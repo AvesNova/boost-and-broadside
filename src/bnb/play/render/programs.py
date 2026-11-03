@@ -11,6 +11,7 @@ INCLUDE = '#include "common.glsl"'
 
 
 def source(name: str) -> str:
+    """A GLSL file's text with `#include "common.glsl"` replaced by that file."""
     text = (HERE / name).read_text()
     return text.replace(INCLUDE, (HERE / "common.glsl").read_text())
 

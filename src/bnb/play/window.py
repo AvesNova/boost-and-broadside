@@ -128,6 +128,8 @@ MODIFIERS = (
 
 
 class Window:
+    """The desktop window: GLFW's window and input, feeding one session."""
+
     def __init__(self, options: Options) -> None:
         if not glfw.init():
             raise RuntimeError("GLFW could not start (is there a display?)")
@@ -164,6 +166,8 @@ class Window:
     # Callbacks ---------------------------------------------------------------------------
 
     def on_key(self, window, key: int, scancode: int, action: int, mods: int) -> None:
+        """GLFW's key callback: every key to ImGui, and a shell key's action when ImGui does
+        not want the keyboard."""
         io = imgui.get_io()
         for flag, imgui_key in MODIFIERS:
             io.add_key_event(imgui_key, bool(mods & flag))
@@ -177,45 +181,59 @@ class Window:
     # The shell's keys (SHELL_KEYS) ---------------------------------------------------------
 
     def quit(self) -> None:
+        """Close the window."""
         glfw.set_window_should_close(self.window, True)
 
     def cycle_view(self) -> None:
+        """Switch to the next view."""
         self.session.cycle_view()
 
     def cycle_theme(self) -> None:
+        """Switch to the next theme."""
         self.session.cycle_theme()
 
     def toggle_editor(self) -> None:
+        """Show or hide the theme editor."""
         self.session.editor.open = not self.session.editor.open
 
     def toggle_follow(self) -> None:
+        """Start or stop following the flown ship."""
         self.session.follow = not self.session.follow
 
     def toggle_help(self) -> None:
+        """Show or hide the key list."""
         self.session.help = not self.session.help
 
     def toggle_pause(self) -> None:
+        """Pause or resume the match."""
         self.session.loop.paused = not self.session.loop.paused
 
     def single_step(self) -> None:
+        """One tick while paused."""
         self.session.loop.single_step()
 
     def next_pilot(self) -> None:
+        """Fly the next ship."""
         self.session.loop.next_pilot()
 
     def faster(self) -> None:
+        """The next larger time scale."""
         self.session.loop.faster()
 
     def slower(self) -> None:
+        """The next smaller time scale."""
         self.session.loop.slower()
 
     def fit(self) -> None:
+        """Fit the arena in the view."""
         self.session.camera.fit(self.session.frame.arena_radius)
 
     def on_char(self, window, codepoint: int) -> None:
+        """GLFW's character callback: typed text to ImGui."""
         imgui.get_io().add_input_character(codepoint)
 
     def on_cursor(self, window, x: float, y: float) -> None:
+        """GLFW's cursor callback: the position to ImGui, and a drag pans the camera."""
         scale_x, scale_y = self._scale()
         x, y = x * scale_x, y * scale_y
         imgui.get_io().add_mouse_pos_event(x, y)
@@ -225,6 +243,7 @@ class Window:
         self.cursor = (x, y)
 
     def on_button(self, window, button: int, action: int, mods: int) -> None:
+        """GLFW's mouse button callback: to ImGui, and a press outside the panels starts a drag."""
         io = imgui.get_io()
         if button < 3:
             io.add_mouse_button_event(button, action == glfw.PRESS)
@@ -232,12 +251,14 @@ class Window:
             self.dragging = action == glfw.PRESS and not io.want_capture_mouse
 
     def on_scroll(self, window, x_offset: float, y_offset: float) -> None:
+        """GLFW's scroll callback: to ImGui, or a zoom about the cursor outside the panels."""
         io = imgui.get_io()
         io.add_mouse_wheel_event(x_offset, y_offset)
         if not io.want_capture_mouse:
             self.session.camera.zoom(WHEEL_ZOOM**y_offset, *self.cursor)
 
     def on_resize(self, window, width: int, height: int) -> None:
+        """GLFW's framebuffer size callback: resize the session."""
         if width > 0 and height > 0:
             self.session.resize(width, height)
 
@@ -252,6 +273,7 @@ class Window:
         return inputs
 
     def run(self) -> None:
+        """Run frames until the window closes, then release the session."""
         last = time.perf_counter()
         while not glfw.window_should_close(self.window):
             glfw.poll_events()
@@ -266,4 +288,5 @@ class Window:
 
 
 def run_window(options: Options) -> None:
+    """Open a window on the options' match and run it."""
     Window(options).run()

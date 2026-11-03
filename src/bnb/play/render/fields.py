@@ -23,6 +23,8 @@ CONTOURS_PER_LEVEL = 3
 
 
 class FieldsPass:
+    """Pass 2: the fields' fill and contours from the index texture, and their core edges."""
+
     def __init__(self, context: moderngl.Context, arc_program: ArcProgram) -> None:
         self.context = context
         self.program = program(context, "fields")
@@ -72,6 +74,7 @@ class FieldsPass:
             )
 
     def core_edges(self, theme: Theme) -> np.ndarray:
+        """The core edges' circles as an arcs table, in each field's thin or thick core colour."""
         fields = self.fields
         cored = fields.core_radius > 0.0
         table = arcs(int(cored.sum()))
@@ -86,6 +89,7 @@ class FieldsPass:
         return table
 
     def draw(self, camera: dict, theme: Theme, log_index_per_level: float) -> None:
+        """Draw the fields' fill and contours, then their core edges."""
         if self.vertex_array is None:
             return
         self.index_texture.use(0)

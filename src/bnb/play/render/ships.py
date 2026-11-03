@@ -19,6 +19,8 @@ def ring_radius(hit_radius: np.ndarray, metres_per_pixel: float) -> np.ndarray:
 
 
 class ShipsPass:
+    """Pass 5: the ships, an instanced outlined silhouette per ship type."""
+
     def __init__(self, context: moderngl.Context, capacity: int = 256) -> None:
         self.context = context
         self.program = program(context, "ships")

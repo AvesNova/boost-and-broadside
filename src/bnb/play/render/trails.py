@@ -28,6 +28,9 @@ NEVER = 1e30  # the age of an empty sample
 
 
 class TrailsPass:
+    """Pass 4: the trails and wingtip vortices, built in the vertex shader from the trail
+    store's textures."""
+
     def __init__(self, context: moderngl.Context) -> None:
         self.context = context
         self.program = program(context, "trails", vertex="trails")

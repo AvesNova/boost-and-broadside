@@ -13,6 +13,8 @@ FLOATS = 8
 
 
 class BulletsPass:
+    """Pass 8: the bullets, one instanced streak per active bullet in its shooter's team colour."""
+
     def __init__(self, context: moderngl.Context, capacity: int = 1024) -> None:
         self.context = context
         self.program = program(context, "bullets")

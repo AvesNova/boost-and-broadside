@@ -13,6 +13,9 @@ FARTHEST_FACTOR = 3.0  # the farthest zoom, as a multiple of the fitted one
 
 @dataclasses.dataclass
 class Camera:
+    """The view: the world point at its middle, the zoom in metres per pixel, and the
+    target's size in pixels."""
+
     width: int
     height: int
     centre_x: float = 0.0
@@ -27,6 +30,7 @@ class Camera:
         self.farthest = self.metres_per_pixel * FARTHEST_FACTOR
 
     def resize(self, width: int, height: int) -> None:
+        """Take the target's new size in pixels (at least 1 by 1)."""
         self.width, self.height = max(width, 1), max(height, 1)
 
     def pan(self, dx: float, dy: float) -> None:
@@ -50,6 +54,7 @@ class Camera:
         self.centre_y += before[1] - after[1]
 
     def follow(self, x: float, y: float) -> None:
+        """Centre the view on the world point (x, y)."""
         self.centre_x, self.centre_y = x, y
 
     def uniforms(self) -> dict:

@@ -90,6 +90,7 @@ class IndexBuilder:
 
     @property
     def done(self) -> bool:
+        """Whether every tile of the texture has been built."""
         return self.next >= len(self.tiles)
 
     def _batch(self, start: int, stop: int) -> list[TileUpdate]:

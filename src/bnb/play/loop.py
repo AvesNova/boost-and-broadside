@@ -66,10 +66,12 @@ class MatchLoop:
 
     @property
     def tick_length(self) -> float:
+        """Seconds of game time per tick."""
         return self.rules.tick_length
 
     @property
     def alpha(self) -> float:
+        """How far the drawn frame is from the previous tick to the current one, in [0, 1]."""
         return min(self.accumulator / self.tick_length, 1.0)
 
     @property
@@ -144,9 +146,11 @@ class MatchLoop:
         self.pilot = (current + 1) % self.rules.num_ships
 
     def faster(self) -> None:
+        """The next larger time scale (the largest stays)."""
         index = TIME_SCALES.index(self.time_scale)
         self.time_scale = TIME_SCALES[min(index + 1, len(TIME_SCALES) - 1)]
 
     def slower(self) -> None:
+        """The next smaller time scale (the smallest stays)."""
         index = TIME_SCALES.index(self.time_scale)
         self.time_scale = TIME_SCALES[max(index - 1, 0)]

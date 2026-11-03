@@ -12,6 +12,8 @@ from .programs import program, set_uniforms
 
 
 class ImguiRenderer:
+    """Draws ImGui's draw data through moderngl and keeps the textures ImGui asks for."""
+
     def __init__(self, context: moderngl.Context) -> None:
         self.context = context
         self.program = program(context, "imgui")

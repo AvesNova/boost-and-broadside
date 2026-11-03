@@ -23,6 +23,7 @@ METER_TRACK_OPACITY = 0.2
 
 
 def zone_table(theme: Theme, zones: Zones, metres_per_pixel: float) -> np.ndarray:
+    """The arcs table of Frontline's zones: each disc and outline, and each defense zone's meter."""
     shown = np.flatnonzero(zones.present)
     team = [colour.floats() for colour in theme.team]
     rows = []

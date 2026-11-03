@@ -59,6 +59,7 @@ class Options:
     threads: int = 1  # torch's CPU threads for the sim
 
     def game(self) -> GameConfig:
+        """The game configuration: the preset with any sizes given overriding it."""
         preset = PRESETS[self.preset]
         sizes = dict(
             ships_per_team=self.ships_per_team,
@@ -141,17 +142,21 @@ class Session:
 
     @property
     def view_name(self) -> str:
+        """The current view's name ("spectator", "team0" or "team1")."""
         return VIEWS[self.view]
 
     def cycle_view(self) -> None:
+        """Switch to the next view: spectator, team 0, team 1."""
         self.view = (self.view + 1) % len(VIEWS)
 
     def cycle_theme(self) -> None:
+        """Switch to the next theme in the library."""
         names = self.theme_names
         index = names.index(self.theme.name) if self.theme.name in names else -1
         self.theme = self.library.load(names[(index + 1) % len(names)])
 
     def resize(self, width: int, height: int) -> None:
+        """Take the target's new size in pixels."""
         self.renderer.resize(width, height)
         self.camera.resize(width, height)
         imgui.set_current_context(self.imgui_context)

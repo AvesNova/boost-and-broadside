@@ -35,6 +35,7 @@ class Colour:
 
     @classmethod
     def from_hex(cls, code: str) -> Colour:
+        """The colour of a hex code, "#RRGGBB" or "#RRGGBBAA"."""
         match = HEX.fullmatch(code)
         if match is None:
             raise ValueError(f"{code!r} is not a colour (#RRGGBB or #RRGGBBAA)")
@@ -48,10 +49,12 @@ class Colour:
         return cls(*channels)
 
     def hex(self) -> str:
+        """The colour's hex code ("#RRGGBB", or "#RRGGBBAA" when it is not opaque)."""
         code = f"#{self.red:02X}{self.green:02X}{self.blue:02X}"
         return code if self.alpha == 255 else code + f"{self.alpha:02X}"
 
     def floats(self) -> tuple[float, float, float, float]:
+        """The colour as four floats in [0, 1], alpha last."""
         return (self.red / 255.0, self.green / 255.0, self.blue / 255.0, self.alpha / 255.0)
 
 
@@ -163,6 +166,7 @@ class Library:
         return shipped if shipped.is_file() else self.user_directory / f"{name}.toml"
 
     def load(self, name: str) -> Theme:
+        """The theme of this name (`path` says which file)."""
         return read(self.path(name))
 
     def user_path(self, name: str) -> pathlib.Path:
@@ -189,6 +193,7 @@ def load(name: str) -> Theme:
 
 
 def to_toml(theme: Theme) -> str:
+    """The theme as a theme file's text, every value listed."""
     lines = [f"# Theme {theme.name}, saved by the play shell's theme editor."]
     for field in dataclasses.fields(Theme):
         if field.name == "name":

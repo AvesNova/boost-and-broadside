@@ -13,6 +13,8 @@ MASK_SCALE = 0.5
 
 
 class FogPass:
+    """Pass 7: the team's visibility mask and the fog it applies."""
+
     def __init__(self, context: moderngl.Context) -> None:
         self.context = context
         self.sight = program(context, "sight", vertex="screen")
@@ -76,6 +78,8 @@ class FogPass:
         self.sight_array.render(moderngl.TRIANGLES, vertices=3)
 
     def draw(self, camera: dict, theme: Theme) -> None:
+        """Multiply the bound framebuffer by the fog colour where the mask says the team
+        cannot see."""
         context = self.context
         self.mask.use(0)
         set_uniforms(self.apply, **camera, fog_mask=0, fog=theme.fog.floats())

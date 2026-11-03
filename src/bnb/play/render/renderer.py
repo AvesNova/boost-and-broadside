@@ -51,6 +51,7 @@ class PassTimer:
 
     @contextlib.contextmanager
     def measure(self, name: str):
+        """Time the block as the pass `name`: a GPU timer query around it and its CPU time."""
         query = self.queries.get(name)
         if query is None:
             query = self.queries[name] = self.context.query(time=True)
@@ -60,10 +61,13 @@ class PassTimer:
         self.cpu[name] = time.perf_counter() - started
 
     def gpu(self) -> dict[str, float]:
+        """The last measured GPU time of each pass, in milliseconds (waits for the GPU)."""
         return {name: query.elapsed * 1e-6 for name, query in self.queries.items()}
 
 
 class Renderer:
+    """Every pass of the battlefield, the multisampled scene they draw into, and the ImGui layer."""
+
     def __init__(self, context: moderngl.Context, width: int, height: int) -> None:
         self.context = context
         self.arcs = ArcProgram(context)
@@ -79,6 +83,7 @@ class Renderer:
         self.timer: PassTimer | None = None
 
     def resize(self, width: int, height: int) -> None:
+        """Reallocate the multisampled scene for a target of this size."""
         size = (max(width, 1), max(height, 1))
         if size == self.size:
             return
@@ -99,6 +104,7 @@ class Renderer:
         ).astype(np.float32)
 
     def write_index(self, updates: list[TileUpdate]) -> None:
+        """Write built tiles into the index texture."""
         self.fields.write(updates)
 
     def _measure(self, name: str):
@@ -193,5 +199,6 @@ class Renderer:
         target.use()
 
     def draw_imgui(self, draw_data) -> None:
+        """Draw this frame's ImGui output over the bound target."""
         with self._measure("imgui"):
             self.imgui.render(draw_data)

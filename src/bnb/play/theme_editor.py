@@ -62,6 +62,7 @@ class ThemeEditor:
         return None if named is None else self._write(named)
 
     def cancel(self) -> None:
+        """Drop the pending theme without saving it."""
         self.pending, self.message = None, "not saved"
 
     def _write(self, theme: Theme) -> Theme:

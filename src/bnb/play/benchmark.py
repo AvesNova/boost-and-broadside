@@ -33,6 +33,8 @@ GAMES = {
 
 @dataclasses.dataclass
 class Benchmark:
+    """One timed configuration: the game, the view and the frame times measured."""
+
     games: tuple[str, ...] = tuple(GAMES)
     views: tuple[str, ...] = ("team0", "spectator")
     seconds: float = 10.0  # timed play per game and view
@@ -54,6 +56,7 @@ def _percentiles(values: list[float]) -> dict:
 def measure(
     session: Session, target, seconds: float, profile_frames: int, warmup_frames: int
 ) -> dict:
+    """Time frames of one configuration offscreen and return the measurement."""
     context = session.context
     for _ in range(warmup_frames):  # compiles the tick and fills the caches
         session.update(1.0 / 60.0)
@@ -112,6 +115,7 @@ def measure(
 
 
 def main() -> None:
+    """Run every benchmark configuration under the benchmark lock and print the tables."""
     from bench.lock import bench_lock
 
     benchmark = tyro.cli(Benchmark)
