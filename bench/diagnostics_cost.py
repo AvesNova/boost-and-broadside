@@ -49,7 +49,7 @@ def main() -> None:
     recorder = Recorder(None, trainer, None, Triggers())
     for diagnostics in (True, False, True):  # compile both variants, then warm up
         trainer.ppo.diagnostics = diagnostics
-        timed_update(trainer, recorder)
+        print(f"warm-up, diagnostics {diagnostics}: {timed_update(trainer, recorder)[0]:.2f} s")
     times = {True: [], False: []}
     records = {True: [], False: []}
     for block in range(options.blocks):
@@ -57,6 +57,7 @@ def main() -> None:
             trainer.ppo.diagnostics = diagnostics
             for _ in range(options.per_block):
                 update, record = timed_update(trainer, recorder)
+                print(f"diagnostics {diagnostics}: {update:.2f} s", flush=True)
                 times[diagnostics].append(update)
                 records[diagnostics].append(record)
     on, off = statistics.median(times[True]), statistics.median(times[False])
