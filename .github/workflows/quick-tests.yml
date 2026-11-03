@@ -41,4 +41,13 @@ jobs:
       - run: uv run --no-sync ruff format --check
 
       - name: Quick tier (parallel, CPU)
-        run: uv run --no-sync pytest -n auto -m "not slow"
+        run: |
+          set -o pipefail
+          uv run --no-sync pytest -n auto -m "not slow" -rfE 2>&1 | tee "$RUNNER_TEMP/pytest.log"
+
+      # The failed tests as annotations, which the public API shows without the log.
+      - name: Name the failures
+        if: failure()
+        run: |
+          grep -E '^(FAILED|ERROR)' "$RUNNER_TEMP/pytest.log" | head -20 | cut -c1-300 \
+            | while read -r line; do echo "::error::$line"; done
