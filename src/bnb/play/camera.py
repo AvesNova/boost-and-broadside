@@ -45,6 +45,13 @@ class Camera:
             self.centre_y - (py - 0.5 * self.height) * self.metres_per_pixel,
         )
 
+    def pixel(self, x: float, y: float) -> tuple[float, float]:
+        """The pixel (y down) a world point (x, y) is drawn at: the inverse of `world`."""
+        return (
+            0.5 * self.width + (x - self.centre_x) / self.metres_per_pixel,
+            0.5 * self.height - (y - self.centre_y) / self.metres_per_pixel,
+        )
+
     def zoom(self, factor: float, px: float, py: float) -> None:
         """Zoom by `factor` (above 1 zooms in) keeping the point under pixel (px, py)."""
         before = self.world(px, py)

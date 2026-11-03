@@ -1,7 +1,8 @@
 """The renderer: the passes in draw order, into a multisampled scene resolved onto the
 target, then the ImGui layer (HUD and panels) on top.
 
-Draw order: sky and arena, fields, zones, trails, ships, rings, fog, bullets. A spectator
+Draw order: sky and arena, fields, zones, trails, ships, rings, fog, bullets, the
+selection's outline; then the minimap into its own texture (`minimap.py`). A spectator
 sees everything; a team's view draws only the ships that team sees (its observation's
 `visible`) and the parts of their trails it saw, and in a fogged match darkens what it
 cannot see. Every bullet is drawn in every view, above the fog at full brightness: agents
@@ -24,6 +25,7 @@ from .bullets import BulletsPass
 from .fields import FieldsPass
 from .fog import FogPass
 from .imgui_renderer import ImguiRenderer
+from .minimap import MinimapPass
 from .rings import ring_table
 from .ships import ShipsPass, ring_radius
 from .sky import SkyPass
@@ -78,6 +80,8 @@ class Renderer:
         self.ships = ShipsPass(context)
         self.fog = FogPass(context)
         self.imgui = ImguiRenderer(context)
+        self.minimap = MinimapPass(context, self.sky, self.fields, self.arcs)
+        self.minimap_id: int | None = None
         self.size = None
         self.resize(width, height)
         self.timer: PassTimer | None = None
@@ -119,9 +123,11 @@ class Renderer:
         trails: Trails,
         now: float,
         target: moderngl.Framebuffer,
+        overlay: np.ndarray | None = None,
     ) -> None:
         """Draw the frame as `view` (SPECTATOR or a team) sees it onto `target`; `now`:
-        game time (s), for the trails."""
+        game time (s), for the trails; overlay: an arcs table drawn last (the selection's
+        outline)."""
         context, uniforms = self.context, camera.uniforms()
         ships, pixel = frame.ships, camera.metres_per_pixel
         team_view = view != SPECTATOR
@@ -194,9 +200,29 @@ class Renderer:
                 bullets.direction_y[active],
                 bullets.team[active],
             )
+        if overlay is not None:
+            self.arcs.draw(uniforms, overlay)
         with self._measure("resolve"):
             context.copy_framebuffer(target, self.scene)
         target.use()
+
+    def draw_minimap(
+        self,
+        frame: Snapshot,
+        view: int,
+        camera: Camera,
+        theme: Theme,
+        shown: np.ndarray,
+        overlay: np.ndarray,
+    ) -> int:
+        """Draw the minimap with its own square camera; returns its texture's id for ImGui."""
+        with self._measure("minimap"):
+            texture = self.minimap.draw(frame, view, camera, theme, self.cores, shown, overlay)
+        if self.minimap_id is not None and self.minimap_id != texture.glo:
+            self.imgui.textures.pop(self.minimap_id, None)  # a resize released the old one
+        self.imgui.textures[texture.glo] = texture
+        self.minimap_id = texture.glo
+        return texture.glo
 
     def draw_imgui(self, draw_data) -> None:
         """Draw this frame's ImGui output over the bound target."""

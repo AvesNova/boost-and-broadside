@@ -69,7 +69,10 @@ def _pair(label: str, alpha: bool = False):
 @dataclasses.dataclass(frozen=True)
 class Theme:
     """A whole look. Colours are `Colour`s; a pair holds team 0's then team 1's. fog
-    multiplies what a team cannot see (#999999 darkens to 60%, saturation kept).
+    multiplies what a team cannot see (#999999 darkens to 60%, saturation kept). The
+    interface's cards draw with panel (their fill, semi-opaque), panel_line (outlines and
+    separators), control (buttons and fields), control_active (a pressed or chosen control)
+    and the HUD text; selection outlines the selected ship, field or zone.
     fill_strength: how far a field's deepest fill goes from the sky toward its air colour.
     vortex_threshold: the angle of attack, as a fraction of the stall angle, beyond which
     a wingtip vortex trails."""
@@ -93,6 +96,11 @@ class Theme:
     trail: tuple[Colour, Colour] = _pair("trail", alpha=True)
     vortex: Colour = _colour("wingtip vortex", alpha=True)
     text: Colour = _colour("HUD text")
+    panel: Colour = _colour("panel", alpha=True)
+    panel_line: Colour = _colour("panel lines")
+    control: Colour = _colour("controls")
+    control_active: Colour = _colour("active control")
+    selection: Colour = _colour("selection")
     fill_strength: float = dataclasses.field(metadata={"label": "fill strength"})
     vortex_threshold: float = dataclasses.field(metadata={"label": "vortex threshold"})
 

@@ -9,6 +9,11 @@ part of the frame times) and the CPU stages (sim tick, controllers, snapshot, in
 tiles, interpolation, and each pass's own Python, which includes its uploads). Last, it
 rebuilds the map's index texture as a map change does, a few tiles per frame, and reports
 those frames.
+
+The interface is drawn as a player sees it with everything open: every card, the minimap
+and a selected ship. The stage `interface` is its own CPU time (building the ImGui frame,
+the minimap's draw included); the passes `minimap` and `imgui` are its GPU work. With
+`--no-interface` the battlefield is drawn alone, for the interface's cost by difference.
 """
 
 import dataclasses
@@ -22,6 +27,7 @@ import tyro
 
 from .app import Options, Session, offscreen_context
 from .render.renderer import PassTimer
+from .selection import Selection
 
 GAMES = {
     "deathmatch": dict(preset="deathmatch"),
@@ -44,6 +50,7 @@ class Benchmark:
     height: int = 1080
     threads: int = 1
     output: pathlib.Path | None = None  # also append the results here, one JSON line each
+    interface: bool = True  # draw the interface, every card open
 
 
 def _percentiles(values: list[float]) -> dict:
@@ -126,7 +133,6 @@ def main() -> None:
         target = context.framebuffer(color_attachments=[context.texture(size, 4)])
         for game in benchmark.games:
             for view in benchmark.views:
-                torch.manual_seed(0)
                 options = Options(
                     **GAMES[game],
                     fog=True,
@@ -134,18 +140,25 @@ def main() -> None:
                     fly=False,
                     width=benchmark.width,
                     height=benchmark.height,
+                    record=False,
                 )
                 started = time.perf_counter()
                 session = Session(options, context, *size)
+                session.loop.realtime.wait_compiled()
                 setup = time.perf_counter() - started
-                result = dict(
-                    game=game, view=view, setup_s=setup, renderer=context.info["GL_RENDERER"]
-                ) | measure(
-                    session,
-                    target,
-                    benchmark.seconds,
-                    benchmark.profile_frames,
-                    benchmark.warmup_frames,
+                session.show_interface = benchmark.interface
+                session.select(Selection("ship", 0))
+                result_interface = dict(interface=benchmark.interface)
+                result = (
+                    dict(game=game, view=view, setup_s=setup, renderer=context.info["GL_RENDERER"])
+                    | result_interface
+                    | measure(
+                        session,
+                        target,
+                        benchmark.seconds,
+                        benchmark.profile_frames,
+                        benchmark.warmup_frames,
+                    )
                 )
                 session.close()
                 print(json.dumps(result), flush=True)

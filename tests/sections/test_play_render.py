@@ -17,14 +17,14 @@ from bnb.play import themes
 from bnb.play.app import Options, read_pixels, run_offscreen
 from bnb.play.camera import Camera
 from bnb.play.index_map import build
-from bnb.play.loop import MatchLoop
+from bnb.play.loop import MatchLoop, MatchSetup
 from bnb.play.render.renderer import SPECTATOR, Renderer
 from bnb.play.render.ships import ring_radius
 from bnb.play.theme_editor import with_colour
 from bnb.play.themes import Colour
 from bnb.play.trails import SAMPLE_SECONDS, Trails
 
-pytestmark = [pytest.mark.gpu, pytest.mark.usefixtures("global_generator")]
+pytestmark = pytest.mark.gpu
 WIDTH, HEIGHT = 320, 240
 
 
@@ -68,8 +68,7 @@ def _target(context):
 
 
 def _loop(config, fogged=True, ticks=0, seed=0):
-    torch.manual_seed(seed)
-    loop = MatchLoop(config, fogged=fogged, compile=False, pilot=None)
+    loop = MatchLoop(MatchSetup(config, fogged=fogged, seed=seed), compiled=False)
     for _ in range(ticks):
         loop.step()
     return loop
@@ -505,6 +504,7 @@ def test_offscreen_frames_are_written(tmp_path):
     paths = run_offscreen(
         Options(
             offscreen=tmp_path,
+            replays=tmp_path / "replays",
             frames=3,
             width=WIDTH,
             height=HEIGHT,
@@ -523,12 +523,16 @@ def test_a_hex_code_typed_into_the_editor_applies(context, tmp_path):
     from imgui_bundle import imgui
 
     from bnb.play.app import Session
-    from bnb.play.theme_editor import PANEL_WIDTH
+    from bnb.play.theme_editor import PANEL_WIDTH, TOP
 
     width, height = 1280, 720
     target = context.framebuffer(color_attachments=[context.texture((width, height), 4)])
     session = Session(
-        Options(compile=False), context, width, height, library=themes.Library(tmp_path)
+        Options(compile=False, replays=tmp_path / "replays"),
+        context,
+        width,
+        height,
+        library=themes.Library(tmp_path),
     )
     session.update(1.0 / 60.0)
     session.editor.open = True
@@ -538,7 +542,7 @@ def test_a_hex_code_typed_into_the_editor_applies(context, tmp_path):
     row = imgui.get_font_size() + 2 * style.frame_padding.y
     io.add_mouse_pos_event(
         width - PANEL_WIDTH - 10 + style.window_padding.x + 30,
-        10 + row + style.window_padding.y + 0.5 * row,
+        TOP + row + style.window_padding.y + 0.5 * row,
     )
     for event in (
         lambda: io.add_mouse_button_event(0, True),

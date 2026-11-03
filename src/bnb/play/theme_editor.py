@@ -15,6 +15,7 @@ from .themes import COLOUR_FIELDS, NUMBER_FIELDS, Colour, Library, Theme
 HEX_FLAGS = imgui.ColorEditFlags_.display_hex | imgui.ColorEditFlags_.input_rgb
 ALPHA_FLAGS = HEX_FLAGS | imgui.ColorEditFlags_.alpha_bar | imgui.ColorEditFlags_.alpha_preview_half
 PANEL_WIDTH = 440.0
+TOP = 60.0  # the panel's top, below the top bar
 LABEL_WIDTH = 170.0  # pixels kept for the labels right of the fields
 
 
@@ -91,7 +92,7 @@ class ThemeEditor:
             return theme, None
         saved = None
         width, _ = imgui.get_io().display_size
-        imgui.set_next_window_pos((width - PANEL_WIDTH - 10.0, 10.0), imgui.Cond_.first_use_ever)
+        imgui.set_next_window_pos((width - PANEL_WIDTH - 10.0, TOP), imgui.Cond_.first_use_ever)
         imgui.set_next_window_size((PANEL_WIDTH, 0.0), imgui.Cond_.first_use_ever)
         expanded, self.open = imgui.begin(f"Theme: {theme.name}###theme editor", self.open)
         if expanded:

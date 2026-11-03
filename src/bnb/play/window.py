@@ -1,9 +1,8 @@
-"""The desktop window: GLFW for the window and input, the session for everything else.
+"""The desktop window: GLFW for the window and its input, the session for everything else.
 
-Keys that fly the ship are read each frame into the pilot's input array; the others act
-when pressed (`bnb.play.render.hud.KEYS` lists them all). The mouse pans and zooms the
-camera, and drives ImGui's panels when it is over one (ImGui then takes the keyboard
-too, so typing a hex code does not fly the ship).
+Every key, character, mouse move, button and wheel step goes to ImGui's input state; the
+session reads it there (its interface, the battlefield's clicks, drags and wheel, the
+flight keys and the shortcuts), so the window adds no behaviour of its own.
 """
 
 import string
@@ -11,24 +10,9 @@ import time
 
 import glfw
 import moderngl
-import torch
 from imgui_bundle import imgui
 
-from bnb.controllers.human import INPUT, INPUTS
-
 from .app import Options, Session
-
-WHEEL_ZOOM = 1.15  # per wheel step
-
-FLIGHT_KEYS = {
-    "boost": (glfw.KEY_W,),
-    "reverse": (glfw.KEY_S,),
-    "left": (glfw.KEY_A,),
-    "right": (glfw.KEY_D,),
-    "full": (glfw.KEY_LEFT_SHIFT, glfw.KEY_RIGHT_SHIFT),
-    "lightest": (glfw.KEY_LEFT_CONTROL, glfw.KEY_RIGHT_CONTROL),
-    "shoot": (glfw.KEY_SPACE,),
-}
 
 # The named keys GLFW and ImGui share (the names below are both libraries' own).
 NAMED_KEYS = {
@@ -82,24 +66,6 @@ NAMED_KEYS = {
 }
 FUNCTION_KEYS = 24  # F1 to F24: ImGui has no F25
 
-# The keys that act once when pressed, to the `Window` method they call.
-SHELL_KEYS = {
-    glfw.KEY_ESCAPE: "quit",
-    glfw.KEY_V: "cycle_view",
-    glfw.KEY_T: "cycle_theme",
-    glfw.KEY_E: "toggle_editor",
-    glfw.KEY_F: "toggle_follow",
-    glfw.KEY_F1: "toggle_help",
-    glfw.KEY_P: "toggle_pause",
-    glfw.KEY_N: "single_step",
-    glfw.KEY_TAB: "next_pilot",
-    glfw.KEY_EQUAL: "faster",
-    glfw.KEY_KP_ADD: "faster",
-    glfw.KEY_MINUS: "slower",
-    glfw.KEY_KP_SUBTRACT: "slower",
-    glfw.KEY_HOME: "fit",
-}
-
 
 def _imgui_keys() -> dict[int, imgui.Key]:
     """Every GLFW key that ImGui has, to its ImGui key: letters, digits, the keypad, the
@@ -148,8 +114,6 @@ class Window:
         self.context = moderngl.create_context(require=330)
         width, height = glfw.get_framebuffer_size(self.window)
         self.session = Session(options, self.context, width, height)
-        self.dragging = False
-        self.cursor = (0.0, 0.0)
         glfw.set_key_callback(self.window, self.on_key)
         glfw.set_char_callback(self.window, self.on_char)
         glfw.set_cursor_pos_callback(self.window, self.on_cursor)
@@ -163,123 +127,45 @@ class Window:
         framebuffer_width, framebuffer_height = glfw.get_framebuffer_size(self.window)
         return framebuffer_width / max(width, 1), framebuffer_height / max(height, 1)
 
-    # Callbacks ---------------------------------------------------------------------------
-
     def on_key(self, window, key: int, scancode: int, action: int, mods: int) -> None:
-        """GLFW's key callback: every key to ImGui, and a shell key's action when ImGui does
-        not want the keyboard."""
+        """GLFW's key callback: the modifiers and the key to ImGui."""
         io = imgui.get_io()
         for flag, imgui_key in MODIFIERS:
             io.add_key_event(imgui_key, bool(mods & flag))
         if key in IMGUI_KEYS and action in (glfw.PRESS, glfw.RELEASE):
             io.add_key_event(IMGUI_KEYS[key], action == glfw.PRESS)
-        if action != glfw.PRESS or io.want_capture_keyboard:
-            return
-        if key in SHELL_KEYS:
-            getattr(self, SHELL_KEYS[key])()
-
-    # The shell's keys (SHELL_KEYS) ---------------------------------------------------------
-
-    def quit(self) -> None:
-        """Close the window."""
-        glfw.set_window_should_close(self.window, True)
-
-    def cycle_view(self) -> None:
-        """Switch to the next view."""
-        self.session.cycle_view()
-
-    def cycle_theme(self) -> None:
-        """Switch to the next theme."""
-        self.session.cycle_theme()
-
-    def toggle_editor(self) -> None:
-        """Show or hide the theme editor."""
-        self.session.editor.open = not self.session.editor.open
-
-    def toggle_follow(self) -> None:
-        """Start or stop following the flown ship."""
-        self.session.follow = not self.session.follow
-
-    def toggle_help(self) -> None:
-        """Show or hide the key list."""
-        self.session.help = not self.session.help
-
-    def toggle_pause(self) -> None:
-        """Pause or resume the match."""
-        self.session.loop.paused = not self.session.loop.paused
-
-    def single_step(self) -> None:
-        """One tick while paused."""
-        self.session.loop.single_step()
-
-    def next_pilot(self) -> None:
-        """Fly the next ship."""
-        self.session.loop.next_pilot()
-
-    def faster(self) -> None:
-        """The next larger time scale."""
-        self.session.loop.faster()
-
-    def slower(self) -> None:
-        """The next smaller time scale."""
-        self.session.loop.slower()
-
-    def fit(self) -> None:
-        """Fit the arena in the view."""
-        self.session.camera.fit(self.session.frame.arena_radius)
 
     def on_char(self, window, codepoint: int) -> None:
         """GLFW's character callback: typed text to ImGui."""
         imgui.get_io().add_input_character(codepoint)
 
     def on_cursor(self, window, x: float, y: float) -> None:
-        """GLFW's cursor callback: the position to ImGui, and a drag pans the camera."""
+        """GLFW's cursor callback: the position, in framebuffer pixels, to ImGui."""
         scale_x, scale_y = self._scale()
-        x, y = x * scale_x, y * scale_y
-        imgui.get_io().add_mouse_pos_event(x, y)
-        if self.dragging:
-            self.session.camera.pan(x - self.cursor[0], y - self.cursor[1])
-            self.session.follow = False
-        self.cursor = (x, y)
+        imgui.get_io().add_mouse_pos_event(x * scale_x, y * scale_y)
 
     def on_button(self, window, button: int, action: int, mods: int) -> None:
-        """GLFW's mouse button callback: to ImGui, and a press outside the panels starts a drag."""
-        io = imgui.get_io()
+        """GLFW's mouse button callback: to ImGui."""
         if button < 3:
-            io.add_mouse_button_event(button, action == glfw.PRESS)
-        if button == glfw.MOUSE_BUTTON_LEFT:
-            self.dragging = action == glfw.PRESS and not io.want_capture_mouse
+            imgui.get_io().add_mouse_button_event(button, action == glfw.PRESS)
 
     def on_scroll(self, window, x_offset: float, y_offset: float) -> None:
-        """GLFW's scroll callback: to ImGui, or a zoom about the cursor outside the panels."""
-        io = imgui.get_io()
-        io.add_mouse_wheel_event(x_offset, y_offset)
-        if not io.want_capture_mouse:
-            self.session.camera.zoom(WHEEL_ZOOM**y_offset, *self.cursor)
+        """GLFW's scroll callback: to ImGui."""
+        imgui.get_io().add_mouse_wheel_event(x_offset, y_offset)
 
     def on_resize(self, window, width: int, height: int) -> None:
         """GLFW's framebuffer size callback: resize the session."""
         if width > 0 and height > 0:
             self.session.resize(width, height)
 
-    # The loop ----------------------------------------------------------------------------
-
-    def _inputs(self) -> torch.Tensor:
-        inputs = torch.zeros(len(INPUTS), dtype=torch.bool)
-        if imgui.get_io().want_capture_keyboard:
-            return inputs
-        for name, keys in FLIGHT_KEYS.items():
-            inputs[INPUT[name]] = any(glfw.get_key(self.window, key) == glfw.PRESS for key in keys)
-        return inputs
-
     def run(self) -> None:
-        """Run frames until the window closes, then release the session."""
+        """Run frames until the window closes or the menu quits, then close the session
+        (saving the live match's replay)."""
         last = time.perf_counter()
-        while not glfw.window_should_close(self.window):
+        while not glfw.window_should_close(self.window) and not self.session.quit_requested:
             glfw.poll_events()
             now = time.perf_counter()
             elapsed, last = now - last, now
-            self.session.loop.inputs = self._inputs()
             self.session.update(elapsed)
             self.session.draw(self.context.screen)
             glfw.swap_buffers(self.window)
