@@ -156,7 +156,8 @@ record's, or the start is refused.
 A training checkpoint is written every N environment steps. Without
 `--checkpoint-every`, N is about 30 minutes at the run's throughput, measured on its
 second update (the first compiles) and recorded in `run.json`{.plain}. The kept checkpoints
-follow the league's rule (`bnb.runs.records.retained`). Number the checkpoints 0, 1, 2, …
+follow `bnb.runs.records.retained` (the league's snapshots have their own rule,
+`bnb.league.pool.retained`). Number the checkpoints 0, 1, 2, …
 in the order written (a stop's off-cadence checkpoint counts too); with n the newest and
 age = n − i, checkpoint i is kept if its age is under `RECENT`, or if i is divisible by
 2^⌊log₂ age⌋, and the final one is always kept. A multiple of 2^(j+1) is a multiple of

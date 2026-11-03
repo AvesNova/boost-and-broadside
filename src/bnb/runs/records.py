@@ -147,8 +147,8 @@ def retained(ordinals: Iterable[int], final: int | None = None) -> set[int]:
     newest RECENT (age < RECENT), every i divisible by 2^floor(log2(age)), and the final
     one. A multiple of 2^(j+1) is a multiple of 2^j, so applied after every write the rule
     only ever deletes what it would delete later anyway, and each band of ages
-    [2^j, 2^(j+1)) from RECENT on holds exactly one checkpoint. The league's snapshots
-    follow the same rule."""
+    [2^j, 2^(j+1)) from RECENT on holds exactly one checkpoint. Training checkpoints
+    only: the league's snapshots have their own rule (`bnb.league.pool.retained`)."""
     ordinals = set(ordinals)
     if not ordinals:
         return set()
