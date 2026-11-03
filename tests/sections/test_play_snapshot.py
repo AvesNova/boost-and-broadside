@@ -30,7 +30,7 @@ def one_thread():
 
 def _match(config: GameConfig, fogged: bool = True, ticks: int = 40, seed: int = 0):
     torch.manual_seed(seed)
-    match = Realtime(config, compile=False, fogged=fogged)
+    match = Realtime(config, compiled=False, fogged=fogged)
     for _ in range(ticks):
         match.step(torch.tensor([[1, 2, 1]] * match.rules.num_ships, dtype=torch.int32))
     return match

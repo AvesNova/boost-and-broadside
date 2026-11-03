@@ -51,7 +51,7 @@ def test_the_loop_gives_the_same_states_as_realtime_alone():
     assert len(actions) == 20
 
     torch.manual_seed(11)
-    alone = Realtime(config, compile=False, fogged=True)
+    alone = Realtime(config, compiled=False, fogged=True)
     for chosen, want in zip(actions, states):
         alone.step(chosen)
         for got, expected in zip(_leaves(alone.state), want):

@@ -45,7 +45,7 @@ class MatchLoop:
 
     def __init__(self, config: GameConfig, fogged: bool = False, compile: bool = True,
                  pilot: int | None = 0) -> None:
-        self.realtime = Realtime(config, compile=compile, fogged=fogged)
+        self.realtime = Realtime(config, compiled=compile, fogged=fogged)
         self.rules, self.types = self.realtime.rules, self.realtime.types
         self.chaser = Chaser(self.rules.ships_per_team)
         self.pilot = pilot
