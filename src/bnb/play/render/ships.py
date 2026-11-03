@@ -25,8 +25,11 @@ class ShipsPass:
         self.meshes = {}
         for silhouette in HALF_OUTLINES:
             vertices, indices = mesh(silhouette)
-            self.meshes[silhouette] = (context.buffer(vertices.tobytes()),
-                                      context.buffer(indices.tobytes()), indices.size)
+            self.meshes[silhouette] = (
+                context.buffer(vertices.tobytes()),
+                context.buffer(indices.tobytes()),
+                indices.size,
+            )
         self.capacity = 0
         self._reserve(capacity)
 
@@ -41,14 +44,28 @@ class ShipsPass:
         self.instances = self.context.buffer(reserve=self.capacity * 8 * 4, dynamic=True)
         self.vertex_arrays = {
             silhouette: self.context.vertex_array(
-                self.program, [(vertices, "2f 2f 1f", "position", "miter", "outline"),
-                               (self.instances, "2f 1f 1f 4f/i", "centre", "heading", "size",
-                                "fill")], index_buffer=indices, index_element_size=4)
-            for silhouette, (vertices, indices, _) in self.meshes.items()}
+                self.program,
+                [
+                    (vertices, "2f 2f 1f", "position", "miter", "outline"),
+                    (self.instances, "2f 1f 1f 4f/i", "centre", "heading", "size", "fill"),
+                ],
+                index_buffer=indices,
+                index_element_size=4,
+            )
+            for silhouette, (vertices, indices, _) in self.meshes.items()
+        }
 
-    def draw(self, camera: dict, theme: Theme, x: np.ndarray, y: np.ndarray,
-             heading: np.ndarray, size: np.ndarray, team: np.ndarray,
-             ship_type: np.ndarray) -> None:
+    def draw(
+        self,
+        camera: dict,
+        theme: Theme,
+        x: np.ndarray,
+        y: np.ndarray,
+        heading: np.ndarray,
+        size: np.ndarray,
+        team: np.ndarray,
+        ship_type: np.ndarray,
+    ) -> None:
         """The listed ships (arrays of one length; size the ring radius in m), each
         silhouette in one instanced draw."""
         if len(x) == 0:
@@ -56,16 +73,25 @@ class ShipsPass:
         self._reserve(len(x))
         silhouette = silhouette_of(ship_type)
         colours = np.array([colour.floats() for colour in theme.team], np.float32)
-        set_uniforms(self.program, **camera, outline_colour=theme.outline.floats(),
-                     outline_pixels=OUTLINE_PIXELS, outline_fraction=OUTLINE_FRACTION)
+        set_uniforms(
+            self.program,
+            **camera,
+            outline_colour=theme.outline.floats(),
+            outline_pixels=OUTLINE_PIXELS,
+            outline_fraction=OUTLINE_FRACTION,
+        )
         for key, vertex_array in self.vertex_arrays.items():
             chosen = silhouette == key
             count = int(chosen.sum())
             if count == 0:
                 continue
-            table = np.concatenate([np.stack([x[chosen], y[chosen], heading[chosen],
-                                              size[chosen]], -1), colours[team[chosen]]], -1)
+            table = np.concatenate(
+                [
+                    np.stack([x[chosen], y[chosen], heading[chosen], size[chosen]], -1),
+                    colours[team[chosen]],
+                ],
+                -1,
+            )
             self.instances.orphan()  # fresh storage: no wait on the last frame's draw
             self.instances.write(table.astype(np.float32).tobytes())
-            vertex_array.render(moderngl.TRIANGLES, vertices=self.meshes[key][2],
-                                instances=count)
+            vertex_array.render(moderngl.TRIANGLES, vertices=self.meshes[key][2], instances=count)

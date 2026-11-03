@@ -5,7 +5,6 @@ game's `medium` on a grid); the bold line on each core edge is drawn from the fi
 geometry, where the game's sight test puts the core.
 """
 
-
 from typing import TYPE_CHECKING
 
 import moderngl
@@ -42,9 +41,12 @@ class FieldsPass:
         self.grid, self.fields, self.count = grid, fields, len(fields.x)
         if values is None:
             values = np.zeros((grid.size, grid.size), np.float32)
-        self.index_texture = context.texture((grid.size, grid.size), 1,
-                                             np.ascontiguousarray(values, np.float32).tobytes(),
-                                             dtype="f4")
+        self.index_texture = context.texture(
+            (grid.size, grid.size),
+            1,
+            np.ascontiguousarray(values, np.float32).tobytes(),
+            dtype="f4",
+        )
         self.index_texture.filter = (moderngl.NEAREST, moderngl.NEAREST)
         outer = fields.radius + 0.5 * fields.band_width
         discs = np.stack([fields.x, fields.y, outer, np.zeros_like(outer)], -1).astype(np.float32)
@@ -52,15 +54,22 @@ class FieldsPass:
         self.outer_discs.filter = (moderngl.NEAREST, moderngl.NEAREST)
         self.instances = context.buffer(discs[:, :3].tobytes())
         self.vertex_array = context.vertex_array(
-            self.program, [(self.corners, "2f", "corner"), (self.instances, "3f/i", "field")])
+            self.program, [(self.corners, "2f", "corner"), (self.instances, "3f/i", "field")]
+        )
         self.resources = (self.index_texture, self.outer_discs, self.instances, self.vertex_array)
 
     def write(self, updates: list[TileUpdate]) -> None:
         """Tiles of the index texture as the builder finishes them."""
         for update in updates:
-            self.index_texture.write(np.ascontiguousarray(update.values, np.float32).tobytes(),
-                                     viewport=(update.column, update.row,
-                                               update.values.shape[1], update.values.shape[0]))
+            self.index_texture.write(
+                np.ascontiguousarray(update.values, np.float32).tobytes(),
+                viewport=(
+                    update.column,
+                    update.row,
+                    update.values.shape[1],
+                    update.values.shape[0],
+                ),
+            )
 
     def core_edges(self, theme: Theme) -> np.ndarray:
         fields = self.fields
@@ -70,8 +79,9 @@ class FieldsPass:
         table[:, 2] = fields.core_radius[cored]
         table[:, 4] = CORE_LINE_PIXELS
         thick = fields.level[cored] > 0
-        table[:, 9:13] = np.where(thick[:, None], theme.thick_core.floats(),
-                                  theme.thin_core.floats())
+        table[:, 9:13] = np.where(
+            thick[:, None], theme.thick_core.floats(), theme.thin_core.floats()
+        )
         table[:, 14] = CIRCLE
         return table
 
@@ -80,12 +90,19 @@ class FieldsPass:
             return
         self.index_texture.use(0)
         self.outer_discs.use(1)
-        set_uniforms(self.program, **camera, index_map=0, outer_discs=1,
-                     index_grid=(self.grid.origin, self.grid.texel), sky=theme.sky.floats(),
-                     thin_air=theme.thin_air.floats(), thick_air=theme.thick_air.floats(),
-                     thin_contour=theme.thin_contour.floats(),
-                     thick_contour=theme.thick_contour.floats(),
-                     fill_strength=theme.fill_strength,
-                     contour_step=log_index_per_level / CONTOURS_PER_LEVEL)
+        set_uniforms(
+            self.program,
+            **camera,
+            index_map=0,
+            outer_discs=1,
+            index_grid=(self.grid.origin, self.grid.texel),
+            sky=theme.sky.floats(),
+            thin_air=theme.thin_air.floats(),
+            thick_air=theme.thick_air.floats(),
+            thin_contour=theme.thin_contour.floats(),
+            thick_contour=theme.thick_contour.floats(),
+            fill_strength=theme.fill_strength,
+            contour_step=log_index_per_level / CONTOURS_PER_LEVEL,
+        )
         self.vertex_array.render(moderngl.TRIANGLE_STRIP, vertices=4, instances=self.count)
         self.arcs.draw(camera, self.core_edges(theme))

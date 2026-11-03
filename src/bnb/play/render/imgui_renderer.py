@@ -18,8 +18,11 @@ class ImguiRenderer:
         self.vertices = context.buffer(reserve=1 << 16, dynamic=True)
         self.indices = context.buffer(reserve=1 << 16, dynamic=True)
         self.vertex_array = context.vertex_array(
-            self.program, [(self.vertices, "2f 2f 4f1", "position", "uv", "tint")],
-            index_buffer=self.indices, index_element_size=imgui.INDEX_SIZE)
+            self.program,
+            [(self.vertices, "2f 2f 4f1", "position", "uv", "tint")],
+            index_buffer=self.indices,
+            index_element_size=imgui.INDEX_SIZE,
+        )
         self.textures: dict[int, moderngl.Texture] = {}
         io = imgui.get_io()
         io.backend_flags |= imgui.BackendFlags_.renderer_has_textures
@@ -35,8 +38,9 @@ class ImguiRenderer:
                 # Another renderer made it (an ImGui context can outlive one): make our own.
                 status = imgui.ImTextureStatus.want_create
             if status == imgui.ImTextureStatus.want_create:
-                created = self.context.texture((texture.width, texture.height), 4,
-                                               texture.get_pixels_array().tobytes())
+                created = self.context.texture(
+                    (texture.width, texture.height), 4, texture.get_pixels_array().tobytes()
+                )
                 created.filter = (moderngl.LINEAR, moderngl.LINEAR)
                 self.textures[created.glo] = created
                 texture.set_tex_id(created.glo)
@@ -60,8 +64,10 @@ class ImguiRenderer:
         context.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA
         set_uniforms(self.program, display_size=(width, height), atlas=0)
         for commands in draw_data.cmd_lists:
-            for buffer, vector, size in ((self.vertices, commands.vtx_buffer, imgui.VERTEX_SIZE),
-                                         (self.indices, commands.idx_buffer, imgui.INDEX_SIZE)):
+            for buffer, vector, size in (
+                (self.vertices, commands.vtx_buffer, imgui.VERTEX_SIZE),
+                (self.indices, commands.idx_buffer, imgui.INDEX_SIZE),
+            ):
                 nbytes = vector.size() * size
                 if buffer.size < nbytes:
                     buffer.orphan(2 * nbytes)
@@ -71,8 +77,13 @@ class ImguiRenderer:
                 left, top, right, bottom = command.clip_rect
                 if right <= left or bottom <= top:
                     continue
-                context.scissor = (int(left), int(height - bottom), int(right - left),
-                                   int(bottom - top))
-                self.vertex_array.render(moderngl.TRIANGLES, vertices=command.elem_count,
-                                         first=command.idx_offset)
+                context.scissor = (
+                    int(left),
+                    int(height - bottom),
+                    int(right - left),
+                    int(bottom - top),
+                )
+                self.vertex_array.render(
+                    moderngl.TRIANGLES, vertices=command.elem_count, first=command.idx_offset
+                )
         context.scissor = None

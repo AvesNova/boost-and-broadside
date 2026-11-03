@@ -17,9 +17,16 @@ WIDTH_FRACTION = 0.12  # of the ring radius
 MINIMUM_WIDTH_PIXELS = 1.6
 
 
-def ring_table(theme: Theme, x: np.ndarray, y: np.ndarray, heading: np.ndarray,
-               size: np.ndarray, team: np.ndarray, shield: np.ndarray,
-               energy: np.ndarray) -> np.ndarray:
+def ring_table(
+    theme: Theme,
+    x: np.ndarray,
+    y: np.ndarray,
+    heading: np.ndarray,
+    size: np.ndarray,
+    team: np.ndarray,
+    shield: np.ndarray,
+    energy: np.ndarray,
+) -> np.ndarray:
     """The arcs of the listed ships (arrays of one length; size the ring radius in m,
     shield and energy fractions): shield track, shield, energy track, energy."""
     count = len(x)
@@ -30,8 +37,12 @@ def ring_table(theme: Theme, x: np.ndarray, y: np.ndarray, heading: np.ndarray,
     table[:, :, 4] = MINIMUM_WIDTH_PIXELS
     shield_colour = np.array([colour.floats() for colour in theme.shield], np.float32)[team]
     energy_colour = np.array(theme.energy.floats(), np.float32)
-    for arc, colour, opacity in ((0, shield_colour, TRACK_OPACITY), (1, shield_colour, 1.0),
-                                 (2, energy_colour, TRACK_OPACITY), (3, energy_colour, 1.0)):
+    for arc, colour, opacity in (
+        (0, shield_colour, TRACK_OPACITY),
+        (1, shield_colour, 1.0),
+        (2, energy_colour, TRACK_OPACITY),
+        (3, energy_colour, 1.0),
+    ):
         table[:, arc, 9:13] = colour
         table[:, arc, 12] *= opacity
     tail = np.remainder(heading + math.pi, 2.0 * math.pi)

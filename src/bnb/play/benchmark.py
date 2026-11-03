@@ -46,12 +46,14 @@ class Benchmark:
 
 def _percentiles(values: list[float]) -> dict:
     data = np.array(values) * 1e3
-    return {f"p{percentile}": float(np.percentile(data, percentile))
-            for percentile in (50, 90, 99)} | {"max": float(data.max())}
+    return {
+        f"p{percentile}": float(np.percentile(data, percentile)) for percentile in (50, 90, 99)
+    } | {"max": float(data.max())}
 
 
-def measure(session: Session, target, seconds: float, profile_frames: int,
-            warmup_frames: int) -> dict:
+def measure(
+    session: Session, target, seconds: float, profile_frames: int, warmup_frames: int
+) -> dict:
     context = session.context
     for _ in range(warmup_frames):  # compiles the tick and fills the caches
         session.update(1.0 / 60.0)
@@ -95,14 +97,18 @@ def measure(session: Session, target, seconds: float, profile_frames: int,
         context.finish()
         rebuild.append(time.perf_counter() - now)
         last = now
-    return dict(frames=len(frame_times), frame_ms=_percentiles(frame_times),
-                tick_rate=tick_rate, real_time_rate=1.0 / loop.tick_length,
-                gpu_ms={name: float(np.mean(values)) for name, values in gpu.items()},
-                pass_cpu_ms={name: float(np.mean(values)) for name, values in cpu.items()},
-                stage_ms={name: float(np.mean(values)) for name, values in stages.items()},
-                map_change=dict(frames=len(rebuild), frame_ms=_percentiles(rebuild)),
-                fog_mask=list(session.renderer.fog.size) if session.renderer.fog.size else None,
-                index_grid=dataclasses.asdict(session.renderer.fields.grid))
+    return dict(
+        frames=len(frame_times),
+        frame_ms=_percentiles(frame_times),
+        tick_rate=tick_rate,
+        real_time_rate=1.0 / loop.tick_length,
+        gpu_ms={name: float(np.mean(values)) for name, values in gpu.items()},
+        pass_cpu_ms={name: float(np.mean(values)) for name, values in cpu.items()},
+        stage_ms={name: float(np.mean(values)) for name, values in stages.items()},
+        map_change=dict(frames=len(rebuild), frame_ms=_percentiles(rebuild)),
+        fog_mask=list(session.renderer.fog.size) if session.renderer.fog.size else None,
+        index_grid=dataclasses.asdict(session.renderer.fields.grid),
+    )
 
 
 def main() -> None:
@@ -117,15 +123,26 @@ def main() -> None:
         for game in benchmark.games:
             for view in benchmark.views:
                 torch.manual_seed(0)
-                options = Options(**GAMES[game], fog=True, view=view, fly=False,
-                                  width=benchmark.width, height=benchmark.height)
+                options = Options(
+                    **GAMES[game],
+                    fog=True,
+                    view=view,
+                    fly=False,
+                    width=benchmark.width,
+                    height=benchmark.height,
+                )
                 started = time.perf_counter()
                 session = Session(options, context, *size)
                 setup = time.perf_counter() - started
-                result = dict(game=game, view=view, setup_s=setup,
-                              renderer=context.info["GL_RENDERER"]) | measure(
-                    session, target, benchmark.seconds, benchmark.profile_frames,
-                    benchmark.warmup_frames)
+                result = dict(
+                    game=game, view=view, setup_s=setup, renderer=context.info["GL_RENDERER"]
+                ) | measure(
+                    session,
+                    target,
+                    benchmark.seconds,
+                    benchmark.profile_frames,
+                    benchmark.warmup_frames,
+                )
                 session.close()
                 print(json.dumps(result), flush=True)
                 if benchmark.output is not None:

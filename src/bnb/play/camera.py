@@ -36,8 +36,10 @@ class Camera:
 
     def world(self, px: float, py: float) -> tuple[float, float]:
         """The world point under pixel (px, py) (y down)."""
-        return (self.centre_x + (px - 0.5 * self.width) * self.metres_per_pixel,
-                self.centre_y - (py - 0.5 * self.height) * self.metres_per_pixel)
+        return (
+            self.centre_x + (px - 0.5 * self.width) * self.metres_per_pixel,
+            self.centre_y - (py - 0.5 * self.height) * self.metres_per_pixel,
+        )
 
     def zoom(self, factor: float, px: float, py: float) -> None:
         """Zoom by `factor` (above 1 zooms in) keeping the point under pixel (px, py)."""
@@ -52,7 +54,13 @@ class Camera:
 
     def uniforms(self) -> dict:
         """The shaders' camera, pixel and viewport uniforms."""
-        return dict(camera=(self.centre_x, self.centre_y,
-                            2.0 / (self.width * self.metres_per_pixel),
-                            2.0 / (self.height * self.metres_per_pixel)),
-                    pixel=self.metres_per_pixel, viewport=(float(self.width), float(self.height)))
+        return dict(
+            camera=(
+                self.centre_x,
+                self.centre_y,
+                2.0 / (self.width * self.metres_per_pixel),
+                2.0 / (self.height * self.metres_per_pixel),
+            ),
+            pixel=self.metres_per_pixel,
+            viewport=(float(self.width), float(self.height)),
+        )

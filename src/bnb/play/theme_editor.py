@@ -37,8 +37,9 @@ class ThemeEditor:
         self.name = ""
         self.pending: Theme | None = None
         shadowed = library.shadowed()
-        self.message = (f"ignored user themes with shipped names: {', '.join(shadowed)}"
-                        if shadowed else "")
+        self.message = (
+            f"ignored user themes with shipped names: {', '.join(shadowed)}" if shadowed else ""
+        )
 
     def save_as(self, theme: Theme, name: str) -> Theme | None:
         """Save the theme under `name`; returns the saved theme, or None when nothing was
@@ -75,8 +76,9 @@ class ThemeEditor:
         if field.metadata["alpha"]:
             changed, floats = imgui.color_edit4(label, list(colour.floats()), ALPHA_FLAGS)
         else:
-            changed, floats = imgui.color_edit3(label, list(colour.floats()[:3]),
-                                                HEX_FLAGS | imgui.ColorEditFlags_.no_alpha)
+            changed, floats = imgui.color_edit3(
+                label, list(colour.floats()[:3]), HEX_FLAGS | imgui.ColorEditFlags_.no_alpha
+            )
         if not changed:
             return theme
         return with_colour(theme, field.name, Colour.from_floats(floats), team)
@@ -100,8 +102,9 @@ class ThemeEditor:
                 for team in teams:
                     theme = self._colour(theme, field, team)
             for name in NUMBER_FIELDS:
-                changed, value = imgui.slider_float(fields[name].metadata["label"],
-                                                    getattr(theme, name), 0.0, 1.0)
+                changed, value = imgui.slider_float(
+                    fields[name].metadata["label"], getattr(theme, name), 0.0, 1.0
+                )
                 if changed:
                     theme = dataclasses.replace(theme, **{name: value})
             imgui.separator()

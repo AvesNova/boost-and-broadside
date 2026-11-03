@@ -39,7 +39,7 @@ class Colour:
         if match is None:
             raise ValueError(f"{code!r} is not a colour (#RRGGBB or #RRGGBBAA)")
         digits = match.group(1) + (match.group(2) or "FF")
-        return cls(*(int(digits[i:i + 2], 16) for i in range(0, 8, 2)))
+        return cls(*(int(digits[i : i + 2], 16) for i in range(0, 8, 2)))
 
     @classmethod
     def from_floats(cls, values) -> Colour:
@@ -95,8 +95,11 @@ class Theme:
 
 
 NUMBER_FIELDS = ("fill_strength", "vortex_threshold")
-COLOUR_FIELDS = tuple(field.name for field in dataclasses.fields(Theme)
-                      if field.name != "name" and field.name not in NUMBER_FIELDS)
+COLOUR_FIELDS = tuple(
+    field.name
+    for field in dataclasses.fields(Theme)
+    if field.name != "name" and field.name not in NUMBER_FIELDS
+)
 
 
 def parse(name: str, values: dict) -> Theme:

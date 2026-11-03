@@ -18,8 +18,10 @@ def source(name: str) -> str:
 def program(context: moderngl.Context, name: str, vertex: str | None = None) -> moderngl.Program:
     """The program built from `name.vert.glsl` (or `vertex.vert.glsl`) and
     `name.frag.glsl`."""
-    return context.program(vertex_shader=source(f"{vertex or name}.vert.glsl"),
-                           fragment_shader=source(f"{name}.frag.glsl"))
+    return context.program(
+        vertex_shader=source(f"{vertex or name}.vert.glsl"),
+        fragment_shader=source(f"{name}.frag.glsl"),
+    )
 
 
 def set_uniforms(program: moderngl.Program, **values) -> None:

@@ -18,8 +18,10 @@ HALF_OUTLINES = {
     GENERIC: ((46, 0), (-28, 34), (-20, 0)),  # a plain dart
 }
 MITER_LIMIT = 2.0
-WINGTIPS = {key: max(abs(side) for _, side in outline) / MOCKUP_RING
-            for key, outline in HALF_OUTLINES.items()}  # half span, in ring radii
+WINGTIPS = {
+    key: max(abs(side) for _, side in outline) / MOCKUP_RING
+    for key, outline in HALF_OUTLINES.items()
+}  # half span, in ring radii
 
 
 def silhouette_of(ship_type: np.ndarray) -> np.ndarray:
@@ -54,9 +56,13 @@ def triangulate(points: np.ndarray) -> np.ndarray:
             a, b, c = points[i], points[j], points[n]
             if cross(a, b, c) <= 0.0:
                 continue  # a reflex corner is not an ear
-            inside = any(cross(a, b, points[m]) >= 0 and cross(b, c, points[m]) >= 0
-                         and cross(c, a, points[m]) >= 0
-                         for m in remaining if m not in (i, j, n))
+            inside = any(
+                cross(a, b, points[m]) >= 0
+                and cross(b, c, points[m]) >= 0
+                and cross(c, a, points[m]) >= 0
+                for m in remaining
+                if m not in (i, j, n)
+            )
             if not inside:
                 triangles.append((i, j, n))
                 remaining.pop(k)

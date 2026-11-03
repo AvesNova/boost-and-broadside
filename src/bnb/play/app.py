@@ -60,19 +60,33 @@ class Options:
 
     def game(self) -> GameConfig:
         preset = PRESETS[self.preset]
-        sizes = dict(ships_per_team=self.ships_per_team, num_fields=self.fields,
-                     arena_radius=self.arena_radius)
-        return dataclasses.replace(preset, **{name: value for name, value in sizes.items()
-                                              if value is not None})
+        sizes = dict(
+            ships_per_team=self.ships_per_team,
+            num_fields=self.fields,
+            arena_radius=self.arena_radius,
+        )
+        return dataclasses.replace(
+            preset, **{name: value for name, value in sizes.items() if value is not None}
+        )
 
 
 class Session:
     """One match being watched or played, independent of any window."""
 
-    def __init__(self, options: Options, context: moderngl.Context, width: int,
-                 height: int, library: themes.Library | None = None) -> None:
-        self.loop = MatchLoop(options.game(), fogged=options.fog, compile=options.compile,
-                              pilot=0 if options.fly else None)
+    def __init__(
+        self,
+        options: Options,
+        context: moderngl.Context,
+        width: int,
+        height: int,
+        library: themes.Library | None = None,
+    ) -> None:
+        self.loop = MatchLoop(
+            options.game(),
+            fogged=options.fog,
+            compile=options.compile,
+            pilot=0 if options.fly else None,
+        )
         self.context = context
         self.imgui_context = imgui.create_context()
         imgui.set_current_context(self.imgui_context)
@@ -104,8 +118,10 @@ class Session:
 
     def _map_changed(self) -> bool:
         fields = self.loop.current.fields
-        return not all(np.array_equal(getattr(fields, name), getattr(self.map_fields, name))
-                       for name in ("x", "y", "radius", "band_width", "level"))
+        return not all(
+            np.array_equal(getattr(fields, name), getattr(self.map_fields, name))
+            for name in ("x", "y", "radius", "band_width", "level")
+        )
 
     def _new_map(self, whole: bool) -> None:
         """Start the static layers of the current map: the whole index texture now, or
@@ -171,16 +187,27 @@ class Session:
     def draw(self, target: moderngl.Framebuffer) -> None:
         """Draw the last updated frame and the ImGui layer onto `target`."""
         view = SPECTATOR if self.view == 0 else self.view - 1
-        self.renderer.draw(self.frame, view, self.camera, self.theme, self.trails,
-                           self.loop.game_time, target)
+        self.renderer.draw(
+            self.frame, view, self.camera, self.theme, self.trails, self.loop.game_time, target
+        )
         imgui.set_current_context(self.imgui_context)
         imgui.get_io().delta_time = max(self.elapsed, 1e-4)
         imgui.new_frame()
         loop = self.loop
-        draw_hud(self.frame, HudState(view=VIEW_LABELS[self.view_name], theme=self.theme.name,
-                                      time_scale=loop.time_scale, paused=loop.paused,
-                                      pilot=loop.pilot, follow=self.follow, help=self.help),
-                 self.theme, self.font)
+        draw_hud(
+            self.frame,
+            HudState(
+                view=VIEW_LABELS[self.view_name],
+                theme=self.theme.name,
+                time_scale=loop.time_scale,
+                paused=loop.paused,
+                pilot=loop.pilot,
+                follow=self.follow,
+                help=self.help,
+            ),
+            self.theme,
+            self.font,
+        )
         if self.original.name != self.theme.name:
             self.original = self._file_theme()
         self.theme, saved = self.editor.draw(self.theme, self.original)
@@ -217,8 +244,9 @@ def run_offscreen(options: Options) -> list[pathlib.Path]:
     """Render options.frames frames at 60 frames per second of game display time; write
     each to options.offscreen/frame_NNNN.png."""
     context = offscreen_context()
-    target = context.framebuffer(color_attachments=[context.texture((options.width,
-                                                                       options.height), 4)])
+    target = context.framebuffer(
+        color_attachments=[context.texture((options.width, options.height), 4)]
+    )
     session = Session(options, context, options.width, options.height)
     options.offscreen.mkdir(parents=True, exist_ok=True)
     paths = []

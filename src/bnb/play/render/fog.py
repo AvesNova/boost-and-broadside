@@ -36,8 +36,9 @@ class FogPass:
         self.framebuffer = self.context.framebuffer(color_attachments=[self.mask])
 
     @staticmethod
-    def _table(context: moderngl.Context, texture: moderngl.Texture | None,
-               rows: np.ndarray) -> moderngl.Texture:
+    def _table(
+        context: moderngl.Context, texture: moderngl.Texture | None, rows: np.ndarray
+    ) -> moderngl.Texture:
         """A (len(rows), 1) RGBA float texture holding rows (k, 4), grown as needed."""
         count = max(len(rows), 1)
         if texture is None or texture.width < count:
@@ -46,8 +47,9 @@ class FogPass:
             texture = context.texture((max(count, 64), 1), 4, dtype="f4")
             texture.filter = (moderngl.NEAREST, moderngl.NEAREST)
         if len(rows):
-            texture.write(np.ascontiguousarray(rows, np.float32).tobytes(),
-                          viewport=(0, 0, len(rows), 1))
+            texture.write(
+                np.ascontiguousarray(rows, np.float32).tobytes(), viewport=(0, 0, len(rows), 1)
+            )
         return texture
 
     def draw_mask(self, camera: dict, observers: np.ndarray, cores: np.ndarray) -> None:
@@ -63,8 +65,14 @@ class FogPass:
         self.observers.use(0)
         self.cores.use(1)
         mask_viewport = tuple(float(value) for value in self.size)
-        set_uniforms(self.sight, **{**camera, "viewport": mask_viewport}, observers=0,
-                     observer_count=len(observers), cores=1, core_count=len(cores))
+        set_uniforms(
+            self.sight,
+            **{**camera, "viewport": mask_viewport},
+            observers=0,
+            observer_count=len(observers),
+            cores=1,
+            core_count=len(cores),
+        )
         self.sight_array.render(moderngl.TRIANGLES, vertices=3)
 
     def draw(self, camera: dict, theme: Theme) -> None:

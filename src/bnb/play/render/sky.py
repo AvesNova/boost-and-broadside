@@ -12,7 +12,13 @@ class SkyPass:
         self.vertex_array = context.vertex_array(self.program, [])
 
     def draw(self, camera: dict, theme: Theme, arena_radius: float) -> None:
-        set_uniforms(self.program, **camera, arena_radius=arena_radius,
-                     sky=theme.sky.floats(), outside=theme.outside.floats(),
-                     boundary=theme.boundary.floats(), edge=theme.thick_core.floats())
+        set_uniforms(
+            self.program,
+            **camera,
+            arena_radius=arena_radius,
+            sky=theme.sky.floats(),
+            outside=theme.outside.floats(),
+            boundary=theme.boundary.floats(),
+            edge=theme.thick_core.floats(),
+        )
         self.vertex_array.render(moderngl.TRIANGLES, vertices=3)

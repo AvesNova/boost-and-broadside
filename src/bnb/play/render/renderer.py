@@ -94,8 +94,9 @@ class Renderer:
         `write_index` brings its tiles)."""
         self.fields.set_map(frame.fields, grid, values)
         fields = frame.fields
-        self.cores = np.stack([fields.x, fields.y, fields.core_radius ** 2,
-                               np.zeros_like(fields.x)], -1).astype(np.float32)
+        self.cores = np.stack(
+            [fields.x, fields.y, fields.core_radius**2, np.zeros_like(fields.x)], -1
+        ).astype(np.float32)
 
     def write_index(self, updates: list[TileUpdate]) -> None:
         self.fields.write(updates)
@@ -103,8 +104,16 @@ class Renderer:
     def _measure(self, name: str):
         return self.timer.measure(name) if self.timer else contextlib.nullcontext()
 
-    def draw(self, frame: Snapshot, view: int, camera: Camera, theme: Theme,
-             trails: Trails, now: float, target: moderngl.Framebuffer) -> None:
+    def draw(
+        self,
+        frame: Snapshot,
+        view: int,
+        camera: Camera,
+        theme: Theme,
+        trails: Trails,
+        now: float,
+        target: moderngl.Framebuffer,
+    ) -> None:
         """Draw the frame as `view` (SPECTATOR or a team) sees it onto `target`; `now`:
         game time (s), for the trails."""
         context, uniforms = self.context, camera.uniforms()
@@ -116,8 +125,15 @@ class Renderer:
         if fogged:
             with self._measure("fog mask"):
                 team = ships.alive & (ships.team == view)
-                observers = np.stack([ships.x[team], ships.y[team], ships.vision_range[team],
-                                      np.zeros(int(team.sum()), np.float32)], -1)
+                observers = np.stack(
+                    [
+                        ships.x[team],
+                        ships.y[team],
+                        ships.vision_range[team],
+                        np.zeros(int(team.sum()), np.float32),
+                    ],
+                    -1,
+                )
                 self.fog.draw_mask(uniforms, observers, self.cores)
         self.scene.use()
         context.viewport = (0, 0, *self.size)
@@ -131,26 +147,47 @@ class Renderer:
             self.arcs.draw(uniforms, zone_table(theme, frame.zones, pixel))
         with self._measure("trails"):
             seen = trails.seen[view] if team_view else np.ones_like(trails.seen[0])
-            self.trails.draw(uniforms, theme, trails, now, seen, ships.team, ships.ship_type,
-                             size)
+            self.trails.draw(uniforms, theme, trails, now, seen, ships.team, ships.ship_type, size)
         with self._measure("ships"):
-            self.ships.draw(uniforms, theme, ships.x[shown], ships.y[shown],
-                            ships.heading[shown], size[shown], ships.team[shown],
-                            ships.ship_type[shown])
+            self.ships.draw(
+                uniforms,
+                theme,
+                ships.x[shown],
+                ships.y[shown],
+                ships.heading[shown],
+                size[shown],
+                ships.team[shown],
+                ships.ship_type[shown],
+            )
         with self._measure("rings"):
-            self.arcs.draw(uniforms, ring_table(theme, ships.x[shown], ships.y[shown],
-                                                ships.heading[shown], size[shown],
-                                                ships.team[shown], ships.shield[shown],
-                                                ships.energy[shown]))
+            self.arcs.draw(
+                uniforms,
+                ring_table(
+                    theme,
+                    ships.x[shown],
+                    ships.y[shown],
+                    ships.heading[shown],
+                    size[shown],
+                    ships.team[shown],
+                    ships.shield[shown],
+                    ships.energy[shown],
+                ),
+            )
         if fogged:
             with self._measure("fog"):
                 self.fog.draw(uniforms, theme)
         with self._measure("bullets"):
             bullets = frame.bullets
             active = bullets.active
-            self.bullets.draw(uniforms, theme, bullets.x[active], bullets.y[active],
-                              bullets.direction_x[active], bullets.direction_y[active],
-                              bullets.team[active])
+            self.bullets.draw(
+                uniforms,
+                theme,
+                bullets.x[active],
+                bullets.y[active],
+                bullets.direction_x[active],
+                bullets.direction_y[active],
+                bullets.team[active],
+            )
         with self._measure("resolve"):
             context.copy_framebuffer(target, self.scene)
         target.use()

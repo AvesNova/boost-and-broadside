@@ -81,12 +81,21 @@ def draw_hud(frame: Snapshot, state: HudState, theme: Theme, font) -> None:
 
     # Top middle: the score or the front, then the clock.
     if frame.mode == "frontline":
-        parts = [(text, "Front "), (team[0] if frame.front > 0 else team[1] if frame.front < 0
-                                    else text, f"{frame.front:+d}"),
-                 (text, f"  (wins at {frame.front_threshold})")]
+        parts = [
+            (text, "Front "),
+            (
+                team[0] if frame.front > 0 else team[1] if frame.front < 0 else text,
+                f"{frame.front:+d}",
+            ),
+            (text, f"  (wins at {frame.front_threshold})"),
+        ]
     elif frame.mode == "team_deathmatch":
-        parts = [(team[0], f"{int(frame.score[0])}"), (text, "  :  "),
-                 (team[1], f"{int(frame.score[1])}"), (text, f"   (first to {frame.score_target})")]
+        parts = [
+            (team[0], f"{int(frame.score[0])}"),
+            (text, "  :  "),
+            (team[1], f"{int(frame.score[1])}"),
+            (text, f"   (first to {frame.score_target})"),
+        ]
     else:
         parts = [(text, "Sandbox")]
     clock = f"{_clock(frame.clock)} / {_clock(frame.episode_length)}"
@@ -109,14 +118,21 @@ def draw_hud(frame: Snapshot, state: HudState, theme: Theme, font) -> None:
             label += " (following)"
         if not ships.alive[pilot]:
             label += f"   respawn in {ships.respawn_wait[pilot]:.1f} s"
-        put(0.5 * (width - measure(label)), height - MARGIN - TEXT_SIZE,
-            team[int(ships.team[pilot])], label)
+        put(
+            0.5 * (width - measure(label)),
+            height - MARGIN - TEXT_SIZE,
+            team[int(ships.team[pilot])],
+            label,
+        )
 
     if state.help:
         y = 2.0 * MARGIN + TEXT_SIZE
-        draw.add_rect_filled((MARGIN - 6, y - 6),
-                             (MARGIN + 420, y + len(KEYS) * (SMALL_SIZE + 4) + 6),
-                             imgui.get_color_u32((1.0, 1.0, 1.0, 0.85)), 6.0)
+        draw.add_rect_filled(
+            (MARGIN - 6, y - 6),
+            (MARGIN + 420, y + len(KEYS) * (SMALL_SIZE + 4) + 6),
+            imgui.get_color_u32((1.0, 1.0, 1.0, 0.85)),
+            6.0,
+        )
         for key, meaning in KEYS:
             put(MARGIN, y, text, key, SMALL_SIZE)
             put(MARGIN + 130, y, text, meaning, SMALL_SIZE)

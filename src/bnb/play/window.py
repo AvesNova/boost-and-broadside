@@ -21,46 +21,93 @@ from .app import Options, Session
 WHEEL_ZOOM = 1.15  # per wheel step
 
 FLIGHT_KEYS = {
-    "boost": (glfw.KEY_W,), "reverse": (glfw.KEY_S,), "left": (glfw.KEY_A,),
-    "right": (glfw.KEY_D,), "full": (glfw.KEY_LEFT_SHIFT, glfw.KEY_RIGHT_SHIFT),
-    "lightest": (glfw.KEY_LEFT_CONTROL, glfw.KEY_RIGHT_CONTROL), "shoot": (glfw.KEY_SPACE,),
+    "boost": (glfw.KEY_W,),
+    "reverse": (glfw.KEY_S,),
+    "left": (glfw.KEY_A,),
+    "right": (glfw.KEY_D,),
+    "full": (glfw.KEY_LEFT_SHIFT, glfw.KEY_RIGHT_SHIFT),
+    "lightest": (glfw.KEY_LEFT_CONTROL, glfw.KEY_RIGHT_CONTROL),
+    "shoot": (glfw.KEY_SPACE,),
 }
 
 # The named keys GLFW and ImGui share (the names below are both libraries' own).
 NAMED_KEYS = {
-    "TAB": "tab", "LEFT": "left_arrow", "RIGHT": "right_arrow", "UP": "up_arrow",
-    "DOWN": "down_arrow", "PAGE_UP": "page_up", "PAGE_DOWN": "page_down", "HOME": "home",
-    "END": "end", "INSERT": "insert", "DELETE": "delete", "BACKSPACE": "backspace",
-    "SPACE": "space", "ENTER": "enter", "ESCAPE": "escape", "APOSTROPHE": "apostrophe",
-    "COMMA": "comma", "MINUS": "minus", "PERIOD": "period", "SLASH": "slash",
-    "SEMICOLON": "semicolon", "EQUAL": "equal", "LEFT_BRACKET": "left_bracket",
-    "BACKSLASH": "backslash", "RIGHT_BRACKET": "right_bracket", "GRAVE_ACCENT": "grave_accent",
-    "CAPS_LOCK": "caps_lock", "SCROLL_LOCK": "scroll_lock", "NUM_LOCK": "num_lock",
-    "PRINT_SCREEN": "print_screen", "PAUSE": "pause", "MENU": "menu",
-    "KP_DECIMAL": "keypad_decimal", "KP_DIVIDE": "keypad_divide",
-    "KP_MULTIPLY": "keypad_multiply", "KP_SUBTRACT": "keypad_subtract", "KP_ADD": "keypad_add",
-    "KP_ENTER": "keypad_enter", "KP_EQUAL": "keypad_equal",
-    "LEFT_SHIFT": "left_shift", "LEFT_CONTROL": "left_ctrl", "LEFT_ALT": "left_alt",
-    "LEFT_SUPER": "left_super", "RIGHT_SHIFT": "right_shift", "RIGHT_CONTROL": "right_ctrl",
-    "RIGHT_ALT": "right_alt", "RIGHT_SUPER": "right_super",
+    "TAB": "tab",
+    "LEFT": "left_arrow",
+    "RIGHT": "right_arrow",
+    "UP": "up_arrow",
+    "DOWN": "down_arrow",
+    "PAGE_UP": "page_up",
+    "PAGE_DOWN": "page_down",
+    "HOME": "home",
+    "END": "end",
+    "INSERT": "insert",
+    "DELETE": "delete",
+    "BACKSPACE": "backspace",
+    "SPACE": "space",
+    "ENTER": "enter",
+    "ESCAPE": "escape",
+    "APOSTROPHE": "apostrophe",
+    "COMMA": "comma",
+    "MINUS": "minus",
+    "PERIOD": "period",
+    "SLASH": "slash",
+    "SEMICOLON": "semicolon",
+    "EQUAL": "equal",
+    "LEFT_BRACKET": "left_bracket",
+    "BACKSLASH": "backslash",
+    "RIGHT_BRACKET": "right_bracket",
+    "GRAVE_ACCENT": "grave_accent",
+    "CAPS_LOCK": "caps_lock",
+    "SCROLL_LOCK": "scroll_lock",
+    "NUM_LOCK": "num_lock",
+    "PRINT_SCREEN": "print_screen",
+    "PAUSE": "pause",
+    "MENU": "menu",
+    "KP_DECIMAL": "keypad_decimal",
+    "KP_DIVIDE": "keypad_divide",
+    "KP_MULTIPLY": "keypad_multiply",
+    "KP_SUBTRACT": "keypad_subtract",
+    "KP_ADD": "keypad_add",
+    "KP_ENTER": "keypad_enter",
+    "KP_EQUAL": "keypad_equal",
+    "LEFT_SHIFT": "left_shift",
+    "LEFT_CONTROL": "left_ctrl",
+    "LEFT_ALT": "left_alt",
+    "LEFT_SUPER": "left_super",
+    "RIGHT_SHIFT": "right_shift",
+    "RIGHT_CONTROL": "right_ctrl",
+    "RIGHT_ALT": "right_alt",
+    "RIGHT_SUPER": "right_super",
 }
 FUNCTION_KEYS = 24  # F1 to F24: ImGui has no F25
 
 # The keys that act once when pressed, to the `Window` method they call.
 SHELL_KEYS = {
-    glfw.KEY_ESCAPE: "quit", glfw.KEY_V: "cycle_view", glfw.KEY_T: "cycle_theme",
-    glfw.KEY_E: "toggle_editor", glfw.KEY_F: "toggle_follow", glfw.KEY_F1: "toggle_help",
-    glfw.KEY_P: "toggle_pause", glfw.KEY_N: "single_step", glfw.KEY_TAB: "next_pilot",
-    glfw.KEY_EQUAL: "faster", glfw.KEY_KP_ADD: "faster", glfw.KEY_MINUS: "slower",
-    glfw.KEY_KP_SUBTRACT: "slower", glfw.KEY_HOME: "fit",
+    glfw.KEY_ESCAPE: "quit",
+    glfw.KEY_V: "cycle_view",
+    glfw.KEY_T: "cycle_theme",
+    glfw.KEY_E: "toggle_editor",
+    glfw.KEY_F: "toggle_follow",
+    glfw.KEY_F1: "toggle_help",
+    glfw.KEY_P: "toggle_pause",
+    glfw.KEY_N: "single_step",
+    glfw.KEY_TAB: "next_pilot",
+    glfw.KEY_EQUAL: "faster",
+    glfw.KEY_KP_ADD: "faster",
+    glfw.KEY_MINUS: "slower",
+    glfw.KEY_KP_SUBTRACT: "slower",
+    glfw.KEY_HOME: "fit",
 }
 
 
 def _imgui_keys() -> dict[int, imgui.Key]:
     """Every GLFW key that ImGui has, to its ImGui key: letters, digits, the keypad, the
     function keys and the named keys (as Dear ImGui's own GLFW backend maps them)."""
-    keys = {getattr(glfw, f"KEY_{letter}"): getattr(imgui.Key, letter.lower())
-            for letter in string.ascii_uppercase}
+    keys = {
+        getattr(glfw, f"KEY_{letter}"): getattr(imgui.Key, letter.lower())
+        for letter in string.ascii_uppercase
+    }
     for digit in range(10):
         keys[getattr(glfw, f"KEY_{digit}")] = getattr(imgui.Key, f"_{digit}")
         keys[getattr(glfw, f"KEY_KP_{digit}")] = getattr(imgui.Key, f"keypad{digit}")
@@ -72,8 +119,12 @@ def _imgui_keys() -> dict[int, imgui.Key]:
 
 
 IMGUI_KEYS = _imgui_keys()
-MODIFIERS = ((glfw.MOD_CONTROL, imgui.Key.mod_ctrl), (glfw.MOD_SHIFT, imgui.Key.mod_shift),
-             (glfw.MOD_ALT, imgui.Key.mod_alt), (glfw.MOD_SUPER, imgui.Key.mod_super))
+MODIFIERS = (
+    (glfw.MOD_CONTROL, imgui.Key.mod_ctrl),
+    (glfw.MOD_SHIFT, imgui.Key.mod_shift),
+    (glfw.MOD_ALT, imgui.Key.mod_alt),
+    (glfw.MOD_SUPER, imgui.Key.mod_super),
+)
 
 
 class Window:
@@ -84,8 +135,9 @@ class Window:
         glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
         glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
         glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, True)
-        self.window = glfw.create_window(options.width, options.height, "Boost and Broadside",
-                                         None, None)
+        self.window = glfw.create_window(
+            options.width, options.height, "Boost and Broadside", None, None
+        )
         if not self.window:
             glfw.terminate()
             raise RuntimeError("GLFW could not open an OpenGL 3.3 window")
@@ -183,7 +235,7 @@ class Window:
         io = imgui.get_io()
         io.add_mouse_wheel_event(x_offset, y_offset)
         if not io.want_capture_mouse:
-            self.session.camera.zoom(WHEEL_ZOOM ** y_offset, *self.cursor)
+            self.session.camera.zoom(WHEEL_ZOOM**y_offset, *self.cursor)
 
     def on_resize(self, window, width: int, height: int) -> None:
         if width > 0 and height > 0:
@@ -196,8 +248,7 @@ class Window:
         if imgui.get_io().want_capture_keyboard:
             return inputs
         for name, keys in FLIGHT_KEYS.items():
-            inputs[INPUT[name]] = any(glfw.get_key(self.window, key) == glfw.PRESS
-                                      for key in keys)
+            inputs[INPUT[name]] = any(glfw.get_key(self.window, key) == glfw.PRESS for key in keys)
         return inputs
 
     def run(self) -> None:

@@ -40,7 +40,8 @@ class ArcProgram:
         self.capacity = max(count, 2 * self.capacity)
         self.instances = self.context.buffer(reserve=self.capacity * FLOATS * 4, dynamic=True)
         self.vertex_array = self.context.vertex_array(
-            self.program, [(self.corners, "2f", "corner"), (self.instances, FORMAT, *ATTRIBUTES)])
+            self.program, [(self.corners, "2f", "corner"), (self.instances, FORMAT, *ATTRIBUTES)]
+        )
 
     def draw(self, camera: dict, table: np.ndarray) -> None:
         if len(table) == 0:

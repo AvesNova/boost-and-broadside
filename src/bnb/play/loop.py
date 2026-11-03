@@ -28,8 +28,12 @@ CATCH_UP_TICKS = 4  # at most this many ticks of backlog per unit of time scale
 
 def team_view(observation: Obs, team: int) -> Obs:
     """One team's view (1, ...) out of the realtime observation (1, 2, ...)."""
-    return Obs(ships=observation.ships[:, team], fields=observation.fields[:, team],
-               globals=observation.globals[:, team], zones=observation.zones[:, team])
+    return Obs(
+        ships=observation.ships[:, team],
+        fields=observation.fields[:, team],
+        globals=observation.globals[:, team],
+        zones=observation.zones[:, team],
+    )
 
 
 class MatchLoop:
@@ -43,8 +47,9 @@ class MatchLoop:
     frame runs several ticks.
     """
 
-    def __init__(self, config: GameConfig, fogged: bool = False, compile: bool = True,
-                 pilot: int | None = 0) -> None:
+    def __init__(
+        self, config: GameConfig, fogged: bool = False, compile: bool = True, pilot: int | None = 0
+    ) -> None:
         self.realtime = Realtime(config, compiled=compile, fogged=fogged)
         self.rules, self.types = self.realtime.rules, self.realtime.types
         self.chaser = Chaser(self.rules.ships_per_team)
@@ -80,8 +85,10 @@ class MatchLoop:
         """(N, 3) int32 actions in sim order: the chaser's, and the pilot's from the inputs."""
         observation = self.realtime.obs
         done = observation.globals[:, 0, GLOBAL["reset"]] > 0.5
-        teams = [self.chaser.step(None, team_view(observation, team), done)[0].packed()[0]
-                 for team in range(TEAMS)]
+        teams = [
+            self.chaser.step(None, team_view(observation, team), done)[0].packed()[0]
+            for team in range(TEAMS)
+        ]
         actions = torch.cat(teams)
         if self.pilot is not None:
             actions[self.pilot] = human_action(self.inputs).packed()
@@ -143,4 +150,3 @@ class MatchLoop:
     def slower(self) -> None:
         index = TIME_SCALES.index(self.time_scale)
         self.time_scale = TIME_SCALES[max(index - 1, 0)]
-
