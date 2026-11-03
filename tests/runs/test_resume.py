@@ -50,7 +50,20 @@ UPDATES = 2
 GPU_TOLERANCE = 0.1
 WEIGHT_TOLERANCE = 3e-3
 FLOOR = 1e-6  # the smallest magnitude a relative difference is judged at
-CHECKED = ("loss/entropy", "approximate_kl", "loss/value", "value_loss/")
+# The series the tolerance judges: an exact name, or a group when it ends in "/". Each must be
+# in the records (`continuation_differences` says so when one is not), so a rename cannot
+# leave the tolerance judging nothing.
+CHECKED = ("policy/entropy/joint", "policy/kl", "critic/value_loss/")
+
+
+def _matches(name: str, checked: str) -> bool:
+    return name == checked or (checked.endswith("/") and name.startswith(checked))
+
+
+def _checked(name: str) -> bool:
+    return any(_matches(name, checked) for checked in CHECKED)
+
+
 # Float metrics that count things: games, wins, draws and losses.
 COUNTS = ("results", "games/")
 
@@ -93,7 +106,7 @@ def _differences(got, want, tolerance: float, path: str = "", exact: bool = True
             for difference in _differences(item, expected, tolerance, f"{path}[{index}]", exact)
         ]
     rounded = isinstance(want, float) and not any(count in path for count in COUNTS)
-    if rounded and tolerance and not any(name in path for name in CHECKED):
+    if rounded and tolerance and not _checked(path.rsplit(".", 1)[-1].split("[", 1)[0]):
         close = True  # a float the tolerance does not judge (see CHECKED)
     elif rounded and type(got) is float:
         close = abs(got - want) <= tolerance * max(abs(want), FLOOR)
@@ -140,7 +153,11 @@ def continuation_differences(
     resume; later, a different game may legitimately follow a rounding difference)."""
     if len(got) != len(want):
         return [f"rows: {len(got)} != {len(want)}"]
-    out = []
+    out = [
+        f"checked series {checked!r} is in no record"
+        for checked in CHECKED
+        if tolerance and not any(_matches(name, checked) for row in want for name in row)
+    ]
     for index, (row, expected) in enumerate(zip(got, want)):
         out += _differences(
             row, expected, tolerance, f"rows[{index}]", exact=index <= exact_through
