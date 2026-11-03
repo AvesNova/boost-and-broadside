@@ -39,13 +39,24 @@ def _gpu_tests_hold_the_benchmark_lock(request):
         yield
 
 
+def _no_cuda() -> int:
+    raise RuntimeError("a test without the gpu marker sees no CUDA device")
+
+
 @pytest.fixture(autouse=True)
-def _only_gpu_tests_touch_cuda(request):
+def _only_gpu_tests_touch_cuda(request, monkeypatch):
     """A test without the `gpu` marker must not initialise CUDA, so `-m "not gpu"` never
-    does."""
+    does. It runs as on a machine without CUDA, since `torch.compile` initialises CUDA even
+    for a graph on the CPU: it saves the CUDA generator's state around every compile when
+    `torch.cuda.is_available()`, and its cache key reads the current device's name (once per
+    process; without CUDA, the read raises and the key leaves the device out)."""
+    gpu = "gpu" in request.keywords
+    if not gpu:
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+        monkeypatch.setattr(torch.cuda, "current_device", _no_cuda)
     before = torch.cuda.is_initialized()
     yield
-    if "gpu" not in request.keywords and not before and torch.cuda.is_initialized():
+    if not gpu and not before and torch.cuda.is_initialized():
         pytest.fail("initialised CUDA without the gpu marker", pytrace=False)
 
 

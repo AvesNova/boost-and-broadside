@@ -23,7 +23,7 @@ pytestmark = pytest.mark.usefixtures("global_generator")
 @pytest.fixture(scope="module")
 def trained(tmp_path_factory):
     """A tiny trainer after two updates and its training checkpoint."""
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         torch.manual_seed(0)
         trainer = Trainer(cases.tiny_train_config(), cases.CPU)
         for _ in range(2):
@@ -45,7 +45,7 @@ def _assert_same_optimizer(got: Trainer, want: Trainer) -> None:
 
 def test_every_part_of_a_training_checkpoint_round_trips(trained):
     trainer, directory = trained
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         loaded = checkpoint.load_training(directory, cases.CPU)
     for name, tensor in trainer.model.state_dict().items():
         assert torch.equal(loaded.model.state_dict()[name], tensor), name
@@ -71,7 +71,7 @@ def test_every_part_of_a_training_checkpoint_round_trips(trained):
 def test_the_default_generators_are_restored_by_the_entry_points_call(trained):
     _, directory = trained
     stored = safetensors.torch.load_file(directory / checkpoint.TRAINING)
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         torch.manual_seed(123)
         checkpoint.restore_default_generators(directory, cases.CPU)
         assert torch.equal(torch.get_rng_state(), stored["default_generator.cpu"])
@@ -99,7 +99,7 @@ def test_a_run_time_override_on_resume_is_allowed(trained):
     _, directory = trained
     saved, _ = checkpoint.training_config(directory)
     learner = dataclasses.replace(saved.learner, learning_rate=1e-4, entropy=-0.01)
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         trainer = checkpoint.load_training(
             directory, cases.CPU, dataclasses.replace(saved, updates=9, learner=learner)
         )
@@ -111,7 +111,7 @@ def test_the_reward_weights_are_saved_and_a_resume_may_change_them(trained):
     saved, _ = checkpoint.training_config(directory)
     assert saved.reward == cases.tiny_train_config().reward
     reward = dataclasses.replace(saved.reward, damage=0.5, outcome=2.0)
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         trainer = checkpoint.load_training(
             directory, cases.CPU, dataclasses.replace(saved, reward=reward)
         )
@@ -130,7 +130,7 @@ def test_the_micro_batch_rows_and_the_precision_may_change_on_resume(trained):
     changed = dataclasses.replace(
         saved, precision="bfloat16", learner=dataclasses.replace(saved.learner, micro_batch_rows=32)
     )
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         trainer = checkpoint.load_training(directory, cases.CPU, changed)
     assert trainer.model.build.config.bfloat16_matmuls
     assert trainer.ppo.config.micro_batch_rows == 32
@@ -140,13 +140,13 @@ def test_a_resume_builds_the_model_from_the_checkpoint_not_the_code_defaults(tmp
     """A model saved with another architecture than the code's default (as after a default
     changed) resumes with its own."""
     config = cases.tiny_train_config()
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         torch.manual_seed(0)
         build = model_build(config, RelationalConfig(value_bins=41))
         trainer = Trainer(config, cases.CPU, build)
         trainer.update()
     checkpoint.save_training(tmp_path / "step", trainer)
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         loaded = checkpoint.load_training(tmp_path / "step", cases.CPU)
     assert loaded.model.build == build and loaded.model.build != model_build(config)
     for name, tensor in trainer.model.state_dict().items():
@@ -160,7 +160,7 @@ def test_a_build_field_the_checkpoint_lacks_is_reported_on_resume_and_fork(tmp_p
     record = json.loads(path.read_text())
     record["model"]["build"]["config"].pop("value_limit")
     path.write_text(json.dumps(record))
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         with pytest.warns(FilledDefaults, match="lacks config.value_limit"):
             checkpoint.load_training(tmp_path / "step", cases.CPU)
         with pytest.warns(FilledDefaults, match="lacks config.value_limit"):
@@ -170,7 +170,7 @@ def test_a_build_field_the_checkpoint_lacks_is_reported_on_resume_and_fork(tmp_p
 def test_a_fork_whose_build_differs_is_refused(trained):
     _, directory = trained
     with (
-        torch.random.fork_rng(),
+        torch.random.fork_rng(devices=[]),
         pytest.raises(
             CheckpointError,
             match="the fork refused: the build record .* differs from the "
@@ -185,7 +185,7 @@ def test_a_fork_whose_build_differs_is_refused(trained):
 
 def test_a_fork_takes_the_model_optimizer_and_return_scale_but_not_the_carry(trained):
     trainer, directory = trained
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         fork = checkpoint.fork_training(
             directory, cases.tiny_train_config(environments=32), cases.CPU
         )
@@ -199,7 +199,7 @@ def test_a_fork_takes_the_model_optimizer_and_return_scale_but_not_the_carry(tra
 
 def test_an_optimizer_state_of_another_shape_is_refused(tmp_path, trained):
     _, directory = trained
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         parent = Trainer(cases.tiny_train_config(), cases.CPU)
     stored = safetensors.torch.load_file(directory / checkpoint.TRAINING)
     stored["optimizer.0.exp_avg"] = stored["optimizer.0.exp_avg"][:1].clone()
@@ -221,7 +221,7 @@ def test_a_warm_start_takes_weights_and_return_scale_with_a_fresh_optimizer(tmp_
         return_scale=trainer.ppo.return_scale,
         steps=dict(environment_steps=trainer.ppo.environment_steps),
     )
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         rl = checkpoint.warm_start(tmp_path / "bc", cases.tiny_train_config(), cases.CPU)
     for name, tensor in trainer.model.state_dict().items():
         assert torch.equal(rl.model.state_dict()[name], tensor)
@@ -237,7 +237,10 @@ def test_a_warm_start_takes_weights_and_return_scale_with_a_fresh_optimizer(tmp_
 def test_a_warm_start_from_another_build_is_refused(tmp_path, trained):
     trainer, _ = trained
     checkpoint.save_policy(tmp_path / "bc", trainer.model)
-    with torch.random.fork_rng(), pytest.raises(CheckpointError, match="the warm start refused"):
+    with (
+        torch.random.fork_rng(devices=[]),
+        pytest.raises(CheckpointError, match="the warm start refused"),
+    ):
         checkpoint.warm_start(
             tmp_path / "bc", cases.tiny_train_config(relational_hidden=32), cases.CPU
         )

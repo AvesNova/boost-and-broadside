@@ -35,7 +35,7 @@ def test_a_checkpoint_uploads_as_an_artifact_named_for_the_run_and_step(monkeypa
             str(tmp_path),
         ],
     )
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         cli.main()
     run = Run.open(tmp_path, "a")
     step = run.checkpoint_steps()[-1]

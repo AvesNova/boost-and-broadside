@@ -129,7 +129,7 @@ def drain_history(tmp_path_factory):
     """Tick by tick over 600 ticks (10 episodes), the league's hooks every 8 ticks: per tick
     each row's entry, reset flag and incoming flag, the draining slot and the incoming
     entry."""
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         torch.manual_seed(0)
         trainer, league = cases.league(tmp_path_factory.mktemp("drain"))
         rollout, slots = trainer.rollout, league.config.slots

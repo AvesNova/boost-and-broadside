@@ -24,7 +24,7 @@ STEPS_PER_UPDATE = 16 * 16  # environments x segment length in TRAIN_OPTIONS
 def bnb(monkeypatch, runs_directory: pathlib.Path, *arguments: str) -> None:
     """`bnb ARGUMENTS --runs-directory RUNS` in this process, its seeding kept local."""
     monkeypatch.setattr(sys, "argv", ["bnb", *arguments, "--runs-directory", str(runs_directory)])
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         cli.main()
 
 
@@ -271,7 +271,7 @@ def test_a_fork_whose_build_differs_is_refused(monkeypatch, tmp_path):
 
 def test_a_warm_start_from_a_policy_file_starts_a_new_run(monkeypatch, tmp_path):
     """Acceptance 9 through the command line: BC's policy file starts RL."""
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         torch.manual_seed(0)
         trainer = Trainer(cases.tiny_train_config(), cases.CPU)
     policy = checkpoint.save_policy(

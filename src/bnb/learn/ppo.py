@@ -56,6 +56,21 @@ SMALL = ("reward", "values", "outcome", "done", "result", "log_probability", "al
 SHOT_LABELS = "shot_labels"
 
 
+class Adam(torch.optim.Adam):
+    """`torch.optim.Adam`, whose graph-capture check runs only for parameters on an
+    accelerator. The check reads the accelerator's current stream, which initialises CUDA on
+    a machine that has it even when every parameter is on the CPU; a CPU run never
+    captures, so skipping it there changes nothing the step computes."""
+
+    def _accelerator_graph_capture_health_check(self) -> None:
+        if any(
+            parameter.device.type != "cpu"
+            for group in self.param_groups
+            for parameter in group["params"]
+        ):
+            super()._accelerator_graph_capture_health_check()
+
+
 @dataclasses.dataclass(frozen=True)
 class LearnerConfig:
     """Learner spec 3-4, v1's values. Per-level tuples follow REWARD_LEVELS. A coefficient
@@ -183,7 +198,7 @@ class Learner:
         self.outcome_level = levels.index(model.config.outcome_level)
         self.local_levels = model.config.local_levels
         self.local_index = torch.tensor(self.local_levels, device=device)  # no copy per use
-        self.optimizer = torch.optim.Adam(
+        self.optimizer = Adam(
             model.parameters(), lr=config.learning_rate, fused=device.type == "cuda"
         )
         self.return_scale = critic.ReturnScale(

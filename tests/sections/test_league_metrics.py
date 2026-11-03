@@ -13,7 +13,7 @@ pytestmark = pytest.mark.usefixtures("global_generator")
 def rows(tmp_path_factory):
     import torch
 
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         torch.manual_seed(0)
         trainer, league = cases.league(tmp_path_factory.mktemp("metrics"))
         out = []

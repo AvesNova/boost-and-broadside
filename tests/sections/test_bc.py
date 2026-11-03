@@ -468,7 +468,7 @@ def _bnb(monkeypatch, *arguments: str) -> None:
     from bnb import cli
 
     monkeypatch.setattr(sys, "argv", ["bnb", *arguments])
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         cli.main()
 
 
