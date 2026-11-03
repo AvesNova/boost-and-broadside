@@ -55,22 +55,46 @@ FLIGHT = NAMES[:14]
 COMBAT = NAMES[14:]
 ZERO_LIFT_DRAG_HANDLE = "zero_lift_drag"
 # Measured by flying the game's flight tick; the rest follow from the card in closed form.
-FLOWN = ("cruise_speed", "climb_time", "low_speed_acceleration", "sustained_turn_rate",
-         "bleed_rate", "nose_reversal_time", "dive_acceleration", "zoom_acceleration")
+FLOWN = (
+    "cruise_speed",
+    "climb_time",
+    "low_speed_acceleration",
+    "sustained_turn_rate",
+    "bleed_rate",
+    "nose_reversal_time",
+    "dive_acceleration",
+    "zoom_acceleration",
+)
 DIRECT_FLIGHT = tuple(name for name in FLIGHT if name not in FLOWN)
 
 DEGREES = 180.0 / math.pi
 # (display unit, factor from SI) for the chart tool.
 UNITS = dict(
-    stall_speed=("m/s", 1.0), g_limit=("g", 1.0), cruise_speed=("m/s", 1.0),
-    climb_time=("s", 1.0), ceiling=("J", 1.0), low_speed_acceleration=("m/s^2", 1.0),
-    sustained_turn_rate=("deg/s", DEGREES), bleed_rate=("W/kg", 1.0),
-    nose_reversal_time=("s", 1.0), dive_acceleration=("m/s^2", 1.0),
-    zoom_acceleration=("m/s^2", 1.0), stall_angle=("deg", DEGREES), vision_range=("m", 1.0),
-    zero_lift_drag=("1/m", 1.0), hit_damage=("", 1.0), fire_rate=("Hz", 1.0),
-    muzzle_speed=("m/s", 1.0), bullet_spread=("m/s", 1.0), gun_range=("m", 1.0),
-    shots_per_store=("", 1.0), max_shield=("", 1.0), shield_recharge_rate=("1/s", 1.0),
-    shield_recharge_delay=("s", 1.0), head_on_fraction=("", 1.0), hit_radius=("m", 1.0),
+    stall_speed=("m/s", 1.0),
+    g_limit=("g", 1.0),
+    cruise_speed=("m/s", 1.0),
+    climb_time=("s", 1.0),
+    ceiling=("J", 1.0),
+    low_speed_acceleration=("m/s^2", 1.0),
+    sustained_turn_rate=("deg/s", DEGREES),
+    bleed_rate=("W/kg", 1.0),
+    nose_reversal_time=("s", 1.0),
+    dive_acceleration=("m/s^2", 1.0),
+    zoom_acceleration=("m/s^2", 1.0),
+    stall_angle=("deg", DEGREES),
+    vision_range=("m", 1.0),
+    zero_lift_drag=("1/m", 1.0),
+    hit_damage=("", 1.0),
+    fire_rate=("Hz", 1.0),
+    muzzle_speed=("m/s", 1.0),
+    bullet_spread=("m/s", 1.0),
+    gun_range=("m", 1.0),
+    shots_per_store=("", 1.0),
+    max_shield=("", 1.0),
+    shield_recharge_rate=("1/s", 1.0),
+    shield_recharge_delay=("s", 1.0),
+    head_on_fraction=("", 1.0),
+    hit_radius=("m", 1.0),
     spawn_energy=("J", 1.0),
 )
 

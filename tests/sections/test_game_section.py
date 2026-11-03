@@ -6,12 +6,12 @@ path, and fresh randomness in CUDA-graph replays."""
 import json
 import math
 import pathlib
-import sys
 
 import pytest
 import torch
 
 from bnb.contracts import Action, GameConfig
+from bnb.contracts.action import NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.game import api
 from bnb.game.physics.combat import hits
 from bnb.game.physics.medium import medium
@@ -20,16 +20,77 @@ from bnb.game.rules import LN_SQRT2, FlightConstants
 from bnb.game.ship_types import DEFAULTS, SCALED
 from bnb.game.state import Fields, replace
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
+
 REFERENCE = pathlib.Path(__file__).resolve().parents[1] / "reference"
-sys.path.insert(0, str(REFERENCE))
-from race_arm import CARD, FLIGHT_SHARED, RULES  # noqa: E402
+
+# The race spec's names for the game's numbers (copied from the race adapter,
+# tests/reference/race_arm.py, so this suite does not depend on it).
+FLIGHT_SHARED = dict(
+    mass="mass",
+    g="gravity",
+    alpha_s="stall_angle",
+    k_ind="induced_drag_factor",
+    e_knee="engine_knee",
+    band="store_fade_band",
+    a0="coast_exchange",
+    a_climb="climb_exchange",
+    a_dive="dive_exchange",
+    soft_p="lift_softmin_exponent",
+    zeta="nose_damping",
+    omega_floor="nose_frequency_floor",
+    eps="speed_floor",
+)
+CARD = dict(
+    cl_max="max_lift_coefficient",
+    a_max="max_acceleration",
+    cd0="zero_lift_drag",
+    power="engine_power",
+    p_min="engine_power_full_store",
+    f_static="static_thrust",
+    e_max="max_energy",
+    omega_c="corner_nose_frequency",
+    shield_max="max_shield",
+    hit_radius="hit_radius",
+    damage="hit_damage",
+    muzzle_speed="muzzle_speed",
+    bullet_cost="bullet_energy_cost",
+    fire_interval="ticks_between_shots",
+    spawn_energy="spawn_energy",
+)
+RULES = dict(
+    h="tick_length",
+    episode_ticks="episode_ticks",
+    slots="bullet_slots",
+    bullet_moves="bullet_moves",
+    bullet_drag="bullet_drag",
+    spread="bullet_spread",
+    head_on_fraction="head_on_fraction",
+    shield_delay="shield_recharge_delay",
+    shield_regen="shield_recharge_rate",
+    boundary_base="boundary_damage_base",
+    boundary_per_m="boundary_damage_per_metre",
+    respawn_ticks="respawn_ticks",
+    spawn_speed="spawn_speed",
+    spawn_offset="spawn_offset",
+    spawn_radius="spawn_radius",
+    field_width="field_band_width",
+    vision="vision_range",
+)
 
 TYPES = api.ship_types()
 
 
 def _actions(batch, ships, generator):
     choice = torch.rand(batch, ships, 3, generator=generator)
-    return Action.unpack((choice * torch.tensor([3.0, 7.0, 2.0])).to(torch.int32))
+    return Action.unpack(
+        (choice * torch.tensor([NUM_POWER, NUM_STICK, NUM_SHOOT], dtype=torch.float32)).to(
+            torch.int32
+        )
+    )
 
 
 def _warm(config=GameConfig(3, 5, 1200.0), batch=8, ticks=90, seed=0):
@@ -38,9 +99,14 @@ def _warm(config=GameConfig(3, 5, 1200.0), batch=8, ticks=90, seed=0):
     generator = torch.Generator().manual_seed(seed)
     state = api.reset(rules, TYPES, api.uniforms(rules, batch, generator=generator))
     for _ in range(ticks):
-        state, _ = api.step(rules, TYPES, state, _actions(batch, rules.num_ships, generator),
-                            api.spread(rules, batch, generator=generator),
-                            api.uniforms(rules, batch, generator=generator))
+        state, _ = api.step(
+            rules,
+            TYPES,
+            state,
+            _actions(batch, rules.num_ships, generator),
+            api.spread(rules, batch, generator=generator),
+            api.uniforms(rules, batch, generator=generator),
+        )
     return rules, state, generator
 
 
@@ -63,8 +129,11 @@ def test_compiled_tick_and_perception_match_eager(config):
     rounding (2e-5 relative); flags, counters and indices exactly."""
     rules, state, generator = _warm(config, batch=4, ticks=60)
     B, N = state.ships.x.shape
-    inputs = (_actions(B, N, generator), api.spread(rules, B, generator=generator),
-              api.uniforms(rules, B, generator=generator))
+    inputs = (
+        _actions(B, N, generator),
+        api.spread(rules, B, generator=generator),
+        api.uniforms(rules, B, generator=generator),
+    )
 
     def tick(state, action, spread, uniforms):
         state, events = api.step(rules, TYPES, state, action, spread, uniforms)
@@ -82,6 +151,7 @@ def test_compiled_tick_and_perception_match_eager(config):
 
 # ------------------------------------------------------------------ the hit test
 
+
 def test_hits_match_brute_force_with_friendly_fire():
     """First contact per bullet over every ship but its shooter, damage per (shooter,
     target) and the killer, against a direct loop: the order is (tau, miss distance), an
@@ -96,15 +166,22 @@ def test_hits_match_brute_force_with_friendly_fire():
 
     near = torch.randint(0, N, (B, N * K), generator=generator)
     sweep = api.Sweep(
-        ship_x=ships.x, ship_y=ships.y, ship_displacement_x=noise(B, N, scale=6.0),
+        ship_x=ships.x,
+        ship_y=ships.y,
+        ship_displacement_x=noise(B, N, scale=6.0),
         ship_displacement_y=noise(B, N, scale=6.0),
         bullet_x=ships.x.gather(1, near).reshape(B, N, K) + noise(B, N, K, scale=15.0),
         bullet_y=ships.y.gather(1, near).reshape(B, N, K) + noise(B, N, K, scale=15.0),
         bullet_displacement_x=noise(B, N, K, scale=20.0),
-        bullet_displacement_y=noise(B, N, K, scale=20.0))
+        bullet_displacement_y=noise(B, N, K, scale=20.0),
+    )
     angle = noise(B, N, K, scale=math.pi)
-    bullets = replace(bullets, moves_left=torch.randint(0, 3, (B, N, K), generator=generator).int(),
-                      direction_x=angle.cos(), direction_y=angle.sin())
+    bullets = replace(
+        bullets,
+        moves_left=torch.randint(0, 3, (B, N, K), generator=generator).int(),
+        direction_x=angle.cos(),
+        direction_y=angle.sin(),
+    )
     ships = replace(ships, alive=torch.rand(B, N, generator=generator) < 0.85)
     got = hits(rules, TYPES, sweep, ships, bullets, ships.alive)
 
@@ -123,14 +200,25 @@ def test_hits_match_brute_force_with_friendly_fire():
                 for t in range(N):
                     if t == owner or not ships.alive[b, t]:
                         continue
-                    start = torch.stack([sweep.bullet_x[b, owner, k] - sweep.ship_x[b, t],
-                                         sweep.bullet_y[b, owner, k] - sweep.ship_y[b, t]]).double()
-                    relative = torch.stack(
-                        [sweep.bullet_displacement_x[b, owner, k] - sweep.ship_displacement_x[b, t],
-                         sweep.bullet_displacement_y[b, owner, k] - sweep.ship_displacement_y[b, t]]
+                    start = torch.stack(
+                        [
+                            sweep.bullet_x[b, owner, k] - sweep.ship_x[b, t],
+                            sweep.bullet_y[b, owner, k] - sweep.ship_y[b, t],
+                        ]
                     ).double()
-                    tau = float((-(start @ relative) / (relative @ relative).clamp_min(1e-12))
-                                .clamp(0.0, 1.0))
+                    relative = torch.stack(
+                        [
+                            sweep.bullet_displacement_x[b, owner, k]
+                            - sweep.ship_displacement_x[b, t],
+                            sweep.bullet_displacement_y[b, owner, k]
+                            - sweep.ship_displacement_y[b, t],
+                        ]
+                    ).double()
+                    tau = float(
+                        (-(start @ relative) / (relative @ relative).clamp_min(1e-12)).clamp(
+                            0.0, 1.0
+                        )
+                    )
                     miss = start + tau * relative
                     # float32 miss distances, as the game orders them
                     miss_squared = float((miss @ miss).float())
@@ -146,17 +234,18 @@ def test_hits_match_brute_force_with_friendly_fire():
                 dy = float(bullets.direction_y[b, owner, k])
                 nose_cos = float(ships.heading_cos[b, target])
                 nose_sin = float(ships.heading_sin[b, target])
-                theta = math.atan2(abs(dx * nose_sin - dy * nose_cos),
-                                   -(dx * nose_cos + dy * nose_sin))
+                theta = math.atan2(
+                    abs(dx * nose_sin - dy * nose_cos), -(dx * nose_cos + dy * nose_sin)
+                )
                 damage[b, owner, target] += float(full[b, owner]) * (
-                    1.0 - (1.0 - rules.head_on_fraction) * math.exp(-4.0 * theta * theta / math.pi))
+                    1.0 - (1.0 - rules.head_on_fraction) * math.exp(-4.0 * theta * theta / math.pi)
+                )
                 if hit_order < tuple(best[b, target].tolist()):  # strict: exact ties keep
-                    best[b, target] = torch.tensor(hit_order)        # the lower bullet index
+                    best[b, target] = torch.tensor(hit_order)  # the lower bullet index
                     first[b, target] = owner
     assert count > 20 and allies > 0, (count, allies)
     assert torch.equal(got.first_shooter.long(), first)
     torch.testing.assert_close(got.damage.double(), damage, rtol=1e-5, atol=1e-4)
-    torch.testing.assert_close(got.taken, got.damage.sum(1))
 
 
 @pytest.mark.parametrize("swap", [False, True])
@@ -167,19 +256,28 @@ def test_killer_ties_at_tau_zero_go_to_the_lower_bullet_eager_and_compiled(swap)
     rules = api.rules_of(GameConfig(2, 1, 1200.0))
     state = api.reset(rules, TYPES, api.uniforms(rules, 1))
     N, K = 4, rules.bullet_slots
-    ships = replace(state.ships, x=torch.tensor([[0.0, 100.0, 200.0, 50.0]]), y=torch.zeros(1, 4),
-                    alive=torch.ones(1, 4, dtype=torch.bool))
+    ships = replace(
+        state.ships,
+        x=torch.tensor([[0.0, 100.0, 200.0, 50.0]]),
+        y=torch.zeros(1, 4),
+        alive=torch.ones(1, 4, dtype=torch.bool),
+    )
     start, step = torch.zeros(1, N, K), torch.zeros(1, N, K)
     moves_left = torch.zeros(1, N, K, dtype=torch.int32)
     with_ship, away = (1, 0) if swap else (0, 1)
     start[0, with_ship, 0], step[0, with_ship, 0] = 51.0, 10.0  # same motion as the target
     start[0, away, 0], step[0, away, 0] = 51.0, 20.0
     moves_left[0, :2, 0] = 1
-    sweep = api.Sweep(ship_x=ships.x, ship_y=ships.y,
-                      ship_displacement_x=torch.tensor([[0.0, 0.0, 0.0, 10.0]]),
-                      ship_displacement_y=torch.zeros(1, 4), bullet_x=start,
-                      bullet_y=torch.zeros(1, N, K), bullet_displacement_x=step,
-                      bullet_displacement_y=torch.zeros(1, N, K))
+    sweep = api.Sweep(
+        ship_x=ships.x,
+        ship_y=ships.y,
+        ship_displacement_x=torch.tensor([[0.0, 0.0, 0.0, 10.0]]),
+        ship_displacement_y=torch.zeros(1, 4),
+        bullet_x=start,
+        bullet_y=torch.zeros(1, N, K),
+        bullet_displacement_x=step,
+        bullet_displacement_y=torch.zeros(1, N, K),
+    )
     bullets = replace(state.bullets, moves_left=moves_left)
 
     def shooter(sweep, ships, bullets):
@@ -204,18 +302,34 @@ def test_a_tau_tie_goes_to_the_closer_pass_whatever_the_index(swap):
     x = torch.tensor([[-300.0, 0.0, 0.0, -300.0, -300.0, 0.0]])
     y = torch.tensor([[300.0, 0.0, 0.0, 600.0, 900.0, 0.0]])
     x[0, near], x[0, far] = 103.0, 105.0  # hit radius 8 m: the bullet ends at 100 m
-    ships = replace(state.ships, x=x, y=y, alive=torch.ones(1, N, dtype=torch.bool),
-                    shield=torch.zeros(1, N), ship_type=torch.zeros(1, N, dtype=torch.int32))
+    ships = replace(
+        state.ships,
+        x=x,
+        y=y,
+        alive=torch.ones(1, N, dtype=torch.bool),
+        shield=torch.zeros(1, N),
+        ship_type=torch.zeros(1, N, dtype=torch.int32),
+    )
     start, step = torch.zeros(1, N, K), torch.zeros(1, N, K)
     start[0, 1, 0], step[0, 1, 0] = 85.0, 15.0
     moves_left = torch.zeros(1, N, K, dtype=torch.int32)
     moves_left[0, 1, 0] = 1
-    sweep = api.Sweep(ship_x=ships.x, ship_y=ships.y, ship_displacement_x=torch.zeros(1, N),
-                      ship_displacement_y=torch.zeros(1, N), bullet_x=start,
-                      bullet_y=torch.zeros(1, N, K), bullet_displacement_x=step,
-                      bullet_displacement_y=torch.zeros(1, N, K))
-    bullets = replace(state.bullets, moves_left=moves_left, direction_x=torch.ones(1, N, K),
-                      direction_y=torch.zeros(1, N, K))
+    sweep = api.Sweep(
+        ship_x=ships.x,
+        ship_y=ships.y,
+        ship_displacement_x=torch.zeros(1, N),
+        ship_displacement_y=torch.zeros(1, N),
+        bullet_x=start,
+        bullet_y=torch.zeros(1, N, K),
+        bullet_displacement_x=step,
+        bullet_displacement_y=torch.zeros(1, N, K),
+    )
+    bullets = replace(
+        state.bullets,
+        moves_left=moves_left,
+        direction_x=torch.ones(1, N, K),
+        direction_y=torch.zeros(1, N, K),
+    )
     got = hits(rules, TYPES, sweep, ships, bullets, ships.alive)
     assert got.damage[0, 1, near] > 0 and got.damage[0, 1, far] == 0
     assert got.first_shooter[0].tolist() == [-1 if n != near else 1 for n in range(N)]
@@ -223,23 +337,27 @@ def test_a_tau_tie_goes_to_the_closer_pass_whatever_the_index(swap):
 
 # ------------------------------------------------------------------ the medium
 
+
 def _reference_medium(fields: Fields, x, y):
     """Game spec 4 in float64, the leave-one-out products written out."""
-    fx, fy, radius, band = (v.double()[:, None, :] for v in
-                            (fields.x, fields.y, fields.radius, fields.band_width))
+    fx, fy, radius, band = (
+        v.double()[:, None, :] for v in (fields.x, fields.y, fields.radius, fields.band_width)
+    )
     target = fields.level.double()[:, None, :] * LN_SQRT2
     dx, dy = x.double()[..., None] - fx, y.double()[..., None] - fy
     d = torch.sqrt(dx * dx + dy * dy)
     zeta = 0.5 - (d - radius) / band
     z = zeta.clamp(0.0, 1.0)
-    alpha = 6 * z ** 5 - 15 * z ** 4 + 10 * z ** 3
+    alpha = 6 * z**5 - 15 * z**4 + 10 * z**3
     in_band = (zeta > 0) & (zeta < 1) & (d > 1e-6)
-    slope = torch.where(in_band, -30 * z ** 2 * (z - 1) ** 2 / band / d.clamp_min(1e-6), 0.0)
+    slope = torch.where(in_band, -30 * z**2 * (z - 1) ** 2 / band / d.clamp_min(1e-6), 0.0)
     gax, gay = slope * dx, slope * dy
     M = fields.x.shape[1]
     complement = 1.0 - alpha
-    others = torch.stack([torch.cat([complement[..., :i], complement[..., i + 1:]], -1).prod(-1)
-                          for i in range(M)], -1)
+    others = torch.stack(
+        [torch.cat([complement[..., :i], complement[..., i + 1 :]], -1).prod(-1) for i in range(M)],
+        -1,
+    )
     coverage = 1.0 - complement.prod(-1)
     weight = alpha.sum(-1)
     covered = weight > 1e-12
@@ -256,22 +374,35 @@ def _fields(x, y, radius, level):
     def row(values, dtype=torch.float32):
         return torch.tensor([values], dtype=dtype)
 
-    return Fields(x=row(x), y=row(y), radius=row(radius), band_width=torch.full((1, len(x)), 40.0),
-                  level=row(level, torch.int32))
+    return Fields(
+        x=row(x),
+        y=row(y),
+        radius=row(radius),
+        band_width=torch.full((1, len(x)), 40.0),
+        level=row(level, torch.int32),
+    )
 
 
 INNER = 200.0 - 20.0  # the inner edge of a 200 m field's band (zeta = 1)
 MEDIUM_CASES = {
-    "inner edge": (_fields([0.0], [0.0], [200.0], [2]),
-                   [INNER + e for e in (1e-1, 1e-3, 1e-5, 3e-6, 1e-6)]),
-    "64 coincident": (_fields([0.0] * 64, [0.0] * 64, [200.0] * 64, [2] * 64),
-                      [INNER + e for e in (1e-3, 1e-5, 2e-6)] + [190.0, 215.0]),
+    "inner edge": (
+        _fields([0.0], [0.0], [200.0], [2]),
+        [INNER + e for e in (1e-1, 1e-3, 1e-5, 3e-6, 1e-6)],
+    ),
+    "64 coincident": (
+        _fields([0.0] * 64, [0.0] * 64, [200.0] * 64, [2] * 64),
+        [INNER + e for e in (1e-3, 1e-5, 2e-6)] + [190.0, 215.0],
+    ),
     "nested": (_fields([0.0, 0.0], [0.0, 0.0], [50.0, 400.0], [2, -2]), [30.0, 50.0, 60.0, 395.0]),
-    "64 staggered": (_fields([0.0] * 64, [0.0] * 64, [INNER + 1e-4 * i for i in range(64)],
-                             [1, -1] * 32), [INNER + 0.003, INNER + 10.0, INNER + 35.0]),
+    "64 staggered": (
+        _fields([0.0] * 64, [0.0] * 64, [INNER + 1e-4 * i for i in range(64)], [1, -1] * 32),
+        [INNER + 0.003, INNER + 10.0, INNER + 35.0],
+    ),
     "exact centre": (_fields([0.0, 0.0], [0.0, 0.0], [200.0, 15.0], [1, -1]), [0.0, 1e-7, 3.0]),
-    "battle scale": (_fields([7000.0, -7000.0], [0.0, 0.0], [300.0, 300.0], [2, 2]),
-                     [7000 + 280 + 0.01, 7000 + 300.0, 7000 + 310.0, -6700.0 - 5.0]),
+    "battle scale": (
+        _fields([7000.0, -7000.0], [0.0, 0.0], [300.0, 300.0], [2, 2]),
+        [7000 + 280 + 0.01, 7000 + 300.0, 7000 + 310.0, -6700.0 - 5.0],
+    ),
 }
 
 
@@ -286,9 +417,12 @@ def test_medium_matches_a_float64_leave_one_out_reference(case):
     # second derivative, at most 3e-3 / m^2) times that.
     resolution = 4.0 * torch.finfo(torch.float32).eps * x.double().abs().clamp_min(1.0)
     slope = torch.hypot(want[1], want[2])
-    for name, g, w, tolerance in zip(("logn", "gx", "gy"), got, want,
-                                     (2e-6 + resolution * slope, 2e-6 + resolution * 3e-3,
-                                      2e-6 + resolution * 3e-3)):
+    for name, g, w, tolerance in zip(
+        ("logn", "gx", "gy"),
+        got,
+        want,
+        (2e-6 + resolution * slope, 2e-6 + resolution * 3e-3, 2e-6 + resolution * 3e-3),
+    ):
         assert torch.isfinite(g).all(), name
         error = (g.double() - w).abs()
         assert (error <= tolerance).all(), (case, name, error.max().item())
@@ -299,8 +433,12 @@ def test_medium_gradients_are_finite_everywhere(case):
     fields, points = MEDIUM_CASES[case]
     x = torch.tensor([points], requires_grad=True)
     y = torch.zeros_like(x, requires_grad=True)
-    fields = Fields(**{k: (v.clone().requires_grad_(True) if v.dtype.is_floating_point else v)
-                       for k, v in fields.__dict__.items()})
+    fields = Fields(
+        **{
+            k: (v.clone().requires_grad_(True) if v.dtype.is_floating_point else v)
+            for k, v in fields.__dict__.items()
+        }
+    )
     total = sum(out.sum() for out in medium(fields, x, y))
     inputs = [x, y, fields.x, fields.y, fields.radius, fields.band_width]
     for grad in torch.autograd.grad(total, inputs):
@@ -309,11 +447,12 @@ def test_medium_gradients_are_finite_everywhere(case):
 
 # ------------------------------------------------------------------ constants and the card
 
+
 def test_defaults_match_the_spec_table():
     spec = json.loads((REFERENCE / "golden" / "presets.json").read_text())
     preset = spec["presets"]["squad"]
     rules = api.rules_of(GameConfig(5, 10, 2600.0, mode="sandbox"))  # the physics game
-    pool, = rules.pools  # the clocks are per game
+    (pool,) = rules.pools  # the clocks are per game
     for key, value in preset.items():
         if key in RULES:
             owner = pool if hasattr(pool, RULES[key]) else rules
@@ -338,7 +477,8 @@ def test_defaults_match_the_spec_table():
     # The ship card's additions: the bleed exponent (2) and per-type scales (1) of values
     # that are shared in the spec's table; the fire rate replaces the ticks between shots.
     assert set(CARD.values()) - {"ticks_between_shots"} == (
-        set(DEFAULTS) - {"bleed_exponent", "fire_rate", *SCALED})
+        set(DEFAULTS) - {"bleed_exponent", "fire_rate", *SCALED}
+    )
     assert TYPES.bleed_exponent.tolist() == [2.0, 2.0]
     assert all(getattr(TYPES, name).tolist() == [1.0, 1.0] for name in SCALED)
 
@@ -359,13 +499,21 @@ def test_ship_card_is_data_per_environment():
     assert torch.equal(one.ships.proper_speed[0], two.ships.proper_speed[0])
     assert not torch.equal(one.ships.proper_speed[1][alive[1]], two.ships.proper_speed[1][alive[1]])
 
-    torch._dynamo.reset()
-    step = torch.compile(lambda s, c: api.step(rules, c, s, action, spread, uniforms),
-                         fullgraph=True)
+    # A counting backend sees each graph this function compiles, whatever compiled before.
+    graphs = []
+
+    def counting(graph, example_inputs):
+        graphs.append(graph)
+        return graph.forward
+
+    step = torch.compile(
+        lambda s, c: api.step(rules, c, s, action, spread, uniforms),
+        fullgraph=True,
+        backend=counting,
+    )
     step(state, TYPES)
-    graphs = torch._dynamo.utils.counters["stats"]["unique_graphs"]
     step(state, api.ship_types(hit_damage=(20.0, 30.0), fire_rate=(30.0, 7.5)))
-    assert torch._dynamo.utils.counters["stats"]["unique_graphs"] == graphs
+    assert len(graphs) == 1
 
 
 def test_formation_ranks_ties_to_the_lower_slot():
@@ -376,12 +524,13 @@ def test_formation_ranks_ties_to_the_lower_slot():
 
 # ------------------------------------------------------------------ the batch-1 realtime path
 
+
 @pytest.mark.parametrize("compiled", [False, pytest.param(True, marks=pytest.mark.slow)])
 def test_realtime_steps_one_match(compiled):
     from bnb.contracts.obs import GLOBAL, SHIP, SHIP_COLUMNS
     from bnb.runtime.realtime import Realtime
 
-    config = GameConfig(2, 3, 900.0, episode_s=2.0)
+    config = GameConfig(2, 3, 900.0, episode_seconds=2.0)
     for fogged in (True, False):
         realtime = Realtime(config, compile=compiled, fogged=fogged)
         actions = torch.zeros(config.num_ships, 3, dtype=torch.int32)
@@ -400,6 +549,7 @@ def test_realtime_steps_one_match(compiled):
 
 
 # ------------------------------------------------------------------ CUDA graphs
+
 
 @pytest.mark.gpu
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
@@ -443,8 +593,17 @@ def test_compiled_rollout_graph_replays_draw_fresh_randomness():
     from bnb.controllers.scripted import Random
     from bnb.runtime.rollout import Rollout
 
-    rollout = Rollout(GameConfig(2, 3, 1200.0), (Pool("p", 1.0, ("r", "r")),), {"r": Random(2)},
-                      "r", 16, 8, torch.device("cuda"), compile=True, graph_ticks=4)
+    rollout = Rollout(
+        GameConfig(2, 3, 1200.0),
+        (Pool("p", 1.0, ("r", "r")),),
+        {"r": Random(2)},
+        "r",
+        16,
+        8,
+        torch.device("cuda"),
+        compiled=True,
+        graph_ticks=4,
+    )
     draws = []
     for _ in range(3):
         rollout.run()

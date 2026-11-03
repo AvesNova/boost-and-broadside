@@ -15,9 +15,13 @@ def norm(width: int) -> nn.RMSNorm:
     return nn.RMSNorm(width, eps=None)
 
 
-def rotary_tables(position: torch.Tensor, heading: torch.Tensor, periods_x: torch.Tensor,
-                  periods_y: torch.Tensor, frequencies_heading: torch.Tensor
-                  ) -> tuple[torch.Tensor, torch.Tensor]:
+def rotary_tables(
+    position: torch.Tensor,
+    heading: torch.Tensor,
+    periods_x: torch.Tensor,
+    periods_y: torch.Tensor,
+    frequencies_heading: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
     """(cos, sin), each (..., tokens, 1, pairs), of the angles [x f_x, y f_y, heading f_h],
     with the position frequencies given as periods p = 2 pi / f.
 
@@ -30,8 +34,14 @@ def rotary_tables(position: torch.Tensor, heading: torch.Tensor, periods_x: torc
     def phase(coordinate: torch.Tensor, periods: torch.Tensor) -> torch.Tensor:
         return 2.0 * math.pi * (torch.remainder(coordinate, periods) / periods)
 
-    angles = torch.cat([phase(position[..., 0:1], periods_x), phase(position[..., 1:2], periods_y),
-                        heading[..., None] * frequencies_heading], -1)[..., None, :]
+    angles = torch.cat(
+        [
+            phase(position[..., 0:1], periods_x),
+            phase(position[..., 1:2], periods_y),
+            heading[..., None] * frequencies_heading,
+        ],
+        -1,
+    )[..., None, :]
     return torch.cos(angles), torch.sin(angles)
 
 
@@ -58,6 +68,7 @@ class GatedMLP(nn.Module):
                 nn.init.kaiming_uniform_(half, a=5**0.5)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        """down(gelu(gate x) * up x), shaped like the inputs (..., width)."""
         if kernels.switches.gated_mlp and gated.applies(inputs):
             return self.down(gated.gated_hidden(inputs, self.gate_up.weight))
         gate, up = self.gate_up(inputs).chunk(2, -1)

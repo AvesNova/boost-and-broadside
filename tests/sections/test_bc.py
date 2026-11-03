@@ -19,28 +19,55 @@ from bnb.learn import bc
 from bnb.learn.rewards import RewardConfig
 from bnb.runtime.rollout import Rollout
 
-POOLS = (Pool("self_play", 0.5, ("learner", "learner"), 0.5),
-         Pool("scripted", 0.5, ("learner", "scripted"), 0.5, mode="frontline"))
-TEACHER = functools.partial(distribution, characteristics=CHARACTERISTICS,
-                            parameters=Scripted(CHARACTERISTICS).parameters)
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
+
+POOLS = (
+    Pool("self_play", 0.5, ("learner", "learner"), 0.5),
+    Pool("scripted", 0.5, ("learner", "scripted"), 0.5, mode="frontline"),
+)
+TEACHER = functools.partial(
+    distribution, characteristics=CHARACTERISTICS, parameters=Scripted(CHARACTERISTICS).parameters
+)
 
 
 def _cloning(net, runner: Rollout, teacher_config=bc.TeacherConfig(), **config):
     views = runner.store.views
     config = dict(dict(minibatches=1, micro_batch_rows=views * runner.rules.num_ships), **config)
-    return bc.BehaviourCloning(net, bc.config(**config), runner.rules, runner.carry["types"],
-                               RewardConfig().outcome, lc.CPU, TEACHER, teacher_config,
-                               tuple(pool.name for pool in POOLS),
-                               runner.lineup.pool_of["learner"])
+    return bc.BehaviourCloning(
+        net,
+        bc.config(**config),
+        runner.rules,
+        runner.carry["types"],
+        RewardConfig().outcome,
+        lc.CPU,
+        TEACHER,
+        teacher_config,
+        tuple(pool.name for pool in POOLS),
+        runner.lineup.pool_of["learner"],
+    )
 
 
 @pytest.fixture(scope="module")
 def segment():
     net = cases.model()
-    controllers = {"learner": cases.controller(net, cases.SHORT_SQUAD),
-                   "scripted": Scripted(CHARACTERISTICS)}
-    runner = Rollout(cases.SHORT_SQUAD, POOLS, controllers, "learner", 8, 32, lc.CPU,
-                     compile=False, extra_reads=Scripted.reads)
+    controllers = {
+        "learner": cases.controller(net, cases.SHORT_SQUAD),
+        "scripted": Scripted(CHARACTERISTICS),
+    }
+    runner = Rollout(
+        cases.SHORT_SQUAD,
+        POOLS,
+        controllers,
+        "learner",
+        8,
+        32,
+        lc.CPU,
+        compiled=False,
+        extra_reads=Scripted.reads,
+    )
     for _ in range(2):
         runner.run()
     learner = _cloning(net, runner)
@@ -53,9 +80,10 @@ def test_the_bc_loss_matches_an_independent_computation(segment):
     trajectory = lc.whole(runner)
     # Mark a third of the own rows dead, so the mask matters.
     marked = trajectory.alive.clone()
-    own = trajectory.logp.shape[-1]
-    marked[..., :own] &= torch.rand(marked[..., :own].shape,
-                                    generator=torch.Generator().manual_seed(1)) > 0.33
+    own = trajectory.log_probability.shape[-1]
+    marked[..., :own] &= (
+        torch.rand(marked[..., :own].shape, generator=torch.Generator().manual_seed(1)) > 0.33
+    )
     trajectory = dataclasses.replace(trajectory, alive=marked)
     with torch.no_grad():
         unrolled = learner.unroll(trajectory)
@@ -64,8 +92,12 @@ def test_the_bc_loss_matches_an_independent_computation(segment):
     assert 0 < tokens < alive.numel()
     cross, kl = torch.zeros(()), torch.zeros(())
     for tick in range(trajectory.done.shape[0]):  # the teacher tick by tick, on its views
-        obs = Obs(**{name: None if value is None else value[tick]
-                     for name, value in dataclasses.asdict(trajectory.obs).items()})
+        obs = Obs(
+            **{
+                name: None if value is None else value[tick]
+                for name, value in dataclasses.asdict(trajectory.obs).items()
+            }
+        )
         q = distribution(obs, CHARACTERISTICS, Scripted(CHARACTERISTICS).parameters)
         floor = bc.TeacherConfig().floor  # the default labels: the uniform floor, T = 1
         q = (1.0 - floor) * q + floor / 42
@@ -75,8 +107,9 @@ def test_the_bc_loss_matches_an_independent_computation(segment):
         cross = cross + per_token[alive[tick]].sum()
         kl = kl + (per_token - entropy)[alive[tick]].sum()
     derived = {name: value for name, value in prepared["derived"].items()}
-    policy_term, _, statistics = learner._policy(unrolled, trajectory, derived,
-                                                 dict(policy=tokens.float()), prepared["scale"])
+    policy_term, _, statistics = learner._policy(
+        unrolled, trajectory, derived, dict(policy=tokens.float()), prepared["scale"]
+    )
     torch.testing.assert_close(policy_term, cross / tokens, rtol=1e-5, atol=1e-6)
     report = learner.report(statistics.tolist())
     assert report["bc_kl"] == pytest.approx(float(kl / tokens), rel=1e-5)
@@ -109,21 +142,33 @@ class Recording(Scripted):
         super().__init__(CHARACTERISTICS)
         self.decisions: list[torch.Tensor] = []
 
-    def step(self, carry, obs, done):
+    def step(self, carry, obs, reset):
         self.decisions.append(distribution(obs, self.characteristics, self.parameters))
-        return super().step(carry, obs, done)
+        return super().step(carry, obs, reset)
 
 
 def test_the_update_time_labels_are_the_rollout_time_distribution():
     recording = Recording()
     pools = (Pool("self_play", 1.0, ("learner", "learner"), 0.5, mode="frontline"),)
-    runner = Rollout(cases.SHORT_FRONTLINE, pools, {"learner": recording}, "learner", 4, 16,
-                     lc.CPU, compile=False)
+    runner = Rollout(
+        cases.SHORT_FRONTLINE,
+        pools,
+        {"learner": recording},
+        "learner",
+        4,
+        16,
+        lc.CPU,
+        compiled=False,
+    )
     trajectory = runner.run()
     decided = torch.stack(recording.decisions[1:])  # the first is the rollout's one-row probe
     for tick in range(trajectory.done.shape[0]):  # the stored views give the same decision
-        stored = Obs(ships=trajectory.obs.ships[tick], fields=None,
-                     globals=trajectory.obs.globals[tick], zones=trajectory.obs.zones[tick])
+        stored = Obs(
+            ships=trajectory.obs.ships[tick],
+            fields=None,
+            globals=trajectory.obs.globals[tick],
+            zones=trajectory.obs.zones[tick],
+        )
         assert torch.equal(TEACHER(stored), decided[tick])
     # Per tick the labels are exact (above). The update labels a whole segment as one
     # batch, and the CPU's vectorized kernels round the tail of a batch apart from its body,
@@ -141,8 +186,9 @@ def test_the_teacher_temperature():
     assert torch.equal(bc.labels(q, bc.TeacherConfig(1.0, 0.0)), q)
     hotter = bc.labels(q, bc.TeacherConfig(temperature=2.0, floor=0.0))
     assert (hotter[:, 5] == 0.0).all()
-    assert (bc.mean_entropy(q, bc.TeacherConfig(2.0, 0.0))
-            > bc.mean_entropy(q, bc.TeacherConfig(1.0, 0.0)))
+    assert bc.mean_entropy(q, bc.TeacherConfig(2.0, 0.0)) > bc.mean_entropy(
+        q, bc.TeacherConfig(1.0, 0.0)
+    )
     for target, floor in ((1.0, 0.0), (2.5, 0.0), (3.5, 0.0), (3.7, 0.05)):
         chosen = bc.calibrate(q, target, floor)
         assert bc.mean_entropy(q, chosen) == pytest.approx(target, abs=0.01)
@@ -164,8 +210,9 @@ def test_every_label_gives_every_action_a_probability_above_zero(segment):
     assert bc.TeacherConfig().floor == bc.FLOOR > 0.0
 
 
-def _scripted_seat(objective: str, teacher: bc.TeacherConfig = bc.TeacherConfig(),
-                   segments: int = 0):
+def _scripted_seat(
+    objective: str, teacher: bc.TeacherConfig = bc.TeacherConfig(), segments: int = 0
+):
     """A small CPU trainer with BC's lineup, its scripted seat's controller and that seat's
     view after `segments` segments of 8 ticks (from 2 on, the scripted agent is no longer
     certain of every action)."""
@@ -174,9 +221,19 @@ def _scripted_seat(objective: str, teacher: bc.TeacherConfig = bc.TeacherConfig(
     from bnb.runtime.train import SCRIPTED, TrainConfig, Trainer
 
     learner = bc.config(minibatches=2) if objective == "bc" else lc.LearnerConfig(minibatches=2)
-    cfg = TrainConfig(game=GameConfig(2, 2, 1200.0), pools=LINEUP, num_envs=4, length=8,
-                      model="relational", relational_hidden=16, compile=False, host_store=False,
-                      learner=learner, objective=objective, teacher=teacher)
+    cfg = TrainConfig(
+        game=GameConfig(2, 2, 1200.0),
+        pools=LINEUP,
+        environments=4,
+        length=8,
+        model="relational",
+        relational_hidden=16,
+        compiled=False,
+        host_store=False,
+        learner=learner,
+        objective=objective,
+        teacher=teacher,
+    )
     trainer = Trainer(cfg, lc.CPU)
     for _ in range(segments):
         trainer.rollout.run()
@@ -187,8 +244,12 @@ def _scripted_seat(objective: str, teacher: bc.TeacherConfig = bc.TeacherConfig(
 def _repeated(view: Obs, times: int) -> Obs:
     """The view's rows (R, ...) repeated `times` times: (times R, ...)."""
     parts = {field.name: getattr(view, field.name) for field in dataclasses.fields(view)}
-    return Obs(**{name: None if value is None else value.repeat(times, *[1] * (value.dim() - 1))
-                  for name, value in parts.items()})
+    return Obs(
+        **{
+            name: None if value is None else value.repeat(times, *[1] * (value.dim() - 1))
+            for name, value in parts.items()
+        }
+    )
 
 
 def test_the_scored_opponent_plays_the_labels_distribution():
@@ -211,8 +272,9 @@ def test_the_scored_opponent_plays_the_labels_distribution():
     joint = to_joint(action).long().unflatten(0, (times, -1))  # (times, R, S)
     frequency = torch.nn.functional.one_hot(joint, NUM_JOINT).float().mean(0)
     error = (expected * (1 - expected) / times).sqrt()
-    assert bool(((frequency - expected).abs() <= 5 * error + 1e-4).all()), \
-        float((frequency - expected).abs().max())
+    assert bool(((frequency - expected).abs() <= 5 * error + 1e-4).all()), float(
+        (frequency - expected).abs().max()
+    )
     assert float(expected.min()) >= teacher.floor / NUM_JOINT * 0.999  # the floor is played
 
 
@@ -253,11 +315,11 @@ def _run(rule: bc.StopRule, updates: int, steps: int, score: float, kl):
 
 def test_each_stop_rule_fires_alone():
     config = bc.StopConfig(score_window=100, plateau_steps=1000, budget_steps=10_000)
-    falling = lambda update: 2.0 * 0.95 ** update  # noqa: E731 - still improving 5% per update
+    falling = lambda update: 2.0 * 0.95**update  # noqa: E731 - still improving 5% per update
     # 0.8 over 100 games: a lower bound of 0.72 (0.5 would give 0.40, below the target)
     assert _run(bc.StopRule(config), 200, 100, 0.8, falling) == (4, "score")  # 100 games
     assert _run(bc.StopRule(config), 200, 100, 0.2, falling) == (99, "budget")
-    flat = lambda update: 1.0 + 0.5 * 0.5 ** update  # noqa: E731 - converges, then plateaus
+    flat = lambda update: 1.0 + 0.5 * 0.5**update  # noqa: E731 - converges, then plateaus
     update, reason = _run(bc.StopRule(config), 200, 100, 0.2, flat)
     assert reason == "kl_plateau" and 10 < update < 99
     rule = bc.StopRule(config)
@@ -315,9 +377,11 @@ def test_a_window_at_the_target_does_not_stop_and_one_clearly_above_does():
 def test_alive_mask_reads_the_own_rows(segment):
     _, runner, _, _ = segment
     trajectory: Trajectory = lc.whole(runner)
-    S = trajectory.logp.shape[-1]
-    torch.testing.assert_close(trajectory.alive[..., :S].float(),
-                               (trajectory.obs.ships[..., :S, SHIP["alive"]] > 0.5).float())
+    S = trajectory.log_probability.shape[-1]
+    torch.testing.assert_close(
+        trajectory.alive[..., :S].float(),
+        (trajectory.obs.ships[..., :S, SHIP["alive"]] > 0.5).float(),
+    )
 
 
 # ------------------------------------------------------------------ the hand-off
@@ -329,9 +393,18 @@ def _tiny(objective: str, pools):
     from bnb.runtime.train import TrainConfig
 
     learner = bc.config(minibatches=2) if objective == "bc" else LearnerConfig(minibatches=2)
-    return TrainConfig(game=GameConfig(2, 2, 1200.0), pools=pools, num_envs=8, length=8,
-                       model="relational", relational_hidden=16, compile=False,
-                       host_store=False, learner=learner, objective=objective)
+    return TrainConfig(
+        game=GameConfig(2, 2, 1200.0),
+        pools=pools,
+        environments=8,
+        length=8,
+        model="relational",
+        relational_hidden=16,
+        compiled=False,
+        host_store=False,
+        learner=learner,
+        objective=objective,
+    )
 
 
 def test_reinforcement_learning_starts_from_the_clone():
@@ -346,8 +419,9 @@ def test_reinforcement_learning_starts_from_the_clone():
     trainer = Trainer(_tiny("ppo", RL_LINEUP), lc.CPU)
     warm_start(trainer, student)
     for module in (trainer.model, trainer.league):
-        for (name, a), b in zip(module.state_dict().items(), student.model.state_dict().values(),
-                                strict=True):
+        for (name, a), b in zip(
+            module.state_dict().items(), student.model.state_dict().values(), strict=True
+        ):
             assert torch.equal(a, b), name
     assert float(trainer.ppo.return_scale.scale()) == float(student.ppo.return_scale.scale())
     assert float(student.ppo.return_scale.high) != 0.0
@@ -359,12 +433,36 @@ def test_reinforcement_learning_starts_from_the_clone():
 
 # The tiny BC run of the command line: 2v2 relational, 16 environments x 16 ticks per
 # update, stopped by its budget after two updates.
-BC_OPTIONS = ("--device", "cpu", "--model", "relational", "--ships-per-team", "2",
-              "--num-fields", "2", "--arena-radius", "1500", "--num-envs", "16",
-              "--objective", "bc", "--bc-budget-steps", str(2 * 16 * 16),
-              "--set", "length=16", "--set", "compile=false", "--set", "learner.minibatches=2",
-              "--set", "learner.epochs=1", "--set", "relational_hidden=16",
-              "--set", "game.episode_s=4.0")
+BC_OPTIONS = (
+    "--device",
+    "cpu",
+    "--model",
+    "relational",
+    "--ships-per-team",
+    "2",
+    "--num-fields",
+    "2",
+    "--arena-radius",
+    "1500",
+    "--environments",
+    "16",
+    "--objective",
+    "bc",
+    "--bc-budget-steps",
+    str(2 * 16 * 16),
+    "--set",
+    "length=16",
+    "--set",
+    "compiled=false",
+    "--set",
+    "learner.minibatches=2",
+    "--set",
+    "learner.epochs=1",
+    "--set",
+    "relational_hidden=16",
+    "--set",
+    "game.episode_seconds=4.0",
+)
 
 
 def _bnb(monkeypatch, *arguments: str) -> None:
@@ -392,9 +490,27 @@ def test_bnb_train_objective_bc_saves_the_clone_as_a_policy_file(monkeypatch, tm
     assert record["steps"] == dict(environment_steps=2 * 16 * 16, updates=2)
     clone = checkpoint.load_policy(run.policy_path, lc.CPU)
     # Reinforcement learning from it: the clone's weights, a run of its own.
-    _bnb(monkeypatch, "train", *BC_OPTIONS[:12], "--set", "length=16", "--set", "compile=false",
-         "--set", "relational_hidden=16", "--set", "game.episode_s=4.0", "--updates", "0",
-         "--init-from", str(run.policy_path), "--name", "rl", "--runs-directory", runs)
+    _bnb(
+        monkeypatch,
+        "train",
+        *BC_OPTIONS[:12],
+        "--set",
+        "length=16",
+        "--set",
+        "compiled=false",
+        "--set",
+        "relational_hidden=16",
+        "--set",
+        "game.episode_seconds=4.0",
+        "--updates",
+        "0",
+        "--init-from",
+        str(run.policy_path),
+        "--name",
+        "rl",
+        "--runs-directory",
+        runs,
+    )
     rl = Run.open(tmp_path / "runs", "rl")
     assert rl.record["parent"] == dict(policy=str(run.policy_path.resolve()))
     final = checkpoint.load_policy(rl.checkpoint_at(), lc.CPU)
@@ -402,8 +518,9 @@ def test_bnb_train_objective_bc_saves_the_clone_as_a_policy_file(monkeypatch, tm
         assert torch.equal(final.state_dict()[name], value), name
 
 
-@pytest.mark.parametrize("start", [("--resume", "clone"), ("--from", "clone"),
-                                   ("--init-from", "somewhere")])
+@pytest.mark.parametrize(
+    "start", [("--resume", "clone"), ("--from", "clone"), ("--init-from", "somewhere")]
+)
 def test_a_bc_run_starts_fresh(monkeypatch, tmp_path, start):
     with pytest.raises(SystemExit, match="a BC run starts fresh"):
         _bnb(monkeypatch, "train", *BC_OPTIONS, *start, "--runs-directory", str(tmp_path))
@@ -417,14 +534,19 @@ def test_the_gradient_stays_finite_for_a_confident_student(segment):
 
     _, runner, learner, prepared = segment
     trajectory = lc.whole(runner)
-    shape = trajectory.logp.shape + (42,)
+    shape = trajectory.log_probability.shape + (42,)
     logits = torch.zeros(shape)
     logits[..., 3] = 1e4  # every other action's probability underflows to 0
     logits.requires_grad_(True)
     policy_term, entropy_term, _ = learner._policy(
-        types.SimpleNamespace(policy_logits=logits), trajectory, prepared["derived"],
-        dict(policy=trajectory.alive[..., :shape[2]].sum().float()), prepared["scale"])
+        types.SimpleNamespace(policy_logits=logits),
+        trajectory,
+        prepared["derived"],
+        dict(policy=trajectory.alive[..., : shape[2]].sum().float()),
+        prepared["scale"],
+    )
     for coefficient in (0.0, -0.0081):  # BC's, and PPO's entropy bonus
-        gradient, = torch.autograd.grad(policy_term + coefficient * entropy_term, logits,
-                                        retain_graph=True)
+        (gradient,) = torch.autograd.grad(
+            policy_term + coefficient * entropy_term, logits, retain_graph=True
+        )
         assert torch.isfinite(gradient).all(), coefficient

@@ -61,14 +61,13 @@ line-length = 100
 # Design-record scripts and the race tests are kept as written.
 extend-exclude = ["docs", "tests/reference"]
 
+[tool.ruff.format]
+# Formatted by the branches that own them (the kernels and the store: fix/intermittent;
+# the play shell: its second milestone), so this pass leaves their diffs alone.
+exclude = ["src/bnb/models/yemong/kernels/**", "src/bnb/runtime/store.py", "src/bnb/play/**"]
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
-
-[tool.ruff.lint.per-file-ignores]
-# Copied verbatim from the race PyTorch arm (120-character lines); the physics section
-# rewrites these files.
-"src/bnb/game/physics/*" = ["E501"]
-"src/bnb/game/perception/sight.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,5 +1,6 @@
 ---
 covers: [src/bnb/play/, src/bnb/controllers/human.py]
+reviewed: 2026-11-03 09:45
 ---
 
 # The play shell

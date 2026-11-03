@@ -1,8 +1,9 @@
 """What a team sees (`Obs`) and the truth only learners may use (`Privileged`).
 
 An observation is raw and in world coordinates, with no rotation or mirroring. The only
-canonicalization is the team: every entity carries `team_relative = (team - viewer) mod T`, and
-rows are ordered by `team_relative` (own ships first), so nothing reveals which seat a team has.
+canonicalization is the team: each ship row carries `team_relative = (team - viewer) mod T`,
+and the ship rows are ordered by it (own ships first); zones and the mode's globals are in
+the viewer's terms. So nothing reveals which seat a team has.
 """
 
 from typing import ClassVar
@@ -13,11 +14,30 @@ from .tree import contract
 
 SHIP_COLUMNS = (
     # zero when the team cannot see the ship
-    "x", "y", "heading_cos", "heading_sin", "velocity_x", "velocity_y", "proper_speed",
-    "angle_of_attack", "nose_rate", "energy", "shield", "shield_recharge_wait", "gun_cooldown",
-    "log_refractive_index", "log_index_gradient_x", "log_index_gradient_y",
+    "x",
+    "y",
+    "heading_cos",
+    "heading_sin",
+    "velocity_x",
+    "velocity_y",
+    "proper_speed",
+    "angle_of_attack",
+    "nose_rate",
+    "energy",
+    "shield",
+    "shield_recharge_wait",
+    "gun_cooldown",
+    "log_refractive_index",
+    "log_index_gradient_x",
+    "log_index_gradient_y",
     # always shown; fired: fired this tick
-    "alive", "visible", "fired", "respawn_wait", "ship_type", "team_relative", "time_since_seen",
+    "alive",
+    "visible",
+    "fired",
+    "respawn_wait",
+    "ship_type",
+    "team_relative",
+    "time_since_seen",
     "spawned",
 )
 SHIP_HIDDEN_ZERO = 16  # the first this-many columns are zero for a ship the team cannot see
@@ -27,15 +47,39 @@ FIELD_COLUMNS = ("x", "y", "radius", "band_width", "level")
 # in the viewer's favour, -1 in the enemy's, 0 still; the distances: captures to the
 # viewer's win and to its loss; present, 1 for a zone of the environment's mode and 0 for an
 # absent slot (a mode without zones in a batch that has them), whose other columns are 0.
-ZONE_COLUMNS = ("x", "y", "radius", "role", "progress", "direction", "offensive_distance",
-                "defensive_distance", "present")
+ZONE_COLUMNS = (
+    "x",
+    "y",
+    "radius",
+    "role",
+    "progress",
+    "direction",
+    "offensive_distance",
+    "defensive_distance",
+    "present",
+)
 # The mode block: a mode one-hot (all zero in sandbox); the scores by team_relative and the
 # score that wins (team deathmatch); the front, positive in the viewer's favour, and the
 # front that wins (Frontline). Absent quantities are 0.
-GLOBAL_COLUMNS = ("episode_progress", "arena_radius", "fogged", "reset", "mode_team_deathmatch",
-                  "mode_frontline", "score_own", "score_enemy", "score_target", "front",
-                  "front_threshold")
+GLOBAL_COLUMNS = (
+    "episode_progress",
+    "arena_radius",
+    "fogged",
+    "reset",
+    "mode_team_deathmatch",
+    "mode_frontline",
+    "score_own",
+    "score_enemy",
+    "score_target",
+    "front",
+    "front_threshold",
+)
 # Times (shield_recharge_wait, gun_cooldown, respawn_wait, time_since_seen) are in seconds.
+
+# Z: the zone slots of every observation in every mode, a fixed shape like the field count,
+# so a model sees the same tokens in any batch. Frontline fills them all; a mode without
+# zones leaves them absent.
+ZONE_SLOTS = 5
 
 SHIP = {name: i for i, name in enumerate(SHIP_COLUMNS)}
 FIELD = {name: i for i, name in enumerate(FIELD_COLUMNS)}
@@ -49,7 +93,7 @@ class Obs:
 
     ships (..., N, len(SHIP_COLUMNS)), own team's S ships first, then by team_relative and slot;
     fields (..., M, len(FIELD_COLUMNS)); globals (..., len(GLOBAL_COLUMNS)); zones (..., Z,
-    len(ZONE_COLUMNS)), Z = 5 zone slots in every mode (a mode without zones shows them
+    len(ZONE_COLUMNS)), Z = ZONE_SLOTS in every mode (a mode without zones shows them
     absent).
 
     A stored batch may leave out (None) a part its model does not read.
@@ -72,7 +116,9 @@ class Privileged:
 
     team: (B, N) int32, the sim team of each ship (sim order).
     view_order: (B, T, N) int64, the sim index of each observation row of each view.
-    ships: (B, T, N, len(SHIP_COLUMNS)), the observation with fog off.
+    ships: (B, T, N, len(SHIP_COLUMNS)), every row as if its ship were seen: `visible` 1,
+        `time_since_seen` 0 and the true hidden columns for every ship, the dead included
+        (unlike a fog-off observation, where a dead enemy is not visible).
     """
 
     team: torch.Tensor

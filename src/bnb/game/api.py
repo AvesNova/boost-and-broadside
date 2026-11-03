@@ -8,10 +8,18 @@
 
 Every function is pure (tensors in, tensors out) and works eagerly or under
 torch.compile, on any device: at any batch size for one game (`rules_of(config)`), and at
-the pools' batch size for several (`rules_of(config, pools, num_envs)`). The state is
-opaque outside `bnb.game`.
+the pools' batch size for several (`rules_of(config, pools, environments)`). The state is
+opaque outside `bnb.game`: other packages hold it and pass it back, and read it only through
+these functions.
 The tick's randomness is an explicit input; `spread` and `uniforms` draw it. The ship card
-`types` is always passed: it is data, which a sweep may change between calls.
+`types` is an argument of every function that reads it (`reset`, `move`, `resolve`, `step`):
+it is data, which a sweep may change between calls.
+
+For a runtime that keeps the state in persistent buffers: `perceived` (the part of the state
+`perceive` changes, to copy back), `episode_ticks` (each environment's episode length),
+`launch_capture` (what the learner's shot re-simulation stores of a tick), `ship_team` and
+`view_order` (each ship's team, and the sim index of each observation row), `start_clocks`
+and `sweep_like`.
 
 For display (the play shell), with no rules of their own: `log_index` (the medium at
 points), `core_radius` (the discs the sight test treats as cores), `zone_sides`
@@ -25,20 +33,52 @@ import torch
 from bnb.contracts import Obs
 from bnb.contracts.obs import SHIP
 
+from .layout import environment
 from .modes import frontline
 from .modes.rules import PRESETS
+from .perception import sight
 from .perception.observe import perceive, view_order
 from .perception.sight import vision_range
+from .physics.bullets import Launch, launch_state
 from .physics.medium import medium
 from .physics.step import move, reset, resolve, step
 from .rules import LN_SQRT2, MAP_SCALE_RADIUS, TEAMS, Rules, rules_of
 from .ship_types import ShipTypes, per_ship, ship_types
-from .state import Fields, State, Sweep, replace, sweep_like
+from .state import Fields, State, Sweep, replace, ship_team, sweep_like
 
-__all__ = ["LN_SQRT2", "MAP_SCALE_RADIUS", "PRESETS", "TEAMS", "Rules", "ShipTypes", "State",
-           "Sweep", "core_radius", "log_index", "move", "per_ship", "perceive", "reset",
-           "resolve", "rules_of", "ship_types", "spread", "start_clocks", "step", "sweep_like",
-           "uniforms", "vision_range", "visible", "zone_sides"]
+__all__ = [
+    "LN_SQRT2",
+    "Launch",
+    "MAP_SCALE_RADIUS",
+    "PRESETS",
+    "Rules",
+    "ShipTypes",
+    "State",
+    "Sweep",
+    "TEAMS",
+    "core_radius",
+    "episode_ticks",
+    "launch_capture",
+    "log_index",
+    "move",
+    "per_ship",
+    "perceive",
+    "perceived",
+    "reset",
+    "resolve",
+    "rules_of",
+    "ship_team",
+    "ship_types",
+    "spread",
+    "start_clocks",
+    "step",
+    "sweep_like",
+    "uniforms",
+    "view_order",
+    "visible",
+    "vision_range",
+    "zone_sides",
+]
 
 
 def spread(rules: Rules, batch: int, device=None, generator=None) -> torch.Tensor:
@@ -56,9 +96,41 @@ def start_clocks(state: State, episode_tick: torch.Tensor) -> State:
     return replace(state, match=replace(state.match, episode_tick=episode_tick.to(torch.int32)))
 
 
-def log_index(centre_x: torch.Tensor, centre_y: torch.Tensor, radius: torch.Tensor,
-              band_width: torch.Tensor, level: torch.Tensor, x: torch.Tensor,
-              y: torch.Tensor) -> torch.Tensor:
+def perceived(state: State) -> tuple[torch.Tensor, ...]:
+    """The part of the state that `perceive` changes, as a pytree of tensors: a caller that
+    keeps the state in persistent buffers copies the new state's part onto its own, leaf by
+    leaf, without naming them."""
+    return (state.match.ticks_since_seen,)
+
+
+def episode_ticks(rules: Rules, batch: int, device=None) -> torch.Tensor:
+    """(B,) int32 each environment's episode length in ticks."""
+    return environment(rules, batch, device).episode_ticks
+
+
+def launch_capture(
+    state: State, sweep: Sweep
+) -> tuple[Launch, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """What the learner's shot re-simulation stores of a tick, in sim order (B, N): each
+    ship's launch state at the tick's start (`Launch`), its straight-line move this tick
+    (x, y, m) and whether it was alive at the tick's start."""
+    return (
+        launch_state(state.ships),
+        sweep.ship_displacement_x,
+        sweep.ship_displacement_y,
+        state.ships.alive,
+    )
+
+
+def log_index(
+    centre_x: torch.Tensor,
+    centre_y: torch.Tensor,
+    radius: torch.Tensor,
+    band_width: torch.Tensor,
+    level: torch.Tensor,
+    x: torch.Tensor,
+    y: torch.Tensor,
+) -> torch.Tensor:
     """(B, P) ln n, the medium's log refractive index, at points x, y (B, P) for the fields
     given as (B, M) centres, radii and band widths (m) and int32 levels: the game's
     `medium`, for a caller that holds fields outside a state (such as a subset of them)."""
@@ -69,9 +141,8 @@ def log_index(centre_x: torch.Tensor, centre_y: torch.Tensor, radius: torch.Tens
 def core_radius(state: State) -> torch.Tensor:
     """(B, M) each field's core radius (m): the disc the sight test treats as the core
     (game spec 10.1), the radius less half the band, and 0 for a field with no flat
-    interior. A test holds it to `visibility`, which builds the same cores."""
-    fields = state.fields
-    return (fields.radius - 0.5 * fields.band_width).clamp_min(0.0)
+    interior."""
+    return sight.core_radius(state.fields)
 
 
 def zone_sides(state: State) -> tuple[torch.Tensor, torch.Tensor]:

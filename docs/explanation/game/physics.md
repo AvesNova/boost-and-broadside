@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/game/physics/, src/bnb/game/rules.py, src/bnb/game/ship_types.py, src/bnb/game/state.py, src/bnb/game/api.py]
-reviewed: 2026-11-01
+reviewed: 2026-11-03 09:45
 ---
 
 # Physics

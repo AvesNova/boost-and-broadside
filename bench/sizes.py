@@ -16,23 +16,25 @@ SKELETON_SEED = 20261031
 
 
 def draw(seed: int, count: int) -> list[dict]:
-    rng = np.random.default_rng(seed)
-    out = []
+    """`count` sizes (ships per team, fields, arena radius) drawn from the seed."""
+    generator = np.random.default_rng(seed)
+    drawn = []
     for _ in range(count):
-        n = 2 * int(rng.integers(SHIPS[0] // 2, SHIPS[1] // 2 + 1))
-        m = int(rng.integers(FIELDS[0], FIELDS[1] + 1))
-        radius = 2600.0 * math.sqrt(n / 10.0) * float(rng.uniform(*DENSITY))
-        out.append(dict(ships_per_team=n // 2, num_fields=m, arena_radius=round(radius, 1)))
-    return out
+        ships = 2 * int(generator.integers(SHIPS[0] // 2, SHIPS[1] // 2 + 1))
+        fields = int(generator.integers(FIELDS[0], FIELDS[1] + 1))
+        radius = 2600.0 * math.sqrt(ships / 10.0) * float(generator.uniform(*DENSITY))
+        drawn.append(
+            dict(ships_per_team=ships // 2, num_fields=fields, arena_radius=round(radius, 1))
+        )
+    return drawn
 
 
-def envs_for(size: dict, budget: int = SHIP_BUDGET, preset: str | None = None) -> int:
-    """Environments for a ship budget, rounded to a whole multiple of what the pools need:
-    8 for the skeleton lineup (its shares are eighths), 64 for the mixed preset."""
-    multiple = 8
-    if preset == "mixed":
-        from bnb.contracts.pools import environment_multiple
-        from bnb.runtime.train import mixed
+def environments_for(size: dict, budget: int = SHIP_BUDGET, preset: str | None = None) -> int:
+    """Environments for a ship budget, rounded to a whole multiple of what the pools need
+    (`environment_multiple`: the skeleton lineup's, or the mixed preset's pools)."""
+    from bnb.contracts.pools import environment_multiple
+    from bnb.runtime.train import LINEUP, mixed
 
-        multiple = environment_multiple(mixed()[1])
+    pools = mixed()[1] if preset == "mixed" else LINEUP
+    multiple = environment_multiple(pools)
     return max(multiple, multiple * round(budget / (2 * size["ships_per_team"]) / multiple))

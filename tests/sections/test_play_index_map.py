@@ -14,6 +14,10 @@ from bnb.game.physics.medium import medium
 from bnb.play.index_map import TILE, TILES_PER_CALL, IndexBuilder, build
 from bnb.play.snapshot import snapshot
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
 
 @pytest.fixture(autouse=True, scope="module")
 def one_thread():
@@ -40,8 +44,8 @@ def test_the_grid_is_medium_at_its_texels(config):
     generator = torch.Generator().manual_seed(1)
     column, row = torch.randint(0, grid.size, (2, 40_000), generator=generator)
     inside = torch.from_numpy(values != 0.0).nonzero()
-    row = torch.cat([row, inside[::max(len(inside) // 10_000, 1), 0]])
-    column = torch.cat([column, inside[::max(len(inside) // 10_000, 1), 1]])
+    row = torch.cat([row, inside[:: max(len(inside) // 10_000, 1), 0]])
+    column = torch.cat([column, inside[:: max(len(inside) // 10_000, 1), 1]])
     x = (grid.origin + (column + 0.5) * grid.texel).float()
     y = (grid.origin + (row + 0.5) * grid.texel).float()
     want = medium(state.fields, x[None], y[None])[0][0]
@@ -58,8 +62,9 @@ def test_a_budgeted_build_matches_the_whole_build():
     calls = 0
     while not builder.done:
         for update in builder.run(budget=0.0):  # one batch per call
-            parts[update.row:update.row + TILE, update.column:update.column + TILE] = \
+            parts[update.row : update.row + TILE, update.column : update.column + TILE] = (
                 update.values
+            )
         calls += 1
     assert calls == math.ceil(len(builder.tiles) / TILES_PER_CALL) and calls > 1
     assert np.array_equal(parts, whole)

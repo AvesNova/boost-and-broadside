@@ -54,8 +54,10 @@ def batched(types: ShipTypes) -> ShipTypes:
 
 def type_axis(types: ShipTypes) -> torch.Tensor:
     """(B, num_types) int32: each column's ship type."""
-    B, T = types.max_energy.shape
-    return torch.arange(T, dtype=torch.int32, device=types.max_energy.device).expand(B, T)
+    B, type_count = types.max_energy.shape
+    return torch.arange(type_count, dtype=torch.int32, device=types.max_energy.device).expand(
+        B, type_count
+    )
 
 
 def ships(speed, energy, angle, nose_rate, ship_type) -> Ships:
@@ -63,21 +65,43 @@ def ships(speed, energy, angle, nose_rate, ship_type) -> Ships:
     zeros = torch.zeros_like(speed)
     integers = torch.zeros_like(ship_type)
     flags = torch.zeros_like(speed, dtype=torch.bool)
-    return Ships(x=zeros, y=zeros, heading_cos=torch.cos(angle), heading_sin=torch.sin(angle),
-                 proper_speed=speed, angle_of_attack=angle, angle_of_attack_cos=torch.cos(angle),
-                 angle_of_attack_sin=torch.sin(angle), nose_rate=nose_rate, energy=energy,
-                 log_refractive_index=zeros, log_index_gradient_x=zeros,
-                 log_index_gradient_y=zeros, shield=zeros, shield_recharge_wait=zeros,
-                 alive=~flags, fired=flags, spawned=flags, respawn_wait=integers,
-                 gun_cooldown=integers, next_slot=integers, ship_type=ship_type)
+    return Ships(
+        x=zeros,
+        y=zeros,
+        heading_cos=torch.cos(angle),
+        heading_sin=torch.sin(angle),
+        proper_speed=speed,
+        angle_of_attack=angle,
+        angle_of_attack_cos=torch.cos(angle),
+        angle_of_attack_sin=torch.sin(angle),
+        nose_rate=nose_rate,
+        energy=energy,
+        log_refractive_index=zeros,
+        log_index_gradient_x=zeros,
+        log_index_gradient_y=zeros,
+        shield=zeros,
+        shield_recharge_wait=zeros,
+        alive=~flags,
+        fired=flags,
+        spawned=flags,
+        respawn_wait=integers,
+        gun_cooldown=integers,
+        next_slot=integers,
+        ship_type=ship_type,
+    )
 
 
 def empty_map(like: torch.Tensor) -> Fields:
     """One field too far away to touch anything: ln n = 0 everywhere a ship flies."""
     B = like.shape[0]
     ones = torch.ones((B, 1), dtype=like.dtype, device=like.device)
-    return Fields(x=ones * FAR, y=ones * 0.0, radius=ones, band_width=ones,
-                  level=torch.ones((B, 1), dtype=torch.int32, device=like.device))
+    return Fields(
+        x=ones * FAR,
+        y=ones * 0.0,
+        radius=ones,
+        band_width=ones,
+        level=torch.ones((B, 1), dtype=torch.int32, device=like.device),
+    )
 
 
 class SteadyTurn(NamedTuple):
@@ -105,7 +129,7 @@ def derivative_weights(tick_length: float, like: torch.Tensor) -> torch.Tensor:
     t = 0 of their least-squares polynomial of degree FIT_DEGREE over FIT_WINDOW."""
     count = max(round(FIT_WINDOW / tick_length), FIT_DEGREE + 1) + 1
     time = torch.arange(count, dtype=like.dtype, device=like.device) * tick_length
-    vandermonde = torch.stack([time ** p for p in range(FIT_DEGREE + 1)], -1)
+    vandermonde = torch.stack([time**p for p in range(FIT_DEGREE + 1)], -1)
     return torch.linalg.pinv(vandermonde)[1]
 
 
@@ -143,8 +167,10 @@ def crossing_time(series: torch.Tensor, threshold: torch.Tensor, tick_length: fl
 def path_turned(before: Ships, after: Ships) -> torch.Tensor:
     """The flight path's turn over a tick: the nose's turn less the angle of attack's."""
     cos, sin = before.heading_cos, before.heading_sin
-    nose = torch.atan2(cos * after.heading_sin - sin * after.heading_cos,
-                       cos * after.heading_cos + sin * after.heading_sin)
+    nose = torch.atan2(
+        cos * after.heading_sin - sin * after.heading_cos,
+        cos * after.heading_cos + sin * after.heading_sin,
+    )
     return nose - (after.angle_of_attack - before.angle_of_attack)
 
 
@@ -158,17 +184,19 @@ def aitken(first, second, third):
 
 
 def cruise_speed(rules: Rules, types: ShipTypes, energy: torch.Tensor) -> torch.Tensor:
-    """(B, T, G) the straight coasting equilibrium at stores energy (B, T, G): the fastest
-    speed the flight tick leaves unchanged, the terminal speed a ship coasting straight
-    reaches from above. Bracketed on a grid of one-tick flights from the stall speed to 30
-    times it (the last sign change of the speed's gain from + to -), then bisected. NaN
-    where there is none."""
+    """(B, types, points) the straight coasting equilibrium at stores energy (B, types,
+    points): the fastest speed the flight tick leaves unchanged, the terminal speed a ship coasting
+    straight reaches from above. Bracketed on a grid of one-tick flights from the stall speed to 30
+    times it (the last sign change of the speed's gain from + to -), then bisected. NaN where there
+    is none."""
     types = batched(types)
-    B, T, G = energy.shape
-    ship_type = type_axis(types)[..., None].expand(B, T, G).reshape(B, T * G)
+    B, type_count, points = energy.shape
+    ship_type = (
+        type_axis(types)[..., None].expand(B, type_count, points).reshape(B, type_count * points)
+    )
     airframe = airframe_of(types, ship_type)
     stall = torch.sqrt(rules.flight.gravity / airframe.max_lift_coefficient)
-    flat = energy.reshape(B, T * G)
+    flat = energy.reshape(B, type_count * points)
 
     def gain(speed):  # (B, P, ...) speeds
         shape = speed.shape
@@ -178,12 +206,14 @@ def cruise_speed(rules: Rules, types: ShipTypes, energy: torch.Tensor) -> torch.
         zeros = torch.zeros_like(speed)
         start = ships(speed, stores, zeros, zeros, kinds)
         flown = airframe_of(types, kinds)
-        end = flight_tick(rules.flight, flown, rules.tick_length, start, zeros, zeros,
-                          empty_map(speed))
+        end = flight_tick(
+            rules.flight, flown, rules.tick_length, start, zeros, zeros, empty_map(speed)
+        )
         return (end.proper_speed - speed).reshape(shape)
 
-    grid = stall[..., None] * torch.logspace(0.0, math.log10(30.0), CRUISE_GRID,
-                                             dtype=stall.dtype, device=stall.device)
+    grid = stall[..., None] * torch.logspace(
+        0.0, math.log10(30.0), CRUISE_GRID, dtype=stall.dtype, device=stall.device
+    )
     rising = gain(grid) > 0.0
     falls = rising[..., :-1] & ~rising[..., 1:]  # a stable root in (grid[i], grid[i + 1])
     found = falls.any(-1)
@@ -194,7 +224,7 @@ def cruise_speed(rules: Rules, types: ShipTypes, energy: torch.Tensor) -> torch.
         middle = 0.5 * (low + high)
         up = gain(middle[..., None])[..., 0] > 0.0
         low, high = torch.where(up, middle, low), torch.where(up, high, middle)
-    return torch.where(found, 0.5 * (low + high), torch.nan).reshape(B, T, G)
+    return torch.where(found, 0.5 * (low + high), torch.nan).reshape(B, type_count, points)
 
 
 class Flown(NamedTuple):
@@ -227,7 +257,7 @@ def fly(rules: Rules, types: ShipTypes) -> Flown:
     constants, h = rules.flight, rules.tick_length
     columns = type_axis(types)
     airframe = airframe_of(types, columns)
-    B, T = columns.shape
+    B, type_count = columns.shape
     full = airframe.max_energy
     cruise = cruise_speed(rules, types, full[..., None])[..., 0]
     stall = torch.sqrt(constants.gravity / airframe.max_lift_coefficient)
@@ -239,19 +269,21 @@ def fly(rules: Rules, types: ShipTypes) -> Flown:
     zeros, ones = torch.zeros_like(full), torch.ones_like(full)
 
     def blocks(*values):
-        return torch.cat(values, -1)  # (B, T) per manoeuvre -> (B, 7 T)
+        return torch.cat(values, -1)  # (B, types) per manoeuvre -> (B, 7 types)
 
     speed = blocks(cruise, cruise, cruise, stall, corner, corner, corner)
     energy = blocks(zeros, DIVE_STORE * full, DIVE_STORE * full, zeros, turning, turning, turning)
     angle = blocks(zeros, zeros, zeros, zeros, steady.angle, bleeding.angle, -steady.angle)
-    nose_rate = blocks(zeros, zeros, zeros, zeros, steady.path_rate, bleeding.path_rate,
-                       -steady.path_rate)
+    nose_rate = blocks(
+        zeros, zeros, zeros, zeros, steady.path_rate, bleeding.path_rate, -steady.path_rate
+    )
     stick = blocks(zeros, zeros, zeros, zeros, ones, BLEED_STICK * ones, ones)
     power = blocks(zeros, -ones, ones, zeros, zeros, zeros, zeros)
     ship_type = columns.repeat(1, 7)
     # The sustained turn's store is held, so it stays below the knee however long it flies.
-    held = blocks(*(torch.full_like(full, block == SUSTAINED, dtype=torch.bool)
-                    for block in range(7)))
+    held = blocks(
+        *(torch.full_like(full, block == SUSTAINED, dtype=torch.bool) for block in range(7))
+    )
     state = ships(speed, energy, angle, nose_rate, ship_type)
     flight = airframe_of(types, ship_type)
     fields = empty_map(speed)
@@ -265,12 +297,12 @@ def fly(rules: Rules, types: ShipTypes) -> Flown:
     history = {"speed": [speed], "energy": [energy], "angle": [angle]}
     path, path_samples = torch.zeros_like(speed), {}
     tick, limit, check = 0, round(CLIMB_LIMIT / h), round(CLIMB_PROGRESS / h)
-    pending, checkpoint = climb_time.isnan(), energy[:, :T]
+    pending, checkpoint = climb_time.isnan(), energy[:, :type_count]
     while tick < limit and (tick < max(short, settle) or pending.any()):
         new = flight_tick(constants, flight, h, state, stick, power, fields)
         path = path + path_turned(state, new)
         tick += 1
-        before, after = state.energy[:, :T], new.energy[:, :T]
+        before, after = state.energy[:, :type_count], new.energy[:, :type_count]
         crossed = climb_time.isnan() & (after >= climb_target)
         fraction = (climb_target - before) / (after - before)
         climb_time = torch.where(crossed, h * (tick - 1 + fraction), climb_time)
@@ -280,27 +312,35 @@ def fly(rules: Rules, types: ShipTypes) -> Flown:
             checkpoint = after
         state = replace(new, energy=torch.where(held, energy, new.energy))
         if tick <= short:
-            for key, value in (("speed", new.proper_speed), ("energy", new.energy),
-                               ("angle", new.angle_of_attack)):
+            for key, value in (
+                ("speed", new.proper_speed),
+                ("energy", new.energy),
+                ("angle", new.angle_of_attack),
+            ):
                 history[key].append(value)
         if tick in samples:
             path_samples[tick] = path
     series = {key: torch.stack(values) for key, values in history.items()}
 
     def block(values, manoeuvre):
-        return values[..., manoeuvre * T:(manoeuvre + 1) * T]
+        return values[..., manoeuvre * type_count : (manoeuvre + 1) * type_count]
 
     def start_rate(values):
-        return torch.einsum("k,k...->...", weights, values[:len(weights)])
+        return torch.einsum("k,k...->...", weights, values[: len(weights)])
 
     specific = 0.5 * series["speed"] ** 2 + series["energy"] / constants.mass
-    rates = [(path_samples[later] - path_samples[earlier]) / ((later - earlier) * h)
-             for earlier, later in zip(samples[:-1], samples[1:])]
+    rates = [
+        (path_samples[later] - path_samples[earlier]) / ((later - earlier) * h)
+        for earlier, later in zip(samples[:-1], samples[1:])
+    ]
     reversal = crossing_time(block(series["angle"], REVERSAL), 0.9 * steady.angle, h)
-    return Flown(cruise_speed=cruise, climb_time=climb_time,
-                 low_speed_acceleration=start_rate(block(series["speed"], LOW_SPEED)),
-                 sustained_turn_rate=block(aitken(*rates), SUSTAINED),
-                 bleed_rate=start_rate(block(specific, BLEED)),
-                 nose_reversal_time=reversal,
-                 dive_acceleration=start_rate(block(series["speed"], DIVE)),
-                 zoom_acceleration=start_rate(block(series["speed"], ZOOM)))
+    return Flown(
+        cruise_speed=cruise,
+        climb_time=climb_time,
+        low_speed_acceleration=start_rate(block(series["speed"], LOW_SPEED)),
+        sustained_turn_rate=block(aitken(*rates), SUSTAINED),
+        bleed_rate=start_rate(block(specific, BLEED)),
+        nose_reversal_time=reversal,
+        dive_acceleration=start_rate(block(series["speed"], DIVE)),
+        zoom_acceleration=start_rate(block(series["speed"], ZOOM)),
+    )

@@ -39,6 +39,7 @@ def _error(name, measured, target):
 
 # ------------------------------------------------------------------ round trip
 
+
 def test_round_trip_default_and_varied_cards():
     """handles -> card -> measured handles within 0.5%, for the default card's handles and
     8 varied cards (both types each)."""
@@ -62,6 +63,7 @@ def test_varied_cards_span_the_envelope():
 
 
 # ------------------------------------------------------------------ independence
+
 
 def test_independence():
     """Each flight handle by -5% and +5%, re-solved: it moves by the perturbation and every
@@ -95,14 +97,17 @@ def test_redundant_handles_warn():
     the power, which the cruise sets, and the two handles are nearly redundant."""
     cases = cases_module.cases()
     beyond = cases.default.replace(
-        low_speed_acceleration=cases.default.low_speed_acceleration * 5.0)
-    with pytest.warns(RedundantHandles,
-                      match="low_speed_acceleration and cruise_speed are nearly redundant"):
+        low_speed_acceleration=cases.default.low_speed_acceleration * 5.0
+    )
+    with pytest.warns(
+        RedundantHandles, match="low_speed_acceleration and cruise_speed are nearly redundant"
+    ):
         solution = solve(beyond, cases.rules, iterations=1, strict=False)
     assert (solution.condition > CONDITION_WARNING).all()
 
 
 # ------------------------------------------------------------------ tick rates
+
 
 def test_handles_agree_across_tick_rates():
     """The same parameters (the default card and the solved varied cards) give flight
@@ -110,8 +115,9 @@ def test_handles_agree_across_tick_rates():
     shots."""
     cases = cases_module.cases()
     rows = cases.round_trip
-    cards = cases_module.double(api.ShipTypes(**{k: v[rows]
-                                                 for k, v in vars(cases.solution.types).items()}))
+    cards = cases_module.double(
+        api.ShipTypes(**{k: v[rows] for k, v in vars(cases.solution.types).items()})
+    )
     by_rate = {30: Handles(**{name: getattr(cases.measured, name)[rows] for name in NAMES})}
     for rate in (25, 60):
         by_rate[rate] = measure(cards, cases_module.rules(rate))
@@ -121,8 +127,10 @@ def test_handles_agree_across_tick_rates():
         assert spread.max() < ACCEPTANCE, (name, spread.max().item())
     # The seconds between shots, flown through the game's fire: the varied cards' 5 Hz is
     # whole at every rate, the default card's 15 and 10 Hz at 30 and 60 Hz.
-    seconds = {rate: cases_module.seconds_between_shots(cases_module.rules(rate), cards)
-               for rate in cases_module.TICK_RATES}
+    seconds = {
+        rate: cases_module.seconds_between_shots(cases_module.rules(rate), cards)
+        for rate in cases_module.TICK_RATES
+    }
     for rate in cases_module.TICK_RATES:
         rows = slice(0, None) if rate != 25 else slice(1, None)
         assert torch.allclose(seconds[rate][rows], seconds[30][rows], rtol=1e-9), rate
@@ -165,12 +173,15 @@ def test_cruise_varies_little_across_the_store():
     for row in over:
         assert solved[row].max() < 0.05, (row, solved[row].tolist())
     default = variation(batched(api.ship_types(dtype=torch.float64)))
-    print(f"default card's cruise variation: fighter {default[0, 0]:.2%}, "
-          f"heavy {default[0, 1]:.2%}; re-solved {solved[0, 0]:.2%}, {solved[0, 1]:.2%}")
+    print(
+        f"default card's cruise variation: fighter {default[0, 0]:.2%}, "
+        f"heavy {default[0, 1]:.2%}; re-solved {solved[0, 0]:.2%}, {solved[0, 1]:.2%}"
+    )
     assert default.max() < 0.02
 
 
 # ------------------------------------------------------------------ infeasible sets
+
 
 def test_infeasible_g_limit():
     cases = cases_module.cases()
@@ -187,8 +198,10 @@ def test_infeasible_cruise_below_stall():
 def test_infeasible_sustained_turn_above_the_peak():
     cases = cases_module.cases()
     with pytest.raises(Infeasible, match="sustained turn rate must be below"):
-        solve(cases.default.replace(sustained_turn_rate=cases.default.sustained_turn_rate * 3.0),
-              cases.rules)
+        solve(
+            cases.default.replace(sustained_turn_rate=cases.default.sustained_turn_rate * 3.0),
+            cases.rules,
+        )
 
 
 def test_infeasible_without_convergence():
@@ -204,16 +217,22 @@ def test_infeasible_nose_reversal_beyond_its_window():
     missing first guess."""
     cases = cases_module.cases()
     slow_nose = cases.default.replace(nose_reversal_time=torch.tensor([0.2, 2.5]))
-    with pytest.raises(Infeasible, match=r"nose_reversal_time beyond its measurement window"
-                                         r".* 2 s \(manoeuvres.REVERSAL_LIMIT\)"):
+    with pytest.raises(
+        Infeasible,
+        match=r"nose_reversal_time beyond its measurement window"
+        r".* 2 s \(manoeuvres.REVERSAL_LIMIT\)",
+    ):
         solve(slow_nose, cases.rules)
 
 
 def test_infeasible_climb_beyond_its_window():
     cases = cases_module.cases()
     slow_climb = cases.default.replace(climb_time=cases.default.climb_time * 6.0)
-    with pytest.raises(Infeasible, match=r"climb_time beyond its measurement window"
-                                         r".* 900 s \(manoeuvres.CLIMB_LIMIT\)"):
+    with pytest.raises(
+        Infeasible,
+        match=r"climb_time beyond its measurement window"
+        r".* 900 s \(manoeuvres.CLIMB_LIMIT\)",
+    ):
         solve(slow_climb, cases.rules)
 
 
@@ -230,27 +249,46 @@ DEFAULT = api.ship_types(dtype=torch.float64)
 
 def _one_ship(speed, energy, ship_type, angle=0.0, nose_rate=0.0):
     """One ship (1, 1), float64, along +x with the nose `angle` above the path."""
+
     def value(v):
         return torch.tensor([[float(v)]], dtype=torch.float64)
 
     zero, angle = value(0.0), value(angle)
     flag = torch.zeros((1, 1), dtype=torch.bool)
     integer = torch.zeros((1, 1), dtype=torch.int32)
-    return Ships(x=zero, y=zero, heading_cos=torch.cos(angle), heading_sin=torch.sin(angle),
-                 proper_speed=value(speed), angle_of_attack=angle,
-                 angle_of_attack_cos=torch.cos(angle), angle_of_attack_sin=torch.sin(angle),
-                 nose_rate=value(nose_rate), energy=value(energy), log_refractive_index=zero,
-                 log_index_gradient_x=zero, log_index_gradient_y=zero, shield=zero,
-                 shield_recharge_wait=zero, alive=~flag, fired=flag, spawned=flag,
-                 respawn_wait=integer, gun_cooldown=integer, next_slot=integer,
-                 ship_type=integer + ship_type)
+    return Ships(
+        x=zero,
+        y=zero,
+        heading_cos=torch.cos(angle),
+        heading_sin=torch.sin(angle),
+        proper_speed=value(speed),
+        angle_of_attack=angle,
+        angle_of_attack_cos=torch.cos(angle),
+        angle_of_attack_sin=torch.sin(angle),
+        nose_rate=value(nose_rate),
+        energy=value(energy),
+        log_refractive_index=zero,
+        log_index_gradient_x=zero,
+        log_index_gradient_y=zero,
+        shield=zero,
+        shield_recharge_wait=zero,
+        alive=~flag,
+        fired=flag,
+        spawned=flag,
+        respawn_wait=integer,
+        gun_cooldown=integer,
+        next_slot=integer,
+        ship_type=integer + ship_type,
+    )
 
 
-FIELDS = Fields(x=torch.tensor([[1e9]], dtype=torch.float64),
-                y=torch.zeros((1, 1), dtype=torch.float64),
-                radius=torch.ones((1, 1), dtype=torch.float64),
-                band_width=torch.ones((1, 1), dtype=torch.float64),
-                level=torch.ones((1, 1), dtype=torch.int32))
+FIELDS = Fields(
+    x=torch.tensor([[1e9]], dtype=torch.float64),
+    y=torch.zeros((1, 1), dtype=torch.float64),
+    radius=torch.ones((1, 1), dtype=torch.float64),
+    band_width=torch.ones((1, 1), dtype=torch.float64),
+    level=torch.ones((1, 1), dtype=torch.int32),
+)
 
 
 class Pilot:
@@ -262,8 +300,10 @@ class Pilot:
         self.tick = tick_length
 
     def step(self, ship, stick=0.0, power=0.0):
-        control = torch.tensor([[stick]], dtype=torch.float64), torch.tensor([[power]],
-                                                                             dtype=torch.float64)
+        control = (
+            torch.tensor([[stick]], dtype=torch.float64),
+            torch.tensor([[power]], dtype=torch.float64),
+        )
         return flight_tick(self.rules.flight, self.airframe, self.tick, ship, *control, FIELDS)
 
     def settle_nose(self, speed, energy, stick, ship_type, seconds=1.0):
@@ -271,8 +311,9 @@ class Pilot:
         ship = _one_ship(speed, energy, ship_type)
         for _ in range(round(seconds / self.tick)):
             ship = self.step(ship, stick)
-            ship = _one_ship(speed, energy, ship_type, float(ship.angle_of_attack),
-                             float(ship.nose_rate))
+            ship = _one_ship(
+                speed, energy, ship_type, float(ship.angle_of_attack), float(ship.nose_rate)
+            )
         return ship
 
 
@@ -289,8 +330,10 @@ def test_each_flown_handle_matches_an_independent_flight(ship_type):
     cases = cases_module.cases()
     measured = {name: float(getattr(cases.default, name)[ship_type]) for name in NAMES}
     gravity = cases.rules.flight.gravity
-    lift, acceleration = float(DEFAULT.max_lift_coefficient[ship_type]), float(
-        DEFAULT.max_acceleration[ship_type])
+    lift, acceleration = (
+        float(DEFAULT.max_lift_coefficient[ship_type]),
+        float(DEFAULT.max_acceleration[ship_type]),
+    )
     full = float(DEFAULT.max_energy[ship_type])
     assert math.isclose(measured["stall_speed"], math.sqrt(gravity / lift), rel_tol=1e-12)
     assert math.isclose(measured["g_limit"], acceleration / gravity, rel_tol=1e-12)
@@ -315,8 +358,12 @@ def test_each_flown_handle_matches_an_independent_flight(ship_type):
     def start_rate(ship, stick=0.0, power=0.0, specific=False):
         after = fine.step(ship, stick, power)
         if specific:
-            return (0.5 * float(after.proper_speed) ** 2 + float(after.energy)
-                    - 0.5 * float(ship.proper_speed) ** 2 - float(ship.energy)) / fine.tick
+            return (
+                0.5 * float(after.proper_speed) ** 2
+                + float(after.energy)
+                - 0.5 * float(ship.proper_speed) ** 2
+                - float(ship.energy)
+            ) / fine.tick
         return (float(after.proper_speed) - float(ship.proper_speed)) / fine.tick
 
     stall = measured["stall_speed"]
@@ -355,11 +402,13 @@ def test_each_flown_handle_matches_an_independent_flight(ship_type):
         before, ship = float(ship.angle_of_attack), reversal_pilot.step(ship, 1.0)
         time += reversal_pilot.tick
     reversal = time - reversal_pilot.tick * (float(ship.angle_of_attack) - target) / (
-        float(ship.angle_of_attack) - before)
+        float(ship.angle_of_attack) - before
+    )
     assert math.isclose(measured["nose_reversal_time"], reversal, rel_tol=ACCEPTANCE)
 
 
 # ------------------------------------------------------------------ the chart tool
+
 
 def _printed(text: str, label: str) -> list[float]:
     for line in text.splitlines():
@@ -403,8 +452,13 @@ def test_chart_tool_runs_and_its_shown_quantities_hold(tmp_path, capsys):
             if wait == 0:
                 if float(ship.energy) < cost:
                     break
-                ship = _one_ship(float(ship.proper_speed), float(ship.energy) - cost, t,
-                                 float(ship.angle_of_attack), float(ship.nose_rate))
+                ship = _one_ship(
+                    float(ship.proper_speed),
+                    float(ship.energy) - cost,
+                    t,
+                    float(ship.angle_of_attack),
+                    float(ship.nose_rate),
+                )
                 wait = interval
             ship, wait, tick = pilot.step(ship), max(wait - 1, 0), tick + 1
         endurance = _printed(text, "firing endurance, coasting (s)")[t]
@@ -414,18 +468,26 @@ def test_chart_tool_runs_and_its_shown_quantities_hold(tmp_path, capsys):
         ship, path, last = _one_ship(cruise, 0.25 * full, t), 0.0, []
         for k in range(3600):
             after = replace(pilot.step(ship, 0.4), energy=ship.energy)
-            path += (math.remainder(_heading(after) - _heading(ship), 2.0 * math.pi)
-                     - (float(after.angle_of_attack) - float(ship.angle_of_attack)))
+            path += math.remainder(_heading(after) - _heading(ship), 2.0 * math.pi) - (
+                float(after.angle_of_attack) - float(ship.angle_of_attack)
+            )
             ship = after
             if k + 1 in (3570, 3600):
                 last.append(path)
         rate = math.degrees((last[1] - last[0]) / (30 * pilot.tick))
-        assert math.isclose(_printed(text, "stick 0.4: coast datum turn (deg/s)")[t], rate,
-                            rel_tol=2e-3)
-        assert math.isclose(_printed(text, "stick 0.4: coast datum speed (m/s)")[t],
-                            float(ship.proper_speed), rel_tol=2e-3)
-        assert math.isclose(_printed(text, "stick 0.4: gun offset (deg)")[t],
-                            math.degrees(float(ship.angle_of_attack)), rel_tol=2e-3)
+        assert math.isclose(
+            _printed(text, "stick 0.4: coast datum turn (deg/s)")[t], rate, rel_tol=2e-3
+        )
+        assert math.isclose(
+            _printed(text, "stick 0.4: coast datum speed (m/s)")[t],
+            float(ship.proper_speed),
+            rel_tol=2e-3,
+        )
+        assert math.isclose(
+            _printed(text, "stick 0.4: gun offset (deg)")[t],
+            math.degrees(float(ship.angle_of_attack)),
+            rel_tol=2e-3,
+        )
         # The instantaneous peak: the turn at its printed speed, nose settled, fine tick; the
         # path's rate at the start by Richardson extrapolation of one- and two-tick turns (a
         # one-tick difference is high). The tool flies 30 Hz, 0.12% under the fine-tick limit.
@@ -435,9 +497,11 @@ def test_chart_tool_runs_and_its_shown_quantities_hold(tmp_path, capsys):
         path, ship = [], settled
         for _ in range(2):
             after = fine.step(ship, 1.0)
-            path.append((path[-1] if path else 0.0)
-                        + math.remainder(_heading(after) - _heading(ship), 2.0 * math.pi)
-                        - (float(after.angle_of_attack) - float(ship.angle_of_attack)))
+            path.append(
+                (path[-1] if path else 0.0)
+                + math.remainder(_heading(after) - _heading(ship), 2.0 * math.pi)
+                - (float(after.angle_of_attack) - float(ship.angle_of_attack))
+            )
             ship = after
         rate = 2.0 * path[0] / fine.tick - path[1] / (2.0 * fine.tick)
         peak = _printed(text, "instantaneous peak turn (deg/s)")[t]

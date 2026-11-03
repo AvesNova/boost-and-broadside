@@ -55,11 +55,12 @@ class Context(NamedTuple):
 
 
 def column(rows: torch.Tensor, name: str) -> torch.Tensor:
+    """The named SHIP column of ship rows (..., columns), shaped (...)."""
     return rows[..., SHIP[name]]
 
 
-def context(obs: Obs, characteristics: Characteristics,
-            parameters: ScriptedParameters) -> Context:
+def context(obs: Obs, characteristics: Characteristics, parameters: ScriptedParameters) -> Context:
+    """The Context both layers read, from one team's views (R, ...), own rows first."""
     ships = obs.ships
     S = ships.shape[-2] // 2  # two teams, own rows first
     own, enemy = ships[:, :S], ships[:, S:]
@@ -76,39 +77,56 @@ def context(obs: Obs, characteristics: Characteristics,
     margin = (parameters.boundary_margin_in_turn_radius * turn_radius).clamp_min(1.0)
     depth = (distance_from_centre - (arena_radius - margin)) / margin
     outward = x * velocity_x + y * velocity_y > 0.0
-    boundary_weight = torch.where(outward, ramp(depth, parameters.boundary_steer_ramp_in_margin),
-                                  0.0)
+    boundary_weight = torch.where(
+        outward, ramp(depth, parameters.boundary_steer_ramp_in_margin), 0.0
+    )
     return Context(
-        own=own, enemy=enemy, own_type=own_type, enemy_type=enemy_type, enemy_seen=enemy_seen,
-        x=x, y=y, velocity_x=velocity_x, velocity_y=velocity_y,
-        cos=column(own, "heading_cos"), sin=column(own, "heading_sin"), speed=speed,
+        own=own,
+        enemy=enemy,
+        own_type=own_type,
+        enemy_type=enemy_type,
+        enemy_seen=enemy_seen,
+        x=x,
+        y=y,
+        velocity_x=velocity_x,
+        velocity_y=velocity_y,
+        cos=column(own, "heading_cos"),
+        sin=column(own, "heading_sin"),
+        speed=speed,
         energy_fraction=column(own, "energy") / per_ship(characteristics.max_energy, own_type),
         gun_range=per_ship(characteristics.gun_range, own_type),
         stall_angle=per_ship(characteristics.stall_angle, own_type),
         corner_speed=per_ship(characteristics.corner_speed, own_type),
-        arena_radius=arena_radius, distance_from_centre=distance_from_centre,
-        boundary_weight=boundary_weight)
+        arena_radius=arena_radius,
+        distance_from_centre=distance_from_centre,
+        boundary_weight=boundary_weight,
+    )
 
 
-def signed_angle(cos: torch.Tensor, sin: torch.Tensor, x: torch.Tensor,
-                 y: torch.Tensor) -> torch.Tensor:
+def signed_angle(
+    cos: torch.Tensor, sin: torch.Tensor, x: torch.Tensor, y: torch.Tensor
+) -> torch.Tensor:
     """The angle from the nose (cos, sin) to the direction (x, y), positive to the left."""
     return torch.atan2(cos * y - sin * x, cos * x + sin * y)
 
 
-def steer(fleet: Context, direction_x: torch.Tensor,
-          direction_y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def steer(
+    fleet: Context, direction_x: torch.Tensor, direction_y: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
     """A wanted direction with the boundary's steer toward the centre blended in."""
     length = torch.sqrt(direction_x * direction_x + direction_y * direction_y).clamp_min(TINY)
     weight = fleet.boundary_weight
     centre_x = -fleet.x / fleet.distance_from_centre
     centre_y = -fleet.y / fleet.distance_from_centre
-    return ((1.0 - weight) * direction_x / length + weight * centre_x,
-            (1.0 - weight) * direction_y / length + weight * centre_y)
+    return (
+        (1.0 - weight) * direction_x / length + weight * centre_x,
+        (1.0 - weight) * direction_y / length + weight * centre_y,
+    )
 
 
-def stick_marginal(fleet: Context, error: torch.Tensor,
-                   parameters: ScriptedParameters) -> torch.Tensor:
+def stick_marginal(
+    fleet: Context, error: torch.Tensor, parameters: ScriptedParameters
+) -> torch.Tensor:
     """(R, S, 7) the stick for an angle error (positive left): P(turn) and the level by
     two further ramps, all in stall angles; the side follows the error's sign. Indices: 0
     straight, then by level, odd right and even left."""
@@ -116,8 +134,14 @@ def stick_marginal(fleet: Context, error: torch.Tensor,
     turn = ramp(size, parameters.turn_ramp_in_stall_angle)
     above_one = ramp(size, parameters.level_two_ramp_in_stall_angle)
     above_two = ramp(size, parameters.level_three_ramp_in_stall_angle)
-    levels = torch.stack([turn * (1.0 - above_one), turn * above_one * (1.0 - above_two),
-                          turn * above_one * above_two], -1)  # (R, S, 3)
+    levels = torch.stack(
+        [
+            turn * (1.0 - above_one),
+            turn * above_one * (1.0 - above_two),
+            turn * above_one * above_two,
+        ],
+        -1,
+    )  # (R, S, 3)
     left = (error > 0.0)[..., None]
     zero = torch.zeros_like(levels)
     sides = torch.stack([torch.where(left, zero, levels), torch.where(left, levels, zero)], -1)
@@ -126,8 +150,9 @@ def stick_marginal(fleet: Context, error: torch.Tensor,
 
 def straight(fleet: Context) -> torch.Tensor:
     """(R, S, 7) the stick held straight."""
-    return torch.nn.functional.one_hot(torch.zeros_like(fleet.own_type, dtype=torch.long),
-                                       7).float()
+    return torch.nn.functional.one_hot(
+        torch.zeros_like(fleet.own_type, dtype=torch.long), 7
+    ).float()
 
 
 def power_marginal(boost: torch.Tensor, reverse: torch.Tensor) -> torch.Tensor:
@@ -143,17 +168,26 @@ def slow(fleet: Context, parameters: ScriptedParameters) -> torch.Tensor:
 
 def far(fleet: Context, distance: torch.Tensor, parameters: ScriptedParameters) -> torch.Tensor:
     """P(boost) for distance: the store fraction times the distance in gun ranges."""
-    return ramp(fleet.energy_fraction * distance / fleet.gun_range,
-                parameters.boost_far_ramp_in_store_gun_ranges)
+    return ramp(
+        fleet.energy_fraction * distance / fleet.gun_range,
+        parameters.boost_far_ramp_in_store_gun_ranges,
+    )
 
 
 def either(first: torch.Tensor, second: torch.Tensor) -> torch.Tensor:
+    """P(first or second) for independent events: 1 - (1 - first)(1 - second)."""
     return 1.0 - (1.0 - first) * (1.0 - second)
 
 
-def lead(fleet: Context, characteristics: Characteristics, parameters: ScriptedParameters,
-         target_x: torch.Tensor, target_y: torch.Tensor, target_velocity_x: torch.Tensor,
-         target_velocity_y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def lead(
+    fleet: Context,
+    characteristics: Characteristics,
+    parameters: ScriptedParameters,
+    target_x: torch.Tensor,
+    target_y: torch.Tensor,
+    target_velocity_x: torch.Tensor,
+    target_velocity_y: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
     """The aim point (first-order interception), relative to the shooter: the target's
     displacement when a bullet fired now arrives, `t = time_of_flight(distance)` with the
     distance capped at lead_cap_in_gun_range. The bullet inherits the shooter's velocity, so
@@ -161,12 +195,15 @@ def lead(fleet: Context, characteristics: Characteristics, parameters: ScriptedP
     distance = torch.sqrt(target_x * target_x + target_y * target_y)
     cap = parameters.lead_cap_in_gun_range * fleet.gun_range
     flight_time = time_of_flight(characteristics, fleet.own_type, torch.minimum(distance, cap))
-    return (target_x + (target_velocity_x - fleet.velocity_x) * flight_time,
-            target_y + (target_velocity_y - fleet.velocity_y) * flight_time)
+    return (
+        target_x + (target_velocity_x - fleet.velocity_x) * flight_time,
+        target_y + (target_velocity_y - fleet.velocity_y) * flight_time,
+    )
 
 
-def combat(fleet: Context, characteristics: Characteristics,
-           parameters: ScriptedParameters) -> tuple[Marginals, torch.Tensor, torch.Tensor]:
+def combat(
+    fleet: Context, characteristics: Characteristics, parameters: ScriptedParameters
+) -> tuple[Marginals, torch.Tensor, torch.Tensor]:
     """The combat layer: (marginals, has_target (R, S), the target's distance (R, S), 0
     without one). The target is the nearest visible, living enemy (ties: lowest row)."""
     enemy = fleet.enemy
@@ -185,24 +222,36 @@ def combat(fleet: Context, characteristics: Characteristics,
     target_x, target_y = target(offset_x), target(offset_y)
     distance = torch.sqrt(target_x * target_x + target_y * target_y)
     safe_distance = distance.clamp_min(TINY)
-    aim_x, aim_y = lead(fleet, characteristics, parameters, target_x, target_y,
-                        target(column(enemy, "velocity_x")), target(column(enemy, "velocity_y")))
+    aim_x, aim_y = lead(
+        fleet,
+        characteristics,
+        parameters,
+        target_x,
+        target_y,
+        target(column(enemy, "velocity_x")),
+        target(column(enemy, "velocity_y")),
+    )
     aim_error = signed_angle(fleet.cos, fleet.sin, aim_x, aim_y)
 
     # Without a target: head for the centre unless already near it.
-    toward_centre = fleet.distance_from_centre > (parameters.centre_hold_in_arena_radius
-                                                  * fleet.arena_radius)
-    wanted_x, wanted_y = steer(fleet, torch.where(has_target, aim_x, -fleet.x),
-                               torch.where(has_target, aim_y, -fleet.y))
-    steered = stick_marginal(fleet, signed_angle(fleet.cos, fleet.sin, wanted_x, wanted_y),
-                             parameters)
+    toward_centre = fleet.distance_from_centre > (
+        parameters.centre_hold_in_arena_radius * fleet.arena_radius
+    )
+    wanted_x, wanted_y = steer(
+        fleet, torch.where(has_target, aim_x, -fleet.x), torch.where(has_target, aim_y, -fleet.y)
+    )
+    steered = stick_marginal(
+        fleet, signed_angle(fleet.cos, fleet.sin, wanted_x, wanted_y), parameters
+    )
     hold = (~has_target & ~toward_centre)[..., None]
     stick = torch.where(hold, straight(fleet), steered)
 
-    boost = either(slow(fleet, parameters),
-                   torch.where(has_target, far(fleet, distance, parameters), 0.0))
-    reverse = torch.where(has_target, ramp(distance / fleet.gun_range,
-                                           parameters.reverse_ramp_in_gun_range), 0.0)
+    boost = either(
+        slow(fleet, parameters), torch.where(has_target, far(fleet, distance, parameters), 0.0)
+    )
+    reverse = torch.where(
+        has_target, ramp(distance / fleet.gun_range, parameters.reverse_ramp_in_gun_range), 0.0
+    )
     power = power_marginal(boost, reverse)
 
     hit_radius = target(per_ship(characteristics.hit_radius, fleet.enemy_type))
@@ -222,5 +271,6 @@ def blend(first: torch.Tensor, second: torch.Tensor, weight: torch.Tensor) -> to
     weight = weight[..., None]
     geometric = first.pow(weight) * second.pow(1.0 - weight)
     total = geometric.sum(-1, keepdim=True)
-    return torch.where(total > 0.0, geometric / total.clamp_min(1e-30),
-                       weight * first + (1.0 - weight) * second)
+    return torch.where(
+        total > 0.0, geometric / total.clamp_min(1e-30), weight * first + (1.0 - weight) * second
+    )

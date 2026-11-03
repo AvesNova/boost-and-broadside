@@ -16,6 +16,21 @@ def rotate(x: torch.Tensor, y: torch.Tensor, cos: torch.Tensor, sin: torch.Tenso
     return x * cos - y * sin, x * sin + y * cos
 
 
+def flight_path_velocity(
+    speed: torch.Tensor,
+    heading_cos: torch.Tensor,
+    heading_sin: torch.Tensor,
+    angle_cos: torch.Tensor,
+    angle_sin: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """(x, y) a velocity of this speed along the flight path: the nose turned back by the
+    angle of attack (its cos and sin)."""
+    return (
+        speed * (heading_cos * angle_cos + heading_sin * angle_sin),
+        speed * (heading_sin * angle_cos - heading_cos * angle_sin),
+    )
+
+
 def softmin(a: torch.Tensor, b, exponent: float) -> torch.Tensor:
     """a (1 + (a/b)^q)^(-1/q) for a, b >= 0.
 

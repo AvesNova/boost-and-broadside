@@ -15,6 +15,7 @@ import pytest
 import torch
 
 from bnb.contracts import Action, Obs
+from bnb.contracts.action import NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.contracts.obs import SHIP
 from bnb.controllers.scripted import Chaser
 from bnb.game import api
@@ -24,12 +25,24 @@ from bnb.game.state import Bullets, Ships, State, replace
 TYPES = api.ship_types()
 STICK_REFLECTED = torch.tensor([0, 2, 1, 4, 3, 6, 5])  # left and right swap
 ZONE_REFLECTED = torch.tensor([0, 4, 3, 2, 1])  # zone k <-> zone -k (mod 5)
-VECTORS = {Ships: (("x", "y"), ("heading_cos", "heading_sin"),
-                   ("log_index_gradient_x", "log_index_gradient_y")),
-           Bullets: (("x", "y"), ("direction_x", "direction_y"),
-                     ("log_index_gradient_x", "log_index_gradient_y"))}
-OBSERVED_VECTORS = (("x", "y"), ("heading_cos", "heading_sin"), ("velocity_x", "velocity_y"),
-                    ("log_index_gradient_x", "log_index_gradient_y"))
+VECTORS = {
+    Ships: (
+        ("x", "y"),
+        ("heading_cos", "heading_sin"),
+        ("log_index_gradient_x", "log_index_gradient_y"),
+    ),
+    Bullets: (
+        ("x", "y"),
+        ("direction_x", "direction_y"),
+        ("log_index_gradient_x", "log_index_gradient_y"),
+    ),
+}
+OBSERVED_VECTORS = (
+    ("x", "y"),
+    ("heading_cos", "heading_sin"),
+    ("velocity_x", "velocity_y"),
+    ("log_index_gradient_x", "log_index_gradient_y"),
+)
 
 
 class Mirror:
@@ -65,18 +78,29 @@ class Mirror:
         if self.reflect:
             zone = ZONE_REFLECTED
             zone_x, zone_y = self.vector(mode.zone_x[:, zone], mode.zone_y[:, zone])
-            mode = replace(mode, front=-mode.front, zone_x=zone_x, zone_y=zone_y,
-                           zone_radius=mode.zone_radius[:, zone], role=4 - mode.role[:, zone],
-                           progress=mode.progress[:, zone], movement=mode.movement[:, zone],
-                           attack_ledger=mode.attack_ledger[:, zone][..., seats],
-                           defense_ledger=mode.defense_ledger[:, zone][..., seats])
-        return State(ships=self._per_ship(state.ships, Ships),
-                     bullets=self._per_ship(state.bullets, Bullets),
-                     fields=replace(fields, x=field_x, y=field_y),
-                     match=replace(match,
-                                   ticks_since_seen=match.ticks_since_seen.flip(1)[..., seats],
-                                   vision_range=match.vision_range[:, seats]),
-                     mode=mode)
+            mode = replace(
+                mode,
+                front=-mode.front,
+                zone_x=zone_x,
+                zone_y=zone_y,
+                zone_radius=mode.zone_radius[:, zone],
+                role=4 - mode.role[:, zone],
+                progress=mode.progress[:, zone],
+                movement=mode.movement[:, zone],
+                attack_ledger=mode.attack_ledger[:, zone][..., seats],
+                defense_ledger=mode.defense_ledger[:, zone][..., seats],
+            )
+        return State(
+            ships=self._per_ship(state.ships, Ships),
+            bullets=self._per_ship(state.bullets, Bullets),
+            fields=replace(fields, x=field_x, y=field_y),
+            match=replace(
+                match,
+                ticks_since_seen=match.ticks_since_seen.flip(1)[..., seats],
+                vision_range=match.vision_range[:, seats],
+            ),
+            mode=mode,
+        )
 
     def action(self, action: Action) -> Action:
         packed = action.packed()[:, self.seats]
@@ -101,30 +125,32 @@ class Mirror:
             axis = torch.where(done, 2.0 * math.pi * u[:, game], self.axis)
 
             def angle(value):
-                return torch.remainder((axis / math.pi).reshape((-1,) + (1,) * (value.dim() - 1))
-                                       - value, 1.0)
+                return torch.remainder(
+                    (axis / math.pi).reshape((-1,) + (1,) * (value.dim() - 1)) - value, 1.0
+                )
         else:
 
             def angle(value):
                 return torch.remainder(value + 0.5, 1.0)
-        drawn = u[:, :4 * M].reshape(B, M, 4)
-        drawn[:, :M // 2, 1] = angle(drawn[:, :M // 2, 1])
-        u[:, :4 * M] = drawn.reshape(B, -1)
+
+        drawn = u[:, : 4 * M].reshape(B, M, 4)
+        drawn[:, : M // 2, 1] = angle(drawn[:, : M // 2, 1])
+        u[:, : 4 * M] = drawn.reshape(B, -1)
         start = rules.map_uniform_count
-        rotation = u[:, start:start + 2].clone()
-        u[:, start:start + 2] = torch.remainder(rotation.flip(-1) + 0.5, 1.0)
-        u[:, start + 2:start + 2 + N] = u[:, start + 2:start + 2 + N][:, self.seats]
+        rotation = u[:, start : start + 2].clone()
+        u[:, start : start + 2] = torch.remainder(rotation.flip(-1) + 0.5, 1.0)
+        u[:, start + 2 : start + 2 + N] = u[:, start + 2 : start + 2 + N][:, self.seats]
         mode = rules.modes[0]
         if mode.name == "frontline":
-            per_ship = u[:, game + 2:game + 2 + 2 * N].reshape(B, N, 2)[:, self.seats]
+            per_ship = u[:, game + 2 : game + 2 + 2 * N].reshape(B, N, 2)[:, self.seats]
             per_ship[..., 1] = angle(per_ship[..., 1])
-            u[:, game + 2:game + 2 + 2 * N] = per_ship.reshape(B, -1)
+            u[:, game + 2 : game + 2 + 2 * N] = per_ship.reshape(B, -1)
         elif mode.name == "team_deathmatch":
             assert not mode.spawn_groups  # the anchor draw is by sim order: see the notes
             K = mode.spawn_candidates
-            per_ship = u[:, game:game + N * (2 * K + 1)].reshape(B, N, 2 * K + 1)[:, self.seats]
+            per_ship = u[:, game : game + N * (2 * K + 1)].reshape(B, N, 2 * K + 1)[:, self.seats]
             per_ship[..., K:] = angle(per_ship[..., K:])
-            u[:, game:game + N * (2 * K + 1)] = per_ship.reshape(B, -1)
+            u[:, game : game + N * (2 * K + 1)] = per_ship.reshape(B, -1)
         return u
 
     def events(self, events):
@@ -132,19 +158,26 @@ class Mirror:
         seats = self.seats
         renumbered = seats.argsort()[events.killer.clamp_min(0).long()]
         killer = torch.where(events.killer >= 0, renumbered, -1)[:, seats].int()
-        return dict(died=events.died[:, seats], fired=events.fired[:, seats],
-                    spawned=events.spawned[:, seats], killer=killer, done=events.done,
-                    result=-events.result, damage=events.damage[:, seats][:, :, seats],
-                    boundary_damage=events.boundary_damage[:, seats],
-                    objective=events.objective[:, seats],
-                    objective_progress=events.objective_progress[:, seats])
+        return dict(
+            died=events.died[:, seats],
+            fired=events.fired[:, seats],
+            spawned=events.spawned[:, seats],
+            killer=killer,
+            done=events.done,
+            result=-events.result,
+            damage=events.damage[:, seats][:, :, seats],
+            boundary_damage=events.boundary_damage[:, seats],
+            objective=events.objective[:, seats],
+            objective_progress=events.objective_progress[:, seats],
+        )
 
     def view(self, ships: torch.Tensor) -> torch.Tensor:
         """A view's ship rows (B, N, C) mapped back by the symmetry."""
         ships = ships.clone()
         for a, b in OBSERVED_VECTORS:
-            ships[..., SHIP[a]], ships[..., SHIP[b]] = self.vector(ships[..., SHIP[a]],
-                                                                   ships[..., SHIP[b]])
+            ships[..., SHIP[a]], ships[..., SHIP[b]] = self.vector(
+                ships[..., SHIP[a]], ships[..., SHIP[b]]
+            )
         if self.reflect:
             for name in ("angle_of_attack", "nose_rate"):
                 ships[..., SHIP[name]] = -ships[..., SHIP[name]]
@@ -163,18 +196,25 @@ def _assert_mirrored(rules, state, action, spread, uniforms, failures):
     """One tick of the state and of its mirror. Flags, counts and indices must agree
     exactly; floats to 1e-4 relative (the reflection rounds; the point reflection only
     reorders sums over ships). Appends the names of any leaves that differ."""
+
     def mirror_of(state):  # Frontline reflects about each environment's own ring axis
         frontline = rules.modes[0].name == "frontline"
         return Mirror(rules, state.mode.ring_rotation if frontline else None)
 
     after, events = api.step(rules, TYPES, state, action, spread, uniforms)
     mirror, mirror_after = mirror_of(state), mirror_of(after)  # a reset draws a new ring
-    mirrored, mirrored_events = api.step(rules, TYPES, mirror.state(state), mirror.action(action),
-                                         mirror.spread(spread),
-                                         mirror.uniforms(uniforms, events.done))
+    mirrored, mirrored_events = api.step(
+        rules,
+        TYPES,
+        mirror.state(state),
+        mirror.action(action),
+        mirror.spread(spread),
+        mirror.uniforms(uniforms, events.done),
+    )
     want = dict(_leaves(mirror_after.state(after))) | mirror.events(events)
-    got = dict(_leaves(mirrored)) | {name: getattr(mirrored_events, name) for name in
-                                      mirror.events(events)}
+    got = dict(_leaves(mirrored)) | {
+        name: getattr(mirrored_events, name) for name in mirror.events(events)
+    }
     _, observed, _ = api.perceive(rules, after)
     _, observed_mirror, _ = api.perceive(rules, mirrored)
     want["view 0"] = observed.ships[:, 0]
@@ -205,23 +245,39 @@ def _melee(rules, batch, generator):
     centre_x, centre_y = uniform(B, 1) * 1500.0, uniform(B, 1) * 1500.0
     angle = uniform(B, N, low=0.0, high=2.0 * math.pi)
     shield = torch.where(uniform(B, N) < 0.0, 0.0, uniform(B, N, low=0.0, high=40.0))
-    ships = replace(state.ships, x=centre_x + 30.0 * uniform(B, N),
-                    y=centre_y + 30.0 * uniform(B, N), heading_cos=angle.cos(),
-                    heading_sin=angle.sin(), shield=shield)
+    ships = replace(
+        state.ships,
+        x=centre_x + 30.0 * uniform(B, N),
+        y=centre_y + 30.0 * uniform(B, N),
+        heading_cos=angle.cos(),
+        heading_sin=angle.sin(),
+        shield=shield,
+    )
     direction = uniform(B, N, K, low=0.0, high=2.0 * math.pi)
-    bullets = replace(state.bullets, x=centre_x[..., None] + 40.0 * uniform(B, N, K),
-                      y=centre_y[..., None] + 40.0 * uniform(B, N, K),
-                      direction_x=direction.cos(), direction_y=direction.sin(),
-                      proper_speed=uniform(B, N, K, low=300.0, high=500.0),
-                      moves_left=torch.randint(0, 13, (B, N, K), generator=generator).int())
+    bullets = replace(
+        state.bullets,
+        x=centre_x[..., None] + 40.0 * uniform(B, N, K),
+        y=centre_y[..., None] + 40.0 * uniform(B, N, K),
+        direction_x=direction.cos(),
+        direction_y=direction.sin(),
+        proper_speed=uniform(B, N, K, low=300.0, high=500.0),
+        moves_left=torch.randint(0, 13, (B, N, K), generator=generator).int(),
+    )
     return replace(state, ships=ships, bullets=bullets)
 
 
 def _random_tick(rules, batch, generator):
     choice = torch.rand(batch, rules.num_ships, 3, generator=generator)
-    action = Action.unpack((choice * torch.tensor([3.0, 7.0, 2.0])).to(torch.int32))
-    return (action, api.spread(rules, batch, generator=generator),
-            api.uniforms(rules, batch, generator=generator))
+    action = Action.unpack(
+        (choice * torch.tensor([NUM_POWER, NUM_STICK, NUM_SHOOT], dtype=torch.float32)).to(
+            torch.int32
+        )
+    )
+    return (
+        action,
+        api.spread(rules, batch, generator=generator),
+        api.uniforms(rules, batch, generator=generator),
+    )
 
 
 @pytest.mark.parametrize("preset", ["deathmatch", "frontline"])
@@ -242,8 +298,12 @@ def test_a_melee_tick_and_its_mirror_agree(preset):
 
 
 def _view(observation: Obs, view: int) -> Obs:
-    return Obs(ships=observation.ships[:, view], fields=observation.fields[:, view],
-               globals=observation.globals[:, view], zones=observation.zones[:, view])
+    return Obs(
+        ships=observation.ships[:, view],
+        fields=observation.fields[:, view],
+        globals=observation.globals[:, view],
+        zones=observation.zones[:, view],
+    )
 
 
 @pytest.mark.slow
@@ -259,16 +319,24 @@ def test_chaser_games_and_their_mirror_agree_every_tick(preset):
     chaser = Chaser(S)
     state = api.reset(rules, TYPES, api.uniforms(rules, batch, generator=generator))
     ticks = rules.pools[0].episode_ticks
-    state = api.start_clocks(state, torch.randint(ticks - warm - compared, ticks - warm, (batch,),
-                                                  generator=generator))
+    state = api.start_clocks(
+        state, torch.randint(ticks - warm - compared, ticks - warm, (batch,), generator=generator)
+    )
     state, observation, _ = api.perceive(rules, state)
     failures, resets, deaths = set(), 0, 0
-    done = torch.zeros(batch, dtype=torch.bool)
+    reset = torch.zeros(batch, dtype=torch.bool)
     for tick in range(warm + compared):
-        action = Action.unpack(torch.cat(
-            [chaser.step(None, _view(observation, view), done)[0].packed() for view in (0, 1)], 1))
-        inputs = (action, api.spread(rules, batch, generator=generator),
-                  api.uniforms(rules, batch, generator=generator))
+        action = Action.unpack(
+            torch.cat(
+                [chaser.step(None, _view(observation, view), reset)[0].packed() for view in (0, 1)],
+                1,
+            )
+        )
+        inputs = (
+            action,
+            api.spread(rules, batch, generator=generator),
+            api.uniforms(rules, batch, generator=generator),
+        )
         if tick < warm:
             state, events = api.step(rules, TYPES, state, *inputs)
         else:
@@ -276,6 +344,6 @@ def test_chaser_games_and_their_mirror_agree_every_tick(preset):
             resets += int(events.done.sum())
             deaths += int(events.died.sum())
         state, observation, _ = api.perceive(rules, state)
-        done = events.done
+        reset = events.done  # the next observation follows a reset
     assert not failures, sorted(failures)
     assert resets >= batch and deaths > 10, (resets, deaths)

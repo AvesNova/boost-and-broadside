@@ -62,7 +62,7 @@ When a match ends, the environment gets a new map and a fresh mode state
 
 ## Frontline
 
-- **The ring:** `bnb.game.modes.rules.FRONTLINE_ZONES` zones on a circle around the
+- **The ring:** `bnb.game.modes.frontline.ZONES` zones on a circle around the
   centre, at a random rotation and a random handedness (clockwise or counter-clockwise). At front 0 their roles are, in ring order:
   neutral, team 0's spawn, team 0's defense, team 1's defense, team 1's spawn.
 - **Meters:** only the two defense zones have meters, from 0 to 1. A meter moves only on a
@@ -98,7 +98,7 @@ compiled graphs specialize on:
 
 ## The mode's observation
 
-- **Zones:** every mode has the same zone slots (`bnb.game.modes.rules.ZONE_SLOTS`), so a
+- **Zones:** every mode has the same zone slots (`bnb.contracts.obs.ZONE_SLOTS`), so a
   model sees the same tokens in any batch. A mode without zones shows them absent. Each
   view lists the zones in its own ring order, with roles, meter direction and the
   captures still needed to win or lose all relative to the viewer, so the order reveals no

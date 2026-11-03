@@ -12,15 +12,17 @@ from bnb.contracts.action import NUM_JOINT, from_joint, to_joint
 from bnb.contracts.obs import SHIP_COLUMNS, SHIP_HIDDEN_ZERO
 from bnb.contracts.pools import environments_per_pool
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
 
 def test_game_config_limits():
     assert GameConfig(5, 10, 2600.0).num_ships == 10
     with pytest.raises(ValueError):
-        GameConfig(128, 10, 2600.0)  # 256 ships: indices must fit in uint8 with 255 = none
+        GameConfig(128, 10, 2600.0)  # 256 ships: over MAX_SHIPS
     with pytest.raises(ValueError):
         GameConfig(5, 65, 2600.0)
-    with pytest.raises(ValueError):
-        GameConfig(5, 10, 2600.0, num_teams=3)
 
 
 def test_time_native_rules_must_be_whole_ticks():
@@ -48,8 +50,10 @@ def test_contracts_are_pytrees():
     leaves, spec = _pytree.tree_flatten(obs)
     back = _pytree.tree_unflatten(leaves, spec)
     assert back.globals is None and torch.equal(back.ships, obs.ships)
-    out = _pytree.tree_map_only(torch.Tensor, lambda x: x + 1, Outputs(logp=torch.zeros(2)))
-    assert out.value is None and out.logp.sum() == 2
+    out = _pytree.tree_map_only(
+        torch.Tensor, lambda x: x + 1, Outputs(log_probability=torch.zeros(2))
+    )
+    assert out.value is None and out.log_probability.sum() == 2
 
 
 def test_pool_shares_must_be_whole():
@@ -63,9 +67,20 @@ def test_pool_shares_must_be_whole():
 
 def _controller_classes():
     from bnb.controllers.model import ModelController
-    from bnb.controllers.scripted import Chaser, Random
+    from bnb.controllers.relational import RelationalController
+    from bnb.controllers.scripted import Chaser, Random, Scripted
+    from bnb.controllers.yemong import YemongController
+    from bnb.learn.bc import TeacherOpponent
 
-    return (ModelController, Chaser, Random)
+    return (
+        ModelController,
+        Chaser,
+        Random,
+        Scripted,
+        RelationalController,
+        YemongController,
+        TeacherOpponent,
+    )
 
 
 @pytest.mark.parametrize("cls", _controller_classes())
@@ -79,7 +94,15 @@ def test_rollout_carry_holds_no_privileged():
     from bnb.controllers.scripted import Random
     from bnb.runtime.rollout import Rollout
 
-    ro = Rollout(GameConfig(1, 1, 600.0), (Pool("p", 1.0, ("r", "r")),), {"r": Random(1)}, "r",
-                 2, 4, torch.device("cpu"), compile=False)
+    ro = Rollout(
+        GameConfig(1, 1, 600.0),
+        (Pool("p", 1.0, ("r", "r")),),
+        {"r": Random(1)},
+        "r",
+        2,
+        4,
+        torch.device("cpu"),
+        compiled=False,
+    )
     leaves = _pytree.tree_leaves(ro.carry, is_leaf=lambda x: isinstance(x, Privileged))
     assert not any(isinstance(x, Privileged) for x in leaves)

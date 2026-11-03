@@ -42,14 +42,24 @@ class HeadGroup(nn.Module):
             nn.init.zeros_(last.bias)
 
     def forward(self, inputs: torch.Tensor) -> list[torch.Tensor]:
+        """One output (..., size) per head, in the order of the constructor's outputs."""
         if kernels.switches.heads and head_kernel.applies(inputs, self.hidden):
-            blocks = zip(self.first.weight.split(self.hidden), self.first.bias.split(self.hidden),
-                         self.norms, self.lasts, strict=True)
-            return [head_kernel.head(inputs, (weight, bias), normed, last)
-                    for weight, bias, normed, last in blocks]
+            blocks = zip(
+                self.first.weight.split(self.hidden),
+                self.first.bias.split(self.hidden),
+                self.norms,
+                self.lasts,
+                strict=True,
+            )
+            return [
+                head_kernel.head(inputs, (weight, bias), normed, last)
+                for weight, bias, normed, last in blocks
+            ]
         hidden = self.first(inputs).split(self.hidden, -1)
-        return [last(F.gelu(normed(part)))
-                for part, normed, last in zip(hidden, self.norms, self.lasts, strict=True)]
+        return [
+            last(F.gelu(normed(part)))
+            for part, normed, last in zip(hidden, self.norms, self.lasts, strict=True)
+        ]
 
 
 def next_state_logits(code: torch.Tensor, change: torch.Tensor) -> torch.Tensor:
@@ -58,16 +68,21 @@ def next_state_logits(code: torch.Tensor, change: torch.Tensor) -> torch.Tensor:
     return codes.baseline(code) + change
 
 
-def critic_values(local_logits: torch.Tensor, outcome_logits: torch.Tensor, bins: torch.Tensor,
-                  local_levels: tuple[int, ...], outcome_level: int) -> torch.Tensor:
-    """(..., S, K) values in the configured level order.
+def critic_values(
+    local_logits: torch.Tensor,
+    outcome_logits: torch.Tensor,
+    bins: torch.Tensor,
+    local_levels: tuple[int, ...],
+    outcome_level: int,
+) -> torch.Tensor:
+    """(..., S, levels) values in the configured level order.
 
-    local_logits (..., S, K - 1, bins): per-ship levels, each the expectation over the bins;
+    local_logits (..., S, levels - 1, bins): per-ship levels, each the expectation over the bins;
     outcome_logits (..., 4): the outcome level P(win) - P(loss), the same for every ship.
     """
     local = critic.expectation(local_logits, bins).unbind(-1)
     outcome = critic.outcome_values(torch.softmax(outcome_logits, -1))[..., None]
-    outcome = outcome.expand(local[0].shape)  # K >= 2: at least one per-ship level
+    outcome = outcome.expand(local[0].shape)  # levels >= 2: at least one per-ship level
     columns = {level: column for level, column in zip(local_levels, local)}
     columns[outcome_level] = outcome
     # Stacked from slices (no index tensor), so eager CUDA-graph capture needs no host copy.
@@ -89,8 +104,12 @@ class ShotTrajectoryHead(nn.Module):
         self.middle = nn.Linear(width, width)
         self.middle_norm = norm(width)
         self.last = nn.Linear(width, outputs)
-        for layer, gain in ((self.latent, FIRST_GAIN), (self.age, FIRST_GAIN),
-                            (self.middle, FIRST_GAIN), (self.last, LAST_GAIN)):
+        for layer, gain in (
+            (self.latent, FIRST_GAIN),
+            (self.age, FIRST_GAIN),
+            (self.middle, FIRST_GAIN),
+            (self.last, LAST_GAIN),
+        ):
             _orthogonal(layer.weight, gain)
             if layer.bias is not None:
                 nn.init.zeros_(layer.bias)

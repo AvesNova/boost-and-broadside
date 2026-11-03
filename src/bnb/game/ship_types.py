@@ -114,8 +114,9 @@ def ship_types(device=None, dtype=torch.float32, **overrides) -> ShipTypes:
         raise TypeError(f"unknown ship-card parameters {sorted(overrides)}")
     batched = [v.shape[0] for v in values.values() if v.dim() == 2]
     if batched:  # one card per environment: give every parameter the batch axis
-        values = {k: v if v.dim() == 2 else v.expand(batched[0], -1).clone()
-                  for k, v in values.items()}
+        values = {
+            k: v if v.dim() == 2 else v.expand(batched[0], -1).clone() for k, v in values.items()
+        }
     return ShipTypes(**values)
 
 
@@ -147,7 +148,9 @@ def ticks_between_shots(fire_rate: torch.Tensor, tick_length: float) -> torch.Te
             raise ValueError(f"a fire rate must be positive, not {value:g} Hz")
         count = tick_rate / Fraction(value).limit_denominator(RATE_DENOMINATOR)
         if count.denominator != 1:
-            raise ValueError(f"a fire rate of {value:g} Hz is not a whole number of ticks at "
-                             f"{float(tick_rate):g} Hz ({float(count):g} ticks between shots)")
+            raise ValueError(
+                f"a fire rate of {value:g} Hz is not a whole number of ticks at "
+                f"{float(tick_rate):g} Hz ({float(count):g} ticks between shots)"
+            )
         ticks.append(count.numerator)
     return torch.tensor(ticks, dtype=torch.int32, device=fire_rate.device).reshape(fire_rate.shape)

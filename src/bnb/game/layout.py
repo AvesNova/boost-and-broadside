@@ -22,7 +22,8 @@ from .rules import MAP_SCALE_RADIUS, Rules
 @contract
 class Environment:
     """The rules that vary by environment, (B,) each, one value per pool: arena_radius (m)
-    and map_scale (arena_radius / 2600) float32; episode_ticks and respawn_ticks int32."""
+    and map_scale (arena_radius / MAP_SCALE_RADIUS) float32; episode_ticks and respawn_ticks
+    int32."""
 
     arena_radius: torch.Tensor
     map_scale: torch.Tensor
@@ -69,15 +70,18 @@ def environment(rules: Rules, batch: int, device=None) -> Environment:
 
     def per_pool(value, dtype=torch.float32) -> torch.Tensor:
         """value(pool) for every environment of the pool."""
-        parts = [torch.full((size,), value(pool), dtype=dtype, device=device)
-                 for pool, size in zip(rules.pools, sizes)]
+        parts = [
+            torch.full((size,), value(pool), dtype=dtype, device=device)
+            for pool, size in zip(rules.pools, sizes)
+        ]
         return parts[0] if len(parts) == 1 else torch.cat(parts)
 
     return Environment(
         arena_radius=per_pool(lambda pool: pool.arena_radius),
         map_scale=per_pool(lambda pool: pool.arena_radius / MAP_SCALE_RADIUS),
         episode_ticks=per_pool(lambda pool: pool.episode_ticks, torch.int32),
-        respawn_ticks=per_pool(lambda pool: pool.respawn_ticks, torch.int32))
+        respawn_ticks=per_pool(lambda pool: pool.respawn_ticks, torch.int32),
+    )
 
 
 def per_mode(rules: Rules, batch: int, function, *trees):
@@ -88,6 +92,6 @@ def per_mode(rules: Rules, batch: int, function, *trees):
         return function(parts[0].mode, *trees)
     outputs = []
     for part in parts:
-        cut = _pytree.tree_map_only(torch.Tensor, lambda x: x[part.start:part.stop], trees)
+        cut = _pytree.tree_map_only(torch.Tensor, lambda x: x[part.start : part.stop], trees)
         outputs.append(function(part.mode, *cut))
     return _pytree.tree_map(lambda *pieces: torch.cat(pieces), *outputs)

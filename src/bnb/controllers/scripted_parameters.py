@@ -102,7 +102,7 @@ def unpack(table: torch.Tensor) -> ScriptedParameters:
     default, values, column = ScriptedParameters(), {}, 0
     for name in NAMES:
         width = _width(getattr(default, name))
-        part = [table[:, column + i:column + i + 1] for i in range(width)]
+        part = [table[:, column + i : column + i + 1] for i in range(width)]
         values[name] = Ramp(*part) if width == 4 else part[0]
         column += width
     return ScriptedParameters(**values)

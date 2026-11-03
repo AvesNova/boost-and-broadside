@@ -91,5 +91,6 @@ def test_a_theme_file_must_list_every_value(tmp_path):
     with pytest.raises(ValueError, match="unknown"):
         themes.parse("broken", values)
     with pytest.raises(ValueError):
-        themes.Library(tmp_path).save(dataclasses.replace(themes.load(themes.DEFAULT),
-                                                          name="Bad Name"))
+        themes.Library(tmp_path).save(
+            dataclasses.replace(themes.load(themes.DEFAULT), name="Bad Name")
+        )

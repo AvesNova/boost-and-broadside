@@ -17,13 +17,19 @@ from bnb.game.state import replace
 def _state(config: GameConfig, ticks: int = 0, seed: int = 0, fogged: bool = True):
     generator = torch.Generator().manual_seed(seed)
     rules, types = api.rules_of(config), api.ship_types()
-    state = api.reset(rules, types, api.uniforms(rules, 1, generator=generator),
-                      torch.tensor([fogged]))
+    state = api.reset(
+        rules, types, api.uniforms(rules, 1, generator=generator), torch.tensor([fogged])
+    )
     action = torch.tensor([[1, 2, 1]] * rules.num_ships, dtype=torch.int32)
     for _ in range(ticks):
-        state, _ = api.step(rules, types, state, Action.unpack(action[None]),
-                            api.spread(rules, 1, generator=generator),
-                            api.uniforms(rules, 1, generator=generator))
+        state, _ = api.step(
+            rules,
+            types,
+            state,
+            Action.unpack(action[None]),
+            api.spread(rules, 1, generator=generator),
+            api.uniforms(rules, 1, generator=generator),
+        )
     state, observation, _ = api.perceive(rules, state)
     return rules, state, observation
 
@@ -42,15 +48,24 @@ def test_core_radius_is_where_the_sight_test_blocks():
     """An observer far off looks at an enemy on the line through a field's centre: the
     enemy is hidden just inside the core radius and seen just outside it."""
     rules, state, _ = _state(GameConfig(1, 1, 2600.0))
-    fields = replace(state.fields, x=torch.tensor([[0.0]]), y=torch.tensor([[0.0]]),
-                     radius=torch.tensor([[300.0]]), band_width=torch.tensor([[40.0]]))
+    fields = replace(
+        state.fields,
+        x=torch.tensor([[0.0]]),
+        y=torch.tensor([[0.0]]),
+        radius=torch.tensor([[300.0]]),
+        band_width=torch.tensor([[40.0]]),
+    )
     state = replace(state, fields=fields)
     core = float(api.core_radius(state)[0, 0])
     for offset, seen in ((-0.5, False), (0.5, True)):
-        ships = replace(state.ships, x=torch.tensor([[900.0, core + offset]]),
-                        y=torch.zeros(1, 2), alive=torch.ones(1, 2, dtype=torch.bool),
-                        fired=torch.zeros(1, 2, dtype=torch.bool),
-                        spawned=torch.zeros(1, 2, dtype=torch.bool))
+        ships = replace(
+            state.ships,
+            x=torch.tensor([[900.0, core + offset]]),
+            y=torch.zeros(1, 2),
+            alive=torch.ones(1, 2, dtype=torch.bool),
+            fired=torch.zeros(1, 2, dtype=torch.bool),
+            spawned=torch.zeros(1, 2, dtype=torch.bool),
+        )
         visible = sight.visibility(replace(state, ships=ships))
         assert bool(visible[0, 0, 1]) is seen, offset
 
@@ -69,9 +84,16 @@ def test_a_lone_attacker_raises_only_the_meters_zone_sides_name():
                 inside = torch.zeros(1, 2, Z, dtype=torch.bool)
                 inside[0, team, zone] = True
                 capture = frontline.capture_step(
-                    torch.tensor([[0, 1]]), torch.ones(1, 2, dtype=torch.bool), inside, role,
-                    torch.zeros(1, Z), torch.zeros(1, Z, 2), torch.zeros(1, Z, 2),
-                    torch.tensor([front]), rules.tick_length, 10.0)
+                    torch.tensor([[0, 1]]),
+                    inside,
+                    role,
+                    torch.zeros(1, Z),
+                    torch.zeros(1, Z, 2),
+                    torch.zeros(1, Z, 2),
+                    torch.tensor([front]),
+                    rules.tick_length,
+                    10.0,
+                )
                 rises = bool(capture.progress[0, zone] > 0)
                 assert rises == (int(attacker[0, zone]) == team), (front, team, zone)
                 if int(attacker[0, zone]) >= 0:
@@ -87,8 +109,11 @@ def test_a_spawn_zones_owner_is_the_team_it_protects():
     spawn_zones = (attacker[0] < 0) & (owner[0] >= 0)
     assert int(spawn_zones.sum()) == 2 and int((owner[0] < 0).sum()) == 1
     for zone in spawn_zones.nonzero()[:, 0].tolist():
-        ships = replace(state.ships, x=mode.zone_x[:, zone, None].expand_as(state.ships.x),
-                        y=mode.zone_y[:, zone, None].expand_as(state.ships.y))
+        ships = replace(
+            state.ships,
+            x=mode.zone_x[:, zone, None].expand_as(state.ships.x),
+            y=mode.zone_y[:, zone, None].expand_as(state.ships.y),
+        )
         safe = protected(rules, rules.pools[0].mode, mode, ships)[0]
         team = torch.arange(rules.num_ships) // rules.ships_per_team
         assert torch.equal(safe, team == int(owner[0, zone])), zone
@@ -106,4 +131,7 @@ def test_the_reexports_are_the_games_own():
     assert api.per_ship is ship_types.per_ship
     assert api.PRESETS is mode_rules.PRESETS
     assert (api.TEAMS, api.LN_SQRT2, api.MAP_SCALE_RADIUS) == (
-        game_rules.TEAMS, game_rules.LN_SQRT2, game_rules.MAP_SCALE_RADIUS)
+        game_rules.TEAMS,
+        game_rules.LN_SQRT2,
+        game_rules.MAP_SCALE_RADIUS,
+    )

@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/cli.py, src/bnb/runs/]
-reviewed: 2026-11-02
+reviewed: 2026-11-03 09:45
 ---
 
 # Resuming, forking and sharing runs
@@ -107,7 +107,7 @@ print(type(loaded).__name__, loaded.build.config.hidden)
 
 <!-- not-runnable: needs CUDA -->
 ```bash
-uv run --no-sync bnb train --preset mixed --num-envs 1536 --probe
+uv run --no-sync bnb train --preset mixed --environments 1536 --probe
 ```
 
 runs the setup and one update, prints the allocator's peaks against the budget, and exits

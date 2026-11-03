@@ -19,9 +19,12 @@ UPDATES = 2
 
 def _run(mode: str, directory: pathlib.Path, device: str, model: str, *damage: str) -> None:
     environment = dict(os.environ, PYTHONPATH=str(WORKER.parent))
-    done = subprocess.run([sys.executable, str(WORKER), mode, str(directory), device, model,
-                           str(UPDATES), *damage], capture_output=True, text=True,
-                          env=environment)
+    done = subprocess.run(
+        [sys.executable, str(WORKER), mode, str(directory), device, model, str(UPDATES), *damage],
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
     assert done.returncode == 0, done.stderr[-4000:]
 
 

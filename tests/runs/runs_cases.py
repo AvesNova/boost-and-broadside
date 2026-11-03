@@ -17,9 +17,17 @@ PARTS = ("ships", "fields", "globals", "zones")
 
 def tiny_yemong_config(width: int = 8) -> YemongConfig:
     """Yemong's smallest configuration: one block, one head, one rotary octave."""
-    return YemongConfig(width=width, blocks=1, spatial_per_block=1, heads=1,
-                        map_width=4, value_bins=11, hex_rings=1, rotary_octaves=1,
-                        heading_harmonics=(1,))
+    return YemongConfig(
+        width=width,
+        blocks=1,
+        spatial_per_block=1,
+        heads=1,
+        map_width=4,
+        value_bins=11,
+        hex_rings=1,
+        rotary_octaves=1,
+        heading_harmonics=(1,),
+    )
 
 
 def _randomised(model: torch.nn.Module, seed: int) -> torch.nn.Module:
@@ -34,30 +42,40 @@ def _randomised(model: torch.nn.Module, seed: int) -> torch.nn.Module:
 
 def tiny_model(name: str, seed: int = 0, width: int = 8, game: GameConfig = GAME):
     """The smallest model registered as `name`, weights drawn from `seed`."""
-    torch.manual_seed(seed)  # the constructors initialise from the default generator
-    if name == "yemong":
-        model = Yemong(yemong_build(tiny_yemong_config(width), api.rules_of(game),
-                                    api.ship_types()))
-    elif name == "relational":
-        model = Relational(RelationalBuild(RelationalConfig(hidden=width, value_bins=11),
-                                           game.ships_per_team, game.num_ships))
-    else:
-        model = MLP(MLPBuild(game.ships_per_team, game.num_ships, game.num_fields, width))
+    # The constructors initialise from the default generator: seeded here, then restored.
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(seed)
+        if name == "yemong":
+            model = Yemong(
+                yemong_build(tiny_yemong_config(width), api.rules_of(game), api.ship_types())
+            )
+        elif name == "relational":
+            build = RelationalBuild(
+                RelationalConfig(hidden=width, value_bins=11), game.ships_per_team, game.num_ships
+            )
+            model = Relational(build)
+        else:
+            model = MLP(MLPBuild(game.ships_per_team, game.num_ships, game.num_fields, width))
     return _randomised(model, seed)
 
 
-def observation(seed: int = 0, views: int = 2, game: GameConfig = GAME,
-                device=CPU) -> Obs:
+def observation(seed: int = 0, views: int = 2, game: GameConfig = GAME, device=CPU) -> Obs:
     """Team 0's views of `views` fresh games a few ticks in."""
     generator = torch.Generator().manual_seed(seed)
     rules, types = api.rules_of(game), api.ship_types()
     state = api.reset(rules, types, api.uniforms(rules, views, generator=generator))
     for _ in range(3):
-        action = torch.randint(0, 3, (views, game.num_ships, 3), generator=generator,
-                               dtype=torch.int32)
-        state, _ = api.step(rules, types, state, Action.unpack(action),
-                            api.spread(rules, views, generator=generator),
-                            api.uniforms(rules, views, generator=generator))
+        action = torch.randint(
+            0, 3, (views, game.num_ships, 3), generator=generator, dtype=torch.int32
+        )
+        state, _ = api.step(
+            rules,
+            types,
+            state,
+            Action.unpack(action),
+            api.spread(rules, views, generator=generator),
+            api.uniforms(rules, views, generator=generator),
+        )
     _, obs, _ = api.perceive(rules, state)
     return Obs(**{part: getattr(obs, part)[:, 0].to(device) for part in PARTS})
 
@@ -68,8 +86,13 @@ def yemong_carry(model: Yemong, seed: int, views: int, game: GameConfig = GAME, 
     carry = model.initial_carry(views, game.ships_per_team, game.num_ships, device)
     return _pytree.tree_map_only(
         torch.Tensor,
-        lambda x: (torch.rand(x.shape, generator=generator).to(device, x.dtype)
-                   if x.is_floating_point() else x), carry)
+        lambda x: (
+            torch.rand(x.shape, generator=generator).to(device, x.dtype)
+            if x.is_floating_point()
+            else x
+        ),
+        carry,
+    )
 
 
 def single_step(model: torch.nn.Module, obs: Obs, carry=None) -> dict[str, torch.Tensor]:
@@ -85,8 +108,7 @@ def single_step(model: torch.nn.Module, obs: Obs, carry=None) -> dict[str, torch
         else:
             out = model(obs)
     leaves, _ = _pytree.tree_flatten_with_path(out)
-    return {_pytree.keystr(path): leaf for path, leaf in leaves
-            if isinstance(leaf, torch.Tensor)}
+    return {_pytree.keystr(path): leaf for path, leaf in leaves if isinstance(leaf, torch.Tensor)}
 
 
 def assert_equal(got: dict, want: dict) -> None:
@@ -102,15 +124,44 @@ def tiny_train_config(model: str = "relational", updates: int = 2, **changes):
     from bnb.runtime.train import TrainConfig
 
     learner = LearnerConfig(epochs=1, minibatches=2, warmup_steps=1000, micro_batch_rows=64)
-    values = dict(game=GameConfig(2, 2, 1500.0, episode_s=4.0, respawn_s=1.0), num_envs=16,
-                  updates=updates, length=16, model=model, relational_hidden=16,
-                  league_every=1, learner=learner, compile=False)
+    values = dict(
+        game=GameConfig(2, 2, 1500.0, episode_seconds=4.0, respawn_seconds=1.0),
+        environments=16,
+        updates=updates,
+        length=16,
+        model=model,
+        relational_hidden=16,
+        league_every=1,
+        learner=learner,
+        compiled=False,
+    )
     values.update(changes)
     return TrainConfig(**values)
 
 
-TRAIN_OPTIONS = ("--device", "cpu", "--model", "relational", "--ships-per-team", "2",
-                 "--num-fields", "2", "--arena-radius", "1500", "--num-envs", "16",
-                 "--set", "length=16", "--set", "compile=false",
-                 "--set", "learner.minibatches=2", "--set", "learner.epochs=1",
-                 "--set", "relational_hidden=16", "--set", "game.episode_s=4.0")
+TRAIN_OPTIONS = (
+    "--device",
+    "cpu",
+    "--model",
+    "relational",
+    "--ships-per-team",
+    "2",
+    "--num-fields",
+    "2",
+    "--arena-radius",
+    "1500",
+    "--environments",
+    "16",
+    "--set",
+    "length=16",
+    "--set",
+    "compiled=false",
+    "--set",
+    "learner.minibatches=2",
+    "--set",
+    "learner.epochs=1",
+    "--set",
+    "relational_hidden=16",
+    "--set",
+    "game.episode_seconds=4.0",
+)

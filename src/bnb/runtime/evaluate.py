@@ -13,13 +13,21 @@ from .rollout import Rollout
 
 
 @torch.no_grad()
-def first_results(game: GameConfig, pools: tuple[Pool, ...], controllers: dict[str, Controller],
-                  player: str, games: int, device: torch.device, length: int = 32,
-                  compile: bool = True) -> torch.Tensor:
+def first_results(
+    game: GameConfig,
+    pools: tuple[Pool, ...],
+    controllers: dict[str, Controller],
+    player: str,
+    games: int,
+    device: torch.device,
+    length: int = 32,
+    compiled: bool = True,
+) -> torch.Tensor:
     """(views,) int32: the result of each of `player`'s views in its environment's first
     game, +1 a win, 0 a draw, -1 a loss. games: environments (the pools' batch)."""
-    rollout = Rollout(game, pools, controllers, player, games, length, device, compile=compile,
-                      staggered=False)
+    rollout = Rollout(
+        game, pools, controllers, player, games, length, device, compiled=compiled, staggered=False
+    )
     views = rollout.lineup.rows(player)
     result = torch.zeros(views, dtype=torch.int32, device=device)
     finished = torch.zeros(views, dtype=torch.bool, device=device)
@@ -39,6 +47,8 @@ def score(results: torch.Tensor) -> float:
 
 def shares(results: torch.Tensor) -> dict:
     """The shares won, drawn and lost."""
-    return dict(wins=float((results > 0).float().mean()),
-                draws=float((results == 0).float().mean()),
-                losses=float((results < 0).float().mean()))
+    return dict(
+        wins=float((results > 0).float().mean()),
+        draws=float((results == 0).float().mean()),
+        losses=float((results < 0).float().mean()),
+    )

@@ -16,10 +16,13 @@ from typing import NamedTuple
 
 import torch
 
+from bnb.contracts.obs import ZONE_SLOTS
+
 from ..physics.numerics import lookup
+from ..rules import FIELD_DISC_FRACTION
 from ..state import Fields
 
-ZONES = 5
+ZONES = ZONE_SLOTS  # Frontline's zones fill every slot
 TEAM0_SPAWN, TEAM0_DEFENSE, NEUTRAL, TEAM1_DEFENSE, TEAM1_SPAWN = range(ZONES)
 BASE_ROLES = (NEUTRAL, TEAM0_SPAWN, TEAM0_DEFENSE, TEAM1_DEFENSE, TEAM1_SPAWN)  # by zone, front 0
 EULER_GAMMA = 0.5772156649015329
@@ -45,8 +48,10 @@ def terminal_distances(front: torch.Tensor, threshold) -> tuple[torch.Tensor, to
     zone = torch.arange(ZONES, device=front.device)
     front = front[..., None]
     threshold = threshold[..., None] if isinstance(threshold, torch.Tensor) else threshold
-    return (_captures_left(threshold - front, zone - front - 2),
-            _captures_left(threshold + front, front + 3 - zone))
+    return (
+        _captures_left(threshold - front, zone - front - 2),
+        _captures_left(threshold + front, front + 3 - zone),
+    )
 
 
 def harmonic(counts: torch.Tensor, dtype: torch.dtype = torch.float32) -> torch.Tensor:
@@ -55,8 +60,9 @@ def harmonic(counts: torch.Tensor, dtype: torch.dtype = torch.float32) -> torch.
     return torch.digamma(counts.to(dtype) + 1.0) + EULER_GAMMA
 
 
-def zone_membership(ship_position: torch.Tensor, zone_position: torch.Tensor,
-                    zone_radius: torch.Tensor) -> torch.Tensor:
+def zone_membership(
+    ship_position: torch.Tensor, zone_position: torch.Tensor, zone_radius: torch.Tensor
+) -> torch.Tensor:
     """(..., N, Z): the ship's distance to the zone's centre is at most its radius.
     ship_position (..., N, 2), zone_position (..., Z, 2), zone_radius (..., Z)."""
     offset = ship_position[..., :, None, :] - zone_position[..., None, :, :]
@@ -64,14 +70,11 @@ def zone_membership(ship_position: torch.Tensor, zone_position: torch.Tensor,
 
 
 class Capture(NamedTuple):
-    """One tick of the meters. progress, direction (..., Z): the majority's push on a defense
-    zone in team 0's frame (+1 a team-0 majority, -1 a team-1 one, 0 none or a completion;
-    clipped meters included); the attempt ledgers
-    (..., Z, N); gain and loss (..., N), each capturing side's shares; team0_captured,
-    team1_captured (...,); front (...,) and roles (..., Z) after the captures."""
+    """One tick of the meters. progress (..., Z); the attempt ledgers (..., Z, N); gain and
+    loss (..., N), each capturing side's shares; team0_captured, team1_captured (...,);
+    front (...,) and roles (..., Z) after the captures."""
 
     progress: torch.Tensor
-    direction: torch.Tensor
     attack_ledger: torch.Tensor
     defense_ledger: torch.Tensor
     gain: torch.Tensor
@@ -104,22 +107,29 @@ def _normalised(values: torch.Tensor) -> torch.Tensor:
     return torch.where(total > 0.0, values / torch.where(total > 0.0, total, 1.0), 0.0)
 
 
-def capture_step(team: torch.Tensor, alive: torch.Tensor, inside: torch.Tensor,
-                 roles: torch.Tensor, progress: torch.Tensor, attack_ledger: torch.Tensor,
-                 defense_ledger: torch.Tensor, front: torch.Tensor, tick_seconds: float,
-                 capture_seconds: float) -> Capture:
+def capture_step(
+    team: torch.Tensor,
+    inside: torch.Tensor,
+    roles: torch.Tensor,
+    progress: torch.Tensor,
+    attack_ledger: torch.Tensor,
+    defense_ledger: torch.Tensor,
+    front: torch.Tensor,
+    tick_length: float,
+    capture_seconds: float,
+) -> Capture:
     """v1's meters, attempt ledgers and completions (spec 5).
 
-    team, alive (..., N); inside (..., N, Z), already masked to living ships; roles,
-    progress (..., Z); the ledgers (..., Z, N); front (...,).
+    team (..., N); inside (..., N, Z), masked to living ships (a dead ship is absent);
+    roles, progress (..., Z); the ledgers (..., Z, N); front (...,).
     """
     present = inside.transpose(-1, -2)  # (..., Z, N)
     attacker, defender, team0_attacks, contested = _sides(team, roles)
     on_team0 = (team == 0)[..., None, :]
     net = (present & on_team0).sum(-1) - (present & ~on_team0).sum(-1)  # team 0 minus team 1
-    direction = torch.where(contested, torch.sign(net), 0)  # the majority, team 0's frame
-    toward_attacker = torch.where(team0_attacks, direction, -direction)
-    rate = harmonic(net.abs(), progress.dtype) * tick_seconds / capture_seconds
+    majority = torch.where(contested, torch.sign(net), 0)  # the majority, in team 0's frame
+    toward_attacker = torch.where(team0_attacks, majority, -majority)
+    rate = harmonic(net.abs(), progress.dtype) * tick_length / capture_seconds
     moved = (progress + toward_attacker * rate).clamp(0.0, 1.0)
     new = torch.where(contested, moved, 0.0)
     delta = new - progress
@@ -143,24 +153,33 @@ def capture_step(team: torch.Tensor, alive: torch.Tensor, inside: torch.Tensor,
     team0_captured = (captured & team0_attacks).any(-1)
     team1_captured = (captured & ~team0_attacks).any(-1)
 
-    # A completion zeroes every meter and push (the roles rotate); an empty meter clears its
-    # ledgers.
+    # A completion zeroes every meter (the roles rotate); an empty meter clears its ledgers.
     completed = (team0_captured | team1_captured)[..., None]
     new = torch.where(completed, 0.0, new)
-    direction = torch.where(completed, 0, direction)
     clear = (new <= 0.0)[..., None]
     front = front + team0_captured.to(front.dtype) - team1_captured.to(front.dtype)
-    return Capture(progress=new, direction=direction,
-                   attack_ledger=torch.where(clear, 0.0, attack_ledger),
-                   defense_ledger=torch.where(clear, 0.0, defense_ledger), gain=gain, loss=loss,
-                   team0_captured=team0_captured, team1_captured=team1_captured, front=front,
-                   roles=roles_from_front(front))
+    return Capture(
+        progress=new,
+        attack_ledger=torch.where(clear, 0.0, attack_ledger),
+        defense_ledger=torch.where(clear, 0.0, defense_ledger),
+        gain=gain,
+        loss=loss,
+        team0_captured=team0_captured,
+        team1_captured=team1_captured,
+        front=front,
+        roles=roles_from_front(front),
+    )
 
 
-def zone_progress_events(team: torch.Tensor, inside: torch.Tensor, roles: torch.Tensor,
-                         previous_progress: torch.Tensor, progress: torch.Tensor,
-                         team0_captured: torch.Tensor, team1_captured: torch.Tensor
-                         ) -> torch.Tensor:
+def zone_progress_events(
+    team: torch.Tensor,
+    inside: torch.Tensor,
+    roles: torch.Tensor,
+    previous_progress: torch.Tensor,
+    progress: torch.Tensor,
+    team0_captured: torch.Tensor,
+    team1_captured: torch.Tensor,
+) -> torch.Tensor:
     """(..., N, 2) held and absent: v1's meter-movement attribution (objective progress).
 
     The side a movement favours splits |delta| among its ships inside the zone; the other
@@ -188,31 +207,46 @@ def timeout_result(front: torch.Tensor) -> torch.Tensor:
 
 # ------------------------------------------------------------------ the map (v2)
 
-def zone_ring(arena_radius: torch.Tensor, zone_radius: torch.Tensor, ring_fraction: float,
-              rotation: torch.Tensor, handedness: torch.Tensor):
+
+def zone_ring(
+    arena_radius: torch.Tensor,
+    zone_radius: torch.Tensor,
+    ring_fraction: float,
+    rotation: torch.Tensor,
+    handedness: torch.Tensor,
+):
     """Zone centres (B, 5) x, y at angles rotation + handedness 2 pi k / 5 on the ring, and
     their radii (B, 5); arena_radius and zone_radius (B,)."""
-    angle = rotation[:, None] + handedness[:, None] * (2.0 * math.pi / ZONES) \
-        * torch.arange(ZONES, device=rotation.device)
+    angle = rotation[:, None] + handedness[:, None] * (2.0 * math.pi / ZONES) * torch.arange(
+        ZONES, device=rotation.device
+    )
     distance = (ring_fraction * arena_radius)[:, None]
-    return (distance * torch.cos(angle), distance * torch.sin(angle),
-            zone_radius[:, None] + torch.zeros_like(angle))
+    return (
+        distance * torch.cos(angle),
+        distance * torch.sin(angle),
+        zone_radius[:, None] + torch.zeros_like(angle),
+    )
 
 
-def mirror_fields(fields: Fields, map_uniforms: torch.Tensor, arena_radius: torch.Tensor,
-                  rotation: torch.Tensor) -> Fields:
+def mirror_fields(
+    fields: Fields, map_uniforms: torch.Tensor, arena_radius: torch.Tensor, rotation: torch.Tensor
+) -> Fields:
     """The point-symmetric map's fields made mirror-symmetric about the axis at angle
     `rotation` through the centre and zone 0: field P + i is field i reflected about it,
-    and an odd last field lies on the axis at signed distance 0.85 R_a (2u - 1) (u the
-    field's first uniform; arena_radius (B,)). Radii, bands and levels are as drawn."""
+    and an odd last field lies on the axis at signed distance FIELD_DISC_FRACTION R_a (2u - 1)
+    (u the field's first uniform; arena_radius (B,)). Radii, bands and levels are as drawn."""
     B, M = fields.x.shape
     P = M // 2
     cos2, sin2 = torch.cos(2.0 * rotation)[:, None], torch.sin(2.0 * rotation)[:, None]
     x, y = fields.x[:, :P], fields.y[:, :P]
     reflected_x, reflected_y = cos2 * x + sin2 * y, sin2 * x - cos2 * y
-    along = 0.85 * arena_radius * (2.0 * map_uniforms[:, 4 * (M - 1)] - 1.0)
+    along = FIELD_DISC_FRACTION * arena_radius * (2.0 * map_uniforms[:, 4 * (M - 1)] - 1.0)
     on_axis = (along * torch.cos(rotation))[:, None], (along * torch.sin(rotation))[:, None]
     keep = M - 2 * P  # 1 for an odd M
-    return Fields(x=torch.cat([x, reflected_x, on_axis[0][:, :keep]], 1),
-                  y=torch.cat([y, reflected_y, on_axis[1][:, :keep]], 1),
-                  radius=fields.radius, band_width=fields.band_width, level=fields.level)
+    return Fields(
+        x=torch.cat([x, reflected_x, on_axis[0][:, :keep]], 1),
+        y=torch.cat([y, reflected_y, on_axis[1][:, :keep]], 1),
+        radius=fields.radius,
+        band_width=fields.band_width,
+        level=fields.level,
+    )

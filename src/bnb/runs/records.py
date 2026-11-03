@@ -32,24 +32,89 @@ CHECKPOINTS = "checkpoints"
 RECENT = 8  # checkpoints kept newest-first, before the geometric history (runs spec 5)
 
 # Small word lists for run names a person can remember (runs spec 5).
-ADJECTIVES = ("amber", "brisk", "calm", "crimson", "dusty", "eager", "fuzzy", "gentle",
-              "golden", "hollow", "icy", "jolly", "keen", "lively", "mellow", "misty",
-              "nimble", "olive", "plucky", "purple", "quiet", "rapid", "rusty", "silver",
-              "sleepy", "snowy", "sunny", "tidy", "vivid", "wandering", "witty", "zesty")
-NOUNS = ("acorn", "badger", "beacon", "comet", "cricket", "falcon", "fern", "harbour",
-         "heron", "lantern", "maple", "meadow", "otter", "pebble", "pumpkin", "quill",
-         "raven", "river", "saffron", "sparrow", "teapot", "thistle", "tulip", "walnut",
-         "willow", "yarrow", "kestrel", "marble", "puffin", "ember", "biscuit", "nebula")
+ADJECTIVES = (
+    "amber",
+    "brisk",
+    "calm",
+    "crimson",
+    "dusty",
+    "eager",
+    "fuzzy",
+    "gentle",
+    "golden",
+    "hollow",
+    "icy",
+    "jolly",
+    "keen",
+    "lively",
+    "mellow",
+    "misty",
+    "nimble",
+    "olive",
+    "plucky",
+    "purple",
+    "quiet",
+    "rapid",
+    "rusty",
+    "silver",
+    "sleepy",
+    "snowy",
+    "sunny",
+    "tidy",
+    "vivid",
+    "wandering",
+    "witty",
+    "zesty",
+)
+NOUNS = (
+    "acorn",
+    "badger",
+    "beacon",
+    "comet",
+    "cricket",
+    "falcon",
+    "fern",
+    "harbour",
+    "heron",
+    "lantern",
+    "maple",
+    "meadow",
+    "otter",
+    "pebble",
+    "pumpkin",
+    "quill",
+    "raven",
+    "river",
+    "saffron",
+    "sparrow",
+    "teapot",
+    "thistle",
+    "tulip",
+    "walnut",
+    "willow",
+    "yarrow",
+    "kestrel",
+    "marble",
+    "puffin",
+    "ember",
+    "biscuit",
+    "nebula",
+)
 
 
-def run_name(label: str, runs_directory: pathlib.Path, date: datetime.date | None = None,
-             generator: random.Random | None = None) -> str:
+def run_name(
+    label: str,
+    runs_directory: pathlib.Path,
+    date: datetime.date | None = None,
+    generator: random.Random | None = None,
+) -> str:
     """`<YYYY-MM-DD>-<label>-<adjective>-<noun>`, drawn again until no run has it."""
     date = date or datetime.date.today()
     generator = generator or random.Random()
     for _ in range(1000):
-        name = (f"{date.isoformat()}-{label}-{generator.choice(ADJECTIVES)}-"
-                f"{generator.choice(NOUNS)}")
+        name = (
+            f"{date.isoformat()}-{label}-{generator.choice(ADJECTIVES)}-{generator.choice(NOUNS)}"
+        )
         if not (runs_directory / name).exists():
             return name
     raise RuntimeError(f"no free run name for {label} on {date} after 1000 draws")
@@ -88,9 +153,11 @@ def retained(ordinals: Iterable[int], final: int | None = None) -> set[int]:
     if not ordinals:
         return set()
     newest = max(ordinals)
-    keep = {ordinal for ordinal in ordinals
-            if newest - ordinal < RECENT
-            or ordinal % (1 << ((newest - ordinal).bit_length() - 1)) == 0}
+    keep = {
+        ordinal
+        for ordinal in ordinals
+        if newest - ordinal < RECENT or ordinal % (1 << ((newest - ordinal).bit_length() - 1)) == 0
+    }
     if final in ordinals:
         keep.add(final)
     return keep
@@ -99,7 +166,7 @@ def retained(ordinals: Iterable[int], final: int | None = None) -> set[int]:
 def step_of(path: pathlib.Path) -> int | None:
     """The step of a complete checkpoint directory `step_<step>`; None for anything else
     (a `.tmp` being written, a `.deleting` being removed)."""
-    digits = path.name[len("step_"):]
+    digits = path.name[len("step_") :]
     return int(digits) if path.name.startswith("step_") and digits.isdigit() else None
 
 
@@ -112,8 +179,15 @@ class Run:
     # ---- creating and opening
 
     @classmethod
-    def create(cls, runs_directory: pathlib.Path, name: str, config, command: list[str],
-               checkpoint_every: int, parent: dict | None = None) -> Run:
+    def create(
+        cls,
+        runs_directory: pathlib.Path,
+        name: str,
+        config,
+        command: list[str],
+        checkpoint_every: int,
+        parent: dict | None = None,
+    ) -> Run:
         """A new run directory with its config.json and run.json (status running, no
         segment yet). parent: the run and step a fork or a warm start began from."""
         directory = pathlib.Path(runs_directory) / name
@@ -122,10 +196,22 @@ class Run:
             (directory / part).mkdir()
         (directory / "metrics.jsonl").touch()
         write_json(directory / "config.json", to_json(config))
-        record = dict(name=name, status="running", pid=os.getpid(), host=socket.gethostname(),
-                      message=None, command=list(command), wandb_id=None, parent=parent,
-                      checkpoint_every=checkpoint_every, newest_checkpoint=None,
-                      final_checkpoint=None, checkpoint_ordinals={}, probe=None, segments=[])
+        record = dict(
+            name=name,
+            status="running",
+            pid=os.getpid(),
+            host=socket.gethostname(),
+            message=None,
+            command=list(command),
+            wandb_id=None,
+            parent=parent,
+            checkpoint_every=checkpoint_every,
+            newest_checkpoint=None,
+            final_checkpoint=None,
+            checkpoint_ordinals={},
+            probe=None,
+            segments=[],
+        )
         run = cls(directory, record)
         run.save()
         return run
@@ -139,26 +225,40 @@ class Run:
         return cls(directory, json.loads((directory / RECORD).read_text()))
 
     def save(self) -> None:
+        """Write the record to the run directory's RECORD file."""
         write_json(self.directory / RECORD, self.record)
 
     # ---- the record
 
-    def start_segment(self, step: int, overrides: dict | None = None,
-                      rewound_from: int | None = None) -> str | None:
+    def start_segment(
+        self, step: int, overrides: dict | None = None, rewound_from: int | None = None
+    ) -> str | None:
         """Begin this process's segment at `step`, mark the run running, and return a
         warning when the commit differs from the previous segment's."""
         head, dirty = provenance.commit()
         segments = self.record["segments"]
         warning = None
         if segments and segments[-1]["commit"] != head:
-            warning = (f"the run continues on commit {head}; its last segment ran on "
-                       f"{segments[-1]['commit']}")
-        segments.append(dict(commit=head, dirty=dirty, start_step=step,
-                             start_time=provenance.now(), end_step=None, end_time=None,
-                             overrides=dict(overrides or {}), rewound_from=rewound_from,
-                             command=list(self.record["command"]) if not segments else None))
-        self.record.update(status="running", pid=os.getpid(), host=socket.gethostname(),
-                           message=None)
+            warning = (
+                f"the run continues on commit {head}; its last segment ran on "
+                f"{segments[-1]['commit']}"
+            )
+        segments.append(
+            dict(
+                commit=head,
+                dirty=dirty,
+                start_step=step,
+                start_time=provenance.now(),
+                end_step=None,
+                end_time=None,
+                overrides=dict(overrides or {}),
+                rewound_from=rewound_from,
+                command=list(self.record["command"]) if not segments else None,
+            )
+        )
+        self.record.update(
+            status="running", pid=os.getpid(), host=socket.gethostname(), message=None
+        )
         self.save()
         return warning
 
@@ -178,15 +278,21 @@ class Run:
 
     def live(self) -> bool:
         """Whether the record says running and its process is alive on this host."""
-        return (self.record["status"] == "running" and self.record["host"] == socket.gethostname()
-                and process_alive(self.record["pid"]))
+        return (
+            self.record["status"] == "running"
+            and self.record["host"] == socket.gethostname()
+            and process_alive(self.record["pid"])
+        )
 
     def shown_status(self) -> str:
         """The status, with `running (stale)` for a running record whose process is gone
         from this host."""
         status = self.record["status"]
-        if (status == "running" and self.record["host"] == socket.gethostname()
-                and not process_alive(self.record["pid"])):
+        if (
+            status == "running"
+            and self.record["host"] == socket.gethostname()
+            and not process_alive(self.record["pid"])
+        ):
             return "running (stale)"
         return status
 
@@ -198,6 +304,7 @@ class Run:
         return self.directory / "policy"
 
     def checkpoint_path(self, step: int) -> pathlib.Path:
+        """Where the checkpoint at environment step step lives, whether or not it exists."""
         return self.directory / CHECKPOINTS / f"step_{step}"
 
     def checkpoint_steps(self) -> list[int]:
@@ -214,8 +321,9 @@ class Run:
         if step is None:
             return self.checkpoint_path(steps[-1])
         if step not in steps:
-            raise FileNotFoundError(f"run {self.record['name']} keeps no checkpoint at step "
-                                    f"{step}; it keeps {steps}")
+            raise FileNotFoundError(
+                f"run {self.record['name']} keeps no checkpoint at step {step}; it keeps {steps}"
+            )
         return self.checkpoint_path(step)
 
     def set_aside_after(self, step: int) -> list[int]:
@@ -267,5 +375,8 @@ def list_runs(runs_directory: pathlib.Path) -> list[Run]:
     directory = pathlib.Path(runs_directory)
     if not directory.is_dir():
         return []
-    return [Run.open(directory, path.name) for path in sorted(directory.iterdir())
-            if (path / RECORD).is_file()]
+    return [
+        Run.open(directory, path.name)
+        for path in sorted(directory.iterdir())
+        if (path / RECORD).is_file()
+    ]

@@ -9,8 +9,10 @@ import torch
 
 from bnb.runtime.store import SegmentStore
 
-pytestmark = [pytest.mark.gpu,
-              pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")]
+pytestmark = [
+    pytest.mark.gpu,
+    pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA"),
+]
 CUDA = torch.device("cuda") if torch.cuda.is_available() else None
 LENGTH, ROWS, WIDTH = 16, 12, 4096
 IN_FLIGHT = 200_000_000  # GPU cycles the caller's queued kernel waits: ~0.1 s, far past a copy
@@ -27,8 +29,7 @@ def _store() -> tuple[SegmentStore, torch.Tensor]:
     return store, held
 
 
-def test_a_new_staging_buffer_is_filled_after_the_compute_that_last_used_its_memory(
-        monkeypatch):
+def test_a_new_staging_buffer_is_filled_after_the_compute_that_last_used_its_memory(monkeypatch):
     """While the caller computes on one micro-batch, the store sets up the next one's staging
     buffers (a new micro-batch size) on its worker thread. Meanwhile the caller frees a
     temporary that a kernel still queued on the compute stream writes; the caching allocator

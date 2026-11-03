@@ -2,9 +2,11 @@
 
 import dataclasses
 
-MAX_SHIPS = 255  # ship indices fit in uint8; 255 is reserved for "none"
+TEAMS = 2  # a game has exactly two teams (author decision): T in shapes
+MAX_SHIPS = 255  # stored ship indices are int32 with -1 for none; the cap is a design limit
 MAX_FIELDS = 64  # sight-line core membership is an int64 bitmask
-MODES = ("team_deathmatch", "frontline", "sandbox")
+TEAM_DEATHMATCH, FRONTLINE, SANDBOX = "team_deathmatch", "frontline", "sandbox"
+MODES = (TEAM_DEATHMATCH, FRONTLINE, SANDBOX)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -13,13 +15,13 @@ class GameConfig:
 
     Teams are equal in size and team-major: ship `n = team * ships_per_team + slot`.
     A batch of several games (mixed spec 1) shares the sizes (ships, fields); mode,
-    arena_radius, spawn_groups, episode_s and respawn_s are then the defaults its pools
+    arena_radius, spawn_groups, episode_seconds and respawn_seconds are then the defaults its pools
     override (`Pool`).
 
     mode: the game's rules (modes spec 1): "team_deathmatch", "frontline" or "sandbox" (no
         score and no win, formation spawns: the physics game the race tests run).
-    episode_s, respawn_s: time-native rules, whole multiples of the tick or the rules fail
-        to build (ticks_of); None takes the mode's (the game's `modes.rules`).
+    episode_seconds, respawn_seconds: time-native rules, whole multiples of the tick or the
+        rules fail to build (ticks_of); None takes the mode's (the game's `modes.rules`).
     spawn_groups: team deathmatch only, ships per team in each spawn group (summing to
         ships_per_team); empty means uniform spawns.
     kills_per_ship: team deathmatch's winning score is kills_per_ship * ships_per_team.
@@ -28,16 +30,13 @@ class GameConfig:
     ships_per_team: int
     num_fields: int
     arena_radius: float  # m
-    episode_s: float | None = None
-    respawn_s: float | None = None
-    num_teams: int = 2
-    mode: str = "team_deathmatch"
+    episode_seconds: float | None = None
+    respawn_seconds: float | None = None
+    mode: str = TEAM_DEATHMATCH
     spawn_groups: tuple[int, ...] = ()
     kills_per_ship: int = 5
 
     def __post_init__(self) -> None:
-        if self.num_teams != 2:
-            raise ValueError("only two teams are supported for now")
         if not 1 <= self.ships_per_team or self.num_ships > MAX_SHIPS:
             raise ValueError(f"need 1 <= ships per team and at most {MAX_SHIPS} ships")
         if not 1 <= self.num_fields <= MAX_FIELDS:
@@ -46,17 +45,22 @@ class GameConfig:
             raise ValueError("arena radius must be positive")
         if self.mode not in MODES:
             raise ValueError(f"mode {self.mode!r} is not one of {MODES}")
-        if self.spawn_groups and (self.mode != "team_deathmatch"
-                                  or min(self.spawn_groups) < 1
-                                  or sum(self.spawn_groups) != self.ships_per_team):
-            raise ValueError(f"spawn groups {self.spawn_groups} must be positive team "
-                             f"deathmatch groups summing to {self.ships_per_team} ships")
+        if self.spawn_groups and (
+            self.mode != TEAM_DEATHMATCH
+            or min(self.spawn_groups) < 1
+            or sum(self.spawn_groups) != self.ships_per_team
+        ):
+            raise ValueError(
+                f"spawn groups {self.spawn_groups} must be positive team "
+                f"deathmatch groups summing to {self.ships_per_team} ships"
+            )
         if self.kills_per_ship < 1:
             raise ValueError("kills_per_ship must be at least 1")
 
     @property
     def num_ships(self) -> int:
-        return self.num_teams * self.ships_per_team
+        """N: TEAMS times ships_per_team."""
+        return TEAMS * self.ships_per_team
 
 
 def ticks_of(seconds: float, tick: float) -> int:

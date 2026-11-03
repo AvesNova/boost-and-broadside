@@ -31,22 +31,41 @@ def _one_ship(ship_type: int, speed: float, energy: float):
     """A one-a-side sandbox game of this ship type: ship 0 flies along +x at the origin,
     n = 1 (the field far away), and ship 1 is far off."""
     rules = dataclasses.replace(RULES, team_types=(ship_type,))
-    state = api.reset(rules, TYPES, api.uniforms(rules, 1, generator=torch.Generator()
-                                                 .manual_seed(0)), torch.zeros(1, dtype=torch.bool))
-    fields = replace(state.fields, x=torch.full_like(state.fields.x, 1e5),
-                     y=torch.full_like(state.fields.y, 1e5), radius=torch.ones_like(state.fields.x))
+    state = api.reset(
+        rules,
+        TYPES,
+        api.uniforms(rules, 1, generator=torch.Generator().manual_seed(0)),
+        torch.zeros(1, dtype=torch.bool),
+    )
+    fields = replace(
+        state.fields,
+        x=torch.full_like(state.fields.x, 1e5),
+        y=torch.full_like(state.fields.y, 1e5),
+        radius=torch.ones_like(state.fields.x),
+    )
     ships = state.ships
 
     def at(values, first, rest):
         return torch.tensor([[first, rest]], dtype=values.dtype)
 
     zeros = torch.zeros_like(ships.x)
-    ships = replace(ships, x=at(ships.x, 0.0, 5e4), y=zeros, heading_cos=torch.ones_like(ships.x),
-                    heading_sin=zeros, proper_speed=at(ships.x, speed, 50.0), angle_of_attack=zeros,
-                    angle_of_attack_cos=torch.ones_like(ships.x), angle_of_attack_sin=zeros,
-                    nose_rate=zeros, energy=at(ships.x, energy, 0.0), log_refractive_index=zeros,
-                    log_index_gradient_x=zeros, log_index_gradient_y=zeros,
-                    gun_cooldown=torch.zeros_like(ships.gun_cooldown))
+    ships = replace(
+        ships,
+        x=at(ships.x, 0.0, 5e4),
+        y=zeros,
+        heading_cos=torch.ones_like(ships.x),
+        heading_sin=zeros,
+        proper_speed=at(ships.x, speed, 50.0),
+        angle_of_attack=zeros,
+        angle_of_attack_cos=torch.ones_like(ships.x),
+        angle_of_attack_sin=zeros,
+        nose_rate=zeros,
+        energy=at(ships.x, energy, 0.0),
+        log_refractive_index=zeros,
+        log_index_gradient_x=zeros,
+        log_index_gradient_y=zeros,
+        gun_cooldown=torch.zeros_like(ships.gun_cooldown),
+    )
     return rules, replace(state, ships=ships, fields=fields)
 
 
@@ -66,14 +85,16 @@ def test_gun_range_and_time_of_flight_match_a_bullet_fired_in_the_game(ship_type
     start = torch.tensor([0.0, 0.0])
     for move in range(2, rules.bullet_moves + 1):
         state, _ = api.move(rules, TYPES, state, _action(), spread)
-        travelled = float(torch.hypot(state.bullets.x[0, 0, 0] - start[0],
-                                      state.bullets.y[0, 0, 0] - start[1]))
+        travelled = float(
+            torch.hypot(state.bullets.x[0, 0, 0] - start[0], state.bullets.y[0, 0, 0] - start[1])
+        )
         flight = float(time_of_flight(MEASURED, torch.tensor(ship_type), torch.tensor(travelled)))
         assert flight == pytest.approx(move * rules.tick_length, rel=2e-3), move
     assert travelled == pytest.approx(float(MEASURED.gun_range[ship_type]), rel=2e-3)
     # Fired along the flight path, the muzzle speed adds to the ship's.
     assert float(MEASURED.bullet_speed[ship_type]) == pytest.approx(
-        cruise + float(TYPES.muzzle_speed[ship_type]), rel=1e-4)
+        cruise + float(TYPES.muzzle_speed[ship_type]), rel=1e-4
+    )
 
 
 def test_cruise_and_top_speed_match_the_reference_maneuvers():
@@ -83,9 +104,11 @@ def test_cruise_and_top_speed_match_the_reference_maneuvers():
     stats = json.loads((GOLDEN / "flight_maneuvers.json").read_text())["stats"]
     for ship_type, prefix in ((0, ""), (1, "heavy_")):
         assert float(MEASURED.cruise_speed[ship_type]) == pytest.approx(
-            stats[f"{prefix}top_full_store"]["final_speed"], rel=2e-4)
+            stats[f"{prefix}top_full_store"]["final_speed"], rel=2e-4
+        )
         assert float(MEASURED.top_speed[ship_type]) == pytest.approx(
-            stats[f"{prefix}dive_full_store"]["peak_speed"], rel=5e-3)
+            stats[f"{prefix}dive_full_store"]["peak_speed"], rel=5e-3
+        )
 
 
 @pytest.mark.slow
@@ -105,25 +128,35 @@ def test_turn_rates_match_a_settled_turn_in_the_game(ship_type):
             energy[0, 0] = store
             state = replace(state, ships=replace(state.ships, energy=energy))
             ships = state.ships
-            path_cos = (ships.heading_cos * ships.angle_of_attack_cos
-                        + ships.heading_sin * ships.angle_of_attack_sin)
-            path_sin = (ships.heading_sin * ships.angle_of_attack_cos
-                        - ships.heading_cos * ships.angle_of_attack_sin)
+            path_cos = (
+                ships.heading_cos * ships.angle_of_attack_cos
+                + ships.heading_sin * ships.angle_of_attack_sin
+            )
+            path_sin = (
+                ships.heading_sin * ships.angle_of_attack_cos
+                - ships.heading_cos * ships.angle_of_attack_sin
+            )
             angles.append(math.atan2(float(path_sin[0, 0]), float(path_cos[0, 0])))
-        turned = torch.tensor(angles[-second - 1:]).diff()
+        turned = torch.tensor(angles[-second - 1 :]).diff()
         turned = torch.remainder(turned + math.pi, 2 * math.pi) - math.pi
         rate = float(turned.sum()) / (second * rules.tick_length)
         assert float(MEASURED.turn_rate[ship_type, level]) == pytest.approx(rate, rel=0.01)
 
 
 def test_card_values_and_constants_are_read_as_given():
-    for name in ("max_energy", "bullet_energy_cost", "max_shield", "hit_radius",
-                 "max_acceleration"):
+    for name in (
+        "max_energy",
+        "bullet_energy_cost",
+        "max_shield",
+        "hit_radius",
+        "max_acceleration",
+    ):
         assert torch.equal(getattr(MEASURED, name), getattr(TYPES, name)), name
     airframe = airframe_of(TYPES, torch.arange(TYPES.max_energy.shape[0]))
     assert torch.equal(MEASURED.corner_speed, airframe.corner_speed)  # the game's own value
-    torch.testing.assert_close(MEASURED.stall_angle,
-                               RULES.flight.stall_angle * TYPES.stall_angle_scale)
+    torch.testing.assert_close(
+        MEASURED.stall_angle, RULES.flight.stall_angle * TYPES.stall_angle_scale
+    )
     torch.testing.assert_close(MEASURED.vision_range, RULES.vision_range * TYPES.vision_range_scale)
     torch.testing.assert_close(MEASURED.bullet_drag, RULES.bullet_drag * TYPES.bullet_drag_scale)
     assert characteristics(TYPES, RULES) is MEASURED  # cached

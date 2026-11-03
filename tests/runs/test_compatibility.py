@@ -11,6 +11,11 @@ import torch
 from bnb.runs.checkpoint import load_policy
 from bnb.runs.registry import MODELS
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
+
 # float32 on the CPU. The same machine and library versions reproduce the outputs bit for
 # bit; another CPU or BLAS may order a sum differently, which moves an output by a few ulps
 # of the largest term (the weights are of order 0.3, the outputs of order 10). A change of
@@ -23,7 +28,8 @@ def test_each_model_has_exactly_one_entry_at_its_current_version(name):
     entries = sorted(path.name for path in compatibility.SET.glob(f"{name}-v*"))
     assert entries == [compatibility.entry(name).name], (
         f"{name} is at version {MODELS[name].VERSION}; write its entry with "
-        f"tests/runs/compatibility.py {name}")
+        f"tests/runs/compatibility.py {name}"
+    )
 
 
 @pytest.mark.parametrize("name", sorted(MODELS))
@@ -35,6 +41,12 @@ def test_the_stored_policy_still_computes_its_stored_outputs(name):
     got = cases.single_step(model, obs, carry)
     assert got.keys() == want.keys()
     for key, tensor in want.items():
-        torch.testing.assert_close(got[key], tensor, **OUTPUT_TOLERANCE, msg=lambda message: (
-            f"{name} version {MODELS[name].VERSION} computes another {key}: a change to what "
-            f"saved weights compute needs a version bump (runs spec 4). {message}"))
+        torch.testing.assert_close(
+            got[key],
+            tensor,
+            **OUTPUT_TOLERANCE,
+            msg=lambda message: (
+                f"{name} version {MODELS[name].VERSION} computes another {key}: a change to what "
+                f"saved weights compute needs a version bump (runs spec 4). {message}"
+            ),
+        )

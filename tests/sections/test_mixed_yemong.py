@@ -15,21 +15,31 @@ from bnb.models.yemong import policy
 from bnb.models.yemong.inputs import POSITION_CODE
 from bnb.models.yemong.state_code import POSITION_PERIOD
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
+
 OWN = 5
-POOLS = (Pool("frontline", 0.5, ("learner", "chaser"), 0.5, mode="frontline"),
-         Pool("deathmatch", 0.5, ("learner", "learner"), 0.5))
+POOLS = (
+    Pool("frontline", 0.5, ("learner", "chaser"), 0.5, mode="frontline"),
+    Pool("deathmatch", 0.5, ("learner", "learner"), 0.5),
+)
 
 
-def _mixed_rollout(net, envs: int = 8, length: int = 32, runs: int = 1):
+def _mixed_rollout(net, environments: int = 8, length: int = 32, runs: int = 1):
     """Yemong learning views of a mixed batch: Frontline against the chaser (first), team
     deathmatch in self-play (absent zones), short clocks so the segment has resets."""
     from bnb.runtime.rollout import Rollout
 
     config = cases.SHORT_SQUAD
-    controllers = {"learner": cases.controller(net, config),
-                   "chaser": Chaser(config.ships_per_team)}
-    runner = Rollout(config, POOLS, controllers, "learner", envs, length, cases.CPU,
-                     compile=False)
+    controllers = {
+        "learner": cases.controller(net, config),
+        "chaser": Chaser(config.ships_per_team),
+    }
+    runner = Rollout(
+        config, POOLS, controllers, "learner", environments, length, cases.CPU, compiled=False
+    )
     for _ in range(runs):
         trajectory = runner.run()
     return trajectory
@@ -46,16 +56,19 @@ def _views(ticks: int = 24):
 
 
 def _last(obs: Obs) -> Obs:
-    return Obs(ships=obs.ships[-1], fields=obs.fields[-1], globals=obs.globals[-1],
-               zones=obs.zones[-1])
+    return Obs(
+        ships=obs.ships[-1], fields=obs.fields[-1], globals=obs.globals[-1], zones=obs.zones[-1]
+    )
 
 
 def _garbage(view: Obs, seed: int) -> Obs:
     """The view with every column of its absent zones but `present` replaced by noise."""
     zones = view.zones.clone()
     absent = zones[..., ZONE["present"]] < 0.5
-    noise = torch.randn(zones.shape, generator=torch.Generator().manual_seed(seed),
-                        dtype=zones.dtype) * 500.0
+    noise = (
+        torch.randn(zones.shape, generator=torch.Generator().manual_seed(seed), dtype=zones.dtype)
+        * 500.0
+    )
     columns = torch.tensor([name != "present" for name in ZONE_COLUMNS])
     zones = torch.where(absent[..., None] & columns, noise, zones)
     return dataclasses.replace(view, zones=zones)
@@ -70,12 +83,21 @@ def test_absent_zone_columns_change_no_output():
     with torch.no_grad():
         plain = net.step(carry, view, reset)
         noisy = net.step(carry, _garbage(view, 1), reset)
-        for name in ("policy_logits", "enemy_action_logits", "next_state_logits", "values",
-                     "outcome_probabilities"):
+        for name in (
+            "policy_logits",
+            "enemy_action_logits",
+            "next_state_logits",
+            "values",
+            "outcome_probabilities",
+        ):
             assert torch.equal(getattr(plain, name), getattr(noisy, name)), name
-        replay = cases.step_loop(net, net.step, net.initial_carry(views, OWN, 10), obs,
-                                 torch.zeros(obs.ships.shape[:2] + (OWN,), dtype=torch.int32)
-                                 )[0].replay
+        replay = cases.step_loop(
+            net,
+            net.step,
+            net.initial_carry(views, OWN, 10),
+            obs,
+            torch.zeros(obs.ships.shape[:2] + (OWN,), dtype=torch.int32),
+        )[0].replay
         noisy_obs = dataclasses.replace(obs, zones=_garbage(obs, 2).zones)
         first = net.unroll(carry, obs, replay, cases.resets(obs))
         second = net.unroll(carry, noisy_obs, replay, cases.resets(obs))
@@ -101,11 +123,12 @@ def test_an_absent_zone_is_the_learned_token_at_the_global_tokens_rotation():
     assert not torch.equal(zone_memory[~absent], learned[~absent])
     # the rotation: the absent zones' rotary tables are the global token's
     for token_table, map_table in zip(token_tables, map_tables, strict=True):
-        global_table = token_table[..., N:N + 1, :, :].expand_as(map_table[..., M:, :, :])
+        global_table = token_table[..., N : N + 1, :, :].expand_as(map_table[..., M:, :, :])
         assert torch.equal(map_table[..., M:, :, :][absent], global_table[absent])
     centre = tokens.query_position[..., N, :]
-    assert torch.equal(tokens.memory_position[..., M:, :][absent],
-                       centre[:, None, :].expand(-1, 5, -1)[absent])
+    assert torch.equal(
+        tokens.memory_position[..., M:, :][absent], centre[:, None, :].expand(-1, 5, -1)[absent]
+    )
 
 
 def test_the_offset_stays_hidden_with_absent_zones():
@@ -114,27 +137,34 @@ def test_the_offset_stays_hidden_with_absent_zones():
     delta gives the same outputs."""
     net, obs = _views(ticks=24)
     with torch.no_grad():
-        for kind in (net.encoder.ship, net.encoder.field, net.encoder.global_token,
-                     net.encoder.zone):
+        for kind in (
+            net.encoder.ship,
+            net.encoder.field,
+            net.encoder.global_token,
+            net.encoder.zone,
+        ):
             kind.first.weight[:, :POSITION_CODE] = 0.0
     views = obs.ships.shape[1]
-    tail = Obs(ships=obs.ships[:-1], fields=obs.fields[:-1], globals=obs.globals[:-1],
-               zones=obs.zones[:-1])
+    tail = Obs(
+        ships=obs.ships[:-1], fields=obs.fields[:-1], globals=obs.globals[:-1], zones=obs.zones[:-1]
+    )
     joint = torch.zeros(obs.ships.shape[:2] + (OWN,), dtype=torch.int32)
     with torch.no_grad():
         _, carry = cases.step_loop(net, net.step, net.initial_carry(views, OWN, 10), tail, joint)
         delta = torch.rand(views, 2, dtype=torch.float64) * POSITION_PERIOD
         means = carry.belief.means.clone()
         means[..., 0:2] += delta[:, None, :]
-        shifted = dataclasses.replace(carry, offset=carry.offset + delta,
-                                      belief=dataclasses.replace(carry.belief, means=means))
+        shifted = dataclasses.replace(
+            carry,
+            offset=carry.offset + delta,
+            belief=dataclasses.replace(carry.belief, means=means),
+        )
         reset = torch.zeros(views, dtype=torch.bool)
         view = _last(obs)
         plain, moved = net.step(carry, view, reset), net.step(shifted, view, reset)
     assert (view.zones[..., ZONE["present"]] < 0.5).any()
     for name in ("policy_logits", "enemy_action_logits", "values", "outcome_probabilities"):
-        torch.testing.assert_close(getattr(moved, name), getattr(plain, name),
-                                   rtol=1e-8, atol=1e-8)
+        torch.testing.assert_close(getattr(moved, name), getattr(plain, name), rtol=1e-8, atol=1e-8)
 
 
 def test_unroll_reproduces_a_stored_mixed_rollout():
@@ -144,17 +174,21 @@ def test_unroll_reproduces_a_stored_mixed_rollout():
     trajectory = _mixed_rollout(net, length=48, runs=2)
     assert cases.resets(trajectory.obs)[1:].any()
     with torch.no_grad():
-        unrolled = net.unroll(trajectory.initial_carry, trajectory.obs, trajectory.replay,
-                              cases.resets(trajectory.obs))
+        unrolled = net.unroll(
+            trajectory.initial_carry,
+            trajectory.obs,
+            trajectory.replay,
+            cases.resets(trajectory.obs),
+        )
     assert cases.scale_error(unrolled.values, trajectory.values) <= 1e-4
-    logp, _ = policy.evaluate(unrolled.policy_logits, cases.joint_actions(trajectory))
-    assert cases.scale_error(logp, trajectory.logp) <= 1e-4
+    log_probability, _ = policy.evaluate(unrolled.policy_logits, cases.joint_actions(trajectory))
+    assert cases.scale_error(log_probability, trajectory.log_probability) <= 1e-4
 
 
 @pytest.mark.gpu
 @pytest.mark.slow
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
-def test_a_compiled_captured_mixed_rollout_stores_what_unroll_needs():
+def test_a_compiled_captured_mixed_rollout_stores_what_unroll_needs(fresh_compiler):
     """The mixed batch compiles into the runtime's stages and captures as one CUDA graph,
     and the stored decisions still agree with unroll to float32 rounding."""
     from bnb.runtime.rollout import Rollout
@@ -162,16 +196,22 @@ def test_a_compiled_captured_mixed_rollout_stores_what_unroll_needs():
     device = torch.device("cuda")
     net = cases.model().to(device)
     config = cases.SHORT_SQUAD
-    controllers = {"learner": cases.controller(net, config),
-                   "chaser": Chaser(config.ships_per_team)}
-    runner = Rollout(config, POOLS, controllers, "learner", 16, 64, device, compile=True)
+    controllers = {
+        "learner": cases.controller(net, config),
+        "chaser": Chaser(config.ships_per_team),
+    }
+    runner = Rollout(config, POOLS, controllers, "learner", 16, 64, device, compiled=True)
     trajectory = runner.run()
     assert runner.graph is not None and cases.resets(trajectory.obs)[1:].any()
     present = trajectory.obs.zones[..., ZONE["present"]]
     assert (present == 1).any() and (present == 0).any()
     with torch.no_grad():
-        unrolled = net.unroll(trajectory.initial_carry, trajectory.obs, trajectory.replay,
-                              cases.resets(trajectory.obs))
+        unrolled = net.unroll(
+            trajectory.initial_carry,
+            trajectory.obs,
+            trajectory.replay,
+            cases.resets(trajectory.obs),
+        )
     assert cases.scale_error(unrolled.values, trajectory.values) <= 1e-5
-    logp, _ = policy.evaluate(unrolled.policy_logits, cases.joint_actions(trajectory))
-    assert cases.scale_error(logp, trajectory.logp) <= 1e-5
+    log_probability, _ = policy.evaluate(unrolled.policy_logits, cases.joint_actions(trajectory))
+    assert cases.scale_error(log_probability, trajectory.log_probability) <= 1e-5

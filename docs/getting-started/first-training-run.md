@@ -12,7 +12,7 @@ reviewed: 2026-11-02
 
 <!-- not-runnable: needs CUDA and runs for minutes -->
 ```bash
-uv run --no-sync bnb train --preset mixed --num-envs 1024 --updates 100
+uv run --no-sync bnb train --preset mixed --environments 1024 --updates 100
 ```
 
 `--preset mixed` trains on the default training mix: Frontline and team deathmatch on two
@@ -21,7 +21,7 @@ pools and the mix. Every option:
 
 <!-- generated: cli-options -->
 
-`--num-envs` must be a multiple of what the pools split into; the command stops with a
+`--environments` must be a multiple of what the pools split into; the command stops with a
 message naming the multiple when it is not.
 
 <!-- runnable -->
@@ -66,8 +66,8 @@ from bnb.learn.ppo import LearnerConfig
 from bnb.runtime.train import TrainConfig, Trainer
 
 config = TrainConfig(game=GameConfig(ships_per_team=1, num_fields=2, arena_radius=1200.0),
-                     num_envs=8, updates=1, length=8, model="relational",
-                     relational_hidden=32, compile=False,
+                     environments=8, updates=1, length=8, model="relational",
+                     relational_hidden=32, compiled=False,
                      learner=LearnerConfig(minibatches=2, micro_batch_rows=8))
 trainer = Trainer(config, torch.device("cpu"))
 row = trainer.update()

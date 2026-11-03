@@ -1,5 +1,6 @@
 ---
 covers: [bench/]
+reviewed: 2026-11-03 09:50
 ---
 
 # Benchmarking
@@ -17,7 +18,7 @@ manager that takes an exclusive `flock` on the file `bench.lock.LOCK_PATH`; a se
 holder waits until the first releases it.
 
 The lock passes through to child processes. While a process holds it, it sets the
-environment variable named by `bench.lock.HELD_ENV` to `1`, and `bench_lock` in any
+environment variable named by `bench.lock.HELD_VARIABLE` to `1`, and `bench_lock` in any
 process that sees that value proceeds without waiting. `bench.run` sets it for each cell
 it starts, so cells run under their parent's lock instead of waiting on it.
 
@@ -70,7 +71,7 @@ ranges below. Benchmarking at sizes nobody tuned for keeps optimizations general
 
 <!-- generated: bench-sizes -->
 
-`bench.sizes.envs_for` sets each cell's batch so that environments times ships is the
+`bench.sizes.environments_for` sets each cell's batch so that environments times ships is the
 ship budget, rounded to a whole multiple of what the pools need.
 
 <!-- runnable -->
@@ -78,7 +79,7 @@ ship budget, rounded to a whole multiple of what the pools need.
 from bench import sizes
 
 for size in sizes.draw(sizes.SKELETON_SEED, 3):
-    print(size, sizes.envs_for(size))
+    print(size, sizes.environments_for(size))
 ```
 
 ## Reading results

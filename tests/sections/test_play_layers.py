@@ -28,8 +28,12 @@ def _allowed(module: str) -> bool:
 
 
 def test_play_reaches_the_game_only_through_its_api():
-    outside = {f"{path.relative_to(PLAY)}: {module}" for path in PLAY.rglob("*.py")
-               for module in _imported_modules(path) if not _allowed(module)}
+    outside = {
+        f"{path.relative_to(PLAY)}: {module}"
+        for path in PLAY.rglob("*.py")
+        for module in _imported_modules(path)
+        if not _allowed(module)
+    }
     assert not outside
 
 
@@ -41,9 +45,11 @@ def test_the_import_check_sees_a_reach_past_the_api(tmp_path):
 
 def test_rendering_never_imports_torch():
     """Import every render module with torch made unimportable."""
-    modules = sorted(f"bnb.play.render.{path.stem}" for path in RENDER.glob("*.py")
-                     if path.stem != "__init__")
-    code = ("import sys; sys.modules['torch'] = None\n"
-            + "".join(f"import {module}\n" for module in modules))
+    modules = sorted(
+        f"bnb.play.render.{path.stem}" for path in RENDER.glob("*.py") if path.stem != "__init__"
+    )
+    code = "import sys; sys.modules['torch'] = None\n" + "".join(
+        f"import {module}\n" for module in modules
+    )
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr

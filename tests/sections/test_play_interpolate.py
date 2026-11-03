@@ -12,6 +12,10 @@ from bnb.game.modes.rules import PRESETS
 from bnb.play.interpolate import interpolate
 from bnb.play.loop import MatchLoop
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
 
 @pytest.fixture(autouse=True, scope="module")
 def one_thread():
@@ -35,8 +39,9 @@ def test_positions_shield_and_energy_are_linear():
     for alpha in (0.0, 0.25, 1.0):
         frame = interpolate(previous, current, alpha)
         for name in ("x", "y", "shield", "energy"):
-            want = getattr(previous.ships, name) + alpha * (getattr(current.ships, name)
-                                                            - getattr(previous.ships, name))
+            want = getattr(previous.ships, name) + alpha * (
+                getattr(current.ships, name) - getattr(previous.ships, name)
+            )
             assert np.allclose(getattr(frame.ships, name), want, atol=1e-4), name
 
 
@@ -44,8 +49,9 @@ def test_headings_take_the_shortest_way_round():
     """A ship turning across the back (170 to -170 degrees) draws through 180, not 0;
     the flight path the same."""
     previous, current = _pair()
-    moving = int(np.flatnonzero(current.ships.alive & ~current.ships.spawned
-                                & previous.ships.alive)[0])
+    moving = int(
+        np.flatnonzero(current.ships.alive & ~current.ships.spawned & previous.ships.alive)[0]
+    )
 
     def turned(ships, degrees: float):
         heading = ships.heading.copy()
@@ -118,8 +124,9 @@ def test_a_refired_slot_draws_from_its_launch_point():
     x, y, moves_left = after.x.copy(), after.y.copy(), after.moves_left.copy()
     x[flying], y[flying] = launch_x + offset_x, launch_y + offset_y
     moves_left[flying] = after.moves_left[new]
-    refired = dataclasses.replace(current, bullets=dataclasses.replace(
-        after, x=x, y=y, moves_left=moves_left))
+    refired = dataclasses.replace(
+        current, bullets=dataclasses.replace(after, x=x, y=y, moves_left=moves_left)
+    )
     for alpha in (0.0, 0.5):
         frame = interpolate(previous, refired, alpha)
         assert np.isclose(frame.bullets.x[flying], launch_x + alpha * offset_x, atol=1e-3)

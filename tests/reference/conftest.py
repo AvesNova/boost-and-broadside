@@ -10,6 +10,7 @@ import sys
 
 import numpy as np
 import pytest
+import torch
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -32,6 +33,17 @@ def arm():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module.make_arm()
+
+
+@pytest.fixture(autouse=True)
+def _another_arm_may_draw(request):
+    """Another implementation (REFERENCE_ARM) may build its modules from torch's default
+    generator, which bnb's arm never does: under one, each test restores the generator."""
+    if not os.environ.get("REFERENCE_ARM"):
+        yield
+        return
+    with torch.random.fork_rng(devices=[]):
+        yield
 
 
 def golden(name: str) -> dict:

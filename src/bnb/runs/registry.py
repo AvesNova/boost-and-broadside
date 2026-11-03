@@ -27,6 +27,5 @@ def name_of(model: torch.nn.Module) -> str:
     """The registered name of a model instance."""
     cls = type(model)
     if cls not in BUILDS:
-        raise ValueError(f"{cls.__name__} is not a registered model; registered: "
-                         f"{sorted(MODELS)}")
+        raise ValueError(f"{cls.__name__} is not a registered model; registered: {sorted(MODELS)}")
     return cls.NAME

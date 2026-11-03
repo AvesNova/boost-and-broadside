@@ -164,7 +164,7 @@ Section code does not compile itself. The learner takes a `stage` function from 
 re-simulation's tick (`bnb.learn.shots.tick`). `TrainConfig.precision` defaults to
 `"bfloat16"`: the model's matmuls run under bf16 autocast, in the rollout and in the update
 alike. `"float32"` (strict) and `"tf32"` (a process-wide setting the entry point applies with
-`bnb.runtime.train.set_precision`) are the alternatives. The residual stream, norms,
+`bnb.cli.set_precision`) are the alternatives. The residual stream, norms,
 softmax, the recurrent state, the codes, the belief, the critic's expectations, every loss,
 the weights and the optimizer stay float32 in all of them.
 

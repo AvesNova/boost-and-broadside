@@ -37,13 +37,21 @@ from bnb.models.yemong.density import HexGrid, poisson_terms
 
 from . import labels, losses, returns, shots
 
-TERMS = ("policy", "entropy", "value", "next_state", "enemy_action", "density",
-         "shot_trajectory", "shot_outcome")
+TERMS = (
+    "policy",
+    "entropy",
+    "value",
+    "next_state",
+    "enemy_action",
+    "density",
+    "shot_trajectory",
+    "shot_outcome",
+)
 # Token counts per view, the denominators' parts: own ships alive; own ships valued (alive or
 # waiting to respawn); view-steps; valid beliefs at non-final steps; enemies alive; shots.
 COUNTS = ("policy", "valued", "steps", "next_state", "enemy_action", "shots")
 # The per-tick records the returns read, staged whole per shard.
-SMALL = ("reward", "values", "outcome", "done", "result", "logp", "alive", "valued")
+SMALL = ("reward", "values", "outcome", "done", "result", "log_probability", "alive", "valued")
 # The stored shot labels' name in the store: per view, {"shots": Shots, "mask"}, (V, L, ...).
 SHOT_LABELS = "shot_labels"
 
@@ -103,12 +111,16 @@ class Segments(Protocol):
     length: int
     names: tuple[str, ...]
 
-    def shard(self, names: tuple[str, ...], shard: int) -> dict: ...
+    def shard(self, names: tuple[str, ...], shard: int) -> dict:
+        """Whole-shard copies on the device of the per-tick leaves names, (L, R, ...) with
+        R = views // shards."""
 
-    def batches(self, names: tuple[str, ...],
-                view_batches: list[torch.Tensor]) -> Iterator[dict]: ...
+    def batches(self, names: tuple[str, ...], view_batches: list[torch.Tensor]) -> Iterator[dict]:
+        """Yield {name: pytree} on the device for each list of views in view_batches."""
 
-    def write_views(self, source: dict, views: slice) -> None: ...
+    def write_views(self, source: dict, views: slice) -> None:
+        """Copy {name: pytree (n, ...)} into the per-view leaves of the n views of the slice
+        views."""
 
 
 def random_stream(seed: int, name: str, device: torch.device | None = None) -> torch.Generator:
@@ -126,8 +138,12 @@ def learning_rate(config: LearnerConfig, steps: int) -> float:
 def trajectory_runs(code: shot_codes.ShotCodeParameters) -> codes.Runs:
     """The shot trajectory code's parts as (groups, size): displacement, direction, speed,
     refractive index."""
-    return ((code.displacement_levels, 9), (code.direction_levels, 4), (1, code.speed_bins),
-            (1, code.index_bins))
+    return (
+        (code.displacement_levels, 9),
+        (code.direction_levels, 4),
+        (1, code.speed_bins),
+        (1, code.index_bins),
+    )
 
 
 def _head(unrolled, name: str):
@@ -135,7 +151,7 @@ def _head(unrolled, name: str):
 
 
 def _own_joint(trajectory: Trajectory) -> torch.Tensor:
-    return to_joint(trajectory.action)[..., :trajectory.logp.shape[-1]]
+    return to_joint(trajectory.action)[..., : trajectory.log_probability.shape[-1]]
 
 
 class Learner:
@@ -147,9 +163,17 @@ class Learner:
     runtime compiles the micro-batch loss, the shot re-simulation's tick and the label codes
     (identity: eager)."""
 
-    def __init__(self, model: torch.nn.Module, config: LearnerConfig, rules: Rules,
-                 types: ShipTypes, outcome_weight: float, device: torch.device,
-                 stage: Callable = lambda function: function, seed: int = 0) -> None:
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        config: LearnerConfig,
+        rules: Rules,
+        types: ShipTypes,
+        outcome_weight: float,
+        device: torch.device,
+        stage: Callable = lambda function: function,
+        seed: int = 0,
+    ) -> None:
         """seed: the learner's random streams (the shot spread, the minibatch order)."""
         self.model, self.config, self.rules, self.types = model, config, rules, types
         self.device, self.outcome_weight = device, outcome_weight
@@ -159,10 +183,12 @@ class Learner:
         self.outcome_level = levels.index(model.config.outcome_level)
         self.local_levels = model.config.local_levels
         self.local_index = torch.tensor(self.local_levels, device=device)  # no copy per use
-        self.optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate,
-                                          fused=device.type == "cuda")
-        self.return_scale = critic.ReturnScale(config.return_scale_decay,
-                                               config.return_scale_floor, device)
+        self.optimizer = torch.optim.Adam(
+            model.parameters(), lr=config.learning_rate, fused=device.type == "cuda"
+        )
+        self.return_scale = critic.ReturnScale(
+            config.return_scale_decay, config.return_scale_floor, device
+        )
         self.spread_generator = random_stream(seed, "shot_spread", device)
         self.order_generator = random_stream(seed, "minibatch_order")  # host indices
         self.auxiliary = hasattr(model, "state_code")
@@ -176,7 +202,7 @@ class Learner:
         self.loss = stage(self._loss)
         self.shot_tick = stage(shots.tick)
         self.codes = stage(self._codes)
-        self.env_steps = 0
+        self.environment_steps = 0
 
     # ------------------------------------------------------------------ returns
 
@@ -193,23 +219,40 @@ class Learner:
         values = self._in_reward_units(small["values"])
         done = small["done"]
         advantages, level_returns = returns.per_level_gae(
-            small["reward"], values, done, self._in_reward_units(bootstrap.values), done[-1],
-            self.discount, self.trace_decay)
-        own_alive = small["alive"][..., :values.shape[-2]]
+            small["reward"],
+            values,
+            done,
+            self._in_reward_units(bootstrap.values),
+            done[-1],
+            self.discount,
+            self.trace_decay,
+        )
+        own_alive = small["alive"][..., : values.shape[-2]]
         team = torch.zeros_like(own_alive, dtype=torch.int64)  # a view's own ships: one team
-        advantage, total = returns.team_aggregate(team, own_alive, advantages, level_returns,
-                                                  self.team_spirit)
-        targets = critic.outcome_targets(small["outcome"], small["result"], done,
-                                         bootstrap.outcome,
-                                         config.discount[level], config.trace_decay[level])
-        return dict(advantage=advantage, total=total, level_returns=level_returns,
-                    values=values, outcome_targets=targets)
+        advantage, total = returns.team_aggregate(
+            team, own_alive, advantages, level_returns, self.team_spirit
+        )
+        targets = critic.outcome_targets(
+            small["outcome"],
+            small["result"],
+            done,
+            bootstrap.outcome,
+            config.discount[level],
+            config.trace_decay[level],
+        )
+        return dict(
+            advantage=advantage,
+            total=total,
+            level_returns=level_returns,
+            values=values,
+            outcome_targets=targets,
+        )
 
     @staticmethod
     def _counts(small: dict) -> torch.Tensor:
         """(R, COUNTS) the tokens of each view that the small records give; the pass over
         the views fills in the rest."""
-        own = small["logp"].shape[-1]
+        own = small["log_probability"].shape[-1]
         alive, length = small["alive"], small["done"].shape[0]
         counts = torch.zeros((alive.shape[1], len(COUNTS)), device=alive.device)
         counts[:, COUNTS.index("policy")] = alive[..., :own].sum((0, 2))
@@ -223,9 +266,17 @@ class Learner:
     def shots(self, trajectory: Trajectory, spread: torch.Tensor):
         """The re-simulated shots and the loss mask: valid shots of own ships and of enemies
         visible at t."""
-        own = trajectory.logp.shape[-1]
-        shot = shots.resimulate(self.rules, self.types, trajectory.capture, trajectory.obs.fields,
-                                trajectory.done, spread, own, self.shot_tick)
+        own = trajectory.log_probability.shape[-1]
+        shot = shots.resimulate(
+            self.rules,
+            self.types,
+            trajectory.capture,
+            trajectory.obs.fields,
+            trajectory.done,
+            spread,
+            own,
+            self.shot_tick,
+        )
         visible = trajectory.obs.ships[..., SHIP["visible"]] > 0.5
         rows = torch.arange(visible.shape[-1], device=visible.device) < own
         return shot, shot.valid & (rows | visible)
@@ -238,16 +289,16 @@ class Learner:
             return {}
         return self.codes(trajectory, shot_labels["shots"], shot_labels["mask"])
 
-    def staged(self, segments: Segments,
-               view_batches: list[torch.Tensor]) -> Iterator[tuple[Trajectory, dict | None]]:
+    def staged(
+        self, segments: Segments, view_batches: list[torch.Tensor]
+    ) -> Iterator[tuple[Trajectory, dict | None]]:
         """Each batch of views (host indices) on the device: its Trajectory and, with
         auxiliary heads, its shot labels from the store ({"shots", "mask"}, (L, n, ...))."""
         names = segments.names + ((SHOT_LABELS,) if self.auxiliary else ())
         for batch in segments.batches(names, view_batches):
             stored = batch.pop(SHOT_LABELS, None)
             if stored is not None:
-                stored = _pytree.tree_map_only(torch.Tensor, lambda x: x.transpose(0, 1),
-                                               stored)
+                stored = _pytree.tree_map_only(torch.Tensor, lambda x: x.transpose(0, 1), stored)
             yield Trajectory(**batch), stored
 
     def _codes(self, trajectory: Trajectory, shot: shots.Shots, shot_mask: torch.Tensor) -> dict:
@@ -260,85 +311,124 @@ class Learner:
         return dict(
             next_state=labels.next_state_targets(model.state_code, trajectory, rows),
             next_state_mask=labels.next_state_mask(trajectory),
-            enemy_action=enemy, enemy_mask=enemy_mask,
+            enemy_action=enemy,
+            enemy_mask=enemy_mask,
             density=labels.density_targets(self.grid, trajectory, rows),
             shot_trajectory=shot_codes.trajectory_code(code, shot.snapshots),
-            shot_ages=shot.age_valid, shot_mask=shot_mask,
-            shot_outcome=shot_codes.outcome_code(code, shot.hit, shot.distance, shot.side))
+            shot_ages=shot.age_valid,
+            shot_mask=shot_mask,
+            shot_outcome=shot_codes.outcome_code(code, shot.hit, shot.distance, shot.side),
+        )
 
     # ------------------------------------------------------------------ the loss
 
     def unroll(self, trajectory: Trajectory):
+        """The model's outputs over a stored segment (L, R, ...), from its initial carry and replay,
+        with the resets read from the observation's globals."""
         reset = trajectory.obs.globals[..., GLOBAL["reset"]] > 0.5
-        return self.model.unroll(trajectory.initial_carry, trajectory.obs, trajectory.replay,
-                                 reset)
+        return self.model.unroll(trajectory.initial_carry, trajectory.obs, trajectory.replay, reset)
 
-    def _loss(self, trajectory: Trajectory, label: dict, derived: dict, denominator: dict,
-              scale: torch.Tensor):
-        """One micro-batch: (loss, terms (TERMS,), value loss per level (K,), statistics
+    def _loss(
+        self,
+        trajectory: Trajectory,
+        label: dict,
+        derived: dict,
+        denominator: dict,
+        scale: torch.Tensor,
+    ):
+        """One micro-batch: (loss, terms (TERMS,), value loss per level (levels,), statistics
         (STATISTICS,)), every sum over its tokens divided by its minibatch-total
         denominator."""
         config, model = self.config, self.model
         unrolled = self.unroll(trajectory)
-        own = trajectory.logp.shape[-1]
+        own = trajectory.log_probability.shape[-1]
         terms = dict.fromkeys(TERMS, unrolled.policy_logits.new_zeros(()))
         terms["policy"], terms["entropy"], statistics = self._policy(
-            unrolled, trajectory, derived, denominator, scale)
+            unrolled, trajectory, derived, denominator, scale
+        )
         per_level = losses.critic_losses(
-            unrolled.value_logits, unrolled.outcome_logits,
-            derived["level_returns"].index_select(-1, self.local_index), derived["outcome_targets"],
-            trajectory.valued, model.bins, self.local_levels, self.outcome_level,
-            denominator["valued"], denominator["steps"])
+            unrolled.value_logits,
+            unrolled.outcome_logits,
+            derived["level_returns"].index_select(-1, self.local_index),
+            derived["outcome_targets"],
+            trajectory.valued,
+            model.bins,
+            self.local_levels,
+            self.outcome_level,
+            denominator["valued"],
+            denominator["steps"],
+        )
         terms["value"] = per_level.sum()
         if _head(unrolled, "next_state_logits") is not None:
-            next_state = codes.grouped_cross_entropy(unrolled.next_state_logits,
-                                                     label["next_state"],
-                                                     model.state_code.runs).sum(-1)
-            terms["next_state"] = losses.masked_sum(next_state, label["next_state_mask"]) \
-                / denominator["next_state"]
+            next_state = codes.grouped_cross_entropy(
+                unrolled.next_state_logits, label["next_state"], model.state_code.runs
+            ).sum(-1)
+            terms["next_state"] = (
+                losses.masked_sum(next_state, label["next_state_mask"]) / denominator["next_state"]
+            )
         if _head(unrolled, "enemy_action_logits") is not None:
-            enemy = losses.index_cross_entropy(unrolled.enemy_action_logits[..., own:, :],
-                                               label["enemy_action"])
-            terms["enemy_action"] = losses.masked_sum(enemy, label["enemy_mask"]) \
-                / denominator["enemy_action"]
+            enemy = losses.index_cross_entropy(
+                unrolled.enemy_action_logits[..., own:, :], label["enemy_action"]
+            )
+            terms["enemy_action"] = (
+                losses.masked_sum(enemy, label["enemy_mask"]) / denominator["enemy_action"]
+            )
         if _head(unrolled, "density_log_rates") is not None:
             per_cell, saturated = poisson_terms(unrolled.density_log_rates, label["density"])
             valued = trajectory.valued.sum(-1).clamp_min(1)
-            terms["density"] = ((per_cell - saturated).sum(-1) / valued).sum() \
-                / denominator["steps"]
+            terms["density"] = ((per_cell - saturated).sum(-1) / valued).sum() / denominator[
+                "steps"
+            ]
         if _head(unrolled, "shot_latents") is not None:
             parts, outcome = losses.shot_cross_entropy(
                 model.shot_trajectory(unrolled.shot_latents, self.ages),
-                label["shot_trajectory"], unrolled.shot_outcome_logits, label["shot_outcome"],
-                self.shot_runs)
+                label["shot_trajectory"],
+                unrolled.shot_outcome_logits,
+                label["shot_outcome"],
+                self.shot_runs,
+            )
             ages = label["shot_ages"]
             per_shot = torch.where(ages, parts.sum(-1), 0.0).sum(-1) / ages.sum(-1).clamp_min(1)
-            terms["shot_trajectory"] = losses.masked_sum(per_shot, label["shot_mask"]) \
-                / denominator["shots"]
-            terms["shot_outcome"] = losses.masked_sum(outcome, label["shot_mask"]) \
-                / denominator["shots"]
+            terms["shot_trajectory"] = (
+                losses.masked_sum(per_shot, label["shot_mask"]) / denominator["shots"]
+            )
+            terms["shot_outcome"] = (
+                losses.masked_sum(outcome, label["shot_mask"]) / denominator["shots"]
+            )
         loss = sum(getattr(config, term) * terms[term] for term in TERMS)
-        return loss, torch.stack([terms[term] for term in TERMS]).detach(), \
-            per_level.detach(), statistics.detach()
+        return (
+            loss,
+            torch.stack([terms[term] for term in TERMS]).detach(),
+            per_level.detach(),
+            statistics.detach(),
+        )
 
     STATISTICS = ("clip_fraction", "approximate_kl")  # what `_policy` reports per minibatch
 
-    def _policy(self, unrolled, trajectory: Trajectory, derived: dict, denominator: dict,
-                scale: torch.Tensor):
+    def _policy(
+        self,
+        unrolled,
+        trajectory: Trajectory,
+        derived: dict,
+        denominator: dict,
+        scale: torch.Tensor,
+    ):
         """The policy's terms of a micro-batch: (the clipped surrogate, the mean entropy,
         statistics (STATISTICS,)), each over own ships alive."""
-        own_alive = trajectory.alive[..., :trajectory.logp.shape[-1]]
-        log_probability, entropy = policy.evaluate(unrolled.policy_logits,
-                                                   _own_joint(trajectory))
+        own_alive = trajectory.alive[..., : trajectory.log_probability.shape[-1]]
+        log_probability, entropy = policy.evaluate(unrolled.policy_logits, _own_joint(trajectory))
         old = derived["old_log_probability"]
-        surrogate = losses.surrogate(log_probability, old, derived["advantage"], scale,
-                                     self.config.clip)
+        surrogate = losses.surrogate(
+            log_probability, old, derived["advantage"], scale, self.config.clip
+        )
         ratio = torch.exp(log_probability - old)
         clipped = losses.masked_sum(((ratio - 1.0).abs() > self.config.clip).float(), own_alive)
         divergence = losses.masked_sum((ratio - 1.0) - (log_probability - old), own_alive)
-        return (losses.masked_sum(surrogate, own_alive) / denominator["policy"],
-                losses.masked_sum(entropy, own_alive) / denominator["policy"],
-                torch.stack([clipped, divergence]) / denominator["policy"])
+        return (
+            losses.masked_sum(surrogate, own_alive) / denominator["policy"],
+            losses.masked_sum(entropy, own_alive) / denominator["policy"],
+            torch.stack([clipped, divergence]) / denominator["policy"],
+        )
 
     def report(self, statistics: list[float]) -> dict:
         """The first epoch's mean STATISTICS, by name."""
@@ -365,7 +455,7 @@ class Learner:
     def prepare(self, segments: Segments, bootstraps: list) -> dict:
         """Steps 1 and 2: per view, the advantage, the returns, the outcome targets and the
         old log-probabilities (L, V, ...), each view's token counts (V, COUNTS), the return
-        scale and the explained variance per level (K,); the shot labels go into the
+        scale and the explained variance per level (levels,); the shot labels go into the
         store."""
         config, device = self.config, self.device
         small = [segments.shard(SMALL, shard) for shard in range(segments.shards)]
@@ -374,43 +464,59 @@ class Learner:
         def joined(name: str, source: list[dict]) -> torch.Tensor:
             return torch.cat([part[name] for part in source], 1)
 
-        derived = {name: joined(name, parts)
-                   for name in ("advantage", "level_returns", "outcome_targets")}
-        rollout_log_probability = joined("logp", small)
+        derived = {
+            name: joined(name, parts) for name in ("advantage", "level_returns", "outcome_targets")
+        }
+        rollout_log_probability = joined("log_probability", small)
         derived["old_log_probability"] = rollout_log_probability.clone()
-        own_alive = joined("alive", small)[..., :rollout_log_probability.shape[-1]]
+        own_alive = joined("alive", small)[..., : rollout_log_probability.shape[-1]]
         scale = self.return_scale.update(joined("total", parts), own_alive)
         counts = torch.cat([self._counts(part) for part in small], 0)
         recompute = config.old_log_probabilities == "recomputed"
         if self.auxiliary or recompute:
             # One spread draw per update: each epoch reads the same stored labels.
-            spread = torch.randn((segments.length, segments.views, self.rules.num_ships, 2),
-                                 device=device, generator=self.spread_generator)
+            spread = torch.randn(
+                (segments.length, segments.views, self.rules.num_ships, 2),
+                device=device,
+                generator=self.spread_generator,
+            )
             order = self._micro_batches(torch.arange(segments.views))  # host indices
-            for host_views, batch in zip(order, segments.batches(segments.names, order),
-                                         strict=True):
+            for host_views, batch in zip(
+                order, segments.batches(segments.names, order), strict=True
+            ):
                 views = self._on_device(host_views)
                 trajectory = Trajectory(**batch)
                 with torch.no_grad():
                     if self.auxiliary:
                         shot, shot_mask = self.shots(trajectory, spread[:, views])
-                        counts[views, COUNTS.index("next_state")] = \
+                        counts[views, COUNTS.index("next_state")] = (
                             labels.next_state_mask(trajectory).sum((0, 2)).float()
+                        )
                         counts[views, COUNTS.index("shots")] = shot_mask.sum((0, 2)).float()
                         stored = _pytree.tree_map_only(
-                            torch.Tensor, lambda x: x.transpose(0, 1).contiguous(),
-                            dict(shots=shot, mask=shot_mask))  # (n, L, ...)
+                            torch.Tensor,
+                            lambda x: x.transpose(0, 1).contiguous(),
+                            dict(shots=shot, mask=shot_mask),
+                        )  # (n, L, ...)
                         first = int(host_views[0])
-                        segments.write_views({SHOT_LABELS: stored},
-                                             slice(first, first + host_views.numel()))
+                        segments.write_views(
+                            {SHOT_LABELS: stored}, slice(first, first + host_views.numel())
+                        )
                     if recompute:
-                        log_probability, _ = policy.evaluate(self.unroll(trajectory).policy_logits,
-                                                             _own_joint(trajectory))
+                        log_probability, _ = policy.evaluate(
+                            self.unroll(trajectory).policy_logits, _own_joint(trajectory)
+                        )
                         derived["old_log_probability"][:, views] = log_probability
-        variance = explained_variance(joined("level_returns", parts), joined("values", parts),
-                                      joined("valued", small))
-        return dict(derived=derived, rollout_log_probability=rollout_log_probability,
-                    counts=counts, scale=scale, explained_variance=variance)
+        variance = explained_variance(
+            joined("level_returns", parts), joined("values", parts), joined("valued", small)
+        )
+        return dict(
+            derived=derived,
+            rollout_log_probability=rollout_log_probability,
+            counts=counts,
+            scale=scale,
+            explained_variance=variance,
+        )
 
     def gradient(self, segments: Segments, prepared: dict, chosen: torch.Tensor) -> tuple:
         """Accumulate one minibatch's gradient (views `chosen`, host indices) into the
@@ -425,22 +531,24 @@ class Learner:
         levels_sum = torch.zeros(len(REWARD_LEVELS), device=device)
         statistics = torch.zeros(len(self.STATISTICS), device=device)
         self.optimizer.zero_grad(set_to_none=True)
-        for host_views, (trajectory, shot_labels) in zip(micro, self.staged(segments, micro),
-                                                         strict=True):
+        for host_views, (trajectory, shot_labels) in zip(
+            micro, self.staged(segments, micro), strict=True
+        ):
             views = self._on_device(host_views)
             label = self.labels(trajectory, shot_labels)
             part = {name: value.index_select(1, views) for name, value in derived.items()}
-            loss, terms, per_level, statistic = self.loss(trajectory, label, part, denominator,
-                                                          prepared["scale"])
+            loss, terms, per_level, statistic = self.loss(
+                trajectory, label, part, denominator, prepared["scale"]
+            )
             loss.backward()
             terms_sum += terms
             levels_sum += per_level
             statistics += statistic
         return terms_sum, levels_sum, statistics
 
-    def update(self, segments: Segments, bootstraps: list, env_steps: int = 0) -> dict:
+    def update(self, segments: Segments, bootstraps: list, environment_steps: int = 0) -> dict:
         """One update from the store's shards and their bootstraps (each the learner's
-        Outputs on the observation after the shard's last tick). env_steps: environment
+        Outputs on the observation after the shard's last tick). environment_steps: environment
         steps this update collected (the warmup counts them)."""
         config, device = self.config, self.device
         views = segments.views
@@ -448,8 +556,8 @@ class Learner:
             raise ValueError(f"{views} views do not make {config.minibatches} minibatches")
         prepared = self.prepare(segments, bootstraps)
         for group in self.optimizer.param_groups:
-            group["lr"] = learning_rate(config, self.env_steps)
-        self.env_steps += env_steps
+            group["lr"] = learning_rate(config, self.environment_steps)
+        self.environment_steps += environment_steps
         terms_total = torch.zeros(len(TERMS), device=device)
         levels_total = torch.zeros(len(REWARD_LEVELS), device=device)
         drift = self.drift(segments, prepared)
@@ -462,8 +570,7 @@ class Learner:
             statistics = torch.zeros(len(self.STATISTICS), device=device)
             for chosen in order.tensor_split(config.minibatches):
                 terms, per_level, statistic = self.gradient(segments, prepared, chosen)
-                norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(),
-                                                      config.max_grad_norm)
+                norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), config.max_grad_norm)
                 nonfinite += ~torch.isfinite(norm)
                 self.optimizer.step()
                 terms_total += terms
@@ -474,27 +581,44 @@ class Learner:
             if epoch == 0:
                 first_epoch = statistics
             # The early stop reads the epoch's mean KL: one host sync per epoch.
-            if (config.target_kl is not None and epoch + 1 < config.epochs
-                    and statistics[self.STATISTICS.index("approximate_kl")].item()
-                    > config.target_kl):
+            if (
+                config.target_kl is not None
+                and epoch + 1 < config.epochs
+                and statistics[self.STATISTICS.index("approximate_kl")].item() > config.target_kl
+            ):
                 stopped = True
                 break
-        readout = torch.cat([terms_total / steps, levels_total / steps,
-                             prepared["explained_variance"], drift, first_epoch,
-                             prepared["scale"].reshape(1), nonfinite]).tolist()  # one transfer
-        terms, readout = readout[:len(TERMS)], readout[len(TERMS):]
-        levels, readout = readout[:len(REWARD_LEVELS)], readout[len(REWARD_LEVELS):]
-        variance, readout = readout[:len(REWARD_LEVELS)], readout[len(REWARD_LEVELS):]
+        readout = torch.cat(
+            [
+                terms_total / steps,
+                levels_total / steps,
+                prepared["explained_variance"],
+                drift,
+                first_epoch,
+                prepared["scale"].reshape(1),
+                nonfinite,
+            ]
+        ).tolist()  # one transfer
+        terms, readout = readout[: len(TERMS)], readout[len(TERMS) :]
+        levels, readout = readout[: len(REWARD_LEVELS)], readout[len(REWARD_LEVELS) :]
+        variance, readout = readout[: len(REWARD_LEVELS)], readout[len(REWARD_LEVELS) :]
         out = {f"loss/{term}": value for term, value in zip(TERMS, terms)}
         out.update({f"value_loss/{name}": value for name, value in zip(REWARD_LEVELS, levels)})
-        out.update({f"explained_variance/{name}": value
-                    for name, value in zip(REWARD_LEVELS, variance)})
+        out.update(
+            {f"explained_variance/{name}": value for name, value in zip(REWARD_LEVELS, variance)}
+        )
         drift, readout = readout[:2], readout[2:]
-        statistics, readout = readout[:len(self.STATISTICS)], readout[len(self.STATISTICS):]
-        out.update(ratio_drift_max=drift[0], ratio_drift_mean=drift[1], **self.report(statistics),
-                   minibatch_steps=steps, stopped_early=stopped, return_scale=readout[0],
-                   nonfinite_gradients=int(readout[1]),
-                   learning_rate=self.optimizer.param_groups[0]["lr"])
+        statistics, readout = readout[: len(self.STATISTICS)], readout[len(self.STATISTICS) :]
+        out.update(
+            ratio_drift_max=drift[0],
+            ratio_drift_mean=drift[1],
+            **self.report(statistics),
+            minibatch_steps=steps,
+            stopped_early=stopped,
+            return_scale=readout[0],
+            nonfinite_gradients=int(readout[1]),
+            learning_rate=self.optimizer.param_groups[0]["lr"],
+        )
         return out
 
     @torch.no_grad()
@@ -507,19 +631,21 @@ class Learner:
         # for reuse only once the compute below is queued (an abandoned generator never does).
         for batch in segments.batches(segments.names, [views]):
             trajectory = Trajectory(**batch)
-            log_probability, _ = policy.evaluate(self.unroll(trajectory).policy_logits,
-                                                 _own_joint(trajectory))
-            mask = trajectory.alive[..., :log_probability.shape[-1]]
+            log_probability, _ = policy.evaluate(
+                self.unroll(trajectory).policy_logits, _own_joint(trajectory)
+            )
+            mask = trajectory.alive[..., : log_probability.shape[-1]]
             rollout = prepared["rollout_log_probability"][:, self._on_device(views)]
             error = torch.where(mask, (torch.exp(log_probability - rollout) - 1.0).abs(), 0.0)
         return torch.stack([error.amax(), error.sum() / mask.sum().clamp_min(1)])
 
 
-def explained_variance(level_returns: torch.Tensor, values: torch.Tensor,
-                       valued: torch.Tensor) -> torch.Tensor:
-    """(K,) per level, 1 - Var(return - value) / Var(return) over the valued own ships
+def explained_variance(
+    level_returns: torch.Tensor, values: torch.Tensor, valued: torch.Tensor
+) -> torch.Tensor:
+    """(levels,) per level, 1 - Var(return - value) / Var(return) over the valued own ships
     (unbiased variances; 0 where the returns do not vary). level_returns, values
-    (L, V, S, K); valued (L, V, S)."""
+    (L, V, S, levels); valued (L, V, S)."""
     mask = valued[..., None].to(level_returns.dtype)
     count = mask.sum((0, 1, 2))
 

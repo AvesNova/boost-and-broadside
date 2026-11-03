@@ -18,9 +18,19 @@ from bnb.contracts.obs import (
 )
 
 
-def random_segment(steps: int, views: int, ships: int = 10, fields: int = 10, zones: int = 5,
-                   device=None, dtype=torch.float32, seed: int = 0, fog_share: float = 0.5,
-                   reset_steps=(), arena_radius: float = 2600.0):
+def random_segment(
+    steps: int,
+    views: int,
+    ships: int = 10,
+    fields: int = 10,
+    zones: int = 5,
+    device=None,
+    dtype=torch.float32,
+    seed: int = 0,
+    fog_share: float = 0.5,
+    reset_steps=(),
+    arena_radius: float = 2600.0,
+):
     """Returns (obs with leaves (L, R, ...), reset (L, R) bool). Views [0, fog_share R) are
     fogged; every view resets at each step in reset_steps."""
     generator = torch.Generator().manual_seed(seed)
@@ -75,8 +85,10 @@ def random_segment(steps: int, views: int, ships: int = 10, fields: int = 10, zo
     put("visible", sight.double())
     put("fired", (torch.rand(shape, generator=generator) < 0.2).double())
     put("respawn_wait", torch.where(alive, 0.0, uniform(*shape, high=8)))
-    put("ship_type", torch.randint(0, 2, (1, views, ships), generator=generator).double()
-        .expand(shape))
+    put(
+        "ship_type",
+        torch.randint(0, 2, (1, views, ships), generator=generator).double().expand(shape),
+    )
     put("team_relative", (torch.arange(ships) >= own).double().expand(shape))
     put("time_since_seen", uniform(*shape, high=10) * ~sight)
     put("spawned", spawned.double())
@@ -100,12 +112,20 @@ def random_segment(steps: int, views: int, ships: int = 10, fields: int = 10, zo
     globals_[..., GLOBAL["reset"]] = reset.double()
     zone = torch.zeros(steps, views, zones, len(ZONE_COLUMNS), dtype=torch.float64)
 
-    obs = Obs(ships=columns.to(device=device, dtype=dtype), fields=field.to(device=device,
-              dtype=dtype), globals=globals_.to(device=device, dtype=dtype),
-              zones=zone.to(device=device, dtype=dtype))
+    obs = Obs(
+        ships=columns.to(device=device, dtype=dtype),
+        fields=field.to(device=device, dtype=dtype),
+        globals=globals_.to(device=device, dtype=dtype),
+        zones=zone.to(device=device, dtype=dtype),
+    )
     return obs, reset.to(device)
 
 
 def time_slice(obs: Obs, t: int) -> Obs:
-    return Obs(*(None if leaf is None else leaf[t] for leaf in
-                 (obs.ships, obs.fields, obs.globals, obs.zones)))
+    """Step t of a segment's observation (L, ...): the views (...) at that step."""
+    return Obs(
+        *(
+            None if leaf is None else leaf[t]
+            for leaf in (obs.ships, obs.fields, obs.globals, obs.zones)
+        )
+    )

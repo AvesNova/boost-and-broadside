@@ -5,7 +5,7 @@ fields and the globals), raw apart from fixed scales. It exists to exercise the 
 to play well; Yemong is the model that matters. The first layer is split along that
 concatenation, so the summary half is computed once per view instead of once per ship.
 The model reads token position (the summary is a flattened view), so it relies on rows
-being ordered by team_rel.
+being ordered by team_relative.
 """
 
 import dataclasses
@@ -18,12 +18,27 @@ from bnb.contracts.obs import FIELD_COLUMNS, GLOBAL_COLUMNS, SHIP, SHIP_COLUMNS
 
 from .heads import SIZES
 
-SHIP_SCALE = {"x": 1e-3, "y": 1e-3, "velocity_x": 1e-2, "velocity_y": 1e-2,
-              "proper_speed": 1e-2, "energy": 1e-4, "shield": 1e-2, "respawn_wait": 0.125,
-              "log_index_gradient_x": 100.0, "log_index_gradient_y": 100.0}
+SHIP_SCALE = {
+    "x": 1e-3,
+    "y": 1e-3,
+    "velocity_x": 1e-2,
+    "velocity_y": 1e-2,
+    "proper_speed": 1e-2,
+    "energy": 1e-4,
+    "shield": 1e-2,
+    "respawn_wait": 0.125,
+    "log_index_gradient_x": 100.0,
+    "log_index_gradient_y": 100.0,
+}
 FIELD_SCALE = (1e-3, 1e-3, 1e-2, 1e-2, 1.0)
-GLOBAL_SCALE = {"arena_radius": 1e-3, "score_own": 0.04, "score_enemy": 0.04,
-                "score_target": 0.04, "front": 1.0 / 3.0, "front_threshold": 1.0 / 3.0}
+GLOBAL_SCALE = {
+    "arena_radius": 1e-3,
+    "score_own": 0.04,
+    "score_enemy": 0.04,
+    "score_target": 0.04,
+    "front": 1.0 / 3.0,
+    "front_threshold": 1.0 / 3.0,
+}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -49,8 +64,7 @@ class MLP(nn.Module):
         super().__init__()
         C, hidden = len(SHIP_COLUMNS), build.hidden
         self.build, self.ships_per_team = build, build.ships_per_team
-        summary = (build.num_ships * C + build.num_fields * len(FIELD_COLUMNS)
-                   + len(GLOBAL_COLUMNS))
+        summary = build.num_ships * C + build.num_fields * len(FIELD_COLUMNS) + len(GLOBAL_COLUMNS)
         self.own = nn.Linear(C, hidden)
         self.summary = nn.Linear(summary, hidden, bias=False)
         self.body = nn.Linear(hidden, hidden)
@@ -59,22 +73,35 @@ class MLP(nn.Module):
         scale = torch.tensor([SHIP_SCALE.get(name, 1.0) for name in SHIP_COLUMNS])
         self.register_buffer("ship_scale", scale, persistent=False)
         self.register_buffer("field_scale", torch.tensor(FIELD_SCALE), persistent=False)
-        self.register_buffer("global_scale",
-                             torch.tensor([GLOBAL_SCALE.get(name, 1.0) for name in GLOBAL_COLUMNS]),
-                             persistent=False)
+        self.register_buffer(
+            "global_scale",
+            torch.tensor([GLOBAL_SCALE.get(name, 1.0) for name in GLOBAL_COLUMNS]),
+            persistent=False,
+        )
         nn.init.zeros_(self.policy.weight)  # a uniform policy at the start
         nn.init.zeros_(self.policy.bias)
 
     def forward(self, obs: Obs) -> tuple[torch.Tensor, torch.Tensor]:
-        """Logits (..., S, 12) and values (..., S) for views with any leading axes."""
+        """Logits (..., S, sum(SIZES)) and values (..., S) for views with any leading axes."""
         ships = obs.ships * self.ship_scale
         since = SHIP["time_since_seen"]
-        ships = torch.cat([ships[..., :since], torch.log1p(ships[..., since:since + 1]),
-                           ships[..., since + 1:]], -1)
-        summary = torch.cat([ships.flatten(-2), (obs.fields * self.field_scale).flatten(-2),
-                             obs.globals * self.global_scale], -1)
+        ships = torch.cat(
+            [
+                ships[..., :since],
+                torch.log1p(ships[..., since : since + 1]),
+                ships[..., since + 1 :],
+            ],
+            -1,
+        )
+        summary = torch.cat(
+            [
+                ships.flatten(-2),
+                (obs.fields * self.field_scale).flatten(-2),
+                obs.globals * self.global_scale,
+            ],
+            -1,
+        )
         own = ships[..., : self.ships_per_team, :]
         h = torch.relu(self.own(own) + self.summary(summary)[..., None, :])
         h = torch.relu(self.body(h))
         return self.policy(h), self.value(h)[..., 0]
-

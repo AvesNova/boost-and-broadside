@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/models/yemong/, src/bnb/controllers/yemong.py]
-reviewed: 2026-11-02
+reviewed: 2026-11-03 09:45
 ---
 
 # The model (Yemong)

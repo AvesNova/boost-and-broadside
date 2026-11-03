@@ -21,6 +21,11 @@ from bnb.game import api
 from bnb.game.handling.characteristics import time_of_flight
 from bnb.runtime.rollout import Rollout
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
+
 PARAMETERS = ScriptedParameters()
 TYPES = (0, 1)
 
@@ -42,8 +47,13 @@ def _ahead(ship_type: int, angle: float, distance_in_gun_range: float, **kwargs)
     velocity, so the lead leaves the aim point on it."""
     distance = distance_in_gun_range * value("gun_range", ship_type)
     cruise = value("cruise_speed", ship_type)
-    return ship(x=distance * math.cos(angle), y=distance * math.sin(angle), team_relative=1,
-                velocity=(cruise, 0.0), **kwargs)
+    return ship(
+        x=distance * math.cos(angle),
+        y=distance * math.sin(angle),
+        team_relative=1,
+        velocity=(cruise, 0.0),
+        **kwargs,
+    )
 
 
 def _levels(stick: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -74,8 +84,9 @@ def test_the_stick_level_rises_with_the_angle_error_and_the_side_follows_its_sig
 @pytest.mark.parametrize("ship_type", TYPES)
 def test_dead_and_waiting_ships_take_the_no_op(ship_type):
     dead = ship(ship_type=ship_type, alive=False)
-    q = distribution(_duel(ship_type, _ahead(ship_type, 0.3, 0.5), own=dead), CHARACTERISTICS,
-                     PARAMETERS)
+    q = distribution(
+        _duel(ship_type, _ahead(ship_type, 0.3, 0.5), own=dead), CHARACTERISTICS, PARAMETERS
+    )
     assert q[0, 0, 0] == 1.0 and q[0, 1, 0] == 1.0
 
 
@@ -90,10 +101,15 @@ def test_it_fires_only_when_aligned_in_range_ready_and_paid_for(ship_type):
     cases = dict(
         unaligned=_duel(ship_type, _ahead(ship_type, math.radians(30.0), 0.4)),
         out_of_range=_duel(ship_type, _ahead(ship_type, 0.0, 1.2)),
-        cooling=_duel(ship_type, _ahead(ship_type, 0.0, 0.4),
-                      own=ship(ship_type=ship_type, gun_cooldown=RULES_TICK)),
-        short_of_energy=_duel(ship_type, _ahead(ship_type, 0.0, 0.4),
-                              own=ship(ship_type=ship_type, energy=0.9 * cost)))
+        cooling=_duel(
+            ship_type,
+            _ahead(ship_type, 0.0, 0.4),
+            own=ship(ship_type=ship_type, gun_cooldown=RULES_TICK),
+        ),
+        short_of_energy=_duel(
+            ship_type, _ahead(ship_type, 0.0, 0.4), own=ship(ship_type=ship_type, energy=0.9 * cost)
+        ),
+    )
     for name, obs in cases.items():
         assert _marginals(obs)[2][1] == 0.0, name
 
@@ -108,14 +124,20 @@ RULES_TICK = 1.0 / 30.0
 def test_it_boosts_when_slow_or_far_with_a_full_store_and_reverses_when_close(ship_type):
     corner = value("corner_speed", ship_type)
     slowest = PARAMETERS.boost_slow_ramp_in_corner_speed.low
-    slow = _duel(ship_type, _ahead(ship_type, 0.0, 1.0), own=ship(ship_type=ship_type,
-                                                                   speed=0.9 * slowest * corner))
+    slow = _duel(
+        ship_type,
+        _ahead(ship_type, 0.0, 1.0),
+        own=ship(ship_type=ship_type, speed=0.9 * slowest * corner),
+    )
     assert _marginals(slow)[0][1] > 0.99
     distance = 1.1 * PARAMETERS.boost_far_ramp_in_store_gun_ranges.high  # with a full store
     far = _duel(ship_type, _ahead(ship_type, 0.0, distance))
     assert _marginals(far)[0][1] > 0.99
-    empty = _duel(ship_type, _ahead(ship_type, 0.0, distance),
-                  own=ship(ship_type=ship_type, energy=0.1 * value("max_energy", ship_type)))
+    empty = _duel(
+        ship_type,
+        _ahead(ship_type, 0.0, distance),
+        own=ship(ship_type=ship_type, energy=0.1 * value("max_energy", ship_type)),
+    )
     assert _marginals(empty)[0][1] < 0.01
     closest = PARAMETERS.reverse_ramp_in_gun_range.low
     close = _duel(ship_type, _ahead(ship_type, 0.0, 0.9 * closest))
@@ -128,18 +150,29 @@ def test_it_boosts_when_slow_or_far_with_a_full_store_and_reverses_when_close(sh
 @pytest.mark.parametrize("ship_type", TYPES)
 @pytest.mark.parametrize("shooter_velocity", [(0.0, 0.0), (80.0, -40.0)])
 def test_the_lead_moves_the_aim_point_along_a_crossing_target_by_its_time_of_flight(
-        ship_type, shooter_velocity):
+    ship_type, shooter_velocity
+):
     """The aim point is the displacement at the time of flight under the relative velocity:
     the bullet inherits the shooter's velocity, so a target keeping pace along x stays on
     the line and only the crossing speed relative to the shooter leads."""
     distance, crossing = 0.8 * value("gun_range", ship_type), 60.0
     target_velocity = (shooter_velocity[0], crossing)
-    obs = _duel(ship_type, ship(x=distance, team_relative=1, velocity=target_velocity),
-                own=ship(ship_type=ship_type, velocity=shooter_velocity))
+    obs = _duel(
+        ship_type,
+        ship(x=distance, team_relative=1, velocity=target_velocity),
+        own=ship(ship_type=ship_type, velocity=shooter_velocity),
+    )
     fleet = scripted_combat.context(obs, CHARACTERISTICS, PARAMETERS)
     one = torch.ones(1, 2)
-    aim_x, aim_y = scripted_combat.lead(fleet, CHARACTERISTICS, PARAMETERS, distance * one,
-                                        0.0 * one, target_velocity[0] * one, crossing * one)
+    aim_x, aim_y = scripted_combat.lead(
+        fleet,
+        CHARACTERISTICS,
+        PARAMETERS,
+        distance * one,
+        0.0 * one,
+        target_velocity[0] * one,
+        crossing * one,
+    )
     flight = time_of_flight(CHARACTERISTICS, fleet.own_type, torch.tensor(distance))
     torch.testing.assert_close(aim_x[0, 0], torch.tensor(distance))
     torch.testing.assert_close(aim_y[0, 0], (crossing - shooter_velocity[1]) * flight[0, 0])
@@ -153,12 +186,18 @@ def test_the_lead_moves_the_aim_point_along_a_crossing_target_by_its_time_of_fli
 @pytest.mark.parametrize("ship_type", TYPES)
 def test_near_the_boundary_and_heading_out_it_turns_inward(ship_type):
     edge = ARENA_RADIUS - 20.0
-    target = ship(x=edge + 0.5 * value("gun_range", ship_type), team_relative=1,
-                  velocity=(value("cruise_speed", ship_type), 0.0))
+    target = ship(
+        x=edge + 0.5 * value("gun_range", ship_type),
+        team_relative=1,
+        velocity=(value("cruise_speed", ship_type), 0.0),
+    )
     outward = _marginals(_duel(ship_type, target, own=ship(x=edge, ship_type=ship_type)))[1]
     assert outward[0] < 0.01  # it turns
-    target = ship(x=0.5 * value("gun_range", ship_type), team_relative=1,
-                  velocity=(value("cruise_speed", ship_type), 0.0))
+    target = ship(
+        x=0.5 * value("gun_range", ship_type),
+        team_relative=1,
+        velocity=(value("cruise_speed", ship_type), 0.0),
+    )
     centred = _marginals(_duel(ship_type, target))[1]
     assert centred[0] > 0.99  # the same chase at the centre flies straight
 
@@ -169,9 +208,12 @@ def test_near_the_boundary_and_heading_inward_it_does_not_turn_back(ship_type):
     left), the boundary leaves the chase of a target dead ahead alone."""
     edge, heading = ARENA_RADIUS - 20.0, 2.0 * math.pi / 3.0
     cruise, ahead = value("cruise_speed", ship_type), 0.5 * value("gun_range", ship_type)
-    target = ship(x=edge + ahead * math.cos(heading), y=ahead * math.sin(heading),
-                  team_relative=1,
-                  velocity=(cruise * math.cos(heading), cruise * math.sin(heading)))
+    target = ship(
+        x=edge + ahead * math.cos(heading),
+        y=ahead * math.sin(heading),
+        team_relative=1,
+        velocity=(cruise * math.cos(heading), cruise * math.sin(heading)),
+    )
     own = ship(x=edge, heading=heading, ship_type=ship_type)
     assert _marginals(_duel(ship_type, target, own=own))[1][0] > 0.99
 
@@ -191,14 +233,21 @@ def test_with_no_visible_enemy_it_heads_for_the_centre_and_holds_fire(ship_type)
 
 def _ring(direction: float = 0.0, progress: float = 0.0) -> list[torch.Tensor]:
     """Own spawn below, own defense on the left, enemy defense on the right."""
-    return [zone(0.0, -1600.0, 0), zone(-1600.0, 0.0, 1, progress, direction),
-            zone(0.0, 1600.0, 2), zone(1600.0, 0.0, 3), zone(0.0, 2600.0, 4)]
+    return [
+        zone(0.0, -1600.0, 0),
+        zone(-1600.0, 0.0, 1, progress, direction),
+        zone(0.0, 1600.0, 2),
+        zone(1600.0, 0.0, 3),
+        zone(0.0, 2600.0, 4),
+    ]
 
 
 @pytest.mark.parametrize("ship_type", TYPES)
 def test_frontline_it_defends_a_zone_whose_meter_moves_against_it(ship_type):
-    own = [ship(heading=math.pi / 2, ship_type=ship_type),
-           ship(x=60.0, heading=math.pi / 2, ship_type=ship_type)]
+    own = [
+        ship(heading=math.pi / 2, ship_type=ship_type),
+        ship(x=60.0, heading=math.pi / 2, ship_type=ship_type),
+    ]
     raiders = [ship(x=-1600.0, y=50.0 * i, team_relative=1) for i in range(2)]
     pressed = observation(own, raiders, _ring(direction=-1.0, progress=0.4))
     for row in (0, 1):  # both turn left, toward the defense zone
@@ -238,8 +287,9 @@ def test_frontline_the_urgency_grows_with_the_enemys_progress(ship_type):
     """The defense wants floor + urgency (1 + progress) while the meter moves against the
     viewer: with floor 0.5, no margin and urgency 1, four healthy ships send two to defend
     at progress 0 (want 1.5) and three at progress 0.9 (want 2.4)."""
-    parameters = dataclasses.replace(PARAMETERS, defensive_floor=0.5, defensive_margin=0.0,
-                                     defense_urgency=1.0)
+    parameters = dataclasses.replace(
+        PARAMETERS, defensive_floor=0.5, defensive_margin=0.0, defense_urgency=1.0
+    )
     own = _line([-300.0, -100.0, 100.0, 300.0], ship_type)
     nobody = [absent()] * 4
     early = observation(own, nobody, _ring(-1.0, 0.0))
@@ -268,8 +318,7 @@ def test_frontline_hands_over_to_combat_from_the_combat_radius_in(ship_type):
     own = [ship(heading=math.pi / 2, ship_type=ship_type), absent(team_relative=0)]
 
     def sides(distance_in_gun_range: float) -> tuple[float, float]:
-        enemy = ship(x=distance_in_gun_range * gun_range, team_relative=1,
-                     velocity=(0.0, cruise))
+        enemy = ship(x=distance_in_gun_range * gun_range, team_relative=1, velocity=(0.0, cruise))
         _, left, right = _levels(_marginals(observation(own, [enemy, absent()], _ring()))[1])
         return float(left), float(right)
 
@@ -282,10 +331,13 @@ def test_frontline_hands_over_to_combat_from_the_combat_radius_in(ship_type):
 @pytest.mark.parametrize("ship_type", TYPES)
 def test_frontline_it_falls_back_to_its_spawn_when_hurt_and_threatened(ship_type):
     gun_range = value("gun_range", ship_type)
-    threats = [ship(x=1.5 * gun_range, y=(0.5 + 0.2 * i) * gun_range, team_relative=1)
-               for i in range(2)]
-    hurt = ship(ship_type=ship_type, shield=0.5 * PARAMETERS.recovery_shield_fraction
-                * value("max_shield", ship_type))
+    threats = [
+        ship(x=1.5 * gun_range, y=(0.5 + 0.2 * i) * gun_range, team_relative=1) for i in range(2)
+    ]
+    hurt = ship(
+        ship_type=ship_type,
+        shield=0.5 * PARAMETERS.recovery_shield_fraction * value("max_shield", ship_type),
+    )
     healthy = ship(ship_type=ship_type)
     for own, side in ((hurt, 2), (healthy, 1)):  # spawn on the right, the threats on the left
         obs = observation([own, absent(team_relative=0)], threats, _ring())
@@ -301,25 +353,36 @@ def _game_views(mode: str, seed: int = 3):
     rules, types = api.rules_of(config), api.ship_types()
     generator = torch.Generator().manual_seed(seed)
     B = 32
-    state = api.reset(rules, types, api.uniforms(rules, B, generator=generator),
-                      torch.ones(B, dtype=torch.bool))
+    state = api.reset(
+        rules, types, api.uniforms(rules, B, generator=generator), torch.ones(B, dtype=torch.bool)
+    )
     agent = Scripted(CHARACTERISTICS)
     torch.manual_seed(seed)
     for _ in range(90):
         state, obs, _ = api.perceive(rules, state)
         actions = [agent.step(None, _view(obs, team), None)[0] for team in (0, 1)]
-        action = type(actions[0])(*(torch.cat(parts, 1) for parts in zip(
-            *[(a.power, a.stick, a.shoot) for a in actions])))
-        state, _ = api.step(rules, types, state, action,
-                            api.spread(rules, B, generator=generator),
-                            api.uniforms(rules, B, generator=generator))
+        action = type(actions[0])(
+            *(torch.cat(parts, 1) for parts in zip(*[(a.power, a.stick, a.shoot) for a in actions]))
+        )
+        state, _ = api.step(
+            rules,
+            types,
+            state,
+            action,
+            api.spread(rules, B, generator=generator),
+            api.uniforms(rules, B, generator=generator),
+        )
     state, obs, _ = api.perceive(rules, state)
     return rules, state, obs
 
 
 def _view(obs: Obs, team: int) -> Obs:
-    return Obs(ships=obs.ships[:, team], fields=None, globals=obs.globals[:, team],
-               zones=obs.zones[:, team])
+    return Obs(
+        ships=obs.ships[:, team],
+        fields=None,
+        globals=obs.globals[:, team],
+        zones=obs.zones[:, team],
+    )
 
 
 def _q(obs: Obs) -> torch.Tensor:
@@ -342,8 +405,11 @@ def test_the_distribution_does_not_depend_on_the_seat(mode):
     reflected[..., SHIP["nose_rate"]] = -reflected[..., SHIP["nose_rate"]]
     zones = view.zones.clone()
     zones[..., ZONE["y"]] = -zones[..., ZONE["y"]]
-    mirrored = marginals(Obs(ships=reflected, fields=None, globals=view.globals, zones=zones),
-                         CHARACTERISTICS, PARAMETERS)
+    mirrored = marginals(
+        Obs(ships=reflected, fields=None, globals=view.globals, zones=zones),
+        CHARACTERISTICS,
+        PARAMETERS,
+    )
     original = marginals(view, CHARACTERISTICS, PARAMETERS)
     swap_sides = torch.tensor([0, 2, 1, 4, 3, 6, 5])
     torch.testing.assert_close(mirrored.power, original.power, atol=1e-5, rtol=0)
@@ -361,14 +427,16 @@ def test_the_distribution_follows_row_permutations_and_ignores_hidden_columns(mo
     assert hidden.any(), "the scenario should hide some enemies"
     noisy = view.ships.clone()
     noise = torch.randn(noisy.shape[:-1] + (SHIP_HIDDEN_ZERO,)) * 1000.0
-    noisy[..., :SHIP_HIDDEN_ZERO] = torch.where(hidden[..., None], noise,
-                                                noisy[..., :SHIP_HIDDEN_ZERO])
+    noisy[..., :SHIP_HIDDEN_ZERO] = torch.where(
+        hidden[..., None], noise, noisy[..., :SHIP_HIDDEN_ZERO]
+    )
     assert torch.equal(_q(dataclasses.replace(view, ships=noisy)), q)
     own_order = torch.tensor([2, 0, 1])
     enemy_order = torch.tensor([1, 2, 0]) + S
     permuted = view.ships[:, torch.cat([own_order, enemy_order])]
-    torch.testing.assert_close(_q(dataclasses.replace(view, ships=permuted)), q[:, own_order],
-                               atol=1e-6, rtol=0)
+    torch.testing.assert_close(
+        _q(dataclasses.replace(view, ships=permuted)), q[:, own_order], atol=1e-6, rtol=0
+    )
 
 
 # ------------------------------------------------------------------ the controller
@@ -384,8 +452,12 @@ def test_a_rung_plays_p_scripted_plus_uniform():
     torch.manual_seed(0)
     obs = _duel(0, _ahead(0, 0.3, 0.5))
     views = 40_000
-    many = Obs(ships=obs.ships.expand(views, -1, -1), fields=None,
-               globals=obs.globals.expand(views, -1), zones=obs.zones.expand(views, -1, -1))
+    many = Obs(
+        ships=obs.ships.expand(views, -1, -1),
+        fields=None,
+        globals=obs.globals.expand(views, -1),
+        zones=obs.zones.expand(views, -1, -1),
+    )
     p = torch.full((views,), 0.6)
     rung = Scripted(CHARACTERISTICS, scripted_probability=p)
     expected = rung.action_distribution(many)[0, 0]
@@ -395,14 +467,19 @@ def test_a_rung_plays_p_scripted_plus_uniform():
     counts = torch.bincount(to_joint(action)[:, 0].long(), minlength=NUM_JOINT).float() / views
     assert (counts - expected).abs().max() < 0.01
     p.zero_()  # the league changes p in place: random
-    assert torch.allclose(rung.action_distribution(many)[0, 0],
-                          torch.full((NUM_JOINT,), 1.0 / NUM_JOINT))
+    assert torch.allclose(
+        rung.action_distribution(many)[0, 0], torch.full((NUM_JOINT,), 1.0 / NUM_JOINT)
+    )
 
 
 def test_per_view_parameters_match_the_single_set():
     obs = _duel(1, _ahead(1, 0.4, 0.7))
-    two = Obs(ships=obs.ships.expand(2, -1, -1), fields=None, globals=obs.globals.expand(2, -1),
-              zones=obs.zones.expand(2, -1, -1))
+    two = Obs(
+        ships=obs.ships.expand(2, -1, -1),
+        fields=None,
+        globals=obs.globals.expand(2, -1),
+        zones=obs.zones.expand(2, -1, -1),
+    )
     other = dataclasses.replace(PARAMETERS, lead_cap_in_gun_range=0.5)
     per_view = distribution(two, CHARACTERISTICS, unpack(table([PARAMETERS, other])))
     torch.testing.assert_close(per_view[0], _q(obs)[0])
@@ -416,7 +493,65 @@ def test_the_scripted_agent_plays_in_the_rollout_against_the_chaser():
 
     game = GameConfig(2, 2, 1200.0, mode="frontline")
     pools = (Pool("scripted", 1.0, ("scripted", "chaser")),)
-    rollout = Rollout(game, pools, {"scripted": Scripted(CHARACTERISTICS), "chaser": Chaser(2)},
-                      "scripted", 4, 16, torch.device("cpu"), compile=False)
+    rollout = Rollout(
+        game,
+        pools,
+        {"scripted": Scripted(CHARACTERISTICS), "chaser": Chaser(2)},
+        "scripted",
+        4,
+        16,
+        torch.device("cpu"),
+        compiled=False,
+    )
     trajectory = rollout.run()
-    assert trajectory.obs.zones is not None and trajectory.logp.shape == (16, 4, 2)
+    assert trajectory.obs.zones is not None and trajectory.log_probability.shape == (16, 4, 2)
+
+
+NEUTRAL = 2  # the viewer's zone role of Frontline's neutral zone (ZONE_COLUMNS' `role`)
+MIRRORED_PAIRS = (
+    ("x", "y"),
+    ("heading_cos", "heading_sin"),
+    ("velocity_x", "velocity_y"),
+    ("log_index_gradient_x", "log_index_gradient_y"),
+)
+
+
+def _reflected(view: Obs, angle: torch.Tensor) -> Obs:
+    """The view (R, ...) reflected about the line through the arena centre at `angle` (R,):
+    positions, directions and gradients mirrored, the angle of attack and the nose rate
+    negated."""
+    cos2, sin2 = torch.cos(2.0 * angle)[:, None], torch.sin(2.0 * angle)[:, None]
+
+    def mirror(x, y):
+        return cos2 * x + sin2 * y, sin2 * x - cos2 * y
+
+    ships, zones = view.ships.clone(), view.zones.clone()
+    for first, second in MIRRORED_PAIRS:
+        a, b = mirror(view.ships[..., SHIP[first]], view.ships[..., SHIP[second]])
+        ships[..., SHIP[first]], ships[..., SHIP[second]] = a, b
+    for name in ("angle_of_attack", "nose_rate"):
+        ships[..., SHIP[name]] = -view.ships[..., SHIP[name]]
+    a, b = mirror(view.zones[..., ZONE["x"]], view.zones[..., ZONE["y"]])
+    zones[..., ZONE["x"]], zones[..., ZONE["y"]] = a, b
+    return Obs(ships=ships, fields=None, globals=view.globals, zones=zones)
+
+
+def test_a_view_reflected_about_frontlines_neutral_axis_reflects_the_stick():
+    """Frontline's map is mirror-symmetric about the axis through the centre and the neutral
+    zone, so the reflected view is a view of a real game: the agent's distribution there is
+    the original's with each stick level swapped for its mirror (cleanup spec 8.4)."""
+    _, _, obs = _game_views("frontline")
+    view = _view(obs, 0)
+    neutral = (view.zones[..., ZONE["role"]] == NEUTRAL) & (view.zones[..., ZONE["present"]] > 0.5)
+    assert bool(neutral.sum(-1).eq(1).all()), "every Frontline view shows one neutral zone"
+    centre_x = torch.where(neutral, view.zones[..., ZONE["x"]], 0.0).sum(-1)
+    centre_y = torch.where(neutral, view.zones[..., ZONE["y"]], 0.0).sum(-1)
+    mirrored = marginals(
+        _reflected(view, torch.atan2(centre_y, centre_x)), CHARACTERISTICS, PARAMETERS
+    )
+    original = marginals(view, CHARACTERISTICS, PARAMETERS)
+    swap_sides = torch.tensor([0, 2, 1, 4, 3, 6, 5])
+    # float32 rounding of the reflection itself moves the inputs by about 1e-4 m
+    torch.testing.assert_close(mirrored.power, original.power, atol=1e-4, rtol=0)
+    torch.testing.assert_close(mirrored.shoot, original.shoot, atol=1e-4, rtol=0)
+    torch.testing.assert_close(mirrored.stick, original.stick[..., swap_sides], atol=1e-4, rtol=0)

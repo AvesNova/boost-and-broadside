@@ -26,7 +26,7 @@ opponent plays the labels' distribution, at `--teacher-floor` and `--teacher-tem
 `--updates` is not used. Each update prints the BC KL, the labels' and the student's
 entropy, the live score per opponent and, once 1000 games have finished, the stop rule's
 window score and its bound; the last line names the rule that stopped it. The other
-options (`--model`, `--num-envs`, `--shards`, `--precision`, `--micro-batch-rows`,
+options (`--model`, `--environments`, `--shards`, `--precision`, `--micro-batch-rows`,
 `--seed`, `--set`, `--name`, `--runs-directory`) are training's ([Training](training.md)).
 
 The run lives in a run directory like a PPO run's
@@ -82,7 +82,7 @@ from bnb.runtime.train import TrainConfig, Trainer
 
 torch.manual_seed(0)
 game = GameConfig(2, 4, 1200.0)
-config = TrainConfig(game=game, pools=cloning.LINEUP, num_envs=256, model="relational",
+config = TrainConfig(game=game, pools=cloning.LINEUP, environments=256, model="relational",
                      learner=bc.config(), objective="bc",
                      teacher=bc.TeacherConfig(temperature=1.0))
 student = Trainer(config, torch.device("cuda"))
@@ -91,7 +91,7 @@ print("stopped by", reason)
 
 # Reinforcement learning from the clone in memory: its weights and return scale, a fresh
 # optimizer (bnb.runs.checkpoint.save_policy writes it to a policy file instead).
-rl = Trainer(TrainConfig(game=game, num_envs=256, model="relational"), torch.device("cuda"))
+rl = Trainer(TrainConfig(game=game, environments=256, model="relational"), torch.device("cuda"))
 cloning.warm_start(rl, student)
 for _ in range(100):
     rl.update()

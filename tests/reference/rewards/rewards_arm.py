@@ -2,8 +2,13 @@
 
 Each method is bnb's function under the fixture's name: the ledger and the levels'
 events from `bnb.learn.rewards`, Frontline's rules from `bnb.game.modes.frontline`. The
-only translation is capture_step's named result to the fixture's dict.
+translations are capture_step's: the fixture passes the living ships (`alive`), which the
+game reads only through `inside` (already masked to them), and checks the majority's push
+(`direction`), which the game does not return; the adapter computes it from the same
+inputs, and the result is the fixture's dict.
 """
+
+import torch
 
 from bnb.game.modes import frontline
 from bnb.learn import rewards
@@ -27,8 +32,24 @@ class RewardsArm:
     timeout_result = staticmethod(frontline.timeout_result)
 
     @staticmethod
-    def capture_step(*args):
-        return frontline.capture_step(*args)._asdict()
+    def capture_step(team, alive, inside, roles, progress, attack_ledger, defense_ledger, front,
+                     tick_seconds, capture_seconds):
+        capture = frontline.capture_step(team, inside, roles, progress, attack_ledger,
+                                         defense_ledger, front, tick_seconds, capture_seconds)
+        out = capture._asdict()
+        out["direction"] = _majority(team, inside, roles, capture)
+        return out
+
+
+def _majority(team, inside, roles, capture):
+    """The majority's push on each defense zone (..., Z) in team 0's frame: +1 a team-0
+    majority, -1 a team-1 one, 0 none, on a completion tick and off the defense zones."""
+    present = inside.transpose(-1, -2)  # (..., Z, N)
+    on_team0 = (team == 0)[..., None, :]
+    net = (present & on_team0).sum(-1) - (present & ~on_team0).sum(-1)
+    contested = (roles == frontline.TEAM0_DEFENSE) | (roles == frontline.TEAM1_DEFENSE)
+    completed = (capture.team0_captured | capture.team1_captured)[..., None]
+    return torch.where(contested & ~completed, torch.sign(net), 0)
 
 
 def make_arm():

@@ -14,9 +14,11 @@ class ModelController:
         self.reads = model.reads
 
     def init_carry(self, views: int, device: torch.device) -> None:
+        """No carry: the model is stateless."""
         return None
 
-    def step(self, carry: None, obs: Obs, done: torch.Tensor):
+    def step(self, carry: None, obs: Obs, reset: torch.Tensor):
+        """One decision for views (R, ...); see `Controller.step`."""
         logits, value = self.model(obs)
-        action, logp, entropy = sample(logits)
-        return action, carry, Outputs(logp=logp, entropy=entropy, value=value)
+        action, log_probability, entropy = sample(logits)
+        return action, carry, Outputs(log_probability=log_probability, entropy=entropy, value=value)

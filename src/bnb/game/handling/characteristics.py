@@ -51,8 +51,9 @@ class Characteristics:
     vision_range: torch.Tensor
 
 
-def time_of_flight(characteristics: Characteristics, ship_type: torch.Tensor,
-                   distance: torch.Tensor) -> torch.Tensor:
+def time_of_flight(
+    characteristics: Characteristics, ship_type: torch.Tensor, distance: torch.Tensor
+) -> torch.Tensor:
     """The time a bullet fired at cruise by a ship of this type takes to travel `distance`
     (s), from the quadratic drag law at n = 1: t = (exp(k s) - 1) / (k w0)."""
     drag = per_ship(characteristics.bullet_drag, ship_type)
@@ -67,22 +68,37 @@ def measure_characteristics(types: ShipTypes, rules: Rules) -> Characteristics:
     device = types.max_energy.device
     if types.max_energy.dim() != 1:
         raise ValueError("measure one card at a time, not a card per environment")
-    types = ShipTypes(**{field.name: getattr(types, field.name).cpu().float()
-                         for field in dataclasses.fields(types)})
+    types = ShipTypes(
+        **{
+            field.name: getattr(types, field.name).cpu().float()
+            for field in dataclasses.fields(types)
+        }
+    )
     handles = measure(types, rules)
     card = batched(types)
     all_types = torch.arange(types.max_energy.shape[0])
     measured = Characteristics(
-        cruise_speed=handles.cruise_speed, top_speed=top_speed(rules, card)[0],
+        cruise_speed=handles.cruise_speed,
+        top_speed=top_speed(rules, card)[0],
         corner_speed=airframe_of(types, all_types).corner_speed,
-        turn_rate=settled(rules, card, STICKS).turn_rate[0], stall_angle=handles.stall_angle,
-        gun_range=handles.gun_range, bullet_speed=handles.cruise_speed + types.muzzle_speed,
-        bullet_drag=rules.bullet_drag * types.bullet_drag_scale, max_energy=types.max_energy,
-        bullet_energy_cost=types.bullet_energy_cost, max_shield=types.max_shield,
-        hit_radius=types.hit_radius, max_acceleration=types.max_acceleration,
-        vision_range=handles.vision_range)
-    return Characteristics(**{field.name: getattr(measured, field.name).float().to(device)
-                              for field in dataclasses.fields(measured)})
+        turn_rate=settled(rules, card, STICKS).turn_rate[0],
+        stall_angle=handles.stall_angle,
+        gun_range=handles.gun_range,
+        bullet_speed=handles.cruise_speed + types.muzzle_speed,
+        bullet_drag=rules.bullet_drag * types.bullet_drag_scale,
+        max_energy=types.max_energy,
+        bullet_energy_cost=types.bullet_energy_cost,
+        max_shield=types.max_shield,
+        hit_radius=types.hit_radius,
+        max_acceleration=types.max_acceleration,
+        vision_range=handles.vision_range,
+    )
+    return Characteristics(
+        **{
+            field.name: getattr(measured, field.name).float().to(device)
+            for field in dataclasses.fields(measured)
+        }
+    )
 
 
 _CACHE: dict = {}
@@ -90,11 +106,22 @@ _CACHE: dict = {}
 
 def characteristics(types: ShipTypes, rules: Rules) -> Characteristics:
     """`measure_characteristics`, cached per card values, device and the rules it reads."""
-    key = (tuple(tuple(getattr(types, field.name).flatten().tolist())
-                 for field in dataclasses.fields(types)), str(types.max_energy.device),
-           rules.flight, rules.tick_length, rules.bullet_drag, rules.bullet_moves,
-           rules.bullet_spread, rules.vision_range, rules.shield_recharge_rate,
-           rules.shield_recharge_delay, rules.head_on_fraction)
+    key = (
+        tuple(
+            tuple(getattr(types, field.name).flatten().tolist())
+            for field in dataclasses.fields(types)
+        ),
+        str(types.max_energy.device),
+        rules.flight,
+        rules.tick_length,
+        rules.bullet_drag,
+        rules.bullet_moves,
+        rules.bullet_spread,
+        rules.vision_range,
+        rules.shield_recharge_rate,
+        rules.shield_recharge_delay,
+        rules.head_on_fraction,
+    )
     if key not in _CACHE:
         _CACHE[key] = measure_characteristics(types, rules)
     return _CACHE[key]

@@ -26,8 +26,9 @@ def to_json(value: Any) -> Any:
     """`value` as JSON data: a dataclass as a dict of its fields, tuples and lists as lists,
     an enum by its name. Numbers, strings, booleans and None are themselves."""
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return {field.name: to_json(getattr(value, field.name))
-                for field in dataclasses.fields(value)}
+        return {
+            field.name: to_json(getattr(value, field.name)) for field in dataclasses.fields(value)
+        }
     if isinstance(value, enum.Enum):
         return value.name
     if isinstance(value, tuple | list):
@@ -66,22 +67,28 @@ def _read(kind: Any, data: Any, path: str, filled: list[str]) -> Any:
         if not isinstance(data, list):
             raise SerialiseError(f"{where}: expected a list, got {data!r}")
         if len(arguments) == 2 and arguments[1] is Ellipsis:
-            return tuple(_read(arguments[0], item, f"{path}[{index}]", filled)
-                         for index, item in enumerate(data))
+            return tuple(
+                _read(arguments[0], item, f"{path}[{index}]", filled)
+                for index, item in enumerate(data)
+            )
         if len(arguments) != len(data):
             raise SerialiseError(f"{where}: expected {len(arguments)} items, got {len(data)}")
-        return tuple(_read(argument, item, f"{path}[{index}]", filled)
-                     for index, (argument, item) in enumerate(zip(arguments, data)))
+        return tuple(
+            _read(argument, item, f"{path}[{index}]", filled)
+            for index, (argument, item) in enumerate(zip(arguments, data))
+        )
     if origin is list:
         if not isinstance(data, list):
             raise SerialiseError(f"{where}: expected a list, got {data!r}")
-        return [_read(arguments[0], item, f"{path}[{index}]", filled)
-                for index, item in enumerate(data)]
+        return [
+            _read(arguments[0], item, f"{path}[{index}]", filled) for index, item in enumerate(data)
+        ]
     if origin is dict:
         if not isinstance(data, dict):
             raise SerialiseError(f"{where}: expected an object, got {data!r}")
-        return {key: _read(arguments[1], item, f"{path}.{key}", filled)
-                for key, item in data.items()}
+        return {
+            key: _read(arguments[1], item, f"{path}.{key}", filled) for key, item in data.items()
+        }
     if isinstance(kind, type) and issubclass(kind, enum.Enum):
         if data not in kind.__members__:
             raise SerialiseError(f"{where}: {data!r} is not one of {list(kind.__members__)}")
@@ -113,8 +120,10 @@ def _read_dataclass(cls: type, data: Any, path: str, filled: list[str]) -> Any:
         dotted = f"{path}.{name}" if path else name
         if name in data:
             values[name] = _read(hints[name], data[name], dotted, filled)
-        elif (field.default is not dataclasses.MISSING
-              or field.default_factory is not dataclasses.MISSING):
+        elif (
+            field.default is not dataclasses.MISSING
+            or field.default_factory is not dataclasses.MISSING
+        ):
             filled.append(dotted)
         else:
             raise SerialiseError(f"{cls.__name__} lacks {dotted}, which has no default")
@@ -153,16 +162,22 @@ def tree_from_named(target: Any, named: dict[str, torch.Tensor], prefix: str = "
     stored = {name for name in named if name.startswith(prefix)}
     missing, extra = sorted(set(wanted) - stored), sorted(stored - set(wanted))
     if missing or extra:
-        raise SerialiseError(f"stored tensors do not match: missing {missing[:5]}"
-                             f"{' ...' if len(missing) > 5 else ''}, unexpected {extra[:5]}"
-                             f"{' ...' if len(extra) > 5 else ''}")
+        raise SerialiseError(
+            f"stored tensors do not match: missing {missing[:5]}"
+            f"{' ...' if len(missing) > 5 else ''}, unexpected {extra[:5]}"
+            f"{' ...' if len(extra) > 5 else ''}"
+        )
     for name, leaf in wanted.items():
         value = named[name]
         if value.shape != leaf.shape or value.dtype != leaf.dtype:
-            raise SerialiseError(f"{name}: stored {tuple(value.shape)} {value.dtype}, "
-                                 f"expected {tuple(leaf.shape)} {leaf.dtype}")
+            raise SerialiseError(
+                f"{name}: stored {tuple(value.shape)} {value.dtype}, "
+                f"expected {tuple(leaf.shape)} {leaf.dtype}"
+            )
     leaves, spec = _pytree.tree_flatten(target)
     names = iter(wanted)
-    loaded = [named[next(names)].to(leaf.device) if isinstance(leaf, torch.Tensor) else leaf
-              for leaf in leaves]
+    loaded = [
+        named[next(names)].to(leaf.device) if isinstance(leaf, torch.Tensor) else leaf
+        for leaf in leaves
+    ]
     return _pytree.tree_unflatten(loaded, spec)

@@ -13,6 +13,9 @@ Tables = tuple[torch.Tensor, torch.Tensor]  # (cos, sin), each (..., tokens, 1, 
 
 
 class SpatialBlock(nn.Module):
+    """The spatial sublayer: rotary attention of the query tokens over themselves and the map
+    memory, then a gated MLP, each pre-normed and residual."""
+
     def __init__(self, width: int, heads: int, map_width: int) -> None:
         super().__init__()
         self.heads = heads
@@ -24,19 +27,30 @@ class SpatialBlock(nn.Module):
         self.feedforward_norm = norm(width)
         self.feedforward = GatedMLP(width, 4 * width)
 
-    def forward(self, tokens: torch.Tensor, map_memory: torch.Tensor, token_tables: Tables,
-                map_tables: Tables) -> torch.Tensor:
+    def forward(
+        self,
+        tokens: torch.Tensor,
+        map_memory: torch.Tensor,
+        token_tables: Tables,
+        map_tables: Tables,
+    ) -> torch.Tensor:
         """tokens (..., Q, D) attend over themselves and map_memory (..., M, Dm)."""
-        query, key, value = self.query_key_value(self.attention_norm(tokens)) \
-            .unflatten(-1, (3, self.heads, -1)).unbind(-3)
-        map_key, map_value = self.map_key_value(self.map_norm(map_memory)) \
-            .unflatten(-1, (2, self.heads, -1)).unbind(-3)
+        query, key, value = (
+            self.query_key_value(self.attention_norm(tokens))
+            .unflatten(-1, (3, self.heads, -1))
+            .unbind(-3)
+        )
+        map_key, map_value = (
+            self.map_key_value(self.map_norm(map_memory))
+            .unflatten(-1, (2, self.heads, -1))
+            .unbind(-3)
+        )
         if kernels.switches.attention and attention.applies(query, token_tables):
-            attended = attention.attend(query, key, value, map_key, map_value, token_tables,
-                                        map_tables)
+            attended = attention.attend(
+                query, key, value, map_key, map_value, token_tables, map_tables
+            )
         else:
-            attended = self._attend(query, key, value, map_key, map_value, token_tables,
-                                    map_tables)
+            attended = self._attend(query, key, value, map_key, map_value, token_tables, map_tables)
         tokens = tokens + self.output(attended.flatten(-2))
         return tokens + self.feedforward(self.feedforward_norm(tokens))
 

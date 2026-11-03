@@ -31,27 +31,82 @@ def _new_matches(rules: Rules, arena: Environment, tick: TickUniforms, previous_
     fields, axis_x, axis_y = new_map(rules, arena.arena_radius, arena.map_scale, tick.map)
 
     def match(mode_rules: ModeRules, arena, uniforms, map_uniforms, fields, previous_mode):
-        return modes.new_match(mode_rules, arena.arena_radius, arena.map_scale,
-                               uniforms[:, :mode_rules.uniform_count(rules.num_ships)], map_uniforms,
-                               fields, previous_mode)
+        return modes.new_match(
+            mode_rules,
+            arena.arena_radius,
+            arena.map_scale,
+            uniforms[:, : mode_rules.uniform_count(rules.num_ships)],
+            map_uniforms,
+            fields,
+            previous_mode,
+        )
 
-    mode, fields = per_mode(rules, tick.map.shape[0], match, arena, tick.mode, tick.map, fields,
-                            previous_mode)
+    mode, fields = per_mode(
+        rules, tick.map.shape[0], match, arena, tick.mode, tick.map, fields, previous_mode
+    )
     return mode, fields, axis_x, axis_y
 
 
-def _placement(rules: Rules, arena: Environment, tick: TickUniforms, mode, ships, alive,
-               starting, axis_x, axis_y):
+def _placement(
+    rules: Rules,
+    arena: Environment,
+    tick: TickUniforms,
+    mode,
+    ships,
+    alive,
+    starting,
+    axis_x,
+    axis_y,
+):
     """Every ship's spawn placement by its environment's mode (selected later by the mask)."""
 
-    def place(mode_rules: ModeRules, arena, uniforms, mode, x, y, alive, starting, axis_x, axis_y,
-              rotation, keys):
-        return placement(rules, mode_rules, arena.arena_radius, arena.map_scale,
-                         uniforms[:, :mode_rules.uniform_count(rules.num_ships)], mode, x, y, alive,
-                         starting, axis_x, axis_y, rotation, keys)
+    def place(
+        mode_rules: ModeRules,
+        arena,
+        uniforms,
+        mode,
+        x,
+        y,
+        alive,
+        starting,
+        axis_x,
+        axis_y,
+        rotation,
+        keys,
+    ):
+        return placement(
+            rules,
+            mode_rules,
+            arena.arena_radius,
+            arena.map_scale,
+            uniforms[:, : mode_rules.uniform_count(rules.num_ships)],
+            mode,
+            x,
+            y,
+            alive,
+            starting,
+            axis_x,
+            axis_y,
+            rotation,
+            keys,
+        )
 
-    return per_mode(rules, alive.shape[0], place, arena, tick.mode, mode, ships.x, ships.y,
-                    alive, starting, axis_x, axis_y, tick.rotation, tick.keys)
+    return per_mode(
+        rules,
+        alive.shape[0],
+        place,
+        arena,
+        tick.mode,
+        mode,
+        ships.x,
+        ships.y,
+        alive,
+        starting,
+        axis_x,
+        axis_y,
+        tick.rotation,
+        tick.keys,
+    )
 
 
 def _vision_ranges(rules: Rules, types: ShipTypes, ship_type: torch.Tensor) -> torch.Tensor:
@@ -59,13 +114,16 @@ def _vision_ranges(rules: Rules, types: ShipTypes, ship_type: torch.Tensor) -> t
     return rules.vision_range * per_ship(types.vision_range_scale, ship_type)
 
 
-def reset(rules: Rules, types: ShipTypes, uniforms: torch.Tensor,
-          fogged: torch.Tensor | None = None) -> State:
+def reset(
+    rules: Rules, types: ShipTypes, uniforms: torch.Tensor, fogged: torch.Tensor | None = None
+) -> State:
     """A fresh state from (B, U) tick uniforms: new maps and modes, every ship spawned,
     tick 0. fogged (B,) bool: which environments hide what their teams cannot see (default
     all); it stays fixed through the episode resets that follow. Raises ValueError for a
     card whose fire rate is not a whole number of ticks at the rules' tick."""
-    ticks_between_shots(types.fire_rate, rules.tick_length)  # refuses a fire rate the tick cannot keep
+    ticks_between_shots(
+        types.fire_rate, rules.tick_length
+    )  # refuses a fire rate the tick cannot keep
     B, device = uniforms.shape[0], uniforms.device
     state = blank(rules, B, device)
     arena = environment(rules, B, device)
@@ -76,33 +134,46 @@ def reset(rules: Rules, types: ShipTypes, uniforms: torch.Tensor,
     everyone = torch.ones_like(state.mode.front, dtype=torch.bool)
     place = _placement(rules, arena, tick, mode, ships, ships.alive, everyone, axis_x, axis_y)
     ships = spawn(rules, types, ships, fields, torch.ones_like(ships.alive), place)
-    match = replace(state.match, spawn_axis_x=axis_x, spawn_axis_y=axis_y,
-                    vision_range=_vision_ranges(rules, types, ships.ship_type))
+    match = replace(
+        state.match,
+        spawn_axis_x=axis_x,
+        spawn_axis_y=axis_y,
+        vision_range=_vision_ranges(rules, types, ships.ship_type),
+    )
     if fogged is not None:
         match = replace(match, fogged=fogged.to(torch.bool))
     return State(ships=ships, bullets=state.bullets, fields=fields, match=match, mode=mode)
 
 
-def move(rules: Rules, types: ShipTypes, state: State, action: Action,
-         spread: torch.Tensor) -> tuple[State, Sweep]:
+def move(
+    rules: Rules, types: ShipTypes, state: State, action: Action, spread: torch.Tensor
+) -> tuple[State, Sweep]:
     """Phases 1-3: fire, ships fly, bullets fly. Returns the moved state and this tick's
     motions (the hit test's input). Motion changes no flag (but `fired`), clock or count."""
     ships0, bullets0 = fire(rules, types, state.ships, state.bullets, action.shoot == 1, spread)
     stick, power = controls(action.power, action.stick)
     airframe = airframe_of(types, ships0.ship_type)
-    flown = flight_tick(rules.flight, airframe, rules.tick_length, ships0, stick, power,
-                        state.fields)
+    flown = flight_tick(
+        rules.flight, airframe, rules.tick_length, ships0, stick, power, state.fields
+    )
     ships = where(ships0.alive, flown, ships0)  # ships dead at tick start keep everything
     bullets = move_bullets(rules, types, bullets0, state.fields, ships0.ship_type)
-    sweep = Sweep(ship_x=ships0.x, ship_y=ships0.y, ship_displacement_x=ships.x - ships0.x,
-                  ship_displacement_y=ships.y - ships0.y, bullet_x=bullets0.x,
-                  bullet_y=bullets0.y, bullet_displacement_x=bullets.x - bullets0.x,
-                  bullet_displacement_y=bullets.y - bullets0.y)
+    sweep = Sweep(
+        ship_x=ships0.x,
+        ship_y=ships0.y,
+        ship_displacement_x=ships.x - ships0.x,
+        ship_displacement_y=ships.y - ships0.y,
+        bullet_x=bullets0.x,
+        bullet_y=bullets0.y,
+        bullet_displacement_x=bullets.x - bullets0.x,
+        bullet_displacement_y=bullets.y - bullets0.y,
+    )
     return replace(state, ships=ships, bullets=bullets), sweep
 
 
-def resolve(rules: Rules, types: ShipTypes, state: State, sweep: Sweep,
-            uniforms: torch.Tensor) -> tuple[State, Events]:
+def resolve(
+    rules: Rules, types: ShipTypes, state: State, sweep: Sweep, uniforms: torch.Tensor
+) -> tuple[State, Events]:
     """Phases 4-8 on the moved state: hits, damage, the mode phase, clocks, death and
     respawn, episode end."""
     ships, bullets, match = state.ships, state.bullets, state.match
@@ -115,9 +186,13 @@ def resolve(rules: Rules, types: ShipTypes, state: State, sweep: Sweep,
     hit = hits(rules, types, sweep, ships, bullets, alive0)
     damage, first_shooter = hit.damage, hit.first_shooter
     if any(mode.name == FRONTLINE for mode in rules.modes):  # the only mode that protects
-        guarded = per_mode(rules, B, lambda mode_rules, mode, ships: modes.protected(rules, mode_rules, mode,
-                                                                               ships),
-                           state.mode, ships)
+        guarded = per_mode(
+            rules,
+            B,
+            lambda mode_rules, mode, ships: modes.protected(rules, mode_rules, mode, ships),
+            state.mode,
+            ships,
+        )
         damage = torch.where(guarded[:, None, :], 0.0, damage)
         first_shooter = torch.where(guarded, -1, first_shooter)
     boundary = boundary_damage(rules, arena.arena_radius, ships, alive0)
@@ -138,19 +213,23 @@ def resolve(rules: Rules, types: ShipTypes, state: State, sweep: Sweep,
     result = torch.where(done, result, 0)
 
     # 6. Clocks.
-    moves_left = torch.where(hit.bullet_hit, 0,
-                             torch.where(active, bullets.moves_left - 1, bullets.moves_left))
+    moves_left = torch.where(
+        hit.bullet_hit, 0, torch.where(active, bullets.moves_left - 1, bullets.moves_left)
+    )
     bullets = replace(bullets, moves_left=moves_left)
 
     # 7. Death and respawn (the spawns happen together with the resets below).
     was_dead = ~alive0
     respawn_wait = torch.where(was_dead, ships.respawn_wait - 1, ships.respawn_wait)
     due = was_dead & (respawn_wait <= 0)
-    ships = replace(ships, alive=alive,
-                    gun_cooldown=(ships.gun_cooldown - 1).clamp_min(0),
-                    respawn_wait=torch.where(died, arena.respawn_ticks[:, None], respawn_wait),
-                    proper_speed=torch.where(died, rules.flight.speed_floor, ships.proper_speed),
-                    nose_rate=torch.where(died, 0.0, ships.nose_rate))
+    ships = replace(
+        ships,
+        alive=alive,
+        gun_cooldown=(ships.gun_cooldown - 1).clamp_min(0),
+        respawn_wait=torch.where(died, arena.respawn_ticks[:, None], respawn_wait),
+        proper_speed=torch.where(died, rules.flight.speed_floor, ships.proper_speed),
+        nose_rate=torch.where(died, 0.0, ships.nose_rate),
+    )
 
     # 8. Episode end: a finished environment gets a new map and mode state, no bullets,
     # cleared slots and flags, and all its ships spawn. Its fog setting stays.
@@ -162,24 +241,44 @@ def resolve(rules: Rules, types: ShipTypes, state: State, sweep: Sweep,
     axis_y = torch.where(done, axis_y, match.spawn_axis_y)
     bullets = where(done, apply(torch.zeros_like, bullets), bullets)
     keep = ~done[:, None]
-    ships = replace(ships, next_slot=torch.where(keep, ships.next_slot, 0),
-                    fired=ships.fired & keep)
+    ships = replace(
+        ships, next_slot=torch.where(keep, ships.next_slot, 0), fired=ships.fired & keep
+    )
     place = _placement(rules, arena, tick, mode, ships, alive, done, axis_x, axis_y)
     ships = spawn(rules, types, ships, fields, due | done[:, None], place)
-    match = replace(match, episode_tick=torch.where(done, 0, match.episode_tick + 1),
-                    spawn_axis_x=axis_x, spawn_axis_y=axis_y,
-                    vision_range=_vision_ranges(rules, types, ships.ship_type))
+    match = replace(
+        match,
+        episode_tick=torch.where(done, 0, match.episode_tick + 1),
+        spawn_axis_x=axis_x,
+        spawn_axis_y=axis_y,
+        vision_range=_vision_ranges(rules, types, ships.ship_type),
+    )
 
-    events = Events(damage=damage, boundary_damage=boundary, died=died,
-                    fired=state.ships.fired, spawned=ships.spawned, killer=killer, done=done,
-                    shield_lost=applied.shield_lost, shield_restored=applied.shield_restored,
-                    objective_progress=phase.objective_progress, objective=phase.objective,
-                    result=result)
+    events = Events(
+        damage=damage,
+        boundary_damage=boundary,
+        died=died,
+        fired=state.ships.fired,
+        spawned=ships.spawned,
+        killer=killer,
+        done=done,
+        shield_lost=applied.shield_lost,
+        shield_restored=applied.shield_restored,
+        objective_progress=phase.objective_progress,
+        objective=phase.objective,
+        result=result,
+    )
     return State(ships=ships, bullets=bullets, fields=fields, match=match, mode=mode), events
 
 
-def step(rules: Rules, types: ShipTypes, state: State, action: Action, spread: torch.Tensor,
-         uniforms: torch.Tensor) -> tuple[State, Events]:
+def step(
+    rules: Rules,
+    types: ShipTypes,
+    state: State,
+    action: Action,
+    spread: torch.Tensor,
+    uniforms: torch.Tensor,
+) -> tuple[State, Events]:
     """One whole tick (phases 1-8; perception is separate)."""
     moved, sweep = move(rules, types, state, action, spread)
     return resolve(rules, types, moved, sweep, uniforms)

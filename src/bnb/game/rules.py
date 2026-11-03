@@ -12,16 +12,18 @@ import dataclasses
 import math
 
 from bnb.contracts import GameConfig, Pool, ticks_of
+from bnb.contracts.config import TEAMS
+from bnb.contracts.obs import ZONE_SLOTS
 from bnb.contracts.pools import environments_per_pool, pool_game
 
-from .modes.rules import CLOCKS, ZONE_SLOTS, ModeRules, mode_rules_of
+from .modes.rules import CLOCKS, ModeRules, mode_rules_of
 
-TEAMS = 2
 STICK_LEVELS = (0.0, -0.4, 0.4, -0.75, 0.75, -1.0, 1.0)  # by stick index; + turns left
 POWER_MODES = (0.0, -1.0, 1.0)  # by power index: coast, boost, reverse
 FIELD_LEVELS = (-2, -1, 1, 2)
 LN_SQRT2 = 0.5 * math.log(2.0)
-MAP_SCALE_RADIUS = 2600.0  # the map scale is arena_radius / 2600
+MAP_SCALE_RADIUS = 2600.0  # m: the arena radius of map scale 1 (map_scale = R_a / this)
+FIELD_DISC_FRACTION = 0.85  # the fields' centres lie within this fraction of the arena radius
 BULLET_LIFE = 0.4  # s, every bullet's: 12 moves at 30 Hz
 
 
@@ -97,6 +99,7 @@ class Rules:
 
     @property
     def num_ships(self) -> int:
+        """N: TEAMS times ships_per_team."""
         return TEAMS * self.ships_per_team
 
     @property
@@ -106,6 +109,7 @@ class Rules:
 
     @property
     def modes(self) -> tuple[ModeRules, ...]:
+        """Each pool's ModeRules, in pool order."""
         return tuple(pool.mode for pool in self.pools)
 
     @property
@@ -130,27 +134,32 @@ class Rules:
         """All uniforms per environment per tick: the game's, then the mode's spawn draws
         (modes spec 2), as wide as the widest mode needs; each environment reads its own
         mode's prefix (mixed spec 2)."""
-        return self.game_uniform_count + max(mode.uniform_count(self.num_ships)
-                                             for mode in self.modes)
+        return self.game_uniform_count + max(
+            mode.uniform_count(self.num_ships) for mode in self.modes
+        )
 
 
 def _pool_rules(environments: int | None, game: GameConfig, tick_length: float) -> PoolRules:
     """A game's mode and its time-native rules (the mode's clock where it leaves them out)."""
-    episode_s, respawn_s = CLOCKS[game.mode]
-    episode_s = episode_s if game.episode_s is None else game.episode_s
-    respawn_s = respawn_s if game.respawn_s is None else game.respawn_s
-    return PoolRules(environments=environments, mode=mode_rules_of(game),
-                     arena_radius=game.arena_radius,
-                     episode_ticks=ticks_of(episode_s, tick_length),
-                     respawn_ticks=ticks_of(respawn_s, tick_length))
+    episode_seconds, respawn_seconds = CLOCKS[game.mode]
+    episode_seconds = episode_seconds if game.episode_seconds is None else game.episode_seconds
+    respawn_seconds = respawn_seconds if game.respawn_seconds is None else game.respawn_seconds
+    return PoolRules(
+        environments=environments,
+        mode=mode_rules_of(game),
+        arena_radius=game.arena_radius,
+        episode_ticks=ticks_of(episode_seconds, tick_length),
+        respawn_ticks=ticks_of(respawn_seconds, tick_length),
+    )
 
 
-def rules_of(config: GameConfig, pools: tuple[Pool, ...] = (), num_envs: int | None = None,
-             **overrides) -> Rules:
+def rules_of(
+    config: GameConfig, pools: tuple[Pool, ...] = (), environments: int | None = None, **overrides
+) -> Rules:
     """The rules for a config's sizes and games; `overrides` replace defaults.
 
     Without pools the batch plays the config's game, at any batch size. With pools (and
-    num_envs, their batch size) each pool plays its own (`pool_game`), in pool order;
+    environments, their batch size) each pool plays its own (`pool_game`), in pool order;
     adjacent pools of the same game merge, and if one game remains it covers the whole
     batch as without pools.
     """
@@ -158,7 +167,7 @@ def rules_of(config: GameConfig, pools: tuple[Pool, ...] = (), num_envs: int | N
     if not pools:
         games = (_pool_rules(None, config, tick_length),)
     else:
-        sizes = environments_per_pool(pools, num_envs)
+        sizes = environments_per_pool(pools, environments)
         merged: list[PoolRules] = []
         for size, pool in zip(sizes, pools):
             game = _pool_rules(size, pool_game(config, pool), tick_length)
@@ -170,5 +179,10 @@ def rules_of(config: GameConfig, pools: tuple[Pool, ...] = (), num_envs: int | N
             merged = [dataclasses.replace(merged[0], environments=None)]
         games = tuple(merged)
     overrides.setdefault("bullet_moves", ticks_of(BULLET_LIFE, tick_length))
-    return Rules(ships_per_team=config.ships_per_team, num_fields=config.num_fields,
-                 pools=games, tick_length=tick_length, **overrides)
+    return Rules(
+        ships_per_team=config.ships_per_team,
+        num_fields=config.num_fields,
+        pools=games,
+        tick_length=tick_length,
+        **overrides,
+    )

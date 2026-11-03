@@ -16,6 +16,12 @@ from bnb.controllers.scripted import Chaser
 from bnb.game import api
 from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+# The ONNX exporter initialises CUDA when a device is visible, so the test is `gpu`.
+pytestmark = [pytest.mark.gpu, pytest.mark.slow, pytest.mark.usefixtures("global_generator")]
+
+
 onnxruntime = pytest.importorskip("onnxruntime")
 
 
@@ -24,11 +30,18 @@ class Step(torch.nn.Module):
         super().__init__()
         self.model, self.carry_spec = model, carry_spec
 
-    def forward(self, ships, fields, globals, reset, *carry):
-        decision = self.model.step(_pytree.tree_unflatten(list(carry), self.carry_spec),
-                                   Obs(ships=ships, fields=fields, globals=globals), reset)
-        return (decision.policy_logits, decision.values, decision.outcome_probabilities,
-                *_pytree.tree_leaves(decision.carry))
+    def forward(self, ships, fields, globals, zones, reset, *carry):
+        decision = self.model.step(
+            _pytree.tree_unflatten(list(carry), self.carry_spec),
+            Obs(ships=ships, fields=fields, globals=globals, zones=zones),
+            reset,
+        )
+        return (
+            decision.policy_logits,
+            decision.values,
+            decision.outcome_probabilities,
+            *_pytree.tree_leaves(decision.carry),
+        )
 
 
 def _mid_game(config: GameConfig, ticks: int):
@@ -40,12 +53,24 @@ def _mid_game(config: GameConfig, ticks: int):
     chaser = Chaser(config.ships_per_team)
     views = []
     for _ in range(ticks):
-        views.append(Obs(ships=obs.ships[:, 0], fields=obs.fields[:, 0], globals=obs.globals[:, 0]))
+        views.append(
+            Obs(
+                ships=obs.ships[:, 0],
+                fields=obs.fields[:, 0],
+                globals=obs.globals[:, 0],
+                zones=obs.zones[:, 0],
+            )
+        )
         action, _, _ = chaser.step(None, Obs(ships=obs.ships[0], fields=None, globals=None), None)
         packed = action.packed().reshape(1, config.num_ships, 3)
-        state, _ = api.step(rules, types, state, Action.unpack(packed),
-                            api.spread(rules, 1, generator=generator),
-                            api.uniforms(rules, 1, generator=generator))
+        state, _ = api.step(
+            rules,
+            types,
+            state,
+            Action.unpack(packed),
+            api.spread(rules, 1, generator=generator),
+            api.uniforms(rules, 1, generator=generator),
+        )
         state, obs, _ = api.perceive(rules, state)
     return rules, types, views
 
@@ -68,7 +93,7 @@ def test_yemong_step_exports_to_onnx(tmp_path):
     leaves, spec = _pytree.tree_flatten(carry)
     step = Step(model, spec).eval()
     view = views[-1]
-    args = (view.ships, view.fields, view.globals, reset, *leaves)
+    args = (view.ships, view.fields, view.globals, view.zones, reset, *leaves)
     path = tmp_path / "yemong.onnx"
     torch.onnx.export(step, args, str(path), dynamo=True)
     session = onnxruntime.InferenceSession(str(path), providers=["CPUExecutionProvider"])

@@ -38,7 +38,7 @@ ships per team. Every field:
 
 <!-- generated: game-config -->
 
-`episode_s` and `respawn_s` must be whole multiples of the tick, or building the rules
+`episode_seconds` and `respawn_seconds` must be whole multiples of the tick, or building the rules
 fails (`bnb.contracts.config.ticks_of`).
 
 ## Pools: who plays whom
@@ -62,8 +62,8 @@ war; it too must come to a whole number. Every field of a pool:
 
 ## The mixed batch
 
-A pool may also set its own game: `mode`, `arena_radius`, `spawn_groups`, `episode_s` and
-`respawn_s`. `None` takes the `GameConfig`'s value. The sizes (ships per team, fields) are
+A pool may also set its own game: `mode`, `arena_radius`, `spawn_groups`, `episode_seconds` and
+`respawn_seconds`. `None` takes the `GameConfig`'s value. The sizes (ships per team, fields) are
 the `GameConfig`'s and are shared by the whole batch. One batch then holds several games
 in the same tensors and the same compiled graph; [Mixed batches](../explanation/game/mixed-batches.md)
 explains how.
@@ -79,7 +79,7 @@ The crossed pools, game by game so that each game is one contiguous slice:
 <!-- generated: mixed-pools -->
 
 `bnb.contracts.pools.environment_multiple` gives the smallest batch the pools split into;
-every valid `--num-envs` is a multiple of it.
+every valid `--environments` is a multiple of it.
 
 <!-- runnable -->
 ```python
@@ -130,7 +130,7 @@ from bnb.runtime.train import LEARNER, TrainConfig, train
 
 pools = (Pool("self_play", 0.5, (LEARNER, LEARNER)),
          Pool("chaser", 0.5, (LEARNER, "chaser"), fog_share=0.0))
-config = TrainConfig(game=GameConfig(5, 10, 2600.0), pools=pools, num_envs=1024, updates=200)
+config = TrainConfig(game=GameConfig(5, 10, 2600.0), pools=pools, environments=1024, updates=200)
 train(config, torch.device("cuda"))
 ```
 
@@ -153,7 +153,7 @@ from bnb.contracts import GameConfig, Pool
 from bnb.runtime.train import LEARNER, TrainConfig, Trainer, win_rate
 
 torch.manual_seed(0)
-config = TrainConfig(game=GameConfig(2, 4, 1200.0), num_envs=256, model="relational",
+config = TrainConfig(game=GameConfig(2, 4, 1200.0), environments=256, model="relational",
                      pools=(Pool("chaser", 1.0, (LEARNER, "chaser")),))
 trainer = Trainer(config, torch.device("cuda"))
 for _ in range(400):
@@ -167,7 +167,7 @@ print(win_rate(trainer, games=256))
 
 The `bnb` command seeds torch's default generator from `--seed` (the run's
 `TrainConfig.seed`, which also seeds the learner's streams; `--set seed=N` is the same)
-and sets the matmul precision (`bnb.runtime.train.set_precision`) once, before training,
+and sets the matmul precision (`bnb.cli.set_precision`) once, before training,
 and sets `TRITON_DEFAULT_FP_FUSION` before torch is imported. A script that calls
 `bnb.runtime.train.train` does the same itself. Library code sets no process-wide options;
 only entry points do (see [Architecture](../explanation/architecture.md)).

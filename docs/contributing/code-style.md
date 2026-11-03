@@ -1,6 +1,6 @@
 ---
 covers: [pyproject.toml, src/bnb/contracts/tree.py, tests/conftest.py, tests/contract/test_imports.py]
-reviewed: 2026-11-02
+reviewed: 2026-11-03 09:45
 ---
 
 # Code style
@@ -47,7 +47,7 @@ rules in `docs/rewrite/scaffold.md` (sections 3 and 4) and the decisions recorde
 
 - **Full words:** `environment`, `probability`{.plain}, `observation`, `length`. Universal
   abbreviations (`cos`, `sin`, `x`, `y`, `id`) are fine; spec symbols (`c`, `w`, `gx`)
-  and truncations (`obs` as a variable, `buf`{.plain}, `ctrl`, `idx`) are not.
+  and truncations (`obs` as a variable, `buf`{.plain}, `ctrl`{.plain}, `idx`) are not.
   - The exceptions are names that are themselves contracts or established terms: the
     `Obs` contract, the `ppo` module, `bnb`.
 - **Units in full words** as suffixes when a name carries one: `_seconds`{.plain}, `_metres`{.plain},
@@ -70,9 +70,12 @@ rules in `docs/rewrite/scaffold.md` (sections 3 and 4) and the decisions recorde
   | `M` | fields |
   | `K` | bullet slots per ship |
   | `Z` | zone slots |
-  | `L` | reward levels |
   | `C` | spawn candidates |
-  | `R` | rollout steps |
+  | `L` | steps of a rollout segment |
+  | `R` | views: the rows of the batch one controller plays |
+
+  The reward levels have no letter: `L` was taken by the segment's steps, so a shape
+  writes them as `levels`, as in `(L, R, S, levels)`.
 
   In code, a dimension is a named variable (`ships_per_team`), or unpacked from a shape
   with these letters at the top of a function (`B, N, K = bullets.moves_left.shape`).

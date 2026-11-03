@@ -268,8 +268,8 @@ def game_presets() -> str:
         episode, respawn = CLOCKS[game.mode]
         rows.append((_code(name), _code(game.mode), game.ships_per_team, game.num_fields,
                      _number(game.arena_radius), _code(game.spawn_groups) if game.spawn_groups
-                     else "uniform", _number(game.episode_s if game.episode_s else episode),
-                     _number(game.respawn_s if game.respawn_s else respawn)))
+                     else "uniform", _number(game.episode_seconds if game.episode_seconds else episode),
+                     _number(game.respawn_seconds if game.respawn_seconds else respawn)))
     return _table(("Preset", "Mode", "Ships per team", "Fields", "Arena radius (m)",
                    "Spawn groups", "Episode (s)", "Respawn wait (s)"), rows)
 

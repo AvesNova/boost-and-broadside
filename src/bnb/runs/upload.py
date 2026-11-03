@@ -26,13 +26,16 @@ def upload(run: Run, step: int | None = None, league: bool = False) -> str:
             raise FileNotFoundError(f"run {run.record['name']} has no league snapshots")
     else:
         directory, kind = run.checkpoint_at(step), "checkpoint"
-        step = int(directory.name[len("step_"):])
+        step = int(directory.name[len("step_") :])
     name = artifact_name(run, step, league)
-    session = wandb.init(project=PROJECT, job_type="upload", name=f"upload {name}",
-                         config=dict(run=run.record["name"], step=step))
+    session = wandb.init(
+        project=PROJECT,
+        job_type="upload",
+        name=f"upload {name}",
+        config=dict(run=run.record["name"], step=step),
+    )
     try:
-        artifact = wandb.Artifact(name, type=kind,
-                                  metadata=dict(run=run.record["name"], step=step))
+        artifact = wandb.Artifact(name, type=kind, metadata=dict(run=run.record["name"], step=step))
         artifact.add_dir(str(pathlib.Path(directory)))
         session.log_artifact(artifact)
     finally:

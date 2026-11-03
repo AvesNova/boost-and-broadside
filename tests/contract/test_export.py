@@ -8,6 +8,12 @@ from bnb.contracts import GameConfig, Obs
 from bnb.game import api
 from bnb.models.mlp import MLP, MLPBuild
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+# The ONNX exporter initialises CUDA when a device is visible, so the test is `gpu`.
+pytestmark = [pytest.mark.gpu, pytest.mark.usefixtures("global_generator")]
+
+
 onnxruntime = pytest.importorskip("onnxruntime")
 
 
@@ -32,8 +38,9 @@ def test_mlp_exports_to_onnx(tmp_path):
     torch.nn.init.normal_(model.policy.weight, std=0.1)  # non-trivial outputs
     args = (obs.ships[:, 0], obs.fields[:, 0], obs.globals[:, 0])
     path = tmp_path / "mlp.onnx"
-    torch.onnx.export(Step(model).eval(), args, str(path), dynamo=True,
-                      input_names=["ships", "fields", "globals"])
+    torch.onnx.export(
+        Step(model).eval(), args, str(path), dynamo=True, input_names=["ships", "fields", "globals"]
+    )
     session = onnxruntime.InferenceSession(str(path), providers=["CPUExecutionProvider"])
     got = session.run(None, {k: v.numpy() for k, v in zip(("ships", "fields", "globals"), args)})
     with torch.no_grad():

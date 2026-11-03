@@ -11,6 +11,7 @@ LOG_RATE_RANGE = (-20.0, 2.0)
 
 
 def cell_count(rings: int) -> int:
+    """C, the hex grid's cells within rings rings of the centre: 1 + 3 rings (rings + 1)."""
     return 1 + 3 * rings * (rings + 1)
 
 
@@ -39,12 +40,17 @@ class HexGrid:
         side = 2 * rings + 1
         # The cell index of axial (q, r) at [q + R, r + R], or C if off the grid.
         lookup = torch.full((side, side), self.cells, dtype=torch.int64, device=device)
-        lookup[axial[:, 0] + rings, axial[:, 1] + rings] = torch.arange(self.cells,
-                                                                         device=device)
+        lookup[axial[:, 0] + rings, axial[:, 1] + rings] = torch.arange(self.cells, device=device)
         self.lookup = lookup
 
-    def counts(self, x: torch.Tensor, y: torch.Tensor, is_ally: torch.Tensor,
-               alive: torch.Tensor, arena_radius: torch.Tensor) -> torch.Tensor:
+    def counts(
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor,
+        is_ally: torch.Tensor,
+        alive: torch.Tensor,
+        arena_radius: torch.Tensor,
+    ) -> torch.Tensor:
         """(B, 2C): each living ship splits one unit over its grid triangle by barycentric
         weight; ally cells, then enemy cells. x, y, is_ally, alive (B, N); arena_radius
         broadcasts to them."""
@@ -62,10 +68,11 @@ class HexGrid:
         vertex = torch.arange(3, device=device)
         offset_q = torch.where(lower[..., None], vertex == 1, vertex != 1).long()
         offset_r = torch.where(lower[..., None], vertex == 2, vertex >= 1).long()
-        weight = torch.where(lower[..., None],
-                             torch.stack([1.0 - along_q - along_r, along_q, along_r], -1),
-                             torch.stack([1.0 - along_r, 1.0 - along_q,
-                                          along_q + along_r - 1.0], -1))
+        weight = torch.where(
+            lower[..., None],
+            torch.stack([1.0 - along_q - along_r, along_q, along_r], -1),
+            torch.stack([1.0 - along_r, 1.0 - along_q, along_q + along_r - 1.0], -1),
+        )
         vertex_q = base_q.long()[..., None] + offset_q + rings
         vertex_r = base_r.long()[..., None] + offset_r + rings
         inside = (vertex_q >= 0) & (vertex_q < side) & (vertex_r >= 0) & (vertex_r < side)
@@ -75,15 +82,17 @@ class HexGrid:
         weight = weight * alive[..., None].to(weight.dtype)
         counts = torch.zeros(x.shape[:-1] + (2 * (cells + 1),), dtype=x.dtype, device=x.device)
         counts.scatter_add_(-1, index.flatten(-2), weight.flatten(-2))
-        return torch.cat([counts[..., :cells], counts[..., cells + 1:-1]], -1)
+        return torch.cat([counts[..., :cells], counts[..., cells + 1 : -1]], -1)
 
 
-def poisson_terms(log_rate: torch.Tensor, counts: torch.Tensor) -> tuple[torch.Tensor,
-                                                                          torch.Tensor]:
+def poisson_terms(
+    log_rate: torch.Tensor, counts: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
     """The per-cell Poisson negative log-likelihood (without log y!) of a clipped log-rate,
     and its saturated value (the best any rate could do)."""
     clipped = torch.clamp(log_rate, *LOG_RATE_RANGE)
     per_cell = torch.exp(clipped) - counts * clipped
-    saturated = torch.where(counts > 0,
-                            counts - counts * torch.log(torch.clamp_min(counts, 1e-12)), 0.0)
+    saturated = torch.where(
+        counts > 0, counts - counts * torch.log(torch.clamp_min(counts, 1e-12)), 0.0
+    )
     return per_cell, saturated

@@ -1,12 +1,11 @@
 """Perception: views depend on team only through team_relative; fog of war per
 environment."""
 
-import math
-
 import pytest
 import torch
 
 from bnb.contracts import Action, GameConfig, Pool
+from bnb.contracts.action import NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.contracts.obs import GLOBAL, SHIP, SHIP_HIDDEN_ZERO
 from bnb.contracts.pools import environments_per_pool
 from bnb.game import api
@@ -21,22 +20,36 @@ def _game(ships_per_team=3, fields=6, radius=1800.0, batch=16, warm=60, fogged=N
     state = api.reset(rules, TYPES, api.uniforms(rules, batch, generator=generator), fogged)
     for _ in range(warm):  # some motion, firing and sight so the views are not trivial
         choice = torch.rand(batch, rules.num_ships, 3, generator=generator)
-        action = Action.unpack((choice * torch.tensor([3.0, 7.0, 2.0])).to(torch.int32))
-        state, _ = api.step(rules, TYPES, state, action,
-                            api.spread(rules, batch, generator=generator),
-                            api.uniforms(rules, batch, generator=generator))
+        action = Action.unpack(
+            (choice * torch.tensor([NUM_POWER, NUM_STICK, NUM_SHOOT], dtype=torch.float32)).to(
+                torch.int32
+            )
+        )
+        state, _ = api.step(
+            rules,
+            TYPES,
+            state,
+            action,
+            api.spread(rules, batch, generator=generator),
+            api.uniforms(rules, batch, generator=generator),
+        )
         state, _, _ = api.perceive(rules, state)
     return rules, state
 
 
 def _swap_teams(state: State, ships_per_team: int) -> State:
     """The same world with the two teams' sim indices exchanged."""
+
     def roll(values):
         return values.roll(ships_per_team, dims=1)
 
     since = state.match.ticks_since_seen.flip(1).roll(ships_per_team, dims=2)
-    return replace(state, ships=apply(roll, state.ships), bullets=apply(roll, state.bullets),
-                   match=replace(state.match, ticks_since_seen=since))
+    return replace(
+        state,
+        ships=apply(roll, state.ships),
+        bullets=apply(roll, state.bullets),
+        match=replace(state.match, ticks_since_seen=since),
+    )
 
 
 def test_views_swap_with_the_teams():
@@ -63,7 +76,9 @@ def test_own_rows_first_and_hidden_rows_blank():
 
 def test_spawn_layout_does_not_reveal_the_seat():
     rules = api.rules_of(GameConfig(3, 4, 2600.0))
-    _, obs, _ = api.perceive(rules, api.reset(rules, TYPES, api.uniforms(rules, 512)))
+    generator = torch.Generator().manual_seed(2)
+    uniforms = api.uniforms(rules, 512, generator=generator)
+    _, obs, _ = api.perceive(rules, api.reset(rules, TYPES, uniforms))
     S = rules.ships_per_team
     own = obs.ships[..., :S, :]
     dx = own[..., 0, SHIP["x"]] - own[..., SHIP["x"]].mean(-1)
@@ -71,7 +86,6 @@ def test_spawn_layout_does_not_reveal_the_seat():
     angle = torch.atan2(dy, dx)  # world-frame direction of slot 0 from its team's centre
     spread = 1.0 - torch.hypot(angle.cos().mean(0), angle.sin().mean(0))  # circular spread
     assert (spread > 0.5).all(), f"slot 0's direction is fixed per view: {spread} (uniform ~1)"
-    assert math.isfinite(float(spread.sum()))
 
 
 def test_unfogged_views_see_every_living_ship():
@@ -88,14 +102,21 @@ def test_unfogged_views_see_every_living_ship():
 
 
 def test_fog_survives_episode_resets():
-    rules = api.rules_of(GameConfig(1, 1, 600.0, episode_s=1 / 15))  # two-tick episodes
+    rules = api.rules_of(GameConfig(1, 1, 600.0, episode_seconds=1 / 15))  # two-tick episodes
     fogged = torch.tensor([True, False])
-    state = api.reset(rules, TYPES, api.uniforms(rules, 2), fogged)
+    generator = torch.Generator().manual_seed(3)
+    state = api.reset(rules, TYPES, api.uniforms(rules, 2, generator=generator), fogged)
     action = Action.unpack(torch.zeros(2, 2, 3, dtype=torch.int32))
     resets = 0
     for _ in range(3):
-        state, events = api.step(rules, TYPES, state, action, api.spread(rules, 2),
-                                 api.uniforms(rules, 2))
+        state, events = api.step(
+            rules,
+            TYPES,
+            state,
+            action,
+            api.spread(rules, 2, generator=generator),
+            api.uniforms(rules, 2, generator=generator),
+        )
         resets += int(events.done.sum())
     assert resets > 0 and torch.equal(state.match.fogged, fogged)
 
@@ -106,13 +127,21 @@ def test_fog_share_must_be_whole():
         environments_per_pool((Pool("a", 1.0, ("x", "x"), fog_share=0.3),), 8)
 
 
-def test_rollout_fogs_the_first_share_of_each_pool():
+def test_rollout_fogs_the_first_share_of_each_pool(global_generator):
     from bnb.controllers.scripted import Random
     from bnb.runtime.rollout import Rollout
 
     pools = (Pool("a", 0.5, ("r", "r"), fog_share=0.5), Pool("b", 0.5, ("r", "r"), fog_share=0.0))
-    rollout = Rollout(GameConfig(1, 1, 600.0), pools, {"r": Random(1)}, "r", 8, 2,
-                      torch.device("cpu"), compile=False)
+    rollout = Rollout(
+        GameConfig(1, 1, 600.0),
+        pools,
+        {"r": Random(1)},
+        "r",
+        8,
+        2,
+        torch.device("cpu"),
+        compiled=False,
+    )
     want = torch.tensor([True, True, False, False, False, False, False, False])
     assert torch.equal(rollout.carry["state"].match.fogged, want)
     rollout.run()

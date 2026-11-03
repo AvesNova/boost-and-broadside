@@ -32,8 +32,11 @@ def test_keys_map_to_the_game_controls():
     assert power() == 0.0 and power(boost=True, reverse=True) == 0.0
     assert power(boost=True) == POWER_MODES[1] and power(reverse=True) == POWER_MODES[2]
     assert stick() == 0.0 and stick(left=True, right=True) == 0.0
-    middle, full, lightest = (stick(left=True), stick(left=True, full=True),
-                              stick(left=True, lightest=True))
+    middle, full, lightest = (
+        stick(left=True),
+        stick(left=True, full=True),
+        stick(left=True, lightest=True),
+    )
     assert 0.0 < lightest < middle < full  # left is the positive (counter-clockwise) side
     assert stick(right=True) == -middle and stick(right=True, full=True) == -full
     assert stick(right=True, lightest=True) == -lightest

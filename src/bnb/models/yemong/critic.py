@@ -4,15 +4,19 @@ the outcome classes and their lambda targets, and the percentile scale of return
 
 import torch
 
+from .codes import two_hot_at
+
 WIN, TIE, LOSS, UNRESOLVED = range(4)
 OUTCOMES = 4
 
 
 def symlog(values: torch.Tensor) -> torch.Tensor:
+    """sign(x) log(1 + |x|), elementwise."""
     return torch.sign(values) * torch.log1p(values.abs())
 
 
 def symexp(values: torch.Tensor) -> torch.Tensor:
+    """The inverse of symlog: sign(x) (exp|x| - 1), elementwise."""
     return torch.sign(values) * torch.expm1(values.abs())
 
 
@@ -28,12 +32,12 @@ def two_hot(values: torch.Tensor, bins: torch.Tensor) -> torch.Tensor:
     upper = torch.clamp(torch.searchsorted(bins, values.contiguous(), right=True), 1, count - 1)
     lower = upper - 1
     weight = torch.clamp((values - bins[lower]) / (bins[upper] - bins[lower]), 0.0, 1.0)
-    index = torch.arange(count, device=values.device)
-    return (1.0 - weight)[..., None] * (index == lower[..., None]) \
-        + weight[..., None] * (index == upper[..., None])
+    return two_hot_at(lower, weight, count)
 
 
 def expectation(logits: torch.Tensor, bins: torch.Tensor) -> torch.Tensor:
+    """The mean (...) of the categorical distribution softmax(logits) (..., bins) over the bin
+    values."""
     return (torch.softmax(logits, -1) * bins).sum(-1)
 
 
@@ -47,8 +51,14 @@ def outcome_class(result: torch.Tensor) -> torch.Tensor:
     return torch.where(result > 0, WIN, torch.where(result < 0, LOSS, TIE)).long()
 
 
-def outcome_targets(probabilities: torch.Tensor, result: torch.Tensor, terminated: torch.Tensor,
-                    next_probabilities: torch.Tensor, gamma: float, lam: float) -> torch.Tensor:
+def outcome_targets(
+    probabilities: torch.Tensor,
+    result: torch.Tensor,
+    terminated: torch.Tensor,
+    next_probabilities: torch.Tensor,
+    gamma: float,
+    lam: float,
+) -> torch.Tensor:
     """Lambda targets for the outcome distribution, (L, ..., 4).
 
     probabilities (L, ..., 4) are p(s_t); next_probabilities (..., 4) bootstrap p(s_L);
@@ -56,7 +66,7 @@ def outcome_targets(probabilities: torch.Tensor, result: torch.Tensor, terminate
     """
     unresolved = torch.zeros(OUTCOMES, dtype=probabilities.dtype, device=probabilities.device)
     unresolved[UNRESOLVED] = 1.0
-    final = (outcome_class(result)[..., None] == torch.arange(OUTCOMES, device=result.device))
+    final = outcome_class(result)[..., None] == torch.arange(OUTCOMES, device=result.device)
     final = final.to(probabilities.dtype)
     following = next_probabilities
     target = next_probabilities
@@ -91,4 +101,5 @@ class ReturnScale:
         return self.scale()
 
     def scale(self) -> torch.Tensor:
+        """The current scale, a scalar tensor: the gap of the percentile EMAs, at least floor."""
         return torch.clamp_min(self.high - self.low, self.floor)

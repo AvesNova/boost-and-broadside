@@ -15,8 +15,12 @@ from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
 from bnb.runtime.rollout import Rollout
 
-pytestmark = [pytest.mark.gpu, pytest.mark.slow,
-              pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")]
+pytestmark = [
+    pytest.mark.gpu,
+    pytest.mark.usefixtures("global_generator"),
+    pytest.mark.slow,
+    pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA"),
+]
 CUDA = torch.device("cuda") if torch.cuda.is_available() else None
 LENGTH, BLOCK = 64, 16
 
@@ -27,10 +31,23 @@ def _rollout(host_store: bool, shards: int = 1, seed: int = 0):
     net = cases.model().to(CUDA)
     torch.manual_seed(seed)  # the rollout's draws come from the global generator
     config = cases.SHORT_SQUAD
-    controllers = {"learner": cases.controller(net, config),
-                   "chaser": Chaser(config.ships_per_team)}
-    runner = Rollout(config, lc.POOLS, controllers, "learner", 16, LENGTH, CUDA, compile=False,
-                     graph_ticks=BLOCK, shards=shards, host_store=host_store)
+    controllers = {
+        "learner": cases.controller(net, config),
+        "chaser": Chaser(config.ships_per_team),
+    }
+    runner = Rollout(
+        config,
+        lc.POOLS,
+        controllers,
+        "learner",
+        16,
+        LENGTH,
+        CUDA,
+        compiled=False,
+        graph_ticks=BLOCK,
+        shards=shards,
+        host_store=host_store,
+    )
     runner.run(0)  # history for the stored initial carry
     bootstraps = []
     for shard in range(shards):
@@ -44,9 +61,14 @@ def _gradient(net, runner, bootstraps):
     the value losses and the gradient."""
     store = runner.store
     views = store.views
-    learner = Learner(net, LearnerConfig(minibatches=1,
-                                         micro_batch_rows=views // 4 * runner.rules.num_ships),
-                      runner.rules, runner.carry["types"], RewardConfig().outcome, CUDA)
+    learner = Learner(
+        net,
+        LearnerConfig(minibatches=1, micro_batch_rows=views // 4 * runner.rules.num_ships),
+        runner.rules,
+        runner.carry["types"],
+        RewardConfig().outcome,
+        CUDA,
+    )
     prepared = learner.prepare(store, bootstraps)
     chosen = torch.randperm(views, generator=torch.Generator().manual_seed(0))
     terms, levels, _ = learner.gradient(store, prepared, chosen)
@@ -75,10 +97,12 @@ def test_an_update_synchronises_only_to_read_its_kl_and_its_results():
     """No host sync per minibatch or per staged batch: the update reads the epoch's mean KL
     once per epoch but the last, and its results once."""
     net, runner, bootstraps = _rollout(host_store=True)
-    config = LearnerConfig(epochs=3, minibatches=4, target_kl=float("inf"),
-                           micro_batch_rows=4 * runner.rules.num_ships)
-    learner = Learner(net, config, runner.rules, runner.carry["types"], RewardConfig().outcome,
-                      CUDA)
+    config = LearnerConfig(
+        epochs=3, minibatches=4, target_kl=float("inf"), micro_batch_rows=4 * runner.rules.num_ships
+    )
+    learner = Learner(
+        net, config, runner.rules, runner.carry["types"], RewardConfig().outcome, CUDA
+    )
     learner.update(runner.store, bootstraps)  # the first: the staging buffers
     torch.cuda.synchronize()
     with warnings.catch_warnings(record=True) as caught:
@@ -96,10 +120,22 @@ def test_an_update_synchronises_only_to_read_its_kl_and_its_results():
 def test_the_rollout_keeps_two_blocks_of_records_on_the_device():
     net = cases.model().to(CUDA)
     config = cases.SHORT_SQUAD
-    controllers = {"learner": cases.controller(net, config),
-                   "chaser": Chaser(config.ships_per_team)}
-    runner = Rollout(config, lc.POOLS, controllers, "learner", 16, LENGTH, CUDA, compile=False,
-                     graph_ticks=BLOCK, host_store=True)
+    controllers = {
+        "learner": cases.controller(net, config),
+        "chaser": Chaser(config.ships_per_team),
+    }
+    runner = Rollout(
+        config,
+        lc.POOLS,
+        controllers,
+        "learner",
+        16,
+        LENGTH,
+        CUDA,
+        compiled=False,
+        graph_ticks=BLOCK,
+        host_store=True,
+    )
     trajectory = runner.run()
     ring = runner.carry["records"]["obs"].ships
     assert ring.shape[0] == 2 * BLOCK and ring.device.type == "cuda"
@@ -107,9 +143,11 @@ def test_the_rollout_keeps_two_blocks_of_records_on_the_device():
     # The stored segment is what the captured graph wrote: unroll reproduces its decisions.
     on_device = _pytree.tree_map_only(torch.Tensor, lambda x: x.to(CUDA), trajectory)
     from bnb.models.yemong import policy
+
     with torch.no_grad():
-        unrolled = net.unroll(on_device.initial_carry, on_device.obs, on_device.replay,
-                              cases.resets(on_device.obs))
-    logp, _ = policy.evaluate(unrolled.policy_logits, cases.joint_actions(on_device))
-    assert cases.scale_error(logp, on_device.logp) <= 1e-5
+        unrolled = net.unroll(
+            on_device.initial_carry, on_device.obs, on_device.replay, cases.resets(on_device.obs)
+        )
+    log_probability, _ = policy.evaluate(unrolled.policy_logits, cases.joint_actions(on_device))
+    assert cases.scale_error(log_probability, on_device.log_probability) <= 1e-5
     assert cases.scale_error(unrolled.values, on_device.values) <= 1e-5

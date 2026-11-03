@@ -55,11 +55,13 @@ def write(name: str) -> pathlib.Path:
     if isinstance(model, Yemong):
         carry = cases.yemong_carry(model, SEED, obs.ships.shape[0])
         stored.update(named_tensors(carry, "carry."))
-    safetensors.torch.save_file({key: value.clone() for key, value in stored.items()},
-                                directory / INPUTS)
+    safetensors.torch.save_file(
+        {key: value.clone() for key, value in stored.items()}, directory / INPUTS
+    )
     outputs = cases.single_step(model, obs, carry)
-    safetensors.torch.save_file({key: value.clone() for key, value in outputs.items()},
-                                directory / OUTPUTS)
+    safetensors.torch.save_file(
+        {key: value.clone() for key, value in outputs.items()}, directory / OUTPUTS
+    )
     return directory
 
 

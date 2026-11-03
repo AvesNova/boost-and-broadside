@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/contracts/]
-reviewed: 2026-11-01
+reviewed: 2026-11-03 09:45
 ---
 
 # Contracts
@@ -70,7 +70,8 @@ A stored batch may leave out (`None`) a part its model does not read.
 ## Privileged truth
 
 `bnb.contracts.Privileged` is the truth only learners may read: each ship's sim team, the
-sim index of each observation row, and the observation as it would be with fog off. The
+sim index of each observation row, and every ship's row as if it were seen (its true
+columns, the dead included). The
 perceive stage produces it. A controller's `step` has no parameter for it, so no
 controller can receive it.
 
@@ -124,8 +125,9 @@ scripted agents, random, and later humans.
 - A controller plays **one team**: it receives that team's views and returns actions for
   that team's `S` ships.
 - `init_carry(views, device)` gives its opaque [carry](glossary.md#carry), a pytree the runtime stores and
-  never inspects (`None` if stateless). `step(carry, obs, done)` returns the action, the
-  next carry and `bnb.contracts.Outputs`.
+  never inspects (`None` if stateless). `step(carry, obs, reset)` returns the action, the
+  next carry and `bnb.contracts.Outputs`; `reset` flags the views whose environment reset
+  before this observation.
 - `reads` lists the observation parts it uses, so the rollout stores only those.
 - A model's parameters live in the controller's own module, following PyTorch idiom. A
   league slot is a separate controller whose weights are copied in.
