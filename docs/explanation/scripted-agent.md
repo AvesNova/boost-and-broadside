@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/controllers/scripted.py, src/bnb/controllers/scripted_parameters.py, src/bnb/controllers/scripted_combat.py, src/bnb/controllers/scripted_frontline.py, src/bnb/game/handling/characteristics.py, src/bnb/runtime/evaluate.py]
-reviewed: 2026-11-02
+reviewed: 2026-11-03 09:45
 ---
 
 # The scripted agent

@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/contracts/, src/bnb/runtime/lineup.py, src/bnb/runtime/rollout.py]
-reviewed: 2026-11-02
+reviewed: 2026-11-03 09:45
 ---
 
 # Glossary

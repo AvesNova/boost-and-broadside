@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/game/handling/, src/bnb/cli.py]
-reviewed: 2026-11-02
+reviewed: 2026-11-03 09:45
 ---
 
 # Designing a ship

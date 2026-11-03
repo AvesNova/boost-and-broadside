@@ -1,25 +1,44 @@
 ---
 covers: [pyproject.toml, tests/conftest.py]
-reviewed: 2026-11-01
+reviewed: 2026-11-03 09:45
 ---
 
 # Running the tests
 
 <!-- not-runnable: runs the whole suite -->
 ```bash
-uv run --no-sync pytest                    # everything; the gpu tests need a GPU
-uv run --no-sync pytest -m "not gpu"       # everything that runs on the CPU
-uv run --no-sync pytest -m "not slow"      # the fast tests
+uv run --no-sync pytest -m "not slow"      # the quick tier: what to run while working
+uv run --no-sync pytest                    # the full tier: at the end of a task and at a merge
+uv run --no-sync pytest -m "not gpu"       # everything that runs without a GPU
 uv run --no-sync ruff check .              # the linter, configured in pyproject.toml
 ```
+
+The suite also runs `ruff format --check` and `ruff check`.
 
 ## Markers
 
 Two markers, declared in `pyproject.toml`:
 
-- `gpu`: the test needs a GPU: a CUDA device, or an OpenGL 3.3 context (EGL) for the play
-  shell's renderer. These tests also skip when none is available.
-- `slow`: the test takes more than a few seconds.
+- `gpu`: the test can touch a GPU: a CUDA device, or an OpenGL 3.3 context (EGL) for the
+  play shell's renderer. Without CUDA, every CUDA test skips (`tests/conftest.py`); the
+  play shell's tests skip when they cannot open a context.
+- `slow`: the test takes more than 10 s on a quiet machine. Where a smaller case of it is
+  fast, that case stays in the quick tier.
+
+## Shared state
+
+The GPU and torch's default generator are shared by every test in the process, and the
+GPU by every process on the machine. `tests/conftest.py` keeps them apart:
+
+- a `gpu` test holds the benchmark lock (`bench.lock.bench_lock`) while it runs, so another
+  process on the GPU cannot make it run out of memory;
+- a test without `gpu` that initialises CUDA fails, so `-m "not gpu"` never does;
+- a test that leaves the default CPU generator changed fails. Draw from a local
+  `torch.Generator`; where the code under test draws from the default generator (a
+  model's initialisation, the rollout), use the `global_generator` fixture, which seeds it
+  and restores it afterwards;
+- `fresh_compiler` empties dynamo's caches for a test whose compiles must not depend on
+  the tests before it.
 
 ## Layout
 

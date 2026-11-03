@@ -1,6 +1,6 @@
 ---
 covers: [pyproject.toml, src/bnb/contracts/tree.py, tests/conftest.py, tests/contract/test_imports.py]
-reviewed: 2026-11-02
+reviewed: 2026-11-03 09:45
 ---
 
 # Code style

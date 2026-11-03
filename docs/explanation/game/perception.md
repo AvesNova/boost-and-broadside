@@ -1,5 +1,6 @@
 ---
 covers: [src/bnb/game/perception/, src/bnb/contracts/obs.py, src/bnb/runtime/lineup.py]
+reviewed: 2026-11-03 09:45
 ---
 
 # Perception and fog
@@ -62,8 +63,9 @@ observation shows it in seconds, in `time_since_seen`.
 - The fields are the same in every view. The zones and the mode's global columns come from
   the mode, on its own slice of the batch (see [Modes](modes.md)).
 - **Privileged** (`bnb.contracts.Privileged`) is built from the same rows with every ship
-  visible, plus each ship's sim team and the sim index of every row. No controller
-  receives it. The rollout does not store it yet; the learner's labels will read it.
+  visible (the dead included, with `time_since_seen` 0), plus each ship's sim team and the
+  sim index of every row. No controller receives it. The rollout stores its enemy rows for
+  the learner's labels (`Trajectory.truth`).
 
 ## The seat
 

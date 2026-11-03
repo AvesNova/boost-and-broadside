@@ -14,18 +14,15 @@ The order of the brief. Each group is one or more commits on `section/cleanup`, 
 - [x] 3 the sweep's tests
 - [x] 4 docs (the stale-page review is left for the end)
 - [x] 5 layering and duplication
-- [ ] 6 test hygiene: the lock fixture, the CUDA and generator guards, clean skips, the
-  recompile test, the gaps are done (`51c4f56f`). Left: mark every test over 10 s `slow`
-  and every CUDA test `gpu` from a full run's `--durations=0` (a full run was waiting on
-  the shared benchmark lock at hand-over), and report both tiers' times with CUDA hidden.
+- [x] 6 test hygiene
 - [ ] 8 additions: 8.1 game version, 8.2 resume drift, 8.4 reflection test done. Left:
   8.3 (the model's settings and the ship card in `TrainConfig`; replaces
   `TrainConfig.relational_hidden`, which tests pass in about 15 places; the ship card needs
   `Rollout` and `Trainer` to take the card instead of `api.ship_types(device)`) and 8.5's
   measurements.
-- [ ] End: the full suite under the lock, the bench after (the rollout script and the
-  realtime cell; see Measurements), the `PossiblyStalePage` review
-  (`uv run --no-sync python -m tests.docs.staleness`), the size table.
+- [x] End: the bench after, both tiers on the CPU, the quick tier on the GPU, the
+  `PossiblyStalePage` review, the size table. Left: one more full GPU run on the final tree
+  (the last one, on `6dd10879`, found the markers fixed since).
 
 ## Items
 
@@ -293,6 +290,53 @@ a real bug, so there is no `xfail`. All 39 run on the CPU in about 5 s; none is 
       `api.core_radius`.
 - **Same-day reviews:** see section 4.
 
+### 6. Test hygiene
+
+- **Markers,** from a full run's `--durations=0` (on `6dd10879`, every GPU test under
+  the lock, load 4-7 from the other agent's runs, so provisional): every test over 10 s was
+  already `slow` except `test_yemong_step_exports_to_onnx` (21.9 s) and
+  `test_a_mixed_batch_equals_each_game_run_alone` (10.4 s), now marked. The ONNX export
+  tests touch CUDA through the exporter when a device is visible, so they are `gpu`.
+  Yemong's unroll-equals-steps float32 test has a CPU case and a `gpu` case (it took CUDA
+  whenever it was visible).
+- **`gpu` tests take the benchmark lock** (`tests/conftest.py`), and skip without CUDA
+  (except the play shell's, which need OpenGL and skip on their own).
+- **The CUDA guard:** a test without `gpu` that initialises CUDA fails. Only the ONNX
+  export tests did.
+- **The generator guard (proposal):** a test that leaves torch's global CPU generator
+  changed fails (100 did on the first run). See decision 6 for the `global_generator`
+  fixture; `yemong_cases.model` and `runs_cases.tiny_model` seed inside `fork_rng`; the
+  Yemong reference adapter wraps its methods in `fork_rng` (its modules draw initial
+  weights that the fixture weights replace).
+- **The recompile test** (`test_game_section.py`) counts graphs with its own backend
+  instead of resetting dynamo and reading its process-wide counters. The two
+  compiled-rollout tests (`test_mixed_yemong`, `test_yemong_runtime`) hit dynamo's
+  recompile limit in the full run once nothing reset dynamo mid-session; they now take the
+  `fresh_compiler` fixture (dynamo's caches emptied first).
+- **Gaps:** `test_no_controller_takes_privileged` covers every controller (`Scripted`,
+  `RelationalController`, `YemongController`, `TeacherOpponent` added; the separate
+  Yemong test is gone); `test_yemong_model.py` reads `GLOBAL["fogged"]`; the redundant
+  `isfinite` assert in `test_perception.py` is gone; the learner equivalence suite runs (it
+  passed in the full run; only the league's six skip, its arm is not written).
+
+### 8. Additions
+
+1. **Game version:** `bnb.game.VERSION = 1`; every policy file records it
+   (`game_version` in `checkpoint.json`; `test_a_policy_file_records_the_game_version`).
+   League ratings: the league is not built yet (its arm returns None), so nothing records
+   them; its section should key ratings by it.
+2. **Resume drift:** the runs page says a long run resumed on the same GPU can drift by
+   the float atomics' rounding (the damage sum and Yemong's density counts), beside the
+   kernels' cross-machine drift.
+3. **Model settings in `TrainConfig`:** not done (see Progress).
+4. **The scripted agent's reflection test:**
+   `test_scripted.py::test_a_view_reflected_about_frontlines_neutral_axis_reflects_the_stick`
+   passes (the stick swapped for its mirror, power and shoot unchanged, to 1e-4). Note: it
+   also passes about an axis 0.3 rad off the neutral one: the agent reads only relative
+   geometry and the arena is a disc, so it is equivariant under every reflection through
+   the centre. The 0.507 seat imbalance is therefore not from a reflection-asymmetric rule.
+5. **Test tiers:** below.
+
 ## Decisions and deviations
 
 1. **The off-limits files are not formatted** (`bnb/models/yemong/kernels/`,
@@ -336,6 +380,55 @@ None. No sweep test found a wrong behaviour, so there is no `xfail`.
     (load 5.4, provisional).
 
   +0.3%, within noise: the copy is the same single `copy_` of `ticks_since_seen`.
+- **After the whole pass** (`cd83e57e`, same script, lock held, load 5.0, provisional):
+  2 710 613 environment-ticks/s, +0.7% on before.
+- **The bench cells:** before, only the realtime cell finished (see request 6): p50
+  0.19 ms, p99 0.21 ms (load 1.3). After (`cd83e57e`, `bench.cell` alone, CPU, load 3.0):
+  p50 0.192 ms, p99 0.201 ms. The train cells were not rerun (they time out cold).
+- **Test tiers** (this machine: RTX 4060 Laptop 8 GB, 16 threads):
+  - quick, `-m "not slow"`, GPU visible, lock held: 1052 passed, 6 skipped in 2 min 28 s
+    (load 0.6 at the start);
+  - quick, CUDA hidden: 1012 passed, 46 skipped in 2 min 25 s (load 2.8);
+  - full, GPU visible: 1 h 47 min in the run that found the last markers (about 40 min of
+    it waiting for the other agent's lock; 2 failures and 27 guard errors, all fixed since);
+  - full, CUDA hidden (`cd83e57e`): 1067 passed, 69 skipped (every CUDA test and the
+    league's six) in 16 min 52 s (load 2.8).
+- **Slow tests** (over 10 s, from that full run, provisional):
+
+  | Time | Test |
+  |---:|---|
+  | 979.82s | `tests/sections/test_bc_toy.py::test_the_toy_clone_scores_against_its_teacher_and_the_chaser` |
+  | 593.93s | `tests/sections/test_ship_card.py::test_round_trip_default_and_varied_cards` |
+  | 184.98s | `tests/runs/test_resume.py::test_a_resumed_run_equals_one_straight_through_on_the_gpu[yemong]` |
+  | 176.56s | `tests/loop/test_learning.py::test_the_toy_learner_beats_the_chaser` |
+  | 109.23s | `tests/runs/test_resume.py::test_a_resumed_run_equals_one_straight_through_on_the_cpu[yemong]` |
+  | 106.14s | `tests/sections/test_mixed.py::test_a_compiled_mixed_tick_equals_each_game_compiled_alone` |
+  | 70.27s | `tests/sections/test_yemong_model.py::test_unroll_equals_steps_float32[compiled-cpu]` |
+  | 50.05s | `tests/runs/test_resume.py::test_a_resumed_run_equals_one_straight_through_on_the_gpu[relational]` |
+  | 48.12s | `tests/sections/test_handling.py::test_the_characteristics_move_with_the_card` |
+  | 42.04s | `tests/sections/test_scripted_acceptance.py::test_it_beats_random_play_in_essentially_every_game[deathmatch]` |
+  | 38.02s | `tests/sections/test_scripted_acceptance.py::test_it_beats_the_chaser[deathmatch]` |
+  | 35.06s | `tests/sections/test_scripted_acceptance.py::test_it_beats_random_play_in_essentially_every_game[deathmatch_wide]` |
+  | 34.52s | `tests/sections/test_ship_card.py::test_handles_agree_across_tick_rates` |
+  | 34.34s | `tests/sections/test_scripted_acceptance.py::test_it_beats_random_play_in_essentially_every_game[frontline]` |
+  | 31.70s | `tests/sections/test_scripted_acceptance.py::test_it_beats_the_chaser[frontline]` |
+  | 30.20s | `tests/sections/test_seat_symmetry.py::test_chaser_games_and_their_mirror_agree_every_tick[frontline]` |
+  | 30.16s | `tests/sections/test_scripted_acceptance.py::test_it_beats_the_chaser[deathmatch_wide]` |
+  | 26.40s | `tests/sections/test_seat_symmetry.py::test_chaser_games_and_their_mirror_agree_every_tick[deathmatch]` |
+  | 25.05s | `tests/sections/test_game_section.py::test_realtime_steps_one_match[True]` |
+  | 24.00s | `tests/sections/test_game_section.py::test_compiled_tick_and_perception_match_eager[M64]` |
+  | 22.42s | `tests/sections/test_game_section.py::test_compiled_tick_and_perception_match_eager[battle]` |
+  | 21.87s | `tests/contract/test_yemong_export.py::test_yemong_step_exports_to_onnx` |
+  | 19.22s | `tests/sections/test_ship_card.py::test_redundant_handles_warn` |
+  | 18.84s | `tests/sections/test_modes.py::test_compiled_tick_matches_eager_in_every_mode[frontline]` |
+  | 18.52s | `tests/sections/test_ship_card.py::test_each_flown_handle_matches_an_independent_flight[1]` |
+  | 17.39s | `tests/sections/test_modes.py::test_compiled_tick_matches_eager_in_every_mode[grouped]` |
+  | 16.88s | `tests/sections/test_ship_card.py::test_infeasible_without_convergence` |
+  | 16.84s | `tests/sections/test_ship_card.py::test_each_flown_handle_matches_an_independent_flight[0]` |
+  | 15.61s | `tests/sections/test_game_section.py::test_compiled_rollout_graph_replays_draw_fresh_randomness` |
+  | 14.82s | `tests/sections/test_modes.py::test_compiled_tick_matches_eager_in_every_mode[sandbox]` |
+  | 13.03s | `tests/sections/test_yemong_model.py::test_unroll_equals_steps_float32[compiled-cuda]` |
+  | 10.36s | `tests/sections/test_mixed.py::test_a_mixed_batch_equals_each_game_run_alone` |
 
 ## Requests and open questions
 
@@ -366,3 +459,28 @@ None. No sweep test found a wrong behaviour, so there is no `xfail`.
    coordinator.
 
 ## Size
+
+`git diff --numstat origin/v2 HEAD` (v2 at `c3953286`), lines added and removed. The
+formatting commit alone (`aa313fd2`) is 136 files, +7401 -3199, so most of `src/`'s count
+is the formatter.
+
+| Part | Added | Removed |
+|---|---:|---:|
+| `src/bnb/game` | 1831 | 799 |
+| `src/bnb/models` | 1078 | 531 |
+| `src/bnb/learn` | 651 | 309 |
+| `src/bnb/runtime` | 477 | 251 |
+| `src/bnb/runs` | 455 | 205 |
+| `src/bnb/controllers` | 277 | 143 |
+| `src/bnb/cli.py` | 249 | 154 |
+| `src/bnb/contracts` | 118 | 56 |
+| `bench` | 334 | 170 |
+| `tests/sections` | 3596 | 1174 |
+| `tests/contract` | 380 | 40 |
+| `tests/runs` | 445 | 164 |
+| `tests/loop` | 162 | 10 |
+| `tests/conftest.py` | 81 | 0 |
+| `tests/reference` (the two adapters) | 56 | 6 |
+| `docs` (user pages) | 52 | 39 |
+| `docs/rewrite` (contracts.md, these notes) | 408 | 41 |
+| `STYLE_GUIDE.md` | 0 | 217 |

@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/runtime/, src/bnb/controllers/, src/bnb/models/relational.py]
-reviewed: 2026-11-02
+reviewed: 2026-11-03 09:45
 ---
 
 # The training loop

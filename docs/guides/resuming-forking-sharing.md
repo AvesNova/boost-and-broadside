@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/cli.py, src/bnb/runs/]
-reviewed: 2026-11-02
+reviewed: 2026-11-03 09:45
 ---
 
 # Resuming, forking and sharing runs

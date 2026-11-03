@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/contracts/]
-reviewed: 2026-11-01
+reviewed: 2026-11-03 09:45
 ---
 
 # Contracts
@@ -70,7 +70,8 @@ A stored batch may leave out (`None`) a part its model does not read.
 ## Privileged truth
 
 `bnb.contracts.Privileged` is the truth only learners may read: each ship's sim team, the
-sim index of each observation row, and the observation as it would be with fog off. The
+sim index of each observation row, and every ship's row as if it were seen (its true
+columns, the dead included). The
 perceive stage produces it. A controller's `step` has no parameter for it, so no
 controller can receive it.
 
