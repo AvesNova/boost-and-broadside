@@ -10,11 +10,10 @@ import torch
 
 from bnb.game.modes.rules import PRESETS
 from bnb.play.interpolate import interpolate
-from bnb.play.loop import MatchLoop
+from bnb.play.loop import MatchLoop, MatchSetup
 
 # The code under test draws from torch's default generator (model initialisation, the
 # rollout, the scripted opponents): each test runs with it seeded and restored.
-pytestmark = pytest.mark.usefixtures("global_generator")
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -27,8 +26,7 @@ def one_thread():
 
 
 def _pair():
-    torch.manual_seed(0)
-    loop = MatchLoop(PRESETS["deathmatch"], compile=False, pilot=None)
+    loop = MatchLoop(MatchSetup(PRESETS["deathmatch"]), compiled=False)
     for _ in range(20):
         loop.step()
     return loop.previous, loop.current
@@ -79,8 +77,7 @@ def test_teleports_snap_to_the_new_state():
 
 
 def _shooting(ticks: int):
-    torch.manual_seed(0)
-    loop = MatchLoop(PRESETS["deathmatch"], compile=False, pilot=None)
+    loop = MatchLoop(MatchSetup(PRESETS["deathmatch"]), compiled=False)
     shoot = torch.tensor([[0, 0, 1]] * loop.rules.num_ships, dtype=torch.int32)
     for _ in range(ticks):
         loop.tick(shoot)

@@ -58,12 +58,11 @@ def clone(tree):
 
 @dataclasses.dataclass(frozen=True)
 class Keyframe:
-    """Everything a match continues from: its state, every team's latest view, the last
-    tick's events and its generator's state."""
+    """Everything a match continues from: its state, every team's latest view and its
+    generator's state."""
 
     state: api.State
     obs: Obs
-    events: Events | None
     generator: torch.Tensor
 
 
@@ -143,9 +142,9 @@ class Realtime:
             self._thread.join()
         _ = self.compiling  # raises a failed compile's error
 
-    def _tick(self) -> TickFunction:
+    def _tick(self, eager: bool) -> TickFunction:
         background = self._thread is not None and self.rules not in _READY
-        if self.compiled and not background:
+        if self.compiled and not background and not eager:
             self.uses_compiled = True
             return compiled_tick(self.rules)
         self.uses_compiled = False
@@ -154,11 +153,12 @@ class Realtime:
     # Stepping, keyframes ------------------------------------------------------------------
 
     @torch.no_grad()
-    def step(self, actions: torch.Tensor) -> Obs:
+    def step(self, actions: torch.Tensor, eager: bool = False) -> Obs:
         """Advance one tick with (N, 3) int32 actions (sim order); returns every team's view,
         shaped (1, 2, ...), and keeps the tick's events. Resets automatically at the end of
-        an episode."""
-        tick = self._tick()
+        an episode. eager: run the uncompiled tick this time (a replay repeats a tick as it
+        was run)."""
+        tick = self._tick(eager)
         spread, uniforms = self._draws()
         self.state, self.obs, self.events = tick(self.state, self.types, actions, spread, uniforms)
         return self.obs
@@ -168,12 +168,12 @@ class Realtime:
         return Keyframe(
             state=clone(self.state),
             obs=clone(self.obs),
-            events=None if self.events is None else clone(self.events),
             generator=self.generator.get_state(),
         )
 
     def restore(self, keyframe: Keyframe) -> None:
-        """Continue from a keyframe (of a match with the same rules)."""
+        """Continue from a keyframe (of a match with the same rules); the last tick's events
+        are gone."""
         self.state, self.obs = clone(keyframe.state), clone(keyframe.obs)
-        self.events = None if keyframe.events is None else clone(keyframe.events)
+        self.events = None
         self.generator.set_state(keyframe.generator)

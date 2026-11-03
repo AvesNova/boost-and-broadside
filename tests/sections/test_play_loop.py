@@ -8,12 +8,11 @@ from torch.utils import _pytree
 from bnb.contracts import GameConfig
 from bnb.contracts.obs import GLOBAL
 from bnb.game.modes.rules import PRESETS
-from bnb.play.loop import TIME_SCALES, MatchLoop, team_view
+from bnb.play.loop import TIME_SCALES, MatchLoop, MatchSetup, team_view
 from bnb.runtime.realtime import Realtime
 
 # The code under test draws from torch's default generator (model initialisation, the
 # rollout, the scripted opponents): each test runs with it seeded and restored.
-pytestmark = pytest.mark.usefixtures("global_generator")
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -33,8 +32,7 @@ def test_the_loop_gives_the_same_states_as_realtime_alone():
     """Drawing (snapshots, interpolation) between ticks draws no random numbers, so the
     sim matches the realtime sim given the same seed and actions."""
     config = GameConfig(3, 6, 1800.0, mode="team_deathmatch")
-    torch.manual_seed(11)
-    loop = MatchLoop(config, fogged=True, compile=False, pilot=0)
+    loop = MatchLoop(MatchSetup(config, seed=11), compiled=False, pilot=0)
     loop.inputs[:] = torch.tensor([True, False, True, False, True, False, True])
     actions, states = [], []
     original = loop.tick
@@ -50,8 +48,7 @@ def test_the_loop_gives_the_same_states_as_realtime_alone():
         loop.frame()
     assert len(actions) == 20
 
-    torch.manual_seed(11)
-    alone = Realtime(config, compiled=False, fogged=True)
+    alone = Realtime(config, compiled=False, generator=torch.Generator().manual_seed(11))
     for chosen, want in zip(actions, states):
         alone.step(chosen)
         for got, expected in zip(_leaves(alone.state), want):
@@ -59,7 +56,7 @@ def test_the_loop_gives_the_same_states_as_realtime_alone():
 
 
 def test_fixed_timestep_pause_step_and_time_scale():
-    loop = MatchLoop(PRESETS["deathmatch"], compile=False)
+    loop = MatchLoop(MatchSetup(PRESETS["deathmatch"]), compiled=False)
     tick = loop.tick_length
     assert loop.advance(0.5 * tick) == 0 and 0.49 < loop.alpha < 0.51
     assert loop.advance(0.5 * tick) == 1 and loop.alpha < 0.01
@@ -83,14 +80,14 @@ def test_fixed_timestep_pause_step_and_time_scale():
 
 
 def test_the_pilot_flies_and_hands_over():
-    loop = MatchLoop(PRESETS["deathmatch"], compile=False, pilot=0)
+    loop = MatchLoop(MatchSetup(PRESETS["deathmatch"]), compiled=False, pilot=0)
     loop.inputs[:] = torch.tensor([True, False, False, True, True, False, True])
     actions = loop.actions()
     assert actions[0].tolist() == [1, 5, 1]  # boost, full right, shoot
     loop.next_pilot()
     assert loop.pilot == 1
     assert loop.actions()[1].tolist() == [1, 5, 1]
-    chaser = loop.chaser.step(None, *_first_view(loop))[0].packed()[0]
+    chaser = loop.sides[0].chaser.step(None, *_first_view(loop))[0].packed()[0]
     assert torch.equal(loop.actions()[0], chaser[0])  # the released ship plays the chaser
 
 

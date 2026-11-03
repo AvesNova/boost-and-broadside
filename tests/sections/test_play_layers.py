@@ -1,5 +1,6 @@
-"""The play shell's layering: it reaches the game only through `bnb.game.api`, and
-rendering never imports torch (it reads numpy snapshots)."""
+"""The play shell's layering: it reaches the game only through `bnb.game.api` (and policy
+files through `bnb.runs`), it reads no field of the game state, and rendering never
+imports torch (it reads numpy snapshots)."""
 
 import ast
 import pathlib
@@ -8,7 +9,14 @@ import sys
 
 PLAY = pathlib.Path(__file__).resolve().parents[2] / "src" / "bnb" / "play"
 RENDER = PLAY / "render"
-ALLOWED = ("bnb.play", "bnb.runtime", "bnb.controllers", "bnb.game.api", "bnb.contracts")
+ALLOWED = (
+    "bnb.play",
+    "bnb.runtime",
+    "bnb.controllers",
+    "bnb.game.api",
+    "bnb.contracts",
+    "bnb.runs",  # policy files, for the trained agents
+)
 
 
 def _imported_modules(path: pathlib.Path) -> list[str]:

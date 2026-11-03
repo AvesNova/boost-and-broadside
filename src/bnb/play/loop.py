@@ -2,11 +2,17 @@
 
 One thread and a fixed timestep: each frame adds the elapsed time (times the time scale)
 to an accumulator, the sim steps while the accumulator holds a whole tick, and the frame
-draws at alpha = accumulator / tick between the last two snapshots. The loop draws no
-random numbers, so with the same seed and the same per-tick actions it gives the same
-states as `bnb.runtime.realtime.Realtime` alone.
+draws at alpha = accumulator / tick between the last two snapshots. The match draws its
+randomness from its own generator (seeded by the setup), and the loop draws none, so the
+setup and the per-tick actions decide every state.
+
+Each side (team) has a controller (`bnb.play.sides`): scripted, or a trained agent. One
+ship at a time may be flown by the human, which replaces that ship's action only. Each
+tick's kills, captures and the match's end are kept as `MatchEvent`s, for the kill feed
+and the replay's markers.
 """
 
+import dataclasses
 import time
 
 import numpy as np
@@ -15,7 +21,6 @@ import torch
 from bnb.contracts import GameConfig, Obs
 from bnb.contracts.obs import GLOBAL
 from bnb.controllers.human import INPUTS, human_action
-from bnb.controllers.scripted import Chaser
 from bnb.game.api import TEAMS
 from bnb.runtime.realtime import Realtime
 
@@ -24,6 +29,43 @@ from .snapshot import Snapshot, snapshot
 
 TIME_SCALES = (1.0, 2.0, 4.0, 8.0)
 CATCH_UP_TICKS = 4  # at most this many ticks of backlog per unit of time scale
+
+
+@dataclasses.dataclass(frozen=True)
+class SideSetup:
+    """One side's controller: "scripted", or "agent" with the policy file's directory and
+    the sampling temperature."""
+
+    controller: str = "scripted"  # "scripted" or "agent"
+    policy: str | None = None
+    temperature: float = 1.0
+
+
+@dataclasses.dataclass(frozen=True)
+class MatchSetup:
+    """Everything a match starts from: the game, the lineup (each slot's ship type, the
+    same for both teams; None for the game's default), fog, the seed of the match's
+    generator, and each side's controller."""
+
+    config: GameConfig
+    lineup: tuple[int, ...] | None = None
+    fogged: bool = True
+    seed: int = 0
+    sides: tuple[SideSetup, SideSetup] = (SideSetup(), SideSetup())
+
+
+@dataclasses.dataclass(frozen=True)
+class MatchEvent:
+    """Something the feed and the markers show: at `tick` (ticks into the episode, the
+    state after that many ticks), a "kill" (`ship` killed by `other`, -1 for the
+    boundary), a "capture" (`team` captured a zone) or the match's "end" (`team` won, -1
+    for a draw)."""
+
+    tick: int
+    kind: str  # "kill", "capture" or "end"
+    ship: int = -1
+    other: int = -1
+    team: int = -1
 
 
 def team_view(observation: Obs, team: int) -> Obs:
@@ -36,23 +78,65 @@ def team_view(observation: Obs, team: int) -> Obs:
     )
 
 
-class MatchLoop:
-    """A scripted match with at most one ship flown from the keyboard.
+def tick_events(realtime: Realtime, before: Snapshot, after: Snapshot, tick: int) -> list:
+    """The kills, the capture and the end in the tick that led from `before` to `after`
+    (`tick` is its number in the episode)."""
+    events = realtime.events
+    died = events.died[0].numpy()
+    killer = events.killer[0].numpy()
+    found = [
+        MatchEvent(tick, "kill", ship=int(ship), other=int(killer[ship]))
+        for ship in np.flatnonzero(died)
+    ]
+    done = bool(events.done[0])
+    if not done and after.front != before.front:
+        found.append(MatchEvent(tick, "capture", team=0 if after.front > before.front else 1))
+    if done:
+        result = int(events.result[0])
+        found.append(MatchEvent(tick, "end", team={1: 0, -1: 1}.get(result, -1)))
+    return found
 
-    Every ship plays the chaser except the pilot's (a sim index, or None for none), which
-    follows `inputs`, a bool tensor in `bnb.controllers.human.INPUTS` order that the shell
-    fills each frame. `timings` holds the seconds the last tick spent per stage. `ticks`
-    counts every tick run; `restarted` (N,) collects the ships that spawned (every ship
-    does at a reset) since the shell last cleared it, so their trails restart even when a
-    frame runs several ticks.
+
+class MatchLoop:
+    """A live match: the realtime sim, a controller per side, and at most one ship flown
+    by the human.
+
+    `pilot` is the flown ship's sim index (None for none); it follows `inputs`, a bool
+    tensor in `bnb.controllers.human.INPUTS` order that the shell fills each frame.
+    `timings` holds the seconds the last tick spent per stage. `ticks` counts every tick
+    run; `restarted` (N,) collects the ships that spawned (every ship does at a reset)
+    since the shell last cleared it, so their trails restart even when a frame runs several
+    ticks. `events` holds this episode's `MatchEvent`s (`kills` and `deaths` count them per
+    ship), and `on_tick`, when set, is called after every tick with the actions, the
+    realtime match and the tick's events (the replay recorder).
     """
 
+    replaying = False
+
     def __init__(
-        self, config: GameConfig, fogged: bool = False, compile: bool = True, pilot: int | None = 0
+        self,
+        setup: MatchSetup,
+        sides: list | None = None,
+        compiled: bool = True,
+        background: bool = False,
+        pilot: int | None = None,
+        realtime: Realtime | None = None,
     ) -> None:
-        self.realtime = Realtime(config, compiled=compile, fogged=fogged)
-        self.rules, self.types = self.realtime.rules, self.realtime.types
-        self.chaser = Chaser(self.rules.ships_per_team)
+        from .sides import build_sides
+
+        self.setup = setup
+        if realtime is None:
+            realtime = Realtime(
+                setup.config,
+                compiled=compiled,
+                fogged=setup.fogged,
+                generator=torch.Generator().manual_seed(setup.seed),
+                lineup=setup.lineup,
+                background=background,
+            )
+        self.realtime = realtime
+        self.rules, self.types = realtime.rules, realtime.types
+        self.sides = build_sides(setup, self.rules, self.types) if sides is None else sides
         self.pilot = pilot
         self.inputs = torch.zeros(len(INPUTS), dtype=torch.bool)
         self.time_scale = TIME_SCALES[0]
@@ -63,6 +147,11 @@ class MatchLoop:
         self.previous = self.current
         self.ticks = 0
         self.restarted = np.ones(self.rules.num_ships, dtype=bool)
+        self.events: list[MatchEvent] = []
+        self.kills = np.zeros(self.rules.num_ships, np.int64)
+        self.deaths = np.zeros(self.rules.num_ships, np.int64)
+        self.last_actions = torch.zeros(self.rules.num_ships, 3, dtype=torch.int32)
+        self.on_tick = None
 
     @property
     def tick_length(self) -> float:
@@ -84,26 +173,48 @@ class MatchLoop:
 
     @torch.no_grad()
     def actions(self) -> torch.Tensor:
-        """(N, 3) int32 actions in sim order: the chaser's, and the pilot's from the inputs."""
+        """(N, 3) int32 actions in sim order: each side's controller's, and the pilot's
+        from the inputs."""
         observation = self.realtime.obs
-        done = observation.globals[:, 0, GLOBAL["reset"]] > 0.5
-        teams = [
-            self.chaser.step(None, team_view(observation, team), done)[0].packed()[0]
-            for team in range(TEAMS)
-        ]
-        actions = torch.cat(teams)
+        reset = observation.globals[:, 0, GLOBAL["reset"]] > 0.5
+        actions = torch.cat(
+            [self.sides[team].act(team_view(observation, team), reset) for team in range(TEAMS)]
+        )
         if self.pilot is not None:
             actions[self.pilot] = human_action(self.inputs).packed()
         return actions
 
+    def _eager(self) -> bool:
+        """Whether the next tick must run uncompiled (a replay repeats ticks as run)."""
+        return False
+
+    def _count(self, events: list[MatchEvent]) -> None:
+        for event in events:
+            if event.kind == "kill":
+                self.deaths[event.ship] += 1
+                if event.other >= 0:
+                    self.kills[event.other] += 1
+        if any(event.kind == "end" for event in events):
+            self.events = []
+            self.kills[:] = 0
+            self.deaths[:] = 0
+        else:
+            self.events += events
+
     def tick(self, actions: torch.Tensor) -> None:
         """Step the sim once with these (N, 3) actions."""
         started = time.perf_counter()
-        self.realtime.step(actions)
+        episode_tick = self.current.tick + 1
+        self.realtime.step(actions, eager=self._eager())
         stepped = time.perf_counter()
         self.previous, self.current = self.current, self._snapshot()
         self.ticks += 1
         self.restarted |= self.current.ships.spawned
+        self.last_actions = actions
+        events = tick_events(self.realtime, self.previous, self.current, episode_tick)
+        if self.on_tick is not None:
+            self.on_tick(actions, self.realtime, events)
+        self._count(events)
         self.timings["sim"] = stepped - started
         self.timings["snapshot"] = time.perf_counter() - stepped
 
@@ -141,7 +252,7 @@ class MatchLoop:
 
     def next_pilot(self) -> None:
         """Hand the keyboard to the next ship in sim order (the released ship returns to
-        the chaser)."""
+        its side's controller)."""
         current = -1 if self.pilot is None else self.pilot
         self.pilot = (current + 1) % self.rules.num_ships
 
