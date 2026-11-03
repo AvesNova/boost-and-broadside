@@ -91,9 +91,8 @@ class Agent:
         self.carry = None
         self.device_draws = None  # a GPU's own stream of the model's draws (its generator state)
         if self.device.type == "cuda":
-            with torch.random.fork_rng(devices=[self.device]):
-                torch.cuda.manual_seed(seed + MODEL_DRAWS_OFFSET)
-                self.device_draws = torch.cuda.get_rng_state(self.device)
+            draws = torch.Generator(device=self.device).manual_seed(seed + MODEL_DRAWS_OFFSET)
+            self.device_draws = draws.get_state()
         if self.recurrent:
             with self._local_draws():
                 self.carry = model.initial_carry(1, ships_per_team, num_ships, self.device)
