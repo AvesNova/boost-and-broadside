@@ -548,9 +548,15 @@ cut; where they differ, this section and the code win.
   - **Metrics** are under a `league` key in each update's row. `bnb ratings` and
     `bnb head-to-head` play the offline matches (`bnb.league.matches`,
     `bnb.league.tournament`).
-  - **Open:** the GPU resume test can differ when its processes autotune from cold. The
-    attention, temporal-mix and heads kernels have configurations whose bits differ, and
-    the first tuning picks one by timing.
+  - **The GPU resume test** can differ in the last bits when its processes autotune from
+    cold. The attention, temporal-mix and heads kernels have configurations whose bits
+    differ, and the first tuning picks one by timing.
+- **Resume: integrity, not bits (author, 2026-11-03):** a resumed run must continue the
+  same run (the same state, generators, league and schedule) within rounding. Bit-for-bit
+  equality is not required. On the CPU it costs nothing and its tests stay bitwise. On
+  the GPU, last-bit differences from autotuning, atomics or another machine are accepted,
+  and the GPU resume tests compare within a float tolerance tight enough that state not
+  restored still fails. Exactness is revisited only if a bug needs it.
 
 ## Decision: no bullets in the observation (author, 2026-10-31)
 
