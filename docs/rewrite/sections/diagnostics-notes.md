@@ -93,6 +93,18 @@ Producer abbreviations: L `bnb.learn.ppo.Learner`, B `bnb.learn.bc.BehaviourClon
 | ungrouped | `repr/` (B6, F2), `input/` (C1), C5 token shares, C6 supervised shares, `bc/` (I1-I5) | `batch/token_share/{mode,opponent}/*` (A); `bc/kl`, `bc/entropy/{student,target}`, `bc/agreement/{power,stick,shoot,joint}`, `bc/kl_by_pool/*`, `bc/score/*`, `bc/stop/*` (B, cloning). Not built: `repr/`, `input/`, supervised shares, `bc/loss/heldout`, `bc/loss/{own,teacher}_states` | `test_bc` |
 | triggers | 8 alerts, 13 warnings | all (T) | `test_triggers` |
 
+## Test runs
+
+- CPU (CUDA hidden), quick tier at `b7a3f1ca`'s parent state: 1090 passed, 3 failed: the
+  docstring and reference checks (fixed before the commit) and
+  `tests/contract/test_layering.py::test_process_wide_settings_belong_to_the_entry_points`,
+  which fails on `src/bnb/play/sides.py` (play's code, untouched here). Load 15-20 (other
+  agents), 31 min.
+- `tests/sections/test_diagnostics.py` and `test_triggers.py`, all tiers, CPU: 54 passed.
+- GPU, under the lock: the learner's, BC's, the streaming and precision `gpu` tests: 9
+  passed, the no-sync test among them.
+- The full suite under the lock: not run yet in this round.
+
 ## Broken by hand
 
 Each bug was introduced, the named test failed, and the change was reverted:
