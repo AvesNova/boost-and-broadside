@@ -132,10 +132,15 @@ A fork or a warm start whose command sets no model setting takes the file's
   (`bnb.runs.checkpoint.warm_start`) refuse unless the model's name, version and build
   record match what the run builds. A new architecture is a new run. The warm start is
   behaviour cloning's hand-off to RL.
-- **The exact resume:** a run stopped, saved and resumed in a fresh process continues as if
-  it had never stopped: the parameters and every logged metric equal a run straight
-  through, bit for bit, on the CPU and on the GPU with the compiled, graph-captured
-  rollout (`tests/runs/test_resume.py`). Three things make it exact:
+- **The resume keeps the run's integrity:** a run stopped, saved and resumed in a fresh
+  process continues the same run. The restore itself is exact: right after loading, before
+  any compute, the parameters, optimizer state, every generator, the rollout's carry, the
+  league's state, the counters and the schedule's position equal what the first process
+  held when it saved, bit for bit. The test enumerates them from the checkpoint's own list
+  (`bnb.runs.checkpoint.training_state`), so a new field is covered at once. On the CPU the
+  continuation is bitwise too. On the GPU it is the same run within rounding, not the same
+  bits (`tests/runs/test_resume.py`). Three things make the restore and the continuation
+  hold:
   - the checkpoint holds every generator: the learner's named streams, and the default
     CPU and CUDA generators, which the rollout's draws and the policy's sampling inside the
     captured graph use. The entry point restores the default ones
@@ -146,16 +151,21 @@ A fork or a warm start whose command sets no model setting takes the file's
   - the per-pool metrics are masked sums, not atomic adds, so the same data gives the same
     numbers.
 
-  On another machine the resume is close, not exact. Yemong's kernels autotune their
-  tiles for each GPU and keep the choice in that machine's cache, not in the checkpoint.
-  A different tile can round the last bits differently, so a run resumed on another GPU
-  drifts from the original by rounding. This is accepted.
+  Bit equality after the restore is not promised. Yemong's kernels autotune their tiles for
+  each GPU and keep the choice in that machine's cache, not in the checkpoint, and a
+  different tile can round the last bits differently. Adam turns rounding in near-zero
+  gradients into full steps within one update, so a one-ulp change to every weight already
+  moves elementwise weights past 1e-4, and with Yemong it changes the sampled actions and so
+  the rollouts. The GPU test therefore compares the entropy, the approximate KL and the
+  value losses of the updates after the resume to the straight run's within a relative
+  tolerance of 0.1, which a one-ulp change passes and another minibatch order fails, and
+  the integers and categoricals (counters, games, results, opponents drawn) exactly over
+  the first update after it. This is accepted.
 
   On the same GPU a long run can drift too. The game's damage sum and Yemong's density
   counts add with float atomics, whose order is not fixed: after a tick in which two hits
   land on one ship, a resumed run can differ from the original in the last bit, and the
-  difference grows from there. The tested resumes are exact because their sums happen to
-  be exact or ordered. This is accepted; the sums stay as they are.
+  difference grows from there. This is accepted; the sums stay as they are.
 
 ## Retention
 
