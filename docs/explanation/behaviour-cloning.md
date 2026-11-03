@@ -82,8 +82,10 @@ first rule to fire (`bnb.learn.bc.StopConfig`):
 ## Metrics
 
 Each update reports the BC KL, the labels' and the student's entropy, overall and per
-pool (`bc_kl/<pool>`{.plain} and so on); the explained variance per level; the auxiliary
-losses; and the live score per opponent kind.
+pool (`bc/kl`{.plain}, `bc/kl_by_pool/<pool>`{.plain} and so on); the student's agreement
+with the labels' likeliest action per factor (`bc/agreement/<factor>`{.plain}); the
+explained variance per level; the auxiliary losses; and the live score per opponent kind
+(`bc/score/<kind>`{.plain}).
 
 ## The hand-off
 

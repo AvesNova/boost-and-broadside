@@ -24,6 +24,7 @@ from bnb.game import api
 from bnb.learn import rewards
 from bnb.learn.shots import ShotCapture
 
+from .analytics import EPISODE_COLUMNS
 from .lineup import Lineup
 from .opponents import OUTCOMES
 from .store import SegmentStore
@@ -97,6 +98,7 @@ class Rollout:
         )
         self.block = max(d for d in range(1, graph_ticks + 1) if length % d == 0)
         self.ring = min(length, 2 * self.block)  # the staging ring: two blocks of records
+        self.episode_ticks = api.episode_ticks(self.rules, environments, device).float()
         self.carry = self._initial_carry(types, staggered)
         ticks = _pytree.tree_map_only(torch.Tensor, lambda x: x[0], self.carry["records"])
         self.store = SegmentStore(ticks, self.carry["segment"], shards, length, device, host_store)
@@ -199,6 +201,7 @@ class Rollout:
                 for name in self.tallied
             },
             counters=torch.zeros(len(COUNTERS), dtype=torch.int64, device=device),
+            episodes=torch.zeros((B, len(EPISODE_COLUMNS)), device=device),
         )
         return _clone(carry)
 
@@ -351,6 +354,13 @@ class Rollout:
                     carry["controllers"][name], events.done[environments], own
                 )
             )
+        # the ended episodes' sums (EPISODE_COLUMNS); the observation is the step's, so its
+        # progress is the last tick's, and the episode lasted one tick more
+        progress = carry["obs"]["globals"][:, 0, GLOBAL["episode_progress"]]
+        ticks = progress * self.episode_ticks + 1.0
+        ended = events.done.float()
+        timeout = ticks >= self.episode_ticks - 0.5
+        carry["episodes"].add_(torch.stack([ended, ended * timeout, ended * ticks], -1))
         redraw = torch.randint(0, self.teams, (self.environments,), device=self.device)
         carry["seat"].copy_(torch.where(events.done, redraw, carry["seat"]))
         carry["counters"].add_(
@@ -371,6 +381,13 @@ class Rollout:
         carry["truth"].copy_(truth.ships)
         carry["segment_tick"].add_(1)
 
+    def take_episodes(self) -> torch.Tensor:
+        """The ended episodes' sums since the last take, (B, EPISODE_COLUMNS) on the device
+        (no host read), and the sums zeroed."""
+        sums = self.carry["episodes"].clone()
+        self.carry["episodes"].zero_()
+        return sums
+
     def take_tally(self, name: str) -> torch.Tensor:
         """The results the controller `name` has tallied since the last take, on the host
         (a host read), and the tally zeroed."""
@@ -384,9 +401,12 @@ class Rollout:
     def saved_carry(self) -> dict:
         """The carry a resume needs (runs spec 3): the game state, the observation, every
         controller's carry, the seats, the reward ledger and the counters. Not the staging
-        ring or the segment buffers, which every segment writes before it reads them."""
+        ring or the segment buffers, which every segment writes before it reads them, nor the
+        episode sums, which every update takes."""
         return {
-            name: tree for name, tree in self.carry.items() if name not in ("records", "segment")
+            name: tree
+            for name, tree in self.carry.items()
+            if name not in ("records", "segment", "episodes")
         }
 
     def load_carry(self, carry: dict) -> None:

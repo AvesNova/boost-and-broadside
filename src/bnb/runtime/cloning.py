@@ -38,10 +38,9 @@ def scores(pools: tuple[Pool, ...], metrics: dict) -> dict:
     (wins plus half the draws; None without a finished game)."""
     totals: dict[str, list[float]] = {}
     for pool in pools:
-        results = metrics[pool.name]["results"]
-        total = totals.setdefault(opponent_kind(pool), [0.0, 0.0, 0.0])
+        total = totals.setdefault(opponent_kind(pool), [0, 0, 0])
         for index, name in enumerate(("wins", "draws", "losses")):
-            total[index] += results[name]
+            total[index] += metrics[f"episode/{name}/{pool.name}"]
     out = {}
     for kind, (wins, draws, losses) in totals.items():
         games = wins + draws + losses
@@ -69,25 +68,28 @@ def clone(
     rule = StopRule(stop)
     while True:
         row = trainer.update()
-        live = scores(trainer.rollout.lineup.pools, row["pools"])
+        live = scores(trainer.rollout.lineup.pools, row)
         against = live.get(SCRIPTED, dict(wins=0, draws=0, losses=0))
         reason = rule.observe(
             trainer.ppo.environment_steps,
             against["wins"],
             against["draws"],
             against["losses"],
-            row["bc_kl"],
+            row["bc/kl"],
         )
         if reason is None and interrupted():
             reason = "interrupted"
-        row.update(
-            scores=live,
-            window_score=rule.score,
-            window_lower_bound=rule.lower_bound,
-            kl_average=rule.kl_average,
-            environment_steps=trainer.ppo.environment_steps,
-            stopped_by=reason,
-        )
+        for kind, value in live.items():
+            row[f"bc/games/{kind}"] = value["games"]
+            if value["score"] is not None:
+                row[f"bc/score/{kind}"] = value["score"]
+        for name, value in (
+            ("window_score", rule.score),
+            ("window_lower_bound", rule.lower_bound),
+            ("kl_average", rule.kl_average),
+        ):
+            if value is not None:
+                row[f"bc/stop/{name}"] = value
         log(row)
         if reason is not None:
             return reason

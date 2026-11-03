@@ -19,6 +19,7 @@ from bnb.game import api
 from bnb.learn import bc
 from bnb.learn.rewards import RewardConfig
 from bnb.models.relational import RelationalConfig
+from bnb.runtime import metrics
 from bnb.runtime.rollout import Rollout
 
 # The code under test draws from torch's default generator (model initialisation, the
@@ -114,9 +115,14 @@ def test_the_bc_loss_matches_an_independent_computation(segment):
         unrolled, trajectory, derived, dict(policy=tokens.float()), prepared["scale"]
     )
     torch.testing.assert_close(policy_term, cross / tokens, rtol=1e-5, atol=1e-6)
-    report = learner.report(statistics.tolist())
-    assert report["bc_kl"] == pytest.approx(float(kl / tokens), rel=1e-5)
-    assert set(report) >= {"bc_kl/self_play", "teacher_entropy/scripted", "student_entropy"}
+    report = metrics.read(learner.report(statistics, statistics, statistics))
+    assert report["bc/kl"] == pytest.approx(float(kl / tokens), rel=1e-5)
+    assert set(report) >= {
+        "bc/kl_by_pool/self_play",
+        "bc/entropy_by_pool/target/scripted",
+        "bc/entropy/student",
+        "bc/agreement/joint",
+    }
 
 
 def test_micro_batches_accumulate_to_the_unsplit_minibatch(segment):
@@ -125,7 +131,7 @@ def test_micro_batches_accumulate_to_the_unsplit_minibatch(segment):
 
     def gradient(size: int):
         lc.with_micro_batch(learner, size)
-        terms, _, statistics = learner.gradient(runner.store, prepared, views)
+        terms, _, statistics, _ = learner.gradient(runner.store, prepared, views)
         return terms, statistics, [parameter.grad.clone() for parameter in net.parameters()]
 
     whole_terms, whole_statistics, whole = gradient(runner.store.views)
@@ -431,7 +437,7 @@ def test_reinforcement_learning_starts_from_the_clone():
     assert not trainer.ppo.optimizer.state  # fresh
     assert type(trainer.ppo) is Learner and trainer.config.learner.policy == 27.0  # no cloning
     row = trainer.update()
-    assert "bc_kl" not in row and "approximate_kl" in row
+    assert "bc/kl" not in row and "policy/kl" in row
 
 
 # The tiny BC run of the command line: 2v2 relational, 16 environments x 16 ticks per

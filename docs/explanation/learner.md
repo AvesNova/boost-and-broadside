@@ -168,12 +168,13 @@ alike. `"float32"` (strict) and `"tf32"` (a process-wide setting the entry point
 softmax, the recurrent state, the codes, the belief, the critic's expectations, every loss,
 the weights and the optimizer stay float32 in all of them.
 
-Each update logs the signals that show a precision problem: `ratio_drift_max` and
-`ratio_drift_mean` (how far the update's `unroll` moves the policy from the rollout's
-`step`, before any optimizer step; bf16 rounding makes it nonzero), `clip_fraction` (the
-first epoch's), `nonfinite_gradients` (minibatch steps whose gradient norm was not finite)
-and `nonfinite_beliefs` (non-finite belief entries the learner's carry has counted since its
-rollouts began).
+Each update logs the signals that show a precision problem: `policy/ratio_drift/max`{.plain}
+and `policy/ratio_drift/mean`{.plain} (how far the update's `unroll` moves the policy from
+the rollout's `step`, before any optimizer step; bf16 rounding makes it nonzero),
+`policy/clip_fraction`{.plain}, `train/skipped_steps`{.plain} (minibatch steps whose
+gradient norm was not finite; the step is skipped, leaving the weights and the optimizer's
+state as they were) and `counters/nonfinite_beliefs`{.plain} (non-finite belief entries the
+learner's carry has counted since its rollouts began).
 
 ## The toy learner
 

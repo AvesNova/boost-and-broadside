@@ -18,6 +18,7 @@ from bnb.game import api
 from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
 from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
+from bnb.runtime import metrics
 from bnb.runtime.rollout import Rollout
 
 pytestmark = [
@@ -65,7 +66,7 @@ def _gradient(model, runner, bootstraps):
         CUDA,
     )
     prepared = learner.prepare(runner.store, bootstraps)
-    terms, _, _ = learner.gradient(runner.store, prepared, torch.arange(runner.store.views))
+    terms, _, _, _ = learner.gradient(runner.store, prepared, torch.arange(runner.store.views))
     return terms, torch.cat([parameter.grad.flatten() for parameter in model.parameters()])
 
 
@@ -131,15 +132,17 @@ def test_the_update_reports_its_precision_signals(stored):
         RewardConfig().outcome,
         CUDA,
     )
-    out = learner.update(runner.store, bootstraps)
-    assert {"ratio_drift_max", "ratio_drift_mean", "clip_fraction"} <= out.keys()
-    assert out["nonfinite_gradients"] == 0
+    out = metrics.read(learner.update(runner.store, bootstraps))
+    assert {"policy/ratio_drift/max", "policy/ratio_drift/mean", "policy/clip_fraction"} <= (
+        out.keys()
+    )
+    assert out["train/skipped_steps"] == 0
     model = copy.deepcopy(net)
     next(model.parameters()).register_hook(lambda gradient: gradient * math.nan)
     learner = Learner(
         model, config, runner.rules, runner.carry["types"], RewardConfig().outcome, CUDA
     )
-    assert learner.update(runner.store, bootstraps)["nonfinite_gradients"] == 2
+    assert metrics.read(learner.update(runner.store, bootstraps))["train/skipped_steps"] == 2
 
 
 def test_the_trainer_reports_the_carrys_nonfinite_beliefs(stored):

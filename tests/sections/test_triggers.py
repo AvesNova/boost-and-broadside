@@ -1,0 +1,269 @@
+"""The trigger rules (diagnostics spec 3 and 6.3-6.5): each fires on a synthetic series that
+should trip it and stays quiet on one that should not, with the warm-up, the hysteresis and
+the cooldown; the state survives a checkpoint; the skipped-step action; the dashboards."""
+
+import sys
+
+import learner_cases as lc
+import pytest
+import torch
+
+from bnb.runs import triggers
+from bnb.runs.triggers import Triggers
+
+CPU = torch.device("cpu")
+RULES = {rule.name: rule for rule in triggers.default_rules()}
+
+
+def _flags(rule_name: str, records: list[dict]) -> list[int]:
+    """The rule's flag over a run of records (updates from 1)."""
+    rules = Triggers((RULES[rule_name],))
+    return [
+        rules.check(record, update)[f"alerts/{rule_name}"]
+        for update, record in enumerate(records, 1)
+    ]
+
+
+def test_there_are_eight_alerts_and_thirteen_warnings():
+    severities = [rule.severity for rule in RULES.values()]
+    assert severities.count(triggers.ALERT) == 8 and severities.count(triggers.WARNING) == 13
+
+
+# (rule, a series that trips it, one that does not); each record is one update's
+QUIET_STEPS = [{"train/environment_steps_per_second": 1000.0}] * 12
+CASES = {
+    "skipped_step": ([{"train/skipped_steps": 1}], [{"train/skipped_steps": 0}]),
+    "recompile": (
+        [{"counters/recompiles": 0}] * 3 + [{"counters/recompiles": 1}],
+        [{"counters/recompiles": 0}] * 4,
+    ),
+    "memory": (
+        [{"train/memory_peak_gigabytes": 7.5, "train/memory_budget_gigabytes": 8.0}],
+        [{"train/memory_peak_gigabytes": 7.0, "train/memory_budget_gigabytes": 8.0}],
+    ),
+    "behaviour_mismatch": ([{"policy/kl_first": 0.01}], [{"policy/kl_first": 1e-6}]),
+    "nonfinite_input": ([{"input/nonfinite_count": 3}], [{"input/nonfinite_count": 0}]),
+    "never_seen_ship": ([{"fog/never_seen_share": 0.1}], [{"fog/never_seen_share": 0.0}]),
+    "throughput": (
+        QUIET_STEPS[:6] + [{"train/environment_steps_per_second": 100.0}] * 3,
+        QUIET_STEPS[:9],
+    ),
+    "rating_drop": (
+        [
+            {"rating/live/frontline": 100.0 + 10 * k, "rating/live_stderr/frontline": 5.0}
+            for k in range(12)
+        ]
+        + [{"rating/live/frontline": 100.0, "rating/live_stderr/frontline": 5.0}] * 3,
+        [
+            {"rating/live/frontline": 100.0 + 10 * k, "rating/live_stderr/frontline": 5.0}
+            for k in range(15)
+        ],
+    ),
+    "entropy_collapse": (
+        [{"policy/entropy/joint": 3.0 + 0.01 * (k % 2)} for k in range(14)]
+        + [{"policy/entropy/joint": 1.0}] * 3,
+        [{"policy/entropy/joint": 3.0 + 0.01 * (k % 2)} for k in range(17)],
+    ),
+    "critic_useless": (
+        [{"critic/explained_variance/outcome": -0.2}] * 13,
+        [{"critic/explained_variance/outcome": 0.3}] * 13,
+    ),
+    "support_clipping": (
+        [{"critic/support_clip/damage": 0.05}],
+        [{"critic/support_clip/damage": 0.001}],
+    ),
+    "envelope_violation": (
+        [{"input/envelope_violation_share/speed": 0.02}],
+        [{"input/envelope_violation_share/speed": 0.0}],
+    ),
+    "representation_collapse": (
+        [{"repr/effective_rank/block_0": 100.0}] * 10 + [{"repr/effective_rank/block_0": 50.0}] * 3,
+        [{"repr/effective_rank/block_0": 100.0}] * 13,
+    ),
+    "dormant_units": (
+        [{"repr/dormant_share/block_0": 0.01 * k} for k in range(30)],
+        [{"repr/dormant_share/block_0": 0.05 + 0.001 * (k % 3)} for k in range(30)],
+    ),
+    "update_ratio": (
+        [{"train/update_ratio/trunk_block_0": 0.5}] * 13,
+        [{"train/update_ratio/trunk_block_0": 1e-3}] * 13,
+    ),
+    "label_validity": (
+        [{"enemy_action/supervised_share": 0.8}] * 10
+        + [{"enemy_action/supervised_share": 0.2}] * 3,
+        [{"enemy_action/supervised_share": 0.8}] * 13,
+    ),
+    "sampling_collapse": (
+        [{"pool/sampling_entropy/frontline": 0.1}] * 13,
+        [{"pool/sampling_entropy/frontline": 0.9}] * 13,
+    ),
+    "reward_hacking": (
+        [
+            {"reward/rate/damage/league": 0.01 * k, "rating/live/frontline": 500.0 + (k % 2)}
+            for k in range(60)
+        ],
+        [
+            {"reward/rate/damage/league": 0.01 * k, "rating/live/frontline": 500.0 + 5 * k}
+            for k in range(60)
+        ],
+    ),
+    "head_worse_than_trivial": (
+        [{"next_state/gain/allies": -0.1}] * 13,
+        [{"next_state/gain/allies": 0.2}] * 13,
+    ),
+    "sigma_miscalibrated": (
+        [{"belief/normalised_square_error/hidden": 3.0}] * 13,
+        [{"belief/normalised_square_error/hidden": 1.1}] * 13,
+    ),
+    "side_imbalance": (
+        [{"episode/result/team_0": 60, "episode/result/team_1": 40, "episode/result/draw": 0}] * 12,
+        [{"episode/result/team_0": 50, "episode/result/team_1": 50, "episode/result/draw": 0}] * 12,
+    ),
+}
+
+
+@pytest.mark.parametrize("name", sorted(CASES))
+def test_each_rule_fires_on_its_case_and_stays_quiet_otherwise(name):
+    tripping, quiet = CASES[name]
+    assert _flags(name, tripping)[-1] == 1, name
+    assert not any(_flags(name, quiet)), name
+
+
+def test_every_rule_has_a_case():
+    assert set(CASES) == set(RULES)
+
+
+def test_a_rule_is_quiet_during_its_warm_up():
+    rule = triggers.Above("probe", triggers.WARNING, "x", "x/value", 0.0, warmup=3)
+    rules = Triggers((rule,))
+    flags = [rules.check({"x/value": 1.0}, update)["alerts/probe"] for update in range(1, 6)]
+    assert flags == [0, 0, 0, 1, 1]
+
+
+def test_a_rule_needs_its_breach_to_hold_for_the_hysteresis():
+    rule = triggers.Above("probe", triggers.WARNING, "x", "x/value", 0.0, hysteresis=3)
+    rules = Triggers((rule,))
+    values = [1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
+    flags = [rules.check({"x/value": v}, u)["alerts/probe"] for u, v in enumerate(values, 1)]
+    assert flags == [0, 0, 0, 0, 0, 1, 1]
+
+
+def test_a_fired_event_is_not_repeated_within_the_cooldown():
+    rule = triggers.Above("probe", triggers.ALERT, "x", "x/value", 0.0, cooldown=3)
+    rules = Triggers((rule,))
+    fired = ["alerts/events" in rules.check({"x/value": 1.0}, update) for update in range(1, 8)]
+    assert fired == [True, False, False, True, False, False, True]
+
+
+def test_an_event_names_the_rule_series_value_threshold_and_panel():
+    out = Triggers().check({"train/skipped_steps": 2, "train/nonfinite_steps/density": 2}, 1)
+    events = out["alerts/events"]
+    assert events["columns"] == list(triggers.EVENT_COLUMNS)
+    assert events["rows"] == [
+        ["skipped_step", "alert", 1, "train/skipped_steps", 2, 0, "train/skipped_steps"],
+        ["skipped_step", "alert", 1, "train/nonfinite_steps/density", 2, 0, "train/skipped_steps"],
+    ]
+    assert out["alerts/active"] == 1
+
+
+def test_an_absent_series_leaves_its_rule_idle():
+    out = Triggers().check({}, 100)
+    assert out["alerts/active"] == 0 and "alerts/events" not in out
+
+
+def _tiny(updates: int = 2):
+    sys.path.insert(0, str(lc.__file__).rsplit("/sections/", 1)[0] + "/runs")
+    from runs_cases import tiny_train_config
+
+    return tiny_train_config(updates=updates)
+
+
+@pytest.mark.slow
+def test_rule_state_survives_a_checkpoint_round_trip(tmp_path, global_generator):
+    from bnb.runs import session
+    from bnb.runs.recording import Recorder
+    from bnb.runs.records import Run
+    from bnb.runtime.train import Trainer
+
+    config = _tiny(updates=3)
+    trainer = Trainer(config, CPU)
+    run = Run.create(tmp_path, "rules", config, ["test"], None)
+    rules = Triggers()
+    for update in range(1, 6):  # history the rules keep: EMAs, peaks, windows, counts
+        rules.check(
+            {"policy/entropy/joint": 3.0 + 0.1 * update, "rating/live/m": 10.0 * update}, update
+        )
+    recorder = Recorder(run, trainer, None, rules)
+    session.save(run, trainer, recorder=recorder)
+    restored = session.triggers_state(run.checkpoint_path(trainer.ppo.environment_steps))
+    assert restored == rules.state
+    resumed = Triggers(state=restored)
+    following = {"policy/entropy/joint": 0.5, "rating/live/m": 60.0}
+    assert resumed.check(following, 6) == rules.check(following, 6)
+    assert resumed.state == rules.state
+
+
+@pytest.mark.slow
+def test_a_non_finite_step_writes_the_checkpoint_and_the_dump_and_training_continues(
+    tmp_path, global_generator
+):
+    from bnb.runs import session
+    from bnb.runs.recording import Recorder
+    from bnb.runs.records import Run
+    from bnb.runtime.train import Trainer
+
+    config = _tiny(updates=2)
+    trainer = Trainer(config, CPU)
+    run = Run.create(tmp_path, "skips", config, ["test"], None)
+    run.start_segment(0)
+    hook = next(trainer.model.parameters()).register_hook(lambda gradient: gradient * torch.nan)
+    records = []
+    recorder = Recorder(run, trainer, None, Triggers())
+
+    def log(record: dict) -> None:
+        records.append(record)
+        hook.remove()  # only the first update's steps are non-finite
+
+    status = session.train(run, trainer, log, recorder=recorder)
+    assert status == "finished"
+    first, second = records
+    assert first["train/skipped_steps"] == config.learner.minibatches
+    assert first["alerts/skipped_step"] == 1 and second["alerts/skipped_step"] == 0
+    step = first["counters/environment_steps"]
+    assert run.checkpoint_path(step).is_dir()  # the action's checkpoint
+    dumped = run.directory / "dumps" / f"step_{step}"
+    assert (dumped / "batch.pt").is_file() and (dumped / "record.json").is_file()
+    assert run.record["dumps"] == [str(dumped)]
+    assert second["train/skipped_steps"] == 0
+    assert all(torch.isfinite(p).all() for p in trainer.model.parameters())
+
+
+def test_the_code_builds_the_headline_and_curated_views():
+    pytest.importorskip("wandb_workspaces")
+    from bnb.runtime import dashboards
+
+    views = dashboards.build("2026-11-03-mixed-amber-acorn", "entity", "project", bc=True)
+    assert dashboards.panel_count(dashboards.HEADLINE) == 12
+    headline, curated = views["headline"], views["curated"]
+    assert sum(len(section.panels) for section in headline.sections) == 12
+    assert [section.name for section in curated.sections][:6] == [
+        "Alerts",
+        "Strength",
+        "Health",
+        "Policy",
+        "Value",
+        "Learning signal",
+    ]
+    assert next(s for s in curated.sections if s.name == "bc/").is_open
+    headline._to_model()  # the workspace's saved form, built offline
+    curated._to_model()
+
+
+def test_a_panel_pattern_matches_its_slices():
+    import re
+
+    from bnb.runtime import dashboards
+
+    expression = re.compile(dashboards.regex(("policy/usage/power/*", "policy/kl")))
+    assert expression.match("policy/usage/power/2") and expression.match("policy/kl")
+    assert not expression.match("policy/kl_first") and not expression.match("policy/usage/stick/0")
