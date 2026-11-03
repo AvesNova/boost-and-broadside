@@ -28,7 +28,11 @@ from bnb.models.yemong.layers import GatedMLP  # noqa: E402
 from bnb.models.yemong.spatial import SpatialBlock  # noqa: E402
 from bnb.models.yemong.temporal import TemporalBlock, parallel_scan  # noqa: E402
 
-pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="the kernels need CUDA")
+pytestmark = [
+    pytest.mark.gpu,
+    pytest.mark.usefixtures("global_generator"),
+    pytest.mark.skipif(not torch.cuda.is_available(), reason="the kernels need CUDA"),
+]
 CUDA = torch.device("cuda")
 OWN, SHIPS, FIELDS, ZONES = 5, 10, 10, 5
 OUTPUTS = (

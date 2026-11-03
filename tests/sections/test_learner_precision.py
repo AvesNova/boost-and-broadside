@@ -22,6 +22,7 @@ from bnb.runtime.rollout import Rollout
 
 pytestmark = [
     pytest.mark.gpu,
+    pytest.mark.usefixtures("global_generator"),
     pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA"),
 ]
 CUDA = torch.device("cuda") if torch.cuda.is_available() else None

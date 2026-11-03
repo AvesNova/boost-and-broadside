@@ -223,6 +223,7 @@ def _against_alone(
     return seen
 
 
+@pytest.mark.slow
 def test_a_mixed_batch_equals_each_game_run_alone():
     """Eager on the CPU, bit for bit, every environment, through 300 lively ticks (kills,
     respawns at each pool's own wait, resets at each pool's own clock, moving meters).

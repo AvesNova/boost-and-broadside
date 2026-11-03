@@ -188,7 +188,7 @@ def test_unroll_reproduces_a_stored_mixed_rollout():
 @pytest.mark.gpu
 @pytest.mark.slow
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
-def test_a_compiled_captured_mixed_rollout_stores_what_unroll_needs():
+def test_a_compiled_captured_mixed_rollout_stores_what_unroll_needs(fresh_compiler):
     """The mixed batch compiles into the runtime's stages and captures as one CUDA graph,
     and the stored decisions still agree with unroll to float32 rounding."""
     from bnb.runtime.rollout import Rollout

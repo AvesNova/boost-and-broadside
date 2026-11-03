@@ -74,3 +74,11 @@ def global_generator():
     ):
         torch.manual_seed(0)
         yield
+
+
+@pytest.fixture
+def fresh_compiler():
+    """Dynamo's caches emptied first, so a test that compiles does not depend on what the
+    tests before it compiled (its recompile limit counts every earlier shape)."""
+    torch._dynamo.reset()
+    yield

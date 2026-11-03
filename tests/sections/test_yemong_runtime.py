@@ -10,6 +10,7 @@ from bnb.models.yemong import policy
 
 pytestmark = [
     pytest.mark.gpu,
+    pytest.mark.usefixtures("global_generator"),
     pytest.mark.slow,
     pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA"),
 ]
@@ -42,7 +43,7 @@ def test_compiled_step_captures_and_samples_fresh_actions():
     assert torch.isfinite(outputs.value).all()
 
 
-def test_compiled_rollout_stores_what_unroll_needs():
+def test_compiled_rollout_stores_what_unroll_needs(fresh_compiler):
     net = cases.model().to(CUDA)
     _, trajectory = cases.rollout(net, environments=16, length=64, device=CUDA, compiled=True)
     # The compiled, captured act stage stores exactly what its step read, so unroll agrees to

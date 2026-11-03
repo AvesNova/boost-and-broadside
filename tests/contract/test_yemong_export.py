@@ -18,7 +18,8 @@ from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
 
 # The code under test draws from torch's default generator (model initialisation, the
 # rollout, the scripted opponents): each test runs with it seeded and restored.
-pytestmark = pytest.mark.usefixtures("global_generator")
+# The ONNX exporter initialises CUDA when a device is visible, so the test is `gpu`.
+pytestmark = [pytest.mark.gpu, pytest.mark.slow, pytest.mark.usefixtures("global_generator")]
 
 
 onnxruntime = pytest.importorskip("onnxruntime")

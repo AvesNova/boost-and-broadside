@@ -24,7 +24,7 @@ from bnb.play.theme_editor import with_colour
 from bnb.play.themes import Colour
 from bnb.play.trails import SAMPLE_SECONDS, Trails
 
-pytestmark = pytest.mark.gpu
+pytestmark = [pytest.mark.gpu, pytest.mark.usefixtures("global_generator")]
 WIDTH, HEIGHT = 320, 240
 
 
