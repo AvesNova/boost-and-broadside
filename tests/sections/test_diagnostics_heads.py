@@ -216,3 +216,57 @@ def test_a_head_that_changes_nothing_gains_nothing(segment, global_generator):
     for name in ("density/explained_deviance/enemy", "enemy_action/gain/repeat/hidden"):
         assert math.isfinite(out[name]), name
     assert any(name.startswith("belief/position_metres/") for name in out)
+
+
+def test_the_input_series_count_envelope_breaks_and_non_finite_entries():
+    """Four visible living ships: one faster than the velocity code reaches, one with more
+    shield than its type holds; a hidden ship's zeros and a dead ship's count nowhere; one
+    NaN in the globals."""
+    from bnb.models.yemong.state_code import velocity_reach
+
+    ships = torch.zeros((1, 1, 6, len(SHIP_COLUMNS)))
+    ships[..., :4, SHIP["visible"]] = 1.0
+    ships[..., :5, SHIP["alive"]] = 1.0
+    ships[..., 0, SHIP["velocity_x"]] = velocity_reach() + 1.0
+    ships[..., 1, SHIP["shield"]] = 101.0
+    ships[..., 5, SHIP["visible"]] = 1.0  # dead
+    ships[..., 5, SHIP["velocity_x"]] = 1e6
+    globals_ = torch.zeros((1, 1, 4))
+    globals_[..., 2] = math.nan
+    state_code = SimpleNamespace(
+        max_shield=torch.tensor([100.0]),
+        max_energy=torch.tensor([100.0]),
+        cooldown_bins=4,
+        tick_length=0.1,
+        angle_of_attack_limit=1.0,
+        shield_delay=2.0,
+    )
+    trajectory = SimpleNamespace(
+        obs=SimpleNamespace(ships=ships, fields=None, globals=globals_, zones=None)
+    )
+    out = metrics.read(
+        head_statistics.input_series(head_statistics.input_sums(state_code, trajectory))
+    )
+    assert out["input/nonfinite_count"] == 1
+    assert out["input/envelope_violation_share/speed"] == 0.25
+    assert out["input/envelope_violation_share/shield"] == 0.25
+    assert out["input/envelope_violation_share/energy"] == 0.0
+
+
+def test_the_fit_explained_variance_comes_from_the_moments():
+    """Returns 1, 2, 3 against values 1, 1, 1 (residuals 0, 1, 2: the same variance) on the
+    first level, against themselves on the others."""
+    from bnb.contracts import REWARD_LEVELS
+    from bnb.learn.ppo import fit_series
+
+    target = torch.tensor([1.0, 2.0, 3.0])
+    residual = torch.tensor([0.0, 1.0, 2.0])
+    levels = len(REWARD_LEVELS)
+    moments = torch.zeros((5, levels))
+    moments[0] = 3.0
+    moments[1] = target.sum()
+    moments[2] = (target**2).sum()
+    moments[3, 0], moments[4, 0] = residual.sum(), (residual**2).sum()
+    out = metrics.read(fit_series(moments.flatten()))
+    assert out[f"critic/explained_variance_fit/{REWARD_LEVELS[0]}"] == pytest.approx(0.0)
+    assert out[f"critic/explained_variance_fit/{REWARD_LEVELS[1]}"] == pytest.approx(1.0)

@@ -10,6 +10,8 @@ each slice is a line and a new slice needs no edit here. The x-axis is
 import dataclasses
 import re
 
+from bnb.learn.head_statistics import BELIEF_QUANTITIES
+
 STEP = "counters/environment_steps"
 
 
@@ -63,7 +65,7 @@ HEADLINE = (
         (
             panel("train/environment_steps_per_second"),
             panel("next_state/kl", "next_state/kl/*"),
-            panel("belief/position_error", "belief/position_error/*"),
+            panel("belief/position_metres", "belief/position_metres/*"),
             panel("representation/effective_rank", "representation/effective_rank/*"),
         ),
         open=True,
@@ -129,9 +131,11 @@ CURATED = (
     Section(
         "Learning signal",
         (
-            panel("grad/share/trunk", "grad/share/trunk/*"),
-            panel("grad/cos/trunk", "grad/cos/trunk/*"),
-            panel("grad/coherent_fraction", "grad/coherent_fraction/*"),
+            panel("gradient/share/trunk", "gradient/share/trunk/*"),
+            panel("gradient/cosine/trunk/policy", "gradient/cosine/trunk/policy/*"),
+            panel("gradient/cosine/trunk/value", "gradient/cosine/trunk/*/value"),
+            panel("gradient/coherent_fraction", "gradient/coherent_fraction/*"),
+            panel("gradient/actor_share"),
         ),
         open=True,
     ),
@@ -181,14 +185,35 @@ CURATED = (
             panel("density/loss"),
             panel("shot/loss", "shot/loss/*"),
             panel("next_state/kl", "next_state/kl/*"),
-            panel("next_state/gain", "next_state/gain/*"),
+            panel("next_state/gain/ally", "next_state/gain/ally/*"),
+            panel("next_state/gain/enemy_visible", "next_state/gain/enemy_visible/*"),
+            panel("next_state/token_share", "next_state/token_share/*"),
             panel("enemy_action/gain", "enemy_action/gain/*"),
-            panel("density/deviance_explained", "density/deviance_explained/*"),
-            panel("belief/position_error", "belief/position_error/*"),
-            panel("belief/normalised_square_error", "belief/normalised_square_error*"),
+            panel("enemy_action/cross_entropy", "enemy_action/cross_entropy/*"),
+            panel("enemy_action/accuracy", "enemy_action/accuracy/*"),
+            panel("enemy_action/entropy", "enemy_action/entropy/*"),
+            panel("enemy_action/factor_cross_entropy", "enemy_action/factor_cross_entropy/*"),
+            panel("density/deviance", "density/deviance/*"),
+            panel("density/explained_deviance", "density/explained_deviance/*"),
+            panel("shot/trajectory_kl", "shot/trajectory_kl/*"),
+            panel("shot/enemy_hit_rate", "shot/enemy_hit_rate/*"),
+            panel("shot/ally_hit_rate", "shot/ally_hit_rate/*"),
+            panel("shot/clear_miss_rate", "shot/clear_miss_rate/*"),
             panel("supervised_share", "*/supervised_share*"),
             panel("outcome/brier_skill", "outcome/brier_skill/*"),
-            panel("outcome/ece", "outcome/ece", "outcome/bias"),
+            panel("outcome/calibration", "outcome/expected_calibration_error", "outcome/bias"),
+            panel("critic/explained_variance_fit", "critic/explained_variance_fit/*"),
+        ),
+    ),
+    Section(
+        "Belief",
+        tuple(
+            panel(f"belief/{quantity}", f"belief/{quantity}/*") for quantity, _ in BELIEF_QUANTITIES
+        )
+        + (
+            panel("belief/normalised_square_error", "belief/normalised_square_error/*"),
+            panel("belief/within_one_sigma", "belief/within_one_sigma/*"),
+            panel("belief/within_two_sigma", "belief/within_two_sigma/*"),
         ),
     ),
     Section(
@@ -220,6 +245,12 @@ CURATED = (
             panel("episode/losses", "episode/losses/*"),
             panel("episode/alive_share"),
             panel("episode/result", "episode/result/*"),
+            panel("episode/lifespan_seconds", "episode/lifespan_seconds/*"),
+            panel("episode/reward_mean", "episode/reward_mean/*"),
+            panel("episode/reward_min", "episode/reward_min/*"),
+            panel("episode/reward_max", "episode/reward_max/*"),
+            panel("episode/reward", "episode/reward/*"),
+            panel("episode/event", "episode/event/*"),
             panel("reward/rate", "reward/rate/*"),
             panel("reward/level_share", "reward/level_share/*"),
             panel("reward/event_share", "reward/event_share/*"),
@@ -228,7 +259,14 @@ CURATED = (
     ),
     Section(
         "Fog",
-        (panel("fog", "fog/*"),),
+        (
+            panel("fog/visible_share", "fog/visible_share/*"),
+            panel("fog/mean_hidden_age_seconds"),
+            panel("fog/reacquisitions_per_slot_minute"),
+            panel("fog/occlusion_share", "fog/occlusion_share/*"),
+            panel("fog/never_seen_share"),
+            panel("fog/fogged_environment_share"),
+        ),
     ),
     Section(
         "Physics, frontline and map scale",
@@ -244,9 +282,16 @@ CURATED = (
             panel("train/parameter_norm", "train/parameter_norm/*"),
             panel("train/update_ratio", "train/update_ratio/*"),
             panel("train/nonfinite_steps", "train/nonfinite_steps/*"),
-            panel("grad/norm", "grad/norm/*"),
-            panel("grad/agreement", "grad/agreement/*"),
-            panel("grad/actor_share"),
+            panel("gradient/norm/model", "gradient/norm/model/*"),
+            panel("gradient/norm/trunk", "gradient/norm/trunk/*"),
+            panel("gradient/share/model", "gradient/share/model/*"),
+            panel("gradient/agreement", "gradient/agreement/*"),
+            panel("gradient/coherent_share", "gradient/coherent_share/*"),
+            panel("gradient/cosine/trunk", "gradient/cosine/trunk/*"),
+            panel(
+                "gradient/actor_norm and critic_norm", "gradient/actor_norm", "gradient/critic_norm"
+            ),
+            panel("train/time/cadence_seconds"),
         ),
     ),
     Section(

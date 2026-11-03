@@ -55,10 +55,11 @@ def test_the_gradient_decomposition_matches_a_hand_computed_case():
 
 def test_halves_that_disagree_are_incoherent():
     a = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])
-    b = torch.tensor([[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, -1.0, 0.0]])
+    b = torch.tensor([[-1.0, 0.0, 0.0], [0.0, 0.5, 0.0], [1.0, -1.0, 0.0]])
     out = _decomposed(a, b)
     assert out["gradient/coherent_fraction/policy"] == pytest.approx(-1.0)
-    assert out["gradient/coherent_fraction/entropy"] == pytest.approx(1.0)
+    # 0.5 / ((1 + 0.25) / 2): agreeing halves of unequal size
+    assert out["gradient/coherent_fraction/entropy"] == pytest.approx(0.8)
     assert out["gradient/coherent_fraction/value"] == pytest.approx(0.0)
 
 

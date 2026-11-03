@@ -31,7 +31,13 @@ from bnb.models.yemong import codes
 from bnb.models.yemong.density import poisson_terms
 from bnb.models.yemong.inputs import truth as shifted_truth
 from bnb.models.yemong.shots import HIT_ALLY, HIT_ENEMY
-from bnb.models.yemong.state_code import POSITION_PERIOD, SCALARS
+from bnb.models.yemong.state_code import (
+    LOG_INDEX_SPAN,
+    NOSE_RATE_LIMIT,
+    POSITION_PERIOD,
+    SCALARS,
+    velocity_reach,
+)
 
 # The state code's runs, in order (`ShipStateCode.runs`).
 STATE_PARTS = ("position", "velocity", "heading", "nose_rate", *SCALARS, "gun_cooldown")
@@ -387,7 +393,13 @@ def belief_sums(trajectory: Trajectory, tick_length: float) -> dict:
         normalised.append(square / len(columns))
     errors, normalised = torch.stack(errors, -1), torch.stack(normalised, -1)
     age = replay.age.float() * tick_length
-    out = {}
+    living = trajectory.truth[..., SHIP["alive"]] > 0.5
+    out = {
+        # the never-seen invariant (diagnostics audit, group 13): a living hidden enemy the
+        # view holds no belief of was not seen since it spawned
+        "fog/living_enemies": living.float().sum(),
+        "fog/never_seen": (hidden & ~replay.valid).float().sum(),
+    }
     for bucket, low, high in AGE_BUCKETS:
         members = chosen & (age >= low) & (age < high)
         out[f"belief/{bucket}/count"] = members.float().sum()
@@ -402,7 +414,7 @@ def belief_series(total: dict) -> dict:
     """The named series of the update's belief totals (`belief_sums`, `add`)."""
     if not total:
         return {}
-    out = {}
+    out = {"fog/never_seen_share": Mean(total["fog/never_seen"], total["fog/living_enemies"])}
     sigma_names = [name for name, _ in BELIEF_QUANTITIES if name in SIGMA_COLUMNS]
     for bucket, _, _ in AGE_BUCKETS:
         count = total[f"belief/{bucket}/count"]
@@ -415,4 +427,70 @@ def belief_series(total: dict) -> dict:
                 sigma_names, total[f"belief/{bucket}/{quantity}"].unbind(), strict=True
             ):
                 out[f"belief/{quantity}/{name}/{bucket}"] = Mean(value, count)
+    return out
+
+
+# ---------------------------------------------------------------------- inputs (C1)
+
+# The ship features the state code bins, with the design envelope its bins span
+# (`bnb.models.yemong.state_code`); positions wrap, so they have none.
+INPUT_FEATURES = (
+    "speed",
+    "nose_rate",
+    "angle_of_attack",
+    "shield_recharge_wait",
+    "shield",
+    "energy",
+    "gun_cooldown",
+    "log_refractive_index",
+)
+
+
+@torch.no_grad()
+def input_sums(state_code, trajectory: Trajectory) -> dict:
+    """The raw observation's totals over a stored batch (diagnostics checklist C1): the
+    non-finite entries of every part, and per INPUT_FEATURES the visible living ship rows
+    whose value lies outside the state code's envelope (beyond its bins, where it folds
+    into the last one)."""
+    obs = trajectory.obs
+    out = {
+        "input/nonfinite": sum(
+            (~torch.isfinite(part)).float().sum()
+            for part in (obs.ships, obs.fields, obs.globals, obs.zones)
+            if part is not None
+        )
+    }
+    ships = obs.ships
+    shown = (ships[..., SHIP["visible"]] > 0.5) & (ships[..., SHIP["alive"]] > 0.5)
+    ship_type = ships[..., SHIP["ship_type"]].long()
+    shield_max = state_code.max_shield[ship_type]
+    energy_max = state_code.max_energy[ship_type]
+    column = {name: ships[..., SHIP[name]] for name in SHIP}
+    speed = torch.sqrt(column["velocity_x"] ** 2 + column["velocity_y"] ** 2)
+    cooldown_limit = (state_code.cooldown_bins - 1) * state_code.tick_length
+    outside = dict(
+        speed=speed > velocity_reach(),
+        nose_rate=column["nose_rate"].abs() > NOSE_RATE_LIMIT,
+        angle_of_attack=column["angle_of_attack"].abs() > state_code.angle_of_attack_limit,
+        shield_recharge_wait=(column["shield_recharge_wait"] < 0.0)
+        | (column["shield_recharge_wait"] > state_code.shield_delay),
+        shield=(column["shield"] < 0.0) | (column["shield"] > shield_max),
+        energy=(column["energy"] < 0.0) | (column["energy"] > energy_max),
+        gun_cooldown=(column["gun_cooldown"] < 0.0) | (column["gun_cooldown"] > cooldown_limit),
+        log_refractive_index=column["log_refractive_index"].abs() > LOG_INDEX_SPAN,
+    )
+    out["input/shown"] = shown.float().sum()
+    out["input/outside"] = torch.stack(
+        [(outside[name] & shown).float().sum() for name in INPUT_FEATURES]
+    )
+    return out
+
+
+def input_series(total: dict) -> dict:
+    """The named series of the update's input totals (`input_sums`, `add`)."""
+    if not total:
+        return {}
+    out = {"input/nonfinite_count": total["input/nonfinite"].int()}
+    for name, value in zip(INPUT_FEATURES, total["input/outside"].unbind(), strict=True):
+        out[f"input/envelope_violation_share/{name}"] = Mean(value, total["input/shown"])
     return out

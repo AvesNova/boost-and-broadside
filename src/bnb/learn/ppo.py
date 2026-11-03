@@ -501,7 +501,27 @@ class Learner:
             statistics.target_entropy(derived["outcome_targets"]).sum() / denominator["steps"]
         )
         targets = torch.stack([columns[level] for level in range(len(columns))])
-        return torch.cat([sums / denominator["policy"], targets])
+        # the fit's moments per level over the valued ships (raw sums): count, target, its
+        # square, residual, its square
+        target = derived["level_returns"]
+        residual = target - self._in_reward_units(unrolled.values.float())
+        weight = trajectory.valued[..., None].float().expand_as(target)
+        moments = (
+            torch.stack(
+                [
+                    weight,
+                    weight * target,
+                    weight * target**2,
+                    weight * residual,
+                    weight * residual**2,
+                ]
+            )
+            .flatten(1, -2)
+            .sum(1)
+        )  # (5, levels)
+        return torch.cat([sums / denominator["policy"], targets, moments.flatten()])
+
+    MOMENTS = 5 * len(REWARD_LEVELS)  # the fit's moments at the end of the diagnostics
 
     STATISTICS = ("clip_fraction", "approximate_kl")  # what `_policy` reports per minibatch
 
@@ -602,7 +622,12 @@ class Learner:
                         if self.diagnostics:
                             belief_total = head_statistics.add(
                                 belief_total,
-                                head_statistics.belief_sums(trajectory, self.rules.tick_length),
+                                {
+                                    **head_statistics.belief_sums(
+                                        trajectory, self.rules.tick_length
+                                    ),
+                                    **head_statistics.input_sums(self.model.state_code, trajectory),
+                                },
                             )
                     if recompute:
                         log_probability, _ = policy.evaluate(
@@ -620,6 +645,7 @@ class Learner:
             else {}
         )
         series.update(head_statistics.belief_series(belief_total))
+        series.update(head_statistics.input_series(belief_total))
         return dict(
             derived=derived,
             rollout_log_probability=rollout_log_probability,
@@ -766,6 +792,7 @@ class Learner:
         levels_total = torch.zeros(len(REWARD_LEVELS), device=device)
         statistics_total = torch.zeros(len(self.STATISTICS), device=device)
         diagnostics_total = None
+        last_moments = None  # the last completed epoch's fit moments
         head_total: dict = {}  # the heads' sums, over the first epoch
         measure_heads = self.diagnostics and self.auxiliary
         drift = self.drift(segments, prepared)
@@ -780,6 +807,7 @@ class Learner:
             # each minibatch's last one smaller where they do not divide).
             order = torch.randperm(views, generator=self.order_generator)
             epoch_statistics = torch.zeros(len(self.STATISTICS), device=device)
+            epoch_moments = None
             for chosen in order.tensor_split(config.minibatches):
                 terms, per_level, statistic, diagnostic, head_part = self.gradient(
                     segments, prepared, chosen, heads=measure_heads and epoch == 0
@@ -798,11 +826,15 @@ class Learner:
                 levels_total += per_level
                 epoch_statistics += statistic
                 statistics_total += statistic
+                if self.diagnostics:
+                    diagnostic, moments = diagnostic[: -self.MOMENTS], diagnostic[-self.MOMENTS :]
+                    epoch_moments = moments if epoch_moments is None else epoch_moments + moments
                 diagnostics_total = (
                     diagnostic if diagnostics_total is None else diagnostics_total + diagnostic
                 )
                 steps += 1
             epochs += 1
+            last_moments = epoch_moments
             epoch_statistics = epoch_statistics / config.minibatches  # the epoch's means
             if epoch == 0:
                 first_epoch = epoch_statistics
@@ -844,6 +876,7 @@ class Learner:
             out[f"train/nonfinite_steps/{term}"] = nonfinite_terms[index]
         if self.diagnostics:
             out.update(self._diagnostic_series(prepared, diagnostics_total, steps, levels_total))
+            out.update(fit_series(last_moments))
             out.update(self._parameter_series(before))
             out.update(head_statistics.series(head_total, self.model))
             if cadence:
@@ -1034,6 +1067,25 @@ class Learner:
             rollout = prepared["rollout_log_probability"][:, self._on_device(views)]
             error = torch.where(mask, (torch.exp(log_probability - rollout) - 1.0).abs(), 0.0)
         return torch.stack([error.amax(), error.sum() / mask.sum().clamp_min(1)])
+
+
+def fit_series(moments: torch.Tensor) -> dict:
+    """`critic/explained_variance_fit/{level}`: the explained variance of the learner's own
+    values during the last completed epoch (moments (5 * levels,) from `_diagnostics`),
+    against the returns it fits (0 where the returns do not vary)."""
+    count, target, target_square, residual, residual_square = moments.view(5, -1)
+
+    def variance(total: torch.Tensor, square: torch.Tensor) -> torch.Tensor:
+        return (square - total**2 / count.clamp_min(1.0)) / (count - 1.0).clamp_min(1.0)
+
+    total = variance(target, target_square)
+    fitted = variance(residual, residual_square)
+    varies = total > 0
+    fit = torch.where(varies, 1.0 - fitted / torch.where(varies, total, 1.0), 0.0)
+    return {
+        f"critic/explained_variance_fit/{level}": value
+        for level, value in zip(REWARD_LEVELS, fit.unbind(), strict=True)
+    }
 
 
 def explained_variance(

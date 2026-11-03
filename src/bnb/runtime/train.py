@@ -319,6 +319,8 @@ class Trainer:
             environment_pool,
             rules.tick_length,
             game.mode,
+            view_fogged=lineup.fogged[lineup.environments[LEARNER]].repeat(config.shards),
+            environment_fogged=lineup.fogged,
         )
 
     @property
@@ -353,6 +355,8 @@ class Trainer:
         store, bootstraps = self.collect()
         collector = Collector()
         collector.add(self.analytics.episodes(self.rollout.take_episodes()))
+        game_sums, outcome_tables = self.rollout.take_games()
+        collector.set(self.analytics.games(game_sums, outcome_tables))
         for shard in range(store.shards):
             collector.add(self.analytics.shard(store.shard(analytics.NAMES, shard)))
         if self.league is not None:
@@ -372,6 +376,10 @@ class Trainer:
         learned = time.perf_counter()
         if cadence:
             row["train/time/cadence_seconds"] = self.ppo.cadence_stopwatch.seconds()
+            if outcome_tables is not None:  # the cadence's own read
+                calibration = metrics.read_back(outcome_tables["calibration"].flatten())
+                rows = [calibration[i : i + 3] for i in range(0, len(calibration), 3)]
+                row["outcome/reliability"] = analytics.reliability_table(rows).as_json()
         if self.league is not None:
             row.update(self.league.updated(self))
         row["train/time/rollout_seconds"] = collected - started

@@ -46,9 +46,11 @@ class Stopwatch:
         self.started = self.stopped = None
 
     def start(self) -> None:
+        """Begin the interval (and forget the last one)."""
         self.started, self.stopped = self._now(), None
 
     def stop(self) -> None:
+        """End the interval."""
         self.stopped = self._now()
 
     def _now(self):

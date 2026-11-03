@@ -155,3 +155,48 @@ def test_the_rollout_keeps_two_blocks_of_records_on_the_device():
     log_probability, _ = policy.evaluate(unrolled.policy_logits, cases.joint_actions(on_device))
     assert cases.scale_error(log_probability, on_device.log_probability) <= 1e-5
     assert cases.scale_error(unrolled.values, on_device.values) <= 1e-5
+
+
+def test_the_cadence_groups_add_no_synchronisation():
+    """The cadence groups (the gradient decomposition, the representation) and the heads'
+    series stay on the device: an update that measures them synchronises as often as one
+    that does not."""
+    net, runner, bootstraps = _rollout(host_store=True)
+    config = LearnerConfig(
+        epochs=2, minibatches=2, target_kl=float("inf"), micro_batch_rows=4 * runner.rules.num_ships
+    )
+    learner = Learner(
+        net, config, runner.rules, runner.carry["types"], RewardConfig().outcome, CUDA
+    )
+    learner.update(runner.store, bootstraps, cadence=True)  # the first: the staging buffers
+    torch.cuda.synchronize()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        torch.cuda.set_sync_debug_mode("warn")
+        try:
+            series = learner.update(runner.store, bootstraps, cadence=True)
+        finally:
+            torch.cuda.set_sync_debug_mode("default")
+    synchronising = [w for w in caught if "called a synchronizing" in str(w.message)]
+    assert len(synchronising) == config.epochs - 1, [(w.filename, w.lineno) for w in synchronising]
+    out = metrics.read(series)
+    assert "gradient/actor_share" in out and "representation/effective_rank/trunk_block_0" in out
+    assert learner.cadence_stopwatch.seconds() > 0
+
+
+def test_the_rollouts_game_sums_are_taken_without_a_synchronisation():
+    """The games' sums and the outcome ledger live in the captured graph's buffers; taking
+    them copies and resets on the device."""
+    net, runner, _ = _rollout(host_store=True)
+    torch.cuda.synchronize()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        torch.cuda.set_sync_debug_mode("warn")
+        try:
+            sums, tables = runner.take_games()
+        finally:
+            torch.cuda.set_sync_debug_mode("default")
+    assert not [w for w in caught if "called a synchronizing" in str(w.message)]
+    assert sums["resolve"].sum() > 0 and tables["calibration"].sum() > 0
+    again, _ = runner.take_games()
+    assert again["resolve"].abs().sum() == 0  # reset in place

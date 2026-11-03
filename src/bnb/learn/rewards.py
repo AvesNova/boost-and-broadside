@@ -32,7 +32,9 @@ __all__ = [
     "enemy_team_share",
     "kill_death_events",
     "outcome_events",
+    "REWARD_EVENTS",
     "reward_step",
+    "reward_step_events",
 ]
 
 
@@ -224,6 +226,35 @@ def reward_step(
 
     Events in sim order; team (N,) or (B, N).
     """
+    rewards, ledger, _ = reward_step_events(config, ledger, events, team)
+    return rewards, ledger
+
+
+# Each level's events (diagnostics audit, group 15), in the order `reward_step_events`
+# gives them: the damage level's six, the kill/death level's four, then one event for each
+# of the other levels.
+REWARD_EVENTS = (
+    ("damage", "damage_taken"),
+    ("damage", "damage_dealt"),
+    ("damage", "friendly_fire"),
+    ("damage", "recharge"),
+    ("damage", "charge_back"),
+    ("damage", "damage_unforced"),
+    ("kill_death", "death"),
+    ("kill_death", "kill"),
+    ("kill_death", "ally_kill"),
+    ("kill_death", "kill_death_unforced"),
+    ("objective_progress", "objective_progress"),
+    ("objective", "objective"),
+    ("outcome", "outcome"),
+)
+
+
+def reward_step_events(
+    config: RewardConfig, ledger: Ledger, events: Events, team: torch.Tensor
+) -> tuple[torch.Tensor, Ledger, torch.Tensor]:
+    """`reward_step`, with each event's weighted reward (B, N, len(REWARD_EVENTS)) as well:
+    a level's reward is the sum of its events'."""
     raw, boundary = events.damage, events.boundary_damage
     raw_total = _column_total(raw)
     old_total = _column_total(ledger.ships)
@@ -278,10 +309,30 @@ def reward_step(
         outcome,
     )
     rewards = torch.stack([weight * level for weight, level in zip(config.weights, levels)], -1)
+    weights = dict(zip(REWARD_LEVELS, config.weights, strict=True))
+    event_rewards = torch.cat(
+        [
+            weights["damage"] * damage,
+            weights["kill_death"] * kill_death,
+            torch.stack(
+                [
+                    weights["objective_progress"] * events.objective_progress,
+                    weights["objective"] * events.objective,
+                    weights["outcome"] * outcome,
+                ],
+                -1,
+            ),
+        ],
+        -1,
+    )
     # A death makes the damage done to the ship stick; a finished match starts afresh.
     # A ship's row (its claims on others) survives its own death.
     clear = died[..., None, :] | events.done[..., None, None]
-    return rewards, Ledger(
-        ships=torch.where(clear, 0.0, ships),
-        boundary=torch.where(clear[..., 0, :], 0.0, boundary_row[..., 0, :]),
+    return (
+        rewards,
+        Ledger(
+            ships=torch.where(clear, 0.0, ships),
+            boundary=torch.where(clear[..., 0, :], 0.0, boundary_row[..., 0, :]),
+        ),
+        event_rewards,
     )
