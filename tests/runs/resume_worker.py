@@ -5,10 +5,13 @@ it: seed the process, then train straight through, or train and save, or resume 
 
 MODE: "straight" (2 x UPDATES updates), "first" (UPDATES updates, then a training
 checkpoint at DIRECTORY/checkpoint) or "second" (resume from it, UPDATES more). Each writes
-its metrics and its final weights into DIRECTORY/<MODE>. The league slot is copied every
-LEAGUE_EVERY updates, so at the checkpoint it lags the model. DAMAGE (with "second", to
-show the test sees it): "league" adds noise to the league slot's weights after the restore,
-"return_scale" puts back a fresh trainer's return scale.
+its metrics and its final weights into DIRECTORY/<MODE>. The league (`bnb.league`) is
+attached, with a snapshot every update, so the pool, the gauges, the slots and the drains
+all change before the checkpoint; its snapshots go to DIRECTORY/league (DIRECTORY/straight-
+league for the straight run). DAMAGE (with "second", to show the test sees it): "league"
+adds noise to the opponent slots' weights after the restore, "draws" restarts the league's
+slot draws, "gauges" forgets the gauges' records and windows, "return_scale" puts back a fresh
+trainer's return scale. Episodes are short (2 s), so drains end and begin in each half.
 """
 
 import json
@@ -23,17 +26,19 @@ import torch  # noqa: E402
 
 from bnb.cli import set_precision  # noqa: E402
 from bnb.contracts import GameConfig  # noqa: E402
+from bnb.league.league import League  # noqa: E402
 from bnb.learn.ppo import LearnerConfig  # noqa: E402
 from bnb.runs import checkpoint  # noqa: E402
+from bnb.runtime.opponents import LeagueConfig  # noqa: E402
 from bnb.runtime.train import TrainConfig, Trainer  # noqa: E402
 
 TIMES = ("rollout_seconds", "learn_seconds")
-LEAGUE_EVERY = 3
+ENVIRONMENTS, LENGTH = 16, 32
 
 
 def config(model: str, device: str) -> TrainConfig:
     # A learning rate that moves the model visibly in two updates, and a return-scale floor
-    # under the returns' spread, so both the league's lag and the return scale show.
+    # under the returns' spread, so both the league's snapshots and the return scale show.
     learner = LearnerConfig(
         epochs=2,
         minibatches=2,
@@ -43,13 +48,13 @@ def config(model: str, device: str) -> TrainConfig:
         return_scale_floor=1e-7,
     )
     return TrainConfig(
-        game=GameConfig(2, 2, 1500.0, episode_seconds=4.0, respawn_seconds=1.0),
-        environments=16,
+        game=GameConfig(2, 2, 1500.0, episode_seconds=2.0, respawn_seconds=1.0),
+        environments=ENVIRONMENTS,
         updates=0,
-        length=32,
+        length=LENGTH,
         model=model,
         relational_hidden=32,
-        league_every=LEAGUE_EVERY,
+        league=LeagueConfig(snapshot_every=ENVIRONMENTS * LENGTH),
         learner=learner,
         compiled=device == "cuda",
     )
@@ -68,13 +73,27 @@ def main() -> None:
                 fresh = Trainer(settings, device).ppo.return_scale
             trainer.ppo.return_scale.low, trainer.ppo.return_scale.high = fresh.low, fresh.high
         checkpoint.restore_default_generators(directory / "checkpoint", device)
+        league = League(
+            trainer, directory / "league", state=checkpoint.league_state(directory / "checkpoint")
+        )
         if damage == ["league"]:
             noise = torch.Generator().manual_seed(1)
             with torch.no_grad():
-                for parameter in trainer.league.parameters():
-                    parameter.add_(0.1 * torch.randn(parameter.shape, generator=noise).to(device))
+                for parameter in trainer.opponents.parameters.values():
+                    if parameter.is_floating_point():
+                        parameter.add_(
+                            0.1 * torch.randn(parameter.shape, generator=noise).to(device)
+                        )
+        if damage == ["draws"]:
+            league.swaps = 0
+        if damage == ["gauges"]:
+            for gauge in league.gauges.values():
+                gauge.wins.clear()
+                for window in gauge.windows.values():
+                    window.clear()
     else:
         trainer = Trainer(settings, device)
+        League(trainer, directory / ("straight-league" if mode == "straight" else "league"))
     count = 2 * updates if mode == "straight" else updates
     rows = []
     for _ in range(count):

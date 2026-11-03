@@ -1,7 +1,8 @@
-"""The exact resume (runs acceptance 3): K updates, a training checkpoint, a resume in a
-fresh process and K more equal 2K updates straight through, parameters and metrics. With
-K = 2 and the league copied every 3 updates, the league slot at the checkpoint lags the
-model, so a league slot restored wrong shows; so does a return scale not restored."""
+"""The exact resume (runs acceptance 3, league acceptance 6): K updates, a training
+checkpoint, a resume in a fresh process and K more equal 2K updates straight through,
+parameters and metrics, the league's included (its draws, gauges and pool). Opponent slots
+restored wrong show, and so do the league's draws restarted, a gauge's record lost or a
+return scale not restored."""
 
 import json
 import os
@@ -47,8 +48,8 @@ def _resumes_exactly(tmp_path: pathlib.Path, device: str, model: str) -> None:
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("damage", ["league", "return_scale"])
-def test_the_exact_resume_test_sees_a_damaged_league_slot_or_return_scale(tmp_path, damage):
+@pytest.mark.parametrize("damage", ["league", "draws", "gauges", "return_scale"])
+def test_the_exact_resume_test_sees_damaged_slots_draws_or_return_scale(tmp_path, damage):
     for mode in ("straight", "first"):
         _run(mode, tmp_path, "cpu", "relational")
     _run("second", tmp_path, "cpu", "relational", damage)

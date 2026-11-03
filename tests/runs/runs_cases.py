@@ -131,7 +131,6 @@ def tiny_train_config(model: str = "relational", updates: int = 2, **changes):
         length=16,
         model=model,
         relational_hidden=16,
-        league_every=1,
         learner=learner,
         compiled=False,
     )

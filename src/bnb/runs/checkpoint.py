@@ -319,9 +319,10 @@ def save_training(
     extra: dict | None = None,
 ) -> pathlib.Path:
     """Write a training checkpoint of `trainer` at `directory`: the policy file of its
-    model, plus the full TrainConfig, the optimizer, the league slot, every generator, the
-    rollout carry and the step counters. `extra` goes into the record as it is (the run's
-    settings)."""
+    model, plus the full TrainConfig, the optimizer, the opponent slots, the league's state
+    (when one is attached: its record part under "league", its tensors in
+    `training.safetensors` under "league."), every generator, the rollout carry and the step
+    counters. `extra` goes into the record as it is (the run's settings)."""
     config, ppo = trainer.config, trainer.ppo
     device = trainer.rollout.device
     steps = dict(environment_steps=ppo.environment_steps, updates=trainer.updates_done)
@@ -335,7 +336,12 @@ def save_training(
     )
     tensors = {}
     tensors.update(named_tensors(optimizer["state"], "optimizer."))
-    tensors.update(named_tensors(trainer.league.state_dict(), "league."))
+    if trainer.opponents is not None:
+        tensors.update(named_tensors(trainer.opponents.state_dict(), "opponents."))
+    if trainer.league is not None:
+        league_record, league_tensors = trainer.league.state()
+        record["league"] = league_record
+        tensors.update(named_tensors(league_tensors, "league."))
     tensors.update(named_tensors(trainer.rollout.saved_carry(), "carry."))
     for name, generator in _generators(trainer).items():
         tensors[f"generator.{name}"] = generator.get_state()
@@ -430,16 +436,20 @@ def restore_optimizer(
 def _restore(
     trainer: Trainer, directory: pathlib.Path, record: dict, policy: PolicyRecord, carry: bool
 ) -> None:
-    """Load the model, league, optimizer, return scale and counters (and with `carry`, the
-    rollout carry and the named streams) of a training checkpoint into `trainer`."""
+    """Load the model, optimizer, return scale and counters (and with `carry`, the opponent
+    slots, the rollout carry and the named streams) of a training checkpoint into
+    `trainer`."""
     stored = safetensors.torch.load_file(directory / TRAINING)
     _load_weights(trainer.model, directory)
-    trainer.league.load_state_dict(tree_from_named(trainer.league.state_dict(), stored, "league."))
     restore_optimizer(trainer, stored, record["optimizer"]["param_groups"])
     _set_return_scale(trainer, policy.return_scale)
     trainer.ppo.environment_steps = policy.steps["environment_steps"]
     trainer.updates_done = policy.steps["updates"]
     if carry:
+        if trainer.opponents is not None:
+            trainer.opponents.load_state_dict(
+                tree_from_named(trainer.opponents.state_dict(), stored, "opponents.")
+            )
         trainer.rollout.load_carry(tree_from_named(trainer.rollout.saved_carry(), stored, "carry."))
         for name, generator in _generators(trainer).items():
             generator.set_state(stored[f"generator.{name}"])
@@ -514,9 +524,10 @@ def fork_training(
     directory: str | os.PathLike, config: TrainConfig, device: torch.device
 ) -> Trainer:
     """A new trainer with `config` that starts from a training checkpoint's model (built
-    from its build record), league slot, optimizer, return scale and environment-step count
-    (so the warm-up goes on), not its carry or generators (the new run's sizes may differ).
-    Its update count starts at zero: `config.updates` is what the fork trains."""
+    from its build record), optimizer, return scale and environment-step count (so the
+    warm-up goes on), not its carry, generators or league (the new run's sizes may differ;
+    its league starts afresh). Its update count starts at zero: `config.updates` is what the
+    fork trains."""
     directory = pathlib.Path(directory)
     record, policy = read_record(directory), read_policy(directory)
     if record.get("kind") != "training":
@@ -526,18 +537,33 @@ def fork_training(
         )
     trainer = Trainer(config, device, run_build(policy, config, directory, "the fork"))
     _restore(trainer, directory, record, policy, carry=False)
+    trainer.reset_opponents()
     trainer.updates_done = 0
     return trainer
 
 
 def warm_start(directory: str | os.PathLike, config: TrainConfig, device: torch.device) -> Trainer:
-    """A new trainer with `config` whose model (and league slot) start from a policy file's
-    build record, weights and return scale, with a fresh optimizer and fresh step counts:
-    the BC -> RL hand-off."""
+    """A new trainer with `config` whose model (and opponent slots) start from a policy
+    file's build record, weights and return scale, with a fresh optimizer and fresh step
+    counts: the BC -> RL hand-off."""
     directory = pathlib.Path(directory)
     policy = read_policy(directory)
     trainer = Trainer(config, device, run_build(policy, config, directory, "the warm start"))
     _load_weights(trainer.model, directory)
-    trainer.league.load_state_dict(trainer.model.state_dict())
+    trainer.reset_opponents()
     _set_return_scale(trainer, policy.return_scale)
     return trainer
+
+
+def league_state(directory: str | os.PathLike) -> tuple[dict, dict[str, torch.Tensor]] | None:
+    """A training checkpoint's league state, (its record part, its tensors), for the league
+    to restore; None when the run had no league attached."""
+    directory = pathlib.Path(directory)
+    record = read_record(directory)
+    if "league" not in record:
+        return None
+    stored = safetensors.torch.load_file(directory / TRAINING)
+    prefix = "league."
+    return record["league"], {
+        name[len(prefix) :]: tensor for name, tensor in stored.items() if name.startswith(prefix)
+    }
