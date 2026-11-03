@@ -24,7 +24,7 @@ OWN = 5  # squad: own ships per view
 
 
 @pytest.fixture(scope="module")
-def segment():
+def segment(module_global_generator):
     """A real squad-sized rollout, half the environments fogged, with several resets."""
     net = cases.model()
     _, trajectory = cases.rollout(net)

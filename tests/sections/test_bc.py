@@ -53,7 +53,7 @@ def _cloning(net, runner: Rollout, teacher_config=bc.TeacherConfig(), **config):
 
 
 @pytest.fixture(scope="module")
-def segment():
+def segment(module_global_generator):
     net = cases.model()
     controllers = {
         "learner": cases.controller(net, cases.SHORT_SQUAD),

@@ -35,7 +35,7 @@ OWN = lc.OWN
 
 
 @pytest.fixture(scope="module")
-def segment():
+def segment(module_global_generator):
     net = cases.model()
     runner = lc.rollout(net)
     learner = lc.learner(net, runner)
@@ -351,7 +351,7 @@ def test_the_store_records_every_rows_action(segment):
 
 
 @pytest.fixture(scope="module")
-def decided():
+def decided(module_global_generator):
     """A self-play and chaser rollout whose every first episode end is team 0's win (the
     score is set to 1-0 before the segment; the clock decides team deathmatch by score), with
     the outcome weighted zero, so its reward cannot tell the result."""
