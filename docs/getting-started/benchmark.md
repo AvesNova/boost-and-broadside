@@ -1,6 +1,6 @@
 ---
 covers: [bench/]
-reviewed: 2026-11-03 09:45
+reviewed: 2026-11-03 09:50
 ---
 
 # A benchmark
