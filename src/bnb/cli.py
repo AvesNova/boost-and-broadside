@@ -345,6 +345,17 @@ def with_settings(config, settings):
         raise SystemExit(f"--set: {error}") from error
 
 
+def warm_start_entropy(config, settings: tuple[str, ...]):
+    """`config` with the warm start's entropy coefficient (`WARM_START_ENTROPY`), unless
+    `--set learner.entropy=...` chose one."""
+    from bnb.learn.ppo import WARM_START_ENTROPY
+
+    if any(path == "learner.entropy" for path, _ in map(parse_setting, settings)):
+        return config
+    learner = dataclasses.replace(config.learner, entropy=WARM_START_ENTROPY)
+    return dataclasses.replace(config, learner=learner)
+
+
 def set_precision(precision: str) -> None:
     """The process-wide matmul precision of a run: TF32 for "tf32", full float32 otherwise
     (bf16 is the model's own autocast)."""
@@ -415,6 +426,7 @@ def train(options: Train, given_options: set[str]) -> None:
                 source = Run.open(runs_directory, options.fork).checkpoint_at(options.at)
             elif options.init_from:
                 source = pathlib.Path(options.init_from)
+                config = warm_start_entropy(config, options.set)
             model_set = any(
                 path.split(".")[0] == config.model for path, _ in map(parse_setting, options.set)
             )

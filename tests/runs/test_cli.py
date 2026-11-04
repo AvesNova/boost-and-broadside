@@ -15,6 +15,7 @@ import runs_cases as cases
 import torch
 
 from bnb import cli
+from bnb.learn.ppo import WARM_START_ENTROPY
 from bnb.models.yemong.model import YemongConfig
 from bnb.runs import checkpoint, probe, provenance
 from bnb.runs.records import Run
@@ -331,6 +332,33 @@ def test_a_warm_start_from_a_policy_file_starts_a_new_run(monkeypatch, tmp_path)
     run = Run.open(tmp_path / "runs", "rl")
     assert run.record["parent"] == dict(policy=str(policy.resolve()))
     assert run.record["segments"][0]["start_step"] == 0
+
+
+@pytest.mark.parametrize(
+    "setting, entropy", [((), WARM_START_ENTROPY), (("--set", "learner.entropy=-0.005"), -0.005)]
+)
+def test_a_warm_start_takes_its_own_entropy_coefficient(
+    monkeypatch, tmp_path, capsys, setting, entropy
+):
+    """The BC -> RL hand-off uses WARM_START_ENTROPY unless --set chooses one."""
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(0)
+        trainer = Trainer(cases.tiny_train_config(), cases.CPU)
+    policy = checkpoint.save_policy(
+        tmp_path / "bc", trainer.model, return_scale=trainer.ppo.return_scale
+    )
+    capsys.readouterr()
+    bnb(
+        monkeypatch,
+        tmp_path / "runs",
+        "train",
+        "--init-from",
+        str(policy),
+        *cases.TRAIN_OPTIONS,
+        *setting,
+        "--print-config",
+    )
+    assert json.loads(capsys.readouterr().out)["learner"]["entropy"] == entropy
 
 
 def test_a_failure_marks_the_run_failed_with_the_message(monkeypatch, tmp_path):

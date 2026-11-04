@@ -116,7 +116,7 @@ A fork or a warm start whose command sets no model setting takes the file's
 |---|---|---|
 | `--resume RUN` | everything: model, opponent slots and the league, optimizer, return scale, generators, rollout carry, counters | the checkpoint's own, plus the run-time overrides |
 | `--from RUN` (a fork) | model, optimizer, return scale, environment steps; the league starts afresh | the code's current settings plus the command line; a new run |
-| `--init-from POLICY` (a warm start) | weights and return scale; a fresh optimizer | the command line; a new run |
+| `--init-from POLICY` (a warm start) | weights and return scale; a fresh optimizer | the command line, with the warm start's entropy coefficient unless it sets one; a new run |
 
 - **A resume** (`bnb.runs.checkpoint.load_training`) may change only the fields in
   `bnb.runs.checkpoint.OVERRIDABLE` (the update budget, the learning rate and its
