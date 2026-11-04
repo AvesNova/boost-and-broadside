@@ -56,7 +56,7 @@ Round 2, GPU (2026-11-04, a second agent, under the lock, alone on the GPU):
 - the cost at 4096 environments: out of memory in the first update's cadence; measured at
   2048 (see Cost). The per-update series cost 3.0 %, over the 2 % cap;
 - `counters/recompiles`: 0 on every update of a 22-update compiled run (see Cost);
-- the full suite: see Test runs.
+- the full suite at `a14678ad`: 1334 passed, 0 failed, 1 h 11 min.
 
 ## Test runs
 
@@ -97,6 +97,8 @@ Round 2, GPU (2026-11-04, a second agent, under the lock, alone on the GPU):
   - both pinned-memory equality cases unpacked `Learner.gradient` as four values (it
     returns five since round 2).
   After `2b63a1da`: the streaming, cadence and diagnostics files on the GPU, 34 passed.
+- Round 2, the full suite under the lock at `a14678ad` (plain `pytest`, nothing else on
+  the machine): 1334 passed, 0 failed, 0 skipped, 4232 s (1 h 11 min).
 
 ## Broken by hand
 
