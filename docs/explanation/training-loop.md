@@ -28,7 +28,11 @@ the [training guide](../guides/training.md).
 
 The default batch is v1's twice over, as v2 trains three modes: 1,024 training environments
 x 8 shards x 128 ticks, 1,048,576 trained ticks per update, with a lookahead of 128 ticks
-(`TrainConfig.environments`, `shards`, `length`, `lookahead`). Every trained tick has at least
+(`TrainConfig.environments`, `shards`, `length`, `lookahead`). The layout was chosen by
+measurement: a wider one (2,048 x 4, 4,096 x 2) plays more lookahead ticks for the same
+trained ticks and is no faster, and 8,192 x 1 does not fit an 8 GB GPU. The rollout's
+records stream to pinned host memory in chunks of `TrainConfig.graph_ticks` (8), two on the
+device at a time, so the trajectory does not bind the device's memory. Every trained tick has at least
 128 played ticks after it in the update, so the advantages are not cut short at a shard's end.
 
 When a league is attached (`bnb.league.league.League`, which `bnb train` attaches to a PPO
@@ -110,9 +114,9 @@ sets how many (`environments`, beyond the training ones) and what they play (`ma
 
 - **Players:** `live`, the weights the learner trains (copied into the lanes before each
   collection); a weight set the league loads by name (`exponential_average`, its averaged
-  agent, and the snapshot slots `snapshot_<i>`, frozen past live policies); and the
-  ladder's rungs, `random`, `rung_<p>` and `scripted` (the raw scripted
-  agent, never BC's softened teacher). A matchup is any pair of them.
+  agent, and `league_<k>`, the entry its network slot k holds); and the ladder's rungs,
+  `random`, `rung_<p>` and `scripted` (the raw scripted agent, never BC's softened teacher).
+  A matchup is any pair of them.
 - **Layout:** every mode of the training mix plays every matchup. The lanes are split evenly
   over the modes and, within a mode, by the matchups' weights; each (mode, matchup) is a
   pool of its own, `<mode>/lane/<first>_vs_<second>`, whose two seats are both the one
@@ -120,24 +124,26 @@ sets how many (`environments`, beyond the training ones) and what they play (`ma
   shapes are fixed at capture: which row plays which player is static, only a network
   player's weights change, copied in place between segments (`LaneSeat.load`).
 - **Defaults:** a reinforcement-learning run's lanes (`bnb.runtime.lanes.RL_MATCHUPS`) play,
-  per mode: the live policy and the averaged agent against each other, against four
-  snapshot slots and against the scripted agent; the slots against each other round a ring
-  and against the scripted agent; and the ladder chained from the scripted agent down (each
-  rung against the next one up), which calibrates the ladder. A game tells the rating fit
-  `p (1 − p)` about its players' gap: 0.25 at even odds, 0.004 at the 950 points v1's
-  policy reached above the scripted agent, about 1/60 as much. So the moving players play
-  opponents near their own strength, the snapshots chain them to the scripted agent, and
-  the weights split the lanes (per mode, of 16.05): the snapshots' games with live and
-  average 8 (half), the slots' ring 4, the anchors on the scripted agent 3.5 (live,
-  average, each slot at 0.5), live against average 0.5, the ladder's eleven links 0.55,
-  which run no network and gather over the whole run. BC's (`bnb.runtime.cloning.LANES`) play the live policy against the
-  scripted agent alone.
+  per mode: the live policy and the averaged agent against each of the league's four slot
+  entries and each other; the slot entries and both against the scripted agent, a small
+  share, the anchor; and the ladder chained from the scripted agent down (each rung against
+  the next one up), which calibrates the ladder. A game tells the rating fit `p (1 − p)`
+  about its players' gap: 0.25 at even odds, 0.004 at the 950 points v1's policy reached
+  above the scripted agent. The league draws its slots' entries by `p (1 − p)` against the
+  live policy, so they are near-even opponents, and older entries, which played lower ones
+  before they cycled out, chain the newer to the scripted agent. BC's
+  (`bnb.runtime.cloning.LANES`) play the live policy against the scripted agent alone.
+- **A game counts once, by the weights that played it:** each lane row stamps its player's
+  weight generation when its game begins, and loading another entry into a slot's lane
+  player (`LaneSeat.load` with `fresh`) starts a new generation, so a game in progress then
+  is left out rather than credited to the new entry.
 - **Results:** the rollout tallies each ended lane game once, from the first player's side,
   and the trainer takes the tally after each collection (`Trainer.lane_record`), logged as
   `lanes/games/<mode>/<matchup>` and `lanes/score/<mode>/<matchup>`. The ratings they give
   are the league's ([The league](league.md#the-rating-lanes)).
-- **Size:** the lanes add rollout time in proportion to their environments; the measured
-  cost and the chosen default are in `docs/rewrite/sections/rollout-lanes-notes.md`.
+- **Size:** 1,024 lanes by default. They cost rollout time in proportion to their network
+  rows, about 5.5 s per 1,024 rows per update on the development laptop; the measurements
+  are in `docs/rewrite/sections/rollout-lanes-notes.md`.
 
 ## Realtime
 

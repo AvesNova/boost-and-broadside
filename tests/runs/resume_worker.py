@@ -58,11 +58,10 @@ RL_LANES = LaneConfig(
         Matchup(LIVE, SCRIPTED_PLAYER),
         Matchup("exponential_average", SCRIPTED_PLAYER),
         Matchup("rung_0.9", SCRIPTED_PLAYER),
-        Matchup("snapshot_0", LIVE),
-        Matchup("snapshot_1", "snapshot_0"),
+        Matchup(LIVE, "league_0"),
+        Matchup("league_1", SCRIPTED_PLAYER),
     ),
     window=2,
-    snapshot_every=1,
 )
 BC_LANES = LaneConfig(environments=4, matchups=BC_MATCHUPS, window=2)
 

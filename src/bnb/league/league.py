@@ -25,7 +25,7 @@ import torch
 from bnb.contracts.series import Table
 from bnb.runs import checkpoint
 from bnb.runs.records import Run
-from bnb.runtime.lanes import LIVE
+from bnb.runtime.lanes import LIVE, league_slot
 from bnb.runtime.opponents import (
     LADDER_KIND,
     NETWORK,
@@ -98,17 +98,12 @@ class League:
         self.lane_seat = trainer.lane_seat
         self.lanes = None
         if trainer.lanes:
-            if state is None:
-                self.lanes = LaneRatings(trainer)
-            else:
-                prefix = "lanes."
-                kept = {k[len(prefix) :]: v for k, v in state[1].items() if k.startswith(prefix)}
-                self.lanes = LaneRatings(trainer, state[0]["lanes"], kept)
+            self.lanes = LaneRatings(trainer, None if state is None else state[0]["lanes"])
         if state is None:
             self._start(trainer, ratings or {})
         else:
             self._restore(trainer, *state)
-        self._load_lanes()
+        self._load_lanes(fresh=False)  # no lane game has begun with these weights yet
         trainer.league = self
 
     # ---- starting and restoring
@@ -216,11 +211,22 @@ class League:
             return self.averages[entry.name]
         return self.snapshots[entry.name]
 
-    def _load_lanes(self) -> None:
-        """The averages' weights into the lanes that play them."""
-        if self.lane_seat is not None:
-            for name, weights in self.averages.items():
-                self.lane_seat.load(name, weights)
+    def _load_lanes(self, fresh: bool = True) -> None:
+        """The averages' weights into the lanes that play them, and each network slot's
+        entry into its lane player (`league_<k>`) where the slot took another: a snapshot,
+        which the lanes rate; an average or a ladder entry they leave unrated. fresh: games
+        in progress were played by the previous entry (`LaneSeat.load`)."""
+        if self.lane_seat is None:
+            return
+        for name, weights in self.averages.items():
+            self.lane_seat.load(name, weights)
+        for slot in range(self.config.slots):
+            name = self.held[slot]
+            entry = self.entries.get(name) if name is not None else None
+            if entry is not None and entry.kind == "checkpoint" and name in self.snapshots:
+                self.lanes.assign(league_slot(slot), name, self.snapshots[name], fresh)
+            elif self.lanes.holders.get(league_slot(slot)) != name:
+                self.lanes.assign(league_slot(slot), None, None)
 
     def _load(self, set_index: int, entry: Entry) -> None:
         if entry.network:
@@ -277,8 +283,7 @@ class League:
         the update's learning. Returns the league's metrics."""
         steps = trainer.ppo.environment_steps
         if self.lanes is not None:
-            self.lanes.update(trainer.lane_record, trainer.updates_done)
-            self.lanes.freeze(trainer)
+            self.lanes.update(trainer.lane_record)
         for mode, gauge in self.gauges.items():
             if self.lanes is None:
                 gauge.update(self.record[mode])
@@ -449,8 +454,6 @@ class League:
         for name, weights in (*self.averages.items(), *self.snapshots.items()):
             for key, value in weights.items():
                 tensors[f"{name}.{key}"] = value
-        if self.lanes is not None:
-            tensors.update({f"lanes.{name}": value for name, value in self.lanes.tensors().items()})
         return record, tensors
 
 

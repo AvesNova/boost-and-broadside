@@ -2,8 +2,8 @@
 tensors as the training games, never stored for the learner nor counted in its losses.
 
 A matchup is a pair of players. A player is a network (`LIVE`, the weights the learner is
-training; or a weight set the league loads by name: its averages, or a snapshot slot,
-`snapshot_<i>`, which holds a frozen past live policy) or a rung of the
+training; or a weight set the league loads by name: its averages, or `league_<k>`, the
+entry its network slot k holds) or a rung of the
 stationary ladder (`random`, `rung_<p>`, `scripted`: the scripted agent at probability p,
 uniform random actions otherwise). Every mode of the training mix plays every matchup: the
 lanes are split evenly over the modes, and within a mode by the matchups' weights. Each
@@ -34,7 +34,7 @@ LIVE = "live"  # the player the learner trains
 SCRIPTED_PLAYER = "scripted"
 EXPONENTIAL_AVERAGE = "exponential_average"  # the league's average the lanes rate by default
 RUNG_PREFIX = "rung_"
-SNAPSHOT_PREFIX = "snapshot_"  # a snapshot slot's player: a frozen past live policy
+LEAGUE_PREFIX = "league_"  # a league slot's player: the entry the league's slot k holds
 
 
 def ladder_probability(player: str) -> float | None:
@@ -79,45 +79,30 @@ def ladder_chain(rungs: tuple[float, ...], weight: float) -> tuple[Matchup, ...]
     )
 
 
-def snapshot_slot(index: int) -> str:
-    """The lane player of snapshot slot `index`: `snapshot_<index>`."""
-    return f"{SNAPSHOT_PREFIX}{index}"
+def league_slot(index: int) -> str:
+    """The lane player of the league's network slot `index`: `league_<index>`."""
+    return f"{LEAGUE_PREFIX}{index}"
 
 
-def snapshot_matchups(slots: int, weight: float, anchor_weight: float) -> tuple[Matchup, ...]:
-    """The snapshot slots' matchups: each slot against the live policy and the averaged
-    agent (`weight`), against the next slot round the ring (`weight`; a slot's neighbours
-    in age are among them whatever the slots' order), and against the scripted agent
-    (`anchor_weight`)."""
-    names = [snapshot_slot(index) for index in range(slots)]
-    out = []
-    for name in names:
-        out += [Matchup(name, LIVE, weight), Matchup(name, EXPONENTIAL_AVERAGE, weight)]
-    if slots > 1:
-        out += [
-            Matchup(first, second, weight)
-            for first, second in zip(names, names[1:] + names[:1], strict=True)
-            if slots > 2 or first < second
-        ]
-    out += [Matchup(name, SCRIPTED_PLAYER, anchor_weight) for name in names]
-    return tuple(out)
-
-
-SNAPSHOT_SLOTS = 4
-# The default matchups of a reinforcement-learning run (author, 2026-11-04). A game tells the
-# fit p (1 - p) about the gap between its players, 0.25 at even odds and 0.004 at the 950
-# points v1's policy reached above the scripted agent, so the moving players are rated
-# against opponents near their own strength: per mode, the live policy and the averaged
-# agent against each other, against frozen snapshots of the live policy in a few slots,
-# and against the scripted agent; the snapshots against each other and the scripted agent,
-# which chain them to its 1000; and the ladder's rungs chained up to the scripted agent,
-# which calibrate the ladder. The snapshots and rungs are stationary, so their games gather
-# over the run, and the rungs' lanes run no network: a small share.
+LEAGUE_SLOTS = 4  # `bnb.runtime.opponents.LeagueConfig.slots`' default
+# The default matchups of a reinforcement-learning run (author, 2026-11-05). A game tells the
+# rating fit p (1 - p) about its players' gap, 0.25 at even odds and 0.004 at the 950 points
+# v1's policy reached above the scripted agent. The league's slots hold entries it draws by
+# p (1 - p) against the live policy, so near-even opponents: per mode, the live policy and
+# the averaged agent play each slot's entry and each other; the slots' entries and both
+# play the scripted agent a little, the anchor (older entries gathered games against lower
+# ones before they cycled out, which chains the newer to it); and the ladder's rungs chained
+# up to the scripted agent calibrate the ladder.
 RL_MATCHUPS = (
-    Matchup(LIVE, SCRIPTED_PLAYER, 0.5),
-    Matchup(EXPONENTIAL_AVERAGE, SCRIPTED_PLAYER, 0.5),
+    *(
+        Matchup(player, league_slot(index), 1.0)
+        for index in range(LEAGUE_SLOTS)
+        for player in (LIVE, EXPONENTIAL_AVERAGE)
+    ),
     Matchup(LIVE, EXPONENTIAL_AVERAGE, 0.5),
-    *snapshot_matchups(SNAPSHOT_SLOTS, 1.0, 0.5),
+    Matchup(LIVE, SCRIPTED_PLAYER, 0.25),
+    Matchup(EXPONENTIAL_AVERAGE, SCRIPTED_PLAYER, 0.25),
+    *(Matchup(league_slot(index), SCRIPTED_PLAYER, 0.25) for index in range(LEAGUE_SLOTS)),
     *ladder_chain((0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95), 0.05),
 )
 # Behaviour cloning's: the live policy against the raw scripted agent (its score stop).
@@ -129,33 +114,22 @@ class LaneConfig:
     """environments: the lanes, beyond the training environments (0: none); matchups: what
     they play; window: the updates of games that rate a moving player (a network: the live
     policy, an average), while a stationary player's (a rung, a snapshot) count from the
-    start; snapshot_every: updates between frozen snapshots of the live policy, each into
-    the next snapshot slot round robin (the slots are the `snapshot_<i>` players the
-    matchups name)."""
+    start."""
 
     environments: int = 1024
     matchups: tuple[Matchup, ...] = RL_MATCHUPS
     window: int = 10
-    snapshot_every: int = 8
 
     def __post_init__(self) -> None:
         if self.environments < 0:
             raise ValueError(f"lanes: {self.environments} environments")
         if self.environments and not self.matchups:
             raise ValueError("lanes need at least one matchup")
-        if self.window < 1 or self.snapshot_every < 1:
-            raise ValueError(
-                f"lanes: a window of {self.window}, snapshots every {self.snapshot_every}"
-            )
+        if self.window < 1:
+            raise ValueError(f"lanes: a window of {self.window} updates")
         names = [matchup.name for matchup in self.matchups]
         if len(set(names)) != len(names):
             raise ValueError(f"lanes: a matchup is listed twice in {names}")
-
-    @property
-    def slots(self) -> int:
-        """The snapshot slots the matchups name."""
-        names = {p for m in self.matchups for p in (m.first, m.second)}
-        return sum(1 for name in names if name.startswith(SNAPSHOT_PREFIX))
 
 
 @dataclasses.dataclass(frozen=True)
@@ -232,9 +206,12 @@ def mode_games(pools: tuple[Pool, ...], game: GameConfig, mode_of) -> dict[str, 
 
 @contract
 class LaneCarry:
-    """Per lane row (R leading): model, the network players' carry (their controller's)."""
+    """Per lane row (R leading): model, the network players' carry (their controller's);
+    started (R,) int64, the generation of the row's player's weights when its game began
+    (`LaneSeat.load` with `fresh`)."""
 
     model: object
+    started: torch.Tensor
 
 
 class _Decision(torch.nn.Module):
@@ -256,7 +233,11 @@ class LaneSeat:
     weights in); lanes: the lane pools in order; pool (R,) and role (R,): each lane row's
     lane (an index into `lanes`) and seat in it, from the lineup; characteristics: the
     scripted agent's, for the ladder players. Every network player starts with the
-    controller's model's weights."""
+    controller's model's weights.
+
+    A game is tallied only if both its players still have the weights it began with: a
+    player loaded `fresh` (another snapshot into a slot) starts a new generation, and the
+    games in progress then are left out, not credited to the new weights."""
 
     def __init__(
         self,
@@ -302,12 +283,30 @@ class LaneSeat:
             for name, value in state.items()
         }
         self.columns, self.mode_count = len(lanes), 1
+        # each row's network player (its index in `networks`), or the spare last entry of
+        # `generation` for a ladder row, which never changes
+        network = torch.full((self.rows,), len(self.networks), dtype=torch.int64)
+        for index, rows in enumerate(self.network_rows):
+            network[rows.cpu()] = index
+        self.player_generation = network.to(device)
+        self.generation = torch.zeros(len(self.networks) + 1, dtype=torch.int64, device=device)
+        # the row of the same game's other seat
+        partner = torch.empty(self.rows, dtype=torch.int64)
+        pool_cpu, role_cpu = pool.cpu(), role.cpu()
+        for lane in range(len(lanes)):
+            first_rows = ((pool_cpu == lane) & (role_cpu == 0)).nonzero().flatten()
+            second_rows = ((pool_cpu == lane) & (role_cpu == 1)).nonzero().flatten()
+            partner[first_rows], partner[second_rows] = second_rows, first_rows
+        self.partner = partner.to(device)
 
     # ---- the controller
 
     def init_carry(self, views: int, device: torch.device) -> LaneCarry:
         """Every row's network carry (a ladder row's is never read)."""
-        return LaneCarry(model=self.decision.controller.init_carry(views, device))
+        return LaneCarry(
+            model=self.decision.controller.init_carry(views, device),
+            started=torch.zeros(views, dtype=torch.int64, device=device),
+        )
 
     def step(self, carry: LaneCarry, obs: Obs, reset: torch.Tensor):
         """One decision for every lane row; see `Controller.step`."""
@@ -332,26 +331,35 @@ class LaneSeat:
             ladder_obs = _pytree.tree_map_only(torch.Tensor, lambda x: x[rows], obs)
             ladder_action, _, _ = self.ladder_agent.step(None, ladder_obs, reset[rows])
             action = action.index_copy(0, rows, ladder_action.packed())
-        return Action.unpack(action), LaneCarry(model=model_carry), Outputs()
+        generation = self.generation[self.player_generation]
+        started = torch.where(reset, generation, carry.started)
+        return Action.unpack(action), LaneCarry(model=model_carry, started=started), Outputs()
 
     def tally(self, carry: LaneCarry, done: torch.Tensor, result: torch.Tensor) -> torch.Tensor:
         """Each ended lane game (`done` (R,)) once, by (lane, outcome) with the outcome from
         the first player's side (`result` (R,) int32 is the row's own: +1 won, 0 tied, -1
-        lost): flat (lanes * 3,) int64, as `bnb.runtime.opponents.OUTCOMES`."""
+        lost): flat (lanes * 3,) int64, as `bnb.runtime.opponents.OUTCOMES`. A game either of
+        whose players' weights changed since it began is left out."""
         outcome = (1 - result).to(torch.int64)  # the row's win 0, tie 1, loss 2
         flat = self.column * len(OUTCOMES) + outcome
+        same = carry.started == self.generation[self.player_generation]
+        counted = done & (self.role == 0) & same & same[self.partner]
         counts = torch.zeros(self.columns * len(OUTCOMES), dtype=torch.int64, device=done.device)
-        return counts.index_add(0, flat, (done & (self.role == 0)).to(torch.int64))
+        return counts.index_add(0, flat, counted.to(torch.int64))
 
     # ---- the host's side, between segments
 
     @torch.no_grad()
-    def load(self, player: str, state: dict[str, torch.Tensor]) -> None:
+    def load(self, player: str, state: dict[str, torch.Tensor], fresh: bool = False) -> None:
         """Copy a network's state (its model's state dict) into `player`'s weights, in place
-        (a player the lanes do not play is ignored)."""
+        (a player the lanes do not play is ignored). fresh: another player now (a snapshot
+        into a slot), so the games in progress are not tallied; else the same player's
+        weights moved on (the live policy, an average)."""
         if player not in self.networks:
             return
         index = self.networks.index(player)
+        if fresh:
+            self.generation[index] += 1
         for name, value in state.items():
             self.parameters[f"model.{name}"][index].copy_(value)
 

@@ -36,7 +36,7 @@ from bnb.runtime.lanes import (
 from bnb.runtime.rollout import Rollout
 
 sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "runs"))
-from runs_cases import tiny_train_config  # noqa: E402
+from runs_cases import observation, tiny_train_config  # noqa: E402
 
 pytestmark = pytest.mark.usefixtures("global_generator")
 MODE = "team_deathmatch"
@@ -261,8 +261,27 @@ def test_a_lane_seat_plays_each_rows_player_and_tallies_each_game_once():
     # from the first player's side
     done = torch.tensor([True, False, True, False, True, False, True, False])
     result = torch.tensor([1, 0, -1, 0, -1, 0, 1, 0], dtype=torch.int32)
-    tally = seat.tally(None, done, result).reshape(2, 3)
+    carry = seat.init_carry(8, lc.CPU)
+    tally = seat.tally(carry, done, result).reshape(2, 3)
     assert tally.tolist() == [[1, 0, 0], [0, 0, 1]]
+
+
+def test_a_game_whose_players_weights_changed_since_it_began_is_not_tallied():
+    """Loading another snapshot into a slot (`fresh`) leaves out the games it was playing;
+    a game that began after the load counts, and moving the live weights on does not."""
+    lanes = (Lane(MODE, Matchup(LIVE, "league_0")),)
+    seat = _seat(lanes)
+    state = seat.decision.model.state_dict()
+    carry = seat.init_carry(4, lc.CPU)
+    done = torch.tensor([True, True, False, False])
+    result = torch.tensor([1, -1, 0, 0], dtype=torch.int32)
+    seat.load(LIVE, state)  # the same player's weights moved on
+    assert seat.tally(carry, done, result).tolist() == [1, 0, 1]
+    seat.load("league_0", state, fresh=True)  # another snapshot: games in progress are out
+    assert seat.tally(carry, done, result).tolist() == [0, 0, 0]
+    obs = observation(views=4)
+    _, carry, _ = seat.step(carry, obs, torch.ones(4, dtype=torch.bool))  # games begin anew
+    assert seat.tally(carry, done, result).tolist() == [1, 0, 1]
 
 
 def test_the_live_lane_plays_the_learners_weights(tmp_path):
@@ -287,21 +306,9 @@ def test_the_live_lane_plays_the_learners_weights(tmp_path):
 
 
 def _trainer(lanes: tuple[Lane, ...], seat=None, **config) -> types.SimpleNamespace:
-    """What `LaneRatings` reads of a trainer: its lanes and their seat, the update's
-    geometry (one 128-tick shard, a 128-tick lookahead) and episodes of `longest` ticks,
-    a model and its counters."""
-    longest = config.pop("longest", 512)
-    model = torch.nn.Linear(2, 2)
+    """What `LaneRatings` reads of a trainer: its lanes, their seat and their window."""
     return types.SimpleNamespace(
-        lanes=lanes,
-        lane_seat=seat,
-        config=types.SimpleNamespace(
-            lanes=LaneConfig(**config), shards=1, length=128, lookahead=128
-        ),
-        rollout=types.SimpleNamespace(episode_ticks=torch.tensor([float(longest)]), device=lc.CPU),
-        model=model,
-        ppo=types.SimpleNamespace(environment_steps=0),
-        updates_done=0,
+        lanes=lanes, lane_seat=seat, config=types.SimpleNamespace(lanes=LaneConfig(**config))
     )
 
 
@@ -338,7 +345,7 @@ def test_a_moving_players_games_leave_after_the_window_and_the_ladders_stay():
     ratings.update({rung: (10, 0, 30), live: (0, 0, 40)})  # the sweep has left the window
     assert ratings.rating(MODE, LIVE)[0] < 1000.0
     assert ratings._games(MODE)[("rung_0.9", SCRIPTED_PLAYER)] == [30.0, 0.0, 90.0]
-    restored = LaneRatings(trainer, ratings.state(), ratings.tensors())
+    restored = LaneRatings(trainer, ratings.state())
     assert restored.state() == ratings.state() and restored.series() == ratings.series()
 
 
@@ -351,19 +358,30 @@ def _expected(n: int, gap: float) -> tuple[float, float, float]:
 def test_a_strong_player_is_rated_far_better_through_a_snapshot_chain():
     """A live policy 1000 points above the scripted agent (2000) plays the same 300 games
     in its window: against the scripted agent (p = 0.997), or against the newest of a chain
-    of snapshots 250 points apart (p = 0.81), whose links, stationary, have gathered 3000
-    games each over the run. Through the chain its standard error is several times
+    of league snapshots 250 points apart (p = 0.81), whose links, stationary, have gathered
+    3000 games each over the run (older entries played lower ones before they cycled
+    out). Through the chain its standard error is several times
     smaller; both fits find the rating."""
-    slots = ("snapshot_0", "snapshot_1", "snapshot_2")
+    slots = ("league_0", "league_1", "league_2")
     alone = Lane(MODE, Matchup(LIVE, SCRIPTED_PLAYER))
-    direct = LaneRatings(_trainer((alone,), window=1, snapshot_every=10**6))
+    direct = LaneRatings(
+        _trainer(
+            (alone,),
+            window=1,
+        )
+    )
     direct.update({alone: _expected(300, 1000.0)})
     links = [Lane(MODE, Matchup(slots[0], SCRIPTED_PLAYER))]
     links += [Lane(MODE, Matchup(high, low)) for low, high in zip(slots, slots[1:], strict=False)]
     top = Lane(MODE, Matchup(LIVE, slots[-1]))
-    ratings = LaneRatings(_trainer((*links, top), window=1, snapshot_every=10**6))
-    ratings.holders = [f"lane_snapshot_{index}" for index in range(3)]
-    ratings.since = [-(10**6)] * 3
+    ratings = LaneRatings(
+        _trainer(
+            (*links, top),
+            window=1,
+        )
+    )
+    for index, slot in enumerate(slots):
+        ratings.assign(slot, f"snapshot_{index}", None)
     for _ in range(10):  # the links' games over ten updates
         ratings.update({lane: _expected(300, 250.0) for lane in links})
     ratings.update({top: _expected(300, 250.0)})
@@ -373,51 +391,38 @@ def test_a_strong_player_is_rated_far_better_through_a_snapshot_chain():
     assert through_chain == pytest.approx(2000.0, abs=25.0)
     assert abs(straight - 2000.0) < direct_error  # within its own (large) error
     assert chain_error * 4 < direct_error, (chain_error, direct_error)
-    assert ratings.rating(MODE, "lane_snapshot_1")[0] == pytest.approx(1500.0, abs=10.0)
+    assert ratings.rating(MODE, "snapshot_1")[0] == pytest.approx(1500.0, abs=10.0)
 
 
-def test_snapshot_slots_credit_games_to_the_snapshot_and_settle_after_a_swap():
-    """A slot's games go to the snapshot it held; a swap is credited to nobody until every
-    game since it began after it; the retired snapshot keeps its games and its rating."""
-    lane = Lane(MODE, Matchup("snapshot_0", SCRIPTED_PLAYER))
-    trainer = _trainer((lane,), window=1, snapshot_every=2, longest=512)
-    ratings = LaneRatings(trainer)  # the starting weights, already settled
-    assert ratings.settle == 2 and ratings.holders == ["lane_snapshot_0"]
-    trainer.updates_done = 1
-    ratings.update({lane: (10, 0, 10)}, 1)
-    trainer.updates_done, trainer.ppo.environment_steps = 2, 2048
-    ratings.freeze(trainer)  # due: the live weights into the (only) slot
-    assert ratings.holders == ["lane_snapshot_2048"]
-    for update in (3, 4):  # games that began under the old weights
-        ratings.update({lane: (99, 0, 0)}, update)
-    assert ratings.rating(MODE, "lane_snapshot_2048") is None
-    ratings.update({lane: (5, 0, 15)}, 5)
-    assert ratings._games(MODE) == {
-        ("lane_snapshot_0", SCRIPTED_PLAYER): [10.0, 0.0, 10.0],
-        ("lane_snapshot_2048", SCRIPTED_PLAYER): [5.0, 0.0, 15.0],
-    }
-    assert ratings.rating(MODE, "lane_snapshot_0")[0] == pytest.approx(1000.0, abs=1.0)
-
-
-def test_a_slot_swap_copies_weights_in_place():
-    """The lanes' shapes are fixed at capture: freezing a snapshot into a slot changes its
-    weights, not the tensors the captured graph reads."""
-    lanes = (Lane(MODE, Matchup("snapshot_0", SCRIPTED_PLAYER)),)
+def test_a_league_slot_swap_copies_weights_in_place_and_credits_the_entry():
+    """The lanes' shapes are fixed at capture: a league slot's new entry changes its lane
+    player's weights, not the tensors the captured graph reads; its games go to the entry,
+    and the entry it replaced keeps its own."""
+    lanes = (
+        Lane(MODE, Matchup(LIVE, "league_0")),
+        Lane(MODE, Matchup("league_0", SCRIPTED_PLAYER)),
+    )
     seat = _seat(lanes)
-    trainer = _trainer(lanes, seat=seat, window=1, snapshot_every=1)
-    trainer.model = seat.decision.model
+    ratings = LaneRatings(_trainer(lanes, seat=seat, window=1))
     before = {name: (value.data_ptr(), value.shape) for name, value in seat.parameters.items()}
-    LaneRatings(trainer)
-    with torch.no_grad():
-        for parameter in trainer.model.parameters():
-            parameter.add_(1.0)
-    trainer.updates_done = 1
-    ratings = LaneRatings(trainer)
-    ratings.freeze(trainer)
-    after = {name: (value.data_ptr(), value.shape) for name, value in seat.parameters.items()}
-    assert after == before
-    for name, value in trainer.model.state_dict().items():
-        assert torch.equal(seat.parameters[f"model.{name}"][0], value), name
+    state = {name: value + 1.0 for name, value in seat.decision.model.state_dict().items()}
+    ratings.assign("league_0", "snapshot_100", state)
+    ratings.update({lanes[1]: (3, 0, 1)})
+    ratings.assign("league_0", "snapshot_200", state)
+    ratings.update({lanes[1]: (1, 0, 3)})
+    assert {
+        name: (value.data_ptr(), value.shape) for name, value in seat.parameters.items()
+    } == before
+    index = seat.networks.index("league_0")
+    for name, value in state.items():
+        assert torch.equal(seat.parameters[f"model.{name}"][index], value), name
+    assert int(seat.generation[index]) == 2  # each new entry a new generation
+    games = ratings._games(MODE)
+    assert games[("snapshot_100", SCRIPTED_PLAYER)] == [3.0, 0.0, 1.0]
+    assert games[("snapshot_200", SCRIPTED_PLAYER)] == [1.0, 0.0, 3.0]
+    ratings.assign("league_0", None, None)  # a ladder entry or an average: unrated
+    ratings.update({lanes[1]: (9, 0, 9)})
+    assert ratings._games(MODE)[("snapshot_200", SCRIPTED_PLAYER)] == [1.0, 0.0, 3.0]
 
 
 def test_the_gauge_takes_the_lanes_ladder_and_live_ratings():

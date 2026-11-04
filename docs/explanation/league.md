@@ -73,17 +73,14 @@ scripted agent pinned at 1000 (`bnb.league.ratings.fit_ratings`, draws as half a
 prior game against the scripted agent, half won, which keeps a sweep finite).
 
 - **The record:** games are kept by mode and by who played them. A game of two stationary
-  players (the rungs, the frozen snapshots) is kept for the whole run; one with a moving
+  players (the rungs, the league's snapshots) is kept for the whole run; one with a moving
   player (the live policy, an average) for its last `LaneConfig.window` updates (10).
-- **The snapshots:** every `LaneConfig.snapshot_every` updates (8) the live weights are
-  frozen into the next of the lanes' snapshot slots, round robin (the first holds the
-  starting weights). A slot's games are credited to the snapshot it holds,
-  `lane_snapshot_<steps>`, so a retired snapshot keeps its games and its rating, and a new
-  one joins the fit as soon as its games connect it. A game in progress at a swap was
-  played partly by the old weights, so a slot's games count again only once every game
-  since the swap began after it (`settle`: the longest episode over the ticks an update
-  plays, 8 updates at the 300 s limit). The slots' weights are in the training
-  checkpoint.
+- **The league's entries:** the lanes play the entries the league's network slots hold
+  (`league_<k>`), copied in when a slot takes another (`League._load_lanes`). A snapshot's
+  games are credited to it by name, so it keeps its games and its rating after it cycles
+  out, and a new one joins the fit as soon as its games connect it; a slot holding an
+  average or a ladder entry plays unrated. A game in progress when a slot's lane player
+  changes is left out.
 - **Who is rated:** a player whose games connect it to the scripted agent; none is reported
   before its matchups have played.
 - **The ladder:** the rungs, chained from the scripted agent down, are rated from their own
@@ -96,7 +93,7 @@ prior game against the scripted agent, half won, which keeps a sweep finite).
   (`PolicyRecord.ratings`): a warm start's live rating starts from its parent's, not 0.
 
 Against the scripted agent alone a policy 1000 points above it would be rated blind: its
-games there carry 1/60 of an even game's information. Through the snapshot chain, whose
+games there carry 1/60 of an even game's information. Through a chain of snapshots, whose
 stationary links gather games over the run, the same window of live games rates it several
 times more precisely
 (`tests/sections/test_lanes.py::test_a_strong_player_is_rated_far_better_through_a_snapshot_chain`).
