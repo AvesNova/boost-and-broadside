@@ -15,16 +15,26 @@ the [training guide](../guides/training.md).
 
 `bnb.runtime.train.Trainer.update` does, in order:
 
-1. **Collect** `shards` segments of `length` ticks over the whole batch (`Rollout.run`),
-   each followed by the learner's bootstrap evaluation (`Rollout.bootstrap`); the segments
-   go into the rollout's segment store.
+1. **Collect** `shards` consecutive segments of `length` ticks over the whole batch
+   (`Rollout.run`), then the lookahead: `TrainConfig.lookahead` more ticks of the same
+   games (`Rollout.run_lookahead`), and the learner's bootstrap evaluation after it
+   (`Rollout.bootstrap`). The segments go into the rollout's segment store; of the
+   lookahead the store keeps only what the learner's targets read there (the returns'
+   records, and a bullet's flight of the shot capture). The lookahead is never trained on,
+   and the next update continues from its end, so nothing is played twice.
 2. **Learn:** one update of the learner over the stored segments
    (`bnb.learn.ppo.Learner.update`; with BC, `bnb.learn.bc.BehaviourCloning`, the same
    update with the cloning loss).
 
+The default batch is v1's twice over, as v2 trains three modes: 1,024 training environments
+x 8 shards x 128 ticks, 1,048,576 trained ticks per update, with a lookahead of 128 ticks
+(`TrainConfig.environments`, `shards`, `length`, `lookahead`). Every trained tick has at least
+128 played ticks after it in the update, so the advantages are not cut short at a shard's end.
+
 When a league is attached (`bnb.league.league.League`, which `bnb train` attaches to a PPO
-run), its hooks run after each segment, after the collection and after the learning; see
-[The league](league.md).
+run), its hooks run after each segment and after the lookahead, after the collection and
+after the learning; see [The league](league.md). A BC run attaches the rating lanes'
+hooks alone (`bnb.league.lanes.LaneHooks`).
 
 It returns a row of measurements: the times of the rollout and the update, the learner's
 statistics (each loss term, the value loss and explained variance per level, the clip
@@ -47,6 +57,8 @@ default lineup (`bnb.runtime.train.LINEUP`) is self-play and the league's seat, 
 - `scripted`: `bnb.controllers.scripted.Scripted`, [the scripted agent](scripted-agent.md),
   with its characteristics measured once for the trainer. With BC it is wrapped in
   `bnb.learn.bc.TeacherOpponent`, which plays the labels' distribution.
+
+- `lanes`: the rating lanes' seat, `bnb.runtime.lanes.LaneSeat` (see below).
 
 The keyboard pilot, `bnb.controllers.human.human_action`, is for the
 [play shell](in-progress/play-shell.md) only; no pool seats it.
@@ -86,7 +98,37 @@ is a sequence of compiled stages over that carry (see [Architecture](architectur
   [Rewards](game/rewards.md)), for every ship, and routed to the learner's views.
 
 `Rollout.run` writes one shard of the store and returns it as a `bnb.contracts.Trajectory`
-that views the store; it is valid until the shard is written again.
+that views the store; it is valid until the shard is written again. `Rollout.run_lookahead`
+plays the lookahead into the store's lookahead leaves (`SegmentStore.lookahead`).
+
+## The rating lanes
+
+The rating lanes (`bnb.runtime.lanes`) are extra environments of the same rollout, in the
+same tensors as the training games, that play rated matchups: they are never stored for the
+learner and count in none of its losses. `TrainConfig.lanes` (`bnb.runtime.lanes.LaneConfig`)
+sets how many (`environments`, beyond the training ones) and what they play (`matchups`).
+
+- **Players:** `live`, the weights the learner trains (copied into the lanes before each
+  collection); a weight set the league loads by name (`exponential_average`, its averaged
+  agent); and the ladder's rungs, `random`, `rung_<p>` and `scripted` (the raw scripted
+  agent, never BC's softened teacher). A matchup is any pair of them.
+- **Layout:** every mode of the training mix plays every matchup. The lanes are split evenly
+  over the modes and, within a mode, by the matchups' weights; each (mode, matchup) is a
+  pool of its own, `<mode>/lane/<first>_vs_<second>`, whose two seats are both the one
+  controller `lanes`, so the seat is redrawn at every reset as in any pool. The rollout's
+  shapes are fixed at capture: which row plays which player is static, only a network
+  player's weights change, copied in place between segments (`LaneSeat.load`).
+- **Defaults:** a reinforcement-learning run's lanes (`bnb.runtime.lanes.RL_MATCHUPS`) play,
+  per mode, the live policy and the averaged agent against the scripted agent, and the
+  ladder chained from the scripted agent down (each rung against the next one up), which
+  calibrates the ladder. BC's (`bnb.runtime.cloning.LANES`) play the live policy against the
+  scripted agent alone.
+- **Results:** the rollout tallies each ended lane game once, from the first player's side,
+  and the trainer takes the tally after each collection (`Trainer.lane_record`), logged as
+  `lanes/games/<mode>/<matchup>` and `lanes/score/<mode>/<matchup>`. The ratings they give
+  are the league's ([The league](league.md#the-rating-lanes)).
+- **Size:** the lanes add rollout time in proportion to their environments; the measured
+  cost and the chosen default are in `docs/rewrite/sections/rollout-lanes-notes.md`.
 
 ## Realtime
 

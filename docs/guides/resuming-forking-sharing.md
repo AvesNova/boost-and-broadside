@@ -62,7 +62,7 @@ uv run --no-sync bnb train --resume 2026-11-02-mixed-purple-pumpkin --at 2684354
 <!-- not-runnable: needs CUDA and a run -->
 ```bash
 uv run --no-sync bnb train --from 2026-11-02-mixed-purple-pumpkin --preset mixed \
-    --set learner.entropy=-0.005 --updates 500
+    --set learner.entropy_shoot=-0.005 --updates 500
 ```
 
 A fork is a new run with the command line's settings that starts from another run's

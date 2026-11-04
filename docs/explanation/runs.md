@@ -56,8 +56,8 @@ other languages read it.
 
 - **A policy file** (`bnb.runs.checkpoint.save_policy`) is what an agent needs to play: the
   model's registered name, version and build record, the `Obs` and `Action` schema
-  versions, its weights, the return scale's state tensors and the step counts (for a warm
-  start), the game and ship card it trained on and the game's version (`bnb.game.VERSION`,
+  versions, its weights, the return scale's state tensors, the step counts and, for a BC
+  clone, its lane rating per mode (for a warm start), the game and ship card it trained on and the game's version (`bnb.game.VERSION`,
   which rises whenever the game computes differently), the commit and the time, and each
   file's SHA-256.
 - **A training checkpoint** (`bnb.runs.checkpoint.save_training`) is a policy file plus
@@ -65,7 +65,9 @@ other languages read it.
   entries, gauges, sampling state, and the averages' and snapshots' weights), every random
   generator, the rollout carry (the game state, every controller's carry, the seats, the
   reward ledger), the step counters, the trigger rules' state and, for a BC run, the stop
-  rule's (its score window, the KL's average and its history). `bnb.runs.checkpoint.load_policy`
+  rule's (its score window, the KL's average and its history). The rating lanes' record is
+  part of the league's state (a BC run's, of its lanes' hooks). The carry saved is the state
+  after the update's lookahead, where the next update begins. `bnb.runs.checkpoint.load_policy`
   reads the policy part of either kind.
 - **Writes are atomic** (`bnb.runs.checkpoint.write_checkpoint`): the files go into
   `<name>.tmp/`, each file and then the directory are flushed, the directory is renamed to
@@ -117,7 +119,7 @@ A fork or a warm start whose command sets no model setting takes the file's
 |---|---|---|
 | `--resume RUN` | everything: model, opponent slots and the league, optimizer, return scale, generators, rollout carry, counters | the checkpoint's own, plus the run-time overrides |
 | `--from RUN` (a fork) | model, optimizer, return scale, environment steps; the league starts afresh | the code's current settings plus the command line; a new run |
-| `--init-from POLICY` (a warm start) | weights and return scale; a fresh optimizer | the command line, with the warm start's entropy coefficient unless it sets one; a new run |
+| `--init-from POLICY` (a warm start) | weights and return scale; a fresh optimizer | the command line, with the warm start's entropy coefficients where it sets none; a new run |
 
 - **A resume** (`bnb.runs.checkpoint.load_training`) may change only the fields in
   `bnb.runs.checkpoint.OVERRIDABLE` (the budget: PPO's updates or BC's environment steps,
