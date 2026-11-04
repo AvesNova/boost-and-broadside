@@ -36,9 +36,15 @@ Teacher = Callable[[Obs], torch.Tensor]  # views (R, ...) -> (R, S, NUM_JOINT) p
 FLOOR = 0.01
 
 
+MINIBATCHES = 256
+
+
 def config(**overrides) -> LearnerConfig:
     """BC's learner settings (scripted spec B1): the BC coefficient 0.025 in nats per token
-    in place of the surrogate's, no entropy term, no KL early stop; the rest section 6's."""
+    in place of the surrogate's, no entropy term, no KL early stop, and 256 minibatches; the
+    rest section 6's. Cloning's progress follows its optimizer steps, so at the 1,024 x 8
+    batch it takes minibatches of the 1,024 x 1 batch's size (32 views), not PPO's 32 per
+    epoch: 8x the steps per environment step for the same compute."""
     return dataclasses.replace(
         LearnerConfig(),
         policy=0.025,
@@ -46,7 +52,7 @@ def config(**overrides) -> LearnerConfig:
         entropy_stick=0.0,
         entropy_shoot=0.0,
         target_kl=None,
-        **overrides,
+        **{"minibatches": MINIBATCHES, **overrides},
     )
 
 
