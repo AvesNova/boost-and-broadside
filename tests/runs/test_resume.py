@@ -51,9 +51,13 @@ GPU_TOLERANCE = 0.1
 WEIGHT_TOLERANCE = 3e-3
 FLOOR = 1e-6  # the smallest magnitude a relative difference is judged at
 # The series the tolerance judges: an exact name, or a group when it ends in "/". Each must be
-# in the records (`continuation_differences` says so when one is not), so a rename cannot
-# leave the tolerance judging nothing.
-CHECKED = ("policy/entropy/joint", "policy/kl", "critic/value_loss/")
+# in an objective's records (`continuation_differences` says so when one is not), so a rename
+# cannot leave the tolerance judging nothing. PPO's and BC's KL differ.
+CHECKED_BY_OBJECTIVE = {
+    "ppo": ("policy/entropy/joint", "policy/kl", "critic/value_loss/"),
+    "bc": ("policy/entropy/joint", "bc/kl", "critic/value_loss/"),
+}
+CHECKED = tuple(dict.fromkeys(c for each in CHECKED_BY_OBJECTIVE.values() for c in each))
 
 
 def _matches(name: str, checked: str) -> bool:
@@ -153,7 +157,7 @@ def restore_differences(directory: pathlib.Path) -> list[str]:
 
 
 def continuation_differences(
-    got: list, want: list, tolerance: float, exact_through: int
+    got: list, want: list, tolerance: float, exact_through: int, objective: str = "ppo"
 ) -> list[str]:
     """Where the resumed run's rows (first process then second) do not continue the straight
     run's: floats beyond `tolerance` (relative) in every row, and integers, strings,
@@ -163,7 +167,7 @@ def continuation_differences(
         return [f"rows: {len(got)} != {len(want)}"]
     out = [
         f"checked series {checked!r} is in no record"
-        for checked in CHECKED
+        for checked in CHECKED_BY_OBJECTIVE[objective]
         if tolerance and not any(_matches(name, checked) for row in want for name in row)
     ]
     for index, (row, expected) in enumerate(zip(got, want)):
@@ -199,7 +203,9 @@ def _resumes(
         for name, tensor in straight_weights.items():
             assert torch.equal(second_weights[name], tensor), name
         return
-    differences = continuation_differences(first + second, straight, GPU_TOLERANCE, UPDATES)
+    differences = continuation_differences(
+        first + second, straight, GPU_TOLERANCE, UPDATES, objective
+    )
     assert not differences, "\n".join(differences[:20])
     distance = weight_distance(second_weights, straight_weights)
     assert distance <= WEIGHT_TOLERANCE, f"weights drifted by {distance:.3g} (relative L2)"
