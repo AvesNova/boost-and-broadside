@@ -50,78 +50,13 @@ Round 2 (2026-11-04), on the CPU while a BC run held the GPU, in the brief's ord
 Then: the dashboards cover every new quantity, the rules read `representation/`, the cost
 script measures the cadence and the rollout's game sums.
 
-**GPU work left (the next agent or the coordinator, under the lock, once):**
-- the `gpu` tests, among them the two new ones in `tests/sections/test_learner_streaming.py`
-  (`test_the_cadence_groups_add_no_synchronisation`,
-  `test_the_rollouts_game_sums_are_taken_without_a_synchronisation`) and the existing
-  no-sync and capture tests, which now run the game sums inside the captured graph;
-- the cost: `uv run --no-sync python -m bench.diagnostics_cost --environments 4096` (and
-  2048 if 4096 does not finish), filling the Cost section below;
-- the full suite under the lock;
-- check `counters/recompiles` stays 0 after update 1 on a compiled run (the heads' variant
-  of the loss and the cadence's compiled terms both compile in update 1; the repr hooks are
-  removed before the next compiled call).
-
-## Spec items
-
-| Spec | Done |
-|---|---|
-| 1 Collection | `Collector`: producers return `{name: tensor or Mean}`; one stacked float64 transfer per update (`read_back`); a `Mean` is divided on the host and absent at count 0. Producers: `Learner.update` (and BC's `report`), `bnb.runtime.analytics.Analytics` (store shards and the rollout's per-environment episode sums), the league's `metrics`, the recorder. The cadence helper `metrics.due` exists; no cadence group is built yet. |
-| 1 Method rules | One readback per update in `Trainer.update`; the per-epoch KL `.item()` stays. Raw values: the only EMAs logged are the return scale's (`returns/scale*`) and the rating. Names quantity first, full words, checked by a test. |
-| 2 Sinks | `metrics.jsonl` per run (always), W&B live with `--wandb` (project `boost-and-broadside-v2`, the run's name, its id kept in run.json so a resume continues it, x-axis `counters/environment_steps`). The fired-events table (`alerts/events`) goes to both. `bnb runs upload` unchanged. |
-| 3 Trigger rules | 8 alerts and 13 warnings, as the audit lists them, with warm-up, hysteresis and cooldown; placeholder thresholds. Outputs `alerts/{rule}`, `alerts/active`, `alerts/events`. Rules whose series are not built yet stay idle. State in the training checkpoint's record (`triggers`), through
-`bnb.runs.checkpoint.training_state`, so the resume test's exact-restore check covers it
-(the resume worker attaches the rules and logs their flags); restored on `--resume` with
-`bnb.runs.checkpoint.triggers_state`. |
-| 3 Skipped step | The learner skips the step on the device (weights and Adam state kept where the gradient norm is not finite); the rule fires per update with a skip; the session writes a checkpoint and `runs/<run>/dumps/step_<steps>/` (the store's whole batch and the record), listed in run.json. A BC run only dumps (it keeps no checkpoints). |
-| 4 Dashboards | `bnb.runtime.dashboards`: the 12-panel headline and the curated view (open sections Alerts, Strength, Health, Policy, Value, Learning signal; collapsed detail sections; a `bc/` section open in BC runs) as `wandb-workspaces` objects; one panel per quantity, slices by regex. `bnb runs dashboard RUN` saves both. |
-| 5 No host syncs (A6) | The streaming test counts the update's synchronisations under `set_sync_debug_mode("warn")`: one per epoch (the early stops' reads and the readback). |
-| 5 Determinism (A8) | `test_diagnostics_do_not_change_the_update` (CPU, bitwise, on and off) and the existing streams test. |
-| 5 Resume (A9) | Unchanged (another branch owns `tests/runs/test_resume.py`); the CPU resume tests pass with the new records. |
-| 5 Joint action | Entropy marginals and usage over power 3, stick 7, shoot 2 of the joint. |
-| 5 Per pool and mode | Pools are named game/opponent, so every per-pool series is per mode and opponent; fog is not sliced yet. |
-| 6.1 Hand-computed cases | See the coverage table's test column. |
-| 6.2 Method rules | Name check, no-smoothing check, no-sync test. |
-| 6.3 Trigger rules | Each rule's trip and quiet case, warm-up, hysteresis, cooldown, the event row, the state's checkpoint round trip (`tests/sections/test_triggers.py`). |
-| 6.4 Skipped-step action | `test_a_non_finite_step_writes_the_checkpoint_and_the_dump_and_training_continues`. |
-| 6.5 Dashboards | `test_the_code_builds_the_headline_and_curated_views` (offline: built and serialised, not saved). |
-| 6.6 Cost | See Cost. |
-| 6.7 Coverage | Below. |
-
-## Coverage
-
-Producer abbreviations: L `bnb.learn.ppo.Learner`, H `bnb.learn.head_statistics` (through
-L), D `bnb.learn.gradients` (L's cadence), B `bnb.learn.bc.BehaviourCloning`, A
-`bnb.runtime.analytics` (store shards, the rollout's episode sums and its game sums), G
-`bnb.league.league.League.metrics`, R `bnb.runs.recording`, T `bnb.runs.triggers`. Test
-files: `d` `tests/sections/test_diagnostics.py`, `dh` `..._heads.py`, `dc` `..._cadence.py`,
-`dg` `..._games.py`, `ls` `test_learner_streaming.py` (gpu).
-
-| Audit group | Series | Built | Test |
-|---|---|---|---|
-| 1 histograms | dropped; D2 quantiles and D3 usage replace them | `policy/entropy_quantile/p10,p50,p90` (L), `policy/usage/{factor}/{option}` (A) | d: histogram quantiles; hand shard |
-| 2 overview | dropped | the dashboards | d: dashboards build |
-| 3 losses | per-head losses | `next_state/loss`, `enemy_action/loss`, `density/loss`, `shot/loss/{trajectory,outcome}` (L) | d: named and finite; `test_learner`'s independent computation |
-| 4 policy | KL split, clip, far ratio, entropy, coupling, epochs, D2-D4 | `policy/*` (L), `policy/usage/*`, `switch_rate/*` (A) | d: policy sums; marginals; hand shard |
-| 5 critic, returns | EV, EV fit, value KL, bias, return mean, support clip, percentiles, advantage, normaliser, mixed | `critic/*`, `returns/*` (L), `critic/explained_variance_fit/{level}` (L, last epoch). Not built: `returns/mixed` (team spirit is 0 at every level) | d: targets hand case; dh: fit moments |
-| 6 outcome | ledger: Brier skill per time-to-end bucket, ECE, bias, reliability table, KL | `outcome/brier_skill/{bucket}`, `outcome/expected_calibration_error`, `outcome/bias` (A, every update), `outcome/reliability` (table, at the cadence), `critic/value_kl/outcome` | dg: ledger hand case, Brier skill, reliability rows, a rollout's ledger |
-| 7 next state | gain per population and part, KL per population, token share, supervised share | `next_state/gain/{ally,enemy_visible}[/{part}]`, `kl/{ally,enemy_visible,enemy_hidden}`, `token_share/*`, `supervised_share` (H). The residual/absolute output slice: the model has one output, so no slice | dh: zero change gives zero gain |
-| 8 belief | errors by hidden age, sigma calibration, baselines | `belief/{quantity}/{age bucket}` (10 quantities), `belief/{normalised_square_error,within_one_sigma,within_two_sigma}/{quantity}/{bucket}` (H, stored forecasts). Not built: the `visible` slice (a visible ship's stored belief is its truth), `position_beyond_legal_share`, the persistence and dead-reckoning baselines (need the last-seen state, which no record keeps) | dh: belief hand case across the seam |
-| 9 enemy action | CE, accuracy, entropy, per-factor CE, gains over repeat and marginal, by sight; opponent-kind slice; supervised share | `enemy_action/{cross_entropy,accuracy,entropy,repeat_rate}/{sight}`, `factor_cross_entropy/{factor}/{sight}`, `gain/{repeat,marginal}/{sight}`, `supervised_share` (H). Not built: the opponent-kind slice (the learner has no view's pool) | dh: uniform-logit hand case |
-| 10 density | deviance and explained deviance per team | `density/deviance/{ally,enemy}`, `density/explained_deviance/{ally,enemy}` (H) | dh: batch mean explains 0, exact counts 1 |
-| 11 shot | trajectory KL per part, rates realised and predicted, supervised share | `shot/trajectory_kl/{part}`, `shot/{enemy_hit,ally_hit,clear_miss}_rate/{realised,predicted}`, `shot/supervised_share` (H) | dh: rates and KL hand case |
-| 12 episode | length, lifespan, reward mean/min/max/level, events, alive share, results by side, end, count | `episode/count`, `length_seconds`, `end/*`, `wins`, `draws`, `losses`, `alive_share` (round 1); `episode/lifespan_seconds`, `reward_mean`, `reward/{level}`, `reward_min`, `reward_max`, `event/{name}` per slice, `episode/result/{team_0,team_1,draw}` (A, game sums; every ship of every game) | dg: hand episode; a rollout's sums against its counters |
-| 13 fog | visible share (all, by scale), hidden age, reacquisitions, occlusion, never seen, fogged share | `fog/visible_share/{all,scale_{1,1_2,2_plus}}`, `mean_hidden_age_seconds`, `reacquisitions_per_slot_minute`, `occlusion_share/{bucket}`, `fogged_environment_share` (A, fogged environments), `fog/never_seen_share` (H). Not built: `range_visible_share`, `field_occluded_share`, `individual_visible_share` (the observation does not say why a ship is hidden or who saw it; needs a perception output) | dg: perceive hand case |
-| 14 physics, frontline, map scale | rates in readable units | `physics/damage_per_ship_second/*`, `deaths_per_ship_minute/*`, `speed_metres_per_second`, `energy_mean`, `out_of_energy_share`, `inside_field_share`, `shield_recharge_per_ship_second`; `frontline/front_moves_per_environment_minute`; `map_scale/mean`, `slot_share/*` (A). Not built: simultaneous captures (no per-zone capture event in the observation) | dg: resolve and perceive hand cases |
-| 15 reward | event share, level share, zero-sum residual | `reward/event_share/{event}` (13 events, `rewards.REWARD_EVENTS`), `reward/zero_sum_residual/{level}` (A, reward per environment-second), `level_share` (round 1) | dg: hand episode |
-| 16 seat | dropped | | |
-| 17 schedule | every scheduled hyperparameter | `schedule/learning_rate` (L), the only schedule | |
-| 18 train, counters | throughput, time, skipped, memory, recompiles, gradient and parameter norms, counters | all (L, R), plus `train/time/cadence_seconds` | recorder; parameter groups; skip test |
-| 19 gradient | the decomposition at the cadence | `gradient/norm/{model,trunk}/{term}`, `share/{scope}/{term}`, `cosine/trunk/{a}/{b}` (every pair), `agreement/{scope}/{terms,value,next_state}`, `coherent_fraction/{term}`, `coherent_share/next_state_{population}`, `actor_share`, `actor_norm`, `critic_norm` (D). Terms: the eight top-level, the value per level, the next state per population. Not built: the policy per reward level (needs per-level advantages kept through the update) | dc: hand Gram case; incoherent halves; the learner's cadence; ls (gpu): no sync |
-| 20 rating, pool | live rating and error, averages, window games, score and game share, size, entropy, draining, entries | all (G) | `test_league_metrics` |
-| ungrouped | `repr/` (B6, F2), `input/` (C1), C5, C6, `bc/` | `representation/{dormant_share,activation_rms,effective_rank}/trunk_block_{i}` (D, at the cadence); `input/nonfinite_count`, `input/envelope_violation_share/{feature}` (H); `batch/token_share/*` (A); `*/supervised_share` (H); `bc/*` (B). Not built: `bc/loss/heldout`, `bc/loss/{own,teacher}_states` | dc: rank and dormant cases, the taps; dh: input case; `test_bc` |
-| H1 replay | one environment every N updates | not built (Requests) | |
-| triggers | 8 alerts, 13 warnings | all (T); every rule now has its series except the ones on unbuilt series | `test_triggers` |
+Round 2, GPU (2026-11-04, a second agent, under the lock, alone on the GPU):
+- the `gpu` tests: 100 passed, 4 failed, all in `test_learner_streaming.py`; fixed in
+  `2b63a1da` (see Test runs), then the streaming, cadence and diagnostics files: 34 passed;
+- the cost at 4096 environments: out of memory in the first update's cadence; measured at
+  2048 (see Cost). The per-update series cost 3.0 %, over the 2 % cap;
+- `counters/recompiles`: 0 on every update of a 22-update compiled run (see Cost);
+- the full suite: see Test runs.
 
 ## Test runs
 
@@ -148,8 +83,20 @@ files: `d` `tests/sections/test_diagnostics.py`, `dh` `..._heads.py`, `dc` `..._
   pass (623 + 32 + 7 in the last runs). The first run found the record test's patch of
   `reward_step`, the resume worker's new timing (`train/time/cadence_seconds`, now left
   out like the other times) and two short words in names (`at_most`, `in_field`): fixed.
-- Round 2, GPU: none run (the BC run held the lock). The full suite under the lock: not
-  run in round 2.
+- Round 2, GPU, under the lock at `dca120c2`: `pytest -m gpu`, 104 tests, 59 min: 100
+  passed, 4 failed in `test_learner_streaming.py`:
+  - both no-sync tests: the belief errors (`head_statistics`) indexed by a Python list,
+    a host-to-device copy of the index per quantity per micro-batch; now slices, with a
+    module check that each quantity's columns are a run;
+  - the cadence no-sync test, then: `torch.linalg.svdvals` (the effective rank)
+    synchronises on CUDA, as every cuSOLVER routine does (svdvals, `gesvdj`, `gesvda` and
+    `eigvalsh` all measured); the sampled tokens are now copied to pinned host memory
+    without a wait and the rank taken on the host after the readback, through a new
+    series value, `bnb.contracts.series.Deferred`, that the collector evaluates after its
+    transfer (`test_a_deferred_series_is_evaluated_on_its_copy_after_the_readback`);
+  - both pinned-memory equality cases unpacked `Learner.gradient` as four values (it
+    returns five since round 2).
+  After `2b63a1da`: the streaming, cadence and diagnostics files on the GPU, 34 passed.
 
 ## Broken by hand
 
@@ -193,7 +140,36 @@ alternating in blocks:
 
 ### Round 2
 
-Not measured: the GPU was held by the BC run for the whole round. The cost script now also
+`uv run --no-sync python -m bench.diagnostics_cost --environments 2048` (4 blocks of 3,
+3 cadences), under the lock, commit `2b63a1da`, RTX 4070 Laptop, load average 1.2 / 1.2 /
+1.4, nothing else on the GPU:
+
+| | median |
+|---|---|
+| update, diagnostics on (12) | 58.05 s |
+| update, diagnostics off (12) | 56.36 s |
+| per-update overhead | **+3.0 %** (spread within each arm about 0.6 s) |
+| the record (rules, sinks) | 4.8 ms |
+| the cadence groups alone | 3.40 s (in a 61.3 s update) |
+| the cadence, amortised over 10 updates | 0.60 % |
+| the rollout's game sums | 2.0 ms per tick, 0.45 % of an update |
+
+- The per-update series are over the 2 % cap at this cell; round 1 measured -0.7 %, so
+  round 2's per-update additions (the heads' series in the first epoch, the belief and
+  input sums, the fit moments) cost about 1.7 s. Not yet split by group.
+- The cadence is well under its 5 % cap; the game sums are small.
+- **4096 environments run out of memory** on this 8 GB GPU in update 1's cadence (the
+  forward of `cadence_terms` in `_gradient_decomposition`, 7.57 GiB in use, 1 GiB of it
+  the CUDA graphs' pool). Round 1's 4096 run fit (it was only slow), so the cadence's
+  memory is what overflows; at 512 environments the cadence updates peak no higher than
+  the plain ones (5.23 GB from update 2 on). A 4096 training run on this GPU would stop at
+  update 1. Not fixed here (see Requests).
+- Recompiles: `bnb train --preset mixed --environments 512 --updates 22` (compiled, the
+  diagnostics on): `counters/recompiles` 0 on every record, through the cadence updates
+  1, 10 and 20; the first update (803 s) compiles the heads' loss and the cadence's
+  terms, and the recorder's baseline is taken after it.
+
+The cost script also
 reports the cadence groups on their own (`cadence_seconds`, its update, and
 `cadence_amortised_overhead` = cadence seconds / 10 / the plain update) and the rollout's
 per-tick game sums timed alone on its buffers (`game_sums_per_update_overhead`), since
@@ -282,6 +258,17 @@ per-tick game sums timed alone on its buffers (`game_sums_per_update_overhead`),
   advantages through the update), the belief's persistence and dead-reckoning baselines
   (need the last-seen state), the enemy action's opponent-kind slice (the learner does not
   know a view's pool), `bc/loss/heldout` and `bc/loss/{own,teacher}_states`.
+- **Request (the cadence's memory):** at 4096 environments on an 8 GB GPU the cadence's
+  first update runs out of memory (see Cost). Options: measure it on a smaller slice than
+  a whole minibatch's micro-batches, release the update's staging and graph memory before
+  it, or skip it when the probe's budget says it will not fit.
+- **Request (the per-update cost):** 3.0 % at 2048 environments, over the 2 % cap; the
+  heads' first-epoch series are the likeliest share. A split by group (each switched off
+  in turn) would say which to move to the cadence.
+- **`Deferred` series** (`bnb.contracts.series`): a host function of device tensors
+  copied to pinned memory without a wait, evaluated by the collector after its readback.
+  Only the effective rank uses it: no CUDA eigen- or singular-value routine runs without
+  a synchronisation.
 
 ## Open questions
 
