@@ -2,7 +2,8 @@
 tensors as the training games, never stored for the learner nor counted in its losses.
 
 A matchup is a pair of players. A player is a network (`LIVE`, the weights the learner is
-training; or a weight set the league loads by name, such as its averages) or a rung of the
+training; or a weight set the league loads by name: its averages, or a snapshot slot,
+`snapshot_<i>`, which holds a frozen past live policy) or a rung of the
 stationary ladder (`random`, `rung_<p>`, `scripted`: the scripted agent at probability p,
 uniform random actions otherwise). Every mode of the training mix plays every matchup: the
 lanes are split evenly over the modes, and within a mode by the matchups' weights. Each
@@ -33,6 +34,7 @@ LIVE = "live"  # the player the learner trains
 SCRIPTED_PLAYER = "scripted"
 EXPONENTIAL_AVERAGE = "exponential_average"  # the league's average the lanes rate by default
 RUNG_PREFIX = "rung_"
+SNAPSHOT_PREFIX = "snapshot_"  # a snapshot slot's player: a frozen past live policy
 
 
 def ladder_probability(player: str) -> float | None:
@@ -77,13 +79,45 @@ def ladder_chain(rungs: tuple[float, ...], weight: float) -> tuple[Matchup, ...]
     )
 
 
-# The default matchups of a reinforcement-learning run (author, 2026-11-04): per mode, the
-# live policy and the league's averaged agent against the scripted agent, and the ladder's
-# rungs chained up to it, which calibrate the ladder. The rungs are stationary, so their
-# ratings gather games over the whole run, and their lanes run no network: a small share.
+def snapshot_slot(index: int) -> str:
+    """The lane player of snapshot slot `index`: `snapshot_<index>`."""
+    return f"{SNAPSHOT_PREFIX}{index}"
+
+
+def snapshot_matchups(slots: int, weight: float, anchor_weight: float) -> tuple[Matchup, ...]:
+    """The snapshot slots' matchups: each slot against the live policy and the averaged
+    agent (`weight`), against the next slot round the ring (`weight`; a slot's neighbours
+    in age are among them whatever the slots' order), and against the scripted agent
+    (`anchor_weight`)."""
+    names = [snapshot_slot(index) for index in range(slots)]
+    out = []
+    for name in names:
+        out += [Matchup(name, LIVE, weight), Matchup(name, EXPONENTIAL_AVERAGE, weight)]
+    if slots > 1:
+        out += [
+            Matchup(first, second, weight)
+            for first, second in zip(names, names[1:] + names[:1], strict=True)
+            if slots > 2 or first < second
+        ]
+    out += [Matchup(name, SCRIPTED_PLAYER, anchor_weight) for name in names]
+    return tuple(out)
+
+
+SNAPSHOT_SLOTS = 4
+# The default matchups of a reinforcement-learning run (author, 2026-11-04). A game tells the
+# fit p (1 - p) about the gap between its players, 0.25 at even odds and 0.004 at the 950
+# points v1's policy reached above the scripted agent, so the moving players are rated
+# against opponents near their own strength: per mode, the live policy and the averaged
+# agent against each other, against frozen snapshots of the live policy in a few slots,
+# and against the scripted agent; the snapshots against each other and the scripted agent,
+# which chain them to its 1000; and the ladder's rungs chained up to the scripted agent,
+# which calibrate the ladder. The snapshots and rungs are stationary, so their games gather
+# over the run, and the rungs' lanes run no network: a small share.
 RL_MATCHUPS = (
-    Matchup(LIVE, SCRIPTED_PLAYER, 1.0),
-    Matchup(EXPONENTIAL_AVERAGE, SCRIPTED_PLAYER, 1.0),
+    Matchup(LIVE, SCRIPTED_PLAYER, 0.5),
+    Matchup(EXPONENTIAL_AVERAGE, SCRIPTED_PLAYER, 0.5),
+    Matchup(LIVE, EXPONENTIAL_AVERAGE, 0.5),
+    *snapshot_matchups(SNAPSHOT_SLOTS, 1.0, 0.5),
     *ladder_chain((0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95), 0.05),
 )
 # Behaviour cloning's: the live policy against the raw scripted agent (its score stop).
@@ -94,22 +128,34 @@ BC_MATCHUPS = (Matchup(LIVE, SCRIPTED_PLAYER, 1.0),)
 class LaneConfig:
     """environments: the lanes, beyond the training environments (0: none); matchups: what
     they play; window: the updates of games that rate a moving player (a network: the live
-    policy, an average), while the ladder's games count from the start."""
+    policy, an average), while a stationary player's (a rung, a snapshot) count from the
+    start; snapshot_every: updates between frozen snapshots of the live policy, each into
+    the next snapshot slot round robin (the slots are the `snapshot_<i>` players the
+    matchups name)."""
 
     environments: int = 1024
     matchups: tuple[Matchup, ...] = RL_MATCHUPS
     window: int = 10
+    snapshot_every: int = 8
 
     def __post_init__(self) -> None:
         if self.environments < 0:
             raise ValueError(f"lanes: {self.environments} environments")
         if self.environments and not self.matchups:
             raise ValueError("lanes need at least one matchup")
-        if self.window < 1:
-            raise ValueError(f"lanes: a window of {self.window} updates")
+        if self.window < 1 or self.snapshot_every < 1:
+            raise ValueError(
+                f"lanes: a window of {self.window}, snapshots every {self.snapshot_every}"
+            )
         names = [matchup.name for matchup in self.matchups]
         if len(set(names)) != len(names):
             raise ValueError(f"lanes: a matchup is listed twice in {names}")
+
+    @property
+    def slots(self) -> int:
+        """The snapshot slots the matchups name."""
+        names = {p for m in self.matchups for p in (m.first, m.second)}
+        return sum(1 for name in names if name.startswith(SNAPSHOT_PREFIX))
 
 
 @dataclasses.dataclass(frozen=True)

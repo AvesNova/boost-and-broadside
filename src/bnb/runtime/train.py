@@ -89,7 +89,10 @@ class TrainConfig:
     ticks per segment; shards: consecutive segments per update (v1's batch, twice over:
     1,024 x 8 x 128); lookahead: ticks played after the last shard on every environment,
     never trained on, for the targets that need the future (the returns' tail, the shot
-    labels); the next update continues from its end. lanes: the rating lanes
+    labels); the next update continues from its end. graph_ticks: the most ticks in one
+    captured rollout chunk; the device holds two chunks of the learner's records, streamed
+    to the store as the next one plays, so it bounds the rollout's memory whatever the
+    segment's length (memory and speed only). lanes: the rating lanes
     (`bnb.runtime.lanes`), environments beyond the training ones. precision: "bfloat16" (the
     model's matmuls under autocast; the default), "float32" or "tf32" (a process-wide
     setting, which the entry point applies with `bnb.cli.set_precision`). reward: the reward
@@ -106,6 +109,7 @@ class TrainConfig:
     length: int = 128
     shards: int = 8
     lookahead: int = 128
+    graph_ticks: int = 8
     lanes: LaneConfig = LaneConfig()
     model: str = "yemong"
     yemong: YemongConfig = YemongConfig()
@@ -302,6 +306,7 @@ class Trainer:
             host_store=config.host_store,
             extra_reads=Scripted.reads if cloning else (),
             lookahead=config.lookahead,
+            graph_ticks=config.graph_ticks,
         )
         lineup = self.rollout.lineup
         self.pool_names = tuple(pool.name for pool in lineup.pools)

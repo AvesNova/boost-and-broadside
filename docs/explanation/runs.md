@@ -124,8 +124,9 @@ A fork or a warm start whose command sets no model setting takes the file's
 - **A resume** (`bnb.runs.checkpoint.load_training`) may change only the fields in
   `bnb.runs.checkpoint.OVERRIDABLE` (the budget: PPO's updates or BC's environment steps,
   `TrainConfig.stop`'s `budget_steps`; the learning rate and its
-  warm-up, the loss coefficients and the entropy, the reward weights, and the precision
-  and micro-batch rows, which change speed but not shapes) and the checkpoint cadence.
+  warm-up, the loss coefficients and the entropy, the reward weights, and the precision,
+  the micro-batch rows and the rollout's chunk (`graph_ticks`), which change speed and
+  memory but not the maths) and the checkpoint cadence.
   Anything else given with `--resume` fails and points to `--from`. Each override is
   recorded in the new segment. The budget is the run's total. A resume on another
   commit goes ahead with a warning, and the segment records the commit.

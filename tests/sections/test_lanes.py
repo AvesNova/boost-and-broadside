@@ -286,8 +286,23 @@ def test_the_live_lane_plays_the_learners_weights(tmp_path):
     assert sum(record[lane]) == int(sums[0])
 
 
-def _record(lane: Lane, wins: int, ties: int, losses: int) -> dict:
-    return {lane: (wins, ties, losses)}
+def _trainer(lanes: tuple[Lane, ...], seat=None, **config) -> types.SimpleNamespace:
+    """What `LaneRatings` reads of a trainer: its lanes and their seat, the update's
+    geometry (one 128-tick shard, a 128-tick lookahead) and episodes of `longest` ticks,
+    a model and its counters."""
+    longest = config.pop("longest", 512)
+    model = torch.nn.Linear(2, 2)
+    return types.SimpleNamespace(
+        lanes=lanes,
+        lane_seat=seat,
+        config=types.SimpleNamespace(
+            lanes=LaneConfig(**config), shards=1, length=128, lookahead=128
+        ),
+        rollout=types.SimpleNamespace(episode_ticks=torch.tensor([float(longest)]), device=lc.CPU),
+        model=model,
+        ppo=types.SimpleNamespace(environment_steps=0),
+        updates_done=0,
+    )
 
 
 def test_lane_ratings_chain_the_ladder_to_the_scripted_agent():
@@ -296,10 +311,7 @@ def test_lane_ratings_chain_the_ladder_to_the_scripted_agent():
     top = Lane(MODE, Matchup("rung_0.9", SCRIPTED_PLAYER))
     below = Lane(MODE, Matchup("rung_0.8", "rung_0.9"))
     live = Lane(MODE, Matchup(LIVE, SCRIPTED_PLAYER))
-    trainer = types.SimpleNamespace(
-        lanes=(top, below, live), config=types.SimpleNamespace(lanes=LaneConfig(window=2))
-    )
-    ratings = LaneRatings(trainer)
+    ratings = LaneRatings(_trainer((top, below, live), window=2))
     ratings.update({top: (250, 0, 750), below: (500, 0, 500), live: (0, 0, 0)})
     expected = 1000.0 - 400.0 * math.log10(3.0)
     rung, error = ratings.rating(MODE, "rung_0.9")
@@ -308,8 +320,7 @@ def test_lane_ratings_chain_the_ladder_to_the_scripted_agent():
     assert ratings.rating(MODE, LIVE) is None
     # a lane whose games do not reach the scripted agent rates nobody
     apart = Lane(MODE, Matchup("random", "rung_0.1"))
-    trainer.lanes += (apart,)
-    ratings = LaneRatings(trainer)
+    ratings = LaneRatings(_trainer((top, below, live, apart), window=2))
     ratings.update({top: (250, 0, 750), below: (500, 0, 500), live: (0, 0, 0), apart: (1, 2, 3)})
     assert ratings.rating(MODE, "random") is None
     series = ratings.series()
@@ -319,18 +330,94 @@ def test_lane_ratings_chain_the_ladder_to_the_scripted_agent():
 def test_a_moving_players_games_leave_after_the_window_and_the_ladders_stay():
     rung = Lane(MODE, Matchup("rung_0.9", SCRIPTED_PLAYER))
     live = Lane(MODE, Matchup(LIVE, SCRIPTED_PLAYER))
-    trainer = types.SimpleNamespace(
-        lanes=(rung, live), config=types.SimpleNamespace(lanes=LaneConfig(window=2))
-    )
+    trainer = _trainer((rung, live), window=2)
     ratings = LaneRatings(trainer)
     ratings.update({rung: (10, 0, 30), live: (40, 0, 0)})
     assert ratings.rating(MODE, LIVE)[0] > 1000.0
     ratings.update({rung: (10, 0, 30), live: (20, 0, 20)})
     ratings.update({rung: (10, 0, 30), live: (0, 0, 40)})  # the sweep has left the window
     assert ratings.rating(MODE, LIVE)[0] < 1000.0
-    assert ratings._games(MODE)[rung] == [30.0, 0.0, 90.0]
-    restored = LaneRatings(trainer, ratings.state())
+    assert ratings._games(MODE)[("rung_0.9", SCRIPTED_PLAYER)] == [30.0, 0.0, 90.0]
+    restored = LaneRatings(trainer, ratings.state(), ratings.tensors())
     assert restored.state() == ratings.state() and restored.series() == ratings.series()
+
+
+def _expected(n: int, gap: float) -> tuple[float, float, float]:
+    """`n` games won at the Bradley-Terry odds of a `gap`-point favourite: (wins, 0, losses)."""
+    p = 1.0 / (1.0 + 10.0 ** (-gap / 400.0))
+    return (n * p, 0.0, n * (1.0 - p))
+
+
+def test_a_strong_player_is_rated_far_better_through_a_snapshot_chain():
+    """A live policy 1000 points above the scripted agent (2000) plays the same 300 games
+    in its window: against the scripted agent (p = 0.997), or against the newest of a chain
+    of snapshots 250 points apart (p = 0.81), whose links, stationary, have gathered 3000
+    games each over the run. Through the chain its standard error is several times
+    smaller; both fits find the rating."""
+    slots = ("snapshot_0", "snapshot_1", "snapshot_2")
+    alone = Lane(MODE, Matchup(LIVE, SCRIPTED_PLAYER))
+    direct = LaneRatings(_trainer((alone,), window=1, snapshot_every=10**6))
+    direct.update({alone: _expected(300, 1000.0)})
+    links = [Lane(MODE, Matchup(slots[0], SCRIPTED_PLAYER))]
+    links += [Lane(MODE, Matchup(high, low)) for low, high in zip(slots, slots[1:], strict=False)]
+    top = Lane(MODE, Matchup(LIVE, slots[-1]))
+    ratings = LaneRatings(_trainer((*links, top), window=1, snapshot_every=10**6))
+    ratings.holders = [f"lane_snapshot_{index}" for index in range(3)]
+    ratings.since = [-(10**6)] * 3
+    for _ in range(10):  # the links' games over ten updates
+        ratings.update({lane: _expected(300, 250.0) for lane in links})
+    ratings.update({top: _expected(300, 250.0)})
+    through_chain, chain_error = ratings.rating(MODE, LIVE)
+    straight, direct_error = direct.rating(MODE, LIVE)
+    # each player's prior game against the scripted agent pulls the far end in a little
+    assert through_chain == pytest.approx(2000.0, abs=25.0)
+    assert abs(straight - 2000.0) < direct_error  # within its own (large) error
+    assert chain_error * 4 < direct_error, (chain_error, direct_error)
+    assert ratings.rating(MODE, "lane_snapshot_1")[0] == pytest.approx(1500.0, abs=10.0)
+
+
+def test_snapshot_slots_credit_games_to_the_snapshot_and_settle_after_a_swap():
+    """A slot's games go to the snapshot it held; a swap is credited to nobody until every
+    game since it began after it; the retired snapshot keeps its games and its rating."""
+    lane = Lane(MODE, Matchup("snapshot_0", SCRIPTED_PLAYER))
+    trainer = _trainer((lane,), window=1, snapshot_every=2, longest=512)
+    ratings = LaneRatings(trainer)  # the starting weights, already settled
+    assert ratings.settle == 2 and ratings.holders == ["lane_snapshot_0"]
+    trainer.updates_done = 1
+    ratings.update({lane: (10, 0, 10)}, 1)
+    trainer.updates_done, trainer.ppo.environment_steps = 2, 2048
+    ratings.freeze(trainer)  # due: the live weights into the (only) slot
+    assert ratings.holders == ["lane_snapshot_2048"]
+    for update in (3, 4):  # games that began under the old weights
+        ratings.update({lane: (99, 0, 0)}, update)
+    assert ratings.rating(MODE, "lane_snapshot_2048") is None
+    ratings.update({lane: (5, 0, 15)}, 5)
+    assert ratings._games(MODE) == {
+        ("lane_snapshot_0", SCRIPTED_PLAYER): [10.0, 0.0, 10.0],
+        ("lane_snapshot_2048", SCRIPTED_PLAYER): [5.0, 0.0, 15.0],
+    }
+    assert ratings.rating(MODE, "lane_snapshot_0")[0] == pytest.approx(1000.0, abs=1.0)
+
+
+def test_a_slot_swap_copies_weights_in_place():
+    """The lanes' shapes are fixed at capture: freezing a snapshot into a slot changes its
+    weights, not the tensors the captured graph reads."""
+    lanes = (Lane(MODE, Matchup("snapshot_0", SCRIPTED_PLAYER)),)
+    seat = _seat(lanes)
+    trainer = _trainer(lanes, seat=seat, window=1, snapshot_every=1)
+    trainer.model = seat.decision.model
+    before = {name: (value.data_ptr(), value.shape) for name, value in seat.parameters.items()}
+    LaneRatings(trainer)
+    with torch.no_grad():
+        for parameter in trainer.model.parameters():
+            parameter.add_(1.0)
+    trainer.updates_done = 1
+    ratings = LaneRatings(trainer)
+    ratings.freeze(trainer)
+    after = {name: (value.data_ptr(), value.shape) for name, value in seat.parameters.items()}
+    assert after == before
+    for name, value in trainer.model.state_dict().items():
+        assert torch.equal(seat.parameters[f"model.{name}"][0], value), name
 
 
 def test_the_gauge_takes_the_lanes_ladder_and_live_ratings():

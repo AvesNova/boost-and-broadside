@@ -53,13 +53,16 @@ ENVIRONMENTS, LENGTH = 16, 32
 # saved is the state after it) and rating lanes of every kind of player.
 GEOMETRY = dict(shards=2, lookahead=LENGTH)
 RL_LANES = LaneConfig(
-    environments=6,
+    environments=8,
     matchups=(
         Matchup(LIVE, SCRIPTED_PLAYER),
         Matchup("exponential_average", SCRIPTED_PLAYER),
         Matchup("rung_0.9", SCRIPTED_PLAYER),
+        Matchup("snapshot_0", LIVE),
+        Matchup("snapshot_1", "snapshot_0"),
     ),
     window=2,
+    snapshot_every=1,
 )
 BC_LANES = LaneConfig(environments=4, matchups=BC_MATCHUPS, window=2)
 

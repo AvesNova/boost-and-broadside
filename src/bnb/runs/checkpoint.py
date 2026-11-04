@@ -299,6 +299,7 @@ OVERRIDABLE = (
     "learner.shot_trajectory",
     "learner.shot_outcome",
     "learner.micro_batch_rows",
+    "graph_ticks",
     "reward.damage",
     "reward.kill_death",
     "reward.objective_progress",

@@ -98,7 +98,12 @@ class League:
         self.lane_seat = trainer.lane_seat
         self.lanes = None
         if trainer.lanes:
-            self.lanes = LaneRatings(trainer, None if state is None else state[0]["lanes"])
+            if state is None:
+                self.lanes = LaneRatings(trainer)
+            else:
+                prefix = "lanes."
+                kept = {k[len(prefix) :]: v for k, v in state[1].items() if k.startswith(prefix)}
+                self.lanes = LaneRatings(trainer, state[0]["lanes"], kept)
         if state is None:
             self._start(trainer, ratings or {})
         else:
@@ -272,7 +277,8 @@ class League:
         the update's learning. Returns the league's metrics."""
         steps = trainer.ppo.environment_steps
         if self.lanes is not None:
-            self.lanes.update(trainer.lane_record)
+            self.lanes.update(trainer.lane_record, trainer.updates_done)
+            self.lanes.freeze(trainer)
         for mode, gauge in self.gauges.items():
             if self.lanes is None:
                 gauge.update(self.record[mode])
@@ -443,6 +449,8 @@ class League:
         for name, weights in (*self.averages.items(), *self.snapshots.items()):
             for key, value in weights.items():
                 tensors[f"{name}.{key}"] = value
+        if self.lanes is not None:
+            tensors.update({f"lanes.{name}": value for name, value in self.lanes.tensors().items()})
         return record, tensors
 
 

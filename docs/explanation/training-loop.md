@@ -110,7 +110,8 @@ sets how many (`environments`, beyond the training ones) and what they play (`ma
 
 - **Players:** `live`, the weights the learner trains (copied into the lanes before each
   collection); a weight set the league loads by name (`exponential_average`, its averaged
-  agent); and the ladder's rungs, `random`, `rung_<p>` and `scripted` (the raw scripted
+  agent, and the snapshot slots `snapshot_<i>`, frozen past live policies); and the
+  ladder's rungs, `random`, `rung_<p>` and `scripted` (the raw scripted
   agent, never BC's softened teacher). A matchup is any pair of them.
 - **Layout:** every mode of the training mix plays every matchup. The lanes are split evenly
   over the modes and, within a mode, by the matchups' weights; each (mode, matchup) is a
@@ -119,9 +120,17 @@ sets how many (`environments`, beyond the training ones) and what they play (`ma
   shapes are fixed at capture: which row plays which player is static, only a network
   player's weights change, copied in place between segments (`LaneSeat.load`).
 - **Defaults:** a reinforcement-learning run's lanes (`bnb.runtime.lanes.RL_MATCHUPS`) play,
-  per mode, the live policy and the averaged agent against the scripted agent, and the
-  ladder chained from the scripted agent down (each rung against the next one up), which
-  calibrates the ladder. BC's (`bnb.runtime.cloning.LANES`) play the live policy against the
+  per mode: the live policy and the averaged agent against each other, against four
+  snapshot slots and against the scripted agent; the slots against each other round a ring
+  and against the scripted agent; and the ladder chained from the scripted agent down (each
+  rung against the next one up), which calibrates the ladder. A game tells the rating fit
+  `p (1 − p)` about its players' gap: 0.25 at even odds, 0.004 at the 950 points v1's
+  policy reached above the scripted agent, about 1/60 as much. So the moving players play
+  opponents near their own strength, the snapshots chain them to the scripted agent, and
+  the weights split the lanes (per mode, of 16.05): the snapshots' games with live and
+  average 8 (half), the slots' ring 4, the anchors on the scripted agent 3.5 (live,
+  average, each slot at 0.5), live against average 0.5, the ladder's eleven links 0.55,
+  which run no network and gather over the whole run. BC's (`bnb.runtime.cloning.LANES`) play the live policy against the
   scripted agent alone.
 - **Results:** the rollout tallies each ended lane game once, from the first player's side,
   and the trainer takes the tally after each collection (`Trainer.lane_record`), logged as

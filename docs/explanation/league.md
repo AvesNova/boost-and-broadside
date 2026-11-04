@@ -72,9 +72,18 @@ fits, once per update and per mode, one Bradley–Terry model of every lane play
 scripted agent pinned at 1000 (`bnb.league.ratings.fit_ratings`, draws as half a win, one
 prior game against the scripted agent, half won, which keeps a sweep finite).
 
-- **The record:** a matchup of two ladder players keeps every game of the run (its players
-  never change); one with a network player, whose weights move, keeps the games of its last
-  `LaneConfig.window` updates (10).
+- **The record:** games are kept by mode and by who played them. A game of two stationary
+  players (the rungs, the frozen snapshots) is kept for the whole run; one with a moving
+  player (the live policy, an average) for its last `LaneConfig.window` updates (10).
+- **The snapshots:** every `LaneConfig.snapshot_every` updates (8) the live weights are
+  frozen into the next of the lanes' snapshot slots, round robin (the first holds the
+  starting weights). A slot's games are credited to the snapshot it holds,
+  `lane_snapshot_<steps>`, so a retired snapshot keeps its games and its rating, and a new
+  one joins the fit as soon as its games connect it. A game in progress at a swap was
+  played partly by the old weights, so a slot's games count again only once every game
+  since the swap began after it (`settle`: the longest episode over the ticks an update
+  plays, 8 updates at the 300 s limit). The slots' weights are in the training
+  checkpoint.
 - **Who is rated:** a player whose games connect it to the scripted agent; none is reported
   before its matchups have played.
 - **The ladder:** the rungs, chained from the scripted agent down, are rated from their own
@@ -86,10 +95,12 @@ prior game against the scripted agent, half won, which keeps a sweep finite).
   (`bnb.league.lanes.LaneHooks`), and the clone's policy file keeps it per mode
   (`PolicyRecord.ratings`): a warm start's live rating starts from its parent's, not 0.
 
-With 1,024 lanes and six moving matchups (live and average in three modes), every game at
-the 300 s limit would still give about 1.3 games per lane per 10 updates, about ±25 points
-per matchup; games end sooner, so the error is smaller (the measured counts are in
-`docs/rewrite/sections/rollout-lanes-notes.md`).
+Against the scripted agent alone a policy 1000 points above it would be rated blind: its
+games there carry 1/60 of an even game's information. Through the snapshot chain, whose
+stationary links gather games over the run, the same window of live games rates it several
+times more precisely
+(`tests/sections/test_lanes.py::test_a_strong_player_is_rated_far_better_through_a_snapshot_chain`).
+The measured game counts and errors are in `docs/rewrite/sections/rollout-lanes-notes.md`.
 
 ## The live gauge
 
