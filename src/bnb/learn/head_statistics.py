@@ -75,6 +75,9 @@ BELIEF_QUANTITIES = (
     ("gun_cooldown_seconds", (10,)),
     ("log_refractive_index", (11,)),
 )
+# Each quantity's columns are a run, read as a slice (indexing by a list copies the index
+# to the device, a synchronisation).
+assert all(columns == tuple(range(columns[0], columns[-1] + 1)) for _, columns in BELIEF_QUANTITIES)
 # The quantities with a sigma, and its column in state_code.SPREADS order (velocity: the
 # packed covariance at 1..3; position: the per-axis RMS sigma).
 SIGMA_COLUMNS = {
@@ -377,7 +380,7 @@ def belief_sums(trajectory: Trajectory, tick_length: float) -> dict:
     )
     errors, normalised = [], []
     for name, columns in BELIEF_QUANTITIES:
-        part = difference[..., list(columns)]
+        part = difference[..., columns[0] : columns[-1] + 1]  # a slice: a list index syncs
         errors.append(part.square().sum(-1).sqrt())
         if name not in SIGMA_COLUMNS:
             continue

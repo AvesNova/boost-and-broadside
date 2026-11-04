@@ -74,7 +74,7 @@ def _gradient(net, runner, bootstraps):
     )
     prepared = learner.prepare(store, bootstraps)
     chosen = torch.randperm(views, generator=torch.Generator().manual_seed(0))
-    terms, levels, _, _ = learner.gradient(store, prepared, chosen)
+    terms, levels, _, _, _ = learner.gradient(store, prepared, chosen)
     return prepared["counts"], terms, levels, [p.grad.clone() for p in net.parameters()]
 
 

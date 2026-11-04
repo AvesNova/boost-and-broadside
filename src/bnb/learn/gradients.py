@@ -32,6 +32,8 @@ import itertools
 
 import torch
 
+from bnb.contracts.series import Deferred
+
 REPRESENTATION_TOKENS = 4096
 DORMANT_THRESHOLD = 0.1
 TRUNK_MODULES = ("encoder", "trunk")
@@ -204,6 +206,7 @@ def representation_series(taps: dict[str, dict[str, torch.Tensor]]) -> dict:
             continue
         tokens = sampled(tap["output"])
         out[f"representation/activation_rms/{block}"] = tokens.square().mean().sqrt()
-        out[f"representation/effective_rank/{block}"] = effective_rank(tokens)
+        # deferred: the singular values synchronise on a GPU, so they are taken on the host
+        out[f"representation/effective_rank/{block}"] = Deferred.of(effective_rank, tokens)
         out[f"representation/dormant_share/{block}"] = dormant_share(sampled(tap["hidden"]))
     return out
