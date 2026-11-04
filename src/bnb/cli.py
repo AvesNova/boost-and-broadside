@@ -631,9 +631,7 @@ def runs(options: Runs) -> None:
 
 def dashboard(run) -> str:
     """`bnb runs dashboard RUN`: build or update the run's headline and curated W&B views
-    (`bnb.runtime.dashboards`; the `tools` extra)."""
-    import os
-
+    for its objective (`bnb.runtime.dashboards`; the `tools` extra), and their links."""
     import wandb
 
     from bnb.runs.upload import PROJECT
@@ -641,10 +639,8 @@ def dashboard(run) -> str:
 
     entity = os.environ.get("WANDB_ENTITY") or wandb.Api().default_entity
     config = json.loads((run.directory / "config.json").read_text())
-    views = dashboards.build(run.record["name"], entity, PROJECT, config.get("objective") == "bc")
-    for view in views.values():
-        view.save()
-    return "\n".join(f"{name}: {view.url}" for name, view in views.items())
+    links = dashboards.save(run.record["name"], entity, PROJECT, config.get("objective", "ppo"))
+    return "\n".join(f"{name}: {link}" for name, link in links.items())
 
 
 def show(run) -> list[str]:

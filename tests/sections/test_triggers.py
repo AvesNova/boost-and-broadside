@@ -243,8 +243,8 @@ def test_the_code_builds_the_headline_and_curated_views():
     pytest.importorskip("wandb_workspaces")
     from bnb.runtime import dashboards
 
-    views = dashboards.build("2026-11-03-mixed-amber-acorn", "entity", "project", bc=True)
-    assert dashboards.panel_count(dashboards.HEADLINE) == 12
+    views = dashboards.build("2026-11-03-mixed-amber-acorn", "entity", "project")
+    assert dashboards.panel_count(dashboards.sections_for(dashboards.HEADLINE, "ppo")) == 12
     headline, curated = views["headline"], views["curated"]
     assert sum(len(section.panels) for section in headline.sections) == 12
     assert [section.name for section in curated.sections][:6] == [
@@ -255,9 +255,74 @@ def test_the_code_builds_the_headline_and_curated_views():
         "Value",
         "Learning signal",
     ]
-    assert next(s for s in curated.sections if s.name == "bc/").is_open
+    assert all(section.name != "bc/" for section in curated.sections)
     headline._to_model()  # the workspace's saved form, built offline
     curated._to_model()
+
+
+# What a BC run's views leave out: reinforcement learning's ratings, league, KL and clip.
+RL_SERIES = ("rating/live", "pool/score", "pool/size", "policy/kl", "policy/clip_fraction")
+
+
+def test_the_bc_views_leave_out_reinforcement_learnings_panels():
+    import re
+
+    pytest.importorskip("wandb_workspaces")
+    from bnb.runtime import dashboards
+
+    views = dashboards.build("2026-11-03-mixed-amber-acorn", "entity", "project", "bc")
+    headline, curated = views["headline"], views["curated"]
+    assert sum(len(section.panels) for section in headline.sections) == 12
+    names = [section.name for section in curated.sections]
+    assert names[:2] == ["Alerts", "bc/"] and "Strength" not in names and "League" not in names
+    assert next(s for s in curated.sections if s.name == "bc/").is_open
+    for view in (dashboards.HEADLINE, dashboards.CURATED):
+        for section in dashboards.sections_for(view, "bc"):
+            for item in section.panels:
+                expression = re.compile(dashboards.regex(item.series))
+                shown = [series for series in RL_SERIES if expression.match(series)]
+                assert not shown, (section.name, item.title, shown)
+    headline._to_model()
+    curated._to_model()
+
+
+@pytest.mark.parametrize(
+    ("app", "link"),
+    [
+        ("https://forge.coreweave.com/wandb", "https://forge.coreweave.com/wandb/e/p?nw=abc"),
+        ("https://forge.coreweave.com/wandb/", "https://forge.coreweave.com/wandb/e/p?nw=abc"),
+        ("https://wandb.ai", "https://wandb.ai/e/p?nw=abc"),
+        ("http://localhost:8080/a/b", "http://localhost:8080/a/b/e/p?nw=abc"),
+    ],
+)
+def test_a_views_link_keeps_the_apps_path_prefix(app, link):
+    """`wandb-workspaces` builds the view's URL from the app's host alone; the link printed
+    is under the app's own address."""
+    from bnb.runtime import dashboards
+
+    host = app.split("/")[2]
+    assert dashboards.app_link(f"https://{host}/e/p?nw=abc", app) == link
+
+
+def test_the_app_address_comes_from_the_configured_base_url(monkeypatch):
+    pytest.importorskip("wandb")
+    import wandb
+
+    from bnb.runtime import dashboards
+
+    monkeypatch.setattr(wandb, "setup", lambda: _Setup("https://api.forge.coreweave.com"))
+    assert dashboards.app_url() == "https://forge.coreweave.com/wandb"
+    monkeypatch.setattr(wandb, "setup", lambda: _Setup("https://wandb.example.org"))
+    assert dashboards.app_url() == "https://wandb.example.org"  # a server of one's own
+
+
+class _Setup:
+    """`wandb.setup()`'s result with settings for `base_url`."""
+
+    def __init__(self, base_url: str) -> None:
+        import wandb
+
+        self.settings = wandb.Settings(base_url=base_url)
 
 
 def test_a_bc_run_leaves_reinforcement_learnings_rules_out():
