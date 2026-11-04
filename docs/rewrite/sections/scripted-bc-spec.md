@@ -183,7 +183,9 @@ The same terms and their combination, read from the observation:
   0.007 per level, next state 0.0041, enemy action 0.11, density 0.021, shot trajectory
   0.007 averaged over ages, shot outcome 0.019).
 - **Nothing else:** no policy gradient and no entropy bonus. Adam at 3e-4 with the 1M-step
-  warmup; 4 epochs of 32 minibatches; no KL early stop (it is a PPO trust region).
+  warmup; 4 epochs of 256 minibatches (32 views each at the 1,024 x 8 batch: cloning's
+  progress follows its optimizer steps; 32 minibatches there learned 8x slower per
+  environment step, 2026-11-05); no KL early stop (it is a PPO trust region).
 - **The return scale** (section 6's EMA) runs during BC, and is handed to RL.
 
 ## B2. Rollouts
