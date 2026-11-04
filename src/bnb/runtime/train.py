@@ -313,13 +313,14 @@ class Trainer:
             torch.arange(len(lineup.pools), device=device),
             torch.tensor(lineup.sizes, device=device),
         )
+        # the analytics read one shard at a time: one shard's views (R,)
         self.analytics = analytics.Analytics(
             self.pool_names,
-            self.learner_pool.repeat(config.shards),
+            self.learner_pool,
             environment_pool,
             rules.tick_length,
             game.mode,
-            view_fogged=lineup.fogged[lineup.environments[LEARNER]].repeat(config.shards),
+            view_fogged=lineup.fogged[lineup.environments[LEARNER]],
             environment_fogged=lineup.fogged,
         )
 
