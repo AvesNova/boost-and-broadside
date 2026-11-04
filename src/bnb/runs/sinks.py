@@ -41,6 +41,21 @@ class JsonSink:
         self.handle.close()
 
 
+def shutdown_telemetry() -> None:
+    """Shut down W&B's own telemetry (wandb 0.31) before the process exits. Left to exit,
+    its handler shuts the OpenTelemetry meter provider down, and then the provider's own
+    exit handler, registered first so run last, shuts it down again: "shutdown can only be
+    called once". Shut down here, the provider unregisters its handler and W&B's returns
+    early. An offline run has no telemetry; a W&B without this module needs nothing."""
+    try:
+        from wandb.analytics.opentelemetry import opentelemetry_proxy
+    except ImportError:
+        return
+    proxy = opentelemetry_proxy.get_open_telemetry_proxy()
+    if proxy is not None:
+        proxy.shutdown()
+
+
 class WandbSink:
     """Streams each record to a W&B run named for the run, in project PROJECT. A resumed run
     continues the W&B run whose id `run.json` keeps."""
@@ -75,8 +90,9 @@ class WandbSink:
         self.session.log(logged)
 
     def close(self) -> None:
-        """Finish the W&B run."""
+        """Finish the W&B run, then W&B's telemetry (`shutdown_telemetry`)."""
         self.session.finish()
+        shutdown_telemetry()
 
 
 class Sinks:
