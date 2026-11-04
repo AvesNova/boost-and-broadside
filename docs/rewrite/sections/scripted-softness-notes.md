@@ -105,7 +105,7 @@ of observations at or below `low`, strictly inside, and at or above `high`.
 | boost far | frontline, Frontline | 0 → 1 | 2.0 | 1.4 | 1.40 | 0.03 / 1.7 / 3.5 | 0.68 / 0.31 / 0.02 |
 | boost far | deathmatch | 0 → 1 | 2.0 | 1.3 | 1.49 | 0.01 / 1.7 / 3.6 | 0.75 / 0.24 / 0.01 |
 | boost far | deathmatch_wide | 0 → 1 | 2.0 | 1.9 | 1.08 | 0.00 / 0.49 / 3.3 | 0.78 / 0.20 / 0.02 |
-| boundary steer (margins deep) | all | 0 → 1 | 0.466 | about 1 | 0.01 | median about -20 to -56 | about 1.00 / 0.00 / 0.00 |
+| boundary steer (margins deep) | all | 0 → 1 | 0.466 | tens | 0.01 | median about -20 to -56 | about 1.00 / 0.00 / 0.00 |
 
 (The boundary row's input is the depth into the margin, over ships flying outward anywhere in
 the arena: almost every observation is far from the edge, so the ramp is read rarely; its
