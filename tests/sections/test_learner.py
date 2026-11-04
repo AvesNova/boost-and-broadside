@@ -147,7 +147,7 @@ def test_each_loss_term_matches_an_independent_computation(segment):
     denominator = dict(zip(COUNTS, prepared["counts"].sum(0).clamp_min(1).unbind()))
     derived = prepared["derived"]
     with torch.no_grad():
-        _, terms, per_level, _, _ = learner.loss(
+        _, terms, per_level, _, _, _ = learner.loss(
             trajectory, label, derived, denominator, prepared["scale"]
         )
         out = learner.unroll(trajectory)
@@ -252,7 +252,7 @@ def test_micro_batches_accumulate_to_the_unsplit_minibatch(segment):
 
     def gradient(size: int):
         lc.with_micro_batch(learner, size)
-        terms, levels, statistics, _ = learner.gradient(runner.store, prepared, views)
+        terms, levels, statistics, _, _ = learner.gradient(runner.store, prepared, views)
         return terms, [parameter.grad.clone() for parameter in net.parameters()]
 
     whole_terms, whole = gradient(runner.store.views)

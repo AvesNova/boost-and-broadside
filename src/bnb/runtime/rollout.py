@@ -24,6 +24,7 @@ from bnb.game import api
 from bnb.learn import rewards
 from bnb.learn.shots import ShotCapture
 
+from . import analytics
 from .analytics import EPISODE_COLUMNS
 from .lineup import Lineup
 from .opponents import OUTCOMES
@@ -172,6 +173,8 @@ class Rollout:
             for name, c in self.controllers.items()
         }
         records.update(self._learner_buffers(obs, controller_carry[self.learner]))
+        # the outcome ledger's seconds of elapsed time: the longest episode's, and one more
+        blocks = int(float(self.episode_ticks.max()) * rules.tick_length) + 2
         segment = dict(final_truth=torch.zeros((views, N, truth.ships.shape[-1]), device=device))
         if controller_carry[self.learner] is not None:
             segment["initial_carry"] = controller_carry[self.learner]
@@ -202,7 +205,12 @@ class Rollout:
             },
             counters=torch.zeros(len(COUNTERS), dtype=torch.int64, device=device),
             episodes=torch.zeros((B, len(EPISODE_COLUMNS)), device=device),
+            game=analytics.blank_game(B, self.ship_count, device),
+            game_sums=analytics.blank_game_sums(B, device),
         )
+        if "outcome" in records:  # the learner's critic predicts the match's outcome
+            carry["outcome"] = analytics.blank_outcome(views, blocks, device)
+            carry["outcome_tables"] = analytics.blank_outcome_tables(device)
         return _clone(carry)
 
     @torch.no_grad()
@@ -286,6 +294,13 @@ class Rollout:
                 ):  # a scripted "learner" (baselines) records no policy
                     records["log_probability"].index_copy_(0, slot, outputs.log_probability[None])
                     records["value"].index_copy_(0, slot, outputs.value[None])
+                if "outcome" in carry:
+                    elapsed = (
+                        view.globals[..., GLOBAL["episode_progress"]]
+                        * self.episode_ticks[self.lineup.environments[name]]
+                        * self.rules.tick_length
+                    )
+                    analytics.outcome_record(carry["outcome"], outputs.outcome, elapsed)
                 for part in ("values", "outcome", "replay"):
                     if part in records:
                         for stored, given in zip(
@@ -334,8 +349,19 @@ class Rollout:
         )
         _assign(carry["state"], state)
         team = api.ship_team(self.ships_per_team, self.device)
-        reward, ledger = rewards.reward_step(self.reward_config, carry["ledger"], events, team)
+        reward, ledger, event_rewards = rewards.reward_step_events(
+            self.reward_config, carry["ledger"], events, team
+        )
         _assign(carry["ledger"], ledger)
+        analytics.resolve_tick(
+            carry["game"],
+            carry["game_sums"],
+            events,
+            reward,
+            event_rewards,
+            carry["truth"][:, 0],
+            self.rules.tick_length,
+        )
         reward = reward.reshape(
             self.environments, self.teams, self.ships_per_team, len(REWARD_LEVELS)
         )
@@ -358,6 +384,15 @@ class Rollout:
         # progress is the last tick's, and the episode lasted one tick more
         progress = carry["obs"]["globals"][:, 0, GLOBAL["episode_progress"]]
         ticks = progress * self.episode_ticks + 1.0
+        if "outcome" in carry:
+            views = self.lineup.environments[self.learner]
+            analytics.outcome_score(
+                carry["outcome"],
+                carry["outcome_tables"],
+                events.done[views],
+                result > 0,
+                ticks[views] * self.rules.tick_length,
+            )
         ended = events.done.float()
         timeout = ticks >= self.episode_ticks - 0.5
         carry["episodes"].add_(torch.stack([ended, ended * timeout, ended * ticks], -1))
@@ -376,6 +411,17 @@ class Rollout:
 
     def _perceive(self, carry: dict) -> None:
         state, obs, truth = api.perceive(self.rules, carry["state"])
+        analytics.perceive_tick(
+            carry["game_sums"],
+            carry["obs"]["ships"],
+            obs.ships,
+            truth.ships,
+            obs.globals,
+            carry["obs"]["globals"],
+            self.ships_per_team,
+            self.rules.tick_length,
+            api.MAP_SCALE_RADIUS,
+        )
         _assign(api.perceived(carry["state"]), api.perceived(state))
         _assign(carry["obs"], {part: getattr(obs, part) for part in PARTS})
         carry["truth"].copy_(truth.ships)
@@ -387,6 +433,18 @@ class Rollout:
         sums = self.carry["episodes"].clone()
         self.carry["episodes"].zero_()
         return sums
+
+    def take_games(self) -> tuple[dict, dict | None]:
+        """The games' sums since the last take (`analytics.blank_game_sums`) and the outcome
+        tables (None without an outcome head), on the device, and both reset."""
+        sums = _clone(self.carry["game_sums"])
+        analytics.reset_game_sums(self.carry["game_sums"])
+        tables = self.carry.get("outcome_tables")
+        if tables is not None:
+            tables = _clone(tables)
+            for table in self.carry["outcome_tables"].values():
+                table.zero_()
+        return sums, tables
 
     def take_tally(self, name: str) -> torch.Tensor:
         """The results the controller `name` has tallied since the last take, on the host
@@ -400,14 +458,12 @@ class Rollout:
 
     def saved_carry(self) -> dict:
         """The carry a resume needs (runs spec 3): the game state, the observation, every
-        controller's carry, the seats, the reward ledger and the counters. Not the staging
-        ring or the segment buffers, which every segment writes before it reads them, nor the
-        episode sums, which every update takes."""
-        return {
-            name: tree
-            for name, tree in self.carry.items()
-            if name not in ("records", "segment", "episodes")
-        }
+        controller's carry, the seats, the reward ledger, the counters and the games' running
+        state (`game`, the outcome ledger). Not the staging ring or the segment buffers, which
+        every segment writes before it reads them, nor the update's sums (the episodes', the
+        games', the outcome tables), which every update takes."""
+        excluded = ("records", "segment", "episodes", "game_sums", "outcome_tables")
+        return {name: tree for name, tree in self.carry.items() if name not in excluded}
 
     def load_carry(self, carry: dict) -> None:
         """Copy a saved carry into the carry's buffers (a captured graph keeps reading

@@ -30,7 +30,7 @@ from bnb.learn.rewards import RewardConfig
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
 from bnb.models.yemong.model import Yemong, YemongBuild, YemongConfig, yemong_build
 
-from . import analytics
+from . import analytics, metrics
 from .evaluate import first_results, shares
 from .lineup import Lineup
 from .metrics import Collector
@@ -319,6 +319,8 @@ class Trainer:
             environment_pool,
             rules.tick_length,
             game.mode,
+            view_fogged=lineup.fogged[lineup.environments[LEARNER]].repeat(config.shards),
+            environment_fogged=lineup.fogged,
         )
 
     @property
@@ -353,12 +355,15 @@ class Trainer:
         store, bootstraps = self.collect()
         collector = Collector()
         collector.add(self.analytics.episodes(self.rollout.take_episodes()))
+        game_sums, outcome_tables = self.rollout.take_games()
+        collector.set(self.analytics.games(game_sums, outcome_tables))
         for shard in range(store.shards):
             collector.add(self.analytics.shard(store.shard(analytics.NAMES, shard)))
         if self.league is not None:
             self.league.collected(self)
         collected = time.perf_counter()
-        collector.set(self.ppo.update(store, bootstraps, self.steps_per_update))
+        cadence = self.ppo.diagnostics and metrics.due(self.updates_done + 1)
+        collector.set(self.ppo.update(store, bootstraps, self.steps_per_update, cadence=cadence))
         self.updates_done += 1
         collector.set(
             {
@@ -369,6 +374,12 @@ class Trainer:
         )
         row = collector.read()  # the update's one transfer
         learned = time.perf_counter()
+        if cadence:
+            row["train/time/cadence_seconds"] = self.ppo.cadence_stopwatch.seconds()
+            if outcome_tables is not None:  # the cadence's own read
+                calibration = metrics.read_back(outcome_tables["calibration"].flatten())
+                rows = [calibration[i : i + 3] for i in range(0, len(calibration), 3)]
+                row["outcome/reliability"] = analytics.reliability_table(rows).as_json()
         if self.league is not None:
             row.update(self.league.updated(self))
         row["train/time/rollout_seconds"] = collected - started

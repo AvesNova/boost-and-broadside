@@ -66,7 +66,7 @@ def _gradient(model, runner, bootstraps):
         CUDA,
     )
     prepared = learner.prepare(runner.store, bootstraps)
-    terms, _, _, _ = learner.gradient(runner.store, prepared, torch.arange(runner.store.views))
+    terms, _, _, _, _ = learner.gradient(runner.store, prepared, torch.arange(runner.store.views))
     return terms, torch.cat([parameter.grad.flatten() for parameter in model.parameters()])
 
 

@@ -15,7 +15,7 @@ import yemong_cases as cases
 
 from bnb.contracts import REWARD_LEVELS, Action
 from bnb.contracts.action import NUM_JOINT
-from bnb.contracts.series import Mean, Table
+from bnb.contracts.series import Deferred, Mean, Table
 from bnb.league.league import entry_kind, normalised_entropy
 from bnb.learn import statistics
 from bnb.runs import sinks
@@ -52,6 +52,16 @@ def test_the_collector_reads_every_device_series_in_one_transfer(monkeypatch):
         "group/table": {"columns": ["a", "b"], "rows": [[1, 2]]},
     }  # the empty mean is absent, not 0/0
     assert collector.read() == {}
+
+
+def test_a_deferred_series_is_evaluated_on_its_copy_after_the_readback():
+    tokens = torch.tensor([1.0, 2.0, 3.0])
+    deferred = Deferred.of(lambda copy: copy.sum(), tokens)
+    tokens.zero_()  # the copy was taken when the series was made
+    assert metrics.read({"group/sum": deferred, "group/value": torch.tensor(2.0)}) == {
+        "group/sum": 6.0,
+        "group/value": 2.0,
+    }
 
 
 def test_a_mean_adds_its_totals_and_its_counts():
@@ -340,7 +350,7 @@ def test_entry_kinds_split_the_ladder():
 # ------------------------------------------------------------------ the method rules
 
 # Abbreviations a series name may use (code style, "Names"): universal ones and percentiles.
-ALLOWED = {"kl", "rms", "x", "y", "id", "p5", "p10", "p50", "p90", "p95"}
+ALLOWED = {"kl", "rms", "x", "y", "id", "of", "p5", "p10", "p50", "p90", "p95"}
 # Truncations a series name must not use.
 FORBIDDEN = {
     "adv", "avg", "cfg", "env", "envs", "ev", "grad", "grads", "idx", "lr", "num", "obs",

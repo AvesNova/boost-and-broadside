@@ -131,7 +131,7 @@ def test_micro_batches_accumulate_to_the_unsplit_minibatch(segment):
 
     def gradient(size: int):
         lc.with_micro_batch(learner, size)
-        terms, _, statistics, _ = learner.gradient(runner.store, prepared, views)
+        terms, _, statistics, _, _ = learner.gradient(runner.store, prepared, views)
         return terms, statistics, [parameter.grad.clone() for parameter in net.parameters()]
 
     whole_terms, whole_statistics, whole = gradient(runner.store.views)

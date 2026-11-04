@@ -7,7 +7,9 @@ A series is named quantity first, `{group}/{quantity}/{slice}`, in full words. I
 - a `Mean`: a total and a count, divided on the host after the readback, so a mean over no
   samples is absent from the record rather than a 0/0;
 - a `Table`: rows of host values, for the views that are not lines (the fired events, the
-  league's entries).
+  league's entries);
+- a `Deferred`: a host function of device tensors copied without a synchronisation,
+  evaluated after the readback (the effective rank's singular values).
 
 Values are raw: nothing here smooths (diagnostics audit, "Rules and method"). Producers own
 their series: a new series needs no change here.
@@ -17,9 +19,19 @@ from collections.abc import Mapping
 
 import torch
 
-from bnb.contracts.series import Mean, Series, Table
+from bnb.contracts.series import Deferred, Mean, Series, Table
 
-__all__ = ["CADENCE", "Collector", "Mean", "Series", "Table", "due", "read", "read_back"]
+__all__ = [
+    "CADENCE",
+    "Collector",
+    "Deferred",
+    "Mean",
+    "Series",
+    "Table",
+    "due",
+    "read",
+    "read_back",
+]
 
 # Updates between the cadence groups' measurements (diagnostics spec 1, cadence C).
 CADENCE = 10
@@ -58,8 +70,9 @@ class Collector:
     def read(self) -> dict:
         """Every series on the host, by name: tensors in one stacked transfer per device
         (float64, so counts stay exact), a Mean as total / count (absent when the count is
-        0), integer and boolean tensors as ints, a table as JSON (`Table.as_json`) and host
-        numbers as given. The collector is emptied."""
+        0), integer and boolean tensors as ints, a table as JSON (`Table.as_json`), a
+        `Deferred` evaluated after the transfer, and host numbers as given. The collector
+        is emptied."""
         values, self.values = self.values, {}
         pending: dict[torch.device, list[torch.Tensor]] = {}
         slots: dict[str, tuple] = {}
@@ -67,6 +80,8 @@ class Collector:
         def place(value):
             if isinstance(value, Table):
                 return ("host", value.as_json())
+            if isinstance(value, Deferred):
+                return ("deferred", value)
             if not isinstance(value, torch.Tensor):
                 return ("host", value)
             if value.numel() != 1:
@@ -86,6 +101,8 @@ class Collector:
         def fetch(slot):
             if slot[0] == "host":
                 return slot[1]
+            if slot[0] == "deferred":
+                return slot[1].value()
             number = host[slot[1]][slot[2]]
             return int(number) if slot[3] else number
 

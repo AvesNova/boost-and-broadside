@@ -427,12 +427,18 @@ def default_rules() -> tuple[Rule, ...]:
         BelowShareOfPeak(
             "representation_collapse",
             WARNING,
-            "repr/effective_rank",
-            "repr/effective_rank/*",
+            "representation/effective_rank",
+            "representation/effective_rank/*",
             0.7,
             **anomaly,
         ),
-        Rising("dormant_units", WARNING, "repr/dormant_share", "repr/dormant_share/*", **anomaly),
+        Rising(
+            "dormant_units",
+            WARNING,
+            "representation/dormant_share",
+            "representation/dormant_share/*",
+            **anomaly,
+        ),
         Outside(
             "update_ratio",
             WARNING,
