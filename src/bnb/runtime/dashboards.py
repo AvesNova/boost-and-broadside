@@ -1,12 +1,15 @@
 """The dashboards (diagnostics spec 4, the audit's "Dashboard layout"), defined in code: the
-12-panel headline and the curated view, as W&B workspaces built with `wandb-workspaces` (an
-optional dependency, the `tools` extra). The third view is W&B's automatic workspace.
+headline (the spec's 12 panels, with the ratings and the games' ends split by mode) and the
+curated view, as W&B workspaces built with `wandb-workspaces` (an optional dependency, the
+`tools` extra). The third view is W&B's automatic workspace.
 
 A panel is one quantity: its series are the names matching a pattern, `*` for any slice, so
-each slice is a line and a new slice needs no edit here. The x-axis is
-`counters/environment_steps`. A panel names the objectives it shows in: a PPO run's views
-leave out BC's panels, a BC run's leave out reinforcement learning's (the ratings, the
-league, PPO's KL and clip fraction), and a section left empty is left out. A `--wandb` run
+each slice is a line and a new slice needs no edit here. The crowded quantities (the ratings,
+the games' ends, the rating lanes) have a panel per game mode of the training mix. The
+x-axis is `counters/environment_steps`. A panel names the objectives it shows in: a PPO
+run's views leave out BC's panels, a BC run's leave out reinforcement learning's (the
+averaged agent, the league, PPO's KL and clip fraction), and a section left empty is left
+out. A `--wandb` run
 saves its views once its first record is logged; `bnb runs dashboard RUN` builds or updates
 them later.
 """
@@ -18,8 +21,11 @@ from urllib.parse import urlsplit, urlunsplit
 
 from bnb.learn.head_statistics import BELIEF_QUANTITIES
 
+from .train import TRAINING_MIX
+
 STEP = "counters/environment_steps"
 OBJECTIVES = ("ppo", "bc")  # `bnb.runtime.train.OBJECTIVES`
+MODES = tuple(mode for mode, _ in TRAINING_MIX)  # the panels split by game mode
 
 
 @dataclasses.dataclass(frozen=True)
@@ -56,16 +62,51 @@ def bc(title: str, *series: str) -> Panel:
     return Panel(title, series or (title,), ("bc",))
 
 
+def by_mode(*make) -> tuple[Panel, ...]:
+    """Each `make(mode)`'s panels, mode by mode (MODES)."""
+    return tuple(panel for mode in MODES for build in make for panel in build(mode))
+
+
+def ratings(mode: str) -> tuple[Panel, ...]:
+    """The mode's rating panel: the live policy's and the averaged agent's lane ratings (BC
+    has no average)."""
+    return (
+        rl(f"rating/{mode}", f"rating/live/{mode}", f"rating/average/{mode}"),
+        bc(f"rating/{mode}", f"rating/live/{mode}"),
+    )
+
+
+def episode_ends(mode: str) -> tuple[Panel, ...]:
+    """The mode's share of training games decided before the time limit, a line per
+    opponent kind (PPO's self-play and league seat; BC's self-play and teacher)."""
+    decided = f"episode/end/decided/{mode}"
+    return (
+        rl(f"episode/end/{mode}", f"{decided}/self_play", f"{decided}/league"),
+        bc(f"episode/end/{mode}", f"{decided}/self_play", f"{decided}/scripted"),
+    )
+
+
+def lanes(mode: str) -> tuple[Panel, ...]:
+    """The mode's rating lanes: games, the first player's score and each player's rating per
+    matchup, and the share of lane games decided before the time limit."""
+    return (
+        panel(f"lanes/games/{mode}", f"lanes/games/{mode}/*"),
+        panel(f"lanes/score/{mode}", f"lanes/score/{mode}/*"),
+        panel(f"lanes/rating/{mode}", f"lanes/rating/{mode}/*"),
+        panel(f"lanes/episode/end/{mode}", f"episode/end/decided/{mode}/lane/*"),
+    )
+
+
 HEADLINE = (
     Section(
         "Is it winning?",
         (
             panel("alerts/active"),
-            rl("rating/live", "rating/live/*", "rating/average/*"),
+            *by_mode(ratings),
             rl("pool/score", "pool/score/*"),
-            bc("bc/score", "bc/score/*", "bc/stop/window_score", "bc/stop/window_lower_bound"),
+            bc("bc/score", "bc/score/*", "bc/stop/window_score"),
             bc("bc/agreement", "bc/agreement/*"),
-            panel("episode/end", "episode/end/*"),
+            *by_mode(episode_ends),
         ),
         open=True,
     ),
@@ -103,21 +144,22 @@ CURATED = (
     Section(
         "Strength",
         (
-            rl("rating/live", "rating/live/*"),
-            rl("rating/live_stderr", "rating/live_stderr/*"),
-            rl("rating/average", "rating/average/*"),
+            *by_mode(ratings),
+            panel("rating/live_stderr", "rating/live_stderr/*"),
+            rl("rating/average_stderr", "rating/average_stderr/*"),
             rl("pool/score", "pool/score/*"),
             rl("rating/window_games", "rating/window_games/*"),
         ),
         open=True,
     ),
+    Section("Rating lanes", by_mode(lanes), open=True),
     Section(
         "bc/",
         (
             bc("bc/kl", "bc/kl", "bc/stop/kl_average"),
             bc("bc/agreement", "bc/agreement/*"),
             bc("bc/entropy", "bc/entropy/*"),
-            bc("bc/score", "bc/score/*", "bc/stop/window_score", "bc/stop/window_lower_bound"),
+            bc("bc/score", "bc/score/*", "bc/stop/window_score", "bc/stop/window_stderr"),
             bc("bc/games", "bc/games/*"),
             bc("bc/kl_by_pool", "bc/kl_by_pool/*"),
             bc("bc/entropy_by_pool", "bc/entropy_by_pool/*"),

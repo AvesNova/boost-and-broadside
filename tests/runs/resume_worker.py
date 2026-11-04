@@ -10,11 +10,13 @@ attached, with a snapshot every update, so the pool, the gauges, the slots and t
 all change before the checkpoint; its snapshots go to DIRECTORY/league (DIRECTORY/straight-
 league for the straight run). DAMAGE (with "second", to show the test sees it): "league"
 adds noise to the opponent slots' weights after the restore, "draws" restarts the league's
-slot draws, "gauges" forgets the gauges' records and windows, "return_scale" puts back a fresh
-trainer's return scale, "stop_rule" forgets BC's stop rule's window. Episodes are short
-(2 s), so drains end and begin in each half. OBJECTIVE "bc" clones instead (no league): each
-update feeds the stop rule (`bnb.runtime.cloning.update`), whose window has filled and
-trims by the checkpoint.
+slot draws, "gauges" forgets the gauges' records and windows, "lanes" forgets the rating
+lanes' records, "return_scale" puts back a fresh trainer's return scale, "stop_rule" forgets
+BC's stop rule's window. Episodes are short (2 s), so drains end and begin in each half.
+An update is two shards and a lookahead, beside a few rating lanes. OBJECTIVE "bc" clones
+instead (no league; its lanes' ratings are the trainer's hooks): each update feeds the stop
+rule (`bnb.runtime.cloning.update`), whose window of lane games has filled and trims by the
+checkpoint.
 """
 
 import json
@@ -29,6 +31,7 @@ import torch  # noqa: E402
 
 from bnb.cli import set_precision  # noqa: E402
 from bnb.contracts import GameConfig  # noqa: E402
+from bnb.league.lanes import LaneHooks  # noqa: E402
 from bnb.league.league import League  # noqa: E402
 from bnb.learn import bc  # noqa: E402
 from bnb.learn.ppo import LearnerConfig  # noqa: E402
@@ -36,6 +39,7 @@ from bnb.models.relational import RelationalConfig  # noqa: E402
 from bnb.runs import checkpoint  # noqa: E402
 from bnb.runs.triggers import Triggers  # noqa: E402
 from bnb.runtime import cloning  # noqa: E402
+from bnb.runtime.lanes import BC_MATCHUPS, LIVE, SCRIPTED_PLAYER, LaneConfig, Matchup  # noqa: E402
 from bnb.runtime.opponents import LeagueConfig  # noqa: E402
 from bnb.runtime.train import TrainConfig, Trainer  # noqa: E402
 
@@ -45,6 +49,21 @@ TIMES = (
     "train/time/cadence_seconds",
 )
 ENVIRONMENTS, LENGTH = 16, 32
+# The geometry the resume must carry: consecutive shards, a lookahead after them (the carry
+# saved is the state after it) and rating lanes of every kind of player.
+GEOMETRY = dict(shards=2, lookahead=LENGTH)
+RL_LANES = LaneConfig(
+    environments=8,
+    matchups=(
+        Matchup(LIVE, SCRIPTED_PLAYER),
+        Matchup("exponential_average", SCRIPTED_PLAYER),
+        Matchup("rung_0.9", SCRIPTED_PLAYER),
+        Matchup(LIVE, "league_0"),
+        Matchup("league_1", SCRIPTED_PLAYER),
+    ),
+    window=2,
+)
+BC_LANES = LaneConfig(environments=4, matchups=BC_MATCHUPS, window=2)
 
 
 def config(model: str, device: str, objective: str = "ppo") -> TrainConfig:
@@ -65,6 +84,8 @@ def config(model: str, device: str, objective: str = "ppo") -> TrainConfig:
             environments=ENVIRONMENTS,
             updates=0,
             length=LENGTH,
+            **GEOMETRY,
+            lanes=BC_LANES,
             model=model,
             relational=RelationalConfig(hidden=32),
             learner=bc.config(**settings),
@@ -78,6 +99,8 @@ def config(model: str, device: str, objective: str = "ppo") -> TrainConfig:
         environments=ENVIRONMENTS,
         updates=0,
         length=LENGTH,
+        **GEOMETRY,
+        lanes=RL_LANES,
         model=model,
         relational=RelationalConfig(hidden=32),
         league=LeagueConfig(snapshot_every=ENVIRONMENTS * LENGTH),
@@ -119,6 +142,8 @@ def main() -> None:
                 directory / "league",
                 state=checkpoint.league_state(directory / "checkpoint"),
             )
+        else:
+            league = LaneHooks(trainer, checkpoint.league_state(directory / "checkpoint"))
         dump_state(directory / "second", trainer)  # the restore alone, before any damage
         if damage == ["stop_rule"]:
             trainer.stop_rule = bc.StopRule(settings.stop)
@@ -139,6 +164,10 @@ def main() -> None:
             trainer.ppo.order_generator.manual_seed(12345)
         if damage == ["draws"]:
             league.swaps = 0
+        if damage == ["lanes"]:
+            lanes = league.ratings if cloned else league.lanes
+            lanes.whole.clear()
+            lanes.recent.clear()
         if damage == ["gauges"]:
             for gauge in league.gauges.values():
                 gauge.wins.clear()
@@ -149,6 +178,8 @@ def main() -> None:
         trainer.triggers = Triggers(objective=objective)
         if not cloned:
             League(trainer, directory / ("straight-league" if mode == "straight" else "league"))
+        else:
+            LaneHooks(trainer)
     count = 2 * updates if mode == "straight" else updates
     rows = []
     for _ in range(count):

@@ -3,11 +3,14 @@ return scale and the auxiliary losses with their labels, over any model with `un
 
 An update reads its segments from a store (`Segments`) and works on the device one shard or
 one micro-batch at a time:
-  1. per shard, the returns: per-level GAE, team mixing, the outcome's targets; then the
-     return scale, once per batch;
-  2. one pass over the views: the shot re-simulation, whose labels go into the store
-     beside the segments for every epoch, each view's token counts and, when set, the old
-     log-probabilities recomputed by `unroll`;
+  1. the returns over the whole update's ticks, the shards in order and then the lookahead
+     (the ticks played after the last shard, never trained on): per-level GAE, team mixing,
+     the outcome's targets, bootstrapped only at the end; then the return scale, once per
+     batch;
+  2. one pass over the views: the shot re-simulation (each view's segment and the bullet
+     flight after it), whose labels go into the store beside the segments for every epoch,
+     each view's token counts and, when set, the old log-probabilities recomputed by
+     `unroll`;
   3. epochs of minibatches over the views (a view keeps its whole segment); a minibatch is
      several micro-batches, each term divided by its minibatch-total denominator, so the
      accumulated gradient is the unsplit minibatch's.
@@ -38,9 +41,11 @@ from bnb.models.yemong.density import HexGrid, poisson_terms
 
 from . import gradients, head_statistics, labels, losses, returns, shots, statistics
 
+# The entropy's terms, one per action factor by the chain rule (`policy.factor_entropies`).
+ENTROPY_TERMS = ("entropy_power", "entropy_stick", "entropy_shoot")
 TERMS = (
     "policy",
-    "entropy",
+    *ENTROPY_TERMS,
     "value",
     "next_state",
     "enemy_action",
@@ -53,6 +58,10 @@ TERMS = (
 COUNTS = ("policy", "valued", "steps", "next_state", "enemy_action", "shots")
 # The per-tick records the returns read, staged whole per shard.
 SMALL = ("reward", "values", "outcome", "done", "result", "log_probability", "alive", "valued")
+# What the returns read of the lookahead.
+LOOKAHEAD = ("reward", "values", "outcome", "done", "result")
+# What the shot re-simulation reads of the ticks after a segment.
+FOLLOWING = ("capture", "obs", "done")
 # The auxiliary heads' losses (nats per token), as their groups' series.
 HEAD_SERIES = {
     "next_state": "next_state/loss",
@@ -83,8 +92,10 @@ class Adam(torch.optim.Adam):
 @dataclasses.dataclass(frozen=True)
 class LearnerConfig:
     """Learner spec 3-4, v1's values. Per-level tuples follow REWARD_LEVELS. A coefficient
-    multiplies its term's mean in nats per token (entropy: the mean entropy, so a negative
-    coefficient rewards it).
+    multiplies its term's mean in nats per token. The entropy has one coefficient per action
+    factor, on its chain-rule part (`entropy_power` on H(power), `entropy_stick` on
+    H(stick | power), `entropy_shoot` on H(shoot | power, stick)), so three equal coefficients
+    weigh the joint entropy; a negative coefficient rewards it.
 
     old_log_probabilities: "rollout" (the rollout's) or "recomputed" (by `unroll` before
     the first epoch). minibatches: per epoch, as equal in views as the views allow;
@@ -100,7 +111,9 @@ class LearnerConfig:
     return_scale_floor: float = 1.0
     clip: float = 0.2
     policy: float = 27.0
-    entropy: float = -0.0081
+    entropy_power: float = -0.0081
+    entropy_stick: float = -0.0081
+    entropy_shoot: float = -0.0081
     value: float = 0.007
     next_state: float = 0.0041
     enemy_action: float = 0.11
@@ -125,8 +138,8 @@ class LearnerConfig:
                 raise ValueError(f"{name} needs one value per reward level")
 
 
-# The entropy coefficient of a warm start from a policy file (`bnb train --init-from`), in
-# place of LearnerConfig.entropy. The BC clone already samples every action (its labels'
+# The entropy coefficients of a warm start from a policy file (`bnb train --init-from`), in
+# place of LearnerConfig's `entropy_*`. The BC clone already samples every action (its labels'
 # uniform floor), and at its advantage scale the bonus outweighs the policy gradient on rare
 # actions: from the first clone, v1's -0.0081 drove the shoot share from 1.7% to 6.8% and the
 # score against the scripted agent from 0.23 to 0.03 in 24 updates, while 0 held it (0.25).
@@ -135,17 +148,26 @@ WARM_START_ENTROPY = 0.0
 
 class Segments(Protocol):
     """Where the update's segments live (`bnb.runtime.store.SegmentStore`): `shards`
-    segments of `length` ticks of `views // shards` views each, every Trajectory field by
-    name (`names`)."""
+    consecutive segments of `length` ticks of the same `views // shards` rows, every
+    Trajectory field by name (`names`), and the lookahead after the last
+    (`lookahead_ticks`: the ticks it keeps of each name)."""
 
     views: int
     shards: int
     length: int
     names: tuple[str, ...]
+    lookahead_ticks: dict[str, int]
 
     def shard(self, names: tuple[str, ...], shard: int) -> dict:
         """Whole-shard copies on the device of the per-tick leaves names, (L, R, ...) with
         R = views // shards."""
+
+    def lookahead(self, names: tuple[str, ...]) -> dict:
+        """The lookahead's leaves names on the device, (n, R, ...)."""
+
+    def following(self, names: tuple[str, ...], views: torch.Tensor, ticks: int):
+        """The first `ticks` ticks after each view's segment on the device, and whether each
+        view has them: ({name: (ticks, n, ...)}, (n,) bool)."""
 
     def batches(self, names: tuple[str, ...], view_batches: list[torch.Tensor]) -> Iterator[dict]:
         """Yield {name: pytree} on the device for each list of views in view_batches."""
@@ -180,6 +202,11 @@ def trajectory_runs(code: shot_codes.ShotCodeParameters) -> codes.Runs:
 
 def _head(unrolled, name: str):
     return getattr(unrolled, name, None)
+
+
+def factor_sums(entropies: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    """(3,): the factor entropies (..., 3) summed over the tokens of `mask` (...)."""
+    return torch.where(mask[..., None], entropies, 0.0).flatten(0, -2).sum(0)
 
 
 def _own_joint(trajectory: Trajectory) -> torch.Tensor:
@@ -255,13 +282,18 @@ class Learner:
         scale[self.outcome_level] = self.outcome_weight
         return values * scale
 
-    def shard_returns(self, small: dict, bootstrap) -> dict:
-        """Per-level GAE, team mixing and the outcome targets of one shard, (L, R, ...)."""
+    def chained_returns(self, chain: dict, alive: torch.Tensor, bootstrap) -> dict:
+        """Per-level GAE, team mixing and the outcome targets over consecutive ticks of the
+        same rows: `chain` the LOOKAHEAD records (T, R, ...), the trained ticks first, then
+        any that are played only for their targets; `alive` (T', R, N) the trained ticks'
+        (T' <= T), which the results cover; bootstrapped from `bootstrap` (the learner's
+        Outputs after the last tick)."""
         level, config = self.outcome_level, self.config
-        values = self._in_reward_units(small["values"])
-        done = small["done"]
+        trained = alive.shape[0]
+        values = self._in_reward_units(chain["values"])
+        done = chain["done"]
         advantages, level_returns = returns.per_level_gae(
-            small["reward"],
+            chain["reward"],
             values,
             done,
             self._in_reward_units(bootstrap.values),
@@ -269,25 +301,26 @@ class Learner:
             self.discount,
             self.trace_decay,
         )
-        own_alive = small["alive"][..., : values.shape[-2]]
-        team = torch.zeros_like(own_alive, dtype=torch.int64)  # a view's own ships: one team
-        advantage, total = returns.team_aggregate(
-            team, own_alive, advantages, level_returns, self.team_spirit
-        )
         targets = critic.outcome_targets(
-            small["outcome"],
-            small["result"],
+            chain["outcome"],
+            chain["result"],
             done,
             bootstrap.outcome,
             config.discount[level],
             config.trace_decay[level],
         )
+        advantages, level_returns = advantages[:trained], level_returns[:trained]
+        own_alive = alive[..., : values.shape[-2]]
+        team = torch.zeros_like(own_alive, dtype=torch.int64)  # a view's own ships: one team
+        advantage, total = returns.team_aggregate(
+            team, own_alive, advantages, level_returns, self.team_spirit
+        )
         return dict(
             advantage=advantage,
             total=total,
             level_returns=level_returns,
-            values=values,
-            outcome_targets=targets,
+            values=values[:trained],
+            outcome_targets=targets[:trained],
         )
 
     @staticmethod
@@ -305,20 +338,43 @@ class Learner:
 
     # ------------------------------------------------------------------ labels
 
-    def shots(self, trajectory: Trajectory, spread: torch.Tensor):
+    def shots(
+        self,
+        trajectory: Trajectory,
+        spread: torch.Tensor,
+        following: dict | None = None,
+        followed: torch.Tensor | None = None,
+    ):
         """The re-simulated shots and the loss mask: valid shots of own ships and of enemies
-        visible at t."""
-        own = trajectory.log_probability.shape[-1]
+        visible at t. following: the FOLLOWING records of the ticks after the segment
+        ({name: (A, n, ...)}), where a shot fired near its end flies on; followed (n,) which
+        views have them (None: none do)."""
+        own, length = trajectory.log_probability.shape[-1], trajectory.done.shape[0]
+        capture, fields, done = trajectory.capture, trajectory.obs.fields, trajectory.done
+        available = None
+        if following is not None:
+            extra = following["done"].shape[0]
+
+            def joined(head, tail):
+                return _pytree.tree_map(lambda x, y: torch.cat([x, y], 0), head, tail)
+
+            capture = joined(capture, following["capture"])
+            fields = torch.cat([fields, following["obs"].fields], 0)
+            done = torch.cat([done, following["done"]], 0)
+            spread = torch.cat([spread, spread.new_zeros((extra,) + spread.shape[1:])], 0)
+            available = torch.where(followed, length + extra, length)
         shot = shots.resimulate(
             self.rules,
             self.types,
-            trajectory.capture,
-            trajectory.obs.fields,
-            trajectory.done,
+            capture,
+            fields,
+            done,
             spread,
             own,
             self.shot_tick,
+            available,
         )
+        shot = _pytree.tree_map_only(torch.Tensor, lambda x: x[:length], shot)
         visible = trajectory.obs.ships[..., SHIP["visible"]] > 0.5
         rows = torch.arange(visible.shape[-1], device=visible.device) < own
         return shot, shot.valid & (rows | visible)
@@ -421,9 +477,10 @@ class Learner:
         unrolled = self.unroll(trajectory)
         own = trajectory.log_probability.shape[-1]
         terms = dict.fromkeys(TERMS, unrolled.policy_logits.new_zeros(()))
-        terms["policy"], terms["entropy"], statistic = self._policy(
+        terms["policy"], entropies, statistic = self._policy(
             unrolled, trajectory, derived, denominator, scale
         )
+        terms.update(zip(ENTROPY_TERMS, entropies.unbind(), strict=True))
         per_level = losses.critic_losses(
             unrolled.value_logits,
             unrolled.outcome_logits,
@@ -541,10 +598,12 @@ class Learner:
         denominator: dict,
         scale: torch.Tensor,
     ):
-        """The policy's terms of a micro-batch: (the clipped surrogate, the mean entropy,
-        statistics (STATISTICS,)), each over own ships alive."""
+        """The policy's terms of a micro-batch: (the clipped surrogate, the mean entropy's
+        factor parts (3,) (`ENTROPY_TERMS`), statistics (STATISTICS,)), each over own ships
+        alive."""
         own_alive = trajectory.alive[..., : trajectory.log_probability.shape[-1]]
-        log_probability, entropy = policy.evaluate(unrolled.policy_logits, _own_joint(trajectory))
+        log_probability, _ = policy.evaluate(unrolled.policy_logits, _own_joint(trajectory))
+        entropies = policy.factor_entropies(unrolled.policy_logits)
         old = derived["old_log_probability"]
         surrogate = losses.surrogate(
             log_probability, old, derived["advantage"], scale, self.config.clip
@@ -554,7 +613,7 @@ class Learner:
         divergence = losses.masked_sum((ratio - 1.0) - (log_probability - old), own_alive)
         return (
             losses.masked_sum(surrogate, own_alive) / denominator["policy"],
-            losses.masked_sum(entropy, own_alive) / denominator["policy"],
+            factor_sums(entropies, own_alive) / denominator["policy"],
             torch.stack([clipped, divergence]) / denominator["policy"],
         )
 
@@ -576,14 +635,28 @@ class Learner:
             return views
         return views.pin_memory().to(self.device, non_blocking=True)
 
-    def prepare(self, segments: Segments, bootstraps: list) -> dict:
+    def prepare(self, segments: Segments, bootstrap) -> dict:
         """Steps 1 and 2: per view, the advantage, the returns, the outcome targets and the
         old log-probabilities (L, V, ...), each view's token counts (V, COUNTS), the return
         scale and the explained variance per level (levels,); the shot labels go into the
-        store."""
+        store. bootstrap: the learner's Outputs after the last tick the store holds (the
+        lookahead's, or the last shard's without one)."""
         config, device = self.config, self.device
-        small = [segments.shard(SMALL, shard) for shard in range(segments.shards)]
-        parts = [self.shard_returns(part, bootstraps[shard]) for shard, part in enumerate(small)]
+        shards, length = segments.shards, segments.length
+        small = [segments.shard(SMALL, shard) for shard in range(shards)]
+        chain = {name: torch.cat([part[name] for part in small], 0) for name in LOOKAHEAD}
+        if all(segments.lookahead_ticks.get(name, 0) > 0 for name in LOOKAHEAD):
+            tail = segments.lookahead(LOOKAHEAD)
+            chain = {name: torch.cat([chain[name], tail[name]], 0) for name in LOOKAHEAD}
+        chained = self.chained_returns(
+            chain, torch.cat([part["alive"] for part in small], 0), bootstrap
+        )
+
+        def by_view(x: torch.Tensor) -> torch.Tensor:
+            """(shards L, R, ...) as the store's views, (L, shards R, ...)."""
+            return x.unflatten(0, (shards, length)).transpose(0, 1).flatten(1, 2)
+
+        parts = [{name: by_view(value) for name, value in chained.items()}]
 
         def joined(name: str, source: list[dict]) -> torch.Tensor:
             return torch.cat([part[name] for part in source], 1)
@@ -613,7 +686,12 @@ class Learner:
                 trajectory = Trajectory(**batch)
                 with torch.no_grad():
                     if self.auxiliary:
-                        shot, shot_mask = self.shots(trajectory, spread[:, views])
+                        following, followed = segments.following(
+                            FOLLOWING, host_views, self.rules.bullet_moves
+                        )
+                        shot, shot_mask = self.shots(
+                            trajectory, spread[:, views], following, followed
+                        )
                         counts[views, COUNTS.index("next_state")] = (
                             labels.next_state_mask(trajectory).sum((0, 2)).float()
                         )
@@ -774,12 +852,12 @@ class Learner:
     def update(
         self,
         segments: Segments,
-        bootstraps: list,
+        bootstrap,
         environment_steps: int = 0,
         cadence: bool = False,
     ) -> dict:
-        """One update from the store's shards and their bootstraps (each the learner's
-        Outputs on the observation after the shard's last tick). environment_steps:
+        """One update from the store's shards and the lookahead after them, and the bootstrap
+        (the learner's Outputs on the observation after the last tick). environment_steps:
         environment steps this update collected (the warmup counts them). cadence: also
         measure the cadence groups (`cadence`), after the steps. Returns the update's series
         on the device (`bnb.contracts.series`), for the caller to read back once."""
@@ -787,7 +865,7 @@ class Learner:
         views = segments.views
         if views < config.minibatches:
             raise ValueError(f"{views} views do not make {config.minibatches} minibatches")
-        prepared = self.prepare(segments, bootstraps)
+        prepared = self.prepare(segments, bootstrap)
         for group in self.optimizer.param_groups:
             group["lr"] = learning_rate(config, self.environment_steps)
         self.environment_steps += environment_steps
@@ -1054,7 +1132,7 @@ class Learner:
             top_level,
             groups,
             populations,
-            actor=("policy", "entropy"),
+            actor=("policy", *ENTROPY_TERMS),
             critic=("value",),
         )
 

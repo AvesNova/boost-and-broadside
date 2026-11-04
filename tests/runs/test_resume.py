@@ -1,7 +1,8 @@
 """The resume (runs acceptance 3, league acceptance 6): K updates, a training checkpoint, a
 resume in a fresh process and K more continue the run that 2K updates straight through make.
 Opponent slots restored wrong show, and so do the league's draws restarted, a gauge's record
-lost or a return scale not restored.
+or the rating lanes' lost, or a return scale not restored. The runs play two shards and a
+lookahead per update, beside rating lanes.
 
 On the CPU the two are bitwise equal, end to end. On the GPU the contract is integrity, not
 bits (contracts, "Resume: integrity, not bits"), checked in two parts:
@@ -212,7 +213,7 @@ def _resumes(
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("damage", ["league", "draws", "gauges", "return_scale"])
+@pytest.mark.parametrize("damage", ["league", "draws", "gauges", "lanes", "return_scale"])
 def test_the_exact_resume_test_sees_damaged_slots_draws_or_return_scale(tmp_path, damage):
     for mode in ("straight", "first"):
         _run(mode, tmp_path, "cpu", "relational")

@@ -204,7 +204,7 @@ def test_a_head_that_changes_nothing_gains_nothing(segment, global_generator):
         model.ship_heads.lasts[1].weight.zero_()
         model.ship_heads.lasts[1].bias.zero_()
     learner = lc.learner(model, runner, epochs=1, learning_rate=0.0)
-    out = metrics.read(learner.update(runner.store, [runner.bootstrap()]))
+    out = metrics.read(learner.update(runner.store, runner.bootstrap()))
     gains = [name for name in out if name.startswith("next_state/gain/")]
     assert len(gains) == 2 * (len(head_statistics.STATE_PARTS) + 1)
     for name in gains:

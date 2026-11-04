@@ -61,7 +61,9 @@ def schemas() -> dict[str, int]:
 class PolicyRecord:
     """A policy file's record, checked: the model's name and version, its build record (the
     model's dataclass), the build fields its defaults filled, the return scale's state
-    tensors (SCALE_STATE, on the CPU) or None, the step counts, and the raw record."""
+    tensors (SCALE_STATE, on the CPU) or None, the step counts, the policy's rating per mode
+    when it was rated as it trained (a warm start's live rating starts there; empty when
+    not), and the raw record."""
 
     name: str
     version: int
@@ -69,6 +71,7 @@ class PolicyRecord:
     filled: tuple[str, ...]
     return_scale: dict[str, torch.Tensor] | None
     steps: dict
+    ratings: dict[str, float]
     raw: dict
 
 
@@ -82,6 +85,7 @@ def policy_record(
     steps: dict | None = None,
     game: GameConfig | None = None,
     types: ShipTypes | None = None,
+    ratings: dict[str, float] | None = None,
 ) -> dict:
     """The record of a policy file for `model` (its file hashes added on writing)."""
     head, dirty = provenance.commit()
@@ -95,6 +99,7 @@ def policy_record(
         ship_card=None if types is None else _ship_card(types),
         return_scale=return_scale is not None,
         steps=dict(steps or {}),
+        ratings=dict(ratings or {}),
         commit=head,
         dirty=dirty,
         time=provenance.now(),
@@ -175,12 +180,14 @@ def save_policy(
     steps: dict | None = None,
     game: GameConfig | None = None,
     types: ShipTypes | None = None,
+    ratings: dict[str, float] | None = None,
 ) -> pathlib.Path:
     """Write `model` as a policy file at `directory`: its registered name, version and build
-    record, its weights, the schema versions, and for a warm start the return scale and the
-    step counts (`steps`, such as {"environment_steps": n}). game and types (the ship card)
-    are recorded for information (ratings are keyed by them)."""
-    record = policy_record(model, return_scale, steps, game, types)
+    record, its weights, the schema versions, and for a warm start the return scale, the
+    step counts (`steps`, such as {"environment_steps": n}) and its rating per mode as it
+    trained (`ratings`). game and types (the ship card) are recorded for information
+    (ratings are keyed by them)."""
+    record = policy_record(model, return_scale, steps, game, types, ratings)
     return write_checkpoint(directory, record, policy_files(model, return_scale))
 
 
@@ -236,6 +243,7 @@ def read_policy(directory: str | os.PathLike) -> PolicyRecord:
         filled=tuple(filled),
         return_scale=scale,
         steps=record["steps"],
+        ratings=record.get("ratings", {}),
         raw=record,
     )
 
@@ -281,7 +289,9 @@ OVERRIDABLE = (
     "learner.warmup_start",
     "learner.warmup_steps",
     "learner.policy",
-    "learner.entropy",
+    "learner.entropy_power",
+    "learner.entropy_stick",
+    "learner.entropy_shoot",
     "learner.value",
     "learner.next_state",
     "learner.enemy_action",
@@ -289,6 +299,7 @@ OVERRIDABLE = (
     "learner.shot_trajectory",
     "learner.shot_outcome",
     "learner.micro_batch_rows",
+    "graph_ticks",
     "reward.damage",
     "reward.kill_death",
     "reward.objective_progress",

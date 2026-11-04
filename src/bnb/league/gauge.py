@@ -1,14 +1,15 @@
 """The live gauge (league spec 4): the ratings that steer sampling and the dashboard during
 training, one gauge per mode and map.
 
-The stationary ladder holds fixed ratings (random 0, rung `p` at `1000 p`, the scripted agent
-1000), never refitted. Once per update:
+The stationary ladder holds ratings the fits never move: the scripted agent 1000 and every
+other rung the rating lanes' calibration (`calibrate`, from `bnb.league.lanes`); before the
+lanes have rated a rung it sits at the prior `1000 p` (random 0). Once per update:
   1. the ladder: the checkpoints' ratings, fitted to the accumulated record among
      stationary players with the gauge held (`fit_ladder`);
-  2. the live policy: rated from this update's record alone against the entries' current
-     ratings (`rate_live`);
-  3. the averages: each rated against the per-game live ratings of its last
-     `AVERAGE_WINDOW` games (`rate_against`).
+  2. the live policy: the lanes' rating when given, else rated from this update's training
+     record alone against the entries' current ratings (`rate_live`);
+  3. the averages: the lanes' rating of an average they rate, else each rated against the
+     per-game live ratings of its last `AVERAGE_WINDOW` games (`rate_against`).
 A snapshot taken at an update starts at that update's live rating, and its games of that
 update (the snapshot's weights are the ones that played them) enter the record.
 
@@ -24,15 +25,15 @@ import torch
 
 from .ratings import fit_ladder, rate_against, rate_live, win_probability
 
-GAUGE_TOP = 1000.0  # the scripted agent's fixed rating; rung p sits at GAUGE_TOP * p
+GAUGE_TOP = 1000.0  # the scripted agent's fixed rating; rung p's prior is GAUGE_TOP * p
 LADDER_PRIOR_GAMES = 1.0  # virtual games per checkpoint at the strongest fixed rating
 AVERAGE_WINDOW = 200  # an average's last games that rate it
 KINDS = ("checkpoint", "average", "ladder")
 
 
 def gauge_rating(scripted_probability: float) -> float:
-    """A ladder entry's fixed rating: random (0) at 0, the scripted agent (1) at
-    GAUGE_TOP."""
+    """A ladder entry's prior rating, until the lanes calibrate it: random (0) at 0, the
+    scripted agent (1) at GAUGE_TOP."""
     return GAUGE_TOP * scripted_probability
 
 
@@ -107,6 +108,15 @@ class Gauge:
 
     # ---- the update
 
+    def calibrate(self, ratings: dict[str, tuple[float, float]]) -> None:
+        """The ladder entries' ratings from the lanes, {name: (rating, standard error)};
+        the entries it does not name keep theirs."""
+        for name, (rating, stderr) in ratings.items():
+            rated = self.entries.get(name)
+            if rated is not None and rated.kind == "ladder" and math.isfinite(rating):
+                rated.rating = rated.reported = rating
+                rated.stderr = stderr
+
     def _fit_ladder(self) -> None:
         stationary = [
             name for name, rated in self.entries.items() if rated.kind in ("checkpoint", "ladder")
@@ -139,12 +149,24 @@ class Gauge:
             if rated.kind == "checkpoint":
                 rated.rating = rated.reported = value
 
-    def update(self, record: dict[str, Record]) -> None:
+    def update(
+        self,
+        record: dict[str, Record],
+        live: tuple[float, float] | None = None,
+        rated: dict[str, tuple[float, float]] | None = None,
+    ) -> None:
         """One update's gauge from this update's live games against each opponent entry
-        (`record`, by entry name): the ladder fit, the live rating, the averages' ratings."""
+        (`record`, by entry name): the ladder fit, the live rating, the averages' ratings.
+        live: the lanes' (rating, standard error) of the live policy; rated: the lanes'
+        ratings of averages, by name."""
         self._fit_ladder()
+        rated = rated or {}
         names = [name for name in record if record[name].games > 0]
-        if names:
+        if live is not None:
+            self.live.reported, self.live.stderr = live
+            if math.isfinite(live[0]):
+                self.live.rating = live[0]
+        elif names:
             rating, stderr = rate_live(
                 [self.entries[name].rating for name in names],
                 [record[name].wins for name in names],
@@ -161,17 +183,20 @@ class Gauge:
                 window.extend([(self.live.rating, 1.0)] * round(games.losses))
                 window.extend([(self.live.rating, 0.0)] * round(games.wins))
                 window.extend([(self.live.rating, 0.5)] * round(games.ties))
-            rated = self.entries[name]
-            if not window:
-                rated.rating = rated.reported = self.live.rating
-                rated.stderr = math.inf
+            entry = self.entries[name]
+            if name in rated:
+                rating, stderr = rated[name]
+            elif not window:
+                entry.rating = entry.reported = self.live.rating
+                entry.stderr = math.inf
                 continue
-            opponents = torch.tensor([live for live, _ in window], dtype=torch.float64)
-            score = torch.tensor([result for _, result in window], dtype=torch.float64)
-            rating, stderr = rate_against(opponents, score, 1.0 - score)
-            rated.reported, rated.stderr = rating, stderr
+            else:
+                opponents = torch.tensor([value for value, _ in window], dtype=torch.float64)
+                score = torch.tensor([result for _, result in window], dtype=torch.float64)
+                rating, stderr = rate_against(opponents, score, 1.0 - score)
+            entry.reported, entry.stderr = rating, stderr
             if math.isfinite(rating):
-                rated.rating = rating
+                entry.rating = rating
 
     # ---- what the update reads
 

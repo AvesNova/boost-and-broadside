@@ -119,8 +119,10 @@ def assert_equal(got: dict, want: dict) -> None:
 
 
 def tiny_train_config(model: str = "relational", updates: int = 2, **changes):
-    """A TrainConfig small enough to train on the CPU in seconds, uncompiled."""
+    """A TrainConfig small enough to train on the CPU in seconds, uncompiled: one shard, no
+    lookahead and no rating lanes."""
     from bnb.learn.ppo import LearnerConfig
+    from bnb.runtime.lanes import LaneConfig
     from bnb.runtime.train import TrainConfig
 
     learner = LearnerConfig(epochs=1, minibatches=2, warmup_steps=1000, micro_batch_rows=64)
@@ -129,6 +131,9 @@ def tiny_train_config(model: str = "relational", updates: int = 2, **changes):
         environments=16,
         updates=updates,
         length=16,
+        shards=1,
+        lookahead=0,
+        lanes=LaneConfig(environments=0),
         model=model,
         relational=RelationalConfig(hidden=16),
         learner=learner,
@@ -151,8 +156,14 @@ TRAIN_OPTIONS = (
     "1500",
     "--environments",
     "16",
+    "--shards",
+    "1",
     "--set",
     "length=16",
+    "--set",
+    "lookahead=0",
+    "--set",
+    "lanes.environments=0",
     "--set",
     "compiled=false",
     "--set",

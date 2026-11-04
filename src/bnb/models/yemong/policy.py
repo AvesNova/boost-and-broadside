@@ -3,6 +3,8 @@
 import torch
 import torch.nn.functional as F
 
+from bnb.contracts.action import NUM_POWER, NUM_SHOOT, NUM_STICK
+
 GUMBEL_FLOOR = 1e-20
 
 
@@ -22,3 +24,18 @@ def evaluate(logits: torch.Tensor, joint: torch.Tensor) -> tuple[torch.Tensor, t
     log_probabilities = F.log_softmax(logits, -1)
     log_probability = log_probabilities.gather(-1, joint.long()[..., None])[..., 0]
     return log_probability, -(log_probabilities.exp() * log_probabilities).sum(-1)
+
+
+def factor_entropies(logits: torch.Tensor) -> torch.Tensor:
+    """(..., 3): the joint entropy split by the chain rule in `bnb.contracts.action.to_joint`'s
+    order, H(power), H(stick | power) and H(shoot | power, stick), from (..., NUM_JOINT)
+    logits. They sum to the joint entropy, so equal coefficients on them weigh the joint."""
+    log_joint = F.log_softmax(logits, -1).unflatten(-1, (NUM_POWER, NUM_STICK, NUM_SHOOT))
+    log_pair = torch.logsumexp(log_joint, -1)  # (..., power, stick)
+    log_power = torch.logsumexp(log_pair, -1)  # (..., power)
+
+    def entropy(log_probabilities: torch.Tensor, axes: int) -> torch.Tensor:
+        return -(log_probabilities.exp() * log_probabilities).flatten(-axes).sum(-1)
+
+    joint, pair, power = entropy(log_joint, 3), entropy(log_pair, 2), entropy(log_power, 1)
+    return torch.stack([power, pair - power, joint - pair], -1)

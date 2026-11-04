@@ -276,7 +276,7 @@ def test_a_fork_is_a_new_run_naming_its_parent_that_trains_its_own_updates(monke
         "a",
         *cases.TRAIN_OPTIONS,
         "--set",
-        "learner.entropy=-0.005",
+        "learner.entropy_shoot=-0.005",
         "--updates",
         "2",
         "--name",
@@ -335,12 +335,14 @@ def test_a_warm_start_from_a_policy_file_starts_a_new_run(monkeypatch, tmp_path)
 
 
 @pytest.mark.parametrize(
-    "setting, entropy", [((), WARM_START_ENTROPY), (("--set", "learner.entropy=-0.005"), -0.005)]
+    "setting, shoot",
+    [((), WARM_START_ENTROPY), (("--set", "learner.entropy_shoot=-0.005"), -0.005)],
 )
 def test_a_warm_start_takes_its_own_entropy_coefficient(
-    monkeypatch, tmp_path, capsys, setting, entropy
+    monkeypatch, tmp_path, capsys, setting, shoot
 ):
-    """The BC -> RL hand-off uses WARM_START_ENTROPY unless --set chooses one."""
+    """The BC -> RL hand-off uses WARM_START_ENTROPY on every factor --set does not
+    choose."""
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(0)
         trainer = Trainer(cases.tiny_train_config(), cases.CPU)
@@ -358,7 +360,9 @@ def test_a_warm_start_takes_its_own_entropy_coefficient(
         *setting,
         "--print-config",
     )
-    assert json.loads(capsys.readouterr().out)["learner"]["entropy"] == entropy
+    learner = json.loads(capsys.readouterr().out)["learner"]
+    assert learner["entropy_power"] == learner["entropy_stick"] == WARM_START_ENTROPY
+    assert learner["entropy_shoot"] == shoot
 
 
 def test_a_failure_marks_the_run_failed_with_the_message(monkeypatch, tmp_path):

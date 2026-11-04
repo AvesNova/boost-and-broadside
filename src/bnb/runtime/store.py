@@ -1,10 +1,13 @@
 """Where an update's segments live (learner spec 2): pinned host memory, or the device.
 
-Two kinds of leaves, each a pytree per name:
+Three kinds of leaves, each a pytree per name:
   per tick     (L, V, ...), V = shards x R views, written block by block from the
                rollout's GPU staging ring;
   per view     (V, ...), written once per segment (the initial carry, the last truth), or
-               by the learner for a range of views (its labels, `write_views`).
+               by the learner for a range of views (its labels, `write_views`);
+  lookahead    (n, R, ...), the first n ticks of a name after the update's last shard (the
+               lookahead's), each name with its own n: what the learner's targets read
+               there and nothing more.
 
 Writes go out on a copy stream, asynchronously: the rollout records an event after each
 block and the copy waits on it; before the ring slots (or a segment buffer) are written
@@ -30,10 +33,11 @@ class SegmentStore:
     """ticks: {name: pytree of tensors shaped (R, ...)}, an example of one tick's record;
     segments: {name: pytree (R, ...)}, an example of a per-segment record. Allocates
     `shards` segments of `length` ticks in pinned host memory (`host=True`, on a CUDA
-    device) or on `device`."""
+    device) or on `device`. lookahead: {name of `ticks`: n}, the first n ticks of each name
+    the lookahead keeps."""
 
     def __init__(self, ticks: dict, segments: dict, shards: int, length: int,
-                 device: torch.device, host: bool) -> None:
+                 device: torch.device, host: bool, lookahead: dict[str, int] | None = None) -> None:
         self.device, self.shards, self.length = device, shards, length
         self.shard_views = _leaves(ticks)[0].shape[0]  # R
         self.views = shards * self.shard_views  # V, every shard's
@@ -52,6 +56,11 @@ class SegmentStore:
             self.data[name] = [allocate(leaf, leading) for leaf in leaves]
         self.per_tick = tuple(ticks)
         self.names = tuple(self.data)
+        self.lookahead_ticks = dict(lookahead or {})
+        self.lookahead_data = {
+            name: [allocate(leaf, (count, self.shard_views)) for leaf in _leaves(ticks[name])]
+            for name, count in self.lookahead_ticks.items()
+        }
         self.copy_stream = torch.cuda.Stream(device) if device.type == "cuda" else None
         self._written: torch.cuda.Event | None = None  # the last write, on the copy stream
         self._staging: dict = {}
@@ -85,6 +94,31 @@ class SegmentStore:
                 for leaf in _leaves(tree):
                     leaf.record_stream(self.copy_stream)
         self._copy(source, views, None)
+
+    def write_lookahead(self, source: dict, start: int) -> torch.cuda.Event | None:
+        """Copy the lookahead's names of {name: pytree (n, R, ...)}, ticks start .. start + n,
+        into the lookahead's leaves, the ticks each keeps; asynchronous as `write`."""
+        kept = {}
+        for name, count in self.lookahead_ticks.items():
+            ticks = min(count - start, _leaves(source[name])[0].shape[0])
+            if ticks > 0:
+                kept[name] = [leaf[:ticks] for leaf in _leaves(source[name])]
+        ready = None
+        if self.copy_stream is not None:
+            ready = torch.cuda.Event()
+            ready.record()
+        with self._copy_context():
+            if ready is not None:
+                self.copy_stream.wait_event(ready)
+            for name, leaves in kept.items():
+                for stored, given in zip(self.lookahead_data[name], leaves, strict=True):
+                    stored[start:start + given.shape[0]].copy_(given, non_blocking=True)
+            if self.copy_stream is None:
+                return None
+            written = torch.cuda.Event()
+            written.record(self.copy_stream)
+        self._written = written
+        return written
 
     def _copy(self, source: dict, views: slice, start: int | None) -> torch.cuda.Event | None:
         ready = None
@@ -134,6 +168,49 @@ class SegmentStore:
         return {name: _pytree.tree_unflatten(
             [leaf[:, views].to(self.device, non_blocking=True) for leaf in self.data[name]],
             self.specs[name]) for name in names}
+
+    def lookahead(self, names: tuple[str, ...]) -> dict:
+        """Copies on the device of the lookahead's leaves `names`, (n, R, ...) each."""
+        if self.pinned:
+            self.synchronize()
+        else:
+            self._written_before_compute()
+        return {name: _pytree.tree_unflatten(
+            [leaf.to(self.device, non_blocking=True) for leaf in self.lookahead_data[name]],
+            self.specs[name]) for name in names}
+
+    def following(self, names: tuple[str, ...], views: torch.Tensor, ticks: int):
+        """The first `ticks` ticks after each view's segment, on the device: ({name: pytree
+        (ticks, n, ...)}, (n,) bool, whether they were played and kept). The segment after a
+        view of shard s < shards - 1 is the same row's in shard s + 1; after the last shard it
+        is the lookahead (which must keep `ticks` ticks of each name, or the views have none).
+        views: int64 on the host. Ticks that were not kept are zeros."""
+        if self.pinned:
+            self.synchronize()
+        else:
+            self._written_before_compute()
+        rows, last = self.shard_views, (self.shards - 1) * self.shard_views
+        where = self.data[names[0]][0].device
+        views = views.to(where)
+        inside = views < last  # a later shard follows in the store
+        kept = all(self.lookahead_ticks.get(name, 0) >= ticks for name in names)
+        valid = inside | kept
+        gathered = {}
+        for name in names:
+            leaves = []
+            for position, leaf in enumerate(self.data[name]):
+                stored = leaf[:ticks].index_select(1, torch.where(inside, views + rows, 0))
+                if kept and not bool(inside.all()):
+                    tail = self.lookahead_data[name][position][:ticks].index_select(
+                        1, torch.where(inside, 0, views - last))
+                    shape = (1, -1) + (1,) * (stored.dim() - 2)
+                    stored = torch.where(inside.reshape(shape), stored, tail)
+                elif not bool(valid.all()):
+                    shape = (1, -1) + (1,) * (stored.dim() - 2)
+                    stored = torch.where(inside.reshape(shape), stored, torch.zeros_like(stored))
+                leaves.append(stored.to(self.device, non_blocking=True))
+            gathered[name] = _pytree.tree_unflatten(leaves, self.specs[name])
+        return gathered, valid.to(self.device, non_blocking=True)
 
     def _gather(self, names, views: torch.Tensor, out: dict | None) -> dict:
         gathered = {}

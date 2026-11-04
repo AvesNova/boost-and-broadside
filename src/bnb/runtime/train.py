@@ -30,8 +30,9 @@ from bnb.learn.rewards import RewardConfig
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
 from bnb.models.yemong.model import Yemong, YemongBuild, YemongConfig, yemong_build
 
-from . import analytics, metrics
+from . import analytics, lanes, metrics
 from .evaluate import first_results, shares
+from .lanes import LANES, LIVE, LaneConfig, LaneSeat
 from .lineup import Lineup
 from .metrics import Collector
 from .opponents import OPPONENTS, LeagueConfig, OpponentSlots, stream_key
@@ -84,8 +85,15 @@ class TrainConfig:
     """model: "yemong" or "relational" (the toy learner), built with the settings of the
     same name (`yemong`, `relational`); their `bfloat16_matmuls` stays False, as `precision`
     sets it. ship_card: the ship card's values by field, one per ship type, every field
-    given (`bnb.game.api.default_card`). length: ticks per segment; shards: segments per
-    update. precision: "bfloat16" (the
+    given (`bnb.game.api.default_card`). environments: the training environments; length:
+    ticks per segment; shards: consecutive segments per update (v1's batch, twice over:
+    1,024 x 8 x 128); lookahead: ticks played after the last shard on every environment,
+    never trained on, for the targets that need the future (the returns' tail, the shot
+    labels); the next update continues from its end. graph_ticks: the most ticks in one
+    captured rollout chunk; the device holds two chunks of the learner's records, streamed
+    to the store as the next one plays, so it bounds the rollout's memory whatever the
+    segment's length (memory and speed only). lanes: the rating lanes
+    (`bnb.runtime.lanes`), environments beyond the training ones. precision: "bfloat16" (the
     model's matmuls under autocast; the default), "float32" or "tf32" (a process-wide
     setting, which the entry point applies with `bnb.cli.set_precision`). reward: the reward
     levels' weights. host_store: stream the segments through pinned host memory (on a GPU)
@@ -99,7 +107,10 @@ class TrainConfig:
     environments: int = 1024
     updates: int = 100
     length: int = 128
-    shards: int = 1
+    shards: int = 8
+    lookahead: int = 128
+    graph_ticks: int = 8
+    lanes: LaneConfig = LaneConfig()
     model: str = "yemong"
     yemong: YemongConfig = YemongConfig()
     relational: RelationalConfig = RelationalConfig()
@@ -123,6 +134,8 @@ class TrainConfig:
             raise ValueError(f"model {self.model!r} is not one of {MODELS}")
         if self.precision not in PRECISIONS:
             raise ValueError(f"precision {self.precision!r} is not one of {PRECISIONS}")
+        if self.shards < 1 or self.lookahead < 0:
+            raise ValueError(f"{self.shards} shards and a lookahead of {self.lookahead} ticks")
         for name in MODELS:
             if getattr(self, name).bfloat16_matmuls:
                 raise ValueError(
@@ -222,11 +235,18 @@ class Trainer:
         # The scripted agent's characteristics, when it plays, teaches or is the ladder.
         self.characteristics = (
             characteristics(types, api.rules_of(game))
-            if cloning or SCRIPTED in seated or OPPONENTS in seated
+            if cloning or SCRIPTED in seated or OPPONENTS in seated or config.lanes.environments
             else None
         )
-        lineup = Lineup(config.pools, config.environments, device)
-        opponent_pools = [config.pools[index] for index in lineup.pool_of.get(OPPONENTS, [])]
+        # the training pools and the rating lanes' (`bnb.runtime.lanes`), in one batch
+        self.pools, self.lanes, self.batch_environments = lanes.lane_pools(
+            config.pools,
+            lanes.mode_games(config.pools, game, mode_key),
+            config.environments,
+            config.lanes,
+        )
+        lineup = Lineup(self.pools, self.batch_environments, device)
+        opponent_pools = [self.pools[index] for index in lineup.pool_of.get(OPPONENTS, [])]
         # the league's gauges: one per mode of the opponents' pools, in order
         self.modes = tuple(dict.fromkeys(mode_key(pool, game) for pool in opponent_pools))
         self.mode_rows = tuple(
@@ -254,17 +274,30 @@ class Trainer:
                 else Scripted(self.characteristics)
             ),
         }
+        if self.lanes:
+            first_lane = len(config.pools)  # the lane pools follow the training pools
+            builders[LANES] = lambda: LaneSeat(
+                model_controller(copy.deepcopy(self.model).requires_grad_(False), game),
+                self.lanes,
+                lineup.pool_of[LANES] - first_lane,
+                lineup.role[LANES],
+                self.characteristics,
+            )
+            seated.add(LANES)
         self.controllers = {
             name: build() for name, build in builders.items() if name in seated or name == LEARNER
         }
         self.opponents: OpponentSlots | None = self.controllers.get(OPPONENTS)
+        self.lane_seat: LaneSeat | None = self.controllers.get(LANES)
+        # the last update's lane games, {Lane: (wins, ties, losses)} from the first player's side
+        self.lane_record: dict = {}
         self.rollout = Rollout(
             game,
             types,
-            config.pools,
+            self.pools,
             self.controllers,
             LEARNER,
-            config.environments,
+            self.batch_environments,
             config.length,
             device,
             compiled=config.compiled,
@@ -272,6 +305,8 @@ class Trainer:
             shards=config.shards,
             host_store=config.host_store,
             extra_reads=Scripted.reads if cloning else (),
+            lookahead=config.lookahead,
+            graph_ticks=config.graph_ticks,
         )
         lineup = self.rollout.lineup
         self.pool_names = tuple(pool.name for pool in lineup.pools)
@@ -291,7 +326,7 @@ class Trainer:
                 device,
                 teacher,
                 config.teacher,
-                self.pool_names,
+                self.pool_names[: len(config.pools)],  # the learner plays no lane
                 self.learner_pool.repeat(config.shards),
                 stage=stage,
                 seed=config.seed,
@@ -334,15 +369,24 @@ class Trainer:
         return self.config.environments * self.config.length * self.config.shards
 
     def collect(self):
-        """Every shard of one update and its bootstrap (no learning): (the store, the
-        bootstraps). The league's hooks run after each shard."""
-        bootstraps = []
+        """Every shard of one update, then the lookahead, and the bootstrap after it (no
+        learning): (the store, the bootstrap). The league's hooks run after each shard and
+        after the lookahead (as shard `shards`); the lanes' games are taken into
+        `lane_record`."""
+        if self.lane_seat is not None:
+            self.lane_seat.load(LIVE, self.model.state_dict())
         for shard in range(self.config.shards):
             self.rollout.run(shard)
-            bootstraps.append(self.rollout.bootstrap())
             if self.league is not None:
                 self.league.after_shard(self, shard)
-        return self.rollout.store, bootstraps
+        if self.config.lookahead:
+            self.rollout.run_lookahead()
+            if self.league is not None:
+                self.league.after_shard(self, self.config.shards)
+        bootstrap = self.rollout.bootstrap()
+        if self.lane_seat is not None:
+            self.lane_record = lanes.results(self.rollout.take_tally(LANES), self.lanes)
+        return self.rollout.store, bootstrap
 
     @torch.no_grad()
     def reset_opponents(self) -> None:
@@ -357,7 +401,7 @@ class Trainer:
         back in one transfer, and its two phases' wall-clock times
         (`train/time/rollout_seconds`, `train/time/learner_seconds`)."""
         started = time.perf_counter()
-        store, bootstraps = self.collect()
+        store, bootstrap = self.collect()
         collector = Collector()
         collector.add(self.analytics.episodes(self.rollout.take_episodes()))
         game_sums, outcome_tables = self.rollout.take_games()
@@ -368,7 +412,7 @@ class Trainer:
             self.league.collected(self)
         collected = time.perf_counter()
         cadence = self.ppo.diagnostics and metrics.due(self.updates_done + 1)
-        collector.set(self.ppo.update(store, bootstraps, self.steps_per_update, cadence=cadence))
+        collector.set(self.ppo.update(store, bootstrap, self.steps_per_update, cadence=cadence))
         self.updates_done += 1
         collector.set(
             {
@@ -385,6 +429,7 @@ class Trainer:
                 calibration = metrics.read_back(outcome_tables["calibration"].flatten())
                 rows = [calibration[i : i + 3] for i in range(0, len(calibration), 3)]
                 row["outcome/reliability"] = analytics.reliability_table(rows).as_json()
+        row.update(lanes.series(self.lane_record))
         if self.league is not None:
             row.update(self.league.updated(self))
         row["train/time/rollout_seconds"] = collected - started

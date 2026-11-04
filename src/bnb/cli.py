@@ -31,7 +31,7 @@ class Train:
     rollout or recomputed (by unroll before the first epoch).
     updates: the updates to train (a resume continues to the run's total).
     seed: the run's seed (TrainConfig.seed: the process and the learner's streams).
-    set: TrainConfig fields by dotted path, such as learner.entropy=-0.01 or
+    set: TrainConfig fields by dotted path, such as learner.entropy_shoot=-0.01 or
     yemong.width=256 (JSON values); fields inside tuples (such as pools) cannot be set.
     resume: continue the run named (PPO or BC), from its newest checkpoint or the one at
     --at, with every setting from the checkpoint; only the budget (--updates, or
@@ -71,7 +71,7 @@ class Train:
     arena_radius: float = 2600.0
     environments: int = 1024
     updates: int = 100
-    shards: int = 1
+    shards: int = 8
     model: str = "yemong"
     precision: str = "bfloat16"
     old_log_probabilities: str = "rollout"
@@ -91,7 +91,7 @@ class Train:
     objective: str = "ppo"
     teacher_temperature: float = 1.0
     teacher_floor: float = 0.01
-    bc_budget_steps: int = 500_000_000
+    bc_budget_steps: int = 50_000_000
     calibrate_entropy: float | None = None
     calibration_segments: int = 4
     wandb: bool = False
@@ -271,6 +271,7 @@ def _requested(options: Train):
     from bnb.learn import bc
     from bnb.learn.ppo import LearnerConfig
     from bnb.runtime import cloning
+    from bnb.runtime.lanes import LaneConfig
     from bnb.runtime.train import LINEUP, TrainConfig, mixed
 
     cloned = options.objective == "bc"
@@ -305,6 +306,7 @@ def _requested(options: Train):
             environments=options.environments,
             updates=options.updates,
             shards=options.shards,
+            lanes=cloning.LANES if cloned else LaneConfig(),
             model=options.model,
             precision=options.precision,
             learner=learner,
@@ -351,13 +353,15 @@ def with_settings(config, settings):
 
 
 def warm_start_entropy(config, settings: tuple[str, ...]):
-    """`config` with the warm start's entropy coefficient (`WARM_START_ENTROPY`), unless
-    `--set learner.entropy=...` chose one."""
-    from bnb.learn.ppo import WARM_START_ENTROPY
+    """`config` with the warm start's entropy coefficient (`WARM_START_ENTROPY`) on every
+    action factor that `--set learner.entropy_<factor>=...` did not choose."""
+    from bnb.learn.ppo import ENTROPY_TERMS, WARM_START_ENTROPY
 
-    if any(path == "learner.entropy" for path, _ in map(parse_setting, settings)):
-        return config
-    learner = dataclasses.replace(config.learner, entropy=WARM_START_ENTROPY)
+    chosen = {path for path, _ in map(parse_setting, settings)}
+    learner = dataclasses.replace(
+        config.learner,
+        **{term: WARM_START_ENTROPY for term in ENTROPY_TERMS if f"learner.{term}" not in chosen},
+    )
     return dataclasses.replace(config, learner=learner)
 
 
@@ -501,7 +505,7 @@ def train(options: Train, given_options: set[str]) -> None:
     def log(row: dict) -> None:
         totals = {
             pool: sum(row.get(f"reward/rate/{level}/{pool}", 0.0) for level in REWARD_LEVELS)
-            for pool in trainer.pool_names
+            for pool in trainer.pool_names[: len(trainer.config.pools)]
         }
         rewards = " ".join(f"{pool} {total:+.3f}" for pool, total in totals.items())
         print(
@@ -515,11 +519,17 @@ def train(options: Train, given_options: set[str]) -> None:
             flush=True,
         )
 
+    state = checkpoint.league_state(source) if options.resume else None
     if config.objective == "ppo" and trainer.opponents is not None:
         from bnb.league.league import League
 
-        state = checkpoint.league_state(source) if options.resume else None
-        League(trainer, run.directory / "league", run, state)
+        # a warm start's live rating starts from its parent's (the clone's lane ratings)
+        ratings = checkpoint.read_policy(source).ratings if options.init_from else None
+        League(trainer, run.directory / "league", run, state, ratings)
+    elif trainer.lanes:
+        from bnb.league.lanes import LaneHooks
+
+        LaneHooks(trainer, state)
 
     from bnb.runs.recording import Recorder
     from bnb.runs.sinks import Sinks
@@ -554,10 +564,9 @@ def log_cloning(row: dict) -> None:
         for name, value in row.items()
         if name.startswith("bc/score/")
     )
-    # the score stop's window against the scripted agent, once full: its score and bound
+    # the score stop's window of lane games against the scripted agent, once full
     window = (
-        f"  window {row['bc/stop/window_score']:.3f} "
-        f"(bound {row['bc/stop/window_lower_bound']:.3f})"
+        f"  window {row['bc/stop/window_score']:.3f} (+- {row['bc/stop/window_stderr']:.3f})"
         if "bc/stop/window_score" in row
         else ""
     )

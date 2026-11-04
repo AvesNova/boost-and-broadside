@@ -21,9 +21,10 @@ from bnb.contracts import Action, Obs, Outputs, Trajectory
 from bnb.contracts.action import NUM_JOINT, NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.contracts.series import Mean
 from bnb.controllers.scripted import Scripted, marginals, sample, uniform_actions
+from bnb.models.yemong import policy
 
 from . import losses
-from .ppo import Learner, LearnerConfig
+from .ppo import Learner, LearnerConfig, factor_sums
 
 # The student's agreement with the labels' likeliest action: per factor, and jointly.
 AGREEMENTS = ("power", "stick", "shoot", "joint")
@@ -39,7 +40,13 @@ def config(**overrides) -> LearnerConfig:
     """BC's learner settings (scripted spec B1): the BC coefficient 0.025 in nats per token
     in place of the surrogate's, no entropy term, no KL early stop; the rest section 6's."""
     return dataclasses.replace(
-        LearnerConfig(), policy=0.025, entropy=0.0, target_kl=None, **overrides
+        LearnerConfig(),
+        policy=0.025,
+        entropy_power=0.0,
+        entropy_stick=0.0,
+        entropy_shoot=0.0,
+        target_kl=None,
+        **overrides,
     )
 
 
@@ -162,10 +169,10 @@ class BehaviourCloning(Learner):
             model, config, rules, types, outcome_weight, device, stage, seed, diagnostics
         )
 
-    def prepare(self, segments, bootstraps: list) -> dict:
+    def prepare(self, segments, bootstrap) -> dict:
         """The Learner's prepare, with each view's pool one-hot (1, V, pools) added to derived for
         the per-pool metrics."""
-        prepared = super().prepare(segments, bootstraps)
+        prepared = super().prepare(segments, bootstrap)
         prepared["derived"]["pool"] = self.pool_one_hot  # (1, V, pools)
         return prepared
 
@@ -177,7 +184,8 @@ class BehaviourCloning(Learner):
         denominator: dict,
         scale: torch.Tensor,
     ):
-        """(the cross-entropy against the labels, the student's mean entropy, per-pool sums
+        """(the cross-entropy against the labels, the student's mean entropy's factor parts
+        (3,), per-pool sums
         of KL(labels || student), the labels' and the student's entropy and the tokens),
         over own ships alive."""
         own_alive = trajectory.alive[..., : trajectory.log_probability.shape[-1]]
@@ -218,7 +226,7 @@ class BehaviourCloning(Learner):
         statistics = (per_view @ derived["pool"][0]).flatten()  # (SUMS x pools,)
         return (
             losses.masked_sum(cross, own_alive) / denominator["policy"],
-            losses.masked_sum(student_entropy, own_alive) / denominator["policy"],
+            factor_sums(policy.factor_entropies(logits), own_alive) / denominator["policy"],
             statistics,
         )
 
@@ -283,20 +291,20 @@ def calibrate(
 
 @dataclasses.dataclass(frozen=True)
 class StopConfig:
-    """When BC stops (scripted spec B4), whichever comes first: the live score against the
-    teacher over the last score_window finished games, less score_errors of its standard
-    errors, reaches score_target; the KL's EMA (kl_decay per update) improved by less than
+    """When BC stops (scripted spec B4), whichever comes first: the live policy's score
+    against the raw scripted agent in the rating lanes, over the last score_window finished
+    games, reaches score_target; the KL's EMA (kl_decay per update) improved by less than
     plateau_fraction over the last plateau_steps environment steps; or budget_steps
-    environment steps."""
+    environment steps (a run stopped by its budget resumes with a larger one)."""
 
-    # v1 stopped BC at about 0.40 against its scripted agent and RL trained from it (author)
-    score_target: float = 0.40
+    # parity with the scripted agent (author, 2026-11-04), a plain score
+    score_target: float = 0.5
     score_window: int = 1000
-    score_errors: float = 2.0
     plateau_fraction: float = 0.01
     plateau_steps: int = 20_000_000
     kl_decay: float = 0.9
-    budget_steps: int = 500_000_000
+    # v1's time to parity (author, 2026-11-04)
+    budget_steps: int = 50_000_000
 
     def __post_init__(self) -> None:
         if self.score_window < 2:
@@ -309,8 +317,7 @@ class StopRule:
     The score window keeps per-update totals (games, points, squared points; a game scores
     1, 0.5 or 0): it drops the oldest updates whole while the rest still fill it, then
     counts the oldest kept update by the exact share of its games the window still needs,
-    so trimming favours no result. The score stop reads the window's lower confidence
-    bound, so a window that is lucky by chance does not stop BC.
+    so trimming favours no result. The score stop reads the window's score.
 
     Its state (`state`: the window, the KL's EMA and its history) is plain JSON, kept in
     the training checkpoint so that a resume continues the same window."""
@@ -359,7 +366,7 @@ class StopRule:
     @property
     def standard_error(self) -> float | None:
         """The window score's standard error, from the spread of its own per-game scores
-        (the sample variance over score_window - 1)."""
+        (the sample variance over score_window - 1); reported beside the score."""
         totals = self._window()
         if totals is None:
             return None
@@ -368,17 +375,11 @@ class StopRule:
         variance = max(squares - points * points / window, 0.0) / (window - 1)
         return math.sqrt(variance / window)
 
-    @property
-    def lower_bound(self) -> float | None:
-        """The window score less score_errors standard errors: what the score stop reads."""
-        score = self.score
-        return None if score is None else score - self.config.score_errors * self.standard_error
-
     def observe(
         self, environment_steps: int, wins: int, draws: int, losses: int, kl: float
     ) -> str | None:
-        """environment_steps: the total so far; wins, draws, losses: games finished against the
-        teacher this update; kl: this update's BC KL."""
+        """environment_steps: the total so far; wins, draws, losses: the live policy's games
+        finished against the raw scripted agent this update; kl: this update's BC KL."""
         config = self.config
         games = wins + draws + losses
         if games > 0:
@@ -394,7 +395,7 @@ class StopRule:
             kl if self.kl_average is None else decay * self.kl_average + (1.0 - decay) * kl
         )
         self.history.append((environment_steps, self.kl_average))
-        if self.lower_bound is not None and self.lower_bound >= config.score_target:
+        if self.score is not None and self.score >= config.score_target:
             return "score"
         cutoff = environment_steps - config.plateau_steps
         past = [average for steps, average in self.history if steps <= cutoff]

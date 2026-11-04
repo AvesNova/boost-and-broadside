@@ -89,11 +89,18 @@ class Analytics:
         pool_of_slice = list(range(len(pools))) + [
             pools.index(name.rsplit("/", 1)[0]) for name in names[len(pools) :]
         ]
-        parts = [pool_parts(name, mode) for name in pools]
+        # the slices with learner views (a rating lane's pool has none): the views' series
+        self.viewed = tuple(bool(column.any()) for column in self.member.unbind(1))
+        parts = [
+            pool_parts(name, mode)
+            for name, viewed in zip(pools, self.viewed[: len(pools)], strict=True)
+            if viewed
+        ]
         self.modes = tuple(dict.fromkeys(game for game, _ in parts))
         self.opponents = tuple(dict.fromkeys(opponent for _, opponent in parts))
         device = self.member.device
-        pool_parts_of_slice = [parts[index] for index in pool_of_slice]
+        all_parts = [pool_parts(name, mode) for name in pools]
+        pool_parts_of_slice = [all_parts[index] for index in pool_of_slice]
         whole = [float(index < len(pools)) for index in range(len(names))]  # the pools alone
         self.mode_of_pool = torch.tensor(
             [
@@ -255,6 +262,8 @@ class Analytics:
         steps = per_pool(torch.ones_like(done, dtype=torch.float32))  # view-steps
         rates = (reward.mean(2).sum(0).transpose(0, 1) @ member).unbind(-1)  # (levels,) per pool
         for index, pool in enumerate(self.slices):
+            if not self.viewed[index]:
+                continue
             for name in ("wins", "draws", "losses"):
                 out[f"episode/{name}/{pool}"] = columns[name][index].int()
             for level, rate in zip(REWARD_LEVELS, rates[index].unbind(), strict=True):

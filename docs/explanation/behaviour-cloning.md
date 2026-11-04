@@ -58,8 +58,11 @@ training mix (`bnb.runtime.cloning.teacher_distributions`).
 ## Rollouts
 
 `bnb.runtime.cloning.LINEUP`: half self-play, half against the scripted agent playing the
-labels' distribution, crossed with the training mix in a mixed batch. The live scores per
-opponent come from the training games themselves; there are no evaluation rollouts.
+labels' distribution, crossed with the training mix in a mixed batch. Beside them the
+rating lanes (`bnb.runtime.cloning.LANES`) play the live policy against the raw scripted
+agent in every mode, in the same rollout ([The training
+loop](training-loop.md#the-rating-lanes)): the score stop and the live rating read those
+games, not the softened teacher's. There are no separate evaluation rollouts.
 
 ## When it stops
 
@@ -67,32 +70,35 @@ opponent come from the training games themselves; there are no evaluation rollou
 first rule to fire (`bnb.learn.bc.StopConfig`, the run's `TrainConfig.stop`). Its state is
 part of the training checkpoint, so a resumed run continues the same window:
 
-- **score:** the score against the scripted agent (wins plus half the draws) over the last
-  1000 finished training games, less two of its standard errors, reaches 0.40, even if
-  the KL is still falling. The standard error is the window's own: the sample deviation of
-  its per-game scores (1, 0.5 or 0) over the square root of 1000. The rule is checked
-  every update, so the bound keeps a window that is high by chance from stopping BC. The
-  window keeps each update's games, points and squared points, drops the oldest updates
-  whole and counts the oldest one it keeps by the share of its games the window needs, so
-  trimming favours no result;
+- **score:** the live policy's score in its lanes against the raw scripted agent (wins
+  plus half the draws) over the last 1000 finished lane games reaches parity, 0.5, even if
+  the KL is still falling. It is the plain score; its standard error (the sample deviation
+  of the per-game scores over the square root of 1000) is reported beside it
+  (`bc/stop/window_stderr`{.plain}). The window keeps each update's games, points and
+  squared points, drops the oldest updates whole and counts the oldest one it keeps by the
+  share of its games the window needs, so trimming favours no result;
 - **KL plateau:** the BC KL, `KL(labels ‖ student) = CE − H(labels)` per token, as an
   exponential average over updates, improved by less than 1% over the last 20M
   environment steps;
-- **budget:** 500M environment steps.
+- **budget:** 50M environment steps, v1's time to parity. A run stopped by its budget ends
+  with a checkpoint and its clone; `bnb train --resume RUN --bc-budget-steps N` with a
+  larger budget continues it.
 
 ## Metrics
 
 Each update reports the BC KL, the labels' and the student's entropy, overall and per
 pool (`bc/kl`{.plain}, `bc/kl_by_pool/<pool>`{.plain} and so on); the student's agreement
 with the labels' likeliest action per factor (`bc/agreement/<factor>`{.plain}); the
-explained variance per level; the auxiliary losses; and the live score per opponent kind
-(`bc/score/<kind>`{.plain}).
+explained variance per level; the auxiliary losses; the training games' score per
+opponent kind (`bc/score/<kind>`{.plain}); and the lanes' games, scores and live rating
+(`lanes/score/<mode>/live_vs_scripted`{.plain}, `rating/live/<mode>`{.plain}).
 
 ## The hand-off
 
 `bnb train --objective bc` saves the clone, when it stops, as the run's policy file
 (`bnb.runs.session.save_clone`, through `bnb.runs.checkpoint.save_policy`): the weights, the
-return scale's state and the step counts. `bnb train --init-from` starts reinforcement
+return scale's state, the step counts and its lane rating per mode, where the RL run's live
+rating starts. `bnb train --init-from` starts reinforcement
 learning from it (`bnb.runs.checkpoint.warm_start`): the weights and return scale, a fresh
 optimizer, fresh step counts and no cloning term ([Runs and checkpoints](runs.md)). In
 Python, `bnb.runtime.cloning.warm_start` does the same in memory, copying into a trainer in
@@ -106,10 +112,11 @@ Measured on 2026-11-02 on the development laptop (RTX 4070 Laptop GPU):
   of the scripted agent's own games of the 5v5 training mix (256 environments, four
   segments of 128 ticks). Its distribution puts weight on 2.4 joint actions on average,
   so the temperature alone reaches at most 0.75 nats; a floor of 0.1 gives 1.03 to 1.34.
-- **The toy test** (`tests/sections/test_bc_toy.py`, at the default floor 0.01): the
-  relational model cloned at 2v2 team deathmatch, 256 environments, stopped by the score
-  rule after 65.6M environment steps (13 minutes), with a window score of 0.432 and a
-  bound of 0.401. Over 512 fresh games it scores 0.418 against its teacher (the toy
+- **The toy test** (`tests/sections/test_bc_toy.py`, at the default floor 0.01; measured
+  before the stop read the lanes, with the then score rule: 0.40 less two standard errors,
+  against the teacher): the relational model cloned at 2v2 team deathmatch, 256
+  environments, stopped by the score rule after 65.6M environment steps (13 minutes), with
+  a window score of 0.432 and a bound of 0.401. Over 512 fresh games it scores 0.418 against its teacher (the toy
   test's bar is 0.356), and over 4096 games 0.425; against the chaser it scores 0.994,
   the teacher 1.000.
 - **Throughput:** Yemong on the 5v5 training mix at 1024 environments, 1923 environment

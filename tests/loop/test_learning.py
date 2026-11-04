@@ -9,12 +9,16 @@ import pytest
 import torch
 
 from bnb.contracts import GameConfig, Pool
+from bnb.runtime.lanes import LaneConfig
 from bnb.runtime.train import LEARNER, TrainConfig, Trainer, win_rate
 
 pytestmark = [pytest.mark.gpu, pytest.mark.slow]
 TOY = TrainConfig(
     game=GameConfig(2, 4, 1200.0),
     environments=256,
+    shards=1,
+    lookahead=0,
+    lanes=LaneConfig(environments=0),
     model="relational",
     pools=(Pool("chaser", 1.0, (LEARNER, "chaser")),),
 )

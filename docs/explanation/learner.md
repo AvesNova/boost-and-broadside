@@ -33,7 +33,10 @@ has the policy and the critic only.
 ## Where the segments live
 
 An update consumes `shards` segments of `length` ticks each, collected one after another,
-each continuing from the carry the last one ended with. The rollout records the learner's
+each continuing from the carry the last one ended with, and the lookahead after them: the
+ticks the rollout plays after the last shard, never trained on, of which the store keeps the
+returns' records (rewards, values, outcome probabilities, `done`, results) and, for a
+bullet's flight, the shot capture and the observation. The rollout records the learner's
 views into a staging ring of two graph blocks on the device, and after each block copies the
 block into a `bnb.runtime.store.SegmentStore` on a copy stream. The store keeps the segments
 in pinned host memory (`host_store`, the default) or on the device. The update stages
@@ -63,13 +66,19 @@ A segment holds, per view and tick:
 - the shot capture (`bnb.learn.shots.ShotCapture`).
 
 Per segment it holds the learner's carry at the start and the privileged rows of the
-observation after the last tick. After a segment's last tick, `bnb.runtime.rollout.Rollout.bootstrap`
-evaluates the learner's controller on the next observation without acting, for the values
-and outcome probabilities the returns bootstrap from.
+observation after the last tick. After the lookahead's last tick (the last shard's, without
+a lookahead), `bnb.runtime.rollout.Rollout.bootstrap` evaluates the learner's controller on
+the next observation without acting, for the values and outcome probabilities the returns
+bootstrap from.
 
 ## Returns
 
-For each shard, on the device:
+Over the whole update's ticks, on the device: the shards in order, each row's segments one
+after another, then the lookahead (`bnb.learn.ppo.Learner.chained_returns`). A shard's end
+is not a cut: its last ticks read the next shard's rewards, and only the lookahead's end
+bootstraps, so every trained tick has the lookahead's ticks, at least, after it. N shards of
+L ticks give the returns of one segment of N L ticks
+(`tests/sections/test_lanes.py::test_chained_returns_over_shards_equal_one_segments`).
 
 - **Values in reward units.** A per-ship level's value is its bin expectation; the outcome
   level's is `P(win) - P(loss)` times the outcome's reward weight.
@@ -97,7 +106,7 @@ The coefficients are the fields of `bnb.learn.ppo.LearnerConfig` named after the
 | Term | Tokens | Definition |
 |---|---|---|
 | `policy` | own ships alive at `t` | the clipped surrogate on the scaled advantage |
-| `entropy` | the same | the joint action distribution's entropy (a negative coefficient rewards it) |
+| `entropy_power`, `entropy_stick`, `entropy_shoot` | the same | the joint action distribution's entropy by the chain rule in the joint's order: H(power), H(stick given power), H(shoot given both). They sum to the joint entropy, so equal coefficients weigh the joint as one coefficient would; a negative coefficient rewards it |
 | `value` | own ships alive or waiting to respawn; each view-step for the outcome | per level, the cross-entropy against the two-hot of the return, the outcome against its targets |
 | `next_state` | rows whose belief is valid at `t`, where `t` did not end an episode | the state code's cross-entropy against the sharp code of the true state at `t + 1`, in the model's shifted frame |
 | `enemy_action` | enemy rows alive at `t` | the cross-entropy of the enemy's actual joint action |
@@ -137,8 +146,12 @@ again with the game's own code (`bnb.learn.shots.resimulate`):
   frame and the refractive index, and its first hit (an enemy or an ally of the shooter), or
   else its closest pass and that ship's side. Ages after a hit are invalid. A shot whose
   flight crosses an episode end is invalid, and so is every shot launched within the
-  longest flight of the segment's end, whatever it hit: keeping the ones that hit in time
-  would bias the labels toward hits.
+  longest flight of the ticks played after it, whatever it hit: keeping the ones that hit in
+  time would bias the labels toward hits. The re-simulation flies on into the bullet flight
+  after the segment (the next shard's first ticks, or the lookahead's after the last shard;
+  `bnb.runtime.store.SegmentStore.following`), so a shot fired in a segment's last ticks is
+  labelled; only where nothing was played after the segment (no lookahead) are they
+  invalid.
 
 A re-simulated shot is the bullet the game fires from that state, position, velocity and
 hit, tick by tick, including friendly fire and fields (`tests/sections/test_learner_shots.py`).

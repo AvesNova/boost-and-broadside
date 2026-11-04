@@ -4,11 +4,14 @@ games (within two standard errors, see SCORE_BAR), and its score against the cha
 within 0.10 of the teacher's.
 
 The labels are at the default floor, and the teacher is the one they describe: BC's
-scripted seat (`bnb.learn.bc.TeacherOpponent`), the same opponent the stop rule scores
-against. BC runs to its score stop (the live score over 1000 games, less two standard
-errors, reaches 0.40) within BUDGET environment steps of 256 environments x 128 ticks
-(the section notes, "Stop rule (2026-11-02)", have the curve).
+scripted seat (`bnb.learn.bc.TeacherOpponent`). BC runs to its score stop, here the toy's
+own target (TARGET: the lanes' score against the raw scripted agent over 1000 games
+reaches 0.40, not the default parity), within BUDGET environment steps of 256 environments
+x 128 ticks, one shard, no lookahead, with 256 rating lanes (the section notes, "Stop rule
+(2026-11-02)", have the curve of the earlier rule).
 """
+
+import dataclasses
 
 import pytest
 import torch
@@ -25,17 +28,21 @@ pytestmark = [pytest.mark.gpu, pytest.mark.slow]
 GAME = GameConfig(2, 4, 1200.0)
 BUDGET = 100_000_000
 GAMES = 512
+TARGET = 0.40
 # "At least 0.40" is read as not significantly below it: two standard errors of a GAMES-game
 # score (at most 0.5 / sqrt(GAMES), about 0.022).
-SCORE_BAR = bc.StopConfig().score_target - 2 * 0.5 / GAMES**0.5
+SCORE_BAR = TARGET - 2 * 0.5 / GAMES**0.5
 TOY = TrainConfig(
     game=GAME,
     pools=cloning.LINEUP,
     environments=256,
+    shards=1,
+    lookahead=0,
+    lanes=dataclasses.replace(cloning.LANES, environments=256),
     model="relational",
     learner=bc.config(),
     objective="bc",
-    stop=bc.StopConfig(budget_steps=BUDGET),
+    stop=bc.StopConfig(score_target=TARGET, budget_steps=BUDGET),
 )
 
 

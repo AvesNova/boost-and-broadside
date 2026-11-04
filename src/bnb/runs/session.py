@@ -49,14 +49,15 @@ def act(run: Run, trainer: Trainer, recorder: Recorder, record: dict) -> None:
 
 
 def save_clone(run: Run, trainer: Trainer) -> None:
-    """The clone as the run's policy file: its weights, the return scale and the step counts,
-    for the BC -> RL hand-off (`bnb train --init-from`). A resumed run's earlier clone is
-    replaced."""
+    """The clone as the run's policy file: its weights, the return scale, the step counts and
+    its lane rating per mode, for the BC -> RL hand-off (`bnb train --init-from`). A resumed
+    run's earlier clone is replaced."""
     path = run.policy_path
     earlier = path.with_name(path.name + ".replaced")
     if path.exists():
         shutil.rmtree(earlier, ignore_errors=True)
         path.rename(earlier)
+    lane_ratings = getattr(trainer.league, "ratings", None)  # BC's lanes (`LaneHooks`)
     checkpoint.save_policy(
         path,
         trainer.model,
@@ -64,6 +65,7 @@ def save_clone(run: Run, trainer: Trainer) -> None:
         steps=dict(environment_steps=trainer.ppo.environment_steps, updates=trainer.updates_done),
         game=trainer.config.game,
         types=trainer.ppo.types,
+        ratings=None if lane_ratings is None else lane_ratings.live(),
     )
     shutil.rmtree(earlier, ignore_errors=True)
 
