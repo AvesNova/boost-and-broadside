@@ -63,7 +63,12 @@ uv run --no-sync bnb train --preset mixed --init-from runs/clone/policy
 
 `--init-from` starts a new PPO run from the policy file's weights and return scale, with a
 fresh optimizer and no cloning term
-([Resuming, forking and sharing runs](resuming-forking-sharing.md)).
+([Resuming, forking and sharing runs](resuming-forking-sharing.md)). Its entropy
+coefficient is `bnb.learn.ppo.WARM_START_ENTROPY` (0) rather than v1's −0.0081, unless
+`--set learner.entropy=...` gives one: the clone already samples every action through its
+labels' floor, and at its advantage scale v1's bonus outweighs the policy gradient on rare
+actions such as shooting, which took the first clone's score against the scripted agent
+from 0.23 to 0.03 in 24 updates.
 
 ## Choose the labels' entropy
 

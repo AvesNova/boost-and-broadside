@@ -350,6 +350,17 @@ def with_settings(config, settings):
         raise SystemExit(f"--set: {error}") from error
 
 
+def warm_start_entropy(config, settings: tuple[str, ...]):
+    """`config` with the warm start's entropy coefficient (`WARM_START_ENTROPY`), unless
+    `--set learner.entropy=...` chose one."""
+    from bnb.learn.ppo import WARM_START_ENTROPY
+
+    if any(path == "learner.entropy" for path, _ in map(parse_setting, settings)):
+        return config
+    learner = dataclasses.replace(config.learner, entropy=WARM_START_ENTROPY)
+    return dataclasses.replace(config, learner=learner)
+
+
 def set_precision(precision: str) -> None:
     """The process-wide matmul precision of a run: TF32 for "tf32", full float32 otherwise
     (bf16 is the model's own autocast)."""
@@ -423,6 +434,7 @@ def train(options: Train, given_options: set[str]) -> None:
                 source = Run.open(runs_directory, options.fork).checkpoint_at(options.at)
             elif options.init_from:
                 source = pathlib.Path(options.init_from)
+                config = warm_start_entropy(config, options.set)
             model_set = any(
                 path.split(".")[0] == config.model for path, _ in map(parse_setting, options.set)
             )
@@ -746,7 +758,7 @@ def head_to_head(options: HeadToHead) -> None:
     import torch
 
     from bnb.league import tournament
-    from bnb.runs import provenance
+    from bnb.runs import provenance, records
 
     _check_presets(options.presets)
     runs_directory = runs_directory_of(options.runs_directory)
@@ -767,8 +779,13 @@ def head_to_head(options: HeadToHead) -> None:
                 f"  {preset:16s} {part['wins']}-{part['losses']}-{part['draws']}, "
                 f"score {part['score']:.3f}"
             )
+    # a run named by the players, never a policy directory given by its path
     owner = next(
-        (runs_directory / name for name in options.players if (runs_directory / name).is_dir()),
+        (
+            runs_directory / name
+            for name in options.players
+            if (runs_directory / name / records.RECORD).is_file()
+        ),
         runs_directory,
     )
     inputs = {player.name: player.policy for player in players if player.policy is not None}

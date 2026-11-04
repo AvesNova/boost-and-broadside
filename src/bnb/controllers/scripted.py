@@ -24,8 +24,12 @@ def uniform_actions(shape: tuple, device) -> torch.Tensor:
     """Actions (*shape, 3) int32 drawn uniformly from the global generator, in the order power,
     stick, shoot."""
     draws = torch.rand(shape + (3,), device=device)
-    scale = torch.tensor([NUM_POWER, NUM_STICK, NUM_SHOOT], dtype=torch.float32, device=device)
-    return (draws * scale).to(torch.int32)
+    # scalar factors, not a tensor built from host values: a host copy cannot run inside a
+    # CUDA graph capture (an eager rollout's, such as the head-to-head's)
+    scaled = [
+        draws[..., index] * count for index, count in enumerate((NUM_POWER, NUM_STICK, NUM_SHOOT))
+    ]
+    return torch.stack(scaled, -1).to(torch.int32)
 
 
 class Random:

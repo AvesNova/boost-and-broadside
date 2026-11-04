@@ -469,3 +469,23 @@ def test_no_logged_series_is_smoothed(segment, global_generator):
     assert first.keys() == second.keys()
     differing = {name for name in first if first[name] != second[name]}
     assert differing <= justified, sorted(differing - justified)
+
+
+def test_an_update_of_several_shards_counts_each_shards_episodes_once(global_generator):
+    """The analytics read one shard at a time, so their pool membership is one shard's
+    views: an update of two shards runs and its pools' results are the shards' sum."""
+    sys.path.insert(0, str(lc.__file__).rsplit("/sections/", 1)[0] + "/runs")
+    from runs_cases import tiny_train_config
+
+    from bnb.runtime.train import Trainer
+
+    trainer = Trainer(tiny_train_config(shards=2, updates=1), CPU)
+    row = trainer.update()
+    store = trainer.rollout.store
+    done = sum(store.shard(("done",), shard)["done"].sum() for shard in range(2))
+    results = sum(
+        row[f"episode/{name}/{pool}"]
+        for name in ("wins", "draws", "losses")
+        for pool in trainer.pool_names
+    )
+    assert results == int(done)

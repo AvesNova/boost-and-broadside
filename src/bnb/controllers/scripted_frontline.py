@@ -108,7 +108,10 @@ def frontline(
     available = torch.where(assignable, own_health, 0.0)
 
     def per_view(value) -> torch.Tensor:  # a float or a per-view (R, 1) parameter
-        return torch.as_tensor(value, dtype=available.dtype, device=available.device)
+        # a float is filled on the device: a host copy cannot run inside a graph capture
+        if isinstance(value, torch.Tensor):
+            return value.to(available.dtype)
+        return available.new_full((), value)
 
     wanted = (
         torch.maximum(

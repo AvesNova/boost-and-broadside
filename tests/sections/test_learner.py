@@ -19,8 +19,15 @@ from bnb.contracts.action import to_joint
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.controllers.scripted import Chaser
 from bnb.game import api
-from bnb.learn import labels
-from bnb.learn.ppo import COUNTS, TERMS, explained_variance, random_stream
+from bnb.learn import labels, losses
+from bnb.learn.ppo import (
+    COUNTS,
+    TERMS,
+    WARM_START_ENTROPY,
+    LearnerConfig,
+    explained_variance,
+    random_stream,
+)
 from bnb.models.relational import RelationalConfig
 from bnb.models.yemong import critic, policy
 from bnb.models.yemong.density import HexGrid, poisson_terms
@@ -553,3 +560,37 @@ def test_the_kl_early_stop_ends_the_update_after_an_epoch(segment):
         out = metrics.read(learner.update(runner.store, [runner.bootstrap()]))
         assert out["policy/minibatch_steps"] == steps and out["policy/stopped_early"] == stopped
         assert out["policy/kl"] >= 0.0
+
+
+# ------------------------------------------------------------------ the warm start's entropy
+
+
+def _shoot_share_after_a_step(entropy_coefficient: float) -> tuple[float, float]:
+    """One decision of the first clone's shape: shooting at 1.7% of the policy, and a
+    shot worth 4e-4 less advantage than holding fire (the clone's measured gap, over every
+    level). The policy and entropy terms' expected loss over the sampled action, at ratio 1,
+    with v1's policy coefficient; returns the shoot share before and after one gradient
+    step on the logits."""
+    config = LearnerConfig()
+    joint = torch.arange(42)
+    shoot = joint % 2 == 1
+    logits = torch.where(shoot, -4.08, 0.0).requires_grad_()
+    old = torch.log_softmax(logits, -1).detach()
+    advantage = torch.where(shoot, -4e-4, 0.0)
+    log_probability, entropy = policy.evaluate(logits.expand(42, 42), joint)
+    surrogate = losses.surrogate(log_probability, old, advantage, 1.0, config.clip)
+    expected = (old.exp() * surrogate).sum()
+    (config.policy * expected + entropy_coefficient * entropy.mean()).backward()
+    before = float(old.exp()[shoot].sum())
+    after = float(torch.softmax(logits.detach() - 0.1 * logits.grad, -1)[shoot].sum())
+    return before, after
+
+
+def test_v1s_entropy_bonus_outweighs_the_clones_policy_gradient_on_shooting():
+    """The degradation of the first RL run, pinned: with v1's coefficient the bonus raises
+    the share of an action the advantages say is worse; the warm start's coefficient lets
+    the policy gradient lower it."""
+    before, after = _shoot_share_after_a_step(LearnerConfig().entropy)
+    assert after > before
+    before, after = _shoot_share_after_a_step(WARM_START_ENTROPY)
+    assert after < before

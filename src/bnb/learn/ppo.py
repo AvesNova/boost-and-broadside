@@ -125,6 +125,14 @@ class LearnerConfig:
                 raise ValueError(f"{name} needs one value per reward level")
 
 
+# The entropy coefficient of a warm start from a policy file (`bnb train --init-from`), in
+# place of LearnerConfig.entropy. The BC clone already samples every action (its labels'
+# uniform floor), and at its advantage scale the bonus outweighs the policy gradient on rare
+# actions: from the first clone, v1's -0.0081 drove the shoot share from 1.7% to 6.8% and the
+# score against the scripted agent from 0.23 to 0.03 in 24 updates, while 0 held it (0.25).
+WARM_START_ENTROPY = 0.0
+
+
 class Segments(Protocol):
     """Where the update's segments live (`bnb.runtime.store.SegmentStore`): `shards`
     segments of `length` ticks of `views // shards` views each, every Trajectory field by
