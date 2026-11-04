@@ -2,7 +2,9 @@
 games between pairs of them, every pair's games split evenly between the seats.
 
 A player is a policy file (or a training checkpoint, whose policy part plays), the newest
-checkpoint of a run, or a ladder entry: "scripted", "random" or "rung_<p>". Policies of any
+checkpoint of a run, a ladder entry ("scripted", "random" or "rung_<p>"), or the scripted agent
+playing a transformed distribution, `scripted@T=<temperature>,floor=<floor>` (either key
+optional: T defaults to 1, floor to 0; BC's teacher is `scripted@floor=0.01`). Policies of any
 architecture play here (only the league's slots need the live policy's).
 
 A batch is one rollout over every pair's games of one game preset: each pair is a pool of
@@ -21,6 +23,7 @@ from bnb.contracts.tree import contract
 from bnb.controllers.scripted import Scripted
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
+from bnb.learn.bc import TeacherConfig, TeacherOpponent
 from bnb.runs import checkpoint
 from bnb.runs.records import Run
 from bnb.runtime.opponents import OUTCOMES
@@ -35,11 +38,32 @@ LADDER_NAMES = {"random": 0.0, "scripted": 1.0}
 @dataclasses.dataclass(frozen=True)
 class Player:
     """One player: its name, and either a policy directory or a ladder entry's scripted
-    probability."""
+    probability, or the transformation of the scripted agent's distribution (`teacher`)."""
 
     name: str
     policy: pathlib.Path | None = None
     scripted_probability: float | None = None
+    teacher: TeacherConfig | None = None
+
+
+def teacher_of(name: str) -> TeacherConfig | None:
+    """The transformation a `scripted@T=<t>,floor=<f>` name means (keys in any order, each
+    optional, none repeated; T defaults to 1 and floor to 0), or None for another name.
+    Raises ValueError for a malformed or out-of-range one."""
+    if not name.startswith("scripted@"):
+        return None
+    values = {"T": 1.0, "floor": 0.0}
+    seen = set()
+    for item in name[len("scripted@") :].split(","):
+        key, equals, text = item.partition("=")
+        if not equals or key not in values or key in seen:
+            raise ValueError(f"{name!r}: expected scripted@T=<temperature>,floor=<floor>")
+        seen.add(key)
+        try:
+            values[key] = float(text)
+        except ValueError:
+            raise ValueError(f"{name!r}: {text!r} is not a number") from None
+    return TeacherConfig(temperature=values["T"], floor=values["floor"])
 
 
 def ladder_probability(name: str) -> float | None:
@@ -63,6 +87,9 @@ def player(name: str, runs_directory: pathlib.Path | None = None) -> Player:
     probability = ladder_probability(name)
     if probability is not None:
         return Player(name, scripted_probability=probability)
+    teacher = teacher_of(name)
+    if teacher is not None:
+        return Player(name, teacher=teacher)
     path = pathlib.Path(name)
     if (path / checkpoint.RECORD).exists():
         return Player(name, policy=path)
@@ -124,6 +151,8 @@ def controller_of(player: Player, game: GameConfig, device: torch.device):
         model = checkpoint.load_policy(player.policy, device).requires_grad_(False)
         return model_controller(model, game)
     agent = characteristics(api.ship_types(device), api.rules_of(game))
+    if player.teacher is not None:
+        return TeacherOpponent(Scripted(agent), player.teacher)
     return Scripted(agent, scripted_probability=player.scripted_probability)
 
 

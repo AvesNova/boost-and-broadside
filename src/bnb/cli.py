@@ -185,7 +185,11 @@ class HeadToHead:
     """Head-to-head (`bnb head-to-head A B [C D ...] --games N`): only the named pairs (A
     against B, C against D, ...), each over `--games` games per preset split evenly between
     the seats. A player is a policy file, a run (its newest checkpoint), "scripted",
-    "random" or "rung_<p>". Prints and records, per pair, the wins, losses and draws, the
+    "random", "rung_<p>", or the scripted agent playing a transformed distribution,
+    "scripted@T=<temperature>,floor=<floor>" (either key optional; T defaults to 1 and
+    floor to 0; the labels' tempering and uniform floor, drawn as BC's teacher opponent
+    does, so "scripted@floor=0.01" is BC's teacher and "scripted@T=1,floor=0" is
+    "scripted"). Prints and records, per pair, the wins, losses and draws, the
     score with its standard error and the split by preset; the result goes to the first
     named run's `artifacts/head_to_head/` (else the runs directory's).
 
