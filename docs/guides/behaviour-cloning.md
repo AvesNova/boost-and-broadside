@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/cli.py, src/bnb/runtime/cloning.py, src/bnb/learn/bc.py, src/bnb/runs/session.py]
-reviewed: 2026-11-02
+reviewed: 2026-11-04
 ---
 
 # Behaviour cloning
@@ -30,11 +30,29 @@ options (`--model`, `--environments`, `--shards`, `--precision`, `--micro-batch-
 `--seed`, `--set`, `--name`, `--runs-directory`) are training's ([Training](training.md)).
 
 The run lives in a run directory like a PPO run's
-([Runs and checkpoints](../explanation/runs.md)). When a stop rule fires, or after the
-update in progress at Ctrl-C, it saves the clone as the run's policy file,
-`runs/<run>/policy/`{.plain}: the weights, the return scale and the step counts. `run.json`{.plain}
-records the rule as `stopped_by`. A BC run writes no training checkpoints and is not
-resumed or forked; start a new one instead.
+([Runs and checkpoints](../explanation/runs.md)) and writes training checkpoints on the
+same cadence. When a stop rule fires, or after the update in progress at Ctrl-C, it writes
+a checkpoint and saves the clone as the run's policy file, `runs/<run>/policy/`{.plain}:
+the weights, the return scale and the step counts. `run.json`{.plain} records the rule as
+`stopped_by` (`interrupted` for Ctrl-C).
+
+## Resume a BC run
+
+<!-- not-runnable: needs CUDA and a run -->
+```bash
+uv run --no-sync bnb train --resume clone
+uv run --no-sync bnb train --resume clone --bc-budget-steps 800000000
+```
+
+A resume continues a stopped or crashed BC run from its newest checkpoint, as for PPO
+([Resuming, forking and sharing runs](resuming-forking-sharing.md)): the stop rule's score
+window, the KL's average and its history come back with the rest, so the rules decide as
+they would have in one process. `--bc-budget-steps` is the run's total budget and may be
+raised on a resume; the other stop settings come from the checkpoint. A finished run
+resumed trains until a rule fires again: a raised budget continues one that stopped on its
+budget, while the score and plateau rules usually fire on the first update. The new clone
+replaces the old policy file. A BC run itself starts fresh or resumes: it does not start
+from another run (`--from`) or a policy file (`--init-from`).
 
 ## Start reinforcement learning from the clone
 
@@ -84,9 +102,10 @@ torch.manual_seed(0)
 game = GameConfig(2, 4, 1200.0)
 config = TrainConfig(game=game, pools=cloning.LINEUP, environments=256, model="relational",
                      learner=bc.config(), objective="bc",
-                     teacher=bc.TeacherConfig(temperature=1.0))
+                     teacher=bc.TeacherConfig(temperature=1.0),
+                     stop=bc.StopConfig(budget_steps=20_000_000))
 student = Trainer(config, torch.device("cuda"))
-reason = cloning.clone(student, bc.StopConfig(budget_steps=20_000_000))
+reason = cloning.clone(student)  # its stop rule: config.stop
 print("stopped by", reason)
 
 # Reinforcement learning from the clone in memory: its weights and return scale, a fresh

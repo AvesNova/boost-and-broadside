@@ -68,10 +68,18 @@ def _checked(name: str) -> bool:
 COUNTS = ("results", "games/")
 
 
-def _run(mode: str, directory: pathlib.Path, device: str, model: str, *damage: str) -> None:
+def _run(
+    mode: str,
+    directory: pathlib.Path,
+    device: str,
+    model: str,
+    *damage: str,
+    objective: str = "ppo",
+) -> None:
     environment = dict(os.environ, PYTHONPATH=str(WORKER.parent))
+    arguments = [mode, str(directory), device, model, objective, str(UPDATES), *damage]
     done = subprocess.run(
-        [sys.executable, str(WORKER), mode, str(directory), device, model, str(UPDATES), *damage],
+        [sys.executable, str(WORKER), *arguments],
         capture_output=True,
         text=True,
         env=environment,
@@ -177,9 +185,11 @@ def weight_distance(got: dict, want: dict) -> float:
     return float((squared / norm).sqrt())
 
 
-def _resumes(tmp_path: pathlib.Path, device: str, model: str, *, bitwise: bool) -> None:
+def _resumes(
+    tmp_path: pathlib.Path, device: str, model: str, *, bitwise: bool, objective: str = "ppo"
+) -> None:
     for mode in ("straight", "first", "second"):
-        _run(mode, tmp_path, device, model)
+        _run(mode, tmp_path, device, model, objective=objective)
     assert not (problems := restore_differences(tmp_path)), "\n".join(problems)
     straight, straight_weights = _result(tmp_path, "straight")
     first, _ = _result(tmp_path, "first")
@@ -250,6 +260,31 @@ def test_the_tolerances_pass_one_ulp_and_fail_another_minibatch_order_on_the_gpu
 @pytest.mark.parametrize("model", ["relational", "yemong"])
 def test_a_resumed_run_equals_one_straight_through_on_the_cpu(tmp_path, model):
     _resumes(tmp_path, "cpu", model, bitwise=True)
+
+
+@pytest.mark.slow
+def test_a_resumed_bc_run_equals_one_straight_through_on_the_cpu(tmp_path):
+    """Behaviour cloning resumes the same way, its stop rule's window included."""
+    _resumes(tmp_path, "cpu", "relational", bitwise=True, objective="bc")
+    first, _ = _result(tmp_path, "first")
+    assert "bc/stop/window_score" in first[-1]  # the window was full at the save
+
+
+@pytest.mark.slow
+def test_the_exact_resume_test_sees_a_lost_stop_rule_window(tmp_path):
+    for mode in ("straight", "first"):
+        _run(mode, tmp_path, "cpu", "relational", objective="bc")
+    _run("second", tmp_path, "cpu", "relational", "stop_rule", objective="bc")
+    straight, _ = _result(tmp_path, "straight")
+    first, _ = _result(tmp_path, "first")
+    second, _ = _result(tmp_path, "second")
+    assert first + second != straight
+
+
+@pytest.mark.gpu
+@pytest.mark.slow
+def test_a_resumed_bc_run_restores_exactly_and_continues_as_one_run_on_the_gpu(tmp_path):
+    _resumes(tmp_path, "cuda", "relational", bitwise=False, objective="bc")
 
 
 @pytest.mark.gpu

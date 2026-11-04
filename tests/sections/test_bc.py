@@ -384,6 +384,27 @@ def test_a_window_at_the_target_does_not_stop_and_one_clearly_above_does():
     assert certain.observe(1, 0, 100, 0, 1.0) == "score" and certain.lower_bound == 0.5
 
 
+def test_the_stop_rules_state_round_trips_through_json_and_continues_the_window():
+    """A resume restores the rule from its JSON state: the window, the KL's EMA and its
+    history, so the restored rule decides exactly as the original would."""
+    config = bc.StopConfig(score_window=100, plateau_steps=1000, budget_steps=10**9)
+    flat = lambda update: 1.0 + 0.5 * 0.5**update  # noqa: E731 - converges, then plateaus
+    original = bc.StopRule(config)
+    assert _run(original, 6, 100, 0.3, flat) is None
+    restored = bc.StopRule(config, json.loads(json.dumps(original.state)))
+    assert restored.state == original.state and restored.score == original.score
+    for update in range(6, 60):
+        kl = flat(update)
+        decisions = [
+            rule.observe((update + 1) * 100, 6, 0, 14, kl) for rule in (original, restored)
+        ]
+        assert decisions[0] == decisions[1] and original.state == restored.state
+    assert decisions[0] == "kl_plateau"
+    # The history keeps only what the plateau still reads: one average at or before
+    # plateau_steps back, and the newer ones.
+    assert len(original.history) == 1000 // 100 + 1
+
+
 def test_alive_mask_reads_the_own_rows(segment):
     _, runner, _, _ = segment
     trajectory: Trajectory = lc.whole(runner)
@@ -527,12 +548,54 @@ def test_bnb_train_objective_bc_saves_the_clone_as_a_policy_file(monkeypatch, tm
         assert torch.equal(final.state_dict()[name], value), name
 
 
-@pytest.mark.parametrize(
-    "start", [("--resume", "clone"), ("--from", "clone"), ("--init-from", "somewhere")]
-)
-def test_a_bc_run_starts_fresh(monkeypatch, tmp_path, start):
-    with pytest.raises(SystemExit, match="a BC run starts fresh"):
+@pytest.mark.parametrize("start", [("--from", "clone"), ("--init-from", "somewhere")])
+def test_a_bc_run_starts_fresh_or_resumes(monkeypatch, tmp_path, start):
+    with pytest.raises(SystemExit, match="a BC run starts fresh or resumes"):
         _bnb(monkeypatch, "train", *BC_OPTIONS, *start, "--runs-directory", str(tmp_path))
+
+
+def test_a_bc_run_writes_training_checkpoints_and_resumes(monkeypatch, tmp_path):
+    """A BC run checkpoints on the usual cadence and at its end, and `--resume` continues
+    it with its stop rule's window and budget: stopped by its budget after two updates, then
+    resumed with a larger budget, it trains two more and replaces its clone."""
+    from bnb.runs import checkpoint
+    from bnb.runs.records import Run
+
+    runs = str(tmp_path / "runs")
+    every = ("--checkpoint-every", str(16 * 16))
+    _bnb(monkeypatch, "train", *BC_OPTIONS, *every, "--name", "clone", "--runs-directory", runs)
+    run = Run.open(tmp_path / "runs", "clone")
+    assert run.checkpoint_steps() == [16 * 16, 2 * 16 * 16]
+    assert run.record["final_checkpoint"] == 2 * 16 * 16
+    newest = run.checkpoint_at()
+    saved = checkpoint.read_record(newest)
+    config, _ = checkpoint.training_config(newest)
+    assert config.objective == "bc" and config.stop.budget_steps == 2 * 16 * 16
+    window = saved["stop_rule"]
+    assert len(window["history"]) == 2 and window["kl_average"] is not None
+    _bnb(
+        monkeypatch,
+        "train",
+        "--resume",
+        "clone",
+        "--device",
+        "cpu",
+        "--bc-budget-steps",
+        str(4 * 16 * 16),
+        "--runs-directory",
+        runs,
+    )
+    run = Run.open(tmp_path / "runs", "clone")
+    assert run.record["status"] == "finished" and run.record["stopped_by"] == "budget"
+    first, second = run.record["segments"]
+    assert second["start_step"] == 2 * 16 * 16 and second["end_step"] == 4 * 16 * 16
+    assert second["overrides"] == {"stop.budget_steps": 4 * 16 * 16}
+    resumed = checkpoint.read_record(run.checkpoint_at())["stop_rule"]
+    assert resumed["history"][:2] == window["history"]  # the window went on
+    assert checkpoint.read_record(run.policy_path)["steps"]["environment_steps"] == 4 * 16 * 16
+    assert not run.policy_path.with_name("policy.replaced").exists()
+    rows = [json.loads(line) for line in (run.directory / "metrics.jsonl").read_text().splitlines()]
+    assert [row["counters/updates"] for row in rows] == [1, 2, 3, 4]
 
 
 def test_the_gradient_stays_finite_for_a_confident_student(segment):

@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/learn/bc.py, src/bnb/runtime/cloning.py]
-reviewed: 2026-11-03 09:45
+reviewed: 2026-11-04 12:00
 ---
 
 # Behaviour cloning
@@ -63,8 +63,9 @@ opponent come from the training games themselves; there are no evaluation rollou
 
 ## When it stops
 
-`bnb.learn.bc.StopRule`, fed once per update by `bnb.runtime.cloning.clone`, names the
-first rule to fire (`bnb.learn.bc.StopConfig`):
+`bnb.learn.bc.StopRule`, fed once per update by `bnb.runtime.cloning.update`, names the
+first rule to fire (`bnb.learn.bc.StopConfig`, the run's `TrainConfig.stop`). Its state is
+part of the training checkpoint, so a resumed run continues the same window:
 
 - **score:** the score against the scripted agent (wins plus half the draws) over the last
   1000 finished training games, less two of its standard errors, reaches 0.40, even if
@@ -90,7 +91,7 @@ explained variance per level; the auxiliary losses; and the live score per oppon
 ## The hand-off
 
 `bnb train --objective bc` saves the clone, when it stops, as the run's policy file
-(`bnb.runs.session.clone`, through `bnb.runs.checkpoint.save_policy`): the weights, the
+(`bnb.runs.session.save_clone`, through `bnb.runs.checkpoint.save_policy`): the weights, the
 return scale's state and the step counts. `bnb train --init-from` starts reinforcement
 learning from it (`bnb.runs.checkpoint.warm_start`): the weights and return scale, a fresh
 optimizer, fresh step counts and no cloning term ([Runs and checkpoints](runs.md)). In

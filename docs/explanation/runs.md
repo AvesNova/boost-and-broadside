@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/runs/, src/bnb/runtime/rollout.py, src/bnb/models/yemong/model.py, src/bnb/models/relational.py, src/bnb/models/mlp.py, tests/runs/]
-reviewed: 2026-11-03 16:00
+reviewed: 2026-11-04 12:00
 ---
 
 # Runs and checkpoints
@@ -64,8 +64,9 @@ other languages read it.
   the full `TrainConfig`, the optimizer, the opponent slots, the league's state (its
   entries, gauges, sampling state, and the averages' and snapshots' weights), every random
   generator, the rollout carry (the game state, every controller's carry, the seats, the
-  reward ledger) and the step counters. `bnb.runs.checkpoint.load_policy` reads the policy part of
-  either kind.
+  reward ledger), the step counters, the trigger rules' state and, for a BC run, the stop
+  rule's (its score window, the KL's average and its history). `bnb.runs.checkpoint.load_policy`
+  reads the policy part of either kind.
 - **Writes are atomic** (`bnb.runs.checkpoint.write_checkpoint`): the files go into
   `<name>.tmp/`, each file and then the directory are flushed, the directory is renamed to
   `<name>/`, and the parent directory is flushed. After a crash, `<name>/` is either
@@ -119,12 +120,17 @@ A fork or a warm start whose command sets no model setting takes the file's
 | `--init-from POLICY` (a warm start) | weights and return scale; a fresh optimizer | the command line; a new run |
 
 - **A resume** (`bnb.runs.checkpoint.load_training`) may change only the fields in
-  `bnb.runs.checkpoint.OVERRIDABLE` (the update budget, the learning rate and its
+  `bnb.runs.checkpoint.OVERRIDABLE` (the budget: PPO's updates or BC's environment steps,
+  `TrainConfig.stop`'s `budget_steps`; the learning rate and its
   warm-up, the loss coefficients and the entropy, the reward weights, and the precision
   and micro-batch rows, which change speed but not shapes) and the checkpoint cadence.
   Anything else given with `--resume` fails and points to `--from`. Each override is
-  recorded in the new segment. The update budget is the run's total. A resume on another
+  recorded in the new segment. The budget is the run's total. A resume on another
   commit goes ahead with a warning, and the segment records the commit.
+- **A BC run** keeps training checkpoints on the same cadence and resumes the same way
+  (`bnb.runs.session.train` runs both objectives); its clone, the run's policy file, is
+  written again when it stops and replaces the earlier one. A BC run does not start from
+  another run (`--from`) or a policy file (`--init-from`).
 - **A fork's** update count starts at zero, so `--updates` is the number of updates the
   fork trains; its environment-step count goes on from the parent's, so the learning
   rate's warm-up does not restart.

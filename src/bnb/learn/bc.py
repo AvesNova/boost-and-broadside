@@ -310,13 +310,30 @@ class StopRule:
     1, 0.5 or 0): it drops the oldest updates whole while the rest still fill it, then
     counts the oldest kept update by the exact share of its games the window still needs,
     so trimming favours no result. The score stop reads the window's lower confidence
-    bound, so a window that is lucky by chance does not stop BC."""
+    bound, so a window that is lucky by chance does not stop BC.
 
-    def __init__(self, config: StopConfig) -> None:
+    Its state (`state`: the window, the KL's EMA and its history) is plain JSON, kept in
+    the training checkpoint so that a resume continues the same window."""
+
+    def __init__(self, config: StopConfig, state: dict | None = None) -> None:
         self.config = config
         self.updates: collections.deque[tuple[float, float, float]] = collections.deque()
         self.kl_average: float | None = None
         self.history: list[tuple[int, float]] = []  # (environment steps, the KL's EMA)
+        if state is not None:
+            self.updates.extend(tuple(update) for update in state["updates"])
+            self.kl_average = state["kl_average"]
+            self.history = [(steps, average) for steps, average in state["history"]]
+
+    @property
+    def state(self) -> dict:
+        """The rule's state as JSON: the window's per-update totals, the KL's EMA and its
+        history (floats round-trip exactly through JSON)."""
+        return dict(
+            updates=[list(update) for update in self.updates],
+            kl_average=self.kl_average,
+            history=[list(entry) for entry in self.history],
+        )
 
     def _window(self) -> tuple[float, float] | None:
         """(points, squared points) over the last score_window games, once there are that
@@ -379,11 +396,12 @@ class StopRule:
         self.history.append((environment_steps, self.kl_average))
         if self.lower_bound is not None and self.lower_bound >= config.score_target:
             return "score"
-        past = [
-            average
-            for steps, average in self.history
-            if steps <= environment_steps - config.plateau_steps
-        ]
+        cutoff = environment_steps - config.plateau_steps
+        past = [average for steps, average in self.history if steps <= cutoff]
+        # the plateau reads the newest average at or before the cutoff, which only rises:
+        # the older ones are never read again
+        while len(self.history) > 1 and self.history[1][0] <= cutoff:
+            self.history.pop(0)
         if past and self.kl_average > (1.0 - config.plateau_fraction) * past[-1]:
             return "kl_plateau"
         if environment_steps >= config.budget_steps:

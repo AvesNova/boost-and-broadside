@@ -43,8 +43,9 @@ uv run --no-sync bnb train --resume 2026-11-02-mixed-purple-pumpkin --at 2684354
 ```
 
 - A resume continues from the newest checkpoint with every setting the checkpoint holds,
-  exactly where the run stopped.
-- `--updates` is the run's total budget. `--precision`, `--micro-batch-rows` and
+  exactly where the run stopped. A BC run resumes the same way, its stop rule's window
+  included ([Behaviour cloning](behaviour-cloning.md#resume-a-bc-run)).
+- `--updates` is the run's total budget (`--bc-budget-steps` a BC run's). `--precision`, `--micro-batch-rows` and
   `--checkpoint-every` may change, and `--set` the fields
   `bnb.runs.checkpoint.OVERRIDABLE` lists (the learning rate, the warm-up, the loss
   coefficients, the reward weights). Each change is recorded with the step it took effect

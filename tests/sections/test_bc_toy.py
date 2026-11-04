@@ -35,6 +35,7 @@ TOY = TrainConfig(
     model="relational",
     learner=bc.config(),
     objective="bc",
+    stop=bc.StopConfig(budget_steps=BUDGET),
 )
 
 
@@ -44,7 +45,7 @@ def test_the_toy_clone_scores_against_its_teacher_and_the_chaser():
     with torch.random.fork_rng():
         torch.manual_seed(0)
         student = Trainer(TOY, device)
-        reason = cloning.clone(student, bc.StopConfig(budget_steps=BUDGET), log=lambda row: None)
+        reason = cloning.clone(student, log=lambda row: None)
         teacher = student.controllers[SCRIPTED]
         assert isinstance(teacher, bc.TeacherOpponent) and teacher.teacher.floor == bc.FLOOR
         chaser = Chaser(GAME.ships_per_team)

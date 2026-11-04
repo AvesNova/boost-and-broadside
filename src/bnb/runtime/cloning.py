@@ -15,7 +15,7 @@ from bnb.contracts.obs import SHIP
 from bnb.controllers.scripted import Scripted, distribution
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
-from bnb.learn.bc import StopConfig, StopRule, flat_views
+from bnb.learn.bc import flat_views
 
 from .rollout import Rollout
 from .train import LEARNER, SCRIPTED, Trainer
@@ -54,45 +54,53 @@ def scores(pools: tuple[Pool, ...], metrics: dict) -> dict:
     return out
 
 
+def update(trainer: Trainer) -> tuple[dict, str | None]:
+    """One BC update of `trainer` (objective "bc"), fed to its stop rule
+    (`trainer.stop_rule`): (the update's row with the live scores and the rule's window,
+    the rule that fired: "score", "kl_plateau" or "budget", or None)."""
+    if trainer.config.objective != "bc":
+        raise ValueError("cloning trains with objective 'bc'")
+    rule = trainer.stop_rule
+    row = trainer.update()
+    live = scores(trainer.rollout.lineup.pools, row)
+    against = live.get(SCRIPTED, dict(wins=0, draws=0, losses=0))
+    reason = rule.observe(
+        trainer.ppo.environment_steps,
+        against["wins"],
+        against["draws"],
+        against["losses"],
+        row["bc/kl"],
+    )
+    for kind, value in live.items():
+        row[f"bc/games/{kind}"] = value["games"]
+        if value["score"] is not None:
+            row[f"bc/score/{kind}"] = value["score"]
+    for name, value in (
+        ("window_score", rule.score),
+        ("window_lower_bound", rule.lower_bound),
+        ("kl_average", rule.kl_average),
+    ):
+        if value is not None:
+            row[f"bc/stop/{name}"] = value
+    return row, reason
+
+
 def clone(
     trainer: Trainer,
-    stop: StopConfig = StopConfig(),
     log: Callable[[dict], None] = print,
     interrupted: Callable[[], bool] = lambda: False,
 ) -> str:
-    """BC with `trainer` (objective "bc") until a stop rule fires or `interrupted()` is true
-    after an update: the rule's name ("score", "kl_plateau" or "budget"), or
-    "interrupted"."""
-    if trainer.config.objective != "bc":
-        raise ValueError("clone trains with objective 'bc'")
-    rule = StopRule(stop)
+    """BC with `trainer` (objective "bc") until its stop rule (`TrainConfig.stop`) fires or
+    `interrupted()` is true after an update: the rule's name ("score", "kl_plateau" or
+    "budget"), or "interrupted". A run's loop, with checkpoints, is
+    `bnb.runs.session.train`."""
     while True:
-        row = trainer.update()
-        live = scores(trainer.rollout.lineup.pools, row)
-        against = live.get(SCRIPTED, dict(wins=0, draws=0, losses=0))
-        reason = rule.observe(
-            trainer.ppo.environment_steps,
-            against["wins"],
-            against["draws"],
-            against["losses"],
-            row["bc/kl"],
-        )
-        if reason is None and interrupted():
-            reason = "interrupted"
-        for kind, value in live.items():
-            row[f"bc/games/{kind}"] = value["games"]
-            if value["score"] is not None:
-                row[f"bc/score/{kind}"] = value["score"]
-        for name, value in (
-            ("window_score", rule.score),
-            ("window_lower_bound", rule.lower_bound),
-            ("kl_average", rule.kl_average),
-        ):
-            if value is not None:
-                row[f"bc/stop/{name}"] = value
+        row, reason = update(trainer)
         log(row)
         if reason is not None:
             return reason
+        if interrupted():
+            return "interrupted"
 
 
 @torch.no_grad()

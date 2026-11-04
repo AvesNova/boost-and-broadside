@@ -33,10 +33,11 @@ class Train:
     seed: the run's seed (TrainConfig.seed: the process and the learner's streams).
     set: TrainConfig fields by dotted path, such as learner.entropy=-0.01 or
     yemong.width=256 (JSON values); fields inside tuples (such as pools) cannot be set.
-    resume: continue the run named, from its newest checkpoint or the one at --at, with
-    every setting from the checkpoint; only the budget, the precision, the micro-batch
-    rows, the checkpoint cadence and --set of OVERRIDABLE fields (the learning rate, the
-    warm-up, the loss coefficients, the reward weights) may change.
+    resume: continue the run named (PPO or BC), from its newest checkpoint or the one at
+    --at, with every setting from the checkpoint; only the budget (--updates, or
+    --bc-budget-steps), the precision, the micro-batch rows, the checkpoint cadence and
+    --set of OVERRIDABLE fields (the learning rate, the warm-up, the loss coefficients, the
+    reward weights) may change.
     fork (--from): a new run with these settings, starting from the named run's checkpoint
     (newest, or at --at): its model, optimizer, return scale, league slot and environment
     steps; --updates counts from the fork.
@@ -51,9 +52,10 @@ class Train:
     checkpoint_every: environment steps between training checkpoints (default: about 30
     minutes at the run's measured throughput).
     objective: ppo, or bc (behaviour cloning against self-play and the scripted agent until
-    a stop rule fires, then the clone is saved as the run's policy file; updates is unused,
-    and a BC run is not resumed or forked); teacher_temperature and teacher_floor set the
-    labels' entropy; bc_budget_steps: BC's budget in environment steps.
+    a stop rule fires, then the clone is saved as the run's policy file; updates is unused;
+    a BC run keeps training checkpoints and resumes, but is not forked or warm-started);
+    teacher_temperature and teacher_floor set the labels' entropy; bc_budget_steps: BC's
+    budget in environment steps (TrainConfig.stop.budget_steps).
     wandb: stream each update's record to W&B (project `boost-and-broadside-v2`, the run's
     name) as well as to the run's metrics.jsonl; without it nothing leaves the machine.
     calibrate_entropy: print the scripted agent's natural entropy over its own games of the
@@ -108,10 +110,12 @@ RESUME_OPTIONS = (
     "runs_directory",
     "print_config",
     "wandb",
+    "bc_budget_steps",
 )
 # The resume options that set a TrainConfig field: their paths.
 RESUME_FIELDS = {
     "updates": "updates",
+    "bc_budget_steps": "stop.budget_steps",
     "precision": "precision",
     "micro_batch_rows": "learner.micro_batch_rows",
 }
@@ -307,6 +311,7 @@ def _requested(options: Train):
             seed=options.seed,
             objective=options.objective,
             teacher=bc.TeacherConfig(options.teacher_temperature, options.teacher_floor),
+            stop=bc.StopConfig(budget_steps=options.bc_budget_steps),
         )
     except ValueError as error:
         raise SystemExit(str(error)) from error
@@ -370,9 +375,12 @@ def train(options: Train, given_options: set[str]) -> None:
     starts = [name for name in ("resume", "fork", "init_from") if getattr(options, name)]
     if len(starts) > 1:
         raise SystemExit(f"choose one of --resume, --from and --init-from, not {starts}")
-    if starts and options.objective == "bc":
-        flag = {"resume": "--resume", "fork": "--from", "init_from": "--init-from"}[starts[0]]
-        raise SystemExit(f"a BC run starts fresh: --objective bc takes no {flag}")
+    if starts and starts[0] != "resume" and options.objective == "bc":
+        flag = {"fork": "--from", "init_from": "--init-from"}[starts[0]]
+        raise SystemExit(
+            f"a BC run starts fresh or resumes: --objective bc takes no {flag} "
+            f"(--resume RUN continues a BC run)"
+        )
     if options.at is not None and not (options.resume or options.fork):
         raise SystemExit("--at chooses a checkpoint of --resume or --from")
     try:
@@ -423,11 +431,6 @@ def train(options: Train, given_options: set[str]) -> None:
         if options.print_config:
             print(json.dumps(to_json(config), indent=1))
             return
-        if options.resume and config.objective == "bc":
-            raise SystemExit(
-                f"run {options.resume} is a BC run, which is not resumed: start a "
-                f"new one, or RL from its policy file with --init-from"
-            )
         torch.manual_seed(config.seed)
         set_precision(config.precision)
         if options.calibrate_entropy is not None:
@@ -513,22 +516,13 @@ def train(options: Train, given_options: set[str]) -> None:
     sinks = Sinks(run, to_json(config), wandb=options.wandb)
     rules = Triggers(state=checkpoint.triggers_state(source) if options.resume else None)
     recorder = Recorder(run, trainer, sinks, rules)
+    cloned = config.objective == "bc"
     try:
-        if config.objective == "bc":
-            from bnb.learn import bc
-
-            status = session.clone(
-                run,
-                trainer,
-                bc.StopConfig(budget_steps=options.bc_budget_steps),
-                log_cloning,
-                recorder,
-            )
+        status = session.train(run, trainer, log_cloning if cloned else log, recorder=recorder)
+        if cloned:
             print(
                 f"stopped by {run.record['stopped_by']}; the clone is {run.policy_path}", flush=True
             )
-        else:
-            status = session.train(run, trainer, log, recorder=recorder)
     except MemoryBudgetError as error:  # the run is marked failed with the same message
         raise SystemExit(str(error)) from error
     finally:

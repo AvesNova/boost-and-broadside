@@ -24,7 +24,7 @@ from bnb.controllers.yemong import YemongController
 from bnb.game import api
 from bnb.game.api import PRESETS, ShipTypes
 from bnb.game.handling.characteristics import characteristics
-from bnb.learn.bc import BehaviourCloning, TeacherConfig, TeacherOpponent
+from bnb.learn.bc import BehaviourCloning, StopConfig, StopRule, TeacherConfig, TeacherOpponent
 from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
@@ -92,8 +92,8 @@ class TrainConfig:
     rather than keep them on the device.
     seed: the learner's random streams; the entry point seeds the process with it too.
     objective: "ppo", or "bc" (clone the scripted agent; `learner` should then be
-    `bnb.learn.bc.config()`, and `teacher` sets its labels and how the scripted opponent
-    plays, `bnb.learn.bc.TeacherOpponent`)."""
+    `bnb.learn.bc.config()`, `teacher` sets its labels and how the scripted opponent
+    plays, `bnb.learn.bc.TeacherOpponent`, and `stop` when it stops, its budget included)."""
 
     game: GameConfig
     environments: int = 1024
@@ -114,6 +114,7 @@ class TrainConfig:
     compiled: bool = True
     objective: str = "ppo"
     teacher: TeacherConfig = TeacherConfig()
+    stop: StopConfig = StopConfig()
 
     def __post_init__(self) -> None:
         if self.objective not in OBJECTIVES:
@@ -309,6 +310,9 @@ class Trainer:
                 diagnostics=diagnostics,
             )
         self.updates_done = 0
+        # BC's stop rule (`bnb.runtime.cloning.update` feeds it): its window is part of the
+        # training checkpoint
+        self.stop_rule = StopRule(config.stop) if cloning else None
         environment_pool = torch.repeat_interleave(
             torch.arange(len(lineup.pools), device=device),
             torch.tensor(lineup.sizes, device=device),
