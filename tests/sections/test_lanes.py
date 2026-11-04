@@ -216,24 +216,24 @@ def test_lanes_split_evenly_over_the_modes_then_by_weight():
     )
     config = LaneConfig(
         environments=8,
-        matchups=(Matchup(LIVE, SCRIPTED_PLAYER, 3.0), Matchup("rung_0.5", SCRIPTED_PLAYER, 1.0)),
+        matchups=(Matchup(LIVE, SCRIPTED_PLAYER, 3.0), Matchup("rung_T2", SCRIPTED_PLAYER, 1.0)),
     )
     modes = {"a": training[0], "b": training[1]}
     pools, lanes, total = lane_pools(training, modes, 16, config)
     assert total == 24 and [lane.name for lane in lanes] == [
         "a/lane/live_vs_scripted",
-        "a/lane/rung_0.5_vs_scripted",
+        "a/lane/rung_T2_vs_scripted",
         "b/lane/live_vs_scripted",
-        "b/lane/rung_0.5_vs_scripted",
+        "b/lane/rung_T2_vs_scripted",
     ]
     assert [round(pool.share * total) for pool in pools] == [8, 8, 3, 1, 3, 1]
     assert all(pool.seats == (LANES, LANES) for pool in pools[2:])
     assert pools[4].mode == "frontline"  # a lane plays its mode's game
-    chain = ladder_chain((0.0, 0.5, 0.9), 0.1)
+    chain = ladder_chain((math.inf, 2.0, 1.25), 0.1)
     assert [m.name for m in chain] == [
-        "random_vs_rung_0.5",
-        "rung_0.5_vs_rung_0.9",
-        "rung_0.9_vs_scripted",
+        "random_vs_rung_T2",
+        "rung_T2_vs_rung_T1.25",
+        "rung_T1.25_vs_scripted",
     ]
 
 
@@ -250,14 +250,14 @@ def _seat(lanes: tuple[Lane, ...], rows_per_lane: int = 2) -> LaneSeat:
 def test_a_lane_seat_plays_each_rows_player_and_tallies_each_game_once():
     lanes = (
         Lane(MODE, Matchup(LIVE, SCRIPTED_PLAYER)),
-        Lane(MODE, Matchup("rung_0.5", "random")),
+        Lane(MODE, Matchup("rung_T2", "random")),
     )
     seat = _seat(lanes)
     assert seat.networks == (LIVE,)
     assert seat.network_rows[0].tolist() == [0, 1]  # live: the first lane's first seat
     assert seat.ladder_rows.tolist() == [2, 3, 4, 5, 6, 7]
-    assert seat.ladder_agent.scripted_probability.tolist() == [1.0, 1.0, 0.5, 0.5, 0.0, 0.0]
-    # rows 0 and 2 are one game (live won), rows 4 and 6 another (rung_0.5 lost): each once,
+    assert seat.ladder_agent.temperature.tolist() == [1.0, 1.0, 2.0, 2.0, math.inf, math.inf]
+    # rows 0 and 2 are one game (live won), rows 4 and 6 another (rung_T2 lost): each once,
     # from the first player's side
     done = torch.tensor([True, False, True, False, True, False, True, False])
     result = torch.tensor([1, 0, -1, 0, -1, 0, 1, 0], dtype=torch.int32)
@@ -313,29 +313,29 @@ def _trainer(lanes: tuple[Lane, ...], seat=None, **config) -> types.SimpleNamesp
 
 
 def test_lane_ratings_chain_the_ladder_to_the_scripted_agent():
-    """rung_0.9 scores 0.25 against the scripted agent and rung_0.8 0.5 against rung_0.9:
+    """rung_T1.25 scores 0.25 against the scripted agent and rung_T1.5 0.5 against rung_T1.25:
     both near 1000 - 400 log10(3); live, without games, is not rated."""
-    top = Lane(MODE, Matchup("rung_0.9", SCRIPTED_PLAYER))
-    below = Lane(MODE, Matchup("rung_0.8", "rung_0.9"))
+    top = Lane(MODE, Matchup("rung_T1.25", SCRIPTED_PLAYER))
+    below = Lane(MODE, Matchup("rung_T1.5", "rung_T1.25"))
     live = Lane(MODE, Matchup(LIVE, SCRIPTED_PLAYER))
     ratings = LaneRatings(_trainer((top, below, live), window=2))
     ratings.update({top: (250, 0, 750), below: (500, 0, 500), live: (0, 0, 0)})
     expected = 1000.0 - 400.0 * math.log10(3.0)
-    rung, error = ratings.rating(MODE, "rung_0.9")
+    rung, error = ratings.rating(MODE, "rung_T1.25")
     assert rung == pytest.approx(expected, abs=2.0) and 0 < error < 30
-    assert ratings.rating(MODE, "rung_0.8")[0] == pytest.approx(rung, abs=3.0)
+    assert ratings.rating(MODE, "rung_T1.5")[0] == pytest.approx(rung, abs=3.0)
     assert ratings.rating(MODE, LIVE) is None
     # a lane whose games do not reach the scripted agent rates nobody
-    apart = Lane(MODE, Matchup("random", "rung_0.1"))
+    apart = Lane(MODE, Matchup("random", "rung_T8"))
     ratings = LaneRatings(_trainer((top, below, live, apart), window=2))
     ratings.update({top: (250, 0, 750), below: (500, 0, 500), live: (0, 0, 0), apart: (1, 2, 3)})
     assert ratings.rating(MODE, "random") is None
     series = ratings.series()
-    assert f"rating/live/{MODE}" not in series and f"lanes/rating/{MODE}/rung_0.9" in series
+    assert f"rating/live/{MODE}" not in series and f"lanes/rating/{MODE}/rung_T1.25" in series
 
 
 def test_a_moving_players_games_leave_after_the_window_and_the_ladders_stay():
-    rung = Lane(MODE, Matchup("rung_0.9", SCRIPTED_PLAYER))
+    rung = Lane(MODE, Matchup("rung_T1.25", SCRIPTED_PLAYER))
     live = Lane(MODE, Matchup(LIVE, SCRIPTED_PLAYER))
     trainer = _trainer((rung, live), window=2)
     ratings = LaneRatings(trainer)
@@ -344,7 +344,7 @@ def test_a_moving_players_games_leave_after_the_window_and_the_ladders_stay():
     ratings.update({rung: (10, 0, 30), live: (20, 0, 20)})
     ratings.update({rung: (10, 0, 30), live: (0, 0, 40)})  # the sweep has left the window
     assert ratings.rating(MODE, LIVE)[0] < 1000.0
-    assert ratings._games(MODE)[("rung_0.9", SCRIPTED_PLAYER)] == [30.0, 0.0, 90.0]
+    assert ratings._games(MODE)[("rung_T1.25", SCRIPTED_PLAYER)] == [30.0, 0.0, 90.0]
     restored = LaneRatings(trainer, ratings.state())
     assert restored.state() == ratings.state() and restored.series() == ratings.series()
 
@@ -428,10 +428,11 @@ def test_a_league_slot_swap_copies_weights_in_place_and_credits_the_entry():
 def test_the_gauge_takes_the_lanes_ladder_and_live_ratings():
     gauge = Gauge(initial_live=850.0)
     assert gauge.live.rating == 850.0  # a warm start's parent's
-    gauge.add("rung_0.9", "ladder", 900.0)
+    gauge.add("rung_T1.25", "ladder", 900.0)
     gauge.add("scripted", "ladder", 1000.0)
-    gauge.calibrate({"rung_0.9": (260.0, 20.0), "unknown": (1.0, 1.0)})
-    assert gauge.entries["rung_0.9"].rating == 260.0 and gauge.entries["scripted"].rating == 1000.0
+    gauge.calibrate({"rung_T1.25": (260.0, 20.0), "unknown": (1.0, 1.0)})
+    assert gauge.entries["rung_T1.25"].rating == 260.0
+    assert gauge.entries["scripted"].rating == 1000.0
     gauge.update({}, live=(700.0, 25.0))
     assert (gauge.live.rating, gauge.live.stderr) == (700.0, 25.0)
 
@@ -472,7 +473,7 @@ def test_bcs_stop_reads_the_live_policys_lane_games_against_the_scripted_agent()
     record = {
         Lane("a", Matchup(LIVE, SCRIPTED_PLAYER)): (3, 1, 2),
         Lane("b", Matchup(SCRIPTED_PLAYER, LIVE)): (5, 0, 1),  # from the scripted side
-        Lane("b", Matchup("rung_0.5", SCRIPTED_PLAYER)): (9, 9, 9),
+        Lane("b", Matchup("rung_T2", SCRIPTED_PLAYER)): (9, 9, 9),
     }
     trainer = types.SimpleNamespace(lane_record=record)
     assert cloning.lane_results(trainer) == (4, 1, 7)

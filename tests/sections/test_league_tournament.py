@@ -8,7 +8,7 @@ import torch
 
 from bnb.contracts import GameConfig
 from bnb.league import tournament
-from bnb.league.matches import Player, ladder_probability, play, player
+from bnb.league.matches import Player, play, player
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
 from bnb.runs import checkpoint
 
@@ -16,15 +16,14 @@ pytestmark = pytest.mark.usefixtures("global_generator")
 
 GAME = GameConfig(2, 2, 1500.0, episode_seconds=2.0, respawn_seconds=1.0)
 CPU = torch.device("cpu")
-SCRIPTED = Player("scripted", scripted_probability=1.0)
-RANDOM = Player("random", scripted_probability=0.0)
-HALF = Player("rung_0.5", scripted_probability=0.5)
+SCRIPTED = Player("scripted", temperature=1.0)
+RANDOM = Player("random", temperature=math.inf)
+HALF = Player("rung_T2", temperature=2.0)
 
 
 def test_ladder_names_parse_and_others_do_not():
-    assert ladder_probability("random") == 0.0 and ladder_probability("scripted") == 1.0
-    assert ladder_probability("rung_0.3") == 0.3
-    assert ladder_probability("rung_1.5") is None and ladder_probability("rung_x") is None
+    assert player("random") == RANDOM and player("scripted") == SCRIPTED
+    assert player("rung_T2") == HALF
     with pytest.raises(ValueError, match="not a policy file"):
         player("no-such-player")
 
@@ -72,7 +71,7 @@ def test_head_to_head_reports_each_pair_in_total_and_per_preset():
     )
     assert [(row["first"], row["second"]) for row in rows] == [
         ("scripted", "random"),
-        ("rung_0.5", "random"),
+        ("rung_T2", "random"),
     ]
     for row in rows:
         assert row["wins"] + row["draws"] + row["losses"] == 12
@@ -108,7 +107,7 @@ def test_transformed_scripted_names_parse():
     from bnb.league.matches import teacher_of
     from bnb.learn.bc import TeacherConfig
 
-    assert teacher_of("scripted") is None and teacher_of("rung_0.5") is None
+    assert teacher_of("scripted") is None and teacher_of("rung_T2") is None
     assert teacher_of("scripted@T=2,floor=0.05") == TeacherConfig(2.0, 0.05)
     assert teacher_of("scripted@floor=0.01") == TeacherConfig(1.0, 0.01)
     assert teacher_of("scripted@floor=0.01,T=0.5") == TeacherConfig(0.5, 0.01)

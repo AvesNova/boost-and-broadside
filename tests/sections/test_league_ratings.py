@@ -68,8 +68,9 @@ def test_the_offline_fit_recovers_known_ratings():
 
 def _ladder_gauge() -> Gauge:
     gauge = Gauge()
-    for probability in (0.0, 0.5, 1.0):
-        gauge.add(f"ladder/{probability}", "ladder", gauge_rating(probability))
+    # the priors 1000 / T: random 0, T = 2 at 500, the scripted agent 1000
+    for name, temperature in (("0.0", math.inf), ("0.5", 2.0), ("1.0", 1.0)):
+        gauge.add(f"ladder/{name}", "ladder", gauge_rating(temperature))
     return gauge
 
 

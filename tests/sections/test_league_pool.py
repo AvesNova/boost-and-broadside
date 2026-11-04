@@ -14,6 +14,7 @@ from bnb.league.pool import (
     retained,
     sampling_weights,
 )
+from bnb.runtime.opponents import ladder_temperature
 
 
 def _apply_after_every_snapshot(count: int) -> set[int]:
@@ -68,14 +69,18 @@ def test_a_pool_of_sure_results_samples_evenly():
 
 
 def test_the_ladder_names_random_rungs_and_scripted():
-    names = [entry.name for entry in ladder_entries((0.0, 0.1, 0.95, 1.0))]
-    assert names == ["random", "rung_0.1", "rung_0.95", "scripted"]
-    assert ladder_name(0.5) == "rung_0.5"
+    names = [entry.name for entry in ladder_entries((math.inf, 4.0, 1.5, 1.0))]
+    assert names == ["random", "rung_T4", "rung_T1.5", "scripted"]
+    assert ladder_name(2.5) == "rung_T2.5"
+    for temperature in (math.inf, 8.0, 1.25, 1.0):
+        assert ladder_temperature(ladder_name(temperature)) == temperature
+    for other in ("rung_T0.5", "rung_T1", "rung_Tx", "rung_0.5", "live"):
+        assert ladder_temperature(other) is None
 
 
-def test_only_a_ladder_entry_has_a_scripted_probability():
+def test_only_a_ladder_entry_has_a_temperature():
     with pytest.raises(ValueError):
-        Entry("snapshot_1", "checkpoint", scripted_probability=0.5)
+        Entry("snapshot_1", "checkpoint", temperature=2.0)
     with pytest.raises(ValueError):
         Entry("rung", "ladder")
 

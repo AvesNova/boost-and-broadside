@@ -141,11 +141,12 @@ def teacher_distributions(
     device: torch.device,
     length: int = 128,
     compiled: bool = True,
-) -> torch.Tensor:
-    """The scripted agent's natural distributions (tokens, 42) over the living own ships of
-    its own games with the ship card `types` (on `device`): it plays every seat of these
-    pools (each pool's seats renamed to it), from staggered clocks, for `segments` segments
-    of `length` ticks."""
+) -> Callable[[float], torch.Tensor]:
+    """The scripted agent's distributions over the living own ships of its own games with
+    the ship card `types` (on `device`), as a function of its temperature: T -> (tokens,
+    42). It plays every seat of these pools (each pool's seats renamed to it) at T = 1,
+    from staggered clocks, for `segments` segments of `length` ticks; the observations are
+    kept and relabelled at each T asked."""
     agent = Scripted(characteristics(types, api.rules_of(game)))
     own_pools = tuple(
         Pool(
@@ -172,11 +173,16 @@ def teacher_distributions(
         device,
         compiled=compiled,
     )
-    rows = []
-    for _ in range(segments):
-        obs = rollout.run().obs
-        views = flat_views(obs)
-        probabilities = distribution(views, agent.characteristics, agent.parameters)
-        alive = views.ships[:, : probabilities.shape[1], SHIP["alive"]] > 0.5
-        rows.append(probabilities[alive])
-    return torch.cat(rows)
+    observed = [flat_views(rollout.run().obs) for _ in range(segments)]
+
+    def at(temperature: float) -> torch.Tensor:
+        rows = []
+        for views in observed:
+            probabilities = distribution(
+                views, agent.characteristics, agent.parameters, temperature
+            )
+            alive = views.ships[:, : probabilities.shape[1], SHIP["alive"]] > 0.5
+            rows.append(probabilities[alive])
+        return torch.cat(rows)
+
+    return at

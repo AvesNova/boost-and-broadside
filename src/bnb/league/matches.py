@@ -2,10 +2,11 @@
 games between pairs of them, every pair's games split evenly between the seats.
 
 A player is a policy file (or a training checkpoint, whose policy part plays), the newest
-checkpoint of a run, a ladder entry ("scripted", "random" or "rung_<p>"), or the scripted agent
-playing a transformed distribution, `scripted@T=<temperature>,floor=<floor>` (either key
-optional: T defaults to 1, floor to 0; BC's teacher is `scripted@floor=0.01`). Policies of any
-architecture play here (only the league's slots need the live policy's).
+checkpoint of a run, a ladder entry ("scripted", "random" or "rung_T<t>"), or a teacher:
+the scripted agent at its own temperature T with a uniform floor on its actions,
+`scripted@T=<temperature>,floor=<floor>` (either key optional: T defaults to 1, floor to 0;
+BC's teacher is `scripted`, T = 1 and floor 0). Policies of any architecture play here (only
+the league's slots need the live policy's).
 
 A batch is one rollout over every pair's games of one game preset: each pair is a pool of
 its own, each player one controller over all its rows. Every environment plays one game
@@ -26,28 +27,24 @@ from bnb.game.handling.characteristics import characteristics
 from bnb.learn.bc import TeacherConfig, TeacherOpponent
 from bnb.runs import checkpoint
 from bnb.runs.records import Run
-from bnb.runtime.opponents import OUTCOMES
+from bnb.runtime.opponents import OUTCOMES, ladder_temperature
 from bnb.runtime.rollout import Rollout
 from bnb.runtime.train import model_controller
-
-from .pool import ladder_name
-
-LADDER_NAMES = {"random": 0.0, "scripted": 1.0}
 
 
 @dataclasses.dataclass(frozen=True)
 class Player:
-    """One player: its name, and either a policy directory or a ladder entry's scripted
-    probability, or the transformation of the scripted agent's distribution (`teacher`)."""
+    """One player: its name, and either a policy directory, a ladder entry's temperature
+    (+inf random), or a teacher (the scripted agent at its temperature with a floor)."""
 
     name: str
     policy: pathlib.Path | None = None
-    scripted_probability: float | None = None
+    temperature: float | None = None
     teacher: TeacherConfig | None = None
 
 
 def teacher_of(name: str) -> TeacherConfig | None:
-    """The transformation a `scripted@T=<t>,floor=<f>` name means (keys in any order, each
+    """The teacher a `scripted@T=<t>,floor=<f>` name means (keys in any order, each
     optional, none repeated; T defaults to 1 and floor to 0), or None for another name.
     Raises ValueError for a malformed or out-of-range one."""
     if not name.startswith("scripted@"):
@@ -66,27 +63,12 @@ def teacher_of(name: str) -> TeacherConfig | None:
     return TeacherConfig(temperature=values["T"], floor=values["floor"])
 
 
-def ladder_probability(name: str) -> float | None:
-    """A ladder entry's scripted probability from its name ("random", "scripted",
-    "rung_<p>"), or None for another name."""
-    if name in LADDER_NAMES:
-        return LADDER_NAMES[name]
-    if name.startswith("rung_"):
-        try:
-            probability = float(name[len("rung_") :])
-        except ValueError:
-            return None
-        if 0.0 < probability < 1.0 and ladder_name(probability) == name:
-            return probability
-    return None
-
-
 def player(name: str, runs_directory: pathlib.Path | None = None) -> Player:
     """The player a command-line name means: a ladder entry, a policy directory (one with a
     checkpoint.json), or a run's newest checkpoint."""
-    probability = ladder_probability(name)
-    if probability is not None:
-        return Player(name, scripted_probability=probability)
+    temperature = ladder_temperature(name)
+    if temperature is not None:
+        return Player(name, temperature=temperature)
     teacher = teacher_of(name)
     if teacher is not None:
         return Player(name, teacher=teacher)
@@ -96,7 +78,7 @@ def player(name: str, runs_directory: pathlib.Path | None = None) -> Player:
     if runs_directory is not None and (pathlib.Path(runs_directory) / name).is_dir():
         return Player(name, policy=Run.open(pathlib.Path(runs_directory), name).checkpoint_at())
     raise ValueError(
-        f"{name!r} is not a policy file, a run or a ladder entry (scripted, random, rung_<p>)"
+        f"{name!r} is not a policy file, a run or a ladder entry (scripted, random, rung_T<t>)"
     )
 
 
@@ -152,8 +134,8 @@ def controller_of(player: Player, game: GameConfig, device: torch.device):
         return model_controller(model, game)
     agent = characteristics(api.ship_types(device), api.rules_of(game))
     if player.teacher is not None:
-        return TeacherOpponent(Scripted(agent), player.teacher)
-    return Scripted(agent, scripted_probability=player.scripted_probability)
+        return TeacherOpponent(agent, player.teacher)
+    return Scripted(agent, temperature=player.temperature)
 
 
 def play(

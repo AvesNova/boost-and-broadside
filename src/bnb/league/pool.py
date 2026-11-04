@@ -2,13 +2,16 @@
 and 5).
 
 Entries: frozen snapshots of the live policy (checkpoints), the uniform average and the
-exponential moving average of its weights, and the stationary ladder (random, the rungs and
-the scripted agent). Self-play is not an entry: it is a fixed share of each mode's batch.
+exponential moving average of its weights, and the stationary ladder (random, the scripted
+agent's temperature rungs and the scripted agent). Self-play is not an entry: it is a fixed
+share of each mode's batch.
 """
 
 import dataclasses
 
 import torch
+
+from bnb.runtime.opponents import ladder_name
 
 from .gauge import KINDS
 
@@ -21,22 +24,22 @@ HISTORY_FROM = 3  # then the snapshot nearest each age 2^k snapshots back, k >= 
 
 @dataclasses.dataclass(frozen=True)
 class Entry:
-    """One pool entry. kind: "checkpoint", "average" or "ladder"; scripted_probability: a
-    ladder entry's `p` (0 random, 1 the scripted agent), None otherwise; steps: a
+    """One pool entry. kind: "checkpoint", "average" or "ladder"; temperature: a ladder
+    entry's scripted temperature (+inf random, 1 the scripted agent), None otherwise; steps: a
     checkpoint's environment steps at its snapshot; ordinal: a checkpoint's place in the
     order of snapshots (0, 1, 2, ...)."""
 
     name: str
     kind: str
-    scripted_probability: float | None = None
+    temperature: float | None = None
     steps: int | None = None
     ordinal: int | None = None
 
     def __post_init__(self) -> None:
         if self.kind not in KINDS:
             raise ValueError(f"entry kind {self.kind!r} is not one of {KINDS}")
-        if (self.kind == "ladder") != (self.scripted_probability is not None):
-            raise ValueError(f"{self.name}: only a ladder entry has a scripted probability")
+        if (self.kind == "ladder") != (self.temperature is not None):
+            raise ValueError(f"{self.name}: only a ladder entry has a temperature")
 
     @property
     def network(self) -> bool:
@@ -44,18 +47,9 @@ class Entry:
         return self.kind != "ladder"
 
 
-def ladder_name(scripted_probability: float) -> str:
-    """ "random" (0), "scripted" (1), or "rung_<p>"."""
-    if scripted_probability == 0.0:
-        return "random"
-    if scripted_probability == 1.0:
-        return "scripted"
-    return f"rung_{scripted_probability:g}"
-
-
-def ladder_entries(probabilities: tuple[float, ...]) -> list[Entry]:
-    """The stationary ladder's entries, one per scripted probability."""
-    return [Entry(ladder_name(p), "ladder", scripted_probability=p) for p in probabilities]
+def ladder_entries(temperatures: tuple[float, ...]) -> list[Entry]:
+    """The stationary ladder's entries, one per temperature (`ladder_name`)."""
+    return [Entry(ladder_name(t), "ladder", temperature=t) for t in temperatures]
 
 
 def snapshot_name(steps: int) -> str:

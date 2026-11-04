@@ -624,7 +624,7 @@ def test_compiled_rollout_graph_replays_draw_fresh_randomness():
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
 def test_an_eager_rollout_of_the_ladder_on_frontline_captures_into_a_graph():
     """The head-to-head's rollout runs uncompiled and captures a CUDA graph: the scripted
-    agent's frontline strategy and the ladder's uniform draws build no tensor from host
+    agent's frontline strategy and a ladder rung's temperature build no tensor from host
     values (a host copy cannot run inside a capture)."""
     from bnb.contracts import Pool
     from bnb.league.matches import Player, controller_of
@@ -633,8 +633,8 @@ def test_an_eager_rollout_of_the_ladder_on_frontline_captures_into_a_graph():
     game = api.PRESETS["frontline"]
     device = torch.device("cuda")
     controllers = {
-        "scripted": controller_of(Player("scripted", scripted_probability=1.0), game, device),
-        "rung": controller_of(Player("rung_0.5", scripted_probability=0.5), game, device),
+        "scripted": controller_of(Player("scripted", temperature=1.0), game, device),
+        "rung": controller_of(Player("rung_T2", temperature=2.0), game, device),
     }
     rollout = Rollout(
         game,

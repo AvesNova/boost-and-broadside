@@ -24,7 +24,14 @@ from bnb.controllers.yemong import YemongController
 from bnb.game import api
 from bnb.game.api import PRESETS, ShipTypes
 from bnb.game.handling.characteristics import characteristics
-from bnb.learn.bc import BehaviourCloning, StopConfig, StopRule, TeacherConfig, TeacherOpponent
+from bnb.learn.bc import (
+    BehaviourCloning,
+    StopConfig,
+    StopRule,
+    TeacherConfig,
+    TeacherOpponent,
+    teacher_agent,
+)
 from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
@@ -269,7 +276,7 @@ class Trainer:
             "random": lambda: Random(game.ships_per_team),
             # BC scores the learner against the teacher its labels describe
             SCRIPTED: lambda: (
-                TeacherOpponent(Scripted(self.characteristics), config.teacher)
+                TeacherOpponent(self.characteristics, config.teacher)
                 if cloning
                 else Scripted(self.characteristics)
             ),
@@ -313,9 +320,12 @@ class Trainer:
         self.learner_pool = lineup.pool_of[LEARNER]
         rules, stage = self.rollout.rules, compiler(config.compiled)
         if cloning:  # the labels are the scripted agent's distribution, transformed
-            agent = Scripted(self.characteristics)
+            agent = teacher_agent(self.characteristics, config.teacher)
             teacher = functools.partial(
-                distribution, characteristics=agent.characteristics, parameters=agent.parameters
+                distribution,
+                characteristics=agent.characteristics,
+                parameters=agent.parameters,
+                temperature=agent.temperature,
             )
             self.ppo = BehaviourCloning(
                 self.model,

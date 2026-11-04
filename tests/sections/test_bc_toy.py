@@ -3,12 +3,12 @@ scripted agent at 2v2 team deathmatch scores at least 0.40 against its teacher o
 games (within two standard errors, see SCORE_BAR), and its score against the chaser is
 within 0.10 of the teacher's.
 
-The labels are at the default floor, and the teacher is the one they describe: BC's
-scripted seat (`bnb.learn.bc.TeacherOpponent`). BC runs to its score stop, here the toy's
-own target (TARGET: the lanes' score against the raw scripted agent over 1000 games
-reaches 0.40, not the default parity), within BUDGET environment steps of 256 environments
-x 128 ticks, one shard, no lookahead, with 256 rating lanes (the section notes, "Stop rule
-(2026-11-02)", have the curve of the earlier rule).
+The labels are the default teacher's (the scripted agent at T = 1, floor 0), and the
+teacher is the one they describe: BC's scripted seat (`bnb.learn.bc.TeacherOpponent`). BC
+runs to its score stop, here the toy's own target (TARGET: the lanes' score against the raw
+scripted agent over 1000 games reaches 0.40, not the default parity), within BUDGET
+environment steps of 256 environments x 128 ticks, one shard, no lookahead, with 256 rating
+lanes (the section notes, "Stop rule (2026-11-02)", have the curve of the earlier rule).
 """
 
 import dataclasses
@@ -54,7 +54,7 @@ def test_the_toy_clone_scores_against_its_teacher_and_the_chaser():
         student = Trainer(TOY, device)
         reason = cloning.clone(student, log=lambda row: None)
         teacher = student.controllers[SCRIPTED]
-        assert isinstance(teacher, bc.TeacherOpponent) and teacher.teacher.floor == bc.FLOOR
+        assert isinstance(teacher, bc.TeacherOpponent) and teacher.teacher == bc.TeacherConfig()
         chaser = Chaser(GAME.ships_per_team)
 
         def against(player, opponent) -> float:

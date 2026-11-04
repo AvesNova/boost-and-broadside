@@ -5,9 +5,9 @@ Everything else is the learner's: the segments, streaming, `unroll`, the critic 
 student's own returns, the auxiliary heads, micro-batching, mixed batches and the return
 scale. No policy gradient, no entropy bonus and no KL early stop. The teacher labels the
 stored observations at update time, on the device, so nothing beyond the observation is
-stored; a temperature and a uniform floor set the labels' entropy. BC's scored opponent
-plays the labels' distribution (`TeacherOpponent`), so the live score is against the
-teacher the labels describe; the scripted agent itself is untouched.
+stored; the scripted agent's own temperature and a uniform floor set the labels' entropy.
+BC's scored opponent plays the labels' distribution (`TeacherOpponent`), so the live score
+is against the teacher the labels describe.
 """
 
 import collections
@@ -20,7 +20,9 @@ import torch
 from bnb.contracts import Action, Obs, Outputs, Trajectory
 from bnb.contracts.action import NUM_JOINT, NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.contracts.series import Mean
-from bnb.controllers.scripted import Scripted, marginals, sample, uniform_actions
+from bnb.controllers.scripted import Scripted, uniform_actions
+from bnb.controllers.scripted_parameters import ScriptedParameters
+from bnb.game.handling.characteristics import Characteristics
 from bnb.models.yemong import policy
 
 from . import losses
@@ -31,9 +33,6 @@ AGREEMENTS = ("power", "stick", "shoot", "joint")
 # BC's per-pool sums over the living own ship-steps, in order.
 SUMS = ("kl", "teacher", "student", "tokens", *(f"agreement_{name}" for name in AGREEMENTS))
 Teacher = Callable[[Obs], torch.Tensor]  # views (R, ...) -> (R, S, NUM_JOINT) probabilities
-# The labels' default uniform floor (author): no label gives an action probability 0, so the
-# clone can sample every action in reinforcement learning.
-FLOOR = 0.01
 
 
 MINIBATCHES = 256
@@ -58,41 +57,51 @@ def config(**overrides) -> LearnerConfig:
 
 @dataclasses.dataclass(frozen=True)
 class TeacherConfig:
-    """The labels' transformation: q_T proportional to q^(1/T), then (1 - floor) q_T +
-    floor / 42. The floor defaults to `FLOOR`; T = 1 and floor 0 leave them as they are."""
+    """The teacher: the scripted agent at its own temperature T (`Scripted`'s), its labels
+    then mixed with uniform, (1 - floor) q_T + floor / 42. The default, T = 1 and floor 0,
+    is the scripted agent itself: it gives no living ship's action probability 0 (its
+    floor of `bnb.controllers.scripted_parameters.EPSILON` per binary decision), so the
+    KL needs no floor of its own."""
 
     temperature: float = 1.0
-    floor: float = FLOOR
+    floor: float = 0.0
 
     def __post_init__(self) -> None:
         if not self.temperature > 0.0 or not 0.0 <= self.floor <= 1.0:
             raise ValueError(f"need temperature > 0 and floor in [0, 1], got {self}")
 
 
-def labels(probabilities: torch.Tensor, teacher: TeacherConfig) -> torch.Tensor:
-    """The teacher's labels from its distribution (..., 42). A structural zero stays zero
-    under the temperature alone."""
-    if teacher.temperature != 1.0:
-        probabilities = torch.softmax(torch.log(probabilities) / teacher.temperature, -1)
-    if teacher.floor != 0.0:
-        probabilities = (1.0 - teacher.floor) * probabilities + teacher.floor / NUM_JOINT
+def labels(probabilities: torch.Tensor, floor: float) -> torch.Tensor:
+    """The labels from the teacher's distribution at its temperature (..., 42): mixed with
+    uniform by `floor`."""
+    if floor != 0.0:
+        probabilities = (1.0 - floor) * probabilities + floor / NUM_JOINT
     return probabilities
 
 
+def teacher_agent(
+    characteristics: Characteristics,
+    teacher: TeacherConfig,
+    parameters: ScriptedParameters = ScriptedParameters(),
+) -> Scripted:
+    """The scripted agent at the teacher's temperature."""
+    return Scripted(characteristics, parameters, teacher.temperature)
+
+
 class TeacherOpponent:
-    """The scripted agent as BC's opponent, playing the labels' distribution: each part's
-    marginal tempered (q^(1/T) normalised per part tempers the joint, their product), then
-    with probability `floor` a uniform joint action instead. At T = 1 and floor 0 it draws
-    exactly as `agent` does. agent: a scripted agent at scripted probability 1."""
+    """The scripted agent as BC's opponent, playing the labels' distribution: the agent at
+    the teacher's temperature, and with probability `floor` a uniform joint action instead.
+    At floor 0 it is the agent at that temperature."""
 
     reads = Scripted.reads
 
-    def __init__(self, agent: Scripted, teacher: TeacherConfig) -> None:
-        if not (
-            isinstance(agent.scripted_probability, float) and agent.scripted_probability == 1.0
-        ):
-            raise ValueError("the teacher is the scripted agent at scripted probability 1")
-        self.agent, self.teacher = agent, teacher
+    def __init__(
+        self,
+        characteristics: Characteristics,
+        teacher: TeacherConfig,
+        parameters: ScriptedParameters = ScriptedParameters(),
+    ) -> None:
+        self.agent, self.teacher = teacher_agent(characteristics, teacher, parameters), teacher
 
     def init_carry(self, views: int, device: torch.device) -> None:
         """No carry: the teacher is memoryless."""
@@ -100,16 +109,13 @@ class TeacherOpponent:
 
     def action_distribution(self, obs: Obs) -> torch.Tensor:
         """(R, S, NUM_JOINT) the distribution `step` samples from: the labels'."""
-        return labels(self.agent.action_distribution(obs), self.teacher)
+        return labels(self.agent.action_distribution(obs), self.teacher.floor)
 
     def step(self, carry: None, obs: Obs, reset: torch.Tensor):
         """One decision for views (R, ...), drawn from the labels' distribution; see
         `Controller.step`."""
-        parts = marginals(obs, self.agent.characteristics, self.agent.parameters)
-        temperature, floor = self.teacher.temperature, self.teacher.floor
-        if temperature != 1.0:
-            parts = [torch.softmax(torch.log(part) / temperature, -1) for part in parts]
-        action = torch.stack([sample(part) for part in parts], -1).to(torch.int32)
+        action, _, _ = self.agent.step(None, obs, reset)
+        action, floor = action.packed(), self.teacher.floor
         if floor != 0.0:
             uniform = torch.rand(action.shape[:-1], device=action.device) < floor
             action = torch.where(
@@ -195,7 +201,9 @@ class BehaviourCloning(Learner):
         of KL(labels || student), the labels' and the student's entropy and the tokens),
         over own ships alive."""
         own_alive = trajectory.alive[..., : trajectory.log_probability.shape[-1]]
-        target = labels(teacher_distribution(self.teacher, trajectory.obs), self.teacher_config)
+        target = labels(
+            teacher_distribution(self.teacher, trajectory.obs), self.teacher_config.floor
+        )
         logits = unrolled.policy_logits.float()
         cross = losses.cross_entropy(logits, target)
         teacher_entropy = entropy(target)
@@ -260,39 +268,44 @@ class BehaviourCloning(Learner):
         return out
 
 
-def mean_entropy(probabilities: torch.Tensor, teacher: TeacherConfig) -> float:
+def mean_entropy(probabilities: torch.Tensor, floor: float = 0.0) -> float:
     """The labels' mean entropy over rows of teacher distributions (tokens, 42)."""
-    return float(entropy(labels(probabilities, teacher)).mean())
+    return float(entropy(labels(probabilities, floor)).mean())
 
 
 def calibrate(
-    probabilities: torch.Tensor,
+    distributions: Callable[[float], torch.Tensor],
     target: float,
-    floor: float = FLOOR,
+    floor: float = 0.0,
     tolerance: float = 1e-3,
     low: float = 1e-2,
     high: float = 1e2,
 ) -> TeacherConfig:
-    """The temperature (floor fixed) whose labels' mean entropy over these teacher
-    distributions (tokens, 42), living own ship-steps, is `target` nats, by bisection on
-    log T. Fails when the target lies outside what [low, high] reaches (raise the floor
-    when it is above what the temperature alone can give)."""
-    reach = [mean_entropy(probabilities, TeacherConfig(t, floor)) for t in (low, high)]
+    """The temperature (floor fixed) at which the labels' mean entropy is `target` nats over
+    the teacher's distributions, `distributions(T)` (tokens, 42) for the scripted agent at
+    temperature T on fixed observations (living own ship-steps), by bisection on log T.
+    Fails when the target lies outside what [low, high] reaches (raise the floor when it is
+    above what the temperature alone can give)."""
+
+    def at(temperature: float) -> float:
+        return mean_entropy(distributions(temperature), floor)
+
+    reach = [at(t) for t in (low, high)]
     if not reach[0] <= target <= reach[1]:
         raise ValueError(
             f"target entropy {target} nats is outside [{reach[0]:.4f}, "
             f"{reach[1]:.4f}] for temperatures [{low}, {high}] at floor {floor}"
         )
-    log_low, log_high = torch.log(torch.tensor(low)), torch.log(torch.tensor(high))
+    log_low, log_high = math.log(low), math.log(high)
     while True:
-        middle = float(torch.exp(0.5 * (log_low + log_high)))
-        value = mean_entropy(probabilities, TeacherConfig(middle, floor))
-        if abs(value - target) <= tolerance or float(log_high - log_low) < 1e-6:
+        middle = math.exp(0.5 * (log_low + log_high))
+        value = at(middle)
+        if abs(value - target) <= tolerance or log_high - log_low < 1e-6:
             return TeacherConfig(middle, floor)
         if value < target:
-            log_low = torch.log(torch.tensor(middle))
+            log_low = math.log(middle)
         else:
-            log_high = torch.log(torch.tensor(middle))
+            log_high = math.log(middle)
 
 
 @dataclasses.dataclass(frozen=True)

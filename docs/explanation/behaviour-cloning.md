@@ -32,28 +32,24 @@ stores nothing for it beyond the observation parts it reads (`Rollout` records t
 `extra_reads`). On the same observation the labels are the distribution the scripted agent
 plays (`tests/sections/test_bc.py`).
 
-A temperature and a uniform floor set the labels' entropy, so the clone starts
-reinforcement learning at a chosen entropy without an entropy bonus
-(`bnb.learn.bc.TeacherConfig`): `q_T ∝ q^(1/T)` over the joint, then `(1 − ε) q_T + ε / 42`.
-One global temperature keeps the teacher's relative confidence between states, which the
-clone learns. A structural zero (turning away from the target) stays zero under the
-temperature alone; the floor lifts every zero and reaches entropies the temperature cannot.
-In BC's own games the scripted opponent plays the labels' distribution
-(`bnb.learn.bc.TeacherOpponent`: each marginal tempered, then a uniform joint action with
-probability ε), so the live score is against the teacher the clone copies. At T = 1 and
-ε = 0 it draws exactly the scripted agent's actions. Everywhere else the scripted agent
-plays its natural distribution.
+The teacher is the scripted agent at its own temperature T, its labels optionally mixed
+with uniform by a floor φ (`bnb.learn.bc.TeacherConfig`): `(1 − φ) q_T + φ / 42`, with q_T
+the agent's distribution at T ([the scripted agent's
+softness](scripted-agent.md#softness-logistics-the-floor-and-the-temperature): every
+logistic's scale times T). The default is T = 1 and φ = 0, the scripted agent itself: it
+gives no living ship's action probability 0 (its own floor of 0.04 per binary decision), so
+the KL needs no floor, and the clone can sample every action in reinforcement learning.
+Raising T sets a higher entropy for the clone to start reinforcement learning at, without
+an entropy bonus. In BC's own games the scripted opponent plays the labels' distribution
+(`bnb.learn.bc.TeacherOpponent`: the agent at T, then a uniform joint action with
+probability φ), so the live score is against the teacher the clone copies; at the default
+it is the scripted agent, so BC's score stop (parity against the scripted agent in the
+lanes) is a target the teacher itself meets.
 
-The floor defaults to ε = 0.01 (`bnb.learn.bc.FLOOR`), spread over all 42 joint actions,
-so no label gives an action probability 0. The teacher itself puts weight on about 2.4
-joint actions per living ship-step on the training mix ([measured](#measurements)); a
-clone trained on its distribution unfloored would give the rest probabilities near 0, and
-PPO never samples an action of probability 0. With the floor, the clone can sample every
-action in reinforcement learning.
-
-`bnb.learn.bc.calibrate` bisects the temperature to a target mean entropy, in nats per
-living ship-step, over the scripted agent's own distributions in its own games of the
-training mix (`bnb.runtime.cloning.teacher_distributions`).
+`bnb.learn.bc.calibrate` bisects the agent's temperature to a target mean entropy, in nats
+per living ship-step, over the scripted agent's distributions on the observations of its
+own games of the training mix (`bnb.runtime.cloning.teacher_distributions`, relabelled at
+each temperature tried).
 
 ## Rollouts
 
@@ -62,7 +58,7 @@ labels' distribution, crossed with the training mix in a mixed batch. Beside the
 rating lanes (`bnb.runtime.cloning.LANES`) play the live policy against the raw scripted
 agent in every mode, in the same rollout ([The training
 loop](training-loop.md#the-rating-lanes)): the score stop and the live rating read those
-games, not the softened teacher's. There are no separate evaluation rollouts.
+games (at the default teacher, the same player). There are no separate evaluation rollouts.
 
 ## When it stops
 
@@ -106,7 +102,10 @@ place so the rollout's captured graphs keep reading the weights.
 
 ## Measurements
 
-Measured on 2026-11-02 on the development laptop (RTX 4070 Laptop GPU):
+Measured on 2026-11-02 on the development laptop (RTX 4070 Laptop GPU), with the earlier
+scripted agent (linear ramps ending at exactly 0 and 1, no floor of its own) and its
+teacher at floor 0.01; the current agent's entropy is in
+[the scripted agent's measurements](scripted-agent.md#measurements):
 
 - **The teacher's natural entropy:** 0.396 nats per living ship-step, over 1.27M ship-steps
   of the scripted agent's own games of the 5v5 training mix (256 environments, four

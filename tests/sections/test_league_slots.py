@@ -72,18 +72,21 @@ def test_ladder_rows_draw_their_rung_from_their_own_modes_weights(tmp_path):
     opponents.kind.fill_(LADDER_KIND)  # every slot holds the ladder
     rows = opponents.modes.shape[0]
     opponents.modes.copy_(torch.arange(rows) % 2)  # two modes over the rows
-    weights = torch.tensor([[8.0, 1.0, 0.0, 1.0] + [0.0] * 8, [0.0, 1.0, 1.0, 2.0] + [0.0] * 8])
+    rungs = len(opponents.config.ladder)
+    weights = torch.tensor(
+        [[8.0, 1.0, 0.0, 1.0] + [0.0] * (rungs - 4), [0.0, 1.0, 1.0, 2.0] + [0.0] * (rungs - 4)]
+    )
     opponents.ladder_weights = weights
     opponents.mode_count = 2
     view = _view(trainer)
     carry = trainer.rollout.carry["controllers"][OPPONENTS]
     reset = torch.ones(rows, dtype=torch.bool)
-    counts = torch.zeros((2, 12), dtype=torch.float64)
+    counts = torch.zeros((2, rungs), dtype=torch.float64)
     for _ in range(600):
         _, carry, _ = opponents.step(carry, view, reset)
         for mode in range(2):
             counts[mode] += torch.bincount(
-                carry.ladder_index[opponents.modes == mode], minlength=12
+                carry.ladder_index[opponents.modes == mode], minlength=rungs
             )
     for mode in range(2):
         _assert_shares(counts[mode], weights[mode].double())
