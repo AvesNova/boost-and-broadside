@@ -52,10 +52,10 @@ def stored(module_global_generator):
     )
     runner.run()
     runner.run()
-    return net, runner, [runner.bootstrap()]
+    return net, runner, runner.bootstrap()
 
 
-def _gradient(model, runner, bootstraps):
+def _gradient(model, runner, bootstrap):
     """Every view's minibatch: the loss terms and the flattened gradient."""
     learner = Learner(
         model,
@@ -65,7 +65,7 @@ def _gradient(model, runner, bootstraps):
         RewardConfig().outcome,
         CUDA,
     )
-    prepared = learner.prepare(runner.store, bootstraps)
+    prepared = learner.prepare(runner.store, bootstrap)
     terms, _, _, _, _ = learner.gradient(runner.store, prepared, torch.arange(runner.store.views))
     return terms, torch.cat([parameter.grad.flatten() for parameter in model.parameters()])
 
@@ -91,15 +91,15 @@ def _bfloat16_copy(net):
     ],
 )
 def test_a_precision_setting_agrees_with_float32(stored, precision, tolerance):
-    net, runner, bootstraps = stored
-    reference_terms, reference = _gradient(net, runner, bootstraps)
+    net, runner, bootstrap = stored
+    reference_terms, reference = _gradient(net, runner, bootstrap)
     try:
         if precision == "tf32":
             set_precision("tf32")
             model = net
         else:
             model = _bfloat16_copy(net)
-        terms, gradient = _gradient(model, runner, bootstraps)
+        terms, gradient = _gradient(model, runner, bootstrap)
     finally:
         set_precision("float32")
     assert torch.isfinite(terms).all() and torch.isfinite(gradient).all()
@@ -122,7 +122,7 @@ def test_the_update_reports_its_precision_signals(stored):
     """Every update reports the step/unroll ratio drift, the first epoch's clip fraction and
     the minibatch steps whose gradient was not finite; a non-finite gradient counts once per
     step."""
-    net, runner, bootstraps = stored
+    net, runner, bootstrap = stored
     config = LearnerConfig(epochs=1, minibatches=2)
     learner = Learner(
         copy.deepcopy(net),
@@ -132,7 +132,7 @@ def test_the_update_reports_its_precision_signals(stored):
         RewardConfig().outcome,
         CUDA,
     )
-    out = metrics.read(learner.update(runner.store, bootstraps))
+    out = metrics.read(learner.update(runner.store, bootstrap))
     assert {"policy/ratio_drift/max", "policy/ratio_drift/mean", "policy/clip_fraction"} <= (
         out.keys()
     )
@@ -142,7 +142,7 @@ def test_the_update_reports_its_precision_signals(stored):
     learner = Learner(
         model, config, runner.rules, runner.carry["types"], RewardConfig().outcome, CUDA
     )
-    assert metrics.read(learner.update(runner.store, bootstraps))["train/skipped_steps"] == 2
+    assert metrics.read(learner.update(runner.store, bootstrap))["train/skipped_steps"] == 2
 
 
 def test_the_trainer_reports_the_carrys_nonfinite_beliefs(stored):

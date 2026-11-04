@@ -25,6 +25,7 @@ import torch
 from bnb.contracts.series import Table
 from bnb.runs import checkpoint
 from bnb.runs.records import Run
+from bnb.runtime.lanes import LIVE
 from bnb.runtime.opponents import (
     LADDER_KIND,
     NETWORK,
@@ -37,6 +38,7 @@ from bnb.runtime.opponents import (
 from bnb.runtime.train import Trainer
 
 from .gauge import Gauge, Record, gauge_rating
+from .lanes import AVERAGE, LaneRatings
 from .pool import (
     AVERAGES,
     EXPONENTIAL_AVERAGE,
@@ -63,8 +65,10 @@ class League:
     """The league of one run (see the module docstring). directory: where the snapshots'
     policy files go (the run's `league/`); run: the run's record, which notes a measured
     snapshot cadence; state: a training checkpoint's league state
-    (`bnb.runs.checkpoint.league_state`) to continue from. Attaching it sets the trainer's
-    hooks; without a state it fills every slot with a draw."""
+    (`bnb.runs.checkpoint.league_state`) to continue from; ratings: the live policy's
+    starting rating per mode (a warm start's parent's; 0 where not given). Attaching it sets
+    the trainer's hooks; without a state it fills every slot with a draw. With rating lanes
+    (`bnb.league.lanes`) the live and averaged ratings and the ladder's are the lanes'."""
 
     def __init__(
         self,
@@ -72,6 +76,7 @@ class League:
         directory: str | pathlib.Path,
         run: Run | None = None,
         state: tuple[dict, dict[str, torch.Tensor]] | None = None,
+        ratings: dict[str, float] | None = None,
     ) -> None:
         if trainer.opponents is None:
             raise ValueError("the trainer's lineup has no league seat (`bnb.runtime.opponents`)")
@@ -90,10 +95,15 @@ class League:
         self.pending: dict[str, torch.Tensor] | None = None
         self.started: float | None = None
         self.record = self._empty_record()
+        self.lane_seat = trainer.lane_seat
+        self.lanes = None
+        if trainer.lanes:
+            self.lanes = LaneRatings(trainer, None if state is None else state[0]["lanes"])
         if state is None:
-            self._start(trainer)
+            self._start(trainer, ratings or {})
         else:
             self._restore(trainer, *state)
+        self._load_lanes()
         trainer.league = self
 
     # ---- starting and restoring
@@ -101,10 +111,10 @@ class League:
     def _empty_record(self) -> dict[str, dict[str, Record]]:
         return {mode: {} for mode in self.modes}
 
-    def _start(self, trainer: Trainer) -> None:
+    def _start(self, trainer: Trainer, ratings: dict[str, float]) -> None:
         weights = trainer.model.state_dict()
         self.entries: dict[str, Entry] = {entry.name: entry for entry in self.ladder}
-        self.gauges = {mode: Gauge() for mode in self.modes}
+        self.gauges = {mode: Gauge(ratings.get(mode, 0.0)) for mode in self.modes}
         for gauge in self.gauges.values():
             for entry in self.ladder:
                 gauge.add(entry.name, "ladder", gauge_rating(entry.scripted_probability))
@@ -201,6 +211,12 @@ class League:
             return self.averages[entry.name]
         return self.snapshots[entry.name]
 
+    def _load_lanes(self) -> None:
+        """The averages' weights into the lanes that play them."""
+        if self.lane_seat is not None:
+            for name, weights in self.averages.items():
+                self.lane_seat.load(name, weights)
+
     def _load(self, set_index: int, entry: Entry) -> None:
         if entry.network:
             self.opponents.load(set_index, self._weights_of(entry))
@@ -255,8 +271,21 @@ class League:
         """The gauges, the snapshot and retention, the averages and the next weights, after
         the update's learning. Returns the league's metrics."""
         steps = trainer.ppo.environment_steps
+        if self.lanes is not None:
+            self.lanes.update(trainer.lane_record)
         for mode, gauge in self.gauges.items():
-            gauge.update(self.record[mode])
+            if self.lanes is None:
+                gauge.update(self.record[mode])
+                continue
+            rated = self.lanes.ratings.get(mode, {})
+            gauge.calibrate(
+                {entry.name: rated[entry.name] for entry in self.ladder if entry.name in rated}
+            )
+            gauge.update(
+                self.record[mode],
+                live=rated.get(LIVE),
+                rated={name: rated[name] for name in AVERAGES if name in rated},
+            )
         if self.pending is not None:
             self._snapshot(trainer, steps, self.pending)
             self.pending = None
@@ -269,6 +298,7 @@ class League:
             self.averaged,
             self.config.exponential_decay,
         )
+        self._load_lanes()
         self._weigh()
         metrics = self.metrics()
         self.record = self._empty_record()
@@ -328,8 +358,10 @@ class League:
 
     def metrics(self) -> dict:
         """The league's series of this update (diagnostics audit, group 20), on the host.
-        Per mode: the live gauge (`rating/live`, its standard error and the games that rated
-        it), each average's rating and the sampling distribution's normalised entropy. By
+        Per mode: the live and averaged ratings (`rating/live`, `rating/average` and their
+        standard errors: the lanes', `bnb.league.lanes.LaneRatings.series`, or without lanes
+        the gauge's), the training games that the gauge read and the sampling distribution's
+        normalised entropy. By
         opponent kind (`entry_kind`): the live policy's score and its share of the games.
         The pool's size, its snapshots and whether a slot is draining; and `pool/entries`,
         a table of every entry per mode (rating, error, sampling share, games, score, and
@@ -339,9 +371,15 @@ class League:
         games_by_kind = dict.fromkeys(ENTRY_KINDS, 0.0)
         points_by_kind = dict.fromkeys(ENTRY_KINDS, 0.0)
         rows = []
+        if self.lanes is not None:
+            out.update(self.lanes.series())
         for mode, gauge in self.gauges.items():
-            out[f"rating/live/{mode}"] = gauge.live.rating  # the last finite value
-            out[f"rating/live_stderr/{mode}"] = gauge.live.stderr
+            if self.lanes is None:  # without lanes, the gauge's own estimates
+                out[f"rating/live/{mode}"] = gauge.live.rating  # the last finite value
+                out[f"rating/live_stderr/{mode}"] = gauge.live.stderr
+                average = gauge.entries[AVERAGE]
+                out[f"rating/average/{mode}"] = average.reported
+                out[f"rating/average_stderr/{mode}"] = average.stderr
             weights = self.weights[mode].tolist()
             out[f"pool/sampling_entropy/{mode}"] = normalised_entropy(weights)
             window = 0.0
@@ -349,9 +387,6 @@ class League:
                 games = self.record[mode].get(name)
                 played = games.games if games is not None else 0.0
                 score = (games.wins + games.ties / 2) / played if played else None
-                if rated.kind == "average":
-                    out[f"rating/average/{name}/{mode}"] = rated.reported
-                    out[f"rating/average_stderr/{name}/{mode}"] = rated.stderr
                 kind = entry_kind(name, rated.kind)
                 if played:
                     games_by_kind[kind] += played
@@ -402,6 +437,7 @@ class League:
             held=list(self.held),
             mixed=self.mixed.tolist(),
             weights={mode: weights.tolist() for mode, weights in self.weights.items()},
+            lanes=None if self.lanes is None else self.lanes.state(),
         )
         tensors = {}
         for name, weights in (*self.averages.items(), *self.snapshots.items()):

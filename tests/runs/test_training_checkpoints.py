@@ -98,7 +98,7 @@ def test_a_structural_change_on_resume_is_refused(trained):
 def test_a_run_time_override_on_resume_is_allowed(trained):
     _, directory = trained
     saved, _ = checkpoint.training_config(directory)
-    learner = dataclasses.replace(saved.learner, learning_rate=1e-4, entropy=-0.01)
+    learner = dataclasses.replace(saved.learner, learning_rate=1e-4, entropy_shoot=-0.01)
     with torch.random.fork_rng(devices=[]):
         trainer = checkpoint.load_training(
             directory, cases.CPU, dataclasses.replace(saved, updates=9, learner=learner)

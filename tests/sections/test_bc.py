@@ -20,6 +20,7 @@ from bnb.learn import bc
 from bnb.learn.rewards import RewardConfig
 from bnb.models.relational import RelationalConfig
 from bnb.runtime import metrics
+from bnb.runtime.lanes import LaneConfig
 from bnb.runtime.rollout import Rollout
 
 # The code under test draws from torch's default generator (model initialisation, the
@@ -75,7 +76,7 @@ def segment(module_global_generator):
     for _ in range(2):
         runner.run()
     learner = _cloning(net, runner)
-    prepared = learner.prepare(runner.store, [runner.bootstrap()])
+    prepared = learner.prepare(runner.store, runner.bootstrap())
     return net, runner, learner, prepared
 
 
@@ -236,6 +237,9 @@ def _scripted_seat(
         pools=LINEUP,
         environments=4,
         length=8,
+        shards=1,
+        lookahead=0,
+        lanes=LaneConfig(environments=0),
         model="relational",
         relational=RelationalConfig(hidden=16),
         compiled=False,
@@ -326,7 +330,7 @@ def _run(rule: bc.StopRule, updates: int, steps: int, score: float, kl):
 def test_each_stop_rule_fires_alone():
     config = bc.StopConfig(score_window=100, plateau_steps=1000, budget_steps=10_000)
     falling = lambda update: 2.0 * 0.95**update  # noqa: E731 - still improving 5% per update
-    # 0.8 over 100 games: a lower bound of 0.72 (0.5 would give 0.40, below the target)
+    # 0.8 over 100 games: above parity once the window is full
     assert _run(bc.StopRule(config), 200, 100, 0.8, falling) == (4, "score")  # 100 games
     assert _run(bc.StopRule(config), 200, 100, 0.2, falling) == (99, "budget")
     flat = lambda update: 1.0 + 0.5 * 0.5**update  # noqa: E731 - converges, then plateaus
@@ -352,36 +356,36 @@ def test_the_score_window_trims_whole_updates_without_favouring_a_result():
     assert rule.score == pytest.approx(1.0) and len(rule.updates) == 1
 
 
-def test_the_score_stop_reads_the_windows_lower_bound_trimmed_like_the_score():
+def test_the_score_stop_reads_the_window_trimmed_like_the_score():
     """Window 100: 30 wins and 30 losses, then 20 wins, 40 draws and 10 losses. The window
-    keeps half the first update, so its 100 games are 35 wins, 40 draws and 25 losses; the
-    bound is their mean less two of their standard errors (sample deviation / 10)."""
-    config = bc.StopConfig(score_window=100, score_target=0.47, budget_steps=10**9)
+    keeps half the first update, so its 100 games are 35 wins, 40 draws and 25 losses: a plain
+    score of 0.55, reported with its standard error (sample deviation / 10)."""
+    config = bc.StopConfig(score_window=100, score_target=0.55, budget_steps=10**9)
     rule = bc.StopRule(config)
-    assert rule.observe(1, 30, 0, 30, 1.0) is None and rule.lower_bound is None
+    assert rule.observe(1, 30, 0, 30, 1.0) is None and rule.score is None
     games = torch.tensor([1.0] * 35 + [0.5] * 40 + [0.0] * 25, dtype=torch.float64)
-    error = float(games.std() / 10)
-    assert rule.observe(2, 20, 40, 10, 1.0) == "score"  # 0.4728 >= 0.47
+    assert rule.observe(2, 20, 40, 10, 1.0) == "score"
     assert rule.score == pytest.approx(0.55)
-    assert rule.standard_error == pytest.approx(error)
-    assert rule.lower_bound == pytest.approx(0.55 - 2 * error)
-    assert rule.lower_bound == pytest.approx(0.472802, abs=1e-6)
-    tighter = bc.StopRule(dataclasses.replace(config, score_target=0.48))
-    tighter.observe(1, 30, 0, 30, 1.0)
-    assert tighter.observe(2, 20, 40, 10, 1.0) is None  # the score 0.55 alone would stop
+    assert rule.standard_error == pytest.approx(float(games.std() / 10))
+    above = bc.StopRule(dataclasses.replace(config, score_target=0.551))
+    above.observe(1, 30, 0, 30, 1.0)
+    assert above.observe(2, 20, 40, 10, 1.0) is None
 
 
-def test_a_window_at_the_target_does_not_stop_and_one_clearly_above_does():
+def test_the_score_stop_fires_at_parity_by_default():
     config = bc.StopConfig(score_window=100, budget_steps=10**9)
-    assert config.score_target == pytest.approx(0.40)  # the default (author)
-    at_target = bc.StopRule(config)
-    assert at_target.observe(1, 40, 0, 60, 1.0) is None
-    assert at_target.score == pytest.approx(0.40) and at_target.lower_bound < 0.40
-    above = bc.StopRule(config)
-    assert above.observe(1, 70, 0, 30, 1.0) == "score"
-    assert above.lower_bound == pytest.approx(0.7 - 2 * (0.21 / 99) ** 0.5)
-    certain = bc.StopRule(config)  # no spread: the bound is the score
-    assert certain.observe(1, 0, 100, 0, 1.0) == "score" and certain.lower_bound == 0.5
+    assert config.score_target == pytest.approx(0.5)  # parity (author)
+    below = bc.StopRule(config)
+    assert below.observe(1, 49, 0, 51, 1.0) is None
+    at = bc.StopRule(config)
+    assert at.observe(1, 40, 20, 40, 1.0) == "score"
+
+
+def test_the_budget_stops_bc_at_v1s_time_to_parity_by_default():
+    assert bc.StopConfig().budget_steps == 50_000_000
+    rule = bc.StopRule(bc.StopConfig())
+    assert rule.observe(49_999_999, 0, 0, 0, 1.0) is None
+    assert rule.observe(50_000_000, 0, 0, 0, 1.0) == "budget"
 
 
 def test_the_stop_rules_state_round_trips_through_json_and_continues_the_window():
@@ -429,6 +433,9 @@ def _tiny(objective: str, pools):
         pools=pools,
         environments=8,
         length=8,
+        shards=1,
+        lookahead=0,
+        lanes=LaneConfig(environments=0),
         model="relational",
         relational=RelationalConfig(hidden=16),
         compiled=False,
@@ -462,7 +469,7 @@ def test_reinforcement_learning_starts_from_the_clone():
 
 
 # The tiny BC run of the command line: 2v2 relational, 16 environments x 16 ticks per
-# update, stopped by its budget after two updates.
+# update and 4 rating lanes, stopped by its budget after two updates.
 BC_OPTIONS = (
     "--device",
     "cpu",
@@ -480,8 +487,14 @@ BC_OPTIONS = (
     "bc",
     "--bc-budget-steps",
     str(2 * 16 * 16),
+    "--shards",
+    "1",
     "--set",
     "length=16",
+    "--set",
+    "lookahead=0",
+    "--set",
+    "lanes.environments=4",
     "--set",
     "compiled=false",
     "--set",
@@ -620,6 +633,6 @@ def test_the_gradient_stays_finite_for_a_confident_student(segment):
     )
     for coefficient in (0.0, -0.0081):  # BC's, and PPO's entropy bonus
         (gradient,) = torch.autograd.grad(
-            policy_term + coefficient * entropy_term, logits, retain_graph=True
+            policy_term + coefficient * entropy_term.sum(), logits, retain_graph=True
         )
         assert torch.isfinite(gradient).all(), coefficient

@@ -29,7 +29,7 @@ LENGTH, BLOCK = 64, 16
 
 def _rollout(host_store: bool, shards: int = 1, seed: int = 0):
     """A Yemong rollout on the GPU, the same from the same seed whatever the store: every
-    shard collected, with its bootstrap."""
+    shard collected, and the bootstrap after the last."""
     net = cases.model().to(CUDA)
     torch.manual_seed(seed)  # the rollout's draws come from the global generator
     config = cases.SHORT_SQUAD
@@ -52,14 +52,12 @@ def _rollout(host_store: bool, shards: int = 1, seed: int = 0):
         host_store=host_store,
     )
     runner.run(0)  # history for the stored initial carry
-    bootstraps = []
     for shard in range(shards):
         runner.run(shard)
-        bootstraps.append(runner.bootstrap())
-    return net, runner, bootstraps
+    return net, runner, runner.bootstrap()
 
 
-def _gradient(net, runner, bootstraps):
+def _gradient(net, runner, bootstrap):
     """One minibatch of every view, in micro-batches of a quarter: the counts, the terms,
     the value losses and the gradient."""
     store = runner.store
@@ -72,7 +70,7 @@ def _gradient(net, runner, bootstraps):
         RewardConfig().outcome,
         CUDA,
     )
-    prepared = learner.prepare(store, bootstraps)
+    prepared = learner.prepare(store, bootstrap)
     chosen = torch.randperm(views, generator=torch.Generator().manual_seed(0))
     terms, levels, _, _, _ = learner.gradient(store, prepared, chosen)
     return prepared["counts"], terms, levels, [p.grad.clone() for p in net.parameters()]
@@ -99,20 +97,20 @@ def test_the_update_through_pinned_memory_equals_the_device_path(shards):
 def test_an_update_synchronises_only_to_read_its_kl_and_its_results():
     """No host sync per minibatch or per staged batch: the update reads the epoch's mean KL
     once per epoch but the last, and its results once."""
-    net, runner, bootstraps = _rollout(host_store=True)
+    net, runner, bootstrap = _rollout(host_store=True)
     config = LearnerConfig(
         epochs=3, minibatches=4, target_kl=float("inf"), micro_batch_rows=4 * runner.rules.num_ships
     )
     learner = Learner(
         net, config, runner.rules, runner.carry["types"], RewardConfig().outcome, CUDA
     )
-    learner.update(runner.store, bootstraps)  # the first: the staging buffers
+    learner.update(runner.store, bootstrap)  # the first: the staging buffers
     torch.cuda.synchronize()
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         torch.cuda.set_sync_debug_mode("warn")
         try:
-            out = metrics.read(learner.update(runner.store, bootstraps))
+            out = metrics.read(learner.update(runner.store, bootstrap))
         finally:
             torch.cuda.set_sync_debug_mode("default")
     synchronising = [w for w in caught if "called a synchronizing" in str(w.message)]
@@ -161,20 +159,20 @@ def test_the_cadence_groups_add_no_synchronisation():
     """The cadence groups (the gradient decomposition, the representation) and the heads'
     series stay on the device: an update that measures them synchronises as often as one
     that does not."""
-    net, runner, bootstraps = _rollout(host_store=True)
+    net, runner, bootstrap = _rollout(host_store=True)
     config = LearnerConfig(
         epochs=2, minibatches=2, target_kl=float("inf"), micro_batch_rows=4 * runner.rules.num_ships
     )
     learner = Learner(
         net, config, runner.rules, runner.carry["types"], RewardConfig().outcome, CUDA
     )
-    learner.update(runner.store, bootstraps, cadence=True)  # the first: the staging buffers
+    learner.update(runner.store, bootstrap, cadence=True)  # the first: the staging buffers
     torch.cuda.synchronize()
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         torch.cuda.set_sync_debug_mode("warn")
         try:
-            series = learner.update(runner.store, bootstraps, cadence=True)
+            series = learner.update(runner.store, bootstrap, cadence=True)
         finally:
             torch.cuda.set_sync_debug_mode("default")
     synchronising = [w for w in caught if "called a synchronizing" in str(w.message)]

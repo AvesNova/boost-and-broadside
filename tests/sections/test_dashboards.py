@@ -5,7 +5,8 @@ series cannot leave a dead panel behind.
 
 The runs are the smallest that log every group: tiny Yemong on the training mix (frontline
 and the map scales), episodes of half a second (so games end, the league scores its
-entries and the outcome head is scored) and, for BC, a score window of two games.
+entries, the lanes rate their players and the outcome head is scored), one lane per
+matchup and mode, and, for BC, a score window of two games.
 """
 
 import dataclasses
@@ -37,6 +38,7 @@ def _config(objective: str):
     from bnb.learn import bc
     from bnb.learn.ppo import LearnerConfig
     from bnb.runtime import cloning
+    from bnb.runtime.lanes import LaneConfig
     from bnb.runtime.train import LINEUP, TrainConfig, mixed
 
     game, pools = mixed(cloning.LINEUP if objective == "bc" else LINEUP)
@@ -44,11 +46,15 @@ def _config(objective: str):
         dataclasses.replace(pool, episode_seconds=0.5, respawn_seconds=0.2) for pool in pools
     )
     settings = dict(epochs=1, minibatches=2, micro_batch_rows=64)
+    matchups = cloning.LANES.matchups if objective == "bc" else LaneConfig().matchups
     return TrainConfig(
         game=game,
         pools=pools,
         environments=16,
         length=16,
+        shards=1,
+        lookahead=16,
+        lanes=LaneConfig(environments=3 * len(matchups), matchups=matchups),
         yemong=tiny_yemong_config(),
         learner=bc.config(**settings) if objective == "bc" else LearnerConfig(**settings),
         compiled=False,
@@ -62,6 +68,7 @@ def logged(objective: str, directory: pathlib.Path, updates: int = 2) -> set[str
     """The series names a short CPU run of `objective` logs: the trainer's rows as the
     run's recorder writes them (the trigger rules' flags included), the league attached
     to a PPO run."""
+    from bnb.league.lanes import LaneHooks
     from bnb.league.league import League
     from bnb.runs.recording import Recorder
     from bnb.runs.triggers import Triggers
@@ -71,6 +78,8 @@ def logged(objective: str, directory: pathlib.Path, updates: int = 2) -> set[str
     trainer = Trainer(_config(objective), CPU)
     if objective == "ppo":
         League(trainer, directory / "league")
+    else:
+        LaneHooks(trainer)
     recorder = Recorder(None, trainer, None, Triggers(objective=objective))
     names = set()
     for _ in range(updates):

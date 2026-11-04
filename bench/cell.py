@@ -49,20 +49,21 @@ def train_cell(size: dict | None, environments: int, preset: str | None = None) 
     torch.cuda.synchronize()
     compile_seconds = time.perf_counter() - started
     episode_ticks = max(pool.episode_ticks for pool in trainer.rollout.rules.pools)
-    for _ in range(math.ceil(episode_ticks / config.length)):  # one episode
+    played = config.shards * config.length + config.lookahead  # ticks per collection
+    for _ in range(math.ceil(episode_ticks / played)):  # one episode
         trainer.collect()
     rollout_seconds, learn_seconds = [], []
     for _ in range(TIMED):
         torch.cuda.synchronize()
         started = time.perf_counter()
-        store, bootstraps = trainer.collect()
+        store, bootstrap = trainer.collect()
         torch.cuda.synchronize()
         collected = time.perf_counter()
-        metrics.read(trainer.ppo.update(store, bootstraps))  # the update's one readback
+        metrics.read(trainer.ppo.update(store, bootstrap))  # the update's one readback
         learned = time.perf_counter()
         rollout_seconds.append(collected - started)
         learn_seconds.append(learned - collected)
-    ticks = environments * config.length
+    ticks = trainer.steps_per_update  # the trained ticks; the lookahead and lanes are extra
     rollout, learn = min(rollout_seconds), min(learn_seconds)
     # The keys are bench/results.jsonl's format, kept so its history compares.
     return dict(

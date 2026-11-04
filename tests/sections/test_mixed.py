@@ -468,6 +468,7 @@ def test_a_mixed_batch_does_not_reveal_the_seat():
 
 def test_the_rollout_runs_a_mixed_batch_and_reports_every_pool():
     from bnb.learn.ppo import LearnerConfig
+    from bnb.runtime.lanes import LaneConfig
     from bnb.runtime.opponents import OPPONENTS
     from bnb.runtime.train import LEARNER, TrainConfig, Trainer
 
@@ -479,6 +480,9 @@ def test_the_rollout_runs_a_mixed_batch_and_reports_every_pool():
         game=BASE,
         environments=16,
         length=32,
+        shards=1,
+        lookahead=0,
+        lanes=LaneConfig(environments=0),
         model="relational",
         relational=RelationalConfig(hidden=32),
         pools=pools,
@@ -486,7 +490,7 @@ def test_the_rollout_runs_a_mixed_batch_and_reports_every_pool():
         learner=LearnerConfig(minibatches=2, micro_batch_rows=30),
     )
     trainer = Trainer(cfg, torch.device("cpu"))
-    store, bootstraps = trainer.collect()
+    store, bootstrap = trainer.collect()
     series = metrics.read(trainer.analytics.shard(store.shard(analytics.NAMES, 0)))
     assert {name.removeprefix("episode/wins/") for name in series if "episode/wins/" in name} == (
         set(GAMES)
@@ -499,7 +503,7 @@ def test_the_rollout_runs_a_mixed_batch_and_reports_every_pool():
         globals_[..., GLOBAL["arena_radius"]][:, 0].tolist()
         == [300.0] * 4 + [900.0] * 4 + [1200.0] * 4 + [300.0] * 4
     )
-    stats = metrics.read(trainer.ppo.update(store, bootstraps))
+    stats = metrics.read(trainer.ppo.update(store, bootstrap))
     assert math.isfinite(stats["policy/kl"]) and math.isfinite(stats["critic/value_loss/outcome"])
 
 

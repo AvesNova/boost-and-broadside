@@ -267,7 +267,7 @@ def test_the_targets_series_match_a_hand_computed_case(segment, global_generator
 def test_the_learners_series_are_named_and_finite(segment, global_generator):
     net, runner = segment
     learner = lc.learner(copy.deepcopy(net), runner, epochs=2, minibatches=2)
-    out = metrics.read(learner.update(runner.store, [runner.bootstrap()]))
+    out = metrics.read(learner.update(runner.store, runner.bootstrap()))
     for name in (
         "policy/kl",
         "policy/kl_first",
@@ -299,7 +299,7 @@ def test_diagnostics_do_not_change_the_update(segment, global_generator):
         model = copy.deepcopy(net)
         learner = lc.learner(model, runner, epochs=2, minibatches=2)
         learner.diagnostics = diagnostics
-        out = metrics.read(learner.update(runner.store, [runner.bootstrap()]))
+        out = metrics.read(learner.update(runner.store, runner.bootstrap()))
         results.append((out, [p.detach().clone() for p in model.parameters()]))
     (on, on_weights), (off, off_weights) = results
     assert all(torch.equal(a, b) for a, b in zip(on_weights, off_weights, strict=True))
@@ -315,7 +315,7 @@ def test_a_non_finite_gradient_skips_the_step_and_keeps_the_state(segment, globa
     learner = lc.learner(model, runner, epochs=1, minibatches=2)
     before = [p.detach().clone() for p in model.parameters()]
     hook = next(model.parameters()).register_hook(lambda gradient: gradient * math.nan)
-    out = metrics.read(learner.update(runner.store, [runner.bootstrap()]))
+    out = metrics.read(learner.update(runner.store, runner.bootstrap()))
     hook.remove()
     assert out["train/skipped_steps"] == 2
     assert all(torch.equal(a, b) for a, b in zip(before, model.parameters(), strict=True))
@@ -325,7 +325,7 @@ def test_a_non_finite_gradient_skips_the_step_and_keeps_the_state(segment, globa
         for value in state.values()
     )  # the first step's state, as Adam starts it
     assert "train/gradient_norm" not in out  # no finite step to average
-    out = metrics.read(learner.update(runner.store, [runner.bootstrap()]))
+    out = metrics.read(learner.update(runner.store, runner.bootstrap()))
     assert out["train/skipped_steps"] == 0  # training continues
     assert not all(torch.equal(a, b) for a, b in zip(before, model.parameters(), strict=True))
 
@@ -457,15 +457,15 @@ def test_no_logged_series_is_smoothed(segment, global_generator):
         copy.deepcopy(net), runner, epochs=1, minibatches=2, return_scale_floor=1e6
     )
     for _ in range(2):
-        seasoned.update(runner.store, [runner.bootstrap()])
+        seasoned.update(runner.store, runner.bootstrap())
     seasoned.model.load_state_dict(fresh.model.state_dict())
     seasoned.optimizer.load_state_dict(fresh.optimizer.state_dict())
     seasoned.environment_steps = fresh.environment_steps
     for learner in (fresh, seasoned):  # the same minibatch order
         learner.order_generator.manual_seed(7)
         learner.spread_generator.manual_seed(7)
-    first = metrics.read(fresh.update(runner.store, [runner.bootstrap()]))
-    second = metrics.read(seasoned.update(runner.store, [runner.bootstrap()]))
+    first = metrics.read(fresh.update(runner.store, runner.bootstrap()))
+    second = metrics.read(seasoned.update(runner.store, runner.bootstrap()))
     assert first.keys() == second.keys()
     differing = {name for name in first if first[name] != second[name]}
     assert differing <= justified, sorted(differing - justified)

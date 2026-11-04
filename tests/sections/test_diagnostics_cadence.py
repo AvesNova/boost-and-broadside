@@ -108,14 +108,15 @@ def test_the_cadence_measures_its_groups_and_does_not_change_the_update(segment,
     for cadence in (True, False):
         model = copy.deepcopy(net)
         learner = lc.with_micro_batch(lc.learner(model, runner, epochs=2, minibatches=2), 2)
-        out = metrics.read(learner.update(runner.store, [runner.bootstrap()], cadence=cadence))
+        out = metrics.read(learner.update(runner.store, runner.bootstrap(), cadence=cadence))
         results.append((out, [p.detach().clone() for p in model.parameters()]))
         if cadence:  # the cadence's gradients are taken with autograd.grad, and .grad cleared
             assert all(p.grad is None for p in model.parameters())
     (on, on_weights), (off, off_weights) = results
     assert all(torch.equal(a, b) for a, b in zip(on_weights, off_weights, strict=True))
     assert not any(name.startswith(("gradient/", "representation/")) for name in off)
-    top = ("policy", "entropy", "value", "next_state", "enemy_action", "density")
+    top = ("policy", "entropy_power", "entropy_stick", "entropy_shoot", "value", "next_state")
+    top += ("enemy_action", "density")
     top += ("shot_trajectory", "shot_outcome")
     for scope in ("model", "trunk"):
         assert sum(on[f"gradient/share/{scope}/{term}"] for term in top) == pytest.approx(1.0)

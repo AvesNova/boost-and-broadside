@@ -153,12 +153,14 @@ def resimulate(
     spread: torch.Tensor,
     own: int,
     step: Callable = tick,
+    available: torch.Tensor | None = None,
 ) -> Shots:
     """The shots of a stored segment. capture (L, R, N); fields (L, R, M, 5), the
     observation's field rows (the map of each tick); done (L, R), the episode ended after
     the tick; spread (L, R, N, 2) standard normals (the learner's draw); own: S, the
     shooter's side is rows [0, S) or [S, N); step: `tick`, or the runtime's compiled
-    copy of it."""
+    copy of it; available (R,): the ticks of each view that hold played ticks (a view whose
+    window was extended past its segment by the ticks after it), L when None."""
     length, views, rows = capture.alive.shape
     ages = rules.bullet_moves
     device = capture.alive.device
@@ -204,7 +206,8 @@ def resimulate(
     crossed = ended.gather(0, end_tick.clamp_max(length)) - ended[:-1]
     # A shot launched within the longest flight of the segment's end is invalid whatever it
     # hit: keeping the ones that hit in time would bias the tail's labels toward hits.
-    whole_flight = (launch_tick + ages - 1 < length)[..., None]  # (L, 1, 1)
+    end = length if available is None else available[:, None]  # () or (R, 1)
+    whole_flight = launch_tick[:, :, None] + ages - 1 < end  # (L, 1 or R, 1)
     valid = capture.alive & whole_flight & (crossed == 0)
     age_valid = valid[..., None] & (torch.arange(ages, device=device) <= flight_end[..., None])
 

@@ -10,6 +10,7 @@ from bnb.contracts import GameConfig, Pool
 from bnb.league.league import League
 from bnb.learn.ppo import LearnerConfig
 from bnb.models.relational import RelationalConfig
+from bnb.runtime.lanes import LaneConfig
 from bnb.runtime.opponents import LeagueConfig
 from bnb.runtime.train import LEARNER, TrainConfig, Trainer
 
@@ -18,12 +19,16 @@ SELF_PLAY = (Pool("self_play", 1.0, (LEARNER, LEARNER)),)  # a lineup without th
 
 
 def config(device: str = "cpu", **changes) -> TrainConfig:
-    """16 environments (8 opponent rows, 2 per slot), 16-tick segments."""
+    """16 environments (8 opponent rows, 2 per slot), one 16-tick segment per update, no
+    lookahead and no rating lanes."""
     values = dict(
         game=GAME,
         environments=16,
         updates=0,
         length=16,
+        shards=1,
+        lookahead=0,
+        lanes=LaneConfig(environments=0),
         model="relational",
         relational=RelationalConfig(hidden=16),
         learner=LearnerConfig(epochs=1, minibatches=2, warmup_steps=1000, micro_batch_rows=64),

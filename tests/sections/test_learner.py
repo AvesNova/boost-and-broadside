@@ -22,6 +22,7 @@ from bnb.game import api
 from bnb.learn import labels, losses
 from bnb.learn.ppo import (
     COUNTS,
+    FOLLOWING,
     TERMS,
     WARM_START_ENTROPY,
     LearnerConfig,
@@ -47,7 +48,7 @@ def segment(module_global_generator):
     net = cases.model()
     runner = lc.rollout(net)
     learner = lc.learner(net, runner)
-    prepared = learner.prepare(runner.store, [runner.bootstrap()])
+    prepared = learner.prepare(runner.store, runner.bootstrap())
     return net, runner, learner, prepared
 
 
@@ -174,8 +175,27 @@ def test_each_loss_term_matches_an_independent_computation(segment):
     assert math.isclose(
         got["policy"], surrogate[own_alive].mean().item(), rel_tol=1e-5, abs_tol=1e-7
     )
-    entropy = -(log_probabilities.exp() * log_probabilities).sum(-1)
-    assert math.isclose(got["entropy"], entropy[own_alive].mean().item(), rel_tol=1e-5)
+    # the entropy's factor parts by the chain rule: power, stick given power, shoot given both
+    joint_probabilities = log_probabilities.exp().unflatten(-1, (3, 7, 2))
+    power = joint_probabilities.sum((-2, -1))
+    pair = joint_probabilities.sum(-1)
+    conditional_stick = pair / power[..., None]
+    conditional_shoot = joint_probabilities / pair[..., None]
+
+    def entropy(p: torch.Tensor, weight: torch.Tensor, axes: int) -> torch.Tensor:
+        return -(weight * torch.special.xlogy(p, p)).flatten(-axes).sum(-1)
+
+    parts = dict(
+        entropy_power=entropy(power, torch.ones_like(power), 1),
+        entropy_stick=entropy(conditional_stick, power[..., None], 2),
+        entropy_shoot=entropy(conditional_shoot, pair[..., None], 3),
+    )
+    for name, part in parts.items():
+        assert math.isclose(got[name], part[own_alive].mean().item(), rel_tol=1e-5), name
+    joint_entropy = -(log_probabilities.exp() * log_probabilities).sum(-1)
+    assert math.isclose(
+        sum(got[name] for name in parts), joint_entropy[own_alive].mean().item(), rel_tol=1e-5
+    )
 
     # value: per-ship levels over valued ships, the outcome per view-step
     valued = own_alive | (ships[..., :OWN, SHIP["respawn_wait"]] > 0)
@@ -406,7 +426,7 @@ def test_the_outcome_targets_read_the_match_result_at_any_outcome_weight(decided
     assert (trajectory.reward[..., -1] == 0).all()
     assert (trajectory.result[ended] > 0).any() and (trajectory.result[ended] < 0).any()
     learner = lc.learner(net, runner)
-    targets = learner.prepare(runner.store, [runner.bootstrap()])["derived"]["outcome_targets"]
+    targets = learner.prepare(runner.store, runner.bootstrap())["derived"]["outcome_targets"]
     assert torch.equal(targets[ended].argmax(-1), critic.outcome_class(trajectory.result[ended]))
 
 
@@ -415,6 +435,7 @@ def test_an_update_consumes_several_shards():
     and one update over both (the relational model, so it is quick)."""
     from bnb.contracts import GameConfig
     from bnb.learn.ppo import LearnerConfig
+    from bnb.runtime.lanes import LaneConfig
     from bnb.runtime.train import LEARNER, TrainConfig, Trainer
 
     cfg = TrainConfig(
@@ -422,6 +443,8 @@ def test_an_update_consumes_several_shards():
         environments=8,
         length=16,
         shards=2,
+        lookahead=0,
+        lanes=LaneConfig(environments=0),
         model="relational",
         relational=RelationalConfig(hidden=32),
         compiled=False,
@@ -429,8 +452,8 @@ def test_an_update_consumes_several_shards():
         learner=LearnerConfig(minibatches=2, micro_batch_rows=16),
     )
     trainer = Trainer(cfg, torch.device("cpu"))
-    store, bootstraps = trainer.collect()
-    assert store.views == 16 and len(bootstraps) == 2
+    store, bootstrap = trainer.collect()
+    assert store.views == 16
     first, second = (trainer.rollout.trajectory(shard) for shard in range(2))
     # The second segment continues the first: its first observation is the first's last
     # bootstrap's (the 60-tick episode's clock moved on by one tick).
@@ -438,7 +461,7 @@ def test_an_update_consumes_several_shards():
     following = second.obs.globals[0, :, GLOBAL["episode_progress"]]
     continued = ~first.done[-1]
     torch.testing.assert_close(following[continued], progress[-1][continued] + 1.0 / 60.0)
-    stats = metrics.read(trainer.ppo.update(store, bootstraps))
+    stats = metrics.read(trainer.ppo.update(store, bootstrap))
     assert stats["policy/minibatch_steps"] == 8
     assert math.isfinite(stats["critic/value_loss/outcome"])
 
@@ -447,8 +470,9 @@ def test_an_update_consumes_several_shards():
 
 
 def test_the_stored_shot_labels_are_the_updates_resimulation(segment):
-    """prepare re-simulates every view once, from the learner's own spread stream, and
-    stores the labels; each epoch's micro-batch reads them back unchanged."""
+    """prepare re-simulates every view once, from the learner's own spread stream and with
+    the bullet flight after its segment where the store has it, and stores the labels; each
+    epoch's micro-batch reads them back unchanged."""
     _, runner, learner, _ = segment
     store = runner.store
     spread = torch.randn(
@@ -456,7 +480,8 @@ def test_the_stored_shot_labels_are_the_updates_resimulation(segment):
     )
     views = torch.arange(3, 7)  # not one of prepare's micro-batches
     trajectory, stored = next(learner.staged(store, [views]))
-    shot, mask = learner.shots(trajectory, spread[:, views])
+    following, followed = store.following(FOLLOWING, views, runner.rules.bullet_moves)
+    shot, mask = learner.shots(trajectory, spread[:, views], following, followed)
     assert mask.any() and torch.equal(stored["mask"], mask)
     for a, b in zip(_pytree.tree_leaves(stored["shots"]), _pytree.tree_leaves(shot), strict=True):
         assert torch.equal(a, b)
@@ -469,7 +494,7 @@ def test_recomputed_old_log_probabilities_are_the_unrolls(segment):
     trajectory = lc.whole(runner)
     assert torch.equal(prepared["derived"]["old_log_probability"], trajectory.log_probability)
     recomputed = lc.learner(net, runner, old_log_probabilities="recomputed")
-    old = recomputed.prepare(runner.store, [runner.bootstrap()])["derived"]["old_log_probability"]
+    old = recomputed.prepare(runner.store, runner.bootstrap())["derived"]["old_log_probability"]
     with torch.no_grad():
         expected, _ = policy.evaluate(
             recomputed.unroll(trajectory).policy_logits, cases.joint_actions(trajectory)
@@ -544,7 +569,7 @@ def test_the_update_is_the_same_whatever_the_global_seed(segment):
         model = copy.deepcopy(net)
         learner = lc.learner(model, runner, epochs=1, minibatches=3)
         torch.manual_seed(seed)
-        out = metrics.read(learner.update(runner.store, [runner.bootstrap()]))
+        out = metrics.read(learner.update(runner.store, runner.bootstrap()))
         results.append((out, [parameter.detach().clone() for parameter in model.parameters()]))
     (first, first_parameters), (second, second_parameters) = results
     assert first == second
@@ -557,7 +582,7 @@ def test_the_kl_early_stop_ends_the_update_after_an_epoch(segment):
     net, runner, _, _ = segment
     for target, steps, stopped in ((-1.0, 2, True), (math.inf, 4, False)):
         learner = lc.learner(copy.deepcopy(net), runner, epochs=2, minibatches=2, target_kl=target)
-        out = metrics.read(learner.update(runner.store, [runner.bootstrap()]))
+        out = metrics.read(learner.update(runner.store, runner.bootstrap()))
         assert out["policy/minibatch_steps"] == steps and out["policy/stopped_early"] == stopped
         assert out["policy/kl"] >= 0.0
 
@@ -590,7 +615,7 @@ def test_v1s_entropy_bonus_outweighs_the_clones_policy_gradient_on_shooting():
     """The degradation of the first RL run, pinned: with v1's coefficient the bonus raises
     the share of an action the advantages say is worse; the warm start's coefficient lets
     the policy gradient lower it."""
-    before, after = _shoot_share_after_a_step(LearnerConfig().entropy)
+    before, after = _shoot_share_after_a_step(LearnerConfig().entropy_shoot)
     assert after > before
     before, after = _shoot_share_after_a_step(WARM_START_ENTROPY)
     assert after < before

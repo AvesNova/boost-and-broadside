@@ -13,6 +13,11 @@ as one CUDA graph, so a rollout is a few graph replays.
 The learner's records go into a staging ring of two blocks on the device, and after each
 block into the segment store (`store.SegmentStore`: pinned host memory, or the device), so
 the device holds two blocks of records, not a whole segment (learner spec 2).
+
+After an update's last shard the rollout plays the lookahead (`run_lookahead`): more ticks
+of the same games, every environment alike, of which the store keeps only what the
+learner's targets read there (`LOOKAHEAD_RETURNS` for the whole lookahead, `LOOKAHEAD_SHOTS`
+for a bullet's flight). The next update continues from its end.
 """
 
 import torch
@@ -32,6 +37,10 @@ from .store import SegmentStore
 
 PARTS = ("ships", "fields", "globals", "zones")
 COUNTERS = ("shots", "hits", "deaths", "resets")
+# What the store keeps of the lookahead: the returns' records over all of it, and the shot
+# re-simulation's over the first bullet flight (the observation for its fields).
+LOOKAHEAD_RETURNS = ("reward", "values", "outcome", "done", "result")
+LOOKAHEAD_SHOTS = ("capture", "obs", "done")
 
 
 def _assign(target, source) -> None:
@@ -56,7 +65,8 @@ class Rollout:
     pinned host memory (on a CUDA device) rather than on the device; staggered: start each
     environment's clock at a random tick of its episode (else every game starts fresh);
     extra_reads: observation parts the learner's records keep beyond what its controller
-    reads (BC's teacher labels the stored observations)."""
+    reads (BC's teacher labels the stored observations); lookahead: ticks `run_lookahead`
+    plays (a multiple of the graph's block)."""
 
     def __init__(
         self,
@@ -75,6 +85,7 @@ class Rollout:
         host_store: bool = False,
         staggered: bool = True,
         extra_reads: tuple[str, ...] = (),
+        lookahead: int = 0,
     ) -> None:
         self.rules = api.rules_of(config, pools, environments)
         self.reward_config = reward_config or rewards.RewardConfig()
@@ -98,11 +109,23 @@ class Rollout:
             part for part in PARTS if part in controllers[learner].reads + extra_reads
         )
         self.block = max(d for d in range(1, graph_ticks + 1) if length % d == 0)
+        if lookahead % self.block:
+            raise ValueError(
+                f"the lookahead's {lookahead} ticks are not whole {self.block}-tick blocks"
+            )
+        self.lookahead = lookahead
         self.ring = min(length, 2 * self.block)  # the staging ring: two blocks of records
         self.episode_ticks = api.episode_ticks(self.rules, environments, device).float()
         self.carry = self._initial_carry(types, staggered)
-        ticks = _pytree.tree_map_only(torch.Tensor, lambda x: x[0], self.carry["records"])
-        self.store = SegmentStore(ticks, self.carry["segment"], shards, length, device, host_store)
+        records = self.carry["records"]
+        ticks = _pytree.tree_map_only(torch.Tensor, lambda x: x[0], records)
+        kept = {name: lookahead for name in LOOKAHEAD_RETURNS if name in records}
+        for name in LOOKAHEAD_SHOTS:
+            kept[name] = max(kept.get(name, 0), min(lookahead, self.rules.bullet_moves))
+        kept = {name: count for name, count in kept.items() if count > 0}
+        self.store = SegmentStore(
+            ticks, self.carry["segment"], shards, length, device, host_store, kept
+        )
         stages = (self._act, self._advance, self._resolve, self._perceive)
         self.stages = (
             tuple(torch.compile(f, fullgraph=True, dynamic=False) for f in stages)
@@ -505,25 +528,25 @@ class Rollout:
         if written is not None:
             torch.cuda.current_stream(self.device).wait_event(written)
 
-    def _write(self, key, source: dict, shard: int, start: int | None = None) -> None:
-        written = self.store.write(source, shard, start)
+    def _write(self, key, source: dict, shard: int | None, start: int | None = None) -> None:
+        """Copy `source` into the store's shard `shard`, or the lookahead's ticks from `start`
+        (shard None)."""
+        if shard is None:
+            written = self.store.write_lookahead(source, start)
+        else:
+            written = self.store.write(source, shard, start)
         if written is not None:
             self._written[key] = written
 
-    @torch.no_grad()
-    def run(self, shard: int = 0) -> Trajectory:
-        """Advance `length` ticks into the store's shard `shard`; returns that shard as a
-        Trajectory (views of the store, valid until the shard is written again)."""
-        carry, records, segment = self.carry, self.carry["records"], self.carry["segment"]
-        carry["segment_tick"].zero_()
-        self._reusable("segment")
-        if "initial_carry" in segment:
-            _assign(segment["initial_carry"], carry["controllers"][self.learner])
+    def _play(self, ticks: int, shard: int | None) -> None:
+        """Advance `ticks` ticks block by block, each block's records into the store's shard
+        `shard` (None: the lookahead's)."""
+        carry, records = self.carry, self.carry["records"]
         cuda = self.device.type == "cuda"
         if cuda and self.graph is None:
             self._capture()
             carry["segment_tick"].zero_()
-        for start in range(0, self.length, self.block):
+        for start in range(0, ticks, self.block):
             slots = slice(start % self.ring, start % self.ring + self.block)
             self._reusable(slots.start)
             if cuda:
@@ -540,9 +563,27 @@ class Rollout:
                 shard,
                 start,
             )
+
+    @torch.no_grad()
+    def run(self, shard: int = 0) -> Trajectory:
+        """Advance `length` ticks into the store's shard `shard`; returns that shard as a
+        Trajectory (views of the store, valid until the shard is written again)."""
+        carry, segment = self.carry, self.carry["segment"]
+        carry["segment_tick"].zero_()
+        self._reusable("segment")
+        if "initial_carry" in segment:
+            _assign(segment["initial_carry"], carry["controllers"][self.learner])
+        self._play(self.length, shard)
         segment["final_truth"].copy_(self._final_truth(carry))
         self._write("segment", segment, shard)
         return self.trajectory(shard)
+
+    @torch.no_grad()
+    def run_lookahead(self) -> None:
+        """Advance the lookahead's ticks after the update's last shard: the same games go on,
+        and the store keeps the lookahead's records (`SegmentStore.lookahead`)."""
+        self.carry["segment_tick"].zero_()
+        self._play(self.lookahead, None)
 
     def _final_truth(self, carry: dict) -> torch.Tensor:
         """The truth of the observation after the last step, in the learner's views' rows."""

@@ -1,9 +1,10 @@
 """Behaviour cloning's loop (scripted spec B2, B4): the student flies the learner views
-against itself and the scripted agent, and BC stops on the first of its rules.
+against itself and the teacher, and BC stops on the first of its rules.
 
-The live scores come from the training games themselves (no evaluation rollouts). The
-teacher's temperature is calibrated offline on the scripted agent's own games
-(`teacher_distributions`, then `bnb.learn.bc.calibrate`).
+The score stop reads the rating lanes (`bnb.runtime.lanes`): the live policy against the raw
+scripted agent, in the same rollout as the training games. The training games' scores, by
+opponent, are series too. The teacher's temperature is calibrated offline on the scripted
+agent's own games (`teacher_distributions`, then `bnb.learn.bc.calibrate`).
 """
 
 from collections.abc import Callable
@@ -17,6 +18,7 @@ from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
 from bnb.learn.bc import flat_views
 
+from .lanes import BC_MATCHUPS, LIVE, SCRIPTED_PLAYER, LaneConfig
 from .rollout import Rollout
 from .train import LEARNER, SCRIPTED, Trainer
 
@@ -25,6 +27,8 @@ from .train import LEARNER, SCRIPTED, Trainer
 # live score is against the teacher the clone copies. Section 8's pool replaces this when
 # it exists.
 LINEUP = (Pool("self_play", 0.5, (LEARNER, LEARNER)), Pool("scripted", 0.5, (LEARNER, SCRIPTED)))
+# BC's rating lanes: the live policy against the raw scripted agent, which the score stop reads.
+LANES = LaneConfig(matchups=BC_MATCHUPS)
 
 
 def opponent_kind(pool: Pool) -> str:
@@ -54,30 +58,41 @@ def scores(pools: tuple[Pool, ...], metrics: dict) -> dict:
     return out
 
 
+def lane_results(trainer: Trainer) -> tuple[int, int, int]:
+    """The last update's lane games of the live policy against the raw scripted agent, over
+    every mode: (wins, draws, losses) from the live policy's side."""
+    totals = [0, 0, 0]
+    for lane, games in trainer.lane_record.items():
+        players = (lane.matchup.first, lane.matchup.second)
+        if players == (LIVE, SCRIPTED_PLAYER):
+            ordered = games
+        elif players == (SCRIPTED_PLAYER, LIVE):
+            ordered = games[::-1]
+        else:
+            continue
+        totals = [total + count for total, count in zip(totals, ordered, strict=True)]
+    return tuple(totals)
+
+
 def update(trainer: Trainer) -> tuple[dict, str | None]:
     """One BC update of `trainer` (objective "bc"), fed to its stop rule
-    (`trainer.stop_rule`): (the update's row with the live scores and the rule's window,
-    the rule that fired: "score", "kl_plateau" or "budget", or None)."""
+    (`trainer.stop_rule`): (the update's row with the training games' scores and the rule's
+    window over the lanes' games against the scripted agent, the rule that fired: "score",
+    "kl_plateau" or "budget", or None)."""
     if trainer.config.objective != "bc":
         raise ValueError("cloning trains with objective 'bc'")
     rule = trainer.stop_rule
     row = trainer.update()
-    live = scores(trainer.rollout.lineup.pools, row)
-    against = live.get(SCRIPTED, dict(wins=0, draws=0, losses=0))
-    reason = rule.observe(
-        trainer.ppo.environment_steps,
-        against["wins"],
-        against["draws"],
-        against["losses"],
-        row["bc/kl"],
-    )
+    live = scores(trainer.config.pools, row)
+    wins, draws, losses = lane_results(trainer)
+    reason = rule.observe(trainer.ppo.environment_steps, wins, draws, losses, row["bc/kl"])
     for kind, value in live.items():
         row[f"bc/games/{kind}"] = value["games"]
         if value["score"] is not None:
             row[f"bc/score/{kind}"] = value["score"]
     for name, value in (
         ("window_score", rule.score),
-        ("window_lower_bound", rule.lower_bound),
+        ("window_stderr", rule.standard_error),
         ("kl_average", rule.kl_average),
     ):
         if value is not None:
