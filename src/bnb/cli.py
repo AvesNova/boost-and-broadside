@@ -753,7 +753,7 @@ def head_to_head(options: HeadToHead) -> None:
     import torch
 
     from bnb.league import tournament
-    from bnb.runs import provenance
+    from bnb.runs import provenance, records
 
     _check_presets(options.presets)
     runs_directory = runs_directory_of(options.runs_directory)
@@ -774,8 +774,13 @@ def head_to_head(options: HeadToHead) -> None:
                 f"  {preset:16s} {part['wins']}-{part['losses']}-{part['draws']}, "
                 f"score {part['score']:.3f}"
             )
+    # a run named by the players, never a policy directory given by its path
     owner = next(
-        (runs_directory / name for name in options.players if (runs_directory / name).is_dir()),
+        (
+            runs_directory / name
+            for name in options.players
+            if (runs_directory / name / records.RECORD).is_file()
+        ),
         runs_directory,
     )
     inputs = {player.name: player.policy for player in players if player.policy is not None}
