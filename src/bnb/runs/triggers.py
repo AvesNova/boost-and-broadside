@@ -11,6 +11,10 @@ Against noise, every rule has a warm-up (no flag in the run's first updates), a 
 (the breach must hold for consecutive updates) and a cooldown (a fired event is not repeated
 within it). The thresholds are placeholders, to be tuned after the first runs.
 
+Each rule names the objectives it watches: most hold for PPO and behaviour cloning alike,
+but a few read what only reinforcement learning has or wants (`RL_ONLY`: a falling entropy is
+BC's goal, and BC has no ratings, no league and no PPO ratio), and a BC run leaves those out.
+
 Each update adds `alerts/{rule}` (1 while the rule's flag is up), `alerts/active` (the flags
 up) and, when a rule fires, `alerts/events`: a table of (rule, severity, update, series,
 value, threshold, panel). A series a run does not log leaves its rule idle. The rules' state
@@ -23,6 +27,8 @@ import fnmatch
 import math
 
 ALERT, WARNING = "alert", "warning"
+OBJECTIVES = ("ppo", "bc")  # `bnb.runtime.train.OBJECTIVES`
+RL_ONLY = ("ppo",)
 EVENT_COLUMNS = ("rule", "severity", "update", "series", "value", "threshold", "panel")
 
 
@@ -39,8 +45,9 @@ def matching(record: dict, pattern: str) -> list[str]:
 
 class Rule:
     """A rule's name, severity and the panel to open; its gate (warm-up updates, hysteresis
-    updates, cooldown updates). Subclasses measure: `breaches(record, state)` returns the
-    breaches of this update as (series, value, threshold) and may keep numbers in `state`."""
+    updates, cooldown updates); the objectives it watches. Subclasses measure:
+    `breaches(record, state)` returns the breaches of this update as (series, value,
+    threshold) and may keep numbers in `state`."""
 
     def __init__(
         self,
@@ -50,9 +57,11 @@ class Rule:
         warmup: int = 0,
         hysteresis: int = 1,
         cooldown: int = 50,
+        objectives: tuple[str, ...] = OBJECTIVES,
     ) -> None:
         self.name, self.severity, self.panel = name, severity, panel
         self.warmup, self.hysteresis, self.cooldown = warmup, hysteresis, cooldown
+        self.objectives = objectives
 
     def breaches(self, record: dict, state: dict) -> list[tuple[str, float, float]]:
         """This update's breaches as (series, value, threshold)."""
@@ -367,8 +376,13 @@ class SkippedSteps(Rule):
 
 
 def default_rules() -> tuple[Rule, ...]:
-    """The audit's final trigger rules, with placeholder thresholds: 8 alerts, 13 warnings."""
+    """The audit's final trigger rules, with placeholder thresholds: 8 alerts, 13 warnings.
+    Five watch reinforcement learning only (`RL_ONLY`): the PPO behaviour mismatch (BC
+    measures no PPO ratio), the rating drop and reward hacking (BC has no ratings), the
+    entropy collapse (BC's student is meant to grow confident) and the league's sampling
+    collapse (BC has no league)."""
     anomaly = dict(warmup=10, hysteresis=3)
+    rl_anomaly = dict(anomaly, objectives=RL_ONLY)
     return (
         # alerts
         # every update with a skipped step fires, and acts
@@ -382,7 +396,14 @@ def default_rules() -> tuple[Rule, ...]:
             "train/memory_budget_gigabytes",
             0.9,
         ),
-        Above("behaviour_mismatch", ALERT, "policy/kl_first", "policy/kl_first", 1e-3),
+        Above(
+            "behaviour_mismatch",
+            ALERT,
+            "policy/kl_first",
+            "policy/kl_first",
+            1e-3,
+            objectives=RL_ONLY,
+        ),
         Above("nonfinite_input", ALERT, "input/nonfinite_count", "input/nonfinite_count", 0),
         Above("never_seen_ship", ALERT, "fog/never_seen_share", "fog/never_seen_share", 0),
         BelowRunningMean(
@@ -402,11 +423,16 @@ def default_rules() -> tuple[Rule, ...]:
             "rating/live/",
             "rating/live_stderr/",
             2.0,
-            **anomaly,
+            **rl_anomaly,
         ),
         # warnings
         ZScoreBelow(
-            "entropy_collapse", WARNING, "policy/entropy", "policy/entropy/joint", 4.0, **anomaly
+            "entropy_collapse",
+            WARNING,
+            "policy/entropy",
+            "policy/entropy/joint",
+            4.0,
+            **rl_anomaly,
         ),
         Below(
             "critic_useless",
@@ -457,10 +483,15 @@ def default_rules() -> tuple[Rule, ...]:
             "pool/sampling_entropy",
             "pool/sampling_entropy/*",
             0.3,
-            **anomaly,
+            **rl_anomaly,
         ),
         RisingWhileFlat(
-            "reward_hacking", WARNING, "reward/rate", "reward/rate/*", "rating/live/*", **anomaly
+            "reward_hacking",
+            WARNING,
+            "reward/rate",
+            "reward/rate/*",
+            "rating/live/*",
+            **rl_anomaly,
         ),
         Below(
             "head_worse_than_trivial",
@@ -484,10 +515,19 @@ def default_rules() -> tuple[Rule, ...]:
 
 
 class Triggers:
-    """The rules and their state; `check` runs them on one update's record."""
+    """The rules that watch `objective` ("ppo" or "bc") and their state; `check` runs them on
+    one update's record."""
 
-    def __init__(self, rules: tuple[Rule, ...] | None = None, state: dict | None = None) -> None:
-        self.rules = default_rules() if rules is None else rules
+    def __init__(
+        self,
+        rules: tuple[Rule, ...] | None = None,
+        state: dict | None = None,
+        objective: str = "ppo",
+    ) -> None:
+        if objective not in OBJECTIVES:
+            raise ValueError(f"objective {objective!r} is not one of {OBJECTIVES}")
+        rules = default_rules() if rules is None else rules
+        self.rules = tuple(rule for rule in rules if objective in rule.objectives)
         self.state = {rule.name: dict(consecutive=0, fired=None, measure={}) for rule in self.rules}
         if state is not None:
             self.state.update({name: value for name, value in state.items() if name in self.state})

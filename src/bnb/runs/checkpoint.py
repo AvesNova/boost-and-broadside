@@ -28,6 +28,7 @@ import torch
 from bnb.contracts import Action, GameConfig, Obs
 from bnb.game import VERSION as GAME_VERSION
 from bnb.game.ship_types import ShipTypes
+from bnb.learn.bc import StopRule
 from bnb.models.yemong.critic import ReturnScale
 from bnb.runtime.train import TrainConfig, Trainer, model_build
 
@@ -266,13 +267,15 @@ def load_policy(directory: str | os.PathLike, device: torch.device) -> torch.nn.
 
 # ---------------------------------------------------------------- training checkpoints
 
-# TrainConfig fields a resume may change (runs spec 6): the budget, the learning rate and
-# its warm-up, the loss coefficients and the entropy, the reward weights (coefficients of
-# the return), and what changes speed but not shapes (the micro-batch rows, the precision).
+# TrainConfig fields a resume may change (runs spec 6): the budget (PPO's updates, BC's
+# environment steps), the learning rate and its warm-up, the loss coefficients and the
+# entropy, the reward weights (coefficients of the return), and what changes speed but not
+# shapes (the micro-batch rows, the precision).
 # Everything else is structural, or not listed and so fixed: a resume takes it from the
 # checkpoint.
 OVERRIDABLE = (
     "updates",
+    "stop.budget_steps",
     "precision",
     "learner.learning_rate",
     "learner.warmup_start",
@@ -344,6 +347,7 @@ def training_state(trainer: Trainer) -> tuple[dict, dict[str, torch.Tensor]]:
         optimizer=to_json(optimizer["param_groups"]),
         league=None if trainer.league is None else trainer.league.state()[0],
         triggers=None if trainer.triggers is None else trainer.triggers.state,
+        stop_rule=None if trainer.stop_rule is None else trainer.stop_rule.state,
     )
     tensors = _training_tensors(trainer, optimizer["state"])
     for file, files in policy_files(trainer.model, ppo.return_scale).items():
@@ -362,8 +366,9 @@ def save_training(
     model, plus the full TrainConfig, the optimizer, the opponent slots, the league's state
     (when one is attached: its record part under "league", its tensors in
     `training.safetensors` under "league."), every generator, the rollout carry and the step
-    counters, and the trigger rules' state when the trainer has them (`trainer.triggers`).
-    `extra` goes into the record as it is (the run's settings)."""
+    counters, the trigger rules' state when the trainer has them (`trainer.triggers`) and
+    BC's stop rule's (`trainer.stop_rule`). `extra` goes into the record as it is (the run's
+    settings)."""
     config, ppo = trainer.config, trainer.ppo
     steps = dict(environment_steps=ppo.environment_steps, updates=trainer.updates_done)
     record = policy_record(trainer.model, ppo.return_scale, steps, config.game, ppo.types)
@@ -379,6 +384,8 @@ def save_training(
         record["league"] = trainer.league.state()[0]
     if trainer.triggers is not None:
         record["triggers"] = trainer.triggers.state
+    if trainer.stop_rule is not None:
+        record["stop_rule"] = trainer.stop_rule.state
     files = policy_files(trainer.model, ppo.return_scale)
     return write_checkpoint(directory, record, dict(files, **{TRAINING: tensors}), stage)
 
@@ -475,8 +482,8 @@ def _restore(
     trainer: Trainer, directory: pathlib.Path, record: dict, policy: PolicyRecord, carry: bool
 ) -> None:
     """Load the model, optimizer, return scale and counters (and with `carry`, the opponent
-    slots, the rollout carry and the named streams) of a training checkpoint into
-    `trainer`."""
+    slots, the rollout carry, the named streams and BC's stop rule) of a training checkpoint
+    into `trainer`."""
     stored = safetensors.torch.load_file(directory / TRAINING)
     _load_weights(trainer.model, directory)
     restore_optimizer(trainer, stored, record["optimizer"]["param_groups"])
@@ -491,6 +498,8 @@ def _restore(
         trainer.rollout.load_carry(tree_from_named(trainer.rollout.saved_carry(), stored, "carry."))
         for name, generator in _generators(trainer).items():
             generator.set_state(stored[f"generator.{name}"])
+        if trainer.stop_rule is not None:
+            trainer.stop_rule = StopRule(trainer.config.stop, record["stop_rule"])
 
 
 def _check_card(trainer: Trainer, record: dict, directory) -> None:

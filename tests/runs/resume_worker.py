@@ -1,7 +1,7 @@
 """One process of the exact-resume test (runs acceptance 3), as an entry point would run
 it: seed the process, then train straight through, or train and save, or resume and train.
 
-    python resume_worker.py MODE DIRECTORY DEVICE MODEL UPDATES [DAMAGE]
+    python resume_worker.py MODE DIRECTORY DEVICE MODEL OBJECTIVE UPDATES [DAMAGE]
 
 MODE: "straight" (2 x UPDATES updates), "first" (UPDATES updates, then a training
 checkpoint at DIRECTORY/checkpoint) or "second" (resume from it, UPDATES more). Each writes
@@ -11,7 +11,10 @@ all change before the checkpoint; its snapshots go to DIRECTORY/league (DIRECTOR
 league for the straight run). DAMAGE (with "second", to show the test sees it): "league"
 adds noise to the opponent slots' weights after the restore, "draws" restarts the league's
 slot draws, "gauges" forgets the gauges' records and windows, "return_scale" puts back a fresh
-trainer's return scale. Episodes are short (2 s), so drains end and begin in each half.
+trainer's return scale, "stop_rule" forgets BC's stop rule's window. Episodes are short
+(2 s), so drains end and begin in each half. OBJECTIVE "bc" clones instead (no league): each
+update feeds the stop rule (`bnb.runtime.cloning.update`), whose window has filled and
+trims by the checkpoint.
 """
 
 import json
@@ -27,10 +30,12 @@ import torch  # noqa: E402
 from bnb.cli import set_precision  # noqa: E402
 from bnb.contracts import GameConfig  # noqa: E402
 from bnb.league.league import League  # noqa: E402
+from bnb.learn import bc  # noqa: E402
 from bnb.learn.ppo import LearnerConfig  # noqa: E402
 from bnb.models.relational import RelationalConfig  # noqa: E402
 from bnb.runs import checkpoint  # noqa: E402
 from bnb.runs.triggers import Triggers  # noqa: E402
+from bnb.runtime import cloning  # noqa: E402
 from bnb.runtime.opponents import LeagueConfig  # noqa: E402
 from bnb.runtime.train import TrainConfig, Trainer  # noqa: E402
 
@@ -42,10 +47,10 @@ TIMES = (
 ENVIRONMENTS, LENGTH = 16, 32
 
 
-def config(model: str, device: str) -> TrainConfig:
+def config(model: str, device: str, objective: str = "ppo") -> TrainConfig:
     # A learning rate that moves the model visibly in two updates, and a return-scale floor
     # under the returns' spread, so both the league's snapshots and the return scale show.
-    learner = LearnerConfig(
+    settings = dict(
         epochs=2,
         minibatches=2,
         learning_rate=3e-3,
@@ -53,6 +58,21 @@ def config(model: str, device: str) -> TrainConfig:
         micro_batch_rows=64,
         return_scale_floor=1e-7,
     )
+    if objective == "bc":  # a window of a few games, so it fills and trims in each half
+        return TrainConfig(
+            game=GameConfig(2, 2, 1500.0, episode_seconds=0.5, respawn_seconds=0.2),
+            pools=cloning.LINEUP,
+            environments=ENVIRONMENTS,
+            updates=0,
+            length=LENGTH,
+            model=model,
+            relational=RelationalConfig(hidden=32),
+            learner=bc.config(**settings),
+            compiled=device == "cuda",
+            objective="bc",
+            stop=bc.StopConfig(score_window=4, plateau_steps=ENVIRONMENTS * LENGTH),
+        )
+    learner = LearnerConfig(**settings)
     return TrainConfig(
         game=GameConfig(2, 2, 1500.0, episode_seconds=2.0, respawn_seconds=1.0),
         environments=ENVIRONMENTS,
@@ -77,9 +97,10 @@ def dump_state(out: pathlib.Path, trainer: Trainer) -> None:
 
 
 def main() -> None:
-    mode, directory, device, model, updates, *damage = sys.argv[1:]
+    mode, directory, device, model, objective, updates, *damage = sys.argv[1:]
     directory, device, updates = pathlib.Path(directory), torch.device(device), int(updates)
-    settings = config(model, device.type)
+    settings = config(model, device.type, objective)
+    cloned = objective == "bc"
     torch.manual_seed(settings.seed)
     set_precision(settings.precision)
     if mode == "second":
@@ -89,11 +110,18 @@ def main() -> None:
                 fresh = Trainer(settings, device).ppo.return_scale
             trainer.ppo.return_scale.low, trainer.ppo.return_scale.high = fresh.low, fresh.high
         checkpoint.restore_default_generators(directory / "checkpoint", device)
-        trainer.triggers = Triggers(state=checkpoint.triggers_state(directory / "checkpoint"))
-        league = League(
-            trainer, directory / "league", state=checkpoint.league_state(directory / "checkpoint")
+        trainer.triggers = Triggers(
+            state=checkpoint.triggers_state(directory / "checkpoint"), objective=objective
         )
+        if not cloned:
+            league = League(
+                trainer,
+                directory / "league",
+                state=checkpoint.league_state(directory / "checkpoint"),
+            )
         dump_state(directory / "second", trainer)  # the restore alone, before any damage
+        if damage == ["stop_rule"]:
+            trainer.stop_rule = bc.StopRule(settings.stop)
         if damage == ["league"]:
             noise = torch.Generator().manual_seed(1)
             with torch.no_grad():
@@ -118,12 +146,13 @@ def main() -> None:
                     window.clear()
     else:
         trainer = Trainer(settings, device)
-        trainer.triggers = Triggers()
-        League(trainer, directory / ("straight-league" if mode == "straight" else "league"))
+        trainer.triggers = Triggers(objective=objective)
+        if not cloned:
+            League(trainer, directory / ("straight-league" if mode == "straight" else "league"))
     count = 2 * updates if mode == "straight" else updates
     rows = []
     for _ in range(count):
-        row = trainer.update()
+        row = cloning.update(trainer)[0] if cloned else trainer.update()
         row.update(trainer.triggers.check(row, row["counters/updates"]))
         rows.append({name: value for name, value in row.items() if name not in TIMES})
     if mode == "first":

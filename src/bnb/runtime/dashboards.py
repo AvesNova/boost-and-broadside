@@ -4,28 +4,37 @@ optional dependency, the `tools` extra). The third view is W&B's automatic works
 
 A panel is one quantity: its series are the names matching a pattern, `*` for any slice, so
 each slice is a line and a new slice needs no edit here. The x-axis is
-`counters/environment_steps`. `bnb runs dashboard RUN` builds or updates a run's views.
+`counters/environment_steps`. A panel names the objectives it shows in: a PPO run's views
+leave out BC's panels, a BC run's leave out reinforcement learning's (the ratings, the
+league, PPO's KL and clip fraction), and a section left empty is left out. A `--wandb` run
+saves its views once its first record is logged; `bnb runs dashboard RUN` builds or updates
+them later.
 """
 
 import dataclasses
+import posixpath
 import re
+from urllib.parse import urlsplit, urlunsplit
 
 from bnb.learn.head_statistics import BELIEF_QUANTITIES
 
 STEP = "counters/environment_steps"
+OBJECTIVES = ("ppo", "bc")  # `bnb.runtime.train.OBJECTIVES`
 
 
 @dataclasses.dataclass(frozen=True)
 class Panel:
-    """One quantity: a title and the series patterns it plots (`*` matches any slice)."""
+    """One quantity: a title, the series patterns it plots (`*` matches any slice) and the
+    objectives whose views show it."""
 
     title: str
     series: tuple[str, ...]
+    objectives: tuple[str, ...] = OBJECTIVES
 
 
 @dataclasses.dataclass(frozen=True)
 class Section:
-    """A named group of panels, open or collapsed; `bc`: shown open in BC runs only."""
+    """A named group of panels, open or collapsed."""
 
     name: str
     panels: tuple[Panel, ...]
@@ -33,8 +42,18 @@ class Section:
 
 
 def panel(title: str, *series: str) -> Panel:
-    """A panel of `series` (the title's own name when none is given)."""
+    """A panel of `series` (the title's own name when none is given), in every view."""
     return Panel(title, series or (title,))
+
+
+def rl(title: str, *series: str) -> Panel:
+    """A panel of reinforcement learning only: left out of BC's views."""
+    return Panel(title, series or (title,), ("ppo",))
+
+
+def bc(title: str, *series: str) -> Panel:
+    """A panel of behaviour cloning only: left out of PPO's views."""
+    return Panel(title, series or (title,), ("bc",))
 
 
 HEADLINE = (
@@ -42,8 +61,10 @@ HEADLINE = (
         "Is it winning?",
         (
             panel("alerts/active"),
-            panel("rating/live", "rating/live/*", "rating/average/*"),
-            panel("pool/score", "pool/score/*"),
+            rl("rating/live", "rating/live/*", "rating/average/*"),
+            rl("pool/score", "pool/score/*"),
+            bc("bc/score", "bc/score/*", "bc/stop/window_score", "bc/stop/window_lower_bound"),
+            bc("bc/agreement", "bc/agreement/*"),
             panel("episode/end", "episode/end/*"),
         ),
         open=True,
@@ -52,7 +73,8 @@ HEADLINE = (
         "Is it learning?",
         (
             panel("policy/entropy/joint"),
-            panel("policy/kl and clip fraction", "policy/kl", "policy/clip_fraction"),
+            rl("policy/kl and clip fraction", "policy/kl", "policy/clip_fraction"),
+            bc("bc/kl", "bc/kl", "bc/stop/kl_average"),
             panel("critic/explained_variance", "critic/explained_variance/*"),
             panel(
                 "gradient norm and clip fire rate", "train/gradient_norm", "train/clip_fire_rate"
@@ -81,11 +103,24 @@ CURATED = (
     Section(
         "Strength",
         (
-            panel("rating/live", "rating/live/*"),
-            panel("rating/live_stderr", "rating/live_stderr/*"),
-            panel("rating/average", "rating/average/*"),
-            panel("pool/score", "pool/score/*"),
-            panel("rating/window_games", "rating/window_games/*"),
+            rl("rating/live", "rating/live/*"),
+            rl("rating/live_stderr", "rating/live_stderr/*"),
+            rl("rating/average", "rating/average/*"),
+            rl("pool/score", "pool/score/*"),
+            rl("rating/window_games", "rating/window_games/*"),
+        ),
+        open=True,
+    ),
+    Section(
+        "bc/",
+        (
+            bc("bc/kl", "bc/kl", "bc/stop/kl_average"),
+            bc("bc/agreement", "bc/agreement/*"),
+            bc("bc/entropy", "bc/entropy/*"),
+            bc("bc/score", "bc/score/*", "bc/stop/window_score", "bc/stop/window_lower_bound"),
+            bc("bc/games", "bc/games/*"),
+            bc("bc/kl_by_pool", "bc/kl_by_pool/*"),
+            bc("bc/entropy_by_pool", "bc/entropy_by_pool/*"),
         ),
         open=True,
     ),
@@ -105,8 +140,8 @@ CURATED = (
         "Policy",
         (
             panel("policy/entropy/joint"),
-            panel("policy/kl", "policy/kl", "policy/kl_first"),
-            panel("policy/clip_fraction"),
+            rl("policy/kl", "policy/kl", "policy/kl_first"),
+            rl("policy/clip_fraction"),
             panel("policy/ratio_drift", "policy/ratio_drift/*"),
             panel(
                 "policy/entropy",
@@ -140,16 +175,6 @@ CURATED = (
         open=True,
     ),
     Section(
-        "bc/",
-        (
-            panel("bc/kl", "bc/kl", "bc/stop/kl_average"),
-            panel("bc/agreement", "bc/agreement/*"),
-            panel("bc/entropy", "bc/entropy/*"),
-            panel("bc/score", "bc/score/*", "bc/stop/window_score", "bc/stop/window_lower_bound"),
-            panel("bc/kl_by_pool", "bc/kl_by_pool/*"),
-        ),
-    ),
-    Section(
         "Policy detail",
         (
             panel("policy/entropy_quantile", "policy/entropy_quantile/*"),
@@ -174,7 +199,6 @@ CURATED = (
             panel("returns/scale_floored"),
             panel("returns/advantage_rms"),
             panel("returns/advantage_mean"),
-            panel("returns/mixed", "returns/mixed/*"),
         ),
     ),
     Section(
@@ -297,9 +321,9 @@ CURATED = (
     Section(
         "League",
         (
-            panel("pool/game_share", "pool/game_share/*"),
-            panel("pool/sampling_entropy", "pool/sampling_entropy/*"),
-            panel("pool", "pool/size", "pool/snapshots", "pool/draining"),
+            rl("pool/game_share", "pool/game_share/*"),
+            rl("pool/sampling_entropy", "pool/sampling_entropy/*"),
+            rl("pool", "pool/size", "pool/snapshots", "pool/draining"),
         ),
     ),
     Section("Schedules", (panel("schedule", "schedule/*"),)),
@@ -324,9 +348,21 @@ def regex(series: tuple[str, ...]) -> str:
     )
 
 
-def workspace(sections: tuple[Section, ...], entity: str, project: str, name: str, bc: bool):
-    """The W&B workspace of `sections` (needs the `tools` extra); `bc`: the `bc/` section
-    opens."""
+def sections_for(sections: tuple[Section, ...], objective: str) -> tuple[Section, ...]:
+    """The sections of a view as `objective`'s run shows them: its panels only, and no
+    section left empty."""
+    if objective not in OBJECTIVES:
+        raise ValueError(f"objective {objective!r} is not one of {OBJECTIVES}")
+    out = []
+    for section in sections:
+        panels = tuple(item for item in section.panels if objective in item.objectives)
+        if panels:
+            out.append(dataclasses.replace(section, panels=panels))
+    return tuple(out)
+
+
+def workspace(sections: tuple[Section, ...], entity: str, project: str, name: str):
+    """The W&B workspace of `sections` (needs the `tools` extra)."""
     import wandb_workspaces.reports.v2 as reports
     import wandb_workspaces.workspaces as workspaces
 
@@ -341,8 +377,7 @@ def workspace(sections: tuple[Section, ...], entity: str, project: str, name: st
                 plots.append(
                     reports.LinePlot(title=item.title, x=STEP, metric_regex=regex(item.series))
                 )
-        is_open = section.open or (bc and section.name == "bc/")
-        built.append(workspaces.Section(name=section.name, panels=plots, is_open=is_open))
+        built.append(workspaces.Section(name=section.name, panels=plots, is_open=section.open))
     return workspaces.Workspace(
         entity=entity,
         project=project,
@@ -352,12 +387,48 @@ def workspace(sections: tuple[Section, ...], entity: str, project: str, name: st
     )
 
 
-def build(run_name: str, entity: str, project: str, bc: bool = False) -> dict:
-    """The run's two views by name ("headline", "curated"), unsaved."""
+def build(run_name: str, entity: str, project: str, objective: str = "ppo") -> dict:
+    """The run's two views by name ("headline", "curated"), for its objective, unsaved."""
     return {
-        view: workspace(sections, entity, project, f"{run_name} {view}", bc)
+        view: workspace(sections_for(sections, objective), entity, project, f"{run_name} {view}")
         for view, sections in VIEWS.items()
     }
+
+
+def app_link(url: str, app_url: str) -> str:
+    """A view's link in the W&B app: `url` (`wandb-workspaces`' view URL, which keeps only
+    the host of the app's address) under the app's own address `app_url`, path prefix
+    included (`https://forge.coreweave.com/wandb` gives
+    `https://forge.coreweave.com/wandb/<entity>/<project>?nw=<id>`)."""
+    view, app = urlsplit(url), urlsplit(app_url)
+    path = posixpath.join(app.path.rstrip("/") or "/", view.path.lstrip("/"))
+    return urlunsplit((app.scheme, app.netloc, path, view.query, view.fragment))
+
+
+def app_url() -> str:
+    """The W&B app's address from W&B's configured settings (`WANDB_BASE_URL`, its settings
+    files, `WANDB_APP_URL`)."""
+    import wandb
+
+    return wandb.setup().settings.app_url
+
+
+def save(run_name: str, entity: str, project: str, objective: str = "ppo") -> dict[str, str]:
+    """Build and save the run's two views on the W&B server; their links by view name.
+    `wandb-workspaces` logs each saved view's link without the app's path prefix, so that
+    line is held back and the working link returned instead."""
+    from unittest import mock
+
+    import wandb
+
+    views = build(run_name, entity, project, objective)
+    base = app_url()
+    links = {}
+    for name, view in views.items():
+        with mock.patch.object(wandb, "termlog", lambda *arguments, **options: None):
+            view.save()
+        links[name] = app_link(view.url, base)
+    return links
 
 
 def panel_count(sections: tuple[Section, ...]) -> int:

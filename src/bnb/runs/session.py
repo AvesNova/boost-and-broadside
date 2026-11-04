@@ -1,6 +1,7 @@
 """One process's segment of a run (runs spec 5 and 7): the probe on its first update,
 checkpoints every N environment steps with the retention, and the run's status at the end.
-A BC run (`clone`) instead saves its clone as the run's policy file when a stop rule fires.
+A PPO run trains to its update budget; a BC run until its stop rule fires, and then (or at
+Ctrl-C) also saves its clone as the run's policy file.
 
 Ctrl-C finishes the current update, writes a checkpoint and marks the run stopped; an
 exception marks it failed, with the message, before it propagates. The cadence N, when the
@@ -8,11 +9,11 @@ run does not set it, is measured: about 30 minutes at the throughput of the segm
 second update (the first compiles), in whole updates, recorded in run.json.
 """
 
+import shutil
 import signal
 import time
 from collections.abc import Callable
 
-from bnb.learn.bc import StopConfig
 from bnb.runtime import cloning
 from bnb.runtime.train import Trainer
 
@@ -49,61 +50,22 @@ def act(run: Run, trainer: Trainer, recorder: Recorder, record: dict) -> None:
 
 def save_clone(run: Run, trainer: Trainer) -> None:
     """The clone as the run's policy file: its weights, the return scale and the step counts,
-    for the BC -> RL hand-off (`bnb train --init-from`)."""
+    for the BC -> RL hand-off (`bnb train --init-from`). A resumed run's earlier clone is
+    replaced."""
+    path = run.policy_path
+    earlier = path.with_name(path.name + ".replaced")
+    if path.exists():
+        shutil.rmtree(earlier, ignore_errors=True)
+        path.rename(earlier)
     checkpoint.save_policy(
-        run.policy_path,
+        path,
         trainer.model,
         return_scale=trainer.ppo.return_scale,
         steps=dict(environment_steps=trainer.ppo.environment_steps, updates=trainer.updates_done),
         game=trainer.config.game,
         types=trainer.ppo.types,
     )
-
-
-def clone(
-    run: Run,
-    trainer: Trainer,
-    stop: StopConfig = StopConfig(),
-    log: Callable[[dict], None] = print,
-    recorder: Recorder | None = None,
-) -> str:
-    """BC until a stop rule fires ("finished") or Ctrl-C ("stopped", after the current
-    update); either way the clone is saved as the run's policy file, and the rule (or
-    "interrupted") is recorded as the run's `stopped_by`. recorder: as for `train` (a BC
-    run keeps no checkpoints, so a skipped step only dumps its batch)."""
-
-    def logged(row: dict) -> None:
-        if recorder is not None:
-            row = recorder.record(row)
-            if recorder.triggers.fired(row, "skipped_step"):
-                dumped = recording.dump_batch(run, trainer, row)
-                run.update(dumps=run.record.get("dumps", []) + [str(dumped)])
-        log(row)
-
-    stopping = []
-    previous = signal.getsignal(signal.SIGINT)
-
-    def interrupt(number, frame) -> None:
-        if stopping:  # a second Ctrl-C stops at once
-            raise KeyboardInterrupt
-        stopping.append(True)
-        print("stopping after this update (Ctrl-C again to stop now)", flush=True)
-
-    signal.signal(signal.SIGINT, interrupt)
-    try:
-        reason = cloning.clone(trainer, stop, logged, interrupted=lambda: bool(stopping))
-        save_clone(run, trainer)
-        status = "stopped" if reason == "interrupted" else "finished"
-        run.update(stopped_by=reason, policy=str(run.policy_path))
-        run.end_segment(trainer.ppo.environment_steps, status)
-        return status
-    except BaseException as error:
-        run.end_segment(
-            trainer.ppo.environment_steps, "failed", message=f"{type(error).__name__}: {error}"
-        )
-        raise
-    finally:
-        signal.signal(signal.SIGINT, previous)
+    shutil.rmtree(earlier, ignore_errors=True)
 
 
 def train(
@@ -113,10 +75,13 @@ def train(
     margin: float = probe.MARGIN,
     recorder: Recorder | None = None,
 ) -> str:
-    """Train until the update budget (`trainer.config.updates`, the run's total) or Ctrl-C;
-    returns the run's final status ("finished" or "stopped"). recorder: builds and writes
-    each update's record (`log` gets the record); without one `log` gets the trainer's
-    row."""
+    """Train until the budget or Ctrl-C; returns the run's final status ("finished" or
+    "stopped"). PPO's budget is the update count (`trainer.config.updates`, the run's
+    total); BC trains until its stop rule fires (`bnb.runtime.cloning.update`), records the
+    rule (or "interrupted") as the run's `stopped_by` and saves the clone (`save_clone`).
+    recorder: builds and writes each update's record (`log` gets the record); without one
+    `log` gets the trainer's row."""
+    cloned = trainer.config.objective == "bc"
     stopping = []
     previous = signal.getsignal(signal.SIGINT)
 
@@ -129,13 +94,15 @@ def train(
     signal.signal(signal.SIGINT, interrupt)
     device = trainer.rollout.device
     try:
-        first = True
-        while trainer.updates_done < trainer.config.updates and not stopping:
+        first, reason = True, None
+        while not stopping and reason is None:
+            if not cloned and trainer.updates_done >= trainer.config.updates:
+                break
             if first:
                 probe.begin(device)
             started = time.perf_counter()
             before = trainer.ppo.environment_steps
-            row = trainer.update()
+            row, reason = cloning.update(trainer) if cloned else (trainer.update(), None)
             if first:
                 peaks = probe.measure(device, margin)
                 run.update(probe=peaks)
@@ -158,8 +125,12 @@ def train(
             every = run.record["checkpoint_every"]
             if every and trainer.ppo.environment_steps // every > before // every:
                 save(run, trainer, recorder=recorder)
-        status = "stopped" if stopping else "finished"
-        save(run, trainer, final=status == "finished", recorder=recorder)
+        finished = reason is not None if cloned else not stopping
+        status = "finished" if finished else "stopped"
+        save(run, trainer, final=finished, recorder=recorder)
+        if cloned:
+            save_clone(run, trainer)
+            run.update(stopped_by=reason or "interrupted", policy=str(run.policy_path))
         run.end_segment(trainer.ppo.environment_steps, status)
         return status
     except BaseException as error:

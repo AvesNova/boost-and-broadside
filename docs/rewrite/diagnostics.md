@@ -1046,6 +1046,18 @@ action 6, density 3, shots 6), Representation 3, Inputs and batch 4, Episode and
 Counters 5. Each collapsed section opens on its headline panel. BC runs: a `bc/` section
 (5), open by default there.
 
+**Amended after the first BC run (2026-11-04).** A panel names the objectives it shows in.
+A BC run's views leave out reinforcement learning's panels and sections (the ratings, the
+league, PPO's KL and clip fraction) and its headline shows the BC score, the agreement and
+the BC KL in their place, still 12 panels; a PPO run's views leave out the `bc/` section.
+The trigger rules know the objective too: in BC the entropy collapse, the rating drop,
+reward hacking, the sampling collapse and the PPO behaviour mismatch are not run (a
+falling student entropy is BC's goal; BC has no ratings, league or PPO ratio). A `--wandb`
+run saves its two views once its first record is logged and prints their links, which
+keep the W&B app's path prefix. `tests/sections/test_dashboards.py` checks every panel
+pattern against what a short CPU run of each objective logs; the unlogged
+`returns/mixed` panel went.
+
 **3. Everything:** W&B's automatic workspace, grouped by prefix. Quantity-first naming
 (`{group}/{quantity}/...`) makes the prefix groups readable; new series appear with no
 layout edits.
