@@ -260,6 +260,29 @@ def test_the_code_builds_the_headline_and_curated_views():
     curated._to_model()
 
 
+def test_a_bc_run_leaves_reinforcement_learnings_rules_out():
+    """In BC a falling student entropy is the goal: the entropy collapse and the other
+    RL-only rules are not run, and each of the 21 rules says which objectives it watches."""
+    assert all(set(rule.objectives) <= {"ppo", "bc"} for rule in RULES.values())
+    rl_only = {name for name, rule in RULES.items() if rule.objectives == ("ppo",)}
+    assert rl_only == {
+        "behaviour_mismatch",
+        "rating_drop",
+        "entropy_collapse",
+        "sampling_collapse",
+        "reward_hacking",
+    }
+    falling = [{"policy/entropy/joint": 3.0 * 0.8**update} for update in range(30)]
+    ppo, cloning = Triggers(), Triggers(objective="bc")
+    assert {rule.name for rule in cloning.rules} == set(RULES) - rl_only
+    fired = [ppo.check(record, update) for update, record in enumerate(falling, 1)]
+    quiet = [cloning.check(record, update) for update, record in enumerate(falling, 1)]
+    assert any(out["alerts/entropy_collapse"] for out in fired)
+    assert all("alerts/entropy_collapse" not in out and "alerts/events" not in out for out in quiet)
+    with pytest.raises(ValueError, match="objective"):
+        Triggers(objective="sft")
+
+
 def test_a_panel_pattern_matches_its_slices():
     import re
 

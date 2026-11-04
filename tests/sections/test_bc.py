@@ -596,6 +596,7 @@ def test_a_bc_run_writes_training_checkpoints_and_resumes(monkeypatch, tmp_path)
     assert not run.policy_path.with_name("policy.replaced").exists()
     rows = [json.loads(line) for line in (run.directory / "metrics.jsonl").read_text().splitlines()]
     assert [row["counters/updates"] for row in rows] == [1, 2, 3, 4]
+    assert all("alerts/entropy_collapse" not in row for row in rows)  # an RL-only rule
 
 
 def test_the_gradient_stays_finite_for_a_confident_student(segment):

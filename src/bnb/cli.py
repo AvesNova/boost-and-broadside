@@ -514,7 +514,10 @@ def train(options: Train, given_options: set[str]) -> None:
     from bnb.runs.triggers import Triggers
 
     sinks = Sinks(run, to_json(config), wandb=options.wandb)
-    rules = Triggers(state=checkpoint.triggers_state(source) if options.resume else None)
+    rules = Triggers(
+        state=checkpoint.triggers_state(source) if options.resume else None,
+        objective=config.objective,
+    )
     recorder = Recorder(run, trainer, sinks, rules)
     cloned = config.objective == "bc"
     try:

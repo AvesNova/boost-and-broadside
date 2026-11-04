@@ -110,7 +110,9 @@ def main() -> None:
                 fresh = Trainer(settings, device).ppo.return_scale
             trainer.ppo.return_scale.low, trainer.ppo.return_scale.high = fresh.low, fresh.high
         checkpoint.restore_default_generators(directory / "checkpoint", device)
-        trainer.triggers = Triggers(state=checkpoint.triggers_state(directory / "checkpoint"))
+        trainer.triggers = Triggers(
+            state=checkpoint.triggers_state(directory / "checkpoint"), objective=objective
+        )
         if not cloned:
             league = League(
                 trainer,
@@ -144,7 +146,7 @@ def main() -> None:
                     window.clear()
     else:
         trainer = Trainer(settings, device)
-        trainer.triggers = Triggers()
+        trainer.triggers = Triggers(objective=objective)
         if not cloned:
             League(trainer, directory / ("straight-league" if mode == "straight" else "league"))
     count = 2 * updates if mode == "straight" else updates
