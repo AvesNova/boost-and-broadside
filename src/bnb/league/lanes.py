@@ -109,6 +109,8 @@ class LaneRatings:
         index = {player: position for position, player in enumerate(players)}
         wins = torch.zeros((len(players), len(players)), dtype=torch.float64)
         for lane, (won, tied, lost) in games.items():
+            if lane.matchup.first not in index:  # games that do not reach the scripted agent
+                continue
             first, second = index[lane.matchup.first], index[lane.matchup.second]
             wins[first, second] += won + tied / 2
             wins[second, first] += lost + tied / 2

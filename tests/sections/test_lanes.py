@@ -306,6 +306,12 @@ def test_lane_ratings_chain_the_ladder_to_the_scripted_agent():
     assert rung == pytest.approx(expected, abs=2.0) and 0 < error < 30
     assert ratings.rating(MODE, "rung_0.8")[0] == pytest.approx(rung, abs=3.0)
     assert ratings.rating(MODE, LIVE) is None
+    # a lane whose games do not reach the scripted agent rates nobody
+    apart = Lane(MODE, Matchup("random", "rung_0.1"))
+    trainer.lanes += (apart,)
+    ratings = LaneRatings(trainer)
+    ratings.update({top: (250, 0, 750), below: (500, 0, 500), live: (0, 0, 0), apart: (1, 2, 3)})
+    assert ratings.rating(MODE, "random") is None
     series = ratings.series()
     assert f"rating/live/{MODE}" not in series and f"lanes/rating/{MODE}/rung_0.9" in series
 
