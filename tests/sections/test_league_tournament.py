@@ -102,3 +102,38 @@ def test_the_commands_parse_their_options():
     assert pairs.players == ("a", "b", "scripted", "random") and pairs.games == 8
     rated = tyro.cli(Ratings, args=["run", "--with", "x", "y", "--target-stderr", "30"])
     assert rated.run == "run" and rated.with_ == ("x", "y") and rated.target_stderr == 30.0
+
+
+def test_transformed_scripted_names_parse():
+    from bnb.league.matches import teacher_of
+    from bnb.learn.bc import TeacherConfig
+
+    assert teacher_of("scripted") is None and teacher_of("rung_0.5") is None
+    assert teacher_of("scripted@T=2,floor=0.05") == TeacherConfig(2.0, 0.05)
+    assert teacher_of("scripted@floor=0.01") == TeacherConfig(1.0, 0.01)
+    assert teacher_of("scripted@floor=0.01,T=0.5") == TeacherConfig(0.5, 0.01)
+    assert teacher_of("scripted@T=4") == TeacherConfig(4.0, 0.0)
+    assert player("scripted@T=2").teacher == TeacherConfig(2.0, 0.0)
+    for bad in ("scripted@", "scripted@T", "scripted@T=x", "scripted@T=1,T=2", "scripted@x=1"):
+        with pytest.raises(ValueError):
+            teacher_of(bad)
+    with pytest.raises(ValueError):
+        teacher_of("scripted@T=0")
+    with pytest.raises(ValueError):
+        teacher_of("scripted@floor=2")
+
+
+def test_scripted_at_temperature_one_and_floor_zero_plays_exactly_as_scripted():
+    identity = player("scripted@T=1,floor=0")
+    outcomes = []
+    for one in (SCRIPTED, identity):
+        torch.manual_seed(7)
+        outcomes.append(play([one, HALF], [(0, 1, 8)], GAME, CPU, length=32))
+    assert torch.equal(outcomes[0], outcomes[1])
+
+
+def test_a_tempered_scripted_agent_plays_its_teachers_distribution():
+    # a high temperature flattens the marginals: the scripted agent loses ground to itself
+    softened = player("scripted@T=4,floor=0.5")
+    results = play([softened, SCRIPTED], [(0, 1, 8)], GAME, CPU, length=32)
+    assert int(results.sum()) == 8

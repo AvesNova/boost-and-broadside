@@ -115,7 +115,9 @@ Branch `section/league`. Spec: `league-spec.md`. Brief: `league-brief.md`.
   mode, map (preset name), fleet size; written via `provenance.write_result`.
 - `bnb head-to-head A B [C D ...] --games N --presets ...`: per pair W/L/D, score ± SE
   (from the per-game score variance), per-preset split; artifact under the first named
-  run, else the runs directory.
+  run, else the runs directory. A player may be `scripted@T=<t>,floor=<f>`: the scripted
+  agent playing `bnb.learn.bc.TeacherOpponent`'s transformed distribution (keys optional,
+  T=1 and floor=0 by default; `scripted@floor=0.01` is BC's teacher).
 - `bnb ratings RUN [--with ...]`: field = the run's league policies + the ladder + `--with`.
 - `bnb train` attaches the league to every PPO run whose lineup seats it, and restores it
   on a resume (`bnb.runs.checkpoint.league_state`). A fork and a warm start reset the slots
