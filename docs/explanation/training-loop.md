@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/runtime/, src/bnb/controllers/, src/bnb/models/relational.py]
-reviewed: 2026-11-03 09:45
+reviewed: 2026-11-06 12:00
 ---
 
 # The training loop
@@ -41,7 +41,7 @@ device at a time, so the trajectory does not bind the device's memory. Every tra
 When a league is attached (`bnb.league.league.League`, which `bnb train` attaches to a PPO
 run), its hooks run after each segment and after the lookahead, after the collection and
 after the learning; see [The league](league.md). A BC run attaches the rating lanes'
-hooks alone (`bnb.league.lanes.LaneHooks`).
+hooks alone (`bnb.league.lanes.LaneHooks`), which also keep the averages of its weights.
 
 It returns a row of measurements: the times of the rollout and the update, the learner's
 statistics (each loss term, the value loss and explained variance per level, the clip
@@ -116,8 +116,9 @@ learner and count in none of its losses. `TrainConfig.lanes` (`bnb.runtime.lanes
 sets how many (`environments`, beyond the training ones) and what they play (`matchups`).
 
 - **Players:** `live`, the weights the learner trains (copied into the lanes before each
-  collection); a weight set the league loads by name (`exponential_average`, its averaged
-  agent, and `league_<k>`, the entry its network slot k holds); and the ladder's rungs,
+  collection); a weight set loaded by name (`exponential_average` and `uniform_average`, the
+  averages of the live weights that the league and BC keep, and `league_<k>`, the entry
+  the league's network slot k holds); and the ladder's rungs,
   `random`, `rung_T<t>_p<p>`, `rung_T<t>` and `scripted` (the scripted agent at T = 1, with
   its mode's parameters, which is also BC's default teacher).
   A matchup is any pair of them.
@@ -136,7 +137,9 @@ sets how many (`environments`, beyond the training ones) and what they play (`ma
   above the scripted agent. The league draws its slots' entries by `p (1 − p)` against the
   live policy, so they are near-even opponents, and older entries, which played lower ones
   before they cycled out, chain the newer to the scripted agent. BC's
-  (`bnb.runtime.cloning.LANES`) play the live policy against the scripted agent alone.
+  (`bnb.runtime.cloning.LANES`) play the live clone, the uniform average and the
+  exponential average against the scripted agent alone, a fifth, two fifths and two
+  fifths of each mode's lanes.
 - **A game counts once, by the weights that played it:** each lane row stamps its player's
   weight generation when its game begins, and loading another entry into a slot's lane
   player (`LaneSeat.load` with `fresh`) starts a new generation, so a game in progress then

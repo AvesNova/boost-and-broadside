@@ -23,8 +23,9 @@ its fixed share. The entries (`bnb.league.pool.Entry`) are:
   throughput, and records it in `run.json`{.plain}. A snapshot is the weights that played the
   update it was taken at;
 - **the averages:** the uniform average and the exponential moving average of the live
-  policy's weights, folded in after every update (`bnb.league.pool.average_into`, the decay
-  `LeagueConfig.exponential_decay` per update). The uniform average starts after
+  policy's weights, folded in after every update (`bnb.league.pool.Averages`, through `average_into`, the
+  decay `LeagueConfig.exponential_decay` per update; behaviour cloning keeps the same
+  two with the same settings). The uniform average starts after
   `LeagueConfig.uniform_from` environment steps (10M), so a warm start's optimizer, critic
   and advantages settle first; until then it is the live weights;
 - **the stationary ladder:** random, the rungs and the scripted agent
@@ -98,9 +99,11 @@ prior game against the scripted agent, half won, which keeps a sweep finite).
   points below.
 - **The series:** per mode `rating/live/<mode>`{.plain} and `rating/average/<mode>`{.plain} (the
   exponential average), their standard errors, and every rated player's
-  `lanes/rating/<mode>/<player>`{.plain}. A BC run's lanes give its live rating the same way
-  (`bnb.league.lanes.LaneHooks`), and the clone's policy file keeps it per mode
-  (`PolicyRecord.ratings`): a warm start's live rating starts from its parent's, not 0.
+  `lanes/rating/<mode>/<player>`{.plain}. A BC run's lanes rate the live clone and both averages the same way
+  (`bnb.league.lanes.LaneHooks`), the uniform average as
+  `rating/uniform_average/<mode>`{.plain}, and each of its policy files keeps its
+  player's per mode (`PolicyRecord.ratings`): a warm start's live rating starts from its
+  parent's, not 0.
 
 Against the scripted agent alone a policy 1000 points above it would be rated blind: its
 games there carry 1/60 of an even game's information. Through a chain of snapshots, whose

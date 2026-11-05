@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/runs/, src/bnb/runtime/rollout.py, src/bnb/models/yemong/model.py, src/bnb/models/relational.py, src/bnb/models/mlp.py, tests/runs/]
-reviewed: 2026-11-04 12:00
+reviewed: 2026-11-06 12:00
 ---
 
 # Runs and checkpoints
@@ -26,7 +26,8 @@ runs/2026-11-02-mixed-purple-pumpkin/
   config.json           the resolved TrainConfig at the start
   checkpoints/step_<environment steps>/   training checkpoints
   league/               the league's policy snapshots
-  policy/               a BC run's clone, a policy file (bnb train --objective bc)
+  policy/               a BC run's policy: the average its stop rule read (bnb train --objective bc)
+  policy-<variant>/     a BC run's live clone and each average (live, uniform, exponential)
   metrics.jsonl         the local metrics sink
   artifacts/<kind>/<id>/result.json        offline results
 ```
@@ -57,7 +58,7 @@ other languages read it.
 - **A policy file** (`bnb.runs.checkpoint.save_policy`) is what an agent needs to play: the
   model's registered name, version and build record, the `Obs` and `Action` schema
   versions, its weights, the return scale's state tensors, the step counts and, for a BC
-  clone, its lane rating per mode (for a warm start), the game and ship card it trained on and the game's version (`bnb.game.VERSION`,
+  run's policies, the lane rating per mode (for a warm start), the game and ship card it trained on and the game's version (`bnb.game.VERSION`,
   which rises whenever the game computes differently), the commit and the time, and each
   file's SHA-256.
 - **A training checkpoint** (`bnb.runs.checkpoint.save_training`) is a policy file plus
@@ -131,8 +132,9 @@ A fork or a warm start whose command sets no model setting takes the file's
   recorded in the new segment. The budget is the run's total. A resume on another
   commit goes ahead with a warning, and the segment records the commit.
 - **A BC run** keeps training checkpoints on the same cadence and resumes the same way
-  (`bnb.runs.session.train` runs both objectives); its clone, the run's policy file, is
-  written again when it stops and replaces the earlier one. A BC run does not start from
+  (`bnb.runs.session.train` runs both objectives); its policy files
+  (`policy/` and `policy-<variant>/`) are written again when it stops and replace the
+  earlier ones. A BC run does not start from
   another run (`--from`) or a policy file (`--init-from`).
 - **A fork's** update count starts at zero, so `--updates` is the number of updates the
   fork trains; its environment-step count goes on from the parent's, so the learning
