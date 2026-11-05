@@ -11,7 +11,10 @@ offsets, come from a second stream of its own, swapped in for the default genera
 for the device's, and back).
 
 A policy file loads only when the game it was trained on and its ship card equal the
-match's; otherwise `load_agent` raises `AgentError` naming the difference.
+match's; otherwise `load_agent` raises `AgentError` naming the difference. With `any_mode`
+the mode's own settings (`bnb.contracts.pools.GAME_FIELDS`: the mode, the arena, the spawn
+groups, the clocks) may differ: a policy trained on a mixed batch records the batch's first
+game only (`bnb.runtime.train.mixed`) and plays every mode of the mix.
 """
 
 import contextlib
@@ -25,6 +28,7 @@ from torch.utils import _pytree
 
 from bnb.contracts import GameConfig, Obs
 from bnb.contracts.action import from_joint
+from bnb.contracts.pools import GAME_FIELDS
 from bnb.controllers.scripted import Chaser
 from bnb.game import api
 from bnb.runs import checkpoint
@@ -217,16 +221,21 @@ def _close(saved, given) -> bool:
 
 
 def mismatch(
-    record: dict, config: GameConfig, rules: api.Rules, types: api.ShipTypes
+    record: dict,
+    config: GameConfig,
+    rules: api.Rules,
+    types: api.ShipTypes,
+    any_mode: bool = False,
 ) -> str | None:
     """Why a policy record cannot play this match (its game, ship card or lineup differ),
-    or None when it can."""
+    or None when it can. any_mode: the mode's own settings may differ (`GAME_FIELDS`)."""
     if record.get("game") is None:
         return "the policy file does not record the game it was trained on"
     saved, given = record["game"], to_json(config)
+    compared = [name for name in given if not (any_mode and name in GAME_FIELDS)]
     differences = [
         f"{name} {saved.get(name)!r} (this match: {given[name]!r})"
-        for name in given
+        for name in compared
         if not _close(saved.get(name), given[name])
     ]
     if differences:
@@ -250,9 +259,10 @@ def load_agent(
     temperature: float = 1.0,
     seed: int = 0,
     graph: bool | None = None,
+    any_mode: bool = False,
 ) -> Agent:
     """The agent of a policy file (or training checkpoint) for this match, on `agent_device()`.
-    Raises AgentError with the reason when it cannot play it."""
+    Raises AgentError with the reason when it cannot play it. any_mode: see `mismatch`."""
     directory = pathlib.Path(directory)
     try:
         policy = checkpoint.read_policy(directory)
@@ -260,7 +270,7 @@ def load_agent(
         raise AgentError(str(error)) from error
     if policy.name not in SUPPORTED_MODELS:
         raise AgentError(f"{policy.name} models do not play in the shell ({SUPPORTED_MODELS})")
-    reason = mismatch(policy.raw, config, rules, types)
+    reason = mismatch(policy.raw, config, rules, types, any_mode)
     if reason is not None:
         raise AgentError(f"{directory.name} cannot play this match: {reason}")
     device = agent_device()
