@@ -37,8 +37,9 @@ with uniform by a floor φ (`bnb.learn.bc.TeacherConfig`): `(1 − φ) q_T + φ 
 the agent's distribution at T ([the scripted agent's
 softness](scripted-agent.md#softness-logistics-the-floor-and-the-temperature): every
 logistic's scale times T). The default is T = 1 and φ = 0, the scripted agent itself: it
-gives no living ship's action probability 0 (its own floor of 0.04 per binary decision), so
-the KL needs no floor, and the clone can sample every action in reinforcement learning.
+gives no living ship's action probability 0 (its own floors on its decisions) except a
+shot it cannot or need not fire (no target, a gun cooling), where P(shoot) is 0; the KL
+needs no floor (a zero label contributes nothing to the cross-entropy).
 Raising T sets a higher entropy for the clone to start reinforcement learning at, without
 an entropy bonus. In BC's own games the scripted opponent plays the labels' distribution
 (`bnb.learn.bc.TeacherOpponent`: the agent at T, then a uniform joint action with

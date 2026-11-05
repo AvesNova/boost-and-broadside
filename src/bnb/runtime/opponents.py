@@ -44,7 +44,7 @@ OPPONENTS = "opponents"  # the controller name of the league's seat
 # The stationary ladder (league spec 1), weakest first: random (temperature +inf), the
 # scripted agent at falling temperatures, the scripted agent itself (T = 1). The section
 # notes give the temperature curve the rungs were chosen from.
-LADDER = (math.inf, 8.0, 5.0, 4.0, 3.0, 2.5, 2.0, 1.5, 1.25, 1.0)
+LADDER = (math.inf, 8.0, 4.0, 3.0, 2.5, 2.0, 1.5, 1.0)
 RUNG_PREFIX = "rung_T"
 SCRIPTED_PLAYER = "scripted"
 

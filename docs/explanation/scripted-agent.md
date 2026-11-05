@@ -77,13 +77,13 @@ Each own ship fights its target, the nearest visible living enemy (ties: lowest 
 - **Shoot:** P(aligned), by the nose's angle to the aim point over the target's angular
   size `2 atan(hit_radius / distance)` (clamped to 1–45°), times P(in range), by the
   distance in gun ranges. Without a target, while the gun cools or while the store cannot
-  pay for a shot it is the floor ε: such a shot does nothing.
+  pay for a shot it is 0: such a shot does nothing, or only spends energy.
 - **The boundary:** a ship within a margin of g-limited turn radii (`speed² /
   max_acceleration`) of the arena's edge and flying outward blends a steer toward the
   centre into its wanted direction, by a linear ramp (a weight, not a probability) on its
   depth into the margin.
 - **No visible enemy:** it heads for the centre and holds its course once within
-  `centre_hold_in_arena_radius` of it (an angle error of 0), and fires only at the floor.
+  `centre_hold_in_arena_radius` of it (an angle error of 0), and does not fire.
 
 ## The Frontline layer
 
@@ -118,13 +118,18 @@ logarithm (`bnb.controllers.scripted_parameters.Logistic`):
 direction (rising or falling) is fixed by the field. The search moves the centres and
 scales.
 
+A logistic's argument is held within ±9.2
+(`bnb.controllers.scripted_parameters.LOGIT_LIMIT`), so it never rounds to exactly 0 or 1.
 Every binary decision is then floored (`bnb.controllers.scripted_parameters.floored`):
-`p ↦ ε + (1 − 2ε) p` with ε = `bnb.controllers.scripted_parameters.EPSILON` = 0.04,
-fixed. The decisions are P(turn), P(level ≥ 2 | turn), P(level 3 | level ≥ 2), the side, P(reverse), P(boost | not reverse)
-and P(shoot). A decision built from two logistics (boost when slow or far; shoot when
-aligned and in range) is floored once, after they combine. So at a finite temperature no
-action of a living ship has probability 0 or 1: the smallest joint probability is a
-product of floors.
+`p ↦ ε + (1 − 2ε) p`, with each decision's ε fixed in
+`bnb.controllers.scripted_parameters.EPSILONS`: 0.02 for P(turn), P(level ≥ 2 | turn),
+P(level 3 | level ≥ 2) and the side; 0.04 for P(reverse) and P(boost | not reverse); 0 for
+P(shoot). A per-tick floor on the shot fires an energy-costly shot at 30 decisions a
+second, and even 0.001 cost measurable strength (the section notes give the ablation); the
+shot's softness is its two logistics'. A decision built from two logistics (boost when slow
+or far; shoot when aligned and in range) is floored once, after they combine. So at a
+finite temperature no power or stick value of a living ship has probability 0 or 1, and
+the shot is certain only at its gates (no target, or a gun that cannot fire).
 
 Two weights are not probabilities and stay linear `Ramp`s: the boundary's steer toward the
 centre and the Frontline layer's hand-over to combat. The goal choices (the target, the
@@ -169,8 +174,26 @@ defaults.
 
 ## Measurements
 
-The current agent's measurements are in the section notes,
-`docs/rewrite/sections/scripted-redesign-notes.md`.
+Measured on 2026-11-05 on the development laptop (RTX 4070 Laptop GPU), 5v5 at the three
+training presets, fog on, the seat drawn per game, 128 games per preset; the section notes
+(`docs/rewrite/sections/scripted-redesign-notes.md`) have the per-preset split, the search
+and the softness audit.
+
+| The agent at | Against | Score |
+|---|---|---|
+| T = 1 | the earlier (linear-ramp) agent | 0.483 ± 0.025 |
+| T = 1 | the earlier BC teacher (that agent, 1% uniform) | 0.630 ± 0.024 |
+| T = 1 | the chaser | 1.000 |
+| T = 1.5, 2, 3, 4 | itself at T = 1 | 0.477, 0.408, 0.172, 0.034 |
+| T = 8, 16 | itself at T = 1 | 0.007 |
+| T = 32 | random | 0.999 |
+| T = 1, 1% uniform | itself at T = 1 | 0.406 ± 0.024 |
+
+Its joint entropy at T = 1 is 0.84 to 0.92 nats per living ship step (1.06 to 1.18 at
+T = 2, 1.40 to 1.57 at T = 4). `tests/sections/test_scripted_acceptance.py` plays it
+against random and the chaser on seeds at or above the search's
+`bench.scripted_search.SEED_LIMIT`: at most 2 non-wins in 2048 games against random, and
+above 0.5 against the chaser, at every preset.
 
 ## Tests
 
