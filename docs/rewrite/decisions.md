@@ -1269,6 +1269,24 @@ Details: `docs/training.md`, `docs/internal/frontline-redesign-implementation.md
   tests). The training stack, wrapper and evaluation stack should not be ported.
 - The new spec is written fresh and owned by the project author.
 
+### Behaviour cloning, round three (author, 2026-11-05/06)
+
+- **The averaged agents are the product,** in BC as in RL: a uniform average and an EMA of
+  the live weights, both kept by the learner and both rated in the lanes. The uniform
+  average runs over the whole period after a warm-up of **10M environment steps** (the
+  reference paper, on weight averaging during BC, averaged uniformly after a slow
+  warm-up). BC's stop rule and saved policy follow the averages, not the live clone
+  (which average: to decide with the implementation).
+- **Deathmatch_wide leaves the training mix for now;** to revisit later. Both clones of
+  2026-11-05 lose to the scripted agent there (0.05 to 0.14) and its KL stopped falling
+  at about 50M steps.
+- **The default layout is 2,048 environments x 4 shards** (more independent games for the
+  same trained ticks).
+- **The BC teacher keeps its memory** (soft hysteresis and dead reckoning); memory costs
+  about 3% of an update.
+- Evidence: run `2026-11-05-mixed-eager-acorn` (150M steps; live clone 0.272 against the
+  scripted agent, an offline uniform average of its retained checkpoints 0.350).
+
 ## Tabled (deliberately deferred)
 
 1. **Remaining flight-parameterization questions** (the card itself is in
