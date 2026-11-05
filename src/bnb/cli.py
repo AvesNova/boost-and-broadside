@@ -1,5 +1,6 @@
 """The `bnb` command: `bnb train` trains or clones, `bnb runs` lists runs and uploads
-checkpoints, `bnb ship-card` charts a ship card.
+checkpoints, `bnb ship-card` charts a ship card, `bnb ratings` and `bnb head-to-head` rate
+policies, `bnb figures` draws what a policy's heads have learned.
 
 An entry point (code style, Layers): it sets the process-wide options its commands need (the
 seed, the matmul precision, the charts' backend). The play shell (`python -m bnb.play`) and
@@ -207,13 +208,44 @@ class HeadToHead:
     runs_directory: str | None = None
 
 
-COMMANDS = ("train", "runs", "ship-card", "ratings", "head-to-head")
+@dataclasses.dataclass(frozen=True)
+class Figures:
+    """Figures of what a policy's heads have learned (`bnb figures SET ... --policy P`):
+    capture a self-play rollout and the scenario lab with the policy's model (on the CPU by
+    default), store it as one artifact under the output's `captures/`, and draw the figure
+    sets from it; or draw them from a stored capture (`--capture FILE`), without the model.
+    The sets (`bnb.figures.sets.FIGURE_SETS`, or all) and how to read them:
+    docs/guides/figures.md. `bnb figures capture --policy P` only captures. Each PNG
+    carries its provenance in its text chunks. Needs the tools extra (matplotlib).
+
+    sets: figure set names, all, or capture; policy: a policy directory or a run's name
+    (its newest checkpoint); capture: a stored capture to draw from; out: the output
+    directory (default: the run's artifacts/figures/<policy directory>, else beside the
+    capture, else figures/); preset, environments, ticks, seed and spread_samples: the
+    capture (`bnb.figures.capture.CaptureConfig`); device; runs_directory: as for bnb train.
+    """
+
+    sets: tyro.conf.Positional[tuple[str, ...]] = ("all",)
+    policy: str | None = None
+    capture: str | None = None
+    out: str | None = None
+    preset: str = "deathmatch"
+    environments: int = 4
+    ticks: int = 256
+    seed: int = 0
+    spread_samples: int = 4
+    device: str = "cpu"
+    runs_directory: str | None = None
+
+
+COMMANDS = ("train", "runs", "ship-card", "ratings", "head-to-head", "figures")
 
 
 def main() -> None:
     """The `bnb` command: `bnb train ...` trains, `bnb runs ...` lists and shows runs and
     uploads checkpoints, `bnb ship-card ...` charts a card, `bnb ratings ...` and
-    `bnb head-to-head ...` rate policies offline."""
+    `bnb head-to-head ...` rate policies offline, `bnb figures ...` draws what a policy's
+    heads have learned."""
     os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")  # Triton 3.9's default, made explicit
     command, arguments = (sys.argv[1:2] or [""])[0], sys.argv[2:]
     if command == "ship-card":
@@ -227,6 +259,9 @@ def main() -> None:
         ratings(tyro.cli(Ratings, args=arguments, prog="bnb ratings"))
     elif command == "head-to-head":
         head_to_head(tyro.cli(HeadToHead, args=arguments, prog="bnb head-to-head"))
+    elif command == "figures":
+        os.environ.setdefault("MPLBACKEND", "Agg")  # the figures go to files: no display
+        figures(tyro.cli(Figures, args=arguments, prog="bnb figures"))
     else:
         raise SystemExit(f"usage: bnb {{{','.join(COMMANDS)}}} ... (bnb train --help)")
 
@@ -806,3 +841,13 @@ def head_to_head(options: HeadToHead) -> None:
     inputs = {player.name: player.policy for player in players if player.policy is not None}
     payload = dict(pairs=rows, games=options.games, presets=list(options.presets))
     print(provenance.write_result(owner, "head_to_head", payload, inputs))
+
+
+def figures(options: Figures) -> None:
+    """`bnb figures`: capture and draw (`bnb.figures.command.figures`)."""
+    from bnb.figures.command import figures as draw
+
+    try:
+        draw(options, runs_directory_of(options.runs_directory))
+    except ImportError as error:
+        raise SystemExit(f"{error}: bnb figures needs the tools extra (uv sync --extra tools)")

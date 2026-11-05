@@ -23,8 +23,8 @@ For a runtime that keeps the state in persistent buffers: `perceived` (the part 
 and `sweep_like`.
 
 For display (the play shell), with no rules of their own: `display` (the state's values a
-display draws, by name), `log_index` (the medium at
-points), `core_radius` (the discs the sight test treats as cores), `zone_sides`
+display draws, by name), `log_index` and `log_index_gradient` (the medium at points),
+`core_radius` (the discs the sight test treats as cores), `zone_sides`
 (Frontline's zone owners and attackers), `visible` (each team's observation in sim order),
 `vision_range` and `per_ship`; and the constants `TEAMS`, `LN_SQRT2` (ln n per field level),
 `MAP_SCALE_RADIUS` (the arena radius of map scale 1) and the game presets `PRESETS`.
@@ -65,6 +65,7 @@ __all__ = [
     "episode_ticks",
     "launch_capture",
     "log_index",
+    "log_index_gradient",
     "move",
     "per_ship",
     "perceive",
@@ -163,6 +164,21 @@ def log_index(
     `medium`, for a caller that holds fields outside a state (such as a subset of them)."""
     fields = Fields(x=centre_x, y=centre_y, radius=radius, band_width=band_width, level=level)
     return medium(fields, x, y)[0]
+
+
+def log_index_gradient(
+    centre_x: torch.Tensor,
+    centre_y: torch.Tensor,
+    radius: torch.Tensor,
+    band_width: torch.Tensor,
+    level: torch.Tensor,
+    x: torch.Tensor,
+    y: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """(ln n, d/dx ln n, d/dy ln n), each (B, P), at points x, y (B, P): `log_index` with
+    the gradient a ship's row shows (`log_index_gradient_x`, `log_index_gradient_y`)."""
+    fields = Fields(x=centre_x, y=centre_y, radius=radius, band_width=band_width, level=level)
+    return medium(fields, x, y)
 
 
 def core_radius(state: State) -> torch.Tensor:
