@@ -114,28 +114,28 @@ class ScriptedParameters:
     ship falls back to its spawn.
     """
 
-    turn_in_stall_angle: Logistic = Logistic(0.0544, 0.49, True)
-    level_two_in_stall_angle: Logistic = Logistic(0.247, 0.22, True)
-    level_three_in_stall_angle: Logistic = Logistic(1.47, 0.16, True)
-    boost_slow_in_corner_speed: Logistic = Logistic(0.5, 0.031, False)
-    boost_far_in_store_gun_ranges: Logistic = Logistic(3.78, 0.143, True)
-    reverse_in_gun_range: Logistic = Logistic(0.434, 0.127, False)
-    aim_in_target_size: Logistic = Logistic(0.604, 0.27, False)
-    shoot_in_gun_range: Logistic = Logistic(0.823, 0.127, False)
-    lead_cap_in_gun_range: float = 1.16
-    boundary_margin_in_turn_radius: float = 2.3
-    boundary_steer_ramp_in_margin: Ramp = Ramp(0.0133, 0.479, 0.0, 1.0)
-    centre_hold_in_arena_radius: float = 0.48
-    combat_radius_in_gun_range: float = 2.33
-    support_radius_in_zone_radius: float = 1.0
-    defensive_floor: float = 0.81
-    defensive_margin: float = 0.496
-    aggression: float = 0.628
-    defense_urgency: float = 1.82
-    separation_radius_in_gun_range: float = 0.853
-    separation_weight: float = 0.444
-    recovery_shield_fraction: float = 0.185
-    recovery_threat: float = 0.945
+    turn_in_stall_angle: Logistic = Logistic(0.0398, 0.306, True)
+    level_two_in_stall_angle: Logistic = Logistic(0.171, 0.17, True)
+    level_three_in_stall_angle: Logistic = Logistic(0.734, 0.171, True)
+    boost_slow_in_corner_speed: Logistic = Logistic(0.536, 0.0345, False)
+    boost_far_in_store_gun_ranges: Logistic = Logistic(10.1, 0.161, True)
+    reverse_in_gun_range: Logistic = Logistic(0.362, 0.135, False)
+    aim_in_target_size: Logistic = Logistic(0.41, 0.237, False)
+    shoot_in_gun_range: Logistic = Logistic(0.513, 0.127, False)
+    lead_cap_in_gun_range: float = 1.33
+    boundary_margin_in_turn_radius: float = 3.41
+    boundary_steer_ramp_in_margin: Ramp = Ramp(0.0169, 0.292, 0.0, 1.0)
+    centre_hold_in_arena_radius: float = 0.469
+    combat_radius_in_gun_range: float = 3.4
+    support_radius_in_zone_radius: float = 1.29
+    defensive_floor: float = 0.298
+    defensive_margin: float = 0.378
+    aggression: float = 1.81
+    defense_urgency: float = 3.87
+    separation_radius_in_gun_range: float = 0.625
+    separation_weight: float = 0.553
+    recovery_shield_fraction: float = 0.133
+    recovery_threat: float = 1.56
 
 
 # Each logistic's smallest scale: 0.1 x the standard deviation of the logarithm of its
