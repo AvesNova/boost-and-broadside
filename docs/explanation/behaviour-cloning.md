@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/learn/bc.py, src/bnb/runtime/cloning.py]
-reviewed: 2026-11-04 12:00
+reviewed: 2026-11-06 12:00
 ---
 
 # Behaviour cloning
@@ -61,10 +61,37 @@ each temperature tried).
 
 `bnb.runtime.cloning.LINEUP`: half self-play, half against the scripted agent playing the
 labels' distribution, crossed with the training mix in a mixed batch. Beside them the
-rating lanes (`bnb.runtime.cloning.LANES`) play the live policy against the raw scripted
+rating lanes (`bnb.runtime.cloning.LANES`) play three players against the raw scripted
 agent in every mode, in the same rollout ([The training
-loop](training-loop.md#the-rating-lanes)): the score stop and the live rating read those
-games (at the default teacher, the same player). There are no separate evaluation rollouts.
+loop](training-loop.md#the-rating-lanes)): the live clone, the uniform average and the
+exponential average of its weights. Each mode's lanes go 1 : 2 : 2 to them (the
+matchups' weights 0.5, 1 and 1; of the default 1,024 lanes in one mode, 205, 410 and
+409), since the score stop reads the averages and the live clone is only logged. The
+score stop and the ratings read those games (at the default teacher, the scripted agent
+is the teacher). There are no separate evaluation rollouts.
+
+## The averages
+
+The averaged agents are the product of BC, as in reinforcement learning (decisions,
+"Behaviour cloning, round three"). BC keeps the league's two averages of the live weights
+(`bnb.league.pool.Averages`, the same class and rule [the league](league.md#the-pool)
+uses), folded in after every update by BC's hooks (`bnb.league.lanes.LaneHooks`):
+
+- **the uniform average** of the live weights over every update after a warm-up of 10M
+  environment steps (`LeagueConfig.uniform_from`); until then it is the live weights;
+- **the exponential moving average**, decay 0.95 per update
+  (`LeagueConfig.exponential_decay`), from the first update.
+
+BC reads these settings from the run's `TrainConfig.league`, the league's own fields,
+rather than fields of its own: one warm-up and one decay for both objectives, set with
+`--set league.uniform_from=...`. Both averages go into the training checkpoint (the
+league state's tensors, and the uniform average's update count) and come back on a
+resume. After each update the hooks copy both into the lanes that play them, so an
+update's lane games are those of the averages as the previous update left them.
+
+The last BC run before the averages (run `2026-11-05-mixed-eager-acorn`, 150M steps)
+shows why: its live clone scored 0.272 against the scripted agent, a uniform average of
+its retained checkpoints from 66M to 151M steps, built offline, 0.350.
 
 ## When it stops
 
@@ -72,19 +99,27 @@ games (at the default teacher, the same player). There are no separate evaluatio
 first rule to fire (`bnb.learn.bc.StopConfig`, the run's `TrainConfig.stop`). Its state is
 part of the training checkpoint, so a resumed run continues the same window:
 
-- **score:** the live policy's score in its lanes against the raw scripted agent (wins
-  plus half the draws) over the last 1000 finished lane games reaches parity, 0.5, even if
-  the KL is still falling. It is the plain score; its standard error (the sample deviation
-  of the per-game scores over the square root of 1000) is reported beside it
-  (`bc/stop/window_stderr`{.plain}). The window keeps each update's games, points and
+- **score:** the score against the raw scripted agent in the lanes (wins plus half the
+  draws) over the last 1000 finished lane games of the better of the two averages reaches
+  parity, 0.5, even if the KL is still falling. Each player keeps its own window
+  (`bnb.learn.bc.ScoreWindow`): the live clone's too, which is logged and never read. The
+  rule reads, of the averages `StopConfig.reads` names, the one whose full window scores
+  higher (`StopRule.read`). Against one opponent a rating is a monotone function of the
+  score, so this is the better-rated average over the stop's own window, not the lanes'
+  ten-update rating window. An equal score goes to the exponential average, the first in
+  `reads`. The uniform average's games count only from the first update that began with
+  it past its warm-up: before that it is the live clone, and the rule reads the
+  exponential average alone. It is the plain score; its standard error (the sample
+  deviation of the per-game scores over the square root of 1000) is reported beside it
+  (`bc/stop/window_stderr`{.plain}). A window keeps each update's games, points and
   squared points, drops the oldest updates whole and counts the oldest one it keeps by the
   share of its games the window needs, so trimming favours no result;
 - **KL plateau:** the BC KL, `KL(labels ‖ student) = CE − H(labels)` per token, as an
   exponential average over updates, improved by less than 1% over the last 20M
   environment steps;
 - **budget:** 50M environment steps, v1's time to parity. A run stopped by its budget ends
-  with a checkpoint and its clone; `bnb train --resume RUN --bc-budget-steps N` with a
-  larger budget continues it.
+  with a checkpoint and its policy files; `bnb train --resume RUN --bc-budget-steps N`
+  with a larger budget continues it.
 
 ## Metrics
 
@@ -92,19 +127,44 @@ Each update reports the BC KL, the labels' and the student's entropy, overall an
 pool (`bc/kl`{.plain}, `bc/kl_by_pool/<pool>`{.plain} and so on); the student's agreement
 with the labels' likeliest action per factor (`bc/agreement/<factor>`{.plain}); the
 explained variance per level; the auxiliary losses; the training games' score per
-opponent kind (`bc/score/<kind>`{.plain}); and the lanes' games, scores and live rating
-(`lanes/score/<mode>/live_vs_scripted`{.plain}, `rating/live/<mode>`{.plain}).
+opponent kind (`bc/score/<kind>`{.plain}); the lanes' games, scores and ratings
+(`lanes/score/<mode>/<player>_vs_scripted`{.plain}; `rating/live/<mode>`{.plain},
+`rating/average/<mode>`{.plain} for the exponential average as in reinforcement learning,
+and `rating/uniform_average/<mode>`{.plain}); and the stop's windows: the read average's
+score and error (`bc/stop/window_score`{.plain}, `bc/stop/window_stderr`{.plain}), every
+full window's (`bc/stop/window_score/<player>`{.plain}) and which average the stop reads
+(`bc/stop/reads/<average>`{.plain}, 1 for the read one).
 
 ## The hand-off
 
-`bnb train --objective bc` saves the clone, when it stops, as the run's policy file
-(`bnb.runs.session.save_clone`, through `bnb.runs.checkpoint.save_policy`): the weights, the
-return scale's state, the step counts and its lane rating per mode, where the RL run's live
-rating starts. `bnb train --init-from` starts reinforcement
-learning from it (`bnb.runs.checkpoint.warm_start`): the weights and return scale, a fresh
+`bnb train --objective bc`, when it stops, saves four policy files
+(`bnb.runs.session.save_policies`, through `bnb.runs.checkpoint.save_policy`), each with
+its weights, the return scale's state, the step counts and its own lane rating per mode,
+where the RL run's live rating starts:
+
+- `policy/`{.plain}: the run's policy, the average the score stop read last (before any
+  window filled, the exponential average); `run.json`{.plain} names it as
+  `policy_player`;
+- `policy-uniform/`{.plain} and `policy-exponential/`{.plain}: each average;
+- `policy-live/`{.plain}: the live clone.
+
+`policy/` duplicates one of the averages' files, so that the hand-off has one path
+whichever average won. The return scale is the learner's in all four. `bnb train
+--init-from` starts reinforcement learning from any of them (`bnb.runs.checkpoint.warm_start`): the weights and return scale, a fresh
 optimizer, fresh step counts and no cloning term ([Runs and checkpoints](runs.md)). In
 Python, `bnb.runtime.cloning.warm_start` does the same in memory, copying into a trainer in
 place so the rollout's captured graphs keep reading the weights.
+
+## Checkpoint retention
+
+The run's retention of training checkpoints
+([Runs and checkpoints](runs.md)) is unchanged: the newest few, then one per doubling of
+age. It thins the older checkpoints, so an offline uniform average of them would weigh a
+few far-apart weights. That is no longer needed: the learner's uniform average folds in
+every update, and every training checkpoint keeps it with its update count. Two retained
+checkpoints also give the uniform average over the updates between them, up to rounding:
+`(n_b ū_b − n_a ū_a) / (n_b − n_a)`, with `ū` the average and `n` its count
+(`averaged` in the checkpoint's league record).
 
 ## Measurements
 

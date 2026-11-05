@@ -1277,6 +1277,12 @@ Details: `docs/training.md`, `docs/internal/frontline-redesign-implementation.md
   reference paper, on weight averaging during BC, averaged uniformly after a slow
   warm-up). BC's stop rule and saved policy follow the averages, not the live clone
   (which average: to decide with the implementation).
+  *Implemented 2026-11-06 (branch `feat/bc-averages`):* the stop reads, of the two, the
+  one whose 1000-game window against the scripted agent scores higher (an equal score
+  goes to the EMA; before the warm-up ends only the EMA is read); `policy/` holds that
+  average, `policy-live/`, `policy-uniform/` and `policy-exponential/` sit beside it; BC
+  takes the league's `uniform_from` and `exponential_decay`; the lanes go 1 : 2 : 2 to
+  the live clone and the two averages.
 - **Deathmatch_wide leaves the training mix for now;** to revisit later. Both clones of
   2026-11-05 lose to the scripted agent there (0.05 to 0.14) and its KL stopped falling
   at about 50M steps.

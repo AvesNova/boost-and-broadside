@@ -14,8 +14,10 @@ against the scripted agent, half won (`bnb.league.ratings.fit_ratings`), which k
 finite. A game in progress when a slot's weights change is left out
 (`bnb.runtime.lanes.LaneSeat.tally`).
 
-The live rating and the averaged agent's of each mode are the series `rating/live/<mode>` and
-`rating/average/<mode>`; every rated player's is `lanes/rating/<mode>/<player>`. The ladder's
+The live rating and the averaged agent's (the exponential average) of each mode are the
+series `rating/live/<mode>` and `rating/average/<mode>`, the uniform average's, where the
+lanes play it (behaviour cloning's do), `rating/uniform_average/<mode>`; every rated
+player's is `lanes/rating/<mode>/<player>`. The ladder's
 rungs, rated here from their own games, are the league's calibrated ladder.
 """
 
@@ -29,16 +31,20 @@ from bnb.runtime.lanes import (
     LEAGUE_PREFIX,
     LIVE,
     SCRIPTED_PLAYER,
+    UNIFORM_AVERAGE,
     Lane,
 )
 from bnb.runtime.opponents import ladder_rung
 from bnb.runtime.train import Trainer
 
+from .pool import Averages
 from .ratings import fit_ratings
 
 ANCHOR_RATING = 1000.0  # the scripted agent's
 PRIOR_GAMES = 1.0  # each player's virtual games against the scripted agent, half won
 AVERAGE = EXPONENTIAL_AVERAGE  # the averaged agent whose rating is `rating/average`
+# each rated player's headline series, `rating/<name>/<mode>`
+HEADLINES = ((LIVE, "live"), (AVERAGE, "average"), (UNIFORM_AVERAGE, UNIFORM_AVERAGE))
 SNAPSHOT_PREFIX = "snapshot_"  # a league snapshot's name (`bnb.league.pool.snapshot_name`)
 
 
@@ -165,9 +171,10 @@ class LaneRatings:
         return self.ratings.get(mode, {}).get(player)
 
     def series(self) -> dict:
-        """Per mode: `rating/live` and `rating/average` (the averaged agent) with their
-        standard errors, and every rated player's `lanes/rating` and `lanes/rating_stderr`;
-        a player is absent until its games rate it."""
+        """Per mode: `rating/live`, `rating/average` (the averaged agent) and
+        `rating/uniform_average` with their standard errors, and every rated player's
+        `lanes/rating` and `lanes/rating_stderr`; a player is absent until its games rate
+        it."""
         out = {}
         for mode, rated in self.ratings.items():
             for player, (rating, error) in rated.items():
@@ -175,20 +182,20 @@ class LaneRatings:
                     continue
                 out[f"lanes/rating/{mode}/{player}"] = rating
                 out[f"lanes/rating_stderr/{mode}/{player}"] = error
-            for player, name in ((LIVE, "live"), (AVERAGE, "average")):
+            for player, name in HEADLINES:
                 if player in rated:
                     out[f"rating/{name}/{mode}"], out[f"rating/{name}_stderr/{mode}"] = rated[
                         player
                     ]
         return out
 
-    def live(self) -> dict[str, float]:
-        """The live policy's rating per mode, where it is rated (a policy file keeps it, for a
-        warm start's starting rating)."""
+    def of(self, player: str) -> dict[str, float]:
+        """`player`'s rating per mode, where it is rated (a policy file keeps it, for a warm
+        start's starting rating)."""
         return {
-            mode: rated[LIVE][0]
+            mode: rated[player][0]
             for mode, rated in self.ratings.items()
-            if LIVE in rated and math.isfinite(rated[LIVE][0])
+            if player in rated and math.isfinite(rated[player][0])
         }
 
     def state(self) -> dict:
@@ -207,15 +214,32 @@ class LaneRatings:
 
 
 class LaneHooks:
-    """The lanes' ratings as a trainer's hooks (`bnb.runtime.train.LeagueHooks`), for a run
-    without a league (behaviour cloning). Attaching it sets the trainer's hooks; state: a
-    training checkpoint's league state (`bnb.runs.checkpoint.league_state`)."""
+    """The lanes' ratings and the averages of the live weights as a trainer's hooks
+    (`bnb.runtime.train.LeagueHooks`), for a run without a league (behaviour cloning). The
+    averages are the league's (`bnb.league.pool.Averages`, with the run's
+    `TrainConfig.league` settings), folded in after every update and played by the lanes
+    that name them. Attaching it sets the trainer's hooks; state: a training checkpoint's
+    league state (`bnb.runs.checkpoint.league_state`)."""
 
     def __init__(
         self, trainer: Trainer, state: tuple[dict, dict[str, torch.Tensor]] | None = None
     ) -> None:
         self.ratings = LaneRatings(trainer, None if state is None else state[0]["lanes"])
+        weights, config = trainer.model.state_dict(), trainer.config.league
+        if state is None:
+            self.averages = Averages(weights, config)
+        else:
+            self.averages = Averages(weights, config, state[0]["averaged"], state[1])
+        self._load_lanes()
         trainer.league = self
+
+    def _load_lanes(self) -> None:
+        """The averages' weights into the lanes that play them (the same players' weights
+        moving on: the games in progress are tallied)."""
+        if self.ratings.seat is None:
+            return
+        for name, weights in self.averages.weights.items():
+            self.ratings.seat.load(name, weights)
 
     def after_shard(self, trainer: Trainer, shard: int) -> None:
         """Nothing: the lanes' games are taken once per update."""
@@ -224,10 +248,16 @@ class LaneHooks:
         """Nothing before learning."""
 
     def updated(self, trainer: Trainer) -> dict:
-        """Fold the update's lane games in; the ratings' series."""
+        """Fold the update's lane games in, and its weights into the averages; the ratings'
+        series."""
         self.ratings.update(trainer.lane_record)
+        self.averages.fold(trainer.model.state_dict(), trainer.ppo.environment_steps)
+        self._load_lanes()
         return self.ratings.series()
 
     def state(self) -> tuple[dict, dict[str, torch.Tensor]]:
-        """(the records as JSON under "lanes", no tensors)."""
-        return dict(lanes=self.ratings.state()), {}
+        """(the records as JSON under "lanes" and the uniform average's count under
+        "averaged", the averages' weights as tensors)."""
+        return dict(lanes=self.ratings.state(), averaged=self.averages.count), (
+            self.averages.tensors()
+        )

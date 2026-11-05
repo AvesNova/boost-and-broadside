@@ -11,12 +11,11 @@ import dataclasses
 
 import torch
 
-from bnb.runtime.opponents import Rung, ladder_name
+from bnb.runtime.lanes import EXPONENTIAL_AVERAGE, UNIFORM_AVERAGE
+from bnb.runtime.opponents import LeagueConfig, Rung, ladder_name
 
 from .gauge import KINDS
 
-UNIFORM_AVERAGE = "uniform_average"
-EXPONENTIAL_AVERAGE = "exponential_average"
 AVERAGES = (UNIFORM_AVERAGE, EXPONENTIAL_AVERAGE)
 RECENT_SNAPSHOTS = 8  # the newest snapshots retention keeps
 HISTORY_FROM = 3  # then the snapshot nearest each age 2^k snapshots back, k >= HISTORY_FROM
@@ -111,3 +110,63 @@ def average_into(
             continue
         uniform[name].add_(value - uniform[name], alpha=1.0 / count)
         exponential[name].mul_(decay).add_(value, alpha=1.0 - decay)
+
+
+class Averages:
+    """The uniform average and the exponential moving average of the live weights (league
+    spec 3), each a state dict by name (`weights`, AVERAGES), folded in after every update
+    (`fold`). The uniform average counts the updates from `LeagueConfig.uniform_from`
+    environment steps on (`count`; before them it is the live weights); the exponential one
+    decays by `LeagueConfig.exponential_decay` per update throughout. The league keeps them
+    as pool entries, behaviour cloning as its product (`bnb.league.lanes.LaneHooks`).
+
+    weights: the live model's state dict, which both start from; a resume's `count` and
+    `tensors` (`tensors()` of the saving run) restore them, on the weights' devices."""
+
+    def __init__(
+        self,
+        weights: dict[str, torch.Tensor],
+        config: LeagueConfig,
+        count: int = 0,
+        tensors: dict[str, torch.Tensor] | None = None,
+    ) -> None:
+        self.config = config
+        self.count = count  # the updates in the uniform average
+        if tensors is None:
+            self.weights = {
+                name: {key: value.detach().clone() for key, value in weights.items()}
+                for name in AVERAGES
+            }
+        else:
+            self.weights = {
+                name: {
+                    key: tensors[f"{name}.{key}"].to(value.device) for key, value in weights.items()
+                }
+                for name in AVERAGES
+            }
+
+    @property
+    def uniform_started(self) -> bool:
+        """Whether the uniform average holds an update past the warm-up (before, it is the
+        live weights)."""
+        return self.count > 0
+
+    def fold(self, weights: dict[str, torch.Tensor], environment_steps: int) -> None:
+        """Fold an update's live weights in, `environment_steps` the run's total after it."""
+        if environment_steps >= self.config.uniform_from:
+            self.count += 1
+        average_into(
+            self.weights[UNIFORM_AVERAGE],
+            self.weights[EXPONENTIAL_AVERAGE],
+            weights,
+            max(self.count, 1),  # before uniform_from, the live weights
+            self.config.exponential_decay,
+        )
+
+    def tensors(self) -> dict[str, torch.Tensor]:
+        """Both averages' weights by `<average>.<key>`, for a training checkpoint."""
+        return {
+            f"{name}.{key}": value
+            for name, weights in self.weights.items()
+            for key, value in weights.items()
+        }

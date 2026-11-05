@@ -22,9 +22,11 @@ from bnb.league.lanes import LaneHooks, LaneRatings
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
 from bnb.runtime import cloning
 from bnb.runtime.lanes import (
+    EXPONENTIAL_AVERAGE,
     LANES,
     LIVE,
     SCRIPTED_PLAYER,
+    UNIFORM_AVERAGE,
     Lane,
     LaneCarry,
     LaneConfig,
@@ -476,32 +478,173 @@ def test_a_warm_starts_league_starts_from_its_parents_rating(tmp_path):
     assert other.gauges[MODE].live.rating == 640.0
 
 
-def test_a_clone_keeps_its_lane_rating_in_its_policy_file(tmp_path):
-    from bnb.runs import checkpoint, session
+def _bc_trainer(**changes):
+    """A tiny BC trainer on the CPU with one lane per BC matchup."""
     from bnb.runtime.train import Trainer
 
     config = tiny_train_config(
         objective="bc",
         pools=cloning.LINEUP,
         learner=dataclasses.replace(tiny_train_config().learner, policy=0.025),
-        lanes=LaneConfig(environments=2, matchups=cloning.LANES.matchups),
+        lanes=LaneConfig(environments=3, matchups=cloning.LANES.matchups),
+        **changes,
     )
-    trainer = Trainer(config, lc.CPU)
+    return Trainer(config, lc.CPU)
+
+
+def test_bcs_lanes_rate_the_live_clone_and_both_averages_against_the_scripted_agent():
+    from bnb.learn import bc
+
+    players = [(matchup.first, matchup.second) for matchup in cloning.LANES.matchups]
+    assert players == [
+        (LIVE, SCRIPTED_PLAYER),
+        (UNIFORM_AVERAGE, SCRIPTED_PLAYER),
+        (EXPONENTIAL_AVERAGE, SCRIPTED_PLAYER),
+    ]
+    # the default 1024 lanes of one mode: a fifth for the live clone, 2/5 for each average
+    sizes = split(1024, [matchup.weight for matchup in cloning.LANES.matchups])
+    assert sizes == [205, 410, 409]
+    assert set(bc.StopConfig().reads) == {UNIFORM_AVERAGE, EXPONENTIAL_AVERAGE}
+
+
+def test_bcs_hooks_fold_both_averages_into_the_lanes_after_every_update():
+    """`LaneHooks` keeps the league's averages (`bnb.league.pool.Averages`, the run's
+    `TrainConfig.league` settings): the exponential one from the first update, the uniform
+    one from `uniform_from` on, both copied into the lanes that play them, and both
+    restored from the hooks' state."""
+    from bnb.runtime.opponents import LeagueConfig
+
+    trainer = _bc_trainer(league=LeagueConfig(exponential_decay=0.5, uniform_from=200))
     hooks = LaneHooks(trainer)
-    (lane,) = trainer.lanes
-    hooks.ratings.update({lane: (30, 0, 10)})
-    run = types.SimpleNamespace(policy_path=tmp_path / "policy")
-    session.save_clone(run, trainer)
-    ratings = checkpoint.read_policy(tmp_path / "policy").ratings
-    assert ratings[MODE] == pytest.approx(hooks.ratings.rating(MODE, LIVE)[0])
-    assert ratings[MODE] > 1000.0
+    name, start = next(
+        (key, value.clone())
+        for key, value in trainer.model.state_dict().items()
+        if value.is_floating_point()
+    )
+    parameter = dict(trainer.model.named_parameters())[name]
+    seat = trainer.lane_seat
+    for steps, shift in ((100, 1.0), (200, 3.0), (300, 5.0)):
+        with torch.no_grad():
+            parameter.copy_(start + shift)
+        trainer.ppo.environment_steps = steps
+        hooks.updated(trainer)
+    averages = hooks.averages
+    assert averages.count == 2  # the updates at 200 and 300 steps
+    # before uniform_from the uniform average is the live weights, then their mean
+    torch.testing.assert_close(averages.weights[UNIFORM_AVERAGE][name], start + 4.0)
+    # start + 0.5, then start + 1.75, then start + 3.375
+    torch.testing.assert_close(averages.weights[EXPONENTIAL_AVERAGE][name], start + 3.375)
+    for player in (UNIFORM_AVERAGE, EXPONENTIAL_AVERAGE):
+        index = seat.networks.index(player)
+        torch.testing.assert_close(
+            seat.parameters[f"model.{name}"][index], averages.weights[player][name]
+        )
+    record, tensors = hooks.state()
+    restored = LaneHooks(_bc_trainer(league=trainer.config.league), (record, tensors))
+    assert restored.averages.count == 2
+    for player, weights in averages.weights.items():
+        for key, value in weights.items():
+            assert torch.equal(restored.averages.weights[player][key], value), (player, key)
 
 
-def test_bcs_stop_reads_the_live_policys_lane_games_against_the_scripted_agent():
+def test_a_clone_saves_the_read_average_as_its_policy_and_every_player_beside_it(tmp_path):
+    """`policy/` holds the average the score stop read, with that average's lane ratings
+    (where a warm start's rating starts); `policy-live/`, `policy-uniform/` and
+    `policy-exponential/` hold each player with its own."""
+    from bnb.runs import checkpoint, session
+
+    trainer = _bc_trainer()
+    hooks = LaneHooks(trainer)
+    with torch.no_grad():
+        for player, shift in ((UNIFORM_AVERAGE, 1.0), (EXPONENTIAL_AVERAGE, 2.0)):
+            for value in hooks.averages.weights[player].values():
+                if value.is_floating_point():
+                    value.add_(shift)
+    results = {LIVE: (20, 0, 20), UNIFORM_AVERAGE: (30, 0, 10), EXPONENTIAL_AVERAGE: (10, 0, 30)}
+    hooks.ratings.update({lane: results[lane.matchup.first] for lane in trainer.lanes})
+    trainer.stop_rule.observe(1, results, 1.0)
+    run = types.SimpleNamespace(
+        policy_path=tmp_path / "policy",
+        variant_policy_path=lambda variant: tmp_path / f"policy-{variant}",
+    )
+    expected = {
+        LIVE: trainer.model.state_dict(),
+        **{
+            player: hooks.averages.weights[player]
+            for player in (UNIFORM_AVERAGE, EXPONENTIAL_AVERAGE)
+        },
+    }
+    # the windows hold 40 games, under the default 1000: no average is read yet, so
+    # `policy/` holds the first the stop reads
+    assert session.save_policies(run, trainer) == EXPONENTIAL_AVERAGE
+    trainer.stop_rule = type(trainer.stop_rule)(
+        dataclasses.replace(trainer.config.stop, score_window=40), trainer.stop_rule.state
+    )
+    assert trainer.stop_rule.read == UNIFORM_AVERAGE
+    assert session.save_policies(run, trainer) == UNIFORM_AVERAGE
+    assert not (tmp_path / "policy.replaced").exists()
+    for directory, player in (
+        ("policy", UNIFORM_AVERAGE),
+        ("policy-live", LIVE),
+        ("policy-uniform", UNIFORM_AVERAGE),
+        ("policy-exponential", EXPONENTIAL_AVERAGE),
+    ):
+        policy = checkpoint.load_policy(tmp_path / directory, lc.CPU)
+        for key, value in expected[player].items():
+            assert torch.equal(policy.state_dict()[key], value.cpu()), (directory, key)
+        ratings = checkpoint.read_policy(tmp_path / directory).ratings
+        assert ratings[MODE] == pytest.approx(hooks.ratings.rating(MODE, player)[0])
+    assert checkpoint.read_policy(tmp_path / "policy").ratings[MODE] > 1000.0
+
+
+def test_bcs_stop_reads_each_players_lane_games_against_the_scripted_agent():
     record = {
         Lane("a", Matchup(LIVE, SCRIPTED_PLAYER)): (3, 1, 2),
         Lane("b", Matchup(SCRIPTED_PLAYER, LIVE)): (5, 0, 1),  # from the scripted side
+        Lane("a", Matchup(UNIFORM_AVERAGE, SCRIPTED_PLAYER)): (2, 0, 0),
         Lane("b", Matchup("rung_T2", SCRIPTED_PLAYER)): (9, 9, 9),
+        Lane("b", Matchup(LIVE, EXPONENTIAL_AVERAGE)): (7, 7, 7),
     }
     trainer = types.SimpleNamespace(lane_record=record)
-    assert cloning.lane_results(trainer) == (4, 1, 7)
+    assert cloning.lane_results(trainer) == {
+        LIVE: (4, 1, 7),
+        UNIFORM_AVERAGE: (2, 0, 0),
+        "rung_T2": (9, 9, 9),
+    }
+
+
+def _fake_bc_trainer(uniform_started: bool, league: bool = True):
+    """A stand-in trainer for `cloning.update`: one update's lane games, no pools."""
+    from bnb.learn import bc
+    from bnb.runtime.lanes import LaneConfig as Lanes
+
+    record = {
+        Lane("a", Matchup(player, SCRIPTED_PLAYER)): (10, 0, 0)
+        for player in (LIVE, UNIFORM_AVERAGE, EXPONENTIAL_AVERAGE)
+    }
+    trainer = types.SimpleNamespace(
+        config=types.SimpleNamespace(objective="bc", pools=(), lanes=Lanes()),
+        stop_rule=bc.StopRule(bc.StopConfig(score_window=10, score_target=1.1)),
+        ppo=types.SimpleNamespace(environment_steps=100),
+        lane_record=record,
+        league=types.SimpleNamespace(
+            averages=types.SimpleNamespace(uniform_started=uniform_started)
+        )
+        if league
+        else None,
+    )
+    trainer.update = lambda: {"bc/kl": 1.0}
+    return trainer
+
+
+def test_the_uniform_averages_games_count_once_it_has_started():
+    before = _fake_bc_trainer(uniform_started=False)
+    row, _ = cloning.update(before)
+    assert set(before.stop_rule.windows) == {LIVE, EXPONENTIAL_AVERAGE}
+    assert row["bc/stop/reads/exponential_average"] == 1.0
+    assert row["bc/stop/window_score/live"] == 1.0
+    after = _fake_bc_trainer(uniform_started=True)
+    cloning.update(after)
+    assert set(after.stop_rule.windows) == {LIVE, UNIFORM_AVERAGE, EXPONENTIAL_AVERAGE}
+    with pytest.raises(ValueError, match="LaneHooks"):
+        cloning.update(_fake_bc_trainer(uniform_started=True, league=False))

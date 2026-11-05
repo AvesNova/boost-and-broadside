@@ -278,10 +278,11 @@ def test_a_resumed_bc_run_equals_one_straight_through_on_the_cpu(tmp_path):
 
 
 @pytest.mark.slow
-def test_the_exact_resume_test_sees_a_lost_stop_rule_window(tmp_path):
+@pytest.mark.parametrize("damage", ["stop_rule", "averages"])
+def test_the_exact_resume_test_sees_a_lost_stop_rule_window_or_damaged_averages(tmp_path, damage):
     for mode in ("straight", "first"):
         _run(mode, tmp_path, "cpu", "relational", objective="bc")
-    _run("second", tmp_path, "cpu", "relational", "stop_rule", objective="bc")
+    _run("second", tmp_path, "cpu", "relational", damage, objective="bc")
     straight, _ = _result(tmp_path, "straight")
     first, _ = _result(tmp_path, "first")
     second, _ = _result(tmp_path, "second")

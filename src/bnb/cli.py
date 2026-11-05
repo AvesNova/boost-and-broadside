@@ -640,7 +640,7 @@ def train(options: Train, given_options: set[str]) -> None:
         # a warm start's live rating starts from its parent's (the clone's lane ratings)
         ratings = checkpoint.read_policy(source).ratings if options.init_from else None
         League(trainer, run.directory / "league", run, state, ratings)
-    elif trainer.lanes:
+    elif trainer.lanes or config.objective == "bc":  # BC's hooks keep its averages
         from bnb.league.lanes import LaneHooks
 
         LaneHooks(trainer, state)
@@ -660,7 +660,9 @@ def train(options: Train, given_options: set[str]) -> None:
         status = session.train(run, trainer, log_cloning if cloned else log, recorder=recorder)
         if cloned:
             print(
-                f"stopped by {run.record['stopped_by']}; the clone is {run.policy_path}", flush=True
+                f"stopped by {run.record['stopped_by']}; the policy is {run.policy_path} "
+                f"(the {run.record['policy_player']})",
+                flush=True,
             )
     except MemoryBudgetError as error:  # the run is marked failed with the same message
         raise SystemExit(str(error)) from error
@@ -671,17 +673,19 @@ def train(options: Train, given_options: set[str]) -> None:
 
 def log_cloning(row: dict) -> None:
     """Print one behaviour-cloning update's row on one line: the timings (ms), the BC KL and the
-    teacher's and student's entropies (nats), each score, and the score stop's window once it is
-    full."""
+    teacher's and student's entropies (nats), each score, and the score stop's window once one
+    is full (the average it reads)."""
     scores = " ".join(
         f"{name.split('/')[-1]} {value:.3f}"
         for name, value in row.items()
         if name.startswith("bc/score/")
     )
-    # the score stop's window of lane games against the scripted agent, once full
+    # the score stop's window of lane games against the scripted agent, once one is full
+    read = [name for name, value in row.items() if name.startswith("bc/stop/reads/") and value]
     window = (
-        f"  window {row['bc/stop/window_score']:.3f} (+- {row['bc/stop/window_stderr']:.3f})"
-        if "bc/stop/window_score" in row
+        f"  window {read[0].split('/')[-1]} {row['bc/stop/window_score']:.3f} "
+        f"(+- {row['bc/stop/window_stderr']:.3f})"
+        if "bc/stop/window_score" in row and read
         else ""
     )
     print(

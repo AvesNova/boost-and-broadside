@@ -2,8 +2,9 @@
 tensors as the training games, never stored for the learner nor counted in its losses.
 
 A matchup is a pair of players. A player is a network (`LIVE`, the weights the learner is
-training; or a weight set the league loads by name: its averages, or `league_<k>`, the
-entry its network slot k holds) or a rung of the
+training; or a weight set loaded by name: the averages of the live weights, which the
+league and behaviour cloning keep, or `league_<k>`, the entry the league's network slot k
+holds) or a rung of the
 stationary ladder (`random`, `rung_T<t>`, `scripted`: the scripted agent at temperature t,
 uniform random actions for `random`). Every mode of the training mix plays every matchup: the
 lanes are split evenly over the modes, and within a mode by the matchups' weights. Each
@@ -31,7 +32,10 @@ from .opponents import LADDER, OUTCOMES, SCRIPTED_PLAYER, Rung, ladder_name, lad
 
 LANES = "lanes"  # the lanes' controller name
 LIVE = "live"  # the player the learner trains
-EXPONENTIAL_AVERAGE = "exponential_average"  # the league's average the lanes rate by default
+# the averages of the live weights the league (and behaviour cloning) keeps
+# (`bnb.league.pool.Averages`); RL's lanes rate the exponential one
+UNIFORM_AVERAGE = "uniform_average"
+EXPONENTIAL_AVERAGE = "exponential_average"
 LEAGUE_PREFIX = "league_"  # a league slot's player: the entry the league's slot k holds
 
 
@@ -91,8 +95,14 @@ RL_MATCHUPS = (
     *(Matchup(league_slot(index), SCRIPTED_PLAYER, 0.25) for index in range(LEAGUE_SLOTS)),
     *ladder_chain(LADDER[:-1], 0.05),
 )
-# Behaviour cloning's: the live policy against the raw scripted agent (its score stop).
-BC_MATCHUPS = (Matchup(LIVE, SCRIPTED_PLAYER, 1.0),)
+# Behaviour cloning's: the live clone and both averages of its weights against the raw
+# scripted agent (decisions: BC round three). The score stop reads the averages, so they
+# take 2/5 of each mode's lanes each; the live clone, only logged, the last fifth.
+BC_MATCHUPS = (
+    Matchup(LIVE, SCRIPTED_PLAYER, 0.5),
+    Matchup(UNIFORM_AVERAGE, SCRIPTED_PLAYER, 1.0),
+    Matchup(EXPONENTIAL_AVERAGE, SCRIPTED_PLAYER, 1.0),
+)
 
 
 @dataclasses.dataclass(frozen=True)

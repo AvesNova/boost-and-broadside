@@ -68,11 +68,16 @@ def by_mode(*make) -> tuple[Panel, ...]:
 
 
 def ratings(mode: str) -> tuple[Panel, ...]:
-    """The mode's rating panel: the live policy's and the averaged agent's lane ratings (BC
-    has no average)."""
+    """The mode's rating panel: the live policy's and the averaged agent's lane ratings, and
+    in BC the uniform average's too."""
     return (
         rl(f"rating/{mode}", f"rating/live/{mode}", f"rating/average/{mode}"),
-        bc(f"rating/{mode}", f"rating/live/{mode}"),
+        bc(
+            f"rating/{mode}",
+            f"rating/live/{mode}",
+            f"rating/average/{mode}",
+            f"rating/uniform_average/{mode}",
+        ),
     )
 
 
@@ -146,7 +151,8 @@ CURATED = (
         (
             *by_mode(ratings),
             panel("rating/live_stderr", "rating/live_stderr/*"),
-            rl("rating/average_stderr", "rating/average_stderr/*"),
+            panel("rating/average_stderr", "rating/average_stderr/*"),
+            bc("rating/uniform_average_stderr", "rating/uniform_average_stderr/*"),
             rl("pool/score", "pool/score/*"),
             rl("rating/window_games", "rating/window_games/*"),
         ),
@@ -160,6 +166,8 @@ CURATED = (
             bc("bc/agreement", "bc/agreement/*"),
             bc("bc/entropy", "bc/entropy/*"),
             bc("bc/score", "bc/score/*", "bc/stop/window_score", "bc/stop/window_stderr"),
+            bc("bc/stop/window_score", "bc/stop/window_score/*", "bc/stop/window_stderr/*"),
+            bc("bc/stop/reads", "bc/stop/reads/*"),
             bc("bc/games", "bc/games/*"),
             bc("bc/kl_by_pool", "bc/kl_by_pool/*"),
             bc("bc/entropy_by_pool", "bc/entropy_by_pool/*"),

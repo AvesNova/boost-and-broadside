@@ -1,7 +1,8 @@
 """One process's segment of a run (runs spec 5 and 7): the probe on its first update,
 checkpoints every N environment steps with the retention, and the run's status at the end.
 A PPO run trains to its update budget; a BC run until its stop rule fires, and then (or at
-Ctrl-C) also saves its clone as the run's policy file.
+Ctrl-C) also saves its policy files: the average its score stop read as the run's policy,
+and the live clone and both averages beside it.
 
 Ctrl-C finishes the current update, writes a checkpoint and marks the run stopped; an
 exception marks it failed, with the message, before it propagates. The cadence N, when the
@@ -9,12 +10,17 @@ run does not set it, is measured: about 30 minutes at the throughput of the segm
 second update (the first compiles), in whole updates, recorded in run.json.
 """
 
+import copy
+import pathlib
 import shutil
 import signal
 import time
 from collections.abc import Callable
 
+import torch
+
 from bnb.runtime import cloning
+from bnb.runtime.lanes import EXPONENTIAL_AVERAGE, LIVE, UNIFORM_AVERAGE
 from bnb.runtime.train import Trainer
 
 from . import checkpoint, probe, recording
@@ -26,6 +32,8 @@ CADENCE_SECONDS = 30 * 60
 # stops early on its KL is several times shorter than the rest (2026-11-06: an 80-minute
 # cadence measured on a 99-second update)
 CADENCE_UPDATES = 3
+# a BC run's policy files beside `policy/`, `policy-<variant>/`, by the lane player they hold
+POLICY_VARIANTS = {LIVE: "live", UNIFORM_AVERAGE: "uniform", EXPONENTIAL_AVERAGE: "exponential"}
 
 
 def save(run: Run, trainer: Trainer, final: bool = False, recorder: Recorder | None = None) -> None:
@@ -52,26 +60,56 @@ def act(run: Run, trainer: Trainer, recorder: Recorder, record: dict) -> None:
     print(f"skipped a non-finite step: checkpoint and batch dump in {dumped}", flush=True)
 
 
-def save_clone(run: Run, trainer: Trainer) -> None:
-    """The clone as the run's policy file: its weights, the return scale, the step counts and
-    its lane rating per mode, for the BC -> RL hand-off (`bnb train --init-from`). A resumed
-    run's earlier clone is replaced."""
-    path = run.policy_path
+def policy_player(trainer: Trainer) -> str:
+    """The lane player a BC run's `policy/` holds: the average its score stop read last
+    (`bnb.learn.bc.StopRule.read`), or before any window filled, the first it reads."""
+    rule = trainer.stop_rule
+    return rule.read or rule.config.reads[0]
+
+
+def _replace_policy(
+    path: pathlib.Path, trainer: Trainer, model: torch.nn.Module, ratings: dict | None
+) -> None:
+    """Write `model` as the policy file at `path` with the trainer's return scale and step
+    counts and `ratings`, replacing an earlier one (a resumed run's)."""
     earlier = path.with_name(path.name + ".replaced")
     if path.exists():
         shutil.rmtree(earlier, ignore_errors=True)
         path.rename(earlier)
-    lane_ratings = getattr(trainer.league, "ratings", None)  # BC's lanes (`LaneHooks`)
     checkpoint.save_policy(
         path,
-        trainer.model,
+        model,
         return_scale=trainer.ppo.return_scale,
         steps=dict(environment_steps=trainer.ppo.environment_steps, updates=trainer.updates_done),
         game=trainer.config.game,
         types=trainer.ppo.types,
-        ratings=None if lane_ratings is None else lane_ratings.live(),
+        ratings=ratings,
     )
     shutil.rmtree(earlier, ignore_errors=True)
+
+
+@torch.no_grad()
+def save_policies(run: Run, trainer: Trainer) -> str:
+    """A BC run's policy files, for the BC -> RL hand-off (`bnb train --init-from`): each of
+    the live clone and the two averages of its weights (`bnb.league.lanes.LaneHooks`) at
+    `policy-<variant>/` (POLICY_VARIANTS), and at `policy/` the one `policy_player` names.
+    Each holds its weights, the return scale, the step counts and its own lane rating per
+    mode (where a warm start's live rating starts). A resumed run's earlier files are
+    replaced. Returns the player `policy/` holds."""
+    hooks = trainer.league  # BC's (`LaneHooks`): the lanes' ratings and the averages
+    chosen = policy_player(trainer)
+    scratch = copy.deepcopy(trainer.model).cpu()
+    for player, variant in POLICY_VARIANTS.items():
+        if player == LIVE:
+            model = trainer.model
+        else:
+            scratch.load_state_dict(hooks.averages.weights[player])
+            model = scratch
+        ratings = hooks.ratings.of(player)
+        _replace_policy(run.variant_policy_path(variant), trainer, model, ratings)
+        if player == chosen:
+            _replace_policy(run.policy_path, trainer, model, ratings)
+    return chosen
 
 
 def train(
@@ -84,7 +122,8 @@ def train(
     """Train until the budget or Ctrl-C; returns the run's final status ("finished" or
     "stopped"). PPO's budget is the update count (`trainer.config.updates`, the run's
     total); BC trains until its stop rule fires (`bnb.runtime.cloning.update`), records the
-    rule (or "interrupted") as the run's `stopped_by` and saves the clone (`save_clone`).
+    rule (or "interrupted") as the run's `stopped_by` and saves its policy files
+    (`save_policies`), recording the player `policy/` holds as `policy_player`.
     recorder: builds and writes each update's record (`log` gets the record); without one
     `log` gets the trainer's row."""
     cloned = trainer.config.objective == "bc"
@@ -136,8 +175,12 @@ def train(
         status = "finished" if finished else "stopped"
         save(run, trainer, final=finished, recorder=recorder)
         if cloned:
-            save_clone(run, trainer)
-            run.update(stopped_by=reason or "interrupted", policy=str(run.policy_path))
+            player = save_policies(run, trainer)
+            run.update(
+                stopped_by=reason or "interrupted",
+                policy=str(run.policy_path),
+                policy_player=player,
+            )
         run.end_segment(trainer.ppo.environment_steps, status)
         return status
     except BaseException as error:

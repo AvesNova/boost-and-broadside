@@ -1,10 +1,12 @@
 """Behaviour cloning's loop (scripted spec B2, B4): the student flies the learner views
 against itself and the teacher, and BC stops on the first of its rules.
 
-The score stop reads the rating lanes (`bnb.runtime.lanes`): the live policy against the raw
-scripted agent, in the same rollout as the training games. The training games' scores, by
-opponent, are series too. The teacher's temperature is calibrated offline on the scripted
-agent's own games (`teacher_distributions`, then `bnb.learn.bc.calibrate`).
+The score stop reads the rating lanes (`bnb.runtime.lanes`): the live clone and the two
+averages of its weights (`bnb.league.pool.Averages`, kept by `bnb.league.lanes.LaneHooks`)
+against the raw scripted agent, in the same rollout as the training games; it reads the
+better average. The training games' scores, by opponent, are series too. The teacher's
+temperature is calibrated offline on the scripted agent's own games
+(`teacher_distributions`, then `bnb.learn.bc.calibrate`).
 """
 
 from collections.abc import Callable
@@ -18,7 +20,7 @@ from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
 from bnb.learn.bc import flat_views, teacher_carries, teacher_distribution
 
-from .lanes import BC_MATCHUPS, LIVE, SCRIPTED_PLAYER, LaneConfig
+from .lanes import BC_MATCHUPS, SCRIPTED_PLAYER, UNIFORM_AVERAGE, LaneConfig
 from .rollout import Rollout
 from .train import LEARNER, SCRIPTED, Trainer
 
@@ -27,7 +29,8 @@ from .train import LEARNER, SCRIPTED, Trainer
 # live score is against the teacher the clone copies. Section 8's pool replaces this when
 # it exists.
 LINEUP = (Pool("self_play", 0.5, (LEARNER, LEARNER)), Pool("scripted", 0.5, (LEARNER, SCRIPTED)))
-# BC's rating lanes: the live policy against the raw scripted agent, which the score stop reads.
+# BC's rating lanes: the live clone and both averages against the raw scripted agent; the
+# score stop reads the averages'.
 LANES = LaneConfig(matchups=BC_MATCHUPS)
 
 
@@ -58,34 +61,47 @@ def scores(pools: tuple[Pool, ...], metrics: dict) -> dict:
     return out
 
 
-def lane_results(trainer: Trainer) -> tuple[int, int, int]:
-    """The last update's lane games of the live policy against the raw scripted agent, over
-    every mode: (wins, draws, losses) from the live policy's side."""
-    totals = [0, 0, 0]
+def lane_results(trainer: Trainer) -> dict[str, tuple[int, int, int]]:
+    """The last update's lane games of each player against the raw scripted agent, over
+    every mode: {player: (wins, draws, losses) from its side}."""
+    totals: dict[str, list[int]] = {}
     for lane, games in trainer.lane_record.items():
-        players = (lane.matchup.first, lane.matchup.second)
-        if players == (LIVE, SCRIPTED_PLAYER):
-            ordered = games
-        elif players == (SCRIPTED_PLAYER, LIVE):
-            ordered = games[::-1]
+        first, second = lane.matchup.first, lane.matchup.second
+        if second == SCRIPTED_PLAYER:
+            player, ordered = first, games
+        elif first == SCRIPTED_PLAYER:
+            player, ordered = second, games[::-1]
         else:
             continue
-        totals = [total + count for total, count in zip(totals, ordered, strict=True)]
-    return tuple(totals)
+        total = totals.setdefault(player, [0, 0, 0])
+        for index, count in enumerate(ordered):
+            total[index] += count
+    return {player: tuple(total) for player, total in totals.items()}
 
 
 def update(trainer: Trainer) -> tuple[dict, str | None]:
     """One BC update of `trainer` (objective "bc"), fed to its stop rule
     (`trainer.stop_rule`): (the update's row with the training games' scores and the rule's
-    window over the lanes' games against the scripted agent, the rule that fired: "score",
-    "kl_plateau" or "budget", or None)."""
+    windows over the lanes' games against the scripted agent, the rule that fired: "score",
+    "kl_plateau" or "budget", or None). The trainer's hooks must be BC's
+    (`bnb.league.lanes.LaneHooks`), which keep the averages. The uniform average's games
+    count only once it held an update past the warm-up (`LeagueConfig.uniform_from`) as
+    the update began: before that it is the live clone."""
     if trainer.config.objective != "bc":
         raise ValueError("cloning trains with objective 'bc'")
+    averages = getattr(trainer.league, "averages", None)
+    if averages is None:
+        raise ValueError(
+            "the score stop reads the averages: attach bnb.league.lanes.LaneHooks first"
+        )
     rule = trainer.stop_rule
+    uniform_started = averages.uniform_started
     row = trainer.update()
     live = scores(trainer.config.pools, row)
-    wins, draws, losses = lane_results(trainer)
-    reason = rule.observe(trainer.ppo.environment_steps, wins, draws, losses, row["bc/kl"])
+    results = lane_results(trainer)
+    if not uniform_started:
+        results.pop(UNIFORM_AVERAGE, None)
+    reason = rule.observe(trainer.ppo.environment_steps, results, row["bc/kl"])
     for kind, value in live.items():
         row[f"bc/games/{kind}"] = value["games"]
         if value["score"] is not None:
@@ -97,6 +113,13 @@ def update(trainer: Trainer) -> tuple[dict, str | None]:
     ):
         if value is not None:
             row[f"bc/stop/{name}"] = value
+    read = rule.read
+    for player, window in rule.windows.items():
+        if window.score is not None:
+            row[f"bc/stop/window_score/{player}"] = window.score
+            row[f"bc/stop/window_stderr/{player}"] = window.standard_error
+    for player in rule.config.reads:
+        row[f"bc/stop/reads/{player}"] = float(player == read)
     return row, reason
 
 
@@ -105,7 +128,8 @@ def clone(
     log: Callable[[dict], None] = print,
     interrupted: Callable[[], bool] = lambda: False,
 ) -> str:
-    """BC with `trainer` (objective "bc") until its stop rule (`TrainConfig.stop`) fires or
+    """BC with `trainer` (objective "bc", `bnb.league.lanes.LaneHooks` attached) until its
+    stop rule (`TrainConfig.stop`) fires or
     `interrupted()` is true after an update: the rule's name ("score", "kl_plateau" or
     "budget"), or "interrupted". A run's loop, with checkpoints, is
     `bnb.runs.session.train`."""
