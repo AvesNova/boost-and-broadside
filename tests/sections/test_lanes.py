@@ -26,6 +26,7 @@ from bnb.runtime.lanes import (
     LIVE,
     SCRIPTED_PLAYER,
     Lane,
+    LaneCarry,
     LaneConfig,
     LaneSeat,
     Matchup,
@@ -262,9 +263,34 @@ def test_a_lane_seat_plays_each_rows_player_and_tallies_each_game_once():
     # from the first player's side
     done = torch.tensor([True, False, True, False, True, False, True, False])
     result = torch.tensor([1, 0, -1, 0, -1, 0, 1, 0], dtype=torch.int32)
-    carry = seat.init_carry(8, lc.CPU)
+    carry = _past_first_games(seat, 8)
     tally = seat.tally(carry, done, result).reshape(2, 3)
     assert tally.tolist() == [[1, 0, 0], [0, 0, 1]]
+
+
+def _past_first_games(seat: LaneSeat, views: int) -> LaneCarry:
+    """The carry after every row's first game ended and a second began."""
+    carry = seat.init_carry(views, lc.CPU)
+    obs = observation(views=views)
+    for reset in (True, True):
+        _, carry, _ = seat.step(carry, obs, torch.full((views,), reset))
+    return carry
+
+
+def test_a_rows_first_game_is_never_tallied():
+    """The rollout's clocks are staggered, so each row's first game is cut short: it is
+    left out, whether or not its first tick is a reset, and the next game counts."""
+    lanes = (Lane(MODE, Matchup(LIVE, SCRIPTED_PLAYER)),)
+    seat = _seat(lanes)
+    obs = observation(views=4)
+    done = torch.tensor([True, False, True, False])
+    result = torch.tensor([1, 0, -1, 0], dtype=torch.int32)
+    for first_reset in (True, False):
+        carry = seat.init_carry(4, lc.CPU)
+        _, carry, _ = seat.step(carry, obs, torch.full((4,), first_reset))
+        assert seat.tally(carry, done, result).tolist() == [0, 0, 0]
+        _, carry, _ = seat.step(carry, obs, torch.ones(4, dtype=torch.bool))  # the next game
+        assert seat.tally(carry, done, result).tolist() == [1, 0, 0]
 
 
 def test_a_game_whose_players_weights_changed_since_it_began_is_not_tallied():
@@ -273,7 +299,7 @@ def test_a_game_whose_players_weights_changed_since_it_began_is_not_tallied():
     lanes = (Lane(MODE, Matchup(LIVE, "league_0")),)
     seat = _seat(lanes)
     state = seat.decision.model.state_dict()
-    carry = seat.init_carry(4, lc.CPU)
+    carry = _past_first_games(seat, 4)
     done = torch.tensor([True, True, False, False])
     result = torch.tensor([1, -1, 0, 0], dtype=torch.int32)
     seat.load(LIVE, state)  # the same player's weights moved on
@@ -301,9 +327,10 @@ def test_the_live_lane_plays_the_learners_weights(tmp_path):
     record = trainer.lane_record
     (lane,) = record
     assert lane.name == f"{MODE}/lane/live_vs_scripted"
-    # every lane game ended once in the tally and once in the environments' episode sums
-    sums = trainer.rollout.take_episodes()[16:].sum(0)
-    assert sum(record[lane]) == int(sums[0])
+    # every lane game ended once in the environments' episode sums and at most once in the
+    # tally, which leaves out each of the 4 environments' first game alone
+    ended = int(trainer.rollout.take_episodes()[16:].sum(0)[0])
+    assert ended - 4 <= sum(record[lane]) <= ended
 
 
 def _trainer(lanes: tuple[Lane, ...], seat=None, **config) -> types.SimpleNamespace:

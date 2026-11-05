@@ -140,7 +140,9 @@ sets how many (`environments`, beyond the training ones) and what they play (`ma
 - **A game counts once, by the weights that played it:** each lane row stamps its player's
   weight generation when its game begins, and loading another entry into a slot's lane
   player (`LaneSeat.load` with `fresh`) starts a new generation, so a game in progress then
-  is left out rather than credited to the new entry.
+  is left out rather than credited to the new entry. Each row's first game is left out
+  too: the rollout's clocks are staggered, so it is cut short, and in the first updates
+  those short games, mostly ties, read as a rating near the scripted agent's.
 - **Results:** the rollout tallies each ended lane game once, from the first player's side,
   and the trainer takes the tally after each collection (`Trainer.lane_record`), logged as
   `lanes/games/<mode>/<matchup>` and `lanes/score/<mode>/<matchup>`. The ratings they give

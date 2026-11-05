@@ -87,7 +87,7 @@ prior game against the scripted agent, half won, which keeps a sweep finite).
   games are credited to it by name, so it keeps its games and its rating after it cycles
   out, and a new one joins the fit as soon as its games connect it; a slot holding an
   average or a ladder entry plays unrated. A game in progress when a slot's lane player
-  changes is left out.
+  changes is left out, as is each lane row's first game (cut short by the staggered clocks).
 - **Who is rated:** a player whose games connect it to the scripted agent; none is reported
   before its matchups have played.
 - **The ladder:** the rungs, chained from the scripted agent down, are rated from their own

@@ -194,11 +194,14 @@ def mode_games(pools: tuple[Pool, ...], game: GameConfig, mode_of) -> dict[str, 
 class LaneCarry:
     """Per lane row (R leading): model, the network players' carry (their controller's);
     started (R,) int64, the generation of the row's player's weights when its game began
-    (`LaneSeat.load` with `fresh`). ladder: the ladder players' carry, one per ladder row
-    (`LaneSeat.ladder_rows`' order)."""
+    (`LaneSeat.load` with `fresh`), or -1 for the row's first game, which the rollout's
+    staggered clocks (or a resume) cut short and so is never tallied; stepped (R,) bool,
+    whether the row has played a tick. ladder: the ladder players' carry, one per ladder
+    row (`LaneSeat.ladder_rows`' order)."""
 
     model: object
     started: torch.Tensor
+    stepped: torch.Tensor
     ladder: object
 
 
@@ -295,7 +298,8 @@ class LaneSeat:
         """Every row's network carry (a ladder row's is never read) and the ladder rows'."""
         return LaneCarry(
             model=self.decision.controller.init_carry(views, device),
-            started=torch.zeros(views, dtype=torch.int64, device=device),
+            started=torch.full((views,), -1, dtype=torch.int64, device=device),
+            stepped=torch.zeros(views, dtype=torch.bool, device=device),
             ladder=self.ladder_agent.init_carry(self.ladder_rows.numel(), device),
         )
 
@@ -326,8 +330,14 @@ class LaneSeat:
             )
             action = action.index_copy(0, rows, ladder_action.packed())
         generation = self.generation[self.player_generation]
-        started = torch.where(reset, generation, carry.started)
-        carry = LaneCarry(model=model_carry, started=started, ladder=ladder_carry)
+        # a game that began before the row's first tick is the first one, cut short
+        started = torch.where(reset & carry.stepped, generation, carry.started)
+        carry = LaneCarry(
+            model=model_carry,
+            started=started,
+            stepped=torch.ones_like(carry.stepped),
+            ladder=ladder_carry,
+        )
         return Action.unpack(action), carry, Outputs()
 
     def tally(self, carry: LaneCarry, done: torch.Tensor, result: torch.Tensor) -> torch.Tensor:
