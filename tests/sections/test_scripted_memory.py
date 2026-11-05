@@ -3,6 +3,8 @@ of hidden enemies, the resets, the mixture rungs' agent flags and the per-mode p
 
 import dataclasses
 import math
+import pathlib
+import sys
 
 import pytest
 import torch
@@ -222,3 +224,16 @@ def test_each_view_plays_its_modes_parameters():
     torch.testing.assert_close(
         mixed[1], distribution(wide, CHARACTERISTICS, sets["deathmatch_wide"])[0]
     )
+
+
+def test_the_mode_defaults_lie_within_the_searchs_bounds_and_the_populations_load():
+    from bnb.controllers.scripted_defaults import MODE_DEFAULTS, populations
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))  # `bench`
+    from bench.scripted_search import clamp
+
+    assert set(MODE_DEFAULTS.sets) == set(MODES)
+    for parameters in MODE_DEFAULTS.sets.values():
+        assert clamp(parameters) == parameters
+    stored = populations()
+    assert all(len(stored[mode]) == 32 for mode in MODES)
