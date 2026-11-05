@@ -373,6 +373,17 @@ class Yemong(nn.Module):
     def step(self, carry: Carry, obs: Obs, reset: torch.Tensor) -> Decision:
         """One decision for views (R, ...); reset (R,) bool: the environment reset before
         this observation."""
+        return self._step(carry, obs, reset, inspect=False)[0]
+
+    def inspect(self, carry: Carry, obs: Obs, reset: torch.Tensor) -> tuple[Decision, Unrolled]:
+        """One decision, as `step` makes it, and every head's output at it, as `unroll`
+        gives them for a segment of this one step ((1, R, ...) leading), from the same
+        trunk pass: what the play shell's prediction overlays read."""
+        return self._step(carry, obs, reset, inspect=True)
+
+    def _step(
+        self, carry: Carry, obs: Obs, reset: torch.Tensor, inspect: bool
+    ) -> tuple[Decision, Unrolled | None]:
         carry = self._cleared(carry, reset)
         ships, dtype = obs.ships, self.bins.dtype
         own = carry.previous_action.shape[-1]
@@ -398,12 +409,17 @@ class Yemong(nn.Module):
             policy_logits, value_logits = self.own_heads(hidden[:, :own])
             enemy_action_logits, change = self.ship_heads(hidden[:, own:ships_count])
             (outcome_logits,) = self.outcome(hidden[:, ships_count])
+            if inspect:
+                every_action_logits, every_change = self.ship_heads(hidden[:, :ships_count])
+                (density_log_rates,) = self.density(hidden[:, ships_count])
+                (shot_outcome_logits,) = self.shot_outcome(hidden[:, :ships_count])
+                shot_latents = self.shot_trajectory_head.latent(hidden[:, :ships_count])
         policy_logits, enemy_action_logits, outcome_logits = (
             policy_logits.to(dtype),
             enemy_action_logits.to(dtype),
             outcome_logits.to(dtype),
         )
-        _, values = self._values(value_logits.to(dtype), outcome_logits)
+        value_logits, values = self._values(value_logits.to(dtype), outcome_logits)
         forecast_logits = next_state_logits(tokens.code[:, own:], change.to(dtype))
         enemy = _rows(seen, slice(own, None))
         means, spreads = self.state_code.decode_logits(forecast_logits, tokens.ship_type[:, own:])
@@ -427,7 +443,7 @@ class Yemong(nn.Module):
             offset=carry.offset,
             nonfinite=carry.nonfinite + nonfinite,
         )
-        return Decision(
+        decision = Decision(
             policy_logits=policy_logits,
             enemy_action_logits=enemy_action_logits,
             next_state_logits=forecast_logits,
@@ -436,6 +452,20 @@ class Yemong(nn.Module):
             carry=carry,
             replay=replay,
         )
+        if not inspect:
+            return decision, None
+        unrolled = Unrolled(
+            policy_logits=policy_logits,
+            enemy_action_logits=every_action_logits.to(dtype),
+            next_state_logits=next_state_logits(tokens.code, every_change.to(dtype)),
+            value_logits=value_logits,
+            values=values,
+            outcome_logits=outcome_logits,
+            density_log_rates=density_log_rates.to(dtype),
+            shot_outcome_logits=shot_outcome_logits.to(dtype),
+            shot_latents=shot_latents.to(dtype),
+        )
+        return decision, torch.utils._pytree.tree_map(lambda tensor: tensor[None], unrolled)
 
     # ------------------------------------------------------------------ unroll
 

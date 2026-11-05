@@ -216,7 +216,16 @@ bnb figures video --policy RUN --video.seconds 10 --video.time-scale 8
 ```
 
 The defaults (`bnb.figures.video.VideoConfig`): 25 s at 30 frames per second and 4x the
-game's speed, so the first 100 s of the game, at 1280 x 720. The file is about 0.5 MB. The
+game's speed, so the first 100 s of the game, at 1280 x 720. `--video.overlays` draws the
+shell's [prediction overlays](playing.md#prediction-overlays) on every frame (the
+policy's predictions, and the true bullet paths; the shot path needs a selected ship, so
+a video draws none), and `--video.truth` the truth beside them:
+
+<!-- not-runnable: needs ffmpeg, an OpenGL context and a policy file -->
+```bash
+bnb figures video --policy RUN --video.overlays bullet_paths belief density --video.truth
+```
+ The file is about 0.5 MB. The
 agent runs on the CPU (`--device cpu` hides the GPU from torch); the drawing uses the GPU's
 OpenGL over EGL, which is not CUDA, and about 100 MiB of its memory. One video takes about
 50 s on a laptop CPU, nearly all of it the agent's decisions. It prints the game's tally:

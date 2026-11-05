@@ -26,7 +26,8 @@ For display (the play shell), with no rules of their own: `display` (the state's
 display draws, by name), `log_index` and `log_index_gradient` (the medium at points),
 `core_radius` (the discs the sight test treats as cores), `zone_sides`
 (Frontline's zone owners and attackers), `visible` (each team's observation in sim order),
-`vision_range` and `per_ship`; and the constants `TEAMS`, `LN_SQRT2` (ln n per field level),
+`vision_range` and `per_ship`; `bullet_paths` (each live bullet's flight ahead, by the
+game's own transport); and the constants `TEAMS`, `LN_SQRT2` (ln n per field level),
 `MAP_SCALE_RADIUS` (the arena radius of map scale 1) and the game presets `PRESETS`.
 """
 
@@ -41,7 +42,7 @@ from .modes.rules import PRESETS
 from .perception import sight
 from .perception.observe import perceive, view_order
 from .perception.sight import vision_range
-from .physics.bullets import Launch, launch_state
+from .physics.bullets import Launch, launch_state, move_bullets
 from .physics.medium import medium
 from .physics.step import move, reset, resolve, step
 from .rules import LN_SQRT2, MAP_SCALE_RADIUS, TEAMS, Rules, rules_of
@@ -59,6 +60,7 @@ __all__ = [
     "State",
     "Sweep",
     "TEAMS",
+    "bullet_paths",
     "core_radius",
     "default_card",
     "display",
@@ -202,6 +204,25 @@ def zone_sides(state: State) -> tuple[torch.Tensor, torch.Tensor]:
         return torch.where(members.any(-1), members.int().argmax(-1), -1).to(torch.int32)
 
     return team_of(defender | spawn), team_of(attacker)
+
+
+def bullet_paths(
+    rules: Rules, types: ShipTypes, state: State
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Each live bullet's flight ahead through the fields, by the game's own transport
+    (`move_bullets`, as the learner's shot re-simulation flies them), ignoring the ships:
+    x, y (B, N, K, A) m after each of the next A = bullet_moves moves, and valid (B, N, K,
+    A), the bullet still flies that move (it has that many moves left)."""
+    bullets, owner_type = state.bullets, state.ships.ship_type
+    xs, ys, valid = [], [], []
+    for _ in range(rules.bullet_moves):
+        flying = bullets.moves_left > 0
+        bullets = move_bullets(rules, types, bullets, state.fields, owner_type)
+        bullets = replace(bullets, moves_left=torch.where(flying, bullets.moves_left - 1, 0))
+        xs.append(bullets.x)
+        ys.append(bullets.y)
+        valid.append(flying)
+    return torch.stack(xs, -1), torch.stack(ys, -1), torch.stack(valid, -1)
 
 
 def visible(rules: Rules, observation: Obs) -> torch.Tensor:

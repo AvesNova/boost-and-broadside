@@ -93,6 +93,48 @@ def test_unroll_continues_from_a_carry_with_history(segment):
     assert cases.scale_error(cold.policy_logits, decisions.policy_logits) > 1e-3
 
 
+def test_a_one_step_unroll_equals_the_step(segment):
+    """A segment of one step (the play shell's prediction overlays unroll one decision)."""
+    net, obs = _float64(segment)
+    joint = cases.joint_actions(segment[1])
+    carry = net.initial_carry(obs.ships.shape[1], OWN, 10)
+    split = 40
+    with torch.no_grad():
+        head = _pytree.tree_map_only(torch.Tensor, lambda x: x[:split], obs)
+        _, middle = cases.step_loop(net, net.step, carry, head, joint)
+        one = _pytree.tree_map_only(torch.Tensor, lambda x: x[split : split + 1], obs)
+        decisions, _ = cases.step_loop(net, net.step, middle, one, joint, start=0)
+        unrolled = net.unroll(middle, one, decisions.replay, cases.resets(one))
+    _compare(unrolled, decisions, 1e-9)
+
+
+def test_inspect_is_the_step_with_every_head_as_unroll_gives_it(segment):
+    """`inspect` decides exactly as `step` does, and its outputs are the one-step unroll's
+    (every row of the ship heads, the density and the shot heads)."""
+    net, obs = _float64(segment)
+    joint = cases.joint_actions(segment[1])
+    carry = net.initial_carry(obs.ships.shape[1], OWN, 10)
+    with torch.no_grad():
+        head = _pytree.tree_map_only(torch.Tensor, lambda x: x[:40], obs)
+        _, middle = cases.step_loop(net, net.step, carry, head, joint)
+        view = _pytree.tree_map_only(torch.Tensor, lambda x: x[40], obs)
+        reset = cases.resets(obs)[40]
+        stepped = net.step(middle, view, reset)
+        decision, inspected = net.inspect(middle, view, reset)
+        leading = _pytree.tree_map_only(torch.Tensor, lambda x: x[None], (view, decision.replay))
+        unrolled = net.unroll(middle, *leading, reset[None])
+    for (path, expected), (_, actual) in zip(
+        _pytree.tree_flatten_with_path(stepped)[0],
+        _pytree.tree_flatten_with_path(decision)[0],
+        strict=True,
+    ):
+        assert torch.equal(actual, expected), path
+    for field in dataclasses.fields(unrolled):
+        actual, expected = getattr(inspected, field.name), getattr(unrolled, field.name)
+        assert actual.shape == expected.shape, field.name
+        assert cases.scale_error(actual, expected) <= 1e-9, field.name
+
+
 def test_unroll_reproduces_the_stored_rollout():
     """What the runtime stored (values, outcome, replay, the initial carry) is what unroll
     needs. The second run's initial carry holds the first run's history."""

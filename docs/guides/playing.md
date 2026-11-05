@@ -1,5 +1,5 @@
 ---
-covers: [src/bnb/play/app.py, src/bnb/play/window.py, src/bnb/play/interface/, src/bnb/play/sides.py, src/bnb/play/replay.py, src/bnb/play/themes.py, src/bnb/play/themes/, src/bnb/play/theme_editor.py]
+covers: [src/bnb/play/app.py, src/bnb/play/window.py, src/bnb/play/interface/, src/bnb/play/sides.py, src/bnb/play/replay.py, src/bnb/play/themes.py, src/bnb/play/themes/, src/bnb/play/theme_editor.py, src/bnb/play/overlays.py, src/bnb/play/predictions.py, src/bnb/play/render/predictions.py]
 ---
 
 # Playing and spectating
@@ -29,7 +29,8 @@ the first several seconds. The options:
 
 ## The screen
 
-- **The top bar** (always shown): the menu button and the view selector on the left; the
+- **The top bar** (always shown): the menu button, the view selector and the
+  **Overlays** button (see [Prediction overlays](#prediction-overlays)) on the left; the
   score, or Frontline's front and zones (captioned "Front" and "Zones", each zone numbered
   in its owner's colour, with a tooltip saying what it shows), and the clock in the middle; the speed controls
   on the right: pause or play, one tick while paused, and ×1, ×2, ×4, ×8.
@@ -87,7 +88,11 @@ The menu (the top bar's menu button, or Escape) pauses a live match and offers *
 
 **New match** chooses the mode, the map (standard or wide), the ships a side, the
 fields, the lineup (each slot's ship type, the same for both teams), fog, the seed, and
-each side's controller: **Scripted** (the chaser) or a trained agent. The agent list is
+each side's controller: **Scripted** (the chaser), **Scripted agent** (the scripted agent
+with its memory, `bnb.controllers.scripted.Scripted`: it remembers each enemy it saw and
+dead reckons it while hidden; `--scripted0 scripted_agent` starts with it) or a trained
+agent. The first scripted agent of a process measures the ship card's characteristics,
+which takes about 15 s on a laptop CPU; later ones start at once. The agent list is
 every policy file of the local runs: `runs/*/policy/`, the training checkpoints and the
 league's snapshots (`--runs` sets the directory). A policy plays only the game it was
 trained on, with the same ship card and the default lineup; otherwise the shell says
@@ -101,6 +106,62 @@ more deterministic, 0 always takes its most likely action. A team's controller c
 be changed in the fleets card during a match.
 
 ![New match](../images/play/interface-new-match-1280.png)
+
+## Prediction overlays
+
+The **Overlays** button opens a submenu that draws, on the battlefield and while the match
+plays, what an agent thinks beside what is true. Each overlay is on or off on its own, and
+the submenu lists only those the sides being played can provide (`bnb.play.overlays`):
+
+| Overlay | From | Draws |
+|---|---|---|
+| True bullet paths | the game, every match | each live bullet's flight ahead through the fields, by the game's own transport (`bnb.game.api.bullet_paths`, the learner's re-simulation of a shot) |
+| Predicted shot path | a Yemong agent | the selected ship's next shot: the shot head's mean at each age from its launch point, a one-sigma circle at each age |
+| Next-state ghosts | a Yemong agent | each ship's predicted pose one tick on, a translucent silhouette with its one-sigma circle |
+| Belief ghosts | a Yemong agent | each hidden enemy's believed pose, with one- and two-sigma circles |
+| Dead-reckoning ghosts | the scripted agent | each remembered enemy it cannot see, at its recalled position, with a line back to its last sighting; its opacity is the agent's weight on it (the memory states no sigma) |
+| Density | a Yemong agent | the density head's expected ships per hex cell |
+| Enemy action | a Yemong agent | in the selection card, for a selected enemy: the power, stick and shoot marginals, the action it took outlined |
+| Value and outcome | a Yemong agent | in the selection card, for a selected own ship: the critic's value per reward level, the outcome head's P(win), P(tie), P(loss) and P(unresolved), and the next shot's P(enemy hit) |
+
+![A fight: the true bullet paths, the selected ship's predicted shot and its critic](../images/play/overlays-fight-1600.png)
+
+Scripted against scripted (the chaser) offers the bullet paths only; a relational agent
+provides nothing; a replay runs no controllers, so it offers the bullet paths only.
+
+**Whose.** Each side's agent has its own predictions. An overlay draws the side picked
+under **Whose**, or by default the selected ship's side when it provides that overlay,
+else the other side (with nothing selected, the view's team first). Each entry names the
+team it draws.
+
+**Show the truth** adds the truth: a ring at each ghost's true position joined to the
+ghost, and the density's **True** and **Error** maps (predicted minus true: over in the
+theme's prediction colour, under in its truth colour). **Density** picks the predicting
+side's enemy or ally cells. The truth draws in every view, so in a team view it shows
+ships the team cannot see.
+
+The predictions are those of the side's latest decision, made from the observation of the
+tick before the one drawn, and decoded by the decoder layer as the figures decode them
+(`bnb.models.yemong.decode`, see [Figures](figures.md)); the truth beside a ghost is that
+tick's (for the next state, the tick it forecasts). While one of its overlays is on, a
+Yemong agent decides with `Yemong.inspect`, the same decision with every head's output
+from the same trunk pass, so the overlays do not change its play; an agent on a GPU then
+steps eagerly instead of from its CUDA graph. Off, the overlays cost nothing.
+
+With a Yemong agent and the scripted agent on the CPU (one torch thread, the tick
+uncompiled), every overlay on adds about 5 ms a frame at ×1 (the predictions are made once
+a tick: about 4 ms for the agent's heads and 4 ms for the bullet paths) to the shell's
+12 to 14 ms.
+
+`--overlays`, `--overlay-side` and `--truth` turn them on from the start:
+
+<!-- not-runnable: opens a window, and needs a policy file -->
+```bash
+uv run --no-sync python -m bnb.play --agent0 runs/<run>/policy --scripted1 scripted_agent \
+    --overlays bullet_paths belief density --truth --view team0
+```
+
+![Belief ghosts against the truth, and the density](../images/play/overlays-belief-density-1600.png)
 
 ## Replays
 
@@ -152,7 +213,7 @@ nothing while you type into a field.
 ## Offscreen renders
 
 `--offscreen DIR --frames N` renders N frames without a window, through an EGL context,
-and writes them to `DIR/frame_0000.png` onwards. The match runs on a fixed clock, so a
+and writes them to `DIR/frame_0000.png` onwards, with any `--overlays` drawn. The match runs on a fixed clock, so a
 seed gives the same frames each time.
 
 <!-- not-runnable: needs an OpenGL 3.3 context (a GPU driver with EGL) -->

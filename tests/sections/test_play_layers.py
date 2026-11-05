@@ -1,6 +1,7 @@
-"""The play shell's layering: it reaches the game only through `bnb.game.api` (and policy
-files through `bnb.runs`), it reads no field of the game state, and rendering never
-imports torch (it reads numpy snapshots)."""
+"""The play shell's layering: it reaches the game only through `bnb.game.api` (and the
+scripted agent's ship-card characteristics, as the runtime does), policy files through
+`bnb.runs` and a model's heads only through the decoder layer; it reads no field of the
+game state, and rendering never imports torch (it reads numpy snapshots)."""
 
 import ast
 import pathlib
@@ -16,6 +17,9 @@ ALLOWED = (
     "bnb.game.api",
     "bnb.contracts",
     "bnb.runs",  # policy files, for the trained agents
+    "bnb.game.handling.characteristics",  # the scripted agent's, as the runtime reads them
+    "bnb.models.yemong.decode",  # the decoder layer, for the prediction overlays
+    "bnb.models.yemong.density.HexGrid",  # the density's true counts, as the learner's
 )
 
 

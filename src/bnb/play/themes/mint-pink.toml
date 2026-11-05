@@ -23,5 +23,7 @@ panel_line = "#D3D8E0"
 control = "#EEF0F3"
 control_active = "#C9D3EA"
 selection = "#2A2F3A"
+prediction = "#7A3FD6"
+truth = "#2A2F3A"
 fill_strength = 0.75
 vortex_threshold = 0.6

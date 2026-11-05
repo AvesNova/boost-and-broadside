@@ -22,6 +22,7 @@ void main() {
     vec2 local = position * size + miter * grow;
     vec2 nose = vec2(cos(heading), sin(heading));
     vec2 turned = vec2(local.x * nose.x - local.y * nose.y, local.x * nose.y + local.y * nose.x);
-    v_colour = outline > 0.5 ? outline_colour : fill;
+    // a translucent fill (a ghost) fades its outline with it
+    v_colour = outline > 0.5 ? vec4(outline_colour.rgb, outline_colour.a * fill.a) : fill;
     gl_Position = clip_of(centre + turned);
 }

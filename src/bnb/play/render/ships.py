@@ -67,14 +67,18 @@ class ShipsPass:
         size: np.ndarray,
         team: np.ndarray,
         ship_type: np.ndarray,
+        opacity: np.ndarray | None = None,
     ) -> None:
         """The listed ships (arrays of one length; size the ring radius in m), each
-        silhouette in one instanced draw."""
+        silhouette in one instanced draw. opacity: each ship's, fill and outline (a
+        prediction overlay's ghosts); None draws them opaque."""
         if len(x) == 0:
             return
         self._reserve(len(x))
         silhouette = silhouette_of(ship_type)
-        colours = np.array([colour.floats() for colour in theme.team], np.float32)
+        colours = np.array([colour.floats() for colour in theme.team], np.float32)[team]
+        if opacity is not None:
+            colours[:, 3] *= opacity
         set_uniforms(
             self.program,
             **camera,
@@ -90,7 +94,7 @@ class ShipsPass:
             table = np.concatenate(
                 [
                     np.stack([x[chosen], y[chosen], heading[chosen], size[chosen]], -1),
-                    colours[team[chosen]],
+                    colours[chosen],
                 ],
                 -1,
             )

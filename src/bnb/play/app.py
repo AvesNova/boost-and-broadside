@@ -4,7 +4,9 @@ frames to PNG files without a window.
 
 The session runs everything on one thread: each frame it advances the match loop, builds
 any pending part of a new map's index texture within a time budget, records the trails,
-draws the battlefield and the minimap, and then draws the interface (`bnb.play.interface`).
+makes the prediction overlays' arrays when one is on and the match moved on
+(`bnb.play.predictions`), draws the battlefield and the minimap, and then draws the
+interface (`bnb.play.interface`).
 All input reaches the session through ImGui's input state, which the window (or a test)
 fills, so the same code serves a window and an offscreen test. The interface's controls
 call the session's methods (`toggle_pause`, `select`, `take_control`, `new_match`, ...).
@@ -22,8 +24,8 @@ from imgui_bundle import imgui
 from bnb.contracts import GameConfig
 from bnb.game.api import PRESETS
 
+from . import predictions, themes
 from . import replay as replays
-from . import themes
 from .camera import Camera
 from .index_map import IndexBuilder, build
 from .interface.interface import Interface
@@ -31,12 +33,15 @@ from .interface.kill_feed import FEED_SECONDS
 from .interface.style import load_fonts
 from .interface.text import TEAM_NAMES
 from .loop import TIME_SCALES, MatchEvent, MatchLoop, MatchSetup, SideSetup
+from .overlays import NAMES as OVERLAY_NAMES
+from .overlays import OverlaySettings, Predictions, offered, offered_by, provider
 from .png import write_png
 from .render.minimap import DOT_PIXELS
 from .render.overlay import outline_table
+from .render.predictions import OverlayDrawing, overlay_drawing
 from .render.renderer import SPECTATOR, Renderer
 from .selection import Selection, shown_ships
-from .sides import AgentError, Scripted, load_agent
+from .sides import AgentError, Scripted, controller_of
 from .theme_editor import ThemeEditor
 from .trails import Trails
 
@@ -65,6 +70,8 @@ class Options:
     fly: bool = False  # start flying team 0's first ship
     agent0: pathlib.Path | None = None  # a policy file for team 0 (scripted without one)
     agent1: pathlib.Path | None = None  # a policy file for team 1
+    scripted0: Literal["scripted", "scripted_agent"] = "scripted"  # team 0 without an agent
+    scripted1: Literal["scripted", "scripted_agent"] = "scripted"  # the chaser or the agent
     temperature: float = 1.0  # the agents' sampling temperature
     replay: pathlib.Path | None = None  # open this replay instead of a match
     replays: pathlib.Path = pathlib.Path("replays")  # where matches are recorded
@@ -78,6 +85,9 @@ class Options:
     vsync: bool = True
     compile: bool = True  # compile the tick (in the background, running uncompiled meanwhile)
     threads: int = 1  # torch's CPU threads for the sim
+    overlays: tuple[str, ...] = ()  # prediction overlays on at the start (bnb.play.overlays)
+    overlay_side: int | None = None  # whose predictions they draw (None: the default)
+    truth: bool = False  # draw the truth beside the predictions
 
     def game(self) -> GameConfig:
         """The game configuration: the preset with any sizes given overriding it."""
@@ -95,8 +105,10 @@ class Options:
     def setup(self) -> MatchSetup:
         """The first match's setup."""
         sides = tuple(
-            SideSetup() if policy is None else SideSetup("agent", str(policy), self.temperature)
-            for policy in (self.agent0, self.agent1)
+            SideSetup(scripted)
+            if policy is None
+            else SideSetup("agent", str(policy), self.temperature)
+            for policy, scripted in ((self.agent0, self.scripted0), (self.agent1, self.scripted1))
         )
         return MatchSetup(self.game(), fogged=self.fog, seed=self.seed, sides=sides)
 
@@ -145,6 +157,15 @@ class Session:
         self.builder: IndexBuilder | None = None
         self.map_fields = None
         self.timings: dict[str, float] = {}
+        unknown = set(options.overlays) - set(OVERLAY_NAMES)
+        if unknown:
+            raise ValueError(f"no overlays {sorted(unknown)}: {OVERLAY_NAMES}")
+        self.overlays = OverlaySettings(
+            set(options.overlays), side=options.overlay_side, truth=options.truth
+        )
+        self.predicted: dict[int, Predictions] = {}  # by team, at predicted_at
+        self.bullet_paths = None
+        self.predicted_at: int | None = None  # the loop's tick count the arrays are of
         self.elapsed = 0.0
         self.loop: MatchLoop | None = None
         if options.replay is not None:
@@ -161,6 +182,7 @@ class Session:
         """Make `loop` the session's match: a new map, trails, feed, selection."""
         self.loop = loop
         self.loop.on_tick = self._on_tick
+        self.predicted, self.bullet_paths, self.predicted_at = {}, None, None
         self.trails = Trails(loop.rules.num_ships, loop.current.stall_angle)
         self.frame = loop.frame()
         self.feed = []
@@ -268,21 +290,11 @@ class Session:
         loop = self.loop
         if loop.replaying:
             return False
-        if side.controller == "agent":
-            try:
-                controller = load_agent(
-                    side.policy,
-                    loop.setup.config,
-                    loop.rules,
-                    loop.types,
-                    side.temperature,
-                    loop.setup.seed + team,
-                )
-            except AgentError as error:
-                self.say(str(error))
-                return False
-        else:
-            controller = Scripted(loop.rules.ships_per_team)
+        try:
+            controller = controller_of(side, team, loop.setup, loop.rules, loop.types)
+        except AgentError as error:
+            self.say(str(error))
+            return False
         loop.sides[team] = controller
         sides = list(loop.setup.sides)
         sides[team] = side
@@ -399,22 +411,12 @@ class Session:
         scripted otherwise (with a notice)."""
         sides, chosen = [], []
         for team, side in enumerate(setup.sides):
-            if side.controller == "agent":
-                try:
-                    sides.append(
-                        load_agent(
-                            side.policy,
-                            setup.config,
-                            self.loop.rules,
-                            self.loop.types,
-                            side.temperature,
-                            setup.seed + team,
-                        )
-                    )
-                    chosen.append(side)
-                    continue
-                except AgentError as error:
-                    self.say(f"{TEAM_NAMES[team]} plays scripted: {error}")
+            try:
+                sides.append(controller_of(side, team, setup, self.loop.rules, self.loop.types))
+                chosen.append(side)
+                continue
+            except AgentError as error:
+                self.say(f"{TEAM_NAMES[team]} plays scripted: {error}")
             sides.append(Scripted(self.loop.rules.ships_per_team))
             chosen.append(SideSetup())
         return sides, dataclasses.replace(setup, sides=tuple(chosen))
@@ -473,6 +475,98 @@ class Session:
     def quit(self) -> None:
         """Ask the window to close (the live match's recording is saved on close)."""
         self.quit_requested = True
+
+    # Prediction overlays ---------------------------------------------------------------------
+
+    def offered_overlays(self) -> tuple[str, ...]:
+        """The overlays this match offers (`bnb.play.overlays.offered`)."""
+        return offered(self.loop.sides)
+
+    def toggle_overlay(self, name: str) -> None:
+        """Turn an overlay on or off."""
+        self.overlays.enabled ^= {name}
+        self.predicted_at = None
+
+    def set_overlay_side(self, team: int | None) -> None:
+        """Draw this team's predictions (None: the default, `bnb.play.overlays.provider`)."""
+        self.overlays.side = team
+        self.predicted_at = None
+
+    def overlay_provider(self, name: str) -> int | None:
+        """The team whose predictions overlay `name` draws now, or None."""
+        ship = self.selected_ship()
+        selected_team = None if ship is None else int(self.frame.ships.team[ship])
+        return provider(name, self.loop.sides, self.overlays.side, selected_team, self.view_team)
+
+    def active_overlays(self) -> tuple[str, ...]:
+        """The overlays on that this match offers."""
+        return tuple(name for name in self.offered_overlays() if name in self.overlays.enabled)
+
+    def _watch(self, active: tuple[str, ...]) -> None:
+        """Mark each agent watched while one of its overlays is on (it then steps eagerly,
+        keeping its decision's inputs)."""
+        for side in self.loop.sides:
+            if hasattr(side, "watched"):
+                side.watched = bool(set(active) & set(offered_by(side)))
+
+    def predict(self) -> None:
+        """Make the arrays of the overlays on, when the match has moved on since they were
+        made (or the overlays changed): the bullet paths, and each providing team's
+        predictions."""
+        active = self.active_overlays()
+        self._watch(active)
+        if not active:
+            self.predicted, self.bullet_paths, self.predicted_at = {}, None, None
+            return
+        loop = self.loop
+        teams = {self.overlay_provider(name) for name in active} - {None}
+        if self.predicted_at == loop.ticks and teams <= self.predicted.keys():
+            return
+        started = time.perf_counter()
+        if self.predicted_at != loop.ticks:
+            self.predicted = {}
+        self.bullet_paths = None
+        if "bullet_paths" in active:
+            self.bullet_paths = predictions.bullet_paths(
+                loop.rules, loop.types, loop.realtime.state, loop.current
+            )
+        for team in teams - self.predicted.keys():
+            made = predictions.side_predictions(loop.sides[team], team, loop.previous, loop.current)
+            if made is not None:
+                self.predicted[team] = made
+        self.predicted_at = loop.ticks
+        self.timings["predictions"] = time.perf_counter() - started
+
+    def overlay_arrays(self) -> dict:
+        """Each overlay on that has arrays this frame: its name to (the providing team, or
+        -1 for physics, and its arrays)."""
+        drawn = {}
+        for name in self.active_overlays():
+            if name == "bullet_paths":
+                if self.bullet_paths is not None:
+                    drawn[name] = (-1, self.bullet_paths)
+                continue
+            team = self.overlay_provider(name)
+            made = self.predicted.get(team)
+            if made is not None and getattr(made, name) is not None:
+                drawn[name] = (team, getattr(made, name))
+        return drawn
+
+    def overlay_drawing(self) -> OverlayDrawing | None:
+        """This frame's overlay tables, or None when no overlay draws on the battlefield."""
+        drawn = self.overlay_arrays()
+        drawn.pop("enemy_action", None)  # the readouts live in the selection card
+        drawn.pop("value", None)
+        if not drawn:
+            return None
+        return overlay_drawing(
+            self.theme,
+            self.overlays,
+            drawn,
+            self.frame,
+            self.selected_ship(),
+            self.camera.metres_per_pixel,
+        )
 
     # The map ----------------------------------------------------------------------------
 
@@ -533,6 +627,7 @@ class Session:
         now = self.loop.ticks * self.loop.tick_length
         self.feed = [(when, event) for when, event in self.feed if now - when < FEED_SECONDS]
         self.frame = frame
+        self.predict()
 
     def outline(
         self, metres_per_pixel: float, ship_pixels: float | None = None
@@ -563,6 +658,7 @@ class Session:
             self.loop.game_time,
             target,
             outline,
+            self.overlay_drawing(),
         )
         imgui.set_current_context(self.imgui_context)
         imgui.get_io().delta_time = max(self.elapsed, 1e-4)

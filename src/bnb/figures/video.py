@@ -9,7 +9,9 @@ mode of the mix). The match runs uncompiled and its agent on whatever device tor
 names one). Each video frame advances the match by `time_scale` frames of display time,
 so a video of 25 s at the default 4x shows the game's first 100 s. The frame is the
 shell's own drawing, with its top bar and kill feed (the fleets card and the minimap
-collapsed, the camera fitted to the arena).
+collapsed, the camera fitted to the arena), and the prediction overlays chosen
+(`VideoConfig.overlays`, `bnb.play.overlays`: the policy's predictions, and the true bullet
+paths), drawn by `draw_frame`.
 """
 
 import dataclasses
@@ -48,6 +50,8 @@ class VideoConfig:
     temperature: float = 1.0
     interface: bool = True
     quality: int = 28
+    overlays: tuple[str, ...] = ()
+    truth: bool = False
 
 
 def encoder(path: pathlib.Path, config: VideoConfig) -> subprocess.Popen:
@@ -117,9 +121,14 @@ class Tally:
         )
 
 
-def draw_frame(session: Session, target) -> None:
-    """One video frame onto `target`: the shell's battlefield and interface. The play-mode
-    overlays will be drawn here, onto the same target, before its pixels are read."""
+def draw_frame(session: Session, target, overlays: tuple[str, ...] | None = None) -> None:
+    """One video frame onto `target`: the shell's battlefield, its prediction overlays and
+    its interface. overlays: the overlays to turn on from this frame (names of
+    `bnb.play.overlays.NAMES`), or None to keep the session's."""
+    if overlays is not None and set(overlays) != session.overlays.enabled:
+        session.overlays.enabled = set(overlays)
+        session.predicted_at = None
+        session.predict()  # the overlays' arrays for this frame
     session.draw(target)
 
 
@@ -145,6 +154,8 @@ def render(
         width=config.width,
         height=config.height,
         seed=config.seed,
+        overlays=config.overlays,
+        truth=config.truth,
     )
     context = app.offscreen_context()
     size = (config.width, config.height)
