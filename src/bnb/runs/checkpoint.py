@@ -42,6 +42,7 @@ WEIGHTS = "weights.safetensors"
 RETURN_SCALE = "return_scale.safetensors"
 SCALE_STATE = ("low", "high")  # the ReturnScale tensors a warm start continues from
 TRAINING = "training.safetensors"
+TEACHER_CARRY = "teacher_carry."  # BC's teacher's memory, in the training file
 
 
 class CheckpointError(ValueError):
@@ -327,7 +328,8 @@ def default_generator_states(device: torch.device) -> dict[str, torch.Tensor]:
 
 def _training_tensors(trainer: Trainer, optimizer_state: dict) -> dict[str, torch.Tensor]:
     """The training file's tensors, as host copies: the optimizer's state, the opponent
-    slots, the league's tensors, the rollout carry and every generator."""
+    slots, the league's tensors, the rollout carry, BC's teacher's carry (once it has one)
+    and every generator."""
     tensors = {}
     tensors.update(named_tensors(optimizer_state, "optimizer."))
     if trainer.opponents is not None:
@@ -335,6 +337,9 @@ def _training_tensors(trainer: Trainer, optimizer_state: dict) -> dict[str, torc
     if trainer.league is not None:
         tensors.update(named_tensors(trainer.league.state()[1], "league."))
     tensors.update(named_tensors(trainer.rollout.saved_carry(), "carry."))
+    teacher_carry = getattr(trainer.ppo, "teacher_carry", None)  # BC's teacher's memory
+    if teacher_carry is not None:
+        tensors.update(named_tensors(teacher_carry, TEACHER_CARRY))
     for name, generator in _generators(trainer).items():
         tensors[f"generator.{name}"] = generator.get_state()
     for name, state in default_generator_states(trainer.rollout.device).items():
@@ -511,6 +516,18 @@ def _restore(
             generator.set_state(stored[f"generator.{name}"])
         if trainer.stop_rule is not None:
             trainer.stop_rule = StopRule(trainer.config.stop, record["stop_rule"])
+        _restore_teacher_carry(trainer, stored)
+
+
+def _restore_teacher_carry(trainer: Trainer, stored: dict[str, torch.Tensor]) -> None:
+    """BC's teacher's carry, when the checkpoint holds one (its rows from the stored
+    target's)."""
+    target = stored.get(f"{TEACHER_CARRY}target")
+    if target is None:
+        return
+    teacher = trainer.ppo.teacher
+    template = teacher.init_carry(target.shape[0], trainer.rollout.device)
+    trainer.ppo.teacher_carry = tree_from_named(template, stored, TEACHER_CARRY)
 
 
 def _check_card(trainer: Trainer, record: dict, directory) -> None:

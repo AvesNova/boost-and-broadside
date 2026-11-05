@@ -28,8 +28,8 @@ logistic's scale stays at or above its floor (`SCALE_FLOORS`), and each switch's
 its own (`SWITCH_SCALE_FLOORS`), its rate within `SWITCH_RATES`; the memory's fade centre
 stays within `FADE_CENTRE`. The kept candidates replay with fresh games, so a lucky
 generation does not carry its luck. The search stops after `--generations` generations, or
-earlier when the best top rating of the last `--patience` generations is not `--min-gain`
-points above the best before them.
+earlier when the best rating (`--plateau-on`: the top, or the median) of the last
+`--patience` generations is not `--min-gain` points above the best before them.
 
 Every candidate's parameters, rating, its error and its score against each reference per
 preset are appended to --log as a JSON line; a run resumes from its log's last generation.
@@ -290,12 +290,24 @@ def plateaued(tops: list[float], patience: int, min_gain: float) -> bool:
     return max(tops[-patience:]) < max(tops[:-patience]) + min_gain
 
 
-def resume(path: pathlib.Path) -> tuple[int, list[ScriptedParameters], list[float]]:
+def statistic(ratings: list[float], kind: str) -> float:
+    """A generation's rating for the plateau rule: its top, or its median (steadier: a
+    lucky top does not hold the rule off its plateau)."""
+    ordered = sorted(ratings, reverse=True)
+    return ordered[0] if kind == "top" else ordered[len(ordered) // 2]
+
+
+def resume(
+    path: pathlib.Path, kind: str = "top"
+) -> tuple[int, list[ScriptedParameters], list[float]]:
     """From a search log: the next generation's index, the last generation's candidates (best
-    first) and every generation's top rating."""
+    first) and every generation's rating for the plateau rule (`statistic`)."""
     rows = [json.loads(line) for line in open(path)]
     last = max(row["generation"] for row in rows)
-    tops = [max(row["rating"] for row in rows if row["generation"] == g) for g in range(last + 1)]
+    tops = [
+        statistic([row["rating"] for row in rows if row["generation"] == g], kind)
+        for g in range(last + 1)
+    ]
     ranked = sorted((row for row in rows if row["generation"] == last), key=lambda r: -r["rating"])
     return last + 1, [from_row(row["parameters"]) for row in ranked], tops
 
@@ -313,6 +325,9 @@ def main() -> None:
     parser.add_argument("--minimum-sigma", type=float, default=0.05)
     parser.add_argument("--patience", type=int, default=3)
     parser.add_argument("--min-gain", type=float, default=10.0, help="rating points")
+    parser.add_argument(
+        "--plateau-on", choices=("top", "median"), default="top", help="the plateau rule's rating"
+    )
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--log", default="scripted_search.jsonl")
     parser.add_argument(
@@ -334,7 +349,7 @@ def main() -> None:
         return torch.Generator().manual_seed(args.seed * MAXIMUM_GENERATIONS + generation)
 
     if log_path.exists() and log_path.stat().st_size:
-        start, ranked, tops = resume(log_path)
+        start, ranked, tops = resume(log_path, args.plateau_on)
         population = next_generation(
             ranked, args.population, args.keep, sigma_at(start), generator_at(start)
         )
@@ -378,10 +393,10 @@ def main() -> None:
                 f"{time.perf_counter() - clock:.0f} s",
                 flush=True,
             )
-            tops.append(spread[0])
+            tops.append(statistic(spread, args.plateau_on))
             ranked = [population[index] for index in order]
             if plateaued(tops, args.patience, args.min_gain):
-                print("the top's rating has plateaued", flush=True)
+                print(f"the {args.plateau_on} rating has plateaued", flush=True)
                 break
             population = next_generation(
                 ranked,
