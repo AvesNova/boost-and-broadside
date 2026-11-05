@@ -70,8 +70,9 @@ The league's seat plays every opponent row of the batch in the captured rollout 
 - **Draws in the graph** use counter-based uniforms (`bnb.runtime.opponents.counter_uniform`,
   a hash of the stream's key, the counter and the row), so they need no generator state and
   repeat exactly; the host draws a slot's entry the same way.
-- **The results:** the rollout tallies every ended game by what the opponent row played and
-  by mode, from the learner's side; the league reads the tally once per segment.
+- **The results:** the rollout tallies every ended game but each row's first by what the
+  opponent row played and by mode, from the learner's side; the league reads the tally
+  once per segment.
 
 ## The ratings
 
@@ -104,7 +105,9 @@ Without lanes the fit reads the league's games alone.
   slot's, so each game goes to the entry that played it
   (`tests/sections/test_league_slots.py::test_each_training_game_is_credited_to_the_entry_that_played_it`).
   A training game spanning an update is credited, like a lane game of the live policy, at
-  the update it ends in.
+  the update it ends in. Each row's first game is left out, as in the lanes: the rollout's
+  clocks are staggered, so it is cut short and leans to ties
+  (`bnb.runtime.opponents.whole_game_begins`, the one rule for both).
 - **The averages move:** a slot holding an average, and the lanes' `league_<k>` holding
   one, take its weights after every update, as the lanes' own average players do, so an
   average is one moving player wherever it plays.

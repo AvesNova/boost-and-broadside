@@ -277,7 +277,7 @@ def test_the_leagues_games_join_the_runs_fit(tmp_path):
     torch.manual_seed(0)
     trainer, league = cases.league(tmp_path, league=LeagueConfig(snapshot_every=1))
     mode, total = league.modes[0], 0.0
-    for update in range(3):
+    for update in range(8):
         trainer.collect()
         league.collected(trainer)
         played = {
@@ -314,10 +314,29 @@ def test_the_tally_counts_each_result_from_the_learners_side(tmp_path):
     rows = opponents.modes.shape[0]
     own = torch.tensor([1, 0, -1, 1, 1, 0, -1, -1], dtype=torch.int32)  # the opponents' results
     done = torch.tensor([True] * 7 + [False])
+    carry.whole.fill_(True)  # past each row's first game
     counts = opponents.tally(carry, done, own).reshape(opponents.columns, 1, 3)
     per_column = counts[:, 0]  # (columns, wins/ties/losses of the learner)
     assert per_column.sum(0).tolist() == [2, 2, 3]  # three opponent wins are learner losses
     assert per_column[carry.column[0]].tolist()[2] >= 1 and rows == 8
+
+
+def test_a_rows_first_game_is_never_tallied(tmp_path):
+    """Each row's first game is cut short by the staggered clocks (and leans to ties), so the
+    league leaves it out as the lanes do: a row's games count from its first reset after its
+    first tick."""
+    trainer, _ = cases.league(tmp_path)
+    opponents = trainer.opponents
+    view = _view(trainer)
+    rows = opponents.modes.shape[0]
+    carry = opponents.init_carry(rows, torch.device("cpu"))
+    every, none = torch.ones(rows, dtype=torch.bool), torch.zeros(rows, dtype=torch.bool)
+    result = torch.zeros(rows, dtype=torch.int32)
+    for reset in (every, none):  # the first game: begun at the first tick, then ended
+        _, carry, _ = opponents.step(carry, view, reset)
+        assert int(opponents.tally(carry, every, result).sum()) == 0
+    _, carry, _ = opponents.step(carry, view, every)  # the second game begins
+    assert int(opponents.tally(carry, every, result).sum()) == rows
 
 
 # ---- the averages
