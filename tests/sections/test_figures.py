@@ -189,3 +189,11 @@ def test_the_next_state_measures_score_the_forecast_against_the_next_row():
     assert numbers["own"]["constant_velocity_error"] == pytest.approx(0.0, abs=1e-5)
     assert numbers["own"]["within_one_sigma"] == 1.0
     assert "enemy_hidden" not in numbers
+
+
+def test_the_density_rings_count_six_more_cells_per_ring():
+    from bnb.figures.density import rings_of
+
+    rings = rings_of(10)
+    counts = torch.bincount(rings)
+    assert counts.tolist() == [1] + [6 * k for k in range(1, 11)]

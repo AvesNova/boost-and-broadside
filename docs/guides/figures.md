@@ -135,3 +135,26 @@ ship keeps its velocity for one tick.
 already knows the ship's motion; the one-sigma share should be near
 `bnb.figures.next_state.ONE_SIGMA`{.nolink}. For a hidden ship the forecast starts from the
 belief, so its error is the belief's; the head adds what the belief cannot.
+
+## `density`
+
+**The question:** does the density head know where each side's ships are, beyond what the
+view sees?
+
+The true field is the learner's target: each living ship splits one unit over the three
+cells of its grid triangle. The head's field is its expected count per cell. Two cheap
+baselines: the constant map (each cell's mean count over the capture) and the visible ships
+alone, counted the same way (for the own side, every ship).
+
+- `density_maps`: for frames with many hidden enemies, the enemy field on the real hex
+  cells: true, the head's expected count, and the head minus the truth; seen enemies as
+  dots, hidden ones as rings.
+- `density_error`: R^2 against the constant map, of the head and of the visible ships, per
+  side; the enemy map's squared error per step by the number of hidden enemies; the head's
+  squared error per cell by ring (0: the arena's centre).
+
+**How to read it.** On the own side the visible ships are the truth, so the head's R^2
+there is how sharply it places ships it sees. On the enemy side, a head that knows more
+than it sees beats the visible ships, most of all when many enemies are hidden. The
+training series `density/explained_deviance` is the same comparison in Poisson deviance
+against the batch-mean map.
