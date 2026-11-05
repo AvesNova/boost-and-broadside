@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/models/yemong/, src/bnb/controllers/yemong.py]
-reviewed: 2026-11-03 09:45
+reviewed: 2026-11-06 15:30
 ---
 
 # The model (Yemong)
@@ -135,6 +135,16 @@ stores the record, so `unroll` composes the same tokens without replaying the be
 The controller samples the joint action from the policy logits by Gumbel-max
 (`bnb.models.yemong.policy.sample`), stores the sample as the previous action, and
 converts it to the factored `Action` with `bnb.contracts.action.from_joint`.
+
+### Decoding the heads
+
+`bnb.models.yemong.decode` turns the heads' outputs into what they predict, in the game's
+units and frame: the shot path at each age with its sigma (in the launch heading's frame,
+and `bnb.models.yemong.decode.launch_frame_to_world` to world coordinates), the next state
+and the beliefs (positions less the view's offset, as the representative nearest a
+reference), the density head's expected counts on the hex cells, the enemy action
+distribution with its factor marginals, and the outcome's class probabilities. The figures
+(`bnb figures`, [Figures](../guides/figures.md)) read the model through it only.
 
 ## Kernels
 

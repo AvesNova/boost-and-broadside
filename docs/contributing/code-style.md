@@ -1,6 +1,6 @@
 ---
 covers: [pyproject.toml, src/bnb/contracts/tree.py, tests/conftest.py, tests/contract/test_imports.py]
-reviewed: 2026-11-03 09:45
+reviewed: 2026-11-06 15:30
 ---
 
 # Code style
@@ -27,7 +27,7 @@ rules in `docs/rewrite/scaffold.md` (sections 3 and 4) and the decisions recorde
 
   <!-- not-runnable: the dependency order, not a command -->
   ```text
-  contracts <- game <- controllers, models <- learn <- runtime <- runs <- league <- play
+  contracts <- game <- controllers, models <- learn <- runtime <- runs <- league <- play, figures
   ```
 
   An import points down this order, never up. `tests/contract/test_imports.py` checks it.
