@@ -54,6 +54,10 @@ Order: after sections 4 and 7. The stationary ladder is section 4's controller (
 
 ## 4. Ratings during training: the live gauge
 
+*Superseded 2026-11-06 (decisions: rating from every game):* the gauge now reads every
+rating from the run's one fit of the lanes' and the league's games
+(`bnb.league.lanes.RunRatings`); the two stages and the averages' window below are gone.
+
 - **The fixed gauge:** random 0, rung `p` at `1000 p`, scripted 1000. These are not
   estimates and are never refitted during training **(decided)**. Below 1000 the gauge
   says where the live policy sits on the ladder; above 1000 it is a rating against the

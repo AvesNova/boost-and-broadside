@@ -73,30 +73,53 @@ The league's seat plays every opponent row of the batch in the captured rollout 
 - **The results:** the rollout tallies every ended game by what the opponent row played and
   by mode, from the learner's side; the league reads the tally once per segment.
 
-## The rating lanes
+## The ratings
 
-The live and averaged ratings come from the rating lanes ([The training
-loop](training-loop.md#the-rating-lanes)): games of rated matchups played beside the training
-games, in the same rollout. `bnb.league.lanes.LaneRatings` keeps their record by mode and
-fits, once per update and per mode, one Bradley–Terry model of every lane player with the
-scripted agent pinned at 1000 (`bnb.league.ratings.fit_ratings`, draws as half a win, one
-prior game against the scripted agent, half won, which keeps a sweep finite).
+Every rating during training comes from one fit per mode, `bnb.league.lanes.RunRatings`:
+one Bradley–Terry model of every rated player with the scripted agent pinned at 1000
+(`bnb.league.ratings.fit_ratings`, draws as half a win, one prior game against the scripted
+agent, half won, which keeps a sweep finite), refitted once per update. Its games are every
+game a rated player played:
 
+- **The rating lanes' games** ([The training loop](training-loop.md#the-rating-lanes)):
+  rated matchups played beside the training games, in the same rollout.
+- **The league's training games:** per mode, the live policy's games against each entry
+  it played this update (`League.record`), as games of the live policy against that entry.
+  Self-play is not an entry and stays out. A snapshot taken at an update is credited with
+  that update's games as well, since its weights played them. The uniform average's games
+  are left out until it has started: before then it is the live weights.
+
+Without lanes the fit reads the league's games alone.
+
+- **Names:** the fit names players by the league's entry names (`snapshot_<steps>`,
+  `exponential_average`, `uniform_average`, the ladder's rungs) and `live`. A lane plays
+  the entry a league slot holds as `league_<k>`, which `RunRatings.resolved` maps to that
+  entry, the one mapping of lane players and entries onto the fit.
 - **The record:** games are kept by mode and by who played them. A game of two stationary
   players (the rungs, the league's snapshots) is kept for the whole run; one with a moving
   player (the live policy, an average) for its last `LaneConfig.window` updates (10).
-- **The league's entries:** the lanes play the entries the league's network slots hold
-  (`league_<k>`), copied in when a slot takes another (`League._load_lanes`). A snapshot's
+- **Attribution:** the rollout tallies each ended training game under the column its row
+  played as it ended (a slot's set, the incoming set or a rung), and the league reads the
+  tally once per segment, before a finished drain renames the incoming set's column to the
+  slot's, so each game goes to the entry that played it
+  (`tests/sections/test_league_slots.py::test_each_training_game_is_credited_to_the_entry_that_played_it`).
+  A training game spanning an update is credited, like a lane game of the live policy, at
+  the update it ends in.
+- **The averages move:** a slot holding an average, and the lanes' `league_<k>` holding
+  one, take its weights after every update, as the lanes' own average players do, so an
+  average is one moving player wherever it plays.
+- **The league's entries in the lanes:** the lanes play the entries the league's network
+  slots hold, copied in when a slot takes another (`League._load_lanes`). A snapshot's
   games are credited to it by name, so it keeps its games and its rating after it cycles
-  out, and a new one joins the fit as soon as its games connect it; a slot holding an
-  average or a ladder entry plays unrated. A game in progress when a slot's lane player
-  changes is left out, as is each lane row's first game (cut short by the staggered clocks).
+  out, and a new one joins the fit as soon as its games connect it; a slot holding a
+  ladder entry plays unrated. A lane game in progress when a slot's lane player changes is
+  left out, as is each lane row's first game (cut short by the staggered clocks).
 - **Who is rated:** a player whose games connect it to the scripted agent; none is reported
   before its matchups have played.
-- **The ladder:** the rungs, chained from the scripted agent down, are rated from their own
-  lane games. A fixed scale would be far off: the earlier probability rungs' `1000 p` put
-  rung_0.95 50 points below the scripted agent, where it scored 0.065 against it, about 530
-  points below.
+- **The ladder:** the rungs, chained from the scripted agent down by the lanes and played
+  by the live policy in training, are rated from their games. A fixed scale would be far
+  off: the earlier probability rungs' `1000 p` put rung_0.95 50 points below the scripted
+  agent, where it scored 0.065 against it, about 530 points below.
 - **The series:** per mode `rating/live/<mode>`{.plain} and `rating/average/<mode>`{.plain} (the
   exponential average), their standard errors, and every rated player's
   `lanes/rating/<mode>/<player>`{.plain}. A BC run's lanes rate the live clone and both averages the same way
@@ -104,6 +127,13 @@ prior game against the scripted agent, half won, which keeps a sweep finite).
   `rating/uniform_average/<mode>`{.plain}, and each of its policy files keeps its
   player's per mode (`PolicyRecord.ratings`): a warm start's live rating starts from its
   parent's, not 0.
+
+The league's games are about half of the information. Refitted offline on run
+2026-11-06-mixed-calm-fern's first 29 updates (its per-update lane games and `pool/entries`
+table), the lanes alone left the live rating's standard error at 95–112 and the
+exponential average's at 82–106; with the training games they are 59–66 and 63–71, and the
+live policy is rated from the first update instead of the twelfth. The synthetic case is
+`tests/sections/test_lanes.py::test_the_leagues_games_shrink_the_ratings_errors`.
 
 Against the scripted agent alone a policy 1000 points above it would be rated blind: its
 games there carry 1/60 of an even game's information. Through a chain of snapshots, whose
@@ -114,38 +144,27 @@ The measured game counts and errors are in `docs/rewrite/sections/rollout-lanes-
 
 ## The live gauge
 
-During training each mode has a gauge (`bnb.league.gauge.Gauge`) that steers sampling. The
-ladder's ratings are held by the fits: the scripted agent 1000 and every other rung the
-lanes' calibration (`Gauge.calibrate`); before the lanes have rated a rung it sits at the
-prior `1000 / T` (random 0), a placeholder the calibration replaces. Once per update:
+During training each mode has a gauge (`bnb.league.gauge.Gauge`) that steers sampling. It
+reads every rating from the fit once per update; an entry the fit does not rate this update
+holds its last rating:
 
-1. **The ladder fit:** the snapshots' ratings from the record among stationary players,
-   the ladder held (`bnb.league.ratings.fit_ladder`). The only games among stationary
-   players are each snapshot's own update, credited when it is taken.
-2. **The live rating:** the lanes'; without lanes, from this update's training games alone,
-   against the entries' current ratings (`bnb.league.ratings.rate_live`, ties as half
-   wins). A new snapshot starts at it.
-3. **The averages:** the lanes' rating of an average they rate; otherwise each rated on its
-   last 200 games against the live rating of each game's update
-   (`bnb.league.ratings.rate_against`).
-
-A sweep gives an infinite estimate; the gauge reports it and keeps the last finite value,
-which sampling uses. Without lanes the gauge's live and averaged estimates are the
-`rating/live/<mode>`{.plain} and `rating/average/<mode>`{.plain} series; they are never
-published.
+- a rung its prior `1000 / T` (random 0), a placeholder, until the fit first rates it;
+- a new snapshot the live rating of its update, until its games rate it;
+- an average the live rating until the fit first rates it;
+- the live policy its last fitted rating, from a warm start's parent's at the start.
 
 ## Resuming
 
 A training checkpoint holds the opponent slots' stacked weights and buffers, the rollout
 carry (every row's carry, flags and rung) and the league's state: its entries, gauges,
-sampling state, the lanes' record, and the averages' and snapshots' weights. A resumed run draws the same
+sampling state, the ratings' record, and the averages' and snapshots' weights. A resumed run draws the same
 opponents and reports the same ratings as one run straight through
 (`tests/runs/test_resume.py`). A fork starts a fresh league from its model.
 
 ## Metrics
 
 `League.updated` returns, under `league`: per mode the live and averaged ratings and their
-standard errors (the lanes'), every lane player's rating, and per entry its rating,
+standard errors, every rated player's rating, and per entry its rating,
 sampling share and score against the live policy this update;
 the pool's entries, snapshots, the slots' entries, the draining slot and the incoming
 entry; and the games of the update by opponent kind.
