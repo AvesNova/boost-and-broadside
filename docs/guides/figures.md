@@ -174,3 +174,26 @@ the marginal baseline, the capture's own action frequencies; the head knows some
 an enemy when it beats that baseline. The joint numbers (`bnb.figures.enemy_action.measures`)
 add the accuracy of the most likely action and the mean probability of the action taken.
 On the reliability plot a calibrated head lies on the diagonal.
+
+## `critic`
+
+**The question:** does the critic's value move with the game, and does the outcome head's
+win probability come true?
+
+It reads the capture's `games` record: the critic over the first segment and over
+`--game-segments` more segments of the same games, so that games end inside the capture
+(a deathmatch game can last minutes: 40 segments of 256 ticks is about 340 s).
+
+- `critic_trace`: one view's game: the outcome head (P(win) - P(loss) as it gives it, the
+  renormalised P(win), P(unresolved)) and each reward level's value (the own ships' mean),
+  with every kill (orange) and loss (black) marked.
+- `critic_outcome`: the reliability of the renormalised P(win) over the ticks of games that
+  ended in the capture, and the Brier skill against the capture's result frequencies by the
+  time left to the game's end.
+
+**How to read it.** The outcome head is discounted: its targets put a share on
+"unresolved" per tick, so its own P(win) is the discounted chance of a win. The figures
+renormalise the resolved classes, P(win) / (P(win) + P(tie) + P(loss)), as its forecast of
+the result. A skill above zero beats always forecasting the result frequencies; it should
+rise as the end nears. The ticks of one game are strongly correlated, so a capture of few
+games gives a noisy reliability curve: the counts beside each point are ticks, not games.

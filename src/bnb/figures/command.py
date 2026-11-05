@@ -70,6 +70,7 @@ def figures(options, runs_directory: pathlib.Path) -> None:
             ticks=options.ticks,
             seed=options.seed,
             spread_samples=options.spread_samples,
+            game_segments=options.game_segments,
         )
         artifact = capturing.capture(
             policy, config, torch.device(options.device), scenarios=scenarios.measure

@@ -7,7 +7,7 @@ directory and returns (the PNGs it wrote, its numbers). The docs page
 
 from collections.abc import Callable
 
-from . import belief, density, enemy_action, next_state, scenarios, shots
+from . import belief, critic, density, enemy_action, next_state, scenarios, shots
 
 FIGURE_SETS: dict[str, Callable] = {
     "shots": shots.render,
@@ -16,4 +16,5 @@ FIGURE_SETS: dict[str, Callable] = {
     "next_state": next_state.render,
     "density": density.render,
     "enemy_action": enemy_action.render,
+    "critic": critic.render,
 }

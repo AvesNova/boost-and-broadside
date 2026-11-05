@@ -197,3 +197,33 @@ def test_the_density_rings_count_six_more_cells_per_ring():
     rings = rings_of(10)
     counts = torch.bincount(rings)
     assert counts.tolist() == [1] + [6 * k for k in range(1, 11)]
+
+
+def test_the_critic_scores_each_tick_against_the_end_of_its_game():
+    from bnb.figures import critic
+
+    length = 4
+    done = torch.tensor([[False], [True], [False], [False]])  # a game ends after tick 1
+    result = torch.tensor([[0], [1], [0], [0]])  # won
+    win = torch.tensor([[0.5], [0.9], [0.5], [0.5]])
+    artifact = dict(
+        meta=dict(tick_length=1.0),
+        games=dict(
+            done=done,
+            result=result,
+            outcome=dict(
+                win=win,
+                tie=torch.zeros((length, 1)),
+                loss=1.0 - win,
+                unresolved=torch.zeros((length, 1)),
+            ),
+        ),
+    )
+    part = critic.ended_games(artifact)
+    assert part["ended"][:, 0].tolist() == [True, True, False, False]
+    assert part["left"][:2, 0].tolist() == [2.0, 1.0]
+    numbers = critic.measures(artifact)
+    assert numbers["games_ended"] == 1 and numbers["ticks_scored"] == 2
+    # all scored ticks were won: the frequencies forecast a win perfectly
+    assert numbers["result_frequency"]["win"] == 1.0
+    assert numbers["brier_skill"] < 0.0

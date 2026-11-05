@@ -46,13 +46,16 @@ class CaptureConfig:
     at once (two views each); ticks: the segment's length; seed: the seed `bnb figures`
     gives the process generators before it captures (the rollout and the spread draw from
     them), and the scenario lab's spread fan; spread_samples: spread draws per shot beyond
-    the learner's one (the fan in the shot figure)."""
+    the learner's one (the fan in the shot figure); game_segments: segments of `ticks`
+    played on after the first, the same games going on, of which only the critic's record
+    is kept (`games`: whole games for the outcome head's reliability)."""
 
     preset: str = "deathmatch"
     environments: int = 4
     ticks: int = 256
     seed: int = 0
     spread_samples: int = 4
+    game_segments: int = 0
 
 
 def policy_types(record: dict, device: torch.device) -> api.ShipTypes:
@@ -173,8 +176,8 @@ def shot_record(model, rules, types, trajectory, unrolled, config: CaptureConfig
 @torch.no_grad()
 def head_record(model, trajectory, unrolled) -> dict:
     """The other heads over the segment, decoded, with the truth they are scored against:
-    the privileged rows, the next state, the beliefs, the enemy actions, the density and the
-    critic."""
+    the privileged rows, the next state, the beliefs, the enemy actions and the density.
+    The critic's is `games_record`."""
     own = trajectory.log_probability.shape[-1]
     rows = labels.privileged_rows(trajectory)  # (L, R, N, columns)
     following = labels.next_rows(trajectory, rows)
@@ -192,7 +195,6 @@ def head_record(model, trajectory, unrolled) -> dict:
     arena_radius = trajectory.obs.globals[..., GLOBAL["arena_radius"]]
     field = decode.density(unrolled.density_log_rates, model.config.hex_rings, arena_radius)
     grid = HexGrid(model.config.hex_rings, rows.device)
-    outcome = decode.outcome(unrolled.outcome_logits)
     return dict(
         rows=rows,
         next_rows=following,
@@ -225,16 +227,6 @@ def head_record(model, trajectory, unrolled) -> dict:
             centres=field.centres,
             cell_radius=field.cell_radius,
             counts=labels.density_targets(grid, trajectory, rows),
-        ),
-        critic=dict(
-            values=unrolled.values.float(),
-            reward=trajectory.reward,
-            win=outcome.win,
-            tie=outcome.tie,
-            loss=outcome.loss,
-            unresolved=outcome.unresolved,
-            done=trajectory.done,
-            result=trajectory.result,
         ),
     )
 
@@ -272,7 +264,32 @@ def capture(
     )
     if scenarios is not None:
         artifact["scenarios"] = scenarios(model, rollout.rules, types, trajectory, config)
+    artifact["games"] = games_record(model, rollout, trajectory, config.game_segments)
     return _on_host(artifact)
+
+
+@torch.no_grad()
+def _critic_part(model, trajectory) -> dict:
+    reset = trajectory.obs.globals[..., GLOBAL["reset"]] > 0.5
+    unrolled = model.unroll(trajectory.initial_carry, trajectory.obs, trajectory.replay, reset)
+    return dict(
+        outcome=dataclasses.asdict(decode.outcome(unrolled.outcome_logits)),
+        values=unrolled.values.float(),
+        done=trajectory.done.clone(),
+        result=trajectory.result.clone(),
+        alive=trajectory.alive.clone(),
+    )
+
+
+@torch.no_grad()
+def games_record(model, rollout, trajectory, segments: int) -> dict:
+    """The critic over the first segment and `segments` more of the same games (L', R, ...)
+    leading: outcome (`bnb.models.yemong.decode.Outcome` by field), values (S, levels),
+    done, result (the view's team's, nonzero where done) and alive (N)."""
+    parts = [_critic_part(model, trajectory)]
+    for _ in range(segments):
+        parts.append(_critic_part(model, rollout.run()))
+    return torch.utils._pytree.tree_map(lambda *x: torch.cat(x), *parts)
 
 
 def _on_host(tree):

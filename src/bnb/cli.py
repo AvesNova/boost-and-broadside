@@ -222,7 +222,8 @@ class Figures:
     (its newest checkpoint); capture: a stored capture to draw from; out: the output
     directory (default: the run's artifacts/figures/<policy directory>, else beside the
     capture, else figures/); preset, environments, ticks, seed and spread_samples: the
-    capture (`bnb.figures.capture.CaptureConfig`); device; runs_directory: as for bnb train.
+    capture, and game_segments (more segments of the same games, for the critic set:
+    `bnb.figures.capture.CaptureConfig`); device; runs_directory: as for bnb train.
     """
 
     sets: tyro.conf.Positional[tuple[str, ...]] = ("all",)
@@ -234,6 +235,7 @@ class Figures:
     ticks: int = 256
     seed: int = 0
     spread_samples: int = 4
+    game_segments: int = 0
     device: str = "cpu"
     runs_directory: str | None = None
 
