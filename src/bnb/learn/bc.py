@@ -37,6 +37,8 @@ AGREEMENTS = ("power", "stick", "shoot", "joint")
 # BC's per-pool sums over the living own ship-steps, in order.
 SUMS = ("kl", "teacher", "student", "tokens", *(f"agreement_{name}" for name in AGREEMENTS))
 TEACHER_CARRY = "teacher_carry/"  # the derived names of the teacher's carry's fields
+# the carry's field names, taken once: torch.compile cannot trace dataclasses.fields
+CARRY_FIELDS = tuple(field.name for field in dataclasses.fields(ScriptedCarry))
 
 
 MINIBATCHES = 256
@@ -229,10 +231,9 @@ class BehaviourCloning(Learner):
             carries, carry = teacher_carries(self.teacher, obs, carry)
             shards.append(carries)
         self.teacher_carry = carry
-        fields = dataclasses.fields(ScriptedCarry)
         return {
-            TEACHER_CARRY + field.name: torch.cat([getattr(c, field.name) for c in shards], 1)
-            for field in fields
+            TEACHER_CARRY + name: torch.cat([getattr(c, name) for c in shards], 1)
+            for name in CARRY_FIELDS
         }
 
     def _policy(
@@ -248,12 +249,7 @@ class BehaviourCloning(Learner):
         of KL(labels || student), the labels' and the student's entropy and the tokens),
         over own ships alive."""
         own_alive = trajectory.alive[..., : trajectory.log_probability.shape[-1]]
-        carries = ScriptedCarry(
-            **{
-                field.name: derived[TEACHER_CARRY + field.name]
-                for field in dataclasses.fields(ScriptedCarry)
-            }
-        )
+        carries = ScriptedCarry(**{name: derived[TEACHER_CARRY + name] for name in CARRY_FIELDS})
         target = labels(
             teacher_distribution(self.teacher, trajectory.obs, carries), self.teacher_config.floor
         )
