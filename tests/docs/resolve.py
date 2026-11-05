@@ -138,17 +138,31 @@ def _options(cls) -> set[str]:
             continue
         names = [getattr(meta, "name", None) for meta in metadata]
         name = next((name for name in names if name), field.name)
-        options.add("--" + name.replace("_", "-"))
+        if dataclasses.is_dataclass(hints[field.name]):  # a nested config: --name.field
+            options |= {f"--{name}.{option[2:]}" for option in _options(hints[field.name])}
+        else:
+            options.add("--" + name.replace("_", "-"))
     return options
 
 
 def command(arguments: str) -> str | None:
     """None if `bnb <arguments>` names a command (`bnb.cli.COMMANDS`) and uses only its
-    options (`bnb.cli.Train`, `Runs`, `ShipCard`, `Ratings`, `HeadToHead` or `Figures`),
+    options (`bnb.cli.Train`, `Runs`, `ShipCard`, `Ratings`, `HeadToHead` or `Figures`, and
+    `FiguresVideo` and `FiguresWatch` for `bnb figures video` and `bnb figures watch`),
     with a known preset and mode."""
     import shlex
 
-    from bnb.cli import COMMANDS, Figures, HeadToHead, Ratings, Runs, ShipCard, Train
+    from bnb.cli import (
+        COMMANDS,
+        Figures,
+        FiguresVideo,
+        FiguresWatch,
+        HeadToHead,
+        Ratings,
+        Runs,
+        ShipCard,
+        Train,
+    )
     from bnb.contracts.config import MODES
     from bnb.game.modes.rules import PRESETS
 
@@ -165,7 +179,10 @@ def command(arguments: str) -> str | None:
         "head-to-head": HeadToHead,
         "figures": Figures,
     }
-    options = _options(commands[tokens[0]])
+    chosen = commands[tokens[0]]
+    if tokens[0] == "figures" and tokens[1:2] in (["video"], ["watch"]):
+        chosen = FiguresVideo if tokens[1] == "video" else FiguresWatch
+    options = _options(chosen)
     values = {"--preset": set(PRESETS) | {"mixed"}, "--mode": set(MODES)}
     for index, token in enumerate(tokens):
         if not token.startswith("-"):

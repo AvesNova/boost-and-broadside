@@ -1,12 +1,13 @@
 """The `bnb` command: `bnb train` trains or clones, `bnb runs` lists runs and uploads
 checkpoints, `bnb ship-card` charts a ship card, `bnb ratings` and `bnb head-to-head` rate
-policies, `bnb figures` draws what a policy's heads have learned.
+policies, `bnb figures` draws what a policy's heads have learned and films it playing.
 
 An entry point (code style, Layers): it sets the process-wide options its commands need (the
 seed, the matmul precision, the charts' backend). The play shell (`python -m bnb.play`) and
 `bench` are the other entry points."""
 
 import dataclasses
+import functools
 import json
 import os
 import pathlib
@@ -18,6 +19,7 @@ import tyro
 
 from bnb.contracts import REWARD_LEVELS
 from bnb.contracts.config import TEAM_DEATHMATCH
+from bnb.figures.video import VideoConfig
 
 
 @dataclasses.dataclass(frozen=True)
@@ -217,6 +219,8 @@ class Figures:
     The sets (`bnb.figures.sets.FIGURE_SETS`, or all) and how to read them:
     docs/guides/figures.md. `bnb figures capture --policy P` only captures. Each PNG
     carries its provenance in its text chunks. Needs the tools extra (matplotlib).
+    `bnb figures video` (FiguresVideo) and `bnb figures watch` (FiguresWatch) have their
+    own options.
 
     sets: figure set names, all, or capture; policy: a policy directory or a run's name
     (its newest checkpoint); capture: a stored capture to draw from; out: the output
@@ -240,6 +244,65 @@ class Figures:
     runs_directory: str | None = None
 
 
+@dataclasses.dataclass(frozen=True)
+class FiguresVideo:
+    """A video of one game (`bnb figures video --policy P`): the policy (team 0) against
+    the scripted agent in the preset's mode, drawn by the play shell offscreen (EGL) and
+    encoded to MP4 by ffmpeg (`bnb.figures.video`). docs/guides/figures.md.
+
+    policy: a policy directory or a run's name (its newest checkpoint); preset: the game
+    (frontline, deathmatch, deathmatch_wide); out: the MP4 file (default: the run's
+    artifacts/figures/<policy directory>/videos/<preset>_seed<seed>.mp4, else
+    figures/videos/); video: the video's own settings (`--video.seconds` and so on:
+    `bnb.figures.video.VideoConfig`); device: where the agent runs (cpu hides the GPU from
+    torch; the drawing uses the GPU's OpenGL either way); threads: torch's CPU threads;
+    runs_directory: as for bnb train.
+    """
+
+    policy: str
+    preset: str = "frontline"
+    out: str | None = None
+    video: VideoConfig = VideoConfig()
+    device: str = "cpu"
+    threads: int = 4
+    runs_directory: str | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class FiguresWatch:
+    """Media of a training run while it trains (`bnb figures watch RUN`): a second process
+    that only reads the run, polls its checkpoints and, for each new one, captures each
+    mode on the CPU, draws the quick figure sets and films one game per mode against the
+    scripted agent, into the run's artifacts/figures/<checkpoint>/ (`bnb.figures.watch`).
+    With --wandb it logs them at the checkpoint's environment steps to the companion W&B
+    run `<run>-media`, never to the training run's own. It stops once the run has stopped
+    and every checkpoint has its media. docs/guides/figures.md.
+
+    run: the run's name (or its directory); sets and modes: the figure sets and the modes
+    (presets) made at each checkpoint; environments, ticks and seed: each capture's;
+    video: the videos' settings (`--video.seconds` and so on:
+    `bnb.figures.video.VideoConfig`); interval: seconds between polls; keep_captures: keep
+    each capture artifact (about 60 MB a mode); once: one pass, then stop; wandb: log to
+    the companion run; threads: torch's CPU threads; nice: the process's niceness
+    increment, so the trainer's CPU work goes first; runs_directory: as for bnb train.
+    """
+
+    run: tyro.conf.Positional[str]
+    sets: tuple[str, ...] = ("shots", "belief", "next_state", "density", "enemy_action")
+    modes: tuple[str, ...] = ("frontline", "deathmatch")
+    environments: int = 4
+    ticks: int = 256
+    seed: int = 0
+    video: VideoConfig = VideoConfig()
+    interval: float = 60.0
+    keep_captures: bool = False
+    once: bool = False
+    wandb: bool = False
+    threads: int = 4
+    nice: int = 10
+    runs_directory: str | None = None
+
+
 COMMANDS = ("train", "runs", "ship-card", "ratings", "head-to-head", "figures")
 
 
@@ -247,7 +310,8 @@ def main() -> None:
     """The `bnb` command: `bnb train ...` trains, `bnb runs ...` lists and shows runs and
     uploads checkpoints, `bnb ship-card ...` charts a card, `bnb ratings ...` and
     `bnb head-to-head ...` rate policies offline, `bnb figures ...` draws what a policy's
-    heads have learned."""
+    heads have learned (`bnb figures video ...` films a game, `bnb figures watch RUN` makes
+    both while a run trains)."""
     os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")  # Triton 3.9's default, made explicit
     command, arguments = (sys.argv[1:2] or [""])[0], sys.argv[2:]
     if command == "ship-card":
@@ -263,7 +327,13 @@ def main() -> None:
         head_to_head(tyro.cli(HeadToHead, args=arguments, prog="bnb head-to-head"))
     elif command == "figures":
         os.environ.setdefault("MPLBACKEND", "Agg")  # the figures go to files: no display
-        figures(tyro.cli(Figures, args=arguments, prog="bnb figures"))
+        kind = (arguments[:1] or [""])[0]
+        if kind == "video":
+            figures_video(tyro.cli(FiguresVideo, args=arguments[1:], prog="bnb figures video"))
+        elif kind == "watch":
+            figures_watch(tyro.cli(FiguresWatch, args=arguments[1:], prog="bnb figures watch"))
+        else:
+            figures(tyro.cli(Figures, args=arguments, prog="bnb figures"))
     else:
         raise SystemExit(f"usage: bnb {{{','.join(COMMANDS)}}} ... (bnb train --help)")
 
@@ -856,3 +926,77 @@ def figures(options: Figures) -> None:
         draw(options, runs_directory_of(options.runs_directory))
     except ImportError as error:
         raise SystemExit(f"{error}: bnb figures needs the tools extra (uv sync --extra tools)")
+
+
+def hide_gpu() -> None:
+    """Hide every CUDA device from torch (before anything initialises CUDA), so a process
+    that shares the machine with a training run never takes GPU memory or time from it.
+    OpenGL over EGL, which the play shell draws with, is not CUDA and still sees the GPU."""
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
+
+def figures_video(options: FiguresVideo) -> None:
+    """`bnb figures video`: one game filmed (`bnb.figures.video.render`)."""
+    if options.device == "cpu":
+        hide_gpu()
+    import torch
+
+    from bnb.figures import video
+    from bnb.figures.command import policy_path, run_of
+
+    torch.set_num_threads(options.threads)
+    policy = policy_path(options.policy, runs_directory_of(options.runs_directory))
+    path = options.out
+    if path is None:
+        run = run_of(policy)
+        directory = pathlib.Path("figures") if run is None else run / "artifacts" / "figures"
+        directory = directory / (policy.name if run is not None else "") / "videos"
+        path = directory / video.video_name(options.preset, options.video)
+    numbers = video.render(policy, options.preset, options.video, path)
+    print(f"wrote {path}")
+    print(f"video: {numbers}")
+
+
+def figures_watch(options: FiguresWatch) -> None:
+    """`bnb figures watch`: media of a training run while it trains
+    (`bnb.figures.watch.watch`), on the CPU at a lower priority."""
+    hide_gpu()
+    import torch
+
+    from bnb.figures import watch
+    from bnb.figures.sets import FIGURE_SETS
+    from bnb.game.api import PRESETS
+
+    unknown = [name for name in options.sets if name not in FIGURE_SETS]
+    unknown += [name for name in options.modes if name not in PRESETS]
+    if unknown:
+        raise SystemExit(f"unknown figure sets or modes {unknown}")
+    os.nice(options.nice)
+    torch.set_num_threads(options.threads)
+    runs_directory = runs_directory_of(options.runs_directory)
+    name = options.run
+    if (pathlib.Path(name) / "run.json").is_file():  # a run's directory
+        runs_directory, name = pathlib.Path(name).resolve().parent, pathlib.Path(name).name
+    config = watch.WatchConfig(
+        sets=options.sets,
+        modes=options.modes,
+        environments=options.environments,
+        ticks=options.ticks,
+        seed=options.seed,
+        video=options.video,
+        interval=options.interval,
+        keep_captures=options.keep_captures,
+    )
+    from bnb.runs.records import Run
+
+    log = watch.MediaLog(Run.open(runs_directory, name), config) if options.wandb else None
+    try:
+        make = functools.partial(
+            watch.make_media, reseed=lambda: torch.manual_seed(options.seed)
+        )  # every checkpoint's captures start from the same draws
+        watch.watch(runs_directory, name, config, log=log, once=options.once, make=make)
+    except ImportError as error:
+        raise SystemExit(f"{error}: bnb figures needs the tools extra (uv sync --extra tools)")
+    finally:
+        if log is not None:
+            log.close()
