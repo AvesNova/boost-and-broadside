@@ -26,11 +26,14 @@ the [training guide](../guides/training.md).
    (`bnb.learn.ppo.Learner.update`; with BC, `bnb.learn.bc.BehaviourCloning`, the same
    update with the cloning loss).
 
-The default batch is v1's twice over, as v2 trains three modes: 1,024 training environments
-x 8 shards x 128 ticks, 1,048,576 trained ticks per update, with a lookahead of 128 ticks
-(`TrainConfig.environments`, `shards`, `length`, `lookahead`). The layout was chosen by
-measurement: a wider one (2,048 x 4, 4,096 x 2) plays more lookahead ticks for the same
-trained ticks and is no faster, and 8,192 x 1 does not fit an 8 GB GPU. The rollout's
+The default batch is v1's twice over, as v2 trains three modes: 4,096 training environments
+x 2 shards x 128 ticks, 1,048,576 trained ticks per update, with a lookahead of 128 ticks
+(`TrainConfig.environments`, `shards`, `length`, `lookahead`). The layout is the widest that
+fits an 8 GB GPU: for the same trained ticks, more environments are more independent games,
+where more shards continue the same ones. Measured with the lanes on (rollout per update,
+device memory): 1,024 x 8, 22.7 s and 5.74 GB; 2,048 x 4, 21.8 s and 6.82 GB; 4,096 x 2,
+24.0 s and 7.55 GB of 7.65 at 8 graph ticks; 8,192 x 1 does not fit. The learner's time
+does not change with the layout. The rollout's
 records stream to pinned host memory in chunks of `TrainConfig.graph_ticks` (8), two on the
 device at a time, so the trajectory does not bind the device's memory. Every trained tick has at least
 128 played ticks after it in the update, so the advantages are not cut short at a shard's end.

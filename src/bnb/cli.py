@@ -71,9 +71,9 @@ class Train:
     ships_per_team: int = 5
     num_fields: int = 10
     arena_radius: float = 2600.0
-    environments: int = 1024
+    environments: int = 4096
     updates: int = 100
-    shards: int = 8
+    shards: int = 2
     model: str = "yemong"
     precision: str = "bfloat16"
     old_log_probabilities: str = "rollout"
