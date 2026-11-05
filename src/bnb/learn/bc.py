@@ -48,7 +48,7 @@ def config(**overrides) -> LearnerConfig:
     """BC's learner settings (scripted spec B1): the BC coefficient 0.025 in nats per token
     in place of the surrogate's, no entropy term, no KL early stop, and 256 minibatches; the
     rest section 6's. Cloning's progress follows its optimizer steps, so at the 8,192-view
-    batch (4,096 x 2) it takes minibatches of 32 views, not PPO's 32 per epoch: 8x the
+    batch (2,048 x 4) it takes minibatches of 32 views, not PPO's 32 per epoch: 8x the
     steps per environment step for the same compute."""
     return dataclasses.replace(
         LearnerConfig(),

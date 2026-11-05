@@ -93,7 +93,7 @@ class TrainConfig:
     sets it. ship_card: the ship card's values by field, one per ship type, every field
     given (`bnb.game.api.default_card`). environments: the training environments; length:
     ticks per segment; shards: consecutive segments per update (v1's batch, twice over:
-    4,096 x 2 x 128); lookahead: ticks played after the last shard on every environment,
+    2,048 x 4 x 128); lookahead: ticks played after the last shard on every environment,
     never trained on, for the targets that need the future (the returns' tail, the shot
     labels); the next update continues from its end. graph_ticks: the most ticks in one
     captured rollout chunk; the device holds two chunks of the learner's records, streamed
@@ -110,10 +110,10 @@ class TrainConfig:
     plays, `bnb.learn.bc.TeacherOpponent`, and `stop` when it stops, its budget included)."""
 
     game: GameConfig
-    environments: int = 4096
+    environments: int = 2048
     updates: int = 100
     length: int = 128
-    shards: int = 2
+    shards: int = 4
     lookahead: int = 128
     graph_ticks: int = 8
     lanes: LaneConfig = LaneConfig()
