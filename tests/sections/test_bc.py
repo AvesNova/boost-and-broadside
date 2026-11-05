@@ -16,8 +16,8 @@ from torch.utils import _pytree
 from bnb.contracts import Obs, Pool, Trajectory
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.controllers.scripted import Scripted, distribution, joint
+from bnb.controllers.scripted_defaults import MODE_DEFAULTS
 from bnb.controllers.scripted_memory import ScriptedCarry
-from bnb.controllers.scripted_parameters import ScriptedParameters
 from bnb.game import api
 from bnb.learn import bc
 from bnb.learn.rewards import RewardConfig
@@ -35,7 +35,7 @@ POOLS = (
     Pool("self_play", 0.5, ("learner", "learner"), 0.5),
     Pool("scripted", 0.5, ("learner", "scripted"), 0.5, mode="frontline"),
 )
-PARAMETERS = ScriptedParameters()
+PARAMETERS = MODE_DEFAULTS  # what the trainer's teacher and scored opponent play
 TEACHER = Scripted(CHARACTERISTICS, 5, PARAMETERS)  # the teacher of the 5v5 segments
 
 

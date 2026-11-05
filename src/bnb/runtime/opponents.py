@@ -62,6 +62,7 @@ LADDER = (
     RANDOM,
     Rung(2.0, 0.1),
     Rung(2.0, 0.3),
+    Rung(2.0, 0.5),
     Rung(8.0),
     Rung(4.0),
     Rung(3.0),

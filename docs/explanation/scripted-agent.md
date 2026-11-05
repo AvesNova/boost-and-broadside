@@ -223,18 +223,18 @@ each named for the quantity it scales, with the logistics as `Logistic`, the wei
 **One set per game mode.** The agent's defaults are
 `bnb.controllers.scripted_defaults.MODE_DEFAULTS`, a
 `bnb.controllers.scripted_parameters.ModeParameters` with a set for each of the training
-presets (`MODES`: deathmatch, deathmatch_wide, Frontline), each from a search of its own
-preset. Each view plays its mode's set, chosen from its observation
-(`bnb.controllers.scripted.mode_index`): Frontline by the mode's flag, else the wide set
-when the arena is wider than the geometric mean of the two deathmatch presets' (2600 and
-8200 m), else deathmatch's. So one batch may mix the modes, and every use plays the mode's
-set: BC's teacher, the lanes' scripted anchor, the ladder's rungs and the head-to-head's
-`scripted`. Each search's final population (its last generation's 32 sets, best first) is
-kept in `src/bnb/controllers/scripted_populations.json`
-(`bnb.controllers.scripted_defaults.populations`) for later use; nothing samples from it. A value may also be a
-tensor `(R, 1)` with one value per view (`bnb.controllers.scripted_parameters.unpack` of a
-parameter table), so one compiled controller plays many parameter sets side by side; the
-search uses that.
+presets (`bnb.controllers.scripted_parameters.MODES`: deathmatch, deathmatch_wide,
+Frontline), each from a search of its own preset. Each view plays its mode's set, chosen
+from its observation (`bnb.controllers.scripted.mode_index`): Frontline by the mode's flag,
+else the wide set when the arena is wider than the geometric mean of the two deathmatch
+presets' (2600 and 8200 m), else deathmatch's. So one batch may mix the modes, and every use
+plays the mode's set: BC's teacher, the lanes' scripted anchor, the ladder's rungs and the
+head-to-head's `scripted`. Each search's final population (its last generation's 32 sets,
+best first) is kept in `src/bnb/controllers/scripted_populations.json`
+(`bnb.controllers.scripted_defaults.populations`) for later use; nothing samples from it. A
+value may also be a tensor `(R, 1)` with one value per view
+(`bnb.controllers.scripted_parameters.unpack` of a parameter table), so one compiled
+controller plays many parameter sets side by side; the search uses that.
 
 The search is `bench/scripted_search.py` (`uv run --no-sync python -m bench.scripted_search`),
 a population round robin. Each generation plays 32 candidates, one parameter-table row per
@@ -254,22 +254,24 @@ defaults.
 ## Measurements
 
 Measured on 2026-11-05 on the development laptop (RTX 4070 Laptop GPU), 5v5 at the three
-training presets, fog on, the seat drawn per game, 128 games per preset; the section notes
-(`docs/rewrite/sections/scripted-redesign-notes.md`) have the per-preset split, the search
-and the softness audit.
+training presets, fog on, the seat drawn per game, 128 games per preset, the agent with its
+per-mode defaults; the section notes (`docs/rewrite/sections/scripted-memory-notes.md`)
+have the per-preset split, the searches and the softness audit.
 
-| The agent at | Against | Score |
-|---|---|---|
-| T = 1 | the earlier (linear-ramp) agent | 0.483 ± 0.025 |
-| T = 1 | the earlier BC teacher (that agent, 1% uniform) | 0.630 ± 0.024 |
-| T = 1 | the chaser | 1.000 |
-| T = 1.5, 2, 3, 4 | itself at T = 1 | 0.477, 0.408, 0.172, 0.034 |
-| T = 8, 16 | itself at T = 1 | 0.007 |
-| T = 32 | random | 0.999 |
-| T = 1, 1% uniform | itself at T = 1 | 0.406 ± 0.024 |
+| The agent at | Against | Score | frontline | deathmatch | deathmatch_wide |
+|---|---|---|---|---|---|
+| T = 1 | round one's (memoryless) agent | 0.454 ± 0.024 | 0.539 | 0.363 | 0.461 |
+| T = 1 | the earlier (linear-ramp) agent | 0.464 ± 0.024 | 0.594 | 0.312 | 0.484 |
+| T = 1 | itself with memory off, T = 1 | 0.374 ± 0.023 | 0.387 | 0.375 | 0.359 |
+| T = 1.5, 2, 3, 4 | itself at T = 1 | 0.522, 0.385, 0.207, 0.074 | | | |
 
-Its joint entropy at T = 1 is 0.84 to 0.92 nats per living ship step (1.06 to 1.18 at
-T = 2, 1.40 to 1.57 at T = 4). `tests/sections/test_scripted_acceptance.py` plays it
+The memory costs strength: the agent loses to its own parameters played without it in
+every mode, and no single part of the memory carries the cost (the notes). The ladder's
+mixtures (T = 2, shares 0.1, 0.3, 0.5) score 0.648, 0.897 and 0.980 against random, each
+0.71 to 0.78 against the one below, and T = 8 scores 0.693 against the share 0.5.
+
+Its joint entropy at T = 1 is 0.85 to 0.88 nats per living ship step (1.11 to 1.12 at
+T = 2, 1.50 to 1.54 at T = 4). `tests/sections/test_scripted_acceptance.py` plays it
 against random and the chaser on seeds at or above the search's
 `bench.scripted_search.SEED_LIMIT`: at most 2 non-wins in 2048 games against random, and
 above 0.5 against the chaser, at every preset.
@@ -283,4 +285,8 @@ its urgency, progress and tie-break, the hand-over to combat by distance, and re
 the invariances (the seat, a mirrored world, permuted rows, the
 values of hidden rows' zeroed columns), the softness (no certain action of a living ship,
 the temperature's flattening, the scale floors), the rungs and per-view parameters.
+`tests/sections/test_scripted_memory.py` covers the memory: the switching rate, the
+target's hysteresis and a forced re-choice, dead reckoning, its fade and its drop inside
+the own view, the resets, the turn side's commitment, memory off as the memoryless agent,
+the mixture's agent flags, and the per-mode parameters.
 `tests/sections/test_scripted_search.py` covers the search's parts on the CPU.
