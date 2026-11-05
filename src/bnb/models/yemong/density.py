@@ -79,7 +79,9 @@ class HexGrid:
         index = self.lookup[vertex_q.clamp(0, side - 1), vertex_r.clamp(0, side - 1)]
         index = torch.where(inside, index, cells)  # off-grid: the dropped cell
         index = index + torch.where(is_ally, 0, cells + 1)[..., None]
-        weight = weight * alive[..., None].to(weight.dtype)
+        # On the triangle's diagonal 1 - u - v can round to -6e-8 (u + v rounds to 1 below
+        # its exact value): a negative count, whose y ln y is NaN in the deviance's null.
+        weight = weight.clamp_min(0.0) * alive[..., None].to(weight.dtype)
         counts = torch.zeros(x.shape[:-1] + (2 * (cells + 1),), dtype=x.dtype, device=x.device)
         counts.scatter_add_(-1, index.flatten(-2), weight.flatten(-2))
         return torch.cat([counts[..., :cells], counts[..., cells + 1 : -1]], -1)

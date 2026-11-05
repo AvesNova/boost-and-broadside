@@ -168,6 +168,28 @@ def test_density_target_and_rates():
     assert counts[0, cells:].sum() == pytest.approx(1.0)
 
 
+def test_a_ship_on_a_grid_triangle_s_diagonal_counts_no_negative_weight():
+    """Where the barycentric u + v rounds to 1 from above, 1 - u - v was -6e-8: a negative
+    count, whose y ln y made the density's explained deviance NaN."""
+    generator = torch.Generator().manual_seed(0)
+    ships = 200_000
+    along_r = torch.rand(ships, generator=generator)
+    corner = torch.randint(-5, 5, (2, ships), generator=generator).float()
+    axis_r, axis_q = corner[0] + along_r, corner[1] + (1.0 - along_r)  # u + v = 1
+    scale = 10 / 2600.0
+    y = axis_r * density.SQRT3_HALF / scale
+    x = (axis_q + 0.5 * axis_r) / scale
+    counts = density.HexGrid(10).counts(
+        x[:, None],
+        y[:, None],
+        torch.ones((len(x), 1), dtype=torch.bool),
+        torch.ones((len(x), 1), dtype=torch.bool),
+        torch.tensor(2600.0),
+    )
+    assert counts.min() >= 0.0
+    assert not torch.special.xlogy(counts, counts).isnan().any()
+
+
 def test_value_bins_and_two_hot():
     bins = critic.value_bins(51, 2.0, dtype=torch.float64)
     values = torch.linspace(-6.0, 6.0, 101, dtype=torch.float64)
