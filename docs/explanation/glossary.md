@@ -69,8 +69,10 @@ the GPU, over every tensor of a pytree at once.
 
 ## Rung
 
-A step of the stationary ladder between random play and the scripted agent: the scripted
-agent at a temperature T > 1, `rung_T<T>` (random play is T = `+inf`). See
+A step of the stationary ladder between random play and the scripted agent
+(`bnb.runtime.opponents.Rung`): the scripted agent at a temperature T > 1, `rung_T<T>`, or a
+mixture, `rung_T<T>_p<p>`, each ship the agent at T with probability p per game and random
+otherwise (random play is T = `+inf`). See
 [The scripted agent](scripted-agent.md#softness-logistics-the-floor-and-the-temperature).
 
 ## Sim index, team-relative

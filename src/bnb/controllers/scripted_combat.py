@@ -2,7 +2,8 @@
 
 Everything is per own ship, (R, S), from one team's observation: the own rows are the first
 S, the enemy rows the rest. An enemy row is read only where it is visible and alive, so a
-hidden row's zeroed columns never matter.
+hidden row's zeroed columns never matter; the target is chosen from the enemies the agent
+recalls (`scripted_memory`), seen or dead reckoned.
 """
 
 import math
@@ -13,8 +14,10 @@ import torch
 from bnb.contracts import Obs
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.game.handling.characteristics import Characteristics, time_of_flight
+from bnb.game.rules import Rules
 from bnb.game.ship_types import per_ship
 
+from .scripted_memory import Recall, ScriptedCarry, commit, fresh_carry, remember, ways_round
 from .scripted_parameters import ScriptedParameters, floored, logistic, ramp
 
 TARGET_SIZE_RANGE = (math.radians(1.0), math.radians(45.0))  # the clamp on its angular size
@@ -53,6 +56,10 @@ class Context(NamedTuple):
     distance_from_centre: torch.Tensor
     boundary_weight: torch.Tensor  # the steer toward the centre, in [0, 1]
     temperature: torch.Tensor | float  # the agent's: a float, or (R, 1) per view
+    carry: ScriptedCarry  # the memory, before this decision's plan choices
+    recall: Recall  # the enemies as the agent believes them
+    seconds: float  # a decision's length
+    switching: bool  # the plan choices may switch (else only a forced re-choice)
 
 
 def column(rows: torch.Tensor, name: str) -> torch.Tensor:
@@ -65,9 +72,26 @@ def context(
     characteristics: Characteristics,
     parameters: ScriptedParameters,
     temperature: torch.Tensor | float = 1.0,
+    carry: ScriptedCarry | None = None,
+    recall: Recall | None = None,
+    seconds: float = Rules.tick_length,
+    switching: bool = False,
 ) -> Context:
     """The Context both layers read, from one team's views (R, ...), own rows first, at the
-    agent's temperature (a float, or (R, 1) per view)."""
+    agent's temperature (a float, or (R, 1) per view), with its memory (`remember`'s carry
+    and recall; None for a fresh one's: the memoryless agent)."""
+    if carry is None:
+        ships = obs.ships
+        S = ships.shape[-2] // 2
+        reset = torch.zeros(ships.shape[0], dtype=torch.bool, device=ships.device)
+        carry, recall = remember(
+            fresh_carry(ships.shape[0], S, ships.shape[-2] - S, ships.device),
+            obs,
+            reset,
+            characteristics,
+            parameters,
+            temperature,
+        )
     ships = obs.ships
     S = ships.shape[-2] // 2  # two teams, own rows first
     own, enemy = ships[:, :S], ships[:, S:]
@@ -108,6 +132,10 @@ def context(
         distance_from_centre=distance_from_centre,
         boundary_weight=boundary_weight,
         temperature=temperature,
+        carry=carry,
+        recall=recall,
+        seconds=seconds,
+        switching=switching,
     )
 
 
@@ -133,12 +161,18 @@ def steer(
 
 
 def stick_marginal(
-    fleet: Context, error: torch.Tensor, parameters: ScriptedParameters
-) -> torch.Tensor:
-    """(R, S, 7) the stick for an angle error (positive left): P(turn) and the level by
-    two further logistics, all in stall angles, each floored; the side follows the error's
-    sign, floored (an error of exactly 0 picks either side evenly). Indices: 0 straight,
-    then by level, odd right and even left."""
+    fleet: Context,
+    error: torch.Tensor,
+    parameters: ScriptedParameters,
+    committed_left: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """((R, S, 7) the stick, the committed side (R, S) bool) for an angle error (positive
+    left): P(turn) and the level by two further logistics, all in stall angles, each
+    floored. The side: the committed side (`committed_left`, None for the error's sign),
+    which switches by side_switch_in_radians on how much shorter the other way round is,
+    outweighs the error's sign by side_commit_in_stall_angle on the error, then floored (an
+    error of exactly 0 picks either side evenly). Indices: 0 straight, then by level, odd
+    right and even left."""
     size = error.abs() / fleet.stall_angle
     temperature = fleet.temperature
     turn = floored(logistic(size, parameters.turn_in_stall_angle, temperature), "turn")
@@ -156,10 +190,28 @@ def stick_marginal(
         ],
         -1,
     )  # (R, S, 3)
-    left = floored((error > 0.0).float(), "side")
-    left = torch.where(error == 0.0, 0.5, left)[..., None]
+    sign_left = error > 0.0
+    if committed_left is None:
+        committed_left, forced = sign_left, torch.ones_like(sign_left)
+    else:
+        forced = fleet.carry.fresh
+    left_way, right_way = ways_round(error)
+    longer = torch.where(committed_left, left_way - right_way, right_way - left_way)
+    committed_left = commit(
+        committed_left,
+        sign_left,
+        longer,
+        forced,
+        parameters.side_switch_in_radians,
+        temperature,
+        fleet.seconds,
+        fleet.switching,
+    )
+    weight = logistic(size, parameters.side_commit_in_stall_angle, temperature)
+    left = weight * committed_left.float() + (1.0 - weight) * sign_left.float()
+    left = torch.where(error == 0.0, 0.5, floored(left, "side"))[..., None]
     sides = torch.stack([(1.0 - left) * levels, left * levels], -1)
-    return torch.cat([(1.0 - turn)[..., None], sides.flatten(-2)], -1)
+    return torch.cat([(1.0 - turn)[..., None], sides.flatten(-2)], -1), committed_left
 
 
 def power_marginal(boost: torch.Tensor, reverse: torch.Tensor) -> torch.Tensor:
@@ -213,18 +265,62 @@ def lead(
     )
 
 
+class Combat(NamedTuple):
+    """The combat layer's result: its marginals; per own ship (R, S): has_target, the
+    target's distance (0 without one) and its weight (1 seen, fading when dead reckoned, 0
+    without one); and the plan choices it made, the target (-1 none) and the turn side."""
+
+    marginals: Marginals
+    has_target: torch.Tensor
+    distance: torch.Tensor
+    weight: torch.Tensor
+    target: torch.Tensor
+    left: torch.Tensor
+
+
+def choose_target(fleet: Context, offset_x: torch.Tensor, offset_y: torch.Tensor, parameters):
+    """The committed target (R, S) int64, -1 without a known enemy: the nearest known enemy
+    by its distance over its weight (ties: lowest row) when the ship is fresh or its target
+    is gone, else the committed one, switching to that nearest at
+    target_switch_in_log_distance's rate on the log ratio of the two."""
+    recall = fleet.recall
+    known = recall.known[:, None, :]  # (R, 1, E)
+    distance = torch.sqrt(offset_x * offset_x + offset_y * offset_y).clamp_min(TINY)
+    score = torch.log(distance) - torch.log(recall.weight.clamp_min(1e-30))[:, None, :]
+    score = torch.where(known, score, math.inf)  # (R, S, E)
+    best = score.argmin(-1)
+    committed = fleet.carry.target
+    held = committed.clamp_min(0)[..., None]
+    valid = (committed >= 0) & known.expand_as(score).gather(-1, held)[..., 0]
+    advantage = torch.where(
+        valid, score.gather(-1, held)[..., 0] - score.gather(-1, best[..., None])[..., 0], 0.0
+    )
+    target = commit(
+        committed,
+        best,
+        advantage,
+        fleet.carry.fresh | ~valid,
+        parameters.target_switch_in_log_distance,
+        fleet.temperature,
+        fleet.seconds,
+        fleet.switching,
+    )
+    return torch.where(recall.known.any(-1, keepdim=True), target, -1)
+
+
 def combat(
     fleet: Context, characteristics: Characteristics, parameters: ScriptedParameters
-) -> tuple[Marginals, torch.Tensor, torch.Tensor]:
-    """The combat layer: (marginals, has_target (R, S), the target's distance (R, S), 0
-    without one). The target is the nearest visible, living enemy (ties: lowest row)."""
-    enemy = fleet.enemy
-    offset_x = column(enemy, "x")[:, None, :] - fleet.x[..., None]  # (R, S, E)
-    offset_y = column(enemy, "y")[:, None, :] - fleet.y[..., None]
-    seen = fleet.enemy_seen[:, None, :]
-    squared = torch.where(seen, offset_x * offset_x + offset_y * offset_y, math.inf)
-    pick = torch.nn.functional.one_hot(squared.argmin(-1), squared.shape[-1]).bool() & seen
-    has_target = seen.any(-1).expand_as(fleet.x)
+) -> Combat:
+    """The combat layer. The target is the committed one (`choose_target`), aimed at where
+    the agent believes it is; P(shoot) is scaled by its weight, so a dead-reckoned target
+    draws fewer shots the staler it is."""
+    recall = fleet.recall
+    offset_x = recall.x[:, None, :] - fleet.x[..., None]  # (R, S, E)
+    offset_y = recall.y[:, None, :] - fleet.y[..., None]
+    chosen = choose_target(fleet, offset_x, offset_y, parameters)
+    has_target = chosen >= 0
+    pick = torch.nn.functional.one_hot(chosen.clamp_min(0), offset_x.shape[-1]).bool()
+    pick = pick & has_target[..., None]
 
     def target(values: torch.Tensor) -> torch.Tensor:
         """The target's value from per-pair (R, S, E) or per-enemy (R, E) values."""
@@ -232,6 +328,7 @@ def combat(
         return torch.where(pick, values, 0.0).sum(-1)
 
     target_x, target_y = target(offset_x), target(offset_y)
+    weight = target(recall.weight)
     distance = torch.sqrt(target_x * target_x + target_y * target_y)
     safe_distance = distance.clamp_min(TINY)
     aim_x, aim_y = lead(
@@ -240,8 +337,8 @@ def combat(
         parameters,
         target_x,
         target_y,
-        target(column(enemy, "velocity_x")),
-        target(column(enemy, "velocity_y")),
+        target(recall.velocity_x),
+        target(recall.velocity_y),
     )
     aim_error = signed_angle(fleet.cos, fleet.sin, aim_x, aim_y)
 
@@ -252,11 +349,15 @@ def combat(
     wanted_x, wanted_y = steer(
         fleet, torch.where(has_target, aim_x, -fleet.x), torch.where(has_target, aim_y, -fleet.y)
     )
-    steered = stick_marginal(
-        fleet, signed_angle(fleet.cos, fleet.sin, wanted_x, wanted_y), parameters
+    steered, left = stick_marginal(
+        fleet,
+        signed_angle(fleet.cos, fleet.sin, wanted_x, wanted_y),
+        parameters,
+        fleet.carry.combat_left,
     )
     hold = (~has_target & ~toward_centre)[..., None]
-    stick = torch.where(hold, stick_marginal(fleet, torch.zeros_like(fleet.x), parameters), steered)
+    held, _ = stick_marginal(fleet, torch.zeros_like(fleet.x), parameters)
+    stick = torch.where(hold, held, steered)
 
     boost = either(
         slow(fleet, parameters), torch.where(has_target, far(fleet, distance, parameters), 0.0)
@@ -276,9 +377,9 @@ def combat(
     )
     cost = per_ship(characteristics.bullet_energy_cost, fleet.own_type)
     ready = (column(fleet.own, "gun_cooldown") <= 0.0) & (column(fleet.own, "energy") >= cost)
-    shoot = floored(torch.where(has_target & ready, aligned * in_range, 0.0), "shoot")
+    shoot = floored(torch.where(has_target & ready, weight * aligned * in_range, 0.0), "shoot")
     shoot = torch.stack([1.0 - shoot, shoot], -1)
-    return Marginals(power, stick, shoot), has_target, distance
+    return Combat(Marginals(power, stick, shoot), has_target, distance, weight, chosen, left)
 
 
 def blend(first: torch.Tensor, second: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:

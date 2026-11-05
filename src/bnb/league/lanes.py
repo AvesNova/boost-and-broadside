@@ -31,7 +31,7 @@ from bnb.runtime.lanes import (
     SCRIPTED_PLAYER,
     Lane,
 )
-from bnb.runtime.opponents import ladder_temperature
+from bnb.runtime.opponents import ladder_rung
 from bnb.runtime.train import Trainer
 
 from .ratings import fit_ratings
@@ -44,7 +44,7 @@ SNAPSHOT_PREFIX = "snapshot_"  # a league snapshot's name (`bnb.league.pool.snap
 
 def stationary(player: str) -> bool:
     """A ladder player or a league snapshot: its play never changes."""
-    return ladder_temperature(player) is not None or player.startswith(SNAPSHOT_PREFIX)
+    return ladder_rung(player) is not None or player.startswith(SNAPSHOT_PREFIX)
 
 
 class LaneRatings:

@@ -27,19 +27,20 @@ from bnb.game.handling.characteristics import characteristics
 from bnb.learn.bc import TeacherConfig, TeacherOpponent
 from bnb.runs import checkpoint
 from bnb.runs.records import Run
-from bnb.runtime.opponents import OUTCOMES, ladder_temperature
+from bnb.runtime.opponents import OUTCOMES, Rung, ladder_rung
 from bnb.runtime.rollout import Rollout
 from bnb.runtime.train import model_controller
 
 
 @dataclasses.dataclass(frozen=True)
 class Player:
-    """One player: its name, and either a policy directory, a ladder entry's temperature
-    (+inf random), or a teacher (the scripted agent at its temperature with a floor)."""
+    """One player: its name, and either a policy directory, a ladder entry's rung
+    (`bnb.runtime.opponents.Rung`; +inf random), or a teacher (the scripted agent at its
+    temperature with a floor)."""
 
     name: str
     policy: pathlib.Path | None = None
-    temperature: float | None = None
+    rung: Rung | None = None
     teacher: TeacherConfig | None = None
 
 
@@ -66,9 +67,9 @@ def teacher_of(name: str) -> TeacherConfig | None:
 def player(name: str, runs_directory: pathlib.Path | None = None) -> Player:
     """The player a command-line name means: a ladder entry, a policy directory (one with a
     checkpoint.json), or a run's newest checkpoint."""
-    temperature = ladder_temperature(name)
-    if temperature is not None:
-        return Player(name, temperature=temperature)
+    rung = ladder_rung(name)
+    if rung is not None:
+        return Player(name, rung=rung)
     teacher = teacher_of(name)
     if teacher is not None:
         return Player(name, teacher=teacher)
@@ -78,7 +79,8 @@ def player(name: str, runs_directory: pathlib.Path | None = None) -> Player:
     if runs_directory is not None and (pathlib.Path(runs_directory) / name).is_dir():
         return Player(name, policy=Run.open(pathlib.Path(runs_directory), name).checkpoint_at())
     raise ValueError(
-        f"{name!r} is not a policy file, a run or a ladder entry (scripted, random, rung_T<t>)"
+        f"{name!r} is not a policy file, a run or a ladder entry (scripted, random, "
+        "rung_T<t>, rung_T<t>_p<share>)"
     )
 
 
@@ -134,8 +136,10 @@ def controller_of(player: Player, game: GameConfig, device: torch.device):
         return model_controller(model, game)
     agent = characteristics(api.ship_types(device), api.rules_of(game))
     if player.teacher is not None:
-        return TeacherOpponent(agent, player.teacher)
-    return Scripted(agent, temperature=player.temperature)
+        return TeacherOpponent(agent, game.ships_per_team, player.teacher)
+    return Scripted(
+        agent, game.ships_per_team, temperature=player.rung.temperature, share=player.rung.share
+    )
 
 
 def play(

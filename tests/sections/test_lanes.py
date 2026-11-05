@@ -33,6 +33,7 @@ from bnb.runtime.lanes import (
     lane_pools,
     split,
 )
+from bnb.runtime.opponents import Rung
 from bnb.runtime.rollout import Rollout
 
 sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "runs"))
@@ -229,7 +230,7 @@ def test_lanes_split_evenly_over_the_modes_then_by_weight():
     assert [round(pool.share * total) for pool in pools] == [8, 8, 3, 1, 3, 1]
     assert all(pool.seats == (LANES, LANES) for pool in pools[2:])
     assert pools[4].mode == "frontline"  # a lane plays its mode's game
-    chain = ladder_chain((math.inf, 2.0, 1.25), 0.1)
+    chain = ladder_chain((Rung(math.inf), Rung(2.0), Rung(1.25)), 0.1)
     assert [m.name for m in chain] == [
         "random_vs_rung_T2",
         "rung_T2_vs_rung_T1.25",
@@ -244,7 +245,7 @@ def _seat(lanes: tuple[Lane, ...], rows_per_lane: int = 2) -> LaneSeat:
     pool = torch.arange(len(lanes)).repeat_interleave(2 * rows_per_lane)
     role = torch.tensor(([0] * rows_per_lane + [1] * rows_per_lane) * len(lanes))
     del game
-    return LaneSeat(controller, lanes, pool, role, CHARACTERISTICS)
+    return LaneSeat(controller, lanes, pool, role, CHARACTERISTICS, 2)
 
 
 def test_a_lane_seat_plays_each_rows_player_and_tallies_each_game_once():

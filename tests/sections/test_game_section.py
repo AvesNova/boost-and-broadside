@@ -628,13 +628,14 @@ def test_an_eager_rollout_of_the_ladder_on_frontline_captures_into_a_graph():
     values (a host copy cannot run inside a capture)."""
     from bnb.contracts import Pool
     from bnb.league.matches import Player, controller_of
+    from bnb.runtime.opponents import Rung
     from bnb.runtime.rollout import Rollout
 
     game = api.PRESETS["frontline"]
     device = torch.device("cuda")
     controllers = {
-        "scripted": controller_of(Player("scripted", temperature=1.0), game, device),
-        "rung": controller_of(Player("rung_T2", temperature=2.0), game, device),
+        "scripted": controller_of(Player("scripted", rung=Rung(1.0)), game, device),
+        "rung": controller_of(Player("rung_T2", rung=Rung(2.0)), game, device),
     }
     rollout = Rollout(
         game,

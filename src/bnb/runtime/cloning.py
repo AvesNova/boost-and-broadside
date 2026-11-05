@@ -13,10 +13,10 @@ import torch
 
 from bnb.contracts import GameConfig, Pool
 from bnb.contracts.obs import SHIP
-from bnb.controllers.scripted import Scripted, distribution
+from bnb.controllers.scripted import Scripted
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
-from bnb.learn.bc import flat_views
+from bnb.learn.bc import flat_views, teacher_carries, teacher_distribution
 
 from .lanes import BC_MATCHUPS, LIVE, SCRIPTED_PLAYER, LaneConfig
 from .rollout import Rollout
@@ -146,8 +146,9 @@ def teacher_distributions(
     the ship card `types` (on `device`), as a function of its temperature: T -> (tokens,
     42). It plays every seat of these pools (each pool's seats renamed to it) at T = 1,
     from staggered clocks, for `segments` segments of `length` ticks; the observations are
-    kept and relabelled at each T asked."""
-    agent = Scripted(characteristics(types, api.rules_of(game)))
+    kept and relabelled at each T asked, by the agent at T with its own carry run over
+    them."""
+    agent = Scripted(characteristics(types, api.rules_of(game)), game.ships_per_team)
     own_pools = tuple(
         Pool(
             pool.name,
@@ -173,14 +174,18 @@ def teacher_distributions(
         device,
         compiled=compiled,
     )
-    observed = [flat_views(rollout.run().obs) for _ in range(segments)]
+    observed = [rollout.run().obs for _ in range(segments)]
 
     def at(temperature: float) -> torch.Tensor:
+        teacher = Scripted(
+            agent.characteristics, game.ships_per_team, agent.parameters, temperature
+        )
+        carry = teacher.init_carry(observed[0].ships.shape[1], device)
         rows = []
-        for views in observed:
-            probabilities = distribution(
-                views, agent.characteristics, agent.parameters, temperature
-            )
+        for obs in observed:  # the teacher's carry runs on through the segments
+            carries, carry = teacher_carries(teacher, obs, carry)
+            probabilities = teacher_distribution(teacher, obs, carries).flatten(0, 1)
+            views = flat_views(obs)
             alive = views.ships[:, : probabilities.shape[1], SHIP["alive"]] > 0.5
             rows.append(probabilities[alive])
         return torch.cat(rows)

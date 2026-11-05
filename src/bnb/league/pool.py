@@ -11,7 +11,7 @@ import dataclasses
 
 import torch
 
-from bnb.runtime.opponents import ladder_name
+from bnb.runtime.opponents import Rung, ladder_name
 
 from .gauge import KINDS
 
@@ -24,22 +24,23 @@ HISTORY_FROM = 3  # then the snapshot nearest each age 2^k snapshots back, k >= 
 
 @dataclasses.dataclass(frozen=True)
 class Entry:
-    """One pool entry. kind: "checkpoint", "average" or "ladder"; temperature: a ladder
-    entry's scripted temperature (+inf random, 1 the scripted agent), None otherwise; steps: a
+    """One pool entry. kind: "checkpoint", "average" or "ladder"; rung: a ladder entry's
+    (`bnb.runtime.opponents.Rung`: +inf random, T = 1 the scripted agent), None otherwise;
+    steps: a
     checkpoint's environment steps at its snapshot; ordinal: a checkpoint's place in the
     order of snapshots (0, 1, 2, ...)."""
 
     name: str
     kind: str
-    temperature: float | None = None
+    rung: Rung | None = None
     steps: int | None = None
     ordinal: int | None = None
 
     def __post_init__(self) -> None:
         if self.kind not in KINDS:
             raise ValueError(f"entry kind {self.kind!r} is not one of {KINDS}")
-        if (self.kind == "ladder") != (self.temperature is not None):
-            raise ValueError(f"{self.name}: only a ladder entry has a temperature")
+        if (self.kind == "ladder") != (self.rung is not None):
+            raise ValueError(f"{self.name}: only a ladder entry has a rung")
 
     @property
     def network(self) -> bool:
@@ -47,9 +48,9 @@ class Entry:
         return self.kind != "ladder"
 
 
-def ladder_entries(temperatures: tuple[float, ...]) -> list[Entry]:
-    """The stationary ladder's entries, one per temperature (`ladder_name`)."""
-    return [Entry(ladder_name(t), "ladder", temperature=t) for t in temperatures]
+def ladder_entries(rungs: tuple[Rung, ...]) -> list[Entry]:
+    """The stationary ladder's entries, one per rung (`ladder_name`)."""
+    return [Entry(ladder_name(rung), "ladder", rung=rung) for rung in rungs]
 
 
 def snapshot_name(steps: int) -> str:

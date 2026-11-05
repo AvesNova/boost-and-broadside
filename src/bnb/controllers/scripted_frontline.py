@@ -4,7 +4,14 @@ with the combat layer by the nearest enemy's distance.
 
 Strength is a sum of Gaussian kernels over visible, living ships, each weighted by its
 health 0.2 + 0.8 shield / max_shield (a ship at full shield counts 1).
+
+The goal (defend or attack) and recovery are plan choices the agent commits to
+(`scripted_memory.commit`): each rule gives a margin, positive for the first option, and the
+committed option switches at its rate on the other's margin.
 """
+
+import math
+from typing import NamedTuple
 
 import torch
 
@@ -13,6 +20,8 @@ from bnb.game.handling.characteristics import Characteristics
 from bnb.game.ship_types import per_ship
 
 from .scripted_combat import (
+    TINY,
+    Combat,
     Context,
     Marginals,
     blend,
@@ -25,6 +34,7 @@ from .scripted_combat import (
     steer,
     stick_marginal,
 )
+from .scripted_memory import commit
 from .scripted_parameters import Ramp, ScriptedParameters, ramp
 
 OWN_SPAWN, OWN_DEFENSE, ENEMY_DEFENSE = 0, 1, 3  # zone roles for the viewer (ZONE_COLUMNS)
@@ -43,18 +53,45 @@ def _pairs(x: torch.Tensor, y: torch.Tensor, to_x: torch.Tensor, to_y: torch.Ten
     return to_x[:, None, :] - x[..., None], to_y[:, None, :] - y[..., None]
 
 
+class Frontline(NamedTuple):
+    """The Frontline layer's marginals and the plan choices it made per own ship (R, S): the
+    turn side, the goal (defending) and recovery."""
+
+    marginals: Marginals
+    left: torch.Tensor
+    defending: torch.Tensor
+    recovering: torch.Tensor
+
+
+def _choice(fleet: Context, committed: torch.Tensor, margin: torch.Tensor, shape) -> torch.Tensor:
+    """A two-way plan choice from its rule's margin (positive: the first option, True):
+    the committed option switches at `shape`'s rate on the other's margin."""
+    advantage = torch.where(committed, -margin, margin)
+    return commit(
+        committed,
+        margin > 0.0,
+        advantage,
+        fleet.carry.fresh,
+        shape,
+        fleet.temperature,
+        fleet.seconds,
+        fleet.switching,
+    )
+
+
 def frontline(
     fleet: Context,
     zones: torch.Tensor,
     characteristics: Characteristics,
     parameters: ScriptedParameters,
-    combat_marginals: Marginals,
-    has_target: torch.Tensor,
-    target_distance: torch.Tensor,
-) -> Marginals:
-    """The Frontline layer's marginals per own ship (R, S): power and stick toward the assigned zone
-    of zones (R, Z, columns), or toward the spawn when recovering, blended with combat_marginals by
-    target_distance (m) where has_target; the shoot marginal is the combat layer's."""
+    fighting: Combat,
+) -> Frontline:
+    """The Frontline layer per own ship (R, S): power and stick toward the assigned zone of
+    zones (R, Z, columns), or toward the spawn when recovering, blended with the combat
+    layer's marginals by its target's distance, times the target's weight, where it has a
+    target; the shoot marginal is the combat layer's."""
+    combat_marginals, has_target = fighting.marginals, fighting.has_target
+    target_distance = fighting.distance
     own, enemy = fleet.own, fleet.enemy
     own_alive = column(own, "alive") > 0.5
     own_health = torch.where(own_alive, _health(own, fleet.own_type, characteristics), 0.0)
@@ -93,9 +130,14 @@ def frontline(
     urgency = of_role(against * (1.0 + zones[..., ZONE["progress"]]), OWN_DEFENSE)  # (R,)
 
     # Recovery: hurt and threatened, fall back to the own spawn.
+    # Recovery's margin: the smaller log margin of its two conditions.
     shield_fraction = column(own, "shield") / per_ship(characteristics.max_shield, fleet.own_type)
-    recovering = (shield_fraction < parameters.recovery_shield_fraction) & (
-        threat > parameters.recovery_threat
+    recovery_margin = torch.minimum(
+        _log(parameters.recovery_shield_fraction) - torch.log(shield_fraction.clamp_min(TINY)),
+        torch.log(threat.clamp_min(TINY)) - _log(parameters.recovery_threat),
+    )
+    recovering = _choice(
+        fleet, fleet.carry.recovering, recovery_margin, parameters.recovery_switch_in_log_ratio
     )
 
     # Who defends: the defense wants the floor, or the enemy's strength near it plus a
@@ -121,9 +163,10 @@ def frontline(
         + parameters.defense_urgency * urgency[:, None]
     )  # (R, 1)
     attackers = available.sum(-1, keepdim=True) - wanted
+    # hopeless where positive: the enemy near the attack zone outweighs the attackers
     hopeless = (
-        attackers * torch.exp(per_view(parameters.aggression))
-        < of_role(enemy_near, ENEMY_DEFENSE)[:, None]
+        of_role(enemy_near, ENEMY_DEFENSE)[:, None] * torch.exp(-per_view(parameters.aggression))
+        - attackers
     )
     order = torch.sqrt(to_defense[0] ** 2 + to_defense[1] ** 2) - torch.sqrt(
         to_attack[0] ** 2 + to_attack[1] ** 2
@@ -133,7 +176,13 @@ def frontline(
         (order[:, None, :] == order[..., None]) & (rows[None, :] < rows[:, None])
     )
     strength_ahead = torch.where(ahead, available[:, None, :], 0.0).sum(-1)  # (R, S)
-    defending = hopeless | (strength_ahead < wanted)
+    # Defend's margin, in ship strengths: the larger of the two rules'.
+    defending = _choice(
+        fleet,
+        fleet.carry.defending,
+        torch.maximum(hopeless, wanted - strength_ahead),
+        parameters.goal_switch_in_strength,
+    )
     goal_x = torch.where(defending, to_defense[0], to_attack[0])
     goal_y = torch.where(defending, to_defense[1], to_attack[1])
 
@@ -155,8 +204,11 @@ def frontline(
         recovering, torch.sqrt(to_spawn[0] ** 2 + to_spawn[1] ** 2), goal_length
     )
 
-    stick = stick_marginal(
-        fleet, signed_angle(fleet.cos, fleet.sin, *steer(fleet, wanted_x, wanted_y)), parameters
+    stick, left = stick_marginal(
+        fleet,
+        signed_angle(fleet.cos, fleet.sin, *steer(fleet, wanted_x, wanted_y)),
+        parameters,
+        fleet.carry.frontline_left,
     )
     power = power_marginal(
         either(slow(fleet, parameters), far(fleet, goal_distance, parameters)),
@@ -166,12 +218,20 @@ def frontline(
     handover = Ramp(
         parameters.shoot_in_gun_range.centre, parameters.combat_radius_in_gun_range, 1.0, 0.0
     )
-    weight = torch.where(has_target, ramp(target_distance / fleet.gun_range, handover), 0.0)
+    weight = torch.where(
+        has_target, fighting.weight * ramp(target_distance / fleet.gun_range, handover), 0.0
+    )
     blended_power = blend(combat_marginals.power, power, weight)
     blended_stick = blend(combat_marginals.stick, stick, weight)
     keep = recovering[..., None]
-    return Marginals(
+    marginals = Marginals(
         torch.where(keep, power, blended_power),
         torch.where(keep, stick, blended_stick),
         combat_marginals.shoot,
     )
+    return Frontline(marginals, left, defending, recovering)
+
+
+def _log(value):
+    """The natural logarithm of a float or a per-view (R, 1) parameter."""
+    return torch.log(value) if isinstance(value, torch.Tensor) else math.log(value)

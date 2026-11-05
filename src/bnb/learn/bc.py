@@ -16,12 +16,16 @@ import math
 from collections.abc import Callable
 
 import torch
+from torch.utils import _pytree
 
 from bnb.contracts import Action, Obs, Outputs, Trajectory
 from bnb.contracts.action import NUM_JOINT, NUM_POWER, NUM_SHOOT, NUM_STICK
+from bnb.contracts.obs import GLOBAL
 from bnb.contracts.series import Mean
 from bnb.controllers.scripted import Scripted, uniform_actions
-from bnb.controllers.scripted_parameters import ScriptedParameters
+from bnb.controllers.scripted_defaults import MODE_DEFAULTS
+from bnb.controllers.scripted_memory import ScriptedCarry
+from bnb.controllers.scripted_parameters import ModeParameters, ScriptedParameters
 from bnb.game.handling.characteristics import Characteristics
 from bnb.models.yemong import policy
 
@@ -32,7 +36,7 @@ from .ppo import Learner, LearnerConfig, factor_sums
 AGREEMENTS = ("power", "stick", "shoot", "joint")
 # BC's per-pool sums over the living own ship-steps, in order.
 SUMS = ("kl", "teacher", "student", "tokens", *(f"agreement_{name}" for name in AGREEMENTS))
-Teacher = Callable[[Obs], torch.Tensor]  # views (R, ...) -> (R, S, NUM_JOINT) probabilities
+TEACHER_CARRY = "teacher_carry/"  # the derived names of the teacher's carry's fields
 
 
 MINIBATCHES = 256
@@ -59,8 +63,8 @@ def config(**overrides) -> LearnerConfig:
 class TeacherConfig:
     """The teacher: the scripted agent at its own temperature T (`Scripted`'s), its labels
     then mixed with uniform, (1 - floor) q_T + floor / 42. The default, T = 1 and floor 0,
-    is the scripted agent itself: it gives no living ship's action probability 0 (its
-    floor of `bnb.controllers.scripted_parameters.EPSILON` per binary decision), so the
+    is the scripted agent itself: it gives no living ship's action probability 0 but a
+    shot at its gates (its floors, `bnb.controllers.scripted_parameters.EPSILONS`), so the
     KL needs no floor of its own."""
 
     temperature: float = 1.0
@@ -81,11 +85,12 @@ def labels(probabilities: torch.Tensor, floor: float) -> torch.Tensor:
 
 def teacher_agent(
     characteristics: Characteristics,
+    ships_per_team: int,
     teacher: TeacherConfig,
-    parameters: ScriptedParameters = ScriptedParameters(),
+    parameters: ScriptedParameters | ModeParameters = MODE_DEFAULTS,
 ) -> Scripted:
     """The scripted agent at the teacher's temperature."""
-    return Scripted(characteristics, parameters, teacher.temperature)
+    return Scripted(characteristics, ships_per_team, parameters, teacher.temperature)
 
 
 class TeacherOpponent:
@@ -98,23 +103,26 @@ class TeacherOpponent:
     def __init__(
         self,
         characteristics: Characteristics,
+        ships_per_team: int,
         teacher: TeacherConfig,
-        parameters: ScriptedParameters = ScriptedParameters(),
+        parameters: ScriptedParameters | ModeParameters = MODE_DEFAULTS,
     ) -> None:
-        self.agent, self.teacher = teacher_agent(characteristics, teacher, parameters), teacher
+        self.agent = teacher_agent(characteristics, ships_per_team, teacher, parameters)
+        self.teacher = teacher
 
-    def init_carry(self, views: int, device: torch.device) -> None:
-        """No carry: the teacher is memoryless."""
-        return None
+    def init_carry(self, views: int, device: torch.device) -> ScriptedCarry:
+        """The agent's carry."""
+        return self.agent.init_carry(views, device)
 
-    def action_distribution(self, obs: Obs) -> torch.Tensor:
-        """(R, S, NUM_JOINT) the distribution `step` samples from: the labels'."""
-        return labels(self.agent.action_distribution(obs), self.teacher.floor)
+    def action_distribution(self, obs: Obs, carry: ScriptedCarry | None = None) -> torch.Tensor:
+        """(R, S, NUM_JOINT) the distribution `step` samples from given a carry it returned
+        (None: memoryless): the labels'."""
+        return labels(self.agent.action_distribution(obs, carry), self.teacher.floor)
 
-    def step(self, carry: None, obs: Obs, reset: torch.Tensor):
+    def step(self, carry: ScriptedCarry, obs: Obs, reset: torch.Tensor):
         """One decision for views (R, ...), drawn from the labels' distribution; see
         `Controller.step`."""
-        action, _, _ = self.agent.step(None, obs, reset)
+        action, carry, _ = self.agent.step(carry, obs, reset)
         action, floor = action.packed(), self.teacher.floor
         if floor != 0.0:
             uniform = torch.rand(action.shape[:-1], device=action.device) < floor
@@ -144,16 +152,34 @@ def flat_views(obs: Obs) -> Obs:
     )
 
 
-def teacher_distribution(teacher: Teacher, obs: Obs) -> torch.Tensor:
-    """The teacher on stored observations (L, n, ...): (L, n, S, 42)."""
+@torch.no_grad()
+def teacher_carries(
+    teacher: Scripted, obs: Obs, carry: ScriptedCarry
+) -> tuple[ScriptedCarry, ScriptedCarry]:
+    """The teacher run over stored observations (L, n, ...) in time order from its carry
+    (n, ...), each tick's reset read from the observation: (its carry after every tick,
+    (L, n, ...), and after the last, (n, ...))."""
+    steps = []
+    for tick in range(obs.ships.shape[0]):
+        view = _pytree.tree_map_only(torch.Tensor, lambda x, t=tick: x[t], obs)
+        reset = view.globals[:, GLOBAL["reset"]] > 0.5
+        _, carry = teacher.decide(carry, view, reset)
+        steps.append(carry)
+    return _pytree.tree_map(lambda *leaves: torch.stack(leaves), *steps), carry
+
+
+def teacher_distribution(teacher: Scripted, obs: Obs, carries: ScriptedCarry) -> torch.Tensor:
+    """The teacher on stored observations (L, n, ...) given its carry at each
+    (`teacher_carries`): (L, n, S, 42)."""
     length, views = obs.ships.shape[:2]
-    return teacher(flat_views(obs)).unflatten(0, (length, views))
+    flat = _pytree.tree_map(lambda x: x.flatten(0, 1), carries)
+    return teacher.action_distribution(flat_views(obs), flat).unflatten(0, (length, views))
 
 
 class BehaviourCloning(Learner):
-    """teacher: the teacher's distribution on views; labels: its transformation.
-    pools: the pool names, view_pool (V,) each stored view's pool index (the metrics are
-    per pool). The other arguments are the Learner's."""
+    """teacher: the scripted agent at the teacher's temperature; labels: its distribution
+    given its carry, transformed. pools: the pool names, view_pool (V,) each stored view's
+    pool index (the metrics are per pool). The other arguments are the Learner's."""
 
     def __init__(
         self,
@@ -163,7 +189,7 @@ class BehaviourCloning(Learner):
         types,
         outcome_weight: float,
         device: torch.device,
-        teacher: Teacher,
+        teacher: Scripted,
         teacher_config: TeacherConfig,
         pools: tuple[str, ...],
         view_pool: torch.Tensor,
@@ -172,6 +198,7 @@ class BehaviourCloning(Learner):
         diagnostics: bool = True,
     ) -> None:
         self.teacher, self.teacher_config, self.pools = teacher, teacher_config, pools
+        self.teacher_carry: ScriptedCarry | None = None  # (R, ...) after the last update
         # (KL, teacher entropy, student entropy, tokens, agreements) per pool.
         self.STATISTICS = tuple(f"{name}/{pool}" for name in SUMS for pool in pools)
         self.pool_one_hot = torch.nn.functional.one_hot(view_pool.to(device), len(pools)).float()[
@@ -186,7 +213,27 @@ class BehaviourCloning(Learner):
         the per-pool metrics."""
         prepared = super().prepare(segments, bootstrap)
         prepared["derived"]["pool"] = self.pool_one_hot  # (1, V, pools)
+        prepared["derived"].update(self._teacher_carries(segments))
         return prepared
+
+    def _teacher_carries(self, segments) -> dict:
+        """The teacher's carry at every stored tick, each field (L, V, ...) under
+        TEACHER_CARRY + its name: the shards in time order, from the last update's carry."""
+        rows = segments.views // segments.shards
+        carry = self.teacher_carry
+        if carry is None:
+            carry = self.teacher.init_carry(rows, self.device)
+        shards = []
+        for shard in range(segments.shards):
+            obs = segments.shard(("obs",), shard)["obs"]
+            carries, carry = teacher_carries(self.teacher, obs, carry)
+            shards.append(carries)
+        self.teacher_carry = carry
+        fields = dataclasses.fields(ScriptedCarry)
+        return {
+            TEACHER_CARRY + field.name: torch.cat([getattr(c, field.name) for c in shards], 1)
+            for field in fields
+        }
 
     def _policy(
         self,
@@ -201,8 +248,14 @@ class BehaviourCloning(Learner):
         of KL(labels || student), the labels' and the student's entropy and the tokens),
         over own ships alive."""
         own_alive = trajectory.alive[..., : trajectory.log_probability.shape[-1]]
+        carries = ScriptedCarry(
+            **{
+                field.name: derived[TEACHER_CARRY + field.name]
+                for field in dataclasses.fields(ScriptedCarry)
+            }
+        )
         target = labels(
-            teacher_distribution(self.teacher, trajectory.obs), self.teacher_config.floor
+            teacher_distribution(self.teacher, trajectory.obs, carries), self.teacher_config.floor
         )
         logits = unrolled.policy_logits.float()
         cross = losses.cross_entropy(logits, target)

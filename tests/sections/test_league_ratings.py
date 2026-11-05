@@ -8,6 +8,7 @@ import torch
 from bnb.league import gauge as gauges
 from bnb.league.gauge import Gauge, Record, gauge_rating
 from bnb.league.ratings import fit_ratings, rate_against, rate_live, win_probability
+from bnb.runtime.opponents import Rung
 
 TRIALS = 200
 COVERAGE = 0.9  # acceptance 2: within two standard errors in at least 90% of trials
@@ -70,7 +71,7 @@ def _ladder_gauge() -> Gauge:
     gauge = Gauge()
     # the priors 1000 / T: random 0, T = 2 at 500, the scripted agent 1000
     for name, temperature in (("0.0", math.inf), ("0.5", 2.0), ("1.0", 1.0)):
-        gauge.add(f"ladder/{name}", "ladder", gauge_rating(temperature))
+        gauge.add(f"ladder/{name}", "ladder", gauge_rating(Rung(temperature)))
     return gauge
 
 

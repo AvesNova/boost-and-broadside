@@ -26,11 +26,14 @@ its fixed share. The entries (`bnb.league.pool.Entry`) are:
   policy's weights, folded in after every update (`bnb.league.pool.average_into`, the decay
   `LeagueConfig.exponential_decay` per update);
 - **the stationary ladder:** random, the rungs and the scripted agent
-  (`LeagueConfig.ladder`, the scripted agent's temperatures, weakest first: `+inf` is
-  `random`, T > 1 is `rung_T<T>`, 1 is `scripted`; see
+  (`LeagueConfig.ladder`, `bnb.runtime.opponents.Rung`s of the scripted agent's
+  temperature and share, weakest first: `+inf` is `random`; a share p below 1 at T is
+  `rung_T<T>_p<p>`, each ship the agent at T with probability p per game, else random (the
+  mixture rungs, the ladder's bottom); T > 1 at share 1 is `rung_T<T>`; T = 1 is
+  `scripted`; see
   [The scripted agent](scripted-agent.md#softness-logistics-the-floor-and-the-temperature)).
-  The rungs were scripted-with-probability-p players until 2026-11-05; the temperature
-  rungs are new players, so ladder ratings from before then do not carry over.
+  The scripted agent gained a memory and per-mode parameters on 2026-11-05, so ladder
+  ratings from before then do not carry over.
 
 **Retention** (`bnb.league.pool.retained`) keeps the newest 8 snapshots and, of the older
 ones, the one nearest each age of 2^k snapshots for k from 3. The run's `league/` directory
@@ -53,7 +56,8 @@ The league's seat plays every opponent row of the batch in the captured rollout 
   mode. Each set runs on its own rows inside the one compiled graph, and each row keeps its
   network's carry.
 - **The ladder:** one scripted pass over every row, each row at its rung's temperature
-  (written in place; `+inf` plays uniformly). A slot can hold the ladder; each of its rows
+  and share (written in place; `+inf` plays uniformly), with the scripted agent's carry for
+  every row in the seat's carry. A slot can hold the ladder; each of its rows
   then draws a rung at every reset from its mode's weights over the ladder.
 - **The drain:** after each segment, if no slot is draining, the next slot (round robin)
   receives an entry drawn from the modes' weights, mixed by the modes' shares of the
