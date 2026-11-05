@@ -158,3 +158,19 @@ there is how sharply it places ships it sees. On the enemy side, a head that kno
 than it sees beats the visible ships, most of all when many enemies are hidden. The
 training series `density/explained_deviance` is the same comparison in Poisson deviance
 against the batch-mean map.
+
+## `enemy_action`
+
+**The question:** how well does the enemy-action head predict what each living enemy does
+next, when the view sees it and when it does not?
+
+- `enemy_action`: per factor of the joint action (power, stick, shoot), the share of each
+  value the enemies took (bars) against the head's mean marginal (dots), seen and hidden;
+  and the reliability of the head's P(shoot): its predicted probability, binned, against
+  the share that shot.
+
+**How to read it.** The titles give the cross-entropy (nats) of the head's marginal against
+the marginal baseline, the capture's own action frequencies; the head knows something about
+an enemy when it beats that baseline. The joint numbers (`bnb.figures.enemy_action.measures`)
+add the accuracy of the most likely action and the mean probability of the action taken.
+On the reliability plot a calibrated head lies on the diagonal.
