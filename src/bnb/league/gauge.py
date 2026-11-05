@@ -3,7 +3,7 @@ training, one gauge per mode and map.
 
 The stationary ladder holds ratings the fits never move: the scripted agent 1000 and every
 other rung the rating lanes' calibration (`calibrate`, from `bnb.league.lanes`); before the
-lanes have rated a rung it sits at the prior `1000 p` (random 0). Once per update:
+lanes have rated a rung it sits at the prior `1000 / T` (random 0). Once per update:
   1. the ladder: the checkpoints' ratings, fitted to the accumulated record among
      stationary players with the gauge held (`fit_ladder`);
   2. the live policy: the lanes' rating when given, else rated from this update's training
@@ -25,16 +25,17 @@ import torch
 
 from .ratings import fit_ladder, rate_against, rate_live, win_probability
 
-GAUGE_TOP = 1000.0  # the scripted agent's fixed rating; rung p's prior is GAUGE_TOP * p
+GAUGE_TOP = 1000.0  # the scripted agent's fixed rating; rung T's prior is GAUGE_TOP / T
 LADDER_PRIOR_GAMES = 1.0  # virtual games per checkpoint at the strongest fixed rating
 AVERAGE_WINDOW = 200  # an average's last games that rate it
 KINDS = ("checkpoint", "average", "ladder")
 
 
-def gauge_rating(scripted_probability: float) -> float:
-    """A ladder entry's prior rating, until the lanes calibrate it: random (0) at 0, the
-    scripted agent (1) at GAUGE_TOP."""
-    return GAUGE_TOP * scripted_probability
+def gauge_rating(temperature: float) -> float:
+    """A ladder entry's prior rating, until the lanes calibrate it: GAUGE_TOP / T, so
+    random (+inf) at 0 and the scripted agent (1) at GAUGE_TOP. A placeholder, not a
+    measurement: the lanes' calibration replaces it."""
+    return GAUGE_TOP / temperature
 
 
 @dataclasses.dataclass

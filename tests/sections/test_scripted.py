@@ -1,5 +1,9 @@
 """The scripted agent (scripted spec A7): behaviour on constructed observations, invariance,
-the ladder's rungs, and the controller in the rollout."""
+its softness (the floor and the temperature), and the controller in the rollout.
+
+Every binary decision is floored at its own epsilon (`EPSILONS`), so "certain" below means
+within the floors: a single decision at most 1 - epsilon, a turn at a given level and side
+at most about (1 - epsilon)^2 (EPSILON below is the largest)."""
 
 import dataclasses
 import inspect
@@ -16,7 +20,18 @@ from bnb.contracts.action import NUM_JOINT, to_joint
 from bnb.contracts.obs import SHIP, SHIP_HIDDEN_ZERO, ZONE
 from bnb.controllers import scripted_combat
 from bnb.controllers.scripted import Scripted, distribution, marginals
-from bnb.controllers.scripted_parameters import ScriptedParameters, pack, table, unpack
+from bnb.controllers.scripted_parameters import (
+    EPSILONS,
+    NAMES,
+    SCALE_FLOORS,
+    Logistic,
+    ScriptedParameters,
+    from_row,
+    logistic,
+    pack,
+    table,
+    unpack,
+)
 from bnb.game import api
 from bnb.game.handling.characteristics import time_of_flight
 from bnb.runtime.rollout import Rollout
@@ -28,6 +43,17 @@ pytestmark = pytest.mark.usefixtures("global_generator")
 
 PARAMETERS = ScriptedParameters()
 TYPES = (0, 1)
+EPSILON = max(EPSILONS.values())
+SURE = 1.0 - EPSILON - 0.02  # one decision near its ceiling 1 - EPSILON
+SURE_TWICE = (1.0 - EPSILON) ** 2 - 0.03  # two decisions near theirs (a side and a turn)
+UNLIKELY = EPSILON + 0.02  # one decision near its floor
+
+
+def _beyond(shape: Logistic, scales: float) -> float:
+    """The input `scales` scales past the logistic's centre, on its high-probability side
+    (negative: on its low side)."""
+    direction = 1.0 if shape.rising else -1.0
+    return shape.centre * math.exp(direction * scales * shape.scale)
 
 
 def _marginals(obs: Obs, row: int = 0):
@@ -74,11 +100,13 @@ def test_the_stick_level_rises_with_the_angle_error_and_the_side_follows_its_sig
             _, stick, _ = _marginals(_duel(ship_type, target))
             level, left, right = _levels(stick)
             if degrees > 0.0:
-                assert (left if sign > 0 else right) > 0.99 * (1.0 - stick[0])
-                assert (right if sign > 0 else left) == 0.0
+                turning = 1.0 - stick[0]
+                assert (left if sign > 0 else right) >= (1.0 - EPSILONS["side"] - 1e-5) * turning
+                assert (right if sign > 0 else left) <= (EPSILONS["side"] + 1e-5) * turning
         assert level >= previous - 1e-6, degrees
         previous = float(level)
-    assert previous > 2.9  # far off the nose: the full stick
+    ceiling = (1.0 - EPSILON) * (1.0 + (1.0 - EPSILON) + (1.0 - EPSILON) ** 2)
+    assert previous > ceiling - 0.1  # far off the nose: the full stick, within the floors
 
 
 @pytest.mark.parametrize("ship_type", TYPES)
@@ -96,22 +124,28 @@ def test_dead_and_waiting_ships_take_the_no_op(ship_type):
 @pytest.mark.parametrize("ship_type", TYPES)
 def test_it_fires_only_when_aligned_in_range_ready_and_paid_for(ship_type):
     cost = value("bullet_energy_cost", ship_type)
-    likely = _marginals(_duel(ship_type, _ahead(ship_type, 0.0, 0.4)))[2][1]
-    assert likely > 0.95
+    close = 0.5 * PARAMETERS.shoot_in_gun_range.centre
+    likely = _marginals(_duel(ship_type, _ahead(ship_type, 0.0, close)))[2][1]
+    assert likely > SURE
+    far = _beyond(PARAMETERS.shoot_in_gun_range, -5.0)
     cases = dict(
-        unaligned=_duel(ship_type, _ahead(ship_type, math.radians(30.0), 0.4)),
-        out_of_range=_duel(ship_type, _ahead(ship_type, 0.0, 1.2)),
+        unaligned=_duel(ship_type, _ahead(ship_type, math.radians(30.0), close)),
+        out_of_range=_duel(ship_type, _ahead(ship_type, 0.0, far)),
         cooling=_duel(
             ship_type,
-            _ahead(ship_type, 0.0, 0.4),
+            _ahead(ship_type, 0.0, close),
             own=ship(ship_type=ship_type, gun_cooldown=RULES_TICK),
         ),
         short_of_energy=_duel(
-            ship_type, _ahead(ship_type, 0.0, 0.4), own=ship(ship_type=ship_type, energy=0.9 * cost)
+            ship_type,
+            _ahead(ship_type, 0.0, close),
+            own=ship(ship_type=ship_type, energy=0.9 * cost),
         ),
     )
     for name, obs in cases.items():
-        assert _marginals(obs)[2][1] == 0.0, name
+        assert _marginals(obs)[2][1] < 0.02, name
+        if name in ("cooling", "short_of_energy"):  # the gate: exactly 0
+            assert _marginals(obs)[2][1] == 0.0, name
 
 
 RULES_TICK = 1.0 / 30.0
@@ -123,25 +157,27 @@ RULES_TICK = 1.0 / 30.0
 @pytest.mark.parametrize("ship_type", TYPES)
 def test_it_boosts_when_slow_or_far_with_a_full_store_and_reverses_when_close(ship_type):
     corner = value("corner_speed", ship_type)
-    slowest = PARAMETERS.boost_slow_ramp_in_corner_speed.low
+    middle = 2.0 * PARAMETERS.reverse_in_gun_range.centre  # neither reversing nor far
     slow = _duel(
         ship_type,
-        _ahead(ship_type, 0.0, 1.0),
-        own=ship(ship_type=ship_type, speed=0.9 * slowest * corner),
+        _ahead(ship_type, 0.0, middle),
+        own=ship(
+            ship_type=ship_type,
+            speed=_beyond(PARAMETERS.boost_slow_in_corner_speed, 5.0) * corner,
+        ),
     )
-    assert _marginals(slow)[0][1] > 0.99
-    distance = 1.1 * PARAMETERS.boost_far_ramp_in_store_gun_ranges.high  # with a full store
+    assert _marginals(slow)[0][1] > SURE_TWICE  # boost and not reverse
+    distance = _beyond(PARAMETERS.boost_far_in_store_gun_ranges, 5.0)  # with a full store
     far = _duel(ship_type, _ahead(ship_type, 0.0, distance))
-    assert _marginals(far)[0][1] > 0.99
+    assert _marginals(far)[0][1] > SURE_TWICE
     empty = _duel(
         ship_type,
         _ahead(ship_type, 0.0, distance),
-        own=ship(ship_type=ship_type, energy=0.1 * value("max_energy", ship_type)),
+        own=ship(ship_type=ship_type, energy=1e-3 * value("max_energy", ship_type)),
     )
-    assert _marginals(empty)[0][1] < 0.01
-    closest = PARAMETERS.reverse_ramp_in_gun_range.low
-    close = _duel(ship_type, _ahead(ship_type, 0.0, 0.9 * closest))
-    assert _marginals(close)[0][2] > 0.99
+    assert _marginals(empty)[0][1] < UNLIKELY
+    close = _duel(ship_type, _ahead(ship_type, 0.0, _beyond(PARAMETERS.reverse_in_gun_range, 5.0)))
+    assert _marginals(close)[0][2] > SURE
 
 
 # ------------------------------------------------------------------ the lead
@@ -192,14 +228,14 @@ def test_near_the_boundary_and_heading_out_it_turns_inward(ship_type):
         velocity=(value("cruise_speed", ship_type), 0.0),
     )
     outward = _marginals(_duel(ship_type, target, own=ship(x=edge, ship_type=ship_type)))[1]
-    assert outward[0] < 0.01  # it turns
+    assert outward[0] < UNLIKELY  # it turns
     target = ship(
         x=0.5 * value("gun_range", ship_type),
         team_relative=1,
         velocity=(value("cruise_speed", ship_type), 0.0),
     )
     centred = _marginals(_duel(ship_type, target))[1]
-    assert centred[0] > 0.99  # the same chase at the centre flies straight
+    assert centred[0] > SURE  # the same chase at the centre flies straight
 
 
 @pytest.mark.parametrize("ship_type", TYPES)
@@ -215,7 +251,7 @@ def test_near_the_boundary_and_heading_inward_it_does_not_turn_back(ship_type):
         velocity=(cruise * math.cos(heading), cruise * math.sin(heading)),
     )
     own = ship(x=edge, heading=heading, ship_type=ship_type)
-    assert _marginals(_duel(ship_type, target, own=own))[1][0] > 0.99
+    assert _marginals(_duel(ship_type, target, own=own))[1][0] > SURE
 
 
 @pytest.mark.parametrize("ship_type", TYPES)
@@ -223,9 +259,14 @@ def test_with_no_visible_enemy_it_heads_for_the_centre_and_holds_fire(ship_type)
     away = ship(x=1500.0, heading=math.pi / 2, ship_type=ship_type)  # the centre is on its left
     for enemy in (absent(), ship(x=1700.0, y=200.0, team_relative=1, visible=False)):
         power, stick, shoot = _marginals(_duel(ship_type, enemy, own=away))
-        assert _levels(stick)[1] > 0.99 and shoot[1] == 0.0 and power[2] == 0.0
+        assert _levels(stick)[1] > SURE_TWICE
+        assert shoot[1] == pytest.approx(EPSILONS["shoot"])
+        assert power[2] == pytest.approx(EPSILONS["reverse"])
     near = ship(x=100.0, heading=math.pi / 2, ship_type=ship_type)
-    assert _marginals(_duel(ship_type, absent(), own=near))[1][0] == 1.0  # holds its course
+    holding = _marginals(_duel(ship_type, absent(), own=near))[1]
+    assert holding[0] == pytest.approx(
+        1.0 - EPSILONS["turn"], abs=1e-3
+    )  # holds its course, within the floor
 
 
 # ------------------------------------------------------------------ Frontline
@@ -251,10 +292,10 @@ def test_frontline_it_defends_a_zone_whose_meter_moves_against_it(ship_type):
     raiders = [ship(x=-1600.0, y=50.0 * i, team_relative=1) for i in range(2)]
     pressed = observation(own, raiders, _ring(direction=-1.0, progress=0.4))
     for row in (0, 1):  # both turn left, toward the defense zone
-        assert _levels(_marginals(pressed, row)[1])[1] > 0.99
+        assert _levels(_marginals(pressed, row)[1])[1] > SURE_TWICE
     calm = observation(own, [absent(), absent()], _ring())
     sides = [_levels(_marginals(calm, row)[1])[1:] for row in (0, 1)]
-    assert sides[0][0] > 0.99 and sides[1][1] > 0.99  # one defends, the other attacks
+    assert sides[0][0] > SURE_TWICE and sides[1][1] > SURE_TWICE  # one defends, one attacks
 
 
 def _defending(obs: Obs, parameters: ScriptedParameters = PARAMETERS) -> list[bool]:
@@ -262,8 +303,8 @@ def _defending(obs: Obs, parameters: ScriptedParameters = PARAMETERS) -> list[bo
     left of `_ring`, rather than right, toward the attack zone."""
     stick = marginals(obs, CHARACTERISTICS, parameters).stick[0]
     left, right = stick[:, 2::2].sum(-1), stick[:, 1::2].sum(-1)
-    assert bool(((left > 0.99) | (right > 0.99)).all()), stick
-    return (left > 0.99).tolist()
+    assert bool(((left > SURE_TWICE) | (right > SURE_TWICE)).all()), stick
+    return (left > SURE_TWICE).tolist()
 
 
 def _line(xs: list[float], ship_type: int, y: float = 0.0) -> list[torch.Tensor]:
@@ -313,7 +354,7 @@ def test_frontline_hands_over_to_combat_from_the_combat_radius_in(ship_type):
     combat radius it flies the strategy, inside the shoot ramp's start it fights, and half
     way between it mixes the two."""
     gun_range, cruise = value("gun_range", ship_type), value("cruise_speed", ship_type)
-    inner = PARAMETERS.shoot_ramp_in_gun_range.low
+    inner = PARAMETERS.shoot_in_gun_range.centre
     outer = PARAMETERS.combat_radius_in_gun_range
     own = [ship(heading=math.pi / 2, ship_type=ship_type), absent(team_relative=0)]
 
@@ -322,8 +363,8 @@ def test_frontline_hands_over_to_combat_from_the_combat_radius_in(ship_type):
         _, left, right = _levels(_marginals(observation(own, [enemy, absent()], _ring()))[1])
         return float(left), float(right)
 
-    assert sides(1.2 * outer)[0] > 0.99  # the strategy: to the defense zone
-    assert sides(0.8 * inner)[1] > 0.99  # combat: at the enemy
+    assert sides(1.2 * outer)[0] > SURE_TWICE  # the strategy: to the defense zone
+    assert sides(0.8 * inner)[1] > SURE_TWICE  # combat: at the enemy
     left, right = sides(0.5 * (inner + outer))
     assert 0.25 < left < 0.75 and 0.25 < right < 0.75
 
@@ -341,7 +382,7 @@ def test_frontline_it_falls_back_to_its_spawn_when_hurt_and_threatened(ship_type
     healthy = ship(ship_type=ship_type)
     for own, side in ((hurt, 2), (healthy, 1)):  # spawn on the right, the threats on the left
         obs = observation([own, absent(team_relative=0)], threats, _ring())
-        assert _levels(_marginals(obs)[1])[side] > 0.9
+        assert _levels(_marginals(obs)[1])[side] > SURE_TWICE
 
 
 # ------------------------------------------------------------------ invariance
@@ -448,38 +489,84 @@ def test_the_controller_never_takes_privileged():
         assert hints.get(name) is not Privileged
 
 
-def test_a_rung_plays_p_scripted_plus_uniform():
-    torch.manual_seed(0)
-    obs = _duel(0, _ahead(0, 0.3, 0.5))
-    views = 40_000
-    many = Obs(
+def _copies(obs: Obs, views: int) -> Obs:
+    return Obs(
         ships=obs.ships.expand(views, -1, -1),
         fields=None,
         globals=obs.globals.expand(views, -1),
         zones=obs.zones.expand(views, -1, -1),
     )
-    p = torch.full((views,), 0.6)
-    rung = Scripted(CHARACTERISTICS, scripted_probability=p)
+
+
+def test_a_rung_plays_the_agent_at_its_temperature_and_infinity_is_uniform():
+    torch.manual_seed(0)
+    obs = _duel(0, _ahead(0, 0.3, 0.5))
+    views = 40_000
+    many = _copies(obs, views)
+    temperature = torch.full((views,), 2.0)
+    rung = Scripted(CHARACTERISTICS, temperature=temperature)
     expected = rung.action_distribution(many)[0, 0]
-    torch.testing.assert_close(expected, 0.6 * _q(obs)[0, 0] + 0.4 / NUM_JOINT)
+    torch.testing.assert_close(expected, distribution(obs, CHARACTERISTICS, PARAMETERS, 2.0)[0, 0])
     action, carry, _ = rung.step(None, many, None)
     assert carry is None
     counts = torch.bincount(to_joint(action)[:, 0].long(), minlength=NUM_JOINT).float() / views
     assert (counts - expected).abs().max() < 0.01
-    p.zero_()  # the league changes p in place: random
+    temperature.fill_(math.inf)  # the league changes the temperature in place: random
     assert torch.allclose(
         rung.action_distribution(many)[0, 0], torch.full((NUM_JOINT,), 1.0 / NUM_JOINT)
     )
+    with pytest.raises(ValueError):
+        Scripted(CHARACTERISTICS, temperature=0.0)
+
+
+def _entropy(q: torch.Tensor) -> torch.Tensor:
+    return -torch.special.xlogy(q, q).sum(-1)
+
+
+@pytest.mark.parametrize("mode", ["team_deathmatch", "frontline"])
+def test_no_living_ships_action_is_certain_and_heat_flattens_every_decision(mode):
+    """In a played game, at T = 1 every living ship's every power and stick value has a
+    probability in (0, 1), each binary decision's at least its epsilon, and the shot is never
+    certain (its only exact value is P(shoot) = 0, at its gates: no target, or a gun that
+    cannot fire); a higher temperature raises every factor's mean entropy, every logistic
+    toward an even choice (the gates stay)."""
+    _, _, obs = _game_views(mode)
+    view = _view(obs, 0)
+    alive = view.ships[:, : view.ships.shape[1] // 2, SHIP["alive"]] > 0.5
+    previous = None
+    for temperature in (1.0, 2.0, 4.0):
+        parts = marginals(view, CHARACTERISTICS, PARAMETERS, temperature)
+        if temperature == 1.0:
+            for part in (parts.power, parts.stick):
+                living = part[alive]
+                assert bool(((living > 0.0) & (living < 1.0)).all())
+            shoot = parts.shoot[alive][:, 1]
+            assert bool((shoot < 1.0).all())
+            assert float(parts.power[alive][:, 2].min()) >= EPSILONS["reverse"] - 1e-6  # P(reverse)
+        entropies = torch.stack([_entropy(part)[alive].mean() for part in parts])
+        if previous is not None:
+            assert bool((entropies >= previous).all()), (temperature, entropies, previous)
+            assert bool((entropies[:2] > previous[:2]).all())  # the shot may be gated throughout
+        previous = entropies
+    x = torch.tensor([1e-3, 0.5, 2.0, 50.0])
+    for name in SCALE_FLOORS:  # every logistic tends to an even choice
+        flat = logistic(x, getattr(PARAMETERS, name), 1e6)
+        torch.testing.assert_close(flat, torch.full_like(x, 0.5), atol=1e-4, rtol=0)
+
+
+def test_the_defaults_respect_the_scale_floors_and_pack_round_trips():
+    defaults = ScriptedParameters()
+    logistics = [name for name in NAMES if isinstance(getattr(defaults, name), Logistic)]
+    assert sorted(logistics) == sorted(SCALE_FLOORS)
+    for name in logistics:
+        shape = getattr(defaults, name)
+        assert shape.scale >= SCALE_FLOORS[name] and shape.centre > 0.0, name
+    assert from_row(pack(defaults)) == defaults
 
 
 def test_per_view_parameters_match_the_single_set():
     obs = _duel(1, _ahead(1, 0.4, 0.7))
-    two = Obs(
-        ships=obs.ships.expand(2, -1, -1),
-        fields=None,
-        globals=obs.globals.expand(2, -1),
-        zones=obs.zones.expand(2, -1, -1),
-    )
+    two = _copies(obs, 2)
     other = dataclasses.replace(PARAMETERS, lead_cap_in_gun_range=0.5)
     per_view = distribution(two, CHARACTERISTICS, unpack(table([PARAMETERS, other])))
     torch.testing.assert_close(per_view[0], _q(obs)[0])

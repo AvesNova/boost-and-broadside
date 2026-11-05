@@ -70,8 +70,8 @@ the GPU, over every tensor of a pytree at once.
 ## Rung
 
 A step of the stationary ladder between random play and the scripted agent: the scripted
-agent playing its action with probability `p` and a uniform one otherwise. See
-[The scripted agent](scripted-agent.md#the-ladders-rungs).
+agent at a temperature T > 1, `rung_T<T>` (random play is T = `+inf`). See
+[The scripted agent](scripted-agent.md#softness-logistics-the-floor-and-the-temperature).
 
 ## Sim index, team-relative
 

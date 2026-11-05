@@ -117,7 +117,7 @@ class League:
         self.gauges = {mode: Gauge(ratings.get(mode, 0.0)) for mode in self.modes}
         for gauge in self.gauges.values():
             for entry in self.ladder:
-                gauge.add(entry.name, "ladder", gauge_rating(entry.scripted_probability))
+                gauge.add(entry.name, "ladder", gauge_rating(entry.temperature))
         self.averages = {
             name: {key: value.detach().clone() for key, value in weights.items()}
             for name in AVERAGES

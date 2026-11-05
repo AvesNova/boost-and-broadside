@@ -8,11 +8,11 @@ One controller, `OpponentSlots`, plays every opponent row of the batch:
   k, k + slots, k + 2 slots, ... (so every slot plays every mode), and the extra set plays
   the draining slot's rows. (Not `torch.vmap`: under vmap, scaled-dot-product attention
   skips autocast's casts, so Yemong's plain bf16 path fails.)
-- the stationary ladder: one scripted pass and one uniform draw over every row, then each
-  row's scripted probability `p` decides (scripted spec A6).
+- the stationary ladder: one scripted pass over every row, each row at its rung's
+  temperature (scripted spec A6; +inf is random).
 - per row, the kind it plays (a network set or the ladder) is selected with `where`.
 
-A slot holds a network entry or a ladder entry. A ladder row draws a new `p` at each of its
+A slot holds a network entry or a ladder entry. A ladder row draws a new rung at each of its
 resets from its mode's ladder weights, by inverse CDF on a counter-based uniform (a hash of
 the stream's key, the tick counter and the row), so the draws need no generator state and
 repeat exactly.
@@ -29,6 +29,7 @@ the learner's side by column and mode (`tally`).
 """
 
 import dataclasses
+import math
 import zlib
 
 import torch
@@ -40,9 +41,40 @@ from bnb.controllers.scripted import Scripted
 from bnb.game.handling.characteristics import Characteristics
 
 OPPONENTS = "opponents"  # the controller name of the league's seat
-# The stationary ladder (league spec 1): random, the rungs in tenths plus 0.95, the scripted
-# agent.
-LADDER = (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0)
+# The stationary ladder (league spec 1), weakest first: random (temperature +inf), the
+# scripted agent at falling temperatures, the scripted agent itself (T = 1). The section
+# notes give the temperature curve the rungs were chosen from.
+LADDER = (math.inf, 8.0, 4.0, 3.0, 2.5, 2.0, 1.5, 1.0)
+RUNG_PREFIX = "rung_T"
+SCRIPTED_PLAYER = "scripted"
+
+
+def ladder_name(temperature: float) -> str:
+    """A ladder entry's name: "random" (+inf), "scripted" (1), or "rung_T<temperature>"."""
+    if temperature == math.inf:
+        return "random"
+    if temperature == 1.0:
+        return SCRIPTED_PLAYER
+    return f"{RUNG_PREFIX}{temperature:g}"
+
+
+def ladder_temperature(name: str) -> float | None:
+    """A ladder entry's temperature from its name (`ladder_name`'s inverse: "random",
+    "scripted", "rung_T<t>" for t > 1), or None for another name."""
+    if name == "random":
+        return math.inf
+    if name == SCRIPTED_PLAYER:
+        return 1.0
+    if name.startswith(RUNG_PREFIX):
+        try:
+            temperature = float(name[len(RUNG_PREFIX) :])
+        except ValueError:
+            return None
+        if 1.0 < temperature < math.inf and ladder_name(temperature) == name:
+            return temperature
+    return None
+
+
 NETWORK, LADDER_KIND = 0, 1  # what a slot holds
 OUTCOMES = ("wins", "ties", "losses")  # the tally's last axis, from the learner's side
 MASK = (1 << 32) - 1
@@ -50,11 +82,11 @@ MASK = (1 << 32) - 1
 
 @dataclasses.dataclass(frozen=True)
 class LeagueConfig:
-    """slots: network slots loaded at once; ladder: the stationary ladder's scripted
-    probabilities; floor: the share of the pool's sampling weight spread evenly over the
-    entries; exponential_decay: the exponential average's decay per update;
-    snapshot_every: environment steps between snapshots (None: measured once, about 30
-    minutes of the run's throughput, and recorded)."""
+    """slots: network slots loaded at once; ladder: the stationary ladder's temperatures,
+    weakest first (+inf random, 1 the scripted agent); floor: the share of the pool's
+    sampling weight spread evenly over the entries; exponential_decay: the exponential
+    average's decay per update; snapshot_every: environment steps between snapshots
+    (None: measured once, about 30 minutes of the run's throughput, and recorded)."""
 
     slots: int = 4
     ladder: tuple[float, ...] = LADDER
@@ -65,10 +97,10 @@ class LeagueConfig:
     def __post_init__(self) -> None:
         if self.slots < 1:
             raise ValueError(f"league slots {self.slots} must be at least 1")
-        if not self.ladder or any(not 0.0 <= p <= 1.0 for p in self.ladder):
-            raise ValueError(f"league ladder {self.ladder} must be probabilities in [0, 1]")
-        if list(self.ladder) != sorted(set(self.ladder)):
-            raise ValueError(f"league ladder {self.ladder} must be increasing")
+        if not self.ladder or any(not t >= 1.0 for t in self.ladder):
+            raise ValueError(f"league ladder {self.ladder} must be temperatures of at least 1")
+        if list(self.ladder) != sorted(set(self.ladder), reverse=True):
+            raise ValueError(f"league ladder {self.ladder} must be decreasing (weakest first)")
         if not 0.0 <= self.floor < 1.0:
             raise ValueError(f"league floor {self.floor} must be in [0, 1)")
         if not 0.0 < self.exponential_decay < 1.0:
@@ -169,9 +201,9 @@ class OpponentSlots:
         self.decision = _Decision(controller)
         self.decision.requires_grad_(False)
         self.reads = tuple(dict.fromkeys(controller.reads + Scripted.reads))
-        # One scripted pass for the whole ladder: each row's p is written in place.
-        self.ladder_probability = torch.ones(rows, device=device)
-        self.ladder_agent = Scripted(characteristics, scripted_probability=self.ladder_probability)
+        # One scripted pass for the whole ladder: each row's temperature is written in place.
+        self.ladder_temperature = torch.ones(rows, device=device)
+        self.ladder_agent = Scripted(characteristics, temperature=self.ladder_temperature)
         state = self.decision.state_dict()
         # The stacked sets: slots, then the incoming entry of the draining slot.
         self.parameters = {
@@ -183,7 +215,7 @@ class OpponentSlots:
         self.kind = torch.full((slots + 1,), NETWORK, dtype=torch.int64, device=device)
         self.draining = torch.full((1,), -1, dtype=torch.int64, device=device)
         ladder = len(config.ladder)
-        self.probabilities = torch.tensor(config.ladder, dtype=torch.float32, device=device)
+        self.temperatures = torch.tensor(config.ladder, dtype=torch.float32, device=device)
         self.ladder_weights = torch.full((mode_count, ladder), 1.0 / ladder, device=device)
         self.columns = slots + 1 + ladder
 
@@ -236,7 +268,7 @@ class OpponentSlots:
         uniform = counter_uniform(self.key, carry.counter, self.rows)
         drawn = draw(self.ladder_weights[self.modes], uniform)
         ladder_index = torch.where(reset & ladder, drawn, carry.ladder_index)
-        self.ladder_probability.copy_(self.probabilities[ladder_index])
+        self.ladder_temperature.copy_(self.temperatures[ladder_index])
         ladder_action, _, _ = self.ladder_agent.step(None, obs, reset)
         action = torch.where(ladder[:, None, None], ladder_action.packed(), network_action)
         column = torch.where(

@@ -162,9 +162,9 @@ def frontline(
         either(slow(fleet, parameters), far(fleet, goal_distance, parameters)),
         torch.zeros_like(goal_distance),
     )
-    # Combat takes over from the inner shooting range in to the combat radius.
+    # Combat takes over from the shooting range's centre in to the combat radius.
     handover = Ramp(
-        parameters.shoot_ramp_in_gun_range.low, parameters.combat_radius_in_gun_range, 1.0, 0.0
+        parameters.shoot_in_gun_range.centre, parameters.combat_radius_in_gun_range, 1.0, 0.0
     )
     weight = torch.where(has_target, ramp(target_distance / fleet.gun_range, handover), 0.0)
     blended_power = blend(combat_marginals.power, power, weight)

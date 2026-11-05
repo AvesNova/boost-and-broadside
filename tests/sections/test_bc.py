@@ -4,6 +4,7 @@ rule, on a real stored Yemong segment on the CPU."""
 import dataclasses
 import functools
 import json
+import math
 import sys
 
 import learner_cases as lc
@@ -104,8 +105,7 @@ def test_the_bc_loss_matches_an_independent_computation(segment):
             }
         )
         q = distribution(obs, CHARACTERISTICS, Scripted(CHARACTERISTICS).parameters)
-        floor = bc.TeacherConfig().floor  # the default labels: the uniform floor, T = 1
-        q = (1.0 - floor) * q + floor / 42
+        assert bc.TeacherConfig() == bc.TeacherConfig(1.0, 0.0)  # the labels are q itself
         log_student = torch.log_softmax(unrolled.policy_logits[tick], -1)
         per_token = -(q * log_student).sum(-1)
         entropy = -torch.special.xlogy(q, q).sum(-1)
@@ -189,36 +189,53 @@ def test_the_update_time_labels_are_the_rollout_time_distribution():
     torch.testing.assert_close(labels, decided, rtol=0, atol=2.5e-7)
 
 
-def test_the_teacher_temperature():
-    torch.manual_seed(0)
-    q = torch.softmax(torch.randn(500, 42) * 3.0, -1)
-    q[:, 5] = 0.0  # a structural zero
-    q = q / q.sum(-1, keepdim=True)
-    assert torch.equal(bc.labels(q, bc.TeacherConfig(1.0, 0.0)), q)
-    hotter = bc.labels(q, bc.TeacherConfig(temperature=2.0, floor=0.0))
-    assert (hotter[:, 5] == 0.0).all()
-    assert bc.mean_entropy(q, bc.TeacherConfig(2.0, 0.0)) > bc.mean_entropy(
-        q, bc.TeacherConfig(1.0, 0.0)
-    )
-    for target, floor in ((1.0, 0.0), (2.5, 0.0), (3.5, 0.0), (3.7, 0.05)):
-        chosen = bc.calibrate(q, target, floor)
-        assert bc.mean_entropy(q, chosen) == pytest.approx(target, abs=0.01)
+def _living_distributions(segment):
+    """The stored segment's views and own-alive mask, and T -> the scripted agent's
+    distributions at T over the living own ships (tokens, 42)."""
+    _, runner, _, _ = segment
+    views = bc.flat_views(lc.whole(runner).obs)
+    own = views.ships.shape[1] // 2
+    alive = views.ships[:, :own, SHIP["alive"]] > 0.5
+
+    def at(temperature: float) -> torch.Tensor:
+        return distribution(
+            views, CHARACTERISTICS, Scripted(CHARACTERISTICS).parameters, temperature
+        )[alive]
+
+    return at
+
+
+def test_the_teacher_temperature_and_its_calibration(segment):
+    """The labels' floor mixes with uniform; the agent's own temperature raises its
+    entropy; the calibration finds the temperature for a target entropy."""
+    at = _living_distributions(segment)
+    q = at(1.0)
+    assert torch.equal(bc.labels(q, 0.0), q)
+    floored = bc.labels(q, 0.1)
+    torch.testing.assert_close(floored, 0.9 * q + 0.1 / 42)
+    entropies = [bc.mean_entropy(at(t)) for t in (0.5, 1.0, 2.0, 4.0)]
+    assert entropies == sorted(entropies) and entropies[-1] > entropies[0] + 0.5
+    for target in (entropies[1] + 0.1, entropies[2]):
+        chosen = bc.calibrate(at, target, 0.0, low=0.25, high=16.0)
+        assert bc.mean_entropy(at(chosen.temperature)) == pytest.approx(target, abs=0.01)
     with pytest.raises(ValueError):
-        bc.calibrate(q, 3.73, 0.0)  # above what the temperature alone reaches with a zero
+        bc.calibrate(at, math.log(42) + 0.01, 0.0)  # above uniform
 
 
 def test_every_label_gives_every_action_a_probability_above_zero(segment):
-    """The default floor, on the stored observations (dead ships' certain no-op included),
-    at T = 1 and at a cold temperature."""
-    _, runner, _, _ = segment
-    trajectory = lc.whole(runner)
-    distributions = bc.teacher_distribution(TEACHER, trajectory.obs)
-    assert (distributions == 0.0).any()  # the teacher itself has zeros
-    for temperature in (1.0, 0.25):
-        labels = bc.labels(distributions, bc.TeacherConfig(temperature=temperature))
-        assert bool((labels > 0.0).all()), temperature
-        assert float(labels.min()) >= 0.99 * bc.FLOOR / 42
-    assert bc.TeacherConfig().floor == bc.FLOOR > 0.0
+    """The scripted agent's own floors (an epsilon per binary decision but the shot): every
+    living ship's every action has a probability above zero at T = 1, and at a cold and a
+    hot T, with no floor on the labels, except a shot at its gates (no target, or a gun that
+    cannot fire), where P(shoot) is 0."""
+    at = _living_distributions(segment)
+    for temperature in (1.0, 0.25, 4.0):
+        joint = at(temperature).unflatten(-1, (3, 7, 2))  # power, stick, shoot
+        shoot = joint.sum((-3, -2))[:, 1]
+        assert bool((joint[..., 0] > 0.0).all()), temperature  # every not-shooting action
+        open_gate = shoot > 0.0
+        assert bool((joint[open_gate][..., 1] > 0.0).all()), temperature
+        assert bool(open_gate.any()) and bool((shoot < 1.0).all())
+    assert bc.TeacherConfig().floor == 0.0 and bc.TeacherConfig().temperature == 1.0
 
 
 def _scripted_seat(
@@ -267,17 +284,19 @@ def _repeated(view: Obs, times: int) -> Obs:
 
 
 def test_the_scored_opponent_plays_the_labels_distribution():
-    """BC's scripted seat samples the labels' distribution (floor and temperature applied):
-    its stated distribution is the labels', and its draws' frequencies over 20000 copies of
-    each view match it within five standard errors."""
+    """BC's scripted seat samples the labels' distribution (the agent at the teacher's
+    temperature, the floor applied): its stated distribution is the labels', BC's labels
+    come from the agent at that temperature, and its draws' frequencies over 20000 copies
+    of each view match it within five standard errors."""
     from bnb.contracts.action import NUM_JOINT, to_joint
 
     teacher = bc.TeacherConfig(temperature=3.0, floor=0.2)
     trainer, opponent, view = _scripted_seat("bc", teacher, segments=2)
-    expected = bc.labels(TEACHER(view), teacher)  # (R, S, 42)
-    untempered = bc.labels(TEACHER(view), dataclasses.replace(teacher, temperature=1.0))
+    expected = bc.labels(TEACHER(view, temperature=3.0), teacher.floor)  # (R, S, 42)
+    untempered = bc.labels(TEACHER(view), teacher.floor)
     assert float((expected - untempered).abs().max()) > 0.05  # the temperature matters here
     torch.testing.assert_close(opponent.action_distribution(view), expected)
+    torch.testing.assert_close(trainer.ppo.teacher(view), TEACHER(view, temperature=3.0))
     assert trainer.ppo.teacher_config == teacher
     assert trainer.rollout.reads == ("ships", "globals", "zones")
     times = 20_000
@@ -310,7 +329,7 @@ def test_floor_0_and_temperature_1_leave_the_scripted_agents_play_unchanged():
     torch.testing.assert_close(opponent.action_distribution(view), TEACHER(view))
     _, reinforcement_opponent, _ = _scripted_seat("ppo")
     assert type(reinforcement_opponent) is Scripted
-    assert reinforcement_opponent.scripted_probability == 1.0
+    assert reinforcement_opponent.temperature == 1.0
 
 
 # ------------------------------------------------------------------ the stop rule

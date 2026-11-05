@@ -4,8 +4,8 @@ tensors as the training games, never stored for the learner nor counted in its l
 A matchup is a pair of players. A player is a network (`LIVE`, the weights the learner is
 training; or a weight set the league loads by name: its averages, or `league_<k>`, the
 entry its network slot k holds) or a rung of the
-stationary ladder (`random`, `rung_<p>`, `scripted`: the scripted agent at probability p,
-uniform random actions otherwise). Every mode of the training mix plays every matchup: the
+stationary ladder (`random`, `rung_T<t>`, `scripted`: the scripted agent at temperature t,
+uniform random actions for `random`). Every mode of the training mix plays every matchup: the
 lanes are split evenly over the modes, and within a mode by the matchups' weights. Each
 matchup is a pool of its own (`<mode>/lane/<first>_vs_<second>`) whose two seats are both
 the one controller `LANES` (`LaneSeat`), so the seat is redrawn at every reset as in any
@@ -27,26 +27,12 @@ from bnb.contracts.tree import contract
 from bnb.controllers.scripted import Scripted
 from bnb.game.handling.characteristics import Characteristics
 
-from .opponents import OUTCOMES
+from .opponents import LADDER, OUTCOMES, SCRIPTED_PLAYER, ladder_name, ladder_temperature
 
 LANES = "lanes"  # the lanes' controller name
 LIVE = "live"  # the player the learner trains
-SCRIPTED_PLAYER = "scripted"
 EXPONENTIAL_AVERAGE = "exponential_average"  # the league's average the lanes rate by default
-RUNG_PREFIX = "rung_"
 LEAGUE_PREFIX = "league_"  # a league slot's player: the entry the league's slot k holds
-
-
-def ladder_probability(player: str) -> float | None:
-    """A ladder player's scripted probability ("random" 0, "scripted" 1, "rung_<p>" p), or
-    None for a network player."""
-    if player == "random":
-        return 0.0
-    if player == SCRIPTED_PLAYER:
-        return 1.0
-    if player.startswith(RUNG_PREFIX):
-        return float(player[len(RUNG_PREFIX) :])
-    return None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -71,9 +57,9 @@ class Matchup:
 
 def ladder_chain(rungs: tuple[float, ...], weight: float) -> tuple[Matchup, ...]:
     """Matchups that calibrate a ladder from the scripted agent down: each rung against the
-    next one up (`rungs` increasing probabilities below 1), the top one against the
+    next one up (`rungs` the temperatures above 1, weakest first), the top one against the
     scripted agent."""
-    names = ["random" if p == 0.0 else f"{RUNG_PREFIX}{p:g}" for p in rungs] + [SCRIPTED_PLAYER]
+    names = [ladder_name(t) for t in rungs] + [SCRIPTED_PLAYER]
     return tuple(
         Matchup(low, high, weight) for low, high in zip(names[:-1], names[1:], strict=True)
     )
@@ -103,7 +89,7 @@ RL_MATCHUPS = (
     Matchup(LIVE, SCRIPTED_PLAYER, 0.25),
     Matchup(EXPONENTIAL_AVERAGE, SCRIPTED_PLAYER, 0.25),
     *(Matchup(league_slot(index), SCRIPTED_PLAYER, 0.25) for index in range(LEAGUE_SLOTS)),
-    *ladder_chain((0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95), 0.05),
+    *ladder_chain(LADDER[:-1], 0.05),
 )
 # Behaviour cloning's: the live policy against the raw scripted agent (its score stop).
 BC_MATCHUPS = (Matchup(LIVE, SCRIPTED_PLAYER, 1.0),)
@@ -253,7 +239,7 @@ class LaneSeat:
                 player for lane in lanes for player in (lane.matchup.first, lane.matchup.second)
             )
         )
-        self.networks = tuple(p for p in players if ladder_probability(p) is None)
+        self.networks = tuple(p for p in players if ladder_temperature(p) is None)
         self.decision = _Decision(controller)
         self.decision.requires_grad_(False)
         self.reads = tuple(dict.fromkeys(controller.reads + Scripted.reads))
@@ -266,13 +252,13 @@ class LaneSeat:
         self.network_rows = [
             (player == players.index(name)).nonzero().flatten().to(device) for name in self.networks
         ]
-        ladder = torch.tensor([ladder_probability(name) is not None for name in players])
+        ladder = torch.tensor([ladder_temperature(name) is not None for name in players])
         ladder_rows = ladder[player].nonzero().flatten()
         self.ladder_rows = ladder_rows.to(device)
         self.ladder_agent = Scripted(
             characteristics,
-            scripted_probability=torch.tensor(
-                [ladder_probability(players[int(index)]) for index in player[ladder_rows]],
+            temperature=torch.tensor(
+                [ladder_temperature(players[int(index)]) for index in player[ladder_rows]],
                 dtype=torch.float32,
                 device=device,
             ),

@@ -15,7 +15,7 @@ from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.game.handling.characteristics import Characteristics, time_of_flight
 from bnb.game.ship_types import per_ship
 
-from .scripted_parameters import ScriptedParameters, ramp
+from .scripted_parameters import ScriptedParameters, floored, logistic, ramp
 
 TARGET_SIZE_RANGE = (math.radians(1.0), math.radians(45.0))  # the clamp on its angular size
 COAST, BOOST, REVERSE = 0, 1, 2  # power indices (bnb.game.rules.POWER_MODES)
@@ -52,6 +52,7 @@ class Context(NamedTuple):
     arena_radius: torch.Tensor  # (R, 1)
     distance_from_centre: torch.Tensor
     boundary_weight: torch.Tensor  # the steer toward the centre, in [0, 1]
+    temperature: torch.Tensor | float  # the agent's: a float, or (R, 1) per view
 
 
 def column(rows: torch.Tensor, name: str) -> torch.Tensor:
@@ -59,8 +60,14 @@ def column(rows: torch.Tensor, name: str) -> torch.Tensor:
     return rows[..., SHIP[name]]
 
 
-def context(obs: Obs, characteristics: Characteristics, parameters: ScriptedParameters) -> Context:
-    """The Context both layers read, from one team's views (R, ...), own rows first."""
+def context(
+    obs: Obs,
+    characteristics: Characteristics,
+    parameters: ScriptedParameters,
+    temperature: torch.Tensor | float = 1.0,
+) -> Context:
+    """The Context both layers read, from one team's views (R, ...), own rows first, at the
+    agent's temperature (a float, or (R, 1) per view)."""
     ships = obs.ships
     S = ships.shape[-2] // 2  # two teams, own rows first
     own, enemy = ships[:, :S], ships[:, S:]
@@ -100,6 +107,7 @@ def context(obs: Obs, characteristics: Characteristics, parameters: ScriptedPara
         arena_radius=arena_radius,
         distance_from_centre=distance_from_centre,
         boundary_weight=boundary_weight,
+        temperature=temperature,
     )
 
 
@@ -128,12 +136,18 @@ def stick_marginal(
     fleet: Context, error: torch.Tensor, parameters: ScriptedParameters
 ) -> torch.Tensor:
     """(R, S, 7) the stick for an angle error (positive left): P(turn) and the level by
-    two further ramps, all in stall angles; the side follows the error's sign. Indices: 0
-    straight, then by level, odd right and even left."""
+    two further logistics, all in stall angles, each floored; the side follows the error's
+    sign, floored (an error of exactly 0 picks either side evenly). Indices: 0 straight,
+    then by level, odd right and even left."""
     size = error.abs() / fleet.stall_angle
-    turn = ramp(size, parameters.turn_ramp_in_stall_angle)
-    above_one = ramp(size, parameters.level_two_ramp_in_stall_angle)
-    above_two = ramp(size, parameters.level_three_ramp_in_stall_angle)
+    temperature = fleet.temperature
+    turn = floored(logistic(size, parameters.turn_in_stall_angle, temperature), "turn")
+    above_one = floored(
+        logistic(size, parameters.level_two_in_stall_angle, temperature), "level_two"
+    )
+    above_two = floored(
+        logistic(size, parameters.level_three_in_stall_angle, temperature), "level_three"
+    )
     levels = torch.stack(
         [
             turn * (1.0 - above_one),
@@ -142,35 +156,33 @@ def stick_marginal(
         ],
         -1,
     )  # (R, S, 3)
-    left = (error > 0.0)[..., None]
-    zero = torch.zeros_like(levels)
-    sides = torch.stack([torch.where(left, zero, levels), torch.where(left, levels, zero)], -1)
+    left = floored((error > 0.0).float(), "side")
+    left = torch.where(error == 0.0, 0.5, left)[..., None]
+    sides = torch.stack([(1.0 - left) * levels, left * levels], -1)
     return torch.cat([(1.0 - turn)[..., None], sides.flatten(-2)], -1)
 
 
-def straight(fleet: Context) -> torch.Tensor:
-    """(R, S, 7) the stick held straight."""
-    return torch.nn.functional.one_hot(
-        torch.zeros_like(fleet.own_type, dtype=torch.long), 7
-    ).float()
-
-
 def power_marginal(boost: torch.Tensor, reverse: torch.Tensor) -> torch.Tensor:
-    """(R, S, 3) from P(reverse) and P(boost | not reverse), coast otherwise."""
-    boost = (1.0 - reverse) * boost
+    """(R, S, 3) from P(reverse) and P(boost | not reverse), each floored, coast otherwise."""
+    reverse = floored(reverse, "reverse")
+    boost = (1.0 - reverse) * floored(boost, "boost")
     return torch.stack([1.0 - boost - reverse, boost, reverse], -1)
 
 
 def slow(fleet: Context, parameters: ScriptedParameters) -> torch.Tensor:
-    """P(boost) for speed: high when slow, in corner speeds."""
-    return ramp(fleet.speed / fleet.corner_speed, parameters.boost_slow_ramp_in_corner_speed)
+    """P(boost) for speed, unfloored: high when slow, in corner speeds."""
+    return logistic(
+        fleet.speed / fleet.corner_speed, parameters.boost_slow_in_corner_speed, fleet.temperature
+    )
 
 
 def far(fleet: Context, distance: torch.Tensor, parameters: ScriptedParameters) -> torch.Tensor:
-    """P(boost) for distance: the store fraction times the distance in gun ranges."""
-    return ramp(
+    """P(boost) for distance, unfloored: the store fraction times the distance in gun
+    ranges."""
+    return logistic(
         fleet.energy_fraction * distance / fleet.gun_range,
-        parameters.boost_far_ramp_in_store_gun_ranges,
+        parameters.boost_far_in_store_gun_ranges,
+        fleet.temperature,
     )
 
 
@@ -244,23 +256,27 @@ def combat(
         fleet, signed_angle(fleet.cos, fleet.sin, wanted_x, wanted_y), parameters
     )
     hold = (~has_target & ~toward_centre)[..., None]
-    stick = torch.where(hold, straight(fleet), steered)
+    stick = torch.where(hold, stick_marginal(fleet, torch.zeros_like(fleet.x), parameters), steered)
 
     boost = either(
         slow(fleet, parameters), torch.where(has_target, far(fleet, distance, parameters), 0.0)
     )
     reverse = torch.where(
-        has_target, ramp(distance / fleet.gun_range, parameters.reverse_ramp_in_gun_range), 0.0
+        has_target,
+        logistic(distance / fleet.gun_range, parameters.reverse_in_gun_range, fleet.temperature),
+        0.0,
     )
     power = power_marginal(boost, reverse)
 
     hit_radius = target(per_ship(characteristics.hit_radius, fleet.enemy_type))
     size = (2.0 * torch.atan(hit_radius / safe_distance)).clamp(*TARGET_SIZE_RANGE)
-    aligned = ramp(aim_error.abs() / size, parameters.aim_ramp_in_target_size)
-    in_range = ramp(distance / fleet.gun_range, parameters.shoot_ramp_in_gun_range)
+    aligned = logistic(aim_error.abs() / size, parameters.aim_in_target_size, fleet.temperature)
+    in_range = logistic(
+        distance / fleet.gun_range, parameters.shoot_in_gun_range, fleet.temperature
+    )
     cost = per_ship(characteristics.bullet_energy_cost, fleet.own_type)
     ready = (column(fleet.own, "gun_cooldown") <= 0.0) & (column(fleet.own, "energy") >= cost)
-    shoot = torch.where(has_target & ready, aligned * in_range, 0.0)
+    shoot = floored(torch.where(has_target & ready, aligned * in_range, 0.0), "shoot")
     shoot = torch.stack([1.0 - shoot, shoot], -1)
     return Marginals(power, stick, shoot), has_target, distance
 

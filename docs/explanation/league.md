@@ -26,8 +26,11 @@ its fixed share. The entries (`bnb.league.pool.Entry`) are:
   policy's weights, folded in after every update (`bnb.league.pool.average_into`, the decay
   `LeagueConfig.exponential_decay` per update);
 - **the stationary ladder:** random, the rungs and the scripted agent
-  (`LeagueConfig.ladder`, the scripted probabilities; see
-  [The scripted agent](scripted-agent.md)).
+  (`LeagueConfig.ladder`, the scripted agent's temperatures, weakest first: `+inf` is
+  `random`, T > 1 is `rung_T<T>`, 1 is `scripted`; see
+  [The scripted agent](scripted-agent.md#softness-logistics-the-floor-and-the-temperature)).
+  The rungs were scripted-with-probability-p players until 2026-11-05; the temperature
+  rungs are new players, so ladder ratings from before then do not carry over.
 
 **Retention** (`bnb.league.pool.retained`) keeps the newest 8 snapshots and, of the older
 ones, the one nearest each age of 2^k snapshots for k from 3. The run's `league/` directory
@@ -49,9 +52,9 @@ The league's seat plays every opponent row of the batch in the captured rollout 
   for the entry coming in. Slot k plays rows k, k + slots, …, so every slot plays every
   mode. Each set runs on its own rows inside the one compiled graph, and each row keeps its
   network's carry.
-- **The ladder:** one scripted pass and one uniform draw over every row; a row's scripted
-  probability decides between the two (scripted spec A6). A slot can hold the ladder; each
-  of its rows then draws a rung at every reset from its mode's weights over the ladder.
+- **The ladder:** one scripted pass over every row, each row at its rung's temperature
+  (written in place; `+inf` plays uniformly). A slot can hold the ladder; each of its rows
+  then draws a rung at every reset from its mode's weights over the ladder.
 - **The drain:** after each segment, if no slot is draining, the next slot (round robin)
   receives an entry drawn from the modes' weights, mixed by the modes' shares of the
   opponent rows. Its weights are copied into the extra set in place. Each row of the slot
@@ -84,8 +87,9 @@ prior game against the scripted agent, half won, which keeps a sweep finite).
 - **Who is rated:** a player whose games connect it to the scripted agent; none is reported
   before its matchups have played.
 - **The ladder:** the rungs, chained from the scripted agent down, are rated from their own
-  lane games. Measured against the scripted agent the old fixed scale, rung `p` at
-  `1000 p`, was far off (rung_0.95 scores 0.065 against it, about 530 points below, not 50).
+  lane games. A fixed scale would be far off: the earlier probability rungs' `1000 p` put
+  rung_0.95 50 points below the scripted agent, where it scored 0.065 against it, about 530
+  points below.
 - **The series:** per mode `rating/live/<mode>`{.plain} and `rating/average/<mode>`{.plain} (the
   exponential average), their standard errors, and every rated player's
   `lanes/rating/<mode>/<player>`{.plain}. A BC run's lanes give its live rating the same way
@@ -104,7 +108,7 @@ The measured game counts and errors are in `docs/rewrite/sections/rollout-lanes-
 During training each mode has a gauge (`bnb.league.gauge.Gauge`) that steers sampling. The
 ladder's ratings are held by the fits: the scripted agent 1000 and every other rung the
 lanes' calibration (`Gauge.calibrate`); before the lanes have rated a rung it sits at the
-prior `1000 p`. Once per update:
+prior `1000 / T` (random 0), a placeholder the calibration replaces. Once per update:
 
 1. **The ladder fit:** the snapshots' ratings from the record among stationary players,
    the ladder held (`bnb.league.ratings.fit_ladder`). The only games among stationary
@@ -163,8 +167,10 @@ uv run --no-sync bnb ratings 2026-11-02-mixed-purple-pumpkin --target-stderr 25
 ```
 
 `bnb head-to-head A B [C D ...] --games N` plays only the named pairs on the same engine.
-A player is a policy file, a run (its newest checkpoint), `scripted`, `random` or a rung
-such as `rung_0.5`. Per pair it reports the wins, losses and draws, the score with its
+A player is a policy file, a run (its newest checkpoint), `scripted`, `random`, a rung such
+as `rung_T2`, or a teacher, `scripted@T=<t>,floor=<f>` (the agent at its own temperature
+`t`, then a uniform joint action with probability `f`; either key optional, T = 1 and
+floor 0 by default, so `scripted@T=2` plays as `rung_T2`). Per pair it reports the wins, losses and draws, the score with its
 standard error, and the split by preset, and records them under `artifacts/head_to_head/`.
 
 <!-- not-runnable: needs CUDA and a run -->

@@ -57,7 +57,7 @@ RL_LANES = LaneConfig(
     matchups=(
         Matchup(LIVE, SCRIPTED_PLAYER),
         Matchup("exponential_average", SCRIPTED_PLAYER),
-        Matchup("rung_0.9", SCRIPTED_PLAYER),
+        Matchup("rung_T1.25", SCRIPTED_PLAYER),
         Matchup(LIVE, "league_0"),
         Matchup("league_1", SCRIPTED_PLAYER),
     ),

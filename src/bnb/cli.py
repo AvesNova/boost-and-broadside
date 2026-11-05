@@ -54,8 +54,10 @@ class Train:
     objective: ppo, or bc (behaviour cloning against self-play and the scripted agent until
     a stop rule fires, then the clone is saved as the run's policy file; updates is unused;
     a BC run keeps training checkpoints and resumes, but is not forked or warm-started);
-    teacher_temperature and teacher_floor set the labels' entropy; bc_budget_steps: BC's
-    budget in environment steps (TrainConfig.stop.budget_steps).
+    teacher_temperature and teacher_floor set the teacher (the scripted agent at its own
+    temperature, its labels mixed with uniform by the floor; T = 1 and floor 0 by
+    default); bc_budget_steps: BC's budget in environment steps
+    (TrainConfig.stop.budget_steps).
     wandb: stream each update's record to W&B (project `boost-and-broadside-v2`, the run's
     name) as well as to the run's metrics.jsonl; without it nothing leaves the machine.
     calibrate_entropy: print the scripted agent's natural entropy over its own games of the
@@ -90,7 +92,7 @@ class Train:
     checkpoint_every: int | None = None
     objective: str = "ppo"
     teacher_temperature: float = 1.0
-    teacher_floor: float = 0.01
+    teacher_floor: float = 0.0
     bc_budget_steps: int = 50_000_000
     calibrate_entropy: float | None = None
     calibration_segments: int = 4
@@ -185,13 +187,14 @@ class HeadToHead:
     """Head-to-head (`bnb head-to-head A B [C D ...] --games N`): only the named pairs (A
     against B, C against D, ...), each over `--games` games per preset split evenly between
     the seats. A player is a policy file, a run (its newest checkpoint), "scripted",
-    "random", "rung_<p>", or the scripted agent playing a transformed distribution,
+    "random", "rung_T<t>" (the scripted agent at temperature t), or a teacher,
     "scripted@T=<temperature>,floor=<floor>" (either key optional; T defaults to 1 and
-    floor to 0; the labels' tempering and uniform floor, drawn as BC's teacher opponent
-    does, so "scripted@floor=0.01" is BC's teacher and "scripted@T=1,floor=0" is
-    "scripted"). Prints and records, per pair, the wins, losses and draws, the
-    score with its standard error and the split by preset; the result goes to the first
-    named run's `artifacts/head_to_head/` (else the runs directory's).
+    floor to 0: the scripted agent at its own temperature T, then a uniform joint action
+    with probability floor, drawn as BC's teacher opponent does, so "scripted" is BC's
+    default teacher and "scripted@T=2" plays as "rung_T2"). Prints and records, per pair,
+    the wins, losses and draws, the score with its standard error and the split by preset;
+    the result goes to the first named run's `artifacts/head_to_head/` (else the runs
+    directory's).
 
     players: the pairs; games: games per pair and preset (even); presets; device;
     runs_directory: as for bnb train.
@@ -590,7 +593,7 @@ def calibrate(options: Train, config, device) -> None:
     from bnb.learn import bc
     from bnb.runtime import cloning
 
-    tokens = cloning.teacher_distributions(
+    distributions = cloning.teacher_distributions(
         config.game,
         config.ship_types(device),
         config.pools,
@@ -598,19 +601,20 @@ def calibrate(options: Train, config, device) -> None:
         options.calibration_segments,
         device,
     )
-    natural = bc.mean_entropy(tokens, bc.TeacherConfig(1.0, 0.0))
+    tokens = distributions(1.0)
+    natural = bc.mean_entropy(tokens)
     print(
         f"natural entropy {natural:.4f} nats per living ship-step over "
         f"{tokens.shape[0]} ship-steps",
         flush=True,
     )
     try:
-        chosen = bc.calibrate(tokens, options.calibrate_entropy, options.teacher_floor)
+        chosen = bc.calibrate(distributions, options.calibrate_entropy, options.teacher_floor)
     except ValueError as error:
         raise SystemExit(str(error)) from None
     print(
         f"temperature {chosen.temperature:.4f} at floor {chosen.floor} gives "
-        f"{bc.mean_entropy(tokens, chosen):.4f}"
+        f"{bc.mean_entropy(distributions(chosen.temperature), chosen.floor):.4f}"
     )
 
 
@@ -740,9 +744,7 @@ def ratings(options: Ratings) -> None:
         for policy in sorted((run.directory / "league").glob("step_*/*"))
         if (policy / "checkpoint.json").exists()
     ]
-    field += [
-        Player(e.name, scripted_probability=e.scripted_probability) for e in ladder_entries(LADDER)
-    ]
+    field += [Player(e.name, temperature=e.temperature) for e in ladder_entries(LADDER)]
     field += [
         p for p in _players(options.with_, runs_directory) if p.name not in {f.name for f in field}
     ]

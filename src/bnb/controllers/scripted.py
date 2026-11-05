@@ -1,5 +1,6 @@
 """Scripted controllers over a team view: random (sticky), the chaser, and the scripted
-agent (scripted spec A), which is also the stationary ladder's rungs and the BC teacher.
+agent (scripted spec A), which at its temperatures is also the stationary ladder's rungs,
+and the BC teacher.
 
 All read only the observation, never the game state.
 """
@@ -9,7 +10,7 @@ import math
 import torch
 
 from bnb.contracts import Action, Obs, Outputs
-from bnb.contracts.action import NUM_JOINT, NUM_POWER, NUM_SHOOT, NUM_STICK
+from bnb.contracts.action import NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.game.handling.characteristics import Characteristics
 
@@ -91,21 +92,34 @@ class Chaser:
 
 
 def marginals(
-    obs: Obs, characteristics: Characteristics, parameters: ScriptedParameters
+    obs: Obs,
+    characteristics: Characteristics,
+    parameters: ScriptedParameters,
+    temperature: torch.Tensor | float = 1.0,
 ) -> Marginals:
     """The scripted agent's power, stick and shoot marginals per own ship, from the
-    observation alone: the combat layer, with the Frontline layer on top in Frontline. A
-    dead ship (or one waiting to respawn) takes the no-op action."""
-    fleet = context(obs, characteristics, parameters)
+    observation alone, at a temperature (a float, or (R, 1) per view): the combat layer,
+    with the Frontline layer on top in Frontline. A dead ship (or one waiting to respawn)
+    takes the no-op action; at temperature +inf a living ship plays uniformly (random)."""
+    fleet = context(obs, characteristics, parameters, temperature)
     fighting, has_target, distance = combat(fleet, characteristics, parameters)
     strategy = frontline(
         fleet, obs.zones, characteristics, parameters, fighting, has_target, distance
     )
     in_frontline = (obs.globals[:, None, GLOBAL["mode_frontline"]] > 0.5)[..., None]
     alive = (fleet.own[..., SHIP["alive"]] > 0.5)[..., None]
+    # a float is compared on the host: a host copy cannot run inside a graph capture
+    if isinstance(temperature, torch.Tensor):
+        uniform = torch.isposinf(temperature)[..., None]  # (R, 1, 1)
+    else:
+        uniform = temperature == math.inf
 
     def chosen(combat_part: torch.Tensor, frontline_part: torch.Tensor) -> torch.Tensor:
         part = torch.where(in_frontline, frontline_part, combat_part)
+        if isinstance(uniform, torch.Tensor):
+            part = torch.where(uniform, 1.0 / part.shape[-1], part)
+        elif uniform:
+            part = torch.full_like(part, 1.0 / part.shape[-1])
         no_op = torch.nn.functional.one_hot(
             torch.zeros_like(part[..., 0], dtype=torch.long), part.shape[-1]
         ).float()
@@ -125,10 +139,14 @@ def joint(parts: Marginals) -> torch.Tensor:
 
 
 def distribution(
-    obs: Obs, characteristics: Characteristics, parameters: ScriptedParameters
+    obs: Obs,
+    characteristics: Characteristics,
+    parameters: ScriptedParameters,
+    temperature: torch.Tensor | float = 1.0,
 ) -> torch.Tensor:
-    """(R, S, NUM_JOINT) the scripted agent's joint action probabilities, `to_joint` order."""
-    return joint(marginals(obs, characteristics, parameters))
+    """(R, S, NUM_JOINT) the scripted agent's joint action probabilities at a temperature,
+    `to_joint` order."""
+    return joint(marginals(obs, characteristics, parameters, temperature))
 
 
 def sample(probabilities: torch.Tensor) -> torch.Tensor:
@@ -142,12 +160,11 @@ def sample(probabilities: torch.Tensor) -> torch.Tensor:
 class Scripted:
     """The scripted agent, and with it every rung of the stationary ladder (spec A6).
 
-    scripted_probability: a float, or a tensor (R,) per view: each ship plays the scripted
-    action with that probability and a uniform one otherwise (0 is random, 1 the scripted
-    agent), so its distribution is the scripted probability times the scripted
-    distribution plus the rest spread uniformly over the 42 joint actions. The league may
-    change a tensor in place. parameters: one set, or per view (`scripted_parameters.unpack`
-    of a table). Memoryless: the carry is None.
+    temperature: a float, or a tensor (R,) per view: every logistic's scale is multiplied
+    by it, so 1 is the agent and a larger one flattens every decision toward an even
+    choice; +inf plays uniformly over the 42 joint actions (the ladder's random). The league
+    may change a tensor in place. parameters: one set, or per view
+    (`scripted_parameters.unpack` of a table). Memoryless: the carry is None.
     """
 
     reads = ("ships", "zones", "globals")
@@ -156,41 +173,31 @@ class Scripted:
         self,
         characteristics: Characteristics,
         parameters: ScriptedParameters = ScriptedParameters(),
-        scripted_probability: float | torch.Tensor = 1.0,
+        temperature: float | torch.Tensor = 1.0,
     ) -> None:
+        if not isinstance(temperature, torch.Tensor) and not temperature > 0.0:
+            raise ValueError(f"the scripted agent's temperature {temperature} must be positive")
         self.characteristics, self.parameters = characteristics, parameters
-        self.scripted_probability = scripted_probability
+        self.temperature = temperature
 
     def init_carry(self, views: int, device: torch.device) -> None:
         """No carry: the scripted agent is memoryless."""
         return None
 
-    def _probability(self) -> torch.Tensor | float:
-        """The scripted probability per view, (R, 1) for a tensor."""
-        probability = self.scripted_probability
-        return probability[:, None] if isinstance(probability, torch.Tensor) else probability
+    def _temperature(self) -> torch.Tensor | float:
+        """The temperature per view, (R, 1) for a tensor."""
+        temperature = self.temperature
+        return temperature[:, None] if isinstance(temperature, torch.Tensor) else temperature
+
+    def marginals(self, obs: Obs) -> Marginals:
+        """The power, stick and shoot marginals `step` samples from."""
+        return marginals(obs, self.characteristics, self.parameters, self._temperature())
 
     def action_distribution(self, obs: Obs) -> torch.Tensor:
         """(R, S, NUM_JOINT) the distribution `step` samples from."""
-        probability = self._probability()
-        if isinstance(probability, torch.Tensor):
-            probability = probability[..., None]
-        return (
-            probability * distribution(obs, self.characteristics, self.parameters)
-            + (1.0 - probability) / NUM_JOINT
-        )
+        return joint(self.marginals(obs))
 
     def step(self, carry: None, obs: Obs, reset: torch.Tensor):
-        """One decision for views (R, ...): an action sampled from each marginal, each ship's
-        replaced by a uniform one with probability 1 - scripted_probability (per view when it is a
-        tensor)."""
-        parts = marginals(obs, self.characteristics, self.parameters)
-        action = torch.stack([sample(part) for part in parts], -1).to(torch.int32)
-        probability = self._probability()
-        if isinstance(probability, torch.Tensor) or probability < 1.0:
-            # a rung: one uniform draw for every view
-            scripted = torch.rand(action.shape[:-1], device=action.device) < probability
-            action = torch.where(
-                scripted[..., None], action, uniform_actions(action.shape[:-1], action.device)
-            )
-        return Action.unpack(action), carry, Outputs()
+        """One decision for views (R, ...): an action sampled from each marginal."""
+        action = torch.stack([sample(part) for part in self.marginals(obs)], -1)
+        return Action.unpack(action.to(torch.int32)), carry, Outputs()

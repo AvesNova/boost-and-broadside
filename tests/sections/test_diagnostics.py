@@ -342,7 +342,7 @@ def test_the_sampling_entropy_is_normalised():
 
 def test_entry_kinds_split_the_ladder():
     assert entry_kind("scripted", "ladder") == "scripted"
-    assert entry_kind("rung_0.5", "ladder") == "rung"
+    assert entry_kind("rung_T2", "ladder") == "rung"
     assert entry_kind("random", "ladder") == "rung"
     assert entry_kind("step_100", "checkpoint") == "checkpoint"
 
