@@ -359,11 +359,13 @@ def calibrate(
 
 @dataclasses.dataclass(frozen=True)
 class StopConfig:
-    """When BC stops (scripted spec B4), whichever comes first: the live policy's score
-    against the raw scripted agent in the rating lanes, over the last score_window finished
-    games, reaches score_target; the KL's EMA (kl_decay per update) improved by less than
-    plateau_fraction over the last plateau_steps environment steps; or budget_steps
-    environment steps (a run stopped by its budget resumes with a larger one)."""
+    """When BC stops (scripted spec B4), whichever comes first: the score against the raw
+    scripted agent in the rating lanes, over the last score_window finished games, of the
+    better of the players `reads` names (the averages of the live weights; decisions: BC
+    round three), reaches score_target; the KL's EMA (kl_decay per update) improved by less
+    than plateau_fraction over the last plateau_steps environment steps; or budget_steps
+    environment steps (a run stopped by its budget resumes with a larger one). `reads` is
+    in order of preference: an equal score goes to the earlier."""
 
     # parity with the scripted agent (author, 2026-11-04), a plain score
     score_target: float = 0.5
@@ -373,52 +375,48 @@ class StopConfig:
     kl_decay: float = 0.9
     # v1's time to parity (author, 2026-11-04)
     budget_steps: int = 50_000_000
+    # the lane players `bnb.runtime.lanes.EXPONENTIAL_AVERAGE` and `UNIFORM_AVERAGE`
+    reads: tuple[str, ...] = ("exponential_average", "uniform_average")
 
     def __post_init__(self) -> None:
         if self.score_window < 2:
             raise ValueError(f"the score window needs two games for its spread, got {self}")
+        if not self.reads or len(set(self.reads)) != len(self.reads):
+            raise ValueError(f"the score stop reads distinct players, got {self.reads}")
 
 
-class StopRule:
-    """Fed once per update; `observe` names the rule that fires, or returns None.
+class ScoreWindow:
+    """One player's score over its last `games` finished games, fed once per update.
 
-    The score window keeps per-update totals (games, points, squared points; a game scores
-    1, 0.5 or 0): it drops the oldest updates whole while the rest still fill it, then
-    counts the oldest kept update by the exact share of its games the window still needs,
-    so trimming favours no result. The score stop reads the window's score.
+    It keeps per-update totals (games, points, squared points; a game scores 1, 0.5 or 0):
+    it drops the oldest updates whole while the rest still fill it, then counts the oldest
+    kept update by the exact share of its games the window still needs, so trimming
+    favours no result. Its state (`updates`) is plain JSON."""
 
-    Its state (`state`: the window, the KL's EMA and its history) is plain JSON, kept in
-    the training checkpoint so that a resume continues the same window."""
-
-    def __init__(self, config: StopConfig, state: dict | None = None) -> None:
-        self.config = config
-        self.updates: collections.deque[tuple[float, float, float]] = collections.deque()
-        self.kl_average: float | None = None
-        self.history: list[tuple[int, float]] = []  # (environment steps, the KL's EMA)
-        if state is not None:
-            self.updates.extend(tuple(update) for update in state["updates"])
-            self.kl_average = state["kl_average"]
-            self.history = [(steps, average) for steps, average in state["history"]]
-
-    @property
-    def state(self) -> dict:
-        """The rule's state as JSON: the window's per-update totals, the KL's EMA and its
-        history (floats round-trip exactly through JSON)."""
-        return dict(
-            updates=[list(update) for update in self.updates],
-            kl_average=self.kl_average,
-            history=[list(entry) for entry in self.history],
+    def __init__(self, games: int, updates: list | None = None) -> None:
+        self.games = games
+        self.updates: collections.deque[tuple[float, float, float]] = collections.deque(
+            tuple(update) for update in updates or ()
         )
 
-    def _window(self) -> tuple[float, float] | None:
-        """(points, squared points) over the last score_window games, once there are that
-        many."""
-        window = self.config.score_window
+    def add(self, wins: int, draws: int, losses: int) -> None:
+        """One update's finished games."""
+        games = wins + draws + losses
+        if games > 0:
+            self.updates.append((float(games), wins + 0.5 * draws, wins + 0.25 * draws))
+        while (
+            len(self.updates) > 1
+            and sum(update[0] for update in self.updates) - self.updates[0][0] >= self.games
+        ):
+            self.updates.popleft()
+
+    def _totals(self) -> tuple[float, float] | None:
+        """(points, squared points) over the last `games` games, once there are that many."""
         games = sum(update[0] for update in self.updates)
-        if games < window:
+        if games < self.games:
             return None
         oldest_games, oldest_points, oldest_squares = self.updates[0]
-        share = (games - window) / oldest_games  # of the oldest update, outside the window
+        share = (games - self.games) / oldest_games  # of the oldest update, outside the window
         return (
             sum(update[1] for update in self.updates) - oldest_points * share,
             sum(update[2] for update in self.updates) - oldest_squares * share,
@@ -426,38 +424,97 @@ class StopRule:
 
     @property
     def score(self) -> float | None:
-        """Wins plus half the draws over the last score_window games, once there are that
-        many."""
-        totals = self._window()
-        return None if totals is None else totals[0] / self.config.score_window
+        """Wins plus half the draws over the window, once it is full."""
+        totals = self._totals()
+        return None if totals is None else totals[0] / self.games
 
     @property
     def standard_error(self) -> float | None:
         """The window score's standard error, from the spread of its own per-game scores
-        (the sample variance over score_window - 1); reported beside the score."""
-        totals = self._window()
+        (the sample variance over games - 1)."""
+        totals = self._totals()
         if totals is None:
             return None
-        window = self.config.score_window
         points, squares = totals
-        variance = max(squares - points * points / window, 0.0) / (window - 1)
-        return math.sqrt(variance / window)
+        variance = max(squares - points * points / self.games, 0.0) / (self.games - 1)
+        return math.sqrt(variance / self.games)
+
+    @property
+    def state(self) -> list:
+        """The per-update totals as JSON (floats round-trip exactly)."""
+        return [list(update) for update in self.updates]
+
+
+class StopRule:
+    """Fed once per update; `observe` names the rule that fires, or returns None.
+
+    Each lane player's games against the scripted agent fill a score window of its own
+    (`ScoreWindow`, `windows` by player). The score stop reads the window of the best of
+    the players `StopConfig.reads` names whose window is full (`read`; an equal score goes
+    to the earlier in `reads`); the others' windows, the live clone's among them, are
+    logged.
+
+    Its state (`state`: the windows, the KL's EMA and its history) is plain JSON, kept in
+    the training checkpoint so that a resume continues the same windows."""
+
+    def __init__(self, config: StopConfig, state: dict | None = None) -> None:
+        self.config = config
+        self.windows: dict[str, ScoreWindow] = {}
+        self.kl_average: float | None = None
+        self.history: list[tuple[int, float]] = []  # (environment steps, the KL's EMA)
+        if state is not None:
+            self.windows = {
+                player: ScoreWindow(config.score_window, updates)
+                for player, updates in state["windows"].items()
+            }
+            self.kl_average = state["kl_average"]
+            self.history = [(steps, average) for steps, average in state["history"]]
+
+    @property
+    def state(self) -> dict:
+        """The rule's state as JSON: each player's window, the KL's EMA and its history
+        (floats round-trip exactly through JSON)."""
+        return dict(
+            windows={player: window.state for player, window in self.windows.items()},
+            kl_average=self.kl_average,
+            history=[list(entry) for entry in self.history],
+        )
+
+    @property
+    def read(self) -> str | None:
+        """The player the score stop reads: of `StopConfig.reads` with a full window, the
+        best scoring (an equal score goes to the earlier); None while none is full."""
+        scores = [
+            (self.windows[player].score, -index, player)
+            for index, player in enumerate(self.config.reads)
+            if player in self.windows and self.windows[player].score is not None
+        ]
+        return max(scores)[2] if scores else None
+
+    @property
+    def score(self) -> float | None:
+        """The read player's window score, once a window is full."""
+        player = self.read
+        return None if player is None else self.windows[player].score
+
+    @property
+    def standard_error(self) -> float | None:
+        """The read player's window score's standard error; reported beside the score."""
+        player = self.read
+        return None if player is None else self.windows[player].standard_error
 
     def observe(
-        self, environment_steps: int, wins: int, draws: int, losses: int, kl: float
+        self,
+        environment_steps: int,
+        results: dict[str, tuple[int, int, int]],
+        kl: float,
     ) -> str | None:
-        """environment_steps: the total so far; wins, draws, losses: the live policy's games
-        finished against the raw scripted agent this update; kl: this update's BC KL."""
+        """environment_steps: the total so far; results: each lane player's games finished
+        against the raw scripted agent this update, (wins, draws, losses) from its side (a
+        player left out played none that count); kl: this update's BC KL."""
         config = self.config
-        games = wins + draws + losses
-        if games > 0:
-            self.updates.append((float(games), wins + 0.5 * draws, wins + 0.25 * draws))
-        while (
-            len(self.updates) > 1
-            and sum(update[0] for update in self.updates) - self.updates[0][0]
-            >= config.score_window
-        ):
-            self.updates.popleft()
+        for player, games in results.items():
+            self.windows.setdefault(player, ScoreWindow(config.score_window)).add(*games)
         decay = config.kl_decay
         self.kl_average = (
             kl if self.kl_average is None else decay * self.kl_average + (1.0 - decay) * kl

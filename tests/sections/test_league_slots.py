@@ -238,7 +238,7 @@ def test_the_uniform_average_starts_after_its_warm_up(tmp_path):
         league.collected(trainer)
         trainer.ppo.environment_steps += trainer.steps_per_update
         league.updated(trainer)
-        name, value = next(iter(league.averages[UNIFORM_AVERAGE].items()))
+        name, value = next(iter(league.averages.weights[UNIFORM_AVERAGE].items()))
         assert trainer.model.state_dict()[name].is_floating_point()
         seen.append(float(value.flatten()[0]))
     # update 0 ends below 2 x steps: the live weights; from update 1 on, the mean since

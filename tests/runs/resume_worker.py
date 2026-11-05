@@ -12,10 +12,12 @@ league for the straight run). DAMAGE (with "second", to show the test sees it): 
 adds noise to the opponent slots' weights after the restore, "draws" restarts the league's
 slot draws, "gauges" forgets the gauges' records and windows, "lanes" forgets the rating
 lanes' records, "return_scale" puts back a fresh trainer's return scale, "stop_rule" forgets
-BC's stop rule's window. Episodes are short (2 s), so drains end and begin in each half.
+BC's stop rule's window, "averages" adds noise to BC's averages of the live weights.
+Episodes are short (2 s), so drains end and begin in each half.
 An update is two shards and a lookahead, beside a few rating lanes. OBJECTIVE "bc" clones
-instead (no league; its lanes' ratings are the trainer's hooks): each update feeds the stop
-rule (`bnb.runtime.cloning.update`), whose window of lane games has filled and trims by the
+instead (no league; its lanes' ratings and both averages, the uniform one from the first
+update, are the trainer's hooks): each update feeds the stop rule
+(`bnb.runtime.cloning.update`), whose window of lane games has filled and trims by the
 checkpoint.
 """
 
@@ -92,6 +94,7 @@ def config(model: str, device: str, objective: str = "ppo") -> TrainConfig:
             compiled=device == "cuda",
             objective="bc",
             stop=bc.StopConfig(score_window=4, plateau_steps=ENVIRONMENTS * LENGTH),
+            league=LeagueConfig(uniform_from=0),
         )
     learner = LearnerConfig(**settings)
     return TrainConfig(
@@ -147,6 +150,13 @@ def main() -> None:
         dump_state(directory / "second", trainer)  # the restore alone, before any damage
         if damage == ["stop_rule"]:
             trainer.stop_rule = bc.StopRule(settings.stop)
+        if damage == ["averages"]:
+            noise = torch.Generator().manual_seed(1)
+            with torch.no_grad():
+                for weights in league.averages.weights.values():
+                    for value in weights.values():
+                        if value.is_floating_point():
+                            value.add_(0.1 * torch.randn(value.shape, generator=noise).to(device))
         if damage == ["league"]:
             noise = torch.Generator().manual_seed(1)
             with torch.no_grad():

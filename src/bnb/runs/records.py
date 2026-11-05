@@ -300,8 +300,13 @@ class Run:
 
     @property
     def policy_path(self) -> pathlib.Path:
-        """Where a BC run saves its clone as a policy file."""
+        """Where a BC run saves its policy file: the average its score stop read."""
         return self.directory / "policy"
+
+    def variant_policy_path(self, variant: str) -> pathlib.Path:
+        """Where a BC run saves one of the policies beside `policy/`: `policy-<variant>/`
+        (`bnb.runs.session.POLICY_VARIANTS`: live, uniform, exponential)."""
+        return self.directory / f"policy-{variant}"
 
     def checkpoint_path(self, step: int) -> pathlib.Path:
         """Where the checkpoint at environment step step lives, whether or not it exists."""

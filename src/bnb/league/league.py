@@ -41,10 +41,8 @@ from .gauge import Gauge, Record, gauge_rating
 from .lanes import AVERAGE, LaneRatings
 from .pool import (
     AVERAGES,
-    EXPONENTIAL_AVERAGE,
-    UNIFORM_AVERAGE,
+    Averages,
     Entry,
-    average_into,
     ladder_entries,
     retained,
     sampling_weights,
@@ -118,15 +116,11 @@ class League:
         for gauge in self.gauges.values():
             for entry in self.ladder:
                 gauge.add(entry.name, "ladder", gauge_rating(entry.rung))
-        self.averages = {
-            name: {key: value.detach().clone() for key, value in weights.items()}
-            for name in AVERAGES
-        }
+        self.averages = Averages(weights, self.config)
         for name in AVERAGES:
             self.entries[name] = Entry(name, "average")
             for gauge in self.gauges.values():
                 gauge.add(name, "average")
-        self.averaged = 0  # the updates in the uniform average
         self.snapshots: dict[str, dict[str, torch.Tensor]] = {}
         self.snapshot_every = self.config.snapshot_every
         self.ordinal = 0
@@ -148,14 +142,9 @@ class League:
     def _restore(self, trainer: Trainer, record: dict, tensors: dict[str, torch.Tensor]) -> None:
         self.entries = {item["name"]: Entry(**item) for item in record["entries"]}
         self.gauges = {mode: Gauge.from_state(record["gauges"][mode]) for mode in self.modes}
-        self.averages = {
-            name: {
-                key: tensors[f"{name}.{key}"].to(value.device)
-                for key, value in trainer.model.state_dict().items()
-            }
-            for name in AVERAGES
-        }
-        self.averaged = record["averaged"]
+        self.averages = Averages(
+            trainer.model.state_dict(), self.config, record["averaged"], tensors
+        )
         self.snapshots = {
             name: {key: tensors[f"{name}.{key}"].clone() for key in trainer.model.state_dict()}
             for name, entry in self.entries.items()
@@ -208,7 +197,7 @@ class League:
 
     def _weights_of(self, entry: Entry) -> dict[str, torch.Tensor]:
         if entry.kind == "average":
-            return self.averages[entry.name]
+            return self.averages.weights[entry.name]
         return self.snapshots[entry.name]
 
     def _load_lanes(self, fresh: bool = True) -> None:
@@ -218,7 +207,7 @@ class League:
         in progress were played by the previous entry (`LaneSeat.load`)."""
         if self.lane_seat is None:
             return
-        for name, weights in self.averages.items():
+        for name, weights in self.averages.weights.items():
             self.lane_seat.load(name, weights)
         for slot in range(self.config.slots):
             name = self.held[slot]
@@ -300,16 +289,7 @@ class League:
         if self.pending is not None:
             self._snapshot(trainer, steps, self.pending)
             self.pending = None
-        if steps >= self.config.uniform_from:
-            self.averaged += 1
-        uniform, exponential = self.averages[UNIFORM_AVERAGE], self.averages[EXPONENTIAL_AVERAGE]
-        average_into(
-            uniform,
-            exponential,
-            trainer.model.state_dict(),
-            max(self.averaged, 1),  # before uniform_from, the live weights
-            self.config.exponential_decay,
-        )
+        self.averages.fold(trainer.model.state_dict(), steps)
         self._load_lanes()
         self._weigh()
         metrics = self.metrics()
@@ -356,7 +336,7 @@ class League:
         if path.exists():  # a rewound timeline's
             shutil.rmtree(path)
         path.mkdir()
-        for policy, state in ((CHECKPOINT_POLICY, weights), *self.averages.items()):
+        for policy, state in ((CHECKPOINT_POLICY, weights), *self.averages.weights.items()):
             self.scratch.load_state_dict(state)
             checkpoint.save_policy(
                 path / policy,
@@ -441,7 +421,7 @@ class League:
         record = dict(
             entries=[dataclasses.asdict(entry) for entry in self.entries.values()],
             gauges={mode: gauge.state() for mode, gauge in self.gauges.items()},
-            averaged=self.averaged,
+            averaged=self.averages.count,
             snapshot_every=self.snapshot_every,
             ordinal=self.ordinal,
             swaps=self.swaps,
@@ -451,8 +431,8 @@ class League:
             weights={mode: weights.tolist() for mode, weights in self.weights.items()},
             lanes=None if self.lanes is None else self.lanes.state(),
         )
-        tensors = {}
-        for name, weights in (*self.averages.items(), *self.snapshots.items()):
+        tensors = self.averages.tensors()
+        for name, weights in self.snapshots.items():
             for key, value in weights.items():
                 tensors[f"{name}.{key}"] = value
         return record, tensors

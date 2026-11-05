@@ -385,13 +385,15 @@ def test_floor_0_and_temperature_1_leave_the_scripted_agents_play_unchanged():
 
 # ------------------------------------------------------------------ the stop rule
 
+EXPONENTIAL, UNIFORM = "exponential_average", "uniform_average"
+
 
 def _run(rule: bc.StopRule, updates: int, steps: int, score: float, kl):
     """Feed `updates` updates of `steps` environment steps, 20 games each at this score;
     kl(update) the BC KL. Returns (update, reason) of the first rule to fire."""
     for update in range(updates):
         wins = round(20 * score)
-        reason = rule.observe((update + 1) * steps, wins, 0, 20 - wins, kl(update))
+        reason = rule.observe((update + 1) * steps, {EXPONENTIAL: (wins, 0, 20 - wins)}, kl(update))
         if reason is not None:
             return update, reason
     return None
@@ -416,14 +418,14 @@ def test_the_score_window_trims_whole_updates_without_favouring_a_result():
     keeps 40/60 of the first (20 points) and the draws (30 points): 0.50, where dropping
     the oldest games one by one, wins first, would leave 0.40."""
     rule = bc.StopRule(bc.StopConfig(score_window=100, score_target=1.1))
-    rule.observe(1, 30, 0, 30, 1.0)
+    rule.observe(1, {EXPONENTIAL: (30, 0, 30)}, 1.0)
     assert rule.score is None  # 60 games: not yet full
-    rule.observe(2, 0, 60, 0, 1.0)
+    rule.observe(2, {EXPONENTIAL: (0, 60, 0)}, 1.0)
     assert rule.score == pytest.approx(0.5)
-    rule.observe(3, 0, 0, 0, 1.0)  # an update without a finished game changes nothing
+    rule.observe(3, {EXPONENTIAL: (0, 0, 0)}, 1.0)  # no finished game changes nothing
     assert rule.score == pytest.approx(0.5)
-    rule.observe(4, 100, 0, 0, 1.0)  # a full window's worth drops both older updates whole
-    assert rule.score == pytest.approx(1.0) and len(rule.updates) == 1
+    rule.observe(4, {EXPONENTIAL: (100, 0, 0)}, 1.0)  # a full window drops both older whole
+    assert rule.score == pytest.approx(1.0) and len(rule.windows[EXPONENTIAL].updates) == 1
 
 
 def test_the_score_stop_reads_the_window_trimmed_like_the_score():
@@ -432,30 +434,62 @@ def test_the_score_stop_reads_the_window_trimmed_like_the_score():
     score of 0.55, reported with its standard error (sample deviation / 10)."""
     config = bc.StopConfig(score_window=100, score_target=0.55, budget_steps=10**9)
     rule = bc.StopRule(config)
-    assert rule.observe(1, 30, 0, 30, 1.0) is None and rule.score is None
+    assert rule.observe(1, {EXPONENTIAL: (30, 0, 30)}, 1.0) is None and rule.score is None
     games = torch.tensor([1.0] * 35 + [0.5] * 40 + [0.0] * 25, dtype=torch.float64)
-    assert rule.observe(2, 20, 40, 10, 1.0) == "score"
+    assert rule.observe(2, {EXPONENTIAL: (20, 40, 10)}, 1.0) == "score"
     assert rule.score == pytest.approx(0.55)
     assert rule.standard_error == pytest.approx(float(games.std() / 10))
     above = bc.StopRule(dataclasses.replace(config, score_target=0.551))
-    above.observe(1, 30, 0, 30, 1.0)
-    assert above.observe(2, 20, 40, 10, 1.0) is None
+    above.observe(1, {EXPONENTIAL: (30, 0, 30)}, 1.0)
+    assert above.observe(2, {EXPONENTIAL: (20, 40, 10)}, 1.0) is None
 
 
 def test_the_score_stop_fires_at_parity_by_default():
     config = bc.StopConfig(score_window=100, budget_steps=10**9)
     assert config.score_target == pytest.approx(0.5)  # parity (author)
     below = bc.StopRule(config)
-    assert below.observe(1, 49, 0, 51, 1.0) is None
+    assert below.observe(1, {EXPONENTIAL: (49, 0, 51)}, 1.0) is None
     at = bc.StopRule(config)
-    assert at.observe(1, 40, 20, 40, 1.0) == "score"
+    assert at.observe(1, {EXPONENTIAL: (40, 20, 40)}, 1.0) == "score"
 
 
 def test_the_budget_stops_bc_at_v1s_time_to_parity_by_default():
     assert bc.StopConfig().budget_steps == 50_000_000
     rule = bc.StopRule(bc.StopConfig())
-    assert rule.observe(49_999_999, 0, 0, 0, 1.0) is None
-    assert rule.observe(50_000_000, 0, 0, 0, 1.0) == "budget"
+    assert rule.observe(49_999_999, {EXPONENTIAL: (0, 0, 0)}, 1.0) is None
+    assert rule.observe(50_000_000, {EXPONENTIAL: (0, 0, 0)}, 1.0) == "budget"
+
+
+def test_the_score_stop_reads_the_better_average_and_only_logs_the_live_clone():
+    """The live clone's window fills first and scores well above parity, but the stop reads
+    the averages (`StopConfig.reads`): it fires when the better of them reaches the
+    target, and reads the uniform average once it beats the exponential."""
+    assert bc.StopConfig().reads == (EXPONENTIAL, UNIFORM)
+    config = bc.StopConfig(score_window=100, budget_steps=10**9)
+    rule = bc.StopRule(config)
+    assert rule.observe(1, {"live": (90, 0, 10), EXPONENTIAL: (30, 0, 50)}, 1.0) is None
+    assert rule.windows["live"].score == pytest.approx(0.9)
+    assert rule.read is None and rule.score is None  # no average's window is full yet
+    assert rule.observe(2, {"live": (90, 0, 10), EXPONENTIAL: (10, 0, 10)}, 1.0) is None
+    assert rule.read == EXPONENTIAL and rule.score == pytest.approx(0.4)
+    # the uniform average's first games (it exists from the warm-up's end on)
+    assert rule.observe(3, {UNIFORM: (45, 0, 50)}, 1.0) is None
+    assert rule.read == EXPONENTIAL  # its window is not full
+    assert rule.observe(4, {UNIFORM: (5, 0, 0)}, 1.0) == "score"
+    assert rule.read == UNIFORM and rule.score == pytest.approx(0.5)
+    assert rule.standard_error == pytest.approx(rule.windows[UNIFORM].standard_error)
+
+
+def test_an_equal_score_reads_the_earlier_average():
+    config = bc.StopConfig(score_window=100, score_target=1.1)
+    rule = bc.StopRule(config)
+    rule.observe(1, {UNIFORM: (40, 20, 40), EXPONENTIAL: (40, 20, 40)}, 1.0)
+    assert rule.read == EXPONENTIAL
+    reversed_rule = bc.StopRule(dataclasses.replace(config, reads=(UNIFORM, EXPONENTIAL)))
+    reversed_rule.observe(1, {UNIFORM: (40, 20, 40), EXPONENTIAL: (40, 20, 40)}, 1.0)
+    assert reversed_rule.read == UNIFORM
+    with pytest.raises(ValueError, match="distinct players"):
+        bc.StopConfig(reads=(UNIFORM, UNIFORM))
 
 
 def test_the_stop_rules_state_round_trips_through_json_and_continues_the_window():
@@ -470,7 +504,8 @@ def test_the_stop_rules_state_round_trips_through_json_and_continues_the_window(
     for update in range(6, 60):
         kl = flat(update)
         decisions = [
-            rule.observe((update + 1) * 100, 6, 0, 14, kl) for rule in (original, restored)
+            rule.observe((update + 1) * 100, {EXPONENTIAL: (6, 0, 14), "live": (9, 2, 9)}, kl)
+            for rule in (original, restored)
         ]
         assert decisions[0] == decisions[1] and original.state == restored.state
     assert decisions[0] == "kl_plateau"
@@ -601,6 +636,10 @@ def test_bnb_train_objective_bc_saves_the_clone_as_a_policy_file(monkeypatch, tm
     record = checkpoint.read_record(run.policy_path)
     assert record["kind"] == "policy" and record["return_scale"]
     assert record["steps"] == dict(environment_steps=2 * 16 * 16, updates=2)
+    # no window filled: `policy/` holds the first average the stop reads, every player beside it
+    assert run.record["policy_player"] == "exponential_average"
+    for variant in ("live", "uniform", "exponential"):
+        assert checkpoint.read_record(run.variant_policy_path(variant))["kind"] == "policy"
     clone = checkpoint.load_policy(run.policy_path, lc.CPU)
     # Reinforcement learning from it: the clone's weights, a run of its own.
     _bnb(
@@ -676,7 +715,9 @@ def test_a_bc_run_writes_training_checkpoints_and_resumes(monkeypatch, tmp_path)
     resumed = checkpoint.read_record(run.checkpoint_at())["stop_rule"]
     assert resumed["history"][:2] == window["history"]  # the window went on
     assert checkpoint.read_record(run.policy_path)["steps"]["environment_steps"] == 4 * 16 * 16
-    assert not run.policy_path.with_name("policy.replaced").exists()
+    assert not list(run.directory.glob("*.replaced"))
+    resumed_record = checkpoint.read_record(run.checkpoint_at())
+    assert resumed_record["league"]["averaged"] == 0  # the uniform average's warm-up is 10M
     rows = [json.loads(line) for line in (run.directory / "metrics.jsonl").read_text().splitlines()]
     assert [row["counters/updates"] for row in rows] == [1, 2, 3, 4]
     assert all("alerts/entropy_collapse" not in row for row in rows)  # an RL-only rule
