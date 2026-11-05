@@ -1,7 +1,7 @@
 """The resume (runs acceptance 3, league acceptance 6): K updates, a training checkpoint, a
 resume in a fresh process and K more continue the run that 2K updates straight through make.
-Opponent slots restored wrong show, and so do the league's draws restarted, a gauge's record
-or the rating lanes' lost, or a return scale not restored. The runs play two shards and a
+Opponent slots restored wrong show, and so do the league's draws restarted, a gauge's ratings
+or the ratings' games lost, or a return scale not restored. The runs play two shards and a
 lookahead per update, beside rating lanes.
 
 On the CPU the two are bitwise equal, end to end. On the GPU the contract is integrity, not

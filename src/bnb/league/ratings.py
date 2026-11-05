@@ -1,6 +1,6 @@
-"""The rating estimators (league spec 4 and 6): the Bradley-Terry fit with standard errors, one
-player against known opponents, the ladder fit with the gauge held, the live rating, and the
-offline tournament's game allocation.
+"""The rating estimators (league spec 4 and 6): the Bradley-Terry fit with standard errors (the
+run's ratings, `bnb.league.lanes.RunRatings`, and the offline tournament's) and the offline
+tournament's game allocation.
 
 Offline tools in float64 on the CPU (code style, Dtypes). Ratings are on the Elo scale: 400
 points per factor of 10 in odds, `P(i beats j) = 1 / (1 + 10^((r_j - r_i)/400))`. Every fit
@@ -91,87 +91,6 @@ def fit_ratings(wins, anchor: int, prior_games: float) -> tuple[torch.Tensor, to
     covariance = torch.linalg.inv(_fisher(theta, wins + wins.T, others))
     stderr[others] = covariance.diagonal().sqrt() * SCALE
     return (theta - theta[anchor]) * SCALE, stderr
-
-
-def rate_against(opponent_ratings, wins, losses) -> tuple[float, float]:
-    """One player's maximum-likelihood rating against opponents of known ratings (K,), from
-    its wins and losses against each (K,), and the rating's standard error. A clean sweep is
-    +inf (-inf when swept) with an infinite error; no games is nan with an infinite error."""
-    opponents, wins, losses = _as_float(opponent_ratings), _as_float(wins), _as_float(losses)
-    games = wins + losses
-    total, won = float(games.sum()), float(wins.sum())
-    if total == 0.0:
-        return math.nan, math.inf
-    if won == total:
-        return math.inf, math.inf
-    if won == 0.0:
-        return -math.inf, math.inf
-    theta = torch.zeros(1, dtype=DTYPE)
-    strengths = opponents / SCALE
-    # Newton on one concave variable; start at the games-weighted mean opponent.
-    theta[0] = float((games * strengths).sum() / total)
-    for _ in range(NEWTON_STEPS):
-        probability = torch.sigmoid(theta[0] - strengths)
-        gradient = float((wins - games * probability).sum())
-        information = float((games * probability * (1.0 - probability)).sum())
-        step = gradient / information
-        if step * gradient < DECREMENT_TOLERANCE:
-            break
-        current = float(
-            (wins * torch.nn.functional.logsigmoid(theta[0] - strengths)).sum()
-            + (losses * torch.nn.functional.logsigmoid(strengths - theta[0])).sum()
-        )
-        length = 1.0
-        while True:
-            trial = theta[0] + length * step
-            value = float(
-                (wins * torch.nn.functional.logsigmoid(trial - strengths)).sum()
-                + (losses * torch.nn.functional.logsigmoid(strengths - trial)).sum()
-            )
-            if value >= current - 1e-15 * abs(current) or length < 1e-12:
-                break
-            length *= 0.5
-        theta[0] = trial
-    probability = torch.sigmoid(theta[0] - strengths)
-    information = float((games * probability * (1.0 - probability)).sum())
-    return float(theta[0]) * SCALE, SCALE / math.sqrt(information)
-
-
-def rate_live(opponent_ratings, wins, losses, ties) -> tuple[float, float]:
-    """One update's live record against opponents of known ratings (K,): wins, losses and
-    ties against each (K,), ties scored as half a win, no prior. Returns (rating, stderr);
-    a clean sweep is +inf (-inf when swept) with an infinite error, no games nan."""
-    ties = _as_float(ties)
-    return rate_against(
-        opponent_ratings, _as_float(wins) + ties / 2.0, _as_float(losses) + ties / 2.0
-    )
-
-
-def fit_ladder(wins, ties, fixed, fixed_ratings, prior_games: float) -> torch.Tensor:
-    """Every player's rating (K,): the `fixed` players (K,) bool keep `fixed_ratings` (K,)
-    exactly, the others are the Bradley-Terry maximum given them. wins (K, K): row's wins over
-    column; ties (K, K) symmetric, half a win to each side. Each free player gets
-    `prior_games` virtual games against the strongest fixed rating, half won and half lost."""
-    wins, ties = _as_float(wins), _as_float(ties)
-    fixed = torch.as_tensor(fixed, dtype=torch.bool).cpu()
-    fixed_ratings = _as_float(fixed_ratings)
-    if not bool(fixed.any()):
-        raise ValueError("the ladder fit needs at least one fixed player (the gauge)")
-    count = wins.shape[0]
-    strongest = float(fixed_ratings[fixed].max())
-    # One extra player, held at the strongest fixed rating, carries every prior game.
-    scored = torch.zeros((count + 1, count + 1), dtype=DTYPE)
-    scored[:count, :count] = wins + ties / 2.0
-    free = torch.cat([~fixed, torch.zeros(1, dtype=torch.bool)])
-    scored[:count, count][~fixed] = prior_games / 2.0
-    scored[count, :count][~fixed] = prior_games / 2.0
-    theta = torch.zeros(count + 1, dtype=DTYPE)
-    theta[:count][fixed] = fixed_ratings[fixed] / SCALE
-    theta[count] = strongest / SCALE
-    theta = _maximise(theta, scored, free)
-    ratings = theta[:count] * SCALE
-    ratings[fixed] = fixed_ratings[fixed]  # exactly, not through a division and back
-    return ratings
 
 
 def allocate(pair_games, ratings, anchor: int, budget: int, minimum_per_pair: int) -> torch.Tensor:

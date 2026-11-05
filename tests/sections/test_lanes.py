@@ -17,8 +17,8 @@ from scripted_cases import CHARACTERISTICS
 from bnb.contracts import GameConfig, Pool
 from bnb.controllers.relational import RelationalController
 from bnb.game import api
-from bnb.league.gauge import Gauge
-from bnb.league.lanes import LaneHooks, LaneRatings
+from bnb.league.gauge import Record
+from bnb.league.lanes import LaneHooks, RunRatings
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
 from bnb.runtime import cloning
 from bnb.runtime.lanes import (
@@ -336,7 +336,7 @@ def test_the_live_lane_plays_the_learners_weights(tmp_path):
 
 
 def _trainer(lanes: tuple[Lane, ...], seat=None, **config) -> types.SimpleNamespace:
-    """What `LaneRatings` reads of a trainer: its lanes, their seat and their window."""
+    """What `RunRatings` reads of a trainer: its lanes, their seat and their window."""
     return types.SimpleNamespace(
         lanes=lanes, lane_seat=seat, config=types.SimpleNamespace(lanes=LaneConfig(**config))
     )
@@ -348,7 +348,7 @@ def test_lane_ratings_chain_the_ladder_to_the_scripted_agent():
     top = Lane(MODE, Matchup("rung_T1.25", SCRIPTED_PLAYER))
     below = Lane(MODE, Matchup("rung_T1.5", "rung_T1.25"))
     live = Lane(MODE, Matchup(LIVE, SCRIPTED_PLAYER))
-    ratings = LaneRatings(_trainer((top, below, live), window=2))
+    ratings = RunRatings(_trainer((top, below, live), window=2))
     ratings.update({top: (250, 0, 750), below: (500, 0, 500), live: (0, 0, 0)})
     expected = 1000.0 - 400.0 * math.log10(3.0)
     rung, error = ratings.rating(MODE, "rung_T1.25")
@@ -357,7 +357,7 @@ def test_lane_ratings_chain_the_ladder_to_the_scripted_agent():
     assert ratings.rating(MODE, LIVE) is None
     # a lane whose games do not reach the scripted agent rates nobody
     apart = Lane(MODE, Matchup("random", "rung_T8"))
-    ratings = LaneRatings(_trainer((top, below, live, apart), window=2))
+    ratings = RunRatings(_trainer((top, below, live, apart), window=2))
     ratings.update({top: (250, 0, 750), below: (500, 0, 500), live: (0, 0, 0), apart: (1, 2, 3)})
     assert ratings.rating(MODE, "random") is None
     series = ratings.series()
@@ -368,14 +368,14 @@ def test_a_moving_players_games_leave_after_the_window_and_the_ladders_stay():
     rung = Lane(MODE, Matchup("rung_T1.25", SCRIPTED_PLAYER))
     live = Lane(MODE, Matchup(LIVE, SCRIPTED_PLAYER))
     trainer = _trainer((rung, live), window=2)
-    ratings = LaneRatings(trainer)
+    ratings = RunRatings(trainer)
     ratings.update({rung: (10, 0, 30), live: (40, 0, 0)})
     assert ratings.rating(MODE, LIVE)[0] > 1000.0
     ratings.update({rung: (10, 0, 30), live: (20, 0, 20)})
     ratings.update({rung: (10, 0, 30), live: (0, 0, 40)})  # the sweep has left the window
     assert ratings.rating(MODE, LIVE)[0] < 1000.0
     assert ratings._games(MODE)[("rung_T1.25", SCRIPTED_PLAYER)] == [30.0, 0.0, 90.0]
-    restored = LaneRatings(trainer, ratings.state())
+    restored = RunRatings(trainer, ratings.state())
     assert restored.state() == ratings.state() and restored.series() == ratings.series()
 
 
@@ -394,7 +394,7 @@ def test_a_strong_player_is_rated_far_better_through_a_snapshot_chain():
     smaller; both fits find the rating."""
     slots = ("league_0", "league_1", "league_2")
     alone = Lane(MODE, Matchup(LIVE, SCRIPTED_PLAYER))
-    direct = LaneRatings(
+    direct = RunRatings(
         _trainer(
             (alone,),
             window=1,
@@ -404,7 +404,7 @@ def test_a_strong_player_is_rated_far_better_through_a_snapshot_chain():
     links = [Lane(MODE, Matchup(slots[0], SCRIPTED_PLAYER))]
     links += [Lane(MODE, Matchup(high, low)) for low, high in zip(slots, slots[1:], strict=False)]
     top = Lane(MODE, Matchup(LIVE, slots[-1]))
-    ratings = LaneRatings(
+    ratings = RunRatings(
         _trainer(
             (*links, top),
             window=1,
@@ -433,7 +433,7 @@ def test_a_league_slot_swap_copies_weights_in_place_and_credits_the_entry():
         Lane(MODE, Matchup("league_0", SCRIPTED_PLAYER)),
     )
     seat = _seat(lanes)
-    ratings = LaneRatings(_trainer(lanes, seat=seat, window=1))
+    ratings = RunRatings(_trainer(lanes, seat=seat, window=1))
     before = {name: (value.data_ptr(), value.shape) for name, value in seat.parameters.items()}
     state = {name: value + 1.0 for name, value in seat.decision.model.state_dict().items()}
     ratings.assign("league_0", "snapshot_100", state)
@@ -455,16 +455,93 @@ def test_a_league_slot_swap_copies_weights_in_place_and_credits_the_entry():
     assert ratings._games(MODE)[("snapshot_200", SCRIPTED_PLAYER)] == [1.0, 0.0, 3.0]
 
 
-def test_the_gauge_takes_the_lanes_ladder_and_live_ratings():
-    gauge = Gauge(initial_live=850.0)
-    assert gauge.live.rating == 850.0  # a warm start's parent's
-    gauge.add("rung_T1.25", "ladder", 900.0)
-    gauge.add("scripted", "ladder", 1000.0)
-    gauge.calibrate({"rung_T1.25": (260.0, 20.0), "unknown": (1.0, 1.0)})
-    assert gauge.entries["rung_T1.25"].rating == 260.0
-    assert gauge.entries["scripted"].rating == 1000.0
-    gauge.update({}, live=(700.0, 25.0))
-    assert (gauge.live.rating, gauge.live.stderr) == (700.0, 25.0)
+def test_the_leagues_training_games_rate_the_live_policy_without_lanes():
+    """A league without lanes is rated from its own games: the live policy's against each
+    entry, kept for the window; a snapshot taken at an update is credited with them, and its
+    games against a stationary entry stay for the run."""
+    ratings = RunRatings(_trainer((), window=1), modes=(MODE,))
+    assert ratings.modes == (MODE,)
+    ratings.update({}, {MODE: {SCRIPTED_PLAYER: Record(wins=30, losses=10)}}, "snapshot_100")
+    # with the prior: half a game won and half lost against the scripted agent
+    live, error = ratings.rating(MODE, LIVE)
+    assert live == pytest.approx(1000.0 + 400.0 * math.log10(30.5 / 10.5), abs=0.1) and error < 120
+    assert ratings.rating(MODE, "snapshot_100") == (live, error)
+    ratings.update({}, {MODE: {EXPONENTIAL_AVERAGE: Record(wins=5, losses=5)}})
+    assert ratings.rating(MODE, LIVE) is None  # its games against the scripted agent have left
+    assert ratings.rating(MODE, "snapshot_100")[0] == pytest.approx(live)
+    assert ratings._games(MODE)[(LIVE, EXPONENTIAL_AVERAGE)] == [5.0, 0.0, 5.0]
+
+
+def test_a_player_against_itself_and_an_unrated_slot_are_left_out():
+    lanes = (
+        Lane(MODE, Matchup(EXPONENTIAL_AVERAGE, "league_0")),
+        Lane(MODE, Matchup(LIVE, "league_1")),
+    )
+    ratings = RunRatings(_trainer(lanes, window=1))
+    ratings.assign("league_0", EXPONENTIAL_AVERAGE, None)
+    ratings.assign("league_1", None, None)  # a ladder entry
+    ratings.update({lanes[0]: (4, 0, 4), lanes[1]: (3, 0, 1)})
+    assert ratings._games(MODE) == {}
+
+
+def test_a_slot_holding_an_average_follows_its_weights():
+    """An average moves: a slot that holds it takes its new weights as the same player's (the
+    games in progress tallied); a snapshot it holds is loaded once."""
+    lanes = (Lane(MODE, Matchup(LIVE, "league_0")),)
+    seat = _seat(lanes)
+    ratings = RunRatings(_trainer(lanes, seat=seat, window=1))
+    index = seat.networks.index("league_0")
+    model = seat.decision.model.state_dict()
+    for step in (1.0, 2.0):
+        state = {name: value + step for name, value in model.items()}
+        ratings.assign("league_0", EXPONENTIAL_AVERAGE, state)
+        name, value = next(iter(state.items()))
+        assert torch.equal(seat.parameters[f"model.{name}"][index], value)
+    assert int(seat.generation[index]) == 1  # one new entry, then the same one moving on
+    ratings.assign("league_0", "snapshot_100", model)
+    ratings.assign("league_0", "snapshot_100", {name: value + 9.0 for name, value in model.items()})
+    name, value = next(iter(model.items()))
+    assert torch.equal(seat.parameters[f"model.{name}"][index], value)
+    assert int(seat.generation[index]) == 2
+
+
+def test_the_leagues_games_shrink_the_ratings_errors():
+    """A synthetic league in the shape of an RL run's update (the run of 2026-11-06 per mode):
+    the lanes play the live policy (1400) against the scripted agent 2 games, against the
+    exponential average (1250) 4, and the average against the scripted agent 1; the league's
+    training games add the live policy against the scripted agent 8 and against the average
+    20. Over a ten-update window, the live policy's and the average's errors shrink by more
+    than a third and both fits find the ratings."""
+    lanes = (
+        Lane(MODE, Matchup(LIVE, SCRIPTED_PLAYER)),
+        Lane(MODE, Matchup(LIVE, EXPONENTIAL_AVERAGE)),
+        Lane(MODE, Matchup(EXPONENTIAL_AVERAGE, SCRIPTED_PLAYER)),
+    )
+    record = {
+        lanes[0]: _expected(2, 400.0),
+        lanes[1]: _expected(4, 150.0),
+        lanes[2]: _expected(1, 250.0),
+    }
+    wins, _, losses = _expected(8, 400.0)
+    average_wins, _, average_losses = _expected(20, 150.0)
+    league = {
+        MODE: {
+            SCRIPTED_PLAYER: Record(wins=wins, losses=losses),
+            EXPONENTIAL_AVERAGE: Record(wins=average_wins, losses=average_losses),
+        }
+    }
+    alone = RunRatings(_trainer(lanes, window=10))
+    every = RunRatings(_trainer(lanes, window=10))
+    for _ in range(10):
+        alone.update(record)
+        every.update(record, league)
+    for player, truth in ((LIVE, 1400.0), (EXPONENTIAL_AVERAGE, 1250.0)):
+        (lanes_only, lanes_error), (both, error) = (
+            alone.rating(MODE, player),
+            every.rating(MODE, player),
+        )
+        assert error < lanes_error * 2 / 3, (player, error, lanes_error)
+        assert abs(both - truth) < error and abs(lanes_only - truth) < lanes_error
 
 
 def test_a_warm_starts_league_starts_from_its_parents_rating(tmp_path):

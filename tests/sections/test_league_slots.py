@@ -8,7 +8,7 @@ import torch
 
 from bnb.contracts import Obs
 from bnb.contracts.obs import GLOBAL
-from bnb.league.pool import UNIFORM_AVERAGE, sampling_weights
+from bnb.league.pool import EXPONENTIAL_AVERAGE, UNIFORM_AVERAGE, sampling_weights
 from bnb.runtime.opponents import (
     LADDER_KIND,
     OPPONENTS,
@@ -199,6 +199,107 @@ def test_a_drain_ends_once_every_row_has_switched(drain_history):
         if before["draining"] is not None and after["draining"] != before["draining"]:
             rows = range(before["draining"], len(before["names"]), 4)
             assert all(before["incoming"][row] for row in rows)
+
+
+def test_each_training_game_is_credited_to_the_entry_that_played_it(tmp_path):
+    """Tick by tick, across drains and swaps: each ended game's column names the entry the
+    row played as it ended (`_names`), and the league's record, read once per shard, credits
+    every game to that entry; each network set holds its entry's weights throughout."""
+    torch.manual_seed(0)
+    trainer, league = cases.league(tmp_path)
+    rollout, slots = trainer.rollout, league.config.slots
+    carry = rollout.carry["controllers"][OPPONENTS]
+    tally = rollout.carry["tallies"][OPPONENTS]
+    columns = trainer.opponents.columns
+    expected: dict[str, list[float]] = {}
+    seen = torch.zeros_like(tally)
+    drains = 0
+    for tick in range(600):
+        rollout._tick()
+        ended = (tally - seen).reshape(columns, len(league.modes), 3)[:, 0]
+        seen = tally.clone()
+        ladder = [entry.name for entry in league.ladder]
+        for column, (wins, ties, losses) in enumerate(ended.tolist()):
+            if wins + ties + losses:
+                name = league.held[column] if column <= slots else ladder[column - slots - 1]
+                assert name in _names(league, carry) or column > slots
+                total = expected.setdefault(name, [0.0, 0.0, 0.0])
+                for index, count in enumerate((wins, losses, ties)):
+                    total[index] += count
+        if tick % 8 == 7:
+            draining = trainer.opponents.draining_slot
+            league.after_shard(trainer, 0)
+            seen.zero_()
+            drains += draining is not None and trainer.opponents.draining_slot != draining
+            for set_index, name in enumerate(league.held):
+                entry = league.entries.get(name) if name is not None else None
+                if entry is None or not entry.network:
+                    continue
+                weights = league._weights_of(entry)
+                key = next(key for key, value in weights.items() if value.is_floating_point())
+                held = trainer.opponents.parameters[f"model.{key}"][set_index]
+                assert torch.equal(held, weights[key].to(held.device)), (set_index, name)
+    recorded = {
+        name: [record.wins, record.losses, record.ties]
+        for name, record in league.record[league.modes[0]].items()
+    }
+    assert drains >= 3 and recorded == expected and sum(map(sum, expected.values())) > 20
+
+
+def test_a_slot_holding_an_average_follows_it_after_every_update(tmp_path):
+    """The averages move: the slots holding one (and the incoming set) take its weights after
+    each update, as the lanes' averages do, so its training games are the average's."""
+    trainer, league = cases.league(tmp_path)
+    for name, set_index in ((EXPONENTIAL_AVERAGE, 0), (UNIFORM_AVERAGE, 1)):
+        league.held[set_index] = name
+        league._load(set_index, league.entries[name])
+    for update in range(2):
+        with torch.no_grad():
+            for parameter in trainer.model.parameters():
+                parameter.add_(1.0)
+        trainer.collect()
+        league.collected(trainer)
+        trainer.ppo.environment_steps += trainer.steps_per_update
+        league.updated(trainer)
+        for name, set_index in ((EXPONENTIAL_AVERAGE, 0), (UNIFORM_AVERAGE, 1)):
+            if league.held[set_index] != name:
+                continue  # drained onto another entry meanwhile
+            weights = league.averages.weights[name]
+            key = next(key for key, value in weights.items() if value.is_floating_point())
+            held = trainer.opponents.parameters[f"model.{key}"][set_index]
+            assert torch.equal(held, weights[key]), (update, name)
+
+
+def test_the_leagues_games_join_the_runs_fit(tmp_path):
+    """Each update's training games enter the run's ratings as the live policy's against
+    each entry, and a snapshot taken at the update is credited with them; the uniform
+    average's are left out before it has started (it is the live weights until then)."""
+    torch.manual_seed(0)
+    trainer, league = cases.league(tmp_path, league=LeagueConfig(snapshot_every=1))
+    mode, total = league.modes[0], 0.0
+    for update in range(3):
+        trainer.collect()
+        league.collected(trainer)
+        played = {
+            name: [record.wins, record.ties, record.losses]
+            for name, record in league.record[mode].items()
+            if name != UNIFORM_AVERAGE
+        }
+        total += sum(map(sum, played.values()))
+        trainer.ppo.environment_steps += trainer.steps_per_update
+        league.updated(trainer)
+        games = league.ratings.recent[-1]
+        snapshot = f"snapshot_{trainer.ppo.environment_steps}"
+        for name, outcomes in played.items():
+            assert games[f"{mode}|live|{name}"] == outcomes, (update, name)
+            stationary = name in {entry.name for entry in league.ladder} or name.startswith(
+                "snapshot_"
+            )
+            credited = league.ratings.whole if stationary else games
+            if name != snapshot:
+                assert credited[f"{mode}|{snapshot}|{name}"][0] >= outcomes[0]
+        assert not any(UNIFORM_AVERAGE in key for key in games)
+    assert total > 0 and not league.averages.uniform_started
 
 
 def test_the_opponent_rows_split_evenly_over_the_slots():
