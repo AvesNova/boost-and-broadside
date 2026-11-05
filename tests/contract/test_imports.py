@@ -14,6 +14,7 @@ LAYER = {
     "runs": 5,
     "league": 6,
     "play": 7,
+    "figures": 7,
     "cli": 8,
 }
 

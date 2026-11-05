@@ -16,3 +16,5 @@ is done.
 - [Adding a mode](adding-a-mode.md): every place a new game mode plugs in.
 - [Playing and spectating](playing.md): watch or fly a match, the views, the themes and
   the theme editor, offscreen renders.
+- [Figures](figures.md): capture a policy's rollout and draw what its heads have
+  learned, set by set.

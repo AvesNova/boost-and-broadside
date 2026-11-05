@@ -189,17 +189,6 @@ def learning_rate(config: LearnerConfig, steps: int) -> float:
     return config.warmup_start + (config.learning_rate - config.warmup_start) * fraction
 
 
-def trajectory_runs(code: shot_codes.ShotCodeParameters) -> codes.Runs:
-    """The shot trajectory code's parts as (groups, size): displacement, direction, speed,
-    refractive index."""
-    return (
-        (code.displacement_levels, 9),
-        (code.direction_levels, 4),
-        (1, code.speed_bins),
-        (1, code.index_bins),
-    )
-
-
 def _head(unrolled, name: str):
     return getattr(unrolled, name, None)
 
@@ -256,7 +245,7 @@ class Learner:
         self.auxiliary = hasattr(model, "state_code")
         if self.auxiliary:
             self.grid = HexGrid(model.config.hex_rings, device)
-            self.shot_runs = trajectory_runs(model.shot_code)
+            self.shot_runs = model.shot_code.trajectory_runs
         self.discount = torch.tensor(config.discount, device=device)
         self.trace_decay = torch.tensor(config.trace_decay, device=device)
         self.team_spirit = torch.tensor(config.team_spirit, device=device)

@@ -144,11 +144,11 @@ def _options(cls) -> set[str]:
 
 def command(arguments: str) -> str | None:
     """None if `bnb <arguments>` names a command (`bnb.cli.COMMANDS`) and uses only its
-    options (`bnb.cli.Train`, `Runs`, `ShipCard`, `Ratings` or `HeadToHead`), with a known
-    preset and mode."""
+    options (`bnb.cli.Train`, `Runs`, `ShipCard`, `Ratings`, `HeadToHead` or `Figures`),
+    with a known preset and mode."""
     import shlex
 
-    from bnb.cli import COMMANDS, HeadToHead, Ratings, Runs, ShipCard, Train
+    from bnb.cli import COMMANDS, Figures, HeadToHead, Ratings, Runs, ShipCard, Train
     from bnb.contracts.config import MODES
     from bnb.game.modes.rules import PRESETS
 
@@ -163,6 +163,7 @@ def command(arguments: str) -> str | None:
         "ship-card": ShipCard,
         "ratings": Ratings,
         "head-to-head": HeadToHead,
+        "figures": Figures,
     }
     options = _options(commands[tokens[0]])
     values = {"--preset": set(PRESETS) | {"mixed"}, "--mode": set(MODES)}

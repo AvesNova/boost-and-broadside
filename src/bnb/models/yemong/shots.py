@@ -43,6 +43,17 @@ class ShotCodeParameters:
         )
 
     @property
+    def trajectory_runs(self) -> tuple[tuple[int, int], ...]:
+        """The trajectory code's parts as (groups, size), in code order: displacement,
+        direction, speed, refractive index (`bnb.models.yemong.codes.Runs`)."""
+        return (
+            (self.displacement_levels, 9),
+            (self.direction_levels, 4),
+            (1, self.speed_bins),
+            (1, self.index_bins),
+        )
+
+    @property
     def outcome_width(self) -> int:
         """The outcome code's width: enemy hit, ally hit, near_bins near-miss bins per side, and
         clear."""
