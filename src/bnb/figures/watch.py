@@ -292,7 +292,7 @@ def watch(
     once: bool = False,
     make=make_media,
     sleep=time.sleep,
-    say=print,
+    say=lambda line: print(line, flush=True),  # a watcher's log is usually a file
 ) -> None:
     """Make every pending checkpoint's media (`make`), log them with `log`, and poll every
     `config.interval` seconds, until the run is no longer live and nothing is pending (or
