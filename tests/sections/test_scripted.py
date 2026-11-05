@@ -1,9 +1,9 @@
 """The scripted agent (scripted spec A7): behaviour on constructed observations, invariance,
 its softness (the floor and the temperature), and the controller in the rollout.
 
-Every binary decision is floored at EPSILON, so "certain" below means within the floor: a
-single decision at most 1 - EPSILON, a turn at a given level and side at most about
-(1 - EPSILON)^2."""
+Every binary decision is floored at its own epsilon (`EPSILONS`), so "certain" below means
+within the floors: a single decision at most 1 - epsilon, a turn at a given level and side
+at most about (1 - epsilon)^2 (EPSILON below is the largest)."""
 
 import dataclasses
 import inspect
@@ -21,7 +21,7 @@ from bnb.contracts.obs import SHIP, SHIP_HIDDEN_ZERO, ZONE
 from bnb.controllers import scripted_combat
 from bnb.controllers.scripted import Scripted, distribution, marginals
 from bnb.controllers.scripted_parameters import (
-    EPSILON,
+    EPSILONS,
     NAMES,
     SCALE_FLOORS,
     Logistic,
@@ -43,6 +43,7 @@ pytestmark = pytest.mark.usefixtures("global_generator")
 
 PARAMETERS = ScriptedParameters()
 TYPES = (0, 1)
+EPSILON = max(EPSILONS.values())
 SURE = 1.0 - EPSILON - 0.02  # one decision near its ceiling 1 - EPSILON
 SURE_TWICE = (1.0 - EPSILON) ** 2 - 0.03  # two decisions near theirs (a side and a turn)
 UNLIKELY = EPSILON + 0.02  # one decision near its floor
@@ -100,8 +101,8 @@ def test_the_stick_level_rises_with_the_angle_error_and_the_side_follows_its_sig
             level, left, right = _levels(stick)
             if degrees > 0.0:
                 turning = 1.0 - stick[0]
-                assert (left if sign > 0 else right) >= (1.0 - EPSILON - 1e-5) * turning
-                assert (right if sign > 0 else left) <= (EPSILON + 1e-5) * turning
+                assert (left if sign > 0 else right) >= (1.0 - EPSILONS["side"] - 1e-5) * turning
+                assert (right if sign > 0 else left) <= (EPSILONS["side"] + 1e-5) * turning
         assert level >= previous - 1e-6, degrees
         previous = float(level)
     ceiling = (1.0 - EPSILON) * (1.0 + (1.0 - EPSILON) + (1.0 - EPSILON) ** 2)
@@ -142,9 +143,9 @@ def test_it_fires_only_when_aligned_in_range_ready_and_paid_for(ship_type):
         ),
     )
     for name, obs in cases.items():
-        assert _marginals(obs)[2][1] < UNLIKELY, name
-        if name in ("cooling", "short_of_energy"):  # the floor exactly
-            assert _marginals(obs)[2][1] == pytest.approx(EPSILON, abs=1e-6), name
+        assert _marginals(obs)[2][1] < 0.02, name
+        if name in ("cooling", "short_of_energy"):  # the gate: exactly 0
+            assert _marginals(obs)[2][1] == 0.0, name
 
 
 RULES_TICK = 1.0 / 30.0
@@ -259,10 +260,13 @@ def test_with_no_visible_enemy_it_heads_for_the_centre_and_holds_fire(ship_type)
     for enemy in (absent(), ship(x=1700.0, y=200.0, team_relative=1, visible=False)):
         power, stick, shoot = _marginals(_duel(ship_type, enemy, own=away))
         assert _levels(stick)[1] > SURE_TWICE
-        assert shoot[1] == pytest.approx(EPSILON) and power[2] == pytest.approx(EPSILON)
+        assert shoot[1] == pytest.approx(EPSILONS["shoot"])
+        assert power[2] == pytest.approx(EPSILONS["reverse"])
     near = ship(x=100.0, heading=math.pi / 2, ship_type=ship_type)
     holding = _marginals(_duel(ship_type, absent(), own=near))[1]
-    assert holding[0] == pytest.approx(1.0 - EPSILON)  # holds its course, within the floor
+    assert holding[0] == pytest.approx(
+        1.0 - EPSILONS["turn"], abs=1e-3
+    )  # holds its course, within the floor
 
 
 # ------------------------------------------------------------------ Frontline
@@ -521,10 +525,11 @@ def _entropy(q: torch.Tensor) -> torch.Tensor:
 
 @pytest.mark.parametrize("mode", ["team_deathmatch", "frontline"])
 def test_no_living_ships_action_is_certain_and_heat_flattens_every_decision(mode):
-    """In a played game, at T = 1 every living ship's every factor value has a probability
-    in (0, 1), each binary decision's at least EPSILON; a higher temperature raises every
-    factor's mean entropy, every logistic toward an even choice (the gates that are not
-    logistics, no target or a gun not ready, stay at the floor)."""
+    """In a played game, at T = 1 every living ship's every power and stick value has a
+    probability in (0, 1), each binary decision's at least its epsilon, and the shot is never
+    certain (its only exact value is P(shoot) = 0, at its gates: no target, or a gun that
+    cannot fire); a higher temperature raises every factor's mean entropy, every logistic
+    toward an even choice (the gates stay)."""
     _, _, obs = _game_views(mode)
     view = _view(obs, 0)
     alive = view.ships[:, : view.ships.shape[1] // 2, SHIP["alive"]] > 0.5
@@ -532,14 +537,16 @@ def test_no_living_ships_action_is_certain_and_heat_flattens_every_decision(mode
     for temperature in (1.0, 2.0, 4.0):
         parts = marginals(view, CHARACTERISTICS, PARAMETERS, temperature)
         if temperature == 1.0:
-            for part in parts:
+            for part in (parts.power, parts.stick):
                 living = part[alive]
                 assert bool(((living > 0.0) & (living < 1.0)).all())
-            assert float(parts.shoot[alive].min()) >= EPSILON - 1e-6
-            assert float(parts.power[alive][:, 2].min()) >= EPSILON - 1e-6  # P(reverse)
+            shoot = parts.shoot[alive][:, 1]
+            assert bool((shoot < 1.0).all())
+            assert float(parts.power[alive][:, 2].min()) >= EPSILONS["reverse"] - 1e-6  # P(reverse)
         entropies = torch.stack([_entropy(part)[alive].mean() for part in parts])
         if previous is not None:
-            assert bool((entropies > previous).all()), (temperature, entropies, previous)
+            assert bool((entropies >= previous).all()), (temperature, entropies, previous)
+            assert bool((entropies[:2] > previous[:2]).all())  # the shot may be gated throughout
         previous = entropies
     x = torch.tensor([1e-3, 0.5, 2.0, 50.0])
     for name in SCALE_FLOORS:  # every logistic tends to an even choice

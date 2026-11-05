@@ -15,7 +15,7 @@ from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.game.handling.characteristics import Characteristics, time_of_flight
 from bnb.game.ship_types import per_ship
 
-from .scripted_parameters import EPSILON, ScriptedParameters, floored, logistic, ramp
+from .scripted_parameters import ScriptedParameters, floored, logistic, ramp
 
 TARGET_SIZE_RANGE = (math.radians(1.0), math.radians(45.0))  # the clamp on its angular size
 COAST, BOOST, REVERSE = 0, 1, 2  # power indices (bnb.game.rules.POWER_MODES)
@@ -141,9 +141,13 @@ def stick_marginal(
     then by level, odd right and even left."""
     size = error.abs() / fleet.stall_angle
     temperature = fleet.temperature
-    turn = floored(logistic(size, parameters.turn_in_stall_angle, temperature))
-    above_one = floored(logistic(size, parameters.level_two_in_stall_angle, temperature))
-    above_two = floored(logistic(size, parameters.level_three_in_stall_angle, temperature))
+    turn = floored(logistic(size, parameters.turn_in_stall_angle, temperature), "turn")
+    above_one = floored(
+        logistic(size, parameters.level_two_in_stall_angle, temperature), "level_two"
+    )
+    above_two = floored(
+        logistic(size, parameters.level_three_in_stall_angle, temperature), "level_three"
+    )
     levels = torch.stack(
         [
             turn * (1.0 - above_one),
@@ -152,7 +156,7 @@ def stick_marginal(
         ],
         -1,
     )  # (R, S, 3)
-    left = torch.where(error > 0.0, 1.0 - EPSILON, EPSILON)
+    left = floored((error > 0.0).float(), "side")
     left = torch.where(error == 0.0, 0.5, left)[..., None]
     sides = torch.stack([(1.0 - left) * levels, left * levels], -1)
     return torch.cat([(1.0 - turn)[..., None], sides.flatten(-2)], -1)
@@ -160,8 +164,8 @@ def stick_marginal(
 
 def power_marginal(boost: torch.Tensor, reverse: torch.Tensor) -> torch.Tensor:
     """(R, S, 3) from P(reverse) and P(boost | not reverse), each floored, coast otherwise."""
-    reverse = floored(reverse)
-    boost = (1.0 - reverse) * floored(boost)
+    reverse = floored(reverse, "reverse")
+    boost = (1.0 - reverse) * floored(boost, "boost")
     return torch.stack([1.0 - boost - reverse, boost, reverse], -1)
 
 
@@ -272,7 +276,7 @@ def combat(
     )
     cost = per_ship(characteristics.bullet_energy_cost, fleet.own_type)
     ready = (column(fleet.own, "gun_cooldown") <= 0.0) & (column(fleet.own, "energy") >= cost)
-    shoot = floored(torch.where(has_target & ready, aligned * in_range, 0.0))
+    shoot = floored(torch.where(has_target & ready, aligned * in_range, 0.0), "shoot")
     shoot = torch.stack([1.0 - shoot, shoot], -1)
     return Marginals(power, stick, shoot), has_target, distance
 

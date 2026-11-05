@@ -223,12 +223,18 @@ def test_the_teacher_temperature_and_its_calibration(segment):
 
 
 def test_every_label_gives_every_action_a_probability_above_zero(segment):
-    """The scripted agent's own floor (EPSILON per binary decision): every living ship's
-    every action has a probability above zero at T = 1, and at a cold and a hot T, with no
-    floor on the labels."""
+    """The scripted agent's own floors (an epsilon per binary decision but the shot): every
+    living ship's every action has a probability above zero at T = 1, and at a cold and a
+    hot T, with no floor on the labels, except a shot at its gates (no target, or a gun that
+    cannot fire), where P(shoot) is 0."""
     at = _living_distributions(segment)
     for temperature in (1.0, 0.25, 4.0):
-        assert bool((at(temperature) > 0.0).all()), temperature
+        joint = at(temperature).unflatten(-1, (3, 7, 2))  # power, stick, shoot
+        shoot = joint.sum((-3, -2))[:, 1]
+        assert bool((joint[..., 0] > 0.0).all()), temperature  # every not-shooting action
+        open_gate = shoot > 0.0
+        assert bool((joint[open_gate][..., 1] > 0.0).all()), temperature
+        assert bool(open_gate.any()) and bool((shoot < 1.0).all())
     assert bc.TeacherConfig().floor == 0.0 and bc.TeacherConfig().temperature == 1.0
 
 

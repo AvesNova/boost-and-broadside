@@ -6,9 +6,10 @@ table), so one compiled controller can play several parameter sets side by side 
 parameter search). The defaults are the search's choice; the section notes record the search.
 
 Every probability the agent reads from a quantity is a `Logistic` in the quantity's
-logarithm, flattened by the agent's temperature; every binary decision is then floored at
-`EPSILON` (`floored`), so no action of a living ship has probability exactly 0 or 1 at a
-finite temperature. Weights that are not probabilities (the boundary's steer toward the
+logarithm, flattened by the agent's temperature and held off exactly 0 and 1
+(`LOGIT_LIMIT`); every binary decision but the shot is then floored at its own `EPSILONS`
+(`floored`). The shot's only exact values are its gates: no target, or a gun that cannot
+fire, and P(shoot) is 0. Weights that are not probabilities (the boundary's steer toward the
 centre, the Frontline layer's hand-over to combat) are linear `Ramp`s.
 """
 
@@ -17,7 +18,22 @@ import math
 
 import torch
 
-EPSILON = 0.04  # the floor of every binary decision (v1's): p in [EPSILON, 1 - EPSILON]
+# Each binary decision's floor: p in [epsilon, 1 - epsilon]. Not searched; each is the
+# largest that costs little strength against the earlier agent (the section notes give the
+# ablation). The shot has none: a per-tick floor fires energy-costly shots at 30 decisions
+# a second, and even 0.001 cost about 0.05 of the score; its softness is its logistics'.
+EPSILONS = {
+    "turn": 0.02,
+    "level_two": 0.02,
+    "level_three": 0.02,
+    "side": 0.02,
+    "reverse": 0.04,
+    "boost": 0.04,
+    "shoot": 0.0,
+}
+# A logistic's argument is held within +-LOGIT_LIMIT, so it never rounds to exactly 0 or 1
+# (sigma(9.2) = 1 - 1.0e-4).
+LOGIT_LIMIT = 9.2
 TINY_RATIO = 1e-6  # a logistic's input below this reads as this (its logarithm stays finite)
 
 
@@ -52,17 +68,20 @@ class Logistic:
 
 def logistic(x: torch.Tensor, shape: Logistic, temperature=1.0) -> torch.Tensor:
     """The logistic at x, without the floor, at a temperature (a float, or (R, 1) per
-    view); at T = +inf it is 1/2 everywhere."""
+    view), within sigma(+-LOGIT_LIMIT); at T = +inf it is 1/2 everywhere."""
     sign = 1.0 if shape.rising else -1.0
     centre = shape.centre
     log_centre = torch.log(centre) if isinstance(centre, torch.Tensor) else math.log(centre)
     argument = sign * (torch.log(x.clamp_min(TINY_RATIO)) - log_centre)
-    return torch.sigmoid(argument / (shape.scale * temperature))
+    argument = argument / (shape.scale * temperature)
+    return torch.sigmoid(argument.clamp(-LOGIT_LIMIT, LOGIT_LIMIT))
 
 
-def floored(probability: torch.Tensor) -> torch.Tensor:
-    """A binary decision's probability squeezed into [EPSILON, 1 - EPSILON]."""
-    return EPSILON + (1.0 - 2.0 * EPSILON) * probability
+def floored(probability: torch.Tensor, decision: str) -> torch.Tensor:
+    """A binary decision's probability squeezed into [epsilon, 1 - epsilon], epsilon the
+    decision's `EPSILONS`."""
+    epsilon = EPSILONS[decision]
+    return epsilon + (1.0 - 2.0 * epsilon) * probability
 
 
 @dataclasses.dataclass(frozen=True)
