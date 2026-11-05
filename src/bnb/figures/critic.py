@@ -14,6 +14,7 @@ import pathlib
 
 import torch
 
+from bnb.contracts import REWARD_LEVELS
 from bnb.models.yemong.critic import LOSS, TIE, WIN
 
 from . import output
@@ -152,7 +153,7 @@ def _trace(artifact, part, directory, numbers) -> pathlib.Path:
     axis = axes[1, 0]
     values = games["values"][:stop, view].mean(1)  # (stop, levels): the own ships' mean
     for level in range(values.shape[-1]):
-        axis.plot(seconds, values[:, level], linewidth=1, label=f"level {level}")
+        axis.plot(seconds, values[:, level], linewidth=1, label=REWARD_LEVELS[level])
     axis.set_ylabel("critic value per level\n(own ships' mean)")
     axis.set_xlabel("seconds")
     axis.legend(frameon=False, fontsize=7, ncol=values.shape[-1])
