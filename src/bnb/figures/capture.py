@@ -43,9 +43,10 @@ SEAT = "policy"  # the one controller, in both seats
 @dataclasses.dataclass(frozen=True)
 class CaptureConfig:
     """preset: the game preset (`bnb.game.modes.rules.PRESETS`); environments: games played
-    at once (two views each); ticks: the segment's length; seed: the process generators'
-    seed for the capture; spread_samples: spread draws per shot beyond the learner's one
-    (the fan in the shot figure)."""
+    at once (two views each); ticks: the segment's length; seed: the seed `bnb figures`
+    gives the process generators before it captures (the rollout and the spread draw from
+    them), and the scenario lab's spread fan; spread_samples: spread draws per shot beyond
+    the learner's one (the fan in the shot figure)."""
 
     preset: str = "deathmatch"
     environments: int = 4
@@ -264,7 +265,6 @@ def capture(
     record = checkpoint.read_policy(policy).raw
     model = checkpoint.load_policy(policy, device).requires_grad_(False).eval()
     types = policy_types(record, device)
-    torch.manual_seed(config.seed)
     rollout, trajectory = play(model, types, config, device)
     artifact = dict(
         meta=meta_of(policy, record, config, model),

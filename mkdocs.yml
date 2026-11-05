@@ -105,6 +105,7 @@ nav:
       - Adding a mode: guides/adding-a-mode.md
       - Designing a ship: guides/designing-a-ship.md
       - Playing and spectating: guides/playing.md
+      - Figures: guides/figures.md
   - Explanation:
       - explanation/index.md
       - Architecture: explanation/architecture.md
@@ -139,6 +140,7 @@ nav:
       - bnb.runs: reference/runs.md
       - bnb.league: reference/league.md
       - bnb.play: reference/play.md
+      - bnb.figures: reference/figures.md
       - bnb.cli: reference/cli.md
       - bench: reference/bench.md
   - Contributing:

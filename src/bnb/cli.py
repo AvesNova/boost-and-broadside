@@ -845,8 +845,11 @@ def head_to_head(options: HeadToHead) -> None:
 
 def figures(options: Figures) -> None:
     """`bnb figures`: capture and draw (`bnb.figures.command.figures`)."""
+    import torch
+
     from bnb.figures.command import figures as draw
 
+    torch.manual_seed(options.seed)  # the capture's rollout and spread draws
     try:
         draw(options, runs_directory_of(options.runs_directory))
     except ImportError as error:
