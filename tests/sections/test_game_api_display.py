@@ -144,3 +144,33 @@ def test_display_names_the_states_own_tensors():
     for name, value in values.items():
         part, field = name.split(".")
         assert value is getattr(getattr(state, part), field), name
+
+
+def test_bullet_paths_are_where_the_game_flies_its_bullets():
+    """Every ship fires, then the game steps on with nobody firing: each live bullet that
+    hits nothing is, after each tick, where bullet_paths put it, and a path is valid for
+    exactly the moves the bullet has left."""
+    config = api.PRESETS["frontline"]
+    rules, state, _ = _state(config, ticks=40)
+    types = api.ship_types()
+    generator = torch.Generator().manual_seed(2)
+    still = torch.zeros((rules.num_ships, 3), dtype=torch.int32)
+    x, y, valid = api.bullet_paths(rules, types, state)
+    moves_left = state.bullets.moves_left
+    assert (moves_left > 0).any()
+    assert torch.equal(valid.sum(-1), moves_left.clamp_min(0))
+    for move in range(rules.bullet_moves):
+        before = state.bullets.moves_left
+        state, _ = api.step(
+            rules,
+            types,
+            state,
+            Action.unpack(still[None]),
+            api.spread(rules, 1, generator=generator),
+            api.uniforms(rules, 1, generator=generator),
+        )
+        flying = (before > 0) & (state.bullets.moves_left == before - 1)  # no hit this tick
+        flying &= valid[..., move]
+        assert flying.any() or move > 0
+        assert torch.allclose(state.bullets.x[flying], x[..., move][flying], atol=1e-3)
+        assert torch.allclose(state.bullets.y[flying], y[..., move][flying], atol=1e-3)
