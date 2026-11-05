@@ -124,7 +124,8 @@ class CausalConvolution(nn.Module):
         history = TAPS - 1
         length = inputs.shape[0]
         padded = torch.cat([buffer.movedim(-2, 0), inputs])  # (L + 3, ..., D)
-        cut = torch.cat([torch.zeros_like(starts[: history - 1]), _later(starts)])  # (L + 2, ...)
+        before = starts.new_zeros((history - 1, *starts.shape[1:]))  # no start before L = 0
+        cut = torch.cat([before, _later(starts)])  # (L + 2, ...)
         out = self.weight[:, history] * inputs + self.bias
         blocked = torch.zeros_like(starts)
         for lag in range(1, TAPS):
