@@ -24,7 +24,9 @@ its fixed share. The entries (`bnb.league.pool.Entry`) are:
   update it was taken at;
 - **the averages:** the uniform average and the exponential moving average of the live
   policy's weights, folded in after every update (`bnb.league.pool.average_into`, the decay
-  `LeagueConfig.exponential_decay` per update);
+  `LeagueConfig.exponential_decay` per update). The uniform average starts after
+  `LeagueConfig.uniform_from` environment steps (10M), so a warm start's optimizer, critic
+  and advantages settle first; until then it is the live weights;
 - **the stationary ladder:** random, the rungs and the scripted agent
   (`LeagueConfig.ladder`, `bnb.runtime.opponents.Rung`s of the scripted agent's
   temperature and share, weakest first: `+inf` is `random`; a share p below 1 at T is

@@ -245,9 +245,10 @@ def test_the_code_builds_the_headline_and_curated_views():
 
     views = dashboards.build("2026-11-03-mixed-amber-acorn", "entity", "project")
     # the 12 of the diagnostics spec, with the ratings and the games' ends split by mode
-    assert dashboards.panel_count(dashboards.sections_for(dashboards.HEADLINE, "ppo")) == 16
+    expected = 10 + 2 * len(dashboards.MODES)
+    assert dashboards.panel_count(dashboards.sections_for(dashboards.HEADLINE, "ppo")) == expected
     headline, curated = views["headline"], views["curated"]
-    assert sum(len(section.panels) for section in headline.sections) == 16
+    assert sum(len(section.panels) for section in headline.sections) == expected
     assert [section.name for section in curated.sections][:7] == [
         "Alerts",
         "Strength",
@@ -274,7 +275,9 @@ def test_the_bc_views_leave_out_reinforcement_learnings_panels():
 
     views = dashboards.build("2026-11-03-mixed-amber-acorn", "entity", "project", "bc")
     headline, curated = views["headline"], views["curated"]
-    assert sum(len(section.panels) for section in headline.sections) == 17
+    assert sum(len(section.panels) for section in headline.sections) == 11 + 2 * len(
+        dashboards.MODES
+    )
     names = [section.name for section in curated.sections]
     # BC's live policy is rated in its lanes too, against the raw scripted agent
     assert names[:4] == ["Alerts", "Strength", "Rating lanes", "bc/"] and "League" not in names

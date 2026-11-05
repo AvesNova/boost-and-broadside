@@ -125,7 +125,9 @@ class LeagueConfig:
     """slots: network slots loaded at once; ladder: the stationary ladder's rungs, weakest
     first (`strength_order`; +inf random, T = 1 at share 1 the scripted agent); floor: the
     share of the pool's sampling weight spread evenly over the entries; exponential_decay:
-    the exponential average's decay per update; snapshot_every: environment steps between
+    the exponential average's decay per update; uniform_from: the environment steps after
+    which the uniform average starts (before them it is the live weights: a warm start's
+    optimizer, critic and advantages settle first); snapshot_every: environment steps between
     snapshots (None: measured once, about 30 minutes of the run's throughput, and
     recorded)."""
 
@@ -133,6 +135,8 @@ class LeagueConfig:
     ladder: tuple[Rung, ...] = LADDER
     floor: float = 0.05
     exponential_decay: float = 0.95
+    # the author's warm-up, 2026-11-06 (decisions: BC round three)
+    uniform_from: int = 10_000_000
     snapshot_every: int | None = None
 
     def __post_init__(self) -> None:
@@ -154,6 +158,8 @@ class LeagueConfig:
             raise ValueError(f"league floor {self.floor} must be in [0, 1)")
         if not 0.0 < self.exponential_decay < 1.0:
             raise ValueError(f"league exponential_decay {self.exponential_decay} must be in (0, 1)")
+        if self.uniform_from < 0:
+            raise ValueError(f"league uniform_from {self.uniform_from} must not be negative")
         if self.snapshot_every is not None and self.snapshot_every < 1:
             raise ValueError(f"league snapshot_every {self.snapshot_every} must be positive")
 

@@ -126,7 +126,7 @@ class League:
             self.entries[name] = Entry(name, "average")
             for gauge in self.gauges.values():
                 gauge.add(name, "average")
-        self.averaged = 1
+        self.averaged = 0  # the updates in the uniform average
         self.snapshots: dict[str, dict[str, torch.Tensor]] = {}
         self.snapshot_every = self.config.snapshot_every
         self.ordinal = 0
@@ -300,13 +300,14 @@ class League:
         if self.pending is not None:
             self._snapshot(trainer, steps, self.pending)
             self.pending = None
-        self.averaged += 1
+        if steps >= self.config.uniform_from:
+            self.averaged += 1
         uniform, exponential = self.averages[UNIFORM_AVERAGE], self.averages[EXPONENTIAL_AVERAGE]
         average_into(
             uniform,
             exponential,
             trainer.model.state_dict(),
-            self.averaged,
+            max(self.averaged, 1),  # before uniform_from, the live weights
             self.config.exponential_decay,
         )
         self._load_lanes()

@@ -400,7 +400,8 @@ cut; where they differ, this section and the code win.
     `where` (no mask), with the global token's rotation.
   - **The training mix** (`bnb.runtime.train.TRAINING_MIX`, preset `mixed`): Frontline
     0.5, team deathmatch squad 0.375, team deathmatch battle map 0.125 (5v5, 10 fields,
-    arena 8200 m, groups (2, 2, 1)).
+    arena 8200 m, groups (2, 2, 1)). *2026-11-06:* the battle map is out for now; Frontline
+    0.5, team deathmatch squad 0.5.
 - **Learner outputs (section 5, 2026-11-01):**
   - **`Outputs`** gains:
     - `values (R, S, levels)`: the critic per reward level, in raw units;

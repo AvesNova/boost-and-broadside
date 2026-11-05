@@ -8,10 +8,11 @@ import torch
 
 from bnb.contracts import Obs
 from bnb.contracts.obs import GLOBAL
-from bnb.league.pool import sampling_weights
+from bnb.league.pool import UNIFORM_AVERAGE, sampling_weights
 from bnb.runtime.opponents import (
     LADDER_KIND,
     OPPONENTS,
+    LeagueConfig,
     counter_uniform,
     draw,
     stream_key,
@@ -216,3 +217,29 @@ def test_the_tally_counts_each_result_from_the_learners_side(tmp_path):
     per_column = counts[:, 0]  # (columns, wins/ties/losses of the learner)
     assert per_column.sum(0).tolist() == [2, 2, 3]  # three opponent wins are learner losses
     assert per_column[carry.column[0]].tolist()[2] >= 1 and rows == 8
+
+
+# ---- the averages
+
+
+def test_the_uniform_average_starts_after_its_warm_up(tmp_path):
+    """Before `uniform_from` the uniform average is the live weights; after it, the mean of
+    the updates since; the exponential average folds in every update."""
+    steps = cases.config().environments * cases.config().length
+    trainer, league = cases.league(
+        tmp_path, league=LeagueConfig(snapshot_every=16 * 16, uniform_from=2 * steps)
+    )
+    seen = []
+    for update in range(4):
+        with torch.no_grad():
+            for parameter in trainer.model.parameters():
+                parameter.fill_(float(update))
+        trainer.collect()
+        league.collected(trainer)
+        trainer.ppo.environment_steps += trainer.steps_per_update
+        league.updated(trainer)
+        name, value = next(iter(league.averages[UNIFORM_AVERAGE].items()))
+        assert trainer.model.state_dict()[name].is_floating_point()
+        seen.append(float(value.flatten()[0]))
+    # update 0 ends below 2 x steps: the live weights; from update 1 on, the mean since
+    assert seen == [0.0, 1.0, 1.5, 2.0]

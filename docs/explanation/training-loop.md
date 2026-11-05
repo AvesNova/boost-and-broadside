@@ -26,7 +26,7 @@ the [training guide](../guides/training.md).
    (`bnb.learn.ppo.Learner.update`; with BC, `bnb.learn.bc.BehaviourCloning`, the same
    update with the cloning loss).
 
-The default batch is v1's twice over, as v2 trains three modes: 2,048 training environments
+The default batch is v1's twice over, as v2 trains several modes: 2,048 training environments
 x 4 shards x 128 ticks, 1,048,576 trained ticks per update, with a lookahead of 128 ticks
 (`TrainConfig.environments`, `shards`, `length`, `lookahead`). For the same trained ticks,
 more environments are more independent games, where more shards continue the same ones;

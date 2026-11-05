@@ -112,12 +112,12 @@ def test_adjacent_pools_of_one_game_are_one_slice_and_one_game_is_the_whole_batc
 
 
 def test_the_mixed_preset_crosses_the_lineup_with_the_training_mix():
-    from bnb.runtime.train import LINEUP, mixed
+    from bnb.runtime.train import LINEUP, TRAINING_MIX, mixed
 
     base, pools = mixed()
-    assert len(pools) == 3 * len(LINEUP)
+    assert len(pools) == len(TRAINING_MIX) * len(LINEUP)
     assert math.isclose(sum(pool.share for pool in pools), 1.0)
-    assert environment_multiple(pools) == 16 and environment_multiple(LINEUP) == 2
+    assert environment_multiple(pools) == 4 and environment_multiple(LINEUP) == 2
     rules = api.rules_of(base, pools, 1024)
     games = [
         (pool.environments, pool.mode.name, pool.arena_radius, pool.mode.spawn_groups)
@@ -125,8 +125,7 @@ def test_the_mixed_preset_crosses_the_lineup_with_the_training_mix():
     ]
     assert games == [
         (512, "frontline", 2600.0, ()),
-        (384, "team_deathmatch", 2600.0, ()),
-        (128, "team_deathmatch", 8200.0, (2, 2, 1)),
+        (512, "team_deathmatch", 2600.0, ()),
     ]
     assert rules.num_fields == 10 and rules.num_ships == 10
 

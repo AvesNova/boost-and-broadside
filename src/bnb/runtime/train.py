@@ -46,9 +46,9 @@ from .rollout import Rollout
 
 LEARNER = "learner"
 SCRIPTED = "scripted"
-# The default training mix (mixed spec 1, a proposal): each game preset's share of the batch.
-# The battle map is 25% of team deathmatch.
-TRAINING_MIX = (("frontline", 0.5), ("deathmatch", 0.375), ("deathmatch_wide", 0.125))
+# The default training mix (mixed spec 1): each game preset's share of the batch. The battle
+# map (deathmatch_wide) is out for now (author, 2026-11-06: decisions, BC round three).
+TRAINING_MIX = (("frontline", 0.5), ("deathmatch", 0.5))
 # Self-play is a fixed share of each mode's batch, the league's seat the rest (league spec 1).
 LINEUP = (Pool("self_play", 0.5, (LEARNER, LEARNER)), Pool("league", 0.5, (LEARNER, OPPONENTS)))
 MODELS = ("yemong", "relational")
