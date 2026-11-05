@@ -6,7 +6,7 @@ Status: decisions settled, 2026-11-01. Spec: `scripted-bc-spec.md`.
 
 - **One function, three uses:** league opponent, the semi-random rungs (scripted action
   with probability p, else uniform) and the BC teacher.
-- **Memoryless.**
+- **Memoryless.** Superseded on 2026-11-05 (below).
 - **The 42-way action:** it emits a distribution over the joint action, the product of
   its power, stick and shoot marginals.
 - **Entropy through the teacher:** a knob on the teacher's distribution (a temperature,
@@ -43,3 +43,16 @@ Status: decisions settled, 2026-11-01. Spec: `scripted-bc-spec.md`.
   - **No v1 Elo comparison:** v1 and v2 are different games.
 - **v1 fixtures:** none, apart from possibly the interception geometry. The retuned
   numbers make the rest a behavioural question.
+
+## Decided (author, 2026-11-05)
+
+- **Memory** (`scripted-memory-brief.md`): soft hysteresis on the plan choices (a switching
+  rate, no thresholds) and dead reckoning of enemies fog hides, for a short time; a flag
+  turns it off for the ablation. BC's labels are the teacher's distribution given its
+  carry, so a clone is asked to remember.
+- **The ladder's bottom:** mixture rungs, each ship the agent at a moderate T with
+  probability p per game, else random.
+- **One parameter set per game mode** (amendment): the same backbone and code, a set per
+  training preset from a search of that preset alone; every use plays the mode's set.
+  Each search's final population is kept in the repository, unused.
+- Notes: `scripted-memory-notes.md`.

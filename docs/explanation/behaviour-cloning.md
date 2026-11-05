@@ -27,10 +27,15 @@ handed on. There is no policy gradient, no entropy bonus and no KL early stop.
 ## The labels
 
 The teacher labels the stored observations at update time, on the device, in the compiled
-loss: the scripted agent is memoryless and reads only the observation, so the rollout
-stores nothing for it beyond the observation parts it reads (`Rollout` records them with
-`extra_reads`). On the same observation the labels are the distribution the scripted agent
-plays (`tests/sections/test_bc.py`).
+loss. The scripted agent reads only the observation, so the rollout stores nothing for it
+beyond the observation parts it reads (`Rollout` records them with `extra_reads`). It has a
+memory, its carry ([the scripted agent's
+memory](scripted-agent.md#memory-soft-hysteresis-and-dead-reckoning)): before each update
+the learner runs the teacher over the stored segments in time order, its carry going on
+from the last update's (`bnb.learn.bc.teacher_carries`), and keeps its carry at every tick;
+a label is the teacher's distribution given its carry there. So the student is asked to
+remember what the teacher remembers. With its memory off the labels are the distribution the
+memoryless agent plays on the same observation (`tests/sections/test_bc.py`).
 
 The teacher is the scripted agent at its own temperature T, its labels optionally mixed
 with uniform by a floor φ (`bnb.learn.bc.TeacherConfig`): `(1 − φ) q_T + φ / 42`, with q_T

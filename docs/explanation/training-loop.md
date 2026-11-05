@@ -115,8 +115,8 @@ sets how many (`environments`, beyond the training ones) and what they play (`ma
 - **Players:** `live`, the weights the learner trains (copied into the lanes before each
   collection); a weight set the league loads by name (`exponential_average`, its averaged
   agent, and `league_<k>`, the entry its network slot k holds); and the ladder's rungs,
-  `random`, `rung_T<t>` and `scripted` (the scripted agent at T = 1, which is also BC's
-  default teacher).
+  `random`, `rung_T<t>_p<p>`, `rung_T<t>` and `scripted` (the scripted agent at T = 1, with
+  its mode's parameters, which is also BC's default teacher).
   A matchup is any pair of them.
 - **Layout:** every mode of the training mix plays every matchup. The lanes are split evenly
   over the modes and, within a mode, by the matchups' weights; each (mode, matchup) is a
