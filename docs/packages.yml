@@ -32,7 +32,7 @@
   holds: "the interactive shell: the match loop, render snapshots, the renderer, themes"
   reference: reference/play.md
 - package: figures
-  holds: "figures of what a policy's heads have learned: the capture artifact, the figure sets"
+  holds: "figures of what a policy's heads have learned: the capture artifact, the figure sets; videos of a policy playing; the watcher of a training run"
   reference: reference/figures.md
 - package: cli
   holds: the entry point, `bnb`

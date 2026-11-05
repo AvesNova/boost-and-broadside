@@ -1,6 +1,6 @@
 ---
-covers: [src/bnb/figures/, src/bnb/models/yemong/decode.py]
-reviewed: 2026-11-06 14:00
+covers: [src/bnb/figures/, src/bnb/models/yemong/decode.py, src/bnb/play/sides.py]
+reviewed: 2026-11-06 16:00
 ---
 
 # Figures
@@ -197,3 +197,72 @@ renormalise the resolved classes, P(win) / (P(win) + P(tie) + P(loss)), as its f
 the result. A skill above zero beats always forecasting the result frequencies; it should
 rise as the end nears. The ticks of one game are strongly correlated, so a capture of few
 games gives a noisy reliability curve: the counts beside each point are ticks, not games.
+
+## Videos
+
+`bnb figures video` films one game: the policy (team 0) against the scripted chaser
+(team 1), fog on, drawn by the play shell offscreen and encoded to MP4 by ffmpeg
+(`bnb.figures.video`). The frame is the shell's own, with its top bar (the score and the
+clock) and kill feed; the fleets card and the minimap stay collapsed and the camera fits
+the arena. A policy trained on a mixed batch records the batch's first game only
+(`bnb.runtime.train.mixed`), so the video loads it for any mode of the preset asked for
+(`bnb.play.sides.load_agent` with `any_mode`): the sizes and the ship card must still
+match.
+
+<!-- not-runnable: needs ffmpeg, an OpenGL context and a policy file -->
+```bash
+bnb figures video --policy runs/RUN/checkpoints/step_N --preset deathmatch
+bnb figures video --policy RUN --video.seconds 10 --video.time-scale 8
+```
+
+The defaults (`bnb.figures.video.VideoConfig`): 25 s at 30 frames per second and 4x the
+game's speed, so the first 100 s of the game, at 1280 x 720. The file is about 0.5 MB. The
+agent runs on the CPU (`--device cpu` hides the GPU from torch); the drawing uses the GPU's
+OpenGL over EGL, which is not CUDA, and about 100 MiB of its memory. One video takes about
+50 s on a laptop CPU, nearly all of it the agent's decisions. It prints the game's tally:
+kills, losses and captures by side, and the games that ended. The output goes to the run's
+`artifacts/figures/<policy directory>/videos/` when the policy lies in a run, else
+`figures/videos/`; `--out` names the file.
+
+## Watching a training run
+
+`bnb figures watch RUN` makes media of a run while it trains. It is a second process,
+started by hand beside the trainer, that only reads the run (and writes its
+`artifacts/figures/`): it polls `checkpoints/` every `--interval` seconds and, for each
+complete checkpoint without media (`bnb.figures.watch`):
+
+1. per mode (`--modes`, frontline and deathmatch by default), captures 4 environments of
+   256 ticks on the CPU, with the same seed at every checkpoint, and draws the quick sets
+   (`--sets`: `shots`, `belief`, `next_state`, `density`, `enemy_action`) into
+   `artifacts/figures/<checkpoint>/<mode>/`; the capture is deleted unless
+   `--keep-captures` (about 60 MB a mode);
+2. per mode, films one game against the scripted agent into `<checkpoint>/videos/`;
+3. writes `<checkpoint>/media.json` last: what was made, the sets' numbers, the videos'
+   tallies, the seconds each part took and any error.
+
+<!-- not-runnable: watches a live training run -->
+```bash
+nohup bnb figures watch RUN --wandb > /tmp/watch-RUN.log 2>&1 &
+```
+
+A part that fails (one set, one video) is recorded with its error and the rest goes on; a
+checkpoint the retention deletes before it is read is skipped. The watcher hides the GPU
+from torch, lowers its own priority (`--nice`) and keeps to `--threads` CPU threads, so
+the trainer's work goes first; a checkpoint's media take about 2.5 minutes. It stops once
+the run has stopped and every checkpoint has its media; a restarted watcher makes only
+what is missing.
+
+**W&B.** With `--wandb` each checkpoint's media are logged once, at its environment steps,
+to a companion run `<run>-media` in the same project, grouped under the run's name, with
+the run it watches in its notes. Two processes cannot write one W&B run, so the training
+run's own is never touched. The companion run's id is the training run's W&B id followed
+by `media`, so a restarted watcher resumes it, and its x-axis is the training run's
+(`counters/environment_steps`). Its keys:
+
+| Key | What |
+|---|---|
+| `video/<mode>` | the game's video |
+| `game/<mode>/...` | its tally (`policy_kills`, `scripted_kills`, `policy_captures`, ...) |
+| `figures/<mode>/<figure>` | each figure, such as `figures/deathmatch/belief_coverage` |
+| `numbers/<mode>/<set>/...` | the numeric leaves of each set's numbers |
+| `watcher/...` | the seconds each part took |

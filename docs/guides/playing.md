@@ -91,7 +91,9 @@ each side's controller: **Scripted** (the chaser) or a trained agent. The agent 
 every policy file of the local runs: `runs/*/policy/`, the training checkpoints and the
 league's snapshots (`--runs` sets the directory). A policy plays only the game it was
 trained on, with the same ship card and the default lineup; otherwise the shell says
-what differs and keeps the match as it was.
+what differs and keeps the match as it was. A policy trained on a mixed batch records the
+batch's first game (frontline), so the shell plays it there;
+[`bnb figures video`](figures.md#videos) plays it in any mode.
 
 An agent runs on the GPU when there is one (the CPU otherwise) at one decision per tick, with its memory kept from tick to tick
 as in training. Its card row has a temperature: 1 samples the policy as trained, lower is
