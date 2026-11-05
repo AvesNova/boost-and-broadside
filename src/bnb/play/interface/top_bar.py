@@ -1,4 +1,5 @@
-"""The top bar, always shown, one row: the menu button and the view selector on the left;
+"""The top bar, always shown, one row: the menu button, the view selector and the overlays
+button (its submenu, `overlays`) on the left;
 the score or the mode's objective and the clock in the middle; the speed controls on the
 right (pause or play, a tick while paused, x1 to x8).
 
@@ -15,6 +16,7 @@ from imgui_bundle import imgui
 
 from ..loop import TIME_SCALES
 from ..selection import Selection
+from . import overlays
 from .cards import window
 from .controls import button, icon_button, menu_icon, pause_icon, play_icon, step_icon, tooltip, u32
 from .inspector import ROLE_NAMES
@@ -71,7 +73,8 @@ def draw(interface: Interface, layout: Layout) -> None:
             session.set_view(view)
         if view:
             imgui.pop_style_color()
-    left_end = imgui.get_item_rect_max().x
+    imgui.same_line(0.0, 14.0 * scale)
+    left_end = overlays.draw_button(interface)
 
     # Right: the speed controls.
     spacing = imgui.get_style().item_spacing.x

@@ -1,4 +1,5 @@
-"""Each side's controller: the scripted chaser, or a trained agent from a policy file.
+"""Each side's controller: the scripted chaser, the scripted agent (with its memory), or a
+trained agent from a policy file.
 
 A side turns its team's view (1, ...) into its ships' actions, (S, 3) int32. An agent
 runs with torch at B = 1 on the GPU when one is present (`agent_device`) and on the CPU
@@ -15,6 +16,14 @@ match's; otherwise `load_agent` raises `AgentError` naming the difference. With 
 the mode's own settings (`bnb.contracts.pools.GAME_FIELDS`: the mode, the arena, the spawn
 groups, the clocks) may differ: a policy trained on a mixed batch records the batch's first
 game only (`bnb.runtime.train.mixed`) and plays every mode of the mix.
+
+Each controller names the prediction overlays it can provide (`overlays`,
+`bnb.play.overlays`) and keeps the inputs of its latest decision (`inspection`, references
+to tensors it holds anyway), which `bnb.play.predictions` reads back. While a Yemong agent
+is `watched` (one of its overlays is on) it decides with `Yemong.inspect`, the same
+decision with every head's output from the same trunk pass, and keeps those too; it then
+steps eagerly, never from its CUDA graph (whose carry lives in static buffers, so a graphed
+step keeps no inspection).
 """
 
 import contextlib
@@ -29,10 +38,15 @@ from torch.utils import _pytree
 from bnb.contracts import GameConfig, Obs
 from bnb.contracts.action import from_joint
 from bnb.contracts.pools import GAME_FIELDS
+from bnb.controllers import scripted
 from bnb.controllers.scripted import Chaser
+from bnb.controllers.scripted_memory import ScriptedCarry
 from bnb.game import api
+from bnb.game.handling.characteristics import characteristics
 from bnb.runs import checkpoint
 from bnb.runs.serialise import to_json
+
+from .overlays import MEMORY, NETWORK
 
 GUMBEL_FLOOR = 1e-20
 SUPPORTED_MODELS = ("yemong", "relational")
@@ -44,10 +58,28 @@ class AgentError(ValueError):
     """A policy file that cannot play this match, with the reason."""
 
 
+CONTROLLERS = ("scripted", "scripted_agent", "agent")  # a SideSetup's controller kinds
+
+
+@dataclasses.dataclass(frozen=True)
+class Inspection:
+    """The inputs of a controller's latest decision: the carry it started from, the view
+    (1, ...) and the reset (1,) it read; for a Yemong agent the step's replay record
+    (`bnb.models.yemong.model.Decision.replay`) and, when it was watched, every head's
+    output (`Yemong.inspect`'s `Unrolled`; None otherwise, and for the scripted agent)."""
+
+    carry: object
+    view: Obs
+    reset: torch.Tensor
+    replay: object = None
+    unrolled: object = None
+
+
 class Scripted:
     """The scripted chaser: each ship turns toward and shoots at its nearest visible enemy."""
 
     label = "scripted"
+    overlays = ()
 
     def __init__(self, ships_per_team: int) -> None:
         self.chaser = Chaser(ships_per_team)
@@ -55,6 +87,34 @@ class Scripted:
     def act(self, view: Obs, reset: torch.Tensor) -> torch.Tensor:
         """The team's (S, 3) actions for its view (1, ...)."""
         return self.chaser.step(None, view, reset)[0].packed()[0]
+
+
+class ScriptedAgent:
+    """The scripted agent (`bnb.controllers.scripted.Scripted`, memory on, temperature 1):
+    it remembers each enemy it saw and dead reckons it while hidden. Its draws come from
+    its own generator, swapped in for torch's default one and back, so it is reproducible
+    from its seed and leaves the process's generator alone."""
+
+    label = "scripted agent"
+    overlays = MEMORY
+
+    def __init__(self, rules: api.Rules, types: api.ShipTypes, seed: int = 0) -> None:
+        self.characteristics = characteristics(types, rules)
+        self.controller = scripted.Scripted(self.characteristics, rules.ships_per_team)
+        self.carry: ScriptedCarry = self.controller.init_carry(1, torch.device("cpu"))
+        self.draws = torch.Generator().manual_seed(seed + MODEL_DRAWS_OFFSET)
+        self.inspection: Inspection | None = None
+
+    @torch.no_grad()
+    def act(self, view: Obs, reset: torch.Tensor) -> torch.Tensor:
+        """The team's (S, 3) actions for its view (1, ...); the carry moves on."""
+        before = self.carry
+        with torch.random.fork_rng(devices=[]):
+            torch.default_generator.set_state(self.draws.get_state())
+            action, self.carry, _ = self.controller.step(before, view, reset)
+            self.draws.set_state(torch.default_generator.get_state())
+        self.inspection = Inspection(before, view, reset)
+        return action.packed()[0]
 
 
 def agent_device() -> torch.device:
@@ -73,7 +133,8 @@ def sample(logits: torch.Tensor, temperature: float, generator: torch.Generator)
 
 class Agent:
     """A trained policy playing one side. `label` names it (the policy's directory, as
-    the run names it); `temperature` may change between ticks."""
+    the run names it); `temperature` may change between ticks. A Yemong agent provides
+    its heads' overlays (`bnb.play.overlays.NETWORK`), a relational one none."""
 
     def __init__(
         self,
@@ -106,6 +167,9 @@ class Agent:
         self._graph: torch.cuda.CUDAGraph | None = None
         self._inputs = self._outputs = None
         self.last_logits: torch.Tensor | None = None  # the latest tick's (S, NUM_JOINT) logits
+        self.overlays = NETWORK if self.recurrent else ()
+        self.watched = False
+        self.inspection: Inspection | None = None
 
     def __getstate__(self) -> dict:
         """A copy (a replay forked into a live match) leaves the captured graph behind and
@@ -185,7 +249,10 @@ class Agent:
     @torch.no_grad()
     def act(self, view: Obs, reset: torch.Tensor) -> torch.Tensor:
         """The team's (S, 3) actions for its view (1, ...), on the CPU; the carry moves on."""
-        if self.graphed:
+        if self.watched:
+            self._graph = None  # the eager step replaces the carry: capture afresh after
+        if self.graphed and not self.watched:
+            self.inspection = None
             logits = self._graphed_logits(view, reset)
             joint = sample(logits, self.temperature, self.generator).to(torch.int32)
             self.carry.previous_action.copy_(joint)
@@ -194,11 +261,17 @@ class Agent:
         if self.device.type != "cpu":
             view = _pytree.tree_map(lambda tensor: tensor.to(self.device), view)
             reset = reset.to(self.device)
+        before, unrolled = self.carry, None
         if self.recurrent:
             with self._local_draws():
-                decision = self.model.step(self.carry, view, reset)
+                if self.watched:
+                    decision, unrolled = self.model.inspect(self.carry, view, reset)
+                else:
+                    decision = self.model.step(self.carry, view, reset)
         else:
             decision = self.model(view)
+        if self.recurrent:
+            self.inspection = Inspection(before, view, reset, decision.replay, unrolled)
         logits = decision.policy_logits.cpu()
         joint = sample(logits, self.temperature, self.generator).to(torch.int32)
         if self.recurrent:
@@ -326,17 +399,18 @@ def describe(directory: pathlib.Path) -> str:
     return f"{model}" + (f", {steps / 1e6:.1f}M steps" if steps else "")
 
 
+def controller_of(side, team: int, setup, rules: api.Rules, types: api.ShipTypes):
+    """The controller of one `SideSetup` for team `team` of the setup's match (raises
+    AgentError for an agent that cannot play it)."""
+    seed = setup.seed + team
+    if side.controller == "agent":
+        return load_agent(side.policy, setup.config, rules, types, side.temperature, seed)
+    if side.controller == "scripted_agent":
+        return ScriptedAgent(rules, types, seed)
+    return Scripted(rules.ships_per_team)
+
+
 def build_sides(setup, rules: api.Rules, types: api.ShipTypes) -> list:
     """Each side's controller from the setup's `SideSetup`s (raises AgentError for an
     agent that cannot play)."""
-    sides = []
-    for team, side in enumerate(setup.sides):
-        if side.controller == "agent":
-            sides.append(
-                load_agent(
-                    side.policy, setup.config, rules, types, side.temperature, setup.seed + team
-                )
-            )
-        else:
-            sides.append(Scripted(rules.ships_per_team))
-    return sides
+    return [controller_of(side, team, setup, rules, types) for team, side in enumerate(setup.sides)]

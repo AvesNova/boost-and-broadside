@@ -33,10 +33,11 @@ CATCH_UP_TICKS = 4  # at most this many ticks of backlog per unit of time scale
 
 @dataclasses.dataclass(frozen=True)
 class SideSetup:
-    """One side's controller: "scripted", or "agent" with the policy file's directory and
-    the sampling temperature."""
+    """One side's controller (`bnb.play.sides.CONTROLLERS`): "scripted" (the chaser),
+    "scripted_agent" (the scripted agent, with its memory), or "agent" with the policy
+    file's directory and the sampling temperature."""
 
-    controller: str = "scripted"  # "scripted" or "agent"
+    controller: str = "scripted"  # "scripted", "scripted_agent" or "agent"
     policy: str | None = None
     temperature: float = 1.0
 

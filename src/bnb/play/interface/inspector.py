@@ -3,7 +3,10 @@ or a card.
 
 - A ship: its team, type and controller, its live state (shield, energy, speed, angle of
   attack, power and stick, the last shot), kills and deaths; "Take control" (or
-  "Release" on the flown ship) and "Follow".
+  "Release" on the flown ship) and "Follow". With the prediction overlays' readouts on
+  (`bnb.play.overlays`), what the predicting side's agent thinks of it: an enemy's action
+  distribution (power, stick, P(shoot)) beside the action it took; an own ship's value per
+  reward level, the outcome head, and its next shot's P(enemy hit).
 - A field: its refractive index, radius and core.
 - A zone: its role and owner, its progress, and the ships contesting it.
 
@@ -29,6 +32,7 @@ if TYPE_CHECKING:
 POWER = ("coast", "boost", "reverse")
 ROLE_NAMES = ("Team 0 spawn", "Team 0 defense", "Neutral", "Team 1 defense", "Team 1 spawn")
 LABEL_COLUMN = 104.0  # pixels at scale 1
+LEVEL_COLUMN = 150.0  # the critic's rows: a reward level's name is longer
 
 
 def stick_text(stick: int) -> str:
@@ -39,9 +43,9 @@ def stick_text(stick: int) -> str:
     return f"{'right' if stick % 2 else 'left'} {level}"
 
 
-def _row(label: str, value: str, scale: float) -> None:
+def _row(label: str, value: str, scale: float, column: float = LABEL_COLUMN) -> None:
     imgui.text_disabled(label)
-    imgui.same_line(LABEL_COLUMN * scale)
+    imgui.same_line(column * scale)
     imgui.text(value)
 
 
@@ -142,6 +146,7 @@ def _ship(interface: Interface, index: int) -> None:
             _row("respawns in", f"{ships.respawn_wait[index]:.1f} s", scale)
     else:
         imgui.text_disabled("out of this view's sight")
+    _predictions(interface, index)
     imgui.spacing()
     flying = loop.pilot == index
     if flying:
@@ -173,6 +178,89 @@ def _ship(interface: Interface, index: int) -> None:
         active=following,
     ):
         session.follow(None if following else index)
+
+
+STICK_ORDER = (6, 4, 2, 0, 1, 3, 5)  # the stick actions from full left to full right
+
+
+def _bars(values, chosen: int, colour, theme, scale: float) -> None:
+    """A row of small bars, one per value in [0, 1], the `chosen` one outlined (the
+    action taken)."""
+    draw = imgui.get_window_draw_list()
+    corner = imgui.get_cursor_screen_pos()
+    line = imgui.get_text_line_height()
+    width, gap = 14.0 * scale, 3.0 * scale
+    for slot, value in enumerate(values):
+        left = corner.x + slot * (width + gap)
+        top = corner.y + line * (1.0 - float(value))
+        draw.add_rect_filled(
+            imgui.ImVec2(left, corner.y),
+            imgui.ImVec2(left + width, corner.y + line),
+            u32(theme.panel_line),
+        )
+        draw.add_rect_filled(
+            imgui.ImVec2(left, top), imgui.ImVec2(left + width, corner.y + line), u32(colour)
+        )
+        if slot == chosen:
+            draw.add_rect(
+                imgui.ImVec2(left - 1, corner.y - 1),
+                imgui.ImVec2(left + width + 1, corner.y + line + 1),
+                u32(theme.truth),
+                0.0,
+                1.5 * scale,
+            )
+    imgui.dummy(imgui.ImVec2(len(values) * (width + gap), line))
+
+
+def _predictions(interface: Interface, index: int) -> None:
+    """The readouts of the overlays on: the predicting side's view of this ship."""
+    session = interface.session
+    theme, scale = session.theme, session.scale
+    drawn = session.overlay_arrays()
+    team = int(session.frame.ships.team[index])
+    colour = theme.prediction
+    power, stick, shoot = (int(value) for value in session.loop.last_actions[index])
+    if "enemy_action" in drawn and drawn["enemy_action"][0] != team:
+        predictor, actions = drawn["enemy_action"]
+        rows = np.flatnonzero(actions.ship == index)
+        if len(rows):
+            row = int(rows[0])
+            imgui.separator()
+            imgui.text_disabled(f"{TEAM_NAMES[predictor]} predicts its action")
+            tooltip("The enemy-action head's marginals; the outline is the action it took")
+            imgui.text_disabled("power")
+            imgui.same_line(LABEL_COLUMN * scale)
+            _bars(actions.power[row], power, colour, theme, scale)
+            tooltip("coast, boost, reverse")
+            imgui.text_disabled("stick")
+            imgui.same_line(LABEL_COLUMN * scale)
+            _bars(
+                actions.stick[row][list(STICK_ORDER)],
+                STICK_ORDER.index(stick),
+                colour,
+                theme,
+                scale,
+            )
+            tooltip("full left to full right")
+            _meter("P(shoot)", float(actions.shoot[row, 1]), colour, theme, scale)
+    if "value" in drawn and drawn["value"][0] == team:
+        critic = drawn["value"][1]
+        rows = np.flatnonzero(critic.ship == index)
+        if len(rows):
+            row = int(rows[0])
+            imgui.separator()
+            imgui.text_disabled(f"{TEAM_NAMES[team]}'s critic")
+            tooltip("The value per reward level (the critic's units) and the outcome head")
+            for level, value in zip(critic.levels, critic.values[row], strict=True):
+                _row(level.replace("_", " "), f"{float(value):+.3f}", scale, LEVEL_COLUMN)
+            _meter("P(win)", critic.win, theme.team[team], theme, scale)
+            _meter("P(tie)", critic.tie, theme.panel_line, theme, scale)
+            _meter("P(loss)", critic.loss, theme.team[1 - team], theme, scale)
+            _meter("P(unresolved)", critic.unresolved, theme.panel_line, theme, scale)
+    if "shot_path" in drawn:
+        shot = drawn["shot_path"][1]
+        _meter("next shot hits", float(shot.enemy_hit[index]), colour, theme, scale)
+        tooltip("The shot-outcome head's P(enemy hit) for the shot it would fire now")
 
 
 def _field(interface: Interface, index: int) -> None:

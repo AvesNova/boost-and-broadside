@@ -72,7 +72,9 @@ class Theme:
     multiplies what a team cannot see (#999999 darkens to 60%, saturation kept). The
     interface's cards draw with panel (their fill, semi-opaque), panel_line (outlines and
     separators), control (buttons and fields), control_active (a pressed or chosen control)
-    and the HUD text; selection outlines the selected ship, field or zone.
+    and the HUD text; selection outlines the selected ship, field or zone. The prediction
+    overlays draw an agent's predictions in prediction and the truth beside them in truth
+    (`bnb.play.overlays`).
     fill_strength: how far a field's deepest fill goes from the sky toward its air colour.
     vortex_threshold: the angle of attack, as a fraction of the stall angle, beyond which
     a wingtip vortex trails."""
@@ -101,6 +103,8 @@ class Theme:
     control: Colour = _colour("controls")
     control_active: Colour = _colour("active control")
     selection: Colour = _colour("selection")
+    prediction: Colour = _colour("predictions")
+    truth: Colour = _colour("truth")
     fill_strength: float = dataclasses.field(metadata={"label": "fill strength"})
     vortex_threshold: float = dataclasses.field(metadata={"label": "vortex threshold"})
 

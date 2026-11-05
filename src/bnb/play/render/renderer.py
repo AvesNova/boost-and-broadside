@@ -1,8 +1,9 @@
 """The renderer: the passes in draw order, into a multisampled scene resolved onto the
 target, then the ImGui layer (HUD and panels) on top.
 
-Draw order: sky and arena, fields, zones, trails, ships, rings, fog, bullets, the
-selection's outline; then the minimap into its own texture (`minimap.py`). A spectator
+Draw order: sky and arena, fields, zones, trails, ships, rings, fog, the density overlay,
+bullets, the other prediction overlays (`predictions.py`), the selection's outline; then
+the minimap into its own texture (`minimap.py`). A spectator
 sees everything; a team's view draws only the ships that team sees (its observation's
 `visible`) and the parts of their trails it saw, and in a fogged match darkens what it
 cannot see. Every bullet is drawn in every view, above the fog at full brightness: agents
@@ -25,17 +26,20 @@ from .bullets import BulletsPass
 from .fields import FieldsPass
 from .fog import FogPass
 from .imgui_renderer import ImguiRenderer
+from .lines import LinesPass
 from .minimap import MinimapPass
 from .rings import ring_table
 from .ships import ShipsPass, ring_radius
 from .sky import SkyPass
 from .trails import TrailsPass
+from .triangles import TrianglesPass
 from .zones import zone_table
 
 if TYPE_CHECKING:
     from ..index_map import IndexGrid, TileUpdate
     from ..snapshot import Snapshot
     from ..trails import Trails
+    from .predictions import OverlayDrawing
 
 SPECTATOR = -1
 SAMPLES = 4  # multisampling
@@ -79,6 +83,8 @@ class Renderer:
         self.bullets = BulletsPass(context)
         self.ships = ShipsPass(context)
         self.fog = FogPass(context)
+        self.lines = LinesPass(context)
+        self.triangles = TrianglesPass(context)
         self.imgui = ImguiRenderer(context)
         self.minimap = MinimapPass(context, self.sky, self.fields, self.arcs)
         self.minimap_id: int | None = None
@@ -124,10 +130,11 @@ class Renderer:
         now: float,
         target: moderngl.Framebuffer,
         overlay: np.ndarray | None = None,
+        predictions: OverlayDrawing | None = None,
     ) -> None:
         """Draw the frame as `view` (SPECTATOR or a team) sees it onto `target`; `now`:
         game time (s), for the trails; overlay: an arcs table drawn last (the selection's
-        outline)."""
+        outline); predictions: the prediction overlays' tables (None: none on)."""
         context, uniforms = self.context, camera.uniforms()
         ships, pixel = frame.ships, camera.metres_per_pixel
         team_view = view != SPECTATOR
@@ -188,6 +195,9 @@ class Renderer:
         if fogged:
             with self._measure("fog"):
                 self.fog.draw(uniforms, theme)
+        if predictions is not None:
+            with self._measure("density"):
+                self.triangles.draw(uniforms, predictions.density)
         with self._measure("bullets"):
             bullets = frame.bullets
             active = bullets.active
@@ -200,6 +210,22 @@ class Renderer:
                 bullets.direction_y[active],
                 bullets.team[active],
             )
+        if predictions is not None:
+            with self._measure("predictions"):
+                self.lines.draw(uniforms, predictions.segments)
+                ghosts = predictions.ghosts
+                self.ships.draw(
+                    uniforms,
+                    theme,
+                    ghosts["x"],
+                    ghosts["y"],
+                    ghosts["heading"],
+                    ghosts["size"],
+                    ghosts["team"].astype(np.int64),
+                    ghosts["ship_type"].astype(np.int64),
+                    ghosts["opacity"],
+                )
+                self.arcs.draw(uniforms, predictions.circles)
         if overlay is not None:
             self.arcs.draw(uniforms, overlay)
         with self._measure("resolve"):
