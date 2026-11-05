@@ -56,7 +56,7 @@ def _results(preset: str, opponent: str, games: int) -> torch.Tensor:
         game,
         api.ship_types(device),
         (Pool("acceptance", 1.0, ("scripted", "opponent")),),
-        {"scripted": Scripted(card), "opponent": rival},
+        {"scripted": Scripted(card, game.ships_per_team), "opponent": rival},
         "scripted",
         games,
         device,

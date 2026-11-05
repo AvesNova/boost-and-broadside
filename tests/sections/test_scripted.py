@@ -20,6 +20,7 @@ from bnb.contracts.action import NUM_JOINT, to_joint
 from bnb.contracts.obs import SHIP, SHIP_HIDDEN_ZERO, ZONE
 from bnb.controllers import scripted_combat
 from bnb.controllers.scripted import Scripted, distribution, marginals
+from bnb.controllers.scripted_memory import ScriptedCarry
 from bnb.controllers.scripted_parameters import (
     EPSILONS,
     NAMES,
@@ -397,11 +398,15 @@ def _game_views(mode: str, seed: int = 3):
     state = api.reset(
         rules, types, api.uniforms(rules, B, generator=generator), torch.ones(B, dtype=torch.bool)
     )
-    agent = Scripted(CHARACTERISTICS)
+    agent = Scripted(CHARACTERISTICS, config.ships_per_team, PARAMETERS)
+    carries = [agent.init_carry(B, torch.device("cpu")) for _ in range(2)]
     torch.manual_seed(seed)
     for _ in range(90):
         state, obs, _ = api.perceive(rules, state)
-        actions = [agent.step(None, _view(obs, team), None)[0] for team in (0, 1)]
+        actions = []
+        for team in (0, 1):
+            action, carries[team], _ = agent.step(carries[team], _view(obs, team), None)
+            actions.append(action)
         action = type(actions[0])(
             *(torch.cat(parts, 1) for parts in zip(*[(a.power, a.stick, a.shoot) for a in actions]))
         )
@@ -504,11 +509,12 @@ def test_a_rung_plays_the_agent_at_its_temperature_and_infinity_is_uniform():
     views = 40_000
     many = _copies(obs, views)
     temperature = torch.full((views,), 2.0)
-    rung = Scripted(CHARACTERISTICS, temperature=temperature)
+    rung = Scripted(CHARACTERISTICS, 2, PARAMETERS, temperature=temperature)
     expected = rung.action_distribution(many)[0, 0]
     torch.testing.assert_close(expected, distribution(obs, CHARACTERISTICS, PARAMETERS, 2.0)[0, 0])
-    action, carry, _ = rung.step(None, many, None)
-    assert carry is None
+    # a fresh carry makes every plan choice afresh: the memoryless distribution
+    action, carry, _ = rung.step(rung.init_carry(views, many.ships.device), many, None)
+    assert isinstance(carry, ScriptedCarry) and not bool(carry.fresh.any())
     counts = torch.bincount(to_joint(action)[:, 0].long(), minlength=NUM_JOINT).float() / views
     assert (counts - expected).abs().max() < 0.01
     temperature.fill_(math.inf)  # the league changes the temperature in place: random
@@ -516,7 +522,7 @@ def test_a_rung_plays_the_agent_at_its_temperature_and_infinity_is_uniform():
         rung.action_distribution(many)[0, 0], torch.full((NUM_JOINT,), 1.0 / NUM_JOINT)
     )
     with pytest.raises(ValueError):
-        Scripted(CHARACTERISTICS, temperature=0.0)
+        Scripted(CHARACTERISTICS, 2, temperature=0.0)
 
 
 def _entropy(q: torch.Tensor) -> torch.Tensor:
@@ -584,7 +590,7 @@ def test_the_scripted_agent_plays_in_the_rollout_against_the_chaser():
         game,
         api.ship_types(),
         pools,
-        {"scripted": Scripted(CHARACTERISTICS), "chaser": Chaser(2)},
+        {"scripted": Scripted(CHARACTERISTICS, 2), "chaser": Chaser(2)},
         "scripted",
         4,
         16,

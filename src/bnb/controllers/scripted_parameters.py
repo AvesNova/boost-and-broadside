@@ -11,10 +11,15 @@ logarithm, flattened by the agent's temperature and held off exactly 0 and 1
 (`floored`). The shot's only exact values are its gates: no target, or a gun that cannot
 fire, and P(shoot) is 0. Weights that are not probabilities (the boundary's steer toward the
 centre, the Frontline layer's hand-over to combat) are linear `Ramp`s.
+
+The plan choices the agent remembers (its target, its turn side, its Frontline goal and its
+recovery) change at a `Switch`'s rate: with probability 1 - exp(-rate dt) per decision, the
+rate rising smoothly with how much better the best alternative is than the committed option.
 """
 
 import dataclasses
 import math
+from typing import NamedTuple
 
 import torch
 
@@ -37,8 +42,7 @@ LOGIT_LIMIT = 9.2
 TINY_RATIO = 1e-6  # a logistic's input below this reads as this (its logarithm stays finite)
 
 
-@dataclasses.dataclass(frozen=True)
-class Ramp:
+class Ramp(NamedTuple):
     """A linear ramp: `at_low` at or below `low`, `at_high` at or above `high`."""
 
     low: float
@@ -53,8 +57,7 @@ def ramp(x: torch.Tensor, shape: Ramp) -> torch.Tensor:
     return shape.at_low + (shape.at_high - shape.at_low) * fraction
 
 
-@dataclasses.dataclass(frozen=True)
-class Logistic:
+class Logistic(NamedTuple):
     """sigma(+-(ln x - ln centre) / (scale T)) of a positive quantity x: 1/2 at `centre` (in
     x's unit), rising with x when `rising`, falling otherwise; `scale` in natural-log units
     (at T = 1 the 10-90% transition spans a factor exp(4.39 scale) in x). It is the Hill
@@ -75,6 +78,27 @@ def logistic(x: torch.Tensor, shape: Logistic, temperature=1.0) -> torch.Tensor:
     argument = sign * (torch.log(x.clamp_min(TINY_RATIO)) - log_centre)
     argument = argument / (shape.scale * temperature)
     return torch.sigmoid(argument.clamp(-LOGIT_LIMIT, LOGIT_LIMIT))
+
+
+class Switch(NamedTuple):
+    """A plan choice's switching rate (per second): rate sigma((advantage - centre) / (scale
+    T)), advantage how much better the best alternative is than the committed option, in the
+    unit the field's name gives. Near-equal options switch at rate sigma(-centre / scale),
+    a clearly better one at up to `rate`."""
+
+    rate: float
+    centre: float
+    scale: float
+
+
+def switch_probability(
+    advantage: torch.Tensor, shape: Switch, temperature, seconds: float
+) -> torch.Tensor:
+    """The probability of switching within a decision of `seconds`: 1 - exp(-rate seconds)
+    for the switch's rate at `advantage`, at a temperature (a float, or (R, 1) per view)."""
+    argument = (advantage - shape.centre) / (shape.scale * temperature)
+    rate = shape.rate * torch.sigmoid(argument.clamp(-LOGIT_LIMIT, LOGIT_LIMIT))
+    return -torch.expm1(-rate * seconds)
 
 
 def floored(probability: torch.Tensor, decision: str) -> torch.Tensor:
@@ -112,6 +136,16 @@ class ScriptedParameters:
     share of the capture); separation_radius_in_gun_range and
     separation_weight; recovery_shield_fraction and recovery_threat, below and above which a
     ship falls back to its spawn.
+
+    Memory: memory_fade_in_seconds, a hidden enemy's weight as a target by the time since it
+    was seen (falling; its dead-reckoned distance is divided by the weight);
+    target_switch_in_log_distance, the target's switch by the log ratio of the committed
+    target's (weighted) distance to the best alternative's; side_commit_in_stall_angle, how
+    much the committed turn side outweighs the error's sign, by the error;
+    side_switch_in_radians, the side's switch by how much shorter the other way round is;
+    goal_switch_in_strength, the Frontline goal's (defend or attack) by the margin of the
+    other goal's rule, in ship strengths; recovery_switch_in_log_ratio, recovery's by the
+    log margin of the other choice's rule.
     """
 
     turn_in_stall_angle: Logistic = Logistic(0.0398, 0.306, True)
@@ -136,6 +170,12 @@ class ScriptedParameters:
     separation_weight: float = 0.553
     recovery_shield_fraction: float = 0.133
     recovery_threat: float = 1.56
+    memory_fade_in_seconds: Logistic = Logistic(1.0, 0.25, False)
+    target_switch_in_log_distance: Switch = Switch(8.0, 0.3, 0.06)
+    side_commit_in_stall_angle: Logistic = Logistic(4.0, 0.2, True)
+    side_switch_in_radians: Switch = Switch(8.0, 0.6, 0.12)
+    goal_switch_in_strength: Switch = Switch(8.0, 0.3, 0.06)
+    recovery_switch_in_log_ratio: Switch = Switch(8.0, 0.3, 0.06)
 
 
 # Each logistic's smallest scale: 0.1 x the standard deviation of the logarithm of its
@@ -151,23 +191,37 @@ SCALE_FLOORS = {
     "reverse_in_gun_range": 0.127,
     "aim_in_target_size": 0.205,
     "shoot_in_gun_range": 0.127,
+    # the memory's: a tenth of a factor e in time, the turn logistics' in stall angles
+    "memory_fade_in_seconds": 0.1,
+    "side_commit_in_stall_angle": 0.158,
+}
+# Each switch's smallest scale, in its advantage's unit: about a tenth of the range its
+# advantage spans in play (a log distance ratio, radians of turn, ship strengths, a log
+# margin).
+SWITCH_SCALE_FLOORS = {
+    "target_switch_in_log_distance": 0.05,
+    "side_switch_in_radians": 0.1,
+    "goal_switch_in_strength": 0.05,
+    "recovery_switch_in_log_ratio": 0.05,
 }
 
 NAMES = tuple(field.name for field in dataclasses.fields(ScriptedParameters))
+_DEFAULT = ScriptedParameters()  # the logistics' directions (`unpack`)
 
 
 def _columns(value) -> tuple:
-    """A value's packed columns: a ramp's four, a logistic's centre and scale, or itself."""
-    if isinstance(value, Ramp):
-        return dataclasses.astuple(value)
+    """A value's packed columns: a ramp's four, a switch's rate, centre and scale, a
+    logistic's centre and scale, or itself."""
+    if isinstance(value, (Ramp, Switch)):
+        return tuple(value)
     if isinstance(value, Logistic):
         return (value.centre, value.scale)
     return (value,)
 
 
 def pack(parameters: ScriptedParameters) -> list[float]:
-    """The parameters as a flat list (a ramp is low, high, at_low, at_high; a logistic is
-    centre, scale)."""
+    """The parameters as a flat list (a ramp is low, high, at_low, at_high; a switch is rate,
+    centre, scale; a logistic is centre, scale)."""
     return [float(number) for name in NAMES for number in _columns(getattr(parameters, name))]
 
 
@@ -175,19 +229,31 @@ def unpack(table: torch.Tensor) -> ScriptedParameters:
     """Per-view parameters from a table (R, len(pack(...))): each value a view (R, 1) of
     its column, so an in-place change to the table changes them. A logistic's direction is
     the default's."""
-    default, values, column = ScriptedParameters(), {}, 0
+    default, values, column = _DEFAULT, {}, 0
     for name in NAMES:
         kind = getattr(default, name)
         width = len(_columns(kind))
         part = [table[:, column + i : column + i + 1] for i in range(width)]
         if isinstance(kind, Ramp):
             values[name] = Ramp(*part)
+        elif isinstance(kind, Switch):
+            values[name] = Switch(*part)
         elif isinstance(kind, Logistic):
             values[name] = Logistic(*part, kind.rising)
         else:
             values[name] = part[0]
         column += width
-    return ScriptedParameters(**values)
+    return _assembled(values)
+
+
+def _assembled(values: dict) -> ScriptedParameters:
+    """ScriptedParameters from every field's value, without its generated __init__: a
+    compiled graph cannot bind that signature's defaults (the logistic constants), so a
+    per-view set can be made inside one."""
+    parameters = object.__new__(ScriptedParameters)
+    for name, value in values.items():
+        object.__setattr__(parameters, name, value)
+    return parameters
 
 
 def from_row(row: list[float]) -> ScriptedParameters:
@@ -196,8 +262,8 @@ def from_row(row: list[float]) -> ScriptedParameters:
     out = {}
     for name in NAMES:
         value = getattr(values, name)
-        if isinstance(value, Ramp):
-            out[name] = Ramp(*(float(end) for end in dataclasses.astuple(value)))
+        if isinstance(value, (Ramp, Switch)):
+            out[name] = type(value)(*(float(end) for end in value))
         elif isinstance(value, Logistic):
             out[name] = Logistic(float(value.centre), float(value.scale), value.rising)
         else:
@@ -208,3 +274,37 @@ def from_row(row: list[float]) -> ScriptedParameters:
 def table(parameters: list[ScriptedParameters], device=None) -> torch.Tensor:
     """A parameter table (R, P) with one row per view."""
     return torch.tensor([pack(p) for p in parameters], dtype=torch.float32, device=device)
+
+
+# The game modes the agent is tuned for, one parameter set each: the training presets
+# (`bnb.game.modes.rules.PRESETS`), in `mode_index` order.
+MODES = ("deathmatch", "deathmatch_wide", "frontline")
+
+
+class ModeParameters:
+    """One parameter set per game mode (`MODES`): each view plays with its mode's set,
+    chosen from its observation (`mode_index`), so one batch may mix the modes."""
+
+    def __init__(self, sets: dict[str, ScriptedParameters]) -> None:
+        if set(sets) != set(MODES):
+            raise ValueError(f"need one parameter set per mode {MODES}, got {tuple(sets)}")
+        self.sets = {mode: sets[mode] for mode in MODES}
+        self._tables: dict[torch.device, torch.Tensor] = {}
+
+    def __eq__(self, other) -> bool:
+        return isinstance(other, ModeParameters) and self.sets == other.sets
+
+    def __repr__(self) -> str:
+        return f"ModeParameters({self.sets!r})"
+
+    def table(self, device) -> torch.Tensor:
+        """(len(MODES), P) the sets' packed rows on `device` (made once per device, so a
+        graph capture after the first use reads the same tensor)."""
+        device = torch.device(device)
+        if device not in self._tables:
+            self._tables[device] = table(list(self.sets.values()), device)
+        return self._tables[device]
+
+    def per_view(self, mode: torch.Tensor) -> ScriptedParameters:
+        """Per-view parameters for views of modes `mode` (R,) int64 (`mode_index`)."""
+        return unpack(self.table(mode.device)[mode])

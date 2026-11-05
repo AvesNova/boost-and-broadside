@@ -14,7 +14,7 @@ from bnb.league.pool import (
     retained,
     sampling_weights,
 )
-from bnb.runtime.opponents import ladder_temperature
+from bnb.runtime.opponents import Rung, ladder_rung, strength_order
 
 
 def _apply_after_every_snapshot(count: int) -> set[int]:
@@ -69,18 +69,28 @@ def test_a_pool_of_sure_results_samples_evenly():
 
 
 def test_the_ladder_names_random_rungs_and_scripted():
-    names = [entry.name for entry in ladder_entries((math.inf, 4.0, 1.5, 1.0))]
-    assert names == ["random", "rung_T4", "rung_T1.5", "scripted"]
-    assert ladder_name(2.5) == "rung_T2.5"
-    for temperature in (math.inf, 8.0, 1.25, 1.0):
-        assert ladder_temperature(ladder_name(temperature)) == temperature
-    for other in ("rung_T0.5", "rung_T1", "rung_Tx", "rung_0.5", "live"):
-        assert ladder_temperature(other) is None
+    rungs = (Rung(math.inf), Rung(2.0, 0.25), Rung(4.0), Rung(1.5), Rung(1.0))
+    names = [entry.name for entry in ladder_entries(rungs)]
+    assert names == ["random", "rung_T2_p0.25", "rung_T4", "rung_T1.5", "scripted"]
+    assert ladder_name(Rung(2.5)) == "rung_T2.5"
+    assert list(rungs) == sorted(rungs, key=strength_order)  # weakest first
+    for rung in (Rung(math.inf), Rung(8.0), Rung(1.25), Rung(1.0), Rung(2.0, 0.1)):
+        assert ladder_rung(ladder_name(rung)) == rung
+    for other in (
+        "rung_T0.5",
+        "rung_T1",
+        "rung_Tx",
+        "rung_0.5",
+        "live",
+        "rung_T2_p0",
+        "rung_T2_p1.5",
+    ):
+        assert ladder_rung(other) is None
 
 
-def test_only_a_ladder_entry_has_a_temperature():
+def test_only_a_ladder_entry_has_a_rung():
     with pytest.raises(ValueError):
-        Entry("snapshot_1", "checkpoint", temperature=2.0)
+        Entry("snapshot_1", "checkpoint", rung=Rung(2.0))
     with pytest.raises(ValueError):
         Entry("rung", "ladder")
 

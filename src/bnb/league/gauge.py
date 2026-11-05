@@ -25,17 +25,19 @@ import torch
 
 from .ratings import fit_ladder, rate_against, rate_live, win_probability
 
-GAUGE_TOP = 1000.0  # the scripted agent's fixed rating; rung T's prior is GAUGE_TOP / T
+GAUGE_TOP = (
+    1000.0  # the scripted agent's fixed rating; rung (T, share)'s prior is share GAUGE_TOP / T
+)
 LADDER_PRIOR_GAMES = 1.0  # virtual games per checkpoint at the strongest fixed rating
 AVERAGE_WINDOW = 200  # an average's last games that rate it
 KINDS = ("checkpoint", "average", "ladder")
 
 
-def gauge_rating(temperature: float) -> float:
-    """A ladder entry's prior rating, until the lanes calibrate it: GAUGE_TOP / T, so
-    random (+inf) at 0 and the scripted agent (1) at GAUGE_TOP. A placeholder, not a
-    measurement: the lanes' calibration replaces it."""
-    return GAUGE_TOP / temperature
+def gauge_rating(rung) -> float:
+    """A ladder entry's prior rating (`bnb.runtime.opponents.Rung`), until the lanes
+    calibrate it: share GAUGE_TOP / T, so random (+inf) at 0 and the scripted agent (1) at
+    GAUGE_TOP. A placeholder, not a measurement: the lanes' calibration replaces it."""
+    return rung.share * GAUGE_TOP / rung.temperature
 
 
 @dataclasses.dataclass

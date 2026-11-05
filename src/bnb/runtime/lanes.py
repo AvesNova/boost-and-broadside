@@ -27,7 +27,7 @@ from bnb.contracts.tree import contract
 from bnb.controllers.scripted import Scripted
 from bnb.game.handling.characteristics import Characteristics
 
-from .opponents import LADDER, OUTCOMES, SCRIPTED_PLAYER, ladder_name, ladder_temperature
+from .opponents import LADDER, OUTCOMES, SCRIPTED_PLAYER, Rung, ladder_name, ladder_rung
 
 LANES = "lanes"  # the lanes' controller name
 LIVE = "live"  # the player the learner trains
@@ -55,10 +55,10 @@ class Matchup:
         return f"{self.first}_vs_{self.second}"
 
 
-def ladder_chain(rungs: tuple[float, ...], weight: float) -> tuple[Matchup, ...]:
+def ladder_chain(rungs: tuple[Rung, ...], weight: float) -> tuple[Matchup, ...]:
     """Matchups that calibrate a ladder from the scripted agent down: each rung against the
-    next one up (`rungs` the temperatures above 1, weakest first), the top one against the
-    scripted agent."""
+    next one up (`rungs` those below the scripted agent, weakest first), the top one against
+    the scripted agent."""
     names = [ladder_name(t) for t in rungs] + [SCRIPTED_PLAYER]
     return tuple(
         Matchup(low, high, weight) for low, high in zip(names[:-1], names[1:], strict=True)
@@ -194,10 +194,12 @@ def mode_games(pools: tuple[Pool, ...], game: GameConfig, mode_of) -> dict[str, 
 class LaneCarry:
     """Per lane row (R leading): model, the network players' carry (their controller's);
     started (R,) int64, the generation of the row's player's weights when its game began
-    (`LaneSeat.load` with `fresh`)."""
+    (`LaneSeat.load` with `fresh`). ladder: the ladder players' carry, one per ladder row
+    (`LaneSeat.ladder_rows`' order)."""
 
     model: object
     started: torch.Tensor
+    ladder: object
 
 
 class _Decision(torch.nn.Module):
@@ -217,9 +219,9 @@ class LaneSeat:
     """Every lane row's player, in one controller. controller: a network controller of the
     live policy's architecture over a model of its own (the forward swaps each player's
     weights in); lanes: the lane pools in order; pool (R,) and role (R,): each lane row's
-    lane (an index into `lanes`) and seat in it, from the lineup; characteristics: the
-    scripted agent's, for the ladder players. Every network player starts with the
-    controller's model's weights.
+    lane (an index into `lanes`) and seat in it, from the lineup; characteristics and
+    ships_per_team: the scripted agent's, for the ladder players. Every network player
+    starts with the controller's model's weights.
 
     A game is tallied only if both its players still have the weights it began with: a
     player loaded `fresh` (another snapshot into a slot) starts a new generation, and the
@@ -232,6 +234,7 @@ class LaneSeat:
         pool: torch.Tensor,
         role: torch.Tensor,
         characteristics: Characteristics,
+        ships_per_team: int,
     ) -> None:
         device = pool.device
         players = tuple(
@@ -239,7 +242,7 @@ class LaneSeat:
                 player for lane in lanes for player in (lane.matchup.first, lane.matchup.second)
             )
         )
-        self.networks = tuple(p for p in players if ladder_temperature(p) is None)
+        self.networks = tuple(p for p in players if ladder_rung(p) is None)
         self.decision = _Decision(controller)
         self.decision.requires_grad_(False)
         self.reads = tuple(dict.fromkeys(controller.reads + Scripted.reads))
@@ -252,16 +255,17 @@ class LaneSeat:
         self.network_rows = [
             (player == players.index(name)).nonzero().flatten().to(device) for name in self.networks
         ]
-        ladder = torch.tensor([ladder_temperature(name) is not None for name in players])
+        ladder = torch.tensor([ladder_rung(name) is not None for name in players])
         ladder_rows = ladder[player].nonzero().flatten()
         self.ladder_rows = ladder_rows.to(device)
+        rungs = [ladder_rung(players[int(index)]) for index in player[ladder_rows]]
         self.ladder_agent = Scripted(
             characteristics,
+            ships_per_team,
             temperature=torch.tensor(
-                [ladder_temperature(players[int(index)]) for index in player[ladder_rows]],
-                dtype=torch.float32,
-                device=device,
+                [rung.temperature for rung in rungs], dtype=torch.float32, device=device
             ),
+            share=torch.tensor([rung.share for rung in rungs], device=device),
         )
         state = self.decision.state_dict()
         self.parameters = {
@@ -288,10 +292,11 @@ class LaneSeat:
     # ---- the controller
 
     def init_carry(self, views: int, device: torch.device) -> LaneCarry:
-        """Every row's network carry (a ladder row's is never read)."""
+        """Every row's network carry (a ladder row's is never read) and the ladder rows'."""
         return LaneCarry(
             model=self.decision.controller.init_carry(views, device),
             started=torch.zeros(views, dtype=torch.int64, device=device),
+            ladder=self.ladder_agent.init_carry(self.ladder_rows.numel(), device),
         )
 
     def step(self, carry: LaneCarry, obs: Obs, reset: torch.Tensor):
@@ -312,14 +317,18 @@ class LaneSeat:
                 model_carry = _pytree.tree_map(
                     lambda whole, part: whole.index_copy(0, rows, part), model_carry, chosen
                 )
+        ladder_carry = carry.ladder
         if self.ladder_rows.numel():
             rows = self.ladder_rows
             ladder_obs = _pytree.tree_map_only(torch.Tensor, lambda x: x[rows], obs)
-            ladder_action, _, _ = self.ladder_agent.step(None, ladder_obs, reset[rows])
+            ladder_action, ladder_carry, _ = self.ladder_agent.step(
+                carry.ladder, ladder_obs, reset[rows]
+            )
             action = action.index_copy(0, rows, ladder_action.packed())
         generation = self.generation[self.player_generation]
         started = torch.where(reset, generation, carry.started)
-        return Action.unpack(action), LaneCarry(model=model_carry, started=started), Outputs()
+        carry = LaneCarry(model=model_carry, started=started, ladder=ladder_carry)
+        return Action.unpack(action), carry, Outputs()
 
     def tally(self, carry: LaneCarry, done: torch.Tensor, result: torch.Tensor) -> torch.Tensor:
         """Each ended lane game (`done` (R,)) once, by (lane, outcome) with the outcome from

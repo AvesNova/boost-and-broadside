@@ -10,7 +10,6 @@ the scripted agent (`bnb.learn.bc`, with its own lineup and stop rule in
 
 import copy
 import dataclasses
-import functools
 import time
 from collections.abc import Callable
 from typing import Protocol
@@ -19,7 +18,7 @@ import torch
 
 from bnb.contracts import GameConfig, Pool
 from bnb.controllers.relational import RelationalController
-from bnb.controllers.scripted import Chaser, Random, Scripted, distribution
+from bnb.controllers.scripted import Chaser, Random, Scripted
 from bnb.controllers.yemong import YemongController
 from bnb.game import api
 from bnb.game.api import PRESETS, ShipTypes
@@ -269,6 +268,7 @@ class Trainer:
                 ),
                 len(self.modes),
                 self.characteristics,
+                game.ships_per_team,
                 config.league,
                 stream_key(config.seed, "league.ladder"),
             ),
@@ -276,9 +276,9 @@ class Trainer:
             "random": lambda: Random(game.ships_per_team),
             # BC scores the learner against the teacher its labels describe
             SCRIPTED: lambda: (
-                TeacherOpponent(self.characteristics, config.teacher)
+                TeacherOpponent(self.characteristics, game.ships_per_team, config.teacher)
                 if cloning
-                else Scripted(self.characteristics)
+                else Scripted(self.characteristics, game.ships_per_team)
             ),
         }
         if self.lanes:
@@ -289,6 +289,7 @@ class Trainer:
                 lineup.pool_of[LANES] - first_lane,
                 lineup.role[LANES],
                 self.characteristics,
+                game.ships_per_team,
             )
             seated.add(LANES)
         self.controllers = {
@@ -320,13 +321,7 @@ class Trainer:
         self.learner_pool = lineup.pool_of[LEARNER]
         rules, stage = self.rollout.rules, compiler(config.compiled)
         if cloning:  # the labels are the scripted agent's distribution, transformed
-            agent = teacher_agent(self.characteristics, config.teacher)
-            teacher = functools.partial(
-                distribution,
-                characteristics=agent.characteristics,
-                parameters=agent.parameters,
-                temperature=agent.temperature,
-            )
+            teacher = teacher_agent(self.characteristics, game.ships_per_team, config.teacher)
             self.ppo = BehaviourCloning(
                 self.model,
                 config.learner,

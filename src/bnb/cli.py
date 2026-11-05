@@ -744,7 +744,7 @@ def ratings(options: Ratings) -> None:
         for policy in sorted((run.directory / "league").glob("step_*/*"))
         if (policy / "checkpoint.json").exists()
     ]
-    field += [Player(e.name, temperature=e.temperature) for e in ladder_entries(LADDER)]
+    field += [Player(e.name, rung=e.rung) for e in ladder_entries(LADDER)]
     field += [
         p for p in _players(options.with_, runs_directory) if p.name not in {f.name for f in field}
     ]

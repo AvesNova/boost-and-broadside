@@ -11,14 +11,15 @@ from bnb.league import tournament
 from bnb.league.matches import Player, play, player
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
 from bnb.runs import checkpoint
+from bnb.runtime.opponents import Rung
 
 pytestmark = pytest.mark.usefixtures("global_generator")
 
 GAME = GameConfig(2, 2, 1500.0, episode_seconds=2.0, respawn_seconds=1.0)
 CPU = torch.device("cpu")
-SCRIPTED = Player("scripted", temperature=1.0)
-RANDOM = Player("random", temperature=math.inf)
-HALF = Player("rung_T2", temperature=2.0)
+SCRIPTED = Player("scripted", rung=Rung(1.0))
+RANDOM = Player("random", rung=Rung(math.inf))
+HALF = Player("rung_T2", rung=Rung(2.0))
 
 
 def test_ladder_names_parse_and_others_do_not():

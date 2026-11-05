@@ -2,7 +2,6 @@
 rule, on a real stored Yemong segment on the CPU."""
 
 import dataclasses
-import functools
 import json
 import math
 import sys
@@ -12,10 +11,13 @@ import pytest
 import torch
 import yemong_cases as cases
 from scripted_cases import CHARACTERISTICS
+from torch.utils import _pytree
 
 from bnb.contracts import Obs, Pool, Trajectory
-from bnb.contracts.obs import SHIP
-from bnb.controllers.scripted import Scripted, distribution
+from bnb.contracts.obs import GLOBAL, SHIP
+from bnb.controllers.scripted import Scripted, distribution, joint
+from bnb.controllers.scripted_memory import ScriptedCarry
+from bnb.controllers.scripted_parameters import ScriptedParameters
 from bnb.game import api
 from bnb.learn import bc
 from bnb.learn.rewards import RewardConfig
@@ -33,9 +35,13 @@ POOLS = (
     Pool("self_play", 0.5, ("learner", "learner"), 0.5),
     Pool("scripted", 0.5, ("learner", "scripted"), 0.5, mode="frontline"),
 )
-TEACHER = functools.partial(
-    distribution, characteristics=CHARACTERISTICS, parameters=Scripted(CHARACTERISTICS).parameters
-)
+PARAMETERS = ScriptedParameters()
+TEACHER = Scripted(CHARACTERISTICS, 5, PARAMETERS)  # the teacher of the 5v5 segments
+
+
+def memoryless(view: Obs, temperature: float = 1.0) -> torch.Tensor:
+    """The memoryless agent's distribution on views (R, ...): a fresh carry's."""
+    return distribution(view, CHARACTERISTICS, PARAMETERS, temperature)
 
 
 def _cloning(net, runner: Rollout, teacher_config=bc.TeacherConfig(), **config):
@@ -60,7 +66,7 @@ def segment(module_global_generator):
     net = cases.model()
     controllers = {
         "learner": cases.controller(net, cases.SHORT_SQUAD),
-        "scripted": Scripted(CHARACTERISTICS),
+        "scripted": Scripted(CHARACTERISTICS, 5, PARAMETERS),
     }
     runner = Rollout(
         cases.SHORT_SQUAD,
@@ -104,7 +110,13 @@ def test_the_bc_loss_matches_an_independent_computation(segment):
                 for name, value in dataclasses.asdict(trajectory.obs).items()
             }
         )
-        q = distribution(obs, CHARACTERISTICS, Scripted(CHARACTERISTICS).parameters)
+        carry = ScriptedCarry(
+            **{
+                field.name: prepared["derived"][bc.TEACHER_CARRY + field.name][tick]
+                for field in dataclasses.fields(ScriptedCarry)
+            }
+        )
+        q = distribution(obs, CHARACTERISTICS, PARAMETERS, carry=carry)
         assert bc.TeacherConfig() == bc.TeacherConfig(1.0, 0.0)  # the labels are q itself
         log_student = torch.log_softmax(unrolled.policy_logits[tick], -1)
         per_token = -(q * log_student).sum(-1)
@@ -146,18 +158,19 @@ def test_micro_batches_accumulate_to_the_unsplit_minibatch(segment):
 
 
 class Recording(Scripted):
-    """The scripted agent as the learner, keeping the distribution of every decision."""
+    """The memoryless scripted agent as the learner, keeping the distribution of every
+    decision."""
 
     def __init__(self) -> None:
-        super().__init__(CHARACTERISTICS)
+        super().__init__(CHARACTERISTICS, 5, PARAMETERS, memory=False)
         self.decisions: list[torch.Tensor] = []
 
     def step(self, carry, obs, reset):
-        self.decisions.append(distribution(obs, self.characteristics, self.parameters))
+        self.decisions.append(memoryless(obs))
         return super().step(carry, obs, reset)
 
 
-def test_the_update_time_labels_are_the_rollout_time_distribution():
+def _recorded_segment():
     recording = Recording()
     pools = (Pool("self_play", 1.0, ("learner", "learner"), 0.5, mode="frontline"),)
     runner = Rollout(
@@ -172,6 +185,12 @@ def test_the_update_time_labels_are_the_rollout_time_distribution():
         compiled=False,
     )
     trajectory = runner.run()
+    return recording, trajectory
+
+
+def test_the_update_time_labels_are_the_rollout_time_distribution():
+    """With its memory off the teacher's labels are the rollout's memoryless distribution."""
+    recording, trajectory = _recorded_segment()
     decided = torch.stack(recording.decisions[1:])  # the first is the rollout's one-row probe
     for tick in range(trajectory.done.shape[0]):  # the stored views give the same decision
         stored = Obs(
@@ -180,13 +199,41 @@ def test_the_update_time_labels_are_the_rollout_time_distribution():
             globals=trajectory.obs.globals[tick],
             zones=trajectory.obs.zones[tick],
         )
-        assert torch.equal(TEACHER(stored), decided[tick])
+        assert torch.equal(memoryless(stored), decided[tick])
     # Per tick the labels are exact (above). The update labels a whole segment as one
     # batch, and the CPU's vectorized kernels round the tail of a batch apart from its body,
     # so a batch of another shape may differ at the ulp level: measured at most 1.2e-7 (on
     # 0.15% of entries). The tolerance is 2.5e-7, about two float32 ulps at 1.
-    labels = bc.teacher_distribution(TEACHER, trajectory.obs)
+    views = trajectory.obs.ships.shape[1]
+    carries, _ = bc.teacher_carries(recording, trajectory.obs, recording.init_carry(views, lc.CPU))
+    labels = bc.teacher_distribution(recording, trajectory.obs, carries)
     torch.testing.assert_close(labels, decided, rtol=0, atol=2.5e-7)
+
+
+def test_a_label_is_the_teachers_decision_given_its_carry():
+    """With memory, re-reading the carry the teacher kept at each tick gives the
+    distribution it decided from there (its plan choices are not drawn again)."""
+    _, trajectory = _recorded_segment()
+    views = trajectory.obs.ships.shape[1]
+    carry, decided, kept = TEACHER.init_carry(views, lc.CPU), [], []
+    torch.manual_seed(5)
+    for tick in range(trajectory.done.shape[0]):
+        view = Obs(
+            ships=trajectory.obs.ships[tick],
+            fields=None,
+            globals=trajectory.obs.globals[tick],
+            zones=trajectory.obs.zones[tick],
+        )
+        reset = view.globals[:, GLOBAL["reset"]] > 0.5
+        parts, carry = TEACHER.decide(carry, view, reset)
+        decided.append(joint(parts))
+        kept.append(carry)
+    carries = _pytree.tree_map(lambda *leaves: torch.stack(leaves), *kept)
+    labels = bc.teacher_distribution(TEACHER, trajectory.obs, carries)
+    torch.testing.assert_close(labels, torch.stack(decided), rtol=0, atol=2.5e-7)
+    torch.manual_seed(5)
+    scanned, last = bc.teacher_carries(TEACHER, trajectory.obs, TEACHER.init_carry(views, lc.CPU))
+    assert torch.equal(scanned.target, carries.target) and torch.equal(last.known, carry.known)
 
 
 def _living_distributions(segment):
@@ -198,9 +245,7 @@ def _living_distributions(segment):
     alive = views.ships[:, :own, SHIP["alive"]] > 0.5
 
     def at(temperature: float) -> torch.Tensor:
-        return distribution(
-            views, CHARACTERISTICS, Scripted(CHARACTERISTICS).parameters, temperature
-        )[alive]
+        return memoryless(views, temperature)[alive]
 
     return at
 
@@ -292,16 +337,18 @@ def test_the_scored_opponent_plays_the_labels_distribution():
 
     teacher = bc.TeacherConfig(temperature=3.0, floor=0.2)
     trainer, opponent, view = _scripted_seat("bc", teacher, segments=2)
-    expected = bc.labels(TEACHER(view, temperature=3.0), teacher.floor)  # (R, S, 42)
-    untempered = bc.labels(TEACHER(view), teacher.floor)
+    expected = bc.labels(memoryless(view, 3.0), teacher.floor)  # (R, S, 42)
+    untempered = bc.labels(memoryless(view), teacher.floor)
     assert float((expected - untempered).abs().max()) > 0.05  # the temperature matters here
     torch.testing.assert_close(opponent.action_distribution(view), expected)
-    torch.testing.assert_close(trainer.ppo.teacher(view), TEACHER(view, temperature=3.0))
+    assert trainer.ppo.teacher.temperature == 3.0
+    torch.testing.assert_close(trainer.ppo.teacher.action_distribution(view), memoryless(view, 3.0))
     assert trainer.ppo.teacher_config == teacher
     assert trainer.rollout.reads == ("ships", "globals", "zones")
     times = 20_000
     torch.manual_seed(0)
-    action, _, _ = opponent.step(None, _repeated(view, times), None)
+    many = _repeated(view, times)
+    action, _, _ = opponent.step(opponent.init_carry(many.ships.shape[0], lc.CPU), many, None)
     joint = to_joint(action).long().unflatten(0, (times, -1))  # (times, R, S)
     frequency = torch.nn.functional.one_hot(joint, NUM_JOINT).float().mean(0)
     error = (expected * (1 - expected) / times).sqrt()
@@ -318,15 +365,19 @@ def test_floor_0_and_temperature_1_leave_the_scripted_agents_play_unchanged():
     _, opponent, view = _scripted_seat("bc", plain, segments=2)
     assert isinstance(opponent, bc.TeacherOpponent)
     views = _repeated(view, 500)
-    agent = Scripted(CHARACTERISTICS)
+    agent = Scripted(CHARACTERISTICS, 2)
     draws = []
     for player in (opponent, agent):  # two steps each: the second sees the first's draws
         torch.manual_seed(1)
-        draws.append([player.step(None, views, None)[0].packed() for _ in range(2)])
+        carry, steps = player.init_carry(views.ships.shape[0], lc.CPU), []
+        for _ in range(2):
+            action, carry, _ = player.step(carry, views, None)
+            steps.append(action.packed())
+        draws.append(steps)
     for drawn, scripted in zip(*draws, strict=True):
         assert torch.equal(drawn, scripted)
         assert len(set(map(tuple, drawn.flatten(0, 1).tolist()))) > 1  # not one action
-    torch.testing.assert_close(opponent.action_distribution(view), TEACHER(view))
+    torch.testing.assert_close(opponent.action_distribution(view), memoryless(view))
     _, reinforcement_opponent, _ = _scripted_seat("ppo")
     assert type(reinforcement_opponent) is Scripted
     assert reinforcement_opponent.temperature == 1.0
