@@ -151,3 +151,17 @@ def test_the_gauge_state_round_trips():
     gauge.update({"ladder/0.5": Record(wins=3, losses=2), "average/ema": Record(wins=1, ties=1)})
     restored = Gauge.from_state(gauge.state())
     assert restored.state() == gauge.state()
+
+
+def test_the_ladder_fit_survives_a_singular_hessian():
+    """A free player with no games and no prior has a zero row in the Hessian (the RL run of
+    2026-11-06 crashed on one): it keeps its start, and the others are still fitted."""
+    from bnb.league.ratings import fit_ladder
+
+    wins = torch.tensor([[0.0, 3.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 0.0]], dtype=torch.float64)
+    ties = torch.zeros((3, 3), dtype=torch.float64)
+    fixed = torch.tensor([True, False, False])
+    ratings = fit_ladder(wins, ties, fixed, torch.tensor([1000.0, 0.0, 0.0]), prior_games=0.0)
+    assert ratings[0] == 1000.0
+    assert torch.isfinite(ratings).all()
+    assert ratings[1] < 1000.0  # it lost 3 of 4 to the fixed player

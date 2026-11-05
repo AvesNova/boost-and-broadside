@@ -45,7 +45,9 @@ def _maximise(theta: torch.Tensor, wins: torch.Tensor, free: torch.Tensor) -> to
         gradient = (wins - games * probability).sum(1)[free]
         weight = games * probability * (1.0 - probability)
         hessian = (torch.diag(weight.sum(1)) - weight)[free][:, free]
-        step = torch.linalg.solve(hessian, gradient)
+        # least squares, not solve: a player whose every game is lost to underflow (or one with
+        # no games) makes the Hessian singular, and that player's step is then zero
+        step = torch.linalg.lstsq(hessian, gradient[:, None], driver="gelsd").solution[:, 0]
         decrement = float(gradient @ step)
         if decrement < DECREMENT_TOLERANCE:
             break

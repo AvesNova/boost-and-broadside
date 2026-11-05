@@ -179,8 +179,9 @@ A fork or a warm start whose command sets no model setting takes the file's
 ## Retention
 
 A training checkpoint is written every N environment steps. Without
-`--checkpoint-every`, N is about 30 minutes at the run's throughput, measured on its
-second update (the first compiles) and recorded in `run.json`{.plain}. The kept checkpoints
+`--checkpoint-every`, N is about 30 minutes at the run's throughput, measured on the slowest
+of its second to fourth updates (the first compiles, and a PPO update that stops early on
+its KL is several times shorter) and recorded in `run.json`{.plain}. The kept checkpoints
 follow `bnb.runs.records.retained` (the league's snapshots have their own rule,
 `bnb.league.pool.retained`). Number the checkpoints 0, 1, 2, …
 in the order written (a stop's off-cadence checkpoint counts too); with n the newest and

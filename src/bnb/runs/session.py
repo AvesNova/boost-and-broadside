@@ -22,6 +22,10 @@ from .recording import Recorder
 from .records import Run
 
 CADENCE_SECONDS = 30 * 60
+# the updates after the first that measure the cadence, by the slowest: one PPO update that
+# stops early on its KL is several times shorter than the rest (2026-11-06: an 80-minute
+# cadence measured on a 99-second update)
+CADENCE_UPDATES = 3
 
 
 def save(run: Run, trainer: Trainer, final: bool = False, recorder: Recorder | None = None) -> None:
@@ -96,7 +100,7 @@ def train(
     signal.signal(signal.SIGINT, interrupt)
     device = trainer.rollout.device
     try:
-        first, reason = True, None
+        first, reason, durations = True, None, []
         while not stopping and reason is None:
             if not cloned and trainer.updates_done >= trainer.config.updates:
                 break
@@ -116,9 +120,10 @@ def train(
                     f"{learner.micro_batch_rows} micro-batch rows",
                 )
             elif run.record["checkpoint_every"] is None:
-                seconds = time.perf_counter() - started
-                updates = max(1, round(CADENCE_SECONDS / seconds))
-                run.update(checkpoint_every=updates * trainer.steps_per_update)
+                durations.append(time.perf_counter() - started)
+                if len(durations) == CADENCE_UPDATES:
+                    updates = max(1, round(CADENCE_SECONDS / max(durations)))
+                    run.update(checkpoint_every=updates * trainer.steps_per_update)
             first = False
             if recorder is not None:
                 row = recorder.record(row)

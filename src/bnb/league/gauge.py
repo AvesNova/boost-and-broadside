@@ -147,6 +147,8 @@ class Gauge:
             wins[keep][:, keep], ties[keep][:, keep], fixed[keep], ratings[keep], LADDER_PRIOR_GAMES
         )
         kept = [name for name, used in zip(stationary, keep.tolist()) if used]
+        if not bool(torch.isfinite(fitted).all()):
+            return  # a degenerate record: the entries keep their last ratings
         for name, value in zip(kept, fitted.tolist()):
             rated = self.entries[name]
             if rated.kind == "checkpoint":
