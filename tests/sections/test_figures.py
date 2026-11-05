@@ -154,3 +154,38 @@ def test_the_belief_measures_count_only_hidden_living_believed_enemies():
     assert numbers["position_within_one_sigma"] == 0.5
     assert numbers["position_within_two_sigma"] == 0.5  # 4.5 > 4
     assert numbers["velocity_within_one_sigma"] == 1.0
+
+
+def test_the_next_state_measures_score_the_forecast_against_the_next_row():
+    from bnb.contracts.obs import SHIP, SHIP_COLUMNS
+    from bnb.figures import next_state
+
+    L, R, N, own = 2, 1, 2, 1
+    rows = torch.zeros((L, R, N, len(SHIP_COLUMNS)))
+    rows[..., SHIP["alive"]] = 1.0
+    rows[..., SHIP["visible"]] = 1.0
+    rows[..., SHIP["velocity_x"]] = 30.0  # 3 m per tick of 0.1 s
+    following = rows.clone()
+    following[..., SHIP["x"]] = 3.0
+    forecast = torch.zeros((L, R, N, 2))
+    forecast[..., 0] = 2.0  # 1 m short
+    artifact = dict(
+        meta=dict(ships_per_team=own, tick_length=0.1),
+        rollout=dict(
+            rows=rows,
+            next_rows=following,
+            ships=rows,
+            next_state_mask=torch.ones((L, R, N), dtype=torch.bool),
+            next_state=dict(position=forecast, position_sigma=torch.full((L, R, N), 2.0)),
+            belief=dict(
+                position=torch.zeros((L, R, N - own, 2)), velocity=torch.zeros((L, R, N - own, 2))
+            ),
+        ),
+    )
+    numbers = next_state.measures(artifact)
+    assert numbers["own"]["rows"] == 2 and numbers["enemy_seen"]["rows"] == 2
+    assert numbers["own"]["head_error"] == pytest.approx(1.0)
+    assert numbers["own"]["stay_error"] == pytest.approx(3.0)
+    assert numbers["own"]["constant_velocity_error"] == pytest.approx(0.0, abs=1e-5)
+    assert numbers["own"]["within_one_sigma"] == 1.0
+    assert "enemy_hidden" not in numbers

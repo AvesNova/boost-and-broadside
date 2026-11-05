@@ -115,3 +115,23 @@ living enemies that hold a belief count.
 overconfident belief. On the right, an honest belief's error tracks its sigma times the
 square root of two; a flat sigma under a rising error is a belief that does not know how
 long it has been blind.
+
+## `next_state`
+
+**The question:** how well does the next-state head forecast where each ship is one tick
+later, for own ships, seen enemies and hidden ones?
+
+The forecast at a tick, decoded to world coordinates, is scored against the privileged row
+one tick later, on the rows the learner trains. Two baselines use only what the model was
+given: the ship stays where it is (for a hidden enemy, where its belief puts it), and the
+ship keeps its velocity for one tick.
+
+- `next_state_track`: one enemy that is both seen and hidden in the segment: its true path
+  with the forecasts (blue when it was seen at the tick, green when hidden); its forecast
+  error over time with the hidden spans shaded, against the constant-velocity baseline and
+  the head's sigma; and the mean error of each population against both baselines.
+
+**How to read it.** For a seen ship, the forecast should beat keeping the velocity, which
+already knows the ship's motion; the one-sigma share should be near
+`bnb.figures.next_state.ONE_SIGMA`{.nolink}. For a hidden ship the forecast starts from the
+belief, so its error is the belief's; the head adds what the belief cannot.
