@@ -44,6 +44,15 @@ Before each decision the belief assimilates sight; after it, it stores the forec
 The forecast comes from the model's own next-state head, decoded back to physical units,
 and from its enemy-action head.
 
+`YemongConfig.forecast_feedback` (on by default) chooses whether the forecast is stored.
+Off, nothing is written back after a decision: a hidden ship's row is what the team last
+saw, its state at its last sighting with no spread, while its age keeps counting, and
+every enemy row's action stays uniform. Everything that reads the belief follows: the
+ship's state code, its position for rotary attention and local presence, its heading, and
+its pending action. The trunk's temporal layers then carry the memory of hidden ships. The
+next-state and enemy-action heads still train as auxiliary losses, unchanged; their
+predictions are only not fed back. Select it with `--set yemong.forecast_feedback=false`.
+
 ### The position offset
 
 Every position the model reads, of ships, fields, zones and the map centre, is shifted by
@@ -119,7 +128,8 @@ categorical value over symlog-spaced bins for each local level, and the outcome 
 
 - **`step(carry, obs, reset)`** is one decision for a batch of views. It clears the carry
   where the environment reset, assimilates sight into the belief, composes the tokens, runs
-  the trunk one step and the heads, and advances the belief with the forecast. It skips
+  the trunk one step and the heads, and advances the belief with the forecast (unless
+  `forecast_feedback` is off). It skips
   rows nothing reads: the enemy-action and next-state heads run on enemy rows only.
 - **`unroll(carry, obs, replay, reset)`** recomputes a stored segment: the encoder and the
   spatial sublayers run over every step at once, and the temporal sublayers scan over

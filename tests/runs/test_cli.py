@@ -212,6 +212,16 @@ def test_set_yemong_width_reaches_the_built_model(monkeypatch, tmp_path, capsys)
     assert widened  # the width is in the weights
 
 
+def test_set_yemong_forecast_feedback_reaches_the_built_model(monkeypatch, tmp_path, capsys):
+    options = ("--model", "yemong", "--set", "yemong.forecast_feedback=false", "--print-config")
+    bnb(monkeypatch, tmp_path, "train", *cases.TRAIN_OPTIONS, *options)
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["yemong"]["forecast_feedback"] is False
+    config, _ = from_json(TrainConfig, printed)
+    with torch.random.fork_rng(devices=[]):  # the model's initialisation draws
+        assert not build_model(model_build(config), cases.CPU).config.forecast_feedback
+
+
 def test_a_fork_that_sets_no_model_setting_takes_the_parents(monkeypatch, tmp_path):
     """The parent's width (16) though the code's default (256) is what the command gives."""
     new_run(monkeypatch, tmp_path)
