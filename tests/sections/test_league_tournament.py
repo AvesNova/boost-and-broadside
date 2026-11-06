@@ -88,10 +88,10 @@ def test_slots_take_their_players_in_place(tmp_path):
     first, second = _network(tmp_path / "a", 1), _network(tmp_path / "b", 2)
     arena = Arena([first, second, SCRIPTED, HALF], GAME, CPU, SMALL)
     seat = arena.seat
-    buffers = {name: value.data_ptr() for name, value in seat.parameters.items()}
+    buffers = {name: value.data_ptr() for name, value in seat.parameters[0].items()}
     arena.play([(0, 2), (3, 1)])
     name = next(iter(arena.states[0]))
-    stacked = seat.parameters[f"model.{name}"]
+    stacked = seat.parameters[0][f"model.{name}"]
     assert torch.equal(stacked[0], arena.states[0][name])  # block 0's first seat
     assert torch.equal(stacked[3], arena.states[1][name])  # block 1's second seat
     rows = seat.slot_rows
@@ -102,7 +102,7 @@ def test_slots_take_their_players_in_place(tmp_path):
     assert torch.equal(stacked[1], arena.states[0][name])
     assert seat.scripted.tolist() == [False] * 2 * rows + [True] * 2 * rows
     # every swap is a copy into the same buffers (a captured graph keeps reading them)
-    assert {name: value.data_ptr() for name, value in seat.parameters.items()} == buffers
+    assert {name: value.data_ptr() for name, value in seat.parameters[0].items()} == buffers
 
 
 def test_a_block_plays_the_same_games_whatever_the_other_blocks_play(tmp_path):
@@ -123,10 +123,48 @@ def test_a_block_plays_the_same_games_whatever_the_other_blocks_play(tmp_path):
     assert any(not torch.equal(one, two) for one, two in zip(states[0], _block_state(arena, 0)))
 
 
-def test_the_networks_share_one_architecture(tmp_path):
+def test_networks_of_different_builds_are_grouped_by_build(tmp_path):
+    first, second = _network(tmp_path / "a", 1), _network(tmp_path / "b", 2)
+    wider = _network(tmp_path / "c", 3, hidden=32)
+    arena = Arena([first, wider, SCRIPTED, second], GAME, CPU, SMALL)
+    assert len(arena.groups) == 2 and len(arena.seat.parameters) == 2
+    assert arena.group_of == {0: 0, 1: 1, 3: 0}  # the groups in order of first appearance
+    arena.play([(0, 1), (3, 1)])  # a block's two seats from different groups
+    rows = arena.seat.slot_rows
+    assert arena.seat.group[: 2 * rows].tolist() == [0] * rows + [1] * rows
+    assert arena.seat.group[2 * rows :].tolist() == [0] * rows + [1] * rows
+    name = next(iter(arena.states[1]))
+    assert torch.equal(arena.seat.parameters[1][f"model.{name}"][1], arena.states[1][name])
+
+
+def test_a_two_build_field_plays_and_a_block_does_not_depend_on_the_others(tmp_path):
     first, wider = _network(tmp_path / "a", 1), _network(tmp_path / "b", 2, hidden=32)
-    with pytest.raises(ValueError, match="one architecture"):
-        Arena([first, wider, SCRIPTED], GAME, CPU, SMALL)
+    arena = Arena([first, wider, SCRIPTED, RANDOM], GAME, CPU, SMALL)
+    results = arena.play([(0, 1), (1, 2)])
+    assert results.sum(1).tolist() == [4, 4]
+    states = []
+    for other in ((1, 0), (2, 3)):
+        torch.manual_seed(5)
+        arena.play([(0, 3), other])
+        states.append(_block_state(arena, 0))
+    for one, two in zip(*states, strict=True):
+        assert torch.equal(one, two)
+
+
+def test_the_tournament_rates_a_two_build_field(tmp_path):
+    first, wider = _network(tmp_path / "a", 1), _network(tmp_path / "b", 2, hidden=32)
+    config = tournament.TournamentConfig(SMALL, target_stderr=1.0, budget=16)
+    rows = tournament.rate([SCRIPTED, first, wider], "small", CPU, config, game=GAME)
+    by_name = {row["player"]: row for row in rows}
+    assert set(by_name) == {"scripted", str(tmp_path / "a"), str(tmp_path / "b")}
+    assert all(math.isfinite(row["calibrated_elo"]) and row["games"] > 0 for row in rows)
+
+
+def test_networks_of_one_build_are_one_group(tmp_path):
+    first, second = _network(tmp_path / "a", 1), _network(tmp_path / "b", 2)
+    arena = Arena([first, second, SCRIPTED], GAME, CPU, SMALL)
+    assert len(arena.groups) == 1 and arena.group_of == {0: 0, 1: 0}
+    assert len(Arena([SCRIPTED, RANDOM], GAME, CPU, SMALL).groups) == 0
 
 
 def test_scripted_at_temperature_one_and_floor_zero_plays_exactly_as_scripted():
@@ -203,6 +241,38 @@ def test_an_ablated_copy_shares_its_weights_and_ablates_only_its_slots_rows(tmp_
     arena.play([(3, 2), (1, 0)])
     assert ablations.rotary.tolist() == [False] * 2 * rows + [True] * rows + [False] * rows
     assert ablations.forecast.tolist() == [False] * rows + [True] * rows + [False] * 2 * rows
+
+
+def test_a_two_build_field_with_an_ablated_yemong(tmp_path):
+    """A relational network beside a Yemong and its ablated copy: the copy shares the
+    Yemong's group and weights, only its slot's rows are ablated, the relational group is
+    called without ablations, and a relational block plays the same games as in an engine
+    without the ablated copy."""
+    relational, yemong = _network(tmp_path / "a", 1), _yemong(tmp_path / "b")
+    rotary = player(f"{yemong.name}:rotary")
+    arena = Arena([relational, yemong, rotary, SCRIPTED], GAME, CPU, SMALL)
+    assert len(arena.groups) == 2 and arena.group_of == {0: 0, 1: 1, 2: 1}
+    assert arena.states[2] is arena.states[1]
+    assert arena.seat.ablatable == [False, True]
+    results = arena.play([(0, 3), (2, 0)])
+    assert results.sum(1).tolist() == [4, 4]
+    rows = arena.seat.slot_rows
+    assert (
+        arena.seat.ablations.rotary.tolist() == [False] * 2 * rows + [True] * rows + [False] * rows
+    )
+    assert arena.seat.group.tolist()[2 * rows :] == [1] * rows + [0] * rows
+    states = []
+    for players, matchups in (
+        ([relational, yemong, SCRIPTED], [(0, 2), (1, 0)]),
+        ([relational, yemong, rotary, SCRIPTED], [(0, 3), (2, 0)]),
+    ):
+        engine = Arena(players, GAME, CPU, SMALL)
+        torch.manual_seed(5)
+        engine.play(matchups)
+        states.append((_block_state(engine, 0), _block_state(engine, 1)))
+    for one, two in zip(states[0][0], states[1][0], strict=True):
+        assert torch.equal(one, two)
+    assert any(not torch.equal(one, two) for one, two in zip(states[0][1], states[1][1]))
 
 
 def test_a_block_without_ablations_plays_as_in_an_engine_without_them(tmp_path):

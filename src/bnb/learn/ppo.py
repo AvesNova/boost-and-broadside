@@ -122,7 +122,7 @@ class LearnerConfig:
     shot_outcome: float = 0.019
     learning_rate: float = 3e-4
     warmup_start: float = 1e-7
-    warmup_steps: int = 1_000_000  # environment steps
+    warmup_steps: int = 10_000_000  # environment steps (decisions: round four)
     max_grad_norm: float = 1.0
     epochs: int = 4
     minibatches: int = 32

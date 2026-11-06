@@ -46,7 +46,7 @@ uv run --no-sync bnb train --resume 2026-11-02-mixed-purple-pumpkin --at 2684354
   exactly where the run stopped. A BC run resumes the same way, its stop rule's window
   included ([Behaviour cloning](behaviour-cloning.md#resume-a-bc-run)).
 - `--updates` is the run's total budget (`--bc-budget-steps` a BC run's). `--precision`, `--micro-batch-rows` and
-  `--checkpoint-every` may change, and `--set` the fields
+  `--checkpoint-every` and `--update-policies` may change, and `--set` the fields
   `bnb.runs.checkpoint.OVERRIDABLE` lists (the learning rate, the warm-up, the loss
   coefficients, the reward weights). Each change is recorded with the step it took effect
   at.
@@ -117,6 +117,20 @@ uv run --no-sync bnb train --preset mixed --environments 1536 --probe
 runs the setup and one update, prints the allocator's peaks against the budget, and exits
 without writing a run. Every run does the same on its first update and stops there if it
 is over the budget.
+
+## Every update's policies and other EMA decays
+
+A PPO run keeps the live and averaged policy files of every update under `policies/`
+(`--update-policies False` turns that off; BC runs default to off). To rate an exponential
+average of another decay, build it from the saved live policies and name it in a tournament:
+
+<!-- not-runnable: needs a finished run -->
+```bash
+uv run --no-sync bnb runs ema 2026-11-02-mixed-purple-pumpkin --decay 0.9 --at 268435456
+```
+
+The decay is per update, and the average starts from the first saved update; see
+[Runs and checkpoints](../explanation/runs.md#every-updates-policy-files).
 
 ## Share a checkpoint
 

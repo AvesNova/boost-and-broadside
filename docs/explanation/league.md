@@ -19,8 +19,8 @@ pools: self-play and the league's seat, half each. Self-play is not a pool entry
 its fixed share. The entries (`bnb.league.pool.Entry`) are:
 
 - **snapshots** of the live policy, taken every `LeagueConfig.snapshot_every` environment
-  steps. Without a set value the league measures it once, about 30 minutes of the run's
-  throughput, and records it in `run.json`{.plain}. A snapshot is the weights that played the
+  steps. Without a set value the league measures it once, about 30 minutes at the pace of the slowest of
+  the second to fourth updates, and records it in `run.json`{.plain}. A snapshot is the weights that played the
   update it was taken at;
 - **the averages:** the uniform average and the exponential moving average of the live
   policy's weights, folded in after every update (`bnb.league.pool.Averages`, through `average_into`, the
@@ -188,10 +188,19 @@ compiled once. Its layout is fixed: `--blocks` matchup blocks of `--block-enviro
 environments each. Each block is two slots, its first seat and its second, both played by
 one controller (`bnb.league.matches.MatchSeat`):
 
-- A **network slot** holds one set of the stacked weights and runs it on the slot's own
-  rows only (`torch.func.functional_call` on the slot's slice, as the rating lanes do), so
-  each network evaluates only the environments where it plays. The networks of one
-  tournament share one architecture.
+- A **network slot** holds one set of the stacked weights of its player's **group** and
+  runs it on the slot's own rows (`torch.func.functional_call` on the slot's slice, as the
+  rating lanes do). The networks of one build (the same model and build record) form a
+  group, with a template, stacked weights and a forward of its own; a field may mix
+  builds, and a block's two seats may come from different groups (two
+  Yemong arms that differ in a build setting, for one). A slot's player changes between batches and the
+  captured graph's shapes cannot, so every group's forward runs over every slot's rows and
+  each slot takes its own group's action: **each extra group costs about one more network
+  pass over every row** (2026-11-06, a small relational model on the CPU: a batch took 1.2
+  s with one group, 1.7 s with two and 2.1 s with three, of which 0.7 s was the games and
+  the scripted pass; on the GPU, where the network is most of a batch, expect close to
+  the network's share of the batch per extra group). One build is one group, and plays as
+  before.
 - A **scripted slot** (a rung or a teacher) takes the scripted pass, one over every row,
   at the slot's temperature, share and floor, written in place.
 - **A batch** copies the chosen players into the slots, in place, so the captured graph
@@ -245,10 +254,10 @@ uv run --no-sync bnb head-to-head 2026-11-02-mixed-purple-pumpkin scripted --gam
 
 **Ablated players.** A Yemong policy may play ablated, in `--with` or in head-to-head:
 `PATH:rotary`, `PATH:forecast` or `PATH:rotary+forecast` (a run's name works as the
-policy too). An ablated player is the same weights, so it plays in the same engine as its
-unablated self; the seat holds each row's ablations and passes them to the network
-(`bnb.models.yemong.model.Ablations`), so only that player's rows are ablated and the
-captured graph stays one graph. A tournament without an ablated player calls the networks
+policy too). An ablated player is the same weights and build, so it shares its policy's
+group and stacked weights; the seat holds each row's ablations and passes them to every
+Yemong group's network (`bnb.models.yemong.model.Ablations`), so only that player's rows
+are ablated and the captured graph stays one graph. A tournament without an ablated player calls the networks
 without them. `rotary` makes the attention's rotary rotation the identity (every angle 0,
 token and map tables); `forecast` stores nothing back to the belief, as
 `yemong.forecast_feedback=false` does. Both are inference-time ablations of a model

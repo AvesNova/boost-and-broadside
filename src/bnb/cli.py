@@ -54,6 +54,9 @@ class Train:
     current directory outside a repository).
     checkpoint_every: environment steps between training checkpoints (default: about 30
     minutes at the run's measured throughput).
+    update_policies: write the live, exponential-average and uniform-average policy files
+    after every update to the run's `policies/` (about 10 MB each, never pruned; default: on
+    for ppo, off for bc; `--update-policies False` turns it off; a resume may change it).
     objective: ppo, or bc (behaviour cloning against self-play and the scripted agent until
     a stop rule fires, then the clone is saved as the run's policy file; updates is unused;
     a BC run keeps training checkpoints and resumes, but is not forked or warm-started);
@@ -93,6 +96,7 @@ class Train:
     name: str | None = None
     runs_directory: str | None = None
     checkpoint_every: int | None = None
+    update_policies: bool | None = None
     objective: str = "ppo"
     teacher_temperature: float = 1.0
     teacher_floor: float = 0.0
@@ -111,6 +115,7 @@ RESUME_OPTIONS = (
     "micro_batch_rows",
     "set",
     "checkpoint_every",
+    "update_policies",
     "device",
     "runs_directory",
     "print_config",
@@ -132,9 +137,14 @@ class Runs:
     checkpoint (`bnb runs upload RUN [--at STEP] [--league]`) as a W&B artifact, or build the
     run's W&B dashboards (`bnb runs dashboard RUN`, the `tools` extra).
 
-    action: list, show, upload or dashboard; run: the run's name (show, upload and
-    dashboard).
-    at: the checkpoint's step (default: the newest); league: upload the league's snapshots
+    Or build an exponential moving average of any decay from the run's saved per-update live
+    policies (`bnb runs ema RUN --decay 0.9 [--at STEP] [--out DIR]`, `bnb.runs.ema`) and
+    write it as a policy file for the tournament; the decay is per update.
+
+    action: list, show, upload, dashboard or ema; run: the run's name (all but list).
+    at: the checkpoint's step (default: the newest; for ema, the update the average ends at);
+    decay and out: ema's per-update decay and where to write the policy file (default under
+    the run's artifacts/ema/); league: upload the league's snapshots
     instead; to: the target (wandb only, for now); runs_directory: as for bnb train.
     """
 
@@ -142,6 +152,8 @@ class Runs:
     run: tyro.conf.Positional[str | None] = None
     at: int | None = None
     league: bool = False
+    decay: float | None = None
+    out: str | None = None
     to: str = "wandb"
     runs_directory: str | None = None
 
@@ -609,6 +621,8 @@ def train(options: Train, given_options: set[str]) -> None:
             if options.checkpoint_every is not None:
                 overrides["checkpoint_every"] = options.checkpoint_every
                 run.update(checkpoint_every=options.checkpoint_every)
+            if options.update_policies is not None:
+                run.update(update_policies=options.update_policies)
             warning = run.start_segment(step, overrides, rewound_from=max(rewound, default=None))
             if warning:
                 print(f"warning: {warning}", flush=True)
@@ -624,8 +638,17 @@ def train(options: Train, given_options: set[str]) -> None:
                 parent = dict(policy=str(pathlib.Path(options.init_from).resolve()))
             else:
                 trainer = Trainer(config, device)
+            keep_policies = options.update_policies
+            if keep_policies is None:
+                keep_policies = config.objective != "bc"
             run = Run.create(
-                runs_directory, name, config, sys.argv, options.checkpoint_every, parent
+                runs_directory,
+                name,
+                config,
+                sys.argv,
+                options.checkpoint_every,
+                parent,
+                keep_policies,
             )
             run.start_segment(trainer.ppo.environment_steps)
             print(f"run {name} in {run.directory}", flush=True)
@@ -777,6 +800,15 @@ def runs(options: Runs) -> None:
             print("\n".join(show(run)))
         elif options.action == "dashboard":
             print(dashboard(run))
+        elif options.action == "ema":
+            from bnb.runs import ema
+
+            if options.decay is None:
+                raise SystemExit("bnb runs ema needs --decay")
+            try:
+                print(ema.build(run, options.decay, options.at, options.out))
+            except ValueError as error:
+                raise SystemExit(str(error)) from error
         elif options.action == "upload":
             from bnb.runs import upload
 
@@ -785,7 +817,7 @@ def runs(options: Runs) -> None:
             print(upload.upload(run, options.at, options.league))
         else:
             raise SystemExit(
-                f"bnb runs {options.action!r}: the actions are list, show, upload, dashboard"
+                f"bnb runs {options.action!r}: the actions are list, show, upload, dashboard, ema"
             )
     except FileNotFoundError as error:
         raise SystemExit(str(error)) from error
@@ -817,6 +849,7 @@ def show(run) -> list[str]:
         f"  W&B id      {record['wandb_id']}",
         f"  parent      {record['parent']}",
         f"  cadence     every {record['checkpoint_every']} environment steps",
+        f"  policies    {'every update' if record.get('update_policies') else 'not per update'}",
         f"  probe       {record['probe']}",
         f"  checkpoints {run.checkpoint_steps()} (newest {record['newest_checkpoint']}, "
         f"final {record['final_checkpoint']})",

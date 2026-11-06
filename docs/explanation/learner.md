@@ -119,7 +119,8 @@ Each term matches an independent computation on a stored segment
 
 An update makes `epochs` passes of `minibatches` minibatches over the views; a view keeps
 its whole segment, which `unroll` needs. It clips the gradient norm, steps Adam with a
-linear warmup of the learning rate over the first environment steps, and stops early after
+linear warmup of the learning rate over the first 10M environment steps (a run warm-started
+from a clone warms up again), and stops early after
 an epoch whose mean approximate KL divergence exceeds `target_kl` (None: never). The
 policy's terms and statistics are one method, `Learner._policy`{.plain}; behaviour cloning
 (`bnb.learn.bc.BehaviourCloning`) replaces it and keeps the rest of the update, with 256

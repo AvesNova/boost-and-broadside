@@ -1,5 +1,7 @@
 """One process's segment of a run (runs spec 5 and 7): the probe on its first update,
-checkpoints every N environment steps with the retention, and the run's status at the end.
+checkpoints every N environment steps with the retention (the newest two and the final),
+the policy files of every update (`policies/`, when the run keeps them), and the run's
+status at the end.
 A PPO run trains to its update budget; a BC run until its stop rule fires, and then (or at
 Ctrl-C) also saves its policy files: the average its score stop read as the run's policy,
 and the live clone and both averages beside it.
@@ -45,6 +47,42 @@ def save(run: Run, trainer: Trainer, final: bool = False, recorder: Recorder | N
     if not path.exists():
         checkpoint.save_training(path, trainer, extra=dict(run=run.record["name"]))
     run.added_checkpoint(step, final=final)
+    if recorder is not None:
+        recorder.checkpoint_seconds += time.perf_counter() - started
+
+
+@torch.no_grad()
+def save_update_policies(
+    run: Run, trainer: Trainer, scratch: torch.nn.Module, recorder: Recorder | None = None
+) -> None:
+    """The policy files of the update that just ended, at `policies/step_<steps>/`: the live
+    weights (`live/`), the exponential average (`exponential_average/`) and, once it has
+    started, the uniform average (`uniform_average/`). They are never pruned, so an average
+    of another decay can be built afterwards from the live files (`bnb runs ema`). scratch: a
+    host copy of the model the averages are loaded into. Files of the same step (a rewound or
+    repeated update's) are replaced."""
+    started = time.perf_counter()
+    steps = trainer.ppo.environment_steps
+    averages = trainer.league.averages
+    path = run.update_policies_path(steps)
+    if path.exists():
+        shutil.rmtree(path)
+    path.mkdir()
+    players = [(LIVE, trainer.model)]
+    for player in (EXPONENTIAL_AVERAGE, UNIFORM_AVERAGE):
+        if player == UNIFORM_AVERAGE and not averages.uniform_started:
+            continue
+        scratch.load_state_dict(averages.weights[player])
+        players.append((player, scratch))
+    for player, model in players:
+        checkpoint.save_policy(
+            path / player,
+            model,
+            return_scale=trainer.ppo.return_scale,
+            steps=dict(environment_steps=steps, updates=trainer.updates_done),
+            game=trainer.config.game,
+            types=trainer.ppo.types,
+        )
     if recorder is not None:
         recorder.checkpoint_seconds += time.perf_counter() - started
 
@@ -127,6 +165,7 @@ def train(
     recorder: builds and writes each update's record (`log` gets the record); without one
     `log` gets the trainer's row."""
     cloned = trainer.config.objective == "bc"
+    scratch = copy.deepcopy(trainer.model).cpu() if run.record.get("update_policies") else None
     stopping = []
     previous = signal.getsignal(signal.SIGINT)
 
@@ -168,6 +207,8 @@ def train(
                 row = recorder.record(row)
                 act(run, trainer, recorder, row)
             log(row)
+            if scratch is not None:
+                save_update_policies(run, trainer, scratch, recorder)
             every = run.record["checkpoint_every"]
             if every and trainer.ppo.environment_steps // every > before // every:
                 save(run, trainer, recorder=recorder)
