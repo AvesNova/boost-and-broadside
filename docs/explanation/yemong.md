@@ -137,7 +137,7 @@ The next-state head predicts the same vector, so a forecast carries its own unce
 | density | global token | ally and enemy rates on a hex grid that scales with the arena |
 | shot outcome | ship rows | how a shot fired now would end |
 | shot trajectory | ship rows, at bullet ages | where a shot fired now would be at each age |
-| rotary read-out (optional) | ship rows, after the first temporal sublayer | a (cos, sin) pair per rotary frequency |
+| rotary read-out (optional) | ship rows, after each block's temporal sublayer | per block, a (cos, sin) pair per rotary frequency |
 
 ### Trunk order and the rotary read-out
 
@@ -149,22 +149,24 @@ equals a loop of `step`, and the carry is the same shape. Select it with
 `--set yemong.order=temporal_first`.
 
 `YemongConfig.rotary_readout` (off by default; it needs `temporal_first` and `rotary`) adds
-a linear head on the first temporal sublayer's ship rows. It gives a (cos, sin) pair for
-every rotary frequency: x and y for each of the `rotary_octaves` position octaves, then each
+one linear head per block, on that block's temporal sublayer's ship rows: every block does
+the same thing, whichever it is. Each head gives a (cos, sin) pair for every rotary
+frequency: x and y for each of the `rotary_octaves` position octaves, then each
 heading harmonic (2 x (2 x 8 + 4) = 40 numbers at the defaults). The pairs are not
 normalised: the read-out is trained toward the true phasors, whose expectation under the
 model's uncertainty is shorter than 1, so a short pair means the model is unsure at that
 frequency, and attention at that frequency is damped.
 
-With the read-out, every spatial sublayer rotates a ship's row by:
+With the read-out, each block's spatial sublayers rotate a ship's row by:
 
 - a **visible** ship: its true tables, from its observed position and heading;
-- a **hidden** ship: the read-out's pairs, in place of the belief's tables;
+- a **hidden** ship: that block's read-out pairs, in place of the belief's tables;
 - the global token and the map memory (fields, zones): their exact tables, as without it.
 
-The read-out enters the tables detached, so it learns only from its own loss (the learner's
-`rotary_readout` term, against the true phasors of every living ship; see the
-[learner page](learner.md)). That keeps its optimum the expected phasor and keeps the fused
+The read-outs enter the tables detached, so each learns only from its own loss (the
+learner's `rotary_readout` term, the mean over blocks of each block's error against the
+true phasors of every living ship; see the [learner page](learner.md)). That keeps each
+optimum the expected phasor and keeps the fused
 attention kernel in use in the learner (the kernel gives no gradient to the tables). The
 inference-time `rotary` ablation still makes every table the identity, the read-out's
 included. Select it with `--set yemong.rotary_readout=true`.
@@ -175,7 +177,7 @@ the baseline:
 - **C**, temporal first with forecast feedback: hidden ships' rows and rotary positions come
   from the belief, as in the baseline (`--set yemong.order=temporal_first`);
 - **D**, temporal first, Griffin only (no forecast fed back between ticks), with hidden
-  ships' rotary pairs from the read-out: memory places a hidden ship where it thinks the
+  ships' rotary pairs from each block's read-out: memory places a hidden ship where it thinks the
   ship is, not at its last sighting (`--set yemong.order=temporal_first --set
   yemong.rotary_readout=true --set yemong.forecast_feedback=false`).
 

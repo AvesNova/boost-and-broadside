@@ -18,7 +18,8 @@ Slices, quantity first:
   batch's action frequencies, cross-entropy the histogram's entropy.
 - belief, by hidden age (`AGE_BUCKETS`), over hidden living enemies that hold a belief.
 - rotary read-out (with `YemongConfig.rotary_readout`), its mean squared pair error
-  (`bnb.learn.losses.phasor_square_error`) by population over the living ships, and for
+  (`bnb.learn.losses.phasor_square_error`, the mean over the blocks' read-outs; per block
+  too, over the living ships) by population over the living ships, and for
   living hidden enemies by hidden age (`AGE_BUCKETS`, then `never_seen`: no sighting since
   the spawn) the error and the mean length of its (cos, sin) pairs (1: certain; it shrinks
   toward 0 with the model's uncertainty).
@@ -181,13 +182,18 @@ def sums(
 
 
 def _rotary_readout(unrolled, trajectory: Trajectory, label: dict, populations: dict, tick):
-    """The read-out's totals: per population the living ships and their error; per hidden
-    age slice of the living hidden enemies, their count, error and mean pair length."""
-    readout = unrolled.rotary_readout.float()  # (L, R, N, 2, pairs)
-    error = losses.phasor_square_error(readout, label["rotary_readout"])
-    length = readout.square().sum(-2).sqrt().mean(-1)
+    """The read-out's totals, each the mean over the blocks' read-outs: per population the
+    living ships and their error; per hidden age slice of the living hidden enemies, their
+    count, error and mean pair length. Per block, the living ships' error (blocks,)."""
+    readout = unrolled.rotary_readout.float()  # (L, R, N, blocks, 2, pairs)
+    per_block = losses.phasor_square_error(readout, label["rotary_readout"][..., None, :, :])
+    error = per_block.mean(-1)
+    length = readout.square().sum(-2).sqrt().mean(-1).mean(-1)
     alive = trajectory.alive
-    out = {}
+    out = {
+        "rotary_readout/alive/count": alive.float().sum(),
+        "rotary_readout/block/error": _masked(per_block, alive),
+    }
     for name, members in populations.items():
         chosen = alive & members
         out[f"rotary_readout/{name}/count"] = chosen.float().sum()
@@ -382,6 +388,10 @@ def series(total: dict, model) -> dict:
             prefix = f"rotary_readout/{name}"
             out[f"rotary_readout/error/{name}"] = Mean(
                 total[f"{prefix}/error"], total[f"{prefix}/count"]
+            )
+        for index, error in enumerate(total["rotary_readout/block/error"].unbind()):
+            out[f"rotary_readout/error/block_{index}"] = Mean(
+                error, total["rotary_readout/alive/count"]
             )
         for name in (*(bucket for bucket, _, _ in AGE_BUCKETS), "never_seen"):
             prefix, count = f"rotary_readout/{name}", total[f"rotary_readout/{name}/count"]

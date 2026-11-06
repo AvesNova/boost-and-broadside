@@ -113,17 +113,20 @@ The coefficients are the fields of `bnb.learn.ppo.LearnerConfig` named after the
 | `density` | each view-step, over its count of valued own ships | Poisson terms over the hex cells, against the counts of living ships at `t` |
 | `shot_trajectory` | valid shots of own ships and of enemies visible at `t` | the trajectory code's cross-entropy, averaged over the shot's valid ages |
 | `shot_outcome` | the same shots | the outcome code's cross-entropy |
-| `rotary_readout` | every ship alive at `t`, visible or hidden (with Yemong's rotary read-out only) | the squared distance between the read-out's (cos, sin) pair and the true one, averaged over the rotary frequencies (`bnb.learn.losses.phasor_square_error`); not in nats |
+| `rotary_readout` | every ship alive at `t`, visible or hidden (with Yemong's rotary read-out only) | the squared distance between a block's read-out (cos, sin) pair and the true one, averaged over the rotary frequencies (`bnb.learn.losses.phasor_square_error`), then over the blocks' read-outs; not in nats |
 
 Each term matches an independent computation on a stored segment
 (`tests/sections/test_learner.py::test_each_loss_term_matches_an_independent_computation`,
 and `tests/sections/test_learner_rotary_readout.py` for the read-out).
 
 The read-out's term is the one term not in nats: a per-ship mean over the frequencies of
-`|p - p_true|^2`, between 0 and 4. An all-zero read-out scores 1. Its minimum over the
+`|p - p_true|^2`, between 0 and 4, averaged over the blocks (each block has its own
+read-out). An all-zero read-out scores 1. Its minimum over the
 model's uncertainty is the expected phasor, so the read-out learns to shorten its pairs
 where it is unsure. A model without the read-out gives no such output, and the term stays 0
-(and out of the gradient decomposition).
+(and out of the gradient decomposition). `rotary_readout/loss` and the
+`rotary_readout/error/*` population and hidden-age series are the blocks' mean;
+`rotary_readout/error/block_<k>` is block k's error over the living ships.
 **The read-out's coefficient, 0.007.** Set so the read-out's trunk gradient norm at
 initialisation is about 0.02, the level the next-state term settles at in a trained BC run.
 Measured on the CPU (arm D, production initialisation, 5v5, 16 environments of 128 ticks,
@@ -132,7 +135,8 @@ gives about 0.021. Calibrating its *share* at initialisation would mislead: ther
 terms' trunk norms are about 0.002, because their heads start at or near zero, while in a
 trained BC run they settle at 0.02-0.10 (policy 0.04-0.07, density 0.05-0.08, enemy action
 0.05-0.10, next state about 0.02, value 0.02-0.07). The arm's own logged
-`gradient/norm/trunk/rotary_readout` is the check.
+`gradient/norm/trunk/rotary_readout` is the check. The measurement predates the read-out
+in every block (it was one head, on the first block) and was not repeated for it.
 
 An update makes `epochs` passes of `minibatches` minibatches over the views; a view keeps
 its whole segment, which `unroll` needs. It clips the gradient norm, steps Adam with a

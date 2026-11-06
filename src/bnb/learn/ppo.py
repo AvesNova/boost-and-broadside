@@ -573,9 +573,9 @@ class Learner:
                 losses.masked_sum(outcome, label["shot_mask"]) / denominator["shots"]
             )
         if _head(unrolled, "rotary_readout") is not None:
-            error = losses.phasor_square_error(
-                unrolled.rotary_readout.float(), label["rotary_readout"]
-            )
+            error = losses.phasor_square_error(  # (L, R, N, blocks): the blocks' mean
+                unrolled.rotary_readout.float(), label["rotary_readout"][..., None, :, :]
+            ).mean(-1)
             terms["rotary_readout"] = (
                 losses.masked_sum(error, trajectory.alive) / denominator["ships"]
             )
