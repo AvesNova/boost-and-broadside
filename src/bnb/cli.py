@@ -167,13 +167,16 @@ class Ratings:
     and averages (its `league/` directory), the stationary ladder and the players `--with`
     names (policy files, runs' newest checkpoints, ladder entries), game preset by preset,
     until every standard error is under `--target-stderr` or the budget is spent. The
-    leaderboard goes to the run's `artifacts/ratings/`.
+    batches are the match engine's fixed blocks (`--blocks` of `--block-environments`
+    games). The leaderboard goes to the run's `artifacts/ratings/` (or `--out`'s).
 
     run: the run; with_: more players; presets: the game presets; target_stderr: rating
-    points; budget: games per preset at most; first_games: games per pair in the first
-    batch; batch_games: games per later batch; device; runs_directory: as for bnb train.
-    ladder: the stationary ladder's rungs below the scripted agent (the scripted agent always
-    plays: it anchors the scale at 1000).
+    points; budget: games per preset at most; blocks and block_environments: the engine's
+    layout; device; runs_directory: as for bnb train. ladder: the stationary ladder's rungs
+    below the scripted agent (the scripted agent always plays: it anchors the scale at
+    1000). league: the run's `league/` policies (else only `--with`'s players and the
+    ladder). scripted_plays: the only players the scripted agent plays (by the names given;
+    all by default). out: the directory whose `artifacts/ratings/` the result goes to.
     """
 
     run: tyro.conf.Positional[str]
@@ -181,11 +184,14 @@ class Ratings:
     presets: tuple[str, ...] = ("frontline", "deathmatch", "deathmatch_wide")
     target_stderr: float = 25.0
     budget: int = 20_000
-    first_games: int = 4
-    batch_games: int = 1024
+    blocks: int = 16
+    block_environments: int = 32
     device: str = "cuda"
     runs_directory: str | None = None
     ladder: bool = True
+    league: bool = True
+    scripted_plays: tuple[str, ...] | None = None
+    out: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -841,7 +847,7 @@ def ratings(options: Ratings) -> None:
     import torch
 
     from bnb.league import tournament
-    from bnb.league.matches import Player
+    from bnb.league.matches import ArenaConfig, Player
     from bnb.league.pool import ladder_entries
     from bnb.runs import provenance
     from bnb.runs.records import Run
@@ -854,9 +860,10 @@ def ratings(options: Ratings) -> None:
         run = Run.open(runs_directory, options.run)
     except FileNotFoundError as error:
         raise SystemExit(str(error)) from error
+    league = sorted((run.directory / "league").glob("step_*/*")) if options.league else []
     field = [
         Player(f"{options.run}/{policy.parent.name}/{policy.name}", policy=policy)
-        for policy in sorted((run.directory / "league").glob("step_*/*"))
+        for policy in league
         if (policy / "checkpoint.json").exists()
     ]
     field += [
@@ -867,24 +874,35 @@ def ratings(options: Ratings) -> None:
     field += [
         p for p in _players(options.with_, runs_directory) if p.name not in {f.name for f in field}
     ]
-    config = tournament.TournamentConfig(
-        first_games=options.first_games,
-        batch_games=options.batch_games,
-        target_stderr=options.target_stderr,
-        budget=options.budget,
-    )
+    try:
+        allowed = tournament.allowed_pairs([p.name for p in field], options.scripted_plays)
+        config = tournament.TournamentConfig(
+            arena=ArenaConfig(blocks=options.blocks, block_environments=options.block_environments),
+            target_stderr=options.target_stderr,
+            budget=options.budget,
+        )
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     device = torch.device(options.device)
     rows = []
-    for preset in options.presets:
-        rows += tournament.rate(field, preset, device, config)
+    try:
+        for preset in options.presets:
+            rows += tournament.rate(field, preset, device, config, allowed=allowed)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     for row in sorted(rows, key=lambda row: (row["map"], -row["calibrated_elo"])):
         print(
             f"{row['map']:16s} {row['player']:60s} {row['calibrated_elo']:8.1f} "
             f"+- {row['stderr']:5.1f}  {row['games']:6d} games"
         )
     inputs = {player.name: player.policy for player in field if player.policy is not None}
-    payload = dict(leaderboard=rows, config=dataclasses.asdict(config))
-    print(provenance.write_result(run, "ratings", payload, inputs))
+    payload = dict(
+        leaderboard=rows,
+        config=dataclasses.asdict(config),
+        scripted_plays=options.scripted_plays,
+    )
+    owner = run if options.out is None else pathlib.Path(options.out)
+    print(provenance.write_result(owner, "ratings", payload, inputs))
 
 
 def head_to_head(options: HeadToHead) -> None:
