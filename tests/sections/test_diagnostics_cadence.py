@@ -81,7 +81,17 @@ def segment(module_global_generator):
 def test_the_taps_read_each_blocks_output_and_are_removed(segment, global_generator):
     """The last block's tapped output is what the heads read, and no hook outlives the
     context."""
-    net, runner = segment
+    _assert_taps_read_the_block_outputs(*segment)
+
+
+def test_the_taps_read_each_blocks_output_in_the_temporal_first_order(global_generator):
+    """With `order = temporal_first` a block's last sublayer is spatial: the taps read it,
+    not the temporal sublayer that runs first."""
+    net = cases.model(order="temporal_first")
+    _assert_taps_read_the_block_outputs(net, lc.rollout(net))
+
+
+def _assert_taps_read_the_block_outputs(net, runner) -> None:
     trajectory = lc.whole(runner)
     heads_input = {}
     handle = net.own_heads.register_forward_pre_hook(
