@@ -233,3 +233,36 @@ These are proposals; the author decides.
 - **The brief** says 4 snapshots; the pool held 4 for updates 71–88 and 5 at the end. Its
   "about 50% rungs" matches the rung kind, 0.49 for updates 64–95; with the scripted agent
   the ladder took 0.57.
+
+## Round 2: turnover, slots, ladder and weighting (2026-11-06)
+
+`bench/league_sampling_2.py` follows every opponent row's game clock (staggered starts,
+capped-exponential game lengths from round 1's fitted rates) on round 1's reconstructed
+inputs with repaired snapshot ratings; 104 variants, 200 seeds each, late updates 48-95.
+At 50 seeds it gives round 1's numbers back (serial 0.374 against 0.368 open games, draining
+together 0.557 against 0.555) and drains of 14.0 updates by themselves. A clean cut swaps a
+slot's weights in place at an update boundary and resets the opponent's carry; the game
+runs on, its ticks train, its result is not credited. Raw results:
+`/tmp/bnb-scratch-league-sim2/round2.json` at the time of writing (rerun:
+`python -m bench.league_sampling_2 RUN --seeds 200 --json out.json`, about 12 minutes).
+
+RL case (ladder out of the pool), 4 slots, p(1 - p) with the floor:
+
+| Turnover | Open games | Signal | Network opponents / 10 updates | Games cut | Rows cut / update | Compute |
+|---|---|---|---|---|---|---|
+| Serial drain (today) | 0.616 | 0.138 | 3.2 | 0 | 0 | 1.25 |
+| Drain together | 0.809 | 0.179 | 4.0 | 0 | 0 | 2.0 |
+| Cut 1 of 4 slots every update | 0.844 | 0.184 | 4.7 | 0.85 | 0.20 | 1.0 |
+| Cut all slots every 2 updates | 0.846 | 0.186 | 5.1 | 0.92 | 0.39 | 1.0 |
+| A draw per row (the limit) | 0.845 | 0.183 | 5.6 | 0 | 0 | 7.0 |
+
+- The ladder and the weighting matter more than the turnover rule: with the 11-entry ladder
+  the same rules give 0.34 (serial), 0.54 (together), 0.63 (cuts).
+- Once turnover is fast, more slots change little (6 or 8 slots: about 0.85).
+- (1 - p)^2 reaches 0.90-0.94 by concentrating on the top-rated entries (round 1: it
+  chases rating errors).
+- The floor is worth about +0.01.
+- Not modelled: the learner's cost of a mid-game opponent change.
+
+**Decided (author, 2026-11-06):** a clean cut of one slot every 2-4 updates, the ladder out
+of the RL training pool, p(1 - p) and the floor kept (`decisions.md`, "Round four").
