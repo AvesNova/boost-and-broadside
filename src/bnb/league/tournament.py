@@ -82,6 +82,12 @@ def report(line: str) -> None:
     print(line, flush=True)
 
 
+def _clock(seconds: float) -> str:
+    """The local clock time `seconds` from now, HH:MM."""
+    later = datetime.datetime.now().astimezone() + datetime.timedelta(seconds=seconds)
+    return later.strftime("%H:%M")
+
+
 def _connected(allowed: torch.Tensor, anchor: int) -> bool:
     """Whether every player reaches the anchor through allowed pairs."""
     reached = torch.zeros(allowed.shape[0], dtype=torch.bool)
@@ -197,12 +203,15 @@ def fit_field(
                 ),
             )
         batches += 1
-        left = (config.budget - played) // arena.games  # an upper bound: the error may stop it
+        left = (config.budget - played) // arena.games  # the budget's bound
+        # the errors fall as one over the root of the games: the batches to the target
+        needed = math.ceil(played * ((worst / config.target_stderr) ** 2 - 1.0) / arena.games)
+        expected = min(left, max(needed, 0))
         mean = sum(seconds) / len(seconds)
         log(
             f"{label}: batch {batches}, {played} games, the largest standard error {worst:.1f} "
-            f"(the batch took {seconds[-1]:.0f} s); at most {left} batches left, "
-            f"{left * mean / 60:.0f} min at {mean:.0f} s a batch"
+            f"(the batch took {seconds[-1]:.0f} s); done about {_clock(expected * mean)} "
+            f"({expected} batches), by {_clock(left * mean)} at the latest ({left} batches)"
         )
     return ratings, stderr, pair_games
 

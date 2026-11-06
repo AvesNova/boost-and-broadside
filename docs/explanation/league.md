@@ -218,8 +218,9 @@ one controller (`bnb.league.matches.MatchSeat`):
   index, its blocks' matchups and results, the games so far, every player's rating and
   standard error, the worst error, the batch's seconds and the wall time. A tournament
   that finds its preset's record rebuilds the games from it and goes on; a finished one
-  plays nothing. Each batch also logs a line with the batches left before the budget (an
-  upper bound: the errors may stop it first) and their time at the mean batch's.
+  plays nothing. Each batch also logs a line with the local clock times it expects to finish
+  (the errors falling as one over the root of the games) and, at the latest, when the
+  budget is spent, at the mean batch's time.
 - **A guard:** a batch whose games run past the game clock's ticks (plus two segments)
   raises rather than playing on.
 

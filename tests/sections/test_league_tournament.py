@@ -274,7 +274,7 @@ def test_each_batch_is_recorded_and_a_tournament_resumes_from_its_record(tmp_pat
     assert lines[-1]["ratings"][3]["rating"] == pytest.approx(float(ratings[3]))
     assert lines[-1]["worst_stderr"] == pytest.approx(float(stderr.max()))
     assert all(len(line["matchups"]) == len(line["results"]) == 4 for line in lines)
-    assert "at most 0 batches left" in logged[-1]
+    assert "at the latest (0 batches)" in logged[-1]
     # a larger budget goes on from the record: its games kept, two batches more
     (_, _, resumed), logged = fit(5 * 64, 2)
     assert "resumed" in logged[0] and len(record.read_text().splitlines()) == 5
