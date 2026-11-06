@@ -172,6 +172,8 @@ class Ratings:
     run: the run; with_: more players; presets: the game presets; target_stderr: rating
     points; budget: games per preset at most; first_games: games per pair in the first
     batch; batch_games: games per later batch; device; runs_directory: as for bnb train.
+    ladder: the stationary ladder's rungs below the scripted agent (the scripted agent always
+    plays: it anchors the scale at 1000).
     """
 
     run: tyro.conf.Positional[str]
@@ -183,6 +185,7 @@ class Ratings:
     batch_games: int = 1024
     device: str = "cuda"
     runs_directory: str | None = None
+    ladder: bool = True
 
 
 @dataclasses.dataclass(frozen=True)
@@ -842,6 +845,7 @@ def ratings(options: Ratings) -> None:
     from bnb.league.pool import ladder_entries
     from bnb.runs import provenance
     from bnb.runs.records import Run
+    from bnb.runtime.lanes import SCRIPTED_PLAYER
     from bnb.runtime.opponents import LADDER
 
     _check_presets(options.presets)
@@ -855,7 +859,11 @@ def ratings(options: Ratings) -> None:
         for policy in sorted((run.directory / "league").glob("step_*/*"))
         if (policy / "checkpoint.json").exists()
     ]
-    field += [Player(e.name, rung=e.rung) for e in ladder_entries(LADDER)]
+    field += [
+        Player(e.name, rung=e.rung)
+        for e in ladder_entries(LADDER)
+        if options.ladder or e.name == SCRIPTED_PLAYER
+    ]
     field += [
         p for p in _players(options.with_, runs_directory) if p.name not in {f.name for f in field}
     ]
