@@ -19,8 +19,8 @@ pools: self-play and the league's seat, half each. Self-play is not a pool entry
 its fixed share. The entries (`bnb.league.pool.Entry`) are:
 
 - **snapshots** of the live policy, taken every `LeagueConfig.snapshot_every` environment
-  steps. Without a set value the league measures it once, about 30 minutes of the run's
-  throughput, and records it in `run.json`{.plain}. A snapshot is the weights that played the
+  steps. Without a set value the league measures it once, about 30 minutes at the pace of the slowest of
+  the second to fourth updates, and records it in `run.json`{.plain}. A snapshot is the weights that played the
   update it was taken at;
 - **the averages:** the uniform average and the exponential moving average of the live
   policy's weights, folded in after every update (`bnb.league.pool.Averages`, through `average_into`, the

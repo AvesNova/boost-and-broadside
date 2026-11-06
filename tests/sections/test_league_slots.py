@@ -363,3 +363,18 @@ def test_the_uniform_average_starts_after_its_warm_up(tmp_path):
         seen.append(float(value.flatten()[0]))
     # update 0 ends below 2 x steps: the live weights; from update 1 on, the mean since
     assert seen == [0.0, 1.0, 1.5, 2.0]
+
+
+def test_the_measured_snapshot_cadence_reads_the_slowest_of_the_second_to_fourth_updates(
+    tmp_path, monkeypatch
+):
+    """One short update (a PPO update that stops early on its KL) must not set the cadence."""
+    trainer, league = cases.league(tmp_path, league=LeagueConfig(snapshot_every=None))
+    clock = iter([0.0, 100.0, 1100.0, 1110.0, 1111.0])  # updates of 100, 1000, 10 and 1 seconds
+    monkeypatch.setattr("bnb.league.league.time.perf_counter", lambda: next(clock))
+    league._measure_cadence(trainer)  # the first update compiles: only starts the clock
+    for _ in range(2):
+        league._measure_cadence(trainer)
+        assert league.snapshot_every is None
+    league._measure_cadence(trainer)  # durations 100, 1000, 10: the slowest sets it
+    assert league.snapshot_every == round(30 * 60 / 1000) * trainer.steps_per_update

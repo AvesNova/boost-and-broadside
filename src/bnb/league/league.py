@@ -27,6 +27,7 @@ import torch
 from bnb.contracts.series import Table
 from bnb.runs import checkpoint
 from bnb.runs.records import Run
+from bnb.runs.session import CADENCE_UPDATES
 from bnb.runtime.lanes import UNIFORM_AVERAGE, league_slot
 from bnb.runtime.opponents import (
     LADDER_KIND,
@@ -95,6 +96,7 @@ class League:
         self.device = trainer.rollout.device
         self.pending: dict[str, torch.Tensor] | None = None
         self.started: float | None = None
+        self.durations: list[float] = []  # the updates after the first, in seconds
         self.record = self._empty_record()
         self.lane_seat = trainer.lane_seat
         self.ratings = RunRatings(
@@ -313,16 +315,19 @@ class League:
         return metrics
 
     def _measure_cadence(self, trainer: Trainer) -> None:
-        """Without a set cadence: about SNAPSHOT_SECONDS at the second update's pace (the
-        first compiles), in whole updates, recorded in the run."""
+        """Without a set cadence: about SNAPSHOT_SECONDS at the pace of the slowest of the
+        second to fourth updates (the first compiles, and a PPO update that stops early on its
+        KL is several times shorter), in whole updates, recorded in the run."""
         if self.snapshot_every is not None:
             return
         now = time.perf_counter()
         if self.started is not None:
-            updates = max(1, round(SNAPSHOT_SECONDS / (now - self.started)))
-            self.snapshot_every = updates * trainer.steps_per_update
-            if self.run is not None:
-                self.run.update(snapshot_every=self.snapshot_every)
+            self.durations.append(now - self.started)
+            if len(self.durations) == CADENCE_UPDATES:
+                updates = max(1, round(SNAPSHOT_SECONDS / max(self.durations)))
+                self.snapshot_every = updates * trainer.steps_per_update
+                if self.run is not None:
+                    self.run.update(snapshot_every=self.snapshot_every)
         self.started = now
 
     def _snapshot(self, trainer: Trainer, steps: int, weights: dict[str, torch.Tensor]) -> str:
