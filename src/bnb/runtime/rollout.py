@@ -477,6 +477,14 @@ class Rollout:
         tally.zero_()
         return taken
 
+    @torch.no_grad()
+    def restart(self) -> None:
+        """Every environment starts a fresh game from its clock's start, and the whole carry
+        is a new rollout's (every controller's carry, the seats, the tallies, the sums),
+        copied in place so a captured graph stays valid: the offline match engine's batch
+        (`bnb.league.matches.Arena`)."""
+        _assign(self.carry, self._initial_carry(self.carry["types"], staggered=False))
+
     # ---- checkpoints --------------------------------------------------------------------
 
     def saved_carry(self) -> dict:

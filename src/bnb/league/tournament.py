@@ -1,18 +1,26 @@
 """Published ratings and head-to-head results (league spec 6): `bnb ratings` and
-`bnb head-to-head`.
+`bnb head-to-head`, on the match engine's fixed slots (`bnb.league.matches.Arena`).
 
-The ratings are an offline tournament over a field, game preset by game preset, in batches:
-the first spread evenly over the pairs, the later ones split by A-optimal value
-(`bnb.league.ratings.allocate`, at least one game per pair, a pair's games rounded up to an
-even count so they split evenly between the seats). After each batch, the Bradley-Terry fit
+The ratings are an offline tournament over a field, game preset by game preset, in batches
+of the engine's fixed matchup blocks. Before each batch every block is given a pair, among
+the allowed pairs, by A-optimal value (`bnb.league.ratings.allocate_blocks`, at the current
+ratings and every game so far); after it, the Bradley-Terry fit on every game so far
 (`fit_ratings`, draws as half a win, prior 1 game), shifted so the scripted agent is 1000:
 only it is pinned. The tournament stops when every rating's standard error is below the
-target, or when the game budget is spent. The result is the leaderboard (`calibrated_elo`),
-keyed by game version, mode, map and fleet size.
+target, or when the next batch would pass the game budget. The result is the leaderboard
+(`calibrated_elo`), keyed by game version, mode, map and fleet size.
+
+The field may restrict who plays whom (`allowed_pairs`): the scripted agent can be kept to
+a few players, which anchor the scale for the others through their games.
 """
 
 import dataclasses
+import datetime
+import json
 import math
+import os
+import pathlib
+import time
 from collections.abc import Callable
 
 import torch
@@ -22,34 +30,190 @@ from bnb.game import VERSION as GAME_VERSION
 from bnb.game.api import PRESETS
 
 from .gauge import GAUGE_TOP
-from .matches import Player, play
-from .ratings import allocate, fit_ratings
+from .matches import Arena, ArenaConfig, Player
+from .ratings import allocate_blocks, fit_ratings
 
 PRESET_NAMES = ("frontline", "deathmatch", "deathmatch_wide")  # the training mix's games
 PRIOR_GAMES = 1.0
+ANCHOR = "scripted"
 
 
 @dataclasses.dataclass(frozen=True)
 class TournamentConfig:
-    """first_games: games per pair in the first batch; batch_games: games per later batch;
-    target_stderr: rating points every standard error must be under to stop; budget: games
-    per preset at most; length: ticks per rollout segment."""
+    """arena: the match engine's layout (a batch is its blocks' games); target_stderr:
+    rating points every standard error must be under to stop; budget: games per preset at
+    most (whole batches)."""
 
-    first_games: int = 4
-    batch_games: int = 1024
+    arena: ArenaConfig = ArenaConfig()
     target_stderr: float = 25.0
     budget: int = 20_000
-    length: int = 64
 
     def __post_init__(self) -> None:
-        if self.first_games < 2 or self.first_games % 2:
-            raise ValueError(f"first_games {self.first_games} must be even and at least 2")
         if self.target_stderr <= 0.0:
             raise ValueError(f"target_stderr {self.target_stderr} must be positive")
+        if self.budget < self.arena.games:
+            raise ValueError(
+                f"a budget of {self.budget} games is less than one batch ({self.arena.games})"
+            )
 
 
-def _even(games: int) -> int:
-    return games + games % 2
+def allowed_pairs(names: list[str], anchor_partners: tuple[str, ...] | None = None) -> torch.Tensor:
+    """Who may play whom in a field of `names`, (K, K) bool: every pair of different
+    players, except that the scripted agent plays only `anchor_partners` when they are
+    given."""
+    count = len(names)
+    allowed = ~torch.eye(count, dtype=torch.bool)
+    if anchor_partners is not None:
+        unknown = [name for name in anchor_partners if name not in names or name == ANCHOR]
+        if unknown or not anchor_partners:
+            raise ValueError(
+                f"the scripted agent's partners {list(anchor_partners)} must be other players "
+                "of the field"
+            )
+        anchor = names.index(ANCHOR)
+        partner = torch.tensor([name in anchor_partners for name in names])
+        allowed[anchor] = partner
+        allowed[:, anchor] = partner
+    return allowed
+
+
+def report(line: str) -> None:
+    """The tournament's default log: a line to stdout, flushed (a run's log is a file)."""
+    print(line, flush=True)
+
+
+def _clock(seconds: float) -> str:
+    """The local clock time `seconds` from now, HH:MM."""
+    later = datetime.datetime.now().astimezone() + datetime.timedelta(seconds=seconds)
+    return later.strftime("%H:%M")
+
+
+def _connected(allowed: torch.Tensor, anchor: int) -> bool:
+    """Whether every player reaches the anchor through allowed pairs."""
+    reached = torch.zeros(allowed.shape[0], dtype=torch.bool)
+    reached[anchor] = True
+    while True:
+        grown = reached | allowed[reached].any(0)
+        if bool((grown == reached).all()):
+            return bool(reached.all())
+        reached = grown
+
+
+def _add(wins, pair_games, matchups, results) -> int:
+    """Add a batch's results (a block's first player's (wins, ties, losses)) to the wins and
+    the pair games; returns its games."""
+    played = 0
+    for (first, second), (won, tied, lost) in zip(matchups, results, strict=True):
+        wins[first, second] += won + tied / 2
+        wins[second, first] += lost + tied / 2
+        games = won + tied + lost
+        pair_games[first, second] += games
+        pair_games[second, first] += games
+        played += games
+    return played
+
+
+def _append(record: pathlib.Path, entry: dict) -> None:
+    """One JSON line appended to `record`, flushed and synced to disk."""
+    record.parent.mkdir(parents=True, exist_ok=True)
+    with record.open("a") as file:
+        file.write(json.dumps(entry) + "\n")
+        file.flush()
+        os.fsync(file.fileno())
+
+
+def _replay(record: pathlib.Path, names: list[str], wins, pair_games) -> tuple[int, int, list]:
+    """The batches a record holds, added to the wins and the pair games: (batches, games,
+    the batch seconds). Its field must be `names`."""
+    batches, played, seconds = 0, 0, []
+    for line in record.read_text().splitlines():
+        entry = json.loads(line)
+        if [row["player"] for row in entry["ratings"]] != names:
+            raise ValueError(f"{record} rates another field; move it aside to start over")
+        index = {name: number for number, name in enumerate(names)}
+        matchups = [(index[first], index[second]) for first, second in entry["matchups"]]
+        played += _add(wins, pair_games, matchups, entry["results"])
+        batches += 1
+        seconds.append(entry["seconds"])
+    return batches, played, seconds
+
+
+def fit_field(
+    play: Callable[[list[tuple[int, int]]], torch.Tensor],
+    names: list[str],
+    anchor: int,
+    allowed: torch.Tensor,
+    config: TournamentConfig,
+    log: Callable[[str], None] = report,
+    label: str = "",
+    record: pathlib.Path | None = None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """The tournament's batches over a field of players `names`: `play` plays one batch (a
+    pair per block, first player and second) and gives each block's (wins, ties, losses)
+    from its first player's side. Returns the ratings (K,) with the anchor at 0, their
+    standard errors (K,) and the games of each pair (K, K).
+
+    record: a JSON-lines file of the batches, one line appended (and synced) after each:
+    its index, the blocks' matchups and results, the games so far, every player's rating
+    and standard error, the worst error, the batch's seconds and the wall time. A record
+    that exists already is read first, and the tournament goes on from its games."""
+    if not _connected(allowed, anchor):
+        raise ValueError("every player must reach the scripted agent through allowed pairs")
+    arena, count = config.arena, len(names)
+    wins = torch.zeros((count, count), dtype=torch.float64)
+    pair_games = torch.zeros((count, count), dtype=torch.float64)
+    batches, played, seconds = 0, 0, []
+    if record is not None and record.exists():
+        batches, played, seconds = _replay(record, names, wins, pair_games)
+        log(f"{label}: resumed from {record}: {batches} batches, {played} games")
+    ratings, stderr = fit_ratings(wins, anchor, PRIOR_GAMES)
+    while batches == 0 or (
+        float(stderr.max()) >= config.target_stderr and played + arena.games <= config.budget
+    ):
+        started = time.perf_counter()
+        matchups = allocate_blocks(
+            pair_games,
+            ratings,
+            anchor,
+            arena.blocks,
+            arena.block_environments,
+            allowed,
+            PRIOR_GAMES,
+        )
+        results = play(matchups).tolist()
+        played += _add(wins, pair_games, matchups, results)
+        ratings, stderr = fit_ratings(wins, anchor, PRIOR_GAMES)
+        seconds.append(time.perf_counter() - started)
+        worst = float(stderr.max())
+        if record is not None:
+            _append(
+                record,
+                dict(
+                    batch=batches,
+                    matchups=[[names[first], names[second]] for first, second in matchups],
+                    results=results,
+                    games=played,
+                    ratings=[
+                        dict(player=name, rating=float(ratings[i]), stderr=float(stderr[i]))
+                        for i, name in enumerate(names)
+                    ],
+                    worst_stderr=worst,
+                    seconds=seconds[-1],
+                    wall_time=datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
+                ),
+            )
+        batches += 1
+        left = (config.budget - played) // arena.games  # the budget's bound
+        # the errors fall as one over the root of the games: the batches to the target
+        needed = math.ceil(played * ((worst / config.target_stderr) ** 2 - 1.0) / arena.games)
+        expected = min(left, max(needed, 0))
+        mean = sum(seconds) / len(seconds)
+        log(
+            f"{label}: batch {batches}, {played} games, the largest standard error {worst:.1f} "
+            f"(the batch took {seconds[-1]:.0f} s); done about {_clock(expected * mean)} "
+            f"({expected} batches), by {_clock(left * mean)} at the latest ({left} batches)"
+        )
+    return ratings, stderr, pair_games
 
 
 def rate(
@@ -57,45 +221,32 @@ def rate(
     preset: str,
     device: torch.device,
     config: TournamentConfig = TournamentConfig(),
-    log: Callable[[str], None] = print,
+    log: Callable[[str], None] = report,
     game: GameConfig | None = None,
+    allowed: torch.Tensor | None = None,
+    record: pathlib.Path | None = None,
 ) -> list[dict]:
     """The field's ratings in one game preset (`game`: its config, PRESETS[preset] by
     default): a row per player (its name, `calibrated_elo`, its standard error and its
     games) plus the leaderboard's key. The field must hold the scripted agent, the
-    anchor."""
+    anchor; allowed (K, K) bool: who may play whom (`allowed_pairs`; every pair by
+    default); record: the batches' record (`fit_field`). The engine is built at the first
+    batch, so a finished record plays nothing."""
     game = PRESETS[preset] if game is None else game
     names = [p.name for p in players]
-    if "scripted" not in names:
+    if ANCHOR not in names:
         raise ValueError("the field needs the scripted agent: it anchors the ratings at 1000")
-    count, anchor = len(players), names.index("scripted")
-    wins = torch.zeros((count, count), dtype=torch.float64)
-    pair_games = torch.zeros((count, count), dtype=torch.float64)
-    upper = torch.triu_indices(count, count, 1)
-    allocation = allocate(
-        pair_games, torch.zeros(count), anchor, config.first_games * upper.shape[1], 0
+    allowed = allowed_pairs(names) if allowed is None else allowed
+    arenas: list[Arena] = []
+
+    def play(matchups: list[tuple[int, int]]) -> torch.Tensor:
+        if not arenas:
+            arenas.append(Arena(players, game, device, config.arena))
+        return arenas[0].play(matchups)
+
+    ratings, stderr, pair_games = fit_field(
+        play, names, names.index(ANCHOR), allowed, config, log, preset, record
     )
-    played = 0
-    while True:
-        pairs = [
-            (int(i), int(j), _even(int(allocation[i, j])))
-            for i, j in upper.T
-            if allocation[i, j] > 0
-        ]
-        results = play(players, pairs, game, device, config.length)
-        for (first, second, games), (won, tied, lost) in zip(pairs, results.tolist()):
-            wins[first, second] += won + tied / 2
-            wins[second, first] += lost + tied / 2
-            pair_games[first, second] += games
-            pair_games[second, first] += games
-            played += games
-        ratings, stderr = fit_ratings(wins, anchor, PRIOR_GAMES)
-        worst = float(stderr.max())
-        log(f"{preset}: {played} games, the largest standard error {worst:.1f}")
-        if worst < config.target_stderr or played >= config.budget:
-            break
-        batch = min(config.batch_games, config.budget - played)
-        allocation = allocate(pair_games, ratings, anchor, batch, 1)
     key = dict(
         game_version=GAME_VERSION, mode=game.mode, map=preset, fleet_size=game.ships_per_team
     )
@@ -111,28 +262,56 @@ def rate(
     ]
 
 
+def head_to_head_layout(pairs: int, games: int, config: ArenaConfig) -> ArenaConfig:
+    """The engine's layout for `pairs` pairs of `games` games each: blocks of the largest
+    even divisor of `games` up to `config.block_environments` games, and as many blocks as
+    the pairs need, up to `config.blocks`."""
+    environments = max(
+        size for size in range(2, config.block_environments + 1, 2) if games % size == 0
+    )
+    blocks = min(config.blocks, pairs * games // environments)
+    return dataclasses.replace(config, blocks=blocks, block_environments=environments)
+
+
 def head_to_head(
     players: list[Player],
     games: int,
     presets: tuple[str, ...],
     device: torch.device,
-    length: int = 64,
+    config: ArenaConfig = ArenaConfig(),
     games_of: dict[str, GameConfig] | None = None,
 ) -> list[dict]:
     """Each pair of `players` (in order: the first against the second, the third against
     the fourth, ...) over `games` games per preset (split evenly between the seats; a
-    preset's config from `games_of`, PRESETS by default): the
-    first player's wins, losses and draws, its score (a draw half a win) with the score's
-    standard error, in total and per preset."""
+    preset's config from `games_of`, PRESETS by default): the first player's wins, losses
+    and draws, its score (a draw half a win) with the score's standard error, in total and
+    per preset. The pairs' blocks are played in batches of the engine's layout
+    (`head_to_head_layout`); a last batch's spare blocks replay the first ones, and their
+    games are left out."""
     if len(players) % 2:
         raise ValueError("head-to-head takes players in pairs: A B [C D ...]")
     if games < 2 or games % 2:
         raise ValueError(f"--games {games} must be even (split evenly between the seats)")
-    pairs = [(index, index + 1, games) for index in range(0, len(players), 2)]
+    pairs = [(index, index + 1) for index in range(0, len(players), 2)]
+    layout = head_to_head_layout(len(pairs), games, config)
+    queue = [
+        number for number in range(len(pairs)) for _ in range(games // layout.block_environments)
+    ]
     games_of = games_of or PRESETS
-    split = {preset: play(players, pairs, games_of[preset], device, length) for preset in presets}
+    split = {}
+    for preset in presets:
+        arena = Arena(players, games_of[preset], device, layout)
+        counts = torch.zeros((len(pairs), 3), dtype=torch.int64)
+        for start in range(0, len(queue), layout.blocks):
+            batch = queue[start : start + layout.blocks]
+            spare = queue[: layout.blocks - len(batch)]
+            results = arena.play([pairs[number] for number in batch + spare])
+            for number, result in zip(batch, results[: len(batch)], strict=True):
+                counts[number] += result
+        split[preset] = counts
+        del arena
     rows = []
-    for number, (first, second, _) in enumerate(pairs):
+    for number, (first, second) in enumerate(pairs):
         per_preset = {preset: _summary(split[preset][number]) for preset in presets}
         total = sum(
             (split[preset][number] for preset in presets), torch.zeros(3, dtype=torch.int64)

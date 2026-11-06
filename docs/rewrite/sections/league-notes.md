@@ -104,15 +104,19 @@ Branch `section/league`. Spec: `league-spec.md`. Brief: `league-brief.md`.
   **Request:** de-duplicate by reference if checkpoint size matters.
 
 ### 6. Published ratings
-- `bnb.league.matches.play`: one rollout per batch and preset, a pool per pair, a
-  `Recorded` controller per player counting its rows' first results (`tally`), seats
-  alternating per environment within each pair (exactly half each). Eager (not compiled):
-  shapes change per batch.
-- `bnb.league.tournament.rate`: first batch even (`first_games` per pair), later batches by
-  `allocate` (≥ 1 per pair), each pair rounded up to an even count (so a batch can exceed
-  its size by one game per pair); `fit_ratings` with prior 1, anchor scripted, +1000; stop
-  on max stderr < target (25) or the budget. Rows keyed by game version (`bnb.game.VERSION`),
-  mode, map (preset name), fleet size; written via `provenance.write_result`.
+- `bnb.league.matches.Arena` (2026-11-06, replacing the per-batch rollout, which built a
+  controller per player over every environment and ran out of memory on a 46-player
+  field): one rollout per preset on fixed slots, `blocks` x `block_environments`, each block
+  two slots of one `MatchSeat`; network slots run stacked weights on their own rows
+  (functional_call), scripted slots take one scripted pass at per-row temperature, share and
+  floor. A batch loads players in place and `Rollout.restart`s every game; each
+  environment's first game counts. One architecture per tournament.
+- `bnb.league.tournament.rate`: `allocate_blocks` gives each block a pair greedily by exact
+  trace reduction (Sherman-Morrison, prior games included, so no even first batch) among
+  the allowed pairs (`allowed_pairs`, `--scripted-plays`); `fit_ratings` with prior 1,
+  anchor scripted, +1000; stop on max stderr < target (25) or when the next batch would
+  pass the budget. Rows keyed by game version (`bnb.game.VERSION`), mode, map (preset
+  name), fleet size; written via `provenance.write_result`.
 - `bnb head-to-head A B [C D ...] --games N --presets ...`: per pair W/L/D, score ± SE
   (from the per-game score variance), per-preset split; artifact under the first named
   run, else the runs directory. A player may be `scripted@T=<t>,floor=<f>`: the scripted
@@ -143,7 +147,7 @@ Branch `section/league`. Spec: `league-spec.md`. Brief: `league-brief.md`.
 | 7 speed | see Measurements |
 
 Also: `test_league_pool.py` (retention, weights, averages), `test_league_metrics.py`,
-`test_league_tournament.py` (engine, tournament anchor and budget, head-to-head, CLI parse),
+`test_league_tournament.py` (engine slots and swaps, block isolation, block allocation, allowed pairs, a known field recovered, anchor and budget, head-to-head, CLI parse),
 the tally orientation test.
 
 Hand breaks (each reverted):

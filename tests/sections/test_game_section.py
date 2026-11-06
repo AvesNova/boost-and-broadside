@@ -623,31 +623,15 @@ def test_compiled_rollout_graph_replays_draw_fresh_randomness():
 @pytest.mark.slow
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
 def test_an_eager_rollout_of_the_ladder_on_frontline_captures_into_a_graph():
-    """The head-to-head's rollout runs uncompiled and captures a CUDA graph: the scripted
+    """The match engine's rollout runs uncompiled and captures a CUDA graph: the scripted
     agent's frontline strategy and a ladder rung's temperature build no tensor from host
     values (a host copy cannot run inside a capture)."""
-    from bnb.contracts import Pool
-    from bnb.league.matches import Player, controller_of
+    from bnb.league.matches import Arena, ArenaConfig, Player, ScriptedPlay
     from bnb.runtime.opponents import Rung
-    from bnb.runtime.rollout import Rollout
 
-    game = api.PRESETS["frontline"]
-    device = torch.device("cuda")
-    controllers = {
-        "scripted": controller_of(Player("scripted", rung=Rung(1.0)), game, device),
-        "rung": controller_of(Player("rung_T2", rung=Rung(2.0)), game, device),
-    }
-    rollout = Rollout(
-        game,
-        api.ship_types(device),
-        (Pool("pair", 1.0, ("scripted", "rung")),),
-        controllers,
-        "scripted",
-        8,
-        8,
-        device,
-        compiled=False,
-        graph_ticks=4,
-    )
-    rollout.run()
-    assert rollout.graph is not None
+    players = [Player("scripted", rung=Rung(1.0)), Player("rung_T2", rung=Rung(2.0))]
+    layout = ArenaConfig(blocks=1, block_environments=8, length=8, compiled=False)
+    arena = Arena(players, api.PRESETS["frontline"], torch.device("cuda"), layout)
+    arena.seat.load_scripted(1, ScriptedPlay(2.0))
+    arena.rollout.run()
+    assert arena.rollout.graph is not None

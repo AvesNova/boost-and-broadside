@@ -177,33 +177,66 @@ entry; and the games of the update by opponent kind.
 `bnb ratings RUN` plays an offline tournament over the run's snapshots and averages, the
 ladder and the players `--with` names, game preset by preset
 (`bnb.league.tournament.rate`). `--no-ladder` leaves out the rungs below the scripted agent,
-which always plays: it anchors the scale. The match engine (`bnb.league.matches.play`) seats each
-pair's first player on team 0 in half its games and on team 1 in the other half; policies
-of any architecture play.
+which always plays: it anchors the scale. `--no-league` leaves out the run's `league/`
+policies, so the field is `--with`'s players and the ladder. `--scripted-plays A B ...`
+keeps the scripted agent to the named players; the others reach the anchor through their
+games with them. `--out DIR` writes the result under `DIR/artifacts/ratings/` instead of
+the run's.
 
-- The first batch spreads its games evenly over the pairs; each later batch splits its
-  games by each pair's A-optimal value (`bnb.league.ratings.allocate`), at least one game
-  per pair, rounded up to an even count.
-- After each batch the ratings are the Bradley–Terry fit with standard errors
+**The match engine** (`bnb.league.matches.Arena`) is one rollout per preset, built and
+compiled once. Its layout is fixed: `--blocks` matchup blocks of `--block-environments`
+environments each. Each block is two slots, its first seat and its second, both played by
+one controller (`bnb.league.matches.MatchSeat`):
+
+- A **network slot** holds one set of the stacked weights and runs it on the slot's own
+  rows only (`torch.func.functional_call` on the slot's slice, as the rating lanes do), so
+  each network evaluates only the environments where it plays. The networks of one
+  tournament share one architecture.
+- A **scripted slot** (a rung or a teacher) takes the scripted pass, one over every row,
+  at the slot's temperature, share and floor, written in place.
+- **A batch** copies the chosen players into the slots, in place, so the captured graph
+  stays valid; every environment starts a fresh game (`Rollout.restart`). Environment i of
+  a block seats the block's first player on team i mod 2, so a block's games split evenly
+  between the seats. Each environment's first game is played to its end and counted once.
+
+**The tournament:**
+
+- Before each batch every block is given a pair (`bnb.league.ratings.allocate_blocks`),
+  greedily: the allowed pair whose block of games most lowers the summed rating variance
+  at the current ratings, given every game so far and the blocks already chosen. The
+  information includes the fit's prior games, so the first batch is chosen the same way.
+- After each batch the ratings are the Bradley–Terry fit on every game so far
   (`bnb.league.ratings.fit_ratings`, draws as half a win, one prior game), shifted so the
   scripted agent is at 1000. Only the scripted agent is pinned; random is fitted.
-- The tournament stops when every standard error is under `--target-stderr`, or when
-  `--budget` games are spent.
+- The tournament stops when every standard error is under `--target-stderr`, or when the
+  next batch would pass `--budget` games.
 - The leaderboard rows (`calibrated_elo`) are keyed by game version, mode, map and fleet
   size, with the standard error and the games behind each. They are written to the run's
   `artifacts/ratings/` with the inputs' hashes.
+- **The record:** after each batch one JSON line is appended, and synced to disk, to
+  `<preset>.batches.jsonl` in `--out` (else the run's `artifacts/ratings/`): the batch's
+  index, its blocks' matchups and results, the games so far, every player's rating and
+  standard error, the worst error, the batch's seconds and the wall time. A tournament
+  that finds its preset's record rebuilds the games from it and goes on; a finished one
+  plays nothing. Each batch also logs a line with the local clock times it expects to finish
+  (the errors falling as one over the root of the games) and, at the latest, when the
+  budget is spent, at the mean batch's time.
+- **A guard:** a batch whose games run past the game clock's ticks (plus two segments)
+  raises rather than playing on.
 
 <!-- not-runnable: needs CUDA and a run -->
 ```bash
 uv run --no-sync bnb ratings 2026-11-02-mixed-purple-pumpkin --target-stderr 25
 ```
 
-`bnb head-to-head A B [C D ...] --games N` plays only the named pairs on the same engine.
+`bnb head-to-head A B [C D ...] --games N` plays only the named pairs on the same engine,
+in blocks that divide `N` (`bnb.league.tournament.head_to_head_layout`).
 A player is a policy file, a run (its newest checkpoint), `scripted`, `random`, a rung such
 as `rung_T2`, or a teacher, `scripted@T=<t>,floor=<f>` (the agent at its own temperature
 `t`, then a uniform joint action with probability `f`; either key optional, T = 1 and
-floor 0 by default, so `scripted@T=2` plays as `rung_T2`). Per pair it reports the wins, losses and draws, the score with its
-standard error, and the split by preset, and records them under `artifacts/head_to_head/`.
+floor 0 by default, so `scripted@T=2` plays as `rung_T2`). Per pair it reports the wins,
+losses and draws, the score with its standard error, and the split by preset, and records
+them under `artifacts/head_to_head/`.
 
 <!-- not-runnable: needs CUDA and a run -->
 ```bash
