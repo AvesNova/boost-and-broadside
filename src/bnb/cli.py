@@ -306,12 +306,13 @@ class FiguresWatch:
     runs_directory: str | None = None
 
 
-COMMANDS = ("train", "runs", "ship-card", "ratings", "head-to-head", "figures")
+COMMANDS = ("train", "play", "runs", "ship-card", "ratings", "head-to-head", "figures")
 
 
 def main() -> None:
-    """The `bnb` command: `bnb train ...` trains, `bnb runs ...` lists and shows runs and
-    uploads checkpoints, `bnb ship-card ...` charts a card, `bnb ratings ...` and
+    """The `bnb` command: `bnb train ...` trains, `bnb play ...` opens the play shell,
+    `bnb runs ...` lists and shows runs and uploads checkpoints, `bnb ship-card ...` charts a
+    card, `bnb ratings ...` and
     `bnb head-to-head ...` rate policies offline, `bnb figures ...` draws what a policy's
     heads have learned (`bnb figures video ...` films a game, `bnb figures watch RUN` makes
     both while a run trains)."""
@@ -322,6 +323,10 @@ def main() -> None:
         ship_card(tyro.cli(ShipCard, args=arguments, prog="bnb ship-card"))
     elif command == "train":
         train(tyro.cli(Train, args=arguments, prog="bnb train"), given(arguments))
+    elif command == "play":
+        from bnb.play.__main__ import main as play
+
+        play(arguments)
     elif command == "runs":
         runs(tyro.cli(Runs, args=arguments, prog="bnb runs"))
     elif command == "ratings":

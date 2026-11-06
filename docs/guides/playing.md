@@ -15,9 +15,9 @@ in [The play shell](../explanation/in-progress/play-shell.md).
 
 <!-- not-runnable: opens a window -->
 ```bash
-uv run --no-sync python -m bnb.play
-uv run --no-sync python -m bnb.play --preset frontline --view team0 --seed 3
-uv run --no-sync python -m bnb.play --agent1 runs/<run>/policy
+uv run bnb play
+uv run bnb play --preset frontline --view team0 --seed 3
+uv run bnb play --agent1 runs/<run>/policy
 ```
 
 The first match comes from the options (a preset, and the sizes that override it); every
@@ -157,7 +157,7 @@ a tick: about 4 ms for the agent's heads and 4 ms for the bullet paths) to the s
 
 <!-- not-runnable: opens a window, and needs a policy file -->
 ```bash
-uv run --no-sync python -m bnb.play --agent0 runs/<run>/policy --scripted1 scripted_agent \
+uv run bnb play --agent0 runs/<run>/policy --scripted1 scripted_agent \
     --overlays bullet_paths belief density --truth --view team0
 ```
 
@@ -218,7 +218,7 @@ seed gives the same frames each time.
 
 <!-- not-runnable: needs an OpenGL 3.3 context (a GPU driver with EGL) -->
 ```bash
-uv run --no-sync python -m bnb.play --offscreen /tmp/frames --frames 120 --preset frontline --view team1
+uv run bnb play --offscreen /tmp/frames --frames 120 --preset frontline --view team1
 ```
 
 ## Frame time
@@ -229,5 +229,5 @@ by pass and by stage (`--no-interface` measures the battlefield alone).
 
 <!-- not-runnable: needs the GPU and the benchmark lock -->
 ```bash
-uv run --no-sync python -m bnb.play.benchmark --games deathmatch frontline --seconds 10
+uv run python -m bnb.play.benchmark --games deathmatch frontline --seconds 10
 ```

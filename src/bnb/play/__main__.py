@@ -1,4 +1,4 @@
-"""`python -m bnb.play`: watch, play or replay a match, in a window or offscreen."""
+"""`bnb play` (or `python -m bnb.play`): watch, play or replay a match, in a window or offscreen."""
 
 import torch
 import tyro
@@ -6,8 +6,8 @@ import tyro
 from .app import Options, run_offscreen
 
 
-def main() -> None:
-    options = tyro.cli(Options)
+def main(arguments: list[str] | None = None) -> None:
+    options = tyro.cli(Options, args=arguments, prog="bnb play")
     torch.set_num_threads(options.threads)
     if options.offscreen is not None:
         paths = run_offscreen(options)

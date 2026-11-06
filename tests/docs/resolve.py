@@ -165,6 +165,7 @@ def command(arguments: str) -> str | None:
     )
     from bnb.contracts.config import MODES
     from bnb.game.modes.rules import PRESETS
+    from bnb.play.app import Options as Play
 
     tokens = shlex.split(arguments)
     if not tokens or tokens == ["..."]:  # the command itself, or `bnb ...`
@@ -173,6 +174,7 @@ def command(arguments: str) -> str | None:
         return f"bnb needs a command, one of {list(COMMANDS)}"
     commands = {
         "train": Train,
+        "play": Play,
         "runs": Runs,
         "ship-card": ShipCard,
         "ratings": Ratings,
