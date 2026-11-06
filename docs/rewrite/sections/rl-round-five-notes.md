@@ -31,7 +31,12 @@ Brief: `rl-round-five-brief.md`. Branch `feat/rl-round-five`, CPU only.
   `pool/slot_share/<kind>`, `pool/distinct_held`; `pool/draining` is gone (dashboard panel
   updated).
 - The resume test (`tests/runs/resume_worker.py`) now cuts two slots at every update, so a
-  cut falls right before the checkpoint and more follow the resume.
+  cut falls right before the checkpoint and more follow the resume. It passed bit for bit
+  on the CPU (relational and Yemong) with the ladder out; the worker now keeps the ladder
+  in its pool, because the "gauges" damage shifts unrated entries and without rungs the
+  only unrated ones are averages, which take the live rating every update (the damage
+  vanished and the test could not see it). Rerun with the ladder in: gauges seen, both
+  models bit for bit.
 
 ## 2. The memory hand-over test
 

@@ -107,8 +107,12 @@ def config(model: str, device: str, objective: str = "ppo") -> TrainConfig:
         lanes=RL_LANES,
         model=model,
         relational=RelationalConfig(hidden=32),
-        # a cut at every update: the checkpoint falls right after one, the resume runs into more
-        league=LeagueConfig(snapshot_every=ENVIRONMENTS * LENGTH, cut_every=1, cut_slots=2),
+        # a cut at every update: the checkpoint falls right after one, the resume runs into
+        # more; the ladder in the pool, so its rows' rungs resume too and the "gauges" damage
+        # has unrated rungs to hold it (an unrated average takes the live rating each update)
+        league=LeagueConfig(
+            snapshot_every=ENVIRONMENTS * LENGTH, cut_every=1, cut_slots=2, ladder_in_pool=True
+        ),
         learner=learner,
         compiled=device == "cuda",
     )
