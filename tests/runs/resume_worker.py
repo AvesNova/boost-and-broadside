@@ -6,14 +6,15 @@ it: seed the process, then train straight through, or train and save, or resume 
 MODE: "straight" (2 x UPDATES updates), "first" (UPDATES updates, then a training
 checkpoint at DIRECTORY/checkpoint) or "second" (resume from it, UPDATES more). Each writes
 its metrics and its final weights into DIRECTORY/<MODE>. The league (`bnb.league`) is
-attached, with a snapshot every update, so the pool, the gauges, the slots and the drains
-all change before the checkpoint; its snapshots go to DIRECTORY/league (DIRECTORY/straight-
-league for the straight run). DAMAGE (with "second", to show the test sees it): "league"
-adds noise to the opponent slots' weights after the restore, "draws" restarts the league's
-slot draws, "gauges" forgets the gauges' records and windows, "lanes" forgets the rating
-lanes' records, "return_scale" puts back a fresh trainer's return scale, "stop_rule" forgets
-BC's stop rule's window, "averages" adds noise to BC's averages of the live weights.
-Episodes are short (2 s), so drains end and begin in each half.
+attached, with a snapshot and a clean cut of two slots every update, so the pool, the
+gauges, the slots and the opponents' carries all change right before the checkpoint; its
+snapshots go to DIRECTORY/league (DIRECTORY/straight-league for the straight run). DAMAGE
+(with "second", to show the test sees it): "league" adds noise to the opponent slots'
+weights after the restore, "draws" restarts the league's slot draws, "gauges" forgets the
+gauges' records and windows, "lanes" forgets the rating lanes' records, "return_scale" puts
+back a fresh trainer's return scale, "stop_rule" forgets BC's stop rule's window, "averages"
+adds noise to BC's averages of the live weights.
+Episodes are short (2 s), so cut games and whole ones end in each half.
 An update is two shards and a lookahead, beside a few rating lanes. OBJECTIVE "bc" clones
 instead (no league; its lanes' ratings and both averages, the uniform one from the first
 update, are the trainer's hooks): each update feeds the stop rule
@@ -106,7 +107,8 @@ def config(model: str, device: str, objective: str = "ppo") -> TrainConfig:
         lanes=RL_LANES,
         model=model,
         relational=RelationalConfig(hidden=32),
-        league=LeagueConfig(snapshot_every=ENVIRONMENTS * LENGTH),
+        # a cut at every update: the checkpoint falls right after one, the resume runs into more
+        league=LeagueConfig(snapshot_every=ENVIRONMENTS * LENGTH, cut_every=1, cut_slots=2),
         learner=learner,
         compiled=device == "cuda",
     )

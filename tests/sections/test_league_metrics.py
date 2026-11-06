@@ -50,7 +50,15 @@ def test_the_pool_and_the_games_by_kind_are_reported(rows):
     last = out[-1]
     assert last["pool/size"] == len(league.entries)
     assert last["pool/snapshots"] == len(league.snapshots) > 0
-    assert last["pool/draining"] in (0, 1)
+    slots = league.config.slots
+    for row in out:
+        assert 0 <= row["pool/cut/cuts"] <= row["pool/cut/draws"] <= league.config.cut_slots
+        assert row["pool/cut/cut_rows"] == row["pool/cut/cuts"] * 8 // slots
+        assert 0 <= row["pool/cut/uncredited_games"] <= row["pool/cut/cut_rows"]
+        assert 1 <= row["pool/distinct_held"] <= slots
+        shares = [row[f"pool/slot_share/{kind}"] for kind in ENTRY_KINDS]
+        assert math.isclose(sum(shares), 1.0)
+    assert sum(row["pool/cut/draws"] for row in out) == len(out) // league.config.cut_every
     shares = [
         row[f"pool/game_share/{kind}"]
         for row in out

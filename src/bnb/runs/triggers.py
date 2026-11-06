@@ -376,11 +376,11 @@ class SkippedSteps(Rule):
 
 
 def default_rules() -> tuple[Rule, ...]:
-    """The audit's final trigger rules, with placeholder thresholds: 8 alerts, 13 warnings.
-    Five watch reinforcement learning only (`RL_ONLY`): the PPO behaviour mismatch (BC
-    measures no PPO ratio), the rating drop and reward hacking (BC has no ratings), the
-    entropy collapse (BC's student is meant to grow confident) and the league's sampling
-    collapse (BC has no league)."""
+    """The audit's final trigger rules, with placeholder thresholds, and the league's gauge
+    guard: 9 alerts, 13 warnings. Six watch reinforcement learning only (`RL_ONLY`): the PPO
+    behaviour mismatch (BC measures no PPO ratio), the rating drop and reward hacking (BC has
+    no ratings), the entropy collapse (BC's student is meant to grow confident), the
+    league's sampling collapse and its gauge runaway (BC has no league)."""
     anomaly = dict(warmup=10, hysteresis=3)
     rl_anomaly = dict(anomaly, objectives=RL_ONLY)
     return (
@@ -424,6 +424,16 @@ def default_rules() -> tuple[Rule, ...]:
             "rating/live_stderr/",
             2.0,
             **rl_anomaly,
+        ),
+        # an entry that has played rated > 1500 from live, or with an infinite error
+        # (`bnb.league.league.League.gauge_anomalies`; league-sampling-sim, round 1)
+        Above(
+            "gauge_runaway",
+            ALERT,
+            "pool/entries",
+            "pool/gauge_anomalies/*",
+            0,
+            objectives=RL_ONLY,
         ),
         # warnings
         ZScoreBelow(

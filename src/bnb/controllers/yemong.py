@@ -32,6 +32,23 @@ class YemongController:
         """The model's initial carry for R = views views, on device."""
         return self.model.initial_carry(views, self.ships_per_team, self.num_ships, device)
 
+    @staticmethod
+    def forget(carry: Carry, rows: torch.Tensor) -> Carry:
+        """The carry with the trunk's memory (its state and convolution buffer) zeroed on
+        `rows` (R,) bool and the rest kept: the belief (observations, last sightings,
+        forecasts), the previous actions and the position offset. What a league slot's rows
+        keep when another network takes the slot (`bnb.runtime.opponents.OpponentSlots.cut`)."""
+
+        def zeroed(tensor: torch.Tensor) -> torch.Tensor:
+            shape = rows.shape + (1,) * (tensor.dim() - rows.dim())
+            return torch.where(rows.view(shape), 0, tensor)
+
+        return dataclasses.replace(
+            carry,
+            state=zeroed(carry.state),
+            convolution_buffer=zeroed(carry.convolution_buffer),
+        )
+
     def step(
         self, carry: Carry, obs: Obs, reset: torch.Tensor, ablations: Ablations | None = None
     ) -> tuple[Action, Carry, Outputs]:

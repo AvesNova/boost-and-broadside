@@ -24,9 +24,9 @@ def _flags(rule_name: str, records: list[dict]) -> list[int]:
     ]
 
 
-def test_there_are_eight_alerts_and_thirteen_warnings():
+def test_there_are_nine_alerts_and_thirteen_warnings():
     severities = [rule.severity for rule in RULES.values()]
-    assert severities.count(triggers.ALERT) == 8 and severities.count(triggers.WARNING) == 13
+    assert severities.count(triggers.ALERT) == 9 and severities.count(triggers.WARNING) == 13
 
 
 # (rule, a series that trips it, one that does not); each record is one update's
@@ -43,6 +43,10 @@ CASES = {
     ),
     "behaviour_mismatch": ([{"policy/kl_first": 0.01}], [{"policy/kl_first": 1e-6}]),
     "nonfinite_input": ([{"input/nonfinite_count": 3}], [{"input/nonfinite_count": 0}]),
+    "gauge_runaway": (
+        [{"pool/gauge_anomalies/frontline": 1}],
+        [{"pool/gauge_anomalies/frontline": 0}],
+    ),
     "never_seen_ship": ([{"fog/never_seen_share": 0.1}], [{"fog/never_seen_share": 0.0}]),
     "throughput": (
         QUIET_STEPS[:6] + [{"train/environment_steps_per_second": 100.0}] * 3,
@@ -333,7 +337,7 @@ class _Setup:
 
 def test_a_bc_run_leaves_reinforcement_learnings_rules_out():
     """In BC a falling student entropy is the goal: the entropy collapse and the other
-    RL-only rules are not run, and each of the 21 rules says which objectives it watches."""
+    RL-only rules are not run, and each of the 22 rules says which objectives it watches."""
     assert all(set(rule.objectives) <= {"ppo", "bc"} for rule in RULES.values())
     rl_only = {name for name, rule in RULES.items() if rule.objectives == ("ppo",)}
     assert rl_only == {
@@ -341,6 +345,7 @@ def test_a_bc_run_leaves_reinforcement_learnings_rules_out():
         "rating_drop",
         "entropy_collapse",
         "sampling_collapse",
+        "gauge_runaway",
         "reward_hacking",
     }
     falling = [{"policy/entropy/joint": 3.0 * 0.8**update} for update in range(30)]

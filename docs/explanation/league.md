@@ -28,7 +28,9 @@ its fixed share. The entries (`bnb.league.pool.Entry`) are:
   two with the same settings). The uniform average starts after
   `LeagueConfig.uniform_from` environment steps (10M), so a warm start's optimizer, critic
   and advantages settle first; until then it is the live weights;
-- **the stationary ladder:** random, the rungs and the scripted agent
+- **the stationary ladder**, only with `LeagueConfig.ladder_in_pool` (default false: the
+  RL training pool is the snapshots and the averages; the rating lanes play the scripted
+  agent and their own ladder either way): random, the rungs and the scripted agent
   (`LeagueConfig.ladder`, `bnb.runtime.opponents.Rung`s of the scripted agent's
   temperature and share, weakest first: `+inf` is `random`; a share p below 1 at T is
   `rung_T<T>_p<p>`, each ship the agent at T with probability p per game, else random (the
@@ -50,23 +52,45 @@ is the predicted probability that the live policy beats it under that mode's liv
 plus a floor (`LeagueConfig.floor`) spread evenly over the entries. Each mode samples by
 its own gauge.
 
-## Slots, the ladder and the drain
+## Slots, the ladder and the cut
 
 The league's seat plays every opponent row of the batch in the captured rollout graph:
 
-- **Network slots** (`LeagueConfig.slots`): their parameters are stacked, with one extra set
-  for the entry coming in. Slot k plays rows k, k + slots, …, so every slot plays every
-  mode. Each set runs on its own rows inside the one compiled graph, and each row keeps its
-  network's carry.
-- **The ladder:** one scripted pass over every row, each row at its rung's temperature
-  and share (written in place; `+inf` plays uniformly), with the scripted agent's carry for
-  every row in the seat's carry. A slot can hold the ladder; each of its rows
-  then draws a rung at every reset from its mode's weights over the ladder.
-- **The drain:** after each segment, if no slot is draining, the next slot (round robin)
-  receives an entry drawn from the modes' weights, mixed by the modes' shares of the
-  opponent rows. Its weights are copied into the extra set in place. Each row of the slot
-  switches at its own next reset, so no opponent changes mid-episode; when every row has
-  switched, the extra set becomes the slot's and the drain ends.
+- **Network slots** (`LeagueConfig.slots`, 4): their parameters are stacked, one set per
+  slot. Slot k plays rows k, k + slots, …, so every slot plays every mode. Each set runs on
+  its own rows inside the one compiled graph, and each row keeps its network's carry.
+- **The ladder**, when it is in the pool: one scripted pass over every row, each row at its
+  rung's temperature and share (written in place; `+inf` plays uniformly), with the
+  scripted agent's carry for every row in the seat's carry. A slot can hold the ladder;
+  each of its rows then draws a rung at every reset from its mode's weights over the
+  ladder. Out of the pool (the default) the seat runs no scripted pass.
+- **The clean cut** (`League._cut`{.plain}, `OpponentSlots.cut`): every `cut_every`
+  updates (2), at the update boundary, `cut_slots` slots (1, round robin) each draw an
+  entry from the modes' weights, mixed by the modes' shares of the opponent rows. A slot
+  whose draw differs from what it holds takes it in place: its weights are copied into the
+  slot's set. The games in progress on its rows play on against the new entry. Their
+  ticks still train the learner (they are on-policy data); their results are credited to
+  no one: the rows' `whole` flags are cleared, so the tally skips each row's game until its
+  next reset. Drawing the entry a slot already holds changes nothing.
+- **The opponent's carry at a cut** (`carry_at_cut`): `"reset"` (default) zeroes the
+  network's trunk carry on the cut rows (Yemong's state and convolution buffer,
+  `YemongController.forget`) and keeps the belief part (observations, last sightings,
+  forecasts), the previous actions and the position offset; `"keep"` leaves the old
+  occupant's carry when the old and the new entry are both networks
+  (`bnb.league.league.same_build`: every network of the training league is the live
+  policy's build, in its one stacked template), else resets. A ladder row's scripted carry
+  runs on every row throughout.
+- **Why a cut, not a drain.** The drain it replaced switched each row of one slot at its
+  next reset, one slot at a time, so a draw stayed resident for slots × one game clock
+  (about 56 updates in run 2026-11-06-mixed-calm-fern) and the late opponent mix followed
+  weights drawn long before. The simulations
+  (`docs/rewrite/sections/league-sampling-sim.md`, rounds 1 and 2) put the RL case (ladder
+  out, 4 slots) at 0.62 open games under the serial drain and 0.84 under a cut of one
+  slot every update, at one network pass per slot instead of slots + 1; the author chose
+  one slot every 2 to 4 updates. The cost is the cut games' results and, under `"reset"`,
+  the opponent's memory for the rest of each cut game
+  (`docs/rewrite/sections/rl-round-five-notes.md` measures how far each option leaves the
+  new opponent from its own play).
 - **Draws in the graph** use counter-based uniforms (`bnb.runtime.opponents.counter_uniform`,
   a hash of the stream's key, the counter and the row), so they need no generator state and
   repeat exactly; the host draws a slot's entry the same way.
@@ -100,10 +124,10 @@ Without lanes the fit reads the league's games alone.
   players (the rungs, the league's snapshots) is kept for the whole run; one with a moving
   player (the live policy, an average) for its last `LaneConfig.window` updates (10).
 - **Attribution:** the rollout tallies each ended training game under the column its row
-  played as it ended (a slot's set, the incoming set or a rung), and the league reads the
-  tally once per segment, before a finished drain renames the incoming set's column to the
-  slot's, so each game goes to the entry that played it
-  (`tests/sections/test_league_slots.py::test_each_training_game_is_credited_to_the_entry_that_played_it`).
+  played as it ended (a slot's set or a rung), and the league reads the tally once per
+  segment; a cut comes after the update's last read and clears its rows' `whole` flags, so
+  each tallied game was played whole by the entry it is credited to and a cut game by
+  no one (`tests/sections/test_league_slots.py::test_a_cut_game_is_credited_to_no_one`).
   A training game spanning an update is credited, like a lane game of the live policy, at
   the update it ends in. Each row's first game is left out, as in the lanes: the rollout's
   clocks are staggered, so it is cut short and leans to ties
@@ -145,6 +169,10 @@ times more precisely
 (`tests/sections/test_lanes.py::test_a_strong_player_is_rated_far_better_through_a_snapshot_chain`).
 The measured game counts and errors are in `docs/rewrite/sections/rollout-lanes-notes.md`.
 
+**Without lanes and without the ladder in the pool** nothing connects the league's entries
+to the scripted agent, so the fit rates no one and the gauge keeps its starting ratings.
+A run that wants league sampling by rating keeps its rating lanes.
+
 ## The live gauge
 
 During training each mode has a gauge (`bnb.league.gauge.Gauge`) that steers sampling. It
@@ -155,6 +183,14 @@ holds its last rating:
 - a new snapshot the live rating of its update, until its games rate it;
 - an average the live rating until the fit first rates it;
 - the live policy its last fitted rating, from a warm start's parent's at the start.
+
+**The guard.** A near-sweep rates finite and near its likelihood's maximum
+(`tests/sections/test_league_ratings.py::test_a_near_sweep_against_the_ladder_rates_finite_near_its_maximum`,
+the run's case: 28 of 29 against the rungs, which the old ladder fit put past 10,000).
+Each update counts, per mode, the entries that have played (credited training games) but
+are rated more than 1,500 from the live policy or still have an infinite error
+(`League.gauge_anomalies`{.plain}, `pool/gauge_anomalies/<mode>`{.plain}); the trigger
+rule `gauge_runaway` alerts when any is.
 
 ## Resuming
 
@@ -169,8 +205,12 @@ opponents and reports the same ratings as one run straight through
 `League.updated` returns, under `league`: per mode the live and averaged ratings and their
 standard errors, every rated player's rating, and per entry its rating,
 sampling share and score against the live policy this update;
-the pool's entries, snapshots, the slots' entries, the draining slot and the incoming
-entry; and the games of the update by opponent kind.
+the pool's entries, snapshots and the slots' entries; the update's cut
+(`pool/cut/<series>`{.plain}: the slots drawn, the slots that took another entry, their
+rows, the games left uncredited and the rows whose opponent carry was reset) and
+the slots' mix after it (`pool/slot_share/<kind>`{.plain}, `pool/distinct_held`{.plain});
+the gauge's anomalies; and the games of the update by opponent kind
+(`pool/game_share/<kind>`{.plain}, `pool/score/<kind>`{.plain}).
 
 ## Published ratings
 
