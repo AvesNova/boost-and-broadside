@@ -176,7 +176,8 @@ entry; and the games of the update by opponent kind.
 
 `bnb ratings RUN` plays an offline tournament over the run's snapshots and averages, the
 ladder and the players `--with` names, game preset by preset
-(`bnb.league.tournament.rate`). The match engine (`bnb.league.matches.play`) seats each
+(`bnb.league.tournament.rate`). `--no-ladder` leaves out the rungs below the scripted agent,
+which always plays: it anchors the scale. The match engine (`bnb.league.matches.play`) seats each
 pair's first player on team 0 in half its games and on team 1 in the other half; policies
 of any architecture play.
 
