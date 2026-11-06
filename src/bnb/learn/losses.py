@@ -29,13 +29,58 @@ def surrogate(
     advantage: torch.Tensor,
     return_scale: torch.Tensor | float,
     clip: float,
+    clip_high: float | None = None,
 ) -> torch.Tensor:
-    """The clipped surrogate per token, max(-A r, -A clip(r, 1 +- clip)), with A the
-    advantage over the return scale (no mean subtracted) and r the probability ratio,
-    exp(log_probability - old_log_probability)."""
+    """The clipped surrogate per token, max(-A r, -A clip(r, 1 - clip, 1 + clip_high)), with
+    A the advantage over the return scale (no mean subtracted) and r the probability ratio,
+    exp(log_probability - old_log_probability). clip_high: the upper bound's margin, `clip`
+    when None (the symmetric clip); a larger one is DAPO's clip-higher."""
     scaled = advantage / return_scale
     ratio = torch.exp(log_probability - old_log_probability)
-    return torch.maximum(-scaled * ratio, -scaled * torch.clamp(ratio, 1.0 - clip, 1.0 + clip))
+    high = clip if clip_high is None else clip_high
+    return torch.maximum(-scaled * ratio, -scaled * torch.clamp(ratio, 1.0 - clip, 1.0 + high))
+
+
+def total_variation(old_probabilities: torch.Tensor, logits: torch.Tensor) -> torch.Tensor:
+    """(...) the exact total variation between the rollout's joint action distribution
+    `old_probabilities` (..., NUM_JOINT) and the current policy's, softmax of `logits`
+    (..., NUM_JOINT): half the summed absolute difference, detached, float32."""
+    current = torch.softmax(logits.detach().float(), -1)
+    return 0.5 * (current - old_probabilities.float()).abs().sum(-1)
+
+
+def binary_total_variation(
+    log_probability: torch.Tensor, old_log_probability: torch.Tensor
+) -> torch.Tensor:
+    """(...) DPPO's binary approximation: the total variation of the two-way split {the
+    sampled action, the rest}, |mu(a) - pi(a)|, detached. A lower bound of the exact form
+    (the total variation is the largest difference over every event)."""
+    return (log_probability.detach().exp() - old_log_probability.exp()).abs()
+
+
+def dppo_keep(
+    divergence: torch.Tensor, ratio: torch.Tensor, advantage: torch.Tensor, delta: float
+) -> torch.Tensor:
+    """(...) bool, DPPO's mask (Qi et al. 2026, eq. 12): False where the divergence is past
+    `delta` and the update moves further away (A > 0 and r > 1, or A < 0 and r < 1); a move
+    back toward ratio 1 is never masked."""
+    ratio = ratio.detach()
+    away = ((advantage > 0) & (ratio > 1.0)) | ((advantage < 0) & (ratio < 1.0))
+    return ~((divergence > delta) & away)
+
+
+def dppo_surrogate(
+    log_probability: torch.Tensor,
+    old_log_probability: torch.Tensor,
+    advantage: torch.Tensor,
+    return_scale: torch.Tensor | float,
+    keep: torch.Tensor,
+) -> torch.Tensor:
+    """DPPO's surrogate per token: the unclipped -A r where `keep` (`dppo_keep`), else 0
+    (no gradient)."""
+    scaled = advantage / return_scale
+    ratio = torch.exp(log_probability - old_log_probability)
+    return torch.where(keep, -scaled * ratio, 0.0)
 
 
 def cross_entropy(logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:

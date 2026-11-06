@@ -1,6 +1,6 @@
 """The league inside the captured rollout (league spec 2; acceptance 5): a rollout with the
-league's seat is CUDA-graph captured once, swaps and drains change only buffers in place so
-the graph is never captured again, and nothing synchronises with the host per step."""
+league's seat is CUDA-graph captured once, cuts change only buffers in place so the graph is
+never captured again, and nothing synchronises with the host per step."""
 
 import warnings
 
@@ -28,18 +28,21 @@ def _count_syncs(work) -> int:
     return sum("called a synchronizing" in str(warning.message) for warning in caught)
 
 
-def test_swaps_and_drains_never_capture_the_rollout_again(tmp_path):
-    trainer, league = cases.league(tmp_path, "cuda")
+def test_cuts_never_capture_the_rollout_again(tmp_path):
+    trainer, league = cases.league(
+        tmp_path, "cuda", league=cases.LeagueConfig(snapshot_every=256, cut_every=1)
+    )
     trainer.collect()
     graph = trainer.rollout.graph
     assert graph is not None
-    drains = 0
+    cuts = 0
     for _ in range(40):  # 640 ticks: about ten episodes
-        before = trainer.opponents.draining_slot
         trainer.collect()
-        drains += before is not None and trainer.opponents.draining_slot != before
+        league.collected(trainer)
+        trainer.ppo.environment_steps += trainer.steps_per_update
+        cuts += league.updated(trainer)["pool/cut/cuts"]
         assert trainer.rollout.graph is graph
-    assert drains >= 3, drains
+    assert cuts >= 3, cuts
 
 
 def test_a_league_rollout_synchronises_no_more_than_self_play(tmp_path):

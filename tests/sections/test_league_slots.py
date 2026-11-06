@@ -1,18 +1,26 @@
 """The league's seat in the rollout (league spec 2, 3; acceptance 3 and 4): the draws' shares
-and repeatability, and the drain: no opponent changes mid-episode, every environment of a
-drained slot reaches the new entry at its next episode end, and at most one slot drains."""
+and repeatability, the ladder in or out of the pool, and the clean cut: it swaps the right
+slot at the right update and nothing else, leaves the games it cuts uncredited, and resets
+or keeps the opponent's memory."""
+
+import pathlib
+import sys
 
 import league_cases as cases
 import pytest
 import torch
+from torch.utils import _pytree
 
 from bnb.contracts import Obs
 from bnb.contracts.obs import GLOBAL
-from bnb.league.pool import EXPONENTIAL_AVERAGE, UNIFORM_AVERAGE, sampling_weights
+from bnb.league.league import same_build
+from bnb.league.pool import EXPONENTIAL_AVERAGE, UNIFORM_AVERAGE, Entry, sampling_weights
 from bnb.runtime.opponents import (
     LADDER_KIND,
+    NETWORK,
     OPPONENTS,
     LeagueConfig,
+    Rung,
     counter_uniform,
     draw,
     stream_key,
@@ -68,7 +76,9 @@ def _view(trainer) -> Obs:
 
 
 def test_ladder_rows_draw_their_rung_from_their_own_modes_weights(tmp_path):
-    trainer, _ = cases.league(tmp_path)
+    trainer, _ = cases.league(
+        tmp_path, league=LeagueConfig(snapshot_every=256, ladder_in_pool=True)
+    )
     opponents = trainer.opponents
     opponents.kind.fill_(LADDER_KIND)  # every slot holds the ladder
     rows = opponents.modes.shape[0]
@@ -116,138 +126,212 @@ def test_the_same_seed_draws_the_same_opponents(tmp_path):
     assert first["state"]["held"] != other["state"]["held"] or first["ladder"] != other["ladder"]
 
 
-# ---- the drain
+# ---- the ladder in or out of the pool
+
+
+def test_the_ladder_is_out_of_the_training_pool_by_default(tmp_path, monkeypatch):
+    """Without `ladder_in_pool` the pool holds no rung, no slot holds the ladder and the seat
+    runs no scripted pass; with it, every rung is an entry."""
+    trainer, league = cases.league(tmp_path)
+    assert not any(entry.kind == "ladder" for entry in league.entries.values())
+    assert all(gauge.names() == list(league.entries) for gauge in league.gauges.values())
+    assert (trainer.opponents.kind == NETWORK).all()
+
+    def scripted_pass(*arguments):
+        raise AssertionError("the seat ran the ladder's scripted pass")
+
+    monkeypatch.setattr(trainer.opponents.ladder_agent, "step", scripted_pass)
+    for _ in range(4):
+        trainer.collect()
+        league.collected(trainer)
+        trainer.ppo.environment_steps += trainer.steps_per_update
+        league.updated(trainer)
+    carry = trainer.rollout.carry["controllers"][OPPONENTS]
+    assert (carry.column < league.config.slots).all()
+    _, inside = cases.league(
+        tmp_path / "inside", league=LeagueConfig(snapshot_every=256, ladder_in_pool=True)
+    )
+    ladder = {entry.name for entry in inside.entries.values() if entry.kind == "ladder"}
+    assert len(ladder) == len(inside.config.ladder) and "scripted" in ladder
+
+
+# ---- the clean cut
 
 
 def _names(league, carry) -> list[str]:
     slots = league.config.slots
     ladder = [entry.name for entry in league.ladder]
     return [
-        league.held[column] if column <= slots else ladder[column - slots - 1]
+        league.held[column] if column < slots else ladder[column - slots]
         for column in carry.column.tolist()
     ]
 
 
-@pytest.fixture(scope="module")
-def drain_history(tmp_path_factory):
-    """Tick by tick over 600 ticks (10 episodes), the league's hooks every 8 ticks: per tick
-    each row's entry, reset flag and incoming flag, the draining slot and the incoming
-    entry."""
-    with torch.random.fork_rng(devices=[]):
-        torch.manual_seed(0)
-        trainer, league = cases.league(tmp_path_factory.mktemp("drain"))
-        rollout, slots = trainer.rollout, league.config.slots
-        carry = rollout.carry["controllers"][OPPONENTS]
-        history = []
-        for tick in range(600):
-            reset = _view(trainer).globals[..., GLOBAL["reset"]] > 0.5
-            rollout._tick()
-            history.append(
-                dict(
-                    names=_names(league, carry),
-                    reset=reset.tolist(),
-                    incoming=carry.incoming.tolist(),
-                    draining=trainer.opponents.draining_slot,
-                    entering=league.held[slots],
-                )
-            )
-            if tick % 8 == 7:
-                league.after_shard(trainer, 0)
-        return history, league.swaps
+def _first_weight(weights: dict[str, torch.Tensor]) -> str:
+    return next(key for key, value in weights.items() if value.is_floating_point())
 
 
-def test_no_opponent_changes_mid_episode(drain_history):
-    history, _ = drain_history
-    for before, after in zip(history, history[1:]):
-        for row, (old, new) in enumerate(zip(before["names"], after["names"])):
-            assert old == new or after["reset"][row], (row, old, new)
+def _cycling_draws(league, monkeypatch) -> None:
+    """Each draw returns an entry other than the one the slot being cut holds, so every cut swaps
+    (the draws' shares are tested above)."""
+
+    def draw():
+        league.swaps += 1
+        held = league.held[(league.next_slot - 1) % league.config.slots]  # the slot cut now
+        names = [name for name in league.entries if name != held]
+        return league.entries[names[league.swaps % len(names)]]
+
+    monkeypatch.setattr(league, "_draw", draw)
 
 
-def test_every_environment_of_a_drained_slot_switches_at_its_next_episode_end(drain_history):
-    history, swaps = drain_history
-    slots = 4
-    drains = 0
-    for start in range(1, len(history)):
-        slot = history[start]["draining"]
-        if slot is None or history[start - 1]["draining"] == slot:
+def test_a_cut_swaps_the_next_slot_every_cut_every_updates_and_nothing_else(tmp_path, monkeypatch):
+    """With cut_every 2 and cut_slots 1, updates 2, 4, 6 and 8 each cut one slot, round robin;
+    the other slots keep their entries and weights, and only the cut slot's rows lose the
+    tally of their game in progress."""
+    trainer, league = cases.league(
+        tmp_path, league=LeagueConfig(snapshot_every=10**9, cut_every=2, cut_slots=1)
+    )
+    _cycling_draws(league, monkeypatch)
+    opponents = trainer.opponents
+    carry = trainer.rollout.carry["controllers"][OPPONENTS]
+    key = _first_weight(trainer.model.state_dict())
+    cut_slots = []
+    for update in range(1, 9):
+        trainer.collect()
+        league.collected(trainer)
+        trainer.ppo.environment_steps += trainer.steps_per_update
+        held = list(league.held)
+        whole = carry.whole.clone()
+        stacked = {slot: opponents.parameters[f"model.{key}"][slot].clone() for slot in range(4)}
+        row = league.updated(trainer)
+        changed = [slot for slot in range(4) if league.held[slot] != held[slot]]
+        assert row["pool/cut/cuts"] == len(changed)
+        if update % 2:
+            assert changed == [] and torch.equal(carry.whole, whole)
             continue
-        drains += 1
-        for row in range(slot, len(history[start]["names"]), slots):
-            first_reset = next(
-                (tick for tick in range(start, len(history)) if history[tick]["reset"][row]),
-                None,
-            )
-            if first_reset is None:
-                continue  # the run ended first
-            assert history[first_reset]["incoming"][row] or (
-                history[first_reset]["draining"] != slot  # already finished and renamed
-            ), (slot, row, start, first_reset)
-    assert drains >= 3 and swaps > drains
+        assert len(changed) == 1
+        slot = changed[0]
+        cut_slots.append(slot)
+        rows = opponents.slot_of_row == slot
+        assert not carry.whole[rows].any()  # the games in progress are not credited
+        assert torch.equal(carry.whole[~rows], whole[~rows])
+        assert row["pool/cut/uncredited_games"] == int(whole[rows].sum())
+        entry = league.entries[league.held[slot]]
+        assert torch.equal(
+            opponents.parameters[f"model.{key}"][slot], league._weights_of(entry)[key]
+        )
+        for other in set(range(4)) - {slot}:
+            if league.entries[held[other]].kind != "average":  # an average follows its weights
+                assert torch.equal(opponents.parameters[f"model.{key}"][other], stacked[other])
+    assert cut_slots == [0, 1, 2, 3]
 
 
-def test_at_most_one_slot_drains(drain_history):
-    history, _ = drain_history
-    for tick in history:
-        switched = {row % 4 for row, flag in enumerate(tick["incoming"]) if flag}
-        assert len(switched) <= 1
-        assert not switched or switched == {tick["draining"]}
-
-
-def test_a_drain_ends_once_every_row_has_switched(drain_history):
-    history, _ = drain_history
-    for before, after in zip(history, history[1:]):
-        if before["draining"] is not None and after["draining"] != before["draining"]:
-            rows = range(before["draining"], len(before["names"]), 4)
-            assert all(before["incoming"][row] for row in rows)
-
-
-def test_each_training_game_is_credited_to_the_entry_that_played_it(tmp_path):
-    """Tick by tick, across drains and swaps: each ended game's column names the entry the
-    row played as it ended (`_names`), and the league's record, read once per shard, credits
-    every game to that entry; each network set holds its entry's weights throughout."""
+def test_a_cut_game_is_credited_to_no_one(tmp_path):
+    """Tick by tick across cuts: a cut slot's column tallies nothing until one of its rows has
+    begun a game after the cut (the games in progress are credited to no one), and the
+    league's record, read once per shard, credits every tallied game to the entry its slot
+    held."""
     torch.manual_seed(0)
-    trainer, league = cases.league(tmp_path)
+    trainer, league = cases.league(
+        tmp_path, league=LeagueConfig(snapshot_every=10**9, cut_every=1, cut_slots=1)
+    )
     rollout, slots = trainer.rollout, league.config.slots
-    carry = rollout.carry["controllers"][OPPONENTS]
+    opponents = trainer.opponents
     tally = rollout.carry["tallies"][OPPONENTS]
-    columns = trainer.opponents.columns
+    columns = opponents.columns
     expected: dict[str, list[float]] = {}
     seen = torch.zeros_like(tally)
-    drains = 0
+    begun = [True] * slots  # a row of the slot has begun a game since the slot's last cut
+    uncredited = 0
     for tick in range(600):
+        reset = _view(trainer).globals[..., GLOBAL["reset"]] > 0.5
+        for slot in range(slots):
+            begun[slot] |= bool(reset[opponents.slot_of_row == slot].any())
         rollout._tick()
         ended = (tally - seen).reshape(columns, len(league.modes), 3)[:, 0]
         seen = tally.clone()
-        ladder = [entry.name for entry in league.ladder]
         for column, (wins, ties, losses) in enumerate(ended.tolist()):
             if wins + ties + losses:
-                name = league.held[column] if column <= slots else ladder[column - slots - 1]
-                assert name in _names(league, carry) or column > slots
-                total = expected.setdefault(name, [0.0, 0.0, 0.0])
+                assert begun[column], (tick, column)
+                total = expected.setdefault(league.held[column], [0.0, 0.0, 0.0])
                 for index, count in enumerate((wins, losses, ties)):
                     total[index] += count
         if tick % 8 == 7:
-            draining = trainer.opponents.draining_slot
             league.after_shard(trainer, 0)
             seen.zero_()
-            drains += draining is not None and trainer.opponents.draining_slot != draining
-            for set_index, name in enumerate(league.held):
-                entry = league.entries.get(name) if name is not None else None
-                if entry is None or not entry.network:
-                    continue
-                weights = league._weights_of(entry)
-                key = next(key for key, value in weights.items() if value.is_floating_point())
-                held = trainer.opponents.parameters[f"model.{key}"][set_index]
-                assert torch.equal(held, weights[key].to(held.device)), (set_index, name)
+        if tick % 32 == 31:  # a cut of one slot every 4 shards: some games whole, some cut
+            before = list(league.held)
+            league._cut(trainer)
+            uncredited += league.last_cut["uncredited_games"]
+            for slot in range(slots):
+                if league.held[slot] != before[slot]:
+                    begun[slot] = False
     recorded = {
         name: [record.wins, record.losses, record.ties]
         for name, record in league.record[league.modes[0]].items()
     }
-    assert drains >= 3 and recorded == expected and sum(map(sum, expected.values())) > 20
+    assert recorded == expected and sum(map(sum, expected.values())) > 20
+    assert uncredited > 0
+
+
+def _yemong_league(directory, carry_at_cut: str):
+    sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "runs"))
+    from runs_cases import tiny_yemong_config  # noqa: PLC0415
+
+    config = cases.config(
+        model="yemong",
+        yemong=tiny_yemong_config(),
+        league=LeagueConfig(snapshot_every=10**9, cut_every=1, carry_at_cut=carry_at_cut),
+    )
+    trainer = cases.Trainer(config, torch.device("cpu"))
+    return trainer, cases.League(trainer, directory)
+
+
+@pytest.mark.parametrize("carry_at_cut", ["reset", "keep"])
+def test_a_cut_resets_the_opponents_memory_or_keeps_it(tmp_path, monkeypatch, carry_at_cut):
+    """ "reset" zeroes the trunk's carry (state and convolution buffer) on the cut slot's rows
+    and keeps the belief, the previous actions and the offset; "keep" changes nothing; the
+    other slots' rows are untouched either way."""
+    torch.manual_seed(0)
+    trainer, league = _yemong_league(tmp_path, carry_at_cut)
+    _cycling_draws(league, monkeypatch)
+    trainer.collect()
+    carry = trainer.rollout.carry["controllers"][OPPONENTS]
+    before = _pytree.tree_map_only(torch.Tensor, torch.clone, carry.model)
+    assert before.state.abs().sum() > 0
+    held = list(league.held)
+    league.collected(trainer)
+    trainer.ppo.environment_steps += trainer.steps_per_update
+    row = league.updated(trainer)
+    slot = next(slot for slot in range(4) if league.held[slot] != held[slot])
+    rows = trainer.opponents.slot_of_row == slot
+    after = carry.model
+    for name in ("state", "convolution_buffer"):
+        new, old = getattr(after, name), getattr(before, name)
+        assert torch.equal(new[~rows], old[~rows])
+        if carry_at_cut == "reset":
+            assert not new[rows].any()
+        else:
+            assert torch.equal(new[rows], old[rows])
+    for new, old in zip(_pytree.tree_leaves(after.belief), _pytree.tree_leaves(before.belief)):
+        assert torch.equal(new, old)
+    assert torch.equal(after.previous_action, before.previous_action)
+    assert torch.equal(after.offset, before.offset)
+    reset_rows = 0 if carry_at_cut == "keep" else int(rows.sum())
+    assert row["pool/cut/carries_reset"] == reset_rows
+
+
+def test_a_cut_keeps_the_memory_only_between_networks():
+    snapshot = Entry("snapshot_1", "checkpoint", steps=1, ordinal=0)
+    average = Entry(EXPONENTIAL_AVERAGE, "average")
+    rung = Entry("scripted", "ladder", rung=Rung(1.0))
+    assert same_build(snapshot, average) and same_build(average, snapshot)
+    assert not same_build(rung, snapshot) and not same_build(snapshot, rung)
+    assert not same_build(None, snapshot)
 
 
 def test_a_slot_holding_an_average_follows_it_after_every_update(tmp_path):
-    """The averages move: the slots holding one (and the incoming set) take its weights after
+    """The averages move: the slots holding one take its weights after
     each update, as the lanes' averages do, so its training games are the average's."""
     trainer, league = cases.league(tmp_path)
     for name, set_index in ((EXPONENTIAL_AVERAGE, 0), (UNIFORM_AVERAGE, 1)):
@@ -263,7 +347,7 @@ def test_a_slot_holding_an_average_follows_it_after_every_update(tmp_path):
         league.updated(trainer)
         for name, set_index in ((EXPONENTIAL_AVERAGE, 0), (UNIFORM_AVERAGE, 1)):
             if league.held[set_index] != name:
-                continue  # drained onto another entry meanwhile
+                continue  # cut to another entry meanwhile
             weights = league.averages.weights[name]
             key = next(key for key, value in weights.items() if value.is_floating_point())
             held = trainer.opponents.parameters[f"model.{key}"][set_index]

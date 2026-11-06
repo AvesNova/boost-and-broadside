@@ -22,6 +22,7 @@ such field (or None) and that term is skipped.
 """
 
 import dataclasses
+import math
 import zlib
 from collections.abc import Callable, Iterator
 from typing import Protocol
@@ -73,6 +74,15 @@ HEAD_SERIES = {
     "shot_outcome": "shot/loss/outcome",
     "rotary_readout": "rotary_readout/loss",
 }
+# The policy term's trust regions (`LearnerConfig.trust_region`).
+TRUST_REGIONS = ("clip", "clip_higher", "dppo_tv", "dppo_binary_tv")
+# The policy's divergence histogram (`trust_region` statistics): log10 bins over
+# [DIVERGENCE_FLOOR, 1], a value below the floor in the first bin.
+DIVERGENCE_BINS = 32
+DIVERGENCE_FLOOR = 1e-4
+DIVERGENCE_QUANTILES = (0.5, 0.9, 0.99)
+# The policy's entropy buckets for the trust region's rate, as fractions of ln NUM_JOINT.
+ENTROPY_BUCKETS = ("low", "middle", "high")
 # The stored shot labels' name in the store: per view, {"shots": Shots, "mask"}, (V, L, ...).
 SHOT_LABELS = "shot_labels"
 
@@ -105,6 +115,15 @@ class LearnerConfig:
     micro_batch_rows: ship rows per micro-batch, so micro_batch_rows // N views (at least
     one): memory only, the result is the same, and the memory a micro-batch needs follows
     its rows at any fleet size.
+
+    trust_region: the policy term's trust region. "clip", PPO's ratio clip at 1 +- clip;
+    "clip_higher", DAPO's asymmetric clip, the ratio in [1 - clip, 1 + clip_high];
+    "dppo_tv" and "dppo_binary_tv", DPPO's mask (Qi et al. 2026; `losses.dppo_keep`): the
+    unclipped r A, its gradient zeroed where the divergence between the rollout's policy and
+    the current one at the state is past dppo_delta and the update moves further away. The
+    divergence of "dppo_tv" is the exact total variation of the 42-way joint action
+    distribution (the rollout records its probabilities); "dppo_binary_tv" is |mu(a) - pi(a)|
+    of the sampled action, a lower bound of it.
     """
 
     discount: tuple[float, ...] = (0.991, 0.995, 0.995, 0.999, 0.9997)
@@ -113,6 +132,9 @@ class LearnerConfig:
     return_scale_decay: float = 0.99
     return_scale_floor: float = 1.0
     clip: float = 0.2
+    trust_region: str = "clip"
+    clip_high: float = 0.28  # "clip_higher"'s upper margin (DAPO's); its lower one is `clip`
+    dppo_delta: float = 0.15  # the DPPO modes' divergence threshold (the paper's, for TV)
     policy: float = 27.0
     entropy_power: float = -0.0081
     entropy_stick: float = -0.0081
@@ -139,6 +161,24 @@ class LearnerConfig:
     def __post_init__(self) -> None:
         if self.old_log_probabilities not in ("rollout", "recomputed"):
             raise ValueError(f"old_log_probabilities {self.old_log_probabilities!r}")
+        if self.trust_region not in TRUST_REGIONS:
+            raise ValueError(f"trust_region {self.trust_region!r}; one of {TRUST_REGIONS}")
+        if self.trust_region == "dppo_tv" and self.old_log_probabilities != "rollout":
+            raise ValueError(
+                "trust_region 'dppo_tv' compares against the rollout's recorded distribution: "
+                "old_log_probabilities must be 'rollout'"
+            )
+        if not 0.0 < self.clip < 1.0 or self.clip_high <= 0.0:
+            raise ValueError(
+                f"clip {self.clip} must be in (0, 1) and clip_high {self.clip_high} positive"
+            )
+        if not 0.0 < self.dppo_delta < 1.0:
+            raise ValueError(f"dppo_delta {self.dppo_delta} must be in (0, 1)")
+
+    @property
+    def records_distribution(self) -> bool:
+        """Whether the rollout records the learner's whole joint action distribution."""
+        return self.trust_region == "dppo_tv"
         for name in ("discount", "trace_decay", "team_spirit"):
             if len(getattr(self, name)) != len(REWARD_LEVELS):
                 raise ValueError(f"{name} needs one value per reward level")
@@ -267,6 +307,7 @@ class Learner:
         # made once: a tensor built from host values inside the update would be a copy
         self.return_quantiles = torch.tensor([0.05, 0.5, 0.95], device=device)
         self.entropy_quantiles = torch.tensor(statistics.ENTROPY_QUANTILES, device=device)
+        self.divergence_quantiles = torch.tensor(DIVERGENCE_QUANTILES, device=device)
 
     # ------------------------------------------------------------------ returns
 
@@ -595,7 +636,19 @@ class Learner:
 
     MOMENTS = 5 * len(REWARD_LEVELS)  # the fit's moments at the end of the diagnostics
 
-    STATISTICS = ("clip_fraction", "approximate_kl")  # what `_policy` reports per minibatch
+    # what `_policy` reports per minibatch, each a sum over the own living ships over the
+    # minibatch's count: the trust region's rate (the ratio past the clip's bounds, or the
+    # samples DPPO masks), the approximate KL, the divergence's mean and share past
+    # dppo_delta, its histogram, and per entropy bucket the tokens and the rate's.
+    STATISTICS = (
+        "clip_fraction",
+        "approximate_kl",
+        "divergence/mean",
+        "divergence/above_delta",
+        *(f"divergence/bin_{index}" for index in range(DIVERGENCE_BINS)),
+        *(f"entropy_bucket/{bucket}/tokens" for bucket in ENTROPY_BUCKETS),
+        *(f"entropy_bucket/{bucket}/limited" for bucket in ENTROPY_BUCKETS),
+    )
 
     def _policy(
         self,
@@ -605,23 +658,84 @@ class Learner:
         denominator: dict,
         scale: torch.Tensor,
     ):
-        """The policy's terms of a micro-batch: (the clipped surrogate, the mean entropy's
-        factor parts (3,) (`ENTROPY_TERMS`), statistics (STATISTICS,)), each over own ships
-        alive."""
+        """The policy's terms of a micro-batch: (the surrogate under the trust region,
+        the mean entropy's factor parts (3,) (`ENTROPY_TERMS`), statistics (STATISTICS,)),
+        each over own ships alive."""
+        config = self.config
         own_alive = trajectory.alive[..., : trajectory.log_probability.shape[-1]]
         log_probability, _ = policy.evaluate(unrolled.policy_logits, _own_joint(trajectory))
         entropies = policy.factor_entropies(unrolled.policy_logits)
-        old = derived["old_log_probability"]
-        surrogate = losses.surrogate(
-            log_probability, old, derived["advantage"], scale, self.config.clip
-        )
+        old, advantage = derived["old_log_probability"], derived["advantage"]
         ratio = torch.exp(log_probability - old)
-        clipped = losses.masked_sum(((ratio - 1.0).abs() > self.config.clip).float(), own_alive)
-        divergence = losses.masked_sum((ratio - 1.0) - (log_probability - old), own_alive)
+        region = config.trust_region
+        if region == "dppo_tv":
+            if trajectory.probabilities is None:
+                raise ValueError("trust_region 'dppo_tv' needs the rollout's probabilities")
+            divergence = losses.total_variation(trajectory.probabilities, unrolled.policy_logits)
+        else:  # the binary form: DPPO's, and the clip modes' reading of the step's size
+            divergence = losses.binary_total_variation(log_probability, old)
+        if region in ("dppo_tv", "dppo_binary_tv"):
+            keep = losses.dppo_keep(divergence, ratio, advantage, config.dppo_delta)
+            surrogate = losses.dppo_surrogate(log_probability, old, advantage, scale, keep)
+            limited = ~keep
+        else:
+            high = config.clip if region == "clip" else config.clip_high
+            surrogate = losses.surrogate(
+                log_probability,
+                old,
+                advantage,
+                scale,
+                config.clip,
+                None if region == "clip" else config.clip_high,
+            )
+            detached = ratio.detach()
+            if region == "clip":
+                limited = (detached - 1.0).abs() > config.clip
+            else:
+                limited = (detached < 1.0 - config.clip) | (detached > 1.0 + high)
+        clipped = losses.masked_sum(limited.float(), own_alive)
+        approximate = losses.masked_sum((ratio - 1.0) - (log_probability - old), own_alive)
+        weight = own_alive.float()
+        position = (
+            (
+                (torch.log10(divergence.clamp_min(DIVERGENCE_FLOOR)) - math.log10(DIVERGENCE_FLOOR))
+                / -math.log10(DIVERGENCE_FLOOR)
+                * DIVERGENCE_BINS
+            )
+            .floor()
+            .clamp(0, DIVERGENCE_BINS - 1)
+        )
+        histogram = (
+            (torch.nn.functional.one_hot(position.long(), DIVERGENCE_BINS) * weight[..., None])
+            .flatten(0, -2)
+            .sum(0)
+        )
+        joint_entropy = entropies.detach().float().sum(-1) / statistics.MAXIMUM_ENTROPY
+        bucket = (joint_entropy * len(ENTROPY_BUCKETS)).floor().clamp(0, len(ENTROPY_BUCKETS) - 1)
+        buckets = (
+            torch.nn.functional.one_hot(bucket.long(), len(ENTROPY_BUCKETS)) * weight[..., None]
+        )
+        tokens = buckets.flatten(0, -2).sum(0)
+        limited_by_bucket = (buckets * limited[..., None]).flatten(0, -2).sum(0)
+        statistic = torch.cat(
+            [
+                torch.stack(
+                    [
+                        clipped,
+                        approximate,
+                        losses.masked_sum(divergence, own_alive),
+                        losses.masked_sum((divergence > config.dppo_delta).float(), own_alive),
+                    ]
+                ),
+                histogram,
+                tokens,
+                limited_by_bucket,
+            ]
+        )
         return (
             losses.masked_sum(surrogate, own_alive) / denominator["policy"],
             factor_sums(entropies, own_alive) / denominator["policy"],
-            torch.stack([clipped, divergence]) / denominator["policy"],
+            statistic.detach() / denominator["policy"],
         )
 
     # ------------------------------------------------------------------ update
@@ -983,10 +1097,25 @@ class Learner:
         epoch's means and the mean over every minibatch step. `policy/kl` is the last
         epoch's (what the early stop reads), the clip fraction every step's."""
         index = self.STATISTICS.index
-        return {
+        out = {
             "policy/kl": last_epoch[index("approximate_kl")],
             "policy/clip_fraction": mean[index("clip_fraction")],
+            "policy/divergence/mean": mean[index("divergence/mean")],
+            "policy/divergence/above_delta": mean[index("divergence/above_delta")],
         }
+        first = index("divergence/bin_0")
+        histogram = mean[first : first + DIVERGENCE_BINS]
+        for quantile, value in zip(
+            DIVERGENCE_QUANTILES,
+            divergence_quantiles(histogram, self.divergence_quantiles).unbind(),
+            strict=True,
+        ):
+            out[f"policy/divergence/p{round(quantile * 100)}"] = value
+        for bucket in ENTROPY_BUCKETS:
+            tokens = mean[index(f"entropy_bucket/{bucket}/tokens")]
+            limited = mean[index(f"entropy_bucket/{bucket}/limited")]
+            out[f"policy/clip_fraction/entropy_{bucket}"] = Mean(limited, tokens)
+        return out
 
     def _diagnostic_series(
         self, prepared: dict, total: torch.Tensor, steps: int, levels_total: torch.Tensor
@@ -1162,6 +1291,19 @@ class Learner:
             rollout = prepared["rollout_log_probability"][:, self._on_device(views)]
             error = torch.where(mask, (torch.exp(log_probability - rollout) - 1.0).abs(), 0.0)
         return torch.stack([error.amax(), error.sum() / mask.sum().clamp_min(1)])
+
+
+def divergence_quantiles(counts: torch.Tensor, quantiles: torch.Tensor) -> torch.Tensor:
+    """(Q,) the quantiles (Q,) of the divergence histogram `counts` (DIVERGENCE_BINS,), log
+    linear within a bin, on the device; NaN for an empty histogram."""
+    total = counts.sum()
+    cumulative = counts.cumsum(0)
+    targets = quantiles * total
+    index = torch.searchsorted(cumulative, targets).clamp(max=counts.shape[0] - 1)
+    below = cumulative[index] - counts[index]
+    fraction = ((targets - below) / counts[index].clamp_min(1e-30)).clamp(0.0, 1.0)
+    exponent = math.log10(DIVERGENCE_FLOOR) * (1.0 - (index + fraction) / counts.shape[0])
+    return torch.where(total > 0, 10.0**exponent, torch.nan)
 
 
 def fit_series(moments: torch.Tensor) -> dict:

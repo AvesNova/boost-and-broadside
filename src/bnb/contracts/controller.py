@@ -27,6 +27,8 @@ class Outputs:
     outcome (R, 4): the outcome probabilities (win, tie, loss, unresolved).
     replay: an opaque pytree with leading (R,), what the decision read from the controller's
         carry, so the learner can recompute a segment without replaying it.
+    probabilities (R, S, NUM_JOINT) float16: the whole joint action distribution, when the
+        learner's trust region needs it (`LearnerConfig.records_distribution`).
     """
 
     log_probability: torch.Tensor | None = None
@@ -35,6 +37,7 @@ class Outputs:
     values: torch.Tensor | None = None
     outcome: torch.Tensor | None = None
     replay: Any = None
+    probabilities: torch.Tensor | None = None
 
 
 class Controller(Protocol):

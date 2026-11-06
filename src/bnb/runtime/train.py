@@ -182,12 +182,15 @@ def build_model(build: YemongBuild | RelationalBuild, device: torch.device) -> t
     return (Relational(build) if isinstance(build, RelationalBuild) else Yemong(build)).to(device)
 
 
-def model_controller(model: torch.nn.Module, game: GameConfig):
+def model_controller(model: torch.nn.Module, game: GameConfig, distribution: bool = False):
     """The controller for a model: RelationalController for a Relational model, otherwise
-    YemongController."""
+    YemongController. distribution: its outputs carry the whole joint action distribution
+    (the learner's, for `LearnerConfig.records_distribution`; Yemong only)."""
     if isinstance(model, Relational):
+        if distribution:
+            raise ValueError("only a Yemong learner records its joint action distribution")
         return RelationalController(model)
-    return YemongController(model, game.ships_per_team, game.num_ships)
+    return YemongController(model, game.ships_per_team, game.num_ships, distribution)
 
 
 def compiler(enabled: bool) -> Callable:
@@ -259,7 +262,9 @@ class Trainer:
             sum(mode_key(pool, game) == mode for pool in opponent_pools) for mode in self.modes
         )
         builders = {
-            LEARNER: lambda: model_controller(self.model, game),
+            LEARNER: lambda: model_controller(
+                self.model, game, not cloning and config.learner.records_distribution
+            ),
             OPPONENTS: lambda: OpponentSlots(
                 model_controller(copy.deepcopy(self.model).requires_grad_(False), game),
                 torch.tensor(

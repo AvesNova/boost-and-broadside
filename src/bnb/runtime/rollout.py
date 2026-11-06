@@ -239,8 +239,8 @@ class Rollout:
     @torch.no_grad()
     def _learner_buffers(self, obs: Obs, learner_carry) -> dict:
         """Ring buffers for what the learner's controller gives beyond log_probability and value:
-        values, outcome and replay, shaped (ring, R, ...). Their shapes come from one probe
-        decision on the learner's first row only."""
+        values, outcome, replay and probabilities, shaped (ring, R, ...). Their shapes come
+        from one probe decision on the learner's first row only."""
         ring, views, device = self.ring, self.lineup.rows(self.learner), self.device
         environments = self.lineup.environments[self.learner][:1]
         team = self.lineup.role[self.learner][:1]
@@ -248,7 +248,12 @@ class Rollout:
         reset = view.globals[..., GLOBAL["reset"]] > 0.5
         one_row = _pytree.tree_map_only(torch.Tensor, lambda x: x[:1].clone(), learner_carry)
         _, _, outputs = self.controllers[self.learner].step(one_row, view, reset)
-        outputs = dict(values=outputs.values, outcome=outputs.outcome, replay=outputs.replay)
+        outputs = dict(
+            values=outputs.values,
+            outcome=outputs.outcome,
+            replay=outputs.replay,
+            probabilities=outputs.probabilities,
+        )
         return {
             name: _pytree.tree_map_only(
                 torch.Tensor,
@@ -324,7 +329,7 @@ class Rollout:
                         * self.rules.tick_length
                     )
                     analytics.outcome_record(carry["outcome"], outputs.outcome, elapsed)
-                for part in ("values", "outcome", "replay"):
+                for part in ("values", "outcome", "replay", "probabilities"):
                     if part in records:
                         for stored, given in zip(
                             _tensors(records[part]), _tensors(getattr(outputs, part)), strict=True

@@ -21,10 +21,12 @@ Gram matrices, so no pair of gradients is ever held twice:
 The scopes: `model`, every parameter; `trunk`, the shared encoder and trunk.
 
 The representation (`representation/{quantity}/{block}`, per trunk block, on about
-REPRESENTATION_TOKENS tokens of one micro-batch): the block output's RMS, its effective
-rank (the exponential of the entropy of its normalised singular values, the tokens centred)
-and the share of the feedforward's hidden units that are dormant (their mean |activation|
-at most DORMANT_THRESHOLD of the layer's mean, as ReDo).
+REPRESENTATION_TOKENS tokens of one micro-batch), tapped at the block's last sublayer (the
+temporal one, or with `yemong.order = temporal_first` the last spatial one): the block
+output's RMS, its effective rank (the exponential of the entropy of its normalised singular
+values, the tokens centred) and the share of that sublayer's feedforward hidden units that
+are dormant (their mean |activation| at most DORMANT_THRESHOLD of the layer's mean, as
+ReDo).
 """
 
 import contextlib
@@ -163,17 +165,30 @@ def sampled(tokens: torch.Tensor, count: int = REPRESENTATION_TOKENS) -> torch.T
     return flat[:: max(1, flat.shape[0] // count)][:count]
 
 
+def last_sublayer(block: torch.nn.Module, order: str) -> torch.nn.Module | None:
+    """The sublayer whose output is `block`'s output in the trunk's `order`: the temporal one
+    when it runs last ("spatial_first", or a block without spatial sublayers), else the last
+    spatial one ("temporal_first"). None for a block without either."""
+    spatial = getattr(block, "spatial", None)
+    if order == "temporal_first" and spatial:
+        return spatial[-1]
+    return getattr(block, "temporal", None)
+
+
 @contextlib.contextmanager
 def block_taps(model: torch.nn.Module):
     """Yields {block: {"output": tokens, "hidden": the feedforward's hidden units}}, filled by
-    hooks on each trunk block's temporal sublayer while the context lasts (empty for a model
-    without `trunk.blocks`); the hooks are removed on exit."""
+    hooks on each trunk block's last sublayer (`last_sublayer`: the block's output in either
+    trunk order) while the context lasts (empty for a model without `trunk.blocks`); the
+    hooks are removed on exit."""
     taps: dict[str, dict[str, torch.Tensor]] = {}
-    blocks = getattr(getattr(model, "trunk", None), "blocks", None)
+    trunk = getattr(model, "trunk", None)
+    blocks = getattr(trunk, "blocks", None)
+    order = getattr(trunk, "order", "spatial_first")
     handles = []
     for index, block in enumerate(blocks or ()):
-        temporal = getattr(block, "temporal", None)
-        if temporal is None:
+        last = last_sublayer(block, order)
+        if last is None:
             continue
         tap = taps.setdefault(f"trunk_block_{index}", {})
 
@@ -187,9 +202,9 @@ def block_taps(model: torch.nn.Module):
             tap["hidden"] = inputs[0]
 
         handles += [
-            temporal.feedforward_norm.register_forward_pre_hook(residual),
-            temporal.feedforward.register_forward_hook(output),
-            temporal.feedforward.down.register_forward_pre_hook(hidden),
+            last.feedforward_norm.register_forward_pre_hook(residual),
+            last.feedforward.register_forward_hook(output),
+            last.feedforward.down.register_forward_pre_hook(hidden),
         ]
     try:
         yield taps

@@ -22,7 +22,8 @@ class Trajectory:
     the match result for the view's team (+1 win, -1 loss, 0 draw), nonzero only where done.
 
     When the learner's controller gives them (else None): values (L, R, S, levels), outcome
-    (L, R, 4) and replay (a pytree, (L, R, ...)) from its Outputs, and initial_carry, the
+    (L, R, 4), replay (a pytree, (L, R, ...)) and probabilities (L, R, S, NUM_JOINT) float16
+    (the rollout's whole joint action distribution) from its Outputs, and initial_carry, the
     learner's carry at the segment's start (R, ...).
 
     The label inputs (learner spec 2), from the runtime: alive (L, R, N) and valued
@@ -45,6 +46,7 @@ class Trajectory:
     outcome: torch.Tensor | None = None
     replay: Any = None
     initial_carry: Any = None
+    probabilities: torch.Tensor | None = None
     alive: torch.Tensor | None = None
     valued: torch.Tensor | None = None
     truth: torch.Tensor | None = None

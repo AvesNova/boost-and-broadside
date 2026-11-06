@@ -137,7 +137,9 @@ scripted agents, random, and later humans.
 of the chosen action, the entropy and the value. A controller that gives them adds the
 critic per reward level (`values`), the outcome probabilities and a `replay` record: what
 the decision read from its carry, so the learner can recompute a stored segment without
-replaying it.
+replaying it. Under DPPO's exact trust region the learner's controller also gives its whole
+joint action distribution (`probabilities`, float16), which the trajectory keeps
+([The learner](learner.md#the-trust-region)).
 
 ## Pools and trajectories
 

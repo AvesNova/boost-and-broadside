@@ -1,13 +1,13 @@
 """The league during training (league spec 1-5 and 7): the pool, the slots' draws and
-drains, the gauges, the averages and the snapshots, attached to a trainer as its hooks.
+cuts, the gauges, the averages and the snapshots, attached to a trainer as its hooks.
 
-Per shard (`after_shard`): read the shard's results by entry and mode; end a finished
-drain; begin the next one (one slot at a time, round robin), drawing its entry from the
-sampling weights. Before learning (`collected`): when a snapshot is due, keep the weights
-that played this update. After learning (`updated`): the new snapshot and the retention, the
-run's ratings from the update's games (the lanes' and these, `bnb.league.lanes.RunRatings`)
-and each mode's gauge from them, the averages (which the slots holding them follow), the
-next sampling weights, and the metrics.
+Per shard (`after_shard`): read the shard's results by entry and mode. Before learning
+(`collected`): when a snapshot is due, keep the weights that played this update. After
+learning (`updated`): the new snapshot and the retention, the run's ratings from the
+update's games (the lanes' and these, `bnb.league.lanes.RunRatings`) and each mode's gauge
+from them, the averages (which the slots holding them follow), the next sampling weights,
+every `cut_every` updates the clean cut of `cut_slots` slots (round robin, each drawing its
+entry from the sampling weights), and the metrics.
 
 A slot's entry is drawn from the modes' sampling weights mixed by the modes' shares of the
 opponent rows (a slot plays every mode); a ladder row draws its rung in the graph, from its
@@ -58,6 +58,10 @@ from .pool import (
 ENTRY_KINDS = ("scripted", "rung", "average", "checkpoint")
 SNAPSHOT_SECONDS = 30 * 60  # the measured snapshot cadence's target (league spec 5)
 SNAPSHOT_DIRECTORY = "step_{steps}"
+# an entry rated further than this from the live policy after it has played is an anomaly
+GAUGE_DISTANCE = 1500.0
+# the cut's series of an update (`pool/cut/<name>`)
+CUT_SERIES = ("draws", "cuts", "cut_rows", "uncredited_games", "carries_reset")
 CHECKPOINT_POLICY = "checkpoint"  # a snapshot directory's policy files: the snapshot, and
 # the averages frozen at the same step (the offline tournament rates those)
 
@@ -90,7 +94,8 @@ class League:
         self.modes = trainer.modes
         rows = torch.tensor(trainer.mode_rows, dtype=torch.float64)
         self.mode_shares = rows / rows.sum()
-        self.ladder = ladder_entries(self.config.ladder)
+        # the stationary ladder in the training pool (the rating lanes play it either way)
+        self.ladder = ladder_entries(self.config.ladder) if self.config.ladder_in_pool else []
         self.swap_key = stream_key(trainer.config.seed, "league.swap")
         self.scratch = copy.deepcopy(trainer.model).cpu()  # writes the snapshots' files
         self.device = trainer.rollout.device
@@ -131,8 +136,11 @@ class League:
         self.ordinal = 0
         self.swaps = 0
         self.next_slot = 0
+        self.updates = 0  # the cuts' clock
+        self.played: set[str] = set()  # the entries with credited training games
+        self.last_cut = dict.fromkeys(CUT_SERIES, 0)
         self._weigh()
-        self.held: list[str | None] = [None] * (self.config.slots + 1)
+        self.held: list[str | None] = [None] * self.config.slots
         carry = trainer.rollout.carry["controllers"][OPPONENTS]
         for slot in range(self.config.slots):
             entry = self._draw()
@@ -156,11 +164,14 @@ class League:
             if entry.kind == "checkpoint"
         }
         self.snapshot_every = record["snapshot_every"]
-        self.ordinal, self.swaps, self.next_slot = (
+        self.ordinal, self.swaps, self.next_slot, self.updates = (
             record["ordinal"],
             record["swaps"],
             record["next_slot"],
+            record["updates"],
         )
+        self.last_cut = dict(record["last_cut"])
+        self.played = set(record["played"])
         self.held = record["held"]
         self.mixed = torch.tensor(record["mixed"], dtype=torch.float64)
         self.weights = {
@@ -186,10 +197,11 @@ class League:
         self.mixed = sum(
             share * self.weights[mode] for share, mode in zip(self.mode_shares.tolist(), self.modes)
         )
-        ladder = [names.index(entry.name) for entry in self.ladder]
-        self.opponents.set_ladder_weights(
-            torch.stack([self.weights[mode][ladder] for mode in self.modes]).float()
-        )
+        if self.ladder:
+            ladder = [names.index(entry.name) for entry in self.ladder]
+            self.opponents.set_ladder_weights(
+                torch.stack([self.weights[mode][ladder] for mode in self.modes]).float()
+            )
 
     def _draw(self) -> Entry:
         """The next slot's entry, from the mixed weights (the swap counter's uniform)."""
@@ -229,27 +241,62 @@ class League:
                 self.ratings.assign(league_slot(slot), None, None)
 
     def _follow_averages(self) -> None:
-        """Each set holding an average (a slot's, or the incoming entry's) takes its new
-        weights, as the lanes' averages do: an average is one moving player."""
+        """Each slot holding an average takes its new weights, as the lanes' averages do: an
+        average is one moving player."""
         for set_index, name in enumerate(self.held):
             entry = self.entries.get(name) if name is not None else None
             if entry is not None and entry.kind == "average":
                 self.opponents.load(set_index, self.averages.weights[name])
 
-    def _load(self, set_index: int, entry: Entry) -> None:
+    def _load(self, slot: int, entry: Entry) -> None:
         if entry.network:
-            self.opponents.load(set_index, self._weights_of(entry))
-        self.opponents.set_kind(set_index, NETWORK if entry.network else LADDER_KIND)
+            self.opponents.load(slot, self._weights_of(entry))
+        self.opponents.set_kind(slot, NETWORK if entry.network else LADDER_KIND)
+
+    def _cut(self, trainer: Trainer) -> None:
+        """The clean cut, when due: `cut_slots` slots (round robin) each draw an entry; a
+        slot whose draw differs from what it holds takes it in place (`OpponentSlots.cut`):
+        its games in progress play on uncredited, and the opponent's model carry on its rows
+        is reset, or kept (`carry_at_cut="keep"`) when the old and the new entry are both
+        networks (`same_build`)."""
+        self.last_cut = dict.fromkeys(CUT_SERIES, 0)
+        self.updates += 1
+        if self.updates % self.config.cut_every:
+            return
+        carry = trainer.rollout.carry["controllers"][OPPONENTS]
+        rows_per_slot = int(self.opponents.rows.numel()) // self.config.slots
+        for _ in range(self.config.cut_slots):
+            slot = self.next_slot
+            self.next_slot = (slot + 1) % self.config.slots
+            entry = self._draw()
+            self.last_cut["draws"] += 1
+            if entry.name == self.held[slot]:
+                continue  # the same entry plays on, its games credited
+            old = self.entries.get(self.held[slot]) if self.held[slot] is not None else None
+            self._load(slot, entry)
+            self.held[slot] = entry.name
+            keep = self.config.carry_at_cut == "keep" and same_build(old, entry)
+            self.last_cut["uncredited_games"] += self.opponents.cut(carry, slot, keep)
+            if entry.kind == "ladder":
+                uniform = counter_uniform(
+                    self.swap_key, torch.tensor(-1 - self.swaps), self.opponents.rows.cpu()
+                )
+                self.opponents.draw_ladder(carry, slot, uniform)
+            self.last_cut["cuts"] += 1
+            self.last_cut["cut_rows"] += rows_per_slot
+            self.last_cut["carries_reset"] += 0 if keep else rows_per_slot
 
     # ---- the hooks
 
     def after_shard(self, trainer: Trainer, shard: int) -> None:
-        """Read the shard's results; end a finished drain and begin the next."""
+        """Read the shard's results."""
         slots = self.config.slots
         tally = trainer.rollout.take_tally(OPPONENTS).reshape(-1, len(self.modes), len(OUTCOMES))
         ladder_names = [entry.name for entry in self.ladder]
         for column, row in enumerate(tally.tolist()):
-            name = self.held[column] if column <= slots else ladder_names[column - slots - 1]
+            if column >= slots + len(ladder_names):
+                break  # the ladder's columns, when it is out of the pool
+            name = self.held[column] if column < slots else ladder_names[column - slots]
             for mode, (wins, ties, losses) in zip(self.modes, row):
                 if wins + ties + losses == 0 or name not in self.entries:
                     continue  # no games, or against an entry retention has dropped
@@ -257,19 +304,6 @@ class League:
                 games.wins += wins
                 games.ties += ties
                 games.losses += losses
-        carry = trainer.rollout.carry["controllers"][OPPONENTS]
-        draining = self.opponents.draining_slot
-        if draining is not None and self.opponents.drained(carry):
-            self.opponents.finish_drain(carry)
-            self.held[draining], self.held[slots] = self.held[slots], None
-            draining = None
-        if draining is None:
-            slot = self.next_slot
-            self.next_slot = (slot + 1) % slots
-            entry = self._draw()
-            self._load(slots, entry)
-            self.held[slots] = entry.name
-            self.opponents.begin_drain(slot)
 
     def _steps_after_update(self, trainer: Trainer) -> tuple[int, int]:
         before = trainer.ppo.environment_steps
@@ -303,12 +337,15 @@ class League:
             for mode, records in self.record.items()
         }
         self.ratings.update(trainer.lane_record, games, snapshot)
+        for records in games.values():
+            self.played.update(name for name, record in records.items() if record.games)
         for mode, gauge in self.gauges.items():
             gauge.update(self.ratings.ratings.get(mode, {}))
         self.averages.fold(trainer.model.state_dict(), steps)
         self._follow_averages()
-        self._load_lanes()
         self._weigh()
+        self._cut(trainer)
+        self._load_lanes()
         metrics = self.metrics()
         self.record = self._empty_record()
         self._measure_cadence(trainer)
@@ -376,10 +413,13 @@ class League:
         with their standard errors: `bnb.league.lanes.RunRatings.series`), the update's
         training games against the entries and the sampling distribution's normalised
         entropy. By opponent kind (`entry_kind`): the live policy's score and its share of
-        the games. The pool's size, its snapshots and whether a slot is draining; and
+        the games. The pool's size, its snapshots; the update's cut (`pool/cut/*`: the slots
+        drawn, the slots that took another entry, their rows, the games left uncredited and
+        the rows whose opponent carry was reset) and the slots' mix after it
+        (`pool/slot_share/<kind>`, `pool/distinct_held`); and
         `pool/entries`, a table of every entry per mode (rating, error, sampling share,
-        games, score, and the slot holding it: the network slots in order, then the
-        incoming one), as JSON (`bnb.contracts.series.Table.as_json`)."""
+        games, score, and the slot holding it after the cut), as JSON
+        (`bnb.contracts.series.Table.as_json`)."""
         out: dict = {}
         games_by_kind = dict.fromkeys(ENTRY_KINDS, 0.0)
         points_by_kind = dict.fromkeys(ENTRY_KINDS, 0.0)
@@ -403,6 +443,7 @@ class League:
                     (mode, name, kind, rated.rating, rated.stderr, share, played, score, slot)
                 )
             out[f"rating/window_games/{mode}"] = window
+            out[f"pool/gauge_anomalies/{mode}"] = len(self.gauge_anomalies(mode))
         total = sum(games_by_kind.values())
         for kind in ENTRY_KINDS:
             if games_by_kind[kind]:
@@ -411,7 +452,14 @@ class League:
                 out[f"pool/game_share/{kind}"] = games_by_kind[kind] / total
         out["pool/size"] = len(self.entries)
         out["pool/snapshots"] = len(self.snapshots)
-        out["pool/draining"] = int(self.opponents.draining_slot is not None)
+        for name, value in self.last_cut.items():
+            out[f"pool/cut/{name}"] = value
+        held = [self.entries[name] for name in self.held if name in self.entries]
+        for kind in ENTRY_KINDS:
+            out[f"pool/slot_share/{kind}"] = sum(
+                entry_kind(entry.name, entry.kind) == kind for entry in held
+            ) / len(self.held)
+        out["pool/distinct_held"] = len({entry.name for entry in held})
         out["pool/entries"] = Table(
             (
                 "mode",
@@ -428,6 +476,22 @@ class League:
         ).as_json()
         return out
 
+    def gauge_anomalies(self, mode: str) -> list[str]:
+        """The entries of `mode`'s gauge that have played (credited training games) but whose
+        rating is more than GAUGE_DISTANCE from the live policy's, or whose error is still
+        infinite: a fit that ran away (league-sampling-sim, round 1). The trigger rule
+        `gauge_runaway` alerts on their count, `pool/gauge_anomalies/<mode>`."""
+        gauge = self.gauges[mode]
+        return [
+            name
+            for name, rated in gauge.entries.items()
+            if name in self.played
+            and (
+                abs(rated.rating - gauge.live.rating) > GAUGE_DISTANCE
+                or not math.isfinite(rated.stderr)
+            )
+        ]
+
     def state(self) -> tuple[dict, dict[str, torch.Tensor]]:
         """What a resume needs: the entries, the gauges, the slots' entries, the sampling
         state and the averages' count as a record; the averages' and snapshots' weights as
@@ -440,6 +504,9 @@ class League:
             ordinal=self.ordinal,
             swaps=self.swaps,
             next_slot=self.next_slot,
+            updates=self.updates,
+            last_cut=dict(self.last_cut),
+            played=sorted(self.played),
             held=list(self.held),
             mixed=self.mixed.tolist(),
             weights={mode: weights.tolist() for mode, weights in self.weights.items()},
@@ -450,6 +517,14 @@ class League:
             for key, value in weights.items():
                 tensors[f"{name}.{key}"] = value
         return record, tensors
+
+
+def same_build(old: Entry | None, new: Entry) -> bool:
+    """Whether a cut from `old` to `new` may keep the opponent's model carry: both are
+    networks, and every network of the training league (snapshots and averages of the live
+    policy, in its one stacked template) has the live policy's build. A ladder entry's
+    carry is the scripted agent's own, so a cut to or from one resets."""
+    return old is not None and old.network and new.network
 
 
 def entry_kind(name: str, kind: str) -> str:
@@ -466,4 +541,4 @@ def normalised_entropy(weights: list[float]) -> float:
         return 0.0
     total = sum(weights)
     entropy = -sum(w / total * math.log(w / total) for w in weights if w > 0)
-    return entropy / math.log(len(weights))
+    return min(1.0, entropy / math.log(len(weights)))  # a uniform one rounds just past 1

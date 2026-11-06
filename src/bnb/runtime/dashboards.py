@@ -377,7 +377,7 @@ CURATED = (
         (
             rl("pool/game_share", "pool/game_share/*"),
             rl("pool/sampling_entropy", "pool/sampling_entropy/*"),
-            rl("pool", "pool/size", "pool/snapshots", "pool/draining"),
+            rl("pool", "pool/size", "pool/snapshots", "pool/cut/cuts", "pool/cut/uncredited_games"),
         ),
     ),
     Section("Schedules", (panel("schedule", "schedule/*"),)),
