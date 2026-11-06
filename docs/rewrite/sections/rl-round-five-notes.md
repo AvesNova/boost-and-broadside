@@ -4,7 +4,7 @@ Brief: `rl-round-five-brief.md`. Branch `feat/rl-round-five`, CPU only.
 
 ## 1. League turnover: the clean cut
 
-- `LeagueConfig.cut_every` (2), `cut_slots` (1), `carry_at_cut` (`"reset"` or `"keep"`),
+- `LeagueConfig.cut_every` (2), `cut_slots` (1), `carry_at_cut` (`"keep"`, the default after the hand-over test, or `"reset"`),
   `ladder_in_pool` (false). The drain, the incoming stacked set, `OpponentCarry.incoming`
   and the draining slot are gone (`bnb.runtime.opponents`, `bnb.league.league`).
 - A cut runs in `League.updated`, after the update's games are read and the weights are
@@ -69,8 +69,8 @@ loads them as they are (their build fills the newer Yemong fields with defaults)
 - **What it means for the cut:** a cut opponent's play is off for about the first second
   under `"reset"` and a fraction of that under `"keep"`; against games of about 150-300 s,
   either is a small share of the cut game's ticks. Even the far pair (66M steps apart) hands
-  over well, so "keep" is safe across the pool's age range. `"reset"` stays the default, as
-  the brief says; the measurement favours `"keep"`.
+  over well, so "keep" is safe across the pool's age range. The author made `"keep"` the default
+  (2026-11-06); a cut between builds still resets.
 - Raw: `/tmp/bnb-scratch-rl-five/handover-{frontline,deathmatch}.json` at the time of
   writing; rerun with
 

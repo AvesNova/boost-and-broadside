@@ -128,8 +128,8 @@ CARRY_AT_CUT = ("reset", "keep")
 class LeagueConfig:
     """slots: network slots loaded at once; cut_every: updates between the clean cuts;
     cut_slots: the slots a cut draws anew (round robin); carry_at_cut: the opponent's model
-    carry on a cut slot's rows, "reset" (the trunk zeroed, the belief kept) or "keep" (the
-    old occupant's, when both are networks of the one build; else reset); ladder_in_pool:
+    carry on a cut slot's rows, "keep" (the old occupant's, when both are networks of the
+    one build; else reset) or "reset" (the trunk zeroed, the belief kept); ladder_in_pool:
     the stationary ladder is in the training pool (the rating lanes play it either way);
     ladder: the stationary ladder's rungs, weakest
     first (`strength_order`; +inf random, T = 1 at share 1 the scripted agent); floor: the
@@ -144,7 +144,7 @@ class LeagueConfig:
     # the author's clean cut, 2026-11-06 (decisions: round four)
     cut_every: int = 2
     cut_slots: int = 1
-    carry_at_cut: str = "reset"
+    carry_at_cut: str = "keep"  # the hand-over test's verdict (author, 2026-11-06)
     ladder_in_pool: bool = False
     ladder: tuple[Rung, ...] = LADDER
     floor: float = 0.05

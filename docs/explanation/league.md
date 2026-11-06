@@ -72,14 +72,49 @@ The league's seat plays every opponent row of the batch in the captured rollout 
   ticks still train the learner (they are on-policy data); their results are credited to
   no one: the rows' `whole` flags are cleared, so the tally skips each row's game until its
   next reset. Drawing the entry a slot already holds changes nothing.
-- **The opponent's carry at a cut** (`carry_at_cut`): `"reset"` (default) zeroes the
-  network's trunk carry on the cut rows (Yemong's state and convolution buffer,
-  `YemongController.forget`) and keeps the belief part (observations, last sightings,
-  forecasts), the previous actions and the position offset; `"keep"` leaves the old
+- **The opponent's carry at a cut** (`carry_at_cut`): `"keep"` (default) leaves the old
   occupant's carry when the old and the new entry are both networks
   (`bnb.league.league.same_build`: every network of the training league is the live
-  policy's build, in its one stacked template), else resets. A ladder row's scripted carry
+  policy's build, in its one stacked template), else resets; `"reset"` zeroes the
+  network's trunk carry on the cut rows (Yemong's state and convolution buffer,
+  `YemongController.forget`) and keeps the belief part (observations, last sightings,
+  forecasts), the previous actions and the position offset. A ladder row's scripted carry
   runs on every row throughout.
+- **The hand-over test** (`bench/memory_handover.py`, CPU, 2026-11-06): 16 fresh games of
+  calm-fern's 73M live policy A against itself, the opponent switched at 60 s to B: B
+  from A's carry ("keep") and from a reset trunk ("reset"), scored by KL over the 42 joint
+  actions per living ship against B warmed from the game's start, on the same
+  observations; "gap" is A playing on (no hand-over). Near: B is the 88M policy; far: the
+  7.3M one. Every model draws the same position offset at a reset, so the test sees the
+  memory, not the frame.
+
+  | Seconds after | Mode, pair | Gap | Keep | Reset |
+  |---|---|---|---|---|
+  | 0-0.25 | frontline, near | 0.150 | 0.043 | 0.579 |
+  | | frontline, far | 1.14 | 0.138 | 0.451 |
+  | | deathmatch, near | 0.075 | 0.029 | 0.622 |
+  | | deathmatch, far | 1.63 | 0.173 | 0.490 |
+  | 0.5-1 | frontline, near | 0.135 | 0.007 | 0.075 |
+  | | frontline, far | 1.17 | 0.021 | 0.059 |
+  | | deathmatch, near | 0.071 | 0.003 | 0.032 |
+  | | deathmatch, far | 1.63 | 0.027 | 0.054 |
+  | 2-4 | frontline, near | 0.150 | 0.002 | 0.044 |
+  | | frontline, far | 1.24 | 0.002 | 0.004 |
+  | | deathmatch, near | 0.076 | 0.001 | 0.004 |
+  | | deathmatch, far | 1.60 | 0.002 | 0.004 |
+
+  "Keep" is closer at every horizon until both reach the floor, about 0.001, from 4-8 s
+  ("reset" is still 0.005 there for frontline's near pair). A reset opponent plays less
+  like B than A does for its first quarter second. The full table, by window to 32 s, is
+  in `docs/rewrite/sections/rl-round-five-notes.md`.
+
+<!-- not-runnable: needs the calm-fern policies -->
+```bash
+P=../runs-v2/players-calm-fern
+uv run --no-sync python -m bench.memory_handover $P/step_73400320-live \
+    $P/step_88080384-live $P/step_7340032-live --mode frontline --threads 8
+```
+
 - **Why a cut, not a drain.** The drain it replaced switched each row of one slot at its
   next reset, one slot at a time, so a draw stayed resident for slots × one game clock
   (about 56 updates in run 2026-11-06-mixed-calm-fern) and the late opponent mix followed
@@ -87,10 +122,8 @@ The league's seat plays every opponent row of the batch in the captured rollout 
   (`docs/rewrite/sections/league-sampling-sim.md`, rounds 1 and 2) put the RL case (ladder
   out, 4 slots) at 0.62 open games under the serial drain and 0.84 under a cut of one
   slot every update, at one network pass per slot instead of slots + 1; the author chose
-  one slot every 2 to 4 updates. The cost is the cut games' results and, under `"reset"`,
-  the opponent's memory for the rest of each cut game
-  (`docs/rewrite/sections/rl-round-five-notes.md` measures how far each option leaves the
-  new opponent from its own play).
+  one slot every 2 to 4 updates. The cost is the cut games' results and the new
+  opponent's first seconds of play away from its own (the hand-over test above).
 - **Draws in the graph** use counter-based uniforms (`bnb.runtime.opponents.counter_uniform`,
   a hash of the stream's key, the counter and the row), so they need no generator state and
   repeat exactly; the host draws a slot's entry the same way.
