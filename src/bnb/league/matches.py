@@ -291,8 +291,8 @@ class ArenaConfig:
     (else eager); graph_ticks: the most ticks in one captured graph on a GPU (as training's:
     a graph holds every slot's kernels for each of its ticks)."""
 
-    blocks: int = 16
-    block_environments: int = 32
+    blocks: int = 8
+    block_environments: int = 128
     length: int = 32
     compiled: bool = True
     graph_ticks: int = 8

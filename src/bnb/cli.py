@@ -184,8 +184,8 @@ class Ratings:
     presets: tuple[str, ...] = ("frontline", "deathmatch", "deathmatch_wide")
     target_stderr: float = 25.0
     budget: int = 20_000
-    blocks: int = 16
-    block_environments: int = 32
+    blocks: int = 8
+    block_environments: int = 128
     device: str = "cuda"
     runs_directory: str | None = None
     ladder: bool = True
