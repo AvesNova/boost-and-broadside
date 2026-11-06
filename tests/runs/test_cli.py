@@ -212,14 +212,15 @@ def test_set_yemong_width_reaches_the_built_model(monkeypatch, tmp_path, capsys)
     assert widened  # the width is in the weights
 
 
-def test_set_yemong_forecast_feedback_reaches_the_built_model(monkeypatch, tmp_path, capsys):
-    options = ("--model", "yemong", "--set", "yemong.forecast_feedback=false", "--print-config")
+@pytest.mark.parametrize("switch", ["forecast_feedback", "rotary"])
+def test_set_a_yemong_switch_reaches_the_built_model(monkeypatch, tmp_path, capsys, switch):
+    options = ("--model", "yemong", "--set", f"yemong.{switch}=false", "--print-config")
     bnb(monkeypatch, tmp_path, "train", *cases.TRAIN_OPTIONS, *options)
     printed = json.loads(capsys.readouterr().out)
-    assert printed["yemong"]["forecast_feedback"] is False
+    assert printed["yemong"][switch] is False
     config, _ = from_json(TrainConfig, printed)
     with torch.random.fork_rng(devices=[]):  # the model's initialisation draws
-        assert not build_model(model_build(config), cases.CPU).config.forecast_feedback
+        assert not getattr(build_model(model_build(config), cases.CPU).config, switch)
 
 
 def test_a_fork_that_sets_no_model_setting_takes_the_parents(monkeypatch, tmp_path):

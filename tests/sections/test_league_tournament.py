@@ -161,7 +161,8 @@ def _yemong(directory) -> Player:
     from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
 
     with torch.no_grad():
-        model = Yemong(yemong_build(YemongConfig(), api.rules_of(GAME), api.ship_types()))
+        small = YemongConfig(width=64, heads=1, map_width=32, blocks=1)
+        model = Yemong(yemong_build(small, api.rules_of(GAME), api.ship_types()))
         for name, parameter in model.named_parameters():
             if name.endswith("last.weight") or ".lasts." in name and name.endswith(".weight"):
                 parameter.normal_(0.0, 0.05)

@@ -72,6 +72,10 @@ class YemongConfig:
     (its state at its last sighting, no spread, its age still counting) and every enemy
     action stays uniform, so the trunk's temporal layers carry the memory. The heads train
     as auxiliary losses either way.
+    rotary: rotate the attention's queries and keys by the rotary tables. Off, the rotation
+    is the identity everywhere (every angle 0: cos 1, sin 0, for the token and the map
+    tables, in the plain and the fused kernel path alike), so attention reads no relative
+    position or heading; the model trains and plays that way.
     """
 
     width: int = 128
@@ -90,6 +94,7 @@ class YemongConfig:
     heading_harmonics: tuple[int, ...] = (1, 2, 4, 8)
     bfloat16_matmuls: bool = False
     forecast_feedback: bool = True  # store the forecast as the next tick's belief
+    rotary: bool = True  # rotary attention (off: the identity rotation)
 
     def __post_init__(self) -> None:
         if self.outcome_level not in self.levels:
@@ -190,6 +195,12 @@ def _nearest(position: torch.Tensor, reference: torch.Tensor) -> torch.Tensor:
     """The representative of position (mod P) nearest to reference: decoded positions come
     back in [0, P), and the belief's frame is continuous."""
     return position + POSITION_PERIOD * torch.round((reference - position) / POSITION_PERIOD)
+
+
+def _zero_angles(tables: tuple[torch.Tensor, torch.Tensor]):
+    """The identity rotation's tables (cos 1, sin 0), shaped as the rotary tables."""
+    cos, sin = tables
+    return torch.ones_like(cos), torch.zeros_like(sin)
 
 
 def _identity(tables: tuple[torch.Tensor, torch.Tensor], off: torch.Tensor):
@@ -391,6 +402,10 @@ class Yemong(nn.Module):
         map_tables = rotary_tables(
             tokens.memory_position, torch.zeros_like(tokens.memory_position[..., 0]), *frequencies
         )
+        if not self.config.rotary:
+            token_tables, map_tables = (
+                _zero_angles(tables) for tables in (token_tables, map_tables)
+            )
         if rotary_off is not None:
             token_tables, map_tables = (
                 _identity(token_tables, rotary_off),

@@ -123,3 +123,62 @@ def test_both_ablations_on_one_view_compose(segment, monkeypatch):
     reference = _loop(switched, trajectory)
     _assert_rows_equal(both[0], reference[0], [2], 1)
     _assert_rows_equal(both[1], reference[1], [2], 0)
+
+
+# ------------------------------------------------------------------ the training switch
+
+
+def _switched(net, **settings):
+    """The same weights under other YemongConfig settings."""
+    other = cases.model(**settings)
+    other.load_state_dict(net.state_dict())
+    return other
+
+
+def _zero_angles(monkeypatch):
+    real = model_module.rotary_tables
+
+    def zero_angles(position, heading, *frequencies):
+        cos, sin = real(position, heading, *frequencies)
+        return torch.ones_like(cos), torch.zeros_like(sin)
+
+    monkeypatch.setattr(model_module, "rotary_tables", zero_angles)
+
+
+def _unrolled(net, trajectory, decisions):
+    obs = trajectory.obs
+    torch.manual_seed(11)
+    carry = net.initial_carry(obs.ships.shape[1], OWN, 10)
+    with torch.no_grad():
+        return net.unroll(carry, obs, decisions.replay, cases.resets(obs))
+
+
+def test_rotary_on_is_the_default_and_todays_model(segment):
+    net, trajectory = segment
+    assert model_module.YemongConfig().rotary
+    on = _switched(net, rotary=True)
+    _assert_trees_equal(_loop(net, trajectory), _loop(on, trajectory))
+    off = _loop(_switched(net, rotary=False), trajectory)
+    assert not torch.equal(off[0].policy_logits, _loop(net, trajectory)[0].policy_logits)
+
+
+def test_rotary_off_is_zero_angles_in_step_and_unroll(segment, monkeypatch):
+    net, trajectory = segment
+    views = trajectory.obs.ships.shape[1]
+    off = _switched(net, rotary=False)
+    switched = _loop(off, trajectory)
+    switched_unroll = _unrolled(off, trajectory, switched[0])
+    # every view ablated per row is the switch off
+    _assert_trees_equal(switched, _loop(net, trajectory, _ablations(views, rotary=range(views))))
+    _zero_angles(monkeypatch)
+    reference = _loop(net, trajectory)
+    _assert_trees_equal(switched, reference)
+    _assert_trees_equal(switched_unroll, _unrolled(net, trajectory, reference[0]))
+
+
+def test_rotary_off_is_recorded_in_the_policy_file(segment, tmp_path):
+    from bnb.runs import checkpoint
+
+    net, _ = segment
+    checkpoint.save_policy(tmp_path / "off", _switched(net, rotary=False))
+    assert not checkpoint.load_policy(tmp_path / "off", torch.device("cpu")).config.rotary
