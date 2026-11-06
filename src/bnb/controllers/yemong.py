@@ -17,13 +17,16 @@ from bnb.models.yemong.model import Ablations, Carry, Replay, Unrolled, Yemong
 class YemongController:
     """Yemong as a controller: the carry is the model's, with the sampled joint action as its
     previous action; the outputs add the critic's values per level, the outcome probabilities and
-    the replay."""
+    the replay, and with `distribution` the whole joint action distribution (float16)."""
 
     reads = ("ships", "fields", "globals", "zones")
 
-    def __init__(self, model: Yemong, ships_per_team: int, num_ships: int) -> None:
+    def __init__(
+        self, model: Yemong, ships_per_team: int, num_ships: int, distribution: bool = False
+    ) -> None:
         self.model = model
         self.ships_per_team, self.num_ships = ships_per_team, num_ships
+        self.distribution = distribution
 
     def init_carry(self, views: int, device: torch.device) -> Carry:
         """The model's initial carry for R = views views, on device."""
@@ -44,6 +47,11 @@ class YemongController:
             values=decision.values,
             outcome=decision.outcome_probabilities,
             replay=decision.replay,
+            probabilities=(
+                torch.softmax(decision.policy_logits.float(), -1).to(torch.float16)
+                if self.distribution
+                else None
+            ),
         )
         return from_joint(joint), carry, outputs
 

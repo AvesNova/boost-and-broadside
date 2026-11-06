@@ -105,7 +105,7 @@ The coefficients are the fields of `bnb.learn.ppo.LearnerConfig` named after the
 
 | Term | Tokens | Definition |
 |---|---|---|
-| `policy` | own ships alive at `t` | the clipped surrogate on the scaled advantage |
+| `policy` | own ships alive at `t` | the surrogate on the scaled advantage under the trust region ([below](#the-trust-region)) |
 | `entropy_power`, `entropy_stick`, `entropy_shoot` | the same | the joint action distribution's entropy by the chain rule in the joint's order: H(power), H(stick given power), H(shoot given both). They sum to the joint entropy, so equal coefficients weigh the joint as one coefficient would; a negative coefficient rewards it |
 | `value` | own ships alive or waiting to respawn; each view-step for the outcome | per level, the cross-entropy against the two-hot of the return, the outcome against its targets |
 | `next_state` | rows whose belief is valid at `t`, where `t` did not end an episode | the state code's cross-entropy against the sharp code of the true state at `t + 1`, in the model's shifted frame |
@@ -146,6 +146,41 @@ the shot spread come from the learner's own random streams (`bnb.learn.ppo.rando
 seeded from the run's `TrainConfig.seed`), so the global generator does not change an update. The old log-probabilities are
 the rollout's, or recomputed by `unroll` before the first epoch
 (`LearnerConfig.old_log_probabilities`).
+
+## The trust region
+
+`LearnerConfig.trust_region` chooses how the policy term limits a step
+(`bnb.learn.ppo.Learner._policy`{.plain}, `bnb.learn.losses`), with r the ratio of the
+sampled joint action's probability now to the rollout's and A the scaled advantage:
+
+| `trust_region` | The policy term per token |
+|---|---|
+| `"clip"` (default) | PPO's: max(-A r, -A clip(r, 1 - `clip`, 1 + `clip`)), as before the option (`tests/sections/test_learner_trust_region.py::test_the_clip_is_todays_bit_for_bit`) |
+| `"clip_higher"` | DAPO's asymmetric clip: the ratio in [1 - `clip`, 1 + `clip_high`], 0.2 and 0.28 |
+| `"dppo_tv"` | DPPO's mask (Qi et al., "Rethinking the Trust Region in LLM Reinforcement Learning", ICML 2026): the unclipped -A r, its gradient zeroed where D > `dppo_delta` (0.15) and the step moves further away (A > 0 and r > 1, or A < 0 and r < 1). D is the exact total variation between the rollout's and the current joint action distribution at the state, 1/2 sum over the 42 joint actions of \|mu(a) - pi(a)\| |
+| `"dppo_binary_tv"` | the same mask with D = \|mu(a) - pi(a)\| of the sampled action, the paper's binary approximation; a lower bound of the exact form, so it masks less at the same delta |
+
+Yemong's policy is one categorical over the 42 joint actions per ship (not three heads),
+so the exact total variation needs no product of marginals: the rollout records each own
+ship's joint distribution as float16 (`Outputs.probabilities`, `Trajectory.probabilities`),
+only under `"dppo_tv"`. That is 42 × 2 bytes per own ship per tick, 420 bytes per learner
+view per tick at 5v5, about a tenth of the segment store's per-tick records (observation,
+replay, shot capture, truth and the rest, about 4.2 kB per view-tick at 5v5), and nothing
+on the device beyond a micro-batch's slice. `"dppo_tv"` needs
+`old_log_probabilities = "rollout"`: its mu is the rollout's.
+
+Every mode logs `policy/clip_fraction`{.plain} as its trust region's rate (the ratio past
+the clip's bounds, or the samples DPPO masks) and the same rate by the policy's joint
+entropy, in thirds of ln 42 (`policy/clip_fraction/entropy_low`{.plain}, `policy/clip_fraction/entropy_middle`{.plain},
+`policy/clip_fraction/entropy_high`{.plain});
+and the divergence D (the binary form under the clip modes): its mean, its share past
+`dppo_delta` and its quantiles p50, p90 and p99 (`policy/divergence/*`{.plain}, from a
+log histogram over [1e-4, 1]).
+
+<!-- not-runnable: needs a run -->
+```bash
+uv run --no-sync bnb train ... --set learner.trust_region=dppo_tv --set learner.dppo_delta=0.15
+```
 
 ## Shot labels
 
