@@ -1,6 +1,9 @@
-"""The trunk's order switch and the rotary read-out (temporal-first brief): spatial_first is
-today's model, temporal_first runs each block's temporal sublayer first and still unrolls as
-a loop of steps, and the read-out drives the hidden ships' rotary tables."""
+"""The trunk's order switch and the rotary read-out (temporal-first and per-block read-out
+briefs): spatial_first is today's model, temporal_first runs each block's temporal sublayer
+first and still unrolls as a loop of steps, and each block's read-out drives the hidden
+ships' rotary tables in that block's spatial sublayers."""
+
+import dataclasses
 
 import pytest
 import torch
@@ -80,12 +83,18 @@ def _initialised(**settings) -> dict:
         return Yemong(build).state_dict()
 
 
-def test_the_read_out_adds_only_its_head_and_leaves_the_rest_initialised_as_before():
+def test_the_read_out_adds_only_one_head_per_block_and_leaves_the_rest_initialised_as_before():
     plain = _initialised(order="temporal_first")
     readout = _initialised(order="temporal_first", rotary_readout=True)
     added = set(readout) - set(plain)
-    assert added == {"rotary_readout.weight", "rotary_readout.bias"}
-    assert readout["rotary_readout.weight"].shape == (2 * YemongConfig().rotary_pairs, 128)
+    blocks = YemongConfig().blocks
+    assert added == {
+        f"rotary_readout.{block}.{name}" for block in range(blocks) for name in ("weight", "bias")
+    }
+    for block in range(blocks):
+        weight = readout[f"rotary_readout.{block}.weight"]
+        assert weight.shape == (2 * YemongConfig().rotary_pairs, 128)
+    assert not torch.equal(readout["rotary_readout.0.weight"], readout["rotary_readout.1.weight"])
     assert all(torch.equal(plain[name], readout[name]) for name in plain)
 
 
@@ -104,6 +113,28 @@ def test_unroll_equals_a_loop_of_steps(segment, settings):
     decisions, unrolled = _loop_and_unroll(net, segment)
     _compare(unrolled, decisions)
     assert (unrolled.rotary_readout is not None) == net.config.rotary_readout
+    if net.config.rotary_readout:  # every block's read-out, as the steps' inspection has it
+        obs = cases.cast(segment.obs, torch.float64)
+        carry = net.initial_carry(obs.ships.shape[1], OWN, 10)
+        joint, reset = cases.joint_actions(segment), cases.resets(obs)
+        state, inspected, replays = carry, [], []
+        with torch.no_grad():
+            for t in range(obs.ships.shape[0]):
+                view = cases.Obs(
+                    ships=obs.ships[t],
+                    fields=obs.fields[t],
+                    globals=obs.globals[t],
+                    zones=obs.zones[t],
+                )
+                decision, outputs = net.inspect(state, view, reset[t])
+                state = dataclasses.replace(decision.carry, previous_action=joint[t])
+                inspected.append(outputs.rotary_readout[0])
+                replays.append(decision.replay)
+            replay = torch.utils._pytree.tree_map(lambda *x: torch.stack(x), *replays)
+            unrolled = net.unroll(carry, obs, replay, reset)
+        assert unrolled.rotary_readout.shape[-3] == net.config.blocks
+        error = cases.scale_error(unrolled.rotary_readout, torch.stack(inspected))
+        assert error <= 1e-9
 
 
 def _sublayer_log(monkeypatch):
@@ -140,8 +171,8 @@ def test_the_read_out_sets_the_hidden_ships_tables_and_visible_ships_keep_theirs
     segment, monkeypatch
 ):
     """Every spatial sublayer's token tables: a visible ship's are its true tables, a hidden
-    ship's the read-out's pairs, the global token's the map centre's; the map tables are the
-    exact ones."""
+    ship's its block's read-out pairs, the global token's the map centre's; the map tables
+    are the exact ones."""
     net = cases.double(cases.model(order="temporal_first", rotary_readout=True))
     seen = []
     original = SpatialBlock.forward
@@ -166,9 +197,12 @@ def test_the_read_out_sets_the_hidden_ships_tables_and_visible_ships_keep_theirs
     offset = decisions.replay.offset[:, :, None, :]
     observed = truth(ships, decisions.replay.offset)
     true = net.phasors(observed[..., 0:2], observed[..., 4])  # (L, R, N, 2, pairs)
-    readout = unrolled.rotary_readout
-    assert readout.shape == true.shape
-    for token_tables, map_tables in seen:
+    readouts = unrolled.rotary_readout  # (L, R, N, blocks, 2, pairs)
+    blocks, per_block = net.config.blocks, net.config.spatial_per_block
+    assert readouts.shape == (*true.shape[:-2], blocks, *true.shape[-2:])
+    assert not torch.equal(readouts[..., 0, :, :], readouts[..., 1, :, :])
+    for index, (token_tables, map_tables) in enumerate(seen):
+        readout = readouts[..., index // per_block, :, :]
         assert all(torch.equal(a, b) for a, b in zip(map_tables, exact_map, strict=True))
         cos, sin = (table[..., 0, :] for table in token_tables)  # (L, R, Q, pairs)
         pairs = torch.stack([cos[..., :-1, :], sin[..., :-1, :]], -2)
@@ -191,7 +225,8 @@ def test_the_read_out_enters_the_tables_detached(segment):
         decisions, _ = cases.step_loop(net, net.step, carry, obs, cases.joint_actions(segment))
     unrolled = net.unroll(carry, obs, decisions.replay, cases.resets(obs))
     unrolled.policy_logits.sum().backward()
-    assert net.rotary_readout.weight.grad is None or not net.rotary_readout.weight.grad.any()
+    for head in net.rotary_readout:
+        assert head.weight.grad is None or not head.weight.grad.any()
     assert net.trunk.blocks[0].temporal.output.weight.grad.abs().sum() > 0
 
 
@@ -234,4 +269,5 @@ def test_a_policy_file_keeps_the_order_and_the_read_out(tmp_path):
     loaded = checkpoint.load_policy(tmp_path / "d", torch.device("cpu"))
     assert loaded.config == net.config
     assert loaded.config.order == "temporal_first" and loaded.config.rotary_readout
-    assert torch.equal(loaded.rotary_readout.weight, net.rotary_readout.weight)
+    for loaded_head, head in zip(loaded.rotary_readout, net.rotary_readout, strict=True):
+        assert torch.equal(loaded_head.weight, head.weight)

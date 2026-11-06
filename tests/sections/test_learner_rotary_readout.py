@@ -1,6 +1,7 @@
-"""The rotary read-out's loss term (temporal-first brief): its target is the true phasor of
-every living ship at t, it is zero when the read-out equals that target, and it appears in
-PPO's and BC's terms, the update's series and the gradient decomposition."""
+"""The rotary read-out's loss term (temporal-first and per-block read-out briefs): its target
+is the true phasor of every living ship at t, it is the mean over the blocks' read-outs of
+their squared pair error, zero when every read-out equals that target, and it appears in
+PPO's and BC's terms, the update's series (per block too) and the gradient decomposition."""
 
 import dataclasses
 import math
@@ -53,7 +54,7 @@ def _terms(learner, runner, prepared, label_change=None):
     return dict(zip(TERMS, terms.tolist())), trajectory, label, unrolled
 
 
-def test_the_term_is_the_mean_squared_pair_error_over_living_ships(segment):
+def test_the_term_is_the_blocks_mean_squared_pair_error_over_living_ships(segment):
     net, runner, learner, prepared = segment
     got, trajectory, label, unrolled = _terms(learner, runner, prepared)
     ships = torch.cat([trajectory.obs.ships[..., :OWN, :], trajectory.truth], -2)
@@ -69,20 +70,27 @@ def test_the_term_is_the_mean_squared_pair_error_over_living_ships(segment):
     target = torch.stack([angles.cos(), angles.sin()], -2)
     torch.testing.assert_close(label["rotary_readout"], target, rtol=0, atol=2e-4)
     alive = ships[..., SHIP["alive"]] > 0.5
-    error = (unrolled.rotary_readout - target).square().sum(-2).mean(-1)
-    assert math.isclose(got["rotary_readout"], error[alive].mean().item(), rel_tol=1e-4)
+    readouts = unrolled.rotary_readout  # (L, R, N, blocks, 2, pairs)
+    assert readouts.shape[-3] == net.config.blocks
+    per_block = [
+        (readouts[..., block, :, :] - target).square().sum(-2).mean(-1)[alive].mean().item()
+        for block in range(net.config.blocks)
+    ]
+    expected = sum(per_block) / len(per_block)
+    assert math.isclose(got["rotary_readout"], expected, rel_tol=1e-4)
     assert got["rotary_readout"] > 0
+    assert not math.isclose(per_block[0], per_block[1], rel_tol=1e-3)  # each its own head
 
 
-def test_the_term_is_zero_when_the_read_out_is_the_truth(segment, monkeypatch):
+def test_the_term_is_zero_when_every_read_out_is_the_truth(segment, monkeypatch):
     net, runner, learner, prepared = segment
     _, trajectory, label, _ = _terms(learner, runner, prepared)
     original = net.unroll
+    target = label["rotary_readout"][..., None, :, :]
+    truth_per_block = target.expand(*target.shape[:-3], net.config.blocks, *target.shape[-2:])
 
     def truthful(*args, **kwargs):
-        return dataclasses.replace(
-            original(*args, **kwargs), rotary_readout=label["rotary_readout"]
-        )
+        return dataclasses.replace(original(*args, **kwargs), rotary_readout=truth_per_block)
 
     monkeypatch.setattr(net, "unroll", truthful)
     got, *_ = _terms(learner, runner, prepared)
@@ -99,6 +107,9 @@ def test_the_update_reports_the_term_its_slices_and_its_gradient(segment):
     assert out["rotary_readout/loss"] > 0
     for name in ("ally", "enemy_visible", "enemy_hidden"):
         assert math.isfinite(out[f"rotary_readout/error/{name}"])
+    blocks = [out[f"rotary_readout/error/block_{k}"] for k in range(net.config.blocks)]
+    assert all(math.isfinite(value) and value > 0 for value in blocks)
+    assert f"rotary_readout/error/block_{net.config.blocks}" not in out
     lengths = [
         value for key, value in out.items() if key.startswith("rotary_readout/hidden_length/")
     ]
