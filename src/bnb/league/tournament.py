@@ -15,7 +15,11 @@ a few players, which anchor the scale for the others through their games.
 """
 
 import dataclasses
+import datetime
+import json
 import math
+import os
+import pathlib
 import time
 from collections.abc import Callable
 
@@ -73,6 +77,11 @@ def allowed_pairs(names: list[str], anchor_partners: tuple[str, ...] | None = No
     return allowed
 
 
+def report(line: str) -> None:
+    """The tournament's default log: a line to stdout, flushed (a run's log is a file)."""
+    print(line, flush=True)
+
+
 def _connected(allowed: torch.Tensor, anchor: int) -> bool:
     """Whether every player reaches the anchor through allowed pairs."""
     reached = torch.zeros(allowed.shape[0], dtype=torch.bool)
@@ -84,27 +93,77 @@ def _connected(allowed: torch.Tensor, anchor: int) -> bool:
         reached = grown
 
 
+def _add(wins, pair_games, matchups, results) -> int:
+    """Add a batch's results (a block's first player's (wins, ties, losses)) to the wins and
+    the pair games; returns its games."""
+    played = 0
+    for (first, second), (won, tied, lost) in zip(matchups, results, strict=True):
+        wins[first, second] += won + tied / 2
+        wins[second, first] += lost + tied / 2
+        games = won + tied + lost
+        pair_games[first, second] += games
+        pair_games[second, first] += games
+        played += games
+    return played
+
+
+def _append(record: pathlib.Path, entry: dict) -> None:
+    """One JSON line appended to `record`, flushed and synced to disk."""
+    record.parent.mkdir(parents=True, exist_ok=True)
+    with record.open("a") as file:
+        file.write(json.dumps(entry) + "\n")
+        file.flush()
+        os.fsync(file.fileno())
+
+
+def _replay(record: pathlib.Path, names: list[str], wins, pair_games) -> tuple[int, int, list]:
+    """The batches a record holds, added to the wins and the pair games: (batches, games,
+    the batch seconds). Its field must be `names`."""
+    batches, played, seconds = 0, 0, []
+    for line in record.read_text().splitlines():
+        entry = json.loads(line)
+        if [row["player"] for row in entry["ratings"]] != names:
+            raise ValueError(f"{record} rates another field; move it aside to start over")
+        index = {name: number for number, name in enumerate(names)}
+        matchups = [(index[first], index[second]) for first, second in entry["matchups"]]
+        played += _add(wins, pair_games, matchups, entry["results"])
+        batches += 1
+        seconds.append(entry["seconds"])
+    return batches, played, seconds
+
+
 def fit_field(
     play: Callable[[list[tuple[int, int]]], torch.Tensor],
-    count: int,
+    names: list[str],
     anchor: int,
     allowed: torch.Tensor,
     config: TournamentConfig,
-    log: Callable[[str], None] = print,
+    log: Callable[[str], None] = report,
     label: str = "",
+    record: pathlib.Path | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """The tournament's batches over a field of `count` players: `play` plays one batch
-    (a pair per block, first player and second) and gives each block's (wins, ties,
-    losses) from its first player's side. Returns the ratings (K,) with the anchor at 0,
-    their standard errors (K,) and the games of each pair (K, K)."""
+    """The tournament's batches over a field of players `names`: `play` plays one batch (a
+    pair per block, first player and second) and gives each block's (wins, ties, losses)
+    from its first player's side. Returns the ratings (K,) with the anchor at 0, their
+    standard errors (K,) and the games of each pair (K, K).
+
+    record: a JSON-lines file of the batches, one line appended (and synced) after each:
+    its index, the blocks' matchups and results, the games so far, every player's rating
+    and standard error, the worst error, the batch's seconds and the wall time. A record
+    that exists already is read first, and the tournament goes on from its games."""
     if not _connected(allowed, anchor):
         raise ValueError("every player must reach the scripted agent through allowed pairs")
-    arena = config.arena
+    arena, count = config.arena, len(names)
     wins = torch.zeros((count, count), dtype=torch.float64)
     pair_games = torch.zeros((count, count), dtype=torch.float64)
-    ratings = torch.zeros(count, dtype=torch.float64)
-    played = 0
-    while True:
+    batches, played, seconds = 0, 0, []
+    if record is not None and record.exists():
+        batches, played, seconds = _replay(record, names, wins, pair_games)
+        log(f"{label}: resumed from {record}: {batches} batches, {played} games")
+    ratings, stderr = fit_ratings(wins, anchor, PRIOR_GAMES)
+    while batches == 0 or (
+        float(stderr.max()) >= config.target_stderr and played + arena.games <= config.budget
+    ):
         started = time.perf_counter()
         matchups = allocate_blocks(
             pair_games,
@@ -115,23 +174,37 @@ def fit_field(
             allowed,
             PRIOR_GAMES,
         )
-        results = play(matchups)
-        for (first, second), (won, tied, lost) in zip(matchups, results.tolist(), strict=True):
-            wins[first, second] += won + tied / 2
-            wins[second, first] += lost + tied / 2
-            games = won + tied + lost
-            pair_games[first, second] += games
-            pair_games[second, first] += games
-            played += games
+        results = play(matchups).tolist()
+        played += _add(wins, pair_games, matchups, results)
         ratings, stderr = fit_ratings(wins, anchor, PRIOR_GAMES)
+        seconds.append(time.perf_counter() - started)
         worst = float(stderr.max())
-        seconds = time.perf_counter() - started
+        if record is not None:
+            _append(
+                record,
+                dict(
+                    batch=batches,
+                    matchups=[[names[first], names[second]] for first, second in matchups],
+                    results=results,
+                    games=played,
+                    ratings=[
+                        dict(player=name, rating=float(ratings[i]), stderr=float(stderr[i]))
+                        for i, name in enumerate(names)
+                    ],
+                    worst_stderr=worst,
+                    seconds=seconds[-1],
+                    wall_time=datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
+                ),
+            )
+        batches += 1
+        left = (config.budget - played) // arena.games  # an upper bound: the error may stop it
+        mean = sum(seconds) / len(seconds)
         log(
-            f"{label}: {played} games, the largest standard error {worst:.1f} "
-            f"(the batch took {seconds:.0f} s)"
+            f"{label}: batch {batches}, {played} games, the largest standard error {worst:.1f} "
+            f"(the batch took {seconds[-1]:.0f} s); at most {left} batches left, "
+            f"{left * mean / 60:.0f} min at {mean:.0f} s a batch"
         )
-        if worst < config.target_stderr or played + arena.games > config.budget:
-            return ratings, stderr, pair_games
+    return ratings, stderr, pair_games
 
 
 def rate(
@@ -139,23 +212,31 @@ def rate(
     preset: str,
     device: torch.device,
     config: TournamentConfig = TournamentConfig(),
-    log: Callable[[str], None] = print,
+    log: Callable[[str], None] = report,
     game: GameConfig | None = None,
     allowed: torch.Tensor | None = None,
+    record: pathlib.Path | None = None,
 ) -> list[dict]:
     """The field's ratings in one game preset (`game`: its config, PRESETS[preset] by
     default): a row per player (its name, `calibrated_elo`, its standard error and its
     games) plus the leaderboard's key. The field must hold the scripted agent, the
     anchor; allowed (K, K) bool: who may play whom (`allowed_pairs`; every pair by
-    default)."""
+    default); record: the batches' record (`fit_field`). The engine is built at the first
+    batch, so a finished record plays nothing."""
     game = PRESETS[preset] if game is None else game
     names = [p.name for p in players]
     if ANCHOR not in names:
         raise ValueError("the field needs the scripted agent: it anchors the ratings at 1000")
     allowed = allowed_pairs(names) if allowed is None else allowed
-    arena = Arena(players, game, device, config.arena)
+    arenas: list[Arena] = []
+
+    def play(matchups: list[tuple[int, int]]) -> torch.Tensor:
+        if not arenas:
+            arenas.append(Arena(players, game, device, config.arena))
+        return arenas[0].play(matchups)
+
     ratings, stderr, pair_games = fit_field(
-        arena.play, len(players), names.index(ANCHOR), allowed, config, log, preset
+        play, names, names.index(ANCHOR), allowed, config, log, preset, record
     )
     key = dict(
         game_version=GAME_VERSION, mode=game.mode, map=preset, fleet_size=game.ships_per_team

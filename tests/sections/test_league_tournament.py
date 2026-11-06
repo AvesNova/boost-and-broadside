@@ -2,6 +2,7 @@
 allocation of its blocks, the allowed pairs, the tournament's anchor, stopping rule and
 recovery of a known field, and head-to-head's report, on a small 2v2 game on the CPU."""
 
+import json
 import math
 
 import pytest
@@ -213,7 +214,7 @@ def test_every_player_must_reach_the_anchor():
     allowed[0, 1] = allowed[1, 0] = True  # player 2 plays no one
     config = tournament.TournamentConfig(SMALL, budget=SMALL.games)
     with pytest.raises(ValueError, match="reach the scripted agent"):
-        tournament.fit_field(lambda matchups: None, 3, 0, allowed, config)
+        tournament.fit_field(lambda matchups: None, ["scripted", "a", "b"], 0, allowed, config)
 
 
 # ---- the tournament
@@ -245,11 +246,59 @@ def test_the_tournament_recovers_a_known_field():
     generator = torch.Generator().manual_seed(3)
     logged = []
     ratings, stderr, pair_games = tournament.fit_field(
-        _bradley_terry(truth, 32, generator), 6, 0, allowed, config, logged.append, "test"
+        _bradley_terry(truth, 32, generator), names, 0, allowed, config, logged.append, "test"
     )
     assert float(stderr.max()) < 30.0 and len(logged) < 40_000 // 256
     assert float(pair_games[0, 3:].sum()) == 0.0  # the scripted agent played only a and b
     assert ((ratings - truth).abs() <= 4.0 * stderr + 1e-9).all(), (ratings, stderr)
+
+
+def test_each_batch_is_recorded_and_a_tournament_resumes_from_its_record(tmp_path):
+    truth = torch.tensor([0.0, 120.0, -200.0, 350.0], dtype=torch.float64)
+    names = ["scripted", "a", "b", "c"]
+    allowed = tournament.allowed_pairs(names, ("a",))
+    layout = ArenaConfig(blocks=4, block_environments=16)
+    record = tmp_path / "frontline.batches.jsonl"
+
+    def fit(budget, seed):
+        config = tournament.TournamentConfig(layout, target_stderr=1.0, budget=budget)
+        play = _bradley_terry(truth, 16, torch.Generator().manual_seed(seed))
+        logged = []
+        fitted = tournament.fit_field(play, names, 0, allowed, config, logged.append, "f", record)
+        return fitted, logged
+
+    (ratings, stderr, pair_games), logged = fit(3 * 64, 1)
+    lines = [json.loads(line) for line in record.read_text().splitlines()]
+    assert [line["batch"] for line in lines] == [0, 1, 2] and lines[-1]["games"] == 192
+    assert [row["player"] for row in lines[-1]["ratings"]] == names
+    assert lines[-1]["ratings"][3]["rating"] == pytest.approx(float(ratings[3]))
+    assert lines[-1]["worst_stderr"] == pytest.approx(float(stderr.max()))
+    assert all(len(line["matchups"]) == len(line["results"]) == 4 for line in lines)
+    assert "at most 0 batches left" in logged[-1]
+    # a larger budget goes on from the record: its games kept, two batches more
+    (_, _, resumed), logged = fit(5 * 64, 2)
+    assert "resumed" in logged[0] and len(record.read_text().splitlines()) == 5
+    assert float(resumed.sum()) == 2 * 5 * 64
+    assert ((resumed - pair_games) >= 0).all()
+    # a finished record plays nothing more
+    (_, _, again), _ = fit(5 * 64, 3)
+    assert torch.equal(again, resumed)
+    with pytest.raises(ValueError, match="another field"):
+        tournament.fit_field(
+            lambda matchups: None,
+            ["scripted", "a", "b", "d"],
+            0,
+            allowed,
+            tournament.TournamentConfig(layout, budget=64),
+            record=record,
+        )
+
+
+def test_a_batch_that_outruns_the_game_clock_raises():
+    arena = Arena([SCRIPTED, RANDOM], GAME, CPU, SMALL)
+    arena.tick_limit = 0  # as if every game outlived its clock
+    with pytest.raises(RuntimeError, match="never ends"):
+        arena.play([(0, 1), (1, 0)])
 
 
 def test_the_tournament_pins_the_scripted_agent_at_1000_and_stops_on_its_budget():

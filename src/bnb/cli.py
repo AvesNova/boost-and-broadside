@@ -177,6 +177,9 @@ class Ratings:
     1000). league: the run's `league/` policies (else only `--with`'s players and the
     ladder). scripted_plays: the only players the scripted agent plays (by the names given;
     all by default). out: the directory whose `artifacts/ratings/` the result goes to.
+    Each preset's batches are recorded as they end in `<preset>.batches.jsonl`, in `--out`
+    (else the run's `artifacts/ratings/`), and a tournament that finds its record goes on
+    from it (move it aside to start over).
     """
 
     run: tyro.conf.Positional[str]
@@ -884,10 +887,13 @@ def ratings(options: Ratings) -> None:
     except ValueError as error:
         raise SystemExit(str(error)) from error
     device = torch.device(options.device)
+    owner = run.directory if options.out is None else pathlib.Path(options.out)
+    records_directory = run.directory / "artifacts" / "ratings" if options.out is None else owner
     rows = []
     try:
         for preset in options.presets:
-            rows += tournament.rate(field, preset, device, config, allowed=allowed)
+            record = records_directory / f"{preset}.batches.jsonl"
+            rows += tournament.rate(field, preset, device, config, allowed=allowed, record=record)
     except ValueError as error:
         raise SystemExit(str(error)) from error
     for row in sorted(rows, key=lambda row: (row["map"], -row["calibrated_elo"])):
@@ -901,7 +907,6 @@ def ratings(options: Ratings) -> None:
         config=dataclasses.asdict(config),
         scripted_plays=options.scripted_plays,
     )
-    owner = run if options.out is None else pathlib.Path(options.out)
     print(provenance.write_result(owner, "ratings", payload, inputs))
 
 

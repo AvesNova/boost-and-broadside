@@ -371,6 +371,8 @@ class Arena:
         )
         # environment i seats its block's first player on team i mod 2
         self.seats = torch.arange(config.games, device=device) % 2
+        # every first game ends by its clock; the margin covers the segment it ends in
+        self.tick_limit = int(self.rollout.episode_ticks.max()) + 2 * config.length
 
     def _load(self, slot: int, index: int) -> None:
         play = scripted_play(self.players[index])
@@ -382,7 +384,8 @@ class Arena:
     def play(self, matchups: list[tuple[int, int]]) -> torch.Tensor:
         """One batch: block b plays `matchups[b]` (its first player, its second; indices into
         the players), every block's games to their end. (blocks, 3) int64: each block's first
-        player's wins, ties and losses."""
+        player's wins, ties and losses. Raises RuntimeError if a game runs past the game
+        clock (plus a margin) without ending."""
         if len(matchups) != self.config.blocks:
             raise ValueError(f"{len(matchups)} matchups for {self.config.blocks} blocks")
         for block, (first, second) in enumerate(matchups):
@@ -393,9 +396,14 @@ class Arena:
         self.rollout.restart()
         self.rollout.carry["seat"].copy_(self.seats)
         counts = torch.zeros(self.config.blocks * len(OUTCOMES), dtype=torch.int64)
-        while True:
+        ticks = 0
+        while not self.seat.finished(self.rollout.carry["controllers"][SEAT]):
+            if ticks > self.tick_limit:
+                raise RuntimeError(
+                    f"the batch's games have run {ticks} ticks, past the game clock's "
+                    f"{int(self.rollout.episode_ticks.max())}: a game that never ends"
+                )
             self.rollout.run()
+            ticks += self.config.length
             counts += self.rollout.take_tally(SEAT)
-            if self.seat.finished(self.rollout.carry["controllers"][SEAT]):
-                break
         return counts.reshape(self.config.blocks, len(OUTCOMES))

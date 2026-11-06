@@ -1,9 +1,9 @@
 # League equivalence fixtures (section 8)
 
 Goldens computed in float64 on the CPU from v1's own rating code at tag `v1-torch-final`,
-on simulated match records:
-- the Bradley–Terry fit with standard errors;
-- the offline A-optimal game allocation.
+on simulated match records: the Bradley–Terry fit with standard errors. (v1's offline
+game allocation, `allocate`, was retired on 2026-11-06 with its golden: the tournament now
+gives whole blocks of games to pairs, `bnb.league.ratings.allocate_blocks`.)
 
 Opponent sampling, snapshots and the pool are tested by the section's own tests.
 
@@ -33,10 +33,3 @@ Opponent sampling, snapshots and the pool are tested by the section's own tests.
     which keeps a clean sweep finite.
   - The standard errors come from the inverse Fisher information with the anchor's row
     and column removed; the anchor's is 0.
-- **`allocate(pair_games, ratings, anchor, budget, minimum_per_pair)`** returns a `(K, K)`
-  symmetric integer matrix: how many of `budget` games each pair plays.
-  - The share is each pair's A-optimal value: how much one more game would reduce the
-    summed rating variance, with the anchor's gauge imposed.
-  - Shares are floored, then raised to at least `minimum_per_pair`. The remainder goes
-    to the pairs with the largest shares, one each.
-  - With no games yet, the budget is spread evenly over pairs.

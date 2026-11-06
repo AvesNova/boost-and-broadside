@@ -213,6 +213,15 @@ one controller (`bnb.league.matches.MatchSeat`):
 - The leaderboard rows (`calibrated_elo`) are keyed by game version, mode, map and fleet
   size, with the standard error and the games behind each. They are written to the run's
   `artifacts/ratings/` with the inputs' hashes.
+- **The record:** after each batch one JSON line is appended, and synced to disk, to
+  `<preset>.batches.jsonl` in `--out` (else the run's `artifacts/ratings/`): the batch's
+  index, its blocks' matchups and results, the games so far, every player's rating and
+  standard error, the worst error, the batch's seconds and the wall time. A tournament
+  that finds its preset's record rebuilds the games from it and goes on; a finished one
+  plays nothing. Each batch also logs a line with the batches left before the budget (an
+  upper bound: the errors may stop it first) and their time at the mean batch's.
+- **A guard:** a batch whose games run past the game clock's ticks (plus two segments)
+  raises rather than playing on.
 
 <!-- not-runnable: needs CUDA and a run -->
 ```bash
