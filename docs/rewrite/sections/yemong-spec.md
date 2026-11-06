@@ -305,6 +305,10 @@ It is a pytree of tensors, so the runtime can store it, `copy_` it and capture i
    - where valid, means and spreads become the prediction's;
    - `action = softmax(enemy-action logits)` for every row. Only enemy rows are read
      later. Before any forecast exists, the action is uniform.
+
+   With `YemongConfig.forecast_feedback` off there is no advance: the belief stays as
+   step 2 left it, so a hidden ship keeps its last sighting (spreads 0), its age counts
+   on, the action stays uniform and the non-finite counter stays 0.
 6. **Act:** the controller samples the joint action (Gumbel-max), and the previous action
    becomes the sample.
 
