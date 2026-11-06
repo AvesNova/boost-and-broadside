@@ -4,8 +4,10 @@ drains, the gauges, the averages and the snapshots, attached to a trainer as its
 Per shard (`after_shard`): read the shard's results by entry and mode; end a finished
 drain; begin the next one (one slot at a time, round robin), drawing its entry from the
 sampling weights. Before learning (`collected`): when a snapshot is due, keep the weights
-that played this update. After learning (`updated`): each mode's gauge, the new snapshot and
-the retention, the averages, the next sampling weights, and the metrics.
+that played this update. After learning (`updated`): the new snapshot and the retention, the
+run's ratings from the update's games (the lanes' and these, `bnb.league.lanes.RunRatings`)
+and each mode's gauge from them, the averages (which the slots holding them follow), the
+next sampling weights, and the metrics.
 
 A slot's entry is drawn from the modes' sampling weights mixed by the modes' shares of the
 opponent rows (a slot plays every mode); a ladder row draws its rung in the graph, from its
@@ -25,7 +27,7 @@ import torch
 from bnb.contracts.series import Table
 from bnb.runs import checkpoint
 from bnb.runs.records import Run
-from bnb.runtime.lanes import LIVE, league_slot
+from bnb.runtime.lanes import UNIFORM_AVERAGE, league_slot
 from bnb.runtime.opponents import (
     LADDER_KIND,
     NETWORK,
@@ -38,7 +40,7 @@ from bnb.runtime.opponents import (
 from bnb.runtime.train import Trainer
 
 from .gauge import Gauge, Record, gauge_rating
-from .lanes import AVERAGE, LaneRatings
+from .lanes import RunRatings
 from .pool import (
     AVERAGES,
     Averages,
@@ -65,8 +67,9 @@ class League:
     snapshot cadence; state: a training checkpoint's league state
     (`bnb.runs.checkpoint.league_state`) to continue from; ratings: the live policy's
     starting rating per mode (a warm start's parent's; 0 where not given). Attaching it sets
-    the trainer's hooks; without a state it fills every slot with a draw. With rating lanes
-    (`bnb.league.lanes`) the live and averaged ratings and the ladder's are the lanes'."""
+    the trainer's hooks; without a state it fills every slot with a draw. Every rating is
+    the run's one fit (`ratings`, `bnb.league.lanes.RunRatings`) of the rating lanes' games,
+    where the run has lanes, and the league's own."""
 
     def __init__(
         self,
@@ -94,9 +97,9 @@ class League:
         self.started: float | None = None
         self.record = self._empty_record()
         self.lane_seat = trainer.lane_seat
-        self.lanes = None
-        if trainer.lanes:
-            self.lanes = LaneRatings(trainer, None if state is None else state[0]["lanes"])
+        self.ratings = RunRatings(
+            trainer, None if state is None else state[0]["ratings"], modes=self.modes
+        )
         if state is None:
             self._start(trainer, ratings or {})
         else:
@@ -200,11 +203,17 @@ class League:
             return self.averages.weights[entry.name]
         return self.snapshots[entry.name]
 
+    def _distinct(self, entry: Entry) -> bool:
+        """Whether `entry` plays other than the live weights: not the uniform average before
+        it has started (until then it is the live weights, and its games self-play)."""
+        return entry.name != UNIFORM_AVERAGE or self.averages.uniform_started
+
     def _load_lanes(self, fresh: bool = True) -> None:
         """The averages' weights into the lanes that play them, and each network slot's
-        entry into its lane player (`league_<k>`) where the slot took another: a snapshot,
-        which the lanes rate; an average or a ladder entry they leave unrated. fresh: games
-        in progress were played by the previous entry (`LaneSeat.load`)."""
+        entry into its lane player (`league_<k>`): a snapshot or an average, which the lanes
+        rate as that entry (an average's weights moving on with it); a ladder entry, which
+        they leave unrated. fresh: games in progress were played by the previous entry
+        (`LaneSeat.load`)."""
         if self.lane_seat is None:
             return
         for name, weights in self.averages.weights.items():
@@ -212,10 +221,18 @@ class League:
         for slot in range(self.config.slots):
             name = self.held[slot]
             entry = self.entries.get(name) if name is not None else None
-            if entry is not None and entry.kind == "checkpoint" and name in self.snapshots:
-                self.lanes.assign(league_slot(slot), name, self.snapshots[name], fresh)
-            elif self.lanes.holders.get(league_slot(slot)) != name:
-                self.lanes.assign(league_slot(slot), None, None)
+            if entry is not None and entry.network and self._distinct(entry):
+                self.ratings.assign(league_slot(slot), name, self._weights_of(entry), fresh)
+            else:
+                self.ratings.assign(league_slot(slot), None, None)
+
+    def _follow_averages(self) -> None:
+        """Each set holding an average (a slot's, or the incoming entry's) takes its new
+        weights, as the lanes' averages do: an average is one moving player."""
+        for set_index, name in enumerate(self.held):
+            entry = self.entries.get(name) if name is not None else None
+            if entry is not None and entry.kind == "average":
+                self.opponents.load(set_index, self.averages.weights[name])
 
     def _load(self, set_index: int, entry: Entry) -> None:
         if entry.network:
@@ -268,28 +285,26 @@ class League:
 
     @torch.no_grad()
     def updated(self, trainer: Trainer) -> dict:
-        """The gauges, the snapshot and retention, the averages and the next weights, after
-        the update's learning. Returns the league's metrics."""
+        """The snapshot and retention, the ratings and the gauges, the averages and the next
+        weights, after the update's learning. Returns the league's metrics."""
         steps = trainer.ppo.environment_steps
-        if self.lanes is not None:
-            self.lanes.update(trainer.lane_record)
-        for mode, gauge in self.gauges.items():
-            if self.lanes is None:
-                gauge.update(self.record[mode])
-                continue
-            rated = self.lanes.ratings.get(mode, {})
-            gauge.calibrate(
-                {entry.name: rated[entry.name] for entry in self.ladder if entry.name in rated}
-            )
-            gauge.update(
-                self.record[mode],
-                live=rated.get(LIVE),
-                rated={name: rated[name] for name in AVERAGES if name in rated},
-            )
+        snapshot = None
         if self.pending is not None:
-            self._snapshot(trainer, steps, self.pending)
+            snapshot = self._snapshot(trainer, steps, self.pending)
             self.pending = None
+        games = {
+            mode: {
+                name: record
+                for name, record in records.items()
+                if name not in self.entries or self._distinct(self.entries[name])
+            }
+            for mode, records in self.record.items()
+        }
+        self.ratings.update(trainer.lane_record, games, snapshot)
+        for mode, gauge in self.gauges.items():
+            gauge.update(self.ratings.ratings.get(mode, {}))
         self.averages.fold(trainer.model.state_dict(), steps)
+        self._follow_averages()
         self._load_lanes()
         self._weigh()
         metrics = self.metrics()
@@ -310,14 +325,15 @@ class League:
                 self.run.update(snapshot_every=self.snapshot_every)
         self.started = now
 
-    def _snapshot(self, trainer: Trainer, steps: int, weights: dict[str, torch.Tensor]) -> None:
+    def _snapshot(self, trainer: Trainer, steps: int, weights: dict[str, torch.Tensor]) -> str:
+        """A snapshot of `weights` (the ones that played this update) into the pool, and the
+        retention after it; returns its name."""
         name = snapshot_name(steps)
         self.entries[name] = Entry(name, "checkpoint", steps=steps, ordinal=self.ordinal)
         self.ordinal += 1
         self.snapshots[name] = weights
-        for mode, gauge in self.gauges.items():
-            gauge.add(name, "checkpoint")  # at this update's live rating
-            gauge.credit(name, self.record[mode])
+        for gauge in self.gauges.values():
+            gauge.add(name, "checkpoint")  # at the live rating, until the fit rates it
         self._write(trainer, steps, weights)
         ordinals = {e.ordinal: e.name for e in self.entries.values() if e.kind == "checkpoint"}
         for ordinal in set(ordinals) - retained(set(ordinals)):
@@ -328,6 +344,7 @@ class League:
             path = self.directory / SNAPSHOT_DIRECTORY.format(steps=dropped.steps)
             if path.exists():
                 shutil.rmtree(path)
+        return name
 
     def _write(self, trainer: Trainer, steps: int, weights: dict[str, torch.Tensor]) -> None:
         """The snapshot and the averages at this step as policy files under
@@ -350,28 +367,20 @@ class League:
 
     def metrics(self) -> dict:
         """The league's series of this update (diagnostics audit, group 20), on the host.
-        Per mode: the live and averaged ratings (`rating/live`, `rating/average` and their
-        standard errors: the lanes', `bnb.league.lanes.LaneRatings.series`, or without lanes
-        the gauge's), the training games that the gauge read and the sampling distribution's
-        normalised entropy. By
-        opponent kind (`entry_kind`): the live policy's score and its share of the games.
-        The pool's size, its snapshots and whether a slot is draining; and `pool/entries`,
-        a table of every entry per mode (rating, error, sampling share, games, score, and
-        the slot holding it: the network slots in order, then the incoming one), as
-        JSON (`bnb.contracts.series.Table.as_json`)."""
+        Per mode: the run's ratings (`rating/live`, `rating/average` and every rated player's,
+        with their standard errors: `bnb.league.lanes.RunRatings.series`), the update's
+        training games against the entries and the sampling distribution's normalised
+        entropy. By opponent kind (`entry_kind`): the live policy's score and its share of
+        the games. The pool's size, its snapshots and whether a slot is draining; and
+        `pool/entries`, a table of every entry per mode (rating, error, sampling share,
+        games, score, and the slot holding it: the network slots in order, then the
+        incoming one), as JSON (`bnb.contracts.series.Table.as_json`)."""
         out: dict = {}
         games_by_kind = dict.fromkeys(ENTRY_KINDS, 0.0)
         points_by_kind = dict.fromkeys(ENTRY_KINDS, 0.0)
         rows = []
-        if self.lanes is not None:
-            out.update(self.lanes.series())
+        out.update(self.ratings.series())
         for mode, gauge in self.gauges.items():
-            if self.lanes is None:  # without lanes, the gauge's own estimates
-                out[f"rating/live/{mode}"] = gauge.live.rating  # the last finite value
-                out[f"rating/live_stderr/{mode}"] = gauge.live.stderr
-                average = gauge.entries[AVERAGE]
-                out[f"rating/average/{mode}"] = average.reported
-                out[f"rating/average_stderr/{mode}"] = average.stderr
             weights = self.weights[mode].tolist()
             out[f"pool/sampling_entropy/{mode}"] = normalised_entropy(weights)
             window = 0.0
@@ -386,7 +395,7 @@ class League:
                     window += played
                 slot = self.held.index(name) if name in self.held else None
                 rows.append(
-                    (mode, name, kind, rated.reported, rated.stderr, share, played, score, slot)
+                    (mode, name, kind, rated.rating, rated.stderr, share, played, score, slot)
                 )
             out[f"rating/window_games/{mode}"] = window
         total = sum(games_by_kind.values())
@@ -429,7 +438,7 @@ class League:
             held=list(self.held),
             mixed=self.mixed.tolist(),
             weights={mode: weights.tolist() for mode, weights in self.weights.items()},
-            lanes=None if self.lanes is None else self.lanes.state(),
+            ratings=self.ratings.state(),
         )
         tensors = self.averages.tensors()
         for name, weights in self.snapshots.items():

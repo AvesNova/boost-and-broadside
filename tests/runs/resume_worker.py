@@ -175,14 +175,12 @@ def main() -> None:
         if damage == ["draws"]:
             league.swaps = 0
         if damage == ["lanes"]:
-            lanes = league.ratings if cloned else league.lanes
-            lanes.whole.clear()
-            lanes.recent.clear()
-        if damage == ["gauges"]:
+            league.ratings.whole.clear()
+            league.ratings.recent.clear()
+        if damage == ["gauges"]:  # the entries the fit has not rated hold the damage
             for gauge in league.gauges.values():
-                gauge.wins.clear()
-                for window in gauge.windows.values():
-                    window.clear()
+                for rated in gauge.entries.values():
+                    rated.rating += 400.0
     else:
         trainer = Trainer(settings, device)
         trainer.triggers = Triggers(objective=objective)

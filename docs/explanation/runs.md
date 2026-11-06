@@ -66,7 +66,7 @@ other languages read it.
   entries, gauges, sampling state, and the averages' and snapshots' weights), every random
   generator, the rollout carry (the game state, every controller's carry, the seats, the
   reward ledger), the step counters, the trigger rules' state and, for a BC run, the stop
-  rule's (its score window, the KL's average and its history). The rating lanes' record is
+  rule's (its score window, the KL's average and its history). The ratings' record is
   part of the league's state (a BC run's, of its lanes' hooks). The carry saved is the state
   after the update's lookahead, where the next update begins. `bnb.runs.checkpoint.load_policy`
   reads the policy part of either kind.

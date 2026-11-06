@@ -28,7 +28,15 @@ from bnb.contracts.tree import contract
 from bnb.controllers.scripted import Scripted
 from bnb.game.handling.characteristics import Characteristics
 
-from .opponents import LADDER, OUTCOMES, SCRIPTED_PLAYER, Rung, ladder_name, ladder_rung
+from .opponents import (
+    LADDER,
+    OUTCOMES,
+    SCRIPTED_PLAYER,
+    Rung,
+    ladder_name,
+    ladder_rung,
+    whole_game_begins,
+)
 
 LANES = "lanes"  # the lanes' controller name
 LIVE = "live"  # the player the learner trains
@@ -340,8 +348,8 @@ class LaneSeat:
             )
             action = action.index_copy(0, rows, ladder_action.packed())
         generation = self.generation[self.player_generation]
-        # a game that began before the row's first tick is the first one, cut short
-        started = torch.where(reset & carry.stepped, generation, carry.started)
+        # the row's first game, cut short, keeps -1 (`whole_game_begins`)
+        started = torch.where(whole_game_begins(reset, carry.stepped), generation, carry.started)
         carry = LaneCarry(
             model=model_carry,
             started=started,

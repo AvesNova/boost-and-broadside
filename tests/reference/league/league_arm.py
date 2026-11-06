@@ -12,8 +12,5 @@ from bnb.league import ratings
 def make_arm():
     return types.SimpleNamespace(
         fit_ratings=ratings.fit_ratings,
-        rate_against=ratings.rate_against,
-        fit_ladder=ratings.fit_ladder,
-        rate_live=ratings.rate_live,
         allocate=ratings.allocate,
     )

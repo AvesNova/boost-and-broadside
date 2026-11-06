@@ -1,24 +1,27 @@
-"""The ratings from the rating lanes (`bnb.runtime.lanes`): per mode, one Bradley-Terry fit of
-every lane player with the scripted agent pinned at 1000.
+"""The run's ratings: per mode, one Bradley-Terry fit of every game a rated player played,
+with the scripted agent pinned at 1000. The games are the rating lanes' (`bnb.runtime.lanes`)
+and, in a league, the training games of the live policy against the league's entries
+(`bnb.league.league.League`); a league without lanes is rated from its own games alone.
 
-Games are recorded by mode and by who played them. A lane names its players; a league slot
-(`league_<k>`) is resolved to the pool entry the lanes hold for it (`assign`: the league
-copies a slot's entry into the lanes when the slot takes it), so an entry keeps its games
-after it cycles out, and older entries, which played lower ones, chain the newer to the
-scripted agent. A game between two stationary players (the ladder's rungs, the league's
-snapshots) is kept for the whole run; one with a moving player (the live policy, an
-average) for its last `LaneConfig.window` updates. A player is rated once its games connect
-it to the scripted agent, so none is reported before its matchups have played, and an entry
-joins the fit as soon as its games connect it. The fit gives each player one prior game
-against the scripted agent, half won (`bnb.league.ratings.fit_ratings`), which keeps a sweep
-finite. A game in progress when a slot's weights change is left out
-(`bnb.runtime.lanes.LaneSeat.tally`).
+Games are recorded by mode and by who played them, under the league's entry names. A lane
+names its players; a league slot (`league_<k>`) is resolved to the entry the lanes hold for
+it (`assign`: the league copies a slot's network entry into the lanes when the slot takes
+it), so an entry keeps its games after it cycles out, and older entries, which played lower
+ones, chain the newer to the scripted agent. The league's games are the live policy's
+against each entry it played (`League.record`; self-play is not an entry), and a snapshot
+taken at an update is credited with that update's games too, since its weights played them.
+A game between two stationary players (the ladder's rungs, the league's snapshots) is kept
+for the whole run; one with a moving player (the live policy, an average) for its last
+`LaneConfig.window` updates. A player is rated once its games connect it to the scripted
+agent, so none is reported before its matchups have played, and an entry joins the fit as
+soon as its games connect it. The fit gives each player one prior game against the scripted
+agent, half won (`bnb.league.ratings.fit_ratings`), which keeps a sweep finite. A lane game
+in progress when a slot's weights change is left out (`bnb.runtime.lanes.LaneSeat.tally`).
 
 The live rating and the averaged agent's (the exponential average) of each mode are the
-series `rating/live/<mode>` and `rating/average/<mode>`, the uniform average's, where the
-lanes play it (behaviour cloning's do), `rating/uniform_average/<mode>`; every rated
-player's is `lanes/rating/<mode>/<player>`. The ladder's
-rungs, rated here from their own games, are the league's calibrated ladder.
+series `rating/live/<mode>` and `rating/average/<mode>`, the uniform average's
+`rating/uniform_average/<mode>`; every rated player's is `lanes/rating/<mode>/<player>`.
+The league's gauges (`bnb.league.gauge`) read every entry's rating from here.
 """
 
 import collections
@@ -37,6 +40,7 @@ from bnb.runtime.lanes import (
 from bnb.runtime.opponents import ladder_rung
 from bnb.runtime.train import Trainer
 
+from .gauge import Record
 from .pool import Averages
 from .ratings import fit_ratings
 
@@ -53,17 +57,20 @@ def stationary(player: str) -> bool:
     return ladder_rung(player) is not None or player.startswith(SNAPSHOT_PREFIX)
 
 
-class LaneRatings:
-    """The lanes' ratings of one run. trainer: its lanes, their seat and their games
-    (`Trainer.lane_record`, taken after each collection); state: `state()` of a checkpoint
-    to continue from. A league calls `assign` and `update`; without one, `LaneHooks` calls
-    `update`."""
+class RunRatings:
+    """The ratings of one run (see the module docstring). trainer: its lanes, their seat and
+    their games (`Trainer.lane_record`, taken after each collection); state: `state()` of a
+    checkpoint to continue from; modes: the league's modes, rated from its games with or
+    without lanes (the lanes' modes are rated in any case). A league calls `assign` and
+    `update` with its games; without one, `LaneHooks` calls `update`."""
 
-    def __init__(self, trainer: Trainer, state: dict | None = None) -> None:
+    def __init__(
+        self, trainer: Trainer, state: dict | None = None, modes: tuple[str, ...] = ()
+    ) -> None:
         self.lanes = trainer.lanes
         self.seat = trainer.lane_seat
         self.window = trainer.config.lanes.window
-        self.modes = tuple(dict.fromkeys(lane.mode for lane in self.lanes))
+        self.modes = tuple(dict.fromkeys((*(lane.mode for lane in self.lanes), *modes)))
         self.whole: dict[str, list[float]] = {}  # stationary players' games, by "mode|a|b"
         self.recent: collections.deque = collections.deque(maxlen=self.window)
         self.ratings: dict[str, dict[str, tuple[float, float]]] = {mode: {} for mode in self.modes}
@@ -87,32 +94,43 @@ class LaneRatings:
         fresh: bool = True,
     ) -> None:
         """The lanes' `player` (a league slot) now plays `entry` with `weights` (None: an
-        entry the lanes do not rate, such as a ladder entry or a moving average; its games
-        are left out). Nothing changes when it already does."""
-        if self.holders.get(player) == entry and entry is not None:
-            return
+        entry the lanes do not play, a ladder entry; its games are left out). A moving entry
+        (an average) it already plays takes its new weights as the same player's, the games
+        in progress tallied; a stationary one it already plays is left as it is. fresh: for
+        another entry, the games in progress were played by the previous one."""
+        same = self.holders.get(player) == entry and entry is not None
         self.holders[player] = entry
-        if weights is not None and self.seat is not None:
-            self.seat.load(player, weights, fresh=fresh)
+        if weights is None or self.seat is None or (same and stationary(entry)):
+            return
+        self.seat.load(player, weights, fresh=fresh and not same)
 
     def resolved(self, player: str) -> str | None:
-        """Who `player` is now: a league slot's entry (None: not rated), any other player
-        itself."""
+        """The fit's name for `player`, the one mapping of the lanes' players and the
+        league's entries onto it: a league slot is the entry the lanes hold for it (None:
+        not rated); any other lane player, and every league entry, is its own name."""
         if not player.startswith(LEAGUE_PREFIX):
             return player
         return self.holders.get(player)
 
     # ---- the update
 
-    def update(self, record: dict[Lane, tuple[int, int, int]]) -> None:
-        """Fold an update's lane games in (by the players that played them: the league
-        slots' entries as the lanes hold them now) and refit every mode."""
+    def update(
+        self,
+        record: dict[Lane, tuple[int, int, int]],
+        league: dict[str, dict[str, Record]] | None = None,
+        snapshot: str | None = None,
+    ) -> None:
+        """Fold an update's games in and refit every mode. record: the lanes' games, by the
+        players that played them (the league slots' entries as the lanes hold them now);
+        league: the live policy's training games against each league entry, by mode and
+        entry, from its side; snapshot: a snapshot taken at this update, whose weights
+        played the league's games as the live policy."""
         moving: dict[str, list[float]] = {}
-        for lane, games in record.items():
-            first, second = self.resolved(lane.matchup.first), self.resolved(lane.matchup.second)
-            if first is None or second is None:
-                continue
-            key = f"{lane.mode}|{first}|{second}"
+
+        def add(mode: str, first: str | None, second: str | None, games) -> None:
+            if first is None or second is None or first == second:
+                return  # an unrated slot, or a player against itself
+            key = f"{mode}|{first}|{second}"
             target = (
                 self.whole.setdefault(key, [0.0, 0.0, 0.0])
                 if stationary(first) and stationary(second)
@@ -120,6 +138,15 @@ class LaneRatings:
             )
             for index, count in enumerate(games):
                 target[index] += count
+
+        for lane, games in record.items():
+            first, second = self.resolved(lane.matchup.first), self.resolved(lane.matchup.second)
+            add(lane.mode, first, second, games)
+        for mode, entries in (league or {}).items():
+            for entry, games in entries.items():
+                outcomes = (games.wins, games.ties, games.losses)
+                for player in (LIVE, snapshot):
+                    add(mode, player, self.resolved(entry), outcomes)
         self.recent.append(moving)
         for mode in self.modes:
             self.ratings[mode] = self._fit(mode)
@@ -224,7 +251,7 @@ class LaneHooks:
     def __init__(
         self, trainer: Trainer, state: tuple[dict, dict[str, torch.Tensor]] | None = None
     ) -> None:
-        self.ratings = LaneRatings(trainer, None if state is None else state[0]["lanes"])
+        self.ratings = RunRatings(trainer, None if state is None else state[0]["ratings"])
         weights, config = trainer.model.state_dict(), trainer.config.league
         if state is None:
             self.averages = Averages(weights, config)
@@ -256,8 +283,8 @@ class LaneHooks:
         return self.ratings.series()
 
     def state(self) -> tuple[dict, dict[str, torch.Tensor]]:
-        """(the records as JSON under "lanes" and the uniform average's count under
+        """(the records as JSON under "ratings" and the uniform average's count under
         "averaged", the averages' weights as tensors)."""
-        return dict(lanes=self.ratings.state(), averaged=self.averages.count), (
+        return dict(ratings=self.ratings.state(), averaged=self.averages.count), (
             self.averages.tensors()
         )

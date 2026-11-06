@@ -1,13 +1,13 @@
 """The league's ratings (league spec 4, 6 and acceptance 2): recovery of known ratings from
-synthetic matches, the live gauge's two stages, the averages' window and sweeps."""
+synthetic matches, and the live gauge, which reads the run's fit and holds between fits."""
 
 import math
 
 import torch
 
-from bnb.league import gauge as gauges
-from bnb.league.gauge import Gauge, Record, gauge_rating
-from bnb.league.ratings import fit_ratings, rate_against, rate_live, win_probability
+from bnb.league.gauge import Gauge, gauge_rating
+from bnb.league.ratings import fit_ratings, win_probability
+from bnb.runtime.lanes import LIVE
 from bnb.runtime.opponents import Rung
 
 TRIALS = 200
@@ -25,19 +25,6 @@ def _results(rating: torch.Tensor, opponents: torch.Tensor, games: torch.Tensor,
     decided = games - tied
     wins = torch.binomial(decided, (probability - tie / 2) / (1.0 - tie), generator=generator)
     return wins, decided - wins, tied
-
-
-def test_the_live_rating_recovers_a_known_rating():
-    generator = torch.Generator().manual_seed(1)
-    opponents = torch.tensor([0.0, 200.0, 400.0, 600.0, 800.0, 1000.0, 1150.0], dtype=torch.float64)
-    games = torch.full((7,), 12.0, dtype=torch.float64)
-    covered = 0
-    for _ in range(TRIALS):
-        truth = torch.rand((), generator=generator, dtype=torch.float64) * 800.0 + 200.0
-        wins, losses, ties = _results(truth, opponents, games, generator)
-        rating, stderr = rate_live(opponents, wins, losses, ties)
-        covered += math.isfinite(rating) and abs(rating - float(truth)) < 2.0 * stderr
-    assert covered >= COVERAGE * TRIALS, covered
 
 
 def test_the_offline_fit_recovers_known_ratings():
@@ -70,98 +57,63 @@ def test_the_offline_fit_recovers_known_ratings():
 def _ladder_gauge() -> Gauge:
     gauge = Gauge()
     # the priors 1000 / T: random 0, T = 2 at 500, the scripted agent 1000
-    for name, temperature in (("0.0", math.inf), ("0.5", 2.0), ("1.0", 1.0)):
-        gauge.add(f"ladder/{name}", "ladder", gauge_rating(Rung(temperature)))
+    for name, temperature in (("random", math.inf), ("rung_T2", 2.0), ("scripted", 1.0)):
+        gauge.add(name, "ladder", gauge_rating(Rung(temperature)))
     return gauge
 
 
-def test_the_ladder_keeps_its_fixed_ratings():
+def test_the_ladder_holds_its_priors_until_the_fit_rates_it():
     gauge = _ladder_gauge()
-    gauge.update({"ladder/0.0": Record(wins=9), "ladder/0.5": Record(wins=5, losses=4)})
-    gauge.add("checkpoint/1", "checkpoint")
-    gauge.credit("checkpoint/1", {"ladder/0.0": Record(wins=9), "ladder/1.0": Record(losses=8)})
-    gauge.update({"ladder/1.0": Record(wins=3, losses=3)})
-    assert [gauge.entries[f"ladder/{p}"].rating for p in (0.0, 0.5, 1.0)] == [0.0, 500.0, 1000.0]
-    assert 0.0 < gauge.entries["checkpoint/1"].rating < 1000.0
+    assert [rated.rating for rated in gauge.entries.values()] == [0.0, 500.0, 1000.0]
+    gauge.update({"rung_T2": (640.0, 30.0), "scripted": (1000.0, 0.0), LIVE: (900.0, 40.0)})
+    assert [rated.rating for rated in gauge.entries.values()] == [0.0, 640.0, 1000.0]
+    assert gauge.entries["rung_T2"].stderr == 30.0
+    assert math.isinf(gauge.entries["random"].stderr)
+    gauge.update({LIVE: (950.0, 40.0)})  # a fit that no longer rates the rung
+    assert gauge.entries["rung_T2"].rating == 640.0
 
 
-def test_a_new_snapshot_starts_at_the_live_rating_of_its_update():
+def test_the_live_rating_is_the_fits_and_holds_between_fits():
+    gauge = Gauge(initial_live=850.0)  # a warm start's parent's
+    assert gauge.live.rating == 850.0 and math.isinf(gauge.live.stderr)
+    gauge.update({"scripted": (1000.0, 0.0)})
+    assert gauge.live.rating == 850.0
+    gauge.update({LIVE: (700.0, 25.0)})
+    assert (gauge.live.rating, gauge.live.stderr) == (700.0, 25.0)
+    gauge.update({})
+    assert gauge.live.rating == 700.0
+
+
+def test_a_new_snapshot_starts_at_the_live_rating_until_the_fit_rates_it():
     gauge = _ladder_gauge()
-    gauge.update({"ladder/0.5": Record(wins=6, losses=4), "ladder/1.0": Record(wins=1, losses=5)})
-    gauge.add("checkpoint/1", "checkpoint")
-    assert gauge.entries["checkpoint/1"].rating == gauge.live.rating
-    assert 500.0 < gauge.live.rating < 1000.0
+    gauge.update({LIVE: (720.0, 30.0)})
+    gauge.add("snapshot_100", "checkpoint")
+    assert gauge.entries["snapshot_100"].rating == 720.0
+    gauge.update({LIVE: (760.0, 30.0), "snapshot_100": (710.0, 35.0)})
+    assert gauge.entries["snapshot_100"].rating == 710.0
 
 
-def test_the_live_rating_uses_only_this_update():
+def test_an_average_takes_the_live_rating_until_the_fit_rates_it():
     gauge = _ladder_gauge()
-    gauge.update({"ladder/0.5": Record(wins=1, losses=9)})
-    first = gauge.live.rating
-    gauge.update({"ladder/0.5": Record(wins=9, losses=1)})
-    expected, _ = rate_live([500.0], [9.0], [1.0], [0.0])
-    assert gauge.live.rating == expected and first < 500.0 < expected
+    gauge.add("exponential_average", "average")
+    gauge.update({LIVE: (700.0, 30.0)})
+    assert gauge.entries["exponential_average"].rating == 700.0
+    gauge.update({LIVE: (800.0, 30.0), "exponential_average": (690.0, 40.0)})
+    gauge.update({LIVE: (850.0, 30.0)})  # its games have left the fit's window
+    assert gauge.entries["exponential_average"].rating == 690.0
 
 
-def test_a_sweep_reports_infinity_and_holds_the_last_finite_rating():
+def test_the_sampling_reads_the_live_policys_odds_against_each_entry():
     gauge = _ladder_gauge()
-    gauge.update({"ladder/0.5": Record(wins=6, losses=4)})
-    held = gauge.live.rating
-    gauge.update({"ladder/0.5": Record(wins=10)})
-    assert gauge.live.reported == math.inf and gauge.live.stderr == math.inf
-    assert gauge.live.rating == held
-
-
-def test_an_average_without_games_takes_the_live_rating():
-    gauge = _ladder_gauge()
-    gauge.add("average/ema", "average")
-    gauge.update({"ladder/0.5": Record(wins=7, losses=3)})
-    assert gauge.entries["average/ema"].rating == gauge.live.rating
-
-
-def test_an_average_is_rated_on_its_window_against_the_live_ratings():
-    gauge = _ladder_gauge()
-    gauge.add("average/ema", "average")
-    for _ in range(30):  # 300 games: the window keeps the newest AVERAGE_WINDOW
-        gauge.update(
-            {"ladder/0.5": Record(wins=5, losses=5), "average/ema": Record(wins=2, losses=8)}
-        )
-    window = list(gauge.windows["average/ema"])
-    assert len(window) == gauges.AVERAGE_WINDOW
-    # the newest games, each against the live rating of its own update
-    opponents = torch.tensor([live for live, _ in window], dtype=torch.float64)
-    score = torch.tensor([result for _, result in window], dtype=torch.float64)
-    assert opponents[-1] == gauge.live.rating and float(score.mean()) == 0.8
-    expected, _ = rate_against(opponents, score, 1.0 - score)
-    assert gauge.entries["average/ema"].rating == expected > float(opponents.max())
-
-
-def test_averages_stay_out_of_the_ladder_record():
-    gauge = _ladder_gauge()
-    gauge.add("average/ema", "average")
-    gauge.add("checkpoint/1", "checkpoint")
-    gauge.credit("checkpoint/1", {"average/ema": Record(wins=5), "ladder/0.5": Record(wins=2)})
-    assert set(gauge.wins) == {("checkpoint/1", "ladder/0.5"), ("ladder/0.5", "checkpoint/1")}
+    gauge.update({LIVE: (500.0, 30.0)})
+    expected = win_probability(torch.tensor(500.0), torch.tensor([0.0, 500.0, 1000.0]))
+    assert torch.allclose(gauge.win_probabilities(), expected.double())
 
 
 def test_the_gauge_state_round_trips():
     gauge = _ladder_gauge()
-    gauge.add("average/ema", "average")
-    gauge.add("checkpoint/1", "checkpoint")
-    gauge.credit("checkpoint/1", {"ladder/0.5": Record(wins=3, losses=1, ties=1)})
-    gauge.update({"ladder/0.5": Record(wins=3, losses=2), "average/ema": Record(wins=1, ties=1)})
+    gauge.add("exponential_average", "average")
+    gauge.add("snapshot_100", "checkpoint")
+    gauge.update({LIVE: (700.0, 30.0), "snapshot_100": (650.0, 35.0)})
     restored = Gauge.from_state(gauge.state())
     assert restored.state() == gauge.state()
-
-
-def test_the_ladder_fit_survives_a_singular_hessian():
-    """A free player with no games and no prior has a zero row in the Hessian (the RL run of
-    2026-11-06 crashed on one): it keeps its start, and the others are still fitted."""
-    from bnb.league.ratings import fit_ladder
-
-    wins = torch.tensor([[0.0, 3.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 0.0]], dtype=torch.float64)
-    ties = torch.zeros((3, 3), dtype=torch.float64)
-    fixed = torch.tensor([True, False, False])
-    ratings = fit_ladder(wins, ties, fixed, torch.tensor([1000.0, 0.0, 0.0]), prior_games=0.0)
-    assert ratings[0] == 1000.0
-    assert torch.isfinite(ratings).all()
-    assert ratings[1] < 1000.0  # it lost 3 of 4 to the fixed player

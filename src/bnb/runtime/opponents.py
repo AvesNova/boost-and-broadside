@@ -194,6 +194,14 @@ def counter_uniform(key: int, counter: torch.Tensor, index: torch.Tensor) -> tor
     return (value >> 8).to(torch.float32) * (1.0 / (1 << 24))
 
 
+def whole_game_begins(reset: torch.Tensor, stepped: torch.Tensor) -> torch.Tensor:
+    """Whether each row begins a whole game at this tick (`reset` (R,), `stepped` (R,), the
+    row has played a tick before): every game but the row's first, which the rollout's
+    staggered clocks cut short. Cut-short games lean to ties and read as a rating near the
+    scripted agent's, so neither the lanes nor the league tally a row's first game."""
+    return reset & stepped
+
+
 def draw(weights: torch.Tensor, uniform: torch.Tensor) -> torch.Tensor:
     """One category per row of non-negative `weights` (..., E), by the inverse CDF of
     `uniform` (...): int64. A category of weight 0 is never drawn."""
@@ -207,13 +215,17 @@ class OpponentCarry:
     """Per opponent row (R leading): model, the network's carry (its controller's); incoming
     (R,) bool, the row has switched to the draining slot's incoming entry; ladder_index (R,)
     int64, the ladder entry the row plays (when its slot holds the ladder); column (R,)
-    int64, what the row plays, for the tally; counter (1,) int64, the decisions so far (the
-    ladder draws' counter); ladder, the ladder agent's carry."""
+    int64, what the row plays, for the tally; stepped (R,) bool, the row has played a tick;
+    whole (R,) bool, the row's game began after its first tick (`whole_game_begins`), so
+    the tally counts it; counter (1,) int64, the decisions so far (the ladder draws'
+    counter); ladder, the ladder agent's carry."""
 
     model: object
     incoming: torch.Tensor
     ladder_index: torch.Tensor
     column: torch.Tensor
+    stepped: torch.Tensor
+    whole: torch.Tensor
     counter: torch.Tensor
     ladder: ScriptedCarry
 
@@ -296,6 +308,8 @@ class OpponentSlots:
             incoming=torch.zeros(views, dtype=torch.bool, device=device),
             ladder_index=torch.zeros(views, dtype=torch.int64, device=device),
             column=self.slot_of_row.clone(),
+            stepped=torch.zeros(views, dtype=torch.bool, device=device),
+            whole=torch.zeros(views, dtype=torch.bool, device=device),
             counter=torch.zeros(1, dtype=torch.int64, device=device),
             ladder=self.ladder_agent.init_carry(views, device),
         )
@@ -351,6 +365,8 @@ class OpponentSlots:
             incoming=incoming,
             ladder_index=ladder_index,
             column=column,
+            stepped=torch.ones_like(carry.stepped),
+            whole=carry.whole | whole_game_begins(reset, carry.stepped),
             counter=carry.counter + 1,
             ladder=ladder_carry,
         )
@@ -359,13 +375,14 @@ class OpponentSlots:
     def tally(self, carry: OpponentCarry, done: torch.Tensor, result: torch.Tensor) -> torch.Tensor:
         """Each ended episode (`done` (R,)), by (column, mode, outcome) with the outcome from
         the learner's side (`result` (R,) int32 is the opponent row's own: +1 won, 0 tied,
-        -1 lost): flat (columns * modes * 3,) int64."""
+        -1 lost): flat (columns * modes * 3,) int64. A row's first game, cut short, is left
+        out (`whole_game_begins`)."""
         outcome = (1 + result).to(torch.int64)  # the learner's win 0, tie 1, loss 2
         flat = (carry.column * self.mode_count + self.modes) * len(OUTCOMES) + outcome
         counts = torch.zeros(
             self.columns * self.mode_count * len(OUTCOMES), dtype=torch.int64, device=done.device
         )
-        return counts.index_add(0, flat, done.to(torch.int64))
+        return counts.index_add(0, flat, (done & carry.whole).to(torch.int64))
 
     # ---- the host's side, between segments
 

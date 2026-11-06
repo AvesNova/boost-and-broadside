@@ -148,8 +148,8 @@ sets how many (`environments`, beyond the training ones) and what they play (`ma
   those short games, mostly ties, read as a rating near the scripted agent's.
 - **Results:** the rollout tallies each ended lane game once, from the first player's side,
   and the trainer takes the tally after each collection (`Trainer.lane_record`), logged as
-  `lanes/games/<mode>/<matchup>` and `lanes/score/<mode>/<matchup>`. The ratings they give
-  are the league's ([The league](league.md#the-rating-lanes)).
+  `lanes/games/<mode>/<matchup>` and `lanes/score/<mode>/<matchup>`. They are rated in
+  one fit with the league's training games ([The league](league.md#the-ratings)).
 - **Size:** 1,024 lanes by default. They cost rollout time in proportion to their network
   rows, about 5.5 s per 1,024 rows per update on the development laptop; the measurements
   are in `docs/rewrite/sections/rollout-lanes-notes.md`.

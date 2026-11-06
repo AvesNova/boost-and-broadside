@@ -1293,6 +1293,21 @@ Details: `docs/training.md`, `docs/internal/frontline-redesign-implementation.md
 - Evidence: run `2026-11-05-mixed-eager-acorn` (150M steps; live clone 0.272 against the
   scripted agent, an offline uniform average of its retained checkpoints 0.350).
 
+### Rating from every game (author, 2026-11-06)
+
+- **The ratings read every game, not only the lanes':** "why are we only rating based on
+  the lanes? Shouldn't we be getting our rating data from all of the games, including the
+  lane games?" One fit per mode (`bnb.league.lanes.RunRatings`) takes the lanes' games and
+  the league's training games, the live policy's against each entry it played; a snapshot
+  is credited with the games of its update. The gauge reads every rating from the fit; its
+  ladder fit, live rating and averages' window, with `fit_ladder`, `rate_live` and
+  `rate_against` and their v1 goldens, are gone.
+  *Implemented 2026-11-06 (branch `feat/rating-all-games`):* a slot holding an average had
+  played the copy made when the slot drew it; it now takes the average's weights after
+  every update, as the lanes' average players do. Refitted offline on
+  `2026-11-06-mixed-calm-fern`'s first 29 updates, the live rating's standard error goes
+  from 95–112 to 59–66 and the exponential average's from 82–106 to 63–71.
+
 ## Tabled (deliberately deferred)
 
 1. **Remaining flight-parameterization questions** (the card itself is in

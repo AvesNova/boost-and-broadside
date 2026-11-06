@@ -1,42 +1,34 @@
 """The live gauge (league spec 4): the ratings that steer sampling and the dashboard during
 training, one gauge per mode and map.
 
-The stationary ladder holds ratings the fits never move: the scripted agent 1000 and every
-other rung the rating lanes' calibration (`calibrate`, from `bnb.league.lanes`); before the
-lanes have rated a rung it sits at the prior `1000 / T` (random 0). Once per update:
-  1. the ladder: the checkpoints' ratings, fitted to the accumulated record among
-     stationary players with the gauge held (`fit_ladder`);
-  2. the live policy: the lanes' rating when given, else rated from this update's training
-     record alone against the entries' current ratings (`rate_live`);
-  3. the averages: the lanes' rating of an average they rate, else each rated against the
-     per-game live ratings of its last `AVERAGE_WINDOW` games (`rate_against`).
-A snapshot taken at an update starts at that update's live rating, and its games of that
-update (the snapshot's weights are the ones that played them) enter the record.
-
-A rating that comes out infinite (a sweep) is reported as such, and the gauge holds its last
-finite value for everything that uses it. Nothing averages it.
+Every rating comes from the run's one fit (`bnb.league.lanes.RunRatings`: the lanes' games
+and the league's), read once per update (`update`). An entry the fit does not rate this
+update holds its last rating: a ladder rung its prior `1000 / T` (random 0) until the fit
+first rates it; a snapshot the live rating of the update it was taken at, until its games
+rate it; an average the live rating until the fit first rates it (it is an average of the
+live weights). The live rating starts at a warm start's parent's (0 without one) and holds
+its last fitted value.
 """
 
-import collections
 import dataclasses
 import math
 
 import torch
 
-from .ratings import fit_ladder, rate_against, rate_live, win_probability
+from bnb.runtime.lanes import LIVE
+
+from .ratings import win_probability
 
 GAUGE_TOP = (
     1000.0  # the scripted agent's fixed rating; rung (T, share)'s prior is share GAUGE_TOP / T
 )
-LADDER_PRIOR_GAMES = 1.0  # virtual games per checkpoint at the strongest fixed rating
-AVERAGE_WINDOW = 200  # an average's last games that rate it
 KINDS = ("checkpoint", "average", "ladder")
 
 
 def gauge_rating(rung) -> float:
-    """A ladder entry's prior rating (`bnb.runtime.opponents.Rung`), until the lanes
-    calibrate it: share GAUGE_TOP / T, so random (+inf) at 0 and the scripted agent (1) at
-    GAUGE_TOP. A placeholder, not a measurement: the lanes' calibration replaces it."""
+    """A ladder entry's prior rating (`bnb.runtime.opponents.Rung`), until the fit rates it:
+    share GAUGE_TOP / T, so random (+inf) at 0 and the scripted agent (1) at GAUGE_TOP. A
+    placeholder, not a measurement: the fit's rating replaces it."""
     return rung.share * GAUGE_TOP / rung.temperature
 
 
@@ -56,152 +48,47 @@ class Record:
 
 @dataclasses.dataclass
 class Rated:
-    """One entry's rating in a gauge: `rating` the last finite value (what sampling and the
-    fits use), `reported` the latest estimate (+-inf after a sweep), `stderr` its error."""
+    """One player's rating in a gauge: `rating` what sampling uses (the last fitted value,
+    or its start), `stderr` its error (infinite until the fit first rates it)."""
 
     kind: str
     rating: float
-    reported: float
     stderr: float = math.inf
 
 
 class Gauge:
-    """One mode's live gauge: every entry's rating, the record among stationary players, the
-    averages' windows and the live policy's rating."""
+    """One mode's live gauge: every entry's rating and the live policy's."""
 
     def __init__(self, initial_live: float = 0.0) -> None:
         self.entries: dict[str, Rated] = {}
-        self.wins: dict[tuple[str, str], float] = collections.defaultdict(float)
-        self.ties: dict[tuple[str, str], float] = collections.defaultdict(float)
-        self.windows: dict[str, collections.deque] = {}
-        self.live = Rated("live", initial_live, initial_live)
+        self.live = Rated("live", initial_live)
 
     # ---- entries
 
     def add(self, name: str, kind: str, rating: float | None = None) -> None:
-        """Add an entry: a ladder entry at its fixed `rating`; a checkpoint or an average at
-        `rating`, the live rating by default."""
+        """Add an entry at `rating`, the live rating by default."""
         if kind not in KINDS:
             raise ValueError(f"entry kind {kind!r} is not one of {KINDS}")
         if name in self.entries:
             raise ValueError(f"entry {name!r} is already in the gauge")
-        start = self.live.rating if rating is None else float(rating)
-        self.entries[name] = Rated(kind, start, start, 0.0 if kind == "ladder" else math.inf)
-        if kind == "average":
-            self.windows[name] = collections.deque(maxlen=AVERAGE_WINDOW)
+        self.entries[name] = Rated(kind, self.live.rating if rating is None else float(rating))
 
     def remove(self, name: str) -> None:
-        """Drop an entry and its games (retention removed it from the pool)."""
+        """Drop an entry (retention removed it from the pool)."""
         del self.entries[name]
-        self.windows.pop(name, None)
-        for table in (self.wins, self.ties):
-            for pair in [pair for pair in table if name in pair]:
-                del table[pair]
-
-    def credit(self, snapshot: str, record: dict[str, Record]) -> None:
-        """Enter a new snapshot's games (the update it was taken at) into the record, against
-        the stationary entries among `record`'s opponents."""
-        for opponent, games in record.items():
-            if self.entries[opponent].kind == "average":
-                continue  # the averages move; a pooled record would mix their versions
-            self.wins[(snapshot, opponent)] += games.wins
-            self.wins[(opponent, snapshot)] += games.losses
-            self.ties[(snapshot, opponent)] += games.ties
-            self.ties[(opponent, snapshot)] += games.ties
 
     # ---- the update
 
-    def calibrate(self, ratings: dict[str, tuple[float, float]]) -> None:
-        """The ladder entries' ratings from the lanes, {name: (rating, standard error)};
-        the entries it does not name keep theirs."""
-        for name, (rating, stderr) in ratings.items():
-            rated = self.entries.get(name)
-            if rated is not None and rated.kind == "ladder" and math.isfinite(rating):
-                rated.rating = rated.reported = rating
-                rated.stderr = stderr
-
-    def _fit_ladder(self) -> None:
-        stationary = [
-            name for name, rated in self.entries.items() if rated.kind in ("checkpoint", "ladder")
-        ]
-        index = {name: position for position, name in enumerate(stationary)}
-        count = len(stationary)
-        wins = torch.zeros((count, count), dtype=torch.float64)
-        ties = torch.zeros((count, count), dtype=torch.float64)
-        for table, matrix in ((self.wins, wins), (self.ties, ties)):
-            for (first, second), value in table.items():
-                if first in index and second in index:
-                    matrix[index[first], index[second]] = value
-        played = (wins + wins.T + ties).sum(1) > 0
-        kinds = [self.entries[name].kind for name in stationary]
-        fixed = torch.tensor([kind == "ladder" for kind in kinds])
-        free = played & ~fixed
-        if not bool(free.any()) or not bool(fixed.any()):
-            return
-        # only players with games, so every fitted player has at least one
-        keep = played | fixed
-        ratings = torch.tensor(
-            [self.entries[name].rating for name in stationary], dtype=torch.float64
-        )
-        fitted = fit_ladder(
-            wins[keep][:, keep], ties[keep][:, keep], fixed[keep], ratings[keep], LADDER_PRIOR_GAMES
-        )
-        kept = [name for name, used in zip(stationary, keep.tolist()) if used]
-        if not bool(torch.isfinite(fitted).all()):
-            return  # a degenerate record: the entries keep their last ratings
-        for name, value in zip(kept, fitted.tolist()):
-            rated = self.entries[name]
-            if rated.kind == "checkpoint":
-                rated.rating = rated.reported = value
-
-    def update(
-        self,
-        record: dict[str, Record],
-        live: tuple[float, float] | None = None,
-        rated: dict[str, tuple[float, float]] | None = None,
-    ) -> None:
-        """One update's gauge from this update's live games against each opponent entry
-        (`record`, by entry name): the ladder fit, the live rating, the averages' ratings.
-        live: the lanes' (rating, standard error) of the live policy; rated: the lanes'
-        ratings of averages, by name."""
-        self._fit_ladder()
-        rated = rated or {}
-        names = [name for name in record if record[name].games > 0]
-        if live is not None:
-            self.live.reported, self.live.stderr = live
-            if math.isfinite(live[0]):
-                self.live.rating = live[0]
-        elif names:
-            rating, stderr = rate_live(
-                [self.entries[name].rating for name in names],
-                [record[name].wins for name in names],
-                [record[name].losses for name in names],
-                [record[name].ties for name in names],
-            )
-            self.live.reported, self.live.stderr = rating, stderr
-            if math.isfinite(rating):
-                self.live.rating = rating
-        for name, window in self.windows.items():
-            games = record.get(name)
-            if games is not None:
-                # from the average's side: its wins are the live policy's losses
-                window.extend([(self.live.rating, 1.0)] * round(games.losses))
-                window.extend([(self.live.rating, 0.0)] * round(games.wins))
-                window.extend([(self.live.rating, 0.5)] * round(games.ties))
-            entry = self.entries[name]
-            if name in rated:
-                rating, stderr = rated[name]
-            elif not window:
-                entry.rating = entry.reported = self.live.rating
-                entry.stderr = math.inf
-                continue
-            else:
-                opponents = torch.tensor([value for value, _ in window], dtype=torch.float64)
-                score = torch.tensor([result for _, result in window], dtype=torch.float64)
-                rating, stderr = rate_against(opponents, score, 1.0 - score)
-            entry.reported, entry.stderr = rating, stderr
-            if math.isfinite(rating):
-                entry.rating = rating
+    def update(self, fitted: dict[str, tuple[float, float]]) -> None:
+        """Take this update's fit, {player: (rating, standard error)}: the live policy's and
+        every entry's it rates (the others as the module docstring says)."""
+        for player, rated in ((LIVE, self.live), *self.entries.items()):
+            value = fitted.get(player)
+            if value is not None and math.isfinite(value[0]):
+                rated.rating, rated.stderr = value
+        for rated in self.entries.values():
+            if rated.kind == "average" and not math.isfinite(rated.stderr):
+                rated.rating = self.live.rating
 
     # ---- what the update reads
 
@@ -223,11 +110,6 @@ class Gauge:
         return dict(
             live=dataclasses.asdict(self.live),
             entries={name: dataclasses.asdict(rated) for name, rated in self.entries.items()},
-            wins=[[first, second, value] for (first, second), value in self.wins.items()],
-            ties=[[first, second, value] for (first, second), value in self.ties.items()],
-            windows={
-                name: [list(game) for game in window] for name, window in self.windows.items()
-            },
         )
 
     @classmethod
@@ -236,11 +118,4 @@ class Gauge:
         gauge = cls()
         gauge.live = Rated(**state["live"])
         gauge.entries = {name: Rated(**rated) for name, rated in state["entries"].items()}
-        for key, table in (("wins", gauge.wins), ("ties", gauge.ties)):
-            for first, second, value in state[key]:
-                table[(first, second)] = value
-        gauge.windows = {
-            name: collections.deque([tuple(game) for game in window], maxlen=AVERAGE_WINDOW)
-            for name, window in state["windows"].items()
-        }
         return gauge

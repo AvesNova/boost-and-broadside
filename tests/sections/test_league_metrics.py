@@ -1,4 +1,4 @@
-"""The league's metrics (league spec 7): per mode the live gauge and each entry's rating,
+"""The league's metrics (league spec 7): per mode the live rating and each entry's rating,
 sampling share and score; the pool; games per update by opponent kind."""
 
 import math
@@ -27,14 +27,17 @@ def rows(tmp_path_factory):
         return out, league
 
 
-def test_each_mode_reports_the_live_gauge_and_every_entry(rows):
+def test_each_mode_reports_the_live_rating_and_every_entry(rows):
     out, league = rows
     for row in out:
         table = row["pool/entries"]
         entries = [dict(zip(table["columns"], values, strict=True)) for values in table["rows"]]
         for mode in league.modes:
-            assert math.isfinite(row[f"rating/live/{mode}"])  # the last finite value
-            assert f"rating/live_stderr/{mode}" in row
+            # the fit's, once the live policy's games reach the scripted agent
+            if f"rating/live/{mode}" in row:
+                assert math.isfinite(row[f"rating/live/{mode}"])
+                assert math.isfinite(row[f"rating/live_stderr/{mode}"])
+            assert all(math.isfinite(entry["rating"]) for entry in entries)
             assert 0.0 <= row[f"pool/sampling_entropy/{mode}"] <= 1.0
             shares = [entry["sampling_share"] for entry in entries if entry["mode"] == mode]
             assert math.isclose(sum(shares), 1.0, abs_tol=1e-12)
