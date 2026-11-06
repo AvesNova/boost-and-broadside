@@ -17,6 +17,11 @@ Slices, quantity first:
   other 41), cross-entropy -r ln r - (1 - r) ln((1 - r) / 41); and always predict the
   batch's action frequencies, cross-entropy the histogram's entropy.
 - belief, by hidden age (`AGE_BUCKETS`), over hidden living enemies that hold a belief.
+- rotary read-out (with `YemongConfig.rotary_readout`), its mean squared pair error
+  (`bnb.learn.losses.phasor_square_error`) by population over the living ships, and for
+  living hidden enemies by hidden age (`AGE_BUCKETS`, then `never_seen`: no sighting since
+  the spawn) the error and the mean length of its (cos, sin) pairs (1: certain; it shrinks
+  toward 0 with the model's uncertainty).
 """
 
 import math
@@ -38,6 +43,8 @@ from bnb.models.yemong.state_code import (
     SCALARS,
     velocity_reach,
 )
+
+from . import losses
 
 # The state code's runs, in order (`ShipStateCode.runs`).
 STATE_PARTS = ("position", "velocity", "heading", "nose_rate", *SCALARS, "gun_cooldown")
@@ -168,6 +175,33 @@ def sums(
     out.update(_density(unrolled, label))
     if shot_parts is not None:
         out.update(_shots(unrolled, label, shot_parts, shot_runs, own, alive))
+    if getattr(unrolled, "rotary_readout", None) is not None:
+        out.update(_rotary_readout(unrolled, trajectory, label, populations, model.tick_length))
+    return out
+
+
+def _rotary_readout(unrolled, trajectory: Trajectory, label: dict, populations: dict, tick):
+    """The read-out's totals: per population the living ships and their error; per hidden
+    age slice of the living hidden enemies, their count, error and mean pair length."""
+    readout = unrolled.rotary_readout.float()  # (L, R, N, 2, pairs)
+    error = losses.phasor_square_error(readout, label["rotary_readout"])
+    length = readout.square().sum(-2).sqrt().mean(-1)
+    alive = trajectory.alive
+    out = {}
+    for name, members in populations.items():
+        chosen = alive & members
+        out[f"rotary_readout/{name}/count"] = chosen.float().sum()
+        out[f"rotary_readout/{name}/error"] = _masked(error, chosen)
+    own = trajectory.log_probability.shape[-1]
+    hidden = (alive & populations["enemy_hidden"])[..., own:]
+    replay = trajectory.replay
+    age = replay.age.float() * tick
+    slices = [(name, replay.valid & (age >= low) & (age < high)) for name, low, high in AGE_BUCKETS]
+    for name, members in [*slices, ("never_seen", ~replay.valid)]:
+        chosen = hidden & members
+        out[f"rotary_readout/{name}/count"] = chosen.float().sum()
+        out[f"rotary_readout/{name}/error"] = _masked(error[..., own:], chosen)
+        out[f"rotary_readout/{name}/length"] = _masked(length[..., own:], chosen)
     return out
 
 
@@ -343,6 +377,16 @@ def series(total: dict, model) -> dict:
         out[f"shot/{name}_rate/realised"] = Mean(realised, shots)
         out[f"shot/{name}_rate/predicted"] = Mean(predicted, shots)
     out["shot/supervised_share"] = Mean(shots, total["shot/own_alive"])
+    if "rotary_readout/ally/count" in total:
+        for name in POPULATIONS:
+            prefix = f"rotary_readout/{name}"
+            out[f"rotary_readout/error/{name}"] = Mean(
+                total[f"{prefix}/error"], total[f"{prefix}/count"]
+            )
+        for name in (*(bucket for bucket, _, _ in AGE_BUCKETS), "never_seen"):
+            prefix, count = f"rotary_readout/{name}", total[f"rotary_readout/{name}/count"]
+            out[f"rotary_readout/hidden_error/{name}"] = Mean(total[f"{prefix}/error"], count)
+            out[f"rotary_readout/hidden_length/{name}"] = Mean(total[f"{prefix}/length"], count)
     return out
 
 

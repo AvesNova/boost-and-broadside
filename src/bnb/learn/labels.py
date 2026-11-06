@@ -36,6 +36,14 @@ def next_state_targets(
     return state_code.sharp(means, following[..., SHIP["ship_type"]].long())
 
 
+def rotary_targets(model, trajectory: Trajectory, rows: torch.Tensor) -> torch.Tensor:
+    """(L, R, N, 2, pairs): the true (cos, sin) of every row's rotary angles at t (its true
+    position in the model's frame, the view's offset added, and its true heading): the
+    rotary read-out's target. Read where the row is alive at t (`trajectory.alive`)."""
+    means = shifted_truth(rows, trajectory.replay.offset)
+    return model.phasors(means[..., 0:2], means[..., 4])
+
+
 def next_state_mask(trajectory: Trajectory) -> torch.Tensor:
     """(L, R, N): the row's belief is valid at t (own rows always), and t did not end an
     episode."""
