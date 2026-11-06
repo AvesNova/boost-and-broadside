@@ -101,3 +101,69 @@ def test_nash_over_a_transitive_pool_is_its_strongest_entry():
     (weights,) = sim.sampler_weights(sim.nash, [update], [ratings])
     assert max(weights["frontline"], key=weights["frontline"].get) == "snapshot_2"
     assert weights["frontline"]["snapshot_2"] > 0.95
+
+
+# ---- round 2 (`bench.league_sampling_2`)
+
+
+def _tables(updates: int = 12, units: tuple[float, ...] = (0.2, 0.4, 0.4)):
+    """Synthetic round-2 tables: one rung and two networks, the same weights every update."""
+    from bench import league_sampling_2 as two
+
+    weights = torch.tensor(units, dtype=torch.float64)
+    count_m = len(sim.MODES)
+    return two.Tables(
+        mixed=weights.repeat(updates, 1),
+        per_mode=weights.repeat(updates, count_m, 1),
+        split=torch.ones(updates, count_m, 1, dtype=torch.float64),
+        truth=torch.full((updates, count_m, 3), 0.7, dtype=torch.float64),
+        network=torch.tensor([False, True, True]),
+        snapshot=torch.tensor([False, False, True]),
+        mean_game=torch.full((count_m, 2), 8.0, dtype=torch.float64),
+        names=["rung", "average", "snapshot"],
+    )
+
+
+def test_a_clean_cut_swaps_its_slots_at_the_cut_and_cuts_their_games():
+    from bench import league_sampling_2 as two
+
+    table = _tables()
+    variant = two.Variant(rule="cut", every=2, fraction=0.5)
+    played = two.simulate(variant, table, seeds=20)
+    # cuts fall only on the cut updates, and reset a slot's rows (half the rows at most)
+    resets = played.cut_resets.sum(0)
+    assert all(float(resets[u]) == 0 for u in range(12) if u == 0 or u % 2)
+    assert float(resets[2::2].sum()) > 0
+    rows = 2 * 512
+    assert float(played.cut_resets.max()) <= rows / 2
+    # every row plays what its slot holds, at once: no drain
+    row_slot = (torch.arange(rows) % 512) % variant.slots
+    assert torch.equal(played.row_unit, played.slot_unit[:, row_slot])
+    # the cut games are among the games, their ticks among the ticks
+    assert 0 < float(played.cut_games.sum()) <= float(played.games.sum())
+    assert float(played.cut_ticks.sum()) <= float(played.ticks.sum())
+    # a draw equal to what the slot holds cuts nothing; a drain cuts nothing
+    certain = two.simulate(variant, _tables(units=(0.0, 1.0, 0.0)), seeds=5)
+    assert float(certain.cut_resets.sum()) == 0 and float(certain.cut_games.sum()) == 0
+    drained = two.simulate(two.Variant(), table, seeds=5)
+    assert float(drained.cut_games.sum()) == 0 and float(drained.cut_resets.sum()) == 0
+
+
+def test_round_two_unit_weights_match_the_league_and_the_ladder_as_one_entry():
+    from bench import league_sampling_2 as two
+    from bnb.league.pool import sampling_weights
+
+    p = torch.tensor([0.99, 0.95, 0.9, 0.7, 0.5], dtype=torch.float64)
+    ladder = torch.tensor([True, True, True, False, False])
+    units, split = two.unit_weights(p, ladder, "entries", "p(1-p)", True)
+    today = sampling_weights(p, sim.FLOOR)
+    assert units[0] == pytest.approx(float(today[ladder].sum()))
+    assert units[1:].tolist() == pytest.approx(today[~ladder].tolist())
+    assert float(split.sum()) == pytest.approx(1.0)
+    units, _ = two.unit_weights(p, ladder, "one", "p(1-p)", False)
+    weight = p * (1 - p)
+    assert units[0] == pytest.approx(
+        float(weight[ladder].max() / (weight[ladder].max() + weight[~ladder].sum()))
+    )
+    units, _ = two.unit_weights(p, ladder, "none", "(1-p)^2", True)
+    assert units[0] == 0 and float(units.sum()) == pytest.approx(1.0)
