@@ -170,6 +170,10 @@ class Ratings:
     batches are the match engine's fixed blocks (`--blocks` of `--block-environments`
     games). The leaderboard goes to the run's `artifacts/ratings/` (or `--out`'s).
 
+    A Yemong policy may play ablated: `PATH:rotary`, `PATH:forecast` or
+    `PATH:rotary+forecast` (`bnb.league.matches.ablations_of`), the same weights with the
+    rotary rotation as the identity or the forecast not fed back, on its own rows only.
+
     run: the run; with_: more players; presets: the game presets; target_stderr: rating
     points; budget: games per preset at most; blocks and block_environments: the engine's
     layout; device; runs_directory: as for bnb train. ladder: the stationary ladder's rungs
@@ -206,7 +210,8 @@ class HeadToHead:
     "scripted@T=<temperature>,floor=<floor>" (either key optional; T defaults to 1 and
     floor to 0: the scripted agent at its own temperature T, then a uniform joint action
     with probability floor, drawn as BC's teacher opponent does, so "scripted" is BC's
-    default teacher and "scripted@T=2" plays as "rung_T2"). Prints and records, per pair,
+    default teacher and "scripted@T=2" plays as "rung_T2"), or a Yemong policy ablated,
+    "PATH:rotary", "PATH:forecast" or "PATH:rotary+forecast". Prints and records, per pair,
     the wins, losses and draws, the score with its standard error and the split by preset;
     the result goes to the first named run's `artifacts/head_to_head/` (else the runs
     directory's).

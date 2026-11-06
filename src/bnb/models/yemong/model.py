@@ -125,6 +125,21 @@ class Carry:
     nonfinite: torch.Tensor
 
 
+ABLATIONS = ("rotary", "forecast")  # the inference-time ablations `Ablations` carries
+
+
+@contract
+class Ablations:
+    """Inference-time ablations, per view (R,) bool (`Yemong.step`): rotary, the attention's
+    rotary rotation is the identity on the view's rows (every angle 0: cos 1, sin 0, for the
+    token and the map tables); forecast, nothing is written back to the view's belief, as
+    with `YemongConfig.forecast_feedback` off (a hidden ship keeps its last sighting, every
+    enemy action stays uniform). A view with neither computes what it would without them."""
+
+    rotary: torch.Tensor
+    forecast: torch.Tensor
+
+
 @contract
 class Decision:
     """One step's outputs, per view: policy_logits (R, S, NUM_JOINT); enemy_action_logits and
@@ -166,10 +181,23 @@ def _rows(belief: Belief, rows: slice) -> Belief:
     return Belief(**{name: getattr(belief, name)[:, rows] for name in BELIEF_FIELDS})
 
 
+def _where_views(off: torch.Tensor, ablated: torch.Tensor, kept: torch.Tensor) -> torch.Tensor:
+    """ablated on the views (R,) where off is set, kept elsewhere."""
+    return torch.where(off.view(off.shape + (1,) * (kept.dim() - 1)), ablated, kept)
+
+
 def _nearest(position: torch.Tensor, reference: torch.Tensor) -> torch.Tensor:
     """The representative of position (mod P) nearest to reference: decoded positions come
     back in [0, P), and the belief's frame is continuous."""
     return position + POSITION_PERIOD * torch.round((reference - position) / POSITION_PERIOD)
+
+
+def _identity(tables: tuple[torch.Tensor, torch.Tensor], off: torch.Tensor):
+    """The rotary tables (cos, sin), each (..., tokens, 1, pairs), with every angle 0 on the
+    leading indices where off (...,) is set."""
+    cos, sin = tables
+    off = off.view(off.shape + (1,) * (cos.dim() - off.dim()))
+    return torch.where(off, 1.0, cos), torch.where(off, 0.0, sin)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -352,8 +380,9 @@ class Yemong(nn.Module):
             self.tick_length,
         )
 
-    def _encode(self, tokens: Tokens):
-        """Queries (..., Q, D), map memory (..., M + Z, Dm) and the rotary tables."""
+    def _encode(self, tokens: Tokens, rotary_off: torch.Tensor | None = None):
+        """Queries (..., Q, D), map memory (..., M + Z, Dm) and the rotary tables; rotary_off
+        (leading axes,) bool: the views whose tables are the identity (`Ablations.rotary`)."""
         queries, memory = self.encoder(
             tokens.ship, tokens.global_token, tokens.field, tokens.zone, tokens.zone_present
         )
@@ -362,6 +391,11 @@ class Yemong(nn.Module):
         map_tables = rotary_tables(
             tokens.memory_position, torch.zeros_like(tokens.memory_position[..., 0]), *frequencies
         )
+        if rotary_off is not None:
+            token_tables, map_tables = (
+                _identity(token_tables, rotary_off),
+                _identity(map_tables, rotary_off),
+            )
         return queries, memory, token_tables, map_tables
 
     def _values(self, value_logits: torch.Tensor, outcome_logits: torch.Tensor):
@@ -377,10 +411,13 @@ class Yemong(nn.Module):
 
     # ------------------------------------------------------------------ step
 
-    def step(self, carry: Carry, obs: Obs, reset: torch.Tensor) -> Decision:
+    def step(
+        self, carry: Carry, obs: Obs, reset: torch.Tensor, ablations: Ablations | None = None
+    ) -> Decision:
         """One decision for views (R, ...); reset (R,) bool: the environment reset before
-        this observation."""
-        return self._step(carry, obs, reset, inspect=False)[0]
+        this observation; ablations: the inference-time ablations per view (none by
+        default)."""
+        return self._step(carry, obs, reset, inspect=False, ablations=ablations)[0]
 
     def inspect(self, carry: Carry, obs: Obs, reset: torch.Tensor) -> tuple[Decision, Unrolled]:
         """One decision, as `step` makes it, and every head's output at it, as `unroll`
@@ -389,7 +426,12 @@ class Yemong(nn.Module):
         return self._step(carry, obs, reset, inspect=True)
 
     def _step(
-        self, carry: Carry, obs: Obs, reset: torch.Tensor, inspect: bool
+        self,
+        carry: Carry,
+        obs: Obs,
+        reset: torch.Tensor,
+        inspect: bool,
+        ablations: Ablations | None = None,
     ) -> tuple[Decision, Unrolled | None]:
         carry = self._cleared(carry, reset)
         ships, dtype = obs.ships, self.bins.dtype
@@ -409,7 +451,9 @@ class Yemong(nn.Module):
         tokens = self.tokens(obs, replay)
         ships_count = tokens.code.shape[-2]
         with self._matmuls(ships.device):
-            queries, memory, token_tables, map_tables = self._encode(tokens)
+            queries, memory, token_tables, map_tables = self._encode(
+                tokens, None if ablations is None else ablations.rotary
+            )
             hidden, state, buffer = self.trunk.step(
                 queries, memory, token_tables, map_tables, carry.state, carry.convolution_buffer
             )
@@ -438,6 +482,15 @@ class Yemong(nn.Module):
             advanced, nonfinite = beliefs.advance(
                 enemy, torch.cat([means, spreads], -1), enemy_action_logits
             )
+            if ablations is not None:  # the ablated views keep what they saw, as below
+                off = ablations.forecast
+                advanced = Belief(
+                    **{
+                        name: _where_views(off, getattr(enemy, name), getattr(advanced, name))
+                        for name in BELIEF_FIELDS
+                    }
+                )
+                nonfinite = torch.where(off, 0, nonfinite)
         else:  # the belief keeps the last sighting (observe holds it, uniform actions)
             advanced, nonfinite = enemy, torch.zeros_like(carry.nonfinite)
         mine = _rows(seen, slice(None, own))

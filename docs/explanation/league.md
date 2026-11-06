@@ -242,3 +242,20 @@ them under `artifacts/head_to_head/`.
 ```bash
 uv run --no-sync bnb head-to-head 2026-11-02-mixed-purple-pumpkin scripted --games 64
 ```
+
+**Ablated players.** A Yemong policy may play ablated, in `--with` or in head-to-head:
+`PATH:rotary`, `PATH:forecast` or `PATH:rotary+forecast` (a run's name works as the
+policy too). An ablated player is the same weights, so it plays in the same engine as its
+unablated self; the seat holds each row's ablations and passes them to the network
+(`bnb.models.yemong.model.Ablations`), so only that player's rows are ablated and the
+captured graph stays one graph. A tournament without an ablated player calls the networks
+without them. `rotary` makes the attention's rotary rotation the identity (every angle 0,
+token and map tables); `forecast` stores nothing back to the belief, as
+`yemong.forecast_feedback=false` does. Both are inference-time ablations of a model
+trained with the feature on: they measure how much the trained policy relies on it, not
+what a model trained without it would reach.
+
+<!-- not-runnable: needs CUDA and a run -->
+```bash
+uv run --no-sync bnb ratings RUN --with POLICY POLICY:rotary POLICY:forecast
+```
