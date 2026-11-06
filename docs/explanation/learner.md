@@ -113,9 +113,26 @@ The coefficients are the fields of `bnb.learn.ppo.LearnerConfig` named after the
 | `density` | each view-step, over its count of valued own ships | Poisson terms over the hex cells, against the counts of living ships at `t` |
 | `shot_trajectory` | valid shots of own ships and of enemies visible at `t` | the trajectory code's cross-entropy, averaged over the shot's valid ages |
 | `shot_outcome` | the same shots | the outcome code's cross-entropy |
+| `rotary_readout` | every ship alive at `t`, visible or hidden (with Yemong's rotary read-out only) | the squared distance between the read-out's (cos, sin) pair and the true one, averaged over the rotary frequencies (`bnb.learn.losses.phasor_square_error`); not in nats |
 
 Each term matches an independent computation on a stored segment
-(`tests/sections/test_learner.py::test_each_loss_term_matches_an_independent_computation`).
+(`tests/sections/test_learner.py::test_each_loss_term_matches_an_independent_computation`,
+and `tests/sections/test_learner_rotary_readout.py` for the read-out).
+
+The read-out's term is the one term not in nats: a per-ship mean over the frequencies of
+`|p - p_true|^2`, between 0 and 4. An all-zero read-out scores 1. Its minimum over the
+model's uncertainty is the expected phasor, so the read-out learns to shorten its pairs
+where it is unsure. A model without the read-out gives no such output, and the term stays 0
+(and out of the gradient decomposition).
+**The read-out's coefficient, 0.007.** Set so the read-out's trunk gradient norm at
+initialisation is about 0.02, the level the next-state term settles at in a trained BC run.
+Measured on the CPU (arm D, production initialisation, 5v5, 16 environments of 128 ticks,
+BC's gradient decomposition): at coefficient 1 the read-out's trunk norm is 2.97, so 0.007
+gives about 0.021. Calibrating its *share* at initialisation would mislead: there the other
+terms' trunk norms are about 0.002, because their heads start at or near zero, while in a
+trained BC run they settle at 0.02-0.10 (policy 0.04-0.07, density 0.05-0.08, enemy action
+0.05-0.10, next state about 0.02, value 0.02-0.07). The arm's own logged
+`gradient/norm/trunk/rotary_readout` is the check.
 
 An update makes `epochs` passes of `minibatches` minibatches over the views; a view keeps
 its whole segment, which `unroll` needs. It clips the gradient norm, steps Adam with a
@@ -171,6 +188,10 @@ size of the segment):
 - **Enemy action:** each enemy row's joint action at `t`.
 - **Density:** the hex counts of the living ships of each side at `t`, in world coordinates
   scaled by each environment's arena radius.
+- **Rotary read-out:** the true (cos, sin) of every row's rotary angles at `t`
+  (`bnb.learn.labels.rotary_targets`): its true position at `t`, shifted by the view's
+  offset, and its true heading. These are the angles the row's tables would have if the ship
+  were visible, which is what the read-out stands in for. The term masks dead rows.
 
 ## Compilation and precision
 
