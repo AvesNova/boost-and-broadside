@@ -15,6 +15,14 @@ def masked_sum(values: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     return torch.where(mask, values, 0.0).sum()
 
 
+def phasor_square_error(readout: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """The rotary read-out's error per token: the squared distance between its (cos, sin)
+    pair and the true one, averaged over the frequencies. readout and target
+    (..., 2, pairs); (...). Its minimum over a distribution of true angles is the expected
+    phasor, whose length shrinks with the spread; an all-zero read-out scores 1."""
+    return (readout - target).square().sum(-2).mean(-1)
+
+
 def surrogate(
     log_probability: torch.Tensor,
     old_log_probability: torch.Tensor,

@@ -52,10 +52,12 @@ TERMS = (
     "density",
     "shot_trajectory",
     "shot_outcome",
+    "rotary_readout",
 )
 # Token counts per view, the denominators' parts: own ships alive; own ships valued (alive or
-# waiting to respawn); view-steps; valid beliefs at non-final steps; enemies alive; shots.
-COUNTS = ("policy", "valued", "steps", "next_state", "enemy_action", "shots")
+# waiting to respawn); view-steps; valid beliefs at non-final steps; enemies alive; shots;
+# every living ship (the rotary read-out's tokens).
+COUNTS = ("policy", "valued", "steps", "next_state", "enemy_action", "shots", "ships")
 # The per-tick records the returns read, staged whole per shard.
 SMALL = ("reward", "values", "outcome", "done", "result", "log_probability", "alive", "valued")
 # What the returns read of the lookahead.
@@ -69,6 +71,7 @@ HEAD_SERIES = {
     "density": "density/loss",
     "shot_trajectory": "shot/loss/trajectory",
     "shot_outcome": "shot/loss/outcome",
+    "rotary_readout": "rotary_readout/loss",
 }
 # The stored shot labels' name in the store: per view, {"shots": Shots, "mask"}, (V, L, ...).
 SHOT_LABELS = "shot_labels"
@@ -120,6 +123,9 @@ class LearnerConfig:
     density: float = 0.021
     shot_trajectory: float = 0.007
     shot_outcome: float = 0.019
+    # the read-out's mean squared pair error (not nats): about 0.02 of trunk gradient norm
+    # at initialisation, next_state's trained level (learner page)
+    rotary_readout: float = 0.007
     learning_rate: float = 3e-4
     warmup_start: float = 1e-7
     warmup_steps: int = 10_000_000  # environment steps (decisions: round four)
@@ -323,6 +329,7 @@ class Learner:
         counts[:, COUNTS.index("valued")] = small["valued"].sum((0, 2))
         counts[:, COUNTS.index("steps")] = length
         counts[:, COUNTS.index("enemy_action")] = alive[..., own:].sum((0, 2))
+        counts[:, COUNTS.index("ships")] = alive.sum((0, 2))
         return counts
 
     # ------------------------------------------------------------------ labels
@@ -395,7 +402,11 @@ class Learner:
         rows = labels.privileged_rows(trajectory)
         enemy, enemy_mask = labels.enemy_actions(trajectory)
         code = model.shot_code
+        readout = {}
+        if getattr(model, "rotary_readout", None) is not None:
+            readout = dict(rotary_readout=labels.rotary_targets(model, trajectory, rows))
         return dict(
+            **readout,
             next_state=labels.next_state_targets(model.state_code, trajectory, rows),
             next_state_mask=labels.next_state_mask(trajectory),
             enemy_action=enemy,
@@ -519,6 +530,13 @@ class Learner:
             )
             terms["shot_outcome"] = (
                 losses.masked_sum(outcome, label["shot_mask"]) / denominator["shots"]
+            )
+        if _head(unrolled, "rotary_readout") is not None:
+            error = losses.phasor_square_error(
+                unrolled.rotary_readout.float(), label["rotary_readout"]
+            )
+            terms["rotary_readout"] = (
+                losses.masked_sum(error, trajectory.alive) / denominator["ships"]
             )
         return terms, per_level, statistic, unrolled, parts
 
@@ -1058,6 +1076,8 @@ class Learner:
                     basic[f"next_state_{name}"] = (
                         config.next_state * part / denominator["next_state"]
                     )
+            elif term == "rotary_readout" and not terms[term].requires_grad:
+                continue  # a model without the read-out
             else:
                 basic[term] = getattr(config, term) * terms[term]
         return basic

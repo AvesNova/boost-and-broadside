@@ -115,7 +115,9 @@ The next-state head predicts the same vector, so a forecast carries its own unce
 
 - **Encoder:** one first projection per token kind, then a shared one. Fields and zones are
   then projected into the map memory, of width `map_width`.
-- **Trunk:** blocks of spatial sublayers followed by one temporal sublayer.
+- **Trunk:** blocks of spatial sublayers and one temporal sublayer each, in the order
+  `YemongConfig.order` gives (see [Trunk order and the rotary read-out](#trunk-order-and-the-rotary-read-out)):
+  by default the spatial sublayers first.
   - A **spatial sublayer** is attention of the queries over themselves and the map memory,
     with rotary encodings of position and heading, then a gated MLP. There is no mask.
   - A **temporal sublayer** runs per query token over time: a short causal convolution and
@@ -135,6 +137,47 @@ The next-state head predicts the same vector, so a forecast carries its own unce
 | density | global token | ally and enemy rates on a hex grid that scales with the arena |
 | shot outcome | ship rows | how a shot fired now would end |
 | shot trajectory | ship rows, at bullet ages | where a shot fired now would be at each age |
+| rotary read-out (optional) | ship rows, after the first temporal sublayer | a (cos, sin) pair per rotary frequency |
+
+### Trunk order and the rotary read-out
+
+`YemongConfig.order` sets each block's sublayer order: `"spatial_first"` (the default:
+spatial, spatial, temporal) or `"temporal_first"` (temporal, spatial, spatial). Temporal
+first, every spatial sublayer reads tokens that have already passed through the first
+temporal sublayer, so attention can use what the recurrence remembers. Either way `unroll`
+equals a loop of `step`, and the carry is the same shape. Select it with
+`--set yemong.order=temporal_first`.
+
+`YemongConfig.rotary_readout` (off by default; it needs `temporal_first` and `rotary`) adds
+a linear head on the first temporal sublayer's ship rows. It gives a (cos, sin) pair for
+every rotary frequency: x and y for each of the `rotary_octaves` position octaves, then each
+heading harmonic (2 x (2 x 8 + 4) = 40 numbers at the defaults). The pairs are not
+normalised: the read-out is trained toward the true phasors, whose expectation under the
+model's uncertainty is shorter than 1, so a short pair means the model is unsure at that
+frequency, and attention at that frequency is damped.
+
+With the read-out, every spatial sublayer rotates a ship's row by:
+
+- a **visible** ship: its true tables, from its observed position and heading;
+- a **hidden** ship: the read-out's pairs, in place of the belief's tables;
+- the global token and the map memory (fields, zones): their exact tables, as without it.
+
+The read-out enters the tables detached, so it learns only from its own loss (the learner's
+`rotary_readout` term, against the true phasors of every living ship; see the
+[learner page](learner.md)). That keeps its optimum the expected phasor and keeps the fused
+attention kernel in use in the learner (the kernel gives no gradient to the tables). The
+inference-time `rotary` ablation still makes every table the identity, the read-out's
+included. Select it with `--set yemong.rotary_readout=true`.
+
+**The temporal-first arms.** The BC comparison of the trunk order runs two arms beside
+the baseline:
+
+- **C**, temporal first with forecast feedback: hidden ships' rows and rotary positions come
+  from the belief, as in the baseline (`--set yemong.order=temporal_first`);
+- **D**, temporal first, Griffin only (no forecast fed back between ticks), with hidden
+  ships' rotary pairs from the read-out: memory places a hidden ship where it thinks the
+  ship is, not at its last sighting (`--set yemong.order=temporal_first --set
+  yemong.rotary_readout=true --set yemong.forecast_feedback=false`).
 
 The critic gives one value per reward level (`bnb.contracts.REWARD_LEVELS`): a per-ship
 categorical value over symlog-spaced bins for each local level, and the outcome level as

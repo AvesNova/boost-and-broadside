@@ -133,6 +133,9 @@ def test_inspect_is_the_step_with_every_head_as_unroll_gives_it(segment):
         assert torch.equal(actual, expected), path
     for field in dataclasses.fields(unrolled):
         actual, expected = getattr(inspected, field.name), getattr(unrolled, field.name)
+        if expected is None:  # a head the model does not have (the rotary read-out)
+            assert actual is None, field.name
+            continue
         assert actual.shape == expected.shape, field.name
         assert cases.scale_error(actual, expected) <= 1e-9, field.name
 

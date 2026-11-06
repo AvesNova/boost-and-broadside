@@ -4,6 +4,8 @@ The query tokens are the ships, then the global token. Fields, and the mode's zo
 only as map memory.
 """
 
+from collections.abc import Callable
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -104,8 +106,12 @@ class Encoder(nn.Module):
         return queries, memory
 
 
+ORDERS = ("spatial_first", "temporal_first")
+
+
 class Block(nn.Module):
-    """One trunk block: spatial_per_block spatial sublayers, then one temporal sublayer."""
+    """One trunk block: spatial_per_block spatial sublayers and one temporal sublayer, in the
+    trunk's order (`ORDERS`)."""
 
     def __init__(self, width: int, heads: int, map_width: int, spatial_per_block: int) -> None:
         super().__init__()
@@ -123,13 +129,28 @@ class Block(nn.Module):
 
 
 class Trunk(nn.Module):
-    """Blocks of spatial sublayers then one temporal sublayer. The trunk carry is
-    state (..., blocks, Q, D) and convolution_buffer (..., blocks, Q, 3, D)."""
+    """Blocks of spatial sublayers and one temporal sublayer each: per block the spatial
+    sublayers then the temporal one ("spatial_first"), or the temporal one then the spatial
+    ones ("temporal_first"). The trunk carry is state (..., blocks, Q, D) and
+    convolution_buffer (..., blocks, Q, 3, D).
+
+    retable (temporal_first only): a function of the first temporal sublayer's output
+    (..., Q, D) giving the token tables of every spatial sublayer after it (all of them), in
+    place of the given ones (the model's rotary read-out)."""
 
     def __init__(
-        self, width: int, heads: int, map_width: int, blocks: int, spatial_per_block: int
+        self,
+        width: int,
+        heads: int,
+        map_width: int,
+        blocks: int,
+        spatial_per_block: int,
+        order: str = "spatial_first",
     ) -> None:
         super().__init__()
+        if order not in ORDERS:
+            raise ValueError(f"order {order!r} is not one of {ORDERS}")
+        self.order = order
         self.blocks = nn.ModuleList(
             Block(width, heads, map_width, spatial_per_block) for _ in range(blocks)
         )
@@ -142,14 +163,21 @@ class Trunk(nn.Module):
         map_tables: Tables,
         state: torch.Tensor,
         buffer: torch.Tensor,
+        retable: Callable[[torch.Tensor], Tables] | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """One decision: tokens (..., Q, D). Returns (tokens, state, buffer)."""
         states, buffers = [], []
+        temporal_first = self.order == "temporal_first"
         for index, block in enumerate(self.blocks):
-            tokens = block.attend(tokens, map_memory, token_tables, map_tables)
+            if not temporal_first:
+                tokens = block.attend(tokens, map_memory, token_tables, map_tables)
             tokens, block_state, block_buffer = block.temporal.step(
                 tokens, state[..., index, :, :], buffer[..., index, :, :, :]
             )
+            if temporal_first:
+                if index == 0 and retable is not None:
+                    token_tables = retable(tokens)
+                tokens = block.attend(tokens, map_memory, token_tables, map_tables)
             states.append(block_state)
             buffers.append(block_buffer)
         return tokens, torch.stack(states, -3), torch.stack(buffers, -4)
@@ -163,17 +191,24 @@ class Trunk(nn.Module):
         state: torch.Tensor,
         buffer: torch.Tensor,
         starts: torch.Tensor,
+        retable: Callable[[torch.Tensor], Tables] | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """A segment: tokens (L, ..., Q, D), the carry at its start (..., blocks, Q, ...),
         starts (L, ...) (the first is ignored). The spatial sublayers run over every step at
         once; the temporal ones scan over time. Returns (tokens, final state, final buffer)."""
         starts = starts[..., None]  # per query token
         states, buffers = [], []
+        temporal_first = self.order == "temporal_first"
         for index, block in enumerate(self.blocks):
-            tokens = block.attend(tokens, map_memory, token_tables, map_tables)
+            if not temporal_first:
+                tokens = block.attend(tokens, map_memory, token_tables, map_tables)
             tokens, block_state, block_buffer = block.temporal.sequence(
                 tokens, state[..., index, :, :], buffer[..., index, :, :, :], starts
             )
+            if temporal_first:
+                if index == 0 and retable is not None:
+                    token_tables = retable(tokens)
+                tokens = block.attend(tokens, map_memory, token_tables, map_tables)
             states.append(block_state)
             buffers.append(block_buffer)
         return tokens, torch.stack(states, -3), torch.stack(buffers, -4)
