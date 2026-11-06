@@ -24,7 +24,9 @@ moves it), which git ignores:
 runs/2026-11-02-mixed-purple-pumpkin/
   run.json              the record
   config.json           the resolved TrainConfig at the start
-  checkpoints/step_<environment steps>/   training checkpoints
+  checkpoints/step_<environment steps>/   training checkpoints (the newest two and the final)
+  policies/step_<environment steps>/{live,exponential_average,uniform_average}/
+                        every update's policy files (a PPO run; never pruned)
   league/               the league's policy snapshots
   policy/               a BC run's policy: the average its stop rule read (bnb train --objective bc)
   policy-<variant>/     a BC run's live clone and each average (live, uniform, exponential)
@@ -183,17 +185,34 @@ A fork or a warm start whose command sets no model setting takes the file's
 A training checkpoint is written every N environment steps. Without
 `--checkpoint-every`, N is about 30 minutes at the run's throughput, measured on the slowest
 of its second to fourth updates (the first compiles, and a PPO update that stops early on
-its KL is several times shorter) and recorded in `run.json`{.plain}. The kept checkpoints
-follow `bnb.runs.records.retained` (the league's snapshots have their own rule,
-`bnb.league.pool.retained`). Number the checkpoints 0, 1, 2, …
-in the order written (a stop's off-cadence checkpoint counts too); with n the newest and
-age = n − i, checkpoint i is kept if its age is under `RECENT`, or if i is divisible by
-2^⌊log₂ age⌋, and the final one is always kept. A multiple of 2^(j+1) is a multiple of
-2^j, so a checkpoint kept now was kept at every earlier step, and each band of ages
-[2^j, 2^(j+1)) from `RECENT` on holds exactly one checkpoint: about `RECENT` + log₂ n in
-all. A deleted checkpoint is first renamed `step_<step>.deleting`, which the listing
-ignores, then removed. A rewind (`--resume RUN --at STEP`) moves the newer
-checkpoints into `checkpoints/rewound_<segment>/`, where they are kept.
+its KL is several times shorter) and recorded in `run.json`{.plain}; the league's snapshot
+interval is measured the same way. Training checkpoints are the large, resumable states, so
+the retention (`bnb.runs.records.retained`; the league's snapshots have their own rule,
+`bnb.league.pool.retained`) keeps only the newest `RECENT` = 2 and the final one, which
+holds both averages. A stop's off-cadence checkpoint counts as one of them. A deleted
+checkpoint is first renamed `step_<step>.deleting`, which the listing ignores, then removed. A
+rewind (`--resume RUN --at STEP`) moves the newer checkpoints into
+`checkpoints/rewound_<segment>/`, and the newer updates' policy files into
+`policies/rewound_<segment>/`, where they are kept.
+
+### Every update's policy files
+
+The history of a run is its policy files, which are small (about 10 MB each). After every update a run with `--update-policies` (the default for PPO,
+off for BC, whose product is the policy files it saves at its end) writes
+`policies/step_<environment steps>/` with three policy files: `live/` (the learner's
+weights), `exponential_average/` and, once the uniform average has started,
+`uniform_average/`. They are never pruned: about 20 to 30 MB per update (the live weights and
+the exponential average, then the uniform average too), so a run of 100M steps at a million
+steps per update keeps about 2 to 3 GB. Their writing time counts in the
+update record's checkpoint seconds.
+
+`bnb runs ema RUN --decay 0.9 [--at STEP]` builds an exponential moving average of any
+decay from the saved live policies (`bnb.runs.ema`) and writes it as a policy file under the
+run's `artifacts/ema/`, which a tournament can rate like any other. The decay is per update,
+as the run's own average, which is `decay * average + (1 - decay) * live` after each update.
+The offline average starts from the first saved update's live weights (the run's own starts
+from the initial weights), so for a decay near 1 its earliest updates are weighted slightly
+differently; it is not the run's exponential average bit for bit.
 
 ## The memory probe
 

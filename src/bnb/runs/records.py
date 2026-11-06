@@ -29,7 +29,8 @@ from .serialise import to_json
 STATUSES = ("running", "stopped", "finished", "failed")
 RECORD = "run.json"
 CHECKPOINTS = "checkpoints"
-RECENT = 8  # checkpoints kept newest-first, before the geometric history (runs spec 5)
+POLICIES = "policies"  # every update's policy files (update_policies)
+RECENT = 2  # training checkpoints kept, newest first (and the final one)
 
 # Small word lists for run names a person can remember (runs spec 5).
 ADJECTIVES = (
@@ -142,22 +143,16 @@ def process_alive(pid: int) -> bool:
 
 
 def retained(ordinals: Iterable[int], final: int | None = None) -> set[int]:
-    """The checkpoints the retention keeps, by ordinal (0, 1, 2, ... in the order written,
-    a stop's off-cadence checkpoint included): with n the newest and age = n - i, the
-    newest RECENT (age < RECENT), every i divisible by 2^floor(log2(age)), and the final
-    one. A multiple of 2^(j+1) is a multiple of 2^j, so applied after every write the rule
-    only ever deletes what it would delete later anyway, and each band of ages
-    [2^j, 2^(j+1)) from RECENT on holds exactly one checkpoint. Training checkpoints
-    only: the league's snapshots have their own rule (`bnb.league.pool.retained`)."""
+    """The training checkpoints the retention keeps, by ordinal (0, 1, 2, ... in the order
+    written, a stop's off-cadence checkpoint included): the newest RECENT, and the final one.
+    The small policy files of every update (`policies/`) are the run's history; the large
+    resumable states are kept only to resume from. The league's snapshots have their own rule
+    (`bnb.league.pool.retained`)."""
     ordinals = set(ordinals)
     if not ordinals:
         return set()
     newest = max(ordinals)
-    keep = {
-        ordinal
-        for ordinal in ordinals
-        if newest - ordinal < RECENT or ordinal % (1 << ((newest - ordinal).bit_length() - 1)) == 0
-    }
+    keep = {ordinal for ordinal in ordinals if newest - ordinal < RECENT}
     if final in ordinals:
         keep.add(final)
     return keep
@@ -187,12 +182,14 @@ class Run:
         command: list[str],
         checkpoint_every: int,
         parent: dict | None = None,
+        update_policies: bool = False,
     ) -> Run:
         """A new run directory with its config.json and run.json (status running, no
-        segment yet). parent: the run and step a fork or a warm start began from."""
+        segment yet). parent: the run and step a fork or a warm start began from;
+        update_policies: whether every update writes its policy files (`policies/`)."""
         directory = pathlib.Path(runs_directory) / name
         directory.mkdir(parents=True)
-        for part in (CHECKPOINTS, "league", "artifacts"):
+        for part in (CHECKPOINTS, POLICIES, "league", "artifacts"):
             (directory / part).mkdir()
         (directory / "metrics.jsonl").touch()
         write_json(directory / "config.json", to_json(config))
@@ -206,6 +203,7 @@ class Run:
             wandb_id=None,
             parent=parent,
             checkpoint_every=checkpoint_every,
+            update_policies=update_policies,
             newest_checkpoint=None,
             final_checkpoint=None,
             checkpoint_ordinals={},
@@ -308,6 +306,11 @@ class Run:
         (`bnb.runs.session.POLICY_VARIANTS`: live, uniform, exponential)."""
         return self.directory / f"policy-{variant}"
 
+    def update_policies_path(self, step: int) -> pathlib.Path:
+        """Where the policy files written after the update that ended at environment step
+        `step` live: `policies/step_<step>/{live, exponential_average, uniform_average}/`."""
+        return self.directory / POLICIES / f"step_{step}"
+
     def checkpoint_path(self, step: int) -> pathlib.Path:
         """Where the checkpoint at environment step step lives, whether or not it exists."""
         return self.directory / CHECKPOINTS / f"step_{step}"
@@ -333,14 +336,26 @@ class Run:
 
     def set_aside_after(self, step: int) -> list[int]:
         """For a rewind to `step`: move every newer checkpoint into
-        `checkpoints/rewound_<segment>/`, where it is kept and out of the retention, so the
-        run can write those steps again. Returns their steps."""
+        `checkpoints/rewound_<segment>/` (and every newer update's policy files into
+        `policies/rewound_<segment>/`), where they are kept and out of the retention, so the
+        run can write those steps again. Returns the checkpoints' steps."""
         newer = [later for later in self.checkpoint_steps() if later > step]
         if newer:
             aside = self.directory / CHECKPOINTS / f"rewound_{len(self.record['segments'])}"
             aside.mkdir()
             for later in newer:
                 self.checkpoint_path(later).rename(aside / f"step_{later}")
+        policies = self.directory / POLICIES
+        later_policies = (
+            [path for path in policies.iterdir() if (step_of(path) or 0) > step]
+            if policies.is_dir()
+            else []
+        )
+        if later_policies:  # the rewound timeline's, out of the way of the new one's
+            aside = policies / f"rewound_{len(self.record['segments'])}"
+            aside.mkdir()
+            for path in later_policies:
+                path.rename(aside / path.name)
         if self.record["final_checkpoint"] in newer:
             self.record["final_checkpoint"] = None
         for later in newer:

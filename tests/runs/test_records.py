@@ -23,29 +23,14 @@ def test_a_run_name_is_the_date_the_label_and_two_words_drawn_again_on_a_clash(t
     assert run_name("mixed", tmp_path, date, random.Random(0)) != first
 
 
-def test_the_retention_keeps_the_newest_eight_one_per_doubling_band_and_the_final():
-    keep = retained(range(101), final=3)  # ordinals 0 to 100
-    assert set(range(100 - RECENT + 1, 101)) <= keep and 3 in keep
-    ages = sorted(100 - ordinal for ordinal in keep if ordinal != 3)
-    assert ages == [0, 1, 2, 3, 4, 5, 6, 7, 12, 20, 36, 100]  # i = 88, 80, 64, 0
-
-
-def test_the_retention_applied_after_every_write_is_stable_with_one_checkpoint_per_band():
-    """Each band of ages [2^j, 2^(j+1)) from 8 on holds exactly one checkpoint at every
-    newest ordinal, so what was deleted is never needed again."""
+def test_the_retention_keeps_the_newest_two_and_the_final():
+    assert RECENT == 2
+    assert retained(range(101), final=3) == {99, 100, 3}
+    assert retained(range(1), final=None) == {0} and retained([], final=None) == set()
     kept: set[int] = set()
-    for newest in range(2000):
-        kept = retained(kept | {newest}, final=None)
-        ages = sorted(newest - ordinal for ordinal in kept)
-        assert ages[:RECENT] == list(range(min(RECENT, newest + 1)))
-        for band in range(3, newest.bit_length()):
-            assert sum(1 << band <= age < 2 << band for age in ages) == 1, (newest, band)
-        assert len(kept) <= RECENT + newest.bit_length()
-    final = 1234
-    kept = set()
-    for newest in range(2000):
-        kept = retained(kept | {newest}, final=final if newest >= final else None)
-    assert final in kept
+    for newest in range(50):
+        kept = retained(kept | {newest}, final=7 if newest >= 7 else None)
+        assert kept == {newest, newest - 1, 7} & set(range(newest + 1))
 
 
 def test_the_run_keeps_its_checkpoints_by_ordinal_and_deletes_by_renaming(tmp_path):
