@@ -10,6 +10,13 @@ players; the others are networks. Networks of one build form a group (`Arena.gro
 groups' builds may differ (a field may mix architectures); the networks of one group have
 their weights stacked.
 
+A Yemong network may play ablated, `<policy>:<ablation>[+<ablation>...]` (for example
+`PATH:rotary`, `PATH:forecast`, `PATH:rotary+forecast`; `bnb.models.yemong.model.ABLATIONS`):
+the same weights, with the ablations applied on that player's rows only
+(`bnb.models.yemong.model.Ablations`). It is the same build, so it shares its policy's group
+and weights. An ablation is inference-time: it measures how much a policy trained with the
+feature relies on it, not what one trained without it would reach.
+
 The engine (`Arena`) is one rollout of one game preset, built once: `blocks` matchup blocks
 of `block_environments` environments each. Each block is a pool of its own whose two seats
 are both the one controller `MatchSeat`; block b's first seat is slot 2b and its second
@@ -44,6 +51,7 @@ from bnb.controllers.scripted_memory import ScriptedCarry
 from bnb.game import api
 from bnb.game.handling.characteristics import Characteristics, characteristics
 from bnb.learn.bc import TeacherConfig
+from bnb.models.yemong.model import ABLATIONS, Ablations, Yemong
 from bnb.runs import checkpoint
 from bnb.runs.records import Run
 from bnb.runtime.opponents import OUTCOMES, Rung, ladder_rung
@@ -57,12 +65,14 @@ SEAT = "matches"  # the match seat's controller name
 class Player:
     """One player: its name, and either a policy directory, a ladder entry's rung
     (`bnb.runtime.opponents.Rung`; +inf random), or a teacher (the scripted agent at its
-    temperature with a floor)."""
+    temperature with a floor); ablations: a network's inference-time ablations (names of
+    `ABLATIONS`, sorted)."""
 
     name: str
     policy: pathlib.Path | None = None
     rung: Rung | None = None
     teacher: TeacherConfig | None = None
+    ablations: tuple[str, ...] = ()
 
 
 def teacher_of(name: str) -> TeacherConfig | None:
@@ -85,9 +95,28 @@ def teacher_of(name: str) -> TeacherConfig | None:
     return TeacherConfig(temperature=values["T"], floor=values["floor"])
 
 
+def ablations_of(name: str) -> tuple[str, tuple[str, ...]]:
+    """A name's policy part and its ablations: `<policy>:<ablation>[+<ablation>...]` gives
+    (policy, the ablations sorted); a name without a known ablation suffix, (name, ())."""
+    policy, colon, suffix = name.rpartition(":")
+    parts = suffix.split("+")
+    if not colon or not policy or not all(part in ABLATIONS for part in parts):
+        return name, ()
+    if len(set(parts)) < len(parts):
+        raise ValueError(f"{name!r}: an ablation is named twice")
+    return policy, tuple(sorted(parts))
+
+
 def player(name: str, runs_directory: pathlib.Path | None = None) -> Player:
     """The player a command-line name means: a ladder entry, a policy directory (one with a
-    checkpoint.json), or a run's newest checkpoint."""
+    checkpoint.json), or a run's newest checkpoint; either of the last two with ablations
+    (`ablations_of`)."""
+    base, ablations = ablations_of(name)
+    if ablations:
+        network = player(base, runs_directory)
+        if network.policy is None:
+            raise ValueError(f"{name!r}: only a network plays ablated")
+        return dataclasses.replace(network, name=name, ablations=ablations)
     rung = ladder_rung(name)
     if rung is not None:
         return Player(name, rung=rung)
@@ -146,8 +175,11 @@ class _Decision(torch.nn.Module):
         self.model = controller.model
         self.controller = controller
 
-    def forward(self, carry, obs: Obs, reset: torch.Tensor):
-        action, carry, _ = self.controller.step(carry, obs, reset)
+    def forward(self, carry, obs: Obs, reset: torch.Tensor, ablations: Ablations | None = None):
+        if ablations is None:
+            action, carry, _ = self.controller.step(carry, obs, reset)
+        else:
+            action, carry, _ = self.controller.step(carry, obs, reset, ablations)
         return action.packed(), carry
 
 
@@ -156,8 +188,10 @@ class MatchSeat:
     network controller per group, over a model of its own (the forward swaps each slot's
     weights in), none when every player is scripted; blocks and block_environments: the layout (rows
     are block by block, each block's first seat's rows then its second's, as the lineup
-    lists them); characteristics and ships_per_team: the scripted agent's. Every slot starts
-    as the scripted agent."""
+    lists them); characteristics and ships_per_team: the scripted agent's; ablations: a
+    network slot may play ablated (each row's ablations held in place and passed to every
+    Yemong group's network as `Ablations`; else the networks are called without them).
+    Every slot starts as the scripted agent."""
 
     def __init__(
         self,
@@ -167,6 +201,7 @@ class MatchSeat:
         characteristics: Characteristics,
         ships_per_team: int,
         device: torch.device,
+        ablations: bool = False,
     ) -> None:
         self.slots, self.slot_rows = 2 * blocks, block_environments
         self.rows, self.ships_per_team = self.slots * block_environments, ships_per_team
@@ -197,6 +232,19 @@ class MatchSeat:
                 }
             )
         self.reads = tuple(dict.fromkeys(reads))
+        # each row's ablations (written in place), or None: the networks are called without;
+        # only a Yemong group reads them
+        self.ablations = None
+        self.ablatable = [isinstance(d.controller.model, Yemong) for d in self.decisions]
+        if ablations:
+            if not any(self.ablatable):
+                raise ValueError("only a Yemong network plays ablated")
+            self.ablations = Ablations(
+                **{
+                    name: torch.zeros(self.rows, dtype=torch.bool, device=device)
+                    for name in ABLATIONS
+                }
+            )
 
     def _slot_rows(self, slot: int) -> slice:
         return slice(slot * self.slot_rows, (slot + 1) * self.slot_rows)
@@ -225,7 +273,10 @@ class MatchSeat:
         for slot in range(self.slots):
             rows = self._slot_rows(slot)
             parameters = {name: value[slot] for name, value in self.parameters[group].items()}
-            inputs = _pytree.tree_map_only(torch.Tensor, lambda x: x[rows], (carry, obs, reset))
+            arguments = (carry, obs, reset)
+            if self.ablations is not None and self.ablatable[group]:
+                arguments += (self.ablations,)
+            inputs = _pytree.tree_map_only(torch.Tensor, lambda x: x[rows], arguments)
             outputs.append(torch.func.functional_call(self.decisions[group], parameters, inputs))
 
         def joined(*leaves: torch.Tensor | None) -> torch.Tensor | None:
@@ -283,16 +334,27 @@ class MatchSeat:
     # ---- the host's side, between batches
 
     @torch.no_grad()
-    def load_network(self, slot: int, group: int, state: dict[str, torch.Tensor]) -> None:
+    def load_network(
+        self,
+        slot: int,
+        group: int,
+        state: dict[str, torch.Tensor],
+        ablations: tuple[str, ...] = (),
+    ) -> None:
         """Slot `slot` plays a network of group `group`: its state (its model's state dict),
-        copied in place."""
+        copied in place, with `ablations` (names of `ABLATIONS`) on its rows."""
         if not 0 <= group < len(self.decisions):
             raise ValueError(f"the seat was built with {len(self.decisions)} network groups")
+        if ablations and (self.ablations is None or not self.ablatable[group]):
+            raise ValueError("only a Yemong network of a seat built with ablations plays ablated")
         for name, value in state.items():
             self.parameters[group][f"model.{name}"][slot].copy_(value)
         rows = self._slot_rows(slot)
         self.group[rows] = group
         self.scripted[rows] = False
+        if self.ablations is not None:
+            for name in ABLATIONS:
+                getattr(self.ablations, name)[rows] = name in ablations
 
     @torch.no_grad()
     def load_scripted(self, slot: int, play: ScriptedPlay) -> None:
@@ -302,6 +364,9 @@ class MatchSeat:
         self.share[rows] = play.share
         self.floor[rows] = play.floor
         self.scripted[rows] = True
+        if self.ablations is not None:
+            for name in ABLATIONS:
+                getattr(self.ablations, name)[rows] = False
 
     def finished(self, carry: MatchCarry) -> bool:
         """Whether every row's first game has ended (a host read)."""
@@ -340,7 +405,8 @@ class ArenaConfig:
 class Arena:
     """The match engine over `players` in `game` (a game preset's config), built once (see
     the module docstring). Each network player's weights are read once and kept on the
-    host; a batch copies them into its slots. `groups`: a template model per build, in the
+    host (an ablated copy shares its policy's, and its group); a batch copies them into its
+    slots, with the player's ablations. `groups`: a template model per build, in the
     order the builds first appear among the players (`group_of` maps a network player's index
     to its group)."""
 
@@ -355,20 +421,28 @@ class Arena:
         self.states: dict[int, dict[str, torch.Tensor]] = {}
         self.group_of: dict[int, int] = {}
         self.groups: list[torch.nn.Module] = []
+        loaded: dict[pathlib.Path, int] = {}  # a policy's first player
         for index, one in enumerate(players):
             if scripted_play(one) is not None:
                 continue
-            model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
-            for group, template in enumerate(self.groups):
-                if type(model) is type(template) and model.build == template.build:
-                    break
+            if one.policy in loaded:  # an ablated copy (or a repeat): the same weights
+                first = loaded[one.policy]
+                self.group_of[index], self.states[index] = self.group_of[first], self.states[first]
             else:
-                group = len(self.groups)
-                self.groups.append(model)
-            self.group_of[index] = group
-            self.states[index] = {
-                name: value.detach().cpu() for name, value in model.state_dict().items()
-            }
+                loaded[one.policy] = index
+                model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
+                for group, template in enumerate(self.groups):
+                    if type(model) is type(template) and model.build == template.build:
+                        break
+                else:
+                    group = len(self.groups)
+                    self.groups.append(model)
+                self.group_of[index] = group
+                self.states[index] = {
+                    name: value.detach().cpu() for name, value in model.state_dict().items()
+                }
+            if one.ablations and not isinstance(self.groups[self.group_of[index]], Yemong):
+                raise ValueError(f"{one.name}: only a Yemong network plays ablated")
         agent = characteristics(api.ship_types(device), api.rules_of(game))
         controllers = [model_controller(template, game) for template in self.groups]
         self.seat = MatchSeat(
@@ -378,6 +452,7 @@ class Arena:
             agent,
             game.ships_per_team,
             device,
+            ablations=any(one.ablations for one in players),
         )
         pools = tuple(
             Pool(f"block_{index}", 1.0 / config.blocks, (SEAT, SEAT))
@@ -404,7 +479,9 @@ class Arena:
     def _load(self, slot: int, index: int) -> None:
         play = scripted_play(self.players[index])
         if play is None:
-            self.seat.load_network(slot, self.group_of[index], self.states[index])
+            self.seat.load_network(
+                slot, self.group_of[index], self.states[index], self.players[index].ablations
+            )
         else:
             self.seat.load_scripted(slot, play)
 

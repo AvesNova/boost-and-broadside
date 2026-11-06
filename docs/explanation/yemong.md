@@ -53,6 +53,22 @@ its pending action. The trunk's temporal layers then carry the memory of hidden 
 next-state and enemy-action heads still train as auxiliary losses, unchanged; their
 predictions are only not fed back. Select it with `--set yemong.forecast_feedback=false`.
 
+`YemongConfig.rotary` (on by default) chooses whether attention is rotary. Off, the
+rotation is the identity everywhere: every angle 0 (cos 1, sin 0) in the token and the map
+tables, in the plain and the fused kernel path alike, so attention reads no relative
+position or heading; positions reach the model only through the tokens' position codes.
+The model trains and plays that way, and the switch is recorded in the build and the run's
+config. Select it with `--set yemong.rotary=false`.
+
+**Inference-time ablations.** `Yemong.step` also takes an `Ablations` (per view, bool):
+`rotary`, the rotary tables are the identity on the view's rows (every angle 0, cos 1 and
+sin 0, for the token and the map tables, so the fused attention kernel reads the same
+tables); `forecast`, the view's belief is not advanced, as with `forecast_feedback` off.
+A view with neither computes exactly what it would without them. The tournament uses them
+to play an ablated copy of a trained policy (see the league page's published ratings);
+they measure reliance on a feature the weights were trained with, not a model trained
+without it.
+
 ### The position offset
 
 Every position the model reads, of ships, fields, zones and the map centre, is shifted by

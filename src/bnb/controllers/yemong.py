@@ -11,7 +11,7 @@ import torch
 from bnb.contracts import Action, Obs, Outputs
 from bnb.contracts.action import from_joint
 from bnb.models.yemong import policy
-from bnb.models.yemong.model import Carry, Replay, Unrolled, Yemong
+from bnb.models.yemong.model import Ablations, Carry, Replay, Unrolled, Yemong
 
 
 class YemongController:
@@ -29,9 +29,12 @@ class YemongController:
         """The model's initial carry for R = views views, on device."""
         return self.model.initial_carry(views, self.ships_per_team, self.num_ships, device)
 
-    def step(self, carry: Carry, obs: Obs, reset: torch.Tensor) -> tuple[Action, Carry, Outputs]:
-        """One decision for views (R, ...); see `Controller.step`."""
-        decision = self.model.step(carry, obs, reset)
+    def step(
+        self, carry: Carry, obs: Obs, reset: torch.Tensor, ablations: Ablations | None = None
+    ) -> tuple[Action, Carry, Outputs]:
+        """One decision for views (R, ...); see `Controller.step`. ablations: the model's
+        inference-time ablations per view (`Ablations`; none by default)."""
+        decision = self.model.step(carry, obs, reset, ablations)
         joint, log_probability, entropy = policy.sample(decision.policy_logits)
         carry = dataclasses.replace(decision.carry, previous_action=joint)
         outputs = Outputs(

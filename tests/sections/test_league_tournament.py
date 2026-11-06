@@ -189,6 +189,112 @@ def test_a_teacher_takes_its_temperature_and_floor():
     assert arena.seat.floor[rows : 3 * rows].tolist() == [0.0] * 2 * rows
 
 
+# ---- ablated players
+
+
+def _yemong(directory) -> Player:
+    """A policy file of a Yemong for the small game with random last layers (so its play
+    depends on its inputs)."""
+    from bnb.game import api
+    from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
+
+    with torch.no_grad():
+        small = YemongConfig(width=64, heads=1, map_width=32, blocks=1)
+        model = Yemong(yemong_build(small, api.rules_of(GAME), api.ship_types()))
+        for name, parameter in model.named_parameters():
+            if name.endswith("last.weight") or ".lasts." in name and name.endswith(".weight"):
+                parameter.normal_(0.0, 0.05)
+    checkpoint.save_policy(directory, model)
+    return player(str(directory))
+
+
+def test_an_ablated_name_is_its_policy_with_sorted_ablations(tmp_path):
+    base = _yemong(tmp_path / "a")
+    rotary = player(f"{base.name}:rotary")
+    assert rotary == Player(f"{base.name}:rotary", policy=base.policy, ablations=("rotary",))
+    assert player(f"{base.name}:rotary+forecast").ablations == ("forecast", "rotary")
+    with pytest.raises(ValueError, match="twice"):
+        player(f"{base.name}:rotary+rotary")
+    with pytest.raises(ValueError, match="only a network"):
+        player("scripted:rotary")
+    with pytest.raises(ValueError, match="not a policy file"):
+        player(f"{base.name}:sideways")
+
+
+def test_only_a_yemong_plays_ablated(tmp_path):
+    relational = _network(tmp_path / "a", 1)
+    ablated = player(f"{relational.name}:rotary")
+    with pytest.raises(ValueError, match="Yemong"):
+        Arena([relational, ablated, SCRIPTED], GAME, CPU, SMALL)
+
+
+def test_an_ablated_copy_shares_its_weights_and_ablates_only_its_slots_rows(tmp_path):
+    base = _yemong(tmp_path / "a")
+    rotary, forecast = player(f"{base.name}:rotary"), player(f"{base.name}:forecast")
+    arena = Arena([base, rotary, forecast, SCRIPTED], GAME, CPU, SMALL)
+    assert arena.states[0] is arena.states[1] is arena.states[2]
+    arena.play([(1, 3), (0, 2)])
+    rows = arena.seat.slot_rows
+    ablations = arena.seat.ablations
+    assert ablations.rotary.tolist() == [True] * rows + [False] * 3 * rows
+    assert ablations.forecast.tolist() == [False] * 3 * rows + [True] * rows
+    arena.play([(3, 2), (1, 0)])
+    assert ablations.rotary.tolist() == [False] * 2 * rows + [True] * rows + [False] * rows
+    assert ablations.forecast.tolist() == [False] * rows + [True] * rows + [False] * 2 * rows
+
+
+def test_a_two_build_field_with_an_ablated_yemong(tmp_path):
+    """A relational network beside a Yemong and its ablated copy: the copy shares the
+    Yemong's group and weights, only its slot's rows are ablated, the relational group is
+    called without ablations, and a relational block plays the same games as in an engine
+    without the ablated copy."""
+    relational, yemong = _network(tmp_path / "a", 1), _yemong(tmp_path / "b")
+    rotary = player(f"{yemong.name}:rotary")
+    arena = Arena([relational, yemong, rotary, SCRIPTED], GAME, CPU, SMALL)
+    assert len(arena.groups) == 2 and arena.group_of == {0: 0, 1: 1, 2: 1}
+    assert arena.states[2] is arena.states[1]
+    assert arena.seat.ablatable == [False, True]
+    results = arena.play([(0, 3), (2, 0)])
+    assert results.sum(1).tolist() == [4, 4]
+    rows = arena.seat.slot_rows
+    assert (
+        arena.seat.ablations.rotary.tolist() == [False] * 2 * rows + [True] * rows + [False] * rows
+    )
+    assert arena.seat.group.tolist()[2 * rows :] == [1] * rows + [0] * rows
+    states = []
+    for players, matchups in (
+        ([relational, yemong, SCRIPTED], [(0, 2), (1, 0)]),
+        ([relational, yemong, rotary, SCRIPTED], [(0, 3), (2, 0)]),
+    ):
+        engine = Arena(players, GAME, CPU, SMALL)
+        torch.manual_seed(5)
+        engine.play(matchups)
+        states.append((_block_state(engine, 0), _block_state(engine, 1)))
+    for one, two in zip(states[0][0], states[1][0], strict=True):
+        assert torch.equal(one, two)
+    assert any(not torch.equal(one, two) for one, two in zip(states[0][1], states[1][1]))
+
+
+def test_a_block_without_ablations_plays_as_in_an_engine_without_them(tmp_path):
+    """Block 0's games are the same in an engine built without ablations as in one whose
+    other block plays an ablated copy; the ablated copy's block plays other games."""
+    base = _yemong(tmp_path / "a")
+    rotary = player(f"{base.name}:rotary")
+    states = []
+    for players, matchups in (
+        ([base, SCRIPTED], [(0, 1), (0, 1)]),
+        ([base, SCRIPTED, rotary], [(0, 1), (2, 1)]),
+    ):
+        arena = Arena(players, GAME, CPU, SMALL)
+        torch.manual_seed(5)
+        arena.play(matchups)
+        states.append((_block_state(arena, 0), _block_state(arena, 1)))
+    assert states[0][0]
+    for one, two in zip(states[0][0], states[1][0], strict=True):
+        assert torch.equal(one, two)
+    assert any(not torch.equal(one, two) for one, two in zip(states[0][1], states[1][1]))
+
+
 # ---- the allocation of blocks and the allowed pairs
 
 
