@@ -1308,6 +1308,32 @@ Details: `docs/training.md`, `docs/internal/frontline-redesign-implementation.md
   `2026-11-06-mixed-calm-fern`'s first 29 updates, the live rating's standard error goes
   from 95–112 to 59–66 and the exponential average's from 82–106 to 63–71.
 
+### Round four: schedule, averages, evaluation (author, 2026-11-06)
+
+- **Learning-rate warmup 10M environment steps, BC and RL** (was 1M): "The 10M warmup is
+  also for the lr (or more accurately, primarily for the lr)". The uniform average still
+  starts at 10M (`league.uniform_from`). A run warm-started from a clone warms up again.
+- **The product, for now:** the uniform average for BC (a static target), the EMA for RL.
+- **The next RL run keeps every checkpoint** (for now): the live, EMA and uniform policy
+  files of every update, so EMA decays can be compared afterwards from the live weights.
+- **No entropy bonus or KL toward the clone in RL:** "the clone is just a scripted agent
+  and not a diverse pool of human experiences. We do need some way to control the kl
+  though" (how: open).
+- **The headline rating is the offline tournament** (scripted at 1000, the ladder of the
+  field), not the in-training fit, which saturates once nearly every game is won.
+- **Tournaments must rate mixed architectures** (the Griffin-only arms against the
+  baseline): the fixed-slot engine needs per-architecture slot groups.
+- **The Griffin-only BC experiment:** the off arm removes every loop, state and enemy
+  action (`yemong.forecast_feedback=false` does both); 30M steps per arm first, then
+  compare and decide whether more is needed.
+- **Inference ablations of the best RL model** (calm-fern's EMA): rotary off collapses it
+  (it loses every game to the BC clone); forecast feedback off moves the policy by 0.004-0.007
+  nats. Ratings in `runs-v2/ratings/2026-11-06-ablations/`.
+- **Under discussion, not decided:** removing the outcome level from the advantages until
+  its critic works; the shot-trajectory target (the zero-spread line, weighted near
+  enemies and field bands, no sigma); larger BC minibatches; league diversity
+  (exploiters, prioritised opponent sampling).
+
 ## Tabled (deliberately deferred)
 
 1. **Remaining flight-parameterization questions** (the card itself is in
