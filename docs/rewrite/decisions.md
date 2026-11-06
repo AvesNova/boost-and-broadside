@@ -1334,6 +1334,19 @@ Details: `docs/training.md`, `docs/internal/frontline-redesign-implementation.md
   enemies and field bands, no sigma); larger BC minibatches; league diversity
   (exploiters, prioritised opponent sampling).
 
+- **Temporal-first arms (C, D):** per block temporal, spatial, spatial; C keeps belief
+  feedback, D is Griffin-only with hidden ships' rotary read from the first temporal layer.
+  The read-out (author, option 1): a (cos, sin) per rotary frequency, about 40 outputs per
+  ship, trained against the true phasors (its optimum is the expected phasor, so its
+  amplitude shrinks with uncertainty); trained on every ship, visible ships fed their true
+  phasors. The old Griffin-only arm in today's order is dropped.
+- **League turnover (author):** a clean cut, one slot every 2-4 updates (no drains); the
+  ladder out of the RL training pool; p(1 - p) kept, the floor kept. Simulations:
+  `league-sampling-sim.md` and `bench/league_sampling_2.py`.
+- **DPPO** (Qi et al., ICML 2026): to try in the RL fine-tunes, exact TV over the joint
+  action and the paper's Binary approximation, delta 0.10/0.15/0.20, against PPO and
+  clip-higher.
+
 ## Tabled (deliberately deferred)
 
 1. **Remaining flight-parameterization questions** (the card itself is in
