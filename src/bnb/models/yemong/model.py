@@ -66,6 +66,12 @@ class YemongConfig:
     bfloat16_matmuls: run the matrix products of the encoder, the trunk and the heads under
     bf16 autocast. Off by default. On, `step` and `unroll` agree only to bf16 rounding (the
     fix-round notes measure it), where float32 gives float32 rounding.
+    forecast_feedback: after each decision store the forecast (the next-state head's decoded
+    means and spreads, the enemy-action head's probabilities) as the belief the next tick
+    reads. Off, nothing is written back: a hidden ship's row stays what the team last saw
+    (its state at its last sighting, no spread, its age still counting) and every enemy
+    action stays uniform, so the trunk's temporal layers carry the memory. The heads train
+    as auxiliary losses either way.
     """
 
     width: int = 128
@@ -83,6 +89,7 @@ class YemongConfig:
     rotary_octaves: int = 8
     heading_harmonics: tuple[int, ...] = (1, 2, 4, 8)
     bfloat16_matmuls: bool = False
+    forecast_feedback: bool = True  # store the forecast as the next tick's belief
 
     def __post_init__(self) -> None:
         if self.outcome_level not in self.levels:
@@ -422,12 +429,17 @@ class Yemong(nn.Module):
         value_logits, values = self._values(value_logits.to(dtype), outcome_logits)
         forecast_logits = next_state_logits(tokens.code[:, own:], change.to(dtype))
         enemy = _rows(seen, slice(own, None))
-        means, spreads = self.state_code.decode_logits(forecast_logits, tokens.ship_type[:, own:])
-        position = _nearest(means[..., 0:2], enemy.means[..., 0:2])
-        means = torch.cat([position, means[..., 2:]], -1)
-        advanced, nonfinite = beliefs.advance(
-            enemy, torch.cat([means, spreads], -1), enemy_action_logits
-        )
+        if self.config.forecast_feedback:
+            means, spreads = self.state_code.decode_logits(
+                forecast_logits, tokens.ship_type[:, own:]
+            )
+            position = _nearest(means[..., 0:2], enemy.means[..., 0:2])
+            means = torch.cat([position, means[..., 2:]], -1)
+            advanced, nonfinite = beliefs.advance(
+                enemy, torch.cat([means, spreads], -1), enemy_action_logits
+            )
+        else:  # the belief keeps the last sighting (observe holds it, uniform actions)
+            advanced, nonfinite = enemy, torch.zeros_like(carry.nonfinite)
         mine = _rows(seen, slice(None, own))
         belief = Belief(
             **{

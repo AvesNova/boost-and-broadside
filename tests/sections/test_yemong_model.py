@@ -9,10 +9,12 @@ import yemong_cases as cases
 from torch.utils import _pytree
 
 from bnb.contracts import REWARD_LEVELS, GameConfig, Obs
+from bnb.contracts.action import NUM_JOINT
 from bnb.contracts.obs import GLOBAL, SHIP, SHIP_HIDDEN_ZERO
 from bnb.game import api
 from bnb.models.yemong import policy
-from bnb.models.yemong.inputs import ACTION_SCALE, POSITION_CODE, truth
+from bnb.models.yemong.inputs import ACTION_SCALE, POSITION_CODE, store_action, truth
+from bnb.models.yemong.model import YemongConfig
 from bnb.models.yemong.state_code import POSITION_PERIOD
 
 # The code under test draws from torch's default generator (model initialisation, the
@@ -316,6 +318,84 @@ def test_hidden_columns_of_hidden_ships_are_not_read():
         second = net.step(carry, dataclasses.replace(view, ships=ships), reset)
     for a, b in zip(_pytree.tree_leaves(first), _pytree.tree_leaves(second), strict=True):
         assert torch.equal(a, b)
+
+
+# ------------------------------------------------------------------ forecast feedback
+
+
+def _feedback_off(segment):
+    """The segment's model with forecast_feedback off (the same weights), in float64."""
+    net, obs = _float64(segment)
+    off = cases.double(cases.model(forecast_feedback=False))
+    off.load_state_dict(net.state_dict())
+    return off, obs
+
+
+def test_forecast_feedback_on_is_the_default_and_feeds_the_forecast_back(segment):
+    """On, the next tick reads the enemy-action head's probabilities as the pending enemy
+    action and a hidden ship's row carries the decoded forecast's spread. (That on is
+    today's model bit for bit was checked against the commit before the switch: a rollout,
+    its step loop, carry and unroll were identical.)"""
+    assert YemongConfig().forecast_feedback
+    net, obs = _float64(segment)
+    carry = net.initial_carry(obs.ships.shape[1], OWN, 10)
+    with torch.no_grad():
+        decisions, _ = cases.step_loop(net, net.step, carry, obs, cases.joint_actions(segment[1]))
+    replay = decisions.replay
+    spawned = obs.ships[1:, :, OWN:, SHIP["spawned"]] > 0.5
+    kept = ~spawned & ~cases.resets(obs)[1:, :, None]
+    forecast = store_action(torch.softmax(decisions.enemy_action_logits[:-1], -1))
+    assert kept.any()
+    assert torch.equal(replay.enemy_action[1:][kept], forecast[kept])
+    hidden = (obs.ships[..., OWN:, SHIP["visible"]] < 0.5) & replay.valid
+    assert (replay.spreads[hidden] > 0).any()
+
+
+def test_forecast_feedback_off_holds_the_last_sighting(segment):
+    """Off, a hidden ship's row is its last sighting at every later tick until it is seen
+    again (state as seen, no spread), its age counts the ticks since, every enemy action is
+    uniform, and nothing non-finite is counted."""
+    net, obs = _feedback_off(segment)
+    carry = net.initial_carry(obs.ships.shape[1], OWN, 10)
+    with torch.no_grad():
+        joint = cases.joint_actions(segment[1])
+        decisions, final = cases.step_loop(net, net.step, carry, obs, joint)
+    replay = decisions.replay
+    enemy = obs.ships[..., OWN:, :]
+    visible = enemy[..., SHIP["visible"]] > 0.5
+    sighting = torch.zeros_like(replay.means)
+    last_seen = torch.zeros(replay.age.shape[1:], dtype=torch.int64)
+    held = 0
+    for t in range(obs.ships.shape[0]):
+        seen = truth(enemy[t], replay.offset[t])
+        sighting[t] = torch.where(visible[t][..., None], seen, sighting[t - 1] if t else 0.0)
+        last_seen = torch.where(visible[t], t, last_seen)
+        hidden = replay.valid[t] & ~visible[t]
+        held += int(hidden.sum())
+        assert torch.equal(replay.means[t][replay.valid[t]], sighting[t][replay.valid[t]])
+        assert torch.equal(replay.age[t][hidden], (t - last_seen[hidden]).int())
+        tokens = net.tokens(
+            _pytree.tree_map_only(torch.Tensor, lambda x: x[t], obs),
+            _pytree.tree_map_only(torch.Tensor, lambda x: x[t], replay),
+        )
+        ship_type = enemy[t][..., SHIP["ship_type"]].long()
+        sharp = net.state_code.sharp(sighting[t], ship_type)
+        assert torch.equal(tokens.code[:, OWN:][hidden], sharp[hidden])
+        position = tokens.query_position[:, OWN:-1]
+        assert torch.equal(position[hidden], sighting[t][..., 0:2][hidden])
+    assert held > 0, "the segment should hide ships the team has seen"
+    assert (replay.spreads == 0).all()
+    assert (replay.enemy_action == store_action(torch.tensor(1.0 / NUM_JOINT))).all()
+    assert (final.nonfinite == 0).all()
+
+
+def test_unroll_equals_steps_with_forecast_feedback_off(segment):
+    net, obs = _feedback_off(segment)
+    carry = net.initial_carry(obs.ships.shape[1], OWN, 10)
+    with torch.no_grad():
+        decisions, _ = cases.step_loop(net, net.step, carry, obs, cases.joint_actions(segment[1]))
+        unrolled = net.unroll(carry, obs, decisions.replay, cases.resets(obs))
+    _compare(unrolled, decisions, 1e-9)
 
 
 # ------------------------------------------------------------------ the position offset

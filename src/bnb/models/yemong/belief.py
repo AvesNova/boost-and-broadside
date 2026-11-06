@@ -3,6 +3,8 @@ sight before a decision and storing the forecast after it.
 
 Visible ships are truth; a hidden ship the team has seen since it last spawned keeps the
 model's forecast; a ship never seen since its spawn is not valid (zeros, uniform action).
+With `YemongConfig.forecast_feedback` off the model never calls `advance`: a hidden ship
+keeps its last sighting (no spread) and every action stays uniform.
 """
 
 import torch
