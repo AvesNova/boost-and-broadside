@@ -40,7 +40,7 @@ from .inputs import (
     truth,
 )
 from .layers import rotary_tables
-from .network import Encoder, Trunk
+from .network import ORDERS, Encoder, Trunk
 from .state_code import (
     MEANS,
     POSITION_LEVELS,
@@ -76,6 +76,17 @@ class YemongConfig:
     is the identity everywhere (every angle 0: cos 1, sin 0, for the token and the map
     tables, in the plain and the fused kernel path alike), so attention reads no relative
     position or heading; the model trains and plays that way.
+    order: per trunk block, the spatial sublayers then the temporal one ("spatial_first")
+    or the temporal one then the spatial ones ("temporal_first"; `network.ORDERS`).
+    rotary_readout (temporal_first and rotary only): a linear head on the first temporal
+    sublayer's ship rows gives a (cos, sin) pair per rotary frequency, unnormalised (a pair
+    shorter than 1 is the model unsure at that frequency). Every spatial sublayer (all of
+    them follow the first temporal one) rotates a hidden ship's row by the read-out's pairs
+    in place of its belief's tables; visible ships keep their true tables and the global
+    token and the map memory their exact ones. The read-out enters the tables detached: it
+    trains only on its own loss (the learner's `rotary_readout` term, against the true
+    phasors), which keeps its optimum the expected phasor and the fused attention kernel
+    usable in the learner.
     """
 
     width: int = 128
@@ -95,8 +106,14 @@ class YemongConfig:
     bfloat16_matmuls: bool = False
     forecast_feedback: bool = True  # store the forecast as the next tick's belief
     rotary: bool = True  # rotary attention (off: the identity rotation)
+    order: str = "spatial_first"  # per block: "spatial_first" or "temporal_first"
+    rotary_readout: bool = False  # hidden ships' rotary pairs from the first temporal layer
 
     def __post_init__(self) -> None:
+        if self.order not in ORDERS:
+            raise ValueError(f"order {self.order!r} is not one of {ORDERS}")
+        if self.rotary_readout and (self.order != "temporal_first" or not self.rotary):
+            raise ValueError("rotary_readout needs order temporal_first and rotary on")
         if self.outcome_level not in self.levels:
             raise ValueError(f"outcome level {self.outcome_level!r} is not in {self.levels}")
         if len(self.levels) < 2:
@@ -106,6 +123,11 @@ class YemongConfig:
             raise ValueError(
                 f"{pairs} rotary pairs do not fit a head of {self.width // self.heads}"
             )
+
+    @property
+    def rotary_pairs(self) -> int:
+        """The rotary frequencies: x and y per octave, then the heading harmonics."""
+        return 2 * self.rotary_octaves + len(self.heading_harmonics)
 
     @property
     def local_levels(self) -> tuple[int, ...]:
@@ -166,7 +188,9 @@ class Unrolled:
     """A segment's outputs, (L, R, ...) leading: policy_logits (S rows), enemy_action_logits
     and next_state_logits (every row), value_logits (S, levels - 1, bins), values (S, levels),
     outcome_logits (4), density_log_rates (2 cells: ally cells, then enemy cells),
-    shot_outcome_logits (N, 19) and shot_latents (N, D) for `Yemong.shot_trajectory`."""
+    shot_outcome_logits (N, 19) and shot_latents (N, D) for `Yemong.shot_trajectory`;
+    rotary_readout (N, 2, pairs), the read-out's (cos, sin) rows per ship (None without
+    `YemongConfig.rotary_readout`)."""
 
     policy_logits: torch.Tensor
     enemy_action_logits: torch.Tensor
@@ -177,6 +201,7 @@ class Unrolled:
     density_log_rates: torch.Tensor
     shot_outcome_logits: torch.Tensor
     shot_latents: torch.Tensor
+    rotary_readout: torch.Tensor | None = None
 
 
 BELIEF_FIELDS = tuple(field.name for field in dataclasses.fields(Belief))  # (traced as constants)
@@ -195,6 +220,10 @@ def _nearest(position: torch.Tensor, reference: torch.Tensor) -> torch.Tensor:
     """The representative of position (mod P) nearest to reference: decoded positions come
     back in [0, P), and the belief's frame is continuous."""
     return position + POSITION_PERIOD * torch.round((reference - position) / POSITION_PERIOD)
+
+
+def _cast(tensor: torch.Tensor | None, dtype: torch.dtype) -> torch.Tensor | None:
+    return None if tensor is None else tensor.to(dtype)
 
 
 def _zero_angles(tables: tuple[torch.Tensor, torch.Tensor]):
@@ -275,7 +304,12 @@ class Yemong(nn.Module):
             ZONE_INPUTS,
         )
         self.trunk = Trunk(
-            width, config.heads, config.map_width, config.blocks, config.spatial_per_block
+            width,
+            config.heads,
+            config.map_width,
+            config.blocks,
+            config.spatial_per_block,
+            config.order,
         )
         levels = len(config.levels) - 1
         # Heads grouped by the token they read: own ships, every ship, the global token.
@@ -305,6 +339,10 @@ class Yemong(nn.Module):
         # gradient is 1 / sqrt(eps)).
         with torch.no_grad():
             self.encoder.absent_zone.normal_()
+        # After every other draw, so the rest initialise as they would without it.
+        self.rotary_readout = (
+            nn.Linear(width, 2 * config.rotary_pairs) if config.rotary_readout else None
+        )
 
     def _initialise(self, num_ships: int, cells: int) -> None:
         """Code columns of each first projection ~ N(0, 1 / groups); the next-state head
@@ -413,6 +451,54 @@ class Yemong(nn.Module):
             )
         return queries, memory, token_tables, map_tables
 
+    def phasors(self, position: torch.Tensor, heading: torch.Tensor) -> torch.Tensor:
+        """(..., tokens, 2, pairs): the (cos, sin) rows of the rotary angles of positions
+        (..., tokens, 2) in the shifted frame and headings (..., tokens): the tables the
+        rotary read-out is trained against."""
+        cos, sin = rotary_tables(
+            position,
+            heading,
+            self.position_periods,
+            self.position_periods,
+            self.heading_frequencies,
+        )
+        return torch.cat([cos, sin], -2)
+
+    def _readout(
+        self,
+        ships: torch.Tensor,
+        token_tables: tuple[torch.Tensor, torch.Tensor],
+        rotary_off: torch.Tensor | None,
+        store: dict,
+    ):
+        """The trunk's `retable` for the rotary read-out (None without it): from the first
+        temporal sublayer's output, the token tables with every hidden ship's row replaced
+        by the read-out's pairs (detached), rotary_off's views made the identity again; the
+        read-out (..., N, 2, pairs) goes into store["readout"]. ships (..., N, columns): the
+        observation's rows."""
+        if self.rotary_readout is None:
+            return None
+        hidden = ships[..., SHIP["visible"]] <= 0.5  # (..., N)
+        count = hidden.shape[-1]
+
+        def retable(tokens: torch.Tensor):
+            readout = self.rotary_readout(tokens[..., :count, :]).unflatten(-1, (2, -1))
+            store["readout"] = readout
+            cos, sin = (part.detach().to(token_tables[0].dtype) for part in readout.unbind(-2))
+            rows = torch.cat([hidden, torch.zeros_like(hidden[..., :1])], -1)[..., None, None]
+            pad = token_tables[0][..., count:, :, :]
+            tables = (
+                torch.where(rows, torch.cat([cos[..., None, :], pad], -3), token_tables[0]),
+                torch.where(
+                    rows,
+                    torch.cat([sin[..., None, :], token_tables[1][..., count:, :, :]], -3),
+                    token_tables[1],
+                ),
+            )
+            return tables if rotary_off is None else _identity(tables, rotary_off)
+
+        return retable
+
     def _values(self, value_logits: torch.Tensor, outcome_logits: torch.Tensor):
         value_logits = value_logits.unflatten(-1, (-1, self.config.value_bins))
         values = critic_values(
@@ -465,12 +551,18 @@ class Yemong(nn.Module):
         )
         tokens = self.tokens(obs, replay)
         ships_count = tokens.code.shape[-2]
+        rotary_off = None if ablations is None else ablations.rotary
+        readout: dict = {}
         with self._matmuls(ships.device):
-            queries, memory, token_tables, map_tables = self._encode(
-                tokens, None if ablations is None else ablations.rotary
-            )
+            queries, memory, token_tables, map_tables = self._encode(tokens, rotary_off)
             hidden, state, buffer = self.trunk.step(
-                queries, memory, token_tables, map_tables, carry.state, carry.convolution_buffer
+                queries,
+                memory,
+                token_tables,
+                map_tables,
+                carry.state,
+                carry.convolution_buffer,
+                self._readout(ships, token_tables, rotary_off, readout),
             )
             policy_logits, value_logits = self.own_heads(hidden[:, :own])
             enemy_action_logits, change = self.ship_heads(hidden[:, own:ships_count])
@@ -544,6 +636,7 @@ class Yemong(nn.Module):
             density_log_rates=density_log_rates.to(dtype),
             shot_outcome_logits=shot_outcome_logits.to(dtype),
             shot_latents=shot_latents.to(dtype),
+            rotary_readout=_cast(readout.get("readout"), dtype),
         )
         return decision, torch.utils._pytree.tree_map(lambda tensor: tensor[None], unrolled)
 
@@ -559,10 +652,18 @@ class Yemong(nn.Module):
         tokens = self.tokens(obs, replay)
         own, ships = replay.previous_action.shape[-1], tokens.code.shape[-2]
         dtype = self.bins.dtype
+        readout: dict = {}
         with self._matmuls(obs.ships.device):
             queries, memory, token_tables, map_tables = self._encode(tokens)
             hidden, _, _ = self.trunk.sequence(
-                queries, memory, token_tables, map_tables, state, buffer, reset
+                queries,
+                memory,
+                token_tables,
+                map_tables,
+                state,
+                buffer,
+                reset,
+                self._readout(obs.ships, token_tables, None, readout),
             )
             policy_logits, value_logits = self.own_heads(hidden[..., :own, :])
             ship_hidden = hidden[..., :ships, :]
@@ -583,6 +684,7 @@ class Yemong(nn.Module):
             density_log_rates=density_log_rates.to(dtype),
             shot_outcome_logits=shot_outcome_logits.to(dtype),
             shot_latents=shot_latents.to(dtype),
+            rotary_readout=_cast(readout.get("readout"), dtype),
         )
 
     def shot_trajectory(self, latents: torch.Tensor, ages: torch.Tensor) -> torch.Tensor:
