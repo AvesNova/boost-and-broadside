@@ -122,3 +122,15 @@ Entries: time, what, why. Newest last.
   C-fixed 30M); job 10 arm 4 BC 30M (`2026-11-08-bc-arm4-extrapolation`); job 11 its
   tournament (arm 4, arm 3, C-fixed 30M). ETAs: arm 2 done ~06:55, its tournament ~07:40;
   arm 3 ~10:00 + tournament ~10:45; arm 4 ~13:05 + tournament ~13:50 (worst +1 h each).
+- **06:52** **Arm 2 finished 30M.** Against C-fixed and arm 1 at 30.4M: KL 0.493 (0.491,
+  0.501), agreement 0.665 (0.672, 0.668): level. Next-state one-tick error on visible ships:
+  position 0.023 m (arm 1's absolute head 0.277), velocity 0.245 m/s (0.95). Hidden position
+  within 1 sigma 0.61/0.31/0.19/0.18/0.20 at 0-0.1 ... 2-5 s (C-fixed 0.58/0.21/0.05/0.08/
+  0.18): better calibrated. **Concern for the author: outcome Brier skill keeps falling**
+  (5-15 s, mean of the last 10 logs from 20-30M: C-fixed 0.52, arm 1 0.35, arm 2 0.15).
+  Round 0's seed spread was 0.2, so arm 2's drop (0.37) is past it. The critic's outcome level
+  has ~0 trunk share in every arm; something in the trunk's representation (the new inputs,
+  the delta heads, or the changed share mix: arm 2's shot_outcome share 0.39 vs 0.15, policy
+  0.13 vs 0.27, single-log samples) is serving the outcome head worse. Not acting on it
+  tonight (BC; the tournament judges play); flagged for the author since the outcome head
+  must work in RL. Tournament (job 7) started 06:50.
