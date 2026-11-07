@@ -20,3 +20,21 @@ Entries: time, what, why. Newest last.
 - **01:30** Wrote `round2-plan.md` and a mobile page of it.
 - **01:40** Arm 1 at update 3: KL 0.7252, identical to C-fixed's at update 3; learn 232 s per
   update (C-fixed 231 s): the inputs cost no speed.
+- **02:10** Bench merged (v2 0eeddc43; `baselines-bench.md`). Verified: ruff, its tests and
+  `tests/docs` (487 pass). Headline: extrapolation (E) leaves the least for position (1.9 mm
+  median vs the rule's 6.6) and velocity (0.12 vs 0.33 m/s); near zero while the control is
+  held; it costs on a power change (carries the old thrust). The nose rate: E overshoots (the
+  held change decays by 0.41 per tick), persistence is better. Axis correlation, folded by turn
+  sign: 0.45-0.63 for constant-velocity and rule forecasts at 0.5-1 s in the nose and track
+  frames, 0.2-0.55 in world axes; one tick: below 0.08 everywhere.
+- **02:10** **O3 (my call, from the bench):** arm 4's baselines per quantity: position E (the
+  arc form; equal to the literal form on the data, exact on a turn); velocity E (accepting the
+  power-change cost); heading E; **nose rate persistence** (E overshoots); angle of attack E;
+  energy E; shield and countdowns the rule (D2); ln n the gradient baseline ln n + grad . v dt
+  (state-deltas measured it better than E in the tail: p99.9 0.013 vs 0.020).
+- **02:10** **O8 (my call):** the error head codes 2D quantities on **three projection axes
+  (0, 60, 120 degrees, world)**: a hidden ship's uncorrected error is correlated 0.45-0.63 at
+  0.5-1 s in every frame, with the sign set by the turn direction, so no fixed frame makes
+  per-axis codes independent; three marginals recover the full 2 x 2 covariance. The physics
+  head (one tick, correlation < 0.08) stays per axis in the velocity frame.
+- **02:10** Arm 1 at update 10: KL 0.4843 vs C-fixed's 0.4890 at the same step (noise level).
