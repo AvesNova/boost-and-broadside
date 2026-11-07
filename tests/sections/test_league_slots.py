@@ -359,7 +359,9 @@ def test_the_leagues_games_join_the_runs_fit(tmp_path):
     each entry, and a snapshot taken at the update is credited with them; the uniform
     average's are left out before it has started (it is the live weights until then)."""
     torch.manual_seed(0)
-    trainer, league = cases.league(tmp_path, league=LeagueConfig(snapshot_every=1))
+    trainer, league = cases.league(
+        tmp_path, league=LeagueConfig(snapshot_every=1, uniform_from=10**9)
+    )
     mode, total = league.modes[0], 0.0
     for update in range(8):
         trainer.collect()

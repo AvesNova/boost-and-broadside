@@ -332,7 +332,59 @@ class FiguresWatch:
     runs_directory: str | None = None
 
 
-COMMANDS = ("train", "play", "runs", "ship-card", "ratings", "head-to-head", "figures")
+@dataclasses.dataclass(frozen=True)
+class QueueOptions:
+    """The GPU job queue (`bnb queue ACTION`, `bnb.runs.queue`): one job at a time, in order.
+
+    `bnb queue add [--after JOB] [--background] KIND ARGUMENTS...` queues a job: KIND train
+    (ARGUMENTS are `bnb train`'s: a new run; give it --name to rate or resume it by name),
+    resume (a run's name, then `bnb train --resume`'s options, such as a larger --updates
+    or --bc-budget-steps) or ratings (`bnb ratings`' arguments). --after: wait until that
+    job has finished; --background: the champion's continuation, run while nothing else is
+    ready and stopped gracefully (then queued again as a resume) when something is.
+    `bnb queue list` shows every job's state, start, end and ETA; `bnb queue remove JOB`
+    removes a job (a running one after a graceful stop); `bnb queue log JOB` prints a job's
+    log's last --lines lines. `bnb queue run` is the runner, for a systemd user unit:
+    `systemd-run --user --unit=bnb-queue -p KillMode=mixed -p TimeoutStopSec=1h
+    --working-directory=$PWD .venv/bin/bnb queue run` (docs/guides/queueing-jobs.md).
+
+    action: add, list, remove, log or run; job: the job's number (remove, log); kind and
+    arguments: the job (add); after and background: as above; queue_file: the queue
+    (default ~/.local/share/bnb/queue.json; the logs go to logs/queue/ beside it); program:
+    the command that runs bnb (default this environment's bnb); lines: the log lines
+    printed; lock: the bench lock's wrapper the runner runs each job under ("none": no
+    lock); poll: the runner's seconds between looks at the queue; until_idle: the runner
+    exits once nothing is running or ready.
+    """
+
+    action: str
+    job: int | None = None
+    kind: str | None = None
+    arguments: tuple[str, ...] = ()
+    after: int | None = None
+    background: bool = False
+    queue_file: str | None = None
+    program: str | None = None
+    lines: int = 40
+    lock: str | None = None
+    poll: float = 2.0
+    until_idle: bool = False
+
+
+# `bnb queue`'s own options, read anywhere on its command line (the rest is the job's), with
+# whether each takes a value
+QUEUE_FLAGS = {
+    "--after": True,
+    "--background": False,
+    "--queue-file": True,
+    "--program": True,
+    "--lines": True,
+    "--lock": True,
+    "--poll": True,
+    "--until-idle": False,
+}
+
+COMMANDS = ("train", "play", "runs", "ship-card", "ratings", "head-to-head", "figures", "queue")
 
 
 def main() -> None:
@@ -341,7 +393,7 @@ def main() -> None:
     card, `bnb ratings ...` and
     `bnb head-to-head ...` rate policies offline, `bnb figures ...` draws what a policy's
     heads have learned (`bnb figures video ...` films a game, `bnb figures watch RUN` makes
-    both while a run trains)."""
+    both while a run trains), `bnb queue ...` queues and runs GPU jobs."""
     os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")  # Triton 3.9's default, made explicit
     command, arguments = (sys.argv[1:2] or [""])[0], sys.argv[2:]
     if command == "ship-card":
@@ -355,6 +407,8 @@ def main() -> None:
         play(arguments)
     elif command == "runs":
         runs(tyro.cli(Runs, args=arguments, prog="bnb runs"))
+    elif command == "queue":
+        queue(queue_options(arguments))
     elif command == "ratings":
         ratings(tyro.cli(Ratings, args=arguments, prog="bnb ratings"))
     elif command == "head-to-head":
@@ -1090,3 +1144,116 @@ def figures_watch(options: FiguresWatch) -> None:
     finally:
         if log is not None:
             log.close()
+
+
+def queue_options(arguments: list[str]) -> QueueOptions:
+    """`bnb queue`'s command line: the action, its own options (QUEUE_FLAGS, anywhere), and
+    for add the kind and the job's arguments (everything else, in order)."""
+    if not arguments or arguments[0] in ("-h", "--help"):
+        print(QueueOptions.__doc__)
+        raise SystemExit(0 if arguments else 2)
+    action, rest = arguments[0], arguments[1:]
+    values: dict[str, object] = {}
+    positional: list[str] = []
+    index = 0
+    while index < len(rest):
+        flag, _, inline = rest[index].partition("=")
+        if flag in QUEUE_FLAGS:
+            name = flag[2:].replace("-", "_")
+            if not QUEUE_FLAGS[flag]:
+                values[name] = True
+            elif inline:
+                values[name] = inline
+            elif index + 1 < len(rest):
+                index += 1
+                values[name] = rest[index]
+            else:
+                raise SystemExit(f"bnb queue: {flag} takes a value")
+        else:
+            positional.append(rest[index])
+        index += 1
+    try:
+        for name, kind in (("after", int), ("lines", int), ("poll", float)):
+            if name in values:
+                values[name] = kind(values[name])
+        if action == "add":
+            if not positional:
+                raise SystemExit("bnb queue add KIND ARGUMENTS... (KIND: train, resume, ratings)")
+            values.update(kind=positional[0], arguments=tuple(positional[1:]))
+        elif action in ("remove", "log"):
+            if len(positional) != 1:
+                raise SystemExit(f"bnb queue {action} JOB")
+            values["job"] = int(positional[0])
+        elif positional:
+            raise SystemExit(f"bnb queue {action} takes no {positional}")
+    except ValueError as error:
+        raise SystemExit(f"bnb queue: {error}") from error
+    return QueueOptions(action=action, **values)
+
+
+def _check_job(kind: str, arguments: tuple[str, ...]) -> None:
+    """Parse a job's arguments as its command would, so a typo fails when it is queued."""
+    if kind == "train":
+        tyro.cli(Train, args=list(arguments), prog="bnb queue add train")
+    elif kind == "resume" and arguments:
+        tyro.cli(Train, args=["--resume", *arguments], prog="bnb queue add resume")
+    elif kind == "ratings":
+        tyro.cli(Ratings, args=list(arguments), prog="bnb queue add ratings")
+
+
+def queue(options: QueueOptions) -> None:
+    """`bnb queue`: add, list, remove, show a log, or run the queue."""
+    import shlex
+
+    from bnb.runs.queue import LOCK_WRAPPER, QUEUE_FILE, Queue, QueueError, Runner, describe
+
+    store = Queue(pathlib.Path(options.queue_file) if options.queue_file else QUEUE_FILE)
+    try:
+        if options.action == "add":
+            _check_job(options.kind, options.arguments)
+            if options.program is not None:
+                program = shlex.split(options.program)
+            elif (script := pathlib.Path(sys.executable).with_name("bnb")).exists():
+                program = [str(script)]
+            else:
+                program = [sys.executable, "-c", "import sys; from bnb.cli import main; main()"]
+            given = next(
+                (
+                    options.arguments[index + 1]
+                    for index, argument in enumerate(options.arguments[:-1])
+                    if argument == "--runs-directory"
+                ),
+                None,
+            )
+            job = store.add(
+                options.kind,
+                list(options.arguments),
+                program=program,
+                cwd=pathlib.Path.cwd(),
+                runs_directory=runs_directory_of(given).resolve(),
+                after=options.after,
+                background=options.background,
+            )
+            print(f"job {job['id']}: {job['kind']} {' '.join(job['arguments'])}, queued")
+        elif options.action == "list":
+            print("\n".join(describe(store)))
+        elif options.action == "remove":
+            print(store.remove(options.job))
+        elif options.action == "log":
+            from bnb.runs.queue import find
+
+            path = store.log_path(find(store.read(), options.job))
+            lines = path.read_text(errors="replace").splitlines() if path.exists() else []
+            print("\n".join([f"{path}:", *lines[-options.lines :]]))
+        elif options.action == "run":
+            lock = LOCK_WRAPPER if options.lock is None else pathlib.Path(options.lock)
+            if options.lock == "none":
+                lock = None
+            elif not lock.exists():
+                raise SystemExit(f"no bench lock wrapper at {lock} (--lock PATH, or --lock none)")
+            print(f"[queue] runner for {store.path}, lock {lock}", flush=True)
+            Runner(store, lock, poll=options.poll).run(until_idle=options.until_idle)
+        else:
+            raise SystemExit(f"bnb queue {{add,list,remove,log,run}}, not {options.action!r}")
+    except QueueError as error:
+        raise SystemExit(str(error)) from error

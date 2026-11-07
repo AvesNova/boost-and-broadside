@@ -28,7 +28,8 @@ touch runs/2026-11-02-mixed-purple-pumpkin/STOP
 ```
 
 The run removes the file once it has stopped, and records what asked and the step in
-`run.json`{.plain} (`stop_request`).
+`run.json`{.plain} (`stop_request`). [Queueing GPU jobs](queueing-jobs.md) stops and
+resumes runs this way.
 
 ## See your runs
 

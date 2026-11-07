@@ -148,12 +148,14 @@ def _options(cls) -> set[str]:
 def command(arguments: str) -> str | None:
     """None if `bnb <arguments>` names a command (`bnb.cli.COMMANDS`) and uses only its
     options (`bnb.cli.Train`, `Runs`, `ShipCard`, `Ratings`, `HeadToHead` or `Figures`, and
-    `FiguresVideo` and `FiguresWatch` for `bnb figures video` and `bnb figures watch`),
-    with a known preset and mode."""
+    `FiguresVideo` and `FiguresWatch` for `bnb figures video` and `bnb figures watch`;
+    `bnb queue`'s own, `bnb.cli.QUEUE_FLAGS`, and for `bnb queue add KIND` the job's
+    command's), with a known preset and mode."""
     import shlex
 
     from bnb.cli import (
         COMMANDS,
+        QUEUE_FLAGS,
         Figures,
         FiguresVideo,
         FiguresWatch,
@@ -181,10 +183,16 @@ def command(arguments: str) -> str | None:
         "head-to-head": HeadToHead,
         "figures": Figures,
     }
-    chosen = commands[tokens[0]]
-    if tokens[0] == "figures" and tokens[1:2] in (["video"], ["watch"]):
-        chosen = FiguresVideo if tokens[1] == "video" else FiguresWatch
-    options = _options(chosen)
+    if tokens[0] == "queue":
+        kinds = {"train": Train, "resume": Train, "ratings": Ratings}
+        kind = next((token for token in tokens[2:] if token in kinds), None)
+        job = _options(kinds[kind]) if tokens[1:2] == ["add"] and kind else set()
+        options = set(QUEUE_FLAGS) | job
+    else:
+        chosen = commands[tokens[0]]
+        if tokens[0] == "figures" and tokens[1:2] in (["video"], ["watch"]):
+            chosen = FiguresVideo if tokens[1] == "video" else FiguresWatch
+        options = _options(chosen)
     values = {"--preset": set(PRESETS) | {"mixed"}, "--mode": set(MODES)}
     for index, token in enumerate(tokens):
         if not token.startswith("-"):

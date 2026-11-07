@@ -100,6 +100,7 @@ nav:
       - Training: guides/training.md
       - Behaviour cloning: guides/behaviour-cloning.md
       - Resuming, forking and sharing runs: guides/resuming-forking-sharing.md
+      - Queueing GPU jobs: guides/queueing-jobs.md
       - Benchmarking: guides/benchmarking.md
       - Reference fixtures: guides/reference-fixtures.md
       - Adding a mode: guides/adding-a-mode.md
