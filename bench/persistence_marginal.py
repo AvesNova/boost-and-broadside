@@ -44,6 +44,7 @@ def pairs(path: pathlib.Path) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]
 
 
 def main() -> None:
+    """Measure the pairs of every segment and print the table."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--segments", default="/tmp/bnb-scratch-arm2/segments")
     parser.add_argument("--out", default="/tmp/bnb-scratch-arm2/marginal.json")

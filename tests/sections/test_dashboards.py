@@ -44,6 +44,9 @@ EXEMPT = (
     # logged with `YemongConfig.next_state` "delta" only (absolute in this run)
     "next_state/support_clip/*",
     "next_state/support_padding/*",
+    "next_state/beats_bench_median/*",
+    "next_state/slow_frame_share",
+    "belief/anisotropy/*",
 )
 
 

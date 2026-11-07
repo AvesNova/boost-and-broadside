@@ -386,6 +386,46 @@ def test_round_ones_build_record_is_refused():
         Yemong(old)
 
 
+ARM_SETS = (
+    "yemong.order=temporal_first",
+    "yemong.acceleration_inputs=true",
+    "yemong.next_state=delta",
+    "yemong.delta_baseline=persistence",
+    "yemong.spread_inputs=ellipse",
+)
+
+
+def test_the_arms_set_line_builds_the_arm():
+    from bnb.cli import parse_setting, with_settings
+    from bnb.contracts import GameConfig
+    from bnb.runtime.train import TrainConfig, model_build
+
+    config = with_settings(
+        TrainConfig(game=GameConfig(5, 10, 2600.0)), map(parse_setting, ARM_SETS)
+    )
+    build = model_build(config)
+    assert build.config.next_state == "delta" and build.config.spread_inputs == "ellipse"
+    assert build.config.acceleration_inputs and build.config.spread_fit == "coarsest"
+    assert build.dynamics is None
+
+
+def test_a_build_record_from_before_the_switches_loads_scalar(tmp_path):
+    import json
+
+    from bnb.runs import checkpoint
+    from bnb.runs.checkpoint import FilledDefaults
+
+    checkpoint.save_policy(tmp_path / "policy", cases.model(order="temporal_first"))
+    path = tmp_path / "policy" / checkpoint.RECORD
+    record = json.loads(path.read_text())
+    for name in ("delta_baseline", "spread_inputs"):
+        record["model"]["build"]["config"].pop(name)
+    path.write_text(json.dumps(record))
+    with pytest.warns(FilledDefaults, match="spread_inputs"):
+        loaded = checkpoint.load_policy(tmp_path / "policy", cases.CPU)
+    assert loaded.config.spread_inputs == "scalar" and loaded.delta_code is None
+
+
 def test_the_marginal_start_is_near_the_measured_marginal():
     """The output bias is the measured marginal: every component's code sums to 1, the
     zero share sits on the zero bin, and the position along peaks near 2.5 m."""

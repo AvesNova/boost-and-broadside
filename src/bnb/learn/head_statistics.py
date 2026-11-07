@@ -17,17 +17,21 @@ Slices, quantity first:
 - next state, by situation and quantity, over the supervised rows alive at t and t + 1:
   `next_state/cross_entropy/{situation}[/{part}]` (`NEXT_STATE_SITUATIONS`: all, in a
   field band, hit, boosting, coasting; parts `STATE_PARTS`); for the rows seen at t
-  `next_state/error/{quantity}/{head, persistence, baseline}`, the decoded one-tick
-  forecast's error and the two baselines' (the physics baseline with the delta head only;
-  quantities `BELIEF_QUANTITIES`); with the delta head, per component
-  (`delta.CONTINUOUS`) `next_state/support_clip/*`, the share of targets clamped to the
-  code's padded range, and `next_state/support_padding/*`, the forecast's mass in the
-  padding bins.
+  `next_state/error/{quantity}/{head, persistence}`, the decoded one-tick forecast's error
+  and persistence's (quantities `BELIEF_QUANTITIES`). With the delta head also: the share
+  of seen rows whose forecast beats each of the bench's medians
+  (`next_state/beats_bench_median/{quantity}/{persistence, rule, extrapolation}`,
+  `BENCH_MEDIANS`), per component (`delta.CONTINUOUS`) `next_state/support_clip/*`, the
+  share of targets clamped to the code's padded range, `next_state/support_padding/*`, the
+  forecast's mass in the padding bins, and `next_state/slow_frame_share`, the targets
+  whose frame was the heading.
 - enemy action, by the enemy's sight at t (`visible`, `hidden`). The baselines come from
   the batch: repeat the last action with the measured repeat rate r (else uniform over the
   other 41), cross-entropy -r ln r - (1 - r) ln((1 - r) / 41); and always predict the
   batch's action frequencies, cross-entropy the histogram's entropy.
-- belief, by hidden age (`AGE_BUCKETS`), over hidden living enemies that hold a belief.
+- belief, by hidden age (`AGE_BUCKETS`), over hidden living enemies that hold a belief;
+  with a delta build's covariance, the position's coverage under its 2 x 2 block and the
+  ellipses' anisotropy (`belief/anisotropy/{position, velocity}/*`).
 - rotary read-out (with `YemongConfig.rotary_readout`), its mean squared pair error
   (`bnb.learn.losses.phasor_square_error`, the mean over the blocks' read-outs; per block
   too, over the living ships) by population over the living ships, and for
