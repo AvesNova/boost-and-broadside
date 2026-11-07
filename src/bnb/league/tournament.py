@@ -30,7 +30,7 @@ from bnb.game import VERSION as GAME_VERSION
 from bnb.game.api import PRESETS
 
 from .gauge import GAUGE_TOP
-from .matches import Arena, ArenaConfig, Player
+from .matches import Arena, ArenaConfig, Player, default_lanes, network_groups
 from .ratings import allocate_blocks, fit_ratings
 
 PRESET_NAMES = ("frontline", "deathmatch", "deathmatch_wide")  # the training mix's games
@@ -147,6 +147,7 @@ def fit_field(
     log: Callable[[str], None] = report,
     label: str = "",
     record: pathlib.Path | None = None,
+    lanes: tuple[list[int | None], tuple[int, ...]] | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """The tournament's batches over a field of players `names`: `play` plays one batch (a
     pair per block, first player and second) and gives each block's (wins, ties, losses)
@@ -156,7 +157,10 @@ def fit_field(
     record: a JSON-lines file of the batches, one line appended (and synced) after each:
     its index, the blocks' matchups and results, the games so far, every player's rating
     and standard error, the worst error, the batch's seconds and the wall time. A record
-    that exists already is read first, and the tournament goes on from its games."""
+    that exists already is read first, and the tournament goes on from its games.
+
+    lanes: the engine's network groups and lanes (`allocate_blocks`), which each batch's
+    blocks keep to; None for an engine without lanes."""
     if not _connected(allowed, anchor):
         raise ValueError("every player must reach the scripted agent through allowed pairs")
     arena, count = config.arena, len(names)
@@ -179,6 +183,7 @@ def fit_field(
             arena.block_environments,
             allowed,
             PRIOR_GAMES,
+            *(lanes or (None, None)),
         )
         results = play(matchups).tolist()
         played += _add(wins, pair_games, matchups, results)
@@ -237,15 +242,17 @@ def rate(
     if ANCHOR not in names:
         raise ValueError("the field needs the scripted agent: it anchors the ratings at 1000")
     allowed = allowed_pairs(names) if allowed is None else allowed
+    groups = network_groups(players)
+    lanes = default_lanes(groups, 2 * config.arena.blocks)
     arenas: list[Arena] = []
 
     def play(matchups: list[tuple[int, int]]) -> torch.Tensor:
         if not arenas:
-            arenas.append(Arena(players, game, device, config.arena))
+            arenas.append(Arena(players, game, device, config.arena, lanes))
         return arenas[0].play(matchups)
 
     ratings, stderr, pair_games = fit_field(
-        play, names, names.index(ANCHOR), allowed, config, log, preset, record
+        play, names, names.index(ANCHOR), allowed, config, log, preset, record, (groups, lanes)
     )
     key = dict(
         game_version=GAME_VERSION, mode=game.mode, map=preset, fleet_size=game.ships_per_team
@@ -298,15 +305,25 @@ def head_to_head(
         number for number in range(len(pairs)) for _ in range(games // layout.block_environments)
     ]
     games_of = games_of or PRESETS
+    batches = [
+        queue[start : start + layout.blocks] for start in range(0, len(queue), layout.blocks)
+    ]
+    batches = [batch + queue[: layout.blocks - len(batch)] for batch in batches]  # spare blocks
+    # each group's lanes: the most of its slots a batch holds
+    groups = network_groups(players)
+    held = [[groups[index] for number in batch for index in pairs[number]] for batch in batches]
+    lanes = tuple(
+        max(max(one.count(group) for one in held), 1)
+        for group in range(1 + max((group for group in groups if group is not None), default=-1))
+    )
     split = {}
     for preset in presets:
-        arena = Arena(players, games_of[preset], device, layout)
+        arena = Arena(players, games_of[preset], device, layout, lanes)
         counts = torch.zeros((len(pairs), 3), dtype=torch.int64)
-        for start in range(0, len(queue), layout.blocks):
-            batch = queue[start : start + layout.blocks]
-            spare = queue[: layout.blocks - len(batch)]
-            results = arena.play([pairs[number] for number in batch + spare])
-            for number, result in zip(batch, results[: len(batch)], strict=True):
+        for start, batch in zip(range(0, len(queue), layout.blocks), batches, strict=True):
+            played = queue[start : start + layout.blocks]
+            results = arena.play([pairs[number] for number in batch])
+            for number, result in zip(played, results[: len(played)], strict=True):
                 counts[number] += result
         split[preset] = counts
         del arena

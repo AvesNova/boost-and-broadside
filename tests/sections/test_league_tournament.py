@@ -11,9 +11,10 @@ from torch.utils import _pytree
 
 from bnb.contracts import GameConfig
 from bnb.league import tournament
-from bnb.league.matches import SEAT, Arena, ArenaConfig, Player, player
+from bnb.league.matches import SEAT, Arena, ArenaConfig, Player, default_lanes, player
 from bnb.league.ratings import SCALE, _fisher, allocate_blocks, win_probability
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
+from bnb.models.yemong import policy
 from bnb.runs import checkpoint
 from bnb.runtime.opponents import Rung
 
@@ -91,15 +92,25 @@ def test_slots_take_their_players_in_place(tmp_path):
     buffers = {name: value.data_ptr() for name, value in seat.parameters[0].items()}
     arena.play([(0, 2), (3, 1)])
     name = next(iter(arena.states[0]))
-    stacked = seat.parameters[0][f"model.{name}"]
+    stacked = seat.parameters[0][f"model.{name}"]  # by lane: the slots in order
+    assert seat.lanes == (4,) and seat.lane_of == {0: (0, 0), 3: (0, 1)}
+    assert seat.lane_slot[0][:2].tolist() == [0, 3] and seat.lane_active[0].tolist() == [
+        True,
+        True,
+        False,
+        False,
+    ]
     assert torch.equal(stacked[0], arena.states[0][name])  # block 0's first seat
-    assert torch.equal(stacked[3], arena.states[1][name])  # block 1's second seat
+    assert torch.equal(stacked[1], arena.states[1][name])  # block 1's second seat
+    assert sorted(seat.lane_slot[0].tolist()) == [0, 1, 2, 3]  # the lanes on different slots
     rows = seat.slot_rows
     assert seat.scripted.tolist() == [False] * rows + [True] * 2 * rows + [False] * rows
     assert seat.temperature[2 * rows : 3 * rows].tolist() == [2.0] * rows  # rung_T2
     arena.play([(1, 0), (2, 3)])
     assert torch.equal(stacked[0], arena.states[1][name])
     assert torch.equal(stacked[1], arena.states[0][name])
+    assert seat.lane_slot[0][:2].tolist() == [0, 1] and seat.lane_of == {0: (0, 0), 1: (0, 1)}
+    assert sorted(seat.lane_slot[0].tolist()) == [0, 1, 2, 3]
     assert seat.scripted.tolist() == [False] * 2 * rows + [True] * 2 * rows
     # every swap is a copy into the same buffers (a captured graph keeps reading them)
     assert {name: value.data_ptr() for name, value in seat.parameters[0].items()} == buffers
@@ -126,15 +137,17 @@ def test_a_block_plays_the_same_games_whatever_the_other_blocks_play(tmp_path):
 def test_networks_of_different_builds_are_grouped_by_build(tmp_path):
     first, second = _network(tmp_path / "a", 1), _network(tmp_path / "b", 2)
     wider = _network(tmp_path / "c", 3, hidden=32)
-    arena = Arena([first, wider, SCRIPTED, second], GAME, CPU, SMALL)
+    arena = Arena([first, wider, SCRIPTED, second], GAME, CPU, SMALL, lanes=(2, 2))
     assert len(arena.groups) == 2 and len(arena.seat.parameters) == 2
     assert arena.group_of == {0: 0, 1: 1, 3: 0}  # the groups in order of first appearance
     arena.play([(0, 1), (3, 1)])  # a block's two seats from different groups
-    rows = arena.seat.slot_rows
-    assert arena.seat.group[: 2 * rows].tolist() == [0] * rows + [1] * rows
-    assert arena.seat.group[2 * rows :].tolist() == [0] * rows + [1] * rows
+    assert arena.seat.lane_of == {0: (0, 0), 1: (1, 0), 2: (0, 1), 3: (1, 1)}
     name = next(iter(arena.states[1]))
     assert torch.equal(arena.seat.parameters[1][f"model.{name}"][1], arena.states[1][name])
+    # by default the lanes split the slots as the groups' players: 2 and 1 of 4 slots
+    assert Arena([first, wider, SCRIPTED, second], GAME, CPU, SMALL).lanes == (3, 1)
+    with pytest.raises(ValueError, match="1 lanes"):
+        Arena([first, wider, SCRIPTED, second], GAME, CPU, SMALL).play([(0, 1), (3, 1)])
 
 
 def test_a_two_build_field_plays_and_a_block_does_not_depend_on_the_others(tmp_path):
@@ -149,6 +162,57 @@ def test_a_two_build_field_plays_and_a_block_does_not_depend_on_the_others(tmp_p
         states.append(_block_state(arena, 0))
     for one, two in zip(*states, strict=True):
         assert torch.equal(one, two)
+
+
+def _greedy(logits):
+    """The policy's most likely joint action, drawing nothing: a network's play then depends
+    on its rows alone, whatever the other lanes draw."""
+    joint = logits.argmax(-1)
+    return (joint.to(torch.int32), *policy.evaluate(logits, joint))
+
+
+def test_a_mixed_field_plays_each_pair_as_the_pair_alone(tmp_path, monkeypatch):
+    """Each row runs its own player's network once, on its group's lane: with greedy
+    networks, a block of a three-build field plays the games the same pair plays in an
+    engine of its two builds alone, block for block (the scripted draws are the same)."""
+    monkeypatch.setattr(policy, "sample", _greedy)
+    first, second = _network(tmp_path / "a", 1), _network(tmp_path / "b", 2, hidden=24)
+    third = _network(tmp_path / "c", 3, hidden=32)
+    mixed = Arena([first, second, third, SCRIPTED, RANDOM], GAME, CPU, SMALL)
+    alone = Arena([first, second, SCRIPTED, RANDOM], GAME, CPU, SMALL)
+    assert len(mixed.groups) == 3 and mixed.lanes == (2, 1, 1)
+    assert len(alone.groups) == 2 and alone.lanes == (2, 2)
+    for matchups, versus in (
+        ([(0, 1), (2, 3)], [(0, 1), (2, 3)]),  # block 1: the third build, or scripted
+        ([(1, 0), (4, 2)], [(1, 0), (3, 2)]),  # the seats swapped; random against a network
+    ):
+        states, results = [], []
+        for arena, pairs in ((mixed, matchups), (alone, versus)):
+            torch.manual_seed(5)
+            results.append(arena.play(pairs))
+            states.append(_block_state(arena, 0))
+        assert torch.equal(results[0][0], results[1][0])
+        assert states[0] and len(states[0]) == len(states[1])
+        for one, two in zip(*states, strict=True):
+            assert torch.equal(one, two)
+
+
+def test_the_lanes_split_the_slots_as_the_groups_players():
+    assert default_lanes([None, 0, None], 16) == (16,)
+    assert default_lanes([None, 0, 1, 1, 2], 16) == (4, 8, 4)
+    assert default_lanes([0, 1, 2, 3, 4], 16) == (4, 3, 3, 3, 3)
+    assert sum(default_lanes([0, 1, 1, 1, 2, 3, 4, None], 16)) == 16
+    assert default_lanes([None, None], 16) == ()
+    with pytest.raises(ValueError, match="more than 2 slots"):
+        default_lanes([0, 1, 2], 2)
+
+
+def test_a_batch_keeps_to_the_engines_lanes(tmp_path):
+    first, wider = _network(tmp_path / "a", 1), _network(tmp_path / "b", 2, hidden=32)
+    arena = Arena([first, wider, SCRIPTED], GAME, CPU, SMALL, lanes=(1, 3))
+    with pytest.raises(ValueError, match="2 slots of network group 0, which has 1 lanes"):
+        arena.play([(0, 2), (0, 1)])
+    assert arena.play([(0, 1), (1, 2)]).sum(1).tolist() == [4, 4]
 
 
 def test_the_tournament_rates_a_two_build_field(tmp_path):
@@ -260,7 +324,7 @@ def test_a_two_build_field_with_an_ablated_yemong(tmp_path):
     assert (
         arena.seat.ablations.rotary.tolist() == [False] * 2 * rows + [True] * rows + [False] * rows
     )
-    assert arena.seat.group.tolist()[2 * rows :] == [1] * rows + [0] * rows
+    assert arena.seat.lane_of == {0: (0, 0), 2: (1, 0), 3: (0, 1)}
     states = []
     for players, matchups in (
         ([relational, yemong, SCRIPTED], [(0, 2), (1, 0)]),
@@ -339,6 +403,33 @@ def test_the_blocks_spread_over_the_field_and_keep_to_the_allowed_pairs():
     pair_games[2, 3] = pair_games[3, 2] = 400
     chosen = allocate_blocks(pair_games, torch.zeros(6), 0, 12, 8, allowed, 1.0)
     assert chosen.count((2, 3)) < chosen.count((4, 5))
+
+
+def test_the_blocks_keep_to_the_engines_lanes():
+    """A batch holds at most a group's lanes of its slots: without them the allocation would
+    put more of group 0 (players 1 and 2) in it."""
+    names = ["scripted", "a", "b", "c"]
+    allowed = tournament.allowed_pairs(names)
+    free = allocate_blocks(torch.zeros((4, 4)), torch.zeros(4), 0, 8, 8, allowed, 1.0)
+    groups, lanes = [None, 0, 0, 1], (3, 13)
+    assert sum(1 for pair in free for index in pair if groups[index] == 0) > 3
+    chosen = allocate_blocks(
+        torch.zeros((4, 4)), torch.zeros(4), 0, 8, 8, allowed, 1.0, groups, lanes
+    )
+    held = [groups[index] for pair in chosen for index in pair]
+    assert held.count(0) <= 3 and held.count(1) <= 13
+    with pytest.raises(ValueError, match="no allowed pair fits"):
+        allocate_blocks(
+            torch.zeros((3, 3)),
+            torch.zeros(3),
+            0,
+            2,
+            8,
+            ~torch.eye(3, dtype=torch.bool),
+            1.0,
+            [None, 0, 0],
+            (1,),
+        )
 
 
 def test_the_scripted_agent_plays_only_its_partners():
@@ -536,3 +627,26 @@ def test_transformed_scripted_names_parse():
         teacher_of("scripted@T=0")
     with pytest.raises(ValueError):
         teacher_of("scripted@floor=2")
+
+
+@pytest.mark.gpu
+@pytest.mark.slow
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+def test_a_mixed_field_captures_into_a_graph_and_plays_each_pair_as_alone(tmp_path, monkeypatch):
+    """On the GPU the lanes' gathers and writes run inside the captured graph, and a block
+    of a three-build field plays as the pair alone (greedy networks, as on the CPU)."""
+    monkeypatch.setattr(policy, "sample", _greedy)
+    cuda = torch.device("cuda")
+    first, second = _network(tmp_path / "a", 1), _network(tmp_path / "b", 2, hidden=24)
+    third = _network(tmp_path / "c", 3, hidden=32)
+    layout = ArenaConfig(blocks=2, block_environments=8, length=8, compiled=False)
+    mixed = Arena([first, second, third, SCRIPTED, RANDOM], GAME, cuda, layout)
+    alone = Arena([first, second, SCRIPTED, RANDOM], GAME, cuda, layout)
+    states = []
+    for arena, pairs in ((mixed, [(0, 1), (2, 4)]), (alone, [(0, 1), (2, 3)])):
+        torch.manual_seed(5)
+        arena.play(pairs)
+        assert arena.rollout.graph is not None
+        states.append(_block_state(arena, 0))
+    for one, two in zip(*states, strict=True):
+        assert torch.equal(one, two)

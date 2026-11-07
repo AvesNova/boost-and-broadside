@@ -21,16 +21,19 @@ The engine (`Arena`) is one rollout of one game preset, built once: `blocks` mat
 of `block_environments` environments each. Each block is a pool of its own whose two seats
 are both the one controller `MatchSeat`; block b's first seat is slot 2b and its second
 slot 2b + 1, so each slot is a fixed, contiguous run of rows. A slot holds a network or a
-scripted player. A network slot belongs to a group of its player's build. Each group has a
-template of its own and the slots' stacked parameters, and runs its forward on every slot's rows
-(`torch.func.functional_call` on the slot's slice, as the rating lanes'
-`bnb.runtime.lanes.LaneSeat` does) with that slot's weights; a slot's action is its own
-group's and the other groups' are discarded (a slot's player changes between batches and the
-captured graph's shapes never do, so every group runs over every slot). A scripted slot's
-rows take the scripted pass, one over every row, at each row's temperature, share and floor.
-Each extra group therefore costs about one more network pass over every row.
+scripted player. Each network group has a template of its own and a fixed number of
+**lanes** (`Arena.lanes`; `default_lanes` splits the slots over the groups as their
+players): a lane holds one slot's weights (stacked by lane) and the slot it plays this
+batch, both written in place, and runs the group's forward on that slot's rows
+(`torch.func.functional_call` on the rows gathered, as the rating lanes'
+`bnb.runtime.lanes.LaneSeat` does), writing back its actions and carry. A batch may hold
+at most a group's lanes of its slots (the tournament's allocation keeps to them); an idle
+lane runs on a slot of its own and writes nothing. With lanes that sum to the slots, as
+by default, a batch costs one network pass over every row however many builds the field
+mixes. A scripted slot's rows take the scripted pass, one over every row, at each row's
+temperature, share and floor.
 The shapes never change, so the rollout's graph is captured once; a batch only copies the
-chosen players into the slots, in place.
+chosen players into the lanes and the slots, in place.
 
 A batch: every environment starts a fresh game (`Rollout.restart`), environment i of a
 block seating the block's first player on team i mod 2, so a block's games split evenly
@@ -185,13 +188,14 @@ class _Decision(torch.nn.Module):
 
 class MatchSeat:
     """Every row's player, in one controller (see the module docstring). controllers: one
-    network controller per group, over a model of its own (the forward swaps each slot's
-    weights in), none when every player is scripted; blocks and block_environments: the layout (rows
-    are block by block, each block's first seat's rows then its second's, as the lineup
-    lists them); characteristics and ships_per_team: the scripted agent's; ablations: a
-    network slot may play ablated (each row's ablations held in place and passed to every
-    Yemong group's network as `Ablations`; else the networks are called without them).
-    Every slot starts as the scripted agent."""
+    network controller per group, over a model of its own (the forward swaps each lane's
+    weights in), none when every player is scripted; lanes: each group's lane count, the
+    most of its slots a batch may hold (one per group by default); blocks and
+    block_environments: the layout (rows are block by block, each block's first seat's rows
+    then its second's, as the lineup lists them); characteristics and ships_per_team: the
+    scripted agent's; ablations: a network slot may play ablated (each row's ablations held
+    in place and passed to every Yemong group's network as `Ablations`; else the networks
+    are called without them). Every slot starts as the scripted agent, every lane idle."""
 
     def __init__(
         self,
@@ -202,6 +206,7 @@ class MatchSeat:
         ships_per_team: int,
         device: torch.device,
         ablations: bool = False,
+        lanes: tuple[int, ...] | None = None,
     ) -> None:
         self.slots, self.slot_rows = 2 * blocks, block_environments
         self.rows, self.ships_per_team = self.slots * block_environments, ships_per_team
@@ -218,20 +223,35 @@ class MatchSeat:
         self.agent = Scripted(
             characteristics, ships_per_team, temperature=self.temperature, share=self.share
         )
-        self.group = torch.zeros(self.rows, dtype=torch.int64, device=device)  # a network row's
+        self.lanes = (1,) * len(controllers) if lanes is None else tuple(lanes)
+        if len(self.lanes) != len(controllers) or not all(
+            1 <= count <= self.slots for count in self.lanes
+        ):
+            raise ValueError(
+                f"lanes {self.lanes}: one count per network group, from 1 to the {self.slots} slots"
+            )
         self.decisions = [_Decision(controller) for controller in controllers]
-        self.parameters: list[dict[str, torch.Tensor]] = []  # per group, stacked by slot
+        # per group: each lane's slot (a group's lanes on different slots, an idle lane's
+        # any) and whether it plays this batch (both written in place), and the lanes'
+        # stacked parameters
+        self.lane_slot = [torch.arange(count, device=device) for count in self.lanes]
+        self.lane_active = [
+            torch.zeros(count, dtype=torch.bool, device=device) for count in self.lanes
+        ]
+        self.lane_of: dict[int, tuple[int, int]] = {}  # this batch's network slots' lanes
+        self.parameters: list[dict[str, torch.Tensor]] = []
         reads = Scripted.reads
-        for decision in self.decisions:
+        for decision, count in zip(self.decisions, self.lanes, strict=True):
             decision.requires_grad_(False)
             reads = decision.controller.reads + reads
             self.parameters.append(
                 {
-                    name: value.detach()[None].repeat((self.slots,) + (1,) * value.dim()).clone()
+                    name: value.detach()[None].repeat((count,) + (1,) * value.dim()).clone()
                     for name, value in decision.state_dict().items()
                 }
             )
         self.reads = tuple(dict.fromkeys(reads))
+        self._offsets = torch.arange(block_environments, device=device)
         # each row's ablations (written in place), or None: the networks are called without;
         # only a Yemong group reads them
         self.ablations = None
@@ -252,8 +272,8 @@ class MatchSeat:
     # ---- the controller
 
     def init_carry(self, views: int, device: torch.device) -> MatchCarry:
-        """Every row's network carry (a scripted row's is never read) and scripted carry,
-        nothing finished."""
+        """Every row's network carry (a row only its own group's lane reads and writes) and
+        scripted carry, nothing finished."""
         model = {}
         for group, decision in enumerate(self.decisions):
             one = decision.controller.init_carry(views, device)
@@ -266,23 +286,40 @@ class MatchSeat:
             started=torch.zeros(1, dtype=torch.bool, device=device),
         )
 
-    def _network(self, group: int, carry, obs: Obs, reset: torch.Tensor):
-        """Group `group`'s network on each slot's own rows, the slots one after another:
-        (packed actions (R, S, 3), the group's network carry)."""
-        outputs = []
-        for slot in range(self.slots):
-            rows = self._slot_rows(slot)
-            parameters = {name: value[slot] for name, value in self.parameters[group].items()}
-            arguments = (carry, obs, reset)
-            if self.ablations is not None and self.ablatable[group]:
-                arguments += (self.ablations,)
-            inputs = _pytree.tree_map_only(torch.Tensor, lambda x: x[rows], arguments)
-            outputs.append(torch.func.functional_call(self.decisions[group], parameters, inputs))
+    def _network(self, group: int, network: torch.Tensor, carry, obs: Obs, reset: torch.Tensor):
+        """Group `group`'s network on its lanes, one after another, each on its slot's rows
+        with its weights: `network`, the packed actions (R, S, 3), with the active lanes'
+        rows written, and the group's network carry with theirs (an idle lane's rows keep
+        their values; a group's lanes are always on different slots)."""
+        arguments = (carry, obs, reset)
+        if self.ablations is not None and self.ablatable[group]:
+            arguments += (self.ablations,)
+        lanes, slots = self.lanes[group], self.lane_slot[group]
+        rows = (slots[:, None] * self.slot_rows + self._offsets).reshape(-1)
+        active = self.lane_active[group].repeat_interleave(self.slot_rows)
+        actions, carries = [], []
+        for lane in range(lanes):
+            parameters = {name: value[lane] for name, value in self.parameters[group].items()}
+            own = rows[lane * self.slot_rows : (lane + 1) * self.slot_rows]
+            inputs = _pytree.tree_map_only(
+                torch.Tensor, lambda x: x.index_select(0, own), arguments
+            )
+            action, lane_carry = torch.func.functional_call(
+                self.decisions[group], parameters, inputs
+            )
+            actions.append(action)
+            carries.append(lane_carry)
 
-        def joined(*leaves: torch.Tensor | None) -> torch.Tensor | None:
-            return None if leaves[0] is None else torch.cat(leaves)  # None: a memoryless network
+        def written(full: torch.Tensor | None, *parts: torch.Tensor | None) -> torch.Tensor | None:
+            if full is None:  # a memoryless network's carry
+                return None
+            kept = full.index_select(0, rows)
+            mask = active.reshape((-1,) + (1,) * (kept.dim() - 1))
+            return full.index_copy(0, rows, torch.where(mask, torch.cat(parts), kept))
 
-        return _pytree.tree_map(joined, outputs[0], *outputs[1:])
+        network = written(network, *actions)
+        updated = None if carries[0] is None else _pytree.tree_map(written, carry, *carries)
+        return network, updated
 
     def step(self, carry: MatchCarry, obs: Obs, reset: torch.Tensor):
         """One decision for every row; see `Controller.step`. The rollout probes its
@@ -298,21 +335,15 @@ class MatchSeat:
         action = torch.where(
             uniform[..., None], uniform_actions(action.shape[:-1], action.device), action
         )
-        model_carry = carry.model
+        model_carry = dict(carry.model)
         if self.decisions:
-            results = [
-                self._network(group, carry.model.get(str(group)), obs, reset)
-                for group in range(len(self.decisions))
-            ]
-            network = results[0][0]
-            for group in range(1, len(results)):
-                mine = (self.group == group)[:, None, None]
-                network = torch.where(mine, results[group][0], network)
-            model_carry = {
-                str(group): result[1]
-                for group, result in enumerate(results)
-                if result[1] is not None
-            }
+            network = torch.zeros_like(action)
+            for group in range(len(self.decisions)):
+                network, updated = self._network(
+                    group, network, carry.model.get(str(group)), obs, reset
+                )
+                if updated is not None:
+                    model_carry[str(group)] = updated
             action = torch.where(self.scripted[:, None, None], action, network)
         carry = MatchCarry(
             model=model_carry,
@@ -334,6 +365,13 @@ class MatchSeat:
     # ---- the host's side, between batches
 
     @torch.no_grad()
+    def clear(self) -> None:
+        """A new batch's slots: every lane idle (every slot then loads its player)."""
+        for active in self.lane_active:
+            active.zero_()
+        self.lane_of = {}
+
+    @torch.no_grad()
     def load_network(
         self,
         slot: int,
@@ -341,16 +379,31 @@ class MatchSeat:
         state: dict[str, torch.Tensor],
         ablations: tuple[str, ...] = (),
     ) -> None:
-        """Slot `slot` plays a network of group `group`: its state (its model's state dict),
-        copied in place, with `ablations` (names of `ABLATIONS`) on its rows."""
+        """Slot `slot` plays a network of group `group`: on the group's first idle lane, its
+        state (its model's state dict) copied into the lane in place, with `ablations` (names
+        of `ABLATIONS`) on its rows. Raises ValueError when every lane of the group plays
+        (`clear` idles them)."""
         if not 0 <= group < len(self.decisions):
             raise ValueError(f"the seat was built with {len(self.decisions)} network groups")
         if ablations and (self.ablations is None or not self.ablatable[group]):
             raise ValueError("only a Yemong network of a seat built with ablations plays ablated")
+        taken = [lane for g, lane in self.lane_of.values() if g == group]
+        if len(taken) >= self.lanes[group]:
+            raise ValueError(
+                f"network group {group} has {self.lanes[group]} lanes, and a batch holds more "
+                "of its slots"
+            )
+        lane, slots = len(taken), self.lane_slot[group]
         for name, value in state.items():
-            self.parameters[group][f"model.{name}"][slot].copy_(value)
+            self.parameters[group][f"model.{name}"][lane].copy_(value)
+        # the idle lane on `slot`, if any, takes this lane's slot: the lanes stay apart
+        holder = (slots == slot).nonzero()
+        if len(holder):
+            slots[holder[0, 0]] = slots[lane].clone()
+        slots[lane] = slot
+        self.lane_active[group][lane] = True
+        self.lane_of[slot] = (group, lane)
         rows = self._slot_rows(slot)
-        self.group[rows] = group
         self.scripted[rows] = False
         if self.ablations is not None:
             for name in ABLATIONS:
@@ -402,13 +455,48 @@ class ArenaConfig:
         return self.blocks * self.block_environments
 
 
+def network_groups(players: list[Player]) -> list[int | None]:
+    """Each player's network group, by its policy's build record (the model and its build;
+    numbered in the order the builds first appear), or None for a scripted player."""
+    builds: list[tuple[str, object]] = []
+    groups: list[int | None] = []
+    for one in players:
+        if scripted_play(one) is not None:
+            groups.append(None)
+            continue
+        record = checkpoint.read_policy(one.policy)
+        build = (record.name, record.build)
+        if build not in builds:
+            builds.append(build)
+        groups.append(builds.index(build))
+    return groups
+
+
+def default_lanes(groups: list[int | None], slots: int) -> tuple[int, ...]:
+    """Each network group's lanes (`MatchSeat`) out of `slots` in all: one each, then each
+    further lane to the group with the most players per lane (the field's network players
+    by group, `network_groups`), so a batch costs one network pass over every row and its
+    slots are spread over the groups as their players are. Raises ValueError for more
+    groups than slots."""
+    count = 1 + max((group for group in groups if group is not None), default=-1)
+    players = [groups.count(group) for group in range(count)]
+    if len(players) > slots:
+        raise ValueError(f"{len(players)} network builds need a lane each, more than {slots} slots")
+    lanes = [1] * len(players)
+    for _ in range(slots - count if count else 0):
+        richest = max(range(len(lanes)), key=lambda group: players[group] / lanes[group])
+        lanes[richest] += 1
+    return tuple(lanes)
+
+
 class Arena:
     """The match engine over `players` in `game` (a game preset's config), built once (see
     the module docstring). Each network player's weights are read once and kept on the
     host (an ablated copy shares its policy's, and its group); a batch copies them into its
-    slots, with the player's ablations. `groups`: a template model per build, in the
+    slots' lanes, with the player's ablations. `groups`: a template model per build, in the
     order the builds first appear among the players (`group_of` maps a network player's index
-    to its group)."""
+    to its group, as `network_groups`); lanes: each group's lanes, the most of its slots a
+    batch may hold (`default_lanes` by default)."""
 
     def __init__(
         self,
@@ -416,32 +504,28 @@ class Arena:
         game: GameConfig,
         device: torch.device,
         config: ArenaConfig = ArenaConfig(),
+        lanes: tuple[int, ...] | None = None,
     ) -> None:
         self.players, self.config, self.device = players, config, device
         self.states: dict[int, dict[str, torch.Tensor]] = {}
-        self.group_of: dict[int, int] = {}
         self.groups: list[torch.nn.Module] = []
+        groups = network_groups(players)
+        self.group_of = {index: group for index, group in enumerate(groups) if group is not None}
+        self.lanes = default_lanes(groups, 2 * config.blocks) if lanes is None else tuple(lanes)
         loaded: dict[pathlib.Path, int] = {}  # a policy's first player
-        for index, one in enumerate(players):
-            if scripted_play(one) is not None:
-                continue
+        for index, group in self.group_of.items():
+            one = players[index]
             if one.policy in loaded:  # an ablated copy (or a repeat): the same weights
-                first = loaded[one.policy]
-                self.group_of[index], self.states[index] = self.group_of[first], self.states[first]
+                self.states[index] = self.states[loaded[one.policy]]
             else:
                 loaded[one.policy] = index
                 model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
-                for group, template in enumerate(self.groups):
-                    if type(model) is type(template) and model.build == template.build:
-                        break
-                else:
-                    group = len(self.groups)
+                if group == len(self.groups):
                     self.groups.append(model)
-                self.group_of[index] = group
                 self.states[index] = {
                     name: value.detach().cpu() for name, value in model.state_dict().items()
                 }
-            if one.ablations and not isinstance(self.groups[self.group_of[index]], Yemong):
+            if one.ablations and not isinstance(self.groups[group], Yemong):
                 raise ValueError(f"{one.name}: only a Yemong network plays ablated")
         agent = characteristics(api.ship_types(device), api.rules_of(game))
         controllers = [model_controller(template, game) for template in self.groups]
@@ -453,6 +537,7 @@ class Arena:
             game.ships_per_team,
             device,
             ablations=any(one.ablations for one in players),
+            lanes=self.lanes,
         )
         pools = tuple(
             Pool(f"block_{index}", 1.0 / config.blocks, (SEAT, SEAT))
@@ -495,6 +580,15 @@ class Arena:
         for block, (first, second) in enumerate(matchups):
             if first == second:
                 raise ValueError(f"block {block}: {self.players[first].name} against itself")
+        held = [self.group_of.get(index) for pair in matchups for index in pair]
+        for group, count in enumerate(self.lanes):
+            if held.count(group) > count:
+                raise ValueError(
+                    f"the batch holds {held.count(group)} slots of network group {group}, "
+                    f"which has {count} lanes"
+                )
+        self.seat.clear()
+        for block, (first, second) in enumerate(matchups):
             self._load(2 * block, first)
             self._load(2 * block + 1, second)
         self.rollout.restart()
