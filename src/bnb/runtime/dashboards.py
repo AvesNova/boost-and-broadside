@@ -285,6 +285,7 @@ CURATED = (
             panel("correction/within_two_sigma", "correction/within_two_sigma/*"),
             panel("correction/step_over_limit", "correction/step_over_limit/*"),
             panel("correction/capped_share", "correction/capped_share/*"),
+            panel("correction/gain", "correction/gain/*"),
             panel("correction/support_clip", "correction/support_clip/*"),
             panel("enemy_action/gain", "enemy_action/gain/*"),
             panel("enemy_action/cross_entropy", "enemy_action/cross_entropy/*"),

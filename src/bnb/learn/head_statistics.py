@@ -40,14 +40,15 @@ Slices, quantity first:
   toward 0 with the model's uncertainty).
 - error head (with `YemongConfig.delta_split`; `_correction`), over the hidden enemies it
   trains on, by hidden age (`AGE_BUCKETS`), per quantity (`correction.QUANTITIES`; position
-  and velocity as 2D vectors): the realised error |e| and the predicted |E e|
+  and velocity as 2D vectors): the realised error |e| and the predicted median |m|
   (`correction/{realised, predicted}_error/{quantity}/{age}`), the realised square error
-  about the prediction |e - E e|^2 and the predicted variance, each per dimension
-  (`correction/{realised_square_error, predicted_variance}/*`, equal when calibrated), and
-  the share of e within 1 and 2 of the predicted sigmas (`correction/within_{one,
-  two}_sigma/*`, the Mahalanobis distance for 2D); over all its rows, per capped quantity
-  (`correction.STEP_LIMITS`) the step's mean |step| / r and the share whose |E e| is past r
-  (`correction/step_over_limit/*`, `correction/capped_share/*`), and per component the
+  about the median |e - m|^2 and the predicted variance (the quantile spread's sigma^2),
+  each per dimension (`correction/{realised_square_error, predicted_variance}/*`, equal
+  when calibrated), and the share of e within 1 and 2 of the predicted sigmas about m
+  (`correction/within_{one, two}_sigma/*`, the Mahalanobis distance for 2D); over all its
+  rows, per capped quantity (`correction.STEP_LIMITS`) the step's mean |step| / r, the share
+  whose eta g m is past r and the mean confidence gain g (`correction/step_over_limit/*`,
+  `correction/capped_share/*`, `correction/gain/*`), and per component the
   share of targets clamped to the code's padded range (`correction/support_clip/*`). The
   physics head on those rows, against the truth's change, by hidden age:
   `next_state/hidden/cross_entropy/{age}` and the decoded change's error
@@ -279,7 +280,7 @@ def _correction(model, unrolled, trajectory: Trajectory, label: dict, physics_en
     age = age.float() * model.tick_length
     realised, predicted, square, variance, normalised = [], [], [], [], []
     for name, columns in _quantity_columns():
-        error, mean, spread = errors[..., columns], moments.mean[name], moments.variance[name]
+        error, mean, spread = errors[..., columns], moments.median[name], moments.variance[name]
         if name in correction.PLANAR:
             error = correction.mean_of(error, code.least_squares)  # exact: a vector's projections
             rest = error - mean
@@ -340,8 +341,9 @@ def _correction(model, unrolled, trajectory: Trajectory, label: dict, physics_en
         out[f"{prefix}/physics_cross_entropy"] = _masked(physics_entropy, members)
         out[f"{prefix}/physics_error"] = _masked(physics, members)
     limited = [name for name in correction.QUANTITIES if name in correction.STEP_LIMITS]
-    ratio, capped = [], []
+    ratio, capped, gain = [], [], []
     for name in limited:
+        gain.append(moments.gain[name])
         limit = correction.STEP_LIMITS[name]
         step, target = moments.step[name], moments.target[name]
         if name in correction.PLANAR:
@@ -352,6 +354,7 @@ def _correction(model, unrolled, trajectory: Trajectory, label: dict, physics_en
     out["correction/count"] = mask.float().sum()
     out["correction/step_over_limit"] = _masked(torch.stack(ratio, -1), mask)
     out["correction/capped"] = _masked(torch.stack(capped, -1), mask)
+    out["correction/gain"] = _masked(torch.stack(gain, -1), mask)
     out["correction/clipped"] = _masked(clipped.float(), mask)
     return out
 
@@ -385,7 +388,11 @@ def _correction_series(total: dict) -> dict:
             out[f"next_state/hidden/error/{name}/{bucket}"] = Mean(value, count)
     count = total["correction/count"]
     limited = [name for name in correction.QUANTITIES if name in correction.STEP_LIMITS]
-    for kind, series_name in (("step_over_limit", "step_over_limit"), ("capped", "capped_share")):
+    for kind, series_name in (
+        ("step_over_limit", "step_over_limit"),
+        ("capped", "capped_share"),
+        ("gain", "gain"),
+    ):
         for name, value in zip(limited, total[f"correction/{kind}"].unbind(), strict=True):
             out[f"correction/{series_name}/{name}"] = Mean(value, count)
     for name, value in zip(
