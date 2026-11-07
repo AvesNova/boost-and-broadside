@@ -63,3 +63,8 @@ Entries: time, what, why. Newest last.
 - **03:07** Corrected my 02:56 note: the agent pointed out that C-fixed blurs the position and velocity codes by sigma (telling the first layer which levels to trust), and 'replacing' had made them sharp. Told it to keep the blur (per world axis from the covariance's marginals) and let the ellipse features replace only the explicit spread slots.
 - **03:12** Arm-2 agent: today's token has no explicit spread slots (the spread enters only through the blur), so the ellipse code is added at the end of the ship token; position blurred per axis by sqrt(P_xx), sqrt(P_yy); velocity blurred by its full block as today. Agreed.
 - **03:26** Arm 1 finished 30M: final KL 0.5011 (C-fixed 0.500 at 30M): level. Tournament (job 5) next.
+- **03:30** Arm 1 against C-fixed at the same 30.4M step (metrics.jsonl): KL 0.501 vs 0.491,
+  agreement 0.668 vs 0.672 (level); outcome Brier skill lower (5-15 s 0.33 vs 0.56; 30-60 s
+  0.24 vs 0.45), but round 0 showed Brier moving 0.2 by seed alone, so not yet evidence;
+  belief position within-1-sigma similar at short ages, lower at 2-30 s. The tournament
+  (job 5, started 03:26) decides.
