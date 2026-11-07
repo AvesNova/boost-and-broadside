@@ -29,6 +29,9 @@ worth pursuing. These items wait until then. Each says where it came from.
   ahead-of-time export (AOTInductor) of the rollout and learner graphs, no recompiles from
   shape or dtype changes, and fewer autotune candidates. Measure steady update time before
   and after; a faster compile that costs steady speed is not wanted.
+- **`bnb ratings --device cpu` fails** in inductor (`KeyError: 'buf52'`), found 2026-11-07 by
+  the run-control queue's end-to-end check; the GPU path works. Reproduce on v2 without the
+  queue, then fix: CPU tournaments are useful for tests and small checks.
 
 ## Portability
 
