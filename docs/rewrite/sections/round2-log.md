@@ -60,3 +60,4 @@ Entries: time, what, why. Newest last.
   accelerations where arm 1's did not (the observation knows t-1); live play is identical.
 - **02:47** Arm-2 build agent launched (worktree `bnb-arm2`, branch `feat/arm2-persistence`, from f5be4390).
 - **02:56** Arm-2 agent's plan OK; told it the ellipse inputs replace the scalar spreads in the token (the brief's wording), not sit beside them. Its ETA: code 06:00, done 08:30 (worst 10:00).
+- **03:07** Corrected my 02:56 note: the agent pointed out that C-fixed blurs the position and velocity codes by sigma (telling the first layer which levels to trust), and 'replacing' had made them sharp. Told it to keep the blur (per world axis from the covariance's marginals) and let the ellipse features replace only the explicit spread slots.
