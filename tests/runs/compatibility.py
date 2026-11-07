@@ -17,7 +17,7 @@ import torch
 
 from bnb.contracts import Obs
 from bnb.models.yemong.model import Yemong
-from bnb.runs.checkpoint import save_policy
+from bnb.runs.checkpoint import read_policy, save_policy
 from bnb.runs.registry import model_class
 from bnb.runs.serialise import named_tensors, tree_from_named
 
@@ -34,6 +34,9 @@ def inputs(model, directory: pathlib.Path):
     """The stored observation and (for Yemong) carry of an entry."""
     stored = safetensors.torch.load_file(directory / INPUTS)
     obs = Obs(**{part: stored.get(f"obs.{part}") for part in cases.PARTS})
+    # the entry's observation has the columns its policy file records (a file from before the
+    # record: COLUMNS_BEFORE_RECORDS); the model reads today's layout
+    obs = cases.current_layout(obs, read_policy(directory / "policy").observation)
     carry = None
     if isinstance(model, Yemong):
         views = obs.ships.shape[0]

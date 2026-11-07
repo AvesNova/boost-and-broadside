@@ -8,7 +8,7 @@ from torch.utils import _pytree
 
 from bnb.contracts import GameConfig, Obs, Pool
 from bnb.contracts.action import to_joint
-from bnb.contracts.obs import GLOBAL
+from bnb.contracts.obs import COLUMNS_BEFORE_RECORDS, GLOBAL, SHIP_COLUMNS
 from bnb.controllers.scripted import Chaser
 from bnb.controllers.yemong import YemongController
 from bnb.game import api
@@ -117,3 +117,19 @@ def double(net: Yemong) -> Yemong:
 def scale_error(actual: torch.Tensor, expected: torch.Tensor) -> float:
     """max |actual - expected| relative to max(1, max |expected|)."""
     return ((actual - expected).abs().max() / expected.abs().max().clamp_min(1.0)).item()
+
+
+def golden_obs(golden: dict) -> Obs:
+    """A golden file's observation, its ship rows recorded with the columns of
+    COLUMNS_BEFORE_RECORDS, in today's layout: each column moved by name, the columns added
+    since (the accelerations) zero, as for a ship the team did not see move."""
+    ships = golden["ships"]
+    recorded = {name: i for i, name in enumerate(COLUMNS_BEFORE_RECORDS["ships"])}
+    assert ships.shape[-1] == len(recorded)
+    zero = torch.zeros_like(ships[..., 0])
+    ships = torch.stack(
+        [ships[..., recorded[name]] if name in recorded else zero for name in SHIP_COLUMNS], -1
+    )
+    return Obs(
+        ships=ships, fields=golden["fields"], globals=golden["globals"], zones=golden["zones"]
+    )

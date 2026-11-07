@@ -43,12 +43,23 @@ def _swap_teams(state: State, ships_per_team: int) -> State:
     def roll(values):
         return values.roll(ships_per_team, dims=1)
 
-    since = state.match.ticks_since_seen.flip(1).roll(ships_per_team, dims=2)
+    def per_team(values):  # (B, 2, N): the team axis flipped, the ships rolled
+        return values.flip(1).roll(ships_per_team, dims=2)
+
+    match = state.match
     return replace(
         state,
         ships=apply(roll, state.ships),
         bullets=apply(roll, state.bullets),
-        match=replace(state.match, ticks_since_seen=since),
+        match=replace(
+            match,
+            ticks_since_seen=per_team(match.ticks_since_seen),
+            previously_seen=per_team(match.previously_seen),
+            previous_velocity_x=roll(match.previous_velocity_x),
+            previous_velocity_y=roll(match.previous_velocity_y),
+            previous_nose_rate=roll(match.previous_nose_rate),
+            previous_alive=roll(match.previous_alive),
+        ),
     )
 
 

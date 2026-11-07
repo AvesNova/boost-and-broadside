@@ -35,6 +35,10 @@ HIDDEN = (
     "log_refractive_index",
     "log_index_gradient_x",
     "log_index_gradient_y",
+    "acceleration_x",
+    "acceleration_y",
+    "nose_acceleration",
+    "acceleration_valid",
 )
 SHOWN = (
     "alive",
@@ -61,13 +65,13 @@ def view_order(ships_per_team: int, device) -> torch.Tensor:
     return torch.stack(rows)
 
 
-def _hidden_columns(rules: Rules, state: State) -> torch.Tensor:
-    """(B, N, SHIP_HIDDEN_ZERO) the columns a team sees only for ships it can see (sim order)."""
+def _hidden_columns(
+    rules: Rules, state: State, velocity_x: torch.Tensor, velocity_y: torch.Tensor
+) -> torch.Tensor:
+    """(B, N, 16) the columns a team sees only for ships it can see but the accelerations
+    (sim order), the velocity given."""
     ships = state.ships
-    speed = ships.proper_speed / torch.exp(ships.log_refractive_index)
     cos, sin = ships.heading_cos, ships.heading_sin
-    angle_cos, angle_sin = ships.angle_of_attack_cos, ships.angle_of_attack_sin
-    velocity_x, velocity_y = flight_path_velocity(speed, cos, sin, angle_cos, angle_sin)
     return torch.stack(
         [
             ships.x,
@@ -93,7 +97,8 @@ def _hidden_columns(rules: Rules, state: State) -> torch.Tensor:
 
 def perceive(rules: Rules, state: State) -> tuple[State, Obs, Privileged]:
     """Visibility, the per-view observation and the truth. Returns the state with
-    `ticks_since_seen` advanced (the only state perception changes)."""
+    `ticks_since_seen` advanced and this tick's velocities, nose rates, life and sight kept
+    for the next tick's accelerations (the only state perception changes)."""
     ships, fields, match = state.ships, state.fields, state.match
     B, N = ships.x.shape
     S, device = rules.ships_per_team, ships.x.device
@@ -106,15 +111,42 @@ def perceive(rules: Rules, state: State) -> tuple[State, Obs, Privileged]:
         visible | unfogged, 0, (match.ticks_since_seen + 1).clamp_max(TICKS_SINCE_SEEN_CAP)
     )
 
-    hidden = _hidden_columns(rules, state)[:, order]  # (B, 2, N, SHIP_HIDDEN_ZERO) by row
+    speed = ships.proper_speed / torch.exp(ships.log_refractive_index)
+    velocity_x, velocity_y = flight_path_velocity(
+        speed,
+        ships.heading_cos,
+        ships.heading_sin,
+        ships.angle_of_attack_cos,
+        ships.angle_of_attack_sin,
+    )
+    # The accelerations: a real tick of motion (alive at both ticks, not spawned at this
+    # one, past the game's first tick), and per view, seen at both.
+    moving = (
+        ships.alive & match.previous_alive & ~ships.spawned & (match.episode_tick != 0)[:, None]
+    )
+    change = torch.stack(
+        [
+            (velocity_x - match.previous_velocity_x) / rules.tick_length,
+            (velocity_y - match.previous_velocity_y) / rules.tick_length,
+            (ships.nose_rate - match.previous_nose_rate) / rules.tick_length,
+        ],
+        -1,
+    )[:, order]  # (B, 2, N, 3) by row
+    moving_seen = moving[:, None] & visible & match.previously_seen  # (B, 2, N) sim order
+
+    hidden = _hidden_columns(rules, state, velocity_x, velocity_y)[:, order]  # (B, 2, N, 16)
     team_relative = ship_team(S, device).float()  # by row: static
     alive, fired = ships.alive[:, order].float(), ships.fired[:, order].float()
     respawn_wait = ships.respawn_wait[:, order].float() * rules.tick_length
     ship_type, spawned = ships.ship_type[:, order].float(), ships.spawned[:, order].float()
 
-    def ship_rows(seen: torch.Tensor, ticks: torch.Tensor) -> torch.Tensor:
-        """seen, ticks: (B, 2, N) in sim order."""
-        seen, ticks = seen[:, views, order], ticks[:, views, order]
+    def ship_rows(seen: torch.Tensor, ticks: torch.Tensor, valid: torch.Tensor) -> torch.Tensor:
+        """seen, ticks, valid (the accelerations'): (B, 2, N) in sim order."""
+        seen, ticks, valid = seen[:, views, order], ticks[:, views, order], valid[:, views, order]
+        accelerations = torch.cat(
+            [torch.where(valid[..., None], change, 0.0), valid[..., None].float()], -1
+        )
+        hidden_rows = torch.cat([hidden, accelerations], -1)
         shown = torch.stack(
             [
                 alive,
@@ -128,7 +160,7 @@ def perceive(rules: Rules, state: State) -> tuple[State, Obs, Privileged]:
             ],
             -1,
         )
-        return torch.cat([torch.where(seen[..., None], hidden, 0.0), shown], -1)
+        return torch.cat([torch.where(seen[..., None], hidden_rows, 0.0), shown], -1)
 
     field_rows = torch.stack(
         [fields.x, fields.y, fields.radius, fields.band_width, fields.level.float()], -1
@@ -155,7 +187,7 @@ def perceive(rules: Rules, state: State) -> tuple[State, Obs, Privileged]:
     )
     globals_ = torch.cat([global_row[:, None].expand(B, TEAMS, -1), mode_part], -1)
     obs = Obs(
-        ships=ship_rows(visible, since),
+        ships=ship_rows(visible, since, moving_seen),
         fields=field_rows[:, None].expand(B, TEAMS, -1, -1),
         globals=globals_,
         zones=zones,
@@ -164,6 +196,17 @@ def perceive(rules: Rules, state: State) -> tuple[State, Obs, Privileged]:
     truth = Privileged(
         team=ship_team(S, device).to(torch.int32).expand(B, N),
         view_order=order.expand(B, TEAMS, N),
-        ships=ship_rows(torch.ones_like(visible), torch.zeros_like(since)),
+        ships=ship_rows(
+            torch.ones_like(visible), torch.zeros_like(since), moving[:, None].expand(B, TEAMS, N)
+        ),
     )
-    return replace(state, match=replace(match, ticks_since_seen=since)), obs, truth
+    match = replace(
+        match,
+        ticks_since_seen=since,
+        previous_velocity_x=velocity_x,
+        previous_velocity_y=velocity_y,
+        previous_nose_rate=ships.nose_rate,
+        previous_alive=ships.alive,
+        previously_seen=visible,
+    )
+    return replace(state, match=match), obs, truth

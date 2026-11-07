@@ -108,7 +108,15 @@ def perceived(state: State) -> tuple[torch.Tensor, ...]:
     """The part of the state that `perceive` changes, as a pytree of tensors: a caller that
     keeps the state in persistent buffers copies the new state's part onto its own, leaf by
     leaf, without naming them."""
-    return (state.match.ticks_since_seen,)
+    match = state.match
+    return (
+        match.ticks_since_seen,
+        match.previous_velocity_x,
+        match.previous_velocity_y,
+        match.previous_nose_rate,
+        match.previous_alive,
+        match.previously_seen,
+    )
 
 
 def episode_ticks(rules: Rules, batch: int, device=None) -> torch.Tensor:

@@ -5,6 +5,7 @@ import torch
 from torch.utils import _pytree
 
 from bnb.contracts import Action, GameConfig, Obs
+from bnb.contracts.obs import COLUMNS
 from bnb.game import api
 from bnb.models.mlp import MLP, MLPBuild
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
@@ -175,3 +176,21 @@ TRAIN_OPTIONS = (
     "--set",
     "game.episode_seconds=4.0",
 )
+
+
+def current_layout(obs: Obs, recorded: dict) -> Obs:
+    """A stored observation whose parts hold the columns `recorded` names (by part), in
+    today's layout: each column moved by name, a column added since zero."""
+    parts = {}
+    for part in PARTS:
+        value = getattr(obs, part)
+        if value is None or part not in recorded:
+            parts[part] = value
+            continue
+        index = {name: i for i, name in enumerate(recorded[part])}
+        assert value.shape[-1] == len(index), part
+        zero = torch.zeros_like(value[..., 0])
+        parts[part] = torch.stack(
+            [value[..., index[name]] if name in index else zero for name in COLUMNS[part]], -1
+        )
+    return Obs(**parts)

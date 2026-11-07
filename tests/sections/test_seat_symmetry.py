@@ -42,6 +42,7 @@ OBSERVED_VECTORS = (
     ("heading_cos", "heading_sin"),
     ("velocity_x", "velocity_y"),
     ("log_index_gradient_x", "log_index_gradient_y"),
+    ("acceleration_x", "acceleration_y"),
 )
 
 
@@ -98,8 +99,23 @@ class Mirror:
                 match,
                 ticks_since_seen=match.ticks_since_seen.flip(1)[..., seats],
                 vision_range=match.vision_range[:, seats],
+                previously_seen=match.previously_seen.flip(1)[..., seats],
+                previous_alive=match.previous_alive[:, seats],
+                **self._previous_motion(match),
             ),
             mode=mode,
+        )
+
+    def _previous_motion(self, match) -> dict:
+        """The perception's previous velocities (a vector) and nose rates (a rate, which a
+        reflection flips), by the swapped seats."""
+        seats = self.seats
+        x, y = self.vector(match.previous_velocity_x[:, seats], match.previous_velocity_y[:, seats])
+        rate = match.previous_nose_rate[:, seats]
+        return dict(
+            previous_velocity_x=x,
+            previous_velocity_y=y,
+            previous_nose_rate=-rate if self.reflect else rate,
         )
 
     def action(self, action: Action) -> Action:
@@ -179,7 +195,7 @@ class Mirror:
                 ships[..., SHIP[a]], ships[..., SHIP[b]]
             )
         if self.reflect:
-            for name in ("angle_of_attack", "nose_rate"):
+            for name in ("angle_of_attack", "nose_rate", "nose_acceleration"):
                 ships[..., SHIP[name]] = -ships[..., SHIP[name]]
         return ships
 
@@ -221,10 +237,28 @@ def _assert_mirrored(rules, state, action, spread, uniforms, failures):
     got["view 0"] = mirror_after.view(observed_mirror.ships[:, 1])
     want["zones"], got["zones"] = observed.zones[:, 0, :, 3:], observed_mirror.zones[:, 1, :, 3:]
     want["globals"], got["globals"] = observed.globals[:, 0], observed_mirror.globals[:, 1]
+    # A reset draws a new ring, but the perception's previous motion stays the old game's
+    # (stale and never read: a game's first tick has no acceleration), so it is compared
+    # only where the game went on.
+    stale = ("match.previous_velocity_x", "match.previous_velocity_y", "match.previous_nose_rate")
+    for name in stale:
+        want[name], got[name] = want[name][~events.done], got[name][~events.done]
+    # The accelerations difference two velocities over a tick: each velocity's rounding
+    # tolerance, twice, over the tick.
+    acceleration = [
+        SHIP[name] for name in ("acceleration_x", "acceleration_y", "nose_acceleration")
+    ]
     for name, value in want.items():
         other = got[name]
         if value.is_floating_point():
             same = torch.isclose(value, other, rtol=1e-4, atol=1e-3)
+            if name == "view 0":
+                same[..., acceleration] = torch.isclose(
+                    value[..., acceleration],
+                    other[..., acceleration],
+                    rtol=1e-4,
+                    atol=2e-3 / rules.tick_length,
+                )
         else:
             same = value == other
         if not bool(same.all()):

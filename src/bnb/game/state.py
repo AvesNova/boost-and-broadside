@@ -84,7 +84,12 @@ class Match:
     (B, 2, N), ticks since team T last saw ship n (0 while visible); fogged (B,), the
     environment hides what its teams cannot see (fixed at reset by the caller);
     vision_range (B, N), each ship's range as an observer (m), its type's from the card,
-    set by every reset and tick (perception reads it here, as it takes no card)."""
+    set by every reset and tick (perception reads it here, as it takes no card).
+    What the observation's accelerations difference against, as the last perception left
+    it: previous_velocity_x, previous_velocity_y (B, N) each ship's velocity (m/s) and
+    previous_nose_rate (B, N) its nose rate (rad/s); previous_alive (B, N); previously_seen
+    (B, 2, N), team T saw ship n. A reset leaves them stale: perception reads them only
+    past a game's first tick and for a ship that did not spawn."""
 
     episode_tick: torch.Tensor
     spawn_axis_x: torch.Tensor
@@ -92,6 +97,11 @@ class Match:
     ticks_since_seen: torch.Tensor
     fogged: torch.Tensor
     vision_range: torch.Tensor
+    previous_velocity_x: torch.Tensor
+    previous_velocity_y: torch.Tensor
+    previous_nose_rate: torch.Tensor
+    previous_alive: torch.Tensor
+    previously_seen: torch.Tensor
 
 
 @contract
@@ -199,6 +209,11 @@ def blank(rules: Rules, batch: int, device=None) -> State:
             ticks_since_seen=torch.zeros((B, TEAMS, N), dtype=INT, device=device),
             fogged=torch.ones(B, dtype=BOOL, device=device),
             vision_range=torch.full((B, N), rules.vision_range, device=device),
+            previous_velocity_x=torch.zeros((B, N), device=device),
+            previous_velocity_y=torch.zeros((B, N), device=device),
+            previous_nose_rate=torch.zeros((B, N), device=device),
+            previous_alive=torch.zeros((B, N), dtype=BOOL, device=device),
+            previously_seen=torch.zeros((B, TEAMS, N), dtype=BOOL, device=device),
         ),
         mode=ModeState(**mode),
     )

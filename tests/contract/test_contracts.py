@@ -41,7 +41,7 @@ def test_joint_action_round_trip():
 
 
 def test_observation_schema():
-    assert len(SHIP_COLUMNS) == len(set(SHIP_COLUMNS)) == 24
+    assert len(SHIP_COLUMNS) == len(set(SHIP_COLUMNS)) == 28
     assert SHIP_COLUMNS[SHIP_HIDDEN_ZERO] == "alive"
     assert Obs.SCHEMA_VERSION == 3 and Action.SCHEMA_VERSION == 1
 

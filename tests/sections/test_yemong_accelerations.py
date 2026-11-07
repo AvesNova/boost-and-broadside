@@ -19,7 +19,7 @@ import yemong_cases as cases
 from torch.utils import _pytree
 
 from bnb.contracts import GameConfig, Obs
-from bnb.contracts.obs import SHIP
+from bnb.contracts.obs import SHIP, SHIP_COLUMNS
 from bnb.controllers.scripted import Scripted
 from bnb.game import api
 from bnb.learn import bc, head_statistics
@@ -28,9 +28,11 @@ from bnb.models.yemong.inputs import (
     ACCELERATION_INPUTS,
     ACCELERATIONS,
     SLOW_SPEED,
+    Accelerations,
     Motion,
     acceleration_code,
     accelerations,
+    believed,
     ship_inputs,
 )
 from bnb.models.yemong.model import YemongConfig
@@ -58,31 +60,61 @@ def _model(**settings):
     return cases.model(**{**SETTINGS, **settings})
 
 
-def _motion(velocity, nose_rate=0.0, present=True, visible=True) -> Motion:
-    velocity = torch.tensor([velocity], dtype=F64)
-    return Motion(
-        velocity=velocity,
-        nose_rate=torch.tensor([nose_rate], dtype=F64),
-        present=torch.tensor([present]),
-        visible=torch.tensor([visible]),
+def _accelerations(
+    now,
+    before,
+    now_rate=0.0,
+    before_rate=0.0,
+    heading=0.0,
+    visible=True,
+    flag=True,
+    present=True,
+    before_present=True,
+    spawned=False,
+):
+    """The inputs of one enemy row (an own row before it): visible, it reads the
+    observation's world-frame change (now - before) / dt with the flag `flag`; hidden, the
+    belief's rows now and before (Motion). The row's velocity at t is `now`."""
+    ships = torch.zeros((1, 2, len(SHIP_COLUMNS)), dtype=F64)
+    ships[..., SHIP["visible"]] = torch.tensor([1.0, float(visible)], dtype=F64)
+    ships[..., SHIP["alive"]] = torch.tensor([1.0, float(present)], dtype=F64)
+    ships[0, 1, SHIP["spawned"]] = float(spawned)
+    now_velocity, before_velocity = torch.tensor(now, dtype=F64), torch.tensor(before, dtype=F64)
+    if visible and flag:
+        change = (now_velocity - before_velocity) / DT
+        ships[0, 1, SHIP["acceleration_x"]], ships[0, 1, SHIP["acceleration_y"]] = change
+        ships[0, 1, SHIP["nose_acceleration"]] = (now_rate - before_rate) / DT
+        ships[0, 1, SHIP["acceleration_valid"]] = 1.0
+    means = torch.zeros((1, 2, 12), dtype=F64)
+    means[0, 1, 2:4], means[0, 1, 4], means[0, 1, 5] = now_velocity, heading, now_rate
+
+    def rows(velocity, rate, alive) -> Motion:
+        return Motion(
+            velocity=velocity.view(1, 1, 2),
+            nose_rate=torch.tensor([[rate]], dtype=F64),
+            present=torch.tensor([[alive]]),
+        )
+
+    out = accelerations(
+        ships,
+        means,
+        rows(now_velocity, now_rate, present),
+        rows(before_velocity, before_rate, before_present),
+        DT,
     )
+    return Accelerations(out.values[0, 1:], out.valid[0, 1:], out.slow[0, 1:])
 
 
-def _accelerations(now: Motion, before: Motion, heading=0.0, spawned=False):
-    return accelerations(
-        now, before, torch.tensor([heading], dtype=F64), torch.tensor([spawned]), DT
-    )
+SIGHT = pytest.mark.parametrize("visible", [True, False], ids=["visible", "hidden"])
 
 
-# ------------------------------------------------------------------ the quantities
-
-
-def test_a_straight_acceleration_is_along_the_velocity():
+@SIGHT
+def test_a_straight_acceleration_is_along_the_velocity(visible):
     angle, speed, rate = 0.7, 80.0, 12.0  # rad, m/s, m/s^2
     direction = torch.tensor([math.cos(angle), math.sin(angle)], dtype=F64)
     before = speed * direction
     now = before + rate * DT * direction
-    out = _accelerations(_motion(now.tolist(), 1.5), _motion(before.tolist(), 1.0), heading=3.0)
+    out = _accelerations(now.tolist(), before.tolist(), 1.5, 1.0, heading=3.0, visible=visible)
     along, across, angular = out.values[0].tolist()
     assert along == pytest.approx(rate, rel=1e-12)
     assert abs(across) < 1e-9
@@ -90,8 +122,9 @@ def test_a_straight_acceleration_is_along_the_velocity():
     assert out.valid.item() and not out.slow.item()
 
 
+@SIGHT
 @pytest.mark.parametrize("path_rate", [0.8, -0.8])
-def test_a_steady_turn_is_across_the_velocity_left_positive(path_rate):
+def test_a_steady_turn_is_across_the_velocity_left_positive(path_rate, visible):
     """Velocity of constant speed turning at path_rate rad/s: across = |v| sin(theta) / dt
     (about |v| x path rate), along = |v| (1 - cos theta) / dt (second order), theta the turn
     in one tick."""
@@ -99,44 +132,47 @@ def test_a_steady_turn_is_across_the_velocity_left_positive(path_rate):
     turn = path_rate * DT
     before = [speed * math.cos(angle), speed * math.sin(angle)]
     now = [speed * math.cos(angle + turn), speed * math.sin(angle + turn)]
-    out = _accelerations(_motion(now), _motion(before))
+    out = _accelerations(now, before, visible=visible)
     along, across, _ = out.values[0].tolist()
     assert across == pytest.approx(speed * math.sin(turn) / DT, rel=1e-12)
     assert across == pytest.approx(speed * path_rate, rel=1e-3)
     assert along == pytest.approx(speed * (1.0 - math.cos(turn)) / DT, rel=1e-9)
 
 
-def test_below_the_slow_speed_the_frame_is_the_heading():
+@SIGHT
+def test_below_the_slow_speed_the_frame_is_the_heading(visible):
     heading = math.pi / 2  # nose to +y
     before, now = [0.2, 0.0], [0.2, 0.6]  # |v_t| < SLOW_SPEED; the change is +y
     assert math.hypot(*now) < SLOW_SPEED
-    out = _accelerations(_motion(now), _motion(before), heading=heading)
+    out = _accelerations(now, before, heading=heading, visible=visible)
     along, across, _ = out.values[0].tolist()
     assert out.slow.item()
     assert along == pytest.approx(0.6 / DT, rel=1e-12)
     assert abs(across) < 1e-9
-    fast = _accelerations(_motion([2.0, 0.6]), _motion([2.0, 0.0]), heading=heading)
+    fast = _accelerations([2.0, 0.6], [2.0, 0.0], heading=heading, visible=visible)
     assert not fast.slow.item()  # at 2 m/s the frame is the velocity's (+x): the change is left
     assert fast.values[0, 1].item() == pytest.approx(0.6 / DT * 2.0 / math.hypot(2.0, 0.6))
 
 
 @pytest.mark.parametrize(
     "case",
-    ["dead_now", "dead_before", "spawned", "first_tick", "just_spotted"],
+    ["observed_invalid", "dead_now", "dead_before", "spawned", "first_tick"],
 )
 def test_an_invalid_difference_is_zero_with_flag_zero(case):
-    now = dict(velocity=[50.0, 3.0], nose_rate=2.0)
-    before = dict(velocity=[40.0, 0.0], nose_rate=0.0)
-    spawned = False
-    if case == "dead_now":
-        now["present"] = False
-    elif case in ("dead_before", "first_tick"):  # the initial carry holds nothing present
-        before["present"] = False
-    elif case == "spawned":
-        spawned = True
-    else:  # hidden at t - 1, visible at t
-        before["visible"] = False
-    out = _accelerations(_motion(**now), _motion(**before), spawned=spawned)
+    """A visible row is invalid by the observation's flag (dead at either tick, spawned, a
+    game's first tick, just spotted: tests/sections/test_observed_accelerations.py); a
+    hidden row by its belief's rows: dead now, dead before or nothing before (the carry's
+    first tick or a reset), or spawned now."""
+    settings = dict(now=[50.0, 3.0], before=[40.0, 0.0], now_rate=2.0, visible=False)
+    if case == "observed_invalid":
+        settings.update(visible=True, flag=False)
+    elif case == "dead_now":
+        settings.update(present=False)
+    elif case in ("dead_before", "first_tick"):
+        settings.update(before_present=False)
+    else:
+        settings.update(spawned=True)
+    out = _accelerations(**settings)
     assert not out.valid.item()
     assert (out.values == 0).all() and not out.slow.item()
     code = acceleration_code(out)
@@ -145,14 +181,20 @@ def test_an_invalid_difference_is_zero_with_flag_zero(case):
     assert torch.equal(code[..., :-1], zero[..., :-1])  # the zero's code
 
 
-@pytest.mark.parametrize("sight", [(True, False), (False, False)], ids=["just_hidden", "hidden"])
-def test_hidden_at_t_is_valid_the_forecast_minus_the_row_before(sight):
-    before_visible, now_visible = sight
-    out = _accelerations(
-        _motion([50.0, 3.0], 2.0, visible=now_visible),
-        _motion([40.0, 0.0], 0.0, visible=before_visible),
-    )
+def test_hidden_at_t_is_valid_the_forecast_minus_the_row_before():
+    """Hidden at t (just hidden or hidden at both ticks: the carry holds the row the model
+    read, truth or forecast): the belief's difference, valid."""
+    out = _accelerations([50.0, 3.0], [40.0, 0.0], 2.0, visible=False)
     assert out.valid.item() and out.values.abs().sum() > 0
+
+
+def test_a_visible_row_reads_the_observation_not_the_belief():
+    """A visible row's input is the observation's change even when the carried rows say
+    otherwise (they are the belief's, and a just-spotted row's would be truth minus belief)."""
+    out = _accelerations([50.0, 3.0], [40.0, 0.0], visible=True, before_present=False)
+    assert out.valid.item()
+    along = (10.0 * 50.0 + 3.0 * 3.0) / DT / math.hypot(50.0, 3.0)
+    assert out.values[0, 0].item() == pytest.approx(along, rel=1e-12)
 
 
 # ------------------------------------------------------------------ the code
@@ -204,12 +246,7 @@ def _digest(tensor: torch.Tensor) -> str:
 
 def _c_fixed_reproduces_the_golden() -> None:
     golden = torch.load(SPREAD_GOLDEN, weights_only=True)
-    obs = Obs(
-        ships=golden["ships"],
-        fields=golden["fields"],
-        globals=golden["globals"],
-        zones=golden["zones"],
-    )
+    obs = cases.golden_obs(golden)
     net = cases.model(**C_FIXED, acceleration_inputs=False)
     torch.manual_seed(11)
     carry = net.initial_carry(obs.ships.shape[1], OWN, 10)
@@ -310,25 +347,85 @@ def test_the_inputs_on_a_real_segment_are_the_observed_differences(segment):
     expected = torch.stack([along, across, angular], -1)
     assert both.sum() > 1000 and (speed[..., 0][both] >= SLOW_SPEED).all()
     assert out.valid[1:][both].all()
-    torch.testing.assert_close(out.values[1:][both], expected[both], rtol=1e-9, atol=1e-6)
-    # the invalid cases occur in the segment and are zero with flag 0
-    previous_alive = torch.cat([torch.zeros_like(alive[:1]), alive[:-1]])
-    previous_visible = torch.cat([torch.zeros_like(visible[:1]), visible[:-1]])
+    # the observation divides in float32 (the sim's), the expectation in float64
+    torch.testing.assert_close(out.values[1:][both], expected[both], rtol=1e-6, atol=1e-5)
+    # the invalid cases occur in the segment (past its first tick, whose previous row is
+    # the game's, not the segment's) and are zero with flag 0
+    previous_alive, previous_visible = alive[:-1], visible[:-1]
+    alive, visible, spawned = alive[1:], visible[1:], spawned[1:]
     cases_ = dict(
         dead=~alive | ~previous_alive,
         spawned=spawned,
-        reset=reset[..., None].expand_as(alive),
+        reset=reset[1:, :, None].expand_as(alive),
         just_spotted=visible & ~previous_visible & previous_alive,
     )
-    for name, members in cases_.items():
-        if name != "just_spotted":
+    for name, members in cases_.items():  # each case, staged: test_observed_accelerations
+        if name in ("spawned", "reset"):
             assert members.any(), name
-        assert not out.valid[members].any(), name
-        assert (out.values[members] == 0).all(), name
+        assert not out.valid[1:][members].any(), name
+        assert (out.values[1:][members] == 0).all(), name
+    visible = column["visible"] > 0.5
     assert torch.equal(tokens.ship[..., -1], out.valid.to(F64))
     assert torch.equal(tokens.ship[..., -ACCELERATION_INPUTS:], acceleration_code(out))
     hidden = out.valid & ~visible
     assert hidden.any() and out.values[hidden].abs().sum() > 0  # the belief's forecast moves
+
+
+def _arm_1_inputs(obs: Obs, replay, reset: torch.Tensor, tick_length: float) -> Accelerations:
+    """Arm 1's inputs (the acceleration-inputs brief, commit fafab800), computed in the
+    model from every row it read, kept here as the reference: the rows (truth where visible,
+    the belief's forecast where hidden) differenced against the tick before's, which an
+    initial carry holds absent; invalid when not present (alive with a belief) at both
+    ticks, spawned at t, after a reset, or just spotted (hidden before, visible now)."""
+    ships = obs.ships
+    valid, _, means, _ = believed(ships, replay)
+    present = (ships[..., SHIP["alive"]] > 0.5) & valid
+    visible = ships[..., SHIP["visible"]] > 0.5
+
+    def before(now: torch.Tensor) -> torch.Tensor:
+        return torch.cat([torch.zeros_like(now[:1]), now[:-1]])
+
+    present_before = before(present) & ~reset[..., None]
+    rule = present & present_before & ~(ships[..., SHIP["spawned"]] > 0.5)
+    rule = rule & (before(visible) | ~visible)
+    velocity, rate = means[..., 2:4], means[..., 5]
+    change = (velocity - before(velocity)) / tick_length
+    speed = torch.linalg.vector_norm(velocity, dim=-1)
+    slow = speed < SLOW_SPEED
+    safe = torch.where(slow, 1.0, speed)
+    unit_x = torch.where(slow, torch.cos(means[..., 4]), velocity[..., 0] / safe)
+    unit_y = torch.where(slow, torch.sin(means[..., 4]), velocity[..., 1] / safe)
+    along = change[..., 0] * unit_x + change[..., 1] * unit_y
+    across = change[..., 1] * unit_x - change[..., 0] * unit_y
+    angular = (rate - before(rate)) / tick_length
+    values = torch.where(rule[..., None], torch.stack([along, across, angular], -1), 0.0)
+    return Accelerations(values=values, valid=rule, slow=slow & rule)
+
+
+def test_the_inputs_equal_arm_1s_on_every_row(segment):
+    """Equivalence: on a real fogged rollout, the observation's columns (visible rows) and
+    the carried enemy rows (hidden rows) give arm 1's model-computed inputs on every row,
+    in float32 bit for bit (both divide the same float32 velocities by the same tick). The
+    segment's first tick is left out: the step loop starts from an initial carry, which
+    holds no previous row, while the observation knows the game's (a rollout's carry,
+    stored with the segment, holds it: test_unroll_reproduces_the_stored_rollout)."""
+    net, trajectory = segment
+    obs = trajectory.obs
+    reset = cases.resets(obs)
+    carry = net.initial_carry(obs.ships.shape[1], OWN, 10)
+    with torch.no_grad():
+        decisions, _ = cases.step_loop(net, net.step, carry, obs, cases.joint_actions(trajectory))
+        out = net.acceleration_inputs(carry, obs, decisions.replay, reset)
+    reference = _arm_1_inputs(obs, decisions.replay, reset, net.tick_length)
+    visible = obs.ships[..., SHIP["visible"]] > 0.5
+    assert (reference.valid & visible).sum() > 1000 and (reference.valid & ~visible).sum() > 100
+    just_spotted = visible[1:] & ~visible[:-1] & (obs.ships[1:, ..., SHIP["alive"]] > 0.5)
+    assert just_spotted.any()  # the case the observation's flag now carries
+    assert torch.equal(out.valid[1:], reference.valid[1:])
+    assert torch.equal(out.slow[1:], reference.slow[1:])
+    assert torch.equal(out.values[1:], reference.values[1:])
+    # at the first tick the observation's rows are valid where arm 1's were not, never less
+    assert (out.valid[0] >= reference.valid[0]).all() and (out.valid[0] & visible[0]).any()
 
 
 def test_unroll_equals_a_loop_of_steps(segment):
@@ -357,8 +454,9 @@ def test_unroll_equals_a_loop_of_steps(segment):
 
 def test_a_segment_start_reads_the_true_previous_row_from_the_carry(segment):
     """Split in two: the second half's unroll from the step loop's carry at the split equals
-    the steps; with the carry's motion dropped (nothing present) the first tick's inputs and
-    the outputs differ."""
+    the steps; with the carry's motion dropped (nothing present) the first tick's hidden
+    rows lose their inputs (the visible rows read the observation) and the outputs
+    differ."""
     net, trajectory = segment
     net = cases.double(net)
     obs = cases.cast(trajectory.obs, F64)
@@ -383,7 +481,9 @@ def test_a_segment_start_reads_the_true_previous_row_from_the_carry(segment):
         blind = net.acceleration_inputs(dropped, tail, decisions.replay, reset)
     for name in ("policy_logits", "values"):
         assert cases.scale_error(getattr(unrolled, name), getattr(decisions, name)) <= 1e-9
-    assert true.valid[0].sum() > 0 and not blind.valid[0].any()
+    hidden = tail.ships[0, ..., SHIP["visible"]] <= 0.5
+    assert (true.valid[0] & hidden).sum() > 0 and not (blind.valid[0] & hidden).any()
+    assert torch.equal(true.valid[0] & ~hidden, blind.valid[0] & ~hidden)
     assert torch.equal(true.values[1:], blind.values[1:])
     assert cases.scale_error(cold.policy_logits[0], decisions.policy_logits[0]) > 1e-6
 

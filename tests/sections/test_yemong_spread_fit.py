@@ -12,7 +12,7 @@ import pytest
 import torch
 import yemong_cases as cases
 
-from bnb.contracts import GameConfig, Obs
+from bnb.contracts import GameConfig
 from bnb.contracts.obs import SHIP
 from bnb.runs import checkpoint
 from bnb.runs.checkpoint import FilledDefaults
@@ -30,12 +30,7 @@ GOLDEN = pathlib.Path(__file__).parent / "golden" / "yemong_v1_spread_steps.pt"
 def _steps(net, golden):
     """net's step loop over the golden's inputs: its outputs in the golden's names, and what
     the forecast check reads."""
-    obs = Obs(
-        ships=golden["ships"],
-        fields=golden["fields"],
-        globals=golden["globals"],
-        zones=golden["zones"],
-    )
+    obs = cases.golden_obs(golden)
     torch.manual_seed(11)
     carry = net.initial_carry(obs.ships.shape[1], OWN, 10)
     with torch.no_grad():

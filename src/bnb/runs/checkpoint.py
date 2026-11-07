@@ -2,7 +2,8 @@
 
 A checkpoint is a directory: `checkpoint.json` (the record) and safetensors files, never
 pickle. A policy file holds what an agent needs to play: the model's registered name,
-version and build record, its weights, the schema versions, and for a warm start the
+version and build record, its weights, the schema versions, the observation's column names
+it was trained with (`observation`), and for a warm start the
 return scale's state tensors (`return_scale.safetensors`) and the step counts. A training
 checkpoint is a policy file plus everything a resume needs (`training.safetensors` and the
 record's training part); `load_policy` reads the policy part of either kind.
@@ -11,7 +12,10 @@ Writes are atomic: everything goes into `<name>.tmp/`, every file and then the d
 itself are flushed, the directory is renamed to `<name>/` and the parent flushed, so after a
 crash `<name>/` is complete or absent. Loading checks the format, the hashes, the schema
 versions and the model's version against the code's, and fails naming both sides of a
-difference.
+difference; and that every observation column the policy recorded exists in the code's
+contract under the same name (a column's meaning never changes under its name), failing
+naming each missing one. A policy file from before the record has the columns of
+`COLUMNS_BEFORE_RECORDS`.
 """
 
 import dataclasses
@@ -26,6 +30,7 @@ import safetensors.torch
 import torch
 
 from bnb.contracts import Action, GameConfig, Obs
+from bnb.contracts.obs import COLUMNS, COLUMNS_BEFORE_RECORDS
 from bnb.game import VERSION as GAME_VERSION
 from bnb.game.ship_types import ShipTypes
 from bnb.learn.bc import StopRule
@@ -58,13 +63,41 @@ def schemas() -> dict[str, int]:
     return {"Obs": Obs.SCHEMA_VERSION, "Action": Action.SCHEMA_VERSION}
 
 
+def observation_columns(model: torch.nn.Module) -> dict[str, list[str]]:
+    """The observation's column names `model` was trained with, by part (`COLUMNS`'s parts):
+    its own (`model.observation`, a model that reads rows by width and was built for a
+    recorded layout) or the code's contract."""
+    columns = getattr(model, "observation", None) or COLUMNS
+    return {part: list(names) for part, names in columns.items()}
+
+
+def recorded_columns(record: dict, directory) -> dict[str, tuple[str, ...]]:
+    """A policy record's observation columns by part (`COLUMNS_BEFORE_RECORDS` for a file
+    from before the record), each checked to exist in the code's contract under its name."""
+    recorded = record.get("observation") or COLUMNS_BEFORE_RECORDS
+    columns = {part: tuple(names) for part, names in recorded.items()}
+    missing = [
+        f"{part}.{name}"
+        for part, names in columns.items()
+        for name in names
+        if name not in COLUMNS.get(part, ())
+    ]
+    if missing:
+        raise CheckpointError(
+            f"{directory} was trained on observation columns the code does not have: "
+            f"{', '.join(missing)}. Load it from a worktree at a commit that has them"
+        )
+    return columns
+
+
 @dataclasses.dataclass(frozen=True)
 class PolicyRecord:
     """A policy file's record, checked: the model's name and version, its build record (the
     model's dataclass), the build fields its defaults filled, the return scale's state
     tensors (SCALE_STATE, on the CPU) or None, the step counts, the policy's rating per mode
     when it was rated as it trained (a warm start's live rating starts there; empty when
-    not), and the raw record."""
+    not), the observation columns it was trained with by part (`recorded_columns`), and the
+    raw record."""
 
     name: str
     version: int
@@ -73,6 +106,7 @@ class PolicyRecord:
     return_scale: dict[str, torch.Tensor] | None
     steps: dict
     ratings: dict[str, float]
+    observation: dict[str, tuple[str, ...]]
     raw: dict
 
 
@@ -95,6 +129,7 @@ def policy_record(
         kind="policy",
         model=dict(name=name_of(model), version=type(model).VERSION, build=to_json(model.build)),
         schemas=schemas(),
+        observation=observation_columns(model),
         game_version=GAME_VERSION,
         game=None if game is None else to_json(game),
         ship_card=None if types is None else _ship_card(types),
@@ -218,7 +253,8 @@ def read_record(directory: str | os.PathLike) -> dict:
 
 def read_policy(directory: str | os.PathLike) -> PolicyRecord:
     """The checked policy part of a checkpoint of either kind: the schema versions and the
-    model's version must equal the code's, and the build record must read."""
+    model's version must equal the code's, the build record must read, and every recorded
+    observation column must exist (`recorded_columns`)."""
     record = read_record(directory)
     if record["schemas"] != schemas():
         raise CheckpointError(
@@ -234,6 +270,7 @@ def read_policy(directory: str | os.PathLike) -> PolicyRecord:
             f"{model['version']}"
         )
     build, filled = from_json(BUILDS[cls], model["build"])
+    observation = recorded_columns(record, directory)
     scale = None
     if record["return_scale"]:
         scale = safetensors.torch.load_file(pathlib.Path(directory) / RETURN_SCALE)
@@ -245,12 +282,16 @@ def read_policy(directory: str | os.PathLike) -> PolicyRecord:
         return_scale=scale,
         steps=record["steps"],
         ratings=record.get("ratings", {}),
+        observation=observation,
         raw=record,
     )
 
 
 def build_model(policy: PolicyRecord, device: torch.device) -> torch.nn.Module:
-    """A fresh model from a policy record's build (its weights not loaded)."""
+    """A fresh model from a policy record's build (its weights not loaded). A model that
+    reads rows by width (`reads_by_width`) is built for the recorded columns, which it
+    selects by name from the code's observation; one that reads columns by name needs
+    nothing more."""
     if policy.filled:
         warnings.warn(
             f"the {policy.name} build record lacks {', '.join(policy.filled)}; "
@@ -258,7 +299,10 @@ def build_model(policy: PolicyRecord, device: torch.device) -> torch.nn.Module:
             FilledDefaults,
             stacklevel=3,
         )
-    return model_class(policy.name)(policy.build).to(device)
+    cls = model_class(policy.name)
+    if getattr(cls, "reads_by_width", False):
+        return cls(policy.build, policy.observation).to(device)
+    return cls(policy.build).to(device)
 
 
 def load_policy(directory: str | os.PathLike, device: torch.device) -> torch.nn.Module:

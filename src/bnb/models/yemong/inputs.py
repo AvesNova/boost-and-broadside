@@ -133,25 +133,24 @@ def truth(ships: torch.Tensor, offset: torch.Tensor) -> torch.Tensor:
 
 @contract
 class Motion:
-    """What a tick's acceleration inputs difference against (`YemongConfig.acceleration_inputs`),
-    per row (..., N): velocity (..., N, 2) m/s and nose_rate rad/s, the row as the model read
-    it (`believed`: truth where visible, the belief's forecast where hidden); present, alive
-    with a belief; visible."""
+    """What a tick's acceleration inputs of hidden rows difference against
+    (`YemongConfig.acceleration_inputs`), per enemy row (..., N - S), the only rows a belief
+    can hide: velocity (..., N - S, 2) m/s and nose_rate rad/s, the row as the model read it
+    (`believed`: truth where visible, the belief's forecast where hidden); present, alive
+    with a belief."""
 
     velocity: torch.Tensor
     nose_rate: torch.Tensor
     present: torch.Tensor
-    visible: torch.Tensor
 
 
-def motion(ships: torch.Tensor, valid: torch.Tensor, means: torch.Tensor) -> Motion:
-    """The Motion of the rows the model reads: ships (..., N, columns), the observation;
-    valid (..., N) and means (..., N, 12) as `believed` gives them."""
+def motion(ships: torch.Tensor, valid: torch.Tensor, means: torch.Tensor, own: int) -> Motion:
+    """The Motion of the enemy rows the model reads: ships (..., N, columns), the
+    observation; valid (..., N) and means (..., N, 12) as `believed` gives them; own, S."""
     return Motion(
-        velocity=means[..., 2:4],
-        nose_rate=means[..., 5],
-        present=(ships[..., SHIP["alive"]] > 0.5) & valid,
-        visible=ships[..., SHIP["visible"]] > 0.5,
+        velocity=means[..., own:, 2:4],
+        nose_rate=means[..., own:, 5],
+        present=(ships[..., own:, SHIP["alive"]] > 0.5) & valid[..., own:],
     )
 
 
@@ -160,7 +159,7 @@ def preceding(now: Motion, start: Motion, reset: torch.Tensor) -> Motion:
     the first, the tick before after it; nothing is present before a reset (L, ...)."""
     shifted = {
         name: torch.cat([getattr(start, name)[None], getattr(now, name)[:-1]], 0)
-        for name in ("velocity", "nose_rate", "present", "visible")
+        for name in ("velocity", "nose_rate", "present")
     }
     shape = reset.shape + (1,) * (shifted["present"].dim() - reset.dim())
     shifted["present"] = shifted["present"] & ~reset.view(shape)
@@ -180,27 +179,49 @@ class Accelerations:
 
 
 def accelerations(
+    ships: torch.Tensor,
+    means: torch.Tensor,
     now: Motion,
     before: Motion,
-    heading: torch.Tensor,
-    spawned: torch.Tensor,
     tick_length: float,
 ) -> Accelerations:
-    """The change from before to now per second, heading (..., N) the rows' at t. Valid when
-    the ship is present at both ticks, did not spawn at t, and was not just spotted (hidden
-    before, visible now: the difference would be truth minus belief, not motion). Just
-    hidden is valid: the belief's forecast minus the last truth."""
-    valid = now.present & before.present & ~spawned & (before.visible | ~now.visible)
-    change = (now.velocity - before.velocity) / tick_length
-    speed = torch.linalg.vector_norm(now.velocity, dim=-1)
+    """The change over the last tick per second of every row, in the velocity frame at t:
+    ships (..., N, columns) the observation, means (..., N, 12) the rows as the model reads
+    them (`believed`), now and before the enemy rows' Motion at t and t - 1.
+
+    A visible row (every own row) reads the observation's world-frame change and its flag
+    (`acceleration_valid`: alive and seen at both ticks, not spawned, not a game's first
+    tick; so just spotted is invalid). A hidden row differences the belief: valid when
+    present at both ticks and not spawned at t; just hidden is the forecast minus the last
+    truth."""
+    own = ships.shape[-2] - now.present.shape[-1]
+    column = {name: ships[..., SHIP[name]] for name in SHIP}
+    visible = column["visible"] > 0.5
+    observed = torch.stack(
+        [column["acceleration_x"], column["acceleration_y"], column["nose_acceleration"]], -1
+    )
+    spawned = column["spawned"][..., own:] > 0.5
+    believed_valid = now.present & before.present & ~spawned
+    believed_change = torch.cat(
+        [
+            (now.velocity - before.velocity) / tick_length,
+            ((now.nose_rate - before.nose_rate) / tick_length)[..., None],
+        ],
+        -1,
+    )
+    believed_change = torch.cat([torch.zeros_like(observed[..., :own, :]), believed_change], -2)
+    believed_valid = torch.cat([torch.zeros_like(visible[..., :own]), believed_valid], -1)
+    valid = torch.where(visible, column["acceleration_valid"] > 0.5, believed_valid)
+    change = torch.where(visible[..., None], observed, believed_change)
+    velocity, heading = means[..., 2:4], means[..., 4]
+    speed = torch.linalg.vector_norm(velocity, dim=-1)
     slow = speed < SLOW_SPEED
     safe = torch.where(slow, 1.0, speed)
-    unit_x = torch.where(slow, torch.cos(heading), now.velocity[..., 0] / safe)
-    unit_y = torch.where(slow, torch.sin(heading), now.velocity[..., 1] / safe)
+    unit_x = torch.where(slow, torch.cos(heading), velocity[..., 0] / safe)
+    unit_y = torch.where(slow, torch.sin(heading), velocity[..., 1] / safe)
     along = change[..., 0] * unit_x + change[..., 1] * unit_y
     across = change[..., 1] * unit_x - change[..., 0] * unit_y
-    angular = (now.nose_rate - before.nose_rate) / tick_length
-    values = torch.where(valid[..., None], torch.stack([along, across, angular], -1), 0.0)
+    values = torch.where(valid[..., None], torch.stack([along, across, change[..., 2]], -1), 0.0)
     return Accelerations(values=values, valid=valid, slow=slow & valid)
 
 
@@ -225,8 +246,8 @@ class Tokens:
     query_position (..., N + 1, 2) and query_heading (..., N + 1): the ships' belief and the
     map centre (no heading); memory_position (..., M + Z, 2), the fields' and zones' centres,
     an absent zone at the map centre (the global token's rotation). Positions are shifted.
-    With the acceleration inputs: motion, the rows' Motion (the next tick's previous), and
-    accelerations (None without them).
+    With the acceleration inputs: motion, the enemy rows' Motion (the next tick's previous),
+    and accelerations (None without them).
     """
 
     ship: torch.Tensor
@@ -275,9 +296,9 @@ def compose(
 ) -> Tokens:
     """The Tokens of one team's views (...) from the observation and the replay: the ships' belief
     codes and features, the global token, the fields and the zones, every position shifted by the
-    replay's offset. presence_radius in m, tick_length in s. previous: the rows' Motion at the
-    tick before (`preceding` in a segment), given with the acceleration inputs only: they
-    end the ship token."""
+    replay's offset. presence_radius in m, tick_length in s. previous: the enemy rows' Motion
+    at the tick before (`preceding` in a segment), given with the acceleration inputs only:
+    they end the ship token."""
     ships, dtype = obs.ships, obs.ships.dtype
     own = replay.previous_action.shape[-1]
     column = {name: ships[..., SHIP[name]] for name in SHIP}
@@ -305,10 +326,8 @@ def compose(
     since_seen = age.to(dtype) * tick_length
     now, change = None, None
     if previous is not None:
-        now = motion(ships, valid, believed_means)
-        change = accelerations(
-            now, previous, believed_means[..., 4], column["spawned"] > 0.5, tick_length
-        )
+        now = motion(ships, valid, believed_means, own)
+        change = accelerations(ships, believed_means, now, previous, tick_length)
     ship = torch.cat(
         [
             code,
