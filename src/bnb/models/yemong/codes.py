@@ -448,3 +448,73 @@ def remove_baseline_floor(
 def baseline(code: torch.Tensor, floor: float = BASELINE_FLOOR) -> torch.Tensor:
     """The next-state head's starting logits: "nothing changes"."""
     return torch.log(code + floor)
+
+
+# --------------------------------------------------------------------------- symlog HL-Gauss
+
+HL_GAUSS_SIGMA = 0.75  # the symlog code's Gaussian, in bins
+PADDING_BINS = 2  # bins past the real range on each side, for the Gaussian's spill
+
+
+def symlog_spacing(knee: float, bound: float, bins: int) -> float:
+    """The bin spacing in symlog units, ln(1 + |x| / knee), of a code of `bins` (odd) real
+    bins whose centres run from -bound to bound with an exact zero at the middle one."""
+    return math.log1p(bound / knee) / (0.5 * (bins - 1))
+
+
+def symlog_coordinate(values: torch.Tensor, knee: float, spacing: float) -> torch.Tensor:
+    """values in bins from the zero centre: sign(x) ln(1 + |x| / knee) / spacing."""
+    return torch.sign(values) * torch.log1p(values.abs() / knee) / spacing
+
+
+def symlog_value(coordinate: torch.Tensor, knee: float, spacing: float) -> torch.Tensor:
+    """The inverse of `symlog_coordinate`."""
+    return torch.sign(coordinate) * knee * torch.expm1(coordinate.abs() * spacing)
+
+
+def symlog_encode(
+    values: torch.Tensor,
+    knee: float,
+    bound: float,
+    bins: int,
+    padding: int = PADDING_BINS,
+    sigma: float = HL_GAUSS_SIGMA,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """(...) to ((..., bins + 2 padding) HL-Gauss probabilities, (...) clipped): the value's
+    symlog coordinate clamped to the padded range (the outermost padding bin's centre;
+    `clipped` marks the values that needed it), then the Gaussian of `sigma` bins integrated
+    over each bin. Nothing folds: the mass past the outer edges is dropped and the code
+    divided by its sum (at most 4e-4 of it, for a value on the last real bin's centre)."""
+    spacing = symlog_spacing(knee, bound, bins)
+    half = (bins - 1) // 2 + padding
+    coordinate = symlog_coordinate(values, knee, spacing)
+    clipped = coordinate.abs() > half
+    coordinate = torch.clamp(coordinate, -float(half), float(half))
+    edges = torch.arange(-half, half + 2, dtype=values.dtype, device=values.device) - 0.5
+    cumulative = torch.erf((edges - coordinate[..., None]) / (sigma * math.sqrt(2.0)))
+    probabilities = 0.5 * (cumulative[..., 1:] - cumulative[..., :-1])
+    return probabilities / probabilities.sum(-1, keepdim=True), clipped
+
+
+def symlog_decode(
+    probabilities: torch.Tensor,
+    knee: float,
+    bound: float,
+    bins: int,
+    padding: int = PADDING_BINS,
+    sigma: float = HL_GAUSS_SIGMA,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """(..., bins + 2 padding) probabilities to (mean, variance), each (...), physical. The
+    mean is the value at the mean coordinate (exact on an encoded value). The variance is
+    the bins' physical variance about it less the code's own smoothing, each bin's mass
+    times the smoothing of a value at its centre (by total variance: a mixture of encoded
+    values decodes near their spread, an encoded value near 0), at least 0."""
+    spacing = symlog_spacing(knee, bound, bins)
+    half = (bins - 1) // 2 + padding
+    index = torch.arange(-half, half + 1, dtype=probabilities.dtype, device=probabilities.device)
+    mean = symlog_value((probabilities * index).sum(-1), knee, spacing)
+    centres = symlog_value(index, knee, spacing)
+    own, _ = symlog_encode(centres, knee, bound, bins, padding, sigma)  # (bins, bins)
+    smoothing = (own * (centres - centres[:, None]) ** 2).sum(-1)
+    spread = (probabilities * (centres - mean[..., None]) ** 2).sum(-1)
+    return mean, torch.clamp_min(spread - (probabilities * smoothing).sum(-1), 0.0)

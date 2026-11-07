@@ -114,9 +114,12 @@ def network(agent, team: int, observed: Snapshot, following: Snapshot) -> Predic
     offset = replay.offset[0].float().cpu()
     origin = torch.zeros(rows.shape[0], 2)  # the arena's centre: every arena point's nearest
 
+    believed_means, believed_spreads = decode.state_at(view.ships, replay)
     forecast = decode.next_state(
-        model.state_code,
+        model,
         unrolled.next_state_logits,
+        believed_means[0].float().cpu(),
+        believed_spreads[0].float().cpu(),
         rows[:, SHIP["ship_type"]].long(),
         offset,
         origin,

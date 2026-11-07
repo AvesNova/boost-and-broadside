@@ -20,6 +20,7 @@ from bnb.contracts.tree import contract
 
 from . import codes, critic
 from .density import LOG_RATE_RANGE, hex_cells
+from .inputs import believed
 from .shots import ShotCodeParameters
 from .state_code import MEANS, POSITION_PERIOD
 
@@ -172,12 +173,37 @@ def ship_forecast(
     )
 
 
+def state_at(ships: torch.Tensor, replay) -> tuple[torch.Tensor, torch.Tensor]:
+    """(means, spreads) (..., N, ...): every row's state at t as the model read it, from the
+    view's ship rows and its replay record (`inputs.believed`): what `next_state` reads."""
+    _, _, means, spreads = believed(ships, replay)
+    return means, spreads
+
+
 def next_state(
-    state_code, logits: torch.Tensor, ship_type: torch.Tensor, offset, reference
+    model,
+    logits: torch.Tensor,
+    means: torch.Tensor,
+    spreads: torch.Tensor,
+    ship_type: torch.Tensor,
+    offset,
+    reference,
 ) -> ShipForecast:
-    """Next-state head logits (..., N, width) to the forecast of the state at t + 1, in
-    world coordinates (`ship_forecast`); ship_type (..., N) int64."""
-    means, spreads = state_code.decode_logits(logits.float(), ship_type)
+    """Next-state head logits (..., N, width) of a Yemong to the forecast of the state at
+    t + 1, in world coordinates (`ship_forecast`); means and spreads (..., N, ...): the rows'
+    state at t as the model read it (`inputs.believed`; the delta head's forecast is its
+    baseline plus the decoded change); ship_type (..., N) int64."""
+    if model.delta_code is None:
+        means, spreads = model.state_code.decode_logits(logits.float(), ship_type)
+    else:  # on the model's device (the play shell decodes on the host)
+        device = model.delta_code.max_shield.device
+        means, spreads = (
+            part.to(logits.device)
+            for part in model.forecast(
+                *(part.float().to(device) for part in (logits, means, spreads)),
+                ship_type.to(device),
+            )
+        )
     return ship_forecast(means, spreads, offset, reference)
 
 

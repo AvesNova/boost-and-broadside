@@ -27,6 +27,7 @@ from . import belief as beliefs
 from . import critic, density, shots
 from .belief import Belief
 from .codes import SPREAD_FITS
+from .delta import DeltaCode, StateDynamics, state_dynamics
 from .heads import HeadGroup, ShotTrajectoryHead, critic_values, next_state_logits
 from .inputs import (
     FIELD_INPUTS,
@@ -53,6 +54,7 @@ from .state_code import (
 )
 
 SHOT_HARMONICS = 4  # the trajectory head's age features
+NEXT_STATES = ("absolute", "delta")  # `YemongConfig.next_state`
 
 
 @dataclasses.dataclass(frozen=True)
@@ -97,6 +99,12 @@ class YemongConfig:
     is "v1" so that every build record from before the option decodes as it was trained;
     training builds "coarsest" (`bnb.runtime.train.TrainConfig.yemong`). "v1" goes once no
     rated policy needs it.
+    next_state (`NEXT_STATES`): what the next-state head predicts. "absolute", the state at
+    t + 1 as the state code (`state_code.ShipStateCode`), its logits over the persistence
+    baseline log(code_t + floor). "delta", each quantity's change from its physics baseline
+    as a symlog HL-Gauss code (`delta.DeltaCode`), its output bias starting at the measured
+    marginal; the forecast fed back is the belief's baseline plus the decoded change. The
+    inputs are the same state code either way.
     """
 
     width: int = 128
@@ -119,8 +127,11 @@ class YemongConfig:
     order: str = "spatial_first"  # per block: "spatial_first" or "temporal_first"
     rotary_readout: bool = False  # hidden ships' rotary pairs from each block's temporal layer
     spread_fit: str = "v1"  # the belief's spread decoding; training builds "coarsest"
+    next_state: str = "absolute"  # the next-state head's target: "absolute" or "delta"
 
     def __post_init__(self) -> None:
+        if self.next_state not in NEXT_STATES:
+            raise ValueError(f"next_state {self.next_state!r} is not one of {NEXT_STATES}")
         if self.spread_fit not in SPREAD_FITS:
             raise ValueError(f"spread_fit {self.spread_fit!r} is not one of {SPREAD_FITS}")
         if self.order not in ORDERS:
@@ -266,7 +277,9 @@ class YemongBuild:
     without the current game. tick_length (s); num_ships sets only the density head's
     starting rate; ship_types: the card's type count; bullet_moves: a bullet's lifetime in
     ticks; muzzle_speed (m/s): the card's fastest; hit_radius (m): its smallest;
-    state_code: the ship-state code's ranges."""
+    state_code: the ship-state code's ranges; dynamics: what the delta code's baselines read
+    (`delta.state_dynamics`), with `YemongConfig.next_state` "delta" only (None otherwise,
+    so an absolute build's record is as before)."""
 
     config: YemongConfig
     tick_length: float
@@ -276,6 +289,7 @@ class YemongBuild:
     muzzle_speed: float
     hit_radius: float
     state_code: StateCodeRanges
+    dynamics: StateDynamics | None = None
 
 
 def yemong_build(config: YemongConfig, rules: Rules, types: ShipTypes) -> YemongBuild:
@@ -289,6 +303,7 @@ def yemong_build(config: YemongConfig, rules: Rules, types: ShipTypes) -> Yemong
         muzzle_speed=float(types.muzzle_speed.max()),
         hit_radius=float(types.hit_radius.min()),
         state_code=state_code_ranges(rules, types),
+        dynamics=state_dynamics(rules, types) if config.next_state == "delta" else None,
     )
 
 
@@ -307,6 +322,11 @@ class Yemong(nn.Module):
         self.ship_types = build.ship_types
         self.tick_length = build.tick_length
         self.state_code = ShipStateCode(build.state_code, config.spread_fit)
+        self.delta_code = None
+        if config.next_state == "delta":
+            if build.dynamics is None:
+                raise ValueError("a delta next-state head needs the build's dynamics")
+            self.delta_code = DeltaCode(build.state_code, build.dynamics)
         self.shot_code = shots.shot_code_parameters(
             build.muzzle_speed,
             velocity_reach(),
@@ -333,7 +353,7 @@ class Yemong(nn.Module):
         levels = len(config.levels) - 1
         # Heads grouped by the token they read: own ships, every ship, the global token.
         self.own_heads = HeadGroup(width, hidden, (NUM_JOINT, levels * config.value_bins))
-        self.ship_heads = HeadGroup(width, hidden, (NUM_JOINT, self.state_code.width))
+        self.ship_heads = HeadGroup(width, hidden, (NUM_JOINT, self.next_state_width))
         self.outcome = HeadGroup(width, hidden, (critic.OUTCOMES,))
         cells = density.cell_count(config.hex_rings)
         self.density = HeadGroup(width, hidden, (2 * cells,))
@@ -367,7 +387,8 @@ class Yemong(nn.Module):
 
     def _initialise(self, num_ships: int, cells: int) -> None:
         """Code columns of each first projection ~ N(0, 1 / groups); the next-state head
-        starts as "nothing changes"; the density head at an even spread of the ships."""
+        starts as "nothing changes" (absolute) or at the measured marginal (delta); the
+        density head at an even spread of the ships."""
         with torch.no_grad():
             self.encoder.ship.first.weight[:, : self.state_code.width].normal_(
                 0.0, self.state_code.groups**-0.5
@@ -375,7 +396,45 @@ class Yemong(nn.Module):
             for kind in (self.encoder.field, self.encoder.global_token, self.encoder.zone):
                 kind.first.weight[:, :POSITION_CODE].normal_(0.0, POSITION_LEVELS**-0.5)
             nn.init.zeros_(self.ship_heads.lasts[1].weight)
+            if self.delta_code is not None:
+                self.ship_heads.lasts[1].bias.copy_(self.delta_code.marginal_logits())
             self.density.lasts[0].bias.fill_(math.log(max(num_ships, 2) / 2 / cells))
+
+    # ------------------------------------------------------------------ next state
+
+    @property
+    def next_state_runs(self):
+        """The next-state head's softmax groups as (groups, size) runs."""
+        code = self.state_code if self.delta_code is None else self.delta_code
+        return code.runs
+
+    @property
+    def next_state_width(self) -> int:
+        """The next-state head's outputs."""
+        code = self.state_code if self.delta_code is None else self.delta_code
+        return code.width
+
+    def _next_state_logits(self, code: torch.Tensor, change: torch.Tensor) -> torch.Tensor:
+        if self.delta_code is None:
+            return next_state_logits(code, change)
+        return change
+
+    def forecast(
+        self,
+        logits: torch.Tensor,
+        means: torch.Tensor,
+        spreads: torch.Tensor,
+        ship_type: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Next-state logits (..., N, next_state_width) to the forecast at t + 1 (means,
+        spreads; positions in the shifted frame, as the representative nearest the state at
+        t) of the rows' state at t (means (..., N, 12), spreads, as the model read them:
+        `inputs.believed`); ship_type (..., N) int64."""
+        if self.delta_code is not None:
+            return self.delta_code.advance(means, spreads, logits, ship_type, self.state_code)
+        predicted, predicted_spreads = self.state_code.decode_logits(logits, ship_type)
+        position = _nearest(predicted[..., 0:2], means[..., 0:2])
+        return torch.cat([position, predicted[..., 2:]], -1), predicted_spreads
 
     # ------------------------------------------------------------------ carry
 
@@ -601,14 +660,12 @@ class Yemong(nn.Module):
             outcome_logits.to(dtype),
         )
         value_logits, values = self._values(value_logits.to(dtype), outcome_logits)
-        forecast_logits = next_state_logits(tokens.code[:, own:], change.to(dtype))
+        forecast_logits = self._next_state_logits(tokens.code[:, own:], change.to(dtype))
         enemy = _rows(seen, slice(own, None))
         if self.config.forecast_feedback:
-            means, spreads = self.state_code.decode_logits(
-                forecast_logits, tokens.ship_type[:, own:]
+            means, spreads = self.forecast(
+                forecast_logits, enemy.means, enemy.spreads, tokens.ship_type[:, own:]
             )
-            position = _nearest(means[..., 0:2], enemy.means[..., 0:2])
-            means = torch.cat([position, means[..., 2:]], -1)
             advanced, nonfinite = beliefs.advance(
                 enemy, torch.cat([means, spreads], -1), enemy_action_logits
             )
@@ -652,7 +709,7 @@ class Yemong(nn.Module):
         unrolled = Unrolled(
             policy_logits=policy_logits,
             enemy_action_logits=every_action_logits.to(dtype),
-            next_state_logits=next_state_logits(tokens.code, every_change.to(dtype)),
+            next_state_logits=self._next_state_logits(tokens.code, every_change.to(dtype)),
             value_logits=value_logits,
             values=values,
             outcome_logits=outcome_logits,
@@ -700,7 +757,7 @@ class Yemong(nn.Module):
         return Unrolled(
             policy_logits=policy_logits.to(dtype),
             enemy_action_logits=enemy_action_logits.to(dtype),
-            next_state_logits=next_state_logits(tokens.code, change.to(dtype)),
+            next_state_logits=self._next_state_logits(tokens.code, change.to(dtype)),
             value_logits=value_logits,
             values=values,
             outcome_logits=outcome_logits,
