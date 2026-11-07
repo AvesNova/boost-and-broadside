@@ -38,3 +38,6 @@ Entries: time, what, why. Newest last.
   per-axis codes independent; three marginals recover the full 2 x 2 covariance. The physics
   head (one tick, correlation < 0.08) stays per axis in the velocity frame.
 - **02:10** Arm 1 at update 10: KL 0.4843 vs C-fixed's 0.4890 at the same step (noise level).
+- **02:15** Brief `observation-accelerations-brief.md` (O10 then O1); agent building
+  `feat/observation-accelerations` (worktree `bnb-observation-accel`). Arm 2's build waits for
+  it (arm 2 should train on the final input path).
