@@ -39,16 +39,17 @@ It supersedes `delta-heads-round2-notes.md` (kept for its findings). Every item 
 | D7 | Velocity frame for the physics head's position and velocity (below 1 m/s: the nose, with a warning) | 11-07 |
 | D8 | Events (recharge wait, gun cooldown) advance by the most likely outcome, not the expected value | 11-07 |
 
-## 4. The arms
+## 4. The arms (revised by the author, 2026-11-08 ~01:40)
 
 | Arm | Contents | Compared with | Isolates | State |
 |---|---|---|---|---|
 | 1. Accelerations | C-fixed + `yemong.acceleration_inputs` (velocity-frame codes, computed in the model), absolute head | C-fixed 30M | the inputs | **running** |
-| 2. Persistence | arm 1 + delta heads with persistence baselines + the correction head + new spread inputs (5.3-5.5) | arm 1 | the head structure (a bundle) | design open |
-| 3. Dead reckoning | arm 2 with the extrapolation baselines | arm 2 | the baseline alone | design open |
+| 2. Persistence, one head | arm 1 + persistence delta heads, **one next-state head trained on every row** (allies, visible and hidden enemies, as round 1); ellipse spread inputs, sigma by the physical-Jacobian propagation | arm 1 | the delta targets | to build |
+| 3. Persistence, split | arm 2, but the physics head trains on visible rows only and a **separate error (correction) head** serves hidden rows (O4-O8; sigma from it) | arm 2 | the separation | to build |
+| 4. Dead reckoning | arm 3 with the extrapolation baselines (O3: where the bench shows a gain) | arm 3 | the baseline | to build |
 
-Arms 2 and 3 share everything except the baseline; the bench (section 6) checks the
-baselines before they train. Arm 2 bundles three things; if it loses we will not know which.
+The author: arms 2 and 3 use the same target types, so 2 against 3 compares like with like;
+then persistence against dead reckoning. All four carry the acceleration inputs (C8).
 
 ## 5. Components
 
@@ -176,9 +177,12 @@ with the control held its residual is near float32 resolution; the nose rate ove
 - Backlog: compile time; CPU ratings `KeyError buf52`; the tournament stopping rule with
   sweeps.
 
-## 10. Open decisions
+## 10. Decisions O1-O10
 
-| # | Question | Options | Recommended | Blocks |
+**The author accepted every recommendation below (2026-11-08 ~01:40)**, and left the rest
+to my judgment while away. O3 and O8 are settled from the bench's numbers.
+
+| # | Question | Options | Recommended (accepted) | Blocks |
 |---|---|---|---|---|
 | O1 | Accelerations in the observation | now / with arms 2-3 / never | with arms 2-3 | arms 2-3 build |
 | O2 | Frame of the acceleration codes | velocity / world / both | velocity | arms 2-3 build |
