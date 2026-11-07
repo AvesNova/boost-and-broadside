@@ -149,3 +149,13 @@ Entries: time, what, why. Newest last.
   (job 13: arm 2b, arm 2, C-fixed 30M). It splits arm 2's bundle: if 2b recovers frontline,
   the ellipse inputs are the cause; if not, the delta head (or its gradient mix) is. ETA
   ~16:15 for both. Remove with `bnb queue remove 12` / `13` if not wanted.
+- **07:45** **Bug, arm 3 (error head spread):** at update 3 on the GPU the error head's
+  position sigma was ~140x too wide (sigma 218 m at 0-0.1 s vs a realised RMS of 1.6 m; 100%
+  within 1 sigma to 2 s). Cause: the variance is the categorical's second moment over symlog
+  bins km wide, so slivers of tail mass dominate (the mean's pathology again). Effect: hidden
+  inputs blurred to nothing and the confidence gain ~0, so the correction never acts; arm 3
+  could not test the design. Actions: STOP file on arm 3 (it ends after its current update;
+  run kept as aborted); removed queued jobs 9-13; queued **arm 2b first** (job 14, tournament
+  job 15), since it does not depend on the fix; brief `error-head-spread-fix-brief.md`
+  (quantile spread: 16/50/84th percentiles in code coordinates, less the smoothing) and an
+  agent on `fix/error-head-spread`. Arms 3 and 4 rerun after the fix, as arm 3b / arm 4b.
