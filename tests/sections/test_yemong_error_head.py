@@ -20,7 +20,7 @@ from bnb.controllers.scripted import Scripted
 from bnb.game import api
 from bnb.learn import bc, head_statistics, labels
 from bnb.learn.ppo import COUNTS, TERMS
-from bnb.models.yemong import codes, correction
+from bnb.models.yemong import codes, correction, delta
 from bnb.models.yemong.inputs import believed, truth
 from bnb.models.yemong.model import YemongConfig
 from bnb.models.yemong.state_code import MEANS, SPREADS, state_code_ranges, unpack_covariance
@@ -103,6 +103,81 @@ def test_the_clamp_makes_the_covariance_positive_semidefinite_and_keeps_one_that
     # a negative-definite triple clamps to zero
     zero = correction.positive_semidefinite(torch.tensor([-1.0, 0.0, -2.0], dtype=F64))
     assert zero.abs().max() == 0
+
+
+# ------------------------------------------------------------------ the spread
+
+
+def _component(name: str):
+    return next(c for c in _code().components if c.name == name)
+
+
+def _spread(component, probabilities: torch.Tensor) -> torch.Tensor:
+    return codes.symlog_spread(
+        probabilities, component.knee, component.bound, component.bins, below=component.below
+    )
+
+
+def _normal(count: int = 20_000) -> torch.Tensor:
+    """A standard normal's quantile points (k + 1/2) / count."""
+    levels = (torch.arange(count, dtype=F64) + 0.5) / count
+    return math.sqrt(2.0) * torch.erfinv(2.0 * levels - 1.0)
+
+
+@pytest.mark.parametrize("name", ["position_0", "velocity_60", "heading", "energy"])
+def test_an_encoded_value_has_no_spread(name):
+    """The probit-interpolated quantiles of an HL-Gauss are its own, so less the smoothing
+    nothing is left, at any offset inside a bin and out in the wide bins."""
+    component = _component(name)
+    values = component.knee * torch.tensor([0.0, 0.13, 0.5, 1.0, -2.7, 9.0, 40.0], dtype=F64)
+    values = values[values.abs() < component.bound]
+    encoded, _ = component.encode(values)
+    assert float(_spread(component, encoded).abs().max()) < 1e-6 * component.knee
+
+
+@pytest.mark.parametrize("centre", [0.0, 2.0])
+@pytest.mark.parametrize("width", [1.0, 3.0, 10.0, 50.0])
+def test_an_encoded_gaussian_decodes_to_its_sigma(centre, width):
+    """A Gaussian of sigma (in knees: across the knee and out into the wide bins), as the
+    mean code of its quantile points: sigma to 6% (measured -5.1% to +1.5%, low where the
+    symlog fold near 0 makes it two-humped in the bin coordinate)."""
+    component = _component("position_0")
+    sigma = width * component.knee
+    encoded, _ = component.encode(centre * component.knee + sigma * _normal())
+    assert math.isclose(float(_spread(component, encoded.mean(0))), sigma, rel_tol=0.06)
+
+
+def test_the_spread_reads_each_side_of_an_asymmetric_code():
+    """The position along the track (asymmetric sides): a Gaussian of 0.3 m at 2.6 m."""
+    component = delta.POSITION_ALONG
+    encoded, _ = component.encode(2.6 + 0.3 * _normal())
+    assert math.isclose(float(_spread(component, encoded.mean(0))), 0.3, rel_tol=0.02)
+
+
+def test_a_far_sliver_moves_the_spread_by_its_mass_not_its_distance():
+    """The bug's case: 1e-3 of the mass in a bin 10 km out. The second moment's sigma grows
+    past 250 m; the quantile spread of a sharp code stays about 0, and of a 20 m Gaussian
+    at 20 m within 1% of its own."""
+    component = _component("position_0")
+    sharp, _ = component.encode(torch.tensor(7.0, dtype=F64))
+    far, _ = component.encode(torch.tensor(10_000.0, dtype=F64))
+    sliver = 0.999 * sharp + 0.001 * far
+    assert float(_spread(component, sliver)) < 0.05
+    _, second = codes.symlog_decode(sliver, component.knee, component.bound, component.bins)
+    assert float(second) ** 0.5 > 250.0
+    broad, _ = component.encode(20.0 + 20.0 * _normal())
+    broad = broad.mean(0)
+    clean = float(_spread(component, broad))
+    assert math.isclose(float(_spread(component, 0.999 * broad + 0.001 * far)), clean, rel_tol=0.01)
+
+
+def test_the_spread_has_a_finite_gradient_where_it_is_zero():
+    component = _component("position_0")
+    encoded, _ = component.encode(torch.tensor([0.0, 7.0], dtype=F64))
+    logits = torch.log(encoded.clamp_min(1e-30)).float().requires_grad_()
+    spread = _spread(component, torch.softmax(logits, -1))
+    spread.sum().backward()
+    assert torch.isfinite(spread).all() and torch.isfinite(logits.grad).all()
 
 
 # ------------------------------------------------------------------ the code
@@ -226,7 +301,8 @@ def test_the_step_is_the_rate_times_the_confident_median():
     moments = code.moments(broad)
     length = float(torch.linalg.vector_norm(moments.step["velocity"][0]))
     assert length < 0.1 * 0.5 * 0.1
-    assert correction.confident(torch.tensor(2.0), torch.tensor(4.0), torch.tensor(0.0)) == 2.0
+    two, four, zero = (torch.tensor(value) for value in (2.0, 4.0, 0.0))
+    assert correction.confident(two, four, zero) == (2.0, 1.0)
     with pytest.raises(ValueError, match="rate"):
         correction.CorrectionCode(code_ranges(), 0.0)
 
@@ -235,29 +311,32 @@ def code_ranges():
     return state_code_ranges(api.rules_of(cases.SQUAD), api.ship_types())
 
 
-def test_the_applied_variance_adds_the_unapplied_mean():
-    mean = {"position": torch.tensor([[3.0, 4.0]], dtype=F64), "heading": torch.tensor([0.5])}
+def test_the_applied_variance_adds_the_unapplied_median():
+    median = {"position": torch.tensor([[3.0, 4.0]], dtype=F64), "heading": torch.tensor([0.5])}
     step = {"position": torch.tensor([[1.0, 1.0]], dtype=F64), "heading": torch.tensor([0.2])}
     variance = {
         "position": torch.tensor([[1.0, 0.0, 2.0]], dtype=F64),
         "heading": torch.tensor([0.1]),
     }
-    moments = correction.Moments(mean=mean, variance=variance, target=step, step=step)
+    moments = correction.Moments(median=median, variance=variance, gain={}, target=step, step=step)
     torch.testing.assert_close(
         moments.applied_variance("position"), torch.tensor([[5.0, 6.0, 11.0]], dtype=F64)
     )
     torch.testing.assert_close(moments.applied_variance("heading"), torch.tensor([0.19]))
 
 
-def test_the_rare_jumps_step_by_the_median():
-    """The wait's error: 0 at p 0.8, +4 s at p 0.2: no step, the spread of the mixture."""
+@pytest.mark.parametrize("jump, low, high", [(0.2, 1.2, 2.2), (0.1, 0.0, 0.15)])
+def test_the_rare_jumps_step_by_the_median(jump, low, high):
+    """The wait's error: 0, or +4 s at p `jump`: no step. A jump past the 84th percentile's
+    reach (p > 0.16) widens the spread by about half its size (the mixture's sigma is 1.6 s
+    at 0.2); a rarer one leaves it near the zero's (0.07 s at 0.1: the quantile spread)."""
     net = cases.double(_model())
     code = net.correction_code
     errors = torch.zeros(2, len(correction.COMPONENT_NAMES), dtype=F64)
     column = correction.COMPONENT_NAMES.index("shield_recharge_wait")
     errors[1, column] = 4.0
     encoded, _ = code.encode(errors)
-    mixture = 0.8 * encoded[0] + 0.2 * encoded[1]
+    mixture = (1.0 - jump) * encoded[0] + jump * encoded[1]
     forecast = torch.zeros(1, len(MEANS), dtype=F64)
     forecast[0, MEANS.index("shield_recharge_wait")] = 2.0
     means, spreads = code.correct(
@@ -267,7 +346,25 @@ def test_the_rare_jumps_step_by_the_median():
         net.state_code,
     )
     assert abs(float(means[0, MEANS.index("shield_recharge_wait")]) - 2.0) < 0.1 / 30.0
-    assert 1.5 < float(spreads[0, SPREADS.index("shield_recharge_wait")]) < 2.2
+    assert low <= float(spreads[0, SPREADS.index("shield_recharge_wait")]) < high
+
+
+def test_a_far_sliver_of_mass_keeps_the_sharp_spread():
+    """The bug's case (2026-11-08): a sharp position error with 1e-3 of the mass 10 km out
+    on every axis. The second moment put sigma near 300 m; the quantile spread keeps the
+    sharp code's, and the gain stays near 1."""
+    net = cases.double(_model())
+    code = net.correction_code
+    errors = torch.zeros(2, len(correction.COMPONENT_NAMES), dtype=F64)
+    errors[0, 0:3] = correction.project(torch.tensor([20.0, -15.0], dtype=F64), code.axes.double())
+    errors[1, 0:3] = 10_000.0
+    encoded, _ = code.encode(errors)
+    sliver = torch.log((0.999 * encoded[0] + 0.001 * encoded[1]).clamp_min(1e-300))[None]
+    moments = code.moments(sliver)
+    sharp = code.moments(torch.log(encoded[:1].clamp_min(1e-300)))
+    assert float(sharp.variance["position"].abs().max()) < 1e-6
+    assert float(moments.variance["position"].abs().max()) < 1.0  # m^2, against ~1e5
+    assert float(moments.gain["position"][0]) > 0.99
 
 
 def test_hidden_rows_take_the_correction_and_seen_rows_the_physics():
@@ -497,6 +594,7 @@ def test_the_ppo_terms_and_their_series(segment):
     for name in correction.STEP_LIMITS:
         assert 0.0 <= series[f"correction/capped_share/{name}"] <= 1.0
         assert 0.0 <= series[f"correction/step_over_limit/{name}"] <= 1.0
+        assert 0.0 <= series[f"correction/gain/{name}"] <= 1.0
     for name in correction.COMPONENT_NAMES:
         assert 0.0 <= series[f"correction/support_clip/{name}"] <= 1.0
     assert math.isfinite(series[f"next_state/hidden/error/position_metres/{bucket}"])

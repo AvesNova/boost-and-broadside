@@ -629,3 +629,65 @@ def symlog_median(
     if inverse is not None:
         coordinate = invert_mean(coordinate, *inverse)
     return symlog_value(coordinate, knee, spacing)
+
+
+SPREAD_LEVELS = (0.16, 0.5, 0.84)  # a Gaussian's median and one sigma either side
+QUANTILE_FLOOR = 1e-6  # the cumulative mass held off 0 and 1 for its probit (float32-safe)
+
+
+def _probit(cumulative: torch.Tensor) -> torch.Tensor:
+    return math.sqrt(2.0) * torch.erfinv(2.0 * cumulative - 1.0)
+
+
+def symlog_quantile(probabilities: torch.Tensor, low: int, level: float) -> torch.Tensor:
+    """(..., width) probabilities to the coordinate (...) of their `level` quantile, in bins
+    from the zero centre (low: the bins under it, padding included): the bin whose edges'
+    cumulative masses straddle the level, then the cumulative mass interpolated across it
+    linearly in its probit. A Gaussian's probit is linear, so the code of an encoded value
+    (the HL-Gauss of `sigma` bins) gives its exact quantiles, and a mixture the quantiles of
+    its smoothed distribution up to the curvature inside one bin."""
+    floor = QUANTILE_FLOOR
+    after = torch.cumsum(probabilities, -1)
+    before = torch.cat([torch.zeros_like(after[..., :1]), after[..., :-1]], -1)
+    width = probabilities.shape[-1]
+    crossing = torch.clamp_max((after < level).sum(-1), width - 1)[..., None]
+    lower = _probit(before.gather(-1, crossing)[..., 0].clamp(floor, 1.0 - floor))
+    upper = _probit(after.gather(-1, crossing)[..., 0].clamp(floor, 1.0 - floor))
+    target = _probit(after.new_full((), level))
+    rise = upper - lower
+    fraction = torch.where(
+        rise > 0, (target - lower) / torch.where(rise > 0, rise, 1.0), 0.5
+    ).clamp(0.0, 1.0)
+    return (crossing[..., 0] - low).to(probabilities.dtype) - 0.5 + fraction
+
+
+def symlog_spread(
+    probabilities: torch.Tensor,
+    knee: float,
+    bound: float,
+    bins: int,
+    padding: int = PADDING_BINS,
+    sigma: float = HL_GAUSS_SIGMA,
+    below: int | None = None,
+) -> torch.Tensor:
+    """(..., bins + 2 padding) probabilities to a robust physical sigma (...): the 16th,
+    50th and 84th percentiles c16, c50, c84 in the code's coordinate (`symlog_quantile`),
+    each side's half-width less the code's own smoothing in quadrature, a = sqrt(max((c84 -
+    c50)^2 - sigma^2, 0)) and b likewise below, and sigma = (v(c50 + a) - v(c50 - b)) / 2, v
+    the code's value map. An encoded value decodes to 0; a Gaussian to its sigma within a
+    few per cent across the knee (`docs/explanation/yemong.md`); a sliver of mass in a far
+    bin moves a quantile by about its mass, not by its distance squared (the second
+    moment's failure on a wide code). The sides apart: a symlog code folds near 0, so a
+    distribution off the centre is lopsided in the coordinate."""
+    spacing = symlog_spacing(knee, bound, bins, below)
+    low = symlog_sides(bins, below)[0] + padding
+    c16, c50, c84 = (symlog_quantile(probabilities, low, level) for level in SPREAD_LEVELS)
+
+    def deconvolved(half: torch.Tensor) -> torch.Tensor:
+        excess = half * half - sigma * sigma
+        positive = excess > 0
+        return torch.where(positive, torch.sqrt(torch.where(positive, excess, 1.0)), 0.0)
+
+    upper = symlog_value(c50 + deconvolved(c84 - c50), knee, spacing)
+    lower = symlog_value(c50 - deconvolved(c50 - c16), knee, spacing)
+    return 0.5 * (upper - lower)

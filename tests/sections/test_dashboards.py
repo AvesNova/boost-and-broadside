@@ -59,6 +59,7 @@ EXEMPT = (
     "correction/within_two_sigma/*",
     "correction/step_over_limit/*",
     "correction/capped_share/*",
+    "correction/gain/*",
     "correction/support_clip/*",
 )
 

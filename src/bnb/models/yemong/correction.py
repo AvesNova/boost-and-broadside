@@ -22,9 +22,16 @@ faster than the ship could move in a tick. The head re-predicts e every tick fro
 corrected belief, so a fraction per tick still converges where it is right, and the loop's
 gain stays below 1 where it is wrong or one update stale. The rare-jump quantities
 (recharge wait, shield, gun cooldown) step by m itself (the most likely outcome, decisions
-D8). The variance is e's second moment about the step, Var e + (E e - step)^2 (for position
-and velocity the 2 x 2 covariance plus the outer product of the unapplied part), and
-replaces the physics' F P F^T + Q for hidden rows.
+D8). The spread is robust, from quantiles (`codes.symlog_spread`): per code the 16th, 50th
+and 84th percentiles in the bin coordinate, each side less the code's own smoothing, mapped
+to a physical sigma; sigma^2 is e's variance (position and velocity: the three projected
+variances to the 2 x 2 by `covariance_of`). The second moment of a code over +-26 km is set
+by slivers of mass in kilometre-wide outer bins (1e-3 in a 10 km bin is 1e5 m^2): on arm
+3's GPU run it put the position sigma at 218 m against a realised 1.6 m at 0-0.1 s, so the
+gain was about 0 and the blurred inputs carried nothing. The belief's spread after the step
+is e's about the median plus the unapplied part, sigma^2 + (m - step)^2 (for position and
+velocity the 2 x 2 plus the outer product), and replaces the physics' F P F^T + Q for
+hidden rows.
 
 Why not the brief's step toward E e (`docs/explanation/yemong.md`, the error head): on a
 short CPU run it ran away. The mean of a broad code over +-26 km is set by its tails, and
@@ -506,11 +513,11 @@ def outer(vector: torch.Tensor) -> torch.Tensor:
 
 
 def confident(median: torch.Tensor, square: torch.Tensor, variance: torch.Tensor):
-    """The median m shrunk by the head's confidence in it, m |m|^2 / (|m|^2 + sigma^2):
-    square |m|^2 (...), variance sigma^2 (...) per dimension; median (...) or (..., 2). A
-    broad prediction (sigma >> |m|) moves nothing, a sharp one moves by m."""
+    """(g m, g): the median m shrunk by the head's confidence in it, g = |m|^2 / (|m|^2 +
+    sigma^2): square |m|^2 (...), variance sigma^2 (...) per dimension; median (...) or
+    (..., 2). A broad prediction (sigma >> |m|) moves nothing, a sharp one moves by m."""
     gain = square / torch.clamp_min(square + variance, torch.finfo(square.dtype).tiny)
-    return median * (gain[..., None] if median.dim() > gain.dim() else gain)
+    return median * (gain[..., None] if median.dim() > gain.dim() else gain), gain
 
 
 def capped_step(mean: torch.Tensor, limit: float) -> torch.Tensor:
@@ -523,20 +530,23 @@ def capped_step(mean: torch.Tensor, limit: float) -> torch.Tensor:
 
 @dataclasses.dataclass(frozen=True)
 class Moments:
-    """The error head's decoded distribution, per quantity (QUANTITIES): mean (..., 2) for
-    position and velocity, (...) for the rest; variance, the packed 2 x 2 covariance (...,
-    3) or (...); target, what the step moves by before the cap: eta g m, e's median m (per
-    projection, then the least-squares vector) shrunk by `confident` and the rate eta (the
-    rare jumps': m itself); step, what the advance applies (same shape as mean)."""
+    """The error head's decoded distribution, per quantity (QUANTITIES): median, e's median
+    m (per projection, then the least-squares vector), (..., 2) for position and velocity,
+    (...) for the rest; variance, sigma^2 about it from the quantile spread
+    (`codes.symlog_spread`), the packed 2 x 2 covariance (..., 3) or (...); gain, the
+    confidence g of `confident` (...) for the quantities that step by it; target, what the
+    step moves by before the cap: eta g m (the rare jumps': m itself); step, what the
+    advance applies (same shape as median)."""
 
-    mean: dict[str, torch.Tensor]
+    median: dict[str, torch.Tensor]
     variance: dict[str, torch.Tensor]
+    gain: dict[str, torch.Tensor]
     target: dict[str, torch.Tensor]
     step: dict[str, torch.Tensor]
 
     def applied_variance(self, name: str) -> torch.Tensor:
-        """Var e + (E e - step)^2: the variance the belief carries after the step."""
-        rest = self.mean[name] - self.step[name]
+        """sigma^2 + (m - step)^2: the variance the belief carries after the step."""
+        rest = self.median[name] - self.step[name]
         if name in PLANAR:
             return self.variance[name] + outer(rest)
         return self.variance[name] + rest * rest
@@ -644,44 +654,48 @@ class CorrectionCode(nn.Module):
         return self.split(torch.exp(codes.grouped_log_softmax(logits, self.runs)))
 
     def decode(self, logits: torch.Tensor):
-        """Head logits (..., width) to ((..., components) means, variances, medians), in the
-        code's units."""
+        """Head logits (..., width) to ((..., components) medians, variances), in the code's
+        units: the median within MEDIAN_WINDOW bins (`codes.symlog_median`), the variance the
+        square of the quantile spread (`codes.symlog_spread`)."""
         parts = self.probabilities(logits)
-        means, variances, medians = [], [], []
+        medians, variances = [], []
         for c in self.components:
-            part, inverse = parts[c.name], self.inverse(c.name)
-            mean, variance = codes.symlog_decode(part, c.knee, c.bound, c.bins, inverse=inverse)
-            means.append(mean)
-            variances.append(variance)
+            part = parts[c.name]
             medians.append(
                 codes.symlog_median(
-                    part, c.knee, c.bound, c.bins, inverse=inverse, window=MEDIAN_WINDOW
+                    part,
+                    c.knee,
+                    c.bound,
+                    c.bins,
+                    inverse=self.inverse(c.name),
+                    window=MEDIAN_WINDOW,
                 )
             )
-        return torch.stack(means, -1), torch.stack(variances, -1), torch.stack(medians, -1)
+            variances.append(codes.symlog_spread(part, c.knee, c.bound, c.bins).square())
+        return torch.stack(medians, -1), torch.stack(variances, -1)
 
     def moments(self, logits: torch.Tensor) -> Moments:
         """The decoded distribution per quantity and the advance's step (module docstring)."""
-        means, variances, medians = self.decode(logits)
-        mean, variance, target, step = {}, {}, {}, {}
+        medians, variances = self.decode(logits)
+        median, variance, gain, target, step = {}, {}, {}, {}, {}
         for k, name in enumerate(PLANAR):
             columns = slice(3 * k, 3 * k + 3)
-            mean[name] = mean_of(means[..., columns], self.least_squares)
+            median[name] = mean_of(medians[..., columns], self.least_squares)
             variance[name] = covariance_of(variances[..., columns], self.variance_solve)
-            median = mean_of(medians[..., columns], self.least_squares)
             spread = 0.5 * (variance[name][..., 0] + variance[name][..., 2])  # per dimension
-            target[name] = self.rate * confident(median, median.square().sum(-1), spread)
+            shrunk, gain[name] = confident(median[name], median[name].square().sum(-1), spread)
+            target[name] = self.rate * shrunk
             step[name] = capped_step(target[name], STEP_LIMITS[name])
         for i, name in enumerate(SCALAR_QUANTITIES, start=3 * len(PLANAR)):
-            mean[name], variance[name] = means[..., i], variances[..., i]
+            median[name], variance[name] = medians[..., i], variances[..., i]
             if name in MEDIAN:
-                target[name] = step[name] = medians[..., i]
+                target[name] = step[name] = median[name]
             else:
-                median = medians[..., i]
-                target[name] = self.rate * confident(median, median.square(), variance[name])
+                shrunk, gain[name] = confident(median[name], median[name].square(), variance[name])
+                target[name] = self.rate * shrunk
                 limit = STEP_LIMITS[name]
                 step[name] = limit * torch.tanh(target[name] / limit)
-        return Moments(mean=mean, variance=variance, target=target, step=step)
+        return Moments(median=median, variance=variance, gain=gain, target=target, step=step)
 
     def marginal_logits(self) -> torch.Tensor:
         """(width,) the starting logits: per component its measured MARGINAL (as

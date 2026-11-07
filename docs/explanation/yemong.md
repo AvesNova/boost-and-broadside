@@ -315,9 +315,9 @@ the full range a hidden ship's error can reach. Position and velocity are coded 
 world projection axes**, at 0, 60 and 120 degrees, one code each. A hidden ship's error is
 correlated across any fixed pair of axes, with a sign set by its turn
 (`docs/rewrite/sections/baselines-bench.md`, 2.2), and three marginals recover the full 2 x 2
-covariance. The mean error is the least-squares vector of the three projected means. The
-covariance S solves `u_i^T S u_i = var_i` for its three entries, clamped to positive
-semi-definite (`correction.covariance_of`). The heading's error is wrapped. The others are
+covariance. The error's location is the least-squares vector of the three projected
+medians. The covariance S solves `u_i^T S u_i = var_i` for its three entries, clamped to
+positive semi-definite (`correction.covariance_of`). The heading's error is wrapped. The others are
 scalars, with shield and energy as fractions of the type's maximum. Bins are about
 `1 + 4 ln(1 + range / knee)`, odd, so two per e-fold on each side of the zero:
 
@@ -379,9 +379,45 @@ sigma is 450-680 m at every age against a realised spread of 3-130 m, and the GP
 `correction/predicted_variance/*` against `correction/realised_square_error/*` shows
 whether it sharpens.
 
-The spread is e's second moment about the applied step, `Var e + (E e - step)^2`: for
-position and velocity the 2 x 2 covariance plus the outer product of the unapplied part. It
-replaces the physics' `F P F^T + Q` for hidden rows. The covariance is block diagonal (the
+#### The error head's spread
+
+Each code's sigma is a quantile spread (`codes.symlog_spread`), not its second moment. In
+the code's bin coordinate it takes the 16th, 50th and 84th percentiles c16, c50 and c84,
+with the cumulative mass interpolated across the bin that holds each level linearly in its
+probit. Each side's half-width loses the code's own smoothing in quadrature, `a =
+sqrt(max((c84 - c50)^2 - 0.75^2, 0))` and `b` likewise below. The physical sigma is `(v(c50
++ a) - v(c50 - b)) / 2`, v the code's value map. Its square is e's variance per code; for
+position and velocity the three projected variances give the 2 x 2 as above.
+
+The second moment failed on arm 3's first GPU run (stopped at update 4): the position
+sigma was 218 m at 0-0.1 s of hidden age against a realised RMS error of 1.6 m, and every
+error lay within 1 sigma up to 2 s. The outer bins of a code over +-26 km are kilometres
+wide, so a sliver of mass there sets the second moment (1e-3 in a 10 km bin is 1e5 m^2).
+That is the mean's failure again. The gain `|m|^2 / (|m|^2 + sigma^2)` was then about 0, so
+the correction never acted, and the hidden ships' blurred inputs carried nothing. A quantile
+moves by about the sliver's mass instead.
+
+Two choices depart from the plain rule, each measured on encoded codes. Linear
+interpolation of the cumulative mass widens an encoded value's half-width to 0.82-0.90
+bins, depending on where it sits in its bin, so less 0.75 bins it never reaches 0 (3.5 m
+at the centre of the position code). A Gaussian's probit is linear, so the probit
+interpolation gives an HL-Gauss its exact quantiles and an encoded value decodes to 0. Both
+sides are deconvolved apart because a symlog code folds near 0: a Gaussian off the centre
+is lopsided in the bin coordinate. The symmetric `(c84 - c16) / 2` read a 200 m Gaussian at
+20 m as 280 m; apart, it reads 192 m. A Gaussian of 1 to 50 knees decodes to its sigma
+within -5% to +2% (low where the fold makes it two-humped in the coordinate). Below about a
+bin's width at its location the code cannot resolve a sigma, and it reads less.
+
+The rare jumps (the wait, the shield and the cooldown) take the same rule. Their second
+moment erred wide as well (the wait's sigma 1.4 s against a realised 0.23 s at 0-0.1 s on
+the short run above). A jump of probability above about 0.16 widens the spread by about
+half its size. A rarer one leaves it near the spread at zero, so the spread reads the most
+likely outcome, as the step does.
+
+The belief's spread after the step is e's about the median plus the unapplied part,
+`sigma^2 + (m - step)^2`: for position and velocity the 2 x 2 covariance plus the outer
+product. The median is the location the step moves toward. It replaces the physics' `F P
+F^T + Q` for hidden rows. The covariance is block diagonal (the
 error head codes position, velocity, heading and the nose rate independently), with the
 same caps on the heading's and the nose rate's variance. The cooldown's code is the
 forecast's sharp code moved by e's distribution. The ellipse inputs and the per-axis blur
