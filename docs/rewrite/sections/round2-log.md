@@ -59,3 +59,4 @@ Entries: time, what, why. Newest last.
   a learner sequence that starts mid-game with a blank carry now gets valid visible
   accelerations where arm 1's did not (the observation knows t-1); live play is identical.
 - **02:47** Arm-2 build agent launched (worktree `bnb-arm2`, branch `feat/arm2-persistence`, from f5be4390).
+- **02:56** Arm-2 agent's plan OK; told it the ellipse inputs replace the scalar spreads in the token (the brief's wording), not sit beside them. Its ETA: code 06:00, done 08:30 (worst 10:00).
