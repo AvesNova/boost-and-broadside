@@ -414,6 +414,19 @@ the short run above). A jump of probability above about 0.16 widens the spread b
 half its size. A rarer one leaves it near the spread at zero, so the spread reads the most
 likely outcome, as the step does.
 
+On the stopped GPU run's policy at update 4 (decoded on a CPU rollout of 64 environments
+x 32 ticks, learning rate 0), the position sigma by hidden age is 7.1 / 6.7 / 9.8 / 12 /
+29 / 78 m at 0-0.1 / 0.1-0.5 / 0.5-1 / 1-2 / 2-5 / 5-10 s, against a realised RMS error
+about the median of 0.85 / 4.9 / 18 / 51 / 166 / 366 m. The rule now errs narrow past
+0.5 s (0.22 / 0.09 / 0.03 within 1 sigma at 0.5-1 / 1-2 / 2-5 s), and so does the head:
+its own raw 16th-84th percentile interval holds 0.39 / 0.23 / 0.13 of the errors there
+(position on the 0-degree axis), and the rule's interval 0.31 / 0.19 / 0.11. Its median is
+unbiased (0.47-0.54 of the errors fall below it). The narrowness belongs to the early
+head's overconfident core, which the rule reports as it is; the second moment hid it under
+the far bins' mass. On 20 CPU updates from initialisation (arm 3 as above) the head stays
+near its unconditioned marginal, and the two rules read about the same: a position sigma
+of 470-720 m against the second moment's 445-815 m.
+
 The belief's spread after the step is e's about the median plus the unapplied part,
 `sigma^2 + (m - step)^2`: for position and velocity the 2 x 2 covariance plus the outer
 product. The median is the location the step moves toward. It replaces the physics' `F P
