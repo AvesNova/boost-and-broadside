@@ -243,45 +243,84 @@ def project(x, y):
     return np.stack([x, -0.5 * x + 0.5 * SQRT3 * y, -0.5 * x - 0.5 * SQRT3 * y], -1)
 
 
-def evaluate_2d(x: np.ndarray, y: np.ndarray, vx: np.ndarray, vy: np.ndarray) -> dict:
+def axis_grid(z: np.ndarray, bins: int) -> np.ndarray:
+    """A symlog grid for one axis: its own knee (the median nonzero |z|) and range (the
+    nice ceiling of max |z|), symmetric with a zero centre."""
+    absolute = np.abs(z)
+    knee = float(np.median(absolute[absolute > 0])) if (absolute > 0).any() else 1.0
+    R = nice_ceiling(float(absolute.max()))
+    return symlog_grid(-R, R, bins, knee)
+
+
+def evaluate_2d(frames: dict[str, tuple[np.ndarray, np.ndarray]]) -> dict:
+    """The 2-D candidates. frames: {"world": (x, y), "nose": (along, across), "track":
+    (along, across)}; NaN rows (the track frame below its speed threshold) are dropped
+    within their frame. The norm is frame-free, so medians are the world frame's."""
+    x, y = frames["world"]
     norm = np.hypot(x, y)
     median, p999, top = (float(np.percentile(norm, q)) for q in (50, 99.9, 100))
     R = nice_ceiling(max(np.abs(x).max(), np.abs(y).max()))
     results = {}
 
-    def per_axis(name, a, b, grid_of):
-        ra, rb = grid_report(grid_of(a), a), grid_report(grid_of(b), b)
+    def per_axis(name, a, b, grid_a, grid_b):
+        ra, rb = grid_report(grid_a, a), grid_report(grid_b, b)
         error = np.hypot(a - ra["nearest"], b - rb["nearest"])
-        centres = grid_of(a)
-        tail = int(
-            ((a < centres[0]) | (a > centres[-1]) | (b < centres[0]) | (b > centres[-1])).sum()
-        )
+        tail = int(((a < grid_a[0]) | (a > grid_a[-1]) | (b < grid_b[0]) | (b > grid_b[-1])).sum())
         results[name] = dict(
-            bins=2 * len(centres),
+            bins=len(grid_a) + len(grid_b),
+            samples=int(a.size),
             coverage=1 - tail / a.size,
-            covers_p999=bool(centres[-1] >= p999),
-            width_p50=local_width(centres, median / math.sqrt(2)),
-            width_p999=local_width(centres, p999 / math.sqrt(2)),
+            covers_p999=bool(min(grid_a[-1], grid_b[-1]) >= p999 / math.sqrt(2)),
+            width_p50=0.5
+            * (
+                local_width(grid_a, median / math.sqrt(2))
+                + local_width(grid_b, median / math.sqrt(2))
+            ),
+            width_p999=0.5
+            * (local_width(grid_a, p999 / math.sqrt(2)) + local_width(grid_b, p999 / math.sqrt(2))),
             nearest=float(error.mean()),
             clip=float(np.hypot(a - ra["decoded"], b - rb["decoded"]).mean()),
             H=ra["H"] + rb["H"],
             H_self=ra["H_self"] + rb["H_self"],
+            H_axes=[ra["H"], rb["H"]],
             tail=tail,
         )
 
-    knee = float(np.median(np.abs(np.concatenate([x, y]))[np.concatenate([x, y]) != 0]))
-    per_axis(f"per axis x, y uniform 2x{PER_AXIS}", x, y, lambda _: uniform_grid(-R, R, PER_AXIS))
-    per_axis(f"per axis x, y symlog 2x{PER_AXIS}", x, y,
-             lambda _: symlog_grid(-R, R, PER_AXIS, knee))  # fmt: skip
-    # the track frame: along and across the velocity at t
-    speed = np.maximum(np.hypot(vx, vy), 1e-9)
-    ux, uy = vx / speed, vy / speed
-    along, across = x * ux + y * uy, -x * uy + y * ux
-    knee_track = float(np.median(np.abs(np.concatenate([along, across]))))
-    per_axis(f"track frame (along, across) symlog 2x{PER_AXIS}", along, across,
-             lambda _: symlog_grid(-R, R, PER_AXIS, knee_track))  # fmt: skip
-    # three directions 120 degrees apart, least-squares decode
+    def polar(name, a, b):
+        magnitude, angle = np.hypot(a, b), np.arctan2(b, a)
+        knee_m = float(np.median(magnitude[magnitude > 0]))
+        grid_m = symlog_grid(0.0, nice_ceiling(magnitude.max()), PER_AXIS, knee_m)
+        rm = grid_report(grid_m, magnitude)
+        wrapped = wrapped_grid_report(angle, PER_AXIS)
+        spacing = wrapped["spacing"]
+        nearest_angle = np.round((angle + math.pi) / spacing) * spacing - math.pi
+        na, nb = rm["nearest"] * np.cos(nearest_angle), rm["nearest"] * np.sin(nearest_angle)
+        results[name] = dict(
+            bins=2 * PER_AXIS,
+            samples=int(a.size),
+            coverage=1 - rm["tail"] / a.size,
+            covers_p999=bool(grid_m[-1] >= p999),
+            width_p50=float(np.hypot(local_width(grid_m, median), spacing * median)),
+            width_p999=float(np.hypot(local_width(grid_m, p999), spacing * p999)),
+            nearest=float(np.hypot(a - na, b - nb).mean()),
+            clip=float(np.abs(magnitude - rm["decoded"]).mean()),
+            H=rm["H"] + wrapped["H"],
+            H_self=rm["H_self"] + wrapped["H_self"],
+            H_axes=[rm["H"], wrapped["H"]],
+            tail=rm["tail"],
+        )
+
+    uniform = uniform_grid(-R, R, PER_AXIS)
+    per_axis(f"world x, y uniform 2x{PER_AXIS}", x, y, uniform, uniform)
+    for frame, (a, b) in frames.items():
+        keep = np.isfinite(a) & np.isfinite(b)
+        a, b = a[keep], b[keep]
+        per_axis(f"{frame} per axis symlog 2x{PER_AXIS}", a, b,
+                 axis_grid(a, PER_AXIS), axis_grid(b, PER_AXIS))  # fmt: skip
+        polar(f"{frame} polar symlog |d| {PER_AXIS} + angle {PER_AXIS}", a, b)
+    # three directions 120 degrees apart (world), least-squares decode
     projections = project(x, y)
+    knee = float(np.median(np.abs(np.concatenate([x, y]))[np.concatenate([x, y]) != 0]))
     grid = symlog_grid(-R, R, DIRECTIONS, knee)
     reports = [grid_report(grid, projections[:, i]) for i in range(3)]
 
@@ -293,8 +332,9 @@ def evaluate_2d(x: np.ndarray, y: np.ndarray, vx: np.ndarray, vy: np.ndarray) ->
     nx, ny = decode(np.stack([r["nearest"] for r in reports], -1))
     cx, cy = decode(np.stack([r["decoded"] for r in reports], -1))
     tail = int(np.any(np.abs(projections) > R, -1).sum())
-    results[f"three directions symlog 3x{DIRECTIONS}"] = dict(
+    results[f"world three directions symlog 3x{DIRECTIONS}"] = dict(
         bins=3 * DIRECTIONS,
+        samples=int(x.size),
         coverage=1 - tail / x.size,
         covers_p999=bool(R >= p999),
         width_p50=local_width(grid, median / math.sqrt(2)),
@@ -305,7 +345,7 @@ def evaluate_2d(x: np.ndarray, y: np.ndarray, vx: np.ndarray, vy: np.ndarray) ->
         H_self=sum(r["H_self"] for r in reports),
         tail=tail,
     )
-    # joint 2-D hierarchy, 3 x 3 colours per level, period = range
+    # joint 2-D hierarchy, 3 x 3 colours per level, period = range (world)
     period = 2 * R
     sx, sy = np.remainder(x + R, period), np.remainder(y + R, period)
     H, H_self = 0.0, 0.0
@@ -325,8 +365,9 @@ def evaluate_2d(x: np.ndarray, y: np.ndarray, vx: np.ndarray, vy: np.ndarray) ->
     finest = period / COLOURS**LEVELS_2D
     nearest_x = np.round(sx / finest) * finest - R
     nearest_y = np.round(sy / finest) * finest - R
-    results[f"joint 2-D hierarchy {LEVELS_2D}x9 (period {period:g})"] = dict(
+    results[f"world joint 2-D hierarchy {LEVELS_2D}x9 (period {period:g})"] = dict(
         bins=9 * LEVELS_2D,
+        samples=int(x.size),
         coverage=float(((np.abs(x) <= R) & (np.abs(y) <= R)).mean()),
         covers_p999=bool(R >= p999),
         width_p50=finest,
@@ -337,31 +378,30 @@ def evaluate_2d(x: np.ndarray, y: np.ndarray, vx: np.ndarray, vy: np.ndarray) ->
         H_self=H_self,
         tail=0,
     )
-    # polar: magnitude symlog (one-sided) + angle wrapped uniform, world frame and track
-    for frame, (a, b) in (("world", (x, y)), ("track", (along, across))):
-        magnitude, angle = np.hypot(a, b), np.arctan2(b, a)
-        knee_m = float(np.median(magnitude[magnitude > 0]))
-        grid_m = symlog_grid(0.0, nice_ceiling(magnitude.max()), PER_AXIS, knee_m)
-        rm = grid_report(grid_m, magnitude)
-        wrapped = wrapped_grid_report(angle, PER_AXIS)
-        spacing = wrapped["spacing"]
-        nearest_angle = np.round((angle + math.pi) / spacing) * spacing - math.pi
-        na, nb = rm["nearest"] * np.cos(nearest_angle), rm["nearest"] * np.sin(nearest_angle)
-        results[f"polar ({frame}) symlog |d| {PER_AXIS} + angle {PER_AXIS}"] = dict(
-            bins=2 * PER_AXIS,
-            coverage=1 - rm["tail"] / x.size,
-            covers_p999=bool(grid_m[-1] >= p999),
-            width_p50=float(np.hypot(local_width(grid_m, median), spacing * median)),
-            width_p999=float(np.hypot(local_width(grid_m, p999), spacing * p999)),
-            nearest=float(np.hypot(a - na, b - nb).mean()),
-            clip=float(np.abs(magnitude - rm["decoded"]).mean()),
-            H=rm["H"] + wrapped["H"],
-            H_self=rm["H_self"] + wrapped["H_self"],
-            tail=rm["tail"],
-        )
     for entry in results.values():
         entry["width_p50_fraction"] = entry["width_p50"] / median if median > 0 else float("nan")
     return dict(n=int(x.size), median=median, p999=p999, max=top, range=R, candidates=results)
+
+
+def budget_sweep(z: np.ndarray, counts=(11, 15, 21, 31, 41, 63)) -> dict:
+    """The symlog per-axis code of one component at several bin counts: width at the
+    median |z| (and as a fraction of it), width at p99.9, H and the nearest-centre error."""
+    z = z[np.isfinite(z)]
+    absolute = np.abs(z)
+    median, p999 = float(np.median(absolute)), float(np.percentile(absolute, 99.9))
+    out = {}
+    for bins in counts:
+        grid = axis_grid(z, bins)
+        r = grid_report(grid, z)
+        width = local_width(grid, median)
+        out[str(bins)] = dict(
+            width_p50=width,
+            width_p50_fraction=width / median if median > 0 else float("nan"),
+            width_p999=local_width(grid, p999),
+            nearest=float(np.abs(z - r["nearest"]).mean()),
+            H=r["H"],
+        )
+    return dict(median=median, p999=p999, sweep=out)
 
 
 # ------------------------------------------------------------------- driver
@@ -424,13 +464,24 @@ def main() -> None:
         report[name] = evaluate_1d(z, circular)
         print(name, "done", flush=True)
     for quantity, base, horizon in TWO_D:
-        names = [f"{quantity}.{base}.{horizon}.x", f"{quantity}.{base}.{horizon}.y"]
-        # the track frame: the velocity at t of the same samples
-        start = [f"_start.velocity.{horizon}.x", f"_start.velocity.{horizon}.y"]
-        data = pooled(names + start)
-        vx, vy = data[start[0]], data[start[1]]
-        report[f"{quantity}.{base}.{horizon}"] = evaluate_2d(data[names[0]], data[names[1]], vx, vy)
+        prefix = f"{quantity}.{base}.{horizon}"
+        components = ("x", "y", "nose_along", "nose_across", "track_along", "track_across")
+        data = pooled([f"{prefix}.{c}" for c in components])
+        get = {c: data[f"{prefix}.{c}"] for c in components}
+        report[prefix] = evaluate_2d(
+            dict(
+                world=(get["x"], get["y"]),
+                nose=(get["nose_along"], get["nose_across"]),
+                track=(get["track_along"], get["track_across"]),
+            )
+        )
+        report[prefix]["track_skipped"] = float(np.mean(~np.isfinite(get["track_along"])))
+        report[prefix]["budget"] = {c: budget_sweep(get[c]) for c in components}
         print(quantity, base, horizon, "done", flush=True)
+    for quantity, base, horizon, _ in ONE_D:
+        component = "angle" if quantity == "heading" else "value"
+        name = f"{quantity}.{base}.{horizon}.{component}"
+        report[name]["budget"] = budget_sweep(pooled([name])[name])
     # gun cooldown: a discrete residual; its distinct values
     z = pooled(["gun_cooldown.countdown.1.value"])["gun_cooldown.countdown.1.value"]
     values, counts = np.unique(np.round(z, 3), return_counts=True)

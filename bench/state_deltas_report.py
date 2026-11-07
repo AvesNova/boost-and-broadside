@@ -116,6 +116,68 @@ def quantity_table(data, quantity) -> list[str]:
     return lines
 
 
+def body_table(data, quantity) -> list[str]:
+    """The body-frame components of a 2-D change: p50 / p99.9 of |component| and the signed
+    mean, along and across the nose and the velocity at t."""
+    parts = ("nose_along", "nose_across", "track_along", "track_across")
+    lines = [
+        "| player | preset | baseline | k | " + " | ".join(parts) + " | track skipped |",
+        "|---|---|---|---|" + "---|" * (len(parts) + 1),
+    ]
+    for (player, preset), entry in data.items():
+        for base, horizons in entry["stats"][quantity].items():
+            for horizon, components in sorted(horizons.items(), key=lambda kv: int(kv[0])):
+                cells = [
+                    f"{g(components[c]['p50'])} / {g(components[c]['p99.9'])} "
+                    f"(mean {g(components[c]['mean'])})"
+                    for c in parts
+                ]
+                skipped = percent(components["track_along"]["skipped"])
+                lines.append(
+                    f"| {player} | {preset} | {base} | {horizon} | " + " | ".join(cells)
+                    + f" | {skipped} |"
+                )  # fmt: skip
+    return lines
+
+
+BODY_SITUATIONS = ("boost", "coast", "reverse", "stick_centred", "stick_full")
+
+
+def body_split_table(data, quantity, base) -> list[str]:
+    """Signed mean and p50 / p99.9 of each body component by power and stick, 1 tick."""
+    lines = [
+        "| player | preset | component | " + " | ".join(BODY_SITUATIONS) + " |",
+        "|---|---|---|" + "---|" * len(BODY_SITUATIONS),
+    ]
+    for (player, preset), entry in data.items():
+        for component in ("nose_along", "nose_across", "track_along", "track_across"):
+            split = entry["splits"][quantity][f"{base}:{component}"]
+            cells = []
+            for situation in BODY_SITUATIONS:
+                inside = split[situation]["in"]
+                cells.append(
+                    "-"
+                    if inside["n"] == 0
+                    else f"{percent(inside['share'])}: mean {g(inside['mean'])}, "
+                    f"{g(inside['p50'])} / {g(inside['p99.9'])}"
+                )
+            lines.append(f"| {player} | {preset} | {component} | " + " | ".join(cells) + " |")
+    return lines
+
+
+def budget_table(sweep: dict) -> list[str]:
+    lines = [
+        "| bins | width at p50 (x median) | width at p99.9 | nearest-centre error | H |",
+        "|---|---|---|---|---|",
+    ]
+    for bins, row in sweep["sweep"].items():
+        lines.append(
+            f"| {bins} | {g(row['width_p50'])} ({g(row['width_p50_fraction'])}) | "
+            f"{g(row['width_p999'])} | {g(row['nearest'])} | {row['H']:.2f} |"
+        )
+    return lines
+
+
 def split_table(data, quantity) -> list[str]:
     base = SPLIT_BASE[quantity]
     keys = list(data)
@@ -158,6 +220,11 @@ def main() -> None:
     out = ["## Samples", "", *counts_table(data), ""]
     for quantity in ORDER:
         out += [f"## {quantity} ({UNITS[quantity]})", "", *quantity_table(data, quantity), ""]
+        if quantity in ("position", "velocity"):
+            out += ["Body frames: p50 / p99.9 (signed mean)", "", *body_table(data, quantity), ""]
+            for base in ("persistence", SPLIT_BASE[quantity]):
+                out += [f"Body components by power and stick ({base}, 1 tick)", "",
+                        *body_split_table(data, quantity, base), ""]  # fmt: skip
         out += [f"Splits ({SPLIT_BASE[quantity]}, 1 tick): share: p50 / p99.9 inside "
                 "(outside)", "", *split_table(data, quantity), ""]  # fmt: skip
     codes = json.loads((SCRATCH / "codes.json").read_text())
@@ -166,9 +233,14 @@ def main() -> None:
         if "candidates" not in entry:
             out += [f"## {name}", "", "```", json.dumps(entry), "```", ""]
             continue
-        summary = {k: entry[k] for k in entry if k != "candidates"}
+        summary = {k: entry[k] for k in entry if k not in ("candidates", "budget")}
         out += [f"## {name}", "", " ".join(f"{k} {g(v)}" for k, v in summary.items()), ""]
         out += [*code_table(entry), ""]
+        budget = entry.get("budget", {})
+        sweeps = {"": budget} if "sweep" in budget else budget
+        for component, sweep in sweeps.items():
+            out += [f"Symlog bins sweep {component} (median {g(sweep['median'])}, "
+                    f"p99.9 {g(sweep['p999'])})", "", *budget_table(sweep), ""]  # fmt: skip
     print("\n".join(out))
 
 

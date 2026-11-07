@@ -29,6 +29,8 @@ MAX_SHIELD = (100.0, 160.0)  # the card's, per type (identical for both players)
 MAX_ENERGY = (10000.0, 14000.0)
 SHIELD_RECHARGE_RATE = 12.0  # HP/s, both types (rules.shield_recharge_rate, scale 1)
 EPS32 = float(np.finfo(np.float32).eps)
+TRACK_MIN_SPEED = 1.0  # m/s: below it the velocity frame is undefined (NaN)
+COMPONENTS_SHARING_SCALE = ("/x", "/y", "_along", "_across")
 RESPAWN_TICKS = 30  # "just respawned": within 1 s of the spawn
 
 
@@ -92,7 +94,23 @@ def segment_series(path: pathlib.Path, columns: list[str], dt: float):
 
     def add(name, values, magnitude, mask):
         series[name] = values[mask].astype(np.float32)
-        scale[name] = magnitude[mask].astype(np.float32)
+        if not name.endswith(COMPONENTS_SHARING_SCALE):  # they use the norm's
+            scale[name] = magnitude[mask].astype(np.float32)
+
+    def add_vector(prefix, ex, ey, magnitude, mask, nose, track_x, track_y, moving):
+        """A 2-D change: world x, y, its norm, and its body-frame components, along and
+        across the nose (heading at t) and along and across the velocity at t (NaN where
+        the speed at t is below TRACK_MIN_SPEED). Across is positive to the left."""
+        add(f"{prefix}/x", ex, magnitude, mask)
+        add(f"{prefix}/y", ey, magnitude, mask)
+        add(f"{prefix}/norm", np.hypot(ex, ey), magnitude, mask)
+        c, s_ = np.cos(nose), np.sin(nose)
+        add(f"{prefix}/nose_along", ex * c + ey * s_, magnitude, mask)
+        add(f"{prefix}/nose_across", -ex * s_ + ey * c, magnitude, mask)
+        add(f"{prefix}/track_along", np.where(moving, ex * track_x + ey * track_y, np.nan),
+            magnitude, mask)  # fmt: skip
+        add(f"{prefix}/track_across", np.where(moving, -ex * track_y + ey * track_x, np.nan),
+            magnitude, mask)  # fmt: skip
 
     for k in (1, 8, 32):
         mask = valid_pairs(alive, done, k)
@@ -106,22 +124,20 @@ def segment_series(path: pathlib.Path, columns: list[str], dt: float):
         half = 0.5 * turn
         sinc = np.where(np.abs(half) > 1e-9, np.sin(half) / np.where(half == 0, 1, half), 1.0)
         bases["arc"] = rotate(vx[a] * T * sinc, vy[a] * T * sinc, half)
+        speed = np.hypot(vx[a], vy[a])
+        moving = speed >= TRACK_MIN_SPEED
+        safe = np.where(moving, speed, 1.0)
+        frame = (heading[a], vx[a] / safe, vy[a] / safe, moving)
         if k == 1:
             bases["trapezoid"] = (0.5 * (vx[a] + vx[b]) * T, 0.5 * (vy[a] + vy[b]) * T)
         for base, (bx, by) in bases.items():
-            ex, ey = dx - bx, dy - by
-            add(f"position/{base}/{k}/x", ex, pos_mag, mask)
-            add(f"position/{base}/{k}/y", ey, pos_mag, mask)
-            add(f"position/{base}/{k}/norm", np.hypot(ex, ey), pos_mag, mask)
+            add_vector(f"position/{base}/{k}", dx - bx, dy - by, pos_mag, mask, *frame)
         vel_mag = np.abs(vx[a]) + np.abs(vy[a])
         add(f"_start/velocity/{k}/x", vx[a], vel_mag, mask)  # the track frame of the code study
         add(f"_start/velocity/{k}/y", vy[a], vel_mag, mask)
         rx, ry = rotate(vx[a], vy[a], turn)
         for base, (bx, by) in {"persistence": (vx[a], vy[a]), "rotated": (rx, ry)}.items():
-            ex, ey = vx[b] - bx, vy[b] - by
-            add(f"velocity/{base}/{k}/x", ex, vel_mag, mask)
-            add(f"velocity/{base}/{k}/y", ey, vel_mag, mask)
-            add(f"velocity/{base}/{k}/norm", np.hypot(ex, ey), vel_mag, mask)
+            add_vector(f"velocity/{base}/{k}", vx[b] - bx, vy[b] - by, vel_mag, mask, *frame)
         pi_mag = np.full_like(heading[a], np.pi)
         add(f"heading/persistence/{k}/angle", wrap(heading[b] - heading[a]), pi_mag, mask)
         add(f"heading/dead_reckoning/{k}/angle", wrap(heading[b] - heading[a] - turn), pi_mag, mask)
@@ -170,6 +186,9 @@ def segment_series(path: pathlib.Path, columns: list[str], dt: float):
                 shot=data["hit"][a],
                 boundary=data["boundary"][a],
                 fired=col("fired")[b] > 0.5,
+                stick_centred=data["stick"][a] == 0,
+                stick_full=data["stick"][a] >= 5,  # stick levels +-1.0
+                slow=~moving,  # below TRACK_MIN_SPEED: no track frame
             )
             situations = {name: value[mask] for name, value in situations.items()}
             series["_ship_type"] = ship_type[a][mask].astype(np.int8)
@@ -182,14 +201,22 @@ def segment_series(path: pathlib.Path, columns: list[str], dt: float):
     return series, scale, situations
 
 
+def quantity_of(name: str) -> str:
+    return name.split("/")[0]
+
+
 def statistics(values: np.ndarray, magnitude: np.ndarray) -> dict:
+    finite = np.isfinite(values)
+    skipped = float(1.0 - finite.mean()) if values.size else 0.0
+    values, magnitude = values[finite], magnitude[finite]
     absolute = np.abs(values.astype(np.float64))
     if absolute.size == 0:
-        return dict(n=0)
+        return dict(n=0, skipped=skipped)
     quantiles = np.percentile(absolute, QUANTILES)
     resolution = 2.0 * EPS32 * np.maximum(magnitude.astype(np.float64), 1e-30)
     return dict(
         n=int(absolute.size),
+        skipped=skipped,
         zero=float((absolute == 0).mean()),
         below_float32=float((absolute <= resolution).mean()),
         mean=float(values.astype(np.float64).mean()),
@@ -201,6 +228,7 @@ def statistics(values: np.ndarray, magnitude: np.ndarray) -> dict:
 
 def histogram(values: np.ndarray) -> dict:
     v = values.astype(np.float64)
+    v = v[np.isfinite(v)]
     positive, _ = np.histogram(v[v > 0], EDGES)
     negative, _ = np.histogram(-v[v < 0], EDGES)
     return dict(
@@ -237,8 +265,11 @@ def measure(player: str, preset: str, rng: np.random.Generator) -> None:
         if name.startswith("_"):
             continue
         quantity, base, horizon, component = name.split("/")
+        magnitude = scales.get(name)
+        if magnitude is None:
+            magnitude = scales[name.rsplit("/", 1)[0] + "/norm"]
         stats.setdefault(quantity, {}).setdefault(base, {}).setdefault(horizon, {})[component] = (
-            statistics(values, scales[name])
+            statistics(values, magnitude)
         )
         hists.setdefault(quantity, {}).setdefault(f"{base}/{horizon}", {})[component] = histogram(
             values
@@ -249,14 +280,19 @@ def measure(player: str, preset: str, rng: np.random.Generator) -> None:
         if name.startswith("_") or "/1/" not in name or name.endswith(("/x", "/y")):
             continue
         quantity, base, _, component = name.split("/")
+        if component.endswith(("_along", "_across")):
+            base = f"{base}:{component}"  # a body-frame component's splits
         for situation, mask in situations.items():
             for flag, selected in (("in", mask), ("out", ~mask)):
-                part = np.abs(values[selected].astype(np.float64))
+                signed = values[selected].astype(np.float64)
+                signed = signed[np.isfinite(signed)]
+                part = np.abs(signed)
                 entry = dict(share=float(selected.mean()), n=int(part.size))
                 if part.size:
                     levels = np.percentile(part, (50, 99, 99.9))
                     entry.update(
                         zero=float((part == 0).mean()),
+                        mean=float(signed.mean()),
                         **{f"p{q:g}": float(v) for q, v in zip((50, 99, 99.9), levels)},
                         max=float(part.max()),
                     )
