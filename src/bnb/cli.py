@@ -523,7 +523,17 @@ def set_precision(precision: str) -> None:
 
 def train(options: Train, given_options: set[str]) -> None:
     """`bnb train`: a new run, a resume, a fork or a warm start, logging a line per update;
-    exits with the reason for a setting that does not fit."""
+    exits with the reason for a setting that does not fit. SIGINT, SIGTERM or the run's
+    STOP file stops it after the update in progress, with a checkpoint
+    (`bnb.runs.session.StopRequest`), from the start: a request during the setup stops the
+    run after no update."""
+    from bnb.runs.session import StopRequest
+
+    with StopRequest() as stop:
+        _train(options, given_options, stop)
+
+
+def _train(options: Train, given_options: set[str], stop) -> None:
     import torch
 
     from bnb.runs import checkpoint, probe, session
@@ -552,8 +562,8 @@ def train(options: Train, given_options: set[str]) -> None:
             if run.live():
                 raise SystemExit(
                     f"run {options.resume} is running as process "
-                    f"{run.record['pid']} on this host; stop it (Ctrl-C) before "
-                    f"resuming it"
+                    f"{run.record['pid']} on this host; stop it (Ctrl-C, SIGTERM or a "
+                    f"STOP file in its directory) before resuming it"
                 )
             source = run.checkpoint_at(options.at)
             fixed = sorted(given_options - set(RESUME_OPTIONS))
@@ -702,7 +712,9 @@ def train(options: Train, given_options: set[str]) -> None:
     recorder = Recorder(run, trainer, sinks, rules)
     cloned = config.objective == "bc"
     try:
-        status = session.train(run, trainer, log_cloning if cloned else log, recorder=recorder)
+        status = session.train(
+            run, trainer, log_cloning if cloned else log, recorder=recorder, stop=stop
+        )
         if cloned:
             print(
                 f"stopped by {run.record['stopped_by']}; the policy is {run.policy_path} "

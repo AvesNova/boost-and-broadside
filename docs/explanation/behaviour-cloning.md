@@ -78,7 +78,7 @@ The averaged agents are the product of BC, as in reinforcement learning (decisio
 uses), folded in after every update by BC's hooks (`bnb.league.lanes.LaneHooks`):
 
 - **the uniform average** of the live weights over every update after the run's
-  learning-rate warm-up (`learner.warmup_steps`, 10M environment steps by default; an
+  learning-rate warm-up (`LearnerConfig.warmup_steps`, 10M environment steps by default; an
   explicit `LeagueConfig.uniform_from` overrides it: `TrainConfig.uniform_start`); until
   then it is the live weights;
 - **the exponential moving average**, decay 0.95 per update

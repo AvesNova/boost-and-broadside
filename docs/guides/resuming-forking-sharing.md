@@ -18,7 +18,17 @@ uv run --no-sync bnb train --preset mixed --updates 2000
 
 The first line names the run, such as `2026-11-02-mixed-purple-pumpkin`; `--name` sets
 it. Ctrl-C finishes the update in progress, writes a checkpoint and marks the run
-`stopped` (a second Ctrl-C stops at once, without a checkpoint).
+`stopped` (a second Ctrl-C stops at once, without a checkpoint). SIGTERM does the same,
+so `systemctl --user stop` of a unit running it is a graceful stop, and so does a `STOP`
+file in the run directory, from any shell:
+
+<!-- not-runnable: needs a running run -->
+```bash
+touch runs/2026-11-02-mixed-purple-pumpkin/STOP
+```
+
+The run removes the file once it has stopped, and records what asked and the step in
+`run.json`{.plain} (`stop_request`).
 
 ## See your runs
 

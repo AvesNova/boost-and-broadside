@@ -26,7 +26,7 @@ its fixed share. The entries (`bnb.league.pool.Entry`) are:
   policy's weights, folded in after every update (`bnb.league.pool.Averages`, through `average_into`, the
   decay `LeagueConfig.exponential_decay` per update; behaviour cloning keeps the same
   two with the same settings). The uniform average starts after
-  the run's learning-rate warm-up (`learner.warmup_steps`, 10M environment steps by
+  the run's learning-rate warm-up (`LearnerConfig.warmup_steps`, 10M environment steps by
   default, or `LeagueConfig.uniform_from` when set: `TrainConfig.uniform_start`), so a
   warm start's optimizer, critic and advantages settle first; until then it is the live weights;
 - **the stationary ladder**, only with `LeagueConfig.ladder_in_pool` (default false: the

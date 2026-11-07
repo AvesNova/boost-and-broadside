@@ -47,9 +47,14 @@ runs/2026-11-02-mixed-purple-pumpkin/
 - **A stale run:** a process killed outright leaves `running`. `bnb runs` shows such a run
   as `running (stale)` when its process id is not alive on this host. A resume of a run
   whose process is alive on this host is refused, so two processes never write one run.
-- **Stopping:** Ctrl-C finishes the current update, writes a checkpoint and marks the run
-  `stopped`; an exception marks it `failed` before it propagates
-  (`bnb.runs.session.train`).
+- **Stopping:** a stop request finishes the current update, writes a checkpoint, marks
+  the run `stopped`, records the request as `stop_request` (what asked, SIGINT,
+  SIGTERM or "STOP file", and the step) and exits 0. A request is Ctrl-C (SIGINT),
+  SIGTERM (what `systemctl --user stop` and the queue's preemption send) or a file named
+  `STOP`{.plain} in the run directory, read after each update and removed once honoured
+  (`bnb.runs.session.StopRequest`). A second signal aborts at once, without a checkpoint.
+  The next segment clears `stop_request`. An exception marks the run `failed` before it
+  propagates (`bnb.runs.session.train`).
 
 ## Policy files and training checkpoints
 

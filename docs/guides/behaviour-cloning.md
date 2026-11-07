@@ -32,7 +32,8 @@ options (`--model`, `--environments`, `--shards`, `--precision`, `--micro-batch-
 
 The run lives in a run directory like a PPO run's
 ([Runs and checkpoints](../explanation/runs.md)) and writes training checkpoints on the
-same cadence. When a stop rule fires, or after the update in progress at Ctrl-C, it writes
+same cadence. When a stop rule fires, or after the update in progress at a stop request (Ctrl-C,
+SIGTERM or a `STOP` file: [Resuming](resuming-forking-sharing.md#start-and-stop-a-run)), it writes
 a checkpoint and saves its policy files, each with its weights, the return scale, the step
 counts and its own lane ratings
 ([The hand-off](../explanation/behaviour-cloning.md#the-hand-off)):
@@ -44,10 +45,10 @@ counts and its own lane ratings
 | `runs/<run>/policy-exponential/`{.plain} | the exponential moving average |
 | `runs/<run>/policy-live/`{.plain} | the live clone |
 
-`run.json`{.plain} records the rule as `stopped_by` (`interrupted` for Ctrl-C) and the
+`run.json`{.plain} records the rule as `stopped_by` (`interrupted` for a stop request) and the
 average in `policy/` as `policy_player` (`uniform_average` or `exponential_average`).
 The averages take the league's settings: the uniform average starts after the run's
-learning-rate warm-up (`learner.warmup_steps`), `--set league.uniform_from=20000000` starts
+learning-rate warm-up (`LearnerConfig.warmup_steps`), `--set league.uniform_from=20000000` starts
 it elsewhere, `--set league.exponential_decay=0.98` slows the exponential
 one.
 
