@@ -190,15 +190,25 @@ state code above, are the same either way.
   velocity frame to world; shield, energy and the countdowns are clamped to their ranges. A
   delta build's belief carries the **full covariance** P of (x, y, vx, vy, heading, nose
   rate), appended to its spreads (`state_code.COVARIANCE_STATE`, 21 entries); each tick
-  `P' = F P F^T + Q`, with F the kinematics' Jacobian (position plus velocity `dt`, heading
-  plus nose rate `dt`) and Q the decoded changes' variances, position and velocity turned
-  to world. The other sigmas add the change's variance to the belief's; the cooldown's code
+  `P' = F P F^T + Q`, with F the kinematics' Jacobian (position plus velocity `dt`) and Q
+  the decoded changes' variances, position and velocity turned to world; the heading's
+  variance is capped at a uniform circle's, `pi^2 / 3`, and the nose rate's at a uniform
+  one over the state code's range, `8^2 / 3` (the nose rate is a bounded oscillator; with
+  its variance growing as a random walk, a hidden ship's nose rate held the truth within
+  one sigma 100% of the time past 0.5 s). The heading is not coupled to the
+  nose rate in F: the head's heading change is the whole turn, nose rate `dt` included,
+  and the nose rate is a damped oscillator, so the coupling counted the turn twice and
+  grew the heading's sigma past pi by 1 s on a short CPU run, while the belief's heading
+  error was 0.55 rad at 1-2 s and grew as the root of the age, as the heading change's
+  own variance does. The other sigmas add the change's variance to the belief's; the cooldown's code
   is the belief's moved by the change's distribution. The spreads' usual slots (the
   position's per-axis RMS sigma, the velocity's covariance, the heading's and nose rate's
   sigmas) are read off P, so play, figures and diagnostics read a delta build as any other.
   A visible row is the truth with zero spread. Under persistence the head's position change
   for a hidden row already holds the belief's velocity error, which F adds again: the
   belief's coverage by hidden age (`belief/within_one_sigma/*`) is where that would show.
+  On a short CPU run it showed the opposite: the position's sigma too small (14% within
+  one sigma at 0.1-0.5 s, 5-9% past it).
 
   The target is the truth's change on every row (allies, visible and hidden enemies) whose
   ship is alive at `t` and `t + 1` (a death or a spawn is not a change of state). Round 1's

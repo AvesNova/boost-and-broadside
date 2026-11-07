@@ -30,6 +30,7 @@ from . import codes
 from .state_code import (
     COVARIANCE_STATE,
     MEANS,
+    NOSE_RATE_LIMIT,
     SPREADS,
     ShipStateCode,
     StateCodeRanges,
@@ -435,12 +436,36 @@ def rotate_variances(
     )
 
 
+# The variance of a heading uniform on the circle: the heading's cap (`advance`); the nose
+# rate's, of one uniform over the state code's range (the nose is a damped oscillator,
+# bounded, not a random walk).
+UNIFORM_HEADING_VARIANCE = math.pi**2 / 3.0
+UNIFORM_NOSE_RATE_VARIANCE = NOSE_RATE_LIMIT**2 / 3.0
+
+
 def kinematics_jacobian(tick: float, dtype, device) -> torch.Tensor:
-    """(6, 6) F of COVARIANCE_STATE over one tick: position += velocity dt, heading +=
-    nose rate dt."""
+    """(6, 6) F of COVARIANCE_STATE over one tick: position += velocity dt. The heading is
+    not coupled to the nose rate: under persistence the head's heading change is the whole
+    turn, nose rate dt included, and the nose rate is a damped oscillator whose errors do
+    not persist the way a velocity's do. Coupling them counted the turn twice and treated
+    the nose rate as a random walk: on a short CPU run the heading sigma passed pi by 1 s
+    while the belief's heading error was 0.55 rad at 1-2 s, growing as the root of the age
+    (about 0.08 rad per root tick), which the heading change's own variance gives."""
     jacobian = torch.eye(len(COVARIANCE_STATE), dtype=dtype, device=device)
-    jacobian[0, 2] = jacobian[1, 3] = jacobian[4, 5] = tick
+    jacobian[0, 2] = jacobian[1, 3] = tick
     return jacobian
+
+
+def cap_variance(covariance: torch.Tensor, index: int, cap: float) -> torch.Tensor:
+    """(..., 6, 6) with entry `index`'s variance at most `cap`: its row and column scaled by
+    sqrt(cap / variance) where larger (the correlations kept, so it stays positive
+    semi-definite)."""
+    variance = covariance[..., index, index]
+    scale = torch.sqrt(cap / torch.clamp_min(variance, cap))  # 1 at or below the cap
+    size = covariance.shape[-1]
+    one = torch.arange(size, device=covariance.device) == index
+    factor = torch.where(one, scale[..., None], torch.ones_like(scale)[..., None])
+    return covariance * factor[..., :, None] * factor[..., None, :]
 
 
 class DeltaCode(nn.Module):
@@ -647,7 +672,9 @@ class DeltaCode(nn.Module):
         from the belief's velocity frame (its heading below SLOW_SPEED) to world; shield,
         energy and the countdowns clamped to their ranges. Spread: the covariance P of
         COVARIANCE_STATE as F P F^T + Q (`kinematics_jacobian`; Q the changes' variances,
-        position and velocity rotated to world); the other sigmas the root of the belief's
+        position and velocity rotated to world), the heading's variance capped at the
+        uniform circle's and the nose rate's at a uniform one over the state code's range
+        (`cap_variance`); the other sigmas the root of the belief's
         variance plus the change's; the cooldown's code the belief's moved by the change's
         distribution (its residual against the advanced mean). SPREADS' kinematic slots
         are read off the new P (position: the per-axis RMS sigma)."""
@@ -682,6 +709,8 @@ class DeltaCode(nn.Module):
             )
         )
         covariance = jacobian @ covariance @ jacobian.transpose(-1, -2) + noise
+        covariance = cap_variance(covariance, 4, UNIFORM_HEADING_VARIANCE)
+        covariance = cap_variance(covariance, 5, UNIFORM_NOSE_RATE_VARIANCE)
 
         def scalar(name: str, scale=1.0):
             value = mean[name] + change[..., part[name]] * scale

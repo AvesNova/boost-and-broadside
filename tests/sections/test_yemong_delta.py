@@ -298,6 +298,38 @@ def test_the_covariance_follows_f_p_f_t_plus_q_with_the_n_cubed_term():
     )
 
 
+def test_the_heading_grows_by_its_change_alone_and_is_capped_at_the_circle():
+    """The nose rate's variance does not feed the heading (the heading change is the
+    whole turn); the heading's variance stops at a uniform circle's, pi^2 / 3, its
+    correlations kept."""
+    net = cases.double(_model())
+    code, state_code = net.delta_code, net.state_code
+    means, spreads = _belief(net, 1)
+    change = torch.zeros(2, len(delta.CONTINUOUS), dtype=F64)
+    heading, nose = delta.CONTINUOUS.index("heading"), delta.CONTINUOUS.index("nose_rate")
+    change[0, heading], change[1, heading] = 0.05, -0.05
+    change[0, nose], change[1, nose] = 1.0, -1.0
+    encoded, _ = code.encode(change)
+    logits = torch.log(encoded.mean(0).clamp_min(1e-300))[None]
+    _, variance, _ = code.decode(logits)
+    q_heading = float(variance[0, heading])
+    for _ in range(10):
+        means, spreads = code.advance(
+            means, spreads, logits, torch.zeros(1, dtype=torch.long), state_code
+        )
+    matrix = unpack_covariance(spreads[..., state_code.covariance_slice])[0]
+    assert math.isclose(float(matrix[4, 4]), 10 * q_heading, rel_tol=1e-9)
+    assert float(matrix[4, 5]) == 0.0
+    big = torch.diag(torch.tensor([1.0, 1.0, 1.0, 1.0, 40.0, 4.0], dtype=F64))
+    big[4, 5] = big[5, 4] = 10.0
+    capped = delta.cap_variance(big, 4, delta.UNIFORM_HEADING_VARIANCE)
+    assert math.isclose(float(capped[4, 4]), math.pi**2 / 3)
+    correlation = lambda m: float(m[4, 5] / torch.sqrt(m[4, 4] * m[5, 5]))  # noqa: E731
+    assert math.isclose(correlation(capped), correlation(big))
+    assert torch.equal(capped[:4, :4], big[:4, :4]) and float(capped[5, 5]) == 4.0
+    assert delta.UNIFORM_NOSE_RATE_VARIANCE == 64.0 / 3.0
+
+
 def test_the_covariance_packs_and_unpacks():
     matrix = torch.randn(3, 6, 6, dtype=F64)
     matrix = matrix @ matrix.transpose(-1, -2)
