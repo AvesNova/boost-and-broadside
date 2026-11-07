@@ -144,3 +144,8 @@ Entries: time, what, why. Newest last.
   grasp of the objective / strategy while helping close-range fighting. Arms 3 and 4 still
   run as planned (they answer 3 vs 2 and 4 vs 3); expect them to share arm 2's frontline
   deficit.
+- **07:18** My call: queued **arm 2b** after arm 4 (job 12, `2026-11-08-bc-arm2b-scalar-spreads`:
+  arm 2 with `spread_inputs=scalar`, i.e. without the ellipse inputs) and its tournament
+  (job 13: arm 2b, arm 2, C-fixed 30M). It splits arm 2's bundle: if 2b recovers frontline,
+  the ellipse inputs are the cause; if not, the delta head (or its gradient mix) is. ETA
+  ~16:15 for both. Remove with `bnb queue remove 12` / `13` if not wanted.
