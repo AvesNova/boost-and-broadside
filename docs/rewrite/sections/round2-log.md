@@ -102,3 +102,17 @@ Entries: time, what, why. Newest last.
 - **05:15** Arm 3 with eta 0.1 + gain: stable over 20 CPU updates. Belief position error 1.2/7.1/21/54/147 m by age (arm 2 1.0/6.5/20/46/143: the correction does little yet); sigma now too WIDE (error head's position sigma 450-680 m vs realised 3-130 m; within 1 sigma 0.74-1.00; arm 2 0.04-0.42). Step 6% of r, 1.4% capped. Trunk shares: physics 0.0146, error head 0.0065 (0.78x per row): coefficient stays 0.0033. Watch in the GPU run whether the error head's sigma sharpens (a wide sigma blurs the hidden inputs). Arm 4 code in; 45 arm-3/4 tests pass incl. equality with the bench's E.
 - **05:32** Arm 3 committed on its branch (a711cd58; quick tier 1550, dashboards slow 4, docs 480 pass). Arm 4 knees re-measured (position 0.26/1.2 mm, velocity 0.019/0.073 m/s; 500 outputs). Arm 4's short run diverged by update 8 (velocity error 1039 m/s at 2-5 s): for hidden rows the rates were the belief's own change, which includes the head's decoded change, so each tick's change became the next tick's acceleration and compounded. Agent's fix: hidden rows hold their last sighting's rates (as the bench's iterated E). I asked for a decay of the held rates with hidden age (default time constant 0.5 s) and/or a top-speed clamp, since a held thrust integrates without bound.
 - **05:48** Arm 4 with held rates decaying at tau 0.5 s: stable, no speed clamp needed. By age (0-0.1 ... 5-10 s): position 0.04/1.9/10.8/32/141/394 m (arm 2 1.0/6.5/20/46/143/377), velocity about equal to arm 2, heading worse (0.25/0.63/1.07 rad at 0.1-2 s vs arm 2 0.17/0.37/0.51): the held nose rate keeps a hidden ship turning. Asked the agent to decay the nose rate feeding hidden headings the same way (one short run; keep only if it helps).
+- **06:20** Arms 3 and 4 reported done (branch `feat/arms34-error-head`, 7f40a369). Departures
+  from the brief, all for stability and logged above: arm 3's step = eta g median(e) then the
+  cap (eta 0.1, `yemong.correction_rate`); arm 4's hidden rows hold their last sighting's
+  rates, decaying with `yemong.extrapolation_decay` 0.5 s (heading turns by the decayed nose
+  rate). Both loss terms share one denominator (a row weighs the same as in arm 2);
+  coefficients 0.0033 / 0.0033 (error head's per-row trunk share 0.78x in arm 3, 1.29x in
+  arm 4: inside the 1.5x band). Error head 338 outputs (knees at initialisation, e.g.
+  position 11.9 m on three axes, 31 bins to 26 km). Short CPU runs: arm 4's position belief
+  clearly better than arm 2's to 2 s (0.04/1.8/11/39 m vs 1.0/6.5/20/46); arm 4's heading
+  worse (persistent nose rate, physics trained on seen rows only); arm 3 about arm 2. The
+  error head's sigma starts far too wide (450-700 m vs 2-145 m realised): watch
+  `correction/predicted_variance` against `correction/realised_square_error`.
+  Verifying: ruff clean; quick tier running (the agent's last full quick tier predates the
+  turn-decay change).
