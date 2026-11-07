@@ -26,6 +26,7 @@ from bnb.game.ship_types import ShipTypes
 from . import belief as beliefs
 from . import critic, density, shots
 from .belief import Belief
+from .codes import SPREAD_FITS
 from .heads import HeadGroup, ShotTrajectoryHead, critic_values, next_state_logits
 from .inputs import (
     FIELD_INPUTS,
@@ -88,6 +89,14 @@ class YemongConfig:
     learner's `rotary_readout` term, the mean over blocks, against the true phasors), which
     keeps each optimum the expected phasor and the fused attention kernel usable in the
     learner.
+    spread_fit (`codes.SPREAD_FITS`): how the belief decodes a forecast's position and
+    heading spreads. "coarsest" reads each at the coarsest level of its code that has
+    broadened, and comes out honest on a forecast that is not Gaussian. "v1" is v1's fit,
+    weighted so the finest informative level decides: on the codes a trained head predicts
+    for a hidden ship it reports metres when the ship is hundreds of metres off. The default
+    is "v1" so that every build record from before the option decodes as it was trained;
+    training builds "coarsest" (`bnb.runtime.train.TrainConfig.yemong`). "v1" goes once no
+    rated policy needs it.
     """
 
     width: int = 128
@@ -109,8 +118,11 @@ class YemongConfig:
     rotary: bool = True  # rotary attention (off: the identity rotation)
     order: str = "spatial_first"  # per block: "spatial_first" or "temporal_first"
     rotary_readout: bool = False  # hidden ships' rotary pairs from each block's temporal layer
+    spread_fit: str = "v1"  # the belief's spread decoding; training builds "coarsest"
 
     def __post_init__(self) -> None:
+        if self.spread_fit not in SPREAD_FITS:
+            raise ValueError(f"spread_fit {self.spread_fit!r} is not one of {SPREAD_FITS}")
         if self.order not in ORDERS:
             raise ValueError(f"order {self.order!r} is not one of {ORDERS}")
         if self.rotary_readout and (self.order != "temporal_first" or not self.rotary):
@@ -294,7 +306,7 @@ class Yemong(nn.Module):
         width, hidden = config.width, 2 * config.width
         self.ship_types = build.ship_types
         self.tick_length = build.tick_length
-        self.state_code = ShipStateCode(build.state_code)
+        self.state_code = ShipStateCode(build.state_code, config.spread_fit)
         self.shot_code = shots.shot_code_parameters(
             build.muzzle_speed,
             velocity_reach(),

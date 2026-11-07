@@ -109,7 +109,17 @@ The next-state head predicts the same vector, so a forecast carries its own unce
   period a fixed factor shorter than the one before. Each level is a softmax group over a
   few "colours" around its circle, so the coarse levels place the value roughly and the
   fine ones precisely. A spread larger than a level's period flattens that level toward
-  uniform.
+  uniform. Decoding reads the spread at the coarsest level that has broadened: a
+  predicted code need not be Gaussian (a sharp core, two modes, flat fine levels), and its
+  fine levels then say little about how far off the mean may be.
+  `YemongConfig.spread_fit` chooses this reading, `"coarsest"`, or v1's fit, `"v1"`. The v1
+  fit weights the levels so the finest informative one decides. On the codes a trained
+  head predicts for a hidden ship it reported metres of spread while the ship was hundreds
+  of metres off, and a 1-sigma range that held the truth 0-5% of the time past half a
+  second. The config's default is `"v1"`, so every build record written before the option
+  decodes as it trained (play, warm starts, tournaments, where the two builds are separate
+  groups). A new run builds `"coarsest"` (`TrainConfig.yemong`). `"v1"` is to be removed
+  once no rated policy needs it.
 
 ## Network
 

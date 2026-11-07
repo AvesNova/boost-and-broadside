@@ -12,6 +12,8 @@ import torch.nn.functional as F
 
 BASELINE_FLOOR = 1e-3  # the next-state baseline log(code + floor) and its removal
 INFORMATIVE = 1e-4  # attenuation below which a circular level carries no information
+BROAD = 0.9  # attenuation below which a circular level has broadened (the spread is read there)
+SPREAD_FITS = ("v1", "coarsest")  # how a circular code's spread is decoded (`circular_decode`)
 
 
 def _tolerance(dtype: torch.dtype) -> float:
@@ -56,9 +58,17 @@ def circular_encode(
 
 
 def circular_decode(
-    probabilities: torch.Tensor, period: float, colours: int, levels: int
+    probabilities: torch.Tensor,
+    period: float,
+    colours: int,
+    levels: int,
+    spread_fit: str = "coarsest",
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """(..., levels, colours) probabilities to (mean, spread), each (...)."""
+    """(..., levels, colours) probabilities to (mean, spread), each (...). spread_fit (one of
+    SPREAD_FITS): "coarsest", the spread read at the coarsest broadened level; "v1", v1's
+    fit (`v1_spread_variance`), for the models trained with it."""
+    if spread_fit not in SPREAD_FITS:
+        raise ValueError(f"spread_fit {spread_fit!r} is not one of {SPREAD_FITS}")
     dtype, device = probabilities.dtype, probabilities.device
     eps, tiny = torch.finfo(dtype).eps, torch.finfo(dtype).tiny
     step = 2.0 * math.pi / colours
@@ -94,15 +104,34 @@ def circular_decode(
     attenuation = torch.where(attenuation > 1.0 - 1e-6, 1.0, attenuation)
     informative = attenuation > INFORMATIVE
     curvature = 0.5 * (2.0 * math.pi * refinement / period) ** 2
-    weight = informative.to(dtype) * attenuation**2
-    variance = -(weight * curvature * torch.log(torch.clamp_min(attenuation, INFORMATIVE))).sum(-1)
-    variance = torch.clamp_min(
-        variance / torch.clamp_min((weight * curvature**2).sum(-1), tiny), 0.0
-    )
+    # Each level implies a variance, -ln a_l / kappa_l (a flat level: at least its floor's).
+    # A Gaussian code implies the same one at every level. Any other code is read at the
+    # coarsest level that has broadened (a < BROAD): its low frequency sees the whole
+    # distribution, where finer levels see only its fine structure and would let a sharp
+    # core or a stray peak decide.
+    if spread_fit == "v1":
+        variance = v1_spread_variance(attenuation, informative, curvature)
+    else:
+        implied = -torch.log(torch.clamp_min(attenuation, INFORMATIVE)) / curvature
+        broad = attenuation < BROAD
+        first = torch.where(broad.any(-1), torch.argmax(broad.to(torch.int32), -1), levels - 1)
+        variance = torch.gather(implied, -1, first[..., None])[..., 0]
     two_hot = ((probabilities > 0).sum(-1) <= 2).all(-1)
     variance = torch.where(two_hot, 0.0, variance)
     spread = torch.where(informative.any(-1), torch.sqrt(variance), period)
     return mean, spread
+
+
+def v1_spread_variance(
+    attenuation: torch.Tensor, informative: torch.Tensor, curvature: torch.Tensor
+) -> torch.Tensor:
+    """v1's spread fit (spec 3.3; `spread_fit="v1"`, kept while a rated policy was trained
+    with it): the levels' implied variances weighted by a^2 kappa^2, so the finest
+    informative level decides. Per level (..., levels) in, (...) out."""
+    tiny = torch.finfo(attenuation.dtype).tiny
+    weight = informative.to(attenuation.dtype) * attenuation**2
+    variance = -(weight * curvature * torch.log(torch.clamp_min(attenuation, INFORMATIVE))).sum(-1)
+    return torch.clamp_min(variance / torch.clamp_min((weight * curvature**2).sum(-1), tiny), 0.0)
 
 
 # --------------------------------------------------------------------------- position
@@ -119,12 +148,15 @@ def position_encode(
 
 
 def position_decode(
-    probabilities: torch.Tensor, periods: tuple[float, float], levels: int
+    probabilities: torch.Tensor,
+    periods: tuple[float, float],
+    levels: int,
+    spread_fit: str = "coarsest",
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """(..., levels, 9) to (mean (..., 2), spread (...))."""
+    """(..., levels, 9) to (mean (..., 2), spread (...)); spread_fit as `circular_decode`."""
     joint = probabilities.unflatten(-1, (3, 3))
-    mean_x, spread_x = circular_decode(joint.sum(-1), periods[0], 3, levels)
-    mean_y, spread_y = circular_decode(joint.sum(-2), periods[1], 3, levels)
+    mean_x, spread_x = circular_decode(joint.sum(-1), periods[0], 3, levels, spread_fit)
+    mean_y, spread_y = circular_decode(joint.sum(-2), periods[1], 3, levels, spread_fit)
     return torch.stack([mean_x, mean_y], -1), torch.sqrt(0.5 * (spread_x**2 + spread_y**2))
 
 
