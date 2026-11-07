@@ -327,6 +327,7 @@ def folded(m: Merged, k, forecast, quantity, frame, sign):
 
 
 def table_folded(m: Merged, horizons, forecasts) -> list[str]:
+    """The mirror-folded correlation table."""
     lines = [
         "The across component multiplied by the sign of the nose rate at t (turn) or of last "
         "tick's normal acceleration (curve): the left-right mirror folded out. Pearson / "
@@ -383,14 +384,17 @@ BASELINES = dict(position=("P", "R", "E", "E-arc"))
 
 
 def baselines_of(quantity):
+    """The baselines measured for a quantity."""
     return BASELINES.get(quantity, ("P", "R", "E"))
 
 
 def components_of(quantity):
+    """The components measured for a quantity."""
     return COMPONENTS.get(quantity, ("value",))
 
 
 def table_headline(m: Merged, components=None) -> list[str]:
+    """The pooled one-tick table."""
     lines = [
         "H: the entropy of the mean code (own code: knee at this baseline's median, range at "
         "its max); H - H_self: less the code's own smoothing floor. Today's code: "
@@ -422,6 +426,7 @@ def table_headline(m: Merged, components=None) -> list[str]:
 
 
 def table_groups(m: Merged, picks) -> list[str]:
+    """Median, p99.9 and H per player and preset."""
     header = "| series | " + " | ".join(f"{p} {r}" for p, r in m.groups) + " |"
     lines = [
         "Each cell: median / p99.9 / H - H_self (nats, the pooled own code).",
@@ -439,6 +444,7 @@ def table_groups(m: Merged, picks) -> list[str]:
 
 
 def table_splits(m: Merged, picks, subsets) -> list[str]:
+    """Median, p99.9 and H per subset."""
     lines = [
         "Each cell: median / p99.9 / H - H_self (nats, the pooled own code). Share: the "
         "subset's share of the pairs (pooled).",
@@ -462,6 +468,7 @@ def table_splits(m: Merged, picks, subsets) -> list[str]:
 
 
 def table_wins(m: Merged, picks, subsets) -> list[str]:
+    """Pairwise win shares per subset."""
     lines = [
         "Each cell: share of pairs where the first leaves a strictly smaller |residual| / "
         "strictly larger (the rest are ties).",
@@ -481,6 +488,7 @@ def table_wins(m: Merged, picks, subsets) -> list[str]:
 
 
 def table_regression(m: Merged, subsets) -> list[str]:
+    """The change on t regressed on last tick's."""
     lines = [
         "beta: least squares of the change on t on last tick's change (E assumes 1, P 0); "
         "then the share of the change's mean square removed by the best beta and by beta = 1 "
@@ -499,6 +507,7 @@ def table_regression(m: Merged, subsets) -> list[str]:
 
 
 def table_counts(m: Merged) -> list[str]:
+    """Pairs and subset shares per player and preset."""
     lines = [
         "| player | preset | one-tick pairs | E falls back (t - 1 missing) | velocity frame falls back (< 1 m/s) | held | changed | power changed | stick changed | in a field band | hit |",  # noqa: E501
         "|---|---|---|---|---|---|---|---|---|---|---|",
@@ -516,6 +525,7 @@ def table_counts(m: Merged) -> list[str]:
 
 
 def table_ellipse(m: Merged, horizons, forecasts, quantities=("position", "velocity")) -> list[str]:
+    """Correlation and ellipse per horizon, forecast and frame."""
     lines = [
         "Pearson and the axis ratio / major-axis angle (deg from the frame's first axis: x, "
         "along) from the full moments; Spearman from the subsample; trimmed: the subsample "
@@ -543,6 +553,7 @@ def table_ellipse(m: Merged, horizons, forecasts, quantities=("position", "veloc
 
 
 def table_least_correlated(m: Merged, horizons, forecasts) -> list[str]:
+    """The least-correlated frame per horizon and forecast (pooled)."""
     lines = [
         "|Spearman| per frame (world / nose / track) and the frame with the smallest; same for "
         "|Pearson|.",
@@ -568,6 +579,7 @@ def table_least_correlated(m: Merged, horizons, forecasts) -> list[str]:
 
 
 def table_ellipse_groups(m: Merged, horizons, forecast) -> list[str]:
+    """Spearman per player and preset."""
     lines = [
         f"Spearman per player and preset, forecast {forecast}, frames world / nose / track.",
         "",
@@ -610,6 +622,7 @@ WIN_PICKS = [
 
 
 def main() -> None:
+    """Print the tables."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--part", choices=("main", "full"), default="main")
     parser.add_argument("--root", default=str(OUT))
