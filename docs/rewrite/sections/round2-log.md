@@ -77,3 +77,4 @@ Entries: time, what, why. Newest last.
   neither help nor hurt play at 30M; KL and agreement level; Brier lower (seed-noisy). As the
   author decided (C8), arms 2-4 keep the inputs; arm 2 is compared with arm 1 (the plan) and
   with C-fixed. The GPU goes back to the champion continuation (job 3).
+- **03:55** Heading spread bug (arm-2 branch, found by my check): real heading error 0.18/0.37/0.55/0.88 rad at 0.1-0.5/0.5-1/1-2/2-5 s vs implied sigma ~1/3/12 rad. Cause: F's heading += nose-rate dt counted the turn twice (the persistence heading change already holds it) and treated the damped nose rate as a random walk. Fixed by the agent: F couples position to velocity only; heading variance capped at pi^2/3 (the uniform circle). Position coupling kept: its coverage showed sigma too small, not too large.
