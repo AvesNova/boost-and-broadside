@@ -135,8 +135,8 @@ state code above, are the same either way.
 
   | Quantity | Baseline | Coded as |
   |---|---|---|
-  | position | the constant-nose-rate arc, the game's drift at `v_t` | along and across the heading at `t` |
-  | velocity | `v_t` turned by `omega_t dt` | along and across the heading at `t` |
+  | position | the constant-nose-rate arc, the game's drift at v_t | along and across the heading at `t` |
+  | velocity | v_t turned by omega_t dt | along and across the heading at `t` |
   | heading | `heading_t + omega_t dt`, wrapped | |
   | nose rate, angle of attack, log refractive index | persistence | |
   | shield, energy | after the deterministic recharge; persistence | fractions of the type's maximum |
