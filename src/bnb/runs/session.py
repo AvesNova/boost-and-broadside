@@ -6,8 +6,11 @@ A PPO run trains to its update budget; a BC run until its stop rule fires, and t
 Ctrl-C) also saves its policy files: the average its score stop read as the run's policy,
 and the live clone and both averages beside it.
 
-Ctrl-C finishes the current update, writes a checkpoint and marks the run stopped; an
-exception marks it failed, with the message, before it propagates. The cadence N, when the
+A stop request (`StopRequest`: SIGINT, as Ctrl-C sends, SIGTERM, as `systemctl stop` sends,
+or a `STOP` file in the run directory, checked after each update) finishes the current
+update, writes a checkpoint, records the request in run.json (`stop_request`: what asked
+and the step) and marks the run stopped; a second signal aborts at once. An exception marks
+it failed, with the message, before it propagates. The cadence N, when the
 run does not set it, is measured: about 30 minutes at the throughput of the segment's
 second update (the first compiles), in whole updates, recorded in run.json.
 """
@@ -36,6 +39,45 @@ CADENCE_SECONDS = 30 * 60
 CADENCE_UPDATES = 3
 # a BC run's policy files beside `policy/`, `policy-<variant>/`, by the lane player they hold
 POLICY_VARIANTS = {LIVE: "live", UNIFORM_AVERAGE: "uniform", EXPONENTIAL_AVERAGE: "exponential"}
+# the file in a run directory that asks its process to stop after the update in progress
+STOP_FILE = "STOP"
+BY_STOP_FILE = "STOP file"  # a `StopRequest.by`, beside the signals' names
+STOP_SIGNALS = (signal.SIGINT, signal.SIGTERM)
+
+
+class StopRequest:
+    """A request to stop after the update in progress, by SIGINT or SIGTERM (while entered:
+    the handlers are this process's until exit) or by a run's STOP file (`check`). `by` is
+    what asked first ("SIGINT", "SIGTERM" or "STOP file"), None before; a second signal
+    raises KeyboardInterrupt, stopping at once. The entry point enters it before it builds
+    anything, so a signal during the setup stops the run after no update."""
+
+    def __init__(self) -> None:
+        self.by: str | None = None
+        self.previous: dict = {}
+
+    def __enter__(self) -> StopRequest:
+        for number in STOP_SIGNALS:
+            self.previous[number] = signal.signal(number, self._handle)
+        return self
+
+    def __exit__(self, *exception) -> None:
+        for number, handler in self.previous.items():
+            signal.signal(number, handler)
+        self.previous.clear()
+
+    def _handle(self, number: int, frame) -> None:
+        if self.by is not None and self.by != BY_STOP_FILE:  # a second signal stops at once
+            raise KeyboardInterrupt
+        self.by = signal.Signals(number).name
+        print(f"{self.by}: stopping after this update (again to stop now)", flush=True)
+
+    def check(self, directory: pathlib.Path) -> bool:
+        """Whether a stop was asked for, reading `directory`'s STOP file."""
+        if self.by is None and (directory / STOP_FILE).exists():
+            self.by = BY_STOP_FILE
+            print(f"{directory / STOP_FILE}: stopping after this update", flush=True)
+        return self.by is not None
 
 
 def save(run: Run, trainer: Trainer, final: bool = False, recorder: Recorder | None = None) -> None:
@@ -55,7 +97,9 @@ def save(run: Run, trainer: Trainer, final: bool = False, recorder: Recorder | N
 def save_update_policies(
     run: Run, trainer: Trainer, scratch: torch.nn.Module, recorder: Recorder | None = None
 ) -> None:
-    """The policy files of the update that just ended, at `policies/step_<steps>/`: the live
+    """The policy files of the update that just ended (after every update when the run keeps
+    them, `update_policies`, else every `TrainConfig.policy_snapshot_every` environment
+    steps and at each segment's end), at `policies/step_<steps>/`: the live
     weights (`live/`), the exponential average (`exponential_average/`) and, once it has
     started, the uniform average (`uniform_average/`). They are never pruned, so an average
     of another decay can be built afterwards from the live files (`bnb runs ema`). scratch: a
@@ -63,13 +107,13 @@ def save_update_policies(
     repeated update's) are replaced."""
     started = time.perf_counter()
     steps = trainer.ppo.environment_steps
-    averages = trainer.league.averages
+    averages = getattr(trainer.league, "averages", None)  # a run with neither: the live only
     path = run.update_policies_path(steps)
     if path.exists():
         shutil.rmtree(path)
     path.mkdir()
     players = [(LIVE, trainer.model)]
-    for player in (EXPONENTIAL_AVERAGE, UNIFORM_AVERAGE):
+    for player in (EXPONENTIAL_AVERAGE, UNIFORM_AVERAGE) if averages is not None else ():
         if player == UNIFORM_AVERAGE and not averages.uniform_started:
             continue
         scratch.load_state_dict(averages.weights[player])
@@ -156,30 +200,32 @@ def train(
     log: Callable[[dict], None] = print,
     margin: float = probe.MARGIN,
     recorder: Recorder | None = None,
+    stop: StopRequest | None = None,
 ) -> str:
-    """Train until the budget or Ctrl-C; returns the run's final status ("finished" or
-    "stopped"). PPO's budget is the update count (`trainer.config.updates`, the run's
+    """Train until the budget or a stop request; returns the run's final status ("finished"
+    or "stopped"). PPO's budget is the update count (`trainer.config.updates`, the run's
     total); BC trains until its stop rule fires (`bnb.runtime.cloning.update`), records the
     rule (or "interrupted") as the run's `stopped_by` and saves its policy files
     (`save_policies`), recording the player `policy/` holds as `policy_player`.
     recorder: builds and writes each update's record (`log` gets the record); without one
-    `log` gets the trainer's row."""
+    `log` gets the trainer's row. stop: the entry point's entered `StopRequest` (else one is
+    entered for the loop). A STOP file left by an earlier process is removed at the start;
+    an honoured one after the stop's checkpoint."""
+    if stop is None:
+        with StopRequest() as own:
+            return train(run, trainer, log, margin, recorder, own)
     cloned = trainer.config.objective == "bc"
-    scratch = copy.deepcopy(trainer.model).cpu() if run.record.get("update_policies") else None
-    stopping = []
-    previous = signal.getsignal(signal.SIGINT)
-
-    def interrupt(number, frame) -> None:
-        if stopping:  # a second Ctrl-C stops at once
-            raise KeyboardInterrupt
-        stopping.append(True)
-        print("stopping after this update (Ctrl-C again to stop now)", flush=True)
-
-    signal.signal(signal.SIGINT, interrupt)
+    every_update = bool(run.record.get("update_policies"))
+    snapshot_every = trainer.config.policy_snapshot_every
+    scratch = copy.deepcopy(trainer.model).cpu()
+    stop_file = run.directory / STOP_FILE
+    if stop.by is None and stop_file.exists():
+        print(f"removing {stop_file}, left by an earlier process", flush=True)
+        stop_file.unlink()
     device = trainer.rollout.device
     try:
         first, reason, durations = True, None, []
-        while not stopping and reason is None:
+        while not stop.by and reason is None:
             if not cloned and trainer.updates_done >= trainer.config.updates:
                 break
             if first:
@@ -207,14 +253,19 @@ def train(
                 row = recorder.record(row)
                 act(run, trainer, recorder, row)
             log(row)
-            if scratch is not None:
+            steps = trainer.ppo.environment_steps
+            if every_update or steps // snapshot_every > before // snapshot_every:
                 save_update_policies(run, trainer, scratch, recorder)
             every = run.record["checkpoint_every"]
             if every and trainer.ppo.environment_steps // every > before // every:
                 save(run, trainer, recorder=recorder)
-        finished = reason is not None if cloned else not stopping
+            stop.check(run.directory)
+        step = trainer.ppo.environment_steps
+        finished = reason is not None if cloned else trainer.updates_done >= trainer.config.updates
         status = "finished" if finished else "stopped"
         save(run, trainer, final=finished, recorder=recorder)
+        if not run.update_policies_path(step).exists():  # the segment's end
+            save_update_policies(run, trainer, scratch, recorder)
         if cloned:
             player = save_policies(run, trainer)
             run.update(
@@ -222,12 +273,14 @@ def train(
                 policy=str(run.policy_path),
                 policy_player=player,
             )
-        run.end_segment(trainer.ppo.environment_steps, status)
+        if stop.by is not None and not finished:
+            run.update(stop_request=dict(by=stop.by, step=step))
+            if stop.by == BY_STOP_FILE:
+                stop_file.unlink(missing_ok=True)
+        run.end_segment(step, status)
         return status
     except BaseException as error:
         run.end_segment(
             trainer.ppo.environment_steps, "failed", message=f"{type(error).__name__}: {error}"
         )
         raise
-    finally:
-        signal.signal(signal.SIGINT, previous)

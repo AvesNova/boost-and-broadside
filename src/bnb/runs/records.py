@@ -231,7 +231,8 @@ class Run:
     def start_segment(
         self, step: int, overrides: dict | None = None, rewound_from: int | None = None
     ) -> str | None:
-        """Begin this process's segment at `step`, mark the run running, and return a
+        """Begin this process's segment at `step`, mark the run running (clearing an earlier
+        segment's `stop_request`), and return a
         warning when the commit differs from the previous segment's."""
         head, dirty = provenance.commit()
         segments = self.record["segments"]
@@ -255,7 +256,11 @@ class Run:
             )
         )
         self.record.update(
-            status="running", pid=os.getpid(), host=socket.gethostname(), message=None
+            status="running",
+            pid=os.getpid(),
+            host=socket.gethostname(),
+            message=None,
+            stop_request=None,
         )
         self.save()
         return warning

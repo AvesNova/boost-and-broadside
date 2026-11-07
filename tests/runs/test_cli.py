@@ -412,7 +412,8 @@ def test_an_interrupt_finishes_the_update_writes_a_checkpoint_and_stops(monkeypa
 
 
 @pytest.mark.slow  # over 10 s: a fresh process imports torch and trains
-def test_ctrl_c_finishes_the_update_writes_a_checkpoint_and_stops(tmp_path):
+@pytest.mark.parametrize("number", [signal.SIGINT, signal.SIGTERM])
+def test_ctrl_c_or_sigterm_finishes_the_update_writes_a_checkpoint_and_stops(tmp_path, number):
     arguments = [
         "bnb",
         "train",
@@ -435,13 +436,14 @@ def test_ctrl_c_finishes_the_update_writes_a_checkpoint_and_stops(tmp_path):
     for line in process.stdout:
         if line.startswith("update"):
             break
-    process.send_signal(signal.SIGINT)
+    process.send_signal(number)
     output = process.communicate(timeout=300)[0]
     assert process.returncode == 0, output
     run = Run.open(tmp_path, "a")
     step = run.record["segments"][0]["end_step"]
     assert run.record["status"] == "stopped" and run.checkpoint_steps() == [step]
     assert 0 < step < 1000 * STEPS_PER_UPDATE and run.record["final_checkpoint"] is None
+    assert run.record["stop_request"] == dict(by=signal.Signals(number).name, step=step)
 
 
 def test_bnb_runs_lists_and_shows_runs_with_a_stale_one(monkeypatch, tmp_path, capsys):

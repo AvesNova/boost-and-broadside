@@ -154,7 +154,8 @@ times C-fixed's logged 0.04-0.047 at updates 10-20, so the run's own
 An update makes `epochs` passes of `minibatches` minibatches over the views; a view keeps
 its whole segment, which `unroll` needs. It clips the gradient norm, steps Adam with a
 linear warmup of the learning rate over the first 10M environment steps (a run warm-started
-from a clone warms up again), and stops early after
+from a clone warms up again; the uniform average of the weights starts when the warm-up
+ends, `TrainConfig.uniform_start`, unless `LeagueConfig.uniform_from` is set), and stops early after
 an epoch whose mean approximate KL divergence exceeds `target_kl` (None: never). The
 policy's terms and statistics are one method, `Learner._policy`{.plain}; behaviour cloning
 (`bnb.learn.bc.BehaviourCloning`) replaces it and keeps the rest of the update, with 256

@@ -77,14 +77,18 @@ The averaged agents are the product of BC, as in reinforcement learning (decisio
 (`bnb.league.pool.Averages`, the same class and rule [the league](league.md#the-pool)
 uses), folded in after every update by BC's hooks (`bnb.league.lanes.LaneHooks`):
 
-- **the uniform average** of the live weights over every update after a warm-up of 10M
-  environment steps (`LeagueConfig.uniform_from`); until then it is the live weights;
+- **the uniform average** of the live weights over every update after the run's
+  learning-rate warm-up (`LearnerConfig.warmup_steps`, 10M environment steps by default; an
+  explicit `LeagueConfig.uniform_from` overrides it: `TrainConfig.uniform_start`); until
+  then it is the live weights;
 - **the exponential moving average**, decay 0.95 per update
   (`LeagueConfig.exponential_decay`), from the first update.
 
 BC reads these settings from the run's `TrainConfig.league`, the league's own fields,
-rather than fields of its own: one warm-up and one decay for both objectives, set with
-`--set league.uniform_from=...`. Both averages go into the training checkpoint (the
+rather than fields of its own: one warm-up and one decay for both objectives. The
+uniform average's start follows the learning rate's warm-up, so a fine-tune with a
+shorter warm-up starts averaging when its warm-up ends; `--set league.uniform_from=...`
+sets it apart from the warm-up. Both averages go into the training checkpoint (the
 league state's tensors, and the uniform average's update count) and come back on a
 resume. After each update the hooks copy both into the lanes that play them, so an
 update's lane games are those of the averages as the previous update left them.
@@ -149,7 +153,10 @@ where the RL run's live rating starts:
 - `policy-live/`{.plain}: the live clone.
 
 `policy/` duplicates one of the averages' files, so that the hand-off has one path
-whichever average won. The return scale is the learner's in all four. `bnb train
+whichever average won. A resumed run replaces these four at its next end; the three
+players of every 10M environment steps and of each end stay under
+`policies/step_<steps>/` (`TrainConfig.policy_snapshot_every`,
+[Runs and checkpoints](runs.md#every-updates-policy-files)). The return scale is the learner's in all four. `bnb train
 --init-from` starts reinforcement learning from any of them (`bnb.runs.checkpoint.warm_start`): the weights and return scale, a fresh
 optimizer, fresh step counts and no cloning term ([Runs and checkpoints](runs.md)). In
 Python, `bnb.runtime.cloning.warm_start` does the same in memory, copying into a trainer in

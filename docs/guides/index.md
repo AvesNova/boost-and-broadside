@@ -9,6 +9,8 @@ is done.
 
 - [Training](training.md): run the training loop, choose a game, configure the pools and
   the mixed batch.
+- [Queueing GPU jobs](queueing-jobs.md): the job queue and its runner, preemption of the
+  champion's continuation, stopping and resuming runs gracefully.
 - [Benchmarking](benchmarking.md): the benchmark lock, the cells, and how to measure a
   change.
 - [Reference fixtures](reference-fixtures.md): what the goldens are, how the adapters and

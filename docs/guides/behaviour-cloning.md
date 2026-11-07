@@ -32,7 +32,8 @@ options (`--model`, `--environments`, `--shards`, `--precision`, `--micro-batch-
 
 The run lives in a run directory like a PPO run's
 ([Runs and checkpoints](../explanation/runs.md)) and writes training checkpoints on the
-same cadence. When a stop rule fires, or after the update in progress at Ctrl-C, it writes
+same cadence. When a stop rule fires, or after the update in progress at a stop request (Ctrl-C,
+SIGTERM or a `STOP` file: [Resuming](resuming-forking-sharing.md#start-and-stop-a-run)), it writes
 a checkpoint and saves its policy files, each with its weights, the return scale, the step
 counts and its own lane ratings
 ([The hand-off](../explanation/behaviour-cloning.md#the-hand-off)):
@@ -40,14 +41,22 @@ counts and its own lane ratings
 | Directory | Holds |
 | --- | --- |
 | `runs/<run>/policy/`{.plain} | the run's policy: the average the stop rule read last |
-| `runs/<run>/policy-uniform/`{.plain} | the uniform average (after a 10M-step warm-up) |
+| `runs/<run>/policy-uniform/`{.plain} | the uniform average (after the warm-up) |
 | `runs/<run>/policy-exponential/`{.plain} | the exponential moving average |
 | `runs/<run>/policy-live/`{.plain} | the live clone |
 
-`run.json`{.plain} records the rule as `stopped_by` (`interrupted` for Ctrl-C) and the
+Every 10M environment steps (`--set policy_snapshot_every=...`) and at each end, the run
+also keeps the live clone and both averages under
+`runs/<run>/policies/step_<steps>/{live,exponential_average,uniform_average}/`{.plain},
+never replaced, so a run resumed past its budget keeps its earlier averages; `bnb ratings
+--with <run>/policies/step_<steps>/uniform_average` rates one
+([Runs and checkpoints](../explanation/runs.md#every-updates-policy-files)).
+
+`run.json`{.plain} records the rule as `stopped_by` (`interrupted` for a stop request) and the
 average in `policy/` as `policy_player` (`uniform_average` or `exponential_average`).
-The averages take the league's settings: `--set league.uniform_from=20000000` moves the
-uniform average's warm-up, `--set league.exponential_decay=0.98` slows the exponential
+The averages take the league's settings: the uniform average starts after the run's
+learning-rate warm-up (`LearnerConfig.warmup_steps`), `--set league.uniform_from=20000000` starts
+it elsewhere, `--set league.exponential_decay=0.98` slows the exponential
 one.
 
 ## Resume a BC run

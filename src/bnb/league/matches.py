@@ -112,8 +112,9 @@ def ablations_of(name: str) -> tuple[str, tuple[str, ...]]:
 
 def player(name: str, runs_directory: pathlib.Path | None = None) -> Player:
     """The player a command-line name means: a ladder entry, a policy directory (one with a
-    checkpoint.json), or a run's newest checkpoint; either of the last two with ablations
-    (`ablations_of`)."""
+    checkpoint.json; a path, or one inside `runs_directory` such as
+    `RUN/policies/step_<steps>/uniform_average`), or a run's newest checkpoint; either of
+    the last two with ablations (`ablations_of`)."""
     base, ablations = ablations_of(name)
     if ablations:
         network = player(base, runs_directory)
@@ -129,7 +130,10 @@ def player(name: str, runs_directory: pathlib.Path | None = None) -> Player:
     path = pathlib.Path(name)
     if (path / checkpoint.RECORD).exists():
         return Player(name, policy=path)
-    if runs_directory is not None and (pathlib.Path(runs_directory) / name).is_dir():
+    inside = None if runs_directory is None else pathlib.Path(runs_directory) / name
+    if inside is not None and (inside / checkpoint.RECORD).exists():
+        return Player(name, policy=inside)
+    if inside is not None and inside.is_dir():
         return Player(name, policy=Run.open(pathlib.Path(runs_directory), name).checkpoint_at())
     raise ValueError(
         f"{name!r} is not a policy file, a run or a ladder entry (scripted, random, "

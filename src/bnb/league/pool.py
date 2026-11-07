@@ -115,8 +115,9 @@ def average_into(
 class Averages:
     """The uniform average and the exponential moving average of the live weights (league
     spec 3), each a state dict by name (`weights`, AVERAGES), folded in after every update
-    (`fold`). The uniform average counts the updates from `LeagueConfig.uniform_from`
-    environment steps on (`count`; before them it is the live weights); the exponential one
+    (`fold`). The uniform average counts the updates from `uniform_from` environment steps
+    on (`count`; before them it is the live weights: `LeagueConfig.uniform_start` of the
+    run's warm-up); the exponential one
     decays by `LeagueConfig.exponential_decay` per update throughout. The league keeps them
     as pool entries, behaviour cloning as its product (`bnb.league.lanes.LaneHooks`).
 
@@ -127,10 +128,11 @@ class Averages:
         self,
         weights: dict[str, torch.Tensor],
         config: LeagueConfig,
+        uniform_from: int,
         count: int = 0,
         tensors: dict[str, torch.Tensor] | None = None,
     ) -> None:
-        self.config = config
+        self.config, self.uniform_from = config, uniform_from
         self.count = count  # the updates in the uniform average
         if tensors is None:
             self.weights = {
@@ -153,7 +155,7 @@ class Averages:
 
     def fold(self, weights: dict[str, torch.Tensor], environment_steps: int) -> None:
         """Fold an update's live weights in, `environment_steps` the run's total after it."""
-        if environment_steps >= self.config.uniform_from:
+        if environment_steps >= self.uniform_from:
             self.count += 1
         average_into(
             self.weights[UNIFORM_AVERAGE],

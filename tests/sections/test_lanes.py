@@ -559,10 +559,10 @@ def _bc_trainer(**changes):
     """A tiny BC trainer on the CPU with one lane per BC matchup."""
     from bnb.runtime.train import Trainer
 
+    changes.setdefault("learner", dataclasses.replace(tiny_train_config().learner, policy=0.025))
     config = tiny_train_config(
         objective="bc",
         pools=cloning.LINEUP,
-        learner=dataclasses.replace(tiny_train_config().learner, policy=0.025),
         lanes=LaneConfig(environments=3, matchups=cloning.LANES.matchups),
         **changes,
     )
@@ -622,6 +622,29 @@ def test_bcs_hooks_fold_both_averages_into_the_lanes_after_every_update():
     for player, weights in averages.weights.items():
         for key, value in weights.items():
             assert torch.equal(restored.averages.weights[player][key], value), (player, key)
+
+
+@pytest.mark.parametrize("explicit", [None, 150])
+def test_the_uniform_average_starts_at_the_first_update_past_the_warm_up(explicit):
+    """`league.uniform_from` defaults to the learner's warm-up (`TrainConfig.uniform_start`):
+    with a warm-up of W the uniform average counts from the first update ending at W or
+    later; an explicit `uniform_from` overrides it."""
+    from bnb.runtime.opponents import LeagueConfig
+
+    warm_up = 250
+    learner = dataclasses.replace(tiny_train_config().learner, policy=0.025, warmup_steps=warm_up)
+    trainer = _bc_trainer(league=LeagueConfig(uniform_from=explicit), learner=learner)
+    start = warm_up if explicit is None else explicit
+    assert trainer.config.uniform_start() == start
+    hooks = LaneHooks(trainer)
+    counts = []
+    for steps in (100, 200, 300, 400):
+        trainer.ppo.environment_steps = steps
+        hooks.updated(trainer)
+        counts.append(hooks.averages.count)
+    first = next(index for index, count in enumerate(counts) if count)
+    assert (100, 200, 300, 400)[first] == (300 if explicit is None else 200)
+    assert counts[-1] == len(counts) - first
 
 
 def test_a_clone_saves_the_read_average_as_its_policy_and_every_player_beside_it(tmp_path):

@@ -56,13 +56,15 @@ def test_the_option_turns_the_per_update_policies_off_and_a_resume_may_change_it
         "--update-policies", "False",
     )  # fmt: skip
     run = Run.open(tmp_path, "a")
-    assert run.record["update_policies"] is False and ema.live_steps(run) == []
+    # off: only the snapshots of the cadence (policy_snapshot_every) and the segment's end
+    assert run.record["update_policies"] is False
+    assert ema.live_steps(run) == [STEPS_PER_UPDATE]
     bnb(
         monkeypatch, tmp_path, "train", "--resume", "a", "--device", "cpu", "--updates", "2",
         "--update-policies", "True",
     )  # fmt: skip
     run = Run.open(tmp_path, "a")
-    assert ema.live_steps(run) == [2 * STEPS_PER_UPDATE]
+    assert ema.live_steps(run) == [STEPS_PER_UPDATE, 2 * STEPS_PER_UPDATE]
 
 
 def test_an_ema_of_decay_zero_is_the_newest_live_and_the_run_s_own_matches_at_its_start(
@@ -136,3 +138,47 @@ def test_a_rewind_sets_aside_the_newer_updates_policy_files(monkeypatch, tmp_pat
     assert ema.live_steps(run) == [STEPS_PER_UPDATE, middle, 3 * STEPS_PER_UPDATE]
     aside = list((run.directory / "policies").glob("rewound_*/step_*"))
     assert [p.name for p in aside] == [f"step_{3 * STEPS_PER_UPDATE}"]
+
+
+BC_OPTIONS = (
+    *cases.TRAIN_OPTIONS,
+    "--objective",
+    "bc",
+    "--set",
+    "lanes.environments=4",
+    "--set",
+    "league.uniform_from=0",
+    "--set",
+    f"policy_snapshot_every={2 * STEPS_PER_UPDATE}",
+)
+
+
+def test_a_bc_run_keeps_policy_snapshots_on_its_cadence_and_at_each_end(monkeypatch, tmp_path):
+    """BC writes no per-update policies by default, but keeps the live clone and both
+    averages every `policy_snapshot_every` environment steps and at each segment's end, so
+    a run continued past its budget keeps its earlier averages; `bnb ratings --with` takes
+    them by their path in the runs directory."""
+    from bnb.league.matches import player
+
+    budget = ("--bc-budget-steps", str(3 * STEPS_PER_UPDATE))
+    bnb(monkeypatch, tmp_path, "train", *BC_OPTIONS, *budget, "--name", "clone")
+    run = Run.open(tmp_path, "clone")
+    assert run.record["update_policies"] is False
+    assert ema.live_steps(run) == [2 * STEPS_PER_UPDATE, 3 * STEPS_PER_UPDATE]
+    earlier = run.update_policies_path(2 * STEPS_PER_UPDATE)
+    files = {
+        name: (earlier / name / checkpoint.WEIGHTS).read_bytes()
+        for name in ("live", "exponential_average", "uniform_average")
+    }
+    bnb(
+        monkeypatch, tmp_path, "train", "--resume", "clone", "--device", "cpu",
+        "--bc-budget-steps", str(5 * STEPS_PER_UPDATE),
+    )  # fmt: skip
+    run = Run.open(tmp_path, "clone")
+    assert ema.live_steps(run) == [step * STEPS_PER_UPDATE for step in (2, 3, 4, 5)]
+    for name, content in files.items():  # the earlier averages are kept as they were
+        assert (earlier / name / checkpoint.WEIGHTS).read_bytes() == content, name
+    record = checkpoint.read_record(run.update_policies_path(5 * STEPS_PER_UPDATE) / "live")
+    assert record["steps"] == dict(environment_steps=5 * STEPS_PER_UPDATE, updates=5)
+    name = f"clone/policies/step_{2 * STEPS_PER_UPDATE}/uniform_average"
+    assert player(name, tmp_path).policy == tmp_path / name
