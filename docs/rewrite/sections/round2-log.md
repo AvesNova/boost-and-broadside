@@ -70,3 +70,10 @@ Entries: time, what, why. Newest last.
   (job 5, started 03:26) decides.
 - **03:50** Arm-2 measurements: loss coefficient 0.0033 (delta's trunk share was 1.24x the absolute head's at C-fixed's 0.0041; verifying); 175-bin position-along costs nothing measurable (update 33.0 vs 33.1 s on CPU, +~40 MB per micro-batch at production): taken. Coverage: position within 1 sigma 0.52 at 0-0.1 s, 0.05-0.14 later (sigma too small, not double-counted; the absolute head was 0.00-0.03). Heading sigma passes pi by 0.5 s: asked the agent to compare with the real heading error and fix over-inflation if that is what it is.
 - **03:40** Arm 1 tournament: frontline done in one batch (largest standard error 20.5); deathmatch running.
+- **03:51** **Arm 1 tournament** (scripted = 1000; out `runs-v2/ratings/2026-11-08-c-accel`):
+  frontline C-fixed 736 +- 18, arm 1 702 +- 21 (-34); deathmatch arm 1 676 +- 22, C-fixed
+  666 +- 20 (+10); mean of the two modes arm 1 689 vs 701 (-12). Inside the noise (the bar is
+  about +50 frontline, +40 mean): **no winner; C-fixed stays champion.** The accelerations
+  neither help nor hurt play at 30M; KL and agreement level; Brier lower (seed-noisy). As the
+  author decided (C8), arms 2-4 keep the inputs; arm 2 is compared with arm 1 (the plan) and
+  with C-fixed. The GPU goes back to the champion continuation (job 3).
