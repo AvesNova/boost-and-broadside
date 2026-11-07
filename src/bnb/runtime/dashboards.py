@@ -272,6 +272,8 @@ CURATED = (
             panel("next_state/error/heading", "next_state/error/heading_radians/*"),
             panel("next_state/support_clip", "next_state/support_clip/*"),
             panel("next_state/support_padding", "next_state/support_padding/*"),
+            panel("next_state/beats_bench_median", "next_state/beats_bench_median/*"),
+            panel("next_state/slow_frame_share"),
             panel("enemy_action/gain", "enemy_action/gain/*"),
             panel("enemy_action/cross_entropy", "enemy_action/cross_entropy/*"),
             panel("enemy_action/accuracy", "enemy_action/accuracy/*"),
@@ -298,6 +300,7 @@ CURATED = (
             panel("belief/normalised_square_error", "belief/normalised_square_error/*"),
             panel("belief/within_one_sigma", "belief/within_one_sigma/*"),
             panel("belief/within_two_sigma", "belief/within_two_sigma/*"),
+            panel("belief/anisotropy", "belief/anisotropy/*"),
         ),
     ),
     Section(

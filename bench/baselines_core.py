@@ -9,9 +9,9 @@ log_index (ln n), and, per ship, rate (the shield recharge per s as a fraction o
 type's maximum).
 
 - P, persistence: nothing changes.
-- R, rule: `bnb.models.yemong.delta.DeltaCode.baseline` (the arc at omega, v rotated by
-  omega dt, heading + omega dt, persistence for the nose rate, angle of attack, energy and
-  ln n, the shield recharge and the countdowns).
+- R, rule: round 1's `DeltaCode.baseline`, removed from the model with arm 2 (the arc at
+  omega, v rotated by omega dt, heading + omega dt, persistence for the nose rate, angle of
+  attack, energy and ln n, the shield recharge and the countdowns).
 - E, extrapolation: last tick's rate (`extrapolate`); R where t - 1 is missing.
 """
 
@@ -86,7 +86,7 @@ def persistence(state):
 
 
 def rule(state, dt):
-    """R: `DeltaCode.baseline`, with the cooldown in whole ticks."""
+    """R: round 1's `DeltaCode.baseline`, with the cooldown in whole ticks."""
     angle = state["omega"] * dt
     along, across = arc_series(angle, dt)
     vx, vy = state["vx"], state["vy"]

@@ -1,23 +1,20 @@
-"""The next-state delta code (`YemongConfig.next_state = "delta"`; state-deltas report,
-section 4): each quantity's one-tick change from its physics baseline, as a symlog HL-Gauss
-code (`codes.symlog_encode`), and the belief advance that adds a decoded change back.
+"""The next-state delta code (`YemongConfig.next_state = "delta"`, `delta_baseline =
+"persistence"`; arm-2 brief): each quantity's one-tick change from persistence (nothing
+changes), truth(t + 1) - truth(t), as a symlog HL-Gauss code (`codes.symlog_encode`), and
+the belief advance that adds a decoded change back, with a full covariance of the
+kinematic state.
 
-The baselines read only the state at t (state_code.MEANS order, physical units):
-- position: the constant-nose-rate arc, x + [[A1, -A2], [A2, A1]] v with the game's
-  series A1 = (1 - a^2 (1/6 - a^2 / 120)) dt and A2 = a (1/2 - a^2 (1/24 - a^2 / 720)) dt,
-  a = omega dt (the game's drift, `bnb.game.physics.flight.flight_tick`, at v_t);
-- velocity: v rotated by omega dt;
-- heading: heading + omega dt, wrapped;
-- nose rate, angle of attack, energy and the log refractive index: persistence;
-- shield: after the deterministic recharge, min(max, s + rate clamp(dt - w, 0, dt));
-- shield recharge wait and gun cooldown: the countdown, max(w - dt, 0) and max(c - dt, 0).
-  Their change is an event, two bins: the wait reset to the type's delay (any damage), the
-  gun fired (the cooldown set to the type's interval less the tick).
+Position and velocity are coded along and across the velocity at t (across to the left);
+below SLOW_SPEED the frame is the heading (counted: `slow`). The heading's change is
+wrapped. The countdowns (shield recharge wait, gun cooldown, in s) and the shield are their
+plain changes: a countdown's steady -dt and a reset's jump, the shield's regeneration and a
+hit's drop. Shield and energy are fractions of the type's maximum. The target is the
+truth's change on every row; the advance applies the decoded change to the belief at t,
+rotated from the belief's own velocity frame.
 
-Position and velocity are coded along and across the heading at t (across: to the left);
-shield and energy as fractions of the type's maximum. The target is the truth's change,
-truth(t + 1) - baseline(truth(t)), on every row; the belief advance applies the decoded
-change to the baseline of the belief at t.
+The arms to come (round-2 plan section 4) build on this: `delta_baseline = "extrapolation"`
+(arm 4) changes `changes` and the advance's baseline only; a separate error head for the
+hidden rows (arm 3) adds a head and a mask and keeps this code as the physics head's.
 """
 
 import dataclasses
@@ -30,83 +27,349 @@ from bnb.game.rules import Rules
 from bnb.game.ship_types import ShipTypes, per_ship, ticks_between_shots
 
 from . import codes
-from .state_code import MEANS, SPREADS, ShipStateCode, StateCodeRanges
+from .state_code import (
+    COVARIANCE_STATE,
+    MEANS,
+    NOSE_RATE_LIMIT,
+    SPREADS,
+    ShipStateCode,
+    StateCodeRanges,
+    pack_covariance,
+    unpack_covariance,
+)
 
-FINE_BINS = 51  # class A: position and velocity, per component
-COARSE_BINS = 31  # class B: the other continuous quantities
-EVENT_BINS = 2
+FINE_BINS = 51  # position across and velocity, per component
+COARSE_BINS = 31  # the other quantities
+SLOW_SPEED = 1.0  # m/s: below it the frame is the heading, not the velocity
+DELTA_BASELINES = ("persistence",)  # `YemongConfig.delta_baseline`
 
 
 @dataclasses.dataclass(frozen=True)
 class DeltaComponent:
-    """One continuous component of the change: knee (the median one-tick change), bound
-    (the hard one-tick bound, the last real bin's centre), real bins (odd)."""
+    """One component of a symlog code: knee, bound (the last real bin's centre above the
+    zero), real bins, and the real bins under the zero centre (None: as many as above)."""
 
     name: str
     knee: float
     bound: float
     bins: int
+    below: int | None = None
 
     @property
     def width(self) -> int:
         """The component's code width: its real bins and the padding on both sides."""
         return self.bins + 2 * codes.PADDING_BINS
 
+    @property
+    def spacing(self) -> float:
+        """The bin spacing in symlog units."""
+        return codes.symlog_spacing(self.knee, self.bound, self.bins, self.below)
 
-# The report's knees (section 4) and hard bounds (section 1.2, the box column).
+    @property
+    def low(self) -> int:
+        """The bins under the zero centre, padding included."""
+        return codes.symlog_sides(self.bins, self.below)[0] + codes.PADDING_BINS
+
+    def encode(self, values: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """`codes.symlog_encode` of this component."""
+        return codes.symlog_encode(values, self.knee, self.bound, self.bins, below=self.below)
+
+
+# Knees: the bench's persistence medians (baselines-bench-tables.md, "One tick, pooled",
+# rows P; position and velocity in the track frame; where the median is 0 the median above
+# 1e-6, the countdowns' one tick). Bounds: the bench's max, rounded up (position along: the
+# state-deltas hard bound, 8.7 m; the cooldown: 3 ticks). Position along the track is the
+# whole move, about |v| dt (median 2.6 m, never near 0): 155 real bins above the zero and
+# 19 below it (to -0.51 m, a slow ship reversing), so a bin is 4.9 cm wide at the median
+# (2.5 cm at 0, 10 cm at the bound).
+POSITION_ALONG = DeltaComponent("position_along", 2.6, 8.7, 175, below=19)  # m
 COMPONENTS = (
-    DeltaComponent("position_along", 0.002, 8.7, FINE_BINS),  # m
-    DeltaComponent("position_across", 0.003, 8.7, FINE_BINS),
-    DeltaComponent("velocity_along", 0.1, 375.0, FINE_BINS),  # m/s
-    DeltaComponent("velocity_across", 0.1, 375.0, FINE_BINS),
-    DeltaComponent("heading", 0.001, 0.9, COARSE_BINS),  # rad
-    DeltaComponent("nose_rate", 0.05, 24.7, COARSE_BINS),  # rad/s
-    DeltaComponent("angle_of_attack", 0.003, 0.49, COARSE_BINS),  # rad
-    DeltaComponent("shield", 0.001, 1.0, COARSE_BINS),  # of the type's maximum
-    DeltaComponent("energy", 0.0005, 0.068, COARSE_BINS),  # of the type's maximum
-    DeltaComponent("log_refractive_index", 0.0006, 0.48, COARSE_BINS),
+    POSITION_ALONG,
+    DeltaComponent("position_across", 0.00628, 0.7, FINE_BINS),  # m
+    DeltaComponent("velocity_along", 0.134, 35.0, FINE_BINS),  # m/s
+    DeltaComponent("velocity_across", 0.471, 41.0, FINE_BINS),
+    DeltaComponent("heading", 0.0101, 0.32, COARSE_BINS),  # rad
+    DeltaComponent("nose_rate", 0.052, 10.5, COARSE_BINS),  # rad/s
+    DeltaComponent("angle_of_attack", 0.00285, 0.17, COARSE_BINS),  # rad
+    DeltaComponent("shield_recharge_wait", 1.0 / 30.0, 6.0, COARSE_BINS),  # s
+    DeltaComponent("shield", 0.00399, 0.36, COARSE_BINS),  # of the type's maximum
+    DeltaComponent("energy", 0.000544, 0.046, COARSE_BINS),  # of the type's maximum
+    DeltaComponent("log_refractive_index", 0.00794, 0.24, COARSE_BINS),
+    DeltaComponent("gun_cooldown", 1.0 / 30.0, 0.1, COARSE_BINS),  # s
 )
 CONTINUOUS = tuple(component.name for component in COMPONENTS)
-EVENTS = ("shield_recharge_wait", "gun_cooldown")  # reset to the delay; fired
-# The code's parts, in the state code's order (`head_statistics.STATE_PARTS`'s names): the
-# components each part holds (events by name).
-PARTS = (
-    ("position", ("position_along", "position_across")),
-    ("velocity", ("velocity_along", "velocity_across")),
-    ("heading", ("heading",)),
-    ("nose_rate", ("nose_rate",)),
-    ("angle_of_attack", ("angle_of_attack",)),
-    ("shield_recharge_wait", ("shield_recharge_wait",)),
-    ("shield", ("shield",)),
-    ("energy", ("energy",)),
-    ("log_refractive_index", ("log_refractive_index",)),
-    ("gun_cooldown", ("gun_cooldown",)),
-)
-# The share of one-tick changes exactly zero (report 2.1 and the "at 0" column of 4), and
-# of the events (report 4): the starting marginal.
-ZERO_SHARE = dict(
-    position_along=0.0,
-    position_across=0.0,
-    velocity_along=0.0,
-    velocity_across=0.0,
-    heading=0.003,
-    nose_rate=0.004,
-    angle_of_attack=0.004,
-    shield=0.935,
-    energy=0.006,
-    log_refractive_index=0.965,
-)
-EVENT_RATE = dict(shield_recharge_wait=0.020, gun_cooldown=0.017)
-# The marginal's nonzero part: a Laplace in symlog units of scale 1 (its median |change| is
-# the knee), discretised by its CDF over the bins.
-MARGINAL_SCALE = 1.0
+# The quantities that advance by the decoded median (their change is a rare jump: the most
+# likely outcome, decisions D8); the others by the mean.
+MEDIAN = ("shield_recharge_wait", "shield", "gun_cooldown")
+# The groups of each of the state code's parts, in `head_statistics.STATE_PARTS` order.
+PART_GROUPS = (2, 2, 1, 1, 1, 1, 1, 1, 1, 1)
+
+# The starting marginal (`marginal_logits`), measured by `bench/persistence_marginal.py` on
+# scripted self-play of this tree (frontline, deathmatch and wide deathmatch, 3 x 1024
+# ticks x 128 games each, 10.7M living pairs): per component the share of changes exactly
+# 0 and 16 quantiles of the rest (at (k + 1/2) / 16).
+MARGINAL = {
+    "position_along": (
+        0.0,
+        (
+            1.084,
+            1.447,
+            1.598,
+            1.715,
+            1.881,
+            2.022,
+            2.209,
+            2.423,
+            2.644,
+            2.859,
+            3.041,
+            3.188,
+            3.307,
+            3.415,
+            3.539,
+            3.814,
+        ),
+    ),
+    "position_across": (
+        0.0,
+        (
+            -0.05217,
+            -0.03324,
+            -0.01941,
+            -0.008983,
+            -0.00511,
+            -0.002632,
+            -0.0009532,
+            -3.989e-05,
+            4.359e-05,
+            0.0009713,
+            0.002652,
+            0.00515,
+            0.009196,
+            0.0205,
+            0.03371,
+            0.05308,
+        ),
+    ),
+    "velocity_along": (
+        0.0,
+        (
+            -0.8614,
+            -0.4944,
+            -0.2288,
+            -0.1058,
+            -0.04588,
+            -0.01076,
+            0.008838,
+            0.02649,
+            0.0469,
+            0.07211,
+            0.1054,
+            0.1495,
+            0.205,
+            0.2714,
+            0.3417,
+            0.9909,
+        ),
+    ),
+    "velocity_across": (
+        0.0,
+        (
+            -3.213,
+            -2.02,
+            -1.265,
+            -0.6615,
+            -0.3947,
+            -0.2054,
+            -0.07036,
+            -0.0006831,
+            0.0008947,
+            0.07159,
+            0.2075,
+            0.3984,
+            0.6787,
+            1.321,
+            2.048,
+            3.27,
+        ),
+    ),
+    "heading": (
+        0.0295,
+        (
+            -0.05126,
+            -0.04031,
+            -0.02583,
+            -0.01479,
+            -0.009393,
+            -0.004662,
+            -0.001522,
+            -3.82e-05,
+            4.401e-05,
+            0.001577,
+            0.004744,
+            0.009521,
+            0.01495,
+            0.02668,
+            0.04068,
+            0.05178,
+        ),
+    ),
+    "nose_rate": (
+        0.0032,
+        (
+            -0.9035,
+            -0.466,
+            -0.2725,
+            -0.1273,
+            -0.04918,
+            -0.01535,
+            -0.003787,
+            -5.412e-05,
+            3.703e-05,
+            0.003656,
+            0.01525,
+            0.04941,
+            0.1276,
+            0.2727,
+            0.4659,
+            0.9027,
+        ),
+    ),
+    "angle_of_attack": (
+        0.0032,
+        (
+            -0.02197,
+            -0.01197,
+            -0.007586,
+            -0.005077,
+            -0.002548,
+            -0.001086,
+            -0.0003291,
+            -7.738e-06,
+            8.008e-06,
+            0.0003319,
+            0.001098,
+            0.002566,
+            0.005077,
+            0.007589,
+            0.01195,
+            0.022,
+        ),
+    ),
+    "shield_recharge_wait": (
+        0.7988,
+        (
+            -0.03333,
+            -0.03333,
+            -0.03333,
+            -0.03333,
+            -0.03333,
+            -0.03333,
+            -0.03333,
+            -0.03333,
+            -0.03333,
+            -0.03333,
+            -0.03333,
+            -0.03333,
+            -0.03333,
+            -0.03333,
+            -0.03333,
+            0.03333,
+        ),
+    ),
+    "shield": (
+        0.9389,
+        (
+            -0.09827,
+            -0.04811,
+            -0.03602,
+            -0.02261,
+            0.0025,
+            0.0025,
+            0.0025,
+            0.0025,
+            0.0025,
+            0.0025,
+            0.0025,
+            0.004,
+            0.004,
+            0.004,
+            0.004,
+            0.004,
+        ),
+    ),
+    "energy": (
+        0.0,
+        (
+            -0.006932,
+            -0.0003094,
+            -0.0001872,
+            -0.0001329,
+            -7.428e-05,
+            0.0003225,
+            0.0004406,
+            0.0005213,
+            0.0005804,
+            0.000632,
+            0.0006972,
+            0.0007574,
+            0.0008268,
+            0.0009216,
+            0.001124,
+            0.004249,
+        ),
+    ),
+    "log_refractive_index": (
+        0.9652,
+        (
+            -0.05022,
+            -0.02651,
+            -0.01508,
+            -0.00866,
+            -0.00483,
+            -0.002338,
+            -0.000739,
+            -8.702e-06,
+            0.0001038,
+            0.0008725,
+            0.002337,
+            0.005017,
+            0.009944,
+            0.01845,
+            0.03171,
+            0.0577,
+        ),
+    ),
+    "gun_cooldown": (
+        0.9588,
+        (
+            -0.03333,
+            -0.03333,
+            -0.03333,
+            -0.03333,
+            -0.03333,
+            -0.03333,
+            -0.03333,
+            -0.03333,
+            -0.03333,
+            0.03333,
+            0.03333,
+            0.03333,
+            0.03333,
+            0.03333,
+            0.06667,
+            0.06667,
+        ),
+    ),
+}
 
 
 @dataclasses.dataclass(frozen=True)
 class StateDynamics:
-    """What the baselines read from the rules and the ship card, per type (`state_dynamics`),
-    so a built model never reads the current game: shield_recharge_rate (per s),
-    shield_recharge_delay (s), ticks_between_shots."""
+    """What a rule baseline reads from the rules and the ship card, per type
+    (`state_dynamics`): shield_recharge_rate (per s), shield_recharge_delay (s),
+    ticks_between_shots. Persistence reads none of it, and its builds record None; the
+    build record keeps the field for the extrapolation baseline to come (D2)."""
 
     shield_recharge_rate: tuple[float, ...]
     shield_recharge_delay: tuple[float, ...]
@@ -133,53 +396,103 @@ def wrap(angle: torch.Tensor) -> torch.Tensor:
     return torch.remainder(angle + math.pi, 2.0 * math.pi) - math.pi
 
 
-def _arc(angle: torch.Tensor, tick: float) -> tuple[torch.Tensor, torch.Tensor]:
-    """The drift's (A1, A2): the game's series in the turn angle."""
-    square = angle * angle
-    along = (1.0 - square * (1.0 / 6.0 - square / 120.0)) * tick
-    across = angle * (0.5 - square * (1.0 / 24.0 - square / 720.0)) * tick
-    return along, across
+def velocity_frame(
+    velocity: torch.Tensor, heading: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """(unit_x, unit_y, slow), each (...): the direction of velocity (..., 2), or of the
+    heading (...) where the speed is below SLOW_SPEED (slow)."""
+    speed = torch.linalg.vector_norm(velocity, dim=-1)
+    slow = speed < SLOW_SPEED
+    safe = torch.where(slow, 1.0, speed)
+    unit_x = torch.where(slow, torch.cos(heading), velocity[..., 0] / safe)
+    unit_y = torch.where(slow, torch.sin(heading), velocity[..., 1] / safe)
+    return unit_x, unit_y, slow
 
 
-def to_nose(vector: torch.Tensor, heading: torch.Tensor) -> torch.Tensor:
-    """(..., 2) world to (along, across) the heading (...)."""
-    cos, sin = torch.cos(heading), torch.sin(heading)
+def to_frame(vector: torch.Tensor, unit_x: torch.Tensor, unit_y: torch.Tensor) -> torch.Tensor:
+    """(..., 2) world to (along, across) the unit direction (across: to the left)."""
     x, y = vector[..., 0], vector[..., 1]
-    return torch.stack([x * cos + y * sin, y * cos - x * sin], -1)
+    return torch.stack([x * unit_x + y * unit_y, y * unit_x - x * unit_y], -1)
 
 
-def from_nose(vector: torch.Tensor, heading: torch.Tensor) -> torch.Tensor:
-    """The inverse of `to_nose`."""
-    cos, sin = torch.cos(heading), torch.sin(heading)
+def from_frame(vector: torch.Tensor, unit_x: torch.Tensor, unit_y: torch.Tensor) -> torch.Tensor:
+    """The inverse of `to_frame`."""
     along, across = vector[..., 0], vector[..., 1]
-    return torch.stack([along * cos - across * sin, along * sin + across * cos], -1)
+    return torch.stack([along * unit_x - across * unit_y, along * unit_y + across * unit_x], -1)
+
+
+def rotate_variances(
+    along: torch.Tensor, across: torch.Tensor, unit_x: torch.Tensor, unit_y: torch.Tensor
+) -> torch.Tensor:
+    """(..., 3) the packed (xx, xy, yy) world covariance of independent along and across
+    variances (...) in the frame of the unit direction."""
+    return torch.stack(
+        [
+            along * unit_x * unit_x + across * unit_y * unit_y,
+            (along - across) * unit_x * unit_y,
+            along * unit_y * unit_y + across * unit_x * unit_x,
+        ],
+        -1,
+    )
+
+
+# The variance of a heading uniform on the circle: the heading's cap (`advance`); the nose
+# rate's, of one uniform over the state code's range (the nose is a damped oscillator,
+# bounded, not a random walk).
+UNIFORM_HEADING_VARIANCE = math.pi**2 / 3.0
+UNIFORM_NOSE_RATE_VARIANCE = NOSE_RATE_LIMIT**2 / 3.0
+
+
+def kinematics_jacobian(tick: float, dtype, device) -> torch.Tensor:
+    """(6, 6) F of COVARIANCE_STATE over one tick: position += velocity dt. The heading is
+    not coupled to the nose rate: under persistence the head's heading change is the whole
+    turn, nose rate dt included, and the nose rate is a damped oscillator whose errors do
+    not persist the way a velocity's do. Coupling them counted the turn twice and treated
+    the nose rate as a random walk: on a short CPU run the heading sigma passed pi by 1 s
+    while the belief's heading error was 0.55 rad at 1-2 s, growing as the root of the age
+    (about 0.08 rad per root tick), which the heading change's own variance gives."""
+    jacobian = torch.eye(len(COVARIANCE_STATE), dtype=dtype, device=device)
+    jacobian[0, 2] = jacobian[1, 3] = tick
+    return jacobian
+
+
+def cap_variance(covariance: torch.Tensor, index: int, cap: float) -> torch.Tensor:
+    """(..., 6, 6) with entry `index`'s variance at most `cap`: its row and column scaled by
+    sqrt(cap / variance) where larger (the correlations kept, so it stays positive
+    semi-definite)."""
+    variance = covariance[..., index, index]
+    scale = torch.sqrt(cap / torch.clamp_min(variance, cap))  # 1 at or below the cap
+    size = covariance.shape[-1]
+    one = torch.arange(size, device=covariance.device) == index
+    factor = torch.where(one, scale[..., None], torch.ones_like(scale)[..., None])
+    return covariance * factor[..., :, None] * factor[..., None, :]
 
 
 class DeltaCode(nn.Module):
     """The delta code of a Yemong build: `targets` (the training code of a pair of states),
-    `decode` (head logits to the change's moments) and `advance` (the belief at t to the
-    forecast at t + 1). Width 434 at the default bins: 2 x 2 x 55 + 6 x 35 + 2 x 2."""
+    `decode` (head logits to the change's moments), `advance` (the belief at t to the
+    forecast at t + 1). Width 624: 179 + 3 x 55 + 8 x 35."""
 
-    def __init__(self, ranges: StateCodeRanges, dynamics: StateDynamics) -> None:
+    def __init__(self, ranges: StateCodeRanges) -> None:
         super().__init__()
         self.tick_length = ranges.tick_length
         tensor = lambda values: torch.tensor(values, dtype=torch.float32)  # noqa: E731
         self.register_buffer("max_shield", tensor(ranges.max_shield))
         self.register_buffer("max_energy", tensor(ranges.max_energy))
-        self.register_buffer("recharge_rate", tensor(dynamics.shield_recharge_rate))
-        self.register_buffer("recharge_delay", tensor(dynamics.shield_recharge_delay))
-        # The cooldown one tick after a shot (s): the interval less the tick's clock.
-        self.register_buffer(
-            "fired_cooldown",
-            tensor([(ticks - 1) * ranges.tick_length for ticks in dynamics.ticks_between_shots]),
-        )
+        self.wait_limit = ranges.shield_recharge_delay
+        self.cooldown_bins = ranges.cooldown_bins
+        self.cooldown_limit = (ranges.cooldown_bins - 1) * ranges.tick_length
         self.components = {component.name: component for component in COMPONENTS}
-        self.sizes = {
-            **{component.name: component.width for component in COMPONENTS},
-            **dict.fromkeys(EVENTS, EVENT_BINS),
-        }
-        self.runs: codes.Runs = tuple((len(names), self.sizes[names[0]]) for _, names in PARTS)
-        self.order = tuple(name for _, names in PARTS for name in names)
+        self.sizes = {component.name: component.width for component in COMPONENTS}
+        self.runs: codes.Runs = tuple((1, component.width) for component in COMPONENTS)
+        self.order = CONTINUOUS
+        self._inverse_ends = {}
+        for component in COMPONENTS:
+            table, lowest, highest = codes.symlog_mean_inverse(
+                component.bins, below=component.below
+            )
+            self.register_buffer(f"inverse_{component.name}", table.float(), persistent=False)
+            self._inverse_ends[component.name] = (lowest, highest)
         # The starting logits, kept for the diagnostics' marginal baseline.
         self.register_buffer("marginal", self.marginal_logits(), persistent=False)
 
@@ -193,55 +506,26 @@ class DeltaCode(nn.Module):
         """The code's softmax groups, summed over runs."""
         return sum(groups for groups, _ in self.runs)
 
-    # ------------------------------------------------------------------ baselines
+    def inverse(self, name: str) -> tuple[torch.Tensor, float, float]:
+        """A component's `codes.symlog_mean_inverse` table and ends."""
+        return (getattr(self, f"inverse_{name}"), *self._inverse_ends[name])
 
-    def _per_type(self, ship_type: torch.Tensor) -> dict[str, torch.Tensor]:
-        return dict(
-            max_shield=per_ship(self.max_shield, ship_type),
-            max_energy=per_ship(self.max_energy, ship_type),
-            rate=per_ship(self.recharge_rate, ship_type),
-            delay=per_ship(self.recharge_delay, ship_type),
-            fired_cooldown=per_ship(self.fired_cooldown, ship_type),
-        )
+    def _maxima(self, ship_type: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        return per_ship(self.max_shield, ship_type), per_ship(self.max_energy, ship_type)
 
-    def baseline(self, means: torch.Tensor, ship_type: torch.Tensor) -> torch.Tensor:
-        """(..., len(MEANS)) the baseline of the state at t (the module's docstring)."""
-        tick, kind = self.tick_length, self._per_type(ship_type)
-        mean = dict(zip(MEANS, means.unbind(-1), strict=True))
-        angle = mean["nose_rate"] * tick
-        along, across = _arc(angle, tick)
-        vx, vy = mean["velocity_x"], mean["velocity_y"]
-        cos, sin = torch.cos(angle), torch.sin(angle)
-        shield = torch.minimum(
-            kind["max_shield"],
-            mean["shield"]
-            + kind["rate"] * torch.clamp(tick - mean["shield_recharge_wait"], 0.0, tick),
-        )
-        values = dict(
-            mean,
-            x=mean["x"] + vx * along - vy * across,
-            y=mean["y"] + vx * across + vy * along,
-            velocity_x=vx * cos - vy * sin,
-            velocity_y=vx * sin + vy * cos,
-            heading=wrap(mean["heading"] + angle),
-            shield=shield,
-            shield_recharge_wait=torch.clamp_min(mean["shield_recharge_wait"] - tick, 0.0),
-            gun_cooldown=torch.clamp_min(mean["gun_cooldown"] - tick, 0.0),
-        )
-        return torch.stack([values[name] for name in MEANS], -1)
+    # ------------------------------------------------------------------ targets
 
     def changes(
         self, means: torch.Tensor, following: torch.Tensor, ship_type: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """((..., len(CONTINUOUS)) the continuous changes of following (..., len(MEANS)) from
-        the baseline of means, in the code's frames and units; (..., len(EVENTS)) bool, the
-        events)."""
-        base, kind = self.baseline(means, ship_type), self._per_type(ship_type)
+        """((..., len(CONTINUOUS)) the changes from means to following (..., len(MEANS)) in
+        the code's frames and units; (...) slow: the frame was the heading)."""
         index = {name: i for i, name in enumerate(MEANS)}
-        difference = following - base
-        heading = means[..., index["heading"]]
-        position = to_nose(difference[..., 0:2], heading)
-        velocity = to_nose(difference[..., 2:4], heading)
+        max_shield, max_energy = self._maxima(ship_type)
+        difference = following - means
+        unit_x, unit_y, slow = velocity_frame(means[..., 2:4], means[..., index["heading"]])
+        position = to_frame(difference[..., 0:2], unit_x, unit_y)
+        velocity = to_frame(difference[..., 2:4], unit_x, unit_y)
         column = lambda name: difference[..., index[name]]  # noqa: E731
         continuous = torch.stack(
             [
@@ -252,102 +536,126 @@ class DeltaCode(nn.Module):
                 wrap(column("heading")),
                 column("nose_rate"),
                 column("angle_of_attack"),
-                column("shield") / kind["max_shield"],
-                column("energy") / kind["max_energy"],
+                column("shield_recharge_wait"),
+                column("shield") / max_shield,
+                column("energy") / max_energy,
                 column("log_refractive_index"),
+                column("gun_cooldown"),
             ],
             -1,
         )
-        half = 0.5 * self.tick_length
-        events = torch.stack(
-            [column("shield_recharge_wait") > half, column("gun_cooldown") > half], -1
-        )
-        return continuous, events
+        return continuous, slow
 
-    # ------------------------------------------------------------------ the code
-
-    def encode(
-        self, continuous: torch.Tensor, events: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    def encode(self, continuous: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """(the code (..., width), (..., len(CONTINUOUS)) bool: the changes clamped to the
-        padded range) of changes and events as `changes` gives them."""
-        parts, clipped = {}, []
+        padded range) of changes as `changes` gives them."""
+        parts, clipped = [], []
         for i, component in enumerate(COMPONENTS):
-            code, clip = codes.symlog_encode(
-                continuous[..., i], component.knee, component.bound, component.bins
-            )
-            parts[component.name] = code
+            code, clip = component.encode(continuous[..., i])
+            parts.append(code)
             clipped.append(clip)
-        for i, name in enumerate(EVENTS):
-            happened = events[..., i].to(continuous.dtype)
-            parts[name] = torch.stack([1.0 - happened, happened], -1)
-        return torch.cat([parts[name] for name in self.order], -1), torch.stack(clipped, -1)
+        return torch.cat(parts, -1), torch.stack(clipped, -1)
 
     def targets(
         self, means: torch.Tensor, following: torch.Tensor, ship_type: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """The training code of the step from means to following, and the clipped flags."""
-        return self.encode(*self.changes(means, following, ship_type))
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """The training code of the step from means to following, the clipped flags and
+        the slow-frame flags."""
+        continuous, slow = self.changes(means, following, ship_type)
+        code, clipped = self.encode(continuous)
+        return code, clipped, slow
 
-    def _split(self, probabilities: torch.Tensor) -> dict[str, torch.Tensor]:
+    # ------------------------------------------------------------------ decoding
+
+    def split(self, probabilities: torch.Tensor) -> dict[str, torch.Tensor]:
+        """The code (..., width) as one (..., size) part per component."""
         return dict(zip(self.order, probabilities.split([self.sizes[n] for n in self.order], -1)))
+
+    def probabilities(self, logits: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Head logits (..., width) to each component's probabilities."""
+        return self.split(torch.exp(codes.grouped_log_softmax(logits, self.runs)))
 
     def decode(self, logits: torch.Tensor):
         """Head logits (..., width) to ((..., len(CONTINUOUS)) the changes' means,
-        (..., len(CONTINUOUS)) their variances, (..., len(EVENTS)) the events'
-        probabilities), in the code's frames and units."""
-        parts = self._split(torch.exp(codes.grouped_log_softmax(logits, self.runs)))
-        means, variances = [], []
-        for component in COMPONENTS:
+        (..., len(CONTINUOUS)) their variances, (..., len(MEDIAN)) the medians of MEDIAN's
+        quantities), in the code's frames and units."""
+        parts = self.probabilities(logits)
+        means, variances, medians = [], [], []
+        for c in COMPONENTS:
+            part, inverse = parts[c.name], self.inverse(c.name)
             mean, variance = codes.symlog_decode(
-                parts[component.name], component.knee, component.bound, component.bins
+                part, c.knee, c.bound, c.bins, below=c.below, inverse=inverse
             )
             means.append(mean)
             variances.append(variance)
-        events = torch.stack([parts[name][..., 1] for name in EVENTS], -1)
-        return torch.stack(means, -1), torch.stack(variances, -1), events
+            if c.name in MEDIAN:
+                medians.append(
+                    codes.symlog_median(
+                        part, c.knee, c.bound, c.bins, below=c.below, inverse=inverse
+                    )
+                )
+        return torch.stack(means, -1), torch.stack(variances, -1), torch.stack(medians, -1)
+
+    @staticmethod
+    def point(means: torch.Tensor, medians: torch.Tensor) -> torch.Tensor:
+        """(..., len(CONTINUOUS)) the change the advance applies, of `decode`'s means and
+        medians: MEDIAN's quantities' medians, the others' means."""
+        columns = list(means.unbind(-1))
+        for i, name in enumerate(MEDIAN):
+            columns[CONTINUOUS.index(name)] = medians[..., i]
+        return torch.stack(columns, -1)
 
     def padding_mass(self, probabilities: torch.Tensor) -> torch.Tensor:
         """(..., len(CONTINUOUS)) each component's mass in its padding bins, of probabilities
         (..., width) in the code's layout."""
-        parts, pad = self._split(probabilities), codes.PADDING_BINS
+        parts, pad = self.split(probabilities), codes.PADDING_BINS
         return torch.stack(
-            [
-                parts[c.name][..., :pad].sum(-1) + parts[c.name][..., -pad:].sum(-1)
-                for c in COMPONENTS
-            ],
-            -1,
+            [parts[n][..., :pad].sum(-1) + parts[n][..., -pad:].sum(-1) for n in self.order], -1
         )
 
     def marginal_logits(self) -> torch.Tensor:
-        """(width,) the starting logits: per component the zero share at the exact-zero
-        centre (its HL-Gauss code) and the rest a symlog Laplace of scale MARGINAL_SCALE;
-        per event its rate (`ZERO_SHARE`, `EVENT_RATE`)."""
-        parts = {}
-        root = math.sqrt(2.0)
+        """(width,) the starting logits: per component (`MARGINAL`) the code of the zero share
+        and of each measured quantile, an equal atom whose Gaussian is as wide as its gaps
+        to the neighbouring quantiles (in bins; at least the code's own HL_GAUSS_SIGMA), so
+        the atoms join into a smooth density where the quantiles spread and stay sharp
+        where they coincide (a countdown's -dt)."""
+        parts = []
         for component in COMPONENTS:
-            half = (component.bins - 1) // 2 + codes.PADDING_BINS
-            edges = torch.arange(-half, half + 2, dtype=torch.float64) - 0.5
-            spacing = codes.symlog_spacing(component.knee, component.bound, component.bins)
-            scale = MARGINAL_SCALE / spacing  # in bins
-            laplace = torch.where(
-                edges < 0,
-                0.5 * torch.exp(edges / scale),
-                1.0 - 0.5 * torch.exp(-edges / scale),
+            share, quantiles = MARGINAL[component.name]
+            values = torch.tensor(quantiles, dtype=torch.float64)
+            coordinate = codes.symlog_coordinate(values, component.knee, component.spacing)
+            low, high = component.low, component.width - 1 - component.low
+            coordinate = coordinate.clamp(-float(low), float(high))
+            padded = torch.cat([coordinate[:1], coordinate, coordinate[-1:]])
+            widths = (0.5 * (padded[2:] - padded[:-2])).clamp_min(codes.HL_GAUSS_SIGMA)
+            atoms = torch.stack(
+                [
+                    codes.hl_gauss(c, low, high, float(w))
+                    for c, w in zip(coordinate, widths, strict=True)
+                ]
             )
-            spread = laplace[1:] - laplace[:-1]
-            spread = spread / spread.sum()
-            cumulative = torch.erf(edges / (codes.HL_GAUSS_SIGMA * root))
-            zero = 0.5 * (cumulative[1:] - cumulative[:-1])
-            zero = zero / zero.sum()
-            share = ZERO_SHARE[component.name]
-            parts[component.name] = share * zero + (1.0 - share) * spread
-        for name in EVENTS:
-            rate = EVENT_RATE[name]
-            parts[name] = torch.tensor([1.0 - rate, rate], dtype=torch.float64)
-        return torch.log(torch.cat([parts[name] for name in self.order])).float()
+            zero = codes.hl_gauss(
+                torch.zeros((), dtype=torch.float64), low, high, codes.HL_GAUSS_SIGMA
+            )
+            parts.append(share * zero + (1.0 - share) * atoms.mean(0))
+        return torch.log(torch.cat(parts).clamp_min(1e-12)).float()
 
     # ------------------------------------------------------------------ the advance
+
+    def _cooldown_code(self, code: torch.Tensor, change: torch.Tensor, state_code) -> torch.Tensor:
+        """The cooldown's code at t + 1: the belief's code (..., cooldown_bins), each of its
+        bins moved by every bin of the change's distribution (..., size), clamped to the
+        cooldown's range and two-hot coded."""
+        component = self.components["gun_cooldown"]
+        index = torch.arange(component.width, dtype=code.dtype, device=code.device)
+        steps = codes.symlog_value(index - component.low, component.knee, component.spacing)
+        centres = self.tick_length * torch.arange(
+            self.cooldown_bins, dtype=code.dtype, device=code.device
+        )
+        moved = torch.clamp(centres[:, None] + steps, 0.0, self.cooldown_limit)  # (bins, size)
+        sharp = state_code._cooldown_sharp(moved)  # (bins, size, bins)
+        weight = code[..., :, None] * change[..., None, :]  # (..., bins, size)
+        return (weight[..., None] * sharp).sum((-3, -2))
 
     def advance(
         self,
@@ -357,98 +665,77 @@ class DeltaCode(nn.Module):
         ship_type: torch.Tensor,
         state_code: ShipStateCode,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """The forecast at t + 1 (means (..., len(MEANS)), spreads (..., spread_count)) of
-        the belief at t and the head's logits: the baseline plus the decoded change (rotated
-        back from the belief's heading), each variance the belief's carried through the
-        baseline (to first order) plus the change's; the events' expected values."""
-        tick, kind = self.tick_length, self._per_type(ship_type)
-        change, variance, events = self.decode(logits)
-        change, variance = change.to(means.dtype), variance.to(means.dtype)
-        base = self.baseline(means, ship_type)
-        index = {name: i for i, name in enumerate(MEANS)}
+        """The forecast at t + 1 (means (..., len(MEANS)), spreads (..., spread_count) in the
+        covariance layout) of the belief at t and the head's logits.
+
+        Means: the belief plus the decoded change (`point`), position and velocity rotated
+        from the belief's velocity frame (its heading below SLOW_SPEED) to world; shield,
+        energy and the countdowns clamped to their ranges. Spread: the covariance P of
+        COVARIANCE_STATE as F P F^T + Q (`kinematics_jacobian`; Q the changes' variances,
+        position and velocity rotated to world), the heading's variance capped at the
+        uniform circle's and the nose rate's at a uniform one over the state code's range
+        (`cap_variance`); the other sigmas the root of the belief's
+        variance plus the change's; the cooldown's code the belief's moved by the change's
+        distribution (its residual against the advanced mean). SPREADS' kinematic slots
+        are read off the new P (position: the per-axis RMS sigma)."""
+        tick, dtype = self.tick_length, means.dtype
+        decoded, variance, medians = self.decode(logits)
+        change, variance = self.point(decoded, medians).to(dtype), variance.to(dtype)
+        part = {name: i for i, name in enumerate(CONTINUOUS)}
         mean = dict(zip(MEANS, means.unbind(-1), strict=True))
         sigma = dict(zip(SPREADS, spreads[..., : len(SPREADS)].unbind(-1), strict=True))
-        part = {name: i for i, name in enumerate(CONTINUOUS)}
-        heading = mean["heading"]
-        position = base[..., 0:2] + from_nose(change[..., 0:2], heading)
-        velocity = base[..., 2:4] + from_nose(change[..., 2:4], heading)
+        max_shield, max_energy = self._maxima(ship_type)
+        unit_x, unit_y, _ = velocity_frame(means[..., 2:4], mean["heading"])
 
-        # Carried variances. The nose rate's turns the arc and the velocity by dt omega.
-        nose_variance = sigma["nose_rate"] ** 2
-        xx, xy, yy = sigma["velocity_xx"], sigma["velocity_xy"], sigma["velocity_yy"]
-        angle = mean["nose_rate"] * tick
-        cos, sin = torch.cos(angle), torch.sin(angle)
-        rotated = torch.stack(
-            [
-                cos * cos * xx - 2.0 * cos * sin * xy + sin * sin * yy,
-                cos * sin * (xx - yy) + (cos * cos - sin * sin) * xy,
-                sin * sin * xx + 2.0 * cos * sin * xy + cos * cos * yy,
-            ],
-            -1,
+        position = means[..., 0:2] + from_frame(change[..., 0:2], unit_x, unit_y)
+        velocity = means[..., 2:4] + from_frame(change[..., 2:4], unit_x, unit_y)
+
+        covariance = unpack_covariance(spreads[..., state_code.covariance_slice])
+        jacobian = kinematics_jacobian(tick, dtype, means.device)
+        position_noise = rotate_variances(variance[..., 0], variance[..., 1], unit_x, unit_y)
+        velocity_noise = rotate_variances(variance[..., 2], variance[..., 3], unit_x, unit_y)
+        zero = torch.zeros_like(variance[..., 0])
+        noise = unpack_covariance(
+            torch.stack(
+                [
+                    *(position_noise[..., 0], position_noise[..., 1], zero, zero, zero, zero),
+                    *(position_noise[..., 2], zero, zero, zero, zero),
+                    *(velocity_noise[..., 0], velocity_noise[..., 1], zero, zero),
+                    *(velocity_noise[..., 2], zero, zero),
+                    *(variance[..., part["heading"]], zero),
+                    variance[..., part["nose_rate"]],
+                ],
+                -1,
+            )
         )
-        turned = torch.stack([-base[..., 3], base[..., 2]], -1)  # d(R v)/d angle
-        turn = (tick * tick * nose_variance)[..., None] * torch.stack(
-            [turned[..., 0] ** 2, turned[..., 0] * turned[..., 1], turned[..., 1] ** 2], -1
-        )
-        along_variance, across_variance = variance[..., 2], variance[..., 3]
-        cos_h, sin_h = torch.cos(heading), torch.sin(heading)
-        changed = torch.stack(
-            [
-                along_variance * cos_h * cos_h + across_variance * sin_h * sin_h,
-                (along_variance - across_variance) * cos_h * sin_h,
-                along_variance * sin_h * sin_h + across_variance * cos_h * cos_h,
-            ],
-            -1,
-        )
-        velocity_covariance = rotated + turn + changed
-        speed_square = mean["velocity_x"] ** 2 + mean["velocity_y"] ** 2
-        position_variance = (
-            sigma["position"] ** 2
-            + tick * tick * 0.5 * (xx + yy)
-            + 0.5 * speed_square * (0.5 * tick * tick) ** 2 * nose_variance
-            + 0.5 * (variance[..., 0] + variance[..., 1])
-        )
-        heading_mean = wrap(base[..., index["heading"]] + change[..., part["heading"]])
-        heading_variance = (
-            sigma["heading"] ** 2 + tick * tick * nose_variance + variance[..., part["heading"]]
-        )
+        covariance = jacobian @ covariance @ jacobian.transpose(-1, -2) + noise
+        covariance = cap_variance(covariance, 4, UNIFORM_HEADING_VARIANCE)
+        covariance = cap_variance(covariance, 5, UNIFORM_NOSE_RATE_VARIANCE)
 
         def scalar(name: str, scale=1.0):
-            value = base[..., index[name]] + change[..., part[name]] * scale
+            value = mean[name] + change[..., part[name]] * scale
             spread = torch.sqrt(sigma[name] ** 2 + variance[..., part[name]] * scale**2)
             return value, spread
 
-        nose_rate, nose_spread = scalar("nose_rate")
         attack, attack_spread = scalar("angle_of_attack")
         index_value, index_spread = scalar("log_refractive_index")
-        shield, shield_spread = scalar("shield", kind["max_shield"])
-        energy, energy_spread = scalar("energy", kind["max_energy"])
-        shield = torch.minimum(torch.clamp_min(shield, 0.0), kind["max_shield"])
-        energy = torch.minimum(torch.clamp_min(energy, 0.0), kind["max_energy"])
+        energy, energy_spread = scalar("energy", max_energy)
+        shield, shield_spread = scalar("shield", max_shield)
+        wait, wait_spread = scalar("shield_recharge_wait")
+        energy = torch.minimum(torch.clamp_min(energy, 0.0), max_energy)
+        shield = torch.minimum(torch.clamp_min(shield, 0.0), max_shield)
+        wait = torch.clamp(wait, 0.0, self.wait_limit)
 
-        reset = events[..., 0].to(means.dtype)
-        countdown = base[..., index["shield_recharge_wait"]]
-        wait = reset * kind["delay"] + (1.0 - reset) * countdown
-        wait_spread = torch.sqrt(
-            (1.0 - reset) * sigma["shield_recharge_wait"] ** 2
-            + reset * (1.0 - reset) * (kind["delay"] - countdown) ** 2
-        )
-
-        # The cooldown as its code: the belief's, counted down one bin, mixed with the shot.
-        fired = events[..., 1].to(means.dtype)[..., None]
         held = torch.clamp_min(
-            state_code._cooldown_sharp(mean["gun_cooldown"]) + spreads[..., len(SPREADS) :], 0.0
+            state_code._cooldown_sharp(mean["gun_cooldown"])
+            + spreads[..., state_code.residual_slice],
+            0.0,
         )
-        counted = torch.cat(
-            [held[..., :1] + held[..., 1:2], held[..., 2:], torch.zeros_like(held[..., :1])], -1
+        cooldown_change = self.probabilities(logits)["gun_cooldown"].to(dtype)
+        cooldown_code = self._cooldown_code(held, cooldown_change, state_code)
+        cooldown = torch.clamp(
+            mean["gun_cooldown"] + change[..., part["gun_cooldown"]], 0.0, self.cooldown_limit
         )
-        cooldown_code = (
-            fired * state_code._cooldown_sharp(kind["fired_cooldown"]) + (1.0 - fired) * counted
-        )
-        centres = tick * torch.arange(
-            cooldown_code.shape[-1], dtype=means.dtype, device=means.device
-        )
-        cooldown = (cooldown_code * centres).sum(-1)
         residual = cooldown_code - state_code._cooldown_sharp(cooldown)
 
         values = dict(
@@ -456,8 +743,8 @@ class DeltaCode(nn.Module):
             y=position[..., 1],
             velocity_x=velocity[..., 0],
             velocity_y=velocity[..., 1],
-            heading=heading_mean,
-            nose_rate=nose_rate,
+            heading=wrap(mean["heading"] + change[..., part["heading"]]),
+            nose_rate=mean["nose_rate"] + change[..., part["nose_rate"]],
             angle_of_attack=attack,
             shield_recharge_wait=wait,
             shield=shield,
@@ -465,13 +752,14 @@ class DeltaCode(nn.Module):
             gun_cooldown=cooldown,
             log_refractive_index=index_value,
         )
+        diagonal = torch.diagonal(covariance, dim1=-2, dim2=-1).clamp_min(0.0)
         spread = dict(
-            position=torch.sqrt(position_variance),
-            velocity_xx=velocity_covariance[..., 0],
-            velocity_xy=velocity_covariance[..., 1],
-            velocity_yy=velocity_covariance[..., 2],
-            heading=torch.sqrt(heading_variance),
-            nose_rate=nose_spread,
+            position=torch.sqrt(0.5 * (diagonal[..., 0] + diagonal[..., 1])),
+            velocity_xx=covariance[..., 2, 2],
+            velocity_xy=covariance[..., 2, 3],
+            velocity_yy=covariance[..., 3, 3],
+            heading=torch.sqrt(diagonal[..., 4]),
+            nose_rate=torch.sqrt(diagonal[..., 5]),
             angle_of_attack=attack_spread,
             shield_recharge_wait=wait_spread,
             shield=shield_spread,
@@ -480,5 +768,12 @@ class DeltaCode(nn.Module):
         )
         return (
             torch.stack([values[name] for name in MEANS], -1),
-            torch.cat([torch.stack([spread[name] for name in SPREADS], -1), residual], -1),
+            torch.cat(
+                [
+                    torch.stack([spread[name] for name in SPREADS], -1),
+                    residual,
+                    pack_covariance(covariance),
+                ],
+                -1,
+            ),
         )

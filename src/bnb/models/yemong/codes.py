@@ -140,10 +140,14 @@ def v1_spread_variance(
 def position_encode(
     mean: torch.Tensor, sigma: torch.Tensor, periods: tuple[float, float], levels: int
 ) -> torch.Tensor:
-    """(..., 2) mean and (...) sigma to (..., levels, 9): the outer product of a 3-colour
-    circular code per axis, x-major."""
-    x = circular_encode(mean[..., 0], sigma, periods[0], 3, levels)
-    y = circular_encode(mean[..., 1], sigma, periods[1], 3, levels)
+    """(..., 2) mean and sigma (...) (one for both axes) or (..., 2) (per axis) to
+    (..., levels, 9): the outer product of a 3-colour circular code per axis, x-major."""
+    if sigma.dim() == mean.dim():
+        sigma_x, sigma_y = sigma[..., 0], sigma[..., 1]
+    else:
+        sigma_x = sigma_y = sigma
+    x = circular_encode(mean[..., 0], sigma_x, periods[0], 3, levels)
+    y = circular_encode(mean[..., 1], sigma_y, periods[1], 3, levels)
     return (x[..., :, None] * y[..., None, :]).flatten(-2)
 
 
@@ -456,10 +460,19 @@ HL_GAUSS_SIGMA = 0.75  # the symlog code's Gaussian, in bins
 PADDING_BINS = 2  # bins past the real range on each side, for the Gaussian's spill
 
 
-def symlog_spacing(knee: float, bound: float, bins: int) -> float:
-    """The bin spacing in symlog units, ln(1 + |x| / knee), of a code of `bins` (odd) real
-    bins whose centres run from -bound to bound with an exact zero at the middle one."""
-    return math.log1p(bound / knee) / (0.5 * (bins - 1))
+def symlog_sides(bins: int, below: int | None = None) -> tuple[int, int]:
+    """(real bins below the zero centre, real bins above it) of a code of `bins` real bins:
+    symmetric (bins odd) when below is None."""
+    below = (bins - 1) // 2 if below is None else below
+    return below, bins - 1 - below
+
+
+def symlog_spacing(knee: float, bound: float, bins: int, below: int | None = None) -> float:
+    """The bin spacing in symlog units, ln(1 + |x| / knee), of a code of `bins` real bins
+    with an exact zero at a centre and the last centre above it at bound; `below` of them
+    under the zero (None: as many as above, so the centres run from -bound to bound)."""
+    _, above = symlog_sides(bins, below)
+    return math.log1p(bound / knee) / above
 
 
 def symlog_coordinate(values: torch.Tensor, knee: float, spacing: float) -> torch.Tensor:
@@ -472,6 +485,15 @@ def symlog_value(coordinate: torch.Tensor, knee: float, spacing: float) -> torch
     return torch.sign(coordinate) * knee * torch.expm1(coordinate.abs() * spacing)
 
 
+def hl_gauss(coordinate: torch.Tensor, low: int, high: int, sigma: float) -> torch.Tensor:
+    """The Gaussian of `sigma` bins at coordinate (...) integrated over the bins centred at
+    -low..high, divided by its sum: (..., low + high + 1)."""
+    edges = torch.arange(-low, high + 2, dtype=coordinate.dtype, device=coordinate.device) - 0.5
+    cumulative = torch.erf((edges - coordinate[..., None]) / (sigma * math.sqrt(2.0)))
+    probabilities = 0.5 * (cumulative[..., 1:] - cumulative[..., :-1])
+    return probabilities / probabilities.sum(-1, keepdim=True)
+
+
 def symlog_encode(
     values: torch.Tensor,
     knee: float,
@@ -479,21 +501,66 @@ def symlog_encode(
     bins: int,
     padding: int = PADDING_BINS,
     sigma: float = HL_GAUSS_SIGMA,
+    below: int | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """(...) to ((..., bins + 2 padding) HL-Gauss probabilities, (...) clipped): the value's
     symlog coordinate clamped to the padded range (the outermost padding bin's centre;
     `clipped` marks the values that needed it), then the Gaussian of `sigma` bins integrated
     over each bin. Nothing folds: the mass past the outer edges is dropped and the code
-    divided by its sum (at most 4e-4 of it, for a value on the last real bin's centre)."""
-    spacing = symlog_spacing(knee, bound, bins)
-    half = (bins - 1) // 2 + padding
+    divided by its sum. below: the real bins under the zero (`symlog_spacing`)."""
+    spacing = symlog_spacing(knee, bound, bins, below)
+    under, over = symlog_sides(bins, below)
+    low, high = under + padding, over + padding
     coordinate = symlog_coordinate(values, knee, spacing)
-    clipped = coordinate.abs() > half
-    coordinate = torch.clamp(coordinate, -float(half), float(half))
-    edges = torch.arange(-half, half + 2, dtype=values.dtype, device=values.device) - 0.5
-    cumulative = torch.erf((edges - coordinate[..., None]) / (sigma * math.sqrt(2.0)))
-    probabilities = 0.5 * (cumulative[..., 1:] - cumulative[..., :-1])
-    return probabilities / probabilities.sum(-1, keepdim=True), clipped
+    clipped = (coordinate < -low) | (coordinate > high)
+    coordinate = torch.clamp(coordinate, -float(low), float(high))
+    return hl_gauss(coordinate, low, high, sigma), clipped
+
+
+INVERSE_STEPS = 64  # the mean inverse's grid steps per bin (`symlog_mean_inverse`)
+
+
+def symlog_mean_inverse(
+    bins: int,
+    padding: int = PADDING_BINS,
+    sigma: float = HL_GAUSS_SIGMA,
+    below: int | None = None,
+) -> tuple[torch.Tensor, float, float]:
+    """(table (steps + 1,) float64, lowest, highest): the coordinate of the encoded value
+    whose code has a given mean bin index, on a uniform grid of that mean from `lowest` (the
+    code of the lowest padding centre's) to `highest`, INVERSE_STEPS per bin. Inside the
+    code an encoded value's mean index is its coordinate to about 1e-5 bins; within a few
+    bins of the padded ends the code loses the Gaussian's spill and its mean moves inward
+    (by up to 0.3 bins at the ends): the table undoes that (`symlog_decode`)."""
+    under, over = symlog_sides(bins, below)
+    low, high = under + padding, over + padding
+    coordinate = torch.linspace(
+        -low, high, (low + high) * 16 * INVERSE_STEPS + 1, dtype=torch.float64
+    )
+    index = torch.arange(-low, high + 1, dtype=torch.float64)
+    mean = (hl_gauss(coordinate, low, high, sigma) * index).sum(-1)  # strictly increasing
+    lowest, highest = float(mean[0]), float(mean[-1])
+    grid = torch.linspace(lowest, highest, (low + high) * INVERSE_STEPS + 1, dtype=torch.float64)
+    right = torch.searchsorted(mean, grid).clamp(1, mean.numel() - 1)
+    left = right - 1
+    weight = ((grid - mean[left]) / (mean[right] - mean[left])).clamp(0.0, 1.0)
+    table = coordinate[left] + weight * (coordinate[right] - coordinate[left])
+    table[0], table[-1] = -low, high
+    return table, lowest, highest
+
+
+def invert_mean(
+    mean: torch.Tensor, table: torch.Tensor, lowest: float, highest: float
+) -> torch.Tensor:
+    """The coordinate (...) of a mean bin index (...) by a `symlog_mean_inverse` table
+    (linear between its steps; the ends clamp)."""
+    steps = table.shape[0] - 1
+    position = torch.clamp((mean - lowest) * (steps / (highest - lowest)), 0.0, float(steps))
+    lower = torch.clamp_max(torch.floor(position), float(steps - 1))
+    fraction = position - lower
+    lower = lower.long()
+    table = table.to(mean.dtype)
+    return table[lower] + fraction * (table[lower + 1] - table[lower])
 
 
 def symlog_decode(
@@ -503,18 +570,61 @@ def symlog_decode(
     bins: int,
     padding: int = PADDING_BINS,
     sigma: float = HL_GAUSS_SIGMA,
+    below: int | None = None,
+    inverse: tuple[torch.Tensor, float, float] | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """(..., bins + 2 padding) probabilities to (mean, variance), each (...), physical. The
-    mean is the value at the mean coordinate (exact on an encoded value). The variance is
-    the bins' physical variance about it less the code's own smoothing, each bin's mass
-    times the smoothing of a value at its centre (by total variance: a mixture of encoded
-    values decodes near their spread, an encoded value near 0), at least 0."""
-    spacing = symlog_spacing(knee, bound, bins)
-    half = (bins - 1) // 2 + padding
-    index = torch.arange(-half, half + 1, dtype=probabilities.dtype, device=probabilities.device)
-    mean = symlog_value((probabilities * index).sum(-1), knee, spacing)
+    mean is the value at the mean coordinate: exact on an encoded value inside the code,
+    and at the padded ends too given `inverse` (`symlog_mean_inverse` of the same code).
+    The variance is the bins' physical variance about it less the code's own smoothing,
+    each bin's mass times the smoothing of a value at its centre (by total variance: a
+    mixture of encoded values decodes near their spread, an encoded value near 0), at
+    least 0."""
+    spacing = symlog_spacing(knee, bound, bins, below)
+    under, over = symlog_sides(bins, below)
+    low, high = under + padding, over + padding
+    index = torch.arange(-low, high + 1, dtype=probabilities.dtype, device=probabilities.device)
+    coordinate = (probabilities * index).sum(-1)
+    if inverse is not None:
+        coordinate = invert_mean(coordinate, *inverse)
+    mean = symlog_value(coordinate, knee, spacing)
     centres = symlog_value(index, knee, spacing)
-    own, _ = symlog_encode(centres, knee, bound, bins, padding, sigma)  # (bins, bins)
+    own = hl_gauss(index, low, high, sigma)  # (bins, bins): each centre's own code
     smoothing = (own * (centres - centres[:, None]) ** 2).sum(-1)
     spread = (probabilities * (centres - mean[..., None]) ** 2).sum(-1)
     return mean, torch.clamp_min(spread - (probabilities * smoothing).sum(-1), 0.0)
+
+
+MEDIAN_WINDOW = 4  # bins either side of the median's bin that `symlog_median` averages
+
+
+def symlog_median(
+    probabilities: torch.Tensor,
+    knee: float,
+    bound: float,
+    bins: int,
+    padding: int = PADDING_BINS,
+    below: int | None = None,
+    inverse: tuple[torch.Tensor, float, float] | None = None,
+) -> torch.Tensor:
+    """(..., bins + 2 padding) probabilities to the median value (...): the bin where the
+    cumulative mass reaches 1/2, then the mean coordinate over the bins within MEDIAN_WINDOW
+    of it (`inverse` as in `symlog_decode`). An encoded value decodes to itself (its
+    Gaussian lies inside the window to 5 sigma); a code with two well-separated modes
+    decodes to the value of the mode that holds the median, so a jump of probability below
+    1/2 is not taken (the most likely outcome, decisions D8)."""
+    spacing = symlog_spacing(knee, bound, bins, below)
+    under, _ = symlog_sides(bins, below)
+    low = under + padding
+    width = probabilities.shape[-1]
+    index = torch.arange(width, device=probabilities.device)
+    cumulative = torch.cumsum(probabilities, -1)
+    crossing = torch.clamp_max((cumulative < 0.5).sum(-1), width - 1)
+    near = ((index - crossing[..., None]).abs() <= MEDIAN_WINDOW).to(probabilities.dtype)
+    weight = probabilities * near
+    position = (index - low).to(probabilities.dtype)
+    tiny = torch.finfo(probabilities.dtype).tiny
+    coordinate = (weight * position).sum(-1) / torch.clamp_min(weight.sum(-1), tiny)
+    if inverse is not None:
+        coordinate = invert_mean(coordinate, *inverse)
+    return symlog_value(coordinate, knee, spacing)

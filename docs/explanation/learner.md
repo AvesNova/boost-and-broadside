@@ -108,7 +108,7 @@ The coefficients are the fields of `bnb.learn.ppo.LearnerConfig` named after the
 | `policy` | own ships alive at `t` | the surrogate on the scaled advantage under the trust region ([below](#the-trust-region)) |
 | `entropy_power`, `entropy_stick`, `entropy_shoot` | the same | the joint action distribution's entropy by the chain rule in the joint's order: H(power), H(stick given power), H(shoot given both). They sum to the joint entropy, so equal coefficients weigh the joint as one coefficient would; a negative coefficient rewards it |
 | `value` | own ships alive or waiting to respawn; each view-step for the outcome | per level, the cross-entropy against the two-hot of the return, the outcome against its targets |
-| `next_state` | rows whose belief is valid at `t`, where `t` did not end an episode | absolute: the state code's cross-entropy against the sharp code of the true state at `t + 1`, in the model's shifted frame; delta: the delta code's against the code of the true change from `t` to `t + 1` |
+| `next_state` | rows whose belief is valid at `t`, where `t` did not end an episode (delta: and whose ship is alive at `t` and `t + 1`) | absolute: the state code's cross-entropy against the sharp code of the true state at `t + 1`, in the model's shifted frame; delta: the delta code's against the code of the true change from `t` to `t + 1` |
 | `enemy_action` | enemy rows alive at `t` | the cross-entropy of the enemy's actual joint action |
 | `density` | each view-step, over its count of valued own ships | Poisson terms over the hex cells, against the counts of living ships at `t` |
 | `shot_trajectory` | valid shots of own ships and of enemies visible at `t` | the trajectory code's cross-entropy, averaged over the shot's valid ages |
@@ -138,18 +138,20 @@ trained BC run they settle at 0.02-0.10 (policy 0.04-0.07, density 0.05-0.08, en
 `gradient/norm/trunk/rotary_readout` is the check. The measurement predates the read-out
 in every block (it was one head, on the first block) and was not repeated for it.
 
-**The delta next-state head's coefficient, 0.0025** (`--set learner.next_state=0.0025`
+**The persistence delta head's coefficient, 0.0033** (`--set learner.next_state=0.0033`
 with `--set yemong.next_state=delta`; the default 0.0041 is the absolute head's). Nats per
 token change with the code, so it is set to match the next-state term's trunk gradient in
-C-fixed (`yemong.order=temporal_first`, `spread_fit="coarsest"`, BC). At initialisation the
-share is exactly 0 for both heads (their last weight starts at zero). Measured on a short
-CPU run instead: C-fixed's config scaled to 64 environments of 32 ticks, 8 minibatches,
-float32, seed 1, the gradient decomposition at every update from 10 to 20. At 0.0041 the
-absolute head's trunk norm averages 0.0116 (share 0.10) and the delta head's 0.0186 (share
-0.31), 1.6 times more; 0.0041 / 1.6 = 0.0025, and at 0.0025 the delta head averages 0.0107
-(share 0.12). The shares at this scale are noisy (their signs flip early on) and several
-times C-fixed's logged 0.04-0.047 at updates 10-20, so the run's own
-`gradient/share/trunk/next_state` is the check.
+the absolute arm it is compared with (arm 1: `yemong.order=temporal_first`,
+`yemong.acceleration_inputs=true`, `spread_fit="coarsest"`, BC). At initialisation the
+share is exactly 0 for both heads (their last weight starts at zero; 0.007-0.012 after the
+first update). Measured on a short CPU run instead: arm 1's config scaled to 64
+environments of 32 ticks, 8 minibatches, float32, seed 1, the gradient decomposition at
+every update, averaged over updates 10 to 20. At 0.0041 the absolute head's trunk norm
+averages 0.0143 (median 0.0120, share 0.17) and the persistence head's 0.0177 (median
+0.0146, share 0.24), 1.24 times more (1.21 on the medians); 0.0041 / 1.23 = 0.0033, and at
+0.0033 the persistence head averages 0.0144 (median 0.0123, share 0.18). The shares at this
+scale are noisy, so the run's own `gradient/share/trunk/next_state` is the check. (Round
+1's delta head, now removed, had 0.0025 by the same method.)
 
 An update makes `epochs` passes of `minibatches` minibatches over the views; a view keeps
 its whole segment, which `unroll` needs. It clips the gradient norm, steps Adam with a
@@ -239,9 +241,9 @@ size of the segment):
 - **Next state:** the sharp code of each row's truth at `t + 1`, its position shifted by the
   view's offset; the last step's truth is the observation after the segment. With the delta
   head (`YemongConfig.next_state = "delta"`), the code of each row's true change from `t`
-  to `t + 1`, from the baseline of its truth at `t`
-  (`bnb.models.yemong.delta.DeltaCode.targets`), and which changes were clamped to the
-  code's padded range (`next_state_clipped`).
+  to `t + 1` (persistence; `bnb.models.yemong.delta.DeltaCode.targets`), which changes
+  were clamped to the code's padded range (`next_state_clipped`), and whether the frame
+  was the heading (slower than 1 m/s, `next_state_slow`).
 - **Enemy action:** each enemy row's joint action at `t`.
 - **Density:** the hex counts of the living ships of each side at `t`, in world coordinates
   scaled by each environment's arena radius.

@@ -131,61 +131,111 @@ state code above, are the same either way.
 - **`"absolute"`** (the default): the state code of the state at `t + 1`. The head's logits
   add to the persistence baseline `log(code_t + 1e-3)` (`bnb.models.yemong.heads.next_state_logits`),
   so it starts as "nothing changes", and the forecast is the decoded code.
-- **`"delta"`**: each quantity's one-tick change from its physics baseline
-  (`bnb.models.yemong.delta`; the measurements behind it are in the state-deltas report,
-  `docs/rewrite/sections/state-deltas.md`). The baselines read only the state at `t`:
+- **`"delta"`**: each quantity's one-tick change from its baseline
+  (`bnb.models.yemong.delta`), chosen by `YemongConfig.delta_baseline`. Today's one
+  baseline is `"persistence"`: nothing changes, so the target is
+  `truth(t + 1) - truth(t)` (the measurements behind it are in
+  `docs/rewrite/sections/baselines-bench.md`). Position and velocity are coded along and
+  across the velocity at `t` (across to the left); below 1 m/s the frame is the heading
+  (counted, `next_state/slow_frame_share`). The heading's change is wrapped. The shield
+  recharge wait and the gun cooldown (in seconds) and the shield are their plain changes:
+  a countdown's steady `-dt` and a reset's jump, the shield's regeneration and a hit's
+  drop, so the model learns the linear regeneration and the countdowns. Shield and energy
+  are fractions of the type's maximum.
 
-  | Quantity | Baseline | Coded as |
-  |---|---|---|
-  | position | the constant-nose-rate arc, the game's drift at v_t | along and across the heading at `t` |
-  | velocity | v_t turned by omega_t dt | along and across the heading at `t` |
-  | heading | `heading_t + omega_t dt`, wrapped | |
-  | nose rate, angle of attack, log refractive index | persistence | |
-  | shield, energy | after the deterministic recharge; persistence | fractions of the type's maximum |
-  | shield recharge wait | the countdown | an event, two bins: reset to the type's delay |
-  | gun cooldown | the countdown | an event, two bins: fired (the type's interval less a tick) |
-
-  Each continuous component is a **symlog HL-Gauss code**
+  Each component is a **symlog HL-Gauss code**
   (`bnb.models.yemong.codes.symlog_encode`): the change's coordinate
-  `sign(x) ln(1 + |x| / knee)` in bins, its centres evenly spaced from minus to plus the
-  hard one-tick bound with an exact zero at the middle one, two padding bins on each side,
-  and a Gaussian of 0.75 bins integrated over each bin. A change past the padded range is
-  clamped to it (and counted); nothing folds: the Gaussian's mass past the outer edges is
-  dropped and the code divided by its sum. Position and velocity have 51 real bins per
-  component, the other six 31: 434 outputs in all (2 x 2 x 55 + 6 x 35 + 2 x 2), against
-  the absolute code's 490.
+  `sign(x) ln(1 + |x| / knee)` in bins, its centres evenly spaced with an exact zero at
+  one of them, two padding bins on each side, and a Gaussian of 0.75 bins integrated over
+  each bin. A change past the padded range is clamped to it (and counted); nothing folds:
+  the Gaussian's mass past the outer edges is dropped and the code divided by its sum.
 
   | Component | Knee | Bound (the last real centre) | Real bins |
   |---|---|---|---|
-  | position, along / across (m) | 0.002 / 0.003 | 8.7 | 51 |
-  | velocity, along / across (m/s) | 0.1 | 375 | 51 |
-  | heading (rad) | 0.001 | 0.9 | 31 |
-  | nose rate (rad/s) | 0.05 | 24.7 | 31 |
-  | angle of attack (rad) | 0.003 | 0.49 | 31 |
-  | shield (of the maximum) | 0.001 | 1 | 31 |
-  | energy (of the maximum) | 0.0005 | 0.068 | 31 |
-  | log refractive index | 0.0006 | 0.48 | 31 |
+  | position along the track (m) | 2.6 | 8.7 | 175 (19 below zero) |
+  | position across the track (m) | 0.00628 | 0.7 | 51 |
+  | velocity, along / across (m/s) | 0.134 / 0.471 | 35 / 41 | 51 |
+  | heading (rad) | 0.0101 | 0.32 | 31 |
+  | nose rate (rad/s) | 0.052 | 10.5 | 31 |
+  | angle of attack (rad) | 0.00285 | 0.17 | 31 |
+  | shield recharge wait (s) | 1/30 | 6 | 31 |
+  | shield (of the maximum) | 0.00399 | 0.36 | 31 |
+  | energy (of the maximum) | 0.000544 | 0.046 | 31 |
+  | log refractive index | 0.00794 | 0.24 | 31 |
+  | gun cooldown (s) | 1/30 | 0.1 | 31 |
 
-  The knees are the report's medians, the bounds its hard bounds (section 1.2, the box). The
-  head's last weight starts at zero and its bias at the measured marginal: the share of
-  exact zeros at the zero centre's code and the rest a Laplace of scale 1 in symlog units
-  (median `|change|` at the knee), the events at their rates
-  (`bnb.models.yemong.delta.DeltaCode.marginal_logits`).
+  The knees are the bench's persistence medians (where the median is 0, the median above
+  1e-6), the bounds its maxima rounded up. Position along the track is the whole move,
+  about `|v| dt` (median 2.6 m, never near 0), so it has its own asymmetric code: 155 real
+  bins above the zero and 19 below (to -0.51 m, a slow ship reversing), a bin 4.9 cm wide at
+  the median move (2.5 cm at 0, 10 cm at 8.7 m). The code is 624 outputs (179 + 3 x 55 + 8
+  x 35), against the absolute code's 490. The head's last weight starts at zero and its
+  bias at the marginal measured on scripted play (`bench/persistence_marginal.py`): per
+  component the share of exact zeros and 16 quantiles of the rest, each an atom whose
+  Gaussian is as wide as its gaps to its neighbours
+  (`bnb.models.yemong.delta.DeltaCode.marginal_logits`). Its first cross-entropy there is
+  30.9 nats per row, against the targets' marginal entropy of 30.3.
 
   Decoding (`bnb.models.yemong.codes.symlog_decode`) reads the mean at the mean
-  coordinate, exact on an encoded change (the round trip's bias is below 1e-3 bins up to
-  0.06 bins short of the last real centre and 1.3e-3 bins at it), and the variance as the
-  bins' physical variance less the code's own smoothing. The forecast fed back
-  (`bnb.models.yemong.delta.DeltaCode.advance`, through `Yemong.forecast`) is the
-  belief's baseline plus the decoded change, turned back from the belief's heading. Each
-  variance is the belief's carried through the baseline to first order (the velocity's
-  covariance turned, `dt^2` of it into the position, the nose rate's `dt^2` into the heading
-  and the arcs) plus the change's; the events' means are their expected values, the
-  cooldown's code the belief's counted down one bin mixed with the shot's. The training
-  target is the truth's change, `truth(t + 1) - baseline(truth(t))`, on the same rows as the
-  absolute head. The baselines' constants per ship type (recharge rate and delay, the ticks
-  between shots) are in the build record (`YemongBuild.dynamics`), only for a delta build.
-  Select it with `--set yemong.next_state=delta`.
+  coordinate through a table that undoes the padded ends' lost spill
+  (`codes.symlog_mean_inverse`): an encoded change decodes to itself within 2e-4 bins
+  everywhere, padding included. The variance is the bins' physical variance less the
+  code's own smoothing. The shield, the wait and the cooldown advance by the **median**
+  instead (`codes.symlog_median`: the mean over the bins within 4 of the one where the
+  cumulative mass reaches one half), the most likely outcome when a jump has a probability
+  below one half: a hidden ship's wait counts down and its shield regenerates.
+
+  The forecast fed back (`bnb.models.yemong.delta.DeltaCode.advance`, through
+  `Yemong.forecast`) is the belief plus the decoded change, turned from the belief's own
+  velocity frame to world; shield, energy and the countdowns are clamped to their ranges. A
+  delta build's belief carries the **full covariance** P of (x, y, vx, vy, heading, nose
+  rate), appended to its spreads (`state_code.COVARIANCE_STATE`, 21 entries); each tick
+  `P' = F P F^T + Q`, with F the kinematics' Jacobian (position plus velocity `dt`) and Q
+  the decoded changes' variances, position and velocity turned to world; the heading's
+  variance is capped at a uniform circle's, `pi^2 / 3`, and the nose rate's at a uniform
+  one over the state code's range, `8^2 / 3` (the nose rate is a bounded oscillator; with
+  its variance growing as a random walk, a hidden ship's nose rate held the truth within
+  one sigma 100% of the time past 0.5 s). The heading is not coupled to the
+  nose rate in F: the head's heading change is the whole turn, nose rate `dt` included,
+  and the nose rate is a damped oscillator, so the coupling counted the turn twice and
+  grew the heading's sigma past pi by 1 s on a short CPU run, while the belief's heading
+  error was 0.55 rad at 1-2 s and grew as the root of the age, as the heading change's
+  own variance does. The other sigmas add the change's variance to the belief's; the cooldown's code
+  is the belief's moved by the change's distribution. The spreads' usual slots (the
+  position's per-axis RMS sigma, the velocity's covariance, the heading's and nose rate's
+  sigmas) are read off P, so play, figures and diagnostics read a delta build as any other.
+  A visible row is the truth with zero spread. Under persistence the head's position change
+  for a hidden row already holds the belief's velocity error, which F adds again: the
+  belief's coverage by hidden age (`belief/within_one_sigma/*`) is where that would show.
+  On a short CPU run it showed the opposite: the position's sigma too small (14% within
+  one sigma at 0.1-0.5 s, 5-9% past it).
+
+  The target is the truth's change on every row (allies, visible and hidden enemies) whose
+  ship is alive at `t` and `t + 1` (a death or a spawn is not a change of state). Round 1's
+  rule baselines (the arc, the turned velocity, the recharge and the countdown rules, the
+  two-bin events) are removed: a policy trained with them does not load (its build record
+  holds the dynamics they read, and the model refuses it). Select the arm with
+  `--set yemong.next_state=delta --set yemong.delta_baseline=persistence`.
+
+### Spread inputs: scalar or ellipse
+
+`YemongConfig.spread_inputs` chooses how a ship row reads its belief's spread. The spread
+enters the state code by blurring it: a sigma larger than a level's period flattens that
+level, so the first layer sees which levels to trust.
+
+- **`"scalar"`** (the default): the position code is blurred by one sigma for both axes,
+  the velocity code by its covariance (its three projections' variances).
+- **`"ellipse"`**: the position code is blurred per world axis by the position
+  covariance's marginal sigmas (`sqrt(P_xx)`, `sqrt(P_yy)`), the velocity code as before,
+  and the ship token ends with the position and velocity **ellipses**
+  (`ShipStateCode.ellipse_code`): log sigma_major, log sigma_minor, and the doubled angle
+  `(cos 2 theta, sin 2 theta)` times the anisotropy `(sigma_major - sigma_minor) /
+  (sigma_major + sigma_minor)`, world frame, so the angle fades out where the ellipse is
+  round. Each feature is a two-hot code of 21 bins, as the state code's scalars: a sigma as
+  `ln(1 + sigma / knee)` from 0 to its bound's (position: knee 1 m, bound the position
+  code's period; velocity: knee 0.1 m/s, bound the velocity code's reach), the angle
+  features over [-1, 1]. 168 inputs, their first-projection columns initialised as the
+  state code's. Without a covariance (an absolute build) the position ellipse is round.
 
 ### The acceleration inputs
 
@@ -255,7 +305,7 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
 | action | own ships | logits over the joint actions |
 | value | own ships | categorical logits per local reward level |
 | enemy action | ship rows | the next joint action's logits |
-| next state | ship rows | the next state code, as a change from the current one (absolute), or each quantity's change from its physics baseline (delta) |
+| next state | ship rows | the next state code, as a change from the current one (absolute), or each quantity's change from persistence (delta) |
 | outcome | global token | win, tie, loss, unresolved |
 | density | global token | ally and enemy rates on a hex grid that scales with the arena |
 | shot outcome | ship rows | how a shot fired now would end |

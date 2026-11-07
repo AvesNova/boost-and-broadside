@@ -1,14 +1,11 @@
 """The baselines bench (`bench.baselines_core`): E is exact on constant acceleration along a
-line, on a steady turn and on a constant nose-rate change; the event rule; R is
-`DeltaCode.baseline`; the iterated forecasts."""
+line, on a steady turn and on a constant nose-rate change; the event rule; the
+iterated forecasts. (R was checked against round 1's `DeltaCode.baseline` until arm 2
+removed it from the model.)"""
 
 import numpy as np
-import torch
 
 from bench import baselines_core as core
-from bnb.game import api
-from bnb.models.yemong.delta import DeltaCode, state_dynamics
-from bnb.models.yemong.state_code import MEANS, state_code_ranges
 
 DT = 1.0 / 30.0
 
@@ -117,46 +114,6 @@ def test_extrapolation_falls_back_to_the_rule_without_a_previous_tick():
     for name in core.STATE:
         assert out[name] == rule[name]
     assert arc_x == rule["x"] and arc_y == rule["y"]
-
-
-def test_rule_is_the_delta_code_baseline():
-    rules, types = api.rules_of(api.PRESETS["deathmatch"]), api.ship_types(torch.device("cpu"))
-    ranges, dynamics = state_code_ranges(rules, types), state_dynamics(rules, types)
-    code = DeltaCode(ranges, dynamics).double()
-    rng = np.random.default_rng(0)
-    n = 64
-    ship_type = rng.integers(0, 2, n)
-    max_shield = np.asarray(ranges.max_shield)[ship_type]
-    max_energy = np.asarray(ranges.max_energy)[ship_type]
-    values = dict(
-        x=rng.normal(0, 500, n), y=rng.normal(0, 500, n),
-        velocity_x=rng.normal(0, 80, n), velocity_y=rng.normal(0, 80, n),
-        heading=rng.uniform(-np.pi, np.pi, n), nose_rate=rng.normal(0, 3, n),
-        angle_of_attack=rng.normal(0, 0.1, n), shield_recharge_wait=rng.choice([0.0, 0.02, 3.0], n),
-        shield=rng.uniform(0, 1, n) * max_shield, energy=rng.uniform(0, 1, n) * max_energy,
-        gun_cooldown=rng.integers(0, 3, n) * DT, log_refractive_index=rng.normal(0, 0.1, n),
-    )  # fmt: skip
-    means = torch.tensor(np.stack([values[name] for name in MEANS], -1))
-    expected = code.baseline(means, torch.tensor(ship_type)).numpy()
-    expected = dict(zip(MEANS, expected.T, strict=True))
-    rate = np.asarray(dynamics.shield_recharge_rate)[ship_type] / max_shield
-    state = dict(
-        x=values["x"], y=values["y"], vx=values["velocity_x"], vy=values["velocity_y"],
-        heading=values["heading"], omega=values["nose_rate"], attack=values["angle_of_attack"],
-        energy=values["energy"] / max_energy, shield=values["shield"] / max_shield,
-        wait=values["shield_recharge_wait"], cooldown=np.round(values["gun_cooldown"] / DT),
-        log_index=values["log_refractive_index"], rate=rate,
-    )  # fmt: skip
-    out = core.rule(state, DT)
-    pairs = dict(x="x", y="y", vx="velocity_x", vy="velocity_y", omega="nose_rate",
-                 attack="angle_of_attack", wait="shield_recharge_wait",
-                 log_index="log_refractive_index")  # fmt: skip
-    for mine, theirs in pairs.items():
-        assert np.allclose(out[mine], expected[theirs], atol=1e-9), mine
-    assert np.allclose(core.wrap(out["heading"] - expected["heading"]), 0.0, atol=1e-12)
-    assert np.allclose(out["shield"] * max_shield, expected["shield"], atol=1e-9)
-    assert np.allclose(out["energy"] * max_energy, expected["energy"], atol=1e-9)
-    assert np.allclose(out["cooldown"] * DT, expected["gun_cooldown"], atol=1e-9)
 
 
 def test_forecasts_dead_reckon_exactly_on_their_own_models():

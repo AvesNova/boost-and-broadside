@@ -27,7 +27,7 @@ from . import belief as beliefs
 from . import critic, density, shots
 from .belief import Belief
 from .codes import SPREAD_FITS
-from .delta import DeltaCode, StateDynamics, state_dynamics
+from .delta import DELTA_BASELINES, DeltaCode, StateDynamics
 from .heads import HeadGroup, ShotTrajectoryHead, critic_values, next_state_logits
 from .inputs import (
     ACCELERATION_INPUTS,
@@ -54,6 +54,7 @@ from .state_code import (
     MEANS,
     POSITION_LEVELS,
     POSITION_PERIOD,
+    SPREAD_INPUTS,
     ShipStateCode,
     StateCodeRanges,
     state_code_ranges,
@@ -108,10 +109,20 @@ class YemongConfig:
     rated policy needs it.
     next_state (`NEXT_STATES`): what the next-state head predicts. "absolute", the state at
     t + 1 as the state code (`state_code.ShipStateCode`), its logits over the persistence
-    baseline log(code_t + floor). "delta", each quantity's change from its physics baseline
-    as a symlog HL-Gauss code (`delta.DeltaCode`), its output bias starting at the measured
-    marginal; the forecast fed back is the belief's baseline plus the decoded change. The
-    inputs are the same state code either way.
+    baseline log(code_t + floor). "delta", each quantity's change from its baseline
+    (`delta_baseline`) as a symlog HL-Gauss code (`delta.DeltaCode`), its output bias
+    starting at the measured marginal; the forecast fed back is the belief plus the decoded
+    change, and the belief carries the full covariance of the kinematic state
+    (`state_code.COVARIANCE_STATE`, appended to its spreads), propagated by the kinematics'
+    Jacobian. Round 1's rule baselines are gone: a policy trained with them does not load.
+    delta_baseline (`delta.DELTA_BASELINES`, with next_state "delta"): "persistence",
+    nothing changes, so the target is truth(t + 1) - truth(t).
+    spread_inputs (`state_code.SPREAD_INPUTS`): how a ship row reads its belief's spread.
+    "scalar": the position code blurred by one sigma for both axes, the velocity code by
+    its covariance. "ellipse": the position code blurred per world axis by the position
+    covariance's marginal sigmas, and the position and velocity ellipses (log sigma_major,
+    log sigma_minor, the doubled angle times the anisotropy; `state_code.ellipse_code`) at
+    the end of the ship token.
     acceleration_inputs: each ship row also reads its acceleration over the last tick, along
     and across its velocity and of its nose rate (`inputs.accelerations`), as symlog HL-Gauss
     codes and a validity flag at the end of the ship token. A visible row reads the
@@ -144,11 +155,19 @@ class YemongConfig:
     rotary_readout: bool = False  # hidden ships' rotary pairs from each block's temporal layer
     spread_fit: str = "v1"  # the belief's spread decoding; training builds "coarsest"
     next_state: str = "absolute"  # the next-state head's target: "absolute" or "delta"
+    delta_baseline: str = "persistence"  # the delta head's baseline
+    spread_inputs: str = "scalar"  # how a row reads its spread: "scalar" or "ellipse"
     acceleration_inputs: bool = False  # each ship row reads its acceleration over the last tick
 
     def __post_init__(self) -> None:
         if self.next_state not in NEXT_STATES:
             raise ValueError(f"next_state {self.next_state!r} is not one of {NEXT_STATES}")
+        if self.delta_baseline not in DELTA_BASELINES:
+            raise ValueError(
+                f"delta_baseline {self.delta_baseline!r} is not one of {DELTA_BASELINES}"
+            )
+        if self.spread_inputs not in SPREAD_INPUTS:
+            raise ValueError(f"spread_inputs {self.spread_inputs!r} is not one of {SPREAD_INPUTS}")
         if self.spread_fit not in SPREAD_FITS:
             raise ValueError(f"spread_fit {self.spread_fit!r} is not one of {SPREAD_FITS}")
         if self.order not in ORDERS:
@@ -297,9 +316,9 @@ class YemongBuild:
     without the current game. tick_length (s); num_ships sets only the density head's
     starting rate; ship_types: the card's type count; bullet_moves: a bullet's lifetime in
     ticks; muzzle_speed (m/s): the card's fastest; hit_radius (m): its smallest;
-    state_code: the ship-state code's ranges; dynamics: what the delta code's baselines read
-    (`delta.state_dynamics`), with `YemongConfig.next_state` "delta" only (None otherwise,
-    so an absolute build's record is as before)."""
+    state_code: the ship-state code's ranges; dynamics: what a rule baseline reads
+    (`delta.StateDynamics`): None for every build today (persistence reads nothing; round
+    1's rule baselines are gone), kept for the records that carry it."""
 
     config: YemongConfig
     tick_length: float
@@ -323,7 +342,6 @@ def yemong_build(config: YemongConfig, rules: Rules, types: ShipTypes) -> Yemong
         muzzle_speed=float(types.muzzle_speed.max()),
         hit_radius=float(types.hit_radius.min()),
         state_code=state_code_ranges(rules, types),
-        dynamics=state_dynamics(rules, types) if config.next_state == "delta" else None,
     )
 
 
@@ -341,12 +359,18 @@ class Yemong(nn.Module):
         width, hidden = config.width, 2 * config.width
         self.ship_types = build.ship_types
         self.tick_length = build.tick_length
-        self.state_code = ShipStateCode(build.state_code, config.spread_fit)
+        delta = config.next_state == "delta"
+        self.state_code = ShipStateCode(
+            build.state_code,
+            config.spread_fit,
+            covariance=delta,
+            spread_inputs=config.spread_inputs,
+        )
         self.delta_code = None
-        if config.next_state == "delta":
-            if build.dynamics is None:
-                raise ValueError("a delta next-state head needs the build's dynamics")
-            self.delta_code = DeltaCode(build.state_code, build.dynamics)
+        if delta:
+            if build.dynamics is not None:
+                raise ValueError("a build with rule dynamics is round 1's delta head (removed)")
+            self.delta_code = DeltaCode(build.state_code)
         self.shot_code = shots.shot_code_parameters(
             build.muzzle_speed,
             velocity_reach(),
@@ -355,7 +379,12 @@ class Yemong(nn.Module):
         )
         self.bullet_moves = build.bullet_moves
         self.encoder = Encoder(
-            ship_inputs(self.state_code.width, self.ship_types, config.acceleration_inputs),
+            ship_inputs(
+                self.state_code.width,
+                self.ship_types,
+                config.acceleration_inputs,
+                self.state_code.ellipse_width,
+            ),
             GLOBAL_INPUTS,
             FIELD_INPUTS,
             width,
@@ -413,10 +442,14 @@ class Yemong(nn.Module):
             self.encoder.ship.first.weight[:, : self.state_code.width].normal_(
                 0.0, self.state_code.groups**-0.5
             )
+            ellipse = self.state_code.ellipse_width
+            end = self.encoder.ship.first.weight.shape[1] - ellipse
             if self.config.acceleration_inputs:  # the codes as the state code's (not the flag)
-                self.encoder.ship.first.weight[:, -ACCELERATION_INPUTS:-1].normal_(
+                self.encoder.ship.first.weight[:, end - ACCELERATION_INPUTS : end - 1].normal_(
                     0.0, self.state_code.groups**-0.5
                 )
+            if ellipse:  # as the state code's columns
+                self.encoder.ship.first.weight[:, end:].normal_(0.0, self.state_code.groups**-0.5)
             for kind in (self.encoder.field, self.encoder.global_token, self.encoder.zone):
                 kind.first.weight[:, :POSITION_CODE].normal_(0.0, POSITION_LEVELS**-0.5)
             nn.init.zeros_(self.ship_heads.lasts[1].weight)

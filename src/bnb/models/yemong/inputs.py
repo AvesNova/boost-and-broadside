@@ -80,13 +80,16 @@ FIELD_INPUTS = POSITION_CODE + 3
 ZONE_INPUTS = POSITION_CODE + 1 + ZONE_ROLES + 4
 
 
-def ship_inputs(code_width: int, ship_types: int, accelerations: bool = False) -> int:
+def ship_inputs(
+    code_width: int, ship_types: int, accelerations: bool = False, ellipse_width: int = 0
+) -> int:
     """The ship token's width: the code, team and type one-hots, the flags, time since seen,
     respawn features (1 + 2 RESPAWN_HARMONICS), the pending action, the gradient and presence
-    (2 each), then with accelerations the acceleration inputs (ACCELERATION_INPUTS)."""
+    (2 each), then with accelerations the acceleration inputs (ACCELERATION_INPUTS), then
+    the ellipse inputs (`ShipStateCode.ellipse_code`, ellipse_width)."""
     respawn = 1 + 2 * RESPAWN_HARMONICS
     width = code_width + TEAMS + ship_types + len(SHIP_FLAGS) + 1 + respawn + NUM_JOINT + 2 + 2
-    return width + (ACCELERATION_INPUTS if accelerations else 0)
+    return width + (ACCELERATION_INPUTS if accelerations else 0) + ellipse_width
 
 
 @contract
@@ -298,7 +301,8 @@ def compose(
     codes and features, the global token, the fields and the zones, every position shifted by the
     replay's offset. presence_radius in m, tick_length in s. previous: the enemy rows' Motion
     at the tick before (`preceding` in a segment), given with the acceleration inputs only:
-    they end the ship token."""
+    they end the ship token, before the ellipse inputs (`state_code.spread_inputs`
+    "ellipse")."""
     ships, dtype = obs.ships, obs.ships.dtype
     own = replay.previous_action.shape[-1]
     column = {name: ships[..., SHIP[name]] for name in SHIP}
@@ -340,6 +344,7 @@ def compose(
             gradient,
             presence,
             *(() if change is None else (acceleration_code(change),)),
+            *((state_code.ellipse_code(spreads),) if state_code.ellipse_width else ()),
         ],
         -1,
     )

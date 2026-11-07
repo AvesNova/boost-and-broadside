@@ -23,15 +23,28 @@ import numpy as np
 import torch
 
 from bnb.models.yemong import codes
-from bnb.models.yemong.delta import COMPONENTS as DELTA_COMPONENTS
 
 from .baselines_measure import BINS, LOWEST, OUT, PER_DECADE, PLAYERS, PRESETS
+
+# Round 1's delta code (its knees, bounds and bins; removed from the model with arm 2), the
+# "today's code" columns of the report.
+ROUND_ONE_CODE = dict(
+    position_along=(0.002, 8.7, 51),
+    position_across=(0.003, 8.7, 51),
+    velocity_along=(0.1, 375.0, 51),
+    velocity_across=(0.1, 375.0, 51),
+    heading=(0.001, 0.9, 31),
+    nose_rate=(0.05, 24.7, 31),
+    angle_of_attack=(0.003, 0.49, 31),
+    shield=(0.001, 1.0, 31),
+    energy=(0.0005, 0.068, 31),
+    log_refractive_index=(0.0006, 0.48, 31),
+)
 
 GROUPS = tuple((player, preset) for player in PLAYERS for preset in PRESETS)
 CENTRES = 10.0 ** (LOWEST + (np.arange(BINS) + 0.5) / PER_DECADE)
 SIGNED_CENTRES = np.concatenate([[0.0], CENTRES, -CENTRES])
 EDGES = 10.0 ** (LOWEST + np.arange(BINS + 1) / PER_DECADE)
-DELTA = {c.name: c for c in DELTA_COMPONENTS}
 EVENT_THRESHOLD = dict(shield_recharge_wait=0.5 / 30.0, gun_cooldown=0.5)  # s; ticks
 NOISE = 1e-6  # |residual| at or below: float rounding, for the knee where the median is 0
 QUANTITIES = (
@@ -193,7 +206,7 @@ class Merged:
         return float(-(above * math.log(above) + (1 - above) * math.log(1 - above)))
 
     def delta_entropy(self, name, subset="all", group=None):
-        """(H, H_self) under today's delta code (`delta.COMPONENTS`; events: two bins)."""
+        """(H, H_self) under round 1's delta code (`ROUND_ONE_CODE`; events: two bins)."""
         quantity, _, component = name.split("/")
         if component == "norm":
             return float("nan"), float("nan")
@@ -206,8 +219,7 @@ class Merged:
                 f"{quantity}_{'along' if component.endswith('along') or component == 'x' else 'across'}"  # noqa: E501
             )
         )
-        c = DELTA[key]
-        return self.entropy(name, subset, group, (c.knee, c.bound, c.bins))
+        return self.entropy(name, subset, group, ROUND_ONE_CODE[key])
 
     def stats(self, name, subset="all", group=None):
         """The series' statistics in a subset."""
@@ -398,7 +410,7 @@ def table_headline(m: Merged, components=None) -> list[str]:
     lines = [
         "H: the entropy of the mean code (own code: knee at this baseline's median, range at "
         "its max); H - H_self: less the code's own smoothing floor. Today's code: "
-        "`delta.COMPONENTS` (two-bin events for the wait and the cooldown).",
+        "round 1's delta code, `ROUND_ONE_CODE` (two-bin events for the wait and the cooldown).",
         "",
         "| quantity | component | baseline | median | p90 | p99 | p99.9 | max | exactly 0 | below 1e-6 | H own | H - H_self own | H today's code | H - H_self today's | own code: knee, range, bins |",  # noqa: E501
         "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
