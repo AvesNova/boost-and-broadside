@@ -1,5 +1,7 @@
 # Notes: the delta heads, round 2 (discussion of 2026-11-07, not yet decided)
 
+> Superseded as the plan by `round2-plan.md` (2026-11-08); kept for the round-1 findings.
+
 The first delta arm (`2026-11-07-bc-arm-C-delta-aborted`) was stopped at update ~5 to fix
 problems found in its first updates. Proposals below are under discussion with the author;
 nothing here is decided until the author says so.
