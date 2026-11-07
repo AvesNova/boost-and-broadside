@@ -125,13 +125,19 @@ Both should be below 1e-3. If not, widen the range and say so.
   - for `l ≥ 1`: `unwrapped = lm_l + round((mean − lm_l)/p_l) p_l`, then
     `total += π_l`, then `mean += π_l / max(total, tiny) · (unwrapped − mean)`;
   - return `mean mod P`.
-- **Spread:**
+- **Spread** (v2 departs from v1 here, `YemongConfig.spread_fit = "coarsest"`; a
+  Gaussian code decodes the same; `"v1"` keeps v1's fit for build records from before the
+  option, and the equivalence fixtures test it):
   - set `a = 1` where `a > 1 − 1e-6`;
   - informative levels are those with `a > 1e-4`;
-  - per level `κ_l = ½(2π/p_l)²` and weight `w_l = informative · a²`;
-  - `var = max(0, −Σ w κ ln max(a, 1e-4) / max(Σ w κ², tiny))`;
+  - per level `κ_l = ½(2π/p_l)²` and implied variance `v_l = −ln max(a_l, 1e-4) / κ_l`;
+  - `var = v_k` at the coarsest level `k` with `a_k < 0.9`, else at the finest level;
   - `var = 0` if every level has at most two nonzero probabilities;
   - `spread = sqrt(var)` if any level is informative, else `P`.
+  - v1 fitted `var = −Σ w κ ln max(a, 1e-4) / Σ w κ²` with `w = informative · a²`. The
+    weights grow `c⁴` per level, so the finest informative level decided: a code with sharp
+    coarse levels and flat fine ones decoded to 0, two sharp points 500 m apart to 1 cm,
+    and Yemong's beliefs of hidden ships to metres while they were hundreds of metres off.
 
 **Position code** (`(P_x, P_y)`, `L` levels):
 - **Encode:** a 3-colour circular code per axis, both with the same sigma. The joint

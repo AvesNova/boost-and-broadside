@@ -102,11 +102,15 @@ class ShipStateCode(nn.Module):
     (..., width) and back. With the default card the spreads are 15 wide and the code 490.
 
     Runs in order: position 9x9, velocity 3x81, heading 4x4, nose rate 41, the five SCALARS
-    of 21 bins each, gun cooldown.
+    of 21 bins each, gun cooldown. spread_fit: how `decode` reads the position's and the
+    heading's spreads (`codes.circular_decode`).
     """
 
-    def __init__(self, ranges: StateCodeRanges) -> None:
+    def __init__(self, ranges: StateCodeRanges, spread_fit: str = "coarsest") -> None:
         super().__init__()
+        if spread_fit not in codes.SPREAD_FITS:
+            raise ValueError(f"spread_fit {spread_fit!r} is not one of {codes.SPREAD_FITS}")
+        self.spread_fit = spread_fit
         self.angle_of_attack_limit = ranges.angle_of_attack_limit
         self.shield_delay = ranges.shield_recharge_delay
         self.tick_length = ranges.tick_length
@@ -226,7 +230,10 @@ class ShipStateCode(nn.Module):
         maxima = self._maxima(ship_type)
         parts = probabilities.split([groups * size for groups, size in self.runs], -1)
         position, position_spread = codes.position_decode(
-            parts[0].unflatten(-1, (POSITION_LEVELS, 9)), (POSITION_PERIOD,) * 2, POSITION_LEVELS
+            parts[0].unflatten(-1, (POSITION_LEVELS, 9)),
+            (POSITION_PERIOD,) * 2,
+            POSITION_LEVELS,
+            self.spread_fit,
         )
         velocity, covariance = codes.velocity_decode(
             parts[1].unflatten(-1, (3, VELOCITY_BINS)),
@@ -239,6 +246,7 @@ class ShipStateCode(nn.Module):
             2.0 * math.pi,
             HEADING_COLOURS,
             HEADING_LEVELS,
+            self.spread_fit,
         )
         heading = torch.remainder(heading + math.pi, 2.0 * math.pi) - math.pi
         nose_rate, nose_spread = codes.scalar_decode(

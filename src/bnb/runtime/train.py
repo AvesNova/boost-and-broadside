@@ -90,7 +90,9 @@ def mixed(
 class TrainConfig:
     """model: "yemong" or "relational" (the toy learner), built with the settings of the
     same name (`yemong`, `relational`); their `bfloat16_matmuls` stays False, as `precision`
-    sets it. ship_card: the ship card's values by field, one per ship type, every field
+    sets it, and a new run's Yemong decodes its belief's spreads with
+    `spread_fit="coarsest"` (the config's own default, "v1", is what older build records
+    hold). ship_card: the ship card's values by field, one per ship type, every field
     given (`bnb.game.api.default_card`). environments: the training environments; length:
     ticks per segment; shards: consecutive segments per update (v1's batch, twice over:
     2,048 x 4 x 128); lookahead: ticks played after the last shard on every environment,
@@ -118,7 +120,7 @@ class TrainConfig:
     graph_ticks: int = 8
     lanes: LaneConfig = LaneConfig()
     model: str = "yemong"
-    yemong: YemongConfig = YemongConfig()
+    yemong: YemongConfig = YemongConfig(spread_fit="coarsest")  # (YemongConfig.spread_fit)
     relational: RelationalConfig = RelationalConfig()
     ship_card: dict[str, tuple[float, ...]] = dataclasses.field(default_factory=api.default_card)
     league: LeagueConfig = LeagueConfig()

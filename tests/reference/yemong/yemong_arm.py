@@ -201,13 +201,13 @@ class Arm:
         return codes.circular_encode(mean, sigma, period, colours, levels)
 
     def circular_decode(self, period, colours, levels, probabilities):
-        return codes.circular_decode(probabilities, period, colours, levels)
+        return codes.circular_decode(probabilities, period, colours, levels, spread_fit="v1")
 
     def position_encode(self, size, levels, mean, sigma):
         return codes.position_encode(mean, sigma, tuple(size), levels)
 
     def position_decode(self, size, levels, probabilities):
-        return codes.position_decode(probabilities, tuple(size), levels)
+        return codes.position_decode(probabilities, tuple(size), levels, spread_fit="v1")
 
     def scalar_sharp(self, low, high, bins, values):
         return codes.scalar_sharp(values, low, high, bins)
