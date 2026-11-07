@@ -160,3 +160,19 @@ Entries: time, what, why. Newest last.
   (quantile spread: 16/50/84th percentiles in code coordinates, less the smoothing) and an
   agent on `fix/error-head-spread`. Arms 3 and 4 rerun after the fix, as arm 3b / arm 4b.
 - **07:49** Arm 3 stopped cleanly at 4.19M (run renamed `2026-11-08-bc-arm3-split-aborted`). Arm 2b (job 14) started 07:48; ETA ~10:05, its tournament ~10:50.
+- **08:45** **Spread fix merged** (v2 c051739a; verified: ruff, the error-head and
+  extrapolation tests 63 pass; agent's quick tier 1569, slow dashboards 2, goldens of
+  C-fixed / arm 1 / arm 2 unchanged). Rule: 16/50/84th percentiles in bin coordinates (the
+  cumulative interpolated in its probit, so an encoded value decodes to 0), each side
+  deconvolved by the 0.75-bin smoothing; same rule for the rare jumps. On the stopped GPU
+  run's update-4 policy (read only, CPU): position sigma 7.1 m at 0-0.1 s (the second moment
+  said 218 m); past 0.5 s now narrow, but that is the head's own overconfidence (its raw
+  16-84% interval holds 0.39/0.23/0.13 of errors), and its median is unbiased. The gain stays
+  ~0.006 (the error is mostly unpredictable early, so the correction rightly barely acts).
+  Open for the author: the rare-jump spreads now read the most likely outcome (the wait's
+  sigma 0.03-0.08 s vs RMS 0.8-1.7 s), so the inputs carry no jump risk.
+- **08:46** Queued from worktree `bnb-run-arms34b` (detached c051739a): job 16 arm 3b BC 30M
+  (`2026-11-08-bc-arm3b-split`) after arm 2b's tournament; job 17 its tournament (arm 3b, arm
+  2, C-fixed 30M); job 18 arm 4b (`2026-11-08-bc-arm4b-extrapolation`); job 19 its tournament
+  (arm 4b, arm 3b, C-fixed 30M). ETAs: arm 2b ~10:15, tournament ~11:00; arm 3b ~13:20,
+  tournament ~14:05; arm 4b ~16:25, tournament ~17:10 (worst +1 h each).
