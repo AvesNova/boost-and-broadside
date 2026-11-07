@@ -49,6 +49,7 @@ TERMS = (
     *ENTROPY_TERMS,
     "value",
     "next_state",
+    "correction",
     "enemy_action",
     "density",
     "shot_trajectory",
@@ -68,6 +69,7 @@ FOLLOWING = ("capture", "obs", "done")
 # The auxiliary heads' losses (nats per token), as their groups' series.
 HEAD_SERIES = {
     "next_state": "next_state/loss",
+    "correction": "correction/loss",
     "enemy_action": "enemy_action/loss",
     "density": "density/loss",
     "shot_trajectory": "shot/loss/trajectory",
@@ -141,6 +143,9 @@ class LearnerConfig:
     entropy_shoot: float = -0.0081
     value: float = 0.007
     next_state: float = 0.0041
+    # the error head's (`yemong.delta_split`); its term and the physics head's share one
+    # denominator (every next-state row), so equal coefficients weigh a row equally
+    correction: float = 0.0033
     enemy_action: float = 0.11
     density: float = 0.021
     shot_trajectory: float = 0.007
@@ -237,6 +242,12 @@ def learning_rate(config: LearnerConfig, steps: int) -> float:
 
 def _head(unrolled, name: str):
     return getattr(unrolled, name, None)
+
+
+def _physics(label: dict) -> torch.Tensor:
+    """The rows the next-state (physics) head trains on: with `yemong.delta_split` the own
+    rows and the enemies seen at t, else every next-state row."""
+    return label.get("physics_mask", label["next_state_mask"])
 
 
 def factor_sums(entropies: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -446,10 +457,15 @@ class Learner:
         readout = {}
         if getattr(model, "rotary_readout", None) is not None:
             readout = dict(rotary_readout=labels.rotary_targets(model, trajectory, rows))
+        mask = labels.next_state_mask(trajectory, self.model)
+        split = {}
+        if getattr(model, "correction_code", None) is not None:
+            split = labels.split_masks(trajectory, mask)
         return dict(
             **readout,
+            **split,
             **labels.next_state_targets(model, trajectory, rows),
-            next_state_mask=labels.next_state_mask(trajectory, self.model),
+            next_state_mask=mask,
             enemy_action=enemy,
             enemy_mask=enemy_mask,
             density=labels.density_targets(self.grid, trajectory, rows),
@@ -538,9 +554,16 @@ class Learner:
         parts = None
         if _head(unrolled, "next_state_logits") is not None:
             terms["next_state"] = (
-                losses.masked_sum(
-                    self._next_state_cross_entropy(unrolled, label), label["next_state_mask"]
-                )
+                losses.masked_sum(self._next_state_cross_entropy(unrolled, label), _physics(label))
+                / denominator["next_state"]
+            )
+        if _head(unrolled, "correction_logits") is not None:
+            target, _, _ = labels.correction_targets(model, trajectory, unrolled.next_state_logits)
+            cross_entropy = codes.grouped_cross_entropy(
+                unrolled.correction_logits, target, model.correction_code.runs
+            ).sum(-1)
+            terms["correction"] = (
+                losses.masked_sum(cross_entropy, label["correction_mask"])
                 / denominator["next_state"]
             )
         if _head(unrolled, "enemy_action_logits") is not None:
@@ -1204,13 +1227,13 @@ class Learner:
                     enemy_hidden=~rows & ~visible,
                 )
                 for name, mask in members.items():
-                    part = losses.masked_sum(cross_entropy, label["next_state_mask"] & mask)
+                    part = losses.masked_sum(cross_entropy, _physics(label) & mask)
                     # the term's normalisation, so the populations sum to the term
                     basic[f"next_state_{name}"] = (
                         config.next_state * part / denominator["next_state"]
                     )
-            elif term == "rotary_readout" and not terms[term].requires_grad:
-                continue  # a model without the read-out
+            elif term in ("rotary_readout", "correction") and not terms[term].requires_grad:
+                continue  # a model without the read-out or the error head
             else:
                 basic[term] = getattr(config, term) * terms[term]
         return basic

@@ -47,6 +47,19 @@ EXEMPT = (
     "next_state/beats_bench_median/*",
     "next_state/slow_frame_share",
     "belief/anisotropy/*",
+    # logged with `YemongConfig.delta_split` only (off in this run)
+    "next_state/hidden/cross_entropy/*",
+    "next_state/hidden/error/*",
+    "correction/loss",
+    "correction/realised_error/*",
+    "correction/predicted_error/*",
+    "correction/realised_square_error/*",
+    "correction/predicted_variance/*",
+    "correction/within_one_sigma/*",
+    "correction/within_two_sigma/*",
+    "correction/step_over_limit/*",
+    "correction/capped_share/*",
+    "correction/support_clip/*",
 )
 
 

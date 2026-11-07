@@ -339,6 +339,7 @@ OVERRIDABLE = (
     "learner.entropy_shoot",
     "learner.value",
     "learner.next_state",
+    "learner.correction",
     "learner.enemy_action",
     "learner.density",
     "learner.shot_trajectory",

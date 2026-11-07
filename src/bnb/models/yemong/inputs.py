@@ -174,11 +174,14 @@ class Accelerations:
     """The acceleration inputs of rows (..., N): values (..., N, 3), along and across the
     velocity at t (the heading below SLOW_SPEED; across to the left) in m/s^2 and the nose
     rate's in rad/s^2, zero where not valid; valid, a real tick of motion; slow, the frame
-    was the heading."""
+    was the heading; world (..., N, 3), the same change in the world frame (x, y, the nose
+    rate's), zero where not valid: what an extrapolation baseline reads
+    (`delta.Rates`)."""
 
     values: torch.Tensor
     valid: torch.Tensor
     slow: torch.Tensor
+    world: torch.Tensor | None = None
 
 
 def accelerations(
@@ -225,7 +228,8 @@ def accelerations(
     along = change[..., 0] * unit_x + change[..., 1] * unit_y
     across = change[..., 1] * unit_x - change[..., 0] * unit_y
     values = torch.where(valid[..., None], torch.stack([along, across, change[..., 2]], -1), 0.0)
-    return Accelerations(values=values, valid=valid, slow=slow & valid)
+    world = torch.where(valid[..., None], change, 0.0)
+    return Accelerations(values=values, valid=valid, slow=slow & valid, world=world)
 
 
 def acceleration_code(inputs: Accelerations) -> torch.Tensor:

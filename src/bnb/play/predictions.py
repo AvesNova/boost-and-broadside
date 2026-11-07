@@ -15,6 +15,8 @@ The truth beside a prediction is the snapshot of the state the decision observed
 maps a view's rows to sim indices).
 """
 
+import dataclasses
+
 import numpy as np
 import torch
 from torch.utils import _pytree
@@ -115,6 +117,21 @@ def network(agent, team: int, observed: Snapshot, following: Snapshot) -> Predic
     origin = torch.zeros(rows.shape[0], 2)  # the arena's centre: every arena point's nearest
 
     believed_means, believed_spreads = decode.state_at(view.ships, replay)
+    rates = getattr(model, "segment_rates", lambda *_: None)(
+        inspection.carry, leading(view), leading(replay), inspection.reset[None]
+    )
+    if rates is not None:  # the one step's first view
+        rates = dataclasses.replace(
+            rates,
+            **{
+                field.name: getattr(rates, field.name)[0, 0].float()
+                if getattr(rates, field.name).is_floating_point()
+                else getattr(rates, field.name)[0, 0]
+                for field in dataclasses.fields(rates)
+            },
+        )
+    own_rows = replay.previous_action.shape[-1]
+    hidden = torch.cat([torch.zeros(own_rows, dtype=torch.bool), replay.age[0].cpu() > 0])
     forecast = decode.next_state(
         model,
         unrolled.next_state_logits,
@@ -123,6 +140,9 @@ def network(agent, team: int, observed: Snapshot, following: Snapshot) -> Predic
         rows[:, SHIP["ship_type"]].long(),
         offset,
         origin,
+        rates,
+        getattr(unrolled, "correction_logits", None),
+        hidden,
     )
     shown = alive.numpy()
     next_state = _ghosts(

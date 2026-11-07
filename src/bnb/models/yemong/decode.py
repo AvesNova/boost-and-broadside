@@ -188,20 +188,30 @@ def next_state(
     ship_type: torch.Tensor,
     offset,
     reference,
+    rates=None,
+    correction_logits: torch.Tensor | None = None,
+    hidden: torch.Tensor | None = None,
 ) -> ShipForecast:
     """Next-state head logits (..., N, width) of a Yemong to the forecast of the state at
     t + 1, in world coordinates (`ship_forecast`); means and spreads (..., N, ...): the rows'
     state at t as the model read it (`inputs.believed`; the delta head's forecast is its
-    baseline plus the decoded change); ship_type (..., N) int64."""
+    baseline plus the decoded change); ship_type (..., N) int64. rates: the extrapolation
+    baseline's (`Yemong.segment_rates`, on the model's device); with the error head's
+    logits and the hidden rows (..., N), the hidden rows take the corrected forecast, as the
+    belief stores it (`Yemong.forecast`)."""
     if model.delta_code is None:
         means, spreads = model.state_code.decode_logits(logits.float(), ship_type)
     else:  # on the model's device (the play shell decodes on the host)
         device = model.delta_code.max_shield.device
+        moved = lambda part: None if part is None else part.to(device)  # noqa: E731
         means, spreads = (
             part.to(logits.device)
             for part in model.forecast(
                 *(part.float().to(device) for part in (logits, means, spreads)),
                 ship_type.to(device),
+                None if correction_logits is None else correction_logits.float().to(device),
+                moved(hidden),
+                rates,
             )
         )
     return ship_forecast(means, spreads, offset, reference)

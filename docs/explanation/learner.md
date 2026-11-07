@@ -108,12 +108,19 @@ The coefficients are the fields of `bnb.learn.ppo.LearnerConfig` named after the
 | `policy` | own ships alive at `t` | the surrogate on the scaled advantage under the trust region ([below](#the-trust-region)) |
 | `entropy_power`, `entropy_stick`, `entropy_shoot` | the same | the joint action distribution's entropy by the chain rule in the joint's order: H(power), H(stick given power), H(shoot given both). They sum to the joint entropy, so equal coefficients weigh the joint as one coefficient would; a negative coefficient rewards it |
 | `value` | own ships alive or waiting to respawn; each view-step for the outcome | per level, the cross-entropy against the two-hot of the return, the outcome against its targets |
-| `next_state` | rows whose belief is valid at `t`, where `t` did not end an episode (delta: and whose ship is alive at `t` and `t + 1`) | absolute: the state code's cross-entropy against the sharp code of the true state at `t + 1`, in the model's shifted frame; delta: the delta code's against the code of the true change from `t` to `t + 1` |
+| `next_state` | rows whose belief is valid at `t`, where `t` did not end an episode (delta: and whose ship is alive at `t` and `t + 1`; with `YemongConfig.delta_split`, of those only the own rows and the enemies seen at `t`) | absolute: the state code's cross-entropy against the sharp code of the true state at `t + 1`, in the model's shifted frame; delta: the delta code's against the code of the true change from `t` to `t + 1` |
+| `correction` | with `YemongConfig.delta_split` only: the next-state rows whose belief at `t` is a forecast (hidden enemies) | the error code's cross-entropy against the code of the physics forecast's error, `truth(t + 1) - forecast(t + 1)` |
 | `enemy_action` | enemy rows alive at `t` | the cross-entropy of the enemy's actual joint action |
 | `density` | each view-step, over its count of valued own ships | Poisson terms over the hex cells, against the counts of living ships at `t` |
 | `shot_trajectory` | valid shots of own ships and of enemies visible at `t` | the trajectory code's cross-entropy, averaged over the shot's valid ages |
 | `shot_outcome` | the same shots | the outcome code's cross-entropy |
 | `rotary_readout` | every ship alive at `t`, visible or hidden (with Yemong's rotary read-out only) | the squared distance between a block's read-out (cos, sin) pair and the true one, averaged over the rotary frequencies (`bnb.learn.losses.phasor_square_error`), then over the blocks' read-outs; not in nats |
+
+With `YemongConfig.delta_split` the `next_state` and `correction` terms both divide by the count
+of every next-state row (seen and hidden), not by their own rows: a row then weighs the
+same in either term at equal coefficients, as it did in the one term before the split. So
+`next_state/loss` and `correction/loss` are each a part of a mean over every next-state
+row, and add up to it.
 
 Each term matches an independent computation on a stored segment
 (`tests/sections/test_learner.py::test_each_loss_term_matches_an_independent_computation`,
@@ -152,6 +159,19 @@ averages 0.0143 (median 0.0120, share 0.17) and the persistence head's 0.0177 (m
 0.0033 the persistence head averages 0.0144 (median 0.0123, share 0.18). The shares at this
 scale are noisy, so the run's own `gradient/share/trunk/next_state` is the check. (Round
 1's delta head, now removed, had 0.0025 by the same method.)
+
+**The error head's coefficient** (`LearnerConfig.correction`, default 0.0033, used only with
+`YemongConfig.delta_split`) starts equal to the physics head's per row (both 0.0033; the shared
+denominator above makes equal coefficients equal per row). Measured on arm 3's short CPU
+run (arm 2's BC config scaled to 64 environments of 32 ticks, 8 minibatches, float32, seed
+1, the gradient decomposition at every update, updates 10 to 20): the physics head's trunk
+norm averages 0.0146 (share 0.19; arm 2's one head 0.0144 at the same coefficient) and the
+error head's 0.0065 (share 0.036), over token shares of 0.64 seen rows (0.49 own, 0.15
+visible enemies) and 0.36 hidden rows. Per row the error head's trunk gradient is 0.78
+times the physics head's, inside the 1.5x band, so its coefficient stays 0.0033. On arm 4's short
+run (the extrapolation baseline, the same scale) the physics head's trunk norm averages
+0.0119 and the error head's 0.0086, 1.32 times per row, also inside the band. The run's
+`gradient/norm/trunk/correction` is the check.
 
 An update makes `epochs` passes of `minibatches` minibatches over the views; a view keeps
 its whole segment, which `unroll` needs. It clips the gradient norm, steps Adam with a
@@ -243,7 +263,17 @@ size of the segment):
   head (`YemongConfig.next_state = "delta"`), the code of each row's true change from `t`
   to `t + 1` (persistence; `bnb.models.yemong.delta.DeltaCode.targets`), which changes
   were clamped to the code's padded range (`next_state_clipped`), and whether the frame
-  was the heading (slower than 1 m/s, `next_state_slow`).
+  was the heading (slower than 1 m/s, `next_state_slow`). Under the extrapolation
+  baseline the change is from the baseline of the true state at `t` under the rates the
+  model read (`bnb.learn.labels.rates`, `Yemong.segment_rates`). With `YemongConfig.delta_split`, the
+  next-state mask split by sight at `t` (`bnb.learn.labels.split_masks`): `physics_mask`,
+  the own rows and the enemies seen at `t`, and `correction_mask`, the enemies whose belief
+  at `t` is a forecast.
+- **Error (with `YemongConfig.delta_split`):** built inside the loss, after the unroll, since it
+  reads the physics head (`bnb.learn.labels.correction_targets`): the code of each row's
+  `e = truth(t + 1) - forecast(t + 1)`, the forecast the physics advance of the row as the
+  model read it at `t` (`bnb.models.yemong.inputs.believed`) under the physics head's
+  detached logits, as `step` made it.
 - **Enemy action:** each enemy row's joint action at `t`.
 - **Density:** the hex counts of the living ships of each side at `t`, in world coordinates
   scaled by each environment's arena radius.
