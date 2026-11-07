@@ -41,7 +41,7 @@ from .state_code import (
 FINE_BINS = 51  # position across and velocity, per component
 COARSE_BINS = 31  # the other quantities
 SLOW_SPEED = 1.0  # m/s: below it the frame is the heading, not the velocity
-DELTA_BASELINES = ("persistence",)  # `YemongConfig.delta_baseline`
+DELTA_BASELINES = ("persistence", "extrapolation")  # `YemongConfig.delta_baseline`
 
 
 @dataclasses.dataclass(frozen=True)
@@ -98,6 +98,26 @@ COMPONENTS = (
     DeltaComponent("gun_cooldown", 1.0 / 30.0, 0.1, COARSE_BINS),  # s
 )
 CONTINUOUS = tuple(component.name for component in COMPONENTS)
+# The extrapolation baseline's code (`DeltaCode.baseline`; arm 4): knees the medians of its
+# residual on recorded scripted play of this tree, bounds its maxima rounded up (where the
+# median is 0, the median above 1e-6; bench/persistence_marginal.py --baseline
+# extrapolation). The residual of the position along the track is small (not the whole
+# move), so every position and velocity component is a symmetric FINE_BINS code.
+EXTRAPOLATION = (
+    DeltaComponent("position_along", 2.56e-4, 0.4, FINE_BINS),  # m
+    DeltaComponent("position_across", 9.72e-4, 0.5, FINE_BINS),  # m
+    DeltaComponent("velocity_along", 0.0134, 26.3, FINE_BINS),  # m/s
+    DeltaComponent("velocity_across", 0.0585, 24.9, FINE_BINS),
+    DeltaComponent("heading", 6.32e-4, 0.38, COARSE_BINS),  # rad
+    DeltaComponent("nose_rate", 0.052, 10.5, COARSE_BINS),  # rad/s (persistence, O3)
+    DeltaComponent("angle_of_attack", 0.00142, 0.23, COARSE_BINS),  # rad
+    DeltaComponent("shield_recharge_wait", 1.0 / 30.0, 6.0, COARSE_BINS),  # s
+    DeltaComponent("shield", 0.00399, 0.36, COARSE_BINS),  # of the type's maximum
+    DeltaComponent("energy", 2.08e-6, 0.06, COARSE_BINS),  # of the type's maximum
+    DeltaComponent("log_refractive_index", 0.00794, 0.16, COARSE_BINS),
+    DeltaComponent("gun_cooldown", 1.0 / 30.0, 0.1, COARSE_BINS),  # s
+)
+assert tuple(component.name for component in EXTRAPOLATION) == CONTINUOUS
 # The quantities that advance by the decoded median (their change is a rare jump: the most
 # likely outcome, decisions D8); the others by the mean.
 MEDIAN = ("shield_recharge_wait", "shield", "gun_cooldown")
@@ -364,12 +384,17 @@ MARGINAL = {
 }
 
 
+# The extrapolation code's starting marginal, as MARGINAL (bench/persistence_marginal.py
+# --baseline extrapolation); a component without one starts at the code of no change.
+EXTRAPOLATION_MARGINAL: dict[str, tuple[float, tuple[float, ...]]] = {}
+
+
 @dataclasses.dataclass(frozen=True)
 class StateDynamics:
     """What a rule baseline reads from the rules and the ship card, per type
     (`state_dynamics`): shield_recharge_rate (per s), shield_recharge_delay (s),
     ticks_between_shots. Persistence reads none of it, and its builds record None; the
-    build record keeps the field for the extrapolation baseline to come (D2)."""
+    extrapolation baseline's shield rule reads the recharge rate (D2)."""
 
     shield_recharge_rate: tuple[float, ...]
     shield_recharge_delay: tuple[float, ...]
@@ -468,13 +493,73 @@ def cap_variance(covariance: torch.Tensor, index: int, cap: float) -> torch.Tens
     return covariance * factor[..., :, None] * factor[..., None, :]
 
 
+@dataclasses.dataclass(frozen=True)
+class Rates:
+    """What the extrapolation baseline reads of last tick, per row (...): valid, a real tick
+    of motion (`inputs.Accelerations.valid`: a visible row seen alive at both ticks, a
+    hidden one present in the belief at both); acceleration (..., 2) world m/s^2 and
+    nose_acceleration rad/s^2, (v_t - v_{t-1}) / dt and its nose rate's (visible rows: the
+    observation's; hidden rows: the belief's own change); previous (..., len(MEANS)), the
+    row as the model read it at t - 1; gradient (..., 2), ln n's world gradient (1/m),
+    known where gradient_known (the row is visible); fired, the ship fired on tick t - 1
+    (the observation's flag; its cooldown's jump is read from previous)."""
+
+    valid: torch.Tensor
+    acceleration: torch.Tensor
+    nose_acceleration: torch.Tensor
+    previous: torch.Tensor
+    gradient: torch.Tensor
+    gradient_known: torch.Tensor
+    fired: torch.Tensor
+
+    def rows(self, rows: slice) -> Rates:
+        """The rates of the rows `rows` (a slice of the row axis)."""
+        return Rates(
+            **{
+                field.name: _row_slice(getattr(self, field.name), rows, field.name)
+                for field in dataclasses.fields(self)
+            }
+        )
+
+
+# the fields of Rates with a trailing feature axis (the rest end at the row axis)
+_FEATURED = ("acceleration", "previous", "gradient")
+
+
+def _row_slice(tensor: torch.Tensor, rows: slice, name: str) -> torch.Tensor:
+    return tensor[..., rows, :] if name in _FEATURED else tensor[..., rows]
+
+
+def arc(angle: torch.Tensor, tick: float) -> tuple[torch.Tensor, torch.Tensor]:
+    """(sin a / a, (1 - cos a) / a) dt: the chord of a steady turn by `angle` over a tick,
+    as (along, across) factors of the velocity at the start (a series near 0)."""
+    small = angle.abs() < 1e-3
+    safe = torch.where(small, 1.0, angle)
+    square = angle * angle
+    along = torch.where(small, 1.0 - square / 6.0, torch.sin(safe) / safe)
+    across = torch.where(small, angle * (0.5 - square / 24.0), (1.0 - torch.cos(safe)) / safe)
+    return along * tick, across * tick
+
+
 class DeltaCode(nn.Module):
     """The delta code of a Yemong build: `targets` (the training code of a pair of states),
     `decode` (head logits to the change's moments), `advance` (the belief at t to the
     forecast at t + 1). Width 624: 179 + 3 x 55 + 8 x 35."""
 
-    def __init__(self, ranges: StateCodeRanges) -> None:
+    def __init__(
+        self,
+        ranges: StateCodeRanges,
+        baseline: str = "persistence",
+        dynamics: StateDynamics | None = None,
+    ) -> None:
         super().__init__()
+        if baseline not in DELTA_BASELINES:
+            raise ValueError(f"baseline {baseline!r} is not one of {DELTA_BASELINES}")
+        if (baseline == "extrapolation") != (dynamics is not None):
+            raise ValueError("the extrapolation baseline, and only it, reads the dynamics")
+        self.baseline_name = baseline
+        self.code_components = COMPONENTS if baseline == "persistence" else EXTRAPOLATION
+        self.marginal_table = MARGINAL if baseline == "persistence" else EXTRAPOLATION_MARGINAL
         self.tick_length = ranges.tick_length
         tensor = lambda values: torch.tensor(values, dtype=torch.float32)  # noqa: E731
         self.register_buffer("max_shield", tensor(ranges.max_shield))
@@ -482,12 +567,15 @@ class DeltaCode(nn.Module):
         self.wait_limit = ranges.shield_recharge_delay
         self.cooldown_bins = ranges.cooldown_bins
         self.cooldown_limit = (ranges.cooldown_bins - 1) * ranges.tick_length
-        self.components = {component.name: component for component in COMPONENTS}
-        self.sizes = {component.name: component.width for component in COMPONENTS}
-        self.runs: codes.Runs = tuple((1, component.width) for component in COMPONENTS)
+        if dynamics is not None:  # the shield rule's recharge rate per type (D2)
+            self.register_buffer("recharge_rate", tensor(dynamics.shield_recharge_rate))
+        listed = self.code_components
+        self.components = {component.name: component for component in listed}
+        self.sizes = {component.name: component.width for component in listed}
+        self.runs: codes.Runs = tuple((1, component.width) for component in listed)
         self.order = CONTINUOUS
         self._inverse_ends = {}
-        for component in COMPONENTS:
+        for component in listed:
             table, lowest, highest = codes.symlog_mean_inverse(
                 component.bins, below=component.below
             )
@@ -513,16 +601,112 @@ class DeltaCode(nn.Module):
     def _maxima(self, ship_type: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         return per_ship(self.max_shield, ship_type), per_ship(self.max_energy, ship_type)
 
+    # ------------------------------------------------------------------ the baseline
+
+    def baseline(
+        self, means: torch.Tensor, rates: Rates | None, ship_type: torch.Tensor
+    ) -> torch.Tensor:
+        """(..., len(MEANS)) the baseline's state at t + 1 of the state at t (means): itself
+        under persistence; under extrapolation (O3, `bench/baselines_core.py`'s E):
+        position the arc of last tick's path turn at its mean speed, x + Arc(turn) (v + du/2
+        u) dt; velocity v + a dt, last tick's tangential and normal acceleration carried
+        from its frame into the frame at t; heading + omega dt + omega_dot dt^2 / 2; the
+        nose rate persistence; the angle of attack and energy last tick's change (energy
+        the rule, persistence, after a shot); shield, recharge wait and cooldown last tick's
+        change without an event, else the rule (the shield's recharge after the wait, the
+        countdowns; D2), the events a reset of the wait or a jump of the cooldown (or the
+        observation's shot flag); ln n + grad . v dt where the gradient is known (a visible
+        row), else last tick's change. Where rates are not valid (a first tick, just
+        spotted, spawned) every rate is 0 and the events take the rule. Shield, energy and
+        the countdowns clamped to their ranges."""
+        if self.baseline_name == "persistence":
+            return means
+        tick = self.tick_length
+        index = {name: i for i, name in enumerate(MEANS)}
+        column = lambda tensor, name: tensor[..., index[name]]  # noqa: E731
+        valid = rates.valid
+        flag = valid[..., None]
+        acceleration = torch.where(flag, rates.acceleration, 0.0)
+        nose_acceleration = torch.where(valid, rates.nose_acceleration, 0.0)
+        previous = torch.where(flag, rates.previous, means)  # no rate: no change
+        velocity, heading = means[..., 2:4], column(means, "heading")
+        unit_x, unit_y, _ = velocity_frame(velocity, heading)
+        before = velocity - acceleration * tick
+        prior_x, prior_y, _ = velocity_frame(before, heading)
+        tangential = acceleration[..., 0] * prior_x + acceleration[..., 1] * prior_y
+        normal = acceleration[..., 1] * prior_x - acceleration[..., 0] * prior_y
+        carried = from_frame(torch.stack([tangential, normal], -1), unit_x, unit_y)
+        turn = torch.atan2(prior_x * unit_y - prior_y * unit_x, prior_x * unit_x + prior_y * unit_y)
+        speed_change = torch.linalg.vector_norm(velocity, dim=-1) - torch.linalg.vector_norm(
+            before, dim=-1
+        )
+        along, across = arc(turn, tick)
+        bx = velocity[..., 0] + 0.5 * speed_change * unit_x
+        by = velocity[..., 1] + 0.5 * speed_change * unit_y
+        x = column(means, "x") + bx * along - by * across
+        y = column(means, "y") + bx * across + by * along
+        next_velocity = velocity + carried * tick
+        omega = column(means, "nose_rate")
+        next_heading = wrap(heading + omega * tick + 0.5 * nose_acceleration * tick * tick)
+
+        def change(name: str) -> torch.Tensor:  # last tick's change (0 without a rate)
+            return column(means, name) - column(previous, name)
+
+        max_shield, max_energy = self._maxima(ship_type)
+        attack = column(means, "angle_of_attack") + change("angle_of_attack")
+        wait, cooldown = column(means, "shield_recharge_wait"), column(means, "gun_cooldown")
+        reset = wait - torch.clamp_min(column(previous, "shield_recharge_wait") - tick, 0.0)
+        shield_event = ~valid | (reset > 0.5 * tick)
+        jump = cooldown - torch.clamp_min(column(previous, "gun_cooldown") - tick, 0.0)
+        fired = ~valid | rates.fired | (jump > 0.5 * tick)
+        shield = column(means, "shield")
+        recharge = per_ship(self.recharge_rate, ship_type) * torch.clamp(tick - wait, 0.0, tick)
+        shield = torch.where(shield_event, shield + recharge, shield + change("shield"))
+        wait = torch.where(
+            shield_event, torch.clamp_min(wait - tick, 0.0), wait + change("shield_recharge_wait")
+        )
+        energy = torch.where(
+            fired, column(means, "energy"), column(means, "energy") + change("energy")
+        )
+        cooldown = torch.where(
+            fired, torch.clamp_min(cooldown - tick, 0.0), cooldown + change("gun_cooldown")
+        )
+        log_index = column(means, "log_refractive_index")
+        drift = (rates.gradient * velocity).sum(-1) * tick
+        log_index = torch.where(
+            rates.gradient_known, log_index + drift, log_index + change("log_refractive_index")
+        )
+        values = dict(
+            x=x,
+            y=y,
+            velocity_x=next_velocity[..., 0],
+            velocity_y=next_velocity[..., 1],
+            heading=next_heading,
+            nose_rate=omega,
+            angle_of_attack=attack,
+            shield_recharge_wait=torch.clamp(wait, 0.0, self.wait_limit),
+            shield=torch.minimum(torch.clamp_min(shield, 0.0), max_shield),
+            energy=torch.minimum(torch.clamp_min(energy, 0.0), max_energy),
+            gun_cooldown=torch.clamp(cooldown, 0.0, self.cooldown_limit),
+            log_refractive_index=log_index,
+        )
+        return torch.stack([values[name] for name in MEANS], -1)
+
     # ------------------------------------------------------------------ targets
 
     def changes(
-        self, means: torch.Tensor, following: torch.Tensor, ship_type: torch.Tensor
+        self,
+        means: torch.Tensor,
+        following: torch.Tensor,
+        ship_type: torch.Tensor,
+        rates: Rates | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """((..., len(CONTINUOUS)) the changes from means to following (..., len(MEANS)) in
-        the code's frames and units; (...) slow: the frame was the heading)."""
+        """((..., len(CONTINUOUS)) the changes from the baseline of means to following
+        (..., len(MEANS)) in the code's frames (the velocity frame at t) and units; (...)
+        slow: the frame was the heading). rates: the extrapolation baseline's."""
         index = {name: i for i, name in enumerate(MEANS)}
         max_shield, max_energy = self._maxima(ship_type)
-        difference = following - means
+        difference = following - self.baseline(means, rates, ship_type)
         unit_x, unit_y, slow = velocity_frame(means[..., 2:4], means[..., index["heading"]])
         position = to_frame(difference[..., 0:2], unit_x, unit_y)
         velocity = to_frame(difference[..., 2:4], unit_x, unit_y)
@@ -550,18 +734,22 @@ class DeltaCode(nn.Module):
         """(the code (..., width), (..., len(CONTINUOUS)) bool: the changes clamped to the
         padded range) of changes as `changes` gives them."""
         parts, clipped = [], []
-        for i, component in enumerate(COMPONENTS):
+        for i, component in enumerate(self.code_components):
             code, clip = component.encode(continuous[..., i])
             parts.append(code)
             clipped.append(clip)
         return torch.cat(parts, -1), torch.stack(clipped, -1)
 
     def targets(
-        self, means: torch.Tensor, following: torch.Tensor, ship_type: torch.Tensor
+        self,
+        means: torch.Tensor,
+        following: torch.Tensor,
+        ship_type: torch.Tensor,
+        rates: Rates | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """The training code of the step from means to following, the clipped flags and
         the slow-frame flags."""
-        continuous, slow = self.changes(means, following, ship_type)
+        continuous, slow = self.changes(means, following, ship_type, rates)
         code, clipped = self.encode(continuous)
         return code, clipped, slow
 
@@ -581,7 +769,7 @@ class DeltaCode(nn.Module):
         quantities), in the code's frames and units."""
         parts = self.probabilities(logits)
         means, variances, medians = [], [], []
-        for c in COMPONENTS:
+        for c in self.code_components:
             part, inverse = parts[c.name], self.inverse(c.name)
             mean, variance = codes.symlog_decode(
                 part, c.knee, c.bound, c.bins, below=c.below, inverse=inverse
@@ -620,8 +808,8 @@ class DeltaCode(nn.Module):
         the atoms join into a smooth density where the quantiles spread and stay sharp
         where they coincide (a countdown's -dt)."""
         parts = []
-        for component in COMPONENTS:
-            share, quantiles = MARGINAL[component.name]
+        for component in self.code_components:
+            share, quantiles = self.marginal_table.get(component.name, (1.0, (0.0,)))
             values = torch.tensor(quantiles, dtype=torch.float64)
             coordinate = codes.symlog_coordinate(values, component.knee, component.spacing)
             low, high = component.low, component.width - 1 - component.low
@@ -664,14 +852,16 @@ class DeltaCode(nn.Module):
         logits: torch.Tensor,
         ship_type: torch.Tensor,
         state_code: ShipStateCode,
+        rates: Rates | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """The forecast at t + 1 (means (..., len(MEANS)), spreads (..., spread_count) in the
-        covariance layout) of the belief at t and the head's logits.
+        covariance layout) of the belief at t and the head's logits; rates: the
+        extrapolation baseline's (`baseline`).
 
-        Means: the belief plus the decoded change (`point`), position and velocity rotated
-        from the belief's velocity frame (its heading below SLOW_SPEED) to world; shield,
-        energy and the countdowns clamped to their ranges. Spread: the covariance P of
-        COVARIANCE_STATE as F P F^T + Q (`kinematics_jacobian`; Q the changes' variances,
+        Means: the belief's baseline plus the decoded change (`point`), position and
+        velocity rotated from the belief's velocity frame (its heading below SLOW_SPEED) to
+        world; shield, energy and the countdowns clamped to their ranges. Spread: the covariance P
+        of COVARIANCE_STATE as F P F^T + Q (`kinematics_jacobian`; Q the changes' variances,
         position and velocity rotated to world), the heading's variance capped at the
         uniform circle's and the nose rate's at a uniform one over the state code's range
         (`cap_variance`); the other sigmas the root of the belief's
@@ -686,9 +876,11 @@ class DeltaCode(nn.Module):
         sigma = dict(zip(SPREADS, spreads[..., : len(SPREADS)].unbind(-1), strict=True))
         max_shield, max_energy = self._maxima(ship_type)
         unit_x, unit_y, _ = velocity_frame(means[..., 2:4], mean["heading"])
+        base = self.baseline(means, rates, ship_type)
+        start = dict(zip(MEANS, base.unbind(-1), strict=True))
 
-        position = means[..., 0:2] + from_frame(change[..., 0:2], unit_x, unit_y)
-        velocity = means[..., 2:4] + from_frame(change[..., 2:4], unit_x, unit_y)
+        position = base[..., 0:2] + from_frame(change[..., 0:2], unit_x, unit_y)
+        velocity = base[..., 2:4] + from_frame(change[..., 2:4], unit_x, unit_y)
 
         covariance = unpack_covariance(spreads[..., state_code.covariance_slice])
         jacobian = kinematics_jacobian(tick, dtype, means.device)
@@ -713,7 +905,7 @@ class DeltaCode(nn.Module):
         covariance = cap_variance(covariance, 5, UNIFORM_NOSE_RATE_VARIANCE)
 
         def scalar(name: str, scale=1.0):
-            value = mean[name] + change[..., part[name]] * scale
+            value = start[name] + change[..., part[name]] * scale
             spread = torch.sqrt(sigma[name] ** 2 + variance[..., part[name]] * scale**2)
             return value, spread
 
@@ -727,14 +919,14 @@ class DeltaCode(nn.Module):
         wait = torch.clamp(wait, 0.0, self.wait_limit)
 
         held = torch.clamp_min(
-            state_code._cooldown_sharp(mean["gun_cooldown"])
+            state_code._cooldown_sharp(start["gun_cooldown"])
             + spreads[..., state_code.residual_slice],
             0.0,
         )
         cooldown_change = self.probabilities(logits)["gun_cooldown"].to(dtype)
         cooldown_code = self._cooldown_code(held, cooldown_change, state_code)
         cooldown = torch.clamp(
-            mean["gun_cooldown"] + change[..., part["gun_cooldown"]], 0.0, self.cooldown_limit
+            start["gun_cooldown"] + change[..., part["gun_cooldown"]], 0.0, self.cooldown_limit
         )
         residual = cooldown_code - state_code._cooldown_sharp(cooldown)
 
@@ -743,8 +935,8 @@ class DeltaCode(nn.Module):
             y=position[..., 1],
             velocity_x=velocity[..., 0],
             velocity_y=velocity[..., 1],
-            heading=wrap(mean["heading"] + change[..., part["heading"]]),
-            nose_rate=mean["nose_rate"] + change[..., part["nose_rate"]],
+            heading=wrap(start["heading"] + change[..., part["heading"]]),
+            nose_rate=start["nose_rate"] + change[..., part["nose_rate"]],
             angle_of_attack=attack,
             shield_recharge_wait=wait,
             shield=shield,

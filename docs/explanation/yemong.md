@@ -132,8 +132,8 @@ state code above, are the same either way.
   add to the persistence baseline `log(code_t + 1e-3)` (`bnb.models.yemong.heads.next_state_logits`),
   so it starts as "nothing changes", and the forecast is the decoded code.
 - **`"delta"`**: each quantity's one-tick change from its baseline
-  (`bnb.models.yemong.delta`), chosen by `YemongConfig.delta_baseline`. Today's one
-  baseline is `"persistence"`: nothing changes, so the target is
+  (`bnb.models.yemong.delta`), chosen by `YemongConfig.delta_baseline`
+  (`"persistence"` here). Under `"persistence"` nothing changes, so the target is
   `truth(t + 1) - truth(t)` (the measurements behind it are in
   `docs/rewrite/sections/baselines-bench.md`). Position and velocity are coded along and
   across the velocity at `t` (across to the left); below 1 m/s the frame is the heading
@@ -216,6 +216,100 @@ state code above, are the same either way.
   two-bin events) are removed: a policy trained with them does not load (its build record
   holds the dynamics they read, and the model refuses it). Select the arm with
   `--set yemong.next_state=delta --set yemong.delta_baseline=persistence`.
+
+### The error head: the next-state work split
+
+`YemongConfig.delta_split` (with `next_state = "delta"`) splits the next-state work in two
+(arms 3 and 4, `docs/rewrite/sections/arms34-brief.md`):
+
+- The next-state head becomes the **physics head**: the same head, code and targets as
+  above, its loss masked to the own rows and the enemies seen at `t`. It still runs on the
+  hidden rows, whose forecast reads it; they give it no gradient.
+- A second head on the same tokens, the **error head** (`bnb.models.yemong.correction`),
+  trains on the hidden enemies only. Its target is how wrong the physics forecast is,
+  `e = truth(t + 1) - forecast(t + 1)`, where `forecast(t + 1)` is the belief at `t` plus the
+  physics head's decoded change. The physics term is detached, so the error head's loss
+  gives the physics head no gradient. The head is built after every other layer (the rest
+  initialise as without it), its last weight zero and its bias the measured marginal.
+
+Every quantity of the state code has a symlog HL-Gauss code of its **uncapped** error over
+the full range a hidden ship's error can reach. Position and velocity are coded on **three
+world projection axes**, at 0, 60 and 120 degrees, one code each. A hidden ship's error is
+correlated across any fixed pair of axes, with a sign set by its turn
+(`docs/rewrite/sections/baselines-bench.md`, 2.2), and three marginals recover the full 2 x 2
+covariance. The mean error is the least-squares vector of the three projected means. The
+covariance S solves `u_i^T S u_i = var_i` for its three entries, clamped to positive
+semi-definite (`correction.covariance_of`). The heading's error is wrapped. The others are
+scalars, with shield and energy as fractions of the type's maximum. Bins are about
+`1 + 4 ln(1 + range / knee)`, odd, so two per e-fold on each side of the zero:
+
+| Quantity | Knee | Bound (the last real centre) | Real bins |
+|---|---|---|---|
+| position, per axis (m) | 11.9 | 26 244 (the position code's period) | 31 |
+| velocity, per axis (m/s) | 9.09 | 639 (twice the velocity code's reach) | 19 |
+| heading (rad) | 0.160 | pi | 13 |
+| nose rate (rad/s) | 0.587 | 16 | 15 |
+| angle of attack (rad) | 0.0267 | 1.05 | 15 |
+| shield recharge wait (s) | 0.217 | 6 | 15 |
+| shield (of the maximum) | 0.0421 | 1 | 13 |
+| energy (of the maximum) | 0.00918 | 1 | 19 |
+| log refractive index | 3.47e-4 | 1.39 | 35 |
+| gun cooldown (s) | 0.0334 | 0.1 | 7 |
+
+The rest's bounds are the spans of their state-code ranges. The knees are the median |e| on
+a short CPU run of the arm at initialisation (`bench/correction_marginal.py`, 139 922 hidden
+rows). The belief of a hidden ship is then the physics head's open-loop forecast. Where the
+error is exactly 0 most of the time (the wait 92%, the shield 91%) the knee is the median
+above 1e-6. The code is 338 outputs. The rare-jump quantities read their median within 2
+bins (`correction.MEDIAN_WINDOW`; these codes are coarse, and the delta code's window of 4
+bins would reach a jump's mode).
+
+The advance of a hidden row (`correction.CorrectionCode.correct`, through
+`Yemong.forecast`) is a rate-limited step toward the truth: `mean(t + 1) = forecast(t + 1)
++ step` per quantity, with the step `eta g m`, then capped. Here m is e's median (per
+projection axis, then the least-squares vector), g the head's confidence in it, `|m|^2 /
+(|m|^2 + sigma^2)` with sigma^2 e's variance per dimension (`correction.confident`), and eta
+a fixed rate per tick (`YemongConfig.correction_rate`, default 0.1: a time constant of
+about 10 ticks, 0.33 s). The cap is `r tanh(|eta g m| / r)` along `m` for position and
+velocity, and `r tanh(eta g m / r)` for the heading, the nose rate, the angle of attack,
+energy and ln n. Here r is the quantity's one-tick physical bound (`correction.STEP_LIMITS`,
+the bench's persistence maxima: 7.99 m, 40.6 m/s, 0.311 rad, 10.2 rad/s, 0.163 rad, 0.0457
+of the maximum energy, 0.232), so the belief moves toward the truth no faster than the ship
+could move in a tick. The recharge wait, the shield and the gun cooldown step by e's median
+itself, the most likely outcome. The head predicts e again every tick from the corrected
+belief, so a fraction per tick still converges where it is right, and the loop's gain stays
+below 1 where it is wrong or an update stale.
+
+The brief asked for a step toward E e, capped at r. On a short CPU run that ran away: the
+mean of a broad code over +-26 km is set by its tails, and an early head predicts one
+offset for every hidden row. Stepped toward at up to r per tick and integrated over a
+hidden ship's age, the push dominated the next update's errors (the replay is one update
+stale), which the head then chased. By update 4 the step was at r for every hidden row and
+the belief's position error at 1-2 s went 51, 27, 94, 128 then 459 m, against arm 2's
+20-58 m. The median alone did the same a little later (118 m at update 4).
+
+With the confidence gain and eta 0.1 the same short run (arm 2's BC config scaled to 64
+environments of 32 ticks, float32, seed 1, 20 updates) stayed stable, its step at 6% of r
+for position on average (1.4% of rows past r), and its belief matched arm 2's by hidden
+age (updates 10-20, position error 1.2 / 7.1 / 21 / 54 / 147 m at 0-0.1 / 0.1-0.5 / 0.5-1
+/ 1-2 / 2-5 s; arm 2 1.0 / 6.5 / 20 / 46 / 143 m). The sigma it reports now errs wide
+where arm 2's erred narrow: the truth within one sigma of position 0.74 / 1.00 / 1.00 /
+1.00 / 0.98 (arm 2: 0.42 / 0.11 / 0.07 / 0.08 / 0.04), velocity 0.80 / 0.98 / 0.93 / 0.84
+/ 0.72 (arm 2: 0.66 / 0.31 / 0.21 / 0.21 / 0.13), heading 0.86 / 0.99 / 0.96 / 0.86 / 0.75
+(arm 2: 0.70 / 0.50 / 0.43 / 0.43 / 0.35). The early error head is broad: its position
+sigma is 450-680 m at every age against a realised spread of 3-130 m, and the GPU run's
+`correction/predicted_variance/*` against `correction/realised_square_error/*` shows
+whether it sharpens.
+
+The spread is e's second moment about the applied step, `Var e + (E e - step)^2`: for
+position and velocity the 2 x 2 covariance plus the outer product of the unapplied part. It
+replaces the physics' `F P F^T + Q` for hidden rows. The covariance is block diagonal (the
+error head codes position, velocity, heading and the nose rate independently), with the
+same caps on the heading's and the nose rate's variance. The cooldown's code is the
+forecast's sharp code moved by e's distribution. The ellipse inputs and the per-axis blur
+read this covariance. A row seen at `t` takes the
+physics forecast, as without the split. Select the arm with `--set yemong.delta_split=true`
+on arm 2's line.
 
 ### Spread inputs: scalar or ellipse
 
@@ -306,6 +400,7 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
 | value | own ships | categorical logits per local reward level |
 | enemy action | ship rows | the next joint action's logits |
 | next state | ship rows | the next state code, as a change from the current one (absolute), or each quantity's change from persistence (delta) |
+| error (with `delta_split`) | ship rows | the physics forecast's error for a hidden ship, per quantity |
 | outcome | global token | win, tie, loss, unresolved |
 | density | global token | ally and enemy rates on a hex grid that scales with the arena |
 | shot outcome | ship rows | how a shot fired now would end |

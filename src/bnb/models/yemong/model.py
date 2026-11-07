@@ -27,7 +27,8 @@ from . import belief as beliefs
 from . import critic, density, shots
 from .belief import Belief
 from .codes import SPREAD_FITS
-from .delta import DELTA_BASELINES, DeltaCode, StateDynamics
+from .correction import CorrectionCode
+from .delta import DELTA_BASELINES, DeltaCode, Rates, StateDynamics, state_dynamics
 from .heads import HeadGroup, ShotTrajectoryHead, critic_values, next_state_logits
 from .inputs import (
     ACCELERATION_INPUTS,
@@ -116,13 +117,25 @@ class YemongConfig:
     (`state_code.COVARIANCE_STATE`, appended to its spreads), propagated by the kinematics'
     Jacobian. Round 1's rule baselines are gone: a policy trained with them does not load.
     delta_baseline (`delta.DELTA_BASELINES`, with next_state "delta"): "persistence",
-    nothing changes, so the target is truth(t + 1) - truth(t).
+    nothing changes, so the target is truth(t + 1) - truth(t); "extrapolation" (arm 4,
+    with acceleration_inputs), last tick's rates carried a tick (`delta.DeltaCode.baseline`):
+    the target is truth(t + 1) less that, and the carry holds every row as the model read
+    it the tick before (`Carry.previous`).
     spread_inputs (`state_code.SPREAD_INPUTS`): how a ship row reads its belief's spread.
     "scalar": the position code blurred by one sigma for both axes, the velocity code by
     its covariance. "ellipse": the position code blurred per world axis by the position
     covariance's marginal sigmas, and the position and velocity ellipses (log sigma_major,
     log sigma_minor, the doubled angle times the anisotropy; `state_code.ellipse_code`) at
     the end of the ship token.
+    delta_split (with next_state "delta"): split the next-state work (arms 3-4). The
+    next-state head becomes the physics head, trained on allies and visible enemies only
+    (still run on hidden rows: their forecast reads it). A second head on the same tokens,
+    the error head (`correction.CorrectionCode`), trained on hidden enemies only, predicts
+    the physics forecast's error e = truth(t + 1) - forecast(t + 1); a hidden row's belief
+    advances by the physics forecast plus a step toward e's median (capped at the one-tick physical
+    bound) and takes its spread from e's distribution, in place of the physics' F P F^T + Q.
+    Off by default. correction_rate (eta, with delta_split): the share of the error head's
+    confident median applied per tick (`correction.CorrectionCode.moments`), before the cap.
     acceleration_inputs: each ship row also reads its acceleration over the last tick, along
     and across its velocity and of its nose rate (`inputs.accelerations`), as symlog HL-Gauss
     codes and a validity flag at the end of the ship token. A visible row reads the
@@ -158,6 +171,8 @@ class YemongConfig:
     delta_baseline: str = "persistence"  # the delta head's baseline
     spread_inputs: str = "scalar"  # how a row reads its spread: "scalar" or "ellipse"
     acceleration_inputs: bool = False  # each ship row reads its acceleration over the last tick
+    delta_split: bool = False  # physics head on seen rows, an error head for hidden rows
+    correction_rate: float = 0.1  # eta: the error head's step per tick, of its confident median
 
     def __post_init__(self) -> None:
         if self.next_state not in NEXT_STATES:
@@ -166,6 +181,10 @@ class YemongConfig:
             raise ValueError(
                 f"delta_baseline {self.delta_baseline!r} is not one of {DELTA_BASELINES}"
             )
+        if self.delta_baseline == "extrapolation" and not self.acceleration_inputs:
+            raise ValueError("the extrapolation baseline reads the acceleration inputs")
+        if self.delta_split and self.next_state != "delta":
+            raise ValueError("delta_split needs next_state 'delta'")
         if self.spread_inputs not in SPREAD_INPUTS:
             raise ValueError(f"spread_inputs {self.spread_inputs!r} is not one of {SPREAD_INPUTS}")
         if self.spread_fit not in SPREAD_FITS:
@@ -204,7 +223,9 @@ class Carry:
     view's position offset, drawn uniformly in [0, P) at every reset; nonfinite (R,) int64,
     a running count of non-finite forecast entries (replaced by zeros); motion: the enemy
     rows' Motion at the last decision, what a hidden row's acceleration inputs difference
-    against (None without `YemongConfig.acceleration_inputs`)."""
+    against (None without `YemongConfig.acceleration_inputs`); previous (R, N, len(MEANS)):
+    every row as the model read it at the last decision (`inputs.believed`), what the
+    extrapolation baseline's last-tick changes difference against (None without it)."""
 
     state: torch.Tensor
     convolution_buffer: torch.Tensor
@@ -213,6 +234,7 @@ class Carry:
     offset: torch.Tensor
     nonfinite: torch.Tensor
     motion: Motion | None = None
+    previous: torch.Tensor | None = None
 
 
 ABLATIONS = ("rotary", "forecast")  # the inference-time ablations `Ablations` carries
@@ -235,7 +257,8 @@ class Decision:
     """One step's outputs, per view: policy_logits (R, S, NUM_JOINT); enemy_action_logits and
     next_state_logits (R, N - S, ...) for the enemy rows; values (R, S, levels) in the configured
     level order; outcome_probabilities (R, 4); the next carry (previous_action not yet
-    replaced by the sample); the replay record."""
+    replaced by the sample); the replay record; correction_logits (R, N - S, ...), the error
+    head's, for the enemy rows (None without `YemongConfig.delta_split`)."""
 
     policy_logits: torch.Tensor
     enemy_action_logits: torch.Tensor
@@ -244,6 +267,7 @@ class Decision:
     outcome_probabilities: torch.Tensor
     carry: Carry
     replay: Replay
+    correction_logits: torch.Tensor | None = None
 
 
 @contract
@@ -253,7 +277,8 @@ class Unrolled:
     outcome_logits (4), density_log_rates (2 cells: ally cells, then enemy cells),
     shot_outcome_logits (N, 19) and shot_latents (N, D) for `Yemong.shot_trajectory`;
     rotary_readout (N, blocks, 2, pairs), each block's read-out (cos, sin) rows per ship
-    (None without `YemongConfig.rotary_readout`)."""
+    (None without `YemongConfig.rotary_readout`); correction_logits (N, ...), the error
+    head's (every row; None without `YemongConfig.delta_split`)."""
 
     policy_logits: torch.Tensor
     enemy_action_logits: torch.Tensor
@@ -265,6 +290,7 @@ class Unrolled:
     shot_outcome_logits: torch.Tensor
     shot_latents: torch.Tensor
     rotary_readout: torch.Tensor | None = None
+    correction_logits: torch.Tensor | None = None
 
 
 BELIEF_FIELDS = tuple(field.name for field in dataclasses.fields(Belief))  # (traced as constants)
@@ -317,8 +343,8 @@ class YemongBuild:
     starting rate; ship_types: the card's type count; bullet_moves: a bullet's lifetime in
     ticks; muzzle_speed (m/s): the card's fastest; hit_radius (m): its smallest;
     state_code: the ship-state code's ranges; dynamics: what a rule baseline reads
-    (`delta.StateDynamics`): None for every build today (persistence reads nothing; round
-    1's rule baselines are gone), kept for the records that carry it."""
+    (`delta.StateDynamics`): the extrapolation baseline's shield rule reads it; None for
+    every other build (persistence reads nothing; round 1's rule baselines are gone)."""
 
     config: YemongConfig
     tick_length: float
@@ -342,6 +368,11 @@ def yemong_build(config: YemongConfig, rules: Rules, types: ShipTypes) -> Yemong
         muzzle_speed=float(types.muzzle_speed.max()),
         hit_radius=float(types.hit_radius.min()),
         state_code=state_code_ranges(rules, types),
+        dynamics=(
+            state_dynamics(rules, types)
+            if config.next_state == "delta" and config.delta_baseline == "extrapolation"
+            else None
+        ),
     )
 
 
@@ -368,9 +399,9 @@ class Yemong(nn.Module):
         )
         self.delta_code = None
         if delta:
-            if build.dynamics is not None:
+            if config.delta_baseline == "persistence" and build.dynamics is not None:
                 raise ValueError("a build with rule dynamics is round 1's delta head (removed)")
-            self.delta_code = DeltaCode(build.state_code)
+            self.delta_code = DeltaCode(build.state_code, config.delta_baseline, build.dynamics)
         self.shot_code = shots.shot_code_parameters(
             build.muzzle_speed,
             velocity_reach(),
@@ -433,6 +464,15 @@ class Yemong(nn.Module):
             if config.rotary_readout
             else None
         )
+        # The error head (`delta_split`), after every other draw, so the rest initialise as
+        # they would without it: its last layer zero, its bias the measured marginal.
+        self.correction_code, self.correction_head = None, None
+        if config.delta_split:
+            self.correction_code = CorrectionCode(build.state_code, config.correction_rate)
+            self.correction_head = HeadGroup(width, hidden, (self.correction_code.width,))
+            with torch.no_grad():
+                nn.init.zeros_(self.correction_head.lasts[0].weight)
+                self.correction_head.lasts[0].bias.copy_(self.correction_code.marginal_logits())
 
     def _initialise(self, num_ships: int, cells: int) -> None:
         """Code columns of each first projection ~ N(0, 1 / groups); the next-state head
@@ -482,13 +522,36 @@ class Yemong(nn.Module):
         means: torch.Tensor,
         spreads: torch.Tensor,
         ship_type: torch.Tensor,
+        correction_logits: torch.Tensor | None = None,
+        hidden: torch.Tensor | None = None,
+        rates: Rates | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Next-state logits (..., N, next_state_width) to the forecast at t + 1 (means,
         spreads; positions in the shifted frame, as the representative nearest the state at
         t) of the rows' state at t (means (..., N, 12), spreads, as the model read them:
-        `inputs.believed`); ship_type (..., N) int64."""
+        `inputs.believed`); ship_type (..., N) int64. With `YemongConfig.delta_split` and
+        the error head's logits (..., N, correction width), the rows where hidden (..., N)
+        is set (a belief, not the truth, at t) take the corrected forecast
+        (`correction.CorrectionCode.correct`); without them every row is the physics'.
+        rates: the extrapolation baseline's (`rates`, required by it)."""
         if self.delta_code is not None:
-            return self.delta_code.advance(means, spreads, logits, ship_type, self.state_code)
+            if self._extrapolates and rates is None:
+                raise ValueError("the extrapolation baseline needs the rows' rates")
+            physics = self.delta_code.advance(
+                means, spreads, logits, ship_type, self.state_code, rates
+            )
+            if correction_logits is None:
+                return physics
+            if hidden is None:
+                raise ValueError("the corrected forecast needs the hidden rows")
+            corrected = self.correction_code.correct(
+                physics[0], correction_logits, ship_type, self.state_code
+            )
+            rows = hidden[..., None]
+            return (
+                torch.where(rows, corrected[0], physics[0]),
+                torch.where(rows, corrected[1], physics[1]),
+            )
         predicted, predicted_spreads = self.state_code.decode_logits(logits, ship_type)
         position = _nearest(predicted[..., 0:2], means[..., 0:2])
         return torch.cat([position, predicted[..., 2:]], -1), predicted_spreads
@@ -527,6 +590,11 @@ class Yemong(nn.Module):
             offset=POSITION_PERIOD * torch.rand((views, 2), dtype=dtype, device=device),
             nonfinite=torch.zeros(views, dtype=torch.int64, device=device),
             motion=rows,
+            previous=(
+                torch.zeros((views, num_ships, len(MEANS)), dtype=dtype, device=device)
+                if self._extrapolates
+                else None
+            ),
         )
 
     @staticmethod
@@ -565,9 +633,53 @@ class Yemong(nn.Module):
             offset=offset,
             nonfinite=carry.nonfinite,
             motion=rows,
+            previous=None if carry.previous is None else masked(carry.previous),
         )
 
     # ------------------------------------------------------------------ shared
+
+    @property
+    def _extrapolates(self) -> bool:
+        return self.delta_code is not None and self.delta_code.baseline_name == "extrapolation"
+
+    def rates(
+        self,
+        ships: torch.Tensor,
+        means: torch.Tensor,
+        previous: torch.Tensor,
+        accelerations: Accelerations,
+    ) -> Rates:
+        """The extrapolation baseline's `delta.Rates` of rows (..., N): ships the
+        observation, means the rows as the model reads them, previous as it read them the
+        tick before, accelerations the acceleration inputs (their validity and world
+        change)."""
+        visible = ships[..., SHIP["visible"]] > 0.5
+        gradient = torch.stack(
+            [ships[..., SHIP["log_index_gradient_x"]], ships[..., SHIP["log_index_gradient_y"]]],
+            -1,
+        )
+        return Rates(
+            valid=accelerations.valid,
+            acceleration=accelerations.world[..., 0:2],
+            nose_acceleration=accelerations.world[..., 2],
+            previous=previous.to(means.dtype),
+            gradient=torch.where(visible[..., None], gradient, 0.0).to(means.dtype),
+            gradient_known=visible,
+            fired=visible & (ships[..., SHIP["fired"]] > 0.5),
+        )
+
+    def segment_rates(
+        self, carry: Carry, obs: Obs, replay: Replay, reset: torch.Tensor
+    ) -> Rates | None:
+        """The extrapolation baseline's rates over a stored segment (L, R, N), as `step`
+        read them: the rows the tick before from the carry at its start, then the segment's
+        own; None for any other build."""
+        if not self._extrapolates:
+            return None
+        _, _, means, _ = believed(obs.ships, replay)
+        previous = torch.cat([carry.previous[None].to(means.dtype), means[:-1]], 0)
+        accelerations = self.acceleration_inputs(carry, obs, replay, reset)
+        return self.rates(obs.ships, means, previous, accelerations)
 
     def _matmuls(self, device: torch.device):
         return torch.autocast(device.type, torch.bfloat16, enabled=self.config.bfloat16_matmuls)
@@ -750,9 +862,14 @@ class Yemong(nn.Module):
             )
             policy_logits, value_logits = self.own_heads(hidden[:, :own])
             enemy_action_logits, change = self.ship_heads(hidden[:, own:ships_count])
+            correction_logits = every_correction = None
+            if self.correction_head is not None:
+                (correction_logits,) = self.correction_head(hidden[:, own:ships_count])
             (outcome_logits,) = self.outcome(hidden[:, ships_count])
             if inspect:
                 every_action_logits, every_change = self.ship_heads(hidden[:, :ships_count])
+                if self.correction_head is not None:
+                    (every_correction,) = self.correction_head(hidden[:, :ships_count])
                 (density_log_rates,) = self.density(hidden[:, ships_count])
                 (shot_outcome_logits,) = self.shot_outcome(hidden[:, :ships_count])
                 shot_latents = self.shot_trajectory_head.latent(hidden[:, :ships_count])
@@ -764,9 +881,20 @@ class Yemong(nn.Module):
         value_logits, values = self._values(value_logits.to(dtype), outcome_logits)
         forecast_logits = self._next_state_logits(tokens.code[:, own:], change.to(dtype))
         enemy = _rows(seen, slice(own, None))
+        correction_logits = _cast(correction_logits, dtype)
+        rates = None
+        if self._extrapolates:
+            rates = self.rates(ships, seen.means, carry.previous, tokens.accelerations)
+            rates = rates.rows(slice(own, None))
         if self.config.forecast_feedback:
             means, spreads = self.forecast(
-                forecast_logits, enemy.means, enemy.spreads, tokens.ship_type[:, own:]
+                forecast_logits,
+                enemy.means,
+                enemy.spreads,
+                tokens.ship_type[:, own:],
+                correction_logits,
+                enemy.age > 0,
+                rates,
             )
             advanced, nonfinite = beliefs.advance(
                 enemy, torch.cat([means, spreads], -1), enemy_action_logits
@@ -797,6 +925,7 @@ class Yemong(nn.Module):
             offset=carry.offset,
             nonfinite=carry.nonfinite + nonfinite,
             motion=tokens.motion,
+            previous=seen.means if self._extrapolates else None,
         )
         decision = Decision(
             policy_logits=policy_logits,
@@ -806,6 +935,7 @@ class Yemong(nn.Module):
             outcome_probabilities=torch.softmax(outcome_logits, -1),
             carry=carry,
             replay=replay,
+            correction_logits=correction_logits,
         )
         if not inspect:
             return decision, None
@@ -820,6 +950,7 @@ class Yemong(nn.Module):
             shot_outcome_logits=shot_outcome_logits.to(dtype),
             shot_latents=shot_latents.to(dtype),
             rotary_readout=_cast(_blocks(readout), dtype),
+            correction_logits=_cast(every_correction, dtype),
         )
         return decision, torch.utils._pytree.tree_map(lambda tensor: tensor[None], unrolled)
 
@@ -855,6 +986,9 @@ class Yemong(nn.Module):
             (density_log_rates,) = self.density(hidden[..., ships, :])
             (shot_outcome_logits,) = self.shot_outcome(ship_hidden)
             shot_latents = self.shot_trajectory_head.latent(ship_hidden)
+            correction_logits = None
+            if self.correction_head is not None:
+                (correction_logits,) = self.correction_head(ship_hidden)
         outcome_logits = outcome_logits.to(dtype)
         value_logits, values = self._values(value_logits.to(dtype), outcome_logits)
         return Unrolled(
@@ -868,6 +1002,7 @@ class Yemong(nn.Module):
             shot_outcome_logits=shot_outcome_logits.to(dtype),
             shot_latents=shot_latents.to(dtype),
             rotary_readout=_cast(_blocks(readout), dtype),
+            correction_logits=_cast(correction_logits, dtype),
         )
 
     def shot_trajectory(self, latents: torch.Tensor, ages: torch.Tensor) -> torch.Tensor:

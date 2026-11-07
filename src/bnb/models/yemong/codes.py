@@ -606,10 +606,11 @@ def symlog_median(
     padding: int = PADDING_BINS,
     below: int | None = None,
     inverse: tuple[torch.Tensor, float, float] | None = None,
+    window: int = MEDIAN_WINDOW,
 ) -> torch.Tensor:
     """(..., bins + 2 padding) probabilities to the median value (...): the bin where the
-    cumulative mass reaches 1/2, then the mean coordinate over the bins within MEDIAN_WINDOW
-    of it (`inverse` as in `symlog_decode`). An encoded value decodes to itself (its
+    cumulative mass reaches 1/2, then the mean coordinate over the bins within `window` of
+    it (`inverse` as in `symlog_decode`). An encoded value decodes to itself (its
     Gaussian lies inside the window to 5 sigma); a code with two well-separated modes
     decodes to the value of the mode that holds the median, so a jump of probability below
     1/2 is not taken (the most likely outcome, decisions D8)."""
@@ -620,7 +621,7 @@ def symlog_median(
     index = torch.arange(width, device=probabilities.device)
     cumulative = torch.cumsum(probabilities, -1)
     crossing = torch.clamp_max((cumulative < 0.5).sum(-1), width - 1)
-    near = ((index - crossing[..., None]).abs() <= MEDIAN_WINDOW).to(probabilities.dtype)
+    near = ((index - crossing[..., None]).abs() <= window).to(probabilities.dtype)
     weight = probabilities * near
     position = (index - low).to(probabilities.dtype)
     tiny = torch.finfo(probabilities.dtype).tiny

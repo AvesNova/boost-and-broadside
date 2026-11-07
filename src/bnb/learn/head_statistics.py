@@ -38,6 +38,20 @@ Slices, quantity first:
   living hidden enemies by hidden age (`AGE_BUCKETS`, then `never_seen`: no sighting since
   the spawn) the error and the mean length of its (cos, sin) pairs (1: certain; it shrinks
   toward 0 with the model's uncertainty).
+- error head (with `YemongConfig.delta_split`; `_correction`), over the hidden enemies it
+  trains on, by hidden age (`AGE_BUCKETS`), per quantity (`correction.QUANTITIES`; position
+  and velocity as 2D vectors): the realised error |e| and the predicted |E e|
+  (`correction/{realised, predicted}_error/{quantity}/{age}`), the realised square error
+  about the prediction |e - E e|^2 and the predicted variance, each per dimension
+  (`correction/{realised_square_error, predicted_variance}/*`, equal when calibrated), and
+  the share of e within 1 and 2 of the predicted sigmas (`correction/within_{one,
+  two}_sigma/*`, the Mahalanobis distance for 2D); over all its rows, per capped quantity
+  (`correction.STEP_LIMITS`) the step's mean |step| / r and the share whose |E e| is past r
+  (`correction/step_over_limit/*`, `correction/capped_share/*`), and per component the
+  share of targets clamped to the code's padded range (`correction/support_clip/*`). The
+  physics head on those rows, against the truth's change, by hidden age:
+  `next_state/hidden/cross_entropy/{age}` and the decoded change's error
+  `next_state/hidden/error/{position_metres, velocity_metres_per_second}/{age}`.
 - acceleration inputs (with `YemongConfig.acceleration_inputs`; `acceleration_sums`): per
   component the mean |input| over the valid rows visible and hidden at t and the share past
   the code's bound; the share of living rows without a valid input, and of valid rows whose
@@ -52,7 +66,7 @@ from bnb.contracts import Trajectory
 from bnb.contracts.action import NUM_JOINT, NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.contracts.series import Mean
-from bnb.models.yemong import codes
+from bnb.models.yemong import codes, correction
 from bnb.models.yemong.delta import CONTINUOUS, PART_GROUPS
 from bnb.models.yemong.density import poisson_terms
 from bnb.models.yemong.inputs import ACCELERATIONS, believed
@@ -237,6 +251,147 @@ def sums(
         out.update(_shots(unrolled, label, shot_parts, shot_runs, own, alive))
     if getattr(unrolled, "rotary_readout", None) is not None:
         out.update(_rotary_readout(unrolled, trajectory, label, populations, model.tick_length))
+    if getattr(unrolled, "correction_logits", None) is not None:
+        out.update(_correction(model, unrolled, trajectory, label, cross_entropy.sum(-1)))
+    return out
+
+
+def _quantity_columns() -> list[tuple[str, slice]]:
+    """Each of correction.QUANTITIES and its columns of the error code's components."""
+    out, start = [], 0
+    for name in correction.QUANTITIES:
+        width = len(correction.AXES) if name in correction.PLANAR else 1
+        out.append((name, slice(start, start + width)))
+        start += width
+    return out
+
+
+def _correction(model, unrolled, trajectory: Trajectory, label: dict, physics_entropy) -> dict:
+    """The error head's totals (module docstring) over the correction mask; physics_entropy
+    (L, R, N): the physics head's cross-entropy per row against the truth's change."""
+    code = model.correction_code
+    mask = label["correction_mask"]
+    _, clipped, errors = labels.correction_targets(model, trajectory, unrolled.next_state_logits)
+    moments = code.moments(unrolled.correction_logits.float())
+    own = trajectory.log_probability.shape[-1]
+    replay = trajectory.replay
+    age = torch.cat([replay.age.new_zeros(replay.age.shape[:-1] + (own,)), replay.age], -1)
+    age = age.float() * model.tick_length
+    realised, predicted, square, variance, normalised = [], [], [], [], []
+    for name, columns in _quantity_columns():
+        error, mean, spread = errors[..., columns], moments.mean[name], moments.variance[name]
+        if name in correction.PLANAR:
+            error = correction.mean_of(error, code.least_squares)  # exact: a vector's projections
+            rest = error - mean
+            xx, xy, yy = spread.unbind(-1)
+            determinant = (xx * yy - xy * xy).clamp_min(TINY_VARIANCE**2)
+            x, y = rest[..., 0], rest[..., 1]
+            distance = (yy * x * x - 2.0 * xy * x * y + xx * y * y) / determinant / 2.0
+            realised.append(torch.linalg.vector_norm(error, dim=-1))
+            predicted.append(torch.linalg.vector_norm(mean, dim=-1))
+            square.append(rest.square().sum(-1) / 2.0)
+            variance.append(0.5 * (xx + yy))
+        else:
+            error = error[..., 0]
+            rest = error - mean
+            distance = rest.square() / spread.clamp_min(TINY_VARIANCE)
+            realised.append(error.abs())
+            predicted.append(mean.abs())
+            square.append(rest.square())
+            variance.append(spread)
+        normalised.append(distance)
+    stacked = [torch.stack(values, -1) for values in (realised, predicted, square, variance)]
+    normalised = torch.stack(normalised, -1)
+    # the physics head's decoded change on these rows against the truth's
+    rows = labels.privileged_rows(trajectory)
+    following = labels.next_rows(trajectory, rows)
+    offset = replay.offset
+    now, after = shifted_truth(rows, offset), shifted_truth(following, offset)
+    _, _, means, spreads = believed(trajectory.obs.ships, replay)
+    ship_type = rows[..., SHIP["ship_type"]].long()
+    forecast, _ = model.delta_code.advance(
+        means.float(),
+        spreads.float(),
+        unrolled.next_state_logits.float(),
+        ship_type,
+        model.state_code,
+        labels.rates(model, trajectory),
+    )
+    change = forecast - means.float()
+    truth_change = after - now
+    physics = torch.stack(
+        [
+            torch.linalg.vector_norm(change[..., 0:2] - truth_change[..., 0:2], dim=-1),
+            torch.linalg.vector_norm(change[..., 2:4] - truth_change[..., 2:4], dim=-1),
+        ],
+        -1,
+    )
+    out = {}
+    for bucket, low, high in AGE_BUCKETS:
+        members = mask & (age >= low) & (age < high)
+        prefix = f"correction/{bucket}"
+        out[f"{prefix}/count"] = members.float().sum()
+        for kind, values in zip(
+            ("realised", "predicted", "square", "variance"), stacked, strict=True
+        ):
+            out[f"{prefix}/{kind}"] = _masked(values, members)
+        out[f"{prefix}/within_one_sigma"] = _masked((normalised <= 1.0).float(), members)
+        out[f"{prefix}/within_two_sigma"] = _masked((normalised <= 4.0).float(), members)
+        out[f"{prefix}/physics_cross_entropy"] = _masked(physics_entropy, members)
+        out[f"{prefix}/physics_error"] = _masked(physics, members)
+    limited = [name for name in correction.QUANTITIES if name in correction.STEP_LIMITS]
+    ratio, capped = [], []
+    for name in limited:
+        limit = correction.STEP_LIMITS[name]
+        step, target = moments.step[name], moments.target[name]
+        if name in correction.PLANAR:
+            step = torch.linalg.vector_norm(step, dim=-1)
+            target = torch.linalg.vector_norm(target, dim=-1)
+        ratio.append(step.abs() / limit)
+        capped.append((target.abs() > limit).float())
+    out["correction/count"] = mask.float().sum()
+    out["correction/step_over_limit"] = _masked(torch.stack(ratio, -1), mask)
+    out["correction/capped"] = _masked(torch.stack(capped, -1), mask)
+    out["correction/clipped"] = _masked(clipped.float(), mask)
+    return out
+
+
+def _correction_series(total: dict) -> dict:
+    """The error head's named series of its totals (`_correction`)."""
+    out = {}
+    names = correction.QUANTITIES
+    kinds = dict(
+        realised="realised_error",
+        predicted="predicted_error",
+        square="realised_square_error",
+        variance="predicted_variance",
+        within_one_sigma="within_one_sigma",
+        within_two_sigma="within_two_sigma",
+    )
+    for bucket, _, _ in AGE_BUCKETS:
+        prefix = f"correction/{bucket}"
+        count = total[f"{prefix}/count"]
+        for kind, series_name in kinds.items():
+            for name, value in zip(names, total[f"{prefix}/{kind}"].unbind(), strict=True):
+                out[f"correction/{series_name}/{name}/{bucket}"] = Mean(value, count)
+        out[f"next_state/hidden/cross_entropy/{bucket}"] = Mean(
+            total[f"{prefix}/physics_cross_entropy"], count
+        )
+        for name, value in zip(
+            ("position_metres", "velocity_metres_per_second"),
+            total[f"{prefix}/physics_error"].unbind(),
+            strict=True,
+        ):
+            out[f"next_state/hidden/error/{name}/{bucket}"] = Mean(value, count)
+    count = total["correction/count"]
+    limited = [name for name in correction.QUANTITIES if name in correction.STEP_LIMITS]
+    for kind, series_name in (("step_over_limit", "step_over_limit"), ("capped", "capped_share")):
+        for name, value in zip(limited, total[f"correction/{kind}"].unbind(), strict=True):
+            out[f"correction/{series_name}/{name}"] = Mean(value, count)
+    for name, value in zip(
+        correction.COMPONENT_NAMES, total["correction/clipped"].unbind(), strict=True
+    ):
+        out[f"correction/support_clip/{name}"] = Mean(value, count)
     return out
 
 
@@ -282,7 +437,11 @@ def _next_state_situations(
     _, _, means, spreads = believed(trajectory.obs.ships, trajectory.replay)
     ship_type = rows[..., SHIP["ship_type"]].long()
     forecast, _ = model.forecast(
-        unrolled.next_state_logits.float(), means.float(), spreads.float(), ship_type
+        unrolled.next_state_logits.float(),
+        means.float(),
+        spreads.float(),
+        ship_type,
+        rates=labels.rates(model, trajectory),
     )
     delta = getattr(model, "delta_code", None)
     predictions = dict(head=forecast, persistence=now)
@@ -567,6 +726,8 @@ def series(total: dict, model) -> dict:
             prefix, count = f"rotary_readout/{name}", total[f"rotary_readout/{name}/count"]
             out[f"rotary_readout/hidden_error/{name}"] = Mean(total[f"{prefix}/error"], count)
             out[f"rotary_readout/hidden_length/{name}"] = Mean(total[f"{prefix}/length"], count)
+    if "correction/count" in total:
+        out.update(_correction_series(total))
     return out
 
 
