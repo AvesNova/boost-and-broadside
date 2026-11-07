@@ -31,6 +31,7 @@ from bnb.learn import labels, shots
 from bnb.models.yemong import decode
 from bnb.models.yemong import shots as shot_codes
 from bnb.models.yemong.density import HexGrid
+from bnb.models.yemong.inputs import believed
 from bnb.models.yemong.inputs import truth as shifted_truth
 from bnb.runs import checkpoint, provenance
 from bnb.runs.serialise import to_json
@@ -184,8 +185,15 @@ def head_record(model, trajectory, unrolled) -> dict:
     offset = trajectory.replay.offset  # (L, R, 2)
     ship_type = rows[..., SHIP["ship_type"]].long()
     position = rows[..., [SHIP["x"], SHIP["y"]]]
+    _, _, believed_means, believed_spreads = believed(trajectory.obs.ships, trajectory.replay)
     forecast = decode.next_state(
-        model.state_code, unrolled.next_state_logits, ship_type, offset, position
+        model,
+        unrolled.next_state_logits,
+        believed_means,
+        believed_spreads,
+        ship_type,
+        offset,
+        position,
     )
     replay = trajectory.replay
     belief = decode.ship_forecast(

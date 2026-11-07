@@ -14,6 +14,7 @@ from torch.utils import _pytree
 from bnb.contracts.obs import SHIP
 from bnb.game import api
 from bnb.models.yemong import decode
+from bnb.models.yemong.inputs import believed
 from bnb.play import predictions
 from bnb.play.loop import MatchLoop, MatchSetup, SideSetup
 from bnb.play.overlays import (
@@ -177,9 +178,12 @@ def test_the_ghosts_are_the_decoded_forecasts_in_sim_order(match):
     inspection = agent.inspection
     rows = inspection.view.ships[0]
     order = api.view_order(S, torch.device("cpu"))[1].numpy()
+    _, _, means, spreads = believed(inspection.view.ships, inspection.replay)
     forecast = decode.next_state(
-        model.state_code,
+        model,
         unrolled.next_state_logits,
+        means[0].float(),
+        spreads[0].float(),
         rows[:, SHIP["ship_type"]].long(),
         inspection.replay.offset[0],
         torch.zeros(N, 2),

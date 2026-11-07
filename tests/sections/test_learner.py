@@ -324,7 +324,7 @@ def test_labels_are_row_aligned_and_in_the_models_frame():
     assert mask.any() and (enemy[mask] == 31).all()
 
     rows = labels.privileged_rows(trajectory)
-    target = labels.next_state_targets(net.state_code, trajectory, rows)
+    target = labels.next_state_targets(net, trajectory, rows)["next_state"]
     ships = trajectory.obs.ships
     # A row visible at t + 1, in the same episode: its target is the sharp code of what
     # the view then observed, shifted by the view's offset.

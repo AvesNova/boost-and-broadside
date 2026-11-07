@@ -34,18 +34,21 @@ from bnb.contracts.action import NUM_JOINT, NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.contracts.obs import SHIP
 from bnb.contracts.series import Mean
 from bnb.models.yemong import codes
+from bnb.models.yemong.delta import CONTINUOUS
 from bnb.models.yemong.density import poisson_terms
+from bnb.models.yemong.inputs import believed
 from bnb.models.yemong.inputs import truth as shifted_truth
 from bnb.models.yemong.shots import HIT_ALLY, HIT_ENEMY
 from bnb.models.yemong.state_code import (
     LOG_INDEX_SPAN,
+    MEANS,
     NOSE_RATE_LIMIT,
     POSITION_PERIOD,
     SCALARS,
     velocity_reach,
 )
 
-from . import losses
+from . import labels, losses
 
 # The state code's runs, in order (`ShipStateCode.runs`).
 STATE_PARTS = ("position", "velocity", "heading", "nose_rate", *SCALARS, "gun_cooldown")
@@ -58,6 +61,11 @@ SHOT_PARTS = ("displacement", "direction", "speed", "refractive_index")
 # the hits by side, then the clear miss (the last column).
 SHOT_RATES = (("enemy_hit", HIT_ENEMY - 1), ("ally_hit", HIT_ALLY - 1), ("clear_miss", -1))
 TEAMS = ("ally", "enemy")
+# The next state's situations at t (`_next_state_situations`): every living pair, in a field
+# or its band (at t or t + 1), hit (any damage: the recharge wait reset), boosting, coasting.
+NEXT_STATE_SITUATIONS = ("all", "field", "hit", "boost", "coast")
+# The decoded one-tick forecast's error against persistence and (delta) the physics baseline.
+ERROR_PREDICTORS = ("head", "persistence", "baseline")
 # Hidden age buckets in seconds (lower bound inclusive) and their slice names.
 AGE_BUCKETS = (
     ("age_0_0.1_seconds", 0.0, 0.1),
@@ -152,12 +160,17 @@ def sums(
     is_own = (rows < own).expand(visible.shape)
     out = {}
     # Group 7: next state.
-    runs = model.state_code.runs
+    runs = model.next_state_runs
     logits = unrolled.next_state_logits.float()
     target = label["next_state"]
     cross_entropy = _run_sums(codes.grouped_cross_entropy(logits, target, runs), runs)
-    code = model.tokens(trajectory.obs, trajectory.replay).code.float()
-    baseline = _run_sums(codes.grouped_cross_entropy(codes.baseline(code), target, runs), runs)
+    delta = getattr(model, "delta_code", None)
+    if delta is None:
+        code = model.tokens(trajectory.obs, trajectory.replay).code.float()
+        start = codes.baseline(code)
+    else:
+        start = delta.marginal.expand_as(logits)
+    baseline = _run_sums(codes.grouped_cross_entropy(start, target, runs), runs)
     entropy = _grouped_entropy(target, runs).sum(-1)
     mask = label["next_state_mask"]
     populations = dict(
@@ -172,6 +185,7 @@ def sums(
             out[f"next_state/{name}/baseline"] = _masked(baseline, chosen)
     out["next_state/alive"] = alive.float().sum()
     out["next_state/supervised"] = (mask & alive).float().sum()
+    out.update(_next_state_situations(model, unrolled, trajectory, label, cross_entropy, visible))
     out.update(_enemy_action(unrolled, trajectory, label, own, visible))
     out.update(_density(unrolled, label))
     if shot_parts is not None:
@@ -179,6 +193,81 @@ def sums(
     if getattr(unrolled, "rotary_readout", None) is not None:
         out.update(_rotary_readout(unrolled, trajectory, label, populations, model.tick_length))
     return out
+
+
+def _next_state_situations(
+    model, unrolled, trajectory: Trajectory, label: dict, cross_entropy, visible
+) -> dict:
+    """The next state's totals by situation and quantity, over the supervised rows alive at
+    t and t + 1 (`NEXT_STATE_SITUATIONS`): each part's cross-entropy; for the rows seen at t
+    (own ships and visible enemies) the decoded forecast's error and persistence's, per
+    quantity (`BELIEF_QUANTITIES`). With the delta head also the baseline's error, the
+    targets clamped to the code's padded range and the forecast's mass in the padding bins,
+    per component (`delta.CONTINUOUS`)."""
+    rows = labels.privileged_rows(trajectory)
+    following = labels.next_rows(trajectory, rows)
+    offset = trajectory.replay.offset
+    now, after = shifted_truth(rows, offset), shifted_truth(following, offset)
+    living = (
+        label["next_state_mask"]
+        & (rows[..., SHIP["alive"]] > 0.5)
+        & (following[..., SHIP["alive"]] > 0.5)
+    )
+    in_field = (rows[..., SHIP["log_refractive_index"]] != 0) | (
+        following[..., SHIP["log_refractive_index"]] != 0
+    )
+    for column in ("log_index_gradient_x", "log_index_gradient_y"):
+        in_field = in_field | (rows[..., SHIP[column]] != 0) | (following[..., SHIP[column]] != 0)
+    wait = MEANS.index("shield_recharge_wait")
+    tick = model.tick_length
+    hit = after[..., wait] > torch.clamp_min(now[..., wait] - tick, 0.0) + 0.5 * tick
+    power = trajectory.action.power
+    situations = dict(
+        all=living,
+        field=living & in_field,
+        hit=living & hit,
+        boost=living & (power == 1),
+        coast=living & (power == 0),
+    )
+    out = {}
+    for name, members in situations.items():
+        out[f"next_state/situation/{name}/count"] = members.float().sum()
+        out[f"next_state/situation/{name}/cross_entropy"] = _masked(cross_entropy, members)
+    seen = living & visible
+    _, _, means, spreads = believed(trajectory.obs.ships, trajectory.replay)
+    ship_type = rows[..., SHIP["ship_type"]].long()
+    forecast, _ = model.forecast(
+        unrolled.next_state_logits.float(), means.float(), spreads.float(), ship_type
+    )
+    delta = getattr(model, "delta_code", None)
+    predictions = dict(head=forecast, persistence=now)
+    if delta is not None:
+        predictions["baseline"] = delta.baseline(now, ship_type)
+    out["next_state/error/count"] = seen.float().sum()
+    for predictor, predicted in predictions.items():
+        out[f"next_state/error/{predictor}"] = _masked(_state_errors(predicted, after), seen)
+    if delta is not None:
+        supervised = label["next_state_mask"]
+        probabilities = torch.exp(
+            codes.grouped_log_softmax(unrolled.next_state_logits.float(), delta.runs)
+        )
+        out["next_state/support/count"] = supervised.float().sum()
+        out["next_state/support/clipped"] = _masked(label["next_state_clipped"].float(), supervised)
+        out["next_state/support/padding"] = _masked(delta.padding_mass(probabilities), supervised)
+    return out
+
+
+def _state_errors(predicted: torch.Tensor, truth: torch.Tensor) -> torch.Tensor:
+    """(..., len(BELIEF_QUANTITIES)) each quantity's error (a length for two columns; the
+    heading wrapped)."""
+    errors = []
+    for name, columns in BELIEF_QUANTITIES:
+        span = slice(columns[0], columns[-1] + 1)
+        difference = predicted[..., span] - truth[..., span]
+        if name == "heading_radians":
+            difference = _wrapped(difference, 2.0 * math.pi)
+        errors.append(torch.linalg.vector_norm(difference, dim=-1))
+    return torch.stack(errors, -1)
 
 
 def _rotary_readout(unrolled, trajectory: Trajectory, label: dict, populations: dict, tick):
@@ -333,6 +422,27 @@ def series(total: dict, model) -> dict:
     out["next_state/supervised_share"] = Mean(
         total["next_state/supervised"], total["next_state/alive"]
     )
+    situations = NEXT_STATE_SITUATIONS if "next_state/situation/all/count" in total else ()
+    for name in situations:
+        count = total[f"next_state/situation/{name}/count"]
+        parts = total[f"next_state/situation/{name}/cross_entropy"]
+        out[f"next_state/cross_entropy/{name}"] = Mean(parts.sum(), count)
+        for part, value in zip(STATE_PARTS, parts.unbind(), strict=True):
+            out[f"next_state/cross_entropy/{name}/{part}"] = Mean(value, count)
+    count = total.get("next_state/error/count")
+    for predictor in ERROR_PREDICTORS if count is not None else ():
+        errors = total.get(f"next_state/error/{predictor}")
+        if errors is None:
+            continue
+        for (quantity, _), value in zip(BELIEF_QUANTITIES, errors.unbind(), strict=True):
+            out[f"next_state/error/{quantity}/{predictor}"] = Mean(value, count)
+    if "next_state/support/count" in total:
+        count = total["next_state/support/count"]
+        for kind in ("clipped", "padding"):
+            values = total[f"next_state/support/{kind}"]
+            name = "support_clip" if kind == "clipped" else "support_padding"
+            for component, value in zip(CONTINUOUS, values.unbind(), strict=True):
+                out[f"next_state/{name}/{component}"] = Mean(value, count)
     # enemy action
     labelled = 0.0
     for name in SIGHT:

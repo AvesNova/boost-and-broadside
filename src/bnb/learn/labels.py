@@ -10,7 +10,6 @@ from bnb.contracts.action import to_joint
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.models.yemong.density import HexGrid
 from bnb.models.yemong.inputs import truth as shifted_truth
-from bnb.models.yemong.state_code import ShipStateCode
 
 
 def privileged_rows(trajectory: Trajectory) -> torch.Tensor:
@@ -26,14 +25,26 @@ def next_rows(trajectory: Trajectory, rows: torch.Tensor) -> torch.Tensor:
     return torch.cat([rows[1:], trajectory.final_truth[None]], 0)
 
 
-def next_state_targets(
-    state_code: ShipStateCode, trajectory: Trajectory, rows: torch.Tensor
-) -> torch.Tensor:
-    """(L, R, N, width): the sharp code of every row's true state at t + 1, in the model's
-    frame (the true position plus the view's position offset at t)."""
+def next_state_targets(model, trajectory: Trajectory, rows: torch.Tensor) -> dict:
+    """The next-state head's targets, (L, R, N, ...) per row: {"next_state": the code}, and
+    with the delta head {"next_state_clipped": (L, R, N, components) bool}.
+
+    Absolute (`YemongConfig.next_state`): the sharp state code of every row's true state at
+    t + 1, in the model's frame (the true position plus the view's position offset at t).
+    Delta: the code of every row's true change from t to t + 1 (`delta.DeltaCode.targets`:
+    from the baseline of its true state at t), and which changes were clamped to the
+    code's padded range."""
     following = next_rows(trajectory, rows)
-    means = shifted_truth(following, trajectory.replay.offset)
-    return state_code.sharp(means, following[..., SHIP["ship_type"]].long())
+    offset = trajectory.replay.offset
+    after = shifted_truth(following, offset)
+    if model.delta_code is None:
+        return dict(
+            next_state=model.state_code.sharp(after, following[..., SHIP["ship_type"]].long())
+        )
+    code, clipped = model.delta_code.targets(
+        shifted_truth(rows, offset), after, rows[..., SHIP["ship_type"]].long()
+    )
+    return dict(next_state=code, next_state_clipped=clipped)
 
 
 def rotary_targets(model, trajectory: Trajectory, rows: torch.Tensor) -> torch.Tensor:

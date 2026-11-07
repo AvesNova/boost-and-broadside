@@ -448,7 +448,7 @@ class Learner:
             readout = dict(rotary_readout=labels.rotary_targets(model, trajectory, rows))
         return dict(
             **readout,
-            next_state=labels.next_state_targets(model.state_code, trajectory, rows),
+            **labels.next_state_targets(model, trajectory, rows),
             next_state_mask=labels.next_state_mask(trajectory),
             enemy_action=enemy,
             enemy_mask=enemy_mask,
@@ -584,7 +584,7 @@ class Learner:
     def _next_state_cross_entropy(self, unrolled, label: dict) -> torch.Tensor:
         """(L, R, N) the next-state code's cross-entropy per row, summed over its groups."""
         return codes.grouped_cross_entropy(
-            unrolled.next_state_logits, label["next_state"], self.model.state_code.runs
+            unrolled.next_state_logits, label["next_state"], self.model.next_state_runs
         ).sum(-1)
 
     @torch.no_grad()
