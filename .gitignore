@@ -19,3 +19,4 @@ wandb/
 
 # The documentation site, built by `mkdocs build`
 site/
+!tests/sections/golden/*.pt
