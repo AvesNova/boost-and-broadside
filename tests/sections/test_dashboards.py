@@ -31,6 +31,11 @@ EXEMPT = (
     "train/memory_peak_gigabytes",
     "train/memory_budget_gigabytes",
     "outcome/brier_skill/*",
+    # logged with `YemongConfig.acceleration_inputs` only (off in this run)
+    "input/acceleration/mean_abs/*",
+    "input/acceleration/invalid_share",
+    "input/acceleration/slow_frame",
+    "input/acceleration/padding_share/*",
 )
 
 

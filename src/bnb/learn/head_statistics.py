@@ -34,6 +34,10 @@ Slices, quantity first:
   living hidden enemies by hidden age (`AGE_BUCKETS`, then `never_seen`: no sighting since
   the spawn) the error and the mean length of its (cos, sin) pairs (1: certain; it shrinks
   toward 0 with the model's uncertainty).
+- acceleration inputs (with `YemongConfig.acceleration_inputs`; `acceleration_sums`): per
+  component the mean |input| over the valid rows visible and hidden at t and the share past
+  the code's bound; the share of living rows without a valid input, and of valid rows whose
+  frame was the heading.
 """
 
 import math
@@ -42,12 +46,12 @@ import torch
 
 from bnb.contracts import Trajectory
 from bnb.contracts.action import NUM_JOINT, NUM_POWER, NUM_SHOOT, NUM_STICK
-from bnb.contracts.obs import SHIP
+from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.contracts.series import Mean
 from bnb.models.yemong import codes
 from bnb.models.yemong.delta import CONTINUOUS
 from bnb.models.yemong.density import poisson_terms
-from bnb.models.yemong.inputs import believed
+from bnb.models.yemong.inputs import ACCELERATIONS, believed
 from bnb.models.yemong.inputs import truth as shifted_truth
 from bnb.models.yemong.shots import HIT_ALLY, HIT_ENEMY
 from bnb.models.yemong.state_code import (
@@ -177,7 +181,10 @@ def sums(
     cross_entropy = _run_sums(codes.grouped_cross_entropy(logits, target, runs), runs)
     delta = getattr(model, "delta_code", None)
     if delta is None:
-        code = model.tokens(trajectory.obs, trajectory.replay).code.float()
+        obs, replay = trajectory.obs, trajectory.replay
+        reset = obs.globals[..., GLOBAL["reset"]] > 0.5
+        previous = model.preceding_motion(trajectory.initial_carry, obs, replay, reset)
+        code = model.tokens(obs, replay, previous).code.float()
         start = codes.baseline(code)
     else:
         start = delta.marginal.expand_as(logits)
@@ -671,4 +678,68 @@ def input_series(total: dict) -> dict:
     out = {"input/nonfinite_count": total["input/nonfinite"].int()}
     for name, value in zip(INPUT_FEATURES, total["input/outside"].unbind(), strict=True):
         out[f"input/envelope_violation_share/{name}"] = Mean(value, total["input/shown"])
+    return out
+
+
+# ---------------------------------------------------------------------- acceleration inputs
+
+SIGHT_AT_T = ("visible", "hidden")  # the acceleration inputs' rows, by sight at t
+
+
+@torch.no_grad()
+def acceleration_sums(model, trajectory: Trajectory) -> dict:
+    """The acceleration inputs' totals over a stored batch (`YemongConfig.acceleration_inputs`;
+    empty without them), as `unroll` reads them: per component the sum of |value| over the
+    valid rows visible and hidden at t, and the valid rows past the code's bound (in its
+    padding); the living rows, those without a valid input, and the valid rows whose frame
+    was the heading (`inputs.SLOW_SPEED`)."""
+    compute = getattr(model, "acceleration_inputs", None)
+    if not callable(compute) or not getattr(model.config, "acceleration_inputs", False):
+        return {}
+    obs = trajectory.obs
+    reset = obs.globals[..., GLOBAL["reset"]] > 0.5
+    inputs = compute(trajectory.initial_carry, obs, trajectory.replay, reset)
+    ships = obs.ships
+    alive = ships[..., SHIP["alive"]] > 0.5
+    visible = ships[..., SHIP["visible"]] > 0.5
+    magnitude = inputs.values.abs().float()
+    valid = inputs.valid
+    bounds = torch.tensor([c.bound for c in ACCELERATIONS], device=magnitude.device)
+    out = {
+        "acceleration/alive": alive.float().sum(),
+        "acceleration/invalid": (alive & ~valid).float().sum(),
+        "acceleration/valid": valid.float().sum(),
+        "acceleration/slow": inputs.slow.float().sum(),
+        "acceleration/padding": _masked((magnitude > bounds).float(), valid),
+    }
+    for name, members in zip(SIGHT_AT_T, (visible, ~visible), strict=True):
+        chosen = valid & members
+        out[f"acceleration/{name}/count"] = chosen.float().sum()
+        out[f"acceleration/{name}/magnitude"] = _masked(magnitude, chosen)
+    return out
+
+
+def acceleration_series(total: dict) -> dict:
+    """The named series of the acceleration totals (`acceleration_sums`, `add`): per
+    component `input/acceleration/mean_abs/{component}/{visible, hidden}` and
+    `input/acceleration/padding_share/{component}`; `input/acceleration/invalid_share` (of
+    the living rows) and `input/acceleration/slow_frame` (of the valid rows)."""
+    if "acceleration/alive" not in total:
+        return {}
+    out = {
+        "input/acceleration/invalid_share": Mean(
+            total["acceleration/invalid"], total["acceleration/alive"]
+        ),
+        "input/acceleration/slow_frame": Mean(
+            total["acceleration/slow"], total["acceleration/valid"]
+        ),
+    }
+    names = [component.name for component in ACCELERATIONS]
+    for name, value in zip(names, total["acceleration/padding"].unbind(), strict=True):
+        out[f"input/acceleration/padding_share/{name}"] = Mean(value, total["acceleration/valid"])
+    for sight in SIGHT_AT_T:
+        count = total[f"acceleration/{sight}/count"]
+        magnitudes = total[f"acceleration/{sight}/magnitude"].unbind()
+        for name, value in zip(names, magnitudes, strict=True):
+            out[f"input/acceleration/mean_abs/{name}/{sight}"] = Mean(value, count)
     return out

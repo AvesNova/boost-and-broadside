@@ -834,6 +834,7 @@ class Learner:
                                         trajectory, self.rules.tick_length
                                     ),
                                     **head_statistics.input_sums(self.model.state_code, trajectory),
+                                    **head_statistics.acceleration_sums(self.model, trajectory),
                                 },
                             )
                     if recompute:
@@ -853,6 +854,7 @@ class Learner:
         )
         series.update(head_statistics.belief_series(belief_total))
         series.update(head_statistics.input_series(belief_total))
+        series.update(head_statistics.acceleration_series(belief_total))
         return dict(
             derived=derived,
             rollout_log_probability=rollout_log_probability,
