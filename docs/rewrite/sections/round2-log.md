@@ -68,3 +68,5 @@ Entries: time, what, why. Newest last.
   0.24 vs 0.45), but round 0 showed Brier moving 0.2 by seed alone, so not yet evidence;
   belief position within-1-sigma similar at short ages, lower at 2-30 s. The tournament
   (job 5, started 03:26) decides.
+- **03:50** Arm-2 measurements: loss coefficient 0.0033 (delta's trunk share was 1.24x the absolute head's at C-fixed's 0.0041; verifying); 175-bin position-along costs nothing measurable (update 33.0 vs 33.1 s on CPU, +~40 MB per micro-batch at production): taken. Coverage: position within 1 sigma 0.52 at 0-0.1 s, 0.05-0.14 later (sigma too small, not double-counted; the absolute head was 0.00-0.03). Heading sigma passes pi by 0.5 s: asked the agent to compare with the real heading error and fix over-inflation if that is what it is.
+- **03:40** Arm 1 tournament: frontline done in one batch (largest standard error 20.5); deathmatch running.
