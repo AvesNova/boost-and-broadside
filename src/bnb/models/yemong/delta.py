@@ -49,6 +49,7 @@ class DeltaComponent:
 
     @property
     def width(self) -> int:
+        """The component's code width: its real bins and the padding on both sides."""
         return self.bins + 2 * codes.PADDING_BINS
 
 
@@ -184,10 +185,12 @@ class DeltaCode(nn.Module):
 
     @property
     def width(self) -> int:
+        """The code's width: groups times size, summed over runs."""
         return sum(groups * size for groups, size in self.runs)
 
     @property
     def groups(self) -> int:
+        """The code's softmax groups, summed over runs."""
         return sum(groups for groups, _ in self.runs)
 
     # ------------------------------------------------------------------ baselines

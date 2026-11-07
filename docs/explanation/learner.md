@@ -108,7 +108,7 @@ The coefficients are the fields of `bnb.learn.ppo.LearnerConfig` named after the
 | `policy` | own ships alive at `t` | the surrogate on the scaled advantage under the trust region ([below](#the-trust-region)) |
 | `entropy_power`, `entropy_stick`, `entropy_shoot` | the same | the joint action distribution's entropy by the chain rule in the joint's order: H(power), H(stick given power), H(shoot given both). They sum to the joint entropy, so equal coefficients weigh the joint as one coefficient would; a negative coefficient rewards it |
 | `value` | own ships alive or waiting to respawn; each view-step for the outcome | per level, the cross-entropy against the two-hot of the return, the outcome against its targets |
-| `next_state` | rows whose belief is valid at `t`, where `t` did not end an episode | the state code's cross-entropy against the sharp code of the true state at `t + 1`, in the model's shifted frame |
+| `next_state` | rows whose belief is valid at `t`, where `t` did not end an episode | absolute: the state code's cross-entropy against the sharp code of the true state at `t + 1`, in the model's shifted frame; delta: the delta code's against the code of the true change from `t` to `t + 1` |
 | `enemy_action` | enemy rows alive at `t` | the cross-entropy of the enemy's actual joint action |
 | `density` | each view-step, over its count of valued own ships | Poisson terms over the hex cells, against the counts of living ships at `t` |
 | `shot_trajectory` | valid shots of own ships and of enemies visible at `t` | the trajectory code's cross-entropy, averaged over the shot's valid ages |
@@ -223,7 +223,11 @@ with the view (as are the shot labels' codes; expanded, the codes would be many 
 size of the segment):
 
 - **Next state:** the sharp code of each row's truth at `t + 1`, its position shifted by the
-  view's offset; the last step's truth is the observation after the segment.
+  view's offset; the last step's truth is the observation after the segment. With the delta
+  head (`YemongConfig.next_state = "delta"`), the code of each row's true change from `t`
+  to `t + 1`, from the baseline of its truth at `t`
+  (`bnb.models.yemong.delta.DeltaCode.targets`), and which changes were clamped to the
+  code's padded range (`next_state_clipped`).
 - **Enemy action:** each enemy row's joint action at `t`.
 - **Density:** the hex counts of the living ships of each side at `t`, in world coordinates
   scaled by each environment's arena radius.

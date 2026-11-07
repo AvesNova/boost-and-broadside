@@ -20,6 +20,7 @@ from bnb.contracts.tree import contract
 
 from . import codes, critic
 from .density import LOG_RATE_RANGE, hex_cells
+from .inputs import believed
 from .shots import ShotCodeParameters
 from .state_code import MEANS, POSITION_PERIOD
 
@@ -170,6 +171,13 @@ def ship_forecast(
         means=means,
         spreads=spreads,
     )
+
+
+def state_at(ships: torch.Tensor, replay) -> tuple[torch.Tensor, torch.Tensor]:
+    """(means, spreads) (..., N, ...): every row's state at t as the model read it, from the
+    view's ship rows and its replay record (`inputs.believed`): what `next_state` reads."""
+    _, _, means, spreads = believed(ships, replay)
+    return means, spreads
 
 
 def next_state(

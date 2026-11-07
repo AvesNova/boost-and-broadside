@@ -121,6 +121,70 @@ The next-state head predicts the same vector, so a forecast carries its own unce
   groups). A new run builds `"coarsest"` (`TrainConfig.yemong`). `"v1"` is to be removed
   once no rated policy needs it.
 
+### The next-state head: absolute or delta
+
+`YemongConfig.next_state` chooses what the next-state head predicts. Its inputs, the
+state code above, are the same either way.
+
+- **`"absolute"`** (the default): the state code of the state at `t + 1`. The head's logits
+  add to the persistence baseline `log(code_t + 1e-3)` (`bnb.models.yemong.heads.next_state_logits`),
+  so it starts as "nothing changes", and the forecast is the decoded code.
+- **`"delta"`**: each quantity's one-tick change from its physics baseline
+  (`bnb.models.yemong.delta`; the measurements behind it are in the state-deltas report,
+  `docs/rewrite/sections/state-deltas.md`). The baselines read only the state at `t`:
+
+  | Quantity | Baseline | Coded as |
+  |---|---|---|
+  | position | the constant-nose-rate arc, the game's drift at `v_t` | along and across the heading at `t` |
+  | velocity | `v_t` turned by `omega_t dt` | along and across the heading at `t` |
+  | heading | `heading_t + omega_t dt`, wrapped | |
+  | nose rate, angle of attack, log refractive index | persistence | |
+  | shield, energy | after the deterministic recharge; persistence | fractions of the type's maximum |
+  | shield recharge wait | the countdown | an event, two bins: reset to the type's delay |
+  | gun cooldown | the countdown | an event, two bins: fired (the type's interval less a tick) |
+
+  Each continuous component is a **symlog HL-Gauss code**
+  (`bnb.models.yemong.codes.symlog_encode`): the change's coordinate
+  `sign(x) ln(1 + |x| / knee)` in bins, its centres evenly spaced from minus to plus the
+  hard one-tick bound with an exact zero at the middle one, two padding bins on each side,
+  and a Gaussian of 0.75 bins integrated over each bin. A change past the padded range is
+  clamped to it (and counted); nothing folds: the Gaussian's mass past the outer edges is
+  dropped and the code divided by its sum. Position and velocity have 51 real bins per
+  component, the other six 31: 434 outputs in all (2 x 2 x 55 + 6 x 35 + 2 x 2), against
+  the absolute code's 490.
+
+  | Component | Knee | Bound (the last real centre) | Real bins |
+  |---|---|---|---|
+  | position, along / across (m) | 0.002 / 0.003 | 8.7 | 51 |
+  | velocity, along / across (m/s) | 0.1 | 375 | 51 |
+  | heading (rad) | 0.001 | 0.9 | 31 |
+  | nose rate (rad/s) | 0.05 | 24.7 | 31 |
+  | angle of attack (rad) | 0.003 | 0.49 | 31 |
+  | shield (of the maximum) | 0.001 | 1 | 31 |
+  | energy (of the maximum) | 0.0005 | 0.068 | 31 |
+  | log refractive index | 0.0006 | 0.48 | 31 |
+
+  The knees are the report's medians, the bounds its hard bounds (section 1.2, the box). The
+  head's last weight starts at zero and its bias at the measured marginal: the share of
+  exact zeros at the zero centre's code and the rest a Laplace of scale 1 in symlog units
+  (median `|change|` at the knee), the events at their rates
+  (`bnb.models.yemong.delta.DeltaCode.marginal_logits`).
+
+  Decoding (`bnb.models.yemong.codes.symlog_decode`) reads the mean at the mean
+  coordinate, exact on an encoded change (the round trip's bias is below 1e-3 bins up to
+  0.06 bins short of the last real centre and 1.3e-3 bins at it), and the variance as the
+  bins' physical variance less the code's own smoothing. The forecast fed back
+  (`bnb.models.yemong.delta.DeltaCode.advance`, through `Yemong.forecast`) is the
+  belief's baseline plus the decoded change, turned back from the belief's heading. Each
+  variance is the belief's carried through the baseline to first order (the velocity's
+  covariance turned, `dt^2` of it into the position, the nose rate's `dt^2` into the heading
+  and the arcs) plus the change's; the events' means are their expected values, the
+  cooldown's code the belief's counted down one bin mixed with the shot's. The training
+  target is the truth's change, `truth(t + 1) - baseline(truth(t))`, on the same rows as the
+  absolute head. The baselines' constants per ship type (recharge rate and delay, the ticks
+  between shots) are in the build record (`YemongBuild.dynamics`), only for a delta build.
+  Select it with `--set yemong.next_state=delta`.
+
 ## Network
 
 - **Encoder:** one first projection per token kind, then a shared one. Fields and zones are
@@ -142,7 +206,7 @@ The next-state head predicts the same vector, so a forecast carries its own unce
 | action | own ships | logits over the joint actions |
 | value | own ships | categorical logits per local reward level |
 | enemy action | ship rows | the next joint action's logits |
-| next state | ship rows | the next state code, as a change from the current one |
+| next state | ship rows | the next state code, as a change from the current one (absolute), or each quantity's change from its physics baseline (delta) |
 | outcome | global token | win, tie, loss, unresolved |
 | density | global token | ally and enemy rates on a hex grid that scales with the arena |
 | shot outcome | ship rows | how a shot fired now would end |

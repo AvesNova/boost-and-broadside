@@ -11,7 +11,18 @@ Slices, quantity first:
 - next state, by population: own ships (`ally`), enemies seen at t (`enemy_visible`) and
   enemies hidden at t (`enemy_hidden`). The gain is the "nothing changes" baseline's
   cross-entropy less the head's, in nats per token; hidden ships have no input state, so
-  they have no gain, only the KL (diagnostics audit, group 7).
+  they have no gain, only the KL (diagnostics audit, group 7). With the delta head
+  (`YemongConfig.next_state = "delta"`) the gain's baseline is the measured marginal the
+  head starts at (`delta.DeltaCode.marginal`), not "nothing changes".
+- next state, by situation and quantity, over the supervised rows alive at t and t + 1:
+  `next_state/cross_entropy/{situation}[/{part}]` (`NEXT_STATE_SITUATIONS`: all, in a
+  field band, hit, boosting, coasting; parts `STATE_PARTS`); for the rows seen at t
+  `next_state/error/{quantity}/{head, persistence, baseline}`, the decoded one-tick
+  forecast's error and the two baselines' (the physics baseline with the delta head only;
+  quantities `BELIEF_QUANTITIES`); with the delta head, per component
+  (`delta.CONTINUOUS`) `next_state/support_clip/*`, the share of targets clamped to the
+  code's padded range, and `next_state/support_padding/*`, the forecast's mass in the
+  padding bins.
 - enemy action, by the enemy's sight at t (`visible`, `hidden`). The baselines come from
   the batch: repeat the last action with the measured repeat rate r (else uniform over the
   other 41), cross-entropy -r ln r - (1 - r) ln((1 - r) / 41); and always predict the
