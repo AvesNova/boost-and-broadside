@@ -1,6 +1,10 @@
-"""The persistence delta code's starting marginal (`bnb.models.yemong.delta.MARGINAL`) and a
-check of its knees and bounds, from segments recorded by `bench/state_deltas_collect.py`
-on this tree (scripted self-play).
+"""The delta code's starting marginal (`bnb.models.yemong.delta.MARGINAL`, or with
+`--baseline extrapolation` `EXTRAPOLATION_MARGINAL`) and its knees and bounds, from segments
+recorded by `bench/state_deltas_collect.py` on this tree (scripted self-play).
+
+Under extrapolation the rates are the recorded rows' own, as a visible row's: the
+observation's acceleration columns and its validity, the shot flag and ln n's gradient,
+the previous tick's row (the first tick of a segment, with no previous, is left out).
 
 Per component of `delta.COMPONENTS`, over the one-tick pairs alive at t and t + 1 with no
 reset between: the share exactly 0, 16 quantiles of the rest, the median |change|, the
@@ -15,6 +19,7 @@ Run (CPU only, capped):
 """
 
 import argparse
+import dataclasses
 import json
 import pathlib
 
@@ -30,17 +35,37 @@ from bnb.models.yemong.state_code import state_code_ranges
 QUANTILES = 16
 
 
-def pairs(path: pathlib.Path) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """(means at t, means at t + 1, ship type) of the living one-tick pairs of a segment."""
+def pairs(path: pathlib.Path):
+    """(means at t, means at t + 1, ship type, the extrapolation rates at t) of the living
+    one-tick pairs of a segment with a tick before them."""
     data = np.load(path)
     rows = torch.from_numpy(data["rows"]).double()  # (L, B, N, C)
     done = torch.from_numpy(data["done"])
     offset = torch.zeros(rows.shape[1], 2, dtype=rows.dtype)
     means = truth(rows, offset[None])
     alive = rows[..., SHIP["alive"]] > 0.5
-    keep = alive[:-1] & alive[1:] & ~done[:-1, :, None]
+    keep = alive[1:-1] & alive[2:] & ~done[1:-1, :, None]
+    now = rows[1:-1]
+    column = lambda name: now[..., SHIP[name]]  # noqa: E731
+    rates = delta.Rates(
+        valid=(column("acceleration_valid") > 0.5) & alive[:-2] & ~done[:-2, :, None],
+        acceleration=torch.stack([column("acceleration_x"), column("acceleration_y")], -1),
+        nose_acceleration=column("nose_acceleration"),
+        change=means[1:-1] - means[:-2],
+        rule=torch.zeros_like(keep),
+        turn=torch.ones_like(keep, dtype=torch.float64),
+        gradient=torch.stack([column("log_index_gradient_x"), column("log_index_gradient_y")], -1),
+        gradient_known=torch.ones_like(keep),
+        fired=column("fired") > 0.5,
+    )
+    rates = delta.Rates(
+        **{
+            field.name: getattr(rates, field.name)[keep]
+            for field in dataclasses.fields(delta.Rates)
+        }
+    )
     ship_type = rows[..., SHIP["ship_type"]].long()
-    return means[:-1][keep], means[1:][keep], ship_type[:-1][keep]
+    return means[1:-1][keep], means[2:][keep], ship_type[1:-1][keep], rates
 
 
 def main() -> None:
@@ -48,21 +73,25 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--segments", default="/tmp/bnb-scratch-arm2/segments")
     parser.add_argument("--out", default="/tmp/bnb-scratch-arm2/marginal.json")
+    parser.add_argument("--baseline", default="persistence", choices=delta.DELTA_BASELINES)
     args = parser.parse_args()
     torch.set_num_threads(8)
     rules, types = api.rules_of(api.PRESETS["frontline"]), api.ship_types()
-    code = delta.DeltaCode(state_code_ranges(rules, types)).double()
+    dynamics = delta.state_dynamics(rules, types) if args.baseline == "extrapolation" else None
+    code = delta.DeltaCode(state_code_ranges(rules, types), args.baseline, dynamics).double()
     changes, slows = [], []
     for path in sorted(pathlib.Path(args.segments).glob("*/*/segment_*.npz")):
-        now, after, kind = pairs(path)
-        change, slow = code.changes(now, after, kind)
+        now, after, kind, rates = pairs(path)
+        change, slow = code.changes(
+            now, after, kind, rates if args.baseline == "extrapolation" else None
+        )
         changes.append(change)
         slows.append(slow)
         print(path, change.shape[0], flush=True)
     change, slow = torch.cat(changes), torch.cat(slows)
     report = dict(pairs=change.shape[0], slow_share=slow.double().mean().item(), components={})
     table = {}
-    for i, component in enumerate(delta.COMPONENTS):
+    for i, component in enumerate(code.code_components):
         values = change[:, i]
         zero = values == 0
         rest = values[~zero]
@@ -89,14 +118,14 @@ def main() -> None:
             clipped=clipped.double().mean().item(),
         )
     # the first cross-entropy of the marginal bias as measured, against the empirical one
-    delta.MARGINAL.update({name: (share, tuple(q)) for name, (share, q) in table.items()})
+    code.marginal_table.update({name: (share, tuple(q)) for name, (share, q) in table.items()})
     logits = code.marginal_logits().double()
     sample = change[torch.randperm(change.shape[0])[:500_000]]
     target, _ = code.encode(sample)
     first = codes.grouped_cross_entropy(logits.expand_as(target), target, code.runs).mean(0)
     empirical = torch.log(target.mean(0).clamp_min(1e-300)).expand_as(target)
     best = codes.grouped_cross_entropy(empirical, target, code.runs).mean(0)
-    for i, component in enumerate(delta.COMPONENTS):
+    for i, component in enumerate(code.code_components):
         report["components"][component.name].update(
             first_cross_entropy=first[i].item(), marginal_entropy=best[i].item()
         )

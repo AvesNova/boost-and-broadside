@@ -133,7 +133,8 @@ state code above, are the same either way.
   so it starts as "nothing changes", and the forecast is the decoded code.
 - **`"delta"`**: each quantity's one-tick change from its baseline
   (`bnb.models.yemong.delta`), chosen by `YemongConfig.delta_baseline`
-  (`"persistence"` here). Under `"persistence"` nothing changes, so the target is
+  (`"persistence"` here; `"extrapolation"` [below](#the-extrapolation-baseline)). Under
+  `"persistence"` nothing changes, so the target is
   `truth(t + 1) - truth(t)` (the measurements behind it are in
   `docs/rewrite/sections/baselines-bench.md`). Position and velocity are coded along and
   across the velocity at `t` (across to the left); below 1 m/s the frame is the heading
@@ -216,6 +217,83 @@ state code above, are the same either way.
   two-bin events) are removed: a policy trained with them does not load (its build record
   holds the dynamics they read, and the model refuses it). Select the arm with
   `--set yemong.next_state=delta --set yemong.delta_baseline=persistence`.
+
+### The extrapolation baseline
+
+`YemongConfig.delta_baseline = "extrapolation"` (arm 4; it needs `acceleration_inputs`)
+carries last tick's rates one tick (`bnb.models.yemong.delta.DeltaCode.baseline`, the
+baselines bench's E with the choices of `docs/rewrite/sections/round2-log.md`, O3):
+
+- position: the arc of last tick's path turn at its mean speed, `x + Arc(turn) (v + du/2 u)
+  dt`, exact on a steady turn and on constant acceleration along a line;
+- velocity: `v + a dt`, last tick's tangential and normal acceleration carried from its
+  velocity frame into the frame at `t`;
+- heading: `+ omega dt + omega_dot dt^2 / 2`; the nose rate: persistence (E overshoots the
+  damped nose);
+- angle of attack and energy: last tick's change (energy: persistence after a shot);
+- shield, recharge wait and gun cooldown: last tick's change without an event, else the
+  rule (the shield's recharge once the wait is over, the countdowns; D2). The events are a
+  reset of the wait (a hit always resets it) and a jump of the cooldown or the
+  observation's shot flag;
+- ln n: `ln n + grad . v dt` where the gradient is known (a visible row's observation),
+  else last tick's change.
+
+The rates (`delta.Rates`, `Yemong.rates`): a visible row reads the observation's
+acceleration and its validity, its shot flag and ln n's gradient, and the other
+quantities' last-tick change against the row as the model read it the tick before (which
+rides in the carry, `Carry.previous`, and which `unroll` shifts within a segment). Where a
+row has no valid rate (a first tick, just spotted, spawned) every rate is 0 and the events
+take the rule. A hidden row **holds its last sighting's rates** (`Carry.held`): the
+acceleration along and across its velocity (turned back with the belief's velocity), the
+nose's and the scalars' last change, each decayed by `exp(-dt / tau)` per tick, tau
+`YemongConfig.extrapolation_decay` (0.5 s), while the belief holds the ship; its shield
+and countdowns take the rule. The brief had a hidden row difference its own belief, as
+its acceleration inputs do. On a short CPU run that ran away: the belief's change holds the
+head's decoded change, which came back as the next tick's acceleration and compounded, to
+a velocity error of 1040 m/s at 2-5 s by update 8. With the held rates decaying at 0.5 s the
+same short run (arm 2's BC config scaled to 64 environments of 32 ticks, float32, seed 1,
+20 updates; the error head as arm 3's, eta 0.1) stayed stable, so no clamp on the speed
+was needed. A hidden ship's heading also turns by its nose rate times that decay since the
+sighting (`delta.Rates.turn`), so it stops turning. Updates 10-20, by hidden age 0-0.1 /
+0.1-0.5 / 0.5-1 / 1-2 / 2-5 / 5-10 s: position error 0.04 / 1.8 / 11 / 39 / 142 / 388 m
+(arm 2: 1.0 / 6.5 / 20 / 46 / 143 / 377; arm 3: 1.2 / 7.1 / 21 / 54 / 147 / 379),
+velocity 1.6 / 11.8 / 28.1 / 47.6 / 64 / 82 m/s (arm 2: 1.9 / 12.4 / 29.2 / 39.9 / 62 /
+80), heading 0.03 / 0.22 / 0.56 / 1.00 / 1.35 / 1.47 rad (arm 2: 0.03 / 0.17 / 0.37 / 0.51
+/ 0.82 / 1.08). The turn's decay helped the heading a little (without it 0.25 / 0.63 / 1.07
+/ 1.49 / 1.56), and it is still worse than arm 2's.
+
+On recorded play the baseline equals the bench's E to float32
+(`tests/sections/test_yemong_extrapolation.py`); below 1 m/s the bench takes last tick's
+frame from last tick's heading, the model from today's (no living ship was that slow on the
+bench's data). The forecast of a hidden row applies the same baseline to the belief, and
+the error head is unchanged. The target is the truth at `t + 1` less the baseline of the
+truth at `t` under the rates the model read: exact for the rows seen at `t`, and, for a
+hidden row (a diagnostic under the split), its held rates on the true state. The build
+records the shield rule's dynamics (`delta.StateDynamics`). Its code:
+
+| Component | Knee | Bound (the last real centre) | Real bins |
+|---|---|---|---|
+| position, along / across the track (m) | 2.62e-4 / 1.17e-3 | 0.3 / 0.4 | 51 |
+| velocity, along / across (m/s) | 0.0188 / 0.0731 | 26 / 26 | 51 |
+| heading (rad) | 1.28e-3 | 0.38 | 31 |
+| nose rate (rad/s; persistence) | 0.0848 | 10.5 | 31 |
+| angle of attack (rad) | 2.11e-3 | 0.23 | 31 |
+| shield recharge wait (s) | 0.0667 | 6 | 31 |
+| shield (of the maximum) | 0.0363 | 0.36 | 31 |
+| energy (of the maximum) | 8.08e-6 | 0.06 | 31 |
+| log refractive index | 5.65e-4 | 0.09 | 31 |
+| gun cooldown (s) | 1/30 | 0.1 | 31 |
+
+The knees are the medians of the baseline's residual (where the median is 0: the wait 97%,
+the shield 98%, ln n 97%, the cooldown 96%, the median above 1e-6) on the arm-2 recordings
+of scripted self-play on this tree (10.6M living pairs with a tick before them;
+`bench/persistence_marginal.py --baseline extrapolation`), the bounds its maxima rounded up;
+nothing falls in the padding. The position along the track is a residual here, not the
+whole move, so it has an ordinary symmetric code. 500 outputs. The head's bias starts at
+the measured marginal (`delta.EXTRAPOLATION_MARGINAL`); its first cross-entropy there was
+29.4 nats per row against the targets' marginal entropy of 29.2, in the code of the bench's
+E knees the measurement started from (the re-measured knees differ by up to 1.6x). Select the arm with
+`--set yemong.delta_baseline=extrapolation` on arm 3's line.
 
 ### The error head: the next-state work split
 

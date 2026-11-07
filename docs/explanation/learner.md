@@ -168,7 +168,9 @@ run (arm 2's BC config scaled to 64 environments of 32 ticks, 8 minibatches, flo
 norm averages 0.0146 (share 0.19; arm 2's one head 0.0144 at the same coefficient) and the
 error head's 0.0065 (share 0.036), over token shares of 0.64 seen rows (0.49 own, 0.15
 visible enemies) and 0.36 hidden rows. Per row the error head's trunk gradient is 0.78
-times the physics head's, inside the 1.5x band, so its coefficient stays 0.0033. The run's
+times the physics head's, inside the 1.5x band, so its coefficient stays 0.0033. On arm 4's short
+run (the extrapolation baseline, the same scale) the physics head's trunk norm averages
+0.0119 and the error head's 0.0086, 1.32 times per row, also inside the band. The run's
 `gradient/norm/trunk/correction` is the check.
 
 An update makes `epochs` passes of `minibatches` minibatches over the views; a view keeps
@@ -261,7 +263,9 @@ size of the segment):
   head (`YemongConfig.next_state = "delta"`), the code of each row's true change from `t`
   to `t + 1` (persistence; `bnb.models.yemong.delta.DeltaCode.targets`), which changes
   were clamped to the code's padded range (`next_state_clipped`), and whether the frame
-  was the heading (slower than 1 m/s, `next_state_slow`). With `YemongConfig.delta_split`, the
+  was the heading (slower than 1 m/s, `next_state_slow`). Under the extrapolation
+  baseline the change is from the baseline of the true state at `t` under the rates the
+  model read (`bnb.learn.labels.rates`, `Yemong.segment_rates`). With `YemongConfig.delta_split`, the
   next-state mask split by sight at `t` (`bnb.learn.labels.split_masks`): `physics_mask`,
   the own rows and the enemies seen at `t`, and `correction_mask`, the enemies whose belief
   at `t` is a forecast.
