@@ -51,3 +51,10 @@ Entries: time, what, why. Newest last.
   resolution rather than learning (new confound **C11**); the spread is the full 6 x 6
   covariance with the physical F (risk: double-counting velocity error on hidden rows; log
   coverage).
+- **02:50** Observation change merged (O10 + O1). Verified: ruff; its new tests, the
+  acceleration tests, the dashboards slow test and the contract tests (94 pass); C-fixed's
+  30M policy and an arm-1 checkpoint load on the new tree. The agent showed arm 1 plays bit
+  for bit the same on both trees (72,000 actions, 138k rows of inputs). Sim speed unchanged
+  within noise (perceive alone 13-18% slower, a small part of a tick). Noted from its report:
+  a learner sequence that starts mid-game with a blank carry now gets valid visible
+  accelerations where arm 1's did not (the observation knows t-1); live play is identical.
