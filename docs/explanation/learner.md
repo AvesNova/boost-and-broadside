@@ -138,6 +138,19 @@ trained BC run they settle at 0.02-0.10 (policy 0.04-0.07, density 0.05-0.08, en
 `gradient/norm/trunk/rotary_readout` is the check. The measurement predates the read-out
 in every block (it was one head, on the first block) and was not repeated for it.
 
+**The delta next-state head's coefficient, 0.0025** (`--set learner.next_state=0.0025`
+with `--set yemong.next_state=delta`; the default 0.0041 is the absolute head's). Nats per
+token change with the code, so it is set to match the next-state term's trunk gradient in
+C-fixed (`yemong.order=temporal_first`, `spread_fit="coarsest"`, BC). At initialisation the
+share is exactly 0 for both heads (their last weight starts at zero). Measured on a short
+CPU run instead: C-fixed's config scaled to 64 environments of 32 ticks, 8 minibatches,
+float32, seed 1, the gradient decomposition at every update from 10 to 20. At 0.0041 the
+absolute head's trunk norm averages 0.0116 (share 0.10) and the delta head's 0.0186 (share
+0.31), 1.6 times more; 0.0041 / 1.6 = 0.0025, and at 0.0025 the delta head averages 0.0107
+(share 0.12). The shares at this scale are noisy (their signs flip early on) and several
+times C-fixed's logged 0.04-0.047 at updates 10-20, so the run's own
+`gradient/share/trunk/next_state` is the check.
+
 An update makes `epochs` passes of `minibatches` minibatches over the views; a view keeps
 its whole segment, which `unroll` needs. It clips the gradient norm, steps Adam with a
 linear warmup of the learning rate over the first 10M environment steps (a run warm-started
