@@ -95,3 +95,4 @@ Entries: time, what, why. Newest last.
   `runs-v2/ratings/2026-11-08-arm2`). I will check the first updates against round 1's
   early numbers (belief error and coverage by age, the head's error against the bench
   medians, the gradient share).
+- **04:30** Brief `arms34-brief.md`; my calls in it: r = each quantity's one-tick physical bound (the belief moves toward the truth no faster than the ship could move); the error target's range is the full reachable error (position +-26 km); the error head's coefficient starts equal per row to the physics head's and changes only if its share is >1.5x off. Agent launched (worktree `bnb-arms34`).
