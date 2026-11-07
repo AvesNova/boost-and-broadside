@@ -328,10 +328,12 @@ class DeltaCode(nn.Module):
         for component in COMPONENTS:
             half = (component.bins - 1) // 2 + codes.PADDING_BINS
             edges = torch.arange(-half, half + 2, dtype=torch.float64) - 0.5
+            spacing = codes.symlog_spacing(component.knee, component.bound, component.bins)
+            scale = MARGINAL_SCALE / spacing  # in bins
             laplace = torch.where(
                 edges < 0,
-                0.5 * torch.exp(edges / MARGINAL_SCALE),
-                1.0 - 0.5 * torch.exp(-edges / MARGINAL_SCALE),
+                0.5 * torch.exp(edges / scale),
+                1.0 - 0.5 * torch.exp(-edges / scale),
             )
             spread = laplace[1:] - laplace[:-1]
             spread = spread / spread.sum()
