@@ -18,6 +18,17 @@ worth pursuing. These items wait until then. Each says where it came from.
   all ages over three seeds. An earlier uniform 3-age test scored 0.62 against 0.97 on one
   seed.
 - **A Triton kernel for the shot-trajectory head.**
+- **Compile time** (author, 2026-11-07): the first BC update costs 550-900 s against about
+  245 s steady, and a tournament's first batch 560-750 s against about 145 s, so compiling
+  and graph capture take roughly 5-10 minutes each time, even with the on-disk inductor
+  cache warm. In the physics race JAX compiled in under a minute. Find where the time goes
+  (`TORCH_LOGS=recompiles,graph_breaks`, compile versus CUDA-graph capture versus Triton
+  autotuning), then cut it without losing steady-state speed: regional compilation (compile
+  the repeated Yemong block once instead of the whole unrolled graph), PyTorch's portable
+  compile caches (`torch.compiler.save_cache_artifacts` / `load_cache_artifacts`), an
+  ahead-of-time export (AOTInductor) of the rollout and learner graphs, no recompiles from
+  shape or dtype changes, and fewer autotune candidates. Measure steady update time before
+  and after; a faster compile that costs steady speed is not wanted.
 
 ## Portability
 
