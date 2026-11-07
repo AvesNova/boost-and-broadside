@@ -116,3 +116,9 @@ Entries: time, what, why. Newest last.
   `correction/predicted_variance` against `correction/realised_square_error`.
   Verifying: ruff clean; quick tier running (the agent's last full quick tier predates the
   turn-decay change).
+- **06:22** Quick tier on the final arms-3/4 tree: 1552 pass (7.5 min). **Merged** (v2
+  33c2084a). Queued from worktree `bnb-run-arms34` (detached 33c2084a): job 8 arm 3 BC 30M
+  (`2026-11-08-bc-arm3-split`) after arm 2's tournament; job 9 its tournament (arm 3, arm 2,
+  C-fixed 30M); job 10 arm 4 BC 30M (`2026-11-08-bc-arm4-extrapolation`); job 11 its
+  tournament (arm 4, arm 3, C-fixed 30M). ETAs: arm 2 done ~06:55, its tournament ~07:40;
+  arm 3 ~10:00 + tournament ~10:45; arm 4 ~13:05 + tournament ~13:50 (worst +1 h each).
