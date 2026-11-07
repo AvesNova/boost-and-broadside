@@ -56,6 +56,7 @@ def build(player: str, game, device):
 
 @torch.no_grad()
 def main() -> None:
+    """Play the segments and write each one to disk."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--player", required=True)
     parser.add_argument("--preset", required=True)

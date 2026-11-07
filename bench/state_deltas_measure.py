@@ -35,10 +35,12 @@ RESPAWN_TICKS = 30  # "just respawned": within 1 s of the spawn
 
 
 def wrap(angle):
+    """An angle wrapped to [-pi, pi)."""
     return np.remainder(angle + np.pi, 2.0 * np.pi) - np.pi
 
 
 def rotate(x, y, angle):
+    """(x, y) rotated by angle."""
     c, s = np.cos(angle), np.sin(angle)
     return c * x - s * y, s * x + c * y
 
@@ -202,10 +204,12 @@ def segment_series(path: pathlib.Path, columns: list[str], dt: float):
 
 
 def quantity_of(name: str) -> str:
+    """The quantity of a series name."""
     return name.split("/")[0]
 
 
 def statistics(values: np.ndarray, magnitude: np.ndarray) -> dict:
+    """The statistics of one series (NaN dropped), with its share below float32 resolution."""
     finite = np.isfinite(values)
     skipped = float(1.0 - finite.mean()) if values.size else 0.0
     values, magnitude = values[finite], magnitude[finite]
@@ -227,6 +231,7 @@ def statistics(values: np.ndarray, magnitude: np.ndarray) -> dict:
 
 
 def histogram(values: np.ndarray) -> dict:
+    """Signed counts of |values| in the log-spaced EDGES."""
     v = values.astype(np.float64)
     v = v[np.isfinite(v)]
     positive, _ = np.histogram(v[v > 0], EDGES)
@@ -241,6 +246,7 @@ def histogram(values: np.ndarray) -> dict:
 
 
 def measure(player: str, preset: str, rng: np.random.Generator) -> None:
+    """Statistics, splits, histograms and subsamples of one player and preset."""
     directory = SCRATCH / "segments" / player / preset
     meta = json.loads((directory / "meta.json").read_text())
     collected: dict[str, list] = {}
@@ -355,6 +361,7 @@ UNITS = dict(
 
 
 def main() -> None:
+    """Measure every collected player and preset."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--players", nargs="+", default=["scripted", "calm-fern"])
     parser.add_argument(

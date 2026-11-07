@@ -52,11 +52,13 @@ def nice_ceiling(value: float) -> float:
 
 
 def entropy(p: np.ndarray) -> float:
+    """The entropy (nats) of a distribution."""
     p = p[p > 0]
     return float(-(p * np.log(p)).sum())
 
 
 def self_entropy(fraction: np.ndarray) -> float:
+    """The mean entropy (nats) of two-hot targets with these upper-bin fractions."""
     f = np.clip(fraction, 1e-12, 1 - 1e-12)
     h = -(f * np.log(f) + (1 - f) * np.log(1 - f))
     return float(np.where((fraction <= 0) | (fraction >= 1), 0.0, h).mean())
@@ -103,10 +105,13 @@ def local_width(centres: np.ndarray, value: float) -> float:
 
 
 def uniform_grid(low, high, bins):
+    """bins evenly spaced centres from low to high."""
     return np.linspace(low, high, bins)
 
 
 def symlog_grid(low, high, bins, knee):
+    """bins centres evenly spaced in sign(v) ln(1 + |v| / knee), with an exact zero for odd bins."""
+
     def forward(v):
         return np.sign(v) * np.log1p(np.abs(v) / knee)
 
@@ -164,6 +169,7 @@ def wrapped_grid_report(z, bins):
 
 
 def evaluate_1d(z: np.ndarray, circular: bool = False, budget: int = BUDGET_1D) -> dict:
+    """Every 1-D candidate's metrics on the changes z (circular: add the circular codes)."""
     absolute = np.abs(z)
     median, p999, top = (float(np.percentile(absolute, q)) for q in (50, 99.9, 100))
     nonzero_median = float(np.median(absolute[absolute > 0])) if (absolute > 0).any() else 1.0
@@ -240,6 +246,7 @@ def evaluate_1d(z: np.ndarray, circular: bool = False, budget: int = BUDGET_1D) 
 
 
 def project(x, y):
+    """(x, y) onto the axes at 0, 120 and 240 degrees."""
     return np.stack([x, -0.5 * x + 0.5 * SQRT3 * y, -0.5 * x - 0.5 * SQRT3 * y], -1)
 
 
@@ -456,6 +463,7 @@ TWO_D = (
 
 
 def main() -> None:
+    """Evaluate every candidate on the pooled samples and write codes.json."""
     report = {}
     for quantity, base, horizon, circular in ONE_D:
         component = "angle" if quantity == "heading" else "value"

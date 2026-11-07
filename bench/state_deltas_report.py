@@ -47,6 +47,7 @@ SPLIT_BASE = dict(
 
 
 def g(value) -> str:
+    """A number in three figures (scientific when tiny or large)."""
     if value is None or value != value:
         return "-"
     if value == 0:
@@ -57,10 +58,12 @@ def g(value) -> str:
 
 
 def percent(value) -> str:
+    """A share as a percentage."""
     return f"{100 * value:.1f}%" if value >= 0.001 or value == 0 else f"{100 * value:.2g}%"
 
 
 def load():
+    """The statistics of every player and preset, by (player, preset)."""
     data = {}
     for player in PLAYERS:
         for preset in PRESETS:
@@ -71,6 +74,7 @@ def load():
 
 
 def counts_table(data) -> list[str]:
+    """The sample counts."""
     lines = [
         "| player | preset | environments | ticks | episode ends | games touched | "
         "living ship-ticks (1 / 8 / 32-tick pairs) |",
@@ -87,6 +91,7 @@ def counts_table(data) -> list[str]:
 
 
 def quantity_table(data, quantity) -> list[str]:
+    """One quantity's statistics per player, preset, baseline and horizon."""
     vector = quantity in ("position", "velocity")
     head = (
         "| player | preset | baseline | k | zero | < f32 | mean | p50 | p90 | p99 | p99.9 | max |"
@@ -166,6 +171,7 @@ def body_split_table(data, quantity, base) -> list[str]:
 
 
 def budget_table(sweep: dict) -> list[str]:
+    """One bin-count sweep."""
     lines = [
         "| bins | width at p50 (x median) | width at p99.9 | nearest-centre error | H |",
         "|---|---|---|---|---|",
@@ -179,6 +185,7 @@ def budget_table(sweep: dict) -> list[str]:
 
 
 def split_table(data, quantity) -> list[str]:
+    """One quantity's splits by situation."""
     base = SPLIT_BASE[quantity]
     keys = list(data)
     head = "| situation | " + " | ".join(f"{p} {s}" for p, s in keys) + " |"
@@ -201,6 +208,7 @@ def split_table(data, quantity) -> list[str]:
 
 
 def code_table(entry) -> list[str]:
+    """One change's candidate codes."""
     lines = [
         "| candidate | bins | coverage | width at p50 (x median) | width at p99.9 | "
         "nearest-centre error | H (nats) | H_self (nats) | clipped |",
@@ -216,6 +224,7 @@ def code_table(entry) -> list[str]:
 
 
 def main() -> None:
+    """Print every table."""
     data = load()
     out = ["## Samples", "", *counts_table(data), ""]
     for quantity in ORDER:
