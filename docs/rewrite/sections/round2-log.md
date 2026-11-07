@@ -134,3 +134,13 @@ Entries: time, what, why. Newest last.
   0.13 vs 0.27, single-log samples) is serving the outcome head worse. Not acting on it
   tonight (BC; the tournament judges play); flagged for the author since the outcome head
   must work in RL. Tournament (job 7) started 06:50.
+- **07:15** **Arm 2 tournament** (scripted = 1000; `runs-v2/ratings/2026-11-08-arm2`):
+  frontline C-fixed 747 +- 23, arm 1 698 +- 24, **arm 2 638 +- 23** (-109 vs C-fixed, -60 vs
+  arm 1: past the noise); deathmatch arm 2 700 +- 16, arm 1 679 +- 17, C-fixed 656 +- 17 (+44
+  vs C-fixed: at the edge). Mean: C-fixed 701, arm 1 689, arm 2 669. **Arm 2 loses; C-fixed
+  stays champion.** Notable: the frontline order (C-fixed > arm 1 > arm 2) is exactly the
+  outcome Brier order (0.52 > 0.35 > 0.15), while deathmatch goes the other way. Frontline is
+  the objective mode, the outcome head reads the objective: the change is hurting the trunk's
+  grasp of the objective / strategy while helping close-range fighting. Arms 3 and 4 still
+  run as planned (they answer 3 vs 2 and 4 vs 3); expect them to share arm 2's frontline
+  deficit.
