@@ -206,7 +206,7 @@ def head_record(model, trajectory, unrolled) -> dict:
     return dict(
         rows=rows,
         next_rows=following,
-        next_state_mask=labels.next_state_mask(trajectory),
+        next_state_mask=labels.next_state_mask(trajectory, model),
         next_state=dict(
             position=forecast.position,
             position_sigma=forecast.position_sigma,

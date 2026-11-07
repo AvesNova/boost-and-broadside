@@ -27,13 +27,14 @@ def next_rows(trajectory: Trajectory, rows: torch.Tensor) -> torch.Tensor:
 
 def next_state_targets(model, trajectory: Trajectory, rows: torch.Tensor) -> dict:
     """The next-state head's targets, (L, R, N, ...) per row: {"next_state": the code}, and
-    with the delta head {"next_state_clipped": (L, R, N, components) bool}.
+    with the delta head {"next_state_clipped": (L, R, N, components) bool,
+    "next_state_slow": (L, R, N) bool}.
 
     Absolute (`YemongConfig.next_state`): the sharp state code of every row's true state at
     t + 1, in the model's frame (the true position plus the view's position offset at t).
-    Delta: the code of every row's true change from t to t + 1 (`delta.DeltaCode.targets`:
-    from the baseline of its true state at t), and which changes were clamped to the
-    code's padded range."""
+    Delta: the code of every row's true change from t to t + 1 (`delta.DeltaCode.targets`),
+    which changes were clamped to the code's padded range, and whether the frame was the
+    heading (slower than `delta.SLOW_SPEED`)."""
     following = next_rows(trajectory, rows)
     offset = trajectory.replay.offset
     after = shifted_truth(following, offset)
@@ -41,10 +42,10 @@ def next_state_targets(model, trajectory: Trajectory, rows: torch.Tensor) -> dic
         return dict(
             next_state=model.state_code.sharp(after, following[..., SHIP["ship_type"]].long())
         )
-    code, clipped = model.delta_code.targets(
+    code, clipped, slow = model.delta_code.targets(
         shifted_truth(rows, offset), after, rows[..., SHIP["ship_type"]].long()
     )
-    return dict(next_state=code, next_state_clipped=clipped)
+    return dict(next_state=code, next_state_clipped=clipped, next_state_slow=slow)
 
 
 def rotary_targets(model, trajectory: Trajectory, rows: torch.Tensor) -> torch.Tensor:
@@ -55,13 +56,19 @@ def rotary_targets(model, trajectory: Trajectory, rows: torch.Tensor) -> torch.T
     return model.phasors(means[..., 0:2], means[..., 4])
 
 
-def next_state_mask(trajectory: Trajectory) -> torch.Tensor:
+def next_state_mask(trajectory: Trajectory, model=None) -> torch.Tensor:
     """(L, R, N): the row's belief is valid at t (own rows always), and t did not end an
-    episode."""
+    episode. With the delta head (model's `delta_code`) also: the ship is alive at t and at
+    t + 1 (a death or a spawn is not a change of state)."""
     valid = trajectory.replay.valid
     own = trajectory.log_probability.shape[-1]
     rows = torch.cat([valid.new_ones(valid.shape[:-1] + (own,)), valid], -1)
-    return rows & ~trajectory.done[..., None]
+    mask = rows & ~trajectory.done[..., None]
+    if getattr(model, "delta_code", None) is None:
+        return mask
+    truth = privileged_rows(trajectory)
+    following = next_rows(trajectory, truth)
+    return mask & (truth[..., SHIP["alive"]] > 0.5) & (following[..., SHIP["alive"]] > 0.5)
 
 
 def enemy_actions(trajectory: Trajectory) -> tuple[torch.Tensor, torch.Tensor]:

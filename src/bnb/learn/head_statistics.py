@@ -49,7 +49,7 @@ from bnb.contracts.action import NUM_JOINT, NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.contracts.series import Mean
 from bnb.models.yemong import codes
-from bnb.models.yemong.delta import CONTINUOUS
+from bnb.models.yemong.delta import CONTINUOUS, PART_GROUPS
 from bnb.models.yemong.density import poisson_terms
 from bnb.models.yemong.inputs import ACCELERATIONS, believed
 from bnb.models.yemong.inputs import truth as shifted_truth
@@ -60,6 +60,7 @@ from bnb.models.yemong.state_code import (
     NOSE_RATE_LIMIT,
     POSITION_PERIOD,
     SCALARS,
+    ellipse,
     velocity_reach,
 )
 
@@ -79,8 +80,22 @@ TEAMS = ("ally", "enemy")
 # The next state's situations at t (`_next_state_situations`): every living pair, in a field
 # or its band (at t or t + 1), hit (any damage: the recharge wait reset), boosting, coasting.
 NEXT_STATE_SITUATIONS = ("all", "field", "hit", "boost", "coast")
-# The decoded one-tick forecast's error against persistence and (delta) the physics baseline.
-ERROR_PREDICTORS = ("head", "persistence", "baseline")
+# The decoded one-tick forecast's error against persistence.
+ERROR_PREDICTORS = ("head", "persistence")
+# The bench's one-tick medians of each baseline's error (baselines-bench.md 1.2: P, R, E;
+# position and velocity as norms; energy as a fraction of the type's maximum), for the
+# share of seen rows whose decoded forecast beats each (`next_state/beats_bench_median/*`;
+# a share above 1/2 is a median below the bench's). The quantities whose medians are 0
+# (shield, the countdowns, ln n) have none.
+BENCH_MEDIANS = {
+    "position_metres": (2.60, 0.0066, 0.0019),
+    "velocity_metres_per_second": (0.598, 0.333, 0.116),
+    "heading_radians": (0.0101, 9.7e-4, 6.3e-4),
+    "nose_rate_radians_per_second": (0.052, 0.052, 0.045),
+    "angle_of_attack_radians": (0.00285, 0.00285, 0.00142),
+    "energy_fraction": (5.4e-4, 5.4e-4, 2.1e-6),
+}
+BENCH_BASELINES = ("persistence", "rule", "extrapolation")
 # Hidden age buckets in seconds (lower bound inclusive) and their slice names.
 AGE_BUCKETS = (
     ("age_0_0.1_seconds", 0.0, 0.1),
@@ -149,6 +164,14 @@ def _run_sums(per_group: torch.Tensor, runs: codes.Runs) -> torch.Tensor:
     )
 
 
+def _part_sums(per_group: torch.Tensor, runs: codes.Runs, delta) -> torch.Tensor:
+    """(..., STATE_PARTS) per-group values (..., groups) summed within each of the state
+    code's parts: its runs (absolute), or the delta code's `PART_GROUPS`."""
+    if delta is None:
+        return _run_sums(per_group, runs)
+    return torch.stack([part.sum(-1) for part in per_group.split(PART_GROUPS, -1)], -1)
+
+
 def _grouped_entropy(target: torch.Tensor, runs: codes.Runs) -> torch.Tensor:
     """(..., runs) the entropy of a grouped code (..., width), summed within each run."""
     parts = [
@@ -178,8 +201,8 @@ def sums(
     runs = model.next_state_runs
     logits = unrolled.next_state_logits.float()
     target = label["next_state"]
-    cross_entropy = _run_sums(codes.grouped_cross_entropy(logits, target, runs), runs)
     delta = getattr(model, "delta_code", None)
+    cross_entropy = _part_sums(codes.grouped_cross_entropy(logits, target, runs), runs, delta)
     if delta is None:
         obs, replay = trajectory.obs, trajectory.replay
         reset = obs.globals[..., GLOBAL["reset"]] > 0.5
@@ -188,7 +211,7 @@ def sums(
         start = codes.baseline(code)
     else:
         start = delta.marginal.expand_as(logits)
-    baseline = _run_sums(codes.grouped_cross_entropy(start, target, runs), runs)
+    baseline = _part_sums(codes.grouped_cross_entropy(start, target, runs), runs, delta)
     entropy = _grouped_entropy(target, runs).sum(-1)
     mask = label["next_state_mask"]
     populations = dict(
@@ -259,12 +282,21 @@ def _next_state_situations(
     )
     delta = getattr(model, "delta_code", None)
     predictions = dict(head=forecast, persistence=now)
-    if delta is not None:
-        predictions["baseline"] = delta.baseline(now, ship_type)
     out["next_state/error/count"] = seen.float().sum()
     for predictor, predicted in predictions.items():
         out[f"next_state/error/{predictor}"] = _masked(_state_errors(predicted, after), seen)
     if delta is not None:
+        errors = _state_errors(forecast, after)
+        columns = {name: i for i, (name, _) in enumerate(BELIEF_QUANTITIES)}
+        energy = MEANS.index("energy")
+        maximum = model.state_code.max_energy[ship_type]
+        errors = dict(
+            {name: errors[..., columns[name]] for name in BENCH_MEDIANS if name in columns},
+            energy_fraction=(forecast[..., energy] - after[..., energy]).abs() / maximum,
+        )
+        for name, medians in BENCH_MEDIANS.items():
+            beats = torch.stack([errors[name] < median for median in medians], -1)
+            out[f"next_state/beats_bench_median/{name}"] = _masked(beats.float(), seen)
         supervised = label["next_state_mask"]
         probabilities = torch.exp(
             codes.grouped_log_softmax(unrolled.next_state_logits.float(), delta.runs)
@@ -272,6 +304,7 @@ def _next_state_situations(
         out["next_state/support/count"] = supervised.float().sum()
         out["next_state/support/clipped"] = _masked(label["next_state_clipped"].float(), supervised)
         out["next_state/support/padding"] = _masked(delta.padding_mass(probabilities), supervised)
+        out["next_state/support/slow"] = _masked(label["next_state_slow"].float(), supervised)
     return out
 
 
@@ -454,8 +487,13 @@ def series(total: dict, model) -> dict:
             continue
         for (quantity, _), value in zip(BELIEF_QUANTITIES, errors.unbind(), strict=True):
             out[f"next_state/error/{quantity}/{predictor}"] = Mean(value, count)
+    for name in BENCH_MEDIANS if "next_state/support/count" in total else ():
+        values = total[f"next_state/beats_bench_median/{name}"]
+        for baseline, value in zip(BENCH_BASELINES, values.unbind(), strict=True):
+            out[f"next_state/beats_bench_median/{name}/{baseline}"] = Mean(value, count)
     if "next_state/support/count" in total:
         count = total["next_state/support/count"]
+        out["next_state/slow_frame_share"] = Mean(total["next_state/support/slow"], count)
         for kind in ("clipped", "padding"):
             values = total[f"next_state/support/{kind}"]
             name = "support_clip" if kind == "clipped" else "support_padding"
@@ -537,12 +575,16 @@ def _wrapped(difference: torch.Tensor, period: float) -> torch.Tensor:
 
 
 @torch.no_grad()
-def belief_sums(trajectory: Trajectory, tick_length: float) -> dict:
+def belief_sums(trajectory: Trajectory, tick_length: float, state_code=None) -> dict:
     """Group 8's totals over a stored batch: per hidden-age bucket, the count of hidden
     living enemies holding a belief, and per quantity the error's sum, the normalised
     square error's sum ((error / sigma)^2 per dimension) and the counts within 1 and 2
     sigma. The belief is the replay record's (what the behaviour policy believed at t,
-    after its sight); the truth is the stored privileged row at t."""
+    after its sight); the truth is the stored privileged row at t. With a state code that
+    carries the covariance (a delta build) the position's normalised error is its
+    Mahalanobis distance under the covariance's position block (as the velocity's always
+    is), and each bucket also sums the position and velocity ellipses' anisotropy
+    ((sigma_major - sigma_minor) / (sigma_major + sigma_minor))."""
     replay = trajectory.replay
     own = trajectory.log_probability.shape[-1]
     enemy = trajectory.obs.ships[..., own:, :]
@@ -560,6 +602,9 @@ def belief_sums(trajectory: Trajectory, tick_length: float) -> dict:
         ],
         -1,
     )
+    covariance = state_code is not None and state_code.covariance
+    if covariance:
+        position_block, velocity_block = state_code.blocks(spreads)
     errors, normalised = [], []
     for name, columns in BELIEF_QUANTITIES:
         part = difference[..., columns[0] : columns[-1] + 1]  # a slice: a list index syncs
@@ -567,8 +612,14 @@ def belief_sums(trajectory: Trajectory, tick_length: float) -> dict:
         if name not in SIGMA_COLUMNS:
             continue
         column = SIGMA_COLUMNS[name]
-        if name == "velocity_metres_per_second":
-            xx, xy, yy = spreads[..., 1], spreads[..., 2], spreads[..., 3]
+        two_dimensional = name == "velocity_metres_per_second" or (
+            name == "position_metres" and covariance
+        )
+        if two_dimensional:
+            if name == "position_metres":
+                xx, xy, yy = position_block.unbind(-1)
+            else:
+                xx, xy, yy = spreads[..., 1], spreads[..., 2], spreads[..., 3]
             determinant = (xx * yy - xy * xy).clamp_min(TINY_VARIANCE**2)
             x, y = part[..., 0], part[..., 1]
             square = (yy * x * x - 2.0 * xy * x * y + xx * y * y) / determinant
@@ -592,6 +643,12 @@ def belief_sums(trajectory: Trajectory, tick_length: float) -> dict:
         out[f"belief/{bucket}/normalised_square_error"] = _masked(normalised, members)
         out[f"belief/{bucket}/within_one_sigma"] = _masked((normalised <= 1.0).float(), members)
         out[f"belief/{bucket}/within_two_sigma"] = _masked((normalised <= 4.0).float(), members)
+        if covariance:
+            anisotropy = []
+            for block in (position_block, velocity_block):
+                _, _, cos, sin = ellipse(block)
+                anisotropy.append(torch.sqrt(cos * cos + sin * sin))
+            out[f"belief/{bucket}/anisotropy"] = _masked(torch.stack(anisotropy, -1), members)
     return out
 
 
@@ -612,6 +669,11 @@ def belief_series(total: dict) -> dict:
                 sigma_names, total[f"belief/{bucket}/{quantity}"].unbind(), strict=True
             ):
                 out[f"belief/{quantity}/{name}/{bucket}"] = Mean(value, count)
+        if f"belief/{bucket}/anisotropy" in total:
+            for name, value in zip(
+                ("position", "velocity"), total[f"belief/{bucket}/anisotropy"].unbind(), strict=True
+            ):
+                out[f"belief/anisotropy/{name}/{bucket}"] = Mean(value, count)
     return out
 
 

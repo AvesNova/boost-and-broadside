@@ -449,7 +449,7 @@ class Learner:
         return dict(
             **readout,
             **labels.next_state_targets(model, trajectory, rows),
-            next_state_mask=labels.next_state_mask(trajectory),
+            next_state_mask=labels.next_state_mask(trajectory, self.model),
             enemy_action=enemy,
             enemy_mask=enemy_mask,
             density=labels.density_targets(self.grid, trajectory, rows),
@@ -814,7 +814,7 @@ class Learner:
                             trajectory, spread[:, views], following, followed
                         )
                         counts[views, COUNTS.index("next_state")] = (
-                            labels.next_state_mask(trajectory).sum((0, 2)).float()
+                            labels.next_state_mask(trajectory, self.model).sum((0, 2)).float()
                         )
                         counts[views, COUNTS.index("shots")] = shot_mask.sum((0, 2)).float()
                         stored = _pytree.tree_map_only(
@@ -831,7 +831,9 @@ class Learner:
                                 belief_total,
                                 {
                                     **head_statistics.belief_sums(
-                                        trajectory, self.rules.tick_length
+                                        trajectory,
+                                        self.rules.tick_length,
+                                        getattr(self.model, "state_code", None),
                                     ),
                                     **head_statistics.input_sums(self.model.state_code, trajectory),
                                     **head_statistics.acceleration_sums(self.model, trajectory),

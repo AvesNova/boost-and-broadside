@@ -48,6 +48,13 @@ SPREADS = (
     "log_refractive_index",
 )
 
+# The kinematic state whose full covariance a delta build's belief carries
+# (`YemongConfig.next_state = "delta"`): appended to the spreads as its upper triangle,
+# row-major (COVARIANCE_ENTRIES).
+COVARIANCE_STATE = ("x", "y", "velocity_x", "velocity_y", "heading", "nose_rate")
+COVARIANCE_ENTRIES = len(COVARIANCE_STATE) * (len(COVARIANCE_STATE) + 1) // 2
+SPREAD_INPUTS = ("scalar", "ellipse")  # `YemongConfig.spread_inputs`
+
 POSITION_PERIOD = 4.0 * 3.0**8  # m per axis: 26 244 m, finest level 4 m
 POSITION_LEVELS = 9
 VELOCITY_KNEE = 50.0  # m/s
@@ -61,6 +68,49 @@ SCALAR_BINS = 21
 LOG_INDEX_SPAN = math.log(2.0)  # field levels span n from 1/2 to 2
 # The five 21-bin scalars in code order; shield and energy are coded as fractions.
 SCALARS = ("angle_of_attack", "shield_recharge_wait", "shield", "energy", "log_refractive_index")
+
+
+# The ellipse inputs (`spread_inputs = "ellipse"`): per ellipse (position, velocity) log
+# sigma_major, log sigma_minor, and the doubled angle (cos 2 theta, sin 2 theta) times the
+# anisotropy (sigma_major - sigma_minor) / (sigma_major + sigma_minor), world frame, each a
+# two-hot code of SCALAR_BINS like the state code's scalars. A sigma is coded as
+# ln(1 + sigma / knee) from 0 up to its bound's (a log above the knee, 0 for a sharp row).
+ELLIPSE_FEATURES = 4
+ELLIPSE_SIGMA = dict(position=(1.0, POSITION_PERIOD), velocity=(0.1, None))  # (knee, bound)
+
+
+def pack_covariance(matrix: torch.Tensor) -> torch.Tensor:
+    """(..., 6, 6) to its upper triangle (..., COVARIANCE_ENTRIES), row-major."""
+    rows, columns = torch.triu_indices(len(COVARIANCE_STATE), len(COVARIANCE_STATE))
+    return matrix[..., rows, columns]
+
+
+def unpack_covariance(packed: torch.Tensor) -> torch.Tensor:
+    """The inverse of `pack_covariance`: (..., COVARIANCE_ENTRIES) to symmetric (..., 6, 6)."""
+    size = len(COVARIANCE_STATE)
+    rows, columns = torch.triu_indices(size, size)
+    index = torch.zeros((size, size), dtype=torch.long)
+    index[rows, columns] = torch.arange(COVARIANCE_ENTRIES)
+    index[columns, rows] = torch.arange(COVARIANCE_ENTRIES)
+    return packed[..., index.to(packed.device)]
+
+
+def ellipse(packed: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """A packed 2 x 2 covariance (..., 3) (xx, xy, yy) to (sigma_major, sigma_minor,
+    anisotropy cos 2 theta, anisotropy sin 2 theta), theta the major axis's angle from x.
+    A round (or zero) covariance has both angle features 0."""
+    xx, xy, yy = packed.unbind(-1)
+    centre = 0.5 * (xx + yy)
+    half = 0.5 * (xx - yy)
+    radius = torch.sqrt(half * half + xy * xy)
+    major = torch.sqrt(torch.clamp_min(centre + radius, 0.0))
+    minor = torch.sqrt(torch.clamp_min(centre - radius, 0.0))
+    total = major + minor
+    anisotropy = torch.where(total > 0, (major - minor) / torch.where(total > 0, total, 1.0), 0.0)
+    safe = torch.where(radius > 0, radius, 1.0)
+    cos = torch.where(radius > 0, half / safe, 0.0)
+    sin = torch.where(radius > 0, xy / safe, 0.0)
+    return major, minor, anisotropy * cos, anisotropy * sin
 
 
 def velocity_reach() -> float:
@@ -106,11 +156,21 @@ class ShipStateCode(nn.Module):
     heading's spreads (`codes.circular_decode`).
     """
 
-    def __init__(self, ranges: StateCodeRanges, spread_fit: str = "coarsest") -> None:
+    def __init__(
+        self,
+        ranges: StateCodeRanges,
+        spread_fit: str = "coarsest",
+        covariance: bool = False,
+        spread_inputs: str = "scalar",
+    ) -> None:
         super().__init__()
         if spread_fit not in codes.SPREAD_FITS:
             raise ValueError(f"spread_fit {spread_fit!r} is not one of {codes.SPREAD_FITS}")
+        if spread_inputs not in SPREAD_INPUTS:
+            raise ValueError(f"spread_inputs {spread_inputs!r} is not one of {SPREAD_INPUTS}")
         self.spread_fit = spread_fit
+        self.covariance = covariance
+        self.spread_inputs = spread_inputs
         self.angle_of_attack_limit = ranges.angle_of_attack_limit
         self.shield_delay = ranges.shield_recharge_delay
         self.tick_length = ranges.tick_length
@@ -143,8 +203,53 @@ class ShipStateCode(nn.Module):
 
     @property
     def spread_count(self) -> int:
-        """SPREADS, then one cooldown residual per cooldown bin."""
-        return len(SPREADS) + self.cooldown_bins
+        """SPREADS, then one cooldown residual per cooldown bin, then with `covariance` the
+        kinematic covariance (COVARIANCE_ENTRIES)."""
+        return len(SPREADS) + self.cooldown_bins + (COVARIANCE_ENTRIES if self.covariance else 0)
+
+    @property
+    def residual_slice(self) -> slice:
+        """The cooldown residuals' columns of the spreads."""
+        return slice(len(SPREADS), len(SPREADS) + self.cooldown_bins)
+
+    @property
+    def covariance_slice(self) -> slice:
+        """The covariance's columns of the spreads (with `covariance`)."""
+        start = len(SPREADS) + self.cooldown_bins
+        return slice(start, start + COVARIANCE_ENTRIES)
+
+    @property
+    def ellipse_width(self) -> int:
+        """The ellipse inputs' width (0 with scalar spread inputs)."""
+        return 2 * ELLIPSE_FEATURES * SCALAR_BINS if self.spread_inputs == "ellipse" else 0
+
+    def blocks(self, spreads: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """(position, velocity) packed 2 x 2 covariances (..., 3) of spreads: the
+        covariance's blocks with `covariance`, else the scalar sigma's round one and the
+        velocity slots."""
+        if self.covariance:
+            matrix = unpack_covariance(spreads[..., self.covariance_slice])
+            position = torch.stack([matrix[..., 0, 0], matrix[..., 0, 1], matrix[..., 1, 1]], -1)
+            velocity = torch.stack([matrix[..., 2, 2], matrix[..., 2, 3], matrix[..., 3, 3]], -1)
+            return position, velocity
+        variance = spreads[..., 0] ** 2
+        position = torch.stack([variance, torch.zeros_like(variance), variance], -1)
+        return position, spreads[..., 1:4]
+
+    def ellipse_code(self, spreads: torch.Tensor) -> torch.Tensor:
+        """(..., ellipse_width): per ellipse (position, velocity; `blocks`) the four
+        ELLIPSE_FEATURES, each a two-hot code of SCALAR_BINS (`ELLIPSE_SIGMA`)."""
+        parts = []
+        for name, packed in zip(("position", "velocity"), self.blocks(spreads), strict=True):
+            knee, bound = ELLIPSE_SIGMA[name]
+            bound = velocity_reach() if bound is None else bound
+            top = math.log1p(bound / knee)
+            major, minor, cos, sin = ellipse(packed)
+            for sigma in (major, minor):
+                parts.append(codes.scalar_sharp(torch.log1p(sigma / knee), 0.0, top, SCALAR_BINS))
+            for feature in (cos, sin):
+                parts.append(codes.scalar_sharp(feature, -1.0, 1.0, SCALAR_BINS))
+        return torch.cat(parts, -1)
 
     def _scalar_ranges(self) -> dict[str, tuple[float, float, int]]:
         """(low, high, bins) of each of SCALARS."""
@@ -176,9 +281,13 @@ class ShipStateCode(nn.Module):
         maxima = self._maxima(ship_type)
         mean = dict(zip(MEANS, means.unbind(-1), strict=True))
         spread = dict(zip(SPREADS, spreads[..., : len(SPREADS)].unbind(-1), strict=True))
-        residual = spreads[..., len(SPREADS) :]
+        residual = spreads[..., self.residual_slice]
+        position_sigma = spread["position"]
+        if self.spread_inputs == "ellipse":  # per world axis: the covariance's marginals
+            block, _ = self.blocks(spreads)
+            position_sigma = torch.sqrt(torch.clamp_min(block[..., 0::2], 0.0))
         position = codes.position_encode(
-            means[..., 0:2], spread["position"], (POSITION_PERIOD,) * 2, POSITION_LEVELS
+            means[..., 0:2], position_sigma, (POSITION_PERIOD,) * 2, POSITION_LEVELS
         )
         velocity = codes.velocity_encode(
             means[..., 2:4], spreads[..., 1:4], VELOCITY_BINS, VELOCITY_SPACING, VELOCITY_KNEE

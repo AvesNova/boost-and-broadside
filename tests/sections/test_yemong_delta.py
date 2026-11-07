@@ -1,6 +1,7 @@
-"""The next-state delta heads (delta-heads brief): the symlog HL-Gauss code, the physics
-baselines against the game, the frame, the belief advance, the switch (absolute unchanged,
-delta's unroll a loop of steps), the term in the learners and a policy-file round trip."""
+"""The persistence delta heads (arm-2 brief): the symlog HL-Gauss code (asymmetric for the
+position along the track), the velocity frame and its fallback, the median rule, the
+covariance advance, the ellipse inputs, the switches (absolute unchanged, the arm's
+unroll a loop of steps), the term in the learners and a policy-file round trip."""
 
 import math
 
@@ -9,20 +10,23 @@ import pytest
 import torch
 import yemong_cases as cases
 
-from bnb.contracts.action import Action
 from bnb.contracts.obs import SHIP
 from bnb.controllers.scripted import Scripted
 from bnb.game import api
-from bnb.game.physics import flight
-from bnb.game.physics.combat import apply_damage
-from bnb.game.physics.numerics import flight_path_velocity
-from bnb.game.state import Fields, apply, replace
 from bnb.learn import bc, head_statistics, labels
 from bnb.learn.ppo import COUNTS, TERMS
 from bnb.models.yemong import codes, delta
-from bnb.models.yemong.inputs import truth
-from bnb.models.yemong.model import Yemong, YemongConfig
-from bnb.models.yemong.state_code import MEANS, SPREADS
+from bnb.models.yemong.inputs import ship_inputs, truth
+from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
+from bnb.models.yemong.state_code import (
+    COVARIANCE_ENTRIES,
+    MEANS,
+    SPREADS,
+    ellipse,
+    pack_covariance,
+    state_code_ranges,
+    unpack_covariance,
+)
 from bnb.runs.checkpoint import load_policy, save_policy
 from bnb.runtime import metrics
 from bnb.runtime.rollout import Rollout
@@ -31,409 +35,372 @@ pytestmark = pytest.mark.usefixtures("global_generator")
 
 OWN = 5
 F64 = torch.float64
-SETTINGS = dict(order="temporal_first", spread_fit="coarsest", next_state="delta")
+DT = 1.0 / 30.0
+# the arm's --set line
+SETTINGS = dict(
+    order="temporal_first",
+    spread_fit="coarsest",
+    acceleration_inputs=True,
+    next_state="delta",
+    delta_baseline="persistence",
+    spread_inputs="ellipse",
+)
 
 
 def _model(**settings):
     return cases.model(**{**SETTINGS, **settings})
 
 
+def _code() -> delta.DeltaCode:
+    rules, types = api.rules_of(cases.SQUAD), api.ship_types()
+    return delta.DeltaCode(state_code_ranges(rules, types)).double()
+
+
 # ------------------------------------------------------------------ the code
 
 
 @pytest.mark.parametrize("component", delta.COMPONENTS, ids=lambda c: c.name)
-def test_the_code_round_trips_without_bias_up_to_the_real_edges(component):
-    """Encode then decode: the mean coordinate's bias is below 1e-3 bins across the real
-    range up to 0.06 bins short of its last centre, and 1.3e-3 at it (the Gaussian's mass
-    past the 2 padding bins, 4e-4, is dropped and the code renormalised; the coordinator's
-    no-fold rule), in float64 and float32."""
-    half = (component.bins - 1) // 2
-    spacing = codes.symlog_spacing(component.knee, component.bound, component.bins)
-    index = torch.arange(-half - 2, half + 3, dtype=F64)
-    coordinate = torch.linspace(-half, half, 4001, dtype=F64)
+def test_the_code_round_trips_below_1e_3_bins_everywhere_including_the_padding(component):
+    """Encode then decode (the mean, with the code's mean inverse) and the median: below
+    1e-3 bins from the lowest padding centre to the highest, in float64 and float32."""
+    code = _code()
+    low, high = component.low, component.width - 1 - component.low
+    coordinate = torch.linspace(-low, high, 6001, dtype=F64)
     for dtype in (F64, torch.float32):
-        values = codes.symlog_value(coordinate, component.knee, spacing).to(dtype)
-        code, clipped = codes.symlog_encode(values, component.knee, component.bound, component.bins)
-        assert not clipped.any()
-        assert code.shape[-1] == component.width
-        bias = ((code.double() * index).sum(-1) - coordinate).abs()
-        inside = coordinate.abs() <= half - 0.06
-        assert bias[inside].max() < 1e-3, bias[inside].max()
-        assert bias.max() < 1.3e-3, bias.max()
-        mean, _ = codes.symlog_decode(code, component.knee, component.bound, component.bins)
-        tolerance = 1e-9 if dtype == F64 else 1e-5
-        relative = (mean.double() - values.double()).abs() / (
-            values.double().abs() + component.knee
+        values = codes.symlog_value(coordinate, component.knee, component.spacing).to(dtype)
+        encoded, clipped = component.encode(values)
+        assert encoded.shape[-1] == component.width
+        assert clipped.sum() <= 2  # the two ends, by rounding only
+        arguments = (component.knee, component.bound, component.bins)
+        inverse = tuple(
+            part.to(dtype) if torch.is_tensor(part) else part
+            for part in code.inverse(component.name)
         )
-        assert relative[inside].max() < 1.3e-3 * spacing + tolerance
+        mean, _ = codes.symlog_decode(encoded, *arguments, below=component.below, inverse=inverse)
+        median = codes.symlog_median(encoded, *arguments, below=component.below, inverse=inverse)
+        for decoded in (mean, median):
+            back = codes.symlog_coordinate(decoded.double(), component.knee, component.spacing)
+            assert (back - coordinate).abs().max() < 1e-3
 
 
-def test_the_code_has_an_exact_zero_and_symlog_spacing():
-    component = delta.COMPONENTS[0]
-    spacing = codes.symlog_spacing(component.knee, component.bound, component.bins)
-    half = (component.bins - 1) // 2
-    centres = codes.symlog_value(torch.arange(-half, half + 1, dtype=F64), component.knee, spacing)
-    assert centres[half] == 0.0  # the middle centre is exactly 0
-    assert centres[-1] == pytest.approx(component.bound, rel=1e-12)  # the bound: the last centre
-    # symlog: ln(1 + x / knee) steps evenly; the first bin is about one knee at this count
-    steps = torch.diff(torch.log1p(centres[half:] / component.knee))
-    torch.testing.assert_close(steps, torch.full_like(steps, spacing))
-    code, _ = codes.symlog_encode(torch.zeros(3, dtype=F64), component.knee, component.bound, 51)
-    torch.testing.assert_close(code, code.flip(-1))  # symmetric about the centre
-    mean, variance = codes.symlog_decode(code, component.knee, component.bound, 51)
-    assert (mean == 0).all() and (variance == 0).all()
-
-
-def test_only_a_change_past_the_padded_range_is_clamped_and_nothing_folds():
-    component = delta.COMPONENTS[4]
-    spacing = codes.symlog_spacing(component.knee, component.bound, component.bins)
-    half = (component.bins - 1) // 2 + codes.PADDING_BINS
-    edge = codes.symlog_value(torch.tensor([float(half)], dtype=F64), component.knee, spacing)
-    values = torch.cat([edge * 0.999, edge, edge * 10.0, -edge * 3.0])
-    code, clipped = codes.symlog_encode(values, component.knee, component.bound, component.bins)
-    assert clipped.tolist() == [False, False, True, True]
-    torch.testing.assert_close(code[2], code[1])  # clamped to the outermost centre
-    torch.testing.assert_close(code[3], code[1].flip(-1))
-    # no fold: the last bin holds only its own Gaussian share, the code renormalised over the
-    # half of the Gaussian inside the padded range and the last half bin
-    integral = 0.5 * math.erf(0.5 / (0.75 * math.sqrt(2.0)))
-    assert code[1, -1] == pytest.approx(2.0 * integral / (0.5 + integral), rel=1e-9)
-    assert code.sum(-1).sub(1).abs().max() < 1e-12
-
-
-def test_the_code_widths_and_the_marginal_start():
-    net = _model()
-    code = net.delta_code
-    assert code.width == 2 * 2 * 55 + 6 * 35 + 2 * 2 == 434
-    assert net.ship_heads.lasts[1].out_features == 434
-    fresh = Yemong(net.build)  # cases.model randomises the last layers
-    assert (fresh.ship_heads.lasts[1].weight == 0).all()
-    torch.testing.assert_close(fresh.ship_heads.lasts[1].bias.detach(), code.marginal)
-    parts = code._split(torch.exp(codes.grouped_log_softmax(code.marginal, code.runs)))
+def test_the_code_has_an_exact_zero_and_folds_only_beyond_the_padded_range():
     for component in delta.COMPONENTS:
-        centre = parts[component.name][(component.width - 1) // 2]
-        assert centre >= delta.ZERO_SHARE[component.name] * 0.5  # the zero's HL-Gauss share
-    for name in delta.EVENTS:
-        assert parts[name][1] == pytest.approx(delta.EVENT_RATE[name], rel=1e-5)
-
-
-# ------------------------------------------------------------------ baselines
-
-
-def _states(ticks: int = 20, batch: int = 8):
-    """Real game states after a few ticks of random play, in float64, out of every field."""
-    rules = api.rules_of(cases.SHORT_SQUAD)
-    types = api.ship_types()
-    generator = torch.Generator().manual_seed(3)
-    state = api.reset(rules, types, api.uniforms(rules, batch, generator=generator))
-    N = rules.num_ships
-    for _ in range(ticks):
-        action = Action(
-            power=torch.randint(0, 3, (batch, N), generator=generator, dtype=torch.int32),
-            stick=torch.randint(0, 7, (batch, N), generator=generator, dtype=torch.int32),
-            shoot=torch.zeros((batch, N), dtype=torch.int32),
+        zero, clipped = component.encode(torch.zeros(1, dtype=F64))
+        assert not clipped.any()
+        centre = component.low
+        assert torch.argmax(zero[0]) == centre
+        assert torch.isclose(zero[0, centre - 1], zero[0, centre + 1])  # symmetric about 0
+        mean, variance = codes.symlog_decode(
+            zero, component.knee, component.bound, component.bins, below=component.below
         )
-        state, _ = api.step(
-            rules,
-            types,
-            state,
-            action,
-            api.spread(rules, batch, generator=generator),
-            api.uniforms(rules, batch, generator=generator),
+        assert mean.abs().max() < 1e-12 and variance.abs().max() < 1e-12
+        top = codes.symlog_value(
+            torch.tensor([float(component.width - 1 - component.low)], dtype=F64),
+            component.knee,
+            component.spacing,
         )
-    ships = apply(lambda x: x.double() if x.is_floating_point() else x, state.ships)
-    zero = torch.zeros_like(ships.x)
-    norm = torch.rsqrt(ships.heading_cos**2 + ships.heading_sin**2)
-    angle_norm = torch.rsqrt(ships.angle_of_attack_cos**2 + ships.angle_of_attack_sin**2)
-    ships = replace(
-        ships,
-        heading_cos=ships.heading_cos * norm,
-        heading_sin=ships.heading_sin * norm,
-        angle_of_attack_cos=ships.angle_of_attack_cos * angle_norm,
-        angle_of_attack_sin=ships.angle_of_attack_sin * angle_norm,
-        log_refractive_index=zero,
-        log_index_gradient_x=zero,
-        log_index_gradient_y=zero,
-    )
-    return rules, types, ships
+        inside, clip_inside = component.encode(top * (1 - 1e-9))
+        beyond, clip_beyond = component.encode(top * 1.5)
+        assert not clip_inside.any() and clip_beyond.all()
+        torch.testing.assert_close(beyond, inside)  # clamped onto the outermost centre
 
 
-def _means(rules, ships) -> torch.Tensor:
-    """The state in state_code.MEANS order, as the observation gives it."""
-    speed = ships.proper_speed / torch.exp(ships.log_refractive_index)
-    velocity_x, velocity_y = flight_path_velocity(
-        speed,
-        ships.heading_cos,
-        ships.heading_sin,
-        ships.angle_of_attack_cos,
-        ships.angle_of_attack_sin,
+def test_position_along_resolves_the_move_to_5_cm():
+    """The whole move, |v| dt (median 2.6 m): a bin 4.93 cm wide at the median, 10 cm at
+    the bound, and a reach of 0.5 m below zero."""
+    component = delta.POSITION_ALONG
+    index = codes.symlog_coordinate(torch.tensor(2.6, dtype=F64), component.knee, component.spacing)
+    centres = codes.symlog_value(
+        torch.stack([torch.floor(index), torch.floor(index) + 1]), component.knee, component.spacing
     )
-    return torch.stack(
-        [
-            ships.x,
-            ships.y,
-            velocity_x,
-            velocity_y,
-            torch.atan2(ships.heading_sin, ships.heading_cos),
-            ships.nose_rate,
-            ships.angle_of_attack,
-            ships.shield_recharge_wait,
-            ships.shield,
-            ships.energy,
-            ships.gun_cooldown.double() * rules.tick_length,
-            ships.log_refractive_index,
+    width = float(centres[1] - centres[0])
+    assert 0.045 < width <= 0.05
+    lowest = codes.symlog_value(torch.tensor(-19.0, dtype=F64), component.knee, component.spacing)
+    assert -0.52 < float(lowest) < -0.5
+    assert component.width == 179 and delta.DeltaCode.__doc__.count("624")
+    assert _code().width == 624
+
+
+def test_the_median_takes_the_mode_that_holds_it():
+    """A countdown's steady -dt with a reset of p 0.3 to +5 s: the median is -dt (the most
+    likely outcome); at p 0.7 it is the reset. The mean (the value at the mean coordinate)
+    lies between the two."""
+    component = _code().components["shield_recharge_wait"]
+    arguments = (component.knee, component.bound, component.bins)
+    tick, _ = component.encode(torch.tensor([-DT], dtype=F64))
+    jump, _ = component.encode(torch.tensor([5.0], dtype=F64))
+    inverse = _code().inverse(component.name)
+    inverse = (inverse[0].double(), *inverse[1:])
+    for p, expected in ((0.3, -DT), (0.7, 5.0)):
+        mixture = (1 - p) * tick + p * jump
+        median = codes.symlog_median(mixture, *arguments, inverse=inverse)
+        mean, _ = codes.symlog_decode(mixture, *arguments, inverse=inverse)
+        assert math.isclose(float(median), expected, rel_tol=1e-3)
+        assert -DT < float(mean) < 5.0
+
+
+# ------------------------------------------------------------------ the frame
+
+
+def test_the_velocity_frame_and_its_inverse():
+    generator = torch.Generator().manual_seed(1)
+    velocity = 80.0 * torch.randn(64, 2, generator=generator, dtype=F64)
+    heading = torch.rand(64, generator=generator, dtype=F64) * 6.0 - 3.0
+    vector = torch.randn(64, 2, generator=generator, dtype=F64)
+    unit_x, unit_y, slow = delta.velocity_frame(velocity, heading)
+    assert not slow.any()
+    framed = delta.to_frame(vector, unit_x, unit_y)
+    torch.testing.assert_close(delta.from_frame(framed, unit_x, unit_y), vector)
+    along = delta.to_frame(velocity, unit_x, unit_y)
+    torch.testing.assert_close(along[:, 0], torch.linalg.vector_norm(velocity, dim=-1))
+    torch.testing.assert_close(along[:, 1], torch.zeros(64, dtype=F64))
+    # across is to the left: +y for a ship moving along +x
+    left = delta.to_frame(
+        torch.tensor([[0.0, 1.0]], dtype=F64),
+        *delta.velocity_frame(torch.tensor([[50.0, 0.0]], dtype=F64), torch.zeros(1, dtype=F64))[
+            :2
         ],
-        -1,
     )
+    assert torch.equal(left, torch.tensor([[0.0, 1.0]], dtype=F64))
 
 
-FAR = Fields(
-    x=torch.tensor([[1e9]], dtype=F64),
-    y=torch.zeros((1, 1), dtype=F64),
-    radius=torch.ones((1, 1), dtype=F64),
-    band_width=torch.ones((1, 1), dtype=F64),
-    level=torch.ones((1, 1), dtype=torch.int32),
-)
+def test_below_one_metre_per_second_the_frame_is_the_heading():
+    velocity = torch.tensor([[0.5, 0.0], [0.0, 0.999], [1.0, 0.0]], dtype=F64)
+    heading = torch.full((3,), 0.5 * math.pi, dtype=F64)
+    unit_x, unit_y, slow = delta.velocity_frame(velocity, heading)
+    assert slow.tolist() == [True, True, False]
+    torch.testing.assert_close(unit_x[:2], torch.zeros(2, dtype=F64), atol=1e-15, rtol=0)
+    torch.testing.assert_close(unit_y, torch.tensor([1.0, 1.0, 0.0], dtype=F64))
 
 
-def test_the_kinematic_baselines_are_the_games_drift(monkeypatch):
-    """With no kick (no controls, no forces) and no field, the game's tick is the drift
-    alone: position along the nose arc, velocity and heading turned by omega dt, everything
-    else persisting. The baselines equal it."""
-    rules, types, ships = _states()
-    assert ships.nose_rate.abs().max() > 0.5  # the arcs are real turns
-    monkeypatch.setattr(flight, "kick", lambda constants, airframe, ship, *rest: ship)
-    airframe = flight.airframe_of(types, ships.ship_type)
-    zero = torch.zeros_like(ships.x)
-    moved = flight.flight_tick(rules.flight, airframe, rules.tick_length, ships, zero, zero, FAR)
-    code = _model().delta_code.double()
-    before, after = _means(rules, ships), _means(rules, moved)
-    baseline = code.baseline(before, ships.ship_type.long())
-    kinematic = [MEANS.index(name) for name in MEANS if name not in ("shield", "gun_cooldown")]
-    kinematic.remove(MEANS.index("shield_recharge_wait"))
-    error = (baseline - after)[..., kinematic].abs()
-    assert error.max() < 1e-9 * (1.0 + after[..., kinematic].abs().max()), error.max()
-    changes, events = code.changes(before, after, ships.ship_type.long())
-    position = changes[..., :2].abs().max()
-    assert position < 1e-9 and not events.any()
-
-
-def test_the_shield_and_the_countdowns_are_the_games():
-    rules, types, ships = _states()
-    code = _model().delta_code.double()
-    ship_type = ships.ship_type.long()
-    # Some shields below the maximum, some recharge waits under a tick.
-    generator = torch.Generator().manual_seed(4)
-    maximum = code.max_shield.double()[ship_type]
-    ships = replace(
-        ships,
-        shield=maximum * torch.rand(ships.x.shape, generator=generator, dtype=F64),
-        shield_recharge_wait=torch.rand(ships.x.shape, generator=generator, dtype=F64) * 0.1,
-    )
-    unhurt = apply_damage(rules, types, ships, ships.alive, torch.zeros_like(ships.x)).ships
-    baseline = code.baseline(_means(rules, ships), ship_type)
-    for name in ("shield", "shield_recharge_wait"):
-        expected = getattr(unhurt, name)
-        torch.testing.assert_close(baseline[..., MEANS.index(name)], expected)
-    hurt = apply_damage(rules, types, ships, ships.alive, torch.full_like(ships.x, 1.0)).ships
-    _, events = code.changes(_means(rules, ships), _means(rules, hurt), ship_type)
-    assert events[..., 0].all() and not events[..., 1].any()
-
-
-def test_a_shot_is_the_cooldown_event_at_the_types_interval():
-    rules = api.rules_of(cases.SHORT_SQUAD)
-    types = api.ship_types()
-    batch, N = 4, rules.num_ships
-    generator = torch.Generator().manual_seed(5)
-    state = api.reset(rules, types, api.uniforms(rules, batch, generator=generator))
-    action = Action(
-        power=torch.zeros((batch, N), dtype=torch.int32),
-        stick=torch.zeros((batch, N), dtype=torch.int32),
-        shoot=torch.ones((batch, N), dtype=torch.int32),
-    )
-    code = _model().delta_code
-    means = []
-    for _ in range(3):
-        means.append(_means(rules, state.ships).float())
-        state, _ = api.step(
-            rules,
-            types,
-            state,
-            action,
-            api.spread(rules, batch, generator=generator),
-            api.uniforms(rules, batch, generator=generator),
-        )
-    means.append(_means(rules, state.ships).float())
-    ship_type = state.ships.ship_type.long()
-    cooldown = MEANS.index("gun_cooldown")
-    shots = 0
-    for before, after in zip(means[:-1], means[1:]):
-        _, events = code.changes(before, after, ship_type)
-        fired = events[..., 1]
-        shots += int(fired.sum())
-        expected = code.fired_cooldown[ship_type]
-        torch.testing.assert_close(after[..., cooldown][fired], expected[fired])
-        countdown = torch.clamp_min(before[..., cooldown] - rules.tick_length, 0.0)
-        torch.testing.assert_close(after[..., cooldown][~fired], countdown[~fired])
-    assert shots > 0
-
-
-def test_the_nose_frame_and_its_inverse():
-    generator = torch.Generator().manual_seed(6)
-    vector = torch.randn(100, 2, generator=generator, dtype=F64)
-    heading = (torch.rand(100, generator=generator, dtype=F64) - 0.5) * 2.0 * math.pi
-    torch.testing.assert_close(delta.from_nose(delta.to_nose(vector, heading), heading), vector)
-    nose = torch.stack([torch.cos(heading), torch.sin(heading)], -1)
-    along = delta.to_nose(3.0 * nose, heading)
-    torch.testing.assert_close(along, torch.stack([torch.full_like(heading, 3.0), 0 * heading], -1))
-    left = torch.stack([-torch.sin(heading), torch.cos(heading)], -1)
-    torch.testing.assert_close(delta.to_nose(left, heading)[..., 1], torch.ones_like(heading))
+def test_the_changes_are_the_truths_in_the_frame():
+    code = _code()
+    means = torch.zeros(2, len(MEANS), dtype=F64)
+    means[:, 2] = torch.tensor([0.0, 60.0], dtype=F64)  # vx
+    means[:, 3] = torch.tensor([60.0, 0.0], dtype=F64)  # vy
+    means[:, MEANS.index("heading")] = 3.0
+    following = means.clone()
+    following[:, 0] += 0.1  # +x: across (right) for the first, along for the second
+    following[:, 1] += 2.0  # +y: along for the first, across (left) for the second
+    following[:, MEANS.index("heading")] = -3.0  # wraps to +0.283
+    following[:, MEANS.index("gun_cooldown")] = -DT
+    following[:, MEANS.index("shield")] = 5.0
+    continuous, slow = code.changes(means, following, torch.zeros(2, dtype=torch.long))
+    assert not slow.any()
+    torch.testing.assert_close(continuous[0, :2], torch.tensor([2.0, -0.1], dtype=F64))
+    torch.testing.assert_close(continuous[1, :2], torch.tensor([0.1, 2.0], dtype=F64))
+    torch.testing.assert_close(continuous[:, 4], torch.full((2,), 2 * math.pi - 6.0, dtype=F64))
+    assert torch.allclose(continuous[:, -1], torch.full((2,), -DT, dtype=F64))
+    assert torch.allclose(continuous[:, delta.CONTINUOUS.index("shield")], 5.0 / code.max_shield[0])
 
 
 # ------------------------------------------------------------------ the advance
 
 
-def _belief(rows: int = 6):
-    generator = torch.Generator().manual_seed(7)
-    rules, _, ships = _states(batch=1)
-    means = _means(rules, ships)[0, :rows]
-    spreads = torch.rand(rows, len(SPREADS), generator=generator, dtype=F64)
-    spreads[:, 2] = 0.0  # a positive definite velocity covariance
-    cooldown_bins = 4
-    spreads = torch.cat([spreads, torch.zeros(rows, cooldown_bins, dtype=F64)], -1)
-    return means, spreads, ships.ship_type[0, :rows].long()
+def _logits_of(code: delta.DeltaCode, continuous: torch.Tensor) -> torch.Tensor:
+    encoded, _ = code.encode(continuous)
+    return torch.log(encoded.clamp_min(1e-300))
 
 
-def _logits_of(code, continuous, events):
-    target, _ = code.encode(continuous, events)
-    return torch.log(target.clamp_min(1e-30))
+def _belief(net: Yemong, rows: int) -> tuple[torch.Tensor, torch.Tensor]:
+    means = torch.zeros(rows, len(MEANS), dtype=F64)
+    means[:, 0:2] = torch.tensor([100.0, -50.0], dtype=F64)
+    means[:, 2:4] = torch.tensor([30.0, 40.0], dtype=F64)  # 50 m/s, unit (0.6, 0.8)
+    means[:, MEANS.index("shield")] = 50.0
+    means[:, MEANS.index("energy")] = 5000.0
+    means[:, MEANS.index("shield_recharge_wait")] = 2.0
+    return means, torch.zeros(rows, net.state_code.spread_count, dtype=F64)
 
 
 def test_a_known_change_moves_the_mean_exactly():
     net = cases.double(_model())
     code = net.delta_code
-    means, spreads, ship_type = _belief()
-    generator = torch.Generator().manual_seed(8)
-    continuous = torch.randn(means.shape[0], len(delta.CONTINUOUS), generator=generator, dtype=F64)
-    continuous = continuous * torch.tensor([c.knee * 20 for c in delta.COMPONENTS], dtype=F64)
-    continuous[:, 7:9] = -continuous[:, 7:9].abs()  # shield and energy start full
-    events = torch.zeros(means.shape[0], 2, dtype=torch.bool)
+    means, spreads = _belief(net, 1)
+    change = torch.tensor(
+        [[1.6, 0.02, 0.3, -0.5, 0.01, 0.2, 0.003, -DT, 0.004, 0.0006, 0.0, 0.0]], dtype=F64
+    )
     forecast, _ = code.advance(
-        means, spreads, _logits_of(code, continuous, events), ship_type, net.state_code
+        means, spreads, _logits_of(code, change), torch.zeros(1, dtype=torch.long), net.state_code
     )
-    base = code.baseline(means, ship_type)
-    heading = means[:, MEANS.index("heading")]
-    difference = forecast - base
-    maximum = dict(
-        shield=code.max_shield.double()[ship_type], energy=code.max_energy.double()[ship_type]
-    )
-    implied = torch.stack(
-        [
-            *delta.to_nose(difference[:, 0:2], heading).unbind(-1),
-            *delta.to_nose(difference[:, 2:4], heading).unbind(-1),
-            delta.wrap(difference[:, 4]),
-            difference[:, 5],
-            difference[:, 6],
-            difference[:, 8] / maximum["shield"],
-            difference[:, 9] / maximum["energy"],
-            difference[:, 11],
-        ],
-        -1,
-    )
-    knee = torch.tensor([c.knee for c in delta.COMPONENTS], dtype=F64)
-    error = (implied - continuous).abs() / (knee + continuous.abs())
-    inside = torch.ones_like(error, dtype=torch.bool)
-    for column, name in ((7, "shield"), (8, "energy")):  # not where the bounds clamp them
-        value = forecast[:, MEANS.index(name)]
-        inside[:, column] = (value > 0) & (value < maximum[name])
-    assert inside.any(0).all()
-    assert error[inside].max() < 1e-4, error[inside].max()
-    # the countdowns with no event
-    torch.testing.assert_close(forecast[:, 7], base[:, 7])
-    torch.testing.assert_close(forecast[:, 10], base[:, 10])
+    unit_x, unit_y = torch.tensor([0.6], dtype=F64), torch.tensor([0.8], dtype=F64)
+    expected = means.clone()
+    expected[:, 0:2] += delta.from_frame(change[:, 0:2], unit_x, unit_y)
+    expected[:, 2:4] += delta.from_frame(change[:, 2:4], unit_x, unit_y)
+    expected[:, 4] += 0.01
+    expected[:, 5] += 0.2
+    expected[:, 6] += 0.003
+    expected[:, 7] -= DT
+    expected[:, 8] += 0.004 * float(code.max_shield[0])
+    expected[:, 9] += 0.0006 * float(code.max_energy[0])
+    torch.testing.assert_close(forecast, expected, rtol=1e-4, atol=1e-5)
 
 
-def test_the_spread_grows_by_the_changes_variance():
+def test_a_rare_reset_does_not_move_the_wait_but_widens_it():
+    """The wait's change: -dt at p 0.8, a reset to 6 s at p 0.2. The forecast counts down
+    (the median), its sigma grows by the mixture's spread."""
     net = cases.double(_model())
     code = net.delta_code
-    means, spreads, ship_type = _belief()
-    rows = means.shape[0]
-    # A two-point change: half at -c, half at +c, per component (variance c^2 less nothing)
-    c = torch.tensor([component.knee * 50 for component in delta.COMPONENTS], dtype=F64)
-    events = torch.zeros(rows, 2, dtype=torch.bool)
-    low, _ = code.encode((-c).expand(rows, -1), events)
-    high, _ = code.encode(c.expand(rows, -1), events)
-    logits = torch.log((0.5 * (low + high)).clamp_min(1e-30))
-    _, variance, _ = code.decode(logits)
-    forecast, grown = code.advance(means, spreads, logits, ship_type, net.state_code)
-    part = {name: i for i, name in enumerate(delta.CONTINUOUS)}
-    sigma = dict(zip(SPREADS, spreads[:, : len(SPREADS)].unbind(-1)))
-    after = dict(zip(SPREADS, grown[:, : len(SPREADS)].unbind(-1)))
-    for name in ("nose_rate", "angle_of_attack", "log_refractive_index"):
-        torch.testing.assert_close(after[name] ** 2, sigma[name] ** 2 + variance[:, part[name]])
-    maximum_energy = code.max_energy.double()[ship_type]
-    torch.testing.assert_close(
-        after["energy"] ** 2, sigma["energy"] ** 2 + variance[:, part["energy"]] * maximum_energy**2
+    means, spreads = _belief(net, 1)
+    change = torch.zeros(2, len(delta.CONTINUOUS), dtype=F64)
+    column = delta.CONTINUOUS.index("shield_recharge_wait")
+    change[0, column], change[1, column] = -DT, 4.0
+    encoded, _ = code.encode(change)
+    mixture = 0.8 * encoded[0] + 0.2 * encoded[1]
+    forecast, spread = code.advance(
+        means,
+        spreads,
+        torch.log(mixture.clamp_min(1e-300))[None],
+        torch.zeros(1, dtype=torch.long),
+        net.state_code,
     )
-    tick = code.tick_length
-    torch.testing.assert_close(
-        after["heading"] ** 2,
-        sigma["heading"] ** 2 + tick**2 * sigma["nose_rate"] ** 2 + variance[:, part["heading"]],
-    )
-    # the variance is the two points' (c^2), the code's smoothing removed to within 10%
-    torch.testing.assert_close(variance, (c**2).expand(rows, -1), rtol=0.1, atol=0.0)
-    # the position: carried, the velocity's dt^2 and the nose rate's, plus the change's
-    speed = means[:, 2] ** 2 + means[:, 3] ** 2
-    expected = (
-        sigma["position"] ** 2
-        + tick**2 * 0.5 * (sigma["velocity_xx"] + sigma["velocity_yy"])
-        + 0.5 * speed * (0.5 * tick**2) ** 2 * sigma["nose_rate"] ** 2
-        + 0.5 * (variance[:, 0] + variance[:, 1])
-    )
-    torch.testing.assert_close(after["position"] ** 2, expected)
-
-
-def test_the_events_advance_to_their_expected_values():
-    net = cases.double(_model())
-    code = net.delta_code
-    means, spreads, ship_type = _belief()
-    rows = means.shape[0]
-    continuous = torch.zeros(rows, len(delta.CONTINUOUS), dtype=F64)
-    logits = _logits_of(code, continuous, torch.zeros(rows, 2, dtype=torch.bool))
-    rate = 0.3
-    offsets = {}
-    start = 0
-    for name in code.order:
-        offsets[name] = start
-        start += code.sizes[name]
-    for name in delta.EVENTS:
-        logits[:, offsets[name]] = math.log(1.0 - rate)
-        logits[:, offsets[name] + 1] = math.log(rate)
-    forecast, grown = code.advance(means, spreads, logits, ship_type, net.state_code)
-    base = code.baseline(means, ship_type)
     wait = MEANS.index("shield_recharge_wait")
-    delay = code.recharge_delay.double()[ship_type]
-    torch.testing.assert_close(forecast[:, wait], rate * delay + (1 - rate) * base[:, wait])
-    cooldown = MEANS.index("gun_cooldown")
-    fired = code.fired_cooldown.double()[ship_type]
-    torch.testing.assert_close(
-        forecast[:, cooldown], rate * fired + (1 - rate) * base[:, cooldown], rtol=0, atol=1e-12
+    assert math.isclose(float(forecast[0, wait]), 2.0 - DT, rel_tol=1e-4)
+    # about 0.4 x 4.03 (the spread is taken about the value at the mean coordinate)
+    assert 1.5 < float(spread[0, SPREADS.index("shield_recharge_wait")]) < 2.0
+
+
+def test_the_covariance_follows_f_p_f_t_plus_q_with_the_n_cubed_term():
+    """Constant velocity with velocity noise q per tick on each axis and nothing else:
+    after n ticks Var x = q dt^2 (n - 1) n (2n - 1) / 6, Cov(x, vx) = q dt n (n - 1) / 2."""
+    net = cases.double(_model())
+    code = net.delta_code
+    means, spreads = _belief(net, 1)
+    state_code = net.state_code
+    # the velocity's change +-0.5 m/s at even odds on both axes: mean 0, variance 0.25
+    change = torch.zeros(2, len(delta.CONTINUOUS), dtype=F64)
+    change[0, 2:4], change[1, 2:4] = 0.5, -0.5
+    encoded, _ = code.encode(change)
+    logits = torch.log(encoded.mean(0).clamp_min(1e-300))[None]
+    decoded, variance, _ = code.decode(logits)
+    assert decoded[0, 2:4].abs().max() < 1e-12
+    q_along, q_across = float(variance[0, 2]), float(variance[0, 3])
+    position_q = float(variance[0, 0])
+    assert q_along > 0 and q_across > 0
+    n = 40
+    for _ in range(n):
+        means, spreads = code.advance(
+            means, spreads, logits, torch.zeros(1, dtype=torch.long), state_code
+        )
+    matrix = unpack_covariance(spreads[..., state_code.covariance_slice])[0]
+    unit = torch.tensor([0.6, 0.8], dtype=F64)
+    along = unit @ matrix[0:2, 0:2] @ unit
+    expected = q_along * DT**2 * (n - 1) * n * (2 * n - 1) / 6 + n * position_q
+    assert math.isclose(float(along), expected, rel_tol=1e-6)
+    assert math.isclose(
+        float(unit @ matrix[0:2, 2:4] @ unit), q_along * DT * n * (n - 1) / 2, rel_tol=1e-6
+    )
+    assert math.isclose(float(unit @ matrix[2:4, 2:4] @ unit), n * q_along, rel_tol=1e-6)
+    # the SPREADS slots are read off it
+    sigma = dict(zip(SPREADS, spreads[0, : len(SPREADS)].tolist()))
+    assert math.isclose(sigma["velocity_xx"], float(matrix[2, 2]), rel_tol=1e-12)
+    assert math.isclose(
+        sigma["position"] ** 2, 0.5 * float(matrix[0, 0] + matrix[1, 1]), rel_tol=1e-12
     )
 
 
-# ------------------------------------------------------------------ the switch
+def test_the_covariance_packs_and_unpacks():
+    matrix = torch.randn(3, 6, 6, dtype=F64)
+    matrix = matrix @ matrix.transpose(-1, -2)
+    packed = pack_covariance(matrix)
+    assert packed.shape[-1] == COVARIANCE_ENTRIES == 21
+    torch.testing.assert_close(unpack_covariance(packed), matrix)
 
 
-def test_absolute_is_the_default_and_its_build_record_has_no_dynamics():
-    assert YemongConfig().next_state == "absolute"
+# ------------------------------------------------------------------ the ellipse
+
+
+def test_a_round_covariance_has_no_angle_and_a_rotated_one_its_angle():
+    major, minor, cos, sin = ellipse(torch.tensor([[4.0, 0.0, 4.0], [0.0, 0.0, 0.0]], dtype=F64))
+    assert torch.equal(cos, torch.zeros(2, dtype=F64)) and torch.equal(
+        sin, torch.zeros(2, dtype=F64)
+    )
+    torch.testing.assert_close(major, torch.tensor([2.0, 0.0], dtype=F64))
+    for angle in (0.3, 1.2, -0.7, 2.9):
+        c, s = math.cos(angle), math.sin(angle)
+        rotation = torch.tensor([[c, -s], [s, c]], dtype=F64)
+        matrix = rotation @ torch.diag(torch.tensor([9.0, 1.0], dtype=F64)) @ rotation.T
+        packed = torch.stack([matrix[0, 0], matrix[0, 1], matrix[1, 1]])
+        major, minor, cos, sin = ellipse(packed)
+        anisotropy = (3.0 - 1.0) / (3.0 + 1.0)
+        assert math.isclose(float(major), 3.0) and math.isclose(float(minor), 1.0)
+        assert math.isclose(float(cos), anisotropy * math.cos(2 * angle), abs_tol=1e-12)
+        assert math.isclose(float(sin), anisotropy * math.sin(2 * angle), abs_tol=1e-12)
+
+
+def test_the_ellipse_inputs_and_the_per_axis_blur():
+    net = _model()
+    state_code = net.state_code
+    assert state_code.ellipse_width == 8 * 21
+    assert net.encoder.ship.first.in_features == ship_inputs(
+        state_code.width, net.ship_types, True, 8 * 21
+    )
+    means = torch.zeros(1, len(MEANS))
+    spreads = torch.zeros(1, state_code.spread_count)
+    matrix = torch.zeros(6, 6)
+    matrix[0, 0], matrix[1, 1] = 400.0, 25.0  # sigma 20 m along x, 5 m along y
+    spreads[:, state_code.covariance_slice] = pack_covariance(matrix)
+    ship_type = torch.zeros(1, dtype=torch.long)
+    code = state_code.encode(means, spreads, ship_type)
+    position = code[:, :81].unflatten(-1, (9, 3, 3))
+    attenuated_x = position.sum(-1)  # the x code's levels
+    attenuated_y = position.sum(-2)
+    # a level of period 4 m (the finest) is flat on both axes; at 36 m only y is still sharp
+    level = 6  # period 26244 / 3^6 = 36 m
+    assert attenuated_x[0, level].max() < attenuated_y[0, level].max()
+    ellipse_code = state_code.ellipse_code(spreads)
+    assert ellipse_code.shape[-1] == 168
+    torch.testing.assert_close(ellipse_code.unflatten(-1, (8, 21)).sum(-1), torch.ones(1, 8))
+    scalar = cases.model(**{**SETTINGS, "spread_inputs": "scalar"})
+    assert scalar.state_code.ellipse_width == 0
+
+
+# ------------------------------------------------------------------ the switches
+
+
+def test_absolute_is_the_default_with_no_covariance_and_no_dynamics():
+    config = YemongConfig()
+    assert config.next_state == "absolute" and config.spread_inputs == "scalar"
+    assert config.delta_baseline == "persistence"
     net = cases.model()
     assert net.delta_code is None and net.build.dynamics is None
+    assert not net.state_code.covariance and net.state_code.spread_count == len(SPREADS) + 4
     assert net.ship_heads.lasts[1].out_features == net.state_code.width
     with pytest.raises(ValueError, match="next_state"):
         YemongConfig(next_state="relative")
-    assert _model().build.dynamics == delta.state_dynamics(
-        api.rules_of(cases.SQUAD), api.ship_types()
-    )
+    with pytest.raises(ValueError, match="delta_baseline"):
+        YemongConfig(delta_baseline="rule")
+    with pytest.raises(ValueError, match="spread_inputs"):
+        YemongConfig(spread_inputs="circle")
+    arm = _model()
+    assert arm.build.dynamics is None
+    assert arm.state_code.spread_count == len(SPREADS) + 4 + COVARIANCE_ENTRIES
+
+
+def test_round_ones_build_record_is_refused():
+    rules, types = api.rules_of(cases.SQUAD), api.ship_types()
+    build = yemong_build(YemongConfig(next_state="delta"), rules, types)
+    import dataclasses
+
+    old = dataclasses.replace(build, dynamics=delta.state_dynamics(rules, types))
+    with pytest.raises(ValueError, match="round 1"):
+        Yemong(old)
+
+
+def test_the_marginal_start_is_near_the_measured_marginal():
+    """The output bias is the measured marginal: every component's code sums to 1, the
+    zero share sits on the zero bin, and the position along peaks near 2.5 m."""
+    net = _model()
+    bias = net.ship_heads.lasts[1].bias.detach().double()
+    torch.testing.assert_close(bias.float(), net.delta_code.marginal)
+    parts = net.delta_code.split(torch.exp(bias))
+    for name, part in parts.items():
+        assert math.isclose(float(part.sum()), 1.0, rel_tol=1e-5), name
+    along = delta.POSITION_ALONG
+    peak = int(torch.argmax(parts["position_along"])) - along.low
+    value = codes.symlog_value(torch.tensor(float(peak)), along.knee, along.spacing)
+    assert 1.5 < float(value) < 3.5
+    wait = parts["shield_recharge_wait"]
+    assert float(wait[delta.COMPONENTS[7].low]) > 0.35  # 80% exactly 0, half on its bin
 
 
 @pytest.fixture(scope="module")
@@ -443,7 +410,7 @@ def segment(module_global_generator):
     return net, trajectory
 
 
-def test_delta_unroll_equals_a_loop_of_steps(segment):
+def test_the_arms_unroll_equals_a_loop_of_steps(segment):
     net, trajectory = segment
     net = cases.double(net)
     obs = cases.cast(trajectory.obs, F64)
@@ -463,10 +430,13 @@ def test_delta_unroll_equals_a_loop_of_steps(segment):
     assert int(final.nonfinite.sum()) == 0
     hidden = decisions.replay.valid & (decisions.replay.age > 0)
     assert hidden.any()  # the forecast was fed back
-    assert (decisions.replay.spreads[..., 0][hidden] > 0).all()  # and its spread grew
+    covariance = decisions.replay.spreads[..., net.state_code.covariance_slice]
+    assert (covariance[..., 0][hidden] > 0).all()  # and its covariance grew
+    visible = decisions.replay.valid & (decisions.replay.age == 0)
+    assert (decisions.replay.spreads[visible] == 0).all()  # a visible row: zero spread
 
 
-def test_the_forecast_of_a_visible_row_is_its_baseline_plus_the_change(segment):
+def test_the_forecast_of_a_visible_row_is_its_truth_plus_the_change(segment):
     net, trajectory = segment
     obs, replay = trajectory.obs, trajectory.replay
     with torch.no_grad():
@@ -477,10 +447,9 @@ def test_the_forecast_of_a_visible_row_is_its_baseline_plus_the_change(segment):
     zero = torch.zeros(means.shape[:-1] + (net.state_code.spread_count,))
     forecast, _ = net.forecast(unrolled.next_state_logits, means, zero, ship_type)
     change, _, _ = net.delta_code.decode(unrolled.next_state_logits)
-    base = net.delta_code.baseline(means, ship_type)
-    heading = means[..., MEANS.index("heading")]
+    unit_x, unit_y, _ = delta.velocity_frame(means[..., 2:4], means[..., MEANS.index("heading")])
     torch.testing.assert_close(
-        forecast[..., 0:2], base[..., 0:2] + delta.from_nose(change[..., 0:2], heading)
+        forecast[..., 0:2], means[..., 0:2] + delta.from_frame(change[..., 0:2], unit_x, unit_y)
     )
 
 
@@ -510,16 +479,18 @@ def _check_term(net, learner, runner):
         )
         out = learner.unroll(trajectory)
     got = dict(zip(TERMS, terms.tolist()))
-    # the truth's change from t to t + 1, from its baseline at t, on the absolute's mask
+    # the truth's change from t to t + 1, on the rows alive at both
     ships = trajectory.obs.ships
     now = torch.cat([ships[..., :OWN, :], trajectory.truth], -2)
     following = torch.cat([now[1:], trajectory.final_truth[None]], 0)
     offset = trajectory.replay.offset
-    target, clipped = net.delta_code.targets(
+    target, clipped, _ = net.delta_code.targets(
         truth(now, offset), truth(following, offset), now[..., SHIP["ship_type"]].long()
     )
     valid = torch.cat([torch.ones_like(trajectory.replay.valid), trajectory.replay.valid], -1)
-    mask = valid & ~trajectory.done[..., None]
+    alive = (now[..., SHIP["alive"]] > 0.5) & (following[..., SHIP["alive"]] > 0.5)
+    mask = valid & ~trajectory.done[..., None] & alive
+    assert torch.equal(label["next_state_mask"], mask)
     ce = _grouped_cross_entropy(out.next_state_logits, target, net.delta_code.runs)
     assert math.isclose(got["next_state"], ce[mask].mean().item(), rel_tol=1e-5)
     assert torch.equal(label["next_state_clipped"], clipped)
@@ -541,16 +512,24 @@ def test_the_ppo_term_is_the_delta_codes_cross_entropy_and_its_series(segment):
     for component in delta.CONTINUOUS:
         assert 0.0 <= series[f"next_state/support_clip/{component}"] <= 1.0
         assert 0.0 <= series[f"next_state/support_padding/{component}"] <= 1.0
-    for predictor in ("head", "persistence", "baseline"):
+    for predictor in ("head", "persistence"):
         assert math.isfinite(series[f"next_state/error/position_metres/{predictor}"])
-    # the baselines beat persistence on the kinematics of visible ships
-    assert (
-        series["next_state/error/position_metres/baseline"]
-        < 0.1 * series["next_state/error/position_metres/persistence"]
-    )
+    assert "next_state/error/position_metres/baseline" not in series
+    for name in head_statistics.BENCH_MEDIANS:
+        for baseline in head_statistics.BENCH_BASELINES:
+            assert 0.0 <= series[f"next_state/beats_bench_median/{name}/{baseline}"] <= 1.0
+    assert 0.0 <= series["next_state/slow_frame_share"] <= 1.0
     for situation in head_statistics.NEXT_STATE_SITUATIONS:
         assert f"next_state/cross_entropy/{situation}/position" in series
     assert math.isfinite(series["next_state/gain/ally"])
+    belief = metrics.read(
+        head_statistics.belief_series(head_statistics.belief_sums(trajectory, DT, net.state_code))
+    )
+    bucket = head_statistics.AGE_BUCKETS[1][0]
+    for name in ("position", "velocity"):
+        value = belief[f"belief/anisotropy/{name}/{bucket}"]
+        assert math.isnan(value) or 0.0 <= value <= 1.0
+    assert f"belief/within_one_sigma/position_metres/{bucket}" in belief
 
 
 def test_the_bc_term_is_the_delta_codes_cross_entropy(segment):
@@ -591,11 +570,11 @@ def test_the_bc_term_is_the_delta_codes_cross_entropy(segment):
     _check_term(net, learner, runner)
 
 
-def test_a_delta_policy_file_round_trips(tmp_path, segment):
+def test_the_arms_policy_file_round_trips(tmp_path, segment):
     net, trajectory = segment
     save_policy(tmp_path / "policy", net)
     loaded = load_policy(tmp_path / "policy", lc.CPU).eval()
-    assert loaded.build == net.build and loaded.config.next_state == "delta"
+    assert loaded.build == net.build and loaded.config.spread_inputs == "ellipse"
     obs = trajectory.obs
     carry = net.initial_carry(obs.ships.shape[1], OWN, 10)
     joint = cases.joint_actions(trajectory)
@@ -606,3 +585,4 @@ def test_a_delta_policy_file_round_trips(tmp_path, segment):
         b, _ = cases.step_loop(loaded, loaded.step, carry, obs, joint)
     assert torch.equal(a.next_state_logits, b.next_state_logits)
     assert torch.equal(a.carry.belief.means, b.carry.belief.means)
+    assert torch.equal(a.carry.belief.spreads, b.carry.belief.spreads)
