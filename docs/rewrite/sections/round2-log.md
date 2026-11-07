@@ -79,3 +79,19 @@ Entries: time, what, why. Newest last.
   with C-fixed. The GPU goes back to the champion continuation (job 3).
 - **03:55** Heading spread bug (arm-2 branch, found by my check): real heading error 0.18/0.37/0.55/0.88 rad at 0.1-0.5/0.5-1/1-2/2-5 s vs implied sigma ~1/3/12 rad. Cause: F's heading += nose-rate dt counted the turn twice (the persistence heading change already holds it) and treated the damped nose rate as a random walk. Fixed by the agent: F couples position to velocity only; heading variance capped at pi^2/3 (the uniform circle). Position coupling kept: its coverage showed sigma too small, not too large.
 - **04:13** Arm-2: coefficient verified (0.0033 gives trunk norm 0.0144 vs the absolute head's 0.0143 at 0.0041). After the heading fix: heading within 1 sigma 0.74/0.49/0.37/0.38/0.29 by age (a little narrow); nose-rate sigma was also a random walk (100% coverage), now capped at a uniform over the code range. Position still too narrow (8/4/6% within 1 sigma at 0.1-2 s) on the 20-update CPU run: accepted for this arm (its belief is open-loop; the error head in arm 3 is the fix by design); watch it in the GPU run.
+- **04:23** **Arm 2 merged** (v2 122bd6bc). Verified: ruff; the delta, acceleration and
+  observation-record tests (78 pass); C-fixed's and arm 1's policies load. Agent's report:
+  quick tier 1506, slow dashboards 2 pass. Codes: position along asymmetric 175 bins (4.9 cm
+  at the 2.6 m median), the rest 51/31; 624 outputs (absolute 490); round trip < 2e-4 bins
+  (needed a mean-inverse table: the plain decode was biased up to 0.37 bins at the padded
+  ends); learner.next_state 0.0033. Changes from the brief: F couples only position to
+  velocity (heading and nose rate decoupled and capped, see 03:55); ellipse code appended
+  (168 inputs) since the token had no spread columns; targets masked to ships alive at t and
+  t+1. Open: position sigma overconfident on the short run (arm 3's error head is the
+  designed fix).
+- **04:24** Queued arm 2 (job 6, `2026-11-08-bc-arm2-persistence`, worktree `bnb-run-arm2` at
+  122bd6bc; it preempted the champion continuation, job 3) and its tournament (job 7: arm 2,
+  arm 1 and C-fixed 30M uniform averages, frontline + deathmatch, out
+  `runs-v2/ratings/2026-11-08-arm2`). I will check the first updates against round 1's
+  early numbers (belief error and coverage by age, the head's error against the bench
+  medians, the gradient share).
