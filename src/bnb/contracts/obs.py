@@ -4,6 +4,12 @@ An observation is raw and in world coordinates, with no rotation or mirroring. T
 canonicalization is the team: each ship row carries `team_relative = (team - viewer) mod T`,
 and the ship rows are ordered by it (own ships first); zones and the mode's globals are in
 the viewer's terms. So nothing reveals which seat a team has.
+
+Columns are read by name, and a column's meaning never changes under the same name: a new
+meaning is a new name. A policy file records the column names it was trained with
+(`COLUMNS`, runs spec 3), so adding columns locks out no policy and does not raise
+`Obs.SCHEMA_VERSION`; that rises only for a real break (a part's shape or a removed or
+renamed column a policy reads).
 """
 
 from typing import ClassVar
@@ -80,6 +86,31 @@ GLOBAL_COLUMNS = (
 # so a model sees the same tokens in any batch. Frontline fills them all; a mode without
 # zones leaves them absent.
 ZONE_SLOTS = 5
+
+# Every column list by observation part: what a policy file records (runs spec 3).
+COLUMNS = dict(ships=SHIP_COLUMNS, fields=FIELD_COLUMNS, globals=GLOBAL_COLUMNS, zones=ZONE_COLUMNS)
+# The column lists as they were at v2 before policy files recorded them (2026-11-08, Obs
+# schema 3): a policy file without a record of its columns was trained on these. Frozen as
+# data: never edit it.
+COLUMNS_BEFORE_RECORDS = dict(
+    ships=(
+        "x", "y", "heading_cos", "heading_sin", "velocity_x", "velocity_y", "proper_speed",
+        "angle_of_attack", "nose_rate", "energy", "shield", "shield_recharge_wait",
+        "gun_cooldown", "log_refractive_index", "log_index_gradient_x", "log_index_gradient_y",
+        "alive", "visible", "fired", "respawn_wait", "ship_type", "team_relative",
+        "time_since_seen", "spawned",
+    ),
+    fields=("x", "y", "radius", "band_width", "level"),
+    globals=(
+        "episode_progress", "arena_radius", "fogged", "reset", "mode_team_deathmatch",
+        "mode_frontline", "score_own", "score_enemy", "score_target", "front",
+        "front_threshold",
+    ),
+    zones=(
+        "x", "y", "radius", "role", "progress", "direction", "offensive_distance",
+        "defensive_distance", "present",
+    ),
+)  # fmt: skip
 
 SHIP = {name: i for i, name in enumerate(SHIP_COLUMNS)}
 FIELD = {name: i for i, name in enumerate(FIELD_COLUMNS)}

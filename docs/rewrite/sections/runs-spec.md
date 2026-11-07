@@ -50,6 +50,9 @@ define and push those first. The league (section 8) comes after this section.
     - the model's registered name and version;
     - its build record;
     - the `Obs` and `Action` schema versions;
+    - the observation's column names it trained with, by part (`observation`: `ships`,
+      `fields`, `globals`, `zones`, as `bnb.contracts.obs.COLUMNS`; a model built for
+      recorded columns records its own);
     - the game version and the ship card it trained on (for ratings keys);
     - the step counters;
     - the commit and whether the tree was dirty;
@@ -78,7 +81,17 @@ define and push those first. The league (section 8) comes after this section.
   - the hashes;
   - the format version;
   - the `Obs` and `Action` schema versions against the code's;
-  - the model's version against the code's.
+  - the model's version against the code's;
+  - every recorded observation column against the code's contract: each must exist under
+    the same name, or the load fails naming each missing one (`ships.<name>`).
+- **Observation columns (2026-11-08):** a column's meaning never changes under the same
+  name; a new meaning is a new name. Adding columns does not raise the `Obs` schema
+  version, which rises only for a real break. A model that reads columns by name (Yemong,
+  Relational) needs nothing more at load; one that reads rows by width (the MLP,
+  `reads_by_width`) is built for its recorded columns and selects them by name, in their
+  recorded order, from the code's observation (`bnb.runs.checkpoint.build_model`). A file
+  written before the record has the columns of `COLUMNS_BEFORE_RECORDS` (v2 at Obs schema
+  3, frozen as data).
 
 ## 4. Models: registry, version, build record
 
@@ -222,6 +235,7 @@ define and push those first. The league (section 8) comes after this section.
    - a hash mismatch;
    - a schema-version mismatch;
    - a model-version mismatch;
+   - a recorded observation column the code lacks;
    - an unknown config field;
    - a structural override on `--resume`;
    - a fork whose build differs.

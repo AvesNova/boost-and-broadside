@@ -15,7 +15,10 @@ are generated from it.
 - The configuration contracts (`GameConfig`, `Pool`) are plain frozen dataclasses of Python
   values. `Controller` is a protocol.
 - `Obs`, `Action` and `Events` each carry a schema version (`bnb.contracts.Obs.SCHEMA_VERSION`
-  and the like). A change to their layout bumps it.
+  and the like). A real break of their layout bumps it. Adding an observation column does
+  not: models read columns by name, a column's meaning never changes under the same name
+  (a new meaning is a new name), and a policy file records the columns it trained with
+  ([runs](runs.md)).
 - `tests/contract` checks every implementation of every contract: shapes, dtypes, the
   import direction and ONNX export of each model's step.
 

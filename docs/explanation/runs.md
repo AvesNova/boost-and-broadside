@@ -66,7 +66,7 @@ other languages read it.
 
 - **A policy file** (`bnb.runs.checkpoint.save_policy`) is what an agent needs to play: the
   model's registered name, version and build record, the `Obs` and `Action` schema
-  versions, its weights, the return scale's state tensors, the step counts and, for a BC
+  versions, the observation's column names it trained with (by part), its weights, the return scale's state tensors, the step counts and, for a BC
   run's policies, the lane rating per mode (for a warm start), the game and ship card it trained on and the game's version (`bnb.game.VERSION`,
   which rises whenever the game computes differently), the commit and the time, and each
   file's SHA-256.
@@ -85,7 +85,12 @@ other languages read it.
   complete or absent; a leftover `<name>.tmp/` is never listed as a checkpoint and is
   removed by the next write. A checkpoint is never overwritten.
 - **Loading checks** the format version, every file's hash, the schema versions and the
-  model's version against the code's, and fails with a message naming both sides.
+  model's version against the code's, and fails with a message naming both sides. It also
+  checks that every observation column the file recorded exists in the code's contract
+  under the same name, and fails naming each missing one. So adding a column locks out no
+  policy. A model that reads columns by name (Yemong) needs nothing more; the MLP, which
+  reads rows by width, is built for its recorded columns and selects them by name. A file
+  written before the record has the columns of `bnb.contracts.obs.COLUMNS_BEFORE_RECORDS`.
 
 ## Build records, versions and the compatibility set
 
