@@ -153,7 +153,10 @@ where the RL run's live rating starts:
 - `policy-live/`{.plain}: the live clone.
 
 `policy/` duplicates one of the averages' files, so that the hand-off has one path
-whichever average won. The return scale is the learner's in all four. `bnb train
+whichever average won. A resumed run replaces these four at its next end; the three
+players of every 10M environment steps and of each end stay under
+`policies/step_<steps>/` (`TrainConfig.policy_snapshot_every`,
+[Runs and checkpoints](runs.md#every-updates-policy-files)). The return scale is the learner's in all four. `bnb train
 --init-from` starts reinforcement learning from any of them (`bnb.runs.checkpoint.warm_start`): the weights and return scale, a fresh
 optimizer, fresh step counts and no cloning term ([Runs and checkpoints](runs.md)). In
 Python, `bnb.runtime.cloning.warm_start` does the same in memory, copying into a trainer in

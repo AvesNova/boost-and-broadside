@@ -131,7 +131,8 @@ is over the budget.
 ## Every update's policies and other EMA decays
 
 A PPO run keeps the live and averaged policy files of every update under `policies/`
-(`--update-policies False` turns that off; BC runs default to off). To rate an exponential
+(`--update-policies False` turns that off; BC runs default to off and keep them every 10M
+steps and at each end instead). To rate an exponential
 average of another decay, build it from the saved live policies and name it in a tournament:
 
 <!-- not-runnable: needs a finished run -->

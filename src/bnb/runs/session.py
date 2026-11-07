@@ -97,7 +97,9 @@ def save(run: Run, trainer: Trainer, final: bool = False, recorder: Recorder | N
 def save_update_policies(
     run: Run, trainer: Trainer, scratch: torch.nn.Module, recorder: Recorder | None = None
 ) -> None:
-    """The policy files of the update that just ended, at `policies/step_<steps>/`: the live
+    """The policy files of the update that just ended (after every update when the run keeps
+    them, `update_policies`, else every `TrainConfig.policy_snapshot_every` environment
+    steps and at each segment's end), at `policies/step_<steps>/`: the live
     weights (`live/`), the exponential average (`exponential_average/`) and, once it has
     started, the uniform average (`uniform_average/`). They are never pruned, so an average
     of another decay can be built afterwards from the live files (`bnb runs ema`). scratch: a
@@ -105,13 +107,13 @@ def save_update_policies(
     repeated update's) are replaced."""
     started = time.perf_counter()
     steps = trainer.ppo.environment_steps
-    averages = trainer.league.averages
+    averages = getattr(trainer.league, "averages", None)  # a run with neither: the live only
     path = run.update_policies_path(steps)
     if path.exists():
         shutil.rmtree(path)
     path.mkdir()
     players = [(LIVE, trainer.model)]
-    for player in (EXPONENTIAL_AVERAGE, UNIFORM_AVERAGE):
+    for player in (EXPONENTIAL_AVERAGE, UNIFORM_AVERAGE) if averages is not None else ():
         if player == UNIFORM_AVERAGE and not averages.uniform_started:
             continue
         scratch.load_state_dict(averages.weights[player])
@@ -213,7 +215,9 @@ def train(
         with StopRequest() as own:
             return train(run, trainer, log, margin, recorder, own)
     cloned = trainer.config.objective == "bc"
-    scratch = copy.deepcopy(trainer.model).cpu() if run.record.get("update_policies") else None
+    every_update = bool(run.record.get("update_policies"))
+    snapshot_every = trainer.config.policy_snapshot_every
+    scratch = copy.deepcopy(trainer.model).cpu()
     stop_file = run.directory / STOP_FILE
     if stop.by is None and stop_file.exists():
         print(f"removing {stop_file}, left by an earlier process", flush=True)
@@ -249,7 +253,8 @@ def train(
                 row = recorder.record(row)
                 act(run, trainer, recorder, row)
             log(row)
-            if scratch is not None:
+            steps = trainer.ppo.environment_steps
+            if every_update or steps // snapshot_every > before // snapshot_every:
                 save_update_policies(run, trainer, scratch, recorder)
             every = run.record["checkpoint_every"]
             if every and trainer.ppo.environment_steps // every > before // every:
@@ -259,6 +264,8 @@ def train(
         finished = reason is not None if cloned else trainer.updates_done >= trainer.config.updates
         status = "finished" if finished else "stopped"
         save(run, trainer, final=finished, recorder=recorder)
+        if not run.update_policies_path(step).exists():  # the segment's end
+            save_update_policies(run, trainer, scratch, recorder)
         if cloned:
             player = save_policies(run, trainer)
             run.update(

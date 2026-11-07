@@ -41,9 +41,16 @@ counts and its own lane ratings
 | Directory | Holds |
 | --- | --- |
 | `runs/<run>/policy/`{.plain} | the run's policy: the average the stop rule read last |
-| `runs/<run>/policy-uniform/`{.plain} | the uniform average (after a 10M-step warm-up) |
+| `runs/<run>/policy-uniform/`{.plain} | the uniform average (after the warm-up) |
 | `runs/<run>/policy-exponential/`{.plain} | the exponential moving average |
 | `runs/<run>/policy-live/`{.plain} | the live clone |
+
+Every 10M environment steps (`--set policy_snapshot_every=...`) and at each end, the run
+also keeps the live clone and both averages under
+`runs/<run>/policies/step_<steps>/{live,exponential_average,uniform_average}/`{.plain},
+never replaced, so a run resumed past its budget keeps its earlier averages; `bnb ratings
+--with <run>/policies/step_<steps>/uniform_average` rates one
+([Runs and checkpoints](../explanation/runs.md#every-updates-policy-files)).
 
 `run.json`{.plain} records the rule as `stopped_by` (`interrupted` for a stop request) and the
 average in `policy/` as `policy_player` (`uniform_average` or `exponential_average`).

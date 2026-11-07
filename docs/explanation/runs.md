@@ -26,7 +26,9 @@ runs/2026-11-02-mixed-purple-pumpkin/
   config.json           the resolved TrainConfig at the start
   checkpoints/step_<environment steps>/   training checkpoints (the newest two and the final)
   policies/step_<environment steps>/{live,exponential_average,uniform_average}/
-                        every update's policy files (a PPO run; never pruned)
+                        every update's policy files (PPO), or every 10M steps and at
+                        each segment's end (BC); never pruned
+  STOP                  a stop request, while the run is asked to stop
   league/               the league's policy snapshots
   policy/               a BC run's policy: the average its stop rule read (bnb train --objective bc)
   policy-<variant>/     a BC run's live clone and each average (live, uniform, exponential)
@@ -203,13 +205,22 @@ rewind (`--resume RUN --at STEP`) moves the newer checkpoints into
 ### Every update's policy files
 
 The history of a run is its policy files, which are small (about 10 MB each). After every update a run with `--update-policies` (the default for PPO,
-off for BC, whose product is the policy files it saves at its end) writes
+off for BC) writes
 `policies/step_<environment steps>/` with three policy files: `live/` (the learner's
 weights), `exponential_average/` and, once the uniform average has started,
 `uniform_average/`. They are never pruned: about 20 to 30 MB per update (the live weights and
 the exponential average, then the uniform average too), so a run of 100M steps at a million
 steps per update keeps about 2 to 3 GB. Their writing time counts in the
 update record's checkpoint seconds.
+
+A run without `--update-policies` (BC by default) writes the same three files every
+`TrainConfig.policy_snapshot_every` environment steps (10M; `--set
+policy_snapshot_every=...`, which a resume may change) and at the end of each process's
+segment (its budget, a stop rule or a stop request). So a BC run continued past its budget
+keeps the averages it had at each 10M and at each earlier end, beside the `policy*/`
+files that its newest end replaces. A tournament takes any of them by path, including one
+inside the runs directory: `bnb ratings RUN --with
+RUN/policies/step_50000000/uniform_average`.
 
 `bnb runs ema RUN --decay 0.9 [--at STEP]` builds an exponential moving average of any
 decay from the saved live policies (`bnb.runs.ema`) and writes it as a policy file under the
