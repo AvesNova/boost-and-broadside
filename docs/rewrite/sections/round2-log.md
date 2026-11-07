@@ -159,3 +159,4 @@ Entries: time, what, why. Newest last.
   job 15), since it does not depend on the fix; brief `error-head-spread-fix-brief.md`
   (quantile spread: 16/50/84th percentiles in code coordinates, less the smoothing) and an
   agent on `fix/error-head-spread`. Arms 3 and 4 rerun after the fix, as arm 3b / arm 4b.
+- **07:49** Arm 3 stopped cleanly at 4.19M (run renamed `2026-11-08-bc-arm3-split-aborted`). Arm 2b (job 14) started 07:48; ETA ~10:05, its tournament ~10:50.
