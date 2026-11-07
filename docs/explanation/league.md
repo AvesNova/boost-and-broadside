@@ -261,19 +261,20 @@ compiled once. Its layout is fixed: `--blocks` matchup blocks of `--block-enviro
 environments each. Each block is two slots, its first seat and its second, both played by
 one controller (`bnb.league.matches.MatchSeat`):
 
-- A **network slot** holds one set of the stacked weights of its player's **group** and
-  runs it on the slot's own rows (`torch.func.functional_call` on the slot's slice, as the
-  rating lanes do). The networks of one build (the same model and build record) form a
-  group, with a template, stacked weights and a forward of its own; a field may mix
-  builds, and a block's two seats may come from different groups (two
-  Yemong arms that differ in a build setting, for one). A slot's player changes between batches and the
-  captured graph's shapes cannot, so every group's forward runs over every slot's rows and
-  each slot takes its own group's action: **each extra group costs about one more network
-  pass over every row** (2026-11-06, a small relational model on the CPU: a batch took 1.2
-  s with one group, 1.7 s with two and 2.1 s with three, of which 0.7 s was the games and
-  the scripted pass; on the GPU, where the network is most of a batch, expect close to
-  the network's share of the batch per extra group). One build is one group, and plays as
-  before.
+- A **network slot** plays on one **lane** of its player's **group**. The networks of
+  one build (the same model and build record) form a group, with a template and a forward
+  of its own; a field may mix builds, and a block's two seats may come from different
+  groups (two Yemong arms that differ in a build setting, for one). Each group has a fixed
+  number of lanes: a lane holds one slot's weights and the slot it plays, both copied in
+  place before a batch, and runs the group's forward on that slot's rows only
+  (`torch.func.functional_call` on the rows gathered, as the rating lanes do), writing
+  back the slot's actions and carry; an idle lane runs on a slot of its own and writes
+  nothing. The lanes split the slots over the groups in proportion to their players
+  (`bnb.league.matches.default_lanes`), so they sum to the slots and **a batch costs one
+  network pass over every row however many builds the field mixes**. A batch may hold at
+  most a group's lanes of its slots: the tournament's allocation keeps to them, and
+  head-to-head gives each group the most of its slots any of its batches holds. One
+  build is one group whose lanes are every slot, and plays as before.
 - A **scripted slot** (a rung or a teacher) takes the scripted pass, one over every row,
   at the slot's temperature, share and floor, written in place.
 - **A batch** copies the chosen players into the slots, in place, so the captured graph
@@ -281,12 +282,19 @@ one controller (`bnb.league.matches.MatchSeat`):
   a block seats the block's first player on team i mod 2, so a block's games split evenly
   between the seats. Each environment's first game is played to its end and counted once.
 
+**Mixed builds.** On frontline, a field of four builds (BC arms A, R, C and D, with an
+average of A's build) plays a batch in about the time one build takes: 20.9 s against
+21.1 s at 2 blocks of 16 environments, 76.5 s against 79.0 s at 8 blocks of 16, and
+148 s at the default 8 blocks of 128, where a single-build field takes about 145 s
+(2026-11-07).
+
 **The tournament:**
 
 - Before each batch every block is given a pair (`bnb.league.ratings.allocate_blocks`),
   greedily: the allowed pair whose block of games most lowers the summed rating variance
-  at the current ratings, given every game so far and the blocks already chosen. The
-  information includes the fit's prior games, so the first batch is chosen the same way.
+  at the current ratings, given every game so far and the blocks already chosen, among
+  the pairs that still fit the engine's lanes. The information includes the fit's prior
+  games, so the first batch is chosen the same way.
 - After each batch the ratings are the Bradley–Terry fit on every game so far
   (`bnb.league.ratings.fit_ratings`, draws as half a win, one prior game), shifted so the
   scripted agent is at 1000. Only the scripted agent is pinned; random is fitted.

@@ -110,7 +110,16 @@ Branch `section/league`. Spec: `league-spec.md`. Brief: `league-brief.md`.
   two slots of one `MatchSeat`; network slots run stacked weights on their own rows
   (functional_call), scripted slots take one scripted pass at per-row temperature, share and
   floor. A batch loads players in place and `Rollout.restart`s every game; each
-  environment's first game counts. One architecture per tournament.
+  environment's first game counts. A field may mix builds: each build is a group with a
+  fixed number of lanes (2026-11-07; `default_lanes` splits the slots by players), each
+  lane one slot's weights run on that slot's rows only, and the allocation keeps each
+  batch to the lanes, so a mixed field costs one network pass per tick like a single
+  build. Before, every group ran over every slot (the slot's group taken after): on
+  frontline at 2 blocks x 16 environments a batch took 20.0 s with one build and 71.0 s
+  with four (first batches 188 s and 467 s, the compile growing with the forwards); with
+  lanes 21.1 s and 20.9 s. The first arms tournament (8 x 128) took 2182 s for batch 1;
+  with lanes the same field at 8 x 128 takes 589 s for its first batch and 148 s after
+  (a single-build field ~145 s).
 - `bnb.league.tournament.rate`: `allocate_blocks` gives each block a pair greedily by exact
   trace reduction (Sherman-Morrison, prior games included, so no even first batch) among
   the allowed pairs (`allowed_pairs`, `--scripted-plays`); `fit_ratings` with prior 1,
