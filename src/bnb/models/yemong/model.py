@@ -30,13 +30,20 @@ from .codes import SPREAD_FITS
 from .delta import DeltaCode, StateDynamics, state_dynamics
 from .heads import HeadGroup, ShotTrajectoryHead, critic_values, next_state_logits
 from .inputs import (
+    ACCELERATION_INPUTS,
     FIELD_INPUTS,
     GLOBAL_INPUTS,
     POSITION_CODE,
     ZONE_INPUTS,
+    Accelerations,
+    Motion,
     Replay,
     Tokens,
+    accelerations,
+    believed,
     compose,
+    motion,
+    preceding,
     ship_inputs,
     store_action,
     truth,
@@ -105,6 +112,12 @@ class YemongConfig:
     as a symlog HL-Gauss code (`delta.DeltaCode`), its output bias starting at the measured
     marginal; the forecast fed back is the belief's baseline plus the decoded change. The
     inputs are the same state code either way.
+    acceleration_inputs: each ship row also reads its acceleration over the last tick, along
+    and across its velocity and of its nose rate (`inputs.accelerations`), as symlog HL-Gauss
+    codes and a validity flag at the end of the ship token. The rows are the ones the model
+    reads (truth where visible, the belief's forecast where hidden); the previous tick's
+    motion rides in the carry (`Carry.motion`), and `unroll` shifts it within the segment.
+    Off by default, so every build from before the option is unchanged.
     """
 
     width: int = 128
@@ -128,6 +141,7 @@ class YemongConfig:
     rotary_readout: bool = False  # hidden ships' rotary pairs from each block's temporal layer
     spread_fit: str = "v1"  # the belief's spread decoding; training builds "coarsest"
     next_state: str = "absolute"  # the next-state head's target: "absolute" or "delta"
+    acceleration_inputs: bool = False  # each ship row reads its acceleration over the last tick
 
     def __post_init__(self) -> None:
         if self.next_state not in NEXT_STATES:
@@ -166,7 +180,9 @@ class Carry:
     (R, blocks, Q, 3, D): the trunk's; belief: per ship row, positions in the shifted frame;
     previous_action (R, S) int32, the own ships' last joint actions; offset (R, 2) m, the
     view's position offset, drawn uniformly in [0, P) at every reset; nonfinite (R,) int64,
-    a running count of non-finite forecast entries (replaced by zeros)."""
+    a running count of non-finite forecast entries (replaced by zeros); motion: the rows'
+    Motion at the last decision, what the acceleration inputs difference against (None
+    without `YemongConfig.acceleration_inputs`)."""
 
     state: torch.Tensor
     convolution_buffer: torch.Tensor
@@ -174,6 +190,7 @@ class Carry:
     previous_action: torch.Tensor
     offset: torch.Tensor
     nonfinite: torch.Tensor
+    motion: Motion | None = None
 
 
 ABLATIONS = ("rotary", "forecast")  # the inference-time ablations `Ablations` carries
@@ -335,7 +352,7 @@ class Yemong(nn.Module):
         )
         self.bullet_moves = build.bullet_moves
         self.encoder = Encoder(
-            ship_inputs(self.state_code.width, self.ship_types),
+            ship_inputs(self.state_code.width, self.ship_types, config.acceleration_inputs),
             GLOBAL_INPUTS,
             FIELD_INPUTS,
             width,
@@ -393,6 +410,10 @@ class Yemong(nn.Module):
             self.encoder.ship.first.weight[:, : self.state_code.width].normal_(
                 0.0, self.state_code.groups**-0.5
             )
+            if self.config.acceleration_inputs:  # the codes as the state code's (not the flag)
+                self.encoder.ship.first.weight[:, -ACCELERATION_INPUTS:-1].normal_(
+                    0.0, self.state_code.groups**-0.5
+                )
             for kind in (self.encoder.field, self.encoder.global_token, self.encoder.zone):
                 kind.first.weight[:, :POSITION_CODE].normal_(0.0, POSITION_LEVELS**-0.5)
             nn.init.zeros_(self.ship_heads.lasts[1].weight)
@@ -454,6 +475,15 @@ class Yemong(nn.Module):
             device=device,
             dtype=dtype,
         )
+        rows = None
+        if config.acceleration_inputs:  # nothing present: the first tick's inputs are invalid
+            absent = torch.zeros((views, num_ships), dtype=torch.bool, device=device)
+            rows = Motion(
+                velocity=torch.zeros((views, num_ships, 2), dtype=dtype, device=device),
+                nose_rate=torch.zeros((views, num_ships), dtype=dtype, device=device),
+                present=absent,
+                visible=absent.clone(),
+            )
         return Carry(
             state=state,
             convolution_buffer=state.new_zeros(state.shape[:-1] + (3, config.width)),
@@ -461,6 +491,7 @@ class Yemong(nn.Module):
             previous_action=torch.zeros((views, ships_per_team), dtype=torch.int32, device=device),
             offset=POSITION_PERIOD * torch.rand((views, 2), dtype=dtype, device=device),
             nonfinite=torch.zeros(views, dtype=torch.int64, device=device),
+            motion=rows,
         )
 
     @staticmethod
@@ -484,6 +515,14 @@ class Yemong(nn.Module):
         offset = torch.where(
             keep[..., None], carry.offset, POSITION_PERIOD * torch.rand_like(carry.offset)
         )
+        rows = carry.motion
+        if rows is not None:  # nothing is present before a reset
+            rows = Motion(
+                velocity=rows.velocity,
+                nose_rate=rows.nose_rate,
+                present=rows.present & keep[..., None],
+                visible=rows.visible,
+            )
         return Carry(
             state=masked(carry.state),
             convolution_buffer=masked(carry.convolution_buffer),
@@ -491,6 +530,7 @@ class Yemong(nn.Module):
             previous_action=masked(carry.previous_action),
             offset=offset,
             nonfinite=carry.nonfinite,
+            motion=rows,
         )
 
     # ------------------------------------------------------------------ shared
@@ -498,8 +538,11 @@ class Yemong(nn.Module):
     def _matmuls(self, device: torch.device):
         return torch.autocast(device.type, torch.bfloat16, enabled=self.config.bfloat16_matmuls)
 
-    def tokens(self, obs: Obs, replay: Replay) -> Tokens:
-        """The encoder inputs of views and their replay records."""
+    def tokens(self, obs: Obs, replay: Replay, previous: Motion | None = None) -> Tokens:
+        """The encoder inputs of views and their replay records; previous: the rows' Motion
+        at the tick before, with `YemongConfig.acceleration_inputs` (required then)."""
+        if self.config.acceleration_inputs and previous is None:
+            raise ValueError("the acceleration inputs need the previous tick's motion")
         return compose(
             obs,
             replay,
@@ -507,7 +550,32 @@ class Yemong(nn.Module):
             self.ship_types,
             self.config.presence_radius,
             self.tick_length,
+            previous if self.config.acceleration_inputs else None,
         )
+
+    def preceding_motion(
+        self, carry: Carry, obs: Obs, replay: Replay, reset: torch.Tensor
+    ) -> Motion | None:
+        """The rows' Motion before each tick of a stored segment (L, R, ...): the carry's at
+        its start, then the tick before; reset (L, R) as `step` received it. None without
+        `YemongConfig.acceleration_inputs`."""
+        if not self.config.acceleration_inputs:
+            return None
+        valid, _, means, _ = believed(obs.ships, replay)
+        return preceding(motion(obs.ships, valid, means), carry.motion, reset)
+
+    def acceleration_inputs(
+        self, carry: Carry, obs: Obs, replay: Replay, reset: torch.Tensor
+    ) -> Accelerations | None:
+        """The acceleration inputs `unroll` reads over a stored segment (its arguments), for
+        the diagnostics; None without `YemongConfig.acceleration_inputs`."""
+        previous = self.preceding_motion(carry, obs, replay, reset)
+        if previous is None:
+            return None
+        valid, _, means, _ = believed(obs.ships, replay)
+        spawned = obs.ships[..., SHIP["spawned"]] > 0.5
+        now = motion(obs.ships, valid, means)
+        return accelerations(now, previous, means[..., 4], spawned, self.tick_length)
 
     def _encode(self, tokens: Tokens, rotary_off: torch.Tensor | None = None):
         """Queries (..., Q, D), map memory (..., M + Z, Dm) and the rotary tables; rotary_off
@@ -631,7 +699,7 @@ class Yemong(nn.Module):
             previous_action=carry.previous_action,
             offset=carry.offset,
         )
-        tokens = self.tokens(obs, replay)
+        tokens = self.tokens(obs, replay, carry.motion)
         ships_count = tokens.code.shape[-2]
         rotary_off = None if ablations is None else ablations.rotary
         readout: dict = {}
@@ -694,6 +762,7 @@ class Yemong(nn.Module):
             previous_action=carry.previous_action,
             offset=carry.offset,
             nonfinite=carry.nonfinite + nonfinite,
+            motion=tokens.motion,
         )
         decision = Decision(
             policy_logits=policy_logits,
@@ -729,7 +798,7 @@ class Yemong(nn.Module):
         keep = ~reset[0]  # step clears the trunk carry at a reset; so does unroll
         state = torch.where(keep[:, None, None, None], carry.state, 0.0)
         buffer = torch.where(keep[:, None, None, None, None], carry.convolution_buffer, 0.0)
-        tokens = self.tokens(obs, replay)
+        tokens = self.tokens(obs, replay, self.preceding_motion(carry, obs, replay, reset))
         own, ships = replay.previous_action.shape[-1], tokens.code.shape[-2]
         dtype = self.bins.dtype
         readout: dict = {}

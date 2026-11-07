@@ -23,6 +23,7 @@ from bnb.contracts.tree import contract
 from bnb.game.rules import TEAMS
 
 from . import codes
+from .delta import DeltaComponent
 from .features import RESPAWN_HARMONICS, local_presence, respawn_features, symlog
 from .state_code import POSITION_LEVELS, POSITION_PERIOD, ShipStateCode
 
@@ -51,6 +52,24 @@ def store_action(probabilities: torch.Tensor) -> torch.Tensor:
     return torch.round(probabilities * ACTION_SCALE).to(torch.int16)
 
 
+# The acceleration inputs (`YemongConfig.acceleration_inputs`): per row the one-tick change
+# of the velocity, along and across the velocity at t (left positive), and of the nose rate,
+# per second, each a symlog HL-Gauss code (`codes.symlog_encode`), and a validity flag.
+# Knees: the median |value| of the living truth's one-tick pairs on the recorded segments,
+# respawns excluded, pooled at equal weight over both players and three presets (3.81 m/s^2,
+# 14.1 m/s^2, 1.55 rad/s^2; bench/acceleration_inputs_measure.py). Bounds (the last real
+# bin's centre): the hard one-tick bounds of the change under persistence (state-deltas
+# 1.2: 258 m/s, 24.7 rad/s) over a tick of 1/30 s. Constants of the model, like the scales.
+ACCELERATION_BINS = 31
+ACCELERATIONS = (
+    DeltaComponent("along", 3.8, 258.0 * 30.0, ACCELERATION_BINS),  # m/s^2
+    DeltaComponent("across", 14.0, 258.0 * 30.0, ACCELERATION_BINS),  # m/s^2
+    DeltaComponent("angular", 1.55, 24.7 * 30.0, ACCELERATION_BINS),  # rad/s^2
+)
+ACCELERATION_CODE = sum(component.width for component in ACCELERATIONS)
+ACCELERATION_INPUTS = ACCELERATION_CODE + 1  # the codes, then the validity flag
+SLOW_SPEED = 1.0  # m/s: below it the frame is the heading, not the velocity
+
 SHIP_FLAGS = ("alive", "visible", "fired")
 POSITION_CODE = 9 * POSITION_LEVELS  # the width of a position code
 # The centre's code, then episode progress, arena radius, fog, the mode one-hot (2), both
@@ -61,12 +80,13 @@ FIELD_INPUTS = POSITION_CODE + 3
 ZONE_INPUTS = POSITION_CODE + 1 + ZONE_ROLES + 4
 
 
-def ship_inputs(code_width: int, ship_types: int) -> int:
+def ship_inputs(code_width: int, ship_types: int, accelerations: bool = False) -> int:
     """The ship token's width: the code, team and type one-hots, the flags, time since seen,
     respawn features (1 + 2 RESPAWN_HARMONICS), the pending action, the gradient and presence
-    (2 each)."""
+    (2 each), then with accelerations the acceleration inputs (ACCELERATION_INPUTS)."""
     respawn = 1 + 2 * RESPAWN_HARMONICS
-    return code_width + TEAMS + ship_types + len(SHIP_FLAGS) + 1 + respawn + NUM_JOINT + 2 + 2
+    width = code_width + TEAMS + ship_types + len(SHIP_FLAGS) + 1 + respawn + NUM_JOINT + 2 + 2
+    return width + (ACCELERATION_INPUTS if accelerations else 0)
 
 
 @contract
@@ -111,6 +131,89 @@ def truth(ships: torch.Tensor, offset: torch.Tensor) -> torch.Tensor:
     )
 
 
+@contract
+class Motion:
+    """What a tick's acceleration inputs difference against (`YemongConfig.acceleration_inputs`),
+    per row (..., N): velocity (..., N, 2) m/s and nose_rate rad/s, the row as the model read
+    it (`believed`: truth where visible, the belief's forecast where hidden); present, alive
+    with a belief; visible."""
+
+    velocity: torch.Tensor
+    nose_rate: torch.Tensor
+    present: torch.Tensor
+    visible: torch.Tensor
+
+
+def motion(ships: torch.Tensor, valid: torch.Tensor, means: torch.Tensor) -> Motion:
+    """The Motion of the rows the model reads: ships (..., N, columns), the observation;
+    valid (..., N) and means (..., N, 12) as `believed` gives them."""
+    return Motion(
+        velocity=means[..., 2:4],
+        nose_rate=means[..., 5],
+        present=(ships[..., SHIP["alive"]] > 0.5) & valid,
+        visible=ships[..., SHIP["visible"]] > 0.5,
+    )
+
+
+def preceding(now: Motion, start: Motion, reset: torch.Tensor) -> Motion:
+    """The Motion before each tick of a segment (L, ...): start (the carry's, (...)) before
+    the first, the tick before after it; nothing is present before a reset (L, ...)."""
+    shifted = {
+        name: torch.cat([getattr(start, name)[None], getattr(now, name)[:-1]], 0)
+        for name in ("velocity", "nose_rate", "present", "visible")
+    }
+    shape = reset.shape + (1,) * (shifted["present"].dim() - reset.dim())
+    shifted["present"] = shifted["present"] & ~reset.view(shape)
+    return Motion(**shifted)
+
+
+@dataclasses.dataclass(frozen=True)
+class Accelerations:
+    """The acceleration inputs of rows (..., N): values (..., N, 3), along and across the
+    velocity at t (the heading below SLOW_SPEED; across to the left) in m/s^2 and the nose
+    rate's in rad/s^2, zero where not valid; valid, a real tick of motion; slow, the frame
+    was the heading."""
+
+    values: torch.Tensor
+    valid: torch.Tensor
+    slow: torch.Tensor
+
+
+def accelerations(
+    now: Motion,
+    before: Motion,
+    heading: torch.Tensor,
+    spawned: torch.Tensor,
+    tick_length: float,
+) -> Accelerations:
+    """The change from before to now per second, heading (..., N) the rows' at t. Valid when
+    the ship is present at both ticks, did not spawn at t, and was not just spotted (hidden
+    before, visible now: the difference would be truth minus belief, not motion). Just
+    hidden is valid: the belief's forecast minus the last truth."""
+    valid = now.present & before.present & ~spawned & (before.visible | ~now.visible)
+    change = (now.velocity - before.velocity) / tick_length
+    speed = torch.linalg.vector_norm(now.velocity, dim=-1)
+    slow = speed < SLOW_SPEED
+    safe = torch.where(slow, 1.0, speed)
+    unit_x = torch.where(slow, torch.cos(heading), now.velocity[..., 0] / safe)
+    unit_y = torch.where(slow, torch.sin(heading), now.velocity[..., 1] / safe)
+    along = change[..., 0] * unit_x + change[..., 1] * unit_y
+    across = change[..., 1] * unit_x - change[..., 0] * unit_y
+    angular = (now.nose_rate - before.nose_rate) / tick_length
+    values = torch.where(valid[..., None], torch.stack([along, across, angular], -1), 0.0)
+    return Accelerations(values=values, valid=valid, slow=slow & valid)
+
+
+def acceleration_code(inputs: Accelerations) -> torch.Tensor:
+    """(..., N, ACCELERATION_INPUTS): each component's symlog HL-Gauss code (an invalid row
+    codes its zero), then the validity flag."""
+    parts = [
+        codes.symlog_encode(inputs.values[..., i], c.knee, c.bound, c.bins)[0]
+        for i, c in enumerate(ACCELERATIONS)
+    ]
+    return torch.cat([*parts, inputs.valid.to(inputs.values.dtype)[..., None]], -1)
+
+
 @dataclasses.dataclass(frozen=True)
 class Tokens:
     """The encoder's inputs and the geometry for the rotary tables, (...) leading axes.
@@ -122,6 +225,8 @@ class Tokens:
     query_position (..., N + 1, 2) and query_heading (..., N + 1): the ships' belief and the
     map centre (no heading); memory_position (..., M + Z, 2), the fields' and zones' centres,
     an absent zone at the map centre (the global token's rotation). Positions are shifted.
+    With the acceleration inputs: motion, the rows' Motion (the next tick's previous), and
+    accelerations (None without them).
     """
 
     ship: torch.Tensor
@@ -134,6 +239,8 @@ class Tokens:
     query_position: torch.Tensor
     query_heading: torch.Tensor
     memory_position: torch.Tensor
+    motion: Motion | None = None
+    accelerations: Accelerations | None = None
 
 
 def _position_code(position: torch.Tensor) -> torch.Tensor:
@@ -164,10 +271,13 @@ def compose(
     ship_types: int,
     presence_radius: float,
     tick_length: float,
+    previous: Motion | None = None,
 ) -> Tokens:
     """The Tokens of one team's views (...) from the observation and the replay: the ships' belief
     codes and features, the global token, the fields and the zones, every position shifted by the
-    replay's offset. presence_radius in m, tick_length in s."""
+    replay's offset. presence_radius in m, tick_length in s. previous: the rows' Motion at the
+    tick before (`preceding` in a segment), given with the acceleration inputs only: they
+    end the ship token."""
     ships, dtype = obs.ships, obs.ships.dtype
     own = replay.previous_action.shape[-1]
     column = {name: ships[..., SHIP[name]] for name in SHIP}
@@ -193,6 +303,12 @@ def compose(
     gradient = torch.where(visible[..., None], gradient, 0.0) / GRADIENT_SCALE
     presence = local_presence(position, team, valid, presence_radius)
     since_seen = age.to(dtype) * tick_length
+    now, change = None, None
+    if previous is not None:
+        now = motion(ships, valid, believed_means)
+        change = accelerations(
+            now, previous, believed_means[..., 4], column["spawned"] > 0.5, tick_length
+        )
     ship = torch.cat(
         [
             code,
@@ -204,6 +320,7 @@ def compose(
             pending,
             gradient,
             presence,
+            *(() if change is None else (acceleration_code(change),)),
         ],
         -1,
     )
@@ -296,4 +413,6 @@ def compose(
         query_position=query_position,
         query_heading=query_heading,
         memory_position=torch.cat([field_position, zone_position], -2),
+        motion=now,
+        accelerations=change,
     )

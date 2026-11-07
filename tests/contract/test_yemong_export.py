@@ -75,12 +75,20 @@ def _mid_game(config: GameConfig, ticks: int):
     return rules, types, views
 
 
-@pytest.mark.parametrize("next_state", ["absolute", "delta"])
-def test_yemong_step_exports_to_onnx(tmp_path, next_state):
+@pytest.mark.parametrize(
+    "settings",
+    [
+        dict(next_state="absolute"),
+        dict(next_state="delta"),
+        dict(order="temporal_first", acceleration_inputs=True),
+    ],
+    ids=["absolute", "delta", "accelerations"],
+)
+def test_yemong_step_exports_to_onnx(tmp_path, settings):
     config = GameConfig(3, 4, 1500.0)
     rules, types, views = _mid_game(config, ticks=20)
     torch.manual_seed(0)
-    model = Yemong(yemong_build(YemongConfig(next_state=next_state), rules, types)).eval()
+    model = Yemong(yemong_build(YemongConfig(**settings), rules, types)).eval()
     with torch.no_grad():
         for name, parameter in model.named_parameters():
             if name.endswith("last.weight") or ".lasts." in name and name.endswith(".weight"):

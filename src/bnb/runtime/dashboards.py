@@ -313,6 +313,13 @@ CURATED = (
         (
             panel("input/envelope_violation_share", "input/envelope_violation_share/*"),
             panel("input/nonfinite_count"),
+            panel("input/acceleration/mean_abs", "input/acceleration/mean_abs/*"),
+            panel(
+                "input/acceleration/validity",
+                "input/acceleration/invalid_share",
+                "input/acceleration/slow_frame",
+            ),
+            panel("input/acceleration/padding_share", "input/acceleration/padding_share/*"),
             panel("batch/token_share/mode", "batch/token_share/mode/*"),
             panel("batch/token_share/opponent", "batch/token_share/opponent/*"),
         ),

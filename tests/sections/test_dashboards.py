@@ -31,6 +31,19 @@ EXEMPT = (
     "train/memory_peak_gigabytes",
     "train/memory_budget_gigabytes",
     "outcome/brier_skill/*",
+    # logged with `YemongConfig.acceleration_inputs` only (off in this run)
+    "input/acceleration/mean_abs/*",
+    "input/acceleration/invalid_share",
+    "input/acceleration/slow_frame",
+    "input/acceleration/padding_share/*",
+    # logged with `YemongConfig.rotary_readout` only (off in this run)
+    "rotary_readout/loss",
+    "rotary_readout/error/*",
+    "rotary_readout/hidden_error/*",
+    "rotary_readout/hidden_length/*",
+    # logged with `YemongConfig.next_state` "delta" only (absolute in this run)
+    "next_state/support_clip/*",
+    "next_state/support_padding/*",
 )
 
 
