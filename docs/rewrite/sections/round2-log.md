@@ -58,3 +58,4 @@ Entries: time, what, why. Newest last.
   within noise (perceive alone 13-18% slower, a small part of a tick). Noted from its report:
   a learner sequence that starts mid-game with a blank carry now gets valid visible
   accelerations where arm 1's did not (the observation knows t-1); live play is identical.
+- **02:55** Arm-2 build agent launched (worktree `bnb-arm2`, branch `feat/arm2-persistence`, from f5be4390).
