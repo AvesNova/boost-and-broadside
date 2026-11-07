@@ -36,6 +36,16 @@ SHIP_COLUMNS = (
     "log_refractive_index",
     "log_index_gradient_x",
     "log_index_gradient_y",
+    # The change over the last tick, per second, world frame: of the velocity
+    # (acceleration_x, acceleration_y; m/s^2) and of the nose rate (nose_acceleration;
+    # rad/s^2). acceleration_valid 1 when it is a real tick of motion the team saw: the ship
+    # alive at both ticks, not spawned at this one, not the game's first tick, and seen by
+    # the team at both (so a ship just spotted shows none, and nothing of the tick before
+    # leaks); 0, with the three zero, otherwise.
+    "acceleration_x",
+    "acceleration_y",
+    "nose_acceleration",
+    "acceleration_valid",
     # always shown; fired: fired this tick
     "alive",
     "visible",
@@ -46,7 +56,7 @@ SHIP_COLUMNS = (
     "time_since_seen",
     "spawned",
 )
-SHIP_HIDDEN_ZERO = 16  # the first this-many columns are zero for a ship the team cannot see
+SHIP_HIDDEN_ZERO = 20  # the first this-many columns are zero for a ship the team cannot see
 FIELD_COLUMNS = ("x", "y", "radius", "band_width", "level")
 # Zones (Frontline's), for the viewer: role 0 own spawn, 1 own defense, 2 neutral, 3 enemy
 # defense, 4 enemy spawn; progress, the meter in [0, 1]; direction +1 when the meter moves

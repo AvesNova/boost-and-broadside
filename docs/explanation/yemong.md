@@ -31,8 +31,8 @@ lives in its [carry](glossary.md#carry) (`bnb.models.yemong.model.Carry`), per
   joint action;
 - the own ships' previous joint actions;
 - the view's **position offset**, drawn uniformly at every reset;
-- with the acceleration inputs (below), each row's velocity, nose rate and sight at the
-  last decision (`bnb.models.yemong.inputs.Motion`).
+- with the acceleration inputs (below), each enemy row's velocity, nose rate and presence
+  as the model read them at the last decision (`bnb.models.yemong.inputs.Motion`).
 
 ### The belief
 
@@ -201,16 +201,20 @@ row its acceleration over the last tick (`bnb.models.yemong.inputs.accelerations
 | across | the same across v_t, to the left | 14 m/s^2 | 7740 m/s^2 |
 | angular | (omega_t - omega_{t-1}) / dt, omega the nose rate | 1.55 rad/s^2 | 741 rad/s^2 |
 
-The rows are the ones the model reads: truth where the ship is visible, the belief's
-forecast where it is hidden (a mean only; no spread). Below 1 m/s the frame is the heading
-at `t`. Each component is a symlog HL-Gauss code (`bnb.models.yemong.codes.symlog_encode`:
+The rows are the ones the model reads. A visible row (every own row) reads the
+observation's acceleration columns (`acceleration_x`, `acceleration_y`,
+`nose_acceleration`, world frame, and `acceleration_valid`; see
+[contracts](contracts.md#the-observation)) and turns them into the velocity frame at `t`. A
+hidden row differences the belief's forecast against the row the model read the tick
+before (a mean only; no spread). Below 1 m/s the frame is the heading at `t`. Each component is a symlog HL-Gauss code (`bnb.models.yemong.codes.symlog_encode`:
 31 real bins, an exact-zero centre, sigma 0.75 bins, 2 padding bins per side, clamped,
 nothing folded), and a validity flag follows the three. They end the ship token, and the
 first projection's columns of the codes start as the state code's do. An input is zero with
 the flag 0 when the difference is not a tick of motion: the ship dead at either tick, spawned
 or respawned at `t`, the first tick of a game, or just spotted (hidden at `t - 1`, visible at
-`t`, where the difference would be truth minus belief). Just hidden is valid: the forecast
-minus the last truth.
+`t`, where the difference would be truth minus belief). For a visible row that is the
+observation's flag, which is 1 only when the team saw the ship alive at both ticks. Just
+hidden is valid: the forecast minus the last truth.
 
 The knees are the median `|value|` of living ships' one-tick pairs on the recorded
 segments of the state-delta measurements (respawns excluded; both players, three presets,
@@ -220,10 +224,12 @@ under persistence (258 m/s and 24.7 rad/s; `docs/rewrite/sections/state-deltas.m
 section 1.2) over the tick. Those bounds come from a loose box: the largest observed values
 are 1214 m/s^2 and 307 rad/s^2, and none of the 16.3M samples reached the padding.
 
-The previous tick's motion rides in the carry (`Carry.motion`), so `step` differences
-against what it read last; `unroll` shifts the segment's own rows by one tick and takes
-the first tick's from the carry at the segment's start, which the runtime stores with the
-segment. The learner logs `input/acceleration/mean_abs/{component}/{visible, hidden}`,
+For hidden rows the previous tick's enemy rows ride in the carry (`Carry.motion`), so
+`step` differences against what it read last; `unroll` shifts the segment's own rows by
+one tick and takes the first tick's from the carry at the segment's start, which the
+runtime stores with the segment. Own rows need no carry: they are always visible. Until
+2026-11-08 the model differenced every row itself (run `2026-11-08-bc-arm-C-accel` trained
+that way); the visible rows' numbers are the same, so that policy plays unchanged. The learner logs `input/acceleration/mean_abs/{component}/{visible, hidden}`,
 `input/acceleration/padding_share/{component}`, `input/acceleration/invalid_share` (of the
 living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it with
 `--set yemong.acceleration_inputs=true`.
@@ -312,7 +318,8 @@ categorical value over symlog-spaced bins for each local level, and the outcome 
 - **`unroll(carry, obs, replay, reset)`** recomputes a stored segment: the encoder and the
   spatial sublayers run over every step at once, and the temporal sublayers scan over
   time. It computes every head on every row, for the learner. With the acceleration
-  inputs, the motion before each tick is the tick before's, the carry's at the start.
+  inputs, the enemy rows' motion before each tick is the tick before's, the carry's at the
+  start.
 
 `step` returns a **replay record** (`bnb.models.yemong.inputs.Replay`): exactly what the
 decision read from its carry. It holds the belief of the enemy rows only: an own ship is

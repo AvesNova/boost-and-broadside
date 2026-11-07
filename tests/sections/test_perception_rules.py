@@ -54,7 +54,7 @@ def test_without_fog_no_ship_goes_unseen_not_even_a_dead_one():
     state = _kill(state, ship=3)
     for _ in range(4):
         state, _, _ = api.perceive(rules, state)
-        (ticks_since_seen,) = api.perceived(state)
+        ticks_since_seen = api.perceived(state)[0]
         assert int(ticks_since_seen.abs().max()) == 0
         state = _kill(_idle(rules, state, generator), ship=3)
 

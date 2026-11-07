@@ -38,6 +38,14 @@ team, with a leading view axis: view `v` is what team `v` sees.
   viewer has. The real team index exists only in the game state and in `Privileged`.
 - **Hidden ships.** For a ship the team cannot see, the first
   `bnb.contracts.obs.SHIP_HIDDEN_ZERO` columns are zero; the rest are always shown.
+- **Accelerations.** `acceleration_x`, `acceleration_y` (m/s^2) and `nose_acceleration`
+  (rad/s^2) are the change of the velocity and of the nose rate over the last tick, per
+  second, in world coordinates like the velocity. `acceleration_valid` is 1 only for a real
+  tick of motion the team saw: the ship alive at both ticks, not spawned or respawned at
+  this one, past the game's first tick, and seen by the team at both ticks. So a ship just
+  spotted shows none, and nothing about the tick before it was seen leaks. Otherwise the
+  three are 0. The game state keeps each ship's velocity, nose rate, life and each team's
+  sight from the last perception for this (`bnb.game.state.Match`).
 - **Times are in seconds.** That covers the shield recharge wait, the gun cooldown, the
   respawn wait and the time since seen.
 - **No bullets.** Models do not read them, a ship that fires is visible that tick, and the

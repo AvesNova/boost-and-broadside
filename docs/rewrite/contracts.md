@@ -308,11 +308,14 @@ snapshot(state) -> RenderSnapshot            # play section
 The source of truth is the code: `src/bnb/contracts/`. The tables above are the first
 cut; where they differ, this section and the code win.
 
-- **Ship columns (24),** in two groups:
+- **Ship columns (28 since 2026-11-08; 24 before),** in two groups:
   - zeroed for a ship the team cannot see: x, y, heading_cos, heading_sin, velocity_x,
     velocity_y, proper_speed, angle_of_attack, nose_rate, energy, shield,
     shield_recharge_wait, gun_cooldown, log_refractive_index, log_index_gradient_x,
-    log_index_gradient_y;
+    log_index_gradient_y, and (2026-11-08, Obs schema still 3: policy files record their
+    columns) acceleration_x, acceleration_y, nose_acceleration, acceleration_valid, the
+    world-frame change over the last tick, valid only when the team saw the ship alive at
+    both ticks and it did not spawn, past a game's first tick;
   - always shown: alive, visible, fired, respawn_wait, ship_type, team_relative,
     time_since_seen, spawned.
 
