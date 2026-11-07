@@ -287,6 +287,11 @@ def measure_segment(path, meta, carry, rng):
     c, s = np.cos(current["heading"]), np.sin(current["heading"])
     tx, ty, _ = core.track_frame(current["vx"], current["vy"], current["heading"])
     produced = core.forecasts(previous, current, dt, has_previous, HORIZONS)
+    # the mirror signs at t: the nose's turn and last tick's normal acceleration (0 without
+    # t - 1), to fold the left-right symmetry out of the across components
+    _, normal, _ = core.acceleration(previous, current, dt)
+    turn_sign = np.sign(current["omega"]).astype(np.int8)
+    curve_sign = np.where(has_previous, np.sign(normal), 0).astype(np.int8)
     for h, k in enumerate(HORIZONS):
         mask = valid_pairs(flags["alive"], flags["done"], k)  # (L - k, B, N)
         count = int(mask.sum())
@@ -294,6 +299,8 @@ def measure_segment(path, meta, carry, rng):
         pick = np.sort(rng.choice(count, size=min(SUBSAMPLE, count), replace=False))
         hp = has_previous[:rows][mask]
         samples[f"{k}/has_previous"] = hp[pick]
+        samples[f"{k}/turn_sign"] = turn_sign[:rows][mask][pick]
+        samples[f"{k}/curve_sign"] = curve_sign[:rows][mask][pick]
         for f, forecast in enumerate(FORECASTS):
             fx, fy, fvx, fvy = (value[:rows] for value in produced[k][forecast])
             for q, (truth_x, truth_y, guess_x, guess_y) in enumerate(

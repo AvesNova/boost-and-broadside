@@ -298,6 +298,64 @@ class Merged:
         )
 
 
+def folded(m: Merged, k, forecast, quantity, frame, sign):
+    """Pearson, Spearman, axis ratio and major-axis angle (deg) of the subsample with its
+    second (across) component multiplied by the mirror sign at t (`turn_sign`: the nose
+    rate's; `curve_sign`: last tick's normal acceleration's), rows of sign 0 dropped."""
+    a, signs = [], []
+    for entry in m.groups.values():
+        a.append(entry["samples"][f"{k}/{forecast}/{quantity}/{frame}"])
+        signs.append(entry["samples"][f"{k}/{sign}"])
+    sample, signs = np.concatenate(a).astype(np.float64), np.concatenate(signs)
+    keep = signs != 0
+    sample = sample[keep] * np.stack([np.ones(keep.sum()), signs[keep]], -1)
+    covariance = np.cov(sample.T)
+    # the world frame at a given heading sees this ellipse rotated by it: its Pearson there,
+    # in absolute value, averaged over headings
+    angles = np.linspace(0.0, np.pi, 180, endpoint=False)
+    world = []
+    for angle in angles:
+        c, s_ = np.cos(angle), np.sin(angle)
+        rotation = np.array([[c, -s_], [s_, c]])
+        world.append(abs(_pearson(rotation @ covariance @ rotation.T)))
+    return dict(
+        pearson=_pearson(covariance),
+        spearman=_spearman(sample),
+        world=float(np.mean(world)),
+        **_axes(covariance),
+    )
+
+
+def table_folded(m: Merged, horizons, forecasts) -> list[str]:
+    lines = [
+        "The across component multiplied by the sign of the nose rate at t (turn) or of last "
+        "tick's normal acceleration (curve): the left-right mirror folded out. Pearson / "
+        "Spearman / axis ratio / major-axis angle (deg from along), from the subsample. "
+        "World: the turn-folded nose ellipse seen in a world frame at a uniformly random "
+        "heading (the world frame pooled over headings is isotropic and uncorrelated).",
+        "",
+        "| quantity | k | forecast | nose, turn-folded | track, turn-folded | track, curve-folded | world at a fixed heading: mean abs Pearson |",  # noqa: E501
+        "|---|---|---|---|---|---|---|",
+    ]
+    for quantity in ("position", "velocity"):
+        for k in horizons:
+            for forecast in forecasts:
+                if (forecast == "P" and k > 1) or (forecast == "CV" and k == 1):
+                    continue
+                cells = []
+                for frame, sign in (("nose", "turn_sign"), ("track", "turn_sign"),
+                                    ("track", "curve_sign")):  # fmt: skip
+                    e = folded(m, k, forecast, quantity, frame, sign)
+                    cells.append(
+                        f"{e['pearson']:+.2f} / {e['spearman']:+.2f} / {e['ratio']:.2f} / "
+                        f"{e['angle']:+.0f}"
+                    )
+                world = folded(m, k, forecast, quantity, "nose", "turn_sign")["world"]
+                cells.append(f"{world:.2f}")
+                lines.append(f"| {quantity} | {k} | {forecast} | " + " | ".join(cells) + " |")
+    return lines
+
+
 def _pearson(covariance):
     return float(covariance[0, 1] / math.sqrt(covariance[0, 0] * covariance[1, 1]))
 
@@ -575,6 +633,8 @@ def main() -> None:
                 *table_regression(m, ["all", "held_quiet", "changed_quiet", "field", "hit"]), ""]  # fmt: skip  # noqa: E501
         out += ["### Axis correlation, least-correlated frame", "",
                 *table_least_correlated(m, m.index["horizons"], ("P", "CV", "R", "E")), ""]  # fmt: skip  # noqa: E501
+        out += ["### Axis correlation with the mirror folded out", "",
+                *table_folded(m, m.index["horizons"], ("P", "CV", "R", "E")), ""]  # fmt: skip
         out += ["### Axis correlation and ellipse, E forecast", "",
                 *table_ellipse(m, m.index["horizons"], ("E",)), ""]  # fmt: skip
     else:
