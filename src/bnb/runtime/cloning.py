@@ -85,7 +85,7 @@ def update(trainer: Trainer) -> tuple[dict, str | None]:
     windows over the lanes' games against the scripted agent, the rule that fired: "score",
     "kl_plateau" or "budget", or None). The trainer's hooks must be BC's
     (`bnb.league.lanes.LaneHooks`), which keep the averages. The uniform average's games
-    count only once it held an update past the warm-up (`LeagueConfig.uniform_from`) as
+    count only once it held an update past the warm-up (`TrainConfig.uniform_start`) as
     the update began: before that it is the live clone."""
     if trainer.config.objective != "bc":
         raise ValueError("cloning trains with objective 'bc'")

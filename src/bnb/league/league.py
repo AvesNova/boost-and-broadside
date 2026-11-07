@@ -126,7 +126,7 @@ class League:
         for gauge in self.gauges.values():
             for entry in self.ladder:
                 gauge.add(entry.name, "ladder", gauge_rating(entry.rung))
-        self.averages = Averages(weights, self.config)
+        self.averages = Averages(weights, self.config, trainer.config.uniform_start())
         for name in AVERAGES:
             self.entries[name] = Entry(name, "average")
             for gauge in self.gauges.values():
@@ -156,7 +156,11 @@ class League:
         self.entries = {item["name"]: Entry(**item) for item in record["entries"]}
         self.gauges = {mode: Gauge.from_state(record["gauges"][mode]) for mode in self.modes}
         self.averages = Averages(
-            trainer.model.state_dict(), self.config, record["averaged"], tensors
+            trainer.model.state_dict(),
+            self.config,
+            trainer.config.uniform_start(),
+            record["averaged"],
+            tensors,
         )
         self.snapshots = {
             name: {key: tensors[f"{name}.{key}"].clone() for key in trainer.model.state_dict()}

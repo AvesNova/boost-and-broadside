@@ -253,10 +253,11 @@ class LaneHooks:
     ) -> None:
         self.ratings = RunRatings(trainer, None if state is None else state[0]["ratings"])
         weights, config = trainer.model.state_dict(), trainer.config.league
+        start = trainer.config.uniform_start()
         if state is None:
-            self.averages = Averages(weights, config)
+            self.averages = Averages(weights, config, start)
         else:
-            self.averages = Averages(weights, config, state[0]["averaged"], state[1])
+            self.averages = Averages(weights, config, start, state[0]["averaged"], state[1])
         self._load_lanes()
         trainer.league = self
 

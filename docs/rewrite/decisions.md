@@ -1312,7 +1312,8 @@ Details: `docs/training.md`, `docs/internal/frontline-redesign-implementation.md
 
 - **Learning-rate warmup 10M environment steps, BC and RL** (was 1M): "The 10M warmup is
   also for the lr (or more accurately, primarily for the lr)". The uniform average still
-  starts at 10M (`league.uniform_from`). A run warm-started from a clone warms up again.
+  starts at 10M (`league.uniform_from`; since 2026-11-07 the run's warm-up, under "Run
+  control"). A run warm-started from a clone warms up again.
 - **The product, for now:** the uniform average for BC (a static target), the EMA for RL.
 - **The next RL run keeps every checkpoint** (for now): the live, EMA and uniform policy
   files of every update, so EMA decays can be compared afterwards from the live weights.
@@ -1346,6 +1347,20 @@ Details: `docs/training.md`, `docs/internal/frontline-redesign-implementation.md
 - **DPPO** (Qi et al., ICML 2026): to try in the RL fine-tunes, exact TV over the joint
   action and the paper's Binary approximation, delta 0.10/0.15/0.20, against PPO and
   clip-higher.
+
+### Run control (author, 2026-11-07)
+
+- **Training stops gracefully on request** (BC and PPO): a `STOP` file in the run
+  directory, SIGTERM or SIGINT finishes the update, writes a checkpoint, records the stop
+  and exits 0; `bnb train --resume` continues it.
+- **GPU work goes through a queue** (`bnb queue`), not hand-written scripts. While the GPU
+  would be idle the queue continues the current champion (a background job); a ready
+  branch preempts it, trains to its budget and is rated, then the champion resumes.
+- **BC keeps policy snapshots** at a fixed step cadence (`policy_snapshot_every`, 10M),
+  so a run continued past its budget keeps its earlier averages.
+- **The uniform average starts after the run's warm-up** (`learner.warmup_steps`) unless
+  `league.uniform_from` is set: one source, so a fine-tune with a shorter warm-up starts
+  its average when its warm-up ends.
 
 ## Tabled (deliberately deferred)
 

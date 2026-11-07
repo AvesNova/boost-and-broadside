@@ -46,8 +46,9 @@ counts and its own lane ratings
 
 `run.json`{.plain} records the rule as `stopped_by` (`interrupted` for Ctrl-C) and the
 average in `policy/` as `policy_player` (`uniform_average` or `exponential_average`).
-The averages take the league's settings: `--set league.uniform_from=20000000` moves the
-uniform average's warm-up, `--set league.exponential_decay=0.98` slows the exponential
+The averages take the league's settings: the uniform average starts after the run's
+learning-rate warm-up (`learner.warmup_steps`), `--set league.uniform_from=20000000` starts
+it elsewhere, `--set league.exponential_decay=0.98` slows the exponential
 one.
 
 ## Resume a BC run

@@ -162,6 +162,11 @@ class TrainConfig:
                     f"{len(card[name])} ship types"
                 )
 
+    def uniform_start(self) -> int:
+        """The environment steps the uniform average starts after: `league.uniform_from`,
+        or by default the learner's warm-up (`LeagueConfig.uniform_start`)."""
+        return self.league.uniform_start(self.learner.warmup_steps)
+
     def ship_types(self, device: torch.device | None = None) -> ShipTypes:
         """The run's ship card as tensors, on `device`."""
         return api.ship_types(device, **self.ship_card)
