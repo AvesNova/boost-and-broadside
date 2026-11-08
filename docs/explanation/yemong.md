@@ -550,12 +550,14 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
 
 ### Trunk order and the rotary read-out
 
-`YemongConfig.order` sets each block's sublayer order: `"spatial_first"` (the default:
-spatial, spatial, temporal) or `"temporal_first"` (temporal, spatial, spatial). Temporal
-first, every spatial sublayer reads tokens that have already passed through the first
-temporal sublayer, so attention can use what the recurrence remembers. Either way `unroll`
-equals a loop of `step`, and the carry is the same shape. Select it with
-`--set yemong.order=temporal_first`.
+`YemongConfig.order` sets each block's sublayer order: `"spatial_first"` (spatial,
+spatial, temporal) or `"temporal_first"` (temporal, spatial, spatial). Temporal first,
+every spatial sublayer reads tokens that have already passed through the first temporal
+sublayer, so attention can use what the recurrence remembers. Either way `unroll` equals a
+loop of `step`, and the carry is the same shape. A new run builds `"temporal_first"` (the
+`TrainConfig.yemong` default, arm C's order); `"spatial_first"` is the config's own
+default, so a build record from before the setting existed loads as it was trained.
+`--set yemong.order=spatial_first` selects the other order.
 
 `YemongConfig.rotary_readout` (off by default; it needs `temporal_first` and `rotary`) adds
 one linear head per block, on that block's temporal sublayer's ship rows: every block does
