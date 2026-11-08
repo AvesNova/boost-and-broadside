@@ -135,3 +135,10 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   error head's predicted spread starts narrow (position 0.11 m vs realised 1.5 m at 0-0.1 s,
   update 2), the opposite of the laptop's too-wide bug and as the laptop saw after its fix
   (the head's own early overconfidence). Recheck at 30M.
+- **14:14 UTC (23:14 KST; the author asked for KST from here) Arm 3d done**
+  (`2026-11-08-bc-arm3d-split-3090`, budget, 30.4M, 54 min). KL 0.471 (lowest; C-fixed 0.475,
+  2d 0.479), agreement 0.676: level. Error head, realised / predicted error by hidden age
+  (0-0.1, 0.1-0.5, 0.5-1, 1-2, 2-5 s): position 0.17/0.64, 1.5/0.83, 6.5/1.7, 20/5.6, 72/30 m;
+  heading 0.018/0.021, 0.095/0.042, 0.23/0.10, 0.38/0.19, 0.43/0.21 rad. Right at the shortest
+  ages, 2-4x too narrow past 0.1 s (overconfident; not the laptop's too-wide bug). A candidate
+  for the next set of tests if the split does well. Arm 4d started.
