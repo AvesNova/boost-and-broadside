@@ -188,3 +188,4 @@ Entries: time, what, why. Newest last.
   ellipse. Arm 4c needs code (extrapolation currently requires the input switch): brief
   `extrapolation-without-inputs-brief.md`, agent launched. ETAs: 2b tournament ~10:50; 2c
   ~13:05 + tournament ~13:50; 3c ~16:10 + ~16:55; 4c after (~19:15 + ~20:00).
+- **10:00** Extrapolation decoupled from the input switch, merged (v2 272a44ed; verified: ruff, its tests; agent: quick tier 1579, slow dashboards 2, digests of every arm unchanged). Queued arm 4c (job 24, `2026-11-08-bc-arm4c-extrapolation`, worktree `bnb-run-arm4c`) after arm 3c's tournament, and its tournament (job 25: arm 4c, arm 3c, C-fixed 30M).
