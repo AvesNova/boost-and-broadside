@@ -1,0 +1,33 @@
+run 2026-11-08-bc-arm2d-persistence-3090 in /workspace/boost-and-broadside/runs/2026-11-08-bc-arm2d-persistence-3090
+memory probe: allocated 16.90 GB, reserved 17.78 GB, budget 23.06 GB of 23.56 GB
+update    1  steps   1,048,576  rollout  50100 ms  learn 197447 ms  bc kl 2.9609  teacher 0.772  student 3.738  scores: learner 0.500 scripted 0.434
+update    2  steps   2,097,152  rollout   8905 ms  learn  71160 ms  bc kl 1.4168  teacher 0.764  student 2.909  scores: learner 0.500 scripted 0.170
+update    3  steps   3,145,728  rollout   8933 ms  learn  71149 ms  bc kl 0.7196  teacher 0.756  student 1.553  scores: learner 0.500 scripted 0.016
+update    4  steps   4,194,304  rollout   8939 ms  learn  71225 ms  bc kl 0.6992  teacher 0.758  student 1.480  scores: learner 0.500 scripted 0.000
+update    5  steps   5,242,880  rollout   8946 ms  learn  71219 ms  bc kl 0.6498  teacher 0.760  student 1.427  scores: learner 0.500 scripted 0.000
+update    6  steps   6,291,456  rollout   8936 ms  learn  71159 ms  bc kl 0.6497  teacher 0.760  student 1.413  scores: learner 0.500 scripted 0.000
+update    7  steps   7,340,032  rollout   8936 ms  learn  71191 ms  bc kl 0.6648  teacher 0.820  student 1.487  scores: learner 0.500 scripted 0.000
+update    8  steps   8,388,608  rollout   8936 ms  learn  71211 ms  bc kl 0.6306  teacher 0.890  student 1.527  scores: learner 0.500 scripted 0.000
+update    9  steps   9,437,184  rollout   8942 ms  learn  71281 ms  bc kl 0.5024  teacher 0.902  student 1.408  scores: learner 0.500 scripted 0.000
+update   10  steps  10,485,760  rollout   8937 ms  learn  72015 ms  bc kl 0.5173  teacher 0.928  student 1.447  scores: learner 0.500 scripted 0.000
+update   11  steps  11,534,336  rollout   8924 ms  learn  71170 ms  bc kl 0.5535  teacher 0.942  student 1.496  scores: learner 0.500 scripted 0.000
+update   12  steps  12,582,912  rollout   8917 ms  learn  71193 ms  bc kl 0.5847  teacher 0.952  student 1.538  scores: learner 0.500 scripted 0.000
+update   13  steps  13,631,488  rollout   8916 ms  learn  71154 ms  bc kl 0.5757  teacher 0.952  student 1.530  scores: learner 0.500 scripted 0.000
+update   14  steps  14,680,064  rollout   8924 ms  learn  71176 ms  bc kl 0.5688  teacher 0.964  student 1.533  scores: learner 0.500 scripted 0.000
+update   15  steps  15,728,640  rollout   8924 ms  learn  71243 ms  bc kl 0.5726  teacher 0.970  student 1.543  scores: learner 0.500 scripted 0.000
+update   16  steps  16,777,216  rollout   8919 ms  learn  71190 ms  bc kl 0.5641  teacher 0.972  student 1.535  scores: learner 0.500 scripted 0.000
+update   17  steps  17,825,792  rollout   8910 ms  learn  71210 ms  bc kl 0.5640  teacher 0.980  student 1.544  scores: learner 0.500 scripted 0.000
+update   18  steps  18,874,368  rollout   8928 ms  learn  71205 ms  bc kl 0.5489  teacher 0.977  student 1.525  scores: learner 0.500 scripted 0.007
+update   19  steps  19,922,944  rollout   8922 ms  learn  71234 ms  bc kl 0.5430  teacher 0.981  student 1.524  scores: learner 0.500 scripted 0.011
+update   20  steps  20,971,520  rollout   8927 ms  learn  71914 ms  bc kl 0.5443  teacher 0.987  student 1.531  scores: learner 0.500 scripted 0.000
+update   21  steps  22,020,096  rollout   8929 ms  learn  71189 ms  bc kl 0.5127  teacher 0.976  student 1.488  scores: learner 0.500 scripted 0.000
+update   22  steps  23,068,672  rollout   8933 ms  learn  71206 ms  bc kl 0.5075  teacher 0.983  student 1.490  scores: learner 0.500 scripted 0.047
+update   23  steps  24,117,248  rollout   8909 ms  learn  71190 ms  bc kl 0.5218  teacher 0.990  student 1.510  scores: learner 0.500 scripted 0.113  window exponential_average 0.000 (+- 0.000)
+update   24  steps  25,165,824  rollout   8922 ms  learn  71206 ms  bc kl 0.5142  teacher 0.993  student 1.506  scores: learner 0.500 scripted 0.056  window exponential_average 0.000 (+- 0.000)
+update   25  steps  26,214,400  rollout   8929 ms  learn  71240 ms  bc kl 0.5198  teacher 0.989  student 1.506  scores: learner 0.500 scripted 0.110  window exponential_average 0.000 (+- 0.000)
+update   26  steps  27,262,976  rollout   8928 ms  learn  71172 ms  bc kl 0.5161  teacher 0.989  student 1.504  scores: learner 0.500 scripted 0.078  window exponential_average 0.000 (+- 0.000)
+update   27  steps  28,311,552  rollout   8926 ms  learn  71189 ms  bc kl 0.4941  teacher 0.987  student 1.480  scores: learner 0.500 scripted 0.125  window exponential_average 0.000 (+- 0.000)
+update   28  steps  29,360,128  rollout   8926 ms  learn  71206 ms  bc kl 0.4864  teacher 0.991  student 1.477  scores: learner 0.500 scripted 0.071  window exponential_average 0.000 (+- 0.000)
+update   29  steps  30,408,704  rollout   8905 ms  learn  71189 ms  bc kl 0.4787  teacher 0.987  student 1.463  scores: learner 0.500 scripted 0.136  window exponential_average 0.000 (+- 0.000)
+stopped by budget; the policy is /workspace/boost-and-broadside/runs/2026-11-08-bc-arm2d-persistence-3090/policy (the exponential_average)
+run 2026-11-08-bc-arm2d-persistence-3090 finished at step 30408704

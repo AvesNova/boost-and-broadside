@@ -1,0 +1,77 @@
+{
+ "name": "2026-11-08-bc-arm-C-fixed-3090",
+ "status": "finished",
+ "pid": 20662,
+ "host": "e98bed47fc73",
+ "message": null,
+ "command": [
+  ".venv/bin/bnb",
+  "train",
+  "--name",
+  "2026-11-08-bc-arm-C-fixed-3090",
+  "--preset",
+  "mixed",
+  "--objective",
+  "bc",
+  "--bc-budget-steps",
+  "30000000",
+  "--set",
+  "yemong.order=temporal_first",
+  "--micro-batch-rows",
+  "2560",
+  "--set",
+  "host_store=false"
+ ],
+ "wandb_id": null,
+ "parent": null,
+ "checkpoint_every": 23068672,
+ "update_policies": false,
+ "newest_checkpoint": 30408704,
+ "final_checkpoint": 30408704,
+ "checkpoint_ordinals": {
+  "23068672": 0,
+  "30408704": 1
+ },
+ "probe": {
+  "allocated": 18116687360,
+  "reserved": 19516096512,
+  "total": 25296044032,
+  "budget": 24759173120
+ },
+ "segments": [
+  {
+   "commit": "23303d8145b51a1f85fc9ced9629d04dbb5bde43",
+   "dirty": false,
+   "start_step": 0,
+   "start_time": "2026-11-08T11:48:27+00:00",
+   "end_step": 30408704,
+   "end_time": "2026-11-08T12:37:46+00:00",
+   "overrides": {},
+   "rewound_from": null,
+   "command": [
+    ".venv/bin/bnb",
+    "train",
+    "--name",
+    "2026-11-08-bc-arm-C-fixed-3090",
+    "--preset",
+    "mixed",
+    "--objective",
+    "bc",
+    "--bc-budget-steps",
+    "30000000",
+    "--set",
+    "yemong.order=temporal_first",
+    "--micro-batch-rows",
+    "2560",
+    "--set",
+    "host_store=false"
+   ]
+  }
+ ],
+ "stop_request": null,
+ "hours": 0.8217510730483465,
+ "skipped_steps": 0,
+ "stopped_by": "budget",
+ "policy": "/workspace/boost-and-broadside/runs/2026-11-08-bc-arm-C-fixed-3090/policy",
+ "policy_player": "exponential_average"
+}

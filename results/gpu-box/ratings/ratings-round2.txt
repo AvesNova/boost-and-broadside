@@ -1,0 +1,15 @@
+frontline: batch 1, 1024 games, the largest standard error 26.1 (the batch took 929 s); done about 17:05 (1 batches), by 21:29 at the latest (18 batches)
+frontline: batch 2, 2048 games, the largest standard error 18.4 (the batch took 181 s); done about 16:53 (0 batches), by 19:30 at the latest (17 batches)
+deathmatch: batch 1, 1024 games, the largest standard error 25.6 (the batch took 926 s); done about 17:24 (1 batches), by 21:46 at the latest (18 batches)
+deathmatch: batch 2, 2048 games, the largest standard error 18.4 (the batch took 181 s); done about 17:11 (0 batches), by 19:48 at the latest (17 batches)
+deathmatch       scripted                                                       1000.0 +-   0.0    1280 games
+deathmatch       runs/2026-11-08-bc-arm4d-extrapolation-3090/policies/step_30408704/uniform_average    739.0 +-  16.6     768 games
+deathmatch       runs/2026-11-08-bc-arm2d-persistence-3090/policies/step_30408704/uniform_average    710.8 +-  17.0     768 games
+deathmatch       runs/2026-11-08-bc-arm3d-split-3090/policies/step_30408704/uniform_average    704.2 +-  18.3     640 games
+deathmatch       runs/2026-11-08-bc-arm-C-fixed-3090/policies/step_30408704/uniform_average    693.4 +-  18.4     640 games
+frontline        scripted                                                       1000.0 +-   0.0    1280 games
+frontline        runs/2026-11-08-bc-arm4d-extrapolation-3090/policies/step_30408704/uniform_average    788.9 +-  15.7     768 games
+frontline        runs/2026-11-08-bc-arm-C-fixed-3090/policies/step_30408704/uniform_average    779.9 +-  15.8     768 games
+frontline        runs/2026-11-08-bc-arm3d-split-3090/policies/step_30408704/uniform_average    738.9 +-  17.6     640 games
+frontline        runs/2026-11-08-bc-arm2d-persistence-3090/policies/step_30408704/uniform_average    682.1 +-  18.4     640 games
+runs/ratings/round2/artifacts/ratings/20261108-171152

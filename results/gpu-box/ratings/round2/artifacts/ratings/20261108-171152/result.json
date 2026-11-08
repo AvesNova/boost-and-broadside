@@ -1,0 +1,164 @@
+{
+ "provenance": {
+  "commit": "017a348ba932fda540b3ee5336ac59ab2c76b567",
+  "dirty": false,
+  "host": "e98bed47fc73",
+  "gpu": "NVIDIA GeForce RTX 3090",
+  "python": "3.14.8",
+  "torch": "2.15.0+cu132",
+  "cuda": "13.2",
+  "command": [
+   ".venv/bin/bnb",
+   "ratings",
+   "2026-11-08-bc-arm-C-fixed-3090",
+   "--no-league",
+   "--no-ladder",
+   "--with",
+   "runs/2026-11-08-bc-arm-C-fixed-3090/policies/step_30408704/uniform_average",
+   "runs/2026-11-08-bc-arm2d-persistence-3090/policies/step_30408704/uniform_average",
+   "runs/2026-11-08-bc-arm3d-split-3090/policies/step_30408704/uniform_average",
+   "runs/2026-11-08-bc-arm4d-extrapolation-3090/policies/step_30408704/uniform_average",
+   "--presets",
+   "frontline",
+   "deathmatch",
+   "--out",
+   "runs/ratings/round2"
+  ],
+  "time": "2026-11-08T17:11:52+00:00"
+ },
+ "kind": "ratings",
+ "payload": {
+  "leaderboard": [
+   {
+    "game_version": 1,
+    "mode": "frontline",
+    "map": "frontline",
+    "fleet_size": 5,
+    "player": "scripted",
+    "calibrated_elo": 1000.0,
+    "stderr": 0.0,
+    "games": 1280
+   },
+   {
+    "game_version": 1,
+    "mode": "frontline",
+    "map": "frontline",
+    "fleet_size": 5,
+    "player": "runs/2026-11-08-bc-arm-C-fixed-3090/policies/step_30408704/uniform_average",
+    "calibrated_elo": 779.8805026567533,
+    "stderr": 15.806269467459037,
+    "games": 768
+   },
+   {
+    "game_version": 1,
+    "mode": "frontline",
+    "map": "frontline",
+    "fleet_size": 5,
+    "player": "runs/2026-11-08-bc-arm2d-persistence-3090/policies/step_30408704/uniform_average",
+    "calibrated_elo": 682.0743133445881,
+    "stderr": 18.3928998104283,
+    "games": 640
+   },
+   {
+    "game_version": 1,
+    "mode": "frontline",
+    "map": "frontline",
+    "fleet_size": 5,
+    "player": "runs/2026-11-08-bc-arm3d-split-3090/policies/step_30408704/uniform_average",
+    "calibrated_elo": 738.9326763760869,
+    "stderr": 17.602269940052643,
+    "games": 640
+   },
+   {
+    "game_version": 1,
+    "mode": "frontline",
+    "map": "frontline",
+    "fleet_size": 5,
+    "player": "runs/2026-11-08-bc-arm4d-extrapolation-3090/policies/step_30408704/uniform_average",
+    "calibrated_elo": 788.9380499162482,
+    "stderr": 15.711232485879988,
+    "games": 768
+   },
+   {
+    "game_version": 1,
+    "mode": "team_deathmatch",
+    "map": "deathmatch",
+    "fleet_size": 5,
+    "player": "scripted",
+    "calibrated_elo": 1000.0,
+    "stderr": 0.0,
+    "games": 1280
+   },
+   {
+    "game_version": 1,
+    "mode": "team_deathmatch",
+    "map": "deathmatch",
+    "fleet_size": 5,
+    "player": "runs/2026-11-08-bc-arm-C-fixed-3090/policies/step_30408704/uniform_average",
+    "calibrated_elo": 693.3521837805636,
+    "stderr": 18.429055161379047,
+    "games": 640
+   },
+   {
+    "game_version": 1,
+    "mode": "team_deathmatch",
+    "map": "deathmatch",
+    "fleet_size": 5,
+    "player": "runs/2026-11-08-bc-arm2d-persistence-3090/policies/step_30408704/uniform_average",
+    "calibrated_elo": 710.7828415819376,
+    "stderr": 16.964314064158344,
+    "games": 768
+   },
+   {
+    "game_version": 1,
+    "mode": "team_deathmatch",
+    "map": "deathmatch",
+    "fleet_size": 5,
+    "player": "runs/2026-11-08-bc-arm3d-split-3090/policies/step_30408704/uniform_average",
+    "calibrated_elo": 704.1896488776924,
+    "stderr": 18.299451103383397,
+    "games": 640
+   },
+   {
+    "game_version": 1,
+    "mode": "team_deathmatch",
+    "map": "deathmatch",
+    "fleet_size": 5,
+    "player": "runs/2026-11-08-bc-arm4d-extrapolation-3090/policies/step_30408704/uniform_average",
+    "calibrated_elo": 738.9635737390882,
+    "stderr": 16.60248588857908,
+    "games": 768
+   }
+  ],
+  "config": {
+   "arena": {
+    "blocks": 8,
+    "block_environments": 128,
+    "length": 32,
+    "compiled": true,
+    "graph_ticks": 8
+   },
+   "target_stderr": 25.0,
+   "budget": 20000
+  },
+  "scripted_plays": null
+ },
+ "inputs": {
+  "runs/2026-11-08-bc-arm-C-fixed-3090/policies/step_30408704/uniform_average": {
+   "path": "/workspace/boost-and-broadside/runs/2026-11-08-bc-arm-C-fixed-3090/policies/step_30408704/uniform_average",
+   "sha256": "e0c432d63fa185730bef8f9d91a4deb5c469bfd1b55a1a1e096081986379bfe5"
+  },
+  "runs/2026-11-08-bc-arm2d-persistence-3090/policies/step_30408704/uniform_average": {
+   "path": "/workspace/boost-and-broadside/runs/2026-11-08-bc-arm2d-persistence-3090/policies/step_30408704/uniform_average",
+   "sha256": "76b77b1e01d0cff7342bd545eb204063bc0a2d5fe3b1d35d18e4cd4359d53975"
+  },
+  "runs/2026-11-08-bc-arm3d-split-3090/policies/step_30408704/uniform_average": {
+   "path": "/workspace/boost-and-broadside/runs/2026-11-08-bc-arm3d-split-3090/policies/step_30408704/uniform_average",
+   "sha256": "bfe5c85683a4966795faf685389192e86dc077194ef7c6a0fae0003e78bad2f4"
+  },
+  "runs/2026-11-08-bc-arm4d-extrapolation-3090/policies/step_30408704/uniform_average": {
+   "path": "/workspace/boost-and-broadside/runs/2026-11-08-bc-arm4d-extrapolation-3090/policies/step_30408704/uniform_average",
+   "sha256": "9b45fcee69ca309c89603316e144591deec60b51fa43fc7716202828d1fdfc3a"
+  }
+ }
+}

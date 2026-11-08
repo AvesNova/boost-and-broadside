@@ -1,0 +1,27 @@
+11:46 start 2026-11-08-bc-arm-C-fixed-3090
+11:46 FAILED 2026-11-08-bc-arm-C-fixed-3090 (see runs/2026-11-08-bc-arm-C-fixed-3090.out); retrying with host_store=true
+11:52 relaunch without --wandb (W&B hosts return 403 from this box)
+11:48 start 2026-11-08-bc-arm-C-fixed-3090
+12:03 runner swapped: arms.sh stopped (its C-fixed trainer kept running), arms2.sh waits for it, then 2d, 3d, 4d, one tournament
+12:10 runner swapped again: arms3.sh adds C-fixed-LB (minibatches 128, epochs 2) before the one tournament
+12:37 done 2026-11-08-bc-arm-C-fixed-3090
+12:37 start 2026-11-08-bc-arm2d-persistence-3090
+13:20 done 2026-11-08-bc-arm2d-persistence-3090
+13:20 start 2026-11-08-bc-arm3d-split-3090
+14:14 done 2026-11-08-bc-arm3d-split-3090
+14:14 start 2026-11-08-bc-arm4d-extrapolation-3090
+14:22 FAILED 2026-11-08-bc-arm4d-extrapolation-3090 (see runs/2026-11-08-bc-arm4d-extrapolation-3090.out); retrying with host_store=true
+14:32 arm 4d failed on its first update (torch.compile: dataclasses.fields(Rates)); fixed (RATE_FIELDS), runner arms4.sh: 4d, LB, tournament
+14:32 start 2026-11-08-bc-arm4d-extrapolation-3090
+15:43 done 2026-11-08-bc-arm4d-extrapolation-3090
+15:43 start 2026-11-08-bc-arm-C-fixed-LB-3090
+16:12 done 2026-11-08-bc-arm-C-fixed-LB-3090
+16:12 tournament round2: 2026-11-08-bc-arm-C-fixed-3090 2026-11-08-bc-arm2d-persistence-3090 2026-11-08-bc-arm3d-split-3090 2026-11-08-bc-arm4d-extrapolation-3090 2026-11-08-bc-arm-C-fixed-LB-3090
+16:28 tournament with the ladder stopped (14 players, 91 pairs: stderr 276 after batch 1, projected 21:02 UTC for frontline alone); restarting with --no-ladder
+16:28 tournament1 start (no ladder)
+16:28 tournament1 FAILED (runs/ratings-round2.out)
+16:28 tournament1 start (no ladder)
+16:34 tournament1 FAILED (runs/ratings-round2.out)
+16:34 tournament1 start (no ladder)
+17:12 tournament1 done
+17:12 start 2026-11-09-bc-absolute-v2clean-check (Brier check on unmodified v2)
