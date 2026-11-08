@@ -359,3 +359,7 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   UTC, perf/gpu-box 7e904347; its resolved config checked by the laptop session: the algorithm
   settings equal the box's; memory settings 160-row micro-batches and the host store). ETAs: arm 1
   05:45, persist-split-laptop 08:00 KST. Box's four arms end about the same time: tournament ~08:00-08:30.
+- **03:33 KST Confirmation:** absolute with C-fixed's learner settings
+  (`2026-11-09-bc-absolute-cfixed-learner-check`), outcome Brier at 5-15 s, updates 6-10: +0.068
+  +0.125 +0.144 +0.172 +0.186 (mean +0.139); the laptop's C-fixed +0.08 to +0.19. The cause was the
+  missing two lines alone; the box's speed changes are cleared. Round 4 started.
