@@ -1,0 +1,16 @@
+run 2026-11-09-bc-absolute in /workspace/boost-and-broadside/runs/2026-11-09-bc-absolute
+memory probe: allocated 16.48 GB, reserved 17.63 GB, budget 23.06 GB of 23.56 GB
+update    1  steps   1,048,576  rollout  49192 ms  learn 100682 ms  bc kl 2.9627  teacher 0.772  student 3.738  scores: learner 0.500 scripted 0.434
+update    2  steps   2,097,152  rollout   8190 ms  learn  72809 ms  bc kl 1.3914  teacher 0.764  student 2.876  scores: learner 0.500 scripted 0.179
+update    3  steps   3,145,728  rollout   8213 ms  learn  72676 ms  bc kl 0.7261  teacher 0.756  student 1.559  scores: learner 0.500 scripted 0.008
+update    4  steps   4,194,304  rollout   8220 ms  learn  72572 ms  bc kl 0.7000  teacher 0.760  student 1.480  scores: learner 0.500 scripted 0.004
+update    5  steps   5,242,880  rollout   8213 ms  learn  72589 ms  bc kl 0.6732  teacher 0.762  student 1.450  scores: learner 0.500 scripted 0.000
+update    6  steps   6,291,456  rollout   8215 ms  learn  72469 ms  bc kl 0.6377  teacher 0.767  student 1.419  scores: learner 0.500 scripted 0.000
+update    7  steps   7,340,032  rollout   8207 ms  learn  72783 ms  bc kl 0.6713  teacher 0.836  student 1.511  scores: learner 0.500 scripted 0.000
+update    8  steps   8,388,608  rollout   8207 ms  learn  72444 ms  bc kl 0.6656  teacher 0.885  student 1.555  scores: learner 0.500 scripted 0.000
+update    9  steps   9,437,184  rollout   8216 ms  learn  72476 ms  bc kl 0.5146  teacher 0.906  student 1.425  scores: learner 0.500 scripted 0.000
+update   10  steps  10,485,760  rollout   8210 ms  learn  73225 ms  bc kl 0.4796  teacher 0.923  student 1.405  scores: learner 0.500 scripted 0.000
+update   11  steps  11,534,336  rollout   8214 ms  learn  72607 ms  bc kl 0.5510  teacher 0.937  student 1.490  scores: learner 0.500 scripted 0.000
+update   12  steps  12,582,912  rollout   8208 ms  learn  72474 ms  bc kl 0.5560  teacher 0.947  student 1.507  scores: learner 0.500 scripted 0.000
+update   13  steps  13,631,488  rollout   8212 ms  learn  72675 ms  bc kl 0.5313  teacher 0.937  student 1.471  scores: learner 0.500 scripted 0.000
+update   14  steps  14,680,064  rollout   8219 ms  learn  72711 ms  bc kl 0.5558  teacher 0.950  student 1.507  scores: learner 0.500 scripted 0.000
