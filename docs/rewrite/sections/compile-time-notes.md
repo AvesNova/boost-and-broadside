@@ -132,3 +132,21 @@ encode in float32 and float64.
 Lesson: fewer ops cut compile time roughly in proportion, but batching changes inductor's
 fusion, so every batched rewrite needs its kernel time measured
 (`torch.profiler`, the compiled function warm, against the old tree).
+
+## Steady A/B/A (2026-11-09, performance profile, 80 W)
+
+The earlier timings (2026-11-08) were taken in the wrong power profile: their absolute
+values are not comparable with runs. This A/B/A ran in the performance profile (checked at
+each start), quiet machine: base `v2` (60c80a41), the branch (3fb6dd6c, without the cond),
+base again; 5 BC updates each on arm 2d's config, the cadence every 2nd update (patched in
+the launcher, timing only), so updates 3 and 5 are plain and 2 and 4 carry the cadence.
+
+| run | plain update | rollout | learner | cadence update | cadence |
+|---|---|---|---|---|---|
+| base 1 | 244.4 s | 18.0 | 226.4 | 242.9 s | 1.9 s |
+| branch | 244.2 s | 18.3 | 225.9 | 246.5 s | 3.9 s |
+| base 2 | 250.8 s | 18.6 | 232.3 | 250.5 s | 2.0 s |
+
+The branch sits inside the base's drift (244 to 251 s): no measurable steady cost on plain
+updates. The cadence's two-minibatch halves cost +2 s on a cadence update, every 10th in a
+run: about 0.2 s per update on average (0.08%). The eager bootstrap is 0.1 s per update.
