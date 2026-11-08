@@ -161,6 +161,12 @@ class YemongConfig:
     bound) and takes its spread from e's distribution, in place of the physics' F P F^T + Q.
     Off by default. correction_rate (eta, with delta_split): the share of the error head's
     confident median applied per tick (`correction.CorrectionCode.moments`), before the cap.
+    physics_hidden_decay (tau, s, with delta_split; None off): the physics head also trains
+    on the hidden enemies, each row weighted exp(-age / tau) by the time since its ship was
+    last seen, against the truth-to-truth target (`learn.labels.next_state_targets`: the
+    true change from the baseline of the true state at t, under the extrapolation
+    baseline's true rates, as a row seen at t - 1 and t would read them), its inputs still
+    the belief it reads; the error head is unchanged. Only the labels read it.
     acceleration_inputs: each ship row also reads its acceleration over the last tick, along
     and across its velocity and of its nose rate (`inputs.accelerations`), as symlog HL-Gauss
     codes and a validity flag at the end of the ship token. A visible row reads the
@@ -200,6 +206,7 @@ class YemongConfig:
     delta_split: bool = False  # physics head on seen rows, an error head for hidden rows
     extrapolation_decay: float = 0.5  # s: a hidden row's held rates decay with this constant
     correction_rate: float = 0.1  # eta: the error head's step per tick, of its confident median
+    physics_hidden_decay: float | None = None  # s: the physics head's hidden rows, exp(-age/tau)
 
     def __post_init__(self) -> None:
         if self.next_state not in NEXT_STATES:
@@ -212,6 +219,13 @@ class YemongConfig:
             raise ValueError(f"extrapolation_decay {self.extrapolation_decay} must be positive")
         if self.delta_split and self.next_state != "delta":
             raise ValueError("delta_split needs next_state 'delta'")
+        if self.physics_hidden_decay is not None:
+            if not self.delta_split:
+                raise ValueError("physics_hidden_decay needs delta_split")
+            if self.physics_hidden_decay <= 0:
+                raise ValueError(
+                    f"physics_hidden_decay {self.physics_hidden_decay} must be positive"
+                )
         if self.spread_inputs not in SPREAD_INPUTS:
             raise ValueError(f"spread_inputs {self.spread_inputs!r} is not one of {SPREAD_INPUTS}")
         if self.position_inputs not in POSITION_INPUTS:

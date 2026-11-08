@@ -8,9 +8,11 @@ import torch
 from bnb.contracts import Trajectory
 from bnb.contracts.action import to_joint
 from bnb.contracts.obs import GLOBAL, SHIP
+from bnb.models.yemong.delta import RATE_FIELDS, Rates
 from bnb.models.yemong.density import HexGrid
-from bnb.models.yemong.inputs import believed
+from bnb.models.yemong.inputs import Accelerations, believed
 from bnb.models.yemong.inputs import truth as shifted_truth
+from bnb.models.yemong.model import HELD
 
 
 def privileged_rows(trajectory: Trajectory) -> torch.Tensor:
@@ -36,6 +38,59 @@ def rates(model, trajectory: Trajectory):
     return method(trajectory.initial_carry, trajectory.obs, trajectory.replay, reset)
 
 
+def _hidden(trajectory: Trajectory) -> torch.Tensor:
+    """(L, R, N): the rows whose belief at t is a forecast (a valid belief not seen at t)."""
+    own = trajectory.log_probability.shape[-1]
+    hidden = trajectory.replay.age > 0
+    return torch.cat([hidden.new_zeros(hidden.shape[:-1] + (own,)), hidden], -1)
+
+
+def _hidden_decay(model) -> float | None:
+    config = getattr(model, "config", None)
+    return getattr(config, "physics_hidden_decay", None)
+
+
+def true_rates(model, trajectory: Trajectory, rows: torch.Tensor) -> Rates:
+    """The extrapolation baseline's rates of every row (L, R, N) read off the truth rows
+    (`privileged_rows`): each row as a row seen at t - 1 and t reads them (`Yemong.rates`
+    of the truth, every row visible: the true accelerations and their validity, the change
+    against the truth at t - 1, the true gradient and shot flag). The segment's first tick
+    has no truth before it and takes the carry's rows there, so its hidden rows' rates are
+    not the truth's (`split_masks` leaves them out)."""
+    offset = trajectory.replay.offset
+    means = shifted_truth(rows, offset)
+    initial = trajectory.initial_carry.previous[None].to(means.dtype)
+    previous = torch.cat([initial, shifted_truth(rows[:-1], offset[:-1])], 0)
+    valid = rows[..., SHIP["acceleration_valid"]] > 0.5
+    world = torch.stack(
+        [
+            rows[..., SHIP["acceleration_x"]],
+            rows[..., SHIP["acceleration_y"]],
+            rows[..., SHIP["nose_acceleration"]],
+        ],
+        -1,
+    )
+    world = torch.where(valid[..., None], world, 0.0)
+    # Yemong.rates reads the world change and its validity only
+    accelerations = Accelerations(
+        values=world, valid=valid, slow=torch.zeros_like(valid), world=world
+    )
+    held = torch.zeros_like(means[..., :1]).expand(means.shape[:-1] + (HELD,))
+    out, _, _ = model.rates(rows, means, previous, accelerations, held, torch.zeros_like(valid))
+    return out
+
+
+def _merged(hidden: torch.Tensor, truth: Rates, read: Rates) -> Rates:
+    """The rates of truth on the hidden rows (L, R, N) and of read elsewhere."""
+
+    def pick(name: str) -> torch.Tensor:
+        a, b = getattr(truth, name), getattr(read, name)
+        where = hidden[..., None] if a.dim() > hidden.dim() else hidden
+        return torch.where(where, a, b.to(a.dtype))
+
+    return Rates(**{name: pick(name) for name in RATE_FIELDS})
+
+
 def next_state_targets(model, trajectory: Trajectory, rows: torch.Tensor) -> dict:
     """The next-state head's targets, (L, R, N, ...) per row: {"next_state": the code}, and
     with the delta head {"next_state_clipped": (L, R, N, components) bool,
@@ -48,7 +103,9 @@ def next_state_targets(model, trajectory: Trajectory, rows: torch.Tensor) -> dic
     heading (slower than `delta.SLOW_SPEED`). Under the extrapolation baseline the change
     is from the baseline of the true state at t under the rates the model read (`rates`:
     exact for the rows seen at t; for a hidden row, a diagnostic, the belief's rates on the
-    true state)."""
+    true state). With `YemongConfig.physics_hidden_decay` a hidden row trains the physics
+    head, so its rates are the truth's (`true_rates`): every row's target is then truth to
+    truth, the one a seen row of that ship would have."""
     following = next_rows(trajectory, rows)
     offset = trajectory.replay.offset
     after = shifted_truth(following, offset)
@@ -56,11 +113,11 @@ def next_state_targets(model, trajectory: Trajectory, rows: torch.Tensor) -> dic
         return dict(
             next_state=model.state_code.sharp(after, following[..., SHIP["ship_type"]].long())
         )
+    read = rates(model, trajectory)
+    if read is not None and _hidden_decay(model) is not None:
+        read = _merged(_hidden(trajectory), true_rates(model, trajectory, rows), read)
     code, clipped, slow = model.delta_code.targets(
-        shifted_truth(rows, offset),
-        after,
-        rows[..., SHIP["ship_type"]].long(),
-        rates(model, trajectory),
+        shifted_truth(rows, offset), after, rows[..., SHIP["ship_type"]].long(), read
     )
     return dict(next_state=code, next_state_clipped=clipped, next_state_slow=slow)
 
@@ -88,16 +145,28 @@ def next_state_mask(trajectory: Trajectory, model=None) -> torch.Tensor:
     return mask & (truth[..., SHIP["alive"]] > 0.5) & (following[..., SHIP["alive"]] > 0.5)
 
 
-def split_masks(trajectory: Trajectory, mask: torch.Tensor) -> dict:
+def split_masks(trajectory: Trajectory, mask: torch.Tensor, model=None) -> dict:
     """With `YemongConfig.delta_split`, the next-state mask (L, R, N) split by sight at t:
     {"physics_mask": own rows and the enemies seen at t (the physics head's), "correction_mask":
     the enemies whose belief at t is a forecast (the error head's)}. Both are parts of the
-    next-state mask, so its count stays both terms' denominator."""
-    replay = trajectory.replay
-    own = trajectory.log_probability.shape[-1]
-    hidden = replay.age > 0  # a valid belief not seen at t
-    hidden = torch.cat([hidden.new_zeros(hidden.shape[:-1] + (own,)), hidden], -1)
-    return dict(physics_mask=mask & ~hidden, correction_mask=mask & hidden)
+    next-state mask, so its count stays both terms' denominator. With the model's
+    `YemongConfig.physics_hidden_decay` tau also "physics_weight" (L, R, N) float32, the
+    physics head's weight per row: 1 on the physics mask, exp(-age / tau) on the correction
+    mask (age the seconds since the ship was seen, `Replay.age` ticks), past the segment's
+    first tick (whose truth rates lack the tick before, `true_rates`), else 0."""
+    hidden = _hidden(trajectory)
+    out = dict(physics_mask=mask & ~hidden, correction_mask=mask & hidden)
+    tau = _hidden_decay(model)
+    if tau is not None:
+        age = trajectory.replay.age.float() * model.tick_length  # s, the enemy rows'
+        own = hidden.shape[-1] - age.shape[-1]
+        age = torch.cat([age.new_zeros(age.shape[:-1] + (own,)), age], -1)
+        decayed = torch.exp(-age / tau)
+        later = torch.arange(hidden.shape[0], device=hidden.device)[:, None, None] > 0
+        out["physics_weight"] = torch.where(
+            out["physics_mask"], 1.0, torch.where(out["correction_mask"] & later, decayed, 0.0)
+        )
+    return out
 
 
 def correction_targets(
