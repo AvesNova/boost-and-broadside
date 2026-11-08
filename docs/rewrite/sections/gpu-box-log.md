@@ -323,3 +323,15 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   the command line (documented in `docs/guides/behaviour-cloning.md`). I merge it when pushed.
   Its tip, adopted: rebuild a run's command from its `run.json` (`segments[].command`), not
   from names or notes.
+- **03:35 KST Round 3 redone on the correct base (the author's plan), `runs/round4.sh`:** gated
+  on the confirmation (starts only if its Brier mean at updates 6-10 is > +0.05). Every arm at
+  30M with C-fixed's learner settings and the laptop arms' stop flags (`--set
+  "learner.discount=[0.991,0.995,0.995,0.999,1.0]" --set
+  "learner.trace_decay=[0.99,0.99,0.99,0.99,1.0]" --set stop.score_target=1.0 --set
+  stop.plateau_steps=1000000000`), in order: absolute, deadreckon-split, deadreckon-split-fourier,
+  deadreckon-split-fastdecay (tau 0.2 s), persist-split, and deadreckon-split-hiddenphysics once
+  its build is merged (the runner checks the switch exists). Not rerun: persist-onehead (~-100
+  frontline on the laptop and here) and absolute-bigbatch (~-560). Then tournament 3 (all six,
+  no ladder), then the best two or three resumed to 60M. ~6.5 h of training. Agent link: the
+  laptop session's message reached me; my reply was accepted by the server, delivery not
+  confirmed.
