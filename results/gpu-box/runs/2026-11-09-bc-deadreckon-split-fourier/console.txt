@@ -1,1 +1,11 @@
 run 2026-11-09-bc-deadreckon-split-fourier in /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-fourier
+memory probe: allocated 16.91 GB, reserved 17.95 GB, budget 23.06 GB of 23.56 GB
+update    1  steps   1,048,576  rollout 472352 ms  learn 1044544 ms  bc kl 2.9682  teacher 0.772  student 3.738  scores: learner 0.500 scripted 0.434
+update    2  steps   2,097,152  rollout   9903 ms  learn  81647 ms  bc kl 1.4364  teacher 0.764  student 2.936  scores: learner 0.500 scripted 0.179
+update    3  steps   3,145,728  rollout   9999 ms  learn  81903 ms  bc kl 0.7272  teacher 0.757  student 1.549  scores: learner 0.500 scripted 0.024
+update    4  steps   4,194,304  rollout   9956 ms  learn  82090 ms  bc kl 0.6998  teacher 0.761  student 1.483  scores: learner 0.500 scripted 0.000
+update    5  steps   5,242,880  rollout   9952 ms  learn  81843 ms  bc kl 0.6689  teacher 0.759  student 1.439  scores: learner 0.500 scripted 0.000
+update    6  steps   6,291,456  rollout   9955 ms  learn  81947 ms  bc kl 0.6455  teacher 0.757  student 1.408  scores: learner 0.500 scripted 0.000
+update    7  steps   7,340,032  rollout   9955 ms  learn  81850 ms  bc kl 0.6418  teacher 0.758  student 1.403  scores: learner 0.500 scripted 0.000
+update    8  steps   8,388,608  rollout   9958 ms  learn  81934 ms  bc kl 0.6747  teacher 0.827  student 1.504  scores: learner 0.500 scripted 0.000
+update    9  steps   9,437,184  rollout   9958 ms  learn  81873 ms  bc kl 0.5632  teacher 0.869  student 1.435  scores: learner 0.500 scripted 0.000
