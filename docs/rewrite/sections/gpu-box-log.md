@@ -363,3 +363,7 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   (`2026-11-09-bc-absolute-cfixed-learner-check`), outcome Brier at 5-15 s, updates 6-10: +0.068
   +0.125 +0.144 +0.172 +0.186 (mean +0.139); the laptop's C-fixed +0.08 to +0.19. The cause was the
   missing two lines alone; the box's speed changes are cleared. Round 4 started.
+- **03:40 KST Disk:** the wrong-base runs need no resume: deleted the checkpoints of the old
+  absolute (C-fixed-3090), deadreckon-split (arm4d-3090), fastdecay-3090 (stopped) and the v2
+  check, each after confirming every file on the hub by size; their policy files kept. 37 GB
+  used, 28 free (the compile cache grows with each new config).
