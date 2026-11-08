@@ -416,3 +416,7 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   0.432 / 0.697, Brier 5-15 s 0.324) and absolute (0.503 / 0.664, 0.428). deadreckon-split's low
   KL is the outlier (every other arm 0.49-0.50): possibly its seed; absolute-seed1 will show the
   spread. hiddenphysics next.
+- **07:00 KST hiddenphysics healthy after 3 updates:** KL 1.4524 / 0.7172 vs deadreckon-split's
+  1.4521 / 0.7173 (the change only adds hidden rows to an auxiliary head's loss); 92 s per update;
+  no non-finite beliefs or skipped steps; 17.1 GB; first update 1,436 s (cold compile). ETAs:
+  hiddenphysics ~07:40, absolute-seed1 ~08:25, laptop persist-split ~08:45 KST, then tournament 3.
