@@ -108,7 +108,7 @@ The coefficients are the fields of `bnb.learn.ppo.LearnerConfig` named after the
 | `policy` | own ships alive at `t` | the surrogate on the scaled advantage under the trust region ([below](#the-trust-region)) |
 | `entropy_power`, `entropy_stick`, `entropy_shoot` | the same | the joint action distribution's entropy by the chain rule in the joint's order: H(power), H(stick given power), H(shoot given both). They sum to the joint entropy, so equal coefficients weigh the joint as one coefficient would; a negative coefficient rewards it |
 | `value` | own ships alive or waiting to respawn; each view-step for the outcome | per level, the cross-entropy against the two-hot of the return, the outcome against its targets |
-| `next_state` | rows whose belief is valid at `t`, where `t` did not end an episode (delta: and whose ship is alive at `t` and `t + 1`; with `YemongConfig.delta_split`, of those only the own rows and the enemies seen at `t`) | absolute: the state code's cross-entropy against the sharp code of the true state at `t + 1`, in the model's shifted frame; delta: the delta code's against the code of the true change from `t` to `t + 1` |
+| `next_state` | rows whose belief is valid at `t`, where `t` did not end an episode (delta: and whose ship is alive at `t` and `t + 1`; with `YemongConfig.delta_split`, of those only the own rows and the enemies seen at `t`; with `YemongConfig.physics_hidden_decay` tau the hidden enemies too, past the segment's first tick, each weighted `exp(-age / tau)`, against the truth-to-truth target) | absolute: the state code's cross-entropy against the sharp code of the true state at `t + 1`, in the model's shifted frame; delta: the delta code's against the code of the true change from `t` to `t + 1` |
 | `correction` | with `YemongConfig.delta_split` only: the next-state rows whose belief at `t` is a forecast (hidden enemies) | the error code's cross-entropy against the code of the physics forecast's error, `truth(t + 1) - forecast(t + 1)` |
 | `enemy_action` | enemy rows alive at `t` | the cross-entropy of the enemy's actual joint action |
 | `density` | each view-step, over its count of valued own ships | Poisson terms over the hex cells, against the counts of living ships at `t` |
@@ -268,7 +268,10 @@ size of the segment):
   model read (`bnb.learn.labels.rates`, `Yemong.segment_rates`). With `YemongConfig.delta_split`, the
   next-state mask split by sight at `t` (`bnb.learn.labels.split_masks`): `physics_mask`,
   the own rows and the enemies seen at `t`, and `correction_mask`, the enemies whose belief
-  at `t` is a forecast.
+  at `t` is a forecast; with `YemongConfig.physics_hidden_decay` also `physics_weight`, the
+  physics head's weight per row (1 seen, `exp(-age / tau)` hidden), and a hidden row's
+  rates in the target are the truth's (`bnb.learn.labels.true_rates`) instead of the
+  belief's held ones.
 - **Error (with `YemongConfig.delta_split`):** built inside the loss, after the unroll, since it
   reads the physics head (`bnb.learn.labels.correction_targets`): the code of each row's
   `e = truth(t + 1) - forecast(t + 1)`, the forecast the physics advance of the row as the

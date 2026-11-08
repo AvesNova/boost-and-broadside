@@ -4,11 +4,13 @@ advance of hidden rows, the split masks, the stop-gradient, the switches (arms 1
 for bit as recorded, the arm's unroll a loop of steps), the term in the learners and a
 policy-file round trip."""
 
+import json
 import math
 import os
 import pathlib
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import learner_cases as lc
 import pytest
@@ -18,13 +20,13 @@ import yemong_cases as cases
 from bnb.contracts.obs import SHIP
 from bnb.controllers.scripted import Scripted
 from bnb.game import api
-from bnb.learn import bc, head_statistics, labels
+from bnb.learn import bc, head_statistics, labels, ppo
 from bnb.learn.ppo import COUNTS, TERMS
 from bnb.models.yemong import codes, correction, delta
 from bnb.models.yemong.inputs import believed, truth
 from bnb.models.yemong.model import YemongConfig
 from bnb.models.yemong.state_code import MEANS, SPREADS, state_code_ranges, unpack_covariance
-from bnb.runs.checkpoint import load_policy, save_policy
+from bnb.runs.checkpoint import FilledDefaults, load_policy, save_policy
 from bnb.runtime import metrics
 from bnb.runtime.rollout import Rollout
 
@@ -449,6 +451,13 @@ ARMS = dict(
     # the split and extrapolation on C-fixed's inputs with the scalar spreads (arms 3d, 4d)
     arm3d=dict(acceleration_inputs=False, spread_inputs="scalar"),
     arm4d=dict(delta_baseline="extrapolation", acceleration_inputs=False, spread_inputs="scalar"),
+    # arm 4d with the physics head also on the hidden rows (`physics_hidden_decay`)
+    arm4dh=dict(
+        delta_baseline="extrapolation",
+        acceleration_inputs=False,
+        spread_inputs="scalar",
+        physics_hidden_decay=0.5,
+    ),
 )
 
 
@@ -514,6 +523,39 @@ def test_the_stored_belief_of_a_hidden_row_is_the_corrected_forecast(segment):
 # ------------------------------------------------------------------ the learners
 
 
+def _true_rates(net, trajectory) -> delta.Rates:
+    """Every row's rates as a row seen at t - 1 and t would read them, by hand from the truth:
+    its true accelerations and their flag, its change from the truth the tick before (the
+    carry's rows at the segment's first tick), its true gradient and shot flag, no rule, a
+    full turn."""
+    rows = labels.privileged_rows(trajectory)
+    offset = trajectory.replay.offset
+    means = truth(rows, offset)
+    previous = torch.cat([trajectory.initial_carry.previous[None], truth(rows[:-1], offset[:-1])])
+    column = lambda name: rows[..., SHIP[name]]  # noqa: E731
+    valid = column("acceleration_valid") > 0.5
+    return delta.Rates(
+        valid=valid,
+        acceleration=torch.stack([column("acceleration_x"), column("acceleration_y")], -1),
+        nose_acceleration=column("nose_acceleration"),
+        change=means - previous,
+        gradient=torch.stack([column("log_index_gradient_x"), column("log_index_gradient_y")], -1),
+        gradient_known=torch.ones_like(valid),
+        fired=column("fired") > 0.5,
+        rule=torch.zeros_like(valid),
+        turn=torch.ones_like(column("fired")),
+    )
+
+
+def _merged_rates(rows: torch.Tensor, first: delta.Rates, second: delta.Rates) -> delta.Rates:
+    """first's rates on rows (L, R, N), second's elsewhere."""
+    out = {}
+    for name in delta.RATE_FIELDS:
+        a, b = getattr(first, name), getattr(second, name)
+        out[name] = torch.where(rows[..., None] if a.dim() > rows.dim() else rows, a, b.to(a.dtype))
+    return delta.Rates(**out)
+
+
 def _check_terms(net, learner, runner):
     prepared = learner.prepare(runner.store, runner.bootstrap())
     views = torch.arange(runner.store.views)
@@ -536,21 +578,27 @@ def _check_terms(net, learner, runner):
     rows = labels.privileged_rows(trajectory)
     following = labels.next_rows(trajectory, rows)
     offset = trajectory.replay.offset
+    read = labels.rates(net, trajectory)
+    decay = net.config.physics_hidden_decay
+    if decay is not None:  # a hidden row's rates are the truth's (`_true_rates`)
+        read = _merged_rates(hidden, _true_rates(net, trajectory), read)
     expected, _, _ = net.delta_code.targets(
-        truth(rows, offset),
-        truth(following, offset),
-        rows[..., SHIP["ship_type"]].long(),
-        labels.rates(net, trajectory),
+        truth(rows, offset), truth(following, offset), rows[..., SHIP["ship_type"]].long(), read
     )
-    torch.testing.assert_close(label["next_state"], expected)
+    # the hand rates' acceleration skips `Yemong.rates`' frame round trip: float rounding
+    tolerance = {} if decay is None else dict(rtol=1e-5, atol=1e-3)
+    torch.testing.assert_close(label["next_state"], expected, **tolerance)
     physics = codes.grouped_cross_entropy(
         out.next_state_logits, label["next_state"], net.delta_code.runs
     ).sum(-1)
-    assert math.isclose(
-        float(terms["next_state"]),
-        float(physics[label["physics_mask"]].sum()) / count,
-        rel_tol=1e-5,
-    )
+    expected = float(physics[label["physics_mask"]].sum())
+    if decay is not None:  # the hidden rows past the first tick, exp(-age / tau) each
+        age = trajectory.replay.age.double() * net.tick_length
+        later = torch.arange(age.shape[0])[:, None, None] > 0
+        weighted = label["correction_mask"][..., OWN:] & later
+        decayed = torch.exp(-age / decay)
+        expected += float((physics[..., OWN:].double() * decayed)[weighted].sum())
+    assert math.isclose(float(terms["next_state"]), expected / count, rel_tol=1e-5)
     # the error head's target: the truth at t + 1 less the physics forecast of the belief
     rows = labels.privileged_rows(trajectory)
     following = labels.next_rows(trajectory, rows)
@@ -610,10 +658,10 @@ def test_the_ppo_terms_and_their_series(segment):
     assert "correction" in TERMS
 
 
-def test_the_bc_terms(segment):
+def _bc(net):
+    """A BC learner (the scripted teacher) of net, and its rollout, run twice."""
     from test_bc import CHARACTERISTICS, PARAMETERS, POOLS, TEACHER
 
-    net, _ = segment
     controllers = {
         "learner": cases.controller(net, cases.SHORT_SQUAD),
         "scripted": Scripted(CHARACTERISTICS, OWN, PARAMETERS),
@@ -645,7 +693,12 @@ def test_the_bc_terms(segment):
         tuple(pool.name for pool in POOLS),
         runner.lineup.pool_of["learner"],
     )
-    _check_terms(net, learner, runner)
+    return learner, runner
+
+
+def test_the_bc_terms(segment):
+    net, _ = segment
+    _check_terms(net, *_bc(net))
 
 
 def test_an_update_with_the_cadence_reports_both_heads_trunk_shares(segment):
@@ -657,7 +710,11 @@ def test_an_update_with_the_cadence_reports_both_heads_trunk_shares(segment):
     series = metrics.read(learner._gradient_decomposition(runner.store, prepared, views))
     for term in ("next_state", "correction"):
         assert series[f"gradient/norm/trunk/{term}"] > 0
-    assert series["gradient/norm/trunk/next_state_enemy_hidden"] == 0  # the physics mask
+    hidden_share = series["gradient/norm/trunk/next_state_enemy_hidden"]
+    if net.config.physics_hidden_decay is None:
+        assert hidden_share == 0  # the physics mask
+    else:
+        assert hidden_share > 0  # the hidden rows, weighted
 
 
 def test_the_arms_policy_file_round_trips(tmp_path, segment):
@@ -693,3 +750,170 @@ def test_the_baseline_rates_trace_whole_under_torch_compile(segment):
         eager = labels.rates(net, trajectory)
     for name in delta.RATE_FIELDS:
         assert torch.equal(getattr(compiled, name), getattr(eager, name)), name
+    if net.config.physics_hidden_decay is None:
+        return
+    # the hidden rows' weights and truth-to-truth targets trace whole too
+
+    def hidden_labels(net, trajectory):
+        rows = labels.privileged_rows(trajectory)
+        mask = labels.next_state_mask(trajectory, net)
+        weight = labels.split_masks(trajectory, mask, net)["physics_weight"]
+        return weight, labels.next_state_targets(net, trajectory, rows)["next_state"]
+
+    torch._dynamo.reset()
+    with torch.no_grad():
+        compiled = torch.compile(hidden_labels, fullgraph=True, backend="eager")(net, trajectory)
+        eager = hidden_labels(net, trajectory)
+    for a, b in zip(compiled, eager, strict=True):
+        assert torch.equal(a, b)
+
+
+# ------------------------------------------------------------------ the hidden rows' physics
+# (`yemong.physics_hidden_decay`, on arm 4d: the deadreckon-split arm)
+
+HIDDEN_ARM = ARMS["arm4dh"]
+HIDDEN_SETS = (
+    "yemong.order=temporal_first",
+    "yemong.next_state=delta",
+    "yemong.delta_baseline=extrapolation",
+    "yemong.spread_inputs=scalar",
+    "learner.next_state=0.0033",
+    "yemong.delta_split=true",
+    "learner.correction=0.0033",
+    "yemong.physics_hidden_decay=0.5",
+)
+
+
+@pytest.fixture(scope="module")
+def deadreckon(module_global_generator):
+    """The arm's model, a learner over a stored segment, and that segment's labels."""
+    net = _model(**HIDDEN_ARM)
+    runner = lc.rollout(net)
+    learner = lc.learner(net, runner)
+    learner.prepare(runner.store, runner.bootstrap())  # stores the shot labels
+    trajectory, shot_labels = next(learner.staged(runner.store, [torch.arange(runner.store.views)]))
+    return net, trajectory, learner.labels(trajectory, shot_labels)
+
+
+def _hidden_rows(trajectory) -> torch.Tensor:
+    age = trajectory.replay.age
+    return torch.cat([torch.zeros_like(age[..., :OWN]), age], -1) > 0
+
+
+def _decay(net, tau: float) -> SimpleNamespace:
+    """What `labels.split_masks` reads of a model, with physics_hidden_decay tau."""
+    return SimpleNamespace(
+        config=SimpleNamespace(physics_hidden_decay=tau), tick_length=net.tick_length
+    )
+
+
+def test_the_hidden_decay_is_off_by_default_and_needs_the_split():
+    assert YemongConfig().physics_hidden_decay is None
+    with pytest.raises(ValueError, match="physics_hidden_decay needs delta_split"):
+        YemongConfig(next_state="delta", physics_hidden_decay=0.5)
+    with pytest.raises(ValueError, match="must be positive"):
+        YemongConfig(next_state="delta", delta_split=True, physics_hidden_decay=0.0)
+
+
+def test_the_hidden_arms_set_line_builds_the_arm():
+    from bnb.cli import parse_setting, with_settings
+    from bnb.contracts import GameConfig
+    from bnb.runtime.train import TrainConfig, model_build
+
+    config = with_settings(
+        TrainConfig(game=GameConfig(5, 10, 2600.0)), map(parse_setting, HIDDEN_SETS)
+    )
+    build = model_build(config)
+    assert build.config.physics_hidden_decay == 0.5 and build.config.delta_split
+    assert build.config.delta_baseline == "extrapolation"
+
+
+def test_a_hidden_row_weighs_exp_of_minus_its_age_over_tau(deadreckon):
+    """A seen row (hidden 0 s) weighs 1; a row hidden tau weighs 1/e; a hidden row of the
+    segment's first tick, a row off the next-state mask, 0."""
+    net, trajectory, label = deadreckon
+    age = torch.cat([torch.zeros_like(trajectory.replay.age[..., :OWN]), trajectory.replay.age], -1)
+    hidden, mask = _hidden_rows(trajectory), label["next_state_mask"]
+    later = torch.arange(age.shape[0])[:, None, None] > 0
+    ticks = 3  # tau = 3 ticks: the rows hidden 3 ticks weigh 1/e
+    chosen = mask & hidden & later & (age == ticks)
+    assert chosen.any()
+    weight = labels.split_masks(trajectory, mask, _decay(net, ticks * net.tick_length))
+    weight = weight["physics_weight"]
+    assert (weight[mask & ~hidden] == 1).all() and (weight[mask & ~hidden & (age == 0)] == 1).all()
+    torch.testing.assert_close(
+        weight[chosen], torch.full_like(weight[chosen], math.exp(-1.0)), rtol=1e-6, atol=0
+    )
+    assert (weight[mask & hidden & ~later] == 0).all() and (weight[~mask] == 0).all()
+    # the arm's own: exp(-age dt / 0.5) on every hidden row past the first tick
+    seconds = age.double() * net.tick_length
+    expected = torch.where(mask & ~hidden, 1.0, torch.exp(-seconds / 0.5))
+    expected = torch.where(mask & (~hidden | later), expected, 0.0).float()
+    torch.testing.assert_close(label["physics_weight"], expected)
+
+
+def test_a_hidden_rows_target_is_truth_to_truth_like_a_seen_rows(deadreckon):
+    """The rates of a hidden row's target are the truth's, as a row seen at t - 1 and t
+    reads them: for such a row the rates the model read give the same target as the
+    truth's; the belief's held rates would give another."""
+    net, trajectory, label = deadreckon
+    rows = labels.privileged_rows(trajectory)
+    following = labels.next_rows(trajectory, rows)
+    offset = trajectory.replay.offset
+    ship_type = rows[..., SHIP["ship_type"]].long()
+
+    def target(rates):
+        code, _, _ = net.delta_code.targets(
+            truth(rows, offset), truth(following, offset), ship_type, rates
+        )
+        return code
+
+    true, read = target(_true_rates(net, trajectory)), target(labels.rates(net, trajectory))
+    hidden, mask = _hidden_rows(trajectory), label["physics_weight"] > 0
+    torch.testing.assert_close(  # less the rounding of `Yemong.rates`' frame round trip
+        label["next_state"][mask & hidden], true[mask & hidden], rtol=1e-5, atol=1e-3
+    )
+    torch.testing.assert_close(label["next_state"][~hidden], read[~hidden])
+    # a row seen at both ticks: the read rates are the truth's, so its target is the same
+    seen = mask & ~hidden & (trajectory.obs.ships[..., SHIP["acceleration_valid"]] > 0.5)
+    assert seen.any()
+    torch.testing.assert_close(read[seen], true[seen], rtol=1e-5, atol=1e-3)
+    # the belief's held rates differ from the truth's on hidden rows
+    assert not torch.allclose(read[mask & hidden], true[mask & hidden])
+
+
+def test_a_vanishing_tau_leaves_the_physics_term_as_without_the_switch(deadreckon):
+    net, trajectory, label = deadreckon
+    cross_entropy = torch.rand(label["next_state_mask"].shape, dtype=F64)
+    mask = label["next_state_mask"]
+    off = {key: value for key, value in label.items() if key != "physics_weight"}
+    expected = float(ppo.physics_sum(cross_entropy, off))
+    for tau in (1e-9, 1e-30):
+        vanishing = dict(label, **labels.split_masks(trajectory, mask, _decay(net, tau)))
+        assert float(ppo.physics_sum(cross_entropy, vanishing)) == expected
+    # and the switch's own weights only add
+    assert float(ppo.physics_sum(cross_entropy, label)) > expected
+
+
+def test_the_hidden_arms_bc_learner_steps():
+    net = _model(**HIDDEN_ARM)
+    learner, runner = _bc(net)
+    before = net.ship_heads.lasts[1].weight.detach().clone()
+    series = metrics.read(learner.update(runner.store, runner.bootstrap()))
+    assert math.isfinite(series["next_state/loss"]) and series["next_state/loss"] > 0
+    assert not torch.equal(net.ship_heads.lasts[1].weight, before)
+
+
+def test_a_policy_file_without_the_hidden_decay_loads_it_as_none(tmp_path):
+    net = _model(**HIDDEN_ARM)
+    save_policy(tmp_path / "policy", net)
+    assert load_policy(tmp_path / "policy", lc.CPU).config.physics_hidden_decay == 0.5
+    record_path = tmp_path / "policy" / "checkpoint.json"
+    record = json.loads(record_path.read_text())
+    config = record["model"]["build"]["config"]
+    assert config.pop("physics_hidden_decay") == 0.5
+    config["delta_split"] = True
+    record_path.write_text(json.dumps(record))
+    with pytest.warns(FilledDefaults, match="physics_hidden_decay"):
+        loaded = load_policy(tmp_path / "policy", lc.CPU)
+    assert loaded.config.physics_hidden_decay is None and loaded.config.delta_split

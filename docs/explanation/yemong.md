@@ -451,6 +451,18 @@ read this covariance. A row seen at `t` takes the
 physics forecast, as without the split. Select the arm with `--set yemong.delta_split=true`
 on arm 2's line.
 
+`YemongConfig.physics_hidden_decay` (tau in seconds, with `delta_split`; off by default)
+also trains the physics head on the hidden enemies, each row weighted `exp(-age / tau)` by
+the time since its ship was last seen (the replay's age at `t`; a row of the segment's
+first tick weighs 0, its truth lacking the tick before). Its target is truth to truth: the
+code of the true change from the baseline of the true state at `t`, the extrapolation
+baseline's rates read off the truth as a row seen at `t - 1` and `t` reads them, which is
+the target a seen row of that ship gets. Its inputs stay the belief it reads; the error
+head is unchanged. The physics term keeps its denominator, so a seen row weighs what it
+did and the hidden rows add on top. Only the labels read the switch; it is in the build
+record, and a policy file without it loads it as off. Select it with `--set
+yemong.physics_hidden_decay=0.5` on the deadreckon-split line.
+
 ### Spread inputs: scalar or ellipse
 
 `YemongConfig.spread_inputs` chooses how a ship row reads its belief's spread. The spread

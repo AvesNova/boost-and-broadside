@@ -250,6 +250,22 @@ def _physics(label: dict) -> torch.Tensor:
     return label.get("physics_mask", label["next_state_mask"])
 
 
+def physics_sum(cross_entropy: torch.Tensor, label: dict, rows: torch.Tensor | None = None):
+    """The physics (next-state) head's cross-entropy (L, R, N) summed over its rows
+    (`_physics`, within rows if given); with `yemong.physics_hidden_decay` each row times
+    its weight (`labels.split_masks`: 1 on the seen rows, exp(-age / tau) on the hidden
+    ones). The term divides it by the next-state mask's count, as without the switch: the
+    count already holds the hidden rows (the error head's term shares it), so a seen row
+    weighs exactly what it did and the hidden rows add on top."""
+    weight = label.get("physics_weight")
+    if weight is None:
+        mask = _physics(label)
+        return losses.masked_sum(cross_entropy, mask if rows is None else mask & rows)
+    mask = weight > 0
+    mask = mask if rows is None else mask & rows
+    return torch.where(mask, cross_entropy * weight.to(cross_entropy.dtype), 0.0).sum()
+
+
 def factor_sums(entropies: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     """(3,): the factor entropies (..., 3) summed over the tokens of `mask` (...)."""
     return torch.where(mask[..., None], entropies, 0.0).flatten(0, -2).sum(0)
@@ -460,7 +476,7 @@ class Learner:
         mask = labels.next_state_mask(trajectory, self.model)
         split = {}
         if getattr(model, "correction_code", None) is not None:
-            split = labels.split_masks(trajectory, mask)
+            split = labels.split_masks(trajectory, mask, model)
         return dict(
             **readout,
             **split,
@@ -554,7 +570,7 @@ class Learner:
         parts = None
         if _head(unrolled, "next_state_logits") is not None:
             terms["next_state"] = (
-                losses.masked_sum(self._next_state_cross_entropy(unrolled, label), _physics(label))
+                physics_sum(self._next_state_cross_entropy(unrolled, label), label)
                 / denominator["next_state"]
             )
         if _head(unrolled, "correction_logits") is not None:
@@ -1239,7 +1255,7 @@ class Learner:
                     enemy_hidden=~rows & ~visible,
                 )
                 for name, mask in members.items():
-                    part = losses.masked_sum(cross_entropy, _physics(label) & mask)
+                    part = physics_sum(cross_entropy, label, mask)
                     # the term's normalisation, so the populations sum to the term
                     basic[f"next_state_{name}"] = (
                         config.next_state * part / denominator["next_state"]
