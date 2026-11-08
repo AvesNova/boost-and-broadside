@@ -142,3 +142,19 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   heading 0.018/0.021, 0.095/0.042, 0.23/0.10, 0.38/0.19, 0.43/0.21 rad. Right at the shortest
   ages, 2-4x too narrow past 0.1 s (overconfident; not the laptop's too-wide bug). A candidate
   for the next set of tests if the split does well. Arm 4d started.
+- **14:22 UTC (23:22 KST) Arm 4d failed on its first update: a code bug, not memory.**
+  `torch._dynamo.exc.Unsupported: dataclass fields failure` in `Yemong.segment_rates`
+  (`dataclasses.fields(Rates)`), reached from the learner's compiled labels (`Learner._codes`,
+  fullgraph). No extrapolation arm had ever run compiled: arms 4, 4b, 4c, 4d were all removed
+  from the laptop's queue before running, and the CPU tests run eager. The runner's automatic
+  retry (host store) would fail the same way, so I stopped it (failed dirs in `runs/failed/`).
+  **Fix:** `delta.RATE_FIELDS`, the field names taken once at import, as `BELIEF_FIELDS` and
+  `bc.CARRY_FIELDS` already are (bc.py says why); used by `segment_rates` and `Rates.rows`.
+  **Test:** `test_the_baseline_rates_trace_whole_under_torch_compile` (every arm: fullgraph,
+  eager backend, equal to eager); fails on the old code for arms 4, 4c, 4d, passes now.
+  Error-head file + delta and acceleration tests: 161 pass; two bit-for-bit golden-digest tests
+  fail (`test_off_steps_and_unrolls_c_fixed_bit_for_bit_like_the_tree_before_the_switch`,
+  `test_arms_1_and_2_step_and_unroll_bit_for_bit_as_recorded`), **identically on clean v2 on
+  this box**: digests recorded on the laptop's CPU; machine-dependent, not a regression.
+- **14:32 UTC (23:32 KST) Arm 4d restarted** (runner `arms4.sh`: 4d, then LB, then the
+  tournament; copy in `gpu-box/arms4.sh`).
