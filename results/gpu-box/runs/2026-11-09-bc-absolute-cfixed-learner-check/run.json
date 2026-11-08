@@ -1,6 +1,6 @@
 {
  "name": "2026-11-09-bc-absolute-cfixed-learner-check",
- "status": "running",
+ "status": "finished",
  "pid": 108470,
  "host": "e98bed47fc73",
  "message": null,
@@ -28,20 +28,27 @@
  ],
  "wandb_id": null,
  "parent": null,
- "checkpoint_every": null,
+ "checkpoint_every": 23068672,
  "update_policies": false,
- "newest_checkpoint": null,
- "final_checkpoint": null,
- "checkpoint_ordinals": {},
- "probe": null,
+ "newest_checkpoint": 10485760,
+ "final_checkpoint": 10485760,
+ "checkpoint_ordinals": {
+  "10485760": 0
+ },
+ "probe": {
+  "allocated": 17696049152,
+  "reserved": 18928893952,
+  "total": 25296044032,
+  "budget": 24759173120
+ },
  "segments": [
   {
    "commit": "e85e8d7f70e877927beae85bb9ad82e643431824",
    "dirty": true,
    "start_step": 0,
    "start_time": "2026-11-08T18:13:02+00:00",
-   "end_step": null,
-   "end_time": null,
+   "end_step": 10485760,
+   "end_time": "2026-11-08T18:33:53+00:00",
    "overrides": {},
    "rewound_from": null,
    "command": [
@@ -68,5 +75,10 @@
    ]
   }
  ],
- "stop_request": null
+ "stop_request": null,
+ "hours": 0.34733642135112963,
+ "skipped_steps": 0,
+ "stopped_by": "budget",
+ "policy": "/workspace/boost-and-broadside/runs/2026-11-09-bc-absolute-cfixed-learner-check/policy",
+ "policy_player": "exponential_average"
 }

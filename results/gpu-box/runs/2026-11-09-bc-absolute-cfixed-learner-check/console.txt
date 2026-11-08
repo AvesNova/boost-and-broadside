@@ -1,1 +1,14 @@
 run 2026-11-09-bc-absolute-cfixed-learner-check in /workspace/boost-and-broadside/runs/2026-11-09-bc-absolute-cfixed-learner-check
+memory probe: allocated 16.48 GB, reserved 17.63 GB, budget 23.06 GB of 23.56 GB
+update    1  steps   1,048,576  rollout 214351 ms  learn 305618 ms  bc kl 2.9627  teacher 0.772  student 3.738  scores: learner 0.500 scripted 0.434
+update    2  steps   2,097,152  rollout   8177 ms  learn  72665 ms  bc kl 1.3914  teacher 0.764  student 2.876  scores: learner 0.500 scripted 0.179
+update    3  steps   3,145,728  rollout   8199 ms  learn  72672 ms  bc kl 0.7259  teacher 0.756  student 1.558  scores: learner 0.500 scripted 0.008
+update    4  steps   4,194,304  rollout   8230 ms  learn  72647 ms  bc kl 0.6993  teacher 0.760  student 1.479  scores: learner 0.500 scripted 0.004
+update    5  steps   5,242,880  rollout   8227 ms  learn  72665 ms  bc kl 0.6717  teacher 0.761  student 1.450  scores: learner 0.500 scripted 0.000
+update    6  steps   6,291,456  rollout   8220 ms  learn  72649 ms  bc kl 0.5958  teacher 0.766  student 1.379  scores: learner 0.500 scripted 0.000
+update    7  steps   7,340,032  rollout   8226 ms  learn  72697 ms  bc kl 0.6797  teacher 0.839  student 1.522  scores: learner 0.500 scripted 0.000
+update    8  steps   8,388,608  rollout   8223 ms  learn  72693 ms  bc kl 0.6733  teacher 0.890  student 1.566  scores: learner 0.500 scripted 0.000
+update    9  steps   9,437,184  rollout   8222 ms  learn  74125 ms  bc kl 0.4716  teacher 0.894  student 1.369  scores: learner 0.500 scripted 0.000
+update   10  steps  10,485,760  rollout   8227 ms  learn  73449 ms  bc kl 0.4988  teacher 0.918  student 1.419  scores: learner 0.500 scripted 0.000
+stopped by budget; the policy is /workspace/boost-and-broadside/runs/2026-11-09-bc-absolute-cfixed-learner-check/policy (the exponential_average)
+run 2026-11-09-bc-absolute-cfixed-learner-check finished at step 10485760
