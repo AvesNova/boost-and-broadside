@@ -426,6 +426,74 @@ def test_the_arms_set_line_builds_the_arm():
     assert config.learner.next_state == config.learner.correction == 0.0033
 
 
+FOURIER_SETS = (
+    "yemong.order=temporal_first",
+    "yemong.next_state=delta",
+    "yemong.delta_baseline=extrapolation",
+    "yemong.spread_inputs=scalar",
+    "learner.next_state=0.0033",
+    "yemong.delta_split=true",
+    "learner.correction=0.0033",
+    "yemong.position_inputs=fourier",
+)
+
+
+def test_fourier_inputs_are_off_by_default_and_need_the_delta_head():
+    assert YemongConfig().position_inputs == "colour"
+    with pytest.raises(ValueError, match="position_inputs 'fourier' needs next_state 'delta'"):
+        YemongConfig(position_inputs="fourier")
+    with pytest.raises(ValueError, match="position_inputs"):
+        YemongConfig(next_state="delta", position_inputs="polar")
+
+
+def test_the_fourier_arms_set_line_builds_it_and_old_records_read_as_colour():
+    from bnb.cli import parse_setting, with_settings
+    from bnb.contracts import GameConfig
+    from bnb.models.yemong.model import YemongBuild
+    from bnb.runs.serialise import from_json, to_json
+    from bnb.runtime.train import TrainConfig, model_build
+
+    config = with_settings(
+        TrainConfig(game=GameConfig(5, 10, 2600.0)), map(parse_setting, FOURIER_SETS)
+    )
+    build = model_build(config)
+    assert build.config.position_inputs == "fourier" and build.config.delta_split
+    assert build.config.delta_baseline == "extrapolation"
+    assert build.config.spread_inputs == "scalar" and not build.config.acceleration_inputs
+    record = to_json(build)
+    assert record["config"]["position_inputs"] == "fourier"
+    assert from_json(YemongBuild, record)[0] == build
+    del record["config"]["position_inputs"]  # a policy from before the switch
+    old, filled = from_json(YemongBuild, record)
+    assert old.config.position_inputs == "colour" and "config.position_inputs" in filled
+
+
+def test_the_fourier_ship_token_reads_fourier_and_the_code_stays_colour():
+    """Only the encoder's ship input changes (437 state columns for 490, the token 500 for
+    553): the tokens' code, the next-state baseline, is the colour code."""
+    colour = _model(**ARMS["arm4d"])
+    fourier = _model(**ARMS["arm4d_fourier"])
+    assert colour.state_code.input_width == colour.state_code.width == 490
+    assert fourier.state_code.input_width == 437
+    width = colour.encoder.ship.first.in_features
+    assert fourier.encoder.ship.first.in_features == width - 490 + 437 == 500
+    _, trajectory = cases.rollout(fourier, length=4)
+    obs, replay = trajectory.obs, trajectory.replay
+    reset = cases.resets(obs)
+    with torch.no_grad():
+        previous = fourier.preceding_motion(trajectory.initial_carry, obs, replay, reset)
+        tokens = fourier.tokens(obs, replay, previous)
+        plain = colour.tokens(obs, replay, previous)
+    assert torch.equal(tokens.code, plain.code)
+    assert tokens.ship.shape[-1] == 500 and plain.ship.shape[-1] == 553
+    torch.testing.assert_close(tokens.ship[..., 437:], plain.ship[..., 490:], rtol=0, atol=0)
+    valid, _, means, spreads = believed(obs.ships, replay)
+    position = torch.where(valid[..., None], means[..., 0:2], replay.offset[..., None, :])
+    means = torch.cat([position, means[..., 2:]], -1)
+    expected = fourier.state_code.inputs(tokens.code, means, spreads)
+    torch.testing.assert_close(tokens.ship[..., :437], expected, rtol=0, atol=0)
+
+
 def test_the_error_head_starts_at_its_marginal_with_a_zero_last_layer():
     from bnb.models.yemong.model import Yemong, yemong_build
 
@@ -449,6 +517,13 @@ ARMS = dict(
     # the split and extrapolation on C-fixed's inputs with the scalar spreads (arms 3d, 4d)
     arm3d=dict(acceleration_inputs=False, spread_inputs="scalar"),
     arm4d=dict(delta_baseline="extrapolation", acceleration_inputs=False, spread_inputs="scalar"),
+    # arm 4d with the Fourier position and heading inputs
+    arm4d_fourier=dict(
+        delta_baseline="extrapolation",
+        acceleration_inputs=False,
+        spread_inputs="scalar",
+        position_inputs="fourier",
+    ),
 )
 
 

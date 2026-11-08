@@ -290,3 +290,97 @@ def test_an_averaged_heading_code_covers_its_samples(sigma):
     assert (spread / sigma).median() == pytest.approx(1.0, abs=0.15)
     covered = (_angle_error(mean[:, None], samples).abs() <= spread[:, None]).double().mean()
     assert covered == pytest.approx(WITHIN_ONE_SIGMA_1D, abs=0.06)
+
+
+# ------------------------------------------------------------------ the Fourier inputs
+# (`YemongConfig.position_inputs = "fourier"`)
+
+
+def _fourier_decode(features, period, refinement, levels):
+    """(..., levels, 2) back to the value in [0, period): per level the phase (atan2), then
+    unwrapped coarse to fine, each level's local value placed nearest the coarser estimate.
+    Decoded in float64, so only the features' own rounding remains."""
+    features = features.double()
+    level_periods = [period / refinement**level for level in range(levels)]
+    phase = torch.remainder(torch.atan2(features[..., 1], features[..., 0]), 2.0 * math.pi)
+    local = [phase[..., level] / (2.0 * math.pi) * level_periods[level] for level in range(levels)]
+    estimate = local[0]
+    for level in range(1, levels):
+        level_period = level_periods[level]
+        estimate = (
+            local[level] + torch.round((estimate - local[level]) / level_period) * level_period
+        )
+    return torch.remainder(estimate, period)
+
+
+def test_fourier_features_decode_to_the_position_and_heading_in_float32():
+    """float32 positions across the shifted frame (beyond one period and below 0) and
+    headings: unwrapped coarse to fine they decode to the value well inside the finest
+    level's 4 m: to 1e-5 m of x mod P as float32 holds it. The per-level reduction keeps
+    the phase exact; unreduced, 2 pi x / 4 m at x ~ 3e4 has a float32 step of about
+    4e-3 rad, a few mm."""
+    generator = torch.Generator().manual_seed(7)
+    x = _uniform(-3_000.0, 30_000.0, generator).float()
+    zero = torch.zeros_like(x)
+    features = codes.fourier_encode(x, zero, POSITION_PERIOD, 3, POSITION_LEVELS)
+    assert features.dtype == torch.float32 and features.shape == (COUNT, POSITION_LEVELS, 2)
+    decoded = _fourier_decode(features, POSITION_PERIOD, 3, POSITION_LEVELS)
+    # x mod P in float32 (below 0 it rounds, to its 2e-3 m step near P), then exact
+    reduced = torch.remainder(x, POSITION_PERIOD).double()
+    assert _periodic_error(decoded, reduced, POSITION_PERIOD).abs().max() < 1e-5  # m
+    assert _periodic_error(decoded, x.double(), POSITION_PERIOD).abs().max() < 2e-3
+    heading = _uniform(-math.pi, math.pi, generator).float()
+    features = codes.fourier_encode(heading, torch.zeros_like(heading), 2.0 * math.pi, 4, 4)
+    decoded = _fourier_decode(features, 2.0 * math.pi, 4, 4)
+    assert _angle_error(decoded, heading.double()).abs().max() < 1e-6
+
+
+def test_fourier_amplitude_is_the_circular_codes_attenuation():
+    """Zero sigma: unit amplitude at every level. A sigma of 100 m: the coarse levels keep
+    almost all of it, the levels of period 108 m and finer fade to about 0; each level's
+    amplitude is the colour code's attenuation exp(-(2 pi sigma / p_l)^2 / 2)."""
+    x = torch.tensor([0.0, 1234.5, 26_000.0], dtype=torch.float64)
+    sharp = codes.fourier_encode(x, torch.zeros_like(x), POSITION_PERIOD, 3, POSITION_LEVELS)
+    torch.testing.assert_close(
+        sharp.norm(dim=-1), torch.ones(3, POSITION_LEVELS, dtype=torch.float64)
+    )
+    sigma = torch.full_like(x, 100.0)
+    blurred = codes.fourier_encode(x, sigma, POSITION_PERIOD, 3, POSITION_LEVELS)
+    amplitude = blurred.norm(dim=-1)
+    periods = POSITION_PERIOD / 3.0 ** torch.arange(POSITION_LEVELS, dtype=torch.float64)
+    expected = torch.exp(-0.5 * (2.0 * math.pi * 100.0 / periods) ** 2).expand(3, -1)
+    torch.testing.assert_close(amplitude, expected)
+    assert (amplitude[:, 0] > 0.999).all() and (amplitude[:, 5:] < 1e-6).all()
+    # the phase is the sharp one's, only shortened
+    torch.testing.assert_close(blurred[:, :3], sharp[:, :3] * expected[:, :3, None])
+
+
+def test_fourier_inputs_replace_the_position_and_heading_runs_only(code):
+    """The ship token's state columns: 36 position and 8 heading columns in place of 81 and
+    16, the rest the code's own; colour inputs are the code itself."""
+    fourier = ShipStateCode(state_code_ranges(RULES, TYPES), position_inputs="fourier").double()
+    assert code.input_width == code.width and code.input_groups == code.groups
+    assert fourier.input_width == code.width - 81 - 16 + 36 + 8 == 437
+    assert fourier.width == code.width  # the code itself is unchanged
+    generator = torch.Generator().manual_seed(3)
+    means, ship_type = _states(generator, margin=0.25)
+    spreads = torch.rand(COUNT, code.spread_count, dtype=torch.float64, generator=generator)
+    encoded = code.encode(means, spreads, ship_type)
+    assert code.inputs(encoded, means, spreads) is encoded
+    torch.testing.assert_close(fourier.encode(means, spreads, ship_type), encoded, rtol=0, atol=0)
+    inputs = fourier.inputs(encoded, means, spreads)
+    assert inputs.shape == (COUNT, fourier.input_width)
+    position = torch.stack(
+        [
+            codes.fourier_encode(means[:, axis], spreads[:, 0], POSITION_PERIOD, 3, 9)
+            for axis in range(2)
+        ],
+        -3,
+    )
+    heading = codes.fourier_encode(means[:, 4], spreads[:, 4], 2.0 * math.pi, 4, 4)
+    torch.testing.assert_close(inputs[:, :36], position.flatten(-3), rtol=0, atol=0)
+    torch.testing.assert_close(inputs[:, 36:279], encoded[:, 81:324], rtol=0, atol=0)  # velocity
+    torch.testing.assert_close(inputs[:, 279:287], heading.flatten(-2), rtol=0, atol=0)
+    torch.testing.assert_close(inputs[:, 287:], encoded[:, 340:], rtol=0, atol=0)
+    with pytest.raises(ValueError, match="position_inputs"):
+        ShipStateCode(state_code_ranges(RULES, TYPES), position_inputs="polar")

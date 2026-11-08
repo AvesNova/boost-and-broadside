@@ -122,6 +122,28 @@ def circular_decode(
     return mean, spread
 
 
+def fourier_encode(
+    mean: torch.Tensor, sigma: torch.Tensor, period: float, refinement: int, levels: int
+) -> torch.Tensor:
+    """(...) mean and sigma to (..., levels, 2): per level l of period p_l = period /
+    refinement^l, a_l (cos, sin) of 2 pi m / p_l, a_l the circular code's attenuation
+    exp(-(2 pi sigma / p_l)^2 / 2), so a blurred level fades toward 0 as the circular
+    code's fades toward uniform. The phase reduces m modulo each level's period first, by
+    remainders level after level as `circular_encode` does, so float32 keeps the finest
+    level's phase."""
+    reduced, phases = mean, []
+    for level in range(levels):
+        level_period = period / refinement**level
+        reduced = torch.remainder(reduced, level_period)
+        phases.append(reduced * (2.0 * math.pi / level_period))
+    phase = torch.stack(phases, -1)
+    level_periods = period / refinement ** torch.arange(
+        levels, dtype=mean.dtype, device=mean.device
+    )
+    attenuation = torch.exp(-0.5 * (2.0 * math.pi * sigma[..., None] / level_periods) ** 2)
+    return attenuation[..., None] * torch.stack([torch.cos(phase), torch.sin(phase)], -1)
+
+
 def v1_spread_variance(
     attenuation: torch.Tensor, informative: torch.Tensor, curvature: torch.Tensor
 ) -> torch.Tensor:
