@@ -420,3 +420,8 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   1.4521 / 0.7173 (the change only adds hidden rows to an auxiliary head's loss); 92 s per update;
   no non-finite beliefs or skipped steps; 17.1 GB; first update 1,436 s (cold compile). ETAs:
   hiddenphysics ~07:40, absolute-seed1 ~08:25, laptop persist-split ~08:45 KST, then tournament 3.
+- **07:41 KST hiddenphysics done** (budget, 30.4M, 67 min): KL 0.444, agreement 0.692 (base
+  deadreckon-split 0.432 / 0.697); Brier 20-30M 0.404 0.388 0.346 0.280 0.180 0.034 (base 0.343
+  0.324 0.293 0.239 0.157 0.006): better at every horizon. Hidden errors at 0-0.1 / 0.5-1 / 2-5 s:
+  position 0.073 / 6.45 / 73.0 m (base 0.071 / 6.26 / 67.9), heading 0.020 / 0.228 / 0.412 rad
+  (base 0.020 / 0.235 / 0.434). absolute-seed1 next.
