@@ -108,3 +108,18 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   and can be synced later. Hugging Face token verified (user julianzia, fine-grained).
 - **11:52 Arms runner relaunched** (detached: `setsid nohup runs/arms.sh`; log `runs/arms.log`).
   C-fixed started.
+- **12:03 One tournament instead of three (the author: fewer tournaments, more arms).** The
+  chain 2d -> 3d -> 4d never waited on a result, so the intermediate tournaments changed
+  nothing; one field over every arm rates each pair directly and replays C-fixed and 2d less.
+  Measured: an arm is ~50-55 min (first update ~11 min, compiling a new config cold; then
+  ~81 s per update); a two-mode tournament took ~25 min on the laptop. The runner was swapped
+  without touching the C-fixed trainer (a bash script cannot be edited while it runs).
+- **12:12 + C-fixed-LB (large batch, the author's request)** before the tournament:
+  `--set learner.minibatches=128 --set learner.epochs=2` (64-view minibatches, each sample used
+  twice: a quarter of the optimizer steps per sample, each on twice the data; lr unchanged,
+  so the comparison isolates batch and reuse). Expected ~2x SPS. Runner `runs/arms3.sh`
+  (copy in `gpu-box/arms3.sh`). Plan after the tournament (the author): my choice of a next
+  set of tests, a second tournament, then the best two to 60M.
+- **12:12 GitHub push works** (the deploy key; `perf/gpu-box` pushed).
+- (Two process-kill slips of mine, harmless: `pgrep -f`/`pkill -f` with a pattern that my own
+  command line contained killed my shell; no run was affected. Patterns now `[a]rms`-style.)
