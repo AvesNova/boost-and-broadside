@@ -348,3 +348,10 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   reading of "cannot separate": within the round-2 bar of the leader (about 50 frontline / 40 on
   the two modes' mean), or overlapping 2-sigma intervals; "beats its base": above
   deadreckon-split by more than the noise on the mean.
+- **03:55 KST The laptop accepted** (the author confirmed in its session): it runs
+  deadreckon-split-fastdecay-laptop then persist-split-laptop and uploads each; the box skips
+  both (`runs/laptop-*` markers). **Merged `fix/bc-defaults`** (the laptop session's e562d1c5,
+  merge ed9cd257): `bc.config()` takes C-fixed's discount and trace decay, `TrainConfig` builds
+  temporal_first by default; the one conflict (`test_yemong_error_head.py`, both branches had
+  formatted the same line) kept the box's version, which has both. A bare BC config now resolves
+  to [.., 1.0] / [0.99, .., 1.0] / temporal_first; the box's explicit flags are now redundant.
