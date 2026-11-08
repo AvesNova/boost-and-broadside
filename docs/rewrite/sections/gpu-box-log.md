@@ -385,3 +385,6 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   41 min): KL 0.503, agreement 0.664 (laptop C-fixed 0.500 / 0.672); outcome Brier mean 20-30M
   <5 s 0.437, 5-15 s 0.428, 15-30 s 0.386, 30-60 s 0.331, 60-120 s 0.238, >120 s 0.085 (laptop
   C-fixed 5-15 s ~0.52; its seed pair read 0.52 vs 0.28). The box reproduces C-fixed.
+- **04:20 KST Merged tree verified** (fourier + hidden physics + bc defaults): error-head (seven
+  arms incl. arm4d_fourier and arm4dh), BC and codes files: 150 pass, 1 fail (the known
+  machine-dependent arms-1-and-2 digest). deadreckon-split started 04:15 on it.
