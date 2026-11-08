@@ -295,3 +295,20 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   8-10), then bisect the merges (~4 steps of ~20 min). Suspects: 1b7218ae (run control: BC
   snapshots, the uniform average from the warm-up), 8ee3178c (accelerations in the observation),
   5cff3794 (delta heads). Queued after fastdecay, before fourier (RL depends on the outcome head).
+- **03:20 KST My error, found by the author's laptop agent: no box run was C-fixed.** The
+  laptop's C-fixed (and every round-2 arm there) ran with `--set
+  learner.discount=[0.991,0.995,0.995,0.999,1.0] --set
+  learner.trace_decay=[0.99,0.99,0.99,0.99,1.0]`: the outcome level's target is the actual game
+  result (gamma = lambda = 1). I rebuilt the commands from the briefs, which list only the
+  model switches; those two lines live only in the laptop's queue commands (nowhere in the
+  repo's docs or code, checked). Every box run (round 2, the v2 check, fastdecay) has the
+  defaults ([..., 0.9997] / [0.9, 0.95, 0.95, 0.97, 0.97]): a discounted, bootstrapped outcome
+  target, hence the negative Brier at 6-10M. The laptop's 2026-11-06 arm-baseline, with the same
+  defaults, read -0.23 there; every laptop run with C-fixed's values from 3b72a914 to 272a44ed
+  reads +0.04 to +0.19. So **not a code regression**: my "regression" note at 03:10 and the
+  bisection prompt were wrong (they could not separate code from command). Consequences: the
+  box's tournament 1 compared arms all on the same wrong base (internally consistent, but none
+  is C-fixed); round 3 is on it too. **Paused round 3** (both runners stopped; fastdecay asked to
+  STOP at update 6-7, resumable; fourier not started). Running the laptop agent's confirmation
+  (`runs/confirm.sh`: absolute to 10.5M with the two lines; expect +0.1 to +0.2 at updates
+  6-10). Round 3's restart needs the author's call.
