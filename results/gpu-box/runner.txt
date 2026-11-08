@@ -25,3 +25,5 @@
 16:34 tournament1 start (no ladder)
 17:12 tournament1 done
 17:12 start 2026-11-09-bc-absolute-v2clean-check (Brier check on unmodified v2)
+17:34 done 2026-11-09-bc-absolute-v2clean-check
+17:34 start 2026-11-09-bc-deadreckon-split-fastdecay-3090

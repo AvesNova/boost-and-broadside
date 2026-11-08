@@ -1,6 +1,6 @@
 {
  "name": "2026-11-09-bc-absolute-v2clean-check",
- "status": "running",
+ "status": "finished",
  "pid": 93741,
  "host": "e98bed47fc73",
  "message": null,
@@ -28,9 +28,11 @@
  "parent": null,
  "checkpoint_every": 18874368,
  "update_policies": false,
- "newest_checkpoint": null,
- "final_checkpoint": null,
- "checkpoint_ordinals": {},
+ "newest_checkpoint": 10485760,
+ "final_checkpoint": 10485760,
+ "checkpoint_ordinals": {
+  "10485760": 0
+ },
  "probe": {
   "allocated": 18176923648,
   "reserved": 19306381312,
@@ -43,8 +45,8 @@
    "dirty": false,
    "start_step": 0,
    "start_time": "2026-11-08T17:12:53+00:00",
-   "end_step": null,
-   "end_time": null,
+   "end_step": 10485760,
+   "end_time": "2026-11-08T17:34:44+00:00",
    "overrides": {},
    "rewound_from": null,
    "command": [
@@ -70,6 +72,9 @@
   }
  ],
  "stop_request": null,
- "hours": 0.17610809059891228,
- "skipped_steps": 0
+ "hours": 0.36398036057207117,
+ "skipped_steps": 0,
+ "stopped_by": "budget",
+ "policy": "/workspace/boost-and-broadside/runs/2026-11-09-bc-absolute-v2clean-check/policy",
+ "policy_player": "exponential_average"
 }

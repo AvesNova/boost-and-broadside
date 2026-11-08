@@ -8,3 +8,7 @@ update    5  steps   5,242,880  rollout   8215 ms  learn  89587 ms  bc kl 0.6931
 update    6  steps   6,291,456  rollout   8211 ms  learn  88931 ms  bc kl 0.6585  teacher 0.759  student 1.420  scores: learner 0.500 scripted 0.000
 update    7  steps   7,340,032  rollout   8223 ms  learn  89298 ms  bc kl 0.6512  teacher 0.805  student 1.462  scores: learner 0.500 scripted 0.000
 update    8  steps   8,388,608  rollout   8221 ms  learn  89669 ms  bc kl 0.6556  teacher 0.886  student 1.544  scores: learner 0.500 scripted 0.000
+update    9  steps   9,437,184  rollout   8211 ms  learn  86352 ms  bc kl 0.5336  teacher 0.908  student 1.445  scores: learner 0.500 scripted 0.000
+update   10  steps  10,485,760  rollout   8210 ms  learn  85840 ms  bc kl 0.5028  teacher 0.933  student 1.438  scores: learner 0.500 scripted 0.000
+stopped by budget; the policy is /workspace/boost-and-broadside/runs/2026-11-09-bc-absolute-v2clean-check/policy (the exponential_average)
+run 2026-11-09-bc-absolute-v2clean-check finished at step 10485760
