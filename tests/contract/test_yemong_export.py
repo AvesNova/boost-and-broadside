@@ -81,8 +81,9 @@ def _mid_game(config: GameConfig, ticks: int):
         dict(next_state="absolute"),
         dict(next_state="delta"),
         dict(order="temporal_first", acceleration_inputs=True),
+        dict(next_state="delta", position_inputs="fourier"),
     ],
-    ids=["absolute", "delta", "accelerations"],
+    ids=["absolute", "delta", "accelerations", "fourier"],
 )
 def test_yemong_step_exports_to_onnx(tmp_path, settings):
     config = GameConfig(3, 4, 1500.0)

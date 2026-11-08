@@ -63,6 +63,7 @@ from .layers import rotary_tables
 from .network import ORDERS, Encoder, Trunk
 from .state_code import (
     MEANS,
+    POSITION_INPUTS,
     POSITION_LEVELS,
     POSITION_PERIOD,
     SPREAD_INPUTS,
@@ -143,6 +144,14 @@ class YemongConfig:
     covariance's marginal sigmas, and the position and velocity ellipses (log sigma_major,
     log sigma_minor, the doubled angle times the anisotropy; `state_code.ellipse_code`) at
     the end of the ship token.
+    position_inputs (`state_code.POSITION_INPUTS`, "fourier" needs next_state "delta"): what
+    a ship row reads for its position and heading. "colour", the state code's runs.
+    "fourier", (cos, sin) of the phase at each level of the colour code's periods (per world
+    axis P / 3^l for l = 0..8, the finest 4 m; the heading 2 pi / 4^l for l = 0..3), each
+    pair times the level's attenuation by the sigma as in the colour code: 36 and 8 columns
+    in place of 81 and 16 (`ShipStateCode.inputs`). Only the encoder's input changes; the
+    tokens' code, the global, field and zone tokens and every head stay the colour codes.
+    The absolute head predicts the colour code from the colour inputs, so it is excluded.
     delta_split (with next_state "delta"): split the next-state work (arms 3-4). The
     next-state head becomes the physics head, trained on allies and visible enemies only
     (still run on hidden rows: their forecast reads it). A second head on the same tokens,
@@ -186,6 +195,7 @@ class YemongConfig:
     next_state: str = "absolute"  # the next-state head's target: "absolute" or "delta"
     delta_baseline: str = "persistence"  # the delta head's baseline
     spread_inputs: str = "scalar"  # how a row reads its spread: "scalar" or "ellipse"
+    position_inputs: str = "colour"  # a row's position and heading: "colour" or "fourier"
     acceleration_inputs: bool = False  # each ship row reads its acceleration over the last tick
     delta_split: bool = False  # physics head on seen rows, an error head for hidden rows
     extrapolation_decay: float = 0.5  # s: a hidden row's held rates decay with this constant
@@ -204,6 +214,12 @@ class YemongConfig:
             raise ValueError("delta_split needs next_state 'delta'")
         if self.spread_inputs not in SPREAD_INPUTS:
             raise ValueError(f"spread_inputs {self.spread_inputs!r} is not one of {SPREAD_INPUTS}")
+        if self.position_inputs not in POSITION_INPUTS:
+            raise ValueError(
+                f"position_inputs {self.position_inputs!r} is not one of {POSITION_INPUTS}"
+            )
+        if self.position_inputs == "fourier" and self.next_state != "delta":
+            raise ValueError("position_inputs 'fourier' needs next_state 'delta'")
         if self.spread_fit not in SPREAD_FITS:
             raise ValueError(f"spread_fit {self.spread_fit!r} is not one of {SPREAD_FITS}")
         if self.order not in ORDERS:
@@ -418,6 +434,7 @@ class Yemong(nn.Module):
             config.spread_fit,
             covariance=delta,
             spread_inputs=config.spread_inputs,
+            position_inputs=config.position_inputs,
         )
         self.delta_code = None
         if delta:
@@ -433,7 +450,7 @@ class Yemong(nn.Module):
         self.bullet_moves = build.bullet_moves
         self.encoder = Encoder(
             ship_inputs(
-                self.state_code.width,
+                self.state_code.input_width,
                 self.ship_types,
                 config.acceleration_inputs,
                 self.state_code.ellipse_width,
@@ -501,8 +518,8 @@ class Yemong(nn.Module):
         starts as "nothing changes" (absolute) or at the measured marginal (delta); the
         density head at an even spread of the ships."""
         with torch.no_grad():
-            self.encoder.ship.first.weight[:, : self.state_code.width].normal_(
-                0.0, self.state_code.groups**-0.5
+            self.encoder.ship.first.weight[:, : self.state_code.input_width].normal_(
+                0.0, self.state_code.input_groups**-0.5
             )
             ellipse = self.state_code.ellipse_width
             end = self.encoder.ship.first.weight.shape[1] - ellipse

@@ -90,6 +90,8 @@ mode's zones are key and value memory only.
   one-hots, its flags, the time since it was seen, its respawn wait as Fourier features,
   its pending action, the refractive-index gradient, and the local presence of allies and
   enemies around it; with `YemongConfig.acceleration_inputs`, its acceleration inputs last.
+  With `YemongConfig.position_inputs` "fourier" the position and heading enter as Fourier
+  features in place of their code runs (see below).
 - **The global token** reads the map centre's code, episode progress, the arena radius,
   the fog flag and the mode's block.
 - **A field token** reads its centre's code, radius, band width and level; **a zone token**
@@ -470,6 +472,22 @@ level, so the first layer sees which levels to trust.
   code's period; velocity: knee 0.1 m/s, bound the velocity code's reach), the angle
   features over [-1, 1]. 168 inputs, their first-projection columns initialised as the
   state code's. Without a covariance (an absolute build) the position ellipse is round.
+
+### Position inputs: colour or Fourier
+
+`YemongConfig.position_inputs` chooses what a ship row reads for its position and heading
+(`ShipStateCode.inputs`). **`"colour"`** (the default) reads the state code's runs.
+**`"fourier"`** reads `a_l (cos, sin)` of the phase at each level of the same periods
+(`bnb.models.yemong.codes.fourier_encode`): per world axis `P / 3^l` for `l = 0..8` (the
+finest 4 m), the heading `2 pi / 4^l` for `l = 0..3`. a_l is the colour code's
+attenuation by the row's sigma, so a blurred level fades toward 0 as the colour level fades
+toward uniform. The phase reduces the value modulo each level's period first, as the colour
+code does, so float32 keeps the 4 m level. 36 position and 8 heading columns replace 81
+and 16 (the ship token 500 wide for 553 on arm 4d). Only the encoder's input changes: the
+tokens' `code`, the global, field and zone tokens, every head and every target stay the
+colour codes. The absolute head predicts the colour code from the colour inputs, so
+"fourier" needs `next_state="delta"`. Select it with `--set yemong.position_inputs=fourier`
+on arm 4d's line.
 
 ### The acceleration inputs
 

@@ -83,10 +83,11 @@ ZONE_INPUTS = POSITION_CODE + 1 + ZONE_ROLES + 4
 def ship_inputs(
     code_width: int, ship_types: int, accelerations: bool = False, ellipse_width: int = 0
 ) -> int:
-    """The ship token's width: the code, team and type one-hots, the flags, time since seen,
-    respawn features (1 + 2 RESPAWN_HARMONICS), the pending action, the gradient and presence
-    (2 each), then with accelerations the acceleration inputs (ACCELERATION_INPUTS), then
-    the ellipse inputs (`ShipStateCode.ellipse_code`, ellipse_width)."""
+    """The ship token's width: the state columns (code_width, `ShipStateCode.input_width`),
+    team and type one-hots, the flags, time since seen, respawn features
+    (1 + 2 RESPAWN_HARMONICS), the pending action, the gradient and presence (2 each), then
+    with accelerations the acceleration inputs (ACCELERATION_INPUTS), then the ellipse inputs
+    (`ShipStateCode.ellipse_code`, ellipse_width)."""
     respawn = 1 + 2 * RESPAWN_HARMONICS
     width = code_width + TEAMS + ship_types + len(SHIP_FLAGS) + 1 + respawn + NUM_JOINT + 2 + 2
     return width + (ACCELERATION_INPUTS if accelerations else 0) + ellipse_width
@@ -249,7 +250,8 @@ class Tokens:
     ship (..., N, ship_inputs), global_token (..., 1, GLOBAL_INPUTS), field (..., M,
     FIELD_INPUTS), zone (..., Z, ZONE_INPUTS); zone_present (..., Z) bool, the zone is
     the mode's (an absent one becomes the learned absent token); code (..., N, state_code.width) the
-    belief's state code (the next-state head's baseline); ship_type (..., N) int64;
+    belief's state code (the next-state head's baseline), the colour code whatever the ship
+    token reads (`ShipStateCode.inputs`); ship_type (..., N) int64;
     query_position (..., N + 1, 2) and query_heading (..., N + 1): the ships' belief and the
     map centre (no heading); memory_position (..., M + Z, 2), the fields' and zones' centres,
     an absent zone at the map centre (the global token's rotation). Positions are shifted.
@@ -307,7 +309,9 @@ def compose(
     codes and features, the global token, the fields and the zones, every position shifted by the
     replay's offset. presence_radius in m, tick_length in s. previous: the enemy rows' Motion
     at the tick before (`preceding` in a segment), given with the acceleration inputs or the
-    extrapolation baseline (its rates, `Tokens.accelerations`); with read_accelerations the
+    extrapolation baseline (its rates, `Tokens.accelerations`). The ship token opens with
+    `ShipStateCode.inputs` of the code (Fourier position and heading with
+    `state_code.position_inputs` "fourier"); with read_accelerations the
     acceleration inputs end the ship token, before the ellipse inputs
     (`state_code.spread_inputs` "ellipse"), and without it the token does not carry them."""
     ships, dtype = obs.ships, obs.ships.dtype
@@ -341,7 +345,7 @@ def compose(
         change = accelerations(ships, believed_means, now, previous, tick_length)
     ship = torch.cat(
         [
-            code,
+            state_code.inputs(code, means, spreads),
             (team[..., None] == torch.arange(TEAMS, device=ships.device)).to(dtype),
             (ship_type[..., None] == torch.arange(ship_types, device=ships.device)).to(dtype),
             torch.stack([column[name] for name in SHIP_FLAGS], -1),
