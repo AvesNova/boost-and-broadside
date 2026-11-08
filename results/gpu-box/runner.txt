@@ -45,3 +45,5 @@
 22:41 done 2026-11-09-bc-deadreckon-split-hiddenphysics
 22:42 round4 training done
 22:42 start 2026-11-09-bc-absolute-seed1
+23:11 laptop: persist-split-laptop uploaded (hub 4965d344, budget, 08:09 KST); laptop GPU free
+23:23 done 2026-11-09-bc-absolute-seed1
