@@ -43,3 +43,5 @@
 21:33 done 2026-11-09-bc-deadreckon-split-fourier
 21:34 start 2026-11-09-bc-deadreckon-split-hiddenphysics
 22:41 done 2026-11-09-bc-deadreckon-split-hiddenphysics
+22:42 round4 training done
+22:42 start 2026-11-09-bc-absolute-seed1

@@ -1,0 +1,5 @@
+run 2026-11-09-bc-absolute-seed1 in /workspace/boost-and-broadside/runs/2026-11-09-bc-absolute-seed1
+memory probe: allocated 16.48 GB, reserved 17.63 GB, budget 23.06 GB of 23.56 GB
+update    1  steps   1,048,576  rollout  47568 ms  learn  99754 ms  bc kl 2.9623  teacher 0.772  student 3.738  scores: learner 0.500 scripted 0.408
+update    2  steps   2,097,152  rollout   8184 ms  learn  72629 ms  bc kl 1.4235  teacher 0.763  student 2.903  scores: learner 0.500 scripted 0.258
+update    3  steps   3,145,728  rollout   8226 ms  learn  72624 ms  bc kl 0.7258  teacher 0.757  student 1.551  scores: learner 0.500 scripted 0.000
