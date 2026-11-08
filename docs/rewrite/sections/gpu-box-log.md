@@ -227,3 +227,16 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   baseline from its held, decaying last-sighting rates + the physics head's change (the head
   runs on hidden rows though trained on seen rows only) + the error head's capped, rate-limited
   step toward its median; its spread is the error head's. Visible rows: baseline + physics.)
+- **02:12 KST Tournament 1 final** (`runs/ratings/round2/`, 2048 games per mode, scripted
+  1000): frontline deadreckon-split 789 +- 16, absolute 780 +- 16, persist-split 739 +- 18,
+  persist-onehead 682 +- 18; deathmatch deadreckon-split 739 +- 17, persist-onehead 711 +- 17,
+  persist-split 704 +- 18, absolute 693 +- 18. Means: 764, 737, 722, 697. deadreckon-split over
+  absolute: +9 frontline, +46 deathmatch, +27 mean: under the bar (+50 / +40), co-champions as
+  the author decided. Brier check started.
+- **02:15 KST Learnable tau (the author asked):** `extrapolation_decay` can be learned, but not
+  through the existing losses (in training the hidden beliefs come from the recorded rollout, so
+  its only gradient is through the error head's target, which rewards easy targets, not small
+  errors): a separate loss on the forecast error itself, networks stop-gradded, possibly per
+  quantity and ship type. The loss-weight tau (`physics_hidden_decay`) cannot be learned by
+  gradient: the loss is lowest with hidden rows weighed at zero (tau -> 0); it is a
+  hyperparameter. Suggested: fastdecay first, then an offline per-quantity fit on recorded play.
