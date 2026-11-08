@@ -150,3 +150,27 @@ the launcher, timing only), so updates 3 and 5 are plain and 2 and 4 carry the c
 The branch sits inside the base's drift (244 to 251 s): no measurable steady cost on plain
 updates. The cadence's two-minibatch halves cost +2 s on a cadence update, every 10th in a
 run: about 0.2 s per update on average (0.08%). The eager bootstrap is 0.1 s per update.
+
+## Cold first update re-measured (2026-11-09, performance profile, 80 W)
+
+Fully cold (fresh `TORCHINDUCTOR_CACHE_DIR` and `TRITON_CACHE_DIR`), untraced, 1 BC update
+on arm 2d's config, profile checked at each start; base `v2` (60c80a41) then the branch
+(3fb6dd6c). These replace the 2026-11-08 cold numbers (wrong profile, traced, and that
+"after" run still had the reverted cond), which were about twice as long.
+
+| | base | branch | change |
+|---|---|---|---|
+| first update | 1,117 s | **881 s** | -236 s (-21%) |
+| rollout / learner / of which cadence | 432 / 685 / 197 | 329 / 553 / 91 | |
+| process wall | 1,161 s | 925 s | |
+| compile, all graphs | 600 s | **399 s** | -34% |
+| Dynamo tracing | 55 | 44 | |
+| lowering / fusion / kernel codegen | 48 / 98 / 180 | 35 / 69 / 130 | |
+| waiting on Triton workers | 170 | 87 | |
+| runtime autotune benchmarks | 193 | 154 | |
+| graphs compiled | 16 | 12 | |
+
+Against a steady update of about 245 s, the cold overhead went from about 870 s to about
+640 s. What remains: compile 399 s and the autotune benchmarks 154 s. The `heads` recompile
+of `_loss` is still there (the cond fix was reverted); fixing it in a cacheable way is the
+next item, then fewer autotune candidates.
