@@ -974,7 +974,19 @@ class Learner:
         """The optimizer's step, kept only where `finite` (a device flag) holds: a step with
         a non-finite gradient leaves the parameters and the optimizer's state as they were
         (learner spec 4d: skipped and counted), with no host synchronisation. A state the
-        step creates (the first step) is zero before it, as Adam starts it."""
+        step creates (the first step) is zero before it, as Adam starts it.
+
+        The fused (CUDA) Adam skips by itself: given `found_inf` it leaves the parameters
+        and the moments untouched and takes its step count back, the same result as the
+        copy-back below without its clone and select per tensor (about 1,400 kernels a
+        step at Yemong's size)."""
+        if all(group.get("fused") for group in self.optimizer.param_groups):
+            self.optimizer.found_inf = (~finite).float()
+            try:
+                self.optimizer.step()
+            finally:
+                del self.optimizer.found_inf
+            return
         tensors = [p for group in self.optimizer.param_groups for p in group["params"]]
         tensors += [
             value

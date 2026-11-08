@@ -1117,6 +1117,14 @@ class Yemong(nn.Module):
 
     def shot_trajectory(self, latents: torch.Tensor, ages: torch.Tensor) -> torch.Tensor:
         """Trajectory code logits (..., ages, trajectory_width) of latents (..., D) at bullet
-        ages (in moves) broadcasting against (..., ages)."""
+        ages (in moves) broadcasting against (..., ages).
+
+        Its products run under the model's matmul autocast like every other head's (bf16
+        when `bfloat16_matmuls`): the query is the head's whole cost, a 128 x 128 and a
+        128 x outputs product at every ship, tick and bullet age (737,280 rows a 32-view
+        minibatch), about an eighth of a BC minibatch's device time in float32. The logits
+        come back in the model's dtype, so the loss over them is float32 as before."""
         features = shots.time_features(ages, float(self.bullet_moves), SHOT_HARMONICS)
-        return self.shot_trajectory_head.query(latents, features)
+        with self._matmuls(latents.device):
+            logits = self.shot_trajectory_head.query(latents, features)
+        return logits.to(self.bins.dtype)
