@@ -26,12 +26,17 @@
  ],
  "wandb_id": null,
  "parent": null,
- "checkpoint_every": null,
+ "checkpoint_every": 18874368,
  "update_policies": false,
  "newest_checkpoint": null,
  "final_checkpoint": null,
  "checkpoint_ordinals": {},
- "probe": null,
+ "probe": {
+  "allocated": 18176923648,
+  "reserved": 19306381312,
+  "total": 25296044032,
+  "budget": 24759173120
+ },
  "segments": [
   {
    "commit": "60c80a41c5b5029a1ea3c264ebeab5042cd2b1fd",
@@ -64,5 +69,7 @@
    ]
   }
  ],
- "stop_request": null
+ "stop_request": null,
+ "hours": 0.17610809059891228,
+ "skipped_steps": 0
 }

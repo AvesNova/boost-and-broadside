@@ -1,0 +1,72 @@
+run 2026-11-08-bc-arm4d-extrapolation-3090 in /workspace/boost-and-broadside/runs/2026-11-08-bc-arm4d-extrapolation-3090
+Traceback (most recent call last):
+  File "/workspace/boost-and-broadside/.venv/bin/bnb", line 10, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/workspace/boost-and-broadside/src/bnb/cli.py", line 403, in main
+    train(tyro.cli(Train, args=arguments, prog="bnb train"), given(arguments))
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/cli.py", line 587, in train
+    _train(options, given_options, stop)
+    ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/cli.py", line 769, in _train
+    status = session.train(
+        run, trainer, log_cloning if cloned else log, recorder=recorder, stop=stop
+    )
+  File "/workspace/boost-and-broadside/src/bnb/runs/session.py", line 235, in train
+    row, reason = cloning.update(trainer) if cloned else (trainer.update(), None)
+                  ~~~~~~~~~~~~~~^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/runtime/cloning.py", line 99, in update
+    row = trainer.update()
+  File "/workspace/boost-and-broadside/src/bnb/runtime/train.py", line 440, in update
+    collector.set(self.ppo.update(store, bootstrap, self.steps_per_update, cadence=cadence))
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/learn/ppo.py", line 1058, in update
+    terms, per_level, statistic, diagnostic, head_part = self.gradient(
+                                                         ~~~~~~~~~~~~~^
+        segments, prepared, chosen, heads=measure_heads and epoch == 0
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/workspace/boost-and-broadside/src/bnb/learn/ppo.py", line 960, in gradient
+    label = self.labels(trajectory, shot_labels)
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/utils/_contextlib.py", line 158, in no_grad
+    return func(*args, **kwargs)
+  File "/workspace/boost-and-broadside/src/bnb/learn/ppo.py", line 436, in labels
+    return self.codes(trajectory, shot_labels["shots"], shot_labels["mask"])
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/eval_frame.py", line 1276, in compile_wrapper
+    raise e.with_traceback(
+    ^^^^^^^^^^^^^^^^^^^^^^^
+        None
+        ^^^^
+    ) from e.__cause__  # User compiler error
+    ^^^^^^^^^^^^^^^^^^
+torch._dynamo.exc.Unsupported: dataclass fields failure
+  Explanation: Dataclass fields handling fails for UserDefinedClassVariable(<class 'bnb.models.yemong.delta.Rates'>). Expected it to be a user-defined object.
+
+
+  Developer debug context: obj: UserDefinedClassVariable(<class 'bnb.models.yemong.delta.Rates'>); variable type: <class 'torch._dynamo.variables.user_defined.UserDefinedClassVariable'>
+
+ For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0180.html
+
+from user code:
+   File "/workspace/boost-and-broadside/src/bnb/learn/ppo.py", line 467, in _codes
+    **labels.next_state_targets(model, trajectory, rows),
+      ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/learn/labels.py", line 63, in next_state_targets
+    rates(model, trajectory),
+    ~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/learn/labels.py", line 36, in rates
+    return method(trajectory.initial_carry, trajectory.obs, trajectory.replay, reset)
+           ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/models/yemong/model.py", line 777, in segment_rates
+    for field in dataclasses.fields(Rates)
+                 ~~~~~~~~~~~~~~~~~~^^^^^^^
+
+Set TORCHDYNAMO_VERBOSE=1 for the internal stack trace (please do this especially if you're reporting a bug to PyTorch). For even more developer context, set TORCH_LOGS="+dynamo"
+
+SIGTERM: stopping after this update (again to stop now)
+run 2026-11-08-bc-arm4d-extrapolation-3090 in /workspace/boost-and-broadside/runs/2026-11-08-bc-arm4d-extrapolation-3090
+stopped by interrupted; the policy is /workspace/boost-and-broadside/runs/2026-11-08-bc-arm4d-extrapolation-3090/policy (the exponential_average)
+run 2026-11-08-bc-arm4d-extrapolation-3090 stopped at step 0
