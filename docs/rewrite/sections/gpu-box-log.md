@@ -395,3 +395,8 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   0.52 vs 0.28). Then `round4b.sh` waits for both laptop runs on the hub and downloads their
   policy files; `tournament3.sh` then rates every finished arm (seven, scripted 1000, frontline
   and deathmatch, no ladder; a missing arm is skipped and named).
+- **05:24 KST deadreckon-split on the correct base done** (budget, 30.4M, 68 min): KL **0.432**,
+  agreement **0.697** (absolute 0.503 / 0.664: clearly better imitation; on the wrong base the two
+  were level, 0.470 / 0.475); outcome Brier 20-30M <5 s 0.343, 5-15 s 0.324, 15-30 s 0.293, 30-60
+  s 0.239, 60-120 s 0.157, >120 s 0.006 (absolute 0.437 ... 0.085): the delta arm lowers the
+  outcome Brier, as on the laptop in round 2. The tournament judges play. fourier started.
