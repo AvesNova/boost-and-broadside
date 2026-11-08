@@ -284,3 +284,14 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   and the detached sync loop pushes `perf/gpu-box` every 20 min (its pushes need no approval:
   checked, origin = local at d4ed65ac). The hidden-physics agent was told to commit only; I
   merge its branch locally.
+- **03:10 KST Outcome Brier: a regression in the code, not the box or my changes.** The
+  laptop's C-fixed (`2026-11-07-bc-arm-C-fixed`, commit 3b72a914, 0-60.8M) at 5-15 s: 6.3-10.5M
+  +0.080 +0.104 +0.180 +0.112 +0.192; 21-30.4M 0.468 rising to 0.560. This box at 6.3-10.5M:
+  -0.12 to -0.34 on current v2 (clean) and on `perf/gpu-box` alike; 0.037 at 20-30M. And on the
+  laptop the runs on newer code were already lower (arm 1 0.35, arms 2 / 2b 0.15 at 20-30M),
+  which round 2 read as the arms' effect. So a change in the 98 commits (12 first-parent merges)
+  from 3b72a914 to v2 hurts every config's outcome head. Plan: reproduce at 3b72a914 here
+  (`runs/bisect.sh COMMIT`: absolute to 10.5M from a detached worktree, read Brier at updates
+  8-10), then bisect the merges (~4 steps of ~20 min). Suspects: 1b7218ae (run control: BC
+  snapshots, the uniform average from the warm-up), 8ee3178c (accelerations in the observation),
+  5cff3794 (delta heads). Queued after fastdecay, before fourier (RL depends on the outcome head).
