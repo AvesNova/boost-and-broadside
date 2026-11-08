@@ -174,3 +174,15 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   1.7x). KL per sample behind early (update 2: 2.14 vs 1.39; update 3: 0.81 vs 0.73), as
   expected with a quarter of the optimizer steps per sample. Probe 20.3 GB allocated, 21.8
   reserved of 23.06 (tight, fits). ETA ~01:10 KST, then tournament 1.
+- **01:12 KST C-fixed-LB done** (budget, 30.4M, 29 min): KL 0.575, agreement 0.640 (C-fixed
+  0.475 / 0.678). **At equal wall-clock it is a wash:** C-fixed after LB's 0.48 h (14.7M) had
+  KL 0.576, agreement 0.645. Twice the speed bought half the learning per sample: the large
+  batch (as set: lr unchanged) gives BC no gain. The tournament checks play.
+- **01:12-01:28 KST Tournament 1, first attempt (the runner's):** with the default stationary
+  ladder the field was 14 players (8 rungs), 91 pairs: batch 1 = 1024 games in 915 s (with
+  compile), the largest standard error 276 (target 25), ratings in mirrored pairs (+57/-57):
+  projected 21:02 UTC for frontline alone. Stopped; restarted **without the ladder** (6 players,
+  15 pairs; the arms play the scripted agent directly, which anchors 1000), `runs/tournament1.sh`
+  (copy in `gpu-box/`). The record of the ladder attempt is in `runs/failed/`. Slips of mine:
+  another self-matching `pgrep` (killed my shell, nothing else), and a path given where
+  `bnb ratings` takes a run name (failed at once, relaunched).
