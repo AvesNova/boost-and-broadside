@@ -189,3 +189,4 @@ Entries: time, what, why. Newest last.
   `extrapolation-without-inputs-brief.md`, agent launched. ETAs: 2b tournament ~10:50; 2c
   ~13:05 + tournament ~13:50; 3c ~16:10 + ~16:55; 4c after (~19:15 + ~20:00).
 - **10:00** Extrapolation decoupled from the input switch, merged (v2 272a44ed; verified: ruff, its tests; agent: quick tier 1579, slow dashboards 2, digests of every arm unchanged). Queued arm 4c (job 24, `2026-11-08-bc-arm4c-extrapolation`, worktree `bnb-run-arm4c`) after arm 3c's tournament, and its tournament (job 25: arm 4c, arm 3c, C-fixed 30M).
+- **10:05** Arm 2b finished 30M: KL 0.453 (lowest of any arm at 30M; arm 2 0.493, C-fixed 0.491), agreement 0.687 (best; C-fixed 0.672); outcome Brier 5-15 s 0.15 (= arm 2's 0.15; C-fixed 0.52). So the Brier drop is not the ellipse inputs: it comes with the delta head (or the acceleration inputs, which 2b keeps; arm 2c will tell). Tournament (job 15) next.
