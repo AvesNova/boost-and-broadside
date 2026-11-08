@@ -206,3 +206,4 @@ Entries: time, what, why. Newest last.
   37: 4d, 3d, C-fixed). The split and extrapolation with scalar spreads were untested: added
   them to the error-head segment tests (12 pass; v2 ae729475). ETAs: 2d ~13:05 (2c's first
   update runs out first) + tournament ~13:50; 3d ~16:15 + ~17:00; 4d ~19:20 + ~20:05.
+- **10:48** Arm 2c stopped at 1.05M (renamed `-aborted`); arm 2d (job 32) started 10:48. ETAs: 2d ~13:05, tournament ~13:50; 3d ~16:15 / ~17:00; 4d ~19:20 / ~20:05.
