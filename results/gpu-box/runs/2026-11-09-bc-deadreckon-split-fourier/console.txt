@@ -22,3 +22,12 @@ update   19  steps  19,922,944  rollout   9959 ms  learn  81919 ms  bc kl 0.5258
 update   20  steps  20,971,520  rollout   9959 ms  learn  82750 ms  bc kl 0.5286  teacher 0.983  student 1.511  scores: learner 0.500 scripted 0.000
 update   21  steps  22,020,096  rollout   9956 ms  learn  81885 ms  bc kl 0.5260  teacher 0.990  student 1.513  scores: learner 0.500 scripted 0.015
 update   22  steps  23,068,672  rollout   9930 ms  learn  81852 ms  bc kl 0.5274  teacher 0.992  student 1.519  scores: learner 0.500 scripted 0.057  window exponential_average 0.000 (+- 0.000)
+update   23  steps  24,117,248  rollout   9980 ms  learn  81955 ms  bc kl 0.5327  teacher 0.995  student 1.524  scores: learner 0.500 scripted 0.071  window exponential_average 0.000 (+- 0.000)
+update   24  steps  25,165,824  rollout   9957 ms  learn  82014 ms  bc kl 0.5092  teacher 0.996  student 1.504  scores: learner 0.500 scripted 0.103  window exponential_average 0.000 (+- 0.000)
+update   25  steps  26,214,400  rollout   9961 ms  learn  81906 ms  bc kl 0.4939  teacher 0.990  student 1.481  scores: learner 0.500 scripted 0.085  window exponential_average 0.000 (+- 0.000)
+update   26  steps  27,262,976  rollout   9958 ms  learn  82015 ms  bc kl 0.5168  teacher 0.996  student 1.511  scores: learner 0.500 scripted 0.107  window exponential_average 0.000 (+- 0.000)
+update   27  steps  28,311,552  rollout   9959 ms  learn  81965 ms  bc kl 0.4960  teacher 0.995  student 1.489  scores: learner 0.500 scripted 0.071  window exponential_average 0.000 (+- 0.000)
+update   28  steps  29,360,128  rollout   9962 ms  learn  81883 ms  bc kl 0.4998  teacher 1.003  student 1.500  scores: learner 0.500 scripted 0.087  window exponential_average 0.000 (+- 0.000)
+update   29  steps  30,408,704  rollout   9962 ms  learn  81851 ms  bc kl 0.4902  teacher 1.000  student 1.489  scores: learner 0.500 scripted 0.110  window exponential_average 0.000 (+- 0.000)
+stopped by budget; the policy is /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-fourier/policy (the exponential_average)
+run 2026-11-09-bc-deadreckon-split-fourier finished at step 30408704
