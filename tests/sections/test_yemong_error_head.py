@@ -448,9 +448,7 @@ ARMS = dict(
     arm4c=dict(delta_baseline="extrapolation", acceleration_inputs=False),
     # the split and extrapolation on C-fixed's inputs with the scalar spreads (arms 3d, 4d)
     arm3d=dict(acceleration_inputs=False, spread_inputs="scalar"),
-    arm4d=dict(
-        delta_baseline="extrapolation", acceleration_inputs=False, spread_inputs="scalar"
-    ),
+    arm4d=dict(delta_baseline="extrapolation", acceleration_inputs=False, spread_inputs="scalar"),
 )
 
 
@@ -656,7 +654,9 @@ def test_an_update_with_the_cadence_reports_both_heads_trunk_shares(segment):
     learner = lc.learner(net, runner)
     prepared = learner.prepare(runner.store, runner.bootstrap())
     views = torch.arange(runner.store.views)
-    series = metrics.read(learner._gradient_decomposition(runner.store, prepared, views))
+    series = metrics.read(
+        learner._gradient_decomposition(runner.store, prepared, list(views.tensor_split(2)))
+    )
     for term in ("next_state", "correction"):
         assert series[f"gradient/norm/trunk/{term}"] > 0
     assert series["gradient/norm/trunk/next_state_enemy_hidden"] == 0  # the physics mask

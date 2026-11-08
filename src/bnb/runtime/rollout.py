@@ -132,10 +132,9 @@ class Rollout:
             if compiled
             else stages
         )
-        learner_step = self.controllers[learner].step
-        self._evaluate = (
-            torch.compile(learner_step, fullgraph=True, dynamic=False) if compiled else learner_step
-        )
+        # The bootstrap's step runs once per update, so it stays eager: compiled, it is a graph
+        # of its own (about 150 s to compile cold, against 0.1 s eager per update).
+        self._evaluate = self.controllers[learner].step
         self.graph: torch.cuda.CUDAGraph | None = None
         self._written: dict = {}  # ring slot or segment buffer -> the copy that reads it
 

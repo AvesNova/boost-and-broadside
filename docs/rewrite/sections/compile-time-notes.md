@@ -65,3 +65,39 @@ CUDA-graph capture and Triton autotuning are negligible here (under 10 s togethe
 | D. Dynamo precompile (`torch.compiler` aot_compile / `load_compiled_function`), keyed by config + source hash | ~120 s on any repeat build (resume, tournaments, reruns); 0 for a new arm | none expected (same graphs); experimental API |
 | E. `nested_compile_region` on the Yemong forward (trace once, reuse) | part of `_act`'s tracing; the lanes run different batch sizes, so less than 3/4 | a region boundary can block fusion; measure |
 | F. cheaper tracing of the code encoders (fewer, larger ops in `codes.py`) | unknown share of 120 s | the kernels change; measure |
+
+## Cold compile (the author's target, 2026-11-08 evening)
+
+The aim is the cold compile: the wait after a new parameter, model change or bug fix, when
+the graphs change and inductor compiles them again. A warm cache does not help there.
+
+Arm 2d's config, fresh `TORCHINDUCTOR_CACHE_DIR` and `TRITON_CACHE_DIR`, 1 update, traced:
+**first update 2,523 s** (rollout 1,062, learner 1,462 of which cadence 500), against
+about 240 s steady. Compile 1,730 s, of which Dynamo tracing 162 s; the rest is inductor.
+Peak memory 29 GB (unit cap 30 GB).
+
+| graph | cold s | note |
+|---|---|---|
+| rollout `_act` | 617 | 4 Yemong forwards (learner, 3 lane policies) + scripted teacher; 906 kernels |
+| `_advance` / `_resolve` / `_perceive` | 59 / 82 / 27 | physics |
+| learner `step` (`Rollout._evaluate`, the bootstrap) | 148 | a 5th copy of the Yemong forward, called once per update |
+| shots `tick`, `_codes` | 17, 27 | |
+| `_loss` (forward + backward) | 235 | |
+| `_loss` again (`heads == True` guard) | **140** | recompile |
+| `_terms` (cadence) | 168 | |
+| `_codes`, `_terms` again (cadence halves at 8 views) | **28, 180** | recompile |
+
+Where inductor's time goes (cold, all graphs): `Scheduler.codegen` 638 s (main thread,
+writing kernel source: `LoopBody.__call__` per node, sympy indexing), waiting on the Triton
+workers 414 s, `Scheduler.__init__` (fusion) 269 s, runtime autotune benchmarks 214 s,
+backward compiles 203 s, lowering 138 s. About 5,900 Triton compiles for about 1,850
+kernels (3 configs each). Most of this is single-threaded Python, so neither a GPU nor
+more cores help much; the lever is fewer ops reaching inductor.
+
+Setup also grows cold: 221 s against 47 s warm, mostly the Yemong Triton kernels'
+`triton.autotune`, which compiles each config serially in the main thread on first use.
+
+The graphs are dominated by the code functions: in one Yemong forward, `codes.py` accounts
+for 1,067 of about 1,590 annotated FX lines (the trunk's kernels are small). They are
+called once per feature (12 delta components, 5 scalars, ...), each call 30-60 ops, with
+per-component constants (HL-Gauss matrices, centres, smoothing) rebuilt in every graph.
