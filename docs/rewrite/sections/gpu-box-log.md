@@ -123,3 +123,6 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
 - **12:12 GitHub push works** (the deploy key; `perf/gpu-box` pushed).
 - (Two process-kill slips of mine, harmless: `pgrep -f`/`pkill -f` with a pattern that my own
   command line contained killed my shell; no run was affected. Patterns now `[a]rms`-style.)
+- **12:37 C-fixed done** (`2026-11-08-bc-arm-C-fixed-3090`, budget, 30.4M, 49 min, 81.1 s per
+  update = 12,900 SPS). KL 0.475, agreement 0.678 (laptop C-fixed at 30M: 0.500, 0.672):
+  in line. Snapshots at 10.5M, 21.0M, 30.4M. Arm 2d started.
