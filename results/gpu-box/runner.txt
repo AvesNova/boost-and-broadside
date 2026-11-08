@@ -39,3 +39,4 @@
 19:15 start 2026-11-09-bc-deadreckon-split
 20:24 done 2026-11-09-bc-deadreckon-split
 20:24 start 2026-11-09-bc-deadreckon-split-fourier
+21:08 laptop: fastdecay-laptop uploaded (hub 2828b28d), loads on the box; persist-split-laptop started 21:07 UTC, ETA 08:45 KST

@@ -48,9 +48,11 @@
  "parent": null,
  "checkpoint_every": 20971520,
  "update_policies": false,
- "newest_checkpoint": null,
+ "newest_checkpoint": 20971520,
  "final_checkpoint": null,
- "checkpoint_ordinals": {},
+ "checkpoint_ordinals": {
+  "20971520": 0
+ },
  "probe": {
   "allocated": 18152613376,
   "reserved": 19270729728,
@@ -110,6 +112,6 @@
   }
  ],
  "stop_request": null,
- "hours": 0.47233680542416145,
+ "hours": 0.9069581863773055,
  "skipped_steps": 0
 }
