@@ -271,3 +271,11 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   largest user is Inductor's compile cache (26 GB); kept (wiping it costs ~10 min of compile per
   config, the co-champions' resumes included); `sync.sh` now prunes cache files unused 12 h when
   under 15 GB free, and reports free space every pass.
+- **02:34 KST Brier check done** (`2026-11-09-bc-absolute-v2clean-check`: absolute on unmodified
+  v2 to 10.5M). Mean of updates 6-10, Brier skill <5 ... >120 s: v2 clean -0.125 -0.140 -0.152
+  -0.176 -0.154 -0.074; this box's absolute -0.148 -0.163 -0.173 -0.202 -0.166 -0.074; calibration
+  error 0.143 vs 0.148; KL at 10.5M 0.503 vs 0.525 (likely seed noise: the bf16 shot head left KL
+  unchanged at 4M). **My changes did not break the outcome head.** Still open: the laptop's 0.52
+  at 20-30M against this box's 0.037 (code history since 11-07, or how the laptop's figure was
+  read). Cheapest check, on the laptop: the mean of `outcome/brier_skill/5_15_seconds` over its
+  C-fixed's last 10 rows. Or extend the clean run to 30M here (~35 min). fastdecay started.
