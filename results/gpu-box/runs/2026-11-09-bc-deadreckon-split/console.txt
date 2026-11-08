@@ -28,3 +28,6 @@ update   25  steps  26,214,400  rollout  10013 ms  learn  82385 ms  bc kl 0.4560
 update   26  steps  27,262,976  rollout  10013 ms  learn  82366 ms  bc kl 0.4670  teacher 0.990  student 1.455  scores: learner 0.500 scripted 0.080  window exponential_average 0.000 (+- 0.000)
 update   27  steps  28,311,552  rollout  10034 ms  learn  82433 ms  bc kl 0.4493  teacher 0.995  student 1.442  scores: learner 0.500 scripted 0.171  window exponential_average 0.000 (+- 0.000)
 update   28  steps  29,360,128  rollout  10037 ms  learn  82344 ms  bc kl 0.4599  teacher 0.990  student 1.449  scores: learner 0.500 scripted 0.177  window exponential_average 0.000 (+- 0.000)
+update   29  steps  30,408,704  rollout  10012 ms  learn  82643 ms  bc kl 0.4322  teacher 0.999  student 1.429  scores: learner 0.500 scripted 0.250  window exponential_average 0.000 (+- 0.000)
+stopped by budget; the policy is /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split/policy (the exponential_average)
+run 2026-11-09-bc-deadreckon-split finished at step 30408704

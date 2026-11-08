@@ -37,3 +37,4 @@
 18:34 start 2026-11-09-bc-absolute
 19:15 done 2026-11-09-bc-absolute
 19:15 start 2026-11-09-bc-deadreckon-split
+20:24 done 2026-11-09-bc-deadreckon-split
