@@ -101,3 +101,34 @@ The graphs are dominated by the code functions: in one Yemong forward, `codes.py
 for 1,067 of about 1,590 annotated FX lines (the trunk's kernels are small). They are
 called once per feature (12 delta components, 5 scalars, ...), each call 30-60 ops, with
 per-component constants (HL-Gauss matrices, centres, smoothing) rebuilt in every graph.
+
+## Changes on this branch
+
+| commit | change | cold saving (estimate) | steady cost |
+|---|---|---|---|
+| 7c62a408 | `Rollout._evaluate` (the bootstrap, once per update) eager | ~148 s (its graph) | 0.1 s per update (102 ms per call, measured) |
+| 7c62a408 | the heads diagnostic by `torch.cond` on a host bool: one `_loss` graph, not two | ~140 s | none (no device sync; checked with `set_sync_debug_mode("error")`) |
+| 7c62a408 | the cadence's gradient decomposition over the first two minibatches, one half each | ~208 s (`_codes` and `_terms` at 8 views) | none; **its series now cover twice the views** (a diagnostic definition change, for the author) |
+| 3b4b4b83 | `StateCode.encode`'s five scalars in one `codes.scalar_encode_many` call | encode 160 s to 93 s cold alone; it is in every Yemong graph | none within noise (2.03 vs 2.09 ms GPU per call) |
+
+All bit for bit where goldens exist: the arm goldens, the C-fixed and v1 spread-fit
+digests pass unchanged; a new test checks `scalar_encode_many` against the per-feature
+encode in float32 and float64.
+
+### Tried and not kept
+
+- **A batched delta decode** (12 `symlog_decode` calls to 3, one per padded range; the
+  medians from the same batches; constants as exact buffers). Ops 856 to 313, cold
+  compile alone 62 s to 26 s, bit for bit. But GPU time per call rose from 0.94 ms to
+  1.2-1.4 ms (the 8-component batch's kernel is about 45% slower per component than the
+  separate kernels; precomputing centres and smoothing did not help). Estimated +0.75% on
+  an update, so not kept. Each component's decode as its own fused kernel is what
+  inductor does best here.
+- **Batching the scalars with per-feature tensor constants** (low and spacing as buffers):
+  inductor split each fused persistent reduction into several kernels (+25% GPU time).
+  Keeping the coordinates in per-feature Python-float arithmetic and batching only the
+  constant-free core kept the fusion.
+
+Lesson: fewer ops cut compile time roughly in proportion, but batching changes inductor's
+fusion, so every batched rewrite needs its kernel time measured
+(`torch.profiler`, the compiled function warm, against the old tree).
