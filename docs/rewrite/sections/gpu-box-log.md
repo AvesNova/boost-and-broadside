@@ -411,3 +411,8 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   256 minibatches, stop flags). KL 0.492, agreement 0.663 (box deadreckon-split 0.432 / 0.697);
   its Brier 5-15 s, last six logs: 0.240 0.267 0.263 0.265 0.337 0.413. persist-split-laptop
   started 06:07, ETA 08:45 KST (worst 09:30).
+- **06:33 KST fourier done** (budget, 30.4M, 68 min): KL 0.490, agreement 0.667; Brier 20-30M
+  0.399 0.390 0.374 0.330 0.230 0.053 (<5 s ... >120 s). Between its base (deadreckon-split
+  0.432 / 0.697, Brier 5-15 s 0.324) and absolute (0.503 / 0.664, 0.428). deadreckon-split's low
+  KL is the outlier (every other arm 0.49-0.50): possibly its seed; absolute-seed1 will show the
+  spread. hiddenphysics next.
