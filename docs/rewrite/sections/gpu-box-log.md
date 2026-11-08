@@ -355,3 +355,7 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   temporal_first by default; the one conflict (`test_yemong_error_head.py`, both branches had
   formatted the same line) kept the box's version, which has both. A bare BC config now resolves
   to [.., 1.0] / [0.99, .., 1.0] / temporal_first; the box's explicit flags are now redundant.
+- **04:00 KST Laptop arm 1 started** (`2026-11-09-bc-deadreckon-split-fastdecay-laptop`, 18:31
+  UTC, perf/gpu-box 7e904347; its resolved config checked by the laptop session: the algorithm
+  settings equal the box's; memory settings 160-row micro-batches and the host store). ETAs: arm 1
+  05:45, persist-split-laptop 08:00 KST. Box's four arms end about the same time: tournament ~08:00-08:30.
