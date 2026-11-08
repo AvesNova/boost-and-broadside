@@ -240,3 +240,34 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   quantity and ship type. The loss-weight tau (`physics_hidden_decay`) cannot be learned by
   gradient: the loss is lowest with hidden rows weighed at zero (tau -> 0); it is a
   hyperparameter. Suggested: fastdecay first, then an offline per-quantity fit on recorded play.
+- **02:20 KST Everything off the box, continuously (the author: make sure all data is saved).**
+  `gpu-box/sync.sh`: git gets each run's records under `results/gpu-box/` (run.json,
+  config.json, metrics.jsonl, console.txt; tournaments; runner log and scripts; `.txt` because
+  the repo ignores `*.log`), committed by path only and pushed; the Hugging Face Hub gets every
+  run directory whole (policies, checkpoints) in the public model repo
+  https://huggingface.co/julianzia/boost-and-broadside-runs (the author allowed public). The
+  first pass: 3.88 GB, 253 files on the hub; git 9c960148. A loop runs it every 20 min
+  (`runs/sync.nohup`). `huggingface_hub` installed in the image's `/venv/main`, not the project's
+  locked venv. Per run ~800 MB: checkpoints 662 MB, policies ~100 MB, records ~2 MB.
+- **02:45 KST Fourier inputs merged** (`feat/fourier-inputs` e51591d9, merge fd33c48f; built by a
+  background agent, verified by me: ruff; the codes and error-head files 112 pass, the one
+  failure the known machine-dependent golden; the arm's line resolves `position_inputs=fourier`;
+  fourier with the absolute head is refused). From its report: `codes.fourier_encode` (per level
+  a_l (cos, sin), the colour code's attenuation, the same per-level remainders);
+  `ShipStateCode.inputs` swaps only the position (2 x 9 x 2) and heading (4 x 2) runs into the
+  ship token; `tokens.code` stays the colour code for its readers (`_next_state_logits`, the
+  absolute head's residual base; `head_statistics` baseline); state columns 490 -> 437, the arm's
+  ship token 553 -> 500; its own choice: the first layer's init counts each (cos, sin) pair as
+  one group. The default is bit for bit (it compared the digests of six configs on one thread
+  before and after). It found a third machine-dependent golden here
+  (`test_yemong_spread_fit::test_the_default_v1_fit_steps_bit_for_bit_like_the_pre_fix_tree`)
+  and a load-dependent flake (`test_yemong_order::test_unroll_equals_a_loop_of_steps[D]`, ~1e-5),
+  both on clean code too. Queued after fastdecay (`round3b.sh`).
+- **02:45 KST Disk (the author: 64 GB; prune what is not needed, watch it):** 40 GB used. After
+  checking the hub has every file (by size): deleted the eliminated arms' checkpoints
+  (persist-onehead, persist-split, absolute-bigbatch; their policy files kept for re-rating), the
+  failed run directories (their console logs and the aborted tournaments' records copied to
+  `results/gpu-box/failed/` first), and my scratch speed-test runs: **34 GB used, 31 free**. The
+  largest user is Inductor's compile cache (26 GB); kept (wiping it costs ~10 min of compile per
+  config, the co-champions' resumes included); `sync.sh` now prunes cache files unused 12 h when
+  under 15 GB free, and reports free space every pass.

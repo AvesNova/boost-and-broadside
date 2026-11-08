@@ -59,9 +59,20 @@ print("hub sync ok")
 EOF
 }
 
+disk_guard() {  # the box has 64 GB: below 15 GB free, prune compile-cache files unused 12 h
+  local free_gb
+  free_gb=$(df -BG --output=avail / | tail -1 | tr -dc 0-9)
+  echo "disk: ${free_gb} GB free"
+  if [ "$free_gb" -lt 15 ]; then
+    find /tmp/torchinductor_root -type f -amin +720 -mmin +720 -delete 2>/dev/null
+    find /tmp/torchinductor_root -type d -empty -delete 2>/dev/null
+    echo "disk: pruned the compile cache, now $(df -BG --output=avail / | tail -1 | tr -dc 0-9) GB free"
+  fi
+}
+
 if [ "${1:-}" = "--loop" ]; then
   while true; do
-    echo "== $(date -u +%H:%M) sync"; one_pass; sleep $(( ${2:-20} * 60 ))
+    echo "== $(date -u +%H:%M) sync"; one_pass; disk_guard; sleep $(( ${2:-20} * 60 ))
   done
 else
   one_pass
