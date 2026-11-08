@@ -388,3 +388,10 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
 - **04:20 KST Merged tree verified** (fourier + hidden physics + bc defaults): error-head (seven
   arms incl. arm4d_fourier and arm4dh), BC and codes files: 150 pass, 1 fail (the known
   machine-dependent arms-1-and-2 digest). deadreckon-split started 04:15 on it.
+- **04:30 KST Laptop ETAs revised** (its message: arm 1's first update 2,546 s cold; arm 1 ends
+  ~06:10, arm 2 ~08:45 KST, worst 09:30). The box's four arms end ~07:45, so the gap goes to
+  **absolute at seed 1** (`round4b.sh`, ~41 min): the seed spread on this box with a real field,
+  which the 60M "cannot separate" call needs (the laptop's two C-fixed seeds differed in Brier
+  0.52 vs 0.28). Then `round4b.sh` waits for both laptop runs on the hub and downloads their
+  policy files; `tournament3.sh` then rates every finished arm (seven, scripted 1000, frontline
+  and deathmatch, no ladder; a missing arm is skipped and named).
