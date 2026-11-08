@@ -164,3 +164,9 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   rate keeps a hidden ship turning, as the laptop saw). KL 0.7196 vs 0.7194. No non-finite
   beliefs or skipped steps; 17.0 GB. 92 s per update (3d 85: the per-tick rate loop). ETAs
   (KST): 4d ~00:45, LB ~01:15, tournament ~01:40.
+- **00:43 KST Arm 4d done** (`2026-11-08-bc-arm4d-extrapolation-3090`, budget, 30.4M, 70 min).
+  KL 0.470, agreement 0.682. All four at 30M: C-fixed 0.475/0.678, 2d 0.479/0.681, 3d
+  0.471/0.676, 4d 0.470/0.682 (KL/agreement): level on imitation. Error head, realised /
+  predicted at 0-0.1, 0.5-1, 2-5 s: position 0.063/0.88, 6.5/2.4, 85/48 m (3d: 0.17, 6.5, 72
+  realised); heading 0.021/0.023, 0.26/0.13, 0.46/0.25 rad (3d 0.018, 0.23, 0.43). C-fixed-LB
+  started.
