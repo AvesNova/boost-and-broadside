@@ -46,8 +46,6 @@ P=2026-11-09-bc
 train $P-absolute
 train $P-deadreckon-split "${DR[@]}"
 train $P-deadreckon-split-fourier "${DR[@]}" --set yemong.position_inputs=fourier
-train $P-deadreckon-split-fastdecay "${DR[@]}" --set yemong.extrapolation_decay=0.2
-train $P-persist-split "${PS[@]}"
 # hidden physics: only once its build is merged (the switch must exist in this tree)
 if .venv/bin/bnb train "${COMMON[@]}" "${DR[@]}" --set yemong.physics_hidden_decay=0.5 \
     --print-config > /dev/null 2>&1; then
@@ -55,4 +53,8 @@ if .venv/bin/bnb train "${COMMON[@]}" "${DR[@]}" --set yemong.physics_hidden_dec
 else
   say "hiddenphysics skipped: yemong.physics_hidden_decay not in this tree yet"
 fi
+# The author's laptop may take these two (2026-11-09 03:45 KST plan): skip one whose run the
+# laptop has claimed (a file runs/laptop-<arm> written when it starts).
+[ -f runs/laptop-fastdecay ] || train $P-deadreckon-split-fastdecay "${DR[@]}" --set yemong.extrapolation_decay=0.2
+[ -f runs/laptop-persist-split ] || train $P-persist-split "${PS[@]}"
 say "round4 training done"

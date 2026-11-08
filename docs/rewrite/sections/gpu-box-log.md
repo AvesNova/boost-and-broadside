@@ -335,3 +335,16 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   no ladder), then the best two or three resumed to 60M. ~6.5 h of training. Agent link: the
   laptop session's message reached me; my reply was accepted by the server, delivery not
   confirmed.
+- **03:50 KST Laptop + box split (the author approved; HF token shared with the laptop session
+  for the upload, at his word).** Offered to the laptop: deadreckon-split-fastdecay and
+  persist-split (no new code), on origin/perf/gpu-box with the same algorithm settings (memory
+  settings its own), names `2026-11-09-bc-*-laptop`, each uploaded whole to the hub repo; the
+  box takes absolute, deadreckon-split, -fourier, -hiddenphysics, then one tournament here over
+  all six. If the laptop declines, the box runs all six (round4.sh skips an arm only when
+  `runs/laptop-<arm>` exists, written when the laptop confirms it started).
+- **03:50 KST The 60M rule (the author):** resume every front runner that the tournament cannot
+  separate (two if two are neck and neck, four if four); and where several one-change ideas each
+  beat their base, add their combination (e.g. fourier + fastdecay) to the 60M round. My
+  reading of "cannot separate": within the round-2 bar of the leader (about 50 frontline / 40 on
+  the two modes' mean), or overlapping 2-sigma intervals; "beats its base": above
+  deadreckon-split by more than the noise on the mean.
