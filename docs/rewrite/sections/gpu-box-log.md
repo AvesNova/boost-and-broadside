@@ -130,3 +130,8 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   compile cache warm). KL 0.479, agreement 0.681 (C-fixed 0.475, 0.678): level, as on the
   laptop. Last-row outcome Brier skill 5-15 s 0.024 vs C-fixed's 0.058 (the laptop's direction;
   single rows, not its 10-log means): the tournament judges. Arm 3d started.
+- **13:35 Arm 3d's first updates healthy:** probe 17.2 GB allocated (fits with the store on the
+  GPU), no non-finite beliefs or skipped steps, 85 s per update (2d 80 s: the error head). The
+  error head's predicted spread starts narrow (position 0.11 m vs realised 1.5 m at 0-0.1 s,
+  update 2), the opposite of the laptop's too-wide bug and as the laptop saw after its fix
+  (the head's own early overconfidence). Recheck at 30M.
