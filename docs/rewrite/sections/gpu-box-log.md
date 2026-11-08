@@ -431,3 +431,8 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   which rows enter the physics head's training loss, default off (= the laptop's behaviour), and
   does not touch the forward pass, so the tournament rates its policies like for like. The
   laptop GPU is free.
+- **08:23 KST absolute-seed1 done** (budget, 30.4M): KL 0.520, agreement 0.657 (seed 0: 0.503 /
+  0.664); Brier 20-30M 0.262 0.246 0.222 0.196 0.139 0.012 (seed 0: 0.437 0.428 0.386 0.331 0.238
+  0.085). **Seed spread in outcome Brier ~0.18 at 5-15 s** (the laptop's C-fixed seeds: 0.52 vs
+  0.28): the arms' Brier differences (0.06-0.10) are within it; KL spread ~0.02. Both laptop runs
+  downloaded; tournament 3 started (seven players).
