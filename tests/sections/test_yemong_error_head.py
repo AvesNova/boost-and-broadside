@@ -676,3 +676,20 @@ def test_the_arms_policy_file_round_trips(tmp_path, segment):
     assert torch.equal(a.correction_logits, b.correction_logits)
     assert torch.equal(a.carry.belief.means, b.carry.belief.means)
     assert torch.equal(a.carry.belief.spreads, b.carry.belief.spreads)
+
+
+def test_the_baseline_rates_trace_whole_under_torch_compile(segment):
+    """The learner compiles its labels (`Learner._codes`, fullgraph): the extrapolation
+    baseline's segment rates must trace without a graph break. dataclasses.fields on Rates
+    broke it (arm 4d's first GPU update, 2026-11-08); the eager backend runs dynamo's tracing
+    alone."""
+    net, trajectory = segment
+    eager = labels.rates(net, trajectory)
+    if eager is None:
+        return  # persistence: no rates
+    torch._dynamo.reset()
+    with torch.no_grad():
+        compiled = torch.compile(labels.rates, fullgraph=True, backend="eager")(net, trajectory)
+        eager = labels.rates(net, trajectory)
+    for name in delta.RATE_FIELDS:
+        assert torch.equal(getattr(compiled, name), getattr(eager, name)), name

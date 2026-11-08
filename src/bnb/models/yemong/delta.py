@@ -773,13 +773,12 @@ class Rates:
 
     def rows(self, rows: slice) -> Rates:
         """The rates of the rows `rows` (a slice of the row axis)."""
-        return Rates(
-            **{
-                field.name: _row_slice(getattr(self, field.name), rows, field.name)
-                for field in dataclasses.fields(self)
-            }
-        )
+        return Rates(**{name: _row_slice(getattr(self, name), rows, name) for name in RATE_FIELDS})
 
+
+# the field names of Rates, taken once: torch.compile cannot trace dataclasses.fields (on the
+# class it fails outright, the compiled extrapolation labels hit it)
+RATE_FIELDS = tuple(field.name for field in dataclasses.fields(Rates))
 
 # the fields of Rates with a trailing feature axis (the rest end at the row axis)
 _FEATURED = ("acceleration", "change", "gradient")

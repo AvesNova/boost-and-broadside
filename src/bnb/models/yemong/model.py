@@ -30,6 +30,7 @@ from .codes import SPREAD_FITS
 from .correction import CorrectionCode
 from .delta import (
     DELTA_BASELINES,
+    RATE_FIELDS,
     DeltaCode,
     Rates,
     StateDynamics,
@@ -772,10 +773,7 @@ class Yemong(nn.Module):
             )
             out.append(rates)
         return Rates(
-            **{
-                field.name: torch.stack([getattr(rates, field.name) for rates in out])
-                for field in dataclasses.fields(Rates)
-            }
+            **{name: torch.stack([getattr(rates, name) for rates in out]) for name in RATE_FIELDS}
         )
 
     def _matmuls(self, device: torch.device):
