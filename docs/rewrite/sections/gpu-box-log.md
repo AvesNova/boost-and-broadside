@@ -425,3 +425,9 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   0.324 0.293 0.239 0.157 0.006): better at every horizon. Hidden errors at 0-0.1 / 0.5-1 / 2-5 s:
   position 0.073 / 6.45 / 73.0 m (base 0.071 / 6.26 / 67.9), heading 0.020 / 0.228 / 0.412 rad
   (base 0.020 / 0.235 / 0.434). absolute-seed1 next.
+- **08:10 KST Laptop arm 2 uploaded** (`2026-11-09-bc-persist-split-laptop`, hub 4965d344,
+  budget at 08:09 KST; Brier 5-15 s, last six logs 0.379 0.338 0.347 0.391 0.388 0.386). The
+  laptop session's caveat (its tree predates `physics_hidden_decay`): the switch only selects
+  which rows enter the physics head's training loss, default off (= the laptop's behaviour), and
+  does not touch the forward pass, so the tournament rates its policies like for like. The
+  laptop GPU is free.
