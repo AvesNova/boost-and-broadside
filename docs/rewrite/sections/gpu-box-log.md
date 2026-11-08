@@ -367,3 +367,17 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   absolute (C-fixed-3090), deadreckon-split (arm4d-3090), fastdecay-3090 (stopped) and the v2
   check, each after confirming every file on the hub by size; their policy files kept. 37 GB
   used, 28 free (the compile cache grows with each new config).
+- **04:05 KST Hidden-physics build merged** (`feat/hidden-physics` eae8916a, merge dfa1d1ff; the
+  one conflict: both branches added an arm to the error-head tests' `ARMS`: kept both). From the
+  agent's report: `yemong.physics_hidden_decay` (None = off; needs `delta_split`, positive);
+  hidden age from `Replay.age` x tick length; weight 1 on seen rows, exp(-age/tau) on hidden
+  ones, 0 for a hidden row at a segment's first tick (no truth at t-1 stored: 20 of 587 rows in
+  one segment). **The target did need changing:** the targets already used the truth at t and
+  t+1, but the extrapolation baseline's rates for a hidden row were the belief's held, decayed
+  rates; now `labels.true_rates` (Yemong.rates on the privileged rows) gives hidden rows the
+  truth's rates; seen rows unchanged. The physics term: sum(weight x CE) / the unchanged
+  next-state count. Trunk-gradient share of the physics term +8% (0.02428 -> 0.02629; per
+  weighted row 3.63e-6 vs 3.67e-6): coefficient kept at 0.0033. Its uncertain calls: the
+  first-tick hidden rows dropped (could use carry.previous); the `next_state/hidden/*`
+  diagnostics measure against the new target with the switch. It had pushed eae8916a before my
+  no-push message reached it. Verifying the merged tree on CPU (error-head, BC, codes files).
