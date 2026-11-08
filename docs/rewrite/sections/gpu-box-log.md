@@ -381,3 +381,7 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   first-tick hidden rows dropped (could use carry.previous); the `next_state/hidden/*`
   diagnostics measure against the new target with the switch. It had pushed eae8916a before my
   no-push message reached it. Verifying the merged tree on CPU (error-head, BC, codes files).
+- **04:15 KST absolute on the correct base done** (`2026-11-09-bc-absolute`, budget, 30.4M,
+  41 min): KL 0.503, agreement 0.664 (laptop C-fixed 0.500 / 0.672); outcome Brier mean 20-30M
+  <5 s 0.437, 5-15 s 0.428, 15-30 s 0.386, 30-60 s 0.331, 60-120 s 0.238, >120 s 0.085 (laptop
+  C-fixed 5-15 s ~0.52; its seed pair read 0.52 vs 0.28). The box reproduces C-fixed.
