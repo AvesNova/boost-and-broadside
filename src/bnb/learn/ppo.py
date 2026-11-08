@@ -490,21 +490,24 @@ class Learner:
         derived: dict,
         denominator: dict,
         scale: torch.Tensor,
-        heads: torch.Tensor | None = None,
+        heads: bool = False,
     ):
         """One micro-batch: (loss, terms (TERMS,), value loss per level (levels,), statistics
         (STATISTICS,), diagnostics (the policy's sums, `statistics.POLICY_SUMS` and the
         entropy histogram, then the critic targets' entropy per level; empty without
-        diagnostics), the heads' sums (`head_statistics.sums`, a dict; empty when `heads` is
-        None, zeros when it holds False)), every sum over its tokens divided by its
-        minibatch-total denominator (the heads' sums are raw totals). heads: a host bool
-        tensor (`_head_flag`), so measuring the heads or not is one compiled graph."""
+        diagnostics), the heads' sums (`head_statistics.sums`, a dict; empty unless `heads`
+        and diagnostics)), every sum over its tokens divided by its minibatch-total
+        denominator (the heads' sums are raw totals)."""
         terms, per_level, statistic, unrolled, shot_parts = self._terms(
             trajectory, label, derived, denominator, scale
         )
         loss = sum(getattr(self.config, term) * terms[term] for term in TERMS)
         head_sums = (
-            {} if heads is None else self._head_sums(heads, unrolled, trajectory, label, shot_parts)
+            head_statistics.sums(
+                self.model, unrolled, trajectory, label, shot_parts, self.shot_runs
+            )
+            if heads
+            else {}
         )
         return (
             loss,
@@ -514,32 +517,6 @@ class Learner:
             self._diagnostics(unrolled, trajectory, derived, denominator),
             head_sums,
         )
-
-    def _head_sums(self, heads: torch.Tensor, unrolled, trajectory, label, shot_parts) -> dict:
-        """`head_statistics.sums` where `heads` (a host bool tensor) holds, else its zeros, as
-        one `torch.cond`: a Python bool would compile the whole loss twice."""
-        leaves, spec = _pytree.tree_flatten((unrolled, trajectory, label, shot_parts))
-        where = [i for i, leaf in enumerate(leaves) if isinstance(leaf, torch.Tensor)]
-
-        def measured(*tensors: torch.Tensor) -> dict:
-            rebuilt = list(leaves)
-            for i, tensor in zip(where, tensors, strict=True):
-                rebuilt[i] = tensor
-            outputs, batch, labelled, parts = _pytree.tree_unflatten(rebuilt, spec)
-            return head_statistics.sums(self.model, outputs, batch, labelled, parts, self.shot_runs)
-
-        def skipped(*tensors: torch.Tensor) -> dict:
-            return {name: torch.zeros_like(value) for name, value in measured(*tensors).items()}
-
-        operands = tuple(leaves[i].detach() for i in where)
-        return torch.cond(heads, measured, skipped, operands)
-
-    def _head_flag(self, heads: bool) -> torch.Tensor | None:
-        """`_loss`'s heads flag: None when the heads are never measured (no diagnostics, or a
-        model without the auxiliary heads), else a host bool tensor (no device sync)."""
-        if not (self.diagnostics and self.auxiliary):
-            return None
-        return torch.tensor(heads)
 
     def _terms(
         self,
@@ -975,7 +952,6 @@ class Learner:
         statistic_sum = torch.zeros(len(self.STATISTICS), device=device)
         diagnostic_sum = None
         head_sum: dict = {}
-        flag = self._head_flag(heads)
         self.optimizer.zero_grad(set_to_none=True)
         for host_views, (trajectory, shot_labels) in zip(
             micro, self.staged(segments, micro), strict=True
@@ -984,15 +960,14 @@ class Learner:
             label = self.labels(trajectory, shot_labels)
             part = {name: value.index_select(1, views) for name, value in derived.items()}
             loss, terms, per_level, statistic, diagnostic, head_part = self.loss(
-                trajectory, label, part, denominator, prepared["scale"], flag
+                trajectory, label, part, denominator, prepared["scale"], heads
             )
             loss.backward()
             terms_sum += terms
             levels_sum += per_level
             statistic_sum += statistic
             diagnostic_sum = diagnostic if diagnostic_sum is None else diagnostic_sum + diagnostic
-            if heads:
-                head_sum = head_statistics.add(head_sum, head_part)
+            head_sum = head_statistics.add(head_sum, head_part)
         return terms_sum, levels_sum, statistic_sum, diagnostic_sum, head_sum
 
     def _step(self, finite: torch.Tensor) -> None:
@@ -1224,9 +1199,7 @@ class Learner:
         .grad empty; timed by `cadence_stopwatch`."""
         self.cadence_stopwatch.start()
         minibatches = torch.arange(segments.views).tensor_split(self.config.minibatches)
-        halves = (
-            list(minibatches[:2]) if len(minibatches) > 1 else list(minibatches[0].tensor_split(2))
-        )
+        halves = list(minibatches[:2] if len(minibatches) > 1 else minibatches[0].tensor_split(2))
         out = self._gradient_decomposition(segments, prepared, halves)
         with torch.no_grad(), gradients.block_taps(self.model) as taps:
             for batch in segments.batches(segments.names, [halves[0][: self.micro_views]]):

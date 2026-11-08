@@ -129,11 +129,9 @@ def correction_targets(
 
 
 def enemy_actions(trajectory: Trajectory) -> tuple[torch.Tensor, torch.Tensor]:
-    """The enemy rows' joint actions at t (L, R, N - S) and the mask: alive at t (its own
-    tensor, not a view of `trajectory.alive`: the heads' `torch.cond` takes both, and a
-    higher-order op's inputs may not alias)."""
+    """The enemy rows' joint actions at t (L, R, N - S) and the mask: alive at t."""
     own = trajectory.log_probability.shape[-1]
-    return to_joint(trajectory.action)[..., own:], trajectory.alive[..., own:].clone()
+    return to_joint(trajectory.action)[..., own:], trajectory.alive[..., own:]
 
 
 def density_targets(grid: HexGrid, trajectory: Trajectory, rows: torch.Tensor) -> torch.Tensor:
