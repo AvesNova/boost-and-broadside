@@ -190,3 +190,19 @@ Entries: time, what, why. Newest last.
   ~13:05 + tournament ~13:50; 3c ~16:10 + ~16:55; 4c after (~19:15 + ~20:00).
 - **10:00** Extrapolation decoupled from the input switch, merged (v2 272a44ed; verified: ruff, its tests; agent: quick tier 1579, slow dashboards 2, digests of every arm unchanged). Queued arm 4c (job 24, `2026-11-08-bc-arm4c-extrapolation`, worktree `bnb-run-arm4c`) after arm 3c's tournament, and its tournament (job 25: arm 4c, arm 3c, C-fixed 30M).
 - **10:05** Arm 2b finished 30M: KL 0.453 (lowest of any arm at 30M; arm 2 0.493, C-fixed 0.491), agreement 0.687 (best; C-fixed 0.672); outcome Brier 5-15 s 0.15 (= arm 2's 0.15; C-fixed 0.52). So the Brier drop is not the ellipse inputs: it comes with the delta head (or the acceleration inputs, which 2b keeps; arm 2c will tell). Tournament (job 15) next.
+- **10:31** **Arm 2b tournament** (`runs-v2/ratings/2026-11-08-arm2b`): frontline arm 2b
+  762 +- 15, C-fixed 761 +- 15, arm 2 655 +- 17; deathmatch arm 2b 731 +- 21, arm 2 708 +- 24,
+  C-fixed 671 +- 25. Mean: 2b 746, C-fixed 716, arm 2 681. **The ellipse inputs caused arm 2's
+  frontline loss** (2b recovers it fully, same Brier 0.15 as arm 2: so the Brier drop did not
+  track play after all; the earlier frontline/Brier match was coincidence). 2b vs C-fixed: +30
+  on the mean, +60 deathmatch, tie frontline: best arm so far but under the bar (+40 mean /
+  +50 frontline): **not a new champion**.
+- **10:34** My call, following the evidence and the build-on-the-winner rule: the remaining
+  arms drop the ellipse inputs. Stopped arm 2c (ellipse) during its first update (STOP file;
+  it ends after that update), removed jobs 21-25 (2c's tournament, 3c, 4c), and queued from
+  `bnb-run-arm4c` (272a44ed): **arm 2d** (job 32: C-fixed + the persistence delta heads, scalar
+  spreads, no accelerations: C-fixed plus one change), its tournament (33: 2d, 2b, C-fixed);
+  **arm 3d** (34: 2d + the split; 35: 3d, 2d, C-fixed); **arm 4d** (36: 3d with extrapolation;
+  37: 4d, 3d, C-fixed). The split and extrapolation with scalar spreads were untested: added
+  them to the error-head segment tests (12 pass; v2 ae729475). ETAs: 2d ~13:05 (2c's first
+  update runs out first) + tournament ~13:50; 3d ~16:15 + ~17:00; 4d ~19:20 + ~20:05.
