@@ -400,3 +400,7 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   were level, 0.470 / 0.475); outcome Brier 20-30M <5 s 0.343, 5-15 s 0.324, 15-30 s 0.293, 30-60
   s 0.239, 60-120 s 0.157, >120 s 0.006 (absolute 0.437 ... 0.085): the delta arm lowers the
   outcome Brier, as on the laptop in round 2. The tournament judges play. fourier started.
+- **05:55 KST fourier healthy after 3 updates:** KL 1.4364 / 0.7272 vs deadreckon-split's
+  1.4521 / 0.7173 at updates 2-3; 92 s per update (equal); no non-finite beliefs or skipped steps;
+  16.9 GB. First update 1,517 s (cold compile of the new input path). ETAs: fourier ~06:45,
+  hiddenphysics ~07:55, absolute-seed1 ~08:40 KST.
