@@ -33,3 +33,5 @@
 18:30 laptop accepted fastdecay and persist-split (the author confirmed there); box skips both
 18:32 laptop: fastdecay-laptop started 18:31 UTC on perf/gpu-box 7e904347 (micro_batch_rows 160, host_store true; algorithm settings as the box's); persist-split-laptop follows; ETAs 05:45 / 08:00 KST
 18:33 done 2026-11-09-bc-absolute-cfixed-learner-check (exit 0): brier 5-15 s at updates 6-10: +0.068 +0.125 +0.144 +0.172 +0.186 | mean +0.139
+18:34 round4 start (confirmation Brier mean +0.139)
+18:34 start 2026-11-09-bc-absolute
