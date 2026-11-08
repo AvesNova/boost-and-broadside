@@ -42,14 +42,23 @@ CARRY_FIELDS = tuple(field.name for field in dataclasses.fields(ScriptedCarry))
 
 
 MINIBATCHES = 256
+# BC's returns per reward level (REWARD_LEVELS' order), in place of the PPO spec's
+# (0.9997 / 0.97 for the outcome): the outcome undiscounted, every level's trace near 1, as
+# every BC arm has run since 2026-11-06 (they passed these on the command line). With the
+# PPO values (run 2026-11-06-bc-arm-baseline) the outcome head's Brier skill (5-15 s) was
+# -0.23 at 6-10M steps, against +0.04 to +0.19 for the arms that set these.
+DISCOUNT = (0.991, 0.995, 0.995, 0.999, 1.0)
+TRACE_DECAY = (0.99, 0.99, 0.99, 0.99, 1.0)
 
 
 def config(**overrides) -> LearnerConfig:
     """BC's learner settings (scripted spec B1): the BC coefficient 0.025 in nats per token
-    in place of the surrogate's, no entropy term, no KL early stop, and 256 minibatches; the
-    rest section 6's. Cloning's progress follows its optimizer steps, so at the 8,192-view
-    batch (2,048 x 4) it takes minibatches of 32 views, not PPO's 32 per epoch: 8x the
-    steps per environment step for the same compute."""
+    in place of the surrogate's, no entropy term, no KL early stop, 256 minibatches, and
+    BC's returns (`DISCOUNT`, `TRACE_DECAY`); the rest section 6's. Cloning's progress
+    follows its optimizer steps, so at the 8,192-view batch (2,048 x 4) it takes
+    minibatches of 32 views, not PPO's 32 per epoch: 8x the steps per environment step for
+    the same compute."""
+    defaults = dict(minibatches=MINIBATCHES, discount=DISCOUNT, trace_decay=TRACE_DECAY)
     return dataclasses.replace(
         LearnerConfig(),
         policy=0.025,
@@ -57,7 +66,7 @@ def config(**overrides) -> LearnerConfig:
         entropy_stick=0.0,
         entropy_shoot=0.0,
         target_kl=None,
-        **{"minibatches": MINIBATCHES, **overrides},
+        **{**defaults, **overrides},
     )
 
 
