@@ -136,11 +136,11 @@ def truth(ships: torch.Tensor, offset: torch.Tensor) -> torch.Tensor:
 
 @contract
 class Motion:
-    """What a tick's acceleration inputs of hidden rows difference against
-    (`YemongConfig.acceleration_inputs`), per enemy row (..., N - S), the only rows a belief
-    can hide: velocity (..., N - S, 2) m/s and nose_rate rad/s, the row as the model read it
-    (`believed`: truth where visible, the belief's forecast where hidden); present, alive
-    with a belief."""
+    """What a tick's accelerations of hidden rows difference against (the acceleration
+    inputs, `YemongConfig.acceleration_inputs`, or the extrapolation baseline's rates), per
+    enemy row (..., N - S), the only rows a belief can hide: velocity (..., N - S, 2) m/s
+    and nose_rate rad/s, the row as the model read it (`believed`: truth where visible, the
+    belief's forecast where hidden); present, alive with a belief."""
 
     velocity: torch.Tensor
     nose_rate: torch.Tensor
@@ -253,8 +253,9 @@ class Tokens:
     query_position (..., N + 1, 2) and query_heading (..., N + 1): the ships' belief and the
     map centre (no heading); memory_position (..., M + Z, 2), the fields' and zones' centres,
     an absent zone at the map centre (the global token's rotation). Positions are shifted.
-    With the acceleration inputs: motion, the enemy rows' Motion (the next tick's previous),
-    and accelerations (None without them).
+    Given the Motion the tick before (the acceleration inputs or the extrapolation
+    baseline): motion, the enemy rows' Motion (the next tick's previous), and accelerations,
+    whether or not the ship token reads them (None without).
     """
 
     ship: torch.Tensor
@@ -300,13 +301,15 @@ def compose(
     presence_radius: float,
     tick_length: float,
     previous: Motion | None = None,
+    read_accelerations: bool = True,
 ) -> Tokens:
     """The Tokens of one team's views (...) from the observation and the replay: the ships' belief
     codes and features, the global token, the fields and the zones, every position shifted by the
     replay's offset. presence_radius in m, tick_length in s. previous: the enemy rows' Motion
-    at the tick before (`preceding` in a segment), given with the acceleration inputs only:
-    they end the ship token, before the ellipse inputs (`state_code.spread_inputs`
-    "ellipse")."""
+    at the tick before (`preceding` in a segment), given with the acceleration inputs or the
+    extrapolation baseline (its rates, `Tokens.accelerations`); with read_accelerations the
+    acceleration inputs end the ship token, before the ellipse inputs
+    (`state_code.spread_inputs` "ellipse"), and without it the token does not carry them."""
     ships, dtype = obs.ships, obs.ships.dtype
     own = replay.previous_action.shape[-1]
     column = {name: ships[..., SHIP[name]] for name in SHIP}
@@ -347,7 +350,7 @@ def compose(
             pending,
             gradient,
             presence,
-            *(() if change is None else (acceleration_code(change),)),
+            *((acceleration_code(change),) if change is not None and read_accelerations else ()),
             *((state_code.ellipse_code(spreads),) if state_code.ellipse_width else ()),
         ],
         -1,

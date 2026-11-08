@@ -1,7 +1,8 @@
 """The extrapolation baseline (arms 3-4 brief, arm 4: `yemong.delta_baseline=extrapolation`):
 equal to the baselines bench's E (`bench/baselines_core.py`) on recorded play, in float32;
-the switches; its rates in the carry. The arm's unroll, learner terms and policy-file round
-trip run in `test_yemong_error_head.py` (its segment tests cover both arms)."""
+the switches; its rates in the carry; arm 4c, the baseline without the acceleration inputs.
+The arm's unroll, learner terms and policy-file round trip run in `test_yemong_error_head.py`
+(its segment tests cover arms 3, 4 and 4c)."""
 
 import dataclasses
 
@@ -38,6 +39,8 @@ ARM_SETS = (
     "yemong.spread_inputs=ellipse",
     "yemong.delta_split=true",
 )
+# arm 4c: arm 4 on C-fixed's inputs, the rates computed for the baseline but not read
+WITHOUT_INPUTS = dict(SETTINGS, acceleration_inputs=False)
 
 
 @pytest.fixture(scope="module")
@@ -182,8 +185,6 @@ def test_without_rates_the_baseline_is_constant_velocity_and_the_rules():
 
 
 def test_the_switches():
-    with pytest.raises(ValueError, match="acceleration"):
-        YemongConfig(next_state="delta", delta_baseline="extrapolation")
     rules, types = api.rules_of(cases.SQUAD), api.ship_types()
     build = yemong_build(YemongConfig(**SETTINGS), rules, types)
     assert build.dynamics == delta.state_dynamics(rules, types)
@@ -290,3 +291,99 @@ def test_a_hidden_row_holds_its_last_sightings_rates_decaying():
         hidden, turned, means, accelerations(False), held, held_valid
     )
     assert not bool(rates.valid[0]) and not bool(held_valid[0])
+
+
+# ------------------------------------------------------------------ arm 4c
+
+
+def test_without_the_inputs_the_token_has_no_acceleration_columns(recorded):
+    """Arm 4c's ship token: C-fixed's, plus the delta arms' own additions (the covariance
+    spreads in the code, the ellipse inputs), as arm 3c's (persistence, inputs off); the
+    inputs-on arm's less the acceleration inputs. The carry still holds the Motion."""
+    from bnb.models.yemong.inputs import ACCELERATION_INPUTS, ship_inputs
+
+    _, trajectory = recorded
+    net = cases.model(**WITHOUT_INPUTS)
+    width = net.encoder.ship.first.in_features
+    assert width == ship_inputs(
+        net.state_code.width, net.ship_types, False, net.state_code.ellipse_width
+    )
+    arm3c = cases.model(**{**WITHOUT_INPUTS, "delta_baseline": "persistence"})
+    assert width == arm3c.encoder.ship.first.in_features
+    assert width == cases.model(**SETTINGS).encoder.ship.first.in_features - ACCELERATION_INPUTS
+    c_fixed = cases.model(order="temporal_first", spread_fit="coarsest")
+    assert width == (
+        c_fixed.encoder.ship.first.in_features
+        + net.state_code.width
+        - c_fixed.state_code.width
+        + net.state_code.ellipse_width
+    )
+    assert net.initial_carry(2, 5, 10).motion is not None
+    assert arm3c.initial_carry(2, 5, 10).motion is None
+    obs = trajectory.obs
+    reset = cases.resets(obs)
+    previous = net.preceding_motion(trajectory.initial_carry, obs, trajectory.replay, reset)
+    tokens = net.tokens(obs, trajectory.replay, previous)
+    assert tokens.ship.shape[-1] == width and tokens.accelerations is not None
+    with pytest.raises(ValueError, match="previous tick's motion"):
+        net.tokens(obs, trajectory.replay)
+
+
+def test_without_the_inputs_the_baseline_equals_the_inputs_ons(recorded):
+    """On the same recorded segment (obs, replay, carry), arm 4c's rates, baseline and
+    next-state targets equal the inputs-on arm's exactly."""
+    rows, trajectory = recorded
+    with_inputs, without = cases.model(**SETTINGS), cases.model(**WITHOUT_INPUTS)
+    a, b = labels.rates(with_inputs, trajectory), labels.rates(without, trajectory)
+    for field in dataclasses.fields(delta.Rates):
+        assert torch.equal(getattr(a, field.name), getattr(b, field.name)), field.name
+    assert a.valid.any() and a.rule.any()
+    means = truth(rows, trajectory.replay.offset)
+    ship_type = rows[..., SHIP["ship_type"]].long()
+    assert torch.equal(
+        with_inputs.delta_code.baseline(means, a, ship_type),
+        without.delta_code.baseline(means, b, ship_type),
+    )
+    for got, expected in zip(
+        labels.next_state_targets(without, trajectory, rows).values(),
+        labels.next_state_targets(with_inputs, trajectory, rows).values(),
+        strict=True,
+    ):
+        assert torch.equal(got, expected)
+
+
+def test_without_the_inputs_the_step_reads_the_same_rates(recorded):
+    """A step loop of arm 4c over the recorded play: its carry holds the Motion and the held
+    rates as the inputs-on arm's would on the same replay (the segment's, from its start)."""
+    _, trajectory = recorded
+    net = cases.model(**WITHOUT_INPUTS)
+    obs = trajectory.obs
+    carry = net.initial_carry(obs.ships.shape[1], 5, 10)
+    with torch.no_grad():
+        decisions, final = cases.step_loop(
+            net, net.step, carry, obs, cases.joint_actions(trajectory)
+        )
+    assert final.motion.present.any() and final.held_valid.any()
+    reset = cases.resets(obs)
+    inputs_on = cases.model(**SETTINGS)
+    a = net.segment_rates(carry, obs, decisions.replay, reset)
+    b = inputs_on.segment_rates(carry, obs, decisions.replay, reset)
+    for field in dataclasses.fields(delta.Rates):
+        assert torch.equal(getattr(a, field.name), getattr(b, field.name)), field.name
+    _, _, means, _ = labels.believed(obs.ships[-1:], _last(decisions.replay))
+    torch.testing.assert_close(final.previous, means[0])
+
+
+def test_the_arm_4c_set_line_builds_the_arm():
+    from bnb.cli import parse_setting, with_settings
+    from bnb.contracts import GameConfig
+    from bnb.runtime.train import TrainConfig, model_build
+
+    sets = tuple(
+        "yemong.acceleration_inputs=false" if line.startswith("yemong.acceleration") else line
+        for line in ARM_SETS
+    )
+    config = with_settings(TrainConfig(game=GameConfig(5, 10, 2600.0)), map(parse_setting, sets))
+    build = model_build(config)
+    assert build.config.delta_baseline == "extrapolation" and build.config.delta_split
+    assert not build.config.acceleration_inputs and build.dynamics is not None

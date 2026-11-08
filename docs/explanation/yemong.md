@@ -31,8 +31,9 @@ lives in its [carry](glossary.md#carry) (`bnb.models.yemong.model.Carry`), per
   joint action;
 - the own ships' previous joint actions;
 - the view's **position offset**, drawn uniformly at every reset;
-- with the acceleration inputs (below), each enemy row's velocity, nose rate and presence
-  as the model read them at the last decision (`bnb.models.yemong.inputs.Motion`).
+- with the acceleration inputs or the extrapolation baseline (below), each enemy row's
+  velocity, nose rate and presence as the model read them at the last decision
+  (`bnb.models.yemong.inputs.Motion`).
 
 ### The belief
 
@@ -220,8 +221,7 @@ state code above, are the same either way.
 
 ### The extrapolation baseline
 
-`YemongConfig.delta_baseline = "extrapolation"` (arm 4; it needs `acceleration_inputs`)
-carries last tick's rates one tick (`bnb.models.yemong.delta.DeltaCode.baseline`, the
+`YemongConfig.delta_baseline = "extrapolation"` (arm 4) carries last tick's rates one tick (`bnb.models.yemong.delta.DeltaCode.baseline`, the
 baselines bench's E with the choices of `docs/rewrite/sections/round2-log.md`, O3):
 
 - position: the arc of last tick's path turn at its mean speed, `x + Arc(turn) (v + du/2 u)
@@ -294,6 +294,19 @@ the measured marginal (`delta.EXTRAPOLATION_MARGINAL`); its first cross-entropy 
 29.4 nats per row against the targets' marginal entropy of 29.2, in the code of the bench's
 E knees the measurement started from (the re-measured knees differ by up to 1.6x). Select the arm with
 `--set yemong.delta_baseline=extrapolation` on arm 3's line.
+
+The baseline does not need the acceleration inputs. Its rates are computed the same way
+with `acceleration_inputs` on or off (the enemy rows' `Motion` rides in the carry
+whenever either needs it, and so do `Carry.previous` and `Carry.held`); the switch decides
+only whether the ship token reads the accelerations. With it off (arm 4c, on C-fixed's
+inputs) the token is C-fixed's plus the delta arms' own additions, and the head learns a
+residual from a baseline whose rates it cannot see. That is the author's choice for round
+2 (each round builds on the winner, and the acceleration inputs did not win): the residual
+then carries what last tick's rates do not explain, and the model cannot tell when the
+baseline took a rate from the tick before. On the same recorded segment its rates,
+baseline and targets equal the inputs-on arm's exactly
+(`tests/sections/test_yemong_extrapolation.py`). Select it with
+`--set yemong.acceleration_inputs=false` on arm 4's line.
 
 ### The error head: the next-state work split
 
@@ -495,7 +508,8 @@ under persistence (258 m/s and 24.7 rad/s; `docs/rewrite/sections/state-deltas.m
 section 1.2) over the tick. Those bounds come from a loose box: the largest observed values
 are 1214 m/s^2 and 307 rad/s^2, and none of the 16.3M samples reached the padding.
 
-For hidden rows the previous tick's enemy rows ride in the carry (`Carry.motion`), so
+For hidden rows the previous tick's enemy rows ride in the carry (`Carry.motion`; also
+under the extrapolation baseline, whose rates read the same accelerations), so
 `step` differences against what it read last; `unroll` shifts the segment's own rows by
 one tick and takes the first tick's from the carry at the segment's start, which the
 runtime stores with the segment. Own rows need no carry: they are always visible. Until
