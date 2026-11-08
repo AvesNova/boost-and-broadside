@@ -1,6 +1,6 @@
 {
  "name": "2026-11-09-bc-absolute",
- "status": "running",
+ "status": "finished",
  "pid": 114733,
  "host": "e98bed47fc73",
  "message": null,
@@ -34,9 +34,12 @@
  "parent": null,
  "checkpoint_every": 23068672,
  "update_policies": false,
- "newest_checkpoint": null,
- "final_checkpoint": null,
- "checkpoint_ordinals": {},
+ "newest_checkpoint": 30408704,
+ "final_checkpoint": 30408704,
+ "checkpoint_ordinals": {
+  "23068672": 0,
+  "30408704": 1
+ },
  "probe": {
   "allocated": 17696049152,
   "reserved": 18928893952,
@@ -49,8 +52,8 @@
    "dirty": false,
    "start_step": 0,
    "start_time": "2026-11-08T18:34:33+00:00",
-   "end_step": null,
-   "end_time": null,
+   "end_step": 30408704,
+   "end_time": "2026-11-08T19:15:00+00:00",
    "overrides": {},
    "rewound_from": null,
    "command": [
@@ -82,6 +85,9 @@
   }
  ],
  "stop_request": null,
- "hours": 0.08662634571302785,
- "skipped_steps": 0
+ "hours": 0.6738566422197295,
+ "skipped_steps": 0,
+ "stopped_by": "budget",
+ "policy": "/workspace/boost-and-broadside/runs/2026-11-09-bc-absolute/policy",
+ "policy_player": "exponential_average"
 }

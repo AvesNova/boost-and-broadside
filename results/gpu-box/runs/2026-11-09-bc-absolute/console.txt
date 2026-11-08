@@ -14,3 +14,20 @@ update   11  steps  11,534,336  rollout   8214 ms  learn  72607 ms  bc kl 0.5510
 update   12  steps  12,582,912  rollout   8208 ms  learn  72474 ms  bc kl 0.5560  teacher 0.947  student 1.507  scores: learner 0.500 scripted 0.000
 update   13  steps  13,631,488  rollout   8212 ms  learn  72675 ms  bc kl 0.5313  teacher 0.937  student 1.471  scores: learner 0.500 scripted 0.000
 update   14  steps  14,680,064  rollout   8219 ms  learn  72711 ms  bc kl 0.5558  teacher 0.950  student 1.507  scores: learner 0.500 scripted 0.000
+update   15  steps  15,728,640  rollout   8206 ms  learn  73136 ms  bc kl 0.5544  teacher 0.948  student 1.504  scores: learner 0.500 scripted 0.000
+update   16  steps  16,777,216  rollout   8209 ms  learn  72688 ms  bc kl 0.5557  teacher 0.957  student 1.513  scores: learner 0.500 scripted 0.000
+update   17  steps  17,825,792  rollout   8213 ms  learn  73866 ms  bc kl 0.5434  teacher 0.957  student 1.502  scores: learner 0.500 scripted 0.000
+update   18  steps  18,874,368  rollout   8220 ms  learn  73938 ms  bc kl 0.5535  teacher 0.961  student 1.515  scores: learner 0.500 scripted 0.000
+update   19  steps  19,922,944  rollout   8212 ms  learn  72630 ms  bc kl 0.5525  teacher 0.963  student 1.515  scores: learner 0.500 scripted 0.017
+update   20  steps  20,971,520  rollout   8221 ms  learn  74026 ms  bc kl 0.5620  teacher 0.972  student 1.535  scores: learner 0.500 scripted 0.020
+update   21  steps  22,020,096  rollout   8207 ms  learn  73865 ms  bc kl 0.5513  teacher 0.977  student 1.527  scores: learner 0.500 scripted 0.016
+update   22  steps  23,068,672  rollout   8208 ms  learn  72511 ms  bc kl 0.5363  teacher 0.980  student 1.516  scores: learner 0.500 scripted 0.058  window exponential_average 0.000 (+- 0.000)
+update   23  steps  24,117,248  rollout   8203 ms  learn  73932 ms  bc kl 0.5318  teacher 0.976  student 1.508  scores: learner 0.500 scripted 0.087  window exponential_average 0.000 (+- 0.000)
+update   24  steps  25,165,824  rollout   8214 ms  learn  72834 ms  bc kl 0.5267  teacher 0.982  student 1.508  scores: learner 0.500 scripted 0.051  window exponential_average 0.000 (+- 0.000)
+update   25  steps  26,214,400  rollout   8262 ms  learn  74582 ms  bc kl 0.5192  teacher 0.985  student 1.502  scores: learner 0.500 scripted 0.058  window exponential_average 0.000 (+- 0.000)
+update   26  steps  27,262,976  rollout   8218 ms  learn  72613 ms  bc kl 0.5251  teacher 0.991  student 1.515  scores: learner 0.500 scripted 0.057  window exponential_average 0.000 (+- 0.000)
+update   27  steps  28,311,552  rollout   8214 ms  learn  72796 ms  bc kl 0.5119  teacher 0.993  student 1.504  scores: learner 0.500 scripted 0.029  window exponential_average 0.000 (+- 0.000)
+update   28  steps  29,360,128  rollout   8213 ms  learn  72561 ms  bc kl 0.5187  teacher 0.994  student 1.511  scores: learner 0.500 scripted 0.089  window exponential_average 0.000 (+- 0.000)
+update   29  steps  30,408,704  rollout   8220 ms  learn  73383 ms  bc kl 0.5032  teacher 0.998  student 1.499  scores: learner 0.500 scripted 0.087  window exponential_average 0.000 (+- 0.000)
+stopped by budget; the policy is /workspace/boost-and-broadside/runs/2026-11-09-bc-absolute/policy (the exponential_average)
+run 2026-11-09-bc-absolute finished at step 30408704
