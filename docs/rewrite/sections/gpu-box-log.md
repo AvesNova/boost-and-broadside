@@ -194,3 +194,36 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   restarted with the four arms (10 pairs); the LB batch's record is in `runs/failed/`.
   (`runs/killpat.sh REGEX` now kills by pattern, sparing its caller and ancestors: the fourth
   self-matching kill of mine is the last.)
+- **02:00 KST Names (the author asked for human ones; run directories keep theirs):** C-fixed
+  = **`absolute`** (the absolute next-state head); 2d = **`persist-onehead`**; 3d =
+  **`persist-split`**; 4d = **`deadreckon-split`**; C-fixed-LB = **`absolute-bigbatch`**.
+- **02:00 KST Brier skill of the outcome head** (mean of the last 10 logs from 20-30M, by time to
+  the end: <5, 5-15, 15-30, 30-60, 60-120, >120 s): absolute 0.043 0.037 0.032 0.026 0.016 0.008;
+  persist-split 0.033 0.030 0.021 0.013 0.010 0.007; deadreckon-split 0.030 0.024 0.019 0.014
+  0.009 0.004; persist-onehead 0.015 0.012 0.008 0.005 0.000 0.001; absolute-bigbatch -0.04 to
+  -0.07. Same order as the laptop, but ~14x lower (laptop C-fixed 5-15 s 0.52, arm 2 0.15).
+  Same formula (`analytics.outcome_series`). **Check queued (the author agreed):** absolute to
+  10.5M on unmodified v2 (old `_step`, fp32 shot head) with only the neutral settings, against
+  this box's absolute at 10.5M: equal clears my changes (then code history or the machine).
+- **02:10 KST Tournament 1 standings** (scripted 1000): frontline deadreckon-split 789 +- 16,
+  absolute 780 +- 16, persist-split 739 +- 18, persist-onehead 682 +- 18; deathmatch batch 1
+  deadreckon-split 743, persist-onehead 727, absolute 720, persist-split 715 (+- 25). **The author:
+  absolute and deadreckon-split are co-champions; both go into the next round.**
+- **02:10 KST Round 3 (the author's ideas + mine), all on deadreckon-split, one change each:**
+  `-fastdecay` (`yemong.extrapolation_decay` 0.5 -> 0.2 s: hidden ships keep turning on the held
+  nose rate); `-fourier` (the ship token's position and heading as cos/sin at the colour code's
+  periods: 9 levels 26,244 m -> 4 m per axis, heading 2pi/4^l, l = 0..3, attenuated by sigma as
+  the colour code is; 36 + 8 inputs instead of 81 + 16; refused with the absolute head, whose
+  targets are colour codes); `-hiddenphysics` (the author: train the physics head on hidden
+  enemies too, the loss weighted exp(-age/tau), tau 0.5 s as its own setting
+  `yemong.physics_hidden_decay`; target truth-to-truth: truth(t+1) - baseline(truth(t)), the
+  inputs the belief, so the physics head learns dynamics and the error head keeps the belief's
+  error; addresses risk C5: the physics head drives hidden forecasts without ever training on
+  hidden inputs). Fourier and hidden-physics built by two background agents in worktrees
+  (`/workspace/bnb-fourier`, `/workspace/bnb-hidden-physics`), CPU only. Runner `round3a.sh`:
+  the Brier check, then fastdecay. Then tournament 2 (absolute, deadreckon-split and the new
+  arms); then the best two resumed to 60M.
+- (The author asked: for deadreckon-split, a hidden enemy's forecast is the dead-reckoning
+  baseline from its held, decaying last-sighting rates + the physics head's change (the head
+  runs on hidden rows though trained on seen rows only) + the error head's capped, rate-limited
+  step toward its median; its spread is the error head's. Visible rows: baseline + physics.)
