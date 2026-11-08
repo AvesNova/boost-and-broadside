@@ -207,3 +207,10 @@ Entries: time, what, why. Newest last.
   them to the error-head segment tests (12 pass; v2 ae729475). ETAs: 2d ~13:05 (2c's first
   update runs out first) + tournament ~13:50; 3d ~16:15 + ~17:00; 4d ~19:20 + ~20:05.
 - **10:48** Arm 2c stopped at 1.05M (renamed `-aborted`); arm 2d (job 32) started 10:48. ETAs: 2d ~13:05, tournament ~13:50; 3d ~16:15 / ~17:00; 4d ~19:20 / ~20:05.
+- **11:31** **Author: stop the current runs.** Removed the pending jobs (33-37: 2d's
+  tournament, arms 3d and 4d with their tournaments; and job 3, the champion continuation, a
+  background resume of `2026-11-07-bc-arm-C-fixed` at 117M). STOP file on arm 2d (at update 8,
+  8.4M; it stops after the current update with a checkpoint, resumable with `bnb train
+  --resume 2026-11-08-bc-arm2d-persistence`), then the queue runner unit `bnb-queue` stopped.
+  To restart later: start the runner (docs/guides/queueing-jobs.md), resume arm 2d to 30M,
+  then re-add 3d and 4d from worktree `bnb-run-arm4c` with the `--set` lines above (10:34).
