@@ -170,3 +170,7 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   predicted at 0-0.1, 0.5-1, 2-5 s: position 0.063/0.88, 6.5/2.4, 85/48 m (3d: 0.17, 6.5, 72
   realised); heading 0.021/0.023, 0.26/0.13, 0.46/0.25 rad (3d 0.018, 0.23, 0.43). C-fixed-LB
   started.
+- **00:55 KST C-fixed-LB speed:** learn 38.9 s + rollout 8.2 s = **22,300 SPS** (C-fixed 12,900:
+  1.7x). KL per sample behind early (update 2: 2.14 vs 1.39; update 3: 0.81 vs 0.73), as
+  expected with a quarter of the optimizer steps per sample. Probe 20.3 GB allocated, 21.8
+  reserved of 23.06 (tight, fits). ETA ~01:10 KST, then tournament 1.
