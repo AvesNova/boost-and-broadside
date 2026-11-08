@@ -158,3 +158,9 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   this box**: digests recorded on the laptop's CPU; machine-dependent, not a regression.
 - **14:32 UTC (23:32 KST) Arm 4d restarted** (runner `arms4.sh`: 4d, then LB, then the
   tournament; copy in `gpu-box/arms4.sh`).
+- **00:00 KST Arm 4d stable after 3 updates** (the laptop's early CPU runs diverged to 1039 m/s
+  velocity error before the held-rate decay). Hidden 2-5 s error at update 3, 4d vs 3d:
+  position 122 vs 133 m, velocity 56 vs 59 m/s, heading 1.4 vs 0.8 rad (worse: the held nose
+  rate keeps a hidden ship turning, as the laptop saw). KL 0.7196 vs 0.7194. No non-finite
+  beliefs or skipped steps; 17.0 GB. 92 s per update (3d 85: the per-tick rate loop). ETAs
+  (KST): 4d ~00:45, LB ~01:15, tournament ~01:40.
