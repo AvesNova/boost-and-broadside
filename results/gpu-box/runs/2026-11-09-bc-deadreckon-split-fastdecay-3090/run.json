@@ -1,6 +1,6 @@
 {
  "name": "2026-11-09-bc-deadreckon-split-fastdecay-3090",
- "status": "running",
+ "status": "stopped",
  "pid": 101860,
  "host": "e98bed47fc73",
  "message": null,
@@ -38,20 +38,27 @@
  ],
  "wandb_id": null,
  "parent": null,
- "checkpoint_every": null,
+ "checkpoint_every": 19922944,
  "update_policies": false,
- "newest_checkpoint": null,
+ "newest_checkpoint": 7340032,
  "final_checkpoint": null,
- "checkpoint_ordinals": {},
- "probe": null,
+ "checkpoint_ordinals": {
+  "7340032": 0
+ },
+ "probe": {
+  "allocated": 18199960576,
+  "reserved": 19270729728,
+  "total": 25296044032,
+  "budget": 24759173120
+ },
  "segments": [
   {
    "commit": "8e7505ee53b89223bdbd8268085799dce8ad5d4d",
    "dirty": false,
    "start_step": 0,
    "start_time": "2026-11-08T17:35:10+00:00",
-   "end_step": null,
-   "end_time": null,
+   "end_step": 7340032,
+   "end_time": "2026-11-08T18:12:20+00:00",
    "overrides": {},
    "rewound_from": null,
    "command": [
@@ -88,5 +95,13 @@
    ]
   }
  ],
- "stop_request": null
+ "stop_request": {
+  "by": "STOP file",
+  "step": 7340032
+ },
+ "hours": 0.6192506384669753,
+ "skipped_steps": 0,
+ "stopped_by": "interrupted",
+ "policy": "/workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-fastdecay-3090/policy",
+ "policy_player": "exponential_average"
 }

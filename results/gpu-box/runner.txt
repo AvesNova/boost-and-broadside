@@ -27,3 +27,6 @@
 17:12 start 2026-11-09-bc-absolute-v2clean-check (Brier check on unmodified v2)
 17:34 done 2026-11-09-bc-absolute-v2clean-check
 17:34 start 2026-11-09-bc-deadreckon-split-fastdecay-3090
+17:59 outcome-Brier bisection moved to the author's laptop; round3b: fourier after fastdecay
+18:11 PAUSED round 3: every box run lacked C-fixed's learner.discount/trace_decay (the laptop agent found it); fastdecay asked to STOP (resumable), fourier not started; confirmation run next
+18:12 start 2026-11-09-bc-absolute-cfixed-learner-check

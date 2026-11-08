@@ -1,1 +1,12 @@
 run 2026-11-09-bc-deadreckon-split-fastdecay-3090 in /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-fastdecay-3090
+memory probe: allocated 16.95 GB, reserved 17.95 GB, budget 23.06 GB of 23.56 GB
+update    1  steps   1,048,576  rollout 319897 ms  learn 1343595 ms  bc kl 2.9645  teacher 0.772  student 3.738  scores: learner 0.500 scripted 0.434
+update    2  steps   2,097,152  rollout   9945 ms  learn  82976 ms  bc kl 1.4537  teacher 0.764  student 2.981  scores: learner 0.500 scripted 0.179
+update    3  steps   3,145,728  rollout  10021 ms  learn  83205 ms  bc kl 0.7163  teacher 0.756  student 1.550  scores: learner 0.500 scripted 0.016
+update    4  steps   4,194,304  rollout  10022 ms  learn  85934 ms  bc kl 0.6992  teacher 0.758  student 1.480  scores: learner 0.500 scripted 0.000
+update    5  steps   5,242,880  rollout  10027 ms  learn  85950 ms  bc kl 0.6601  teacher 0.761  student 1.437  scores: learner 0.500 scripted 0.000
+update    6  steps   6,291,456  rollout  10027 ms  learn  83093 ms  bc kl 0.6573  teacher 0.760  student 1.420  scores: learner 0.500 scripted 0.000
+update    7  steps   7,340,032  rollout   9990 ms  learn  84334 ms  bc kl 0.5899  teacher 0.761  student 1.356  scores: learner 0.500 scripted 0.000
+/workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-fastdecay-3090/STOP: stopping after this update
+stopped by interrupted; the policy is /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-fastdecay-3090/policy (the exponential_average)
+run 2026-11-09-bc-deadreckon-split-fastdecay-3090 stopped at step 7340032
