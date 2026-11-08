@@ -1,2 +1,7 @@
 /workspace/boost-and-broadside/src/bnb/league/matches.py:526: FilledDefaults: the yemong build record lacks config.physics_hidden_decay; they take their defaults
   model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
+frontline: batch 1, 1024 games, the largest standard error 54.1 (the batch took 1019 s); done about 00:48 (4 batches), by 04:46 at the latest (18 batches)
+frontline: batch 2, 2048 games, the largest standard error 26.8 (the batch took 191 s); done about 23:54 (1 batches), by 02:35 at the latest (17 batches)
+frontline: batch 3, 3072 games, the largest standard error 20.9 (the batch took 191 s); done about 23:47 (0 batches), by 01:51 at the latest (16 batches)
+/workspace/boost-and-broadside/src/bnb/league/matches.py:526: FilledDefaults: the yemong build record lacks config.physics_hidden_decay; they take their defaults
+  model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
