@@ -176,3 +176,15 @@ Entries: time, what, why. Newest last.
   2, C-fixed 30M); job 18 arm 4b (`2026-11-08-bc-arm4b-extrapolation`); job 19 its tournament
   (arm 4b, arm 3b, C-fixed 30M). ETAs: arm 2b ~10:15, tournament ~11:00; arm 3b ~13:20,
   tournament ~14:05; arm 4b ~16:25, tournament ~17:10 (worst +1 h each).
+- **09:36** **Correction from the author:** each round takes the winner, so arms 2-4 should
+  have read C-fixed's inputs (arm 1 did not win). My C8 call (carry the acceleration inputs
+  into every arm because arm 4's baseline needs the rates) mixed up the baseline's needs with
+  the model's inputs. Actions: removed jobs 16-19 (arms 3b and 4b with the inputs); queued
+  **arm 2c** (job 20: arm 2 with `acceleration_inputs=false`, i.e. C-fixed's inputs + the
+  persistence delta heads + the ellipse spreads; tournament job 21 against arm 2 and C-fixed)
+  and **arm 3c** (job 22: the split, inputs off; tournament job 23 against arm 2c and C-fixed),
+  from worktree `bnb-run-arms34b` (c051739a, which has the spread fix). Arm 2b (inputs on, no
+  ellipse) is nearly done and runs its tournament: arm 2 vs 2b is still a clean test of the
+  ellipse. Arm 4c needs code (extrapolation currently requires the input switch): brief
+  `extrapolation-without-inputs-brief.md`, agent launched. ETAs: 2b tournament ~10:50; 2c
+  ~13:05 + tournament ~13:50; 3c ~16:10 + ~16:55; 4c after (~19:15 + ~20:00).
