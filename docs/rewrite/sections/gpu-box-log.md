@@ -404,3 +404,10 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   1.4521 / 0.7173 at updates 2-3; 92 s per update (equal); no non-finite beliefs or skipped steps;
   16.9 GB. First update 1,517 s (cold compile of the new input path). ETAs: fourier ~06:45,
   hiddenphysics ~07:55, absolute-seed1 ~08:40 KST.
+- **06:10 KST Laptop arm 1 uploaded** (`2026-11-09-bc-deadreckon-split-fastdecay-laptop`, hub
+  2828b28d, budget): downloaded, loads on the box's code (one expected FilledDefaults warning:
+  its tree predates the hidden-physics merge, so `physics_hidden_decay` takes its default, off);
+  its config matches the plan (C-fixed's discount and trace decay, 2048 x 4 shards x 4 epochs x
+  256 minibatches, stop flags). KL 0.492, agreement 0.663 (box deadreckon-split 0.432 / 0.697);
+  its Brier 5-15 s, last six logs: 0.240 0.267 0.263 0.265 0.337 0.413. persist-split-laptop
+  started 06:07, ETA 08:45 KST (worst 09:30).
