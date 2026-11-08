@@ -312,3 +312,14 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   STOP at update 6-7, resumable; fourier not started). Running the laptop agent's confirmation
   (`runs/confirm.sh`: absolute to 10.5M with the two lines; expect +0.1 to +0.2 at updates
   6-10). Round 3's restart needs the author's call.
+- **03:20 KST From the laptop session (the author asked the two agents to talk directly):** its
+  per-run numbers at 6.2-10.6M with C-fixed's learner settings: C-fixed +0.13, C-accel +0.10,
+  arm2 +0.07, arm2b +0.08, arm2d +0.04 (laptop arm2d at 272a44ed +0.04 vs box arm2d -0.17).
+  The laptop's arms also passed `--set stop.score_target=1.0 --set
+  stop.plateau_steps=1000000000` (so no stop rule ends an arm before its budget); the box's 30M
+  runs lacked them too but all reached the budget anyway (`stopped_by: budget`). It is building
+  `fix/bc-defaults`: `bc.config()` takes C-fixed's discount and trace decay (PPO keeps the
+  spec's), and a new build's `yemong.order` defaults to temporal_first; the stop flags stay on
+  the command line (documented in `docs/guides/behaviour-cloning.md`). I merge it when pushed.
+  Its tip, adopted: rebuild a run's command from its `run.json` (`segments[].command`), not
+  from names or notes.

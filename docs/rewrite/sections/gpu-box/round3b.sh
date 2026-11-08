@@ -1,7 +1,6 @@
 #!/bin/bash
-# Round 3, part b: after part a (the Brier check, fastdecay): the outcome-Brier reproduction at
-# C-fixed's commit 3b72a914 (the author's laptop: positive skill by 6-10M there; current v2
-# here: negative), then deadreckon-split-fourier.
+# Round 3, part b: after part a (the Brier check, fastdecay): deadreckon-split-fourier. (The
+# outcome-Brier bisection moved to the author's laptop, 2026-11-09 03:15 KST.)
 set -u
 cd /workspace/boost-and-broadside
 set -a; . /workspace/.env; set +a
@@ -10,7 +9,6 @@ LOG=runs/arms.log
 say() { echo "$(date -u +%H:%M) $*" | tee -a "$LOG"; }
 until grep -q "round3a done" "$LOG"; do sleep 30; done
 
-runs/bisect.sh 3b72a914
 
 NAME=2026-11-09-bc-deadreckon-split-fourier-3090
 say "start $NAME"
