@@ -440,8 +440,13 @@ def test_the_error_head_starts_at_its_marginal_with_a_zero_last_layer():
         assert math.isclose(float(part.sum()), 1.0, rel_tol=1e-5), name
 
 
-# arm 3 (persistence) and arm 4 (extrapolation): every test on a segment runs on both
-ARMS = dict(arm3=dict(), arm4=dict(delta_baseline="extrapolation"))
+# arm 3 (persistence), arm 4 (extrapolation) and arm 4c (extrapolation without the
+# acceleration inputs): every test on a segment runs on each
+ARMS = dict(
+    arm3=dict(),
+    arm4=dict(delta_baseline="extrapolation"),
+    arm4c=dict(delta_baseline="extrapolation", acceleration_inputs=False),
+)
 
 
 @pytest.fixture(scope="module", params=tuple(ARMS))

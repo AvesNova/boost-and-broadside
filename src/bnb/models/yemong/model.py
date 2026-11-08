@@ -128,11 +128,14 @@ class YemongConfig:
     (`state_code.COVARIANCE_STATE`, appended to its spreads), propagated by the kinematics'
     Jacobian. Round 1's rule baselines are gone: a policy trained with them does not load.
     delta_baseline (`delta.DELTA_BASELINES`, with next_state "delta"): "persistence",
-    nothing changes, so the target is truth(t + 1) - truth(t); "extrapolation" (arm 4,
-    with acceleration_inputs), last tick's rates carried a tick (`delta.DeltaCode.baseline`):
+    nothing changes, so the target is truth(t + 1) - truth(t); "extrapolation" (arm 4),
+    last tick's rates carried a tick (`delta.DeltaCode.baseline`):
     the target is truth(t + 1) less that, and the carry holds every row as the model read
     it the tick before (`Carry.previous`). A hidden row holds its last sighting's rates,
-    decaying with time constant extrapolation_decay (s; `Yemong.rates`).
+    decaying with time constant extrapolation_decay (s; `Yemong.rates`). The rates are
+    computed as the acceleration inputs are (`Carry.motion` rides in the carry either way),
+    with or without acceleration_inputs: without it the ship token does not read them, and
+    the head learns a residual from a baseline whose rates it cannot see (arm 4c).
     spread_inputs (`state_code.SPREAD_INPUTS`): how a ship row reads its belief's spread.
     "scalar": the position code blurred by one sigma for both axes, the velocity code by
     its covariance. "ellipse": the position code blurred per world axis by the position
@@ -196,8 +199,6 @@ class YemongConfig:
             )
         if self.extrapolation_decay <= 0:
             raise ValueError(f"extrapolation_decay {self.extrapolation_decay} must be positive")
-        if self.delta_baseline == "extrapolation" and not self.acceleration_inputs:
-            raise ValueError("the extrapolation baseline reads the acceleration inputs")
         if self.delta_split and self.next_state != "delta":
             raise ValueError("delta_split needs next_state 'delta'")
         if self.spread_inputs not in SPREAD_INPUTS:
@@ -237,10 +238,11 @@ class Carry:
     previous_action (R, S) int32, the own ships' last joint actions; offset (R, 2) m, the
     view's position offset, drawn uniformly in [0, P) at every reset; nonfinite (R,) int64,
     a running count of non-finite forecast entries (replaced by zeros); motion: the enemy
-    rows' Motion at the last decision, what a hidden row's acceleration inputs difference
-    against (None without `YemongConfig.acceleration_inputs`); previous (R, N, len(MEANS)):
-    every row as the model read it at the last decision (`inputs.believed`), what the
-    extrapolation baseline's last-tick changes difference against (None without it); held
+    rows' Motion at the last decision, what a hidden row's accelerations difference against
+    (None without `YemongConfig.acceleration_inputs` or the extrapolation baseline);
+    previous (R, N, len(MEANS)): every row as the model read it at the last decision
+    (`inputs.believed`), what the extrapolation baseline's last-tick changes difference
+    against (None without it); held
     (R, N, HELD) and held_valid (R, N): the rates each row holds from its last sighting
     (`Yemong.rates`; None without it)."""
 
@@ -594,7 +596,7 @@ class Yemong(nn.Module):
             dtype=dtype,
         )
         rows = None
-        if config.acceleration_inputs:  # nothing present: the first tick's inputs are invalid
+        if self._tracks_motion:  # nothing present: the first tick's inputs are invalid
             enemies = num_ships - ships_per_team
             rows = Motion(
                 velocity=torch.zeros((views, enemies, 2), dtype=dtype, device=device),
@@ -672,6 +674,13 @@ class Yemong(nn.Module):
     @property
     def _extrapolates(self) -> bool:
         return self.delta_code is not None and self.delta_code.baseline_name == "extrapolation"
+
+    @property
+    def _tracks_motion(self) -> bool:
+        """The carry holds the enemy rows' Motion (`Carry.motion`) and each tick computes the
+        rows' accelerations: the acceleration inputs read them, the extrapolation baseline's
+        rates too (with or without the inputs)."""
+        return self.config.acceleration_inputs or self._extrapolates
 
     def rates(
         self,
@@ -774,9 +783,11 @@ class Yemong(nn.Module):
 
     def tokens(self, obs: Obs, replay: Replay, previous: Motion | None = None) -> Tokens:
         """The encoder inputs of views and their replay records; previous: the enemy rows'
-        Motion at the tick before, with `YemongConfig.acceleration_inputs` (required then)."""
-        if self.config.acceleration_inputs and previous is None:
-            raise ValueError("the acceleration inputs need the previous tick's motion")
+        Motion at the tick before, with `YemongConfig.acceleration_inputs` or the
+        extrapolation baseline (required then; the ship token reads the accelerations only
+        with the inputs)."""
+        if self._tracks_motion and previous is None:
+            raise ValueError("the accelerations need the previous tick's motion")
         return compose(
             obs,
             replay,
@@ -784,7 +795,8 @@ class Yemong(nn.Module):
             self.ship_types,
             self.config.presence_radius,
             self.tick_length,
-            previous if self.config.acceleration_inputs else None,
+            previous if self._tracks_motion else None,
+            self.config.acceleration_inputs,
         )
 
     def preceding_motion(
@@ -792,8 +804,8 @@ class Yemong(nn.Module):
     ) -> Motion | None:
         """The enemy rows' Motion before each tick of a stored segment (L, R, ...): the
         carry's at its start, then the tick before; reset (L, R) as `step` received it. None
-        without `YemongConfig.acceleration_inputs`."""
-        if not self.config.acceleration_inputs:
+        without `YemongConfig.acceleration_inputs` or the extrapolation baseline."""
+        if not self._tracks_motion:
             return None
         valid, _, means, _ = believed(obs.ships, replay)
         own = replay.previous_action.shape[-1]
@@ -802,8 +814,9 @@ class Yemong(nn.Module):
     def acceleration_inputs(
         self, carry: Carry, obs: Obs, replay: Replay, reset: torch.Tensor
     ) -> Accelerations | None:
-        """The acceleration inputs `unroll` reads over a stored segment (its arguments), for
-        the diagnostics; None without `YemongConfig.acceleration_inputs`."""
+        """The accelerations `unroll` computes over a stored segment (its arguments), for the
+        diagnostics and the extrapolation baseline's rates (`segment_rates`); None without
+        `YemongConfig.acceleration_inputs` or the extrapolation baseline."""
         previous = self.preceding_motion(carry, obs, replay, reset)
         if previous is None:
             return None
