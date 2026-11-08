@@ -233,7 +233,30 @@ def scalar_encode(
 ) -> torch.Tensor:
     """(...) mean and sigma to (..., bins): a sampled Gaussian with folded tails, mixed with
     the sharp code and moment-matched."""
-    coordinate, lower, fraction, spacing = _scalar_coordinate(mean, low, high, bins)
+    return _scalar_encode(mean, sigma, *_scalar_coordinate(mean, low, high, bins), bins)
+
+
+def scalar_encode_many(
+    means: list[torch.Tensor],
+    sigmas: list[torch.Tensor],
+    ranges: list[tuple[float, float]],
+    bins: int,
+) -> torch.Tensor:
+    """K features' means and sigmas (each (...)) sharing `bins`, with their (low, high)
+    ranges, to (..., K, bins): each feature's `scalar_encode` in one call. The coordinates
+    are each feature's own (its floats, as `scalar_encode` computes them); the code built
+    from them is one set of ops for all K, so a compiled graph holds one copy."""
+    columns = [
+        (*_scalar_coordinate(mean, low, high, bins), sigma)
+        for mean, sigma, (low, high) in zip(means, sigmas, ranges, strict=True)
+    ]
+    coordinate, lower, fraction, spacing, sigma = zip(*columns, strict=True)
+    stacked = [torch.stack(part, -1) for part in (coordinate, lower, fraction)]
+    in_bins = torch.stack([s / d for s, d in zip(sigma, spacing, strict=True)], -1)
+    return _scalar_encode(means[0], in_bins, *stacked, 1.0, bins)
+
+
+def _scalar_encode(mean, sigma, coordinate, lower, fraction, spacing, bins: int) -> torch.Tensor:
     last = bins - 1
     variance = torch.minimum(
         (sigma / spacing) ** 2,

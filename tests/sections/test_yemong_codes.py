@@ -290,3 +290,26 @@ def test_an_averaged_heading_code_covers_its_samples(sigma):
     assert (spread / sigma).median() == pytest.approx(1.0, abs=0.15)
     covered = (_angle_error(mean[:, None], samples).abs() <= spread[:, None]).double().mean()
     assert covered == pytest.approx(WITHIN_ONE_SIGMA_1D, abs=0.06)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_many_scalars_encode_bit_for_bit_as_one_at_a_time(dtype):
+    """`scalar_encode_many` (one set of ops for K features, so a compiled graph holds one
+    copy) is each feature's `scalar_encode`, bit for bit in eager arithmetic, at the
+    edges of the range and past them too."""
+    generator = torch.Generator().manual_seed(3)
+    ranges = [(-0.3, 0.3), (0.0, 6.0), (0.0, 1.0), (-0.25, 0.25)]
+    means = [
+        (high - low) * (1.4 * torch.rand(64, 7, generator=generator, dtype=dtype) - 0.2) + low
+        for low, high in ranges
+    ]
+    sigmas = [0.3 * torch.rand(64, 7, generator=generator, dtype=dtype) for _ in ranges]
+    many = codes.scalar_encode_many(means, sigmas, ranges, 21)
+    one = torch.stack(
+        [
+            codes.scalar_encode(mean, sigma, low, high, 21)
+            for mean, sigma, (low, high) in zip(means, sigmas, ranges, strict=True)
+        ],
+        -2,
+    )
+    assert torch.equal(many, one)

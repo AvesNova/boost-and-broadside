@@ -177,6 +177,9 @@ class ShipStateCode(nn.Module):
         self.cooldown_bins = ranges.cooldown_bins
         self.register_buffer("max_shield", torch.tensor(ranges.max_shield, dtype=torch.float32))
         self.register_buffer("max_energy", torch.tensor(ranges.max_energy, dtype=torch.float32))
+        for name, (_, _, bins) in self._scalar_ranges().items():
+            if bins != SCALAR_BINS:  # `encode` codes SCALARS in one batch
+                raise ValueError(f"scalar {name} does not have SCALAR_BINS bins")
         scalar = (1, SCALAR_BINS)
         self.runs: codes.Runs = (
             (POSITION_LEVELS, 9),
@@ -303,14 +306,12 @@ class ShipStateCode(nn.Module):
             NOSE_RATE_BINS,
         )
         ranges = self._scalar_ranges()
-        scalars = [
-            codes.scalar_encode(
-                mean[name] / maxima.get(name, 1.0),
-                spread[name] / maxima.get(name, 1.0),
-                *ranges[name],
-            )
-            for name in SCALARS
-        ]
+        scalars = codes.scalar_encode_many(
+            [mean[name] / maxima.get(name, 1.0) for name in SCALARS],
+            [spread[name] / maxima.get(name, 1.0) for name in SCALARS],
+            [ranges[name][:2] for name in SCALARS],
+            SCALAR_BINS,
+        )
         cooldown = torch.clamp_min(self._cooldown_sharp(mean["gun_cooldown"]) + residual, 0.0)
         return torch.cat(
             [
@@ -318,7 +319,7 @@ class ShipStateCode(nn.Module):
                 velocity.flatten(-2),
                 heading.flatten(-2),
                 nose_rate,
-                *scalars,
+                scalars.flatten(-2),
                 cooldown,
             ],
             -1,

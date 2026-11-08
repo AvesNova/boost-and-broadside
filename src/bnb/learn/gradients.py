@@ -1,9 +1,9 @@
 """The cadence groups (diagnostics audit, group 19 and `repr/`): the gradient decomposition
 and the representation's health, measured every `bnb.runtime.metrics.CADENCE` updates.
 
-The decomposition takes each loss term's gradient (its coefficient applied) over one
-minibatch, accumulated separately over two halves of its views, and compares them through
-Gram matrices, so no pair of gradients is ever held twice:
+The decomposition takes each loss term's gradient (its coefficient applied) over the
+first two minibatches, accumulated separately over each (the two halves), and compares
+them through Gram matrices, so no pair of gradients is ever held twice:
 - `gradient/norm/{scope}/{term}`: the term's gradient norm;
 - `gradient/share/{scope}/{term}`: its projection on the step's direction, <g_t, g> / |g|^2
   with g the sum of the top-level terms (the top-level shares sum to 1);
