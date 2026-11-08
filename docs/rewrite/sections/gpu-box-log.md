@@ -186,3 +186,11 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   (copy in `gpu-box/`). The record of the ladder attempt is in `runs/failed/`. Slips of mine:
   another self-matching `pgrep` (killed my shell, nothing else), and a path given where
   `bnb ratings` takes a run name (failed at once, relaunched).
+- **01:34 KST Tournament 1, no ladder, batch 1 (frontline, 1024 games, 327 s with the compile
+  cache warm; scripted = 1000):** C-fixed 807 +- 26, 4d 775 +- 30, 3d 722 +- 32, 2d 675 +- 32,
+  **C-fixed-LB 215 +- 78**. LB nearly always loses (its KL resembled C-fixed's at half the steps,
+  but its play does not): the large batch as set is out. Its slowly shrinking error alone would
+  have held the stopping rule (every error under 25) for ~9 batches, so I dropped it and
+  restarted with the four arms (10 pairs); the LB batch's record is in `runs/failed/`.
+  (`runs/killpat.sh REGEX` now kills by pattern, sparing its caller and ancestors: the fourth
+  self-matching kill of mine is the last.)
