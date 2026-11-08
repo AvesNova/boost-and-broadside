@@ -126,3 +126,7 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
 - **12:37 C-fixed done** (`2026-11-08-bc-arm-C-fixed-3090`, budget, 30.4M, 49 min, 81.1 s per
   update = 12,900 SPS). KL 0.475, agreement 0.678 (laptop C-fixed at 30M: 0.500, 0.672):
   in line. Snapshots at 10.5M, 21.0M, 30.4M. Arm 2d started.
+- **13:20 Arm 2d done** (`2026-11-08-bc-arm2d-persistence-3090`, budget, 30.4M, 41 min: the
+  compile cache warm). KL 0.479, agreement 0.681 (C-fixed 0.475, 0.678): level, as on the
+  laptop. Last-row outcome Brier skill 5-15 s 0.024 vs C-fixed's 0.058 (the laptop's direction;
+  single rows, not its 10-log means): the tournament judges. Arm 3d started.
