@@ -1,5 +1,10 @@
 # Rewrite: decision log
 
+> **Status 2026-11-08:** the author has decided to build a **JAX version** of v2 after the
+> freeze, because of v2's compile times and launch-bound speed. The plan, its decisions
+> (Equinox resolves tabled item 6) and its progress are in [jax/plan.md](jax/plan.md) and
+> [jax/progress.md](jax/progress.md), which take precedence for that work.
+
 > **Status 2026-10-31:** the framework is **PyTorch**, not JAX. A physics race between
 > the two (separate `physics-race*` repos) did not show a structural speed gap on general
 > code, and the author chose PyTorch. The seams below carry over with the translations in
