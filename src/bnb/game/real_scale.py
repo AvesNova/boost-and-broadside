@@ -36,8 +36,8 @@ time: the one whose initial store charge, coasting at cruise, is gravity times i
 
 Each type is solved in its own process (`solve_set`), and its ship file written as it
 finishes, so a stopped build loses at most the cards in flight (`--resume` keeps every
-written card whose targets are unchanged). Each ship file records in `[notes]` where each
-value comes from and how sure it is, and any handle its card misses.
+written card whose targets are unchanged, refreshing its notes). Each ship file records in
+`[notes]` where each value comes from and how sure it is, and any handle its card misses.
 """
 
 import argparse
@@ -485,7 +485,8 @@ def solve_set(
 ) -> list[Solved]:
     """Write the set's rules.toml, then solve each type in its own process, writing its ship
     file as it finishes, and finally the set's order: the solves, in the set's order.
-    resume: keep a written card whose targets (all but the climb time) and notes match;
+    resume: keep a written card whose targets (all but the climb time) match, its notes
+    and name refreshed;
     only: solve just these keys (the others must be written already)."""
     combat = combat_constants()
     standard_rules = rules_of(GameConfig(1, 1, 1.0))
@@ -508,13 +509,16 @@ def solve_set(
             for n, v in values.items()
             if n != "climb_time"
         )
-        old_notes = {n: v.split(" MISSED")[0] for n, v in old.notes.items()} if old else {}
-        keep = (resume and same and old_notes == notes) or (
-            only is not None and one.key not in only
-        )
-        if keep:
+        if (resume and same) or (only is not None and one.key not in only):
             if old is None:
                 raise FileNotFoundError(f"{one.key} is not written yet: solve it too")
+            if same:  # the notes and name may have changed: keep a MISSED mark
+                missed = {
+                    n: v[v.index(" MISSED") :] for n, v in old.notes.items() if " MISSED" in v
+                }
+                fresh = {n: note + missed.get(n, "") for n, note in notes.items()}
+                old = dataclasses.replace(old, name=one.name, notes=fresh)
+                ships.write_ship(old, SHIP_SET)
             results[one.key] = Solved(old, math.nan, True, [])
             continue
         if old is not None and same:
@@ -555,7 +559,12 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=WORKERS)
     arguments = parser.parse_args()
     only = set(arguments.only.split(",")) if arguments.only else None
-    solved = solve_set(workers=arguments.workers, resume=arguments.resume, only=only)
+    solved = solve_set(
+        workers=arguments.workers,
+        resume=arguments.resume,
+        only=only,
+        log=lambda line: print(line, flush=True),
+    )
     print(f"wrote {len(solved)} ships to {ships.directory_of(SHIP_SET)}")
     for one in solved:
         print(f"{one.ship.key}: worst flown error {one.worst:.2e}, converged {one.converged}")

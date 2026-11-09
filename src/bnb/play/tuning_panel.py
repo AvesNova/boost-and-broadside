@@ -267,7 +267,7 @@ class TuningPanel:
         self.ship = min(self.ship, len(names) - 1)
         scale = session.scale
         imgui.set_next_item_width(150.0 * scale)
-        _, self.ship = imgui.combo("##ship", self.ship, list(names))
+        _, self.ship = imgui.combo("##ship", self.ship, list(names), len(names))
         imgui.same_line()
         if imgui.button("Save ships"):
             self._save(session, tuner)

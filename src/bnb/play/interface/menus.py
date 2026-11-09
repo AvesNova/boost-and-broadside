@@ -396,7 +396,9 @@ class Menu:
             imgui.set_next_item_width(width)
             name = f"new match/lineup/{slot}"
             opened = imgui.begin_combo(
-                f"##slot{slot}", names[ship_type], imgui.ComboFlags_.no_arrow_button
+                f"##slot{slot}",
+                names[ship_type],
+                imgui.ComboFlags_.no_arrow_button | imgui.ComboFlags_.height_largest,
             )
             controls.record(name)
             tooltip(f"Slot {slot + 1}: {names[ship_type]}, on both teams")

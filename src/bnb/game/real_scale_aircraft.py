@@ -204,7 +204,7 @@ AIRCRAFT = (
             ),
             g_limit=Datum(
                 7.5,
-                "low",
+                "estimated",
                 "AAF pursuit class design (~8 g at design gross), reduced for combat weight above design gross",
             ),
             cruise_speed=Datum(
@@ -276,7 +276,7 @@ AIRCRAFT = (
             ),
             g_limit=Datum(
                 8.0,
-                "low",
+                "estimated",
                 "no published limit found; pilots pulled 8-10 g with wrinkled skins; RAF fighters designed to factor ~ 8 limit",
             ),
             cruise_speed=Datum(
@@ -346,7 +346,7 @@ AIRCRAFT = (
         "2x Hispano Mk II 20 mm (wing); 2x Browning AN/M2 .50 cal (wing)",
         dict(
             stall_speed=Datum(43.4, "estimated", "W/S 34.7 lb/sq ft and CLmax ~1.35; 97 mph."),
-            g_limit=Datum(8.0, "low", "as Mk IX"),
+            g_limit=Datum(8.0, "estimated", "as Mk IX"),
             cruise_speed=Datum(
                 161.8,
                 "medium",
@@ -370,7 +370,7 @@ AIRCRAFT = (
                 "estimated",
                 "the research's point-mass model (21.1 deg/s) x 0.88, its correction for propeller efficiency (no literature value)",
             ),
-            roll_rate=Datum(90.0, "low", "peak roll rate: as Mk IX"),
+            roll_rate=Datum(90.0, "estimated", "peak roll rate: as Mk IX"),
             stall_angle=Datum(16.0, "estimated", "as Mk IX"),
             drag_coefficient=Datum(
                 0.0186,
@@ -412,7 +412,7 @@ AIRCRAFT = (
         "4x Hispano Mk V 20 mm (wing)",
         dict(
             stall_speed=Datum(45.2, "estimated", "W/S 37.7 lb/sq ft with CLmax ~1.45; 101 mph."),
-            g_limit=Datum(8.0, "low", "estimated"),
+            g_limit=Datum(8.0, "estimated", "no published value found: the research's estimate"),
             cruise_speed=Datum(
                 168.1,
                 "good",
@@ -438,7 +438,7 @@ AIRCRAFT = (
             ),
             roll_rate=Datum(
                 100.0,
-                "low",
+                "estimated",
                 "peak roll rate: spring-tab ailerons; AFDU/CFE trials rate it better than the Spitfire XIV at speed, worse than the Fw 190",
             ),
             stall_angle=Datum(16.0, "estimated", "thin semi-elliptical wing (14.5% root, 10% tip)"),
@@ -480,7 +480,7 @@ AIRCRAFT = (
         "4x Hispano Mk II 20 mm (nose); 4x .303 Browning Mk II (nose)",
         dict(
             stall_speed=Datum(49.2, "estimated", "W/S 43 lb/sq ft and CLmax ~1.4; 110 mph."),
-            g_limit=Datum(6.0, "low", "fighter-bomber/light-bomber strength class"),
+            g_limit=Datum(6.0, "estimated", "fighter-bomber/light-bomber strength class"),
             cruise_speed=Datum(
                 148.4,
                 "good",
@@ -507,7 +507,9 @@ AIRCRAFT = (
             roll_rate=Datum(
                 60.0, "estimated", "peak roll rate: large twin with heavy roll inertia"
             ),
-            stall_angle=Datum(15.0, "estimated", "estimated"),
+            stall_angle=Datum(
+                15.0, "estimated", "no published value found: the research's estimate"
+            ),
             drag_coefficient=Datum(
                 0.0215,
                 "estimated",
@@ -556,7 +558,7 @@ AIRCRAFT = (
             ),
             g_limit=Datum(
                 7.0,
-                "low",
+                "estimated",
                 "German strength group H5 safe load factor ~ 7 at design weight; not found tonight",
             ),
             cruise_speed=Datum(
@@ -567,9 +569,9 @@ AIRCRAFT = (
             climb_rate=Datum(
                 14.4,
                 "good",
-                "sea-level climb, military power: wwiiaircraftperformance.org test report (GL/C-E2 Nr 7578/44 (13)",
+                "sea-level climb, military power: wwiiaircraftperformance.org test report (GL/C-E2 Nr 7578/44 (13.4 m/s in the 13.11.43 chart))",
             ),
-            service_ceiling=Datum(10300.0, "low", "recalled standard figure, not re-checked ()"),
+            service_ceiling=Datum(10300.0, "low", "recalled standard figure, not re-checked"),
             low_speed_acceleration=Datum(
                 2.807,
                 "estimated",
@@ -622,7 +624,7 @@ AIRCRAFT = (
         "2x Rheinmetall-Borsig MG 131 13 mm (cowl); 2x Mauser MG 151/20 (wing_root)",
         dict(
             stall_speed=Datum(52.8, "estimated", "same wing, similar weight to the A-8; 190 km/h."),
-            g_limit=Datum(7.0, "low", "as A-8"),
+            g_limit=Datum(7.0, "estimated", "as A-8"),
             cruise_speed=Datum(
                 151.4,
                 "good",
@@ -692,7 +694,7 @@ AIRCRAFT = (
             stall_speed=Datum(
                 47.2, "estimated", "W/S 206 kg/m^2 with automatic slats, CLmax ~1.5; 170 km/h."
             ),
-            g_limit=Datum(7.0, "low", "as Fw 190"),
+            g_limit=Datum(7.0, "estimated", "as Fw 190"),
             cruise_speed=Datum(
                 165.3,
                 "medium",
@@ -701,9 +703,9 @@ AIRCRAFT = (
             climb_rate=Datum(
                 22.5,
                 "medium",
-                "sea-level climb, military power: forum post quoting kurfurst.org (1)",
+                "sea-level climb, military power: forum post quoting kurfurst.org (1.80 ata; 25 m/s at 1.98 ata; IL-2 museum page gives 20.5 m/s)",
             ),
-            service_ceiling=Datum(12500.0, "medium", "recalled standard figure, not re-checked ()"),
+            service_ceiling=Datum(12500.0, "medium", "recalled standard figure, not re-checked"),
             low_speed_acceleration=Datum(
                 4.743,
                 "estimated",
@@ -716,7 +718,7 @@ AIRCRAFT = (
             ),
             roll_rate=Datum(
                 100.0,
-                "low",
+                "estimated",
                 "peak roll rate: light at low speed, ailerons stiffen markedly above ~450 km/h IAS",
             ),
             stall_angle=Datum(17.0, "estimated", "slats delay the stall"),
@@ -762,16 +764,18 @@ AIRCRAFT = (
         "2x Type 99 Mk 2 20 mm (wing); 2x Type 97 7.7 mm (cowl)",
         dict(
             stall_speed=Datum(37.5, "estimated", "W/S 127 kg/m^2 with CLmax ~1.45; 135 km/h."),
-            g_limit=Datum(7.0, "low", "light structure, IJN fighter strength requirement"),
+            g_limit=Datum(7.0, "estimated", "light structure, IJN fighter strength requirement"),
             cruise_speed=Datum(
                 130.6,
-                "low",
+                "estimated",
                 "sea-level maximum speed, military power: 565 km/h at 6,000 m less the usual ~95 km/h altitude gain for a single-stage-two-speed engine (470 km/h)",
             ),
             climb_rate=Datum(
-                15.7, "low", "sea-level climb, military power: Wikipedia (Wikipedia gives 15)"
+                15.7,
+                "low",
+                "sea-level climb, military power: Wikipedia (Wikipedia gives 15.7 m/s for the A6M2; the A6M5 is similar (6,000 m in ~7 min))",
             ),
-            service_ceiling=Datum(11740.0, "medium", "recalled standard figure, not re-checked ()"),
+            service_ceiling=Datum(11740.0, "medium", "recalled standard figure, not re-checked"),
             low_speed_acceleration=Datum(
                 4.374,
                 "estimated",
@@ -828,7 +832,7 @@ AIRCRAFT = (
             stall_speed=Datum(
                 55.6, "estimated", "W/S 295 kg/m^2 with automatic slats, CLmax ~1.45; 200 km/h."
             ),
-            g_limit=Datum(7.0, "low", "estimated"),
+            g_limit=Datum(7.0, "estimated", "no published value found: the research's estimate"),
             cruise_speed=Datum(
                 227.8,
                 "medium",
@@ -839,7 +843,7 @@ AIRCRAFT = (
                 "medium",
                 "sea-level climb, military power: Wikipedia (At 7,130 kg max weight)",
             ),
-            service_ceiling=Datum(11450.0, "good", "Wikipedia ()"),
+            service_ceiling=Datum(11450.0, "good", "Wikipedia"),
             low_speed_acceleration=Datum(
                 1.76,
                 "estimated",
@@ -850,7 +854,9 @@ AIRCRAFT = (
                 "estimated",
                 "the research's point-mass model (14.1 deg/s; no propeller, no correction)",
             ),
-            roll_rate=Datum(60.0, "low", "peak roll rate: long span with engines out on the wing"),
+            roll_rate=Datum(
+                60.0, "estimated", "peak roll rate: long span with engines out on the wing"
+            ),
             stall_angle=Datum(17.0, "estimated", "slats"),
             drag_coefficient=Datum(
                 0.0191,
@@ -892,18 +898,18 @@ AIRCRAFT = (
         "2x Ho-5 20 mm (wing); 2x Ho-103 12.7 mm (cowl)",
         dict(
             stall_speed=Datum(44.4, "estimated", "W/S 171 kg/m^2 with CLmax ~1.4; 160 km/h."),
-            g_limit=Datum(7.5, "low", "estimated"),
+            g_limit=Datum(7.5, "estimated", "no published value found: the research's estimate"),
             cruise_speed=Datum(
                 155.6,
-                "low",
+                "estimated",
                 "sea-level maximum speed, military power: 624 km/h at 6,120 m (Japanese data) less altitude gain (560 km/h)",
             ),
             climb_rate=Datum(
                 18.5,
-                "low",
-                "sea-level climb, military power: 5,000 m in 5 min 54 s (Japanese data) ()",
+                "estimated",
+                "sea-level climb, military power: 5,000 m in 5 min 54 s (Japanese data)",
             ),
-            service_ceiling=Datum(10500.0, "medium", "Wikipedia ()"),
+            service_ceiling=Datum(10500.0, "medium", "Wikipedia"),
             low_speed_acceleration=Datum(
                 4.488,
                 "estimated",
@@ -914,8 +920,14 @@ AIRCRAFT = (
                 "estimated",
                 "the research's point-mass model (21.3 deg/s) x 0.88, its correction for propeller efficiency (no literature value)",
             ),
-            roll_rate=Datum(90.0, "low", "peak roll rate: estimated"),
-            stall_angle=Datum(16.0, "estimated", "estimated"),
+            roll_rate=Datum(
+                90.0,
+                "estimated",
+                "peak roll rate: no published value found: the research's estimate",
+            ),
+            stall_angle=Datum(
+                16.0, "estimated", "no published value found: the research's estimate"
+            ),
             drag_coefficient=Datum(
                 0.021,
                 "estimated",
@@ -956,7 +968,7 @@ AIRCRAFT = (
         "1x ShVAK 20 mm (engine); 2x Berezin UBS 12.7 mm (cowl)",
         dict(
             stall_speed=Datum(45.8, "estimated", "W/S 181 kg/m^2 with CLmax ~1.4; 165 km/h."),
-            g_limit=Datum(8.0, "low", "estimated"),
+            g_limit=Datum(8.0, "estimated", "no published value found: the research's estimate"),
             cruise_speed=Datum(
                 157.5,
                 "medium",
@@ -964,10 +976,10 @@ AIRCRAFT = (
             ),
             climb_rate=Datum(
                 21.0,
-                "low",
-                "sea-level climb, military power: 5,000 m in 4.5 min (airpages/Wikipedia) ()",
+                "estimated",
+                "sea-level climb, military power: 5,000 m in 4.5 min (airpages/Wikipedia)",
             ),
-            service_ceiling=Datum(10400.0, "good", "Wikipedia ()"),
+            service_ceiling=Datum(10400.0, "good", "Wikipedia"),
             low_speed_acceleration=Datum(
                 4.083,
                 "estimated",
@@ -976,8 +988,10 @@ AIRCRAFT = (
             sustained_turn_rate=Datum(
                 19.5, "medium", "literature: airpages.ru (NII VVS-derived) (360 deg in 18.5 s)"
             ),
-            roll_rate=Datum(100.0, "low", "peak roll rate: small span, light"),
-            stall_angle=Datum(16.0, "estimated", "estimated"),
+            roll_rate=Datum(100.0, "estimated", "peak roll rate: small span, light"),
+            stall_angle=Datum(
+                16.0, "estimated", "no published value found: the research's estimate"
+            ),
             drag_coefficient=Datum(
                 0.0204,
                 "estimated",
@@ -1090,7 +1104,7 @@ AIRCRAFT = (
         "2x ShVAK 20 mm (cowl)",
         dict(
             stall_speed=Datum(45.8, "estimated", "W/S 186 kg/m^2 with CLmax ~1.4; 165 km/h."),
-            g_limit=Datum(8.0, "low", "estimated"),
+            g_limit=Datum(8.0, "estimated", "no published value found: the research's estimate"),
             cruise_speed=Datum(
                 160.8,
                 "medium",
@@ -1098,10 +1112,10 @@ AIRCRAFT = (
             ),
             climb_rate=Datum(
                 18.0,
-                "low",
-                "sea-level climb, military power: 5,000 m in 5.25 min (4.6 min forced) ()",
+                "estimated",
+                "sea-level climb, military power: 5,000 m in 5.25 min (4.6 min forced)",
             ),
-            service_ceiling=Datum(10750.0, "medium", "recalled standard figure, not re-checked ()"),
+            service_ceiling=Datum(10750.0, "medium", "recalled standard figure, not re-checked"),
             low_speed_acceleration=Datum(
                 4.242,
                 "estimated",
@@ -1112,10 +1126,12 @@ AIRCRAFT = (
             ),
             roll_rate=Datum(
                 110.0,
-                "low",
+                "estimated",
                 "peak roll rate: metal-spar wing, light ailerons; often compared with the Fw 190",
             ),
-            stall_angle=Datum(16.0, "estimated", "estimated"),
+            stall_angle=Datum(
+                16.0, "estimated", "no published value found: the research's estimate"
+            ),
             drag_coefficient=Datum(
                 0.0205,
                 "estimated",
@@ -1154,16 +1170,16 @@ AIRCRAFT = (
         "2x Rheinmetall-Borsig MK 108 30 mm (wing_root)",
         dict(
             stall_speed=Datum(44.4, "estimated", "tailless, W/S ~180 kg/m^2 at burnout; 160 km/h."),
-            g_limit=Datum(7.0, "low", "estimated"),
+            g_limit=Datum(7.0, "estimated", "no published value found: the research's estimate"),
             cruise_speed=Datum(
                 230.6,
-                "low",
+                "estimated",
                 "sea-level maximum speed, military power: Mach-limited airframe, ~960 km/h at altitude (830 km/h)",
             ),
             climb_rate=Datum(
                 81.3, "medium", "sea-level climb, military power: Wikipedia (16000 ft/min)"
             ),
-            service_ceiling=Datum(12100.0, "medium", "recalled standard figure, not re-checked ()"),
+            service_ceiling=Datum(12100.0, "medium", "recalled standard figure, not re-checked"),
             low_speed_acceleration=Datum(
                 3.01,
                 "estimated",
@@ -1174,7 +1190,7 @@ AIRCRAFT = (
                 "estimated",
                 "the research's point-mass model (19.3 deg/s; no propeller, no correction)",
             ),
-            roll_rate=Datum(120.0, "low", "peak roll rate: elevons, very light"),
+            roll_rate=Datum(120.0, "estimated", "peak roll rate: elevons, very light"),
             stall_angle=Datum(18.0, "estimated", "fixed leading-edge slots give a benign stall"),
             drag_coefficient=Datum(0.016, "estimated", "very clean tailless glider-like airframe"),
             wing_loading=Datum(178.6, "low", "combat mass 3500 kg (low) over wing area 19.6 m^2"),
