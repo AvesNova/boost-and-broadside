@@ -52,3 +52,4 @@
 23:23 round4b ready for the tournament
 23:23 tournament3 start (7 players)
 00:10 tournament3 done
+00:10 start resume 2026-11-09-bc-deadreckon-split-hiddenphysics to 60M
