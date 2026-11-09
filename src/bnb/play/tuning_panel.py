@@ -70,9 +70,15 @@ def number(
     imgui.set_next_item_width(-1.0)
     if integer:
         slid, slider = imgui.slider_int("##slider", int(value), int(low), int(high), " ")
+    elif log and low * high > 0.0:
+        # A linear slider over the log of the magnitude: ImGui's own logarithmic slider takes
+        # values below the format's precision for zero, and its format here shows nothing.
+        start, end = log_axis(low, high)
+        position = min(max(to_log_axis(value, low), start), end) if value * low > 0 else start
+        slid, position = imgui.slider_float("##slider", position, start, end, " ")
+        slider = from_log_axis(position, low)
     else:
-        flags = imgui.SliderFlags_.logarithmic if log else 0
-        slid, slider = imgui.slider_float("##slider", value, low, high, " ", flags)
+        slid, slider = imgui.slider_float("##slider", value, low, high, " ")
     imgui.table_next_column()
     imgui.set_next_item_width(-1.0)
     if integer:
@@ -84,6 +90,24 @@ def number(
     if typed:
         return True, float(box)
     return slid, float(slider)
+
+
+def to_log_axis(value: float, low: float) -> float:
+    """A value's place on a logarithmic slider whose ends share `low`'s sign: the log of its
+    magnitude, negated for negative values so the slider still runs from low to high."""
+    sign = math.copysign(1.0, low)
+    return sign * math.log(abs(value))
+
+
+def from_log_axis(position: float, low: float) -> float:
+    """The value at a place on that slider (`to_log_axis`'s inverse)."""
+    sign = math.copysign(1.0, low)
+    return sign * math.exp(sign * position)
+
+
+def log_axis(low: float, high: float) -> tuple[float, float]:
+    """The slider's ends on that axis, in order (low and high of one sign)."""
+    return tuple(sorted((to_log_axis(low, low), to_log_axis(high, low))))
 
 
 def _range(saved: float) -> tuple[float, float]:

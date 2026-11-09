@@ -2,6 +2,8 @@
 trip, a running match takes new rules and a new card from the next tick (never
 recompiling) and refuses new sizes, and presets round trip."""
 
+import math
+
 import pytest
 import torch
 
@@ -9,6 +11,7 @@ from bnb.contracts import GameConfig
 from bnb.game import api
 from bnb.play.loop import MatchLoop, MatchSetup
 from bnb.play.tuning import Presets, Tuning, base_rules, fire_rates, snap_handle
+from bnb.play.tuning_panel import from_log_axis, log_axis, to_log_axis
 from bnb.runtime.realtime import Realtime
 
 FRONTLINE = GameConfig(2, 4, 900.0, episode_seconds=20.0, mode="frontline")
@@ -139,6 +142,19 @@ def test_a_bullet_life_changes_the_gun_range_at_once():
         api.gun_range(longer, api.ship_types(), cruise),
     )
     assert (far > 1.5 * near).all()
+
+
+@pytest.mark.parametrize("low, high", [(1.7e-4, 2.8e-3), (-96.0, -6.0), (0.03, 0.7)])
+def test_a_handle_slider_runs_from_low_to_high_at_any_scale(low, high):
+    """The panel's logarithmic slider (a linear slider over the log of the magnitude) puts
+    tiny values (the zero-lift drag, ~7e-4) inside it, not at an end, and runs from low to
+    high for negative values (the zoom acceleration) too."""
+    start, end = log_axis(low, high)
+    assert from_log_axis(start, low) == pytest.approx(low)
+    assert from_log_axis(end, low) == pytest.approx(high)
+    middle = -math.sqrt(low * high) if low < 0 else math.sqrt(low * high)
+    assert to_log_axis(middle, low) == pytest.approx(0.5 * (start + end))
+    assert from_log_axis(to_log_axis(middle, low), low) == pytest.approx(middle)
 
 
 def test_presets_round_trip(tmp_path):

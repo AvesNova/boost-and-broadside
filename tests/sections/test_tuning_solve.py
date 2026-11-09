@@ -118,3 +118,47 @@ def test_the_tuner_applies_the_estimate_then_the_exact_card():
         assert (tuner.targets.gun_range > 1.5 * gun_range).all()  # at once, the card kept
     finally:
         tuner.close()
+
+
+def _live_tuner():
+    setup = MatchSetup(GameConfig(2, 4, 900.0, mode="frontline"))
+    loop = MatchLoop(setup, compiled=False)
+    tuner = Tuner(loop, base_rules(setup.config, setup.lineup))
+
+    def frames(done, seconds):
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            tuner.update()
+            loop.advance(1.0 / 30.0)
+            if done():
+                return True
+            time.sleep(0.01)
+        return False
+
+    return tuner, frames
+
+
+def test_a_rule_change_while_the_handles_are_measured_restarts_the_measurement():
+    """A rule set while the handles are measured (the panel just opened) restarts the
+    measurement under the new rules; the handles do not stay unsettable."""
+    tuner, frames = _live_tuner()
+    try:
+        tuner.set_setting("pool.arena_radius", 1500.0)  # not a flight constant
+        assert frames(lambda: tuner.targets is not None, 300.0), tuner.message
+        assert tuner.exact
+    finally:
+        tuner.close()
+
+
+def test_a_rule_change_during_a_solve_solves_again():
+    """A rule set while the exact solve runs cancels it (it solved under the old rules), and
+    the solve runs again: the card becomes exact without touching a handle."""
+    tuner, frames = _live_tuner()
+    try:
+        assert frames(lambda: tuner.targets is not None, 300.0), tuner.message
+        tuner.set_handle("cruise_speed", 0, float(tuner.targets.cruise_speed[0]) * 1.1)
+        assert frames(lambda: tuner._solving is not None, 30.0), tuner.message
+        tuner.set_setting("pool.arena_radius", 1500.0)
+        assert frames(lambda: tuner.exact, 600.0), (tuner.status, tuner.message)
+    finally:
+        tuner.close()

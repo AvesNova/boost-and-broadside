@@ -19,8 +19,10 @@ Two kinds of number, both applied through `MatchLoop.retune`:
 
 A rule that changes what the card flies (the flight constants, the bullet life) keeps the
 card and re-measures its handles on the slow worker; until that finishes, handles cannot be
-set (`measuring`). Every change reaches the game on the main thread, in `update`, which the
-shell calls each frame: the workers only compute. The workers are processes, not threads:
+set (`measuring`). Any rule set while the handles are measured restarts the measurement, and
+one set while the exact solve runs cancels it and solves again under the new rules. Every
+change reaches the game on the main thread, in `update`, which the shell calls each frame:
+the workers only compute. The workers are processes, not threads:
 the solve and the estimate are thousands of small tensor operations, and on a thread each
 would wait for the interpreter lock while the match runs (several times slower).
 
@@ -366,11 +368,13 @@ class Tuner:
         self.values = values
         self.message = ""
         self._retune(rules=rules)
-        self._rules_version += 1
-        if key.startswith(MEASURED_BY):
-            self._measure()
-        elif key == "rules.bullet_life" and self.targets is not None:
+        self._rules_version += 1  # what the workers were computing under the old rules is stale
+        if key.startswith(MEASURED_BY) or self.targets is None:
+            self._measure()  # a measurement under way restarts under the new rules
+        elif key == "rules.bullet_life":
             self._rerange()
+        if self.targets is not None and (self._solving is not None or not self.exact):
+            self._handles_changed = time.monotonic()  # the cancelled solve runs again
 
     def _rerange(self) -> None:
         """A new bullet life: the card is kept, so its gun range (a closed form of the
