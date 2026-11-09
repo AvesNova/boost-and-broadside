@@ -1,6 +1,6 @@
-# Me 262 A-1a: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
+# Me 262: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
 # it; [card] is solved from [handles], so edit the handles, not the card.
-name = 'Me 262 A-1a'
+name = 'Me 262'
 
 [handles]
 # What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
@@ -18,7 +18,7 @@ zoom_acceleration = -8.55118444795679
 stall_angle = 0.29670597283903605
 vision_range = 3072.0
 zero_lift_drag = 3.9670227195659555e-05
-hit_damage = 66.71739130434783
+hit_damage = 133.43478260869566
 fire_rate = 10.0
 muzzle_speed = 520.0
 bullet_spread = 0.2810626436560293
@@ -43,7 +43,7 @@ max_energy = 112324.5
 corner_nose_frequency = 3.6083407402038574
 max_shield = 120.0
 hit_radius = 6.300000190734863
-hit_damage = 66.71739196777344
+hit_damage = 133.43478393554688
 muzzle_speed = 520.0
 bullet_energy_cost = 283.7456970214844
 fire_rate = 10.0
@@ -77,7 +77,7 @@ zoom_acceleration = "placeholder: the standard heavy's, scaled as the standard f
 stall_angle = "estimated: stall_angle 17; degrees. slats"
 vision_range = "placeholder: the standard heavy's, scaled as the standard fighter is to the P-51D"
 zero_lift_drag = "estimated: drag_coefficient 0.0191; rho C_D0 / (2 W/S) with W/S 294.9 kg/m^2 (researched (medium)). back-solved so the point-mass model (propeller efficiency 0.8, Oswald 0.8) reaches the measured sea-level mili..."
-hit_damage = "researched (medium): weight_of_fire 13.64; proposal: 180 per second (the P-51D's) x the weight of fire over the P-51D's 3.68 kg/s, over the fire rate. 2x Rheinmetall-Borsig MK 108 30 mm (nose); 2x Rheinmetall-Borsig MK 108 30 mm (nose): count x rate x projectile mass"
+hit_damage = "researched (medium): weight_of_fire 13.64; proposal: 360 per second (the P-51D's) x the weight of fire over the P-51D's 3.68 kg/s, over the fire rate. 2x Rheinmetall-Borsig MK 108 30 mm (nose); 2x Rheinmetall-Borsig MK 108 30 mm (nose): count x rate x projectile mass"
 fire_rate = "derived: fire_rate 10; proposal: the main gun's volley rate. the Rheinmetall-Borsig MK 108 30 mm: the whole-Hz volley rate dividing 30 nearest its rate per gun"
 muzzle_speed = "researched (medium): muzzle_speed 520. the Rheinmetall-Borsig MK 108 30 mm: Wikipedia"
 bullet_spread = "estimated: dispersion 1.8; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"

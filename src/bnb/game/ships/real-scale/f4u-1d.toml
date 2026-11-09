@@ -1,6 +1,6 @@
-# F4U-1D Corsair: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
+# Corsair: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
 # it; [card] is solved from [handles], so edit the handles, not the card.
-name = 'F4U-1D Corsair'
+name = 'Corsair'
 
 [handles]
 # What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
@@ -18,7 +18,7 @@ zoom_acceleration = -8.717968852296035
 stall_angle = 0.2792526803190927
 vision_range = 3072.0
 zero_lift_drag = 5.415996784565917e-05
-hit_damage = 12.0
+hit_damage = 24.0
 fire_rate = 15.0
 muzzle_speed = 856.0
 bullet_spread = 1.5422411728818017
@@ -43,7 +43,7 @@ max_energy = 115758.0
 corner_nose_frequency = 4.855084419250488
 max_shield = 140.0
 hit_radius = 6.236000061035156
-hit_damage = 12.0
+hit_damage = 24.0
 muzzle_speed = 856.0
 bullet_energy_cost = 156.0601348876953
 fire_rate = 15.0
@@ -77,7 +77,7 @@ zoom_acceleration = "placeholder: the standard fighter's, scaled as the standard
 stall_angle = "estimated: stall_angle 16; degrees. estimated; note the left-wing-drop stall (stall strip fitted)"
 vision_range = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
 zero_lift_drag = "estimated: drag_coefficient 0.0165; rho C_D0 / (2 W/S) with W/S 186.6 kg/m^2 (researched (medium)). back-solved so the point-mass model (propeller efficiency 0.8, Oswald 0.8) reaches the measured sea-level mili..."
-hit_damage = "researched (medium): weight_of_fire 3.68; proposal: 180 per second (the P-51D's) x the weight of fire over the P-51D's 3.68 kg/s, over the fire rate. 6x Browning AN/M2 .50 cal (wing): count x rate x projectile mass"
+hit_damage = "researched (medium): weight_of_fire 3.68; proposal: 360 per second (the P-51D's) x the weight of fire over the P-51D's 3.68 kg/s, over the fire rate. 6x Browning AN/M2 .50 cal (wing): count x rate x projectile mass"
 fire_rate = "derived: fire_rate 15; proposal: the main gun's volley rate. the Browning AN/M2 .50 cal: the whole-Hz volley rate dividing 30 nearest its rate per gun"
 muzzle_speed = "researched (medium): muzzle_speed 856. the Browning AN/M2 .50 cal: AAF Manual 200-1"
 bullet_spread = "researched (low): dispersion 6; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"

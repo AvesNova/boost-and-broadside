@@ -60,7 +60,7 @@ QUANTITIES = {
 AIRCRAFT = (
     Aircraft(
         "p51d",
-        "P-51D Mustang",
+        "P-51D",
         "fighter",
         "long-range escort fighter",
         "6x Browning AN/M2 .50 cal (wing)",
@@ -128,7 +128,7 @@ AIRCRAFT = (
     ),
     Aircraft(
         "p47d",
-        "P-47D Thunderbolt",
+        "P-47D",
         "heavy",
         "fighter / fighter-bomber",
         "8x Browning AN/M2 .50 cal (wing)",
@@ -192,7 +192,7 @@ AIRCRAFT = (
     ),
     Aircraft(
         "p38l",
-        "P-38L Lightning",
+        "P-38L",
         "heavy",
         "twin-engine long-range fighter",
         "1x AN/M2 20 mm (nose); 4x Browning AN/M2 .50 cal (nose)",
@@ -264,7 +264,7 @@ AIRCRAFT = (
     ),
     Aircraft(
         "spitfire-ix",
-        "Spitfire LF IX",
+        "Spitfire IX",
         "fighter",
         "air-superiority fighter",
         "2x Hispano Mk II 20 mm (wing); 2x Browning AN/M2 .50 cal (wing)",
@@ -474,7 +474,7 @@ AIRCRAFT = (
     ),
     Aircraft(
         "mosquito",
-        "Mosquito FB VI",
+        "Mosquito",
         "heavy",
         "twin-engine fighter-bomber",
         "4x Hispano Mk II 20 mm (nose); 4x .303 Browning Mk II (nose)",
@@ -546,7 +546,7 @@ AIRCRAFT = (
     ),
     Aircraft(
         "fw190-a8",
-        "Fw 190 A-8",
+        "Fw 190A",
         "fighter",
         "fighter / bomber-destroyer",
         "2x Rheinmetall-Borsig MG 131 13 mm (cowl); 2x Mauser MG 151/20 (wing_root); 2x Mauser MG 151/20 (wing)",
@@ -618,7 +618,7 @@ AIRCRAFT = (
     ),
     Aircraft(
         "fw190-d9",
-        "Fw 190 D-9",
+        "Fw 190D",
         "fighter",
         "air-superiority fighter",
         "2x Rheinmetall-Borsig MG 131 13 mm (cowl); 2x Mauser MG 151/20 (wing_root)",
@@ -686,7 +686,7 @@ AIRCRAFT = (
     ),
     Aircraft(
         "bf109-k4",
-        "Bf 109 K-4",
+        "Bf 109K",
         "fighter",
         "interceptor / air-superiority fighter",
         "1x Rheinmetall-Borsig MK 108 30 mm (engine); 2x Rheinmetall-Borsig MG 131 13 mm (cowl)",
@@ -758,7 +758,7 @@ AIRCRAFT = (
     ),
     Aircraft(
         "a6m5",
-        "A6M5 Zero",
+        "Zero",
         "fighter",
         "carrier fighter",
         "2x Type 99 Mk 2 20 mm (wing); 2x Type 97 7.7 mm (cowl)",
@@ -824,7 +824,7 @@ AIRCRAFT = (
     ),
     Aircraft(
         "me262",
-        "Me 262 A-1a",
+        "Me 262",
         "heavy",
         "jet interceptor",
         "2x Rheinmetall-Borsig MK 108 30 mm (nose); 2x Rheinmetall-Borsig MK 108 30 mm (nose)",
@@ -892,7 +892,7 @@ AIRCRAFT = (
     ),
     Aircraft(
         "ki84",
-        "Ki-84 Hayate",
+        "Ki-84",
         "fighter",
         "fighter",
         "2x Ho-5 20 mm (wing); 2x Ho-103 12.7 mm (cowl)",
@@ -1028,7 +1028,7 @@ AIRCRAFT = (
     ),
     Aircraft(
         "f4u-1d",
-        "F4U-1D Corsair",
+        "Corsair",
         "fighter",
         "carrier fighter / fighter-bomber",
         "6x Browning AN/M2 .50 cal (wing)",
@@ -1164,7 +1164,7 @@ AIRCRAFT = (
     ),
     Aircraft(
         "me163",
-        "Me 163 B Komet",
+        "Me 163",
         "fighter",
         "rocket point-defence interceptor",
         "2x Rheinmetall-Borsig MK 108 30 mm (wing_root)",
@@ -1220,7 +1220,7 @@ AIRCRAFT = (
     ),
     Aircraft(
         "f6f-5",
-        "F6F-5 Hellcat",
+        "Hellcat",
         "fighter",
         "carrier fighter",
         "6x Browning AN/M2 .50 cal (wing)",

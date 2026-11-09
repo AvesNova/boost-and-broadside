@@ -24,8 +24,8 @@ speed, the nose reversal the P-51's (a placeholder) times the P-51's roll rate o
 type's, the shield the survivability rating (SHIELD_PER_RATING). The combat economy is a
 proposal (COMBAT, a `CombatEconomy`; `combat_economy`): continuous fire costs every type
 the same multiple of its own initial climb charge as it costs the standard fighter (a P-51
-shot about 1 s of charge); damage per second follows the weight of fire, the P-51 keeping
-the standard fighter's 180 per second.
+shot about 1 s of charge); damage per second follows the weight of fire, the P-51's
+360 per second (provisional: twice the standard fighter's).
 
 Every handle a type does not give is a placeholder: its `like` type's standard handle times
 the factor that turns the standard fighter into the P-51 (`placeholder_factors`: the P-51's
@@ -101,7 +101,10 @@ class CombatEconomy:
     damage_per_second: float | None = None
 
 
-COMBAT = CombatEconomy()
+# Provisional: twice the standard fighter's damage per second. The scripted agent's
+# real-scale deathmatch (seed 1, 600 s) has 28 kills at 360 against 16 at 180 (and 3 with
+# the game's combat values); the standard deathmatch has 45 in 300 s.
+COMBAT = CombatEconomy(damage_per_second=360.0)
 
 HEAVY_PLACEHOLDER = Aircraft("heavy", "Heavy", "heavy", "placeholder", "", {})
 AIRCRAFT = (RESEARCHED[0], HEAVY_PLACEHOLDER, *RESEARCHED[1:])

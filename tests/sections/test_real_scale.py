@@ -44,7 +44,7 @@ def test_the_rules_are_todays_in_real_units():
 def test_the_first_type_is_the_researched_p51d_with_a_600_m_gun():
     p51 = ships.load(SET)[0]
     handles = p51.handles
-    assert p51.name == "P-51D Mustang"
+    assert p51.name == "P-51D"
     assert handles["stall_speed"] == 44.7 and handles["g_limit"] == 8.0
     assert handles["cruise_speed"] == 162.7 and handles["ceiling"] == pytest.approx(9.81 * 12680)
     assert handles["sustained_turn_rate"] == pytest.approx(math.radians(15.7))
@@ -88,10 +88,10 @@ def test_the_spread_is_the_volleys_75_percent_cone():
 def test_the_combat_economy_follows_the_weight_of_fire_and_the_climb_charge():
     """A P-51 shot costs about the standard fighter's 1 s of climb charge, every type's
     continuous fire the same multiple of its own charge, and damage per second follows the
-    weight of fire (the P-51 keeps the standard fighter's 12 x 15)."""
+    weight of fire (the P-51's twice the standard fighter's 12 x 15, provisional)."""
     power, damage = real_scale.combat_constants()
     standard = {ship.key: ship.handles for ship in ships.load()}["fighter"]
-    assert damage == 180.0
+    assert damage == 2.0 * standard["hit_damage"] * standard["fire_rate"] == 360.0
     found = {ship.key: ship.handles for ship in ships.load(SET)}
     data = {one.key: one.data for one in real_scale.AIRCRAFT}
     charge = standard["ceiling"] / standard["shots_per_store"] / power * standard["fire_rate"]
@@ -102,7 +102,7 @@ def test_the_combat_economy_follows_the_weight_of_fire_and_the_climb_charge():
         own_charge = 9.81 * data[key]["climb_rate"].value
         assert cost * handles["fire_rate"] == pytest.approx(power * own_charge), key
         ratio = data[key]["weight_of_fire"].value / data["p51d"]["weight_of_fire"].value
-        assert handles["hit_damage"] * handles["fire_rate"] == pytest.approx(180.0 * ratio), key
+        assert handles["hit_damage"] * handles["fire_rate"] == pytest.approx(damage * ratio), key
     p51 = found["p51d"]
     assert p51["ceiling"] / p51["shots_per_store"] / (9.81 * 15.2) == pytest.approx(0.96, abs=0.01)
 
