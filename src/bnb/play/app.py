@@ -232,7 +232,8 @@ class Session:
             self._finish_recording()
         self.following = pilot
         self._adopt(loop, whole, fit=realtime is None)
-        if self.options.record:
+        self._warn(loop.sides)
+        if self.options.record and not setup.tuning:  # a tuned match is not recorded
             self.recorder = replays.Recorder(setup, loop.realtime, self._match_name())
         return True
 
@@ -266,6 +267,9 @@ class Session:
 
     def save_replay(self) -> pathlib.Path | None:
         """Save the live match recorded so far (recording goes on); returns its directory."""
+        if self.recorder is None and self.current_tuning():
+            self.say("a tuned match is not recorded")
+            return None
         if self.recorder is None or self.recorder.ticks == 0:
             self.say("nothing recorded yet")
             return None
@@ -281,6 +285,12 @@ class Session:
 
     def _match_name(self) -> str:
         return "-vs-".join(side.label.replace("/", "-") for side in self.loop.sides)
+
+    def _warn(self, sides) -> None:
+        """Say what an agent was not trained with (another ship card or lineup)."""
+        warnings = [side.warning for side in sides if getattr(side, "warning", None)]
+        if warnings:
+            self.say("; ".join(warnings))
 
     # Live tuning ------------------------------------------------------------------------
 
@@ -307,8 +317,9 @@ class Session:
             self.tuner.load(tuning)
 
     def _on_retune(self, realtime) -> None:
-        if self.recorder is not None:
-            self.recorder.retuned(realtime)
+        """A live change: the match is tuned from here, so its recording is dropped (a
+        replay re-simulates with the numbers it started from)."""
+        self.recorder = None
 
     def _on_tick(self, actions, realtime, events: list[MatchEvent]) -> None:
         loop = self.loop
@@ -335,6 +346,7 @@ class Session:
             self.say(str(error))
             return False
         loop.sides[team] = controller
+        self._warn([controller])
         sides = list(loop.setup.sides)
         sides[team] = side
         loop.setup = dataclasses.replace(loop.setup, sides=tuple(sides))

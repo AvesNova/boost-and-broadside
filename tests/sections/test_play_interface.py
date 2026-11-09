@@ -239,14 +239,17 @@ def test_taking_control_puts_the_camera_on_the_flown_ship_and_keeps_it_there(con
 
 def test_the_tuning_panel_opens_from_the_menu_and_a_restart_keeps_the_tuning(context, tmp_path):
     """**Tune the game** opens the panel and starts the live match's tuner; a rule changed
-    there is drawn on the next frame, and a restart starts from the tuned rules."""
+    there is drawn on the next frame and stops the match's recording, and a restart starts
+    from the tuned rules, unrecorded."""
     session = _session(context, tmp_path, preset="frontline")
     player = Player(session, context, 1280, 720)
     player.click("menu")
     player.click("menu/tune")
     assert session.tuning_panel.open and session.tuner is not None
     assert not session.interface.menu.is_open
+    assert session.recorder is not None
     session.tuner.set_setting("mode.zone_radius", 500.0)
+    assert session.recorder is None  # a tuned match is not recorded
     player.frames(2)
     assert session.frame.zones.radius == pytest.approx(np.full(5, 500.0))  # map scale 1
     player.click("menu")
@@ -254,6 +257,7 @@ def test_the_tuning_panel_opens_from_the_menu_and_a_restart_keeps_the_tuning(con
     assert session.loop.rules.pools[0].mode.zone_radius == 500.0
     assert session.loop.setup.tuning.rules == {"mode.zone_radius": 500.0}
     assert session.tuner is not None and session.tuner.loop is session.loop
+    assert session.recorder is None
     session.toggle_tuning()
     assert not session.tuning_panel.open
     player.frames(2)

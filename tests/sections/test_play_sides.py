@@ -41,9 +41,21 @@ def test_a_policy_for_another_game_is_refused_with_the_reason(tmp_path):
     setup = MatchSetup(other, sides=(SideSetup("agent", str(policy)), SideSetup()))
     with pytest.raises(AgentError, match="num_fields 4 .this match: 6."):
         MatchLoop(setup, compiled=False)
-    lineup = MatchSetup(SMALL, lineup=(1, 1, 1), sides=setup.sides)
-    with pytest.raises(AgentError, match="default lineup"):
-        MatchLoop(lineup, compiled=False)
+
+
+def test_a_policy_trained_with_another_card_or_lineup_plays_with_a_warning(tmp_path):
+    from bnb.play.tuning import Tuning
+
+    policy = tiny_policy(tmp_path / "policy", SMALL)
+    sides = (SideSetup("agent", str(policy)), SideSetup())
+    lineup = MatchLoop(MatchSetup(SMALL, lineup=(1, 1, 1), sides=sides), compiled=False)
+    assert "default lineup" in lineup.sides[0].warning
+    tuned = Tuning(card={"hit_damage": (20.0, 25.0)})
+    card = MatchLoop(MatchSetup(SMALL, sides=sides, tuning=tuned), compiled=False)
+    assert "another ship card: hit_damage" in card.sides[0].warning
+    card.step()
+    plain = MatchLoop(MatchSetup(SMALL, sides=sides), compiled=False)
+    assert plain.sides[0].warning is None
 
 
 def test_a_policy_without_its_game_or_a_broken_file_is_refused(tmp_path):

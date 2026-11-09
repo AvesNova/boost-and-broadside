@@ -1,29 +1,18 @@
 """Live tuning (`bnb.game.tuning`, `Realtime.retune`, `bnb.play.tuning`): the settings round
 trip, a running match takes new rules and a new card from the next tick and refuses new
-sizes, new rules run uncompiled until they compile, presets round trip, and a replay of a
-match tuned while it played re-simulates bitwise."""
+sizes, new rules run uncompiled until they compile, and presets round trip."""
 
 import pytest
 import torch
-from torch.utils import _pytree
 
 from bnb.contracts import GameConfig
 from bnb.game import api
 from bnb.play.loop import MatchLoop, MatchSetup
-from bnb.play.replay import Recorder, Replay, ReplayLoop, save
 from bnb.play.tuning import Presets, Tuning, base_rules, bullet_slots_needed, snap_handle
 from bnb.runtime.realtime import Realtime
 
 FRONTLINE = GameConfig(2, 4, 900.0, episode_seconds=20.0, mode="frontline")
 DEATHMATCH = GameConfig(2, 4, 900.0, episode_seconds=20.0)
-
-
-def _leaves(tree) -> list[torch.Tensor]:
-    return [leaf.clone() for leaf in _pytree.tree_leaves(tree)]
-
-
-def _equal(first, second) -> bool:
-    return all(torch.equal(a, b) for a, b in zip(first, second, strict=True))
 
 
 # ------------------------------------------------------------------ the settings
@@ -139,36 +128,3 @@ def test_presets_round_trip(tmp_path):
     with pytest.raises(ValueError, match="lowercase"):
         presets.save("Fast Guns", tuning, tuning.types())
     assert set(__import__("json").loads(path.read_text())["ship_card"]) == set(api.default_card())
-
-
-# ------------------------------------------------------------------ replays
-
-
-def test_a_replay_of_a_tuned_match_resimulates_bitwise(tmp_path):
-    """Changes made while the match played are recorded with their ticks: playback and a
-    seek past them repeat the recorded states exactly."""
-    loop = MatchLoop(MatchSetup(FRONTLINE, seed=5), compiled=False)
-    recorder = Recorder(loop.setup, loop.realtime, "tuned")
-    loop.on_retune = recorder.retuned
-    states = [_leaves(loop.realtime.state)]
-
-    def on_tick(actions, realtime, events):
-        recorder.record(actions, realtime, events)
-        states.append(_leaves(realtime.state))
-
-    loop.on_tick = on_tick
-    for tick in range(130):
-        if tick == 40:
-            loop.retune(rules=api.tuning.tuned(loop.rules, {"mode.zone_radius": 500.0}))
-        if tick == 100:
-            loop.retune(types=api.ship_types(hit_damage=(40.0, 50.0), max_shield=(60.0, 80.0)))
-        loop.step()
-    replay = Replay.load(save(recorder, tmp_path))
-    assert [tick for tick, _ in replay.tunings] == [40, 100]
-    playback = ReplayLoop(replay, compiled=False)
-    for tick in range(1, 130):
-        playback.step()
-        assert _equal(_leaves(playback.realtime.state), states[tick]), tick
-    for tick in (95, 120):
-        playback.seek(tick)
-        assert _equal(_leaves(playback.realtime.state), states[tick]), tick

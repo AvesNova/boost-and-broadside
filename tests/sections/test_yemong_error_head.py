@@ -448,9 +448,7 @@ ARMS = dict(
     arm4c=dict(delta_baseline="extrapolation", acceleration_inputs=False),
     # the split and extrapolation on C-fixed's inputs with the scalar spreads (arms 3d, 4d)
     arm3d=dict(acceleration_inputs=False, spread_inputs="scalar"),
-    arm4d=dict(
-        delta_baseline="extrapolation", acceleration_inputs=False, spread_inputs="scalar"
-    ),
+    arm4d=dict(delta_baseline="extrapolation", acceleration_inputs=False, spread_inputs="scalar"),
 )
 
 

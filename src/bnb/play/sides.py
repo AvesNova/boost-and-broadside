@@ -153,6 +153,7 @@ class Agent:
         graph: bool | None = None,
     ) -> None:
         self.model, self.name, self.label = model, name, label
+        self.warning: str | None = None  # set by load_agent: trained with another card or lineup
         self.temperature = temperature
         self.generator = torch.Generator().manual_seed(seed)
         self.model_draws = torch.Generator().manual_seed(seed + MODEL_DRAWS_OFFSET)
@@ -304,9 +305,12 @@ def mismatch(
     rules: api.Rules,
     types: api.ShipTypes,
     any_mode: bool = False,
+    card: bool = True,
 ) -> str | None:
     """Why a policy record cannot play this match (its game, ship card or lineup differ),
-    or None when it can. any_mode: the mode's own settings may differ (`GAME_FIELDS`)."""
+    or None when it can. any_mode: the mode's own settings may differ (`GAME_FIELDS`).
+    card: also check the ship card and the lineup (the play shell only warns about them:
+    `trained_differently`)."""
     if record.get("game") is None:
         return "the policy file does not record the game it was trained on"
     saved, given = record["game"], to_json(config)
@@ -318,6 +322,14 @@ def mismatch(
     ]
     if differences:
         return "it was trained on another game: " + ", ".join(differences)
+    return trained_differently(record, config, rules, types) if card else None
+
+
+def trained_differently(
+    record: dict, config: GameConfig, rules: api.Rules, types: api.ShipTypes
+) -> str | None:
+    """How a policy record's ship card or lineup differs from this match's, or None. The
+    agent can still play (the sizes match); it plays a game it was not trained on."""
     if record.get("ship_card") is None:
         return "the policy file does not record its ship card"
     card = ship_card(types)
@@ -340,7 +352,8 @@ def load_agent(
     any_mode: bool = False,
 ) -> Agent:
     """The agent of a policy file (or training checkpoint) for this match, on `agent_device()`.
-    Raises AgentError with the reason when it cannot play it. any_mode: see `mismatch`."""
+    Raises AgentError with the reason when it cannot play it (another game); a ship card or
+    lineup it was not trained with only sets its `warning`. any_mode: see `mismatch`."""
     directory = pathlib.Path(directory)
     try:
         policy = checkpoint.read_policy(directory)
@@ -348,14 +361,15 @@ def load_agent(
         raise AgentError(str(error)) from error
     if policy.name not in SUPPORTED_MODELS:
         raise AgentError(f"{policy.name} models do not play in the shell ({SUPPORTED_MODELS})")
-    reason = mismatch(policy.raw, config, rules, types, any_mode)
+    reason = mismatch(policy.raw, config, rules, types, any_mode, card=False)
     if reason is not None:
         raise AgentError(f"{directory.name} cannot play this match: {reason}")
+    warning = trained_differently(policy.raw, config, rules, types)
     device = agent_device()
     drawn = [device] if device.type == "cuda" else []
     with torch.random.fork_rng(devices=drawn):  # the model's initialisation draws; keep it local
         model = checkpoint.load_policy(directory, device).eval()
-    return Agent(
+    agent = Agent(
         model,
         policy.name,
         label_of(directory),
@@ -365,6 +379,8 @@ def load_agent(
         seed=seed,
         graph=graph,
     )
+    agent.warning = f"{agent.label} plays, but {warning}" if warning else None
+    return agent
 
 
 def label_of(directory: pathlib.Path) -> str:
