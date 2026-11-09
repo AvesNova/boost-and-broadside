@@ -266,7 +266,8 @@ def test_the_tuning_panel_opens_from_the_menu_and_a_restart_keeps_the_tuning(con
 
 def test_the_tuning_panel_adds_and_removes_ships(context, tmp_path, monkeypatch):
     """Adding a copy of a ship type writes its file and starts a match with three types;
-    removing it goes back to two (the ship files here are a copy)."""
+    **Remove** asks first (Cancel keeps the type), and confirming goes back to two (the
+    ship files here are a copy)."""
     import shutil
     import time
 
@@ -291,7 +292,14 @@ def test_the_tuning_panel_adds_and_removes_ships(context, tmp_path, monkeypatch)
         assert session.loop.types.max_energy.shape == (3,)
         player.frames(3)
         panel.ship = 2
-        panel._remove(session, session.tuner)
+        player.frames(2)
+        player.click("tuning/remove")
+        assert session.interface.controls.shown("tuning/remove/confirm")
+        player.click("tuning/remove/cancel")
+        assert not session.interface.controls.shown("tuning/remove/confirm")
+        assert api.type_names() == ("Fighter", "Heavy", "Scout")
+        player.click("tuning/remove")
+        player.click("tuning/remove/confirm")
         assert api.type_names() == ("Fighter", "Heavy") and not (copy / "scout.toml").exists()
         assert session.loop.types.max_energy.shape == (2,)
         player.frames(3)

@@ -6,7 +6,8 @@
   it is more than 0.5% off; "..." until a solve iteration has measured it). The fire rate is
   a choice of the rates a card can hold; the bleed rate is shown, not set. **Save ships**
   writes every type to its ship file (`src/bnb/game/ships/`, tracked in git); **Add** copies
-  the chosen type under a new name and **Remove** deletes it, each starting a new match.
+  the chosen type under a new name and **Remove** deletes it (after a popup asks; the last
+  type stays), each starting a new match.
 - **Rules**, by group: each setting a slider and a number box within its bounds;
   "(next episode)" marks those drawn at an episode's start.
 - **Presets**: save the tuning under a name (the rules' settings and the whole card), load
@@ -30,6 +31,7 @@ FORMAT = "%.5g"
 BOX_WIDTH = 90.0  # the number box beside each slider
 SPAN = 4.0  # a handle's slider spans its saved value divided and multiplied by this
 ENTER = imgui.InputTextFlags_.enter_returns_true
+REMOVE = "Remove a ship type###remove ship"
 
 
 def _label(name: str) -> str:
@@ -129,6 +131,7 @@ class TuningPanel:
         self.name = ""
         self.new_ship = ""
         self.chosen = 0
+        self.removing = 0  # the ship type the remove popup asks about
         self.message = ""
         self._files: list | None = None  # the ship files as last read
 
@@ -178,8 +181,14 @@ class TuningPanel:
         if imgui.button("Save ships"):
             self._save(session, tuner)
         imgui.same_line()
-        if imgui.button("Remove") and len(names) > 1:
-            self._remove(session, tuner)
+        controls = session.interface.controls
+        imgui.begin_disabled(len(names) < 2)  # the last type stays
+        if imgui.button("Remove"):
+            self.removing = self.ship
+            imgui.open_popup(REMOVE)
+        controls.record("tuning/remove")
+        imgui.end_disabled()
+        self._confirm_remove(session, tuner, names)
         imgui.set_next_item_width(180.0)
         _, self.new_ship = imgui.input_text_with_hint(
             "##new ship", "new ship's name", self.new_ship
@@ -279,6 +288,26 @@ class TuningPanel:
         self._files = None
         self.ship, self.new_ship = len(current) - 1, ""
         self.message = f"added {name}: a copy of {copy.name}, in a new match"
+
+    def _confirm_remove(self, session, tuner, names: tuple) -> None:
+        """The modal that asks before **Remove** deletes a ship type's file."""
+        if not imgui.begin_popup_modal(REMOVE, None, imgui.WindowFlags_.always_auto_resize)[0]:
+            return
+        controls = session.interface.controls
+        imgui.text(f"Remove {names[self.removing]}?")
+        imgui.push_style_color(imgui.Col_.text, DIM)
+        imgui.text("This deletes its ship file and starts a new match.")
+        imgui.pop_style_color()
+        if imgui.button("Remove##confirm"):
+            self.ship = self.removing
+            self._remove(session, tuner)
+            imgui.close_current_popup()
+        controls.record("tuning/remove/confirm")
+        imgui.same_line()
+        if imgui.button("Cancel"):
+            imgui.close_current_popup()
+        controls.record("tuning/remove/cancel")
+        imgui.end_popup()
 
     def _remove(self, session, tuner) -> None:
         current = self._current(tuner) if tuner.targets is not None else list(self._saved())

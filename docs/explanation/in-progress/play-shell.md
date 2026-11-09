@@ -229,8 +229,8 @@ plays, through `bnb.play.tuning.Tuner` and `MatchLoop.retune`:
 **Ship types** live in tracked files, one per type (`src/bnb/game/ships/`, `bnb.game.ships`):
 the handles the type flies and the card the game reads, in the order of `order.toml`. The
 default card is read from them. The panel's **Save ships** writes them; **Add** copies the
-chosen type under a new name and **Remove** deletes one, each starting a new match with the
-lineup remapped. Rule presets (`bnb.play.tuning.Presets`) save the rule settings and the
+chosen type under a new name and **Remove** deletes one (after a confirmation popup; the
+last type stays), each starting a new match with the lineup remapped. Rule presets (`bnb.play.tuning.Presets`) save the rule settings and the
 whole card to the user's configuration directory.
 
 ## Themes

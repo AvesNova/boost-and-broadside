@@ -219,7 +219,8 @@ change takes effect while the match plays; pause first if you want to compare.
   half-lift drag (the drag of a half-stick turn over a full one) sets the drag's shape.
 - **Save ships** writes every type to its file in `src/bnb/game/ships/`, tracked in git:
   the handles and the card. **Add a copy as this name** copies the chosen type under the
-  name in the field, and **Remove** deletes the chosen type; each starts a new match.
+  name in the field, and **Remove** deletes the chosen type after asking; each starts a new
+  match. The last type cannot be removed.
 - **Rules**, by group: the arena and the clocks, bullet life, the flight constants every
   type shares, spawns, and the current mode's rules (Frontline's zone radius and capture
   time, team deathmatch's kills to win). Each has a slider and a number box, and applies on
