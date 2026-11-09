@@ -518,3 +518,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
 - **10:50 KST Laptop accepted persist-split-hiddenphysics-laptop** (queued after tau10; ETA 15:20 KST, worst 16:00); box marker set. Box: seed1, tau1.25, fade, deadreckon-split-seed1 (~14:15); tournament 4 once both laptop runs are in.
 - **10:55 KST absolute's 60M resume fills the box's wait for the laptop** (the 60M round's baseline; checkpoint 30.4M restored from the hub), after deadreckon-split-seed1.
 - **10:26 KST hiddenphysics-seed1 done** (30.4M): KL 0.475, agreement 0.674, Brier 5-15 s 0.230 (seed 0: 0.444 / 0.692 / 0.388). The same seed pattern as absolute's pair (Brier 0.428 vs 0.246): seed 0 the luckier for both; only multi-seed tournament results decide. tau1.25 next.
+- **11:22 KST Disk:** 18 GB free; pruned compile-cache files unused 12 h (80,423 files: the wrong-base and speed-test configs): cache 35 -> 29 GB, **24 GB free**.
