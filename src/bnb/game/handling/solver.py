@@ -456,6 +456,26 @@ class Progress(NamedTuple):
     iteration: int
 
 
+def marquardt_step(
+    jacobian: torch.Tensor, residual: torch.Tensor, damping: torch.Tensor
+) -> torch.Tensor:
+    """The Levenberg-Marquardt step (..., P) of residuals (..., h) with this Jacobian
+    (..., h, P) and damping (...). A parameter no flown handle feels (a zero Jacobian
+    column) makes the system singular: such a card takes the least-squares step, which
+    leaves that parameter alone."""
+    normal = jacobian.transpose(-1, -2) @ jacobian
+    normal = normal + damping[..., None, None] * torch.diag_embed(
+        normal.diagonal(dim1=-2, dim2=-1)
+    )
+    gradient = jacobian.transpose(-1, -2) @ residual[..., None]
+    solved, info = torch.linalg.solve_ex(normal, gradient)
+    singular = info != 0
+    if singular.any():
+        least = torch.linalg.pinv(normal) @ gradient
+        solved = torch.where(singular[..., None, None], least, solved)
+    return -solved[..., 0]
+
+
 def solve(
     handles: Handles,
     rules: Rules,
@@ -551,12 +571,7 @@ def solve(
             break
         # Levenberg-Marquardt from each card's best point: Gauss-Newton while it improves,
         # toward scaled gradient descent while it does not.
-        normal = best_jacobian.transpose(-1, -2) @ best_jacobian
-        normal = normal + damping[..., None, None] * torch.diag_embed(
-            normal.diagonal(dim1=-2, dim2=-1)
-        )
-        gradient = (best_jacobian.transpose(-1, -2) @ best_base[..., None])[..., 0]
-        step = -torch.linalg.solve(normal, gradient[..., None])[..., 0]
+        step = marquardt_step(best_jacobian, best_base, damping)
         step = step * (STEP_LIMIT / step.abs().amax(-1, keepdim=True).clamp_min(STEP_LIMIT))
         x = best_x + step
     jacobian = best_jacobian

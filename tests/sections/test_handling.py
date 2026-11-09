@@ -179,3 +179,21 @@ def test_the_characteristics_move_with_the_card():
     liftier = scaled("max_lift_coefficient", 1.2)
     assert torch.all(liftier.corner_speed < MEASURED.corner_speed)
     assert torch.all(liftier.turn_rate[:, 0] > MEASURED.turn_rate[:, 0])
+
+
+def test_a_parameter_no_handle_feels_takes_no_step():
+    """A zero Jacobian column makes the Marquardt system singular: that card steps by least
+    squares and leaves the parameter alone, and a regular card's step is the plain solve's."""
+    from bnb.game.handling.solver import marquardt_step
+
+    generator = torch.Generator().manual_seed(0)
+    jacobian = torch.randn(2, 7, 7, dtype=torch.float64, generator=generator)
+    residual = torch.randn(2, 7, dtype=torch.float64, generator=generator)
+    jacobian[1, :, 3] = 0.0
+    damping = torch.full((2,), 1e-3, dtype=torch.float64)
+    step = marquardt_step(jacobian, residual, damping)
+    assert torch.isfinite(step).all() and abs(float(step[1, 3])) < 1e-12
+    normal = jacobian[0].T @ jacobian[0]
+    normal = normal + 1e-3 * torch.diag(normal.diagonal())
+    plain = -torch.linalg.solve(normal, jacobian[0].T @ residual[0])
+    assert torch.equal(step[0], plain)
