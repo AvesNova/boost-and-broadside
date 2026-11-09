@@ -121,3 +121,5 @@
 18:18 2026-11-09-rl-deadreckon-split-hiddenphysics already finished
 18:18 start 2026-11-09-rl-absolute (RL, 60M, from runs/2026-11-09-bc-absolute/policies/step_120586240/uniform_average)
 20:03 done 2026-11-09-rl-absolute
+20:04 round9 done
+20:04 start resume 2026-11-09-rl-absolute to 116 updates (121.6M)

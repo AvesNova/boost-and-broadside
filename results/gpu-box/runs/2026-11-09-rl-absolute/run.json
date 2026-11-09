@@ -1,7 +1,7 @@
 {
  "name": "2026-11-09-rl-absolute",
- "status": "finished",
- "pid": 469109,
+ "status": "running",
+ "pid": 494891,
  "host": "e98bed47fc73",
  "message": null,
  "command": [
@@ -33,8 +33,8 @@
   "60817408": 3
  },
  "probe": {
-  "allocated": 18304522752,
-  "reserved": 19337838592,
+  "allocated": 15996591104,
+  "reserved": 16626221056,
   "total": 25296044032,
   "budget": 24759173120
  },
@@ -64,6 +64,19 @@
     "--set",
     "host_store=false"
    ]
+  },
+  {
+   "commit": "5be5fb155c6e3131b29e8819ed514630c8cf05be",
+   "dirty": false,
+   "start_step": 60817408,
+   "start_time": "2026-11-09T20:04:58+00:00",
+   "end_step": null,
+   "end_time": null,
+   "overrides": {
+    "updates": 116
+   },
+   "rewound_from": null,
+   "command": null
   }
  ],
  "stop_request": null,
