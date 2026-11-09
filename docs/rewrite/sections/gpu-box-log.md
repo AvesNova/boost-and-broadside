@@ -515,3 +515,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   better.
 - **10:40 KST The author: the laptop takes two arms** (tau10, then persist-split-hiddenphysics-laptop; requested, the author to confirm in its session). The box runner skips each once the laptop confirms it (markers) and fetches both from the hub before tournament 4.
 - **10:45 KST Laptop accepted tau10** (started 10:19 KST on 45774aeb; its resolved config: extrapolation, split, both taus 10.0, temporal_first, BC discounts; memory settings its defaults); box marker set. persist-split-hiddenphysics: awaiting the author's confirmation there.
+- **10:50 KST Laptop accepted persist-split-hiddenphysics-laptop** (queued after tau10; ETA 15:20 KST, worst 16:00); box marker set. Box: seed1, tau1.25, fade, deadreckon-split-seed1 (~14:15); tournament 4 once both laptop runs are in.
