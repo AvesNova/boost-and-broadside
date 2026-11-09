@@ -68,3 +68,5 @@
 03:49 done 2026-11-09-bc-deadreckon-split-hiddenphysics-fade
 03:50 start 2026-11-09-bc-deadreckon-split-seed1
 04:40 done 2026-11-09-bc-deadreckon-split-seed1
+04:41 start resume 2026-11-09-bc-absolute to 60M
+04:41 FAILED resume 2026-11-09-bc-absolute (runs/2026-11-09-bc-absolute.out)

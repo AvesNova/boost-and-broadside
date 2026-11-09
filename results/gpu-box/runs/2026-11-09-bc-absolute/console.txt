@@ -31,3 +31,4 @@ update   28  steps  29,360,128  rollout   8213 ms  learn  72561 ms  bc kl 0.5187
 update   29  steps  30,408,704  rollout   8220 ms  learn  73383 ms  bc kl 0.5032  teacher 0.998  student 1.499  scores: learner 0.500 scripted 0.087  window exponential_average 0.000 (+- 0.000)
 stopped by budget; the policy is /workspace/boost-and-broadside/runs/2026-11-09-bc-absolute/policy (the exponential_average)
 run 2026-11-09-bc-absolute finished at step 30408704
+/workspace/boost-and-broadside/runs/2026-11-09-bc-absolute/checkpoints/step_30408704/training.safetensors has SHA-256 7b09f3ba10267d8f0eb85eabee7d222d8a63093a114375b4b07a371d901f8654, but the record says c5776cb3b43dd2296822f7eab01e016ce79bb79798b2e0fe30082406e99a4ee7: the file changed after it was written
