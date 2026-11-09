@@ -159,3 +159,21 @@ def test_a_real_scale_store_climbs():
     climb = fly(scaled_rules(), card).climb_time
     assert torch.isfinite(climb).all()
     assert float(climb) > 900.0
+
+
+def test_the_top_speed_ends_its_flight_once_the_boost_is_spent_without_changing_it():
+    """`shown.top_speed` stops once every store is spent and every speed falls; the peak is
+    the full window's to the bit (the standard card), in a fraction of the ticks."""
+    from bnb.game.handling import shown
+    from bnb.game.handling.manoeuvres import batched, card_stretch, cruise_speed
+
+    rules = api.rules_of(api.PRESETS["frontline"])
+    card = batched(api.ship_types())
+    full = card.max_energy[..., None]
+    cruise = cruise_speed(rules, card, full)
+    zeros = torch.zeros_like(cruise)
+    ticks = round(
+        shown.TOP_SPEED_LIMIT * card_stretch(rules.flight, card).climb / rules.tick_length
+    )
+    whole = shown.trajectory(rules, card, cruise, full, zeros, zeros, zeros, zeros - 1.0, ticks)
+    assert torch.equal(shown.top_speed(rules, card), whole["speed"].amax(0)[..., 0])

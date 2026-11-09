@@ -1,5 +1,6 @@
 """A ship type's characteristic quantities for the scripted agent (scripted spec A2), from the
-ship card's own measurements: the handles (`measure`), the shown top speed and the coast
+ship card's own measurements: the handles it reads (the cruise and the closed forms, as
+`bnb.game.handling.measure` has them), the shown top speed and the coast
 datum's turn rates, all flown in the game's code. The agent states every threshold as a
 dimensionless number times one of these, so it follows the card.
 
@@ -15,9 +16,9 @@ from bnb.contracts.tree import contract
 from ..physics.flight import airframe_of
 from ..rules import Rules
 from ..ship_types import ShipTypes, per_ship
-from .manoeuvres import batched
+from .manoeuvres import batched, cruise_speed, type_axis
 from .shown import STICKS, settled, top_speed
-from .solver import measure
+from .weapons import combat_handles
 
 
 @contract
@@ -74,24 +75,28 @@ def measure_characteristics(types: ShipTypes, rules: Rules) -> Characteristics:
             for field in dataclasses.fields(types)
         }
     )
-    handles = measure(types, rules)
+    # The handles it reads, without the flights only the solver needs (a real-scale climb
+    # flies for an hour of game time): the cruise and the closed forms, as `measure` has them.
     card = batched(types)
+    airframe = airframe_of(card, type_axis(card))
+    cruise = cruise_speed(rules, card, airframe.max_energy[..., None])[..., 0]
+    gun_range = combat_handles(rules, card, cruise)["gun_range"][0]
     all_types = torch.arange(types.max_energy.shape[0])
     measured = Characteristics(
-        cruise_speed=handles.cruise_speed,
+        cruise_speed=cruise[0],
         top_speed=top_speed(rules, card)[0],
         corner_speed=airframe_of(types, all_types).corner_speed,
         turn_rate=settled(rules, card, STICKS).turn_rate[0],
-        stall_angle=handles.stall_angle,
-        gun_range=handles.gun_range,
-        bullet_speed=handles.cruise_speed + types.muzzle_speed,
+        stall_angle=rules.flight.stall_angle * types.stall_angle_scale,
+        gun_range=gun_range,
+        bullet_speed=cruise[0] + types.muzzle_speed,
         bullet_drag=rules.bullet_drag * types.bullet_drag_scale,
         max_energy=types.max_energy,
         bullet_energy_cost=types.bullet_energy_cost,
         max_shield=types.max_shield,
         hit_radius=types.hit_radius,
         max_acceleration=types.max_acceleration,
-        vision_range=handles.vision_range,
+        vision_range=rules.vision_range * types.vision_range_scale,
     )
     return Characteristics(
         **{

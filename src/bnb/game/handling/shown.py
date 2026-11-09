@@ -65,10 +65,12 @@ def trajectory(
     power,
     ticks: int,
     hold_store: bool = False,
+    stop=None,
 ) -> dict[str, torch.Tensor]:
     """Fly (B, types, grid) starts for `ticks` ticks: (ticks + 1, B, types, grid) speed,
     energy, angle of attack and the flight path's angle (from 0). hold_store: the store is
-    reset to its start after every tick."""
+    reset to its start after every tick. stop: called with the ships before and after each
+    tick; True ends the flight there (fewer ticks are returned)."""
     B, type_count, grid = speed.shape
     ship_type, airframe, (speed, energy, angle, nose_rate, stick, power) = _grid(
         types, speed, energy, angle, nose_rate, stick, power
@@ -80,7 +82,7 @@ def trajectory(
     for _ in range(ticks):
         new = flight_tick(rules.flight, airframe, rules.tick_length, state, stick, power, fields)
         path = path + path_turned(state, new)
-        state = replace(new, energy=energy) if hold_store else new
+        before, state = state, replace(new, energy=energy) if hold_store else new
         for key, value in (
             ("speed", new.proper_speed),
             ("energy", new.energy),
@@ -88,7 +90,9 @@ def trajectory(
             ("path", path),
         ):
             history[key].append(value)
-    return {k: torch.stack(v).reshape(ticks + 1, B, type_count, grid) for k, v in history.items()}
+        if stop is not None and stop(before, new):
+            break
+    return {k: torch.stack(v).reshape(-1, B, type_count, grid) for k, v in history.items()}
 
 
 class Instant(NamedTuple):
@@ -185,10 +189,18 @@ def settled(rules: Rules, types: ShipTypes, sticks: tuple[float, ...]) -> Settle
 
 def top_speed(rules: Rules, types: ShipTypes) -> torch.Tensor:
     """(B, types) the peak speed of a straight boost from cruise with a full store, within
-    TOP_SPEED_LIMIT (stretched by the card's climb scale)."""
+    TOP_SPEED_LIMIT (stretched by the card's climb scale); the flight ends once every store
+    is spent and every speed falls."""
     full = types.max_energy[..., None]
     cruise = cruise_speed(rules, types, full)
     zeros = torch.zeros_like(cruise)
+    fade = rules.flight.store_fade_band * types.max_energy.repeat_interleave(full.shape[-1], -1)
+
+    def past_peak(before, after) -> bool:
+        """Every store is in its fade band and every speed falls: the boost is spent, and a
+        ship coasting above cruise only slows."""
+        return bool(((after.energy <= fade) & (after.proper_speed < before.proper_speed)).all())
+
     flown = trajectory(
         rules,
         types,
@@ -199,6 +211,7 @@ def top_speed(rules: Rules, types: ShipTypes) -> torch.Tensor:
         zeros,
         zeros - 1.0,
         round(TOP_SPEED_LIMIT * card_stretch(rules.flight, types).climb / rules.tick_length),
+        stop=past_peak,
     )
     return flown["speed"].amax(0)[..., 0]
 
