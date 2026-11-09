@@ -46,11 +46,12 @@
  "parent": null,
  "checkpoint_every": 19922944,
  "update_policies": false,
- "newest_checkpoint": 39845888,
+ "newest_checkpoint": 59768832,
  "final_checkpoint": 30408704,
  "checkpoint_ordinals": {
   "30408704": 1,
-  "39845888": 2
+  "39845888": 2,
+  "59768832": 3
  },
  "probe": {
   "allocated": 18221742592,
@@ -122,7 +123,7 @@
   }
  ],
  "stop_request": null,
- "hours": 1.424321095693029,
+ "hours": 1.9118836257994798,
  "skipped_steps": 0,
  "stopped_by": "budget",
  "policy": "/workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split/policy",
