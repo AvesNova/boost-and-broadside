@@ -38,3 +38,16 @@ run 2026-11-09-bc-deadreckon-split finished at step 30408704
 warning: the run continues on commit acdc364a03e673da26a15f40bb2cde5e3f11015f; its last segment ran on 7c42cf449332848ccbcb37e80466d21593d88b00
 memory probe: allocated 16.97 GB, reserved 17.97 GB, budget 23.06 GB of 23.56 GB
 update   30  steps  31,457,280  rollout  74202 ms  learn 212722 ms  bc kl 0.4279  teacher 1.007  student 1.433  scores: learner 0.500 scripted 0.194  window exponential_average 0.000 (+- 0.000)
+update   31  steps  32,505,856  rollout  10001 ms  learn  82122 ms  bc kl 0.4142  teacher 1.003  student 1.416  scores: learner 0.500 scripted 0.205  window exponential_average 0.000 (+- 0.000)
+update   32  steps  33,554,432  rollout  10040 ms  learn  82087 ms  bc kl 0.4279  teacher 0.994  student 1.420  scores: learner 0.500 scripted 0.221  window exponential_average 0.000 (+- 0.000)
+update   33  steps  34,603,008  rollout  10024 ms  learn  82152 ms  bc kl 0.4070  teacher 0.998  student 1.403  scores: learner 0.500 scripted 0.191  window exponential_average 0.000 (+- 0.000)
+update   34  steps  35,651,584  rollout  10040 ms  learn  82148 ms  bc kl 0.4154  teacher 0.990  student 1.404  scores: learner 0.500 scripted 0.220  window exponential_average 0.000 (+- 0.000)
+update   35  steps  36,700,160  rollout  10040 ms  learn  82152 ms  bc kl 0.4179  teacher 0.987  student 1.403  scores: learner 0.500 scripted 0.259  window exponential_average 0.000 (+- 0.000)
+update   36  steps  37,748,736  rollout  10039 ms  learn  82119 ms  bc kl 0.4172  teacher 0.982  student 1.397  scores: learner 0.500 scripted 0.253  window exponential_average 0.000 (+- 0.000)
+update   37  steps  38,797,312  rollout  10040 ms  learn  82236 ms  bc kl 0.4113  teacher 0.979  student 1.389  scores: learner 0.500 scripted 0.205  window exponential_average 0.000 (+- 0.000)
+update   38  steps  39,845,888  rollout  10003 ms  learn  82161 ms  bc kl 0.4118  teacher 0.985  student 1.395  scores: learner 0.500 scripted 0.303  window exponential_average 0.000 (+- 0.000)
+update   39  steps  40,894,464  rollout   9997 ms  learn  82189 ms  bc kl 0.3969  teacher 0.985  student 1.379  scores: learner 0.500 scripted 0.269  window exponential_average 0.000 (+- 0.000)
+update   40  steps  41,943,040  rollout   9999 ms  learn  83034 ms  bc kl 0.4002  teacher 0.983  student 1.381  scores: learner 0.500 scripted 0.314  window exponential_average 0.000 (+- 0.000)
+update   41  steps  42,991,616  rollout  10045 ms  learn  82110 ms  bc kl 0.3805  teacher 0.983  student 1.362  scores: learner 0.500 scripted 0.333  window exponential_average 0.000 (+- 0.000)
+update   42  steps  44,040,192  rollout  10047 ms  learn  82123 ms  bc kl 0.3852  teacher 0.978  student 1.361  scores: learner 0.500 scripted 0.379  window uniform_average 0.139 (+- 0.010)
+update   43  steps  45,088,768  rollout  10046 ms  learn  82171 ms  bc kl 0.3879  teacher 0.970  student 1.356  scores: learner 0.500 scripted 0.344  window uniform_average 0.149 (+- 0.011)
