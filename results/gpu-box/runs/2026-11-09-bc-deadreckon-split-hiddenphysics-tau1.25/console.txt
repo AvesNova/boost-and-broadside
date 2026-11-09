@@ -28,3 +28,6 @@ update   25  steps  26,214,400  rollout  10007 ms  learn  82480 ms  bc kl 0.4897
 update   26  steps  27,262,976  rollout  10049 ms  learn  82504 ms  bc kl 0.4812  teacher 0.996  student 1.474  scores: learner 0.500 scripted 0.155  window exponential_average 0.000 (+- 0.000)
 update   27  steps  28,311,552  rollout  10002 ms  learn  82529 ms  bc kl 0.4669  teacher 0.998  student 1.465  scores: learner 0.500 scripted 0.189  window exponential_average 0.000 (+- 0.000)
 update   28  steps  29,360,128  rollout  10003 ms  learn  82547 ms  bc kl 0.4655  teacher 0.999  student 1.462  scores: learner 0.500 scripted 0.155  window exponential_average 0.000 (+- 0.000)
+update   29  steps  30,408,704  rollout  10007 ms  learn  82561 ms  bc kl 0.4675  teacher 0.998  student 1.462  scores: learner 0.500 scripted 0.200  window exponential_average 0.000 (+- 0.000)
+stopped by budget; the policy is /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics-tau1.25/policy (the exponential_average)
+run 2026-11-09-bc-deadreckon-split-hiddenphysics-tau1.25 finished at step 30408704
