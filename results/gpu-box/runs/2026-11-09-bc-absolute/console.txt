@@ -67,3 +67,12 @@ update   48  steps  50,331,648  rollout   8223 ms  learn  72504 ms  bc kl 0.4513
 update   49  steps  51,380,224  rollout   8226 ms  learn  72567 ms  bc kl 0.4279  teacher 0.989  student 1.414  scores: learner 0.500 scripted 0.278  window uniform_average 0.113 (+- 0.009)
 update   50  steps  52,428,800  rollout   8222 ms  learn  73228 ms  bc kl 0.4176  teacher 0.995  student 1.409  scores: learner 0.500 scripted 0.250  window uniform_average 0.119 (+- 0.009)
 update   51  steps  53,477,376  rollout   8229 ms  learn  72547 ms  bc kl 0.4301  teacher 0.992  student 1.418  scores: learner 0.500 scripted 0.270  window uniform_average 0.126 (+- 0.009)
+update   52  steps  54,525,952  rollout   8236 ms  learn  72742 ms  bc kl 0.4330  teacher 0.991  student 1.422  scores: learner 0.500 scripted 0.230  window uniform_average 0.134 (+- 0.009)
+update   53  steps  55,574,528  rollout   8230 ms  learn  72559 ms  bc kl 0.4399  teacher 0.985  student 1.421  scores: learner 0.500 scripted 0.361  window uniform_average 0.140 (+- 0.010)
+update   54  steps  56,623,104  rollout   8220 ms  learn  72539 ms  bc kl 0.4299  teacher 0.987  student 1.413  scores: learner 0.500 scripted 0.265  window uniform_average 0.147 (+- 0.010)
+update   55  steps  57,671,680  rollout   8222 ms  learn  72539 ms  bc kl 0.4262  teacher 0.988  student 1.413  scores: learner 0.500 scripted 0.303  window uniform_average 0.152 (+- 0.010)
+update   56  steps  58,720,256  rollout   8223 ms  learn  72684 ms  bc kl 0.4256  teacher 0.985  student 1.406  scores: learner 0.500 scripted 0.336  window uniform_average 0.160 (+- 0.010)
+update   57  steps  59,768,832  rollout   8230 ms  learn  72561 ms  bc kl 0.4181  teacher 0.986  student 1.400  scores: learner 0.500 scripted 0.343  window uniform_average 0.168 (+- 0.011)
+update   58  steps  60,817,408  rollout   8228 ms  learn  72581 ms  bc kl 0.4159  teacher 0.988  student 1.401  scores: learner 0.500 scripted 0.311  window uniform_average 0.172 (+- 0.011)
+stopped by budget; the policy is /workspace/boost-and-broadside/runs/2026-11-09-bc-absolute/policy (the uniform_average)
+run 2026-11-09-bc-absolute finished at step 60817408
