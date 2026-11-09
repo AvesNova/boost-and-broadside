@@ -640,3 +640,16 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   stops there; RL starts after the choice.
 - **22:39 KST absolute at 120M BC** (budget): KL 0.351, agreement 0.740, Brier 5-15 s 0.686 (champion 0.277 / 0.786 / 0.697). Tournament 6 started (120M live / uniform / exponential of both).
 - **23:35 KST Tournament 6 final (120M)**, mean (frontline / deathmatch): champion uniform 989 (973 / 1004), absolute uniform 979 (1013 / 945), champion exponential 966, champion live 965, absolute exponential 949, absolute live 892 (+-12-14). Uniform is the best variant for both (+23, +30 over the next); both near the scripted teacher (1000); champion vs null now level (+10; the 60M lead of +64 narrowed as both converge on the teacher). Scorecards next.
+- **00:00 KST Scorecards (120M variants, each on fresh games, nothing trained):** champion live /
+  uniform / exponential: held-out KL 0.451 / 0.644 / 0.644, agreement 0.701 / 0.605 / 0.607,
+  student entropy 1.18 / 1.33 / 1.32 (teacher ~0.95), EV objective progress, objective, outcome
+  0.95 0.94 0.53 / 0.91 0.93 0.75 / 0.91 0.93 0.76, next-state CE 24.47 / 25.00 / 24.98; null:
+  KL 0.482 / 0.662 / 0.656, agreement 0.672 / 0.585 / 0.590, entropy 1.28 / 1.49 / 1.48, EV 0.95
+  0.94 0.60 / 0.83 0.87 0.81 / 0.83 0.87 0.81, CE 23.65 / 23.46 / 23.47. The training log's KL
+  (0.277) is lower because it is measured across the update's epochs on the same batch; the
+  scorecard's is held out. **Not trusted (my scorecard's design):** outcome Brier, lane scores and
+  hidden-row errors, confounded by measuring the variants one after another in one process from a
+  synchronised reset (which episodes ended in a window, with whose earlier predictions, depended on
+  the order); the per-update metrics above are sound. Reading: live imitates closest, the averages
+  are softer but play better (tournament: uniform best for both) and their critics' outcome EV is
+  higher (0.75-0.81 vs 0.53-0.60). Recommended RL start: the 120M uniform average for both.
