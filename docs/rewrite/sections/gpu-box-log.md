@@ -485,3 +485,20 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   agent on `feat/physics-hidden-fade`, CPU only; the runner waits for it to be merged). The
   existing hiddenphysics is the tau 0.5 point. Then tournament 4: every 30M policy on the
   correct base (11 players, both seed pairs).
+- **10:20 KST Fade build merged** (`feat/physics-hidden-fade` accc60c5, merge 64d7aeb8, no
+  conflicts; ruff clean; the arm's line resolves). From the agent's report:
+  `YemongConfig.physics_hidden_fade` (needs `delta_split` and `physics_hidden_decay`);
+  `Yemong.forecast` takes the rows' hidden age (ticks) and, for age > 0, sets the forecast to
+  baseline + exp(-age x tick / tau) x (physics forecast - baseline) (`delta.fade`; seen rows bit
+  for bit); faded: the means of x, y, velocity, heading (wrapped), nose rate, angle of attack,
+  energy, ln n; not faded: the jumps (shield, recharge wait, gun cooldown, advanced by their
+  median) and every spread. `step` passes the enemy rows' age (= `replay.age`); the learner's
+  error label now uses `model.forecast` with the age (so e = truth - the faded forecast; bit for
+  bit with the switch off); the physics target unchanged (truth to truth). Callers that rebuild
+  the forecast (head statistics, decode, figures capture, play predictions) pass the age. Its
+  report: 230 pass in six files, the one failure the known arm-1/2 digest; not tested on GPU or
+  under graph capture (`delta.fade` builds no index tensor, so capture stays safe). Verifying the
+  merged tree on CPU before the next arm imports it.
+- **10:20 KST The author: the 60M round also takes absolute (C-fixed) as a baseline**, to catch
+  arms that do well to 30M and badly after. Laptop asked (author to confirm there) to take
+  hiddenphysics-tau10 (runner skips it on the box if claimed; `runs/hub_fetch.py` fetches it).
