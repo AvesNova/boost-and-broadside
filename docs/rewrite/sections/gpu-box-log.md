@@ -524,3 +524,15 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
 - **12:50 KST Laptop tau10 uploaded** (hub a55608a0, budget at 12:43 KST); fetched and loads here (extrapolation, split, both taus 10.0, no fade). KL 0.482, agreement 0.672, Brier 5-15 s 0.271: inside the tau 0.5 seed range. persist-split-hiddenphysics-laptop started 12:44 KST (persistence, split, physics_hidden_decay 0.5), ETA 15:10.
 - **12:49 KST fade done** (budget, 30.4M): KL 0.475, agreement 0.671, Brier 5-15 s 0.331, hidden position error 0.5-1 / 1-2 / 2-5 s 6.9 / 23.1 / 105 m, heading 2-5 s 0.446 rad: all inside the tau 0.5 seed pair's range (0.444-0.475 KL; 0.230-0.388 Brier; 73-114 m). deadreckon-split-seed1 next.
 - **13:40 KST deadreckon-split-seed1 done** (30.4M): KL 0.480, agreement 0.670, Brier 5-15 s 0.190, outcome EV 0.521 (seed 0: 0.432 / 0.697 / 0.324 / 0.626). Third arm where seed 1 is worse than seed 0 on every training metric (absolute, hiddenphysics, deadreckon-split): seed 0 may be the luckier seed for all, so compare like seeds. absolute's 60M resume next.
+- **13:41 KST absolute's 60M resume failed: its hub checkpoint was inconsistent.** The 30.4M
+  checkpoint restored from the hub refused to load: `training.safetensors` has SHA-256 7b09f3ba,
+  the checkpoint's record says c5776cb3 (weights and return scale match). Same size, so my
+  deletion check (size only) passed it at 09:22 and the local original is gone. Likely cause: a
+  sync uploaded while that final checkpoint was rewritten, pairing one write's record with the
+  other's training state. **Checked every checkpoint on the hub against its own record (SHA-256
+  from the hub's metadata): 38 checkpoints, this one file the only mismatch.** Fixes: deletions
+  now require each file's SHA-256 to equal the record (not the size); absolute resumes from its
+  23.1M checkpoint instead (verified by hash; 19.9M is not kept: a run keeps its newest two),
+  `runs/absolute60.sh`, started 13:43 (loads, with the expected FilledDefaults for the newer
+  switches). Its 30.4M policy, the one rated, is the original. The 60M continuation branches at
+  23.1M. The box's queue is otherwise done; tournament 4 waits for the laptop's last arm.
