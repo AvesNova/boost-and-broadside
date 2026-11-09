@@ -457,3 +457,13 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   (identical policies: their rating change from tournament 3 is the tournament's own noise; the
   absolute pair is the seed noise), the nodecay arm at 30M, and the three at 60M (11 players).
   Numbering: tournament 2 never ran (round 3's first attempt, on the wrong base, was paused).
+- **09:40 KST Pivot (the author): the 60M round stopped for now; more 30M comparisons first.**
+  hiddenphysics' resume asked to STOP (it stops after its update with a checkpoint; resumable);
+  deadreckon-split's resume cancelled; the laptop's 60M request withdrawn. `round6.sh` rewritten:
+  three 30M arms on the hidden-physics base, one change each: **nodecay**
+  (`physics_hidden_decay=1e9`: every hidden row weighs 1); **slowdecay** (the held rates fade
+  2.5x slower, `extrapolation_decay` 0.5 -> 1.25 s, the other direction from fastdecay's 0.2 s,
+  which hurt; my reading of "slow decay": the held-rate tau, as fastdecay's was); and
+  **hiddenphysics-seed1** (my addition, for the leader's seed spread: the only same-settings
+  replication at 30M on the correct base is absolute / absolute-seed1). Then tournament 4: every
+  30M policy on the correct base (10 players), both seed pairs in.
