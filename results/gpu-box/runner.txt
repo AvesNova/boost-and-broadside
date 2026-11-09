@@ -114,3 +114,4 @@
 14:39 start scorecard 2026-11-09-bc-absolute
 14:56 done scorecard 2026-11-09-bc-absolute
 14:57 round8b done: choose RL's starting point
+15:24 start 2026-11-09-rl-deadreckon-split-hiddenphysics (RL, 60M, from runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average)

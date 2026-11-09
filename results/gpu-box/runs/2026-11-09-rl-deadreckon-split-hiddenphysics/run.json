@@ -1,0 +1,62 @@
+{
+ "name": "2026-11-09-rl-deadreckon-split-hiddenphysics",
+ "status": "running",
+ "pid": 399098,
+ "host": "e98bed47fc73",
+ "message": null,
+ "command": [
+  ".venv/bin/bnb",
+  "train",
+  "--name",
+  "2026-11-09-rl-deadreckon-split-hiddenphysics",
+  "--init-from",
+  "runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average",
+  "--preset",
+  "mixed",
+  "--updates",
+  "58",
+  "--micro-batch-rows",
+  "640",
+  "--set",
+  "host_store=false"
+ ],
+ "wandb_id": null,
+ "parent": {
+  "policy": "/workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average"
+ },
+ "checkpoint_every": null,
+ "update_policies": true,
+ "newest_checkpoint": null,
+ "final_checkpoint": null,
+ "checkpoint_ordinals": {},
+ "probe": null,
+ "segments": [
+  {
+   "commit": "61cd449ba5fdedd2c041b3b4465203817dfb67a2",
+   "dirty": false,
+   "start_step": 0,
+   "start_time": "2026-11-09T15:24:33+00:00",
+   "end_step": null,
+   "end_time": null,
+   "overrides": {},
+   "rewound_from": null,
+   "command": [
+    ".venv/bin/bnb",
+    "train",
+    "--name",
+    "2026-11-09-rl-deadreckon-split-hiddenphysics",
+    "--init-from",
+    "runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average",
+    "--preset",
+    "mixed",
+    "--updates",
+    "58",
+    "--micro-batch-rows",
+    "640",
+    "--set",
+    "host_store=false"
+   ]
+  }
+ ],
+ "stop_request": null
+}
