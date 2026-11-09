@@ -73,3 +73,12 @@ update   57  steps  59,768,832  rollout  10042 ms  learn  82249 ms  bc kl 0.3328
 update   58  steps  60,817,408  rollout   9999 ms  learn  82176 ms  bc kl 0.3344  teacher 0.955  student 1.288  scores: learner 0.500 scripted 0.375  window uniform_average 0.325 (+- 0.014)
 stopped by budget; the policy is /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policy (the uniform_average)
 run 2026-11-09-bc-deadreckon-split-hiddenphysics finished at step 60817408
+warning: the run continues on commit 09db261c7fdaacda81f6429e4854ade7b07cbf1b; its last segment ran on e84ee16a131ea913f76cd99e2a3c31f7518b7fd6
+memory probe: allocated 16.97 GB, reserved 17.97 GB, budget 23.06 GB of 23.56 GB
+update   59  steps  61,865,984  rollout  74047 ms  learn 176341 ms  bc kl 0.3296  teacher 0.951  student 1.279  scores: learner 0.500 scripted 0.438  window uniform_average 0.334 (+- 0.014)
+update   60  steps  62,914,560  rollout  10019 ms  learn 115634 ms  bc kl 0.3315  teacher 0.953  student 1.282  scores: learner 0.500 scripted 0.379  window uniform_average 0.340 (+- 0.014)
+update   61  steps  63,963,136  rollout   9996 ms  learn  82201 ms  bc kl 0.3324  teacher 0.952  student 1.282  scores: learner 0.500 scripted 0.466  window uniform_average 0.349 (+- 0.014)
+update   62  steps  65,011,712  rollout  10016 ms  learn  82314 ms  bc kl 0.3344  teacher 0.947  student 1.279  scores: learner 0.500 scripted 0.388  window uniform_average 0.361 (+- 0.014)
+update   63  steps  66,060,288  rollout   9994 ms  learn  82252 ms  bc kl 0.3258  teacher 0.950  student 1.273  scores: learner 0.500 scripted 0.394  window uniform_average 0.367 (+- 0.014)
+update   64  steps  67,108,864  rollout  10041 ms  learn  82226 ms  bc kl 0.3252  teacher 0.955  student 1.277  scores: learner 0.500 scripted 0.353  window uniform_average 0.374 (+- 0.014)
+update   65  steps  68,157,440  rollout  10044 ms  learn  82211 ms  bc kl 0.3266  teacher 0.950  student 1.273  scores: learner 0.500 scripted 0.506  window uniform_average 0.387 (+- 0.014)
