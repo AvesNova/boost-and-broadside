@@ -1,7 +1,7 @@
 {
  "name": "2026-11-09-bc-deadreckon-split-hiddenphysics-tau1.25",
- "status": "finished",
- "pid": 188899,
+ "status": "running",
+ "pid": 282296,
  "host": "e98bed47fc73",
  "message": null,
  "command": [
@@ -57,8 +57,8 @@
   "30408704": 1
  },
  "probe": {
-  "allocated": 18199960576,
-  "reserved": 19270729728,
+  "allocated": 18221742592,
+  "reserved": 19293798400,
   "total": 25296044032,
   "budget": 24759173120
  },
@@ -114,6 +114,19 @@
     "--set",
     "yemong.physics_hidden_decay=1.25"
    ]
+  },
+  {
+   "commit": "2192cb048273364c68a2ffcc101da170772e5a1d",
+   "dirty": false,
+   "start_step": 30408704,
+   "start_time": "2026-11-09T08:17:06+00:00",
+   "end_step": null,
+   "end_time": null,
+   "overrides": {
+    "stop.budget_steps": 60000000
+   },
+   "rewound_from": null,
+   "command": null
   }
  ],
  "stop_request": null,

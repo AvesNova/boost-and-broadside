@@ -31,3 +31,11 @@ update   28  steps  29,360,128  rollout  10003 ms  learn  82547 ms  bc kl 0.4655
 update   29  steps  30,408,704  rollout  10007 ms  learn  82561 ms  bc kl 0.4675  teacher 0.998  student 1.462  scores: learner 0.500 scripted 0.200  window exponential_average 0.000 (+- 0.000)
 stopped by budget; the policy is /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics-tau1.25/policy (the exponential_average)
 run 2026-11-09-bc-deadreckon-split-hiddenphysics-tau1.25 finished at step 30408704
+warning: the run continues on commit 2192cb048273364c68a2ffcc101da170772e5a1d; its last segment ran on 109ce04bc7922b10f49af3490751c8b40a187f07
+memory probe: allocated 16.97 GB, reserved 17.97 GB, budget 23.06 GB of 23.56 GB
+update   30  steps  31,457,280  rollout  73809 ms  learn 209426 ms  bc kl 0.4612  teacher 0.997  student 1.455  scores: learner 0.500 scripted 0.155  window exponential_average 0.000 (+- 0.000)
+update   31  steps  32,505,856  rollout  10000 ms  learn  82244 ms  bc kl 0.4685  teacher 0.990  student 1.455  scores: learner 0.500 scripted 0.263  window exponential_average 0.000 (+- 0.000)
+update   32  steps  33,554,432  rollout  10015 ms  learn  82376 ms  bc kl 0.4529  teacher 0.996  student 1.446  scores: learner 0.500 scripted 0.181  window exponential_average 0.000 (+- 0.000)
+update   33  steps  34,603,008  rollout  10017 ms  learn  82502 ms  bc kl 0.4494  teacher 0.995  student 1.441  scores: learner 0.500 scripted 0.237  window exponential_average 0.000 (+- 0.000)
+update   34  steps  35,651,584  rollout  10016 ms  learn  82349 ms  bc kl 0.4403  teacher 0.991  student 1.428  scores: learner 0.500 scripted 0.211  window exponential_average 0.000 (+- 0.000)
+update   35  steps  36,700,160  rollout   9996 ms  learn  82267 ms  bc kl 0.4403  teacher 1.001  student 1.439  scores: learner 0.500 scripted 0.269  window exponential_average 0.000 (+- 0.000)
