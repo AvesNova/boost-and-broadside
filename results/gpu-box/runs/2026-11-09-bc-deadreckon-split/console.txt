@@ -31,3 +31,10 @@ update   28  steps  29,360,128  rollout  10037 ms  learn  82344 ms  bc kl 0.4599
 update   29  steps  30,408,704  rollout  10012 ms  learn  82643 ms  bc kl 0.4322  teacher 0.999  student 1.429  scores: learner 0.500 scripted 0.250  window exponential_average 0.000 (+- 0.000)
 stopped by budget; the policy is /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split/policy (the exponential_average)
 run 2026-11-09-bc-deadreckon-split finished at step 30408704
+/workspace/boost-and-broadside/src/bnb/cli.py:691: FilledDefaults: the TrainConfig of /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split/checkpoints/step_30408704 lacks yemong.physics_hidden_fade; they take their defaults
+  trainer = checkpoint.load_training(source, device, config)
+/workspace/boost-and-broadside/src/bnb/cli.py:691: FilledDefaults: the yemong build record of /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split/checkpoints/step_30408704 lacks config.physics_hidden_fade; they take their defaults
+  trainer = checkpoint.load_training(source, device, config)
+warning: the run continues on commit acdc364a03e673da26a15f40bb2cde5e3f11015f; its last segment ran on 7c42cf449332848ccbcb37e80466d21593d88b00
+memory probe: allocated 16.97 GB, reserved 17.97 GB, budget 23.06 GB of 23.56 GB
+update   30  steps  31,457,280  rollout  74202 ms  learn 212722 ms  bc kl 0.4279  teacher 1.007  student 1.433  scores: learner 0.500 scripted 0.194  window exponential_average 0.000 (+- 0.000)

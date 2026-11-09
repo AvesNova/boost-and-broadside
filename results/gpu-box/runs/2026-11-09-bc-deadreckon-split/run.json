@@ -1,7 +1,7 @@
 {
  "name": "2026-11-09-bc-deadreckon-split",
- "status": "finished",
- "pid": 121061,
+ "status": "running",
+ "pid": 292139,
  "host": "e98bed47fc73",
  "message": null,
  "command": [
@@ -53,8 +53,8 @@
   "30408704": 1
  },
  "probe": {
-  "allocated": 18199960576,
-  "reserved": 19270729728,
+  "allocated": 18221742592,
+  "reserved": 19293798400,
   "total": 25296044032,
   "budget": 24759173120
  },
@@ -106,6 +106,19 @@
     "--set",
     "learner.correction=0.0033"
    ]
+  },
+  {
+   "commit": "acdc364a03e673da26a15f40bb2cde5e3f11015f",
+   "dirty": false,
+   "start_step": 30408704,
+   "start_time": "2026-11-09T09:06:23+00:00",
+   "end_step": null,
+   "end_time": null,
+   "overrides": {
+    "stop.budget_steps": 60000000
+   },
+   "rewound_from": null,
+   "command": null
   }
  ],
  "stop_request": null,

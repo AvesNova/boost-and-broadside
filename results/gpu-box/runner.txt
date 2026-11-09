@@ -96,3 +96,4 @@
 08:15 done resume 2026-11-09-bc-deadreckon-split-hiddenphysics
 08:16 start resume 2026-11-09-bc-deadreckon-split-hiddenphysics-tau1.25 to 60M
 09:05 done resume 2026-11-09-bc-deadreckon-split-hiddenphysics-tau1.25
+09:06 start resume 2026-11-09-bc-deadreckon-split to 60M
