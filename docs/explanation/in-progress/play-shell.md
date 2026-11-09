@@ -207,7 +207,8 @@ plays, through `bnb.play.tuning.Tuner` and `MatchLoop.retune`:
   changed handle applies the instant estimate (`bnb.game.api.Estimate`, about 50 ms, on a
   worker process) on the next frames; once the handles settle, the exact solve runs on a
   second worker from that estimate, swapping each better card in and reporting the handles
-  it flies, which the panel shows beside the set values. A flight constant re-measures the
+  it flies; the panel marks a handle flown more than 0.5% off its set value with a red dot,
+  the flown value in its tooltip. A flight constant re-measures the
   card's handles (the card is kept); the bullet life changes only the gun range, in closed
   form.
 - **The workers are processes**, not threads: the solve and the estimate are thousands of

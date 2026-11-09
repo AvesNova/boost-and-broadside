@@ -247,6 +247,8 @@ def test_the_tuning_panel_opens_from_the_menu_and_a_restart_keeps_the_tuning(con
     player.click("menu/tune")
     assert session.tuning_panel.open and session.tuner is not None
     assert not session.interface.menu.is_open
+    window = session.tuning_panel.window  # opened inside the display, scrolling within
+    assert window.right <= 1280 and window.bottom <= 720 and window.width <= 420
     assert session.recorder is not None
     session.tuner.set_setting("mode.zone_radius", 500.0)
     assert session.recorder is None  # a tuned match is not recorded

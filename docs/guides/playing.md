@@ -205,18 +205,21 @@ value that is missing, unknown or malformed.
 
 ## Tuning the game
 
-**Tune the game** in the menu (or F2) opens the tuning panel over a live match. Every
-change takes effect while the match plays; pause first if you want to compare.
+**Tune the game** in the menu (or F2) opens the tuning panel over a live match, at the
+right below the top bar; drag or resize it like any window, and scroll it when it holds more
+than fits. Every change takes effect while the match plays; pause first if you want to
+compare.
 
 - **Ships**: choose a ship type at the top. Each handle (cruise speed, sustained turn rate,
   climb time, half-lift drag, gun range, shield, ...) has a slider and, beside it, a number
-  box: click the box, type a value and press Enter. The ships change within a frame or
-  two, from an instant estimate of the card that meets the new values; when you stop, the
-  exact card is solved in the background and swapped in, seconds later. **flying** shows
-  what the ships actually fly: red while it is more than 0.5% off the set value, "..."
-  until it has been measured. The fire rate is a choice of the rates a ship can hold (whole
-  shots per second, a whole number of ticks apart). The bleed rate is shown, not set: the
-  half-lift drag (the drag of a half-stick turn over a full one) sets the drag's shape.
+  box showing 4 significant digits: click the box, type a value and press Enter. Hover a
+  row for its full name and unit. The ships change within a frame or two, from an instant
+  estimate of the card that meets the new values; when you stop, the exact card is solved
+  in the background and swapped in, seconds later. A red dot after a box marks a handle the
+  ships fly more than 0.5% off its set value; hover the dot for what they fly. The fire
+  rate is a choice of the rates a ship can hold (whole shots per second, a whole number of
+  ticks apart). The bleed rate is shown, not set: the half-lift drag (the drag of a
+  half-stick turn over a full one) sets the drag's shape.
 - **Save ships** writes every type to its file in `src/bnb/game/ships/`, tracked in git:
   the handles and the card. **Add a copy as this name** copies the chosen type under the
   name in the field, and **Remove** deletes the chosen type after asking; each starts a new
@@ -224,8 +227,8 @@ change takes effect while the match plays; pause first if you want to compare.
 - **Rules**, by group: the arena and the clocks, bullet life, the flight constants every
   type shares, spawns, and the current mode's rules (Frontline's zone radius and capture
   time, team deathmatch's kills to win). Each has a slider and a number box, and applies on
-  the next tick; those marked *(next episode)* are drawn at an episode's start. Hover a
-  slider for the game's value.
+  the next tick; those marked with * are drawn at an episode's start. Hover a row for
+  the game's value.
 - Changing a flight constant re-measures the handles (the ships keep their card, so what
   they fly changes); the handles cannot be set until it finishes, a few seconds.
 - **Presets**: **Save** writes the rule settings and the whole card to your configuration

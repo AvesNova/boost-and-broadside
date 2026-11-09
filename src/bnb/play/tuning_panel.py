@@ -1,15 +1,20 @@
 """The tuning panel: an ImGui window over a live match that changes its numbers as it plays
 (`bnb.play.tuning`).
 
+The window opens at the right, below the top bar, 400 px wide per interface scale and as
+tall as the room under the top bar (never taller; its contents scroll). Each row is a label
+(cut short to its column; the full label and unit in its tooltip), a slider and a number box
+(4 significant digits).
+
 - **Ships**: choose a ship type; each of its handles is a slider with a number box beside it
-  (click the box, type, Enter), and beside that the value the ship actually flies (red when
-  it is more than 0.5% off; "..." until a solve iteration has measured it). The fire rate is
-  a choice of the rates a card can hold; the bleed rate is shown, not set. **Save ships**
+  (click the box, type, Enter). A red dot after the box marks a handle the ships fly more
+  than 0.5% off its set value; its tooltip gives the flown value. The fire rate is a choice
+  of the rates a card can hold; the bleed rate is shown, not set. **Save ships**
   writes every type to its ship file (`src/bnb/game/ships/`, tracked in git); **Add** copies
   the chosen type under a new name and **Remove** deletes it (after a popup asks; the last
   type stays), each starting a new match.
-- **Rules**, by group: each setting a slider and a number box within its bounds;
-  "(next episode)" marks those drawn at an episode's start.
+- **Rules**, by group: each setting a slider and a number box within its bounds; "*" marks
+  those drawn at an episode's start, and the tooltip gives the game's value.
 - **Presets**: save the tuning under a name (the rules' settings and the whole card), load
   one, or go back to the game's numbers (the ship files' and the rules' own).
 """
@@ -21,34 +26,77 @@ from imgui_bundle import imgui
 
 from bnb.game import api
 
+from .interface.layout import MARGIN, TOP_BAR, Rect
 from .tuning import Presets, Tuning, fire_rates
 
-PANEL_WIDTH = 640.0
-TOP = 60.0
+PANEL_WIDTH = 400.0  # pixels at interface scale 1, like every size here
+LABEL_WIDTH = 150.0  # the label column
+BOX_WIDTH = 72.0  # the number box beside each slider
+MARKER_WIDTH = 10.0  # the column of a handle's off-target marker
 ERROR = imgui.ImVec4(0.85, 0.25, 0.25, 1.0)
 DIM = imgui.ImVec4(0.55, 0.55, 0.55, 1.0)
-FORMAT = "%.5g"
-BOX_WIDTH = 90.0  # the number box beside each slider
+OFF = 5e-3  # a flown handle this far off its set value, relative, is marked
 SPAN = 4.0  # a handle's slider spans its saved value divided and multiplied by this
 ENTER = imgui.InputTextFlags_.enter_returns_true
 REMOVE = "Remove a ship type###remove ship"
+EPISODE_MARK = " *"  # after the label of a setting drawn at an episode's start
 
 
 def _label(name: str) -> str:
     return name.replace("_", " ")
 
 
-def begin_rows(name: str, extra: bool) -> bool:
-    """A table of rows: the label, the slider, the number box and (extra) a note."""
-    columns = 4 if extra else 3
-    if not imgui.begin_table(name, columns, imgui.TableFlags_.sizing_stretch_prop):
+def number_format(value: float) -> str:
+    """The printf format of a number in the panel: 4 significant digits, written out in
+    full from 10000 up rather than with an exponent."""
+    return "%.0f" if abs(value) >= 1e4 else "%.4g"
+
+
+def short(value: float) -> str:
+    """The number as the panel writes it (`number_format`)."""
+    return number_format(value) % value
+
+
+def fit(text: str, width: float) -> str:
+    """The text, cut short with "..." if it is wider than `width` pixels."""
+    if imgui.calc_text_size(text).x <= width:
+        return text
+    while text and imgui.calc_text_size(text + "...").x > width:
+        text = text[:-1]
+    return text.rstrip() + "..."
+
+
+def tooltip(help: str) -> None:
+    """The row's tooltip for the last item, when it is hovered."""
+    if help and imgui.is_item_hovered(imgui.HoveredFlags_.for_tooltip):
+        imgui.set_tooltip(help)
+
+
+def begin_rows(name: str, scale: float) -> bool:
+    """A table of rows: the label, the slider, the number box and a handle's off-target
+    marker (blank for a rule, so every table's boxes line up)."""
+    if not imgui.begin_table(name, 4, imgui.TableFlags_.sizing_fixed_fit):
         return False
-    imgui.table_setup_column("label", imgui.TableColumnFlags_.width_stretch, 1.6)
-    imgui.table_setup_column("slider", imgui.TableColumnFlags_.width_stretch, 1.4)
-    imgui.table_setup_column("box", imgui.TableColumnFlags_.width_fixed, BOX_WIDTH)
-    if extra:
-        imgui.table_setup_column("note", imgui.TableColumnFlags_.width_stretch, 0.9)
+    fixed, stretch = imgui.TableColumnFlags_.width_fixed, imgui.TableColumnFlags_.width_stretch
+    imgui.table_setup_column("label", fixed, LABEL_WIDTH * scale)
+    imgui.table_setup_column("slider", stretch)
+    imgui.table_setup_column("box", fixed, BOX_WIDTH * scale)
+    imgui.table_setup_column("marker", fixed, MARKER_WIDTH * scale)
     return True
+
+
+def row_label(label: str, help: str, mark: str = "") -> None:
+    """A row's label (cut to its column, `mark` after it, dim), its tooltip the full one."""
+    imgui.table_next_row()
+    imgui.table_next_column()
+    imgui.align_text_to_frame_padding()
+    room = imgui.get_content_region_avail().x - imgui.calc_text_size(mark).x
+    imgui.text(fit(label, room))
+    tooltip(help)
+    if mark:
+        imgui.same_line(0.0, 0.0)
+        imgui.text_colored(DIM, mark)
+        tooltip(help)
 
 
 def number(
@@ -59,14 +107,13 @@ def number(
     high: float,
     integer: bool = False,
     log: bool = False,
+    help: str = "",
+    mark: str = "",
 ):
     """One row: the label, a slider (logarithmic: its value sits mid-slider whatever its
     scale) and a number box that takes any typed value, applied on Enter or when the box
-    loses focus. Returns (changed, value)."""
-    imgui.table_next_row()
-    imgui.table_next_column()
-    imgui.align_text_to_frame_padding()
-    imgui.text(label)
+    loses focus; `help` is the row's tooltip. Returns (changed, value)."""
+    row_label(label, help, mark)
     imgui.push_id(key)
     imgui.table_next_column()
     imgui.set_next_item_width(-1.0)
@@ -81,13 +128,15 @@ def number(
         slider = from_log_axis(position, low)
     else:
         slid, slider = imgui.slider_float("##slider", value, low, high, " ")
+    tooltip(help)
     imgui.table_next_column()
     imgui.set_next_item_width(-1.0)
     if integer:
         typed, box = imgui.input_int("##box", int(value), 0, 0, ENTER)
     else:
-        typed, box = imgui.input_float("##box", value, 0.0, 0.0, FORMAT, ENTER)
+        typed, box = imgui.input_float("##box", value, 0.0, 0.0, number_format(value), ENTER)
     typed = typed or imgui.is_item_deactivated_after_edit()
+    tooltip(help)
     imgui.pop_id()
     if typed:
         return True, float(box)
@@ -120,6 +169,38 @@ def _range(saved: float) -> tuple[float, float]:
     return min(ends), max(ends)
 
 
+def placement(width: float, height: float, scale: float) -> tuple[float, float, float, float]:
+    """The panel's first place on a display this size (x, y, width, height): at the right,
+    below the top bar, as tall as the room under it."""
+    margin, top = MARGIN * scale, (TOP_BAR + 2.0 * MARGIN) * scale
+    panel_width = min(PANEL_WIDTH * scale, width - 2.0 * margin)
+    return width - panel_width - margin, top, panel_width, max(height - top - margin, 0.0)
+
+
+def is_off(flown: float, value: float) -> bool:
+    """Whether a flown handle is more than `OFF` (relative) from its set value."""
+    return abs(flown - value) > OFF * max(abs(value), 1e-9)
+
+
+def flown_marker(value: float, flown: float | None, unit: str, scale: float) -> None:
+    """A handle row's last cell: a red dot when what the ships fly is more than 0.5% off the
+    set value, the flown value in its tooltip; blank otherwise (and until measured)."""
+    side = imgui.get_frame_height()
+    low = imgui.get_cursor_screen_pos()
+    imgui.dummy((MARKER_WIDTH * scale, side))
+    if flown is None:
+        tooltip("not measured yet")
+    else:
+        flies = f"flies {short(flown)}" + (f" {unit}" if unit else "")
+        if is_off(flown, value):
+            centre = (low.x + 0.5 * MARKER_WIDTH * scale, low.y + 0.5 * side)
+            colour = imgui.get_color_u32(ERROR)
+            imgui.get_window_draw_list().add_circle_filled(centre, 3.5 * scale, colour)
+            tooltip(f"{flies}: more than 0.5% off the set {short(value)}")
+        else:
+            tooltip(flies)
+
+
 class TuningPanel:
     """open: whether the window shows; `ship`: the ship type shown. The tuner it drives is
     the session's (created when the panel first opens on a live match)."""
@@ -132,6 +213,7 @@ class TuningPanel:
         self.new_ship = ""
         self.chosen = 0
         self.removing = 0  # the ship type the remove popup asks about
+        self.window: Rect | None = None  # where the window was last drawn
         self.message = ""
         self._files: list | None = None  # the ship files as last read
 
@@ -144,10 +226,14 @@ class TuningPanel:
         """The window, in the current ImGui frame."""
         if not self.open:
             return
-        width, _ = imgui.get_io().display_size
-        imgui.set_next_window_pos((width - PANEL_WIDTH - 10.0, TOP), imgui.Cond_.first_use_ever)
-        imgui.set_next_window_size((PANEL_WIDTH, 680.0), imgui.Cond_.first_use_ever)
+        x, y, width, height = placement(*imgui.get_io().display_size, session.scale)
+        imgui.set_next_window_pos((x, y), imgui.Cond_.first_use_ever)
+        imgui.set_next_window_size((width, height), imgui.Cond_.first_use_ever)
+        # Never taller than the room below the top bar: the contents scroll instead.
+        imgui.set_next_window_size_constraints((0.0, 0.0), (math.inf, height))
         expanded, self.open = imgui.begin("Tuning###tuning", self.open)
+        position, size = imgui.get_window_pos(), imgui.get_window_size()
+        self.window = Rect(position.x, position.y, size.x, size.y)
         if expanded:
             tuner = session.tuner
             if session.loop.replaying or tuner is None:
@@ -155,7 +241,7 @@ class TuningPanel:
             else:
                 self._status(tuner)
                 self._ships(session, tuner)
-                self._rules(tuner)
+                self._rules(tuner, session.scale)
                 self._presets(session, tuner)
         imgui.end()
 
@@ -175,7 +261,8 @@ class TuningPanel:
             return
         names = api.type_names()
         self.ship = min(self.ship, len(names) - 1)
-        imgui.set_next_item_width(180.0)
+        scale = session.scale
+        imgui.set_next_item_width(150.0 * scale)
         _, self.ship = imgui.combo("##ship", self.ship, list(names))
         imgui.same_line()
         if imgui.button("Save ships"):
@@ -189,7 +276,7 @@ class TuningPanel:
         controls.record("tuning/remove")
         imgui.end_disabled()
         self._confirm_remove(session, tuner, names)
-        imgui.set_next_item_width(180.0)
+        imgui.set_next_item_width(150.0 * scale)
         _, self.new_ship = imgui.input_text_with_hint(
             "##new ship", "new ship's name", self.new_ship
         )
@@ -206,17 +293,15 @@ class TuningPanel:
             return
         saved = self._saved()[kind].handles if kind < len(self._saved()) else {}
         flying = tuner.flying
-        if not begin_rows("handles", extra=True):
+        if not begin_rows("handles", scale):
             return
         for name in api.HANDLE_NAMES:
             unit, factor = api.HANDLE_UNITS[name]
             value = float(getattr(targets, name)[kind]) * factor
-            label = _label(name) + (f" ({unit})" if unit else "")
+            label = _label(name)
+            help = label + (f", {unit}" if unit else "")
             if name == "fire_rate":
-                imgui.table_next_row()
-                imgui.table_next_column()
-                imgui.align_text_to_frame_padding()
-                imgui.text(label)
+                row_label(label, help)
                 imgui.table_next_column()
                 rates = fire_rates(tuner.base.tick_length)
                 index = min(range(len(rates)), key=lambda i: abs(rates[i] - value))
@@ -229,22 +314,20 @@ class TuningPanel:
                 low, high = _range(saved.get(name, value / factor) * factor)
                 if name == "half_lift_drag":
                     low, high = 0.5**5, 0.5**0.5
-                changed, new = number(label, name, value, low, high, log=True)
+                changed, new = number(label, name, value, low, high, log=True, help=help)
                 if changed and math.isfinite(new):
                     tuner.set_handle(name, kind, new / factor)
             imgui.table_next_column()
-            if flying is None:
-                imgui.text_colored(DIM, "flying ...")
-            else:
-                flown = float(flying[name][kind]) * factor
-                off = abs(flown - value) > 5e-3 * max(abs(value), 1e-9)
-                imgui.text_colored(ERROR if off else DIM, f"flying {FORMAT % flown}")
+            flown = None if flying is None else float(flying[name][kind]) * factor
+            flown_marker(value, flown, unit, scale)
         for name, values in tuner.shown.items():
-            imgui.table_next_row()
+            unit = api.HANDLE_UNITS[name][0]
+            row_label(_label(name), f"{_label(name)}, {unit}: shown, not set")
             imgui.table_next_column()
-            imgui.text(f"{_label(name)} ({api.HANDLE_UNITS[name][0]})")
+            imgui.align_text_to_frame_padding()
+            imgui.text_colored(DIM, "shown, not set")
             imgui.table_next_column()
-            imgui.text_colored(DIM, f"{FORMAT % values[kind]} (shown, not set)")
+            imgui.text_colored(DIM, short(values[kind]))
         imgui.end_table()
 
     def _current(self, tuner) -> list:
@@ -323,37 +406,48 @@ class TuningPanel:
 
     # Rules -------------------------------------------------------------------------------
 
-    def _rules(self, tuner) -> None:
+    def _rules(self, tuner, scale: float) -> None:
         groups: dict[str, list] = {}
         for setting in api.tuning.settings_for(tuner.base):
             groups.setdefault(setting.group, []).append(setting)
         for group, settings in groups.items():
-            if not imgui.collapsing_header(group) or not begin_rows(group, extra=False):
+            if not imgui.collapsing_header(group) or not begin_rows(group, scale):
                 continue
             for setting in settings:
-                label = setting.label + (f" ({setting.unit})" if setting.unit else "")
-                if setting.when == api.tuning.EPISODE:
-                    label += " (next episode)"
+                episode = setting.when == api.tuning.EPISODE
+                help = "\n".join(
+                    line
+                    for line in (
+                        setting.label + (f", {setting.unit}" if setting.unit else ""),
+                        f"game's value: {short(tuner.default(setting.key))}",
+                        "applies from the next episode" if episode else "",
+                    )
+                    if line
+                )
                 changed, new = number(
-                    label,
+                    setting.label.split(" (")[0],
                     setting.key,
                     tuner.values[setting.key],
                     setting.low,
                     setting.high,
                     setting.integer,
+                    help=help,
+                    mark=EPISODE_MARK if episode else "",
                 )
                 if changed and math.isfinite(new):
                     tuner.set_setting(setting.key, new)
-                if imgui.is_item_hovered():
-                    imgui.set_tooltip(f"game's value: {tuner.default(setting.key):.5g}")
             imgui.end_table()
+            if any(setting.when == api.tuning.EPISODE for setting in settings):
+                imgui.text_colored(DIM, "* applies from the next episode")
 
     # Presets -----------------------------------------------------------------------------
 
     def _presets(self, session, tuner) -> None:
         if not imgui.collapsing_header("Presets"):
             return
-        _, self.name = imgui.input_text("name##preset", self.name)
+        width = 150.0 * session.scale
+        imgui.set_next_item_width(width)
+        _, self.name = imgui.input_text_with_hint("##preset name", "preset's name", self.name)
         imgui.same_line()
         if imgui.button("Save##preset"):
             try:
@@ -364,6 +458,7 @@ class TuningPanel:
         names = self.presets.names()
         if names:
             self.chosen = min(self.chosen, len(names) - 1)
+            imgui.set_next_item_width(width)
             _, self.chosen = imgui.combo("##presets", self.chosen, names)
             imgui.same_line()
             if imgui.button("Load"):

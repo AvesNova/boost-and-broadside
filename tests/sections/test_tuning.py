@@ -11,7 +11,14 @@ from bnb.contracts import GameConfig
 from bnb.game import api
 from bnb.play.loop import MatchLoop, MatchSetup
 from bnb.play.tuning import Presets, Tuning, base_rules, fire_rates, snap_handle
-from bnb.play.tuning_panel import from_log_axis, log_axis, to_log_axis
+from bnb.play.tuning_panel import (
+    from_log_axis,
+    is_off,
+    log_axis,
+    placement,
+    short,
+    to_log_axis,
+)
 from bnb.runtime.realtime import Realtime
 
 FRONTLINE = GameConfig(2, 4, 900.0, episode_seconds=20.0, mode="frontline")
@@ -155,6 +162,37 @@ def test_a_handle_slider_runs_from_low_to_high_at_any_scale(low, high):
     middle = -math.sqrt(low * high) if low < 0 else math.sqrt(low * high)
     assert to_log_axis(middle, low) == pytest.approx(0.5 * (start + end))
     assert from_log_axis(to_log_axis(middle, low), low) == pytest.approx(middle)
+
+
+def test_the_panels_numbers_hold_at_most_four_significant_digits():
+    """The number boxes write 4 significant digits, and numbers from 10000 up in full rather
+    than with an exponent."""
+    assert [short(v) for v in (31.6228, 0.00069612, -23.994, 8.0, 10000.0, 12345.6)] == [
+        "31.62",
+        "0.0006961",
+        "-23.99",
+        "8",
+        "10000",
+        "12346",
+    ]
+
+
+def test_a_flown_handle_is_marked_only_past_half_a_percent_off():
+    assert not is_off(100.4, 100.0) and is_off(100.6, 100.0)
+    assert not is_off(-23.99, -24.0) and is_off(-24.2, -24.0)
+    assert is_off(1e-3, 0.0) and not is_off(0.0, 0.0)
+
+
+@pytest.mark.parametrize(
+    "width, height, scale", [(1280, 720, 1.0), (1280, 720, 1.5), (1920, 1080, 2.0), (360, 300, 1.0)]
+)
+def test_the_tuning_panel_opens_inside_the_display(width, height, scale):
+    """The panel opens at the right, below the top bar, about 400 px wide per interface
+    scale and no wider or taller than the display leaves room for."""
+    x, y, panel_width, panel_height = placement(width, height, scale)
+    assert x >= 0.0 and y > 0.0
+    assert x + panel_width < width and y + panel_height < height
+    assert panel_width == pytest.approx(min(400.0 * scale, width - 16.0 * scale))
 
 
 def test_presets_round_trip(tmp_path):
