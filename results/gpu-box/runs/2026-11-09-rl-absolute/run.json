@@ -1,0 +1,67 @@
+{
+ "name": "2026-11-09-rl-absolute",
+ "status": "running",
+ "pid": 469109,
+ "host": "e98bed47fc73",
+ "message": null,
+ "command": [
+  ".venv/bin/bnb",
+  "train",
+  "--name",
+  "2026-11-09-rl-absolute",
+  "--init-from",
+  "runs/2026-11-09-bc-absolute/policies/step_120586240/uniform_average",
+  "--preset",
+  "mixed",
+  "--updates",
+  "58",
+  "--micro-batch-rows",
+  "320",
+  "--set",
+  "host_store=false"
+ ],
+ "wandb_id": null,
+ "parent": {
+  "policy": "/workspace/boost-and-broadside/runs/2026-11-09-bc-absolute/policies/step_120586240/uniform_average"
+ },
+ "checkpoint_every": null,
+ "update_policies": true,
+ "newest_checkpoint": null,
+ "final_checkpoint": null,
+ "checkpoint_ordinals": {},
+ "probe": {
+  "allocated": 18304522752,
+  "reserved": 19337838592,
+  "total": 25296044032,
+  "budget": 24759173120
+ },
+ "segments": [
+  {
+   "commit": "1ffd0ff3f1cf9160e13025f77bb90d8ab45838e3",
+   "dirty": false,
+   "start_step": 0,
+   "start_time": "2026-11-09T18:18:33+00:00",
+   "end_step": null,
+   "end_time": null,
+   "overrides": {},
+   "rewound_from": null,
+   "command": [
+    ".venv/bin/bnb",
+    "train",
+    "--name",
+    "2026-11-09-rl-absolute",
+    "--init-from",
+    "runs/2026-11-09-bc-absolute/policies/step_120586240/uniform_average",
+    "--preset",
+    "mixed",
+    "--updates",
+    "58",
+    "--micro-batch-rows",
+    "320",
+    "--set",
+    "host_store=false"
+   ]
+  }
+ ],
+ "stop_request": null
+}

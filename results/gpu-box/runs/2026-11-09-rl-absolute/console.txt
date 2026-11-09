@@ -1,0 +1,49 @@
+SIGTERM: stopping after this update (again to stop now)
+Traceback (most recent call last):
+  File "/workspace/boost-and-broadside/.venv/bin/bnb", line 10, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/workspace/boost-and-broadside/src/bnb/cli.py", line 414, in main
+    train(tyro.cli(Train, args=arguments, prog="bnb train"), given(arguments))
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/cli.py", line 598, in train
+    _train(options, given_options, stop)
+    ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/cli.py", line 712, in _train
+    trainer = checkpoint.warm_start(source, config, device)
+  File "/workspace/boost-and-broadside/src/bnb/runs/checkpoint.py", line 677, in warm_start
+    trainer = Trainer(config, device)
+  File "/workspace/boost-and-broadside/src/bnb/runtime/train.py", line 264, in __init__
+    characteristics(types, api.rules_of(game))
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/game/handling/characteristics.py", line 126, in characteristics
+    _CACHE[key] = measure_characteristics(types, rules)
+                  ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/utils/_contextlib.py", line 158, in no_grad
+    return func(*args, **kwargs)
+  File "/workspace/boost-and-broadside/src/bnb/game/handling/characteristics.py", line 82, in measure_characteristics
+    top_speed=top_speed(rules, card)[0],
+              ~~~~~~~~~^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/game/handling/shown.py", line 184, in top_speed
+    flown = trajectory(
+        rules,
+    ...<7 lines>...
+        round(TOP_SPEED_LIMIT / rules.tick_length),
+    )
+  File "/workspace/boost-and-broadside/src/bnb/game/handling/shown.py", line 76, in trajectory
+    new = flight_tick(rules.flight, airframe, rules.tick_length, state, stick, power, fields)
+  File "/workspace/boost-and-broadside/src/bnb/game/physics/flight.py", line 295, in flight_tick
+    ship = kick(
+        constants,
+    ...<6 lines>...
+        0.5 * tick_length,
+    )
+  File "/workspace/boost-and-broadside/src/bnb/game/physics/flight.py", line 189, in kick
+    def kick(
+    
+  File "/workspace/boost-and-broadside/src/bnb/runs/session.py", line 71, in _handle
+    raise KeyboardInterrupt
+KeyboardInterrupt
+run 2026-11-09-rl-absolute in /workspace/boost-and-broadside/runs/2026-11-09-rl-absolute
+memory probe: allocated 17.05 GB, reserved 18.01 GB, budget 23.06 GB of 23.56 GB
+update    1  rollout 493639 ms  learn 373281 ms  entropy 1.69  kl +0.0005  clip 0.001  drift 0.194  skipped 0  nonfinite beliefs 0  reward/s: frontline/self_play -0.000 frontline/league -0.000 deathmatch/self_play -0.000 deathmatch/league +0.001
