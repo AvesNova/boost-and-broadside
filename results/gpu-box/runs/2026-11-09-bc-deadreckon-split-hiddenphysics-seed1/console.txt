@@ -7,3 +7,16 @@ update    4  steps   4,194,304  rollout  10042 ms  learn  82068 ms  bc kl 0.6946
 update    5  steps   5,242,880  rollout  10012 ms  learn  82392 ms  bc kl 0.6535  teacher 0.757  student 1.424  scores: learner 0.500 scripted 0.002
 update    6  steps   6,291,456  rollout  10001 ms  learn  82391 ms  bc kl 0.6510  teacher 0.757  student 1.413  scores: learner 0.500 scripted 0.000
 update    7  steps   7,340,032  rollout   9996 ms  learn  82442 ms  bc kl 0.7001  teacher 0.819  student 1.519  scores: learner 0.500 scripted 0.000
+update    8  steps   8,388,608  rollout   9997 ms  learn  84275 ms  bc kl 0.6104  teacher 0.871  student 1.483  scores: learner 0.500 scripted 0.000
+update    9  steps   9,437,184  rollout   9996 ms  learn  84394 ms  bc kl 0.4993  teacher 0.900  student 1.404  scores: learner 0.500 scripted 0.000
+update   10  steps  10,485,760  rollout   9999 ms  learn  87740 ms  bc kl 0.4780  teacher 0.920  student 1.400  scores: learner 0.500 scripted 0.000
+update   11  steps  11,534,336  rollout   9997 ms  learn  85554 ms  bc kl 0.5252  teacher 0.936  student 1.464  scores: learner 0.500 scripted 0.000
+update   12  steps  12,582,912  rollout  10008 ms  learn  83151 ms  bc kl 0.5266  teacher 0.949  student 1.478  scores: learner 0.500 scripted 0.000
+update   13  steps  13,631,488  rollout  10006 ms  learn  84748 ms  bc kl 0.5511  teacher 0.946  student 1.499  scores: learner 0.500 scripted 0.000
+update   14  steps  14,680,064  rollout  10011 ms  learn  82275 ms  bc kl 0.5554  teacher 0.959  student 1.516  scores: learner 0.500 scripted 0.000
+update   15  steps  15,728,640  rollout  10007 ms  learn  82382 ms  bc kl 0.5613  teacher 0.963  student 1.525  scores: learner 0.500 scripted 0.000
+update   16  steps  16,777,216  rollout  10002 ms  learn  82341 ms  bc kl 0.5658  teacher 0.968  student 1.534  scores: learner 0.500 scripted 0.000
+update   17  steps  17,825,792  rollout   9997 ms  learn  82257 ms  bc kl 0.5420  teacher 0.976  student 1.517  scores: learner 0.500 scripted 0.000
+update   18  steps  18,874,368  rollout  10043 ms  learn  82347 ms  bc kl 0.5379  teacher 0.979  student 1.518  scores: learner 0.500 scripted 0.000
+update   19  steps  19,922,944  rollout  10047 ms  learn  83203 ms  bc kl 0.5492  teacher 0.988  student 1.536  scores: learner 0.500 scripted 0.005
+update   20  steps  20,971,520  rollout  10021 ms  learn  86857 ms  bc kl 0.5213  teacher 0.989  student 1.509  scores: learner 0.500 scripted 0.028
