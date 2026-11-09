@@ -60,6 +60,7 @@ from .handling import solve as solve_handles
 from .handling.manoeuvres import airframe_of, empty_map
 from .handling.manoeuvres import ships as flying_ships
 from .handling.similarity import HANDLE_UNITS, factor, scale_flight
+from .handling.weapons import combat_card
 from .physics.flight import flight_tick
 from .real_scale_aircraft import AIRCRAFT as RESEARCHED
 from .real_scale_aircraft import Aircraft
@@ -482,6 +483,16 @@ def _solve_in_process(arguments) -> Solved | str:
         return traceback.format_exc()
 
 
+def rearmed(ship: ships.Ship, values: dict[str, float], rules: Rules) -> ships.Ship:
+    """A solved ship with new combat handles: its combat card fields in closed form (as the
+    solver sets them, float64 to float32), its flight card and climb time kept."""
+    values = dict(values, climb_time=ship.handles["climb_time"])
+    handles = Handles(**{n: torch.tensor([v], dtype=torch.float64) for n, v in values.items()})
+    combat = combat_card(rules, handles, handles.cruise_speed)
+    card = dict(ship.card) | {n: float(v.float()[0]) for n, v in combat.items()}
+    return dataclasses.replace(ship, handles=values, card=card)
+
+
 def clock(seconds_from_now: float) -> str:
     """A clock time this many seconds from now."""
     return (datetime.datetime.now() + datetime.timedelta(seconds=seconds_from_now)).strftime(
@@ -496,7 +507,8 @@ def solve_set(
         file as it finishes, and finally the set's order: the solves, in the set's order. A type
     that fails stops no other; the order is then left as it was and Infeasible names them.
         resume: keep a written card whose targets (all but the climb time) match, its notes
-        and name refreshed;
+        and name refreshed, and re-arm one whose flight targets match (its combat card
+        fields in closed form, no flight);
         only: solve just these keys (the others must be written already)."""
     combat = combat_constants()
     standard_rules = rules_of(GameConfig(1, 1, 1.0))
@@ -514,11 +526,16 @@ def solve_set(
     for one in aircraft:
         values, notes, rate = target_handles(one, rules, combat)
         old = written.get(one.key)
-        same = old is not None and all(
-            math.isclose(old.handles.get(n, math.nan), v, rel_tol=1e-9)
+        matching = {
+            n
             for n, v in values.items()
-            if n != "climb_time"
-        )
+            if old is not None and math.isclose(old.handles.get(n, math.nan), v, rel_tol=1e-9)
+        }
+        flight_same = set(FLIGHT) - {"climb_time"} <= matching
+        same = flight_same and set(values) - {"climb_time"} <= matching
+        if resume and flight_same and not same:  # a combat change: no flight to solve
+            old = rearmed(old, values, rules)
+            same = True
         if (resume and same) or (only is not None and one.key not in only):
             if old is None:
                 raise FileNotFoundError(f"{one.key} is not written yet: solve it too")
@@ -529,7 +546,8 @@ def solve_set(
                 fresh = {n: note + missed.get(n, "") for n, note in notes.items()}
                 old = dataclasses.replace(old, name=one.name, notes=fresh)
                 ships.write_ship(old, SHIP_SET)
-            results[one.key] = Solved(old, math.nan, True, [])
+            missed = [n for n, note in old.notes.items() if " MISSED" in note]
+            results[one.key] = Solved(old, math.nan, not missed, [f"missed {n}" for n in missed])
             continue
         if old is not None and same:
             values["climb_time"] = old.handles["climb_time"]  # a close start
@@ -583,7 +601,8 @@ def main() -> None:
     )
     print(f"wrote {len(solved)} ships to {ships.directory_of(SHIP_SET)}")
     for one in solved:
-        print(f"{one.ship.key}: worst flown error {one.worst:.2e}, converged {one.converged}")
+        error = "kept" if math.isnan(one.worst) else f"worst flown error {one.worst:.2e}"
+        print(f"{one.ship.key}: {error}, converged {one.converged} {' '.join(one.failures)}")
 
 
 if __name__ == "__main__":
