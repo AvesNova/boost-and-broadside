@@ -536,3 +536,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   `runs/absolute60.sh`, started 13:43 (loads, with the expected FilledDefaults for the newer
   switches). Its 30.4M policy, the one rated, is the original. The 60M continuation branches at
   23.1M. The box's queue is otherwise done; tournament 4 waits for the laptop's last arm.
+- **13:56 KST absolute's resume healthy** (rewound to 23.1M; at update 30, 81 s per update; ETA 14:35 KST). Note: its metrics.jsonl now holds updates 23-29 twice (the original and the rewound branch): 20-30M statistics for absolute must take the first 29 rows only (the tables already given predate the rewind).
