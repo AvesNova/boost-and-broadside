@@ -1,0 +1,2 @@
+# The ship types in order: a type's index is its place here (bnb.game.ships).
+order = ["fighter", "heavy"]

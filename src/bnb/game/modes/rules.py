@@ -17,11 +17,28 @@ from .. import ships
 CLOCKS = {TEAM_DEATHMATCH: (300.0, 5.0), FRONTLINE: (300.0, 8.0), SANDBOX: (60.0, 8.0)}
 
 # Training presets, all 5v5 at 10 fields (modes spec 1; mixed spec 1: the battle map keeps
-# 10 fields, zoomed with the arena).
+# 10 fields, zoomed with the arena). The real-scale ones play the real-scale ship set
+# (docs/explanation/game/real-scale.md): the map 3x the standard one in metres (map scale 3)
+# and the mode's clock doubled, as crossing between fields takes about twice as long.
+REAL_SCALE = "real-scale"
+REAL_SCALE_ARENA = 3.0 * 2600.0  # m
+REAL_SCALE_CLOCK = 2.0  # rule times against the standard game's
 PRESETS = {
     "deathmatch": GameConfig(5, 10, 2600.0, mode=TEAM_DEATHMATCH),
     "deathmatch_wide": GameConfig(5, 10, 8200.0, mode=TEAM_DEATHMATCH, spawn_groups=(2, 2, 1)),
     "frontline": GameConfig(5, 10, 2600.0, mode=FRONTLINE),
+    **{
+        f"real_scale_{name}": GameConfig(
+            5,
+            10,
+            REAL_SCALE_ARENA,
+            episode_seconds=REAL_SCALE_CLOCK * CLOCKS[mode][0],
+            respawn_seconds=REAL_SCALE_CLOCK * CLOCKS[mode][1],
+            mode=mode,
+            ship_set=REAL_SCALE,
+        )
+        for name, mode in (("deathmatch", TEAM_DEATHMATCH), ("frontline", FRONTLINE))
+    },
 }
 
 

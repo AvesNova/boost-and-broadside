@@ -1,0 +1,91 @@
+# Fighter: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
+# it; [card] is solved from [handles], so edit the handles, not the card.
+name = 'Fighter'
+
+[handles]
+# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
+stall_speed = 46.0
+g_limit = 8.0
+cruise_speed = 163.0
+climb_time = 3918.2135051814653
+ceiling = 125300.0
+low_speed_acceleration = 3.4825191551381303
+sustained_turn_rate = 0.3141592653589793
+half_lift_drag = 0.25
+nose_reversal_time = 0.7874054035417282
+dive_acceleration = 10.901973181024061
+zoom_acceleration = -8.717968852296035
+stall_angle = 0.2792526803190927
+vision_range = 3072.0
+zero_lift_drag = 0.00011960824742268042
+hit_damage = 12.0
+fire_rate = 15.0
+muzzle_speed = 880.0
+bullet_spread = 21.12
+gun_range = 600.3345067337407
+shots_per_store = 33.333333333333336
+max_shield = 100.0
+shield_recharge_rate = 12.0
+shield_recharge_delay = 6.0
+head_on_fraction = 0.3
+hit_radius = 5.64
+spawn_energy = 50120.0
+
+[card]
+# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).
+max_lift_coefficient = 0.004636106081306934
+max_acceleration = 78.4800033569336
+zero_lift_drag = 0.00011960824485868216
+engine_power = 722.6626586914062
+engine_power_full_store = 563.154296875
+static_thrust = 6.897543430328369
+max_energy = 125300.0
+corner_nose_frequency = 5.42275857925415
+max_shield = 100.0
+hit_radius = 5.639999866485596
+hit_damage = 12.0
+muzzle_speed = 880.0
+bullet_energy_cost = 3759.0
+fire_rate = 15.0
+spawn_energy = 50120.0
+bleed_exponent = 2.0
+induced_drag_scale = 0.9351497888565063
+stall_angle_scale = 1.0666667222976685
+coast_exchange_scale = 0.8977786898612976
+dive_exchange_scale = 1.0236849784851074
+climb_exchange_scale = 0.9763094782829285
+vision_range_scale = 1.0
+bullet_spread_scale = 1.7599999904632568
+bullet_drag_scale = 1.0
+shield_recharge_rate_scale = 1.0
+shield_recharge_delay_scale = 1.0
+head_on_fraction_scale = 1.0
+
+[notes]
+# Where each handle's value comes from.
+stall_speed = "P-51D, clean, power off (100-106 mph)"
+g_limit = "P-51D"
+cruise_speed = "P-51D maximum level speed at sea level, military power (364 mph)"
+climb_time = "solved for an initial charge of g x 16.3 m/s (P-51D, 3,200 ft/min)"
+ceiling = "P-51D service ceiling 12,770 m (41,900 ft) times g, rounded: the store, J/kg"
+low_speed_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51"
+sustained_turn_rate = "P-51D, about 18 deg/s (simulator-based)"
+half_lift_drag = "a parabolic drag polar"
+nose_reversal_time = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51"
+dive_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51"
+zoom_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51"
+stall_angle = "P-51D, about 16 deg"
+vision_range = "the standard 1024 m times the map scale (3)"
+zero_lift_drag = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51"
+hit_damage = "placeholder: the standard fighter's"
+fire_rate = "placeholder: the standard fighter's"
+muzzle_speed = "the .50 M2's 880 m/s"
+bullet_spread = "placeholder: the standard fighter's dispersion angle"
+gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
+shots_per_store = "placeholder: the standard fighter's"
+max_shield = "placeholder: the standard fighter's"
+shield_recharge_rate = "placeholder: the standard fighter's"
+shield_recharge_delay = "placeholder: the standard fighter's"
+head_on_fraction = "placeholder: the standard fighter's"
+hit_radius = "P-51D half-span"
+spawn_energy = "placeholder: the standard fighter's fraction of the store"
