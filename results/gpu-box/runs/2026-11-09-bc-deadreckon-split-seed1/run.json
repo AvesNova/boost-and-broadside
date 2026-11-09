@@ -1,6 +1,6 @@
 {
  "name": "2026-11-09-bc-deadreckon-split-seed1",
- "status": "running",
+ "status": "finished",
  "pid": 213028,
  "host": "e98bed47fc73",
  "message": null,
@@ -48,9 +48,12 @@
  "parent": null,
  "checkpoint_every": 20971520,
  "update_policies": false,
- "newest_checkpoint": null,
- "final_checkpoint": null,
- "checkpoint_ordinals": {},
+ "newest_checkpoint": 30408704,
+ "final_checkpoint": 30408704,
+ "checkpoint_ordinals": {
+  "20971520": 0,
+  "30408704": 1
+ },
  "probe": {
   "allocated": 18199960576,
   "reserved": 19270729728,
@@ -63,8 +66,8 @@
    "dirty": false,
    "start_step": 0,
    "start_time": "2026-11-09T03:50:27+00:00",
-   "end_step": null,
-   "end_time": null,
+   "end_step": 30408704,
+   "end_time": "2026-11-09T04:40:18+00:00",
    "overrides": {},
    "rewound_from": null,
    "command": [
@@ -110,6 +113,9 @@
   }
  ],
  "stop_request": null,
- "hours": 0.16410955446138462,
- "skipped_steps": 0
+ "hours": 0.8307189033286543,
+ "skipped_steps": 0,
+ "stopped_by": "budget",
+ "policy": "/workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-seed1/policy",
+ "policy_player": "exponential_average"
 }
