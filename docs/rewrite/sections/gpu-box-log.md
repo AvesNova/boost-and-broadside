@@ -613,3 +613,10 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   slow taus barely moved (tau10 dipped). Caveat: seed 0 only at 60M. The 30M policies reproduced
   their tournament-4 ratings (822 vs 811, 838 vs 842, 709 vs 710, 681 vs 658). Next (the author's
   original goal): 200M BC of the champion resumed from 60M, then 200M RL.
+- **19:40 KST Round 8 (the author): champion and null to 120M BC, then 60M RL each**
+  (`round8.sh`): BC resumes of deadreckon-split-hiddenphysics then absolute from 60.8M to 120M
+  (~1.5 h + 1.3 h); then RL: `bnb train --init-from <run>/policies/<last>/uniform_average --preset
+  mixed --updates 58` (60.8M), the file's build, PPO's own settings: the spec's discounts (outcome
+  gamma 0.9997, lambda 0.97, unlike BC's 1 / 1: watch the outcome Brier), warm-start entropy 0,
+  32 minibatches x 4 epochs; micro-batch 320 rows (32 views, as BC's proven memory), else 160.
+  RL speed on the box not measured yet.
