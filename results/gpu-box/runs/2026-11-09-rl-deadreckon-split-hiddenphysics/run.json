@@ -1,7 +1,7 @@
 {
  "name": "2026-11-09-rl-deadreckon-split-hiddenphysics",
- "status": "finished",
- "pid": 427643,
+ "status": "running",
+ "pid": 513849,
  "host": "e98bed47fc73",
  "message": null,
  "command": [
@@ -64,6 +64,19 @@
     "--set",
     "host_store=false"
    ]
+  },
+  {
+   "commit": "82e12ff95453eeeacf9d828b9025a6a1654b69eb",
+   "dirty": false,
+   "start_step": 60817408,
+   "start_time": "2026-11-09T21:39:35+00:00",
+   "end_step": null,
+   "end_time": null,
+   "overrides": {
+    "updates": 116
+   },
+   "rewound_from": null,
+   "command": null
   }
  ],
  "stop_request": null,
