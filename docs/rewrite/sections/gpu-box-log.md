@@ -658,3 +658,12 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
 - **01:30 KST Champion RL running at 320-row micro-batches** (probe 18.1 GB of 23.6): update 2-3: rollout 17 s, learn 97-98 s = **~9,100 SPS** (BC 11,400; RL's rollout also plays the league's opponents); PPO KL 0.005-0.006, clip fraction 0.06, no skipped steps; outcome EV 0.95-0.96; Brier 5-15 s -0.97 -> -0.15 -> +0.23 (the synchronised launch's first finished games). ETAs: champion RL ~03:20, null RL ~05:40 KST.
 - **03:16 KST Champion RL done** (`2026-11-09-rl-deadreckon-split-hiddenphysics`, 60.8M, from the 120M BC uniform average): steady throughout (PPO KL 0.005-0.007, clip fraction 0.06-0.07, no skipped steps); last 10 updates outcome Brier 5-15 s 0.520, outcome EV 0.964. RL keeps every update's policy files (~1.7 GB). Null RL next.
 - **03:18 KST Null RL restarted at 320-row micro-batches**: `round9.sh` tried 640 first again (the setting that ran out of memory for the champion, same size); stopped it within a minute (moved to runs/failed/) and set the runner to 320 only. ETA ~05:40 KST.
+- **04:10 KST Round 10 (the author): both RL runs to 120M, then the whole-curve tournament.**
+  `round10.sh` (after round 9): RL resumes `--updates 116` (121.6M; a resume continues to the
+  run's total), null then champion; then **tournament 7**: both headline lines in one field (Elos
+  directly comparable from the first BC snapshot to the last RL one): the uniform average every
+  ~10M, BC 10.5 ... 120.6M (absolute's post-23.1M snapshots are its rewound branch, the lineage
+  that leads to 120M) and RL 10.5 ... 121.6M (RL step 0 = the BC 120.6M uniform), plus live /
+  uniform / exponential at BC 120.6M, RL 60.8M and RL 121.6M: 60 players + scripted;
+  `--budget 60000`, `--reuse runs/ratings/round5 runs/ratings/round6`. ETAs: null RL 120M ~06:45,
+  champion ~08:40, tournament ~11:30 KST (estimate).
