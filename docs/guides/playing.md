@@ -89,7 +89,8 @@ The menu (the top bar's menu button, or Escape) pauses a live match and offers *
 
 **New match** chooses the mode, the map (**Standard**, **Wide**, or **Real scale**: the
 [real-scale variant](../explanation/game/real-scale.md), where a metre is a metre and the
-fighter flies like a P-51D, on a map three times the standard one), the ships a side, the
+27 types are late-war fighters from the P-51D to the Me 262 and a few invented designs,
+on a map three times the standard one), the ships a side, the
 fields, the lineup (a dropdown per slot of the map's ship types, the same for both teams;
 **Default** alternates the first two), fog, the seed, and
 each side's controller: **Scripted** (the chaser), **Scripted agent** (the scripted agent

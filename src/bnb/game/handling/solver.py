@@ -464,9 +464,7 @@ def marquardt_step(
     column) makes the system singular: such a card takes the least-squares step, which
     leaves that parameter alone."""
     normal = jacobian.transpose(-1, -2) @ jacobian
-    normal = normal + damping[..., None, None] * torch.diag_embed(
-        normal.diagonal(dim1=-2, dim2=-1)
-    )
+    normal = normal + damping[..., None, None] * torch.diag_embed(normal.diagonal(dim1=-2, dim2=-1))
     gradient = jacobian.transpose(-1, -2) @ residual[..., None]
     solved, info = torch.linalg.solve_ex(normal, gradient)
     singular = info != 0

@@ -22,9 +22,10 @@ store is g times the service ceiling, the zero-lift drag rho C_D0 / (2 W/S), the
 the half-span, the bullet spread the volley's dispersion angle times the main gun's muzzle
 speed, the nose reversal the P-51's (a placeholder) times the P-51's roll rate over the
 type's, the shield the survivability rating (SHIELD_PER_RATING). The combat economy is a
-proposal (COMBAT, `combat_economy`): a shot costs the same seconds of a type's own climb
-charge as a standard shot does of the standard fighter's, at full rate; damage per second
-follows the weight of fire, the P-51 keeping the standard fighter's 180 per second.
+proposal (COMBAT, a `CombatEconomy`; `combat_economy`): continuous fire costs every type
+the same multiple of its own initial climb charge as it costs the standard fighter (a P-51
+shot about 1 s of charge); damage per second follows the weight of fire, the P-51 keeping
+the standard fighter's 180 per second.
 
 Every handle a type does not give is a placeholder: its `like` type's standard handle times
 the factor that turns the standard fighter into the P-51 (`placeholder_factors`: the P-51's
@@ -89,7 +90,7 @@ ACCEPTED = 5e-3  # the solver's acceptance: every flown handle within 0.5%
 
 
 @dataclasses.dataclass(frozen=True)
-class Combat:
+class CombatEconomy:
     """The proposed combat economy (`docs/explanation/game/real-scale.md`): `fire_power`
     is continuous fire's store cost over the type's initial climb charge (None: the
     standard fighter's, about 14.5: a shot about 1 s of charge at 15 Hz), and
@@ -99,10 +100,10 @@ class Combat:
     damage_per_second: float | None = None
 
 
-COMBAT = Combat()
+COMBAT = CombatEconomy()
 
-HEAVY = Aircraft("heavy", "Heavy", "heavy", "placeholder", "", {})
-AIRCRAFT = (RESEARCHED[0], HEAVY, *RESEARCHED[1:])
+HEAVY_PLACEHOLDER = Aircraft("heavy", "Heavy", "heavy", "placeholder", "", {})
+AIRCRAFT = (RESEARCHED[0], HEAVY_PLACEHOLDER, *RESEARCHED[1:])
 REFERENCE = RESEARCHED[0]  # the P-51D: its given handles define the placeholder factors
 
 
@@ -121,7 +122,7 @@ def standard_climb_charges() -> dict[str, float]:
     return {ship.key: float(value) for ship, value in zip(found, charge)}
 
 
-def combat_constants(combat: Combat = COMBAT) -> tuple[float, float]:
+def combat_constants(combat: CombatEconomy = COMBAT) -> tuple[float, float]:
     """(fire power over climb charge, the P-51's damage per second), the standard fighter's
     where the economy leaves them out."""
     fighter = standard_handles()["fighter"]
@@ -473,9 +474,8 @@ def solve_type(
 
 
 def _solve_in_process(arguments) -> Solved | str:
-    """`solve_type` in a worker process, one thread, logging to stdout: the solve, or the
-    reason (a traceback) it failed, so that one type's failure stops no other."""
-    torch.set_num_threads(1)
+    """`solve_type` in a worker process, logging to stdout: the solve, or the reason (a
+    traceback) it failed, so that one type's failure stops no other."""
     try:
         return solve_type(*arguments, log=lambda line: print(line, flush=True))
     except Exception:
@@ -574,6 +574,7 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=WORKERS)
     arguments = parser.parse_args()
     only = set(arguments.only.split(",")) if arguments.only else None
+    os.environ["OMP_NUM_THREADS"] = "1"  # each worker process (started after this) one thread
     solved = solve_set(
         workers=arguments.workers,
         resume=arguments.resume,
