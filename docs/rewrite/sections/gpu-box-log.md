@@ -558,3 +558,16 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   names in the same order, and I had reordered them; relaunched in the record's order, it resumed
   with its two batches.
 - **15:13 KST 16 x 256 ran out of GPU memory** (23.5 of 23.6 GB: each block holds its own two networks and environments); the runner fell back to **16 x 128** (2048 games, 16 pairs a batch: twice the default), resumed from the record.
+- **16:00 KST Tournament 4 frontline final** (4096 games; the bigger layout's first batch took
+  2216 s, ~33 min of it compiling 16 blocks): hiddenphysics-tau1.25 842, -tau10-laptop 836,
+  hiddenphysics 811, persist-split-laptop 751, persist-split-hiddenphysics-laptop 742, -fade 716,
+  deadreckon-split 710, hiddenphysics-seed1 709, fastdecay-laptop 670, absolute 658,
+  deadreckon-split-seed1 656, fourier 603, absolute-seed1 584 (+-18-23). The seven re-rated
+  policies moved 3-34 from tournament 3 (the tournament's own noise is small); seed gaps 54-102,
+  seed 0 better every time; hidden physics beats its base at both seeds (+101, +53); slower tau
+  +28 (within noise); fade -95.
+- **16:05 KST Game reuse across tournaments (the author asked), being built** by a background
+  agent on `feat/tournament-reuse`: `bnb ratings --reuse DIR...` starts from every earlier recorded
+  game whose two players are both in the field, players matched by the SHA-256 of their weights
+  (a path can change contents: the rewind case), legacy records by path. The author: decide the
+  60M round after deathmatch.
