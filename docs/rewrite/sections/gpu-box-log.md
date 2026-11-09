@@ -630,3 +630,11 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   (640 rows) is near the limit: RL runs at 640, falling back to 320 (same result, memory/speed
   only). Runner replaced without disturbing the champion's 120M BC resume (it waits for it).
 - **21:12 KST Champion at 120M BC** (deadreckon-split-hiddenphysics, budget, 120.6M): KL 0.277, agreement 0.786, Brier 5-15 s 0.697 (110-120M mean); at 60M 0.334 / 0.753 / 0.592: still improving. Its 120M uniform average (step_120586240) seeds its RL. absolute's BC resume to 120M started.
+- **21:25 KST Before RL (the author): pick RL's starting policy on the evidence, one kind for
+  both runs.** `round8b.sh` (replaced round8's runner; absolute's 120M BC undisturbed): after it,
+  **tournament 6** (120M live, uniform average, exponential average of the champion and the null)
+  and a **scorecard** per run (`runs/scorecard.py`: the run's own TrainConfig with learning rate and
+  warm-up start 0 (checked: lr 0 at every step), each variant's weights copied into the model in
+  place, 1 settling + 3 measured updates on fresh games: BC KL / agreement, explained variance,
+  outcome Brier, next-state and error-head errors, the live lane's score vs scripted). The runner
+  stops there; RL starts after the choice.
