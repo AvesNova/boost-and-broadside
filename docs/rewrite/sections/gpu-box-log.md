@@ -638,3 +638,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   place, 1 settling + 3 measured updates on fresh games: BC KL / agreement, explained variance,
   outcome Brier, next-state and error-head errors, the live lane's score vs scripted). The runner
   stops there; RL starts after the choice.
+- **22:39 KST absolute at 120M BC** (budget): KL 0.351, agreement 0.740, Brier 5-15 s 0.686 (champion 0.277 / 0.786 / 0.697). Tournament 6 started (120M live / uniform / exponential of both).
