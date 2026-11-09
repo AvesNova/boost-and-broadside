@@ -639,3 +639,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   outcome Brier, next-state and error-head errors, the live lane's score vs scripted). The runner
   stops there; RL starts after the choice.
 - **22:39 KST absolute at 120M BC** (budget): KL 0.351, agreement 0.740, Brier 5-15 s 0.686 (champion 0.277 / 0.786 / 0.697). Tournament 6 started (120M live / uniform / exponential of both).
+- **23:35 KST Tournament 6 final (120M)**, mean (frontline / deathmatch): champion uniform 989 (973 / 1004), absolute uniform 979 (1013 / 945), champion exponential 966, champion live 965, absolute exponential 949, absolute live 892 (+-12-14). Uniform is the best variant for both (+23, +30 over the next); both near the scripted teacher (1000); champion vs null now level (+10; the 60M lead of +64 narrowed as both converge on the teacher). Scorecards next.
