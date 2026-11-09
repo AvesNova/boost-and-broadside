@@ -55,6 +55,7 @@ FRAME_SECONDS = 1.0 / 60.0  # the offscreen runner's clock
 NOTICE_SECONDS = 6.0  # a notice stays this long (display time)
 FLYING_ZOOM = 3.0  # taking control zooms in to at most this multiple of the fitted view
 SEEK_BEFORE_MARKER = 3.0  # seconds before an event a marker seeks to
+SOLVED_UNDER = ("flight.", "rules.bullet_life")  # the rules a card's handles depend on
 
 
 PresetName = Literal[tuple(PRESETS)]  # the game presets' names (`api.PRESETS`)
@@ -326,13 +327,37 @@ class Session:
         if self.tuner is not None:
             self.tuner.load(tuning)
 
+    def time_scale(self, factor: float) -> None:
+        """Make the game `factor` times faster at fixed map lengths (`Tuner.time_scale`)."""
+        self._ensure_tuner()
+        if self.tuner is not None:
+            self.tuner.time_scale(factor)
+
+    def make_speed_normal(self) -> None:
+        """Make the current playback speed the game's own: the game becomes that many times
+        faster (`time_scale`) and playback goes back to x1, so it looks the same."""
+        factor = self.loop.time_scale
+        if factor != 1.0 and not self.loop.replaying:
+            self.time_scale(factor)
+            self.loop.time_scale = 1.0
+
     def save_ships(self, ships: list, moved: dict[int, int | None] | None = None) -> None:
-        """Write the ship files of the match's ship set (`api.ships`, tracked in git) and
-        play on with them. The
+        """Write the ship files of the match's ship set (`api.ships`, tracked in git), and
+        the tuned rule values the cards fly under (`SOLVED_UNDER`: the flight constants and the
+        bullet life) into the set's rules.toml, and play on with them. The
         current card becomes the files' default, so the match plays on as it is; when the
         types change (`moved`: each old type's new index, None for a removed one), a new
         match starts with the lineup remapped (a removed type's slots take the first type)."""
-        api.ships.write(ships, self.loop.setup.config.ship_set)
+        ship_set = self.loop.setup.config.ship_set
+        api.ships.write(ships, ship_set)
+        # The rules the cards fly under go with them (the set's rules.toml).
+        solved_under = {
+            key: value
+            for key, value in self.current_tuning().rules.items()
+            if key.startswith(SOLVED_UNDER)
+        }
+        if solved_under:
+            api.ships.write_rules(dict(api.ships.rules(ship_set), **solved_under), ship_set)
         api.reload_ships()
         if moved is None:
             return

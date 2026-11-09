@@ -28,7 +28,8 @@ from .interpolate import interpolate
 from .snapshot import Snapshot, snapshot
 from .tuning import Tuning
 
-TIME_SCALES = (1.0, 2.0, 4.0, 8.0)
+TIME_SCALES = (0.25, 0.5, 1.0, 2.0, 4.0, 8.0)  # playback speeds, times real time
+TIME_SCALE_LABELS = {0.25: "×¼", 0.5: "×½"}  # the others are written "×<n>"
 CATCH_UP_TICKS = 4  # at most this many ticks of backlog per unit of time scale
 
 
@@ -146,7 +147,7 @@ class MatchLoop:
         self.sides = build_sides(setup, self.rules, self.types) if sides is None else sides
         self.pilot = pilot
         self.inputs = torch.zeros(len(INPUTS), dtype=torch.bool)
-        self.time_scale = TIME_SCALES[0]
+        self.time_scale = 1.0
         self.paused = False
         self.accumulator = 0.0
         self.timings = {"controllers": 0.0, "sim": 0.0, "snapshot": 0.0}

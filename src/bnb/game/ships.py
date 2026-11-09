@@ -88,6 +88,7 @@ def write_rules(values: dict[str, float], ship_set: str = STANDARD) -> None:
     if not values:
         path.unlink(missing_ok=True)
         return
+    path.parent.mkdir(parents=True, exist_ok=True)
     unknown = sorted(key for key in values if key.split(".", 1)[0] not in RULE_TABLES)
     if unknown:
         raise ValueError(f"rule keys {unknown}: use owners {list(RULE_TABLES)}")

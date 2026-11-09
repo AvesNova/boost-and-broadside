@@ -100,7 +100,11 @@ def combat_handles(rules: Rules, types: ShipTypes, cruise_speed: torch.Tensor) -
         shots_per_store=types.max_energy / types.bullet_energy_cost,
         max_shield=types.max_shield,
         shield_recharge_rate=rules.shield_recharge_rate * types.shield_recharge_rate_scale,
-        shield_recharge_delay=rules.shield_recharge_delay * types.shield_recharge_delay_scale,
+        # Held to whole ticks: the float32 card leaves a delay a hair off its tick.
+        shield_recharge_delay=torch.round(
+            rules.shield_recharge_delay * types.shield_recharge_delay_scale / rules.tick_length
+        )
+        * rules.tick_length,
         head_on_fraction=rules.head_on_fraction * types.head_on_fraction_scale,
         hit_radius=types.hit_radius,
         spawn_energy=types.spawn_energy,

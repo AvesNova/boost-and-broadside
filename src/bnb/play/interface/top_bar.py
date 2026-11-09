@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from imgui_bundle import imgui
 
-from ..loop import TIME_SCALES
+from ..loop import TIME_SCALE_LABELS, TIME_SCALES
 from ..selection import Selection
 from . import overlays
 from .cards import window
@@ -78,7 +78,7 @@ def draw(interface: Interface, layout: Layout) -> None:
 
     # Right: the speed controls.
     spacing = imgui.get_style().item_spacing.x
-    labels = [f"×{scale_value:g}" for scale_value in TIME_SCALES]
+    labels = [TIME_SCALE_LABELS.get(value, f"×{value:g}") for value in TIME_SCALES]
     widths = [
         imgui.calc_text_size(label).x + 2 * imgui.get_style().frame_padding.x for label in labels
     ]

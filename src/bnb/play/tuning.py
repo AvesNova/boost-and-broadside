@@ -45,6 +45,7 @@ import platformdirs
 import torch
 
 from bnb.game import api
+from bnb.game.handling import similarity
 from bnb.game.handling.characteristics import characteristics
 from bnb.runtime.flights import compiled_flight_tick
 
@@ -122,6 +123,47 @@ def snap_handle(name: str, value: float, tick_length: float) -> float:
     if name in TICK_HANDLES:
         return max(round(value / tick_length), 0) * tick_length
     return value
+
+
+def time_scaled_settings(
+    values: dict[str, float], factor: float, tick_length: float
+) -> dict[str, float]:
+    """Rule settings in a game `factor` times faster at fixed map lengths (`similarity` with
+    length 1 and time 1/factor: speeds x factor, accelerations x factor^2, rates x factor,
+    times / factor), the times snapped to whole ticks."""
+    scaled = similarity.scale_rules(values, 1.0, 1.0 / factor)
+    return {
+        key: api.tuning.snap(api.tuning.BY_KEY[key], number, tick_length, bounded=False)
+        for key, number in scaled.items()
+    }
+
+
+def time_scaled_card(types: api.ShipTypes, rules: api.Rules, factor: float) -> api.ShipTypes:
+    """A card in a game `factor` times faster (`similarity.scale_card`, length 1, time
+    1/factor; energies x factor^2 with gravity, so a store's height, energy / g, stays). The
+    shared values the card scales per type and that no setting holds (the exchanges, the
+    bullet spread, the shield recharge) are scaled through the per-type scales; the fire
+    rate snaps to `fire_rates` and the shield recharge delay to whole ticks."""
+    scaled = similarity.scale_card(types, 1.0, 1.0 / factor)
+    acceleration, rate = factor**2, factor
+    tick = rules.tick_length
+    delay = rules.shield_recharge_delay * types.shield_recharge_delay_scale / factor
+    delay = torch.clamp(torch.round(delay / tick), min=0.0) * tick
+    fire_rate = [
+        snap_handle("fire_rate", float(value), tick) for value in scaled.fire_rate.flatten()
+    ]
+    return dataclasses.replace(
+        scaled,
+        coast_exchange_scale=types.coast_exchange_scale * acceleration,
+        dive_exchange_scale=types.dive_exchange_scale * acceleration,
+        climb_exchange_scale=types.climb_exchange_scale * acceleration,
+        bullet_spread_scale=types.bullet_spread_scale * rate,
+        shield_recharge_rate_scale=types.shield_recharge_rate_scale * rate,
+        shield_recharge_delay_scale=delay / rules.shield_recharge_delay,
+        fire_rate=torch.tensor(fire_rate, dtype=types.fire_rate.dtype).reshape(
+            types.fire_rate.shape
+        ),
+    )
 
 
 HANDLES, RULES, WARM = 0, 1, 2  # the shared counters' slots; WARM: the flights compiled
@@ -376,7 +418,7 @@ class Tuner:
         if value == self.values.get(key):
             return
         values = dict(self.values, **{key: value})
-        rules = api.tuning.tuned(self.base, values)
+        rules = api.tuning.tuned(self.base, values, bounded=False)  # only `key` is new
         self.values = values
         self.message = ""
         self._retune(rules=rules)
@@ -403,12 +445,46 @@ class Tuner:
     def load(self, tuning: Tuning) -> None:
         """Play on with a whole tuning (a preset, or the game's numbers): its rules and card
         from the next tick, the handles re-measured."""
-        rules = api.tuning.tuned(self.base, tuning.rules)
+        rules = api.tuning.tuned(self.base, tuning.rules, bounded=False)
         self.values = {
             s.key: api.tuning.value(rules, s.key) for s in api.tuning.settings_for(rules)
         }
         self._retune(rules=rules, types=tuning.types(self.ship_set))
         self.message = ""
+        self._rules_version += 1
+        self._measure()
+
+    def time_scale(self, factor: float) -> None:
+        """Make the whole game `factor` times faster with the map's lengths fixed: every rule
+        setting and the card by their units (`time_scaled_settings`, `time_scaled_card`),
+        energies with gravity (an exact similarity, up to the tick and the values held to
+        whole ticks or Hz, which snap); the handles are then re-measured. `message` says
+        which values snapped."""
+        if factor <= 0.0 or factor == 1.0:
+            return
+        tick = self.base.tick_length
+        exact = similarity.scale_rules(self.values, 1.0, 1.0 / factor)
+        values = time_scaled_settings(self.values, factor, tick)
+        types = time_scaled_card(self.loop.types, self.loop.rules, factor)
+        rules = api.tuning.tuned(self.base, values, bounded=False)
+        self.values = {
+            s.key: api.tuning.value(rules, s.key) for s in api.tuning.settings_for(rules)
+        }
+        snapped = [
+            f"{api.tuning.BY_KEY[key].label} {exact[key]:.4g} -> {values[key]:.4g} s"
+            for key in values
+            if abs(values[key] - exact[key]) > 1e-9 * max(1.0, abs(exact[key]))
+        ]
+        wanted = self.loop.types.fire_rate * factor
+        snapped += [
+            f"fire rate {float(a):.4g} -> {float(b):.4g} Hz"
+            for a, b in zip(wanted.flatten(), types.fire_rate.flatten())
+            if abs(float(a) - float(b)) > 1e-6 * float(a)
+        ]
+        self._retune(rules=rules, types=types)
+        self.message = f"x{factor:g} faster" + (
+            "; snapped: " + ", ".join(snapped) if snapped else ""
+        )
         self._rules_version += 1
         self._measure()
 

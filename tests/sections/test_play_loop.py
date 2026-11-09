@@ -69,15 +69,19 @@ def test_fixed_timestep_pause_step_and_time_scale():
     assert loop.ticks == 2 and loop.alpha == 1.0
     loop.paused = False
     loop.accumulator = 0.0
+    assert loop.time_scale == 1.0
     loop.faster()
-    assert loop.time_scale == TIME_SCALES[1]
+    assert loop.time_scale == TIME_SCALES[TIME_SCALES.index(1.0) + 1]
     assert loop.advance(tick) == 2  # x2: two ticks per tick of display time
     for _ in TIME_SCALES:
         loop.faster()
     assert loop.time_scale == TIME_SCALES[-1]
     for _ in TIME_SCALES:
         loop.slower()
-    assert loop.time_scale == TIME_SCALES[0]
+    assert loop.time_scale == TIME_SCALES[0] == 0.25
+    loop.accumulator = 0.0
+    assert loop.advance(4 * tick) == 1  # x1/4: a tick per four ticks of display time
+    loop.time_scale = 1.0
     # A long stall is not made up all at once.
     assert loop.advance(10.0) <= 5
 

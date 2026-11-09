@@ -213,6 +213,7 @@ class TuningPanel:
         self.new_ship = ""
         self.chosen = 0
         self.removing = 0  # the ship type the remove popup asks about
+        self.factor = 2.0  # the time scale's factor
         self.window: Rect | None = None  # where the window was last drawn
         self.message = ""
         self._files: list | None = None  # the ship files as last read
@@ -244,6 +245,7 @@ class TuningPanel:
                 self._status(tuner)
                 self._ships(session, tuner)
                 self._rules(tuner, session.scale)
+                self._time_scale(session, tuner)
                 self._presets(session, tuner)
         imgui.end()
 
@@ -445,6 +447,45 @@ class TuningPanel:
             imgui.end_table()
             if any(setting.when == api.tuning.EPISODE for setting in settings):
                 imgui.text_colored(DIM, "* applies from the next episode")
+
+    # Time scale --------------------------------------------------------------------------
+
+    def _time_scale(self, session, tuner) -> None:
+        """A factor and **Apply** (the game that many times faster, map lengths fixed), and
+        **Make this speed 1×** (the playback speed becomes the game's own)."""
+        if not imgui.collapsing_header("Time scale"):
+            return
+        controls = session.interface.controls
+        help = (
+            "Make the whole game this many times faster with the map's lengths fixed: speeds "
+            "x k, accelerations and gravity x k^2, rates and fire rates x k, times / k, "
+            "energies x k^2 (a store keeps its height, energy / g) and powers x k^3. Fire "
+            "rates snap to whole Hz dividing the tick rate and bullet life, clocks and shield "
+            "delays to whole ticks; the handles are re-measured."
+        )
+        width = 80.0 * session.scale
+        imgui.align_text_to_frame_padding()
+        imgui.text("faster by")
+        imgui.same_line()
+        imgui.set_next_item_width(width)
+        _, self.factor = imgui.input_float("##time factor", self.factor, 0.0, 0.0, "%.4g")
+        controls.record("tuning/time factor")
+        tooltip(help)
+        imgui.same_line()
+        if imgui.button("Apply##time scale") and self.factor > 0.0:
+            session.time_scale(self.factor)
+        controls.record("tuning/time scale")
+        tooltip(help)
+        playback = session.loop.time_scale
+        imgui.begin_disabled(playback == 1.0)
+        if imgui.button(f"Make this speed 1× (playback ×{playback:g})"):
+            session.make_speed_normal()
+        imgui.end_disabled()
+        controls.record("tuning/make speed normal")
+        tooltip(
+            "Take the playback speed as the factor: the game becomes that many times faster "
+            "and playback goes back to ×1, so the match looks the same.\n" + help
+        )
 
     # Presets -----------------------------------------------------------------------------
 

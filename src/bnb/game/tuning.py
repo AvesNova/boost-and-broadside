@@ -65,7 +65,7 @@ ARENA, COMBAT, FLIGHT, SPAWNS, MAP = (
     "Map",
 )
 SETTINGS = (
-    _s("pool.arena_radius", ARENA, "arena radius", "m", 800.0, 12_000.0),
+    _s("pool.arena_radius", ARENA, "arena radius", "m", 800.0, 30_000.0),
     _s("pool.episode_seconds", ARENA, "episode length", "s", 10.0, 900.0, ticks=True),
     _s("pool.respawn_seconds", ARENA, "respawn wait", "s", 0.0, 30.0, ticks=True),
     _s("rules.boundary_damage_base", ARENA, "boundary damage", "/s", 0.0, 50.0),
@@ -196,10 +196,11 @@ def value(rules: Rules, key: str) -> float:
     return float(getattr(pool.mode, name))
 
 
-def snap(setting: Setting, number: float, tick_length: float) -> float:
-    """A number as the setting holds it: within its bounds, whole where it is an integer or
-    a time in whole ticks."""
-    number = min(max(number, setting.low), setting.high)
+def snap(setting: Setting, number: float, tick_length: float, bounded: bool = True) -> float:
+    """A number as the setting holds it: within its bounds (unless not `bounded`), whole
+    where it is an integer or a time in whole ticks."""
+    if bounded:
+        number = min(max(number, setting.low), setting.high)
     if setting.integer:
         return float(round(number))
     if setting.ticks:
@@ -207,13 +208,14 @@ def snap(setting: Setting, number: float, tick_length: float) -> float:
     return number
 
 
-def tuned(rules: Rules, values: dict[str, float]) -> Rules:
+def tuned(rules: Rules, values: dict[str, float], bounded: bool = True) -> Rules:
     """These rules with the settings' values replaced (keys of SETTINGS; times snapped to
-    whole ticks). Raises KeyError for an unknown key."""
+    whole ticks, and every value held within its setting's bounds unless not `bounded`: a
+    time scale may carry values past a slider's ends). Raises KeyError for an unknown key."""
     shared, flight, modes, pools = {}, {}, {}, {}
     for key, number in values.items():
         setting = BY_KEY[key]
-        number = snap(setting, number, rules.tick_length)
+        number = snap(setting, number, rules.tick_length, bounded)
         owner, name = key.split(".", 1)
         if setting.integer:
             number = int(number)
