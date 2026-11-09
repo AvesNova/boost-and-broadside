@@ -1,0 +1,9 @@
+run 2026-11-09-bc-deadreckon-split-hiddenphysics-seed1 in /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics-seed1
+memory probe: allocated 16.95 GB, reserved 17.95 GB, budget 23.06 GB of 23.56 GB
+update    1  steps   1,048,576  rollout  73542 ms  learn 208507 ms  bc kl 2.9669  teacher 0.772  student 3.738  scores: learner 0.500 scripted 0.400
+update    2  steps   2,097,152  rollout   9989 ms  learn  82155 ms  bc kl 1.4269  teacher 0.763  student 2.942  scores: learner 0.500 scripted 0.242
+update    3  steps   3,145,728  rollout   9995 ms  learn  82181 ms  bc kl 0.7216  teacher 0.757  student 1.559  scores: learner 0.500 scripted 0.000
+update    4  steps   4,194,304  rollout  10042 ms  learn  82068 ms  bc kl 0.6946  teacher 0.761  student 1.483  scores: learner 0.500 scripted 0.000
+update    5  steps   5,242,880  rollout  10012 ms  learn  82392 ms  bc kl 0.6535  teacher 0.757  student 1.424  scores: learner 0.500 scripted 0.002
+update    6  steps   6,291,456  rollout  10001 ms  learn  82391 ms  bc kl 0.6510  teacher 0.757  student 1.413  scores: learner 0.500 scripted 0.000
+update    7  steps   7,340,032  rollout   9996 ms  learn  82442 ms  bc kl 0.7001  teacher 0.819  student 1.519  scores: learner 0.500 scripted 0.000

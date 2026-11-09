@@ -53,3 +53,7 @@
 23:23 tournament3 start (7 players)
 00:10 tournament3 done
 00:10 start resume 2026-11-09-bc-deadreckon-split-hiddenphysics to 60M
+00:35 60M stopped (the author): hiddenphysics resume asked to STOP (resumable), deadreckon-split resume cancelled; round 6 rewritten (nodecay, slowdecay, hiddenphysics-seed1, then a 30M tournament)
+00:35 start 2026-11-09-bc-deadreckon-split-hiddenphysics-nodecay
+00:37 nodecay (decoupled taus) aborted at its first update (the author: the taus are coupled); hiddenphysics-seed1 next
+00:37 start 2026-11-09-bc-deadreckon-split-hiddenphysics-seed1

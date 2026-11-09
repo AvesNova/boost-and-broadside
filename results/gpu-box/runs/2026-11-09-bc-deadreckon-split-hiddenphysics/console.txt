@@ -42,3 +42,9 @@ update   35  steps  36,700,160  rollout   9998 ms  learn  82050 ms  bc kl 0.4002
 update   36  steps  37,748,736  rollout   9998 ms  learn  82051 ms  bc kl 0.4046  teacher 0.970  student 1.372  scores: learner 0.500 scripted 0.305  window exponential_average 0.000 (+- 0.000)
 update   37  steps  38,797,312  rollout  10052 ms  learn  81985 ms  bc kl 0.3973  teacher 0.971  student 1.366  scores: learner 0.500 scripted 0.386  window exponential_average 0.000 (+- 0.000)
 update   38  steps  39,845,888  rollout  10015 ms  learn  82252 ms  bc kl 0.3901  teacher 0.977  student 1.365  scores: learner 0.500 scripted 0.458  window exponential_average 0.000 (+- 0.000)
+update   39  steps  40,894,464  rollout  10015 ms  learn  82113 ms  bc kl 0.3819  teacher 0.968  student 1.348  scores: learner 0.500 scripted 0.406  window exponential_average 0.003 (+- 0.001)
+update   40  steps  41,943,040  rollout  10010 ms  learn  82749 ms  bc kl 0.3786  teacher 0.970  student 1.346  scores: learner 0.500 scripted 0.300  window exponential_average 0.004 (+- 0.002)
+update   41  steps  42,991,616  rollout  10015 ms  learn  82006 ms  bc kl 0.3698  teacher 0.968  student 1.335  scores: learner 0.500 scripted 0.411  window exponential_average 0.004 (+- 0.002)
+/workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics/STOP: stopping after this update
+stopped by interrupted; the policy is /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policy (the exponential_average)
+run 2026-11-09-bc-deadreckon-split-hiddenphysics stopped at step 42991616
