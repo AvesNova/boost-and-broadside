@@ -67,3 +67,9 @@ update   51  steps  53,477,376  rollout  10005 ms  learn  82318 ms  bc kl 0.3573
 update   52  steps  54,525,952  rollout  10008 ms  learn  82074 ms  bc kl 0.3463  teacher 0.960  student 1.305  scores: learner 0.500 scripted 0.348  window uniform_average 0.273 (+- 0.013)
 update   53  steps  55,574,528  rollout  10009 ms  learn  82414 ms  bc kl 0.3517  teacher 0.952  student 1.300  scores: learner 0.500 scripted 0.278  window uniform_average 0.281 (+- 0.013)
 update   54  steps  56,623,104  rollout  10004 ms  learn  82467 ms  bc kl 0.3408  teacher 0.954  student 1.295  scores: learner 0.500 scripted 0.359  window uniform_average 0.293 (+- 0.013)
+update   55  steps  57,671,680  rollout  10004 ms  learn  82662 ms  bc kl 0.3425  teacher 0.953  student 1.292  scores: learner 0.500 scripted 0.328  window uniform_average 0.297 (+- 0.013)
+update   56  steps  58,720,256  rollout   9999 ms  learn  82093 ms  bc kl 0.3366  teacher 0.957  student 1.292  scores: learner 0.500 scripted 0.336  window uniform_average 0.307 (+- 0.014)
+update   57  steps  59,768,832  rollout  10042 ms  learn  82249 ms  bc kl 0.3328  teacher 0.953  student 1.281  scores: learner 0.500 scripted 0.417  window uniform_average 0.319 (+- 0.014)
+update   58  steps  60,817,408  rollout   9999 ms  learn  82176 ms  bc kl 0.3344  teacher 0.955  student 1.288  scores: learner 0.500 scripted 0.375  window uniform_average 0.325 (+- 0.014)
+stopped by budget; the policy is /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policy (the uniform_average)
+run 2026-11-09-bc-deadreckon-split-hiddenphysics finished at step 60817408
