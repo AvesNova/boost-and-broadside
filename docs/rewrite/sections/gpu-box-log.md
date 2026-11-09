@@ -537,3 +537,14 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   switches). Its 30.4M policy, the one rated, is the original. The 60M continuation branches at
   23.1M. The box's queue is otherwise done; tournament 4 waits for the laptop's last arm.
 - **13:56 KST absolute's resume healthy** (rewound to 23.1M; at update 30, 81 s per update; ETA 14:35 KST). Note: its metrics.jsonl now holds updates 23-29 twice (the original and the rewound branch): 20-30M statistics for absolute must take the first 29 rows only (the tables already given predate the rewind).
+- **14:35 KST absolute at 60M done** (budget, 60.8M; branched at 23.1M): KL 0.416, agreement
+  0.702, Brier 5-15 s 0.642 (last log). **Caught before the tournament:** the rewind moved the
+  original 30.4M policy files (the ones rated in tournament 3) to `policies/rewound_1/` (the
+  runs code's rule, `records.py`), and `policies/step_30408704` now holds the rewound branch's
+  30.4M (different weights). The tournament runner was fixed to rate the original
+  (`rewound_1`); checked in the ratings process's arguments.
+- **14:38 KST Tournament 4 started** (13 players at 30M: absolute (original), absolute-seed1,
+  deadreckon-split, -seed1, -fourier, -fastdecay-laptop, persist-split-laptop, hiddenphysics,
+  -seed1, -tau1.25, -tau10-laptop, -fade, persist-split-hiddenphysics-laptop; frontline then
+  deathmatch, no ladder). The laptop's last arm arrived (hub 00aaa6cc, budget at 14:37 KST,
+  Brier 5-15 s last six 0.272-0.325); the laptop GPU is free.
