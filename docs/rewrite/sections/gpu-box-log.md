@@ -571,3 +571,15 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   game whose two players are both in the field, players matched by the SHA-256 of their weights
   (a path can change contents: the rewind case), legacy records by path. The author: decide the
   60M round after deathmatch.
+- **16:45 KST Game reuse merged** (`feat/tournament-reuse` c9ea02af, merge 2695b77e; ruff; league
+  tournament/ratings + imports tests 50 pass). `bnb ratings ... --reuse DIR...`: every recorded
+  game whose two players are both in the field starts the fit (the own `--out` record replays as
+  before; `--budget` counts only new games). Players are matched by content: `sha256:` of
+  `checkpoint.json`'s weights hash (+ ablations); scripted/ladder by name; weights shared by two
+  field players are skipped as ambiguous. Records now store `identities` per batch. Legacy
+  records (no identities) resolve names by path and skip any policy whose checkpoint `time` is
+  after the record's first batch ended (a policy written after the games cannot have played
+  them): this catches the rewind case. Dry run (round4's 13 + scripted): frontline 6528 games
+  reusable (round3 2432 of 3072, round4 4096), deathmatch 2304 (round3); round3's old
+  `absolute` path is skipped (rewritten 2026-11-09 04:54 UTC, after its games), so the original
+  absolute gets only round4's games.
