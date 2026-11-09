@@ -1,0 +1,2 @@
+frontline: batch 1, 1024 games, the largest standard error 38.8 (the batch took 925 s); done about 14:27 (2 batches), by 18:33 at the latest (18 batches)
+frontline: batch 2, 2048 games, the largest standard error 19.8 (the batch took 170 s); done about 13:59 (0 batches), by 16:34 at the latest (17 batches)
