@@ -557,3 +557,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   relaunch failed ("rates another field"): the batch record resumes only for the same player
   names in the same order, and I had reordered them; relaunched in the record's order, it resumed
   with its two batches.
+- **15:13 KST 16 x 256 ran out of GPU memory** (23.5 of 23.6 GB: each block holds its own two networks and environments); the runner fell back to **16 x 128** (2048 games, 16 pairs a batch: twice the default), resumed from the record.
