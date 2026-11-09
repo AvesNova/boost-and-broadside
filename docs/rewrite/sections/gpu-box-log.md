@@ -677,3 +677,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   Expected ~40-60 min instead of ~2.5 h. Falls back to 8 x 128. The real fix (batch the networks
   across blocks: 3-5x but days of work through the custom Triton kernels; compile per build:
   hours) stays in the backlog for after the RL runs.
+- **04:40 KST Disk:** 17 GB free before the RL extensions (~+7 GB). Deleted the checkpoints of five finished arms (fade, hiddenphysics-seed1, -tau1.25, deadreckon-split-seed1, deadreckon-split: no further resume planned) after **every file's SHA-256 matched its checkpoint record on the hub**; kept the two BC headline runs' and the RL runs' checkpoints; pruned compile-cache files unused 12 h (27 -> 24 GB): **24 GB free**.
