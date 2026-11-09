@@ -467,3 +467,13 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   **hiddenphysics-seed1** (my addition, for the leader's seed spread: the only same-settings
   replication at 30M on the correct base is absolute / absolute-seed1). Then tournament 4: every
   30M policy on the correct base (10 players), both seed pairs in.
+- **09:50 KST The two taus are coupled (the author): "only use the head's information where it's
+  trained".** In the code they are two settings, `extrapolation_decay` (the held rates' fade in
+  the baseline) and `physics_hidden_decay` (the hidden rows' weight in the physics loss), equal
+  in the hiddenphysics arm only by default; my nodecay changed only the second and slowdecay only
+  the first: both decoupled, wrong. Proposed design (to confirm): one tau for the held-rate fade,
+  the loss weight exp(-age/tau), and a new third use, a hidden row's forecast = baseline + exp(-age/tau)
+  x the physics change (today hidden rows take the full change at any age). Caution: coupled no
+  decay (tau = infinity) holds the rates forever, the divergence the decay was added against (a
+  held thrust integrates without bound): it needs a top-speed clamp or a long finite tau (10 s).
+  Aborted nodecay at its first update (in `runs/failed/`); hiddenphysics-seed1 runs meanwhile.
