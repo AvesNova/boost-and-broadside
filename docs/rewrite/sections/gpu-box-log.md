@@ -448,3 +448,12 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   combination. **60M (the author's rule):** hiddenphysics and deadreckon-split resumed on the box
   (`round5.sh`, ~45 + 50 min); persist-split-laptop offered to the laptop (its own checkpoint,
   ~2.5 h). Then tournament 4 at 60M.
+- **09:35 KST The author: add deadreckon-split-hiddenphysics without decay; then a tournament
+  with everything, including the same 30M checkpoints again, to see variance.** "No decay" =
+  every hidden row weighs 1 at any age: `yemong.physics_hidden_decay=1e9` (exp(-age/1e9) is 1.0
+  in float32 for any age here). `round6.sh`, after round 5's box resumes: the nodecay arm (30M);
+  persist-split to 60M on the box from its hub checkpoint unless the laptop takes it (marker
+  `runs/laptop-persist-60m`); then **tournament 4**: the seven 30M policies of tournament 3 again
+  (identical policies: their rating change from tournament 3 is the tournament's own noise; the
+  absolute pair is the seed noise), the nodecay arm at 30M, and the three at 60M (11 players).
+  Numbering: tournament 2 never ran (round 3's first attempt, on the wrong base, was paused).
