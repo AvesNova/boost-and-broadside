@@ -50,7 +50,7 @@ PRESETS = pathlib.Path(platformdirs.user_config_dir("boost-and-broadside")) / "t
 NAME = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 TICK_HANDLES = ("shield_recharge_delay",)  # handles held to whole ticks
 # Rule settings that change what a card flies: the card is kept and its handles re-measured.
-MEASURED_BY = ("flight.", "rules.bullet_life")
+MEASURED_BY = ("flight.",)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -93,22 +93,21 @@ def base_rules(config, lineup: tuple[int, ...] | None) -> api.Rules:
     return rules if lineup is None else dataclasses.replace(rules, team_types=tuple(lineup))
 
 
+def fire_rates(tick_length: float) -> list[float]:
+    """The fire rates a card can hold: whole shots per second, a whole number of ticks
+    apart (at 30 Hz: 1, 2, 3, 5, 6, 10, 15 and 30)."""
+    tick_rate = round(1.0 / tick_length)
+    return [float(rate) for rate in range(1, tick_rate + 1) if tick_rate % rate == 0]
+
+
 def snap_handle(name: str, value: float, tick_length: float) -> float:
-    """A handle's value as the card can hold it: a fire rate whose shots are whole ticks
-    apart, a shield recharge delay in whole ticks."""
+    """A handle's value as the card can hold it: the nearest of `fire_rates` for the fire
+    rate, a shield recharge delay in whole ticks."""
     if name == "fire_rate":
-        return 1.0 / (tick_length * max(round(1.0 / (tick_length * max(value, 1e-9))), 1))
+        return min(fire_rates(tick_length), key=lambda rate: abs(math.log(rate / max(value, 1e-9))))
     if name in TICK_HANDLES:
         return max(round(value / tick_length), 0) * tick_length
     return value
-
-
-def bullet_slots_needed(rules: api.Rules, fire_rate) -> int:
-    """The bullet slots a ship needs to keep every bullet of its fire rate alive for the
-    rules' bullet life (the most over the types)."""
-    rates = fire_rate.tolist() if isinstance(fire_rate, torch.Tensor) else list(fire_rate)
-    intervals = [max(round(1.0 / (rules.tick_length * rate)), 1) for rate in rates]
-    return max(math.ceil(rules.bullet_moves / interval) for interval in intervals)
 
 
 HANDLES, RULES = 0, 1  # the shared version counters' slots
@@ -167,6 +166,10 @@ def _solve_job(versions, report, version, rules_version, targets, rules, start):
     anchor = _Anchor(solution.types, handles, api.Estimate(rules, solution.types, handles))
     converged = bool(solution.converged.all())
     return ("solved", version, rules_version, anchor, converged, "; ".join(solution.failures))
+
+
+def _anchor_job(versions, report, version, rules, types, handles):
+    return ("anchored", version, _Anchor(types, handles, api.Estimate(rules, types, handles)))
 
 
 def _characterise_job(versions, report, card, rules, types):
@@ -248,7 +251,7 @@ class Tuner:
 
     def __init__(self, loop, base: api.Rules) -> None:
         self.loop = loop
-        self.base = base
+        self.base = dataclasses.replace(base, bullet_slots=loop.rules.bullet_slots)
         rules = loop.rules
         self.values = {
             s.key: api.tuning.value(rules, s.key) for s in api.tuning.settings_for(rules)
@@ -328,20 +331,26 @@ class Tuner:
             return
         values = dict(self.values, **{key: value})
         rules = api.tuning.tuned(self.base, values)
-        if key == "rules.bullet_life":
-            needed = bullet_slots_needed(rules, self.loop.types.fire_rate)
-            if needed > rules.bullet_slots:
-                self.message = (
-                    f"a {value:g} s bullet life needs {needed} bullet slots at these fire "
-                    f"rates; a ship has {rules.bullet_slots}"
-                )
-                return
         self.values = values
         self.message = ""
         self._retune(rules=rules)
         self._rules_version += 1
         if key.startswith(MEASURED_BY):
             self._measure()
+        elif key == "rules.bullet_life" and self.targets is not None:
+            self._rerange()
+
+    def _rerange(self) -> None:
+        """A new bullet life: the card is kept, so its gun range (a closed form of the
+        bullet's drag, speed and life) changes; the estimate is re-anchored on it."""
+        gun_range = api.gun_range(self.loop.rules, self.loop.types, self.targets.cruise_speed)
+        self.targets = self._applied = self.targets.replace(gun_range=gun_range)
+        if self.flying is not None:
+            self.flying = dict(self.flying, gun_range=gun_range.tolist())
+        self._handles_version += 1
+        self._fast.submit(
+            _anchor_job, self._rules_version, self.loop.rules, self.loop.types, self.targets
+        )
 
     def load(self, tuning: Tuning) -> None:
         """Play on with a whole tuning (a preset, or the game's numbers): its rules and card
@@ -376,14 +385,6 @@ class Tuner:
             return
         changed = current.clone()
         changed[ship_type] = value
-        if name == "fire_rate":
-            needed = bullet_slots_needed(self.loop.rules, changed)
-            if needed > self.loop.rules.bullet_slots:
-                self.message = (
-                    f"{value:g} shots/s needs {needed} bullet slots at this bullet life; a "
-                    f"ship has {self.loop.rules.bullet_slots}"
-                )
-                return
         self.targets = self.targets.replace(**{name: changed})
         self.message = ""
         self.exact = False
@@ -435,6 +436,11 @@ class Tuner:
             self.targets = self._applied = anchor.handles
             self.flying, self.exact = flying, True
             self._characterise(anchor.types)
+            return
+        if kind == "anchored":
+            _, version, anchor = result
+            if version == self._rules_version:
+                self._anchor = anchor
             return
         if kind == "characterised":
             _, card, traits = result

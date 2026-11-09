@@ -87,7 +87,7 @@ class Rollout:
         extra_reads: tuple[str, ...] = (),
         lookahead: int = 0,
     ) -> None:
-        self.rules = api.rules_of(config, pools, environments)
+        self.rules = api.rules_of(config, pools, environments, types=types)
         self.reward_config = reward_config or rewards.RewardConfig()
         self.teams, self.ships_per_team, self.ship_count = (
             api.TEAMS,

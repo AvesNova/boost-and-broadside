@@ -84,7 +84,9 @@ class Realtime:
     generator: the match's draws (a fresh one seeded 0 when None). lineup: the ship type of
     each slot, the same for both teams (the game's alternating default when None).
     settings: tuned rules by `api.tuning` key (none: the game's); types: the ship card (None:
-    the default card).
+    the default card); bullet_slots: per ship (None: `api.tuning.most_bullet_slots`, room for
+    any fire rate and bullet life live tuning allows: a match never runs out of slots while
+    it is tuned, and spare slots cost the tick next to nothing).
     """
 
     def __init__(
@@ -97,15 +99,20 @@ class Realtime:
         background: bool = False,
         settings: dict[str, float] | None = None,
         types: api.ShipTypes | None = None,
+        bullet_slots: int | None = None,
     ) -> None:
+        types = api.ship_types() if types is None else types
         rules = api.rules_of(config)
         if lineup is not None:
             rules = dataclasses.replace(rules, team_types=tuple(lineup))
         if settings:
             rules = api.tuning.tuned(rules, settings)
+        if bullet_slots is None:  # room for any fire rate and bullet life live tuning allows
+            bullet_slots = api.tuning.most_bullet_slots(rules.tick_length)
+        rules = dataclasses.replace(rules, bullet_slots=bullet_slots)
         self.config, self.rules = config, rules
         self.static, self.live = api.tuning.static_of(rules), api.tuning.live_of(rules)
-        self.types = api.ship_types() if types is None else types
+        self.types = types
         self.generator = torch.Generator().manual_seed(0) if generator is None else generator
         fog_flags = torch.tensor([fogged])
         uniforms = api.uniforms(rules, 1, generator=self.generator)

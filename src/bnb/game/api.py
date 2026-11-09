@@ -54,6 +54,7 @@ from .handling.estimate import Estimate
 from .handling.estimate import bleed_rate_now as bleed_rate
 from .handling.handles import UNITS as HANDLE_UNITS
 from .handling.solver import Progress as SolveProgress
+from .handling.weapons import combat_handles
 from .layout import environment, per_mode
 from .modes import frontline, phase
 from .modes.rules import PRESETS
@@ -63,7 +64,7 @@ from .perception.sight import vision_range
 from .physics.bullets import Launch, launch_state, move_bullets
 from .physics.medium import medium
 from .physics.step import move, reset, resolve, step
-from .rules import LN_SQRT2, MAP_SCALE_RADIUS, TEAMS, Rules, rules_of
+from .rules import LN_SQRT2, MAP_SCALE_RADIUS, TEAMS, Rules, bullet_slots_for, rules_of
 from .ship_types import ShipTypes, default_card, per_ship, ship_types
 from .state import Fields, State, Sweep, replace, ship_team, sweep_like
 
@@ -87,6 +88,8 @@ __all__ = [
     "TEAMS",
     "bleed_rate",
     "bullet_paths",
+    "bullet_slots_for",
+    "gun_range",
     "core_radius",
     "default_card",
     "display",
@@ -152,6 +155,12 @@ def retune(rules: Rules, types: ShipTypes, state: State) -> State:
         energy=torch.minimum(ships.energy, per_ship(types.max_energy, ships.ship_type)),
     )
     return replace(state, ships=ships, mode=mode)
+
+
+def gun_range(rules: Rules, types: ShipTypes, cruise_speed: torch.Tensor) -> torch.Tensor:
+    """(num_types,) each type's gun range handle: how far a bullet fired at cruise along the
+    flight path travels in the rules' bullet life (`combat_handles`)."""
+    return combat_handles(rules, types, cruise_speed)["gun_range"]
 
 
 def start_clocks(state: State, episode_tick: torch.Tensor) -> State:

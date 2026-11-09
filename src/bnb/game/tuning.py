@@ -22,6 +22,7 @@ the spawns are drawn at an episode's start, so those apply from the next episode
 """
 
 import dataclasses
+import math
 
 import torch
 
@@ -157,6 +158,12 @@ SETTINGS = (
     ),
 )
 BY_KEY = {setting.key: setting for setting in SETTINGS}
+
+
+def most_bullet_slots(tick_length: float) -> int:
+    """The bullet slots a ship needs at the fastest fire rate (a shot every tick) and the
+    longest bullet life a setting allows: what a match that may be tuned allocates."""
+    return math.ceil(round(BY_KEY["rules.bullet_life"].high / tick_length, 9))
 
 
 def settings_for(rules: Rules) -> tuple[Setting, ...]:

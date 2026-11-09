@@ -8,7 +8,7 @@ import torch
 from bnb.contracts import GameConfig
 from bnb.game import api
 from bnb.play.loop import MatchLoop, MatchSetup
-from bnb.play.tuning import Presets, Tuning, base_rules, bullet_slots_needed, snap_handle
+from bnb.play.tuning import Presets, Tuning, base_rules, fire_rates, snap_handle
 from bnb.runtime.realtime import Realtime
 
 FRONTLINE = GameConfig(2, 4, 900.0, episode_seconds=20.0, mode="frontline")
@@ -111,13 +111,34 @@ def test_a_match_starts_from_its_tuning():
 
 def test_handles_hold_to_what_the_card_can_keep():
     tick = 1.0 / 30.0
-    assert snap_handle("fire_rate", 14.0, tick) == pytest.approx(15.0)  # 2 ticks apart
-    assert snap_handle("fire_rate", 8.0, tick) == pytest.approx(7.5)  # 4 ticks
+    assert fire_rates(tick) == [1.0, 2.0, 3.0, 5.0, 6.0, 10.0, 15.0, 30.0]
+    assert snap_handle("fire_rate", 14.0, tick) == 15.0
+    assert snap_handle("fire_rate", 8.0, tick) == 10.0
     assert snap_handle("shield_recharge_delay", 6.01, tick) == pytest.approx(6.0)
     assert snap_handle("cruise_speed", 101.3, tick) == 101.3
-    rules = api.rules_of(FRONTLINE)
-    assert bullet_slots_needed(rules, [15.0, 10.0]) == 6  # 12 moves, 2 ticks apart
-    assert bullet_slots_needed(rules, [30.0, 10.0]) == 12
+
+
+def test_bullet_slots_follow_the_card_and_a_tunable_match_has_room():
+    """Training's rules hold what the card needs (6 for the default card: 12 moves, 2 ticks
+    apart); a play-shell match holds a shot every tick for the longest bullet life."""
+    types = api.ship_types()
+    assert api.rules_of(DEATHMATCH, types=types).bullet_slots == 6
+    fast = api.ship_types(fire_rate=(30.0, 10.0))
+    assert api.rules_of(DEATHMATCH, types=fast).bullet_slots == 12
+    assert api.tuning.most_bullet_slots(1.0 / 30.0) == 45
+    assert Realtime(DEATHMATCH, compiled=False).rules.bullet_slots == 45
+
+
+def test_a_bullet_life_changes_the_gun_range_at_once():
+    """The card is kept: the gun range handle follows the bullet life in closed form."""
+    rules = api.rules_of(DEATHMATCH)
+    longer = api.tuning.tuned(rules, {"rules.bullet_life": 0.8})
+    cruise = torch.tensor([100.0, 100.0])
+    near, far = (
+        api.gun_range(rules, api.ship_types(), cruise),
+        api.gun_range(longer, api.ship_types(), cruise),
+    )
+    assert (far > 1.5 * near).all()
 
 
 def test_presets_round_trip(tmp_path):

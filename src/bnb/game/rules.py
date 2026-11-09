@@ -153,15 +153,29 @@ def _pool_rules(environments: int | None, game: GameConfig, tick_length: float) 
     )
 
 
+def bullet_slots_for(fire_rate, bullet_moves: int, tick_length: float) -> int:
+    """The bullet slots a ship needs so that none of its bullets is replaced in flight: its
+    life in moves over the fewest ticks between shots of any type (fire_rate: the card's,
+    shots per second, one per type)."""
+    rates = fire_rate.tolist() if hasattr(fire_rate, "tolist") else list(fire_rate)
+    fewest = min(max(round(1.0 / (tick_length * rate)), 1) for rate in rates)
+    return math.ceil(bullet_moves / fewest)
+
+
 def rules_of(
-    config: GameConfig, pools: tuple[Pool, ...] = (), environments: int | None = None, **overrides
+    config: GameConfig,
+    pools: tuple[Pool, ...] = (),
+    environments: int | None = None,
+    types=None,
+    **overrides,
 ) -> Rules:
     """The rules for a config's sizes and games; `overrides` replace defaults.
 
     Without pools the batch plays the config's game, at any batch size. With pools (and
     environments, their batch size) each pool plays its own (`pool_game`), in pool order;
     adjacent pools of the same game merge, and if one game remains it covers the whole
-    batch as without pools.
+    batch as without pools. types: the ship card, which sets the bullet slots
+    (`bullet_slots_for`; 6 for the default card) unless `bullet_slots` is given.
     """
     tick_length = overrides.pop("tick_length", Rules.tick_length)
     if not pools:
@@ -179,6 +193,11 @@ def rules_of(
             merged = [dataclasses.replace(merged[0], environments=None)]
         games = tuple(merged)
     overrides.setdefault("bullet_moves", ticks_of(BULLET_LIFE, tick_length))
+    if types is not None:
+        overrides.setdefault(
+            "bullet_slots",
+            bullet_slots_for(types.fire_rate, overrides["bullet_moves"], tick_length),
+        )
     return Rules(
         ships_per_team=config.ships_per_team,
         num_fields=config.num_fields,

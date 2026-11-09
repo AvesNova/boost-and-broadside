@@ -85,7 +85,7 @@ def test_a_cancelled_solve_stops_before_flying(anchor):
 def test_the_tuner_applies_the_estimate_then_the_exact_card():
     """A live match with the scripted agent: after the handles are measured, a cruise
     change applies within seconds (the estimate) and becomes exact (the solve), with the
-    agent's characteristics retuned; a bullet life the slots cannot hold is refused."""
+    agent's characteristics retuned; a longer bullet life lengthens the gun range at once."""
     setup = MatchSetup(
         GameConfig(2, 4, 900.0, mode="frontline"), sides=(SideSetup("scripted_agent"), SideSetup())
     )
@@ -112,8 +112,9 @@ def test_the_tuner_applies_the_estimate_then_the_exact_card():
         assert frames(lambda: tuner.exact, 600.0), tuner.message
         assert tuner.flying["cruise_speed"][0] == pytest.approx(cruise, rel=5e-3)
         assert frames(lambda: loop.sides[0].characteristics is not traits, 300.0)
-        tuner.set_setting("rules.bullet_life", 1.2)
-        assert "bullet slots" in tuner.message
-        assert loop.rules.bullet_moves == RULES.bullet_moves
+        gun_range = tuner.targets.gun_range.clone()
+        tuner.set_setting("rules.bullet_life", 0.8)
+        assert loop.rules.bullet_moves == 24 and not tuner.message
+        assert (tuner.targets.gun_range > 1.5 * gun_range).all()  # at once, the card kept
     finally:
         tuner.close()
