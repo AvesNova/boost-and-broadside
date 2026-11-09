@@ -45,6 +45,24 @@ train $P-fade --set yemong.physics_hidden_decay=0.5 --set yemong.physics_hidden_
 [ -f runs/laptop-drsplit-seed1 ] || train 2026-11-09-bc-deadreckon-split-seed1 --seed 1
 [ -f runs/laptop-persist-split-hp ] || train 2026-11-09-bc-persist-split-hiddenphysics \
   --set yemong.delta_baseline=persistence --set yemong.physics_hidden_decay=0.5
+# the author, 10:55 KST: fill the wait for the laptop with absolute's 60M resume (the 60M
+# round's baseline); its local checkpoints were deleted for disk, so take 30.4M from the hub
+A=2026-11-09-bc-absolute
+if ! grep -q '"status": "finished"' runs/$A/run.json 2>/dev/null || [ ! -d runs/$A/policies/step_60817408 ]; then
+  /venv/main/bin/python -c "
+import os
+from huggingface_hub import snapshot_download
+snapshot_download('julianzia/boost-and-broadside-runs', local_dir='runs/hub',
+                  allow_patterns=['runs/$A/checkpoints/step_30408704/*'], token=os.environ['HF_TOKEN'])"
+  mkdir -p runs/$A/checkpoints && cp -r runs/hub/runs/$A/checkpoints/step_30408704 runs/$A/checkpoints/
+  say "start resume $A to 60M"
+  if .venv/bin/bnb train --resume $A --bc-budget-steps 60000000 >> runs/$A.out 2>&1; then
+    say "done resume $A"
+  else
+    say "FAILED resume $A (runs/$A.out)"
+  fi
+  docs/rewrite/sections/gpu-box/sync.sh > /dev/null 2>&1
+fi
 say "round6b training done"
 
 P30=policies/step_30408704/uniform_average
