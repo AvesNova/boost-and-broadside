@@ -22,7 +22,17 @@ from ..rules import Rules
 from ..ship_types import DEFAULTS, ShipTypes
 from .errors import Infeasible, RedundantHandles
 from .handles import FLOWN, NAMES, Handles
-from .manoeuvres import CLIMB_LIMIT, REVERSAL_LIMIT, TURNING_STORE, batched, fly, steady_turn
+from .manoeuvres import (
+    CLIMB_LIMIT,
+    REFERENCE,
+    REFERENCE_STALL_SPEED,
+    REVERSAL_LIMIT,
+    TURNING_STORE,
+    batched,
+    fly,
+    steady_turn,
+    stretch,
+)
 from .weapons import combat_card, combat_handles
 
 # The parameter each flown handle sets, in FLOWN's order (physical values, not scales). The
@@ -40,7 +50,9 @@ FLOWN_PARAMETERS = (
     "climb_exchange",
 )
 P = len(FLOWN_PARAMETERS)
-# A handle's error is relative to max(|target|, floor), so handles near zero have a floor.
+# A handle's error is relative to max(|target|, floor), so handles near zero have a floor:
+# these at the standard card's scales (manoeuvres.REFERENCE), each a multiple of its unit in
+# the type's own scales (ERROR_UNITS: speed V_s, time V_s / g, acceleration g, rate g / V_s).
 ERROR_FLOOR = dict(
     cruise_speed=1.0,
     climb_time=0.1,
@@ -50,6 +62,16 @@ ERROR_FLOOR = dict(
     dive_acceleration=0.1,
     zoom_acceleration=0.1,
 )
+# Each flown handle's unit as powers of the type's (time, speed) scales; g = speed / time.
+ERROR_UNITS = dict(
+    cruise_speed=(0, 1),
+    climb_time=(1, 0),
+    low_speed_acceleration=(-1, 1),
+    sustained_turn_rate=(-1, 0),
+    nose_reversal_time=(1, 0),
+    dive_acceleration=(-1, 1),
+    zoom_acceleration=(-1, 1),
+)
 TOLERANCE = 1e-4  # stop when every flown handle is this close (the spec's bar is 5e-3)
 ACCEPTANCE = 5e-3  # the spec's 0.5%: beyond it after the budget, the solve fails
 ITERATIONS = 16
@@ -58,16 +80,37 @@ STEP_LIMIT = 0.5  # the largest Newton step in any log parameter
 DAMPING = (1e-6, 1e6)  # Levenberg-Marquardt's: the first, and the bounds
 EXPONENT_BOUNDS = (0.5, 5.0)  # the bleed exponents a card may have
 CONDITION_WARNING = 1e4  # a Jacobian condition number above this warns
-# The flown handles measured over a bounded flight: (window in s, its constant's name).
+# The flown handles measured over a bounded flight: (its window's constant, its name, the
+# stretch it flies by: `manoeuvres.Scales`' field).
 WINDOWS = dict(
-    nose_reversal_time=(REVERSAL_LIMIT, "REVERSAL_LIMIT"), climb_time=(CLIMB_LIMIT, "CLIMB_LIMIT")
+    nose_reversal_time=(REVERSAL_LIMIT, "REVERSAL_LIMIT", "time"),
+    climb_time=(CLIMB_LIMIT, "CLIMB_LIMIT", "climb"),
 )
-# Why a flown handle is not measured (NaN), where it can be.
+# Why a flown handle is not measured (NaN), where it can be; {window} is its window in s.
 UNMEASURED = dict(
     cruise_speed="no straight equilibrium: the drag outruns the engine at every speed",
-    climb_time=f"the store does not fill within {CLIMB_LIMIT:g} s, or stops rising",
-    nose_reversal_time=f"the nose does not reverse within {REVERSAL_LIMIT:g} s",
+    climb_time="the store does not fill within {window:g} s, or stops rising",
+    nose_reversal_time="the nose does not reverse within {window:g} s",
 )
+
+
+def windows(rules: Rules, handles: Handles) -> dict[str, float]:
+    """The window (s) each WINDOWS handle is flown over for a batch of these handles: its
+    constant stretched by the batch's largest scales (`manoeuvres.stretch`)."""
+    scale = stretch(rules.flight, handles.stall_speed, handles.ceiling)
+    return {name: limit * getattr(scale, kind) for name, (limit, _, kind) in WINDOWS.items()}
+
+
+def error_floor(rules: Rules, handles: Handles) -> torch.Tensor:
+    """(..., num_types, P) each flown handle's error floor in its type's own scales."""
+    time_scale = handles.stall_speed / rules.flight.gravity
+    floors = []
+    for name in FLOWN:
+        time_power, speed_power = ERROR_UNITS[name]
+        reference = REFERENCE.time**time_power * REFERENCE_STALL_SPEED**speed_power
+        own = time_scale**time_power * handles.stall_speed**speed_power
+        floors.append(ERROR_FLOOR[name] * own / reference)
+    return torch.stack(floors, -1)
 
 
 def exponent_of(half_lift_drag: torch.Tensor) -> torch.Tensor:
@@ -195,7 +238,9 @@ def check(rules: Rules, handles: Handles) -> None:
             f"the half-lift drag must lie in [{low:.3g}, {high:.3g}] (a bleed exponent in "
             f"{list(EXPONENT_BOUNDS)})"
         )
-    for name, (window, constant) in WINDOWS.items():
+    window_of = windows(rules, handles)
+    for name, (_, constant, _) in WINDOWS.items():
+        window = window_of[name]
         if (getattr(handles, name) >= window).any():
             raise Infeasible(
                 f"a {name} beyond its measurement window: the manoeuvre is flown "
@@ -203,16 +248,21 @@ def check(rules: Rules, handles: Handles) -> None:
             )
 
 
-def _unmeasured(residual: torch.Tensor) -> str:
+def _unmeasured(residual: torch.Tensor, window_of: dict[str, float]) -> str:
     """Why the first guess flies no measurement: for each card and type that misses a flown
-    handle (residual (B, types, P), NaN where not measured), the handles and their reasons."""
+    handle (residual (B, types, P), NaN where not measured), the handles and their reasons
+    (with the windows the handles were flown over, `windows`)."""
     missing = residual.isnan()  # (B, types, P)
     reasons = []
     for card, kind in missing.any(-1).nonzero().tolist():
         names = [FLOWN[i] for i in missing[card, kind].nonzero()[:, 0].tolist()]
         reasons.append(
             f"card {card} type {kind}: "
-            + ", ".join(f"{name} ({UNMEASURED.get(name, 'not measured')})" for name in names)
+            + ", ".join(
+                f"{name} "
+                f"({UNMEASURED.get(name, 'not measured').format(window=window_of.get(name))})"
+                for name in names
+            )
         )
     return "; ".join(reasons)
 
@@ -436,7 +486,7 @@ def solve(
     combat = combat_card(rules, handles, handles.cruise_speed)
     B, type_count = handles.ceiling.shape
     target = torch.stack([getattr(handles, name) for name in FLOWN], -1)  # (B, types, P)
-    scale = torch.maximum(target.abs(), target.new_tensor([ERROR_FLOOR[n] for n in FLOWN]))
+    scale = torch.maximum(target.abs(), error_floor(rules, handles))
 
     def flown(log_parameters: torch.Tensor, copies: int) -> torch.Tensor:
         """Relative residuals (B, copies, types, P) of log parameters (B * copies, types, P)."""
@@ -474,7 +524,10 @@ def solve(
         )
         base = residual[:, 0]  # (B, types, P)
         if iteration == 1 and start is None and not torch.isfinite(base).all():
-            raise Infeasible(f"the first guess does not fly every manoeuvre: {_unmeasured(base)}")
+            raise Infeasible(
+                "the first guess does not fly every manoeuvre: "
+                + _unmeasured(base, windows(rules, handles))
+            )
         jacobian = ((residual[:, 1:] - base[:, None]) / STEP).permute(
             0, 2, 3, 1
         )  # (B, types, h, p)

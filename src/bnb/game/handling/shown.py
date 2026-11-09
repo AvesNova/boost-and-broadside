@@ -2,6 +2,9 @@
 the reference charts (spec 6), all flown in the game's own code.
 
 Every function takes a batched card (B, num_types) and returns (B, num_types, ...) tensors.
+Their windows are in seconds at the standard card's scales and flown stretched by the
+card's own (`manoeuvres.card_stretch`): the settling turns by its time, V_s / g; the boost
+and the firing, which last as long as the store, by its climb's, E_max / (m g V_s).
 """
 
 import math
@@ -18,6 +21,7 @@ from .manoeuvres import (
     TURNING_STORE,
     aitken,
     batched,
+    card_stretch,
     cruise_speed,
     derivative_weights,
     empty_map,
@@ -31,6 +35,7 @@ from .weapons import bullet_life
 STICKS = tuple(level for level in STICK_LEVELS if level > 0.0)  # 0.4, 0.75, 1
 SUSTAINED_CURVE = tuple(i / 12 for i in range(1, 13))  # stick levels drawn on the doghouse
 SETTLE_TIME = 40.0  # s
+AVERAGING_WINDOW = 1.0  # s, each of the last three settled windows
 ENDURANCE_LIMIT = 120.0  # s: firing longer than this counts as unlimited
 TOP_SPEED_LIMIT = 60.0  # s
 SPEED_GRID = 160  # speeds on the charts' curves
@@ -104,7 +109,7 @@ def instant(rules: Rules, types: ShipTypes, speed: torch.Tensor, stick: float) -
     sticks = torch.full_like(speed, stick)
     _, airframe, (flat_speed, flat_energy, flat_stick) = _grid(types, speed, energy, sticks)
     steady = steady_turn(rules, airframe, flat_speed, flat_energy, flat_stick)
-    weights = derivative_weights(rules.tick_length, speed)
+    weights = derivative_weights(rules.tick_length, speed, card_stretch(rules.flight, types).time)
     flown = trajectory(
         rules,
         types,
@@ -141,14 +146,16 @@ class Settled(NamedTuple):
 def settled(rules: Rules, types: ShipTypes, sticks: tuple[float, ...]) -> Settled:
     """The coast datum at each stick level: coasting from cruise with the store held below
     the engine knee until speed, angle of attack and turn rate settle (the Aitken limit of
-    the last three seconds' means)."""
+    the means over the last three AVERAGING_WINDOWs), for SETTLE_TIME (both stretched by
+    the card's time scale)."""
     B, type_count = types.max_energy.shape
     stick_count = len(sticks)
     stick = torch.tensor(sticks, dtype=types.max_energy.dtype).expand(B, type_count, stick_count)
     cruise = cruise_speed(rules, types, types.max_energy[..., None])
     zeros = torch.zeros_like(stick)
-    ticks = round(SETTLE_TIME / rules.tick_length)
-    last = round(1.0 / rules.tick_length)
+    time = card_stretch(rules.flight, types).time
+    ticks = round(SETTLE_TIME * time / rules.tick_length)
+    last = round(AVERAGING_WINDOW * time / rules.tick_length)
     energy = TURNING_STORE * types.max_energy[..., None].expand(B, type_count, stick_count)
     flown = trajectory(
         rules,
@@ -177,7 +184,8 @@ def settled(rules: Rules, types: ShipTypes, sticks: tuple[float, ...]) -> Settle
 
 
 def top_speed(rules: Rules, types: ShipTypes) -> torch.Tensor:
-    """(B, types) the peak speed of a straight boost from cruise with a full store."""
+    """(B, types) the peak speed of a straight boost from cruise with a full store, within
+    TOP_SPEED_LIMIT (stretched by the card's climb scale)."""
     full = types.max_energy[..., None]
     cruise = cruise_speed(rules, types, full)
     zeros = torch.zeros_like(cruise)
@@ -190,7 +198,7 @@ def top_speed(rules: Rules, types: ShipTypes) -> torch.Tensor:
         zeros,
         zeros,
         zeros - 1.0,
-        round(TOP_SPEED_LIMIT / rules.tick_length),
+        round(TOP_SPEED_LIMIT * card_stretch(rules.flight, types).climb / rules.tick_length),
     )
     return flown["speed"].amax(0)[..., 0]
 
@@ -201,7 +209,7 @@ ENDURANCE = dict(coasting=(0.0, 0.0), climbing=(0.0, 1.0), diving=(0.0, -1.0), h
 def endurance(rules: Rules, types: ShipTypes) -> dict[str, torch.Tensor]:
     """(B, types) per flight condition (ENDURANCE: stick, power): the time from cruise with a full
     store, firing at every chance (the game's fire rule), until a shot is refused for lack of
-    energy; inf beyond ENDURANCE_LIMIT."""
+    energy; inf beyond ENDURANCE_LIMIT (stretched by the card's climb scale)."""
     B, type_count = types.max_energy.shape
     conditions = len(ENDURANCE)
     cruise = cruise_speed(rules, types, types.max_energy[..., None]).expand(
@@ -237,7 +245,8 @@ def endurance(rules: Rules, types: ShipTypes) -> dict[str, torch.Tensor]:
     spread = torch.zeros(speed.shape + (2,), dtype=speed.dtype)
     fields = empty_map(speed)
     refused = torch.full_like(speed, math.inf)
-    for tick in range(round(ENDURANCE_LIMIT / rules.tick_length)):
+    limit = ENDURANCE_LIMIT * card_stretch(rules.flight, types).climb
+    for tick in range(round(limit / rules.tick_length)):
         ready = state.gun_cooldown == 0
         state, bullets = fire(rules, types, state, bullets, shoot, spread)
         refused = torch.where(

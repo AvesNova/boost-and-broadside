@@ -103,9 +103,21 @@ dtype; the solver uses float64 on the CPU.
 - The **climb's time** interpolates linearly between ticks. The **nose reversal**, four to
   eight ticks long, interpolates through the cubic on the four ticks around the crossing.
 - The **sustained turn** flies 20 s and takes the Aitken limit of the path's turn rate
-  over its last three seconds.
+  over its last three seconds (at the standard card's scales; see below).
 - The **turns** fly at a quarter-full store: below the engine knee, so the store does not
   change the engine, and clear of the store's fade bands.
+
+The windows (the fit window, the settling turn and its samples, the longest reversal and
+climb) are written in seconds at the standard card's scales and flown stretched by each
+card's own, so a card of any size flies them for the same length in its own units. A
+type's time scale is `V_s / g`, with `V_s = sqrt(g / C_max)` its stall speed; the climb's
+is `E_max / (m g V_s)`, the store over the specific power scale `g V_s`. A batch flies its
+largest scales over the standard heavy's (`manoeuvres.card_stretch`, the reference
+`manoeuvres.REFERENCE`, 1.30 s and 14.8 s): the climb's window by the climb scale, the rest
+by the time scale. The standard card flies exactly the seconds written (20 s, 2 s, 900 s);
+a P-51-scale card, about 3.6 times as slow with a 125 kJ store, flies its climb for up to
+about 17,000 s. The shown quantities follow the same rule (`bnb.game.handling.shown`: the
+settled turns by the time scale, the boost and the firing endurance by the climb's).
 
 `bnb.game.handling.manoeuvres.cruise_speed` finds the straight equilibrium at any store
 by bisection on one-tick flights, from the fastest speed at which the tick's speed gain
@@ -149,7 +161,9 @@ returns the reasons in `Solution.failures`. Handle sets that cannot be met at al
 g limit at or below 1, a cruise below the stall speed or a sustained turn above the
 instantaneous peak, fail before any flight. So does a nose reversal or a climb longer than
 its manoeuvre flies (`REVERSAL_LIMIT` and `CLIMB_LIMIT` in
-`bnb.game.handling.manoeuvres`), with the window named. A condition number above
+`bnb.game.handling.manoeuvres`, stretched by the card's scales: `solver.windows`), with the
+window named. The relative errors have floors for handles near zero (`ERROR_FLOOR`, set at
+the standard card's scales and taken in each type's own units). A condition number above
 `CONDITION_WARNING` raises a `bnb.game.handling.RedundantHandles` warning.
 
 For live tuning, `solve` also takes `start` (a card to start from instead of the first

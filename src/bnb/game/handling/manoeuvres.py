@@ -23,15 +23,19 @@ from ..physics.flight import (
     setting,
     stall_angle,
 )
-from ..rules import STICK_LEVELS, Rules
+from ..rules import STICK_LEVELS, FlightConstants, Rules
 from ..ship_types import ShipTypes
 from ..state import Fields, Ships, replace
 
+# The flights' windows are set in seconds at the standard card's scales (REFERENCE) and
+# flown stretched by each card's own (`Stretch`): a card twice as slow flies them twice as
+# long, and the standard card flies exactly these.
 FIT_WINDOW = 0.2  # s
 FIT_DEGREE = 4  # a cubic's slope is 0.9% off the bleed rate's (its curvature)
 SETTLE_TIME = 20.0  # s, a sustained turn's settling time
+SAMPLE_SPACING = 1.0  # s between the settled turn's path samples (the last three spans)
 REVERSAL_LIMIT = 2.0  # s, the longest nose reversal measured
-CLIMB_LIMIT = 900.0  # s, the longest climb measured
+CLIMB_LIMIT = 900.0  # s, the longest climb measured (stretched by the climb's scale)
 CLIMB_PROGRESS = 10.0  # s: a climb whose store has not risen over this long is given up
 CRUISE_BISECTIONS = 50
 CROSSING_BISECTIONS = 50  # on the cubic through the ticks around a crossing
@@ -43,6 +47,39 @@ DIVE_STORE = 0.5  # store fraction for the dive and the zoom (spec: half full)
 # and exponent apart.
 BLEED_STICK = sorted(level for level in STICK_LEVELS if level > 0.0)[1]
 FAR = 1e9  # m, where the one field of a flight-only map sits
+
+
+class Scales(NamedTuple):
+    """A ship type's own scales, with V_s its stall speed sqrt(g / C_max) and g gravity: its
+    time V_s / g, and its climb's time E_max / (m g V_s), the store over the specific power
+    scale g V_s (both in s)."""
+
+    time: float
+    climb: float
+
+
+# The standard card's scales: its heavy type's, the larger of its two types' in both (C_max
+# 0.022 /m and a 14 kJ store at g = 27 m/s^2 and m = 1 kg).
+REFERENCE_GRAVITY = 27.0  # m/s^2
+REFERENCE_STALL_SPEED = math.sqrt(REFERENCE_GRAVITY / 0.022)  # m/s, 35.03
+REFERENCE = Scales(
+    time=REFERENCE_STALL_SPEED / REFERENCE_GRAVITY,
+    climb=14000.0 / (REFERENCE_GRAVITY * REFERENCE_STALL_SPEED),
+)
+
+
+def stretch(constants: FlightConstants, stall_speed, store) -> Scales:
+    """How many times longer than the standard card's a batch of types (stall speeds and
+    stores, any shape) flies its windows: its largest scales over REFERENCE's."""
+    time = float((stall_speed / constants.gravity).max())
+    climb = float((store / (constants.mass * constants.gravity * stall_speed)).max())
+    return Scales(time / REFERENCE.time, climb / REFERENCE.climb)
+
+
+def card_stretch(constants: FlightConstants, types: ShipTypes) -> Scales:
+    """`stretch` of every type of a card (or a batch of cards)."""
+    stall = torch.sqrt(constants.gravity / types.max_lift_coefficient)
+    return stretch(constants, stall, types.max_energy)
 
 
 def batched(types: ShipTypes) -> ShipTypes:
@@ -124,10 +161,11 @@ def steady_turn(rules: Rules, airframe: Airframe, speed, energy, stick) -> Stead
     return SteadyTurn(angle, (lift * speed * speed + current.thrust * torch.sin(angle)) / speed)
 
 
-def derivative_weights(tick_length: float, like: torch.Tensor) -> torch.Tensor:
+def derivative_weights(tick_length: float, like: torch.Tensor, time_stretch: float) -> torch.Tensor:
     """(K + 1,) weights whose dot product with samples at t = 0, h, ..., K h is the slope at
-    t = 0 of their least-squares polynomial of degree FIT_DEGREE over FIT_WINDOW."""
-    count = max(round(FIT_WINDOW / tick_length), FIT_DEGREE + 1) + 1
+    t = 0 of their least-squares polynomial of degree FIT_DEGREE over FIT_WINDOW (times the
+    card's time stretch)."""
+    count = max(round(FIT_WINDOW * time_stretch / tick_length), FIT_DEGREE + 1) + 1
     time = torch.arange(count, dtype=like.dtype, device=like.device) * tick_length
     vandermonde = torch.stack([time**p for p in range(FIT_DEGREE + 1)], -1)
     return torch.linalg.pinv(vandermonde)[1]
@@ -251,7 +289,9 @@ def fly(rules: Rules, types: ShipTypes, tick_function=None) -> Flown:
     The cruise is found first (cruise_speed at a full store), since the climb, the dive and
     the zoom start from it. The sustained turn (full stick) and the bleed (BLEED_STICK)
     start at corner speed with the nose at its steady angle of attack; the sustained turn's
-    store is held below the knee.
+    store is held below the knee. Every window is flown stretched by the batch's
+    `card_stretch` (the slowest card's): the climb's by its climb scale, the rest by its time
+    scale.
 
     tick_function: the flight tick to fly with (the game's `flight_tick` by default; the
     play shell's tuning passes a compiled one, which the runtime builds)."""
@@ -291,15 +331,19 @@ def fly(rules: Rules, types: ShipTypes, tick_function=None) -> Flown:
     flight = airframe_of(types, ship_type)
     fields = empty_map(speed)
 
-    weights = derivative_weights(h, speed)
-    short = max(len(weights) - 1, math.ceil(REVERSAL_LIMIT / h))
-    settle = round(SETTLE_TIME / h)
-    samples = [settle - round(k / h) for k in (3.0, 2.0, 1.0, 0.0)]  # path angle at these ticks
+    scale = card_stretch(constants, types)
+    weights = derivative_weights(h, speed, scale.time)
+    short = max(len(weights) - 1, round(REVERSAL_LIMIT * scale.time / h))
+    settle = round(SETTLE_TIME * scale.time / h)
+    samples = [  # the path angle at these ticks
+        settle - round(k * SAMPLE_SPACING * scale.time / h) for k in (3.0, 2.0, 1.0, 0.0)
+    ]
     climb_target = (1.0 - constants.store_fade_band) * full
     climb_time = torch.full_like(full, torch.nan)
     history = {"speed": [speed], "energy": [energy], "angle": [angle]}
     path, path_samples = torch.zeros_like(speed), {}
-    tick, limit, check = 0, round(CLIMB_LIMIT / h), round(CLIMB_PROGRESS / h)
+    limit = round(CLIMB_LIMIT * scale.climb / h)
+    tick, check = 0, max(round(CLIMB_PROGRESS * scale.time / h), 1)
     pending, checkpoint = climb_time.isnan(), energy[:, :type_count]
     while tick < limit and (tick < max(short, settle) or pending.any()):
         new = step(constants, flight, h, state, stick, power, fields)
