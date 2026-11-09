@@ -548,3 +548,12 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   -seed1, -tau1.25, -tau10-laptop, -fade, persist-split-hiddenphysics-laptop; frontline then
   deathmatch, no ladder). The laptop's last arm arrived (hub 00aaa6cc, budget at 14:37 KST,
   Brier 5-15 s last six 0.272-0.325); the laptop GPU is free.
+- **15:11 KST Tournament 4 relaunched with a bigger engine layout** (the author: fewer, larger
+  batches; fill the GPU). The default 8 blocks x 128 games ran the GPU at 100% but ~260 W and
+  7.5 of 24 GB (each block runs its two networks on 128 environments: small kernels); the
+  matchup choice was already information-optimal (`allocate_blocks`: greedy A-optimal, the pair
+  whose games most cut the summed rating variance; a later refinement could weight the top
+  contenders). Now 16 x 256 (4096 games, 16 pairs a batch), `runs/tournament4.sh`. My first
+  relaunch failed ("rates another field"): the batch record resumes only for the same player
+  names in the same order, and I had reordered them; relaunched in the record's order, it resumed
+  with its two batches.
