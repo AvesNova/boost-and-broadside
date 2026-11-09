@@ -242,8 +242,8 @@ switch rates) are tuned to the standard game's tempo and are not re-tuned. The s
 windows and error floors follow each card's own scales ([The ship
 card](ship-card.md#measuring)); a 125 kJ store climbs for about an hour of game time, so
 a real-scale card takes minutes to measure or solve on a CPU, where a standard one takes
-seconds. The tuning panel measures every type of the set before its sliders show: about
-six minutes for the 27 real-scale types on a busy 16-core CPU.
+seconds. The tuning panel measures every type of the set before its sliders show: four to
+six minutes for the 27 real-scale types on a 16-core CPU (270 s measured quiet, 352 s busy).
 
 The playback speed and the tuning panel's [time scale](../in-progress/play-shell.md#live-tuning)
 are the way to try the variant faster than real time.
