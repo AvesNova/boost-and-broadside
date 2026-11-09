@@ -629,3 +629,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   gradient memory. From BC's measured ~17 GB (store ~11 GB) at 32-view micro-batches, 64 views
   (640 rows) is near the limit: RL runs at 640, falling back to 320 (same result, memory/speed
   only). Runner replaced without disturbing the champion's 120M BC resume (it waits for it).
+- **21:12 KST Champion at 120M BC** (deadreckon-split-hiddenphysics, budget, 120.6M): KL 0.277, agreement 0.786, Brier 5-15 s 0.697 (110-120M mean); at 60M 0.334 / 0.753 / 0.592: still improving. Its 120M uniform average (step_120586240) seeds its RL. absolute's BC resume to 120M started.
