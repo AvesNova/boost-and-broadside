@@ -102,3 +102,4 @@
 09:55 round7 box done
 09:55 downloaded 2026-11-09-bc-deadreckon-split-hiddenphysics-tau10-laptop at 60M
 09:55 tournament5 start (10 players, reusing rounds 3 and 4)
+10:36 tournament5 done
