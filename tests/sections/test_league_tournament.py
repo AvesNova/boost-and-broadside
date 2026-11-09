@@ -2,6 +2,8 @@
 allocation of its blocks, the allowed pairs, the tournament's anchor, stopping rule and
 recovery of a known field, and head-to-head's report, on a small 2v2 game on the CPU."""
 
+import dataclasses
+import datetime
 import json
 import math
 
@@ -529,6 +531,170 @@ def test_each_batch_is_recorded_and_a_tournament_resumes_from_its_record(tmp_pat
         )
 
 
+# ---- reusing earlier tournaments' games
+
+
+def _recorded(record, names, identities=None, batches=3, seed=1):
+    """A record of `batches` batches of 4 blocks of 16 games over `names` (the scripted agent
+    first), its players' identities recorded when given; returns its replayed wins and pair
+    games."""
+    truth = torch.linspace(0.0, 300.0, len(names), dtype=torch.float64)
+    layout = ArenaConfig(blocks=4, block_environments=16)
+    config = tournament.TournamentConfig(layout, target_stderr=1.0, budget=batches * 64)
+    play = _bradley_terry(truth, 16, torch.Generator().manual_seed(seed))
+    allowed = tournament.allowed_pairs(names)
+    tournament.fit_field(
+        play, names, 0, allowed, config, lambda line: None, "f", record, None, identities
+    )
+    count = len(names)
+    wins = torch.zeros((count, count), dtype=torch.float64)
+    pair_games = torch.zeros((count, count), dtype=torch.float64)
+    tournament._replay(record, names, wins, pair_games)
+    return wins, pair_games
+
+
+def test_a_reused_record_gives_the_shared_players_games_as_its_replay(tmp_path):
+    record = tmp_path / "frontline.batches.jsonl"
+    old = ["scripted", "a", "b", "c", "d"]
+    wins, pair_games = _recorded(
+        record, old, [f"sha256:{name}" if name != "scripted" else name for name in old]
+    )
+    assert json.loads(record.read_text().splitlines()[0])["identities"]["a"] == "sha256:a"
+    # a field of some of them, in another order, one under another path, and a newcomer
+    names = ["scripted", "moved/c", "a", "e"]
+    identities = ["scripted", "sha256:c", "sha256:a", "sha256:e"]
+    found = tournament.reuse_record(record, names, identities)
+    shared = [0, 3, 1]  # scripted, c, a in the old field
+    assert torch.equal(found.wins[:3, :3], wins[shared][:, shared])
+    assert torch.equal(found.pair_games[:3, :3], pair_games[shared][:, shared])
+    assert float(found.pair_games[3].sum()) == 0.0
+    assert found.games == float(found.pair_games.sum()) / 2 > 0
+    assert found.matched == {"scripted": "scripted", "a": "a", "c": "moved/c"}
+    assert found.batches == 3 and found.recorded == tuple(old) and not found.skipped
+    # the same path with other weights is not matched
+    other = tournament.reuse_record(record, ["scripted", "a"], ["scripted", "sha256:a2"])
+    assert other.matched == {"scripted": "scripted"} and other.games == 0
+    # weights two of the field's players share are ambiguous
+    twice = tournament.reuse_record(
+        record, ["scripted", "a", "a2"], ["scripted", "sha256:a", "sha256:a"]
+    )
+    assert "a" in twice.skipped and twice.games == 0
+
+
+def test_a_policy_is_identified_by_its_weights_and_a_scripted_player_by_its_name(tmp_path):
+    weights = tournament.identity(_network(tmp_path / "a", 1))
+    assert weights.startswith("sha256:")
+    moved = player(str((tmp_path / "a").rename(tmp_path / "moved")))
+    assert tournament.identity(moved) == weights  # a policy moved keeps its identity
+    assert tournament.identity(_network(tmp_path / "a", 2)) != weights  # new weights there
+    ablated = dataclasses.replace(moved, name="moved:rotary", ablations=("rotary",))
+    assert tournament.identity(ablated) == weights + ":rotary"
+    assert tournament.identity(SCRIPTED) == "scripted" and tournament.identity(HALF) == "rung_T2"
+
+
+def test_a_legacy_record_is_reused_by_its_paths_but_not_a_path_written_after_it(tmp_path):
+    a, b = _network(tmp_path / "a", 1), _network(tmp_path / "b", 2)
+    record = tmp_path / "frontline.batches.jsonl"
+    old = ["scripted", a.name, b.name, "gone"]
+    wins, pair_games = _recorded(record, old)  # no identities: a legacy record
+    assert "identities" not in json.loads(record.read_text().splitlines()[0])
+    field = [SCRIPTED, b, a]
+    found = tournament.reuse_record(
+        record, [p.name for p in field], [tournament.identity(p) for p in field]
+    )
+    order = [0, 2, 1]
+    assert torch.equal(found.pair_games, pair_games[order][:, order])
+    assert torch.equal(found.wins, wins[order][:, order])
+    assert set(found.matched) == {"scripted", a.name, b.name} and set(found.skipped) == {"gone"}
+    # a rewind: b moved away, and other weights written at its path an hour after the games
+    (tmp_path / "rewound_1").mkdir()
+    moved = player(str((tmp_path / "b").rename(tmp_path / "rewound_1" / "b")))
+    rewritten = _network(tmp_path / "b", 3)
+    written = json.loads((tmp_path / "b" / checkpoint.RECORD).read_text())
+    later = datetime.datetime.fromisoformat(written["time"]) + datetime.timedelta(hours=1)
+    written["time"] = later.isoformat()
+    (tmp_path / "b" / checkpoint.RECORD).write_text(json.dumps(written))
+    for field in ([SCRIPTED, moved, a], [SCRIPTED, rewritten, a]):
+        found = tournament.reuse_record(
+            record, [p.name for p in field], [tournament.identity(p) for p in field]
+        )
+        assert set(found.matched) == {"scripted", a.name} and "written at" in found.skipped[b.name]
+        assert float(found.pair_games[1].sum()) == 0.0
+
+
+def test_reused_games_that_meet_the_target_play_no_batch(tmp_path):
+    record = tmp_path / "earlier.batches.jsonl"
+    names = ["scripted", "a", "b"]
+    _recorded(record, names, names, batches=6)
+    found = tournament.reuse_record(record, names, names)
+    config = tournament.TournamentConfig(ArenaConfig(blocks=4, block_environments=16), 200.0, 64)
+
+    def play(matchups):
+        raise AssertionError("no batch is played")
+
+    own = tmp_path / "own.batches.jsonl"
+    ratings, stderr, pair_games = tournament.fit_field(
+        play,
+        names,
+        0,
+        tournament.allowed_pairs(names),
+        config,
+        lambda line: None,
+        "f",
+        own,
+        None,
+        names,
+        (found.wins, found.pair_games),
+    )
+    assert float(stderr.max()) < 200.0 and torch.equal(pair_games, found.pair_games)
+    assert not own.exists()
+    # unmet, the batches go on from the reused games, the budget counting only the new
+    logged = []
+    tournament.fit_field(
+        _bradley_terry(torch.zeros(3, dtype=torch.float64), 16, torch.Generator().manual_seed(4)),
+        names,
+        0,
+        tournament.allowed_pairs(names),
+        tournament.TournamentConfig(config.arena, 1.0, 128),
+        logged.append,
+        "f",
+        own,
+        None,
+        names,
+        (found.wins, found.pair_games),
+    )
+    lines = [json.loads(line) for line in own.read_text().splitlines()]
+    assert [line["games"] for line in lines] == [64, 128]
+    assert lines[0]["reused_games"] == found.games == 6 * 64
+    assert lines[0]["identities"] == dict(zip(names, names))
+
+
+def test_the_tournament_reuses_an_earlier_fields_record(tmp_path):
+    earlier = tmp_path / "earlier" / "small.batches.jsonl"
+    config = tournament.TournamentConfig(SMALL, target_stderr=1.0, budget=8)
+    tournament.rate(
+        [RANDOM, SCRIPTED, HALF], "small", CPU, config, lambda line: None, GAME, record=earlier
+    )
+    line = json.loads(earlier.read_text())
+    assert line["identities"] == {"random": "random", "scripted": "scripted", "rung_T2": "rung_T2"}
+    # another field: the shared pair's games reused (its own record left out of the reuse),
+    # and none played when they meet the target
+    own = tmp_path / "own" / "small.batches.jsonl"
+    met = tournament.TournamentConfig(SMALL, target_stderr=1e6, budget=8)
+    logged = []
+    rows = tournament.rate(
+        [SCRIPTED, RANDOM], "small", CPU, met, logged.append, GAME, record=own, reuse=(earlier, own)
+    )
+    shared = sum(
+        sum(result)
+        for pair, result in zip(line["matchups"], line["results"], strict=True)
+        if set(pair) == {"scripted", "random"}
+    )
+    assert shared > 0 and f"reused {shared} games" in logged[0]
+    assert not own.exists() and len(logged) == 1  # no batch played
+    assert [row["games"] for row in rows] == [shared, shared]
+
+
 def test_a_batch_that_outruns_the_game_clock_raises():
     arena = Arena([SCRIPTED, RANDOM], GAME, CPU, SMALL)
     arena.tick_limit = 0  # as if every game outlived its clock
@@ -604,10 +770,11 @@ def test_the_commands_parse_their_options():
     assert pairs.players == ("a", "b", "scripted", "random") and pairs.games == 8
     rated = tyro.cli(
         Ratings,
-        args=["run", "--with", "x", "y", "--target-stderr", "30", "--scripted-plays", "x"],
+        args=["run", "--with", "x", "y", "--target-stderr", "30", "--scripted-plays", "x"]
+        + ["--reuse", "r1", "r2"],
     )
     assert rated.run == "run" and rated.with_ == ("x", "y") and rated.target_stderr == 30.0
-    assert rated.scripted_plays == ("x",) and rated.league
+    assert rated.scripted_plays == ("x",) and rated.league and rated.reuse == ("r1", "r2")
 
 
 def test_transformed_scripted_names_parse():

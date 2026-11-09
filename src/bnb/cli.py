@@ -195,7 +195,17 @@ class Ratings:
     all by default). out: the directory whose `artifacts/ratings/` the result goes to.
     Each preset's batches are recorded as they end in `<preset>.batches.jsonl`, in `--out`
     (else the run's `artifacts/ratings/`), and a tournament that finds its record goes on
-    from it (move it aside to start over).
+    from it (its field must be the same; move it aside to start over).
+
+    reuse: directories of earlier tournaments' records (every `<preset>.batches.jsonl` below
+    each, as `--out` writes them): each recorded game whose two players are both in this
+    field starts the fit, and batches are played only while an error is above the target
+    (`bnb.league.tournament.reuse_record`; the layout does not matter). Players match by
+    content: a policy by the SHA-256 of its weights in its checkpoint.json, a scripted
+    player by its name. A record written before identities were recorded (a legacy one)
+    trusts its paths: a name is resolved as it would be now, and is left out (and
+    reported) when it no longer resolves or its policy's checkpoint.json was written after
+    the record's first batch ended (a rewind writes a new policy at the old path).
     """
 
     run: tyro.conf.Positional[str]
@@ -211,6 +221,7 @@ class Ratings:
     league: bool = True
     scripted_plays: tuple[str, ...] | None = None
     out: str | None = None
+    reuse: tuple[str, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -959,7 +970,7 @@ def ratings(options: Ratings) -> None:
     import torch
 
     from bnb.league import tournament
-    from bnb.league.matches import ArenaConfig, Player
+    from bnb.league.matches import ArenaConfig, Player, player
     from bnb.league.pool import ladder_entries
     from bnb.runs import provenance
     from bnb.runs.records import Run
@@ -998,11 +1009,35 @@ def ratings(options: Ratings) -> None:
     device = torch.device(options.device)
     owner = run.directory if options.out is None else pathlib.Path(options.out)
     records_directory = run.directory / "artifacts" / "ratings" if options.out is None else owner
+    missing = [name for name in options.reuse if not pathlib.Path(name).is_dir()]
+    if missing:
+        raise SystemExit(f"--reuse: {missing} are not directories")
+    reused = {
+        preset: tuple(
+            sorted(
+                {
+                    record.resolve()
+                    for name in options.reuse
+                    for record in pathlib.Path(name).rglob(f"{preset}.batches.jsonl")
+                }
+            )
+        )
+        for preset in options.presets
+    }
     rows = []
     try:
         for preset in options.presets:
             record = records_directory / f"{preset}.batches.jsonl"
-            rows += tournament.rate(field, preset, device, config, allowed=allowed, record=record)
+            rows += tournament.rate(
+                field,
+                preset,
+                device,
+                config,
+                allowed=allowed,
+                record=record,
+                reuse=reused[preset],
+                resolve=lambda name: player(name, runs_directory),
+            )
     except ValueError as error:
         raise SystemExit(str(error)) from error
     for row in sorted(rows, key=lambda row: (row["map"], -row["calibrated_elo"])):
@@ -1015,6 +1050,7 @@ def ratings(options: Ratings) -> None:
         leaderboard=rows,
         config=dataclasses.asdict(config),
         scripted_plays=options.scripted_plays,
+        reused={preset: [str(record) for record in records] for preset, records in reused.items()},
     )
     print(provenance.write_result(owner, "ratings", payload, inputs))
 

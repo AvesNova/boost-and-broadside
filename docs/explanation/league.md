@@ -307,9 +307,28 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
 - **The record:** after each batch one JSON line is appended, and synced to disk, to
   `<preset>.batches.jsonl` in `--out` (else the run's `artifacts/ratings/`): the batch's
   index, its blocks' matchups and results, the games so far, every player's rating and
-  standard error, the worst error, the batch's seconds and the wall time. A tournament
-  that finds its preset's record rebuilds the games from it and goes on; a finished one
-  plays nothing. Each batch also logs a line with the local clock times it expects to finish
+  standard error, the worst error, the batch's seconds and the wall time, the games reused
+  (`reused_games`) and each player's identity (`identities`, name to identity). A
+  tournament that finds its preset's record rebuilds the games from it and goes on (the
+  record's field must be its own: same names, same order, same identities); a finished one
+  plays nothing.
+- **Reusing earlier games** (`--reuse DIR [DIR ...]`, `bnb.league.tournament.reuse_record`):
+  every `<preset>.batches.jsonl` below the directories (as `--out` writes them; the run's
+  own record is left out) adds each recorded game whose two players are both in the field
+  to the starting games, whatever its field or arena layout. The fit starts from them, and
+  batches are played only while an error is above the target (none when the reused games
+  meet it); `--budget` counts only the games played here. Players are matched by identity
+  (`bnb.league.tournament.identity`): a policy's is the SHA-256 of its
+  `weights.safetensors` as its checkpoint.json records it (with its ablations), so a moved
+  policy still matches and other weights at the same path do not; a scripted player's
+  (the ladder's, a teacher's) is its name. Each record's reused games, matched players and
+  skipped names are logged. A **legacy record** (written before identities were recorded)
+  holds no hashes, so it trusts its paths: each name is resolved as it would be now, and
+  is skipped when it no longer resolves, or when its policy's checkpoint.json `time` is
+  after the record's first batch ended. That catches a rewind, which moves a policy to
+  `policies/rewound_<n>/` and later writes other weights at the old path: the old path's
+  games are skipped, and the moved policy cannot be matched to them either (nothing in the
+  record says which weights played). Each batch also logs a line with the local clock times it expects to finish
   (the errors falling as one over the root of the games) and, at the latest, when the
   budget is spent, at the mean batch's time.
 - **A guard:** a batch whose games run past the game clock's ticks (plus two segments)
