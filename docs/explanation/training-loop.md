@@ -59,7 +59,9 @@ default lineup (`bnb.runtime.train.LINEUP`) is self-play and the league's seat, 
 - `opponents`: the league's seat, `bnb.runtime.opponents.OpponentSlots`: network slots
   and the stationary ladder in one controller (see [The league](league.md));
 - `chaser`: `bnb.controllers.scripted.Chaser`, which turns toward and shoots at the nearest
-  visible living enemy;
+  visible living enemy, boosting when far and reversing when close; its distances are in
+  the card's lengths (the race's 600, 120 and 250 m on the standard card), from the same
+  characteristics as the scripted agent's;
 - `random`: `bnb.controllers.scripted.Random`, sticky uniform random actions;
 - `scripted`: `bnb.controllers.scripted.Scripted`, [the scripted agent](scripted-agent.md),
   with its characteristics measured once for the trainer. With BC it is wrapped in

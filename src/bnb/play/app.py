@@ -484,7 +484,7 @@ class Session:
                 continue
             except AgentError as error:
                 self.say(f"{TEAM_NAMES[team]} plays scripted: {error}")
-            sides.append(Scripted(self.loop.rules.ships_per_team))
+            sides.append(Scripted(self.loop.rules, self.loop.types))
             chosen.append(SideSetup())
         return sides, dataclasses.replace(setup, sides=tuple(chosen))
 

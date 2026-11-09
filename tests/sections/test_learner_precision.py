@@ -15,6 +15,7 @@ import yemong_cases as cases
 from bnb.cli import set_precision
 from bnb.controllers.scripted import Chaser
 from bnb.game import api
+from bnb.game.handling.characteristics import characteristics
 from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
 from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
@@ -35,7 +36,9 @@ def stored(module_global_generator):
     config = cases.SHORT_SQUAD
     controllers = {
         "learner": cases.controller(net, config),
-        "chaser": Chaser(config.ships_per_team),
+        "chaser": Chaser(
+            characteristics(api.ship_types(), api.rules_of(config)), config.ships_per_team
+        ),
     }
     runner = Rollout(
         config,

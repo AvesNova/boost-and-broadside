@@ -14,6 +14,7 @@ from bnb.contracts import Action, GameConfig, Obs
 from bnb.contracts.obs import SHIP
 from bnb.controllers.scripted import Chaser
 from bnb.game import api
+from bnb.game.handling.characteristics import characteristics
 from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
 
 # The code under test draws from torch's default generator (model initialisation, the
@@ -50,7 +51,7 @@ def _mid_game(config: GameConfig, ticks: int):
     generator = torch.Generator().manual_seed(3)
     state = api.reset(rules, types, api.uniforms(rules, 1, generator=generator))
     state, obs, _ = api.perceive(rules, state)
-    chaser = Chaser(config.ships_per_team)
+    chaser = Chaser(characteristics(types, rules), config.ships_per_team)
     views = []
     for _ in range(ticks):
         views.append(

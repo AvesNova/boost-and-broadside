@@ -12,6 +12,7 @@ from bnb.contracts.obs import COLUMNS_BEFORE_RECORDS, GLOBAL, SHIP_COLUMNS
 from bnb.controllers.scripted import Chaser
 from bnb.controllers.yemong import YemongController
 from bnb.game import api
+from bnb.game.handling.characteristics import characteristics
 from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
 
 CPU = torch.device("cpu")
@@ -59,7 +60,12 @@ def rollout(
         Pool("self_play", 0.5, ("learner", "learner"), fog_share),
         Pool("chaser", 0.5, ("learner", "chaser"), fog_share),
     )
-    controllers = {"learner": controller(net, config), "chaser": Chaser(config.ships_per_team)}
+    controllers = {
+        "learner": controller(net, config),
+        "chaser": Chaser(
+            characteristics(api.ship_types(), api.rules_of(config)), config.ships_per_team
+        ),
+    }
     runner = Rollout(
         config,
         api.ship_types(device),

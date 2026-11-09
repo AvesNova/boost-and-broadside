@@ -590,7 +590,7 @@ def test_the_scripted_agent_plays_in_the_rollout_against_the_chaser():
         game,
         api.ship_types(),
         pools,
-        {"scripted": Scripted(CHARACTERISTICS, 2), "chaser": Chaser(2)},
+        {"scripted": Scripted(CHARACTERISTICS, 2), "chaser": Chaser(CHARACTERISTICS, 2)},
         "scripted",
         4,
         16,

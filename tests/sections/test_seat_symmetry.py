@@ -19,6 +19,7 @@ from bnb.contracts.action import NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.contracts.obs import SHIP
 from bnb.controllers.scripted import Chaser
 from bnb.game import api
+from bnb.game.handling.characteristics import characteristics
 from bnb.game.modes.rules import PRESETS
 from bnb.game.state import Bullets, Ships, State, replace
 
@@ -350,7 +351,7 @@ def test_chaser_games_and_their_mirror_agree_every_tick(preset):
     rules = api.rules_of(PRESETS[preset])
     generator = torch.Generator().manual_seed(5)
     batch, S, warm, compared = 24, rules.ships_per_team, 900, 300
-    chaser = Chaser(S)
+    chaser = Chaser(characteristics(api.ship_types(), rules), S)
     state = api.reset(rules, TYPES, api.uniforms(rules, batch, generator=generator))
     ticks = rules.pools[0].episode_ticks
     state = api.start_clocks(

@@ -57,7 +57,10 @@ def _collect(net, shards: int, length: int, lookahead: int = 0, environments: in
         cases.SHORT_SQUAD,
         api.ship_types(lc.CPU),
         lc.POOLS,
-        {"learner": cases.controller(net, cases.SHORT_SQUAD), "chaser": lc.Chaser(5)},
+        {
+            "learner": cases.controller(net, cases.SHORT_SQUAD),
+            "chaser": lc.Chaser(CHARACTERISTICS, 5),
+        },
         "learner",
         environments,
         length,

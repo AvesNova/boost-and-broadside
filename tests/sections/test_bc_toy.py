@@ -19,6 +19,7 @@ import torch
 from bnb.contracts import GameConfig, Pool
 from bnb.controllers.scripted import Chaser
 from bnb.game import api
+from bnb.game.handling.characteristics import characteristics
 from bnb.league.lanes import LaneHooks
 from bnb.learn import bc
 from bnb.runs.session import policy_player
@@ -58,7 +59,7 @@ def test_the_toy_clone_scores_against_its_teacher_and_the_chaser():
         reason = cloning.clone(student, log=lambda row: None)
         teacher = student.controllers[SCRIPTED]
         assert isinstance(teacher, bc.TeacherOpponent) and teacher.teacher == bc.TeacherConfig()
-        chaser = Chaser(GAME.ships_per_team)
+        chaser = Chaser(characteristics(api.ship_types(), api.rules_of(GAME)), GAME.ships_per_team)
 
         def against(player, opponent) -> float:
             controllers = {"player": player, "opponent": opponent}

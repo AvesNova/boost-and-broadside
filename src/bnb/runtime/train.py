@@ -256,10 +256,11 @@ class Trainer:
         cloning = config.objective == "bc"
         seated = {name for pool in config.pools for name in pool.seats}
         self.types = types = config.ship_types(device)
-        # The scripted agent's characteristics, when it plays, teaches or is the ladder.
+        # The card's characteristics, when the scripted agent plays, teaches or is the ladder,
+        # or the chaser plays (its distances are in the card's lengths).
         self.characteristics = (
             characteristics(types, api.rules_of(game))
-            if cloning or SCRIPTED in seated or OPPONENTS in seated or config.lanes.environments
+            if cloning or {SCRIPTED, OPPONENTS, "chaser"} & seated or config.lanes.environments
             else None
         )
         # the training pools and the rating lanes' (`bnb.runtime.lanes`), in one batch
@@ -292,7 +293,7 @@ class Trainer:
                 config.league,
                 stream_key(config.seed, "league.ladder"),
             ),
-            "chaser": lambda: Chaser(game.ships_per_team),
+            "chaser": lambda: Chaser(self.characteristics, game.ships_per_team),
             "random": lambda: Random(game.ships_per_team),
             # BC scores the learner against the teacher its labels describe
             SCRIPTED: lambda: (

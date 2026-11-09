@@ -12,6 +12,8 @@ import yemong_cases as cases
 
 from bnb.contracts.action import NUM_JOINT
 from bnb.controllers.scripted import Chaser
+from bnb.game import api
+from bnb.game.handling.characteristics import characteristics
 from bnb.learn import losses
 from bnb.learn.ppo import DIVERGENCE_BINS, LearnerConfig, divergence_quantiles
 
@@ -108,7 +110,13 @@ def recorded(module_global_generator):
     controller.distribution = True
     runner = lc.rollout(
         net,
-        controllers={"learner": controller, "chaser": Chaser(cases.SHORT_SQUAD.ships_per_team)},
+        controllers={
+            "learner": controller,
+            "chaser": Chaser(
+                characteristics(api.ship_types(), api.rules_of(cases.SHORT_SQUAD)),
+                cases.SHORT_SQUAD.ships_per_team,
+            ),
+        },
     )
     return net, runner
 

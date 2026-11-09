@@ -50,7 +50,9 @@ def _results(preset: str, opponent: str, games: int) -> torch.Tensor:
     device = torch.device("cuda")
     game = PRESETS[preset]
     card = characteristics(api.ship_types(device), api.rules_of(game))
-    rival = Random(game.ships_per_team) if opponent == "random" else Chaser(game.ships_per_team)
+    rival = (
+        Random(game.ships_per_team) if opponent == "random" else Chaser(card, game.ships_per_team)
+    )
     torch.manual_seed(SEEDS[preset, opponent])
     return first_results(
         game,

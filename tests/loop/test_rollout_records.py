@@ -15,6 +15,7 @@ from bnb.contracts.config import ticks_of
 from bnb.contracts.obs import SHIP
 from bnb.controllers.scripted import Chaser, Random
 from bnb.game import api
+from bnb.game.handling.characteristics import characteristics
 from bnb.learn import rewards
 from bnb.runtime.rollout import Rollout
 
@@ -35,7 +36,10 @@ def _rollout(config, pools, environments, length, **options):
         config,
         api.ship_types(CPU),
         pools,
-        {"learner": Chaser(S), "other": Random(S)},
+        {
+            "learner": Chaser(characteristics(api.ship_types(), api.rules_of(config)), S),
+            "other": Random(S),
+        },
         "learner",
         environments,
         length,

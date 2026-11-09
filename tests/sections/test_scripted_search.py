@@ -104,9 +104,9 @@ def test_the_mixed_seat_plays_each_rows_controller():
     )
     choice = torch.tensor([0, 1, 0, 1, 1, 0])
     uniform = Scripted(CHARACTERISTICS, 2, temperature=math.inf)
-    mixed = search.Mixed([uniform, Chaser(2)], choice)
+    mixed = search.Mixed([uniform, Chaser(CHARACTERISTICS, 2)], choice)
     assert set(mixed.reads) == {"ships", "zones", "globals"}
     torch.manual_seed(0)
     action = mixed.step(mixed.init_carry(views, obs.ships.device), obs, None)[0].packed()
-    chased = Chaser(2).step(None, obs, None)[0].packed()
+    chased = Chaser(CHARACTERISTICS, 2).step(None, obs, None)[0].packed()
     assert torch.equal(action[choice == 1], chased[choice == 1])

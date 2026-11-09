@@ -226,8 +226,11 @@ each named for the quantity it scales, with the logistics as `Logistic`, the wei
 presets (`bnb.controllers.scripted_parameters.MODES`: deathmatch, deathmatch_wide,
 Frontline), each from a search of its own preset. Each view plays its mode's set, chosen
 from its observation (`bnb.controllers.scripted.mode_index`): Frontline by the mode's flag,
-else the wide set when the arena is wider than the geometric mean of the two deathmatch
-presets' (2600 and 8200 m), else deathmatch's. So one batch may mix the modes, and every use
+else the wide set when the arena radius is more than `WIDE_ARENA_IN_GUN_RANGES` of the
+card's longest gun range (20.9: the geometric mean of the two deathmatch presets' 2600 and
+8200 m on the standard card, 11.8 and 37.1 of its 220.8 m gun range), else deathmatch's. In
+gun ranges the classification follows the card: a real-scale deathmatch, the standard map
+three times as wide (7800 m) for a 600 m gun range, plays the deathmatch set. So one batch may mix the modes, and every use
 plays the mode's set: BC's teacher, the lanes' scripted anchor, the ladder's rungs and the
 head-to-head's `scripted`. Each search's final population (its last generation's 32 sets,
 best first) is kept in `src/bnb/controllers/scripted_populations.json`

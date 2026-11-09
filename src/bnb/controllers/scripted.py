@@ -24,6 +24,14 @@ from .scripted_memory import ScriptedCarry, forgotten, fresh_carry, remember
 from .scripted_parameters import MODES, ModeParameters, ScriptedParameters
 
 REDRAW = 0.1  # sticky random: per-tick probability of a new action
+# The standard card's lengths from its characteristics at 30 Hz, to the last bit
+# (`gun_range` and `corner_radius`): its longest gun range (the fighter's) and its largest
+# corner radius (the heavy's: the corner speed squared over the g limit's acceleration, the
+# radius of a full-stick turn at the corner speed). Distances below are stated in these, so
+# the standard card plays exactly the distances in metres they were set in, and any other
+# card the same distances in its own lengths.
+STANDARD_GUN_RANGE = 220.78790283203125  # m
+STANDARD_CORNER_RADIUS = 45.45454775076505  # m
 
 
 def uniform_actions(shape: tuple, device) -> torch.Tensor:
@@ -59,13 +67,43 @@ class Random:
         return Action.unpack(held), held, Outputs()
 
 
+def gun_range(characteristics: Characteristics) -> float:
+    """The card's longest gun range (m): the length the agents' gun distances are stated in."""
+    return float(characteristics.gun_range.amax())
+
+
+def corner_radius(characteristics: Characteristics) -> float:
+    """The card's largest corner radius (m), corner speed^2 / a_max in float64: the length
+    the chaser's flight distances are stated in."""
+    speed = characteristics.corner_speed.double()
+    return float((speed * speed / characteristics.max_acceleration.double()).amax())
+
+
+# The chaser's distances (race BENCHMARK 3.1: boost beyond 600 m, reverse inside 120 m and
+# shoot inside 250 m, on the standard card): the flight's in corner radii, the gun's in gun
+# ranges.
+BOOST_IN_CORNER_RADII = 600.0 / STANDARD_CORNER_RADIUS
+REVERSE_IN_CORNER_RADII = 120.0 / STANDARD_CORNER_RADIUS
+SHOOT_IN_GUN_RANGES = 250.0 / STANDARD_GUN_RANGE
+
+
 class Chaser:
-    """Turn toward and shoot at the nearest visible living enemy (race BENCHMARK 3.1 rules)."""
+    """Turn toward and shoot at the nearest visible living enemy (race BENCHMARK 3.1 rules),
+    at distances in the card's lengths (`BOOST_IN_CORNER_RADII`, `REVERSE_IN_CORNER_RADII`,
+    `SHOOT_IN_GUN_RANGES`): the race's 600, 120 and 250 m on the standard card."""
 
     reads = ("ships",)
 
-    def __init__(self, ships_per_team: int) -> None:
+    def __init__(self, characteristics: Characteristics, ships_per_team: int) -> None:
         self.ships_per_team = ships_per_team
+        self.retune(characteristics)
+
+    def retune(self, characteristics: Characteristics) -> None:
+        """Play at the distances of this card's characteristics."""
+        radius, reach = corner_radius(characteristics), gun_range(characteristics)
+        self.boost_distance = BOOST_IN_CORNER_RADII * radius  # m
+        self.reverse_distance = REVERSE_IN_CORNER_RADII * radius  # m
+        self.shoot_distance = SHOOT_IN_GUN_RANGES * reach  # m
 
     def init_carry(self, views: int, device: torch.device) -> None:
         """No carry: the chaser is stateless."""
@@ -87,8 +125,10 @@ class Chaser:
         bearing, distance = signed.abs(), torch.sqrt(to_x * to_x + to_y * to_y)
         level = sum((bearing >= math.radians(degrees)).int() for degrees in (3.0, 10.0, 30.0))
         stick = torch.where(level == 0, 0, 2 * level - (signed < 0.0).int())
-        power = torch.where(distance > 600.0, 1, torch.where(distance < 120.0, 2, 0))
-        shoot = ((bearing < math.radians(8.0)) & (distance < 250.0)).int()
+        power = torch.where(
+            distance > self.boost_distance, 1, torch.where(distance < self.reverse_distance, 2, 0)
+        )
+        shoot = ((bearing < math.radians(8.0)) & (distance < self.shoot_distance)).int()
         any_target = target.any(-1)[:, None]
         action = Action(
             *(torch.where(any_target, part, 0).to(torch.int32) for part in (power, stick, shoot))
@@ -96,27 +136,33 @@ class Chaser:
         return action, carry, Outputs()
 
 
-# A team deathmatch view plays deathmatch_wide's set when its arena is wider than the
-# geometric mean of the two presets' (2600 and 8200 m), else deathmatch's.
-WIDE_ARENA_RADIUS = math.sqrt(
-    PRESETS["deathmatch"].arena_radius * PRESETS["deathmatch_wide"].arena_radius
+# A team deathmatch view plays deathmatch_wide's set when its arena radius is more than this
+# many of the card's longest gun ranges, the geometric mean of the two presets' on the
+# standard card (2600 and 8200 m: 11.8 and 37.1), else deathmatch's.
+WIDE_ARENA_IN_GUN_RANGES = (
+    math.sqrt(PRESETS["deathmatch"].arena_radius * PRESETS["deathmatch_wide"].arena_radius)
+    / STANDARD_GUN_RANGE
 )
 
 
-def mode_index(obs: Obs) -> torch.Tensor:
+def mode_index(obs: Obs, characteristics: Characteristics) -> torch.Tensor:
     """(R,) int64 each view's mode, an index into `MODES`: frontline by the mode's flag, else
-    deathmatch_wide beyond WIDE_ARENA_RADIUS, else deathmatch (a sandbox view too)."""
+    deathmatch_wide beyond WIDE_ARENA_IN_GUN_RANGES of the card's longest gun range, else
+    deathmatch (a sandbox view too)."""
     globals_ = obs.globals
-    wide = globals_[:, GLOBAL["arena_radius"]] > WIDE_ARENA_RADIUS
+    wide_radius = WIDE_ARENA_IN_GUN_RANGES * characteristics.gun_range.amax()
+    wide = globals_[:, GLOBAL["arena_radius"]] > wide_radius
     frontline_view = globals_[:, GLOBAL["mode_frontline"]] > 0.5
     index = torch.where(wide, MODES.index("deathmatch_wide"), MODES.index("deathmatch"))
     return torch.where(frontline_view, MODES.index("frontline"), index)
 
 
-def resolved(parameters: ScriptedParameters | ModeParameters, obs: Obs) -> ScriptedParameters:
+def resolved(
+    parameters: ScriptedParameters | ModeParameters, obs: Obs, characteristics: Characteristics
+) -> ScriptedParameters:
     """The parameters each view plays with: a per-mode mapping's set for the view's mode."""
     if isinstance(parameters, ModeParameters):
-        return parameters.per_view(mode_index(obs))
+        return parameters.per_view(mode_index(obs, characteristics))
     return parameters
 
 
@@ -141,7 +187,7 @@ def decide(
     switch (a decision); without, only a fresh ship or a lost target re-chooses, so a carry
     `decide` returned gives the same marginals again (a label's re-reading). parameters: one
     set, per view, or per mode (`ModeParameters`: each view its mode's)."""
-    parameters = resolved(parameters, obs)
+    parameters = resolved(parameters, obs, characteristics)
     ships = obs.ships
     views, S = ships.shape[0], ships.shape[-2] // 2
     if carry is None:

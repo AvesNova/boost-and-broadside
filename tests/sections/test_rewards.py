@@ -243,6 +243,7 @@ def test_the_rollouts_ledger_holds_every_deficit(mode):
     """Through the runtime: the rollout's carried ledger against its carried state, after
     each of 16 short runs (staggered clocks, so resets fall inside)."""
     from bnb.controllers.scripted import Chaser, Random
+    from bnb.game.handling.characteristics import characteristics
     from bnb.runtime.rollout import Rollout
 
     config = cases.MODES[mode]
@@ -251,7 +252,7 @@ def test_the_rollouts_ledger_holds_every_deficit(mode):
         config,
         api.ship_types(),
         (Pool("random", 0.5, ("r", "r")), Pool("chaser", 0.5, ("c", "r"))),
-        {"r": Random(S), "c": Chaser(S)},
+        {"r": Random(S), "c": Chaser(characteristics(api.ship_types(), api.rules_of(config)), S)},
         "r",
         8,
         8,

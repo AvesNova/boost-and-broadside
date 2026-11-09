@@ -188,6 +188,7 @@ def _view_sequence(config: GameConfig, fogged: bool, ticks: int, seed: int = 0) 
     """Views (2B, ...) of a game, one per tick of chaser play (ticks + 1 of them)."""
     from bnb.contracts import Action
     from bnb.controllers.scripted import Chaser
+    from bnb.game.handling.characteristics import characteristics
 
     generator = torch.Generator().manual_seed(seed)
     rules, types = api.rules_of(config), api.ship_types()
@@ -196,7 +197,7 @@ def _view_sequence(config: GameConfig, fogged: bool, ticks: int, seed: int = 0) 
         rules, types, api.uniforms(rules, batch, generator=generator), torch.full((batch,), fogged)
     )
     state, obs, _ = api.perceive(rules, state)
-    chaser = Chaser(config.ships_per_team)
+    chaser = Chaser(characteristics(types, rules), config.ships_per_team)
     views = []
     for tick in range(ticks + 1):
         views.append(

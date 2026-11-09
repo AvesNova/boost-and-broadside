@@ -211,8 +211,8 @@ def test_each_view_plays_its_modes_parameters():
     wide = observation(
         [ship(), absent(team_relative=0)], [_enemy(400.0, 300.0), absent()], arena_radius=8200.0
     )
-    assert mode_index(narrow).tolist() == [MODES.index("deathmatch")]
-    assert mode_index(wide).tolist() == [MODES.index("deathmatch_wide")]
+    assert mode_index(narrow, CHARACTERISTICS).tolist() == [MODES.index("deathmatch")]
+    assert mode_index(wide, CHARACTERISTICS).tolist() == [MODES.index("deathmatch_wide")]
     both = Obs(
         ships=torch.cat([narrow.ships, wide.ships]),
         fields=None,

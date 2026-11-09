@@ -12,6 +12,7 @@ from torch.utils import _pytree
 
 from bnb.controllers.scripted import Chaser
 from bnb.game import api
+from bnb.game.handling.characteristics import characteristics
 from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
 from bnb.runtime import metrics
@@ -35,7 +36,9 @@ def _rollout(host_store: bool, shards: int = 1, seed: int = 0):
     config = cases.SHORT_SQUAD
     controllers = {
         "learner": cases.controller(net, config),
-        "chaser": Chaser(config.ships_per_team),
+        "chaser": Chaser(
+            characteristics(api.ship_types(), api.rules_of(config)), config.ships_per_team
+        ),
     }
     runner = Rollout(
         config,
@@ -123,7 +126,9 @@ def test_the_rollout_keeps_two_blocks_of_records_on_the_device():
     config = cases.SHORT_SQUAD
     controllers = {
         "learner": cases.controller(net, config),
-        "chaser": Chaser(config.ships_per_team),
+        "chaser": Chaser(
+            characteristics(api.ship_types(), api.rules_of(config)), config.ships_per_team
+        ),
     }
     runner = Rollout(
         config,

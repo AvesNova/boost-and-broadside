@@ -252,7 +252,7 @@ def memory(agent, team: int, observed: Snapshot) -> Predictions | None:
         view,
         inspection.reset,
         controller.characteristics,
-        resolved(controller.parameters, view),
+        resolved(controller.parameters, view, controller.characteristics),
         controller.temperature,
     )
     own = controller.ships_per_team

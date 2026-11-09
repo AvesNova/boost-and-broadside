@@ -62,16 +62,34 @@ def theme():
 
 
 def test_scripted_against_scripted_offers_only_the_bullet_paths():
-    assert offered([Scripted(S), Scripted(S)]) == PHYSICS == ("bullet_paths",)
+    assert (
+        offered(
+            [
+                Scripted(api.rules_of(SMALL), api.ship_types()),
+                Scripted(api.rules_of(SMALL), api.ship_types()),
+            ]
+        )
+        == PHYSICS
+        == ("bullet_paths",)
+    )
     assert offered([]) == PHYSICS  # a replay runs no controllers
 
 
 def test_each_controller_offers_what_it_can_provide():
     rules = api.rules_of(SMALL)
     memory = ScriptedAgent(rules, api.ship_types())
-    assert offered([memory, Scripted(S)]) == ("bullet_paths", "dead_reckoning")
-    assert offered([_agent(), Scripted(S)]) == ("bullet_paths",) + NETWORK
-    assert offered([_agent(name="relational"), Scripted(S)]) == PHYSICS
+    assert offered([memory, Scripted(api.rules_of(SMALL), api.ship_types())]) == (
+        "bullet_paths",
+        "dead_reckoning",
+    )
+    assert (
+        offered([_agent(), Scripted(api.rules_of(SMALL), api.ship_types())])
+        == ("bullet_paths",) + NETWORK
+    )
+    assert (
+        offered([_agent(name="relational"), Scripted(api.rules_of(SMALL), api.ship_types())])
+        == PHYSICS
+    )
     everything = offered([_agent(), memory])
     assert set(everything) == set(PHYSICS + NETWORK + MEMORY) == set(NAMES)
     assert everything == tuple(name for name in NAMES if name in everything)  # card order
@@ -131,7 +149,7 @@ def match(module_global_generator):
     seconds in; and its predictions."""
     agent = _agent(3)
     agent.watched = True
-    loop = _loop([Scripted(S), agent], ticks=120)
+    loop = _loop([Scripted(api.rules_of(SMALL), api.ship_types()), agent], ticks=120)
     made = predictions.side_predictions(agent, 1, loop.previous, loop.current)
     return loop, agent, made
 
@@ -230,7 +248,11 @@ def test_the_dead_reckoning_ghosts_are_the_memorys_recall():
     sighting plus the velocity then times the time since, its opacity the weight."""
     memory = ScriptedAgent(api.rules_of(SMALL), api.ship_types(), seed=2)
     found = None
-    loop = MatchLoop(MatchSetup(SMALL, seed=7), sides=[memory, Scripted(S)], compiled=False)
+    loop = MatchLoop(
+        MatchSetup(SMALL, seed=7),
+        sides=[memory, Scripted(api.rules_of(SMALL), api.ship_types())],
+        compiled=False,
+    )
     for _ in range(600):
         loop.step()
         made = predictions.side_predictions(memory, 0, loop.previous, loop.current)

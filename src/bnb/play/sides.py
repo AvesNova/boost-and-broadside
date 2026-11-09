@@ -76,13 +76,18 @@ class Inspection:
 
 
 class Scripted:
-    """The scripted chaser: each ship turns toward and shoots at its nearest visible enemy."""
+    """The scripted chaser: each ship turns toward and shoots at its nearest visible enemy,
+    at distances in the card's lengths."""
 
     label = "scripted"
     overlays = ()
 
-    def __init__(self, ships_per_team: int) -> None:
-        self.chaser = Chaser(ships_per_team)
+    def __init__(self, rules: api.Rules, types: api.ShipTypes) -> None:
+        self.chaser = Chaser(characteristics(types, rules), rules.ships_per_team)
+
+    def retune(self, traits) -> None:
+        """Play on at the distances of a tuned card's characteristics (live tuning)."""
+        self.chaser.retune(traits)
 
     def act(self, view: Obs, reset: torch.Tensor) -> torch.Tensor:
         """The team's (S, 3) actions for its view (1, ...)."""
@@ -428,7 +433,7 @@ def controller_of(side, team: int, setup, rules: api.Rules, types: api.ShipTypes
         return load_agent(side.policy, setup.config, rules, types, side.temperature, seed)
     if side.controller == "scripted_agent":
         return ScriptedAgent(rules, types, seed)
-    return Scripted(rules.ships_per_team)
+    return Scripted(rules, types)
 
 
 def build_sides(setup, rules: api.Rules, types: api.ShipTypes) -> list:

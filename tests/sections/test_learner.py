@@ -19,6 +19,7 @@ from bnb.contracts.action import to_joint
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.controllers.scripted import Chaser
 from bnb.game import api
+from bnb.game.handling.characteristics import characteristics
 from bnb.learn import labels, losses
 from bnb.learn.ppo import (
     COUNTS,
@@ -386,7 +387,10 @@ def decided(module_global_generator):
     from bnb.learn.rewards import RewardConfig
 
     net = cases.model()
-    controllers = {"learner": cases.controller(net, cases.SHORT_SQUAD), "chaser": Chaser(OWN)}
+    controllers = {
+        "learner": cases.controller(net, cases.SHORT_SQUAD),
+        "chaser": Chaser(characteristics(api.ship_types(), api.rules_of(cases.SHORT_SQUAD)), OWN),
+    }
     runner = lc.Rollout(
         cases.SHORT_SQUAD,
         api.ship_types(lc.CPU),

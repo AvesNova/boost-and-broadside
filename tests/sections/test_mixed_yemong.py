@@ -12,6 +12,7 @@ from bnb.contracts import Obs, Pool
 from bnb.contracts.obs import ZONE, ZONE_COLUMNS
 from bnb.controllers.scripted import Chaser
 from bnb.game import api
+from bnb.game.handling.characteristics import characteristics
 from bnb.models.yemong import policy
 from bnb.models.yemong.inputs import POSITION_CODE
 from bnb.models.yemong.state_code import POSITION_PERIOD
@@ -36,7 +37,9 @@ def _mixed_rollout(net, environments: int = 8, length: int = 32, runs: int = 1):
     config = cases.SHORT_SQUAD
     controllers = {
         "learner": cases.controller(net, config),
-        "chaser": Chaser(config.ships_per_team),
+        "chaser": Chaser(
+            characteristics(api.ship_types(), api.rules_of(config)), config.ships_per_team
+        ),
     }
     runner = Rollout(
         config,
@@ -207,7 +210,9 @@ def test_a_compiled_captured_mixed_rollout_stores_what_unroll_needs(fresh_compil
     config = cases.SHORT_SQUAD
     controllers = {
         "learner": cases.controller(net, config),
-        "chaser": Chaser(config.ships_per_team),
+        "chaser": Chaser(
+            characteristics(api.ship_types(), api.rules_of(config)), config.ships_per_team
+        ),
     }
     runner = Rollout(
         config, api.ship_types(device), POOLS, controllers, "learner", 16, 64, device, compiled=True

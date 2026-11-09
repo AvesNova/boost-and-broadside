@@ -9,6 +9,7 @@ import yemong_cases as cases
 from bnb.contracts import Pool
 from bnb.controllers.scripted import Chaser
 from bnb.game import api
+from bnb.game.handling.characteristics import characteristics
 from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
 from bnb.runtime.rollout import Rollout
@@ -35,7 +36,9 @@ def rollout(
     the learner."""
     controllers = controllers or {
         "learner": cases.controller(net, config),
-        "chaser": Chaser(config.ships_per_team),
+        "chaser": Chaser(
+            characteristics(api.ship_types(), api.rules_of(config)), config.ships_per_team
+        ),
     }
     runner = Rollout(
         config,

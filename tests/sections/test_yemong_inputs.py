@@ -19,6 +19,7 @@ from bnb.contracts.action import NUM_JOINT, to_joint
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.controllers.scripted import Chaser
 from bnb.game import api
+from bnb.game.handling.characteristics import characteristics
 from bnb.models.yemong import model as yemong_model
 from bnb.models.yemong.critic import symlog
 from bnb.models.yemong.inputs import NULL_ACTION, compose, store_action
@@ -82,7 +83,7 @@ def _game(environments: int, ticks: int, fogged: bool = True, seed: int = 2):
     fog = torch.full((environments,), fogged)
     state = api.reset(rules, TYPES, api.uniforms(rules, environments, generator=generator), fog)
     state, observation, _ = api.perceive(rules, state)
-    chaser = Chaser(S)
+    chaser = Chaser(characteristics(TYPES, rules), S)
     views, resets, joints = [], [], []
     for _ in range(ticks):
         team0, team1 = (
