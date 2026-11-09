@@ -47,6 +47,7 @@ import datetime
 import math
 import os
 import time
+import traceback
 
 import torch
 
@@ -75,6 +76,9 @@ GUN_RANGE = 600.0  # m, the P-51's, which sets the bullet life (whole ticks)
 SPAWN_SPEED_MARGIN = 1.3  # the spawn speed over the set's fastest stall speed
 CLIMB_TOLERANCE = 0.01  # the initial climb charge is met to this fraction
 CLIMB_ROUNDS = 6
+# The climb time's first guess, over the store's fill time at its initial charge: the charge
+# falls once the store passes the engine knee, and every type's solve lands near 4.99.
+CLIMB_FILL = 4.99
 DEGREE = math.pi / 180.0
 AIR_DENSITY = 1.225  # kg/m^3, sea level
 # A round's 2-D normal spread: the 75% circle's radius over the per-axis sigma, sqrt(2 ln 4).
@@ -384,6 +388,7 @@ def target_handles(
     values["gun_range"] = math.log1p(drag * launch * life) / drag
     notes["gun_range"] = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
     rate, notes["climb_time"] = climb_rate_of(aircraft, given)
+    values["climb_time"] = CLIMB_FILL * values["ceiling"] / (GRAVITY * rate)
     return values, notes, rate
 
 
@@ -467,10 +472,14 @@ def solve_type(
     )
 
 
-def _solve_in_process(arguments) -> Solved:
-    """`solve_type` in a worker process, one thread, logging to stdout."""
+def _solve_in_process(arguments) -> Solved | str:
+    """`solve_type` in a worker process, one thread, logging to stdout: the solve, or the
+    reason (a traceback) it failed, so that one type's failure stops no other."""
     torch.set_num_threads(1)
-    return solve_type(*arguments, log=lambda line: print(line, flush=True))
+    try:
+        return solve_type(*arguments, log=lambda line: print(line, flush=True))
+    except Exception:
+        return traceback.format_exc()
 
 
 def clock(seconds_from_now: float) -> str:
@@ -484,10 +493,11 @@ def solve_set(
     aircraft=AIRCRAFT, workers: int = WORKERS, resume: bool = False, only=None, log=print
 ) -> list[Solved]:
     """Write the set's rules.toml, then solve each type in its own process, writing its ship
-    file as it finishes, and finally the set's order: the solves, in the set's order.
-    resume: keep a written card whose targets (all but the climb time) match, its notes
-    and name refreshed;
-    only: solve just these keys (the others must be written already)."""
+        file as it finishes, and finally the set's order: the solves, in the set's order. A type
+    that fails stops no other; the order is then left as it was and Infeasible names them.
+        resume: keep a written card whose targets (all but the climb time) match, its notes
+        and name refreshed;
+        only: solve just these keys (the others must be written already)."""
     combat = combat_constants()
     standard_rules = rules_of(GameConfig(1, 1, 1.0))
     stall_speeds = [
@@ -500,7 +510,7 @@ def solve_set(
     for one in aircraft:
         if (directory / f"{one.key}.toml").is_file():
             written[one.key] = ships.read(directory / f"{one.key}.toml", one.key)
-    jobs, results = [], {}
+    jobs, results, failed = [], {}, {}
     for one in aircraft:
         values, notes, rate = target_handles(one, rules, combat)
         old = written.get(one.key)
@@ -530,14 +540,14 @@ def solve_set(
         futures = {pool.submit(_solve_in_process, job): job[0] for job in jobs}
         for done, future in enumerate(concurrent.futures.as_completed(futures), 1):
             key = futures[future]
-            try:
-                solved = future.result()
-            except Infeasible as error:
-                log(f"{key}: INFEASIBLE: {error}")
-                raise
+            solved = future.result()
+            elapsed = time.time() - started
+            if isinstance(solved, str):
+                failed[key] = solved.strip().splitlines()[-1]
+                log(f"FAILED {done}/{len(jobs)} {key}:\n{solved}")
+                continue
             ships.write_ship(solved.ship, SHIP_SET)
             results[key] = solved
-            elapsed = time.time() - started
             waves = math.ceil(len(jobs) / workers)
             per_wave = elapsed / math.ceil(done / workers)
             left = max(waves * per_wave - elapsed, 0.0)
@@ -546,6 +556,11 @@ def solve_set(
                 f"converged {solved.converged} ({elapsed / 60:.1f} min); "
                 f"ETA {clock(left)} (worst {clock(1.5 * left + 60)})"
             )
+    if failed:
+        raise Infeasible(
+            "the set's order is left as it was; failed: "
+            + "; ".join(f"{key}: {reason}" for key, reason in failed.items())
+        )
     ordered = [results[one.key] for one in aircraft]
     ships.write([solved.ship for solved in ordered], SHIP_SET)
     return ordered
