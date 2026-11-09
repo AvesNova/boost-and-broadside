@@ -20,7 +20,14 @@ For a runtime that keeps the state in persistent buffers: `perceived` (the part 
 `perceive` changes, to copy back), `episode_ticks` (each environment's episode length),
 `launch_capture` (what the learner's shot re-simulation stores of a tick), `ship_team` and
 `view_order` (each ship's team, and the sim index of each observation row), `start_clocks`
-and `sweep_like`.
+and `sweep_like`; `retune`, the state carried over to new rules or a new card of the same
+sizes (live tuning).
+
+For live tuning (the play shell's tuning panel): `tuning` (the rules a running match can
+change, by key, and the rules with changed values), the ship card's handles (`Handles`,
+`HANDLE_NAMES`, `FLOWN_HANDLES`, `HANDLE_UNITS`), `measure_handles` (a card's handles),
+`solve_handles` (the card meeting handles, exact, with `SolveProgress` reports), `Estimate`
+(an instant estimate of that card, anchored on an exact one) and `Infeasible`.
 
 For display (the play shell), with no rules of their own: `display` (the state's values a
 display draws, by name), `log_index` and `log_index_gradient` (the medium at points),
@@ -36,8 +43,17 @@ import torch
 from bnb.contracts import Obs
 from bnb.contracts.obs import SHIP
 
-from .layout import environment
-from .modes import frontline
+from . import tuning
+from .handling import FLOWN as FLOWN_HANDLES
+from .handling import NAMES as HANDLE_NAMES
+from .handling import Handles, Infeasible
+from .handling import measure as measure_handles
+from .handling import solve as solve_handles
+from .handling.estimate import Estimate
+from .handling.handles import UNITS as HANDLE_UNITS
+from .handling.solver import Progress as SolveProgress
+from .layout import environment, per_mode
+from .modes import frontline, phase
 from .modes.rules import PRESETS
 from .perception import sight
 from .perception.observe import perceive, view_order
@@ -51,6 +67,13 @@ from .state import Fields, State, Sweep, replace, ship_team, sweep_like
 
 __all__ = [
     "DISPLAYED",
+    "Estimate",
+    "FLOWN_HANDLES",
+    "HANDLE_NAMES",
+    "HANDLE_UNITS",
+    "Handles",
+    "Infeasible",
+    "SolveProgress",
     "LN_SQRT2",
     "Launch",
     "MAP_SCALE_RADIUS",
@@ -68,19 +91,23 @@ __all__ = [
     "launch_capture",
     "log_index",
     "log_index_gradient",
+    "measure_handles",
     "move",
     "per_ship",
     "perceive",
     "perceived",
     "reset",
     "resolve",
+    "retune",
     "rules_of",
     "ship_team",
     "ship_types",
+    "solve_handles",
     "spread",
     "start_clocks",
     "step",
     "sweep_like",
+    "tuning",
     "uniforms",
     "view_order",
     "visible",
@@ -97,6 +124,31 @@ def spread(rules: Rules, batch: int, device=None, generator=None) -> torch.Tenso
 def uniforms(rules: Rules, batch: int, device=None, generator=None) -> torch.Tensor:
     """(B, U) uniforms in [0, 1): a tick's map, formation rotations and keys."""
     return torch.rand((batch, rules.tick_uniform_count), device=device, generator=generator)
+
+
+def retune(rules: Rules, types: ShipTypes, state: State) -> State:
+    """The state carried over to new rules or a new card of the same sizes (live tuning):
+    Frontline's zone ring rebuilt for the rules' zone radius, ring fraction and arena, and
+    each ship's shield and store capped at its type's new maximum. The map and the spawns
+    are left as drawn; they follow the rules from the next episode."""
+    batch = state.ships.x.shape[0]
+    arena = environment(rules, batch, state.ships.x.device)
+    mode = per_mode(
+        rules,
+        batch,
+        lambda mode_rules, arena, mode: phase.refit_zones(
+            mode_rules, arena.arena_radius, arena.map_scale, mode
+        ),
+        arena,
+        state.mode,
+    )
+    ships = state.ships
+    ships = replace(
+        ships,
+        shield=torch.minimum(ships.shield, per_ship(types.max_shield, ships.ship_type)),
+        energy=torch.minimum(ships.energy, per_ship(types.max_energy, ships.ship_type)),
+    )
+    return replace(state, ships=ships, mode=mode)
 
 
 def start_clocks(state: State, episode_tick: torch.Tensor) -> State:

@@ -125,6 +125,25 @@ def protected(rules: Rules, mode_rules: ModeRules, mode: ModeState, ships: Ships
     return (_in_zones(mode, ships) & own).any(-1)
 
 
+def refit_zones(
+    mode_rules: ModeRules, arena_radius: torch.Tensor, map_scale: torch.Tensor, mode: ModeState
+) -> ModeState:
+    """The mode state with Frontline's zone ring rebuilt for these rules (live tuning): the
+    match's own ring rotation and handedness, the rules' zone radius and ring fraction, and
+    the environments' arena radius and map scale (B,). The zones' roles, meters and the
+    front are kept. A mode without zones passes through unchanged."""
+    if mode_rules.name != FRONTLINE:
+        return mode
+    zone_x, zone_y, radius = frontline.zone_ring(
+        arena_radius,
+        mode_rules.zone_radius * map_scale,
+        mode_rules.zone_ring_fraction,
+        mode.ring_rotation,
+        mode.handedness,
+    )
+    return replace(mode, zone_x=zone_x, zone_y=zone_y, zone_radius=radius)
+
+
 def new_match(
     mode_rules: ModeRules,
     arena_radius: torch.Tensor,

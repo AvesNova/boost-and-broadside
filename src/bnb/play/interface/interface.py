@@ -2,9 +2,9 @@
 
 Each frame draws, in order: the top bar, the fleets card, the selection card, the
 minimap, the kill feed, the scrubber (replays), the flying HUD (while flying), the menu,
-the theme editor and the key list; then it reads the input nothing else took: a click on
-the battlefield selects (the hit test), a drag pans, the wheel zooms, the keys fly the
-flown ship, and the shortcuts call their session methods. Which cards are open is
+the theme editor, the tuning panel and the key list; then it reads the input nothing else
+took: a click on the battlefield selects (the hit test), a drag pans, the wheel zooms, the
+keys fly the flown ship, and the shortcuts call their session methods. Which cards are open is
 remembered for the session.
 """
 
@@ -119,6 +119,7 @@ class Interface:
             flying.draw(self, layout)
         self.menu.draw(self)
         self._editor()
+        session.tuning_panel.draw(session)
         self._keys()
         self._notice(layout)
         self._battlefield()

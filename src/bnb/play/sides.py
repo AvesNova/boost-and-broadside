@@ -105,6 +105,11 @@ class ScriptedAgent:
         self.draws = torch.Generator().manual_seed(seed + MODEL_DRAWS_OFFSET)
         self.inspection: Inspection | None = None
 
+    def retune(self, traits) -> None:
+        """Play on with the characteristics of a tuned card (live tuning), keeping what the
+        agent remembers."""
+        self.characteristics = self.controller.characteristics = traits
+
     @torch.no_grad()
     def act(self, view: Obs, reset: torch.Tensor) -> torch.Tensor:
         """The team's (S, 3) actions for its view (1, ...); the carry moves on."""

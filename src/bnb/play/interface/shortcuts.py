@@ -21,6 +21,7 @@ SHORTCUTS = (
     (imgui.Key.home, "Home", "fit", "fit the arena in the view"),
     (imgui.Key.t, "T", "cycle_theme", "next theme"),
     (imgui.Key.e, "E", "toggle_editor", "theme editor"),
+    (imgui.Key.f2, "F2", "toggle_tuning", "tuning panel: the ships' handles and the rules"),
     (imgui.Key.left_arrow, "Left", "step_back", "replay: one tick back, while paused"),
     (imgui.Key.right_arrow, "Right", "single_step", "replay: one tick on, while paused"),
     (imgui.Key.f1, "F1", "toggle_keys", "this list"),

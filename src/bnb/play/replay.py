@@ -1,12 +1,13 @@
 """Replays: every live match is recorded, saved on its end or on quit, and played back by
 re-simulation.
 
-A recording holds the setup (`MatchSetup`: game, lineup, fog, seed, controllers), a
-keyframe every KEYFRAME_TICKS ticks (`Realtime`'s state, views and generator, cloned),
-every tick's actions, whether each tick ran compiled, and the match's events (kills,
-captures, the end). Playback restores the nearest keyframe and repeats the recorded
-actions, each tick compiled or not as it was run, so it reproduces the recorded states
-bitwise and a seek costs at most KEYFRAME_TICKS ticks.
+A recording holds the setup (`MatchSetup`: game, lineup, fog, seed, controllers, the
+tuning it started from), a keyframe every KEYFRAME_TICKS ticks (`Realtime`'s state, views
+and generator, cloned), every tick's actions, whether each tick ran compiled, the match's
+events (kills, captures, the end) and every live tuning change with the tick it came
+before. Playback restores the nearest keyframe, applies the tuning in force there, and
+repeats the recorded actions and changes, each tick compiled or not as it was run, so it
+reproduces the recorded states bitwise and a seek costs at most KEYFRAME_TICKS ticks.
 
 On disk a replay is a directory `<root>/<date>-<mode>-<sides>/`: `replay.json` (the record),
 `actions.safetensors` and `keyframes.safetensors`. The root keeps the newest KEEP replays.
@@ -23,10 +24,12 @@ import safetensors.torch
 import torch
 from torch.utils import _pytree
 
+from bnb.game import api
 from bnb.runs.serialise import from_json, named_tensors, to_json
 from bnb.runtime.realtime import Keyframe, Realtime
 
 from .loop import MatchEvent, MatchLoop, MatchSetup
+from .tuning import Tuning, base_rules
 
 FORMAT = 1
 KEYFRAME_TICKS = 90  # 3 s at 30 Hz
@@ -41,8 +44,9 @@ class ReplayError(ValueError):
 class Recorder:
     """Records a live match from its current state: a keyframe at the start and every
     KEYFRAME_TICKS ticks, and each tick's actions, compile flag and events (their ticks
-    counted from the recording's start). `ended`: the match ended (the last tick's state
-    is the next match's start, which playback never shows)."""
+    counted from the recording's start), and each live tuning change (`retuned`) with the
+    number of ticks recorded before it. `ended`: the match ended (the last tick's state is
+    the next match's start, which playback never shows)."""
 
     def __init__(self, setup: MatchSetup, realtime: Realtime, name: str = "") -> None:
         self.setup, self.name = setup, name
@@ -51,7 +55,13 @@ class Recorder:
         self.actions: list[torch.Tensor] = []
         self.compiled: list[bool] = []
         self.events: list[MatchEvent] = []
+        self.tunings: list[tuple[int, Tuning]] = []
         self.ended = False
+        self._base = base_rules(setup.config, setup.lineup)
+
+    def retuned(self, realtime: Realtime) -> None:
+        """After a live tuning change: what the match is tuned to from the next tick on."""
+        self.tunings.append((self.ticks, Tuning.of(realtime.rules, realtime.types, self._base)))
 
     @property
     def ticks(self) -> int:
@@ -124,6 +134,7 @@ def save(recorder: Recorder, root: str | pathlib.Path, keep: int = KEEP) -> path
         keyframes=sorted(recorder.keyframes),
         compiled=recorder.compiled,
         events=[to_json(event) for event in recorder.events],
+        tunings=[[tick, to_json(tuning)] for tick, tuning in recorder.tunings],
     )
     (partial / RECORD).write_text(json.dumps(record))
     partial.rename(directory)
@@ -159,6 +170,7 @@ class Replay:
     compiled: list[bool]
     events: list[MatchEvent]
     ended: bool
+    tunings: list[tuple[int, Tuning]] = dataclasses.field(default_factory=list)
 
     @property
     def last(self) -> int:
@@ -186,6 +198,7 @@ class Replay:
                 setup.config, compiled=False, fogged=setup.fogged, lineup=setup.lineup
             ).keyframe()
         )
+        tunings = [(tick, from_json(Tuning, data)[0]) for tick, data in record.get("tunings", [])]
         keyframes = {}
         for tick in record["keyframes"]:
             tree = _tree_like(template, stored, f"{tick}.")
@@ -200,6 +213,7 @@ class Replay:
             record["compiled"],
             events,
             record["ended"],
+            tunings,
         )
 
 
@@ -217,11 +231,23 @@ class ReplayLoop(MatchLoop):
             fogged=setup.fogged,
             lineup=setup.lineup,
             background=compiled,
+            settings=setup.tuning.rules,
+            types=setup.tuning.types() if setup.tuning.card else None,
         )
         realtime.restore(replay.keyframes[0])
         self.replay = replay
         self.position = 0
+        self._base = base_rules(setup.config, setup.lineup)
         super().__init__(setup, sides=[], realtime=realtime)
+
+    def _tune(self, tuning: Tuning) -> None:
+        self.realtime.retune(rules=api.tuning.tuned(self._base, tuning.rules), types=tuning.types())
+
+    def _tune_before(self, position: int) -> None:
+        """Apply the tuning changes recorded before tick `position`."""
+        for tick, tuning in self.replay.tunings:
+            if tick == position:
+                self._tune(tuning)
 
     def actions(self) -> torch.Tensor:
         """The recorded actions of the next tick."""
@@ -231,7 +257,10 @@ class ReplayLoop(MatchLoop):
         return not self.replay.compiled[self.position]
 
     def tick(self, actions: torch.Tensor) -> None:
-        """Repeat the next recorded tick, compiled or not as it was run."""
+        """Repeat the next recorded tick, compiled or not as it was run, after the tuning
+        changes recorded before it."""
+        self._tune_before(self.position)
+        self.rules, self.types = self.realtime.rules, self.realtime.types
         super().tick(actions)
         self.position += 1
 
@@ -251,8 +280,12 @@ class ReplayLoop(MatchLoop):
         tick = min(max(int(tick), 0), self.replay.last)
         start = max(t for t in self.replay.keyframes if t <= tick)
         self.realtime.restore(self.replay.keyframes[start])
+        in_force = [tuning for t, tuning in self.replay.tunings if t <= start]
+        self._tune(in_force[-1] if in_force else self.setup.tuning)
         self.previous = None
         for position in range(start, tick):
+            if position > start:
+                self._tune_before(position)
             if position == tick - 1:  # the tick before: for the speed and the last action
                 self.previous = self._snapshot()
                 self.last_actions = self.replay.actions[position]
@@ -260,6 +293,7 @@ class ReplayLoop(MatchLoop):
                 self.replay.actions[position], eager=not self.replay.compiled[position]
             )
         self.position = tick
+        self.rules, self.types = self.realtime.rules, self.realtime.types
         self.current = self._snapshot()
         self.previous = self.current if self.previous is None else self.previous
         self.accumulator = self.tick_length

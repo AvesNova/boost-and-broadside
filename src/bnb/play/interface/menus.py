@@ -210,6 +210,9 @@ class Menu:
         ]
         if live:
             entries.append(("save replay", "Save replay", "Save this match so far as a replay"))
+            entries.append(
+                ("tune", "Tune the game", "Change the ships' handles and the rules as it plays")
+            )
         entries += [
             ("settings", "Settings", "Theme, fog, interface scale"),
             ("quit", "Quit", "Close the game (a live match's replay is saved)"),
@@ -225,6 +228,10 @@ class Menu:
                 elif key == "save replay":
                     path = session.save_replay()
                     self.message = f"saved {path.name}" if path else session.notice
+                elif key == "tune":
+                    self.close()
+                    if not session.tuning_panel.open:
+                        session.toggle_tuning()
                 else:
                     session.quit()
 
