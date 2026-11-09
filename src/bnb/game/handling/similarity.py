@@ -9,7 +9,7 @@ game is the same flight sampled at another rate, and the quantities held to whol
 (fire rates, the bullet life, the shield recharge delay) are snapped by their callers.
 
 Two uses: building a ship set in other units from the standard one (the real-scale set,
-`bnb.game.ships_real_scale`), and live tuning's time scale (length 1, time 1/k: the game k
+`bnb.game.real_scale`), and live tuning's time scale (length 1, time 1/k: the game k
 times faster at fixed map lengths).
 
 `UNITS` gives (a, b) by name: the handles, the card's fields, the flight constants and the

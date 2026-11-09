@@ -120,17 +120,20 @@ def load(ship_set: str = STANDARD) -> list[Ship]:
         path = directory / f"{key}.toml"
         if not path.is_file():
             raise FileNotFoundError(f"{ORDER} lists the ship {key!r}, but {path} is missing")
-        data = tomllib.loads(path.read_text())
-        ships.append(
-            Ship(
-                key=key,
-                name=data["name"],
-                handles={k: float(v) for k, v in data.get("handles", {}).items()},
-                card={k: float(v) for k, v in data["card"].items()},
-                notes={k: str(v) for k, v in data.get("notes", {}).items()},
-            )
-        )
+        ships.append(read(path, key))
     return ships
+
+
+def read(path: pathlib.Path, key: str) -> Ship:
+    """One ship file."""
+    data = tomllib.loads(path.read_text())
+    return Ship(
+        key=key,
+        name=data["name"],
+        handles={k: float(v) for k, v in data.get("handles", {}).items()},
+        card={k: float(v) for k, v in data["card"].items()},
+        notes={k: str(v) for k, v in data.get("notes", {}).items()},
+    )
 
 
 def _table(values: dict[str, float | str]) -> str:
@@ -145,26 +148,8 @@ def write(ships: list[Ship], ship_set: str = STANDARD) -> None:
     """Write a set's ship types (their order and one file each), and remove the files of
     ships no longer listed."""
     directory = directory_of(ship_set)
-    directory.mkdir(parents=True, exist_ok=True)
     for ship in ships:
-        if NAME.fullmatch(ship.key) is None:
-            raise ValueError(f"ship key {ship.key!r}: use lowercase words joined by hyphens")
-        (directory / f"{ship.key}.toml").write_text(
-            f"# {ship.name}: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves\n"
-            "# it; [card] is solved from [handles], so edit the handles, not the card.\n"
-            f"name = {ship.name!r}\n\n"
-            "[handles]\n"
-            "# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.\n"
-            f"{_table(ship.handles)}\n"
-            "[card]\n"
-            "# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).\n"
-            f"{_table(ship.card)}"
-            + (
-                "\n[notes]\n# Where each handle's value comes from.\n" + _table(ship.notes)
-                if ship.notes
-                else ""
-            )
-        )
+        write_ship(ship, ship_set)
     keys = [ship.key for ship in ships]
     listed = ", ".join(f'"{key}"' for key in keys)
     (directory / ORDER).write_text(
@@ -174,6 +159,30 @@ def write(ships: list[Ship], ship_set: str = STANDARD) -> None:
     for path in directory.glob("*.toml"):
         if path.name not in (ORDER, RULES) and path.stem not in keys:
             path.unlink()
+
+
+def write_ship(ship: Ship, ship_set: str = STANDARD) -> None:
+    """Write one ship type's file (not the set's order)."""
+    if NAME.fullmatch(ship.key) is None:
+        raise ValueError(f"ship key {ship.key!r}: use lowercase words joined by hyphens")
+    directory = directory_of(ship_set)
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / f"{ship.key}.toml").write_text(
+        f"# {ship.name}: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves\n"
+        "# it; [card] is solved from [handles], so edit the handles, not the card.\n"
+        f"name = {ship.name!r}\n\n"
+        "[handles]\n"
+        "# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.\n"
+        f"{_table(ship.handles)}\n"
+        "[card]\n"
+        "# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).\n"
+        f"{_table(ship.card)}"
+        + (
+            "\n[notes]\n# Where each handle's value comes from.\n" + _table(ship.notes)
+            if ship.notes
+            else ""
+        )
+    )
 
 
 def names(ship_set: str = STANDARD) -> tuple[str, ...]:
