@@ -116,12 +116,12 @@ def _batched_handles(handles: Handles) -> Handles:
     return Handles(**{name: getattr(handles, name)[None] for name in NAMES})
 
 
-def measure(types: ShipTypes, rules: Rules) -> Handles:
+def measure(types: ShipTypes, rules: Rules, tick_function=None) -> Handles:
     """Every handle of a card ((num_types,) or (B, num_types) fields), flown in its dtype."""
     one_card = types.max_energy.dim() == 1
     types = batched(types)
     constants = rules.flight
-    flown = fly(rules, types)
+    flown = fly(rules, types, tick_function)
     handles = Handles(
         stall_speed=torch.sqrt(constants.gravity / types.max_lift_coefficient),
         g_limit=types.max_acceleration / constants.gravity,
@@ -414,6 +414,7 @@ def solve(
     start: ShipTypes | None = None,
     progress: Callable[[Progress], None] | None = None,
     cancel: Callable[[], bool] | None = None,
+    tick_function=None,
 ) -> Solution:
     """The card meeting these handles ((num_types,) or (B, num_types) fields), solved in
     float64 on the handles' device and stored in float32. Infeasible with a reason when no
@@ -427,7 +428,8 @@ def solve(
     closed-form first guess (near the answer, it converges in an iteration or two);
     `progress`, called after every iteration with the best card so far (`Progress`);
     `cancel`, asked before every iteration: True stops the solve, which then returns its
-    best card so far as if its iterations had run out."""
+    best card so far as if its iterations had run out; `tick_function`, the flight tick the
+    flights use (`manoeuvres.fly`)."""
     one_card = handles.ceiling.dim() == 1
     handles = _batched_handles(Handles(**{n: getattr(handles, n).double() for n in NAMES}))
     check(rules, handles)
@@ -445,7 +447,7 @@ def solve(
             log_parameters.exp(),
             {k: v.repeat_interleave(copies, 0) for k, v in combat.items()},
         )
-        measured = _flown_values(fly(rules, types)).reshape(B, copies, type_count, P)
+        measured = _flown_values(fly(rules, types, tick_function)).reshape(B, copies, type_count, P)
         return (measured - target[:, None]) / scale[:, None]
 
     if start is not None:

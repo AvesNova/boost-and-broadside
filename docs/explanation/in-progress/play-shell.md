@@ -171,10 +171,9 @@ all its ships as usual and keeps its carry.
 
 Every live match is recorded (`bnb.play.replay.Recorder`): the setup, a keyframe every
 `KEYFRAME_TICKS` ticks (the state, every team's latest view and the generator's state),
-every tick's actions, whether each tick ran compiled, the match's events, and every live
-tuning change with the tick it came before. Playback (`ReplayLoop`) restores the nearest
-keyframe, applies the tuning in force there, and repeats the recorded actions and changes,
-each tick compiled or not as it ran, so it reproduces the match bitwise
+every tick's actions, whether each tick ran compiled, and the match's events. Playback
+(`ReplayLoop`) restores the nearest keyframe and repeats the recorded actions, each tick
+compiled or not as it ran, so it reproduces the match bitwise
 (`tests/sections/test_play_replay.py`) and a seek costs at most `KEYFRAME_TICKS` ticks.
 The scrubber's markers and the kill feed come from the same events (`MatchEvent`: kills
 from the tick's `Events`, captures from the front's moves, the end from `done`).
@@ -196,29 +195,42 @@ The tuning panel (`bnb.play.tuning_panel`, F2) changes a live match's numbers wh
 plays, through `bnb.play.tuning.Tuner` and `MatchLoop.retune`:
 
 - **Rule settings** (`bnb.game.api.tuning`: the arena and clock, the bullet life, the
-  shared flight constants, spawns and each mode's rules) apply from the next tick.
-  `Realtime.retune` swaps the rules and runs the uncompiled tick (a few ms at B = 1); once
-  a setting has been still for `SETTLE` seconds, `Realtime.prepare` compiles the new rules
-  on a thread and the compiled tick takes over. The state carries over
-  (`bnb.game.api.retune`: Frontline's zone ring is rebuilt for the new radius and ring;
-  shields and stores are capped). The map and the spawns follow the rules from the next
-  episode. Sizes (ships, fields, lineup, bullet slots, the tick) take a new match.
-- **Handles**, per ship type, go through the card: the card is an input of the compiled
-  tick, so a new one costs nothing. A changed handle applies the instant estimate
-  (`bnb.game.api.Estimate`, tens of ms, on a worker thread) on the next frame; once the
-  handles settle, the exact solve runs on a second thread from that estimate, swapping each
-  better card in and reporting the handles it flies, which the panel shows next to the set
-  values. A setting that changes what the card flies (the flight constants, the bullet
-  life) keeps the card and re-measures its handles.
-- A fire rate or bullet life that needs more bullet slots than a ship has is refused with
-  the reason (a ship's oldest bullet would otherwise vanish in flight).
-- The scripted agent's characteristics are re-measured for each exact card.
-- A new match or a restart keeps the tuning (`MatchSetup.tuning`); a trained agent refuses
-  a card other than the one it trained with, as before.
+  shared flight constants, spawns and each mode's rules) apply from the next tick, without
+  a recompile: the compiled tick takes their values as tensors (`bnb.game.tuning.live_of`) and
+  is keyed on the rules with them blanked (`bnb.game.tuning.static_of`), so every value runs on
+  the same compiled tick. The state carries over (`bnb.game.api.retune`: Frontline's zone
+  ring is rebuilt for the new radius and ring; shields and stores are capped). The map and
+  the spawns follow the rules from the next episode. Sizes (ships, fields, lineup, the
+  tick) take a new match.
+- **Handles**, per ship type, go through the card, also an input of the compiled tick. A
+  changed handle applies the instant estimate (`bnb.game.api.Estimate`, about 50 ms, on a
+  worker process) on the next frames; once the handles settle, the exact solve runs on a
+  second worker from that estimate, swapping each better card in and reporting the handles
+  it flies, which the panel shows beside the set values. A flight constant re-measures the
+  card's handles (the card is kept); the bullet life changes only the gun range, in closed
+  form.
+- **The workers are processes**, not threads: the solve and the estimate are thousands of
+  small tensor operations, and on a thread each waits for the interpreter lock while the
+  match runs. A warm-up process compiles the flights the solver flies
+  (`bnb.runtime.flights`) into the on-disk cache when the panel first opens; the workers
+  switch to the compiled flights once it is done (a measurement about 1 s instead of
+  12.5 s, a solve about 4 s instead of 40, on the development CPU).
+- **Bullet slots.** A play-shell match allocates a slot per tick of the longest bullet life
+  a setting allows (`bnb.game.tuning.most_bullet_slots`, 45 at 30 Hz), so no fire rate or bullet
+  life runs out of them; the compiled 5v5 tick costs the same 0.7-1.0 ms at 6, 15 or 45.
+  Elsewhere the rules hold what the card needs (`bnb.game.rules.bullet_slots_for`). Fire rates are
+  whole shots per second a whole number of ticks apart.
+- The scripted agent's characteristics are re-measured for each exact card. A trained
+  agent plays a card or lineup it was not trained with, with a warning.
+- A new match or a restart keeps the tuning (`MatchSetup.tuning`). A tuned match is not
+  recorded: a replay re-simulates with the numbers it started from.
 
-`Tuning` is the form a tuning is held in: the rule settings and the card fields that
-differ from the game's. Presets (`bnb.play.tuning.Presets`) save it with the whole card as
-JSON, the form `TrainConfig.ship_card` reads.
+**Ship types** live in tracked files, one per type (`src/bnb/game/ships/`, `bnb.game.ships`):
+the handles the type flies and the card the game reads, in the order of `order.toml`. The
+default card is read from them. The panel's **Save ships** writes them; **Add** copies the
+chosen type under a new name and **Remove** deletes one, each starting a new match with the
+lineup remapped. Rule presets (`bnb.play.tuning.Presets`) save the rule settings and the
+whole card to the user's configuration directory.
 
 ## Themes
 

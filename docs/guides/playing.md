@@ -1,5 +1,5 @@
 ---
-covers: [src/bnb/play/app.py, src/bnb/play/window.py, src/bnb/play/interface/, src/bnb/play/sides.py, src/bnb/play/replay.py, src/bnb/play/themes.py, src/bnb/play/themes/, src/bnb/play/theme_editor.py, src/bnb/play/overlays.py, src/bnb/play/predictions.py, src/bnb/play/render/predictions.py, src/bnb/play/tuning.py, src/bnb/play/tuning_panel.py]
+covers: [src/bnb/play/app.py, src/bnb/play/window.py, src/bnb/play/interface/, src/bnb/play/sides.py, src/bnb/play/replay.py, src/bnb/play/themes.py, src/bnb/play/themes/, src/bnb/play/theme_editor.py, src/bnb/play/overlays.py, src/bnb/play/predictions.py, src/bnb/play/render/predictions.py, src/bnb/play/tuning.py, src/bnb/play/tuning_panel.py, src/bnb/game/ships/]
 ---
 
 # Playing and spectating
@@ -208,32 +208,34 @@ value that is missing, unknown or malformed.
 **Tune the game** in the menu (or F2) opens the tuning panel over a live match. Every
 change takes effect while the match plays; pause first if you want to compare.
 
-- **Ships**: each ship type's handles, the quantities a designer sets (cruise speed,
-  sustained turn rate, climb time, gun range, shield, ...). Drag a value, or Ctrl+click it
-  and type one. The ships change on the next frame, from an instant estimate of the card
-  that meets the new values; when you stop, the exact card is solved in the background and
-  swapped in, a few seconds to a minute later. Under each value, **flying** shows what the
-  ships actually fly: red while it is more than 0.5% off the set value, "..." until it has
-  been measured.
+- **Ships**: choose a ship type at the top. Each handle (cruise speed, sustained turn rate,
+  climb time, half-lift drag, gun range, shield, ...) has a slider and, beside it, a number
+  box: click the box, type a value and press Enter. The ships change within a frame or
+  two, from an instant estimate of the card that meets the new values; when you stop, the
+  exact card is solved in the background and swapped in, seconds later. **flying** shows
+  what the ships actually fly: red while it is more than 0.5% off the set value, "..."
+  until it has been measured. The fire rate is a choice of the rates a ship can hold (whole
+  shots per second, a whole number of ticks apart). The bleed rate is shown, not set: the
+  half-lift drag (the drag of a half-stick turn over a full one) sets the drag's shape.
+- **Save ships** writes every type to its file in `src/bnb/game/ships/`, tracked in git:
+  the handles and the card. **Add a copy as this name** copies the chosen type under the
+  name in the field, and **Remove** deletes the chosen type; each starts a new match.
 - **Rules**, by group: the arena and the clocks, bullet life, the flight constants every
   type shares, spawns, and the current mode's rules (Frontline's zone radius and capture
-  time, team deathmatch's kills to win). They apply on the next tick; those marked
-  *(next episode)* are drawn at an episode's start. Hover a slider for the game's value.
-  The match runs uncompiled for a moment after a change, while the new rules compile.
-- Changing a flight constant or the bullet life re-measures the handles (the ships keep
-  their card, so what they fly changes); the handles cannot be set until it finishes.
-- A value the game cannot hold is refused with the reason, under the status line: a fire
-  rate is held to whole ticks between shots, and a fire rate or bullet life that would
-  need more than six bullets in flight per ship is refused.
-- **Presets**: **Save** writes the tuning under the name in the field to your configuration
-  directory (`tunings/<name>.json`: the changed rules and the whole ship card; the card is
-  what training's `ship_card` takes). **Load** applies one; **Game's numbers** goes back to
-  the game's.
+  time, team deathmatch's kills to win). Each has a slider and a number box, and applies on
+  the next tick; those marked *(next episode)* are drawn at an episode's start. Hover a
+  slider for the game's value.
+- Changing a flight constant re-measures the handles (the ships keep their card, so what
+  they fly changes); the handles cannot be set until it finishes, a few seconds.
+- **Presets**: **Save** writes the rule settings and the whole card to your configuration
+  directory (`tunings/<name>.json`; the card is what training's `ship_card` takes). **Load**
+  applies one; **Game's numbers** goes back to the ship files' and the rules' own.
 
 A new match or a restart keeps the tuning. Ship counts, fields and the lineup are set in
-**New match**. A trained agent plays only the card it trained with, so it refuses a tuned
-card when it loads; an agent already playing keeps playing. Replays record every change and
-play it back as it happened.
+**New match**. A trained agent given a ship card or lineup it was not trained with plays,
+with a warning. A tuned match is not recorded as a replay. The first time the panel opens
+on a machine, the solver's flights compile in the background (about a minute); after that
+they come from the cache.
 
 ## Keys
 

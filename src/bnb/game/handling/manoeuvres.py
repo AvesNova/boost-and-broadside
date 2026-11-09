@@ -244,7 +244,7 @@ class Flown(NamedTuple):
 CLIMB, DIVE, ZOOM, LOW_SPEED, SUSTAINED, BLEED, REVERSAL = range(7)
 
 
-def fly(rules: Rules, types: ShipTypes) -> Flown:
+def fly(rules: Rules, types: ShipTypes, tick_function=None) -> Flown:
     """Fly every manoeuvre of every card (B, num_types) in one batch and read the flown
     handles off it.
 
@@ -252,7 +252,10 @@ def fly(rules: Rules, types: ShipTypes) -> Flown:
     the zoom start from it. The sustained turn (full stick) and the bleed (BLEED_STICK)
     start at corner speed with the nose at its steady angle of attack; the sustained turn's
     store is held below the knee.
-    """
+
+    tick_function: the flight tick to fly with (the game's `flight_tick` by default; the
+    play shell's tuning passes a compiled one, which the runtime builds)."""
+    step = flight_tick if tick_function is None else tick_function
     types = batched(types)
     constants, h = rules.flight, rules.tick_length
     columns = type_axis(types)
@@ -299,7 +302,7 @@ def fly(rules: Rules, types: ShipTypes) -> Flown:
     tick, limit, check = 0, round(CLIMB_LIMIT / h), round(CLIMB_PROGRESS / h)
     pending, checkpoint = climb_time.isnan(), energy[:, :type_count]
     while tick < limit and (tick < max(short, settle) or pending.any()):
-        new = flight_tick(constants, flight, h, state, stick, power, fields)
+        new = step(constants, flight, h, state, stick, power, fields)
         path = path + path_turned(state, new)
         tick += 1
         before, after = state.energy[:, :type_count], new.energy[:, :type_count]

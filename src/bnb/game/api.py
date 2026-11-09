@@ -29,7 +29,9 @@ change, by key, and the rules with changed values), the ship card's handles (`Ha
 `solve_handles` (the card meeting handles, exact, with `SolveProgress` reports), `Estimate`
 (an instant estimate of that card, anchored on an exact one), `bleed_rate` (a card's bleed
 rate in closed form, shown beside the handles) and `Infeasible`; `ships` (the ship files:
-one per type, tracked in git) and `reload_ships` (read them again after writing).
+one per type, tracked in git) and `reload_ships` (read them again after writing);
+`flight_tick` (one tick of flight, which the handles' flights repeat: the runtime compiles
+it for them).
 
 For display (the play shell), with no rules of their own: `display` (the state's values a
 display draws, by name), `log_index` and `log_index_gradient` (the medium at points),
@@ -64,6 +66,7 @@ from .perception import sight
 from .perception.observe import perceive, view_order
 from .perception.sight import vision_range
 from .physics.bullets import Launch, launch_state, move_bullets
+from .physics.flight import flight_tick
 from .physics.medium import medium
 from .physics.step import move, reset, resolve, step
 from .rules import LN_SQRT2, MAP_SCALE_RADIUS, TEAMS, Rules, bullet_slots_for, rules_of
@@ -97,6 +100,7 @@ __all__ = [
     "default_card",
     "display",
     "episode_ticks",
+    "flight_tick",
     "launch_capture",
     "log_index",
     "log_index_gradient",

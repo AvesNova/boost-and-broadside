@@ -37,11 +37,13 @@ from bnb.game.handling import measure
 
 rules = api.rules_of(GameConfig(ships_per_team=1, num_fields=1, arena_radius=1000.0))
 handles = measure(api.ship_types(dtype=torch.float64), rules)
-print(handles.sustained_turn_rate, handles.bleed_rate)
+print(handles.sustained_turn_rate, handles.half_lift_drag)
 ```
 
-Every field of `bnb.game.handling.Handles` has one value per type (fighter, heavy). Angles
-are in radians, times in seconds.
+Every field of `bnb.game.handling.Handles` has one value per type, in the order of the ship
+files (`src/bnb/game/ships/`: fighter, heavy). Angles are in radians, times in seconds. The
+ship files hold each type's handles and card; the play shell's tuning panel (`bnb play`,
+F2) edits them live and saves them.
 
 ## 3. Change handles and solve
 

@@ -44,6 +44,7 @@ import torch
 
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
+from bnb.runtime.flights import compiled_flight_tick
 
 SETTLE = 0.6  # s the handles must be still before the exact solve starts
 PRESETS = pathlib.Path(platformdirs.user_config_dir("boost-and-broadside")) / "tunings"
@@ -110,7 +111,8 @@ def snap_handle(name: str, value: float, tick_length: float) -> float:
     return value
 
 
-HANDLES, RULES = 0, 1  # the shared version counters' slots
+HANDLES, RULES, WARM = 0, 1, 2  # the shared counters' slots; WARM: the flights compiled
+_STEP = None  # this worker process's compiled flight tick, once WARM is set
 
 
 @dataclasses.dataclass
@@ -129,6 +131,28 @@ class _Anchor:
 # `report` sends a result before the job ends (a solve's iterations).
 
 
+def _step(versions):
+    """The flight tick a worker flies with: compiled once the warm-up has filled the
+    compile cache (so compiling here is quick), the game's own until then."""
+    global _STEP
+    if not versions[WARM]:
+        return None
+    if _STEP is None:
+        _STEP = compiled_flight_tick()
+    return _STEP
+
+
+def _warm_job(versions, report, rules, types):
+    """Compile the flights for both batch sizes the tuner flies (a measurement, and a solve
+    iteration's card and perturbations) into the on-disk cache, then set WARM."""
+    step = compiled_flight_tick()
+    card = api.ShipTypes(**{n: v.double() for n, v in vars(types).items()})
+    handles = api.measure_handles(card, rules, step)
+    api.solve_handles(handles, rules, iterations=1, strict=False, start=types, tick_function=step)
+    versions[WARM] = 1
+    return ("warmed",)
+
+
 def _estimate(versions, report, version, estimate, targets):
     try:
         return ("estimated", version, estimate.card(targets), targets)
@@ -138,7 +162,7 @@ def _estimate(versions, report, version, estimate, targets):
 
 def _measure_job(versions, report, version, rules, types):
     card = api.ShipTypes(**{n: v.double() for n, v in vars(types).items()})
-    handles = api.measure_handles(card, rules)
+    handles = api.measure_handles(card, rules, _step(versions))
     anchor = _Anchor(types, handles, api.Estimate(rules, types, handles))
     flying = {name: getattr(handles, name).tolist() for name in api.HANDLE_NAMES}
     return ("measured", version, anchor, flying)
@@ -155,7 +179,13 @@ def _solve_job(versions, report, version, rules_version, targets, rules, start):
         report(("progress", version, state.types, state.flown))
 
     solution = api.solve_handles(
-        targets, rules, start=start, progress=progress, cancel=stale, strict=False
+        targets,
+        rules,
+        start=start,
+        progress=progress,
+        cancel=stale,
+        strict=False,
+        tick_function=_step(versions),
     )
     if stale() or not last:
         return ("solved", version, rules_version, None, False, "")
@@ -264,10 +294,12 @@ class Tuner:
         self.shown: dict[str, list[float]] = {}
         self._anchor: _Anchor | None = None
         self._context = context = multiprocessing.get_context("spawn")
-        self._versions = context.Array("q", 2, lock=False)
+        self._versions = context.Array("q", 3, lock=False)
         self._fast = _Worker(context, "tuning-estimate", self._versions)
         self._slow = _Worker(context, "tuning-solve", self._versions)
         self._traits: _Worker | None = None  # the scripted agent's, started when one plays
+        self._warm: _Worker | None = _Worker(context, "tuning-warm", self._versions)
+        self._warm.submit(_warm_job, loop.rules, loop.types)
         self._card = 0  # counts the cards the match has played, for the characteristics
         self._handles_changed: float | None = None
         self._solving: int | None = None  # the handles version a solve is running for
@@ -368,7 +400,7 @@ class Tuner:
         """Stop the workers (a match that ends): what they are computing is dropped."""
         self._rules_version += 1
         self._handles_version += 1
-        for worker in (self._fast, self._slow, self._traits):
+        for worker in (self._fast, self._slow, self._traits, self._warm):
             if worker is not None:
                 worker.stop()
 
@@ -397,8 +429,11 @@ class Tuner:
     def update(self) -> None:
         """Apply what the workers finished and start what is due (each frame, on the main
         thread)."""
-        traits = self._traits.results() if self._traits is not None else []
-        for result in self._fast.results() + self._slow.results() + traits:
+        found = self._fast.results() + self._slow.results()
+        for worker in (self._traits, self._warm):
+            if worker is not None:
+                found += worker.results()
+        for result in found:
             self._apply(result)
         now = time.monotonic()
         if (
@@ -436,6 +471,10 @@ class Tuner:
             self.targets = self._applied = anchor.handles
             self.flying, self.exact = flying, True
             self._characterise(anchor.types)
+            return
+        if kind == "warmed":
+            self._warm.stop()
+            self._warm = None
             return
         if kind == "anchored":
             _, version, anchor = result

@@ -56,7 +56,7 @@ handles are read off flights at the standard field index (no fields).
 | `ceiling` | the store size | the store size |
 | `low_speed_acceleration` | flown: the start rate of speed at the stall speed, store empty | the static-thrust cap |
 | `sustained_turn_rate` | flown: the settled full-stick coasting turn, store held below the engine knee | the induced-drag factor |
-| `bleed_rate` | flown: the start rate of specific energy at corner speed, the middle stick level, nose at its steady angle of attack | the bleed exponent |
+| `half_lift_drag` | `0.5^e`: the induced drag at half lift over that at full lift | the bleed exponent |
 | `nose_reversal_time` | flown: from a settled full-stick turn at corner speed, the time to 90% of the reversed steady angle of attack | the nose frequency |
 | `dive_acceleration` | flown: the start rate of speed in a boost from cruise, store half full | the dive exchange |
 | `zoom_acceleration` | flown: the start rate of speed in a reverse from cruise, store half full | the climb exchange |
@@ -64,9 +64,21 @@ handles are read off flights at the standard field index (no fields).
 | `vision_range` | the observer's range | the vision range |
 | `zero_lift_drag` | the zero-lift drag coefficient | itself; the solver holds it |
 
-The sustained turn and the bleed rate set the induced drag's factor and exponent. They are
-turns at different stick levels, full and middle, and so at different lifts: the exponent
-changes their ratio, which keeps the two handles apart.
+The sustained turn and the half-lift drag set the induced drag's size and shape. The
+sustained turn flies at full lift (the lift fraction about 0.99), where the shape does not
+matter, so it sets the drag at full lift; the half-lift drag sets how fast the drag falls
+below it. A low half-lift drag (a high exponent) is a ship that turns hard but bleeds fast
+in hard turns and keeps its energy in gentle ones; a high one spreads the cost.
+
+**Why the shape is a direct handle (author, 2026-11-09).** It used to be flown: the bleed
+rate, the specific energy rate at corner speed and three-quarter stick, set the exponent.
+That turn flies at a lift fraction of about 0.76, so the two handles measured the drag
+curve at nearly the same point: the exponent's leverage between them was ln(0.99/0.76),
+about 0.26, and holding the bleed rate while the sustained turn moved 10% swung the
+exponent from 2 to about 0.8 or 3.2 (at a third more turn no exponent held it). With the
+shape set directly the default card's condition number fell from 16-17 to about 9 and 7.
+The bleed rate is still shown: the flights measure it (`Flown.bleed_rate`), and
+`bnb.game.handling.estimate.bleed_rate_now` gives it in closed form within 1%.
 
 **Why the zero-lift drag is held.** Under the cruise fix (below), the engine's full-store
 power is the drag's power at cruise. Whatever the zero-lift drag, the full-store power that
@@ -106,28 +118,27 @@ changes from positive to negative.
 numbers of ticks at the rules' tick, or the solve fails with the reason: the fighter's
 15 Hz is 2 ticks at 30 Hz, 4 at 60 Hz, and no whole number at 25 Hz. The game refuses such
 a card at reset too (`bnb.game.ship_types.ticks_between_shots`, in exact fractions). The
-eight flown handles set eight parameters
+seven flown handles set seven parameters
 (`bnb.game.handling.solver.FLOWN_PARAMETERS`{.nolink}):
 
 1. **The cruise fix.** Cruise does not depend on the store: the engine power below the
    knee is the full-store power plus the charging power at cruise,
    `P = P_min + m a_0 u_cruise`. The solver derives `P` this way, and solves the full-store power so that
    the flown cruise meets its handle.
-2. **First guess.** At each bleed exponent of `EXPONENT_SCAN`, every other parameter
-   inverts the game's instantaneous equations (`setting` and `rates` in
-   `bnb.game.physics.flight`) at its manoeuvre's state. The candidates fly in one batch and
-   each card and type starts from its best. The nose frequency comes from the reversal
+2. **First guess.** At the exponent the half-lift drag sets, every parameter inverts the
+   game's instantaneous equations (`setting` and `rates` in `bnb.game.physics.flight`) at
+   its manoeuvre's state. The nose frequency comes from the reversal
    time with the damping lift adds to the nose: at corner speed, where the reversal flies,
    the angle error obeys `e'' + (kappa + 2 zeta omega_c) e' + omega_c^2 e = 0`, `kappa` the
    path slope, so its damping ratio is `zeta + kappa / (2 omega_c)`, about 0.9 rather than
    `zeta` = 0.7. Without that term the guess was a third low and flew the reversal 70-100%
-   slow; with it, the first guess flies every flown handle but the bleed rate within a few
-   percent (`tests/sections/test_ship_card.py::test_first_guess_flies_close_to_its_handles`).
+   slow; with it, the first guess flies every flown handle within a few percent
+   (`tests/sections/test_ship_card.py::test_first_guess_flies_close_to_its_handles`).
 3. **Levenberg-Marquardt** on the relative errors of the flown handles, in the logs of the
    parameters, with a finite-difference Jacobian. Each iteration flies the card and its
-   eight perturbations in one batch. The induced drag is solved as its value at full lift,
-   `k C_max^(e-2)`, which keeps the bleed exponent from rescaling the whole polar. The bleed
-   exponent stays within `EXPONENT_BOUNDS`.
+   seven perturbations in one batch. The induced drag is solved as its value at full lift,
+   `k C_max^(e-2)`, so the exponent reshapes the curve below full lift without rescaling
+   it. A half-lift drag outside `EXPONENT_BOUNDS`' range is infeasible before any flight.
 4. **Stop** when every flown handle is within `TOLERANCE` of its target, or after
    `ITERATIONS` iterations.
 
@@ -141,11 +152,15 @@ its manoeuvre flies (`REVERSAL_LIMIT` and `CLIMB_LIMIT` in
 `bnb.game.handling.manoeuvres`), with the window named. A condition number above
 `CONDITION_WARNING` raises a `bnb.game.handling.RedundantHandles` warning.
 
-For live tuning, `solve` also takes `start` (a card to start from instead of the exponent
-scan: near the answer it converges in two or three iterations), `progress` (called after
+For live tuning, `solve` also takes `start` (a card to start from instead of the first
+guess: near the answer it converges in two or three iterations), `progress` (called after
 every iteration with the best card so far and the flown handles it flies,
-`bnb.game.handling.solver.Progress`) and `cancel` (asked before every iteration; True
-returns the best card so far).
+`bnb.game.handling.solver.Progress`), `cancel` (asked before every iteration; True returns
+the best card so far) and `tick_function` (the flight tick to fly with; `measure` takes it
+too). The
+play shell passes a compiled flight tick (`bnb.runtime.flights`): a measurement then takes
+about 1 s instead of 12.5 s and a warm-started solve about 4 s instead of 40 (on the
+development CPU), after a one-time compile per batch size that the on-disk cache keeps.
 
 ## Estimating
 
@@ -154,27 +169,26 @@ slider. `bnb.game.handling.estimate.Estimate` answers at once, from closed forms
 anchored on an exact card and its handles: each field of the estimated card is the
 anchor's times the ratio between the closed forms (`closed_card`) at the new handles and
 at the anchor's. At the anchor it is the anchor exactly; away from it the closed forms'
-systematic errors mostly cancel. `closed_card` is the first guess at the bleed exponent
-where the bleed rate's closed form meets its handle: the bleed rate is the specific energy
-rate at the bleed manoeuvre's start (`bleed_rate_now`), which the game's `rates` give
-without flying.
+systematic errors mostly cancel. `closed_card` is the solver's first guess.
 
 Measured on the default card (fighter and heavy), moving one flown handle by 10%, the
-estimated card flies the moved handle within 1.5% and every other flown handle within 1.4%,
-except the sustained turn rate (itself within 2.2%), which drags another handle 6-12% off. The sustained turn
-and the bleed rate are strongly coupled: at a fixed bleed exponent, 10% more sustained turn
-changes the bleed rate by about half, so holding the bleed rate moves the exponent from 2
-to about 0.8 or 3.2, where the closed forms are least accurate; at a third more sustained
-turn no exponent in `EXPONENT_BOUNDS` holds it at all. Moves of 25-33% of the other
-handles stay within 6.5%. The play shell's tuning panel applies the estimate at once and the
-exact solve, started from it, once the handles settle (`bnb.play.tuning`).
+estimated card flies the moved handle within 0.8% and every other flown handle within
+1.5%, except the sustained turn rate, which moves the low-speed acceleration 3-4%: both
+fly at full lift, so the drag at full lift the turn sets is also the drag at the stall
+speed, and the static-thrust cap's closed form is least accurate when it has to absorb a
+large change (a quarter less sustained turn moves the low-speed acceleration 29%). The
+direct handles move the flown ones at most 3.2% (the stall speed and the g limit set the
+corner speed every turn is flown at). Moves of 25-33% stay within about 7% but that one. The
+play shell's tuning panel applies the estimate at once and the exact solve, started from
+it, once the handles settle (`bnb.play.tuning`).
 ## How independent the handles are
 
 On the default card (measured on the development laptop's CPU, the cases in
 `tests/sections/ship_card_cases.py`), re-solving after moving one flight handle by 5% holds
-every other flight handle within 1e-6 for all 28 moves. The largest change of the bleed
-exponent is to 1.4 (the sustained turn rate up 5%), and the condition numbers stay between
-11 and 34. The details are in `docs/rewrite/sections/ship-card-notes.md`.
+every other flight handle within the acceptance band for all 28 moves
+(`tests/sections/test_ship_card.py::test_independence`), and the default card's condition
+numbers are about 9 (fighter) and 7 (heavy). The details from when the bleed rate was a
+handle are in `docs/rewrite/sections/ship-card-notes.md`.
 
 ## The reference chart
 
