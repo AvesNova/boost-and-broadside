@@ -477,3 +477,11 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   decay (tau = infinity) holds the rates forever, the divergence the decay was added against (a
   held thrust integrates without bound): it needs a top-speed clamp or a long finite tau (10 s).
   Aborted nodecay at its first update (in `runs/failed/`); hiddenphysics-seed1 runs meanwhile.
+- **10:00 KST The author chose: without the fade first, then the fade on the best tau.** Three
+  arms on the hidden-physics base (`round6b.sh`, after hiddenphysics-seed1): **tau1.25** and
+  **tau10** (both `extrapolation_decay` and `physics_hidden_decay` set to the same tau; 10 s = the
+  author's "no decay", bounded), and **fade** (tau 0.5 with the new `physics_hidden_fade`: a
+  hidden row's forecast = baseline + exp(-age/tau) x the physics change; built by a background
+  agent on `feat/physics-hidden-fade`, CPU only; the runner waits for it to be merged). The
+  existing hiddenphysics is the tau 0.5 point. Then tournament 4: every 30M policy on the
+  correct base (11 players, both seed pairs).
