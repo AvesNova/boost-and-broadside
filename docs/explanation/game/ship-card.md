@@ -1,5 +1,5 @@
 ---
-covers: [src/bnb/game/handling/, src/bnb/game/ship_types.py]
+covers: [src/bnb/game/handling/, src/bnb/game/ship_types.py, src/bnb/game/ships.py]
 reviewed: 2026-11-03 09:45
 ---
 
@@ -40,6 +40,31 @@ Whose value applies: the flight and shield values are the ship's own; the bullet
 drag are the shooter's; the head-on fraction is the target's; the vision range is the
 observer's. Perception takes no card, so the observers' ranges are kept in the state,
 `Match.vision_range`, written by every reset and every tick.
+
+## Ship sets
+
+The ship types live in tracked files, one per type, grouped in **ship sets**
+(`bnb.game.ships`). The standard set is `src/bnb/game/ships/` itself; every other set is
+a subdirectory of it named after the set (`src/bnb/game/ships/real-scale/`). In each set,
+`order.toml` lists the types: a type's index (its card column, its lineup entry) is its
+place there. A type's file holds its display name, its handles, its card and, optionally,
+`[notes]`: where each handle's value comes from, kept through a save.
+
+A game names its set, `GameConfig.ship_set` ("standard" by default); the whole batch
+shares it. `bnb.game.ship_types.ship_types`, `default_card` and `type_names` take the set
+(the standard one by default) and read its files once; `reload` reads every set again
+after a save. A set may hold `rules.toml`, the rule values its cards were solved under:
+`[rules]` (`Rules` fields, and `bullet_life` in seconds), `[flight]` (`FlightConstants`)
+and `[mode]` (`ModeRules`). `rules_of` and `mode_rules_of` apply them where the caller
+does not override them, so a card always flies under its own rules. The standard set has
+none: it is the game's own rules, and its card is the default card.
+
+The card follows the set everywhere a game is built: training's `ship_card` defaults to the
+game's set's card (a mixed batch shares one set), a rated match plays the card its
+policies were trained with (`bnb.league.matches.card_of`, from each policy record's
+`ship_card`; two policies with different cards cannot share a match), and the play shell
+names ships, tunes, saves and replays in the match's set. A set may hold many types; the
+New match lineup offers them by name, one dropdown per slot.
 
 ## The handles
 

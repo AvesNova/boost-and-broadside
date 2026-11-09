@@ -17,6 +17,7 @@ in [The play shell](../explanation/in-progress/play-shell.md).
 ```bash
 uv run bnb play
 uv run bnb play --preset frontline --view team0 --seed 3
+uv run bnb play --preset real_scale_frontline
 uv run bnb play --agent1 runs/<run>/policy
 ```
 
@@ -86,8 +87,11 @@ bottom shows the shield, energy, power and stick:
 The menu (the top bar's menu button, or Escape) pauses a live match and offers **Resume**,
 **Restart**, **New match**, **Replays**, **Save replay**, **Settings** and **Quit**.
 
-**New match** chooses the mode, the map (standard or wide), the ships a side, the
-fields, the lineup (each slot's ship type, the same for both teams), fog, the seed, and
+**New match** chooses the mode, the map (**Standard**, **Wide**, or **Real scale**: the
+[real-scale variant](../explanation/game/real-scale.md), where a metre is a metre and the
+fighter flies like a P-51D, on a map three times the standard one), the ships a side, the
+fields, the lineup (a dropdown per slot of the map's ship types, the same for both teams;
+**Default** alternates the first two), fog, the seed, and
 each side's controller: **Scripted** (the chaser), **Scripted agent** (the scripted agent
 with its memory, `bnb.controllers.scripted.Scripted`: it remembers each enemy it saw and
 dead reckons it while hidden; `--scripted0 scripted_agent` starts with it) or a trained
@@ -220,8 +224,10 @@ compare.
   rate is a choice of the rates a ship can hold (whole shots per second, a whole number of
   ticks apart). The bleed rate is shown, not set: the half-lift drag (the drag of a
   half-stick turn over a full one) sets the drag's shape.
-- **Save ships** writes every type to its file in `src/bnb/game/ships/`, tracked in git:
-  the handles and the card. **Add a copy as this name** copies the chosen type under the
+- **Save ships** writes every type to its file in the match's ship set (`src/bnb/game/ships/`
+  for the standard set, `src/bnb/game/ships/real-scale/` for the real-scale one), tracked
+  in git: the handles and the card, and the tuned flight constants and bullet life into
+  the set's `rules.toml`, as the cards fly under them. **Add a copy as this name** copies the chosen type under the
   name in the field, and **Remove** deletes the chosen type after asking; each starts a new
   match. The last type cannot be removed.
 - **Rules**, by group: the arena and the clocks, bullet life, the flight constants every
@@ -231,11 +237,19 @@ compare.
   the game's value.
 - Changing a flight constant re-measures the handles (the ships keep their card, so what
   they fly changes); the handles cannot be set until it finishes, a few seconds.
-- **Presets**: **Save** writes the rule settings and the whole card to your configuration
-  directory (`tunings/<name>.json`; the card is what training's `ship_card` takes). **Load**
-  applies one; **Game's numbers** goes back to the ship files' and the rules' own.
+- **Time scale**: **Apply** makes the whole game the given factor faster with the map's
+  lengths fixed (speeds x k, gravity and accelerations x k^2, rates and fire rates x k,
+  times / k, energies x k^2, so a store keeps its height). Fire rates snap to whole Hz that
+  divide 30, and bullet life, clocks and shield delays to whole ticks; the message says
+  what snapped. **Make this speed 1×** takes the playback speed (×¼ to ×8 in the top bar)
+  as the factor and sets playback back to ×1: pick the speed at which the game feels
+  right, then make it the game's own. Save ships and a preset keep the result.
+- **Presets**: **Save** writes the ship set, the rule settings and the whole card to your
+  configuration directory (`tunings/<name>.json`; the card is what training's `ship_card`
+  takes). **Load** applies one to a match of the same set; **Game's numbers** goes back to
+  the ship files' and the rules' own.
 
-A new match or a restart keeps the tuning. Ship counts, fields and the lineup are set in
+A new match or a restart keeps the tuning, unless it plays another ship set. Ship counts, fields and the lineup are set in
 **New match**. A trained agent given a ship card or lineup it was not trained with plays,
 with a warning. A tuned match is not recorded as a replay. The first time the panel opens
 on a machine, the solver's flights compile in the background (about a minute); after that

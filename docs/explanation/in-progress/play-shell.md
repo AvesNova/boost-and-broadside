@@ -224,15 +224,39 @@ plays, through `bnb.play.tuning.Tuner` and `MatchLoop.retune`:
   whole shots per second a whole number of ticks apart.
 - The scripted agent's characteristics are re-measured for each exact card. A trained
   agent plays a card or lineup it was not trained with, with a warning.
-- A new match or a restart keeps the tuning (`MatchSetup.tuning`). A tuned match is not
-  recorded: a replay re-simulates with the numbers it started from.
+- A new match or a restart keeps the tuning (`MatchSetup.tuning`) when it plays the same
+  ship set; a match of another set starts untuned. A tuned match is not recorded: a replay
+  re-simulates with the numbers it started from.
 
-**Ship types** live in tracked files, one per type (`src/bnb/game/ships/`, `bnb.game.ships`):
-the handles the type flies and the card the game reads, in the order of `order.toml`. The
-default card is read from them. The panel's **Save ships** writes them; **Add** copies the
-chosen type under a new name and **Remove** deletes one (after a confirmation popup; the
-last type stays), each starting a new match with the lineup remapped. Rule presets (`bnb.play.tuning.Presets`) save the rule settings and the
-whole card to the user's configuration directory.
+**The time scale** (the panel's *Time scale*, `Tuner.time_scale`) makes the whole game k
+times faster with the map's lengths fixed, by the units of every quantity
+(`bnb.game.handling.similarity`): speeds x k, accelerations and gravity x k^2, rates and
+fire rates x k, times / k, energies x k^2 and specific powers x k^3. Energies scale with
+gravity, so a store keeps its height (energy / g): a time-scaled game is an exact
+similarity of the original, up to the tick, which stays at 30 Hz, and the values held to
+whole ticks or Hz (bullet life, clocks, shield delays, fire rates), which snap; the
+panel's message lists what snapped. The rule settings change through
+`api.tuning.tuned(..., bounded=False)` (a scaled value may lie past a slider's end); the
+card is transformed in closed form, with the shared values no setting holds (the
+exchanges, the bullet spread, the shield recharge) scaled through the card's per-type
+scales; then the handles are re-measured. **Make this speed 1×** takes the playback speed
+(×¼ to ×8, `bnb.play.loop.TIME_SCALES`) as k and sets playback back to ×1, so the match
+looks the same and plays at real time.
+
+**Ship types** live in tracked files, one per type, in ship sets (`bnb.game.ships`; see
+[The ship card](../game/ship-card.md#ship-sets)): the handles the type flies and the card
+the game reads, in the order of `order.toml`. A match plays its config's set
+(`GameConfig.ship_set`), whose default card is read from them. The panel's **Save ships**
+writes the match's set, and the tuned flight constants and bullet life with it (into the
+set's `rules.toml`: the rules its cards fly under); **Add** copies the chosen type under a
+new name and **Remove** deletes one (after a confirmation popup; the last type stays),
+each starting a new match with the lineup remapped. Rule presets
+(`bnb.play.tuning.Presets`) save the ship set, the rule settings and the whole card to the
+user's configuration directory; a preset loads only into a match of its set.
+
+**New match** offers one map per game preset's map (`bnb.play.interface.menus.maps`: a
+preset's name without its mode's word, so Standard, Wide and Real scale), and a dropdown
+per lineup slot listing the map's ship set's types by name, five to a row.
 
 ## Themes
 
