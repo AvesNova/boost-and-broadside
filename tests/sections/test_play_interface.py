@@ -262,3 +262,40 @@ def test_the_tuning_panel_opens_from_the_menu_and_a_restart_keeps_the_tuning(con
     assert not session.tuning_panel.open
     player.frames(2)
     session.close()
+
+
+def test_the_tuning_panel_adds_and_removes_ships(context, tmp_path, monkeypatch):
+    """Adding a copy of a ship type writes its file and starts a match with three types;
+    removing it goes back to two (the ship files here are a copy)."""
+    import shutil
+    import time
+
+    from bnb.game import api, ships
+
+    copy = tmp_path / "ships"
+    shutil.copytree(ships.SHIPS, copy)
+    monkeypatch.setattr(ships, "SHIPS", copy)
+    try:
+        session = _session(context, tmp_path, preset="frontline")
+        player = Player(session, context, 1280, 720)
+        session.toggle_tuning()
+        deadline = time.monotonic() + 300.0
+        while session.tuner.targets is None and time.monotonic() < deadline:
+            player.frames()
+            time.sleep(0.02)
+        panel = session.tuning_panel
+        panel.new_ship = "Scout"
+        panel._add(session, session.tuner)
+        assert api.type_names() == ("Fighter", "Heavy", "Scout")
+        assert (copy / "scout.toml").is_file()
+        assert session.loop.types.max_energy.shape == (3,)
+        player.frames(3)
+        panel.ship = 2
+        panel._remove(session, session.tuner)
+        assert api.type_names() == ("Fighter", "Heavy") and not (copy / "scout.toml").exists()
+        assert session.loop.types.max_energy.shape == (2,)
+        player.frames(3)
+        session.close()
+    finally:
+        monkeypatch.undo()
+        api.reload_ships()

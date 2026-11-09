@@ -17,40 +17,76 @@ import torch
 
 from bnb.contracts.tree import contract
 
+from . import ships
+
 FIGHTER, HEAVY = 0, 1
 RATE_DENOMINATOR = 1000  # a rate is read as a fraction with at most this denominator
 
-# Game spec 1.1, by type: fighter, heavy (spec key in brackets).
-DEFAULTS = dict(
-    max_lift_coefficient=(0.027, 0.022),  # 1/m [cl_max]
-    max_acceleration=(216.0, 160.0),  # m/s^2, the g limit [a_max]
-    zero_lift_drag=(6.9612e-4, 8.5e-4),  # 1/m [cd0]
-    engine_power=(1200.0, 1500.0),  # W, below the knee [power]
-    engine_power_full_store=(863.2, 1100.0),  # W [p_min]
-    static_thrust=(20.0, 24.0),  # N [f_static]
-    max_energy=(10_000.0, 14_000.0),  # J [e_max]
-    corner_nose_frequency=(22.0, 16.0),  # rad/s at corner speed [omega_c]
-    max_shield=(100.0, 160.0),  # [shield_max]
-    hit_radius=(8.0, 11.0),  # m
-    hit_damage=(12.0, 16.0),  # [damage]
-    muzzle_speed=(500.0, 450.0),  # m/s, proper
-    bullet_energy_cost=(300.0, 360.0),  # J [bullet_cost]
-    fire_rate=(15.0, 10.0),  # shots/s; 2 and 3 ticks between shots at 30 Hz [fire_interval]
-    spawn_energy=(4000.0, 5600.0),  # J
-    bleed_exponent=(2.0, 2.0),  # e: induced drag k (C^2 + (z/u^2)^2)^(e/2)
+# Game spec 1.1: the card's fields, with their units (spec key in brackets). The values, one
+# per ship type, live in the ship files (`bnb.game.ships`) and are read into DEFAULTS.
+FIELDS = dict(
+    max_lift_coefficient="1/m [cl_max]",
+    max_acceleration="m/s^2, the g limit [a_max]",
+    zero_lift_drag="1/m [cd0]",
+    engine_power="W, below the knee [power]",
+    engine_power_full_store="W [p_min]",
+    static_thrust="N [f_static]",
+    max_energy="J [e_max]",
+    corner_nose_frequency="rad/s at corner speed [omega_c]",
+    max_shield="[shield_max]",
+    hit_radius="m",
+    hit_damage="[damage]",
+    muzzle_speed="m/s, proper",
+    bullet_energy_cost="J [bullet_cost]",
+    fire_rate="shots/s; 2 and 3 ticks between shots at 30 Hz [fire_interval]",
+    spawn_energy="J",
+    bleed_exponent="e: induced drag k (C^2 + (z/u^2)^2)^(e/2)",
     # Per-type scales of shared values (SCALED), 1 by default.
-    induced_drag_scale=(1.0, 1.0),  # of flight.induced_drag_factor [k]
-    stall_angle_scale=(1.0, 1.0),  # of flight.stall_angle [alpha_s]
-    coast_exchange_scale=(1.0, 1.0),  # of flight.coast_exchange [a_0]
-    dive_exchange_scale=(1.0, 1.0),  # of flight.dive_exchange [a_d]
-    climb_exchange_scale=(1.0, 1.0),  # of flight.climb_exchange [a_c]
-    vision_range_scale=(1.0, 1.0),  # of rules.vision_range; the observer's [V]
-    bullet_spread_scale=(1.0, 1.0),  # of rules.bullet_spread; the shooter's [sigma_b]
-    bullet_drag_scale=(1.0, 1.0),  # of rules.bullet_drag; the shooter's [k_b]
-    shield_recharge_rate_scale=(1.0, 1.0),  # of rules.shield_recharge_rate
-    shield_recharge_delay_scale=(1.0, 1.0),  # of rules.shield_recharge_delay
-    head_on_fraction_scale=(1.0, 1.0),  # of rules.head_on_fraction; the target's [f_0]
+    induced_drag_scale="of flight.induced_drag_factor [k]",
+    stall_angle_scale="of flight.stall_angle [alpha_s]",
+    coast_exchange_scale="of flight.coast_exchange [a_0]",
+    dive_exchange_scale="of flight.dive_exchange [a_d]",
+    climb_exchange_scale="of flight.climb_exchange [a_c]",
+    vision_range_scale="of rules.vision_range; the observer's [V]",
+    bullet_spread_scale="of rules.bullet_spread; the shooter's [sigma_b]",
+    bullet_drag_scale="of rules.bullet_drag; the shooter's [k_b]",
+    shield_recharge_rate_scale="of rules.shield_recharge_rate",
+    shield_recharge_delay_scale="of rules.shield_recharge_delay",
+    head_on_fraction_scale="of rules.head_on_fraction; the target's [f_0]",
 )
+
+
+def _defaults() -> dict[str, tuple[float, ...]]:
+    """The card's values by field, one per ship type in the ship files' order."""
+    found = ships.load()
+    for ship in found:
+        if set(ship.card) != set(FIELDS):
+            missing, unknown = (
+                sorted(set(FIELDS) - set(ship.card)),
+                sorted(set(ship.card) - set(FIELDS)),
+            )
+            raise ValueError(f"ship {ship.key}: card lacks {missing} and has unknown {unknown}")
+    return {name: tuple(ship.card[name] for ship in found) for name in FIELDS}
+
+
+DEFAULTS = _defaults()
+TYPE_NAMES = ships.names()
+
+
+def type_names() -> tuple[str, ...]:
+    """The ship types' display names, in the card's order (the ship files' `name`)."""
+    return TYPE_NAMES
+
+
+def reload() -> None:
+    """Read the ship files again (after the tuning panel saved them): the default card and
+    the type names follow them, in place."""
+    global TYPE_NAMES
+    DEFAULTS.clear()
+    DEFAULTS.update(_defaults())
+    TYPE_NAMES = ships.names()
+
+
 # Card field -> (owner in Rules, shared field) for the per-type scales.
 SCALED = dict(
     induced_drag_scale=("flight", "induced_drag_factor"),
@@ -69,7 +105,7 @@ SCALED = dict(
 
 @contract
 class ShipTypes:
-    """Ship-card parameters by type, float; see DEFAULTS for units and SCALED for the
+    """Ship-card parameters by type, float; see FIELDS for units and SCALED for the
     scales. Times are time-native: the fire rate becomes ticks with `ticks_between_shots`."""
 
     max_lift_coefficient: torch.Tensor

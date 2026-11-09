@@ -150,3 +150,48 @@ def test_presets_round_trip(tmp_path):
     with pytest.raises(ValueError, match="lowercase"):
         presets.save("Fast Guns", tuning, tuning.types())
     assert set(__import__("json").loads(path.read_text())["ship_card"]) == set(api.default_card())
+
+
+# ------------------------------------------------------------------ the ship files
+
+
+@pytest.fixture
+def ship_files(tmp_path, monkeypatch):
+    """A copy of the ship files to change; the game's defaults are read back from the real
+    ones afterwards."""
+    import shutil
+
+    from bnb.game import ships
+
+    copy = tmp_path / "ships"
+    shutil.copytree(ships.SHIPS, copy)
+    monkeypatch.setattr(ships, "SHIPS", copy)
+    yield copy
+    monkeypatch.undo()
+    api.reload_ships()
+
+
+def test_the_default_card_is_the_ship_files():
+    from bnb.game import ships
+
+    files = ships.load()
+    assert api.type_names() == tuple(ship.name for ship in files) == ("Fighter", "Heavy")
+    for name, value in vars(api.ship_types(dtype=torch.float64)).items():
+        assert value.tolist() == [ship.card[name] for ship in files], name
+    assert set(files[0].handles) == set(api.HANDLE_NAMES)
+
+
+def test_ship_files_round_trip_and_a_new_type_joins_the_card(ship_files):
+    from bnb.game import ships
+
+    files = ships.load()
+    scout = ships.Ship(
+        "scout", "Scout", dict(files[0].handles), dict(files[0].card, hit_damage=7.0)
+    )
+    ships.write([*files, scout])
+    api.reload_ships()
+    assert api.type_names() == ("Fighter", "Heavy", "Scout")
+    assert api.ship_types().hit_damage.tolist() == [12.0, 16.0, 7.0]
+    ships.write(files[:1])
+    api.reload_ships()
+    assert api.type_names() == ("Fighter",) and not (ship_files / "heavy.toml").exists()

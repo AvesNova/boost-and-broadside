@@ -22,6 +22,7 @@ import numpy as np
 from imgui_bundle import imgui
 
 from bnb.contracts import GameConfig
+from bnb.game import api
 from bnb.game.api import PRESETS
 
 from . import predictions, themes
@@ -315,6 +316,21 @@ class Session:
         self._ensure_tuner()
         if self.tuner is not None:
             self.tuner.load(tuning)
+
+    def save_ships(self, ships: list, moved: dict[int, int | None] | None = None) -> None:
+        """Write the ship files (`api.ships`, tracked in git) and play on with them. The
+        current card becomes the files' default, so the match plays on as it is; when the
+        types change (`moved`: each old type's new index, None for a removed one), a new
+        match starts with the lineup remapped (a removed type's slots take the first type)."""
+        api.ships.write(ships)
+        api.reload_ships()
+        if moved is None:
+            return
+        setup = self.loop.setup
+        lineup = setup.lineup or self.loop.rules.team_types
+        lineup = tuple(moved.get(kind) or 0 for kind in lineup)
+        tuning = Tuning(rules=self.current_tuning().rules)  # the card is the files' now
+        self.start(dataclasses.replace(setup, lineup=lineup, tuning=tuning))
 
     def _on_retune(self, realtime) -> None:
         """A live change: the match is tuned from here, so its recording is dropped (a

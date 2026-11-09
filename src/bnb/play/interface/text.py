@@ -1,15 +1,17 @@
 """Names and numbers as the interface writes them: ships by type and slot, clocks, and
-the ship card's types."""
+the ship card's types (their names from the ship files, `bnb.game.api.type_names`)."""
 
 import numpy as np
 
-TYPE_NAMES = ("Fighter", "Heavy")  # by ship type (the ship card's order)
+from bnb.game import api
+
 TEAM_NAMES = ("Team 0", "Team 1")
 
 
 def type_name(ship_type: int) -> str:
-    """A ship type's name ("Type 7" for a type without one)."""
-    return TYPE_NAMES[ship_type] if 0 <= ship_type < len(TYPE_NAMES) else f"Type {ship_type}"
+    """A ship type's name, from its ship file ("Type 7" for a type without one)."""
+    names = api.type_names()
+    return names[ship_type] if 0 <= ship_type < len(names) else f"Type {ship_type}"
 
 
 def slot_of(team: np.ndarray, index: int) -> int:

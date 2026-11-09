@@ -1,0 +1,62 @@
+# Fighter: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
+# it; [card] is solved from [handles], so edit the handles, not the card.
+name = 'Fighter'
+
+[handles]
+# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
+stall_speed = 31.622776601683793
+g_limit = 8.0
+cruise_speed = 103.71953977608814
+climb_time = 159.88902593512495
+ceiling = 10000.0
+low_speed_acceleration = 9.584915105884761
+sustained_turn_rate = 1.2192760993587262
+half_lift_drag = 0.25
+nose_reversal_time = 0.1967385743932851
+dive_acceleration = 30.005430773460716
+zoom_acceleration = -23.994409685218443
+stall_angle = 0.2617993877991494
+vision_range = 1024.0
+zero_lift_drag = 0.00069612
+hit_damage = 12.0
+fire_rate = 15.0
+muzzle_speed = 500.0
+bullet_spread = 12.0
+gun_range = 220.78825575951785
+shots_per_store = 33.333333333333336
+max_shield = 100.0
+shield_recharge_rate = 12.0
+shield_recharge_delay = 6.0
+head_on_fraction = 0.3
+hit_radius = 8.0
+spawn_energy = 4000.0
+
+[card]
+# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).
+max_lift_coefficient = 0.027
+max_acceleration = 216.0
+zero_lift_drag = 0.00069612
+engine_power = 1200.0
+engine_power_full_store = 863.2
+static_thrust = 20.0
+max_energy = 10000.0
+corner_nose_frequency = 22.0
+max_shield = 100.0
+hit_radius = 8.0
+hit_damage = 12.0
+muzzle_speed = 500.0
+bullet_energy_cost = 300.0
+fire_rate = 15.0
+spawn_energy = 4000.0
+bleed_exponent = 2.0
+induced_drag_scale = 1.0
+stall_angle_scale = 1.0
+coast_exchange_scale = 1.0
+dive_exchange_scale = 1.0
+climb_exchange_scale = 1.0
+vision_range_scale = 1.0
+bullet_spread_scale = 1.0
+bullet_drag_scale = 1.0
+shield_recharge_rate_scale = 1.0
+shield_recharge_delay_scale = 1.0
+head_on_fraction_scale = 1.0

@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from imgui_bundle import imgui
 
 from bnb.contracts import GameConfig
+from bnb.game import api
 from bnb.game.api import PRESETS
 
 from .. import replay as replays
@@ -24,7 +25,7 @@ from ..sides import policy_choices
 from .controls import button
 from .fleets import controller_combo
 from .style import SCALES
-from .text import TEAM_NAMES, TYPE_NAMES
+from .text import TEAM_NAMES, type_name
 
 if TYPE_CHECKING:
     from ..app import Session
@@ -286,14 +287,14 @@ class Menu:
         for slot, ship_type in enumerate(draft.lineup):
             if slot % per_row:
                 imgui.same_line(0.0, 3.0 * scale)
-            letter = TYPE_NAMES[ship_type][0] if ship_type < len(TYPE_NAMES) else "?"
+            letter = type_name(ship_type)[0]
             if button(
                 controls,
                 f"new match/lineup/{slot}",
                 f"{letter}##slot{slot}",
-                f"Slot {slot + 1}: {TYPE_NAMES[ship_type]} (click to change)",
+                f"Slot {slot + 1}: {type_name(ship_type)} (click to change)",
             ):
-                draft.lineup[slot] = (ship_type + 1) % len(TYPE_NAMES)
+                draft.lineup[slot] = (ship_type + 1) % len(api.type_names())
         imgui.end_group()
         imgui.same_line()
         if button(

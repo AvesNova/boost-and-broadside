@@ -11,13 +11,12 @@ from typing import NamedTuple
 import torch
 
 from ..rules import Rules
-from ..ship_types import DEFAULTS, SCALED, ShipTypes, ship_types
+from ..ship_types import DEFAULTS, SCALED, ShipTypes, ship_types, type_names
 from . import shown as shown_module
 from .handles import DEGREES, NAMES, UNITS, Handles
 from .manoeuvres import batched, cruise_speed
 from .solver import measure
 
-TYPE_NAMES = ("fighter", "heavy")
 CHARTS = ("ps_curve.png", "doghouse.png", "similarity.png")
 
 
@@ -58,7 +57,7 @@ def _row(label: str, values, digits: int = 4) -> str:
 
 def lines(rules: Rules, types: ShipTypes, card: Report) -> list[str]:
     """The printed chart."""
-    names = TYPE_NAMES[: len(card.handles.ceiling)]
+    names = type_names()[: len(card.handles.ceiling)]
     header = f"  {'':46s}" + "".join(f"{name:>14s}" for name in names)
     out = [f"Ship card at {1.0 / rules.tick_length:g} Hz", "", "Handles", header]
     for name in NAMES:
@@ -135,7 +134,7 @@ def write_charts(rules: Rules, types: ShipTypes, card: Report, directory: str) -
     out = pathlib.Path(directory)
     out.mkdir(parents=True, exist_ok=True)
     curves = _curves(rules, types, card)
-    names = TYPE_NAMES[: len(card.handles.ceiling)]
+    names = type_names()[: len(card.handles.ceiling)]
     constants = rules.flight
     sustained = shown_module.settled(rules, types, shown_module.SUSTAINED_CURVE)
     cruise = cruise_speed(rules, types, types.max_energy[..., None])[0, :, 0]

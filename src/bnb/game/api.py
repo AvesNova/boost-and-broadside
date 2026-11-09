@@ -28,14 +28,16 @@ change, by key, and the rules with changed values), the ship card's handles (`Ha
 `HANDLE_NAMES`, `FLOWN_HANDLES`, `HANDLE_UNITS`), `measure_handles` (a card's handles),
 `solve_handles` (the card meeting handles, exact, with `SolveProgress` reports), `Estimate`
 (an instant estimate of that card, anchored on an exact one), `bleed_rate` (a card's bleed
-rate in closed form, shown beside the handles) and `Infeasible`.
+rate in closed form, shown beside the handles) and `Infeasible`; `ships` (the ship files:
+one per type, tracked in git) and `reload_ships` (read them again after writing).
 
 For display (the play shell), with no rules of their own: `display` (the state's values a
 display draws, by name), `log_index` and `log_index_gradient` (the medium at points),
 `core_radius` (the discs the sight test treats as cores), `zone_sides`
 (Frontline's zone owners and attackers), `visible` (each team's observation in sim order),
-`vision_range` and `per_ship`; `bullet_paths` (each live bullet's flight ahead, by the
-game's own transport); and the constants `TEAMS`, `LN_SQRT2` (ln n per field level),
+`vision_range`, `per_ship` and `type_names` (the ship types' names, from the ship files);
+`bullet_paths` (each live bullet's flight ahead, by the game's own transport); and the
+constants `TEAMS`, `LN_SQRT2` (ln n per field level),
 `MAP_SCALE_RADIUS` (the arena radius of map scale 1) and the game presets `PRESETS`.
 """
 
@@ -44,7 +46,7 @@ import torch
 from bnb.contracts import Obs
 from bnb.contracts.obs import SHIP
 
-from . import tuning
+from . import ships, tuning
 from .handling import FLOWN as FLOWN_HANDLES
 from .handling import NAMES as HANDLE_NAMES
 from .handling import Handles, Infeasible
@@ -65,7 +67,8 @@ from .physics.bullets import Launch, launch_state, move_bullets
 from .physics.medium import medium
 from .physics.step import move, reset, resolve, step
 from .rules import LN_SQRT2, MAP_SCALE_RADIUS, TEAMS, Rules, bullet_slots_for, rules_of
-from .ship_types import ShipTypes, default_card, per_ship, ship_types
+from .ship_types import ShipTypes, default_card, per_ship, ship_types, type_names
+from .ship_types import reload as reload_ships
 from .state import Fields, State, Sweep, replace, ship_team, sweep_like
 
 __all__ = [
@@ -103,17 +106,20 @@ __all__ = [
     "perceive",
     "perceived",
     "reset",
+    "reload_ships",
     "resolve",
     "retune",
     "rules_of",
     "ship_team",
     "ship_types",
+    "ships",
     "solve_handles",
     "spread",
     "start_clocks",
     "step",
     "sweep_like",
     "tuning",
+    "type_names",
     "uniforms",
     "view_order",
     "visible",
