@@ -23,3 +23,11 @@ update   20  steps  20,971,520  rollout  10065 ms  learn  83477 ms  bc kl 0.5225
 update   21  steps  22,020,096  rollout  10063 ms  learn  82615 ms  bc kl 0.4989  teacher 0.997  student 1.495  scores: learner 0.500 scripted 0.014
 update   22  steps  23,068,672  rollout  10062 ms  learn  82574 ms  bc kl 0.4970  teacher 0.999  student 1.495  scores: learner 0.500 scripted 0.056
 update   23  steps  24,117,248  rollout  10110 ms  learn  82658 ms  bc kl 0.5054  teacher 0.999  student 1.501  scores: learner 0.500 scripted 0.103  window exponential_average 0.000 (+- 0.000)
+update   24  steps  25,165,824  rollout  10110 ms  learn  82683 ms  bc kl 0.4948  teacher 1.002  student 1.496  scores: learner 0.500 scripted 0.089  window exponential_average 0.000 (+- 0.000)
+update   25  steps  26,214,400  rollout  10109 ms  learn  82876 ms  bc kl 0.4894  teacher 1.005  student 1.493  scores: learner 0.500 scripted 0.116  window exponential_average 0.000 (+- 0.000)
+update   26  steps  27,262,976  rollout  10064 ms  learn  82634 ms  bc kl 0.4853  teacher 1.005  student 1.488  scores: learner 0.500 scripted 0.088  window exponential_average 0.000 (+- 0.000)
+update   27  steps  28,311,552  rollout  10115 ms  learn  82684 ms  bc kl 0.4769  teacher 0.997  student 1.472  scores: learner 0.500 scripted 0.055  window exponential_average 0.000 (+- 0.000)
+update   28  steps  29,360,128  rollout  10109 ms  learn  82588 ms  bc kl 0.4769  teacher 1.004  student 1.479  scores: learner 0.500 scripted 0.160  window exponential_average 0.000 (+- 0.000)
+update   29  steps  30,408,704  rollout  10109 ms  learn  82618 ms  bc kl 0.4753  teacher 1.001  student 1.475  scores: learner 0.500 scripted 0.162  window exponential_average 0.000 (+- 0.000)
+stopped by budget; the policy is /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics-fade/policy (the exponential_average)
+run 2026-11-09-bc-deadreckon-split-hiddenphysics-fade finished at step 30408704

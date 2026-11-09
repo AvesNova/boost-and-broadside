@@ -64,3 +64,5 @@
 01:27 start 2026-11-09-bc-deadreckon-split-hiddenphysics-tau1.25
 02:37 done 2026-11-09-bc-deadreckon-split-hiddenphysics-tau1.25
 02:41 start 2026-11-09-bc-deadreckon-split-hiddenphysics-fade
+03:45 laptop: tau10-laptop uploaded (hub a55608a0), fetched and loads; persist-split-hiddenphysics-laptop started 12:44 KST, ETA 15:10
+03:49 done 2026-11-09-bc-deadreckon-split-hiddenphysics-fade
