@@ -1,0 +1,91 @@
+# Shrike: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
+# it; [card] is solved from [handles], so edit the handles, not the card.
+name = 'Shrike'
+
+[handles]
+# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
+stall_speed = 50.06
+g_limit = 9.0
+cruise_speed = 167.6
+climb_time = 3745.782894736842
+ceiling = 111932.1
+low_speed_acceleration = 2.728
+sustained_turn_rate = 0.24120450262561635
+half_lift_drag = 0.25
+nose_reversal_time = 0.47706322280908275
+dive_acceleration = 10.901973181024061
+zoom_acceleration = -8.717968852296035
+stall_angle = 0.27052603405912107
+vision_range = 3072.0
+zero_lift_drag = 4.7521094764171365e-05
+hit_damage = 21.6
+fire_rate = 10.0
+muzzle_speed = 805.0
+bullet_spread = 0.8992202913379758
+gun_range = 561.3358753322095
+shots_per_store = 519.0530831116089
+max_shield = 140.0
+shield_recharge_rate = 12.0
+shield_recharge_delay = 6.0
+head_on_fraction = 0.3
+hit_radius = 5.645
+spawn_energy = 44772.840000000004
+
+[card]
+# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).
+max_lift_coefficient = 0.003914599306881428
+max_acceleration = 88.29000091552734
+zero_lift_drag = 4.752109452965669e-05
+engine_power = 426.8302917480469
+engine_power_full_store = 278.0709228515625
+static_thrust = 7.366711616516113
+max_energy = 111932.1015625
+corner_nose_frequency = 7.883518695831299
+max_shield = 140.0
+hit_radius = 5.644999980926514
+hit_damage = 21.600000381469727
+muzzle_speed = 805.0
+bullet_energy_cost = 215.646728515625
+fire_rate = 10.0
+spawn_energy = 44772.83984375
+bleed_exponent = 2.0
+induced_drag_scale = 1.421905279159546
+stall_angle_scale = 1.0333333015441895
+coast_exchange_scale = 0.8142988681793213
+dive_exchange_scale = 1.0216448307037354
+climb_exchange_scale = 0.9783493280410767
+vision_range_scale = 1.0
+bullet_spread_scale = 0.07493502646684647
+bullet_drag_scale = 1.0
+shield_recharge_rate_scale = 1.0
+shield_recharge_delay_scale = 1.0
+head_on_fraction_scale = 1.0
+
+[notes]
+# Where each handle's value comes from.
+stall_speed = "invented: stall_speed 50.06. the P-51D's x 1.12: Roll-and-dive slasher (Fw 190 vibe)."
+g_limit = "invented: g_limit 9. Roll-and-dive slasher (Fw 190 vibe)."
+cruise_speed = "invented: cruise_speed 167.6. the P-51D's x 1.03: Roll-and-dive slasher (Fw 190 vibe)."
+climb_time = "solved for an initial charge of g x 15.2 m/s; invented: climb_rate 15.2. the P-51D's x 1.0: Roll-and-dive slasher (Fw 190 vibe)."
+ceiling = "invented: service_ceiling 11410; the store g h, J/kg. the P-51D's x 0.9: Roll-and-dive slasher (Fw 190 vibe)."
+low_speed_acceleration = "invented: low_speed_acceleration 2.728. the P-51D's x 1.0: Roll-and-dive slasher (Fw 190 vibe)."
+sustained_turn_rate = "invented: sustained_turn_rate 13.82; degrees. the P-51D's x 0.88: Roll-and-dive slasher (Fw 190 vibe)."
+half_lift_drag = "placeholder: the standard fighter's"
+nose_reversal_time = "invented: roll_rate 156.8; the P-51D's nose reversal (a placeholder) x its roll rate 95 over this one. the P-51D's x 1.65: Roll-and-dive slasher (Fw 190 vibe)."
+dive_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+zoom_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+stall_angle = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+vision_range = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+zero_lift_drag = "invented: drag_coefficient 0.01793; rho C_D0 / (2 W/S) with W/S 231.1 kg/m^2 (invented). the P-51D's x 1.1: Roll-and-dive slasher (Fw 190 vibe)."
+hit_damage = "invented: weight_of_fire 4.416; proposal: 180 per second (the P-51D's) x the weight of fire over the P-51D's 3.68 kg/s, over the fire rate. 4x MG 151/20-class 20 mm @ 10/s (wing_root); 2x MG 131-class 13 mm @ 10/s (cowl): the P-51D's x 1.2"
+fire_rate = "invented: fire_rate 10; proposal: the main gun's volley rate. the MG 151/20-class 20 mm, 3.68 of 4.40 kg/s"
+muzzle_speed = "invented: muzzle_speed 805. the MG 151/20-class 20 mm, 3.68 of 4.40 kg/s"
+bullet_spread = "invented: dispersion 3.72; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the P-51D's x 0.62: Roll-and-dive slasher (Fw 190 vibe)."
+gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
+shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 15.2 m/s), the standard fighter's ratio: a shot costs 215.6 J/kg, 1.45 s of charge"
+max_shield = "invented: survivability 4; proposal: the standard 100 x (1 + 0.2 per rating step from the P-51D's 2). Radial engine in front, armour."
+shield_recharge_rate = "placeholder: the standard fighter's"
+shield_recharge_delay = "placeholder: the standard fighter's"
+head_on_fraction = "placeholder: the standard fighter's"
+hit_radius = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+spawn_energy = "placeholder: the standard fighter's fraction of the store"

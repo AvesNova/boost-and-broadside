@@ -1,0 +1,91 @@
+# Mosquito FB VI: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
+# it; [card] is solved from [handles], so edit the handles, not the card.
+name = 'Mosquito FB VI'
+
+[handles]
+# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
+stall_speed = 49.2
+g_limit = 6.0
+cruise_speed = 148.4
+climb_time = 4443.546078431373
+ceiling = 89104.23000000001
+low_speed_acceleration = 2.816
+sustained_turn_rate = 0.2611012560983517
+half_lift_drag = 0.25
+nose_reversal_time = 1.246725222274403
+dive_acceleration = 11.068751713941717
+zoom_acceleration = -8.55118444795679
+stall_angle = 0.2617993877991494
+vision_range = 3072.0
+zero_lift_drag = 6.279804482594182e-05
+hit_damage = 29.69021739130435
+fire_rate = 10.0
+muzzle_speed = 880.0
+bullet_spread = 0.8191654827923588
+gun_range = 592.263886562084
+shots_per_store = 615.7421176756002
+max_shield = 120.0
+shield_recharge_rate = 12.0
+shield_recharge_delay = 6.0
+head_on_fraction = 0.3
+hit_radius = 8.256
+spawn_energy = 35641.692
+
+[card]
+# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).
+max_lift_coefficient = 0.004052647389471531
+max_acceleration = 58.86000061035156
+zero_lift_drag = 6.27980480203405e-05
+engine_power = 348.1491394042969
+engine_power_full_store = 248.3182373046875
+static_thrust = 6.2981038093566895
+max_energy = 89104.2265625
+corner_nose_frequency = 3.7285501956939697
+max_shield = 120.0
+hit_radius = 8.255999565124512
+hit_damage = 29.690217971801758
+muzzle_speed = 880.0
+bullet_energy_cost = 144.71031188964844
+fire_rate = 10.0
+spawn_energy = 35641.69140625
+bleed_exponent = 2.0
+induced_drag_scale = 0.994200587272644
+stall_angle_scale = 1.0
+coast_exchange_scale = 0.6171697974205017
+dive_exchange_scale = 1.0606642961502075
+climb_exchange_scale = 0.9393292665481567
+vision_range_scale = 1.0
+bullet_spread_scale = 0.06826379150152206
+bullet_drag_scale = 1.0
+shield_recharge_rate_scale = 1.0
+shield_recharge_delay_scale = 1.0
+head_on_fraction_scale = 1.0
+
+[notes]
+# Where each handle's value comes from.
+stall_speed = "estimated: stall_speed 49.2. W/S 43 lb/sq ft and CLmax ~1.4; 110 mph."
+g_limit = "estimated: g_limit 6. fighter-bomber/light-bomber strength class"
+cruise_speed = "researched (good): cruise_speed 148.4. sea-level maximum speed, military power: wwiiaircraftperformance.org test report (332 mph)"
+climb_time = "solved for an initial charge of g x 10.2 m/s; estimated: climb_rate 10.2. sea-level climb, military power: A&AEE HJ.679 at 21,020 lb gives 1,740 ft/min at 10,400 ft in M.S. gear; lighter combat weight and SL density (2000 ft/min)"
+ceiling = "researched (good): service_ceiling 9083; the store g h, J/kg. wwiiaircraftperformance.org test report (29800 ft)"
+low_speed_acceleration = "estimated: low_speed_acceleration 2.816. the research's point-mass model at 1.1 x stall, military power (3.2 m/s^2) x 0.88, its correction for propeller efficiency"
+sustained_turn_rate = "estimated: sustained_turn_rate 14.96; degrees. the research's point-mass model (17.0 deg/s) x 0.88, its correction for propeller efficiency (no literature value)"
+half_lift_drag = "placeholder: the standard heavy's"
+nose_reversal_time = "estimated: roll_rate 60; the P-51D's nose reversal (a placeholder) x its roll rate 95 over this one. peak roll rate: large twin with heavy roll inertia"
+dive_acceleration = "placeholder: the standard heavy's, scaled as the standard fighter is to the P-51D"
+zoom_acceleration = "placeholder: the standard heavy's, scaled as the standard fighter is to the P-51D"
+stall_angle = "estimated: stall_angle 15; degrees. no published value found: the research's estimate"
+vision_range = "placeholder: the standard heavy's, scaled as the standard fighter is to the P-51D"
+zero_lift_drag = "estimated: drag_coefficient 0.0215; rho C_D0 / (2 W/S) with W/S 209.7 kg/m^2 (estimated). back-solved so the point-mass model (propeller efficiency 0.8, Oswald 0.8) reaches the measured sea-level mili..."
+hit_damage = "researched (medium): weight_of_fire 6.07; proposal: 180 per second (the P-51D's) x the weight of fire over the P-51D's 3.68 kg/s, over the fire rate. 4x Hispano Mk II 20 mm (nose); 4x .303 Browning Mk II (nose): count x rate x projectile mass"
+fire_rate = "derived: fire_rate 10; proposal: the main gun's volley rate. the Hispano Mk II 20 mm, 5.20 of 6.07 kg/s: the whole-Hz volley rate dividing 30 nearest its rate per gun"
+muzzle_speed = "researched (medium): muzzle_speed 880. the Hispano Mk II 20 mm, 5.20 of 6.07 kg/s: Wikipedia"
+bullet_spread = "estimated: dispersion 3.1; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
+gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
+shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 10.2 m/s), the standard fighter's ratio: a shot costs 144.7 J/kg, 1.45 s of charge"
+max_shield = "researched (medium): survivability 3; proposal: the standard 100 x (1 + 0.2 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Two engines; wooden structure absorbs hits but burns and was hard to repair; little armour beyond the crew bulkhead; coo"
+shield_recharge_rate = "placeholder: the standard heavy's"
+shield_recharge_delay = "placeholder: the standard heavy's"
+head_on_fraction = "placeholder: the standard heavy's"
+hit_radius = "researched (good): half_span 8.256. half of the span 16.51 m (54.17 ft)"
+spawn_energy = "placeholder: the standard heavy's fraction of the store"

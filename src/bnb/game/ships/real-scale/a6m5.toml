@@ -1,0 +1,91 @@
+# A6M5 Zero: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
+# it; [card] is solved from [handles], so edit the handles, not the card.
+name = 'A6M5 Zero'
+
+[handles]
+# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
+stall_speed = 37.5
+g_limit = 7.0
+cruise_speed = 130.6
+climb_time = 3731.375796178345
+ceiling = 115169.40000000001
+low_speed_acceleration = 4.374
+sustained_turn_rate = 0.39269908169872414
+half_lift_drag = 0.25
+nose_reversal_time = 0.9350439167058022
+dive_acceleration = 10.901973181024061
+zoom_acceleration = -8.717968852296035
+stall_angle = 0.2792526803190927
+vision_range = 3072.0
+zero_lift_drag = 0.00010578667192429022
+hit_damage = 11.592391304347826
+fire_rate = 10.0
+muzzle_speed = 750.0
+bullet_spread = 0.6080682194481403
+gun_range = 510.0545940067522
+shots_per_store = 517.0566916667154
+max_shield = 80.0
+shield_recharge_rate = 12.0
+shield_recharge_delay = 6.0
+head_on_fraction = 0.3
+hit_radius = 5.5
+spawn_energy = 46067.76000000001
+
+[card]
+# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).
+max_lift_coefficient = 0.006976000033318996
+max_acceleration = 68.66999816894531
+zero_lift_drag = 0.0001057866684277542
+engine_power = 418.4861145019531
+engine_power_full_store = 264.8119812011719
+static_thrust = 8.21102237701416
+max_energy = 115169.3984375
+corner_nose_frequency = 4.975592136383057
+max_shield = 80.0
+hit_radius = 5.5
+hit_damage = 11.592391014099121
+muzzle_speed = 750.0
+bullet_energy_cost = 222.74037170410156
+fire_rate = 10.0
+spawn_energy = 46067.76171875
+bleed_exponent = 2.0
+induced_drag_scale = 0.5915312767028809
+stall_angle_scale = 1.0666667222976685
+coast_exchange_scale = 1.0795209407806396
+dive_exchange_scale = 0.9930408596992493
+climb_exchange_scale = 1.0069533586502075
+vision_range_scale = 1.0
+bullet_spread_scale = 0.05067235231399536
+bullet_drag_scale = 1.0
+shield_recharge_rate_scale = 1.0
+shield_recharge_delay_scale = 1.0
+head_on_fraction_scale = 1.0
+
+[notes]
+# Where each handle's value comes from.
+stall_speed = "estimated: stall_speed 37.5. W/S 127 kg/m^2 with CLmax ~1.45; 135 km/h."
+g_limit = "estimated: g_limit 7. light structure, IJN fighter strength requirement"
+cruise_speed = "estimated: cruise_speed 130.6. sea-level maximum speed, military power: 565 km/h at 6,000 m less the usual ~95 km/h altitude gain for a single-stage-two-speed engine (470 km/h)"
+climb_time = "solved for an initial charge of g x 15.7 m/s; researched (low): climb_rate 15.7. sea-level climb, military power: Wikipedia (Wikipedia gives 15.7 m/s for the A6M2; the A6M5 is similar (6,000 m in ~7 min))"
+ceiling = "researched (medium): service_ceiling 11740; the store g h, J/kg. recalled standard figure, not re-checked"
+low_speed_acceleration = "estimated: low_speed_acceleration 4.374. the research's point-mass model at 1.1 x stall, military power (4.97 m/s^2) x 0.88, its correction for propeller efficiency"
+sustained_turn_rate = "researched (low): sustained_turn_rate 22.5; degrees. literature: simulator/community turn-time compilations (360 deg in 16.0 s)"
+half_lift_drag = "placeholder: the standard fighter's"
+nose_reversal_time = "researched (low): roll_rate 80; the P-51D's nose reversal (a placeholder) x its roll rate 95 over this one. peak roll rate: wwiiaircraftperformance.org test report"
+dive_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+zoom_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+stall_angle = "estimated: stall_angle 16; degrees. docile stall reported in US tests"
+vision_range = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+zero_lift_drag = "estimated: drag_coefficient 0.0219; rho C_D0 / (2 W/S) with W/S 126.8 kg/m^2 (researched (medium)). back-solved so the point-mass model (propeller efficiency 0.8, Oswald 0.8) reaches the measured sea-level mili..."
+hit_damage = "researched (medium): weight_of_fire 2.37; proposal: 180 per second (the P-51D's) x the weight of fire over the P-51D's 3.68 kg/s, over the fire rate. 2x Type 99 Mk 2 20 mm (wing); 2x Type 97 7.7 mm (cowl): count x rate x projectile mass"
+fire_rate = "derived: fire_rate 10; proposal: the main gun's volley rate. the Type 99 Mk 2 20 mm, 2.09 of 2.37 kg/s: the whole-Hz volley rate dividing 30 nearest its rate per gun"
+muzzle_speed = "researched (medium): muzzle_speed 750. the Type 99 Mk 2 20 mm, 2.09 of 2.37 kg/s: Wikipedia"
+bullet_spread = "estimated: dispersion 2.7; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
+gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
+shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 15.7 m/s), the standard fighter's ratio: a shot costs 222.7 J/kg, 1.45 s of charge"
+max_shield = "researched (medium): survivability 1; proposal: the standard 100 x (1 + 0.2 per rating step from the P-51D's 2). 1 fragile - 5 very tough: No pilot armour and no self-sealing tanks on the A6M5 base model; light structure. Burns easily."
+shield_recharge_rate = "placeholder: the standard fighter's"
+shield_recharge_delay = "placeholder: the standard fighter's"
+head_on_fraction = "placeholder: the standard fighter's"
+hit_radius = "researched (good): half_span 5.5. half of the span 11.00 m"
+spawn_energy = "placeholder: the standard fighter's fraction of the store"

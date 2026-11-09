@@ -1,0 +1,91 @@
+# Bf 109 K-4: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
+# it; [card] is solved from [handles], so edit the handles, not the card.
+name = 'Bf 109 K-4'
+
+[handles]
+# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
+stall_speed = 47.2
+g_limit = 7.0
+cruise_speed = 165.3
+climb_time = 2769.732476688013
+ceiling = 122625.0
+low_speed_acceleration = 4.743
+sustained_turn_rate = 0.30717794835100204
+half_lift_drag = 0.25
+nose_reversal_time = 0.7480351333646418
+dive_acceleration = 10.901973181024061
+zoom_acceleration = -8.717968852296035
+stall_angle = 0.29670597283903605
+vision_range = 3072.0
+zero_lift_drag = 7.030642023346305e-05
+hit_damage = 21.08152173913043
+fire_rate = 10.0
+muzzle_speed = 520.0
+bullet_spread = 0.37475019154137235
+gun_range = 399.9802130563444
+shots_per_store = 384.14679439558154
+max_shield = 100.0
+shield_recharge_rate = 12.0
+shield_recharge_delay = 6.0
+head_on_fraction = 0.3
+hit_radius = 4.96
+spawn_energy = 49050.0
+
+[card]
+# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).
+max_lift_coefficient = 0.004403368104249239
+max_acceleration = 68.66999816894531
+zero_lift_drag = 7.030642154859379e-05
+engine_power = 580.58349609375
+engine_power_full_store = 360.1606750488281
+static_thrust = 9.280267715454102
+max_energy = 122625.0
+corner_nose_frequency = 5.427356243133545
+max_shield = 100.0
+hit_radius = 4.960000038146973
+hit_damage = 21.08152198791504
+muzzle_speed = 520.0
+bullet_energy_cost = 319.2138977050781
+fire_rate = 10.0
+spawn_energy = 49050.0
+bleed_exponent = 2.0
+induced_drag_scale = 1.096030831336975
+stall_angle_scale = 1.1333333253860474
+coast_exchange_scale = 1.2233682870864868
+dive_exchange_scale = 0.977028489112854
+climb_exchange_scale = 1.022966980934143
+vision_range_scale = 1.0
+bullet_spread_scale = 0.031229183077812195
+bullet_drag_scale = 1.0
+shield_recharge_rate_scale = 1.0
+shield_recharge_delay_scale = 1.0
+head_on_fraction_scale = 1.0
+
+[notes]
+# Where each handle's value comes from.
+stall_speed = "estimated: stall_speed 47.2. W/S 206 kg/m^2 with automatic slats, CLmax ~1.5; 170 km/h."
+g_limit = "estimated: g_limit 7. as Fw 190"
+cruise_speed = "researched (medium): cruise_speed 165.3. sea-level maximum speed, military power: forum post quoting kurfurst.org (595 km/h)"
+climb_time = "solved for an initial charge of g x 22.5 m/s; researched (medium): climb_rate 22.5. sea-level climb, military power: forum post quoting kurfurst.org (1.80 ata; 25 m/s at 1.98 ata; IL-2 museum page gives 20.5 m/s)"
+ceiling = "researched (medium): service_ceiling 12500; the store g h, J/kg. recalled standard figure, not re-checked"
+low_speed_acceleration = "estimated: low_speed_acceleration 4.743. the research's point-mass model at 1.1 x stall, military power (5.39 m/s^2) x 0.88, its correction for propeller efficiency"
+sustained_turn_rate = "researched (low): sustained_turn_rate 17.6; degrees. literature: simulator/community turn-time compilations (360 deg in 20.5 s)"
+half_lift_drag = "placeholder: the standard fighter's"
+nose_reversal_time = "estimated: roll_rate 100; the P-51D's nose reversal (a placeholder) x its roll rate 95 over this one. peak roll rate: light at low speed, ailerons stiffen markedly above ~450 km/h IAS"
+dive_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+zoom_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+stall_angle = "estimated: stall_angle 17; degrees. slats delay the stall"
+vision_range = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+zero_lift_drag = "estimated: drag_coefficient 0.0236; rho C_D0 / (2 W/S) with W/S 205.6 kg/m^2 (researched (medium)). back-solved so the point-mass model (propeller efficiency 0.8, Oswald 0.8) reaches the measured sea-level mili..."
+hit_damage = "researched (medium): weight_of_fire 4.31; proposal: 180 per second (the P-51D's) x the weight of fire over the P-51D's 3.68 kg/s, over the fire rate. 1x Rheinmetall-Borsig MK 108 30 mm (engine); 2x Rheinmetall-Borsig MG 131 13 mm (cowl): count x rate x projectile mass"
+fire_rate = "derived: fire_rate 10; proposal: the main gun's volley rate. the Rheinmetall-Borsig MK 108 30 mm, 3.41 of 4.31 kg/s: the whole-Hz volley rate dividing 30 nearest its rate per gun"
+muzzle_speed = "researched (medium): muzzle_speed 520. the Rheinmetall-Borsig MK 108 30 mm, 3.41 of 4.31 kg/s: Wikipedia"
+bullet_spread = "researched (low): dispersion 2.4; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
+gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
+shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 22.5 m/s), the standard fighter's ratio: a shot costs 319.2 J/kg, 1.45 s of charge"
+max_shield = "researched (medium): survivability 2; proposal: the standard 100 x (1 + 0.2 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Small and light, liquid-cooled with wing radiators; pilot armour and armoured glass; few hits needed."
+shield_recharge_rate = "placeholder: the standard fighter's"
+shield_recharge_delay = "placeholder: the standard fighter's"
+head_on_fraction = "placeholder: the standard fighter's"
+hit_radius = "researched (good): half_span 4.96. half of the span 9.92 m"
+spawn_energy = "placeholder: the standard fighter's fraction of the store"

@@ -1,0 +1,91 @@
+# P-47D Thunderbolt: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
+# it; [card] is solved from [handles], so edit the handles, not the card.
+name = 'P-47D Thunderbolt'
+
+[handles]
+# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
+stall_speed = 49.2
+g_limit = 8.0
+cruise_speed = 152.0
+climb_time = 4423.758865248227
+ceiling = 122625.0
+low_speed_acceleration = 2.218
+sustained_turn_rate = 0.25132741228718347
+half_lift_drag = 0.25
+nose_reversal_time = 0.8800413333701668
+dive_acceleration = 11.068751713941717
+zoom_acceleration = -8.55118444795679
+stall_angle = 0.2792526803190927
+vision_range = 3072.0
+zero_lift_drag = 5.882453345471098e-05
+hit_damage = 16.01086956521739
+fire_rate = 15.0
+muzzle_speed = 856.0
+bullet_spread = 1.5422411728818017
+gun_range = 580.9721136456876
+shots_per_store = 919.5003057341048
+max_shield = 160.0
+shield_recharge_rate = 12.0
+shield_recharge_delay = 6.0
+head_on_fraction = 0.3
+hit_radius = 6.21
+spawn_energy = 49050.0
+
+[card]
+# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).
+max_lift_coefficient = 0.004052647389471531
+max_acceleration = 78.4800033569336
+zero_lift_drag = 5.8824534789891914e-05
+engine_power = 392.6772155761719
+engine_power_full_store = 254.6208953857422
+static_thrust = 5.92026948928833
+max_energy = 122625.0
+corner_nose_frequency = 4.848238945007324
+max_shield = 160.0
+hit_radius = 6.210000038146973
+hit_damage = 16.0108699798584
+muzzle_speed = 856.0
+bullet_energy_cost = 133.3604736328125
+fire_rate = 15.0
+spawn_energy = 49050.0
+bleed_exponent = 2.0
+induced_drag_scale = 1.13395357131958
+stall_angle_scale = 1.0666667222976685
+coast_exchange_scale = 0.833270788192749
+dive_exchange_scale = 1.0377893447875977
+climb_exchange_scale = 0.9622041583061218
+vision_range_scale = 1.0
+bullet_spread_scale = 0.12852010130882263
+bullet_drag_scale = 1.0
+shield_recharge_rate_scale = 1.0
+shield_recharge_delay_scale = 1.0
+head_on_fraction_scale = 1.0
+
+[notes]
+# Where each handle's value comes from.
+stall_speed = "estimated: stall_speed 49.2. from W/S 45 lb/sq ft and CLmax ~1.45 (NACA TN 2899 measured F-47D-30 stalls; not opened); 110 mph."
+g_limit = "researched (medium): g_limit 8. recalled standard figure, not re-checked"
+cruise_speed = "researched (medium): cruise_speed 152. sea-level maximum speed, military power: wwiiaircraftperformance.org test report (340 mph)"
+climb_time = "solved for an initial charge of g x 14.1 m/s; estimated: climb_rate 14.1. sea-level climb, military power: 2,330 ft/min at 12,000 ft at 56 in (Wright Field) plus paddle-blade propeller gain; WEP at SL ~3,100 ft/min (2780 ft/min)"
+ceiling = "researched (medium): service_ceiling 12500; the store g h, J/kg. recalled standard figure, not re-checked (41000 ft)"
+low_speed_acceleration = "estimated: low_speed_acceleration 2.218. the research's point-mass model at 1.1 x stall, military power (2.52 m/s^2) x 0.88, its correction for propeller efficiency"
+sustained_turn_rate = "researched (low): sustained_turn_rate 14.4; degrees. literature: simulator/community turn-time compilations (360 deg in 25.0 s)"
+half_lift_drag = "placeholder: the standard heavy's"
+nose_reversal_time = "researched (medium): roll_rate 85; the P-51D's nose reversal (a placeholder) x its roll rate 95 over this one. peak roll rate: NACA TR-868 via secondary summaries"
+dive_acceleration = "placeholder: the standard heavy's, scaled as the standard fighter is to the P-51D"
+zoom_acceleration = "placeholder: the standard heavy's, scaled as the standard fighter is to the P-51D"
+stall_angle = "estimated: stall_angle 16; degrees. Seversky S-3 section, typical 15-17 deg"
+vision_range = "placeholder: the standard heavy's, scaled as the standard fighter is to the P-51D"
+zero_lift_drag = "researched (medium): drag_coefficient 0.0211; rho C_D0 / (2 W/S) with W/S 219.7 kg/m^2 (researched (medium)). recalled standard figure, not re-checked"
+hit_damage = "researched (medium): weight_of_fire 4.91; proposal: 180 per second (the P-51D's) x the weight of fire over the P-51D's 3.68 kg/s, over the fire rate. 8x Browning AN/M2 .50 cal (wing): count x rate x projectile mass"
+fire_rate = "derived: fire_rate 15; proposal: the main gun's volley rate. the Browning AN/M2 .50 cal: the whole-Hz volley rate dividing 30 nearest its rate per gun"
+muzzle_speed = "researched (medium): muzzle_speed 856. the Browning AN/M2 .50 cal: AAF Manual 200-1"
+bullet_spread = "researched (low): dispersion 6; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
+gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
+shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 14.1 m/s), the standard fighter's ratio: a shot costs 133.4 J/kg, 0.964 s of charge"
+max_shield = "researched (medium): survivability 5; proposal: the standard 100 x (1 + 0.2 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Air-cooled 18-cylinder radial that kept running with cylinders shot away, very large and strong airframe, cockpit armour"
+shield_recharge_rate = "placeholder: the standard heavy's"
+shield_recharge_delay = "placeholder: the standard heavy's"
+head_on_fraction = "placeholder: the standard heavy's"
+hit_radius = "researched (good): half_span 6.21. half of the span 12.42 m (40.75 ft)"
+spawn_energy = "placeholder: the standard heavy's fraction of the store"

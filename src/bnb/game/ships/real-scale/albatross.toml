@@ -1,0 +1,91 @@
+# Albatross: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
+# it; [card] is solved from [handles], so edit the handles, not the card.
+name = 'Albatross'
+
+[handles]
+# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
+stall_speed = 35.76
+g_limit = 7.0
+cruise_speed = 149.7
+climb_time = 6762.763157894738
+ceiling = 161668.80000000002
+low_speed_acceleration = 1.637
+sustained_turn_rate = 0.27401669256310973
+half_lift_drag = 0.25
+nose_reversal_time = 1.0498738713889708
+dive_acceleration = 10.901973181024061
+zoom_acceleration = -8.717968852296035
+stall_angle = 0.27052603405912107
+vision_range = 3072.0
+zero_lift_drag = 4.6343667108753316e-05
+hit_damage = 9.0
+fire_rate = 10.0
+muzzle_speed = 856.0
+bullet_spread = 1.1566808796613512
+gun_range = 579.6979215065165
+shots_per_store = 937.115995801853
+max_shield = 100.0
+shield_recharge_rate = 12.0
+shield_recharge_delay = 6.0
+head_on_fraction = 0.3
+hit_radius = 5.645
+spawn_energy = 64667.52000000001
+
+[card]
+# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).
+max_lift_coefficient = 0.0076713887974619865
+max_acceleration = 68.66999816894531
+zero_lift_drag = 4.634366632672027e-05
+engine_power = 338.69000244140625
+engine_power_full_store = 219.7153778076172
+static_thrust = 13.156825065612793
+max_energy = 161668.796875
+corner_nose_frequency = 4.551578998565674
+max_shield = 100.0
+hit_radius = 5.644999980926514
+hit_damage = 9.0
+muzzle_speed = 856.0
+bullet_energy_cost = 172.5173797607422
+fire_rate = 10.0
+spawn_energy = 64667.51953125
+bleed_exponent = 2.0
+induced_drag_scale = 1.5059760808944702
+stall_angle_scale = 1.0333333015441895
+coast_exchange_scale = 0.7291317582130432
+dive_exchange_scale = 1.0303422212600708
+climb_exchange_scale = 0.9696518778800964
+vision_range_scale = 1.0
+bullet_spread_scale = 0.09639007598161697
+bullet_drag_scale = 1.0
+shield_recharge_rate_scale = 1.0
+shield_recharge_delay_scale = 1.0
+head_on_fraction_scale = 1.0
+
+[notes]
+# Where each handle's value comes from.
+stall_speed = "invented: stall_speed 35.76. the P-51D's x 0.8: Glider-like energy fighter: very low drag, long wing, weak engine."
+g_limit = "invented: g_limit 7. Glider-like energy fighter: very low drag, long wing, weak engine."
+cruise_speed = "invented: cruise_speed 149.7. the P-51D's x 0.92: Glider-like energy fighter: very low drag, long wing, weak engine."
+climb_time = "solved for an initial charge of g x 12.16 m/s; invented: climb_rate 12.16. the P-51D's x 0.8: Glider-like energy fighter: very low drag, long wing, weak engine."
+ceiling = "invented: service_ceiling 16480; the store g h, J/kg. the P-51D's x 1.3: Glider-like energy fighter: very low drag, long wing, weak engine."
+low_speed_acceleration = "invented: low_speed_acceleration 1.637. the P-51D's x 0.6: Glider-like energy fighter: very low drag, long wing, weak engine."
+sustained_turn_rate = "invented: sustained_turn_rate 15.7; degrees. the P-51D's x 1.0: Glider-like energy fighter: very low drag, long wing, weak engine."
+half_lift_drag = "placeholder: the standard fighter's"
+nose_reversal_time = "invented: roll_rate 71.25; the P-51D's nose reversal (a placeholder) x its roll rate 95 over this one. the P-51D's x 0.75: Glider-like energy fighter: very low drag, long wing, weak engine."
+dive_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+zoom_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+stall_angle = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+vision_range = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+zero_lift_drag = "invented: drag_coefficient 0.01141; rho C_D0 / (2 W/S) with W/S 150.8 kg/m^2 (invented). the P-51D's x 0.7: Glider-like energy fighter: very low drag, long wing, weak engine."
+hit_damage = "invented: weight_of_fire 1.84; proposal: 180 per second (the P-51D's) x the weight of fire over the P-51D's 3.68 kg/s, over the fire rate. 4x Browning .50-class 12.7 mm @ 10/s (wing): the P-51D's x 0.5"
+fire_rate = "invented: fire_rate 10; proposal: the main gun's volley rate. the Browning .50-class 12.7 mm"
+muzzle_speed = "invented: muzzle_speed 856. the Browning .50-class 12.7 mm"
+bullet_spread = "invented: dispersion 4.5; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the P-51D's x 0.75: Glider-like energy fighter: very low drag, long wing, weak engine."
+gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
+shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 12.16 m/s), the standard fighter's ratio: a shot costs 172.5 J/kg, 1.45 s of charge"
+max_shield = "invented: survivability 2; proposal: the standard 100 x (1 + 0.2 per rating step from the P-51D's 2). Light structure."
+shield_recharge_rate = "placeholder: the standard fighter's"
+shield_recharge_delay = "placeholder: the standard fighter's"
+head_on_fraction = "placeholder: the standard fighter's"
+hit_radius = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+spawn_energy = "placeholder: the standard fighter's fraction of the store"

@@ -1,0 +1,91 @@
+# Ki-84 Hayate: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
+# it; [card] is solved from [handles], so edit the handles, not the card.
+name = 'Ki-84 Hayate'
+
+[handles]
+# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
+stall_speed = 44.4
+g_limit = 7.5
+cruise_speed = 155.6
+climb_time = 2832.162162162162
+ceiling = 103005.0
+low_speed_acceleration = 4.488
+sustained_turn_rate = 0.3270747018237373
+half_lift_drag = 0.25
+nose_reversal_time = 0.8311501481829353
+dive_acceleration = 10.901973181024061
+zoom_acceleration = -8.717968852296035
+stall_angle = 0.2792526803190927
+vision_range = 3072.0
+zero_lift_drag = 7.504375729288216e-05
+hit_damage = 9.913043478260871
+fire_rate = 15.0
+muzzle_speed = 750.0
+bullet_spread = 0.9909259872488213
+gun_range = 524.0255310786363
+shots_per_store = 588.6790065467425
+max_shield = 120.0
+shield_recharge_rate = 12.0
+shield_recharge_delay = 6.0
+head_on_fraction = 0.3
+hit_radius = 5.62
+spawn_energy = 41202.0
+
+[card]
+# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).
+max_lift_coefficient = 0.004976260010153055
+max_acceleration = 73.57499694824219
+zero_lift_drag = 7.504375389544293e-05
+engine_power = 500.2132263183594
+engine_power_full_store = 319.1429443359375
+static_thrust = 8.54437255859375
+max_energy = 103005.0
+corner_nose_frequency = 5.207061290740967
+max_shield = 120.0
+hit_radius = 5.619999885559082
+hit_damage = 9.913043022155762
+muzzle_speed = 750.0
+bullet_energy_cost = 174.9765167236328
+fire_rate = 15.0
+spawn_energy = 41202.0
+bleed_exponent = 2.0
+induced_drag_scale = 0.8813698887825012
+stall_angle_scale = 1.0666667222976685
+coast_exchange_scale = 1.0676062107086182
+dive_exchange_scale = 0.9941376447677612
+climb_exchange_scale = 1.0058566331863403
+vision_range_scale = 1.0
+bullet_spread_scale = 0.0825771689414978
+bullet_drag_scale = 1.0
+shield_recharge_rate_scale = 1.0
+shield_recharge_delay_scale = 1.0
+head_on_fraction_scale = 1.0
+
+[notes]
+# Where each handle's value comes from.
+stall_speed = "estimated: stall_speed 44.4. W/S 171 kg/m^2 with CLmax ~1.4; 160 km/h."
+g_limit = "estimated: g_limit 7.5. no published value found: the research's estimate"
+cruise_speed = "estimated: cruise_speed 155.6. sea-level maximum speed, military power: 624 km/h at 6,120 m (Japanese data) less altitude gain (560 km/h)"
+climb_time = "solved for an initial charge of g x 18.5 m/s; estimated: climb_rate 18.5. sea-level climb, military power: 5,000 m in 5 min 54 s (Japanese data)"
+ceiling = "researched (medium): service_ceiling 10500; the store g h, J/kg. Wikipedia"
+low_speed_acceleration = "estimated: low_speed_acceleration 4.488. the research's point-mass model at 1.1 x stall, military power (5.1 m/s^2) x 0.88, its correction for propeller efficiency"
+sustained_turn_rate = "estimated: sustained_turn_rate 18.74; degrees. the research's point-mass model (21.3 deg/s) x 0.88, its correction for propeller efficiency (no literature value)"
+half_lift_drag = "placeholder: the standard fighter's"
+nose_reversal_time = "estimated: roll_rate 90; the P-51D's nose reversal (a placeholder) x its roll rate 95 over this one. peak roll rate: no published value found: the research's estimate"
+dive_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+zoom_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+stall_angle = "estimated: stall_angle 16; degrees. no published value found: the research's estimate"
+vision_range = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+zero_lift_drag = "estimated: drag_coefficient 0.021; rho C_D0 / (2 W/S) with W/S 171.4 kg/m^2 (researched (medium)). back-solved so the point-mass model (propeller efficiency 0.8, Oswald 0.8) reaches the measured sea-level mili..."
+hit_damage = "researched (medium): weight_of_fire 3.04; proposal: 180 per second (the P-51D's) x the weight of fire over the P-51D's 3.68 kg/s, over the fire rate. 2x Ho-5 20 mm (wing); 2x Ho-103 12.7 mm (cowl): count x rate x projectile mass"
+fire_rate = "derived: fire_rate 15; proposal: the main gun's volley rate. the Ho-5 20 mm, 2.13 of 3.04 kg/s: the whole-Hz volley rate dividing 30 nearest its rate per gun"
+muzzle_speed = "researched (medium): muzzle_speed 750. the Ho-5 20 mm, 2.13 of 3.04 kg/s: Wikipedia"
+bullet_spread = "estimated: dispersion 4.4; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
+gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
+shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 18.5 m/s), the standard fighter's ratio: a shot costs 175 J/kg, 0.964 s of charge"
+max_shield = "researched (medium): survivability 3; proposal: the standard 100 x (1 + 0.2 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Pilot armour and self-sealing tanks, air-cooled radial; but poor build quality late in the war (landing-gear failures, e"
+shield_recharge_rate = "placeholder: the standard fighter's"
+shield_recharge_delay = "placeholder: the standard fighter's"
+head_on_fraction = "placeholder: the standard fighter's"
+hit_radius = "researched (good): half_span 5.62. half of the span 11.24 m"
+spawn_energy = "placeholder: the standard fighter's fraction of the store"

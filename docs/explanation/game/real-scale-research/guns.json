@@ -1,0 +1,969 @@
+{
+ "conventions": {
+  "dispersion": "Diameter of the cone holding 75% / 100% of rounds, in mils. Gun-alone values (dispersion_75/100) and installed values by mounting (installed_dispersion). Where a source gives only one share, the other is x2 or x0.5 (USAAF convention 4 mil 75% <-> 8 mil 100%).",
+  "rate_of_fire": "Free-firing unless the _synchronised field."
+ },
+ "guns": {
+  "M2_50": {
+   "name": "Browning AN/M2 .50 cal (12.7x99 mm)",
+   "nation": "USA",
+   "calibre": {
+    "value": 12.7,
+    "unit": "mm",
+    "confidence": "good",
+    "source": "https://cdn.shopify.com/s/files/1/1343/9895/files/aaf2001manualforgunharmonizationreduced.pdf"
+   },
+   "rate_of_fire": {
+    "value": 800,
+    "unit": "rounds/min",
+    "confidence": "good",
+    "source": "https://cdn.shopify.com/s/files/1/1343/9895/files/aaf2001manualforgunharmonizationreduced.pdf",
+    "note": "AAF Manual 200-1 data page: free-firing 750-850 rounds/min, synchronised 650. Midpoint used."
+   },
+   "rate_of_fire_synchronised": {
+    "value": 650,
+    "unit": "rounds/min",
+    "confidence": "good",
+    "source": "https://cdn.shopify.com/s/files/1/1343/9895/files/aaf2001manualforgunharmonizationreduced.pdf"
+   },
+   "muzzle_velocity": {
+    "value": 856,
+    "unit": "m/s",
+    "confidence": "medium",
+    "source": "https://cdn.shopify.com/s/files/1/1343/9895/files/aaf2001manualforgunharmonizationreduced.pdf",
+    "note": "AAF Manual 200-1 firing-table basis is 2700 ft/s (823 m/s) for AP M2; 2810 ft/s (856 m/s) is the usual 36-in barrel figure. Use 823-856."
+   },
+   "projectile_mass": {
+    "value": 0.046,
+    "unit": "kg",
+    "confidence": "good",
+    "source": "https://cdn.shopify.com/s/files/1/1343/9895/files/aaf2001manualforgunharmonizationreduced.pdf",
+    "note": "AP M2 projectile 0.1015 lb = 46.0 g (AAF Manual 200-1 data page)."
+   },
+   "dispersion_75": {
+    "value": 4.0,
+    "unit": "mil",
+    "confidence": "good",
+    "source": "https://forum.il2sturmovik.com/topic/68761-dispersion",
+    "note": "Air Forces Manual No. 64 (May 1945) 'about 4 mils for 75% of the rounds' (as quoted); AAF Manual 200-1 (30 Jan 1945) draws every fighter harmonisation pattern on a '4-mil dispersion cone'."
+   },
+   "dispersion_100": {
+    "value": 8.0,
+    "unit": "mil",
+    "confidence": "good",
+    "source": "https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642",
+    "note": "USAAF 1944 gunnery manual, P-38 nose installation: 1.88 m at 229 m = 8.2 mil (100%), 4.1 mil (75%), as tabulated by Butch2k. AF Manual 335-25 (1950) quoted with 4/8 mil."
+   },
+   "dispersion_installation_note": "Nose (P-38) value is the gun itself on a stiff mount. Wing mounts add flexing: Butch2k's estimate for a wing M2 is 'at least 12 mils' (100%), i.e. about 6 mil 75% (estimated, https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642)."
+  },
+  "AN_M2_20": {
+   "name": "AN/M2 20 mm (US-built Hispano)",
+   "nation": "USA",
+   "calibre": {
+    "value": 20,
+    "unit": "mm",
+    "confidence": "good",
+    "source": "https://cdn.shopify.com/s/files/1/1343/9895/files/aaf2001manualforgunharmonizationreduced.pdf"
+   },
+   "rate_of_fire": {
+    "value": 650,
+    "unit": "rounds/min",
+    "confidence": "good",
+    "source": "https://cdn.shopify.com/s/files/1/1343/9895/files/aaf2001manualforgunharmonizationreduced.pdf",
+    "note": "AAF Manual 200-1 data page: 600-700 rounds/min."
+   },
+   "rate_of_fire_synchronised": {
+    "value": "n/a",
+    "unit": "rounds/min",
+    "confidence": "good",
+    "source": "https://cdn.shopify.com/s/files/1/1343/9895/files/aaf2001manualforgunharmonizationreduced.pdf",
+    "note": "Not synchronised in any aircraft here."
+   },
+   "muzzle_velocity": {
+    "value": 823,
+    "unit": "m/s",
+    "confidence": "good",
+    "source": "https://cdn.shopify.com/s/files/1/1343/9895/files/aaf2001manualforgunharmonizationreduced.pdf",
+    "note": "2700 ft/s firing-table value."
+   },
+   "projectile_mass": {
+    "value": 0.13,
+    "unit": "kg",
+    "confidence": "good",
+    "source": "https://cdn.shopify.com/s/files/1/1343/9895/files/aaf2001manualforgunharmonizationreduced.pdf",
+    "note": "0.29 lb HE M97 / AP M75 class projectile."
+   },
+   "dispersion_75": {
+    "value": 3.0,
+    "unit": "mil",
+    "confidence": "medium",
+    "source": "https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642",
+    "note": "USAAF 1944 gunnery manual, P-38 nose installation, 75% (per Butch2k); Williams quotes 3 mil 75% for the Hispano."
+   },
+   "dispersion_100": {
+    "value": 6.0,
+    "unit": "mil",
+    "confidence": "medium",
+    "source": "https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642",
+    "note": "Derived: 2 x the 75% value (Butch2k's and Williams' convention)."
+   },
+   "dispersion_installation_note": "Nose mount. Wing mount estimated at 4 mil 75% / 8 mil 100% (estimated: +1 mil for wing flex, by analogy with the MG 151/20 engine-vs-wing figures)."
+  },
+  "HISPANO_II": {
+   "name": "Hispano Mk II 20 mm (British)",
+   "nation": "UK",
+   "calibre": {
+    "value": 20,
+    "unit": "mm",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/Hispano-Suiza_HS.404"
+   },
+   "rate_of_fire": {
+    "value": 600,
+    "unit": "rounds/min",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Hispano-Suiza_HS.404",
+    "note": "Sources give 600-650 for the Mk II."
+   },
+   "rate_of_fire_synchronised": {
+    "value": "n/a",
+    "unit": "rounds/min",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/Hispano-Suiza_HS.404",
+    "note": "Never synchronised."
+   },
+   "muzzle_velocity": {
+    "value": 880,
+    "unit": "m/s",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Hispano-Suiza_HS.404",
+    "note": "840-880 m/s depending on barrel; long-barrel Mk II ~880."
+   },
+   "projectile_mass": {
+    "value": 0.13,
+    "unit": "kg",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/Hispano-Suiza_HS.404"
+   },
+   "dispersion_75": {
+    "value": 3.0,
+    "unit": "mil",
+    "confidence": "medium",
+    "source": "Tony Williams (author of Flying Guns: WW2), post quoted in https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642",
+    "note": "Williams: a friend's study gives 4 mil for the Browning .50 and 3 mil for the Hispano, 75% of shots, double for 100% (reported via search result for https://ww2aircraft.net/forum/threads/performance-comparison-machine-guns-and-light-cannon.17521/ ; page not opened). Consistent with the USAAF P-38 nose 20 mm figure of 3 mil 75% in the ATAG table."
+   },
+   "dispersion_100": {
+    "value": 6.0,
+    "unit": "mil",
+    "confidence": "medium",
+    "source": "Tony Williams (author of Flying Guns: WW2), post quoted in https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642"
+   },
+   "dispersion_installation_note": "Wing mount in every British type here (except the Mosquito nose). Wing installed: estimated 4 mil 75% / 8 mil 100%."
+  },
+  "HISPANO_V": {
+   "name": "Hispano Mk V 20 mm (short barrel, lighter)",
+   "nation": "UK",
+   "calibre": {
+    "value": 20,
+    "unit": "mm",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/Hispano-Suiza_HS.404"
+   },
+   "rate_of_fire": {
+    "value": 750,
+    "unit": "rounds/min",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Hispano-Suiza_HS.404",
+    "note": "Sources give 700-750."
+   },
+   "rate_of_fire_synchronised": {
+    "value": "n/a",
+    "unit": "rounds/min",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/Hispano-Suiza_HS.404",
+    "note": "Not synchronised in any aircraft here."
+   },
+   "muzzle_velocity": {
+    "value": 840,
+    "unit": "m/s",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Hispano-Suiza_HS.404"
+   },
+   "projectile_mass": {
+    "value": 0.13,
+    "unit": "kg",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/Hispano-Suiza_HS.404"
+   },
+   "dispersion_75": {
+    "value": 3.0,
+    "unit": "mil",
+    "confidence": "estimated",
+    "source": "estimated: assumed equal to the Mk II (same action and ammunition; shorter barrel)"
+   },
+   "dispersion_100": {
+    "value": 6.0,
+    "unit": "mil",
+    "confidence": "estimated",
+    "source": "estimated: 2 x 75% value"
+   },
+   "dispersion_installation_note": "Tempest V wing mount: estimated 4 mil 75% / 8 mil 100%."
+  },
+  "BROWNING_303": {
+   "name": ".303 Browning Mk II (7.7x56R)",
+   "nation": "UK",
+   "calibre": {
+    "value": 7.7,
+    "unit": "mm",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/M1919_Browning_machine_gun#.303_British"
+   },
+   "rate_of_fire": {
+    "value": 1150,
+    "unit": "rounds/min",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/M1919_Browning_machine_gun#.303_British",
+    "note": "1,100-1,200."
+   },
+   "rate_of_fire_synchronised": {
+    "value": "n/a",
+    "unit": "rounds/min",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/M1919_Browning_machine_gun#.303_British",
+    "note": "Not synchronised in any aircraft here."
+   },
+   "muzzle_velocity": {
+    "value": 744,
+    "unit": "m/s",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/M1919_Browning_machine_gun#.303_British",
+    "note": "2,440 ft/s Mk VII ball."
+   },
+   "projectile_mass": {
+    "value": 0.0113,
+    "unit": "kg",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/M1919_Browning_machine_gun#.303_British",
+    "note": "174 gr."
+   },
+   "dispersion_75": {
+    "value": 5.0,
+    "unit": "mil",
+    "confidence": "medium",
+    "source": "Tony Williams (author of Flying Guns: WW2), post quoted in https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642",
+    "note": "Williams: Hurricane/Spitfire wing-mounted .303s '10 mils dispersion, with 75% of the shots within 5 mils' (his own data; document not named). This is an installed (wing) figure."
+   },
+   "dispersion_100": {
+    "value": 10.0,
+    "unit": "mil",
+    "confidence": "medium",
+    "source": "Tony Williams (author of Flying Guns: WW2), post quoted in https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642"
+   },
+   "dispersion_installation_note": "Figure is already a wing-installed value. Mosquito nose mount: estimated 3.5 mil 75% / 7 mil 100% (estimated: stiff nose mount, by the M2 nose/wing ratio)."
+  },
+  "MG151_20": {
+   "name": "Mauser MG 151/20 (20x82 mm)",
+   "nation": "Germany",
+   "calibre": {
+    "value": 20,
+    "unit": "mm",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/MG_151_cannon"
+   },
+   "rate_of_fire": {
+    "value": 720,
+    "unit": "rounds/min",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/MG_151_cannon",
+    "note": "Unsynchronised 700-750 (Wikipedia gives 740 for HE)."
+   },
+   "rate_of_fire_synchronised": {
+    "value": 600,
+    "unit": "rounds/min",
+    "confidence": "low",
+    "source": "https://en.wikipedia.org/wiki/MG_151_cannon",
+    "note": "Synchronised wing-root guns of the Fw 190: commonly quoted 550-650 (forum/simulator data); estimated."
+   },
+   "muzzle_velocity": {
+    "value": 805,
+    "unit": "m/s",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/MG_151_cannon",
+    "note": "Minengeschoss (M-Geschoss) 805 m/s; HE-T 705 m/s; AP 720 m/s. The M-Geschoss was the standard air-to-air round from 1943."
+   },
+   "projectile_mass": {
+    "value": 0.092,
+    "unit": "kg",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/MG_151_cannon",
+    "note": "M-Geschoss 92 g; HE-T ~115 g."
+   },
+   "dispersion_75": {
+    "value": 1.5,
+    "unit": "mil",
+    "confidence": "low",
+    "source": "https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642",
+    "note": "Derived: half of the 100% value (USAAF/Williams convention)."
+   },
+   "dispersion_100": {
+    "value": 3.0,
+    "unit": "mil",
+    "confidence": "medium",
+    "source": "https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642",
+    "note": "Bf 109 G-6 engine-mounted MG 151/20: H = 0.3 m at 100 m = 3 mil, 100% (Luftwaffe 'theoretical max' figure, tabulated by Butch2k from Luftwaffe documents). Fw 190 A wing inner: 7 mil 100%; wing outer: 8 mil 100% (same source)."
+   },
+   "dispersion_installation_note": "Installation matters more than the gun: 3 mil engine (Bf 109), 7 mil wing root synchronised (Fw 190), 8 mil outer wing (Fw 190), all 100% values."
+  },
+  "MK108": {
+   "name": "Rheinmetall-Borsig MK 108 30 mm (30x90RB)",
+   "nation": "Germany",
+   "calibre": {
+    "value": 30,
+    "unit": "mm",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/MK_108_cannon"
+   },
+   "rate_of_fire": {
+    "value": 620,
+    "unit": "rounds/min",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/MK_108_cannon",
+    "note": "600-650."
+   },
+   "rate_of_fire_synchronised": {
+    "value": "n/a",
+    "unit": "rounds/min",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/MK_108_cannon",
+    "note": "Not synchronisable; engine-mounted or nose-mounted."
+   },
+   "muzzle_velocity": {
+    "value": 520,
+    "unit": "m/s",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/MK_108_cannon",
+    "note": "500-540 m/s (M-Geschoss ~ 500-505; sources vary)."
+   },
+   "projectile_mass": {
+    "value": 0.33,
+    "unit": "kg",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/MK_108_cannon",
+    "note": "M-Geschoss 330 g (HE ~ 330-360 g)."
+   },
+   "dispersion_75": {
+    "value": 1.75,
+    "unit": "mil",
+    "confidence": "low",
+    "source": "https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642",
+    "note": "Derived: half of the 100% value."
+   },
+   "dispersion_100": {
+    "value": 3.5,
+    "unit": "mil",
+    "confidence": "medium",
+    "source": "https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642",
+    "note": "Ta 152 engine-mounted MK 108: H = 0.35 m at 100 m = 3.5 mil, 100% (Luftwaffe 'theoretical max', per Butch2k)."
+   },
+   "dispersion_installation_note": "Nose (Me 262) and engine (Bf 109 K) mounts are both stiff: use 3.5 mil 100%. Low muzzle velocity means large drop and long time of flight, which matters more than dispersion beyond ~400 m."
+  },
+  "MG131": {
+   "name": "Rheinmetall-Borsig MG 131 13 mm (13x64B)",
+   "nation": "Germany",
+   "calibre": {
+    "value": 13,
+    "unit": "mm",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/MG_131_machine_gun"
+   },
+   "rate_of_fire": {
+    "value": 900,
+    "unit": "rounds/min",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/MG_131_machine_gun",
+    "note": "Unsynchronised 900-930; DTIC 'German Aircraft Guns and Special Weapons' (US NavTechMisEu, 1945) p. 67 via Wikipedia."
+   },
+   "rate_of_fire_synchronised": {
+    "value": 750,
+    "unit": "rounds/min",
+    "confidence": "low",
+    "source": "estimated: ~80-85% of free rate, the usual synchronisation loss for cowl guns"
+   },
+   "muzzle_velocity": {
+    "value": 750,
+    "unit": "m/s",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/MG_131_machine_gun"
+   },
+   "projectile_mass": {
+    "value": 0.036,
+    "unit": "kg",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/MG_131_machine_gun",
+    "note": "34-38.5 g by type."
+   },
+   "dispersion_75": {
+    "value": 4.0,
+    "unit": "mil",
+    "confidence": "low",
+    "source": "https://en.wikipedia.org/wiki/MG_131_machine_gun",
+    "note": "Wikipedia (uncited): '35 x 45 cm spread at 100 m' = 3.5 x 4.5 mil; share not stated, taken as ~75%."
+   },
+   "dispersion_100": {
+    "value": 10.0,
+    "unit": "mil",
+    "confidence": "medium",
+    "source": "https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642",
+    "note": "Fw 190 A cowl installation, H = 1 m at 100 m = 10 mil, 100% (Luftwaffe theoretical max, per Butch2k). Synchronised cowl installation figure."
+   },
+   "dispersion_installation_note": "Cowl (synchronised) installation: 10 mil 100%. Gun alone appears much tighter (~4 mil)."
+  },
+  "TYPE99_2": {
+   "name": "Type 99 Mk 2 20 mm (Oerlikon FFL derivative, 20x101RB)",
+   "nation": "Japan (IJN)",
+   "calibre": {
+    "value": 20,
+    "unit": "mm",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/Type_99_cannon"
+   },
+   "rate_of_fire": {
+    "value": 490,
+    "unit": "rounds/min",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Type_99_cannon",
+    "note": "Mk 2 Model 3/4: 480-500 rounds/min."
+   },
+   "rate_of_fire_synchronised": {
+    "value": "n/a",
+    "unit": "rounds/min",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/Type_99_cannon",
+    "note": "Not synchronised in any aircraft here."
+   },
+   "muzzle_velocity": {
+    "value": 750,
+    "unit": "m/s",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Type_99_cannon"
+   },
+   "projectile_mass": {
+    "value": 0.128,
+    "unit": "kg",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Type_99_cannon"
+   },
+   "dispersion_75": {
+    "value": 2.5,
+    "unit": "mil",
+    "confidence": "estimated",
+    "source": "estimated: no source found. Oerlikon-family MG FF tested at 2 mil (engine) and 3.5 mil (Bf 109 E wing), 100% (https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642); the longer-barrel Type 99-2 in a light Zero wing taken as ~5 mil 100% / 2.5 mil 75%."
+   },
+   "dispersion_100": {
+    "value": 5.0,
+    "unit": "mil",
+    "confidence": "estimated",
+    "source": "estimated: see 75% note"
+   },
+   "dispersion_installation_note": "Wing installation, estimated."
+  },
+  "TYPE97_77": {
+   "name": "Type 97 7.7 mm (Vickers-pattern, 7.7x56R)",
+   "nation": "Japan (IJN)",
+   "calibre": {
+    "value": 7.7,
+    "unit": "mm",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/Type_97_aircraft_machine_gun"
+   },
+   "rate_of_fire": {
+    "value": 900,
+    "unit": "rounds/min",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Type_97_aircraft_machine_gun",
+    "note": "~900 free."
+   },
+   "rate_of_fire_synchronised": {
+    "value": 750,
+    "unit": "rounds/min",
+    "confidence": "low",
+    "source": "estimated: ~85% of free rate when synchronised"
+   },
+   "muzzle_velocity": {
+    "value": 745,
+    "unit": "m/s",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Type_97_aircraft_machine_gun"
+   },
+   "projectile_mass": {
+    "value": 0.0113,
+    "unit": "kg",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Type_97_aircraft_machine_gun"
+   },
+   "dispersion_75": {
+    "value": 4.0,
+    "unit": "mil",
+    "confidence": "estimated",
+    "source": "estimated: rifle-calibre cowl gun; taken equal to the M2 .50 (4 mil 75%), tighter than the wing .303 (5 mil 75%) because of the stiff cowl mount"
+   },
+   "dispersion_100": {
+    "value": 8.0,
+    "unit": "mil",
+    "confidence": "estimated",
+    "source": "estimated: 2 x 75%"
+   },
+   "dispersion_installation_note": "Cowl, synchronised."
+  },
+  "TYPE3_132": {
+   "name": "Type 3 13.2 mm (Browning-derived, 13.2x99)",
+   "nation": "Japan (IJN)",
+   "calibre": {
+    "value": 13.2,
+    "unit": "mm",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/Type_3_aircraft_machine_gun"
+   },
+   "rate_of_fire": {
+    "value": 800,
+    "unit": "rounds/min",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Type_3_aircraft_machine_gun"
+   },
+   "rate_of_fire_synchronised": {
+    "value": 650,
+    "unit": "rounds/min",
+    "confidence": "low",
+    "source": "estimated: as the M2 .50 synchronised"
+   },
+   "muzzle_velocity": {
+    "value": 790,
+    "unit": "m/s",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Type_3_aircraft_machine_gun"
+   },
+   "projectile_mass": {
+    "value": 0.052,
+    "unit": "kg",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Type_3_aircraft_machine_gun"
+   },
+   "dispersion_75": {
+    "value": 4.0,
+    "unit": "mil",
+    "confidence": "estimated",
+    "source": "estimated: Browning-derived action; taken equal to the M2 .50"
+   },
+   "dispersion_100": {
+    "value": 8.0,
+    "unit": "mil",
+    "confidence": "estimated",
+    "source": "estimated: as M2"
+   },
+   "dispersion_installation_note": "Fitted to the A6M5b/c (not the A6M5 base model described here). Listed because requested."
+  },
+  "HO5": {
+   "name": "Ho-5 20 mm (Browning-derived, 20x94)",
+   "nation": "Japan (IJA)",
+   "calibre": {
+    "value": 20,
+    "unit": "mm",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/Ho-5_cannon"
+   },
+   "rate_of_fire": {
+    "value": 800,
+    "unit": "rounds/min",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Ho-5_cannon",
+    "note": "750-850 free."
+   },
+   "rate_of_fire_synchronised": {
+    "value": 600,
+    "unit": "rounds/min",
+    "confidence": "low",
+    "source": "https://en.wikipedia.org/wiki/Ho-5_cannon"
+   },
+   "muzzle_velocity": {
+    "value": 750,
+    "unit": "m/s",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Ho-5_cannon"
+   },
+   "projectile_mass": {
+    "value": 0.08,
+    "unit": "kg",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Ho-5_cannon",
+    "note": "79-84 g."
+   },
+   "dispersion_75": {
+    "value": 3.5,
+    "unit": "mil",
+    "confidence": "estimated",
+    "source": "estimated: no source; between the Hispano (3) and the Browning .50 (4) it was scaled from"
+   },
+   "dispersion_100": {
+    "value": 7.0,
+    "unit": "mil",
+    "confidence": "estimated",
+    "source": "estimated: 2 x 75%"
+   },
+   "dispersion_installation_note": "Ki-84 wing, unsynchronised. Wing installed estimated 4.5 mil 75% / 9 mil 100%."
+  },
+  "HO103": {
+   "name": "Ho-103 12.7 mm (Browning-derived, 12.7x81SR)",
+   "nation": "Japan (IJA)",
+   "calibre": {
+    "value": 12.7,
+    "unit": "mm",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/Ho-103_machine_gun"
+   },
+   "rate_of_fire": {
+    "value": 900,
+    "unit": "rounds/min",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Ho-103_machine_gun"
+   },
+   "rate_of_fire_synchronised": {
+    "value": 800,
+    "unit": "rounds/min",
+    "confidence": "low",
+    "source": "https://en.wikipedia.org/wiki/Ho-103_machine_gun",
+    "note": "Quoted 800 synchronised; estimated."
+   },
+   "muzzle_velocity": {
+    "value": 780,
+    "unit": "m/s",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Ho-103_machine_gun"
+   },
+   "projectile_mass": {
+    "value": 0.034,
+    "unit": "kg",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Ho-103_machine_gun",
+    "note": "33-36 g."
+   },
+   "dispersion_75": {
+    "value": 4.0,
+    "unit": "mil",
+    "confidence": "estimated",
+    "source": "estimated: Browning-derived; as M2 .50"
+   },
+   "dispersion_100": {
+    "value": 8.0,
+    "unit": "mil",
+    "confidence": "estimated",
+    "source": "estimated"
+   },
+   "dispersion_installation_note": "Ki-84 cowl, synchronised."
+  },
+  "SHVAK": {
+   "name": "ShVAK 20 mm (20x99R)",
+   "nation": "USSR",
+   "calibre": {
+    "value": 20,
+    "unit": "mm",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/ShVAK_cannon"
+   },
+   "rate_of_fire": {
+    "value": 750,
+    "unit": "rounds/min",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/ShVAK_cannon",
+    "note": "700-800 free (motor-cannon)."
+   },
+   "rate_of_fire_synchronised": {
+    "value": 600,
+    "unit": "rounds/min",
+    "confidence": "low",
+    "source": "https://en.wikipedia.org/wiki/ShVAK_cannon",
+    "note": "550-650 synchronised (La-7 cowl guns)."
+   },
+   "muzzle_velocity": {
+    "value": 770,
+    "unit": "m/s",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/ShVAK_cannon",
+    "note": "750-790 m/s."
+   },
+   "projectile_mass": {
+    "value": 0.096,
+    "unit": "kg",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/ShVAK_cannon",
+    "note": "91-96 g."
+   },
+   "dispersion_75": {
+    "value": 1.5,
+    "unit": "mil",
+    "confidence": "estimated",
+    "source": "estimated: no Soviet dispersion figure found. Motor-cannon (Yak-3) taken equal to the engine-mounted MG 151/20 (3 mil 100%); an IL-2 forum poster calls ShVAK tighter than the MG 151/20 (anecdotal): https://forum.il2sturmovik.com/topic/31160-russian-guns-balistics/page/5/"
+   },
+   "dispersion_100": {
+    "value": 3.0,
+    "unit": "mil",
+    "confidence": "estimated",
+    "source": "estimated: engine-mounted, as MG 151/20 engine"
+   },
+   "dispersion_installation_note": "Engine (Yak-3): 3 mil 100%. Synchronised cowl pair (La-7): estimated 7 mil 100% by analogy with the Fw 190 synchronised wing-root MG 151/20."
+  },
+  "B20": {
+   "name": "Berezin B-20 20 mm (20x99R)",
+   "nation": "USSR",
+   "calibre": {
+    "value": 20,
+    "unit": "mm",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/Berezin_B-20"
+   },
+   "rate_of_fire": {
+    "value": 800,
+    "unit": "rounds/min",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Berezin_B-20"
+   },
+   "rate_of_fire_synchronised": {
+    "value": 650,
+    "unit": "rounds/min",
+    "confidence": "low",
+    "source": "https://en.wikipedia.org/wiki/Berezin_B-20",
+    "note": "600-700 synchronised; estimated."
+   },
+   "muzzle_velocity": {
+    "value": 770,
+    "unit": "m/s",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Berezin_B-20"
+   },
+   "projectile_mass": {
+    "value": 0.096,
+    "unit": "kg",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Berezin_B-20"
+   },
+   "dispersion_75": {
+    "value": 3.5,
+    "unit": "mil",
+    "confidence": "estimated",
+    "source": "estimated: synchronised cowl installation, as ShVAK cowl"
+   },
+   "dispersion_100": {
+    "value": 7.0,
+    "unit": "mil",
+    "confidence": "estimated",
+    "source": "estimated"
+   },
+   "dispersion_installation_note": "Late La-7s carried three B-20S (synchronised). Not the configuration used here."
+  },
+  "UBS": {
+   "name": "Berezin UBS 12.7 mm (synchronised UB, 12.7x108)",
+   "nation": "USSR",
+   "calibre": {
+    "value": 12.7,
+    "unit": "mm",
+    "confidence": "good",
+    "source": "https://en.wikipedia.org/wiki/Berezin_UB"
+   },
+   "rate_of_fire": {
+    "value": 1050,
+    "unit": "rounds/min",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Berezin_UB",
+    "note": "Free UBK ~1,050."
+   },
+   "rate_of_fire_synchronised": {
+    "value": 800,
+    "unit": "rounds/min",
+    "confidence": "low",
+    "source": "https://en.wikipedia.org/wiki/Berezin_UB",
+    "note": "UBS 700-800 synchronised."
+   },
+   "muzzle_velocity": {
+    "value": 850,
+    "unit": "m/s",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Berezin_UB",
+    "note": "814-860."
+   },
+   "projectile_mass": {
+    "value": 0.048,
+    "unit": "kg",
+    "confidence": "medium",
+    "source": "https://en.wikipedia.org/wiki/Berezin_UB"
+   },
+   "dispersion_75": {
+    "value": 4.0,
+    "unit": "mil",
+    "confidence": "estimated",
+    "source": "estimated: no source; as M2 .50"
+   },
+   "dispersion_100": {
+    "value": 8.0,
+    "unit": "mil",
+    "confidence": "estimated",
+    "source": "estimated"
+   },
+   "dispersion_installation_note": "Yak-3 cowl pair, synchronised."
+  }
+ },
+ "installed_dispersion": {
+  "M2_50/nose": {
+   "dispersion_75": 4.0,
+   "dispersion_100": 8.0,
+   "unit": "mil",
+   "confidence": "good",
+   "source": "USAAF P-38 nose: 4.1/8.2 mil (https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642)"
+  },
+  "M2_50/wing": {
+   "dispersion_75": 6.0,
+   "dispersion_100": 12.0,
+   "unit": "mil",
+   "confidence": "low",
+   "source": "estimated: Butch2k 'at least 12 mils' (100%) for a wing M2 (https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642)"
+  },
+  "AN_M2_20/nose": {
+   "dispersion_75": 3.0,
+   "dispersion_100": 6.0,
+   "unit": "mil",
+   "confidence": "medium",
+   "source": "USAAF P-38 nose 20 mm 3 mil 75% (https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642)"
+  },
+  "HISPANO_II/wing": {
+   "dispersion_75": 4.0,
+   "dispersion_100": 8.0,
+   "unit": "mil",
+   "confidence": "estimated",
+   "source": "estimated: gun 3/6 mil plus wing flex"
+  },
+  "HISPANO_II/nose": {
+   "dispersion_75": 3.0,
+   "dispersion_100": 6.0,
+   "unit": "mil",
+   "confidence": "medium",
+   "source": "as US 20 mm nose installation"
+  },
+  "HISPANO_V/wing": {
+   "dispersion_75": 4.0,
+   "dispersion_100": 8.0,
+   "unit": "mil",
+   "confidence": "estimated",
+   "source": "estimated: as Mk II wing"
+  },
+  "BROWNING_303/wing": {
+   "dispersion_75": 5.0,
+   "dispersion_100": 10.0,
+   "unit": "mil",
+   "confidence": "medium",
+   "source": "Williams, Hurricane/Spitfire wing (https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642)"
+  },
+  "BROWNING_303/nose": {
+   "dispersion_75": 3.5,
+   "dispersion_100": 7.0,
+   "unit": "mil",
+   "confidence": "estimated",
+   "source": "estimated: stiff nose mount"
+  },
+  "MG151_20/engine": {
+   "dispersion_75": 1.5,
+   "dispersion_100": 3.0,
+   "unit": "mil",
+   "confidence": "medium",
+   "source": "Bf 109 G-6 engine 3 mil 100% (https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642)"
+  },
+  "MG151_20/wing_root": {
+   "dispersion_75": 3.5,
+   "dispersion_100": 7.0,
+   "unit": "mil",
+   "confidence": "medium",
+   "source": "Fw 190 A wing inner 7 mil 100% (https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642)"
+  },
+  "MG151_20/wing": {
+   "dispersion_75": 4.0,
+   "dispersion_100": 8.0,
+   "unit": "mil",
+   "confidence": "medium",
+   "source": "Fw 190 A wing outer 8 mil 100% (https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642)"
+  },
+  "MK108/engine": {
+   "dispersion_75": 1.75,
+   "dispersion_100": 3.5,
+   "unit": "mil",
+   "confidence": "medium",
+   "source": "Ta 152 engine 3.5 mil 100% (https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642)"
+  },
+  "MK108/nose": {
+   "dispersion_75": 1.75,
+   "dispersion_100": 3.5,
+   "unit": "mil",
+   "confidence": "estimated",
+   "source": "estimated: as engine mount"
+  },
+  "MK108/wing_root": {
+   "dispersion_75": 2.5,
+   "dispersion_100": 5.0,
+   "unit": "mil",
+   "confidence": "estimated",
+   "source": "estimated: wing-root mount, light airframe"
+  },
+  "MG131/cowl": {
+   "dispersion_75": 5.0,
+   "dispersion_100": 10.0,
+   "unit": "mil",
+   "confidence": "medium",
+   "source": "Fw 190 A cowl 10 mil 100% (https://theairtacticalassaultgroup.com/forum/showthread.php?t=9642)"
+  },
+  "TYPE99_2/wing": {
+   "dispersion_75": 2.5,
+   "dispersion_100": 5.0,
+   "unit": "mil",
+   "confidence": "estimated",
+   "source": "estimated: Oerlikon-family analogy"
+  },
+  "TYPE97_77/cowl": {
+   "dispersion_75": 4.0,
+   "dispersion_100": 8.0,
+   "unit": "mil",
+   "confidence": "estimated",
+   "source": "estimated"
+  },
+  "HO5/wing": {
+   "dispersion_75": 4.5,
+   "dispersion_100": 9.0,
+   "unit": "mil",
+   "confidence": "estimated",
+   "source": "estimated"
+  },
+  "HO103/cowl": {
+   "dispersion_75": 4.0,
+   "dispersion_100": 8.0,
+   "unit": "mil",
+   "confidence": "estimated",
+   "source": "estimated"
+  },
+  "SHVAK/engine": {
+   "dispersion_75": 1.5,
+   "dispersion_100": 3.0,
+   "unit": "mil",
+   "confidence": "estimated",
+   "source": "estimated: as MG 151/20 engine"
+  },
+  "SHVAK/cowl": {
+   "dispersion_75": 3.5,
+   "dispersion_100": 7.0,
+   "unit": "mil",
+   "confidence": "estimated",
+   "source": "estimated: as Fw 190 synchronised wing-root MG 151/20"
+  },
+  "UBS/cowl": {
+   "dispersion_75": 4.0,
+   "dispersion_100": 8.0,
+   "unit": "mil",
+   "confidence": "estimated",
+   "source": "estimated"
+  }
+ }
+}

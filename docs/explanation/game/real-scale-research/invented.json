@@ -1,0 +1,811 @@
+{
+ "baseline": {
+  "stall_speed_clean_power_off": {
+   "value": 44.7,
+   "unit": "m/s"
+  },
+  "g_limit": {
+   "value": 8.0,
+   "unit": "g"
+  },
+  "max_speed_sea_level_military": {
+   "value": 162.7,
+   "unit": "m/s"
+  },
+  "climb_rate_sea_level": {
+   "value": 15.2,
+   "unit": "m/s"
+  },
+  "service_ceiling": {
+   "value": 12680,
+   "unit": "m"
+  },
+  "energy_store": {
+   "value": 124348,
+   "unit": "J/kg"
+  },
+  "low_speed_acceleration": {
+   "value": 3.1,
+   "unit": "m/s^2"
+  },
+  "sustained_turn_rate_sea_level": {
+   "value": 16.7,
+   "unit": "deg/s"
+  },
+  "roll_rate_peak": {
+   "value": 95,
+   "unit": "deg/s"
+  },
+  "cd0": {
+   "value": 0.0163,
+   "unit": "-"
+  },
+  "wing_loading": {
+   "value": 201.0,
+   "unit": "kg/m^2"
+  },
+  "power_loading": {
+   "value": 0.255,
+   "unit": "kW/kg"
+  },
+  "weight_of_fire": {
+   "value": 3.68,
+   "unit": "kg/s"
+  },
+  "dispersion_volley_75": {
+   "value": 6.0,
+   "unit": "mil"
+  }
+ },
+ "notes": "Multipliers apply to the P-51D values in 'baseline' (same field names as aircraft.json). g_limit is absolute. Volley rates are whole shots per second dividing 30. Each design keeps stall < cruise, positive drag, and a power/drag/wing-loading story that would produce its numbers; 'physics_story' says what that story is. Gun dispersion values use the real gun families in guns.json.",
+ "designs": [
+  {
+   "name": "Hammerhead",
+   "concept": "Energy interceptor: a huge engine on a small wing.",
+   "feel": "Rockets upward and runs down anything in a straight line; wallows and bleeds speed if dragged into a turning fight. Fights in the vertical.",
+   "g_limit": 7.0,
+   "multipliers": {
+    "stall_speed_clean_power_off": 1.25,
+    "max_speed_sea_level_military": 1.1,
+    "climb_rate_sea_level": 1.9,
+    "energy_store": 1.4,
+    "low_speed_acceleration": 1.5,
+    "sustained_turn_rate_sea_level": 0.75,
+    "roll_rate_peak": 0.85,
+    "cd0": 0.95,
+    "wing_loading": 1.55,
+    "power_loading": 1.9,
+    "weight_of_fire": 0.9,
+    "dispersion_volley_75": 0.29
+   },
+   "physics_story": "Power per kg x1.9 drives climb and acceleration; wing loading x1.55 raises stall by sqrt(1.55) = 1.25 and cuts sustained turn; clean airframe keeps cruise high.",
+   "guns": [
+    {
+     "kind": "MK 108-class 30 mm",
+     "count": 2,
+     "calibre_mm": 30,
+     "volleys_per_second": 5,
+     "projectile_mass_kg": 0.33,
+     "muzzle_velocity_m_s": 520,
+     "dispersion_75_mil": 1.75,
+     "ammunition_per_gun": 60,
+     "mounting": "nose",
+     "weight_of_fire_kg_s": 3.3
+    }
+   ],
+   "survivability": {
+    "rating": 3,
+    "reason": "Armoured engine bay, nothing else."
+   },
+   "derived_absolute": {
+    "stall_speed_clean_power_off": {
+     "value": 55.88,
+     "unit": "m/s"
+    },
+    "max_speed_sea_level_military": {
+     "value": 178.97,
+     "unit": "m/s"
+    },
+    "climb_rate_sea_level": {
+     "value": 28.88,
+     "unit": "m/s"
+    },
+    "energy_store": {
+     "value": 174087.2,
+     "unit": "J/kg"
+    },
+    "low_speed_acceleration": {
+     "value": 4.65,
+     "unit": "m/s^2"
+    },
+    "sustained_turn_rate_sea_level": {
+     "value": 12.52,
+     "unit": "deg/s"
+    },
+    "roll_rate_peak": {
+     "value": 80.75,
+     "unit": "deg/s"
+    },
+    "cd0": {
+     "value": 0.0155,
+     "unit": "-"
+    },
+    "wing_loading": {
+     "value": 311.55,
+     "unit": "kg/m^2"
+    },
+    "power_loading": {
+     "value": 0.48,
+     "unit": "kW/kg"
+    },
+    "weight_of_fire": {
+     "value": 3.31,
+     "unit": "kg/s"
+    },
+    "dispersion_volley_75": {
+     "value": 1.74,
+     "unit": "mil"
+    }
+   }
+  },
+  {
+   "name": "Wren",
+   "concept": "Nimble brawler: very low wing loading, light guns.",
+   "feel": "Turns inside everything and floats at low speed; slow, light-hitting and fragile, so it must win by position.",
+   "g_limit": 10.0,
+   "multipliers": {
+    "stall_speed_clean_power_off": 0.72,
+    "max_speed_sea_level_military": 0.86,
+    "climb_rate_sea_level": 1.15,
+    "energy_store": 0.85,
+    "low_speed_acceleration": 1.3,
+    "sustained_turn_rate_sea_level": 1.45,
+    "roll_rate_peak": 1.4,
+    "cd0": 1.15,
+    "wing_loading": 0.55,
+    "power_loading": 1.05,
+    "weight_of_fire": 0.37,
+    "dispersion_volley_75": 0.67
+   },
+   "physics_story": "Wing loading x0.55 gives stall x0.74 and a big sustained turn; similar power per kg in a draggier, lighter airframe gives modest cruise and good low-speed acceleration (thrust/weight high, induced drag low).",
+   "guns": [
+    {
+     "kind": "Browning .50-class 12.7 mm",
+     "count": 2,
+     "calibre_mm": 12.7,
+     "volleys_per_second": 15,
+     "projectile_mass_kg": 0.046,
+     "muzzle_velocity_m_s": 856,
+     "dispersion_75_mil": 4.0,
+     "ammunition_per_gun": 300,
+     "mounting": "cowl",
+     "weight_of_fire_kg_s": 1.38
+    }
+   ],
+   "survivability": {
+    "rating": 1,
+    "reason": "No armour; Zero-like."
+   },
+   "derived_absolute": {
+    "stall_speed_clean_power_off": {
+     "value": 32.18,
+     "unit": "m/s"
+    },
+    "max_speed_sea_level_military": {
+     "value": 139.92,
+     "unit": "m/s"
+    },
+    "climb_rate_sea_level": {
+     "value": 17.48,
+     "unit": "m/s"
+    },
+    "energy_store": {
+     "value": 105695.8,
+     "unit": "J/kg"
+    },
+    "low_speed_acceleration": {
+     "value": 4.03,
+     "unit": "m/s^2"
+    },
+    "sustained_turn_rate_sea_level": {
+     "value": 24.21,
+     "unit": "deg/s"
+    },
+    "roll_rate_peak": {
+     "value": 133.0,
+     "unit": "deg/s"
+    },
+    "cd0": {
+     "value": 0.0187,
+     "unit": "-"
+    },
+    "wing_loading": {
+     "value": 110.55,
+     "unit": "kg/m^2"
+    },
+    "power_loading": {
+     "value": 0.27,
+     "unit": "kW/kg"
+    },
+    "weight_of_fire": {
+     "value": 1.36,
+     "unit": "kg/s"
+    },
+    "dispersion_volley_75": {
+     "value": 4.02,
+     "unit": "mil"
+    }
+   }
+  },
+  {
+   "name": "Anvil",
+   "concept": "Heavy gunship: one big slow cannon, armoured bathtub.",
+   "feel": "A flying tank: shrugs off hits, one 40 mm shell kills, but it aims like a barge and every shot counts.",
+   "g_limit": 6.0,
+   "multipliers": {
+    "stall_speed_clean_power_off": 1.15,
+    "max_speed_sea_level_military": 0.9,
+    "climb_rate_sea_level": 0.75,
+    "energy_store": 0.8,
+    "low_speed_acceleration": 0.75,
+    "sustained_turn_rate_sea_level": 0.8,
+    "roll_rate_peak": 0.7,
+    "cd0": 1.3,
+    "wing_loading": 1.3,
+    "power_loading": 0.85,
+    "weight_of_fire": 0.74,
+    "dispersion_volley_75": 0.4
+   },
+   "physics_story": "Armour and gun mass push wing loading x1.3 (stall x1.14) and power per kg x0.85; gun fairing and armour raise drag; low g limit for the heavy structure.",
+   "guns": [
+    {
+     "kind": "Vickers S-class 40 mm",
+     "count": 1,
+     "calibre_mm": 40,
+     "volleys_per_second": 2,
+     "projectile_mass_kg": 1.08,
+     "muzzle_velocity_m_s": 615,
+     "dispersion_75_mil": 2.0,
+     "ammunition_per_gun": 30,
+     "mounting": "nose",
+     "weight_of_fire_kg_s": 2.16
+    },
+    {
+     "kind": "Browning .50-class 12.7 mm (ranging)",
+     "count": 2,
+     "calibre_mm": 12.7,
+     "volleys_per_second": 6,
+     "projectile_mass_kg": 0.046,
+     "muzzle_velocity_m_s": 856,
+     "dispersion_75_mil": 4.0,
+     "ammunition_per_gun": 200,
+     "mounting": "nose",
+     "weight_of_fire_kg_s": 0.55
+    }
+   ],
+   "survivability": {
+    "rating": 5,
+    "reason": "Armoured engine, cockpit and tanks (Il-2 style)."
+   },
+   "derived_absolute": {
+    "stall_speed_clean_power_off": {
+     "value": 51.41,
+     "unit": "m/s"
+    },
+    "max_speed_sea_level_military": {
+     "value": 146.43,
+     "unit": "m/s"
+    },
+    "climb_rate_sea_level": {
+     "value": 11.4,
+     "unit": "m/s"
+    },
+    "energy_store": {
+     "value": 99478.4,
+     "unit": "J/kg"
+    },
+    "low_speed_acceleration": {
+     "value": 2.33,
+     "unit": "m/s^2"
+    },
+    "sustained_turn_rate_sea_level": {
+     "value": 13.36,
+     "unit": "deg/s"
+    },
+    "roll_rate_peak": {
+     "value": 66.5,
+     "unit": "deg/s"
+    },
+    "cd0": {
+     "value": 0.0212,
+     "unit": "-"
+    },
+    "wing_loading": {
+     "value": 261.3,
+     "unit": "kg/m^2"
+    },
+    "power_loading": {
+     "value": 0.22,
+     "unit": "kW/kg"
+    },
+    "weight_of_fire": {
+     "value": 2.72,
+     "unit": "kg/s"
+    },
+    "dispersion_volley_75": {
+     "value": 2.4,
+     "unit": "mil"
+    }
+   }
+  },
+  {
+   "name": "Albatross",
+   "concept": "Glider-like energy fighter: very low drag, long wing, weak engine.",
+   "feel": "Keeps its energy forever and zooms high, but cannot get it back quickly once spent. Patient, high-altitude play.",
+   "g_limit": 7.0,
+   "multipliers": {
+    "stall_speed_clean_power_off": 0.8,
+    "max_speed_sea_level_military": 0.92,
+    "climb_rate_sea_level": 0.8,
+    "energy_store": 1.3,
+    "low_speed_acceleration": 0.6,
+    "sustained_turn_rate_sea_level": 1.0,
+    "roll_rate_peak": 0.75,
+    "cd0": 0.7,
+    "wing_loading": 0.75,
+    "power_loading": 0.6,
+    "weight_of_fire": 0.5,
+    "dispersion_volley_75": 0.75
+   },
+   "physics_story": "C_D0 x0.7 and aspect ratio ~x1.8 (less induced drag) let a power x0.6 engine still reach cruise x0.92 (V ~ (P/C_D0)^(1/3) = (0.6/0.7)^(1/3) = 0.95); acceleration and climb track the weak engine; long span rolls slowly.",
+   "guns": [
+    {
+     "kind": "Browning .50-class 12.7 mm",
+     "count": 4,
+     "calibre_mm": 12.7,
+     "volleys_per_second": 10,
+     "projectile_mass_kg": 0.046,
+     "muzzle_velocity_m_s": 856,
+     "dispersion_75_mil": 4.5,
+     "ammunition_per_gun": 350,
+     "mounting": "wing",
+     "weight_of_fire_kg_s": 1.84
+    }
+   ],
+   "survivability": {
+    "rating": 2,
+    "reason": "Light structure."
+   },
+   "derived_absolute": {
+    "stall_speed_clean_power_off": {
+     "value": 35.76,
+     "unit": "m/s"
+    },
+    "max_speed_sea_level_military": {
+     "value": 149.68,
+     "unit": "m/s"
+    },
+    "climb_rate_sea_level": {
+     "value": 12.16,
+     "unit": "m/s"
+    },
+    "energy_store": {
+     "value": 161652.4,
+     "unit": "J/kg"
+    },
+    "low_speed_acceleration": {
+     "value": 1.86,
+     "unit": "m/s^2"
+    },
+    "sustained_turn_rate_sea_level": {
+     "value": 16.7,
+     "unit": "deg/s"
+    },
+    "roll_rate_peak": {
+     "value": 71.25,
+     "unit": "deg/s"
+    },
+    "cd0": {
+     "value": 0.0114,
+     "unit": "-"
+    },
+    "wing_loading": {
+     "value": 150.75,
+     "unit": "kg/m^2"
+    },
+    "power_loading": {
+     "value": 0.15,
+     "unit": "kW/kg"
+    },
+    "weight_of_fire": {
+     "value": 1.84,
+     "unit": "kg/s"
+    },
+    "dispersion_volley_75": {
+     "value": 4.5,
+     "unit": "mil"
+    }
+   }
+  },
+  {
+   "name": "Firecracker",
+   "concept": "Rocket sprinter: enormous thrust, a tiny store (propellant).",
+   "feel": "A few seconds of terrifying speed and climb, then a glider. One pass, maybe two.",
+   "g_limit": 8.0,
+   "multipliers": {
+    "stall_speed_clean_power_off": 1.1,
+    "max_speed_sea_level_military": 1.45,
+    "climb_rate_sea_level": 4.0,
+    "energy_store": 0.25,
+    "low_speed_acceleration": 3.0,
+    "sustained_turn_rate_sea_level": 1.0,
+    "roll_rate_peak": 1.2,
+    "cd0": 0.9,
+    "wing_loading": 1.2,
+    "power_loading": 4.0,
+    "weight_of_fire": 0.9,
+    "dispersion_volley_75": 0.42
+   },
+   "physics_story": "Me 163-like: thrust/weight ~0.4 regardless of speed (power x4 at combat speed); store x0.25 stands for the propellant, not a ceiling. Sustained turn x1.0 only while burning; after burnout it is unpowered.",
+   "guns": [
+    {
+     "kind": "MK 108-class 30 mm",
+     "count": 2,
+     "calibre_mm": 30,
+     "volleys_per_second": 5,
+     "projectile_mass_kg": 0.33,
+     "muzzle_velocity_m_s": 520,
+     "dispersion_75_mil": 2.5,
+     "ammunition_per_gun": 40,
+     "mounting": "wing_root",
+     "weight_of_fire_kg_s": 3.3
+    }
+   ],
+   "survivability": {
+    "rating": 1,
+    "reason": "Explosive propellants."
+   },
+   "derived_absolute": {
+    "stall_speed_clean_power_off": {
+     "value": 49.17,
+     "unit": "m/s"
+    },
+    "max_speed_sea_level_military": {
+     "value": 235.91,
+     "unit": "m/s"
+    },
+    "climb_rate_sea_level": {
+     "value": 60.8,
+     "unit": "m/s"
+    },
+    "energy_store": {
+     "value": 31087.0,
+     "unit": "J/kg"
+    },
+    "low_speed_acceleration": {
+     "value": 9.3,
+     "unit": "m/s^2"
+    },
+    "sustained_turn_rate_sea_level": {
+     "value": 16.7,
+     "unit": "deg/s"
+    },
+    "roll_rate_peak": {
+     "value": 114.0,
+     "unit": "deg/s"
+    },
+    "cd0": {
+     "value": 0.0147,
+     "unit": "-"
+    },
+    "wing_loading": {
+     "value": 241.2,
+     "unit": "kg/m^2"
+    },
+    "power_loading": {
+     "value": 1.02,
+     "unit": "kW/kg"
+    },
+    "weight_of_fire": {
+     "value": 3.31,
+     "unit": "kg/s"
+    },
+    "dispersion_volley_75": {
+     "value": 2.52,
+     "unit": "mil"
+    }
+   }
+  },
+  {
+   "name": "Zerstörer",
+   "concept": "Twin-engine destroyer with a concentrated nose battery.",
+   "feel": "Slashing head-on and rear passes with a laser-straight stream; never turns with single-engine fighters. Two engines: limps home on one.",
+   "g_limit": 6.5,
+   "multipliers": {
+    "stall_speed_clean_power_off": 1.2,
+    "max_speed_sea_level_military": 0.97,
+    "climb_rate_sea_level": 0.95,
+    "energy_store": 0.95,
+    "low_speed_acceleration": 0.95,
+    "sustained_turn_rate_sea_level": 0.75,
+    "roll_rate_peak": 0.6,
+    "cd0": 1.5,
+    "wing_loading": 1.15,
+    "power_loading": 1.0,
+    "weight_of_fire": 1.79,
+    "dispersion_volley_75": 0.53
+   },
+   "physics_story": "Mosquito/P-38-like: two nacelles raise C_D0 x1.5 but twin power keeps cruise near x1; high roll inertia; nose guns give a tight cone.",
+   "guns": [
+    {
+     "kind": "Hispano-class 20 mm",
+     "count": 4,
+     "calibre_mm": 20,
+     "volleys_per_second": 10,
+     "projectile_mass_kg": 0.13,
+     "muzzle_velocity_m_s": 860,
+     "dispersion_75_mil": 3.0,
+     "ammunition_per_gun": 150,
+     "mounting": "nose",
+     "weight_of_fire_kg_s": 5.2
+    },
+    {
+     "kind": "Browning .50-class 12.7 mm",
+     "count": 2,
+     "calibre_mm": 12.7,
+     "volleys_per_second": 15,
+     "projectile_mass_kg": 0.046,
+     "muzzle_velocity_m_s": 856,
+     "dispersion_75_mil": 4.0,
+     "ammunition_per_gun": 400,
+     "mounting": "nose",
+     "weight_of_fire_kg_s": 1.38
+    }
+   ],
+   "survivability": {
+    "rating": 4,
+    "reason": "Two engines, crew armour."
+   },
+   "derived_absolute": {
+    "stall_speed_clean_power_off": {
+     "value": 53.64,
+     "unit": "m/s"
+    },
+    "max_speed_sea_level_military": {
+     "value": 157.82,
+     "unit": "m/s"
+    },
+    "climb_rate_sea_level": {
+     "value": 14.44,
+     "unit": "m/s"
+    },
+    "energy_store": {
+     "value": 118130.6,
+     "unit": "J/kg"
+    },
+    "low_speed_acceleration": {
+     "value": 2.94,
+     "unit": "m/s^2"
+    },
+    "sustained_turn_rate_sea_level": {
+     "value": 12.52,
+     "unit": "deg/s"
+    },
+    "roll_rate_peak": {
+     "value": 57.0,
+     "unit": "deg/s"
+    },
+    "cd0": {
+     "value": 0.0244,
+     "unit": "-"
+    },
+    "wing_loading": {
+     "value": 231.15,
+     "unit": "kg/m^2"
+    },
+    "power_loading": {
+     "value": 0.26,
+     "unit": "kW/kg"
+    },
+    "weight_of_fire": {
+     "value": 6.59,
+     "unit": "kg/s"
+    },
+    "dispersion_volley_75": {
+     "value": 3.18,
+     "unit": "mil"
+    }
+   }
+  },
+  {
+   "name": "Shrike",
+   "concept": "Roll-and-dive slasher (Fw 190 vibe).",
+   "feel": "Flicks from bank to bank instantly and dives away; mediocre sustained turn, abrupt stall. Wins with reversals, not circles.",
+   "g_limit": 9.0,
+   "multipliers": {
+    "stall_speed_clean_power_off": 1.12,
+    "max_speed_sea_level_military": 1.03,
+    "climb_rate_sea_level": 1.0,
+    "energy_store": 0.9,
+    "low_speed_acceleration": 1.0,
+    "sustained_turn_rate_sea_level": 0.88,
+    "roll_rate_peak": 1.65,
+    "cd0": 1.1,
+    "wing_loading": 1.15,
+    "power_loading": 1.1,
+    "weight_of_fire": 1.2,
+    "dispersion_volley_75": 0.62
+   },
+   "physics_story": "Short, stiff wing with light ailerons (roll x1.65, as Fw 190 vs P-51 at medium speed); higher wing loading costs turn; strong radial power.",
+   "guns": [
+    {
+     "kind": "MG 151/20-class 20 mm",
+     "count": 4,
+     "calibre_mm": 20,
+     "volleys_per_second": 10,
+     "projectile_mass_kg": 0.092,
+     "muzzle_velocity_m_s": 805,
+     "dispersion_75_mil": 3.5,
+     "ammunition_per_gun": 200,
+     "mounting": "wing_root",
+     "weight_of_fire_kg_s": 3.68
+    },
+    {
+     "kind": "MG 131-class 13 mm",
+     "count": 2,
+     "calibre_mm": 13,
+     "volleys_per_second": 10,
+     "projectile_mass_kg": 0.036,
+     "muzzle_velocity_m_s": 750,
+     "dispersion_75_mil": 5.0,
+     "ammunition_per_gun": 400,
+     "mounting": "cowl",
+     "weight_of_fire_kg_s": 0.72
+    }
+   ],
+   "survivability": {
+    "rating": 4,
+    "reason": "Radial engine in front, armour."
+   },
+   "derived_absolute": {
+    "stall_speed_clean_power_off": {
+     "value": 50.06,
+     "unit": "m/s"
+    },
+    "max_speed_sea_level_military": {
+     "value": 167.58,
+     "unit": "m/s"
+    },
+    "climb_rate_sea_level": {
+     "value": 15.2,
+     "unit": "m/s"
+    },
+    "energy_store": {
+     "value": 111913.2,
+     "unit": "J/kg"
+    },
+    "low_speed_acceleration": {
+     "value": 3.1,
+     "unit": "m/s^2"
+    },
+    "sustained_turn_rate_sea_level": {
+     "value": 14.7,
+     "unit": "deg/s"
+    },
+    "roll_rate_peak": {
+     "value": 156.75,
+     "unit": "deg/s"
+    },
+    "cd0": {
+     "value": 0.0179,
+     "unit": "-"
+    },
+    "wing_loading": {
+     "value": 231.15,
+     "unit": "kg/m^2"
+    },
+    "power_loading": {
+     "value": 0.28,
+     "unit": "kW/kg"
+    },
+    "weight_of_fire": {
+     "value": 4.42,
+     "unit": "kg/s"
+    },
+    "dispersion_volley_75": {
+     "value": 3.72,
+     "unit": "mil"
+    }
+   }
+  },
+  {
+   "name": "Lantern",
+   "concept": "Fast, fragile skirmisher.",
+   "feel": "Always chooses the fight: fastest piston-type in a straight line, average turn, light guns, dies to one good burst.",
+   "g_limit": 8.0,
+   "multipliers": {
+    "stall_speed_clean_power_off": 1.0,
+    "max_speed_sea_level_military": 1.15,
+    "climb_rate_sea_level": 1.1,
+    "energy_store": 1.1,
+    "low_speed_acceleration": 1.05,
+    "sustained_turn_rate_sea_level": 0.92,
+    "roll_rate_peak": 1.0,
+    "cd0": 0.85,
+    "wing_loading": 1.0,
+    "power_loading": 1.15,
+    "weight_of_fire": 0.37,
+    "dispersion_volley_75": 0.67
+   },
+   "physics_story": "Cleaner (C_D0 x0.85) with power x1.15: V ~ (1.15/0.85)^(1/3) = 1.11, plus weight saved by light guns and no armour.",
+   "guns": [
+    {
+     "kind": "Browning .50-class 12.7 mm",
+     "count": 2,
+     "calibre_mm": 12.7,
+     "volleys_per_second": 15,
+     "projectile_mass_kg": 0.046,
+     "muzzle_velocity_m_s": 856,
+     "dispersion_75_mil": 4.0,
+     "ammunition_per_gun": 300,
+     "mounting": "cowl",
+     "weight_of_fire_kg_s": 1.38
+    }
+   ],
+   "survivability": {
+    "rating": 1,
+    "reason": "No armour, unprotected tanks."
+   },
+   "derived_absolute": {
+    "stall_speed_clean_power_off": {
+     "value": 44.7,
+     "unit": "m/s"
+    },
+    "max_speed_sea_level_military": {
+     "value": 187.1,
+     "unit": "m/s"
+    },
+    "climb_rate_sea_level": {
+     "value": 16.72,
+     "unit": "m/s"
+    },
+    "energy_store": {
+     "value": 136782.8,
+     "unit": "J/kg"
+    },
+    "low_speed_acceleration": {
+     "value": 3.26,
+     "unit": "m/s^2"
+    },
+    "sustained_turn_rate_sea_level": {
+     "value": 15.36,
+     "unit": "deg/s"
+    },
+    "roll_rate_peak": {
+     "value": 95.0,
+     "unit": "deg/s"
+    },
+    "cd0": {
+     "value": 0.0139,
+     "unit": "-"
+    },
+    "wing_loading": {
+     "value": 201.0,
+     "unit": "kg/m^2"
+    },
+    "power_loading": {
+     "value": 0.29,
+     "unit": "kW/kg"
+    },
+    "weight_of_fire": {
+     "value": 1.36,
+     "unit": "kg/s"
+    },
+    "dispersion_volley_75": {
+     "value": 4.02,
+     "unit": "mil"
+    }
+   }
+  }
+ ]
+}

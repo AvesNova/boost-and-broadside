@@ -1,0 +1,91 @@
+# Anvil: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
+# it; [card] is solved from [handles], so edit the handles, not the card.
+name = 'Anvil'
+
+[handles]
+# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
+stall_speed = 51.41
+g_limit = 6.0
+cruise_speed = 146.4
+climb_time = 4438.473684210527
+ceiling = 99473.40000000001
+low_speed_acceleration = 2.046
+sustained_turn_rate = 0.2192133540504878
+half_lift_drag = 0.25
+nose_reversal_time = 1.1248648622024688
+dive_acceleration = 11.068751713941717
+zoom_acceleration = -8.55118444795679
+stall_angle = 0.27052603405912107
+vision_range = 3072.0
+zero_lift_drag = 4.967039800995025e-05
+hit_damage = 66.59510869565217
+fire_rate = 2.0
+muzzle_speed = 615.0
+bullet_spread = 0.44321416884219994
+gun_range = 443.06972404430667
+shots_per_store = 123.00784721593256
+max_shield = 160.0
+shield_recharge_rate = 12.0
+shield_recharge_delay = 6.0
+head_on_fraction = 0.3
+hit_radius = 7.761875
+spawn_energy = 39789.36000000001
+
+[card]
+# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).
+max_lift_coefficient = 0.003711707890033722
+max_acceleration = 58.86000061035156
+zero_lift_drag = 4.967039785697125e-05
+engine_power = 331.1451416015625
+engine_power_full_store = 219.5832061767578
+static_thrust = 7.233984470367432
+max_energy = 99473.3984375
+corner_nose_frequency = 3.8818814754486084
+max_shield = 160.0
+hit_radius = 7.761875152587891
+hit_damage = 66.59510803222656
+muzzle_speed = 615.0
+bullet_energy_cost = 808.6752319335938
+fire_rate = 2.0
+spawn_energy = 39789.359375
+bleed_exponent = 2.0
+induced_drag_scale = 1.4588662385940552
+stall_angle_scale = 1.0333333015441895
+coast_exchange_scale = 0.6991147994995117
+dive_exchange_scale = 1.051110863685608
+climb_exchange_scale = 0.9488826394081116
+vision_range_scale = 1.0
+bullet_spread_scale = 0.036934513598680496
+bullet_drag_scale = 1.0
+shield_recharge_rate_scale = 1.0
+shield_recharge_delay_scale = 1.0
+head_on_fraction_scale = 1.0
+
+[notes]
+# Where each handle's value comes from.
+stall_speed = "invented: stall_speed 51.41. the P-51D's x 1.15: Heavy gunship: one big slow cannon, armoured bathtub."
+g_limit = "invented: g_limit 6. Heavy gunship: one big slow cannon, armoured bathtub."
+cruise_speed = "invented: cruise_speed 146.4. the P-51D's x 0.9: Heavy gunship: one big slow cannon, armoured bathtub."
+climb_time = "solved for an initial charge of g x 11.4 m/s; invented: climb_rate 11.4. the P-51D's x 0.75: Heavy gunship: one big slow cannon, armoured bathtub."
+ceiling = "invented: service_ceiling 10140; the store g h, J/kg. the P-51D's x 0.8: Heavy gunship: one big slow cannon, armoured bathtub."
+low_speed_acceleration = "invented: low_speed_acceleration 2.046. the P-51D's x 0.75: Heavy gunship: one big slow cannon, armoured bathtub."
+sustained_turn_rate = "invented: sustained_turn_rate 12.56; degrees. the P-51D's x 0.8: Heavy gunship: one big slow cannon, armoured bathtub."
+half_lift_drag = "placeholder: the standard heavy's"
+nose_reversal_time = "invented: roll_rate 66.5; the P-51D's nose reversal (a placeholder) x its roll rate 95 over this one. the P-51D's x 0.7: Heavy gunship: one big slow cannon, armoured bathtub."
+dive_acceleration = "placeholder: the standard heavy's, scaled as the standard fighter is to the P-51D"
+zoom_acceleration = "placeholder: the standard heavy's, scaled as the standard fighter is to the P-51D"
+stall_angle = "placeholder: the standard heavy's, scaled as the standard fighter is to the P-51D"
+vision_range = "placeholder: the standard heavy's, scaled as the standard fighter is to the P-51D"
+zero_lift_drag = "invented: drag_coefficient 0.02119; rho C_D0 / (2 W/S) with W/S 261.3 kg/m^2 (invented). the P-51D's x 1.3: Heavy gunship: one big slow cannon, armoured bathtub."
+hit_damage = "invented: weight_of_fire 2.723; proposal: 180 per second (the P-51D's) x the weight of fire over the P-51D's 3.68 kg/s, over the fire rate. 1x Vickers S-class 40 mm @ 2/s (nose); 2x Browning .50-class 12.7 mm (ranging) @ 6/s (nose): the P-51D's x 0.74"
+fire_rate = "invented: fire_rate 2; proposal: the main gun's volley rate. the Vickers S-class 40 mm, 2.16 of 2.71 kg/s"
+muzzle_speed = "invented: muzzle_speed 615. the Vickers S-class 40 mm, 2.16 of 2.71 kg/s"
+bullet_spread = "invented: dispersion 2.4; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the P-51D's x 0.4: Heavy gunship: one big slow cannon, armoured bathtub."
+gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
+shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 11.4 m/s), the standard fighter's ratio: a shot costs 808.7 J/kg, 7.23 s of charge"
+max_shield = "invented: survivability 5; proposal: the standard 100 x (1 + 0.2 per rating step from the P-51D's 2). Armoured engine, cockpit and tanks (Il-2 style)."
+shield_recharge_rate = "placeholder: the standard heavy's"
+shield_recharge_delay = "placeholder: the standard heavy's"
+head_on_fraction = "placeholder: the standard heavy's"
+hit_radius = "placeholder: the standard heavy's, scaled as the standard fighter is to the P-51D"
+spawn_energy = "placeholder: the standard heavy's fraction of the store"

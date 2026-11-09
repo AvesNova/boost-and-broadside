@@ -5,7 +5,7 @@
 bullet_life = 0.6
 bullet_drag = 0.0001374570446735395
 vision_range = 3072.0
-spawn_speed = 66.24784044507687
+spawn_speed = 72.644
 field_band_width = 120.0
 
 [flight]

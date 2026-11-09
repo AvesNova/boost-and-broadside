@@ -1,0 +1,91 @@
+# Spitfire XIV: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
+# it; [card] is solved from [handles], so edit the handles, not the card.
+name = 'Spitfire XIV'
+
+[handles]
+# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
+stall_speed = 43.4
+g_limit = 8.0
+cruise_speed = 161.8
+climb_time = 2553.092938574911
+ceiling = 128609.1
+low_speed_acceleration = 4.382
+sustained_turn_rate = 0.324107642095347
+half_lift_drag = 0.25
+nose_reversal_time = 0.8311501481829353
+dive_acceleration = 10.901973181024061
+zoom_acceleration = -8.717968852296035
+stall_angle = 0.2792526803190927
+vision_range = 3072.0
+zero_lift_drag = 6.721238938053097e-05
+hit_damage = 18.733695652173914
+fire_rate = 10.0
+muzzle_speed = 880.0
+bullet_spread = 1.2155358776918872
+gun_range = 599.6715056852389
+shots_per_store = 354.1053146151146
+max_shield = 100.0
+shield_recharge_rate = 12.0
+shield_recharge_delay = 6.0
+head_on_fraction = 0.3
+hit_radius = 5.613
+spawn_energy = 51443.64000000001
+
+[card]
+# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).
+max_lift_coefficient = 0.005208222661167383
+max_acceleration = 78.4800033569336
+zero_lift_drag = 6.721238605678082e-05
+engine_power = 576.9221801757812
+engine_power_full_store = 326.1157531738281
+static_thrust = 9.34061336517334
+max_energy = 128609.1015625
+corner_nose_frequency = 5.234266757965088
+max_shield = 100.0
+hit_radius = 5.61299991607666
+hit_damage = 18.73369598388672
+muzzle_speed = 880.0
+bullet_energy_cost = 363.1944885253906
+fire_rate = 10.0
+spawn_energy = 51443.640625
+bleed_exponent = 2.0
+induced_drag_scale = 1.0450599193572998
+stall_angle_scale = 1.0666667222976685
+coast_exchange_scale = 1.4221115112304688
+dive_exchange_scale = 0.9550944566726685
+climb_exchange_scale = 1.0449012517929077
+vision_range_scale = 1.0
+bullet_spread_scale = 0.10129465907812119
+bullet_drag_scale = 1.0
+shield_recharge_rate_scale = 1.0
+shield_recharge_delay_scale = 1.0
+head_on_fraction_scale = 1.0
+
+[notes]
+# Where each handle's value comes from.
+stall_speed = "estimated: stall_speed 43.4. W/S 34.7 lb/sq ft and CLmax ~1.35; 97 mph."
+g_limit = "estimated: g_limit 8. as Mk IX"
+cruise_speed = "researched (medium): cruise_speed 161.8. sea-level maximum speed, military power: spitfireperformance.com trials (362 mph)"
+climb_time = "solved for an initial charge of g x 25.6 m/s; researched (good): climb_rate 25.6. sea-level climb, military power: spitfireperformance.com trials (5040 ft/min)"
+ceiling = "researched (medium): service_ceiling 13110; the store g h, J/kg. recalled standard figure, not re-checked (43000 ft)"
+low_speed_acceleration = "estimated: low_speed_acceleration 4.382. the research's point-mass model at 1.1 x stall, military power (4.98 m/s^2) x 0.88, its correction for propeller efficiency"
+sustained_turn_rate = "estimated: sustained_turn_rate 18.57; degrees. the research's point-mass model (21.1 deg/s) x 0.88, its correction for propeller efficiency (no literature value)"
+half_lift_drag = "placeholder: the standard fighter's"
+nose_reversal_time = "estimated: roll_rate 90; the P-51D's nose reversal (a placeholder) x its roll rate 95 over this one. peak roll rate: as Mk IX"
+dive_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+zoom_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+stall_angle = "estimated: stall_angle 16; degrees. as Mk IX"
+vision_range = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+zero_lift_drag = "estimated: drag_coefficient 0.0186; rho C_D0 / (2 W/S) with W/S 169.5 kg/m^2 (researched (good)). back-solved so the point-mass model (propeller efficiency 0.8, Oswald 0.8) reaches the measured sea-level mili..."
+hit_damage = "researched (medium): weight_of_fire 3.83; proposal: 180 per second (the P-51D's) x the weight of fire over the P-51D's 3.68 kg/s, over the fire rate. 2x Hispano Mk II 20 mm (wing); 2x Browning AN/M2 .50 cal (wing): count x rate x projectile mass"
+fire_rate = "derived: fire_rate 10; proposal: the main gun's volley rate. the Hispano Mk II 20 mm, 2.60 of 3.83 kg/s: the whole-Hz volley rate dividing 30 nearest its rate per gun"
+muzzle_speed = "researched (medium): muzzle_speed 880. the Hispano Mk II 20 mm, 2.60 of 3.83 kg/s: Wikipedia"
+bullet_spread = "estimated: dispersion 4.6; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
+gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
+shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 25.6 m/s), the standard fighter's ratio: a shot costs 363.2 J/kg, 1.45 s of charge"
+max_shield = "researched (medium): survivability 2; proposal: the standard 100 x (1 + 0.2 per rating step from the P-51D's 2). 1 fragile - 5 very tough: As Mk IX; slightly heavier."
+shield_recharge_rate = "placeholder: the standard fighter's"
+shield_recharge_delay = "placeholder: the standard fighter's"
+head_on_fraction = "placeholder: the standard fighter's"
+hit_radius = "researched (good): half_span 5.613. half of the span 11.23 m (36.83 ft)"
+spawn_energy = "placeholder: the standard fighter's fraction of the store"
