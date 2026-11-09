@@ -74,3 +74,12 @@
 04:41 downloaded 2026-11-09-bc-deadreckon-split-hiddenphysics-tau10-laptop from the hub
 04:43 start resume 2026-11-09-bc-absolute to 60M from 23.1M
 05:33 done resume 2026-11-09-bc-absolute
+05:34 2026-11-09-bc-deadreckon-split-hiddenphysics-tau1.25 already finished
+05:34 2026-11-09-bc-deadreckon-split-hiddenphysics-fade already finished
+05:34 2026-11-09-bc-deadreckon-split-seed1 already finished
+05:34 round6b training done
+05:34 downloaded 2026-11-09-bc-deadreckon-split-hiddenphysics-tau10-laptop from the hub
+05:38 downloaded 2026-11-09-bc-persist-split-hiddenphysics-laptop from the hub
+05:38 tournament4: 2026-11-09-bc-deadreckon-split-hiddenphysics-tau10 missing
+05:38 tournament4: 2026-11-09-bc-persist-split-hiddenphysics missing
+05:38 tournament4 start (13 players)

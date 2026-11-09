@@ -79,7 +79,11 @@ for run in 2026-11-09-bc-absolute 2026-11-09-bc-absolute-seed1 2026-11-09-bc-dea
     2026-11-09-bc-persist-split-laptop $P $P-seed1 $P-tau1.25 $P-tau10 $P-tau10-laptop $P-fade \
     2026-11-09-bc-deadreckon-split-seed1 2026-11-09-bc-persist-split-hiddenphysics \
     2026-11-09-bc-persist-split-hiddenphysics-laptop; do
-  [ -f runs/$run/$P30/checkpoint.json ] && players+=(runs/$run/$P30) || say "tournament4: $run missing"
+  path=runs/$run/$P30
+  # absolute was rewound to 23.1M for its 60M resume: its original 30.4M policy (the one
+  # rated in tournament 3) moved to policies/rewound_1/
+  [ $run = 2026-11-09-bc-absolute ] && path=runs/$run/policies/rewound_1/step_30408704/uniform_average
+  [ -f $path/checkpoint.json ] && players+=($path) || say "tournament4: $run missing"
 done
 say "tournament4 start (${#players[@]} players)"
 if .venv/bin/bnb ratings 2026-11-09-bc-absolute --no-league --no-ladder --with "${players[@]}" \
