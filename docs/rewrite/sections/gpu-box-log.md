@@ -596,3 +596,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   barely matters (1.25 and 10: +9 and +4 over 0.5). Fade -111 vs its base. Proposed 60M (the
   author's rule, the top four within 24 on the mean): hiddenphysics, -tau1.25, deadreckon-split
   on the box, -tau10 on the laptop; then tournament 5 with absolute's 60M and their 30M (reuse).
+- **17:00 KST 60M round started (the author: go, with absolute as the null).** `round7.sh`: box resumes hiddenphysics (from 43M), -tau1.25, deadreckon-split to 60M; laptop asked (author to confirm there) to resume -tau10-laptop; then tournament 5: those four and absolute at 60M plus their 30M policies, `--reuse runs/ratings/round3 runs/ratings/round4`, default layout. If the laptop has not confirmed by the time the box finishes (~19:05), tournament 5 runs without tau10's 60M.
