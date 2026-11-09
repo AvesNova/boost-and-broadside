@@ -16,6 +16,7 @@ from bnb.contracts.config import TEAMS
 from bnb.contracts.obs import ZONE_SLOTS
 from bnb.contracts.pools import environments_per_pool, pool_game
 
+from . import ships
 from .modes.rules import CLOCKS, ModeRules, mode_rules_of
 
 STICK_LEVELS = (0.0, -0.4, 0.4, -0.75, 0.75, -1.0, 1.0)  # by stick index; + turns left
@@ -162,6 +163,24 @@ def bullet_slots_for(fire_rate, bullet_moves: int, tick_length: float) -> int:
     return math.ceil(bullet_moves / fewest)
 
 
+def set_overrides(ship_set: str, tick_length: float) -> dict:
+    """The `Rules` fields a ship set's rules.toml sets (`ships.rules`): its [rules] values
+    (bullet_life in seconds, as whole ticks of bullet_moves) and its [flight] constants (as
+    `flight`). Empty for the standard set."""
+    found = ships.rules(ship_set)
+    shared = {
+        key.split(".", 1)[1]: value for key, value in found.items() if key.startswith("rules.")
+    }
+    if "bullet_life" in shared:
+        shared["bullet_moves"] = ticks_of(shared.pop("bullet_life"), tick_length)
+    flight = {
+        key.split(".", 1)[1]: value for key, value in found.items() if key.startswith("flight.")
+    }
+    if flight:
+        shared["flight"] = dataclasses.replace(FlightConstants(), **flight)
+    return shared
+
+
 def rules_of(
     config: GameConfig,
     pools: tuple[Pool, ...] = (),
@@ -175,9 +194,12 @@ def rules_of(
     environments, their batch size) each pool plays its own (`pool_game`), in pool order;
     adjacent pools of the same game merge, and if one game remains it covers the whole
     batch as without pools. types: the ship card, which sets the bullet slots
-    (`bullet_slots_for`; 6 for the default card) unless `bullet_slots` is given.
+    (`bullet_slots_for`; 6 for the default card) unless `bullet_slots` is given. The config's
+    ship set gives its own rule values (`set_overrides`) where `overrides` leave them out.
     """
     tick_length = overrides.pop("tick_length", Rules.tick_length)
+    for name, value in set_overrides(config.ship_set, tick_length).items():
+        overrides.setdefault(name, value)
     if not pools:
         games = (_pool_rules(None, config, tick_length),)
     else:

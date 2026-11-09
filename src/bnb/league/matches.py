@@ -493,6 +493,29 @@ def default_lanes(groups: list[int | None], slots: int) -> tuple[int, ...]:
     return tuple(lanes)
 
 
+def card_of(players: list[Player], game: GameConfig, device: torch.device) -> api.ShipTypes:
+    """The ship card a match of these players plays: the one their policies were trained
+    with (each policy record's `ship_card`), else (only scripted players, or records
+    without a card) the default card of the game's ship set. Raises ValueError when two
+    policies were trained with different cards: one match plays one card."""
+    cards = {}
+    for player in players:
+        if player.policy is None:
+            continue
+        card = checkpoint.read_record(player.policy).get("ship_card")
+        if card is not None:
+            cards[player.policy] = card
+    found = list(cards.values())
+    if not found:
+        return api.ship_types(device, ship_set=game.ship_set)
+    if any(card != found[0] for card in found[1:]):
+        raise ValueError(
+            "these policies were trained with different ship cards: "
+            + ", ".join(str(policy) for policy in cards)
+        )
+    return api.ship_types(device, ship_set=game.ship_set, **found[0])
+
+
 class Arena:
     """The match engine over `players` in `game` (a game preset's config), built once (see
     the module docstring). Each network player's weights are read once and kept on the
@@ -531,7 +554,8 @@ class Arena:
                 }
             if one.ablations and not isinstance(self.groups[group], Yemong):
                 raise ValueError(f"{one.name}: only a Yemong network plays ablated")
-        agent = characteristics(api.ship_types(device), api.rules_of(game))
+        self.types = card_of(players, game, device)
+        agent = characteristics(self.types, api.rules_of(game))
         controllers = [model_controller(template, game) for template in self.groups]
         self.seat = MatchSeat(
             controllers,
@@ -549,7 +573,7 @@ class Arena:
         )
         self.rollout = Rollout(
             game,
-            api.ship_types(device),
+            self.types,
             pools,
             {SEAT: self.seat},
             SEAT,

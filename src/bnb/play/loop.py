@@ -139,7 +139,7 @@ class MatchLoop:
                 lineup=setup.lineup,
                 background=background,
                 settings=setup.tuning.rules,
-                types=setup.tuning.types() if setup.tuning.card else None,
+                types=setup.tuning.types(setup.config.ship_set) if setup.tuning.card else None,
             )
         self.realtime = realtime
         self.rules, self.types = realtime.rules, realtime.types

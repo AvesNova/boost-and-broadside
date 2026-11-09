@@ -2,8 +2,9 @@
 
 - the main page (the pause menu when a live match runs, which it pauses): resume,
   restart, new match, replays, save the replay, settings, quit;
-- New match: mode, map, fleet size, fields, lineup (each slot's ship type, both teams),
-  fog, seed, and each side's controller; "Start";
+- New match: mode, map (one per game preset's map: `maps`), fleet size, fields, lineup
+  (each slot's ship type, a dropdown of the map's ship set, both teams), fog, seed, and
+  each side's controller; "Start";
 - Replays: the saved replays, newest first; "Open";
 - Settings: theme (and the theme editor), fog in new matches, interface scale, the key
   list.
@@ -22,19 +23,55 @@ from bnb.game.api import PRESETS
 from .. import replay as replays
 from ..loop import MatchSetup, SideSetup
 from ..sides import policy_choices
-from .controls import button
+from .controls import button, tooltip
 from .fleets import controller_combo
 from .style import SCALES
-from .text import TEAM_NAMES, type_name
+from .text import TEAM_NAMES
 
 if TYPE_CHECKING:
     from ..app import Session
     from .interface import Interface
 
 MODES = (("team_deathmatch", "Team deathmatch"), ("frontline", "Frontline"))
-MAPS = (("standard", "Standard", 2600.0), ("wide", "Wide", 8200.0))
+MODE_WORDS = {"team_deathmatch": "deathmatch", "frontline": "frontline", "sandbox": "sandbox"}
 POLICY_REFRESH_SECONDS = 5.0
 WIDTH = 460.0  # the menu's width at scale 1
+LINEUP_PER_ROW = 5  # lineup dropdowns per row
+
+
+@dataclasses.dataclass(frozen=True)
+class GameMap:
+    """A map the New match page offers: its key (a preset's name without its mode word,
+    "standard" for none), label, ship set and arena radius (m)."""
+
+    key: str
+    label: str
+    ship_set: str
+    arena_radius: float
+
+
+def map_of(preset: str) -> str:
+    """A preset's map key: its name without its mode's word ("deathmatch_wide" -> "wide",
+    "real_scale_frontline" -> "real_scale", "frontline" -> "standard")."""
+    word = MODE_WORDS[PRESETS[preset].mode]
+    parts = [part for part in preset.split("_") if part != word]
+    return "_".join(parts) or "standard"
+
+
+def maps() -> tuple[GameMap, ...]:
+    """The maps of the game presets, in the presets' order."""
+    found: dict[str, GameMap] = {}
+    for name, config in PRESETS.items():
+        key = map_of(name)
+        if key not in found:
+            label = key.replace("_", " ").capitalize()
+            found[key] = GameMap(key, label, config.ship_set, config.arena_radius)
+    return tuple(found.values())
+
+
+def default_lineup(size: int, ship_set: str) -> list[int]:
+    """The game's lineup: the set's first two types alternating."""
+    return [i % min(2, len(api.type_names(ship_set))) for i in range(size)]
 
 
 @dataclasses.dataclass
@@ -50,33 +87,50 @@ class Draft:
     seed: int = 0
     sides: list[SideSetup] = dataclasses.field(default_factory=lambda: [SideSetup(), SideSetup()])
 
+    @property
+    def ship_set(self) -> str:
+        """The chosen map's ship set."""
+        return {game_map.key: game_map for game_map in maps()}[self.map].ship_set
+
     def config(self) -> GameConfig:
-        """The game of these choices."""
-        radius = dict((key, value) for key, _, value in MAPS)[self.map]
-        groups = ()
-        if self.mode == "team_deathmatch" and self.map == "wide":
-            wide = PRESETS["deathmatch_wide"].spawn_groups
-            groups = wide if sum(wide) == self.ships_per_team else ()
-        return GameConfig(
-            self.ships_per_team, self.fields, radius, mode=self.mode, spawn_groups=groups
+        """The game of these choices: the preset of this mode and map with the chosen sizes
+        (its spawn groups kept when they fit the fleet), or, for a pair no preset has, a
+        preset of the map in this mode."""
+        of_map = [name for name in PRESETS if map_of(name) == self.map]
+        exact = [name for name in of_map if PRESETS[name].mode == self.mode]
+        preset = PRESETS[(exact or of_map)[0]]
+        groups = preset.spawn_groups if self.mode == "team_deathmatch" else ()
+        if sum(groups) != self.ships_per_team:
+            groups = ()
+        return dataclasses.replace(
+            preset,
+            ships_per_team=self.ships_per_team,
+            num_fields=self.fields,
+            mode=self.mode,
+            spawn_groups=groups,
         )
 
     def setup(self) -> MatchSetup:
         """The match of these choices (the default lineup is passed as None)."""
-        default = [i % 2 for i in range(self.ships_per_team)]
+        default = default_lineup(self.ships_per_team, self.ship_set)
         lineup = None if self.lineup == default else tuple(self.lineup)
         return MatchSetup(self.config(), lineup, self.fogged, self.seed, tuple(self.sides))
 
     @classmethod
     def of(cls, setup: MatchSetup) -> Draft:
-        """The choices that give this setup."""
+        """The choices that give this setup (the map of its ship set nearest its arena)."""
         config = setup.config
         size = config.ships_per_team
-        lineup = list(setup.lineup) if setup.lineup is not None else [i % 2 for i in range(size)]
-        game_map = "wide" if config.arena_radius > 5000.0 else "standard"
+        lineup = (
+            list(setup.lineup)
+            if setup.lineup is not None
+            else default_lineup(size, config.ship_set)
+        )
+        candidates = [m for m in maps() if m.ship_set == config.ship_set] or list(maps())
+        nearest = min(candidates, key=lambda m: abs(m.arena_radius - config.arena_radius))
         return cls(
             config.mode if config.mode in dict(MODES) else "team_deathmatch",
-            game_map,
+            nearest.key,
             size,
             config.num_fields,
             lineup,
@@ -84,6 +138,13 @@ class Draft:
             setup.seed,
             list(setup.sides),
         )
+
+    def choose_map(self, key: str) -> None:
+        """Choose a map; a map of another ship set restarts the lineup from its default."""
+        before = self.ship_set
+        self.map = key
+        if self.ship_set != before:
+            self.lineup = default_lineup(self.ships_per_team, self.ship_set)
 
 
 def switch(controls, name: str, value: bool, help: str) -> bool:
@@ -254,15 +315,15 @@ class Menu:
             imgui.same_line()
         imgui.new_line()
         label("Map")
-        for key, name, radius in MAPS:
+        for game_map in maps():
             if button(
                 controls,
-                f"new match/map/{key}",
-                name,
-                f"An arena {radius:.0f} m across the radius",
-                active=draft.map == key,
+                f"new match/map/{game_map.key}",
+                game_map.label,
+                f"An arena of radius {game_map.arena_radius:.0f} m; the {game_map.ship_set} ships",
+                active=draft.map == game_map.key,
             ):
-                draft.map = key
+                draft.choose_map(game_map.key)
             imgui.same_line()
         imgui.new_line()
         label("Ships a side")
@@ -271,9 +332,9 @@ class Menu:
         controls.record("new match/ships")
         if changed:
             draft.ships_per_team = size
-            draft.lineup = (draft.lineup + [i % 2 for i in range(size)])[:size]
+            default = default_lineup(size, draft.ship_set)
             draft.lineup = [
-                draft.lineup[i] if i < len(draft.lineup) else i % 2 for i in range(size)
+                draft.lineup[i] if i < len(draft.lineup) else default[i] for i in range(size)
             ]
         label("Fields")
         imgui.set_next_item_width(-1.0)
@@ -282,28 +343,7 @@ class Menu:
         if changed:
             draft.fields = fields
         label("Lineup")
-        imgui.begin_group()
-        per_row = 10
-        for slot, ship_type in enumerate(draft.lineup):
-            if slot % per_row:
-                imgui.same_line(0.0, 3.0 * scale)
-            letter = type_name(ship_type)[0]
-            if button(
-                controls,
-                f"new match/lineup/{slot}",
-                f"{letter}##slot{slot}",
-                f"Slot {slot + 1}: {type_name(ship_type)} (click to change)",
-            ):
-                draft.lineup[slot] = (ship_type + 1) % len(api.type_names())
-        imgui.end_group()
-        imgui.same_line()
-        if button(
-            controls,
-            "new match/lineup/default",
-            "Default",
-            "Fighters and heavies alternating, as the game sets them",
-        ):
-            draft.lineup = [i % 2 for i in range(draft.ships_per_team)]
+        self._lineup(interface)
         label("Fog of war")
         draft.fogged = switch(
             controls,
@@ -336,6 +376,42 @@ class Menu:
         imgui.same_line()
         if button(controls, "menu/back", "Back"):
             self.page = "main"
+
+    def _lineup(self, interface: Interface) -> None:
+        """Each slot's ship type, a dropdown of the set's type names (LINEUP_PER_ROW to a
+        row), and Default. Recorded as `new match/lineup/<slot>` and
+        `new match/lineup/<slot>/<type name>`."""
+        controls, draft = interface.controls, self.draft
+        scale = self.session.scale
+        names = api.type_names(draft.ship_set)
+        spacing = 3.0 * scale
+        imgui.begin_group()
+        width = (imgui.get_content_region_avail().x - (LINEUP_PER_ROW - 1) * spacing) / (
+            LINEUP_PER_ROW
+        )
+        for slot, ship_type in enumerate(draft.lineup):
+            if slot % LINEUP_PER_ROW:
+                imgui.same_line(0.0, spacing)
+            ship_type = min(ship_type, len(names) - 1)
+            imgui.set_next_item_width(width)
+            name = f"new match/lineup/{slot}"
+            opened = imgui.begin_combo(f"##slot{slot}", names[ship_type])
+            controls.record(name)
+            tooltip(f"Slot {slot + 1}: {names[ship_type]}, on both teams")
+            if opened:
+                for kind, type_label in enumerate(names):
+                    if imgui.selectable(type_label, kind == ship_type)[0]:
+                        draft.lineup[slot] = kind
+                    controls.record(f"{name}/{type_label}")
+                imgui.end_combo()
+        if button(
+            controls,
+            "new match/lineup/default",
+            "Default",
+            "The set's first two types alternating, as the game sets them",
+        ):
+            draft.lineup = default_lineup(draft.ships_per_team, draft.ship_set)
+        imgui.end_group()
 
     def _replays(self, interface: Interface) -> None:
         session, controls = self.session, interface.controls

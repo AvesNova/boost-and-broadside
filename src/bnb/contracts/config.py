@@ -7,6 +7,7 @@ MAX_SHIPS = 255  # stored ship indices are int32 with -1 for none; the cap is a 
 MAX_FIELDS = 64  # sight-line core membership is an int64 bitmask
 TEAM_DEATHMATCH, FRONTLINE, SANDBOX = "team_deathmatch", "frontline", "sandbox"
 MODES = (TEAM_DEATHMATCH, FRONTLINE, SANDBOX)
+STANDARD_SHIP_SET = "standard"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -25,6 +26,9 @@ class GameConfig:
     spawn_groups: team deathmatch only, ships per team in each spawn group (summing to
         ships_per_team); empty means uniform spawns.
     kills_per_ship: team deathmatch's winning score is kills_per_ship * ships_per_team.
+    ship_set: the ship types and the rules their cards were solved under
+        (`bnb.game.ships`): "standard", or another set's directory name ("real-scale").
+        The whole batch shares it (a pool cannot change it).
     """
 
     ships_per_team: int
@@ -35,6 +39,7 @@ class GameConfig:
     mode: str = TEAM_DEATHMATCH
     spawn_groups: tuple[int, ...] = ()
     kills_per_ship: int = 5
+    ship_set: str = STANDARD_SHIP_SET
 
     def __post_init__(self) -> None:
         if not 1 <= self.ships_per_team or self.num_ships > MAX_SHIPS:

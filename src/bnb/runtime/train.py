@@ -69,6 +69,8 @@ def mixed(
         game = PRESETS[name]
         if (game.ships_per_team, game.num_fields) != (base.ships_per_team, base.num_fields):
             raise ValueError(f"{name} has other sizes than {mix[0][0]}: one batch, one size")
+        if game.ship_set != base.ship_set:
+            raise ValueError(f"{name} plays another ship set than {mix[0][0]}: one batch, one card")
         pools.extend(
             Pool(
                 f"{name}/{pool.name}",
@@ -126,7 +128,7 @@ class TrainConfig:
     model: str = "yemong"
     yemong: YemongConfig = YemongConfig(spread_fit="coarsest")  # (YemongConfig.spread_fit)
     relational: RelationalConfig = RelationalConfig()
-    ship_card: dict[str, tuple[float, ...]] = dataclasses.field(default_factory=api.default_card)
+    ship_card: dict[str, tuple[float, ...]] | None = None  # None: the game's ship set's card
     league: LeagueConfig = LeagueConfig()
     pools: tuple[Pool, ...] = LINEUP
     learner: LearnerConfig = LearnerConfig()
@@ -158,7 +160,9 @@ class TrainConfig:
                     f"{name}.bfloat16_matmuls is set by precision ({self.precision!r}), "
                     f"not by the model's settings"
                 )
-        card = api.default_card()
+        card = api.default_card(self.game.ship_set)
+        if self.ship_card is None:
+            object.__setattr__(self, "ship_card", card)
         if self.ship_card.keys() != card.keys():
             missing = sorted(card.keys() - self.ship_card.keys())
             unknown = sorted(self.ship_card.keys() - card.keys())

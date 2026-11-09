@@ -216,10 +216,12 @@ class TuningPanel:
         self.window: Rect | None = None  # where the window was last drawn
         self.message = ""
         self._files: list | None = None  # the ship files as last read
+        self._files_set = ""  # the ship set they are of
 
-    def _saved(self) -> list:
-        if self._files is None:
-            self._files = api.ships.load()
+    def _saved(self, ship_set: str) -> list:
+        """The ship set's files as last read."""
+        if self._files is None or self._files_set != ship_set:
+            self._files, self._files_set = api.ships.load(ship_set), ship_set
         return self._files
 
     def draw(self, session) -> None:
@@ -259,7 +261,7 @@ class TuningPanel:
     def _ships(self, session, tuner) -> None:
         if not imgui.collapsing_header("Ships", imgui.TreeNodeFlags_.default_open):
             return
-        names = api.type_names()
+        names = api.type_names(tuner.ship_set)
         self.ship = min(self.ship, len(names) - 1)
         scale = session.scale
         imgui.set_next_item_width(150.0 * scale)
@@ -291,7 +293,8 @@ class TuningPanel:
         if kind >= targets.ceiling.shape[-1]:
             imgui.text_wrapped("This type joins at the next match.")
             return
-        saved = self._saved()[kind].handles if kind < len(self._saved()) else {}
+        files = self._saved(tuner.ship_set)
+        saved = files[kind].handles if kind < len(files) else {}
         flying = tuner.flying
         if not begin_rows("handles", scale):
             return
@@ -333,7 +336,7 @@ class TuningPanel:
     def _current(self, tuner) -> list:
         """The ship types as the match plays them: the card's columns, and the handles they
         fly (the measured ones where known)."""
-        types, files = tuner.loop.types, self._saved()
+        types, files = tuner.loop.types, self._saved(tuner.ship_set)
         out = []
         for kind, ship in enumerate(files):
             handles = {
@@ -343,7 +346,7 @@ class TuningPanel:
                 for name in api.HANDLE_NAMES
             }
             card = {field: float(value[kind]) for field, value in vars(types).items()}
-            out.append(api.ships.Ship(ship.key, ship.name, handles, card))
+            out.append(api.ships.Ship(ship.key, ship.name, handles, card, dict(ship.notes)))
         return out
 
     def _save(self, session, tuner) -> None:
@@ -352,7 +355,8 @@ class TuningPanel:
             return
         session.save_ships(self._current(tuner))
         self._files = None
-        self.message = f"saved {len(api.type_names())} ships to src/bnb/game/ships/"
+        directory = api.ships.directory_of(tuner.ship_set)
+        self.message = f"saved {len(api.type_names(tuner.ship_set))} ships to {directory}"
 
     def _add(self, session, tuner) -> None:
         name = self.new_ship.strip()
@@ -393,7 +397,9 @@ class TuningPanel:
         imgui.end_popup()
 
     def _remove(self, session, tuner) -> None:
-        current = self._current(tuner) if tuner.targets is not None else list(self._saved())
+        current = (
+            self._current(tuner) if tuner.targets is not None else list(self._saved(tuner.ship_set))
+        )
         removed = current.pop(self.ship)
         moved = {
             kind: (None if kind == self.ship else kind - (kind > self.ship))
@@ -451,7 +457,9 @@ class TuningPanel:
         imgui.same_line()
         if imgui.button("Save##preset"):
             try:
-                path = self.presets.save(self.name.strip(), tuner.tuning, session.loop.types)
+                path = self.presets.save(
+                    self.name.strip(), tuner.tuning, session.loop.types, tuner.ship_set
+                )
                 self.message = f"saved {path}"
             except (ValueError, OSError) as error:
                 self.message = str(error)
@@ -463,7 +471,7 @@ class TuningPanel:
             imgui.same_line()
             if imgui.button("Load"):
                 try:
-                    session.retune_to(self.presets.load(names[self.chosen]))
+                    session.retune_to(self.presets.load(names[self.chosen], tuner.ship_set))
                     self.message = f"loaded {names[self.chosen]}"
                 except (ValueError, OSError, KeyError) as error:
                     self.message = str(error)

@@ -10,6 +10,8 @@ import dataclasses
 from bnb.contracts import GameConfig
 from bnb.contracts.config import FRONTLINE, SANDBOX, TEAM_DEATHMATCH
 
+from .. import ships
+
 # The mode's clock when the config leaves it out: (episode, respawn) seconds. Sandbox keeps
 # the physics game's (game spec 1), so the race tests run in it unchanged.
 CLOCKS = {TEAM_DEATHMATCH: (300.0, 5.0), FRONTLINE: (300.0, 8.0), SANDBOX: (60.0, 8.0)}
@@ -65,7 +67,16 @@ class ModeRules:
 
 def mode_rules_of(config: GameConfig) -> ModeRules:
     """The ModeRules of the config's mode: its name, kills_per_ship and spawn_groups from the
-    config, the other fields their defaults."""
+    config, the fields its ship set's rules give ([mode] in `ships.rules`), the others their
+    defaults."""
+    given = {
+        key.split(".", 1)[1]: value
+        for key, value in ships.rules(config.ship_set).items()
+        if key.startswith("mode.")
+    }
     return ModeRules(
-        name=config.mode, kills_per_ship=config.kills_per_ship, spawn_groups=config.spawn_groups
+        name=config.mode,
+        kills_per_ship=config.kills_per_ship,
+        spawn_groups=config.spawn_groups,
+        **given,
     )

@@ -60,7 +60,8 @@ MEASURED_BY = ("flight.",)
 class Tuning:
     """A match's tuned numbers, where they differ from the game's: rule settings by
     `api.tuning` key, and ship-card fields by name, one value per ship type (the form
-    `TrainConfig.ship_card` and `bnb ship-card --card` read)."""
+    `TrainConfig.ship_card` and `bnb ship-card --card` read), relative to the default card of
+    the match's ship set."""
 
     rules: dict[str, float] = dataclasses.field(default_factory=dict)
     card: dict[str, tuple[float, ...]] = dataclasses.field(default_factory=dict)
@@ -68,24 +69,34 @@ class Tuning:
     def __bool__(self) -> bool:
         return bool(self.rules or self.card)
 
-    def types(self) -> api.ShipTypes:
-        """The tuned ship card (the default card's other fields)."""
-        return api.ship_types(**{name: values for name, values in self.card.items()})
+    def types(self, ship_set: str = api.STANDARD_SHIP_SET) -> api.ShipTypes:
+        """The tuned ship card (the set's default card's other fields)."""
+        values = {name: values for name, values in self.card.items()}
+        return api.ship_types(ship_set=ship_set, **values)
 
     @classmethod
-    def of(cls, rules: api.Rules, types: api.ShipTypes, base: api.Rules) -> Tuning:
-        """The tuning that makes `base` into `rules` and the default card into `types`."""
-        return cls(rules=api.tuning.changed(rules, base), card=changed_card(types))
+    def of(
+        cls,
+        rules: api.Rules,
+        types: api.ShipTypes,
+        base: api.Rules,
+        ship_set: str = api.STANDARD_SHIP_SET,
+    ) -> Tuning:
+        """The tuning that makes `base` into `rules` and the set's default card into
+        `types`."""
+        return cls(rules=api.tuning.changed(rules, base), card=changed_card(types, ship_set))
 
 
-def changed_card(types: api.ShipTypes) -> dict[str, tuple[float, ...]]:
-    """The card's fields that differ from the default card's, compared in the card's own
-    dtype."""
-    default = vars(api.ship_types(dtype=types.max_energy.dtype))
+def changed_card(
+    types: api.ShipTypes, ship_set: str = api.STANDARD_SHIP_SET
+) -> dict[str, tuple[float, ...]]:
+    """The card's fields that differ from the set's default card's, compared in the card's
+    own dtype (every field, when the type counts differ)."""
+    default = vars(api.ship_types(dtype=types.max_energy.dtype, ship_set=ship_set))
     return {
         name: tuple(float(v) for v in value.tolist())
         for name, value in vars(types).items()
-        if not torch.equal(value, default[name])
+        if value.shape != default[name].shape or not torch.equal(value, default[name])
     }
 
 
@@ -283,6 +294,7 @@ class Tuner:
 
     def __init__(self, loop, base: api.Rules) -> None:
         self.loop = loop
+        self.ship_set = loop.setup.config.ship_set
         self.base = dataclasses.replace(base, bullet_slots=loop.rules.bullet_slots)
         rules = loop.rules
         self.values = {
@@ -349,7 +361,7 @@ class Tuner:
     @property
     def tuning(self) -> Tuning:
         """What the match is tuned to now."""
-        return Tuning.of(self.loop.rules, self.loop.types, self.base)
+        return Tuning.of(self.loop.rules, self.loop.types, self.base, self.ship_set)
 
     def default(self, key: str) -> float:
         """A rule setting's value in the game's rules for this match."""
@@ -395,7 +407,7 @@ class Tuner:
         self.values = {
             s.key: api.tuning.value(rules, s.key) for s in api.tuning.settings_for(rules)
         }
-        self._retune(rules=rules, types=tuning.types())
+        self._retune(rules=rules, types=tuning.types(self.ship_set))
         self.message = ""
         self._rules_version += 1
         self._measure()
@@ -585,26 +597,38 @@ class Presets:
             raise ValueError(f"preset name {name!r}: use lowercase words joined by hyphens")
         return self.directory / f"{name}.json"
 
-    def save(self, name: str, tuning: Tuning, types: api.ShipTypes) -> pathlib.Path:
-        """Write a preset: the tuning's rule settings and every card field (so the file is
-        a whole `ship_card` for training)."""
+    def save(
+        self,
+        name: str,
+        tuning: Tuning,
+        types: api.ShipTypes,
+        ship_set: str = api.STANDARD_SHIP_SET,
+    ) -> pathlib.Path:
+        """Write a preset: its ship set, the tuning's rule settings and every card field (so
+        the file is a whole `ship_card` for training)."""
         path = self.path(name)
         path.parent.mkdir(parents=True, exist_ok=True)
         card = {name: [float(v) for v in value.tolist()] for name, value in vars(types).items()}
-        path.write_text(json.dumps({"rules": tuning.rules, "ship_card": card}, indent=2))
+        data = {"ship_set": ship_set, "rules": tuning.rules, "ship_card": card}
+        path.write_text(json.dumps(data, indent=2))
         return path
 
-    def load(self, name: str) -> Tuning:
+    def load(self, name: str, ship_set: str = api.STANDARD_SHIP_SET) -> Tuning:
         """The tuning a preset holds (its card reduced to the fields that differ from the
-        default); fails naming any entry it does not know."""
+        set's default); fails naming any entry it does not know, and for a preset of another
+        ship set (a preset without one is the standard set's)."""
         data = json.loads(self.path(name).read_text())
+        stored_set = data.get("ship_set", api.STANDARD_SHIP_SET)
+        if stored_set != ship_set:
+            raise ValueError(f"preset {name} tunes the {stored_set} ships, not the {ship_set} ones")
         stored = data.get("ship_card", {})
-        unknown = sorted(set(stored) - set(api.default_card())) + sorted(
+        unknown = sorted(set(stored) - set(api.default_card(ship_set))) + sorted(
             set(data.get("rules", {})) - set(api.tuning.BY_KEY)
         )
         if unknown:
             raise ValueError(f"preset {name}: unknown entries {unknown}")
         # The card as the match holds it (float32), with only the fields that differ kept.
-        types = api.ship_types(**{field: tuple(values) for field, values in stored.items()})
-        card = changed_card(types)
+        values = {field: tuple(values) for field, values in stored.items()}
+        types = api.ship_types(ship_set=ship_set, **values)
+        card = changed_card(types, ship_set)
         return Tuning(rules={k: float(v) for k, v in data.get("rules", {}).items()}, card=card)

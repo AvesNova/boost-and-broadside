@@ -1,16 +1,29 @@
 """Names and numbers as the interface writes them: ships by type and slot, clocks, and
-the ship card's types (their names from the ship files, `bnb.game.api.type_names`)."""
+the ship card's types (their names from the ship files, `bnb.game.api.type_names`, of the
+ship set the shown match plays: `show_ship_set`, which the session calls for each match and
+replay)."""
 
 import numpy as np
 
 from bnb.game import api
 
 TEAM_NAMES = ("Team 0", "Team 1")
+_shown = {"ship_set": api.STANDARD_SHIP_SET}
+
+
+def show_ship_set(ship_set: str) -> None:
+    """Name ships after this ship set's types (the match or replay on screen)."""
+    _shown["ship_set"] = ship_set
+
+
+def shown_ship_set() -> str:
+    """The ship set ships are named after."""
+    return _shown["ship_set"]
 
 
 def type_name(ship_type: int) -> str:
     """A ship type's name, from its ship file ("Type 7" for a type without one)."""
-    names = api.type_names()
+    names = api.type_names(_shown["ship_set"])
     return names[ship_type] if 0 <= ship_type < len(names) else f"Type {ship_type}"
 
 

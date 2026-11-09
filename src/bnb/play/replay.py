@@ -183,7 +183,11 @@ class Replay:
         stored = safetensors.torch.load_file(directory / KEYFRAMES)
         template = _keyframe_tree(
             Realtime(
-                setup.config, compiled=False, fogged=setup.fogged, lineup=setup.lineup
+                setup.config,
+                compiled=False,
+                fogged=setup.fogged,
+                lineup=setup.lineup,
+                **tuned(setup),
             ).keyframe()
         )
         keyframes = {}
@@ -203,6 +207,14 @@ class Replay:
         )
 
 
+def tuned(setup: MatchSetup) -> dict:
+    """The rule settings and the card a recorded match played (its ship set's default card
+    unless it was tuned), as `Realtime` takes them."""
+    tuning = setup.tuning
+    types = tuning.types(setup.config.ship_set) if tuning.card else None
+    return dict(settings=tuning.rules, types=types)
+
+
 class ReplayLoop(MatchLoop):
     """A replay played back: the loop's clock and controls, with the recorded actions in
     place of the controllers. `position` is the tick shown; playback pauses at the end."""
@@ -217,6 +229,7 @@ class ReplayLoop(MatchLoop):
             fogged=setup.fogged,
             lineup=setup.lineup,
             background=compiled,
+            **tuned(setup),
         )
         realtime.restore(replay.keyframes[0])
         self.replay = replay

@@ -32,7 +32,7 @@ from .index_map import IndexBuilder, build
 from .interface.interface import Interface
 from .interface.kill_feed import FEED_SECONDS
 from .interface.style import load_fonts
-from .interface.text import TEAM_NAMES
+from .interface.text import TEAM_NAMES, show_ship_set
 from .loop import TIME_SCALES, MatchEvent, MatchLoop, MatchSetup, SideSetup
 from .overlays import NAMES as OVERLAY_NAMES
 from .overlays import OverlaySettings, Predictions, offered, offered_by, provider
@@ -57,12 +57,15 @@ FLYING_ZOOM = 3.0  # taking control zooms in to at most this multiple of the fit
 SEEK_BEFORE_MARKER = 3.0  # seconds before an event a marker seeks to
 
 
+PresetName = Literal[tuple(PRESETS)]  # the game presets' names (`api.PRESETS`)
+
+
 @dataclasses.dataclass
 class Options:
     """Play or watch a match. The game comes from a preset, or from the sizes (which
     override the preset's)."""
 
-    preset: Literal["deathmatch", "deathmatch_wide", "frontline"] = "deathmatch"
+    preset: PresetName = "deathmatch"
     ships_per_team: int | None = None
     fields: int | None = None
     arena_radius: float | None = None  # m
@@ -189,6 +192,7 @@ class Session:
             self.tuner.close()
             self.tuner = None
         self.loop = loop
+        show_ship_set(loop.setup.config.ship_set)
         self.loop.on_tick = self._on_tick
         self.loop.on_retune = self._on_retune
         if self.tuning_panel.open:
@@ -239,9 +243,11 @@ class Session:
         return True
 
     def new_match(self, setup: MatchSetup) -> bool:
-        """Start a new match from the menu's setup, tuned as the current match is; the menu
-        closes when it starts."""
-        started = self.start(dataclasses.replace(setup, tuning=self.current_tuning()))
+        """Start a new match from the menu's setup, tuned as the current match is when it
+        plays the same ship set (untuned otherwise); the menu closes when it starts."""
+        same_ships = setup.config.ship_set == self.loop.setup.config.ship_set
+        tuning = self.current_tuning() if same_ships else Tuning()  # a tuning is of one set
+        started = self.start(dataclasses.replace(setup, tuning=tuning))
         if started:
             self.selection = None
             self.interface.close_menu()
@@ -298,7 +304,10 @@ class Session:
     def current_tuning(self) -> Tuning:
         """What the current match is tuned to (a new match starts from it)."""
         loop = self.loop
-        return Tuning.of(loop.rules, loop.types, base_rules(loop.setup.config, loop.setup.lineup))
+        config = loop.setup.config
+        return Tuning.of(
+            loop.rules, loop.types, base_rules(config, loop.setup.lineup), config.ship_set
+        )
 
     def _ensure_tuner(self) -> None:
         loop = self.loop
@@ -318,11 +327,12 @@ class Session:
             self.tuner.load(tuning)
 
     def save_ships(self, ships: list, moved: dict[int, int | None] | None = None) -> None:
-        """Write the ship files (`api.ships`, tracked in git) and play on with them. The
+        """Write the ship files of the match's ship set (`api.ships`, tracked in git) and
+        play on with them. The
         current card becomes the files' default, so the match plays on as it is; when the
         types change (`moved`: each old type's new index, None for a removed one), a new
         match starts with the lineup remapped (a removed type's slots take the first type)."""
-        api.ships.write(ships)
+        api.ships.write(ships, self.loop.setup.config.ship_set)
         api.reload_ships()
         if moved is None:
             return

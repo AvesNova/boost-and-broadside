@@ -56,9 +56,9 @@ FIELDS = dict(
 )
 
 
-def _defaults() -> dict[str, tuple[float, ...]]:
-    """The card's values by field, one per ship type in the ship files' order."""
-    found = ships.load()
+def _read(ship_set: str) -> dict[str, tuple[float, ...]]:
+    """A set's card values by field, one per ship type in the ship files' order."""
+    found = ships.load(ship_set)
     for ship in found:
         if set(ship.card) != set(FIELDS):
             missing, unknown = (
@@ -69,22 +69,35 @@ def _defaults() -> dict[str, tuple[float, ...]]:
     return {name: tuple(ship.card[name] for ship in found) for name in FIELDS}
 
 
-DEFAULTS = _defaults()
-TYPE_NAMES = ships.names()
+STANDARD = ships.STANDARD
+DEFAULTS = _read(STANDARD)  # the standard set's card, kept in place by `reload`
+_DEFAULTS = {STANDARD: DEFAULTS}  # by ship set, read when first asked for
+_NAMES = {STANDARD: ships.names(STANDARD)}
 
 
-def type_names() -> tuple[str, ...]:
-    """The ship types' display names, in the card's order (the ship files' `name`)."""
-    return TYPE_NAMES
+def defaults(ship_set: str = STANDARD) -> dict[str, tuple[float, ...]]:
+    """A ship set's default card values by field, one per type (read once, then kept)."""
+    if ship_set not in _DEFAULTS:
+        _DEFAULTS[ship_set] = _read(ship_set)
+    return _DEFAULTS[ship_set]
+
+
+def type_names(ship_set: str = STANDARD) -> tuple[str, ...]:
+    """A ship set's type names, in the card's order (the ship files' `name`)."""
+    if ship_set not in _NAMES:
+        _NAMES[ship_set] = ships.names(ship_set)
+    return _NAMES[ship_set]
 
 
 def reload() -> None:
-    """Read the ship files again (after the tuning panel saved them): the default card and
-    the type names follow them, in place."""
-    global TYPE_NAMES
+    """Read the ship files again (after the tuning panel saved them): every set's default
+    card, type names and rules follow them (the standard card in place)."""
+    _DEFAULTS.clear()
+    _NAMES.clear()
+    ships.rules.cache_clear()
     DEFAULTS.clear()
-    DEFAULTS.update(_defaults())
-    TYPE_NAMES = ships.names()
+    DEFAULTS.update(_read(STANDARD))
+    _DEFAULTS[STANDARD] = DEFAULTS
 
 
 # Card field -> (owner in Rules, shared field) for the per-type scales.
@@ -137,18 +150,22 @@ class ShipTypes:
     head_on_fraction_scale: torch.Tensor
 
 
-def default_card() -> dict[str, tuple[float, ...]]:
-    """The default card's values by field (DEFAULTS), one per type: the JSON form a
+def default_card(ship_set: str = STANDARD) -> dict[str, tuple[float, ...]]:
+    """A ship set's default card values by field, one per type: the JSON form a
     configuration holds, which `ship_types(**card)` turns into tensors."""
-    return {name: tuple(float(value) for value in values) for name, values in DEFAULTS.items()}
+    return {
+        name: tuple(float(value) for value in values) for name, values in defaults(ship_set).items()
+    }
 
 
-def ship_types(device=None, dtype=torch.float32, **overrides) -> ShipTypes:
-    """The default card. An override is a per-type sequence or tensor ((num_types,) or
-    (B, num_types)), or one number for every type. dtype is the fields' (offline tools use
-    float64)."""
+def ship_types(
+    device=None, dtype=torch.float32, ship_set: str = STANDARD, **overrides
+) -> ShipTypes:
+    """A ship set's default card (the standard set's by default). An override is a per-type
+    sequence or tensor ((num_types,) or (B, num_types)), or one number for every type. dtype
+    is the fields' (offline tools use float64)."""
     values = {}
-    for name, default in DEFAULTS.items():
+    for name, default in defaults(ship_set).items():
         value = overrides.pop(name, default)
         value = torch.as_tensor(value, dtype=dtype, device=device)
         values[name] = value.expand(len(default)).clone() if value.dim() == 0 else value

@@ -84,9 +84,10 @@ class Realtime:
     generator: the match's draws (a fresh one seeded 0 when None). lineup: the ship type of
     each slot, the same for both teams (the game's alternating default when None).
     settings: tuned rules by `api.tuning` key (none: the game's); types: the ship card (None:
-    the default card); bullet_slots: per ship (None: `api.tuning.most_bullet_slots`, room for
-    any fire rate and bullet life live tuning allows: a match never runs out of slots while
-    it is tuned, and spare slots cost the tick next to nothing).
+    the default card of the config's ship set); bullet_slots: per ship (None:
+    `api.tuning.most_bullet_slots`, room for any fire rate and bullet life live tuning
+    allows: a match never runs out of slots while it is tuned, and spare slots cost the tick
+    next to nothing).
     """
 
     def __init__(
@@ -101,7 +102,7 @@ class Realtime:
         types: api.ShipTypes | None = None,
         bullet_slots: int | None = None,
     ) -> None:
-        types = api.ship_types() if types is None else types
+        types = api.ship_types(ship_set=config.ship_set) if types is None else types
         rules = api.rules_of(config)
         if lineup is not None:
             rules = dataclasses.replace(rules, team_types=tuple(lineup))

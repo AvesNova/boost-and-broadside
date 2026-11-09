@@ -1,7 +1,10 @@
-"""The ship types, one file each: `src/bnb/game/ships/<name>.toml`, tracked in git.
+"""The ship types, one file each, tracked in git, in ship sets.
 
-`order.toml` lists the types in order: a ship type's index (the card's column, a lineup's
-entry) is its place there. Each ship's file holds:
+A ship set is a directory of ship files: the standard set is `src/bnb/game/ships/` itself,
+and every other set a subdirectory of it named after the set (`ships/real-scale/`). A game
+names its set (`GameConfig.ship_set`). In each set, `order.toml` lists the types in order: a
+ship type's index (the card's column, a lineup's entry) is its place there. A set may hold
+`rules.toml`, the rule values its cards were solved under (`rules`). Each ship's file holds:
 
 - `name`: what the interface calls it ("Fighter");
 - `[handles]`: what a designer sets (`bnb.game.handling.Handles`, SI units), as the ship
@@ -9,35 +12,107 @@ entry) is its place there. Each ship's file holds:
 - `[card]`: the physics parameters the game reads (`bnb.game.ship_types.ShipTypes`), solved
   from the handles: the default card is these, column by column.
 
-The files are written by `write` (the tuning panel's Save), and read once at import into
-`bnb.game.ship_types.DEFAULTS`; `reload` reads them again after a save.
+The files are written by `write` (the tuning panel's Save), and read when a set's default
+card is first asked for (`bnb.game.ship_types.defaults`); `reload` reads them again after a
+save.
 """
 
 import dataclasses
+import functools
+import json
 import pathlib
 import re
 import tomllib
 
-SHIPS = pathlib.Path(__file__).parent / "ships"
+SHIPS = pathlib.Path(__file__).parent / "ships"  # the standard set; other sets inside it
+STANDARD = "standard"
 ORDER = "order.toml"
+RULES = "rules.toml"
 NAME = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
+# The tables of a set's rules.toml and the owners of their keys (`bnb.game.tuning`'s naming):
+# [rules] Rules fields (and bullet_life, s), [flight] FlightConstants, [mode] ModeRules.
+RULE_TABLES = ("rules", "flight", "mode")
+
+
+def directory_of(ship_set: str = STANDARD) -> pathlib.Path:
+    """The directory of a ship set's files. Fails for a name that is not lowercase words
+    joined by hyphens."""
+    if NAME.fullmatch(ship_set) is None:
+        raise ValueError(f"ship set {ship_set!r}: use lowercase words joined by hyphens")
+    return SHIPS if ship_set == STANDARD else SHIPS / ship_set
+
+
+def sets() -> tuple[str, ...]:
+    """The ship sets: the standard one, then every subdirectory with an order, by name."""
+    found = sorted(path.parent.name for path in SHIPS.glob(f"*/{ORDER}"))
+    return (STANDARD, *found)
+
+
+@functools.cache
+def rules(ship_set: str = STANDARD) -> dict[str, float]:
+    """A set's rule values by `bnb.game.tuning`-style key (`rules.<field>`,
+    `flight.<field>`, `mode.<field>`), from its rules.toml; empty for a set without one
+    (the standard set: the game's own rules). Read once; `rules.cache_clear()` forgets it."""
+    path = directory_of(ship_set) / RULES
+    if not path.is_file():
+        return {}
+    data = tomllib.loads(path.read_text())
+    unknown = sorted(set(data) - set(RULE_TABLES))
+    if unknown:
+        raise ValueError(f"{path}: unknown tables {unknown}; use {list(RULE_TABLES)}")
+    return {
+        f"{table}.{name}": value
+        for table in RULE_TABLES
+        for name, value in data.get(table, {}).items()
+    }
 
 
 @dataclasses.dataclass(frozen=True)
 class Ship:
     """One ship type: its file's stem (`key`), its display name, its handles and its card
-    fields (name -> value)."""
+    fields (name -> value), and notes on its handles (name -> text: where a value comes
+    from, or that it is a placeholder), which the files keep through a save."""
 
     key: str
     name: str
     handles: dict[str, float]
     card: dict[str, float]
+    notes: dict[str, str] = dataclasses.field(default_factory=dict)
 
 
-def load(directory: str | pathlib.Path | None = None) -> list[Ship]:
-    """The ship types in their order (from SHIPS by default). Fails naming the file for a
-    missing ship file."""
-    directory = pathlib.Path(SHIPS if directory is None else directory)
+def write_rules(values: dict[str, float], ship_set: str = STANDARD) -> None:
+    """Write a set's rules.toml from values by key (as `rules` returns them); no values
+    removes it (the set then plays the game's own rules)."""
+    path = directory_of(ship_set) / RULES
+    rules.cache_clear()
+    if not values:
+        path.unlink(missing_ok=True)
+        return
+    unknown = sorted(key for key in values if key.split(".", 1)[0] not in RULE_TABLES)
+    if unknown:
+        raise ValueError(f"rule keys {unknown}: use owners {list(RULE_TABLES)}")
+    tables = [
+        f"[{table}]\n"
+        + _table(
+            {
+                key.split(".", 1)[1]: value
+                for key, value in values.items()
+                if key.startswith(f"{table}.")
+            }
+        )
+        for table in RULE_TABLES
+        if any(key.startswith(f"{table}.") for key in values)
+    ]
+    path.write_text(
+        "# The rule values this set's cards were solved under (bnb.game.ships.rules); the\n"
+        "# game's own rules elsewhere. Times in s, lengths in m, per unit mass.\n\n"
+        + "\n".join(tables)
+    )
+
+
+def load(ship_set: str = STANDARD) -> list[Ship]:
+    """A set's ship types in their order. Fails naming the file for a missing ship file."""
+    directory = directory_of(ship_set)
     order = tomllib.loads((directory / ORDER).read_text())["order"]
     ships = []
     for key in order:
@@ -51,19 +126,24 @@ def load(directory: str | pathlib.Path | None = None) -> list[Ship]:
                 name=data["name"],
                 handles={k: float(v) for k, v in data.get("handles", {}).items()},
                 card={k: float(v) for k, v in data["card"].items()},
+                notes={k: str(v) for k, v in data.get("notes", {}).items()},
             )
         )
     return ships
 
 
-def _table(values: dict[str, float]) -> str:
-    return "".join(f"{name} = {value!r}\n" for name, value in values.items())
+def _table(values: dict[str, float | str]) -> str:
+    """TOML lines: numbers as Python writes them, text as a basic string."""
+    return "".join(
+        f"{name} = {json.dumps(value) if isinstance(value, str) else repr(value)}\n"
+        for name, value in values.items()
+    )
 
 
-def write(ships: list[Ship], directory: str | pathlib.Path | None = None) -> None:
-    """Write the ship types (their order and one file each; to SHIPS by default), and remove
-    the files of ships no longer listed."""
-    directory = pathlib.Path(SHIPS if directory is None else directory)
+def write(ships: list[Ship], ship_set: str = STANDARD) -> None:
+    """Write a set's ship types (their order and one file each), and remove the files of
+    ships no longer listed."""
+    directory = directory_of(ship_set)
     directory.mkdir(parents=True, exist_ok=True)
     for ship in ships:
         if NAME.fullmatch(ship.key) is None:
@@ -78,6 +158,11 @@ def write(ships: list[Ship], directory: str | pathlib.Path | None = None) -> Non
             "[card]\n"
             "# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).\n"
             f"{_table(ship.card)}"
+            + (
+                "\n[notes]\n# Where each handle's value comes from.\n" + _table(ship.notes)
+                if ship.notes
+                else ""
+            )
         )
     keys = [ship.key for ship in ships]
     listed = ", ".join(f'"{key}"' for key in keys)
@@ -86,10 +171,10 @@ def write(ships: list[Ship], directory: str | pathlib.Path | None = None) -> Non
         f"order = [{listed}]\n"
     )
     for path in directory.glob("*.toml"):
-        if path.name != ORDER and path.stem not in keys:
+        if path.name not in (ORDER, RULES) and path.stem not in keys:
             path.unlink()
 
 
-def names(ships: list[Ship] | None = None) -> tuple[str, ...]:
-    """The ship types' display names, in order."""
-    return tuple(ship.name for ship in (load() if ships is None else ships))
+def names(ship_set: str = STANDARD) -> tuple[str, ...]:
+    """A set's ship types' display names, in order."""
+    return tuple(ship.name for ship in load(ship_set))

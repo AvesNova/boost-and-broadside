@@ -59,10 +59,11 @@ class CaptureConfig:
     game_segments: int = 0
 
 
-def policy_types(record: dict, device: torch.device) -> api.ShipTypes:
-    """The ship card a policy was saved with (its record's `ship_card`), else the default."""
+def policy_types(record: dict, device: torch.device, ship_set: str) -> api.ShipTypes:
+    """The ship card a policy was saved with (its record's `ship_card`), else the default
+    card of the ship set."""
     card = record.get("ship_card") or {}
-    return api.ship_types(device, **card)
+    return api.ship_types(device, ship_set=ship_set, **card)
 
 
 def meta_of(policy: pathlib.Path, record: dict, config: CaptureConfig, model) -> dict:
@@ -269,7 +270,7 @@ def capture(
     policy = pathlib.Path(policy)
     record = checkpoint.read_policy(policy).raw
     model = checkpoint.load_policy(policy, device).requires_grad_(False).eval()
-    types = policy_types(record, device)
+    types = policy_types(record, device, PRESETS[config.preset].ship_set)
     rollout, trajectory = play(model, types, config, device)
     artifact = dict(
         meta=meta_of(policy, record, config, model),
