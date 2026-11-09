@@ -1,6 +1,6 @@
 {
  "name": "2026-11-09-rl-absolute",
- "status": "running",
+ "status": "finished",
  "pid": 469109,
  "host": "e98bed47fc73",
  "message": null,
@@ -26,11 +26,11 @@
  },
  "checkpoint_every": 19922944,
  "update_policies": true,
- "newest_checkpoint": 39845888,
- "final_checkpoint": null,
+ "newest_checkpoint": 60817408,
+ "final_checkpoint": 60817408,
  "checkpoint_ordinals": {
-  "19922944": 0,
-  "39845888": 1
+  "59768832": 2,
+  "60817408": 3
  },
  "probe": {
   "allocated": 18304522752,
@@ -44,8 +44,8 @@
    "dirty": false,
    "start_step": 0,
    "start_time": "2026-11-09T18:18:33+00:00",
-   "end_step": null,
-   "end_time": null,
+   "end_step": 60817408,
+   "end_time": "2026-11-09T20:03:23+00:00",
    "overrides": {},
    "rewound_from": null,
    "command": [
@@ -67,7 +67,7 @@
   }
  ],
  "stop_request": null,
- "hours": 1.2175376590233966,
+ "hours": 1.746651365283437,
  "skipped_steps": 0,
  "snapshot_every": 19922944
 }
