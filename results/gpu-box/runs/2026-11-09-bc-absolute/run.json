@@ -34,11 +34,12 @@
  "parent": null,
  "checkpoint_every": 23068672,
  "update_policies": false,
- "newest_checkpoint": 69206016,
+ "newest_checkpoint": 92274688,
  "final_checkpoint": 60817408,
  "checkpoint_ordinals": {
   "60817408": 2,
-  "69206016": 3
+  "69206016": 3,
+  "92274688": 4
  },
  "probe": {
   "allocated": 17716846592,
@@ -111,7 +112,7 @@
   }
  ],
  "stop_request": null,
- "hours": 1.8503994865384368,
+ "hours": 2.346747752526491,
  "skipped_steps": 0,
  "stopped_by": "budget",
  "policy": "/workspace/boost-and-broadside/runs/2026-11-09-bc-absolute/policy",
