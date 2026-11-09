@@ -45,7 +45,6 @@ import platformdirs
 import torch
 
 from bnb.game import api
-from bnb.game.handling import similarity
 from bnb.game.handling.characteristics import characteristics
 from bnb.runtime.flights import compiled_flight_tick
 
@@ -131,7 +130,7 @@ def time_scaled_settings(
     """Rule settings in a game `factor` times faster at fixed map lengths (`similarity` with
     length 1 and time 1/factor: speeds x factor, accelerations x factor^2, rates x factor,
     times / factor), the times snapped to whole ticks."""
-    scaled = similarity.scale_rules(values, 1.0, 1.0 / factor)
+    scaled = api.similarity.scale_rules(values, 1.0, 1.0 / factor)
     return {
         key: api.tuning.snap(api.tuning.BY_KEY[key], number, tick_length, bounded=False)
         for key, number in scaled.items()
@@ -144,7 +143,7 @@ def time_scaled_card(types: api.ShipTypes, rules: api.Rules, factor: float) -> a
     shared values the card scales per type and that no setting holds (the exchanges, the
     bullet spread, the shield recharge) are scaled through the per-type scales; the fire
     rate snaps to `fire_rates` and the shield recharge delay to whole ticks."""
-    scaled = similarity.scale_card(types, 1.0, 1.0 / factor)
+    scaled = api.similarity.scale_card(types, 1.0, 1.0 / factor)
     acceleration, rate = factor**2, factor
     tick = rules.tick_length
     delay = rules.shield_recharge_delay * types.shield_recharge_delay_scale / factor
@@ -463,7 +462,7 @@ class Tuner:
         if factor <= 0.0 or factor == 1.0:
             return ""
         tick = self.base.tick_length
-        exact = similarity.scale_rules(self.values, 1.0, 1.0 / factor)
+        exact = api.similarity.scale_rules(self.values, 1.0, 1.0 / factor)
         values = time_scaled_settings(self.values, factor, tick)
         types = time_scaled_card(self.loop.types, self.loop.rules, factor)
         rules = api.tuning.tuned(self.base, values, bounded=False)

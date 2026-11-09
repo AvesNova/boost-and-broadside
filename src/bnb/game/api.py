@@ -30,7 +30,8 @@ change, by key, and the rules with changed values), the ship card's handles (`Ha
 (an instant estimate of that card, anchored on an exact one), `bleed_rate` (a card's bleed
 rate in closed form, shown beside the handles) and `Infeasible`; `ships` (the ship files:
 one per type, tracked in git, in ship sets: `ships.sets()`; `STANDARD_SHIP_SET` is the
-game's) and `reload_ships` (read them again after writing);
+game's) and `reload_ships` (read them again after writing); `similarity` (every handle,
+card field and rule value by its units, for the time scale);
 `flight_tick` (one tick of flight, which the handles' flights repeat: the runtime compiles
 it for them).
 
@@ -52,7 +53,7 @@ from bnb.contracts.obs import SHIP
 from . import ships, tuning
 from .handling import FLOWN as FLOWN_HANDLES
 from .handling import NAMES as HANDLE_NAMES
-from .handling import Handles, Infeasible
+from .handling import Handles, Infeasible, similarity
 from .handling import measure as measure_handles
 from .handling import solve as solve_handles
 from .handling.estimate import Estimate
@@ -120,6 +121,7 @@ __all__ = [
     "ship_team",
     "ship_types",
     "ships",
+    "similarity",
     "solve_handles",
     "spread",
     "start_clocks",
