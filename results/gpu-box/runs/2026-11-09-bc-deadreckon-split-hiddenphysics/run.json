@@ -1,7 +1,7 @@
 {
  "name": "2026-11-09-bc-deadreckon-split-hiddenphysics",
- "status": "finished",
- "pid": 147232,
+ "status": "running",
+ "pid": 176023,
  "host": "e98bed47fc73",
  "message": null,
  "command": [
@@ -48,15 +48,15 @@
  "parent": null,
  "checkpoint_every": 19922944,
  "update_policies": false,
- "newest_checkpoint": 30408704,
+ "newest_checkpoint": 39845888,
  "final_checkpoint": 30408704,
  "checkpoint_ordinals": {
-  "19922944": 0,
-  "30408704": 1
+  "30408704": 1,
+  "39845888": 2
  },
  "probe": {
-  "allocated": 18312111104,
-  "reserved": 19270729728,
+  "allocated": 18501996544,
+  "reserved": 19440599040,
   "total": 25296044032,
   "budget": 24759173120
  },
@@ -110,10 +110,23 @@
     "--set",
     "yemong.physics_hidden_decay=0.5"
    ]
+  },
+  {
+   "commit": "6736d1d4f933a737c8e419fdeb0ddda34b20e504",
+   "dirty": false,
+   "start_step": 30408704,
+   "start_time": "2026-11-09T00:11:14+00:00",
+   "end_step": null,
+   "end_time": null,
+   "overrides": {
+    "stop.budget_steps": 60000000
+   },
+   "rewound_from": null,
+   "command": null
   }
  ],
  "stop_request": null,
- "hours": 1.1197306394922395,
+ "hours": 1.447116902278633,
  "skipped_steps": 0,
  "stopped_by": "budget",
  "policy": "/workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policy",

@@ -31,3 +31,14 @@ update   28  steps  29,360,128  rollout  10015 ms  learn  82583 ms  bc kl 0.4455
 update   29  steps  30,408,704  rollout  10060 ms  learn  82504 ms  bc kl 0.4440  teacher 0.977  student 1.420  scores: learner 0.500 scripted 0.180  window exponential_average 0.000 (+- 0.000)
 stopped by budget; the policy is /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policy (the exponential_average)
 run 2026-11-09-bc-deadreckon-split-hiddenphysics finished at step 30408704
+warning: the run continues on commit 6736d1d4f933a737c8e419fdeb0ddda34b20e504; its last segment ran on fadd60654ca50bd9439e95e7063b2616ead85532
+memory probe: allocated 17.23 GB, reserved 18.11 GB, budget 23.06 GB of 23.56 GB
+update   30  steps  31,457,280  rollout 176585 ms  learn 265079 ms  bc kl 0.4242  teacher 0.980  student 1.402  scores: learner 0.500 scripted 0.264  window exponential_average 0.000 (+- 0.000)
+update   31  steps  32,505,856  rollout  10009 ms  learn  81951 ms  bc kl 0.4171  teacher 0.971  student 1.387  scores: learner 0.500 scripted 0.328  window exponential_average 0.000 (+- 0.000)
+update   32  steps  33,554,432  rollout  10014 ms  learn  81947 ms  bc kl 0.4215  teacher 0.981  student 1.400  scores: learner 0.500 scripted 0.229  window exponential_average 0.000 (+- 0.000)
+update   33  steps  34,603,008  rollout  10019 ms  learn  81988 ms  bc kl 0.4099  teacher 0.983  student 1.390  scores: learner 0.500 scripted 0.283  window exponential_average 0.000 (+- 0.000)
+update   34  steps  35,651,584  rollout  10014 ms  learn  82378 ms  bc kl 0.4090  teacher 0.975  student 1.382  scores: learner 0.500 scripted 0.407  window exponential_average 0.000 (+- 0.000)
+update   35  steps  36,700,160  rollout   9998 ms  learn  82050 ms  bc kl 0.4002  teacher 0.978  student 1.376  scores: learner 0.500 scripted 0.347  window exponential_average 0.000 (+- 0.000)
+update   36  steps  37,748,736  rollout   9998 ms  learn  82051 ms  bc kl 0.4046  teacher 0.970  student 1.372  scores: learner 0.500 scripted 0.305  window exponential_average 0.000 (+- 0.000)
+update   37  steps  38,797,312  rollout  10052 ms  learn  81985 ms  bc kl 0.3973  teacher 0.971  student 1.366  scores: learner 0.500 scripted 0.386  window exponential_average 0.000 (+- 0.000)
+update   38  steps  39,845,888  rollout  10015 ms  learn  82252 ms  bc kl 0.3901  teacher 0.977  student 1.365  scores: learner 0.500 scripted 0.458  window exponential_average 0.000 (+- 0.000)
