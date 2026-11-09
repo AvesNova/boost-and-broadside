@@ -601,3 +601,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
 - **17:10 KST Laptop resuming hiddenphysics-tau10-laptop to 60M** (started 16:42 KST, ETA 19:10, worst 19:50); marker set, so tournament 5 waits for it.
 - **17:15 KST hiddenphysics at 60M** (budget, 60.8M): KL 0.334, agreement 0.753, Brier 5-15 s (50-60M) 0.592; absolute at 60M (branched at 23.1M): 0.416 / 0.702 / 0.620. The imitation gap widened from 30M (KL -0.06) to 60M (-0.08): no fade after 30M; outcome Brier now nearly level. tau1.25 resuming.
 - **18:05 KST hiddenphysics-tau1.25 at 60M:** KL 0.387, agreement 0.719, Brier 0.553 (tau 0.5: 0.334 / 0.753 / 0.592; absolute 0.416 / 0.702 / 0.620). deadreckon-split resuming.
+- **18:45 KST Laptop's tau10 at 60M uploaded** (hub 3c3a2952, budget at 18:41 KST): KL 0.387; Brier 5-15 s last six 0.467-0.573; its lane window (uniform average vs scripted) 0.260 +- 0.013. The laptop GPU is free.
