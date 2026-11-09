@@ -112,3 +112,4 @@
 14:16 start scorecard 2026-11-09-bc-deadreckon-split-hiddenphysics
 14:39 done scorecard 2026-11-09-bc-deadreckon-split-hiddenphysics
 14:39 start scorecard 2026-11-09-bc-absolute
+14:56 done scorecard 2026-11-09-bc-absolute
