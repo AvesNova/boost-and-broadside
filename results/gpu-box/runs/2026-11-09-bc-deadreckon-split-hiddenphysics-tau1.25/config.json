@@ -1,0 +1,402 @@
+{
+ "game": {
+  "ships_per_team": 5,
+  "num_fields": 10,
+  "arena_radius": 2600.0,
+  "episode_seconds": null,
+  "respawn_seconds": null,
+  "mode": "frontline",
+  "spawn_groups": [],
+  "kills_per_ship": 5
+ },
+ "environments": 2048,
+ "updates": 100,
+ "length": 128,
+ "shards": 4,
+ "lookahead": 128,
+ "graph_ticks": 8,
+ "lanes": {
+  "environments": 1024,
+  "matchups": [
+   {
+    "first": "live",
+    "second": "scripted",
+    "weight": 0.5
+   },
+   {
+    "first": "uniform_average",
+    "second": "scripted",
+    "weight": 1.0
+   },
+   {
+    "first": "exponential_average",
+    "second": "scripted",
+    "weight": 1.0
+   }
+  ],
+  "window": 10
+ },
+ "model": "yemong",
+ "yemong": {
+  "width": 128,
+  "blocks": 2,
+  "spatial_per_block": 2,
+  "heads": 2,
+  "map_width": 64,
+  "value_bins": 51,
+  "value_limit": 2.0,
+  "levels": [
+   "damage",
+   "kill_death",
+   "objective_progress",
+   "objective",
+   "outcome"
+  ],
+  "outcome_level": "outcome",
+  "hex_rings": 10,
+  "presence_radius": 150.0,
+  "rotary_period": 8192.0,
+  "rotary_octaves": 8,
+  "heading_harmonics": [
+   1,
+   2,
+   4,
+   8
+  ],
+  "bfloat16_matmuls": false,
+  "forecast_feedback": true,
+  "rotary": true,
+  "order": "temporal_first",
+  "rotary_readout": false,
+  "spread_fit": "coarsest",
+  "next_state": "delta",
+  "delta_baseline": "extrapolation",
+  "spread_inputs": "scalar",
+  "position_inputs": "colour",
+  "acceleration_inputs": false,
+  "delta_split": true,
+  "extrapolation_decay": 1.25,
+  "correction_rate": 0.1,
+  "physics_hidden_decay": 1.25,
+  "physics_hidden_fade": false
+ },
+ "relational": {
+  "hidden": 256,
+  "value_bins": 51,
+  "value_limit": 2.0,
+  "levels": [
+   "damage",
+   "kill_death",
+   "objective_progress",
+   "objective",
+   "outcome"
+  ],
+  "outcome_level": "outcome",
+  "bfloat16_matmuls": false
+ },
+ "ship_card": {
+  "max_lift_coefficient": [
+   0.027,
+   0.022
+  ],
+  "max_acceleration": [
+   216.0,
+   160.0
+  ],
+  "zero_lift_drag": [
+   0.00069612,
+   0.00085
+  ],
+  "engine_power": [
+   1200.0,
+   1500.0
+  ],
+  "engine_power_full_store": [
+   863.2,
+   1100.0
+  ],
+  "static_thrust": [
+   20.0,
+   24.0
+  ],
+  "max_energy": [
+   10000.0,
+   14000.0
+  ],
+  "corner_nose_frequency": [
+   22.0,
+   16.0
+  ],
+  "max_shield": [
+   100.0,
+   160.0
+  ],
+  "hit_radius": [
+   8.0,
+   11.0
+  ],
+  "hit_damage": [
+   12.0,
+   16.0
+  ],
+  "muzzle_speed": [
+   500.0,
+   450.0
+  ],
+  "bullet_energy_cost": [
+   300.0,
+   360.0
+  ],
+  "fire_rate": [
+   15.0,
+   10.0
+  ],
+  "spawn_energy": [
+   4000.0,
+   5600.0
+  ],
+  "bleed_exponent": [
+   2.0,
+   2.0
+  ],
+  "induced_drag_scale": [
+   1.0,
+   1.0
+  ],
+  "stall_angle_scale": [
+   1.0,
+   1.0
+  ],
+  "coast_exchange_scale": [
+   1.0,
+   1.0
+  ],
+  "dive_exchange_scale": [
+   1.0,
+   1.0
+  ],
+  "climb_exchange_scale": [
+   1.0,
+   1.0
+  ],
+  "vision_range_scale": [
+   1.0,
+   1.0
+  ],
+  "bullet_spread_scale": [
+   1.0,
+   1.0
+  ],
+  "bullet_drag_scale": [
+   1.0,
+   1.0
+  ],
+  "shield_recharge_rate_scale": [
+   1.0,
+   1.0
+  ],
+  "shield_recharge_delay_scale": [
+   1.0,
+   1.0
+  ],
+  "head_on_fraction_scale": [
+   1.0,
+   1.0
+  ]
+ },
+ "league": {
+  "slots": 4,
+  "cut_every": 2,
+  "cut_slots": 1,
+  "carry_at_cut": "keep",
+  "ladder_in_pool": false,
+  "ladder": [
+   {
+    "temperature": Infinity,
+    "share": 1.0
+   },
+   {
+    "temperature": 2.0,
+    "share": 0.1
+   },
+   {
+    "temperature": 2.0,
+    "share": 0.3
+   },
+   {
+    "temperature": 2.0,
+    "share": 0.5
+   },
+   {
+    "temperature": 8.0,
+    "share": 1.0
+   },
+   {
+    "temperature": 4.0,
+    "share": 1.0
+   },
+   {
+    "temperature": 3.0,
+    "share": 1.0
+   },
+   {
+    "temperature": 2.5,
+    "share": 1.0
+   },
+   {
+    "temperature": 2.0,
+    "share": 1.0
+   },
+   {
+    "temperature": 1.5,
+    "share": 1.0
+   },
+   {
+    "temperature": 1.0,
+    "share": 1.0
+   }
+  ],
+  "floor": 0.05,
+  "exponential_decay": 0.95,
+  "uniform_from": null,
+  "snapshot_every": null
+ },
+ "pools": [
+  {
+   "name": "frontline/self_play",
+   "share": 0.25,
+   "seats": [
+    "learner",
+    "learner"
+   ],
+   "fog_share": 1.0,
+   "mode": "frontline",
+   "arena_radius": 2600.0,
+   "spawn_groups": [],
+   "episode_seconds": null,
+   "respawn_seconds": null
+  },
+  {
+   "name": "frontline/scripted",
+   "share": 0.25,
+   "seats": [
+    "learner",
+    "scripted"
+   ],
+   "fog_share": 1.0,
+   "mode": "frontline",
+   "arena_radius": 2600.0,
+   "spawn_groups": [],
+   "episode_seconds": null,
+   "respawn_seconds": null
+  },
+  {
+   "name": "deathmatch/self_play",
+   "share": 0.25,
+   "seats": [
+    "learner",
+    "learner"
+   ],
+   "fog_share": 1.0,
+   "mode": "team_deathmatch",
+   "arena_radius": 2600.0,
+   "spawn_groups": [],
+   "episode_seconds": null,
+   "respawn_seconds": null
+  },
+  {
+   "name": "deathmatch/scripted",
+   "share": 0.25,
+   "seats": [
+    "learner",
+    "scripted"
+   ],
+   "fog_share": 1.0,
+   "mode": "team_deathmatch",
+   "arena_radius": 2600.0,
+   "spawn_groups": [],
+   "episode_seconds": null,
+   "respawn_seconds": null
+  }
+ ],
+ "learner": {
+  "discount": [
+   0.991,
+   0.995,
+   0.995,
+   0.999,
+   1.0
+  ],
+  "trace_decay": [
+   0.99,
+   0.99,
+   0.99,
+   0.99,
+   1.0
+  ],
+  "team_spirit": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "return_scale_decay": 0.99,
+  "return_scale_floor": 1.0,
+  "clip": 0.2,
+  "trust_region": "clip",
+  "clip_high": 0.28,
+  "dppo_delta": 0.15,
+  "policy": 0.025,
+  "entropy_power": 0.0,
+  "entropy_stick": 0.0,
+  "entropy_shoot": 0.0,
+  "value": 0.007,
+  "next_state": 0.0033,
+  "correction": 0.0033,
+  "enemy_action": 0.11,
+  "density": 0.021,
+  "shot_trajectory": 0.007,
+  "shot_outcome": 0.019,
+  "rotary_readout": 0.007,
+  "learning_rate": 0.0003,
+  "warmup_start": 1e-07,
+  "warmup_steps": 10000000,
+  "max_grad_norm": 1.0,
+  "epochs": 4,
+  "minibatches": 256,
+  "micro_batch_rows": 2560,
+  "target_kl": null,
+  "old_log_probabilities": "rollout"
+ },
+ "reward": {
+  "damage": 0.274,
+  "kill_death": 0.283,
+  "objective_progress": 2.0,
+  "objective": 2.0,
+  "outcome": 1.0,
+  "damage_unit": 100.0
+ },
+ "precision": "bfloat16",
+ "host_store": false,
+ "seed": 0,
+ "compiled": true,
+ "objective": "bc",
+ "teacher": {
+  "temperature": 1.0,
+  "floor": 0.0
+ },
+ "stop": {
+  "score_target": 1.0,
+  "score_window": 1000,
+  "plateau_fraction": 0.01,
+  "plateau_steps": 1000000000,
+  "kl_decay": 0.9,
+  "budget_steps": 30000000,
+  "reads": [
+   "exponential_average",
+   "uniform_average"
+  ]
+ },
+ "policy_snapshot_every": 10000000
+}
