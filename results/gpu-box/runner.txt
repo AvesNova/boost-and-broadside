@@ -92,3 +92,4 @@
 06:12 tournament4 start (13 players, 16 blocks x 128 games)
 07:38 tournament4 done
 07:41 start resume 2026-11-09-bc-deadreckon-split-hiddenphysics to 60M
+07:49 laptop: tau10-laptop 60M resume started 16:42 KST (ETA 19:10, worst 19:50); tournament 5 waits for it

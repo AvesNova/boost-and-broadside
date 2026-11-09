@@ -53,3 +53,17 @@ run 2026-11-09-bc-deadreckon-split-hiddenphysics stopped at step 42991616
 /workspace/boost-and-broadside/src/bnb/cli.py:691: FilledDefaults: the yemong build record of /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics/checkpoints/step_42991616 lacks config.physics_hidden_fade; they take their defaults
   trainer = checkpoint.load_training(source, device, config)
 warning: the run continues on commit e84ee16a131ea913f76cd99e2a3c31f7518b7fd6; its last segment ran on 6736d1d4f933a737c8e419fdeb0ddda34b20e504
+memory probe: allocated 16.97 GB, reserved 17.97 GB, budget 23.06 GB of 23.56 GB
+update   42  steps  44,040,192  rollout 152253 ms  learn 301780 ms  bc kl 0.3670  teacher 0.970  student 1.336  scores: learner 0.500 scripted 0.400  window uniform_average 0.150 (+- 0.010)
+update   43  steps  45,088,768  rollout  10017 ms  learn  82186 ms  bc kl 0.3752  teacher 0.966  student 1.339  scores: learner 0.500 scripted 0.477  window uniform_average 0.164 (+- 0.011)
+update   44  steps  46,137,344  rollout  10013 ms  learn  82113 ms  bc kl 0.3572  teacher 0.969  student 1.325  scores: learner 0.500 scripted 0.418  window uniform_average 0.173 (+- 0.011)
+update   45  steps  47,185,920  rollout  10045 ms  learn  82152 ms  bc kl 0.3665  teacher 0.962  student 1.326  scores: learner 0.500 scripted 0.331  window uniform_average 0.188 (+- 0.011)
+update   46  steps  48,234,496  rollout   9995 ms  learn  82142 ms  bc kl 0.3571  teacher 0.967  student 1.321  scores: learner 0.500 scripted 0.386  window uniform_average 0.202 (+- 0.012)
+update   47  steps  49,283,072  rollout  10040 ms  learn  82214 ms  bc kl 0.3582  teacher 0.974  student 1.331  scores: learner 0.500 scripted 0.399  window uniform_average 0.212 (+- 0.012)
+update   48  steps  50,331,648  rollout   9994 ms  learn  82123 ms  bc kl 0.3504  teacher 0.966  student 1.314  scores: learner 0.500 scripted 0.382  window uniform_average 0.222 (+- 0.012)
+update   49  steps  51,380,224  rollout   9999 ms  learn  82110 ms  bc kl 0.3556  teacher 0.960  student 1.312  scores: learner 0.500 scripted 0.379  window uniform_average 0.229 (+- 0.012)
+update   50  steps  52,428,800  rollout   9992 ms  learn 163893 ms  bc kl 0.3538  teacher 0.955  student 1.307  scores: learner 0.500 scripted 0.352  window uniform_average 0.238 (+- 0.012)
+update   51  steps  53,477,376  rollout  10005 ms  learn  82318 ms  bc kl 0.3573  teacher 0.954  student 1.308  scores: learner 0.500 scripted 0.390  window uniform_average 0.252 (+- 0.013)
+update   52  steps  54,525,952  rollout  10008 ms  learn  82074 ms  bc kl 0.3463  teacher 0.960  student 1.305  scores: learner 0.500 scripted 0.348  window uniform_average 0.273 (+- 0.013)
+update   53  steps  55,574,528  rollout  10009 ms  learn  82414 ms  bc kl 0.3517  teacher 0.952  student 1.300  scores: learner 0.500 scripted 0.278  window uniform_average 0.281 (+- 0.013)
+update   54  steps  56,623,104  rollout  10004 ms  learn  82467 ms  bc kl 0.3408  teacher 0.954  student 1.295  scores: learner 0.500 scripted 0.359  window uniform_average 0.293 (+- 0.013)
