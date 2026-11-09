@@ -7,6 +7,7 @@ import pytest
 import torch
 from play_cases import tiny_policy
 
+from bnb.game import api
 from bnb.game.api import PRESETS
 from bnb.play import themes
 from bnb.play.app import Options, Session, read_pixels
@@ -309,3 +310,33 @@ def test_the_tuning_panel_adds_and_removes_ships(context, tmp_path, monkeypatch)
     finally:
         monkeypatch.undo()
         api.reload_ships()
+
+
+def test_a_real_scale_match_is_chosen_with_a_dropdown_lineup_and_sped_up(context, tmp_path):
+    """New match: the Real scale map plays the real-scale ship set; a lineup slot is a
+    dropdown of the set's type names; Make this speed 1x turns the playback speed into the
+    game's own (the time scale) and sets playback back to x1."""
+    session = _session(context, tmp_path)
+    player = Player(session, context, 1280, 720)
+    player.click("menu")
+    player.click("menu/new match")
+    player.click("new match/map/real_scale")
+    player.click("new match/mode/frontline")
+    player.click("new match/lineup/0")
+    names = api.type_names("real-scale")
+    player.click(f"new match/lineup/0/{names[1]}")
+    player.click("new match/start")
+    config = session.loop.setup.config
+    assert config == PRESETS["real_scale_frontline"]
+    assert session.loop.setup.lineup[0] == 1
+    assert session.loop.types.max_energy.tolist() == list(
+        api.default_card("real-scale")["max_energy"]
+    )
+    gravity = session.loop.rules.flight.gravity
+    assert gravity == pytest.approx(9.81)
+    player.click("speed/0.5")
+    session.make_speed_normal()
+    assert session.loop.time_scale == 1.0
+    assert session.loop.rules.flight.gravity == pytest.approx(0.25 * gravity)
+    assert session.loop.rules.pools[0].episode_ticks == 2 * 600 * 30
+    session.close()

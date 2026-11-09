@@ -276,8 +276,9 @@ def table(parameters: list[ScriptedParameters], device=None) -> torch.Tensor:
     return torch.tensor([pack(p) for p in parameters], dtype=torch.float32, device=device)
 
 
-# The game modes the agent is tuned for, one parameter set each: the training presets
-# (`bnb.game.modes.rules.PRESETS`), in `mode_index` order.
+# The game modes the agent is tuned for, one parameter set each: the standard training
+# presets (`bnb.game.modes.rules.PRESETS`), in `mode_index` order. The real-scale presets
+# play the deathmatch and frontline sets (`mode_index` reads the map in gun ranges).
 MODES = ("deathmatch", "deathmatch_wide", "frontline")
 
 
