@@ -66,11 +66,10 @@ def test_varied_cards_span_the_envelope():
 
 
 def test_first_guess_flies_close_to_its_handles():
-    """The closed-form first guess at each card's own bleed exponent, flown, meets every
-    flown handle but the bleed rate (the exponent scan's) within a few percent, for the
-    default card and the varied cards (worst 3.6%, the low-speed acceleration). The nose
-    reversal's guess includes the damping lift adds to the nose: without it the guess was a
-    third low and flew 70-100% slow; with it the worst varied card flies 11.5% off."""
+    """The closed-form first guess, flown, meets every flown handle within a few percent,
+    for the default card and the varied cards (worst 3.6%, the low-speed acceleration). The
+    nose reversal's guess includes the damping lift adds to the nose: without it the guess
+    was a third low and flew 70-100% slow; with it the worst varied card flies 11.5% off."""
     from bnb.game.handling.manoeuvres import fly
     from bnb.game.handling.solver import _card, first_guess
     from bnb.game.handling.weapons import combat_card
@@ -83,11 +82,9 @@ def test_first_guess_flies_close_to_its_handles():
     )
     handles = measure(cards, rules)
     combat = combat_card(rules, handles, handles.cruise_speed)
-    guess = first_guess(rules, handles, combat, cards.bleed_exponent)
+    guess = first_guess(rules, handles, combat)
     flown = fly(rules, _card(rules, handles, guess, combat))
     for name in FLOWN:
-        if name == "bleed_rate":
-            continue
         error = _error(name, getattr(flown, name), getattr(handles, name))
         bound = 0.13 if name == "nose_reversal_time" else 0.04
         assert error.max() < bound, (name, error.max().item())
@@ -112,14 +109,14 @@ def test_independence():
 
 
 def test_conditioning_is_reported_and_the_default_card_is_well_conditioned():
-    """Every card's condition number is reported; the default card's is below 50 (measured
-    16 and 17 with the bleed at the middle stick, against 1e4 and more where two handles
-    measure nearly the same thing)."""
+    """Every card's condition number is reported; the default card's is below 20 (measured
+    8.8 and 6.7 with the half-lift drag a direct handle; 16 and 17 when the bleed rate was a
+    flown one; 1e4 and more where two handles measure nearly the same thing)."""
     cases = cases_module.cases()
     condition = cases.solution.condition
     assert condition.shape == cases.targets.ceiling.shape
     assert torch.isfinite(condition).all() and (condition >= 1.0).all()
-    assert condition[0].max() < 50.0, condition[0]
+    assert condition[0].max() < 20.0, condition[0]
 
 
 def test_redundant_handles_warn():
@@ -179,10 +176,10 @@ def test_unsupported_weapon_cadence_is_refused():
 
 # Solved cards whose cruise varies by more than 2% across the store (ship-card-notes.md,
 # "Fix round"): the static-thrust cap shaves the empty store's engine power more than the
-# full store's. Reported, not fixed (spec 2).
+# full store's. Reported, not fixed (spec 2). (The sustained turn +5% card was 2.2% while the
+# bleed rate was a flown handle; with the half-lift drag direct it is within 2%.)
 OVER_TWO_PERCENT = {
     3: "varied card 2: 3.4% (fighter) and 2.1% (heavy)",
-    22: "sustained turn +5%: 2.2% (fighter)",
 }
 
 
@@ -409,7 +406,16 @@ def test_each_flown_handle_matches_an_independent_flight(ship_type):
     turning = 0.25 * full
     settled = fine.settle_nose(corner, turning, 0.75, ship_type)  # the middle stick level
     bleed = start_rate(settled, stick=0.75, specific=True)
-    assert math.isclose(measured["bleed_rate"], bleed, rel_tol=ACCEPTANCE)
+    # The bleed rate is shown, not set: the flights measure it, and its closed form (the
+    # play shell's) agrees with both.
+    from bnb.game.handling.estimate import bleed_rate_now
+    from bnb.game.handling.manoeuvres import fly
+
+    flown = float(fly(cases.rules, batched(DEFAULT)).bleed_rate[0, ship_type])
+    assert math.isclose(flown, bleed, rel_tol=ACCEPTANCE)
+    closed = float(bleed_rate_now(cases.rules, DEFAULT)[0, ship_type])
+    assert math.isclose(closed, bleed, rel_tol=0.01)
+    assert math.isclose(measured["half_lift_drag"], 0.5 ** float(DEFAULT.bleed_exponent[ship_type]))
 
     # Sustained turn: 60 s at full stick from cruise, the store held below the knee; the
     # path's rate over the last 10 s.

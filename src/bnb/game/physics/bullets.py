@@ -121,7 +121,7 @@ def launch(rules: Rules, types: ShipTypes, state: Launch, spread: torch.Tensor) 
         log_refractive_index=state.log_refractive_index,
         log_index_gradient_x=state.log_index_gradient_x,
         log_index_gradient_y=state.log_index_gradient_y,
-        moves_left=torch.full_like(state.ship_type, rules.bullet_moves),
+        moves_left=torch.zeros_like(state.ship_type) + rules.bullet_moves,
     )
 
 

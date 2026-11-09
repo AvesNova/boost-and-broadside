@@ -69,9 +69,10 @@ def environment(rules: Rules, batch: int, device=None) -> Environment:
     sizes = sizes_in_batch(rules, batch)
 
     def per_pool(value, dtype=torch.float32) -> torch.Tensor:
-        """value(pool) for every environment of the pool."""
+        """value(pool) for every environment of the pool (a number, or a 0-d tensor when
+        the rules are live: `bnb.game.tuning.with_live`)."""
         parts = [
-            torch.full((size,), value(pool), dtype=dtype, device=device)
+            torch.zeros((size,), dtype=dtype, device=device) + value(pool)
             for pool, size in zip(rules.pools, sizes)
         ]
         return parts[0] if len(parts) == 1 else torch.cat(parts)

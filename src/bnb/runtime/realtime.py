@@ -7,10 +7,11 @@ randomness from its own `torch.Generator`, outside the compiled function, so a s
 keyframe and the actions decide every state. Process-wide settings (thread count) belong
 to the entry point.
 
-Live tuning (`Realtime.retune`): the ship card is an input of the compiled tick, so a new
-card takes effect on the next tick at no cost. New rules of the same sizes take effect on
-the next tick too: the match runs the uncompiled tick (a few ms at B = 1) until
-`Realtime.prepare` has compiled the new rules on a background thread.
+The tick takes the rules' tunable values as tensors (`api.tuning.live_of`): one compiled tick
+serves every value of them, keyed on the rules with those values blanked
+(`api.tuning.static_of`), and the ship card is an input too. So a live change
+(`Realtime.retune`: new tunable values or a new card, of the same sizes) is new data on the
+next tick, never a recompile.
 """
 
 import dataclasses
@@ -25,35 +26,24 @@ from bnb.game import api
 
 TickFunction = Callable[..., tuple[api.State, Obs, Events]]
 
-_COMPILED: dict[api.Rules, TickFunction] = {}
-_READY: set[api.Rules] = set()  # rules whose compiled tick has run once (compiled)
+_COMPILED: dict[api.Rules, TickFunction] = {}  # by static rules
+_READY: set[api.Rules] = set()  # static rules whose compiled tick has run once (compiled)
 _LOCK = threading.Lock()
-COMPILED_LIMIT = 16  # compiled ticks kept per process; live tuning makes one per setting
 
 
-def sizes(rules: api.Rules) -> tuple:
-    """What a live retune must keep: the state's shapes and the draws' widths (the ships,
-    fields, lineup, bullet slots and tick, and each pool's size and mode)."""
-    return (
-        rules.ships_per_team,
-        rules.num_fields,
-        rules.team_types,
-        rules.bullet_slots,
-        rules.tick_length,
-        tuple((pool.environments, pool.mode.name, pool.mode.spawn_groups) for pool in rules.pools),
-    )
-
-
-def _tick_of(rules: api.Rules) -> TickFunction:
-    """The tick for these rules: move, resolve and perceive, with the draws as inputs."""
+def _tick_of(static: api.Rules) -> TickFunction:
+    """The tick for these static rules: move, resolve and perceive, with the rules' live
+    values, the card and the draws as inputs."""
 
     def tick(
         state: api.State,
         types: api.ShipTypes,
+        live: dict[str, torch.Tensor],
         actions: torch.Tensor,
         spread: torch.Tensor,
         uniforms: torch.Tensor,
     ) -> tuple[api.State, Obs, Events]:
+        rules = api.tuning.with_live(static, live)
         moved, sweep = api.move(rules, types, state, Action.unpack(actions[None]), spread)
         stepped, events = api.resolve(rules, types, moved, sweep, uniforms)
         stepped, obs, _ = api.perceive(rules, stepped)
@@ -63,13 +53,9 @@ def _tick_of(rules: api.Rules) -> TickFunction:
 
 
 def compiled_tick(rules: api.Rules) -> TickFunction:
-    """The process's compiled tick for these rules (compiled on its first call)."""
+    """The process's compiled tick for these static rules (compiled on its first call)."""
     with _LOCK:
         if rules not in _COMPILED:
-            while len(_COMPILED) >= COMPILED_LIMIT:  # the oldest first (dicts keep order)
-                oldest = next(iter(_COMPILED))
-                del _COMPILED[oldest]
-                _READY.discard(oldest)
             _COMPILED[rules] = torch.compile(_tick_of(rules), fullgraph=True, dynamic=False)
         return _COMPILED[rules]
 
@@ -118,6 +104,7 @@ class Realtime:
         if settings:
             rules = api.tuning.tuned(rules, settings)
         self.config, self.rules = config, rules
+        self.static, self.live = api.tuning.static_of(rules), api.tuning.live_of(rules)
         self.types = api.ship_types() if types is None else types
         self.generator = torch.Generator().manual_seed(0) if generator is None else generator
         fog_flags = torch.tensor([fogged])
@@ -125,15 +112,14 @@ class Realtime:
         self.state = api.reset(rules, self.types, uniforms, fog_flags)
         self.state, self.obs, _ = api.perceive(rules, self.state)
         self.events: Events | None = None
-        self._eager = _tick_of(rules)
+        self._eager = _tick_of(self.static)
         self.compiled = compiled
-        self.background = background
         self.uses_compiled = False
         self._compile_error: BaseException | None = None
         self._thread: threading.Thread | None = None
-        self._compiling: api.Rules | None = None
-        if compiled and background:
-            self.prepare()
+        if compiled and background and self.static not in _READY:
+            self._thread = threading.Thread(target=self._compile, daemon=True)
+            self._thread.start()
 
     # The compiled tick --------------------------------------------------------------------
 
@@ -143,49 +129,28 @@ class Realtime:
             api.uniforms(self.rules, 1, generator=self.generator),
         )
 
-    def _compile(self, rules: api.Rules, state: api.State, types: api.ShipTypes) -> None:
-        """Run these rules' compiled tick once on throwaway inputs, so it is ready to swap
-        in."""
+    def _compile(self) -> None:
+        """Run the compiled tick once on throwaway inputs, so it is ready to swap in."""
         try:
             generator = torch.Generator().manual_seed(0)
             inputs = (
-                torch.zeros(rules.num_ships, 3, dtype=torch.int32),
-                api.spread(rules, 1, generator=generator),
-                api.uniforms(rules, 1, generator=generator),
+                torch.zeros(self.rules.num_ships, 3, dtype=torch.int32),
+                api.spread(self.rules, 1, generator=generator),
+                api.uniforms(self.rules, 1, generator=generator),
             )
             with torch.no_grad():
-                compiled_tick(rules)(state, types, *inputs)
+                compiled_tick(self.static)(clone(self.state), self.types, self.live, *inputs)
             with _LOCK:
-                _READY.add(rules)
+                _READY.add(self.static)
         except BaseException as error:  # reported by `compiling`; the match stays eager
             self._compile_error = error
 
-    def prepare(self) -> None:
-        """Compile the current rules' tick on a background thread, unless it is ready or
-        already compiling; the match runs uncompiled until it is (live tuning calls this
-        once a setting has settled). One compile at a time: rules that change while one runs
-        are compiled by the next call after it finishes."""
-        if not self.compiled or self.rules in _READY or self.compiling:
-            return
-        self._compiling = self.rules
-        self._thread = threading.Thread(
-            target=self._compile,
-            args=(self.rules, clone(self.state), self.types),
-            daemon=True,
-        )
-        self._thread.start()
-
     @property
     def compiling(self) -> bool:
-        """A compiled tick is being built in the background."""
+        """The compiled tick is still being built in the background."""
         if self._compile_error is not None:
             raise RuntimeError("the background compile failed") from self._compile_error
         return self._thread is not None and self._thread.is_alive()
-
-    @property
-    def ready(self) -> bool:
-        """The current rules' compiled tick is ready (the next tick runs it)."""
-        return self.rules in _READY
 
     def wait_compiled(self) -> None:
         """Block until a background compile finishes."""
@@ -194,34 +159,12 @@ class Realtime:
         _ = self.compiling  # raises a failed compile's error
 
     def _tick(self, eager: bool) -> TickFunction:
-        waiting = self.background and self.rules not in _READY
-        if self.compiled and not waiting and not eager:
+        background = self._thread is not None and self.static not in _READY
+        if self.compiled and not background and not eager:
             self.uses_compiled = True
-            return compiled_tick(self.rules)
+            return compiled_tick(self.static)
         self.uses_compiled = False
         return self._eager
-
-    # Live tuning --------------------------------------------------------------------------
-
-    def retune(self, rules: api.Rules | None = None, types: api.ShipTypes | None = None) -> None:
-        """Play on with new rules and/or a new ship card from the next tick, keeping the
-        match: same sizes (`sizes`) and card shapes, or ValueError. The state carries over
-        (`api.retune`: the zone ring refit, shields and stores capped). New rules run the
-        uncompiled tick until `prepare` has compiled them."""
-        rules = self.rules if rules is None else rules
-        types = self.types if types is None else types
-        if sizes(rules) != sizes(self.rules):
-            raise ValueError("live tuning keeps the sizes; a new match changes them")
-        for name, value in vars(types).items():
-            current = getattr(self.types, name)
-            if value.shape != current.shape or value.dtype != current.dtype:
-                raise ValueError(f"the card's {name} must stay {tuple(current.shape)}")
-        if rules != self.rules:
-            self.rules = rules
-            self._eager = _tick_of(rules)
-            self.background = True  # never block a frame on a compile
-        self.types = types
-        self.state = api.retune(rules, types, self.state)
 
     # Stepping, keyframes ------------------------------------------------------------------
 
@@ -233,8 +176,26 @@ class Realtime:
         was run)."""
         tick = self._tick(eager)
         spread, uniforms = self._draws()
-        self.state, self.obs, self.events = tick(self.state, self.types, actions, spread, uniforms)
+        self.state, self.obs, self.events = tick(
+            self.state, self.types, self.live, actions, spread, uniforms
+        )
         return self.obs
+
+    def retune(self, rules: api.Rules | None = None, types: api.ShipTypes | None = None) -> None:
+        """Play on with new rules and/or a new ship card from the next tick, keeping the
+        match: rules that differ only in their live values (`api.tuning.static_of`), and a
+        card of the same shapes, or ValueError. Nothing recompiles. The state carries over
+        (`api.retune`: the zone ring refit, shields and stores capped)."""
+        rules = self.rules if rules is None else rules
+        types = self.types if types is None else types
+        if api.tuning.static_of(rules) != self.static:
+            raise ValueError("live tuning keeps the sizes and the mode; a new match changes them")
+        for name, value in vars(types).items():
+            current = getattr(self.types, name)
+            if value.shape != current.shape or value.dtype != current.dtype:
+                raise ValueError(f"the card's {name} must stay {tuple(current.shape)}")
+        self.rules, self.live, self.types = rules, api.tuning.live_of(rules), types
+        self.state = api.retune(rules, types, self.state)
 
     def keyframe(self) -> Keyframe:
         """A copy of everything the match continues from."""

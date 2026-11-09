@@ -23,9 +23,10 @@ the spawns are drawn at an episode's start, so those apply from the next episode
 
 import dataclasses
 
+import torch
+
 from bnb.contracts import ticks_of
 
-from .modes.rules import ModeRules
 from .rules import FlightConstants, PoolRules, Rules
 
 NOW, EPISODE = "now", "episode"
@@ -255,16 +256,80 @@ def changed(rules: Rules, base: Rules) -> dict[str, float]:
     }
 
 
-__all__ = [
-    "BY_KEY",
-    "EPISODE",
-    "NOW",
-    "SETTINGS",
-    "ModeRules",
-    "Setting",
-    "changed",
-    "settings_for",
-    "snap",
-    "tuned",
-    "value",
-]
+# ---------------------------------------------------------------- live values
+# A compiled tick that takes the settings' values as tensors serves every value of them: a
+# setting changes data, not the graph. `live_of` reads the values a running match passes
+# in, `static_of` the rules with them blanked (what the compiled tick is keyed on), and
+# `with_live` the rules rebuilt from the two (inside the tick).
+
+LIVE_RULES = (
+    "boundary_damage_base",
+    "boundary_damage_per_metre",
+    "bullet_moves",
+    "spawn_speed",
+    "spawn_offset",
+    "spawn_radius",
+    "field_band_width",
+)
+LIVE_FLIGHT = ("gravity", "engine_knee", "store_fade_band", "nose_damping", "nose_frequency_floor")
+LIVE_MODE = (
+    "kills_per_ship",
+    "group_centre_fraction",
+    "group_radius",
+    "anchor_distance_min",
+    "anchor_distance_max",
+    "spawn_margin",
+    "zone_radius",
+    "zone_ring_fraction",
+    "capture_seconds",
+    "front_threshold",
+    "spawn_zone_fraction",
+)
+LIVE_POOL = ("arena_radius", "episode_ticks", "respawn_ticks")
+_INTEGERS = {"bullet_moves", "kills_per_ship", "front_threshold", "episode_ticks", "respawn_ticks"}
+
+
+def _tensor(name: str, number) -> torch.Tensor:
+    return torch.tensor(number, dtype=torch.int32 if name in _INTEGERS else torch.float32)
+
+
+def live_of(rules: Rules) -> dict[str, torch.Tensor]:
+    """The settings' values of these rules as 0-d tensors, by path ("rules.<field>",
+    "flight.<field>", "pool<i>.<field>", "pool<i>.mode.<field>")."""
+    live = {f"rules.{name}": _tensor(name, getattr(rules, name)) for name in LIVE_RULES}
+    live |= {f"flight.{name}": _tensor(name, getattr(rules.flight, name)) for name in LIVE_FLIGHT}
+    for index, pool in enumerate(rules.pools):
+        live |= {f"pool{index}.{name}": _tensor(name, getattr(pool, name)) for name in LIVE_POOL}
+        live |= {
+            f"pool{index}.mode.{name}": _tensor(name, getattr(pool.mode, name))
+            for name in LIVE_MODE
+        }
+    return live
+
+
+def static_of(rules: Rules) -> Rules:
+    """The rules with every live value blanked: rules that differ only in live values have
+    the same static rules (one compiled tick serves them all)."""
+    return with_live(rules, {path: 0 for path in live_of(rules)})
+
+
+def with_live(rules: Rules, live: dict) -> Rules:
+    """These rules with the live values in `live` (tensors in a tick, or numbers)."""
+
+    def part(prefix: str) -> dict:
+        return {
+            path[len(prefix) :]: value
+            for path, value in live.items()
+            if path.startswith(prefix) and "." not in path[len(prefix) :]
+        }
+
+    pools = tuple(
+        dataclasses.replace(
+            pool,
+            mode=dataclasses.replace(pool.mode, **part(f"pool{index}.mode.")),
+            **part(f"pool{index}."),
+        )
+        for index, pool in enumerate(rules.pools)
+    )
+    flight = dataclasses.replace(rules.flight, **part("flight."))
+    return dataclasses.replace(rules, pools=pools, flight=flight, **part("rules."))

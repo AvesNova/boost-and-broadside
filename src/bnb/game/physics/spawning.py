@@ -71,7 +71,7 @@ def new_map(
         x=torch.cat([x, -x, centre], 1),
         y=torch.cat([y, -y, centre], 1),
         radius=radius,
-        band_width=torch.full_like(radius, rules.field_band_width),
+        band_width=torch.zeros_like(radius) + rules.field_band_width,
         level=level,
     )
     axis = 2.0 * math.pi * uniforms[:, 4 * M]

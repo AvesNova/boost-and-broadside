@@ -27,7 +27,8 @@ For live tuning (the play shell's tuning panel): `tuning` (the rules a running m
 change, by key, and the rules with changed values), the ship card's handles (`Handles`,
 `HANDLE_NAMES`, `FLOWN_HANDLES`, `HANDLE_UNITS`), `measure_handles` (a card's handles),
 `solve_handles` (the card meeting handles, exact, with `SolveProgress` reports), `Estimate`
-(an instant estimate of that card, anchored on an exact one) and `Infeasible`.
+(an instant estimate of that card, anchored on an exact one), `bleed_rate` (a card's bleed
+rate in closed form, shown beside the handles) and `Infeasible`.
 
 For display (the play shell), with no rules of their own: `display` (the state's values a
 display draws, by name), `log_index` and `log_index_gradient` (the medium at points),
@@ -50,6 +51,7 @@ from .handling import Handles, Infeasible
 from .handling import measure as measure_handles
 from .handling import solve as solve_handles
 from .handling.estimate import Estimate
+from .handling.estimate import bleed_rate_now as bleed_rate
 from .handling.handles import UNITS as HANDLE_UNITS
 from .handling.solver import Progress as SolveProgress
 from .layout import environment, per_mode
@@ -83,6 +85,7 @@ __all__ = [
     "State",
     "Sweep",
     "TEAMS",
+    "bleed_rate",
     "bullet_paths",
     "core_radius",
     "default_card",

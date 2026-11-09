@@ -4,10 +4,9 @@ next tick.
 Two kinds of number, both applied through `MatchLoop.retune`:
 
 - **Rule settings** (`api.tuning`: the arena and clock, bullet life, the shared flight
-  constants, spawns, each mode's rules). They apply on the next tick: the match runs the
-  uncompiled tick until the new rules have compiled in the background (`Realtime.prepare`,
-  once a setting has been still for SETTLE seconds). A few apply from the next episode
-  (`api.tuning.EPISODE`: the map and the spawns).
+  constants, spawns, each mode's rules). They apply on the next tick: the compiled tick
+  takes their values as tensors (`Realtime.retune`), so nothing recompiles. A few apply
+  from the next episode (`api.tuning.EPISODE`: the map and the spawns).
 - **Handles**, per ship type (`api.Handles`: cruise speed, sustained turn, gun range, ...).
   The card meeting a set of handles takes an exact solve that flies the game's code (tens of
   seconds on the CPU), so a change goes in two steps:
@@ -46,7 +45,7 @@ import torch
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
 
-SETTLE = 0.6  # s a change must be still before the exact solve or the compile starts
+SETTLE = 0.6  # s the handles must be still before the exact solve starts
 PRESETS = pathlib.Path(platformdirs.user_config_dir("boost-and-broadside")) / "tunings"
 NAME = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 TICK_HANDLES = ("shield_recharge_delay",)  # handles held to whole ticks
@@ -259,6 +258,7 @@ class Tuner:
         self.exact = False
         self.status = ""
         self.message = ""
+        self.shown: dict[str, list[float]] = {}
         self._anchor: _Anchor | None = None
         self._context = context = multiprocessing.get_context("spawn")
         self._versions = context.Array("q", 2, lock=False)
@@ -267,9 +267,9 @@ class Tuner:
         self._traits: _Worker | None = None  # the scripted agent's, started when one plays
         self._card = 0  # counts the cards the match has played, for the characteristics
         self._handles_changed: float | None = None
-        self._rules_changed: float | None = None
         self._solving: int | None = None  # the handles version a solve is running for
         self._applied: api.Handles | None = None  # the targets the applied card was made for
+        self._show()
         self._measure()
 
     # The version counters, shared with the workers: a job for an older one is stale.
@@ -294,6 +294,13 @@ class Tuner:
         self.loop.retune(rules=rules, types=types)
         if types is not None:
             self._card += 1
+        self._show()
+
+    def _show(self) -> None:
+        """The values shown beside the handles for the card the match plays: its bleed rate
+        (closed form, within 1% of the flown one)."""
+        card = api.ShipTypes(**{n: v.double() for n, v in vars(self.loop.types).items()})
+        self.shown = {"bleed_rate": api.bleed_rate(self.loop.rules, card)[0].tolist()}
 
     # ---------------------------------------------------------------- reading
 
@@ -333,7 +340,6 @@ class Tuner:
         self.message = ""
         self._retune(rules=rules)
         self._rules_version += 1
-        self._rules_changed = time.monotonic()
         if key.startswith(MEASURED_BY):
             self._measure()
 
@@ -347,7 +353,6 @@ class Tuner:
         self._retune(rules=rules, types=tuning.types())
         self.message = ""
         self._rules_version += 1
-        self._rules_changed = time.monotonic()
         self._measure()
 
     def close(self) -> None:
@@ -395,9 +400,6 @@ class Tuner:
         for result in self._fast.results() + self._slow.results() + traits:
             self._apply(result)
         now = time.monotonic()
-        if self._rules_changed is not None and now - self._rules_changed > SETTLE:
-            self._rules_changed = None
-            self.loop.realtime.prepare()
         if (
             self._handles_changed is not None
             and now - self._handles_changed > SETTLE
@@ -410,7 +412,6 @@ class Tuner:
         self.status = self._status()
 
     def _status(self) -> str:
-        realtime = self.loop.realtime
         parts = []
         if self.targets is None:
             parts.append("measuring the handles")
@@ -418,8 +419,6 @@ class Tuner:
             parts.append("solving the card exactly")
         elif not self.exact:
             parts.append("estimated card")
-        if realtime.compiled and not realtime.ready:
-            parts.append("compiling the rules (running uncompiled)")
         return "; ".join(parts) or "exact"
 
     def _apply(self, result) -> None:

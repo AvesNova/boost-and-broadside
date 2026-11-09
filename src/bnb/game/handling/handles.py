@@ -25,7 +25,7 @@ class Handles:
     ceiling: torch.Tensor  # J, the store size
     low_speed_acceleration: torch.Tensor  # m/s^2 at the stall speed, store empty
     sustained_turn_rate: torch.Tensor  # rad/s, settled full-stick coasting turn
-    bleed_rate: torch.Tensor  # W/kg, specific energy rate at corner speed, middle stick
+    half_lift_drag: torch.Tensor  # induced drag at half lift over that at full lift, 0.5^e
     nose_reversal_time: torch.Tensor  # s, to 90% of the reversed angle of attack
     dive_acceleration: torch.Tensor  # m/s^2 at the start of a boost from cruise
     zoom_acceleration: torch.Tensor  # m/s^2 at the start of a reverse from cruise
@@ -60,12 +60,14 @@ FLOWN = (
     "climb_time",
     "low_speed_acceleration",
     "sustained_turn_rate",
-    "bleed_rate",
     "nose_reversal_time",
     "dive_acceleration",
     "zoom_acceleration",
 )
 DIRECT_FLIGHT = tuple(name for name in FLIGHT if name not in FLOWN)
+# Measured by the flights but not set: shown beside the handles (the bleed rate, the specific
+# energy rate at corner speed and the middle stick, follows from the drag's shape).
+SHOWN = ("bleed_rate",)
 
 DEGREES = 180.0 / math.pi
 # (display unit, factor from SI) for the chart tool.
@@ -77,6 +79,7 @@ UNITS = dict(
     ceiling=("J", 1.0),
     low_speed_acceleration=("m/s^2", 1.0),
     sustained_turn_rate=("deg/s", DEGREES),
+    half_lift_drag=("", 1.0),
     bleed_rate=("W/kg", 1.0),
     nose_reversal_time=("s", 1.0),
     dive_acceleration=("m/s^2", 1.0),

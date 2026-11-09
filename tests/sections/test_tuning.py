@@ -1,6 +1,6 @@
 """Live tuning (`bnb.game.tuning`, `Realtime.retune`, `bnb.play.tuning`): the settings round
-trip, a running match takes new rules and a new card from the next tick and refuses new
-sizes, new rules run uncompiled until they compile, and presets round trip."""
+trip, a running match takes new rules and a new card from the next tick (never
+recompiling) and refuses new sizes, and presets round trip."""
 
 import pytest
 import torch
@@ -80,21 +80,22 @@ def test_a_retune_keeps_the_sizes():
 
 
 @pytest.mark.slow
-def test_new_rules_run_uncompiled_until_prepared():
-    """After a retune the match runs the uncompiled tick; `prepare` compiles the new rules
-    in the background and the compiled tick takes over."""
-    realtime = Realtime(DEATHMATCH, compiled=True, background=True)
-    realtime.wait_compiled()
+def test_a_retune_never_recompiles():
+    """The compiled tick takes the rules' live values as tensors: new values run on the same
+    compiled tick, with no new graph, and match a match started with them."""
+    from torch._dynamo.utils import counters
+
+    realtime = Realtime(DEATHMATCH, compiled=True)
     actions = torch.zeros(DEATHMATCH.num_ships, 3, dtype=torch.int32)
     realtime.step(actions)
+    graphs = counters["stats"]["unique_graphs"]
+    changes = {"flight.gravity": 33.0, "rules.bullet_life": 0.3, "pool.respawn_seconds": 2.0}
+    realtime.retune(rules=api.tuning.tuned(realtime.rules, changes))
+    for _ in range(5):
+        realtime.step(actions)
     assert realtime.uses_compiled
-    realtime.retune(rules=api.tuning.tuned(realtime.rules, {"flight.gravity": 30.0}))
-    realtime.step(actions)
-    assert not realtime.uses_compiled and not realtime.ready
-    realtime.prepare()
-    realtime.wait_compiled()
-    realtime.step(actions)
-    assert realtime.uses_compiled
+    assert counters["stats"]["unique_graphs"] == graphs
+    assert realtime.rules.flight.gravity == 33.0 and realtime.rules.bullet_moves == 9
 
 
 def test_a_match_starts_from_its_tuning():
