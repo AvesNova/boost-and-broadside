@@ -29,7 +29,12 @@
  "newest_checkpoint": null,
  "final_checkpoint": null,
  "checkpoint_ordinals": {},
- "probe": null,
+ "probe": {
+  "allocated": 19426491392,
+  "reserved": 20392706048,
+  "total": 25296044032,
+  "budget": 24759173120
+ },
  "segments": [
   {
    "commit": "6af08e09ece071d1f57992460ecfda6637955706",
