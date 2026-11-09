@@ -48,3 +48,8 @@ update   41  steps  42,991,616  rollout  10015 ms  learn  82006 ms  bc kl 0.3698
 /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics/STOP: stopping after this update
 stopped by interrupted; the policy is /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policy (the exponential_average)
 run 2026-11-09-bc-deadreckon-split-hiddenphysics stopped at step 42991616
+/workspace/boost-and-broadside/src/bnb/cli.py:691: FilledDefaults: the TrainConfig of /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics/checkpoints/step_42991616 lacks yemong.physics_hidden_fade; they take their defaults
+  trainer = checkpoint.load_training(source, device, config)
+/workspace/boost-and-broadside/src/bnb/cli.py:691: FilledDefaults: the yemong build record of /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics/checkpoints/step_42991616 lacks config.physics_hidden_fade; they take their defaults
+  trainer = checkpoint.load_training(source, device, config)
+warning: the run continues on commit e84ee16a131ea913f76cd99e2a3c31f7518b7fd6; its last segment ran on 6736d1d4f933a737c8e419fdeb0ddda34b20e504

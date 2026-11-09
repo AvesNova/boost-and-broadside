@@ -91,3 +91,4 @@
 06:12 tournament4 FAILED with 16 x 256 (runs/ratings-round4.out)
 06:12 tournament4 start (13 players, 16 blocks x 128 games)
 07:38 tournament4 done
+07:41 start resume 2026-11-09-bc-deadreckon-split-hiddenphysics to 60M

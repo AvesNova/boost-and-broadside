@@ -1,7 +1,7 @@
 {
  "name": "2026-11-09-bc-deadreckon-split-hiddenphysics",
- "status": "stopped",
- "pid": 176023,
+ "status": "running",
+ "pid": 271360,
  "host": "e98bed47fc73",
  "message": null,
  "command": [
@@ -124,12 +124,22 @@
    },
    "rewound_from": null,
    "command": null
+  },
+  {
+   "commit": "e84ee16a131ea913f76cd99e2a3c31f7518b7fd6",
+   "dirty": false,
+   "start_step": 42991616,
+   "start_time": "2026-11-09T07:42:15+00:00",
+   "end_step": null,
+   "end_time": null,
+   "overrides": {
+    "stop.budget_steps": 60000000
+   },
+   "rewound_from": null,
+   "command": null
   }
  ],
- "stop_request": {
-  "by": "STOP file",
-  "step": 42991616
- },
+ "stop_request": null,
  "hours": 1.5242694047600447,
  "skipped_steps": 0,
  "stopped_by": "interrupted",
