@@ -603,3 +603,13 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
 - **18:05 KST hiddenphysics-tau1.25 at 60M:** KL 0.387, agreement 0.719, Brier 0.553 (tau 0.5: 0.334 / 0.753 / 0.592; absolute 0.416 / 0.702 / 0.620). deadreckon-split resuming.
 - **18:45 KST Laptop's tau10 at 60M uploaded** (hub 3c3a2952, budget at 18:41 KST): KL 0.387; Brier 5-15 s last six 0.467-0.573; its lane window (uniform average vs scripted) 0.260 +- 0.013. The laptop GPU is free.
 - **18:55 KST deadreckon-split at 60M** (KL 0.355, agreement 0.740, Brier 0.503); **tournament 5 started** (10 players + scripted: the five at 60M and their 30M). **Reuse worked:** frontline starts from 1,664 recorded games (round3 640, round4 1,024; only pairs both in the field); round3's old absolute path skipped (rewritten after its games), the original matched via rewound_1.
+- **19:36 KST Tournament 5 final (60M)** (`runs/ratings/round5/`, reusing rounds 3-4; frontline
+  in 2 batches, deathmatch in 2): mean (frontline / deathmatch): **deadreckon-split-hiddenphysics
+  60M 936 (960 / 912)**; absolute 60M 872 (923 / 820); -tau1.25 60M 855; deadreckon-split 60M
+  846 (803 / 889); hiddenphysics 30M 823; -tau10-laptop 30M 818 / 60M 813; -tau1.25 30M 811;
+  deadreckon-split 30M 789; absolute 30M 665 (+-10-14). **Champion: deadreckon-split-hiddenphysics
+  (tau 0.5)**: +64 on the mean over the null (absolute) at 60M, past the +40 bar; its lead holds or
+  grows from 30M to 60M; best imitation (KL 0.334). The null gained +207 30M -> 60M (second); the
+  slow taus barely moved (tau10 dipped). Caveat: seed 0 only at 60M. The 30M policies reproduced
+  their tournament-4 ratings (822 vs 811, 838 vs 842, 709 vs 710, 681 vs 658). Next (the author's
+  original goal): 200M BC of the champion resumed from 60M, then 200M RL.
