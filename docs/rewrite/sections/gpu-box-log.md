@@ -620,3 +620,12 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   gamma 0.9997, lambda 0.97, unlike BC's 1 / 1: watch the outcome Brier), warm-start entropy 0,
   32 minibatches x 4 epochs; micro-batch 320 rows (32 views, as BC's proven memory), else 160.
   RL speed on the box not measured yet.
+- **20:00 KST RL settings (the author asked):** (1) **outcome is in RL's advantages**: reward
+  `outcome` weight 1.0, its own per-level GAE, summed with the other four levels
+  (`returns.team_aggregate`; team spirit 0); no v2 commit disables it. (2) **The same high-VRAM
+  profile**: `host_store=false` as BC; the micro-batch cannot be BC's 2560 literally: a BC
+  minibatch is 32 views (256 minibatches) so 2560 meant one micro-batch per minibatch, while
+  PPO's is 256 views (32 minibatches), and 256 views through backward at once would need ~8x BC's
+  gradient memory. From BC's measured ~17 GB (store ~11 GB) at 32-view micro-batches, 64 views
+  (640 rows) is near the limit: RL runs at 640, falling back to 320 (same result, memory/speed
+  only). Runner replaced without disturbing the champion's 120M BC resume (it waits for it).
