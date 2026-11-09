@@ -44,6 +44,8 @@ from .selection import Selection, shown_ships
 from .sides import AgentError, Scripted, controller_of
 from .theme_editor import ThemeEditor
 from .trails import Trails
+from .tuning import Tuner, Tuning, base_rules
+from .tuning_panel import TuningPanel
 
 VIEWS = ("spectator", "team0", "team1")
 VIEW_LABELS = ("Spectator", "Team 0", "Team 1")
@@ -141,6 +143,8 @@ class Session:
         self.theme = self.library.load(options.theme)
         self.original = self.theme  # what "Revert" restores
         self.editor = ThemeEditor(self.library)
+        self.tuning_panel = TuningPanel()
+        self.tuner: Tuner | None = None
         self.scale = options.scale
         self.fog_default = options.fog
         self.interface = Interface(self)
@@ -180,8 +184,14 @@ class Session:
 
     def _adopt(self, loop: MatchLoop, whole: bool, fit: bool = True) -> None:
         """Make `loop` the session's match: a new map, trails, feed, selection."""
+        if self.tuner is not None:
+            self.tuner.close()
+            self.tuner = None
         self.loop = loop
         self.loop.on_tick = self._on_tick
+        self.loop.on_retune = self._on_retune
+        if self.tuning_panel.open:
+            self._ensure_tuner()
         self.predicted, self.bullet_paths, self.predicted_at = {}, None, None
         self.trails = Trails(loop.rules.num_ships, loop.current.stall_angle)
         self.frame = loop.frame()
@@ -227,8 +237,9 @@ class Session:
         return True
 
     def new_match(self, setup: MatchSetup) -> bool:
-        """Start a new match from the menu's setup; the menu closes when it starts."""
-        started = self.start(setup)
+        """Start a new match from the menu's setup, tuned as the current match is; the menu
+        closes when it starts."""
+        started = self.start(dataclasses.replace(setup, tuning=self.current_tuning()))
         if started:
             self.selection = None
             self.interface.close_menu()
@@ -270,6 +281,34 @@ class Session:
 
     def _match_name(self) -> str:
         return "-vs-".join(side.label.replace("/", "-") for side in self.loop.sides)
+
+    # Live tuning ------------------------------------------------------------------------
+
+    def current_tuning(self) -> Tuning:
+        """What the current match is tuned to (a new match starts from it)."""
+        loop = self.loop
+        return Tuning.of(loop.rules, loop.types, base_rules(loop.setup.config, loop.setup.lineup))
+
+    def _ensure_tuner(self) -> None:
+        loop = self.loop
+        if self.tuner is None and not loop.replaying:
+            self.tuner = Tuner(loop, base_rules(loop.setup.config, loop.setup.lineup))
+
+    def toggle_tuning(self) -> None:
+        """Show or hide the tuning panel (a live match's tuner starts when it first shows)."""
+        self.tuning_panel.open = not self.tuning_panel.open
+        if self.tuning_panel.open:
+            self._ensure_tuner()
+
+    def retune_to(self, tuning: Tuning) -> None:
+        """Play on with a whole tuning (a preset, or the game's numbers)."""
+        self._ensure_tuner()
+        if self.tuner is not None:
+            self.tuner.load(tuning)
+
+    def _on_retune(self, realtime) -> None:
+        if self.recorder is not None:
+            self.recorder.retuned(realtime)
 
     def _on_tick(self, actions, realtime, events: list[MatchEvent]) -> None:
         loop = self.loop
@@ -605,6 +644,8 @@ class Session:
         layers and trails current."""
         self.elapsed = elapsed
         self.clock += elapsed
+        if self.tuner is not None:
+            self.tuner.update()
         started = time.perf_counter()
         ticks = self.loop.advance(elapsed)
         self.timings["advance"] = time.perf_counter() - started
@@ -688,7 +729,10 @@ class Session:
         )
 
     def close(self) -> None:
-        """Save the live match's recording and release the session's ImGui context."""
+        """Save the live match's recording, stop the tuner and release the session's ImGui
+        context."""
+        if self.tuner is not None:
+            self.tuner.close()
         self._finish_recording()
         imgui.destroy_context(self.imgui_context)
 

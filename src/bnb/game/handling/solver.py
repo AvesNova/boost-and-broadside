@@ -12,6 +12,7 @@ so that the flown cruise meets its handle.
 import functools
 import math
 import warnings
+from collections.abc import Callable
 from typing import NamedTuple
 
 import torch
@@ -223,22 +224,49 @@ def _climb_integral(knee: float, band: float) -> float:
     return total * end / steps
 
 
-@functools.cache
-def _reversal_constant(damping: float) -> float:
-    """omega t at which a damped oscillator stepping from -1 to +1 first reaches +0.9 (95% of
-    the step): the reversal time is about this over the corner nose frequency."""
-    damped = math.sqrt(1.0 - damping * damping)
+def _step_response(damping: torch.Tensor, phase: torch.Tensor) -> torch.Tensor:
+    """The fraction of a unit step a second-order system starting at rest has covered at
+    phase = omega t, for any damping ratio (under-, critically and over-damped)."""
+    d2 = 1.0 - damping * damping
+    d = d2.abs().sqrt().clamp_min(1e-6)
+    x = d * phase
+    under = torch.cos(x) + damping * torch.sin(x) / d
+    over = torch.cosh(x) + damping * torch.sinh(x) / d
+    return 1.0 - torch.exp(-damping * phase) * torch.where(d2 > 0.0, under, over)
 
-    def reached(t):
-        return 1.0 - math.exp(-damping * t) * (
-            math.cos(damped * t) + damping / damped * math.sin(damped * t)
-        )
 
-    low, high = 0.0, math.pi / damped  # rises monotonically to its first peak
-    for _ in range(100):
+def _reversal_frequency(rules: Rules, airframe: Airframe, handles: Handles, turning):
+    """The corner nose frequency omega_c that reverses the nose in the reversal handle's time.
+
+    The reversal (`manoeuvres.fly`) flies at corner speed, where the nose frequency is
+    omega_c, from the steady full-stick turn's angle of attack to its mirror, to 95% of the
+    step. The nose oscillator (game spec 3.5) is a damped oscillator in the angle error, but
+    lift turning the flight path adds damping: e'' + (kappa + 2 zeta Omega) e' + Omega^2 e = 0,
+    so its damping ratio is zeta + kappa / (2 omega_c), with kappa the path slope. kappa is
+    taken at its mean over the swing: the lift's mean slope between the two angles, and the
+    thrust's mean cos. Leaving that damping out (zeta alone) guessed omega_c about a third
+    low; with it, the guess is within a few percent of the card that flies the time."""
+    constants = rules.flight
+    corner = airframe.corner_speed
+    ones = torch.ones_like(corner)
+    steady = steady_turn(rules, airframe, corner, turning, ones)
+    angle = steady.angle.abs().clamp_min(1e-6)
+    mean_slope = (
+        lift_coefficient(constants, airframe, angle) - lift_coefficient(constants, airframe, -angle)
+    ) / (2.0 * angle)
+    current = setting(constants, airframe, corner, turning, ones, torch.zeros_like(corner))
+    kappa = mean_slope * corner + current.thrust * (torch.sin(angle) / angle) / corner
+    time = handles.nose_reversal_time
+    # 95% of the step by `time`: monotone in omega (a faster and less damped nose), so bisect
+    # it in log omega.
+    low, high = torch.full_like(time, math.log(1e-2)), torch.full_like(time, math.log(1e4))
+    for _ in range(80):
         middle = 0.5 * (low + high)
-        low, high = (middle, high) if reached(middle) < 0.95 else (low, middle)
-    return 0.5 * (low + high)
+        omega = middle.exp()
+        damping = constants.nose_damping + kappa / (2.0 * omega)
+        slow = _step_response(damping, omega * time) < 0.95
+        low, high = torch.where(slow, middle, low), torch.where(slow, high, middle)
+    return (0.5 * (low + high)).exp()
 
 
 def _drag_and_exchange(rules: Rules, airframe, speed, energy, stick, angle):
@@ -252,10 +280,13 @@ def _drag_and_exchange(rules: Rules, airframe, speed, energy, stick, angle):
     return drag, current
 
 
-def first_guess(rules: Rules, handles: Handles, combat: dict, exponent: float) -> torch.Tensor:
-    """(B, num_types, 8) flown parameters at this bleed exponent, from closed forms in the
-    handles, each inverting the game's own instantaneous equations at its manoeuvre's state
-    (no flight). The bleed rate is left to the exponent scan (`solve`)."""
+def first_guess(
+    rules: Rules, handles: Handles, combat: dict, exponent: float | torch.Tensor
+) -> torch.Tensor:
+    """(B, num_types, 8) flown parameters at this bleed exponent (one number, or a tensor
+    shaped like the handles' fields), from closed forms in the handles, each inverting the
+    game's own instantaneous equations at its manoeuvre's state (no flight). The bleed rate
+    is left to the exponent scan (`solve`), or to `estimate.closed_card`."""
     constants = rules.flight
     mass = constants.mass
     stall, cruise, store = handles.stall_speed, handles.cruise_speed, handles.ceiling
@@ -274,7 +305,7 @@ def first_guess(rules: Rules, handles: Handles, combat: dict, exponent: float) -
             "short of, the coast exchange the climb implies"
         )
     lift = constants.gravity / stall**2  # C_max
-    exponent = torch.full_like(stall, exponent)
+    exponent = torch.as_tensor(exponent, dtype=stall.dtype, device=stall.device).expand_as(stall)
     full_lift = torch.full_like(stall, constants.induced_drag_factor)  # k C_max^(e - 2)
     thrust_cap = torch.full_like(stall, 1e6)
     zeros, ones = torch.zeros_like(stall), torch.ones_like(stall)
@@ -317,7 +348,7 @@ def first_guess(rules: Rules, handles: Handles, combat: dict, exponent: float) -
         total = current.thrust * torch.cos(turn.angle) - current.exchange
         induced_drag = (total / speed**2 - handles.zero_lift_drag).clamp_min(1e-12)
         full_lift = induced_drag / lifting ** (0.5 * exponent) * lift ** (exponent - 2.0)
-    frequency = _reversal_constant(constants.nose_damping) / handles.nose_reversal_time
+    frequency = _reversal_frequency(rules, airframe_at(), handles, turning)
     return torch.stack(
         [null_power, coast, thrust_cap, full_lift, exponent, frequency, dive, climb], -1
     )
@@ -342,8 +373,45 @@ def _flown_values(flown) -> torch.Tensor:
     return torch.stack([getattr(flown, name) for name in FLOWN], -1)
 
 
+def flown_parameters(rules: Rules, types: ShipTypes) -> torch.Tensor:
+    """(..., num_types, 8) a card's flown parameters (FLOWN_PARAMETERS, physical values): what
+    `solve` iterates on, so a solve can start from a card (`start`)."""
+    constants = rules.flight
+    induced = constants.induced_drag_factor * types.induced_drag_scale
+    return torch.stack(
+        [
+            types.engine_power_full_store,
+            types.coast_exchange_scale * constants.coast_exchange,
+            types.static_thrust,
+            induced * types.max_lift_coefficient ** (types.bleed_exponent - 2.0),
+            types.bleed_exponent,
+            types.corner_nose_frequency,
+            types.dive_exchange_scale * constants.dive_exchange,
+            types.climb_exchange_scale * constants.climb_exchange,
+        ],
+        -1,
+    )
+
+
+class Progress(NamedTuple):
+    """What `solve` reports after each iteration (its `progress` callback): the best card so
+    far (float32, shaped like the handles), the flown handles that card flies (FLOWN order,
+    (..., num_types, 8)), its worst relative error, and the iteration."""
+
+    types: ShipTypes
+    flown: torch.Tensor
+    worst: torch.Tensor
+    iteration: int
+
+
 def solve(
-    handles: Handles, rules: Rules, iterations: int = ITERATIONS, strict: bool = True
+    handles: Handles,
+    rules: Rules,
+    iterations: int = ITERATIONS,
+    strict: bool = True,
+    start: ShipTypes | None = None,
+    progress: Callable[[Progress], None] | None = None,
+    cancel: Callable[[], bool] | None = None,
 ) -> Solution:
     """The card meeting these handles ((num_types,) or (B, num_types) fields), solved in
     float64 on the handles' device and stored in float32. Infeasible with a reason when no
@@ -351,7 +419,13 @@ def solve(
 
     A batch converges or fails card by card. strict (the default) raises Infeasible with
     every failure's reason; otherwise the Solution lists them (`converged`, `failures`), and
-    a failed card's types are its best attempt."""
+    a failed card's types are its best attempt.
+
+    Live tuning: `start`, a card shaped like the handles to start from instead of the first
+    guess's exponent scan (near the answer, it converges in an iteration or two);
+    `progress`, called after every iteration with the best card so far (`Progress`);
+    `cancel`, asked before every iteration: True stops the solve, which then returns its
+    best card so far as if its iterations had run out."""
     one_card = handles.ceiling.dim() == 1
     handles = _batched_handles(Handles(**{n: getattr(handles, n).double() for n in NAMES}))
     check(rules, handles)
@@ -372,24 +446,34 @@ def solve(
         measured = _flown_values(fly(rules, types)).reshape(B, copies, type_count, 8)
         return (measured - target[:, None]) / scale[:, None]
 
-    # The first guess: closed forms at each scanned bleed exponent, flown in one batch; each
-    # card and type starts from its best.
-    scan = torch.stack([first_guess(rules, handles, combat, e) for e in EXPONENT_SCAN], 1).log()
-    if not torch.isfinite(scan).all():
-        raise Infeasible("the closed-form first guess has no finite parameters")
-    residual = flown(scan.reshape(B * len(EXPONENT_SCAN), type_count, 8), len(EXPONENT_SCAN))
-    cost = residual.pow(2).sum(-1)
-    if not torch.isfinite(cost).any(1).all():
-        raise Infeasible(f"no first guess flies every manoeuvre: {_unmeasured(residual)}")
-    choice = cost.nan_to_num(math.inf).argmin(1)  # (B, types)
-    x = scan.gather(1, choice[:, None, :, None].expand(B, 1, type_count, 8))[:, 0]
+    if start is not None:
+        start = batched(ShipTypes(**{n: v.double() for n, v in vars(start).items()}))
+        x = flown_parameters(rules, start).log().expand(B, type_count, 8)
+        if not torch.isfinite(x).all():
+            raise Infeasible("the starting card has parameters a solve cannot start from")
+    else:
+        # The first guess: closed forms at each scanned bleed exponent, flown in one batch;
+        # each card and type starts from its best.
+        scan = torch.stack([first_guess(rules, handles, combat, e) for e in EXPONENT_SCAN], 1).log()
+        if not torch.isfinite(scan).all():
+            raise Infeasible("the closed-form first guess has no finite parameters")
+        residual = flown(scan.reshape(B * len(EXPONENT_SCAN), type_count, 8), len(EXPONENT_SCAN))
+        cost = residual.pow(2).sum(-1)
+        if not torch.isfinite(cost).any(1).all():
+            raise Infeasible(f"no first guess flies every manoeuvre: {_unmeasured(residual)}")
+        choice = cost.nan_to_num(math.inf).argmin(1)  # (B, types)
+        x = scan.gather(1, choice[:, None, :, None].expand(B, 1, type_count, 8))[:, 0]
     eye = torch.eye(8, dtype=x.dtype, device=x.device)
     candidates = torch.cat([torch.zeros_like(eye[:1]), STEP * eye])  # (9, 8)
     bounds = math.log(EXPONENT_BOUNDS[0]), math.log(EXPONENT_BOUNDS[1])
     best_x, best_cost = x, torch.full_like(x[..., 0], math.inf)
     best_base, best_jacobian = torch.full_like(x, math.inf), eye.expand(B, type_count, 8, 8)
     damping = torch.full_like(best_cost, DAMPING[0])
+    iteration = 0
     for iteration in range(1, iterations + 1):
+        if cancel is not None and cancel():
+            iteration -= 1
+            break
         residual = flown(
             (x[:, None] + candidates[None, :, None, :]).reshape(B * 9, type_count, 8), 9
         )
@@ -404,6 +488,15 @@ def solve(
         best_base = torch.where(improved[..., None], base, best_base)
         best_jacobian = torch.where(improved[..., None, None], jacobian, best_jacobian)
         damping = torch.where(improved, damping / 3.0, damping * 4.0).clamp(*DAMPING)
+        if progress is not None:
+            best = _card(rules, handles, best_x.exp(), combat)
+            best = ShipTypes(**{name: value.float() for name, value in vars(best).items()})
+            measured = target + best_base * scale
+            worst = best_base.abs().amax(-1)
+            if one_card:
+                best = ShipTypes(**{name: value[0] for name, value in vars(best).items()})
+                measured, worst = measured[0], worst[0]
+            progress(Progress(best, measured, worst, iteration))
         if (best_base.abs().amax(-1) < TOLERANCE).all():
             break
         # Levenberg-Marquardt from each card's best point: Gauss-Newton while it improves,

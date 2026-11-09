@@ -116,7 +116,13 @@ eight flown handles set eight parameters
 2. **First guess.** At each bleed exponent of `EXPONENT_SCAN`, every other parameter
    inverts the game's instantaneous equations (`setting` and `rates` in
    `bnb.game.physics.flight`) at its manoeuvre's state. The candidates fly in one batch and
-   each card and type starts from its best.
+   each card and type starts from its best. The nose frequency comes from the reversal
+   time with the damping lift adds to the nose: at corner speed, where the reversal flies,
+   the angle error obeys `e'' + (kappa + 2 zeta omega_c) e' + omega_c^2 e = 0`, `kappa` the
+   path slope, so its damping ratio is `zeta + kappa / (2 omega_c)`, about 0.9 rather than
+   `zeta` = 0.7. Without that term the guess was a third low and flew the reversal 70-100%
+   slow; with it, the first guess flies every flown handle but the bleed rate within a few
+   percent (`tests/sections/test_ship_card.py::test_first_guess_flies_close_to_its_handles`).
 3. **Levenberg-Marquardt** on the relative errors of the flown handles, in the logs of the
    parameters, with a finite-difference Jacobian. Each iteration flies the card and its
    eight perturbations in one batch. The induced drag is solved as its value at full lift,
@@ -135,6 +141,33 @@ its manoeuvre flies (`REVERSAL_LIMIT` and `CLIMB_LIMIT` in
 `bnb.game.handling.manoeuvres`), with the window named. A condition number above
 `CONDITION_WARNING` raises a `bnb.game.handling.RedundantHandles` warning.
 
+For live tuning, `solve` also takes `start` (a card to start from instead of the exponent
+scan: near the answer it converges in two or three iterations), `progress` (called after
+every iteration with the best card so far and the flown handles it flies,
+`bnb.game.handling.solver.Progress`) and `cancel` (asked before every iteration; True
+returns the best card so far).
+
+## Estimating
+
+A solve flies the game's code every iteration, tens of seconds on the CPU, too slow for a
+slider. `bnb.game.handling.estimate.Estimate` answers at once, from closed forms only,
+anchored on an exact card and its handles: each field of the estimated card is the
+anchor's times the ratio between the closed forms (`closed_card`) at the new handles and
+at the anchor's. At the anchor it is the anchor exactly; away from it the closed forms'
+systematic errors mostly cancel. `closed_card` is the first guess at the bleed exponent
+where the bleed rate's closed form meets its handle: the bleed rate is the specific energy
+rate at the bleed manoeuvre's start (`bleed_rate_now`), which the game's `rates` give
+without flying.
+
+Measured on the default card (fighter and heavy), moving one flown handle by 10%, the
+estimated card flies the moved handle within 1.5% and every other flown handle within 1.4%,
+except the sustained turn rate (itself within 2.2%), which drags another handle 6-12% off. The sustained turn
+and the bleed rate are strongly coupled: at a fixed bleed exponent, 10% more sustained turn
+changes the bleed rate by about half, so holding the bleed rate moves the exponent from 2
+to about 0.8 or 3.2, where the closed forms are least accurate; at a third more sustained
+turn no exponent in `EXPONENT_BOUNDS` holds it at all. Moves of 25-33% of the other
+handles stay within 6.5%. The play shell's tuning panel applies the estimate at once and the
+exact solve, started from it, once the handles settle (`bnb.play.tuning`).
 ## How independent the handles are
 
 On the default card (measured on the development laptop's CPU, the cases in

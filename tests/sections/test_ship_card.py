@@ -62,6 +62,37 @@ def test_varied_cards_span_the_envelope():
         assert relative.max() > 0.05, name
 
 
+# ------------------------------------------------------------------ the first guess
+
+
+def test_first_guess_flies_close_to_its_handles():
+    """The closed-form first guess at each card's own bleed exponent, flown, meets every
+    flown handle but the bleed rate (the exponent scan's) within a few percent, for the
+    default card and the varied cards (worst 3.6%, the low-speed acceleration). The nose
+    reversal's guess includes the damping lift adds to the nose: without it the guess was a
+    third low and flew 70-100% slow; with it the worst varied card flies 11.5% off."""
+    from bnb.game.handling.manoeuvres import fly
+    from bnb.game.handling.solver import _card, first_guess
+    from bnb.game.handling.weapons import combat_card
+
+    rules = cases_module.rules()
+    cards = cases_module.varied_cards()
+    default = api.ship_types(dtype=torch.float64)
+    cards = api.ShipTypes(
+        **{n: torch.cat([getattr(default, n)[None], getattr(cards, n)]) for n in vars(cards)}
+    )
+    handles = measure(cards, rules)
+    combat = combat_card(rules, handles, handles.cruise_speed)
+    guess = first_guess(rules, handles, combat, cards.bleed_exponent)
+    flown = fly(rules, _card(rules, handles, guess, combat))
+    for name in FLOWN:
+        if name == "bleed_rate":
+            continue
+        error = _error(name, getattr(flown, name), getattr(handles, name))
+        bound = 0.13 if name == "nose_reversal_time" else 0.04
+        assert error.max() < bound, (name, error.max().item())
+
+
 # ------------------------------------------------------------------ independence
 
 

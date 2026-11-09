@@ -26,6 +26,7 @@ from bnb.runtime.realtime import Realtime
 
 from .interpolate import interpolate
 from .snapshot import Snapshot, snapshot
+from .tuning import Tuning
 
 TIME_SCALES = (1.0, 2.0, 4.0, 8.0)
 CATCH_UP_TICKS = 4  # at most this many ticks of backlog per unit of time scale
@@ -46,13 +47,15 @@ class SideSetup:
 class MatchSetup:
     """Everything a match starts from: the game, the lineup (each slot's ship type, the
     same for both teams; None for the game's default), fog, the seed of the match's
-    generator, and each side's controller."""
+    generator, each side's controller, and the tuning it starts from (`Tuning`: the rules'
+    settings and the ship card where they differ from the game's)."""
 
     config: GameConfig
     lineup: tuple[int, ...] | None = None
     fogged: bool = True
     seed: int = 0
     sides: tuple[SideSetup, SideSetup] = (SideSetup(), SideSetup())
+    tuning: Tuning = Tuning()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -109,7 +112,8 @@ class MatchLoop:
     since the shell last cleared it, so their trails restart even when a frame runs several
     ticks. `events` holds this episode's `MatchEvent`s (`kills` and `deaths` count them per
     ship), and `on_tick`, when set, is called after every tick with the actions, the
-    realtime match and the tick's events (the replay recorder).
+    realtime match and the tick's events (the replay recorder); `on_retune`, when set, is
+    called after every live change (`retune`) with the realtime match.
     """
 
     replaying = False
@@ -134,6 +138,8 @@ class MatchLoop:
                 generator=torch.Generator().manual_seed(setup.seed),
                 lineup=setup.lineup,
                 background=background,
+                settings=setup.tuning.rules,
+                types=setup.tuning.types() if setup.tuning.card else None,
             )
         self.realtime = realtime
         self.rules, self.types = realtime.rules, realtime.types
@@ -153,6 +159,20 @@ class MatchLoop:
         self.deaths = np.zeros(self.rules.num_ships, np.int64)
         self.last_actions = torch.zeros(self.rules.num_ships, 3, dtype=torch.int32)
         self.on_tick = None
+        self.on_retune = None
+
+    def retune(self, rules=None, types=None) -> None:
+        """Play on with new rules and/or a new ship card of the same sizes from the next
+        tick (`Realtime.retune`); the shown state is re-read, so a change shows even while
+        paused."""
+        self.realtime.retune(rules=rules, types=types)
+        self.rules, self.types = self.realtime.rules, self.realtime.types
+        self.current = self._snapshot()
+        self.previous = dataclasses.replace(
+            self.previous, zones=self.current.zones, arena_radius=self.current.arena_radius
+        )
+        if self.on_retune is not None:
+            self.on_retune(self.realtime)
 
     @property
     def tick_length(self) -> float:
