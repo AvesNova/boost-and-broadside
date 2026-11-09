@@ -102,10 +102,10 @@ def test_make_this_speed_normal_scales_the_live_game_and_resets_playback():
         assert frames(lambda: tuner.targets is not None, 300.0), tuner.message
         cruise = tuner.targets.cruise_speed.clone()
         gravity, store = loop.rules.flight.gravity, loop.types.max_energy.clone()
-        tuner.time_scale(4.0)
+        done = tuner.time_scale(4.0)
         assert loop.rules.flight.gravity == 16.0 * gravity
         assert torch.allclose(loop.types.max_energy, 16.0 * store)
-        assert "fire rate" in tuner.message  # 15 Hz x 4 is past the tick rate
+        assert "fire rate" in done  # 15 Hz x 4 is past the tick rate
         assert frames(lambda: tuner.targets is not None, 300.0), tuner.message
         assert torch.allclose(tuner.targets.cruise_speed, 4.0 * cruise, rtol=0.03)
         assert tuner.tuning.rules["flight.gravity"] == 16.0 * gravity

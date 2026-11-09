@@ -473,13 +473,13 @@ class TuningPanel:
         tooltip(help)
         imgui.same_line()
         if imgui.button("Apply##time scale") and self.factor > 0.0:
-            session.time_scale(self.factor)
+            self.message = session.time_scale(self.factor)
         controls.record("tuning/time scale")
         tooltip(help)
         playback = session.loop.time_scale
         imgui.begin_disabled(playback == 1.0)
         if imgui.button(f"Make this speed 1× (playback ×{playback:g})"):
-            session.make_speed_normal()
+            self.message = session.make_speed_normal()
         imgui.end_disabled()
         controls.record("tuning/make speed normal")
         tooltip(

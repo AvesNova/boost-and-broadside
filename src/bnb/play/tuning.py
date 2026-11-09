@@ -454,14 +454,14 @@ class Tuner:
         self._rules_version += 1
         self._measure()
 
-    def time_scale(self, factor: float) -> None:
+    def time_scale(self, factor: float) -> str:
         """Make the whole game `factor` times faster with the map's lengths fixed: every rule
         setting and the card by their units (`time_scaled_settings`, `time_scaled_card`),
         energies with gravity (an exact similarity, up to the tick and the values held to
-        whole ticks or Hz, which snap); the handles are then re-measured. `message` says
-        which values snapped."""
+        whole ticks or Hz, which snap); the handles are then re-measured. Returns what it
+        did, naming the values that snapped."""
         if factor <= 0.0 or factor == 1.0:
-            return
+            return ""
         tick = self.base.tick_length
         exact = similarity.scale_rules(self.values, 1.0, 1.0 / factor)
         values = time_scaled_settings(self.values, factor, tick)
@@ -482,11 +482,10 @@ class Tuner:
             if abs(float(a) - float(b)) > 1e-6 * float(a)
         ]
         self._retune(rules=rules, types=types)
-        self.message = f"x{factor:g} faster" + (
-            "; snapped: " + ", ".join(snapped) if snapped else ""
-        )
+        self.message = ""
         self._rules_version += 1
         self._measure()
+        return f"x{factor:g} faster" + ("; snapped: " + ", ".join(snapped) if snapped else "")
 
     def close(self) -> None:
         """Stop the workers (a match that ends): what they are computing is dropped."""

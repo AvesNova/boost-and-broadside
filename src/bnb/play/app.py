@@ -327,19 +327,22 @@ class Session:
         if self.tuner is not None:
             self.tuner.load(tuning)
 
-    def time_scale(self, factor: float) -> None:
-        """Make the game `factor` times faster at fixed map lengths (`Tuner.time_scale`)."""
+    def time_scale(self, factor: float) -> str:
+        """Make the game `factor` times faster at fixed map lengths (`Tuner.time_scale`);
+        returns what it did."""
         self._ensure_tuner()
-        if self.tuner is not None:
-            self.tuner.time_scale(factor)
+        return "" if self.tuner is None else self.tuner.time_scale(factor)
 
-    def make_speed_normal(self) -> None:
+    def make_speed_normal(self) -> str:
         """Make the current playback speed the game's own: the game becomes that many times
-        faster (`time_scale`) and playback goes back to x1, so it looks the same."""
+        faster (`time_scale`) and playback goes back to x1, so it looks the same; returns
+        what it did."""
         factor = self.loop.time_scale
-        if factor != 1.0 and not self.loop.replaying:
-            self.time_scale(factor)
-            self.loop.time_scale = 1.0
+        if factor == 1.0 or self.loop.replaying:
+            return ""
+        done = self.time_scale(factor)
+        self.loop.time_scale = 1.0
+        return done
 
     def save_ships(self, ships: list, moved: dict[int, int | None] | None = None) -> None:
         """Write the ship files of the match's ship set (`api.ships`, tracked in git), and
