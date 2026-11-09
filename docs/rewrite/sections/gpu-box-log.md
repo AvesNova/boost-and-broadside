@@ -584,3 +584,15 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   `absolute` path is skipped (rewritten 2026-11-09 04:54 UTC, after its games), so the original
   absolute gets only round4's games.
 - **16:55 KST The bigger tournament layout did not help** (measured): 16 x 128 steady 2048 games in 386 s = 5.3 games/s vs the default 8 x 128's 1024 in 201 s = 5.1/s; same ~258 W; and it doubled the compile per mode (~35 vs ~15 min). The engine's cost scales with blocks (each block runs its own networks), so per-block work, not GPU fill, is the limit. Back to the default layout; game reuse cuts batches instead. A real speedup would batch the networks across blocks inside the engine (code, later).
+- **16:38 KST Tournament 4 final** (`runs/ratings/round4/`; mean of frontline / deathmatch):
+  hiddenphysics-tau1.25 820 (842 / 799), -tau10-laptop 815 (836 / 795), hiddenphysics 811
+  (811 / 810), deadreckon-split 796 (710 / 883), persist-split-hiddenphysics-laptop 732,
+  persist-split-laptop 716, -fade 700, hiddenphysics-seed1 696, deadreckon-split-seed1 686,
+  fastdecay-laptop 674, absolute 657, fourier 573, absolute-seed1 545 (+-12-15). **Seed 0 is ~110
+  above seed 1 for all three configs that have both (112, 115, 110): systematic (the seed sets
+  the init and data order every seed-0 arm shares), so same-seed comparisons are paired and far
+  tighter than 110; never compare across seeds.** Hidden physics trades deathmatch for frontline
+  vs its base at both seeds (frontline +101 / +53, deathmatch -73 / -34, mean +15 / +10). Tau
+  barely matters (1.25 and 10: +9 and +4 over 0.5). Fade -111 vs its base. Proposed 60M (the
+  author's rule, the top four within 24 on the mean): hiddenphysics, -tau1.25, deadreckon-split
+  on the box, -tau10 on the laptop; then tournament 5 with absolute's 60M and their 30M (reuse).
