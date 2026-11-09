@@ -193,7 +193,8 @@ def test_a_parameter_no_handle_feels_takes_no_step():
     damping = torch.full((2,), 1e-3, dtype=torch.float64)
     step = marquardt_step(jacobian, residual, damping)
     assert torch.isfinite(step).all() and abs(float(step[1, 3])) < 1e-12
-    normal = jacobian[0].T @ jacobian[0]
-    normal = normal + 1e-3 * torch.diag(normal.diagonal())
-    plain = -torch.linalg.solve(normal, jacobian[0].T @ residual[0])
-    assert torch.equal(step[0], plain)
+    normal = jacobian.transpose(-1, -2) @ jacobian
+    normal = normal + 1e-3 * torch.diag_embed(normal.diagonal(dim1=-2, dim2=-1))
+    gradient = jacobian.transpose(-1, -2) @ residual[..., None]
+    plain = -torch.linalg.solve(normal[:1], gradient[:1])[..., 0]
+    assert torch.equal(marquardt_step(jacobian[:1], residual[:1], damping[:1]), plain)
