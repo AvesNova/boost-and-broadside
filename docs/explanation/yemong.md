@@ -465,6 +465,20 @@ did and the hidden rows add on top. Only the labels read the switch; it is in th
 record, and a policy file without it loads it as off. Select it with `--set
 yemong.physics_hidden_decay=0.5` on the deadreckon-split line.
 
+`YemongConfig.physics_hidden_fade` (with `physics_hidden_decay` tau; off by default) uses the
+physics head's change on a hidden row only where it is trained: the row's physics forecast
+takes the share `w = exp(-age / tau)` of the head's change from the baseline, `baseline +
+w (physics - baseline)`, with `age` the seconds since the ship was seen at `t`
+(`delta.fade`). It fades the means of position, velocity, heading (its change wrapped), nose
+rate, angle of attack, energy and log refractive index; the rare jumps (shield, its recharge
+wait, the gun cooldown, advanced by their median) and every spread stay the physics
+forecast's, a hidden row's spread being the error head's. The error head's correction
+applies on top, and its label is the error of the faded forecast; the physics head's target
+is unchanged. Seen rows (age 0) are untouched, bit for bit. `step`, the labels and the
+decoded forecasts all go through `Yemong.forecast` with the belief's age, so the rollout and
+the learner agree. It is in the build record; a policy file without it loads it as off.
+Select it with `--set yemong.physics_hidden_fade=true` after the hidden decay.
+
 ### Spread inputs: scalar or ellipse
 
 `YemongConfig.spread_inputs` chooses how a ship row reads its belief's spread. The spread

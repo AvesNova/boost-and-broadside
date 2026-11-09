@@ -276,7 +276,8 @@ size of the segment):
   reads the physics head (`bnb.learn.labels.correction_targets`): the code of each row's
   `e = truth(t + 1) - forecast(t + 1)`, the forecast the physics advance of the row as the
   model read it at `t` (`bnb.models.yemong.inputs.believed`) under the physics head's
-  detached logits, as `step` made it.
+  detached logits, as `step` made it (`Yemong.forecast`: with
+  `YemongConfig.physics_hidden_fade`, a hidden row's forecast faded by its age).
 - **Enemy action:** each enemy row's joint action at `t`.
 - **Density:** the hex counts of the living ships of each side at `t`, in world coordinates
   scaled by each environment's arena radius.

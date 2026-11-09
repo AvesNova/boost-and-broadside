@@ -174,22 +174,23 @@ def correction_targets(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """The error head's targets on every row (L, R, N, ...): (the code of e = truth(t + 1)
     - forecast(t + 1), its clipped flags, e itself (`correction.CorrectionCode.errors`)),
-    with forecast(t + 1) the physics forecast (`delta.DeltaCode.advance`) of the row as the
-    model read it at t (`inputs.believed`) and of the physics head's logits, detached: the
-    error head's loss gives the physics head no gradient (O7); nothing here carries a
-    gradient. Read on the correction mask."""
+    with forecast(t + 1) the physics forecast (`Yemong.forecast` without the correction: the
+    step's, faded on the hidden rows with `YemongConfig.physics_hidden_fade`) of the row as
+    the model read it at t (`inputs.believed`, its age too) and of the physics head's
+    logits, detached: the error head's loss gives the physics head no gradient (O7);
+    nothing here carries a gradient. Read on the correction mask."""
     rows = privileged_rows(trajectory)
     following = next_rows(trajectory, rows)
     offset = trajectory.replay.offset
-    _, _, means, spreads = believed(trajectory.obs.ships, trajectory.replay)
+    _, age, means, spreads = believed(trajectory.obs.ships, trajectory.replay)
     ship_type = rows[..., SHIP["ship_type"]].long()
-    forecast, _ = model.delta_code.advance(
+    forecast, _ = model.forecast(
+        next_state_logits.detach().float(),
         means.float(),
         spreads.float(),
-        next_state_logits.detach().float(),
         ship_type,
-        model.state_code,
-        rates(model, trajectory),
+        rates=rates(model, trajectory),
+        age=age,
     )
     code = model.correction_code
     errors = code.errors(forecast, shifted_truth(following, offset).float(), ship_type)

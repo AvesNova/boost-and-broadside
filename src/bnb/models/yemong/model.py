@@ -38,6 +38,7 @@ from .delta import (
     state_dynamics,
     to_frame,
 )
+from .delta import fade as delta_fade
 from .delta import velocity_frame as delta_frame
 from .heads import HeadGroup, ShotTrajectoryHead, critic_values, next_state_logits
 from .inputs import (
@@ -167,6 +168,16 @@ class YemongConfig:
     true change from the baseline of the true state at t, under the extrapolation
     baseline's true rates, as a row seen at t - 1 and t would read them), its inputs still
     the belief it reads; the error head is unchanged. Only the labels read it.
+    physics_hidden_fade (with physics_hidden_decay tau): use the physics head's change on a
+    hidden row only where it is trained. A hidden row's physics forecast takes the share
+    w = exp(-age / tau) of the head's change from the baseline (age the seconds since the
+    ship was seen, at t): baseline + w (physics - baseline), on the means of position,
+    velocity, heading, nose rate, angle of attack, energy and log refractive index
+    (`delta.fade`); the rare jumps (shield, its recharge wait, the gun cooldown, advanced
+    by their median) and every spread stay the physics forecast's (a hidden row's spread is
+    the error head's). The error head's correction applies on top, and its label is the
+    error of this faded forecast (`learn.labels.correction_targets`); the physics head's
+    target is unchanged. Seen rows (age 0) are untouched, bit for bit. Off by default.
     acceleration_inputs: each ship row also reads its acceleration over the last tick, along
     and across its velocity and of its nose rate (`inputs.accelerations`), as symlog HL-Gauss
     codes and a validity flag at the end of the ship token. A visible row reads the
@@ -207,6 +218,7 @@ class YemongConfig:
     extrapolation_decay: float = 0.5  # s: a hidden row's held rates decay with this constant
     correction_rate: float = 0.1  # eta: the error head's step per tick, of its confident median
     physics_hidden_decay: float | None = None  # s: the physics head's hidden rows, exp(-age/tau)
+    physics_hidden_fade: bool = False  # a hidden row's forecast: exp(-age/tau) of the change
 
     def __post_init__(self) -> None:
         if self.next_state not in NEXT_STATES:
@@ -226,6 +238,8 @@ class YemongConfig:
                 raise ValueError(
                     f"physics_hidden_decay {self.physics_hidden_decay} must be positive"
                 )
+        if self.physics_hidden_fade and (not self.delta_split or self.physics_hidden_decay is None):
+            raise ValueError("physics_hidden_fade needs delta_split and physics_hidden_decay")
         if self.spread_inputs not in SPREAD_INPUTS:
             raise ValueError(f"spread_inputs {self.spread_inputs!r} is not one of {SPREAD_INPUTS}")
         if self.position_inputs not in POSITION_INPUTS:
@@ -578,6 +592,7 @@ class Yemong(nn.Module):
         correction_logits: torch.Tensor | None = None,
         hidden: torch.Tensor | None = None,
         rates: Rates | None = None,
+        age: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Next-state logits (..., N, next_state_width) to the forecast at t + 1 (means,
         spreads; positions in the shifted frame, as the representative nearest the state at
@@ -586,13 +601,18 @@ class Yemong(nn.Module):
         the error head's logits (..., N, correction width), the rows where hidden (..., N)
         is set (a belief, not the truth, at t) take the corrected forecast
         (`correction.CorrectionCode.correct`); without them every row is the physics'.
-        rates: the extrapolation baseline's (`rates`, required by it)."""
+        rates: the extrapolation baseline's (`rates`, required by it). age (..., N): the
+        ticks since each row's ship was seen (the belief's), required with
+        `YemongConfig.physics_hidden_fade`: the rows with age > 0 take the faded physics
+        forecast (`delta.fade`) before any correction."""
         if self.delta_code is not None:
             if self._extrapolates and rates is None:
                 raise ValueError("the extrapolation baseline needs the rows' rates")
             physics = self.delta_code.advance(
                 means, spreads, logits, ship_type, self.state_code, rates
             )
+            if self.config.physics_hidden_fade:
+                physics = (self._faded(physics[0], means, ship_type, rates, age), physics[1])
             if correction_logits is None:
                 return physics
             if hidden is None:
@@ -608,6 +628,25 @@ class Yemong(nn.Module):
         predicted, predicted_spreads = self.state_code.decode_logits(logits, ship_type)
         position = _nearest(predicted[..., 0:2], means[..., 0:2])
         return torch.cat([position, predicted[..., 2:]], -1), predicted_spreads
+
+    def _faded(
+        self,
+        forecast: torch.Tensor,
+        means: torch.Tensor,
+        ship_type: torch.Tensor,
+        rates: Rates | None,
+        age: torch.Tensor | None,
+    ) -> torch.Tensor:
+        """The physics forecast's means (..., N, len(MEANS)) with each hidden row's (age > 0
+        ticks) change from the baseline faded by exp(-age dt / tau) (`delta.fade`); the
+        other rows the forecast itself."""
+        if age is None:
+            raise ValueError("the faded forecast needs the rows' age")
+        seconds = age.to(forecast.dtype) * self.tick_length
+        weight = torch.exp(-seconds / self.config.physics_hidden_decay)
+        baseline = self.delta_code.baseline(means, rates, ship_type)
+        faded = delta_fade(forecast, baseline, weight)
+        return torch.where((age > 0)[..., None], faded, forecast)
 
     # ------------------------------------------------------------------ carry
 
@@ -1032,6 +1071,7 @@ class Yemong(nn.Module):
                 correction_logits,
                 enemy.age > 0,
                 rates,
+                enemy.age,
             )
             advanced, nonfinite = beliefs.advance(
                 enemy, torch.cat([means, spreads], -1), enemy_action_logits

@@ -131,7 +131,8 @@ def network(agent, team: int, observed: Snapshot, following: Snapshot) -> Predic
             },
         )
     own_rows = replay.previous_action.shape[-1]
-    hidden = torch.cat([torch.zeros(own_rows, dtype=torch.bool), replay.age[0].cpu() > 0])
+    age = torch.cat([torch.zeros(own_rows, dtype=replay.age.dtype), replay.age[0].cpu()])
+    hidden = age > 0
     forecast = decode.next_state(
         model,
         unrolled.next_state_logits,
@@ -143,6 +144,7 @@ def network(agent, team: int, observed: Snapshot, following: Snapshot) -> Predic
         rates,
         getattr(unrolled, "correction_logits", None),
         hidden,
+        age,
     )
     shown = alive.numpy()
     next_state = _ghosts(

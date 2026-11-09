@@ -441,7 +441,7 @@ def _next_state_situations(
         out[f"next_state/situation/{name}/count"] = members.float().sum()
         out[f"next_state/situation/{name}/cross_entropy"] = _masked(cross_entropy, members)
     seen = living & visible
-    _, _, means, spreads = believed(trajectory.obs.ships, trajectory.replay)
+    _, age, means, spreads = believed(trajectory.obs.ships, trajectory.replay)
     ship_type = rows[..., SHIP["ship_type"]].long()
     forecast, _ = model.forecast(
         unrolled.next_state_logits.float(),
@@ -449,6 +449,7 @@ def _next_state_situations(
         spreads.float(),
         ship_type,
         rates=labels.rates(model, trajectory),
+        age=age,
     )
     delta = getattr(model, "delta_code", None)
     predictions = dict(head=forecast, persistence=now)
