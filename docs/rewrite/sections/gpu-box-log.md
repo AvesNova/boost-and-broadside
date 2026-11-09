@@ -503,3 +503,13 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   arms that do well to 30M and badly after. Laptop asked (author to confirm there) to take
   hiddenphysics-tau10 (runner skips it on the box if claimed; `runs/hub_fetch.py` fetches it).
 - **10:15 KST Merged tree (with the fade) verified:** 230 pass in the six files, 1 fail (the known arm-1/2 digest).
+- **10:30 KST Two more 30M arms (the author):** **deadreckon-split-seed1** (so hidden physics vs
+  its base becomes two seeds each) and **persist-split-hiddenphysics** (whether hidden physics
+  helps beyond dead reckoning), after fade in `round6b.sh` (each skippable if the laptop claims
+  it). Tournament 4: 13 players at 30M. Tournament 3 with Brier and imitation (the author asked;
+  Brier = mean of 20-30.4M logs; my first table wrongly took hiddenphysics' rows past 30M from
+  its stopped 60M resume: 0.445 -> 0.388 corrected): hiddenphysics 823 Elo / Brier 5-15 s 0.388
+  / KL 0.444; deadreckon-split 785 / 0.324 / 0.432; persist-split 703 / 0.353 / 0.470; fastdecay
+  661 / 0.280 / 0.492; absolute 657 / 0.428 / 0.503; fourier 573 / 0.390 / 0.490; absolute-seed1
+  532 / 0.246 / 0.520. Brier does not track Elo (absolute, fourier: top Brier, low Elo); KL a bit
+  better.

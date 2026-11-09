@@ -41,6 +41,10 @@ for _ in $(seq 36); do
   say "waiting for physics_hidden_fade to be merged"; sleep 300
 done
 train $P-fade --set yemong.physics_hidden_decay=0.5 --set yemong.physics_hidden_fade=true
+# the author, 10:30 KST: two more (each the laptop's if it claims it: runs/laptop-<arm>)
+[ -f runs/laptop-drsplit-seed1 ] || train 2026-11-09-bc-deadreckon-split-seed1 --seed 1
+[ -f runs/laptop-persist-split-hp ] || train 2026-11-09-bc-persist-split-hiddenphysics \
+  --set yemong.delta_baseline=persistence --set yemong.physics_hidden_decay=0.5
 say "round6b training done"
 
 P30=policies/step_30408704/uniform_average
@@ -52,7 +56,8 @@ fi
 players=()
 for run in 2026-11-09-bc-absolute 2026-11-09-bc-absolute-seed1 2026-11-09-bc-deadreckon-split \
     2026-11-09-bc-deadreckon-split-fourier 2026-11-09-bc-deadreckon-split-fastdecay-laptop \
-    2026-11-09-bc-persist-split-laptop $P $P-seed1 $P-tau1.25 $P-tau10 $P-tau10-laptop $P-fade; do
+    2026-11-09-bc-persist-split-laptop $P $P-seed1 $P-tau1.25 $P-tau10 $P-tau10-laptop $P-fade \
+    2026-11-09-bc-deadreckon-split-seed1 2026-11-09-bc-persist-split-hiddenphysics; do
   [ -f runs/$run/$P30/checkpoint.json ] && players+=(runs/$run/$P30) || say "tournament4: $run missing"
 done
 say "tournament4 start (${#players[@]} players)"
