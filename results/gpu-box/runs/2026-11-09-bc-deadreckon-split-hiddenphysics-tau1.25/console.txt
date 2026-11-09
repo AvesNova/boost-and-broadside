@@ -14,3 +14,17 @@ update   11  steps  11,534,336  rollout  10007 ms  learn  82425 ms  bc kl 0.5391
 update   12  steps  12,582,912  rollout  10052 ms  learn  82623 ms  bc kl 0.5560  teacher 0.952  student 1.510  scores: learner 0.500 scripted 0.000
 update   13  steps  13,631,488  rollout  10053 ms  learn  82377 ms  bc kl 0.5708  teacher 0.960  student 1.532  scores: learner 0.500 scripted 0.000
 update   14  steps  14,680,064  rollout  10021 ms  learn  82385 ms  bc kl 0.5865  teacher 0.970  student 1.557  scores: learner 0.500 scripted 0.000
+update   15  steps  15,728,640  rollout  10015 ms  learn  82650 ms  bc kl 0.5859  teacher 0.970  student 1.555  scores: learner 0.500 scripted 0.000
+update   16  steps  16,777,216  rollout  10012 ms  learn  82740 ms  bc kl 0.5559  teacher 0.976  student 1.534  scores: learner 0.500 scripted 0.000
+update   17  steps  17,825,792  rollout  10001 ms  learn  82552 ms  bc kl 0.5562  teacher 0.977  student 1.534  scores: learner 0.500 scripted 0.000
+update   18  steps  18,874,368  rollout  10002 ms  learn  82602 ms  bc kl 0.5311  teacher 0.983  student 1.514  scores: learner 0.500 scripted 0.000
+update   19  steps  19,922,944  rollout  10004 ms  learn  82694 ms  bc kl 0.5359  teacher 0.994  student 1.530  scores: learner 0.500 scripted 0.020
+update   20  steps  20,971,520  rollout  10006 ms  learn  83276 ms  bc kl 0.5319  teacher 0.999  student 1.530  scores: learner 0.500 scripted 0.021
+update   21  steps  22,020,096  rollout   9979 ms  learn  82561 ms  bc kl 0.5033  teacher 0.993  student 1.495  scores: learner 0.500 scripted 0.062
+update   22  steps  23,068,672  rollout  10004 ms  learn  82378 ms  bc kl 0.5164  teacher 0.995  student 1.511  scores: learner 0.500 scripted 0.093
+update   23  steps  24,117,248  rollout  10003 ms  learn  82560 ms  bc kl 0.5110  teacher 0.998  student 1.507  scores: learner 0.500 scripted 0.087  window exponential_average 0.000 (+- 0.000)
+update   24  steps  25,165,824  rollout  10006 ms  learn  82525 ms  bc kl 0.4963  teacher 1.001  student 1.496  scores: learner 0.500 scripted 0.113  window exponential_average 0.000 (+- 0.000)
+update   25  steps  26,214,400  rollout  10007 ms  learn  82480 ms  bc kl 0.4897  teacher 0.999  student 1.488  scores: learner 0.500 scripted 0.100  window exponential_average 0.000 (+- 0.000)
+update   26  steps  27,262,976  rollout  10049 ms  learn  82504 ms  bc kl 0.4812  teacher 0.996  student 1.474  scores: learner 0.500 scripted 0.155  window exponential_average 0.000 (+- 0.000)
+update   27  steps  28,311,552  rollout  10002 ms  learn  82529 ms  bc kl 0.4669  teacher 0.998  student 1.465  scores: learner 0.500 scripted 0.189  window exponential_average 0.000 (+- 0.000)
+update   28  steps  29,360,128  rollout  10003 ms  learn  82547 ms  bc kl 0.4655  teacher 0.999  student 1.462  scores: learner 0.500 scripted 0.155  window exponential_average 0.000 (+- 0.000)
