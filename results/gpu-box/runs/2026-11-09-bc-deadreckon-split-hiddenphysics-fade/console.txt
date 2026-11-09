@@ -1,1 +1,12 @@
 run 2026-11-09-bc-deadreckon-split-hiddenphysics-fade in /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics-fade
+memory probe: allocated 16.95 GB, reserved 17.95 GB, budget 23.06 GB of 23.56 GB
+update    1  steps   1,048,576  rollout 448789 ms  learn 990602 ms  bc kl 2.9645  teacher 0.772  student 3.738  scores: learner 0.500 scripted 0.434
+update    2  steps   2,097,152  rollout   9980 ms  learn  82329 ms  bc kl 1.4523  teacher 0.764  student 2.978  scores: learner 0.500 scripted 0.179
+update    3  steps   3,145,728  rollout  10070 ms  learn  82524 ms  bc kl 0.7169  teacher 0.757  student 1.558  scores: learner 0.500 scripted 0.016
+update    4  steps   4,194,304  rollout  10078 ms  learn  82768 ms  bc kl 0.6959  teacher 0.758  student 1.478  scores: learner 0.500 scripted 0.000
+update    5  steps   5,242,880  rollout  10063 ms  learn  82673 ms  bc kl 0.6617  teacher 0.762  student 1.438  scores: learner 0.500 scripted 0.000
+update    6  steps   6,291,456  rollout  10061 ms  learn  82643 ms  bc kl 0.6532  teacher 0.764  student 1.424  scores: learner 0.500 scripted 0.000
+update    7  steps   7,340,032  rollout  10074 ms  learn  82527 ms  bc kl 0.6681  teacher 0.816  student 1.486  scores: learner 0.500 scripted 0.000
+update    8  steps   8,388,608  rollout  10071 ms  learn  82472 ms  bc kl 0.5962  teacher 0.875  student 1.474  scores: learner 0.500 scripted 0.000
+update    9  steps   9,437,184  rollout  10072 ms  learn  82553 ms  bc kl 0.4839  teacher 0.901  student 1.389  scores: learner 0.500 scripted 0.000
+update   10  steps  10,485,760  rollout  10071 ms  learn  83406 ms  bc kl 0.5034  teacher 0.929  student 1.434  scores: learner 0.500 scripted 0.000
