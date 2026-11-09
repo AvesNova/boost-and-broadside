@@ -73,3 +73,34 @@ frontline: batch 3, 4096 games, the largest standard error 23.1 (the batch took 
 /workspace/boost-and-broadside/src/bnb/league/matches.py:526: FilledDefaults: the yemong build record lacks config.physics_hidden_fade; they take their defaults
   model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
 deathmatch: batch 1, 2048 games, the largest standard error 55.6 (the batch took 2154 s); done about 09:48 (4 batches), by 12:12 at the latest (8 batches)
+deathmatch: batch 2, 4096 games, the largest standard error 25.4 (the batch took 386 s); done about 07:52 (1 batches), by 09:59 at the latest (7 batches)
+deathmatch: batch 3, 6144 games, the largest standard error 18.9 (the batch took 386 s); done about 07:38 (0 batches), by 09:15 at the latest (6 batches)
+deathmatch       scripted                                                       1000.0 +-   0.0    2304 games
+deathmatch       runs/2026-11-09-bc-deadreckon-split/policies/step_30408704/uniform_average    882.9 +-  15.8     768 games
+deathmatch       runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_30408704/uniform_average    810.0 +-  15.3     768 games
+deathmatch       runs/2026-11-09-bc-deadreckon-split-hiddenphysics-tau1.25/policies/step_30408704/uniform_average    799.0 +-  15.2     768 games
+deathmatch       runs/2026-11-09-bc-deadreckon-split-hiddenphysics-tau10-laptop/policies/step_30408704/uniform_average    795.4 +-  15.7     768 games
+deathmatch       runs/2026-11-09-bc-persist-split-hiddenphysics-laptop/policies/step_30408704/uniform_average    721.2 +-  16.4     768 games
+deathmatch       runs/2026-11-09-bc-deadreckon-split-seed1/policies/step_30408704/uniform_average    717.2 +-  16.5     768 games
+deathmatch       runs/2026-11-09-bc-deadreckon-split-hiddenphysics-fade/policies/step_30408704/uniform_average    685.3 +-  16.7     768 games
+deathmatch       runs/2026-11-09-bc-deadreckon-split-hiddenphysics-seed1/policies/step_30408704/uniform_average    682.6 +-  16.2     896 games
+deathmatch       runs/2026-11-09-bc-persist-split-laptop/policies/step_30408704/uniform_average    681.1 +-  16.7     768 games
+deathmatch       runs/2026-11-09-bc-deadreckon-split-fastdecay-laptop/policies/step_30408704/uniform_average    677.3 +-  17.0     768 games
+deathmatch       runs/2026-11-09-bc-absolute/policies/rewound_1/step_30408704/uniform_average    655.1 +-  17.1     768 games
+deathmatch       runs/2026-11-09-bc-deadreckon-split-fourier/policies/step_30408704/uniform_average    542.9 +-  17.9     768 games
+deathmatch       runs/2026-11-09-bc-absolute-seed1/policies/step_30408704/uniform_average    506.1 +-  18.9     640 games
+frontline        scripted                                                       1000.0 +-   0.0    1536 games
+frontline        runs/2026-11-09-bc-deadreckon-split-hiddenphysics-tau1.25/policies/step_30408704/uniform_average    842.0 +-  20.4     512 games
+frontline        runs/2026-11-09-bc-deadreckon-split-hiddenphysics-tau10-laptop/policies/step_30408704/uniform_average    835.5 +-  19.6     512 games
+frontline        runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_30408704/uniform_average    811.4 +-  17.6     640 games
+frontline        runs/2026-11-09-bc-persist-split-laptop/policies/step_30408704/uniform_average    750.6 +-  20.6     512 games
+frontline        runs/2026-11-09-bc-persist-split-hiddenphysics-laptop/policies/step_30408704/uniform_average    742.3 +-  22.6     384 games
+frontline        runs/2026-11-09-bc-deadreckon-split-hiddenphysics-fade/policies/step_30408704/uniform_average    715.6 +-  23.1     384 games
+frontline        runs/2026-11-09-bc-deadreckon-split/policies/step_30408704/uniform_average    709.7 +-  20.8     512 games
+frontline        runs/2026-11-09-bc-deadreckon-split-hiddenphysics-seed1/policies/step_30408704/uniform_average    709.2 +-  20.5     512 games
+frontline        runs/2026-11-09-bc-deadreckon-split-fastdecay-laptop/policies/step_30408704/uniform_average    669.8 +-  21.0     512 games
+frontline        runs/2026-11-09-bc-absolute/policies/rewound_1/step_30408704/uniform_average    658.0 +-  21.5     512 games
+frontline        runs/2026-11-09-bc-deadreckon-split-seed1/policies/step_30408704/uniform_average    655.7 +-  19.9     640 games
+frontline        runs/2026-11-09-bc-deadreckon-split-fourier/policies/step_30408704/uniform_average    603.4 +-  22.0     512 games
+frontline        runs/2026-11-09-bc-absolute-seed1/policies/step_30408704/uniform_average    583.6 +-  22.0     512 games
+runs/ratings/round4/artifacts/ratings/20261109-073803
