@@ -41,18 +41,44 @@ for _ in $(seq 36); do
   say "waiting for physics_hidden_fade to be merged"; sleep 300
 done
 train $P-fade --set yemong.physics_hidden_decay=0.5 --set yemong.physics_hidden_fade=true
+# the author, 10:30 KST: two more (each the laptop's if it claims it: runs/laptop-<arm>)
+[ -f runs/laptop-drsplit-seed1 ] || train 2026-11-09-bc-deadreckon-split-seed1 --seed 1
+[ -f runs/laptop-persist-split-hp ] || train 2026-11-09-bc-persist-split-hiddenphysics \
+  --set yemong.delta_baseline=persistence --set yemong.physics_hidden_decay=0.5
+# the author, 10:55 KST: fill the wait for the laptop with absolute's 60M resume (the 60M
+# round's baseline); its local checkpoints were deleted for disk, so take 30.4M from the hub
+A=2026-11-09-bc-absolute
+if ! grep -q '"status": "finished"' runs/$A/run.json 2>/dev/null || [ ! -d runs/$A/policies/step_60817408 ]; then
+  /venv/main/bin/python -c "
+import os
+from huggingface_hub import snapshot_download
+snapshot_download('julianzia/boost-and-broadside-runs', local_dir='runs/hub',
+                  allow_patterns=['runs/$A/checkpoints/step_30408704/*'], token=os.environ['HF_TOKEN'])"
+  mkdir -p runs/$A/checkpoints && cp -r runs/hub/runs/$A/checkpoints/step_30408704 runs/$A/checkpoints/
+  say "start resume $A to 60M"
+  if .venv/bin/bnb train --resume $A --bc-budget-steps 60000000 >> runs/$A.out 2>&1; then
+    say "done resume $A"
+  else
+    say "FAILED resume $A (runs/$A.out)"
+  fi
+  docs/rewrite/sections/gpu-box/sync.sh > /dev/null 2>&1
+fi
 say "round6b training done"
 
 P30=policies/step_30408704/uniform_average
-if [ -f runs/laptop-tau10 ]; then  # wait for the laptop's run on the hub; take its policy files
-  L=$P-tau10-laptop
-  until /venv/main/bin/python runs/hub_fetch.py "$L"; do sleep 120; done
-  mkdir -p runs/$L && cp -r runs/hub/runs/$L/. runs/$L/ && say "downloaded $L from the hub"
-fi
+fetch() {  # marker, run: wait for the laptop's run on the hub; take its policy files
+  [ -f "runs/$1" ] || return 0
+  until /venv/main/bin/python runs/hub_fetch.py "$2"; do sleep 120; done
+  mkdir -p runs/$2 && cp -r runs/hub/runs/$2/. runs/$2/ && say "downloaded $2 from the hub"
+}
+fetch laptop-tau10 $P-tau10-laptop
+fetch laptop-persist-split-hp 2026-11-09-bc-persist-split-hiddenphysics-laptop
 players=()
 for run in 2026-11-09-bc-absolute 2026-11-09-bc-absolute-seed1 2026-11-09-bc-deadreckon-split \
     2026-11-09-bc-deadreckon-split-fourier 2026-11-09-bc-deadreckon-split-fastdecay-laptop \
-    2026-11-09-bc-persist-split-laptop $P $P-seed1 $P-tau1.25 $P-tau10 $P-tau10-laptop $P-fade; do
+    2026-11-09-bc-persist-split-laptop $P $P-seed1 $P-tau1.25 $P-tau10 $P-tau10-laptop $P-fade \
+    2026-11-09-bc-deadreckon-split-seed1 2026-11-09-bc-persist-split-hiddenphysics \
+    2026-11-09-bc-persist-split-hiddenphysics-laptop; do
   [ -f runs/$run/$P30/checkpoint.json ] && players+=(runs/$run/$P30) || say "tournament4: $run missing"
 done
 say "tournament4 start (${#players[@]} players)"

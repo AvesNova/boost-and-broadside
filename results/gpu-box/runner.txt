@@ -57,3 +57,6 @@
 00:35 start 2026-11-09-bc-deadreckon-split-hiddenphysics-nodecay
 00:37 nodecay (decoupled taus) aborted at its first update (the author: the taus are coupled); hiddenphysics-seed1 next
 00:37 start 2026-11-09-bc-deadreckon-split-hiddenphysics-seed1
+01:20 laptop: hiddenphysics-tau10-laptop accepted, started 10:19 KST on 45774aeb (config checked there); ETA 12:50 KST
+01:20 laptop: persist-split-hiddenphysics-laptop accepted, queued after tau10 (~12:50), ETA 15:20 KST; box skips it
+01:26 done 2026-11-09-bc-deadreckon-split-hiddenphysics-seed1
