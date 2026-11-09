@@ -142,7 +142,8 @@ as a slim tab on its edge when collapsed, so everything outside the rectangles i
 battlefield; a test renders with and without the interface and checks those pixels are
 unchanged. The cards are Dear ImGui windows themed from the theme file: the panel,
 line and control colours are theme values like the battlefield's, so the theme editor
-edits both.
+edits both. The cards are translucent, and every control has a 1-pixel outline in the
+line colour, so a control stays visible where the fog greys the card behind it.
 
 All input reaches the session through ImGui's input state, which the window fills from
 GLFW (and a test fills with synthetic clicks). What no card takes belongs to the

@@ -76,7 +76,7 @@ def apply_style(theme: Theme, scale: float) -> None:
         window_border_size=1,
         child_border_size=1,
         popup_border_size=1,
-        frame_border_size=0,
+        frame_border_size=1,
         window_min_size=(20, 20),
     )
     for name, value in sizes.items():
