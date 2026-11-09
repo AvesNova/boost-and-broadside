@@ -48,11 +48,11 @@
  "parent": null,
  "checkpoint_every": 19922944,
  "update_policies": false,
- "newest_checkpoint": 60817408,
+ "newest_checkpoint": 79691776,
  "final_checkpoint": 60817408,
  "checkpoint_ordinals": {
-  "59768832": 4,
-  "60817408": 5
+  "60817408": 5,
+  "79691776": 6
  },
  "probe": {
   "allocated": 18221742592,
@@ -152,7 +152,7 @@
   }
  ],
  "stop_request": null,
- "hours": 2.083465351389669,
+ "hours": 2.5985352602893372,
  "skipped_steps": 0,
  "stopped_by": "budget",
  "policy": "/workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policy",
