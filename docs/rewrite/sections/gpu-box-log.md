@@ -502,3 +502,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
 - **10:20 KST The author: the 60M round also takes absolute (C-fixed) as a baseline**, to catch
   arms that do well to 30M and badly after. Laptop asked (author to confirm there) to take
   hiddenphysics-tau10 (runner skips it on the box if claimed; `runs/hub_fetch.py` fetches it).
+- **10:15 KST Merged tree (with the fade) verified:** 230 pass in the six files, 1 fail (the known arm-1/2 digest).
