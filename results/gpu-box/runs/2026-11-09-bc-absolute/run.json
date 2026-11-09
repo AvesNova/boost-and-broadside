@@ -1,7 +1,7 @@
 {
  "name": "2026-11-09-bc-absolute",
- "status": "finished",
- "pid": 114733,
+ "status": "running",
+ "pid": 221889,
  "host": "e98bed47fc73",
  "message": null,
  "command": [
@@ -41,8 +41,8 @@
   "30408704": 1
  },
  "probe": {
-  "allocated": 17696049152,
-  "reserved": 18928893952,
+  "allocated": 17716846592,
+  "reserved": 18949865472,
   "total": 25296044032,
   "budget": 24759173120
  },
@@ -82,6 +82,19 @@
     "--set",
     "stop.plateau_steps=1000000000"
    ]
+  },
+  {
+   "commit": "4434bd5ab5c677d0bf762588a76be2c16651f250",
+   "dirty": false,
+   "start_step": 23068672,
+   "start_time": "2026-11-09T04:43:49+00:00",
+   "end_step": null,
+   "end_time": null,
+   "overrides": {
+    "stop.budget_steps": 60000000
+   },
+   "rewound_from": null,
+   "command": null
   }
  ],
  "stop_request": null,

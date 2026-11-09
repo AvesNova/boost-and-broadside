@@ -32,3 +32,22 @@ update   29  steps  30,408,704  rollout   8220 ms  learn  73383 ms  bc kl 0.5032
 stopped by budget; the policy is /workspace/boost-and-broadside/runs/2026-11-09-bc-absolute/policy (the exponential_average)
 run 2026-11-09-bc-absolute finished at step 30408704
 /workspace/boost-and-broadside/runs/2026-11-09-bc-absolute/checkpoints/step_30408704/training.safetensors has SHA-256 7b09f3ba10267d8f0eb85eabee7d222d8a63093a114375b4b07a371d901f8654, but the record says c5776cb3b43dd2296822f7eab01e016ce79bb79798b2e0fe30082406e99a4ee7: the file changed after it was written
+/workspace/boost-and-broadside/src/bnb/cli.py:680: FilledDefaults: the TrainConfig of /workspace/boost-and-broadside/runs/2026-11-09-bc-absolute/checkpoints/step_23068672 lacks yemong.physics_hidden_decay, yemong.physics_hidden_fade; they take their defaults
+  trainer = checkpoint.load_training(source, device, config)
+/workspace/boost-and-broadside/src/bnb/cli.py:680: FilledDefaults: the yemong build record of /workspace/boost-and-broadside/runs/2026-11-09-bc-absolute/checkpoints/step_23068672 lacks config.physics_hidden_decay, config.physics_hidden_fade; they take their defaults
+  trainer = checkpoint.load_training(source, device, config)
+warning: the run continues on commit 4434bd5ab5c677d0bf762588a76be2c16651f250; its last segment ran on cb63d49e05f6c3349c0c25c89459bfa8be6bd9e5
+memory probe: allocated 16.50 GB, reserved 17.65 GB, budget 23.06 GB of 23.56 GB
+update   23  steps  24,117,248  rollout  52717 ms  learn  95194 ms  bc kl 0.5317  teacher 0.976  student 1.508  scores: learner 0.500 scripted 0.086  window exponential_average 0.000 (+- 0.000)
+update   24  steps  25,165,824  rollout   8222 ms  learn  72398 ms  bc kl 0.5287  teacher 0.981  student 1.510  scores: learner 0.500 scripted 0.066  window exponential_average 0.000 (+- 0.000)
+update   25  steps  26,214,400  rollout   8221 ms  learn  72481 ms  bc kl 0.5252  teacher 0.986  student 1.510  scores: learner 0.500 scripted 0.065  window exponential_average 0.000 (+- 0.000)
+update   26  steps  27,262,976  rollout   8222 ms  learn  72451 ms  bc kl 0.5216  teacher 0.984  student 1.505  scores: learner 0.500 scripted 0.062  window exponential_average 0.000 (+- 0.000)
+update   27  steps  28,311,552  rollout   8234 ms  learn  72575 ms  bc kl 0.5113  teacher 0.991  student 1.502  scores: learner 0.500 scripted 0.022  window exponential_average 0.000 (+- 0.000)
+update   28  steps  29,360,128  rollout   8221 ms  learn  72644 ms  bc kl 0.5016  teacher 0.995  student 1.496  scores: learner 0.500 scripted 0.081  window exponential_average 0.000 (+- 0.000)
+update   29  steps  30,408,704  rollout   8223 ms  learn  72534 ms  bc kl 0.5017  teacher 1.000  student 1.499  scores: learner 0.500 scripted 0.149  window exponential_average 0.000 (+- 0.000)
+update   30  steps  31,457,280  rollout   8227 ms  learn  95433 ms  bc kl 0.4819  teacher 1.002  student 1.482  scores: learner 0.500 scripted 0.113  window exponential_average 0.000 (+- 0.000)
+update   31  steps  32,505,856  rollout   8186 ms  learn  72500 ms  bc kl 0.4953  teacher 0.995  student 1.488  scores: learner 0.500 scripted 0.122  window exponential_average 0.000 (+- 0.000)
+update   32  steps  33,554,432  rollout   8227 ms  learn  72590 ms  bc kl 0.4867  teacher 0.995  student 1.480  scores: learner 0.500 scripted 0.095  window exponential_average 0.000 (+- 0.000)
+update   33  steps  34,603,008  rollout   8233 ms  learn  72517 ms  bc kl 0.4767  teacher 0.994  student 1.468  scores: learner 0.500 scripted 0.190  window exponential_average 0.000 (+- 0.000)
+update   34  steps  35,651,584  rollout   8228 ms  learn  72524 ms  bc kl 0.4978  teacher 0.994  student 1.490  scores: learner 0.500 scripted 0.120  window exponential_average 0.000 (+- 0.000)
+update   35  steps  36,700,160  rollout   8228 ms  learn  72702 ms  bc kl 0.4882  teacher 0.992  student 1.478  scores: learner 0.500 scripted 0.111  window exponential_average 0.000 (+- 0.000)
