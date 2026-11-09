@@ -533,6 +533,14 @@ ARMS = dict(
         spread_inputs="scalar",
         physics_hidden_decay=0.5,
     ),
+    # and a hidden row's forecast only the trained share of the head's change (the fade)
+    arm4dhf=dict(
+        delta_baseline="extrapolation",
+        acceleration_inputs=False,
+        spread_inputs="scalar",
+        physics_hidden_decay=0.5,
+        physics_hidden_fade=True,
+    ),
 )
 
 
@@ -574,9 +582,9 @@ def test_the_stored_belief_of_a_hidden_row_is_the_corrected_forecast(segment):
     obs, replay = trajectory.obs, trajectory.replay
     with torch.no_grad():
         unrolled = net.unroll(trajectory.initial_carry, obs, replay, cases.resets(obs))
-    _, _, means, spreads = believed(obs.ships, replay)
+    _, age, means, spreads = believed(obs.ships, replay)
     ship_type = labels.privileged_rows(trajectory)[..., SHIP["ship_type"]].long()
-    hidden = torch.cat([torch.zeros_like(replay.valid[..., :OWN]), replay.age > 0], -1)
+    hidden = age > 0
     forecast, _ = net.forecast(
         unrolled.next_state_logits,
         means,
@@ -585,6 +593,7 @@ def test_the_stored_belief_of_a_hidden_row_is_the_corrected_forecast(segment):
         unrolled.correction_logits,
         hidden,
         labels.rates(net, trajectory),
+        age,
     )
     # still hidden at t + 1, no reset between: the stored belief is the forecast
     still = (replay.age[1:] > 1) & replay.valid[1:] & replay.valid[:-1]
@@ -631,6 +640,21 @@ def _merged_rates(rows: torch.Tensor, first: delta.Rates, second: delta.Rates) -
     return delta.Rates(**out)
 
 
+def _faded_by_hand(net, forecast, means, ship_type, rates, age) -> torch.Tensor:
+    """forecast with each hidden row's (age > 0) change from the baseline times
+    exp(-age dt / tau), on the faded means (the heading's change wrapped)."""
+    baseline = net.delta_code.baseline(means, rates, ship_type)
+    weight = torch.exp(-age.to(forecast.dtype) * net.tick_length / net.config.physics_hidden_decay)
+    change = forecast - baseline
+    heading = MEANS.index("heading")
+    change[..., heading] = delta.wrap(change[..., heading])
+    faded = baseline + weight[..., None] * change
+    faded[..., heading] = delta.wrap(faded[..., heading])
+    jumps = torch.tensor([name in delta.MEDIAN for name in MEANS])
+    faded = torch.where(jumps, forecast, faded)
+    return torch.where((age > 0)[..., None], faded, forecast)
+
+
 def _check_terms(net, learner, runner):
     prepared = learner.prepare(runner.store, runner.bootstrap())
     views = torch.arange(runner.store.views)
@@ -675,18 +699,17 @@ def _check_terms(net, learner, runner):
         expected += float((physics[..., OWN:].double() * decayed)[weighted].sum())
     assert math.isclose(float(terms["next_state"]), expected / count, rel_tol=1e-5)
     # the error head's target: the truth at t + 1 less the physics forecast of the belief
+    # (with the fade, a hidden row's by hand: exp(-age / tau) of the change from the baseline)
     rows = labels.privileged_rows(trajectory)
     following = labels.next_rows(trajectory, rows)
-    _, _, means, spreads = believed(trajectory.obs.ships, trajectory.replay)
+    _, age, means, spreads = believed(trajectory.obs.ships, trajectory.replay)
     ship_type = rows[..., SHIP["ship_type"]].long()
+    read = labels.rates(net, trajectory)
     forecast, _ = net.delta_code.advance(
-        means,
-        spreads,
-        out.next_state_logits.detach(),
-        ship_type,
-        net.state_code,
-        labels.rates(net, trajectory),
+        means, spreads, out.next_state_logits.detach(), ship_type, net.state_code, read
     )
+    if net.config.physics_hidden_fade:
+        forecast = _faded_by_hand(net, forecast, means, ship_type, read, age)
     errors = net.correction_code.errors(
         forecast, truth(following, trajectory.replay.offset), ship_type
     )
@@ -992,3 +1015,177 @@ def test_a_policy_file_without_the_hidden_decay_loads_it_as_none(tmp_path):
     with pytest.warns(FilledDefaults, match="physics_hidden_decay"):
         loaded = load_policy(tmp_path / "policy", lc.CPU)
     assert loaded.config.physics_hidden_decay is None and loaded.config.delta_split
+
+
+# ------------------------------------------------------------------ the fade
+# (`yemong.physics_hidden_fade`: a hidden row's forecast takes exp(-age / tau) of the change)
+
+FADE_ARM = ARMS["arm4dhf"]
+FADE_SETS = HIDDEN_SETS + ("yemong.physics_hidden_fade=true",)
+FADE_TICKS = 3  # the constructed nets' tau: 3 ticks
+
+
+def _fade_pair(tau_ticks: float = FADE_TICKS):
+    """(faded, unfaded): the fade arm in float64 with tau = tau_ticks ticks, and the same
+    weights without the switch."""
+    tick = _model(**FADE_ARM).tick_length
+    settings = dict(FADE_ARM, physics_hidden_decay=tau_ticks * tick)
+    faded = cases.double(_model(**settings))
+    unfaded = cases.double(_model(**dict(settings, physics_hidden_fade=False)))
+    unfaded.load_state_dict(faded.state_dict())
+    return faded, unfaded
+
+
+def _fade_case(net, rows: int = 4):
+    """A constructed batch of rows moving with last tick's rates (valid, hidden: the rule),
+    its physics logits and its error head's logits."""
+    generator = torch.Generator().manual_seed(3)
+    randn = lambda *shape: torch.randn(*shape, dtype=F64, generator=generator)  # noqa: E731
+    means = torch.zeros(rows, len(MEANS), dtype=F64)
+    means[:, 0:2] = 100.0 * randn(rows, 2)
+    means[:, 2:4] = 40.0 + 5.0 * randn(rows, 2)
+    means[:, MEANS.index("heading")] = 3.0  # near pi: the heading's change wraps
+    means[:, MEANS.index("nose_rate")] = 0.5 * randn(rows)
+    means[:, MEANS.index("shield")] = 0.5
+    means[:, MEANS.index("energy")] = 0.5
+    change = torch.zeros(rows, len(MEANS), dtype=F64)
+    change[:, MEANS.index("angle_of_attack")] = 0.01
+    change[:, MEANS.index("energy")] = -0.01
+    true = torch.ones(rows, dtype=torch.bool)
+    rates = delta.Rates(
+        valid=true,
+        acceleration=5.0 * randn(rows, 2),
+        nose_acceleration=randn(rows),
+        change=change,
+        gradient=torch.zeros(rows, 2, dtype=F64),
+        gradient_known=~true,
+        fired=~true,
+        rule=true,
+        turn=torch.full((rows,), 0.5, dtype=F64),
+    )
+    spreads = torch.zeros(rows, net.state_code.spread_count, dtype=F64)
+    ship_type = torch.zeros(rows, dtype=torch.long)
+    logits = randn(rows, net.next_state_width)
+    correction_logits = randn(rows, net.correction_code.width)
+    return means, spreads, ship_type, logits, correction_logits, rates
+
+
+def test_the_fade_is_off_by_default_and_needs_the_split_and_the_hidden_decay():
+    assert not YemongConfig().physics_hidden_fade
+    with pytest.raises(ValueError, match="physics_hidden_fade needs"):
+        YemongConfig(next_state="delta", delta_split=True, physics_hidden_fade=True)
+    with pytest.raises(ValueError, match="physics_hidden_fade needs"):
+        YemongConfig(next_state="delta", physics_hidden_fade=True)
+    net = _model(**FADE_ARM)
+    means, spreads, ship_type, logits, _, rates = _fade_case(net)
+    with pytest.raises(ValueError, match="age"):
+        cases.double(net).forecast(logits, means, spreads, ship_type, rates=rates)
+
+
+def test_seen_rows_forecast_bit_for_bit_as_without_the_fade():
+    faded, unfaded = _fade_pair()
+    means, spreads, ship_type, logits, correction_logits, rates = _fade_case(faded)
+    age = torch.tensor([0, 2, 0, 7], dtype=torch.int32)
+    hidden = age > 0
+    with_fade = faded.forecast(
+        logits, means, spreads, ship_type, correction_logits, hidden, rates, age
+    )
+    without = unfaded.forecast(logits, means, spreads, ship_type, correction_logits, hidden, rates)
+    assert torch.equal(with_fade[0][~hidden], without[0][~hidden])
+    assert torch.equal(with_fade[1], without[1])  # the spreads: hidden rows' the error head's
+    assert not torch.allclose(with_fade[0][hidden], without[0][hidden])
+
+
+def test_a_hidden_rows_change_fades_to_one_over_e_at_age_tau():
+    """Age 0: the unfaded forecast; age tau: 1/e of the change from the baseline on the
+    faded means, the jumps and every spread the unfaded forecast's."""
+    faded, unfaded = _fade_pair()
+    means, spreads, ship_type, logits, _, rates = _fade_case(faded)
+    without, without_spreads = unfaded.forecast(logits, means, spreads, ship_type, rates=rates)
+    zero = torch.zeros(len(means), dtype=torch.int32)
+    at_zero = faded.forecast(logits, means, spreads, ship_type, rates=rates, age=zero)
+    assert torch.equal(at_zero[0], without) and torch.equal(at_zero[1], without_spreads)
+    tau = torch.full_like(zero, FADE_TICKS)
+    got, got_spreads = faded.forecast(logits, means, spreads, ship_type, rates=rates, age=tau)
+    assert torch.equal(got_spreads, without_spreads)
+    baseline = faded.delta_code.baseline(means, rates, ship_type)
+    for i, name in enumerate(MEANS):
+        if name in delta.MEDIAN:
+            assert torch.equal(got[:, i], without[:, i]), name
+            continue
+        full, part = without[:, i] - baseline[:, i], got[:, i] - baseline[:, i]
+        if name == "heading":
+            full, part = delta.wrap(full), delta.wrap(part)
+        assert full.abs().min() > 1e-9, name  # the head moves every faded quantity
+        torch.testing.assert_close(part, full * math.exp(-1.0), rtol=1e-9, atol=1e-12)
+    # the heading near pi: its change wraps, the faded heading stays in range
+    assert (got[:, MEANS.index("heading")].abs() <= math.pi).all()
+
+
+def test_a_huge_tau_forecasts_as_without_the_fade():
+    tick = _model(**FADE_ARM).tick_length
+    faded, unfaded = _fade_pair(1e9 / tick)
+    means, spreads, ship_type, logits, correction_logits, rates = _fade_case(faded)
+    age = torch.tensor([0, 1, 30, 600], dtype=torch.int32)
+    hidden = age > 0
+    with_fade = faded.forecast(
+        logits, means, spreads, ship_type, correction_logits, hidden, rates, age
+    )
+    without = unfaded.forecast(logits, means, spreads, ship_type, correction_logits, hidden, rates)
+    for got, expected in zip(with_fade, without, strict=True):  # 1 - w is age dt / 1e9 s
+        torch.testing.assert_close(got, expected, rtol=1e-7, atol=1e-7)
+
+
+def test_the_error_heads_label_is_the_error_of_the_faded_forecast(segment):
+    net, trajectory = segment
+    if not net.config.physics_hidden_fade:
+        return
+    with torch.no_grad():
+        unrolled = net.unroll(
+            trajectory.initial_carry,
+            trajectory.obs,
+            trajectory.replay,
+            cases.resets(trajectory.obs),
+        )
+    _, _, errors = labels.correction_targets(net, trajectory, unrolled.next_state_logits)
+    rows = labels.privileged_rows(trajectory)
+    following = labels.next_rows(trajectory, rows)
+    _, age, means, spreads = believed(trajectory.obs.ships, trajectory.replay)
+    ship_type = rows[..., SHIP["ship_type"]].long()
+    read = labels.rates(net, trajectory)
+    logits = unrolled.next_state_logits.float()
+    physics, _ = net.delta_code.advance(means, spreads, logits, ship_type, net.state_code, read)
+    faded = _faded_by_hand(net, physics, means, ship_type, read, age)
+    after = truth(following, trajectory.replay.offset)
+    hidden = age > 0
+    expected = net.correction_code.errors(faded, after, ship_type)
+    torch.testing.assert_close(errors[hidden], expected[hidden], rtol=1e-5, atol=1e-3)
+    unfaded = net.correction_code.errors(physics, after, ship_type)
+    torch.testing.assert_close(errors[~hidden], unfaded[~hidden], rtol=0, atol=0)
+    assert not torch.allclose(errors[hidden], unfaded[hidden], rtol=1e-5, atol=1e-3)
+
+
+def test_the_fade_arms_set_line_builds_the_arm():
+    from bnb.cli import parse_setting, with_settings
+    from bnb.contracts import GameConfig
+    from bnb.runtime.train import TrainConfig, model_build
+
+    config = with_settings(
+        TrainConfig(game=GameConfig(5, 10, 2600.0)), map(parse_setting, FADE_SETS)
+    )
+    build = model_build(config)
+    assert build.config.physics_hidden_fade and build.config.physics_hidden_decay == 0.5
+    assert build.config.delta_split and build.config.delta_baseline == "extrapolation"
+
+
+def test_a_policy_file_without_the_fade_loads_it_as_off(tmp_path):
+    net = _model(**FADE_ARM)
+    save_policy(tmp_path / "policy", net)
+    assert load_policy(tmp_path / "policy", lc.CPU).config.physics_hidden_fade
+    record_path = tmp_path / "policy" / "checkpoint.json"
+    record = json.loads(record_path.read_text())
+    assert record["model"]["build"]["config"].pop("physics_hidden_fade") is True
+    record_path.write_text(json.dumps(record))
+    with pytest.warns(FilledDefaults, match="physics_hidden_fade"):
+        loaded = load_policy(tmp_path / "policy", lc.CPU)
+    assert not loaded.config.physics_hidden_fade and loaded.config.physics_hidden_decay == 0.5
