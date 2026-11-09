@@ -1,1 +1,70 @@
 run 2026-11-09-rl-deadreckon-split-hiddenphysics in /workspace/boost-and-broadside/runs/2026-11-09-rl-deadreckon-split-hiddenphysics
+[W1109 16:00:41.894218755 CUDACachingAllocator.cpp:623] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 33161216, total: 25296044032).
+[W1109 16:00:42.946125773 CUDACachingAllocator.cpp:623] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 33161216, total: 25296044032).
+Traceback (most recent call last):
+  File "/workspace/boost-and-broadside/.venv/bin/bnb", line 10, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/workspace/boost-and-broadside/src/bnb/cli.py", line 414, in main
+    train(tyro.cli(Train, args=arguments, prog="bnb train"), given(arguments))
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/cli.py", line 598, in train
+    _train(options, given_options, stop)
+    ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/cli.py", line 780, in _train
+    status = session.train(
+        run, trainer, log_cloning if cloned else log, recorder=recorder, stop=stop
+    )
+  File "/workspace/boost-and-broadside/src/bnb/runs/session.py", line 235, in train
+    row, reason = cloning.update(trainer) if cloned else (trainer.update(), None)
+                                                          ~~~~~~~~~~~~~~^^
+  File "/workspace/boost-and-broadside/src/bnb/runtime/train.py", line 443, in update
+    collector.set(self.ppo.update(store, bootstrap, self.steps_per_update, cadence=cadence))
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/learn/ppo.py", line 1145, in update
+    out.update(self.cadence(segments, prepared))
+               ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/learn/ppo.py", line 1229, in cadence
+    out = self._gradient_decomposition(segments, prepared, views)
+  File "/workspace/boost-and-broadside/src/bnb/learn/ppo.py", line 1291, in _gradient_decomposition
+    terms, per_level, _, unrolled, _ = self.cadence_terms(
+                                       ~~~~~~~~~~~~~~~~~~^
+        trajectory, label, part, denominator, prepared["scale"]
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/eval_frame.py", line 1265, in compile_wrapper
+    result = fn(*args, **kwargs)
+  File "/workspace/boost-and-broadside/src/bnb/learn/ppo.py", line 537, in _terms
+    def _terms(
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/eval_frame.py", line 1552, in _fn
+    return fn(*args, **kwargs)
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_functorch/aot_autograd.py", line 1289, in forward
+    return compiled_fn(full_args)
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 1204, in runtime_wrapper
+    result = _codegen_runtime_wrapper(
+        _inner_compiled_fn,
+    ...<2 lines>...
+        args,
+    )
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_functorch/_aot_autograd/codegen.py:codegen(runtime_wrapper_orchestration)", line 11, in _runtime_wrapper
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_functorch/_aot_autograd/utils.py", line 118, in g
+    return f(*args)
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 3541, in forward
+    return CompiledFunction._fwd_fn(
+           ~~~~~~~~~~~~~~~~~~~~~~~~^
+        ctx,
+        ^^^^
+    ...<4 lines>...
+        CompiledFunction.compiled_fw,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_functorch/_aot_autograd/codegen.py:codegen(compiled_function_forward)", line 2, in _compiled_forward
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/output_code.py", line 830, in __call__
+    return self.current_callable(inputs)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "/tmp/torchinductor_root/vg/cvg6kz4v2bfndmbwtuxyvqzg763v7rftvpjx5a32i4oxkfka6ejg.py", line 746949, in call
+    buf2665 = empty_strided_cuda((128, 64, 10, 500), (321536, 5024, 500, 1), torch.float32)
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 158.00 MiB. GPU 0 has a total capacity of 23.56 GiB of which 131.62 MiB is free. Process 3424384 has 23.38 GiB memory in use. Of the allocated memory 22.45 GiB is allocated by PyTorch, with 436.00 MiB allocated in private pools (e.g., CUDA Graphs), and 65.27 MiB is reserved by PyTorch but unallocated. expandable_segments is enabled. If instead the process is running out of virtual address space (VSZ), expandable segments may be over-reserving VA (each segment reserves ~9/8 of device memory, times the number of streams); reduce it via PYTORCH_CUDA_ALLOC_CONF expandable_segments_reserve / expandable_segments_reserve_by_class.
+run 2026-11-09-rl-deadreckon-split-hiddenphysics in /workspace/boost-and-broadside/runs/2026-11-09-rl-deadreckon-split-hiddenphysics

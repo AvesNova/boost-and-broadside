@@ -475,7 +475,7 @@
   "max_grad_norm": 1.0,
   "epochs": 4,
   "minibatches": 32,
-  "micro_batch_rows": 640,
+  "micro_batch_rows": 320,
   "target_kl": 0.02,
   "old_log_probabilities": "rollout"
  },
