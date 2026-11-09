@@ -1,2 +1,19 @@
 frontline: batch 1, 1024 games, the largest standard error 38.8 (the batch took 925 s); done about 14:27 (2 batches), by 18:33 at the latest (18 batches)
 frontline: batch 2, 2048 games, the largest standard error 19.8 (the batch took 170 s); done about 13:59 (0 batches), by 16:34 at the latest (17 batches)
+deathmatch: batch 1, 1024 games, the largest standard error 38.7 (the batch took 878 s); done about 14:42 (2 batches), by 18:37 at the latest (18 batches)
+deathmatch: batch 2, 2048 games, the largest standard error 20.2 (the batch took 169 s); done about 14:16 (0 batches), by 16:44 at the latest (17 batches)
+deathmatch       runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average   1004.3 +-  16.9     512 games
+deathmatch       scripted                                                       1000.0 +-   0.0    1152 games
+deathmatch       runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/exponential_average    974.8 +-  17.0     512 games
+deathmatch       runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/live    971.6 +-  17.4     512 games
+deathmatch       runs/2026-11-09-bc-absolute/policies/step_120586240/uniform_average    945.3 +-  16.9     512 games
+deathmatch       runs/2026-11-09-bc-absolute/policies/step_120586240/exponential_average    913.3 +-  18.0     512 games
+deathmatch       runs/2026-11-09-bc-absolute/policies/step_120586240/live        902.0 +-  20.2     384 games
+frontline        runs/2026-11-09-bc-absolute/policies/step_120586240/uniform_average   1013.5 +-  19.8     384 games
+frontline        scripted                                                       1000.0 +-   0.0    1152 games
+frontline        runs/2026-11-09-bc-absolute/policies/step_120586240/exponential_average    984.7 +-  17.0     512 games
+frontline        runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average    973.2 +-  16.9     512 games
+frontline        runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/exponential_average    958.0 +-  16.9     512 games
+frontline        runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/live    957.6 +-  17.7     512 games
+frontline        runs/2026-11-09-bc-absolute/policies/step_120586240/live        881.6 +-  18.0     512 games
+runs/ratings/round6/artifacts/ratings/20261109-141629

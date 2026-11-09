@@ -108,3 +108,5 @@
 12:12 start resume 2026-11-09-bc-absolute to 120M BC
 13:39 done resume 2026-11-09-bc-absolute to 120M
 13:40 tournament6 start (6 players: 120M live / uniform / exponential, champion and null)
+14:16 tournament6 done
+14:16 start scorecard 2026-11-09-bc-deadreckon-split-hiddenphysics
