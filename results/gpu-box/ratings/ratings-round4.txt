@@ -72,3 +72,4 @@ frontline: batch 3, 4096 games, the largest standard error 23.1 (the batch took 
   model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
 /workspace/boost-and-broadside/src/bnb/league/matches.py:526: FilledDefaults: the yemong build record lacks config.physics_hidden_fade; they take their defaults
   model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
+deathmatch: batch 1, 2048 games, the largest standard error 55.6 (the batch took 2154 s); done about 09:48 (4 batches), by 12:12 at the latest (8 batches)
