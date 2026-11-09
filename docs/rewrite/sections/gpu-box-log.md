@@ -436,3 +436,15 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   0.085). **Seed spread in outcome Brier ~0.18 at 5-15 s** (the laptop's C-fixed seeds: 0.52 vs
   0.28): the arms' Brier differences (0.06-0.10) are within it; KL spread ~0.02. Both laptop runs
   downloaded; tournament 3 started (seven players).
+- **09:10 KST Tournament 3 final** (`runs/ratings/round3/`, 3072 games per mode, scripted 1000;
+  frontline / deathmatch / mean): deadreckon-split-hiddenphysics 824 +- 17 / 821 +- 18 / **823**;
+  deadreckon-split 713 / 857 / 785; persist-split-laptop 717 / 689 / 703; fastdecay-laptop 657 /
+  664 / 661; absolute 672 / 642 / 657; fourier 588 / 558 / 573; absolute-seed1 569 / 496 / 532.
+  **Seed noise is large:** absolute's two seeds differ by 125 on the mean (one pair: a single
+  run's spread ~ +-90), so single-seed gaps under ~100 do not separate arms. Readings:
+  hiddenphysics vs its base +38 mean (+111 frontline, -36 deathmatch): neck and neck; persist-split
+  -120 (about one seed sigma): borderline, kept; absolute -166 (its better seed); fourier -212 and
+  fastdecay -124 below their base (both hurt); only hidden physics beat its base, so no
+  combination. **60M (the author's rule):** hiddenphysics and deadreckon-split resumed on the box
+  (`round5.sh`, ~45 + 50 min); persist-split-laptop offered to the laptop (its own checkpoint,
+  ~2.5 h). Then tournament 4 at 60M.
