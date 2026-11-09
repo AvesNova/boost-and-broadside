@@ -63,3 +63,4 @@
 01:27 round6 seed1 done
 01:27 start 2026-11-09-bc-deadreckon-split-hiddenphysics-tau1.25
 02:37 done 2026-11-09-bc-deadreckon-split-hiddenphysics-tau1.25
+02:41 start 2026-11-09-bc-deadreckon-split-hiddenphysics-fade
