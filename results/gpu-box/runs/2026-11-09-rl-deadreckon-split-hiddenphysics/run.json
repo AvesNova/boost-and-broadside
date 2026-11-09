@@ -26,15 +26,15 @@
  },
  "checkpoint_every": 16777216,
  "update_policies": true,
- "newest_checkpoint": 60817408,
+ "newest_checkpoint": 67108864,
  "final_checkpoint": 60817408,
  "checkpoint_ordinals": {
-  "50331648": 2,
-  "60817408": 3
+  "60817408": 3,
+  "67108864": 4
  },
  "probe": {
-  "allocated": 19426491392,
-  "reserved": 20392706048,
+  "allocated": 16735010304,
+  "reserved": 17341349888,
   "total": 25296044032,
   "budget": 24759173120
  },
@@ -80,7 +80,7 @@
   }
  ],
  "stop_request": null,
- "hours": 2.251567936873633,
+ "hours": 2.537041017781659,
  "skipped_steps": 0,
  "snapshot_every": 16777216
 }
