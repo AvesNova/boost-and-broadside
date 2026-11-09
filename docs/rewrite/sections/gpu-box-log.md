@@ -653,3 +653,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   the order); the per-update metrics above are sound. Reading: live imitates closest, the averages
   are softer but play better (tournament: uniform best for both) and their critics' outcome EV is
   higher (0.75-0.81 vs 0.53-0.60). Recommended RL start: the 120M uniform average for both.
+- **00:05 KST RL started (the author: both from the 120M uniform average)**, `round9.sh`: champion then null, 60M each (58 updates), PPO's settings, 640-row micro-batches (else 320), store on the GPU.
