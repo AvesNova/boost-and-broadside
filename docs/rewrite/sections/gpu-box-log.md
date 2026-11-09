@@ -583,3 +583,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   reusable (round3 2432 of 3072, round4 4096), deathmatch 2304 (round3); round3's old
   `absolute` path is skipped (rewritten 2026-11-09 04:54 UTC, after its games), so the original
   absolute gets only round4's games.
+- **16:55 KST The bigger tournament layout did not help** (measured): 16 x 128 steady 2048 games in 386 s = 5.3 games/s vs the default 8 x 128's 1024 in 201 s = 5.1/s; same ~258 W; and it doubled the compile per mode (~35 vs ~15 min). The engine's cost scales with blocks (each block runs its own networks), so per-block work, not GPU fill, is the limit. Back to the default layout; game reuse cuts batches instead. A real speedup would batch the networks across blocks inside the engine (code, later).
