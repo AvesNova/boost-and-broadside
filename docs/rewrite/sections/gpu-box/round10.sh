@@ -36,13 +36,18 @@ for line in deadreckon-split-hiddenphysics absolute; do
     add runs/2026-11-09-rl-$line/policies/step_121634816/$v
   done
 done
-say "tournament7 start (${#players[@]} players: the whole BC + RL curve of the champion and the null)"
-if .venv/bin/bnb ratings 2026-11-09-bc-absolute --no-league --no-ladder --with "${players[@]}" \
-    --presets frontline deathmatch --budget 60000 \
-    --reuse runs/ratings/round5 runs/ratings/round6 \
-    --out runs/ratings/round7 >> runs/ratings-round7.out 2>&1; then
-  say "tournament7 done"
-else
-  say "tournament7 FAILED (runs/ratings-round7.out)"
-fi
+# the author, 04:30 KST: 8 blocks x 256 games (twice the games per network call; 2048 games, under
+# training's rollout) and target +-35 (games scale with 1/error^2); the default layout if it fails
+for layout in "8 256" "8 128"; do
+  set -- $layout
+  say "tournament7 start (${#players[@]} players: the whole BC + RL curve; $1 x $2, target 35)"
+  if .venv/bin/bnb ratings 2026-11-09-bc-absolute --no-league --no-ladder --with "${players[@]}" \
+      --presets frontline deathmatch --budget 60000 --target-stderr 35 \
+      --blocks $1 --block-environments $2 \
+      --reuse runs/ratings/round5 runs/ratings/round6 \
+      --out runs/ratings/round7-$1x$2 >> runs/ratings-round7.out 2>&1; then
+    say "tournament7 done ($1 x $2)"; break
+  fi
+  say "tournament7 FAILED with $1 x $2 (runs/ratings-round7.out)"
+done
 docs/rewrite/sections/gpu-box/sync.sh > /dev/null 2>&1

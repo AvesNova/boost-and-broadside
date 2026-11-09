@@ -667,3 +667,13 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   uniform / exponential at BC 120.6M, RL 60.8M and RL 121.6M: 60 players + scripted;
   `--budget 60000`, `--reuse runs/ratings/round5 runs/ratings/round6`. ETAs: null RL 120M ~06:45,
   champion ~08:40, tournament ~11:30 KST (estimate).
+- **04:30 KST Tournament 7's settings (the author): 8 blocks x 256 games, target +-35.** Why
+  (my analysis for the author): splitting BC and RL into two tournaments would not be faster
+  (games per player x players is the same; two compiles) and would weaken the scale (BC vs RL only
+  through lopsided games against scripted). The engine is launch-bound (~16 small forwards a tick
+  on 128 games each; ~260 W vs training's ~410 W; ~10x below training's game-ticks/s): doubling the
+  games per block halves the launches per game (8 x 256 = 2048 games, under training's rollout;
+  16 x 256 ran out of memory), likely ~1.7-2x; +-35 instead of +-25 halves the games (1/error^2).
+  Expected ~40-60 min instead of ~2.5 h. Falls back to 8 x 128. The real fix (batch the networks
+  across blocks: 3-5x but days of work through the custom Triton kernels; compile per build:
+  hours) stays in the backlog for after the RL runs.
