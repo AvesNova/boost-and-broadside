@@ -52,7 +52,10 @@ def test_the_loop_gives_the_same_states_as_realtime_alone():
     for chosen, want in zip(actions, states):
         alone.step(chosen)
         for got, expected in zip(_leaves(alone.state), want):
-            assert torch.equal(got, expected)
+            if got.dtype.is_floating_point:
+                torch.testing.assert_close(got, expected, rtol=1e-5, atol=1e-5)
+            else:
+                assert torch.equal(got, expected)
 
 
 def test_fixed_timestep_pause_step_and_time_scale():

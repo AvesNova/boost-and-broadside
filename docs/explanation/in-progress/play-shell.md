@@ -173,8 +173,8 @@ Every live match is recorded (`bnb.play.replay.Recorder`): the setup, a keyframe
 `KEYFRAME_TICKS` ticks (the state, every team's latest view and the generator's state),
 every tick's actions, whether each tick ran compiled, and the match's events. Playback
 (`ReplayLoop`) restores the nearest keyframe and repeats the recorded actions, each tick
-compiled or not as it ran, so it reproduces the match bitwise
-(`tests/sections/test_play_replay.py`) and a seek costs at most `KEYFRAME_TICKS` ticks.
+compiled or not as it ran, so it reproduces the match (the tests hold integers exactly and
+floats to float32's tolerance: `tests/sections/test_play_replay.py`) and a seek costs at most `KEYFRAME_TICKS` ticks.
 The scrubber's markers and the kill feed come from the same events (`MatchEvent`: kills
 from the tick's `Events`, captures from the front's moves, the end from `done`).
 

@@ -5,8 +5,8 @@ A recording holds the setup (`MatchSetup`: game, lineup, fog, seed, controllers)
 keyframe every KEYFRAME_TICKS ticks (`Realtime`'s state, views and generator, cloned),
 every tick's actions, whether each tick ran compiled, and the match's events (kills,
 captures, the end). Playback restores the nearest keyframe and repeats the recorded
-actions, each tick compiled or not as it was run, so it reproduces the recorded states
-bitwise and a seek costs at most KEYFRAME_TICKS ticks.
+actions, each tick compiled or not as it was run, so it reproduces the recorded states and
+a seek costs at most KEYFRAME_TICKS ticks.
 
 On disk a replay is a directory `<root>/<date>-<mode>-<sides>/`: `replay.json` (the record),
 `actions.safetensors` and `keyframes.safetensors`. The root keeps the newest KEEP replays.

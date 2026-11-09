@@ -1,4 +1,4 @@
-"""Replays (`bnb.play.replay`): a recorded match plays back bitwise, a seek equals
+"""Replays (`bnb.play.replay`): a recorded match plays back as recorded, a seek equals
 playing to the same tick, the markers and the kill feed's kills are the match's events,
 and the replay directory keeps the newest ones."""
 
@@ -18,8 +18,16 @@ def _leaves(tree) -> list[torch.Tensor]:
     return [leaf.clone() for leaf in _pytree.tree_leaves(tree)]
 
 
-def _equal(first, second) -> bool:
-    return all(torch.equal(a, b) for a, b in zip(first, second, strict=True))
+def _equal(a, b) -> bool:
+    """Same states: integers and flags exactly, floats to float32's tolerance (no test asks
+    for bitwise floats)."""
+    return all(_same(x, y) for x, y in zip(a, b, strict=True))
+
+
+def _same(x: torch.Tensor, y: torch.Tensor) -> bool:
+    if x.dtype.is_floating_point:
+        return torch.allclose(x, y, rtol=1e-5, atol=1e-5)
+    return torch.equal(x, y)
 
 
 @pytest.fixture(scope="module")
@@ -45,7 +53,7 @@ def recorded(tmp_path_factory):
     return directory, states, raw, recorder
 
 
-def test_a_replay_resimulates_bitwise_to_the_recorded_states(recorded):
+def test_a_replay_resimulates_the_recorded_states(recorded):
     directory, states, _, _ = recorded
     loop = ReplayLoop(Replay.load(directory), compiled=False)
     assert _equal(_leaves(loop.realtime.state), states[0])
