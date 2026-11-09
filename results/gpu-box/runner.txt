@@ -98,3 +98,4 @@
 09:05 done resume 2026-11-09-bc-deadreckon-split-hiddenphysics-tau1.25
 09:06 start resume 2026-11-09-bc-deadreckon-split to 60M
 09:42 laptop: tau10-laptop at 60M uploaded (hub 3c3a2952, budget 18:41 KST, KL 0.387)
+09:54 done resume 2026-11-09-bc-deadreckon-split

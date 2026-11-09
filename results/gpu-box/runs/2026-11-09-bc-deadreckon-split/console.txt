@@ -65,3 +65,6 @@ update   54  steps  56,623,104  rollout  10046 ms  learn  82147 ms  bc kl 0.3657
 update   55  steps  57,671,680  rollout  10045 ms  learn  82093 ms  bc kl 0.3486  teacher 0.972  student 1.319  scores: learner 0.500 scripted 0.367  window uniform_average 0.263 (+- 0.013)
 update   56  steps  58,720,256  rollout  10030 ms  learn  82152 ms  bc kl 0.3463  teacher 0.973  student 1.318  scores: learner 0.500 scripted 0.282  window uniform_average 0.265 (+- 0.013)
 update   57  steps  59,768,832  rollout  10046 ms  learn  82101 ms  bc kl 0.3539  teacher 0.972  student 1.324  scores: learner 0.500 scripted 0.357  window uniform_average 0.271 (+- 0.013)
+update   58  steps  60,817,408  rollout   9997 ms  learn  82226 ms  bc kl 0.3550  teacher 0.968  student 1.320  scores: learner 0.500 scripted 0.333  window uniform_average 0.277 (+- 0.013)
+stopped by budget; the policy is /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split/policy (the uniform_average)
+run 2026-11-09-bc-deadreckon-split finished at step 60817408
