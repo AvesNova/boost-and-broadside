@@ -654,3 +654,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   are softer but play better (tournament: uniform best for both) and their critics' outcome EV is
   higher (0.75-0.81 vs 0.53-0.60). Recommended RL start: the 120M uniform average for both.
 - **00:05 KST RL started (the author: both from the 120M uniform average)**, `round9.sh`: champion then null, 60M each (58 updates), PPO's settings, 640-row micro-batches (else 320), store on the GPU.
+- **01:00 KST RL at 640-row micro-batches ran out of memory** (23.4 of 23.6 GB, after ~36 min of compile); the runner retries at 320 (32 views, BC's proven size; same result). First attempt moved to runs/failed/.
