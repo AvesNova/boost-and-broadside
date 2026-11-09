@@ -110,3 +110,5 @@
 13:40 tournament6 start (6 players: 120M live / uniform / exponential, champion and null)
 14:16 tournament6 done
 14:16 start scorecard 2026-11-09-bc-deadreckon-split-hiddenphysics
+14:39 done scorecard 2026-11-09-bc-deadreckon-split-hiddenphysics
+14:39 start scorecard 2026-11-09-bc-absolute
