@@ -513,3 +513,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   661 / 0.280 / 0.492; absolute 657 / 0.428 / 0.503; fourier 573 / 0.390 / 0.490; absolute-seed1
   532 / 0.246 / 0.520. Brier does not track Elo (absolute, fourier: top Brier, low Elo); KL a bit
   better.
+- **10:40 KST The author: the laptop takes two arms** (tau10, then persist-split-hiddenphysics-laptop; requested, the author to confirm in its session). The box runner skips each once the laptop confirms it (markers) and fetches both from the hub before tournament 4.

@@ -48,16 +48,19 @@ train $P-fade --set yemong.physics_hidden_decay=0.5 --set yemong.physics_hidden_
 say "round6b training done"
 
 P30=policies/step_30408704/uniform_average
-if [ -f runs/laptop-tau10 ]; then  # wait for the laptop's run on the hub; take its policy files
-  L=$P-tau10-laptop
-  until /venv/main/bin/python runs/hub_fetch.py "$L"; do sleep 120; done
-  mkdir -p runs/$L && cp -r runs/hub/runs/$L/. runs/$L/ && say "downloaded $L from the hub"
-fi
+fetch() {  # marker, run: wait for the laptop's run on the hub; take its policy files
+  [ -f "runs/$1" ] || return 0
+  until /venv/main/bin/python runs/hub_fetch.py "$2"; do sleep 120; done
+  mkdir -p runs/$2 && cp -r runs/hub/runs/$2/. runs/$2/ && say "downloaded $2 from the hub"
+}
+fetch laptop-tau10 $P-tau10-laptop
+fetch laptop-persist-split-hp 2026-11-09-bc-persist-split-hiddenphysics-laptop
 players=()
 for run in 2026-11-09-bc-absolute 2026-11-09-bc-absolute-seed1 2026-11-09-bc-deadreckon-split \
     2026-11-09-bc-deadreckon-split-fourier 2026-11-09-bc-deadreckon-split-fastdecay-laptop \
     2026-11-09-bc-persist-split-laptop $P $P-seed1 $P-tau1.25 $P-tau10 $P-tau10-laptop $P-fade \
-    2026-11-09-bc-deadreckon-split-seed1 2026-11-09-bc-persist-split-hiddenphysics; do
+    2026-11-09-bc-deadreckon-split-seed1 2026-11-09-bc-persist-split-hiddenphysics \
+    2026-11-09-bc-persist-split-hiddenphysics-laptop; do
   [ -f runs/$run/$P30/checkpoint.json ] && players+=(runs/$run/$P30) || say "tournament4: $run missing"
 done
 say "tournament4 start (${#players[@]} players)"
