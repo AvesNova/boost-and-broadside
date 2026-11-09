@@ -1,7 +1,7 @@
 {
  "name": "2026-11-09-bc-absolute",
- "status": "finished",
- "pid": 221889,
+ "status": "running",
+ "pid": 342642,
  "host": "e98bed47fc73",
  "message": null,
  "command": [
@@ -92,6 +92,19 @@
    "end_time": "2026-11-09T05:33:53+00:00",
    "overrides": {
     "stop.budget_steps": 60000000
+   },
+   "rewound_from": null,
+   "command": null
+  },
+  {
+   "commit": "3cc913e9db2532366aaa8cc8174896ef6e7a058f",
+   "dirty": false,
+   "start_step": 60817408,
+   "start_time": "2026-11-09T12:12:56+00:00",
+   "end_step": null,
+   "end_time": null,
+   "overrides": {
+    "stop.budget_steps": 120000000
    },
    "rewound_from": null,
    "command": null

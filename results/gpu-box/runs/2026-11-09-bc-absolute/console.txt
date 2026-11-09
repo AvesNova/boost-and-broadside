@@ -76,3 +76,4 @@ update   57  steps  59,768,832  rollout   8230 ms  learn  72561 ms  bc kl 0.4181
 update   58  steps  60,817,408  rollout   8228 ms  learn  72581 ms  bc kl 0.4159  teacher 0.988  student 1.401  scores: learner 0.500 scripted 0.311  window uniform_average 0.172 (+- 0.011)
 stopped by budget; the policy is /workspace/boost-and-broadside/runs/2026-11-09-bc-absolute/policy (the uniform_average)
 run 2026-11-09-bc-absolute finished at step 60817408
+warning: the run continues on commit 3cc913e9db2532366aaa8cc8174896ef6e7a058f; its last segment ran on 4434bd5ab5c677d0bf762588a76be2c16651f250

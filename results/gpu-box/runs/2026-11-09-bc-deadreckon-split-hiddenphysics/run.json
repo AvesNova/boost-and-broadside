@@ -1,6 +1,6 @@
 {
  "name": "2026-11-09-bc-deadreckon-split-hiddenphysics",
- "status": "running",
+ "status": "finished",
  "pid": 317764,
  "host": "e98bed47fc73",
  "message": null,
@@ -48,12 +48,11 @@
  "parent": null,
  "checkpoint_every": 19922944,
  "update_policies": false,
- "newest_checkpoint": 99614720,
- "final_checkpoint": 60817408,
+ "newest_checkpoint": 120586240,
+ "final_checkpoint": 120586240,
  "checkpoint_ordinals": {
-  "60817408": 5,
-  "79691776": 6,
-  "99614720": 7
+  "119537664": 8,
+  "120586240": 9
  },
  "probe": {
   "allocated": 18221742592,
@@ -143,8 +142,8 @@
    "dirty": false,
    "start_step": 60817408,
    "start_time": "2026-11-09T10:41:19+00:00",
-   "end_step": null,
-   "end_time": null,
+   "end_step": 120586240,
+   "end_time": "2026-11-09T12:12:23+00:00",
    "overrides": {
     "stop.budget_steps": 120000000
    },
@@ -153,7 +152,7 @@
   }
  ],
  "stop_request": null,
- "hours": 3.0867911217551827,
+ "hours": 3.6008343376409413,
  "skipped_steps": 0,
  "stopped_by": "budget",
  "policy": "/workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policy",
