@@ -24,7 +24,7 @@
  "parent": {
   "policy": "/workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average"
  },
- "checkpoint_every": null,
+ "checkpoint_every": 16777216,
  "update_policies": true,
  "newest_checkpoint": null,
  "final_checkpoint": null,
@@ -63,5 +63,8 @@
    ]
   }
  ],
- "stop_request": null
+ "stop_request": null,
+ "hours": 0.4916250164394215,
+ "skipped_steps": 0,
+ "snapshot_every": 16777216
 }
