@@ -10,12 +10,13 @@ LOG=runs/arms.log
 say() { echo "$(date -u +%H:%M) $*" | tee -a "$LOG"; }
 P=policies/step_30408704/uniform_average
 B=2026-11-09-bc
+# the record's order (it resumes only for the same names in the same order)
 players=(runs/$B-absolute/policies/rewound_1/step_30408704/uniform_average
-  runs/$B-absolute-seed1/$P runs/$B-deadreckon-split/$P runs/$B-deadreckon-split-seed1/$P
-  runs/$B-deadreckon-split-fourier/$P runs/$B-deadreckon-split-fastdecay-laptop/$P
-  runs/$B-persist-split-laptop/$P runs/$B-deadreckon-split-hiddenphysics/$P
-  runs/$B-deadreckon-split-hiddenphysics-seed1/$P runs/$B-deadreckon-split-hiddenphysics-tau1.25/$P
-  runs/$B-deadreckon-split-hiddenphysics-tau10-laptop/$P runs/$B-deadreckon-split-hiddenphysics-fade/$P
+  runs/$B-absolute-seed1/$P runs/$B-deadreckon-split/$P runs/$B-deadreckon-split-fourier/$P
+  runs/$B-deadreckon-split-fastdecay-laptop/$P runs/$B-persist-split-laptop/$P
+  runs/$B-deadreckon-split-hiddenphysics/$P runs/$B-deadreckon-split-hiddenphysics-seed1/$P
+  runs/$B-deadreckon-split-hiddenphysics-tau1.25/$P runs/$B-deadreckon-split-hiddenphysics-tau10-laptop/$P
+  runs/$B-deadreckon-split-hiddenphysics-fade/$P runs/$B-deadreckon-split-seed1/$P
   runs/$B-persist-split-hiddenphysics-laptop/$P)
 for layout in "16 256" "16 128"; do
   set -- $layout

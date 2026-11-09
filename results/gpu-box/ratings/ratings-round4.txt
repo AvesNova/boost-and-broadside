@@ -6,3 +6,64 @@ frontline: batch 1, 1024 games, the largest standard error 248.3 (the batch took
 frontline: batch 2, 2048 games, the largest standard error 53.1 (the batch took 201 s); done about 07:27 (8 batches), by 09:04 at the latest (17 batches)
 runs/ratings/round4/frontline.batches.jsonl rates another field; move it aside to start over
 runs/ratings/round4/frontline.batches.jsonl rates another field; move it aside to start over
+frontline: resumed from runs/ratings/round4/frontline.batches.jsonl: 2 batches, 2048 games
+/workspace/boost-and-broadside/src/bnb/league/matches.py:526: FilledDefaults: the yemong build record lacks config.physics_hidden_decay, config.physics_hidden_fade; they take their defaults
+  model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
+/workspace/boost-and-broadside/src/bnb/league/matches.py:526: FilledDefaults: the yemong build record lacks config.physics_hidden_fade; they take their defaults
+  model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
+[W1109 06:12:18.626635299 CUDACachingAllocator.cpp:623] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 37355520, total: 25296044032).
+[W1109 06:12:18.626698119 CUDACachingAllocator.cpp:623] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 37355520, total: 25296044032).
+Traceback (most recent call last):
+  File "/workspace/boost-and-broadside/.venv/bin/bnb", line 10, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/workspace/boost-and-broadside/src/bnb/cli.py", line 413, in main
+    ratings(tyro.cli(Ratings, args=arguments, prog="bnb ratings"))
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/cli.py", line 1005, in ratings
+    rows += tournament.rate(field, preset, device, config, allowed=allowed, record=record)
+            ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/league/tournament.py", line 254, in rate
+    ratings, stderr, pair_games = fit_field(
+                                  ~~~~~~~~~^
+        play, names, names.index(ANCHOR), allowed, config, log, preset, record, (groups, lanes)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/workspace/boost-and-broadside/src/bnb/league/tournament.py", line 188, in fit_field
+    results = play(matchups).tolist()
+              ~~~~^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/league/tournament.py", line 252, in play
+    return arenas[0].play(matchups)
+           ~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/league/matches.py", line 598, in play
+    self.rollout.restart()
+    ~~~~~~~~~~~~~~~~~~~~^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/utils/_contextlib.py", line 158, in no_grad
+    return func(*args, **kwargs)
+  File "/workspace/boost-and-broadside/src/bnb/runtime/rollout.py", line 491, in restart
+    _assign(self.carry, self._initial_carry(self.carry["types"], staggered=False))
+                        ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/runtime/rollout.py", line 237, in _initial_carry
+    return _clone(carry)
+  File "/workspace/boost-and-broadside/src/bnb/runtime/rollout.py", line 59, in _clone
+    return _pytree.tree_map_only(torch.Tensor, lambda x: x.contiguous().clone(), tree)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/utils/_pytree.py", line 1776, in tree_map_only
+    return tree_map(map_only(type_or_types_or_pred)(func), tree, is_leaf=is_leaf)
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/utils/_pytree.py", line 1600, in tree_map
+    return treespec.unflatten(map(func, *flat_args))
+           ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/utils/_pytree.py", line 1329, in unflatten
+    leaves = list(leaves)
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/utils/_pytree.py", line 1711, in wrapped
+    return func(x)
+  File "/workspace/boost-and-broadside/src/bnb/runtime/rollout.py", line 59, in <lambda>
+    return _pytree.tree_map_only(torch.Tensor, lambda x: x.contiguous().clone(), tree)
+                                                         ~~~~~~~~~~~~~~~~~~~~^^
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 88.00 MiB. GPU 0 has a total capacity of 23.56 GiB of which 35.62 MiB is free. Process 3055381 has 23.47 GiB memory in use. Of the allocated memory 23.14 GiB is allocated by PyTorch, and 24.55 MiB is reserved by PyTorch but unallocated. expandable_segments is enabled. If instead the process is running out of virtual address space (VSZ), expandable segments may be over-reserving VA (each segment reserves ~9/8 of device memory, times the number of streams); reduce it via PYTORCH_CUDA_ALLOC_CONF expandable_segments_reserve / expandable_segments_reserve_by_class.
+frontline: resumed from runs/ratings/round4/frontline.batches.jsonl: 2 batches, 2048 games
+/workspace/boost-and-broadside/src/bnb/league/matches.py:526: FilledDefaults: the yemong build record lacks config.physics_hidden_decay, config.physics_hidden_fade; they take their defaults
+  model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
+/workspace/boost-and-broadside/src/bnb/league/matches.py:526: FilledDefaults: the yemong build record lacks config.physics_hidden_fade; they take their defaults
+  model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
