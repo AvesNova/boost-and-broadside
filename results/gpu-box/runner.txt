@@ -83,3 +83,7 @@
 05:38 tournament4: 2026-11-09-bc-deadreckon-split-hiddenphysics-tau10 missing
 05:38 tournament4: 2026-11-09-bc-persist-split-hiddenphysics missing
 05:38 tournament4 start (13 players)
+06:01 tournament4 start (13 players, 16 blocks x 256 games)
+06:01 tournament4 FAILED with 16 x 256 (runs/ratings-round4.out)
+06:01 tournament4 start (13 players, 16 blocks x 128 games)
+06:01 tournament4 FAILED with 16 x 128 (runs/ratings-round4.out)

@@ -2,3 +2,7 @@
   model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
 /workspace/boost-and-broadside/src/bnb/league/matches.py:526: FilledDefaults: the yemong build record lacks config.physics_hidden_fade; they take their defaults
   model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
+frontline: batch 1, 1024 games, the largest standard error 248.3 (the batch took 1103 s); done about 11:27 (18 batches), by 11:27 at the latest (18 batches)
+frontline: batch 2, 2048 games, the largest standard error 53.1 (the batch took 201 s); done about 07:27 (8 batches), by 09:04 at the latest (17 batches)
+runs/ratings/round4/frontline.batches.jsonl rates another field; move it aside to start over
+runs/ratings/round4/frontline.batches.jsonl rates another field; move it aside to start over
