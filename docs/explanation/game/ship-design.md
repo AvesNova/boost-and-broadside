@@ -342,7 +342,21 @@ the estimate's error on a 10% turn change being worth 60 Elo here, so a result i
 only on exact cards. In Frontline the cycle does not hold: Heron (the Mosquito's airframe)
 beats both others (0.75 and 0.64), the ratings spread 99 Elo.
 
-ROBUST_RESULTS
+**Does it survive the agent?** (`robust`, decision 6's test: each design flies its own random
+perturbation of the agent's set, a different draw per design, six draws at each size, 256
+games a pair; `stage-1/seed/robust-real_scale_deathmatch.jsonl`):
+
+| Perturbation | Edges (Bastion > Heron, Kestrel > Bastion, Heron > Kestrel), per draw | Curl per draw | All three the cycle's way |
+|---|---|---|---|
+| sigma 0.1 | 0.55 0.50 0.57; 0.55 0.38 0.59; 0.61 0.47 0.57; 0.59 0.47 0.59; 0.56 0.64 0.48; 0.42 0.65 0.52 | 0.50, 0.08, 0.58, 0.63, 0.75, 0.37 | 1 of 6 |
+| sigma 0.25 | 0.51 0.49 0.57; 0.74 0.10 0.84; 0.71 0.47 0.46; 0.50 0.54 0.55; 0.57 0.65 0.57; 0.30 0.82 0.45 | 0.29, 0.51, 0.66, 0.34, 1.22, 0.51 | 1 of 6 |
+
+(an edge at 256 games has a standard error of 0.03). The curl keeps its sign in every draw
+(0.08 to 1.22, about its unperturbed 0.57): the cyclic part belongs to the ships. Which edge
+carries it does not: a tenth of the search's own step in each type's doctrine moves single
+edges by up to 0.15, a quarter by up to 0.45, so a type's doctrine weighs more than its
+design. A cycle at the band's 0.6 to 0.7 is about twice this curl; a cycle that survives the
+agent needs that, or doctrine held fixed per type as part of the design.
 
 ## Running it
 
