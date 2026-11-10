@@ -1,0 +1,189 @@
+{
+ "name": "sensitivity: flight and store",
+ "preset": "real_scale_deathmatch",
+ "airframes": [
+  "la7"
+ ],
+ "cross": "all",
+ "target_stderr": 20.0,
+ "budget": 60000,
+ "variants": [
+  {
+   "name": "baseline"
+  },
+  {
+   "name": "stall speed x0.8",
+   "scale": {
+    "stall_speed": 0.8
+   }
+  },
+  {
+   "name": "stall speed x0.9",
+   "scale": {
+    "stall_speed": 0.9
+   }
+  },
+  {
+   "name": "stall speed x1.1",
+   "scale": {
+    "stall_speed": 1.1
+   }
+  },
+  {
+   "name": "stall speed x1.25",
+   "scale": {
+    "stall_speed": 1.25
+   }
+  },
+  {
+   "name": "cruise speed x0.8",
+   "scale": {
+    "cruise_speed": 0.8
+   }
+  },
+  {
+   "name": "cruise speed x0.9",
+   "scale": {
+    "cruise_speed": 0.9
+   }
+  },
+  {
+   "name": "cruise speed x1.1",
+   "scale": {
+    "cruise_speed": 1.1
+   }
+  },
+  {
+   "name": "cruise speed x1.25",
+   "scale": {
+    "cruise_speed": 1.25
+   }
+  },
+  {
+   "name": "turn rate x0.9",
+   "scale": {
+    "sustained_turn_rate": 0.9
+   }
+  },
+  {
+   "name": "turn rate x0.95",
+   "scale": {
+    "sustained_turn_rate": 0.95
+   }
+  },
+  {
+   "name": "turn rate x1.05",
+   "scale": {
+    "sustained_turn_rate": 1.05
+   }
+  },
+  {
+   "name": "turn rate x1.1",
+   "scale": {
+    "sustained_turn_rate": 1.1
+   }
+  },
+  {
+   "name": "climb rate x0.5",
+   "scale": {
+    "climb_rate": 0.5
+   }
+  },
+  {
+   "name": "climb rate x0.7",
+   "scale": {
+    "climb_rate": 0.7
+   }
+  },
+  {
+   "name": "climb rate x1.4",
+   "scale": {
+    "climb_rate": 1.4
+   }
+  },
+  {
+   "name": "climb rate x2",
+   "scale": {
+    "climb_rate": 2.0
+   }
+  },
+  {
+   "name": "store x0.5",
+   "scale": {
+    "ceiling": 0.5
+   }
+  },
+  {
+   "name": "store x0.7",
+   "scale": {
+    "ceiling": 0.7
+   }
+  },
+  {
+   "name": "store x1.4",
+   "scale": {
+    "ceiling": 1.4
+   }
+  },
+  {
+   "name": "store x2",
+   "scale": {
+    "ceiling": 2.0
+   }
+  },
+  {
+   "name": "half-lift drag x0.5",
+   "handles": {
+    "half_lift_drag": 0.5
+   }
+  },
+  {
+   "name": "half-lift drag x0.7",
+   "handles": {
+    "half_lift_drag": 0.7
+   }
+  },
+  {
+   "name": "half-lift drag x1.4",
+   "handles": {
+    "half_lift_drag": 1.4
+   }
+  },
+  {
+   "name": "half-lift drag x2",
+   "handles": {
+    "half_lift_drag": 2.0
+   }
+  },
+  {
+   "name": "engine knee x0.6",
+   "card": {
+    "engine_knee_scale": 0.6
+   }
+  },
+  {
+   "name": "engine knee x1.4",
+   "card": {
+    "engine_knee_scale": 1.4
+   }
+  },
+  {
+   "name": "engine knee x1.8",
+   "card": {
+    "engine_knee_scale": 1.8
+   }
+  },
+  {
+   "name": "coast exchange x0.5",
+   "card": {
+    "coast_exchange_scale": 0.5
+   }
+  },
+  {
+   "name": "coast exchange x2",
+   "card": {
+    "coast_exchange_scale": 2.0
+   }
+  }
+ ]
+}

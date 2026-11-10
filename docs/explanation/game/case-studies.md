@@ -26,6 +26,9 @@ estimates any flight change from the airframe's solved card. The report's model 
 least-squares line of each variant's Elo against its airframe's baseline in the log changes
 of what the variants vary, weighted by the ratings' errors.
 
+[Sensitivity](case-studies/sensitivity.md) rates every ship knob one at a time on the La-7 and
+the trade-off pairs that should cancel.
+
 The specs and reports are in [case-studies/](case-studies/guns-la7.json). The set is the
 paced one ([Pacing](real-scale-pacing.md): four times the researched climb).
 

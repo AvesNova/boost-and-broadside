@@ -1,0 +1,129 @@
+{
+ "name": "sensitivity: the steep knobs in small steps",
+ "preset": "real_scale_deathmatch",
+ "airframes": [
+  "la7"
+ ],
+ "cross": "all",
+ "target_stderr": 15.0,
+ "budget": 60000,
+ "variants": [
+  {
+   "name": "baseline"
+  },
+  {
+   "name": "shield x0.97",
+   "scale": {
+    "max_shield": 0.97
+   }
+  },
+  {
+   "name": "shield x0.98",
+   "scale": {
+    "max_shield": 0.98
+   }
+  },
+  {
+   "name": "shield x1.02",
+   "scale": {
+    "max_shield": 1.02
+   }
+  },
+  {
+   "name": "shield x1.03",
+   "scale": {
+    "max_shield": 1.03
+   }
+  },
+  {
+   "name": "damage per second x0.975",
+   "scale": {
+    "damage_per_second": 0.975
+   }
+  },
+  {
+   "name": "damage per second x1.025",
+   "scale": {
+    "damage_per_second": 1.025
+   }
+  },
+  {
+   "name": "damage per second x1.075",
+   "scale": {
+    "damage_per_second": 1.075
+   }
+  },
+  {
+   "name": "head-on fraction x0.9",
+   "handles": {
+    "head_on_fraction": 0.9
+   }
+  },
+  {
+   "name": "head-on fraction x0.95",
+   "handles": {
+    "head_on_fraction": 0.95
+   }
+  },
+  {
+   "name": "head-on fraction x1.05",
+   "handles": {
+    "head_on_fraction": 1.05
+   }
+  },
+  {
+   "name": "head-on fraction x1.1",
+   "handles": {
+    "head_on_fraction": 1.1
+   }
+  },
+  {
+   "name": "hit radius x0.95",
+   "handles": {
+    "hit_radius": 0.95
+   }
+  },
+  {
+   "name": "hit radius x1.05",
+   "handles": {
+    "hit_radius": 1.05
+   }
+  },
+  {
+   "name": "muzzle speed x0.98",
+   "scale": {
+    "muzzle_speed": 0.98
+   }
+  },
+  {
+   "name": "muzzle speed x1.02",
+   "scale": {
+    "muzzle_speed": 1.02
+   }
+  },
+  {
+   "name": "turn rate x0.975",
+   "scale": {
+    "sustained_turn_rate": 0.975
+   }
+  },
+  {
+   "name": "turn rate x1.025",
+   "scale": {
+    "sustained_turn_rate": 1.025
+   }
+  },
+  {
+   "name": "stall speed x0.95",
+   "scale": {
+    "stall_speed": 0.95
+   }
+  },
+  {
+   "name": "stall speed x1.05",
+   "scale": {
+    "stall_speed": 1.05
+   }
+  }
+ ]
+}

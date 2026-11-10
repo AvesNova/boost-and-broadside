@@ -1,0 +1,223 @@
+{
+ "name": "trade-off pairs",
+ "preset": "real_scale_deathmatch",
+ "airframes": [
+  "la7"
+ ],
+ "cross": "all",
+ "target_stderr": 12.0,
+ "budget": 150000,
+ "variants": [
+  {
+   "name": "baseline"
+  },
+  {
+   "name": "muzzle x1.02 + turn x0.95",
+   "scale": {
+    "muzzle_speed": 1.02,
+    "sustained_turn_rate": 0.95
+   }
+  },
+  {
+   "name": "muzzle x1.02 + stall x0.92",
+   "scale": {
+    "muzzle_speed": 1.02,
+    "stall_speed": 0.92
+   }
+  },
+  {
+   "name": "muzzle x1.02 + hit radius x1.1",
+   "scale": {
+    "muzzle_speed": 1.02
+   },
+   "handles": {
+    "hit_radius": 1.1
+   }
+  },
+  {
+   "name": "turn x1.03 + muzzle x0.97",
+   "scale": {
+    "sustained_turn_rate": 1.03,
+    "muzzle_speed": 0.97
+   }
+  },
+  {
+   "name": "turn x1.03 + hit radius x1.1",
+   "scale": {
+    "sustained_turn_rate": 1.03
+   },
+   "handles": {
+    "hit_radius": 1.1
+   }
+  },
+  {
+   "name": "turn x1.03 + half-lift drag x1.7",
+   "scale": {
+    "sustained_turn_rate": 1.03
+   },
+   "handles": {
+    "half_lift_drag": 1.7
+   }
+  },
+  {
+   "name": "stall x1.08 + half-lift drag x1.7",
+   "scale": {
+    "stall_speed": 1.08
+   },
+   "handles": {
+    "half_lift_drag": 1.7
+   }
+  },
+  {
+   "name": "stall x1.08 + turn x0.95",
+   "scale": {
+    "stall_speed": 1.08,
+    "sustained_turn_rate": 0.95
+   }
+  },
+  {
+   "name": "hit radius x0.95 + muzzle x0.97",
+   "handles": {
+    "hit_radius": 0.95
+   },
+   "scale": {
+    "muzzle_speed": 0.97
+   }
+  },
+  {
+   "name": "hit radius x0.95 + stall x0.92",
+   "handles": {
+    "hit_radius": 0.95
+   },
+   "scale": {
+    "stall_speed": 0.92
+   }
+  },
+  {
+   "name": "15 Hz + turn x0.95",
+   "knobs": {
+    "fire_rate": 15.0
+   },
+   "scale": {
+    "sustained_turn_rate": 0.95
+   }
+  },
+  {
+   "name": "15 Hz + hit radius x1.1",
+   "knobs": {
+    "fire_rate": 15.0
+   },
+   "handles": {
+    "hit_radius": 1.1
+   }
+  },
+  {
+   "name": "muzzle x1.05 + turn x0.9",
+   "scale": {
+    "muzzle_speed": 1.05,
+    "sustained_turn_rate": 0.9
+   }
+  },
+  {
+   "name": "turn x1.1 + muzzle x0.95",
+   "scale": {
+    "sustained_turn_rate": 1.1,
+    "muzzle_speed": 0.95
+   }
+  },
+  {
+   "name": "hit radius x0.8 + turn x0.9",
+   "handles": {
+    "hit_radius": 0.8
+   },
+   "scale": {
+    "sustained_turn_rate": 0.9
+   }
+  },
+  {
+   "name": "shield x1.05 + head-on x1.1",
+   "scale": {
+    "max_shield": 1.05
+   },
+   "handles": {
+    "head_on_fraction": 1.1
+   }
+  },
+  {
+   "name": "damage/s x1.1 + shield x0.95",
+   "scale": {
+    "damage_per_second": 1.1,
+    "max_shield": 0.95
+   }
+  },
+  {
+   "name": "stall x1.1 + hit radius x1.25",
+   "scale": {
+    "stall_speed": 1.1
+   },
+   "handles": {
+    "hit_radius": 1.25
+   }
+  },
+  {
+   "name": "muzzle x1.02",
+   "scale": {
+    "muzzle_speed": 1.02
+   }
+  },
+  {
+   "name": "muzzle x0.97",
+   "scale": {
+    "muzzle_speed": 0.97
+   }
+  },
+  {
+   "name": "turn x1.03",
+   "scale": {
+    "sustained_turn_rate": 1.03
+   }
+  },
+  {
+   "name": "turn x0.95",
+   "scale": {
+    "sustained_turn_rate": 0.95
+   }
+  },
+  {
+   "name": "hit radius x0.95",
+   "handles": {
+    "hit_radius": 0.95
+   }
+  },
+  {
+   "name": "hit radius x1.1",
+   "handles": {
+    "hit_radius": 1.1
+   }
+  },
+  {
+   "name": "stall x1.08",
+   "scale": {
+    "stall_speed": 1.08
+   }
+  },
+  {
+   "name": "stall x0.92",
+   "scale": {
+    "stall_speed": 0.92
+   }
+  },
+  {
+   "name": "half-lift drag x0.5",
+   "handles": {
+    "half_lift_drag": 0.5
+   }
+  },
+  {
+   "name": "half-lift drag x1.7",
+   "handles": {
+    "half_lift_drag": 1.7
+   }
+  }
+ ]
+}

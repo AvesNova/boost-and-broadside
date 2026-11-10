@@ -1,0 +1,1331 @@
+{
+ "games": 34560,
+ "slots": [
+  {
+   "slot": "la7: baseline",
+   "elo": 0.0,
+   "stderr": 0.0,
+   "against_baseline": 0.0
+  },
+  {
+   "slot": "la7: muzzle speed x0.9",
+   "elo": -181.48203215267517,
+   "stderr": 8.490956411208176,
+   "against_baseline": -181.48203215267517
+  },
+  {
+   "slot": "la7: muzzle speed x0.95",
+   "elo": -97.5859784714344,
+   "stderr": 8.358501056270686,
+   "against_baseline": -97.5859784714344
+  },
+  {
+   "slot": "la7: muzzle speed x1.05",
+   "elo": 114.0345063908158,
+   "stderr": 8.316737125472791,
+   "against_baseline": 114.0345063908158
+  },
+  {
+   "slot": "la7: muzzle speed x1.1",
+   "elo": 209.61836680989052,
+   "stderr": 8.775129224502482,
+   "against_baseline": 209.61836680989052
+  },
+  {
+   "slot": "la7: damage per second x0.9",
+   "elo": -148.31162519650175,
+   "stderr": 8.478659495725491,
+   "against_baseline": -148.31162519650175
+  },
+  {
+   "slot": "la7: damage per second x0.95",
+   "elo": -114.78043284820374,
+   "stderr": 8.422760204078685,
+   "against_baseline": -114.78043284820374
+  },
+  {
+   "slot": "la7: damage per second x1.05",
+   "elo": 4.056963776438227,
+   "stderr": 8.228949991332907,
+   "against_baseline": 4.056963776438227
+  },
+  {
+   "slot": "la7: damage per second x1.1",
+   "elo": 154.03409346211498,
+   "stderr": 8.429081416486403,
+   "against_baseline": 154.03409346211498
+  },
+  {
+   "slot": "la7: 5 Hz, damage/s held",
+   "elo": -196.06869545534127,
+   "stderr": 8.273480457244213,
+   "against_baseline": -196.06869545534127
+  },
+  {
+   "slot": "la7: 6 Hz, damage/s held",
+   "elo": -128.29781415420598,
+   "stderr": 8.465613211500292,
+   "against_baseline": -128.29781415420598
+  },
+  {
+   "slot": "la7: 15 Hz, damage/s held",
+   "elo": 63.918590788563506,
+   "stderr": 8.279118389878324,
+   "against_baseline": 63.918590788563506
+  },
+  {
+   "slot": "la7: 15 Hz, damage/bullet held",
+   "elo": 490.6684113571255,
+   "stderr": 12.0793591307005,
+   "against_baseline": 490.6684113571255
+  },
+  {
+   "slot": "la7: 6 Hz, damage/bullet held",
+   "elo": -940.9611334337222,
+   "stderr": 19.901672031089817,
+   "against_baseline": -940.9611334337222
+  },
+  {
+   "slot": "la7: dispersion x0.5",
+   "elo": -3.4606872031059663,
+   "stderr": 8.194230508074828,
+   "against_baseline": -3.4606872031059663
+  },
+  {
+   "slot": "la7: dispersion x0.7",
+   "elo": 4.839823124246195,
+   "stderr": 8.178315852728375,
+   "against_baseline": 4.839823124246195
+  },
+  {
+   "slot": "la7: dispersion x1.4",
+   "elo": -2.08167542074768,
+   "stderr": 8.152157776260687,
+   "against_baseline": -2.08167542074768
+  },
+  {
+   "slot": "la7: dispersion x2",
+   "elo": -7.746488496715131,
+   "stderr": 8.260967999743968,
+   "against_baseline": -7.746488496715131
+  },
+  {
+   "slot": "la7: shot cost x2",
+   "elo": 18.35354949353574,
+   "stderr": 8.251980103486412,
+   "against_baseline": 18.35354949353574
+  },
+  {
+   "slot": "la7: shot cost x1.4",
+   "elo": 10.813450351710234,
+   "stderr": 8.179705388546706,
+   "against_baseline": 10.813450351710234
+  },
+  {
+   "slot": "la7: shot cost x0.7",
+   "elo": -20.446489211071352,
+   "stderr": 8.255133300567067,
+   "against_baseline": -20.446489211071352
+  },
+  {
+   "slot": "la7: shot cost x0.5",
+   "elo": -61.575917147823226,
+   "stderr": 8.303073617634706,
+   "against_baseline": -61.575917147823226
+  }
+ ],
+ "models": {
+  "la7": {
+   "elo_per_doubling": {
+    "muzzle_speed": 1363.5676638162415,
+    "damage_per_second": 857.8235465364775,
+    "fire_rate": 170.21978437042284,
+    "dispersion": -3.08796503617611,
+    "handle shots_per_store": 38.131735990391675
+   },
+   "rms_residual": 51.25940599956367
+  },
+  "pooled": {
+   "elo_per_doubling": {
+    "muzzle_speed": 1363.5676638162415,
+    "damage_per_second": 857.8235465364775,
+    "fire_rate": 170.21978437042284,
+    "dispersion": -3.08796503617611,
+    "handle shots_per_store": 38.131735990391675
+   },
+   "rms_residual": 51.25940599956367
+  }
+ },
+ "cycles": [
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: dispersion x0.5",
+    "la7: damage per second x1.05"
+   ],
+   "weakest": 0.5033482142857143
+  },
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: dispersion x2",
+    "la7: damage per second x1.05"
+   ],
+   "weakest": 0.5033482142857143
+  },
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: shot cost x0.5",
+    "la7: damage per second x1.05"
+   ],
+   "weakest": 0.5033482142857143
+  },
+  {
+   "cycle": [
+    "la7: damage per second x1.05",
+    "la7: shot cost x1.4",
+    "la7: dispersion x0.5"
+   ],
+   "weakest": 0.52734375
+  },
+  {
+   "cycle": [
+    "la7: damage per second x1.05",
+    "la7: shot cost x0.7",
+    "la7: dispersion x0.5"
+   ],
+   "weakest": 0.52734375
+  },
+  {
+   "cycle": [
+    "la7: damage per second x1.05",
+    "la7: shot cost x1.4",
+    "la7: dispersion x0.7"
+   ],
+   "weakest": 0.546875
+  },
+  {
+   "cycle": [
+    "la7: damage per second x1.05",
+    "la7: dispersion x1.4",
+    "la7: dispersion x2"
+   ],
+   "weakest": 0.53515625
+  },
+  {
+   "cycle": [
+    "la7: damage per second x1.05",
+    "la7: dispersion x1.4",
+    "la7: shot cost x0.5"
+   ],
+   "weakest": 0.53515625
+  },
+  {
+   "cycle": [
+    "la7: damage per second x1.05",
+    "la7: shot cost x1.4",
+    "la7: dispersion x2"
+   ],
+   "weakest": 0.5390625
+  },
+  {
+   "cycle": [
+    "la7: damage per second x1.05",
+    "la7: shot cost x1.4",
+    "la7: shot cost x2"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: damage per second x1.05",
+    "la7: shot cost x1.4",
+    "la7: shot cost x0.5"
+   ],
+   "weakest": 0.5625
+  },
+  {
+   "cycle": [
+    "la7: damage per second x1.05",
+    "la7: shot cost x0.7",
+    "la7: shot cost x0.5"
+   ],
+   "weakest": 0.5625
+  },
+  {
+   "cycle": [
+    "la7: dispersion x0.5",
+    "la7: dispersion x1.4",
+    "la7: dispersion x2"
+   ],
+   "weakest": 0.515625
+  },
+  {
+   "cycle": [
+    "la7: dispersion x0.5",
+    "la7: dispersion x1.4",
+    "la7: shot cost x0.7"
+   ],
+   "weakest": 0.546875
+  }
+ ],
+ "pairs": [
+  {
+   "first": "la7: baseline",
+   "second": "la7: muzzle speed x0.9",
+   "games": 640,
+   "score": 0.7203125
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: muzzle speed x0.95",
+   "games": 512,
+   "score": 0.6533203125
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: muzzle speed x1.05",
+   "games": 576,
+   "score": 0.3090277777777778
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: muzzle speed x1.1",
+   "games": 768,
+   "score": 0.24544270833333334
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: damage per second x0.9",
+   "games": 512,
+   "score": 0.6865234375
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: damage per second x0.95",
+   "games": 512,
+   "score": 0.642578125
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: damage per second x1.05",
+   "games": 448,
+   "score": 0.4966517857142857
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: damage per second x1.1",
+   "games": 704,
+   "score": 0.30326704545454547
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: 5 Hz, damage/s held",
+   "games": 704,
+   "score": 0.7428977272727273
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: 6 Hz, damage/s held",
+   "games": 512,
+   "score": 0.6904296875
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: 15 Hz, damage/s held",
+   "games": 512,
+   "score": 0.4033203125
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: 15 Hz, damage/bullet held",
+   "games": 64,
+   "score": 0.0
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: dispersion x0.5",
+   "games": 448,
+   "score": 0.5167410714285714
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: dispersion x0.7",
+   "games": 512,
+   "score": 0.470703125
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: dispersion x1.4",
+   "games": 512,
+   "score": 0.5283203125
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: dispersion x2",
+   "games": 512,
+   "score": 0.5166015625
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: shot cost x2",
+   "games": 512,
+   "score": 0.48046875
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: shot cost x1.4",
+   "games": 512,
+   "score": 0.47265625
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: shot cost x0.7",
+   "games": 448,
+   "score": 0.5301339285714286
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: shot cost x0.5",
+   "games": 448,
+   "score": 0.6316964285714286
+  },
+  {
+   "first": "la7: muzzle speed x0.9",
+   "second": "la7: muzzle speed x0.95",
+   "games": 192,
+   "score": 0.296875
+  },
+  {
+   "first": "la7: muzzle speed x0.9",
+   "second": "la7: muzzle speed x1.05",
+   "games": 64,
+   "score": 0.1953125
+  },
+  {
+   "first": "la7: muzzle speed x0.9",
+   "second": "la7: damage per second x0.9",
+   "games": 256,
+   "score": 0.458984375
+  },
+  {
+   "first": "la7: muzzle speed x0.9",
+   "second": "la7: damage per second x0.95",
+   "games": 192,
+   "score": 0.4192708333333333
+  },
+  {
+   "first": "la7: muzzle speed x0.9",
+   "second": "la7: damage per second x1.05",
+   "games": 64,
+   "score": 0.3125
+  },
+  {
+   "first": "la7: muzzle speed x0.9",
+   "second": "la7: 5 Hz, damage/s held",
+   "games": 64,
+   "score": 0.4609375
+  },
+  {
+   "first": "la7: muzzle speed x0.9",
+   "second": "la7: 6 Hz, damage/s held",
+   "games": 192,
+   "score": 0.4114583333333333
+  },
+  {
+   "first": "la7: muzzle speed x0.9",
+   "second": "la7: 6 Hz, damage/bullet held",
+   "games": 2624,
+   "score": 0.9910442073170732
+  },
+  {
+   "first": "la7: muzzle speed x0.9",
+   "second": "la7: dispersion x0.5",
+   "games": 64,
+   "score": 0.234375
+  },
+  {
+   "first": "la7: muzzle speed x0.9",
+   "second": "la7: dispersion x0.7",
+   "games": 64,
+   "score": 0.2578125
+  },
+  {
+   "first": "la7: muzzle speed x0.9",
+   "second": "la7: dispersion x1.4",
+   "games": 64,
+   "score": 0.203125
+  },
+  {
+   "first": "la7: muzzle speed x0.9",
+   "second": "la7: dispersion x2",
+   "games": 64,
+   "score": 0.3125
+  },
+  {
+   "first": "la7: muzzle speed x0.9",
+   "second": "la7: shot cost x1.4",
+   "games": 64,
+   "score": 0.2578125
+  },
+  {
+   "first": "la7: muzzle speed x0.9",
+   "second": "la7: shot cost x0.7",
+   "games": 64,
+   "score": 0.171875
+  },
+  {
+   "first": "la7: muzzle speed x0.9",
+   "second": "la7: shot cost x0.5",
+   "games": 128,
+   "score": 0.328125
+  },
+  {
+   "first": "la7: muzzle speed x0.95",
+   "second": "la7: damage per second x0.9",
+   "games": 128,
+   "score": 0.55859375
+  },
+  {
+   "first": "la7: muzzle speed x0.95",
+   "second": "la7: damage per second x0.95",
+   "games": 128,
+   "score": 0.53125
+  },
+  {
+   "first": "la7: muzzle speed x0.95",
+   "second": "la7: damage per second x1.05",
+   "games": 128,
+   "score": 0.32421875
+  },
+  {
+   "first": "la7: muzzle speed x0.95",
+   "second": "la7: 5 Hz, damage/s held",
+   "games": 192,
+   "score": 0.6458333333333334
+  },
+  {
+   "first": "la7: muzzle speed x0.95",
+   "second": "la7: 6 Hz, damage/s held",
+   "games": 128,
+   "score": 0.546875
+  },
+  {
+   "first": "la7: muzzle speed x0.95",
+   "second": "la7: 15 Hz, damage/s held",
+   "games": 64,
+   "score": 0.2578125
+  },
+  {
+   "first": "la7: muzzle speed x0.95",
+   "second": "la7: dispersion x0.5",
+   "games": 128,
+   "score": 0.37890625
+  },
+  {
+   "first": "la7: muzzle speed x0.95",
+   "second": "la7: dispersion x0.7",
+   "games": 64,
+   "score": 0.3359375
+  },
+  {
+   "first": "la7: muzzle speed x0.95",
+   "second": "la7: dispersion x1.4",
+   "games": 64,
+   "score": 0.328125
+  },
+  {
+   "first": "la7: muzzle speed x0.95",
+   "second": "la7: dispersion x2",
+   "games": 64,
+   "score": 0.3828125
+  },
+  {
+   "first": "la7: muzzle speed x0.95",
+   "second": "la7: shot cost x2",
+   "games": 64,
+   "score": 0.421875
+  },
+  {
+   "first": "la7: muzzle speed x0.95",
+   "second": "la7: shot cost x1.4",
+   "games": 64,
+   "score": 0.34375
+  },
+  {
+   "first": "la7: muzzle speed x0.95",
+   "second": "la7: shot cost x0.7",
+   "games": 128,
+   "score": 0.390625
+  },
+  {
+   "first": "la7: muzzle speed x0.95",
+   "second": "la7: shot cost x0.5",
+   "games": 64,
+   "score": 0.3515625
+  },
+  {
+   "first": "la7: muzzle speed x1.05",
+   "second": "la7: muzzle speed x1.1",
+   "games": 128,
+   "score": 0.265625
+  },
+  {
+   "first": "la7: muzzle speed x1.05",
+   "second": "la7: damage per second x0.9",
+   "games": 64,
+   "score": 0.8046875
+  },
+  {
+   "first": "la7: muzzle speed x1.05",
+   "second": "la7: damage per second x1.05",
+   "games": 128,
+   "score": 0.5859375
+  },
+  {
+   "first": "la7: muzzle speed x1.05",
+   "second": "la7: damage per second x1.1",
+   "games": 128,
+   "score": 0.41796875
+  },
+  {
+   "first": "la7: muzzle speed x1.05",
+   "second": "la7: 15 Hz, damage/s held",
+   "games": 128,
+   "score": 0.62109375
+  },
+  {
+   "first": "la7: muzzle speed x1.05",
+   "second": "la7: 15 Hz, damage/bullet held",
+   "games": 576,
+   "score": 0.1111111111111111
+  },
+  {
+   "first": "la7: muzzle speed x1.05",
+   "second": "la7: dispersion x0.5",
+   "games": 128,
+   "score": 0.703125
+  },
+  {
+   "first": "la7: muzzle speed x1.05",
+   "second": "la7: dispersion x0.7",
+   "games": 128,
+   "score": 0.6796875
+  },
+  {
+   "first": "la7: muzzle speed x1.05",
+   "second": "la7: dispersion x1.4",
+   "games": 128,
+   "score": 0.609375
+  },
+  {
+   "first": "la7: muzzle speed x1.05",
+   "second": "la7: dispersion x2",
+   "games": 64,
+   "score": 0.578125
+  },
+  {
+   "first": "la7: muzzle speed x1.05",
+   "second": "la7: shot cost x2",
+   "games": 128,
+   "score": 0.609375
+  },
+  {
+   "first": "la7: muzzle speed x1.05",
+   "second": "la7: shot cost x1.4",
+   "games": 128,
+   "score": 0.6796875
+  },
+  {
+   "first": "la7: muzzle speed x1.05",
+   "second": "la7: shot cost x0.7",
+   "games": 64,
+   "score": 0.75
+  },
+  {
+   "first": "la7: muzzle speed x1.05",
+   "second": "la7: shot cost x0.5",
+   "games": 64,
+   "score": 0.6796875
+  },
+  {
+   "first": "la7: muzzle speed x1.1",
+   "second": "la7: damage per second x1.05",
+   "games": 128,
+   "score": 0.7734375
+  },
+  {
+   "first": "la7: muzzle speed x1.1",
+   "second": "la7: damage per second x1.1",
+   "games": 128,
+   "score": 0.625
+  },
+  {
+   "first": "la7: muzzle speed x1.1",
+   "second": "la7: 15 Hz, damage/s held",
+   "games": 192,
+   "score": 0.7135416666666666
+  },
+  {
+   "first": "la7: muzzle speed x1.1",
+   "second": "la7: 15 Hz, damage/bullet held",
+   "games": 896,
+   "score": 0.16741071428571427
+  },
+  {
+   "first": "la7: muzzle speed x1.1",
+   "second": "la7: dispersion x0.5",
+   "games": 64,
+   "score": 0.734375
+  },
+  {
+   "first": "la7: muzzle speed x1.1",
+   "second": "la7: dispersion x0.7",
+   "games": 128,
+   "score": 0.79296875
+  },
+  {
+   "first": "la7: muzzle speed x1.1",
+   "second": "la7: dispersion x1.4",
+   "games": 64,
+   "score": 0.7734375
+  },
+  {
+   "first": "la7: muzzle speed x1.1",
+   "second": "la7: dispersion x2",
+   "games": 128,
+   "score": 0.7890625
+  },
+  {
+   "first": "la7: muzzle speed x1.1",
+   "second": "la7: shot cost x2",
+   "games": 128,
+   "score": 0.6953125
+  },
+  {
+   "first": "la7: muzzle speed x1.1",
+   "second": "la7: shot cost x1.4",
+   "games": 128,
+   "score": 0.6953125
+  },
+  {
+   "first": "la7: damage per second x0.9",
+   "second": "la7: damage per second x0.95",
+   "games": 128,
+   "score": 0.4375
+  },
+  {
+   "first": "la7: damage per second x0.9",
+   "second": "la7: damage per second x1.05",
+   "games": 64,
+   "score": 0.28125
+  },
+  {
+   "first": "la7: damage per second x0.9",
+   "second": "la7: 5 Hz, damage/s held",
+   "games": 256,
+   "score": 0.578125
+  },
+  {
+   "first": "la7: damage per second x0.9",
+   "second": "la7: 6 Hz, damage/s held",
+   "games": 192,
+   "score": 0.5104166666666666
+  },
+  {
+   "first": "la7: damage per second x0.9",
+   "second": "la7: dispersion x0.5",
+   "games": 64,
+   "score": 0.3125
+  },
+  {
+   "first": "la7: damage per second x0.9",
+   "second": "la7: dispersion x0.7",
+   "games": 64,
+   "score": 0.3515625
+  },
+  {
+   "first": "la7: damage per second x0.9",
+   "second": "la7: dispersion x1.4",
+   "games": 64,
+   "score": 0.15625
+  },
+  {
+   "first": "la7: damage per second x0.9",
+   "second": "la7: dispersion x2",
+   "games": 64,
+   "score": 0.2578125
+  },
+  {
+   "first": "la7: damage per second x0.9",
+   "second": "la7: shot cost x2",
+   "games": 64,
+   "score": 0.3046875
+  },
+  {
+   "first": "la7: damage per second x0.9",
+   "second": "la7: shot cost x1.4",
+   "games": 64,
+   "score": 0.21875
+  },
+  {
+   "first": "la7: damage per second x0.9",
+   "second": "la7: shot cost x0.7",
+   "games": 64,
+   "score": 0.296875
+  },
+  {
+   "first": "la7: damage per second x0.9",
+   "second": "la7: shot cost x0.5",
+   "games": 128,
+   "score": 0.34765625
+  },
+  {
+   "first": "la7: damage per second x0.95",
+   "second": "la7: damage per second x1.05",
+   "games": 128,
+   "score": 0.3125
+  },
+  {
+   "first": "la7: damage per second x0.95",
+   "second": "la7: 5 Hz, damage/s held",
+   "games": 256,
+   "score": 0.63671875
+  },
+  {
+   "first": "la7: damage per second x0.95",
+   "second": "la7: 6 Hz, damage/s held",
+   "games": 128,
+   "score": 0.53515625
+  },
+  {
+   "first": "la7: damage per second x0.95",
+   "second": "la7: 15 Hz, damage/s held",
+   "games": 64,
+   "score": 0.2265625
+  },
+  {
+   "first": "la7: damage per second x0.95",
+   "second": "la7: dispersion x0.5",
+   "games": 64,
+   "score": 0.2109375
+  },
+  {
+   "first": "la7: damage per second x0.95",
+   "second": "la7: dispersion x0.7",
+   "games": 64,
+   "score": 0.328125
+  },
+  {
+   "first": "la7: damage per second x0.95",
+   "second": "la7: dispersion x1.4",
+   "games": 64,
+   "score": 0.3046875
+  },
+  {
+   "first": "la7: damage per second x0.95",
+   "second": "la7: dispersion x2",
+   "games": 64,
+   "score": 0.265625
+  },
+  {
+   "first": "la7: damage per second x0.95",
+   "second": "la7: shot cost x2",
+   "games": 64,
+   "score": 0.4375
+  },
+  {
+   "first": "la7: damage per second x0.95",
+   "second": "la7: shot cost x1.4",
+   "games": 64,
+   "score": 0.3984375
+  },
+  {
+   "first": "la7: damage per second x0.95",
+   "second": "la7: shot cost x0.7",
+   "games": 64,
+   "score": 0.328125
+  },
+  {
+   "first": "la7: damage per second x0.95",
+   "second": "la7: shot cost x0.5",
+   "games": 128,
+   "score": 0.40625
+  },
+  {
+   "first": "la7: damage per second x1.05",
+   "second": "la7: damage per second x1.1",
+   "games": 128,
+   "score": 0.3515625
+  },
+  {
+   "first": "la7: damage per second x1.05",
+   "second": "la7: 5 Hz, damage/s held",
+   "games": 64,
+   "score": 0.703125
+  },
+  {
+   "first": "la7: damage per second x1.05",
+   "second": "la7: 6 Hz, damage/s held",
+   "games": 64,
+   "score": 0.5703125
+  },
+  {
+   "first": "la7: damage per second x1.05",
+   "second": "la7: 15 Hz, damage/s held",
+   "games": 64,
+   "score": 0.453125
+  },
+  {
+   "first": "la7: damage per second x1.05",
+   "second": "la7: dispersion x0.5",
+   "games": 128,
+   "score": 0.47265625
+  },
+  {
+   "first": "la7: damage per second x1.05",
+   "second": "la7: dispersion x0.7",
+   "games": 64,
+   "score": 0.4296875
+  },
+  {
+   "first": "la7: damage per second x1.05",
+   "second": "la7: dispersion x1.4",
+   "games": 128,
+   "score": 0.53515625
+  },
+  {
+   "first": "la7: damage per second x1.05",
+   "second": "la7: dispersion x2",
+   "games": 128,
+   "score": 0.4609375
+  },
+  {
+   "first": "la7: damage per second x1.05",
+   "second": "la7: shot cost x2",
+   "games": 128,
+   "score": 0.4921875
+  },
+  {
+   "first": "la7: damage per second x1.05",
+   "second": "la7: shot cost x1.4",
+   "games": 64,
+   "score": 0.640625
+  },
+  {
+   "first": "la7: damage per second x1.05",
+   "second": "la7: shot cost x0.7",
+   "games": 64,
+   "score": 0.5703125
+  },
+  {
+   "first": "la7: damage per second x1.05",
+   "second": "la7: shot cost x0.5",
+   "games": 64,
+   "score": 0.4375
+  },
+  {
+   "first": "la7: damage per second x1.1",
+   "second": "la7: 15 Hz, damage/s held",
+   "games": 128,
+   "score": 0.61328125
+  },
+  {
+   "first": "la7: damage per second x1.1",
+   "second": "la7: 15 Hz, damage/bullet held",
+   "games": 768,
+   "score": 0.12565104166666666
+  },
+  {
+   "first": "la7: damage per second x1.1",
+   "second": "la7: dispersion x0.5",
+   "games": 128,
+   "score": 0.71875
+  },
+  {
+   "first": "la7: damage per second x1.1",
+   "second": "la7: dispersion x0.7",
+   "games": 128,
+   "score": 0.76953125
+  },
+  {
+   "first": "la7: damage per second x1.1",
+   "second": "la7: dispersion x1.4",
+   "games": 128,
+   "score": 0.765625
+  },
+  {
+   "first": "la7: damage per second x1.1",
+   "second": "la7: dispersion x2",
+   "games": 64,
+   "score": 0.671875
+  },
+  {
+   "first": "la7: damage per second x1.1",
+   "second": "la7: shot cost x2",
+   "games": 128,
+   "score": 0.66796875
+  },
+  {
+   "first": "la7: damage per second x1.1",
+   "second": "la7: shot cost x1.4",
+   "games": 128,
+   "score": 0.72265625
+  },
+  {
+   "first": "la7: damage per second x1.1",
+   "second": "la7: shot cost x0.7",
+   "games": 64,
+   "score": 0.8125
+  },
+  {
+   "first": "la7: 5 Hz, damage/s held",
+   "second": "la7: 6 Hz, damage/s held",
+   "games": 256,
+   "score": 0.404296875
+  },
+  {
+   "first": "la7: 5 Hz, damage/s held",
+   "second": "la7: 6 Hz, damage/bullet held",
+   "games": 3904,
+   "score": 0.9839907786885246
+  },
+  {
+   "first": "la7: 5 Hz, damage/s held",
+   "second": "la7: dispersion x0.5",
+   "games": 64,
+   "score": 0.2265625
+  },
+  {
+   "first": "la7: 5 Hz, damage/s held",
+   "second": "la7: dispersion x0.7",
+   "games": 64,
+   "score": 0.2265625
+  },
+  {
+   "first": "la7: 5 Hz, damage/s held",
+   "second": "la7: dispersion x1.4",
+   "games": 64,
+   "score": 0.2109375
+  },
+  {
+   "first": "la7: 5 Hz, damage/s held",
+   "second": "la7: dispersion x2",
+   "games": 64,
+   "score": 0.2265625
+  },
+  {
+   "first": "la7: 5 Hz, damage/s held",
+   "second": "la7: shot cost x1.4",
+   "games": 64,
+   "score": 0.2265625
+  },
+  {
+   "first": "la7: 5 Hz, damage/s held",
+   "second": "la7: shot cost x0.7",
+   "games": 128,
+   "score": 0.24609375
+  },
+  {
+   "first": "la7: 5 Hz, damage/s held",
+   "second": "la7: shot cost x0.5",
+   "games": 128,
+   "score": 0.40625
+  },
+  {
+   "first": "la7: 6 Hz, damage/s held",
+   "second": "la7: dispersion x0.5",
+   "games": 64,
+   "score": 0.3515625
+  },
+  {
+   "first": "la7: 6 Hz, damage/s held",
+   "second": "la7: dispersion x0.7",
+   "games": 64,
+   "score": 0.25
+  },
+  {
+   "first": "la7: 6 Hz, damage/s held",
+   "second": "la7: dispersion x1.4",
+   "games": 64,
+   "score": 0.3515625
+  },
+  {
+   "first": "la7: 6 Hz, damage/s held",
+   "second": "la7: dispersion x2",
+   "games": 64,
+   "score": 0.3359375
+  },
+  {
+   "first": "la7: 6 Hz, damage/s held",
+   "second": "la7: shot cost x2",
+   "games": 64,
+   "score": 0.296875
+  },
+  {
+   "first": "la7: 6 Hz, damage/s held",
+   "second": "la7: shot cost x1.4",
+   "games": 64,
+   "score": 0.375
+  },
+  {
+   "first": "la7: 6 Hz, damage/s held",
+   "second": "la7: shot cost x0.7",
+   "games": 128,
+   "score": 0.33984375
+  },
+  {
+   "first": "la7: 6 Hz, damage/s held",
+   "second": "la7: shot cost x0.5",
+   "games": 128,
+   "score": 0.44921875
+  },
+  {
+   "first": "la7: 15 Hz, damage/s held",
+   "second": "la7: 15 Hz, damage/bullet held",
+   "games": 64,
+   "score": 0.046875
+  },
+  {
+   "first": "la7: 15 Hz, damage/s held",
+   "second": "la7: 6 Hz, damage/bullet held",
+   "games": 64,
+   "score": 1.0
+  },
+  {
+   "first": "la7: 15 Hz, damage/s held",
+   "second": "la7: dispersion x0.5",
+   "games": 128,
+   "score": 0.578125
+  },
+  {
+   "first": "la7: 15 Hz, damage/s held",
+   "second": "la7: dispersion x0.7",
+   "games": 128,
+   "score": 0.609375
+  },
+  {
+   "first": "la7: 15 Hz, damage/s held",
+   "second": "la7: dispersion x1.4",
+   "games": 128,
+   "score": 0.54296875
+  },
+  {
+   "first": "la7: 15 Hz, damage/s held",
+   "second": "la7: dispersion x2",
+   "games": 128,
+   "score": 0.6328125
+  },
+  {
+   "first": "la7: 15 Hz, damage/s held",
+   "second": "la7: shot cost x2",
+   "games": 128,
+   "score": 0.55859375
+  },
+  {
+   "first": "la7: 15 Hz, damage/s held",
+   "second": "la7: shot cost x1.4",
+   "games": 128,
+   "score": 0.65234375
+  },
+  {
+   "first": "la7: 15 Hz, damage/s held",
+   "second": "la7: shot cost x0.7",
+   "games": 128,
+   "score": 0.60546875
+  },
+  {
+   "first": "la7: 15 Hz, damage/s held",
+   "second": "la7: shot cost x0.5",
+   "games": 64,
+   "score": 0.6640625
+  },
+  {
+   "first": "la7: 15 Hz, damage/bullet held",
+   "second": "la7: shot cost x0.7",
+   "games": 64,
+   "score": 0.96875
+  },
+  {
+   "first": "la7: 6 Hz, damage/bullet held",
+   "second": "la7: dispersion x0.5",
+   "games": 64,
+   "score": 0.0
+  },
+  {
+   "first": "la7: 6 Hz, damage/bullet held",
+   "second": "la7: shot cost x0.5",
+   "games": 64,
+   "score": 0.0
+  },
+  {
+   "first": "la7: dispersion x0.5",
+   "second": "la7: dispersion x0.7",
+   "games": 128,
+   "score": 0.4765625
+  },
+  {
+   "first": "la7: dispersion x0.5",
+   "second": "la7: dispersion x1.4",
+   "games": 64,
+   "score": 0.5703125
+  },
+  {
+   "first": "la7: dispersion x0.5",
+   "second": "la7: dispersion x2",
+   "games": 128,
+   "score": 0.484375
+  },
+  {
+   "first": "la7: dispersion x0.5",
+   "second": "la7: shot cost x2",
+   "games": 128,
+   "score": 0.4921875
+  },
+  {
+   "first": "la7: dispersion x0.5",
+   "second": "la7: shot cost x1.4",
+   "games": 64,
+   "score": 0.4296875
+  },
+  {
+   "first": "la7: dispersion x0.5",
+   "second": "la7: shot cost x0.7",
+   "games": 64,
+   "score": 0.40625
+  },
+  {
+   "first": "la7: dispersion x0.5",
+   "second": "la7: shot cost x0.5",
+   "games": 128,
+   "score": 0.5859375
+  },
+  {
+   "first": "la7: dispersion x0.7",
+   "second": "la7: dispersion x1.4",
+   "games": 128,
+   "score": 0.5
+  },
+  {
+   "first": "la7: dispersion x0.7",
+   "second": "la7: dispersion x2",
+   "games": 64,
+   "score": 0.5703125
+  },
+  {
+   "first": "la7: dispersion x0.7",
+   "second": "la7: shot cost x2",
+   "games": 64,
+   "score": 0.53125
+  },
+  {
+   "first": "la7: dispersion x0.7",
+   "second": "la7: shot cost x1.4",
+   "games": 128,
+   "score": 0.453125
+  },
+  {
+   "first": "la7: dispersion x0.7",
+   "second": "la7: shot cost x0.7",
+   "games": 128,
+   "score": 0.56640625
+  },
+  {
+   "first": "la7: dispersion x0.7",
+   "second": "la7: shot cost x0.5",
+   "games": 64,
+   "score": 0.5078125
+  },
+  {
+   "first": "la7: dispersion x1.4",
+   "second": "la7: dispersion x2",
+   "games": 64,
+   "score": 0.5703125
+  },
+  {
+   "first": "la7: dispersion x1.4",
+   "second": "la7: shot cost x2",
+   "games": 128,
+   "score": 0.4375
+  },
+  {
+   "first": "la7: dispersion x1.4",
+   "second": "la7: shot cost x1.4",
+   "games": 128,
+   "score": 0.4765625
+  },
+  {
+   "first": "la7: dispersion x1.4",
+   "second": "la7: shot cost x0.7",
+   "games": 64,
+   "score": 0.546875
+  },
+  {
+   "first": "la7: dispersion x1.4",
+   "second": "la7: shot cost x0.5",
+   "games": 128,
+   "score": 0.54296875
+  },
+  {
+   "first": "la7: dispersion x2",
+   "second": "la7: shot cost x2",
+   "games": 64,
+   "score": 0.4453125
+  },
+  {
+   "first": "la7: dispersion x2",
+   "second": "la7: shot cost x1.4",
+   "games": 128,
+   "score": 0.43359375
+  },
+  {
+   "first": "la7: dispersion x2",
+   "second": "la7: shot cost x0.7",
+   "games": 128,
+   "score": 0.51953125
+  },
+  {
+   "first": "la7: dispersion x2",
+   "second": "la7: shot cost x0.5",
+   "games": 128,
+   "score": 0.546875
+  },
+  {
+   "first": "la7: shot cost x2",
+   "second": "la7: shot cost x1.4",
+   "games": 64,
+   "score": 0.484375
+  },
+  {
+   "first": "la7: shot cost x2",
+   "second": "la7: shot cost x0.7",
+   "games": 128,
+   "score": 0.625
+  },
+  {
+   "first": "la7: shot cost x2",
+   "second": "la7: shot cost x0.5",
+   "games": 128,
+   "score": 0.61328125
+  },
+  {
+   "first": "la7: shot cost x1.4",
+   "second": "la7: shot cost x0.7",
+   "games": 128,
+   "score": 0.55078125
+  },
+  {
+   "first": "la7: shot cost x1.4",
+   "second": "la7: shot cost x0.5",
+   "games": 64,
+   "score": 0.625
+  },
+  {
+   "first": "la7: shot cost x0.7",
+   "second": "la7: shot cost x0.5",
+   "games": 128,
+   "score": 0.5859375
+  }
+ ]
+}

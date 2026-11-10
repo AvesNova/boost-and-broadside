@@ -1,0 +1,147 @@
+{
+ "name": "sensitivity: shield and body",
+ "preset": "real_scale_deathmatch",
+ "airframes": [
+  "la7"
+ ],
+ "cross": "all",
+ "target_stderr": 20.0,
+ "budget": 60000,
+ "variants": [
+  {
+   "name": "baseline"
+  },
+  {
+   "name": "shield x0.9",
+   "scale": {
+    "max_shield": 0.9
+   }
+  },
+  {
+   "name": "shield x0.95",
+   "scale": {
+    "max_shield": 0.95
+   }
+  },
+  {
+   "name": "shield x1.05",
+   "scale": {
+    "max_shield": 1.05
+   }
+  },
+  {
+   "name": "shield x1.1",
+   "scale": {
+    "max_shield": 1.1
+   }
+  },
+  {
+   "name": "shield recharge rate x0.5",
+   "handles": {
+    "shield_recharge_rate": 0.5
+   }
+  },
+  {
+   "name": "shield recharge rate x0.7",
+   "handles": {
+    "shield_recharge_rate": 0.7
+   }
+  },
+  {
+   "name": "shield recharge rate x1.4",
+   "handles": {
+    "shield_recharge_rate": 1.4
+   }
+  },
+  {
+   "name": "shield recharge rate x2",
+   "handles": {
+    "shield_recharge_rate": 2.0
+   }
+  },
+  {
+   "name": "shield recharge delay x0.5",
+   "handles": {
+    "shield_recharge_delay": 0.5
+   }
+  },
+  {
+   "name": "shield recharge delay x0.7",
+   "handles": {
+    "shield_recharge_delay": 0.7
+   }
+  },
+  {
+   "name": "shield recharge delay x1.4",
+   "handles": {
+    "shield_recharge_delay": 1.4
+   }
+  },
+  {
+   "name": "shield recharge delay x2",
+   "handles": {
+    "shield_recharge_delay": 2.0
+   }
+  },
+  {
+   "name": "head-on fraction x0.5",
+   "handles": {
+    "head_on_fraction": 0.5
+   }
+  },
+  {
+   "name": "head-on fraction x0.75",
+   "handles": {
+    "head_on_fraction": 0.75
+   }
+  },
+  {
+   "name": "head-on fraction x1.5",
+   "handles": {
+    "head_on_fraction": 1.5
+   }
+  },
+  {
+   "name": "head-on fraction x2",
+   "handles": {
+    "head_on_fraction": 2.0
+   }
+  },
+  {
+   "name": "hit radius x0.8",
+   "handles": {
+    "hit_radius": 0.8
+   }
+  },
+  {
+   "name": "hit radius x0.9",
+   "handles": {
+    "hit_radius": 0.9
+   }
+  },
+  {
+   "name": "hit radius x1.1",
+   "handles": {
+    "hit_radius": 1.1
+   }
+  },
+  {
+   "name": "hit radius x1.25",
+   "handles": {
+    "hit_radius": 1.25
+   }
+  },
+  {
+   "name": "spawn energy x0.5",
+   "handles": {
+    "spawn_energy": 0.5
+   }
+  },
+  {
+   "name": "spawn energy x2",
+   "handles": {
+    "spawn_energy": 2.0
+   }
+  }
+ ]
+}

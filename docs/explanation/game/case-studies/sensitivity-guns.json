@@ -1,0 +1,147 @@
+{
+ "name": "sensitivity: the gun's values",
+ "preset": "real_scale_deathmatch",
+ "airframes": [
+  "la7"
+ ],
+ "cross": "all",
+ "target_stderr": 20.0,
+ "budget": 60000,
+ "variants": [
+  {
+   "name": "baseline"
+  },
+  {
+   "name": "muzzle speed x0.9",
+   "scale": {
+    "muzzle_speed": 0.9
+   }
+  },
+  {
+   "name": "muzzle speed x0.95",
+   "scale": {
+    "muzzle_speed": 0.95
+   }
+  },
+  {
+   "name": "muzzle speed x1.05",
+   "scale": {
+    "muzzle_speed": 1.05
+   }
+  },
+  {
+   "name": "muzzle speed x1.1",
+   "scale": {
+    "muzzle_speed": 1.1
+   }
+  },
+  {
+   "name": "damage per second x0.9",
+   "scale": {
+    "damage_per_second": 0.9
+   }
+  },
+  {
+   "name": "damage per second x0.95",
+   "scale": {
+    "damage_per_second": 0.95
+   }
+  },
+  {
+   "name": "damage per second x1.05",
+   "scale": {
+    "damage_per_second": 1.05
+   }
+  },
+  {
+   "name": "damage per second x1.1",
+   "scale": {
+    "damage_per_second": 1.1
+   }
+  },
+  {
+   "name": "5 Hz, damage/s held",
+   "knobs": {
+    "fire_rate": 5.0
+   }
+  },
+  {
+   "name": "6 Hz, damage/s held",
+   "knobs": {
+    "fire_rate": 6.0
+   }
+  },
+  {
+   "name": "15 Hz, damage/s held",
+   "knobs": {
+    "fire_rate": 15.0
+   }
+  },
+  {
+   "name": "15 Hz, damage/bullet held",
+   "knobs": {
+    "fire_rate": 15.0
+   },
+   "scale": {
+    "damage_per_second": 1.5
+   }
+  },
+  {
+   "name": "6 Hz, damage/bullet held",
+   "knobs": {
+    "fire_rate": 6.0
+   },
+   "scale": {
+    "damage_per_second": 0.6
+   }
+  },
+  {
+   "name": "dispersion x0.5",
+   "scale": {
+    "dispersion": 0.5
+   }
+  },
+  {
+   "name": "dispersion x0.7",
+   "scale": {
+    "dispersion": 0.7
+   }
+  },
+  {
+   "name": "dispersion x1.4",
+   "scale": {
+    "dispersion": 1.4
+   }
+  },
+  {
+   "name": "dispersion x2",
+   "scale": {
+    "dispersion": 2.0
+   }
+  },
+  {
+   "name": "shot cost x2",
+   "handles": {
+    "shots_per_store": 2.0
+   }
+  },
+  {
+   "name": "shot cost x1.4",
+   "handles": {
+    "shots_per_store": 1.4
+   }
+  },
+  {
+   "name": "shot cost x0.7",
+   "handles": {
+    "shots_per_store": 0.7
+   }
+  },
+  {
+   "name": "shot cost x0.5",
+   "handles": {
+    "shots_per_store": 0.5
+   }
+  }
+ ]
+}

@@ -1,0 +1,1411 @@
+{
+ "games": 41472,
+ "slots": [
+  {
+   "slot": "la7: baseline",
+   "elo": 0.0,
+   "stderr": 0.0,
+   "against_baseline": 0.0
+  },
+  {
+   "slot": "la7: shield x0.9",
+   "elo": -132.5227481816347,
+   "stderr": 7.981587250336704,
+   "against_baseline": -132.5227481816347
+  },
+  {
+   "slot": "la7: shield x0.95",
+   "elo": -128.6806207673672,
+   "stderr": 7.938712189913708,
+   "against_baseline": -128.6806207673672
+  },
+  {
+   "slot": "la7: shield x1.05",
+   "elo": 131.9274358907562,
+   "stderr": 7.9389875485294255,
+   "against_baseline": 131.9274358907562
+  },
+  {
+   "slot": "la7: shield x1.1",
+   "elo": 138.00339632926733,
+   "stderr": 7.911712119229398,
+   "against_baseline": 138.00339632926733
+  },
+  {
+   "slot": "la7: shield recharge rate x0.5",
+   "elo": -15.472082430981985,
+   "stderr": 7.854330586448399,
+   "against_baseline": -15.472082430981985
+  },
+  {
+   "slot": "la7: shield recharge rate x0.7",
+   "elo": 3.807113163561992,
+   "stderr": 7.86073361565449,
+   "against_baseline": 3.807113163561992
+  },
+  {
+   "slot": "la7: shield recharge rate x1.4",
+   "elo": 16.873903214047164,
+   "stderr": 7.854004715655701,
+   "against_baseline": 16.873903214047164
+  },
+  {
+   "slot": "la7: shield recharge rate x2",
+   "elo": 24.464581375677867,
+   "stderr": 7.867915956129964,
+   "against_baseline": 24.464581375677867
+  },
+  {
+   "slot": "la7: shield recharge delay x0.5",
+   "elo": 14.76508969965841,
+   "stderr": 7.938325286172573,
+   "against_baseline": 14.76508969965841
+  },
+  {
+   "slot": "la7: shield recharge delay x0.7",
+   "elo": 15.499931308708945,
+   "stderr": 7.848118300891294,
+   "against_baseline": 15.499931308708945
+  },
+  {
+   "slot": "la7: shield recharge delay x1.4",
+   "elo": -25.978239249006926,
+   "stderr": 7.902311951968849,
+   "against_baseline": -25.978239249006926
+  },
+  {
+   "slot": "la7: shield recharge delay x2",
+   "elo": -28.687046342510616,
+   "stderr": 7.866417715054726,
+   "against_baseline": -28.687046342510616
+  },
+  {
+   "slot": "la7: head-on fraction x0.5",
+   "elo": 1281.8913854741127,
+   "stderr": 19.746928092676658,
+   "against_baseline": 1281.8913854741127
+  },
+  {
+   "slot": "la7: head-on fraction x0.75",
+   "elo": 621.0864913042751,
+   "stderr": 11.67408175956715,
+   "against_baseline": 621.0864913042751
+  },
+  {
+   "slot": "la7: head-on fraction x1.5",
+   "elo": -386.6349224198569,
+   "stderr": 9.570693787203279,
+   "against_baseline": -386.6349224198569
+  },
+  {
+   "slot": "la7: head-on fraction x2",
+   "elo": -586.8267120686427,
+   "stderr": 12.587032922254322,
+   "against_baseline": -586.8267120686427
+  },
+  {
+   "slot": "la7: hit radius x0.8",
+   "elo": 136.2046801317497,
+   "stderr": 7.9093851979082,
+   "against_baseline": 136.2046801317497
+  },
+  {
+   "slot": "la7: hit radius x0.9",
+   "elo": 50.431898049787705,
+   "stderr": 7.8947302232667615,
+   "against_baseline": 50.431898049787705
+  },
+  {
+   "slot": "la7: hit radius x1.1",
+   "elo": -47.19607953434326,
+   "stderr": 7.96076552427107,
+   "against_baseline": -47.19607953434326
+  },
+  {
+   "slot": "la7: hit radius x1.25",
+   "elo": -89.21847627943849,
+   "stderr": 7.914695318911769,
+   "against_baseline": -89.21847627943849
+  },
+  {
+   "slot": "la7: spawn energy x0.5",
+   "elo": -23.89441530716789,
+   "stderr": 7.8652171206027255,
+   "against_baseline": -23.89441530716789
+  },
+  {
+   "slot": "la7: spawn energy x2",
+   "elo": -11.94998658581104,
+   "stderr": 7.86089248231975,
+   "against_baseline": -11.94998658581104
+  }
+ ],
+ "models": {
+  "la7": {
+   "elo_per_doubling": {
+    "max_shield": 1105.448941615702,
+    "handle shield_recharge_rate": 18.46063307188068,
+    "handle shield_recharge_delay": -25.668109961535922,
+    "handle head_on_fraction": -818.1008074015308,
+    "handle hit_radius": -347.93183422359846,
+    "handle spawn_energy": 5.962357246309515
+   },
+   "rms_residual": 126.01646893056584
+  },
+  "pooled": {
+   "elo_per_doubling": {
+    "max_shield": 1105.448941615702,
+    "handle shield_recharge_rate": 18.46063307188068,
+    "handle shield_recharge_delay": -25.668109961535922,
+    "handle head_on_fraction": -818.1008074015308,
+    "handle hit_radius": -347.93183422359846,
+    "handle spawn_energy": 5.962357246309515
+   },
+   "rms_residual": 126.01646893056584
+  }
+ },
+ "cycles": [
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: shield recharge rate x0.7",
+    "la7: shield recharge delay x0.7"
+   ],
+   "weakest": 0.509765625
+  },
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: spawn energy x2",
+    "la7: shield recharge rate x1.4"
+   ],
+   "weakest": 0.515625
+  },
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: shield recharge delay x2",
+    "la7: shield recharge delay x0.5"
+   ],
+   "weakest": 0.515625
+  },
+  {
+   "cycle": [
+    "la7: shield x0.9",
+    "la7: shield x0.95",
+    "la7: hit radius x1.25"
+   ],
+   "weakest": 0.5234375
+  },
+  {
+   "cycle": [
+    "la7: shield recharge rate x0.5",
+    "la7: spawn energy x2",
+    "la7: shield recharge rate x0.7"
+   ],
+   "weakest": 0.5390625
+  },
+  {
+   "cycle": [
+    "la7: shield recharge rate x0.5",
+    "la7: spawn energy x2",
+    "la7: shield recharge rate x1.4"
+   ],
+   "weakest": 0.515625
+  },
+  {
+   "cycle": [
+    "la7: shield recharge rate x0.5",
+    "la7: shield recharge delay x2",
+    "la7: shield recharge delay x0.5"
+   ],
+   "weakest": 0.51953125
+  },
+  {
+   "cycle": [
+    "la7: shield recharge rate x0.7",
+    "la7: shield recharge delay x0.7",
+    "la7: shield recharge rate x1.4"
+   ],
+   "weakest": 0.5234375
+  },
+  {
+   "cycle": [
+    "la7: shield recharge rate x0.7",
+    "la7: shield recharge delay x0.7",
+    "la7: shield recharge delay x0.5"
+   ],
+   "weakest": 0.53515625
+  },
+  {
+   "cycle": [
+    "la7: shield recharge rate x0.7",
+    "la7: shield recharge delay x2",
+    "la7: shield recharge delay x0.5"
+   ],
+   "weakest": 0.5546875
+  },
+  {
+   "cycle": [
+    "la7: shield recharge rate x0.7",
+    "la7: shield recharge delay x0.7",
+    "la7: spawn energy x2"
+   ],
+   "weakest": 0.5390625
+  },
+  {
+   "cycle": [
+    "la7: shield recharge rate x0.7",
+    "la7: shield recharge delay x2",
+    "la7: spawn energy x2"
+   ],
+   "weakest": 0.515625
+  },
+  {
+   "cycle": [
+    "la7: shield recharge rate x1.4",
+    "la7: shield recharge rate x2",
+    "la7: shield recharge delay x0.7"
+   ],
+   "weakest": 0.5234375
+  },
+  {
+   "cycle": [
+    "la7: shield recharge rate x1.4",
+    "la7: shield recharge rate x2",
+    "la7: spawn energy x2"
+   ],
+   "weakest": 0.515625
+  },
+  {
+   "cycle": [
+    "la7: shield recharge rate x1.4",
+    "la7: shield recharge delay x0.5",
+    "la7: spawn energy x2"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: shield recharge rate x1.4",
+    "la7: shield recharge delay x2",
+    "la7: spawn energy x2"
+   ],
+   "weakest": 0.515625
+  },
+  {
+   "cycle": [
+    "la7: shield recharge delay x0.5",
+    "la7: shield recharge delay x1.4",
+    "la7: shield recharge delay x2"
+   ],
+   "weakest": 0.53125
+  },
+  {
+   "cycle": [
+    "la7: shield recharge delay x0.5",
+    "la7: spawn energy x0.5",
+    "la7: shield recharge delay x2"
+   ],
+   "weakest": 0.5546875
+  },
+  {
+   "cycle": [
+    "la7: shield recharge delay x1.4",
+    "la7: shield recharge delay x2",
+    "la7: spawn energy x2"
+   ],
+   "weakest": 0.51171875
+  },
+  {
+   "cycle": [
+    "la7: shield recharge delay x2",
+    "la7: spawn energy x2",
+    "la7: spawn energy x0.5"
+   ],
+   "weakest": 0.515625
+  }
+ ],
+ "pairs": [
+  {
+   "first": "la7: baseline",
+   "second": "la7: shield x0.9",
+   "games": 704,
+   "score": 0.6846590909090909
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: shield x0.95",
+   "games": 704,
+   "score": 0.6832386363636364
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: shield x1.05",
+   "games": 768,
+   "score": 0.3287760416666667
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: shield x1.1",
+   "games": 832,
+   "score": 0.31189903846153844
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: shield recharge rate x0.5",
+   "games": 512,
+   "score": 0.53515625
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: shield recharge rate x0.7",
+   "games": 512,
+   "score": 0.509765625
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: shield recharge rate x1.4",
+   "games": 512,
+   "score": 0.4384765625
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: shield recharge rate x2",
+   "games": 512,
+   "score": 0.451171875
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: shield recharge delay x0.5",
+   "games": 512,
+   "score": 0.484375
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: shield recharge delay x0.7",
+   "games": 512,
+   "score": 0.4814453125
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: shield recharge delay x1.4",
+   "games": 512,
+   "score": 0.5400390625
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: shield recharge delay x2",
+   "games": 512,
+   "score": 0.54296875
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: head-on fraction x0.75",
+   "games": 64,
+   "score": 0.0
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: head-on fraction x1.5",
+   "games": 768,
+   "score": 0.9114583333333334
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: head-on fraction x2",
+   "games": 64,
+   "score": 0.984375
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: hit radius x0.8",
+   "games": 832,
+   "score": 0.32271634615384615
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: hit radius x0.9",
+   "games": 512,
+   "score": 0.3984375
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: hit radius x1.1",
+   "games": 512,
+   "score": 0.5830078125
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: hit radius x1.25",
+   "games": 576,
+   "score": 0.5954861111111112
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: spawn energy x0.5",
+   "games": 512,
+   "score": 0.529296875
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: spawn energy x2",
+   "games": 512,
+   "score": 0.5234375
+  },
+  {
+   "first": "la7: shield x0.9",
+   "second": "la7: shield x0.95",
+   "games": 64,
+   "score": 0.5625
+  },
+  {
+   "first": "la7: shield x0.9",
+   "second": "la7: shield x1.05",
+   "games": 64,
+   "score": 0.1796875
+  },
+  {
+   "first": "la7: shield x0.9",
+   "second": "la7: shield recharge rate x0.5",
+   "games": 128,
+   "score": 0.33984375
+  },
+  {
+   "first": "la7: shield x0.9",
+   "second": "la7: shield recharge rate x0.7",
+   "games": 64,
+   "score": 0.3046875
+  },
+  {
+   "first": "la7: shield x0.9",
+   "second": "la7: shield recharge rate x1.4",
+   "games": 64,
+   "score": 0.3125
+  },
+  {
+   "first": "la7: shield x0.9",
+   "second": "la7: shield recharge rate x2",
+   "games": 64,
+   "score": 0.28125
+  },
+  {
+   "first": "la7: shield x0.9",
+   "second": "la7: shield recharge delay x0.5",
+   "games": 64,
+   "score": 0.375
+  },
+  {
+   "first": "la7: shield x0.9",
+   "second": "la7: shield recharge delay x0.7",
+   "games": 64,
+   "score": 0.2421875
+  },
+  {
+   "first": "la7: shield x0.9",
+   "second": "la7: shield recharge delay x1.4",
+   "games": 128,
+   "score": 0.33984375
+  },
+  {
+   "first": "la7: shield x0.9",
+   "second": "la7: shield recharge delay x2",
+   "games": 128,
+   "score": 0.3671875
+  },
+  {
+   "first": "la7: shield x0.9",
+   "second": "la7: head-on fraction x1.5",
+   "games": 384,
+   "score": 0.7643229166666666
+  },
+  {
+   "first": "la7: shield x0.9",
+   "second": "la7: head-on fraction x2",
+   "games": 704,
+   "score": 0.9524147727272727
+  },
+  {
+   "first": "la7: shield x0.9",
+   "second": "la7: hit radius x1.1",
+   "games": 128,
+   "score": 0.41015625
+  },
+  {
+   "first": "la7: shield x0.9",
+   "second": "la7: hit radius x1.25",
+   "games": 128,
+   "score": 0.44921875
+  },
+  {
+   "first": "la7: shield x0.9",
+   "second": "la7: spawn energy x0.5",
+   "games": 128,
+   "score": 0.31640625
+  },
+  {
+   "first": "la7: shield x0.9",
+   "second": "la7: spawn energy x2",
+   "games": 128,
+   "score": 0.3203125
+  },
+  {
+   "first": "la7: shield x0.95",
+   "second": "la7: shield recharge rate x0.5",
+   "games": 128,
+   "score": 0.35546875
+  },
+  {
+   "first": "la7: shield x0.95",
+   "second": "la7: shield recharge rate x0.7",
+   "games": 128,
+   "score": 0.28125
+  },
+  {
+   "first": "la7: shield x0.95",
+   "second": "la7: shield recharge rate x1.4",
+   "games": 64,
+   "score": 0.3125
+  },
+  {
+   "first": "la7: shield x0.95",
+   "second": "la7: shield recharge rate x2",
+   "games": 64,
+   "score": 0.3359375
+  },
+  {
+   "first": "la7: shield x0.95",
+   "second": "la7: shield recharge delay x0.5",
+   "games": 64,
+   "score": 0.2578125
+  },
+  {
+   "first": "la7: shield x0.95",
+   "second": "la7: shield recharge delay x0.7",
+   "games": 64,
+   "score": 0.2578125
+  },
+  {
+   "first": "la7: shield x0.95",
+   "second": "la7: shield recharge delay x1.4",
+   "games": 128,
+   "score": 0.29296875
+  },
+  {
+   "first": "la7: shield x0.95",
+   "second": "la7: shield recharge delay x2",
+   "games": 128,
+   "score": 0.31640625
+  },
+  {
+   "first": "la7: shield x0.95",
+   "second": "la7: head-on fraction x1.5",
+   "games": 448,
+   "score": 0.8102678571428571
+  },
+  {
+   "first": "la7: shield x0.95",
+   "second": "la7: head-on fraction x2",
+   "games": 576,
+   "score": 0.9635416666666666
+  },
+  {
+   "first": "la7: shield x0.95",
+   "second": "la7: hit radius x0.9",
+   "games": 64,
+   "score": 0.2890625
+  },
+  {
+   "first": "la7: shield x0.95",
+   "second": "la7: hit radius x1.1",
+   "games": 128,
+   "score": 0.38671875
+  },
+  {
+   "first": "la7: shield x0.95",
+   "second": "la7: hit radius x1.25",
+   "games": 64,
+   "score": 0.5234375
+  },
+  {
+   "first": "la7: shield x0.95",
+   "second": "la7: spawn energy x0.5",
+   "games": 128,
+   "score": 0.33203125
+  },
+  {
+   "first": "la7: shield x0.95",
+   "second": "la7: spawn energy x2",
+   "games": 128,
+   "score": 0.40234375
+  },
+  {
+   "first": "la7: shield x1.05",
+   "second": "la7: shield x1.1",
+   "games": 64,
+   "score": 0.4765625
+  },
+  {
+   "first": "la7: shield x1.05",
+   "second": "la7: shield recharge rate x0.5",
+   "games": 64,
+   "score": 0.6796875
+  },
+  {
+   "first": "la7: shield x1.05",
+   "second": "la7: shield recharge rate x0.7",
+   "games": 128,
+   "score": 0.671875
+  },
+  {
+   "first": "la7: shield x1.05",
+   "second": "la7: shield recharge rate x1.4",
+   "games": 128,
+   "score": 0.7109375
+  },
+  {
+   "first": "la7: shield x1.05",
+   "second": "la7: shield recharge rate x2",
+   "games": 128,
+   "score": 0.7109375
+  },
+  {
+   "first": "la7: shield x1.05",
+   "second": "la7: shield recharge delay x0.5",
+   "games": 128,
+   "score": 0.67578125
+  },
+  {
+   "first": "la7: shield x1.05",
+   "second": "la7: shield recharge delay x0.7",
+   "games": 128,
+   "score": 0.70703125
+  },
+  {
+   "first": "la7: shield x1.05",
+   "second": "la7: shield recharge delay x1.4",
+   "games": 64,
+   "score": 0.6640625
+  },
+  {
+   "first": "la7: shield x1.05",
+   "second": "la7: shield recharge delay x2",
+   "games": 64,
+   "score": 0.6796875
+  },
+  {
+   "first": "la7: shield x1.05",
+   "second": "la7: head-on fraction x0.75",
+   "games": 1600,
+   "score": 0.05125
+  },
+  {
+   "first": "la7: shield x1.05",
+   "second": "la7: hit radius x0.9",
+   "games": 192,
+   "score": 0.609375
+  },
+  {
+   "first": "la7: shield x1.05",
+   "second": "la7: hit radius x1.1",
+   "games": 64,
+   "score": 0.7890625
+  },
+  {
+   "first": "la7: shield x1.05",
+   "second": "la7: spawn energy x0.5",
+   "games": 64,
+   "score": 0.7578125
+  },
+  {
+   "first": "la7: shield x1.05",
+   "second": "la7: spawn energy x2",
+   "games": 128,
+   "score": 0.67578125
+  },
+  {
+   "first": "la7: shield x1.1",
+   "second": "la7: shield recharge rate x0.5",
+   "games": 128,
+   "score": 0.7734375
+  },
+  {
+   "first": "la7: shield x1.1",
+   "second": "la7: shield recharge rate x0.7",
+   "games": 128,
+   "score": 0.7421875
+  },
+  {
+   "first": "la7: shield x1.1",
+   "second": "la7: shield recharge rate x1.4",
+   "games": 128,
+   "score": 0.73046875
+  },
+  {
+   "first": "la7: shield x1.1",
+   "second": "la7: shield recharge rate x2",
+   "games": 128,
+   "score": 0.671875
+  },
+  {
+   "first": "la7: shield x1.1",
+   "second": "la7: shield recharge delay x0.5",
+   "games": 128,
+   "score": 0.6328125
+  },
+  {
+   "first": "la7: shield x1.1",
+   "second": "la7: shield recharge delay x0.7",
+   "games": 128,
+   "score": 0.58203125
+  },
+  {
+   "first": "la7: shield x1.1",
+   "second": "la7: shield recharge delay x1.4",
+   "games": 64,
+   "score": 0.671875
+  },
+  {
+   "first": "la7: shield x1.1",
+   "second": "la7: shield recharge delay x2",
+   "games": 64,
+   "score": 0.8515625
+  },
+  {
+   "first": "la7: shield x1.1",
+   "second": "la7: head-on fraction x0.75",
+   "games": 1728,
+   "score": 0.046296296296296294
+  },
+  {
+   "first": "la7: shield x1.1",
+   "second": "la7: hit radius x0.9",
+   "games": 192,
+   "score": 0.6536458333333334
+  },
+  {
+   "first": "la7: shield x1.1",
+   "second": "la7: hit radius x1.1",
+   "games": 64,
+   "score": 0.7578125
+  },
+  {
+   "first": "la7: shield x1.1",
+   "second": "la7: spawn energy x0.5",
+   "games": 64,
+   "score": 0.8125
+  },
+  {
+   "first": "la7: shield x1.1",
+   "second": "la7: spawn energy x2",
+   "games": 64,
+   "score": 0.59375
+  },
+  {
+   "first": "la7: shield recharge rate x0.5",
+   "second": "la7: shield recharge rate x0.7",
+   "games": 128,
+   "score": 0.42578125
+  },
+  {
+   "first": "la7: shield recharge rate x0.5",
+   "second": "la7: shield recharge rate x1.4",
+   "games": 64,
+   "score": 0.453125
+  },
+  {
+   "first": "la7: shield recharge rate x0.5",
+   "second": "la7: shield recharge rate x2",
+   "games": 128,
+   "score": 0.4375
+  },
+  {
+   "first": "la7: shield recharge rate x0.5",
+   "second": "la7: shield recharge delay x0.5",
+   "games": 128,
+   "score": 0.4609375
+  },
+  {
+   "first": "la7: shield recharge rate x0.5",
+   "second": "la7: shield recharge delay x0.7",
+   "games": 128,
+   "score": 0.4765625
+  },
+  {
+   "first": "la7: shield recharge rate x0.5",
+   "second": "la7: shield recharge delay x1.4",
+   "games": 64,
+   "score": 0.5859375
+  },
+  {
+   "first": "la7: shield recharge rate x0.5",
+   "second": "la7: shield recharge delay x2",
+   "games": 128,
+   "score": 0.51953125
+  },
+  {
+   "first": "la7: shield recharge rate x0.5",
+   "second": "la7: head-on fraction x0.5",
+   "games": 64,
+   "score": 0.03125
+  },
+  {
+   "first": "la7: shield recharge rate x0.5",
+   "second": "la7: hit radius x0.8",
+   "games": 64,
+   "score": 0.28125
+  },
+  {
+   "first": "la7: shield recharge rate x0.5",
+   "second": "la7: hit radius x0.9",
+   "games": 128,
+   "score": 0.38671875
+  },
+  {
+   "first": "la7: shield recharge rate x0.5",
+   "second": "la7: hit radius x1.1",
+   "games": 128,
+   "score": 0.58203125
+  },
+  {
+   "first": "la7: shield recharge rate x0.5",
+   "second": "la7: hit radius x1.25",
+   "games": 128,
+   "score": 0.6484375
+  },
+  {
+   "first": "la7: shield recharge rate x0.5",
+   "second": "la7: spawn energy x0.5",
+   "games": 64,
+   "score": 0.53125
+  },
+  {
+   "first": "la7: shield recharge rate x0.5",
+   "second": "la7: spawn energy x2",
+   "games": 64,
+   "score": 0.5625
+  },
+  {
+   "first": "la7: shield recharge rate x0.7",
+   "second": "la7: shield recharge rate x1.4",
+   "games": 64,
+   "score": 0.4609375
+  },
+  {
+   "first": "la7: shield recharge rate x0.7",
+   "second": "la7: shield recharge rate x2",
+   "games": 64,
+   "score": 0.421875
+  },
+  {
+   "first": "la7: shield recharge rate x0.7",
+   "second": "la7: shield recharge delay x0.5",
+   "games": 64,
+   "score": 0.421875
+  },
+  {
+   "first": "la7: shield recharge rate x0.7",
+   "second": "la7: shield recharge delay x0.7",
+   "games": 64,
+   "score": 0.5859375
+  },
+  {
+   "first": "la7: shield recharge rate x0.7",
+   "second": "la7: shield recharge delay x1.4",
+   "games": 128,
+   "score": 0.53515625
+  },
+  {
+   "first": "la7: shield recharge rate x0.7",
+   "second": "la7: shield recharge delay x2",
+   "games": 128,
+   "score": 0.55859375
+  },
+  {
+   "first": "la7: shield recharge rate x0.7",
+   "second": "la7: hit radius x0.8",
+   "games": 128,
+   "score": 0.296875
+  },
+  {
+   "first": "la7: shield recharge rate x0.7",
+   "second": "la7: hit radius x0.9",
+   "games": 128,
+   "score": 0.4765625
+  },
+  {
+   "first": "la7: shield recharge rate x0.7",
+   "second": "la7: hit radius x1.1",
+   "games": 128,
+   "score": 0.5390625
+  },
+  {
+   "first": "la7: shield recharge rate x0.7",
+   "second": "la7: hit radius x1.25",
+   "games": 128,
+   "score": 0.640625
+  },
+  {
+   "first": "la7: shield recharge rate x0.7",
+   "second": "la7: spawn energy x0.5",
+   "games": 128,
+   "score": 0.609375
+  },
+  {
+   "first": "la7: shield recharge rate x0.7",
+   "second": "la7: spawn energy x2",
+   "games": 64,
+   "score": 0.4609375
+  },
+  {
+   "first": "la7: shield recharge rate x1.4",
+   "second": "la7: shield recharge rate x2",
+   "games": 128,
+   "score": 0.53515625
+  },
+  {
+   "first": "la7: shield recharge rate x1.4",
+   "second": "la7: shield recharge delay x0.5",
+   "games": 128,
+   "score": 0.515625
+  },
+  {
+   "first": "la7: shield recharge rate x1.4",
+   "second": "la7: shield recharge delay x0.7",
+   "games": 128,
+   "score": 0.4765625
+  },
+  {
+   "first": "la7: shield recharge rate x1.4",
+   "second": "la7: shield recharge delay x1.4",
+   "games": 128,
+   "score": 0.6328125
+  },
+  {
+   "first": "la7: shield recharge rate x1.4",
+   "second": "la7: shield recharge delay x2",
+   "games": 128,
+   "score": 0.5703125
+  },
+  {
+   "first": "la7: shield recharge rate x1.4",
+   "second": "la7: hit radius x0.8",
+   "games": 128,
+   "score": 0.359375
+  },
+  {
+   "first": "la7: shield recharge rate x1.4",
+   "second": "la7: hit radius x0.9",
+   "games": 128,
+   "score": 0.4296875
+  },
+  {
+   "first": "la7: shield recharge rate x1.4",
+   "second": "la7: hit radius x1.1",
+   "games": 128,
+   "score": 0.5
+  },
+  {
+   "first": "la7: shield recharge rate x1.4",
+   "second": "la7: hit radius x1.25",
+   "games": 128,
+   "score": 0.61328125
+  },
+  {
+   "first": "la7: shield recharge rate x1.4",
+   "second": "la7: spawn energy x0.5",
+   "games": 64,
+   "score": 0.578125
+  },
+  {
+   "first": "la7: shield recharge rate x1.4",
+   "second": "la7: spawn energy x2",
+   "games": 64,
+   "score": 0.484375
+  },
+  {
+   "first": "la7: shield recharge rate x2",
+   "second": "la7: shield recharge delay x0.5",
+   "games": 128,
+   "score": 0.5078125
+  },
+  {
+   "first": "la7: shield recharge rate x2",
+   "second": "la7: shield recharge delay x0.7",
+   "games": 64,
+   "score": 0.5703125
+  },
+  {
+   "first": "la7: shield recharge rate x2",
+   "second": "la7: shield recharge delay x1.4",
+   "games": 128,
+   "score": 0.515625
+  },
+  {
+   "first": "la7: shield recharge rate x2",
+   "second": "la7: shield recharge delay x2",
+   "games": 128,
+   "score": 0.5546875
+  },
+  {
+   "first": "la7: shield recharge rate x2",
+   "second": "la7: hit radius x0.8",
+   "games": 192,
+   "score": 0.3723958333333333
+  },
+  {
+   "first": "la7: shield recharge rate x2",
+   "second": "la7: hit radius x0.9",
+   "games": 128,
+   "score": 0.46875
+  },
+  {
+   "first": "la7: shield recharge rate x2",
+   "second": "la7: hit radius x1.1",
+   "games": 64,
+   "score": 0.6015625
+  },
+  {
+   "first": "la7: shield recharge rate x2",
+   "second": "la7: hit radius x1.25",
+   "games": 128,
+   "score": 0.67578125
+  },
+  {
+   "first": "la7: shield recharge rate x2",
+   "second": "la7: spawn energy x0.5",
+   "games": 64,
+   "score": 0.625
+  },
+  {
+   "first": "la7: shield recharge rate x2",
+   "second": "la7: spawn energy x2",
+   "games": 64,
+   "score": 0.5859375
+  },
+  {
+   "first": "la7: shield recharge delay x0.5",
+   "second": "la7: shield recharge delay x0.7",
+   "games": 128,
+   "score": 0.46484375
+  },
+  {
+   "first": "la7: shield recharge delay x0.5",
+   "second": "la7: shield recharge delay x1.4",
+   "games": 128,
+   "score": 0.5859375
+  },
+  {
+   "first": "la7: shield recharge delay x0.5",
+   "second": "la7: shield recharge delay x2",
+   "games": 64,
+   "score": 0.4453125
+  },
+  {
+   "first": "la7: shield recharge delay x0.5",
+   "second": "la7: hit radius x0.8",
+   "games": 128,
+   "score": 0.32421875
+  },
+  {
+   "first": "la7: shield recharge delay x0.5",
+   "second": "la7: hit radius x0.9",
+   "games": 64,
+   "score": 0.4921875
+  },
+  {
+   "first": "la7: shield recharge delay x0.5",
+   "second": "la7: hit radius x1.1",
+   "games": 64,
+   "score": 0.6640625
+  },
+  {
+   "first": "la7: shield recharge delay x0.5",
+   "second": "la7: hit radius x1.25",
+   "games": 64,
+   "score": 0.6640625
+  },
+  {
+   "first": "la7: shield recharge delay x0.5",
+   "second": "la7: spawn energy x0.5",
+   "games": 128,
+   "score": 0.58203125
+  },
+  {
+   "first": "la7: shield recharge delay x0.5",
+   "second": "la7: spawn energy x2",
+   "games": 128,
+   "score": 0.5078125
+  },
+  {
+   "first": "la7: shield recharge delay x0.7",
+   "second": "la7: shield recharge delay x1.4",
+   "games": 64,
+   "score": 0.53125
+  },
+  {
+   "first": "la7: shield recharge delay x0.7",
+   "second": "la7: shield recharge delay x2",
+   "games": 128,
+   "score": 0.55078125
+  },
+  {
+   "first": "la7: shield recharge delay x0.7",
+   "second": "la7: hit radius x0.8",
+   "games": 128,
+   "score": 0.34765625
+  },
+  {
+   "first": "la7: shield recharge delay x0.7",
+   "second": "la7: hit radius x0.9",
+   "games": 128,
+   "score": 0.41796875
+  },
+  {
+   "first": "la7: shield recharge delay x0.7",
+   "second": "la7: hit radius x1.1",
+   "games": 128,
+   "score": 0.54296875
+  },
+  {
+   "first": "la7: shield recharge delay x0.7",
+   "second": "la7: hit radius x1.25",
+   "games": 64,
+   "score": 0.6328125
+  },
+  {
+   "first": "la7: shield recharge delay x0.7",
+   "second": "la7: spawn energy x0.5",
+   "games": 128,
+   "score": 0.55859375
+  },
+  {
+   "first": "la7: shield recharge delay x0.7",
+   "second": "la7: spawn energy x2",
+   "games": 128,
+   "score": 0.59765625
+  },
+  {
+   "first": "la7: shield recharge delay x1.4",
+   "second": "la7: shield recharge delay x2",
+   "games": 64,
+   "score": 0.53125
+  },
+  {
+   "first": "la7: shield recharge delay x1.4",
+   "second": "la7: head-on fraction x1.5",
+   "games": 64,
+   "score": 0.8359375
+  },
+  {
+   "first": "la7: shield recharge delay x1.4",
+   "second": "la7: hit radius x0.8",
+   "games": 64,
+   "score": 0.40625
+  },
+  {
+   "first": "la7: shield recharge delay x1.4",
+   "second": "la7: hit radius x0.9",
+   "games": 64,
+   "score": 0.3828125
+  },
+  {
+   "first": "la7: shield recharge delay x1.4",
+   "second": "la7: hit radius x1.1",
+   "games": 128,
+   "score": 0.5
+  },
+  {
+   "first": "la7: shield recharge delay x1.4",
+   "second": "la7: hit radius x1.25",
+   "games": 128,
+   "score": 0.51953125
+  },
+  {
+   "first": "la7: shield recharge delay x1.4",
+   "second": "la7: spawn energy x0.5",
+   "games": 128,
+   "score": 0.48828125
+  },
+  {
+   "first": "la7: shield recharge delay x1.4",
+   "second": "la7: spawn energy x2",
+   "games": 128,
+   "score": 0.48828125
+  },
+  {
+   "first": "la7: shield recharge delay x2",
+   "second": "la7: head-on fraction x1.5",
+   "games": 128,
+   "score": 0.8828125
+  },
+  {
+   "first": "la7: shield recharge delay x2",
+   "second": "la7: hit radius x0.8",
+   "games": 64,
+   "score": 0.2265625
+  },
+  {
+   "first": "la7: shield recharge delay x2",
+   "second": "la7: hit radius x0.9",
+   "games": 64,
+   "score": 0.4765625
+  },
+  {
+   "first": "la7: shield recharge delay x2",
+   "second": "la7: hit radius x1.1",
+   "games": 64,
+   "score": 0.5703125
+  },
+  {
+   "first": "la7: shield recharge delay x2",
+   "second": "la7: hit radius x1.25",
+   "games": 128,
+   "score": 0.55078125
+  },
+  {
+   "first": "la7: shield recharge delay x2",
+   "second": "la7: spawn energy x0.5",
+   "games": 128,
+   "score": 0.4140625
+  },
+  {
+   "first": "la7: shield recharge delay x2",
+   "second": "la7: spawn energy x2",
+   "games": 128,
+   "score": 0.515625
+  },
+  {
+   "first": "la7: head-on fraction x0.5",
+   "second": "la7: head-on fraction x0.75",
+   "games": 5568,
+   "score": 0.9786278735632183
+  },
+  {
+   "first": "la7: head-on fraction x0.5",
+   "second": "la7: head-on fraction x1.5",
+   "games": 64,
+   "score": 1.0
+  },
+  {
+   "first": "la7: head-on fraction x0.5",
+   "second": "la7: hit radius x0.8",
+   "games": 64,
+   "score": 1.0
+  },
+  {
+   "first": "la7: head-on fraction x0.75",
+   "second": "la7: hit radius x0.8",
+   "games": 1728,
+   "score": 0.9259259259259259
+  },
+  {
+   "first": "la7: head-on fraction x1.5",
+   "second": "la7: head-on fraction x2",
+   "games": 1216,
+   "score": 0.733141447368421
+  },
+  {
+   "first": "la7: head-on fraction x1.5",
+   "second": "la7: hit radius x1.1",
+   "games": 320,
+   "score": 0.13125
+  },
+  {
+   "first": "la7: head-on fraction x1.5",
+   "second": "la7: hit radius x1.25",
+   "games": 576,
+   "score": 0.17708333333333334
+  },
+  {
+   "first": "la7: head-on fraction x1.5",
+   "second": "la7: spawn energy x0.5",
+   "games": 128,
+   "score": 0.09765625
+  },
+  {
+   "first": "la7: hit radius x0.8",
+   "second": "la7: hit radius x0.9",
+   "games": 192,
+   "score": 0.609375
+  },
+  {
+   "first": "la7: hit radius x0.8",
+   "second": "la7: hit radius x1.1",
+   "games": 64,
+   "score": 0.6796875
+  },
+  {
+   "first": "la7: hit radius x0.8",
+   "second": "la7: spawn energy x0.5",
+   "games": 64,
+   "score": 0.71875
+  },
+  {
+   "first": "la7: hit radius x0.8",
+   "second": "la7: spawn energy x2",
+   "games": 128,
+   "score": 0.671875
+  },
+  {
+   "first": "la7: hit radius x0.9",
+   "second": "la7: hit radius x1.1",
+   "games": 64,
+   "score": 0.6328125
+  },
+  {
+   "first": "la7: hit radius x0.9",
+   "second": "la7: hit radius x1.25",
+   "games": 64,
+   "score": 0.6953125
+  },
+  {
+   "first": "la7: hit radius x0.9",
+   "second": "la7: spawn energy x0.5",
+   "games": 128,
+   "score": 0.5546875
+  },
+  {
+   "first": "la7: hit radius x0.9",
+   "second": "la7: spawn energy x2",
+   "games": 64,
+   "score": 0.59375
+  },
+  {
+   "first": "la7: hit radius x1.1",
+   "second": "la7: hit radius x1.25",
+   "games": 64,
+   "score": 0.515625
+  },
+  {
+   "first": "la7: hit radius x1.1",
+   "second": "la7: spawn energy x0.5",
+   "games": 64,
+   "score": 0.421875
+  },
+  {
+   "first": "la7: hit radius x1.1",
+   "second": "la7: spawn energy x2",
+   "games": 128,
+   "score": 0.5
+  },
+  {
+   "first": "la7: hit radius x1.25",
+   "second": "la7: spawn energy x0.5",
+   "games": 128,
+   "score": 0.40234375
+  },
+  {
+   "first": "la7: hit radius x1.25",
+   "second": "la7: spawn energy x2",
+   "games": 128,
+   "score": 0.33203125
+  },
+  {
+   "first": "la7: spawn energy x0.5",
+   "second": "la7: spawn energy x2",
+   "games": 128,
+   "score": 0.44921875
+  }
+ ]
+}

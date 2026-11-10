@@ -1,0 +1,2143 @@
+{
+ "games": 18432,
+ "slots": [
+  {
+   "slot": "la7: baseline",
+   "elo": 0.0,
+   "stderr": 0.0,
+   "against_baseline": 0.0
+  },
+  {
+   "slot": "la7: muzzle x1.02 + turn x0.95",
+   "elo": -2.666496839047938,
+   "stderr": 11.326085166271989,
+   "against_baseline": -2.666496839047938
+  },
+  {
+   "slot": "la7: muzzle x1.02 + stall x0.92",
+   "elo": 4.936090890297954,
+   "stderr": 11.339615557808477,
+   "against_baseline": 4.936090890297954
+  },
+  {
+   "slot": "la7: muzzle x1.02 + hit radius x1.1",
+   "elo": -11.31883156465094,
+   "stderr": 10.976688012286141,
+   "against_baseline": -11.31883156465094
+  },
+  {
+   "slot": "la7: turn x1.03 + muzzle x0.97",
+   "elo": -32.736803972868046,
+   "stderr": 11.348918935267164,
+   "against_baseline": -32.736803972868046
+  },
+  {
+   "slot": "la7: turn x1.03 + hit radius x1.1",
+   "elo": -23.929702877001322,
+   "stderr": 11.33541330649298,
+   "against_baseline": -23.929702877001322
+  },
+  {
+   "slot": "la7: turn x1.03 + half-lift drag x1.7",
+   "elo": -37.233749682778395,
+   "stderr": 11.089584041925445,
+   "against_baseline": -37.233749682778395
+  },
+  {
+   "slot": "la7: stall x1.08 + half-lift drag x1.7",
+   "elo": 3.353240384186278,
+   "stderr": 11.328203357122277,
+   "against_baseline": 3.353240384186278
+  },
+  {
+   "slot": "la7: stall x1.08 + turn x0.95",
+   "elo": -24.07624191009621,
+   "stderr": 11.0661829970188,
+   "against_baseline": -24.07624191009621
+  },
+  {
+   "slot": "la7: hit radius x0.95 + muzzle x0.97",
+   "elo": -42.66925064637039,
+   "stderr": 11.087478001229755,
+   "against_baseline": -42.66925064637039
+  },
+  {
+   "slot": "la7: hit radius x0.95 + stall x0.92",
+   "elo": -28.93212820758823,
+   "stderr": 11.076159362953952,
+   "against_baseline": -28.93212820758823
+  },
+  {
+   "slot": "la7: 15 Hz + turn x0.95",
+   "elo": 23.31259578476056,
+   "stderr": 11.077994643167218,
+   "against_baseline": 23.31259578476056
+  },
+  {
+   "slot": "la7: 15 Hz + hit radius x1.1",
+   "elo": 0.4306157602890644,
+   "stderr": 11.340095779757217,
+   "against_baseline": 0.4306157602890644
+  },
+  {
+   "slot": "la7: muzzle x1.05 + turn x0.9",
+   "elo": 31.383160193086905,
+   "stderr": 11.03400564737812,
+   "against_baseline": 31.383160193086905
+  },
+  {
+   "slot": "la7: turn x1.1 + muzzle x0.95",
+   "elo": -74.94314590837362,
+   "stderr": 11.456504847637534,
+   "against_baseline": -74.94314590837362
+  },
+  {
+   "slot": "la7: hit radius x0.8 + turn x0.9",
+   "elo": 9.276597597085672,
+   "stderr": 11.324850647764844,
+   "against_baseline": 9.276597597085672
+  },
+  {
+   "slot": "la7: shield x1.05 + head-on x1.1",
+   "elo": -8.882661459475223,
+   "stderr": 11.061840591314821,
+   "against_baseline": -8.882661459475223
+  },
+  {
+   "slot": "la7: damage/s x1.1 + shield x0.95",
+   "elo": 13.073963303443438,
+   "stderr": 11.001103484591884,
+   "against_baseline": 13.073963303443438
+  },
+  {
+   "slot": "la7: stall x1.1 + hit radius x1.25",
+   "elo": -76.41794088608955,
+   "stderr": 11.461635382525298,
+   "against_baseline": -76.41794088608955
+  },
+  {
+   "slot": "la7: muzzle x1.02",
+   "elo": 29.629426787285805,
+   "stderr": 11.359940235310852,
+   "against_baseline": 29.629426787285805
+  },
+  {
+   "slot": "la7: muzzle x0.97",
+   "elo": -81.80609343455873,
+   "stderr": 11.208565927890279,
+   "against_baseline": -81.80609343455873
+  },
+  {
+   "slot": "la7: turn x1.03",
+   "elo": 21.76972364500147,
+   "stderr": 11.350322433257709,
+   "against_baseline": 21.76972364500147
+  },
+  {
+   "slot": "la7: turn x0.95",
+   "elo": -42.996703869125405,
+   "stderr": 11.018980449703692,
+   "against_baseline": -42.996703869125405
+  },
+  {
+   "slot": "la7: hit radius x0.95",
+   "elo": 23.656996985375205,
+   "stderr": 11.367334553034285,
+   "against_baseline": 23.656996985375205
+  },
+  {
+   "slot": "la7: hit radius x1.1",
+   "elo": -54.98835481002152,
+   "stderr": 11.401321727430805,
+   "against_baseline": -54.98835481002152
+  },
+  {
+   "slot": "la7: stall x1.08",
+   "elo": 52.447963917516795,
+   "stderr": 11.32922639875834,
+   "against_baseline": 52.447963917516795
+  },
+  {
+   "slot": "la7: stall x0.92",
+   "elo": -64.89696491873478,
+   "stderr": 11.420870062634222,
+   "against_baseline": -64.89696491873478
+  },
+  {
+   "slot": "la7: half-lift drag x0.5",
+   "elo": 27.886412652645532,
+   "stderr": 11.358087608229262,
+   "against_baseline": 27.886412652645532
+  },
+  {
+   "slot": "la7: half-lift drag x1.7",
+   "elo": -55.53339798897383,
+   "stderr": 11.39436369013754,
+   "against_baseline": -55.53339798897383
+  }
+ ],
+ "models": {
+  "la7": {
+   "elo_per_doubling": {
+    "muzzle_speed": 1775.0974818040688,
+    "sustained_turn_rate": 617.4280561218349,
+    "stall_speed": 397.1150773320841,
+    "handle hit_radius": -375.6203040078688,
+    "handle half_lift_drag": -54.74282601081538,
+    "fire_rate": 103.83402019210747,
+    "max_shield": -54.28889112452388,
+    "handle head_on_fraction": -36.80853234318007,
+    "damage_per_second": 65.86415785795498
+   },
+   "rms_residual": 12.869163577841428
+  },
+  "pooled": {
+   "elo_per_doubling": {
+    "muzzle_speed": 1775.0974818040688,
+    "sustained_turn_rate": 617.4280561218349,
+    "stall_speed": 397.1150773320841,
+    "handle hit_radius": -375.6203040078688,
+    "handle half_lift_drag": -54.74282601081538,
+    "fire_rate": 103.83402019210747,
+    "max_shield": -54.28889112452388,
+    "handle head_on_fraction": -36.80853234318007,
+    "damage_per_second": 65.86415785795498
+   },
+   "rms_residual": 12.869163577841428
+  }
+ },
+ "cycles": [
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: muzzle x1.02 + hit radius x1.1",
+    "la7: muzzle x1.02 + turn x0.95"
+   ],
+   "weakest": 0.5052083333333334
+  },
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: turn x1.03 + hit radius x1.1",
+    "la7: muzzle x1.02 + turn x0.95"
+   ],
+   "weakest": 0.5052083333333334
+  },
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: muzzle x1.02 + stall x0.92",
+    "la7: muzzle x1.05 + turn x0.9"
+   ],
+   "weakest": 0.5052083333333334
+  },
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: muzzle x1.02 + stall x0.92",
+    "la7: hit radius x0.95"
+   ],
+   "weakest": 0.5052083333333334
+  },
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: muzzle x1.02 + hit radius x1.1",
+    "la7: 15 Hz + turn x0.95"
+   ],
+   "weakest": 0.515625
+  },
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: muzzle x1.02 + hit radius x1.1",
+    "la7: stall x1.08"
+   ],
+   "weakest": 0.53125
+  },
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: turn x1.03 + muzzle x0.97",
+    "la7: damage/s x1.1 + shield x0.95"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: turn x1.03 + half-lift drag x1.7",
+    "la7: 15 Hz + turn x0.95"
+   ],
+   "weakest": 0.515625
+  },
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: stall x1.08 + turn x0.95",
+    "la7: turn x1.03"
+   ],
+   "weakest": 0.5208333333333334
+  },
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: hit radius x0.95 + muzzle x0.97",
+    "la7: damage/s x1.1 + shield x0.95"
+   ],
+   "weakest": 0.515625
+  },
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: 15 Hz + hit radius x1.1",
+    "la7: hit radius x0.8 + turn x0.9"
+   ],
+   "weakest": 0.515625
+  },
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: 15 Hz + hit radius x1.1",
+    "la7: muzzle x1.02"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: 15 Hz + hit radius x1.1",
+    "la7: turn x1.03"
+   ],
+   "weakest": 0.5260416666666666
+  },
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: shield x1.05 + head-on x1.1",
+    "la7: hit radius x0.8 + turn x0.9"
+   ],
+   "weakest": 0.5130208333333334
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + turn x0.95",
+    "la7: muzzle x1.02 + stall x0.92",
+    "la7: muzzle x1.02 + hit radius x1.1"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + turn x0.95",
+    "la7: muzzle x1.02 + stall x0.92",
+    "la7: hit radius x0.95"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + turn x0.95",
+    "la7: stall x1.08 + turn x0.95",
+    "la7: muzzle x1.02 + hit radius x1.1"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + turn x0.95",
+    "la7: hit radius x0.95 + muzzle x0.97",
+    "la7: muzzle x1.02 + hit radius x1.1"
+   ],
+   "weakest": 0.546875
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + turn x0.95",
+    "la7: muzzle x1.02",
+    "la7: muzzle x1.02 + hit radius x1.1"
+   ],
+   "weakest": 0.5234375
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + turn x0.95",
+    "la7: 15 Hz + hit radius x1.1",
+    "la7: turn x1.03 + hit radius x1.1"
+   ],
+   "weakest": 0.53125
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + turn x0.95",
+    "la7: 15 Hz + hit radius x1.1",
+    "la7: hit radius x0.8 + turn x0.9"
+   ],
+   "weakest": 0.578125
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + turn x0.95",
+    "la7: muzzle x1.02",
+    "la7: hit radius x0.8 + turn x0.9"
+   ],
+   "weakest": 0.5234375
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + turn x0.95",
+    "la7: muzzle x1.02",
+    "la7: hit radius x0.95"
+   ],
+   "weakest": 0.5234375
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + stall x0.92",
+    "la7: muzzle x1.02 + hit radius x1.1",
+    "la7: 15 Hz + turn x0.95"
+   ],
+   "weakest": 0.5234375
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + stall x0.92",
+    "la7: turn x1.03 + half-lift drag x1.7",
+    "la7: 15 Hz + turn x0.95"
+   ],
+   "weakest": 0.5625
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + stall x0.92",
+    "la7: muzzle x1.05 + turn x0.9",
+    "la7: stall x1.08 + half-lift drag x1.7"
+   ],
+   "weakest": 0.5390625
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + stall x0.92",
+    "la7: hit radius x0.95",
+    "la7: stall x1.08 + half-lift drag x1.7"
+   ],
+   "weakest": 0.546875
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + stall x0.92",
+    "la7: muzzle x1.05 + turn x0.9",
+    "la7: shield x1.05 + head-on x1.1"
+   ],
+   "weakest": 0.5390625
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + stall x0.92",
+    "la7: muzzle x1.05 + turn x0.9",
+    "la7: half-lift drag x0.5"
+   ],
+   "weakest": 0.53125
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + hit radius x1.1",
+    "la7: hit radius x0.95 + stall x0.92",
+    "la7: hit radius x0.95 + muzzle x0.97"
+   ],
+   "weakest": 0.546875
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + hit radius x1.1",
+    "la7: 15 Hz + turn x0.95",
+    "la7: hit radius x0.95 + muzzle x0.97"
+   ],
+   "weakest": 0.5234375
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + hit radius x1.1",
+    "la7: half-lift drag x1.7",
+    "la7: hit radius x0.95 + muzzle x0.97"
+   ],
+   "weakest": 0.546875
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + hit radius x1.1",
+    "la7: 15 Hz + turn x0.95",
+    "la7: turn x1.03"
+   ],
+   "weakest": 0.5234375
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + hit radius x1.1",
+    "la7: stall x1.08",
+    "la7: muzzle x1.02"
+   ],
+   "weakest": 0.53125
+  },
+  {
+   "cycle": [
+    "la7: muzzle x1.02 + hit radius x1.1",
+    "la7: stall x1.08",
+    "la7: turn x1.03"
+   ],
+   "weakest": 0.53125
+  },
+  {
+   "cycle": [
+    "la7: turn x1.03 + muzzle x0.97",
+    "la7: damage/s x1.1 + shield x0.95",
+    "la7: hit radius x1.1"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: turn x1.03 + muzzle x0.97",
+    "la7: half-lift drag x1.7",
+    "la7: hit radius x1.1"
+   ],
+   "weakest": 0.515625
+  },
+  {
+   "cycle": [
+    "la7: turn x1.03 + hit radius x1.1",
+    "la7: stall x0.92",
+    "la7: 15 Hz + hit radius x1.1"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: turn x1.03 + hit radius x1.1",
+    "la7: stall x1.1 + hit radius x1.25",
+    "la7: shield x1.05 + head-on x1.1"
+   ],
+   "weakest": 0.5625
+  },
+  {
+   "cycle": [
+    "la7: turn x1.03 + hit radius x1.1",
+    "la7: hit radius x1.1",
+    "la7: shield x1.05 + head-on x1.1"
+   ],
+   "weakest": 0.5625
+  },
+  {
+   "cycle": [
+    "la7: turn x1.03 + half-lift drag x1.7",
+    "la7: 15 Hz + turn x0.95",
+    "la7: hit radius x0.95 + muzzle x0.97"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: turn x1.03 + half-lift drag x1.7",
+    "la7: half-lift drag x1.7",
+    "la7: hit radius x0.95 + muzzle x0.97"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: turn x1.03 + half-lift drag x1.7",
+    "la7: 15 Hz + turn x0.95",
+    "la7: hit radius x0.95 + stall x0.92"
+   ],
+   "weakest": 0.5546875
+  },
+  {
+   "cycle": [
+    "la7: turn x1.03 + half-lift drag x1.7",
+    "la7: 15 Hz + turn x0.95",
+    "la7: hit radius x0.95"
+   ],
+   "weakest": 0.546875
+  },
+  {
+   "cycle": [
+    "la7: stall x1.08 + half-lift drag x1.7",
+    "la7: 15 Hz + hit radius x1.1",
+    "la7: hit radius x0.8 + turn x0.9"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: stall x1.08 + turn x0.95",
+    "la7: hit radius x0.95 + stall x0.92",
+    "la7: hit radius x0.95 + muzzle x0.97"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: stall x1.08 + turn x0.95",
+    "la7: hit radius x0.95 + stall x0.92",
+    "la7: shield x1.05 + head-on x1.1"
+   ],
+   "weakest": 0.53125
+  },
+  {
+   "cycle": [
+    "la7: stall x1.08 + turn x0.95",
+    "la7: stall x1.1 + hit radius x1.25",
+    "la7: shield x1.05 + head-on x1.1"
+   ],
+   "weakest": 0.5625
+  },
+  {
+   "cycle": [
+    "la7: stall x1.08 + turn x0.95",
+    "la7: turn x1.03",
+    "la7: shield x1.05 + head-on x1.1"
+   ],
+   "weakest": 0.53125
+  },
+  {
+   "cycle": [
+    "la7: stall x1.08 + turn x0.95",
+    "la7: hit radius x1.1",
+    "la7: shield x1.05 + head-on x1.1"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: stall x1.08 + turn x0.95",
+    "la7: turn x1.03",
+    "la7: damage/s x1.1 + shield x0.95"
+   ],
+   "weakest": 0.53125
+  },
+  {
+   "cycle": [
+    "la7: stall x1.08 + turn x0.95",
+    "la7: turn x1.03",
+    "la7: half-lift drag x0.5"
+   ],
+   "weakest": 0.53125
+  },
+  {
+   "cycle": [
+    "la7: hit radius x0.95 + muzzle x0.97",
+    "la7: stall x1.1 + hit radius x1.25",
+    "la7: shield x1.05 + head-on x1.1"
+   ],
+   "weakest": 0.53125
+  },
+  {
+   "cycle": [
+    "la7: hit radius x0.95 + muzzle x0.97",
+    "la7: stall x1.1 + hit radius x1.25",
+    "la7: turn x0.95"
+   ],
+   "weakest": 0.5390625
+  },
+  {
+   "cycle": [
+    "la7: hit radius x0.95 + muzzle x0.97",
+    "la7: stall x1.1 + hit radius x1.25",
+    "la7: half-lift drag x1.7"
+   ],
+   "weakest": 0.546875
+  },
+  {
+   "cycle": [
+    "la7: 15 Hz + turn x0.95",
+    "la7: 15 Hz + hit radius x1.1",
+    "la7: muzzle x1.02"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: 15 Hz + turn x0.95",
+    "la7: half-lift drag x0.5",
+    "la7: muzzle x1.02"
+   ],
+   "weakest": 0.53125
+  },
+  {
+   "cycle": [
+    "la7: 15 Hz + hit radius x1.1",
+    "la7: hit radius x0.8 + turn x0.9",
+    "la7: damage/s x1.1 + shield x0.95"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: 15 Hz + hit radius x1.1",
+    "la7: hit radius x0.8 + turn x0.9",
+    "la7: stall x0.92"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: 15 Hz + hit radius x1.1",
+    "la7: muzzle x1.02",
+    "la7: damage/s x1.1 + shield x0.95"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: 15 Hz + hit radius x1.1",
+    "la7: turn x1.03",
+    "la7: damage/s x1.1 + shield x0.95"
+   ],
+   "weakest": 0.5546875
+  },
+  {
+   "cycle": [
+    "la7: 15 Hz + hit radius x1.1",
+    "la7: turn x1.03",
+    "la7: half-lift drag x0.5"
+   ],
+   "weakest": 0.515625
+  },
+  {
+   "cycle": [
+    "la7: 15 Hz + hit radius x1.1",
+    "la7: half-lift drag x1.7",
+    "la7: stall x0.92"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: turn x1.1 + muzzle x0.95",
+    "la7: stall x1.1 + hit radius x1.25",
+    "la7: muzzle x0.97"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: turn x1.1 + muzzle x0.95",
+    "la7: stall x1.1 + hit radius x1.25",
+    "la7: turn x0.95"
+   ],
+   "weakest": 0.5390625
+  },
+  {
+   "cycle": [
+    "la7: turn x1.1 + muzzle x0.95",
+    "la7: stall x1.1 + hit radius x1.25",
+    "la7: half-lift drag x1.7"
+   ],
+   "weakest": 0.546875
+  },
+  {
+   "cycle": [
+    "la7: hit radius x0.8 + turn x0.9",
+    "la7: hit radius x1.1",
+    "la7: shield x1.05 + head-on x1.1"
+   ],
+   "weakest": 0.5234375
+  },
+  {
+   "cycle": [
+    "la7: shield x1.05 + head-on x1.1",
+    "la7: half-lift drag x1.7",
+    "la7: hit radius x1.1"
+   ],
+   "weakest": 0.53125
+  },
+  {
+   "cycle": [
+    "la7: stall x1.1 + hit radius x1.25",
+    "la7: muzzle x0.97",
+    "la7: stall x0.92"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: stall x1.1 + hit radius x1.25",
+    "la7: turn x0.95",
+    "la7: stall x0.92"
+   ],
+   "weakest": 0.5234375
+  },
+  {
+   "cycle": [
+    "la7: stall x1.1 + hit radius x1.25",
+    "la7: half-lift drag x1.7",
+    "la7: stall x0.92"
+   ],
+   "weakest": 0.5234375
+  }
+ ],
+ "pairs": [
+  {
+   "first": "la7: baseline",
+   "second": "la7: muzzle x1.02 + turn x0.95",
+   "games": 192,
+   "score": 0.4947916666666667
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: muzzle x1.02 + stall x0.92",
+   "games": 192,
+   "score": 0.5052083333333334
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: muzzle x1.02 + hit radius x1.1",
+   "games": 256,
+   "score": 0.548828125
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: turn x1.03 + muzzle x0.97",
+   "games": 192,
+   "score": 0.5494791666666666
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: turn x1.03 + hit radius x1.1",
+   "games": 192,
+   "score": 0.5364583333333334
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: turn x1.03 + half-lift drag x1.7",
+   "games": 192,
+   "score": 0.5338541666666666
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: stall x1.08 + half-lift drag x1.7",
+   "games": 192,
+   "score": 0.5
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: stall x1.08 + turn x0.95",
+   "games": 192,
+   "score": 0.5208333333333334
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: hit radius x0.95 + muzzle x0.97",
+   "games": 192,
+   "score": 0.5234375
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: hit radius x0.95 + stall x0.92",
+   "games": 192,
+   "score": 0.5572916666666666
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: 15 Hz + turn x0.95",
+   "games": 192,
+   "score": 0.484375
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: 15 Hz + hit radius x1.1",
+   "games": 192,
+   "score": 0.5260416666666666
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: muzzle x1.05 + turn x0.9",
+   "games": 256,
+   "score": 0.4609375
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: turn x1.1 + muzzle x0.95",
+   "games": 192,
+   "score": 0.6041666666666666
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: hit radius x0.8 + turn x0.9",
+   "games": 192,
+   "score": 0.484375
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: shield x1.05 + head-on x1.1",
+   "games": 192,
+   "score": 0.5130208333333334
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: damage/s x1.1 + shield x0.95",
+   "games": 256,
+   "score": 0.435546875
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: stall x1.1 + hit radius x1.25",
+   "games": 192,
+   "score": 0.6302083333333334
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: muzzle x1.02",
+   "games": 192,
+   "score": 0.46875
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: muzzle x0.97",
+   "games": 192,
+   "score": 0.6145833333333334
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: turn x1.03",
+   "games": 192,
+   "score": 0.4739583333333333
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: turn x0.95",
+   "games": 256,
+   "score": 0.533203125
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: hit radius x0.95",
+   "games": 192,
+   "score": 0.4791666666666667
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: hit radius x1.1",
+   "games": 192,
+   "score": 0.6197916666666666
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: stall x1.08",
+   "games": 256,
+   "score": 0.43359375
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: stall x0.92",
+   "games": 192,
+   "score": 0.5703125
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: half-lift drag x0.5",
+   "games": 192,
+   "score": 0.453125
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: half-lift drag x1.7",
+   "games": 192,
+   "score": 0.5572916666666666
+  },
+  {
+   "first": "la7: muzzle x1.02 + turn x0.95",
+   "second": "la7: muzzle x1.02 + stall x0.92",
+   "games": 64,
+   "score": 0.5078125
+  },
+  {
+   "first": "la7: muzzle x1.02 + turn x0.95",
+   "second": "la7: muzzle x1.02 + hit radius x1.1",
+   "games": 64,
+   "score": 0.4453125
+  },
+  {
+   "first": "la7: muzzle x1.02 + turn x0.95",
+   "second": "la7: turn x1.03 + muzzle x0.97",
+   "games": 64,
+   "score": 0.5
+  },
+  {
+   "first": "la7: muzzle x1.02 + turn x0.95",
+   "second": "la7: turn x1.03 + hit radius x1.1",
+   "games": 64,
+   "score": 0.46875
+  },
+  {
+   "first": "la7: muzzle x1.02 + turn x0.95",
+   "second": "la7: stall x1.08 + turn x0.95",
+   "games": 64,
+   "score": 0.5234375
+  },
+  {
+   "first": "la7: muzzle x1.02 + turn x0.95",
+   "second": "la7: hit radius x0.95 + muzzle x0.97",
+   "games": 64,
+   "score": 0.671875
+  },
+  {
+   "first": "la7: muzzle x1.02 + turn x0.95",
+   "second": "la7: 15 Hz + hit radius x1.1",
+   "games": 64,
+   "score": 0.578125
+  },
+  {
+   "first": "la7: muzzle x1.02 + turn x0.95",
+   "second": "la7: turn x1.1 + muzzle x0.95",
+   "games": 64,
+   "score": 0.671875
+  },
+  {
+   "first": "la7: muzzle x1.02 + turn x0.95",
+   "second": "la7: hit radius x0.8 + turn x0.9",
+   "games": 64,
+   "score": 0.421875
+  },
+  {
+   "first": "la7: muzzle x1.02 + turn x0.95",
+   "second": "la7: muzzle x1.02",
+   "games": 64,
+   "score": 0.5234375
+  },
+  {
+   "first": "la7: muzzle x1.02 + turn x0.95",
+   "second": "la7: turn x0.95",
+   "games": 64,
+   "score": 0.5859375
+  },
+  {
+   "first": "la7: muzzle x1.02 + turn x0.95",
+   "second": "la7: hit radius x0.95",
+   "games": 64,
+   "score": 0.328125
+  },
+  {
+   "first": "la7: muzzle x1.02 + turn x0.95",
+   "second": "la7: stall x1.08",
+   "games": 64,
+   "score": 0.3671875
+  },
+  {
+   "first": "la7: muzzle x1.02 + turn x0.95",
+   "second": "la7: half-lift drag x1.7",
+   "games": 64,
+   "score": 0.59375
+  },
+  {
+   "first": "la7: muzzle x1.02 + stall x0.92",
+   "second": "la7: muzzle x1.02 + hit radius x1.1",
+   "games": 64,
+   "score": 0.53125
+  },
+  {
+   "first": "la7: muzzle x1.02 + stall x0.92",
+   "second": "la7: turn x1.03 + half-lift drag x1.7",
+   "games": 64,
+   "score": 0.59375
+  },
+  {
+   "first": "la7: muzzle x1.02 + stall x0.92",
+   "second": "la7: stall x1.08 + half-lift drag x1.7",
+   "games": 64,
+   "score": 0.453125
+  },
+  {
+   "first": "la7: muzzle x1.02 + stall x0.92",
+   "second": "la7: 15 Hz + turn x0.95",
+   "games": 64,
+   "score": 0.4375
+  },
+  {
+   "first": "la7: muzzle x1.02 + stall x0.92",
+   "second": "la7: muzzle x1.05 + turn x0.9",
+   "games": 64,
+   "score": 0.5390625
+  },
+  {
+   "first": "la7: muzzle x1.02 + stall x0.92",
+   "second": "la7: turn x1.1 + muzzle x0.95",
+   "games": 64,
+   "score": 0.6015625
+  },
+  {
+   "first": "la7: muzzle x1.02 + stall x0.92",
+   "second": "la7: shield x1.05 + head-on x1.1",
+   "games": 64,
+   "score": 0.4296875
+  },
+  {
+   "first": "la7: muzzle x1.02 + stall x0.92",
+   "second": "la7: damage/s x1.1 + shield x0.95",
+   "games": 64,
+   "score": 0.4921875
+  },
+  {
+   "first": "la7: muzzle x1.02 + stall x0.92",
+   "second": "la7: muzzle x0.97",
+   "games": 64,
+   "score": 0.65625
+  },
+  {
+   "first": "la7: muzzle x1.02 + stall x0.92",
+   "second": "la7: turn x1.03",
+   "games": 64,
+   "score": 0.4765625
+  },
+  {
+   "first": "la7: muzzle x1.02 + stall x0.92",
+   "second": "la7: hit radius x0.95",
+   "games": 64,
+   "score": 0.5546875
+  },
+  {
+   "first": "la7: muzzle x1.02 + stall x0.92",
+   "second": "la7: stall x0.92",
+   "games": 64,
+   "score": 0.6015625
+  },
+  {
+   "first": "la7: muzzle x1.02 + stall x0.92",
+   "second": "la7: half-lift drag x0.5",
+   "games": 64,
+   "score": 0.46875
+  },
+  {
+   "first": "la7: muzzle x1.02 + hit radius x1.1",
+   "second": "la7: turn x1.03 + muzzle x0.97",
+   "games": 64,
+   "score": 0.59375
+  },
+  {
+   "first": "la7: muzzle x1.02 + hit radius x1.1",
+   "second": "la7: turn x1.03 + hit radius x1.1",
+   "games": 64,
+   "score": 0.5078125
+  },
+  {
+   "first": "la7: muzzle x1.02 + hit radius x1.1",
+   "second": "la7: stall x1.08 + turn x0.95",
+   "games": 64,
+   "score": 0.4921875
+  },
+  {
+   "first": "la7: muzzle x1.02 + hit radius x1.1",
+   "second": "la7: hit radius x0.95 + muzzle x0.97",
+   "games": 64,
+   "score": 0.453125
+  },
+  {
+   "first": "la7: muzzle x1.02 + hit radius x1.1",
+   "second": "la7: hit radius x0.95 + stall x0.92",
+   "games": 64,
+   "score": 0.5859375
+  },
+  {
+   "first": "la7: muzzle x1.02 + hit radius x1.1",
+   "second": "la7: 15 Hz + turn x0.95",
+   "games": 64,
+   "score": 0.5234375
+  },
+  {
+   "first": "la7: muzzle x1.02 + hit radius x1.1",
+   "second": "la7: turn x1.1 + muzzle x0.95",
+   "games": 64,
+   "score": 0.53125
+  },
+  {
+   "first": "la7: muzzle x1.02 + hit radius x1.1",
+   "second": "la7: hit radius x0.8 + turn x0.9",
+   "games": 64,
+   "score": 0.4140625
+  },
+  {
+   "first": "la7: muzzle x1.02 + hit radius x1.1",
+   "second": "la7: muzzle x1.02",
+   "games": 64,
+   "score": 0.4140625
+  },
+  {
+   "first": "la7: muzzle x1.02 + hit radius x1.1",
+   "second": "la7: turn x1.03",
+   "games": 64,
+   "score": 0.4609375
+  },
+  {
+   "first": "la7: muzzle x1.02 + hit radius x1.1",
+   "second": "la7: stall x1.08",
+   "games": 64,
+   "score": 0.53125
+  },
+  {
+   "first": "la7: muzzle x1.02 + hit radius x1.1",
+   "second": "la7: half-lift drag x1.7",
+   "games": 64,
+   "score": 0.578125
+  },
+  {
+   "first": "la7: turn x1.03 + muzzle x0.97",
+   "second": "la7: turn x1.03 + half-lift drag x1.7",
+   "games": 64,
+   "score": 0.4765625
+  },
+  {
+   "first": "la7: turn x1.03 + muzzle x0.97",
+   "second": "la7: stall x1.08 + half-lift drag x1.7",
+   "games": 64,
+   "score": 0.40625
+  },
+  {
+   "first": "la7: turn x1.03 + muzzle x0.97",
+   "second": "la7: hit radius x0.95 + stall x0.92",
+   "games": 64,
+   "score": 0.4609375
+  },
+  {
+   "first": "la7: turn x1.03 + muzzle x0.97",
+   "second": "la7: muzzle x1.05 + turn x0.9",
+   "games": 64,
+   "score": 0.4296875
+  },
+  {
+   "first": "la7: turn x1.03 + muzzle x0.97",
+   "second": "la7: damage/s x1.1 + shield x0.95",
+   "games": 64,
+   "score": 0.5078125
+  },
+  {
+   "first": "la7: turn x1.03 + muzzle x0.97",
+   "second": "la7: stall x1.1 + hit radius x1.25",
+   "games": 64,
+   "score": 0.546875
+  },
+  {
+   "first": "la7: turn x1.03 + muzzle x0.97",
+   "second": "la7: muzzle x0.97",
+   "games": 64,
+   "score": 0.546875
+  },
+  {
+   "first": "la7: turn x1.03 + muzzle x0.97",
+   "second": "la7: turn x1.03",
+   "games": 64,
+   "score": 0.4921875
+  },
+  {
+   "first": "la7: turn x1.03 + muzzle x0.97",
+   "second": "la7: hit radius x1.1",
+   "games": 64,
+   "score": 0.484375
+  },
+  {
+   "first": "la7: turn x1.03 + muzzle x0.97",
+   "second": "la7: stall x0.92",
+   "games": 64,
+   "score": 0.578125
+  },
+  {
+   "first": "la7: turn x1.03 + muzzle x0.97",
+   "second": "la7: half-lift drag x0.5",
+   "games": 64,
+   "score": 0.4140625
+  },
+  {
+   "first": "la7: turn x1.03 + muzzle x0.97",
+   "second": "la7: half-lift drag x1.7",
+   "games": 64,
+   "score": 0.5546875
+  },
+  {
+   "first": "la7: turn x1.03 + hit radius x1.1",
+   "second": "la7: turn x1.03 + half-lift drag x1.7",
+   "games": 64,
+   "score": 0.5546875
+  },
+  {
+   "first": "la7: turn x1.03 + hit radius x1.1",
+   "second": "la7: stall x1.08 + half-lift drag x1.7",
+   "games": 64,
+   "score": 0.4296875
+  },
+  {
+   "first": "la7: turn x1.03 + hit radius x1.1",
+   "second": "la7: hit radius x0.95 + stall x0.92",
+   "games": 64,
+   "score": 0.421875
+  },
+  {
+   "first": "la7: turn x1.03 + hit radius x1.1",
+   "second": "la7: 15 Hz + hit radius x1.1",
+   "games": 64,
+   "score": 0.46875
+  },
+  {
+   "first": "la7: turn x1.03 + hit radius x1.1",
+   "second": "la7: shield x1.05 + head-on x1.1",
+   "games": 64,
+   "score": 0.390625
+  },
+  {
+   "first": "la7: turn x1.03 + hit radius x1.1",
+   "second": "la7: damage/s x1.1 + shield x0.95",
+   "games": 64,
+   "score": 0.4609375
+  },
+  {
+   "first": "la7: turn x1.03 + hit radius x1.1",
+   "second": "la7: stall x1.1 + hit radius x1.25",
+   "games": 64,
+   "score": 0.5703125
+  },
+  {
+   "first": "la7: turn x1.03 + hit radius x1.1",
+   "second": "la7: muzzle x0.97",
+   "games": 64,
+   "score": 0.5390625
+  },
+  {
+   "first": "la7: turn x1.03 + hit radius x1.1",
+   "second": "la7: hit radius x0.95",
+   "games": 64,
+   "score": 0.3984375
+  },
+  {
+   "first": "la7: turn x1.03 + hit radius x1.1",
+   "second": "la7: hit radius x1.1",
+   "games": 64,
+   "score": 0.6640625
+  },
+  {
+   "first": "la7: turn x1.03 + hit radius x1.1",
+   "second": "la7: stall x0.92",
+   "games": 64,
+   "score": 0.6015625
+  },
+  {
+   "first": "la7: turn x1.03 + hit radius x1.1",
+   "second": "la7: half-lift drag x0.5",
+   "games": 64,
+   "score": 0.4296875
+  },
+  {
+   "first": "la7: turn x1.03 + half-lift drag x1.7",
+   "second": "la7: stall x1.08 + turn x0.95",
+   "games": 64,
+   "score": 0.390625
+  },
+  {
+   "first": "la7: turn x1.03 + half-lift drag x1.7",
+   "second": "la7: hit radius x0.95 + muzzle x0.97",
+   "games": 64,
+   "score": 0.4921875
+  },
+  {
+   "first": "la7: turn x1.03 + half-lift drag x1.7",
+   "second": "la7: hit radius x0.95 + stall x0.92",
+   "games": 64,
+   "score": 0.4453125
+  },
+  {
+   "first": "la7: turn x1.03 + half-lift drag x1.7",
+   "second": "la7: 15 Hz + turn x0.95",
+   "games": 64,
+   "score": 0.578125
+  },
+  {
+   "first": "la7: turn x1.03 + half-lift drag x1.7",
+   "second": "la7: muzzle x1.05 + turn x0.9",
+   "games": 64,
+   "score": 0.3671875
+  },
+  {
+   "first": "la7: turn x1.03 + half-lift drag x1.7",
+   "second": "la7: turn x1.1 + muzzle x0.95",
+   "games": 64,
+   "score": 0.6171875
+  },
+  {
+   "first": "la7: turn x1.03 + half-lift drag x1.7",
+   "second": "la7: hit radius x0.8 + turn x0.9",
+   "games": 64,
+   "score": 0.34375
+  },
+  {
+   "first": "la7: turn x1.03 + half-lift drag x1.7",
+   "second": "la7: stall x1.1 + hit radius x1.25",
+   "games": 64,
+   "score": 0.6015625
+  },
+  {
+   "first": "la7: turn x1.03 + half-lift drag x1.7",
+   "second": "la7: muzzle x0.97",
+   "games": 64,
+   "score": 0.59375
+  },
+  {
+   "first": "la7: turn x1.03 + half-lift drag x1.7",
+   "second": "la7: turn x0.95",
+   "games": 64,
+   "score": 0.5
+  },
+  {
+   "first": "la7: turn x1.03 + half-lift drag x1.7",
+   "second": "la7: hit radius x0.95",
+   "games": 64,
+   "score": 0.3359375
+  },
+  {
+   "first": "la7: turn x1.03 + half-lift drag x1.7",
+   "second": "la7: half-lift drag x1.7",
+   "games": 64,
+   "score": 0.5625
+  },
+  {
+   "first": "la7: stall x1.08 + half-lift drag x1.7",
+   "second": "la7: stall x1.08 + turn x0.95",
+   "games": 64,
+   "score": 0.6875
+  },
+  {
+   "first": "la7: stall x1.08 + half-lift drag x1.7",
+   "second": "la7: hit radius x0.95 + muzzle x0.97",
+   "games": 64,
+   "score": 0.5
+  },
+  {
+   "first": "la7: stall x1.08 + half-lift drag x1.7",
+   "second": "la7: 15 Hz + turn x0.95",
+   "games": 64,
+   "score": 0.5
+  },
+  {
+   "first": "la7: stall x1.08 + half-lift drag x1.7",
+   "second": "la7: 15 Hz + hit radius x1.1",
+   "games": 64,
+   "score": 0.5546875
+  },
+  {
+   "first": "la7: stall x1.08 + half-lift drag x1.7",
+   "second": "la7: muzzle x1.05 + turn x0.9",
+   "games": 64,
+   "score": 0.40625
+  },
+  {
+   "first": "la7: stall x1.08 + half-lift drag x1.7",
+   "second": "la7: turn x1.1 + muzzle x0.95",
+   "games": 64,
+   "score": 0.6328125
+  },
+  {
+   "first": "la7: stall x1.08 + half-lift drag x1.7",
+   "second": "la7: hit radius x0.8 + turn x0.9",
+   "games": 64,
+   "score": 0.4921875
+  },
+  {
+   "first": "la7: stall x1.08 + half-lift drag x1.7",
+   "second": "la7: turn x0.95",
+   "games": 64,
+   "score": 0.484375
+  },
+  {
+   "first": "la7: stall x1.08 + half-lift drag x1.7",
+   "second": "la7: hit radius x0.95",
+   "games": 64,
+   "score": 0.421875
+  },
+  {
+   "first": "la7: stall x1.08 + half-lift drag x1.7",
+   "second": "la7: stall x1.08",
+   "games": 64,
+   "score": 0.34375
+  },
+  {
+   "first": "la7: stall x1.08 + half-lift drag x1.7",
+   "second": "la7: half-lift drag x1.7",
+   "games": 64,
+   "score": 0.5625
+  },
+  {
+   "first": "la7: stall x1.08 + turn x0.95",
+   "second": "la7: hit radius x0.95 + muzzle x0.97",
+   "games": 64,
+   "score": 0.4921875
+  },
+  {
+   "first": "la7: stall x1.08 + turn x0.95",
+   "second": "la7: hit radius x0.95 + stall x0.92",
+   "games": 64,
+   "score": 0.578125
+  },
+  {
+   "first": "la7: stall x1.08 + turn x0.95",
+   "second": "la7: shield x1.05 + head-on x1.1",
+   "games": 64,
+   "score": 0.40625
+  },
+  {
+   "first": "la7: stall x1.08 + turn x0.95",
+   "second": "la7: damage/s x1.1 + shield x0.95",
+   "games": 64,
+   "score": 0.4140625
+  },
+  {
+   "first": "la7: stall x1.08 + turn x0.95",
+   "second": "la7: stall x1.1 + hit radius x1.25",
+   "games": 64,
+   "score": 0.5859375
+  },
+  {
+   "first": "la7: stall x1.08 + turn x0.95",
+   "second": "la7: muzzle x1.02",
+   "games": 64,
+   "score": 0.4140625
+  },
+  {
+   "first": "la7: stall x1.08 + turn x0.95",
+   "second": "la7: muzzle x0.97",
+   "games": 64,
+   "score": 0.6171875
+  },
+  {
+   "first": "la7: stall x1.08 + turn x0.95",
+   "second": "la7: turn x1.03",
+   "games": 64,
+   "score": 0.53125
+  },
+  {
+   "first": "la7: stall x1.08 + turn x0.95",
+   "second": "la7: hit radius x1.1",
+   "games": 64,
+   "score": 0.5078125
+  },
+  {
+   "first": "la7: stall x1.08 + turn x0.95",
+   "second": "la7: stall x0.92",
+   "games": 64,
+   "score": 0.5546875
+  },
+  {
+   "first": "la7: stall x1.08 + turn x0.95",
+   "second": "la7: half-lift drag x0.5",
+   "games": 64,
+   "score": 0.3828125
+  },
+  {
+   "first": "la7: hit radius x0.95 + muzzle x0.97",
+   "second": "la7: hit radius x0.95 + stall x0.92",
+   "games": 64,
+   "score": 0.4453125
+  },
+  {
+   "first": "la7: hit radius x0.95 + muzzle x0.97",
+   "second": "la7: 15 Hz + turn x0.95",
+   "games": 64,
+   "score": 0.2578125
+  },
+  {
+   "first": "la7: hit radius x0.95 + muzzle x0.97",
+   "second": "la7: muzzle x1.05 + turn x0.9",
+   "games": 64,
+   "score": 0.3671875
+  },
+  {
+   "first": "la7: hit radius x0.95 + muzzle x0.97",
+   "second": "la7: shield x1.05 + head-on x1.1",
+   "games": 64,
+   "score": 0.46875
+  },
+  {
+   "first": "la7: hit radius x0.95 + muzzle x0.97",
+   "second": "la7: damage/s x1.1 + shield x0.95",
+   "games": 64,
+   "score": 0.515625
+  },
+  {
+   "first": "la7: hit radius x0.95 + muzzle x0.97",
+   "second": "la7: stall x1.1 + hit radius x1.25",
+   "games": 64,
+   "score": 0.59375
+  },
+  {
+   "first": "la7: hit radius x0.95 + muzzle x0.97",
+   "second": "la7: muzzle x0.97",
+   "games": 64,
+   "score": 0.5234375
+  },
+  {
+   "first": "la7: hit radius x0.95 + muzzle x0.97",
+   "second": "la7: turn x0.95",
+   "games": 64,
+   "score": 0.4609375
+  },
+  {
+   "first": "la7: hit radius x0.95 + muzzle x0.97",
+   "second": "la7: stall x0.92",
+   "games": 64,
+   "score": 0.546875
+  },
+  {
+   "first": "la7: hit radius x0.95 + muzzle x0.97",
+   "second": "la7: half-lift drag x1.7",
+   "games": 64,
+   "score": 0.421875
+  },
+  {
+   "first": "la7: hit radius x0.95 + stall x0.92",
+   "second": "la7: 15 Hz + turn x0.95",
+   "games": 64,
+   "score": 0.359375
+  },
+  {
+   "first": "la7: hit radius x0.95 + stall x0.92",
+   "second": "la7: 15 Hz + hit radius x1.1",
+   "games": 64,
+   "score": 0.453125
+  },
+  {
+   "first": "la7: hit radius x0.95 + stall x0.92",
+   "second": "la7: turn x1.1 + muzzle x0.95",
+   "games": 64,
+   "score": 0.5078125
+  },
+  {
+   "first": "la7: hit radius x0.95 + stall x0.92",
+   "second": "la7: shield x1.05 + head-on x1.1",
+   "games": 64,
+   "score": 0.53125
+  },
+  {
+   "first": "la7: hit radius x0.95 + stall x0.92",
+   "second": "la7: muzzle x0.97",
+   "games": 64,
+   "score": 0.5546875
+  },
+  {
+   "first": "la7: hit radius x0.95 + stall x0.92",
+   "second": "la7: turn x0.95",
+   "games": 64,
+   "score": 0.5625
+  },
+  {
+   "first": "la7: hit radius x0.95 + stall x0.92",
+   "second": "la7: hit radius x0.95",
+   "games": 64,
+   "score": 0.453125
+  },
+  {
+   "first": "la7: hit radius x0.95 + stall x0.92",
+   "second": "la7: stall x1.08",
+   "games": 64,
+   "score": 0.375
+  },
+  {
+   "first": "la7: hit radius x0.95 + stall x0.92",
+   "second": "la7: half-lift drag x0.5",
+   "games": 64,
+   "score": 0.4296875
+  },
+  {
+   "first": "la7: 15 Hz + turn x0.95",
+   "second": "la7: 15 Hz + hit radius x1.1",
+   "games": 64,
+   "score": 0.5234375
+  },
+  {
+   "first": "la7: 15 Hz + turn x0.95",
+   "second": "la7: shield x1.05 + head-on x1.1",
+   "games": 64,
+   "score": 0.5390625
+  },
+  {
+   "first": "la7: 15 Hz + turn x0.95",
+   "second": "la7: damage/s x1.1 + shield x0.95",
+   "games": 64,
+   "score": 0.5
+  },
+  {
+   "first": "la7: 15 Hz + turn x0.95",
+   "second": "la7: muzzle x1.02",
+   "games": 64,
+   "score": 0.4609375
+  },
+  {
+   "first": "la7: 15 Hz + turn x0.95",
+   "second": "la7: turn x1.03",
+   "games": 64,
+   "score": 0.5390625
+  },
+  {
+   "first": "la7: 15 Hz + turn x0.95",
+   "second": "la7: hit radius x0.95",
+   "games": 64,
+   "score": 0.546875
+  },
+  {
+   "first": "la7: 15 Hz + turn x0.95",
+   "second": "la7: hit radius x1.1",
+   "games": 64,
+   "score": 0.65625
+  },
+  {
+   "first": "la7: 15 Hz + turn x0.95",
+   "second": "la7: stall x1.08",
+   "games": 64,
+   "score": 0.40625
+  },
+  {
+   "first": "la7: 15 Hz + turn x0.95",
+   "second": "la7: half-lift drag x0.5",
+   "games": 64,
+   "score": 0.546875
+  },
+  {
+   "first": "la7: 15 Hz + hit radius x1.1",
+   "second": "la7: muzzle x1.05 + turn x0.9",
+   "games": 64,
+   "score": 0.453125
+  },
+  {
+   "first": "la7: 15 Hz + hit radius x1.1",
+   "second": "la7: hit radius x0.8 + turn x0.9",
+   "games": 64,
+   "score": 0.59375
+  },
+  {
+   "first": "la7: 15 Hz + hit radius x1.1",
+   "second": "la7: damage/s x1.1 + shield x0.95",
+   "games": 64,
+   "score": 0.4453125
+  },
+  {
+   "first": "la7: 15 Hz + hit radius x1.1",
+   "second": "la7: stall x1.1 + hit radius x1.25",
+   "games": 64,
+   "score": 0.6484375
+  },
+  {
+   "first": "la7: 15 Hz + hit radius x1.1",
+   "second": "la7: muzzle x1.02",
+   "games": 64,
+   "score": 0.5078125
+  },
+  {
+   "first": "la7: 15 Hz + hit radius x1.1",
+   "second": "la7: turn x1.03",
+   "games": 64,
+   "score": 0.5859375
+  },
+  {
+   "first": "la7: 15 Hz + hit radius x1.1",
+   "second": "la7: stall x0.92",
+   "games": 64,
+   "score": 0.4921875
+  },
+  {
+   "first": "la7: 15 Hz + hit radius x1.1",
+   "second": "la7: half-lift drag x0.5",
+   "games": 64,
+   "score": 0.484375
+  },
+  {
+   "first": "la7: 15 Hz + hit radius x1.1",
+   "second": "la7: half-lift drag x1.7",
+   "games": 64,
+   "score": 0.5859375
+  },
+  {
+   "first": "la7: muzzle x1.05 + turn x0.9",
+   "second": "la7: turn x1.1 + muzzle x0.95",
+   "games": 64,
+   "score": 0.640625
+  },
+  {
+   "first": "la7: muzzle x1.05 + turn x0.9",
+   "second": "la7: hit radius x0.8 + turn x0.9",
+   "games": 64,
+   "score": 0.5078125
+  },
+  {
+   "first": "la7: muzzle x1.05 + turn x0.9",
+   "second": "la7: shield x1.05 + head-on x1.1",
+   "games": 64,
+   "score": 0.6171875
+  },
+  {
+   "first": "la7: muzzle x1.05 + turn x0.9",
+   "second": "la7: muzzle x1.02",
+   "games": 64,
+   "score": 0.515625
+  },
+  {
+   "first": "la7: muzzle x1.05 + turn x0.9",
+   "second": "la7: hit radius x0.95",
+   "games": 64,
+   "score": 0.515625
+  },
+  {
+   "first": "la7: muzzle x1.05 + turn x0.9",
+   "second": "la7: hit radius x1.1",
+   "games": 64,
+   "score": 0.59375
+  },
+  {
+   "first": "la7: muzzle x1.05 + turn x0.9",
+   "second": "la7: stall x1.08",
+   "games": 64,
+   "score": 0.4296875
+  },
+  {
+   "first": "la7: muzzle x1.05 + turn x0.9",
+   "second": "la7: half-lift drag x0.5",
+   "games": 64,
+   "score": 0.53125
+  },
+  {
+   "first": "la7: turn x1.1 + muzzle x0.95",
+   "second": "la7: damage/s x1.1 + shield x0.95",
+   "games": 64,
+   "score": 0.4765625
+  },
+  {
+   "first": "la7: turn x1.1 + muzzle x0.95",
+   "second": "la7: stall x1.1 + hit radius x1.25",
+   "games": 64,
+   "score": 0.5859375
+  },
+  {
+   "first": "la7: turn x1.1 + muzzle x0.95",
+   "second": "la7: muzzle x0.97",
+   "games": 64,
+   "score": 0.453125
+  },
+  {
+   "first": "la7: turn x1.1 + muzzle x0.95",
+   "second": "la7: turn x0.95",
+   "games": 64,
+   "score": 0.359375
+  },
+  {
+   "first": "la7: turn x1.1 + muzzle x0.95",
+   "second": "la7: hit radius x1.1",
+   "games": 64,
+   "score": 0.4921875
+  },
+  {
+   "first": "la7: turn x1.1 + muzzle x0.95",
+   "second": "la7: stall x0.92",
+   "games": 64,
+   "score": 0.515625
+  },
+  {
+   "first": "la7: turn x1.1 + muzzle x0.95",
+   "second": "la7: half-lift drag x1.7",
+   "games": 64,
+   "score": 0.3984375
+  },
+  {
+   "first": "la7: hit radius x0.8 + turn x0.9",
+   "second": "la7: shield x1.05 + head-on x1.1",
+   "games": 64,
+   "score": 0.4765625
+  },
+  {
+   "first": "la7: hit radius x0.8 + turn x0.9",
+   "second": "la7: damage/s x1.1 + shield x0.95",
+   "games": 64,
+   "score": 0.5078125
+  },
+  {
+   "first": "la7: hit radius x0.8 + turn x0.9",
+   "second": "la7: muzzle x1.02",
+   "games": 64,
+   "score": 0.4296875
+  },
+  {
+   "first": "la7: hit radius x0.8 + turn x0.9",
+   "second": "la7: turn x1.03",
+   "games": 64,
+   "score": 0.5
+  },
+  {
+   "first": "la7: hit radius x0.8 + turn x0.9",
+   "second": "la7: hit radius x0.95",
+   "games": 64,
+   "score": 0.390625
+  },
+  {
+   "first": "la7: hit radius x0.8 + turn x0.9",
+   "second": "la7: hit radius x1.1",
+   "games": 64,
+   "score": 0.5625
+  },
+  {
+   "first": "la7: hit radius x0.8 + turn x0.9",
+   "second": "la7: stall x0.92",
+   "games": 64,
+   "score": 0.625
+  },
+  {
+   "first": "la7: hit radius x0.8 + turn x0.9",
+   "second": "la7: half-lift drag x0.5",
+   "games": 64,
+   "score": 0.5
+  },
+  {
+   "first": "la7: shield x1.05 + head-on x1.1",
+   "second": "la7: stall x1.1 + hit radius x1.25",
+   "games": 64,
+   "score": 0.4375
+  },
+  {
+   "first": "la7: shield x1.05 + head-on x1.1",
+   "second": "la7: muzzle x1.02",
+   "games": 64,
+   "score": 0.5
+  },
+  {
+   "first": "la7: shield x1.05 + head-on x1.1",
+   "second": "la7: turn x1.03",
+   "games": 64,
+   "score": 0.4140625
+  },
+  {
+   "first": "la7: shield x1.05 + head-on x1.1",
+   "second": "la7: turn x0.95",
+   "games": 64,
+   "score": 0.5546875
+  },
+  {
+   "first": "la7: shield x1.05 + head-on x1.1",
+   "second": "la7: hit radius x1.1",
+   "games": 64,
+   "score": 0.4375
+  },
+  {
+   "first": "la7: shield x1.05 + head-on x1.1",
+   "second": "la7: stall x1.08",
+   "games": 64,
+   "score": 0.46875
+  },
+  {
+   "first": "la7: shield x1.05 + head-on x1.1",
+   "second": "la7: half-lift drag x1.7",
+   "games": 64,
+   "score": 0.609375
+  },
+  {
+   "first": "la7: damage/s x1.1 + shield x0.95",
+   "second": "la7: stall x1.1 + hit radius x1.25",
+   "games": 64,
+   "score": 0.6875
+  },
+  {
+   "first": "la7: damage/s x1.1 + shield x0.95",
+   "second": "la7: muzzle x1.02",
+   "games": 64,
+   "score": 0.46875
+  },
+  {
+   "first": "la7: damage/s x1.1 + shield x0.95",
+   "second": "la7: turn x1.03",
+   "games": 64,
+   "score": 0.40625
+  },
+  {
+   "first": "la7: damage/s x1.1 + shield x0.95",
+   "second": "la7: hit radius x1.1",
+   "games": 64,
+   "score": 0.6328125
+  },
+  {
+   "first": "la7: damage/s x1.1 + shield x0.95",
+   "second": "la7: stall x1.08",
+   "games": 64,
+   "score": 0.46875
+  },
+  {
+   "first": "la7: stall x1.1 + hit radius x1.25",
+   "second": "la7: muzzle x0.97",
+   "games": 64,
+   "score": 0.5078125
+  },
+  {
+   "first": "la7: stall x1.1 + hit radius x1.25",
+   "second": "la7: turn x0.95",
+   "games": 64,
+   "score": 0.5390625
+  },
+  {
+   "first": "la7: stall x1.1 + hit radius x1.25",
+   "second": "la7: hit radius x0.95",
+   "games": 64,
+   "score": 0.375
+  },
+  {
+   "first": "la7: stall x1.1 + hit radius x1.25",
+   "second": "la7: stall x0.92",
+   "games": 64,
+   "score": 0.4765625
+  },
+  {
+   "first": "la7: stall x1.1 + hit radius x1.25",
+   "second": "la7: half-lift drag x1.7",
+   "games": 64,
+   "score": 0.546875
+  },
+  {
+   "first": "la7: muzzle x1.02",
+   "second": "la7: muzzle x0.97",
+   "games": 64,
+   "score": 0.671875
+  },
+  {
+   "first": "la7: muzzle x1.02",
+   "second": "la7: turn x0.95",
+   "games": 64,
+   "score": 0.6328125
+  },
+  {
+   "first": "la7: muzzle x1.02",
+   "second": "la7: hit radius x0.95",
+   "games": 64,
+   "score": 0.609375
+  },
+  {
+   "first": "la7: muzzle x1.02",
+   "second": "la7: stall x1.08",
+   "games": 64,
+   "score": 0.4609375
+  },
+  {
+   "first": "la7: muzzle x1.02",
+   "second": "la7: half-lift drag x0.5",
+   "games": 64,
+   "score": 0.46875
+  },
+  {
+   "first": "la7: muzzle x0.97",
+   "second": "la7: turn x1.03",
+   "games": 64,
+   "score": 0.3125
+  },
+  {
+   "first": "la7: muzzle x0.97",
+   "second": "la7: turn x0.95",
+   "games": 64,
+   "score": 0.4453125
+  },
+  {
+   "first": "la7: muzzle x0.97",
+   "second": "la7: hit radius x1.1",
+   "games": 64,
+   "score": 0.375
+  },
+  {
+   "first": "la7: muzzle x0.97",
+   "second": "la7: stall x0.92",
+   "games": 64,
+   "score": 0.5078125
+  },
+  {
+   "first": "la7: muzzle x0.97",
+   "second": "la7: half-lift drag x1.7",
+   "games": 64,
+   "score": 0.4921875
+  },
+  {
+   "first": "la7: turn x1.03",
+   "second": "la7: turn x0.95",
+   "games": 64,
+   "score": 0.703125
+  },
+  {
+   "first": "la7: turn x1.03",
+   "second": "la7: hit radius x0.95",
+   "games": 64,
+   "score": 0.5546875
+  },
+  {
+   "first": "la7: turn x1.03",
+   "second": "la7: stall x1.08",
+   "games": 64,
+   "score": 0.4375
+  },
+  {
+   "first": "la7: turn x1.03",
+   "second": "la7: half-lift drag x0.5",
+   "games": 64,
+   "score": 0.5390625
+  },
+  {
+   "first": "la7: turn x0.95",
+   "second": "la7: hit radius x1.1",
+   "games": 64,
+   "score": 0.4765625
+  },
+  {
+   "first": "la7: turn x0.95",
+   "second": "la7: stall x0.92",
+   "games": 64,
+   "score": 0.546875
+  },
+  {
+   "first": "la7: turn x0.95",
+   "second": "la7: half-lift drag x0.5",
+   "games": 64,
+   "score": 0.390625
+  },
+  {
+   "first": "la7: hit radius x0.95",
+   "second": "la7: hit radius x1.1",
+   "games": 64,
+   "score": 0.640625
+  },
+  {
+   "first": "la7: hit radius x0.95",
+   "second": "la7: stall x1.08",
+   "games": 64,
+   "score": 0.421875
+  },
+  {
+   "first": "la7: hit radius x1.1",
+   "second": "la7: stall x0.92",
+   "games": 64,
+   "score": 0.5234375
+  },
+  {
+   "first": "la7: hit radius x1.1",
+   "second": "la7: half-lift drag x1.7",
+   "games": 64,
+   "score": 0.46875
+  },
+  {
+   "first": "la7: stall x1.08",
+   "second": "la7: stall x0.92",
+   "games": 64,
+   "score": 0.6328125
+  },
+  {
+   "first": "la7: stall x1.08",
+   "second": "la7: half-lift drag x0.5",
+   "games": 64,
+   "score": 0.5
+  },
+  {
+   "first": "la7: stall x0.92",
+   "second": "la7: half-lift drag x1.7",
+   "games": 64,
+   "score": 0.4765625
+  },
+  {
+   "first": "la7: half-lift drag x0.5",
+   "second": "la7: half-lift drag x1.7",
+   "games": 64,
+   "score": 0.671875
+  }
+ ]
+}
