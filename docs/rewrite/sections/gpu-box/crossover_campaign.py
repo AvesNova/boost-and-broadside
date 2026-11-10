@@ -26,7 +26,7 @@ PRESETS = [("frontline", 5), ("deathmatch", 5)] + [
     for variant in ("arena", "density")
     for mode in ("frontline", "deathmatch")
 ]
-LAYOUT = {5: (8, 128), 10: (8, 64), 20: (8, 32), 40: (8, 16)}  # blocks, environments per block
+LAYOUT = {5: (8, 128), 10: (8, 64), 20: (8, 32), 40: (8, 16), 80: (8, 8), 120: (4, 8)}  # blocks, envs
 OUT = ROOT / "runs" / "crossover"
 SUMMARY = OUT / "summary.jsonl"
 
