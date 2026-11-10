@@ -149,6 +149,7 @@ nav:
       - bnb.league: reference/league.md
       - bnb.play: reference/play.md
       - bnb.figures: reference/figures.md
+      - bnb.cache: reference/cache.md
       - bnb.cli: reference/cli.md
       - bench: reference/bench.md
   - Contributing:

@@ -1,6 +1,6 @@
 """The Yemong step's kernels at a match engine's rows: the compiled controller step on
 `rows` views, profiled (torch.profiler, CUDA time by kernel). Prints the top kernels and the
-total. Usage: python bench/network_kernels.py policy=DIR [rows=2048] [top=25]
+total. Usage: `python bench/network_kernels.py policy=DIR [rows=2048] [top=25]`
 """
 
 import sys

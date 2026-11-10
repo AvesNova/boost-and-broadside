@@ -12,7 +12,7 @@ Cases:
             (default two)
   realtime  the play shell's tick on the CPU (compiled, B = 1), its first call
 
-Usage: python bench/compile_baseline.py CASE [key=value ...] > result.json
+Usage: `python bench/compile_baseline.py CASE [key=value ...] > result.json`
 Run it with fresh TORCHINDUCTOR_CACHE_DIR and TRITON_CACHE_DIR for a cold measurement
 (`bench/compile_baseline.sh` does). Prints progress lines to stderr and one JSON object
 to stdout.
@@ -25,6 +25,7 @@ import sys
 import time
 
 os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")  # as `bnb`'s
 
 import torch  # noqa: E402
 import torch._dynamo.utils as dynamo_utils  # noqa: E402

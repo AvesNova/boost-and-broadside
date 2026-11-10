@@ -2,7 +2,7 @@
 scripted pass), compiled: its compile time, its traced ops and its step time, at a small
 row count (compile time does not depend on it). Prints one JSON line.
 
-Usage: python bench/lane_probe.py policy=DIR lanes=16 block_environments=8 [cpu=1]
+Usage: `python bench/lane_probe.py policy=DIR lanes=16 block_environments=8 [cpu=1]`
 """
 
 import json

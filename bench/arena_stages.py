@@ -3,7 +3,7 @@ each compiled stage timed on its own outside the graph (CUDA events, best of `re
 then a replayed block, a segment's host work (the store writes and the reads `play` makes)
 and the act stage's parts. Prints one JSON line.
 
-Usage: python bench/arena_stages.py [players=a,b,c] [preset=frontline] [repeats=20]
+Usage: `python bench/arena_stages.py [players=a,b,c] [preset=frontline] [repeats=20]`
 """
 
 import json

@@ -429,3 +429,28 @@ updates 2-4 steady:
 
 No cost: 0.6% faster, at noise. The 232.9 s of the short run's second update was that run's
 own variation, not the old tree's speed.
+
+### Learner micro-batch and memory (`bnb train --preset real_scale_mixed --probe`, PPO)
+
+| Micro-batch rows | Allocator | Allocated | Reserved | |
+|---|---|---|---|---|
+| 160 | default | 4.71 GB | 6.16 GB | fits |
+| 160 | expandable_segments | 4.69 GB | 5.43 GB | fits |
+| 320 | expandable_segments | | | OOM (7.08 GB allocated, 218 MB short) |
+| 640 | expandable_segments | | | OOM |
+
+On the 8 GB card 160 rows is the most, even with the better allocator, so the speed of
+larger micro-batches is a measurement for the 24 GB card. expandable_segments works with
+the graph capture and frees 0.73 GB of reserved memory at 160 rows.
+
+expandable_segments, warm, the real-scale BC config (`steps=3`): steady learn 236.9 and
+237.2 s against 239.4-240.0 s without, collect 17.8 s both. It is now `bnb`'s default
+(`cli.main`, `PYTORCH_CUDA_ALLOC_CONF`; an explicit setting wins). A warm first update
+(collect 50.8 s, learn 246.8 s) is about 42 s over a steady one.
+
+Pre-existing failures seen on the way (not this work's): `tests/contract/test_yemong_export.py
+::test_yemong_step_exports_to_onnx[accelerations]` fails on a00c5a47 too (onnxruntime has
+no `Where(16)` for a node of the accelerations variant); the installation example fails in
+a worktree (`uv run` finds no `.venv` there). Fixed: the bench scripts' usage lines broke
+the strict docs build (mkdocs read `[preset=frontline]` as a cross-reference), and
+`bnb.cache` (from the play-shell merge) had no reference page.

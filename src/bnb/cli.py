@@ -460,6 +460,11 @@ def main() -> None:
     heads have learned (`bnb figures video ...` films a game, `bnb figures watch RUN` makes
     both while a run trains), `bnb queue ...` queues and runs GPU jobs."""
     os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")  # Triton 3.9's default, made explicit
+    # The CUDA caching allocator grows its segments in place rather than caching fixed blocks:
+    # at a real-scale PPO update (160 micro-batch rows) 0.73 GB less reserved memory and the
+    # steady update about 1% faster (docs/rewrite/sections/compile-overhaul-notes.md). Read
+    # at the first CUDA allocation, so it has to be set here, before any.
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     command, arguments = (sys.argv[1:2] or [""])[0], sys.argv[2:]
     if command in ("train", "ratings", "head-to-head", "figures"):
         compile_limits()

@@ -10,7 +10,8 @@ per batch tick and the share of row-ticks counted, for several T. That rule is a
 rule (the next game starts only after the last has ended), so wins / games stays a
 consistent estimate (Wald's identity); counting the games that ended before T would not.
 
-Usage: python bench/arena_utilisation.py players=a,b,c [preset=frontline] [batches=3]\n       [save=ticks.npy]
+Usage: `python bench/arena_utilisation.py players=a,b,c [preset=frontline] [batches=3]
+[save=ticks.npy]`
 Prints one JSON line.
 """
 
@@ -20,7 +21,7 @@ import sys
 import numpy
 
 from bnb.game.api import PRESETS
-from bnb.league.matches import SEAT, Arena, ArenaConfig, player
+from bnb.league.matches import Arena, ArenaConfig, player
 
 
 def _simulate(lengths: list[numpy.ndarray], horizon: float, rng, repeats: int = 200) -> dict:
