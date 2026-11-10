@@ -262,6 +262,23 @@ class ShipStateCode(nn.Module):
             log_refractive_index=(-LOG_INDEX_SPAN, LOG_INDEX_SPAN, SCALAR_BINS),
         )
 
+    def _scalar_axis(
+        self, maxima: dict[str, torch.Tensor], like: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """SCALARS' lows and highs (len(SCALARS),) and divisors (..., len(SCALARS)), for one
+        code call over the scalars."""
+        ranges = self._scalar_ranges()
+        low, high = (
+            torch.tensor(
+                [ranges[name][end] for name in SCALARS], dtype=like.dtype, device=like.device
+            )
+            for end in (0, 1)
+        )
+        shape = next(iter(maxima.values())).shape if maxima else like.shape[:-1]
+        ones = torch.ones(shape, dtype=like.dtype, device=like.device)
+        divisor = torch.stack([maxima.get(name, ones) for name in SCALARS], -1)
+        return low, high, divisor
+
     def _maxima(self, ship_type: torch.Tensor) -> dict[str, torch.Tensor]:
         """The divisor that makes each scalar a fraction (1 for the others)."""
         return dict(
@@ -302,15 +319,16 @@ class ShipStateCode(nn.Module):
             NOSE_RATE_LIMIT,
             NOSE_RATE_BINS,
         )
-        ranges = self._scalar_ranges()
-        scalars = [
-            codes.scalar_encode(
-                mean[name] / maxima.get(name, 1.0),
-                spread[name] / maxima.get(name, 1.0),
-                *ranges[name],
-            )
-            for name in SCALARS
-        ]
+        # every scalar shares SCALAR_BINS: one code call over a scalar axis, the bounds per
+        # scalar as tensors
+        low, high, divisor = self._scalar_axis(maxima, means)
+        scalars = codes.scalar_encode(
+            torch.stack([mean[name] for name in SCALARS], -1) / divisor,
+            torch.stack([spread[name] for name in SCALARS], -1) / divisor,
+            low,
+            high,
+            SCALAR_BINS,
+        )
         cooldown = torch.clamp_min(self._cooldown_sharp(mean["gun_cooldown"]) + residual, 0.0)
         return torch.cat(
             [
@@ -318,7 +336,7 @@ class ShipStateCode(nn.Module):
                 velocity.flatten(-2),
                 heading.flatten(-2),
                 nose_rate,
-                *scalars,
+                scalars.flatten(-2),
                 cooldown,
             ],
             -1,
@@ -361,12 +379,16 @@ class ShipStateCode(nn.Module):
         nose_rate, nose_spread = codes.scalar_decode(
             parts[3], -NOSE_RATE_LIMIT, NOSE_RATE_LIMIT, NOSE_RATE_BINS
         )
-        ranges = self._scalar_ranges()
-        scalar, scalar_spread = {}, {}
-        for name, part in zip(SCALARS, parts[4:9], strict=True):
-            value, sigma = codes.scalar_decode(part, *ranges[name])
-            scale = maxima.get(name, 1.0)
-            scalar[name], scalar_spread[name] = value * scale, sigma * scale
+        low, high, divisor = self._scalar_axis(maxima, probabilities)
+        values, sigmas = codes.scalar_decode(
+            torch.cat(parts[4:9], -1).unflatten(-1, (len(SCALARS), SCALAR_BINS)),
+            low,
+            high,
+            SCALAR_BINS,
+        )
+        values, sigmas = values * divisor, sigmas * divisor
+        scalar = dict(zip(SCALARS, values.unbind(-1), strict=True))
+        scalar_spread = dict(zip(SCALARS, sigmas.unbind(-1), strict=True))
         cooldown_code = parts[9]
         centres = self.tick_length * torch.arange(
             self.cooldown_bins, dtype=probabilities.dtype, device=probabilities.device

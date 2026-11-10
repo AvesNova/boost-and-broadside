@@ -167,7 +167,11 @@ def position_decode(
 # --------------------------------------------------------------------------- scalar
 
 
-def _scalar_coordinate(values: torch.Tensor, low: float, high: float, bins: int):
+# a scalar code's range end: a number, or a tensor over a scalar axis (several codes at once)
+Bound = float | torch.Tensor
+
+
+def _scalar_coordinate(values: torch.Tensor, low: Bound, high: Bound, bins: int):
     spacing = (high - low) / (bins - 1)
     coordinate = torch.clamp((values - low) / spacing, 0.0, float(bins - 1))
     lower = torch.clamp_max(torch.floor(coordinate), float(bins - 2))
@@ -229,9 +233,11 @@ def match_moments(
 
 
 def scalar_encode(
-    mean: torch.Tensor, sigma: torch.Tensor, low: float, high: float, bins: int
+    mean: torch.Tensor, sigma: torch.Tensor, low: Bound, high: Bound, bins: int
 ) -> torch.Tensor:
-    """(...) mean and sigma to (..., bins): a sampled Gaussian with folded tails, mixed with
+    """(...) mean and sigma to (..., bins) (low and high: numbers, or tensors that broadcast
+    against the values, one code call for several scalars): a sampled Gaussian with folded
+    tails, mixed with
     the sharp code and moment-matched."""
     coordinate, lower, fraction, spacing = _scalar_coordinate(mean, low, high, bins)
     last = bins - 1
@@ -268,7 +274,7 @@ def scalar_encode(
 
 
 def scalar_decode(
-    probabilities: torch.Tensor, low: float, high: float, bins: int
+    probabilities: torch.Tensor, low: Bound, high: Bound, bins: int
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """(..., bins) to (mean, spread)."""
     spacing = (high - low) / (bins - 1)
