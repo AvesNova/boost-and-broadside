@@ -145,3 +145,4 @@
 06:46 tournament10 start (78 added players: the nearest curve, the Yemong RL to 180M)
 06:46 round13 done
 07:48 tournament10 done
+08:26 fleet 5v5 start (6 players + scripted + ladder; 8 x 256)
