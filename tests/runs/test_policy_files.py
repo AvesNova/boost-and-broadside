@@ -21,7 +21,7 @@ from bnb.runs.serialise import SerialiseError
 pytestmark = pytest.mark.usefixtures("global_generator")
 
 
-MODELS = ("yemong", "relational", "mlp")
+MODELS = ("yemong", "relational", "nearest", "mlp")
 
 
 def _inputs(model, device=cases.CPU):

@@ -49,7 +49,7 @@ from bnb.runs.serialise import to_json
 from .overlays import MEMORY, NETWORK
 
 GUMBEL_FLOOR = 1e-20
-SUPPORTED_MODELS = ("yemong", "relational")
+SUPPORTED_MODELS = ("yemong", "relational", "nearest")
 POLICY_RECORD = "checkpoint.json"
 MODEL_DRAWS_OFFSET = 1_000_003  # the model's own draws: a stream apart from the sampling
 
@@ -134,7 +134,7 @@ def sample(logits: torch.Tensor, temperature: float, generator: torch.Generator)
 class Agent:
     """A trained policy playing one side. `label` names it (the policy's directory, as
     the run names it); `temperature` may change between ticks. A Yemong agent provides
-    its heads' overlays (`bnb.play.overlays.NETWORK`), a relational one none."""
+    its heads' overlays (`bnb.play.overlays.NETWORK`), a relational or nearest one none."""
 
     def __init__(
         self,

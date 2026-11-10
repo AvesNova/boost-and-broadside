@@ -25,7 +25,9 @@ from bnb.figures.video import VideoConfig
 @dataclasses.dataclass(frozen=True)
 class Train:
     """Train a model with PPO (learner spec), or clone the scripted agent (BC), in a run
-    directory (runs spec): Yemong, or the toy relational model.
+    directory (runs spec): Yemong (--model yemong), the toy relational model (relational), or
+    the nearest-neighbour MLP (nearest; its settings `--set nearest.hidden=...`, `allies`,
+    `enemies`, `fields`).
 
     preset: a training preset (deathmatch, deathmatch_wide, frontline), which sets the mode,
     the sizes and the spawn groups, or mixed, the default training mix of all three in one

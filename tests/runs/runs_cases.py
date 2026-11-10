@@ -8,6 +8,7 @@ from bnb.contracts import Action, GameConfig, Obs
 from bnb.contracts.obs import COLUMNS
 from bnb.game import api
 from bnb.models.mlp import MLP, MLPBuild
+from bnb.models.nearest import Nearest, NearestBuild, NearestConfig
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
 from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
 
@@ -55,6 +56,8 @@ def tiny_model(name: str, seed: int = 0, width: int = 8, game: GameConfig = GAME
                 RelationalConfig(hidden=width, value_bins=11), game.ships_per_team, game.num_ships
             )
             model = Relational(build)
+        elif name == "nearest":
+            model = Nearest(NearestBuild(NearestConfig(hidden=width, value_bins=11)))
         else:
             model = MLP(MLPBuild(game.ships_per_team, game.num_ships, game.num_fields, width))
     return _randomised(model, seed)

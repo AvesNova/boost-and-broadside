@@ -55,7 +55,7 @@ The trainer builds the learner and a controller for every other name its pools s
 default lineup (`bnb.runtime.train.LINEUP`) is self-play and the league's seat, half each:
 
 - `learner`: the model being trained, through `bnb.controllers.yemong.YemongController` or
-  `bnb.controllers.relational.RelationalController`;
+  `bnb.controllers.relational.RelationalController` (the relational and nearest models);
 - `opponents`: the league's seat, `bnb.runtime.opponents.OpponentSlots`: network slots
   and the stationary ladder in one controller (see [The league](league.md));
 - `chaser`: `bnb.controllers.scripted.Chaser`, which turns toward and shoots at the nearest
@@ -70,8 +70,10 @@ default lineup (`bnb.runtime.train.LINEUP`) is self-play and the league's seat, 
 The keyboard pilot, `bnb.controllers.human.human_action`, is for the
 [play shell](in-progress/play-shell.md) only; no pool seats it.
 
-`TrainConfig.model` chooses the model: `yemong` (`bnb.models.yemong`) or `relational`, the
-toy learner's fixed-size model (`bnb.models.relational.Relational`). The skeleton MLP
+`TrainConfig.model` chooses the model: `yemong` (`bnb.models.yemong`), `relational`, the
+toy learner's fixed-size model (`bnb.models.relational.Relational`), or `nearest`, the
+nearest-neighbour MLP of any fleet size (`bnb.models.nearest.Nearest`; see
+[The learner](learner.md#the-nearest-neighbour-mlp)). The skeleton MLP
 (`bnb.models.mlp.MLP`) and its controller (`bnb.controllers.model.ModelController`) remain
 for the contract tests; the loop does not train them.
 

@@ -3,9 +3,9 @@ hooks, progress metrics.
 
 Lineup: self-play and the league's seat (`bnb.runtime.opponents`), half each. A mixed batch
 (mixed spec 5) crosses the lineup with the games of a training mix. The learner is Yemong,
-or the toy relational model (learner spec 9). The objective is PPO, or behaviour cloning of
-the scripted agent (`bnb.learn.bc`, with its own lineup and stop rule in
-`bnb.runtime.cloning`).
+the toy relational model (learner spec 9) or the nearest-neighbour MLP
+(`bnb.models.nearest`). The objective is PPO, or behaviour cloning of the scripted agent
+(`bnb.learn.bc`, with its own lineup and stop rule in `bnb.runtime.cloning`).
 """
 
 import copy
@@ -33,6 +33,7 @@ from bnb.learn.bc import (
 )
 from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
+from bnb.models.nearest import Nearest, NearestBuild, NearestConfig
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
 from bnb.models.yemong.model import Yemong, YemongBuild, YemongConfig, yemong_build
 
@@ -51,7 +52,7 @@ SCRIPTED = "scripted"
 TRAINING_MIX = (("frontline", 0.5), ("deathmatch", 0.5))
 # Self-play is a fixed share of each mode's batch, the league's seat the rest (league spec 1).
 LINEUP = (Pool("self_play", 0.5, (LEARNER, LEARNER)), Pool("league", 0.5, (LEARNER, OPPONENTS)))
-MODELS = ("yemong", "relational")
+MODELS = ("yemong", "relational", "nearest")
 OBJECTIVES = ("ppo", "bc")
 PRECISIONS = ("float32", "tf32", "bfloat16")
 
@@ -88,8 +89,9 @@ def mixed(
 
 @dataclasses.dataclass(frozen=True)
 class TrainConfig:
-    """model: "yemong" or "relational" (the toy learner), built with the settings of the
-    same name (`yemong`, `relational`); their `bfloat16_matmuls` stays False, as `precision`
+    """model: "yemong", "relational" (the toy learner) or "nearest" (the nearest-neighbour
+    MLP), built with the settings of the same name (`yemong`, `relational`, `nearest`);
+    their `bfloat16_matmuls` stays False, as `precision`
     sets it, and a new run's Yemong decodes its belief's spreads with
     `spread_fit="coarsest"` and runs each block's temporal sublayer first
     (`order="temporal_first"`, arm C's order, the champion's since 2026-11-07); the config's
@@ -129,6 +131,7 @@ class TrainConfig:
     # a new build's settings that differ from the record defaults (see the docstring)
     yemong: YemongConfig = YemongConfig(spread_fit="coarsest", order="temporal_first")
     relational: RelationalConfig = RelationalConfig()
+    nearest: NearestConfig = NearestConfig()
     ship_card: dict[str, tuple[float, ...]] = dataclasses.field(default_factory=api.default_card)
     league: LeagueConfig = LeagueConfig()
     pools: tuple[Pool, ...] = LINEUP
@@ -183,11 +186,16 @@ class TrainConfig:
         return api.ship_types(device, **self.ship_card)
 
 
-def model_build(config: TrainConfig) -> YemongBuild | RelationalBuild:
-    """The build record of the run's model: its settings (`TrainConfig.yemong` or
-    `TrainConfig.relational`) with the run's precision, and the numbers the run's game and
-    ship card derive."""
+Build = YemongBuild | RelationalBuild | NearestBuild
+
+
+def model_build(config: TrainConfig) -> Build:
+    """The build record of the run's model: its settings (`TrainConfig.yemong`,
+    `TrainConfig.relational` or `TrainConfig.nearest`) with the run's precision, and the
+    numbers the run's game and ship card derive (none for the nearest-neighbour MLP)."""
     game, bfloat16 = config.game, config.precision == "bfloat16"
+    if config.model == "nearest":
+        return NearestBuild(dataclasses.replace(config.nearest, bfloat16_matmuls=bfloat16))
     if config.model == "relational":
         architecture = dataclasses.replace(config.relational, bfloat16_matmuls=bfloat16)
         return RelationalBuild(architecture, game.ships_per_team, game.num_ships)
@@ -195,16 +203,19 @@ def model_build(config: TrainConfig) -> YemongBuild | RelationalBuild:
     return yemong_build(architecture, api.rules_of(game), config.ship_types())
 
 
-def build_model(build: YemongBuild | RelationalBuild, device: torch.device) -> torch.nn.Module:
+def build_model(build: Build, device: torch.device) -> torch.nn.Module:
     """A fresh model of the build record, on `device`."""
+    if isinstance(build, NearestBuild):
+        return Nearest(build).to(device)
     return (Relational(build) if isinstance(build, RelationalBuild) else Yemong(build)).to(device)
 
 
 def model_controller(model: torch.nn.Module, game: GameConfig, distribution: bool = False):
-    """The controller for a model: RelationalController for a Relational model, otherwise
-    YemongController. distribution: its outputs carry the whole joint action distribution
-    (the learner's, for `LearnerConfig.records_distribution`; Yemong only)."""
-    if isinstance(model, Relational):
+    """The controller for a model: RelationalController for a stateless joint-policy model
+    (Relational, Nearest), otherwise YemongController. distribution: its outputs carry the
+    whole joint action distribution (the learner's, for `LearnerConfig.records_distribution`;
+    Yemong only)."""
+    if isinstance(model, Relational | Nearest):
         if distribution:
             raise ValueError("only a Yemong learner records its joint action distribution")
         return RelationalController(model)
