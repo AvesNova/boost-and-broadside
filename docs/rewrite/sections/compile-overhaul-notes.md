@@ -476,3 +476,11 @@ games; at a ratings run's 1,024 games the tick costs about 4x as much, so 4x soo
 one batch. So: an engine per size for size sweeps; benching for what needs unequal teams
 in one batch (the crossover, its purpose). Benching costs nothing at full size (15.00 against
 14.97 ms).
+
+### The heads' sums' share (`compile_baseline.py train ... heads=0`)
+
+The real-scale RL config, warm, expandable_segments, steady updates 2-3: learn 229.0 and
+228.2 s with the heads' sums (every update's first epoch), 219.0 and 219.5 s without: **9.4 s
+an update, 4.1% of the learn, 3.8% of the update** (collect 17.8 s both). Measuring them
+every 10th update (as the cadence diagnostics are) would save about 3.4%; it is the
+author's call (it thins the heads' series).

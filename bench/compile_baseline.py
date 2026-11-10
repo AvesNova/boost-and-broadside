@@ -9,7 +9,7 @@ Cases:
   ratings   the match engine: `players` (default: two policies of one build and the
             scripted agent) on `preset`, the default ArenaConfig, two batches
   train     a run's TrainConfig (`run`: a run directory with config.json), `steps` updates
-            (default two)
+            (default two); heads=0 turns the learner's heads' sums off
   realtime  the play shell's tick on the CPU (compiled, B = 1), its first call
 
 Usage: `python bench/compile_baseline.py CASE [key=value ...] > result.json`
@@ -170,6 +170,8 @@ def train_case(options: dict, phases: dict) -> dict:
     device = torch.device("cuda")
     with phase("build", phases):
         trainer = Trainer(config, device)
+    if options.get("heads") == "0":  # the heads' sums off, to time their share
+        trainer.ppo.measures_heads = False
     for index in range(1, int(options.get("steps", 2)) + 1):
         with phase(f"collect_{index}", phases):
             store, bootstrap = trainer.collect()
