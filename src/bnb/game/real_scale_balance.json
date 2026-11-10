@@ -4,6 +4,11 @@
    "value": 0.1,
    "round": 3,
    "reason": "the shield's Spearman correlation with the round-2 Elo was +0.54 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
+  },
+  "climb_multiplier": {
+   "value": 4.0,
+   "round": "pacing",
+   "reason": "the pacing study (docs/explanation/game/real-scale-pacing.md): at today's climb 82% of a ship's living time is spent out of a fight below the spawn energy and 99% of fights start there; four times the climb brings these to 33% and 15% with kills a minute, kill time and speed while engaged unchanged and the turn while engaged 9% lower."
   }
  },
  "heavy": {

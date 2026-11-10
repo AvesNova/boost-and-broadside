@@ -77,7 +77,7 @@ converts them to handles:
 | g limit | the limit load factor | as is |
 | cruise speed | sea-level maximum speed, military power | as is |
 | ceiling (the store) | service ceiling h | g h, J/kg |
-| climb time | sea-level climb rate, military power | solved so that the initial store charge, coasting at cruise, is g x the climb rate |
+| climb time | sea-level climb rate, military power, times the set's pacing (4: [Pacing](real-scale-pacing.md)) | solved so that the initial store charge, coasting at cruise, is g x the climb rate |
 | low-speed acceleration | the research's point-mass model at 1.1 x stall | x 0.88 for propeller types (the research's own correction: its model reads 8-17% high where it can be checked) |
 | sustained turn | a literature value where the research has one, else its model | the model x 0.88 for propeller types |
 | nose reversal | peak roll rate | the P-51D's (a placeholder) x its 95 deg/s over the type's |
@@ -116,10 +116,14 @@ no researched type replaces it cleanly, and the default lineup and the tests nam
 
 Each ship file's `[notes]` says, per handle, where its value comes from and how sure it is:
 "researched (good/medium/low)", "estimated" (and how), "derived", "invented", "placeholder"
-or "proposal". A handle the solver could not meet is marked MISSED with its error: only
-the Hammerhead's sustained turn (2.1%) and low-speed acceleration (1.0%), which its card
-cannot meet together (the solver finds the two nearly redundant for it, condition number
-1e9); the card kept is the closest it found.
+or "proposal". A handle the solver could not meet is marked MISSED with its error. At the
+researched climbs only the Hammerhead missed (its sustained turn by 2.1% and low-speed
+acceleration by 1.0%, nearly redundant for it, condition number 1e9). At four times the
+climb ([Pacing](real-scale-pacing.md)) three invented designs miss: the Albatross its
+sustained turn by 4.3% (the stronger engine against its long, low-drag wing), the Hammerhead
+its sustained turn by 0.7%, and the Firecracker, whose climb is 243 m/s, its low-speed
+acceleration by 27% and its cruise, turn and zoom by 2 to 4%; the cards kept are the closest
+found.
 
 | Type | Role | Stall / cruise m/s | Climb m/s (climb time s) | Turn deg/s | g | Store kJ/kg | Guns: Hz x damage, spread m/s | Shield | Data (stall, cruise, climb, turn, roll, C_D0, dispersion) | Worst flown error |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -150,6 +154,11 @@ cannot meet together (the solver finds the two nearly redundant for it, conditio
 | Zerstörer | Twin-engine destroyer with a concentrated nose battery. | 53.6 / 157.8 | 14.4 (4164) | 11.8 | 6.5 | 118.2 | 10 x 64.4, 0.82 | 140 | i, i, i, i, i, i, i | 3.1e-05 |
 | Shrike | Roll-and-dive slasher (Fw 190 vibe). | 50.1 / 167.6 | 15.2 (3746) | 13.8 | 9 | 111.9 | 10 x 43.2, 0.90 | 140 | i, i, i, i, i, i, i | 9.3e-08 |
 | Lantern | Fast, fragile skirmisher. | 44.7 / 187.1 | 16.7 (4163) | 14.4 | 8 | 136.8 | 15 x 8.9, 1.03 | 80 | i, i, i, i, i, i, i | 1.2e-05 |
+
+The table gives the researched climbs. The set flies four times each
+([Pacing](real-scale-pacing.md)): every climb time is a quarter of the table's, the shots
+keep their cost in J/kg (so a shot is a quarter of the seconds of charge given below), and
+the two rocket types' dive handles rise so that a boost still trades store for speed.
 
 Data letters: g good, m medium, l low, e estimated, i invented, p placeholder, for the
 stall speed, cruise speed, climb rate, sustained turn, roll rate, C_D0 and dispersion.

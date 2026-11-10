@@ -110,4 +110,29 @@ What the sweep says:
 
 ## The choice
 
-PACING_CHOICE
+For reference, the standard game's fighter lineup in its own deathmatch (300 s, the same
+measures; `real-scale-pacing/pacing-standard.jsonl`): engaged 0.32, recovering 0.26, ready
+0.42, fights begun below the spawn energy 32%, the store at a fight's start 0.50, 11.6 kills
+a minute.
+
+**Four times the climb, the store and the knee as they are** (the balance file's
+"_rules" entry "climb_multiplier", read by `bnb.game.real_scale.pacing`). Four times brings the time spent
+recovering to the standard game's (0.33 against 0.26) and the fights begun depleted below it
+(15% against 32%); twice is not enough (0.61, 49%), and eight times costs the turn while
+engaged twice as much (-16% against -9%) for a further 16 points of recovering share. Every
+other measure of the fight is unchanged at four times. The store's size is left at the
+researched ceilings: it does not move the pacing, and it is one of the design knobs. The
+knee is left at 0.5: it does nothing while ships stay below half their store, which they do.
+
+What it does to the set: every climb rate is four times its researched value (a P-51D's
+15.2 m/s becomes 60.8, its store refilling to the spawn energy in 84 s instead of 334); a
+shot keeps its cost in J/kg, a quarter of the seconds of charge it cost; a type whose boost
+exchange (its dive handle less its paced coast exchange) would fall below half the
+P-51D's has its dive handle (a placeholder) raised to that: the Me 163 (10.9 to 17.5 m/s^2)
+and the Firecracker (10.9 to 13.7). Every type is solved again under it (`python -m
+bnb.game.real_scale --resume`).
+
+The cost the author should weigh: a faster climb is a stronger engine, whose extra power
+the solver hides at the handles but not in a partial-stick turn (the bleed rate above). A
+way to raise the reset without it would be a charge that does not come from the engine (a
+flight-model change, not a value: left open).
