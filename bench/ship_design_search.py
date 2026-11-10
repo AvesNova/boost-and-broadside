@@ -36,6 +36,9 @@ edge on every pair of designs (a round robin), and the mixed-team test: for ever
 each) and writes them as a ship set (`--ship-set`), so `check --card SET` plays the exact
 cards.
 
+`robust` replays the round robin with every design flying its own random perturbation of
+the agent's set (per-type doctrine), several draws: whether the cycle survives the agent.
+
 `compose` writes the seven-type spec from three cycle searches (the Paley tournament's
 three planes, one per cycle; see the function).
 
@@ -605,6 +608,68 @@ def candidate_row(log_path: pathlib.Path, candidate: str | None) -> dict:
     raise SystemExit(f"{candidate}: no such candidate in {log_path}")
 
 
+def robust(args) -> None:
+    """Does the cycle hold when the agent changes? For each of `--seeds` draws, every design
+    flies its own perturbation of the preset's set (`bench.scripted_search.perturb` at
+    `--sigma`, a different draw per design), and every pair plays `--games` games; one row per
+    draw and pair to DIR/robust-<preset>.jsonl, with the draw's edges against the band."""
+    from bench.scripted_search import perturb
+    from bnb.controllers.scripted_defaults import MODE_DEFAULTS
+
+    spec = json.loads(pathlib.Path(args.spec).read_text())
+    out = pathlib.Path(args.out)
+    space = setup(spec)
+    names = [design["name"] for design in space.designs]
+    row = candidate_row(out / "search.jsonl", args.candidate)
+    preset = args.preset or spec.get("preset", "real_scale_deathmatch")
+    card = padded(
+        design_cards(
+            space.rules, [d["base"] for d in space.designs], space.handles_of(row["knobs"])
+        )
+    )
+    if args.card:
+        from bnb.game import ships as ship_files
+
+        found = {ship.name: ship for ship in ship_files.load(args.card)}
+        card = padded(
+            ShipTypes(
+                **{
+                    k: torch.tensor([found[n].card[k] for n in names], dtype=torch.float64)
+                    for k in vars(card)
+                }
+            )
+        )
+    count = len(names)
+    pairs = list(itertools.combinations(range(count), 2))
+    blocks = args.games // BLOCK_GAMES
+    path = out / f"robust-{preset}.jsonl"
+    base = MODE_DEFAULTS.sets[preset]
+    with bench_lock():
+        arena = DesignArena(preset, torch.device("cuda"))
+        arena.arena.set_card(card)
+        for draw in range(args.seeds):
+            generator = torch.Generator().manual_seed(9000 + draw)
+            for slot in range(count):
+                arena.set_doctrine(slot, perturb(base, args.sigma, generator))
+            torch.manual_seed(7_000_000 + draw)
+            counts = arena.play(None, [(a, b) for a, b in pairs for _ in range(blocks)])
+            with open(path, "a") as log:
+                for k, (a, b) in enumerate(pairs):
+                    total = counts[k * blocks : (k + 1) * blocks].sum(0)
+                    score = float((total[0] + 0.5 * total[1]) / total.sum())
+                    record = dict(
+                        draw=draw,
+                        sigma=args.sigma,
+                        first=names[a],
+                        second=names[b],
+                        games=int(total.sum()),
+                        score=score,
+                        card=args.card or "estimate",
+                    )
+                    log.write(json.dumps(record) + "\n")
+                    print(json.dumps(record), flush=True)
+
+
 PALEY_SIGNS = (1, 1, -1)  # the quadratic character of 1, 2, 3 mod 7
 
 
@@ -763,6 +828,15 @@ def main() -> None:
     four.add_argument("--out", required=True)
     four.add_argument("--candidate", help="GENERATION:INDEX (default: the best recent mean)")
     four.add_argument("--ship-set", required=True, help="the set to write, e.g. design-flight")
+    six = sub.add_parser("robust")
+    six.add_argument("--spec", required=True)
+    six.add_argument("--out", required=True)
+    six.add_argument("--candidate", help="GENERATION:INDEX (default: the best recent mean)")
+    six.add_argument("--card", help="a ship set holding the designs' exact cards, by name")
+    six.add_argument("--preset", help="default: the spec's")
+    six.add_argument("--sigma", type=float, default=0.1, help="the agent's perturbation")
+    six.add_argument("--seeds", type=int, default=6, help="draws")
+    six.add_argument("--games", type=int, default=256, help="per pair and draw")
     five = sub.add_parser("compose")
     five.add_argument("--specs", required=True, help="the three cycle specs, comma-separated")
     five.add_argument("--outs", required=True, help="their search directories, in order")
@@ -774,9 +848,14 @@ def main() -> None:
     three.add_argument("--preset", default="real_scale_deathmatch")
     three.add_argument("--card", help="only the rows of this card (a ship set, or 'estimate')")
     args = parser.parse_args()
-    {"search": search, "check": check, "summary": summary, "export": export, "compose": compose}[
-        args.command
-    ](args)
+    {
+        "search": search,
+        "check": check,
+        "summary": summary,
+        "export": export,
+        "compose": compose,
+        "robust": robust,
+    }[args.command](args)
 
 
 if __name__ == "__main__":

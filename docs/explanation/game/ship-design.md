@@ -73,6 +73,12 @@ mixed lineups of every type, the round-1 champion at T = 1 against the variant, 
 | itself at T = 3 | 0.857 ± 0.011 | 312 |
 | its predecessor (balancing round 1, the adopt check) | 0.607 ± 0.015 | 75 |
 | its predecessor (balancing round 2) | 0.566 ± 0.015 | 46 |
+| a random perturbation of itself, sigma 0.25 (three draws; the round-2 champion, 512 games) | 0.516, 0.577, 0.897 | 11, 54, 377 |
+| a random perturbation of itself, sigma 0.5 (three draws) | 0.682, 0.695, 0.950 | 132, 143, 512 |
+
+(The perturbation is the search's own: every number times exp(sigma N(0, 1)).) A small
+random change of the agent costs from nothing to several hundred Elo: the agent's skill is a
+narrow ridge, and its steps are of the size of the designed edges.
 
 So a 0.70 edge equals the gap between the agent and itself at twice the temperature, about
 two of the balancing's search rounds; a 0.60 edge (70 Elo) is one round's gain. For the
