@@ -1,0 +1,2 @@
+frontline_20v20_arena: batch 1, 1024 games, the largest standard error 39.5 (the batch took 1126 s); done about 11:28 (1 batches), by 17:06 at the latest (19 batches)
+frontline_20v20_arena: batch 2, 2048 games, the largest standard error 19.9 (the batch took 214 s); done about 11:13 (0 batches), by 14:34 at the latest (18 batches)
