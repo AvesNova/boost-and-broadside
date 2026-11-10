@@ -1,7 +1,7 @@
 #!/bin/bash
 # Round 16 (the author, 21:00 KST): win rates at fixed odds for a paper, replacing the crossover
 # search: the champion and the nearest model with n ships against the scripted agent with n x 1,
-# 1.25, 1.5, 2, deathmatch in the training arena, at n = 10, 20, 40 (n = 5's 5:5 .. 5:10 grid is
+# 1.2, 1.5, 2, deathmatch in the training arena, at n = 10, 20, 40 (n = 5's 5:5 .. 5:10 grid is
 # already measured); 128 games per ratio; one compile per case.
 set -u
 cd /workspace/boost-and-broadside
@@ -22,8 +22,8 @@ odds() {  # tag, agent, n, block environments, batches
     say "odds FAILED $1 (runs/fixed-odds.out)"
   fi
 }
-odds champion-10 $C 10 64 1
-odds nearest-10 $M 10 64 1
+# done at 1.2 already: odds champion-10 $C 10 64 1
+# done at 1.2 already: odds nearest-10 $M 10 64 1
 odds champion-20 $C 20 32 2
 odds nearest-20 $M 20 32 2
 odds champion-40 $C 40 16 4

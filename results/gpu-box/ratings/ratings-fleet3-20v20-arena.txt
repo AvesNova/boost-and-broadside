@@ -5,3 +5,8 @@ deathmatch_20v20_arena: batch 1, 1024 games, the largest standard error 245.7 (t
 deathmatch_20v20_arena: batch 2, 2048 games, the largest standard error 141.9 (the batch took 289 s); done about 14:44 (18 batches), by 14:44 at the latest (18 batches)
 deathmatch_20v20_arena: batch 3, 3072 games, the largest standard error 141.9 (the batch took 233 s); done about 14:10 (17 batches), by 14:10 at the latest (17 batches)
 deathmatch_20v20_arena: batch 4, 4096 games, the largest standard error 141.9 (the batch took 193 s); done about 13:50 (16 batches), by 13:50 at the latest (16 batches)
+deathmatch_20v20_arena: batch 5, 5120 games, the largest standard error 141.9 (the batch took 186 s); done about 13:37 (15 batches), by 13:37 at the latest (15 batches)
+deathmatch_20v20_arena: batch 6, 6144 games, the largest standard error 141.9 (the batch took 192 s); done about 13:29 (14 batches), by 13:29 at the latest (14 batches)
+deathmatch_20v20_arena: batch 7, 7168 games, the largest standard error 141.9 (the batch took 233 s); done about 13:25 (13 batches), by 13:25 at the latest (13 batches)
+deathmatch_20v20_arena: batch 8, 8192 games, the largest standard error 141.9 (the batch took 394 s); done about 13:28 (12 batches), by 13:28 at the latest (12 batches)
+deathmatch_20v20_arena: batch 9, 9216 games, the largest standard error 141.9 (the batch took 209 s); done about 13:25 (11 batches), by 13:25 at the latest (11 batches)
