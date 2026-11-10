@@ -44,3 +44,11 @@ W1110 07:25:23.603000 653711 torch/_inductor/triton_bundler.py:247] [2/1]     ra
 W1110 07:25:23.603000 653711 torch/_inductor/triton_bundler.py:247] [2/1]         "Cubin file saved by TritonBundler not found at %s", cubin_location
 W1110 07:25:23.603000 653711 torch/_inductor/triton_bundler.py:247] [2/1]     )
 W1110 07:25:23.603000 653711 torch/_inductor/triton_bundler.py:247] [2/1] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/5L3UHHT6MEPZAS2IDBACXEA7VCGEAQJFCHYDPOAHYTTTBWBK35NA/triton_poi_fused_add_copy__67.cubin')
+deathmatch: batch 1, 2048 games, the largest standard error 347.4 (the batch took 669 s); done about 08:57 (8 batches), by 08:57 at the latest (8 batches)
+deathmatch: batch 2, 4096 games, the largest standard error 347.4 (the batch took 154 s); done about 08:18 (7 batches), by 08:18 at the latest (7 batches)
+deathmatch: batch 3, 6144 games, the largest standard error 347.4 (the batch took 154 s); done about 08:05 (6 batches), by 08:05 at the latest (6 batches)
+deathmatch: batch 4, 8192 games, the largest standard error 347.4 (the batch took 154 s); done about 07:59 (5 batches), by 07:59 at the latest (5 batches)
+deathmatch: batch 5, 10240 games, the largest standard error 299.8 (the batch took 154 s); done about 07:55 (4 batches), by 07:55 at the latest (4 batches)
+deathmatch: batch 6, 12288 games, the largest standard error 59.5 (the batch took 154 s); done about 07:52 (3 batches), by 07:52 at the latest (3 batches)
+deathmatch: batch 7, 14336 games, the largest standard error 45.3 (the batch took 154 s); done about 07:50 (2 batches), by 07:50 at the latest (2 batches)
+deathmatch: batch 8, 16384 games, the largest standard error 35.6 (the batch took 154 s); done about 07:49 (1 batches), by 07:49 at the latest (1 batches)
