@@ -1,1 +1,3 @@
 --reuse: ['runs/ratings/fleet-40v40-arena'] are not directories
+frontline_40v40_arena: batch 1, 512 games, the largest standard error 40.3 (the batch took 1425 s); done about 13:26 (1 batches), by 15:48 at the latest (7 batches)
+frontline_40v40_arena: batch 2, 1024 games, the largest standard error 27.5 (the batch took 226 s); done about 13:06 (0 batches), by 14:28 at the latest (6 batches)
