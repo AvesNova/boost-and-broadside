@@ -185,3 +185,7 @@
 11:44 fleet3 20v20-arena start (champion, nearest, scripted; 8 x 128)
 11:44 fleet3 done
 11:49 odds start champion-10
+12:03 odds done champion-10: 10/10: win 1.00 score 1.00 [0.97,1.00]  12/10: win 0.95 score 0.95 [0.90,0.98]  15/10: win 0.73 score 0.75 [0.67,0.82]  20/10: win 0.43 score 0.45 [0.37,0.54]  (852 s, build 19 s)
+12:03 odds start nearest-10
+12:06 odds done nearest-10: 10/10: win 0.89 score 0.89 [0.82,0.93]  12/10: win 0.19 score 0.19 [0.13,0.26]  15/10: win 0.00 score 0.00 [0.00,0.03]  20/10: win 0.00 score 0.00 [0.00,0.03]  (162 s, build 18 s)
+12:06 odds start champion-20
