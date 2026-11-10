@@ -66,7 +66,12 @@ disk_guard() {  # the box has 64 GB: below 15 GB free, prune compile-cache files
   local free_gb
   free_gb=$(df -BG --output=avail / | tail -1 | tr -dc 0-9)
   echo "disk: ${free_gb} GB free"
-  if [ "$free_gb" -lt 15 ]; then
+  # Never while a bnb process runs: the "unused 12 h" test reads access times, which relatime
+  # leaves stale, so a running process's kernels could go (2026-11-10: "Cubin file not found"
+  # warnings, then an illegal memory access in a compiled crossover).
+  if [ "$free_gb" -lt 15 ] && pgrep -f "bin/bnb " > /dev/null; then
+    echo "disk: ${free_gb} GB free but bnb is running: the compile cache is left alone"
+  elif [ "$free_gb" -lt 15 ]; then
     find /tmp/torchinductor_root -type f -amin +720 -mmin +720 -delete 2>/dev/null
     find /tmp/torchinductor_root -type d -empty -delete 2>/dev/null
     echo "disk: pruned the compile cache, now $(df -BG --output=avail / | tail -1 | tr -dc 0-9) GB free"

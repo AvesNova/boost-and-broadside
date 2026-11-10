@@ -859,3 +859,13 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   (up to 2n) when it loses at n:n. Summary: runs/crossover/summary.jsonl.
 - **18:15 KST The author: crossover measured upwards** ("n network ships beat up to m scripted ones"): the network keeps n ships, the scripted side gets n .. 2n (3n while it still wins at 2n), each grid at the larger side's game size (benched slots still cost), then every integer inside the crossing's bracket; where it loses at n:n, the scripted side gets fewer. Campaign restarted (the first run was still compiling).
 - **18:13 KST Fleet 5v5 done** (no ladder; frontline entirely from reused games, so no batch file: the leaderboard is in `artifacts/ratings/20261110-091249/result.json`). Frontline / deathmatch: champion 1997 / 2404, null RL 180M 1875 / 2235, null 80M 1680 / 1884, null 40M 1568 / 1584, null 20M 1477 / 1345, nearest RL 40.9M 1303 / 1386, scripted 1000 (+-15-32). 10v10 arena next.
+- **18:24-18:45 KST Crossover, frontline 5 ships, upwards** (256 games per pair): **champion 5 ships
+  break even against 6.36 scripted (x1.27)** (5:5 0.994, 5:6 0.676, 5:7 0.186, 5:8 0.021);
+  **nearest 5.44 (x1.09)**. **The null's case failed: a CUDA illegal memory access** in the compiled
+  rollout (the error surfaces at the store's synchronize, asynchronously). Not reproduced uncompiled:
+  CPU eager (20 s games) and GPU eager with CUDA_LAUNCH_BLOCKING (full 300 s games, the same M = 10
+  and pairs) both run clean. Suspect: the compile cache. The sync's disk guard had pruned
+  /tmp/torchinductor_root by access time (relatime leaves it stale, so files in use can look
+  unused 12 h), and the runs since logged TritonBundler "Cubin file not found". The guard now
+  never prunes while a bnb process runs. Re-running the failed command with a fresh, empty
+  cache to tell a corrupt cache from a miscompile.
