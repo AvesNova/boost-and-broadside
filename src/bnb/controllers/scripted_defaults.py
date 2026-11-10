@@ -9,12 +9,14 @@ import json
 import pathlib
 
 from .scripted_parameters import (
+    NAMES,
     STANDARD_MODES,
     Logistic,
     ModeParameters,
     Ramp,
     ScriptedParameters,
     Switch,
+    _columns,
     from_row,
 )
 
@@ -114,71 +116,49 @@ STANDARD_DEFAULTS = {
         recovery_switch_in_log_ratio=Switch(3.33, 0.171, 0.0837),
     ),
 }
-# Each real-scale preset's light retune (docs/explanation/game/real-scale.md): a search from
-# the standard mode's set on the P-51D lineup, and among eight finalists at T = 1 (4,096
-# games) the deathmatch's best rated; Frontline's the one within noise of the best with the
-# fewest draws and the second-most captures in self-play. To three significant figures.
+# Each real-scale preset's set, in `scripted_real_scale.json` (`write_real_scale`), which the
+# balancing rounds rewrite (docs/explanation/game/real-scale-balance.md): each its mode's
+# champion, with the source that chose it.
+REAL_SCALE = pathlib.Path(__file__).with_name("scripted_real_scale.json")
+
+
+def named(parameters: ScriptedParameters, figures: int = 3) -> dict:
+    """A set as its fields by name (a logistic's centre and scale, a ramp's four ends, a
+    switch's rate, centre and scale), each number to `figures` significant figures."""
+
+    def rounded(number: float) -> float:
+        return float(f"{number:.{figures}g}")
+
+    out = {}
+    for name in NAMES:
+        columns = [rounded(float(number)) for number in _columns(getattr(parameters, name))]
+        out[name] = columns[0] if len(columns) == 1 else columns
+    return out
+
+
+def from_named(fields: dict) -> ScriptedParameters:
+    """`named`'s inverse (a logistic's direction is the default's)."""
+    row = []
+    for name in NAMES:
+        value = fields[name]
+        row.extend(value if isinstance(value, list) else [value])
+    return from_row(row)
+
+
+def read_real_scale(path: pathlib.Path = REAL_SCALE) -> dict[str, dict]:
+    """The real-scale sets' file: per mode, its "parameters" (`named`) and "source"."""
+    return json.loads(path.read_text())
+
+
+def write_real_scale(mode: str, parameters: ScriptedParameters, source: str, path=REAL_SCALE):
+    """Replace one real-scale mode's set in the file, to three significant figures."""
+    stored = read_real_scale(path)
+    stored[mode] = dict(source=source, parameters=named(parameters))
+    path.write_text(json.dumps(stored, indent=1, ensure_ascii=False) + "\n")
+
+
 REAL_SCALE_DEFAULTS = {
-    "real_scale_deathmatch": ScriptedParameters(
-        turn_in_stall_angle=Logistic(0.0282, 0.33, True),
-        level_two_in_stall_angle=Logistic(0.306, 0.174, True),
-        level_three_in_stall_angle=Logistic(0.565, 0.243, True),
-        boost_slow_in_corner_speed=Logistic(0.757, 0.0534, False),
-        boost_far_in_store_gun_ranges=Logistic(6.32, 0.177, True),
-        reverse_in_gun_range=Logistic(0.206, 0.207, False),
-        aim_in_target_size=Logistic(0.625, 0.322, False),
-        shoot_in_gun_range=Logistic(1.71, 0.142, False),
-        lead_cap_in_gun_range=1.21,
-        boundary_margin_in_turn_radius=2.81,
-        boundary_steer_ramp_in_margin=Ramp(0.0601, 0.521, 0.0, 1.0),
-        centre_hold_in_arena_radius=0.378,
-        combat_radius_in_gun_range=4.67,
-        support_radius_in_zone_radius=0.633,
-        defensive_floor=0.17,
-        defensive_margin=0.355,
-        aggression=1.94,
-        defense_urgency=0.624,
-        separation_radius_in_gun_range=1.15,
-        separation_weight=0.649,
-        recovery_shield_fraction=0.437,
-        recovery_threat=1.79,
-        memory_fade_in_seconds=Logistic(1.07, 0.115, False),
-        target_switch_in_log_distance=Switch(30.0, 0.359, 0.098),
-        side_commit_in_stall_angle=Logistic(3.46, 0.166, True),
-        side_switch_in_radians=Switch(8.43, 0.478, 0.179),
-        goal_switch_in_strength=Switch(9.15, 0.429, 0.123),
-        recovery_switch_in_log_ratio=Switch(6.66, 0.227, 0.0697),
-    ),
-    "real_scale_frontline": ScriptedParameters(
-        turn_in_stall_angle=Logistic(0.0377, 0.326, True),
-        level_two_in_stall_angle=Logistic(0.227, 0.166, True),
-        level_three_in_stall_angle=Logistic(0.12, 0.46, True),
-        boost_slow_in_corner_speed=Logistic(0.181, 0.0348, False),
-        boost_far_in_store_gun_ranges=Logistic(5.44, 0.197, True),
-        reverse_in_gun_range=Logistic(0.172, 0.229, False),
-        aim_in_target_size=Logistic(0.351, 0.233, False),
-        shoot_in_gun_range=Logistic(1.9, 0.127, False),
-        lead_cap_in_gun_range=1.3,
-        boundary_margin_in_turn_radius=2.17,
-        boundary_steer_ramp_in_margin=Ramp(0.0247, 0.115, 0.0, 1.0),
-        centre_hold_in_arena_radius=0.603,
-        combat_radius_in_gun_range=4.81,
-        support_radius_in_zone_radius=0.726,
-        defensive_floor=0.148,
-        defensive_margin=0.465,
-        aggression=3.37,
-        defense_urgency=3.3,
-        separation_radius_in_gun_range=0.924,
-        separation_weight=0.831,
-        recovery_shield_fraction=0.175,
-        recovery_threat=3.45,
-        memory_fade_in_seconds=Logistic(1.79, 0.304, False),
-        target_switch_in_log_distance=Switch(15.6, 0.52, 0.149),
-        side_commit_in_stall_angle=Logistic(17.9, 0.167, True),
-        side_switch_in_radians=Switch(6.71, 0.0985, 0.42),
-        goal_switch_in_strength=Switch(9.05, 0.582, 0.157),
-        recovery_switch_in_log_ratio=Switch(3.82, 0.224, 0.0761),
-    ),
+    mode: from_named(entry["parameters"]) for mode, entry in read_real_scale().items()
 }
 MODE_DEFAULTS = ModeParameters(STANDARD_DEFAULTS | REAL_SCALE_DEFAULTS)
 

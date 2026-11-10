@@ -1,0 +1,67 @@
+{
+ "round": 1,
+ "shield_spearman": 0.68986568986569,
+ "shield_step": 0.2,
+ "moves": [
+  {
+   "type": "(every type)",
+   "handle": "shield_per_rating",
+   "value": 0.15,
+   "round": 2,
+   "reason": "the shield's Spearman correlation with the round-1 Elo was +0.69 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
+  },
+  {
+   "type": "Heavy",
+   "handle": "max_shield",
+   "value": 140.0,
+   "round": 2,
+   "reason": "an invented or placeholder type rated 1319 +- 7 in round 1, +262 from the median 1057 (the rule moves its shield 20 towards the median beyond 200 Elo).",
+   "key": "heavy"
+  },
+  {
+   "type": "Albatross",
+   "handle": "max_shield",
+   "value": 120.0,
+   "round": 2,
+   "reason": "an invented or placeholder type rated 849 +- 6 in round 1, -208 from the median 1057 (the rule moves its shield 20 towards the median beyond 200 Elo).",
+   "key": "albatross"
+  },
+  {
+   "type": "Wren",
+   "handle": "max_shield",
+   "value": 100.0,
+   "round": 2,
+   "reason": "an invented or placeholder type rated 792 +- 6 in round 1, -265 from the median 1057 (the rule moves its shield 20 towards the median beyond 200 Elo).",
+   "key": "wren"
+  },
+  {
+   "type": "Lantern",
+   "handle": "max_shield",
+   "value": 100.0,
+   "round": 2,
+   "reason": "an invented or placeholder type rated 689 +- 6 in round 1, -368 from the median 1057 (the rule moves its shield 20 towards the median beyond 200 Elo).",
+   "key": "lantern"
+  },
+  {
+   "type": "Hammerhead",
+   "handle": "max_shield",
+   "value": 140.0,
+   "round": 2,
+   "reason": "an invented or placeholder type rated -1 +- 11 in round 1, -1058 from the median 1057 (the rule moves its shield 20 towards the median beyond 200 Elo).",
+   "key": "hammerhead"
+  },
+  {
+   "type": "Firecracker",
+   "handle": "max_shield",
+   "value": 100.0,
+   "round": 2,
+   "reason": "an invented or placeholder type rated -1129 +- 26 in round 1, -2186 from the median 1057 (the rule moves its shield 20 towards the median beyond 200 Elo).",
+   "key": "firecracker"
+  }
+ ],
+ "median_elo": 1056.9929417187175,
+ "at_bounds": [
+  "Anvil"
+ ],
+ "stop": false
+}

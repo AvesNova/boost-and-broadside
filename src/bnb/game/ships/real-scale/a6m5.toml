@@ -24,7 +24,7 @@ muzzle_speed = 750.0
 bullet_spread = 0.6080682194481403
 gun_range = 510.0545940067522
 shots_per_store = 517.0566916667154
-max_shield = 80.0
+max_shield = 85.0
 shield_recharge_rate = 12.0
 shield_recharge_delay = 6.0
 head_on_fraction = 0.3
@@ -41,7 +41,7 @@ engine_power_full_store = 264.8119812011719
 static_thrust = 8.21102237701416
 max_energy = 115169.3984375
 corner_nose_frequency = 4.975592136383057
-max_shield = 80.0
+max_shield = 85.0
 hit_radius = 5.5
 hit_damage = 35.216609954833984
 muzzle_speed = 750.0
@@ -83,7 +83,7 @@ muzzle_speed = "researched (medium): muzzle_speed 750. the Type 99 Mk 2 20 mm, 2
 bullet_spread = "estimated: dispersion 2.7; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
 gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
 shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 15.7 m/s), the standard fighter's ratio: a shot costs 222.7 J/kg, 1.45 s of charge"
-max_shield = "researched (medium): survivability 1; proposal: the standard 100 x (1 + 0.2 per rating step from the P-51D's 2). 1 fragile - 5 very tough: No pilot armour and no self-sealing tanks on the A6M5 base model; light structure. Burns easily."
+max_shield = "researched (medium): survivability 1; proposal: the standard 100 x (1 + 0.15 per rating step from the P-51D's 2). 1 fragile - 5 very tough: No pilot armour and no self-sealing tanks on the A6M5 base model; light structure. Burns easily. Balanced (round 2): 80 -> 85, the step per rating 0.2 -> 0.15: the shield's Spearman correlation with the round-1 Elo was +0.69 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
 shield_recharge_rate = "placeholder: the standard fighter's"
 shield_recharge_delay = "placeholder: the standard fighter's"
 head_on_fraction = "placeholder: the standard fighter's"

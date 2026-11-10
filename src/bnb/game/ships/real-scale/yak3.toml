@@ -83,7 +83,7 @@ muzzle_speed = "researched (medium): muzzle_speed 850. the Berezin UBS 12.7 mm, 
 bullet_spread = "estimated: dispersion 2.8; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
 gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
 shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 21 m/s), the standard fighter's ratio: a shot costs 198.6 J/kg, 0.964 s of charge"
-max_shield = "researched (medium): survivability 2; proposal: the standard 100 x (1 + 0.2 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Very light mixed wood/metal structure, liquid-cooled; some pilot armour, protected tanks."
+max_shield = "researched (medium): survivability 2; proposal: the standard 100 x (1 + 0.15 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Very light mixed wood/metal structure, liquid-cooled; some pilot armour, protected tanks."
 shield_recharge_rate = "placeholder: the standard fighter's"
 shield_recharge_delay = "placeholder: the standard fighter's"
 head_on_fraction = "placeholder: the standard fighter's"

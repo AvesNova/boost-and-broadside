@@ -1,6 +1,7 @@
 """The real-scale variant (`docs/explanation/game/real-scale.md`): its ship set, its rules
 and its presets, and that its cards fly their handles."""
 
+import json
 import math
 
 import pytest
@@ -121,6 +122,27 @@ def test_every_type_deals_about_the_p51s_damage_per_second():
         per_second = ship.handles["hit_damage"] * ship.handles["fire_rate"]
         assert 342.0 - 1e-6 <= per_second <= 378.0 + 1e-6, ship.key
         assert "Balanced (round 1)" in ship.notes["hit_damage"], ship.key
+
+
+def test_a_balance_move_sets_its_handle_and_notes_old_new_and_why(tmp_path, monkeypatch):
+    moves = {"p51d": {"max_shield": {"value": 90.0, "round": 2, "reason": "a test."}}}
+    path = tmp_path / "balance.json"
+    path.write_text(json.dumps(moves))
+    monkeypatch.setattr(real_scale, "BALANCE_FILE", path)
+    rules = api.rules_of(api.PRESETS["real_scale_deathmatch"])
+    values, notes, _ = real_scale.target_handles(real_scale.AIRCRAFT[0], rules)
+    assert values["max_shield"] == 90.0
+    assert notes["max_shield"].endswith("Balanced (round 2): 100 -> 90: a test.")
+    assert real_scale.balance_moves(tmp_path / "absent.json") == {}
+    moves = {"_rules": {"shield_per_rating": {"value": 0.1, "round": 2, "reason": "a test."}}}
+    path.write_text(json.dumps(moves))
+    p47 = next(one for one in real_scale.AIRCRAFT if one.key == "p47d")  # survivability 5
+    values, notes, _ = real_scale.target_handles(p47, rules)
+    assert values["max_shield"] == pytest.approx(130.0)
+    assert (
+        "Balanced (round 2): 160 -> 130, the step per rating 0.2 -> 0.1: a test."
+        in (notes["max_shield"])
+    )
 
 
 def test_the_nose_reversal_follows_the_roll_rate():

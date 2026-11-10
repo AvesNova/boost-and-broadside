@@ -24,7 +24,7 @@ muzzle_speed = 856.0
 bullet_spread = 1.033301585830807
 gun_range = 600.3897540938283
 shots_per_store = 865.3641752936352
-max_shield = 80.0
+max_shield = 100.0
 shield_recharge_rate = 12.0
 shield_recharge_delay = 6.0
 head_on_fraction = 0.3
@@ -41,7 +41,7 @@ engine_power_full_store = 336.75933837890625
 static_thrust = 9.456695556640625
 max_energy = 136849.5
 corner_nose_frequency = 5.3541107177734375
-max_shield = 80.0
+max_shield = 100.0
 hit_radius = 5.644999980926514
 hit_damage = 22.836402893066406
 muzzle_speed = 856.0
@@ -83,7 +83,7 @@ muzzle_speed = "invented: muzzle_speed 856. the Browning .50-class 12.7 mm"
 bullet_spread = "invented: dispersion 4.02; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the P-51D's x 0.67: Fast, fragile skirmisher."
 gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
 shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 16.72 m/s), the standard fighter's ratio: a shot costs 158.1 J/kg, 0.964 s of charge"
-max_shield = "invented: survivability 1; proposal: the standard 100 x (1 + 0.2 per rating step from the P-51D's 2). No armour, unprotected tanks."
+max_shield = "invented: survivability 1; proposal: the standard 100 x (1 + 0.15 per rating step from the P-51D's 2). No armour, unprotected tanks. Balanced (round 2): 80 -> 85, the step per rating 0.2 -> 0.15: the shield's Spearman correlation with the round-1 Elo was +0.69 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal. Balanced (round 2): 85 -> 100: an invented or placeholder type rated 689 +- 6 in round 1, -368 from the median 1057 (the rule moves its shield 20 towards the median beyond 200 Elo)."
 shield_recharge_rate = "placeholder: the standard fighter's"
 shield_recharge_delay = "placeholder: the standard fighter's"
 head_on_fraction = "placeholder: the standard fighter's"

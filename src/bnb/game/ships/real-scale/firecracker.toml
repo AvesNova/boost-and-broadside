@@ -24,7 +24,7 @@ muzzle_speed = 520.0
 bullet_spread = 0.393487701118441
 gun_range = 439.96404354168027
 shots_per_store = 18.02583559885846
-max_shield = 80.0
+max_shield = 100.0
 shield_recharge_rate = 12.0
 shield_recharge_delay = 6.0
 head_on_fraction = 0.3
@@ -41,7 +41,7 @@ engine_power_full_store = 578.0923461914062
 static_thrust = 20.372222900390625
 max_energy = 31097.69921875
 corner_nose_frequency = 5.997812271118164
-max_shield = 80.0
+max_shield = 100.0
 hit_radius = 5.644999980926514
 hit_damage = 71.62169647216797
 muzzle_speed = 520.0
@@ -83,7 +83,7 @@ muzzle_speed = "invented: muzzle_speed 520. the MK 108-class 30 mm"
 bullet_spread = "invented: dispersion 2.52; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the P-51D's x 0.42: Rocket sprinter: enormous thrust, a tiny store (propellant)."
 gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
 shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 60.8 m/s), the standard fighter's ratio: a shot costs 1725 J/kg, 2.89 s of charge"
-max_shield = "invented: survivability 1; proposal: the standard 100 x (1 + 0.2 per rating step from the P-51D's 2). Explosive propellants."
+max_shield = "invented: survivability 1; proposal: the standard 100 x (1 + 0.15 per rating step from the P-51D's 2). Explosive propellants. Balanced (round 2): 80 -> 85, the step per rating 0.2 -> 0.15: the shield's Spearman correlation with the round-1 Elo was +0.69 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal. Balanced (round 2): 85 -> 100: an invented or placeholder type rated -1129 +- 26 in round 1, -2186 from the median 1057 (the rule moves its shield 20 towards the median beyond 200 Elo)."
 shield_recharge_rate = "placeholder: the standard fighter's"
 shield_recharge_delay = "placeholder: the standard fighter's"
 head_on_fraction = "placeholder: the standard fighter's"

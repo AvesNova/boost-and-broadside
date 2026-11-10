@@ -24,7 +24,7 @@ muzzle_speed = 520.0
 bullet_spread = 0.3903647828555962
 gun_range = 436.97004198524144
 shots_per_store = 102.91165045431447
-max_shield = 80.0
+max_shield = 85.0
 shield_recharge_rate = 12.0
 shield_recharge_delay = 6.0
 head_on_fraction = 0.3
@@ -41,7 +41,7 @@ engine_power_full_store = 705.9129638671875
 static_thrust = 9.462546348571777
 max_energy = 118701.0
 corner_nose_frequency = 6.364673614501953
-max_shield = 80.0
+max_shield = 85.0
 hit_radius = 4.650000095367432
 hit_damage = 37.127811431884766
 muzzle_speed = 520.0
@@ -83,7 +83,7 @@ muzzle_speed = "researched (medium): muzzle_speed 520. the Rheinmetall-Borsig MK
 bullet_spread = "estimated: dispersion 2.5; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
 gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
 shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 81.3 m/s), the standard fighter's ratio: a shot costs 1153 J/kg, 1.45 s of charge"
-max_shield = "researched (medium): survivability 1; proposal: the standard 100 x (1 + 0.2 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Hypergolic T-Stoff/C-Stoff propellants: leaks, hard landings or hits often meant explosion; landed on a skid. Some pilot"
+max_shield = "researched (medium): survivability 1; proposal: the standard 100 x (1 + 0.15 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Hypergolic T-Stoff/C-Stoff propellants: leaks, hard landings or hits often meant explosion; landed on a skid. Some pilot. Balanced (round 2): 80 -> 85, the step per rating 0.2 -> 0.15: the shield's Spearman correlation with the round-1 Elo was +0.69 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
 shield_recharge_rate = "placeholder: the standard fighter's"
 shield_recharge_delay = "placeholder: the standard fighter's"
 head_on_fraction = "placeholder: the standard fighter's"

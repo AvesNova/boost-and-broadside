@@ -1,0 +1,6117 @@
+{
+ "meta": {
+  "preset": "real_scale_deathmatch",
+  "anchor": "P-51D",
+  "games": 111744,
+  "batches": 97,
+  "draws": 1890,
+  "prior_games": 1.0,
+  "confidence": 1.96
+ },
+ "ratings": [
+  {
+   "type": "P-47D",
+   "elo": 1671.074344340711,
+   "stderr": 9.023765552091398,
+   "low": 1653.3877638586118,
+   "high": 1688.76092482281,
+   "games": 4800,
+   "score": 0.845,
+   "wins": 4002,
+   "draws": 108,
+   "losses": 690,
+   "kills_per_game": 23.142083333333332,
+   "deaths_per_game": 18.32875,
+   "kill_ratio": 1.2626111073222852,
+   "shots_per_game": 1680.1997916666667,
+   "hit_share": 0.2742168931050982,
+   "mean_speed": 112.12333367164489
+  },
+  {
+   "type": "Hellcat",
+   "elo": 1533.7935887094495,
+   "stderr": 8.114703885355476,
+   "low": 1517.8887690941528,
+   "high": 1549.6984083247462,
+   "games": 4864,
+   "score": 0.7208059210526315,
+   "wins": 3457,
+   "draws": 98,
+   "losses": 1309,
+   "kills_per_game": 22.973067434210527,
+   "deaths_per_game": 19.2734375,
+   "kill_ratio": 1.1919548567405542,
+   "shots_per_game": 1712.6332236842106,
+   "hit_share": 0.28084518011948745,
+   "mean_speed": 99.96597783646419
+  },
+  {
+   "type": "P-38L",
+   "elo": 1440.1306916555668,
+   "stderr": 7.671146043614847,
+   "low": 1425.0952454100818,
+   "high": 1455.1661379010518,
+   "games": 4992,
+   "score": 0.6723758012820513,
+   "wins": 3297,
+   "draws": 119,
+   "losses": 1576,
+   "kills_per_game": 22.674879807692307,
+   "deaths_per_game": 19.54286858974359,
+   "kill_ratio": 1.1602636380409603,
+   "shots_per_game": 1640.7379807692307,
+   "hit_share": 0.2788159643218709,
+   "mean_speed": 122.75423353895192
+  },
+  {
+   "type": "Tempest V",
+   "elo": 1408.3738170013207,
+   "stderr": 7.6468506846733035,
+   "low": 1393.385989659361,
+   "high": 1423.3616443432804,
+   "games": 4864,
+   "score": 0.6566611842105263,
+   "wins": 3141,
+   "draws": 106,
+   "losses": 1617,
+   "kills_per_game": 22.63795230263158,
+   "deaths_per_game": 20.34560032894737,
+   "kill_ratio": 1.1126706480330635,
+   "shots_per_game": 1598.2736430921052,
+   "hit_share": 0.274965548636912,
+   "mean_speed": 107.52535171486312
+  },
+  {
+   "type": "Fw 190A",
+   "elo": 1385.6696742918907,
+   "stderr": 7.489883363245079,
+   "low": 1370.9895028999304,
+   "high": 1400.349845683851,
+   "games": 5120,
+   "score": 0.66279296875,
+   "wins": 3333,
+   "draws": 121,
+   "losses": 1666,
+   "kills_per_game": 21.74453125,
+   "deaths_per_game": 19.7583984375,
+   "kill_ratio": 1.1005209414509258,
+   "shots_per_game": 1146.1271484375,
+   "hit_share": 0.25587512701998627,
+   "mean_speed": 118.0075526374334
+  },
+  {
+   "type": "Corsair",
+   "elo": 1375.1004962228283,
+   "stderr": 7.438324391086318,
+   "low": 1360.521380416299,
+   "high": 1389.6796120293575,
+   "games": 5184,
+   "score": 0.6578896604938271,
+   "wins": 3365,
+   "draws": 91,
+   "losses": 1728,
+   "kills_per_game": 22.75733024691358,
+   "deaths_per_game": 19.663194444444443,
+   "kill_ratio": 1.157356721015559,
+   "shots_per_game": 1637.1720679012346,
+   "hit_share": 0.2678303543024119,
+   "mean_speed": 103.79389006513237
+  },
+  {
+   "type": "Heavy",
+   "elo": 1318.5255575863794,
+   "stderr": 7.062894946887366,
+   "low": 1304.6822834904801,
+   "high": 1332.3688316822786,
+   "games": 5376,
+   "score": 0.6530877976190477,
+   "wins": 3466,
+   "draws": 90,
+   "losses": 1820,
+   "kills_per_game": 22.541480654761905,
+   "deaths_per_game": 19.888206845238095,
+   "kill_ratio": 1.133409403380129,
+   "shots_per_game": 1167.2959449404761,
+   "hit_share": 0.25473425287348994,
+   "mean_speed": 115.94606948306367
+  },
+  {
+   "type": "Shrike",
+   "elo": 1243.0425504622024,
+   "stderr": 6.6884330053797925,
+   "low": 1229.933221771658,
+   "high": 1256.1518791527467,
+   "games": 5248,
+   "score": 0.5939405487804879,
+   "wins": 3058,
+   "draws": 118,
+   "losses": 2072,
+   "kills_per_game": 22.139481707317074,
+   "deaths_per_game": 21.332888719512194,
+   "kill_ratio": 1.0378098343084274,
+   "shots_per_game": 1096.9946646341464,
+   "hit_share": 0.25788757671493,
+   "mean_speed": 115.46972802318838
+  },
+  {
+   "type": "Zerst\u00f6rer",
+   "elo": 1142.0790104647801,
+   "stderr": 6.469560136091296,
+   "low": 1129.3986725980412,
+   "high": 1154.759348331519,
+   "games": 4928,
+   "score": 0.5251623376623377,
+   "wins": 2549,
+   "draws": 78,
+   "losses": 2301,
+   "kills_per_game": 21.551339285714285,
+   "deaths_per_game": 20.726866883116884,
+   "kill_ratio": 1.0397779561786533,
+   "shots_per_game": 1038.9249188311687,
+   "hit_share": 0.2539725013877436,
+   "mean_speed": 109.45682179642725
+  },
+  {
+   "type": "Yak-3",
+   "elo": 1119.2592489083904,
+   "stderr": 6.503778429730304,
+   "low": 1106.511843186119,
+   "high": 1132.0066546306618,
+   "games": 4736,
+   "score": 0.5167863175675675,
+   "wins": 2389,
+   "draws": 117,
+   "losses": 2230,
+   "kills_per_game": 21.447423986486488,
+   "deaths_per_game": 21.5,
+   "kill_ratio": 0.9975546040226273,
+   "shots_per_game": 1583.6794763513512,
+   "hit_share": 0.2575497586365143,
+   "mean_speed": 116.58101563671805
+  },
+  {
+   "type": "Fw 190D",
+   "elo": 1074.1450055765686,
+   "stderr": 6.596364072586966,
+   "low": 1061.2161319942982,
+   "high": 1087.073879158839,
+   "games": 4288,
+   "score": 0.5185401119402985,
+   "wins": 2125,
+   "draws": 197,
+   "losses": 1966,
+   "kills_per_game": 20.82999067164179,
+   "deaths_per_game": 20.85750932835821,
+   "kill_ratio": 0.998680635531156,
+   "shots_per_game": 1093.546875,
+   "hit_share": 0.24939876893981802,
+   "mean_speed": 118.31883949086631
+  },
+  {
+   "type": "Spitfire IX",
+   "elo": 1070.5313240374614,
+   "stderr": 6.628763813572838,
+   "low": 1057.5389469628587,
+   "high": 1083.5237011120641,
+   "games": 4224,
+   "score": 0.5232007575757576,
+   "wins": 2130,
+   "draws": 160,
+   "losses": 1934,
+   "kills_per_game": 22.77840909090909,
+   "deaths_per_game": 22.172585227272727,
+   "kill_ratio": 1.0273231045196836,
+   "shots_per_game": 1138.5980113636363,
+   "hit_share": 0.25001050018734,
+   "mean_speed": 108.09866137168784
+  },
+  {
+   "type": "La-7",
+   "elo": 1061.1317132617296,
+   "stderr": 6.593363768437085,
+   "low": 1048.208720275593,
+   "high": 1074.0547062478663,
+   "games": 4224,
+   "score": 0.5280539772727273,
+   "wins": 2185,
+   "draws": 91,
+   "losses": 1948,
+   "kills_per_game": 21.308948863636363,
+   "deaths_per_game": 21.2265625,
+   "kill_ratio": 1.003881286177937,
+   "shots_per_game": 1128.125946969697,
+   "hit_share": 0.24599513473085308,
+   "mean_speed": 116.10873474762813
+  },
+  {
+   "type": "Spitfire XIV",
+   "elo": 1056.9929417187175,
+   "stderr": 6.595813751632809,
+   "low": 1044.065146765517,
+   "high": 1069.920736671918,
+   "games": 4224,
+   "score": 0.5291193181818182,
+   "wins": 2161,
+   "draws": 148,
+   "losses": 1915,
+   "kills_per_game": 22.61339962121212,
+   "deaths_per_game": 21.991950757575758,
+   "kill_ratio": 1.0282580145111633,
+   "shots_per_game": 1140.0120738636363,
+   "hit_share": 0.2441407389732673,
+   "mean_speed": 112.34029967361883
+  },
+  {
+   "type": "Mosquito",
+   "elo": 1051.4421488795524,
+   "stderr": 6.595608017460967,
+   "low": 1038.514757165329,
+   "high": 1064.3695405937758,
+   "games": 4224,
+   "score": 0.5310132575757576,
+   "wins": 2209,
+   "draws": 68,
+   "losses": 1947,
+   "kills_per_game": 22.230113636363637,
+   "deaths_per_game": 21.545217803030305,
+   "kill_ratio": 1.0317887635017087,
+   "shots_per_game": 1090.3217329545455,
+   "hit_share": 0.24471443934983222,
+   "mean_speed": 108.66895659016623
+  },
+  {
+   "type": "P-51D",
+   "elo": 1000.0,
+   "stderr": 0.0,
+   "low": 1000.0,
+   "high": 1000.0,
+   "games": 22208,
+   "score": 0.5116174351585014,
+   "wins": 11142,
+   "draws": 440,
+   "losses": 10626,
+   "kills_per_game": 22.22608969740634,
+   "deaths_per_game": 22.803359149855908,
+   "kill_ratio": 0.9746848940695119,
+   "shots_per_game": 1557.5936149135446,
+   "hit_share": 0.2457312427071069,
+   "mean_speed": 109.50497494164912
+  },
+  {
+   "type": "Ki-84",
+   "elo": 980.0207652152026,
+   "stderr": 6.4564808856144715,
+   "low": 967.3660626793982,
+   "high": 992.675467751007,
+   "games": 4544,
+   "score": 0.5106734154929577,
+   "wins": 2280,
+   "draws": 81,
+   "losses": 2183,
+   "kills_per_game": 21.870818661971832,
+   "deaths_per_game": 21.769146126760564,
+   "kill_ratio": 1.00467048797501,
+   "shots_per_game": 1439.412852112676,
+   "hit_share": 0.25914459815566915,
+   "mean_speed": 112.54527703207147
+  },
+  {
+   "type": "Albatross",
+   "elo": 849.0942889880762,
+   "stderr": 6.334554743902548,
+   "low": 836.6785616900272,
+   "high": 861.5100162861252,
+   "games": 6528,
+   "score": 0.5260416666666666,
+   "wins": 3394,
+   "draws": 80,
+   "losses": 3054,
+   "kills_per_game": 22.43811274509804,
+   "deaths_per_game": 19.745098039215687,
+   "kill_ratio": 1.1363890268123138,
+   "shots_per_game": 1125.030024509804,
+   "hit_share": 0.2261084807649469,
+   "mean_speed": 85.2603090014485
+  },
+  {
+   "type": "Wren",
+   "elo": 792.1508727642089,
+   "stderr": 6.161221609906478,
+   "low": 780.0748784087922,
+   "high": 804.2268671196256,
+   "games": 7808,
+   "score": 0.534515881147541,
+   "wins": 4158,
+   "draws": 31,
+   "losses": 3619,
+   "kills_per_game": 22.479508196721312,
+   "deaths_per_game": 21.901127049180328,
+   "kill_ratio": 1.0264087389768661,
+   "shots_per_game": 1517.4595286885246,
+   "hit_share": 0.25210671146400115,
+   "mean_speed": 99.19923494392347
+  },
+  {
+   "type": "Lantern",
+   "elo": 688.9514132728438,
+   "stderr": 5.91325062465275,
+   "low": 677.3614420485244,
+   "high": 700.5413844971631,
+   "games": 11008,
+   "score": 0.4692042151162791,
+   "wins": 5088,
+   "draws": 154,
+   "losses": 5766,
+   "kills_per_game": 21.446856831395348,
+   "deaths_per_game": 21.130268895348838,
+   "kill_ratio": 1.0149826742676331,
+   "shots_per_game": 1568.1785065406978,
+   "hit_share": 0.2462301974759289,
+   "mean_speed": 105.1084306555258
+  },
+  {
+   "type": "Zero",
+   "elo": 477.55395382557197,
+   "stderr": 7.268285630272944,
+   "low": 463.308113990237,
+   "high": 491.7997936609069,
+   "games": 10944,
+   "score": 0.43357090643274854,
+   "wins": 4709,
+   "draws": 72,
+   "losses": 6163,
+   "kills_per_game": 19.979897660818715,
+   "deaths_per_game": 22.305555555555557,
+   "kill_ratio": 0.8957363832994691,
+   "shots_per_game": 1063.0032894736842,
+   "hit_share": 0.25329264397290996,
+   "mean_speed": 102.73526388880924
+  },
+  {
+   "type": "Me 262",
+   "elo": 338.78010350646275,
+   "stderr": 8.050393850666584,
+   "low": 323.00133155915626,
+   "high": 354.55887545376925,
+   "games": 10688,
+   "score": 0.40129116766467066,
+   "wins": 4112,
+   "draws": 354,
+   "losses": 6222,
+   "kills_per_game": 16.06614895209581,
+   "deaths_per_game": 19.396425898203592,
+   "kill_ratio": 0.8283046080970918,
+   "shots_per_game": 835.4306699101796,
+   "hit_share": 0.22243403941927745,
+   "mean_speed": 126.73586414198664
+  },
+  {
+   "type": "Anvil",
+   "elo": 182.14587811595095,
+   "stderr": 9.201517302822054,
+   "low": 164.11090420241973,
+   "high": 200.18085202948217,
+   "games": 7168,
+   "score": 0.34765625,
+   "wins": 2394,
+   "draws": 196,
+   "losses": 4578,
+   "kills_per_game": 17.408482142857142,
+   "deaths_per_game": 21.013253348214285,
+   "kill_ratio": 0.8284524939750237,
+   "shots_per_game": 255.97293526785714,
+   "hit_share": 0.26045964332079435,
+   "mean_speed": 102.86237502230759
+  },
+  {
+   "type": "Bf 109K",
+   "elo": 63.51131400954614,
+   "stderr": 10.014659128029216,
+   "low": 43.88258211860888,
+   "high": 83.1400459004834,
+   "games": 6016,
+   "score": 0.25241023936170215,
+   "wins": 1455,
+   "draws": 127,
+   "losses": 4434,
+   "kills_per_game": 15.848570478723405,
+   "deaths_per_game": 22.09408244680851,
+   "kill_ratio": 0.7173219578988549,
+   "shots_per_game": 875.1020611702128,
+   "hit_share": 0.24303016327502833,
+   "mean_speed": 113.67057420168071
+  },
+  {
+   "type": "Hammerhead",
+   "elo": -1.3031062310444668,
+   "stderr": 10.515731364375405,
+   "low": -21.913939705220262,
+   "high": 19.30772724313133,
+   "games": 4992,
+   "score": 0.23687900641025642,
+   "wins": 1088,
+   "draws": 189,
+   "losses": 3715,
+   "kills_per_game": 14.31209935897436,
+   "deaths_per_game": 20.23417467948718,
+   "kill_ratio": 0.7073231098218971,
+   "shots_per_game": 469.35616987179486,
+   "hit_share": 0.2517663056235825,
+   "mean_speed": 109.31507248309265
+  },
+  {
+   "type": "Me 163",
+   "elo": -43.10377857769481,
+   "stderr": 10.047557916787381,
+   "low": -62.79699209459808,
+   "high": -23.410565060791544,
+   "games": 32512,
+   "score": 0.8393823818897638,
+   "wins": 27145,
+   "draws": 290,
+   "losses": 5077,
+   "kills_per_game": 16.28841658464567,
+   "deaths_per_game": 8.464136318897637,
+   "kill_ratio": 1.9244038577543916,
+   "shots_per_game": 739.8843503937007,
+   "hit_share": 0.2157738144727609,
+   "mean_speed": 108.56544540671206
+  },
+  {
+   "type": "Firecracker",
+   "elo": -1128.9587314630326,
+   "stderr": 26.44592164862926,
+   "low": -1180.792737894346,
+   "high": -1077.1247250317192,
+   "games": 27776,
+   "score": 0.001800115207373272,
+   "wins": 22,
+   "draws": 56,
+   "losses": 27698,
+   "kills_per_game": 4.309043778801843,
+   "deaths_per_game": 17.36250720046083,
+   "kill_ratio": 0.24818096424964906,
+   "shots_per_game": 205.1746831797235,
+   "hit_share": 0.18245260690950516,
+   "mean_speed": 100.6143831742199
+  }
+ ],
+ "pairs": [
+  {
+   "first": "P-51D",
+   "second": "Heavy",
+   "wins": 100,
+   "draws": 17,
+   "losses": 1291,
+   "score": 0.07705965909090909
+  },
+  {
+   "first": "P-51D",
+   "second": "P-47D",
+   "wins": 0,
+   "draws": 0,
+   "losses": 128,
+   "score": 0.0
+  },
+  {
+   "first": "P-51D",
+   "second": "P-38L",
+   "wins": 2,
+   "draws": 0,
+   "losses": 126,
+   "score": 0.015625
+  },
+  {
+   "first": "P-51D",
+   "second": "Spitfire IX",
+   "wins": 420,
+   "draws": 81,
+   "losses": 459,
+   "score": 0.4796875
+  },
+  {
+   "first": "P-51D",
+   "second": "Spitfire XIV",
+   "wins": 433,
+   "draws": 65,
+   "losses": 462,
+   "score": 0.48489583333333336
+  },
+  {
+   "first": "P-51D",
+   "second": "Tempest V",
+   "wins": 8,
+   "draws": 0,
+   "losses": 120,
+   "score": 0.0625
+  },
+  {
+   "first": "P-51D",
+   "second": "Mosquito",
+   "wins": 459,
+   "draws": 14,
+   "losses": 359,
+   "score": 0.5600961538461539
+  },
+  {
+   "first": "P-51D",
+   "second": "Fw 190A",
+   "wins": 130,
+   "draws": 11,
+   "losses": 627,
+   "score": 0.17643229166666666
+  },
+  {
+   "first": "P-51D",
+   "second": "Fw 190D",
+   "wins": 359,
+   "draws": 80,
+   "losses": 585,
+   "score": 0.3896484375
+  },
+  {
+   "first": "P-51D",
+   "second": "Bf 109K",
+   "wins": 126,
+   "draws": 1,
+   "losses": 1,
+   "score": 0.98828125
+  },
+  {
+   "first": "P-51D",
+   "second": "Zero",
+   "wins": 126,
+   "draws": 1,
+   "losses": 1,
+   "score": 0.98828125
+  },
+  {
+   "first": "P-51D",
+   "second": "Me 262",
+   "wins": 124,
+   "draws": 4,
+   "losses": 0,
+   "score": 0.984375
+  },
+  {
+   "first": "P-51D",
+   "second": "Ki-84",
+   "wins": 441,
+   "draws": 7,
+   "losses": 384,
+   "score": 0.5342548076923077
+  },
+  {
+   "first": "P-51D",
+   "second": "Yak-3",
+   "wins": 417,
+   "draws": 29,
+   "losses": 706,
+   "score": 0.3745659722222222
+  },
+  {
+   "first": "P-51D",
+   "second": "Corsair",
+   "wins": 36,
+   "draws": 4,
+   "losses": 856,
+   "score": 0.04241071428571429
+  },
+  {
+   "first": "P-51D",
+   "second": "La-7",
+   "wins": 348,
+   "draws": 20,
+   "losses": 592,
+   "score": 0.3729166666666667
+  },
+  {
+   "first": "P-51D",
+   "second": "Me 163",
+   "wins": 127,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.9921875
+  },
+  {
+   "first": "P-51D",
+   "second": "Hellcat",
+   "wins": 3,
+   "draws": 1,
+   "losses": 124,
+   "score": 0.02734375
+  },
+  {
+   "first": "P-51D",
+   "second": "Hammerhead",
+   "wins": 128,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-51D",
+   "second": "Wren",
+   "wins": 1655,
+   "draws": 7,
+   "losses": 642,
+   "score": 0.7198350694444444
+  },
+  {
+   "first": "P-51D",
+   "second": "Anvil",
+   "wins": 128,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-51D",
+   "second": "Albatross",
+   "wins": 1215,
+   "draws": 35,
+   "losses": 286,
+   "score": 0.8024088541666666
+  },
+  {
+   "first": "P-51D",
+   "second": "Firecracker",
+   "wins": 128,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-51D",
+   "second": "Zerst\u00f6rer",
+   "wins": 223,
+   "draws": 12,
+   "losses": 1045,
+   "score": 0.17890625
+  },
+  {
+   "first": "P-51D",
+   "second": "Shrike",
+   "wins": 363,
+   "draws": 20,
+   "losses": 1089,
+   "score": 0.25339673913043476
+  },
+  {
+   "first": "P-51D",
+   "second": "Lantern",
+   "wins": 3643,
+   "draws": 31,
+   "losses": 742,
+   "score": 0.8284646739130435
+  },
+  {
+   "first": "Heavy",
+   "second": "P-51D",
+   "wins": 1291,
+   "draws": 17,
+   "losses": 100,
+   "score": 0.9229403409090909
+  },
+  {
+   "first": "Heavy",
+   "second": "P-47D",
+   "wins": 13,
+   "draws": 2,
+   "losses": 113,
+   "score": 0.109375
+  },
+  {
+   "first": "Heavy",
+   "second": "P-38L",
+   "wins": 102,
+   "draws": 6,
+   "losses": 340,
+   "score": 0.234375
+  },
+  {
+   "first": "Heavy",
+   "second": "Spitfire IX",
+   "wins": 135,
+   "draws": 4,
+   "losses": 53,
+   "score": 0.7135416666666666
+  },
+  {
+   "first": "Heavy",
+   "second": "Spitfire XIV",
+   "wins": 142,
+   "draws": 2,
+   "losses": 48,
+   "score": 0.7447916666666666
+  },
+  {
+   "first": "Heavy",
+   "second": "Tempest V",
+   "wins": 120,
+   "draws": 6,
+   "losses": 258,
+   "score": 0.3203125
+  },
+  {
+   "first": "Heavy",
+   "second": "Mosquito",
+   "wins": 140,
+   "draws": 7,
+   "losses": 45,
+   "score": 0.7473958333333334
+  },
+  {
+   "first": "Heavy",
+   "second": "Fw 190A",
+   "wins": 68,
+   "draws": 8,
+   "losses": 180,
+   "score": 0.28125
+  },
+  {
+   "first": "Heavy",
+   "second": "Fw 190D",
+   "wins": 164,
+   "draws": 7,
+   "losses": 21,
+   "score": 0.8723958333333334
+  },
+  {
+   "first": "Heavy",
+   "second": "Bf 109K",
+   "wins": 127,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.9921875
+  },
+  {
+   "first": "Heavy",
+   "second": "Zero",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "Heavy",
+   "second": "Me 262",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Heavy",
+   "second": "Ki-84",
+   "wins": 62,
+   "draws": 1,
+   "losses": 1,
+   "score": 0.9765625
+  },
+  {
+   "first": "Heavy",
+   "second": "Yak-3",
+   "wins": 100,
+   "draws": 4,
+   "losses": 24,
+   "score": 0.796875
+  },
+  {
+   "first": "Heavy",
+   "second": "Corsair",
+   "wins": 79,
+   "draws": 4,
+   "losses": 109,
+   "score": 0.421875
+  },
+  {
+   "first": "Heavy",
+   "second": "La-7",
+   "wins": 114,
+   "draws": 1,
+   "losses": 13,
+   "score": 0.89453125
+  },
+  {
+   "first": "Heavy",
+   "second": "Me 163",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Heavy",
+   "second": "Hellcat",
+   "wins": 156,
+   "draws": 13,
+   "losses": 471,
+   "score": 0.25390625
+  },
+  {
+   "first": "Heavy",
+   "second": "Hammerhead",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Heavy",
+   "second": "Wren",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Heavy",
+   "second": "Anvil",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Heavy",
+   "second": "Albatross",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Heavy",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Heavy",
+   "second": "Zerst\u00f6rer",
+   "wins": 53,
+   "draws": 0,
+   "losses": 11,
+   "score": 0.828125
+  },
+  {
+   "first": "Heavy",
+   "second": "Shrike",
+   "wins": 27,
+   "draws": 6,
+   "losses": 31,
+   "score": 0.46875
+  },
+  {
+   "first": "Heavy",
+   "second": "Lantern",
+   "wins": 62,
+   "draws": 2,
+   "losses": 0,
+   "score": 0.984375
+  },
+  {
+   "first": "P-47D",
+   "second": "P-51D",
+   "wins": 128,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-47D",
+   "second": "Heavy",
+   "wins": 113,
+   "draws": 2,
+   "losses": 13,
+   "score": 0.890625
+  },
+  {
+   "first": "P-47D",
+   "second": "P-38L",
+   "wins": 534,
+   "draws": 21,
+   "losses": 149,
+   "score": 0.7734375
+  },
+  {
+   "first": "P-47D",
+   "second": "Spitfire IX",
+   "wins": 63,
+   "draws": 1,
+   "losses": 0,
+   "score": 0.9921875
+  },
+  {
+   "first": "P-47D",
+   "second": "Spitfire XIV",
+   "wins": 63,
+   "draws": 1,
+   "losses": 0,
+   "score": 0.9921875
+  },
+  {
+   "first": "P-47D",
+   "second": "Tempest V",
+   "wins": 509,
+   "draws": 4,
+   "losses": 127,
+   "score": 0.7984375
+  },
+  {
+   "first": "P-47D",
+   "second": "Mosquito",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "P-47D",
+   "second": "Fw 190A",
+   "wins": 461,
+   "draws": 25,
+   "losses": 90,
+   "score": 0.8220486111111112
+  },
+  {
+   "first": "P-47D",
+   "second": "Fw 190D",
+   "wins": 60,
+   "draws": 2,
+   "losses": 2,
+   "score": 0.953125
+  },
+  {
+   "first": "P-47D",
+   "second": "Bf 109K",
+   "wins": 61,
+   "draws": 2,
+   "losses": 1,
+   "score": 0.96875
+  },
+  {
+   "first": "P-47D",
+   "second": "Zero",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-47D",
+   "second": "Me 262",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-47D",
+   "second": "Ki-84",
+   "wins": 63,
+   "draws": 1,
+   "losses": 0,
+   "score": 0.9921875
+  },
+  {
+   "first": "P-47D",
+   "second": "Yak-3",
+   "wins": 59,
+   "draws": 2,
+   "losses": 3,
+   "score": 0.9375
+  },
+  {
+   "first": "P-47D",
+   "second": "Corsair",
+   "wins": 472,
+   "draws": 10,
+   "losses": 94,
+   "score": 0.828125
+  },
+  {
+   "first": "P-47D",
+   "second": "La-7",
+   "wins": 59,
+   "draws": 0,
+   "losses": 5,
+   "score": 0.921875
+  },
+  {
+   "first": "P-47D",
+   "second": "Me 163",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-47D",
+   "second": "Hellcat",
+   "wins": 594,
+   "draws": 35,
+   "losses": 203,
+   "score": 0.7349759615384616
+  },
+  {
+   "first": "P-47D",
+   "second": "Hammerhead",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-47D",
+   "second": "Wren",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-47D",
+   "second": "Anvil",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-47D",
+   "second": "Albatross",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-47D",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-47D",
+   "second": "Zerst\u00f6rer",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "P-47D",
+   "second": "Shrike",
+   "wins": 61,
+   "draws": 2,
+   "losses": 1,
+   "score": 0.96875
+  },
+  {
+   "first": "P-47D",
+   "second": "Lantern",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-38L",
+   "second": "P-51D",
+   "wins": 126,
+   "draws": 0,
+   "losses": 2,
+   "score": 0.984375
+  },
+  {
+   "first": "P-38L",
+   "second": "Heavy",
+   "wins": 340,
+   "draws": 6,
+   "losses": 102,
+   "score": 0.765625
+  },
+  {
+   "first": "P-38L",
+   "second": "P-47D",
+   "wins": 149,
+   "draws": 21,
+   "losses": 534,
+   "score": 0.2265625
+  },
+  {
+   "first": "P-38L",
+   "second": "Spitfire IX",
+   "wins": 60,
+   "draws": 0,
+   "losses": 4,
+   "score": 0.9375
+  },
+  {
+   "first": "P-38L",
+   "second": "Spitfire XIV",
+   "wins": 51,
+   "draws": 3,
+   "losses": 10,
+   "score": 0.8203125
+  },
+  {
+   "first": "P-38L",
+   "second": "Tempest V",
+   "wins": 125,
+   "draws": 8,
+   "losses": 123,
+   "score": 0.50390625
+  },
+  {
+   "first": "P-38L",
+   "second": "Mosquito",
+   "wins": 56,
+   "draws": 2,
+   "losses": 6,
+   "score": 0.890625
+  },
+  {
+   "first": "P-38L",
+   "second": "Fw 190A",
+   "wins": 147,
+   "draws": 14,
+   "losses": 159,
+   "score": 0.48125
+  },
+  {
+   "first": "P-38L",
+   "second": "Fw 190D",
+   "wins": 61,
+   "draws": 0,
+   "losses": 3,
+   "score": 0.953125
+  },
+  {
+   "first": "P-38L",
+   "second": "Bf 109K",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-38L",
+   "second": "Zero",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-38L",
+   "second": "Me 262",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-38L",
+   "second": "Ki-84",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "P-38L",
+   "second": "Yak-3",
+   "wins": 350,
+   "draws": 10,
+   "losses": 24,
+   "score": 0.9244791666666666
+  },
+  {
+   "first": "P-38L",
+   "second": "Corsair",
+   "wins": 173,
+   "draws": 16,
+   "losses": 131,
+   "score": 0.565625
+  },
+  {
+   "first": "P-38L",
+   "second": "La-7",
+   "wins": 60,
+   "draws": 1,
+   "losses": 3,
+   "score": 0.9453125
+  },
+  {
+   "first": "P-38L",
+   "second": "Me 163",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-38L",
+   "second": "Hellcat",
+   "wins": 150,
+   "draws": 8,
+   "losses": 226,
+   "score": 0.4010416666666667
+  },
+  {
+   "first": "P-38L",
+   "second": "Hammerhead",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-38L",
+   "second": "Wren",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "P-38L",
+   "second": "Anvil",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-38L",
+   "second": "Albatross",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-38L",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "P-38L",
+   "second": "Zerst\u00f6rer",
+   "wins": 441,
+   "draws": 11,
+   "losses": 60,
+   "score": 0.8720703125
+  },
+  {
+   "first": "P-38L",
+   "second": "Shrike",
+   "wins": 306,
+   "draws": 19,
+   "losses": 187,
+   "score": 0.6162109375
+  },
+  {
+   "first": "P-38L",
+   "second": "Lantern",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "P-51D",
+   "wins": 459,
+   "draws": 81,
+   "losses": 420,
+   "score": 0.5203125
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Heavy",
+   "wins": 53,
+   "draws": 4,
+   "losses": 135,
+   "score": 0.2864583333333333
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "P-47D",
+   "wins": 0,
+   "draws": 1,
+   "losses": 63,
+   "score": 0.0078125
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "P-38L",
+   "wins": 4,
+   "draws": 0,
+   "losses": 60,
+   "score": 0.0625
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Spitfire XIV",
+   "wins": 87,
+   "draws": 17,
+   "losses": 88,
+   "score": 0.4973958333333333
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Tempest V",
+   "wins": 39,
+   "draws": 1,
+   "losses": 88,
+   "score": 0.30859375
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Mosquito",
+   "wins": 112,
+   "draws": 0,
+   "losses": 80,
+   "score": 0.5833333333333334
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Fw 190A",
+   "wins": 32,
+   "draws": 1,
+   "losses": 95,
+   "score": 0.25390625
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Fw 190D",
+   "wins": 79,
+   "draws": 18,
+   "losses": 95,
+   "score": 0.4583333333333333
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Bf 109K",
+   "wins": 62,
+   "draws": 2,
+   "losses": 0,
+   "score": 0.984375
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Zero",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Me 262",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Ki-84",
+   "wins": 163,
+   "draws": 3,
+   "losses": 90,
+   "score": 0.642578125
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Yak-3",
+   "wins": 81,
+   "draws": 12,
+   "losses": 99,
+   "score": 0.453125
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Corsair",
+   "wins": 38,
+   "draws": 0,
+   "losses": 154,
+   "score": 0.19791666666666666
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "La-7",
+   "wins": 78,
+   "draws": 5,
+   "losses": 109,
+   "score": 0.4192708333333333
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Me 163",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Hellcat",
+   "wins": 2,
+   "draws": 0,
+   "losses": 62,
+   "score": 0.03125
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Hammerhead",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Wren",
+   "wins": 49,
+   "draws": 0,
+   "losses": 15,
+   "score": 0.765625
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Anvil",
+   "wins": 63,
+   "draws": 1,
+   "losses": 0,
+   "score": 0.9921875
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Albatross",
+   "wins": 204,
+   "draws": 9,
+   "losses": 43,
+   "score": 0.814453125
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Zerst\u00f6rer",
+   "wins": 83,
+   "draws": 3,
+   "losses": 106,
+   "score": 0.4401041666666667
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Shrike",
+   "wins": 68,
+   "draws": 2,
+   "losses": 122,
+   "score": 0.359375
+  },
+  {
+   "first": "Spitfire IX",
+   "second": "Lantern",
+   "wins": 55,
+   "draws": 0,
+   "losses": 9,
+   "score": 0.859375
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "P-51D",
+   "wins": 462,
+   "draws": 65,
+   "losses": 433,
+   "score": 0.5151041666666667
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Heavy",
+   "wins": 48,
+   "draws": 2,
+   "losses": 142,
+   "score": 0.2552083333333333
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "P-47D",
+   "wins": 0,
+   "draws": 1,
+   "losses": 63,
+   "score": 0.0078125
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "P-38L",
+   "wins": 10,
+   "draws": 3,
+   "losses": 51,
+   "score": 0.1796875
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Spitfire IX",
+   "wins": 88,
+   "draws": 17,
+   "losses": 87,
+   "score": 0.5026041666666666
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Tempest V",
+   "wins": 12,
+   "draws": 1,
+   "losses": 51,
+   "score": 0.1953125
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Mosquito",
+   "wins": 115,
+   "draws": 1,
+   "losses": 76,
+   "score": 0.6015625
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Fw 190A",
+   "wins": 31,
+   "draws": 4,
+   "losses": 93,
+   "score": 0.2578125
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Fw 190D",
+   "wins": 65,
+   "draws": 13,
+   "losses": 114,
+   "score": 0.3723958333333333
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Bf 109K",
+   "wins": 61,
+   "draws": 1,
+   "losses": 2,
+   "score": 0.9609375
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Zero",
+   "wins": 63,
+   "draws": 1,
+   "losses": 0,
+   "score": 0.9921875
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Me 262",
+   "wins": 61,
+   "draws": 1,
+   "losses": 2,
+   "score": 0.9609375
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Ki-84",
+   "wins": 149,
+   "draws": 4,
+   "losses": 103,
+   "score": 0.58984375
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Yak-3",
+   "wins": 74,
+   "draws": 12,
+   "losses": 106,
+   "score": 0.4166666666666667
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Corsair",
+   "wins": 23,
+   "draws": 1,
+   "losses": 104,
+   "score": 0.18359375
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "La-7",
+   "wins": 71,
+   "draws": 3,
+   "losses": 118,
+   "score": 0.3776041666666667
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Me 163",
+   "wins": 63,
+   "draws": 1,
+   "losses": 0,
+   "score": 0.9921875
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Hellcat",
+   "wins": 2,
+   "draws": 0,
+   "losses": 62,
+   "score": 0.03125
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Hammerhead",
+   "wins": 62,
+   "draws": 1,
+   "losses": 1,
+   "score": 0.9765625
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Wren",
+   "wins": 162,
+   "draws": 0,
+   "losses": 30,
+   "score": 0.84375
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Anvil",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Albatross",
+   "wins": 208,
+   "draws": 9,
+   "losses": 39,
+   "score": 0.830078125
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Zerst\u00f6rer",
+   "wins": 84,
+   "draws": 6,
+   "losses": 102,
+   "score": 0.453125
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Shrike",
+   "wins": 65,
+   "draws": 1,
+   "losses": 126,
+   "score": 0.3411458333333333
+  },
+  {
+   "first": "Spitfire XIV",
+   "second": "Lantern",
+   "wins": 54,
+   "draws": 0,
+   "losses": 10,
+   "score": 0.84375
+  },
+  {
+   "first": "Tempest V",
+   "second": "P-51D",
+   "wins": 120,
+   "draws": 0,
+   "losses": 8,
+   "score": 0.9375
+  },
+  {
+   "first": "Tempest V",
+   "second": "Heavy",
+   "wins": 258,
+   "draws": 6,
+   "losses": 120,
+   "score": 0.6796875
+  },
+  {
+   "first": "Tempest V",
+   "second": "P-47D",
+   "wins": 127,
+   "draws": 4,
+   "losses": 509,
+   "score": 0.2015625
+  },
+  {
+   "first": "Tempest V",
+   "second": "P-38L",
+   "wins": 123,
+   "draws": 8,
+   "losses": 125,
+   "score": 0.49609375
+  },
+  {
+   "first": "Tempest V",
+   "second": "Spitfire IX",
+   "wins": 88,
+   "draws": 1,
+   "losses": 39,
+   "score": 0.69140625
+  },
+  {
+   "first": "Tempest V",
+   "second": "Spitfire XIV",
+   "wins": 51,
+   "draws": 1,
+   "losses": 12,
+   "score": 0.8046875
+  },
+  {
+   "first": "Tempest V",
+   "second": "Mosquito",
+   "wins": 51,
+   "draws": 3,
+   "losses": 10,
+   "score": 0.8203125
+  },
+  {
+   "first": "Tempest V",
+   "second": "Fw 190A",
+   "wins": 111,
+   "draws": 5,
+   "losses": 140,
+   "score": 0.443359375
+  },
+  {
+   "first": "Tempest V",
+   "second": "Fw 190D",
+   "wins": 165,
+   "draws": 4,
+   "losses": 23,
+   "score": 0.8697916666666666
+  },
+  {
+   "first": "Tempest V",
+   "second": "Bf 109K",
+   "wins": 62,
+   "draws": 2,
+   "losses": 0,
+   "score": 0.984375
+  },
+  {
+   "first": "Tempest V",
+   "second": "Zero",
+   "wins": 60,
+   "draws": 2,
+   "losses": 2,
+   "score": 0.953125
+  },
+  {
+   "first": "Tempest V",
+   "second": "Me 262",
+   "wins": 61,
+   "draws": 1,
+   "losses": 2,
+   "score": 0.9609375
+  },
+  {
+   "first": "Tempest V",
+   "second": "Ki-84",
+   "wins": 57,
+   "draws": 3,
+   "losses": 4,
+   "score": 0.9140625
+  },
+  {
+   "first": "Tempest V",
+   "second": "Yak-3",
+   "wins": 321,
+   "draws": 3,
+   "losses": 60,
+   "score": 0.83984375
+  },
+  {
+   "first": "Tempest V",
+   "second": "Corsair",
+   "wins": 199,
+   "draws": 21,
+   "losses": 100,
+   "score": 0.6546875
+  },
+  {
+   "first": "Tempest V",
+   "second": "La-7",
+   "wins": 111,
+   "draws": 3,
+   "losses": 14,
+   "score": 0.87890625
+  },
+  {
+   "first": "Tempest V",
+   "second": "Me 163",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Tempest V",
+   "second": "Hellcat",
+   "wins": 122,
+   "draws": 8,
+   "losses": 254,
+   "score": 0.328125
+  },
+  {
+   "first": "Tempest V",
+   "second": "Hammerhead",
+   "wins": 63,
+   "draws": 1,
+   "losses": 0,
+   "score": 0.9921875
+  },
+  {
+   "first": "Tempest V",
+   "second": "Wren",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "Tempest V",
+   "second": "Anvil",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Tempest V",
+   "second": "Albatross",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Tempest V",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Tempest V",
+   "second": "Zerst\u00f6rer",
+   "wins": 376,
+   "draws": 19,
+   "losses": 53,
+   "score": 0.8604910714285714
+  },
+  {
+   "first": "Tempest V",
+   "second": "Shrike",
+   "wins": 232,
+   "draws": 11,
+   "losses": 141,
+   "score": 0.6184895833333334
+  },
+  {
+   "first": "Tempest V",
+   "second": "Lantern",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Mosquito",
+   "second": "P-51D",
+   "wins": 359,
+   "draws": 14,
+   "losses": 459,
+   "score": 0.43990384615384615
+  },
+  {
+   "first": "Mosquito",
+   "second": "Heavy",
+   "wins": 45,
+   "draws": 7,
+   "losses": 140,
+   "score": 0.2526041666666667
+  },
+  {
+   "first": "Mosquito",
+   "second": "P-47D",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Mosquito",
+   "second": "P-38L",
+   "wins": 6,
+   "draws": 2,
+   "losses": 56,
+   "score": 0.109375
+  },
+  {
+   "first": "Mosquito",
+   "second": "Spitfire IX",
+   "wins": 80,
+   "draws": 0,
+   "losses": 112,
+   "score": 0.4166666666666667
+  },
+  {
+   "first": "Mosquito",
+   "second": "Spitfire XIV",
+   "wins": 76,
+   "draws": 1,
+   "losses": 115,
+   "score": 0.3984375
+  },
+  {
+   "first": "Mosquito",
+   "second": "Tempest V",
+   "wins": 10,
+   "draws": 3,
+   "losses": 51,
+   "score": 0.1796875
+  },
+  {
+   "first": "Mosquito",
+   "second": "Fw 190A",
+   "wins": 7,
+   "draws": 3,
+   "losses": 54,
+   "score": 0.1328125
+  },
+  {
+   "first": "Mosquito",
+   "second": "Fw 190D",
+   "wins": 95,
+   "draws": 8,
+   "losses": 153,
+   "score": 0.38671875
+  },
+  {
+   "first": "Mosquito",
+   "second": "Bf 109K",
+   "wins": 62,
+   "draws": 0,
+   "losses": 2,
+   "score": 0.96875
+  },
+  {
+   "first": "Mosquito",
+   "second": "Zero",
+   "wins": 60,
+   "draws": 1,
+   "losses": 3,
+   "score": 0.9453125
+  },
+  {
+   "first": "Mosquito",
+   "second": "Me 262",
+   "wins": 56,
+   "draws": 3,
+   "losses": 5,
+   "score": 0.8984375
+  },
+  {
+   "first": "Mosquito",
+   "second": "Ki-84",
+   "wins": 129,
+   "draws": 2,
+   "losses": 61,
+   "score": 0.6770833333333334
+  },
+  {
+   "first": "Mosquito",
+   "second": "Yak-3",
+   "wins": 80,
+   "draws": 1,
+   "losses": 175,
+   "score": 0.314453125
+  },
+  {
+   "first": "Mosquito",
+   "second": "Corsair",
+   "wins": 14,
+   "draws": 0,
+   "losses": 50,
+   "score": 0.21875
+  },
+  {
+   "first": "Mosquito",
+   "second": "La-7",
+   "wins": 171,
+   "draws": 3,
+   "losses": 82,
+   "score": 0.673828125
+  },
+  {
+   "first": "Mosquito",
+   "second": "Me 163",
+   "wins": 60,
+   "draws": 1,
+   "losses": 3,
+   "score": 0.9453125
+  },
+  {
+   "first": "Mosquito",
+   "second": "Hellcat",
+   "wins": 1,
+   "draws": 3,
+   "losses": 60,
+   "score": 0.0390625
+  },
+  {
+   "first": "Mosquito",
+   "second": "Hammerhead",
+   "wins": 62,
+   "draws": 0,
+   "losses": 2,
+   "score": 0.96875
+  },
+  {
+   "first": "Mosquito",
+   "second": "Wren",
+   "wins": 241,
+   "draws": 0,
+   "losses": 15,
+   "score": 0.94140625
+  },
+  {
+   "first": "Mosquito",
+   "second": "Anvil",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Mosquito",
+   "second": "Albatross",
+   "wins": 198,
+   "draws": 4,
+   "losses": 54,
+   "score": 0.78125
+  },
+  {
+   "first": "Mosquito",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Mosquito",
+   "second": "Zerst\u00f6rer",
+   "wins": 155,
+   "draws": 7,
+   "losses": 94,
+   "score": 0.619140625
+  },
+  {
+   "first": "Mosquito",
+   "second": "Shrike",
+   "wins": 53,
+   "draws": 4,
+   "losses": 135,
+   "score": 0.2864583333333333
+  },
+  {
+   "first": "Mosquito",
+   "second": "Lantern",
+   "wins": 60,
+   "draws": 1,
+   "losses": 3,
+   "score": 0.9453125
+  },
+  {
+   "first": "Fw 190A",
+   "second": "P-51D",
+   "wins": 627,
+   "draws": 11,
+   "losses": 130,
+   "score": 0.8235677083333334
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Heavy",
+   "wins": 180,
+   "draws": 8,
+   "losses": 68,
+   "score": 0.71875
+  },
+  {
+   "first": "Fw 190A",
+   "second": "P-47D",
+   "wins": 90,
+   "draws": 25,
+   "losses": 461,
+   "score": 0.1779513888888889
+  },
+  {
+   "first": "Fw 190A",
+   "second": "P-38L",
+   "wins": 159,
+   "draws": 14,
+   "losses": 147,
+   "score": 0.51875
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Spitfire IX",
+   "wins": 95,
+   "draws": 1,
+   "losses": 32,
+   "score": 0.74609375
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Spitfire XIV",
+   "wins": 93,
+   "draws": 4,
+   "losses": 31,
+   "score": 0.7421875
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Tempest V",
+   "wins": 140,
+   "draws": 5,
+   "losses": 111,
+   "score": 0.556640625
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Mosquito",
+   "wins": 54,
+   "draws": 3,
+   "losses": 7,
+   "score": 0.8671875
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Fw 190D",
+   "wins": 178,
+   "draws": 3,
+   "losses": 11,
+   "score": 0.9348958333333334
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Bf 109K",
+   "wins": 63,
+   "draws": 1,
+   "losses": 0,
+   "score": 0.9921875
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Zero",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Me 262",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Ki-84",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Yak-3",
+   "wins": 170,
+   "draws": 5,
+   "losses": 81,
+   "score": 0.673828125
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Corsair",
+   "wins": 159,
+   "draws": 3,
+   "losses": 94,
+   "score": 0.626953125
+  },
+  {
+   "first": "Fw 190A",
+   "second": "La-7",
+   "wins": 121,
+   "draws": 3,
+   "losses": 4,
+   "score": 0.95703125
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Me 163",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Hellcat",
+   "wins": 92,
+   "draws": 8,
+   "losses": 348,
+   "score": 0.21428571428571427
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Hammerhead",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Wren",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Anvil",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Albatross",
+   "wins": 61,
+   "draws": 0,
+   "losses": 3,
+   "score": 0.953125
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Zerst\u00f6rer",
+   "wins": 276,
+   "draws": 1,
+   "losses": 43,
+   "score": 0.8640625
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Shrike",
+   "wins": 201,
+   "draws": 26,
+   "losses": 93,
+   "score": 0.66875
+  },
+  {
+   "first": "Fw 190A",
+   "second": "Lantern",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Fw 190D",
+   "second": "P-51D",
+   "wins": 585,
+   "draws": 80,
+   "losses": 359,
+   "score": 0.6103515625
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Heavy",
+   "wins": 21,
+   "draws": 7,
+   "losses": 164,
+   "score": 0.12760416666666666
+  },
+  {
+   "first": "Fw 190D",
+   "second": "P-47D",
+   "wins": 2,
+   "draws": 2,
+   "losses": 60,
+   "score": 0.046875
+  },
+  {
+   "first": "Fw 190D",
+   "second": "P-38L",
+   "wins": 3,
+   "draws": 0,
+   "losses": 61,
+   "score": 0.046875
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Spitfire IX",
+   "wins": 95,
+   "draws": 18,
+   "losses": 79,
+   "score": 0.5416666666666666
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Spitfire XIV",
+   "wins": 114,
+   "draws": 13,
+   "losses": 65,
+   "score": 0.6276041666666666
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Tempest V",
+   "wins": 23,
+   "draws": 4,
+   "losses": 165,
+   "score": 0.13020833333333334
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Mosquito",
+   "wins": 153,
+   "draws": 8,
+   "losses": 95,
+   "score": 0.61328125
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Fw 190A",
+   "wins": 11,
+   "draws": 3,
+   "losses": 178,
+   "score": 0.06510416666666667
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Bf 109K",
+   "wins": 63,
+   "draws": 1,
+   "losses": 0,
+   "score": 0.9921875
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Zero",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Me 262",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Ki-84",
+   "wins": 131,
+   "draws": 21,
+   "losses": 104,
+   "score": 0.552734375
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Yak-3",
+   "wins": 62,
+   "draws": 15,
+   "losses": 115,
+   "score": 0.3619791666666667
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Corsair",
+   "wins": 23,
+   "draws": 8,
+   "losses": 161,
+   "score": 0.140625
+  },
+  {
+   "first": "Fw 190D",
+   "second": "La-7",
+   "wins": 89,
+   "draws": 6,
+   "losses": 97,
+   "score": 0.4791666666666667
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Me 163",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Hellcat",
+   "wins": 8,
+   "draws": 0,
+   "losses": 56,
+   "score": 0.125
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Hammerhead",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Wren",
+   "wins": 59,
+   "draws": 0,
+   "losses": 5,
+   "score": 0.921875
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Anvil",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Albatross",
+   "wins": 158,
+   "draws": 5,
+   "losses": 29,
+   "score": 0.8359375
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Zerst\u00f6rer",
+   "wins": 46,
+   "draws": 2,
+   "losses": 80,
+   "score": 0.3671875
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Shrike",
+   "wins": 39,
+   "draws": 4,
+   "losses": 85,
+   "score": 0.3203125
+  },
+  {
+   "first": "Fw 190D",
+   "second": "Lantern",
+   "wins": 57,
+   "draws": 0,
+   "losses": 7,
+   "score": 0.890625
+  },
+  {
+   "first": "Bf 109K",
+   "second": "P-51D",
+   "wins": 1,
+   "draws": 1,
+   "losses": 126,
+   "score": 0.01171875
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Heavy",
+   "wins": 1,
+   "draws": 0,
+   "losses": 127,
+   "score": 0.0078125
+  },
+  {
+   "first": "Bf 109K",
+   "second": "P-47D",
+   "wins": 1,
+   "draws": 2,
+   "losses": 61,
+   "score": 0.03125
+  },
+  {
+   "first": "Bf 109K",
+   "second": "P-38L",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Spitfire IX",
+   "wins": 0,
+   "draws": 2,
+   "losses": 62,
+   "score": 0.015625
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Spitfire XIV",
+   "wins": 2,
+   "draws": 1,
+   "losses": 61,
+   "score": 0.0390625
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Tempest V",
+   "wins": 0,
+   "draws": 2,
+   "losses": 62,
+   "score": 0.015625
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Mosquito",
+   "wins": 2,
+   "draws": 0,
+   "losses": 62,
+   "score": 0.03125
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Fw 190A",
+   "wins": 0,
+   "draws": 1,
+   "losses": 63,
+   "score": 0.0078125
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Fw 190D",
+   "wins": 0,
+   "draws": 1,
+   "losses": 63,
+   "score": 0.0078125
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Zero",
+   "wins": 46,
+   "draws": 15,
+   "losses": 1539,
+   "score": 0.0334375
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Me 262",
+   "wins": 106,
+   "draws": 46,
+   "losses": 808,
+   "score": 0.134375
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Ki-84",
+   "wins": 1,
+   "draws": 1,
+   "losses": 62,
+   "score": 0.0234375
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Yak-3",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Corsair",
+   "wins": 0,
+   "draws": 1,
+   "losses": 63,
+   "score": 0.0078125
+  },
+  {
+   "first": "Bf 109K",
+   "second": "La-7",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Me 163",
+   "wins": 706,
+   "draws": 38,
+   "losses": 280,
+   "score": 0.7080078125
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Hellcat",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Hammerhead",
+   "wins": 434,
+   "draws": 5,
+   "losses": 201,
+   "score": 0.68203125
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Wren",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Anvil",
+   "wins": 71,
+   "draws": 8,
+   "losses": 241,
+   "score": 0.234375
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Albatross",
+   "wins": 4,
+   "draws": 0,
+   "losses": 60,
+   "score": 0.0625
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Zerst\u00f6rer",
+   "wins": 10,
+   "draws": 2,
+   "losses": 52,
+   "score": 0.171875
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Shrike",
+   "wins": 2,
+   "draws": 0,
+   "losses": 62,
+   "score": 0.03125
+  },
+  {
+   "first": "Bf 109K",
+   "second": "Lantern",
+   "wins": 2,
+   "draws": 1,
+   "losses": 61,
+   "score": 0.0390625
+  },
+  {
+   "first": "Zero",
+   "second": "P-51D",
+   "wins": 1,
+   "draws": 1,
+   "losses": 126,
+   "score": 0.01171875
+  },
+  {
+   "first": "Zero",
+   "second": "Heavy",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Zero",
+   "second": "P-47D",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Zero",
+   "second": "P-38L",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Zero",
+   "second": "Spitfire IX",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Zero",
+   "second": "Spitfire XIV",
+   "wins": 0,
+   "draws": 1,
+   "losses": 63,
+   "score": 0.0078125
+  },
+  {
+   "first": "Zero",
+   "second": "Tempest V",
+   "wins": 2,
+   "draws": 2,
+   "losses": 60,
+   "score": 0.046875
+  },
+  {
+   "first": "Zero",
+   "second": "Mosquito",
+   "wins": 3,
+   "draws": 1,
+   "losses": 60,
+   "score": 0.0546875
+  },
+  {
+   "first": "Zero",
+   "second": "Fw 190A",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Zero",
+   "second": "Fw 190D",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Zero",
+   "second": "Bf 109K",
+   "wins": 1539,
+   "draws": 15,
+   "losses": 46,
+   "score": 0.9665625
+  },
+  {
+   "first": "Zero",
+   "second": "Me 262",
+   "wins": 134,
+   "draws": 5,
+   "losses": 53,
+   "score": 0.7109375
+  },
+  {
+   "first": "Zero",
+   "second": "Ki-84",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Zero",
+   "second": "Yak-3",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Zero",
+   "second": "Corsair",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Zero",
+   "second": "La-7",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Zero",
+   "second": "Me 163",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Zero",
+   "second": "Hellcat",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Zero",
+   "second": "Hammerhead",
+   "wins": 61,
+   "draws": 0,
+   "losses": 3,
+   "score": 0.953125
+  },
+  {
+   "first": "Zero",
+   "second": "Wren",
+   "wins": 339,
+   "draws": 5,
+   "losses": 1640,
+   "score": 0.17212701612903225
+  },
+  {
+   "first": "Zero",
+   "second": "Anvil",
+   "wins": 2084,
+   "draws": 35,
+   "losses": 505,
+   "score": 0.8008765243902439
+  },
+  {
+   "first": "Zero",
+   "second": "Albatross",
+   "wins": 28,
+   "draws": 6,
+   "losses": 2334,
+   "score": 0.013091216216216216
+  },
+  {
+   "first": "Zero",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Zero",
+   "second": "Zerst\u00f6rer",
+   "wins": 8,
+   "draws": 0,
+   "losses": 56,
+   "score": 0.125
+  },
+  {
+   "first": "Zero",
+   "second": "Shrike",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Zero",
+   "second": "Lantern",
+   "wins": 377,
+   "draws": 1,
+   "losses": 454,
+   "score": 0.45372596153846156
+  },
+  {
+   "first": "Me 262",
+   "second": "P-51D",
+   "wins": 0,
+   "draws": 4,
+   "losses": 124,
+   "score": 0.015625
+  },
+  {
+   "first": "Me 262",
+   "second": "Heavy",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 262",
+   "second": "P-47D",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 262",
+   "second": "P-38L",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 262",
+   "second": "Spitfire IX",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 262",
+   "second": "Spitfire XIV",
+   "wins": 2,
+   "draws": 1,
+   "losses": 61,
+   "score": 0.0390625
+  },
+  {
+   "first": "Me 262",
+   "second": "Tempest V",
+   "wins": 2,
+   "draws": 1,
+   "losses": 61,
+   "score": 0.0390625
+  },
+  {
+   "first": "Me 262",
+   "second": "Mosquito",
+   "wins": 5,
+   "draws": 3,
+   "losses": 56,
+   "score": 0.1015625
+  },
+  {
+   "first": "Me 262",
+   "second": "Fw 190A",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Me 262",
+   "second": "Fw 190D",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 262",
+   "second": "Bf 109K",
+   "wins": 808,
+   "draws": 46,
+   "losses": 106,
+   "score": 0.865625
+  },
+  {
+   "first": "Me 262",
+   "second": "Zero",
+   "wins": 53,
+   "draws": 5,
+   "losses": 134,
+   "score": 0.2890625
+  },
+  {
+   "first": "Me 262",
+   "second": "Ki-84",
+   "wins": 0,
+   "draws": 1,
+   "losses": 63,
+   "score": 0.0078125
+  },
+  {
+   "first": "Me 262",
+   "second": "Yak-3",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 262",
+   "second": "Corsair",
+   "wins": 2,
+   "draws": 3,
+   "losses": 59,
+   "score": 0.0546875
+  },
+  {
+   "first": "Me 262",
+   "second": "La-7",
+   "wins": 1,
+   "draws": 1,
+   "losses": 62,
+   "score": 0.0234375
+  },
+  {
+   "first": "Me 262",
+   "second": "Me 163",
+   "wins": 1386,
+   "draws": 85,
+   "losses": 193,
+   "score": 0.8584735576923077
+  },
+  {
+   "first": "Me 262",
+   "second": "Hellcat",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 262",
+   "second": "Hammerhead",
+   "wins": 1073,
+   "draws": 68,
+   "losses": 75,
+   "score": 0.9103618421052632
+  },
+  {
+   "first": "Me 262",
+   "second": "Wren",
+   "wins": 65,
+   "draws": 10,
+   "losses": 1333,
+   "score": 0.04971590909090909
+  },
+  {
+   "first": "Me 262",
+   "second": "Anvil",
+   "wins": 327,
+   "draws": 15,
+   "losses": 42,
+   "score": 0.87109375
+  },
+  {
+   "first": "Me 262",
+   "second": "Albatross",
+   "wins": 4,
+   "draws": 2,
+   "losses": 58,
+   "score": 0.078125
+  },
+  {
+   "first": "Me 262",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Me 262",
+   "second": "Zerst\u00f6rer",
+   "wins": 14,
+   "draws": 2,
+   "losses": 48,
+   "score": 0.234375
+  },
+  {
+   "first": "Me 262",
+   "second": "Shrike",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Me 262",
+   "second": "Lantern",
+   "wins": 304,
+   "draws": 107,
+   "losses": 3173,
+   "score": 0.09974888392857142
+  },
+  {
+   "first": "Ki-84",
+   "second": "P-51D",
+   "wins": 384,
+   "draws": 7,
+   "losses": 441,
+   "score": 0.4657451923076923
+  },
+  {
+   "first": "Ki-84",
+   "second": "Heavy",
+   "wins": 1,
+   "draws": 1,
+   "losses": 62,
+   "score": 0.0234375
+  },
+  {
+   "first": "Ki-84",
+   "second": "P-47D",
+   "wins": 0,
+   "draws": 1,
+   "losses": 63,
+   "score": 0.0078125
+  },
+  {
+   "first": "Ki-84",
+   "second": "P-38L",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Ki-84",
+   "second": "Spitfire IX",
+   "wins": 90,
+   "draws": 3,
+   "losses": 163,
+   "score": 0.357421875
+  },
+  {
+   "first": "Ki-84",
+   "second": "Spitfire XIV",
+   "wins": 103,
+   "draws": 4,
+   "losses": 149,
+   "score": 0.41015625
+  },
+  {
+   "first": "Ki-84",
+   "second": "Tempest V",
+   "wins": 4,
+   "draws": 3,
+   "losses": 57,
+   "score": 0.0859375
+  },
+  {
+   "first": "Ki-84",
+   "second": "Mosquito",
+   "wins": 61,
+   "draws": 2,
+   "losses": 129,
+   "score": 0.3229166666666667
+  },
+  {
+   "first": "Ki-84",
+   "second": "Fw 190A",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Ki-84",
+   "second": "Fw 190D",
+   "wins": 104,
+   "draws": 21,
+   "losses": 131,
+   "score": 0.447265625
+  },
+  {
+   "first": "Ki-84",
+   "second": "Bf 109K",
+   "wins": 62,
+   "draws": 1,
+   "losses": 1,
+   "score": 0.9765625
+  },
+  {
+   "first": "Ki-84",
+   "second": "Zero",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Ki-84",
+   "second": "Me 262",
+   "wins": 63,
+   "draws": 1,
+   "losses": 0,
+   "score": 0.9921875
+  },
+  {
+   "first": "Ki-84",
+   "second": "Yak-3",
+   "wins": 70,
+   "draws": 6,
+   "losses": 180,
+   "score": 0.28515625
+  },
+  {
+   "first": "Ki-84",
+   "second": "Corsair",
+   "wins": 4,
+   "draws": 1,
+   "losses": 59,
+   "score": 0.0703125
+  },
+  {
+   "first": "Ki-84",
+   "second": "La-7",
+   "wins": 97,
+   "draws": 20,
+   "losses": 139,
+   "score": 0.41796875
+  },
+  {
+   "first": "Ki-84",
+   "second": "Me 163",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Ki-84",
+   "second": "Hellcat",
+   "wins": 2,
+   "draws": 1,
+   "losses": 61,
+   "score": 0.0390625
+  },
+  {
+   "first": "Ki-84",
+   "second": "Hammerhead",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Ki-84",
+   "second": "Wren",
+   "wins": 242,
+   "draws": 3,
+   "losses": 75,
+   "score": 0.7609375
+  },
+  {
+   "first": "Ki-84",
+   "second": "Anvil",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Ki-84",
+   "second": "Albatross",
+   "wins": 163,
+   "draws": 1,
+   "losses": 92,
+   "score": 0.638671875
+  },
+  {
+   "first": "Ki-84",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Ki-84",
+   "second": "Zerst\u00f6rer",
+   "wins": 48,
+   "draws": 2,
+   "losses": 142,
+   "score": 0.2552083333333333
+  },
+  {
+   "first": "Ki-84",
+   "second": "Shrike",
+   "wins": 15,
+   "draws": 1,
+   "losses": 48,
+   "score": 0.2421875
+  },
+  {
+   "first": "Ki-84",
+   "second": "Lantern",
+   "wins": 446,
+   "draws": 2,
+   "losses": 64,
+   "score": 0.873046875
+  },
+  {
+   "first": "Yak-3",
+   "second": "P-51D",
+   "wins": 706,
+   "draws": 29,
+   "losses": 417,
+   "score": 0.6254340277777778
+  },
+  {
+   "first": "Yak-3",
+   "second": "Heavy",
+   "wins": 24,
+   "draws": 4,
+   "losses": 100,
+   "score": 0.203125
+  },
+  {
+   "first": "Yak-3",
+   "second": "P-47D",
+   "wins": 3,
+   "draws": 2,
+   "losses": 59,
+   "score": 0.0625
+  },
+  {
+   "first": "Yak-3",
+   "second": "P-38L",
+   "wins": 24,
+   "draws": 10,
+   "losses": 350,
+   "score": 0.07552083333333333
+  },
+  {
+   "first": "Yak-3",
+   "second": "Spitfire IX",
+   "wins": 99,
+   "draws": 12,
+   "losses": 81,
+   "score": 0.546875
+  },
+  {
+   "first": "Yak-3",
+   "second": "Spitfire XIV",
+   "wins": 106,
+   "draws": 12,
+   "losses": 74,
+   "score": 0.5833333333333334
+  },
+  {
+   "first": "Yak-3",
+   "second": "Tempest V",
+   "wins": 60,
+   "draws": 3,
+   "losses": 321,
+   "score": 0.16015625
+  },
+  {
+   "first": "Yak-3",
+   "second": "Mosquito",
+   "wins": 175,
+   "draws": 1,
+   "losses": 80,
+   "score": 0.685546875
+  },
+  {
+   "first": "Yak-3",
+   "second": "Fw 190A",
+   "wins": 81,
+   "draws": 5,
+   "losses": 170,
+   "score": 0.326171875
+  },
+  {
+   "first": "Yak-3",
+   "second": "Fw 190D",
+   "wins": 115,
+   "draws": 15,
+   "losses": 62,
+   "score": 0.6380208333333334
+  },
+  {
+   "first": "Yak-3",
+   "second": "Bf 109K",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "Yak-3",
+   "second": "Zero",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Yak-3",
+   "second": "Me 262",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Yak-3",
+   "second": "Ki-84",
+   "wins": 180,
+   "draws": 6,
+   "losses": 70,
+   "score": 0.71484375
+  },
+  {
+   "first": "Yak-3",
+   "second": "Corsair",
+   "wins": 35,
+   "draws": 2,
+   "losses": 219,
+   "score": 0.140625
+  },
+  {
+   "first": "Yak-3",
+   "second": "La-7",
+   "wins": 111,
+   "draws": 11,
+   "losses": 70,
+   "score": 0.6067708333333334
+  },
+  {
+   "first": "Yak-3",
+   "second": "Me 163",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Yak-3",
+   "second": "Hellcat",
+   "wins": 4,
+   "draws": 1,
+   "losses": 59,
+   "score": 0.0703125
+  },
+  {
+   "first": "Yak-3",
+   "second": "Hammerhead",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Yak-3",
+   "second": "Wren",
+   "wins": 59,
+   "draws": 0,
+   "losses": 5,
+   "score": 0.921875
+  },
+  {
+   "first": "Yak-3",
+   "second": "Anvil",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Yak-3",
+   "second": "Albatross",
+   "wins": 52,
+   "draws": 3,
+   "losses": 9,
+   "score": 0.8359375
+  },
+  {
+   "first": "Yak-3",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Yak-3",
+   "second": "Zerst\u00f6rer",
+   "wins": 20,
+   "draws": 0,
+   "losses": 44,
+   "score": 0.3125
+  },
+  {
+   "first": "Yak-3",
+   "second": "Shrike",
+   "wins": 28,
+   "draws": 1,
+   "losses": 35,
+   "score": 0.4453125
+  },
+  {
+   "first": "Yak-3",
+   "second": "Lantern",
+   "wins": 60,
+   "draws": 0,
+   "losses": 4,
+   "score": 0.9375
+  },
+  {
+   "first": "Corsair",
+   "second": "P-51D",
+   "wins": 856,
+   "draws": 4,
+   "losses": 36,
+   "score": 0.9575892857142857
+  },
+  {
+   "first": "Corsair",
+   "second": "Heavy",
+   "wins": 109,
+   "draws": 4,
+   "losses": 79,
+   "score": 0.578125
+  },
+  {
+   "first": "Corsair",
+   "second": "P-47D",
+   "wins": 94,
+   "draws": 10,
+   "losses": 472,
+   "score": 0.171875
+  },
+  {
+   "first": "Corsair",
+   "second": "P-38L",
+   "wins": 131,
+   "draws": 16,
+   "losses": 173,
+   "score": 0.434375
+  },
+  {
+   "first": "Corsair",
+   "second": "Spitfire IX",
+   "wins": 154,
+   "draws": 0,
+   "losses": 38,
+   "score": 0.8020833333333334
+  },
+  {
+   "first": "Corsair",
+   "second": "Spitfire XIV",
+   "wins": 104,
+   "draws": 1,
+   "losses": 23,
+   "score": 0.81640625
+  },
+  {
+   "first": "Corsair",
+   "second": "Tempest V",
+   "wins": 100,
+   "draws": 21,
+   "losses": 199,
+   "score": 0.3453125
+  },
+  {
+   "first": "Corsair",
+   "second": "Mosquito",
+   "wins": 50,
+   "draws": 0,
+   "losses": 14,
+   "score": 0.78125
+  },
+  {
+   "first": "Corsair",
+   "second": "Fw 190A",
+   "wins": 94,
+   "draws": 3,
+   "losses": 159,
+   "score": 0.373046875
+  },
+  {
+   "first": "Corsair",
+   "second": "Fw 190D",
+   "wins": 161,
+   "draws": 8,
+   "losses": 23,
+   "score": 0.859375
+  },
+  {
+   "first": "Corsair",
+   "second": "Bf 109K",
+   "wins": 63,
+   "draws": 1,
+   "losses": 0,
+   "score": 0.9921875
+  },
+  {
+   "first": "Corsair",
+   "second": "Zero",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "Corsair",
+   "second": "Me 262",
+   "wins": 59,
+   "draws": 3,
+   "losses": 2,
+   "score": 0.9453125
+  },
+  {
+   "first": "Corsair",
+   "second": "Ki-84",
+   "wins": 59,
+   "draws": 1,
+   "losses": 4,
+   "score": 0.9296875
+  },
+  {
+   "first": "Corsair",
+   "second": "Yak-3",
+   "wins": 219,
+   "draws": 2,
+   "losses": 35,
+   "score": 0.859375
+  },
+  {
+   "first": "Corsair",
+   "second": "La-7",
+   "wins": 120,
+   "draws": 0,
+   "losses": 8,
+   "score": 0.9375
+  },
+  {
+   "first": "Corsair",
+   "second": "Me 163",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Corsair",
+   "second": "Hellcat",
+   "wins": 139,
+   "draws": 6,
+   "losses": 303,
+   "score": 0.3169642857142857
+  },
+  {
+   "first": "Corsair",
+   "second": "Hammerhead",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "Corsair",
+   "second": "Wren",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Corsair",
+   "second": "Anvil",
+   "wins": 63,
+   "draws": 1,
+   "losses": 0,
+   "score": 0.9921875
+  },
+  {
+   "first": "Corsair",
+   "second": "Albatross",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Corsair",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Corsair",
+   "second": "Zerst\u00f6rer",
+   "wins": 201,
+   "draws": 6,
+   "losses": 49,
+   "score": 0.796875
+  },
+  {
+   "first": "Corsair",
+   "second": "Shrike",
+   "wins": 143,
+   "draws": 4,
+   "losses": 109,
+   "score": 0.56640625
+  },
+  {
+   "first": "Corsair",
+   "second": "Lantern",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "La-7",
+   "second": "P-51D",
+   "wins": 592,
+   "draws": 20,
+   "losses": 348,
+   "score": 0.6270833333333333
+  },
+  {
+   "first": "La-7",
+   "second": "Heavy",
+   "wins": 13,
+   "draws": 1,
+   "losses": 114,
+   "score": 0.10546875
+  },
+  {
+   "first": "La-7",
+   "second": "P-47D",
+   "wins": 5,
+   "draws": 0,
+   "losses": 59,
+   "score": 0.078125
+  },
+  {
+   "first": "La-7",
+   "second": "P-38L",
+   "wins": 3,
+   "draws": 1,
+   "losses": 60,
+   "score": 0.0546875
+  },
+  {
+   "first": "La-7",
+   "second": "Spitfire IX",
+   "wins": 109,
+   "draws": 5,
+   "losses": 78,
+   "score": 0.5807291666666666
+  },
+  {
+   "first": "La-7",
+   "second": "Spitfire XIV",
+   "wins": 118,
+   "draws": 3,
+   "losses": 71,
+   "score": 0.6223958333333334
+  },
+  {
+   "first": "La-7",
+   "second": "Tempest V",
+   "wins": 14,
+   "draws": 3,
+   "losses": 111,
+   "score": 0.12109375
+  },
+  {
+   "first": "La-7",
+   "second": "Mosquito",
+   "wins": 82,
+   "draws": 3,
+   "losses": 171,
+   "score": 0.326171875
+  },
+  {
+   "first": "La-7",
+   "second": "Fw 190A",
+   "wins": 4,
+   "draws": 3,
+   "losses": 121,
+   "score": 0.04296875
+  },
+  {
+   "first": "La-7",
+   "second": "Fw 190D",
+   "wins": 97,
+   "draws": 6,
+   "losses": 89,
+   "score": 0.5208333333333334
+  },
+  {
+   "first": "La-7",
+   "second": "Bf 109K",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "La-7",
+   "second": "Zero",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "La-7",
+   "second": "Me 262",
+   "wins": 62,
+   "draws": 1,
+   "losses": 1,
+   "score": 0.9765625
+  },
+  {
+   "first": "La-7",
+   "second": "Ki-84",
+   "wins": 139,
+   "draws": 20,
+   "losses": 97,
+   "score": 0.58203125
+  },
+  {
+   "first": "La-7",
+   "second": "Yak-3",
+   "wins": 70,
+   "draws": 11,
+   "losses": 111,
+   "score": 0.3932291666666667
+  },
+  {
+   "first": "La-7",
+   "second": "Corsair",
+   "wins": 8,
+   "draws": 0,
+   "losses": 120,
+   "score": 0.0625
+  },
+  {
+   "first": "La-7",
+   "second": "Me 163",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "La-7",
+   "second": "Hellcat",
+   "wins": 2,
+   "draws": 2,
+   "losses": 60,
+   "score": 0.046875
+  },
+  {
+   "first": "La-7",
+   "second": "Hammerhead",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "La-7",
+   "second": "Wren",
+   "wins": 117,
+   "draws": 0,
+   "losses": 11,
+   "score": 0.9140625
+  },
+  {
+   "first": "La-7",
+   "second": "Anvil",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "La-7",
+   "second": "Albatross",
+   "wins": 203,
+   "draws": 5,
+   "losses": 48,
+   "score": 0.802734375
+  },
+  {
+   "first": "La-7",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "La-7",
+   "second": "Zerst\u00f6rer",
+   "wins": 64,
+   "draws": 1,
+   "losses": 127,
+   "score": 0.3359375
+  },
+  {
+   "first": "La-7",
+   "second": "Shrike",
+   "wins": 39,
+   "draws": 6,
+   "losses": 147,
+   "score": 0.21875
+  },
+  {
+   "first": "La-7",
+   "second": "Lantern",
+   "wins": 60,
+   "draws": 0,
+   "losses": 4,
+   "score": 0.9375
+  },
+  {
+   "first": "Me 163",
+   "second": "P-51D",
+   "wins": 1,
+   "draws": 0,
+   "losses": 127,
+   "score": 0.0078125
+  },
+  {
+   "first": "Me 163",
+   "second": "Heavy",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 163",
+   "second": "P-47D",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 163",
+   "second": "P-38L",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 163",
+   "second": "Spitfire IX",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 163",
+   "second": "Spitfire XIV",
+   "wins": 0,
+   "draws": 1,
+   "losses": 63,
+   "score": 0.0078125
+  },
+  {
+   "first": "Me 163",
+   "second": "Tempest V",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 163",
+   "second": "Mosquito",
+   "wins": 3,
+   "draws": 1,
+   "losses": 60,
+   "score": 0.0546875
+  },
+  {
+   "first": "Me 163",
+   "second": "Fw 190A",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Me 163",
+   "second": "Fw 190D",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 163",
+   "second": "Bf 109K",
+   "wins": 280,
+   "draws": 38,
+   "losses": 706,
+   "score": 0.2919921875
+  },
+  {
+   "first": "Me 163",
+   "second": "Zero",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 163",
+   "second": "Me 262",
+   "wins": 193,
+   "draws": 85,
+   "losses": 1386,
+   "score": 0.14152644230769232
+  },
+  {
+   "first": "Me 163",
+   "second": "Ki-84",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 163",
+   "second": "Yak-3",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 163",
+   "second": "Corsair",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 163",
+   "second": "La-7",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 163",
+   "second": "Hellcat",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 163",
+   "second": "Hammerhead",
+   "wins": 307,
+   "draws": 44,
+   "losses": 545,
+   "score": 0.3671875
+  },
+  {
+   "first": "Me 163",
+   "second": "Wren",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 163",
+   "second": "Anvil",
+   "wins": 318,
+   "draws": 65,
+   "losses": 1025,
+   "score": 0.2489346590909091
+  },
+  {
+   "first": "Me 163",
+   "second": "Albatross",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 163",
+   "second": "Firecracker",
+   "wins": 26034,
+   "draws": 56,
+   "losses": 22,
+   "score": 0.9980851715686274
+  },
+  {
+   "first": "Me 163",
+   "second": "Zerst\u00f6rer",
+   "wins": 7,
+   "draws": 0,
+   "losses": 57,
+   "score": 0.109375
+  },
+  {
+   "first": "Me 163",
+   "second": "Shrike",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Me 163",
+   "second": "Lantern",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Hellcat",
+   "second": "P-51D",
+   "wins": 124,
+   "draws": 1,
+   "losses": 3,
+   "score": 0.97265625
+  },
+  {
+   "first": "Hellcat",
+   "second": "Heavy",
+   "wins": 471,
+   "draws": 13,
+   "losses": 156,
+   "score": 0.74609375
+  },
+  {
+   "first": "Hellcat",
+   "second": "P-47D",
+   "wins": 203,
+   "draws": 35,
+   "losses": 594,
+   "score": 0.26502403846153844
+  },
+  {
+   "first": "Hellcat",
+   "second": "P-38L",
+   "wins": 226,
+   "draws": 8,
+   "losses": 150,
+   "score": 0.5989583333333334
+  },
+  {
+   "first": "Hellcat",
+   "second": "Spitfire IX",
+   "wins": 62,
+   "draws": 0,
+   "losses": 2,
+   "score": 0.96875
+  },
+  {
+   "first": "Hellcat",
+   "second": "Spitfire XIV",
+   "wins": 62,
+   "draws": 0,
+   "losses": 2,
+   "score": 0.96875
+  },
+  {
+   "first": "Hellcat",
+   "second": "Tempest V",
+   "wins": 254,
+   "draws": 8,
+   "losses": 122,
+   "score": 0.671875
+  },
+  {
+   "first": "Hellcat",
+   "second": "Mosquito",
+   "wins": 60,
+   "draws": 3,
+   "losses": 1,
+   "score": 0.9609375
+  },
+  {
+   "first": "Hellcat",
+   "second": "Fw 190A",
+   "wins": 348,
+   "draws": 8,
+   "losses": 92,
+   "score": 0.7857142857142857
+  },
+  {
+   "first": "Hellcat",
+   "second": "Fw 190D",
+   "wins": 56,
+   "draws": 0,
+   "losses": 8,
+   "score": 0.875
+  },
+  {
+   "first": "Hellcat",
+   "second": "Bf 109K",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "Hellcat",
+   "second": "Zero",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Hellcat",
+   "second": "Me 262",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Hellcat",
+   "second": "Ki-84",
+   "wins": 61,
+   "draws": 1,
+   "losses": 2,
+   "score": 0.9609375
+  },
+  {
+   "first": "Hellcat",
+   "second": "Yak-3",
+   "wins": 59,
+   "draws": 1,
+   "losses": 4,
+   "score": 0.9296875
+  },
+  {
+   "first": "Hellcat",
+   "second": "Corsair",
+   "wins": 303,
+   "draws": 6,
+   "losses": 139,
+   "score": 0.6830357142857143
+  },
+  {
+   "first": "Hellcat",
+   "second": "La-7",
+   "wins": 60,
+   "draws": 2,
+   "losses": 2,
+   "score": 0.953125
+  },
+  {
+   "first": "Hellcat",
+   "second": "Me 163",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Hellcat",
+   "second": "Hammerhead",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Hellcat",
+   "second": "Wren",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Hellcat",
+   "second": "Anvil",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "Hellcat",
+   "second": "Albatross",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Hellcat",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Hellcat",
+   "second": "Zerst\u00f6rer",
+   "wins": 62,
+   "draws": 0,
+   "losses": 2,
+   "score": 0.96875
+  },
+  {
+   "first": "Hellcat",
+   "second": "Shrike",
+   "wins": 409,
+   "draws": 11,
+   "losses": 28,
+   "score": 0.9252232142857143
+  },
+  {
+   "first": "Hellcat",
+   "second": "Lantern",
+   "wins": 63,
+   "draws": 1,
+   "losses": 0,
+   "score": 0.9921875
+  },
+  {
+   "first": "Hammerhead",
+   "second": "P-51D",
+   "wins": 0,
+   "draws": 0,
+   "losses": 128,
+   "score": 0.0
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Heavy",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Hammerhead",
+   "second": "P-47D",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Hammerhead",
+   "second": "P-38L",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Spitfire IX",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Spitfire XIV",
+   "wins": 1,
+   "draws": 1,
+   "losses": 62,
+   "score": 0.0234375
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Tempest V",
+   "wins": 0,
+   "draws": 1,
+   "losses": 63,
+   "score": 0.0078125
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Mosquito",
+   "wins": 2,
+   "draws": 0,
+   "losses": 62,
+   "score": 0.03125
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Fw 190A",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Fw 190D",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Bf 109K",
+   "wins": 201,
+   "draws": 5,
+   "losses": 434,
+   "score": 0.31796875
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Zero",
+   "wins": 3,
+   "draws": 0,
+   "losses": 61,
+   "score": 0.046875
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Me 262",
+   "wins": 75,
+   "draws": 68,
+   "losses": 1073,
+   "score": 0.08963815789473684
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Ki-84",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Yak-3",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Corsair",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Hammerhead",
+   "second": "La-7",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Me 163",
+   "wins": 545,
+   "draws": 44,
+   "losses": 307,
+   "score": 0.6328125
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Hellcat",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Wren",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Anvil",
+   "wins": 190,
+   "draws": 68,
+   "losses": 510,
+   "score": 0.2916666666666667
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Albatross",
+   "wins": 2,
+   "draws": 0,
+   "losses": 62,
+   "score": 0.03125
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Zerst\u00f6rer",
+   "wins": 3,
+   "draws": 2,
+   "losses": 59,
+   "score": 0.0625
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Shrike",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Hammerhead",
+   "second": "Lantern",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Wren",
+   "second": "P-51D",
+   "wins": 642,
+   "draws": 7,
+   "losses": 1655,
+   "score": 0.2801649305555556
+  },
+  {
+   "first": "Wren",
+   "second": "Heavy",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Wren",
+   "second": "P-47D",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Wren",
+   "second": "P-38L",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Wren",
+   "second": "Spitfire IX",
+   "wins": 15,
+   "draws": 0,
+   "losses": 49,
+   "score": 0.234375
+  },
+  {
+   "first": "Wren",
+   "second": "Spitfire XIV",
+   "wins": 30,
+   "draws": 0,
+   "losses": 162,
+   "score": 0.15625
+  },
+  {
+   "first": "Wren",
+   "second": "Tempest V",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Wren",
+   "second": "Mosquito",
+   "wins": 15,
+   "draws": 0,
+   "losses": 241,
+   "score": 0.05859375
+  },
+  {
+   "first": "Wren",
+   "second": "Fw 190A",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Wren",
+   "second": "Fw 190D",
+   "wins": 5,
+   "draws": 0,
+   "losses": 59,
+   "score": 0.078125
+  },
+  {
+   "first": "Wren",
+   "second": "Bf 109K",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Wren",
+   "second": "Zero",
+   "wins": 1640,
+   "draws": 5,
+   "losses": 339,
+   "score": 0.8278729838709677
+  },
+  {
+   "first": "Wren",
+   "second": "Me 262",
+   "wins": 1333,
+   "draws": 10,
+   "losses": 65,
+   "score": 0.9502840909090909
+  },
+  {
+   "first": "Wren",
+   "second": "Ki-84",
+   "wins": 75,
+   "draws": 3,
+   "losses": 242,
+   "score": 0.2390625
+  },
+  {
+   "first": "Wren",
+   "second": "Yak-3",
+   "wins": 5,
+   "draws": 0,
+   "losses": 59,
+   "score": 0.078125
+  },
+  {
+   "first": "Wren",
+   "second": "Corsair",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Wren",
+   "second": "La-7",
+   "wins": 11,
+   "draws": 0,
+   "losses": 117,
+   "score": 0.0859375
+  },
+  {
+   "first": "Wren",
+   "second": "Me 163",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Wren",
+   "second": "Hellcat",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Wren",
+   "second": "Hammerhead",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "Wren",
+   "second": "Anvil",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Wren",
+   "second": "Albatross",
+   "wins": 21,
+   "draws": 1,
+   "losses": 42,
+   "score": 0.3359375
+  },
+  {
+   "first": "Wren",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Wren",
+   "second": "Zerst\u00f6rer",
+   "wins": 5,
+   "draws": 1,
+   "losses": 58,
+   "score": 0.0859375
+  },
+  {
+   "first": "Wren",
+   "second": "Shrike",
+   "wins": 2,
+   "draws": 0,
+   "losses": 62,
+   "score": 0.03125
+  },
+  {
+   "first": "Wren",
+   "second": "Lantern",
+   "wins": 38,
+   "draws": 4,
+   "losses": 22,
+   "score": 0.625
+  },
+  {
+   "first": "Anvil",
+   "second": "P-51D",
+   "wins": 0,
+   "draws": 0,
+   "losses": 128,
+   "score": 0.0
+  },
+  {
+   "first": "Anvil",
+   "second": "Heavy",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Anvil",
+   "second": "P-47D",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Anvil",
+   "second": "P-38L",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Anvil",
+   "second": "Spitfire IX",
+   "wins": 0,
+   "draws": 1,
+   "losses": 63,
+   "score": 0.0078125
+  },
+  {
+   "first": "Anvil",
+   "second": "Spitfire XIV",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Anvil",
+   "second": "Tempest V",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Anvil",
+   "second": "Mosquito",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Anvil",
+   "second": "Fw 190A",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Anvil",
+   "second": "Fw 190D",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Anvil",
+   "second": "Bf 109K",
+   "wins": 241,
+   "draws": 8,
+   "losses": 71,
+   "score": 0.765625
+  },
+  {
+   "first": "Anvil",
+   "second": "Zero",
+   "wins": 505,
+   "draws": 35,
+   "losses": 2084,
+   "score": 0.1991234756097561
+  },
+  {
+   "first": "Anvil",
+   "second": "Me 262",
+   "wins": 42,
+   "draws": 15,
+   "losses": 327,
+   "score": 0.12890625
+  },
+  {
+   "first": "Anvil",
+   "second": "Ki-84",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Anvil",
+   "second": "Yak-3",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Anvil",
+   "second": "Corsair",
+   "wins": 0,
+   "draws": 1,
+   "losses": 63,
+   "score": 0.0078125
+  },
+  {
+   "first": "Anvil",
+   "second": "La-7",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Anvil",
+   "second": "Me 163",
+   "wins": 1025,
+   "draws": 65,
+   "losses": 318,
+   "score": 0.7510653409090909
+  },
+  {
+   "first": "Anvil",
+   "second": "Hellcat",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Anvil",
+   "second": "Hammerhead",
+   "wins": 510,
+   "draws": 68,
+   "losses": 190,
+   "score": 0.7083333333333334
+  },
+  {
+   "first": "Anvil",
+   "second": "Wren",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Anvil",
+   "second": "Albatross",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Anvil",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Anvil",
+   "second": "Zerst\u00f6rer",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Anvil",
+   "second": "Shrike",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Anvil",
+   "second": "Lantern",
+   "wins": 3,
+   "draws": 3,
+   "losses": 314,
+   "score": 0.0140625
+  },
+  {
+   "first": "Albatross",
+   "second": "P-51D",
+   "wins": 286,
+   "draws": 35,
+   "losses": 1215,
+   "score": 0.19759114583333334
+  },
+  {
+   "first": "Albatross",
+   "second": "Heavy",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Albatross",
+   "second": "P-47D",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Albatross",
+   "second": "P-38L",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Albatross",
+   "second": "Spitfire IX",
+   "wins": 43,
+   "draws": 9,
+   "losses": 204,
+   "score": 0.185546875
+  },
+  {
+   "first": "Albatross",
+   "second": "Spitfire XIV",
+   "wins": 39,
+   "draws": 9,
+   "losses": 208,
+   "score": 0.169921875
+  },
+  {
+   "first": "Albatross",
+   "second": "Tempest V",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Albatross",
+   "second": "Mosquito",
+   "wins": 54,
+   "draws": 4,
+   "losses": 198,
+   "score": 0.21875
+  },
+  {
+   "first": "Albatross",
+   "second": "Fw 190A",
+   "wins": 3,
+   "draws": 0,
+   "losses": 61,
+   "score": 0.046875
+  },
+  {
+   "first": "Albatross",
+   "second": "Fw 190D",
+   "wins": 29,
+   "draws": 5,
+   "losses": 158,
+   "score": 0.1640625
+  },
+  {
+   "first": "Albatross",
+   "second": "Bf 109K",
+   "wins": 60,
+   "draws": 0,
+   "losses": 4,
+   "score": 0.9375
+  },
+  {
+   "first": "Albatross",
+   "second": "Zero",
+   "wins": 2334,
+   "draws": 6,
+   "losses": 28,
+   "score": 0.9869087837837838
+  },
+  {
+   "first": "Albatross",
+   "second": "Me 262",
+   "wins": 58,
+   "draws": 2,
+   "losses": 4,
+   "score": 0.921875
+  },
+  {
+   "first": "Albatross",
+   "second": "Ki-84",
+   "wins": 92,
+   "draws": 1,
+   "losses": 163,
+   "score": 0.361328125
+  },
+  {
+   "first": "Albatross",
+   "second": "Yak-3",
+   "wins": 9,
+   "draws": 3,
+   "losses": 52,
+   "score": 0.1640625
+  },
+  {
+   "first": "Albatross",
+   "second": "Corsair",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Albatross",
+   "second": "La-7",
+   "wins": 48,
+   "draws": 5,
+   "losses": 203,
+   "score": 0.197265625
+  },
+  {
+   "first": "Albatross",
+   "second": "Me 163",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Albatross",
+   "second": "Hellcat",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Albatross",
+   "second": "Hammerhead",
+   "wins": 62,
+   "draws": 0,
+   "losses": 2,
+   "score": 0.96875
+  },
+  {
+   "first": "Albatross",
+   "second": "Wren",
+   "wins": 42,
+   "draws": 1,
+   "losses": 21,
+   "score": 0.6640625
+  },
+  {
+   "first": "Albatross",
+   "second": "Anvil",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "Albatross",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Albatross",
+   "second": "Zerst\u00f6rer",
+   "wins": 3,
+   "draws": 0,
+   "losses": 61,
+   "score": 0.046875
+  },
+  {
+   "first": "Albatross",
+   "second": "Shrike",
+   "wins": 2,
+   "draws": 0,
+   "losses": 62,
+   "score": 0.03125
+  },
+  {
+   "first": "Albatross",
+   "second": "Lantern",
+   "wins": 39,
+   "draws": 0,
+   "losses": 25,
+   "score": 0.609375
+  },
+  {
+   "first": "Firecracker",
+   "second": "P-51D",
+   "wins": 0,
+   "draws": 0,
+   "losses": 128,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Heavy",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "P-47D",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "P-38L",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Spitfire IX",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Spitfire XIV",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Tempest V",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Mosquito",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Fw 190A",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Fw 190D",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Bf 109K",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Zero",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Me 262",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Ki-84",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Yak-3",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Corsair",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "La-7",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Me 163",
+   "wins": 22,
+   "draws": 56,
+   "losses": 26034,
+   "score": 0.001914828431372549
+  },
+  {
+   "first": "Firecracker",
+   "second": "Hellcat",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Hammerhead",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Wren",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Anvil",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Albatross",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Zerst\u00f6rer",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Shrike",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Firecracker",
+   "second": "Lantern",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "P-51D",
+   "wins": 1045,
+   "draws": 12,
+   "losses": 223,
+   "score": 0.82109375
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Heavy",
+   "wins": 11,
+   "draws": 0,
+   "losses": 53,
+   "score": 0.171875
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "P-47D",
+   "wins": 1,
+   "draws": 0,
+   "losses": 63,
+   "score": 0.015625
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "P-38L",
+   "wins": 60,
+   "draws": 11,
+   "losses": 441,
+   "score": 0.1279296875
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Spitfire IX",
+   "wins": 106,
+   "draws": 3,
+   "losses": 83,
+   "score": 0.5598958333333334
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Spitfire XIV",
+   "wins": 102,
+   "draws": 6,
+   "losses": 84,
+   "score": 0.546875
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Tempest V",
+   "wins": 53,
+   "draws": 19,
+   "losses": 376,
+   "score": 0.13950892857142858
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Mosquito",
+   "wins": 94,
+   "draws": 7,
+   "losses": 155,
+   "score": 0.380859375
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Fw 190A",
+   "wins": 43,
+   "draws": 1,
+   "losses": 276,
+   "score": 0.1359375
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Fw 190D",
+   "wins": 80,
+   "draws": 2,
+   "losses": 46,
+   "score": 0.6328125
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Bf 109K",
+   "wins": 52,
+   "draws": 2,
+   "losses": 10,
+   "score": 0.828125
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Zero",
+   "wins": 56,
+   "draws": 0,
+   "losses": 8,
+   "score": 0.875
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Me 262",
+   "wins": 48,
+   "draws": 2,
+   "losses": 14,
+   "score": 0.765625
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Ki-84",
+   "wins": 142,
+   "draws": 2,
+   "losses": 48,
+   "score": 0.7447916666666666
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Yak-3",
+   "wins": 44,
+   "draws": 0,
+   "losses": 20,
+   "score": 0.6875
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Corsair",
+   "wins": 49,
+   "draws": 6,
+   "losses": 201,
+   "score": 0.203125
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "La-7",
+   "wins": 127,
+   "draws": 1,
+   "losses": 64,
+   "score": 0.6640625
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Me 163",
+   "wins": 57,
+   "draws": 0,
+   "losses": 7,
+   "score": 0.890625
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Hellcat",
+   "wins": 2,
+   "draws": 0,
+   "losses": 62,
+   "score": 0.03125
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Hammerhead",
+   "wins": 59,
+   "draws": 2,
+   "losses": 3,
+   "score": 0.9375
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Wren",
+   "wins": 58,
+   "draws": 1,
+   "losses": 5,
+   "score": 0.9140625
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Anvil",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Albatross",
+   "wins": 61,
+   "draws": 0,
+   "losses": 3,
+   "score": 0.953125
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Shrike",
+   "wins": 14,
+   "draws": 0,
+   "losses": 50,
+   "score": 0.21875
+  },
+  {
+   "first": "Zerst\u00f6rer",
+   "second": "Lantern",
+   "wins": 58,
+   "draws": 1,
+   "losses": 5,
+   "score": 0.9140625
+  },
+  {
+   "first": "Shrike",
+   "second": "P-51D",
+   "wins": 1089,
+   "draws": 20,
+   "losses": 363,
+   "score": 0.7466032608695652
+  },
+  {
+   "first": "Shrike",
+   "second": "Heavy",
+   "wins": 31,
+   "draws": 6,
+   "losses": 27,
+   "score": 0.53125
+  },
+  {
+   "first": "Shrike",
+   "second": "P-47D",
+   "wins": 1,
+   "draws": 2,
+   "losses": 61,
+   "score": 0.03125
+  },
+  {
+   "first": "Shrike",
+   "second": "P-38L",
+   "wins": 187,
+   "draws": 19,
+   "losses": 306,
+   "score": 0.3837890625
+  },
+  {
+   "first": "Shrike",
+   "second": "Spitfire IX",
+   "wins": 122,
+   "draws": 2,
+   "losses": 68,
+   "score": 0.640625
+  },
+  {
+   "first": "Shrike",
+   "second": "Spitfire XIV",
+   "wins": 126,
+   "draws": 1,
+   "losses": 65,
+   "score": 0.6588541666666666
+  },
+  {
+   "first": "Shrike",
+   "second": "Tempest V",
+   "wins": 141,
+   "draws": 11,
+   "losses": 232,
+   "score": 0.3815104166666667
+  },
+  {
+   "first": "Shrike",
+   "second": "Mosquito",
+   "wins": 135,
+   "draws": 4,
+   "losses": 53,
+   "score": 0.7135416666666666
+  },
+  {
+   "first": "Shrike",
+   "second": "Fw 190A",
+   "wins": 93,
+   "draws": 26,
+   "losses": 201,
+   "score": 0.33125
+  },
+  {
+   "first": "Shrike",
+   "second": "Fw 190D",
+   "wins": 85,
+   "draws": 4,
+   "losses": 39,
+   "score": 0.6796875
+  },
+  {
+   "first": "Shrike",
+   "second": "Bf 109K",
+   "wins": 62,
+   "draws": 0,
+   "losses": 2,
+   "score": 0.96875
+  },
+  {
+   "first": "Shrike",
+   "second": "Zero",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "Shrike",
+   "second": "Me 262",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "Shrike",
+   "second": "Ki-84",
+   "wins": 48,
+   "draws": 1,
+   "losses": 15,
+   "score": 0.7578125
+  },
+  {
+   "first": "Shrike",
+   "second": "Yak-3",
+   "wins": 35,
+   "draws": 1,
+   "losses": 28,
+   "score": 0.5546875
+  },
+  {
+   "first": "Shrike",
+   "second": "Corsair",
+   "wins": 109,
+   "draws": 4,
+   "losses": 143,
+   "score": 0.43359375
+  },
+  {
+   "first": "Shrike",
+   "second": "La-7",
+   "wins": 147,
+   "draws": 6,
+   "losses": 39,
+   "score": 0.78125
+  },
+  {
+   "first": "Shrike",
+   "second": "Me 163",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Shrike",
+   "second": "Hellcat",
+   "wins": 28,
+   "draws": 11,
+   "losses": 409,
+   "score": 0.07477678571428571
+  },
+  {
+   "first": "Shrike",
+   "second": "Hammerhead",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Shrike",
+   "second": "Wren",
+   "wins": 62,
+   "draws": 0,
+   "losses": 2,
+   "score": 0.96875
+  },
+  {
+   "first": "Shrike",
+   "second": "Anvil",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "Shrike",
+   "second": "Albatross",
+   "wins": 62,
+   "draws": 0,
+   "losses": 2,
+   "score": 0.96875
+  },
+  {
+   "first": "Shrike",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Shrike",
+   "second": "Zerst\u00f6rer",
+   "wins": 50,
+   "draws": 0,
+   "losses": 14,
+   "score": 0.78125
+  },
+  {
+   "first": "Shrike",
+   "second": "Lantern",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Lantern",
+   "second": "P-51D",
+   "wins": 742,
+   "draws": 31,
+   "losses": 3643,
+   "score": 0.1715353260869565
+  },
+  {
+   "first": "Lantern",
+   "second": "Heavy",
+   "wins": 0,
+   "draws": 2,
+   "losses": 62,
+   "score": 0.015625
+  },
+  {
+   "first": "Lantern",
+   "second": "P-47D",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Lantern",
+   "second": "P-38L",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Lantern",
+   "second": "Spitfire IX",
+   "wins": 9,
+   "draws": 0,
+   "losses": 55,
+   "score": 0.140625
+  },
+  {
+   "first": "Lantern",
+   "second": "Spitfire XIV",
+   "wins": 10,
+   "draws": 0,
+   "losses": 54,
+   "score": 0.15625
+  },
+  {
+   "first": "Lantern",
+   "second": "Tempest V",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Lantern",
+   "second": "Mosquito",
+   "wins": 3,
+   "draws": 1,
+   "losses": 60,
+   "score": 0.0546875
+  },
+  {
+   "first": "Lantern",
+   "second": "Fw 190A",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Lantern",
+   "second": "Fw 190D",
+   "wins": 7,
+   "draws": 0,
+   "losses": 57,
+   "score": 0.109375
+  },
+  {
+   "first": "Lantern",
+   "second": "Bf 109K",
+   "wins": 61,
+   "draws": 1,
+   "losses": 2,
+   "score": 0.9609375
+  },
+  {
+   "first": "Lantern",
+   "second": "Zero",
+   "wins": 454,
+   "draws": 1,
+   "losses": 377,
+   "score": 0.5462740384615384
+  },
+  {
+   "first": "Lantern",
+   "second": "Me 262",
+   "wins": 3173,
+   "draws": 107,
+   "losses": 304,
+   "score": 0.9002511160714286
+  },
+  {
+   "first": "Lantern",
+   "second": "Ki-84",
+   "wins": 64,
+   "draws": 2,
+   "losses": 446,
+   "score": 0.126953125
+  },
+  {
+   "first": "Lantern",
+   "second": "Yak-3",
+   "wins": 4,
+   "draws": 0,
+   "losses": 60,
+   "score": 0.0625
+  },
+  {
+   "first": "Lantern",
+   "second": "Corsair",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  },
+  {
+   "first": "Lantern",
+   "second": "La-7",
+   "wins": 4,
+   "draws": 0,
+   "losses": 60,
+   "score": 0.0625
+  },
+  {
+   "first": "Lantern",
+   "second": "Me 163",
+   "wins": 63,
+   "draws": 0,
+   "losses": 1,
+   "score": 0.984375
+  },
+  {
+   "first": "Lantern",
+   "second": "Hellcat",
+   "wins": 0,
+   "draws": 1,
+   "losses": 63,
+   "score": 0.0078125
+  },
+  {
+   "first": "Lantern",
+   "second": "Hammerhead",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Lantern",
+   "second": "Wren",
+   "wins": 22,
+   "draws": 4,
+   "losses": 38,
+   "score": 0.375
+  },
+  {
+   "first": "Lantern",
+   "second": "Anvil",
+   "wins": 314,
+   "draws": 3,
+   "losses": 3,
+   "score": 0.9859375
+  },
+  {
+   "first": "Lantern",
+   "second": "Albatross",
+   "wins": 25,
+   "draws": 0,
+   "losses": 39,
+   "score": 0.390625
+  },
+  {
+   "first": "Lantern",
+   "second": "Firecracker",
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0
+  },
+  {
+   "first": "Lantern",
+   "second": "Zerst\u00f6rer",
+   "wins": 5,
+   "draws": 1,
+   "losses": 58,
+   "score": 0.0859375
+  },
+  {
+   "first": "Lantern",
+   "second": "Shrike",
+   "wins": 0,
+   "draws": 0,
+   "losses": 64,
+   "score": 0.0
+  }
+ ]
+}

@@ -24,7 +24,7 @@ muzzle_speed = 856.0
 bullet_spread = 1.5422411728818017
 gun_range = 575.5413960772087
 shots_per_store = 796.8190838614837
-max_shield = 160.0
+max_shield = 145.0
 shield_recharge_rate = 12.0
 shield_recharge_delay = 6.0
 head_on_fraction = 0.3
@@ -41,7 +41,7 @@ engine_power_full_store = 271.0877380371094
 static_thrust = 8.618815422058105
 max_energy = 111539.703125
 corner_nose_frequency = 4.6942138671875
-max_shield = 160.0
+max_shield = 145.0
 hit_radius = 6.5269999504089355
 hit_damage = 24.0
 muzzle_speed = 856.0
@@ -83,7 +83,7 @@ muzzle_speed = "researched (medium): muzzle_speed 856. the Browning AN/M2 .50 ca
 bullet_spread = "researched (low): dispersion 6; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
 gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
 shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 14.8 m/s), the standard fighter's ratio: a shot costs 140 J/kg, 0.964 s of charge"
-max_shield = "researched (medium): survivability 5; proposal: the standard 100 x (1 + 0.2 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Air-cooled radial, ~200 lb of armour, self-sealing tanks, rugged Grumman structure."
+max_shield = "researched (medium): survivability 5; proposal: the standard 100 x (1 + 0.15 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Air-cooled radial, ~200 lb of armour, self-sealing tanks, rugged Grumman structure. Balanced (round 2): 160 -> 145, the step per rating 0.2 -> 0.15: the shield's Spearman correlation with the round-1 Elo was +0.69 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
 shield_recharge_rate = "placeholder: the standard fighter's"
 shield_recharge_delay = "placeholder: the standard fighter's"
 head_on_fraction = "placeholder: the standard fighter's"

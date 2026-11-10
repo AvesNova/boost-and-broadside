@@ -27,8 +27,8 @@ the same multiple of its own initial climb charge as it costs the standard fight
 shot about 1 s of charge); damage per second follows the weight of fire, the P-51's
 360 per second (provisional: twice the standard fighter's). The balancing then evens it
 (`balance`, docs/explanation/game/real-scale-balance.md): every type deals about the
-P-51's damage per second at its own fire rate (`balanced_damage_per_second`), and `BALANCE`
-moves a loosely known value where the ratings call for it, each move noted.
+P-51's damage per second at its own fire rate (`balanced_damage_per_second`), and the balance file
+moves a loosely known value where the ratings call for it (`balance_moves`), each noted.
 
 Every handle a type does not give is a placeholder: its `like` type's standard handle times
 the factor that turns the standard fighter into the P-51 (`placeholder_factors`: the P-51's
@@ -48,8 +48,10 @@ import argparse
 import concurrent.futures
 import dataclasses
 import datetime
+import json
 import math
 import os
+import pathlib
 import time
 import traceback
 
@@ -117,11 +119,26 @@ COMBAT = CombatEconomy(damage_per_second=360.0)
 DAMAGE_ELASTICITY = 0.05
 DAMAGE_BAND = 0.05
 
-# Balancing moves beyond the rules, by round: per type key, per handle, (the new target,
-# the round, the reason). Each overrides the handle's target, and its note records the old
-# value, the new and the reason. Only values the research holds loosely (low, estimated,
-# invented or placeholder) are moved.
-BALANCE: dict[str, dict[str, tuple[float, int, str]]] = {}
+# Balancing moves beyond the rules, by round, in real_scale_balance.json: per type key, per
+# handle, {"value": the new target, "round": the round, "reason": why}. Each overrides the
+# handle's target, and its note records the old value, the new and the reason. Only values
+# the research holds loosely (low, estimated, invented or placeholder) are moved.
+BALANCE_FILE = pathlib.Path(__file__).with_name("real_scale_balance.json")
+RULES = "_rules"  # the balance file's set-wide moves (the others are per type key)
+
+
+def shield_per_rating() -> tuple[float, dict | None]:
+    """The shield's step per survivability rating, and the balance file's move that set it
+    (its "_rules" entry "shield_per_rating"; SHIELD_PER_RATING and None without one)."""
+    move = balance_moves().get(RULES, {}).get("shield_per_rating")
+    return (SHIELD_PER_RATING, None) if move is None else (float(move["value"]), move)
+
+
+def balance_moves(path: pathlib.Path | None = None) -> dict[str, dict[str, dict]]:
+    """The balancing moves (empty when the file is absent; `BALANCE_FILE` by default)."""
+    path = BALANCE_FILE if path is None else path
+    return json.loads(path.read_text()) if path.is_file() else {}
+
 
 HEAVY_PLACEHOLDER = Aircraft("heavy", "Heavy", "heavy", "placeholder", "", {})
 AIRCRAFT = (RESEARCHED[0], HEAVY_PLACEHOLDER, *RESEARCHED[1:])
@@ -235,13 +252,20 @@ def given_handles(
     if "survivability" in data:
         rating = data["survivability"]
         reference_rating = REFERENCE.data["survivability"].value
+        step, move = shield_per_rating()
         give(
             "max_shield",
-            100.0 * (1.0 + SHIELD_PER_RATING * (rating - reference_rating)),
+            round(100.0 * (1.0 + step * (rating - reference_rating)), 6),
             "survivability",
-            f"proposal: the standard 100 x (1 + {SHIELD_PER_RATING:g} per rating step "
+            f"proposal: the standard 100 x (1 + {step:g} per rating step "
             f"from the P-51D's {reference_rating:g})",
         )
+        if move is not None and rating != reference_rating:
+            old = 100.0 * (1.0 + SHIELD_PER_RATING * (rating - reference_rating))
+            notes["max_shield"] = _sentence(notes["max_shield"]) + (
+                f" Balanced (round {move['round']}): {old:.4g} -> {values['max_shield']:.4g}, "
+                f"the step per rating {SHIELD_PER_RATING:g} -> {step:g}: {move['reason']}"
+            )
     if {"weight_of_fire", "fire_rate", "climb_rate", "service_ceiling"} <= set(data):
         power, damage = combat_constants() if combat is None else combat
         economy = combat_economy(
@@ -284,7 +308,8 @@ def _sentence(text: str) -> str:
 
 def balance(values: dict[str, float], notes: dict[str, str], key: str, damage: float) -> None:
     """Apply the balancing (in place): the equal-damage rule to the hit damage, then the
-    type's `BALANCE` moves, each note recording the old value, the new and why."""
+    type's moves in the balance file (`balance_moves`), each note recording the old value,
+    the new and why."""
     raw = values["hit_damage"] * values["fire_rate"]
     balanced = balanced_damage_per_second(raw, damage)
     old = values["hit_damage"]
@@ -295,11 +320,12 @@ def balance(values: dict[str, float], notes: dict[str, str], key: str, damage: f
         f"{damage:g} x (its weight of fire over the P-51D's)^{DAMAGE_ELASTICITY:g} within "
         f"{DAMAGE_BAND:.0%} (the guns dominated the ratings)."
     )
-    for name, (value, round_number, reason) in BALANCE.get(key, {}).items():
+    for name, move in balance_moves().get(key, {}).items():
         notes[name] = _sentence(notes[name]) + (
-            f" Balanced (round {round_number}): {values[name]:.4g} -> {value:.4g}: {reason}"
+            f" Balanced (round {move['round']}): {values[name]:.4g} -> {move['value']:.4g}: "
+            f"{move['reason']}"
         )
-        values[name] = value
+        values[name] = float(move["value"])
 
 
 def spread_of(dispersion: float, muzzle_speed: float) -> float:

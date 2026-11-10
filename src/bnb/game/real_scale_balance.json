@@ -1,0 +1,51 @@
+{
+ "_rules": {
+  "shield_per_rating": {
+   "value": 0.15,
+   "round": 2,
+   "reason": "the shield's Spearman correlation with the round-1 Elo was +0.69 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
+  }
+ },
+ "heavy": {
+  "max_shield": {
+   "value": 140.0,
+   "round": 2,
+   "reason": "an invented or placeholder type rated 1319 +- 7 in round 1, +262 from the median 1057 (the rule moves its shield 20 towards the median beyond 200 Elo)."
+  }
+ },
+ "albatross": {
+  "max_shield": {
+   "value": 120.0,
+   "round": 2,
+   "reason": "an invented or placeholder type rated 849 +- 6 in round 1, -208 from the median 1057 (the rule moves its shield 20 towards the median beyond 200 Elo)."
+  }
+ },
+ "wren": {
+  "max_shield": {
+   "value": 100.0,
+   "round": 2,
+   "reason": "an invented or placeholder type rated 792 +- 6 in round 1, -265 from the median 1057 (the rule moves its shield 20 towards the median beyond 200 Elo)."
+  }
+ },
+ "lantern": {
+  "max_shield": {
+   "value": 100.0,
+   "round": 2,
+   "reason": "an invented or placeholder type rated 689 +- 6 in round 1, -368 from the median 1057 (the rule moves its shield 20 towards the median beyond 200 Elo)."
+  }
+ },
+ "hammerhead": {
+  "max_shield": {
+   "value": 140.0,
+   "round": 2,
+   "reason": "an invented or placeholder type rated -1 +- 11 in round 1, -1058 from the median 1057 (the rule moves its shield 20 towards the median beyond 200 Elo)."
+  }
+ },
+ "firecracker": {
+  "max_shield": {
+   "value": 100.0,
+   "round": 2,
+   "reason": "an invented or placeholder type rated -1129 +- 26 in round 1, -2186 from the median 1057 (the rule moves its shield 20 towards the median beyond 200 Elo)."
+  }
+ }
+}

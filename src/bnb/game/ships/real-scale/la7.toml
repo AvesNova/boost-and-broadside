@@ -24,7 +24,7 @@ muzzle_speed = 770.0
 bullet_spread = 0.8092562229198708
 gun_range = 538.0811353036446
 shots_per_store = 412.95780397525016
-max_shield = 120.0
+max_shield = 114.99999999999999
 shield_recharge_rate = 12.0
 shield_recharge_delay = 6.0
 head_on_fraction = 0.3
@@ -41,7 +41,7 @@ engine_power_full_store = 312.65771484375
 static_thrust = 7.629525184631348
 max_energy = 105457.5
 corner_nose_frequency = 6.084754943847656
-max_shield = 120.0
+max_shield = 115.0
 hit_radius = 4.900000095367432
 hit_damage = 34.84778594970703
 muzzle_speed = 770.0
@@ -83,7 +83,7 @@ muzzle_speed = "researched (medium): muzzle_speed 770. the ShVAK 20 mm: Wikipedi
 bullet_spread = "estimated: dispersion 3.5; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
 gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
 shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 18 m/s), the standard fighter's ratio: a shot costs 255.4 J/kg, 1.45 s of charge"
-max_shield = "researched (medium): survivability 3; proposal: the standard 100 x (1 + 0.2 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Air-cooled radial and pilot armour; wooden wing structure (metal spars) less resilient than all-metal designs."
+max_shield = "researched (medium): survivability 3; proposal: the standard 100 x (1 + 0.15 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Air-cooled radial and pilot armour; wooden wing structure (metal spars) less resilient than all-metal designs. Balanced (round 2): 120 -> 115, the step per rating 0.2 -> 0.15: the shield's Spearman correlation with the round-1 Elo was +0.69 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
 shield_recharge_rate = "placeholder: the standard fighter's"
 shield_recharge_delay = "placeholder: the standard fighter's"
 head_on_fraction = "placeholder: the standard fighter's"

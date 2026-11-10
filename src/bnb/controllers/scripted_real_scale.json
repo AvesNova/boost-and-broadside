@@ -1,0 +1,170 @@
+{
+ "real_scale_deathmatch": {
+  "source": "balancing round 1: the search's candidate 24:6 (docs/explanation/game/real-scale-balance.md), scoring 0.607 +- 0.015 against the champion before it",
+  "parameters": {
+   "turn_in_stall_angle": [
+    0.0231,
+    0.174
+   ],
+   "level_two_in_stall_angle": [
+    0.147,
+    0.162
+   ],
+   "level_three_in_stall_angle": [
+    0.344,
+    0.276
+   ],
+   "boost_slow_in_corner_speed": [
+    0.78,
+    0.0553
+   ],
+   "boost_far_in_store_gun_ranges": [
+    9.06,
+    0.171
+   ],
+   "reverse_in_gun_range": [
+    0.296,
+    0.19
+   ],
+   "aim_in_target_size": [
+    0.545,
+    0.223
+   ],
+   "shoot_in_gun_range": [
+    1.61,
+    0.127
+   ],
+   "lead_cap_in_gun_range": 3.49,
+   "boundary_margin_in_turn_radius": 2.18,
+   "boundary_steer_ramp_in_margin": [
+    0.0483,
+    0.449,
+    0.0,
+    1.0
+   ],
+   "centre_hold_in_arena_radius": 0.374,
+   "combat_radius_in_gun_range": 3.92,
+   "support_radius_in_zone_radius": 0.395,
+   "defensive_floor": 0.0873,
+   "defensive_margin": 0.362,
+   "aggression": 2.49,
+   "defense_urgency": 0.324,
+   "separation_radius_in_gun_range": 2.69,
+   "separation_weight": 1.45,
+   "recovery_shield_fraction": 0.433,
+   "recovery_threat": 2.5,
+   "memory_fade_in_seconds": [
+    0.618,
+    0.105
+   ],
+   "target_switch_in_log_distance": [
+    22.8,
+    0.204,
+    0.233
+   ],
+   "side_commit_in_stall_angle": [
+    5.66,
+    0.222
+   ],
+   "side_switch_in_radians": [
+    9.84,
+    0.493,
+    0.11
+   ],
+   "goal_switch_in_strength": [
+    12.2,
+    1.44,
+    0.189
+   ],
+   "recovery_switch_in_log_ratio": [
+    5.27,
+    0.275,
+    0.0602
+   ]
+  }
+ },
+ "real_scale_frontline": {
+  "source": "balancing round 1: the search's candidate 26:1 (docs/explanation/game/real-scale-balance.md), scoring 0.951 +- 0.005 against the champion before it",
+  "parameters": {
+   "turn_in_stall_angle": [
+    0.00797,
+    0.269
+   ],
+   "level_two_in_stall_angle": [
+    0.0513,
+    0.194
+   ],
+   "level_three_in_stall_angle": [
+    0.174,
+    0.318
+   ],
+   "boost_slow_in_corner_speed": [
+    0.0843,
+    0.0432
+   ],
+   "boost_far_in_store_gun_ranges": [
+    0.764,
+    0.237
+   ],
+   "reverse_in_gun_range": [
+    0.388,
+    0.243
+   ],
+   "aim_in_target_size": [
+    0.705,
+    0.253
+   ],
+   "shoot_in_gun_range": [
+    1.14,
+    0.129
+   ],
+   "lead_cap_in_gun_range": 0.946,
+   "boundary_margin_in_turn_radius": 1.58,
+   "boundary_steer_ramp_in_margin": [
+    0.0236,
+    0.104,
+    0.0,
+    1.0
+   ],
+   "centre_hold_in_arena_radius": 1.18,
+   "combat_radius_in_gun_range": 3.2,
+   "support_radius_in_zone_radius": 1.45,
+   "defensive_floor": 0.0843,
+   "defensive_margin": 0.3,
+   "aggression": 5.64,
+   "defense_urgency": 2.9,
+   "separation_radius_in_gun_range": 2.26,
+   "separation_weight": 0.392,
+   "recovery_shield_fraction": 0.179,
+   "recovery_threat": 6.03,
+   "memory_fade_in_seconds": [
+    1.43,
+    0.412
+   ],
+   "target_switch_in_log_distance": [
+    28.0,
+    0.371,
+    0.123
+   ],
+   "side_commit_in_stall_angle": [
+    9.57,
+    0.251
+   ],
+   "side_switch_in_radians": [
+    7.59,
+    0.029,
+    0.319
+   ],
+   "goal_switch_in_strength": [
+    9.62,
+    0.632,
+    0.174
+   ],
+   "recovery_switch_in_log_ratio": [
+    6.27,
+    0.19,
+    0.0673
+   ]
+  }
+ }
+}
