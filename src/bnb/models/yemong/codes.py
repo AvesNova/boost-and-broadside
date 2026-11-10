@@ -164,12 +164,13 @@ def position_encode(
 ) -> torch.Tensor:
     """(..., 2) mean and sigma (...) (one for both axes) or (..., 2) (per axis) to
     (..., levels, 9): the outer product of a 3-colour circular code per axis, x-major."""
-    if sigma.dim() == mean.dim():
-        sigma_x, sigma_y = sigma[..., 0], sigma[..., 1]
+    if sigma.dim() != mean.dim():
+        sigma = sigma[..., None].expand(mean.shape)
+    if periods[0] == periods[1]:  # both axes in one call (one copy of the level loop)
+        x, y = circular_encode(mean, sigma, periods[0], 3, levels).unbind(-3)
     else:
-        sigma_x = sigma_y = sigma
-    x = circular_encode(mean[..., 0], sigma_x, periods[0], 3, levels)
-    y = circular_encode(mean[..., 1], sigma_y, periods[1], 3, levels)
+        x = circular_encode(mean[..., 0], sigma[..., 0], periods[0], 3, levels)
+        y = circular_encode(mean[..., 1], sigma[..., 1], periods[1], 3, levels)
     return (x[..., :, None] * y[..., None, :]).flatten(-2)
 
 
@@ -181,6 +182,10 @@ def position_decode(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """(..., levels, 9) to (mean (..., 2), spread (...)); spread_fit as `circular_decode`."""
     joint = probabilities.unflatten(-1, (3, 3))
+    if periods[0] == periods[1]:  # both axes in one call (one copy of the level loop)
+        axes = torch.stack([joint.sum(-1), joint.sum(-2)], -3)
+        mean, spread = circular_decode(axes, periods[0], 3, levels, spread_fit)
+        return mean, torch.sqrt(0.5 * (spread**2).sum(-1))
     mean_x, spread_x = circular_decode(joint.sum(-1), periods[0], 3, levels, spread_fit)
     mean_y, spread_y = circular_decode(joint.sum(-2), periods[1], 3, levels, spread_fit)
     return torch.stack([mean_x, mean_y], -1), torch.sqrt(0.5 * (spread_x**2 + spread_y**2))
@@ -208,8 +213,9 @@ def two_hot_at(lower: torch.Tensor, fraction: torch.Tensor, bins: int) -> torch.
     ] * _one_hot(lower + 1, bins, fraction.dtype)
 
 
-def scalar_sharp(values: torch.Tensor, low: float, high: float, bins: int) -> torch.Tensor:
-    """(...) to (..., bins): two-hot on the bins either side."""
+def scalar_sharp(values: torch.Tensor, low: Bound, high: Bound, bins: int) -> torch.Tensor:
+    """(...) to (..., bins): two-hot on the bins either side (low and high: numbers, or
+    tensors that broadcast against the values, one code call for several scalars)."""
     _, lower, fraction, _ = _scalar_coordinate(values, low, high, bins)
     return two_hot_at(lower, fraction, bins)
 
@@ -438,7 +444,7 @@ def velocity_decode(
 Runs = tuple[tuple[int, int], ...]  # (groups, size) per run, in vector order
 
 
-def _split_runs(code: torch.Tensor, runs: Runs) -> list[torch.Tensor]:
+def split_runs(code: torch.Tensor, runs: Runs) -> list[torch.Tensor]:
     """The code vector as one (..., groups, size) tensor per run."""
     parts = code.split([groups * size for groups, size in runs], -1)
     return [part.unflatten(-1, (groups, size)) for part, (groups, size) in zip(parts, runs)]
@@ -447,9 +453,7 @@ def _split_runs(code: torch.Tensor, runs: Runs) -> list[torch.Tensor]:
 def grouped_log_softmax(logits: torch.Tensor, runs: Runs) -> torch.Tensor:
     """Log-probabilities in the code's layout (..., width): a log-softmax over each group of each
     run."""
-    return torch.cat(
-        [F.log_softmax(part, -1).flatten(-2) for part in _split_runs(logits, runs)], -1
-    )
+    return torch.cat([F.log_softmax(part, -1).flatten(-2) for part in split_runs(logits, runs)], -1)
 
 
 def grouped_cross_entropy(logits: torch.Tensor, target: torch.Tensor, runs: Runs) -> torch.Tensor:
@@ -457,7 +461,7 @@ def grouped_cross_entropy(logits: torch.Tensor, target: torch.Tensor, runs: Runs
     return torch.cat(
         [
             -(target_part * F.log_softmax(part, -1)).sum(-1)
-            for part, target_part in zip(_split_runs(logits, runs), _split_runs(target, runs))
+            for part, target_part in zip(split_runs(logits, runs), split_runs(target, runs))
         ],
         -1,
     )
@@ -469,7 +473,7 @@ def remove_baseline_floor(
     """Group softmax, then undo the floor's mixture with uniform (clip at zero, renormalise)."""
     tiny = torch.finfo(logits.dtype).tiny
     out = []
-    for part, (_, size) in zip(_split_runs(logits, runs), runs):
+    for part, (_, size) in zip(split_runs(logits, runs), runs):
         probabilities = torch.clamp_min((1.0 + size * floor) * torch.softmax(part, -1) - floor, 0.0)
         out.append(
             (probabilities / torch.clamp_min(probabilities.sum(-1, keepdim=True), tiny)).flatten(-2)
@@ -503,14 +507,29 @@ def symlog_spacing(knee: float, bound: float, bins: int, below: int | None = Non
     return math.log1p(bound / knee) / above
 
 
-def symlog_coordinate(values: torch.Tensor, knee: float, spacing: float) -> torch.Tensor:
-    """values in bins from the zero centre: sign(x) ln(1 + |x| / knee) / spacing."""
+def symlog_coordinate(values: torch.Tensor, knee: Bound, spacing: Bound) -> torch.Tensor:
+    """values in bins from the zero centre: sign(x) ln(1 + |x| / knee) / spacing. knee and
+    spacing: numbers, or tensors over a trailing component axis (several codes at once)."""
     return torch.sign(values) * torch.log1p(values.abs() / knee) / spacing
 
 
-def symlog_value(coordinate: torch.Tensor, knee: float, spacing: float) -> torch.Tensor:
+def symlog_value(coordinate: torch.Tensor, knee: Bound, spacing: Bound) -> torch.Tensor:
     """The inverse of `symlog_coordinate`."""
     return torch.sign(coordinate) * knee * torch.expm1(coordinate.abs() * spacing)
+
+
+def symlog_smoothing(
+    knee: Bound, spacing: Bound, low: int, high: int, sigma: float, like: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """((..., width) each bin centre's physical value, (..., width) the physical variance of
+    the code of a value at that centre about it): the code's own smoothing, which
+    `symlog_decode_at` takes off. knee, spacing: numbers, or (k, 1) tensors for k codes at
+    once; like: the dtype and device."""
+    index = torch.arange(-low, high + 1, dtype=like.dtype, device=like.device)
+    centres = symlog_value(index, knee, spacing)
+    own = hl_gauss(index, low, high, sigma)  # (width, width): each centre's own code
+    smoothing = (own * (centres[..., None, :] - centres[..., :, None]) ** 2).sum(-1)
+    return centres, smoothing
 
 
 def hl_gauss(coordinate: torch.Tensor, low: int, high: int, sigma: float) -> torch.Tensor:
@@ -538,7 +557,15 @@ def symlog_encode(
     divided by its sum. below: the real bins under the zero (`symlog_spacing`)."""
     spacing = symlog_spacing(knee, bound, bins, below)
     under, over = symlog_sides(bins, below)
-    low, high = under + padding, over + padding
+    return symlog_encode_at(values, under + padding, over + padding, knee, spacing, sigma)
+
+
+def symlog_encode_at(
+    values: torch.Tensor, low: int, high: int, knee: Bound, spacing: Bound, sigma: float
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """`symlog_encode` of a code with `low` bins under its zero centre and `high` above it
+    (padding included) at a given spacing: knee and spacing numbers, or tensors (k,) over
+    values' last axis, k codes of one layout at once ((..., k, width), (..., k))."""
     coordinate = symlog_coordinate(values, knee, spacing)
     clipped = (coordinate < -low) | (coordinate > high)
     coordinate = torch.clamp(coordinate, -float(low), float(high))
@@ -611,14 +638,29 @@ def symlog_decode(
     spacing = symlog_spacing(knee, bound, bins, below)
     under, over = symlog_sides(bins, below)
     low, high = under + padding, over + padding
-    index = torch.arange(-low, high + 1, dtype=probabilities.dtype, device=probabilities.device)
+    centres, smoothing = symlog_smoothing(knee, spacing, low, high, sigma, probabilities)
+    return symlog_decode_at(probabilities, low, knee, spacing, centres, smoothing, inverse)
+
+
+def symlog_decode_at(
+    probabilities: torch.Tensor,
+    low: int,
+    knee: Bound,
+    spacing: Bound,
+    centres: torch.Tensor,
+    smoothing: torch.Tensor,
+    inverse: tuple[torch.Tensor, float, float] | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """`symlog_decode` of a code with `low` bins under its zero centre (padding included),
+    given its `symlog_smoothing`: knee and spacing numbers with centres and smoothing
+    (width,), or for k codes of one layout at once (probabilities (..., k, width)) tensors
+    (k,) and (k, width)."""
+    width = probabilities.shape[-1]
+    index = torch.arange(-low, width - low, dtype=probabilities.dtype, device=probabilities.device)
     coordinate = (probabilities * index).sum(-1)
     if inverse is not None:
         coordinate = invert_mean(coordinate, *inverse)
     mean = symlog_value(coordinate, knee, spacing)
-    centres = symlog_value(index, knee, spacing)
-    own = hl_gauss(index, low, high, sigma)  # (bins, bins): each centre's own code
-    smoothing = (own * (centres - centres[:, None]) ** 2).sum(-1)
     spread = (probabilities * (centres - mean[..., None]) ** 2).sum(-1)
     return mean, torch.clamp_min(spread - (probabilities * smoothing).sum(-1), 0.0)
 
@@ -643,8 +685,21 @@ def symlog_median(
     decodes to the value of the mode that holds the median, so a jump of probability below
     1/2 is not taken (the most likely outcome, decisions D8)."""
     spacing = symlog_spacing(knee, bound, bins, below)
-    under, _ = symlog_sides(bins, below)
-    low = under + padding
+    low = symlog_sides(bins, below)[0] + padding
+    return symlog_median_at(probabilities, low, knee, spacing, inverse, window)
+
+
+def symlog_median_at(
+    probabilities: torch.Tensor,
+    low: int,
+    knee: Bound,
+    spacing: Bound,
+    inverse: tuple[torch.Tensor, float, float] | None = None,
+    window: int = MEDIAN_WINDOW,
+) -> torch.Tensor:
+    """`symlog_median` of a code with `low` bins under its zero centre (padding included):
+    knee and spacing numbers, or tensors (k,) for k codes of one layout at once
+    (probabilities (..., k, width))."""
     width = probabilities.shape[-1]
     index = torch.arange(width, device=probabilities.device)
     cumulative = torch.cumsum(probabilities, -1)

@@ -349,3 +349,29 @@ speed on real_scale_mixed; then measure before acting: the learner's micro-batch
 (160/320/640 rows), the heads' sums' run-time share, the Arena's wasted ticks after first
 games, benching against a compile per fleet size; and continue the graph shrink (the delta
 code's per-component symlog decodes: about 740 of a step's 3,226 ops).
+
+## Next runs: real-scale BC, graph shrink 2 (2026-11-11 04:00- KST)
+
+- Short BC run on `--preset real_scale_mixed` (budget 1.5M steps, before the shrink below;
+  power profile performance): runs end to end. Update 1 rollout 332.7 s, learn 528.0 s
+  (compile included); update 2 rollout 17.8 s, learn 232.9 s; bc kl 2.88 then 1.55. The
+  first update's overhead, about 610 s, covers both presets of the mix.
+- Graph shrink, counted with Dynamo and an op-counting backend on the CPU (no Inductor) on
+  one controller step of a fresh Yemong in the arm's settings (`next_state=delta`,
+  persistence, ellipse spreads; frontline; the count does not depend on the rows): **3,708
+  -> 2,625 ops (-29%)**, the maths unchanged within rounding.
+  - The delta code by family (3,708 -> 2,982): its components fall into runs of one layout
+    (position along: 175 bins; the fine 51; the coarse 31), each now one (..., k, width)
+    tensor, one softmax run of k groups, one encode and one decode with per-component
+    knees and spacings as tensors (`codes.symlog_*_at`; the one-component functions are
+    wrappers over them and the test's reference). Constants are float32 buffers made at
+    init (the median's index too: an index made from a list in the step is a host copy).
+  - Position codes: both axes in one circular encode and decode (2,982 -> 2,774; bitwise
+    equal to before, eager, float32 and float64).
+  - The ellipse inputs: eight two-hot codes in one call (2,774 -> 2,625).
+  - The default build (`next_state=absolute`, what `--preset real_scale_mixed` trains
+    unless set): 2,940 -> 2,533 ops (-14%; the position codes; it has no delta code).
+  - Left: `circular_encode`'s level loop (sequential remainders, kept for float32: see its
+    docstring), the scalar codes' moment matching, the rotary embedding (168).
+- The vmap fallback's warning for the `yemong::` kernels is silenced in `stacked.py` (it
+  printed on every trace; the per-set loop is measured and kept, above).

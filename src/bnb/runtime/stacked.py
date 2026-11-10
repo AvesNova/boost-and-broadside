@@ -16,10 +16,23 @@ the same number of rows (the training lanes group their players by row count, on
 group, rather than pad: padding the league's slots to the live policy's rows ran half again
 as many rows). The random draws differ per set (`randomness="different"`), as separate
 forwards' did.
+
+The custom kernels (`yemong::...` Triton ops) have no batching rule: under vmap each runs
+once per set, which PyTorch warns of on every trace. Measured, that is still faster than
+their plain twins batched (19.5 against 24.8 ms a tick in the match engine), so the warning
+for them is silenced here; any other op's still shows.
 """
+
+import warnings
 
 import torch
 from torch.utils import _pytree
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"There is a performance drop because we have not yet implemented the batching rule "
+    r"for yemong::",
+)
 
 
 def call(module: torch.nn.Module, parameters: dict[str, torch.Tensor], inputs: tuple):

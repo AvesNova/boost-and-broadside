@@ -191,6 +191,15 @@ class ShipStateCode(nn.Module):
         for end, name in enumerate(("scalar_low", "scalar_high")):
             values = [bounds[scalar][end] for scalar in SCALARS]
             self.register_buffer(name, torch.tensor(values, dtype=torch.float32), persistent=False)
+        # the ellipse features' lows and highs (`ellipse_code`), likewise
+        ellipse_low, ellipse_high = [], []
+        for name in ("position", "velocity"):
+            knee, bound = ELLIPSE_SIGMA[name]
+            top = math.log1p((velocity_reach() if bound is None else bound) / knee)
+            ellipse_low += [0.0, 0.0, -1.0, -1.0]
+            ellipse_high += [top, top, 1.0, 1.0]
+        for name, values in (("ellipse_low", ellipse_low), ("ellipse_high", ellipse_high)):
+            self.register_buffer(name, torch.tensor(values, dtype=torch.float32), persistent=False)
         scalar = (1, SCALAR_BINS)
         self.runs: codes.Runs = (
             (POSITION_LEVELS, 9),
@@ -272,17 +281,15 @@ class ShipStateCode(nn.Module):
     def ellipse_code(self, spreads: torch.Tensor) -> torch.Tensor:
         """(..., ellipse_width): per ellipse (position, velocity; `blocks`) the four
         ELLIPSE_FEATURES, each a two-hot code of SCALAR_BINS (`ELLIPSE_SIGMA`)."""
-        parts = []
+        features = []
         for name, packed in zip(("position", "velocity"), self.blocks(spreads), strict=True):
-            knee, bound = ELLIPSE_SIGMA[name]
-            bound = velocity_reach() if bound is None else bound
-            top = math.log1p(bound / knee)
+            knee, _ = ELLIPSE_SIGMA[name]
             major, minor, cos, sin = ellipse(packed)
-            for sigma in (major, minor):
-                parts.append(codes.scalar_sharp(torch.log1p(sigma / knee), 0.0, top, SCALAR_BINS))
-            for feature in (cos, sin):
-                parts.append(codes.scalar_sharp(feature, -1.0, 1.0, SCALAR_BINS))
-        return torch.cat(parts, -1)
+            features += [torch.log1p(major / knee), torch.log1p(minor / knee), cos, sin]
+        # one code call over the eight features, their bounds per feature (module init)
+        low = self.ellipse_low.to(spreads.dtype)
+        high = self.ellipse_high.to(spreads.dtype)
+        return codes.scalar_sharp(torch.stack(features, -1), low, high, SCALAR_BINS).flatten(-2)
 
     def _scalar_ranges(self) -> dict[str, tuple[float, float, int]]:
         """(low, high, bins) of each of SCALARS."""

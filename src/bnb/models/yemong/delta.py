@@ -123,6 +123,7 @@ assert tuple(component.name for component in EXTRAPOLATION) == CONTINUOUS
 # The quantities that advance by the decoded median (their change is a rare jump: the most
 # likely outcome, decisions D8); the others by the mean.
 MEDIAN = ("shield_recharge_wait", "shield", "gun_cooldown")
+assert MEDIAN == tuple(name for name in CONTINUOUS if name in MEDIAN)  # `DeltaCode.decode`
 # The means a hidden row's faded forecast scales the change of (`fade`;
 # `YemongConfig.physics_hidden_fade`): the continuous quantities the head moves by its mean.
 FADED = tuple(name for name in MEANS if name not in MEDIAN)
@@ -833,15 +834,50 @@ class DeltaCode(nn.Module):
         listed = self.code_components
         self.components = {component.name: component for component in listed}
         self.sizes = {component.name: component.width for component in listed}
-        self.runs: codes.Runs = tuple((1, component.width) for component in listed)
         self.order = CONTINUOUS
-        self._inverse_ends = {}
-        for component in listed:
-            table, lowest, highest = codes.symlog_mean_inverse(
-                component.bins, below=component.below
+        self._inverse_ends: dict[int, tuple[float, float]] = {}
+        # Families: runs of neighbouring components of one layout (bins, below), each encoded
+        # and decoded as one (..., k, width) tensor and one softmax run of k groups.
+        self.families: list[tuple[int, int, int, int, tuple[int, ...]]] = []
+        start = 0
+        while start < len(listed):
+            first = listed[start]
+            stop = start
+            while stop < len(listed) and (listed[stop].bins, listed[stop].below) == (
+                first.bins,
+                first.below,
+            ):
+                stop += 1
+            family = listed[start:stop]
+            under, over = codes.symlog_sides(first.bins, first.below)
+            low, high = under + codes.PADDING_BINS, over + codes.PADDING_BINS
+            medians = tuple(i for i, c in enumerate(family) if c.name in MEDIAN)
+            self.families.append((start, stop, low, high, medians))
+            f = len(self.families) - 1
+            knee = torch.tensor([c.knee for c in family], dtype=torch.float64)
+            spacing = torch.tensor([c.spacing for c in family], dtype=torch.float64)
+            centres, smoothing = codes.symlog_smoothing(
+                knee[:, None], spacing[:, None], low, high, codes.HL_GAUSS_SIGMA, knee
             )
-            self.register_buffer(f"inverse_{component.name}", table.float(), persistent=False)
-            self._inverse_ends[component.name] = (lowest, highest)
+            table, lowest, highest = codes.symlog_mean_inverse(first.bins, below=first.below)
+            chosen = torch.tensor(medians, dtype=torch.long)
+            for name, value in (
+                ("knee", knee),
+                ("spacing", spacing),
+                ("centres", centres),
+                ("smoothing", smoothing),
+                ("inverse", table),
+                ("median_knee", knee[chosen]),
+                ("median_spacing", spacing[chosen]),
+            ):
+                self.register_buffer(f"family_{f}_{name}", value.float(), persistent=False)
+            # an index tensor made in the step would be a host copy, which CUDA graphs refuse
+            self.register_buffer(f"family_{f}_median_index", chosen, persistent=False)
+            self._inverse_ends[f] = (lowest, highest)
+            start = stop
+        self.runs: codes.Runs = tuple(
+            (stop - start, listed[start].width) for start, stop, *_ in self.families
+        )
         # The starting logits, kept for the diagnostics' marginal baseline.
         self.register_buffer("marginal", self.marginal_logits(), persistent=False)
 
@@ -855,9 +891,20 @@ class DeltaCode(nn.Module):
         """The code's softmax groups, summed over runs."""
         return sum(groups for groups, _ in self.runs)
 
+    def family(self, f: int, name: str) -> torch.Tensor:
+        """A family's constant (knee, spacing, centres, smoothing, inverse, or the median
+        components' median_index, median_knee and median_spacing; module init)."""
+        return getattr(self, f"family_{f}_{name}")
+
+    def family_inverse(self, f: int) -> tuple[torch.Tensor, float, float]:
+        """A family's `codes.symlog_mean_inverse` table and ends."""
+        return (self.family(f, "inverse"), *self._inverse_ends[f])
+
     def inverse(self, name: str) -> tuple[torch.Tensor, float, float]:
-        """A component's `codes.symlog_mean_inverse` table and ends."""
-        return (getattr(self, f"inverse_{name}"), *self._inverse_ends[name])
+        """A component's `codes.symlog_mean_inverse` table and ends (its family's)."""
+        index = CONTINUOUS.index(name)
+        f = next(f for f, (start, stop, *_) in enumerate(self.families) if start <= index < stop)
+        return self.family_inverse(f)
 
     def _maxima(self, ship_type: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         return per_ship(self.max_shield, ship_type), per_ship(self.max_energy, ship_type)
@@ -999,11 +1046,15 @@ class DeltaCode(nn.Module):
         """(the code (..., width), (..., len(CONTINUOUS)) bool: the changes clamped to the
         padded range) of changes as `changes` gives them."""
         parts, clipped = [], []
-        for i, component in enumerate(self.code_components):
-            code, clip = component.encode(continuous[..., i])
-            parts.append(code)
+        for f, (start, stop, low, high, _) in enumerate(self.families):
+            knee = self.family(f, "knee").to(continuous.dtype)
+            spacing = self.family(f, "spacing").to(continuous.dtype)
+            code, clip = codes.symlog_encode_at(
+                continuous[..., start:stop], low, high, knee, spacing, codes.HL_GAUSS_SIGMA
+            )
+            parts.append(code.flatten(-2))
             clipped.append(clip)
-        return torch.cat(parts, -1), torch.stack(clipped, -1)
+        return torch.cat(parts, -1), torch.cat(clipped, -1)
 
     def targets(
         self,
@@ -1032,22 +1083,34 @@ class DeltaCode(nn.Module):
         """Head logits (..., width) to ((..., len(CONTINUOUS)) the changes' means,
         (..., len(CONTINUOUS)) their variances, (..., len(MEDIAN)) the medians of MEDIAN's
         quantities), in the code's frames and units."""
-        parts = self.probabilities(logits)
+        parts = [torch.softmax(part, -1) for part in codes.split_runs(logits, self.runs)]
         means, variances, medians = [], [], []
-        for c in self.code_components:
-            part, inverse = parts[c.name], self.inverse(c.name)
-            mean, variance = codes.symlog_decode(
-                part, c.knee, c.bound, c.bins, below=c.below, inverse=inverse
+        for f, (part, (_, _, low, _, median)) in enumerate(zip(parts, self.families)):
+            dtype = part.dtype
+            knee = self.family(f, "knee").to(dtype)
+            spacing = self.family(f, "spacing").to(dtype)
+            mean, variance = codes.symlog_decode_at(
+                part,
+                low,
+                knee,
+                spacing,
+                self.family(f, "centres").to(dtype),
+                self.family(f, "smoothing").to(dtype),
+                self.family_inverse(f),
             )
             means.append(mean)
             variances.append(variance)
-            if c.name in MEDIAN:
+            if median:
                 medians.append(
-                    codes.symlog_median(
-                        part, c.knee, c.bound, c.bins, below=c.below, inverse=inverse
+                    codes.symlog_median_at(
+                        part.index_select(-2, self.family(f, "median_index")),
+                        low,
+                        self.family(f, "median_knee").to(dtype),
+                        self.family(f, "median_spacing").to(dtype),
+                        self.family_inverse(f),
                     )
                 )
-        return torch.stack(means, -1), torch.stack(variances, -1), torch.stack(medians, -1)
+        return torch.cat(means, -1), torch.cat(variances, -1), torch.cat(medians, -1)
 
     @staticmethod
     def point(means: torch.Tensor, medians: torch.Tensor) -> torch.Tensor:

@@ -83,6 +83,41 @@ def test_the_code_round_trips_below_1e_3_bins_everywhere_including_the_padding(c
             assert (back - coordinate).abs().max() < 1e-3
 
 
+@pytest.mark.parametrize("baseline", delta.DELTA_BASELINES)
+def test_the_families_decode_and_encode_as_each_component_alone(baseline):
+    """`DeltaCode` encodes and decodes its components by family (one tensor per layout); each
+    component's part matches the one-component functions to rounding, in float32 (the dtype
+    it runs in; its constants are float32 buffers, as the inverse tables are)."""
+    rules, types = api.rules_of(cases.SQUAD), api.ship_types()
+    dynamics = delta.state_dynamics(rules, types) if baseline == "extrapolation" else None
+    code = delta.DeltaCode(state_code_ranges(rules, types), baseline, dynamics)
+    components = code.code_components
+    logits = torch.randn(3, 5, code.width) * 3.0
+    means, variances, medians = code.decode(logits)
+    parts = code.split(torch.exp(codes.grouped_log_softmax(logits, code.runs)))
+    chosen = []
+    for i, c in enumerate(components):
+        table, lowest, highest = codes.symlog_mean_inverse(c.bins, below=c.below)
+        inverse = (table.float(), lowest, highest)
+        mean, variance = codes.symlog_decode(
+            parts[c.name], c.knee, c.bound, c.bins, below=c.below, inverse=inverse
+        )
+        torch.testing.assert_close(means[..., i], mean)
+        torch.testing.assert_close(variances[..., i], variance)
+        if c.name in delta.MEDIAN:
+            chosen.append(
+                codes.symlog_median(
+                    parts[c.name], c.knee, c.bound, c.bins, below=c.below, inverse=inverse
+                )
+            )
+    torch.testing.assert_close(medians, torch.stack(chosen, -1))
+    values = torch.randn(4, len(components)) * torch.tensor([c.bound for c in components])
+    encoded, clipped = code.encode(values)
+    alone = [c.encode(values[..., i]) for i, c in enumerate(components)]
+    torch.testing.assert_close(encoded, torch.cat([a for a, _ in alone], -1))
+    assert torch.equal(clipped, torch.stack([b for _, b in alone], -1))
+
+
 def test_the_code_has_an_exact_zero_and_folds_only_beyond_the_padded_range():
     for component in delta.COMPONENTS:
         zero, clipped = component.encode(torch.zeros(1, dtype=F64))
