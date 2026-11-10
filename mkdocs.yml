@@ -121,6 +121,8 @@ nav:
           - The real-scale variant: explanation/game/real-scale.md
           - The ship-type tournament: explanation/game/real-scale-tournament.md
           - Balancing the real-scale set: explanation/game/real-scale-balance.md
+          - Pacing the real-scale fight: explanation/game/real-scale-pacing.md
+          - Designing ship types: explanation/game/ship-design.md
       - The model (Yemong): explanation/yemong.md
       - The training loop: explanation/training-loop.md
       - The learner: explanation/learner.md
