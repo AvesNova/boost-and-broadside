@@ -794,3 +794,15 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   live, nearest live and exponential; reusing tournaments 5-8.
 - **15:15 KST The author: nearest RL straight to 180.4M, then one final tournament and an Elo plot of all three lines.** `round13.sh` ready (172 updates; starts after tournament 9 with the BC policy it picks). `--print-config` against the Yemong RL's recorded command (run.json segment 1): only `model` and the memory-only `micro_batch_rows` (3840 vs 320) differ.
 - **15:30 KST Nearest RL's start: the BC 120M exponential average** (tournament 9: frontline live 925 / exp 898, deathmatch live 1026 / exp 1068, all +-18; a tie, exp marginally ahead on the mean and an averaged policy like the Yemong runs' uniform start). Queued after tournament 9.
+- **15:35 KST Tournament 9 done.** Frontline (+-10-29): champion RL 180.4M exp **1893**, 121.6M exp
+  1857, 180.4M uni 1802 / live 1789; null 180.4M 1702-1713 (all three types); BC 120M 891-992;
+  nearest BC live 925 / exp 898. Deathmatch: champion 180.4M uni **1942**, null 180.4M live 1877 /
+  exp 1854 / uni 1781, champion 121.6M uni 1794; **champion 180.4M live 1185, exp 1572**; nearest
+  BC exp 1041 / live 1012; BC Yemong 898-980.
+  **The champion's deathmatch live regressed** from update ~100 (its own lane rating 1745 at 100,
+  ~1000 by 160; the null's fluctuates without a trend) while its uniform kept rising: no
+  instability (KL 0.006-0.007, outcome EV 0.93-0.97, no skipped steps); reads as self-play
+  cycling the average smooths. Checked whether a rule was being gamed: every deathmatch training
+  game in both RL runs times out from ~update 80 (300 s, nobody at 25 kills; BC-start levels 46%
+  champion / 9% null), but a timeout is decided by the kill lead (`clock_result`), not a draw:
+  legal, evenly matched play. Not investigated further.
