@@ -171,3 +171,14 @@
 10:50 fleet 20v20-arena start (6 players + scripted; 8 x 128)
 11:09 crossover done champion frontline_10v10_arena: 10 network ships break even against 11.19 scripted (x1.12)
 11:09 crossover start null frontline_10v10_arena
+11:32 crossover done null frontline_10v10_arena: 10 network ships break even against 11.15 scripted (x1.12)
+11:32 crossover start nearest frontline_10v10_arena
+11:39 crossover done nearest frontline_10v10_arena: 10 network ships break even against 10.79 scripted (x1.08)
+11:39 crossover start champion deathmatch_10v10_arena
+11:39 crossover campaign restarted without the density presets
+11:39 crossover start champion deathmatch_10v10_arena
+11:43 crossover2 start champion-dm10 (prior x1.49)
+11:43 fleet3 20v20-arena start (champion, nearest, scripted; 8 x 128)
+11:43 fleet3 20v20-arena FAILED (runs/ratings-fleet3-20v20-arena.out)
+11:43 fleet3 40v40-arena start (champion, nearest, scripted; 8 x 64)
+11:43 fleet3 40v40-arena FAILED (runs/ratings-fleet3-40v40-arena.out)

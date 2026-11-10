@@ -1,2 +1,5 @@
 frontline_20v20_arena: batch 1, 1024 games, the largest standard error 39.5 (the batch took 1126 s); done about 11:28 (1 batches), by 17:06 at the latest (19 batches)
 frontline_20v20_arena: batch 2, 2048 games, the largest standard error 19.9 (the batch took 214 s); done about 11:13 (0 batches), by 14:34 at the latest (18 batches)
+deathmatch_20v20_arena: batch 1, 1024 games, the largest standard error 259.4 (the batch took 986 s); done about 16:42 (19 batches), by 16:42 at the latest (19 batches)
+deathmatch_20v20_arena: batch 2, 2048 games, the largest standard error 255.9 (the batch took 292 s); done about 14:46 (18 batches), by 14:46 at the latest (18 batches)
+deathmatch_20v20_arena: batch 3, 3072 games, the largest standard error 78.6 (the batch took 351 s); done about 13:38 (13 batches), by 14:14 at the latest (17 batches)
