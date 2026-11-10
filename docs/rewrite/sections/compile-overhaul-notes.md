@@ -454,3 +454,25 @@ no `Where(16)` for a node of the accelerations variant); the installation exampl
 a worktree (`uv run` finds no `.venv` there). Fixed: the bench scripts' usage lines broke
 the strict docs build (mkdocs read `[preset=frontline]` as a cross-reference), and
 `bnb.cache` (from the play-shell merge) had no reference page.
+
+### A size sweep: an engine per size, or one engine with benching (`bench/fleet_sizes.py`)
+
+Frontline's `_arena` fleet presets (one map radius at every size, so a benched game is the
+smaller preset's game; the `_density` ones grow the map and cannot be benched to), the
+scripted agent against the short BC run's policy, 8 blocks x 32 games, warm-ish caches, one
+process. Tick: a captured block's replay over its ticks.
+
+| Ships per team | Own engine: first segment | Own: tick | Benched (40's engine): tick |
+|---|---|---|---|
+| 10 | 155.3 s | 4.73 ms | 14.96 ms |
+| 20 | 152.9 s | 7.75 ms | 14.99 ms |
+| 40 | 163.3 s | 14.97 ms | 15.00 ms |
+
+The benched engine's own first segment took 18.9 s (the 40's graph in the cache), and
+switching its sizes nothing. A benched ship still costs its full tick: a benched 10v10 runs
+at the 40v40's price, 3.2x its own engine's. An extra size's compile (about 155 s here,
+about 20 s warm) is repaid after about 15,000 ticks at 10 ships and 21,000 at 20 (256
+games; at a ratings run's 1,024 games the tick costs about 4x as much, so 4x sooner): about
+one batch. So: an engine per size for size sweeps; benching for what needs unequal teams
+in one batch (the crossover, its purpose). Benching costs nothing at full size (15.00 against
+14.97 ms).
