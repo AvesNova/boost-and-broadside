@@ -793,3 +793,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   exponentials (BC 120M; RL 60.8M / 121.6M / 180.4M), the RL 180.4M live and uniform, BC 120M
   live, nearest live and exponential; reusing tournaments 5-8.
 - **15:15 KST The author: nearest RL straight to 180.4M, then one final tournament and an Elo plot of all three lines.** `round13.sh` ready (172 updates; starts after tournament 9 with the BC policy it picks). `--print-config` against the Yemong RL's recorded command (run.json segment 1): only `model` and the memory-only `micro_batch_rows` (3840 vs 320) differ.
+- **15:30 KST Nearest RL's start: the BC 120M exponential average** (tournament 9: frontline live 925 / exp 898, deathmatch live 1026 / exp 1068, all +-18; a tie, exp marginally ahead on the mean and an averaged policy like the Yemong runs' uniform start). Queued after tournament 9.
