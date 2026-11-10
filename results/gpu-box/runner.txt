@@ -141,3 +141,4 @@
 05:41 tournament9 start (22 players: true exponentials, RL 180.4M, nearest)
 06:31 tournament9 done
 06:31 start 2026-11-10-rl-nearest (RL to 180.4M from exponential_average, micro-batch 3840)
+06:46 done 2026-11-10-rl-nearest

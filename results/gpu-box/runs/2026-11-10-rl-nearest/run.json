@@ -1,6 +1,6 @@
 {
  "name": "2026-11-10-rl-nearest",
- "status": "running",
+ "status": "finished",
  "pid": 646564,
  "host": "e98bed47fc73",
  "message": null,
@@ -28,9 +28,11 @@
  },
  "checkpoint_every": 501219328,
  "update_policies": true,
- "newest_checkpoint": null,
- "final_checkpoint": null,
- "checkpoint_ordinals": {},
+ "newest_checkpoint": 180355072,
+ "final_checkpoint": 180355072,
+ "checkpoint_ordinals": {
+  "180355072": 0
+ },
  "probe": {
   "allocated": 8675153920,
   "reserved": 8866758656,
@@ -43,8 +45,8 @@
    "dirty": false,
    "start_step": 0,
    "start_time": "2026-11-10T06:32:20+00:00",
-   "end_step": null,
-   "end_time": null,
+   "end_step": 180355072,
+   "end_time": "2026-11-10T06:46:01+00:00",
    "overrides": {},
    "rewound_from": null,
    "command": [
@@ -68,7 +70,7 @@
   }
  ],
  "stop_request": null,
- "hours": 0.04621712374384515,
+ "hours": 0.22788791861268698,
  "skipped_steps": 0,
  "snapshot_every": 493879296
 }
