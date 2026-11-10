@@ -881,3 +881,15 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   parent, was killed at once). Crossover 10 ships, frontline, training arena: champion 11.19
   (x1.12), null 11.15 (x1.12), nearest 10.79 (x1.08). Estimated finish ~13:00 KST Nov 11 +-2.5 h
   (the 40-ship cases dominate).
+- **20:50 KST The author: the evaluation took longer than a training run; cut it.** Crossover:
+  deathmatch only, the champion and the nearest model only. Fleet ratings: champion, nearest and
+  scripted only (no null, no calibration rungs). The crossover search made adaptive
+  (`gpu-box/crossover_adaptive.py`, one process and one compile per case): the first guess is the
+  previous fleet size's ratio; a batch's 8 blocks are 8 handicap levels at no extra cost; batch 1
+  spreads them over +-25% of the guess, a logistic fit (score vs the scripted side's ships, half a
+  win and half a loss of prior per level) gives the crossing and its standard error, and each
+  later batch packs the 8 levels within +-2 SE of it; the engine is built at the guess x 1.4, not
+  2n or 3n. Fit checked on a synthetic case (true 15: 15.22 +- 0.18). `round15.sh` (crossovers at
+  10, 20, 40 ships) and `fleet3.sh` (20v20 reusing its games, 40v40) started; round15's own copy of
+  the ratings listed a not-yet-existing --reuse directory and failed at once (its "fleet3" lines
+  at 11:43 UTC). Expected: everything by ~23:30 KST +-45 min.
