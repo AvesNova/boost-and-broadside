@@ -61,5 +61,13 @@ class SpatialBlock(nn.Module):
         map_key = apply_rotary(map_key, *map_tables)
         keys = torch.cat([key, map_key], -3).transpose(-3, -2)  # (..., heads, Q + M, width)
         values = torch.cat([value, map_value], -3).transpose(-3, -2)
-        attended = F.scaled_dot_product_attention(query.transpose(-3, -2), keys, values)
+        query = query.transpose(-3, -2)
+        device = query.device.type
+        if torch.is_autocast_enabled(device):
+            # Autocast's own cast for attention, made explicit: under `torch.vmap` (the
+            # stacked weight sets, `bnb.runtime.stacked`) autocast skips it, and the float32
+            # query met the bf16 values. Bitwise the same where autocast does cast.
+            dtype = torch.get_autocast_dtype(device)
+            query, keys, values = query.to(dtype), keys.to(dtype), values.to(dtype)
+        attended = F.scaled_dot_product_attention(query, keys, values)
         return attended.transpose(-3, -2)

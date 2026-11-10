@@ -137,10 +137,9 @@ class Rollout:
             if compiled
             else stages
         )
-        learner_step = self.controllers[learner].step
-        self._evaluate = (
-            torch.compile(learner_step, fullgraph=True, dynamic=False) if compiled else learner_step
-        )
+        # The bootstrap runs once per update: uncompiled, it costs a forward (milliseconds);
+        # compiled, it cost a whole second compile of the learner's step (65 s cold).
+        self._evaluate = self.controllers[learner].step
         self.graph: torch.cuda.CUDAGraph | None = None
         self._written: dict = {}  # ring slot or segment buffer -> the copy that reads it
 
@@ -625,6 +624,7 @@ class Rollout:
             fields[name] = _pytree.tree_unflatten(picked, self.store.specs[name])
         return Trajectory(**fields)
 
+    @torch.no_grad()
     @torch.no_grad()
     def bootstrap(self):
         """The learner's controller on its current views without acting (learner spec 2):

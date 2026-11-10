@@ -36,9 +36,8 @@ from .ppo import Learner, LearnerConfig, factor_sums
 AGREEMENTS = ("power", "stick", "shoot", "joint")
 # BC's per-pool sums over the living own ship-steps, in order.
 SUMS = ("kl", "teacher", "student", "tokens", *(f"agreement_{name}" for name in AGREEMENTS))
-TEACHER_CARRY = "teacher_carry/"  # the derived names of the teacher's carry's fields
+TEACHER_LABELS = "teacher_labels"  # the derived name of the labels (L, V, S, 42)
 # the carry's field names, taken once: torch.compile cannot trace dataclasses.fields
-CARRY_FIELDS = tuple(field.name for field in dataclasses.fields(ScriptedCarry))
 
 
 MINIBATCHES = 256
@@ -215,26 +214,40 @@ class BehaviourCloning(Learner):
         the per-pool metrics."""
         prepared = super().prepare(segments, bootstrap)
         prepared["derived"]["pool"] = self.pool_one_hot  # (1, V, pools)
-        prepared["derived"].update(self._teacher_carries(segments))
+        prepared["derived"][TEACHER_LABELS] = self._teacher_labels(segments)
         return prepared
 
-    def _teacher_carries(self, segments) -> dict:
-        """The teacher's carry at every stored tick, each field (L, V, ...) under
-        TEACHER_CARRY + its name: the shards in time order, from the last update's carry."""
+    @torch.no_grad()
+    def _teacher_labels(self, segments) -> torch.Tensor:
+        """The labels at every stored tick, (L, V, S, 42): the teacher run over each shard
+        in time order from the last update's carry (`teacher_carries`), its distribution
+        given its carry at each tick, transformed (`labels`). Made once per update, outside
+        the compiled loss: the labels do not change between epochs, and the loss graph then
+        holds no copy of the scripted agent."""
         rows = segments.views // segments.shards
         carry = self.teacher_carry
         if carry is None:
             carry = self.teacher.init_carry(rows, self.device)
+        # as many views a pass as a loss micro-batch held when the loss made them
+        ticks = max(1, self.micro_views * segments.length // rows)
         shards = []
         for shard in range(segments.shards):
             obs = segments.shard(("obs",), shard)["obs"]
             carries, carry = teacher_carries(self.teacher, obs, carry)
-            shards.append(carries)
+            chunks = []
+            for start in range(0, segments.length, ticks):
+                part = slice(start, start + ticks)
+                chunk_obs = _pytree.tree_map_only(torch.Tensor, lambda x, p=part: x[p], obs)
+                chunk_carries = _pytree.tree_map(lambda x, p=part: x[p], carries)
+                chunks.append(
+                    labels(
+                        teacher_distribution(self.teacher, chunk_obs, chunk_carries),
+                        self.teacher_config.floor,
+                    )
+                )
+            shards.append(torch.cat(chunks))
         self.teacher_carry = carry
-        return {
-            TEACHER_CARRY + name: torch.cat([getattr(c, name) for c in shards], 1)
-            for name in CARRY_FIELDS
-        }
+        return torch.cat(shards, 1)
 
     def _policy(
         self,
@@ -249,10 +262,7 @@ class BehaviourCloning(Learner):
         of KL(labels || student), the labels' and the student's entropy and the tokens),
         over own ships alive."""
         own_alive = trajectory.alive[..., : trajectory.log_probability.shape[-1]]
-        carries = ScriptedCarry(**{name: derived[TEACHER_CARRY + name] for name in CARRY_FIELDS})
-        target = labels(
-            teacher_distribution(self.teacher, trajectory.obs, carries), self.teacher_config.floor
-        )
+        target = derived[TEACHER_LABELS]
         logits = unrolled.policy_logits.float()
         cross = losses.cross_entropy(logits, target)
         teacher_entropy = entropy(target)

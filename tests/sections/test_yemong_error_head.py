@@ -591,9 +591,10 @@ def test_the_ppo_terms_and_their_series(segment):
     learner = lc.learner(net, runner)
     prepared, trajectory, label, denominator = _check_terms(net, learner, runner)
     with torch.no_grad():
-        total = learner._loss(
-            trajectory, label, prepared["derived"], denominator, prepared["scale"], heads=True
+        heads_read = learner._loss(
+            trajectory, label, prepared["derived"], denominator, prepared["scale"]
         )[-1]
+        total = learner._head_sums(heads_read, trajectory, label)
     series = metrics.read(head_statistics.series(total, net))
     bucket = head_statistics.AGE_BUCKETS[0][0]
     for name in correction.QUANTITIES:

@@ -103,6 +103,19 @@ def test_the_bc_loss_matches_an_independent_computation(segment):
     tokens = alive.sum()
     assert 0 < tokens < alive.numel()
     cross, kl = torch.zeros(()), torch.zeros(())
+    views = trajectory.done.shape[1]
+    # The teacher's memory over the segment, from a fresh carry, and the labels `prepare`
+    # makes from it, with the same draws (the teacher's memory draws from the default
+    # generator).
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(7)
+        carries, _ = bc.teacher_carries(
+            learner.teacher, trajectory.obs, learner.teacher.init_carry(views, lc.CPU)
+        )
+        torch.manual_seed(7)
+        learner.teacher_carry = None
+        made = learner._teacher_labels(runner.store)
+    prepared = dict(prepared, derived=dict(prepared["derived"], **{bc.TEACHER_LABELS: made}))
     for tick in range(trajectory.done.shape[0]):  # the teacher tick by tick, on its views
         obs = Obs(
             **{
@@ -112,7 +125,7 @@ def test_the_bc_loss_matches_an_independent_computation(segment):
         )
         carry = ScriptedCarry(
             **{
-                field.name: prepared["derived"][bc.TEACHER_CARRY + field.name][tick]
+                field.name: getattr(carries, field.name)[tick]
                 for field in dataclasses.fields(ScriptedCarry)
             }
         )

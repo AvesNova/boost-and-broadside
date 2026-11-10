@@ -198,7 +198,10 @@ def test_a_mixed_field_plays_each_pair_as_the_pair_alone(tmp_path, monkeypatch):
 
 
 def test_the_lanes_split_the_slots_as_the_groups_players():
-    assert default_lanes([None, 0, None], 16) == (16,)
+    # one network player fills at most one slot of each of the 8 blocks
+    assert default_lanes([None, 0, None], 16) == (8,)
+    assert default_lanes([None, 0, 0], 16) == (16,)
+    assert default_lanes([0, 1, None], 16) == (8, 8)
     assert default_lanes([None, 0, 1, 1, 2], 16) == (4, 8, 4)
     assert default_lanes([0, 1, 2, 3, 4], 16) == (4, 3, 3, 3, 3)
     assert sum(default_lanes([0, 1, 1, 1, 2, 3, 4, None], 16)) == 16
@@ -349,7 +352,9 @@ def test_a_block_without_ablations_plays_as_in_an_engine_without_them(tmp_path):
         ([base, SCRIPTED], [(0, 1), (0, 1)]),
         ([base, SCRIPTED, rotary], [(0, 1), (2, 1)]),
     ):
-        arena = Arena(players, GAME, CPU, SMALL)
+        # the same lanes in both (the default caps a one-player group at a slot a block):
+        # the lanes' draws are one batched draw, shaped by the lane count
+        arena = Arena(players, GAME, CPU, SMALL, lanes=(4,))
         torch.manual_seed(5)
         arena.play(matchups)
         states.append((_block_state(arena, 0), _block_state(arena, 1)))

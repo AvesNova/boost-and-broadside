@@ -28,6 +28,7 @@ from bnb.contracts.tree import contract
 from bnb.controllers.scripted import Scripted
 from bnb.game.handling.characteristics import Characteristics
 
+from . import stacked
 from .opponents import (
     LADDER,
     OUTCOMES,
@@ -276,6 +277,10 @@ class LaneSeat:
         self.network_rows = [
             (player == players.index(name)).nonzero().flatten().to(device) for name in self.networks
         ]
+        # the players' rows as one (players, most) index for the stacked forward: a player
+        # with fewer rows is padded, and the padding's decisions are dropped
+        if self.networks:
+            self.network_index, self.network_valid = stacked.padded_rows(self.network_rows)
         ladder = torch.tensor([ladder_rung(name) is not None for name in players])
         ladder_rows = ladder[player].nonzero().flatten()
         self.ladder_rows = ladder_rows.to(device)
@@ -326,18 +331,21 @@ class LaneSeat:
         S = obs.ships.shape[-2] // 2
         action = torch.zeros((self.rows, S, 3), dtype=torch.int32, device=reset.device)
         model_carry = carry.model
-        for index, rows in enumerate(self.network_rows):
-            if not rows.numel():
-                continue
-            parameters = {name: value[index] for name, value in self.parameters.items()}
+        if self.networks:  # one forward over the players' stacked weights
+            index, valid = self.network_index, self.network_valid
             inputs = _pytree.tree_map_only(
-                torch.Tensor, lambda x: x[rows], (carry.model, obs, reset)
+                torch.Tensor,
+                lambda x: x[index.reshape(-1)].unflatten(0, index.shape),
+                (carry.model, obs, reset),
             )
-            packed, chosen = torch.func.functional_call(self.decision, parameters, inputs)
-            action = action.index_copy(0, rows, packed)
+            packed, chosen = stacked.call(self.decision, self.parameters, inputs)
+            rows = index[valid]  # every network row once (the padding left out)
+            action = action.index_copy(0, rows, packed[valid])
             if chosen is not None:
                 model_carry = _pytree.tree_map(
-                    lambda whole, part: whole.index_copy(0, rows, part), model_carry, chosen
+                    lambda whole, part: whole.index_copy(0, rows, part[valid]),
+                    model_carry,
+                    chosen,
                 )
         ladder_carry = carry.ladder
         if self.ladder_rows.numel():

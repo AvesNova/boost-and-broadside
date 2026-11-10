@@ -2,11 +2,9 @@
 parameters, the stationary ladder, the clean cut and the in-graph draws.
 
 One controller, `OpponentSlots`, plays every opponent row of the batch:
-- `slots` network slots, with their parameters stacked `(slots, ...)`. Each set runs on its
-  own rows in the one compiled graph (`torch.func.functional_call` on the set's slice): slot
-  k plays rows k, k + slots, k + 2 slots, ... (so every slot plays every mode). (Not
-  `torch.vmap`: under vmap, scaled-dot-product attention skips autocast's casts, so Yemong's
-  plain bf16 path fails.)
+- `slots` network slots, with their parameters stacked `(slots, ...)`, run as one forward
+  over the stacked sets (`bnb.runtime.stacked`, `torch.vmap`), each set on its own rows:
+  slot k plays rows k, k + slots, k + 2 slots, ... (so every slot plays every mode).
 - the stationary ladder, when it is in the pool (`LeagueConfig.ladder_in_pool`): one
   scripted pass over every row, each row at its rung's temperature and share (scripted spec
   A6; +inf is random, a share below 1 a mixture rung). Without it the seat runs no scripted
@@ -41,6 +39,8 @@ from bnb.contracts.tree import contract
 from bnb.controllers.scripted import Scripted
 from bnb.controllers.scripted_memory import ScriptedCarry
 from bnb.game.handling.characteristics import Characteristics
+
+from . import stacked
 
 OPPONENTS = "opponents"  # the controller name of the league's seat
 
@@ -339,25 +339,26 @@ class OpponentSlots:
         )
 
     def _network(self, carry, obs: Obs, reset: torch.Tensor):
-        """Every set's decision on its own rows, the sets one after another in the one
-        compiled graph: (packed actions (R, S, 3), the network carry)."""
+        """Every set's decision on its own rows, as one forward over the sets' stacked
+        parameters (`bnb.runtime.stacked`): (packed actions (R, S, 3), the network
+        carry)."""
         slots = self.slots
-        by_slot = self.rows.reshape(-1, slots)  # (R / slots, slots): column k is slot k's rows
-        row_sets = [by_slot[:, slot] for slot in range(slots)]
-        outputs = []
-        for index, rows in enumerate(row_sets):
-            parameters = {name: value[index] for name, value in self.parameters.items()}
-            inputs = _pytree.tree_map_only(torch.Tensor, lambda x: x[rows], (carry, obs, reset))
-            outputs.append(torch.func.functional_call(self.decision, parameters, inputs))
-        own_rows = torch.cat(row_sets)
+        by_set = self.rows.reshape(-1, slots).T  # (slots, R / slots): row k is slot k's rows
+        inputs = _pytree.tree_map_only(
+            torch.Tensor,
+            lambda x: x[by_set.reshape(-1)].unflatten(0, by_set.shape),
+            (carry, obs, reset),
+        )
+        outputs = stacked.call(self.decision, self.parameters, inputs)
+        own_rows = by_set.reshape(-1)
 
-        def assemble(*leaves: torch.Tensor | None) -> torch.Tensor | None:
-            if leaves[0] is None:  # a memoryless network's carry
+        def assemble(stacked_leaf: torch.Tensor | None) -> torch.Tensor | None:
+            if stacked_leaf is None:  # a memoryless network's carry
                 return None
-            stacked = torch.cat(leaves)
-            return torch.empty_like(stacked).index_copy(0, own_rows, stacked)
+            flat = stacked_leaf.flatten(0, 1)
+            return torch.empty_like(flat).index_copy(0, own_rows, flat)
 
-        return _pytree.tree_map(assemble, outputs[0], *outputs[1:])
+        return _pytree.tree_map(assemble, outputs, is_leaf=lambda x: x is None)
 
     def step(self, carry: OpponentCarry, obs: Obs, reset: torch.Tensor):
         """One decision for every opponent row; see `Controller.step`."""

@@ -24,9 +24,9 @@ slot 2b + 1, so each slot is a fixed, contiguous run of rows. A slot holds a net
 scripted player. Each network group has a template of its own and a fixed number of
 **lanes** (`Arena.lanes`; `default_lanes` splits the slots over the groups as their
 players): a lane holds one slot's weights (stacked by lane) and the slot it plays this
-batch, both written in place, and runs the group's forward on that slot's rows
-(`torch.func.functional_call` on the rows gathered, as the rating lanes'
-`bnb.runtime.lanes.LaneSeat` does), writing back its actions and carry. A batch may hold
+batch, both written in place; a group's lanes run as one forward over their stacked
+weights, each on its slot's rows (`bnb.runtime.stacked`, as the rating lanes'
+`bnb.runtime.lanes.LaneSeat` does), writing back each slot's actions and carry. A batch may hold
 at most a group's lanes of its slots (the tournament's allocation keeps to them); an idle
 lane runs on a slot of its own and writes nothing. With lanes that sum to the slots, as
 by default, a batch costs one network pass over every row however many builds the field
@@ -60,6 +60,7 @@ from bnb.learn.bc import TeacherConfig
 from bnb.models.yemong.model import ABLATIONS, Ablations, Yemong
 from bnb.runs import checkpoint
 from bnb.runs.records import Run
+from bnb.runtime import stacked
 from bnb.runtime.opponents import OUTCOMES, Rung, ladder_rung
 from bnb.runtime.rollout import Rollout
 from bnb.runtime.train import model_controller
@@ -339,38 +340,33 @@ class MatchSeat:
         )
 
     def _network(self, group: int, network: torch.Tensor, carry, obs: Obs, reset: torch.Tensor):
-        """Group `group`'s network on its lanes, one after another, each on its slot's rows
-        with its weights: `network`, the packed actions (R, S, 3), with the active lanes'
-        rows written, and the group's network carry with theirs (an idle lane's rows keep
-        their values; a group's lanes are always on different slots)."""
+        """Group `group`'s network on its lanes, as one forward over the lanes' stacked
+        weights (`bnb.runtime.stacked`), each lane on its slot's rows: `network`, the
+        packed actions (R, S, 3), with the active lanes' rows written, and the group's
+        network carry with theirs (an idle lane's rows keep their values; a group's lanes
+        are always on different slots)."""
         arguments = (carry, obs, reset)
         if self.ablations is not None and self.ablatable[group]:
             arguments += (self.ablations,)
         lanes, slots = self.lanes[group], self.lane_slot[group]
         rows = (slots[:, None] * self.slot_rows + self._offsets).reshape(-1)
         active = self.lane_active[group].repeat_interleave(self.slot_rows)
-        actions, carries = [], []
-        for lane in range(lanes):
-            parameters = {name: value[lane] for name, value in self.parameters[group].items()}
-            own = rows[lane * self.slot_rows : (lane + 1) * self.slot_rows]
-            inputs = _pytree.tree_map_only(
-                torch.Tensor, lambda x: x.index_select(0, own), arguments
-            )
-            action, lane_carry = torch.func.functional_call(
-                self.decisions[group], parameters, inputs
-            )
-            actions.append(action)
-            carries.append(lane_carry)
+        inputs = _pytree.tree_map_only(
+            torch.Tensor,
+            lambda x: x.index_select(0, rows).unflatten(0, (lanes, self.slot_rows)),
+            arguments,
+        )
+        action, lane_carry = stacked.call(self.decisions[group], self.parameters[group], inputs)
 
-        def written(full: torch.Tensor | None, *parts: torch.Tensor | None) -> torch.Tensor | None:
+        def written(full: torch.Tensor | None, part: torch.Tensor | None) -> torch.Tensor | None:
             if full is None:  # a memoryless network's carry
                 return None
             kept = full.index_select(0, rows)
             mask = active.reshape((-1,) + (1,) * (kept.dim() - 1))
-            return full.index_copy(0, rows, torch.where(mask, torch.cat(parts), kept))
+            return full.index_copy(0, rows, torch.where(mask, part.flatten(0, 1), kept))
 
-        network = written(network, *actions)
-        updated = None if carries[0] is None else _pytree.tree_map(written, carry, *carries)
+        network = written(network, action)
+        updated = None if lane_carry is None else _pytree.tree_map(written, carry, lane_carry)
         return network, updated
 
     def step(self, carry: MatchCarry, obs: Obs, reset: torch.Tensor):
@@ -569,15 +565,21 @@ def default_lanes(groups: list[int | None], slots: int) -> tuple[int, ...]:
     """Each network group's lanes (`MatchSeat`) out of `slots` in all: one each, then each
     further lane to the group with the most players per lane (the field's network players
     by group, `network_groups`), so a batch costs one network pass over every row and its
-    slots are spread over the groups as their players are. Raises ValueError for more
-    groups than slots."""
+    slots are spread over the groups as their players are. A group gets no more lanes than
+    a batch can fill: a block's two slots hold different players, so a group with one
+    player fills at most one slot per block (`slots // 2`), and every lane runs its forward
+    whether it plays or not. Raises ValueError for more groups than slots."""
     count = 1 + max((group for group in groups if group is not None), default=-1)
     players = [groups.count(group) for group in range(count)]
     if len(players) > slots:
         raise ValueError(f"{len(players)} network builds need a lane each, more than {slots} slots")
+    most = [slots // 2 * min(held, 2) for held in players]
     lanes = [1] * len(players)
     for _ in range(slots - count if count else 0):
-        richest = max(range(len(lanes)), key=lambda group: players[group] / lanes[group])
+        open_groups = [group for group in range(count) if lanes[group] < most[group]]
+        if not open_groups:
+            break
+        richest = max(open_groups, key=lambda group: players[group] / lanes[group])
         lanes[richest] += 1
     return tuple(lanes)
 

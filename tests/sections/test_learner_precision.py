@@ -161,3 +161,40 @@ def test_the_trainer_reports_the_carrys_nonfinite_beliefs(stored):
     counted = dataclasses.replace(carry, nonfinite=torch.tensor([1, 0, 2], device=CUDA))
     trainer.rollout.carry["controllers"][LEARNER] = counted
     assert Trainer.nonfinite_beliefs(trainer) == 3
+
+
+@pytest.mark.gpu
+def test_a_fused_step_with_a_nonfinite_gradient_changes_nothing():
+    """On a GPU the step is fused and skips itself (`found_inf`): a flagged step leaves the
+    parameters, the moments and the step count as they were (zero on a first step), and the
+    next step is the one an optimizer that never saw it takes."""
+    from bnb.learn.ppo import Adam
+
+    device = torch.device("cuda")
+    start = torch.randn(64, device=device)
+    gradients = [torch.randn(64, device=device) for _ in range(3)]
+
+    def learner(parameter):
+        optimizer = Adam([parameter], lr=0.1, fused=True)
+        return optimizer, type("Stepper", (), {"optimizer": optimizer})()
+
+    skipping = torch.nn.Parameter(start.clone())
+    optimizer, stepper = learner(skipping)
+    skipping.grad = torch.full_like(start, math.nan)  # a first step that fails
+    Learner._step(stepper, torch.tensor(False, device=device))
+    assert torch.equal(skipping, start)
+    state = optimizer.state[skipping]
+    assert float(state["step"]) == 0.0
+    assert not state["exp_avg"].any() and not state["exp_avg_sq"].any()
+    plain = torch.nn.Parameter(start.clone())
+    reference, _ = learner(plain)
+    for index, gradient in enumerate(gradients):
+        skipping.grad, plain.grad = gradient.clone(), gradient.clone()
+        Learner._step(stepper, torch.tensor(True, device=device))
+        reference.step()
+        if index == 0:  # a failing step between two good ones
+            skipping.grad = torch.full_like(start, math.inf)
+            Learner._step(stepper, torch.tensor(False, device=device))
+    assert torch.equal(skipping, plain)
+    for name in ("exp_avg", "exp_avg_sq", "step"):
+        assert torch.equal(optimizer.state[skipping][name], reference.state[plain][name])

@@ -577,9 +577,10 @@ def test_the_ppo_term_is_the_delta_codes_cross_entropy_and_its_series(segment):
     prepared = learner.prepare(runner.store, runner.bootstrap())
     denominator = dict(zip(COUNTS, prepared["counts"].sum(0).clamp_min(1).unbind()))
     with torch.no_grad():
-        total = learner._loss(
-            trajectory, label, prepared["derived"], denominator, prepared["scale"], heads=True
+        heads_read = learner._loss(
+            trajectory, label, prepared["derived"], denominator, prepared["scale"]
         )[-1]
+        total = learner._head_sums(heads_read, trajectory, label)
     series = metrics.read(head_statistics.series(total, net))
     for component in delta.CONTINUOUS:
         assert 0.0 <= series[f"next_state/support_clip/{component}"] <= 1.0

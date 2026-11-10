@@ -308,12 +308,15 @@ class Learner:
         self.team_spirit = torch.tensor(config.team_spirit, device=device)
         self.ages = torch.arange(1, rules.bullet_moves + 1, dtype=torch.float32, device=device)
         self.loss = stage(self._loss)
+        self.head_sums = stage(self._head_sums)
         self.cadence_terms = stage(self._terms)  # the cadence groups' own compiled function
         self.cadence_stopwatch = Stopwatch(device)
         self.shot_tick = stage(shots.tick)
         self.codes = stage(self._codes)
         self.environment_steps = 0
         self.diagnostics = diagnostics
+        # the loss returns what the heads' sums read (one graph for every epoch)
+        self.measures_heads = diagnostics and self.auxiliary
         self.parameter_groups = statistics.parameter_groups(model)
         # made once: a tensor built from host values inside the update would be a copy
         self.return_quantiles = torch.tensor([0.05, 0.5, 0.95], device=device)
@@ -490,32 +493,38 @@ class Learner:
         derived: dict,
         denominator: dict,
         scale: torch.Tensor,
-        heads: bool = False,
     ):
         """One micro-batch: (loss, terms (TERMS,), value loss per level (levels,), statistics
         (STATISTICS,), diagnostics (the policy's sums, `statistics.POLICY_SUMS` and the
         entropy histogram, then the critic targets' entropy per level; empty without
-        diagnostics), the heads' sums (`head_statistics.sums`, a dict; empty unless `heads`
-        and diagnostics)), every sum over its tokens divided by its minibatch-total
-        denominator (the heads' sums are raw totals)."""
+        diagnostics), what the heads' sums read (the unrolled outputs and the shot parts,
+        detached; None unless the learner measures the heads)), every sum over its tokens
+        divided by its minibatch-total denominator. The heads' sums are their own compiled
+        function (`_head_sums`), so every epoch runs this one graph."""
         terms, per_level, statistic, unrolled, shot_parts = self._terms(
             trajectory, label, derived, denominator, scale
         )
         loss = sum(getattr(self.config, term) * terms[term] for term in TERMS)
-        head_sums = (
-            head_statistics.sums(
-                self.model, unrolled, trajectory, label, shot_parts, self.shot_runs
+        heads_read = None
+        if self.measures_heads:
+            heads_read = _pytree.tree_map_only(
+                torch.Tensor, lambda x: x.detach(), (unrolled, shot_parts)
             )
-            if heads
-            else {}
-        )
         return (
             loss,
             torch.stack([terms[term] for term in TERMS]).detach(),
             per_level.detach(),
             statistic.detach(),
             self._diagnostics(unrolled, trajectory, derived, denominator),
-            head_sums,
+            heads_read,
+        )
+
+    def _head_sums(self, heads_read, trajectory: Trajectory, label: dict) -> dict:
+        """The heads' raw totals over one micro-batch (`head_statistics.sums`), from what
+        the loss gave (`_loss`)."""
+        unrolled, shot_parts = heads_read
+        return head_statistics.sums(
+            self.model, unrolled, trajectory, label, shot_parts, self.shot_runs
         )
 
     def _terms(
@@ -959,10 +968,14 @@ class Learner:
             views = self._on_device(host_views)
             label = self.labels(trajectory, shot_labels)
             part = {name: value.index_select(1, views) for name, value in derived.items()}
-            loss, terms, per_level, statistic, diagnostic, head_part = self.loss(
-                trajectory, label, part, denominator, prepared["scale"], heads
+            loss, terms, per_level, statistic, diagnostic, heads_read = self.loss(
+                trajectory, label, part, denominator, prepared["scale"]
             )
             loss.backward()
+            head_part = {}
+            if heads and heads_read is not None:
+                with torch.no_grad():
+                    head_part = self.head_sums(heads_read, trajectory, label)
             terms_sum += terms
             levels_sum += per_level
             statistic_sum += statistic
@@ -974,7 +987,19 @@ class Learner:
         """The optimizer's step, kept only where `finite` (a device flag) holds: a step with
         a non-finite gradient leaves the parameters and the optimizer's state as they were
         (learner spec 4d: skipped and counted), with no host synchronisation. A state the
-        step creates (the first step) is zero before it, as Adam starts it."""
+        step creates (the first step) is zero before it, as Adam starts it.
+
+        Fused (on a GPU), the step reads the flag itself (`found_inf`, as gradient scaling
+        passes it): a flagged step leaves the parameters and moments untouched and takes its
+        step count back, in the one kernel. Unfused (the CPU), every tensor is saved and
+        put back where the flag fails."""
+        if self.optimizer.defaults.get("fused"):
+            self.optimizer.found_inf = (~finite).to(torch.float32).reshape(())
+            try:
+                self.optimizer.step()
+            finally:
+                del self.optimizer.found_inf
+            return
         tensors = [p for group in self.optimizer.param_groups for p in group["params"]]
         tensors += [
             value
@@ -1028,7 +1053,7 @@ class Learner:
         diagnostics_total = None
         last_moments = None  # the last completed epoch's fit moments
         head_total: dict = {}  # the heads' sums, over the first epoch
-        measure_heads = self.diagnostics and self.auxiliary
+        measure_heads = self.measures_heads
         drift = self.drift(segments, prepared)
         skipped = torch.zeros((), dtype=torch.int64, device=device)
         nonfinite_terms = torch.zeros(len(TERMS), dtype=torch.int64, device=device)

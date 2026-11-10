@@ -267,12 +267,15 @@ one controller (`bnb.league.matches.MatchSeat`):
   of its own; a field may mix builds, and a block's two seats may come from different
   groups (two Yemong arms that differ in a build setting, for one). Each group has a fixed
   number of lanes: a lane holds one slot's weights and the slot it plays, both copied in
-  place before a batch, and runs the group's forward on that slot's rows only
-  (`torch.func.functional_call` on the rows gathered, as the rating lanes do), writing
-  back the slot's actions and carry; an idle lane runs on a slot of its own and writes
-  nothing. The lanes split the slots over the groups in proportion to their players
-  (`bnb.league.matches.default_lanes`), so they sum to the slots and **a batch costs one
-  network pass over every row however many builds the field mixes**. A batch may hold at
+  place before a batch, and the group's lanes run as one forward over their stacked
+  weights, each lane on its slot's rows (`bnb.runtime.stacked`: `torch.vmap` over
+  `torch.func.functional_call`, as the rating lanes and the league's slots do), writing
+  back each slot's actions and carry; an idle lane runs on a slot of its own and writes
+  nothing. The compiled stage therefore holds one copy of each group's network, however
+  many lanes it has. The lanes split the slots over the groups in proportion to their
+  players, but a group gets no more lanes than a batch can fill (one slot per block for a
+  group with one player, two with more: `bnb.league.matches.default_lanes`), so **a batch
+  costs one network pass over every row however many builds the field mixes**. A batch may hold at
   most a group's lanes of its slots: the tournament's allocation keeps to them, and
   head-to-head gives each group the most of its slots any of its batches holds. One
   build is one group whose lanes are every slot, and plays as before.

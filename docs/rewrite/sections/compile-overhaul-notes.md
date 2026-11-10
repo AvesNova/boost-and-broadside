@@ -32,10 +32,10 @@ the hot code paths), checked in the code before listing. Status is kept current 
 | # | Item | Status |
 |---|---|---|
 | 1 | `bnb.game.VERSION` never raised (36 game changes under version 1) | done (v2 + fingerprint test) |
-| 2 | Ratings lanes: 16 serial Yemong forwards per tick in one graph (`MatchSeat._network`) | region written (`runtime/regions.py`), to measure |
+| 2 | Ratings lanes: 16 serial Yemong forwards per tick in one graph (`MatchSeat._network`) | done: one vmapped forward (`runtime/stacked.py`) |
 | 3 | `default_lanes` gives one network group all 16 slots; at most 8 can play | done (capped at `blocks x min(players, 2)`) |
 | 4 | `bnb ratings` builds a new Arena and compiles everything per preset (3x) | |
-| 5 | Training act stage: 11 forwards, about 5 duplicates (LIVE = learner, league_k = slot k) | region applied to both loops, to measure |
+| 5 | Training act stage: 11 forwards, about 5 duplicates (LIVE = learner, league_k = slot k) | the slots and the lanes vmapped; the duplicates remain (below) |
 | 6 | Learner loss compiled in several variants (heads flag, micro-batch remainders, cadence, a second learner step for bootstrap) | bootstrap uncompiled; heads' sums their own small stage (one loss graph) |
 | 7 | BC teacher labels computed inside the loss, every epoch | done (made once in `prepare`, in micro-batch-sized chunks) |
 | 8 | Several scripted passes per act stage; the frontline layer on every row | |
@@ -177,3 +177,37 @@ bootstrap's second network compile are most of the rest. Separately, the steady 
   ops are many calls with per-feature constants. Folding them changes the model's input
   rounding, which every trained policy depends on, for roughly 1,500 ops of one forward,
   and after the regions the forward is compiled once. Not worth the risk now.
+
+## The stacked forward (items 2 and 5)
+
+`bench/lane_probe.py`: `MatchSeat.step` alone, compiled cold, 8 rows a lane (compile time
+does not depend on the rows), one Yemong build (arm2d's), on the dev GPU:
+
+| Lanes | Loop: compile, step | `nested_compile_region`: compile, step | vmap: compile, step |
+|---|---|---|---|
+| 2 | 107.8 s, 3.3 ms | 110.3 s, 3.3 ms | 96.2 s, 3.0 ms |
+| 4 | 162.8 s, 5.6 ms | 169.7 s, 5.6 ms | 109.3 s, 3.5 ms |
+| 16 | (~600 s by the slope) | 599.1 s, 19.1 ms | **146.2 s, 8.0 ms** |
+
+- The region was tried first (it keeps each lane's arithmetic): Dynamo traced the forward
+  once (3,495 ops at 16 lanes, against 65,516 unrolled), but the compile grew with the lanes
+  as fast as the loop's (AOT dispatch and Inductor's scheduling still scale), so it bought
+  nothing and was dropped.
+- vmap holds one batched copy (5,533 ops at any lane count): 16 lanes compile 4.1x faster,
+  and a tick's network part runs 2.4x faster, since each lane's forward was latency-bound
+  (about 1.15 ms each even at 8 rows).
+- Correctness (`tests/sections/test_stacked.py`): each set's policy logits and carry equal a
+  forward of its own within the batched products' rounding (float32 1e-4; bf16 2e-2 of each
+  tensor's scale), with no resets: a reset draws the position offset, and vmap's batched
+  draw (`randomness="different"`) is not the separate forwards' draws. Sampled actions and
+  offsets therefore differ from the loop's draw for draw, as any change to the draws would;
+  their distribution is the same.
+- The plain path's attention (`SpatialBlock._attend`) now casts to the autocast dtype itself:
+  under vmap autocast skipped the cast and a float32 query met bf16 values (the league
+  section's reason for the loop). The explicit cast is bitwise autocast's on CPU and GPU.
+- The training lanes' players have unequal row counts (the live policy plays in more
+  matchups): `stacked.padded_rows` pads each to the largest with its first row, and the
+  padding's decisions are dropped.
+- Left: the duplicate forwards in training (lane LIVE is the learner's weights, lane
+  league_k a slot's). They are now batch entries of one forward rather than separate graph
+  copies, so they cost rows, not compile.

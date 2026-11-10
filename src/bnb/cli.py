@@ -396,6 +396,8 @@ def main() -> None:
     both while a run trains), `bnb queue ...` queues and runs GPU jobs."""
     os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")  # Triton 3.9's default, made explicit
     command, arguments = (sys.argv[1:2] or [""])[0], sys.argv[2:]
+    if command in ("train", "ratings", "head-to-head", "figures"):
+        compile_limits()
     if command == "ship-card":
         os.environ.setdefault("MPLBACKEND", "Agg")  # the charts go to files: no display
         ship_card(tyro.cli(ShipCard, args=arguments, prog="bnb ship-card"))
@@ -424,6 +426,17 @@ def main() -> None:
             figures(tyro.cli(Figures, args=arguments, prog="bnb figures"))
     else:
         raise SystemExit(f"usage: bnb {{{','.join(COMMANDS)}}} ... (bnb train --help)")
+
+
+def compile_limits() -> None:
+    """Room for one compiled rollout per match engine a process builds. Every `Rollout`
+    compiles its stages again (their guards read the instance), and each compile counts
+    against the stage function's recompile limit (8 by default): with `fullgraph=True` the
+    ninth engine in a process (a ratings run over many presets or sizes) fails with
+    `FailOnRecompileLimitHit`."""
+    import torch._dynamo
+
+    torch._dynamo.config.recompile_limit = 64
 
 
 def given(arguments: list[str]) -> set[str]:
