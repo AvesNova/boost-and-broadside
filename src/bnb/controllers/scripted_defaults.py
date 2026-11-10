@@ -16,7 +16,6 @@ from .scripted_parameters import (
     Ramp,
     ScriptedParameters,
     Switch,
-    _columns,
     from_row,
 )
 
@@ -116,28 +115,15 @@ STANDARD_DEFAULTS = {
         recovery_switch_in_log_ratio=Switch(3.33, 0.171, 0.0837),
     ),
 }
-# Each real-scale preset's set, in `scripted_real_scale.json` (`write_real_scale`), which the
-# balancing rounds rewrite (docs/explanation/game/real-scale-balance.md): each its mode's
-# champion, with the source that chose it.
+# Each real-scale preset's set, in `scripted_real_scale.json`: each its mode's champion of the
+# balancing rounds (docs/explanation/game/real-scale-balance.md), with the source that chose it.
 REAL_SCALE = pathlib.Path(__file__).with_name("scripted_real_scale.json")
 
 
-def named(parameters: ScriptedParameters, figures: int = 3) -> dict:
-    """A set as its fields by name (a logistic's centre and scale, a ramp's four ends, a
-    switch's rate, centre and scale), each number to `figures` significant figures."""
-
-    def rounded(number: float) -> float:
-        return float(f"{number:.{figures}g}")
-
-    out = {}
-    for name in NAMES:
-        columns = [rounded(float(number)) for number in _columns(getattr(parameters, name))]
-        out[name] = columns[0] if len(columns) == 1 else columns
-    return out
-
-
 def from_named(fields: dict) -> ScriptedParameters:
-    """`named`'s inverse (a logistic's direction is the default's)."""
+    """A set from its fields by name, as the real-scale sets' file holds them (a logistic's
+    centre and scale, a ramp's four ends, a switch's rate, centre and scale; a logistic's
+    direction is the default's)."""
     row = []
     for name in NAMES:
         value = fields[name]
@@ -148,13 +134,6 @@ def from_named(fields: dict) -> ScriptedParameters:
 def read_real_scale(path: pathlib.Path = REAL_SCALE) -> dict[str, dict]:
     """The real-scale sets' file: per mode, its "parameters" (`named`) and "source"."""
     return json.loads(path.read_text())
-
-
-def write_real_scale(mode: str, parameters: ScriptedParameters, source: str, path=REAL_SCALE):
-    """Replace one real-scale mode's set in the file, to three significant figures."""
-    stored = read_real_scale(path)
-    stored[mode] = dict(source=source, parameters=named(parameters))
-    path.write_text(json.dumps(stored, indent=1, ensure_ascii=False) + "\n")
 
 
 REAL_SCALE_DEFAULTS = {

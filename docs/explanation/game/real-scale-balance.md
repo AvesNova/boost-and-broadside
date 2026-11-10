@@ -19,6 +19,9 @@ The rounds stop when the ratings follow well-documented values, or when a change
 the noise. Each round's data are in `real-scale-balance/`
 (`round-N/`).
 
+This page is the record of rounds 1 and 2. The procedure was replaced by the ship-design
+search ([Designing ship types](ship-design.md)), and its round script is gone.
+
 ## The rules the rounds follow
 
 **Equal damage per second.** Every type deals about the P-51D's 360 per second
@@ -42,8 +45,8 @@ points at it. Every move is an entry of the balance file (`bnb.game.real_scale.B
 old value, the new and the reason; the equal-damage rule's note does the same for the hit
 damage.
 
-**The decision rule.** After each round's tournament, `bench/balance_round.py`'s `propose`
-stage sets the next round's moves without a judgement call:
+**The decision rule.** After each round's tournament, the round script's `propose`
+stage set the next round's moves without a judgement call:
 
 - *The shield step, for every type.* A researched type's shield is 100 x (1 + step x (its
   survivability rating - 2)). The ratings (1 to 5) are estimates and the step (0.2 at the
@@ -341,21 +344,18 @@ the researched types' shields span 90 to 130; and three loosely known types move
 the median: the Hammerhead 140 to 160 (rated -802 from the median 986), the Anvil 145 to 160
 (-1,070) and the Firecracker 100 to 120 (-1,854).
 
-## Running a round
+## How a round ran
 
-    uv run --no-sync python -m bench.balance_round --round N
-
-runs the round's six stages in order, each resuming from what is on disk (`--stages` runs
-some of them): `ships` rebuilds the set with the balance file's moves; `search` searches each
-mode against its champion (at most 40 generations; the median rating's plateau over 10);
-`adopt` checks each mode's candidate (the best-rated survivor of its last generation)
-against the champion, 1,024 games at T = 1 on mixed lineups and 512 on the held-out types,
-and adopts it when its score is more than two standard errors above one half
-(`src/bnb/controllers/scripted_real_scale.json` holds the champions); `tournament` runs the
-A-optimal tournament to 25 Elo, then the top-up; `analyse` writes the ratings, the
-correlations and the intransitivity checks (`tables.txt` holds them as tables); `propose`
-applies the decision rule. The search logs go to `runs/real-scale-balance/round-N/`; the
-rest to `real-scale-balance/round-N/` beside this page.
+A round ran six stages, each resuming from what was on disk: `ships` rebuilt the set with
+the balance file's moves; `search` searched each mode's scripted set against its champion
+(at most 40 generations; the median rating's plateau over 10); `adopt` checked each mode's
+candidate (the best-rated survivor of its last generation) against the champion, 1,024 games
+at T = 1 on mixed lineups and 512 on the held-out types, and adopted it when its score was
+more than two standard errors above one half (`src/bnb/controllers/scripted_real_scale.json`
+holds the champions); `tournament` ran the A-optimal tournament to 25 Elo, then the top-up;
+`analyse` wrote the ratings, the correlations and the intransitivity checks (`tables.txt`);
+`propose` applied the decision rule. The data are in `real-scale-balance/round-N/` beside
+this page.
 
 ## After round 2: the set is paced, and the method moves on
 

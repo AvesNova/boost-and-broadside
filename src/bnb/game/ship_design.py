@@ -10,7 +10,8 @@ knobs are nearly independent (`KNOBS`, each with the reason it is in the search)
   store's initial charge, as a ratio to the set-wide level) and the store (`ceiling`);
 - combat: the damage per second (the hit damage is it over the fire rate), the fire rate (a
   whole number of hertz dividing the 30 Hz tick), the shield, the muzzle speed and the
-  dispersion angle (the bullet spread over the muzzle speed).
+  dispersion angle (the bullet spread over the muzzle speed);
+- size: the hit radius (the half span).
 
 Every other handle is the base type's; the gun range follows from the cruise and the muzzle
 speed, the climb time from the store and the climb rate, the spawn energy is the base's
@@ -22,7 +23,10 @@ deviation, and a design's realism is the Mahalanobis distance of its knobs' logs
 mean, under the 16 types' covariance shrunk half way to its diagonal (`Envelope`), so that
 a combination the real fighters do not show (fast and weakly armed) costs more than its
 parts. The bounds are the 16 types' range, with margins only where the data is soft or the
-author widened them (`BOUNDS`).
+author widened them (`BOUNDS`). The two steepest knobs, the muzzle speed and the shield (about
+1,400 and 1,200 Elo a doubling), are held to a narrower band around the real values
+(`NARROWED`, the author's decision of 2026-11-10): the differences between designs may be
+smaller than the real fighters', not larger.
 
 `design_cards` is the instant card of designs (`bnb.game.handling.estimate.Estimate`,
 anchored on each base's solved card); `bnb.game.real_scale.solve_type` gives the exact one.
@@ -102,6 +106,7 @@ KNOBS = (
     Knob("max_shield", "combat", "toughness"),
     Knob("muzzle_speed", "combat", "the gun's reach and the lead a shot needs"),
     Knob("dispersion", "combat", "the cone: hits on a manoeuvring target at range"),
+    Knob("hit_radius", "size", "the target a design presents (the half span)"),
 )
 NAMES = tuple(knob.name for knob in KNOBS)
 CONTINUOUS = tuple(name for name in NAMES if name != "fire_rate")
@@ -114,6 +119,15 @@ BOUNDS = dict(
     max_shield=(80.0, 200.0),
 )
 SOFT_MARGINS = dict(sustained_turn_rate=0.10)
+# The steep knobs' narrowed band (physical units): a design's value stays within it (the
+# envelope's statistics, and so the realism distance, are unchanged). The muzzle speed's is
+# the real guns' cluster (the Bf 109K's 520 m/s cannon left out) with room above the 880 m/s
+# bases for a trim; the shield's is the researched types' 90 to 130 with room above for the
+# armoured designs.
+NARROWED = dict(
+    muzzle_speed=(720.0, 900.0),
+    max_shield=(90.0, 150.0),
+)
 
 
 def climb_rate_of(handles: dict[str, float]) -> float:
@@ -134,6 +148,7 @@ def knobs_of(handles: dict[str, float]) -> dict[str, float]:
         max_shield=handles["max_shield"],
         muzzle_speed=handles["muzzle_speed"],
         dispersion=handles["bullet_spread"] / handles["muzzle_speed"],
+        hit_radius=handles["hit_radius"],
     )
 
 
@@ -147,6 +162,7 @@ def handles_of(base: dict[str, float], knobs: dict[str, float], rules: Rules) ->
     for name in ("stall_speed", "cruise_speed", "sustained_turn_rate", "ceiling"):
         handles[name] = values[name]
     handles["max_shield"] = values["max_shield"]
+    handles["hit_radius"] = values["hit_radius"]
     handles["muzzle_speed"] = values["muzzle_speed"]
     handles["fire_rate"] = values["fire_rate"]
     handles["hit_damage"] = values["damage_per_second"] / values["fire_rate"]
@@ -195,6 +211,9 @@ class Envelope:
                 # a knob the envelope does not vary (the balanced damage) spreads over its
                 # bounds: four deviations
                 deviation[index] = max(float(deviation[index]), float(high[index] - low[index]) / 4)
+        for index, name in enumerate(CONTINUOUS):  # the steep knobs' band (bounds only)
+            if name in NARROWED:
+                low[index], high[index] = (math.log(bound) for bound in NARROWED[name])
         centred = (rows - mean) / deviation
         correlation = centred.T @ centred / (len(keys) - 1)
         shrunk = (
