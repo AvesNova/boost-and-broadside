@@ -763,3 +763,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   one per 384-view minibatch). Queued `round12.sh`: nearest BC to 120M after the champion's RL
   (~13:55 KST); RL only after the BC gates.
 - **13:54 KST Champion RL at 180.4M** (last 10 updates Brier 0.570, outcome EV 0.970, PPO KL 0.0062, no skipped steps): both RL runs at 180.4M. **Nearest BC started** (13:55 KST).
+- **14:05 KST Nearest BC gate 1 passed:** KL 2.965 / 1.202 / 0.795 / 0.751 at updates 1-4 (champion 2.965 / 1.452 / 0.717 / 0.699), entropy toward the teacher's (3.74 -> 1.65 vs 0.86), no non-finite values or skipped steps; **~120,000 SPS** (rollout 1.4 s, learn 7 s; 10x the champion's), 8 GB; 120M in ~17 min.
