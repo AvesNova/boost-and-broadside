@@ -72,14 +72,15 @@ class Player:
     temperature with a floor); ablations: a network's inference-time ablations (names of
     `ABLATIONS`, sorted); ship_type: every ship of its team flies this type (an index into
     the game's card; None: the game's lineup), so a scripted player with a ship type is a
-    ship type as the scripted agent flies it (`ship_type_players`)."""
+    ship type as the scripted agent flies it (`ship_type_players`); a tuple gives each ship
+    of the team its own type (a mixed team, one entry per ship)."""
 
     name: str
     policy: pathlib.Path | None = None
     rung: Rung | None = None
     teacher: TeacherConfig | None = None
     ablations: tuple[str, ...] = ()
-    ship_type: int | None = None
+    ship_type: int | tuple[int, ...] | None = None
 
 
 def ship_type_players(ship_set: str, rung: Rung = Rung(1.0)) -> list[Player]:
@@ -575,6 +576,21 @@ def card_of(players: list[Player], game: GameConfig, device: torch.device) -> ap
     return api.ship_types(device, ship_set=game.ship_set, **found[0])
 
 
+def team_lineup(player: Player, rules) -> tuple[int, ...]:
+    """A player's team lineup, one type per ship: its `ship_type` on every ship (or each
+    ship's own, for a tuple), else the game's."""
+    if player.ship_type is None:
+        return rules.team_types
+    if isinstance(player.ship_type, tuple):
+        if len(player.ship_type) != rules.ships_per_team:
+            raise ValueError(
+                f"{player.name}: a lineup of {len(player.ship_type)} ships for a team of "
+                f"{rules.ships_per_team}"
+            )
+        return player.ship_type
+    return (player.ship_type,) * rules.ships_per_team
+
+
 class Arena:
     """The match engine over `players` in `game` (a game preset's config), built once (see
     the module docstring). Each network player's weights are read once and kept on the
@@ -591,6 +607,7 @@ class Arena:
         device: torch.device,
         config: ArenaConfig = ArenaConfig(),
         lanes: tuple[int, ...] | None = None,
+        card: api.ShipTypes | None = None,
     ) -> None:
         self.players, self.config, self.device = players, config, device
         self.states: dict[int, dict[str, torch.Tensor]] = {}
@@ -613,14 +630,12 @@ class Arena:
                 }
             if one.ablations and not isinstance(self.groups[group], Yemong):
                 raise ValueError(f"{one.name}: only a Yemong network plays ablated")
-        self.types = card_of(players, game, device)
+        self.types = card_of(players, game, device) if card is None else card
         rules = api.rules_of(game)
+        self.rules = rules
         agent = characteristics(self.types, rules)
         # each player's team lineup: its ship type on every ship, else the game's
-        self.team_types = [
-            rules.team_types if one.ship_type is None else (one.ship_type,) * game.ships_per_team
-            for one in players
-        ]
+        self.team_types = [team_lineup(one, rules) for one in players]
         ship_type = None
         if any(one.ship_type is not None for one in players):
             ship_type = torch.tensor(rules.slot_types, dtype=torch.int32).repeat(config.games, 1)
@@ -657,6 +672,34 @@ class Arena:
         self.seats = torch.arange(config.games, device=device) % 2
         # every first game ends by its clock; the margin covers the segment it ends in
         self.tick_limit = int(self.rollout.episode_ticks.max()) + 2 * config.length
+
+    def set_card(self, types: api.ShipTypes) -> None:
+        """Play the following batches with this card ((num_types,) fields, as the arena's):
+        written in place into the rollout's card and the scripted agent's characteristics,
+        so nothing recompiles (`docs/explanation/game/ship-design.md`). Raises ValueError
+        for another number of types, or a fire rate that needs more bullet slots than the
+        arena was built with (build it with the fastest fire rate the cards will use)."""
+        held = self.rollout.carry["types"]
+        if types.max_energy.shape != held.max_energy.shape:
+            raise ValueError(
+                f"a card of {tuple(types.max_energy.shape)} types for an arena built with "
+                f"{tuple(held.max_energy.shape)}"
+            )
+        rules = self.rollout.rules
+        if api.bullet_slots_for(types.fire_rate, rules.bullet_moves, rules.tick_length) > (
+            rules.bullet_slots
+        ):
+            raise ValueError(
+                f"fire rates {types.fire_rate.tolist()} need more than the arena's "
+                f"{rules.bullet_slots} bullet slots"
+            )
+        for field in dataclasses.fields(held):
+            getattr(held, field.name).copy_(getattr(types, field.name))
+        measured = characteristics(types, self.rules)
+        agent = self.seat.agent.characteristics
+        for field in dataclasses.fields(agent):
+            getattr(agent, field.name).copy_(getattr(measured, field.name))
+        self.types = types
 
     def _load(self, slot: int, index: int) -> None:
         play = scripted_play(self.players[index])
