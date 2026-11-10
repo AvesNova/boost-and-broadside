@@ -128,3 +128,4 @@
 23:36 done resume 2026-11-09-rl-deadreckon-split-hiddenphysics to 121.6M
 23:37 tournament7 start (60 players: the whole BC + RL curve; 8 x 256, target 35)
 01:30 tournament7 done (8 x 256)
+01:31 start resume 2026-11-09-rl-absolute to 172 updates (180.4M)

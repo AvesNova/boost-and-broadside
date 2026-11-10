@@ -1,7 +1,7 @@
 {
  "name": "2026-11-09-rl-absolute",
- "status": "finished",
- "pid": 494891,
+ "status": "running",
+ "pid": 564862,
  "host": "e98bed47fc73",
  "message": null,
  "command": [
@@ -74,6 +74,19 @@
    "end_time": "2026-11-09T21:38:05+00:00",
    "overrides": {
     "updates": 116
+   },
+   "rewound_from": null,
+   "command": null
+  },
+  {
+   "commit": "686d05329dcc2c9ad1a9c03260e477cf5adaa2f1",
+   "dirty": false,
+   "start_step": 121634816,
+   "start_time": "2026-11-10T01:32:14+00:00",
+   "end_step": null,
+   "end_time": null,
+   "overrides": {
+    "updates": 172
    },
    "rewound_from": null,
    "command": null
