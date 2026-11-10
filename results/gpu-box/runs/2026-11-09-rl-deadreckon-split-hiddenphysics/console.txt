@@ -1429,3 +1429,448 @@ update  114  rollout  17040 ms  learn  96588 ms  entropy 0.66  kl +0.0065  clip 
 update  115  rollout  17041 ms  learn  96561 ms  entropy 0.67  kl +0.0083  clip 0.069  drift 0.142  skipped 0  nonfinite beliefs 0  reward/s: frontline/self_play -0.000 frontline/league +0.003 deathmatch/self_play -0.000 deathmatch/league +0.001
 update  116  rollout  17038 ms  learn  96625 ms  entropy 0.66  kl +0.0066  clip 0.060  drift 0.126  skipped 0  nonfinite beliefs 0  reward/s: frontline/self_play -0.000 frontline/league +0.005 deathmatch/self_play -0.000 deathmatch/league +0.000
 run 2026-11-09-rl-deadreckon-split-hiddenphysics finished at step 121634816
+warning: the run continues on commit f45ada61ae7987bc80fcff4e6fa758371670d39c; its last segment ran on 82e12ff95453eeeacf9d828b9025a6a1654b69eb
+W1110 03:06:22.344000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_per_fused__log_softmax__to_copy_cat_prepare_softmax_online_split_with_sizes_view_153
+W1110 03:06:22.344000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.344000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.344000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.344000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.344000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.344000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.344000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.344000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.344000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/GFAZZBGJLBLT4S3BTCLPRI6JZPIVN53RVQUFYIPEP56V4WBK5HNQ/triton_per_fused__log_softmax__to_copy_cat_prepare_softmax_online_split_with_sizes_view_153.cubin')
+W1110 03:06:22.345000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_per_fused__log_softmax__to_copy_cat_prepare_softmax_online_split_with_sizes_view_154
+W1110 03:06:22.345000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.345000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.345000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.345000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.345000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.345000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.345000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.345000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.345000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/LFACLG2VYHG3BLDX2KCO7L7KETVS5SYMKZDX63KA4KTBEFXGG3CA/triton_per_fused__log_softmax__to_copy_cat_prepare_softmax_online_split_with_sizes_view_154.cubin')
+W1110 03:06:22.345000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_per_fused__log_softmax__to_copy_cat_prepare_softmax_online_split_with_sizes_view_155
+W1110 03:06:22.345000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.345000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.345000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.345000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.345000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.345000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.345000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.345000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.345000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/4KA5EVM2QGFMAH5E3UACETMFKT2KT2ZQGGDK4PQAKLRHSI3Y6EOA/triton_per_fused__log_softmax__to_copy_cat_prepare_softmax_online_split_with_sizes_view_155.cubin')
+W1110 03:06:22.346000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_per_fused__log_softmax__to_copy_cat_prepare_softmax_online_split_with_sizes_view_161
+W1110 03:06:22.346000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.346000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.346000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.346000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.346000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.346000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.346000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.346000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.346000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/3KH6SWXEKYQ6AUXUF4AYIPH5WKWFR5GQ2AYTC3XMKRRUIEWF4SIA/triton_per_fused__log_softmax__to_copy_cat_prepare_softmax_online_split_with_sizes_view_161.cubin')
+W1110 03:06:22.347000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_per_fused__log_softmax__to_copy_cat_prepare_softmax_online_split_with_sizes_view_163
+W1110 03:06:22.347000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.347000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.347000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.347000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.347000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.347000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.347000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.347000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.347000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/C6OHWCUZZH4MJ5H5PXW7AMKHQHXQOXTTUAMPKPBYB2EHORYD4E6Q/triton_per_fused__log_softmax__to_copy_cat_prepare_softmax_online_split_with_sizes_view_163.cubin')
+W1110 03:06:22.347000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_per_fused_cumsum_exp_lt_split_with_sizes_sum_171
+W1110 03:06:22.347000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.347000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.347000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.347000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.347000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.347000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.347000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.347000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.347000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/LJ4RA4QSWJCCPWAVJVGTLDW3KUWS357GU6PODKS6I7AMZHWVQSLQ/triton_per_fused_cumsum_exp_lt_split_with_sizes_sum_171.cubin')
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_per_fused_cumsum_exp_lt_split_with_sizes_sum_172
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/YKWCXL7MUR5QDK6OXPJXI3OODIH72MMEOJAXDPS4HYC3K6T4YKGA/triton_per_fused_cumsum_exp_lt_split_with_sizes_sum_172.cubin')
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_per_fused_cumsum_exp_lt_split_with_sizes_sum_173
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/LJ3HHK7XI23JHKX7JGOYXSFSL562C7ZBOMDEBWPJCFQOKL7UCTRQ/triton_per_fused_cumsum_exp_lt_split_with_sizes_sum_173.cubin')
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_per_fused_cumsum_exp_lt_split_with_sizes_sum_175
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.348000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/FVGHQ7FB57MXK3KQHHWBALSRG7RO2SSPH4LA66H4DI5TOZHB2NTA/triton_per_fused_cumsum_exp_lt_split_with_sizes_sum_175.cubin')
+W1110 03:06:22.349000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_per_fused_cumsum_exp_lt_split_with_sizes_sum_187
+W1110 03:06:22.349000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.349000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.349000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.349000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.349000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.349000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.349000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.349000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.349000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/RAYBPRRK4UCRMZR2NGXOPILJF2ZMIKEQXKEHKSDJETSY2BXKYTJQ/triton_per_fused_cumsum_exp_lt_split_with_sizes_sum_187.cubin')
+W1110 03:06:22.349000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_select_stack_unbind_190
+W1110 03:06:22.349000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.349000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.349000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.349000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.349000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.349000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.349000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.349000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.349000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/URLUGBXJQB2NPP2XYWLYB5GMYVDWSBPKMJEHJRQRL2GUQS44HTPA/triton_poi_fused_select_stack_unbind_190.cubin')
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_select_stack_unbind_192
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/EFMKEI75QCQKOR5M5K2GQYKV2HUW3NQLBOMB3V5HKKODUMCEHDMA/triton_poi_fused_select_stack_unbind_192.cubin')
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_select_stack_unbind_193
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/ZHMUAFN652D476YAD5S2RM2QRMQQZPLH2EKKZRD5OG32PPK4SLSA/triton_poi_fused_select_stack_unbind_193.cubin')
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_select_stack_unbind_194
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.350000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/FE5756C3KKUSMCSXMFEBLTB6FLOEUFPEQ4TTT4TWZ3LLOLB4TCDA/triton_poi_fused_select_stack_unbind_194.cubin')
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_select_stack_unbind_195
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/36DCRNT2TIKRS4OOYWBOTPCLPFXV57YU5RM6A3VDCE4PE4T72MHQ/triton_poi_fused_select_stack_unbind_195.cubin')
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_select_stack_unbind_196
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/TN4KTMRSRL34S4NQGTYB7KKFB76J35MXN7TTJJ6E5C5FD5NAE7EA/triton_poi_fused_select_stack_unbind_196.cubin')
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_select_stack_unbind_197
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/4VIKM6NOBV2CDQBB5MJ3IJIBPRV3ARTUM3FPGWIJMSYBR6C5QHRA/triton_poi_fused_select_stack_unbind_197.cubin')
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_add_cos_div_linalg_vector_norm_lt_mul_scalar_tensor_select_sin_slice_stack_sub_unbind_where_199
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.351000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/5TIGGK46QA4LIYY6ZKHEJYIND25553JXXQJASIYYDU5CQXYLHR3A/triton_poi_fused_add_cos_div_linalg_vector_norm_lt_mul_scalar_tensor_select_sin_slice_stack_sub_unbind_where_199.cubin')
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_add_clamp_clamp_min_minimum_mul_remainder_select_slice_stack_sub_unbind_203
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/SNZ2XUAREQ7PVUTJZ2XSDXC4VTO6BNWK3JZPOFAJQNVHY5KKBORQ/triton_poi_fused_add_clamp_clamp_min_minimum_mul_remainder_select_slice_stack_sub_unbind_203.cubin')
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_add_clamp_clamp_min_minimum_mul_remainder_select_slice_stack_sub_unbind_204
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/IWCB2K34TK36XXMQ754UOORCKYKGSLWFTSDO6JT6G26FWJ3LWTRA/triton_poi_fused_add_clamp_clamp_min_minimum_mul_remainder_select_slice_stack_sub_unbind_204.cubin')
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_add_clamp_clamp_min_minimum_mul_remainder_select_slice_stack_sub_unbind_206
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.352000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/TO54Q5N4PZVHWR2BFPIQORRHUPVM77SJBFDI7ARI5YTOFEG2HF4A/triton_poi_fused_add_clamp_clamp_min_minimum_mul_remainder_select_slice_stack_sub_unbind_206.cubin')
+W1110 03:06:22.353000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_add_clamp_clamp_min_minimum_mul_remainder_select_slice_stack_sub_unbind_208
+W1110 03:06:22.353000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.353000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.353000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.353000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.353000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.353000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.353000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.353000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.353000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/OY33AWIPQR5WXTBD24VNGGPICKMMIXWICHLEZRBWUXY2PUZNFHQQ/triton_poi_fused_add_clamp_clamp_min_minimum_mul_remainder_select_slice_stack_sub_unbind_208.cubin')
+W1110 03:06:22.353000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_add_clamp_min_div_mul_pow_select_sum_unsqueeze_228
+W1110 03:06:22.353000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.353000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.353000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.353000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.353000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.353000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.353000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.353000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.353000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/GXBKWLWHF35MHEEPTT53ZU4TUSX3BACMRT6TQ75M27Q3NNWBX7XQ/triton_poi_fused_add_clamp_min_div_mul_pow_select_sum_unsqueeze_228.cubin')
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_div_gt_linalg_vector_norm_mul_scalar_tensor_select_stack_sub_tanh_where_238
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/HPCZ2YXFJ3QNE6OMHER4WBWJP5O22HTIWRVR6HUNRF5I6XA2Y7GA/triton_poi_fused_div_gt_linalg_vector_norm_mul_scalar_tensor_select_stack_sub_tanh_where_238.cubin')
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_add_clamp_min_div_mul_pow_select_stack_sub_tanh_zeros_like_241
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/FELUME7IFE6MML7J3LCATQ3WOAW3N3QT5J4ROHRECJY3W7TUWBEQ/triton_poi_fused_add_clamp_min_div_mul_pow_select_stack_sub_tanh_zeros_like_241.cubin')
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_add_clamp_min_div_mul_pow_select_stack_sub_tanh_zeros_like_242
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.354000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/5OFM2QQRN6WVWZXLV3AFGAMGTN34D7CURIGXOXE3KT5WWRPWFG5A/triton_poi_fused_add_clamp_min_div_mul_pow_select_stack_sub_tanh_zeros_like_242.cubin')
+W1110 03:06:22.355000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_add_clamp_min_diagonal_div_mul_pow_select_sqrt_stack_sub_tanh_250
+W1110 03:06:22.355000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.355000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.355000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.355000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.355000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.355000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.355000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.355000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.355000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/WZSOBU4TFYZMNPXSXTKWB7JOLWG2LE7RTCDFPEGY4V2WPTFHSZAQ/triton_poi_fused_add_clamp_min_diagonal_div_mul_pow_select_sqrt_stack_sub_tanh_250.cubin')
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_per_fused__to_copy_add_arange_clamp_clamp_max_div_eq_floor_mul_rsub_select_sub_sum_unbind_unsqueeze_257
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/WYU5JCYD5NY47ZGSNXW5ADBTI2E3HMPEXQKGTR52MDYFJ3D5YAAQ/triton_per_fused__to_copy_add_arange_clamp_clamp_max_div_eq_floor_mul_rsub_select_sub_sum_unbind_unsqueeze_257.cubin')
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_cat_index_select_triu_indices_258
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/66OSBT6SI7YJIUKCB5MW7IN37I5CCAY4GYT74EDWIXPFZVGFQM6A/triton_poi_fused_cat_index_select_triu_indices_258.cubin')
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_select_stack_zeros_like_263
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.356000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/MU2E7RNPIB45PHSV7XDBLGVVBMDLMAWD5QKCNXAING4CLCNU7XGA/triton_poi_fused_select_stack_zeros_like_263.cubin')
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_select_stack_zeros_like_265
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/TCPKLG6Y4YXUAHWFPLUB4UMCIDQ3O2DWGB63RWN3LES5EAGXMCXQ/triton_poi_fused_select_stack_zeros_like_265.cubin')
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused__to_copy__unsafe_view_add_arange_clamp_min_eq_index_mul_reciprocal_select_sqrt_unsqueeze_where_268
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/OSDP3ME46H6OZ53KEPYTAJSJ6ZUSLYRIN6S7X7ZC2VWXBGBM2U4A/triton_poi_fused__to_copy__unsafe_view_add_arange_clamp_min_eq_index_mul_reciprocal_select_sqrt_unsqueeze_where_268.cubin')
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_add_arange_clamp_min_diagonal_eq_mul_pow_reciprocal_select_slice_sqrt_stack_unbind_unsqueeze_where_269
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.357000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/UPYPPUZ5SWWYENJHAAYMN7KQ43YC6T4ZRMFCSBGRDTP3H7ZZTEWQ/triton_poi_fused_add_arange_clamp_min_diagonal_eq_mul_pow_reciprocal_select_slice_sqrt_stack_unbind_unsqueeze_where_269.cubin')
+W1110 03:06:22.358000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_add_arange_clamp_min_diagonal_eq_mul_pow_reciprocal_select_slice_sqrt_stack_unbind_unsqueeze_where_271
+W1110 03:06:22.358000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.358000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.358000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.358000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.358000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.358000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.358000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.358000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.358000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/YVRGXOAS7F4Y526XHKUFWZIZ2T22OFM2DEXLPW5R6SHP5JANDN3A/triton_poi_fused_add_arange_clamp_min_diagonal_eq_mul_pow_reciprocal_select_slice_sqrt_stack_unbind_unsqueeze_where_271.cubin')
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_add_gt_index_index_copy_remainder_select_unsqueeze_283
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/62XGHNNSNUSC3CHTX4T5M4RARLJIENSSNEB3WUQWKHHJ5TVPT7QQ/triton_poi_fused_add_gt_index_index_copy_remainder_select_unsqueeze_283.cubin')
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused__softmax__to_copy_index_copy_prepare_softmax_online_remainder_unsqueeze_286
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/EBWPOIMMJ635I57ZA3VHECVBLKCLQXJ4LTRUMEOPVLLYRB6YJ7UQ/triton_poi_fused__softmax__to_copy_index_copy_prepare_softmax_online_remainder_unsqueeze_286.cubin')
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_expand_select_stack_sub_unbind_unsqueeze_289
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.359000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/OB22RHHAS6K27DZ3L7F32KR6LCDINP2MZK2LWGLD4RJP2DQF3YYQ/triton_poi_fused_expand_select_stack_sub_unbind_unsqueeze_289.cubin')
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_expand_select_stack_sub_unbind_unsqueeze_290
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/XIFMMZ4UQCJTV4FJIRI3FIHXKA2EGTAH2ZIXW6MNDX2LYUOU4VFQ/triton_poi_fused_expand_select_stack_sub_unbind_unsqueeze_290.cubin')
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_index_copy_remainder_sum_unsqueeze_292
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/OSNNVNVVEUQJRW2IHC4HB6W4FW5KH54II5VVEKKF6HVO2JESWHLA/triton_poi_fused_index_copy_remainder_sum_unsqueeze_292.cubin')
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused__to_copy_add_clamp_clamp_min_div_expand_index_mul_ones_like_remainder_scatter_add_select_stack_unsqueeze_294
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.360000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/LHOTFSEB4W3MHK65B5I2MSNCKA3RWLZREJYFS7IVPTXJJI3FQ4SA/triton_poi_fused__to_copy_add_clamp_clamp_min_div_expand_index_mul_ones_like_remainder_scatter_add_select_stack_unsqueeze_294.cubin')
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_index_copy_remainder_unsqueeze_297
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/QQHMT6VSO4KRWODTJB2PFGTWZFDKD5ZFNUHNTGTAXQ2O476VHRKQ/triton_poi_fused_index_copy_remainder_unsqueeze_297.cubin')
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_index_copy_remainder_slice_unsqueeze_299
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/6AFH5TUF37YXDUIRHJXYEWZRL3AXIXB7OZMRFWTWXR62TWLHTR5Q/triton_poi_fused_index_copy_remainder_slice_unsqueeze_299.cubin')
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_index_copy_remainder_slice_unsqueeze_300
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/L5IUXBO6WWLNNRGM32M4R2PWL5BU4BS2KLJWIMZLV432ELT5KOHQ/triton_poi_fused_index_copy_remainder_slice_unsqueeze_300.cubin')
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Failed to reload cubin file statically launchable autotuner triton_poi_fused_index_copy_remainder_slice_unsqueeze_301
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0] Traceback (most recent call last):
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/triton_bundler.py", line 245, in load_autotuners
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     compile_result.reload_cubin_path()
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]   File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_inductor/runtime/triton_heuristics.py", line 3158, in reload_cubin_path
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     raise RuntimeError(
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]         "Cubin file saved by TritonBundler not found at %s", cubin_location
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0]     )
+W1110 03:06:22.361000 595669 torch/_inductor/triton_bundler.py:247] [0/0] RuntimeError: ('Cubin file saved by TritonBundler not found at %s', '/tmp/torchinductor_root/triton/0/CAXMNHOBGZ5BCTNTC2YNR3UJQNG5RLY3R6GYDHOQ6PFSLPZPARPA/triton_poi_fused_index_copy_remainder_slice_unsqueeze_301.cubin')
+memory probe: allocated 15.59 GB, reserved 16.15 GB, budget 23.06 GB of 23.56 GB
+update  117  rollout 160759 ms  learn 187228 ms  entropy 0.61  kl +0.0064  clip 0.060  drift 0.221  skipped 0  nonfinite beliefs 0  reward/s: frontline/self_play -0.000 frontline/league +0.007 deathmatch/self_play -0.000 deathmatch/league +0.001
+update  118  rollout  17087 ms  learn  95292 ms  entropy 0.62  kl +0.0073  clip 0.065  drift 0.132  skipped 0  nonfinite beliefs 0  reward/s: frontline/self_play -0.000 frontline/league +0.008 deathmatch/self_play -0.000 deathmatch/league +0.002
+update  119  rollout  17025 ms  learn  97175 ms  entropy 0.60  kl +0.0071  clip 0.065  drift 0.132  skipped 0  nonfinite beliefs 0  reward/s: frontline/self_play -0.000 frontline/league +0.005 deathmatch/self_play -0.000 deathmatch/league +0.001
