@@ -192,3 +192,8 @@
 12:16 odds start champion-20
 12:26 odds done champion-20: 20/20: win 0.97 score 0.97 [0.92,0.99]  24/20: win 0.91 score 0.91 [0.85,0.95]  30/20: win 0.69 score 0.69 [0.60,0.76]  40/20: win 0.22 score 0.23 [0.16,0.31]  (636 s, build 20 s)
 12:26 odds start nearest-20
+12:38 odds done nearest-20: 20/20: win 0.31 score 0.31 [0.24,0.40]  24/20: win 0.00 score 0.00 [0.00,0.03]  30/20: win 0.00 score 0.00 [0.00,0.03]  40/20: win 0.00 score 0.00 [0.00,0.03]  (678 s, build 19 s)
+12:38 odds start champion-40
+12:38 fleet3 20v20-frontline start (budget 2048)
+12:38 fleet3 20v20-frontline done
+12:38 fleet3 40v40-arena start (budget 4096)

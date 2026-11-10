@@ -1,0 +1,98 @@
+{
+ "provenance": {
+  "commit": "10f93ead3da4039089613b9bec8d3220cc2c5e41",
+  "dirty": false,
+  "host": "e98bed47fc73",
+  "gpu": null,
+  "python": "3.14.8",
+  "torch": "2.15.0+cu132",
+  "cuda": "13.2",
+  "command": [
+   ".venv/bin/bnb",
+   "ratings",
+   "2026-11-09-bc-absolute",
+   "--no-league",
+   "--no-ladder",
+   "--with",
+   "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+   "runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average",
+   "--presets",
+   "frontline_20v20_arena",
+   "--target-stderr",
+   "35",
+   "--budget",
+   "2048",
+   "--blocks",
+   "8",
+   "--block-environments",
+   "128",
+   "--reuse",
+   "runs/ratings/fleet-20v20-arena",
+   "--out",
+   "runs/ratings/fleet3-20v20-frontline"
+  ],
+  "time": "2026-11-10T12:38:52+00:00"
+ },
+ "kind": "ratings",
+ "payload": {
+  "leaderboard": [
+   {
+    "game_version": 1,
+    "mode": "frontline",
+    "map": "frontline_20v20_arena",
+    "fleet_size": 20,
+    "player": "scripted",
+    "calibrated_elo": 1000.0,
+    "stderr": 0.0,
+    "games": 384
+   },
+   {
+    "game_version": 1,
+    "mode": "frontline",
+    "map": "frontline_20v20_arena",
+    "fleet_size": 20,
+    "player": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+    "calibrated_elo": 1133.668437026531,
+    "stderr": 20.626811377815606,
+    "games": 384
+   },
+   {
+    "game_version": 1,
+    "mode": "frontline",
+    "map": "frontline_20v20_arena",
+    "fleet_size": 20,
+    "player": "runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average",
+    "calibrated_elo": 1101.7380010148618,
+    "stderr": 24.60730315511321,
+    "games": 256
+   }
+  ],
+  "config": {
+   "arena": {
+    "blocks": 8,
+    "block_environments": 128,
+    "length": 32,
+    "compiled": true,
+    "graph_ticks": 8
+   },
+   "target_stderr": 35.0,
+   "budget": 2048
+  },
+  "scripted_plays": null,
+  "reused": {
+   "frontline_20v20_arena": [
+    "/workspace/boost-and-broadside/runs/ratings/fleet-20v20-arena/frontline_20v20_arena.batches.jsonl"
+   ]
+  }
+ },
+ "inputs": {
+  "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average": {
+   "path": "/workspace/boost-and-broadside/runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+   "sha256": "5f4d415afec54ce6fef58675425b23aad808c5919680c5ad3029ee2f263ee1d9"
+  },
+  "runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average": {
+   "path": "/workspace/boost-and-broadside/runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average",
+   "sha256": "0841f6cd486b2602b343aa2adddba40cfd7b81007369e109cb3a66abaf693d4d"
+  }
+ }
+}

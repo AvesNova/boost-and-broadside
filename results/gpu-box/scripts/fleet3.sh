@@ -15,7 +15,7 @@ ratings() {  # name, block environments, presets...
   rm -rf runs/ratings/fleet3-$name
   say "fleet3 $name start (champion, nearest, scripted; 8 x $envs)"
   if .venv/bin/bnb ratings 2026-11-09-bc-absolute --no-league --no-ladder --with $C $M \
-      --presets "$@" --target-stderr 35 --budget 20480 --blocks 8 --block-environments $envs \
+      --presets "$@" --target-stderr 35 --budget "${BUDGET:-20480}" --blocks 8 --block-environments $envs \
       --reuse runs/ratings/fleet-20v20-arena --out runs/ratings/fleet3-$name \
       >> runs/ratings-fleet3-$name.out 2>&1; then
     say "fleet3 $name done"
