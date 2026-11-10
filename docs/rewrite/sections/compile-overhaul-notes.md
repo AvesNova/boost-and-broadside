@@ -266,3 +266,33 @@ warm (what a repeat run of the same preset and size pays).
 - So each new preset or fleet size is a cold compile (about 3 min for ratings), and each
   repeat is about 20 s; the play itself (167 s a batch of 1024 frontline games) is now
   the cost of an evaluation.
+
+## The training lanes' grouping (bef843eb, 8b301089)
+
+rl-aux-x0 trains over two modes, so the lanes are split per mode and the lane players'
+row counts are 454 (live), 454 (exponential average), 218, 218, 214, 214 (the league's
+slots). Three ways to stack them, measured cold (rl):
+
+| Grouping | Act stage compile | Steady collect |
+|---|---|---|
+| loop (baseline) | 493.1 s, 42,611 ops | 24.0 s |
+| one group, all padded to 454 | 270.9 s, 12,891 ops | 28.7 s |
+| a group per exact count (three) | 384.5 s, 20,891 ops | 24.0 s |
+| within 10% (two; 8 padded rows) | 322.5 s, 16,964 ops | 24.1 s |
+
+Padding everyone to the most ran 1.54x the network rows (+4.7 s a collect, about 2% of an
+update, every update); a group per exact count paid a network copy in the graph for each
+count, and counts differ by a few rows from the split's rounding. `RUN_SLACK` (10%)
+groups players within a tenth of each other's rows.
+
+RL with the 10% grouping (8b301089, `after-3/`), cold then warm:
+
+- cold: {'build': 26.9, 'collect_1': 417.0, 'learn_1': 448.6, 'collect_2': 24.1, 'learn_2': 222.4}; compiles 563.7 s: [('Rollout._act', 322.5), ('Rollout._advance', 14.2), ('Rollout._resolve', 32.3), ('Rollout._perceive', 11.2), ('tick', 6.5), ('Learner._codes', 51.0), ('Learner._loss', 65.0), ('Learner._head_sums', 61.1)]
+- warm: {'build': 4.6, 'collect_1': 63.2, 'learn_1': 228.3, 'collect_2': 24.1, 'learn_2': 217.5}; compiles 49.5 s: [('Rollout._act', 32.3), ('Rollout._advance', 1.9), ('Rollout._resolve', 3.8), ('Rollout._perceive', 1.0), ('tick', 0.5), ('Learner._codes', 1.9), ('Learner._loss', 4.1), ('Learner._head_sums', 3.9)]
+
+A steady rl update is now 24.1 + 222.4 s (baseline 24.0 + 225.1).
+The first update costs, over a steady one, 646 s cold (baseline about 900 s) and
+54 s warm.
+- The trainer's build (27-32 s cold) is 4.6 s warm: it is a compile too (the scripted
+  agent's characteristics fly a compiled flight tick, `runtime/flights.py`), and the
+  on-disk caches already cover it.
