@@ -130,6 +130,19 @@ def test_the_mixed_preset_crosses_the_lineup_with_the_training_mix():
     assert rules.num_fields == 10 and rules.num_ships == 10
 
 
+def test_the_real_scale_mix_plays_both_modes_on_the_real_scale_maps():
+    from bnb.runtime.train import LINEUP, TRAINING_MIXES, mixed
+
+    base, pools = mixed(LINEUP, TRAINING_MIXES["real_scale_mixed"])
+    assert base.ship_set == "real-scale"
+    rules = api.rules_of(base, pools, 1024)
+    games = [(pool.environments, pool.mode.name, pool.arena_radius) for pool in rules.pools]
+    assert games == [(512, "frontline", 7800.0), (512, "team_deathmatch", 7800.0)]
+    clocks = [pool.episode_ticks for pool in rules.pools]
+    standard = [pool.episode_ticks for pool in api.rules_of(*mixed(), 1024).pools]
+    assert clocks == [2 * ticks for ticks in standard]  # the real-scale clock is doubled
+
+
 # ------------------------------------------------------------------ equivalence
 
 

@@ -30,9 +30,11 @@ class Train:
     the nearest-neighbour MLP (nearest; its settings `--set nearest.hidden=...`, `allies`,
     `enemies`, `fields`).
 
-    preset: a training preset (deathmatch, deathmatch_wide, frontline), which sets the mode,
-    the sizes and the spawn groups, or mixed, the default training mix of all three in one
-    batch; without one, the mode and sizes below.
+    preset: a game preset (deathmatch, deathmatch_wide, frontline, real_scale_deathmatch,
+    real_scale_frontline), which sets the mode, the sizes, the map and the ship set, or a
+    training mix in one batch (`bnb.runtime.train.TRAINING_MIXES`): mixed, frontline and
+    deathmatch half each; real_scale_mixed, the same on the real-scale maps and ships;
+    without one, the mode and sizes below.
     precision: bfloat16 (the model's matmuls), float32 or tf32; old_log_probabilities:
     rollout or recomputed (by unroll before the first epoch).
     updates: the updates to train (a resume continues to the run's total).
@@ -552,16 +554,17 @@ def _requested(options: Train):
     from bnb.learn.ppo import LearnerConfig
     from bnb.runtime import cloning
     from bnb.runtime.lanes import LaneConfig
-    from bnb.runtime.train import LINEUP, TrainConfig, mixed
+    from bnb.runtime.train import LINEUP, TRAINING_MIXES, TrainConfig, mixed
 
     cloned = options.objective == "bc"
     pools = cloning.LINEUP if cloned else LINEUP
-    if options.preset == "mixed":
-        game, pools = mixed(pools)
+    if options.preset in TRAINING_MIXES:
+        game, pools = mixed(pools, TRAINING_MIXES[options.preset])
     elif options.preset is not None:
         if options.preset not in PRESETS:
             raise SystemExit(
-                f"unknown preset {options.preset!r}; one of {sorted(PRESETS) + ['mixed']}"
+                f"unknown preset {options.preset!r}; one of "
+                f"{sorted(PRESETS) + sorted(TRAINING_MIXES)}"
             )
         game = PRESETS[options.preset]
     else:
