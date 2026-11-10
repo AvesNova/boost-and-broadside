@@ -114,6 +114,23 @@ left the band by the exact solve (it passed on the estimate) -> rerun the search
 stopped for five more generations (raise the spec's `generations` by 5) and repeat steps 2-3
 once; then report.
 
+## 3b. Continuing a search
+
+To continue from a search's best mean with other settings (more games, a fixed direction),
+write a new spec whose designs' `start` values are that mean's knobs (`search.jsonl`, the
+row with `"mean": true` of lowest loss in the last five generations), `edges` in the
+direction the exact cards went round, `"edges_are_cycle": true`, and a smaller `sigma`
+(`stage-1/seed-2.json` continues `seed.json` this way). Run steps 1 to 3 with it.
+
+## The seven types (after three cycles pass)
+
+    uv run --no-sync python -m bench.ship_design_search compose \
+      --specs A.json,B.json,C.json --outs runs/.../A,runs/.../B,runs/.../C \
+      --names N1,N2,N3,N4,N5,N6,N7 --write docs/explanation/game/ship-design/stage-2/seven.json
+
+then steps 1 to 4 with `seven.json` (21 edges, 5 candidates a generation, about 3 minutes a
+generation). Its check includes the mixed-team test: the summary's `mixed_pass` must be true.
+
 ## 4. Frontline
 
 The same check with `--preset real_scale_frontline`, and its summary with
