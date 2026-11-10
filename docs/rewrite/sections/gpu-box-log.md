@@ -752,3 +752,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   pair a path with the wrong content (the 30.4M checkpoint earlier was likely the same). Repaired
   and re-verified; `gpu-box/hub_repair.py` now runs after every sync pass (re-uploads any file whose
   hub hash differs from its record and re-checks).
+- **12:02 KST Null RL at 180.4M** (finished; last 10 updates Brier 0.612, outcome EV 0.959, PPO KL 0.0085, no skipped steps). Champion RL resuming to 180.4M (~13:55 KST).
