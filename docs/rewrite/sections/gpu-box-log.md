@@ -899,3 +899,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   128 games per ratio (10: 1 batch of 8 x 64; 20: 2 of 8 x 32; 40: 4 of 8 x 16); win rate and score
   with 95% Wilson intervals. `round16.sh` replaced round 15's crossover search (stopped in its first
   compile; `fleet3.sh` ratings untouched).
+- **21:06 KST Fixed odds at 10 ships** (deathmatch, training arena, 128 games per ratio; win rate, score [95%]): champion 10:10 1.00, 12:10 0.95, **15:10 0.73 (score 0.75 [0.67, 0.82])**, **20:10 0.43 (0.45 [0.37, 0.54])**; nearest 10:10 0.89, 12:10 0.19, 15:10 0.00, 20:10 0.00. (1.25 x 10 rounded to 12, Python's round-half-even: the 10-ship middle ratio is 1.2:1; 20 and 40 are exact.) The champion's case took 852 s, the nearest's 162 s (the compile happens in the first batch, not the engine's build).
