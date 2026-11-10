@@ -26,11 +26,11 @@
  },
  "checkpoint_every": 16777216,
  "update_policies": true,
- "newest_checkpoint": 121634816,
+ "newest_checkpoint": 134217728,
  "final_checkpoint": 121634816,
  "checkpoint_ordinals": {
-  "117440512": 7,
-  "121634816": 8
+  "121634816": 8,
+  "134217728": 9
  },
  "probe": {
   "allocated": 16735010304,
@@ -93,7 +93,7 @@
   }
  ],
  "stop_request": null,
- "hours": 4.195026598231894,
+ "hours": 4.6440473936923725,
  "skipped_steps": 0,
  "snapshot_every": 16777216
 }
