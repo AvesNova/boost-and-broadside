@@ -296,3 +296,29 @@ The first update costs, over a steady one, 646 s cold (baseline about 900 s) and
 - The trainer's build (27-32 s cold) is 4.6 s warm: it is a compile too (the scripted
   agent's characteristics fly a compiled flight tick, `runtime/flights.py`), and the
   on-disk caches already cover it.
+
+## What a steady ratings batch spends (bench/arena_stages.py, bench/network_kernels.py)
+
+`arena_stages.py` (frontline 5v5, 16 lanes, 1024 games, warm): a captured tick is 18.0 ms;
+outside the graph the act stage is 20.6 ms of which the network group's stacked forward is
+18.5 ms and the scripted pass 0.34 ms; advance 0.40, resolve 0.63, perceive 0.23 ms. A
+32-tick segment is 580 ms against 575 ms of graph replays, so the host's work between
+segments (the store writes, the tally read, the finished check) is about 1%.
+
+- **Item 11 (a lean Arena) is not worth doing**: the records, the store and the analytics
+  are under 2 ms of an 18 ms tick together with the physics. The batch is the network.
+- One forward of the controller over 2048 views (no lanes) takes 11.8 ms
+  (`network_kernels.py`, arm2d's build: 2.63 M parameters, width 128): about 36% in the
+  matrix products and the Triton kernels, and about half in large fused elementwise
+  kernels of the inputs' and the belief's codes (the model's input design; not this
+  work's to change).
+- So the 16 stacked lanes cost 1.6x one forward over the same rows (19.5 against 11.8 ms
+  at 2048 rows, `lane_probe.py block_environments=128`): vmap has no batching rule for
+  the Triton kernels (`torch.library.triton_op`), so it calls each once per lane. Their
+  plain twins batch (as batched products) but run slower: all plain 24.8 ms a step
+  (compile 65 s instead of 133 s: the kernels' compile and autotune are about 60 s of a
+  cold stage), plain but the attention 22.5 ms. The kernels stay.
+- Candidate, not done: batched-weight variants of the gated-MLP and head kernels (a lane
+  axis on the weights, one launch for every lane) and a vmap rule for them, which would
+  bring a ratings tick toward the 11.8 ms of one forward (about a third off an
+  evaluation's play time). Kernel work; left for a session of its own.
