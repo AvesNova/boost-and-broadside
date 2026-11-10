@@ -326,3 +326,26 @@ segments (the store writes, the tally read, the finished check) is about 1%.
   one launch). On a quiet machine the seat step at 16 x 128 rows was 20.2 / 21.2 ms without
   it and 21.3 / 20.2 ms with it: no difference beyond noise, so the stacked lanes' extra
   cost over one forward is not the attention's per-set launches.
+
+## Integration (integrate/next-runs, 2026-11-11 03:00-04:00 KST)
+
+The author's next fresh BC and RL runs fly the real-scale ships (`real_scale_*` presets).
+`integrate/next-runs` = perf/compile-overhaul (42a45e2e) + a squash of origin/perf/gpu-box
+(3497f549) without results/gpu-box (81d1b146) + feat/live-tuning-panel (154be767) +
+`--preset real_scale_mixed` (876bfee6). perf/compile-overhaul is frozen as the record;
+work continues on integrate/next-runs.
+
+- 7 conflicts, all kept both sides (see 81d1b146's message); found and fixed where the
+  branches met: the deathmatch target under live tuning (the play shell crashed), the
+  fleet presets listed as play maps, reuse across game versions, the fingerprint test.
+- Fleet-size presets now exist for every base game, real-scale too (`FLEET_PRESETS`).
+- A bug of mine caught by the GPU tests after the merge: the stacked scalars' bounds were
+  built from host numbers inside the step (a host copy an uncompiled CUDA-graph capture
+  refuses). Fixed with buffers (47113b20 on the overhaul branch, carried into the squash).
+- The merged game computes the same numbers on the five base games: VERSION stays 2.
+
+Next (agreed with the author): a short real-scale BC run; re-baseline compile and steady
+speed on real_scale_mixed; then measure before acting: the learner's micro-batch size
+(160/320/640 rows), the heads' sums' run-time share, the Arena's wasted ticks after first
+games, benching against a compile per fleet size; and continue the graph shrink (the delta
+code's per-component symlog decodes: about 740 of a step's 3,226 ops).
