@@ -21,3 +21,6 @@ deathmatch: reused 256 games of /workspace/boost-and-broadside/runs/ratings/roun
   model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
 /workspace/boost-and-broadside/src/bnb/league/matches.py:526: FilledDefaults: the yemong build record lacks config.physics_hidden_decay, config.physics_hidden_fade; they take their defaults
   model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
+deathmatch: batch 1, 2048 games, the largest standard error 347.4 (the batch took 929 s); done about 07:58 (28 batches), by 07:58 at the latest (28 batches)
+deathmatch: batch 2, 4096 games, the largest standard error 347.4 (the batch took 210 s); done about 05:04 (27 batches), by 05:04 at the latest (27 batches)
+deathmatch: batch 3, 6144 games, the largest standard error 634.4 (the batch took 210 s); done about 04:06 (26 batches), by 04:06 at the latest (26 batches)
