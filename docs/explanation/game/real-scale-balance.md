@@ -356,3 +356,15 @@ A-optimal tournament to 25 Elo, then the top-up; `analyse` writes the ratings, t
 correlations and the intransitivity checks (`tables.txt` holds them as tables); `propose`
 applies the decision rule. The search logs go to `runs/real-scale-balance/round-N/`; the
 rest to `real-scale-balance/round-N/` beside this page.
+
+## After round 2: the set is paced, and the method moves on
+
+Two things changed after round 2 (2026-11-10, the author's decisions). The set flies four
+times its researched climb ([Pacing](real-scale-pacing.md)), so a round 3 rates a different
+set from round 2's. And the rounds' rule (move one loosely known value, the shield) gives way
+to designing types for balance and cycles together, with every value open within a WW2
+envelope and no type-against-type modifier ([Designing ship types](ship-design.md)), after
+studies of each trade-off on its own ([Case studies](case-studies.md)): the values that dominate
+these ratings are the muzzle speed (about 1,400 Elo a doubling, the same on every airframe) and
+the shield (about 1,200), the fire rate is mild, and the dispersion and the recharge are nearly
+free.

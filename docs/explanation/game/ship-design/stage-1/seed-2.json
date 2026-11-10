@@ -4,10 +4,10 @@
   0.6,
   0.7
  ],
- "games_per_edge": 64,
+ "games_per_edge": 128,
  "population": 12,
- "generations": 30,
- "sigma": 0.4,
+ "generations": 24,
+ "sigma": 0.25,
  "realism_radius": 3.5,
  "realism_weight": 1.0,
  "distinct": 1.0,
@@ -23,7 +23,13 @@
     "fire_rate",
     "sustained_turn_rate"
    ],
-   "role": "the twin: a big target, a fair turn"
+   "role": "the twin: a big target, a fair turn",
+   "start": {
+    "max_shield": 109.38007610573531,
+    "damage_per_second": 378.5900363690206,
+    "fire_rate": 10.0,
+    "sustained_turn_rate": 0.26662893696719336
+   }
   },
   {
    "name": "Bastion",
@@ -34,7 +40,13 @@
     "fire_rate",
     "sustained_turn_rate"
    ],
-   "role": "the armoured destroyer: a shield over the light guns' threshold"
+   "role": "the armoured destroyer: a shield over the light guns' threshold",
+   "start": {
+    "max_shield": 117.17419700256752,
+    "damage_per_second": 409.95533706284334,
+    "fire_rate": 10.0,
+    "sustained_turn_rate": 0.2261946710584651
+   }
   },
   {
    "name": "Kestrel",
@@ -45,14 +57,31 @@
     "fire_rate",
     "sustained_turn_rate"
    ],
-   "role": "the light fighter: a small target, the turn"
+   "role": "the light fighter: a small target, the turn",
+   "start": {
+    "max_shield": 88.91357417954346,
+    "damage_per_second": 387.76248163324937,
+    "fire_rate": 15.0,
+    "sustained_turn_rate": 0.30289393077139126
+   }
   }
  ],
- "cycle": [
-  "Heron",
-  "Bastion",
-  "Kestrel"
- ],
  "games_late": 256,
- "curl_weight": 1.0
+ "curl_weight": 1.0,
+ "edges": [
+  [
+   "Bastion",
+   "Heron"
+  ],
+  [
+   "Kestrel",
+   "Bastion"
+  ],
+  [
+   "Heron",
+   "Kestrel"
+  ]
+ ],
+ "note": "continues seed.json from its best mean (generation 28), the direction its exact cards go round, with the curl term and more games",
+ "edges_are_cycle": true
 }

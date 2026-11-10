@@ -158,10 +158,11 @@ class Space:
 
 
 def curl_shortfall(scores: list[float], games: int, spec: dict) -> float:
-    """For a cycle: the squared shortfall of its curl (the sum of its edges' log-odds, the
+    """For a cycle (a "cycle" spec, or "edges" with "edges_are_cycle": the edges in order
+    round one): the squared shortfall of its curl (the sum of its edges' log-odds, the
     part no rating difference can make) below the band's lower edge times the edges' count;
     0 for a spec of edges, or a curl at or above it."""
-    if "cycle" not in spec:
+    if "cycle" not in spec and not spec.get("edges_are_cycle", False):
         return 0.0
     clipped = [min(max(p, 0.5 / games), 1.0 - 0.5 / games) for p in scores]
     curl = sum(math.log(p / (1.0 - p)) for p in clipped)
