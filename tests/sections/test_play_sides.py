@@ -210,3 +210,27 @@ def test_the_captured_step_matches_the_eager_one(tmp_path):
     graphed.act(team_view(loop.realtime.obs, 0), torch.ones(1, dtype=torch.bool))
     assert not torch.allclose(graphed.carry.state, before)
     assert not torch.equal(graphed.carry.offset, offset)  # a new offset drawn in the graph
+
+
+@pytest.mark.gpu
+def test_a_prepared_agent_plays_its_captured_graph_without_capturing_again(tmp_path):
+    """`Agent.prepare` captures the graphed step ahead of play (the shell does it on a
+    thread); the first tick replays that graph and plays as an unprepared agent does."""
+    if not torch.cuda.is_available():
+        pytest.skip("no GPU")
+    policy = tiny_policy(tmp_path / "policy", SMALL, "yemong")
+    loop = MatchLoop(MatchSetup(SMALL, seed=4), compiled=False)
+
+    def agent():
+        return load_agent(policy, SMALL, loop.rules, loop.types, 1.0, seed=7, graph=True)
+
+    prepared, plain = agent(), agent()
+    no_reset = torch.zeros(1, dtype=torch.bool)
+    prepared.prepare(team_view(loop.realtime.obs, 0), no_reset)
+    graph = prepared._graph
+    assert graph is not None
+    for _ in range(5):
+        loop.step()
+        view = team_view(loop.realtime.obs, 0)
+        assert torch.equal(prepared.act(view, no_reset), plain.act(view, no_reset))
+    assert prepared._graph is graph

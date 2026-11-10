@@ -14,6 +14,7 @@ call the session's methods (`toggle_pause`, `select`, `take_control`, `new_match
 
 import dataclasses
 import pathlib
+import threading
 import time
 from typing import Literal
 
@@ -22,8 +23,12 @@ import numpy as np
 from imgui_bundle import imgui
 
 from bnb.contracts import GameConfig
+from bnb.contracts.obs import GLOBAL
 from bnb.game import api
 from bnb.game.api import PRESETS
+from bnb.game.handling.characteristics import cached as cached_characteristics
+from bnb.game.handling.characteristics import measure_aside
+from bnb.runtime.realtime import clone
 
 from . import predictions, themes
 from . import replay as replays
@@ -33,7 +38,7 @@ from .interface.interface import Interface
 from .interface.kill_feed import FEED_SECONDS
 from .interface.style import load_fonts
 from .interface.text import TEAM_NAMES, show_ship_set
-from .loop import TIME_SCALES, MatchEvent, MatchLoop, MatchSetup, SideSetup
+from .loop import TIME_SCALES, MatchEvent, MatchLoop, MatchSetup, SideSetup, team_view
 from .overlays import NAMES as OVERLAY_NAMES
 from .overlays import OverlaySettings, Predictions, offered, offered_by, provider
 from .png import write_png
@@ -120,6 +125,19 @@ class Options:
         return MatchSetup(self.game(), fogged=self.fog, seed=self.seed, sides=sides)
 
 
+@dataclasses.dataclass
+class PendingSide:
+    """A side's controller being made on a thread (`Session.set_side`): the match it is for,
+    the side, the controller when it is made before the thread starts (an agent whose
+    CUDA graph the thread captures; None: made on install), the thread and its error."""
+
+    loop: MatchLoop
+    side: SideSetup
+    controller: object | None
+    thread: threading.Thread | None = None
+    error: BaseException | None = None
+
+
 class Session:
     """One match or replay being watched or played, independent of any window."""
 
@@ -177,6 +195,7 @@ class Session:
         self.predicted_at: int | None = None  # the loop's tick count the arrays are of
         self.elapsed = 0.0
         self.loop: MatchLoop | None = None
+        self._pending: dict[int, PendingSide] = {}  # by team: controllers being made aside
         if options.replay is not None:
             self.open_replay(options.replay, whole=True)
         else:
@@ -221,10 +240,23 @@ class Session:
     ) -> bool:
         """Start a live match (its tick compiles in the background when its graph is new);
         returns False, with a notice, when a side's agent cannot play it. realtime and
-        sides: continue this match with these controllers (a replay forked)."""
+        sides: continue this match with these controllers (a replay forked). A side whose
+        controller takes long to make (`slow_side`) starts as the scripted chaser and takes
+        over once it is made aside."""
+        deferred = {}
+        if sides is None:
+            deferred = {
+                team: side for team, side in enumerate(setup.sides) if self.slow_side(side, setup)
+            }
+        played = dataclasses.replace(
+            setup,
+            sides=tuple(
+                SideSetup() if team in deferred else side for team, side in enumerate(setup.sides)
+            ),
+        )
         try:
             loop = MatchLoop(
-                setup,
+                played,
                 sides=sides,
                 compiled=self.options.compile,
                 background=True,
@@ -240,7 +272,9 @@ class Session:
         self._adopt(loop, whole, fit=realtime is None)
         self._warn(loop.sides)
         if self.options.record and not setup.tuning:  # a tuned match is not recorded
-            self.recorder = replays.Recorder(setup, loop.realtime, self._match_name())
+            self.recorder = replays.Recorder(played, loop.realtime, self._match_name())
+        for team, side in deferred.items():
+            self.set_side(team, side)
         return True
 
     def new_match(self, setup: MatchSetup) -> bool:
@@ -395,17 +429,94 @@ class Session:
         loop = self.loop
         if loop.replaying:
             return False
+        self._pending.pop(team, None)  # a side chosen again replaces one still being made
+        if side.controller == "scripted_agent" and self.slow_side(side, loop.setup):
+            self._make_aside(team, side, None, lambda: measure_aside(loop.types, loop.rules))
+            self.say(
+                f"{TEAM_NAMES[team]}: measuring the ships for the scripted agent; "
+                "it takes over when done"
+            )
+            return True
         try:
             controller = controller_of(side, team, loop.setup, loop.rules, loop.types)
         except AgentError as error:
             self.say(str(error))
             return False
+        if getattr(controller, "graphed", False):  # its first step captures a CUDA graph
+            observation = loop.realtime.obs
+            view = clone(team_view(observation, team))
+            reset = observation.globals[:, 0, GLOBAL["reset"]] > 0.5
+            self._make_aside(team, side, controller, lambda: controller.prepare(view, reset))
+            return True
+        self._install(team, side, controller)
+        return True
+
+    def slow_side(self, side: SideSetup, setup: MatchSetup) -> bool:
+        """Whether this side's controller takes seconds to make: a scripted agent whose
+        ship characteristics no earlier run measured for this card."""
+        if side.controller != "scripted_agent":
+            return False
+        loop = self.loop
+        if (
+            loop is not None
+            and loop.setup.config == setup.config
+            and loop.setup.lineup == setup.lineup
+        ):
+            rules, types = loop.rules, loop.types
+        else:
+            rules = base_rules(setup.config, setup.lineup)
+            if setup.tuning.rules:
+                rules = api.tuning.tuned(rules, setup.tuning.rules)
+            types = setup.tuning.types() if setup.tuning.card else api.ship_types()
+        return cached_characteristics(types, rules) is None
+
+    def _make_aside(self, team: int, side: SideSetup, controller, work) -> None:
+        """Run `work` on a thread (it waits on a child process, or captures a CUDA graph);
+        `update` installs the side when it is done. Meanwhile the team plays on as it was."""
+        pending = PendingSide(self.loop, side, controller)
+
+        def run() -> None:
+            try:
+                work()
+            except BaseException as error:  # said by `update`; the team plays on as it was
+                pending.error = error
+
+        pending.thread = threading.Thread(target=run, name=f"side-{team}", daemon=True)
+        pending.thread.start()
+        self._pending[team] = pending
+
+    def _install_made(self) -> None:
+        """Install each side made aside that is done (on this thread)."""
+        for team, pending in list(self._pending.items()):
+            if pending.thread.is_alive():
+                continue
+            del self._pending[team]
+            loop = self.loop
+            if pending.loop is not loop or loop.replaying:
+                continue
+            if pending.error is not None:
+                self.say(f"{TEAM_NAMES[team]} plays on as it was: {pending.error}")
+                continue
+            controller = pending.controller
+            if controller is None:
+                try:
+                    controller = controller_of(
+                        pending.side, team, loop.setup, loop.rules, loop.types
+                    )
+                except AgentError as error:
+                    self.say(str(error))
+                    continue
+            self._install(team, pending.side, controller)
+            self.say(f"{TEAM_NAMES[team]}: {getattr(controller, 'label', 'controller')} plays")
+
+    def _install(self, team: int, side: SideSetup, controller) -> None:
+        """Make `controller` (of `side`) play the team from the next tick."""
+        loop = self.loop
         loop.sides[team] = controller
         self._warn([controller])
         sides = list(loop.setup.sides)
         sides[team] = side
         loop.setup = dataclasses.replace(loop.setup, sides=tuple(sides))
-        return True
 
     def set_temperature(self, team: int, temperature: float) -> None:
         """An agent side's sampling temperature (from the next tick)."""
@@ -713,6 +824,8 @@ class Session:
         self.clock += elapsed
         if self.tuner is not None:
             self.tuner.update()
+        if self._pending:
+            self._install_made()
         started = time.perf_counter()
         ticks = self.loop.advance(elapsed)
         self.timings["advance"] = time.perf_counter() - started

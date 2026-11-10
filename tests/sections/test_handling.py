@@ -198,3 +198,39 @@ def test_a_parameter_no_handle_feels_takes_no_step():
     gradient = jacobian.transpose(-1, -2) @ residual[..., None]
     plain = -torch.linalg.solve(normal[:1], gradient[:1])[..., 0]
     assert torch.equal(marquardt_step(jacobian[:1], residual[:1], damping[:1]), plain)
+
+
+def test_the_characteristics_are_kept_on_disk(tmp_path, monkeypatch):
+    """Measured once, they are written to the cache; a later process (the in-process cache
+    forgotten) reads them back exactly instead of measuring again."""
+    from bnb import cache
+    from bnb.game.handling import characteristics as module
+
+    monkeypatch.setattr(cache, "ROOT", tmp_path)
+    monkeypatch.setattr(module, "_CACHE", {})
+    measured = []
+    monkeypatch.setattr(
+        module, "measure_characteristics", lambda types, rules: measured.append(1) or MEASURED
+    )
+    assert module.cached(TYPES, RULES) is None
+    assert module.characteristics(TYPES, RULES) is MEASURED
+    monkeypatch.setattr(module, "_CACHE", {})
+    read = module.cached(TYPES, RULES)
+    assert measured == [1]
+    for field in dataclasses.fields(MEASURED):
+        assert torch.equal(getattr(read, field.name), getattr(MEASURED, field.name))
+
+
+@pytest.mark.slow
+def test_the_characteristics_are_measured_aside(tmp_path, monkeypatch):
+    """`measure_aside` measures in a child process, into the cache this process reads."""
+    from bnb import cache
+    from bnb.game.handling import characteristics as module
+
+    monkeypatch.setenv("BNB_CACHE", str(tmp_path))
+    monkeypatch.setattr(cache, "ROOT", tmp_path)
+    monkeypatch.setattr(module, "_CACHE", {})
+    module.measure_aside(TYPES, RULES)
+    read = module.cached(TYPES, RULES)
+    assert read is not None
+    torch.testing.assert_close(read.cruise_speed, MEASURED.cruise_speed)
