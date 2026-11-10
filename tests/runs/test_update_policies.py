@@ -39,6 +39,32 @@ def test_a_ppo_run_writes_the_live_and_both_averages_after_every_update(monkeypa
     assert run.checkpoint_steps() == [STEPS_PER_UPDATE * 3, STEPS_PER_UPDATE * 4]
 
 
+def test_each_averages_policy_file_holds_its_own_average(monkeypatch, tmp_path):
+    """The uniform average file is the mean of the live weights so far and the exponential
+    average file is a different average (2026-11-10: both names held the uniform average,
+    saved after loading both into one scratch model)."""
+    bnb(
+        monkeypatch, tmp_path, "train", *cases.TRAIN_OPTIONS, "--updates", "3", "--name", "a",
+        "--set", "league.uniform_from=0",
+    )  # fmt: skip
+    run = Run.open(tmp_path, "a")
+
+    def weights(step: int, name: str) -> dict:
+        return safetensors.torch.load_file(
+            run.update_policies_path(step) / name / "weights.safetensors"
+        )
+
+    newest = 3 * STEPS_PER_UPDATE
+    uniform = weights(newest, "uniform_average")
+    exponential = weights(newest, "exponential_average")
+    floats = [name for name, value in uniform.items() if value.is_floating_point()]
+    assert any(not torch.equal(uniform[name], exponential[name]) for name in floats)
+    lives = [weights(STEPS_PER_UPDATE * n, "live") for n in (1, 2, 3)]
+    for name in floats:
+        mean = sum(live[name].double() for live in lives) / len(lives)
+        assert torch.allclose(uniform[name].double(), mean, atol=1e-5)
+
+
 def test_the_last_updates_live_policy_is_the_final_checkpoints_weights(monkeypatch, tmp_path):
     run = new_run(monkeypatch, tmp_path, updates=2)
     live = run.update_policies_path(2 * STEPS_PER_UPDATE) / "live" / checkpoint.WEIGHTS

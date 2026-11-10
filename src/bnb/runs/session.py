@@ -112,13 +112,8 @@ def save_update_policies(
     if path.exists():
         shutil.rmtree(path)
     path.mkdir()
-    players = [(LIVE, trainer.model)]
-    for player in (EXPONENTIAL_AVERAGE, UNIFORM_AVERAGE) if averages is not None else ():
-        if player == UNIFORM_AVERAGE and not averages.uniform_started:
-            continue
-        scratch.load_state_dict(averages.weights[player])
-        players.append((player, scratch))
-    for player, model in players:
+
+    def save(player: str, model: torch.nn.Module) -> None:
         checkpoint.save_policy(
             path / player,
             model,
@@ -127,6 +122,16 @@ def save_update_policies(
             game=trainer.config.game,
             types=trainer.ppo.types,
         )
+
+    save(LIVE, trainer.model)
+    # Each average is saved as soon as it is loaded into the one scratch model: saving after
+    # loading both wrote the uniform average under both names (2026-11-10, every snapshot of
+    # every run before this fix).
+    for player in (EXPONENTIAL_AVERAGE, UNIFORM_AVERAGE) if averages is not None else ():
+        if player == UNIFORM_AVERAGE and not averages.uniform_started:
+            continue
+        scratch.load_state_dict(averages.weights[player])
+        save(player, scratch)
     if recorder is not None:
         recorder.checkpoint_seconds += time.perf_counter() - started
 
