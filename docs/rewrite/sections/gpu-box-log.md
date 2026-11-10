@@ -839,3 +839,13 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   beyond 4617 m (20v20 and 40v40 density deathmatch). `fleet.sh` started: one field per size and
   variant (scripted, its temperature ladder below, the null's RL 20/40/80/180M above, the three
   best). Bench + crossover command delegated to a build agent (worktree feat/crossover).
+- **17:35 KST Benched ships and `bnb crossover` merged** (c6afebb6, merge efc339e9; the agent's
+  report: 25 new tests, the full CPU suite's 6 failures fail at the base commit or are flaky; my
+  check: 125 pass incl. modes, contracts, policy files; ruff). A per-game (B, 2) active count:
+  a team's last slots benched, dead in the state and the observation (respawn_wait held at the
+  full respawn length), visible to their own team as an ordinary own dead ship (the game always
+  shows a team its own ships), hidden from the enemy; deathmatch target kills_per_ship x the
+  enemy's active ships; `active=None` leaves training's graph unchanged. `bnb crossover A
+  --preset P [--ships-per-team M] --pairs a:b ...` plays every pair in one batch, sides swapped
+  evenly, score = win + draw/2 with a Wilson interval, and interpolates the 0.5 crossing.
+  First GPU run started alongside the fleet ratings (champion frontline 5v5, 5..1 vs 5).
