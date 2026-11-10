@@ -51,7 +51,9 @@ from bnb.contracts import Action, GameConfig, Obs, Outputs, Pool
 from bnb.contracts.obs import SHIP
 from bnb.contracts.tree import contract
 from bnb.controllers.scripted import Scripted, uniform_actions
+from bnb.controllers.scripted_defaults import MODE_DEFAULTS
 from bnb.controllers.scripted_memory import ScriptedCarry
+from bnb.controllers.scripted_parameters import ScriptedParameters, table, unpack
 from bnb.game import api
 from bnb.game.handling.characteristics import Characteristics, characteristics
 from bnb.learn.bc import TeacherConfig
@@ -73,7 +75,9 @@ class Player:
     `ABLATIONS`, sorted); ship_type: every ship of its team flies this type (an index into
     the game's card; None: the game's lineup), so a scripted player with a ship type is a
     ship type as the scripted agent flies it (`ship_type_players`); a tuple gives each ship
-    of the team its own type (a mixed team, one entry per ship)."""
+    of the team its own type (a mixed team, one entry per ship); parameters: a scripted
+    player's own parameter set (its doctrine; only in an arena built with a `doctrine`), else
+    the arena's."""
 
     name: str
     policy: pathlib.Path | None = None
@@ -81,6 +85,7 @@ class Player:
     teacher: TeacherConfig | None = None
     ablations: tuple[str, ...] = ()
     ship_type: int | tuple[int, ...] | None = None
+    parameters: ScriptedParameters | None = None
 
 
 def ship_type_players(ship_set: str, rung: Rung = Rung(1.0)) -> list[Player]:
@@ -164,14 +169,19 @@ class ScriptedPlay:
     temperature: float
     share: float = 1.0
     floor: float = 0.0
+    parameters: ScriptedParameters | None = None
 
 
 def scripted_play(player: Player) -> ScriptedPlay | None:
     """A scripted player's play (a rung's or a teacher's), or None for a network."""
     if player.rung is not None:
-        return ScriptedPlay(player.rung.temperature, player.rung.share)
+        return ScriptedPlay(
+            player.rung.temperature, player.rung.share, parameters=player.parameters
+        )
     if player.teacher is not None:
-        return ScriptedPlay(player.teacher.temperature, floor=player.teacher.floor)
+        return ScriptedPlay(
+            player.teacher.temperature, floor=player.teacher.floor, parameters=player.parameters
+        )
     return None
 
 
@@ -220,7 +230,9 @@ class MatchSeat:
     most of its slots a batch may hold (one per group by default); blocks and
     block_environments: the layout (rows are block by block, each block's first seat's rows
     then its second's, as the lineup lists them); characteristics and ships_per_team: the
-    scripted agent's; ablations: a network slot may play ablated (each row's ablations held
+    scripted agent's; doctrine: the scripted agent's parameter set for every row whose slot's
+    player brings none (None: the mode's set, and no player may bring one); ablations: a
+    network slot may play ablated (each row's ablations held
     in place and passed to every Yemong group's network as `Ablations`; else the networks
     are called without them). Every slot starts as the scripted agent, every lane idle."""
 
@@ -234,6 +246,7 @@ class MatchSeat:
         device: torch.device,
         ablations: bool = False,
         lanes: tuple[int, ...] | None = None,
+        doctrine: ScriptedParameters | None = None,
     ) -> None:
         self.slots, self.slot_rows = 2 * blocks, block_environments
         self.rows, self.ships_per_team = self.slots * block_environments, ships_per_team
@@ -247,8 +260,19 @@ class MatchSeat:
         self.share = torch.ones(self.rows, device=device)
         self.floor = torch.zeros(self.rows, device=device)
         self.scripted = torch.ones(self.rows, dtype=torch.bool, device=device)
+        # with a doctrine, each row plays its slot's parameter set (a table written in place:
+        # the slot's player's set, else the doctrine); else every row the mode's set
+        self.doctrine, self.doctrine_table = doctrine, None
+        parameters = MODE_DEFAULTS
+        if doctrine is not None:
+            self.doctrine_table = table([doctrine] * self.rows, device)
+            parameters = unpack(self.doctrine_table)
         self.agent = Scripted(
-            characteristics, ships_per_team, temperature=self.temperature, share=self.share
+            characteristics,
+            ships_per_team,
+            parameters,
+            temperature=self.temperature,
+            share=self.share,
         )
         self.lanes = (1,) * len(controllers) if lanes is None else tuple(lanes)
         if len(self.lanes) != len(controllers) or not all(
@@ -481,6 +505,11 @@ class MatchSeat:
         self.share[rows] = play.share
         self.floor[rows] = play.floor
         self.scripted[rows] = True
+        if self.doctrine_table is not None:
+            own = self.doctrine if play.parameters is None else play.parameters
+            self.doctrine_table[rows] = table([own], self.doctrine_table.device)
+        elif play.parameters is not None:
+            raise ValueError("a player with its own parameters needs an arena with a doctrine")
         if self.ablations is not None:
             for name in ABLATIONS:
                 getattr(self.ablations, name)[rows] = False
@@ -598,7 +627,10 @@ class Arena:
     slots' lanes, with the player's ablations. `groups`: a template model per build, in the
     order the builds first appear among the players (`group_of` maps a network player's index
     to its group, as `network_groups`); lanes: each group's lanes, the most of its slots a
-    batch may hold (`default_lanes` by default)."""
+    batch may hold (`default_lanes` by default); card: the card to play (the players' by
+    default, `card_of`); doctrine: the scripted agent's set for scripted players without
+    their own (`Player.parameters`; None: the mode's set, and no player may bring one).
+    `set_card` writes a new card in place."""
 
     def __init__(
         self,
@@ -608,6 +640,7 @@ class Arena:
         config: ArenaConfig = ArenaConfig(),
         lanes: tuple[int, ...] | None = None,
         card: api.ShipTypes | None = None,
+        doctrine: ScriptedParameters | None = None,
     ) -> None:
         self.players, self.config, self.device = players, config, device
         self.states: dict[int, dict[str, torch.Tensor]] = {}
@@ -649,6 +682,7 @@ class Arena:
             device,
             ablations=any(one.ablations for one in players),
             lanes=self.lanes,
+            doctrine=doctrine,
         )
         pools = tuple(
             Pool(f"block_{index}", 1.0 / config.blocks, (SEAT, SEAT))

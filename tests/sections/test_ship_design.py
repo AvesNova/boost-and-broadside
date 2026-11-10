@@ -165,3 +165,44 @@ def test_the_nash_of_a_cycle_is_uniform_and_a_dominated_type_gets_none():
     dominated[:3, :3] = rps
     dominated[3, :3], dominated[:3, 3] = -0.1, 0.1
     assert search.nash(dominated)[3] < 0.02
+
+
+def test_a_player_brings_its_own_doctrine_only_to_an_arena_with_one():
+    from bnb.controllers.scripted_parameters import ScriptedParameters
+    from bnb.league.matches import scripted_play
+    from bnb.runtime.opponents import Rung
+
+    own = ScriptedParameters(aggression=0.5)
+    play = scripted_play(Player("a", rung=Rung(1.0), ship_type=0, parameters=own))
+    assert play.parameters is own
+    assert scripted_play(Player("b", rung=Rung(1.0))).parameters is None
+
+
+@pytest.mark.gpu
+@pytest.mark.slow
+def test_a_slots_doctrine_is_live_and_compiles_nothing():
+    """In an arena built with a doctrine, a player's own parameter set is written into its
+    rows of the table: the next batch plays it with no new compiled graph."""
+    from torch._dynamo.utils import counters
+
+    from bnb.controllers.scripted_defaults import MODE_DEFAULTS
+    from bnb.controllers.scripted_parameters import pack
+    from bnb.league.matches import Arena, ArenaConfig
+    from bnb.runtime.opponents import Rung
+
+    device = torch.device("cuda")
+    doctrine = MODE_DEFAULTS.sets["real_scale_deathmatch"]
+    players = [Player(f"slot {i}", rung=Rung(1.0), ship_type=0) for i in range(2)]
+    arena = Arena(
+        players, GAME, device, ArenaConfig(blocks=1, block_environments=8), doctrine=doctrine
+    )
+    arena.play([(0, 1)])
+    graphs = counters["stats"]["unique_graphs"]
+    timid = dataclasses.replace(doctrine, aggression=-5.0)
+    arena.players[1] = dataclasses.replace(players[1], parameters=timid)
+    arena.play([(0, 1)])
+    assert counters["stats"]["unique_graphs"] == graphs
+    table = arena.seat.doctrine_table
+    rows = arena.seat._slot_rows(1)
+    assert torch.allclose(table[rows][0].cpu(), torch.tensor(pack(timid), dtype=torch.float32))
+    assert torch.allclose(table[arena.seat._slot_rows(0)][0].cpu(), torch.tensor(pack(doctrine)))

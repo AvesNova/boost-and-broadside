@@ -72,11 +72,12 @@ from bnb.league.matches import Arena, ArenaConfig, Player
 from bnb.runtime.opponents import Rung
 
 SLOTS = 36  # the arena's card: a fixed number of type slots, so a new card never recompiles
-BLOCKS = 36  # matchups a batch
+ARENA_BLOCKS = 36  # matchups a batch
 BLOCK_GAMES = 64
 
 
 def clock(seconds: float) -> str:
+    """A clock time this many seconds from now."""
     return (datetime.datetime.now() + datetime.timedelta(seconds=seconds)).strftime("%H:%M")
 
 
@@ -101,9 +102,11 @@ class Space:
 
     @property
     def size(self) -> int:
+        """The number of search coordinates."""
         return len(self.columns)
 
     def base(self, index: int) -> dict:
+        """A design's start: its base's knobs with the spec's start values."""
         design = self.designs[index]
         knobs = knobs_of(self.handles[design["base"]]) | design.get("start", {})
         if knobs["fire_rate"] not in FIRE_RATES:  # a base outside the rates: the nearest
@@ -126,6 +129,7 @@ class Space:
         return [self.envelope.clamp(knobs) for knobs in out]
 
     def handles_of(self, knobs: list[dict[str, float]]) -> list[dict[str, float]]:
+        """Every design's handles from its knobs."""
         return [
             handles_of(self.handles[design["base"]], one, self.rules)
             for design, one in zip(self.designs, knobs, strict=True)
@@ -161,11 +165,13 @@ def band_loss(score: float, games: int, band) -> float:
 
 
 class DesignArena:
-    """A fixed arena of SLOTS type slots and BLOCKS matchups a batch: one player per slot
+    """A fixed arena of SLOTS type slots and ARENA_BLOCKS matchups a batch: one player per slot
     (every ship that slot's type), and mixed teams added as needed. `play(card, matchups)`
-    writes the card in place and plays the matchups, BLOCKS at a time."""
+    writes the card in place and plays the matchups, ARENA_BLOCKS at a time."""
 
     def __init__(self, preset: str, device: torch.device, block_games: int = BLOCK_GAMES):
+        from bnb.controllers.scripted_defaults import MODE_DEFAULTS
+
         self.game = api.PRESETS[preset]
         self.players = [Player(f"slot {i}", rung=Rung(1.0), ship_type=i) for i in range(SLOTS)]
         # the build card: the P-51D (15 Hz, the fastest rate a design may fire) in every
@@ -176,10 +182,18 @@ class DesignArena:
             self.players,
             self.game,
             device,
-            ArenaConfig(blocks=BLOCKS, block_environments=block_games),
+            ArenaConfig(blocks=ARENA_BLOCKS, block_environments=block_games),
             card=card,
+            doctrine=MODE_DEFAULTS.sets[preset],
         )
         self.device = device
+
+    def set_doctrine(self, slot: int, parameters) -> None:
+        """The scripted parameters a slot's player flies with (its type's doctrine; None: the
+        preset's set), used from the next batch on (written in place: no recompile)."""
+        self.arena.players[slot] = dataclasses.replace(
+            self.arena.players[slot], parameters=parameters
+        )
 
     def player(self, lineup: tuple[int, ...]) -> int:
         """The index of a player whose team flies this lineup (added the first time)."""
@@ -191,14 +205,16 @@ class DesignArena:
         self.arena.team_types.append(lineup)
         return len(self.arena.players) - 1
 
-    def play(self, card: ShipTypes, matchups: list[tuple[int, int]]) -> np.ndarray:
-        """(len(matchups), 3) each matchup's first player's wins, ties and losses."""
-        self.arena.set_card(card)
+    def play(self, card: ShipTypes | None, matchups: list[tuple[int, int]]) -> np.ndarray:
+        """(len(matchups), 3) each matchup's first player's wins, ties and losses (with this
+        card written first; None: the card already written)."""
+        if card is not None:
+            self.arena.set_card(card)
         out = []
-        for start in range(0, len(matchups), BLOCKS):
-            chunk = list(matchups[start : start + BLOCKS])
+        for start in range(0, len(matchups), ARENA_BLOCKS):
+            chunk = list(matchups[start : start + ARENA_BLOCKS])
             real = len(chunk)
-            chunk += [(0, 1)] * (BLOCKS - real)  # padding, not read
+            chunk += [(0, 1)] * (ARENA_BLOCKS - real)  # padding, not read
             counts = self.arena.play(chunk).numpy()
             out.append(counts[:real])
         return np.concatenate(out)
@@ -247,6 +263,7 @@ class CMA:
         self.rng = np.random.default_rng(seed + 7919 * self.generation)
 
     def state(self) -> dict:
+        """The optimiser's state, as JSON (`CMA(..., state=...)` resumes it)."""
         return dict(
             mean=self.mean.tolist(),
             sigma=self.sigma,
@@ -266,6 +283,7 @@ class CMA:
         return samples
 
     def tell(self, samples: list[np.ndarray], losses: list[float]) -> None:
+        """Update the mean, the step size and the covariance from the samples' losses."""
         order = np.argsort(losses)[: self.mu]
         chosen = np.array([samples[i] for i in order])
         old = self.mean
@@ -298,6 +316,7 @@ class CMA:
 
 
 def setup(spec: dict):
+    """The search space of a spec: the set's handles, the envelope and the rules."""
     handles = set_handles()
     game = api.PRESETS[spec.get("preset", "real_scale_deathmatch")]
     rules = api.rules_of(game)
@@ -322,6 +341,7 @@ def edge_matchups(designs: int, edges: list[tuple[int, int]], offset: int):
 
 
 def search(args) -> None:
+    """The `search` command (the module docstring)."""
     spec = json.loads(pathlib.Path(args.spec).read_text())
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -424,6 +444,7 @@ def best_of(log_path: pathlib.Path, last: int = 5) -> dict:
 
 
 def check(args) -> None:
+    """The `check` command (the module docstring)."""
     spec = json.loads(pathlib.Path(args.spec).read_text())
     out = pathlib.Path(args.out)
     space = setup(spec)
@@ -722,6 +743,7 @@ def summary(args) -> None:
 
 
 def main() -> None:
+    """The commands the module describes."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
     one = sub.add_parser("search")
