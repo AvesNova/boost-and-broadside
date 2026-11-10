@@ -8,3 +8,11 @@ deathmatch_40v40_arena: batch 4, 2048 games, the largest standard error 245.7 (t
 deathmatch_40v40_arena: batch 5, 2560 games, the largest standard error 245.7 (the batch took 176 s); done about 13:43 (3 batches), by 13:43 at the latest (3 batches)
 deathmatch_40v40_arena: batch 6, 3072 games, the largest standard error 245.7 (the batch took 176 s); done about 13:40 (2 batches), by 13:40 at the latest (2 batches)
 deathmatch_40v40_arena: batch 7, 3584 games, the largest standard error 245.7 (the batch took 176 s); done about 13:39 (1 batches), by 13:39 at the latest (1 batches)
+deathmatch_40v40_arena: batch 8, 4096 games, the largest standard error 245.7 (the batch took 176 s); done about 13:38 (0 batches), by 13:38 at the latest (0 batches)
+deathmatch_40v40_arena runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average   2445.0 +- 245.7    2112 games
+deathmatch_40v40_arena scripted                                                       1000.0 +-   0.0    4032 games
+deathmatch_40v40_arena runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average   -439.5 +- 245.7    2048 games
+frontline_40v40_arena runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average   1040.6 +-  19.2     384 games
+frontline_40v40_arena scripted                                                       1000.0 +-   0.0     960 games
+frontline_40v40_arena runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average    526.2 +-  27.5     704 games
+runs/ratings/fleet3-40v40-arena/artifacts/ratings/20261110-133812
