@@ -827,3 +827,15 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   scripted. Plot `results/gpu-box/curve-tournament10.png`. Noted: the nearest model's pair
   features (from relational) have no neighbour ship type, shield or energy (the own ship's type
   only); every run is 3 fighters + 2 heavies per team (default `team_types`).
+- **17:20 KST The author: crossover fights and zero-shot fleet sizes** (5v5, 10v10, 20v20, 40v40;
+  both the training arena and the training density; best checkpoints: champion and null RL 180.4M
+  uniform, nearest RL 40.9M uniform; deathmatch target per enemy fleet with unequal teams).
+  Map size never varied in training (`mixed` mixes modes only; map scale 1.0 in every game).
+  Fleet presets added (8c0bcc33; density variant: radius 2600 sqrt(n/5), 10 fields zooming with
+  the arena, the game's map-scale convention). Smoke test at 40v40 (512 games per mode, +-100-250):
+  deathmatch in the 2600 m arena champion 2385 / null 2338 / null RL 20M 1440 / nearest 156;
+  **frontline at density every trained agent ~140-270 vs scripted 1000** (to be checked); 111 s
+  per 256 games after a 7-17 min compile. Note: the scripted agent plays its deathmatch_wide set
+  beyond 4617 m (20v20 and 40v40 density deathmatch). `fleet.sh` started: one field per size and
+  variant (scripted, its temperature ladder below, the null's RL 20/40/80/180M above, the three
+  best). Bench + crossover command delegated to a build agent (worktree feat/crossover).
