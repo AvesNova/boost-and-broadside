@@ -893,3 +893,9 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   10, 20, 40 ships) and `fleet3.sh` (20v20 reusing its games, 40v40) started; round15's own copy of
   the ratings listed a not-yet-existing --reuse directory and failed at once (its "fleet3" lines
   at 11:43 UTC). Expected: everything by ~23:30 KST +-45 min.
+- **21:00 KST The author: win rates at fixed odds instead of a crossover** (a paper's standard
+  measure). `gpu-box/fixed_odds.py`: n network ships vs n x 1, 1.25, 1.5, 2 scripted, deathmatch
+  in the training arena, one engine at 2n (one compile), 2 of each batch's 8 blocks per ratio,
+  128 games per ratio (10: 1 batch of 8 x 64; 20: 2 of 8 x 32; 40: 4 of 8 x 16); win rate and score
+  with 95% Wilson intervals. `round16.sh` replaced round 15's crossover search (stopped in its first
+  compile; `fleet3.sh` ratings untouched).
