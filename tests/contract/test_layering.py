@@ -69,9 +69,22 @@ def _dotted(node: ast.expr) -> str:
     return ".".join(reversed(parts))
 
 
+# a spawned child process's target: its process's entry point (the play shell's work aside)
+CHILD_ENTRY_POINTS = {
+    ("game/handling/characteristics.py", "_measure_child"),
+    ("runtime/realtime.py", "_build"),
+}
+
+
 def _entry_point(path: pathlib.Path, function: str | None) -> bool:
-    """`bnb.cli`, a package's `__main__`, or a module's `main` function."""
-    return path == SRC / "cli.py" or path.name == "__main__.py" or function == "main"
+    """`bnb.cli`, a package's `__main__`, a module's `main` function, or a child process's
+    target (`CHILD_ENTRY_POINTS`)."""
+    return (
+        path == SRC / "cli.py"
+        or path.name == "__main__.py"
+        or function == "main"
+        or (path.relative_to(SRC).as_posix(), function) in CHILD_ENTRY_POINTS
+    )
 
 
 def _calls_and_assignments(tree: ast.AST):
