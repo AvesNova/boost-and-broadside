@@ -277,6 +277,9 @@ self-play), so it is the search's direction, not one candidate's.
 The pass did not cover the other types, the timing parameters' bounds, the decision floors
 or the chaser; the backlog holds a proper retune (`docs/rewrite/backlog.md`).
 
+With these sets the scripted agent has flown every type against every other: [The ship-type
+tournament](real-scale-tournament.md).
+
 ## What is not scaled
 
 The model and the learner (Yemong's position and velocity codes, the delta and correction

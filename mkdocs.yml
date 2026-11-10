@@ -119,6 +119,7 @@ nav:
           - Mixed batches: explanation/game/mixed-batches.md
           - The ship card: explanation/game/ship-card.md
           - The real-scale variant: explanation/game/real-scale.md
+          - The ship-type tournament: explanation/game/real-scale-tournament.md
       - The model (Yemong): explanation/yemong.md
       - The training loop: explanation/training-loop.md
       - The learner: explanation/learner.md

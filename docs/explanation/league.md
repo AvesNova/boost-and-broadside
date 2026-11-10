@@ -314,6 +314,16 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
   budget is spent, at the mean batch's time.
 - **A guard:** a batch whose games run past the game clock's ticks (plus two segments)
   raises rather than playing on.
+- **Other fields.** `rate` takes another anchor (rated 1000), the balanced allocation
+  (`TournamentConfig.allocation = "balanced"`, `bnb.league.tournament.balanced_blocks`:
+  each block to the allowed pair with the fewest games, so a budget of every pair's games
+  is a full round robin) and, with `statistics`, keeps each block's first-game statistics
+  in the record (`bnb.league.matches.STATISTICS`: kills, deaths, shots, hits, living
+  ship-ticks and their summed speed, per side). A player may fly one ship type with every
+  ship of its team (`Player.ship_type`; `bnb.league.matches.ship_type_players` gives the
+  scripted agent flying each type of a set); the engine then sets each environment's ship
+  types per team (`bnb.game.api.reset`'s `ship_type`). The [ship-type
+  tournament](game/real-scale-tournament.md) is such a field.
 
 <!-- not-runnable: needs CUDA and a run -->
 ```bash

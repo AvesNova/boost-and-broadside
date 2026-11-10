@@ -18,14 +18,16 @@ against the anchor, the P-51D at 1000) with their standard errors and 95% interv
 (1.96 standard errors, relative to the anchor), each type's score, wins, draws and losses,
 kills and deaths a game, kill ratio, shots a game, hit share and mean speed, and every
 pair's results: `ratings.csv`, `pairs.csv` and `tournament.json` in `--out`, and the table
-as Markdown (`table.md`, also printed).
+as Markdown (printed).
 
 `analyse`: from `--out`'s `tournament.json` and the set's ship files, each handle's and a
 few dimensionless groups' correlation with the Elo (Pearson and Spearman, over the types),
 and how well a small linear model predicts the Elo: ridge regression on every feature
 (standardised; its penalty chosen by leave-one-out) and every one-, two- and
 three-feature least-squares model, each scored by its leave-one-out error against the
-mean's; `analysis.json` and `analysis.md` in `--out`.
+mean's, and the same searches on the Elo shuffled across the types (what they find in
+noise); `analysis.json` in `--out` (with `--exclude`, a suffix naming the types left out),
+and the tables as Markdown (printed).
 
 It rates a type as the scripted agent, tuned on the P-51D, flies it: not the type's
 ceiling.
@@ -207,7 +209,6 @@ def report(args) -> None:
         f"| {row['mean_speed']:.0f} |\n"
         for rank, row in enumerate(rows, 1)
     )
-    (out / "table.md").write_text(header + body)
     print(json.dumps(meta))
     print(header + body, end="")
 
@@ -281,6 +282,9 @@ def _loo_error(x: torch.Tensor, y: torch.Tensor, penalty: float = 0.0) -> float:
     for left in range(len(y)):
         keep = torch.arange(len(y)) != left
         train, target = x[keep], y[keep]
+        if x.shape[1] == 0:  # the mean alone
+            errors.append(float(target.mean() - y[left]))
+            continue
         mean, scale = train.mean(0), train.std(0).clamp_min(1e-12)
         design = (train - mean) / scale
         slopes = torch.linalg.solve(
@@ -296,6 +300,7 @@ def analyse(args) -> None:
     """The correlations and models the module describes."""
     out = pathlib.Path(args.out)
     rated = json.loads((out / "tournament.json").read_text())["ratings"]
+    rated = [row for row in rated if row["type"] not in args.exclude]
     table = features(api.PRESETS[PRESET].ship_set)
     names = [row["type"] for row in rated]
     elo = torch.tensor([row["elo"] for row in rated], dtype=torch.float64)
@@ -321,9 +326,12 @@ def analyse(args) -> None:
     # what the best-of-many subset search finds in pure noise: the same search over the Elo
     # shuffled across the types
     generator = torch.Generator().manual_seed(0)
-    shuffled = []
+    shuffled, ridge_shuffled = [], []
     for _ in range(args.shuffles):
         noise = elo[torch.randperm(len(elo), generator=generator)]
+        ridge_shuffled.append(
+            min(_loo_error(x, noise, p) for p in penalties) / _loo_error(x[:, :0], noise)
+        )
         shuffled.append(
             min(
                 _loo_error(x[:, list(chosen)], noise) / _loo_error(x[:, :0], noise)
@@ -340,10 +348,13 @@ def analyse(args) -> None:
             str(size): dict(loo_rmse=error, features=chosen)
             for size, (error, chosen) in best.items()
         },
+        excluded=list(args.exclude),
         shuffled_best_ratio=sorted(shuffled),
+        shuffled_ridge_ratio=sorted(ridge_shuffled),
         correlations=correlations,
     )
-    (out / "analysis.json").write_text(json.dumps(result, indent=1) + "\n")
+    suffix = "-without-" + "-".join(args.exclude).lower().replace(" ", "") if args.exclude else ""
+    (out / f"analysis{suffix}.json").write_text(json.dumps(result, indent=1) + "\n")
     lines = [
         "| Feature | Pearson r | Spearman rho |",
         "|---|---|---|",
@@ -360,9 +371,11 @@ def analyse(args) -> None:
         )
         + f". The best one- or two-feature model on shuffled Elo ({args.shuffles} shuffles): "
         f"median {sorted(shuffled)[len(shuffled) // 2]:.2f} of the mean's error, "
-        f"5th percentile {sorted(shuffled)[len(shuffled) // 20]:.2f}.",
+        f"5th percentile {sorted(shuffled)[len(shuffled) // 20]:.2f}; ridge on shuffled Elo: "
+        f"median {sorted(ridge_shuffled)[len(ridge_shuffled) // 2]:.2f}, 5th percentile "
+        f"{sorted(ridge_shuffled)[len(ridge_shuffled) // 20]:.2f}"
+        + (f" (without {', '.join(args.exclude)})." if args.exclude else "."),
     ]
-    (out / "analysis.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))
 
 
@@ -382,6 +395,7 @@ def main() -> None:
     analysing = commands.add_parser("analyse")
     analysing.add_argument("--out", required=True)
     analysing.add_argument("--shuffles", type=int, default=200)
+    analysing.add_argument("--exclude", nargs="*", default=[], help="types left out")
     args = parser.parse_args()
     dict(play=play, report=report, analyse=analyse)[args.command](args)
 
