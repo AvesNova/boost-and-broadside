@@ -908,3 +908,12 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   frontline 20v20 ratings came from the reused games alone (`fleet3b.sh`); 40v40 capped at 4096
   games per mode (the fixed-odds 1:1 gives the champion's 40-ship win rate directly).
 - **22:08 KST Fixed odds at 40 ships:** champion 40:40 0.97, 48:40 0.53, **60:40 0.03**, **80:40 0.00**; nearest 0.00 at every ratio, 40:40 included. Fixed odds complete (n = 10, 20, 40; n = 5 from the crossover grid).
+- **22:40 KST Evaluation done.** 40v40 training-arena ratings (champion, nearest, scripted; 4096
+  games per mode at most): frontline champion **526 +- 28** (below scripted), nearest 1041 +- 19;
+  deathmatch saturated both ways (champion 2445 +- 246, nearest -440 +- 246). Summary figure
+  `results/gpu-box/fleet-size-zero-shot.png` (`gpu-box/fleet_figure.py`): Elo by fleet size per mode
+  (hollow = saturated bound) and deathmatch win rates at fixed odds. Findings: deathmatch skill
+  transfers zero-shot to 20 ships for Yemong (~70% wins outnumbered 1.5:1 at 10 and 20 ships) and
+  breaks at 40 in the 2600 m arena (1.2:1 a coin flip, 1.5:1 3%); the nearest MLP fails as fleets
+  grow even at even numbers (89% / 31% / 0% at 10 / 20 / 40); crowded frontline erodes the
+  champion's edge (1997 / 1875 / 1134 / 526 at 5 / 10 / 20 / 40) below the nearest MLP's at 40.
