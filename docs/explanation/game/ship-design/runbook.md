@@ -128,7 +128,7 @@ direction the exact cards went round, `"edges_are_cycle": true`, and a smaller `
       --specs A.json,B.json,C.json --outs runs/.../A,runs/.../B,runs/.../C \
       --names N1,N2,N3,N4,N5,N6,N7 --write docs/explanation/game/ship-design/stage-2/seven.json
 
-then steps 1 to 4 with `seven.json` (21 edges, 5 candidates a generation, about 3 minutes a
+then steps 1 to 4 with that spec (21 edges, 5 candidates a generation, about 3 minutes a
 generation). Its check includes the mixed-team test: the summary's `mixed_pass` must be true.
 
 ## 4. Frontline
