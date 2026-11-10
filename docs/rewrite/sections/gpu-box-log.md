@@ -695,3 +695,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   in its first 10M and still climbing at 121.6M; both pass the MVP's ~1500 by RL ~40M; the null
   leads early in RL, the champion pulls ahead after ~60M (+106 uniform, +190 live at 121.6M); in RL
   the champion's live policy is its best (the averages lag a still-improving policy). Deathmatch next.
+- **10:35 KST Round 11 queued (the author): after tournament 7, both RL runs resumed to 172 updates (180.4M)**, null then champion (`round11.sh`); ~1.6 h + ~1.9 h.
