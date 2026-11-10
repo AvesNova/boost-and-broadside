@@ -1,6 +1,6 @@
 {
  "name": "2026-11-09-rl-deadreckon-split-hiddenphysics",
- "status": "running",
+ "status": "finished",
  "pid": 595669,
  "host": "e98bed47fc73",
  "message": null,
@@ -26,12 +26,11 @@
  },
  "checkpoint_every": 16777216,
  "update_policies": true,
- "newest_checkpoint": 167772160,
- "final_checkpoint": 121634816,
+ "newest_checkpoint": 180355072,
+ "final_checkpoint": 180355072,
  "checkpoint_ordinals": {
-  "121634816": 8,
-  "150994944": 10,
-  "167772160": 11
+  "167772160": 11,
+  "180355072": 12
  },
  "probe": {
   "allocated": 16735010304,
@@ -84,8 +83,8 @@
    "dirty": false,
    "start_step": 121634816,
    "start_time": "2026-11-10T03:04:18+00:00",
-   "end_step": null,
-   "end_time": null,
+   "end_step": 180355072,
+   "end_time": "2026-11-10T04:54:49+00:00",
    "overrides": {
     "updates": 172
    },
@@ -94,7 +93,7 @@
   }
  ],
  "stop_request": null,
- "hours": 5.65760804994989,
+ "hours": 6.036190384996848,
  "skipped_steps": 0,
  "snapshot_every": 16777216
 }
