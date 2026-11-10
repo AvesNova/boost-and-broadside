@@ -815,3 +815,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   to 0.127 / 0.128, nearest 0.160 / 0.124), the Yemong lane ratings sag late too: nothing the Yemong
   runs do not show. Lane ratings are against the run's own league, so tournament 10 (started 15:46,
   78 players, one field) measures whether it truly peaks early.
+- **16:30 KST Tournament 10 frontline converged** (largest error 31): RL 180.4M uniform champion 1937, null 1802, nearest 1130 (its RL uniform peaks at 1255 ~40M into RL, then 1125-1130; its live 1065 at 60.8M, 801 at 180.4M); BC 120M uniform 992 / 974 / 579 (nearest live 915). Preview plot `results/gpu-box/curve-tournament10-frontline-preview.png` (`gpu-box/curve3.py`, three lines; frontline only until deathmatch lands). The run's compile cache had been pruned by the sync's disk guard: deathmatch logs TritonBundler 'Cubin file not found' warnings (harmless recompiles).
