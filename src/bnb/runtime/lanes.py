@@ -237,6 +237,12 @@ class _Decision(torch.nn.Module):
         return action.packed(), carry
 
 
+# A run of lane players (`LaneSeat.network_runs`) takes the next player while its rows are
+# within this fraction of the run's first player's: the padding it costs against the network
+# copy a run of its own would add to the compiled stage.
+RUN_SLACK = 0.1
+
+
 class LaneSeat:
     """Every lane row's player, in one controller. controller: a network controller of the
     live policy's architecture over a model of its own (the forward swaps each player's
@@ -278,24 +284,43 @@ class LaneSeat:
             name: (player == players.index(name)).nonzero().flatten().to(device)
             for name in self.networks
         }
-        # The network players ordered by their row count, so the players with as many rows
-        # as each other are a contiguous run of the stacked weights: each run is one
-        # stacked forward over its players' rows (`bnb.runtime.stacked`), with no padding
-        # (the live policy plays in more lanes than the league's slots), and its weights are
-        # a slice of the stack, not a copy.
+        # The network players ordered by their row count, and cut into runs of players with
+        # nearly as many rows as each other (within RUN_SLACK of the run's first): each run
+        # is one stacked forward over its players' rows (`bnb.runtime.stacked`), each padded
+        # to the run's first with its own first row, and its weights are a slice of the
+        # stack, not a copy. One run for every player padded the league's slots to the live
+        # policy's rows (about half again as many network rows); a run per exact count put
+        # a network copy per count into the compiled stage (counts differ by a few rows).
         self.networks = tuple(sorted(self.networks, key=lambda name: -rows_of[name].numel()))
         self.network_rows = [rows_of[name] for name in self.networks]
-        self.network_runs: list[tuple[slice, torch.Tensor]] = []  # (players, their rows)
+        # (players, (players, most) rows padded, the real entries' flat positions, their rows)
+        self.network_runs: list[tuple[slice, torch.Tensor, torch.Tensor, torch.Tensor]] = []
         start = 0
         while start < len(self.networks):
-            count = self.network_rows[start].numel()
-            end = start
-            while end < len(self.networks) and self.network_rows[end].numel() == count:
+            most = self.network_rows[start].numel()
+            end = start + 1
+            while end < len(self.networks) and (
+                self.network_rows[end].numel() * (1.0 + RUN_SLACK) >= most
+            ):
                 end += 1
-            if count:
-                self.network_runs.append(
-                    (slice(start, end), torch.stack(self.network_rows[start:end]))
+            if most:
+                run = self.network_rows[start:end]
+                index = torch.stack(
+                    [
+                        torch.cat(
+                            [r, (r[:1] if r.numel() else r.new_zeros(1)).expand(most - r.numel())]
+                        )
+                        for r in run
+                    ]
                 )
+                # made here, not in the graph: a boolean mask's size is data-dependent there
+                kept = torch.cat(
+                    [
+                        position * most + torch.arange(r.numel(), device=device)
+                        for position, r in enumerate(run)
+                    ]
+                )
+                self.network_runs.append((slice(start, end), index, kept, index.reshape(-1)[kept]))
             start = end
         ladder = torch.tensor([ladder_rung(name) is not None for name in players])
         ladder_rows = ladder[player].nonzero().flatten()
@@ -347,7 +372,7 @@ class LaneSeat:
         S = obs.ships.shape[-2] // 2
         action = torch.zeros((self.rows, S, 3), dtype=torch.int32, device=reset.device)
         model_carry = carry.model
-        for players, index in self.network_runs:  # (players, n) rows, a stacked forward
+        for players, index, kept, rows in self.network_runs:  # a stacked forward each
             inputs = _pytree.tree_map_only(
                 torch.Tensor,
                 lambda x, index=index: x[index.reshape(-1)].unflatten(0, index.shape),
@@ -355,11 +380,12 @@ class LaneSeat:
             )
             weights = {name: value[players] for name, value in self.parameters.items()}
             packed, chosen = stacked.call(self.decision, weights, inputs)
-            rows = index.reshape(-1)
-            action = action.index_copy(0, rows, packed.flatten(0, 1))
+            action = action.index_copy(0, rows, packed.flatten(0, 1).index_select(0, kept))
             if chosen is not None:
                 model_carry = _pytree.tree_map(
-                    lambda whole, part, rows=rows: whole.index_copy(0, rows, part.flatten(0, 1)),
+                    lambda whole, part, rows=rows, kept=kept: whole.index_copy(
+                        0, rows, part.flatten(0, 1).index_select(0, kept)
+                    ),
                     model_carry,
                     chosen,
                 )

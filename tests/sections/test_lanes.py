@@ -755,9 +755,9 @@ def test_the_uniform_averages_games_count_once_it_has_started():
 
 @pytest.mark.slow
 def test_a_lane_seat_with_unequal_players_compiles_whole_and_plays_as_uncompiled():
-    """The networks run as stacked forwards, one per run of players with as many rows as
-    each other (`LaneSeat.network_runs`): compiled whole (no data-dependent shapes in the
-    graph), each row gets what the uncompiled step gives."""
+    """The networks run as stacked forwards, one per run of players with nearly as many
+    rows as each other (`LaneSeat.network_runs`): compiled whole (no data-dependent shapes
+    in the graph), each row gets what the uncompiled step gives."""
     from bnb.contracts import Obs
     from bnb.runtime.realtime import Realtime
 
@@ -767,7 +767,7 @@ def test_a_lane_seat_with_unequal_players_compiles_whole_and_plays_as_uncompiled
     )
     seat = _seat(lanes)
     assert [rows.numel() for rows in seat.network_rows] == [4, 2]  # live plays twice
-    assert [index.shape for _, index in seat.network_runs] == [(1, 4), (1, 2)]
+    assert [run[1].shape for run in seat.network_runs] == [(1, 4), (1, 2)]
     views = seat.rows
     sim = Realtime(GameConfig(2, 2, 1500.0), compiled=False)
     obs = Obs(
