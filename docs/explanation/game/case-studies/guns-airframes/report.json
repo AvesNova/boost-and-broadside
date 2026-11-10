@@ -1,0 +1,568 @@
+{
+ "games": 20736,
+ "slots": [
+  {
+   "slot": "la7: the La-7's gun",
+   "elo": 0.0,
+   "stderr": 0.0,
+   "against_baseline": 0.0
+  },
+  {
+   "slot": "la7: 5 Hz",
+   "elo": -209.37328371418613,
+   "stderr": 13.610379195618144,
+   "against_baseline": -209.37328371418613
+  },
+  {
+   "slot": "la7: 15 Hz",
+   "elo": 60.03944240189944,
+   "stderr": 12.731106563566092,
+   "against_baseline": 60.03944240189944
+  },
+  {
+   "slot": "la7: damage x1.3, muzzle x0.72",
+   "elo": -328.16147208527894,
+   "stderr": 15.487598427440801,
+   "against_baseline": -328.16147208527894
+  },
+  {
+   "slot": "la7: muzzle x1.13",
+   "elo": 231.04320409322915,
+   "stderr": 14.413448205632507,
+   "against_baseline": 231.04320409322915
+  },
+  {
+   "slot": "la7: dispersion x2",
+   "elo": -1.2178267800432976,
+   "stderr": 12.510376116408892,
+   "against_baseline": -1.2178267800432976
+  },
+  {
+   "slot": "a6m5: the La-7's gun",
+   "elo": -350.16296407158916,
+   "stderr": 10.307022976727879,
+   "against_baseline": 0.0
+  },
+  {
+   "slot": "a6m5: 5 Hz",
+   "elo": -521.6316873324496,
+   "stderr": 16.608059283142573,
+   "against_baseline": -171.46872326086043
+  },
+  {
+   "slot": "a6m5: 15 Hz",
+   "elo": -315.6665425165478,
+   "stderr": 16.358952102642863,
+   "against_baseline": 34.496421555041366
+  },
+  {
+   "slot": "a6m5: damage x1.3, muzzle x0.72",
+   "elo": -709.8813591740642,
+   "stderr": 19.176141691264128,
+   "against_baseline": -359.71839510247503
+  },
+  {
+   "slot": "a6m5: muzzle x1.13",
+   "elo": -131.6523426389258,
+   "stderr": 17.434544133991032,
+   "against_baseline": 218.51062143266336
+  },
+  {
+   "slot": "a6m5: dispersion x2",
+   "elo": -346.7809279645796,
+   "stderr": 16.393612505002555,
+   "against_baseline": 3.382036107009583
+  },
+  {
+   "slot": "p38l: the La-7's gun",
+   "elo": -55.94661695327117,
+   "stderr": 8.15867140109299,
+   "against_baseline": 0.0
+  },
+  {
+   "slot": "p38l: 5 Hz",
+   "elo": -124.63168020828027,
+   "stderr": 14.854939504049424,
+   "against_baseline": -68.68506325500911
+  },
+  {
+   "slot": "p38l: 15 Hz",
+   "elo": -54.43498789939164,
+   "stderr": 14.980237195149519,
+   "against_baseline": 1.511629053879524
+  },
+  {
+   "slot": "p38l: damage x1.3, muzzle x0.72",
+   "elo": -209.49427119884834,
+   "stderr": 15.62021698639499,
+   "against_baseline": -153.54765424557718
+  },
+  {
+   "slot": "p38l: muzzle x1.13",
+   "elo": 157.97419944142337,
+   "stderr": 16.20155827360915,
+   "against_baseline": 213.92081639469453
+  },
+  {
+   "slot": "p38l: dispersion x2",
+   "elo": -76.21398705547217,
+   "stderr": 14.763384928815421,
+   "against_baseline": -20.267370102201006
+  },
+  {
+   "slot": "p47d: the La-7's gun",
+   "elo": 13.101181235094119,
+   "stderr": 8.280458187655265,
+   "against_baseline": 0.0
+  },
+  {
+   "slot": "p47d: 5 Hz",
+   "elo": -218.04849506213517,
+   "stderr": 16.319725961255447,
+   "against_baseline": -231.1496762972293
+  },
+  {
+   "slot": "p47d: 15 Hz",
+   "elo": 57.978779742240604,
+   "stderr": 15.237081361069642,
+   "against_baseline": 44.87759850714649
+  },
+  {
+   "slot": "p47d: damage x1.3, muzzle x0.72",
+   "elo": -202.35994204934963,
+   "stderr": 15.88440460070665,
+   "against_baseline": -215.46112328444374
+  },
+  {
+   "slot": "p47d: muzzle x1.13",
+   "elo": 269.20054299928836,
+   "stderr": 16.825190200369462,
+   "against_baseline": 256.0993617641942
+  },
+  {
+   "slot": "p47d: dispersion x2",
+   "elo": -2.153262875722704,
+   "stderr": 15.128258099213097,
+   "against_baseline": -15.254444110816824
+  }
+ ],
+ "models": {
+  "la7": {
+   "elo_per_doubling": {
+    "fire_rate": 179.36645710010794,
+    "damage_per_second": 773.6899953274159,
+    "muzzle_speed": 1310.3423944242631,
+    "dispersion": -1.2178267800432954
+   },
+   "rms_residual": 22.041294893939497
+  },
+  "a6m5": {
+   "elo_per_doubling": {
+    "fire_rate": 142.13771093127028,
+    "damage_per_second": 601.3233752123799,
+    "muzzle_speed": 1239.2648899539772,
+    "dispersion": 3.3820361070095837
+   },
+   "rms_residual": 23.191287618611806
+  },
+  "p38l": {
+   "elo_per_doubling": {
+    "fire_rate": 52.04307683235687,
+    "damage_per_second": 1113.4185627685315,
+    "muzzle_speed": 1213.2341908602878,
+    "dispersion": -20.267370102201006
+   },
+   "rms_residual": 13.625920814703068
+  },
+  "p47d": {
+   "elo_per_doubling": {
+    "fire_rate": 187.6179009017515,
+    "damage_per_second": 1249.3631814024986,
+    "muzzle_speed": 1452.4463172230323,
+    "dispersion": -15.254444110816824
+   },
+   "rms_residual": 31.894019378132292
+  },
+  "pooled": {
+   "elo_per_doubling": {
+    "fire_rate": 140.94384940912997,
+    "damage_per_second": 955.6714606027786,
+    "muzzle_speed": 1303.7511394595854,
+    "dispersion": -8.12037497793425
+   },
+   "rms_residual": 49.69983712228115
+  }
+ },
+ "cycles": [
+  {
+   "cycle": [
+    "p38l: the La-7's gun",
+    "p38l: dispersion x2",
+    "p38l: 15 Hz"
+   ],
+   "weakest": 0.50390625
+  }
+ ],
+ "pairs": [
+  {
+   "first": "la7: the La-7's gun",
+   "second": "la7: 5 Hz",
+   "games": 512,
+   "score": 0.7626953125
+  },
+  {
+   "first": "la7: the La-7's gun",
+   "second": "la7: 15 Hz",
+   "games": 448,
+   "score": 0.40401785714285715
+  },
+  {
+   "first": "la7: the La-7's gun",
+   "second": "la7: damage x1.3, muzzle x0.72",
+   "games": 576,
+   "score": 0.8758680555555556
+  },
+  {
+   "first": "la7: the La-7's gun",
+   "second": "la7: muzzle x1.13",
+   "games": 576,
+   "score": 0.2152777777777778
+  },
+  {
+   "first": "la7: the La-7's gun",
+   "second": "la7: dispersion x2",
+   "games": 448,
+   "score": 0.5033482142857143
+  },
+  {
+   "first": "la7: the La-7's gun",
+   "second": "a6m5: the La-7's gun",
+   "games": 1856,
+   "score": 0.8728448275862069
+  },
+  {
+   "first": "la7: the La-7's gun",
+   "second": "p38l: the La-7's gun",
+   "games": 1280,
+   "score": 0.591015625
+  },
+  {
+   "first": "la7: the La-7's gun",
+   "second": "p47d: the La-7's gun",
+   "games": 1344,
+   "score": 0.48586309523809523
+  },
+  {
+   "first": "la7: 5 Hz",
+   "second": "la7: 15 Hz",
+   "games": 128,
+   "score": 0.19921875
+  },
+  {
+   "first": "la7: 5 Hz",
+   "second": "la7: damage x1.3, muzzle x0.72",
+   "games": 320,
+   "score": 0.6265625
+  },
+  {
+   "first": "la7: 5 Hz",
+   "second": "la7: dispersion x2",
+   "games": 128,
+   "score": 0.2734375
+  },
+  {
+   "first": "la7: 15 Hz",
+   "second": "la7: muzzle x1.13",
+   "games": 192,
+   "score": 0.2421875
+  },
+  {
+   "first": "la7: 15 Hz",
+   "second": "la7: dispersion x2",
+   "games": 192,
+   "score": 0.609375
+  },
+  {
+   "first": "la7: damage x1.3, muzzle x0.72",
+   "second": "la7: muzzle x1.13",
+   "games": 64,
+   "score": 0.03125
+  },
+  {
+   "first": "la7: damage x1.3, muzzle x0.72",
+   "second": "la7: dispersion x2",
+   "games": 128,
+   "score": 0.0703125
+  },
+  {
+   "first": "la7: muzzle x1.13",
+   "second": "la7: dispersion x2",
+   "games": 128,
+   "score": 0.7734375
+  },
+  {
+   "first": "a6m5: the La-7's gun",
+   "second": "a6m5: 5 Hz",
+   "games": 512,
+   "score": 0.7412109375
+  },
+  {
+   "first": "a6m5: the La-7's gun",
+   "second": "a6m5: 15 Hz",
+   "games": 448,
+   "score": 0.42075892857142855
+  },
+  {
+   "first": "a6m5: the La-7's gun",
+   "second": "a6m5: damage x1.3, muzzle x0.72",
+   "games": 576,
+   "score": 0.9010416666666666
+  },
+  {
+   "first": "a6m5: the La-7's gun",
+   "second": "a6m5: muzzle x1.13",
+   "games": 576,
+   "score": 0.2309027777777778
+  },
+  {
+   "first": "a6m5: the La-7's gun",
+   "second": "a6m5: dispersion x2",
+   "games": 448,
+   "score": 0.48549107142857145
+  },
+  {
+   "first": "a6m5: the La-7's gun",
+   "second": "p38l: the La-7's gun",
+   "games": 640,
+   "score": 0.1453125
+  },
+  {
+   "first": "a6m5: the La-7's gun",
+   "second": "p47d: the La-7's gun",
+   "games": 256,
+   "score": 0.056640625
+  },
+  {
+   "first": "a6m5: 5 Hz",
+   "second": "a6m5: 15 Hz",
+   "games": 128,
+   "score": 0.34375
+  },
+  {
+   "first": "a6m5: 5 Hz",
+   "second": "a6m5: damage x1.3, muzzle x0.72",
+   "games": 320,
+   "score": 0.73125
+  },
+  {
+   "first": "a6m5: 5 Hz",
+   "second": "a6m5: muzzle x1.13",
+   "games": 64,
+   "score": 0.046875
+  },
+  {
+   "first": "a6m5: 5 Hz",
+   "second": "a6m5: dispersion x2",
+   "games": 128,
+   "score": 0.26953125
+  },
+  {
+   "first": "a6m5: 15 Hz",
+   "second": "a6m5: damage x1.3, muzzle x0.72",
+   "games": 64,
+   "score": 0.953125
+  },
+  {
+   "first": "a6m5: 15 Hz",
+   "second": "a6m5: muzzle x1.13",
+   "games": 192,
+   "score": 0.2552083333333333
+  },
+  {
+   "first": "a6m5: 15 Hz",
+   "second": "a6m5: dispersion x2",
+   "games": 128,
+   "score": 0.52734375
+  },
+  {
+   "first": "a6m5: damage x1.3, muzzle x0.72",
+   "second": "a6m5: dispersion x2",
+   "games": 128,
+   "score": 0.1484375
+  },
+  {
+   "first": "a6m5: muzzle x1.13",
+   "second": "a6m5: dispersion x2",
+   "games": 128,
+   "score": 0.7890625
+  },
+  {
+   "first": "p38l: the La-7's gun",
+   "second": "p38l: 5 Hz",
+   "games": 448,
+   "score": 0.5825892857142857
+  },
+  {
+   "first": "p38l: the La-7's gun",
+   "second": "p38l: 15 Hz",
+   "games": 384,
+   "score": 0.4895833333333333
+  },
+  {
+   "first": "p38l: the La-7's gun",
+   "second": "p38l: damage x1.3, muzzle x0.72",
+   "games": 448,
+   "score": 0.7075892857142857
+  },
+  {
+   "first": "p38l: the La-7's gun",
+   "second": "p38l: muzzle x1.13",
+   "games": 576,
+   "score": 0.2404513888888889
+  },
+  {
+   "first": "p38l: the La-7's gun",
+   "second": "p38l: dispersion x2",
+   "games": 448,
+   "score": 0.5334821428571429
+  },
+  {
+   "first": "p38l: the La-7's gun",
+   "second": "p47d: the La-7's gun",
+   "games": 448,
+   "score": 0.4185267857142857
+  },
+  {
+   "first": "p38l: 5 Hz",
+   "second": "p38l: 15 Hz",
+   "games": 128,
+   "score": 0.35546875
+  },
+  {
+   "first": "p38l: 5 Hz",
+   "second": "p38l: damage x1.3, muzzle x0.72",
+   "games": 192,
+   "score": 0.6197916666666666
+  },
+  {
+   "first": "p38l: 5 Hz",
+   "second": "p38l: muzzle x1.13",
+   "games": 64,
+   "score": 0.1015625
+  },
+  {
+   "first": "p38l: 5 Hz",
+   "second": "p38l: dispersion x2",
+   "games": 128,
+   "score": 0.453125
+  },
+  {
+   "first": "p38l: 15 Hz",
+   "second": "p38l: damage x1.3, muzzle x0.72",
+   "games": 128,
+   "score": 0.69921875
+  },
+  {
+   "first": "p38l: 15 Hz",
+   "second": "p38l: muzzle x1.13",
+   "games": 192,
+   "score": 0.2109375
+  },
+  {
+   "first": "p38l: 15 Hz",
+   "second": "p38l: dispersion x2",
+   "games": 128,
+   "score": 0.49609375
+  },
+  {
+   "first": "p38l: damage x1.3, muzzle x0.72",
+   "second": "p38l: dispersion x2",
+   "games": 128,
+   "score": 0.3046875
+  },
+  {
+   "first": "p38l: muzzle x1.13",
+   "second": "p38l: dispersion x2",
+   "games": 128,
+   "score": 0.8046875
+  },
+  {
+   "first": "p47d: the La-7's gun",
+   "second": "p47d: 5 Hz",
+   "games": 512,
+   "score": 0.8232421875
+  },
+  {
+   "first": "p47d: the La-7's gun",
+   "second": "p47d: 15 Hz",
+   "games": 448,
+   "score": 0.46316964285714285
+  },
+  {
+   "first": "p47d: the La-7's gun",
+   "second": "p47d: damage x1.3, muzzle x0.72",
+   "games": 512,
+   "score": 0.7509765625
+  },
+  {
+   "first": "p47d: the La-7's gun",
+   "second": "p47d: muzzle x1.13",
+   "games": 640,
+   "score": 0.171875
+  },
+  {
+   "first": "p47d: the La-7's gun",
+   "second": "p47d: dispersion x2",
+   "games": 448,
+   "score": 0.5066964285714286
+  },
+  {
+   "first": "p47d: 5 Hz",
+   "second": "p47d: 15 Hz",
+   "games": 64,
+   "score": 0.265625
+  },
+  {
+   "first": "p47d: 5 Hz",
+   "second": "p47d: damage x1.3, muzzle x0.72",
+   "games": 256,
+   "score": 0.537109375
+  },
+  {
+   "first": "p47d: 5 Hz",
+   "second": "p47d: dispersion x2",
+   "games": 128,
+   "score": 0.18359375
+  },
+  {
+   "first": "p47d: 15 Hz",
+   "second": "p47d: damage x1.3, muzzle x0.72",
+   "games": 128,
+   "score": 0.859375
+  },
+  {
+   "first": "p47d: 15 Hz",
+   "second": "p47d: muzzle x1.13",
+   "games": 192,
+   "score": 0.2786458333333333
+  },
+  {
+   "first": "p47d: 15 Hz",
+   "second": "p47d: dispersion x2",
+   "games": 128,
+   "score": 0.61328125
+  },
+  {
+   "first": "p47d: damage x1.3, muzzle x0.72",
+   "second": "p47d: dispersion x2",
+   "games": 128,
+   "score": 0.30078125
+  },
+  {
+   "first": "p47d: muzzle x1.13",
+   "second": "p47d: dispersion x2",
+   "games": 128,
+   "score": 0.83203125
+  }
+ ]
+}

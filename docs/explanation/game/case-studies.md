@@ -225,4 +225,57 @@ Elo a doubling of the knee). The ships seldom hold more than half their store
 and gained 20 in the climb-and-turn study, within three errors of each other: the climb is a
 lever of at most a few tens of Elo either way, and its sign depends on the field.
 
-STUDIES
+## Guns on four airframes
+
+**Question.** Does a gun's value depend on the airframe that carries it? A gun that is worth
+more on one airframe than another is a lever for cycles; one that is worth the same
+everywhere is a pure rating.
+
+**Design.** The La-7's gun (10 Hz, 348 a second, 770 m/s, its dispersion) on the La-7, the
+Zero (the turner), the P-38L (the energy twin) and the P-47D (the tough one), each airframe
+keeping its own shield, and five variants of that gun on each; a variant plays the other
+variants of its airframe, and the four baselines play each other. 20,736 games
+([case-studies/guns-airframes/](case-studies/guns-airframes/report.json)).
+
+| Gun | La-7 | Zero | P-38L | P-47D |
+|---|---|---|---|---|
+| the La-7's (the airframe's Elo against the La-7) | 0 | -350 ± 10 | -56 ± 8 | +13 ± 8 |
+| 5 Hz | -209 ± 14 | -171 ± 17 | -69 ± 15 | -231 ± 16 |
+| 15 Hz | +60 ± 13 | +34 ± 16 | +2 ± 15 | +45 ± 15 |
+| damage x 1.3, muzzle x 0.72 | -328 ± 15 | -360 ± 19 | -154 ± 16 | -215 ± 16 |
+| muzzle x 1.13 | +231 ± 14 | +219 ± 17 | +214 ± 16 | +256 ± 17 |
+| dispersion x 2 | -1 ± 13 | +3 ± 16 | -20 ± 15 | -15 ± 15 |
+
+Per airframe, in Elo a doubling: muzzle speed +1,213 to +1,452; damage per second +601 (Zero)
+to +1,249 (P-47D); fire rate +52 (P-38L) to +188 (P-47D); dispersion -20 to +3.
+
+**What it says.**
+
+- **The muzzle speed is worth the same on every airframe** (about 220 Elo for 13% on all
+  four): a pure rating, no lever for a cycle.
+- **The slow heavy gun and the slow fire rate depend on the airframe.** The heavy cannon
+  (30% more damage at 28% less muzzle speed) costs the light La-7 and Zero 330 to 360 Elo and
+  the P-38L 154; 5 Hz costs the P-47D 231 and the P-38L 69. The P-38L, the steady twin with a
+  large store, loses least from guns that need a steady approach: about 170 Elo of airframe
+  dependence, the size of a 0.70 edge. That is a lever: a slow, hard-hitting gun on a steady
+  airframe against a fast, light gun on an agile one.
+- **The damage per second matters twice as much on the tough P-47D as on the fragile Zero**
+  (1,249 against 601 Elo a doubling): a ship that survives longer converts more of its damage.
+- **The dispersion is free on every airframe.**
+- The one majority cycle (weakest edge 0.50) is noise.
+
+## What the studies imply
+
+- **To move a rating without a swing**, use the steep values in small steps: 1% of muzzle
+  speed is about 20 Elo, 1% of shield about 17, 1% of damage per second about 14 (more on a
+  tough airframe, and with a cliff where a hit's damage crosses a shield's threshold).
+- **To make types feel different at the same rating**, use the free values: the dispersion
+  (a tight line against a spray) and the shield's recharge (fast and short against slow and
+  long) move the rating by less than 40 Elo across a factor of four.
+- **To build a cycle**, use what interacts: the shield against the opponent's damage per hit
+  (the thresholds), the gun's character against the airframe (a slow heavy gun on a steady
+  airframe, a fast light one on an agile one: about 170 Elo of dependence), and the turn with
+  the target's size. Energy (the store, the climb, the cruise) does not enter the scripted
+  agent's fight until it flies the energy fight, per type.
+- **What not to use**: the engine knee (it does nothing below half the store), and the muzzle
+  speed for anything but the rating (it is worth the same on every airframe).

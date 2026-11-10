@@ -28,6 +28,33 @@ rather than improvising a fix to the method.
     systemd-run --user --scope -p MemoryMax=8G -q uv run --no-sync pytest -q \
         tests/sections/test_ship_design.py -m "not slow and not gpu"
 
+## A case study (one trade-off; about 10 to 20 minutes of GPU)
+
+A study is a spec in `docs/explanation/game/case-studies/` ([Case studies](../case-studies.md)
+explains the fields; copy the nearest existing spec and change only the variants or the
+airframes). At most 36 slots (airframes x variants).
+
+    NAME=guns-la7   # the spec's file name without .json
+    mkdir -p runs/case-studies
+    systemd-run --user --unit=case-$NAME --working-directory=$PWD \
+      -p StandardOutput=file:$PWD/runs/case-studies/$NAME.log \
+      -p StandardError=file:$PWD/runs/case-studies/$NAME.log \
+      $PWD/.venv/bin/python -m bench.case_study play \
+        --spec docs/explanation/game/case-studies/$NAME.json --out runs/case-studies/$NAME --hours 1
+    # when the unit has ended:
+    uv run --no-sync python -m bench.case_study report \
+      --spec docs/explanation/game/case-studies/$NAME.json --out runs/case-studies/$NAME
+
+Each batch prints the largest standard error and an ETA; the play stops at the spec's
+`target_stderr` (20 Elo) or `budget`, or at `--hours`, and resumes from its record if rerun.
+Copy `report.json` and `batches.jsonl` into `docs/explanation/game/case-studies/$NAME/` and add
+a section to the case-studies page in the shape of the others: **Question**, **Design** (the
+airframe, the variants, the games), the table of Elo against the baseline, the line's Elo per
+doubling, and **What it says** (plain statements of what is steep, what is free, what
+interacts, whether any majority cycle has a weakest edge above 0.55). Do not draw a
+conclusion the numbers do not carry: a difference under two standard errors is "within
+noise".
+
 ## 1. Search one stage's spec
 
 A spec is a JSON file in a stage's directory, `docs/explanation/game/ship-design/stage-1/` for
