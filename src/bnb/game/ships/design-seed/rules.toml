@@ -1,0 +1,31 @@
+# The rule values this set's cards were solved under (bnb.game.ships.rules); the
+# game's own rules elsewhere. Times in s, lengths in m, per unit mass.
+
+[rules]
+bullet_life = 0.6
+bullet_drag = 0.0001374570446735395
+vision_range = 3072.0
+spawn_speed = 72.644
+field_band_width = 120.0
+
+[flight]
+mass = 1.0
+gravity = 9.81
+stall_angle = 0.2617993877991494
+induced_drag_factor = 66.348
+engine_knee = 0.5
+store_fade_band = 0.02
+coast_exchange = 1.0900000000000003
+climb_exchange = 9.810000000000002
+dive_exchange = 9.810000000000002
+lift_softmin_exponent = 16.0
+nose_damping = 0.7
+nose_frequency_floor = 0.24985677455140684
+speed_floor = 1.454166427889188e-06
+
+[mode]
+group_radius = 900.0
+anchor_distance_min = 750.0
+anchor_distance_max = 1800.0
+spawn_margin = 150.0
+capture_seconds = 20.0

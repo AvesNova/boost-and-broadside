@@ -1,0 +1,25 @@
+{
+ "preset": "real_scale_deathmatch",
+ "elo": {
+  "Heron": 7.4,
+  "Bastion": -6.4,
+  "Kestrel": -0.9
+ },
+ "elo_spread": 7.354276723146779,
+ "edges": {
+  "Bastion > Heron": 0.52685546875,
+  "Kestrel > Bastion": 0.5546875,
+  "Heron > Kestrel": 0.55859375
+ },
+ "edges_in_band": false,
+ "exploitability": 0.010579427083333334,
+ "nash": {
+  "Heron": 0.388,
+  "Bastion": 0.42,
+  "Kestrel": 0.192
+ },
+ "nash_full_support": true,
+ "mixed": [],
+ "mixed_pass": true,
+ "pass": false
+}

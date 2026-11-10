@@ -1,0 +1,25 @@
+{
+ "preset": "real_scale_frontline",
+ "elo": {
+  "Heron": 99.2,
+  "Bastion": -99.2,
+  "Kestrel": -0.0
+ },
+ "elo_spread": 99.17312404114033,
+ "edges": {
+  "Bastion > Heron": 0.24755859375,
+  "Kestrel > Bastion": 0.64453125,
+  "Heron > Kestrel": 0.64453125
+ },
+ "edges_in_band": false,
+ "exploitability": 0.13232421875,
+ "nash": {
+  "Heron": 1.0,
+  "Bastion": 0.0,
+  "Kestrel": 0.0
+ },
+ "nash_full_support": false,
+ "mixed": [],
+ "mixed_pass": true,
+ "pass": false
+}

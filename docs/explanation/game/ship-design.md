@@ -324,6 +324,24 @@ What it says about the method:
   reach three times the band's lower log-odds, so that the search cannot buy equal ratings
   with the cycle.
 
+**The exact cards** (`export`: each design solved, every handle met within 4e-5; the ship set
+`design-seed`), 1,024 games a pair, `ship-design/stage-1/seed/`:
+
+| Edge | Deathmatch | Frontline |
+|---|---|---|
+| Bastion over Heron | 0.527 ± 0.016 | 0.248 ± 0.013 |
+| Kestrel over Bastion | 0.555 ± 0.016 | 0.645 ± 0.015 |
+| Heron over Kestrel | 0.559 ± 0.016 | 0.645 ± 0.015 |
+
+In deathmatch the exact cards go round, weakly: all three edges the cycle's way, two of them
+beyond three errors; the ratings are within 7 Elo of their mean, the uniform pick's
+exploitability is 0.011 and the Nash equilibrium has full support (0.39, 0.42, 0.19). Every
+balance target is met; the band is not (a curl of 0.57 against the 1.22 a 0.60 cycle needs).
+The instant cards had put Kestrel over Bastion at 0.639; the exact solve moved it to 0.555,
+the estimate's error on a 10% turn change being worth 60 Elo here, so a result is accepted
+only on exact cards. In Frontline the cycle does not hold: Heron (the Mosquito's airframe)
+beats both others (0.75 and 0.64), the ratings spread 99 Elo.
+
 ROBUST_RESULTS
 
 ## Running it

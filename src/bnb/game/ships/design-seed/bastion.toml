@@ -1,0 +1,92 @@
+# Bastion: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
+# it; [card] is solved from [handles], so edit the handles, not the card.
+name = 'Bastion'
+
+[handles]
+# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
+stall_speed = 52.800000000000004
+g_limit = 6.5
+cruise_speed = 157.8
+climb_time = 1041.0231994459834
+ceiling = 118210.5
+low_speed_acceleration = 2.592
+sustained_turn_rate = 0.2261946710584651
+half_lift_drag = 0.25
+nose_reversal_time = 1.3123423392362137
+dive_acceleration = 11.068751713941717
+zoom_acceleration = -8.55118444795679
+stall_angle = 0.27052603405912107
+vision_range = 3072.0
+zero_lift_drag = 6.480149286023367e-05
+hit_damage = 40.995533706284334
+fire_rate = 10.0
+muzzle_speed = 860.0
+bullet_spread = 0.8212073908872959
+gun_range = 586.3987802595157
+shots_per_store = 577.0182805013964
+max_shield = 117.17419700256752
+shield_recharge_rate = 12.0
+shield_recharge_delay = 6.0
+head_on_fraction = 0.3
+hit_radius = 7.761875
+spawn_energy = 47284.200000000004
+
+[card]
+# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).
+max_lift_coefficient = 0.003518853336572647
+max_acceleration = 63.76499938964844
+zero_lift_drag = 6.480149022536352e-05
+engine_power = 931.0498657226562
+engine_power_full_store = 365.0240783691406
+static_thrust = 12.232068061828613
+max_energy = 118210.5
+corner_nose_frequency = 3.449620008468628
+max_shield = 117.1741943359375
+hit_radius = 7.761875152587891
+hit_damage = 40.99553298950195
+muzzle_speed = 860.0
+bullet_energy_cost = 204.86439514160156
+fire_rate = 10.0
+spawn_energy = 47284.19921875
+bleed_exponent = 2.0
+induced_drag_scale = 2.7254831790924072
+stall_angle_scale = 1.0333333015441895
+coast_exchange_scale = 3.290809392929077
+dive_exchange_scale = 0.7704671025276184
+climb_exchange_scale = 1.2295271158218384
+vision_range_scale = 1.0
+bullet_spread_scale = 0.06843394786119461
+bullet_drag_scale = 1.0
+shield_recharge_rate_scale = 1.0
+shield_recharge_delay_scale = 1.0
+head_on_fraction_scale = 1.0
+engine_knee_scale = 1.0
+
+[notes]
+# Where each handle's value comes from.
+stall_speed = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): 52.8, the base zerstorer's 53.64"
+g_limit = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+cruise_speed = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+climb_time = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+ceiling = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+low_speed_acceleration = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+sustained_turn_rate = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): 0.226195, the base zerstorer's 0.205425"
+half_lift_drag = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+nose_reversal_time = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+dive_acceleration = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+zoom_acceleration = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+stall_angle = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+vision_range = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+zero_lift_drag = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+hit_damage = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): 40.9955, the base zerstorer's 37.0633"
+fire_rate = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+muzzle_speed = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+bullet_spread = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+gun_range = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+shots_per_store = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+max_shield = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): 117.174, the base zerstorer's 120"
+shield_recharge_rate = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+shield_recharge_delay = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+head_on_fraction = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+hit_radius = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+spawn_energy = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"

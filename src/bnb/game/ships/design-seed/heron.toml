@@ -1,0 +1,92 @@
+# Heron: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
+# it; [card] is solved from [handles], so edit the handles, not the card.
+name = 'Heron'
+
+[handles]
+# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
+stall_speed = 49.2
+g_limit = 6.0
+cruise_speed = 148.4
+climb_time = 1110.8865196078434
+ceiling = 89104.23000000003
+low_speed_acceleration = 2.816
+sustained_turn_rate = 0.26662893696719336
+half_lift_drag = 0.25
+nose_reversal_time = 1.246725222274403
+dive_acceleration = 11.068751713941717
+zoom_acceleration = -8.55118444795679
+stall_angle = 0.2617993877991494
+vision_range = 3072.0
+zero_lift_drag = 6.279804482594182e-05
+hit_damage = 37.85900363690206
+fire_rate = 10.0
+muzzle_speed = 879.9999999999998
+bullet_spread = 0.8191654827923586
+gun_range = 592.2638865620839
+shots_per_store = 615.7421176756003
+max_shield = 109.38007610573531
+shield_recharge_rate = 12.0
+shield_recharge_delay = 6.0
+head_on_fraction = 0.3
+hit_radius = 8.256
+spawn_energy = 35641.69200000001
+
+[card]
+# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).
+max_lift_coefficient = 0.004052647389471531
+max_acceleration = 58.86000061035156
+zero_lift_drag = 6.27980480203405e-05
+engine_power = 666.81787109375
+engine_power_full_store = 266.9830017089844
+static_thrust = 9.059016227722168
+max_energy = 89104.2265625
+corner_nose_frequency = 3.718477725982666
+max_shield = 109.38007354736328
+hit_radius = 8.255999565124512
+hit_damage = 37.859004974365234
+muzzle_speed = 880.0
+bullet_energy_cost = 144.71031188964844
+fire_rate = 10.0
+spawn_energy = 35641.69140625
+bleed_exponent = 2.0
+induced_drag_scale = 1.4327577352523804
+stall_angle_scale = 1.0
+coast_exchange_scale = 2.471839666366577
+dive_exchange_scale = 0.8602734804153442
+climb_exchange_scale = 1.1397202014923096
+vision_range_scale = 1.0
+bullet_spread_scale = 0.06826379150152206
+bullet_drag_scale = 1.0
+shield_recharge_rate_scale = 1.0
+shield_recharge_delay_scale = 1.0
+head_on_fraction_scale = 1.0
+engine_knee_scale = 1.0
+
+[notes]
+# Where each handle's value comes from.
+stall_speed = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+g_limit = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+cruise_speed = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+climb_time = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+ceiling = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+low_speed_acceleration = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+sustained_turn_rate = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): 0.266629, the base mosquito's 0.261101"
+half_lift_drag = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+nose_reversal_time = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+dive_acceleration = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+zoom_acceleration = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+stall_angle = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+vision_range = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+zero_lift_drag = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+hit_damage = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): 37.859, the base mosquito's 36.9122"
+fire_rate = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+muzzle_speed = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+bullet_spread = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+gun_range = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+shots_per_store = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+max_shield = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): 109.38, the base mosquito's 110"
+shield_recharge_rate = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+shield_recharge_delay = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+head_on_fraction = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+hit_radius = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+spawn_energy = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"

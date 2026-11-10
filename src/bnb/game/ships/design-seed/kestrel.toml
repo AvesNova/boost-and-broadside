@@ -1,0 +1,92 @@
+# Kestrel: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
+# it; [card] is solved from [handles], so edit the handles, not the card.
+name = 'Kestrel'
+
+[handles]
+# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
+stall_speed = 41.1
+g_limit = 8.0
+cruise_speed = 150.2
+climb_time = 661.9712765957447
+ceiling = 122330.70000000001
+low_speed_acceleration = 4.488
+sustained_turn_rate = 0.30289393077139126
+half_lift_drag = 0.25
+nose_reversal_time = 0.8311501481829353
+dive_acceleration = 10.901973181024061
+zoom_acceleration = -8.717968852296035
+stall_angle = 0.2792526803190927
+vision_range = 3072.0
+zero_lift_drag = 8.066870332654446e-05
+hit_damage = 25.850832108883292
+fire_rate = 15.0
+muzzle_speed = 879.9999999999998
+bullet_spread = 1.215535877691887
+gun_range = 593.259378532043
+shots_per_store = 550.3761030002057
+max_shield = 88.91357417954346
+shield_recharge_rate = 12.0
+shield_recharge_delay = 6.0
+head_on_fraction = 0.3
+hit_radius = 5.613
+spawn_energy = 48932.280000000006
+
+[card]
+# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).
+max_lift_coefficient = 0.005807448644191027
+max_acceleration = 78.4800033569336
+zero_lift_drag = 8.066870213951916e-05
+engine_power = 1339.788330078125
+engine_power_full_store = 419.496337890625
+static_thrust = 23.590965270996094
+max_energy = 122330.703125
+corner_nose_frequency = 5.276745319366455
+max_shield = 88.91357421875
+hit_radius = 5.61299991607666
+hit_damage = 25.850831985473633
+muzzle_speed = 880.0
+bullet_energy_cost = 222.2674560546875
+fire_rate = 15.0
+spawn_energy = 48932.28125
+bleed_exponent = 2.0
+induced_drag_scale = 3.4374680519104004
+stall_angle_scale = 1.0666667222976685
+coast_exchange_scale = 5.62120246887207
+dive_exchange_scale = 0.4913084805011749
+climb_exchange_scale = 1.5086860656738281
+vision_range_scale = 1.0
+bullet_spread_scale = 0.10129465907812119
+bullet_drag_scale = 1.0
+shield_recharge_rate_scale = 1.0
+shield_recharge_delay_scale = 1.0
+head_on_fraction_scale = 1.0
+engine_knee_scale = 1.0
+
+[notes]
+# Where each handle's value comes from.
+stall_speed = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
+g_limit = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
+cruise_speed = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
+climb_time = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
+ceiling = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
+low_speed_acceleration = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
+sustained_turn_rate = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): 0.302894, the base spitfire-ix's 0.340339"
+half_lift_drag = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
+nose_reversal_time = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
+dive_acceleration = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
+zoom_acceleration = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
+stall_angle = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
+vision_range = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
+zero_lift_drag = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
+hit_damage = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): 25.8508, the base spitfire-ix's 36.072"
+fire_rate = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): 15, the base spitfire-ix's 10"
+muzzle_speed = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
+bullet_spread = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
+gun_range = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
+shots_per_store = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): 550.376, the base spitfire-ix's 366.917"
+max_shield = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): 88.9136, the base spitfire-ix's 100"
+shield_recharge_rate = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
+shield_recharge_delay = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
+head_on_fraction = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
+hit_radius = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
+spawn_energy = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base spitfire-ix's"
