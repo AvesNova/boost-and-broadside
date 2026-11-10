@@ -154,3 +154,7 @@
 09:14 fleet 10v10-arena start (6 players + scripted; 8 x 256)
 09:24 crossover done champion frontline: 5 network ships break even against 6.36 scripted (x1.27)
 09:24 crossover start null frontline
+09:35 crossover FAILED null frontline (Command '['.venv/bin/bnb', 'crossover', 'runs/2026-11-09-rl-absolute/policies/step_180355072/uniform_average', '--preset', 'frontline', '--pairs', '5:5', '5:6', '5:7', '5:8', '5:9', '5:10', '--games', '256', '--blocks', '8', '--block-environments', '64', '--out', '/workspace/boost-and-broadside/runs/crossover/null/frontline', '--ships-per-team', '10']' returned non-zero exit status 1.; runs/crossover.out)
+09:35 crossover start nearest frontline
+09:40 crossover done nearest frontline: 5 network ships break even against 5.44 scripted (x1.09)
+09:40 crossover start champion deathmatch
