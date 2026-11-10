@@ -287,8 +287,8 @@ sets (above); the chaser keeps the standard distances in the card's lengths. The
 windows and error floors follow each card's own scales ([The ship
 card](ship-card.md#measuring)); a 125 kJ store climbs for about an hour of game time, so
 a real-scale card takes minutes to measure or solve on a CPU, where a standard one takes
-seconds. The tuning panel measures every type of the set before its sliders show: four to
-six minutes for the 27 real-scale types on a 16-core CPU (270 s measured quiet, 352 s busy).
+seconds. The tuning panel shows its sliders at once from the ship files and measures only
+the shown type and the types in the match, 7 to 20 s a real-scale type.
 
 The playback speed and the tuning panel's [time scale](../in-progress/play-shell.md#live-tuning)
 are the way to try the variant faster than real time.
