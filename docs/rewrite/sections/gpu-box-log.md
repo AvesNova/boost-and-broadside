@@ -731,3 +731,13 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   RL 121.6M uniform  champion 1825 / 2219 / 2022  null 1719 / 2005 / 1862
   RL 121.6M exponential  champion 1837 / 2205 / 2021  null 1663 / 1997 / 1830
   Reading: the champion leads the null at nearly every point (BC +50-130 on the mean; RL from ~20M, +160 at 121.6M); RL adds ~+1000 over BC and is still climbing at 121.6M (largest gains in deathmatch); live best mid-RL (+90 at 60M), the averages best at 121.6M (+80 for the champion). RL to 180.4M next (round11).
+- **11:00 KST A/B against a much simpler model (the author).** Being built by a background agent
+  on `feat/nearest-mlp` (CPU only): `--model nearest`, a per-ship 2-hidden-layer MLP (relational's
+  body) with the joint policy, the 5-level critic and the outcome head (the 5th level needs it), no
+  other heads; fixed-size inputs so it runs at any fleet size: own state + the mode's objective
+  globals, the nearest 3 allies and 4 visible enemies (relative, sorted, padded; my call: 4 enemies
+  covers a 5v5 engagement, 3 often drops an attacker), the nearest 3 fields, every zone slot in role
+  order (own spawn, own defense, neutral, enemy defense, enemy spawn); K configurable. No memory, so
+  no belief about hidden enemies (part of what the A/B measures). The A/B keeps every training
+  setting equal to the Yemong runs except memory-only ones (micro-batch); expected 4-6x faster (the
+  learner was ~85% of an update). Runs after the RL to 180M (~14:05 KST).
