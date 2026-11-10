@@ -1,6 +1,6 @@
 {
  "name": "2026-11-10-bc-nearest",
- "status": "running",
+ "status": "finished",
  "pid": 618632,
  "host": "e98bed47fc73",
  "message": null,
@@ -34,20 +34,27 @@
  ],
  "wandb_id": null,
  "parent": null,
- "checkpoint_every": null,
+ "checkpoint_every": 214958080,
  "update_policies": false,
- "newest_checkpoint": null,
- "final_checkpoint": null,
- "checkpoint_ordinals": {},
- "probe": null,
+ "newest_checkpoint": 120586240,
+ "final_checkpoint": 120586240,
+ "checkpoint_ordinals": {
+  "120586240": 0
+ },
+ "probe": {
+  "allocated": 8668372480,
+  "reserved": 8883535872,
+  "total": 25296044032,
+  "budget": 24759173120
+ },
  "segments": [
   {
    "commit": "c104b15620e7fd78f83726c817699d629adc4284",
    "dirty": false,
    "start_step": 0,
    "start_time": "2026-11-10T04:56:20+00:00",
-   "end_step": null,
-   "end_time": null,
+   "end_step": 120586240,
+   "end_time": "2026-11-10T05:15:41+00:00",
    "overrides": {},
    "rewound_from": null,
    "command": [
@@ -80,5 +87,10 @@
    ]
   }
  ],
- "stop_request": null
+ "stop_request": null,
+ "hours": 0.3225953855904907,
+ "skipped_steps": 0,
+ "stopped_by": "budget",
+ "policy": "/workspace/boost-and-broadside/runs/2026-11-10-bc-nearest/policy",
+ "policy_player": "exponential_average"
 }
