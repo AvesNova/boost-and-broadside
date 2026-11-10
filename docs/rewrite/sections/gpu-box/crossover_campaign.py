@@ -23,7 +23,7 @@ AGENTS = {
 PRESETS = [("frontline", 5), ("deathmatch", 5)] + [
     (f"{mode}_{n}v{n}_{variant}", n)
     for n in (10, 20, 40)
-    for variant in ("arena", "density")
+    for variant in ("arena",)  # the author, 20:35 KST: no map-size deviation (training is 2600 m only)
     for mode in ("frontline", "deathmatch")
 ]
 LAYOUT = {5: (8, 128), 10: (8, 64), 20: (8, 32), 40: (8, 16), 80: (8, 8), 120: (4, 8)}  # blocks, envs

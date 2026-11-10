@@ -874,3 +874,10 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
 - **19:23 KST Fleet 10v10 arena done** (frontline / deathmatch; 5v5 in brackets): champion 1875 / 2778 (1997 / 2404), null 1680 / 2606 (1875 / 2235), null 80M 1489 / 2117, 40M 1361 / 1738, 20M 1244 / 1455, nearest 1240 / 1345 (1303 / 1386), scripted 1000. Crossover deathmatch 5 ships: **champion breaks even against 7.46 scripted (x1.49)** (5:10 still 0.221).
 - **19:40 KST Crossover at 5 ships complete** (5 network ships break even against m scripted): frontline champion 6.36 (x1.27), null 5.87 (x1.17), nearest 5.44 (x1.09); deathmatch champion 7.46 (x1.49), null 7.70 (x1.54; every level within the champion's 95% interval: tied), nearest 5.67 (x1.13). 10-ship cases next.
 - **19:50 KST Fleet 10v10 density done** (the 3677 m arena; frontline / deathmatch): champion 1499 / 2317, null 1358 / 2113, null 80M 1201 / 1764, 40M 1169 / 1482, 20M 1077 / 1220, nearest 958 / 1307, scripted 1000. Against the same 10v10 in the training arena (1875 / 2778 champion): the bigger map costs frontline ~-375 (every trained agent; nearest below scripted) and deathmatch ~-460 for Yemong, ~-40 for nearest: the frontline drop at 10v10 is the map size, not the fleet.
+- **20:40 KST The author: no map-size deviation.** The `_density` presets dropped: the fleet
+  ratings go from the running 20v20 arena straight to 40v40 arena (`round14.sh`; fleet.sh
+  stopped, its 20v20 ratings process left running); the crossover campaign restarted without them
+  after its running case (an orphaned duplicate of the next case, left by killing the campaign
+  parent, was killed at once). Crossover 10 ships, frontline, training arena: champion 11.19
+  (x1.12), null 11.15 (x1.12), nearest 10.79 (x1.08). Estimated finish ~13:00 KST Nov 11 +-2.5 h
+  (the 40-ship cases dominate).
