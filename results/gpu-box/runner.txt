@@ -144,3 +144,4 @@
 06:46 done 2026-11-10-rl-nearest
 06:46 tournament10 start (78 added players: the nearest curve, the Yemong RL to 180M)
 06:46 round13 done
+07:48 tournament10 done
