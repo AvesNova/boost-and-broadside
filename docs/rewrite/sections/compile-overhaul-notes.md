@@ -375,3 +375,24 @@ code's per-component symlog decodes: about 740 of a step's 3,226 ops).
     docstring), the scalar codes' moment matching, the rotary embedding (168).
 - The vmap fallback's warning for the `yemong::` kernels is silenced in `stacked.py` (it
   printed on every trace; the per-set loop is measured and kept, above).
+
+### Real-scale baseline, cold (after 205c22f6; `compile-overhaul/real-scale/`)
+
+`bench/compile_baseline.sh`, empty caches per case, power profile performance, quiet
+machine. BC and RL: the short BC run's TrainConfig (`--preset real_scale_mixed`, default
+Yemong: `next_state=absolute`), RL the same with objective ppo. Ratings: the scripted agent
+and that run's two policies on `real_scale_frontline`, the default ArenaConfig.
+
+| Case | Build | First collect | First learn | Steady collect | Steady learn | Overhead |
+|---|---|---|---|---|---|---|
+| BC | 112.0 s | 312.2 s | 425.2 s | 17.7 s | 240.5 s | ~479 s |
+| RL | 108.6 s | 307.9 s | 412.4 s | 17.7 s | 228.9 s | ~474 s |
+
+Ratings: build 84.7 s, first batch 499.7 s, steady batch 319.6 s (compile overhead ~180 s).
+Overhead: the first collect and learn less the steady ones. The short BC run before the
+shrink (caches not guaranteed cold) took 332.7 s and 528.0 s for its first collect and
+learn, about 610 s of overhead. Its steady learn was 232.9 s against 240.5 s here: to check
+warm A/B (noise, or a cost of the stacked position codes).
+
+A real-scale ratings batch takes 320 s against 167 s on standard frontline: the games are
+longer, which makes the batch's tail (`bench/arena_utilisation.py`) worth measuring there.
