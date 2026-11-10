@@ -93,6 +93,9 @@ SPREAD_RADIUS_75 = math.sqrt(2.0 * math.log(4.0))
 SHIELD_PER_RATING = 0.2  # the shield against the P-51's per survivability rating step
 WORKERS = max(1, (os.cpu_count() or 2) - 2)
 ACCEPTED = 5e-3  # the solver's acceptance: every flown handle within 0.5%
+# The pacing's floor on a type's boost exchange (its dive handle less its coast exchange),
+# as a share of the P-51D's: below it the dive handle rises (real_scale-pacing.md)
+BOOST_FLOOR = 0.5
 
 
 @dataclasses.dataclass(frozen=True)
@@ -502,8 +505,29 @@ def target_handles(
             "(docs/explanation/game/real-scale-pacing.md)."
         )
         rate *= climb
+        # The boost must still trade store for speed: a type whose paced coast exchange
+        # would leave less boost exchange than half the P-51D's keeps that (its dive
+        # handle, a placeholder, rises; only the rocket types).
+        coast = GRAVITY * rate / values["cruise_speed"]
+        floor = coast + BOOST_FLOOR * reference_boost_exchange(climb, factors, standard)
+        if values["dive_acceleration"] < floor:
+            old = values["dive_acceleration"]
+            values["dive_acceleration"] = floor
+            notes["dive_acceleration"] = _sentence(notes["dive_acceleration"]) + (
+                f" Paced: {old:.4g} -> {floor:.4g} m/s^2, the paced coast exchange "
+                f"{coast:.4g} plus half the P-51D's paced boost exchange "
+                "(docs/explanation/game/real-scale-pacing.md)."
+            )
     values["climb_time"] = CLIMB_FILL * values["ceiling"] / (GRAVITY * rate)
     return values, notes, rate
+
+
+def reference_boost_exchange(climb: float, factors: dict, standard: dict) -> float:
+    """The P-51D's boost exchange (m/s^2) at a climb multiplier: its dive handle (a
+    placeholder) less its paced coast exchange."""
+    data = REFERENCE.data
+    dive = standard["fighter"]["dive_acceleration"] * factors["dive_acceleration"]
+    return dive - GRAVITY * climb * data["climb_rate"].value / data["cruise_speed"].value
 
 
 def initial_climb_charge(rules: Rules, types: ShipTypes, cruise_speed: torch.Tensor):
@@ -605,6 +629,15 @@ def rearmed(ship: ships.Ship, values: dict[str, float], rules: Rules) -> ships.S
     return dataclasses.replace(ship, handles=values, card=card)
 
 
+def climb_met(ship: ships.Ship, rate: float, rules: Rules) -> bool:
+    """Whether a written card's initial climb charge meets g x this climb rate (to the
+    solve's CLIMB_TOLERANCE)."""
+    types = ShipTypes(**{n: torch.tensor([ship.card.get(n, 1.0)]) for n in FIELDS})
+    cruise = torch.tensor([ship.handles["cruise_speed"]])
+    charge = float(initial_climb_charge(rules, types, cruise)[0])
+    return abs(charge / (rules.flight.gravity * rate) - 1.0) <= CLIMB_TOLERANCE
+
+
 def clock(seconds_from_now: float) -> str:
     """A clock time this many seconds from now."""
     return (datetime.datetime.now() + datetime.timedelta(seconds=seconds_from_now)).strftime(
@@ -643,7 +676,9 @@ def solve_set(
             for n, v in values.items()
             if old is not None and math.isclose(old.handles.get(n, math.nan), v, rel_tol=1e-9)
         }
-        flight_same = set(FLIGHT) - {"climb_time"} <= matching
+        # The climb time is iterated, so it is not compared; the climb rate it was solved for
+        # is: the written card's initial charge must still meet g x the rate.
+        flight_same = set(FLIGHT) - {"climb_time"} <= matching and climb_met(old, rate, rules)
         same = flight_same and set(values) - {"climb_time"} <= matching
         if resume and flight_same and not same:  # a combat change: no flight to solve
             old = rearmed(old, values, rules)

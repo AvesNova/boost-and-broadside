@@ -32,6 +32,13 @@ edge on every pair of designs (a round robin), and the mixed-team test: for ever
 {A, B} and every design D that the spec says beats both, a team of A and B (alternating,
 3 + 2 and 2 + 3 in half the games each) against a team of D. Rows to DIR/check-<preset>.jsonl.
 
+`export` solves a candidate's designs exactly (`bnb.game.real_scale.solve_type`, one process
+each) and writes them as a ship set (`--ship-set`), so `check --card SET` plays the exact
+cards.
+
+`compose` writes the seven-type spec from three cycle searches (the Paley tournament's
+three planes, one per cycle; see the function).
+
 `summary` turns a check into the verdict against the targets: the Bradley-Terry ratings, the
 edges against the band, the uniform pick's exploitability, the Nash equilibrium (regret
 matching) and its support, and the mixed-team test (DIR/summary-<preset>.json).
@@ -421,16 +428,7 @@ def check(args) -> None:
     out = pathlib.Path(args.out)
     space = setup(spec)
     names = [design["name"] for design in space.designs]
-    log_path = out / "search.jsonl"
-    if args.candidate:
-        generation, index = (int(v) for v in args.candidate.split(":"))
-        row = next(
-            json.loads(line)
-            for line in log_path.read_text().splitlines()
-            if json.loads(line)["generation"] == generation and json.loads(line)["index"] == index
-        )
-    else:
-        row = best_of(log_path)
+    row = candidate_row(out / "search.jsonl", args.candidate)
     knobs = row["knobs"]
     preset = args.preset or spec.get("preset", "real_scale_deathmatch")
     card = padded(
@@ -514,6 +512,135 @@ def check(args) -> None:
                 log.write(json.dumps(record) + "\n")
                 print(json.dumps(record), flush=True)
         print(f"checked in {time.time() - started:.0f} s", flush=True)
+
+
+def _solve_design(arguments):
+    """One design's exact card in a worker process (`real_scale.solve_type`)."""
+    import os
+
+    os.environ["OMP_NUM_THREADS"] = "1"
+    torch.set_num_threads(1)
+    from bnb.contracts import GameConfig
+    from bnb.game import real_scale
+    from bnb.game.rules import rules_of
+
+    key, name, handles, notes, rate = arguments
+    rules = rules_of(GameConfig(1, 1, 7800.0, ship_set=real_scale.SHIP_SET))
+    return real_scale.solve_type(key, name, handles, notes, rate, rules, log=lambda line: None)
+
+
+def export(args) -> None:
+    """Solve a candidate's designs exactly and write them as a ship set (rules from the
+    real-scale set's), one file per design, in the spec's order."""
+    import concurrent.futures
+
+    from bnb.game import real_scale
+    from bnb.game import ships as ship_files
+    from bnb.game.ship_design import climb_rate_of
+
+    spec = json.loads(pathlib.Path(args.spec).read_text())
+    out = pathlib.Path(args.out)
+    space = setup(spec)
+    row = candidate_row(out / "search.jsonl", args.candidate)
+    handles = space.handles_of(row["knobs"])
+    jobs = []
+    for design, one, knobs in zip(space.designs, handles, row["knobs"], strict=True):
+        key = design["name"].lower()
+        base = space.handles[design["base"]]
+        notes = {
+            name: f"designed ({out}, candidate {row['generation']}:{row['index']}): "
+            + (
+                f"{value:.6g}, the base {design['base']}'s {base[name]:.6g}"
+                if not math.isclose(value, base[name], rel_tol=1e-9)
+                else f"the base {design['base']}'s"
+            )
+            for name, value in one.items()
+        }
+        jobs.append((key, design["name"], one, notes, climb_rate_of(one)))
+    ship_files.write_rules(ship_files.rules(real_scale.SHIP_SET), args.ship_set)
+    started = time.time()
+    solved = {}
+    with concurrent.futures.ProcessPoolExecutor(max_workers=len(jobs)) as pool:
+        for job, result in zip(jobs, pool.map(_solve_design, jobs), strict=True):
+            solved[job[0]] = result
+            print(
+                f"{job[1]}: worst flown error {result.worst:.2e}, converged "
+                f"{result.converged} ({(time.time() - started) / 60:.1f} min)",
+                flush=True,
+            )
+    ship_files.write([solved[job[0]].ship for job in jobs], args.ship_set)
+    print(f"wrote {ship_files.directory_of(args.ship_set)}", flush=True)
+
+
+def candidate_row(log_path: pathlib.Path, candidate: str | None) -> dict:
+    """A search's row by GENERATION:INDEX, or its best recent mean (`best_of`)."""
+    if not candidate:
+        return best_of(log_path)
+    generation, index = (int(v) for v in candidate.split(":"))
+    for line in log_path.read_text().splitlines():
+        row = json.loads(line)
+        if row["generation"] == generation and row["index"] == index:
+            return row
+    raise SystemExit(f"{candidate}: no such candidate in {log_path}")
+
+
+PALEY_SIGNS = (1, 1, -1)  # the quadratic character of 1, 2, 3 mod 7
+
+
+def compose(args) -> None:
+    """The seven-type spec from three cycle searches (one per plane): type i sits at angle
+    chi(k) 2 pi k i / 7 in plane k, its knobs of that plane's group the log-mixture of the
+    cycle's three corners at that angle (weights (1 + 2 cos(angle - 2 pi c / 3)) / 3 for the
+    corner c, in the order each beats the next), the fire rate the nearest allowed. Every
+    other knob is the common base's. Writes the spec (all three groups' knobs searched)."""
+    planes = []
+    for spec_path, out in zip(args.specs.split(","), args.outs.split(","), strict=True):
+        spec = json.loads(pathlib.Path(spec_path).read_text())
+        out = pathlib.Path(out)
+        names = [design["name"] for design in spec["designs"]]
+        edges, _ = spec_edges(spec, names)
+        state = json.loads((out / "state.json").read_text())
+        order = [a for a, _ in edges]
+        if state.get("orientation") == -1:
+            order = order[::-1]
+        row = candidate_row(out / "search.jsonl", None)
+        corners = [row["knobs"][index] for index in order]
+        group = spec["designs"][0]["knobs"]
+        planes.append((group, corners, spec["designs"][0]["base"]))
+    base = planes[0][2]
+    designs = []
+    names = args.names.split(",")
+    for i in range(7):
+        start = {}
+        for k, (group, corners, _) in enumerate(planes, 1):
+            angle = PALEY_SIGNS[k - 1] * 2 * math.pi * k * i / 7
+            weights = [(1 + 2 * math.cos(angle - 2 * math.pi * c / 3)) / 3 for c in range(3)]
+            for name in group:
+                if name == "fire_rate":
+                    log = sum(w * math.log(c[name]) for w, c in zip(weights, corners, strict=True))
+                    start[name] = min(FIRE_RATES, key=lambda r: abs(math.log(r) - log))
+                else:
+                    log = sum(w * math.log(c[name]) for w, c in zip(weights, corners, strict=True))
+                    start[name] = math.exp(log)
+        knobs = [name for group, _, _ in planes for name in group]
+        designs.append(dict(name=names[i], base=base, knobs=knobs, start=start))
+    edges = [[names[i], names[(i + d) % 7]] for i in range(7) for d in (1, 2, 4)]
+    template = json.loads(pathlib.Path(args.specs.split(",")[0]).read_text())
+    spec = {
+        key: template[key]
+        for key in (
+            "preset",
+            "band",
+            "realism_radius",
+            "realism_weight",
+            "distinct",
+            "distinct_weight",
+        )
+    }
+    spec |= dict(designs=designs, edges=edges, games_per_edge=64, population=5, generations=40)
+    spec |= dict(sigma=0.3, seed=707)
+    pathlib.Path(args.write).write_text(json.dumps(spec, indent=1) + "\n")
+    print(json.dumps(spec, indent=1))
 
 
 def nash(payoff: np.ndarray, iterations: int = 20000) -> np.ndarray:
@@ -609,13 +736,25 @@ def main() -> None:
     two.add_argument("--preset", help="default: the spec's")
     two.add_argument("--card", help="a ship set holding the designs' exact cards, by name")
     two.add_argument("--seed", type=int, default=5_000_000)
+    four = sub.add_parser("export")
+    four.add_argument("--spec", required=True)
+    four.add_argument("--out", required=True)
+    four.add_argument("--candidate", help="GENERATION:INDEX (default: the best recent mean)")
+    four.add_argument("--ship-set", required=True, help="the set to write, e.g. design-flight")
+    five = sub.add_parser("compose")
+    five.add_argument("--specs", required=True, help="the three cycle specs, comma-separated")
+    five.add_argument("--outs", required=True, help="their search directories, in order")
+    five.add_argument("--names", required=True, help="seven names, comma-separated")
+    five.add_argument("--write", required=True, help="the seven-type spec to write")
     three = sub.add_parser("summary")
     three.add_argument("--spec", required=True)
     three.add_argument("--out", required=True)
     three.add_argument("--preset", default="real_scale_deathmatch")
     three.add_argument("--card", help="only the rows of this card (a ship set, or 'estimate')")
     args = parser.parse_args()
-    {"search": search, "check": check, "summary": summary}[args.command](args)
+    {"search": search, "check": check, "summary": summary, "export": export, "compose": compose}[
+        args.command
+    ](args)
 
 
 if __name__ == "__main__":
