@@ -807,3 +807,11 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   champion / 9% null), but a timeout is decided by the kill lead (`clock_result`), not a draw:
   legal, evenly matched play. Not investigated further.
 - **15:36 KST Nearest RL gate 1 passed** (KL 0.0002 -> 0.0034, clip 0.03, outcome EV 0.89 -> 0.975, the first update's outcome Brier -0.49 then recovering as the Yemong runs' (-0.97 / -0.80); 8 GB at 3840 rows; ~275,000 SPS in-update, ~8 s per update wall-clock with snapshots: 180M in ~23 min). Tournament 10 queued (the final one): the Yemong lines' whole curves plus RL 141.6M / 160.4M, and the nearest curve (uniform every ~20M, live at 6 points, its RL 180.4M exponential), one field, reusing tournaments 5-9.
+- **15:46 KST Nearest RL at 180.4M** (finished, no skipped steps, one KL spike: 0.050 at update 28,
+  the KL guard cut its epochs; median 0.0046). Its own lane ratings peak at updates 20-59 (frontline
+  1219, deathmatch 1328) and fall after (878 / 660 at 116-172), outcome EV 0.97 -> 0.87, deathmatch
+  timeouts 2% -> 100%. Checked against the Yemong RL runs: entropy falls alike (nearest 1.54 -> 0.43;
+  champion 1.55 -> 0.50; null 1.69 -> 0.58), the unforced damage and death shares rise alike (null
+  to 0.127 / 0.128, nearest 0.160 / 0.124), the Yemong lane ratings sag late too: nothing the Yemong
+  runs do not show. Lane ratings are against the run's own league, so tournament 10 (started 15:46,
+  78 players, one field) measures whether it truly peaks early.
