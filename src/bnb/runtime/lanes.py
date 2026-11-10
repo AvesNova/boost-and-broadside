@@ -280,7 +280,10 @@ class LaneSeat:
         # the players' rows as one (players, most) index for the stacked forward: a player
         # with fewer rows is padded, and the padding's decisions are dropped
         if self.networks:
-            self.network_index, self.network_valid = stacked.padded_rows(self.network_rows)
+            self.network_index, valid = stacked.padded_rows(self.network_rows)
+            # made here, not in the graph: a boolean mask's size is data-dependent there
+            self.network_kept = valid.reshape(-1).nonzero().flatten()
+            self.network_flat_rows = self.network_index.reshape(-1)[self.network_kept]
         ladder = torch.tensor([ladder_rung(name) is not None for name in players])
         ladder_rows = ladder[player].nonzero().flatten()
         self.ladder_rows = ladder_rows.to(device)
@@ -332,18 +335,20 @@ class LaneSeat:
         action = torch.zeros((self.rows, S, 3), dtype=torch.int32, device=reset.device)
         model_carry = carry.model
         if self.networks:  # one forward over the players' stacked weights
-            index, valid = self.network_index, self.network_valid
+            index = self.network_index
             inputs = _pytree.tree_map_only(
                 torch.Tensor,
                 lambda x: x[index.reshape(-1)].unflatten(0, index.shape),
                 (carry.model, obs, reset),
             )
             packed, chosen = stacked.call(self.decision, self.parameters, inputs)
-            rows = index[valid]  # every network row once (the padding left out)
-            action = action.index_copy(0, rows, packed[valid])
+            rows, kept = self.network_flat_rows, self.network_kept  # the padding left out
+            action = action.index_copy(0, rows, packed.flatten(0, 1).index_select(0, kept))
             if chosen is not None:
                 model_carry = _pytree.tree_map(
-                    lambda whole, part: whole.index_copy(0, rows, part[valid]),
+                    lambda whole, part: whole.index_copy(
+                        0, rows, part.flatten(0, 1).index_select(0, kept)
+                    ),
                     model_carry,
                     chosen,
                 )

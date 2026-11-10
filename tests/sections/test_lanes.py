@@ -751,3 +751,45 @@ def test_the_uniform_averages_games_count_once_it_has_started():
     assert set(after.stop_rule.windows) == {LIVE, UNIFORM_AVERAGE, EXPONENTIAL_AVERAGE}
     with pytest.raises(ValueError, match="LaneHooks"):
         cloning.update(_fake_bc_trainer(uniform_started=True, league=False))
+
+
+@pytest.mark.slow
+def test_a_lane_seat_with_unequal_players_compiles_whole_and_plays_as_uncompiled():
+    """The networks run as one stacked forward with the players' rows padded
+    (`bnb.runtime.stacked.padded_rows`): compiled whole (no data-dependent shapes in the
+    graph), each row gets what the uncompiled step gives."""
+    from bnb.contracts import Obs
+    from bnb.runtime.realtime import Realtime
+
+    lanes = (
+        Lane(MODE, Matchup(LIVE, SCRIPTED_PLAYER)),
+        Lane(MODE, Matchup(LIVE, EXPONENTIAL_AVERAGE)),
+    )
+    seat = _seat(lanes)
+    assert [rows.numel() for rows in seat.network_rows] == [4, 2]  # live plays twice
+    views = seat.rows
+    sim = Realtime(GameConfig(2, 2, 1500.0), compiled=False)
+    obs = Obs(
+        **{
+            part: getattr(sim.obs, part)[0].repeat(
+                views // 2, *([1] * (getattr(sim.obs, part).dim() - 2))
+            )
+            for part in ("ships", "fields", "globals", "zones")
+        }
+    )
+    reset = torch.zeros(views, dtype=torch.bool)
+    carry = seat.init_carry(views, lc.CPU)
+    compiled = torch.compile(seat.step, fullgraph=True, dynamic=False)
+    import torch._inductor.config as inductor_config
+
+    # compiled code draws its own random numbers unless told to draw eager's
+    with (
+        torch.random.fork_rng(devices=[]),
+        torch.no_grad(),
+        inductor_config.patch(fallback_random=True),
+    ):
+        torch.manual_seed(3)
+        eager_action, _, _ = seat.step(carry, obs, reset)
+        torch.manual_seed(3)
+        compiled_action, _, _ = compiled(carry, obs, reset)
+    assert torch.equal(eager_action.packed(), compiled_action.packed())
