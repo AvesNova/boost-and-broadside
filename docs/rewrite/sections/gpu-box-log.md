@@ -816,3 +816,14 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   runs do not show. Lane ratings are against the run's own league, so tournament 10 (started 15:46,
   78 players, one field) measures whether it truly peaks early.
 - **16:30 KST Tournament 10 frontline converged** (largest error 31): RL 180.4M uniform champion 1937, null 1802, nearest 1130 (its RL uniform peaks at 1255 ~40M into RL, then 1125-1130; its live 1065 at 60.8M, 801 at 180.4M); BC 120M uniform 992 / 974 / 579 (nearest live 915). Preview plot `results/gpu-box/curve-tournament10-frontline-preview.png` (`gpu-box/curve3.py`, three lines; frontline only until deathmatch lands). The run's compile cache had been pruned by the sync's disk guard: deathmatch logs TritonBundler 'Cubin file not found' warnings (harmless recompiles).
+- **16:48 KST Tournament 10 done: the simple-model A/B's result.** One field (91 players), the mean of
+  frontline and deathmatch, uniform averages, scripted = 1000 (F / D):
+  - champion: BC 120M 988 (992 / 983); RL 60.8M 1755; 121.6M 2034; **180.4M 2161 (1937 / 2386)**
+  - null: BC 946 (974 / 917); RL 60.8M 1673; 121.6M 1856; **180.4M 2010 (1802 / 2218)**
+  - nearest: BC 611 (579 / 643; its live 972); RL 40.9M 1294 (its peak); 121.6M 1185;
+    **180.4M 1140 (1130 / 1149)**; its RL 180.4M live 768, exponential 859
+  Both Yemong lines still rising at 180M (the champion ~+150 over the null); the nearest MLP gains
+  ~+680 in its first 40M of RL, then slides and flattens ~1140; its live weights fall below
+  scripted. Plot `results/gpu-box/curve-tournament10.png`. Noted: the nearest model's pair
+  features (from relational) have no neighbour ship type, shield or energy (the own ship's type
+  only); every run is 3 fighters + 2 heavies per team (default `team_types`).
