@@ -2,3 +2,21 @@ frontline_10v10_arena: batch 1, 2048 games, the largest standard error 40.6 (the
 frontline_10v10_arena: batch 2, 4096 games, the largest standard error 26.5 (the batch took 302 s); done about 09:38 (0 batches), by 11:15 at the latest (8 batches)
 deathmatch_10v10_arena: batch 1, 2048 games, the largest standard error 158.7 (the batch took 1173 s); done about 12:54 (9 batches), by 12:54 at the latest (9 batches)
 deathmatch_10v10_arena: batch 2, 4096 games, the largest standard error 53.0 (the batch took 334 s); done about 10:41 (3 batches), by 11:44 at the latest (8 batches)
+deathmatch_10v10_arena: batch 3, 6144 games, the largest standard error 42.3 (the batch took 243 s); done about 10:27 (2 batches), by 11:15 at the latest (7 batches)
+deathmatch_10v10_arena: batch 4, 8192 games, the largest standard error 35.4 (the batch took 440 s); done about 10:24 (1 batches), by 11:09 at the latest (6 batches)
+deathmatch_10v10_arena: batch 5, 10240 games, the largest standard error 32.2 (the batch took 485 s); done about 10:23 (0 batches), by 11:07 at the latest (5 batches)
+deathmatch_10v10_arena runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average   2778.4 +-  32.2    1280 games
+deathmatch_10v10_arena runs/2026-11-09-rl-absolute/policies/step_180355072/uniform_average   2605.9 +-  28.1    2048 games
+deathmatch_10v10_arena runs/2026-11-09-rl-absolute/policies/step_80740352/uniform_average   2117.0 +-  21.1    4096 games
+deathmatch_10v10_arena runs/2026-11-09-rl-absolute/policies/step_40894464/uniform_average   1738.2 +-  16.6    3840 games
+deathmatch_10v10_arena runs/2026-11-09-rl-absolute/policies/step_20971520/uniform_average   1455.3 +-  14.3    2560 games
+deathmatch_10v10_arena runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average   1344.9 +-  11.9    3072 games
+deathmatch_10v10_arena scripted                                                       1000.0 +-   0.0    3584 games
+frontline_10v10_arena runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average   1874.7 +-  26.5     768 games
+frontline_10v10_arena runs/2026-11-09-rl-absolute/policies/step_180355072/uniform_average   1680.4 +-  21.2    1024 games
+frontline_10v10_arena runs/2026-11-09-rl-absolute/policies/step_80740352/uniform_average   1488.5 +-  18.5    1280 games
+frontline_10v10_arena runs/2026-11-09-rl-absolute/policies/step_40894464/uniform_average   1361.2 +-  17.1    1280 games
+frontline_10v10_arena runs/2026-11-09-rl-absolute/policies/step_20971520/uniform_average   1243.9 +-  15.3    1024 games
+frontline_10v10_arena runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average   1239.5 +-  16.6    1024 games
+frontline_10v10_arena scripted                                                       1000.0 +-   0.0    1792 games
+runs/ratings/fleet-10v10-arena/artifacts/ratings/20261110-102308

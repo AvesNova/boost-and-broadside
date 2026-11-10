@@ -159,3 +159,6 @@
 09:40 crossover done nearest frontline: 5 network ships break even against 5.44 scripted (x1.09)
 09:40 crossover start champion deathmatch
 10:00 crossover start champion deathmatch
+10:22 crossover done champion deathmatch: 5 network ships break even against 7.46 scripted (x1.49)
+10:22 crossover start null deathmatch
+10:23 fleet 10v10-arena done
