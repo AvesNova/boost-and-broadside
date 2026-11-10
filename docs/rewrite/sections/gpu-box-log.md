@@ -850,3 +850,10 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   evenly, score = win + draw/2 with a Wilson interval, and interpolates the 0.5 crossing.
   First GPU run started alongside the fleet ratings (champion frontline 5v5, 5..1 vs 5).
 - **17:55 KST The author: drop the temperature ladder** (at 5v5 it cost ~6 frontline batches, the rest reused); fleet ratings restarted with `--no-ladder`, the ladder run's 5v5 frontline games reused (`runs/ratings/fleet-5v5-ladder`). Crossover grids already share one compiled graph per game size (every pair is a per-game bench count).
+- **18:05 KST First GPU crossover** (champion, frontline 5v5, 128 games per pair, vs scripted 5):
+  5 ships 1.000 (128-0-0), 4: 0.766 [0.69, 0.83], 3: 0.012, 2 and 1: 0.000; **crosses 0.5 at 3.65
+  ships vs 5** (1.35 ships, 27% of its fleet, given); 466 s with the compile, sharing the GPU.
+  `gpu-box/crossover_campaign.py` started alongside the fleet ratings: the three best checkpoints x
+  2 modes x (5v5; 10v10, 20v20, 40v40 arena and density): a full integer grid at n <= 10, else a
+  coarse grid (n x 1.0 .. 0.1) then every integer in the crossing's bracket; A given more ships
+  (up to 2n) when it loses at n:n. Summary: runs/crossover/summary.jsonl.
