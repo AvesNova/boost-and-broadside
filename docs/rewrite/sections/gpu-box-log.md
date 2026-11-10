@@ -753,3 +753,12 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   and re-verified; `gpu-box/hub_repair.py` now runs after every sync pass (re-uploads any file whose
   hub hash differs from its record and re-checks).
 - **12:02 KST Null RL at 180.4M** (finished; last 10 updates Brier 0.612, outcome EV 0.959, PPO KL 0.0085, no skipped steps). Champion RL resuming to 180.4M (~13:55 KST).
+- **12:30 KST The nearest model merged** (`feat/nearest-mlp` 0ef77935, merge 0d6691b9; ruff; 62 pass:
+  its 13 tests, every model's policy-file round trips, contracts). From the agent's report: 196
+  inputs per ship at the defaults (own 15, globals 10, 3 allies x 11, 4 visible enemies x 11, 3
+  fields x 8 (ranked by centre distance; edge distance a feature), 5 zone roles x 14), 180,474
+  parameters (hidden 256); width independent of fleet size (a 5v5-built model runs at 8v8,
+  tested); no auxiliary heads (the learner's auxiliary path is off, as for relational);
+  `--print-config`: the A/B arms differ only in the model (and RL's memory-only micro-batch, 3840 =
+  one per 384-view minibatch). Queued `round12.sh`: nearest BC to 120M after the champion's RL
+  (~13:55 KST); RL only after the BC gates.
