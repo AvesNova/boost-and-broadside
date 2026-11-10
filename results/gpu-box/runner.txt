@@ -137,3 +137,4 @@
 05:15 done 2026-11-10-bc-nearest
 05:15 tournament8 start (11 players: nearest BC vs the champion and null BC curves)
 05:16 round12 done
+05:40 tournament8 done

@@ -3,3 +3,37 @@ frontline: reused 896 games of /workspace/boost-and-broadside/runs/ratings/round
 frontline: reused 1024 games of /workspace/boost-and-broadside/runs/ratings/round7-8x256/frontline.batches.jsonl (11 batches), 9 of its 61 players matched: ['runs/2026-11-09-bc-absolute/policies/step_120586240/uniform_average', 'runs/2026-11-09-bc-absolute/policies/step_120586240/uniform_average', 'runs/2026-11-09-bc-absolute/policies/step_30408704/uniform_average', 'runs/2026-11-09-bc-absolute/policies/step_60817408/uniform_average', 'runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average', 'runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average', 'runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_30408704/uniform_average', 'runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_60817408/uniform_average', 'scripted']
 /workspace/boost-and-broadside/src/bnb/league/matches.py:526: FilledDefaults: the yemong build record lacks config.physics_hidden_fade; they take their defaults
   model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
+frontline: batch 1, 2048 games, the largest standard error 195.0 (the batch took 636 s); done about 06:51 (8 batches), by 06:51 at the latest (8 batches)
+frontline: batch 2, 4096 games, the largest standard error 28.4 (the batch took 129 s); done about 05:28 (0 batches), by 06:13 at the latest (7 batches)
+deathmatch: reused 512 games of /workspace/boost-and-broadside/runs/ratings/round5/deathmatch.batches.jsonl (2 batches), 4 of its 11 players matched: ['runs/2026-11-09-bc-absolute/policies/step_60817408/uniform_average', 'runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_30408704/uniform_average', 'runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_60817408/uniform_average', 'scripted']
+deathmatch: reused 1024 games of /workspace/boost-and-broadside/runs/ratings/round6/deathmatch.batches.jsonl (2 batches), 5 of its 7 players matched: ['runs/2026-11-09-bc-absolute/policies/step_120586240/uniform_average', 'runs/2026-11-09-bc-absolute/policies/step_120586240/uniform_average', 'runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average', 'runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average', 'scripted']
+deathmatch: reused 512 games of /workspace/boost-and-broadside/runs/ratings/round7-8x256/deathmatch.batches.jsonl (14 batches), 9 of its 61 players matched: ['runs/2026-11-09-bc-absolute/policies/step_120586240/uniform_average', 'runs/2026-11-09-bc-absolute/policies/step_120586240/uniform_average', 'runs/2026-11-09-bc-absolute/policies/step_30408704/uniform_average', 'runs/2026-11-09-bc-absolute/policies/step_60817408/uniform_average', 'runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average', 'runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average', 'runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_30408704/uniform_average', 'runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_60817408/uniform_average', 'scripted']
+/workspace/boost-and-broadside/src/bnb/league/matches.py:526: FilledDefaults: the yemong build record lacks config.physics_hidden_fade; they take their defaults
+  model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
+deathmatch: batch 1, 2048 games, the largest standard error 192.5 (the batch took 564 s); done about 06:53 (8 batches), by 06:53 at the latest (8 batches)
+deathmatch: batch 2, 4096 games, the largest standard error 22.6 (the batch took 129 s); done about 05:40 (0 batches), by 06:20 at the latest (7 batches)
+deathmatch       runs/2026-11-10-bc-nearest/policies/step_120586240/live        1037.0 +-  21.1     768 games
+deathmatch       runs/2026-11-10-bc-nearest/policies/step_60817408/uniform_average   1020.3 +-  16.9     768 games
+deathmatch       scripted                                                       1000.0 +-   0.0    3072 games
+deathmatch       runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average    987.8 +-  10.9    1152 games
+deathmatch       runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_60817408/uniform_average    936.5 +-  15.6     640 games
+deathmatch       runs/2026-11-09-bc-absolute/policies/step_120586240/uniform_average    922.2 +-  13.9     768 games
+deathmatch       runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_30408704/uniform_average    840.9 +-  13.8    1024 games
+deathmatch       runs/2026-11-09-bc-absolute/policies/step_60817408/uniform_average    836.7 +-  14.8    1024 games
+deathmatch       runs/2026-11-10-bc-nearest/policies/step_30408704/uniform_average    693.9 +-  22.6     512 games
+deathmatch       runs/2026-11-09-bc-absolute/policies/step_30408704/uniform_average    681.3 +-  15.8    1024 games
+deathmatch       runs/2026-11-10-bc-nearest/policies/step_120586240/exponential_average    672.5 +-  21.1     768 games
+deathmatch       runs/2026-11-10-bc-nearest/policies/step_120586240/uniform_average    628.2 +-  20.6     768 games
+frontline        scripted                                                       1000.0 +-   0.0    4096 games
+frontline        runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average    986.1 +-  10.9    1024 games
+frontline        runs/2026-11-09-bc-absolute/policies/step_120586240/uniform_average    978.8 +-  12.8     896 games
+frontline        runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_60817408/uniform_average    977.9 +-  15.5     640 games
+frontline        runs/2026-11-09-bc-absolute/policies/step_60817408/uniform_average    951.0 +-  14.4     768 games
+frontline        runs/2026-11-10-bc-nearest/policies/step_120586240/live         913.7 +-  18.5     768 games
+frontline        runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_30408704/uniform_average    825.9 +-  13.8    1024 games
+frontline        runs/2026-11-09-bc-absolute/policies/step_30408704/uniform_average    703.1 +-  15.8    1024 games
+frontline        runs/2026-11-10-bc-nearest/policies/step_60817408/uniform_average    612.8 +-  18.4     768 games
+frontline        runs/2026-11-10-bc-nearest/policies/step_120586240/exponential_average    589.8 +-  21.8     768 games
+frontline        runs/2026-11-10-bc-nearest/policies/step_120586240/uniform_average    562.1 +-  28.4     512 games
+frontline        runs/2026-11-10-bc-nearest/policies/step_30408704/uniform_average    441.6 +-  22.0     768 games
+runs/ratings/round8/artifacts/ratings/20261110-054013
