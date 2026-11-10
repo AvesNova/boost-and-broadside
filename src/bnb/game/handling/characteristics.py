@@ -32,7 +32,10 @@ class Characteristics:
         rate at stick levels 1-3 (rad/s); stall_angle (rad), the gun's offset scale;
         gun_range: how far a bullet fired along the flight path at cruise travels in its
         life (m); bullet_speed: that bullet's launch speed, cruise plus muzzle speed (m/s);
-        bullet_drag (1/m); the card's max_energy, bullet_energy_cost (J), max_shield,
+        bullet_drag (1/m); climb_power: the store's charge rate coasting straight at
+        cruise with the store below the engine knee (W, per unit mass g times the climb
+        rate), in closed form: the mass times the cruise times the coast exchange; the
+        card's max_energy, bullet_energy_cost (J), max_shield,
         hit_radius (m) and max_acceleration (m/s^2); vision_range (m); gravity (m/s^2), the
         rules' (the same for every type: the scripted agent tells a real-scale card by it).
     """
@@ -45,6 +48,7 @@ class Characteristics:
     gun_range: torch.Tensor
     bullet_speed: torch.Tensor
     bullet_drag: torch.Tensor
+    climb_power: torch.Tensor
     max_energy: torch.Tensor
     bullet_energy_cost: torch.Tensor
     max_shield: torch.Tensor
@@ -93,6 +97,10 @@ def measure_characteristics(types: ShipTypes, rules: Rules) -> Characteristics:
         gun_range=gun_range,
         bullet_speed=cruise[0] + types.muzzle_speed,
         bullet_drag=rules.bullet_drag * types.bullet_drag_scale,
+        climb_power=rules.flight.mass
+        * cruise[0]
+        * rules.flight.coast_exchange
+        * types.coast_exchange_scale,
         max_energy=types.max_energy,
         bullet_energy_cost=types.bullet_energy_cost,
         max_shield=types.max_shield,

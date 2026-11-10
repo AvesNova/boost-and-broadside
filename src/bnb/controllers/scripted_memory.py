@@ -86,6 +86,18 @@ def forgotten(carry: ScriptedCarry) -> ScriptedCarry:
     )
 
 
+def time_unit(
+    characteristics: Characteristics, own_type: torch.Tensor, parameters: ScriptedParameters
+) -> torch.Tensor:
+    """Each own ship's time unit (R, S), in seconds: its corner turn time (the corner speed
+    over the g limit's acceleration: the time a full-stick turn at corner speed takes to
+    turn the path one radian) over the card's first type's (the type each set was tuned
+    on), raised to time_unit_exponent. At the exponent 0 it is exactly 1 (seconds)."""
+    turn_time = characteristics.corner_speed / characteristics.max_acceleration
+    relative = per_ship(turn_time / turn_time[..., :1], own_type)
+    return torch.pow(relative, parameters.time_unit_exponent)
+
+
 class Recall(NamedTuple):
     """Each enemy (R, E) as the agent believes it: its position and velocity (seen, or dead
     reckoned), its weight as a target (1 seen, fading with the time since seen, 0
@@ -132,15 +144,21 @@ def remember(
     velocity_x = stored("velocity_x", carry.enemy_velocity_x)
     velocity_y = stored("velocity_y", carry.enemy_velocity_y)
     since = torch.where(seen, 0.0, enemy[..., SHIP["time_since_seen"]])
+    # the team's memory fades in its ships' own time: their mean unit (every ship's own,
+    # where the team flies one type)
+    own_type = own[..., SHIP["ship_type"]].to(torch.int32)
+    unit = time_unit(characteristics, own_type, parameters).mean(-1, keepdim=True)
     x, y = last_x + velocity_x * since, last_y + velocity_y * since
     arena_radius = obs.globals[:, None, GLOBAL["arena_radius"]]
     radius = torch.sqrt(x * x + y * y).clamp_min(1e-6)
     inside = (arena_radius / radius).clamp_max(1.0)
     x = torch.where(seen, last_x, x * inside)
     y = torch.where(seen, last_y, y * inside)
-    weight = torch.where(seen, 1.0, logistic(since, parameters.memory_fade_in_seconds, temperature))
+    weight = torch.where(
+        seen, 1.0, logistic(since / unit, parameters.memory_fade_in_seconds, temperature)
+    )
     # a prediction inside an own living ship's vision, where it would be seen, was wrong
-    vision = per_ship(characteristics.vision_range, own[..., SHIP["ship_type"]].to(torch.int32))
+    vision = per_ship(characteristics.vision_range, own_type)
     offset_x = x[:, None, :] - own[..., SHIP["x"]][..., None]  # (R, S, E)
     offset_y = y[:, None, :] - own[..., SHIP["y"]][..., None]
     in_view = (
