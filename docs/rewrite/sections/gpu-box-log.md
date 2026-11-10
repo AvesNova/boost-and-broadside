@@ -741,3 +741,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   no belief about hidden enemies (part of what the A/B measures). The A/B keeps every training
   setting equal to the Yemong runs except memory-only ones (micro-batch); expected 4-6x faster (the
   learner was ~85% of an update). Runs after the RL to 180M (~14:05 KST).
+- **11:05 KST The author: treat the nearest-MLP's first run as a bug hunt** (it should get near the scripted agent's level in BC, which has little memory). Gates: (1) first 3 updates: KL falling about as Yemong's did (2.96 -> 1.41 -> 0.72), finite, speed, entropy toward the teacher's; (2) ~10M and ~30M: KL / agreement vs Yemong at the same step and the run's own lane score vs scripted; stop and investigate (features, normalisation, nearest-K, zone roles, padding) if the score is near zero or KL stalls far above Yemong's; (3) before RL: a short rating of BC 120M vs scripted; RL only if BC is sane.
