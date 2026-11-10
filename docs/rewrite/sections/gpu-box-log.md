@@ -902,3 +902,8 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
 - **21:06 KST Fixed odds at 10 ships** (deathmatch, training arena, 128 games per ratio; win rate, score [95%]): champion 10:10 1.00, 12:10 0.95, **15:10 0.73 (score 0.75 [0.67, 0.82])**, **20:10 0.43 (0.45 [0.37, 0.54])**; nearest 10:10 0.89, 12:10 0.19, 15:10 0.00, 20:10 0.00. (1.25 x 10 rounded to 12, Python's round-half-even: the 10-ship middle ratio is 1.2:1; 20 and 40 are exact.) The champion's case took 852 s, the nearest's 162 s (the compile happens in the first batch, not the engine's build).
 - **21:16 KST The author: 1.2:1 at every size** (consistent with 10 ships' rounded 12). fixed_odds.py's ratios (1, 1.2, 1.5, 2); round 16 restarted at the 20-ship champion case (same game size 2n, so the compile cache's graph; ~10 min of its first compile lost); the 10-ship records relabelled 1.25 -> 1.2.
 - **21:38 KST Fixed odds at 20 ships:** champion 20:20 0.97, 24:20 0.91, **30:20 0.69**, **40:20 0.22**; nearest 20:20 **0.31** (below scripted at even numbers), 24, 30, 40: 0.00. (636 s / 678 s.)
+- **21:40 KST Fleet ratings, 20v20 deathmatch stopped:** with only champion, nearest and scripted,
+  the champion won every game it played in the last batches (1024 of 1024), so its Elo is only a
+  lower bound (~2551 +- 142, the error not falling); nearest 859 +- 19 (below scripted). The
+  frontline 20v20 ratings came from the reused games alone (`fleet3b.sh`); 40v40 capped at 4096
+  games per mode (the fixed-odds 1:1 gives the champion's 40-ship win rate directly).
