@@ -322,3 +322,7 @@ segments (the store writes, the tally read, the finished check) is about 1%.
   axis on the weights, one launch for every lane) and a vmap rule for them, which would
   bring a ratings tick toward the 11.8 ms of one forward (about a third off an
   evaluation's play time). Kernel work; left for a session of its own.
+- Tried and dropped: a vmap rule for the attention kernel (the sets folded into its views,
+  one launch). On a quiet machine the seat step at 16 x 128 rows was 20.2 / 21.2 ms without
+  it and 21.3 / 20.2 ms with it: no difference beyond noise, so the stacked lanes' extra
+  cost over one forward is not the attention's per-set launches.
