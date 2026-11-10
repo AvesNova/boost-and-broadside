@@ -767,3 +767,18 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
 - **14:15 KST Nearest BC gate 2 passed:** KL at updates 10 / 20 / 29: 0.488 / 0.495 / 0.467 (champion 0.483 / 0.498 / 0.444, null 0.480 / 0.562 / 0.502); agreement 0.725 / 0.725 / 0.729 (champion 0.719 / 0.666 / 0.692); pool score vs scripted 0.000 / 0.013 / 0.177 (champion 0.000 / 0.006 / 0.180, null 0.000 / 0.020 / 0.087); the exponential lane's window ~0 for all three at 30M (it accumulates from the start). Outcome Brier lower (0.21 vs 0.40 at 30M; no memory). No sign of a bug.
 - **14:18 KST Gate 3 queued** (`tournament8.sh`): after the nearest BC, its 120M live / uniform / exponential and 30M / 60M uniform against the champion's and null's BC uniforms at 30M / 60M / 120M, reusing tournaments 5-7's games; 8 x 256, +-35.
 - **14:15 KST Nearest BC at 120M** (budget; **19 min**, the champion's BC 3.6 h): KL 0.326, agreement 0.799, Brier 5-15 s 0.640, pool score vs scripted 0.438 (champion 0.277 / 0.786 / 0.702 / 0.458; null 0.351 / 0.740 / 0.689 / 0.393): between the two lines, highest agreement. Tournament 8 (gate 3) started.
+- **14:40 KST Bug found by the nearest gate 3: every per-step `exponential_average` policy file
+  held the uniform average.** Tournament 8's nearest 120M "uniform" and "exponential" were
+  bit-identical; so were every run's (all 24 runs with snapshots, laptop runs included).
+  `save_update_policies` loaded both averages into one scratch model, then saved both: the
+  uniform last, so both names got it. The final `policy-exponential/` (`save_policies`, which
+  saves as it loads) and the training checkpoints' `league.exponential_average.*` were right.
+  Fixed in d62bbc1d with a test that fails on the old code (the uniform file is the mean of the
+  saved lives; the two averages differ). **Consequence: tournaments 6 and 7's "exponential"
+  players were the uniform averages again; the live-vs-exponential question was never measured.**
+  The uniform files (and so both RL runs' starting points) were right. Rewrote the true
+  exponential at the steps the tournaments use (`gpu-box/fix_exponential.py`, record copied from
+  the same step's live with the weights and hash replaced; each loads through `load_policy`):
+  both RL runs at 60.8M / 121.6M / 180.4M from their training checkpoints (60.8M and 121.6M
+  downloaded from the hub), both BC lines at 120.6M from `policy-exponential/`. Nearest's 120.6M
+  waits until tournament 8 ends (it is a player). Older snapshots (BC 30M / 60M) not rewritten.
