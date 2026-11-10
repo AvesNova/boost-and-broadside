@@ -396,3 +396,23 @@ warm A/B (noise, or a cost of the stacked position codes).
 
 A real-scale ratings batch takes 320 s against 167 s on standard frontline: the games are
 longer, which makes the batch's tail (`bench/arena_utilisation.py`) worth measuring there.
+
+### The Arena's tail (`bench/arena_utilisation.py`; `compile-overhaul/arena/`)
+
+`real_scale_frontline`, the scripted agent and the short BC run's two policies (two updates
+old), the default ArenaConfig (8 blocks x 128 games), three steady batches:
+
+- Every batch ran 18,016 ticks, the game clock (10 min) plus the segment it ended in. Only
+  **44% of the row-ticks were in counted games**.
+- The tail is not a spread of lengths: blocks 3 and 5 (the two BC policies against each
+  other) averaged about 17,900 ticks, nearly every game a time-out; the other six blocks
+  averaged about 4,600 ticks (at most 7,936). One slow matchup holds the batch to its
+  clock.
+- Simulated from these lengths (each block's games i.i.d. from its measured ones), "every
+  game started before T, each to its end": T = 1x the median game (4,800 ticks) 1.49x the
+  games per batch tick, 2x 2.27x, 4x 2.03x (the batch then runs past one clock). The rule
+  is a stopping rule, so wins / games stays consistent (Wald's identity).
+- The policies here barely play, so the time-outs overstate it; trained policies will
+  differ. The structure is general: the batch waits for its slowest block. Proposal for the
+  author (changes how a tournament counts its games, so not done): the started-before-T
+  rule at T about 2x the median, or a T from the batch's own game lengths.
