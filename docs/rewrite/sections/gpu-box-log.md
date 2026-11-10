@@ -696,3 +696,38 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   leads early in RL, the champion pulls ahead after ~60M (+106 uniform, +190 live at 121.6M); in RL
   the champion's live policy is its best (the averages lag a still-improving policy). Deathmatch next.
 - **10:35 KST Round 11 queued (the author): after tournament 7, both RL runs resumed to 172 updates (180.4M)**, null then champion (`round11.sh`); ~1.6 h + ~1.9 h.
+- **10:30 KST Tournament 7 final** (`runs/ratings/round7-8x256/`; frontline 11 batches, deathmatch 14; worst +-32). Frontline / deathmatch / mean:
+  BC 10.5M  champion 465 / 275 / 370  null 440 / 32 / 236
+  BC 21.0M  champion 728 / 727 / 728  null 606 / 559 / 582
+  BC 30.4M  champion 803 / 838 / 820  null 718 / 687 / 702
+  BC 40.9M  champion 840 / 913 / 876  null 761 / 745 / 753
+  BC 50.3M  champion 924 / 902 / 913  null 877 / 807 / 842
+  BC 60.8M  champion 969 / 912 / 940  null 932 / 827 / 880
+  BC 70.3M  champion 997 / 947 / 972  null 957 / 861 / 909
+  BC 80.7M  champion 980 / 971 / 975  null 978 / 878 / 928
+  BC 90.2M  champion 976 / 972 / 974  null 1001 / 906 / 954
+  BC 100.7M  champion 1009 / 947 / 978  null 1013 / 890 / 952
+  BC 110.1M  champion 1033 / 1002 / 1018  null 989 / 900 / 945
+  BC 120.6M  champion 1010 / 979 / 995  null 948 / 898 / 923
+  RL 10.5M  champion 1293 / 1313 / 1303  null 1351 / 1196 / 1273
+  RL 21.0M  champion 1396 / 1493 / 1445  null 1409 / 1330 / 1369
+  RL 30.4M  champion 1436 / 1597 / 1517  null 1489 / 1469 / 1479
+  RL 40.9M  champion 1537 / 1702 / 1620  null 1531 / 1588 / 1560
+  RL 50.3M  champion 1564 / 1806 / 1685  null 1550 / 1626 / 1588
+  RL 60.8M  champion 1573 / 1855 / 1714  null 1604 / 1744 / 1674
+  RL 70.3M  champion 1677 / 1961 / 1819  null 1578 / 1808 / 1693
+  RL 80.7M  champion 1703 / 2020 / 1861  null 1630 / 1836 / 1733
+  RL 90.2M  champion 1711 / 2080 / 1895  null 1651 / 1894 / 1772
+  RL 100.7M  champion 1770 / 2131 / 1950  null 1686 / 1923 / 1804
+  RL 110.1M  champion 1780 / 2147 / 1963  null 1700 / 1964 / 1832
+  RL 121.6M  champion 1825 / 2219 / 2022  null 1719 / 2005 / 1862
+  BC 120.6M live  champion 937 / 991 / 964  null 873 / 897 / 885
+  BC 120.6M uniform  champion 1010 / 979 / 995  null 948 / 898 / 923
+  BC 120.6M exponential  champion 1013 / 981 / 997  null 987 / 919 / 953
+  RL 60.8M live  champion 1655 / 1965 / 1810  null 1586 / 1888 / 1737
+  RL 60.8M uniform  champion 1573 / 1855 / 1714  null 1604 / 1744 / 1674
+  RL 60.8M exponential  champion 1610 / 1863 / 1736  null 1580 / 1760 / 1670
+  RL 121.6M live  champion 1868 / 2017 / 1942  null 1655 / 2059 / 1857
+  RL 121.6M uniform  champion 1825 / 2219 / 2022  null 1719 / 2005 / 1862
+  RL 121.6M exponential  champion 1837 / 2205 / 2021  null 1663 / 1997 / 1830
+  Reading: the champion leads the null at nearly every point (BC +50-130 on the mean; RL from ~20M, +160 at 121.6M); RL adds ~+1000 over BC and is still climbing at 121.6M (largest gains in deathmatch); live best mid-RL (+90 at 60M), the averages best at 121.6M (+80 for the champion). RL to 180.4M next (round11).
