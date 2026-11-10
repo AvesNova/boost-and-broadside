@@ -4,3 +4,8 @@ frontline: reused 256 games of /workspace/boost-and-broadside/runs/ratings/round
   model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
 /workspace/boost-and-broadside/src/bnb/league/matches.py:526: FilledDefaults: the yemong build record lacks config.physics_hidden_decay, config.physics_hidden_fade; they take their defaults
   model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
+frontline: batch 1, 2048 games, the largest standard error 347.4 (the batch took 1007 s); done about 07:44 (28 batches), by 07:44 at the latest (28 batches)
+frontline: batch 2, 4096 games, the largest standard error 347.4 (the batch took 211 s); done about 04:31 (27 batches), by 04:31 at the latest (27 batches)
+frontline: batch 3, 6144 games, the largest standard error 347.4 (the batch took 211 s); done about 03:27 (26 batches), by 03:27 at the latest (26 batches)
+frontline: batch 4, 8192 games, the largest standard error 347.4 (the batch took 211 s); done about 02:55 (25 batches), by 02:55 at the latest (25 batches)
+frontline: batch 5, 10240 games, the largest standard error 347.4 (the batch took 211 s); done about 02:36 (24 batches), by 02:36 at the latest (24 batches)
