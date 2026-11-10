@@ -94,6 +94,7 @@ CARD_UNITS = dict(
     shield_recharge_rate_scale=NONE,
     shield_recharge_delay_scale=NONE,
     head_on_fraction_scale=NONE,
+    engine_knee_scale=NONE,
 )
 FLIGHT_UNITS = dict(
     mass=NONE,

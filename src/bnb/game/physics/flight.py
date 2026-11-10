@@ -34,6 +34,7 @@ class Airframe(NamedTuple):
     coast_exchange_scale: torch.Tensor
     dive_exchange_scale: torch.Tensor
     climb_exchange_scale: torch.Tensor
+    engine_knee_scale: torch.Tensor
     corner_speed: torch.Tensor  # sqrt(max_acceleration / max_lift_coefficient)
 
 
@@ -54,9 +55,8 @@ def controls(power_index: torch.Tensor, stick_index: torch.Tensor):
 def engine_fall(constants: FlightConstants, airframe: Airframe, energy: torch.Tensor):
     """phi(E): 0 below the knee, rising smoothly to 1 at a full store."""
     fraction = energy / airframe.max_energy
-    return smoothstep(
-        ((fraction - constants.engine_knee) / (1.0 - constants.engine_knee)).clamp(0.0, 1.0)
-    )
+    knee = constants.engine_knee * airframe.engine_knee_scale
+    return smoothstep(((fraction - knee) / (1.0 - knee)).clamp(0.0, 1.0))
 
 
 def stall_angle(constants: FlightConstants, airframe: Airframe) -> torch.Tensor:

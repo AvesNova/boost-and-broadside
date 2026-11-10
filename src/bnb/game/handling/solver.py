@@ -144,6 +144,9 @@ def _flight_card(rules: Rules, handles: Handles, parameters: torch.Tensor) -> di
         dive_exchange_scale=value["dive_exchange"] / constants.dive_exchange,
         climb_exchange_scale=value["climb_exchange"] / constants.climb_exchange,
         vision_range_scale=handles.vision_range / rules.vision_range,
+        # The knee is the rules' (a card is solved under it); the scale is a live tuning
+        # knob of the card, 1 for a solved one.
+        engine_knee_scale=torch.ones_like(lift),
     )
 
 

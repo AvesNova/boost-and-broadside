@@ -53,6 +53,7 @@ FIELDS = dict(
     shield_recharge_rate_scale="of rules.shield_recharge_rate",
     shield_recharge_delay_scale="of rules.shield_recharge_delay",
     head_on_fraction_scale="of rules.head_on_fraction; the target's [f_0]",
+    engine_knee_scale="of flight.engine_knee [e_k]",
 )
 
 
@@ -113,6 +114,7 @@ SCALED = dict(
     shield_recharge_rate_scale=("rules", "shield_recharge_rate"),
     shield_recharge_delay_scale=("rules", "shield_recharge_delay"),
     head_on_fraction_scale=("rules", "head_on_fraction"),
+    engine_knee_scale=("flight", "engine_knee"),
 )
 
 
@@ -148,6 +150,7 @@ class ShipTypes:
     shield_recharge_rate_scale: torch.Tensor
     shield_recharge_delay_scale: torch.Tensor
     head_on_fraction_scale: torch.Tensor
+    engine_knee_scale: torch.Tensor
 
 
 def default_card(ship_set: str = STANDARD) -> dict[str, tuple[float, ...]]:
