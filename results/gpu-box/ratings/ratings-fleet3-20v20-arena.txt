@@ -1,1 +1,3 @@
 --reuse: ['runs/ratings/fleet-40v40-arena'] are not directories
+frontline_20v20_arena: reused 512 games of /workspace/boost-and-broadside/runs/ratings/fleet-20v20-arena/frontline_20v20_arena.batches.jsonl (2 batches), 3 of its 7 players matched: ['runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average', 'runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average', 'scripted']
+deathmatch_20v20_arena: reused 512 games of /workspace/boost-and-broadside/runs/ratings/fleet-20v20-arena/deathmatch_20v20_arena.batches.jsonl (3 batches), 3 of its 7 players matched: ['runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average', 'runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average', 'scripted']

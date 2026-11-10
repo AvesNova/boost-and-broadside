@@ -182,3 +182,6 @@
 11:43 fleet3 20v20-arena FAILED (runs/ratings-fleet3-20v20-arena.out)
 11:43 fleet3 40v40-arena start (champion, nearest, scripted; 8 x 64)
 11:43 fleet3 40v40-arena FAILED (runs/ratings-fleet3-40v40-arena.out)
+11:44 fleet3 20v20-arena start (champion, nearest, scripted; 8 x 128)
+11:44 fleet3 done
+11:49 odds start champion-10
