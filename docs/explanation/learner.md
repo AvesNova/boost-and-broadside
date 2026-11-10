@@ -1,5 +1,5 @@
 ---
-covers: [src/bnb/learn/ppo.py, src/bnb/learn/returns.py, src/bnb/learn/losses.py, src/bnb/learn/labels.py, src/bnb/learn/shots.py, src/bnb/runtime/store.py, src/bnb/models/relational.py]
+covers: [src/bnb/learn/ppo.py, src/bnb/learn/returns.py, src/bnb/learn/losses.py, src/bnb/learn/labels.py, src/bnb/learn/shots.py, src/bnb/runtime/store.py, src/bnb/models/relational.py, src/bnb/models/nearest.py]
 reviewed: 2026-11-02
 ---
 
@@ -316,3 +316,27 @@ own ships' hidden states. It is stateless, so its `unroll` is its forward over e
 Trained from scratch against the chaser at 2v2, it must win at least 60% of 256 games after
 the budget in `tests/loop/test_learning.py`; the [training guide](../guides/training.md#the-toy-learner)
 shows how to run it.
+
+## The nearest-neighbour MLP
+
+`bnb.models.nearest.Nearest` (`--model nearest`, settings `TrainConfig.nearest`,
+`NearestConfig`) is the relational model's outputs over an input whose width depends on
+neither the fleet nor the field count, so a model trained at 5v5 plays any size. It is
+stateless and has no memory or belief: it sees only what is visible now. Each own ship
+reads (widths at the defaults, 196 in all, `nearest.input_width`):
+
+| Block | Width | Contents |
+|---|---|---|
+| own state | 15 + 10 | the relational model's own features; the globals (episode progress, arena radius, fog, mode one-hot, scores own, enemy and target, front and threshold), scaled as the MLP's `GLOBAL_SCALE` |
+| allies | 3 x 11 | the nearest living allies, nearest first: the relational model's 10 pair features and a presence flag |
+| enemies | 4 x 11 | the nearest living visible enemies (a hidden one is never a candidate), the same 11 |
+| fields | 3 x 8 | the nearest fields by the distance to their centre: centre offset in the heading frame, centre distance, signed edge distance (centre distance minus radius), radius, band width, level, presence |
+| zones | 5 x 14 | one slot per role (own spawn, own defense, neutral, enemy defense, enemy spawn): centre offset in the heading frame, distance, radius, role one-hot, progress, direction, symlog of the captures to win and to lose, presence |
+
+A missing ally, enemy or field, and a role no present zone has (team deathmatch), are zero
+with presence 0. The own ships are the first half of the view's rows, so the build record
+(`NearestBuild`) holds the config alone. Two hidden GELU layers of `hidden` (256) feed the
+joint policy, the critic and the outcome (the mean of the own ships' hidden states); at the
+defaults it has 180,474 parameters. It plays through
+`bnb.controllers.relational.RelationalController`, and like the relational model has no
+auxiliary heads, so neither PPO nor BC computes those terms (`Learner.auxiliary` is False).
