@@ -1,6 +1,7 @@
 """The `bnb` command: `bnb train` trains or clones, `bnb runs` lists runs and uploads
 checkpoints, `bnb ship-card` charts a ship card, `bnb ratings` and `bnb head-to-head` rate
-policies, `bnb figures` draws what a policy's heads have learned and films it playing.
+policies, `bnb crossover` finds the ship-count handicap at which a policy's score crosses
+one half, `bnb figures` draws what a policy's heads have learned and films it playing.
 
 An entry point (code style, Layers): it sets the process-wide options its commands need (the
 seed, the matmul precision, the charts' backend). The play shell (`python -m bnb.play`) and
@@ -253,6 +254,44 @@ class HeadToHead:
 
 
 @dataclasses.dataclass(frozen=True)
+class Crossover:
+    """Crossover fights (`bnb crossover A [B] --pairs a:b ...`): A against B (default
+    "scripted") at unequal ship counts, to find the handicap at which A's score crosses one
+    half (`bnb.league.crossover`). The game is the preset's, at `--ships-per-team` ships per
+    team when given (default the preset's own); each pair a:b plays A with a active ships
+    against B with b, the rest of each team's slots benched (they stay dead and out of play,
+    and team deathmatch's winning score counts the enemy's active ships), `--games` games
+    per pair split evenly between the seats, every pair in the same batches. A and B name
+    players as for bnb head-to-head; a player may be named twice (scripted against itself).
+
+    Prints and records, per pair, A's wins, draws and losses and its score (a draw half a
+    win) with a 95% Wilson interval, and where the score crosses one half between
+    neighbouring pairs (in the order given, interpolated): `pairs.jsonl` (a line per pair)
+    and `result.json` (the provenance with the command, the players' SHA-256, the rows and
+    the crossings) in `artifacts/crossover/<time>/` of `--out` (else A's run, else the
+    runs directory). To refine, play a finer grid or more games around the crossing.
+
+    players: A, and B (default scripted); pairs: the active counts, a:b each (A's, B's;
+    each from 1 to the ships per team); preset; ships_per_team: the game's size M (the
+    largest count any pair needs, at least); games: per pair (even); blocks and
+    block_environments: the engine's layout at most; seed: the process's seed (the games'
+    draws); device; out; runs_directory: as for bnb train.
+    """
+
+    players: tyro.conf.Positional[tuple[str, ...]]
+    pairs: tuple[str, ...]
+    preset: str = "deathmatch"
+    ships_per_team: int | None = None
+    games: int = 256
+    blocks: int = 8
+    block_environments: int = 128
+    seed: int = 0
+    device: str = "cuda"
+    out: str | None = None
+    runs_directory: str | None = None
+
+
+@dataclasses.dataclass(frozen=True)
 class Figures:
     """Figures of what a policy's heads have learned (`bnb figures SET ... --policy P`):
     capture a self-play rollout and the scenario lab with the policy's model (on the CPU by
@@ -397,14 +436,25 @@ QUEUE_FLAGS = {
     "--until-idle": False,
 }
 
-COMMANDS = ("train", "play", "runs", "ship-card", "ratings", "head-to-head", "figures", "queue")
+COMMANDS = (
+    "train",
+    "play",
+    "runs",
+    "ship-card",
+    "ratings",
+    "head-to-head",
+    "crossover",
+    "figures",
+    "queue",
+)
 
 
 def main() -> None:
     """The `bnb` command: `bnb train ...` trains, `bnb play ...` opens the play shell,
     `bnb runs ...` lists and shows runs and uploads checkpoints, `bnb ship-card ...` charts a
     card, `bnb ratings ...` and
-    `bnb head-to-head ...` rate policies offline, `bnb figures ...` draws what a policy's
+    `bnb head-to-head ...` rate policies offline, `bnb crossover ...` plays them at unequal
+    ship counts, `bnb figures ...` draws what a policy's
     heads have learned (`bnb figures video ...` films a game, `bnb figures watch RUN` makes
     both while a run trains), `bnb queue ...` queues and runs GPU jobs."""
     os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")  # Triton 3.9's default, made explicit
@@ -426,6 +476,8 @@ def main() -> None:
         ratings(tyro.cli(Ratings, args=arguments, prog="bnb ratings"))
     elif command == "head-to-head":
         head_to_head(tyro.cli(HeadToHead, args=arguments, prog="bnb head-to-head"))
+    elif command == "crossover":
+        crossover(tyro.cli(Crossover, args=arguments, prog="bnb crossover"))
     elif command == "figures":
         os.environ.setdefault("MPLBACKEND", "Agg")  # the figures go to files: no display
         kind = (arguments[:1] or [""])[0]
@@ -1095,6 +1147,83 @@ def head_to_head(options: HeadToHead) -> None:
     inputs = {player.name: player.policy for player in players if player.policy is not None}
     payload = dict(pairs=rows, games=options.games, presets=list(options.presets))
     print(provenance.write_result(owner, "head_to_head", payload, inputs))
+
+
+def crossover(options: Crossover) -> None:
+    """`bnb crossover`: the pairs of ship counts, the table, and the result recorded."""
+    import torch
+
+    from bnb.game.api import PRESETS
+    from bnb.league import crossover as fights
+    from bnb.league.matches import ArenaConfig
+    from bnb.runs import provenance, records
+
+    _check_presets((options.preset,))
+    if not 1 <= len(options.players) <= 2:
+        raise SystemExit("bnb crossover takes one or two players: A [B]")
+    names = (*options.players, "scripted")[:2]
+    runs_directory = runs_directory_of(options.runs_directory)
+    first, second = _players(names, runs_directory)
+    try:
+        pairs = [fights.parse_pair(text) for text in options.pairs]
+        game = PRESETS[options.preset]
+        if options.ships_per_team is not None:
+            game = dataclasses.replace(game, ships_per_team=options.ships_per_team)
+        layout = ArenaConfig(blocks=options.blocks, block_environments=options.block_environments)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+    torch.manual_seed(options.seed)  # the games' draws
+    try:
+        rows = fights.crossover(
+            first, second, pairs, options.games, game, torch.device(options.device), layout
+        )
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+    found = fights.crossings(rows)
+    print(
+        f"{first.name} against {second.name}, {options.preset} at "
+        f"{game.ships_per_team}v{game.ships_per_team}, {options.games} games per pair"
+    )
+    print(
+        f"{'pair':>7s} {'games':>6s} {'wins':>6s} {'draws':>6s} {'losses':>6s}  score [95% Wilson]"
+    )
+    for row in rows:
+        print(
+            f"{row['first_active']:>3d}:{row['second_active']:<3d} {row['games']:6d} "
+            f"{row['wins']:6d} {row['draws']:6d} {row['losses']:6d}  {row['score']:.3f} "
+            f"[{row['score_low']:.3f}, {row['score_high']:.3f}]"
+        )
+    for crossing in found:
+        print(
+            f"the score crosses 0.5 between {' and '.join(crossing['between'])}: at "
+            f"{crossing['first_active']:.2f}:{crossing['second_active']:.2f} "
+            f"(handicap {crossing['handicap']:+.2f} ships)"
+        )
+    if not found:
+        print("the score does not cross 0.5 along the pairs")
+    if options.out is not None:
+        owner = pathlib.Path(options.out)
+    else:
+        owner = next(
+            (
+                runs_directory / name
+                for name in names
+                if (runs_directory / name / records.RECORD).is_file()
+            ),
+            runs_directory,
+        )
+    inputs = {one.name: one.policy for one in (first, second) if one.policy is not None}
+    payload = dict(
+        rows=rows,
+        crossings=found,
+        preset=options.preset,
+        game=dataclasses.asdict(game),
+        games=options.games,
+        seed=options.seed,
+    )
+    directory = provenance.write_result(owner, "crossover", payload, inputs)
+    (directory / "pairs.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+    print(directory)
 
 
 def figures(options: Figures) -> None:

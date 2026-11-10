@@ -47,15 +47,18 @@ def mode_phase(
     ships: Ships,
     alive: torch.Tensor,
     died: torch.Tensor,
+    active: torch.Tensor | None = None,
 ) -> Phase:
-    """ships: after the moves; alive (B, N): alive after the damage phase; died (B, N)."""
+    """ships: after the moves; alive (B, N): alive after the damage phase; died (B, N);
+    active (B, 2) int32 or None: each team's active ships (None: every ship), which sets
+    team deathmatch's winning scores (`deathmatch_targets`)."""
     zero = torch.zeros_like(ships.x)
     no = torch.zeros_like(mode.front, dtype=torch.bool)
     if mode_rules.name == TEAM_DEATHMATCH:
         # Every death scores for the other team, whatever its cause: (B, 2) by the scoring
         # team, its enemy's deaths.
         score = mode.score + enemy(died.to(torch.int32)).sum(-1, dtype=torch.int32)
-        reached = score >= mode_rules.kills_per_ship * rules.ships_per_team
+        reached = score >= deathmatch_targets(rules, mode_rules, active)
         result = reached[:, 0].to(torch.int32) - reached[:, 1].to(torch.int32)  # both: a draw
         return Phase(replace(mode, score=score), zero, zero, reached.any(-1), result)
     if mode_rules.name == FRONTLINE:
@@ -103,6 +106,17 @@ def mode_phase(
             torch.sign(capture.front).to(torch.int32),
         )
     return Phase(mode, zero, zero, no, torch.zeros_like(mode.front))
+
+
+def deathmatch_targets(
+    rules: Rules, mode_rules: ModeRules, active: torch.Tensor | None
+) -> torch.Tensor | int:
+    """Team deathmatch's winning score per team: kills_per_ship times the enemy team's
+    active ships, (B, 2) int32 by the scoring team from active (B, 2), or the one int
+    kills_per_ship * ships_per_team when every ship is active (active None)."""
+    if active is None:
+        return mode_rules.kills_per_ship * rules.ships_per_team
+    return mode_rules.kills_per_ship * active.flip(-1).to(torch.int32)
 
 
 def clock_result(mode_rules: ModeRules, mode: ModeState) -> torch.Tensor:

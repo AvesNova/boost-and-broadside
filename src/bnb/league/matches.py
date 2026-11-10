@@ -39,6 +39,11 @@ A batch: every environment starts a fresh game (`Rollout.restart`), environment 
 block seating the block's first player on team i mod 2, so a block's games split evenly
 between the seats. Each environment's first game is played to its end and tallied once,
 from the block's first player's side (`MatchSeat.tally`).
+
+An engine built with benching plays unequal teams (the crossover, `bnb.league.crossover`):
+each block's batch may give its two players their active ship counts (at most the game's
+ships per team; the rest of a team's slots benched, `bnb.game.api`), set per environment
+with the seats, so one graph plays every handicap at once.
 """
 
 import dataclasses
@@ -500,7 +505,8 @@ class Arena:
     slots' lanes, with the player's ablations. `groups`: a template model per build, in the
     order the builds first appear among the players (`group_of` maps a network player's index
     to its group, as `network_groups`); lanes: each group's lanes, the most of its slots a
-    batch may hold (`default_lanes` by default)."""
+    batch may hold (`default_lanes` by default); benching: the batches may give the players
+    active ship counts (`play`)."""
 
     def __init__(
         self,
@@ -509,8 +515,10 @@ class Arena:
         device: torch.device,
         config: ArenaConfig = ArenaConfig(),
         lanes: tuple[int, ...] | None = None,
+        benching: bool = False,
     ) -> None:
         self.players, self.config, self.device = players, config, device
+        self.ships_per_team = game.ships_per_team
         self.states: dict[int, dict[str, torch.Tensor]] = {}
         self.groups: list[torch.nn.Module] = []
         groups = network_groups(players)
@@ -559,6 +567,7 @@ class Arena:
             compiled=config.compiled,
             graph_ticks=config.graph_ticks,
             staggered=False,
+            benching=benching,
         )
         # environment i seats its block's first player on team i mod 2
         self.seats = torch.arange(config.games, device=device) % 2
@@ -574,13 +583,32 @@ class Arena:
         else:
             self.seat.load_scripted(slot, play)
 
-    def play(self, matchups: list[tuple[int, int]]) -> torch.Tensor:
+    def _active(self, counts: list[tuple[int, int]]) -> torch.Tensor:
+        """(B, 2) int32 each environment's active ships by team, from each block's (first
+        player's, second player's) counts and the environment's seat."""
+        for block, pair in enumerate(counts):
+            if len(pair) != 2 or not all(1 <= count <= self.ships_per_team for count in pair):
+                raise ValueError(
+                    f"block {block}: active ships {tuple(pair)}, each from 1 to the game's "
+                    f"{self.ships_per_team} ships per team"
+                )
+        by_block = torch.tensor(counts, dtype=torch.int32)  # (blocks, 2) first, second
+        rows = by_block.repeat_interleave(self.config.block_environments, 0)  # (B, 2)
+        first_on_team0 = (self.seats.cpu() == 0)[:, None]
+        return torch.where(first_on_team0, rows, rows.flip(-1)).to(self.device)
+
+    def play(
+        self, matchups: list[tuple[int, int]], active: list[tuple[int, int]] | None = None
+    ) -> torch.Tensor:
         """One batch: block b plays `matchups[b]` (its first player, its second; indices into
-        the players), every block's games to their end. (blocks, 3) int64: each block's first
-        player's wins, ties and losses. Raises RuntimeError if a game runs past the game
-        clock (plus a margin) without ending."""
+        the players), every block's games to their end; active: block b's players' active
+        ship counts (first, second), for an engine built with benching (None: every ship).
+        (blocks, 3) int64: each block's first player's wins, ties and losses. Raises
+        RuntimeError if a game runs past the game clock (plus a margin) without ending."""
         if len(matchups) != self.config.blocks:
             raise ValueError(f"{len(matchups)} matchups for {self.config.blocks} blocks")
+        if active is not None and len(active) != self.config.blocks:
+            raise ValueError(f"{len(active)} active counts for {self.config.blocks} blocks")
         for block, (first, second) in enumerate(matchups):
             if first == second:
                 raise ValueError(f"block {block}: {self.players[first].name} against itself")
@@ -595,7 +623,7 @@ class Arena:
         for block, (first, second) in enumerate(matchups):
             self._load(2 * block, first)
             self._load(2 * block + 1, second)
-        self.rollout.restart()
+        self.rollout.restart(None if active is None else self._active(active))
         self.rollout.carry["seat"].copy_(self.seats)
         counts = torch.zeros(self.config.blocks * len(OUTCOMES), dtype=torch.int64)
         ticks = 0

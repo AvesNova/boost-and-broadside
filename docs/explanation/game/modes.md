@@ -49,7 +49,10 @@ When a match ends, the environment gets a new map and a fresh mode state
 - **Score:** every death scores one point for the other team, whatever its cause: an
   enemy's hit, friendly fire or the boundary.
 - **Win:** the first team to `kills_per_ship * ships_per_team` points. Both reaching it on
-  the same tick is a draw. At the clock the higher score wins, and equal scores draw.
+  the same tick is a draw. At the clock the higher score wins, and equal scores draw. With
+  benched ships (below) a team's target is `kills_per_ship` times the enemy's *active*
+  ships (`bnb.game.modes.phase.deathmatch_targets`), and the observation's `score_target`
+  is the viewer's own.
 - **Spawns, uniform:** each spawning ship draws candidate points uniformly over the arena
   and takes the one farthest from the nearest living enemy. At a reset, when every ship
   spawns at once, each ship's first candidate stands in for its position, and each ship
@@ -59,6 +62,24 @@ When a match ends, the environment gets a new map and a fresh mode state
   centres are spread over the arena, and each team's ships are assigned to groups by
   formation rank. A respawn lands at a distance from an anchor, a random living ship of
   either team, choosing the candidate farthest from the nearest living enemy.
+
+## Benched ships
+
+Unequal teams at one static size, for evaluation (the crossover, `bnb crossover`):
+`bnb.game.api.reset`, `bnb.game.api.step`, `bnb.game.api.resolve` and
+`bnb.game.api.perceive` take `active`, (B, 2) int32, each team's
+active ship count per environment, a runtime input, so one compiled graph plays every
+handicap at once. A team's benched ships are its last `ships_per_team - active` slots
+(`bnb.game.state.benched_of`). They are kept as dead ships waiting to respawn: alive false,
+`respawn_wait` held at the full respawn length, the speed floor and a still nose, at the
+point their last spawn placed them. So they never fly, fire, take or deal damage, score,
+give the enemy a point, respawn or show to the enemy, and a reset's spawns keep no distance
+from them. In the observation their rows are a dead ship's: alive 0, fired and spawned 0,
+`respawn_wait` the full respawn length; the enemy's view shows them not visible (hidden
+columns zero), and their own team's view shows them as it shows its own dead ships
+(visible, with the frozen values, no accelerations). With every ship active (or `active`
+None, as in training) the game is bit-identical to the game without the input
+(`tests/sections/test_benched.py`).
 
 ## Frontline
 

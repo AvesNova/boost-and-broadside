@@ -263,3 +263,10 @@ def enemy(values: torch.Tensor) -> torch.Tensor:
     """(B, N, ...) per-ship values as each team's enemy's, (B, 2, S, ...): row t holds team
     1 - t."""
     return by_team(values).flip(1)
+
+
+def benched_of(ships_per_team: int, active: torch.Tensor) -> torch.Tensor:
+    """(B, N) bool: the benched ships of active (B, 2) int, each team's active ship count: a
+    team's slots from its count up (its last S - active slots), in team-major order."""
+    slot = torch.arange(ships_per_team, device=active.device)
+    return (slot >= active[..., None]).reshape(active.shape[0], TEAMS * ships_per_team)

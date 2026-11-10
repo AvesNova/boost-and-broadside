@@ -7,6 +7,15 @@ tick uniforms. `types` is the ship card, tensors, so a sweep can vary it without
 recompiling. Each environment's mode owns its win rule, objective, spawn placement and
 spawn protection; those steps run on the mode's slices of the batch (`layout.per_mode`), the
 rest once over the batch with the per-environment rules (`layout.environment`).
+
+Benched ships (unequal teams at one static size): `active` (B, 2) int32, each team's active
+ship count per environment, a runtime input of `reset`, `resolve` and `step` (None: every
+ship active, the game unchanged). A team's benched ships are its last S - active slots
+(`benched_of`). They are kept as dead ships waiting to respawn, alive false with
+respawn_wait held at the environment's full respawn length (`_bench`), so they never act,
+fly, fire, take or deal damage, are seen by the enemy, score or respawn; team deathmatch's
+winning score counts the enemy's active ships only (`modes.phase.mode_phase`). The counts
+hold through the episode resets: a caller passes the same tensor every tick.
 """
 
 import torch
@@ -19,7 +28,7 @@ from ..modes.rules import FRONTLINE, ModeRules
 from ..modes.spawns import placement
 from ..rules import Rules
 from ..ship_types import ShipTypes, per_ship, ticks_between_shots
-from ..state import State, Sweep, apply, blank, replace, where
+from ..state import Ships, State, Sweep, apply, benched_of, blank, replace, where
 from .bullets import fire, move_bullets
 from .combat import apply_damage, boundary_damage, hits
 from .flight import airframe_of, controls, flight_tick
@@ -57,8 +66,11 @@ def _placement(
     starting,
     axis_x,
     axis_y,
+    benched=None,
 ):
-    """Every ship's spawn placement by its environment's mode (selected later by the mask)."""
+    """Every ship's spawn placement by its environment's mode (selected later by the mask).
+    benched (B, N) or None: ships that do not spawn, which spawning ships keep no distance
+    from."""
 
     def place(
         mode_rules: ModeRules,
@@ -73,6 +85,7 @@ def _placement(
         axis_y,
         rotation,
         keys,
+        benched,
     ):
         return placement(
             rules,
@@ -89,6 +102,7 @@ def _placement(
             axis_y,
             rotation,
             keys,
+            benched,
         )
 
     return per_mode(
@@ -106,6 +120,22 @@ def _placement(
         axis_y,
         tick.rotation,
         tick.keys,
+        benched,
+    )
+
+
+def _bench(rules: Rules, ships: Ships, benched: torch.Tensor, respawn_ticks: torch.Tensor) -> Ships:
+    """The ships with the benched ones (B, N) held as dead ships waiting to respawn: alive
+    and spawned false, respawn_wait the environment's full respawn length (B,) ticks, and
+    the speed floor and still nose a death leaves. Their other values stay as the last spawn
+    placed them (a fresh ship's, at its spawn point), as a dead ship keeps its last ones."""
+    return replace(
+        ships,
+        alive=ships.alive & ~benched,
+        spawned=ships.spawned & ~benched,
+        respawn_wait=torch.where(benched, respawn_ticks[:, None], ships.respawn_wait),
+        proper_speed=torch.where(benched, rules.flight.speed_floor, ships.proper_speed),
+        nose_rate=torch.where(benched, 0.0, ships.nose_rate),
     )
 
 
@@ -115,12 +145,18 @@ def _vision_ranges(rules: Rules, types: ShipTypes, ship_type: torch.Tensor) -> t
 
 
 def reset(
-    rules: Rules, types: ShipTypes, uniforms: torch.Tensor, fogged: torch.Tensor | None = None
+    rules: Rules,
+    types: ShipTypes,
+    uniforms: torch.Tensor,
+    fogged: torch.Tensor | None = None,
+    active: torch.Tensor | None = None,
 ) -> State:
     """A fresh state from (B, U) tick uniforms: new maps and modes, every ship spawned,
     tick 0. fogged (B,) bool: which environments hide what their teams cannot see (default
-    all); it stays fixed through the episode resets that follow. Raises ValueError for a
-    card whose fire rate is not a whole number of ticks at the rules' tick."""
+    all); it stays fixed through the episode resets that follow. active (B, 2) int32: each
+    team's active ships, the rest benched (see the module docstring; default every ship).
+    Raises ValueError for a card whose fire rate is not a whole number of ticks at the
+    rules' tick."""
     ticks_between_shots(
         types.fire_rate, rules.tick_length
     )  # refuses a fire rate the tick cannot keep
@@ -132,8 +168,13 @@ def reset(
     tick = TickUniforms(rules, uniforms)
     mode, fields, axis_x, axis_y = _new_matches(rules, arena, tick, state.mode)
     everyone = torch.ones_like(state.mode.front, dtype=torch.bool)
-    place = _placement(rules, arena, tick, mode, ships, ships.alive, everyone, axis_x, axis_y)
+    benched = None if active is None else benched_of(rules.ships_per_team, active)
+    place = _placement(
+        rules, arena, tick, mode, ships, ships.alive, everyone, axis_x, axis_y, benched
+    )
     ships = spawn(rules, types, ships, fields, torch.ones_like(ships.alive), place)
+    if benched is not None:
+        ships = _bench(rules, ships, benched, arena.respawn_ticks)
     match = replace(
         state.match,
         spawn_axis_x=axis_x,
@@ -172,14 +213,21 @@ def move(
 
 
 def resolve(
-    rules: Rules, types: ShipTypes, state: State, sweep: Sweep, uniforms: torch.Tensor
+    rules: Rules,
+    types: ShipTypes,
+    state: State,
+    sweep: Sweep,
+    uniforms: torch.Tensor,
+    active: torch.Tensor | None = None,
 ) -> tuple[State, Events]:
     """Phases 4-8 on the moved state: hits, damage, the mode phase, clocks, death and
-    respawn, episode end."""
+    respawn, episode end. active (B, 2) int32: each team's active ships, as `reset` was
+    given (default every ship)."""
     ships, bullets, match = state.ships, state.bullets, state.match
     B = ships.x.shape[0]
     arena = environment(rules, B, ships.x.device)
-    alive0, active = ships.alive, bullets.moves_left > 0  # as at tick start: motion keeps them
+    benched = None if active is None else benched_of(rules.ships_per_team, active)
+    alive0, flying = ships.alive, bullets.moves_left > 0  # as at tick start: motion keeps them
 
     # 4-5. Hits between the two motions (none deal damage to a protected ship; the bullet
     # is still spent), then damage, deaths and shields.
@@ -203,18 +251,18 @@ def resolve(
     # The mode phase: the mode state, the objective events, and whether the match is won.
     alive = alive0 & ~died
 
-    def mode_phase(mode_rules: ModeRules, mode, ships, alive, died):
-        phase = modes.mode_phase(rules, mode_rules, mode, ships, alive, died)
+    def mode_phase(mode_rules: ModeRules, mode, ships, alive, died, active):
+        phase = modes.mode_phase(rules, mode_rules, mode, ships, alive, died, active)
         return phase, modes.clock_result(mode_rules, phase.mode)
 
-    phase, clock_result = per_mode(rules, B, mode_phase, state.mode, ships, alive, died)
+    phase, clock_result = per_mode(rules, B, mode_phase, state.mode, ships, alive, died, active)
     done = (match.episode_tick + 1 >= arena.episode_ticks) | phase.won
     result = torch.where(phase.won, phase.result, clock_result)
     result = torch.where(done, result, 0)
 
     # 6. Clocks.
     moves_left = torch.where(
-        hit.bullet_hit, 0, torch.where(active, bullets.moves_left - 1, bullets.moves_left)
+        hit.bullet_hit, 0, torch.where(flying, bullets.moves_left - 1, bullets.moves_left)
     )
     bullets = replace(bullets, moves_left=moves_left)
 
@@ -244,8 +292,10 @@ def resolve(
     ships = replace(
         ships, next_slot=torch.where(keep, ships.next_slot, 0), fired=ships.fired & keep
     )
-    place = _placement(rules, arena, tick, mode, ships, alive, done, axis_x, axis_y)
+    place = _placement(rules, arena, tick, mode, ships, alive, done, axis_x, axis_y, benched)
     ships = spawn(rules, types, ships, fields, due | done[:, None], place)
+    if benched is not None:  # a benched ship spawns with an episode's reset, and is benched again
+        ships = _bench(rules, ships, benched, arena.respawn_ticks)
     match = replace(
         match,
         episode_tick=torch.where(done, 0, match.episode_tick + 1),
@@ -278,7 +328,8 @@ def step(
     action: Action,
     spread: torch.Tensor,
     uniforms: torch.Tensor,
+    active: torch.Tensor | None = None,
 ) -> tuple[State, Events]:
-    """One whole tick (phases 1-8; perception is separate)."""
+    """One whole tick (phases 1-8; perception is separate); active as for `resolve`."""
     moved, sweep = move(rules, types, state, action, spread)
-    return resolve(rules, types, moved, sweep, uniforms)
+    return resolve(rules, types, moved, sweep, uniforms, active)
