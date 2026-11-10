@@ -20,6 +20,13 @@ kills and deaths a game, kill ratio, shots a game, hit share and mean speed, and
 pair's results: `ratings.csv`, `pairs.csv` and `tournament.json` in `--out`, and the table
 as Markdown (`table.md`, also printed).
 
+`analyse`: from `--out`'s `tournament.json` and the set's ship files, each handle's and a
+few dimensionless groups' correlation with the Elo (Pearson and Spearman, over the types),
+and how well a small linear model predicts the Elo: ridge regression on every feature
+(standardised; its penalty chosen by leave-one-out) and every one-, two- and
+three-feature least-squares model, each scored by its leave-one-out error against the
+mean's; `analysis.json` and `analysis.md` in `--out`.
+
 It rates a type as the scripted agent, tuned on the P-51D, flies it: not the type's
 ceiling.
 """
@@ -27,6 +34,7 @@ ceiling.
 import argparse
 import csv
 import datetime
+import itertools
 import json
 import math
 import pathlib
@@ -35,7 +43,7 @@ import time
 import torch
 
 from bench.lock import bench_lock
-from bnb.game import api
+from bnb.game import api, ships
 from bnb.league import tournament
 from bnb.league.matches import STATISTICS, ArenaConfig, ship_type_players
 from bnb.league.ratings import fit_ratings
@@ -204,6 +212,160 @@ def report(args) -> None:
     print(header + body, end="")
 
 
+GRAVITY = 9.81  # m/s^2, the real-scale set's
+
+
+def features(ship_set: str) -> dict[str, dict[str, float]]:
+    """Per type name: the handles that differ between types, and the groups."""
+    from bnb.game.real_scale import combat_constants
+
+    fire_over_charge = combat_constants()[0]  # continuous fire's power over the climb charge
+    out = {}
+    for ship in ships.load(ship_set):
+        h = ship.handles
+        # the climb rate, from the combat economy: continuous fire costs fire_over_charge
+        # times the initial climb charge g x climb_rate
+        climb_rate = ship.card["bullet_energy_cost"] * h["fire_rate"] / fire_over_charge / GRAVITY
+        weight_of_fire = h["fire_rate"] * h["hit_damage"]  # damage per second
+        spread_angle = h["bullet_spread"] / h["muzzle_speed"]  # rad, per axis
+        row = dict(
+            stall_speed=h["stall_speed"],
+            g_limit=h["g_limit"],
+            cruise_speed=h["cruise_speed"],
+            climb_rate=climb_rate,
+            store=h["ceiling"],
+            low_speed_acceleration=h["low_speed_acceleration"],
+            sustained_turn_rate=math.degrees(h["sustained_turn_rate"]),
+            nose_reversal_time=h["nose_reversal_time"],
+            stall_angle=h["stall_angle"],
+            zero_lift_drag=h["zero_lift_drag"],
+            hit_radius=h["hit_radius"],
+            max_shield=h["max_shield"],
+            fire_rate=h["fire_rate"],
+            hit_damage=h["hit_damage"],
+            weight_of_fire=weight_of_fire,
+            bullet_spread=h["bullet_spread"],
+            muzzle_speed=h["muzzle_speed"],
+            gun_range=h["gun_range"],
+            # dimensionless groups
+            speed_range=h["cruise_speed"] / h["stall_speed"],
+            turn_load=h["sustained_turn_rate"] * h["cruise_speed"] / GRAVITY,
+            climb_over_cruise=climb_rate / h["cruise_speed"],
+            shots_to_kill_p51=math.ceil(100.0 / h["hit_damage"]),
+            kill_time_ratio=weight_of_fire / 360.0 * 100.0 / h["max_shield"],
+            target_over_cone=h["hit_radius"] / (spread_angle * h["gun_range"]),
+            gun_range_over_turn_radius=h["gun_range"]
+            * h["sustained_turn_rate"]
+            / h["cruise_speed"],
+        )
+        out[ship.name] = row
+    return out
+
+
+def _ranks(values: torch.Tensor) -> torch.Tensor:
+    order = values.argsort()
+    ranks = torch.empty_like(values)
+    ranks[order] = torch.arange(len(values), dtype=values.dtype)
+    return ranks
+
+
+def _pearson(x: torch.Tensor, y: torch.Tensor) -> float:
+    x, y = x - x.mean(), y - y.mean()
+    return float((x * y).sum() / (x.norm() * y.norm()).clamp_min(1e-30))
+
+
+def _loo_error(x: torch.Tensor, y: torch.Tensor, penalty: float = 0.0) -> float:
+    """Leave-one-out root-mean-square error of a linear model with an intercept (ridge
+    `penalty` on the slopes, the columns standardised on the training rows)."""
+    errors = []
+    for left in range(len(y)):
+        keep = torch.arange(len(y)) != left
+        train, target = x[keep], y[keep]
+        mean, scale = train.mean(0), train.std(0).clamp_min(1e-12)
+        design = (train - mean) / scale
+        slopes = torch.linalg.solve(
+            design.T @ design + penalty * torch.eye(x.shape[1], dtype=x.dtype),
+            design.T @ (target - target.mean()),
+        )
+        guess = target.mean() + ((x[left] - mean) / scale) @ slopes
+        errors.append(float(guess - y[left]))
+    return math.sqrt(sum(e * e for e in errors) / len(errors))
+
+
+def analyse(args) -> None:
+    """The correlations and models the module describes."""
+    out = pathlib.Path(args.out)
+    rated = json.loads((out / "tournament.json").read_text())["ratings"]
+    table = features(api.PRESETS[PRESET].ship_set)
+    names = [row["type"] for row in rated]
+    elo = torch.tensor([row["elo"] for row in rated], dtype=torch.float64)
+    keys = list(next(iter(table.values())))
+    x = torch.tensor([[table[name][key] for key in keys] for name in names], dtype=torch.float64)
+    correlations = {
+        key: dict(
+            pearson=_pearson(x[:, k], elo),
+            spearman=_pearson(_ranks(x[:, k]), _ranks(elo)),
+        )
+        for k, key in enumerate(keys)
+    }
+    null = _loo_error(torch.zeros((len(elo), 0), dtype=torch.float64), elo)
+    penalties = [0.1 * 2**k for k in range(16)]
+    ridge = min((_loo_error(x, elo, p), p) for p in penalties)
+    subsets = []
+    for size in (1, 2, 3):
+        for chosen in itertools.combinations(range(len(keys)), size):
+            error = _loo_error(x[:, list(chosen)], elo)
+            subsets.append((error, [keys[k] for k in chosen]))
+    subsets.sort()
+    best = {size: next(s for s in subsets if len(s[1]) == size) for size in (1, 2, 3)}
+    # what the best-of-many subset search finds in pure noise: the same search over the Elo
+    # shuffled across the types
+    generator = torch.Generator().manual_seed(0)
+    shuffled = []
+    for _ in range(args.shuffles):
+        noise = elo[torch.randperm(len(elo), generator=generator)]
+        shuffled.append(
+            min(
+                _loo_error(x[:, list(chosen)], noise) / _loo_error(x[:, :0], noise)
+                for size in (1, 2)
+                for chosen in itertools.combinations(range(len(keys)), size)
+            )
+        )
+    result = dict(
+        types=len(names),
+        elo_spread=float(elo.std()),
+        null_loo_rmse=null,
+        ridge=dict(loo_rmse=ridge[0], penalty=ridge[1]),
+        best_subsets={
+            str(size): dict(loo_rmse=error, features=chosen)
+            for size, (error, chosen) in best.items()
+        },
+        shuffled_best_ratio=sorted(shuffled),
+        correlations=correlations,
+    )
+    (out / "analysis.json").write_text(json.dumps(result, indent=1) + "\n")
+    lines = [
+        "| Feature | Pearson r | Spearman rho |",
+        "|---|---|---|",
+        *(
+            f"| {key} | {value['pearson']:+.2f} | {value['spearman']:+.2f} |"
+            for key, value in sorted(correlations.items(), key=lambda kv: -abs(kv[1]["spearman"]))
+        ),
+        "",
+        f"Leave-one-out RMSE (Elo): the mean {null:.0f}; ridge on all {len(keys)} features "
+        f"{ridge[0]:.0f} (penalty {ridge[1]:g}); "
+        + "; ".join(
+            f"best {size}-feature {error:.0f} ({', '.join(chosen)})"
+            for size, (error, chosen) in best.items()
+        )
+        + f". The best one- or two-feature model on shuffled Elo ({args.shuffles} shuffles): "
+        f"median {sorted(shuffled)[len(shuffled) // 2]:.2f} of the mean's error, "
+        f"5th percentile {sorted(shuffled)[len(shuffled) // 20]:.2f}.",
+    ]
+    (out / "analysis.md").write_text("\n".join(lines) + "\n")
+    print("\n".join(lines))
+
+
 def main() -> None:
     """`play` or `report`, as the module describes."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
@@ -217,8 +379,11 @@ def main() -> None:
     reporting = commands.add_parser("report")
     reporting.add_argument("--record", required=True)
     reporting.add_argument("--out", required=True)
+    analysing = commands.add_parser("analyse")
+    analysing.add_argument("--out", required=True)
+    analysing.add_argument("--shuffles", type=int, default=200)
     args = parser.parse_args()
-    (play if args.command == "play" else report)(args)
+    dict(play=play, report=report, analyse=analyse)[args.command](args)
 
 
 if __name__ == "__main__":
