@@ -1,0 +1,703 @@
+first,second,wins,draws,losses,score
+P-51D,Heavy,237,9,266,0.4716796875
+P-51D,P-47D,4,1,123,0.03515625
+P-51D,P-38L,29,7,540,0.05642361111111111
+P-51D,Spitfire IX,216,25,207,0.5100446428571429
+P-51D,Spitfire XIV,202,33,213,0.4877232142857143
+P-51D,Tempest V,148,5,615,0.19596354166666666
+P-51D,Mosquito,430,8,266,0.6164772727272727
+P-51D,Fw 190A,145,14,609,0.19791666666666666
+P-51D,Fw 190D,259,25,228,0.5302734375
+P-51D,Bf 109K,124,4,0,0.984375
+P-51D,Zero,1012,1,11,0.98876953125
+P-51D,Me 262,127,0,1,0.9921875
+P-51D,Ki-84,724,16,412,0.6354166666666666
+P-51D,Yak-3,204,15,293,0.4130859375
+P-51D,Corsair,73,3,564,0.11640625
+P-51D,La-7,266,7,239,0.5263671875
+P-51D,Me 163,127,0,1,0.9921875
+P-51D,Hellcat,1,0,127,0.0078125
+P-51D,Hammerhead,127,1,0,0.99609375
+P-51D,Wren,432,16,256,0.625
+P-51D,Anvil,64,0,0,1.0
+P-51D,Albatross,222,1,225,0.4966517857142857
+P-51D,Firecracker,64,0,0,1.0
+P-51D,Zerstörer,157,6,349,0.3125
+P-51D,Shrike,178,8,326,0.35546875
+P-51D,Lantern,826,58,332,0.703125
+Heavy,P-51D,266,9,237,0.5283203125
+Heavy,P-47D,3,0,61,0.046875
+Heavy,P-38L,19,5,104,0.16796875
+Heavy,Spitfire IX,26,4,34,0.4375
+Heavy,Spitfire XIV,54,8,66,0.453125
+Heavy,Tempest V,28,2,98,0.2265625
+Heavy,Mosquito,83,2,43,0.65625
+Heavy,Fw 190A,27,5,96,0.23046875
+Heavy,Fw 190D,80,7,41,0.65234375
+Heavy,Bf 109K,64,0,0,1.0
+Heavy,Zero,62,1,1,0.9765625
+Heavy,Me 262,63,0,1,0.984375
+Heavy,Ki-84,47,1,16,0.7421875
+Heavy,Yak-3,21,3,40,0.3515625
+Heavy,Corsair,52,0,76,0.40625
+Heavy,La-7,103,2,23,0.8125
+Heavy,Me 163,64,0,0,1.0
+Heavy,Hellcat,7,0,57,0.109375
+Heavy,Hammerhead,64,0,0,1.0
+Heavy,Wren,70,0,58,0.546875
+Heavy,Anvil,64,0,0,1.0
+Heavy,Albatross,71,3,54,0.56640625
+Heavy,Firecracker,64,0,0,1.0
+Heavy,Zerstörer,45,0,19,0.703125
+Heavy,Shrike,28,1,35,0.4453125
+Heavy,Lantern,47,0,17,0.734375
+P-47D,P-51D,123,1,4,0.96484375
+P-47D,Heavy,61,0,3,0.953125
+P-47D,P-38L,343,5,100,0.7712053571428571
+P-47D,Spitfire IX,61,0,3,0.953125
+P-47D,Spitfire XIV,62,0,2,0.96875
+P-47D,Tempest V,306,3,75,0.80078125
+P-47D,Mosquito,63,0,1,0.984375
+P-47D,Fw 190A,324,11,49,0.8580729166666666
+P-47D,Fw 190D,62,1,1,0.9765625
+P-47D,Bf 109K,63,0,1,0.984375
+P-47D,Zero,62,1,1,0.9765625
+P-47D,Me 262,63,0,1,0.984375
+P-47D,Ki-84,60,1,3,0.9453125
+P-47D,Yak-3,58,0,6,0.90625
+P-47D,Corsair,267,3,50,0.8390625
+P-47D,La-7,58,0,6,0.90625
+P-47D,Me 163,64,0,0,1.0
+P-47D,Hellcat,288,19,141,0.6640625
+P-47D,Hammerhead,63,0,1,0.984375
+P-47D,Wren,64,0,0,1.0
+P-47D,Anvil,64,0,0,1.0
+P-47D,Albatross,63,0,1,0.984375
+P-47D,Firecracker,64,0,0,1.0
+P-47D,Zerstörer,63,0,1,0.984375
+P-47D,Shrike,63,0,1,0.984375
+P-47D,Lantern,64,0,0,1.0
+P-38L,P-51D,540,7,29,0.9435763888888888
+P-38L,Heavy,104,5,19,0.83203125
+P-38L,P-47D,100,5,343,0.22879464285714285
+P-38L,Spitfire IX,59,0,5,0.921875
+P-38L,Spitfire XIV,59,0,5,0.921875
+P-38L,Tempest V,103,8,81,0.5572916666666666
+P-38L,Mosquito,55,2,7,0.875
+P-38L,Fw 190A,81,13,98,0.4557291666666667
+P-38L,Fw 190D,60,2,2,0.953125
+P-38L,Bf 109K,63,1,0,0.9921875
+P-38L,Zero,63,0,1,0.984375
+P-38L,Me 262,64,0,0,1.0
+P-38L,Ki-84,63,1,0,0.9921875
+P-38L,Yak-3,160,5,27,0.8463541666666666
+P-38L,Corsair,121,5,66,0.6432291666666666
+P-38L,La-7,60,0,4,0.9375
+P-38L,Me 163,63,1,0,0.9921875
+P-38L,Hellcat,148,2,170,0.465625
+P-38L,Hammerhead,64,0,0,1.0
+P-38L,Wren,58,0,6,0.90625
+P-38L,Anvil,64,0,0,1.0
+P-38L,Albatross,55,1,8,0.8671875
+P-38L,Firecracker,64,0,0,1.0
+P-38L,Zerstörer,52,0,12,0.8125
+P-38L,Shrike,125,13,54,0.6848958333333334
+P-38L,Lantern,64,0,0,1.0
+Spitfire IX,P-51D,207,25,216,0.48995535714285715
+Spitfire IX,Heavy,34,4,26,0.5625
+Spitfire IX,P-47D,3,0,61,0.046875
+Spitfire IX,P-38L,5,0,59,0.078125
+Spitfire IX,Spitfire XIV,64,13,51,0.55078125
+Spitfire IX,Tempest V,25,1,102,0.19921875
+Spitfire IX,Mosquito,87,7,34,0.70703125
+Spitfire IX,Fw 190A,11,1,52,0.1796875
+Spitfire IX,Fw 190D,36,3,25,0.5859375
+Spitfire IX,Bf 109K,64,0,0,1.0
+Spitfire IX,Zero,127,0,1,0.9921875
+Spitfire IX,Me 262,64,0,0,1.0
+Spitfire IX,Ki-84,86,1,41,0.67578125
+Spitfire IX,Yak-3,51,8,69,0.4296875
+Spitfire IX,Corsair,10,0,54,0.15625
+Spitfire IX,La-7,29,3,32,0.4765625
+Spitfire IX,Me 163,63,0,1,0.984375
+Spitfire IX,Hellcat,1,1,62,0.0234375
+Spitfire IX,Hammerhead,63,0,1,0.984375
+Spitfire IX,Wren,71,6,51,0.578125
+Spitfire IX,Anvil,64,0,0,1.0
+Spitfire IX,Albatross,73,2,53,0.578125
+Spitfire IX,Firecracker,64,0,0,1.0
+Spitfire IX,Zerstörer,45,0,83,0.3515625
+Spitfire IX,Shrike,56,4,68,0.453125
+Spitfire IX,Lantern,92,7,29,0.74609375
+Spitfire XIV,P-51D,213,33,202,0.5122767857142857
+Spitfire XIV,Heavy,66,8,54,0.546875
+Spitfire XIV,P-47D,2,0,62,0.03125
+Spitfire XIV,P-38L,5,0,59,0.078125
+Spitfire XIV,Spitfire IX,51,13,64,0.44921875
+Spitfire XIV,Tempest V,15,1,48,0.2421875
+Spitfire XIV,Mosquito,81,4,43,0.6484375
+Spitfire XIV,Fw 190A,10,3,51,0.1796875
+Spitfire XIV,Fw 190D,67,4,57,0.5390625
+Spitfire XIV,Bf 109K,64,0,0,1.0
+Spitfire XIV,Zero,61,2,1,0.96875
+Spitfire XIV,Me 262,64,0,0,1.0
+Spitfire XIV,Ki-84,85,2,41,0.671875
+Spitfire XIV,Yak-3,51,5,72,0.41796875
+Spitfire XIV,Corsair,2,0,62,0.03125
+Spitfire XIV,La-7,31,0,33,0.484375
+Spitfire XIV,Me 163,64,0,0,1.0
+Spitfire XIV,Hellcat,1,0,63,0.015625
+Spitfire XIV,Hammerhead,62,1,1,0.9765625
+Spitfire XIV,Wren,71,7,50,0.58203125
+Spitfire XIV,Anvil,64,0,0,1.0
+Spitfire XIV,Albatross,27,0,37,0.421875
+Spitfire XIV,Firecracker,64,0,0,1.0
+Spitfire XIV,Zerstörer,47,0,81,0.3671875
+Spitfire XIV,Shrike,59,4,65,0.4765625
+Spitfire XIV,Lantern,89,3,36,0.70703125
+Tempest V,P-51D,615,5,148,0.8040364583333334
+Tempest V,Heavy,98,2,28,0.7734375
+Tempest V,P-47D,75,3,306,0.19921875
+Tempest V,P-38L,81,8,103,0.4427083333333333
+Tempest V,Spitfire IX,102,1,25,0.80078125
+Tempest V,Spitfire XIV,48,1,15,0.7578125
+Tempest V,Mosquito,47,3,14,0.7578125
+Tempest V,Fw 190A,51,1,76,0.40234375
+Tempest V,Fw 190D,50,1,13,0.7890625
+Tempest V,Bf 109K,62,1,1,0.9765625
+Tempest V,Zero,61,1,2,0.9609375
+Tempest V,Me 262,59,4,1,0.953125
+Tempest V,Ki-84,55,2,7,0.875
+Tempest V,Yak-3,96,3,29,0.76171875
+Tempest V,Corsair,50,11,67,0.43359375
+Tempest V,La-7,51,4,9,0.828125
+Tempest V,Me 163,64,0,0,1.0
+Tempest V,Hellcat,107,1,212,0.3359375
+Tempest V,Hammerhead,62,0,2,0.96875
+Tempest V,Wren,54,0,10,0.84375
+Tempest V,Anvil,64,0,0,1.0
+Tempest V,Albatross,51,0,13,0.796875
+Tempest V,Firecracker,64,0,0,1.0
+Tempest V,Zerstörer,103,2,23,0.8125
+Tempest V,Shrike,77,3,48,0.61328125
+Tempest V,Lantern,56,1,7,0.8828125
+Mosquito,P-51D,266,8,430,0.3835227272727273
+Mosquito,Heavy,43,2,83,0.34375
+Mosquito,P-47D,1,0,63,0.015625
+Mosquito,P-38L,7,2,55,0.125
+Mosquito,Spitfire IX,34,7,87,0.29296875
+Mosquito,Spitfire XIV,43,4,81,0.3515625
+Mosquito,Tempest V,14,3,47,0.2421875
+Mosquito,Fw 190A,11,2,51,0.1875
+Mosquito,Fw 190D,45,2,81,0.359375
+Mosquito,Bf 109K,57,0,7,0.890625
+Mosquito,Zero,1091,4,57,0.9487847222222222
+Mosquito,Me 262,61,1,2,0.9609375
+Mosquito,Ki-84,51,1,12,0.8046875
+Mosquito,Yak-3,17,0,47,0.265625
+Mosquito,Corsair,15,1,48,0.2421875
+Mosquito,La-7,45,0,83,0.3515625
+Mosquito,Me 163,62,1,1,0.9765625
+Mosquito,Hellcat,0,2,62,0.015625
+Mosquito,Hammerhead,64,0,0,1.0
+Mosquito,Wren,23,0,41,0.359375
+Mosquito,Anvil,64,0,0,1.0
+Mosquito,Albatross,82,2,44,0.6484375
+Mosquito,Firecracker,64,0,0,1.0
+Mosquito,Zerstörer,40,3,21,0.6484375
+Mosquito,Shrike,33,1,30,0.5234375
+Mosquito,Lantern,37,1,26,0.5859375
+Fw 190A,P-51D,609,14,145,0.8020833333333334
+Fw 190A,Heavy,96,5,27,0.76953125
+Fw 190A,P-47D,49,11,324,0.14192708333333334
+Fw 190A,P-38L,98,13,81,0.5442708333333334
+Fw 190A,Spitfire IX,52,1,11,0.8203125
+Fw 190A,Spitfire XIV,51,3,10,0.8203125
+Fw 190A,Tempest V,76,1,51,0.59765625
+Fw 190A,Mosquito,51,2,11,0.8125
+Fw 190A,Fw 190D,54,1,9,0.8515625
+Fw 190A,Bf 109K,63,1,0,0.9921875
+Fw 190A,Zero,64,0,0,1.0
+Fw 190A,Me 262,63,1,0,0.9921875
+Fw 190A,Ki-84,54,2,8,0.859375
+Fw 190A,Yak-3,73,4,51,0.5859375
+Fw 190A,Corsair,78,5,45,0.62890625
+Fw 190A,La-7,56,1,7,0.8828125
+Fw 190A,Me 163,64,0,0,1.0
+Fw 190A,Hellcat,96,4,220,0.30625
+Fw 190A,Hammerhead,64,0,0,1.0
+Fw 190A,Wren,57,2,5,0.90625
+Fw 190A,Anvil,64,0,0,1.0
+Fw 190A,Albatross,56,3,5,0.8984375
+Fw 190A,Firecracker,64,0,0,1.0
+Fw 190A,Zerstörer,111,0,17,0.8671875
+Fw 190A,Shrike,85,7,36,0.69140625
+Fw 190A,Lantern,57,0,7,0.890625
+Fw 190D,P-51D,228,25,259,0.4697265625
+Fw 190D,Heavy,41,7,80,0.34765625
+Fw 190D,P-47D,1,1,62,0.0234375
+Fw 190D,P-38L,2,2,60,0.046875
+Fw 190D,Spitfire IX,25,3,36,0.4140625
+Fw 190D,Spitfire XIV,57,4,67,0.4609375
+Fw 190D,Tempest V,13,1,50,0.2109375
+Fw 190D,Mosquito,81,2,45,0.640625
+Fw 190D,Fw 190A,9,1,54,0.1484375
+Fw 190D,Bf 109K,62,0,2,0.96875
+Fw 190D,Zero,61,1,2,0.9609375
+Fw 190D,Me 262,64,0,0,1.0
+Fw 190D,Ki-84,79,4,45,0.6328125
+Fw 190D,Yak-3,41,6,81,0.34375
+Fw 190D,Corsair,3,1,60,0.0546875
+Fw 190D,La-7,58,10,60,0.4921875
+Fw 190D,Me 163,63,1,0,0.9921875
+Fw 190D,Hellcat,2,1,61,0.0390625
+Fw 190D,Hammerhead,63,1,0,0.9921875
+Fw 190D,Wren,82,3,43,0.65234375
+Fw 190D,Anvil,64,0,0,1.0
+Fw 190D,Albatross,32,0,32,0.5
+Fw 190D,Firecracker,64,0,0,1.0
+Fw 190D,Zerstörer,63,2,63,0.5
+Fw 190D,Shrike,37,3,88,0.30078125
+Fw 190D,Lantern,91,10,27,0.75
+Bf 109K,P-51D,0,4,124,0.015625
+Bf 109K,Heavy,0,0,64,0.0
+Bf 109K,P-47D,1,0,63,0.015625
+Bf 109K,P-38L,0,1,63,0.0078125
+Bf 109K,Spitfire IX,0,0,64,0.0
+Bf 109K,Spitfire XIV,0,0,64,0.0
+Bf 109K,Tempest V,1,1,62,0.0234375
+Bf 109K,Mosquito,7,0,57,0.109375
+Bf 109K,Fw 190A,0,1,63,0.0078125
+Bf 109K,Fw 190D,2,0,62,0.03125
+Bf 109K,Zero,26,5,801,0.034254807692307696
+Bf 109K,Me 262,141,23,220,0.3971354166666667
+Bf 109K,Ki-84,1,0,63,0.015625
+Bf 109K,Yak-3,1,0,63,0.015625
+Bf 109K,Corsair,2,1,61,0.0390625
+Bf 109K,La-7,0,0,64,0.0
+Bf 109K,Me 163,245,23,116,0.66796875
+Bf 109K,Hellcat,1,2,61,0.03125
+Bf 109K,Hammerhead,143,10,231,0.3854166666666667
+Bf 109K,Wren,0,0,64,0.0
+Bf 109K,Anvil,177,8,327,0.353515625
+Bf 109K,Albatross,1,0,63,0.015625
+Bf 109K,Firecracker,511,1,0,0.9990234375
+Bf 109K,Zerstörer,8,2,54,0.140625
+Bf 109K,Shrike,1,0,63,0.015625
+Bf 109K,Lantern,2,0,62,0.03125
+Zero,P-51D,11,1,1012,0.01123046875
+Zero,Heavy,1,1,62,0.0234375
+Zero,P-47D,1,1,62,0.0234375
+Zero,P-38L,1,0,63,0.015625
+Zero,Spitfire IX,1,0,127,0.0078125
+Zero,Spitfire XIV,1,2,61,0.03125
+Zero,Tempest V,2,1,61,0.0390625
+Zero,Mosquito,57,4,1091,0.051215277777777776
+Zero,Fw 190A,0,0,64,0.0
+Zero,Fw 190D,2,1,61,0.0390625
+Zero,Bf 109K,801,5,26,0.9657451923076923
+Zero,Me 262,1694,45,309,0.838134765625
+Zero,Ki-84,207,21,2012,0.09709821428571429
+Zero,Yak-3,2,2,60,0.046875
+Zero,Corsair,0,1,63,0.0078125
+Zero,La-7,7,1,56,0.1171875
+Zero,Me 163,314,0,6,0.98125
+Zero,Hellcat,2,0,62,0.03125
+Zero,Hammerhead,1685,69,358,0.814157196969697
+Zero,Wren,16,1,1007,0.01611328125
+Zero,Anvil,64,0,0,1.0
+Zero,Albatross,0,0,64,0.0
+Zero,Firecracker,64,0,0,1.0
+Zero,Zerstörer,20,0,108,0.15625
+Zero,Shrike,0,1,63,0.0078125
+Zero,Lantern,153,8,2207,0.06630067567567567
+Me 262,P-51D,1,0,127,0.0078125
+Me 262,Heavy,1,0,63,0.015625
+Me 262,P-47D,1,0,63,0.015625
+Me 262,P-38L,0,0,64,0.0
+Me 262,Spitfire IX,0,0,64,0.0
+Me 262,Spitfire XIV,0,0,64,0.0
+Me 262,Tempest V,1,4,59,0.046875
+Me 262,Mosquito,2,1,61,0.0390625
+Me 262,Fw 190A,0,1,63,0.0078125
+Me 262,Fw 190D,0,0,64,0.0
+Me 262,Bf 109K,220,23,141,0.6028645833333334
+Me 262,Zero,309,45,1694,0.161865234375
+Me 262,Ki-84,2,0,62,0.03125
+Me 262,Yak-3,0,0,64,0.0
+Me 262,Corsair,0,0,64,0.0
+Me 262,La-7,0,2,62,0.015625
+Me 262,Me 163,333,30,149,0.6796875
+Me 262,Hellcat,2,0,62,0.03125
+Me 262,Hammerhead,40,6,18,0.671875
+Me 262,Wren,2,0,62,0.03125
+Me 262,Anvil,879,13,4,0.98828125
+Me 262,Albatross,6,2,56,0.109375
+Me 262,Firecracker,63,0,1,0.984375
+Me 262,Zerstörer,13,1,50,0.2109375
+Me 262,Shrike,2,0,62,0.03125
+Me 262,Lantern,4,0,60,0.0625
+Ki-84,P-51D,412,16,724,0.3645833333333333
+Ki-84,Heavy,16,1,47,0.2578125
+Ki-84,P-47D,3,1,60,0.0546875
+Ki-84,P-38L,0,1,63,0.0078125
+Ki-84,Spitfire IX,41,1,86,0.32421875
+Ki-84,Spitfire XIV,41,2,85,0.328125
+Ki-84,Tempest V,7,2,55,0.125
+Ki-84,Mosquito,12,1,51,0.1953125
+Ki-84,Fw 190A,8,2,54,0.140625
+Ki-84,Fw 190D,45,4,79,0.3671875
+Ki-84,Bf 109K,63,0,1,0.984375
+Ki-84,Zero,2012,21,207,0.9029017857142857
+Ki-84,Me 262,62,0,2,0.96875
+Ki-84,Yak-3,19,1,44,0.3046875
+Ki-84,Corsair,2,0,62,0.03125
+Ki-84,La-7,30,9,89,0.26953125
+Ki-84,Me 163,64,0,0,1.0
+Ki-84,Hellcat,4,0,60,0.0625
+Ki-84,Hammerhead,64,0,0,1.0
+Ki-84,Wren,24,2,38,0.390625
+Ki-84,Anvil,64,0,0,1.0
+Ki-84,Albatross,65,1,62,0.51171875
+Ki-84,Firecracker,64,0,0,1.0
+Ki-84,Zerstörer,20,0,44,0.3125
+Ki-84,Shrike,13,2,49,0.21875
+Ki-84,Lantern,32,0,32,0.5
+Yak-3,P-51D,293,15,204,0.5869140625
+Yak-3,Heavy,40,3,21,0.6484375
+Yak-3,P-47D,6,0,58,0.09375
+Yak-3,P-38L,27,5,160,0.15364583333333334
+Yak-3,Spitfire IX,69,8,51,0.5703125
+Yak-3,Spitfire XIV,72,5,51,0.58203125
+Yak-3,Tempest V,29,3,96,0.23828125
+Yak-3,Mosquito,47,0,17,0.734375
+Yak-3,Fw 190A,51,4,73,0.4140625
+Yak-3,Fw 190D,81,6,41,0.65625
+Yak-3,Bf 109K,63,0,1,0.984375
+Yak-3,Zero,60,2,2,0.953125
+Yak-3,Me 262,64,0,0,1.0
+Yak-3,Ki-84,44,1,19,0.6953125
+Yak-3,Corsair,23,0,105,0.1796875
+Yak-3,La-7,74,9,45,0.61328125
+Yak-3,Me 163,64,0,0,1.0
+Yak-3,Hellcat,5,2,57,0.09375
+Yak-3,Hammerhead,64,0,0,1.0
+Yak-3,Wren,44,3,17,0.7109375
+Yak-3,Anvil,64,0,0,1.0
+Yak-3,Albatross,82,1,45,0.64453125
+Yak-3,Firecracker,64,0,0,1.0
+Yak-3,Zerstörer,50,0,78,0.390625
+Yak-3,Shrike,33,1,30,0.5234375
+Yak-3,Lantern,46,5,13,0.7578125
+Corsair,P-51D,564,3,73,0.88359375
+Corsair,Heavy,76,0,52,0.59375
+Corsair,P-47D,50,3,267,0.1609375
+Corsair,P-38L,66,5,121,0.3567708333333333
+Corsair,Spitfire IX,54,0,10,0.84375
+Corsair,Spitfire XIV,62,0,2,0.96875
+Corsair,Tempest V,67,11,50,0.56640625
+Corsair,Mosquito,48,1,15,0.7578125
+Corsair,Fw 190A,45,5,78,0.37109375
+Corsair,Fw 190D,60,1,3,0.9453125
+Corsair,Bf 109K,61,1,2,0.9609375
+Corsair,Zero,63,1,0,0.9921875
+Corsair,Me 262,64,0,0,1.0
+Corsair,Ki-84,62,0,2,0.96875
+Corsair,Yak-3,105,0,23,0.8203125
+Corsair,La-7,54,1,9,0.8515625
+Corsair,Me 163,64,0,0,1.0
+Corsair,Hellcat,118,4,262,0.3125
+Corsair,Hammerhead,63,0,1,0.984375
+Corsair,Wren,56,0,8,0.875
+Corsair,Anvil,64,0,0,1.0
+Corsair,Albatross,50,2,12,0.796875
+Corsair,Firecracker,64,0,0,1.0
+Corsair,Zerstörer,97,5,26,0.77734375
+Corsair,Shrike,70,7,51,0.57421875
+Corsair,Lantern,61,0,3,0.953125
+La-7,P-51D,239,7,266,0.4736328125
+La-7,Heavy,23,2,103,0.1875
+La-7,P-47D,6,0,58,0.09375
+La-7,P-38L,4,0,60,0.0625
+La-7,Spitfire IX,32,3,29,0.5234375
+La-7,Spitfire XIV,33,0,31,0.515625
+La-7,Tempest V,9,4,51,0.171875
+La-7,Mosquito,83,0,45,0.6484375
+La-7,Fw 190A,7,1,56,0.1171875
+La-7,Fw 190D,60,10,58,0.5078125
+La-7,Bf 109K,64,0,0,1.0
+La-7,Zero,56,1,7,0.8828125
+La-7,Me 262,62,2,0,0.984375
+La-7,Ki-84,89,9,30,0.73046875
+La-7,Yak-3,45,9,74,0.38671875
+La-7,Corsair,9,1,54,0.1484375
+La-7,Me 163,64,0,0,1.0
+La-7,Hellcat,7,2,55,0.125
+La-7,Hammerhead,64,0,0,1.0
+La-7,Wren,69,6,53,0.5625
+La-7,Anvil,64,0,0,1.0
+La-7,Albatross,70,1,57,0.55078125
+La-7,Firecracker,64,0,0,1.0
+La-7,Zerstörer,58,0,70,0.453125
+La-7,Shrike,36,2,90,0.2890625
+La-7,Lantern,85,3,40,0.67578125
+Me 163,P-51D,1,0,127,0.0078125
+Me 163,Heavy,0,0,64,0.0
+Me 163,P-47D,0,0,64,0.0
+Me 163,P-38L,0,1,63,0.0078125
+Me 163,Spitfire IX,1,0,63,0.015625
+Me 163,Spitfire XIV,0,0,64,0.0
+Me 163,Tempest V,0,0,64,0.0
+Me 163,Mosquito,1,1,62,0.0234375
+Me 163,Fw 190A,0,0,64,0.0
+Me 163,Fw 190D,0,1,63,0.0078125
+Me 163,Bf 109K,116,23,245,0.33203125
+Me 163,Zero,6,0,314,0.01875
+Me 163,Me 262,149,30,333,0.3203125
+Me 163,Ki-84,0,0,64,0.0
+Me 163,Yak-3,0,0,64,0.0
+Me 163,Corsair,0,0,64,0.0
+Me 163,La-7,0,0,64,0.0
+Me 163,Hellcat,0,0,64,0.0
+Me 163,Hammerhead,156,23,333,0.3271484375
+Me 163,Wren,0,0,64,0.0
+Me 163,Anvil,267,21,224,0.5419921875
+Me 163,Albatross,0,1,63,0.0078125
+Me 163,Firecracker,64,0,0,1.0
+Me 163,Zerstörer,7,0,57,0.109375
+Me 163,Shrike,0,0,64,0.0
+Me 163,Lantern,0,1,63,0.0078125
+Hellcat,P-51D,127,0,1,0.9921875
+Hellcat,Heavy,57,0,7,0.890625
+Hellcat,P-47D,141,19,288,0.3359375
+Hellcat,P-38L,170,2,148,0.534375
+Hellcat,Spitfire IX,62,1,1,0.9765625
+Hellcat,Spitfire XIV,63,0,1,0.984375
+Hellcat,Tempest V,212,1,107,0.6640625
+Hellcat,Mosquito,62,2,0,0.984375
+Hellcat,Fw 190A,220,4,96,0.69375
+Hellcat,Fw 190D,61,1,2,0.9609375
+Hellcat,Bf 109K,61,2,1,0.96875
+Hellcat,Zero,62,0,2,0.96875
+Hellcat,Me 262,62,0,2,0.96875
+Hellcat,Ki-84,60,0,4,0.9375
+Hellcat,Yak-3,57,2,5,0.90625
+Hellcat,Corsair,262,4,118,0.6875
+Hellcat,La-7,55,2,7,0.875
+Hellcat,Me 163,64,0,0,1.0
+Hellcat,Hammerhead,61,1,2,0.9609375
+Hellcat,Wren,61,0,3,0.953125
+Hellcat,Anvil,64,0,0,1.0
+Hellcat,Albatross,58,0,6,0.90625
+Hellcat,Firecracker,64,0,0,1.0
+Hellcat,Zerstörer,61,2,1,0.96875
+Hellcat,Shrike,240,2,14,0.94140625
+Hellcat,Lantern,62,1,1,0.9765625
+Hammerhead,P-51D,0,1,127,0.00390625
+Hammerhead,Heavy,0,0,64,0.0
+Hammerhead,P-47D,1,0,63,0.015625
+Hammerhead,P-38L,0,0,64,0.0
+Hammerhead,Spitfire IX,1,0,63,0.015625
+Hammerhead,Spitfire XIV,1,1,62,0.0234375
+Hammerhead,Tempest V,2,0,62,0.03125
+Hammerhead,Mosquito,0,0,64,0.0
+Hammerhead,Fw 190A,0,0,64,0.0
+Hammerhead,Fw 190D,0,1,63,0.0078125
+Hammerhead,Bf 109K,231,10,143,0.6145833333333334
+Hammerhead,Zero,358,69,1685,0.18584280303030304
+Hammerhead,Me 262,18,6,40,0.328125
+Hammerhead,Ki-84,0,0,64,0.0
+Hammerhead,Yak-3,0,0,64,0.0
+Hammerhead,Corsair,1,0,63,0.015625
+Hammerhead,La-7,0,0,64,0.0
+Hammerhead,Me 163,333,23,156,0.6728515625
+Hammerhead,Hellcat,2,1,61,0.0390625
+Hammerhead,Wren,0,0,64,0.0
+Hammerhead,Anvil,768,40,88,0.8794642857142857
+Hammerhead,Albatross,0,0,64,0.0
+Hammerhead,Firecracker,64,0,0,1.0
+Hammerhead,Zerstörer,5,1,58,0.0859375
+Hammerhead,Shrike,0,0,64,0.0
+Hammerhead,Lantern,1,0,63,0.015625
+Wren,P-51D,256,16,432,0.375
+Wren,Heavy,58,0,70,0.453125
+Wren,P-47D,0,0,64,0.0
+Wren,P-38L,6,0,58,0.09375
+Wren,Spitfire IX,51,6,71,0.421875
+Wren,Spitfire XIV,50,7,71,0.41796875
+Wren,Tempest V,10,0,54,0.15625
+Wren,Mosquito,41,0,23,0.640625
+Wren,Fw 190A,5,2,57,0.09375
+Wren,Fw 190D,43,3,82,0.34765625
+Wren,Bf 109K,64,0,0,1.0
+Wren,Zero,1007,1,16,0.98388671875
+Wren,Me 262,62,0,2,0.96875
+Wren,Ki-84,38,2,24,0.609375
+Wren,Yak-3,17,3,44,0.2890625
+Wren,Corsair,8,0,56,0.125
+Wren,La-7,53,6,69,0.4375
+Wren,Me 163,64,0,0,1.0
+Wren,Hellcat,3,0,61,0.046875
+Wren,Hammerhead,64,0,0,1.0
+Wren,Anvil,64,0,0,1.0
+Wren,Albatross,43,0,85,0.3359375
+Wren,Firecracker,64,0,0,1.0
+Wren,Zerstörer,23,0,41,0.359375
+Wren,Shrike,10,0,54,0.15625
+Wren,Lantern,38,3,23,0.6171875
+Anvil,P-51D,0,0,64,0.0
+Anvil,Heavy,0,0,64,0.0
+Anvil,P-47D,0,0,64,0.0
+Anvil,P-38L,0,0,64,0.0
+Anvil,Spitfire IX,0,0,64,0.0
+Anvil,Spitfire XIV,0,0,64,0.0
+Anvil,Tempest V,0,0,64,0.0
+Anvil,Mosquito,0,0,64,0.0
+Anvil,Fw 190A,0,0,64,0.0
+Anvil,Fw 190D,0,0,64,0.0
+Anvil,Bf 109K,327,8,177,0.646484375
+Anvil,Zero,0,0,64,0.0
+Anvil,Me 262,4,13,879,0.01171875
+Anvil,Ki-84,0,0,64,0.0
+Anvil,Yak-3,0,0,64,0.0
+Anvil,Corsair,0,0,64,0.0
+Anvil,La-7,0,0,64,0.0
+Anvil,Me 163,224,21,267,0.4580078125
+Anvil,Hellcat,0,0,64,0.0
+Anvil,Hammerhead,88,40,768,0.12053571428571429
+Anvil,Wren,0,0,64,0.0
+Anvil,Albatross,0,0,64,0.0
+Anvil,Firecracker,6490,57,45,0.9888501213592233
+Anvil,Zerstörer,2,0,62,0.03125
+Anvil,Shrike,0,0,64,0.0
+Anvil,Lantern,0,0,64,0.0
+Albatross,P-51D,225,1,222,0.5033482142857143
+Albatross,Heavy,54,3,71,0.43359375
+Albatross,P-47D,1,0,63,0.015625
+Albatross,P-38L,8,1,55,0.1328125
+Albatross,Spitfire IX,53,2,73,0.421875
+Albatross,Spitfire XIV,37,0,27,0.578125
+Albatross,Tempest V,13,0,51,0.203125
+Albatross,Mosquito,44,2,82,0.3515625
+Albatross,Fw 190A,5,3,56,0.1015625
+Albatross,Fw 190D,32,0,32,0.5
+Albatross,Bf 109K,63,0,1,0.984375
+Albatross,Zero,64,0,0,1.0
+Albatross,Me 262,56,2,6,0.890625
+Albatross,Ki-84,62,1,65,0.48828125
+Albatross,Yak-3,45,1,82,0.35546875
+Albatross,Corsair,12,2,50,0.203125
+Albatross,La-7,57,1,70,0.44921875
+Albatross,Me 163,63,1,0,0.9921875
+Albatross,Hellcat,6,0,58,0.09375
+Albatross,Hammerhead,64,0,0,1.0
+Albatross,Wren,85,0,43,0.6640625
+Albatross,Anvil,64,0,0,1.0
+Albatross,Firecracker,64,0,0,1.0
+Albatross,Zerstörer,70,1,57,0.55078125
+Albatross,Shrike,49,2,77,0.390625
+Albatross,Lantern,124,0,68,0.6458333333333334
+Firecracker,P-51D,0,0,64,0.0
+Firecracker,Heavy,0,0,64,0.0
+Firecracker,P-47D,0,0,64,0.0
+Firecracker,P-38L,0,0,64,0.0
+Firecracker,Spitfire IX,0,0,64,0.0
+Firecracker,Spitfire XIV,0,0,64,0.0
+Firecracker,Tempest V,0,0,64,0.0
+Firecracker,Mosquito,0,0,64,0.0
+Firecracker,Fw 190A,0,0,64,0.0
+Firecracker,Fw 190D,0,0,64,0.0
+Firecracker,Bf 109K,0,1,511,0.0009765625
+Firecracker,Zero,0,0,64,0.0
+Firecracker,Me 262,1,0,63,0.015625
+Firecracker,Ki-84,0,0,64,0.0
+Firecracker,Yak-3,0,0,64,0.0
+Firecracker,Corsair,0,0,64,0.0
+Firecracker,La-7,0,0,64,0.0
+Firecracker,Me 163,0,0,64,0.0
+Firecracker,Hellcat,0,0,64,0.0
+Firecracker,Hammerhead,0,0,64,0.0
+Firecracker,Wren,0,0,64,0.0
+Firecracker,Anvil,45,57,6490,0.0111498786407767
+Firecracker,Albatross,0,0,64,0.0
+Firecracker,Zerstörer,0,0,64,0.0
+Firecracker,Shrike,0,0,64,0.0
+Firecracker,Lantern,0,0,64,0.0
+Zerstörer,P-51D,349,6,157,0.6875
+Zerstörer,Heavy,19,0,45,0.296875
+Zerstörer,P-47D,1,0,63,0.015625
+Zerstörer,P-38L,12,0,52,0.1875
+Zerstörer,Spitfire IX,83,0,45,0.6484375
+Zerstörer,Spitfire XIV,81,0,47,0.6328125
+Zerstörer,Tempest V,23,2,103,0.1875
+Zerstörer,Mosquito,21,3,40,0.3515625
+Zerstörer,Fw 190A,17,0,111,0.1328125
+Zerstörer,Fw 190D,63,2,63,0.5
+Zerstörer,Bf 109K,54,2,8,0.859375
+Zerstörer,Zero,108,0,20,0.84375
+Zerstörer,Me 262,50,1,13,0.7890625
+Zerstörer,Ki-84,44,0,20,0.6875
+Zerstörer,Yak-3,78,0,50,0.609375
+Zerstörer,Corsair,26,5,97,0.22265625
+Zerstörer,La-7,70,0,58,0.546875
+Zerstörer,Me 163,57,0,7,0.890625
+Zerstörer,Hellcat,1,2,61,0.03125
+Zerstörer,Hammerhead,58,1,5,0.9140625
+Zerstörer,Wren,41,0,23,0.640625
+Zerstörer,Anvil,62,0,2,0.96875
+Zerstörer,Albatross,57,1,70,0.44921875
+Zerstörer,Firecracker,64,0,0,1.0
+Zerstörer,Shrike,14,3,47,0.2421875
+Zerstörer,Lantern,47,0,17,0.734375
+Shrike,P-51D,326,8,178,0.64453125
+Shrike,Heavy,35,1,28,0.5546875
+Shrike,P-47D,1,0,63,0.015625
+Shrike,P-38L,54,13,125,0.3151041666666667
+Shrike,Spitfire IX,68,4,56,0.546875
+Shrike,Spitfire XIV,65,4,59,0.5234375
+Shrike,Tempest V,48,3,77,0.38671875
+Shrike,Mosquito,30,1,33,0.4765625
+Shrike,Fw 190A,36,7,85,0.30859375
+Shrike,Fw 190D,88,3,37,0.69921875
+Shrike,Bf 109K,63,0,1,0.984375
+Shrike,Zero,63,1,0,0.9921875
+Shrike,Me 262,62,0,2,0.96875
+Shrike,Ki-84,49,2,13,0.78125
+Shrike,Yak-3,30,1,33,0.4765625
+Shrike,Corsair,51,7,70,0.42578125
+Shrike,La-7,90,2,36,0.7109375
+Shrike,Me 163,64,0,0,1.0
+Shrike,Hellcat,14,2,240,0.05859375
+Shrike,Hammerhead,64,0,0,1.0
+Shrike,Wren,54,0,10,0.84375
+Shrike,Anvil,64,0,0,1.0
+Shrike,Albatross,77,2,49,0.609375
+Shrike,Firecracker,64,0,0,1.0
+Shrike,Zerstörer,47,3,14,0.7578125
+Shrike,Lantern,47,2,15,0.75
+Lantern,P-51D,332,58,826,0.296875
+Lantern,Heavy,17,0,47,0.265625
+Lantern,P-47D,0,0,64,0.0
+Lantern,P-38L,0,0,64,0.0
+Lantern,Spitfire IX,29,7,92,0.25390625
+Lantern,Spitfire XIV,36,3,89,0.29296875
+Lantern,Tempest V,7,1,56,0.1171875
+Lantern,Mosquito,26,1,37,0.4140625
+Lantern,Fw 190A,7,0,57,0.109375
+Lantern,Fw 190D,27,10,91,0.25
+Lantern,Bf 109K,62,0,2,0.96875
+Lantern,Zero,2207,8,153,0.9336993243243243
+Lantern,Me 262,60,0,4,0.9375
+Lantern,Ki-84,32,0,32,0.5
+Lantern,Yak-3,13,5,46,0.2421875
+Lantern,Corsair,3,0,61,0.046875
+Lantern,La-7,40,3,85,0.32421875
+Lantern,Me 163,63,1,0,0.9921875
+Lantern,Hellcat,1,1,62,0.0234375
+Lantern,Hammerhead,63,0,1,0.984375
+Lantern,Wren,23,3,38,0.3828125
+Lantern,Anvil,64,0,0,1.0
+Lantern,Albatross,68,0,124,0.3541666666666667
+Lantern,Firecracker,64,0,0,1.0
+Lantern,Zerstörer,17,0,47,0.265625
+Lantern,Shrike,15,2,47,0.25

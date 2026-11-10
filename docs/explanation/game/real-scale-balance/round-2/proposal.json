@@ -1,0 +1,40 @@
+{
+ "round": 2,
+ "shield_spearman": 0.5433455433455434,
+ "shield_step": 0.15,
+ "moves": [
+  {
+   "type": "(every type)",
+   "handle": "shield_per_rating",
+   "value": 0.1,
+   "round": 3,
+   "reason": "the shield's Spearman correlation with the round-2 Elo was +0.54 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
+  },
+  {
+   "type": "Hammerhead",
+   "key": "hammerhead",
+   "handle": "max_shield",
+   "value": 160.0,
+   "round": 3,
+   "reason": "an invented or placeholder type rated 185 +- 11 in round 2, -802 from the median 986 (the rule moves its shield 20 towards the median beyond 200 Elo)."
+  },
+  {
+   "type": "Anvil",
+   "key": "anvil",
+   "handle": "max_shield",
+   "value": 160.0,
+   "round": 3,
+   "reason": "an invented or placeholder type rated -84 +- 13 in round 2, -1070 from the median 986 (the rule moves its shield 20 towards the median beyond 200 Elo)."
+  },
+  {
+   "type": "Firecracker",
+   "key": "firecracker",
+   "handle": "max_shield",
+   "value": 120.0,
+   "round": 3,
+   "reason": "an invented or placeholder type rated -867 +- 24 in round 2, -1854 from the median 986 (the rule moves its shield 20 towards the median beyond 200 Elo)."
+  }
+ ],
+ "median_elo": 986.4860593471442,
+ "stop": false
+}

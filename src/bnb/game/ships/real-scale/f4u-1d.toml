@@ -24,7 +24,7 @@ muzzle_speed = 856.0
 bullet_spread = 1.5422411728818017
 gun_range = 582.966053421242
 shots_per_store = 741.7525375420139
-max_shield = 130.0
+max_shield = 120.0
 shield_recharge_rate = 12.0
 shield_recharge_delay = 6.0
 head_on_fraction = 0.3
@@ -41,7 +41,7 @@ engine_power_full_store = 263.56787109375
 static_thrust = 9.006194114685059
 max_energy = 115758.0
 corner_nose_frequency = 4.855084419250488
-max_shield = 130.0
+max_shield = 120.0
 hit_radius = 6.236000061035156
 hit_damage = 24.0
 muzzle_speed = 856.0
@@ -83,7 +83,7 @@ muzzle_speed = "researched (medium): muzzle_speed 856. the Browning AN/M2 .50 ca
 bullet_spread = "researched (low): dispersion 6; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
 gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
 shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 16.5 m/s), the standard fighter's ratio: a shot costs 156.1 J/kg, 0.964 s of charge"
-max_shield = "researched (medium): survivability 4; proposal: the standard 100 x (1 + 0.15 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Air-cooled radial, pilot armour, self-sealing tanks, strong carrier airframe. Balanced (round 2): 140 -> 130, the step per rating 0.2 -> 0.15: the shield's Spearman correlation with the round-1 Elo was +0.69 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
+max_shield = "researched (medium): survivability 4; proposal: the standard 100 x (1 + 0.1 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Air-cooled radial, pilot armour, self-sealing tanks, strong carrier airframe. Balanced (round 3): 140 -> 120, the step per rating 0.2 -> 0.1: the shield's Spearman correlation with the round-2 Elo was +0.54 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
 shield_recharge_rate = "placeholder: the standard fighter's"
 shield_recharge_delay = "placeholder: the standard fighter's"
 head_on_fraction = "placeholder: the standard fighter's"

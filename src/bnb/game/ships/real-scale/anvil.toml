@@ -24,7 +24,7 @@ muzzle_speed = 615.0
 bullet_spread = 0.44321416884219994
 gun_range = 443.06972404430667
 shots_per_store = 123.00784721593256
-max_shield = 145.0
+max_shield = 160.0
 shield_recharge_rate = 12.0
 shield_recharge_delay = 6.0
 head_on_fraction = 0.3
@@ -41,7 +41,7 @@ engine_power_full_store = 219.5832061767578
 static_thrust = 7.233984470367432
 max_energy = 99473.3984375
 corner_nose_frequency = 3.8818814754486084
-max_shield = 145.0
+max_shield = 160.0
 hit_radius = 7.761875152587891
 hit_damage = 177.30970764160156
 muzzle_speed = 615.0
@@ -83,7 +83,7 @@ muzzle_speed = "invented: muzzle_speed 615. the Vickers S-class 40 mm, 2.16 of 2
 bullet_spread = "invented: dispersion 2.4; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the P-51D's x 0.4: Heavy gunship: one big slow cannon, armoured bathtub."
 gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
 shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 11.4 m/s), the standard fighter's ratio: a shot costs 808.7 J/kg, 7.23 s of charge"
-max_shield = "invented: survivability 5; proposal: the standard 100 x (1 + 0.15 per rating step from the P-51D's 2). Armoured engine, cockpit and tanks (Il-2 style). Balanced (round 2): 160 -> 145, the step per rating 0.2 -> 0.15: the shield's Spearman correlation with the round-1 Elo was +0.69 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
+max_shield = "invented: survivability 5; proposal: the standard 100 x (1 + 0.1 per rating step from the P-51D's 2). Armoured engine, cockpit and tanks (Il-2 style). Balanced (round 3): 160 -> 130, the step per rating 0.2 -> 0.1: the shield's Spearman correlation with the round-2 Elo was +0.54 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal. Balanced (round 3): 130 -> 160: an invented or placeholder type rated -84 +- 13 in round 2, -1070 from the median 986 (the rule moves its shield 20 towards the median beyond 200 Elo)."
 shield_recharge_rate = "placeholder: the standard heavy's"
 shield_recharge_delay = "placeholder: the standard heavy's"
 head_on_fraction = "placeholder: the standard heavy's"

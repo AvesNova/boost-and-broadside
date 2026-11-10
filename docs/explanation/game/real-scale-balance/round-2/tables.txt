@@ -1,0 +1,115 @@
+# Round 2 tables
+
+
+## Ratings
+
+{"preset": "real_scale_deathmatch", "anchor": "P-51D", "games": 64512, "batches": 56, "draws": 1139, "prior_games": 1.0, "confidence": 1.96}
+| Rank | Type | Elo (95% interval) | Score | W / D / L | Kills / deaths a game | Kill ratio | Shots a game | Hit share | Mean speed m/s |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | P-47D | 1548 (1527 to 1569) | 0.860 | 2896 / 45 / 451 | 23.39 / 18.44 | 1.27 | 1478 | 0.285 | 121 |
+| 2 | Hellcat | 1419 (1401 to 1438) | 0.752 | 2529 / 46 / 817 | 23.25 / 19.40 | 1.20 | 1486 | 0.295 | 108 |
+| 3 | P-38L | 1351 (1333 to 1368) | 0.724 | 2512 / 71 / 937 | 23.04 / 19.71 | 1.17 | 1413 | 0.293 | 133 |
+| 4 | Fw 190A | 1276 (1259 to 1293) | 0.679 | 2305 / 81 / 1070 | 22.11 / 20.22 | 1.09 | 977 | 0.282 | 127 |
+| 5 | Corsair | 1271 (1254 to 1288) | 0.671 | 2208 / 50 / 1070 | 23.02 / 20.48 | 1.12 | 1411 | 0.297 | 112 |
+| 6 | Tempest V | 1255 (1239 to 1272) | 0.662 | 2303 / 58 / 1159 | 22.83 / 20.90 | 1.09 | 1352 | 0.294 | 115 |
+| 7 | Shrike | 1106 (1090 to 1122) | 0.573 | 1654 / 66 / 1224 | 22.17 / 21.41 | 1.04 | 945 | 0.287 | 123 |
+| 8 | Yak-3 | 1071 (1055 to 1088) | 0.567 | 1559 / 73 / 1184 | 22.27 / 20.92 | 1.06 | 1371 | 0.294 | 124 |
+| 9 | Heavy | 1054 (1038 to 1070) | 0.563 | 1522 / 53 / 1177 | 22.49 / 20.86 | 1.08 | 1053 | 0.262 | 125 |
+| 10 | Zerstörer | 1030 (1014 to 1047) | 0.550 | 1500 / 28 / 1224 | 21.90 / 21.07 | 1.04 | 933 | 0.273 | 117 |
+| 11 | Spitfire IX | 1017 (1001 to 1034) | 0.559 | 1495 / 86 / 1171 | 22.78 / 21.36 | 1.07 | 1014 | 0.275 | 115 |
+| 12 | Spitfire XIV | 1007 (991 to 1024) | 0.544 | 1416 / 90 / 1182 | 22.48 / 21.38 | 1.05 | 1009 | 0.273 | 119 |
+| 13 | P-51D | 1000 (1000 to 1000) | 0.508 | 6398 / 263 / 6203 | 22.60 / 22.28 | 1.01 | 1389 | 0.284 | 118 |
+| 14 | La-7 | 986 (970 to 1002) | 0.521 | 1402 / 63 / 1287 | 21.58 / 21.02 | 1.03 | 980 | 0.279 | 123 |
+| 15 | Fw 190D | 986 (970 to 1002) | 0.520 | 1386 / 89 / 1277 | 21.41 / 20.67 | 1.04 | 940 | 0.282 | 126 |
+| 16 | Albatross | 983 (967 to 999) | 0.520 | 1420 / 23 / 1309 | 22.96 / 21.83 | 1.05 | 1029 | 0.281 | 93 |
+| 17 | Mosquito | 946 (930 to 961) | 0.607 | 2270 / 47 / 1459 | 22.88 / 20.02 | 1.14 | 974 | 0.257 | 118 |
+| 18 | Wren | 944 (928 to 959) | 0.594 | 2142 / 49 / 1457 | 23.29 / 20.99 | 1.11 | 1364 | 0.292 | 106 |
+| 19 | Ki-84 | 881 (867 to 895) | 0.614 | 3187 / 67 / 1994 | 22.78 / 21.66 | 1.05 | 1245 | 0.283 | 122 |
+| 20 | Lantern | 868 (854 to 882) | 0.605 | 3276 / 103 / 2125 | 23.01 / 20.95 | 1.10 | 1386 | 0.268 | 116 |
+| 21 | Zero | 460 (443 to 476) | 0.362 | 5106 / 165 / 9065 | 19.60 / 22.95 | 0.85 | 951 | 0.276 | 109 |
+| 22 | Me 262 | 210 (188 to 232) | 0.366 | 1881 / 128 / 3303 | 17.73 / 20.15 | 0.88 | 755 | 0.264 | 137 |
+| 23 | Hammerhead | 185 (162 to 207) | 0.346 | 1786 / 153 / 3437 | 17.76 / 21.35 | 0.83 | 433 | 0.274 | 121 |
+| 24 | Bf 109K | 19 (-7 to 45) | 0.301 | 1271 / 82 / 2999 | 16.50 / 20.33 | 0.81 | 808 | 0.268 | 118 |
+| 25 | Me 163 | -6 (-33 to 20) | 0.225 | 768 / 102 / 2778 | 15.08 / 20.90 | 0.72 | 733 | 0.273 | 139 |
+| 26 | Anvil | -84 (-109 to -58) | 0.670 | 7135 / 139 / 3478 | 12.94 / 11.10 | 1.17 | 214 | 0.242 | 91 |
+| 27 | Firecracker | -867 (-914 to -820) | 0.009 | 46 / 58 / 8536 | 3.45 / 14.68 | 0.23 | 170 | 0.238 | 100 |
+
+## What predicts the rating
+
+| Feature | Pearson r | Spearman rho |
+|---|---|---|
+| fire_rate | +0.70 | +0.76 |
+| shots_to_kill_p51 | +0.64 | +0.76 |
+| bullet_spread | +0.78 | +0.65 |
+| target_over_cone | -0.73 | -0.63 |
+| muzzle_speed | +0.88 | +0.55 |
+| gun_range | +0.85 | +0.55 |
+| max_shield | +0.36 | +0.54 |
+| kill_time_ratio | -0.41 | -0.49 |
+| hit_damage | -0.57 | -0.45 |
+| speed_range | -0.48 | -0.42 |
+| gun_range_over_turn_radius | +0.55 | +0.37 |
+| turn_load | -0.47 | -0.36 |
+| climb_rate | -0.61 | -0.33 |
+| low_speed_acceleration | -0.50 | -0.30 |
+| cruise_speed | -0.64 | -0.28 |
+| hit_radius | +0.17 | +0.26 |
+| g_limit | +0.22 | +0.25 |
+| weight_of_fire | -0.04 | +0.25 |
+| zero_lift_drag | +0.28 | +0.20 |
+| climb_over_cruise | -0.55 | -0.19 |
+| stall_angle | -0.30 | +0.16 |
+| store | +0.32 | +0.08 |
+| nose_reversal_time | -0.03 | -0.06 |
+| stall_speed | -0.14 | +0.05 |
+| sustained_turn_rate | +0.02 | -0.03 |
+
+Leave-one-out RMSE (Elo): the mean 570; ridge on all 25 features 184 (penalty 1.6); best 1-feature 297 (muzzle_speed); best 2-feature 271 (max_shield, muzzle_speed); best 3-feature 215 (max_shield, fire_rate, muzzle_speed). The best one- or two-feature model on shuffled Elo (200 shuffles): median 0.93 of the mean's error, 5th percentile 0.78; ridge on shuffled Elo: median 1.00, 5th percentile 0.90.
+
+## Intransitivity
+
+351 of 351 pairs played, 64512 games
+| Model | Held-out log-likelihood a game | Gain over Bradley-Terry | Gain over the best link without a cycle |
+|---|---|---|---|
+| link=power, k=2, penalty=0.1 | -0.37489 | +0.01052 +- 0.00063 | +0.01046 +- 0.00061 |
+| link=logit, k=2, penalty=0.1 | -0.37491 | +0.01050 +- 0.00063 | +0.01045 +- 0.00062 |
+| link=probit, k=2, penalty=0.1 | -0.37500 | +0.01042 +- 0.00064 | +0.01036 +- 0.00062 |
+| link=logit, k=3, penalty=1 | -0.37511 | +0.01030 +- 0.00063 | +0.01024 +- 0.00061 |
+| link=logit, k=2, penalty=1 | -0.37512 | +0.01029 +- 0.00061 | +0.01024 +- 0.00059 |
+| link=power, k=3, penalty=1 | -0.37515 | +0.01027 +- 0.00064 | +0.01021 +- 0.00062 |
+| link=probit, k=3, penalty=10 | -0.37517 | +0.01025 +- 0.00056 | +0.01019 +- 0.00054 |
+| link=probit, k=3, penalty=1 | -0.37518 | +0.01024 +- 0.00064 | +0.01018 +- 0.00063 |
+| link=power, k=2, penalty=1 | -0.37522 | +0.01019 +- 0.00061 | +0.01013 +- 0.00060 |
+| link=probit, k=3, penalty=0.1 | -0.37525 | +0.01016 +- 0.00066 | +0.01010 +- 0.00065 |
+| link=logit, k=3, penalty=0.1 | -0.37530 | +0.01011 +- 0.00065 | +0.01006 +- 0.00064 |
+| link=power, k=3, penalty=10 | -0.37542 | +0.00999 +- 0.00052 | +0.00994 +- 0.00052 |
+| link=power, k=3, penalty=0.1 | -0.37542 | +0.00999 +- 0.00066 | +0.00994 +- 0.00065 |
+| link=probit, k=2, penalty=1 | -0.37551 | +0.00990 +- 0.00070 | +0.00984 +- 0.00069 |
+| link=probit, k=2, penalty=10 | -0.37561 | +0.00981 +- 0.00054 | +0.00975 +- 0.00053 |
+| link=logit, k=3, penalty=10 | -0.37574 | +0.00967 +- 0.00047 | +0.00961 +- 0.00046 |
+| link=logit, k=2, penalty=10 | -0.37583 | +0.00959 +- 0.00047 | +0.00953 +- 0.00046 |
+| link=power, k=2, penalty=10 | -0.37584 | +0.00958 +- 0.00050 | +0.00952 +- 0.00049 |
+| link=power, k=1, penalty=1 | -0.37618 | +0.00924 +- 0.00056 | +0.00918 +- 0.00054 |
+| link=power, k=1, penalty=0.1 | -0.37619 | +0.00922 +- 0.00058 | +0.00917 +- 0.00056 |
+| link=logit, k=1, penalty=1 | -0.37622 | +0.00920 +- 0.00056 | +0.00914 +- 0.00055 |
+| link=logit, k=1, penalty=0.1 | -0.37624 | +0.00918 +- 0.00058 | +0.00912 +- 0.00056 |
+| link=logit, k=1, penalty=10 | -0.37694 | +0.00847 +- 0.00044 | +0.00842 +- 0.00043 |
+| link=power, k=1, penalty=10 | -0.37697 | +0.00845 +- 0.00044 | +0.00839 +- 0.00044 |
+| link=probit, k=1, penalty=1 | -0.37699 | +0.00843 +- 0.00065 | +0.00837 +- 0.00064 |
+| link=probit, k=1, penalty=0.1 | -0.37713 | +0.00828 +- 0.00073 | +0.00823 +- 0.00073 |
+| link=probit, k=1, penalty=10 | -0.37730 | +0.00812 +- 0.00054 | +0.00806 +- 0.00054 |
+| link=probit, k=3, penalty=100 | -0.38333 | +0.00208 +- 0.00026 | +0.00202 +- 0.00031 |
+| link=probit, k=1, penalty=100 | -0.38333 | +0.00208 +- 0.00026 | +0.00202 +- 0.00031 |
+| link=probit, k=2, penalty=100 | -0.38333 | +0.00208 +- 0.00026 | +0.00202 +- 0.00031 |
+| link=power, k=2, penalty=100 | -0.38536 | +0.00006 +- 0.00006 | +0.00000 +- 0.00000 |
+| link=power, k=1, penalty=100 | -0.38536 | +0.00006 +- 0.00006 | +0.00000 +- 0.00000 |
+| link=power, k=0, penalty=0 | -0.38536 | +0.00006 +- 0.00006 | +0.00000 +- 0.00000 |
+| link=power, k=3, penalty=100 | -0.38536 | +0.00006 +- 0.00006 | -0.00000 +- 0.00000 |
+| link=logit, k=3, penalty=100 | -0.38541 | +0.00000 +- 0.00000 | -0.00006 +- 0.00006 |
+| link=logit, k=1, penalty=100 | -0.38541 | +0.00000 +- 0.00000 | -0.00006 +- 0.00006 |
+| link=logit, k=0, penalty=0 | -0.38541 | +0.00000 +- 0.00000 | -0.00006 +- 0.00006 |
+| link=logit, k=2, penalty=100 | -0.38541 | -0.00000 +- 0.00000 | -0.00006 +- 0.00006 |
+| link=probit, k=0, penalty=0 | -0.38791 | -0.00249 +- 0.00029 | -0.00255 +- 0.00035 |
+{"cyclic_part_supported": true, "residuals": {"link=logit, k=0, penalty=0": {"beyond_3": 54, "chi_square": 3586.048994918398, "gamma": 1.0}, "link=power, k=0, penalty=0": {"beyond_3": 51, "chi_square": 2890.6837298152254, "gamma": 0.9411599949881494}, "link=power, k=2, penalty=0.1": {"beyond_3": 2, "chi_square": 276.83445849055784, "gamma": 1.0436659971751656}}}
+majority cycles: 36 [{'cycle': ['Spitfire IX', 'Mosquito', 'Zerstörer'], 'weakest_score': 0.6484375}, {'cycle': ['Mosquito', 'Albatross', 'Wren'], 'weakest_score': 0.640625}, {'cycle': ['Mosquito', 'Zerstörer', 'Wren'], 'weakest_score': 0.640625}, {'cycle': ['Spitfire XIV', 'Mosquito', 'Zerstörer'], 'weakest_score': 0.6328125}, {'cycle': ['P-51D', 'Mosquito', 'Zerstörer'], 'weakest_score': 0.6164772727272727}, {'cycle': ['Heavy', 'Zerstörer', 'Yak-3'], 'weakest_score': 0.609375}, {'cycle': ['Mosquito', 'Zerstörer', 'Yak-3'], 'weakest_score': 0.609375}, {'cycle': ['Spitfire XIV', 'Mosquito', 'Albatross'], 'weakest_score': 0.578125}, {'cycle': ['Heavy', 'Zerstörer', 'Spitfire IX'], 'weakest_score': 0.5625}, {'cycle': ['Spitfire IX', 'Albatross', 'Zerstörer'], 'weakest_score': 0.55078125}]
+{"transitive_rms_elo": 733.2465154337904, "cyclic_rms_elo": 208.62657474108903, "cyclic_share": 0.07489140144742627} [{'winner': 'Anvil', 'loser': 'Hellcat', 'elo': 933.1253683375337}, {'winner': 'Anvil', 'loser': 'Bf 109K', 'elo': 932.0631049155447}, {'winner': 'Anvil', 'loser': 'Zerstörer', 'elo': 807.4830727244787}, {'winner': 'P-51D', 'loser': 'Anvil', 'elo': 793.5848222321266}, {'winner': 'Spitfire IX', 'loser': 'Anvil', 'elo': 765.3348352531184}, {'winner': 'Yak-3', 'loser': 'Anvil', 'elo': 764.7480051758661}]

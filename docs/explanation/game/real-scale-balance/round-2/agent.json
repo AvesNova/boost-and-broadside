@@ -1,0 +1,787 @@
+{
+ "deathmatch": {
+  "generations": 33,
+  "per_generation": [
+   {
+    "generation": 0,
+    "champion": "defaults",
+    "top": -71.50778442355096,
+    "median": -186.66888377552323,
+    "median_score": 0.25
+   },
+   {
+    "generation": 1,
+    "champion": "defaults",
+    "top": -76.99442998918887,
+    "median": -208.59146988421077,
+    "median_score": 0.21875
+   },
+   {
+    "generation": 2,
+    "champion": "defaults",
+    "top": -85.15806574656771,
+    "median": -192.62679027818888,
+    "median_score": 0.25
+   },
+   {
+    "generation": 3,
+    "champion": "defaults",
+    "top": -72.28181484000338,
+    "median": -156.18966147485,
+    "median_score": 0.28125
+   },
+   {
+    "generation": 4,
+    "champion": "defaults",
+    "top": -25.925229732330934,
+    "median": -180.02151110789404,
+    "median_score": 0.25
+   },
+   {
+    "generation": 5,
+    "champion": "defaults",
+    "top": -23.139531879244313,
+    "median": -139.86749331111383,
+    "median_score": 0.3125
+   },
+   {
+    "generation": 6,
+    "champion": "defaults",
+    "top": -9.563232905461485,
+    "median": -121.15656101070667,
+    "median_score": 0.34375
+   },
+   {
+    "generation": 7,
+    "champion": "defaults",
+    "top": -41.49393758789714,
+    "median": -125.86444660961594,
+    "median_score": 0.328125
+   },
+   {
+    "generation": 8,
+    "champion": "defaults",
+    "top": -54.724321908055295,
+    "median": -126.39117421222558,
+    "median_score": 0.3125
+   },
+   {
+    "generation": 9,
+    "champion": "defaults",
+    "top": -72.97733345737602,
+    "median": -136.90617561232577,
+    "median_score": 0.328125
+   },
+   {
+    "generation": 10,
+    "champion": "defaults",
+    "top": -38.9957292894466,
+    "median": -133.6216774802468,
+    "median_score": 0.3125
+   },
+   {
+    "generation": 11,
+    "champion": "defaults",
+    "top": -19.38261395156779,
+    "median": -124.83213585511467,
+    "median_score": 0.359375
+   },
+   {
+    "generation": 12,
+    "champion": "defaults",
+    "top": -9.943883225101773,
+    "median": -120.78119226622974,
+    "median_score": 0.328125
+   },
+   {
+    "generation": 13,
+    "champion": "defaults",
+    "top": -19.955754811642993,
+    "median": -117.24519383993078,
+    "median_score": 0.359375
+   },
+   {
+    "generation": 14,
+    "champion": "defaults",
+    "top": -22.743111326826256,
+    "median": -93.81025825150975,
+    "median_score": 0.375
+   },
+   {
+    "generation": 15,
+    "champion": "defaults",
+    "top": -1.3317108176211112,
+    "median": -117.1703128324994,
+    "median_score": 0.359375
+   },
+   {
+    "generation": 16,
+    "champion": "defaults",
+    "top": -44.05357256338203,
+    "median": -98.73867438018816,
+    "median_score": 0.328125
+   },
+   {
+    "generation": 17,
+    "champion": "defaults",
+    "top": -33.69614572839901,
+    "median": -121.57285169816586,
+    "median_score": 0.328125
+   },
+   {
+    "generation": 18,
+    "champion": "defaults",
+    "top": -10.11159930959313,
+    "median": -91.77757310216018,
+    "median_score": 0.359375
+   },
+   {
+    "generation": 19,
+    "champion": "defaults",
+    "top": -47.821088140182056,
+    "median": -110.10388884785863,
+    "median_score": 0.34375
+   },
+   {
+    "generation": 20,
+    "champion": "defaults",
+    "top": -25.101135861853194,
+    "median": -92.68775436594672,
+    "median_score": 0.375
+   },
+   {
+    "generation": 21,
+    "champion": "defaults",
+    "top": -41.27570088235079,
+    "median": -97.75501346904882,
+    "median_score": 0.359375
+   },
+   {
+    "generation": 22,
+    "champion": "defaults",
+    "top": -25.265548417259865,
+    "median": -82.85881195219092,
+    "median_score": 0.375
+   },
+   {
+    "generation": 23,
+    "champion": "defaults",
+    "top": -40.31330796392496,
+    "median": -103.11992709256558,
+    "median_score": 0.390625
+   },
+   {
+    "generation": 24,
+    "champion": "defaults",
+    "top": 11.28965923703132,
+    "median": -80.10003241475107,
+    "median_score": 0.40625
+   },
+   {
+    "generation": 25,
+    "champion": "defaults",
+    "top": -13.744603338842465,
+    "median": -82.25278646240162,
+    "median_score": 0.390625
+   },
+   {
+    "generation": 26,
+    "champion": "defaults",
+    "top": -30.5374317683089,
+    "median": -102.06242577409178,
+    "median_score": 0.34375
+   },
+   {
+    "generation": 27,
+    "champion": "defaults",
+    "top": -20.821189172736734,
+    "median": -105.63132397760356,
+    "median_score": 0.34375
+   },
+   {
+    "generation": 28,
+    "champion": "defaults",
+    "top": -30.04947320652493,
+    "median": -107.93396910083287,
+    "median_score": 0.34375
+   },
+   {
+    "generation": 29,
+    "champion": "defaults",
+    "top": -26.130752537001396,
+    "median": -83.68091548881719,
+    "median_score": 0.390625
+   },
+   {
+    "generation": 30,
+    "champion": "defaults",
+    "top": -13.453310513645857,
+    "median": -100.09412108881172,
+    "median_score": 0.375
+   },
+   {
+    "generation": 31,
+    "champion": "defaults",
+    "top": -17.423169487772462,
+    "median": -83.13554894854927,
+    "median_score": 0.359375
+   },
+   {
+    "generation": 32,
+    "champion": "defaults",
+    "top": -26.60097598788814,
+    "median": -101.91703488069888,
+    "median_score": 0.375
+   }
+  ],
+  "candidate": "32:2",
+  "candidate_rating": -56.44742002584317,
+  "candidate_stderr": 36.751528987552916,
+  "checks": {
+   "mixed": [
+    {
+     "preset": "real_scale_deathmatch",
+     "first": "/home/vizia/avesnova/boost-and-broadside-v2/runs/real-scale-balance/round-2/search-deathmatch.jsonl:32:2",
+     "second": "real_scale_deathmatch",
+     "games": 1024,
+     "score": 0.56591796875,
+     "score_stderr": 0.0152242892416643,
+     "wins": 562,
+     "draws": 35,
+     "losses": 427,
+     "kills_per_game": 44.75121951219512,
+     "shots_per_game": 2448.149268292683,
+     "hits_per_game": 663.7921951219512,
+     "kills_per_minute": 6.6814632652919625,
+     "front_moves_per_minute": 0.0,
+     "clock_share": 0.1521951219512195,
+     "episodes": 1025,
+     "types": [
+      "P-51D",
+      "Heavy",
+      "P-47D",
+      "P-38L",
+      "Spitfire IX",
+      "Spitfire XIV",
+      "Tempest V",
+      "Mosquito",
+      "Fw 190A",
+      "Fw 190D",
+      "Bf 109K",
+      "Zero",
+      "Me 262",
+      "Ki-84",
+      "Yak-3",
+      "Corsair",
+      "La-7",
+      "Me 163",
+      "Hellcat",
+      "Hammerhead",
+      "Wren",
+      "Anvil",
+      "Albatross",
+      "Firecracker",
+      "Zerstörer",
+      "Shrike",
+      "Lantern"
+     ],
+     "seconds": 61.94687568402151
+    },
+    {
+     "preset": "real_scale_deathmatch",
+     "first": "/home/vizia/avesnova/boost-and-broadside-v2/runs/real-scale-balance/round-2/search-deathmatch.jsonl:32:2",
+     "second": "/home/vizia/avesnova/boost-and-broadside-v2/runs/real-scale-balance/round-2/search-deathmatch.jsonl:32:2",
+     "games": 1024,
+     "score": 0.5224609375,
+     "score_stderr": 0.015323751602770217,
+     "wins": 516,
+     "draws": 38,
+     "losses": 470,
+     "kills_per_game": 45.0,
+     "shots_per_game": 2283.545631067961,
+     "hits_per_game": 661.9708737864078,
+     "kills_per_minute": 6.9346561736789525,
+     "front_moves_per_minute": 0.0,
+     "clock_share": 0.13883495145631067,
+     "episodes": 1030,
+     "types": [
+      "P-51D",
+      "Heavy",
+      "P-47D",
+      "P-38L",
+      "Spitfire IX",
+      "Spitfire XIV",
+      "Tempest V",
+      "Mosquito",
+      "Fw 190A",
+      "Fw 190D",
+      "Bf 109K",
+      "Zero",
+      "Me 262",
+      "Ki-84",
+      "Yak-3",
+      "Corsair",
+      "La-7",
+      "Me 163",
+      "Hellcat",
+      "Hammerhead",
+      "Wren",
+      "Anvil",
+      "Albatross",
+      "Firecracker",
+      "Zerstörer",
+      "Shrike",
+      "Lantern"
+     ],
+     "seconds": 59.32811496802606
+    },
+    {
+     "preset": "real_scale_deathmatch",
+     "first": "real_scale_deathmatch",
+     "second": "real_scale_deathmatch",
+     "games": 1024,
+     "score": 0.484375,
+     "score_stderr": 0.01539418967921876,
+     "wins": 481,
+     "draws": 30,
+     "losses": 513,
+     "kills_per_game": 44.438048780487804,
+     "shots_per_game": 2581.8819512195123,
+     "hits_per_game": 661.7356097560976,
+     "kills_per_minute": 6.454418988676732,
+     "front_moves_per_minute": 0.0,
+     "clock_share": 0.16390243902439025,
+     "episodes": 1025,
+     "types": [
+      "P-51D",
+      "Heavy",
+      "P-47D",
+      "P-38L",
+      "Spitfire IX",
+      "Spitfire XIV",
+      "Tempest V",
+      "Mosquito",
+      "Fw 190A",
+      "Fw 190D",
+      "Bf 109K",
+      "Zero",
+      "Me 262",
+      "Ki-84",
+      "Yak-3",
+      "Corsair",
+      "La-7",
+      "Me 163",
+      "Hellcat",
+      "Hammerhead",
+      "Wren",
+      "Anvil",
+      "Albatross",
+      "Firecracker",
+      "Zerstörer",
+      "Shrike",
+      "Lantern"
+     ],
+     "seconds": 60.018372255028225
+    }
+   ],
+   "held_out": [
+    {
+     "preset": "real_scale_deathmatch",
+     "first": "/home/vizia/avesnova/boost-and-broadside-v2/runs/real-scale-balance/round-2/search-deathmatch.jsonl:32:2",
+     "second": "real_scale_deathmatch",
+     "games": 512,
+     "score": 0.5546875,
+     "score_stderr": 0.02154700193200501,
+     "wins": 274,
+     "draws": 20,
+     "losses": 218,
+     "kills_per_game": 45.87329434697856,
+     "shots_per_game": 2492.9532163742692,
+     "hits_per_game": 674.2397660818714,
+     "kills_per_minute": 7.167847330150977,
+     "front_moves_per_minute": 0.0,
+     "clock_share": 0.10721247563352826,
+     "episodes": 513,
+     "types": [
+      "Spitfire XIV",
+      "Ki-84",
+      "Zerstörer",
+      "Lantern"
+     ],
+     "seconds": 55.354182598006446
+    }
+   ]
+  },
+  "adopted": true,
+  "score": 0.56591796875,
+  "stderr": 0.0152242892416643
+ },
+ "frontline": {
+  "generations": 26,
+  "per_generation": [
+   {
+    "generation": 0,
+    "champion": "defaults",
+    "top": -5.163220157565389,
+    "median": -99.32632142881957,
+    "median_score": 0.359375
+   },
+   {
+    "generation": 1,
+    "champion": "defaults",
+    "top": -41.41493996868141,
+    "median": -91.47759183923982,
+    "median_score": 0.34375
+   },
+   {
+    "generation": 2,
+    "champion": "defaults",
+    "top": -12.95403786110246,
+    "median": -96.46029088330664,
+    "median_score": 0.359375
+   },
+   {
+    "generation": 3,
+    "champion": "defaults",
+    "top": -16.899485114125184,
+    "median": -103.01419523243608,
+    "median_score": 0.375
+   },
+   {
+    "generation": 4,
+    "champion": "defaults",
+    "top": -23.99160605394108,
+    "median": -79.42598453675355,
+    "median_score": 0.375
+   },
+   {
+    "generation": 5,
+    "champion": "defaults",
+    "top": 8.192072036614016,
+    "median": -75.2106692016078,
+    "median_score": 0.40625
+   },
+   {
+    "generation": 6,
+    "champion": "defaults",
+    "top": 11.135031068814913,
+    "median": -67.44636800385969,
+    "median_score": 0.390625
+   },
+   {
+    "generation": 7,
+    "champion": "defaults",
+    "top": 16.946259877665916,
+    "median": -65.94033754534395,
+    "median_score": 0.390625
+   },
+   {
+    "generation": 8,
+    "champion": "defaults",
+    "top": -4.073352159802449,
+    "median": -67.96208938249885,
+    "median_score": 0.40625
+   },
+   {
+    "generation": 9,
+    "champion": "defaults",
+    "top": -8.441302223073084,
+    "median": -84.86521941282464,
+    "median_score": 0.390625
+   },
+   {
+    "generation": 10,
+    "champion": "defaults",
+    "top": 11.303847745317556,
+    "median": -59.72214273615082,
+    "median_score": 0.421875
+   },
+   {
+    "generation": 11,
+    "champion": "defaults",
+    "top": -12.473967791151576,
+    "median": -61.759112352579635,
+    "median_score": 0.421875
+   },
+   {
+    "generation": 12,
+    "champion": "defaults",
+    "top": -12.305908450411206,
+    "median": -74.3582052029483,
+    "median_score": 0.390625
+   },
+   {
+    "generation": 13,
+    "champion": "defaults",
+    "top": 11.229807136043485,
+    "median": -66.73491674207014,
+    "median_score": 0.421875
+   },
+   {
+    "generation": 14,
+    "champion": "defaults",
+    "top": 5.034915697009197,
+    "median": -57.08536145923569,
+    "median_score": 0.40625
+   },
+   {
+    "generation": 15,
+    "champion": "defaults",
+    "top": 25.298668721070698,
+    "median": -39.100194777659496,
+    "median_score": 0.4375
+   },
+   {
+    "generation": 16,
+    "champion": "defaults",
+    "top": 11.932466541437167,
+    "median": -32.52666068097816,
+    "median_score": 0.453125
+   },
+   {
+    "generation": 17,
+    "champion": "defaults",
+    "top": 23.341844250035162,
+    "median": -42.64616561092188,
+    "median_score": 0.4375
+   },
+   {
+    "generation": 18,
+    "champion": "defaults",
+    "top": 29.302263869141203,
+    "median": -63.45730847298845,
+    "median_score": 0.421875
+   },
+   {
+    "generation": 19,
+    "champion": "defaults",
+    "top": 15.829683142076405,
+    "median": -42.575075642679444,
+    "median_score": 0.4375
+   },
+   {
+    "generation": 20,
+    "champion": "defaults",
+    "top": 17.87663983067108,
+    "median": -50.5606495792168,
+    "median_score": 0.453125
+   },
+   {
+    "generation": 21,
+    "champion": "defaults",
+    "top": 11.647655173770312,
+    "median": -38.48676762381648,
+    "median_score": 0.4375
+   },
+   {
+    "generation": 22,
+    "champion": "defaults",
+    "top": 26.997334152383168,
+    "median": -46.5920145514379,
+    "median_score": 0.453125
+   },
+   {
+    "generation": 23,
+    "champion": "defaults",
+    "top": 24.149809140710612,
+    "median": -41.137139587792404,
+    "median_score": 0.4375
+   },
+   {
+    "generation": 24,
+    "champion": "defaults",
+    "top": 32.815805303278616,
+    "median": -56.070379788550085,
+    "median_score": 0.4375
+   },
+   {
+    "generation": 25,
+    "champion": "defaults",
+    "top": 30.526266867243937,
+    "median": -68.57133931484441,
+    "median_score": 0.40625
+   }
+  ],
+  "candidate": "25:2",
+  "candidate_rating": 30.526266867243937,
+  "candidate_stderr": 36.166100608494546,
+  "checks": {
+   "mixed": [
+    {
+     "preset": "real_scale_frontline",
+     "first": "/home/vizia/avesnova/boost-and-broadside-v2/runs/real-scale-balance/round-2/search-frontline.jsonl:25:2",
+     "second": "real_scale_frontline",
+     "games": 1024,
+     "score": 0.52001953125,
+     "score_stderr": 0.012919095435648587,
+     "wins": 371,
+     "draws": 323,
+     "losses": 330,
+     "kills_per_game": 46.59609756097561,
+     "shots_per_game": 2024.5843902439024,
+     "hits_per_game": 631.6526829268292,
+     "kills_per_minute": 4.793590593083926,
+     "front_moves_per_minute": 0.6201518788854352,
+     "clock_share": 0.8848780487804878,
+     "episodes": 1025,
+     "types": [
+      "P-51D",
+      "Heavy",
+      "P-47D",
+      "P-38L",
+      "Spitfire IX",
+      "Spitfire XIV",
+      "Tempest V",
+      "Mosquito",
+      "Fw 190A",
+      "Fw 190D",
+      "Bf 109K",
+      "Zero",
+      "Me 262",
+      "Ki-84",
+      "Yak-3",
+      "Corsair",
+      "La-7",
+      "Me 163",
+      "Hellcat",
+      "Hammerhead",
+      "Wren",
+      "Anvil",
+      "Albatross",
+      "Firecracker",
+      "Zerstörer",
+      "Shrike",
+      "Lantern"
+     ],
+     "seconds": 58.753399155975785
+    },
+    {
+     "preset": "real_scale_frontline",
+     "first": "/home/vizia/avesnova/boost-and-broadside-v2/runs/real-scale-balance/round-2/search-frontline.jsonl:25:2",
+     "second": "/home/vizia/avesnova/boost-and-broadside-v2/runs/real-scale-balance/round-2/search-frontline.jsonl:25:2",
+     "games": 1024,
+     "score": 0.48828125,
+     "score_stderr": 0.012882829582177915,
+     "wins": 336,
+     "draws": 328,
+     "losses": 360,
+     "kills_per_game": 50.8125,
+     "shots_per_game": 2238.7080078125,
+     "hits_per_game": 708.4150390625,
+     "kills_per_minute": 5.165037761573046,
+     "front_moves_per_minute": 0.5610247488343695,
+     "clock_share": 0.9267578125,
+     "episodes": 1024,
+     "types": [
+      "P-51D",
+      "Heavy",
+      "P-47D",
+      "P-38L",
+      "Spitfire IX",
+      "Spitfire XIV",
+      "Tempest V",
+      "Mosquito",
+      "Fw 190A",
+      "Fw 190D",
+      "Bf 109K",
+      "Zero",
+      "Me 262",
+      "Ki-84",
+      "Yak-3",
+      "Corsair",
+      "La-7",
+      "Me 163",
+      "Hellcat",
+      "Hammerhead",
+      "Wren",
+      "Anvil",
+      "Albatross",
+      "Firecracker",
+      "Zerstörer",
+      "Shrike",
+      "Lantern"
+     ],
+     "seconds": 56.26479408098385
+    },
+    {
+     "preset": "real_scale_frontline",
+     "first": "real_scale_frontline",
+     "second": "real_scale_frontline",
+     "games": 1024,
+     "score": 0.49951171875,
+     "score_stderr": 0.012692108656446295,
+     "wins": 337,
+     "draws": 349,
+     "losses": 338,
+     "kills_per_game": 43.90829268292683,
+     "shots_per_game": 1836.3463414634145,
+     "hits_per_game": 586.7278048780488,
+     "kills_per_minute": 4.51990808517429,
+     "front_moves_per_minute": 0.6888408220470693,
+     "clock_share": 0.8907317073170732,
+     "episodes": 1025,
+     "types": [
+      "P-51D",
+      "Heavy",
+      "P-47D",
+      "P-38L",
+      "Spitfire IX",
+      "Spitfire XIV",
+      "Tempest V",
+      "Mosquito",
+      "Fw 190A",
+      "Fw 190D",
+      "Bf 109K",
+      "Zero",
+      "Me 262",
+      "Ki-84",
+      "Yak-3",
+      "Corsair",
+      "La-7",
+      "Me 163",
+      "Hellcat",
+      "Hammerhead",
+      "Wren",
+      "Anvil",
+      "Albatross",
+      "Firecracker",
+      "Zerstörer",
+      "Shrike",
+      "Lantern"
+     ],
+     "seconds": 57.18791974399937
+    }
+   ],
+   "held_out": [
+    {
+     "preset": "real_scale_frontline",
+     "first": "/home/vizia/avesnova/boost-and-broadside-v2/runs/real-scale-balance/round-2/search-frontline.jsonl:25:2",
+     "second": "real_scale_frontline",
+     "games": 512,
+     "score": 0.591796875,
+     "score_stderr": 0.017991162145423636,
+     "wins": 225,
+     "draws": 156,
+     "losses": 131,
+     "kills_per_game": 53.8046875,
+     "shots_per_game": 2198.740234375,
+     "hits_per_game": 705.830078125,
+     "kills_per_minute": 5.465649457426732,
+     "front_moves_per_minute": 0.6232741035746003,
+     "clock_share": 0.921875,
+     "episodes": 512,
+     "types": [
+      "Spitfire XIV",
+      "Ki-84",
+      "Zerstörer",
+      "Lantern"
+     ],
+     "seconds": 54.645806756976526
+    }
+   ]
+  },
+  "adopted": false,
+  "score": 0.52001953125,
+  "stderr": 0.012919095435648587
+ }
+}

@@ -1,0 +1,959 @@
+{
+ "pairs_played": 351,
+ "pairs": 351,
+ "cross_validation": {
+  "games": 64512,
+  "folds": 5,
+  "models": {
+   "link=logit, k=0, penalty=0": {
+    "log_likelihood": -0.3854132242563228,
+    "gain_over_bradley_terry": 0.0,
+    "gain_stderr": 0.0,
+    "gain_over_best_transitive": -5.730288221545302e-05,
+    "gain_over_best_transitive_stderr": 6.140007711490263e-05
+   },
+   "link=logit, k=1, penalty=0.1": {
+    "log_likelihood": -0.37623789840269084,
+    "gain_over_bradley_terry": 0.009175325853631936,
+    "gain_stderr": 0.0005761694581397611,
+    "gain_over_best_transitive": 0.009118022971416482,
+    "gain_over_best_transitive_stderr": 0.0005624895776904745
+   },
+   "link=logit, k=1, penalty=1": {
+    "log_likelihood": -0.37621813522438635,
+    "gain_over_bradley_terry": 0.009195089031936502,
+    "gain_stderr": 0.0005586275260925522,
+    "gain_over_best_transitive": 0.009137786149721046,
+    "gain_over_best_transitive_stderr": 0.0005455934666114655
+   },
+   "link=logit, k=1, penalty=10": {
+    "log_likelihood": -0.3769382619915186,
+    "gain_over_bradley_terry": 0.008474962264804225,
+    "gain_stderr": 0.000441301507133622,
+    "gain_over_best_transitive": 0.008417659382588772,
+    "gain_over_best_transitive_stderr": 0.00043314523553916615
+   },
+   "link=logit, k=1, penalty=100": {
+    "log_likelihood": -0.38541322425446106,
+    "gain_over_bradley_terry": 1.8617031527672013e-12,
+    "gain_stderr": 1.7651431050607415e-11,
+    "gain_over_best_transitive": -5.730288035374987e-05,
+    "gain_over_best_transitive_stderr": 6.140007616457431e-05
+   },
+   "link=logit, k=2, penalty=0.1": {
+    "log_likelihood": -0.3749082791631741,
+    "gain_over_bradley_terry": 0.010504945093148744,
+    "gain_stderr": 0.0006348391217737339,
+    "gain_over_best_transitive": 0.010447642210933292,
+    "gain_over_best_transitive_stderr": 0.000617713517689637
+   },
+   "link=logit, k=2, penalty=1": {
+    "log_likelihood": -0.37511958276784224,
+    "gain_over_bradley_terry": 0.010293641488480531,
+    "gain_stderr": 0.0006071738166541775,
+    "gain_over_best_transitive": 0.01023633860626508,
+    "gain_over_best_transitive_stderr": 0.0005918132471864538
+   },
+   "link=logit, k=2, penalty=10": {
+    "log_likelihood": -0.37582572184678154,
+    "gain_over_bradley_terry": 0.00958750240954125,
+    "gain_stderr": 0.0004680601824804675,
+    "gain_over_best_transitive": 0.009530199527325795,
+    "gain_over_best_transitive_stderr": 0.00045712269558106586
+   },
+   "link=logit, k=2, penalty=100": {
+    "log_likelihood": -0.385413224258193,
+    "gain_over_bradley_terry": -1.8701748654057666e-12,
+    "gain_stderr": 1.9017643329228423e-11,
+    "gain_over_best_transitive": -5.7302884085627915e-05,
+    "gain_over_best_transitive_stderr": 6.140007545264785e-05
+   },
+   "link=logit, k=3, penalty=0.1": {
+    "log_likelihood": -0.3752992854731593,
+    "gain_over_bradley_terry": 0.010113938783163395,
+    "gain_stderr": 0.0006516532352190143,
+    "gain_over_best_transitive": 0.010056635900947944,
+    "gain_over_best_transitive_stderr": 0.0006358063594951478
+   },
+   "link=logit, k=3, penalty=1": {
+    "log_likelihood": -0.3751132396817261,
+    "gain_over_bradley_terry": 0.010299984574596684,
+    "gain_stderr": 0.0006272750781932419,
+    "gain_over_best_transitive": 0.01024268169238123,
+    "gain_over_best_transitive_stderr": 0.0006111897530256301
+   },
+   "link=logit, k=3, penalty=10": {
+    "log_likelihood": -0.37574240508798556,
+    "gain_over_bradley_terry": 0.009670819168337308,
+    "gain_stderr": 0.00047301659668592006,
+    "gain_over_best_transitive": 0.009613516286121853,
+    "gain_over_best_transitive_stderr": 0.00046178219561377755
+   },
+   "link=logit, k=3, penalty=100": {
+    "log_likelihood": -0.38541322423780616,
+    "gain_over_bradley_terry": 1.85166025113756e-11,
+    "gain_stderr": 1.7388264473308685e-11,
+    "gain_over_best_transitive": -5.730286369885053e-05,
+    "gain_over_best_transitive_stderr": 6.140007569229544e-05
+   },
+   "link=probit, k=0, penalty=0": {
+    "log_likelihood": -0.38790810704429834,
+    "gain_over_bradley_terry": -0.0024948827879755315,
+    "gain_stderr": 0.000292350942469071,
+    "gain_over_best_transitive": -0.002552185670190984,
+    "gain_over_best_transitive_stderr": 0.0003476643958570956
+   },
+   "link=probit, k=1, penalty=0.1": {
+    "log_likelihood": -0.37713032980448796,
+    "gain_over_bradley_terry": 0.008282894451834834,
+    "gain_stderr": 0.0007340694591409403,
+    "gain_over_best_transitive": 0.00822559156961938,
+    "gain_over_best_transitive_stderr": 0.0007293869485160148
+   },
+   "link=probit, k=1, penalty=1": {
+    "log_likelihood": -0.37698589360698104,
+    "gain_over_bradley_terry": 0.00842733064934176,
+    "gain_stderr": 0.0006487927536389599,
+    "gain_over_best_transitive": 0.008370027767126306,
+    "gain_over_best_transitive_stderr": 0.0006425230047293416
+   },
+   "link=probit, k=1, penalty=10": {
+    "log_likelihood": -0.37729731612359363,
+    "gain_over_bradley_terry": 0.008115908132729178,
+    "gain_stderr": 0.0005354703328160641,
+    "gain_over_best_transitive": 0.008058605250513723,
+    "gain_over_best_transitive_stderr": 0.0005350774972671264
+   },
+   "link=probit, k=1, penalty=100": {
+    "log_likelihood": -0.3833341192987633,
+    "gain_over_bradley_terry": 0.002079104957559518,
+    "gain_stderr": 0.0002634735382872101,
+    "gain_over_best_transitive": 0.0020218020753440644,
+    "gain_over_best_transitive_stderr": 0.00030739756663992075
+   },
+   "link=probit, k=2, penalty=0.1": {
+    "log_likelihood": -0.3749965288020516,
+    "gain_over_bradley_terry": 0.010416695454271149,
+    "gain_stderr": 0.0006399705159354132,
+    "gain_over_best_transitive": 0.010359392572055695,
+    "gain_over_best_transitive_stderr": 0.0006236188683991485
+   },
+   "link=probit, k=2, penalty=1": {
+    "log_likelihood": -0.3755132221402334,
+    "gain_over_bradley_terry": 0.009900002116089391,
+    "gain_stderr": 0.0006968309601171229,
+    "gain_over_best_transitive": 0.009842699233873936,
+    "gain_over_best_transitive_stderr": 0.0006864146320249434
+   },
+   "link=probit, k=2, penalty=10": {
+    "log_likelihood": -0.37560614425067856,
+    "gain_over_bradley_terry": 0.009807080005644259,
+    "gain_stderr": 0.0005405946567750898,
+    "gain_over_best_transitive": 0.009749777123428805,
+    "gain_over_best_transitive_stderr": 0.0005312386661773563
+   },
+   "link=probit, k=2, penalty=100": {
+    "log_likelihood": -0.3833341197070466,
+    "gain_over_bradley_terry": 0.0020791045492761953,
+    "gain_stderr": 0.00026347354947321505,
+    "gain_over_best_transitive": 0.002021801667060742,
+    "gain_over_best_transitive_stderr": 0.00030739758108619446
+   },
+   "link=probit, k=3, penalty=0.1": {
+    "log_likelihood": -0.37525447398084416,
+    "gain_over_bradley_terry": 0.010158750275478709,
+    "gain_stderr": 0.0006623164596135476,
+    "gain_over_best_transitive": 0.010101447393263255,
+    "gain_over_best_transitive_stderr": 0.0006474607285728441
+   },
+   "link=probit, k=3, penalty=1": {
+    "log_likelihood": -0.3751770997441163,
+    "gain_over_bradley_terry": 0.010236124512206525,
+    "gain_stderr": 0.0006405705645601001,
+    "gain_over_best_transitive": 0.010178821629991073,
+    "gain_over_best_transitive_stderr": 0.0006254728428900771
+   },
+   "link=probit, k=3, penalty=10": {
+    "log_likelihood": -0.37516779594099264,
+    "gain_over_bradley_terry": 0.010245428315330086,
+    "gain_stderr": 0.0005554786023840672,
+    "gain_over_best_transitive": 0.010188125433114634,
+    "gain_over_best_transitive_stderr": 0.000543822027950018
+   },
+   "link=probit, k=3, penalty=100": {
+    "log_likelihood": -0.38333411928521316,
+    "gain_over_bradley_terry": 0.002079104971109642,
+    "gain_stderr": 0.00026347353992459344,
+    "gain_over_best_transitive": 0.0020218020888941894,
+    "gain_over_best_transitive_stderr": 0.0003073975683482729
+   },
+   "link=power, k=0, penalty=0": {
+    "log_likelihood": -0.38535592137410735,
+    "gain_over_bradley_terry": 5.730288221545302e-05,
+    "gain_stderr": 6.140007711490263e-05,
+    "gain_over_best_transitive": 0.0,
+    "gain_over_best_transitive_stderr": 0.0
+   },
+   "link=power, k=1, penalty=0.1": {
+    "log_likelihood": -0.3761891594453174,
+    "gain_over_bradley_terry": 0.009224064811005366,
+    "gain_stderr": 0.0005750280390595585,
+    "gain_over_best_transitive": 0.009166761928789914,
+    "gain_over_best_transitive_stderr": 0.0005592904504112929
+   },
+   "link=power, k=1, penalty=1": {
+    "log_likelihood": -0.3761754026535558,
+    "gain_over_bradley_terry": 0.009237821602766934,
+    "gain_stderr": 0.0005577253473540451,
+    "gain_over_best_transitive": 0.00918051872055148,
+    "gain_over_best_transitive_stderr": 0.0005431423518153306
+   },
+   "link=power, k=1, penalty=10": {
+    "log_likelihood": -0.3769655720045318,
+    "gain_over_bradley_terry": 0.008447652251791032,
+    "gain_stderr": 0.00044490371718164086,
+    "gain_over_best_transitive": 0.008390349369575582,
+    "gain_over_best_transitive_stderr": 0.0004386856463651304
+   },
+   "link=power, k=1, penalty=100": {
+    "log_likelihood": -0.3853559213719477,
+    "gain_over_bradley_terry": 5.7302884375083576e-05,
+    "gain_stderr": 6.140007590641626e-05,
+    "gain_over_best_transitive": 2.15963050986828e-12,
+    "gain_over_best_transitive_stderr": 5.3231147548125455e-12
+   },
+   "link=power, k=2, penalty=0.1": {
+    "log_likelihood": -0.3748938554681582,
+    "gain_over_bradley_terry": 0.010519368788164642,
+    "gain_stderr": 0.0006321337221338035,
+    "gain_over_best_transitive": 0.01046206590594919,
+    "gain_over_best_transitive_stderr": 0.0006146739462870741
+   },
+   "link=power, k=2, penalty=1": {
+    "log_likelihood": -0.37522346916770655,
+    "gain_over_bradley_terry": 0.010189755088616257,
+    "gain_stderr": 0.0006125063879391358,
+    "gain_over_best_transitive": 0.010132452206400803,
+    "gain_over_best_transitive_stderr": 0.0005986027379116714
+   },
+   "link=power, k=2, penalty=10": {
+    "log_likelihood": -0.375836148006085,
+    "gain_over_bradley_terry": 0.009577076250237779,
+    "gain_stderr": 0.0004985983285515884,
+    "gain_over_best_transitive": 0.009519773368022327,
+    "gain_over_best_transitive_stderr": 0.0004921730700825523
+   },
+   "link=power, k=2, penalty=100": {
+    "log_likelihood": -0.3853559213709294,
+    "gain_over_bradley_terry": 5.7302885393449076e-05,
+    "gain_stderr": 6.140007609885045e-05,
+    "gain_over_best_transitive": 3.1779960686278624e-12,
+    "gain_over_best_transitive_stderr": 1.4267714401013849e-11
+   },
+   "link=power, k=3, penalty=0.1": {
+    "log_likelihood": -0.3754190065709555,
+    "gain_over_bradley_terry": 0.009994217685367278,
+    "gain_stderr": 0.000663661669765255,
+    "gain_over_best_transitive": 0.009936914803151828,
+    "gain_over_best_transitive_stderr": 0.0006497845427004002
+   },
+   "link=power, k=3, penalty=1": {
+    "log_likelihood": -0.37514720751554964,
+    "gain_over_bradley_terry": 0.01026601674077314,
+    "gain_stderr": 0.0006368067566135112,
+    "gain_over_best_transitive": 0.010208713858557688,
+    "gain_over_best_transitive_stderr": 0.0006225554351385108
+   },
+   "link=power, k=3, penalty=10": {
+    "log_likelihood": -0.3754186524098626,
+    "gain_over_bradley_terry": 0.00999457184646023,
+    "gain_stderr": 0.0005231350572297514,
+    "gain_over_best_transitive": 0.009937268964244775,
+    "gain_over_best_transitive_stderr": 0.0005161823994226895
+   },
+   "link=power, k=3, penalty=100": {
+    "log_likelihood": -0.385355921378061,
+    "gain_over_bradley_terry": 5.730287826179653e-05,
+    "gain_stderr": 6.140007663844772e-05,
+    "gain_over_best_transitive": -3.95365648575874e-12,
+    "gain_over_best_transitive_stderr": 8.25297111781006e-12
+   }
+  },
+  "best": "link=power, k=2, penalty=0.1",
+  "best_transitive": "link=power, k=0, penalty=0"
+ },
+ "cyclic_part_supported": true,
+ "residuals": {
+  "link=logit, k=0, penalty=0": {
+   "beyond_3": 54,
+   "chi_square": 3586.048994918398,
+   "gamma": 1.0
+  },
+  "link=power, k=0, penalty=0": {
+   "beyond_3": 51,
+   "chi_square": 2890.6837298152254,
+   "gamma": 0.9411599949881494
+  },
+  "link=power, k=2, penalty=0.1": {
+   "beyond_3": 2,
+   "chi_square": 276.83445849055784,
+   "gamma": 1.0436659971751656
+  }
+ },
+ "majority_cycles": [
+  {
+   "cycle": [
+    "Spitfire IX",
+    "Mosquito",
+    "Zerst\u00f6rer"
+   ],
+   "weakest_score": 0.6484375
+  },
+  {
+   "cycle": [
+    "Mosquito",
+    "Albatross",
+    "Wren"
+   ],
+   "weakest_score": 0.640625
+  },
+  {
+   "cycle": [
+    "Mosquito",
+    "Zerst\u00f6rer",
+    "Wren"
+   ],
+   "weakest_score": 0.640625
+  },
+  {
+   "cycle": [
+    "Spitfire XIV",
+    "Mosquito",
+    "Zerst\u00f6rer"
+   ],
+   "weakest_score": 0.6328125
+  },
+  {
+   "cycle": [
+    "P-51D",
+    "Mosquito",
+    "Zerst\u00f6rer"
+   ],
+   "weakest_score": 0.6164772727272727
+  },
+  {
+   "cycle": [
+    "Heavy",
+    "Zerst\u00f6rer",
+    "Yak-3"
+   ],
+   "weakest_score": 0.609375
+  },
+  {
+   "cycle": [
+    "Mosquito",
+    "Zerst\u00f6rer",
+    "Yak-3"
+   ],
+   "weakest_score": 0.609375
+  },
+  {
+   "cycle": [
+    "Spitfire XIV",
+    "Mosquito",
+    "Albatross"
+   ],
+   "weakest_score": 0.578125
+  },
+  {
+   "cycle": [
+    "Heavy",
+    "Zerst\u00f6rer",
+    "Spitfire IX"
+   ],
+   "weakest_score": 0.5625
+  },
+  {
+   "cycle": [
+    "Spitfire IX",
+    "Albatross",
+    "Zerst\u00f6rer"
+   ],
+   "weakest_score": 0.55078125
+  },
+  {
+   "cycle": [
+    "Yak-3",
+    "Albatross",
+    "Zerst\u00f6rer"
+   ],
+   "weakest_score": 0.55078125
+  },
+  {
+   "cycle": [
+    "Heavy",
+    "Albatross",
+    "Spitfire XIV"
+   ],
+   "weakest_score": 0.546875
+  },
+  {
+   "cycle": [
+    "Heavy",
+    "Zerst\u00f6rer",
+    "Spitfire XIV"
+   ],
+   "weakest_score": 0.546875
+  },
+  {
+   "cycle": [
+    "Mosquito",
+    "Zerst\u00f6rer",
+    "La-7"
+   ],
+   "weakest_score": 0.546875
+  },
+  {
+   "cycle": [
+    "La-7",
+    "Albatross",
+    "Zerst\u00f6rer"
+   ],
+   "weakest_score": 0.546875
+  },
+  {
+   "cycle": [
+    "Bf 109K",
+    "Me 163",
+    "Anvil"
+   ],
+   "weakest_score": 0.5419921875
+  },
+  {
+   "cycle": [
+    "P-51D",
+    "Mosquito",
+    "Shrike"
+   ],
+   "weakest_score": 0.5234375
+  },
+  {
+   "cycle": [
+    "Heavy",
+    "La-7",
+    "Spitfire IX"
+   ],
+   "weakest_score": 0.5234375
+  },
+  {
+   "cycle": [
+    "Heavy",
+    "Mosquito",
+    "Shrike"
+   ],
+   "weakest_score": 0.5234375
+  },
+  {
+   "cycle": [
+    "Spitfire IX",
+    "Mosquito",
+    "Shrike"
+   ],
+   "weakest_score": 0.5234375
+  },
+  {
+   "cycle": [
+    "Spitfire XIV",
+    "Mosquito",
+    "Shrike"
+   ],
+   "weakest_score": 0.5234375
+  },
+  {
+   "cycle": [
+    "Mosquito",
+    "Shrike",
+    "Fw 190D"
+   ],
+   "weakest_score": 0.5234375
+  },
+  {
+   "cycle": [
+    "Mosquito",
+    "Shrike",
+    "La-7"
+   ],
+   "weakest_score": 0.5234375
+  },
+  {
+   "cycle": [
+    "Mosquito",
+    "Shrike",
+    "Wren"
+   ],
+   "weakest_score": 0.5234375
+  },
+  {
+   "cycle": [
+    "Yak-3",
+    "Shrike",
+    "Zerst\u00f6rer"
+   ],
+   "weakest_score": 0.5234375
+  },
+  {
+   "cycle": [
+    "Heavy",
+    "La-7",
+    "Spitfire XIV"
+   ],
+   "weakest_score": 0.515625
+  },
+  {
+   "cycle": [
+    "P-51D",
+    "La-7",
+    "Spitfire XIV"
+   ],
+   "weakest_score": 0.5122767857142857
+  },
+  {
+   "cycle": [
+    "Spitfire XIV",
+    "Ki-84",
+    "Albatross"
+   ],
+   "weakest_score": 0.51171875
+  },
+  {
+   "cycle": [
+    "Ki-84",
+    "Albatross",
+    "Wren"
+   ],
+   "weakest_score": 0.51171875
+  },
+  {
+   "cycle": [
+    "Ki-84",
+    "Albatross",
+    "Zerst\u00f6rer"
+   ],
+   "weakest_score": 0.51171875
+  },
+  {
+   "cycle": [
+    "P-51D",
+    "Spitfire IX",
+    "Heavy"
+   ],
+   "weakest_score": 0.5100446428571429
+  },
+  {
+   "cycle": [
+    "P-51D",
+    "Spitfire IX",
+    "Spitfire XIV"
+   ],
+   "weakest_score": 0.5100446428571429
+  },
+  {
+   "cycle": [
+    "P-51D",
+    "Spitfire IX",
+    "Albatross"
+   ],
+   "weakest_score": 0.5033482142857143
+  },
+  {
+   "cycle": [
+    "P-51D",
+    "Mosquito",
+    "Albatross"
+   ],
+   "weakest_score": 0.5033482142857143
+  },
+  {
+   "cycle": [
+    "P-51D",
+    "Ki-84",
+    "Albatross"
+   ],
+   "weakest_score": 0.5033482142857143
+  },
+  {
+   "cycle": [
+    "P-51D",
+    "La-7",
+    "Albatross"
+   ],
+   "weakest_score": 0.5033482142857143
+  }
+ ],
+ "decomposition": {
+  "transitive_rms_elo": 733.2465154337904,
+  "cyclic_rms_elo": 208.62657474108903,
+  "cyclic_share": 0.07489140144742627
+ },
+ "types": [
+  {
+   "type": "P-51D",
+   "transitive_elo": 1000.0,
+   "cyclic_strength": 17.245737881442476,
+   "cyclic_vector": [
+    0.829676371975944,
+    7.820039372952764,
+    10.252442790723864,
+    11.4219750140511
+   ]
+  },
+  {
+   "type": "Heavy",
+   "transitive_elo": 1081.7483527664117,
+   "cyclic_strength": 13.2498736202245,
+   "cyclic_vector": [
+    -0.20980743258370252,
+    10.270969714793864,
+    1.6640863008904647,
+    8.200800552027205
+   ]
+  },
+  {
+   "type": "P-47D",
+   "transitive_elo": 1367.5060587241346,
+   "cyclic_strength": 23.437612048967694,
+   "cyclic_vector": [
+    16.095501707368104,
+    -10.620986491586411,
+    -3.3502961808782348,
+    -12.892891250295941
+   ]
+  },
+  {
+   "type": "P-38L",
+   "transitive_elo": 1258.8856242440875,
+   "cyclic_strength": 16.15072179041044,
+   "cyclic_vector": [
+    -3.1833774468995477,
+    0.8742623324094916,
+    5.205359513388385,
+    -14.928222268318386
+   ]
+  },
+  {
+   "type": "Spitfire IX",
+   "transitive_elo": 1022.2147050185392,
+   "cyclic_strength": 17.07851420727817,
+   "cyclic_vector": [
+    1.0357562852444817,
+    4.360173382431226,
+    9.81805251586539,
+    13.236222622660382
+   ]
+  },
+  {
+   "type": "Spitfire XIV",
+   "transitive_elo": 999.0721525798946,
+   "cyclic_strength": 16.328092772451935,
+   "cyclic_vector": [
+    2.524185797200794,
+    4.785304725658205,
+    9.601311327666389,
+    12.0478537142026
+   ]
+  },
+  {
+   "type": "Tempest V",
+   "transitive_elo": 1154.5542722647906,
+   "cyclic_strength": 7.8521521107159975,
+   "cyclic_vector": [
+    1.2673484026936328,
+    -0.8352846546806775,
+    1.047343052693582,
+    -7.632528602739794
+   ]
+  },
+  {
+   "type": "Mosquito",
+   "transitive_elo": 905.5757816459147,
+   "cyclic_strength": 13.063053477541766,
+   "cyclic_vector": [
+    11.888387048148175,
+    -0.8527840118770394,
+    -3.7205977146150033,
+    3.839209765775669
+   ]
+  },
+  {
+   "type": "Fw 190A",
+   "transitive_elo": 1243.8403348042025,
+   "cyclic_strength": 10.97961951106212,
+   "cyclic_vector": [
+    5.553806282888769,
+    8.973351130688403,
+    -0.9774619283975897,
+    2.868940230075847
+   ]
+  },
+  {
+   "type": "Fw 190D",
+   "transitive_elo": 965.4192979582853,
+   "cyclic_strength": 8.061298939635469,
+   "cyclic_vector": [
+    -0.9755069808934484,
+    2.083110360344201,
+    6.144599070441136,
+    4.683746386660647
+   ]
+  },
+  {
+   "type": "Bf 109K",
+   "transitive_elo": 288.5430623994321,
+   "cyclic_strength": 21.525969093666667,
+   "cyclic_vector": [
+    -6.704183980831613,
+    -14.833695405018497,
+    -11.174770548203014,
+    -8.573636707885452
+   ]
+  },
+  {
+   "type": "Zero",
+   "transitive_elo": 480.98301218157894,
+   "cyclic_strength": 22.91943283628497,
+   "cyclic_vector": [
+    -22.096450515000754,
+    4.1815406558949935,
+    -3.45761124041295,
+    -2.758064253850491
+   ]
+  },
+  {
+   "type": "Me 262",
+   "transitive_elo": 351.47273346638224,
+   "cyclic_strength": 19.386403260762417,
+   "cyclic_vector": [
+    7.134867277171012,
+    -10.72929552762718,
+    -13.139293410455908,
+    6.096514289398769
+   ]
+  },
+  {
+   "type": "Ki-84",
+   "transitive_elo": 840.2567838255062,
+   "cyclic_strength": 6.223790543811633,
+   "cyclic_vector": [
+    3.7392189976587473,
+    0.19145028349918689,
+    4.387708795096328,
+    2.3377699500099283
+   ]
+  },
+  {
+   "type": "Yak-3",
+   "transitive_elo": 1084.1811404301695,
+   "cyclic_strength": 16.636797631371707,
+   "cyclic_vector": [
+    2.362797660551797,
+    4.734484222314807,
+    8.94925593865677,
+    12.988290878155409
+   ]
+  },
+  {
+   "type": "Corsair",
+   "transitive_elo": 1172.0601866237396,
+   "cyclic_strength": 15.440741270597156,
+   "cyclic_vector": [
+    -3.592143502277656,
+    0.24222225841137293,
+    5.5191220331633275,
+    -13.964011472537106
+   ]
+  },
+  {
+   "type": "La-7",
+   "transitive_elo": 948.2777931927495,
+   "cyclic_strength": 10.180209875017017,
+   "cyclic_vector": [
+    -7.098305153746917,
+    -4.279183216082226,
+    5.615060603911258,
+    -1.846732915526195
+   ]
+  },
+  {
+   "type": "Me 163",
+   "transitive_elo": 171.26364562145704,
+   "cyclic_strength": 20.06359518209996,
+   "cyclic_vector": [
+    -2.0032911708810297,
+    -16.175785866657325,
+    -11.568918644130518,
+    -1.7432008253191151
+   ]
+  },
+  {
+   "type": "Hellcat",
+   "transitive_elo": 1278.2868411427162,
+   "cyclic_strength": 23.815076217709503,
+   "cyclic_vector": [
+    7.405086857243404,
+    -10.128898975976442,
+    3.7454734355219053,
+    -19.892193900378537
+   ]
+  },
+  {
+   "type": "Hammerhead",
+   "transitive_elo": 253.63433814444193,
+   "cyclic_strength": 14.354327063848293,
+   "cyclic_vector": [
+    -6.6622018693981255,
+    -0.28608397086755893,
+    -10.929488485690207,
+    -6.490470638566478
+   ]
+  },
+  {
+   "type": "Wren",
+   "transitive_elo": 955.0831272852633,
+   "cyclic_strength": 16.5236670727831,
+   "cyclic_vector": [
+    -2.004761510532474,
+    8.699902853437047,
+    8.238057711223203,
+    11.200830339996129
+   ]
+  },
+  {
+   "type": "Anvil",
+   "transitive_elo": -536.186429341861,
+   "cyclic_strength": 49.50726056612533,
+   "cyclic_vector": [
+    -27.1365595605253,
+    7.748433788495326,
+    -38.466033844886404,
+    13.225051911037959
+   ]
+  },
+  {
+   "type": "Albatross",
+   "transitive_elo": 923.1574943890045,
+   "cyclic_strength": 14.060585365509615,
+   "cyclic_vector": [
+    10.539708208664313,
+    9.259515340927264,
+    0.2161325076758102,
+    -0.9106448743915909
+   ]
+  },
+  {
+   "type": "Firecracker",
+   "transitive_elo": -700.9669278115139,
+   "cyclic_strength": 26.32366845186162,
+   "cyclic_vector": [
+    -5.307461039138811,
+    -24.244211563369475,
+    8.763834590834612,
+    0.42401299111093954
+   ]
+  },
+  {
+   "type": "Zerst\u00f6rer",
+   "transitive_elo": 867.2394313879073,
+   "cyclic_strength": 22.20021981095892,
+   "cyclic_vector": [
+    2.2608569592574765,
+    -0.4060644226842335,
+    2.320328574242105,
+    -21.958813093080774
+   ]
+  },
+  {
+   "type": "Shrike",
+   "transitive_elo": 1079.2902478813207,
+   "cyclic_strength": 19.88391343901978,
+   "cyclic_vector": [
+    11.086238181858661,
+    15.95602885084079,
+    -0.4740713028240545,
+    4.200682841694382
+   ]
+  },
+  {
+   "type": "Lantern",
+   "transitive_elo": 830.3044553128616,
+   "cyclic_strength": 10.041614051036166,
+   "cyclic_vector": [
+    3.2502305165315275,
+    3.215512717374121,
+    5.771910447606839,
+    6.827557549269468
+   ]
+  }
+ ],
+ "largest_cyclic_terms": [
+  {
+   "winner": "Anvil",
+   "loser": "Hellcat",
+   "elo": 933.1253683375337
+  },
+  {
+   "winner": "Anvil",
+   "loser": "Bf 109K",
+   "elo": 932.0631049155447
+  },
+  {
+   "winner": "Anvil",
+   "loser": "Zerst\u00f6rer",
+   "elo": 807.4830727244787
+  },
+  {
+   "winner": "P-51D",
+   "loser": "Anvil",
+   "elo": 793.5848222321266
+  },
+  {
+   "winner": "Spitfire IX",
+   "loser": "Anvil",
+   "elo": 765.3348352531184
+  },
+  {
+   "winner": "Yak-3",
+   "loser": "Anvil",
+   "elo": 764.7480051758661
+  },
+  {
+   "winner": "Wren",
+   "loser": "Anvil",
+   "elo": 760.3519299531686
+  },
+  {
+   "winner": "Spitfire XIV",
+   "loser": "Anvil",
+   "elo": 739.8261826737399
+  },
+  {
+   "winner": "Anvil",
+   "loser": "P-47D",
+   "elo": 703.7483353501043
+  },
+  {
+   "winner": "Anvil",
+   "loser": "Me 163",
+   "elo": 674.5311171738587
+  },
+  {
+   "winner": "Shrike",
+   "loser": "Anvil",
+   "elo": 674.2067005467899
+  },
+  {
+   "winner": "Heavy",
+   "loser": "Anvil",
+   "elo": 614.5530017133112
+  }
+ ]
+}

@@ -24,7 +24,7 @@ muzzle_speed = 805.0
 bullet_spread = 0.8992202913379758
 gun_range = 561.3358753322095
 shots_per_store = 519.0530831116089
-max_shield = 130.0
+max_shield = 120.0
 shield_recharge_rate = 12.0
 shield_recharge_delay = 6.0
 head_on_fraction = 0.3
@@ -41,7 +41,7 @@ engine_power_full_store = 278.0709228515625
 static_thrust = 7.366711616516113
 max_energy = 111932.1015625
 corner_nose_frequency = 7.883518695831299
-max_shield = 130.0
+max_shield = 120.0
 hit_radius = 5.644999980926514
 hit_damage = 36.32967758178711
 muzzle_speed = 805.0
@@ -83,7 +83,7 @@ muzzle_speed = "invented: muzzle_speed 805. the MG 151/20-class 20 mm, 3.68 of 4
 bullet_spread = "invented: dispersion 3.72; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the P-51D's x 0.62: Roll-and-dive slasher (Fw 190 vibe)."
 gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
 shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 15.2 m/s), the standard fighter's ratio: a shot costs 215.6 J/kg, 1.45 s of charge"
-max_shield = "invented: survivability 4; proposal: the standard 100 x (1 + 0.15 per rating step from the P-51D's 2). Radial engine in front, armour. Balanced (round 2): 140 -> 130, the step per rating 0.2 -> 0.15: the shield's Spearman correlation with the round-1 Elo was +0.69 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
+max_shield = "invented: survivability 4; proposal: the standard 100 x (1 + 0.1 per rating step from the P-51D's 2). Radial engine in front, armour. Balanced (round 3): 140 -> 120, the step per rating 0.2 -> 0.1: the shield's Spearman correlation with the round-2 Elo was +0.54 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
 shield_recharge_rate = "placeholder: the standard fighter's"
 shield_recharge_delay = "placeholder: the standard fighter's"
 head_on_fraction = "placeholder: the standard fighter's"

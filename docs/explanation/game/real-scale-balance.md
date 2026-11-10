@@ -238,6 +238,109 @@ Firecracker 80 to 100 (-2,186). The Anvil (-875) is at its bound and listed for 
 as are two levers the rule does not touch: the fire-rate granularity and the muzzle speed,
 both researched, which now carry most of the spread.
 
+## Round 2
+
+**The ships.** The round-1 decision, applied: the shield step fell from 0.2 to 0.15, so the
+researched types' shields span 85 to 145, and six loosely known types moved 20 towards the
+median: the Heavy 160 to 140, the Albatross 100 to 120, the Wren and the Lantern 80 to 100,
+the Hammerhead 120 to 140 and the Firecracker 80 to 100. Nothing else moved; the Anvil's shield
+followed the step, 160 to 145. The ships stage had nothing left to change (the Hammerhead's flight
+solve still misses its low-speed acceleration and sustained turn rate, as before; a shield is
+not a flight handle).
+
+**The agent.** Each mode searched from its champion, the round-1 set.
+
+| Mode | Generations | Champion promotions in the search | Candidate | Against the previous champion, mixed lineups (1,024 games) | Held-out types (512 games) | Adopted |
+|---|---|---|---|---|---|---|
+| deathmatch | 33 | none | 32:2 | 0.566 +- 0.015 | 0.555 +- 0.022 | yes |
+| Frontline | 26 | none | 25:2 | 0.520 +- 0.013 | 0.592 +- 0.018 | no |
+
+The deathmatch candidate is 4.3 standard errors above one half on mixed lineups (0.555 on the
+held-out types): adopted. The Frontline candidate is 1.5
+standard errors above one half on mixed lineups (0.592 on the held-out types), short of the
+two the rule asks, so the round-1 Frontline set stays the champion. Self-play of the new and
+the previous sets on mixed lineups (1,024 games each, T = 1):
+
+| Mode | Set | Kills a game | Kills a minute | Shots a game | Hit share | Front moves a minute | Drawn |
+|---|---|---|---|---|---|---|---|
+| deathmatch | previous | 44.4 | 6.45 | 2,582 | 0.26 | | 2.9% |
+| deathmatch | new | 45.0 | 6.93 | 2,284 | 0.29 | | 3.7% |
+| Frontline | previous | 43.9 | 4.52 | 1,836 | 0.32 | 0.69 | 34.1% |
+| Frontline | candidate (not adopted) | 50.8 | 5.17 | 2,239 | 0.32 | 0.56 | 32.0% |
+
+**The ratings.** 64,512 games in real_scale_deathmatch: 52,992 A-optimal (every type's
+standard error under 25 Elo after 46 batches; the largest then 24.6, the Firecracker's), then
+11,520 in the top-up over the 174 pairs short of 64 games. Draws were 1.8%.
+
+| Rank | Type | Elo (95% interval) | Score | W / D / L | Kills / deaths a game | Kill ratio | Shots a game | Hit share | Mean speed m/s |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | P-47D | 1548 (1527 to 1569) | 0.860 | 2896 / 45 / 451 | 23.39 / 18.44 | 1.27 | 1478 | 0.285 | 121 |
+| 2 | Hellcat | 1419 (1401 to 1438) | 0.752 | 2529 / 46 / 817 | 23.25 / 19.40 | 1.20 | 1486 | 0.295 | 108 |
+| 3 | P-38L | 1351 (1333 to 1368) | 0.724 | 2512 / 71 / 937 | 23.04 / 19.71 | 1.17 | 1413 | 0.293 | 133 |
+| 4 | Fw 190A | 1276 (1259 to 1293) | 0.679 | 2305 / 81 / 1070 | 22.11 / 20.22 | 1.09 | 977 | 0.282 | 127 |
+| 5 | Corsair | 1271 (1254 to 1288) | 0.671 | 2208 / 50 / 1070 | 23.02 / 20.48 | 1.12 | 1411 | 0.297 | 112 |
+| 6 | Tempest V | 1255 (1239 to 1272) | 0.662 | 2303 / 58 / 1159 | 22.83 / 20.90 | 1.09 | 1352 | 0.294 | 115 |
+| 7 | Shrike | 1106 (1090 to 1122) | 0.573 | 1654 / 66 / 1224 | 22.17 / 21.41 | 1.04 | 945 | 0.287 | 123 |
+| 8 | Yak-3 | 1071 (1055 to 1088) | 0.567 | 1559 / 73 / 1184 | 22.27 / 20.92 | 1.06 | 1371 | 0.294 | 124 |
+| 9 | Heavy | 1054 (1038 to 1070) | 0.563 | 1522 / 53 / 1177 | 22.49 / 20.86 | 1.08 | 1053 | 0.262 | 125 |
+| 10 | Zerstörer | 1030 (1014 to 1047) | 0.550 | 1500 / 28 / 1224 | 21.90 / 21.07 | 1.04 | 933 | 0.273 | 117 |
+| 11 | Spitfire IX | 1017 (1001 to 1034) | 0.559 | 1495 / 86 / 1171 | 22.78 / 21.36 | 1.07 | 1014 | 0.275 | 115 |
+| 12 | Spitfire XIV | 1007 (991 to 1024) | 0.544 | 1416 / 90 / 1182 | 22.48 / 21.38 | 1.05 | 1009 | 0.273 | 119 |
+| 13 | P-51D | 1000 (1000 to 1000) | 0.508 | 6398 / 263 / 6203 | 22.60 / 22.28 | 1.01 | 1389 | 0.284 | 118 |
+| 14 | La-7 | 986 (970 to 1002) | 0.521 | 1402 / 63 / 1287 | 21.58 / 21.02 | 1.03 | 980 | 0.279 | 123 |
+| 15 | Fw 190D | 986 (970 to 1002) | 0.520 | 1386 / 89 / 1277 | 21.41 / 20.67 | 1.04 | 940 | 0.282 | 126 |
+| 16 | Albatross | 983 (967 to 999) | 0.520 | 1420 / 23 / 1309 | 22.96 / 21.83 | 1.05 | 1029 | 0.281 | 93 |
+| 17 | Mosquito | 946 (930 to 961) | 0.607 | 2270 / 47 / 1459 | 22.88 / 20.02 | 1.14 | 974 | 0.257 | 118 |
+| 18 | Wren | 944 (928 to 959) | 0.594 | 2142 / 49 / 1457 | 23.29 / 20.99 | 1.11 | 1364 | 0.292 | 106 |
+| 19 | Ki-84 | 881 (867 to 895) | 0.614 | 3187 / 67 / 1994 | 22.78 / 21.66 | 1.05 | 1245 | 0.283 | 122 |
+| 20 | Lantern | 868 (854 to 882) | 0.605 | 3276 / 103 / 2125 | 23.01 / 20.95 | 1.10 | 1386 | 0.268 | 116 |
+| 21 | Zero | 460 (443 to 476) | 0.362 | 5106 / 165 / 9065 | 19.60 / 22.95 | 0.85 | 951 | 0.276 | 109 |
+| 22 | Me 262 | 210 (188 to 232) | 0.366 | 1881 / 128 / 3303 | 17.73 / 20.15 | 0.88 | 755 | 0.264 | 137 |
+| 23 | Hammerhead | 185 (162 to 207) | 0.346 | 1786 / 153 / 3437 | 17.76 / 21.35 | 0.83 | 433 | 0.274 | 121 |
+| 24 | Bf 109K | 19 (-7 to 45) | 0.301 | 1271 / 82 / 2999 | 16.50 / 20.33 | 0.81 | 808 | 0.268 | 118 |
+| 25 | Me 163 | -6 (-33 to 20) | 0.225 | 768 / 102 / 2778 | 15.08 / 20.90 | 0.72 | 733 | 0.273 | 139 |
+| 26 | Anvil | -84 (-109 to -58) | 0.670 | 7135 / 139 / 3478 | 12.94 / 11.10 | 1.17 | 214 | 0.242 | 91 |
+| 27 | Firecracker | -867 (-914 to -820) | 0.009 | 46 / 58 / 8536 | 3.45 / 14.68 | 0.23 | 170 | 0.238 | 100 |
+
+The standard deviation of the ratings over the types fell from 611 to 549 (480 to 447 without
+the Firecracker), the range without the Firecracker from 1,714 to 1,631. The armoured types
+still lead (P-47D, Hellcat, P-38L, Fw 190A, Corsair, Tempest V), and the bottom is still the
+520 m/s guns, the Anvil and the Firecracker. The Anvil is the odd row: it wins 67% of its
+games and is rated -84, because 6,592 of its 10,752 games are against the Firecracker (won
+99%), which the A-optimal pairs favour, while it loses to the Me 262 (1%) and the Hammerhead
+(12%) it met 896 times each; its cyclic part below is the largest. The Heavy, the Albatross, the Wren and the Lantern, moved towards the median,
+now sit at 868 to 1054. The Hammerhead (+186) and the Firecracker (+262), whose shields
+rose, gained; the Me 262 (-129) and the Bf 109K (-45), not moved, fell.
+
+**Intransitivity.** Thirty-six triples go round by majority (nine in round 1); most go through
+the Mosquito or the Zerstörer, the weakest edge of the strongest 0.65 (Spitfire IX, Mosquito,
+Zerstörer). Bradley-Terry leaves 54 pairs more than three standard errors off; the power
+link (gamma 0.94) 51 and gains 0.00006 nats a game held out, nothing; the probit loses
+0.0025. mElo with k = 2 and a power link (gamma 1.04) gains 0.0105 (0.0006) over the best
+link without a cycle and leaves 2 pairs off, so the cyclic part is supported. It is
+small beside the transitive part: its root-mean-square log-odds term is 209 Elo against 733
+(7.5% of the summed squares; round 1: 159 against 797). The types with the largest cyclic
+strength are the Anvil (49.5), the Firecracker (26.3), the Hellcat, the P-47D and the Zero
+(about 23); the largest cyclic terms are the Anvil over the Hellcat and over the Bf 109K
+(about 930 Elo beyond their ratings) and over the Zerstörer (810). The Anvil's transitive
+rating is -536, not -84.
+
+**What explains the ratings.** The strongest rank correlations with the Elo are the fire rate
+(+0.76), the shots a type needs to kill a P-51D (+0.76), the bullet spread (+0.65), the
+target over the firing cone (-0.63), the muzzle speed and the gun range (+0.55 each) and the
+shield (+0.54, from +0.69; Pearson +0.36). The best single predictor is the muzzle speed
+(leave-one-out error 297 against the mean's 570), the best pair the shield and the muzzle
+speed (271), the best three those and the fire rate (215), ridge on all 25 features 184; on
+shuffled ratings the best one- or two-feature model reaches 0.78 of the mean's error at its
+5th percentile, so these are beyond noise. The shield enters the best models only
+beside the muzzle speed: the guns still decide the order.
+
+**The decision for round 3** (`round-2/proposal.json`, applied to the balance file and the
+ship files): the shield step falls from 0.15 to 0.10 (the shield's correlation +0.54), so
+the researched types' shields span 90 to 130; and three loosely known types move 20 towards
+the median: the Hammerhead 140 to 160 (rated -802 from the median 986), the Anvil 145 to 160
+(-1,070) and the Firecracker 100 to 120 (-1,854).
+
 ## Running a round
 
     uv run --no-sync python -m bench.balance_round --round N

@@ -24,7 +24,7 @@ muzzle_speed = 520.0
 bullet_spread = 0.2810626436560293
 gun_range = 435.38780774309083
 shots_per_store = 395.86327162464676
-max_shield = 114.99999999999999
+max_shield = 110.0
 shield_recharge_rate = 12.0
 shield_recharge_delay = 6.0
 head_on_fraction = 0.3
@@ -41,7 +41,7 @@ engine_power_full_store = 506.7514953613281
 static_thrust = 4.17903470993042
 max_energy = 112324.5
 corner_nose_frequency = 3.6083407402038574
-max_shield = 115.0
+max_shield = 110.0
 hit_radius = 6.300000190734863
 hit_damage = 37.79999923706055
 muzzle_speed = 520.0
@@ -83,7 +83,7 @@ muzzle_speed = "researched (medium): muzzle_speed 520. the Rheinmetall-Borsig MK
 bullet_spread = "estimated: dispersion 1.8; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
 gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
 shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 20 m/s), the standard fighter's ratio: a shot costs 283.7 J/kg, 1.45 s of charge"
-max_shield = "researched (medium): survivability 3; proposal: the standard 100 x (1 + 0.15 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Unarmoured jets that flamed out or caught fire; pilot armour and self-sealing tanks; very vulnerable at take-off/landing. Balanced (round 2): 120 -> 115, the step per rating 0.2 -> 0.15: the shield's Spearman correlation with the round-1 Elo was +0.69 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
+max_shield = "researched (medium): survivability 3; proposal: the standard 100 x (1 + 0.1 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Unarmoured jets that flamed out or caught fire; pilot armour and self-sealing tanks; very vulnerable at take-off/landing. Balanced (round 3): 120 -> 110, the step per rating 0.2 -> 0.1: the shield's Spearman correlation with the round-2 Elo was +0.54 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
 shield_recharge_rate = "placeholder: the standard heavy's"
 shield_recharge_delay = "placeholder: the standard heavy's"
 head_on_fraction = "placeholder: the standard heavy's"
