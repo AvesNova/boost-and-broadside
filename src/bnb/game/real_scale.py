@@ -25,7 +25,10 @@ type's, the shield the survivability rating (SHIELD_PER_RATING). The combat econ
 proposal (COMBAT, a `CombatEconomy`; `combat_economy`): continuous fire costs every type
 the same multiple of its own initial climb charge as it costs the standard fighter (a P-51
 shot about 1 s of charge); damage per second follows the weight of fire, the P-51's
-360 per second (provisional: twice the standard fighter's).
+360 per second (provisional: twice the standard fighter's). The balancing then evens it
+(`balance`, docs/explanation/game/real-scale-balance.md): every type deals about the
+P-51's damage per second at its own fire rate (`balanced_damage_per_second`), and `BALANCE`
+moves a loosely known value where the ratings call for it, each move noted.
 
 Every handle a type does not give is a placeholder: its `like` type's standard handle times
 the factor that turns the standard fighter into the P-51 (`placeholder_factors`: the P-51's
@@ -105,6 +108,20 @@ class CombatEconomy:
 # real-scale deathmatch (seed 1, 600 s) has 28 kills at 360 against 16 at 180 (and 3 with
 # the game's combat values); the standard deathmatch has 45 in 300 s.
 COMBAT = CombatEconomy(damage_per_second=360.0)
+
+# The equal-damage rule (balancing, round 1: docs/explanation/game/real-scale-balance.md):
+# every type deals about the P-51D's damage per second, D x (w / w_P-51D)^DAMAGE_ELASTICITY
+# kept within DAMAGE_BAND of D, where w is its weight of fire (for a placeholder, the
+# weight of fire its placeholder damage would mean). Each keeps its real fire rate, so a
+# slower-firing type hits harder a shot; the shot cost is unchanged.
+DAMAGE_ELASTICITY = 0.05
+DAMAGE_BAND = 0.05
+
+# Balancing moves beyond the rules, by round: per type key, per handle, (the new target,
+# the round, the reason). Each overrides the handle's target, and its note records the old
+# value, the new and the reason. Only values the research holds loosely (low, estimated,
+# invented or placeholder) are moved.
+BALANCE: dict[str, dict[str, tuple[float, int, str]]] = {}
 
 HEAVY_PLACEHOLDER = Aircraft("heavy", "Heavy", "heavy", "placeholder", "", {})
 AIRCRAFT = (RESEARCHED[0], HEAVY_PLACEHOLDER, *RESEARCHED[1:])
@@ -253,6 +270,38 @@ def given_handles(
     return values, notes
 
 
+def balanced_damage_per_second(raw: float, damage: float) -> float:
+    """The equal-damage rule: a type whose weight of fire would deal `raw` per second deals
+    `damage` (the P-51D's) x (raw / damage)^DAMAGE_ELASTICITY, within DAMAGE_BAND of it."""
+    factor = (raw / damage) ** DAMAGE_ELASTICITY
+    return damage * min(max(factor, 1.0 - DAMAGE_BAND), 1.0 + DAMAGE_BAND)
+
+
+def _sentence(text: str) -> str:
+    """The text ending in a full stop."""
+    return text if text.endswith(".") else text + "."
+
+
+def balance(values: dict[str, float], notes: dict[str, str], key: str, damage: float) -> None:
+    """Apply the balancing (in place): the equal-damage rule to the hit damage, then the
+    type's `BALANCE` moves, each note recording the old value, the new and why."""
+    raw = values["hit_damage"] * values["fire_rate"]
+    balanced = balanced_damage_per_second(raw, damage)
+    old = values["hit_damage"]
+    values["hit_damage"] = balanced / values["fire_rate"]
+    notes["hit_damage"] = _sentence(notes["hit_damage"]) + (
+        f" Balanced (round 1): {old:.4g} -> {values['hit_damage']:.4g} a shot, {raw:.4g} -> "
+        f"{balanced:.4g} per second at its {values['fire_rate']:g} Hz: the equal-damage rule, "
+        f"{damage:g} x (its weight of fire over the P-51D's)^{DAMAGE_ELASTICITY:g} within "
+        f"{DAMAGE_BAND:.0%} (the guns dominated the ratings)."
+    )
+    for name, (value, round_number, reason) in BALANCE.get(key, {}).items():
+        notes[name] = _sentence(notes[name]) + (
+            f" Balanced (round {round_number}): {values[name]:.4g} -> {value:.4g}: {reason}"
+        )
+        values[name] = value
+
+
 def spread_of(dispersion: float, muzzle_speed: float) -> float:
     """The bullet spread (m/s per axis) of a volley's 75% cone diameter (mil) at this muzzle
     speed."""
@@ -387,6 +436,7 @@ def target_handles(
     if "spawn_energy" not in given:
         values["spawn_energy"] = like["spawn_energy"] / like["ceiling"] * values["ceiling"]
         notes["spawn_energy"] = f"placeholder: the standard {aircraft.like}'s fraction of the store"
+    balance(values, notes, aircraft.key, combat[1])
     drag = rules.bullet_drag
     launch = values["cruise_speed"] + values["muzzle_speed"]
     life = rules.bullet_moves * rules.tick_length

@@ -46,11 +46,12 @@ import torch
 
 from bench.lock import bench_lock
 from bnb.game import api, ships
-from bnb.league import tournament
+from bnb.league import cyclic, tournament
 from bnb.league.matches import STATISTICS, ArenaConfig, ship_type_players
 from bnb.league.ratings import fit_ratings
 
 PRESET = "real_scale_deathmatch"
+PRESETS = ("real_scale_deathmatch", "real_scale_frontline")
 ANCHOR = "P-51D"
 PRIOR_GAMES = 1.0
 CONFIDENCE = 1.96  # standard errors in a 95% interval
@@ -61,24 +62,46 @@ def _clock(seconds: float) -> str:
     return later.strftime("%H:%M")
 
 
+def _recorded_games(record: pathlib.Path) -> int:
+    """The games a record holds so far (0 for none)."""
+    if not record.exists() or not record.stat().st_size:
+        return 0
+    return json.loads(record.read_text().splitlines()[-1])["games"]
+
+
 def play(args) -> None:
-    """The round robin the module describes, appended to the record batch by batch."""
-    game = api.PRESETS[PRESET]
+    """The tournament the module describes, appended to the record batch by batch."""
+    game = api.PRESETS[args.preset]
     players = ship_type_players(game.ship_set)
     count = len(players)
     pairs = count * (count - 1) // 2
-    if args.games % args.block_games or args.block_games % 2:
-        raise SystemExit("--games must be whole blocks of an even --block-games")
-    blocks = pairs * args.games // args.block_games
-    if blocks % args.blocks:
-        raise SystemExit(f"{blocks} blocks do not split into batches of {args.blocks}")
-    config = tournament.TournamentConfig(
-        ArenaConfig(blocks=args.blocks, block_environments=args.block_games),
-        target_stderr=1e-9,  # never met: the budget ends it, a full round robin
-        budget=pairs * args.games,
-        allocation="balanced",
-    )
     record = pathlib.Path(args.record)
+    if args.block_games % 2:
+        raise SystemExit("--block-games must be even (half the games on each side)")
+    arena = ArenaConfig(blocks=args.blocks, block_environments=args.block_games)
+    if args.allocation == "a_optimal":
+        config = tournament.TournamentConfig(
+            arena, target_stderr=args.target_stderr, budget=args.budget, allocation="a_optimal"
+        )
+    elif args.top_up:  # balanced: the least-played pairs first, `--top-up` more games
+        config = tournament.TournamentConfig(
+            arena,
+            target_stderr=1e-9,  # never met: the budget ends it
+            budget=_recorded_games(record) + args.top_up,
+            allocation="balanced",
+        )
+    else:  # a full round robin of --games a pair
+        if args.games % args.block_games:
+            raise SystemExit("--games must be whole blocks of --block-games")
+        blocks = pairs * args.games // args.block_games
+        if blocks % args.blocks:
+            raise SystemExit(f"{blocks} blocks do not split into batches of {args.blocks}")
+        config = tournament.TournamentConfig(
+            arena,
+            target_stderr=1e-9,  # never met: the budget ends it, a full round robin
+            budget=pairs * args.games,
+            allocation="balanced",
+        )
     started = time.time()
     deadline = started + 3600.0 * args.hours
 
@@ -88,14 +111,14 @@ def play(args) -> None:
             raise SystemExit(f"past the {args.hours} h bound: resume from {record}")
 
     log(
-        f"{count} types, {pairs} pairs x {args.games} games = {pairs * args.games} games in "
-        f"{blocks // args.blocks} batches of {config.arena.games}; "
-        f"bound {_clock(deadline - time.time())}"
+        f"{count} types, {pairs} pairs, {config.allocation} allocation, target standard error "
+        f"{config.target_stderr:g}, budget {config.budget} games in batches of "
+        f"{config.arena.games}; bound {_clock(deadline - time.time())}"
     )
     with bench_lock():
         tournament.rate(
             players,
-            PRESET,
+            args.preset,
             torch.device("cuda"),
             config,
             log,
@@ -185,7 +208,7 @@ def report(args) -> None:
             writer.writerows(table)
     total = int(games.sum()) // 2
     meta = dict(
-        preset=PRESET,
+        preset=args.preset,
         anchor=ANCHOR,
         games=total,
         batches=len(lines),
@@ -301,7 +324,7 @@ def analyse(args) -> None:
     out = pathlib.Path(args.out)
     rated = json.loads((out / "tournament.json").read_text())["ratings"]
     rated = [row for row in rated if row["type"] not in args.exclude]
-    table = features(api.PRESETS[PRESET].ship_set)
+    table = features(api.PRESETS[args.preset].ship_set)
     names = [row["type"] for row in rated]
     elo = torch.tensor([row["elo"] for row in rated], dtype=torch.float64)
     keys = list(next(iter(table.values())))
@@ -379,6 +402,92 @@ def analyse(args) -> None:
     print("\n".join(lines))
 
 
+def cyclic_report(args) -> None:
+    """The intransitivity analysis the module describes, from a record."""
+    record, out = pathlib.Path(args.record), pathlib.Path(args.out)
+    names, counts, _, _ = _summaries(record)
+    games = counts.sum(-1)
+    wins = counts[..., 0] + counts[..., 1] / 2
+    validated = cyclic.cross_validate(counts, folds=args.folds)
+    upper = torch.triu(games > 0, 1)
+    fits = {}
+    for label in dict.fromkeys(
+        ["link=logit, k=0, penalty=0", validated["best_transitive"], validated["best"]]
+    ):
+        link, k, penalty = cyclic.parse_model(label)
+        fits[label] = cyclic.fit(wins, games, k, penalty, 0, link)
+    off = {}
+    for label, model in fits.items():
+        z_scores = cyclic.residuals(counts, model.probability())[upper]
+        off[label] = dict(
+            beyond_3=int((z_scores.abs() > 3.0).sum()),
+            chi_square=float(z_scores.square().sum()),
+            gamma=model.gamma,
+        )
+    cycles = cyclic.majority_cycles(counts)
+    best = validated["models"][validated["best"]]
+    needed = (
+        validated["best"] != validated["best_transitive"]
+        and best["gain_over_best_transitive"] > 2.0 * best["gain_over_best_transitive_stderr"]
+    )
+    result = dict(
+        pairs_played=int(upper.sum()),
+        pairs=len(names) * (len(names) - 1) // 2,
+        cross_validation=validated,
+        cyclic_part_supported=needed,
+        residuals=off,
+        majority_cycles=[
+            dict(cycle=[names[a], names[b], names[c]], weakest_score=weakest)
+            for a, b, c, weakest in sorted(cycles, key=lambda one: -one[3])
+        ],
+    )
+    link, k, _ = cyclic.parse_model(validated["best"])
+    model = fits[validated["best"]]
+    if k:  # the transitive and cyclic parts
+        anchor = names.index(ANCHOR)
+        scale = cyclic.SCALE
+        transitive = scale * (model.ratings - model.ratings[anchor])
+        strength = math.sqrt(scale) * model.vectors.norm(dim=1)
+        terms = scale * (model.log_odds() - (model.ratings[:, None] - model.ratings[None, :]))
+        largest = sorted(
+            (float(terms[i, j]), names[i], names[j])
+            for i in range(len(names))
+            for j in range(len(names))
+            if terms[i, j] > 0
+        )[::-1][:12]
+        result |= dict(
+            decomposition=cyclic.decomposition(model),
+            types=[
+                dict(
+                    type=name,
+                    transitive_elo=1000.0 + float(transitive[index]),
+                    cyclic_strength=float(strength[index]),
+                    cyclic_vector=[float(v) * math.sqrt(scale) for v in model.vectors[index]],
+                )
+                for index, name in enumerate(names)
+            ],
+            largest_cyclic_terms=[dict(winner=a, loser=b, elo=e) for e, a, b in largest],
+        )
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "cyclic.json").write_text(json.dumps(result, indent=1) + "\n")
+    models = validated["models"]
+    print(f"{result['pairs_played']} of {result['pairs']} pairs played, {validated['games']} games")
+    print(
+        "| Model | Held-out log-likelihood a game | Gain over Bradley-Terry | Gain over the best "
+        "link without a cycle |\n|---|---|---|---|"
+    )
+    for name, row in sorted(models.items(), key=lambda kv: -kv[1]["log_likelihood"]):
+        print(
+            f"| {name} | {row['log_likelihood']:.5f} | {row['gain_over_bradley_terry']:+.5f} "
+            f"+- {row['gain_stderr']:.5f} | {row['gain_over_best_transitive']:+.5f} +- "
+            f"{row['gain_over_best_transitive_stderr']:.5f} |"
+        )
+    print(json.dumps({key: result[key] for key in ("cyclic_part_supported", "residuals")}))
+    print(f"majority cycles: {len(cycles)}", result["majority_cycles"][:10])
+    if k:
+        print(json.dumps(result["decomposition"]), result["largest_cyclic_terms"][:6])
+
+
 def main() -> None:
     """`play` or `report`, as the module describes."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
@@ -389,6 +498,21 @@ def main() -> None:
     playing.add_argument("--block-games", type=int, default=64)
     playing.add_argument("--blocks", type=int, default=18, help="per batch")
     playing.add_argument("--hours", type=float, default=1.5, help="the run's bound")
+    playing.add_argument(
+        "--allocation",
+        choices=tournament.ALLOCATIONS,
+        default="balanced",
+        help="balanced: a full round robin of --games a pair (or --top-up); a_optimal: until "
+        "every standard error is under --target-stderr, at most --budget games",
+    )
+    playing.add_argument("--target-stderr", type=float, default=25.0, help="Elo, a_optimal")
+    playing.add_argument("--budget", type=int, default=100_000, help="games, a_optimal")
+    playing.add_argument(
+        "--top-up",
+        type=int,
+        default=0,
+        help="balanced: this many more games on the least-played pairs of the record",
+    )
     reporting = commands.add_parser("report")
     reporting.add_argument("--record", required=True)
     reporting.add_argument("--out", required=True)
@@ -396,8 +520,14 @@ def main() -> None:
     analysing.add_argument("--out", required=True)
     analysing.add_argument("--shuffles", type=int, default=200)
     analysing.add_argument("--exclude", nargs="*", default=[], help="types left out")
+    cycling = commands.add_parser("cyclic")
+    cycling.add_argument("--record", required=True)
+    cycling.add_argument("--out", required=True)
+    cycling.add_argument("--folds", type=int, default=5)
+    for one in (playing, reporting, analysing, cycling):
+        one.add_argument("--preset", default=PRESET, choices=PRESETS)
     args = parser.parse_args()
-    dict(play=play, report=report, analyse=analyse)[args.command](args)
+    dict(play=play, report=report, analyse=analyse, cyclic=cyclic_report)[args.command](args)
 
 
 if __name__ == "__main__":

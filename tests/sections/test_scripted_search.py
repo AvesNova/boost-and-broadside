@@ -85,8 +85,8 @@ def test_a_search_resumes_from_its_log(tmp_path):
             for index, (parameters, rating) in enumerate(zip(candidates, ratings, strict=True)):
                 row = dict(generation=generation, index=index, rating=rating)
                 out.write(json.dumps(dict(row, parameters=pack(parameters))) + "\n")
-    start, ranked, tops = search.resume(log)
-    assert start == 2 and tops == [9.0, 40.0]
+    start, ranked, tops, champion = search.resume(log)
+    assert start == 2 and tops == [9.0, 40.0] and champion is None
     for expected, got in zip((candidates[2], candidates[1], candidates[0]), ranked, strict=True):
         assert pack(got) == pytest.approx(pack(expected), rel=1e-6)
 
@@ -110,3 +110,58 @@ def test_the_mixed_seat_plays_each_rows_controller():
     action = mixed.step(mixed.init_carry(views, obs.ships.device), obs, None)[0].packed()
     chased = Chaser(CHARACTERISTICS, 2).step(None, obs, None)[0].packed()
     assert torch.equal(action[choice == 1], chased[choice == 1])
+
+
+def test_mixed_lineups_draw_from_the_pool_and_mirror_the_teams():
+    generator = torch.Generator().manual_seed(4)
+    lineup = search.mixed_lineups(4000, 5, (2, 7, 11), generator)
+    assert lineup.shape == (4000, 10) and lineup.dtype == torch.int32
+    assert torch.equal(lineup[:, :5], lineup[:, 5:])
+    counts = torch.bincount(lineup.flatten().long(), minlength=12)
+    assert set(torch.nonzero(counts).flatten().tolist()) == {2, 7, 11}
+    assert counts[[2, 7, 11]].min() > 0.3 * lineup.numel() / 3  # about even
+    assert (lineup[:, :5] != lineup[:, :1]).any(1).float().mean() > 0.9  # mixed teams
+
+
+def test_the_type_pool_names_types_and_holds_some_out():
+    names = list(search.api.type_names("real-scale"))
+    assert search.type_pool("real-scale", None, None) == tuple(range(len(names)))
+    pool = search.type_pool("real-scale", None, "P-51D,Wren")
+    assert len(pool) == len(names) - 2 and names.index("Wren") not in pool and 0 not in pool
+    assert search.type_pool("real-scale", "Me 262,P-51D", None) == (names.index("Me 262"), 0)
+    with pytest.raises(SystemExit):
+        search.type_pool("real-scale", "Sopwith Camel", None)
+
+
+def _champion_rows(generation, scores, champion):
+    return [
+        dict(
+            generation=generation,
+            index=index,
+            rating=100.0 * index,
+            scores={search.CHAMPION: [score]},
+            champion=champion,
+            parameters=pack(DEFAULTS),
+        )
+        for index, score in enumerate(scores)
+    ]
+
+
+def test_the_top_candidate_is_promoted_once_the_median_beats_the_champion(tmp_path):
+    assert search.promoted(_champion_rows(3, [0.5, 0.6, 0.7], "defaults"), 0.75) is None
+    assert search.promoted(_champion_rows(3, [0.7, 0.8, 0.9], "defaults"), 0.75) == "3:2"
+    assert search.promoted(_champion_rows(3, [0.7, 0.8, 0.9], "defaults"), None) is None
+    log = tmp_path / "search.jsonl"
+    rows = _champion_rows(0, [0.4, 0.5, 0.6], "defaults") + _champion_rows(
+        1, [0.7, 0.8, 0.9], "defaults"
+    )
+    log.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    start, _, tops, champion = search.resume(log, "median", 0.75)
+    assert start == 2 and champion == "1:2" and tops == []  # promoted: the history restarts
+    start, _, tops, champion = search.resume(log, "median", 0.95)
+    assert champion == "defaults" and tops == [100.0, 100.0]
+    assert pack(search.champion_of("1:2", "real_scale_deathmatch", log)) == pack(DEFAULTS)
+    assert (
+        search.champion_of("defaults", "real_scale_deathmatch", log)
+        == (search.MODE_DEFAULTS.sets["real_scale_deathmatch"])
+    )

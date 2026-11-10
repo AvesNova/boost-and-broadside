@@ -88,7 +88,8 @@ def test_the_spread_is_the_volleys_75_percent_cone():
 def test_the_combat_economy_follows_the_weight_of_fire_and_the_climb_charge():
     """A P-51 shot costs about the standard fighter's 1 s of climb charge, every type's
     continuous fire the same multiple of its own charge, and damage per second follows the
-    weight of fire (the P-51's twice the standard fighter's 12 x 15, provisional)."""
+    weight of fire (the P-51's twice the standard fighter's 12 x 15, provisional) only
+    weakly: the equal-damage rule keeps it within 5% of the P-51's."""
     power, damage = real_scale.combat_constants()
     standard = {ship.key: ship.handles for ship in ships.load()}["fighter"]
     assert damage == 2.0 * standard["hit_damage"] * standard["fire_rate"] == 360.0
@@ -102,9 +103,24 @@ def test_the_combat_economy_follows_the_weight_of_fire_and_the_climb_charge():
         own_charge = 9.81 * data[key]["climb_rate"].value
         assert cost * handles["fire_rate"] == pytest.approx(power * own_charge), key
         ratio = data[key]["weight_of_fire"].value / data["p51d"]["weight_of_fire"].value
-        assert handles["hit_damage"] * handles["fire_rate"] == pytest.approx(damage * ratio), key
+        balanced = real_scale.balanced_damage_per_second(damage * ratio, damage)
+        assert handles["hit_damage"] * handles["fire_rate"] == pytest.approx(balanced), key
+        assert handles["fire_rate"] == data[key]["fire_rate"].value, key
     p51 = found["p51d"]
     assert p51["ceiling"] / p51["shots_per_store"] / (9.81 * 15.2) == pytest.approx(0.96, abs=0.01)
+
+
+def test_every_type_deals_about_the_p51s_damage_per_second():
+    """The equal-damage rule: (w / w_P-51)^0.05 within 5% of 360 per second, at the type's
+    own fire rate; the note records the value before it."""
+    rule = real_scale.balanced_damage_per_second
+    assert rule(360.0, 360.0) == 360.0
+    assert rule(720.0, 360.0) == pytest.approx(360.0 * 2.0**0.05)
+    assert rule(1e6, 360.0) == pytest.approx(378.0) and rule(1.0, 360.0) == pytest.approx(342.0)
+    for ship in ships.load(SET):
+        per_second = ship.handles["hit_damage"] * ship.handles["fire_rate"]
+        assert 342.0 - 1e-6 <= per_second <= 378.0 + 1e-6, ship.key
+        assert "Balanced (round 1)" in ship.notes["hit_damage"], ship.key
 
 
 def test_the_nose_reversal_follows_the_roll_rate():

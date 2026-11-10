@@ -17,6 +17,24 @@ of that (the real-scale variant's light retune:
         --ship-type 0 --from-defaults --log real_scale_deathmatch.jsonl
 ).
 
+`--mixed` plays mixed lineups instead: each game draws every seat's type from the
+preset's set (`--types`, all by default; less `--hold-out`, kept back to check that a set
+generalises) and both teams fly the same draw, seat for seat, so neither side is favoured
+by its ships (`mixed_lineups`).
+
+`--champion` plays against a champion instead of the standard references: the preset's set
+in `MODE_DEFAULTS` (`--champion defaults`) or a search log's candidate (`LOG:GENERATION:
+INDEX`), anchored at 0. Ratings anchored on a reference that every candidate beats are held
+by the prior, so the plateau rule stalls; so when the median candidate's score against the
+champion reaches `--promote-at`, the generation's top candidate becomes the champion (from
+the next generation on) and the plateau history starts again. Each row logs its champion
+(`champion`: "defaults", the spec given, or "GENERATION:INDEX" of this log), so a resumed
+search keeps it. The real-scale balancing's searches (docs/explanation/game/real-scale-balance.md):
+
+    uv run --no-sync python -m bench.scripted_search --preset real_scale_deathmatch \
+        --mixed --hold-out "Spitfire XIV,Ki-84,Zerstörer,Lantern" --champion defaults \
+        --from-defaults --plateau-on median --generations 40 --log dm.jsonl
+
 Each generation plays a population of `--population` candidates side by side, one
 parameter-table row per view, so one compiled rollout per preset: every candidate plays
 `--games` fresh 5v5 games per preset, fog on, the seat drawn per game, at each preset searched.
@@ -52,6 +70,7 @@ generation of each is kept as `scripted_populations.json` (`scripted_defaults`).
 """
 
 import argparse
+import datetime
 import json
 import math
 import os
@@ -104,6 +123,34 @@ REFERENCES: dict[str, Reference] = {
     "scripted": lambda card, ships: Scripted(card, ships),
     "chaser": lambda card, ships: Chaser(card, ships),
 }
+CHAMPION = "champion"  # the reference's name with `--champion`
+
+
+def champion_references(parameters: ScriptedParameters) -> dict[str, Reference]:
+    """The references of a search against a champion: the champion alone."""
+    return {CHAMPION: lambda card, ships: Scripted(card, ships, parameters)}
+
+
+def mixed_lineups(
+    views: int, ships_per_team: int, pool: tuple[int, ...], generator=None
+) -> torch.Tensor:
+    """(views, 2 x ships_per_team) int32: each view's seat types drawn uniformly from `pool`
+    (type indices, with replacement), the second team flying the first's, seat for seat."""
+    choice = torch.randint(len(pool), (views, ships_per_team), generator=generator)
+    team = torch.tensor(pool, dtype=torch.int32)[choice]
+    return torch.cat([team, team], dim=1)
+
+
+def type_pool(ship_set: str, types: str | None, hold_out: str | None) -> tuple[int, ...]:
+    """The type indices of a set named in `types` (comma-separated names; all when None),
+    less those in `hold_out`."""
+    names = list(api.type_names(ship_set))
+    chosen = names if not types else [name.strip() for name in types.split(",")]
+    held = [] if not hold_out else [name.strip() for name in hold_out.split(",")]
+    unknown = [name for name in chosen + held if name not in names]
+    if unknown:
+        raise SystemExit(f"not types of {ship_set}: {unknown}")
+    return tuple(names.index(name) for name in chosen if name not in held)
 
 
 def game_seed(seed: int, generation: int) -> int:
@@ -233,12 +280,14 @@ def play(
     device: torch.device,
     presets: tuple[str, ...] = STANDARD_MODES,
     ship_type: int | None = None,
+    pool: tuple[int, ...] | None = None,
+    reference_players: dict[str, Reference] = REFERENCES,
 ) -> tuple[torch.Tensor, dict]:
     """One generation's games. Returns the win matrix (K, K), K = the candidates then the
     references, a draw half a win each, and per reference each candidate's score against it
     per preset. ship_type: every ship flies this type of the preset's card (None: the
-    game's lineup)."""
-    count, references = len(candidates), list(REFERENCES)
+    game's lineup); pool: mixed lineups of these types instead (`mixed_lineups`)."""
+    count, references = len(candidates), list(reference_players)
     per_reference = round(reference_share * games / len(references))
     against_population = games - per_reference * len(references)
     wins = torch.zeros(count + len(references), count + len(references), dtype=torch.float64)
@@ -269,7 +318,8 @@ def play(
             temperature[1],
         )
         rival = Mixed(
-            [population] + [REFERENCES[name](card, game.ships_per_team) for name in references],
+            [population]
+            + [reference_players[name](card, game.ships_per_team) for name in references],
             choice,
         )
         candidate = Scripted(
@@ -279,6 +329,8 @@ def play(
         lineup = None
         if ship_type is not None:
             lineup = torch.full((views, game.num_ships), ship_type, dtype=torch.int32)
+        if pool is not None:
+            lineup = mixed_lineups(views, game.ships_per_team, pool)
         results = first_results(
             game,
             types,
@@ -314,19 +366,53 @@ def statistic(ratings: list[float], kind: str) -> float:
     return ordered[0] if kind == "top" else ordered[len(ordered) // 2]
 
 
+def promoted(rows: list[dict], promote_at: float | None) -> str | None:
+    """The candidate a generation's rows promote to champion ("GENERATION:INDEX", its top
+    rated) when the median candidate's mean score against the champion reaches `promote_at`;
+    else None."""
+    if promote_at is None or not rows or CHAMPION not in rows[0]["scores"]:
+        return None
+    scores = sorted(sum(row["scores"][CHAMPION]) / len(row["scores"][CHAMPION]) for row in rows)
+    if scores[len(scores) // 2] < promote_at:
+        return None
+    top = max(rows, key=lambda row: row["rating"])
+    return f"{top['generation']}:{top['index']}"
+
+
 def resume(
-    path: pathlib.Path, kind: str = "top"
-) -> tuple[int, list[ScriptedParameters], list[float]]:
+    path: pathlib.Path, kind: str = "top", promote_at: float | None = None
+) -> tuple[int, list[ScriptedParameters], list[float], str | None]:
     """From a search log: the next generation's index, the last generation's candidates (best
-    first) and every generation's rating for the plateau rule (`statistic`)."""
+    first), the rating for the plateau rule (`statistic`) of every generation against the
+    next generation's champion, and that champion's label (None without one)."""
     rows = [json.loads(line) for line in open(path)]
     last = max(row["generation"] for row in rows)
+    by_generation = [[row for row in rows if row["generation"] == g] for g in range(last + 1)]
+    champion = by_generation[-1][0].get("champion")
     tops = [
-        statistic([row["rating"] for row in rows if row["generation"] == g], kind)
-        for g in range(last + 1)
+        statistic([row["rating"] for row in one], kind)
+        for one in by_generation
+        if one[0].get("champion") == champion
     ]
-    ranked = sorted((row for row in rows if row["generation"] == last), key=lambda r: -r["rating"])
-    return last + 1, [from_row(row["parameters"]) for row in ranked], tops
+    if (label := promoted(by_generation[-1], promote_at)) is not None:
+        champion, tops = label, []
+    ranked = sorted(by_generation[-1], key=lambda r: -r["rating"])
+    return last + 1, [from_row(row["parameters"]) for row in ranked], tops, champion
+
+
+def champion_of(label: str, preset: str, log_path: pathlib.Path) -> ScriptedParameters:
+    """A champion's parameters: "defaults" (the preset's set in MODE_DEFAULTS),
+    "GENERATION:INDEX" (a candidate of this search's log) or "LOG:GENERATION:INDEX"."""
+    if label == "defaults":
+        return MODE_DEFAULTS.sets[preset]
+    path, generation, index = (str(log_path), *label.split(":"))
+    if label.count(":") == 2:
+        path, generation, index = label.rsplit(":", 2)
+    for line in open(path):
+        row = json.loads(line)
+        if row["generation"] == int(generation) and row["index"] == int(index):
+            return from_row(row["parameters"])
+    raise SystemExit(f"champion {label}: no such candidate")
 
 
 def main() -> None:
@@ -357,14 +443,35 @@ def main() -> None:
         "--ship-type", type=int, help="every ship flies this type (default: the game's lineup)"
     )
     parser.add_argument(
+        "--mixed",
+        action="store_true",
+        help="mixed lineups: each seat a type drawn from --types, both teams the same draw",
+    )
+    parser.add_argument("--types", help="comma-separated type names (default: all)")
+    parser.add_argument("--hold-out", help="comma-separated type names left out of the draws")
+    parser.add_argument(
+        "--champion",
+        help="play against this champion alone: 'defaults' or LOG:GENERATION:INDEX (needs "
+        "--preset)",
+    )
+    parser.add_argument(
+        "--promote-at",
+        type=float,
+        default=0.75,
+        help="with --champion: the median score against it that promotes the top candidate",
+    )
+    parser.add_argument(
         "--from-defaults",
         action="store_true",
         help="start from the preset's set in MODE_DEFAULTS (needs --preset)",
     )
     args = parser.parse_args()
     presets = (args.preset,) if args.preset else STANDARD_MODES
-    if args.from_defaults and not args.preset:
-        raise SystemExit("--from-defaults needs --preset")
+    if (args.from_defaults or args.champion or args.mixed) and not args.preset:
+        raise SystemExit("--from-defaults, --champion and --mixed need --preset")
+    pool = None
+    if args.mixed:
+        pool = type_pool(PRESETS[args.preset].ship_set, args.types, args.hold_out)
     if not 0 <= args.seed <= MAXIMUM_SEED:
         raise SystemExit(f"seed in [0, {MAXIMUM_SEED}]")
     device = torch.device("cuda")
@@ -376,8 +483,10 @@ def main() -> None:
     def generator_at(generation: int) -> torch.Generator:
         return torch.Generator().manual_seed(args.seed * MAXIMUM_GENERATIONS + generation)
 
+    promote_at = args.promote_at if args.champion else None
+    champion = args.champion
     if log_path.exists() and log_path.stat().st_size:
-        start, ranked, tops = resume(log_path, args.plateau_on)
+        start, ranked, tops, champion = resume(log_path, args.plateau_on, promote_at)
         population = next_generation(
             ranked, args.population, args.keep, sigma_at(start), generator_at(start)
         )
@@ -393,40 +502,66 @@ def main() -> None:
     with bench_lock(), open(log_path, "a") as log:
         for generation in range(start, min(start + args.generations, MAXIMUM_GENERATIONS)):
             torch.manual_seed(game_seed(args.seed, generation))
+            players = REFERENCES
+            if champion is not None:
+                players = champion_references(champion_of(champion, args.preset, log_path))
             wins, scores = play(
-                population, args.games, args.reference_share, device, presets, args.ship_type
+                population,
+                args.games,
+                args.reference_share,
+                device,
+                presets,
+                args.ship_type,
+                pool,
+                players,
             )
             anchor = len(population)  # the first reference
             ratings, errors = fit_ratings(wins, anchor, PRIOR_GAMES)
-            references = {name: float(ratings[anchor + k]) for k, name in enumerate(REFERENCES)}
+            references = {name: float(ratings[anchor + k]) for k, name in enumerate(players)}
+            rows = []
             for index, parameters in enumerate(population):
                 row = dict(
                     generation=generation,
                     index=index,
                     rating=float(ratings[index]),
                     stderr=float(errors[index]),
-                    scores={name: scores[name][index] for name in REFERENCES},
+                    scores={name: scores[name][index] for name in players},
                     presets=presets,
+                    champion=champion,
                     references=references,
                     parameters=pack(parameters),
                 )
                 log.write(json.dumps(row) + "\n")
+                rows.append(row)
             log.flush()
             order = sorted(range(len(population)), key=lambda index: -float(ratings[index]))
             spread = [float(ratings[index]) for index in order]
             top = order[0]
             summary = ", ".join(
-                f"{name} {sum(scores[name][top]) / len(presets):.3f}" for name in REFERENCES
+                f"{name} {sum(scores[name][top]) / len(presets):.3f}" for name in players
             )
+            elapsed = time.perf_counter() - clock
+            left = min(start + args.generations, MAXIMUM_GENERATIONS) - generation - 1
+
+            def eta(margin: float) -> str:
+                per = elapsed / (generation - start + 1)
+                later = datetime.datetime.now() + datetime.timedelta(seconds=margin * per * left)
+                return later.strftime("%H:%M")
+
+            middle = sorted(sum(score) / len(presets) for score in scores[list(players)[0]])
             print(
                 f"generation {generation}: top {spread[0]:.0f} +- {float(errors[top]):.0f} "
                 f"(candidate {top}), median {spread[len(spread) // 2]:.0f}, last "
-                f"{spread[-1]:.0f}; the top's scores {summary}; "
-                f"{time.perf_counter() - clock:.0f} s",
+                f"{spread[-1]:.0f}; the top's scores {summary} "
+                f"(the median's {middle[len(middle) // 2]:.3f}); "
+                f"{elapsed:.0f} s; the bound ETA {eta(1.0)} (worst {eta(1.3)})",
                 flush=True,
             )
             tops.append(statistic(spread, args.plateau_on))
             ranked = [population[index] for index in order]
+            if (label := promoted(rows, promote_at)) is not None:
+                print(f"champion {champion} -> {label} (the median candidate beat it)", flush=True)
+                champion, tops = label, []
             if plateaued(tops, args.patience, args.min_gain):
                 print(f"the {args.plateau_on} rating has plateaued", flush=True)
                 break

@@ -198,6 +198,9 @@ standard game is unchanged:
   a shield of 100), the standard game's nine. The Me 262's 13.6 kg/s gives 1,334 per second,
   133 a shot at 10 Hz: one hit takes any shield below 140, as two or three MK 108 hits took
   a fighter. The Yak-3's 2.5 kg/s gives 243 per second.
+  The [balancing](real-scale-balance.md) has since evened it: every type now deals within
+  5% of 360 per second at its own fire rate (the Me 262 378, 37.8 a shot), so the damages
+  in this page's table are the economy's before the balancing.
 - **Shields** follow the survivability rating (above): 80 for the Zero, the Me 163 and the
   fragile invented designs, 160 for the P-47D, F6F-5 and Anvil.
 - **Dispersion** is researched, not proposed, but it moves the hit rate most: the real

@@ -7,11 +7,12 @@ light retune, docs/explanation/game/real-scale.md).
 
 A set is a mode's in `MODE_DEFAULTS` (its name) or a search log's candidate
 (`LOG.jsonl:GENERATION:INDEX`). Every match is `--games` fresh games at T = 1, fog on, the
-seat drawn per game (`bnb.runtime.evaluate.first_results`'s rollout), seeded with
-`--seed`: the first set against the second (its score, a draw half a win, with its standard
-error), then each against itself. Per match: the games' kills (combat deaths), shots and
-hits a game over the episodes ended, and kills, front moves (Frontline's captures) and
-shots a minute over every tick played; the share of games ended by the clock. One JSON
+seat drawn per game (`bnb.runtime.evaluate.first_results`'s rollout), seeded with `--seed`,
+on the game's lineup, every ship one type (`--ship-type`) or mixed lineups (`--mixed`, as
+the search draws them): the first set against the second (its score, a draw half a win, with
+its standard error), then each against itself. Per match: the games' kills (combat deaths),
+shots and hits a game over the episodes ended, and kills, front moves (Frontline's captures)
+and shots a minute over every tick played; the share of games ended by the clock. One JSON
 line per match is appended to `--out` as it finishes. Holds the benchmark lock.
 """
 
@@ -23,6 +24,7 @@ import time
 import torch
 
 from bench.lock import bench_lock
+from bench.scripted_search import mixed_lineups, type_pool
 from bnb.contracts import Pool
 from bnb.controllers.scripted import Scripted
 from bnb.controllers.scripted_defaults import MODE_DEFAULTS
@@ -46,13 +48,15 @@ def parameters_of(name: str):
     raise SystemExit(f"{name}: no such candidate")
 
 
-def match(game, types, card, first, second, games, ship_type, device) -> dict:
+def match(game, types, card, first, second, games, ship_type, device, pool=None) -> dict:
     """`games` fresh games of `first` against `second` to every first game's end, and the
     games' statistics (the module docstring)."""
     S = game.ships_per_team
     lineup = None
     if ship_type is not None:
         lineup = torch.full((games, game.num_ships), ship_type, dtype=torch.int32)
+    if pool is not None:
+        lineup = mixed_lineups(games, S, pool)
     rollout = Rollout(
         game,
         types,
@@ -109,6 +113,13 @@ def main() -> None:
     parser.add_argument("--second", required=True)
     parser.add_argument("--games", type=int, default=512)
     parser.add_argument("--ship-type", type=int, help="every ship flies this type")
+    parser.add_argument(
+        "--mixed",
+        action="store_true",
+        help="mixed lineups (bench.scripted_search.mixed_lineups) of --types less --hold-out",
+    )
+    parser.add_argument("--types", help="comma-separated type names (default: all)")
+    parser.add_argument("--hold-out", help="comma-separated type names left out of the draws")
     parser.add_argument("--seed", type=int, default=1_000_000, help="above the search's seeds")
     parser.add_argument("--self-play", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--out", required=True)
@@ -117,6 +128,7 @@ def main() -> None:
     game = api.PRESETS[args.preset]
     types = api.ship_types(device, ship_set=game.ship_set)
     card = characteristics(types, api.rules_of(game))
+    pool = type_pool(game.ship_set, args.types, args.hold_out) if args.mixed else None
     first, second = parameters_of(args.first), parameters_of(args.second)
     pairs = [(args.first, first, args.second, second)]
     if args.self_play:
@@ -129,8 +141,10 @@ def main() -> None:
             started = time.perf_counter()
             torch.manual_seed(args.seed)
             torch._dynamo.reset()
-            row = match(game, types, card, one, other, args.games, args.ship_type, device)
+            row = match(game, types, card, one, other, args.games, args.ship_type, device, pool)
             row = dict(preset=args.preset, first=first_name, second=second_name, **row)
+            if pool is not None:
+                row["types"] = [api.type_names(game.ship_set)[k] for k in pool]
             row["seconds"] = time.perf_counter() - started
             out.write(json.dumps(row) + "\n")
             out.flush()

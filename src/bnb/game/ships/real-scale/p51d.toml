@@ -77,7 +77,7 @@ zoom_acceleration = "placeholder: the standard fighter's, scaled as the standard
 stall_angle = "estimated: stall_angle 15.5; degrees. NACA 45-100 laminar section, clean CLmax ~1.4; typical fuselage-reference stall angle 15-17 deg"
 vision_range = "derived: the standard 1024 m times the map scale (3)"
 zero_lift_drag = "researched (good): drag_coefficient 0.0163; rho C_D0 / (2 W/S) with W/S 201 kg/m^2 (researched (medium)). Loftin, NASA SP-468"
-hit_damage = "researched (medium): weight_of_fire 3.68; proposal: 360 per second (the P-51D's) x the weight of fire over the P-51D's 3.68 kg/s, over the fire rate. 6x Browning AN/M2 .50 cal (wing): count x rate x projectile mass"
+hit_damage = "researched (medium): weight_of_fire 3.68; proposal: 360 per second (the P-51D's) x the weight of fire over the P-51D's 3.68 kg/s, over the fire rate. 6x Browning AN/M2 .50 cal (wing): count x rate x projectile mass. Balanced (round 1): 24 -> 24 a shot, 360 -> 360 per second at its 15 Hz: the equal-damage rule, 360 x (its weight of fire over the P-51D's)^0.05 within 5% (the guns dominated the ratings)."
 fire_rate = "derived: fire_rate 15; proposal: the main gun's volley rate. the Browning AN/M2 .50 cal: the whole-Hz volley rate dividing 30 nearest its rate per gun"
 muzzle_speed = "researched (medium): muzzle_speed 856. the Browning AN/M2 .50 cal: AAF Manual 200-1"
 bullet_spread = "researched (low): dispersion 6; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
