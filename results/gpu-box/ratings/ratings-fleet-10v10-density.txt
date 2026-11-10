@@ -1,0 +1,3 @@
+frontline_10v10_density: batch 1, 2048 games, the largest standard error 31.4 (the batch took 608 s); done about 10:34 (0 batches), by 12:05 at the latest (9 batches)
+deathmatch_10v10_density: batch 1, 2048 games, the largest standard error 86.1 (the batch took 392 s); done about 11:20 (6 batches), by 11:40 at the latest (9 batches)
+deathmatch_10v10_density: batch 2, 4096 games, the largest standard error 38.3 (the batch took 243 s); done about 10:50 (1 batches), by 11:27 at the latest (8 batches)

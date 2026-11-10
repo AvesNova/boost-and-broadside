@@ -163,3 +163,7 @@
 10:22 crossover start null deathmatch
 10:23 fleet 10v10-arena done
 10:24 fleet 10v10-density start (6 players + scripted; 8 x 256)
+10:35 crossover done null deathmatch: 5 network ships break even against 7.70 scripted (x1.54)
+10:35 crossover start nearest deathmatch
+10:39 crossover done nearest deathmatch: 5 network ships break even against 5.67 scripted (x1.13)
+10:39 crossover start champion frontline_10v10_arena
