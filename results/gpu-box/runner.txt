@@ -132,3 +132,5 @@
 03:02 done resume 2026-11-09-rl-absolute to 180.4M
 03:03 start resume 2026-11-09-rl-deadreckon-split-hiddenphysics to 172 updates (180.4M)
 04:54 done resume 2026-11-09-rl-deadreckon-split-hiddenphysics to 180.4M
+04:55 round11 done
+04:55 start 2026-11-10-bc-nearest (BC 120M, the simple-model A/B)
