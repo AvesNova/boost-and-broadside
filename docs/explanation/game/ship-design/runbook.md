@@ -17,7 +17,7 @@ rather than improvising a fix to the method.
 - Python as `uv run --no-sync python ...`. Tests under
   `systemd-run --user --scope -p MemoryMax=8G -q uv run --no-sync pytest ...`.
 - One GPU job at a time, as a systemd user unit (below). Read the power profile first
-  (`powerprofilesctl get`, expect `performance`) and note it.
+  (`powerprofilesctl get`, expect performance) and note it.
 - Progress notes (tried / worked / didn't / next, ETAs as clock times such as
   "ETA 15:40 (worst 16:10)") in the notes file your brief names.
 
@@ -30,7 +30,8 @@ rather than improvising a fix to the method.
 
 ## 1. Search one stage's spec
 
-A spec is a JSON file in `docs/explanation/game/ship-design/stage-N/` (the stage-1 specs:
+A spec is a JSON file in a stage's directory, `docs/explanation/game/ship-design/stage-1/` for
+the first stage (the stage-1 specs:
 `flight.json`, `guns.json`, `reach.json`). For each spec, one unit (about 30 s a generation
 for a three-type cycle of 12 candidates; 30 generations, about 20 minutes with the first
 compile):

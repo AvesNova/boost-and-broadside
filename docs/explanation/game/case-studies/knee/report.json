@@ -1,0 +1,183 @@
+{
+ "games": 2304,
+ "slots": [
+  {
+   "slot": "la7: knee 0.5",
+   "elo": 0.0,
+   "stderr": 0.0,
+   "against_baseline": 0.0
+  },
+  {
+   "slot": "la7: knee 0.3",
+   "elo": -13.444603360538318,
+   "stderr": 14.917140201831621,
+   "against_baseline": -13.444603360538318
+  },
+  {
+   "slot": "la7: knee 0.7",
+   "elo": 11.610533529895815,
+   "stderr": 14.627553469007923,
+   "against_baseline": 11.610533529895815
+  },
+  {
+   "slot": "la7: knee 0.9",
+   "elo": -22.903732890979725,
+   "stderr": 14.616538627393426,
+   "against_baseline": -22.903732890979725
+  },
+  {
+   "slot": "la7: climb x0.5, knee 0.5",
+   "elo": -45.26646607527261,
+   "stderr": 15.190357297016664,
+   "against_baseline": -45.26646607527261
+  },
+  {
+   "slot": "la7: climb x0.5, knee 0.9",
+   "elo": -39.4620311328781,
+   "stderr": 14.958534950427168,
+   "against_baseline": -39.4620311328781
+  }
+ ],
+ "models": {
+  "la7": {
+   "elo_per_doubling": {
+    "card engine_knee_scale": -1.0850520268775443,
+    "climb_rate": 41.85248449511937
+   },
+   "rms_residual": 11.945053200667173
+  },
+  "pooled": {
+   "elo_per_doubling": {
+    "card engine_knee_scale": -1.0850520268775443,
+    "climb_rate": 41.85248449511937
+   },
+   "rms_residual": 11.945053200667173
+  }
+ },
+ "cycles": [
+  {
+   "cycle": [
+    "la7: knee 0.5",
+    "la7: knee 0.3",
+    "la7: knee 0.7"
+   ],
+   "weakest": 0.50390625
+  },
+  {
+   "cycle": [
+    "la7: knee 0.3",
+    "la7: knee 0.7",
+    "la7: knee 0.9"
+   ],
+   "weakest": 0.50390625
+  },
+  {
+   "cycle": [
+    "la7: knee 0.3",
+    "la7: climb x0.5, knee 0.9",
+    "la7: knee 0.9"
+   ],
+   "weakest": 0.50390625
+  },
+  {
+   "cycle": [
+    "la7: knee 0.9",
+    "la7: climb x0.5, knee 0.5",
+    "la7: climb x0.5, knee 0.9"
+   ],
+   "weakest": 0.50390625
+  }
+ ],
+ "pairs": [
+  {
+   "first": "la7: knee 0.5",
+   "second": "la7: knee 0.3",
+   "games": 256,
+   "score": 0.5234375
+  },
+  {
+   "first": "la7: knee 0.5",
+   "second": "la7: knee 0.7",
+   "games": 320,
+   "score": 0.4828125
+  },
+  {
+   "first": "la7: knee 0.5",
+   "second": "la7: knee 0.9",
+   "games": 320,
+   "score": 0.5515625
+  },
+  {
+   "first": "la7: knee 0.5",
+   "second": "la7: climb x0.5, knee 0.5",
+   "games": 320,
+   "score": 0.5359375
+  },
+  {
+   "first": "la7: knee 0.5",
+   "second": "la7: climb x0.5, knee 0.9",
+   "games": 256,
+   "score": 0.56640625
+  },
+  {
+   "first": "la7: knee 0.3",
+   "second": "la7: knee 0.7",
+   "games": 128,
+   "score": 0.50390625
+  },
+  {
+   "first": "la7: knee 0.3",
+   "second": "la7: knee 0.9",
+   "games": 64,
+   "score": 0.4375
+  },
+  {
+   "first": "la7: knee 0.3",
+   "second": "la7: climb x0.5, knee 0.5",
+   "games": 64,
+   "score": 0.5625
+  },
+  {
+   "first": "la7: knee 0.3",
+   "second": "la7: climb x0.5, knee 0.9",
+   "games": 128,
+   "score": 0.53515625
+  },
+  {
+   "first": "la7: knee 0.7",
+   "second": "la7: knee 0.9",
+   "games": 64,
+   "score": 0.5703125
+  },
+  {
+   "first": "la7: knee 0.7",
+   "second": "la7: climb x0.5, knee 0.5",
+   "games": 64,
+   "score": 0.65625
+  },
+  {
+   "first": "la7: knee 0.7",
+   "second": "la7: climb x0.5, knee 0.9",
+   "games": 64,
+   "score": 0.5546875
+  },
+  {
+   "first": "la7: knee 0.9",
+   "second": "la7: climb x0.5, knee 0.5",
+   "games": 64,
+   "score": 0.625
+  },
+  {
+   "first": "la7: knee 0.9",
+   "second": "la7: climb x0.5, knee 0.9",
+   "games": 128,
+   "score": 0.49609375
+  },
+  {
+   "first": "la7: climb x0.5, knee 0.5",
+   "second": "la7: climb x0.5, knee 0.9",
+   "games": 64,
+   "score": 0.53125
+  }
+ ]
+}

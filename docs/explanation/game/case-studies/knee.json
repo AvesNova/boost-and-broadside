@@ -1,0 +1,48 @@
+{
+ "name": "the engine knee",
+ "airframes": [
+  "la7"
+ ],
+ "cross": "all",
+ "target_stderr": 20.0,
+ "budget": 30000,
+ "variants": [
+  {
+   "name": "knee 0.5"
+  },
+  {
+   "name": "knee 0.3",
+   "card": {
+    "engine_knee_scale": 0.6
+   }
+  },
+  {
+   "name": "knee 0.7",
+   "card": {
+    "engine_knee_scale": 1.4
+   }
+  },
+  {
+   "name": "knee 0.9",
+   "card": {
+    "engine_knee_scale": 1.8
+   }
+  },
+  {
+   "name": "climb x0.5, knee 0.5",
+   "scale": {
+    "climb_rate": 0.5
+   }
+  },
+  {
+   "name": "climb x0.5, knee 0.9",
+   "scale": {
+    "climb_rate": 0.5
+   },
+   "card": {
+    "engine_knee_scale": 1.8
+   }
+  }
+ ],
+ "preset": "real_scale_deathmatch"
+}

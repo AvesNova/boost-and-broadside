@@ -112,6 +112,7 @@ def moved(base_card: ShipTypes, index: int, name: str, factor: float) -> ShipTyp
 
 
 def main() -> None:
+    """The analysis the module describes."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument(
         "--bases", default="p51d,spitfire-ix,fw190-a8,p47d,a6m5,ki84,albatross,zerstorer"

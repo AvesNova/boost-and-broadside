@@ -1,0 +1,514 @@
+{
+ "games": 16128,
+ "slots": [
+  {
+   "slot": "la7: baseline",
+   "elo": 0.0,
+   "stderr": 0.0,
+   "against_baseline": 0.0
+  },
+  {
+   "slot": "la7: shield 90",
+   "elo": -279.71464897890735,
+   "stderr": 11.273907645384732,
+   "against_baseline": -279.71464897890735
+  },
+  {
+   "slot": "la7: shield 130",
+   "elo": 318.5019622961971,
+   "stderr": 11.545743570067591,
+   "against_baseline": 318.5019622961971
+  },
+  {
+   "slot": "la7: shield 160",
+   "elo": 867.4963980235807,
+   "stderr": 18.90927109043911,
+   "against_baseline": 867.4963980235807
+  },
+  {
+   "slot": "la7: recharge delay x0.5",
+   "elo": 33.2269429444255,
+   "stderr": 10.008330989717408,
+   "against_baseline": 33.2269429444255
+  },
+  {
+   "slot": "la7: recharge delay x2",
+   "elo": -33.69000556713484,
+   "stderr": 10.007888291219734,
+   "against_baseline": -33.69000556713484
+  },
+  {
+   "slot": "la7: recharge rate x3",
+   "elo": 30.75584117848849,
+   "stderr": 10.167573054085638,
+   "against_baseline": 30.75584117848849
+  },
+  {
+   "slot": "la7: recharge rate x0.33",
+   "elo": -29.47519578893416,
+   "stderr": 10.118422123795211,
+   "against_baseline": -29.47519578893416
+  },
+  {
+   "slot": "la7: 5 Hz",
+   "elo": -170.29064818073172,
+   "stderr": 10.304919665981746,
+   "against_baseline": -170.29064818073172
+  },
+  {
+   "slot": "la7: 15 Hz",
+   "elo": 74.9906979151316,
+   "stderr": 10.289227553278867,
+   "against_baseline": 74.9906979151316
+  },
+  {
+   "slot": "la7: 5 Hz, shield 90",
+   "elo": -467.826485877412,
+   "stderr": 13.839011186834028,
+   "against_baseline": -467.826485877412
+  },
+  {
+   "slot": "la7: 15 Hz, shield 130",
+   "elo": 384.8838071642566,
+   "stderr": 11.839776582745843,
+   "against_baseline": 384.8838071642566
+  },
+  {
+   "slot": "la7: 5 Hz, shield 130",
+   "elo": 84.83571453104508,
+   "stderr": 10.132305542160163,
+   "against_baseline": 84.83571453104508
+  },
+  {
+   "slot": "la7: 15 Hz, shield 90",
+   "elo": -210.93254379792663,
+   "stderr": 10.74998321947507,
+   "against_baseline": -210.93254379792663
+  }
+ ],
+ "models": {
+  "la7": {
+   "elo_per_doubling": {
+    "max_shield": 1194.8073311192525,
+    "handle shield_recharge_delay": -33.458484497330986,
+    "handle shield_recharge_rate": 18.9988189707831,
+    "fire_rate": 173.28818747501484
+   },
+   "rms_residual": 65.36342610447147
+  },
+  "pooled": {
+   "elo_per_doubling": {
+    "max_shield": 1194.8073311192525,
+    "handle shield_recharge_delay": -33.458484497330986,
+    "handle shield_recharge_rate": 18.9988189707831,
+    "fire_rate": 173.28818747501484
+   },
+   "rms_residual": 65.36342610447147
+  }
+ },
+ "cycles": [],
+ "pairs": [
+  {
+   "first": "la7: baseline",
+   "second": "la7: shield 90",
+   "games": 704,
+   "score": 0.8089488636363636
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: shield 130",
+   "games": 704,
+   "score": 0.1534090909090909
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: shield 160",
+   "games": 64,
+   "score": 0.0234375
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: recharge delay x0.5",
+   "games": 512,
+   "score": 0.427734375
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: recharge delay x2",
+   "games": 448,
+   "score": 0.5747767857142857
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: recharge rate x3",
+   "games": 448,
+   "score": 0.4888392857142857
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: recharge rate x0.33",
+   "games": 448,
+   "score": 0.5502232142857143
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: 5 Hz",
+   "games": 576,
+   "score": 0.7048611111111112
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: 15 Hz",
+   "games": 512,
+   "score": 0.4189453125
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: 5 Hz, shield 90",
+   "games": 64,
+   "score": 0.984375
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: 15 Hz, shield 130",
+   "games": 768,
+   "score": 0.08723958333333333
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: 5 Hz, shield 130",
+   "games": 512,
+   "score": 0.3515625
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: 15 Hz, shield 90",
+   "games": 640,
+   "score": 0.7828125
+  },
+  {
+   "first": "la7: shield 90",
+   "second": "la7: shield 130",
+   "games": 64,
+   "score": 0.0
+  },
+  {
+   "first": "la7: shield 90",
+   "second": "la7: shield 160",
+   "games": 64,
+   "score": 0.0
+  },
+  {
+   "first": "la7: shield 90",
+   "second": "la7: recharge delay x2",
+   "games": 128,
+   "score": 0.1953125
+  },
+  {
+   "first": "la7: shield 90",
+   "second": "la7: recharge rate x0.33",
+   "games": 128,
+   "score": 0.21875
+  },
+  {
+   "first": "la7: shield 90",
+   "second": "la7: 5 Hz",
+   "games": 192,
+   "score": 0.3697916666666667
+  },
+  {
+   "first": "la7: shield 90",
+   "second": "la7: 5 Hz, shield 90",
+   "games": 448,
+   "score": 0.7120535714285714
+  },
+  {
+   "first": "la7: shield 90",
+   "second": "la7: 15 Hz, shield 130",
+   "games": 64,
+   "score": 0.0
+  },
+  {
+   "first": "la7: shield 90",
+   "second": "la7: 15 Hz, shield 90",
+   "games": 192,
+   "score": 0.3697916666666667
+  },
+  {
+   "first": "la7: shield 130",
+   "second": "la7: shield 160",
+   "games": 832,
+   "score": 0.024639423076923076
+  },
+  {
+   "first": "la7: shield 130",
+   "second": "la7: recharge delay x0.5",
+   "games": 128,
+   "score": 0.765625
+  },
+  {
+   "first": "la7: shield 130",
+   "second": "la7: recharge rate x3",
+   "games": 128,
+   "score": 0.83984375
+  },
+  {
+   "first": "la7: shield 130",
+   "second": "la7: 5 Hz",
+   "games": 64,
+   "score": 0.96875
+  },
+  {
+   "first": "la7: shield 130",
+   "second": "la7: 15 Hz",
+   "games": 192,
+   "score": 0.7760416666666666
+  },
+  {
+   "first": "la7: shield 130",
+   "second": "la7: 15 Hz, shield 130",
+   "games": 320,
+   "score": 0.4859375
+  },
+  {
+   "first": "la7: shield 130",
+   "second": "la7: 5 Hz, shield 130",
+   "games": 192,
+   "score": 0.84375
+  },
+  {
+   "first": "la7: shield 160",
+   "second": "la7: recharge delay x0.5",
+   "games": 64,
+   "score": 0.9609375
+  },
+  {
+   "first": "la7: shield 160",
+   "second": "la7: recharge delay x2",
+   "games": 64,
+   "score": 0.984375
+  },
+  {
+   "first": "la7: shield 160",
+   "second": "la7: recharge rate x0.33",
+   "games": 64,
+   "score": 1.0
+  },
+  {
+   "first": "la7: shield 160",
+   "second": "la7: 15 Hz, shield 130",
+   "games": 1536,
+   "score": 0.9352213541666666
+  },
+  {
+   "first": "la7: recharge delay x0.5",
+   "second": "la7: recharge delay x2",
+   "games": 128,
+   "score": 0.6015625
+  },
+  {
+   "first": "la7: recharge delay x0.5",
+   "second": "la7: recharge rate x3",
+   "games": 128,
+   "score": 0.4453125
+  },
+  {
+   "first": "la7: recharge delay x0.5",
+   "second": "la7: recharge rate x0.33",
+   "games": 128,
+   "score": 0.5703125
+  },
+  {
+   "first": "la7: recharge delay x0.5",
+   "second": "la7: 5 Hz",
+   "games": 64,
+   "score": 0.75
+  },
+  {
+   "first": "la7: recharge delay x0.5",
+   "second": "la7: 15 Hz",
+   "games": 128,
+   "score": 0.4453125
+  },
+  {
+   "first": "la7: recharge delay x0.5",
+   "second": "la7: 5 Hz, shield 90",
+   "games": 64,
+   "score": 0.953125
+  },
+  {
+   "first": "la7: recharge delay x0.5",
+   "second": "la7: 15 Hz, shield 130",
+   "games": 128,
+   "score": 0.11328125
+  },
+  {
+   "first": "la7: recharge delay x0.5",
+   "second": "la7: 5 Hz, shield 130",
+   "games": 128,
+   "score": 0.375
+  },
+  {
+   "first": "la7: recharge delay x0.5",
+   "second": "la7: 15 Hz, shield 90",
+   "games": 64,
+   "score": 0.6796875
+  },
+  {
+   "first": "la7: recharge delay x2",
+   "second": "la7: recharge rate x3",
+   "games": 128,
+   "score": 0.41015625
+  },
+  {
+   "first": "la7: recharge delay x2",
+   "second": "la7: recharge rate x0.33",
+   "games": 128,
+   "score": 0.48046875
+  },
+  {
+   "first": "la7: recharge delay x2",
+   "second": "la7: 5 Hz",
+   "games": 128,
+   "score": 0.7578125
+  },
+  {
+   "first": "la7: recharge delay x2",
+   "second": "la7: 15 Hz",
+   "games": 128,
+   "score": 0.3359375
+  },
+  {
+   "first": "la7: recharge delay x2",
+   "second": "la7: 5 Hz, shield 90",
+   "games": 64,
+   "score": 0.96875
+  },
+  {
+   "first": "la7: recharge delay x2",
+   "second": "la7: 15 Hz, shield 130",
+   "games": 64,
+   "score": 0.078125
+  },
+  {
+   "first": "la7: recharge delay x2",
+   "second": "la7: 5 Hz, shield 130",
+   "games": 128,
+   "score": 0.3359375
+  },
+  {
+   "first": "la7: recharge delay x2",
+   "second": "la7: 15 Hz, shield 90",
+   "games": 128,
+   "score": 0.76171875
+  },
+  {
+   "first": "la7: recharge rate x3",
+   "second": "la7: recharge rate x0.33",
+   "games": 128,
+   "score": 0.6328125
+  },
+  {
+   "first": "la7: recharge rate x3",
+   "second": "la7: 5 Hz",
+   "games": 128,
+   "score": 0.73828125
+  },
+  {
+   "first": "la7: recharge rate x3",
+   "second": "la7: 15 Hz",
+   "games": 128,
+   "score": 0.44140625
+  },
+  {
+   "first": "la7: recharge rate x3",
+   "second": "la7: 15 Hz, shield 130",
+   "games": 128,
+   "score": 0.1171875
+  },
+  {
+   "first": "la7: recharge rate x3",
+   "second": "la7: 5 Hz, shield 130",
+   "games": 128,
+   "score": 0.4453125
+  },
+  {
+   "first": "la7: recharge rate x3",
+   "second": "la7: 15 Hz, shield 90",
+   "games": 64,
+   "score": 0.8125
+  },
+  {
+   "first": "la7: recharge rate x0.33",
+   "second": "la7: 5 Hz",
+   "games": 128,
+   "score": 0.74609375
+  },
+  {
+   "first": "la7: recharge rate x0.33",
+   "second": "la7: 15 Hz",
+   "games": 128,
+   "score": 0.37890625
+  },
+  {
+   "first": "la7: recharge rate x0.33",
+   "second": "la7: 5 Hz, shield 130",
+   "games": 128,
+   "score": 0.3203125
+  },
+  {
+   "first": "la7: recharge rate x0.33",
+   "second": "la7: 15 Hz, shield 90",
+   "games": 128,
+   "score": 0.75390625
+  },
+  {
+   "first": "la7: 5 Hz",
+   "second": "la7: 5 Hz, shield 90",
+   "games": 448,
+   "score": 0.8805803571428571
+  },
+  {
+   "first": "la7: 5 Hz",
+   "second": "la7: 5 Hz, shield 130",
+   "games": 64,
+   "score": 0.140625
+  },
+  {
+   "first": "la7: 5 Hz",
+   "second": "la7: 15 Hz, shield 90",
+   "games": 128,
+   "score": 0.50390625
+  },
+  {
+   "first": "la7: 15 Hz",
+   "second": "la7: 5 Hz, shield 90",
+   "games": 64,
+   "score": 1.0
+  },
+  {
+   "first": "la7: 15 Hz",
+   "second": "la7: 15 Hz, shield 130",
+   "games": 256,
+   "score": 0.17578125
+  },
+  {
+   "first": "la7: 15 Hz",
+   "second": "la7: 5 Hz, shield 130",
+   "games": 64,
+   "score": 0.484375
+  },
+  {
+   "first": "la7: 5 Hz, shield 90",
+   "second": "la7: 15 Hz, shield 90",
+   "games": 448,
+   "score": 0.203125
+  },
+  {
+   "first": "la7: 15 Hz, shield 130",
+   "second": "la7: 5 Hz, shield 130",
+   "games": 320,
+   "score": 0.89375
+  }
+ ]
+}

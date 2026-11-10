@@ -1,0 +1,441 @@
+{
+ "games": 4608,
+ "slots": [
+  {
+   "slot": "la7: baseline",
+   "elo": 0.0,
+   "stderr": 0.0,
+   "against_baseline": 0.0
+  },
+  {
+   "slot": "la7: climb x0.5",
+   "elo": 20.001157117900448,
+   "stderr": 15.046972155072007,
+   "against_baseline": 20.001157117900448
+  },
+  {
+   "slot": "la7: climb x2",
+   "elo": -33.48118689113512,
+   "stderr": 15.318555781727515,
+   "against_baseline": -33.48118689113512
+  },
+  {
+   "slot": "la7: store x0.75",
+   "elo": 1.354709335683131,
+   "stderr": 15.009713258144485,
+   "against_baseline": 1.354709335683131
+  },
+  {
+   "slot": "la7: store x1.33",
+   "elo": 7.052454248072351,
+   "stderr": 14.489580643012355,
+   "against_baseline": 7.052454248072351
+  },
+  {
+   "slot": "la7: turn x0.9",
+   "elo": -70.42960418881674,
+   "stderr": 15.178248577217602,
+   "against_baseline": -70.42960418881674
+  },
+  {
+   "slot": "la7: turn x1.1",
+   "elo": 75.2171511550655,
+   "stderr": 15.338987255210345,
+   "against_baseline": 75.2171511550655
+  },
+  {
+   "slot": "la7: climb x2, turn x0.9",
+   "elo": -113.785931952,
+   "stderr": 15.525152967332748,
+   "against_baseline": -113.785931952
+  },
+  {
+   "slot": "la7: store x1.33, turn x0.9",
+   "elo": -75.59326186594369,
+   "stderr": 15.217419263197142,
+   "against_baseline": -75.59326186594369
+  },
+  {
+   "slot": "la7: climb x0.5, turn x1.1",
+   "elo": 85.8221036676082,
+   "stderr": 15.46329581710421,
+   "against_baseline": 85.8221036676082
+  },
+  {
+   "slot": "la7: stall x0.9",
+   "elo": -60.49801725405816,
+   "stderr": 14.6343428745546,
+   "against_baseline": -60.49801725405816
+  },
+  {
+   "slot": "la7: cruise x1.05",
+   "elo": 5.41025894872115,
+   "stderr": 15.022021743429065,
+   "against_baseline": 5.41025894872115
+  }
+ ],
+ "models": {
+  "la7": {
+   "elo_per_doubling": {
+    "climb_rate": -26.50416658150067,
+    "ceiling": 6.048272942765233,
+    "sustained_turn_rate": 506.93149160573955,
+    "stall_speed": 398.00517136138785,
+    "cruise_speed": 76.86192084499665
+   },
+   "rms_residual": 5.877536187286995
+  },
+  "pooled": {
+   "elo_per_doubling": {
+    "climb_rate": -26.50416658150067,
+    "ceiling": 6.048272942765233,
+    "sustained_turn_rate": 506.93149160573955,
+    "stall_speed": 398.00517136138785,
+    "cruise_speed": 76.86192084499665
+   },
+   "rms_residual": 5.877536187286995
+  }
+ },
+ "cycles": [
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: climb x0.5",
+    "la7: store x1.33"
+   ],
+   "weakest": 0.5234375
+  },
+  {
+   "cycle": [
+    "la7: baseline",
+    "la7: climb x0.5",
+    "la7: cruise x1.05"
+   ],
+   "weakest": 0.5052083333333334
+  },
+  {
+   "cycle": [
+    "la7: turn x0.9",
+    "la7: stall x0.9",
+    "la7: climb x2, turn x0.9"
+   ],
+   "weakest": 0.5078125
+  },
+  {
+   "cycle": [
+    "la7: turn x0.9",
+    "la7: stall x0.9",
+    "la7: store x1.33, turn x0.9"
+   ],
+   "weakest": 0.5078125
+  }
+ ],
+ "pairs": [
+  {
+   "first": "la7: baseline",
+   "second": "la7: climb x0.5",
+   "games": 192,
+   "score": 0.5390625
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: climb x2",
+   "games": 128,
+   "score": 0.546875
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: store x0.75",
+   "games": 192,
+   "score": 0.4375
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: store x1.33",
+   "games": 192,
+   "score": 0.4765625
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: turn x0.9",
+   "games": 192,
+   "score": 0.6015625
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: turn x1.1",
+   "games": 192,
+   "score": 0.3984375
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: climb x2, turn x0.9",
+   "games": 192,
+   "score": 0.6458333333333334
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: store x1.33, turn x0.9",
+   "games": 192,
+   "score": 0.6223958333333334
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: climb x0.5, turn x1.1",
+   "games": 192,
+   "score": 0.3880208333333333
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: stall x0.9",
+   "games": 192,
+   "score": 0.5729166666666666
+  },
+  {
+   "first": "la7: baseline",
+   "second": "la7: cruise x1.05",
+   "games": 192,
+   "score": 0.4947916666666667
+  },
+  {
+   "first": "la7: climb x0.5",
+   "second": "la7: climb x2",
+   "games": 64,
+   "score": 0.5234375
+  },
+  {
+   "first": "la7: climb x0.5",
+   "second": "la7: store x1.33",
+   "games": 64,
+   "score": 0.5703125
+  },
+  {
+   "first": "la7: climb x0.5",
+   "second": "la7: turn x0.9",
+   "games": 64,
+   "score": 0.625
+  },
+  {
+   "first": "la7: climb x0.5",
+   "second": "la7: store x1.33, turn x0.9",
+   "games": 64,
+   "score": 0.6484375
+  },
+  {
+   "first": "la7: climb x0.5",
+   "second": "la7: climb x0.5, turn x1.1",
+   "games": 64,
+   "score": 0.5
+  },
+  {
+   "first": "la7: climb x0.5",
+   "second": "la7: stall x0.9",
+   "games": 64,
+   "score": 0.6796875
+  },
+  {
+   "first": "la7: climb x0.5",
+   "second": "la7: cruise x1.05",
+   "games": 64,
+   "score": 0.5546875
+  },
+  {
+   "first": "la7: climb x2",
+   "second": "la7: store x0.75",
+   "games": 64,
+   "score": 0.421875
+  },
+  {
+   "first": "la7: climb x2",
+   "second": "la7: store x1.33",
+   "games": 64,
+   "score": 0.4921875
+  },
+  {
+   "first": "la7: climb x2",
+   "second": "la7: turn x0.9",
+   "games": 64,
+   "score": 0.5625
+  },
+  {
+   "first": "la7: climb x2",
+   "second": "la7: climb x2, turn x0.9",
+   "games": 64,
+   "score": 0.625
+  },
+  {
+   "first": "la7: climb x2",
+   "second": "la7: climb x0.5, turn x1.1",
+   "games": 64,
+   "score": 0.296875
+  },
+  {
+   "first": "la7: climb x2",
+   "second": "la7: stall x0.9",
+   "games": 64,
+   "score": 0.5
+  },
+  {
+   "first": "la7: climb x2",
+   "second": "la7: cruise x1.05",
+   "games": 64,
+   "score": 0.421875
+  },
+  {
+   "first": "la7: store x0.75",
+   "second": "la7: store x1.33",
+   "games": 64,
+   "score": 0.515625
+  },
+  {
+   "first": "la7: store x0.75",
+   "second": "la7: turn x0.9",
+   "games": 64,
+   "score": 0.5234375
+  },
+  {
+   "first": "la7: store x0.75",
+   "second": "la7: turn x1.1",
+   "games": 64,
+   "score": 0.3515625
+  },
+  {
+   "first": "la7: store x0.75",
+   "second": "la7: climb x0.5, turn x1.1",
+   "games": 64,
+   "score": 0.3359375
+  },
+  {
+   "first": "la7: store x0.75",
+   "second": "la7: stall x0.9",
+   "games": 64,
+   "score": 0.609375
+  },
+  {
+   "first": "la7: store x0.75",
+   "second": "la7: cruise x1.05",
+   "games": 64,
+   "score": 0.40625
+  },
+  {
+   "first": "la7: store x1.33",
+   "second": "la7: turn x1.1",
+   "games": 64,
+   "score": 0.4921875
+  },
+  {
+   "first": "la7: store x1.33",
+   "second": "la7: climb x2, turn x0.9",
+   "games": 64,
+   "score": 0.671875
+  },
+  {
+   "first": "la7: store x1.33",
+   "second": "la7: store x1.33, turn x0.9",
+   "games": 64,
+   "score": 0.671875
+  },
+  {
+   "first": "la7: store x1.33",
+   "second": "la7: climb x0.5, turn x1.1",
+   "games": 64,
+   "score": 0.328125
+  },
+  {
+   "first": "la7: store x1.33",
+   "second": "la7: cruise x1.05",
+   "games": 64,
+   "score": 0.5
+  },
+  {
+   "first": "la7: turn x0.9",
+   "second": "la7: turn x1.1",
+   "games": 64,
+   "score": 0.3515625
+  },
+  {
+   "first": "la7: turn x0.9",
+   "second": "la7: climb x2, turn x0.9",
+   "games": 64,
+   "score": 0.4921875
+  },
+  {
+   "first": "la7: turn x0.9",
+   "second": "la7: store x1.33, turn x0.9",
+   "games": 64,
+   "score": 0.4375
+  },
+  {
+   "first": "la7: turn x0.9",
+   "second": "la7: stall x0.9",
+   "games": 64,
+   "score": 0.5078125
+  },
+  {
+   "first": "la7: turn x1.1",
+   "second": "la7: store x1.33, turn x0.9",
+   "games": 64,
+   "score": 0.6953125
+  },
+  {
+   "first": "la7: turn x1.1",
+   "second": "la7: climb x0.5, turn x1.1",
+   "games": 64,
+   "score": 0.5234375
+  },
+  {
+   "first": "la7: turn x1.1",
+   "second": "la7: stall x0.9",
+   "games": 64,
+   "score": 0.71875
+  },
+  {
+   "first": "la7: turn x1.1",
+   "second": "la7: cruise x1.05",
+   "games": 64,
+   "score": 0.6484375
+  },
+  {
+   "first": "la7: climb x2, turn x0.9",
+   "second": "la7: store x1.33, turn x0.9",
+   "games": 64,
+   "score": 0.390625
+  },
+  {
+   "first": "la7: climb x2, turn x0.9",
+   "second": "la7: climb x0.5, turn x1.1",
+   "games": 64,
+   "score": 0.1796875
+  },
+  {
+   "first": "la7: climb x2, turn x0.9",
+   "second": "la7: stall x0.9",
+   "games": 64,
+   "score": 0.390625
+  },
+  {
+   "first": "la7: climb x2, turn x0.9",
+   "second": "la7: cruise x1.05",
+   "games": 64,
+   "score": 0.390625
+  },
+  {
+   "first": "la7: store x1.33, turn x0.9",
+   "second": "la7: stall x0.9",
+   "games": 64,
+   "score": 0.4921875
+  },
+  {
+   "first": "la7: store x1.33, turn x0.9",
+   "second": "la7: cruise x1.05",
+   "games": 64,
+   "score": 0.3515625
+  },
+  {
+   "first": "la7: climb x0.5, turn x1.1",
+   "second": "la7: stall x0.9",
+   "games": 64,
+   "score": 0.65625
+  }
+ ]
+}

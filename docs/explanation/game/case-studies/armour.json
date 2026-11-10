@@ -1,0 +1,97 @@
+{
+ "name": "shield, recharge and damage per hit",
+ "airframes": [
+  "la7"
+ ],
+ "cross": "all",
+ "target_stderr": 20.0,
+ "budget": 60000,
+ "variants": [
+  {
+   "name": "baseline"
+  },
+  {
+   "name": "shield 90",
+   "knobs": {
+    "max_shield": 90.0
+   }
+  },
+  {
+   "name": "shield 130",
+   "knobs": {
+    "max_shield": 130.0
+   }
+  },
+  {
+   "name": "shield 160",
+   "knobs": {
+    "max_shield": 160.0
+   }
+  },
+  {
+   "name": "recharge delay x0.5",
+   "handles": {
+    "shield_recharge_delay": 0.5
+   }
+  },
+  {
+   "name": "recharge delay x2",
+   "handles": {
+    "shield_recharge_delay": 2.0
+   }
+  },
+  {
+   "name": "recharge rate x3",
+   "handles": {
+    "shield_recharge_rate": 3.0
+   }
+  },
+  {
+   "name": "recharge rate x0.33",
+   "handles": {
+    "shield_recharge_rate": 0.3333333333333333
+   }
+  },
+  {
+   "name": "5 Hz",
+   "knobs": {
+    "fire_rate": 5.0
+   }
+  },
+  {
+   "name": "15 Hz",
+   "knobs": {
+    "fire_rate": 15.0
+   }
+  },
+  {
+   "name": "5 Hz, shield 90",
+   "knobs": {
+    "fire_rate": 5.0,
+    "max_shield": 90.0
+   }
+  },
+  {
+   "name": "15 Hz, shield 130",
+   "knobs": {
+    "fire_rate": 15.0,
+    "max_shield": 130.0
+   }
+  },
+  {
+   "name": "5 Hz, shield 130",
+   "knobs": {
+    "fire_rate": 5.0,
+    "max_shield": 130.0
+   }
+  },
+  {
+   "name": "15 Hz, shield 90",
+   "knobs": {
+    "fire_rate": 15.0,
+    "max_shield": 90.0
+   }
+  }
+ ],
+ "preset": "real_scale_deathmatch"
+}

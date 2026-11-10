@@ -179,6 +179,7 @@ class Envelope:
 
     @classmethod
     def of(cls, handles: dict[str, dict[str, float]], keys=ENVELOPE, shrink: float = 0.5):
+        """The envelope of these types' knobs (`keys`), the correlation shrunk by `shrink`."""
         rows = torch.tensor(
             [[math.log(knobs_of(handles[key])[name]) for name in CONTINUOUS] for key in keys],
             dtype=torch.float64,

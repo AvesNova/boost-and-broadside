@@ -1,0 +1,102 @@
+{
+ "name": "guns on one airframe",
+ "preset": "real_scale_deathmatch",
+ "airframes": [
+  "la7"
+ ],
+ "cross": "all",
+ "target_stderr": 20.0,
+ "budget": 60000,
+ "variants": [
+  {
+   "name": "baseline"
+  },
+  {
+   "name": "5 Hz",
+   "knobs": {
+    "fire_rate": 5.0
+   }
+  },
+  {
+   "name": "6 Hz",
+   "knobs": {
+    "fire_rate": 6.0
+   }
+  },
+  {
+   "name": "15 Hz",
+   "knobs": {
+    "fire_rate": 15.0
+   }
+  },
+  {
+   "name": "damage x1.15, muzzle x0.85",
+   "scale": {
+    "damage_per_second": 1.15,
+    "muzzle_speed": 0.85
+   }
+  },
+  {
+   "name": "damage x1.3, muzzle x0.72",
+   "scale": {
+    "damage_per_second": 1.3,
+    "muzzle_speed": 0.72
+   }
+  },
+  {
+   "name": "damage x0.9, muzzle x1.13",
+   "scale": {
+    "damage_per_second": 0.9,
+    "muzzle_speed": 1.13
+   }
+  },
+  {
+   "name": "damage x0.85",
+   "scale": {
+    "damage_per_second": 0.85
+   }
+  },
+  {
+   "name": "damage x1.15",
+   "scale": {
+    "damage_per_second": 1.15
+   }
+  },
+  {
+   "name": "muzzle x0.8",
+   "scale": {
+    "muzzle_speed": 0.8
+   }
+  },
+  {
+   "name": "muzzle x1.13",
+   "scale": {
+    "muzzle_speed": 1.13
+   }
+  },
+  {
+   "name": "dispersion x0.5",
+   "scale": {
+    "dispersion": 0.5
+   }
+  },
+  {
+   "name": "dispersion x2",
+   "scale": {
+    "dispersion": 2.0
+   }
+  },
+  {
+   "name": "shot cost x4",
+   "handles": {
+    "shots_per_store": 0.25
+   }
+  },
+  {
+   "name": "shot cost x0.25",
+   "handles": {
+    "shots_per_store": 4.0
+   }
+  }
+ ]
+}

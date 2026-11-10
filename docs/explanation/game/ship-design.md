@@ -60,9 +60,25 @@ designed set the ratings are equal and every matchup is a cyclic term of about �
 
 The operational test is the skill gap that overturns the worst matchup: the worst
 matchup should be overturned by a skill gap smaller than one "class" of player (200 Elo,
-the chess class interval; 76%). A 0.70 edge (147 Elo) passes; 0.80 (241) does not. On the
-scripted agent's own scale (measured below with its variants) the same edge is compared
-with the gaps between the agent and its slightly worse versions.
+the chess class interval; 76%). A 0.70 edge (147 Elo) passes; 0.80 (241) does not.
+
+On the scripted agent's own scale, its variants give the skill steps (real_scale_deathmatch,
+mixed lineups of every type, the round-1 champion at T = 1 against the variant, 1,024 games;
+`ship-design/skill/`):
+
+| The champion against | Score | Elo gap |
+|---|---|---|
+| itself at T = 1.5 | 0.568 ± 0.015 | 47 |
+| itself at T = 2 | 0.697 ± 0.014 | 145 |
+| itself at T = 3 | 0.857 ± 0.011 | 312 |
+| its predecessor (balancing round 1, the adopt check) | 0.607 ± 0.015 | 75 |
+| its predecessor (balancing round 2) | 0.566 ± 0.015 | 46 |
+
+So a 0.70 edge equals the gap between the agent and itself at twice the temperature, about
+two of the balancing's search rounds; a 0.60 edge (70 Elo) is one round's gain. For the
+scripted agent the designed matchups are as large as its skill steps by construction, which
+is the "matters" half of the target; the "skill matters more" half is a statement about
+players, whose skill spreads far wider than one agent's tuning steps.
 
 ### No dominant type, no dominant pair
 
@@ -245,6 +261,18 @@ are three planes. The seven then sit on all three: type i at angle 2πki/7 in pl
 knobs in each group the mixture of that cycle's three corners at its angle; a seven-type
 search starts there. Building the three first measures each mechanism's strength alone and
 tests that each is a cycle at all, which the seven-type search could not tell apart.
+
+**What the case studies changed** ([Case studies](case-studies.md)). The scripted agent
+fights on the turn alone (store, climb and cruise are worth nothing to it), so the flight
+cycle cannot form from flight values with today's doctrine: its energy leg needs the energy
+fight, flown by that type only, which needs per-type doctrine in the arena (each player its
+own parameter set; the arena's scripted seat plays one set today). The guns are a ladder on
+one airframe (no cycle among fifteen guns), the muzzle speed and the shield are the steepest
+values (about 1,400 and 1,200 Elo a doubling), and the dispersion and the recharge are nearly
+free (feel, not balance). So the order is: the guns-and-armour cycle first (the thresholds
+of the shield against the damage per hit, with the turn and the target size, are what the
+balancing's Mosquito-Zerstörer cycle is made of), the speed-and-reach cycle second (the muzzle
+speed's steepness against the cruise), and the flight cycle once per-type doctrine exists.
 
 `check` plays the chosen candidate at 1,024 games a pair (a round robin) and the
 mixed-team test, in deathmatch and then in Frontline.

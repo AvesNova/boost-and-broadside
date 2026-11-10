@@ -1,0 +1,79 @@
+{
+ "name": "guns on four airframes",
+ "airframes": [
+  "la7",
+  "a6m5",
+  "p38l",
+  "p47d"
+ ],
+ "cross": "airframe",
+ "target_stderr": 20.0,
+ "budget": 80000,
+ "variants": [
+  {
+   "name": "the La-7's gun",
+   "knobs": {
+    "fire_rate": 10.0,
+    "damage_per_second": 348.47784,
+    "muzzle_speed": 770.0,
+    "dispersion": 0.00105
+   }
+  },
+  {
+   "name": "5 Hz",
+   "knobs": {
+    "fire_rate": 5.0,
+    "damage_per_second": 348.47784,
+    "muzzle_speed": 770.0,
+    "dispersion": 0.00105
+   }
+  },
+  {
+   "name": "15 Hz",
+   "knobs": {
+    "fire_rate": 15.0,
+    "damage_per_second": 348.47784,
+    "muzzle_speed": 770.0,
+    "dispersion": 0.00105
+   }
+  },
+  {
+   "name": "damage x1.3, muzzle x0.72",
+   "knobs": {
+    "fire_rate": 10.0,
+    "damage_per_second": 348.47784,
+    "muzzle_speed": 770.0,
+    "dispersion": 0.00105
+   },
+   "scale": {
+    "damage_per_second": 1.3,
+    "muzzle_speed": 0.72
+   }
+  },
+  {
+   "name": "muzzle x1.13",
+   "knobs": {
+    "fire_rate": 10.0,
+    "damage_per_second": 348.47784,
+    "muzzle_speed": 770.0,
+    "dispersion": 0.00105
+   },
+   "scale": {
+    "muzzle_speed": 1.13
+   }
+  },
+  {
+   "name": "dispersion x2",
+   "knobs": {
+    "fire_rate": 10.0,
+    "damage_per_second": 348.47784,
+    "muzzle_speed": 770.0,
+    "dispersion": 0.00105
+   },
+   "scale": {
+    "dispersion": 2.0
+   }
+  }
+ ],
+ "preset": "real_scale_deathmatch"
+}

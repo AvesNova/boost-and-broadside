@@ -122,7 +122,9 @@ nav:
           - The ship-type tournament: explanation/game/real-scale-tournament.md
           - Balancing the real-scale set: explanation/game/real-scale-balance.md
           - Pacing the real-scale fight: explanation/game/real-scale-pacing.md
+          - Case studies of the trade-offs: explanation/game/case-studies.md
           - Designing ship types: explanation/game/ship-design.md
+          - "Runbook: a ship-design search": explanation/game/ship-design/runbook.md
       - The model (Yemong): explanation/yemong.md
       - The training loop: explanation/training-loop.md
       - The learner: explanation/learner.md

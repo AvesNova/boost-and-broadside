@@ -1,0 +1,84 @@
+{
+ "name": "climb and store against turn",
+ "airframes": [
+  "la7"
+ ],
+ "cross": "all",
+ "target_stderr": 20.0,
+ "budget": 60000,
+ "variants": [
+  {
+   "name": "baseline"
+  },
+  {
+   "name": "climb x0.5",
+   "scale": {
+    "climb_rate": 0.5
+   }
+  },
+  {
+   "name": "climb x2",
+   "scale": {
+    "climb_rate": 2.0
+   }
+  },
+  {
+   "name": "store x0.75",
+   "scale": {
+    "ceiling": 0.75
+   }
+  },
+  {
+   "name": "store x1.33",
+   "scale": {
+    "ceiling": 1.33
+   }
+  },
+  {
+   "name": "turn x0.9",
+   "scale": {
+    "sustained_turn_rate": 0.9
+   }
+  },
+  {
+   "name": "turn x1.1",
+   "scale": {
+    "sustained_turn_rate": 1.1
+   }
+  },
+  {
+   "name": "climb x2, turn x0.9",
+   "scale": {
+    "climb_rate": 2.0,
+    "sustained_turn_rate": 0.9
+   }
+  },
+  {
+   "name": "store x1.33, turn x0.9",
+   "scale": {
+    "ceiling": 1.33,
+    "sustained_turn_rate": 0.9
+   }
+  },
+  {
+   "name": "climb x0.5, turn x1.1",
+   "scale": {
+    "climb_rate": 0.5,
+    "sustained_turn_rate": 1.1
+   }
+  },
+  {
+   "name": "stall x0.9",
+   "scale": {
+    "stall_speed": 0.9
+   }
+  },
+  {
+   "name": "cruise x1.05",
+   "scale": {
+    "cruise_speed": 1.05
+   }
+  }
+ ],
+ "preset": "real_scale_deathmatch"
+}
