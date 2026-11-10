@@ -1,3 +1,19 @@
 frontline_10v10_density: batch 1, 2048 games, the largest standard error 31.4 (the batch took 608 s); done about 10:34 (0 batches), by 12:05 at the latest (9 batches)
 deathmatch_10v10_density: batch 1, 2048 games, the largest standard error 86.1 (the batch took 392 s); done about 11:20 (6 batches), by 11:40 at the latest (9 batches)
 deathmatch_10v10_density: batch 2, 4096 games, the largest standard error 38.3 (the batch took 243 s); done about 10:50 (1 batches), by 11:27 at the latest (8 batches)
+deathmatch_10v10_density: batch 3, 6144 games, the largest standard error 30.0 (the batch took 249 s); done about 10:49 (0 batches), by 11:23 at the latest (7 batches)
+deathmatch_10v10_density runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average   2316.9 +-  30.0    1024 games
+deathmatch_10v10_density runs/2026-11-09-rl-absolute/policies/step_180355072/uniform_average   2113.2 +-  25.7    1536 games
+deathmatch_10v10_density runs/2026-11-09-rl-absolute/policies/step_80740352/uniform_average   1764.1 +-  20.1    3072 games
+deathmatch_10v10_density runs/2026-11-09-rl-absolute/policies/step_40894464/uniform_average   1481.8 +-  17.2    1536 games
+deathmatch_10v10_density runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average   1307.3 +-  15.1    2048 games
+deathmatch_10v10_density runs/2026-11-09-rl-absolute/policies/step_20971520/uniform_average   1220.2 +-  16.0    1024 games
+deathmatch_10v10_density scripted                                                       1000.0 +-   0.0    2048 games
+frontline_10v10_density runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average   1499.0 +-  31.2     512 games
+frontline_10v10_density runs/2026-11-09-rl-absolute/policies/step_180355072/uniform_average   1357.9 +-  31.4     256 games
+frontline_10v10_density runs/2026-11-09-rl-absolute/policies/step_80740352/uniform_average   1201.1 +-  20.4    1024 games
+frontline_10v10_density runs/2026-11-09-rl-absolute/policies/step_40894464/uniform_average   1168.6 +-  20.7     512 games
+frontline_10v10_density runs/2026-11-09-rl-absolute/policies/step_20971520/uniform_average   1076.7 +-  23.3     512 games
+frontline_10v10_density scripted                                                       1000.0 +-   0.0     768 games
+frontline_10v10_density runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average    958.2 +-  20.7     512 games
+runs/ratings/fleet-10v10-density/artifacts/ratings/20261110-104926
