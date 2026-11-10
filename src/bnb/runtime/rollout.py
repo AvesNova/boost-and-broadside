@@ -66,7 +66,10 @@ class Rollout:
     environment's clock at a random tick of its episode (else every game starts fresh);
     extra_reads: observation parts the learner's records keep beyond what its controller
     reads (BC's teacher labels the stored observations); lookahead: ticks `run_lookahead`
-    plays (a multiple of the graph's block)."""
+    plays (a multiple of the graph's block); ship_type: (environments, N) int32, each ship's
+    type per environment (`api.reset`; None: the game's lineup), held in place as
+    `self.ship_type`, which a `restart` reads (the match engine writes it between
+    batches)."""
 
     def __init__(
         self,
@@ -86,8 +89,10 @@ class Rollout:
         staggered: bool = True,
         extra_reads: tuple[str, ...] = (),
         lookahead: int = 0,
+        ship_type: torch.Tensor | None = None,
     ) -> None:
         self.rules = api.rules_of(config, pools, environments, types=types)
+        self.ship_type = None if ship_type is None else ship_type.to(device, torch.int32, copy=True)
         self.reward_config = reward_config or rewards.RewardConfig()
         self.teams, self.ships_per_team, self.ship_count = (
             api.TEAMS,
@@ -144,7 +149,9 @@ class Rollout:
     def _initial_carry(self, types: api.ShipTypes, staggered: bool) -> dict:
         rules, B, device = self.rules, self.environments, self.device
         types = _pytree.tree_map_only(torch.Tensor, lambda x: x.to(device, copy=True), types)
-        state = api.reset(rules, types, api.uniforms(rules, B, device), self.lineup.fogged)
+        state = api.reset(
+            rules, types, api.uniforms(rules, B, device), self.lineup.fogged, self.ship_type
+        )
         if staggered:
             episode_ticks = api.episode_ticks(rules, B, device)
             state = api.start_clocks(
@@ -408,6 +415,9 @@ class Rollout:
                     carry["controllers"][name], events.done[environments], own
                 )
             )
+            count = getattr(self.controllers[name], "count_events", None)
+            if count is not None:  # a seat that keeps its games' statistics (the league's)
+                count(carry["controllers"][name], events, environments, team)
         # the ended episodes' sums (EPISODE_COLUMNS); the observation is the step's, so its
         # progress is the last tick's, and the episode lasted one tick more
         progress = carry["obs"]["globals"][:, 0, GLOBAL["episode_progress"]]

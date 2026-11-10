@@ -1,6 +1,7 @@
 """The scripted controllers' lengths follow the card: the deathmatch/wide classification in
 gun ranges and the chaser's distances in corner radii and gun ranges reproduce the standard
-card's metres exactly, and a real-scale (P-51-like) card plays its own."""
+card's metres exactly, and a real-scale (P-51-like) card plays its own, with the real-scale
+parameter sets."""
 
 import dataclasses
 import math
@@ -9,6 +10,7 @@ import pytest
 import torch
 from scripted_cases import CHARACTERISTICS, absent, observation, ship
 
+from bnb.contracts.obs import GLOBAL
 from bnb.controllers.scripted import (
     STANDARD_CORNER_RADIUS,
     STANDARD_GUN_RANGE,
@@ -28,7 +30,10 @@ REAL_SCALE = dataclasses.replace(
     corner_speed=CHARACTERISTICS.corner_speed * (LENGTH / TIME),
     max_acceleration=CHARACTERISTICS.max_acceleration * (LENGTH / TIME**2),
     gun_range=CHARACTERISTICS.gun_range * (600.0 / STANDARD_GUN_RANGE),
+    gravity=torch.full_like(CHARACTERISTICS.gravity, 9.81),
 )
+# The same lengths at the standard gravity: a card the agent classifies by gun ranges alone.
+SCALED_LENGTHS = dataclasses.replace(REAL_SCALE, gravity=CHARACTERISTICS.gravity)
 
 
 def _deathmatch(arena_radius: float):
@@ -44,14 +49,34 @@ def test_the_standard_lengths_are_the_standard_cards():
 
 
 def test_deathmatch_or_wide_by_gun_ranges():
-    """The standard presets classify as before (2600 m deathmatch, 8200 m wide); the
-    real-scale deathmatch, the standard map 3 times as wide (7800 m) with a 600 m gun range,
-    plays the deathmatch set, and its wide map (24,600 m) the wide one."""
+    """The standard presets classify as before (2600 m deathmatch, 8200 m wide); a card of
+    the standard gravity with a 600 m gun range classifies the standard map 3 times as wide
+    (7800 m) as deathmatch, and its wide map (24,600 m) as wide."""
     narrow, wide = MODES.index("deathmatch"), MODES.index("deathmatch_wide")
     for radius, expected in ((2600.0, narrow), (8200.0, wide)):
         assert mode_index(_deathmatch(radius), CHARACTERISTICS).tolist() == [expected]
     for radius, expected in ((7800.0, narrow), (3 * 8200.0, wide)):
-        assert mode_index(_deathmatch(radius), REAL_SCALE).tolist() == [expected]
+        assert mode_index(_deathmatch(radius), SCALED_LENGTHS).tolist() == [expected]
+
+
+def test_a_real_scale_card_plays_the_real_scale_sets():
+    """A card at the real-scale gravity plays real_scale_deathmatch on any deathmatch map and
+    real_scale_frontline in Frontline; the real-scale presets' own card is one."""
+    from bnb.controllers.scripted import REAL_SCALE_GRAVITY
+    from bnb.game import api
+    from bnb.game.handling.characteristics import characteristics
+
+    deathmatch = MODES.index("real_scale_deathmatch")
+    for radius in (2600.0, 7800.0, 3 * 8200.0):
+        assert mode_index(_deathmatch(radius), REAL_SCALE).tolist() == [deathmatch]
+    view = _deathmatch(7800.0)
+    view.globals[:, GLOBAL["mode_frontline"]] = 1.0
+    view.globals[:, GLOBAL["mode_team_deathmatch"]] = 0.0
+    assert mode_index(view, REAL_SCALE).tolist() == [MODES.index("real_scale_frontline")]
+    assert mode_index(view, CHARACTERISTICS).tolist() == [MODES.index("frontline")]
+    game = api.PRESETS["real_scale_deathmatch"]
+    card = characteristics(api.ship_types(ship_set=game.ship_set), api.rules_of(game))
+    assert float(card.gravity.amax()) < REAL_SCALE_GRAVITY < float(CHARACTERISTICS.gravity[0])
 
 
 def test_the_chaser_plays_the_race_distances_on_the_standard_card():

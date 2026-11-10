@@ -12,6 +12,12 @@ target, or when the next batch would pass the game budget. The result is the lea
 
 The field may restrict who plays whom (`allowed_pairs`): the scripted agent can be kept to
 a few players, which anchor the scale for the others through their games.
+
+A field may instead be balanced (`TournamentConfig.allocation`): each block goes to the
+allowed pair with the fewest games so far, so a budget of every pair's games is a full
+round robin; and anchored on another player (`rate`'s `anchor`). The ship-type tournament
+(`bench/ship_type_tournament.py`) is one: the real-scale set's types, each flown by the
+scripted agent (`matches.ship_type_players`), anchored on the P-51D.
 """
 
 import dataclasses
@@ -36,19 +42,24 @@ from .ratings import allocate_blocks, fit_ratings
 PRESET_NAMES = ("frontline", "deathmatch", "deathmatch_wide")  # the training mix's games
 PRIOR_GAMES = 1.0
 ANCHOR = "scripted"
+ALLOCATIONS = ("a_optimal", "balanced")
 
 
 @dataclasses.dataclass(frozen=True)
 class TournamentConfig:
     """arena: the match engine's layout (a batch is its blocks' games); target_stderr:
     rating points every standard error must be under to stop; budget: games per preset at
-    most (whole batches)."""
+    most (whole batches); allocation: how a batch's blocks choose their pairs, "a_optimal"
+    (`allocate_blocks`) or "balanced" (`balanced_blocks`)."""
 
     arena: ArenaConfig = ArenaConfig()
     target_stderr: float = 25.0
     budget: int = 20_000
+    allocation: str = "a_optimal"
 
     def __post_init__(self) -> None:
+        if self.allocation not in ALLOCATIONS:
+            raise ValueError(f"allocation {self.allocation!r} is not one of {ALLOCATIONS}")
         if self.target_stderr <= 0.0:
             raise ValueError(f"target_stderr {self.target_stderr} must be positive")
         if self.budget < self.arena.games:
@@ -75,6 +86,26 @@ def allowed_pairs(names: list[str], anchor_partners: tuple[str, ...] | None = No
         allowed[anchor] = partner
         allowed[:, anchor] = partner
     return allowed
+
+
+def balanced_blocks(pair_games, blocks: int, block_games: int, allowed) -> list[tuple[int, int]]:
+    """Which pair each of `blocks` blocks of `block_games` games plays next: each the allowed
+    pair (i, j), i < j, with the fewest games so far (the blocks already chosen counted),
+    the first in row order on a tie. pair_games (K, K); allowed (K, K) bool, symmetric."""
+    games = torch.as_tensor(pair_games, dtype=torch.float64).clone()
+    allowed = torch.as_tensor(allowed, dtype=torch.bool)
+    upper = torch.triu_indices(games.shape[0], games.shape[0], 1)
+    upper = upper[:, allowed[upper[0], upper[1]]]
+    if upper.shape[1] == 0:
+        raise ValueError("no pair is allowed to play")
+    chosen = []
+    for _ in range(blocks):
+        best = int(torch.argmin(games[upper[0], upper[1]]))
+        first, second = int(upper[0, best]), int(upper[1, best])
+        chosen.append((first, second))
+        games[first, second] += block_games
+        games[second, first] += block_games
+    return chosen
 
 
 def report(line: str) -> None:
@@ -151,8 +182,9 @@ def fit_field(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """The tournament's batches over a field of players `names`: `play` plays one batch (a
     pair per block, first player and second) and gives each block's (wins, ties, losses)
-    from its first player's side. Returns the ratings (K,) with the anchor at 0, their
-    standard errors (K,) and the games of each pair (K, K).
+    from its first player's side, or those and a dict of more of the batch's results, which
+    the record keeps. Returns the ratings (K,) with the anchor at 0, their standard errors
+    (K,) and the games of each pair (K, K).
 
     record: a JSON-lines file of the batches, one line appended (and synced) after each:
     its index, the blocks' matchups and results, the games so far, every player's rating
@@ -175,17 +207,23 @@ def fit_field(
         float(stderr.max()) >= config.target_stderr and played + arena.games <= config.budget
     ):
         started = time.perf_counter()
-        matchups = allocate_blocks(
-            pair_games,
-            ratings,
-            anchor,
-            arena.blocks,
-            arena.block_environments,
-            allowed,
-            PRIOR_GAMES,
-            *(lanes or (None, None)),
-        )
-        results = play(matchups).tolist()
+        if config.allocation == "balanced":
+            matchups = balanced_blocks(pair_games, arena.blocks, arena.block_environments, allowed)
+        else:
+            matchups = allocate_blocks(
+                pair_games,
+                ratings,
+                anchor,
+                arena.blocks,
+                arena.block_environments,
+                allowed,
+                PRIOR_GAMES,
+                *(lanes or (None, None)),
+            )
+        outcome, extra = play(matchups), {}
+        if isinstance(outcome, tuple):
+            outcome, extra = outcome
+        results = outcome.tolist()
         played += _add(wins, pair_games, matchups, results)
         ratings, stderr = fit_ratings(wins, anchor, PRIOR_GAMES)
         seconds.append(time.perf_counter() - started)
@@ -205,6 +243,7 @@ def fit_field(
                     worst_stderr=worst,
                     seconds=seconds[-1],
                     wall_time=datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
+                    **extra,
                 ),
             )
         batches += 1
@@ -230,29 +269,35 @@ def rate(
     game: GameConfig | None = None,
     allowed: torch.Tensor | None = None,
     record: pathlib.Path | None = None,
+    anchor: str = ANCHOR,
+    statistics: bool = False,
 ) -> list[dict]:
     """The field's ratings in one game preset (`game`: its config, PRESETS[preset] by
     default): a row per player (its name, `calibrated_elo`, its standard error and its
-    games) plus the leaderboard's key. The field must hold the scripted agent, the
-    anchor; allowed (K, K) bool: who may play whom (`allowed_pairs`; every pair by
-    default); record: the batches' record (`fit_field`). The engine is built at the first
-    batch, so a finished record plays nothing."""
+    games) plus the leaderboard's key. The field must hold the anchor (the scripted agent
+    by default), rated 1000; allowed (K, K) bool: who may play whom (`allowed_pairs`; every
+    pair by default); record: the batches' record (`fit_field`), which with `statistics`
+    also keeps each block's game statistics (`Arena.statistics`, under "statistics"). The
+    engine is built at the first batch, so a finished record plays nothing."""
     game = PRESETS[preset] if game is None else game
     names = [p.name for p in players]
-    if ANCHOR not in names:
-        raise ValueError("the field needs the scripted agent: it anchors the ratings at 1000")
+    if anchor not in names:
+        raise ValueError(f"the field needs its anchor {anchor!r}: it anchors the ratings at 1000")
     allowed = allowed_pairs(names) if allowed is None else allowed
     groups = network_groups(players)
     lanes = default_lanes(groups, 2 * config.arena.blocks)
     arenas: list[Arena] = []
 
-    def play(matchups: list[tuple[int, int]]) -> torch.Tensor:
+    def play(matchups: list[tuple[int, int]]):
         if not arenas:
             arenas.append(Arena(players, game, device, config.arena, lanes))
-        return arenas[0].play(matchups)
+        results = arenas[0].play(matchups)
+        if not statistics:
+            return results
+        return results, dict(statistics=arenas[0].statistics().tolist())
 
     ratings, stderr, pair_games = fit_field(
-        play, names, names.index(ANCHOR), allowed, config, log, preset, record, (groups, lanes)
+        play, names, names.index(anchor), allowed, config, log, preset, record, (groups, lanes)
     )
     key = dict(
         game_version=GAME_VERSION, mode=game.mode, map=preset, fleet_size=game.ships_per_team

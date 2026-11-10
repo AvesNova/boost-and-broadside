@@ -284,7 +284,7 @@ def test_the_tuning_panel_adds_and_removes_ships(context, tmp_path, monkeypatch)
         player = Player(session, context, 1280, 720)
         session.toggle_tuning()
         deadline = time.monotonic() + 300.0
-        while session.tuner.targets is None and time.monotonic() < deadline:
+        while not session.tuner.ready() and time.monotonic() < deadline:
             player.frames()
             time.sleep(0.02)
         panel = session.tuning_panel

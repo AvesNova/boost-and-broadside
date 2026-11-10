@@ -24,10 +24,12 @@ def first_results(
     device: torch.device,
     length: int = 32,
     compiled: bool = True,
+    ship_type: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """(views,) int32: the result of each of `player`'s views in its environment's first
     game, +1 a win, 0 a draw, -1 a loss, with the ship card `types`. games: environments
-    (the pools' batch)."""
+    (the pools' batch); ship_type: (games, N) each ship's type (`Rollout`; None the game's
+    lineup)."""
     rollout = Rollout(
         game,
         types,
@@ -39,6 +41,7 @@ def first_results(
         device,
         compiled=compiled,
         staggered=False,
+        ship_type=ship_type,
     )
     views = rollout.lineup.rows(player)
     result = torch.zeros(views, dtype=torch.int32, device=device)

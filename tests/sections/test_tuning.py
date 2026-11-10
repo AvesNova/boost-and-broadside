@@ -1,6 +1,7 @@
 """Live tuning (`bnb.game.tuning`, `Realtime.retune`, `bnb.play.tuning`): the settings round
 trip, a running match takes new rules and a new card from the next tick (never
-recompiling) and refuses new sizes, and presets round trip."""
+recompiling) and refuses new sizes, presets round trip, and the panel shows the ship
+files' handles without measuring them."""
 
 import math
 
@@ -9,8 +10,18 @@ import torch
 
 from bnb.contracts import GameConfig
 from bnb.game import api
+from bnb.play.interface.layout import FLEETS_WIDTH, Layout
 from bnb.play.loop import MatchLoop, MatchSetup
-from bnb.play.tuning import Presets, Tuning, base_rules, fire_rates, snap_handle
+from bnb.play.tuning import (
+    Presets,
+    Tuning,
+    base_rules,
+    columns,
+    file_handles,
+    fire_rates,
+    snap_handle,
+    with_columns,
+)
 from bnb.play.tuning_panel import (
     from_log_axis,
     is_off,
@@ -249,3 +260,40 @@ def test_ship_files_round_trip_and_a_new_type_joins_the_card(ship_files):
     ships.write(files[:1])
     api.reload_ships()
     assert api.type_names() == ("Fighter",) and not (ship_files / "heavy.toml").exists()
+
+
+def test_the_panel_takes_each_types_handles_from_its_ship_file():
+    """The handles shown before anything is measured: each type's file's, in float64; a
+    type past the files (or one missing a handle) takes a stand-in and is not complete."""
+    from bnb.game import ships
+
+    files = ships.load("real-scale")
+    handles, complete = file_handles(files, len(files))
+    assert all(complete) and handles.cruise_speed.dtype == torch.float64
+    for kind, ship in enumerate(files):
+        for name in api.HANDLE_NAMES:
+            assert float(getattr(handles, name)[kind]) == ship.handles[name], (ship.key, name)
+    handles, complete = file_handles(files[:2], 3)
+    assert complete == [True, True, False]
+    assert float(handles.ceiling[2]) == files[0].handles["ceiling"]
+
+
+def test_a_cards_columns_are_taken_and_put_back_by_type():
+    types = api.ship_types(ship_set="real-scale")
+    part = columns(types, [3, 1])
+    assert part.max_energy.tolist() == [types.max_energy[3].item(), types.max_energy[1].item()]
+    doubled = api.ShipTypes(**{n: 2.0 * v for n, v in vars(part).items()})
+    changed = with_columns(types, [3, 1], doubled)
+    assert changed.max_energy[3] == 2.0 * types.max_energy[3]
+    assert changed.max_energy[0] == types.max_energy[0]
+    assert changed.max_energy.dtype == types.max_energy.dtype
+    assert types.max_energy[3] != changed.max_energy[3]  # the original is untouched
+
+
+@pytest.mark.parametrize("scale", [1.0, 1.5])
+def test_the_fleets_card_widens_for_long_ship_names(scale):
+    assert Layout(1920, 1080, scale).fleets.width == FLEETS_WIDTH * scale
+    wide = Layout(1920, 1080, scale, fleets_width=380.0)
+    assert (
+        wide.fleets.width == 380.0 * scale and wide.fleets.x == Layout(1920, 1080).fleets.x * scale
+    )

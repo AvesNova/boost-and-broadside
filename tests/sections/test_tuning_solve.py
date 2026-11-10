@@ -1,7 +1,9 @@
 """Live tuning of the handles (`api.Estimate`, `solve_handles(start=..., progress=...,
 cancel=...)`, `bnb.play.tuning.Tuner`): the instant estimate is the anchor at the anchor
 and close to the solve near it, a solve started from the estimate converges in a few
-iterations and reports each, and the tuner applies the estimate, then the exact card."""
+iterations and reports each, and the tuner applies the estimate, then the exact card; a
+combat handle of a measured card applies exactly at once, and a type is measured when
+shown."""
 
 import time
 
@@ -13,7 +15,7 @@ from bnb.game import api
 from bnb.game.handling.manoeuvres import fly
 from bnb.game.handling.solver import ERROR_FLOOR
 from bnb.play.loop import MatchLoop, MatchSetup, SideSetup
-from bnb.play.tuning import Tuner, base_rules
+from bnb.play.tuning import Tuner, base_rules, columns, file_handles
 
 pytestmark = pytest.mark.slow
 
@@ -83,9 +85,10 @@ def test_a_cancelled_solve_stops_before_flying(anchor):
 
 
 def test_the_tuner_applies_the_estimate_then_the_exact_card():
-    """A live match with the scripted agent: after the handles are measured, a cruise
-    change applies within seconds (the estimate) and becomes exact (the solve), with the
-    agent's characteristics retuned; a longer bullet life lengthens the gun range at once."""
+    """A live match with the scripted agent: the handles show at once (the ship files'), a
+    cruise change applies within seconds (the estimate) and becomes exact (the solve), with
+    the agent's characteristics retuned; a longer bullet life lengthens the gun range at
+    once."""
     setup = MatchSetup(
         GameConfig(2, 4, 900.0, mode="frontline"), sides=(SideSetup("scripted_agent"), SideSetup())
     )
@@ -103,7 +106,7 @@ def test_the_tuner_applies_the_estimate_then_the_exact_card():
         return False
 
     try:
-        assert frames(lambda: tuner.targets is not None, 300.0), tuner.message
+        assert tuner.ready()
         traits = loop.sides[0].characteristics
         cruise = float(tuner.targets.cruise_speed[0]) * 1.1
         power = loop.types.engine_power.clone()
@@ -139,13 +142,20 @@ def _live_tuner():
 
 
 def test_a_rule_change_while_the_handles_are_measured_restarts_the_measurement():
-    """A rule set while the handles are measured (the panel just opened) restarts the
-    measurement under the new rules; the handles do not stay unsettable."""
+    """A flight constant re-measures the shown type's handles (unsettable meanwhile); a rule
+    set while they are measured restarts the measurement under the new rules, and the
+    handles do not stay unsettable."""
     tuner, frames = _live_tuner()
     try:
+        cruise = float(tuner.targets.cruise_speed[0])
+        tuner.set_setting("flight.gravity", tuner.values["flight.gravity"] * 1.1)
+        assert not tuner.ready(0)
+        tuner.set_handle("cruise_speed", 0, cruise * 1.1)  # refused while measured
+        assert frames(lambda: tuner._measuring == 0, 30.0), tuner.message
         tuner.set_setting("pool.arena_radius", 1500.0)  # not a flight constant
-        assert frames(lambda: tuner.targets is not None, 300.0), tuner.message
-        assert tuner.exact
+        assert frames(lambda: tuner.ready(0), 300.0), tuner.message
+        assert tuner.exact and float(tuner.targets.cruise_speed[0]) != cruise
+        assert tuner.flying["cruise_speed"][0] == float(tuner.targets.cruise_speed[0])
     finally:
         tuner.close()
 
@@ -155,10 +165,68 @@ def test_a_rule_change_during_a_solve_solves_again():
     the solve runs again: the card becomes exact without touching a handle."""
     tuner, frames = _live_tuner()
     try:
-        assert frames(lambda: tuner.targets is not None, 300.0), tuner.message
         tuner.set_handle("cruise_speed", 0, float(tuner.targets.cruise_speed[0]) * 1.1)
         assert frames(lambda: tuner._solving is not None, 30.0), tuner.message
         tuner.set_setting("pool.arena_radius", 1500.0)
         assert frames(lambda: tuner.exact, 600.0), (tuner.status, tuner.message)
     finally:
         tuner.close()
+
+
+def test_a_combat_handle_of_a_measured_card_applies_exactly_at_once():
+    """Once the shown type's flight is measured, a combat handle (damage, fire rate, gun
+    range, shield, ...) gives the exact card at once, without a flight: only the card's
+    combat fields change, so it flies what it flew, and they are the solver's."""
+    tuner, frames = _live_tuner()
+    try:
+        assert frames(lambda: tuner.flying["cruise_speed"][0] is not None, 300.0)
+        before = tuner.loop.types
+        flown = fly(tuner.loop.rules, _double(before))
+        for name, factor in (("hit_damage", 1.5), ("gun_range", 1.2), ("max_shield", 0.8)):
+            tuner.set_handle(name, 0, float(getattr(tuner.targets, name)[0]) * factor)
+            assert tuner.exact and tuner._solving is None and not tuner.message, name
+        after = tuner.loop.types
+        assert float(after.hit_damage[0]) == pytest.approx(1.5 * float(before.hit_damage[0]))
+        assert torch.equal(after.engine_power, before.engine_power)
+        for name, value in fly(tuner.loop.rules, _double(after))._asdict().items():
+            torch.testing.assert_close(value, getattr(flown, name), rtol=0.0, atol=0.0)
+        solved = api.solve_handles(columns(tuner.targets, [0]), tuner.loop.rules)
+        for name in ("hit_damage", "bullet_drag_scale", "max_shield", "bullet_energy_cost"):
+            assert float(getattr(after, name)[0]) == pytest.approx(
+                float(getattr(solved.types, name)[0]), rel=5e-3
+            ), name
+    finally:
+        tuner.close()
+
+
+def test_a_type_is_measured_when_shown_and_only_then():
+    """Opening the panel measures nothing up front: the shown type is measured first, then
+    the match's types."""
+    setup = MatchSetup(GameConfig(1, 4, 900.0, mode="frontline"), lineup=(0,))
+    loop = MatchLoop(setup, compiled=False)
+    tuner = Tuner(loop, base_rules(setup.config, setup.lineup))
+    try:
+        assert tuner.ready() and tuner.flying["cruise_speed"] == [None, None]
+        tuner.show(1)
+        end = time.monotonic() + 300.0
+        while time.monotonic() < end and tuner.flying["cruise_speed"][0] is None:
+            tuner.update()
+            time.sleep(0.01)
+        assert tuner.flying["cruise_speed"][1] is not None  # the shown type first
+        assert tuner.flying["cruise_speed"][0] is not None  # then the match's
+    finally:
+        tuner.close()
+
+
+def test_the_ship_files_handles_are_what_their_cards_fly():
+    """The panel shows each type's file's handles before measuring it: the cards fly them
+    within the solver's 0.5% (the set's rules, every handle)."""
+    from bnb.game import ships
+
+    rules = api.rules_of(GameConfig(2, 4, 900.0, mode="frontline"))
+    handles, _ = file_handles(ships.load(), 2)
+    flown = api.measure_handles(_double(api.ship_types()), rules)
+    for name in api.HANDLE_NAMES:
+        torch.testing.assert_close(
+            getattr(flown, name), getattr(handles, name), rtol=5e-3, atol=0.0, msg=name
+        )

@@ -83,6 +83,7 @@ class Interface:
             replay=session.loop.replaying,
             flying=session.loop.pilot is not None,
             selected=session.selection is not None,
+            fleets_width=fleets.width(self),
         )
 
     # Menus ------------------------------------------------------------------------------------

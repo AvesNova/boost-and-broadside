@@ -8,11 +8,13 @@ tall as the room under the top bar (never taller; its contents scroll). Each row
 
 - **Ships**: choose a ship type; each of its handles is a slider with a number box beside it
   (click the box, type, Enter). A red dot after the box marks a handle the ships fly more
-  than 0.5% off its set value; its tooltip gives the flown value. The fire rate is a choice
-  of the rates a card can hold; the bleed rate is shown, not set. **Save ships**
-  writes every type to its ship file (`src/bnb/game/ships/`, tracked in git); **Add** copies
-  the chosen type under a new name and **Remove** deletes it (after a popup asks; the last
-  type stays), each starting a new match.
+  than 0.5% off its set value; its tooltip gives the flown value, or that the type is not
+  measured yet (the sliders show at once; the chosen type is measured first). The fire
+  rate is a choice of the rates a card can hold; the bleed rate is shown, not set. **Save
+  ships** writes every type to its ship file (`src/bnb/game/ships/`, tracked in git);
+  **Add** copies the chosen type under a new name and **Remove** deletes it (after a popup
+  asks; the last type stays), each starting a new match. Save and Add need every type's
+  handles, and first measure the ones not known (after a flight constant changed).
 - **Rules**, by group: each setting a slider and a number box within its bounds; "*" marks
   those drawn at an episode's start, and the tooltip gives the game's value.
 - **Presets**: save the tuning under a name (the rules' settings and the whole card), load
@@ -287,13 +289,14 @@ class TuningPanel:
         imgui.same_line()
         if imgui.button("Add a copy as this name"):
             self._add(session, tuner)
-        targets = tuner.targets
-        if targets is None:
-            imgui.text_wrapped("Measuring the card's handles under the current rules...")
-            return
         kind = self.ship
+        targets = tuner.targets
         if kind >= targets.ceiling.shape[-1]:
             imgui.text_wrapped("This type joins at the next match.")
+            return
+        tuner.show(kind)  # measured first
+        if not tuner.ready(kind):
+            imgui.text_wrapped(f"Measuring {names[kind]}'s handles under the current rules...")
             return
         files = self._saved(tuner.ship_set)
         saved = files[kind].handles if kind < len(files) else {}
@@ -323,7 +326,8 @@ class TuningPanel:
                 if changed and math.isfinite(new):
                     tuner.set_handle(name, kind, new / factor)
             imgui.table_next_column()
-            flown = None if flying is None else float(flying[name][kind]) * factor
+            flown = flying[name][kind]
+            flown = None if flown is None else float(flown) * factor
             flown_marker(value, flown, unit, scale)
         for name, values in tuner.shown.items():
             unit = api.HANDLE_UNITS[name][0]
@@ -341,18 +345,31 @@ class TuningPanel:
         types, files = tuner.loop.types, self._saved(tuner.ship_set)
         out = []
         for kind, ship in enumerate(files):
-            handles = {
-                name: float(
-                    (tuner.flying or {}).get(name, getattr(tuner.targets, name).tolist())[kind]
+            handles = {}
+            for name in api.HANDLE_NAMES:
+                flown = tuner.flying[name][kind]
+                handles[name] = float(
+                    getattr(tuner.targets, name)[kind] if flown is None else flown
                 )
-                for name in api.HANDLE_NAMES
-            }
             card = {field: float(value[kind]) for field, value in vars(types).items()}
             out.append(api.ships.Ship(ship.key, ship.name, handles, card, dict(ship.notes)))
         return out
 
+    def _measured(self, tuner) -> bool:
+        """Whether every type's handles are known, so the files can be written; if not,
+        they are measured and the message says so."""
+        if tuner.ready():
+            return True
+        tuner.measure_all()
+        self.message = (
+            "measuring every type's handles under the current rules first; try again then"
+        )
+        return False
+
     def _save(self, session, tuner) -> None:
-        if tuner.targets is None or not tuner.exact:
+        if not self._measured(tuner):
+            return
+        if not tuner.exact:
             self.message = "wait for the exact card (the status line) before saving"
             return
         session.save_ships(self._current(tuner))
@@ -363,8 +380,10 @@ class TuningPanel:
     def _add(self, session, tuner) -> None:
         name = self.new_ship.strip()
         key = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
-        if not key or tuner.targets is None:
+        if not key:
             self.message = "type the new ship's name first"
+            return
+        if not self._measured(tuner):
             return
         current = self._current(tuner)
         if key in [ship.key for ship in current]:
@@ -399,9 +418,7 @@ class TuningPanel:
         imgui.end_popup()
 
     def _remove(self, session, tuner) -> None:
-        current = (
-            self._current(tuner) if tuner.targets is not None else list(self._saved(tuner.ship_set))
-        )
+        current = self._current(tuner) if tuner.ready() else list(self._saved(tuner.ship_set))
         removed = current.pop(self.ship)
         moved = {
             kind: (None if kind == self.ship else kind - (kind > self.ship))

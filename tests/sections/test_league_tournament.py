@@ -549,9 +549,11 @@ def test_the_tournament_pins_the_scripted_agent_at_1000_and_stops_on_its_budget(
     assert all(row["fleet_size"] == 2 and row["mode"] == GAME.mode for row in rows)
 
 
-def test_the_tournament_needs_the_scripted_agent_and_a_batch_of_budget():
-    with pytest.raises(ValueError, match="scripted agent"):
+def test_the_tournament_needs_its_anchor_and_a_batch_of_budget():
+    with pytest.raises(ValueError, match="anchor 'scripted'"):
         tournament.rate([RANDOM, HALF], "small", CPU, game=GAME)
+    with pytest.raises(ValueError, match="anchor 'fighter'"):
+        tournament.rate([RANDOM, HALF], "small", CPU, game=GAME, anchor="fighter")
     with pytest.raises(ValueError, match="one batch"):
         tournament.TournamentConfig(SMALL, budget=7)
 
@@ -650,3 +652,84 @@ def test_a_mixed_field_captures_into_a_graph_and_plays_each_pair_as_alone(tmp_pa
         states.append(_block_state(arena, 0))
     for one, two in zip(*states, strict=True):
         assert torch.equal(one, two)
+
+
+# ---- ship-type players and the balanced field
+
+
+def test_a_ship_type_player_flies_its_type_on_its_own_team():
+    """Each environment's teams fly their players' types, the block's first player on team
+    i mod 2; a player without a type flies the game's lineup."""
+    from bnb.league.matches import ship_type_players
+
+    fighters, heavies = ship_type_players("standard")
+    assert (fighters.ship_type, heavies.ship_type) == (0, 1)
+    assert fighters.rung == Rung(1.0)
+    arena = Arena([fighters, heavies, SCRIPTED], GAME, CPU, SMALL)
+    arena.play([(0, 1), (2, 1)])
+    types = arena.rollout.carry["state"].ships.ship_type.tolist()
+    assert types[:4] == [[0, 0, 1, 1], [1, 1, 0, 0]] * 2  # block 0: fighters, then heavies
+    assert types[4:] == [[0, 1, 1, 1], [1, 1, 0, 1]] * 2  # block 1: the lineup, then heavies
+
+
+def test_the_arena_keeps_each_blocks_first_game_statistics():
+    """Per block and player: kills, deaths, shots, hits, ship-ticks and summed speed, each
+    from the first games alone; one side's kills are at most the other's deaths."""
+    from bnb.league.matches import STATISTICS
+
+    arena = Arena([SCRIPTED, RANDOM, HALF], GAME, CPU, SMALL)
+    arena.play([(0, 1), (2, 1)])
+    statistics = arena.statistics()
+    assert statistics.shape == (2, 2, len(STATISTICS))
+    column = {name: statistics[..., index] for index, name in enumerate(STATISTICS)}
+    assert (column["kills"] <= column["deaths"].flip(1)).all()
+    assert (column["hits"] <= column["shots"]).all()
+    # each block's 4 games of 2 s at 30 Hz, 2 ships a side: at most 4 x 2 x 61 ship-ticks
+    assert (column["ship_ticks"] > 0).all() and (column["ship_ticks"] <= 4 * 2 * 61).all()
+    assert (column["speed"] > 0).all()
+    arena.play([(0, 1), (2, 1)])  # a batch starts its statistics afresh
+    assert (arena.statistics()[..., STATISTICS.index("ship_ticks")] <= 4 * 2 * 61).all()
+
+
+def test_the_balanced_allocation_is_a_round_robin():
+    """Each block to the pair with the fewest games: a budget of every pair's games plays
+    each pair the same games, and the record keeps a play's extra results."""
+    truth = torch.tensor([0.0, 120.0, -200.0, 350.0], dtype=torch.float64)
+    names = ["anchor", "a", "b", "c"]
+    blocks = tournament.balanced_blocks(torch.zeros(4, 4), 6, 8, ~torch.eye(4, dtype=torch.bool))
+    assert sorted(blocks) == [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
+    config = tournament.TournamentConfig(
+        ArenaConfig(blocks=3, block_environments=8),
+        target_stderr=1.0,
+        budget=6 * 32,
+        allocation="balanced",
+    )
+    play = _bradley_terry(truth, 8, torch.Generator().manual_seed(4))
+    _, _, pair_games = tournament.fit_field(
+        lambda matchups: (play(matchups), dict(extra=len(matchups))),
+        names,
+        0,
+        tournament.allowed_pairs(names),
+        config,
+        lambda line: None,
+    )
+    upper = pair_games[torch.triu_indices(4, 4, 1).unbind()]
+    assert upper.tolist() == [32.0] * 6
+    with pytest.raises(ValueError, match="allocation"):
+        tournament.TournamentConfig(allocation="random")
+
+
+def test_a_reset_takes_each_ships_type_per_environment():
+    from bnb.game import api
+
+    rules = api.rules_of(GAME)
+    types = api.ship_types()
+    lineup = torch.tensor([[1, 1, 0, 0], [0, 1, 0, 1]], dtype=torch.int32)
+    state = api.reset(rules, types, api.uniforms(rules, 2), ship_type=lineup)
+    assert state.ships.ship_type.tolist() == lineup.tolist()
+    assert (
+        api.reset(rules, types, api.uniforms(rules, 2)).ships.ship_type.tolist()
+        == [[0, 1, 0, 1]] * 2
+    )
+    with pytest.raises(ValueError, match="ship_type"):
+        api.reset(rules, types, api.uniforms(rules, 2), ship_type=lineup[:1])

@@ -8,23 +8,34 @@ Two kinds of number, both applied through `MatchLoop.retune`:
   takes their values as tensors (`Realtime.retune`), so nothing recompiles. A few apply
   from the next episode (`api.tuning.EPISODE`: the map and the spawns).
 - **Handles**, per ship type (`api.Handles`: cruise speed, sustained turn, gun range, ...).
-  The card meeting a set of handles takes an exact solve that flies the game's code (tens of
-  seconds on the CPU), so a change goes in two steps:
+  A type's handles show at once: where its card and the rules its handles depend on
+  (`SET_BY`) are its ship file's, they are the file's (each type solved exact); otherwise
+  they are measured, one type at a time, when the panel shows the type. The card meeting a
+  set of handles takes an exact solve that flies the game's code (seconds to minutes on
+  the CPU), so a change goes in two steps:
   1. **at once**, `api.Estimate`: closed forms anchored on the last exact card, within a few
      percent for moderate changes, on the fast worker (tens of ms);
-  2. **once the handles settle** (SETTLE seconds), the exact solve on the slow worker,
-     started from the estimate. Each of its iterations swaps a better card in and reports
-     the handles that card actually flies (`flying`); the last one re-anchors the estimate.
-     The scripted agent's characteristics follow each exact card (a third worker).
+  2. **once the handles settle** (SETTLE seconds), the exact solve of the changed types on
+     the slow worker, started from the estimate. Each of its iterations swaps a better card
+     in and reports the handles that card actually flies (`flying`); the last one
+     re-anchors the estimate. The scripted agent's characteristics follow each exact card
+     (a worker of their own).
+  A combat handle (damage, fire rate, shield, ...) of an exact card whose flight is
+  measured skips both: the flight does not depend on it, so the exact card is that card
+  with its combat fields in closed form, applied at once.
 
-A rule that changes what the card flies (the flight constants, the bullet life) keeps the
-card and re-measures its handles on the slow worker; until that finishes, handles cannot be
-set (`measuring`). Any rule set while the handles are measured restarts the measurement, and
-one set while the exact solve runs cancels it and solves again under the new rules. Every
-change reaches the game on the main thread, in `update`, which the shell calls each frame:
-the workers only compute. The workers are processes, not threads:
-the solve and the estimate are thousands of small tensor operations, and on a thread each
-would wait for the interpreter lock while the match runs (several times slower).
+What each card flies (`flying`, behind the panel's off-target marker) is measured on the
+measuring worker: the type shown first, then the match's types. A rule that changes what
+the card flies (a flight constant) keeps the card and re-measures its handles; a type's
+handles cannot be set until it is measured (`ready`). A rule set while a type is measured
+restarts its measurement, and one set while the exact solve runs cancels it and solves
+again under the new rules. Every change reaches the game on the main thread, in `update`,
+which the shell calls each frame: the workers only compute. The workers are processes, not
+threads: the solve and the estimate are thousands of small tensor operations, and on a
+thread each would wait for the interpreter lock while the match runs (several times
+slower). Each worker flies the compiled flight tick, compiled on its first flight (from
+the on-disk cache after the first time on a machine, in seconds); the slow worker compiles
+a solve's flights when the tuner starts, ahead of the first solve.
 
 `Tuning` is what a match was tuned to (the rules' settings and the card, where they differ
 from the game's), as `MatchSetup.tuning`, replays and presets hold it; `Presets` saves and
@@ -54,6 +65,8 @@ NAME = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 TICK_HANDLES = ("shield_recharge_delay",)  # handles held to whole ticks
 # Rule settings that change what a card flies: the card is kept and its handles re-measured.
 MEASURED_BY = ("flight.",)
+# The rule settings a card's handles depend on: a ship file's handles hold under its set's.
+SET_BY = (*MEASURED_BY, "rules.bullet_life")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -165,18 +178,41 @@ def time_scaled_card(types: api.ShipTypes, rules: api.Rules, factor: float) -> a
     )
 
 
-HANDLES, RULES, WARM = 0, 1, 2  # the shared counters' slots; WARM: the flights compiled
-_STEP = None  # this worker process's compiled flight tick, once WARM is set
+HANDLES, RULES = 0, 1  # the shared counters' slots
+_STEP = None  # this worker process's compiled flight tick
+_ESTIMATE: tuple | None = None  # this worker process's estimate: (its anchor's key, Estimate)
 
 
-@dataclasses.dataclass
-class _Anchor:
-    """An exact card under the current rules, its handles, and the estimate anchored on
-    them."""
+class _Compiled(Exception):
+    """The warm-up's flight stops after its first tick: that call compiled it."""
 
-    types: api.ShipTypes
-    handles: api.Handles
-    estimate: api.Estimate
+
+def columns(value, kinds):
+    """The ship types `kinds` of a card or handles ((num_types,) fields), in that order."""
+    index = torch.tensor(list(kinds), dtype=torch.long)
+    return type(value)(**{name: field[index] for name, field in vars(value).items()})
+
+
+def with_columns(value, kinds, part):
+    """A card or handles with the ship types `kinds` taken from `part` (their columns, in
+    that order), in `value`'s dtype."""
+    index = torch.tensor(list(kinds), dtype=torch.long)
+    fields = {}
+    for name, field in vars(value).items():
+        field = field.clone()
+        field[index] = getattr(part, name).to(field.dtype)
+        fields[name] = field
+    return type(value)(**fields)
+
+
+def joined(parts: list):
+    """Cards or handles of one or more types each, side by side."""
+    names = vars(parts[0])
+    return type(parts[0])(**{name: torch.cat([getattr(p, name) for p in parts]) for name in names})
+
+
+def _double(types: api.ShipTypes) -> api.ShipTypes:
+    return api.ShipTypes(**{name: value.double() for name, value in vars(types).items()})
 
 
 # ---------------------------------------------------------------- the workers' jobs
@@ -186,74 +222,93 @@ class _Anchor:
 
 
 def _step(versions):
-    """The flight tick a worker flies with: compiled once the warm-up has filled the
-    compile cache (so compiling here is quick), the game's own until then."""
+    """The compiled flight tick this worker flies with (compiled on its first call for each
+    batch size, from the on-disk cache after the first time on a machine: seconds instead
+    of about a minute)."""
     global _STEP
-    if not versions[WARM]:
-        return None
     if _STEP is None:
         _STEP = compiled_flight_tick()
     return _STEP
 
 
-def _warm_job(versions, report, rules, types):
-    """Compile the flights for both batch sizes the tuner flies (a measurement, and a solve
-    iteration's card and perturbations) into the on-disk cache, then set WARM."""
-    step = compiled_flight_tick()
-    card = api.ShipTypes(**{n: v.double() for n, v in vars(types).items()})
-    handles = api.measure_handles(card, rules, step)
-    api.solve_handles(handles, rules, iterations=1, strict=False, start=types, tick_function=step)
-    versions[WARM] = 1
+def _warm_job(versions, report, rules, card, handles):
+    """Compile the solve's flights (one type's card and its perturbations) ahead of the
+    first solve. `card` and `handles`: one type's. The flight stops after its first tick,
+    the call that compiles."""
+    step = _step(versions)
+
+    def once(*arguments):
+        step(*arguments)
+        raise _Compiled
+
+    try:
+        api.solve_handles(
+            handles, rules, iterations=1, strict=False, start=_double(card), tick_function=once
+        )
+    except _Compiled:
+        pass
     return ("warmed",)
 
 
-def _estimate(versions, report, version, estimate, targets):
+def _estimate_job(versions, report, version, kinds, key, rules, anchor, anchor_handles, targets):
+    """The estimated card of the ship types `kinds` (`anchor`, `anchor_handles` and
+    `targets`: their columns); `key` names the anchor, whose `Estimate` is kept while the
+    key holds."""
+    global _ESTIMATE
     try:
-        return ("estimated", version, estimate.card(targets), targets)
+        if _ESTIMATE is None or _ESTIMATE[0] != key:
+            _ESTIMATE = (key, api.Estimate(rules, anchor, anchor_handles))
+        return ("estimated", version, kinds, _ESTIMATE[1].card(targets), targets)
     except api.Infeasible as error:
         return ("refused", version, str(error))
 
 
-def _measure_job(versions, report, version, rules, types):
-    card = api.ShipTypes(**{n: v.double() for n, v in vars(types).items()})
-    handles = api.measure_handles(card, rules, _step(versions))
-    anchor = _Anchor(types, handles, api.Estimate(rules, types, handles))
-    flying = {name: getattr(handles, name).tolist() for name in api.HANDLE_NAMES}
-    return ("measured", version, anchor, flying)
+def _measure_job(versions, report, rules_version, kind, rules, card):
+    """One ship type's handles (`card`: its column) under the rules."""
+    step = _step(versions)
+    if versions[RULES] != rules_version:
+        return ("measured", rules_version, kind, card, None)
+    return ("measured", rules_version, kind, card, api.measure_handles(_double(card), rules, step))
 
 
-def _solve_job(versions, report, version, rules_version, targets, rules, start):
+def _solve_job(versions, report, version, rules_version, kinds, targets, rules, start):
+    """The exact cards of the ship types `kinds` (`targets` and `start`: their columns), one
+    type at a time (the flights' batch size stays the compiled one)."""
+
     def stale() -> bool:
         return versions[HANDLES] != version or versions[RULES] != rules_version
 
-    last = []
+    step = _step(versions)
+    cards, flown_handles, converged, failures = [], [], [], []
+    for index, kind in enumerate(kinds):
+        target, last = columns(targets, [index]), []
 
-    def progress(state) -> None:
-        last[:] = [state]
-        report(("progress", version, state.types, state.flown))
+        def progress(state, kind=kind) -> None:
+            last[:] = [state]
+            report(("progress", version, kind, state.types, state.flown))
 
-    solution = api.solve_handles(
-        targets,
-        rules,
-        start=start,
-        progress=progress,
-        cancel=stale,
-        strict=False,
-        tick_function=_step(versions),
-    )
-    if stale() or not last:
-        return ("solved", version, rules_version, None, False, "")
-    # The anchor's handles: the targets, with the flown ones as the solve's last flight
-    # measured them (the others follow from the card in closed form).
-    flown = last[0].flown.double()
-    handles = targets.replace(**{name: flown[..., i] for i, name in enumerate(api.FLOWN_HANDLES)})
-    anchor = _Anchor(solution.types, handles, api.Estimate(rules, solution.types, handles))
-    converged = bool(solution.converged.all())
-    return ("solved", version, rules_version, anchor, converged, "; ".join(solution.failures))
-
-
-def _anchor_job(versions, report, version, rules, types, handles):
-    return ("anchored", version, _Anchor(types, handles, api.Estimate(rules, types, handles)))
+        solution = api.solve_handles(
+            target,
+            rules,
+            start=columns(start, [index]),
+            progress=progress,
+            cancel=stale,
+            strict=False,
+            tick_function=step,
+        )
+        if stale() or not last:
+            return ("solved", version, rules_version, kinds, None, None, [], [])
+        # The anchor's handles: the targets, with the flown ones as the solve's last flight
+        # measured them (the others follow from the card in closed form).
+        flown = last[0].flown.double()
+        flown_handles.append(
+            target.replace(**{name: flown[..., i] for i, name in enumerate(api.FLOWN_HANDLES)})
+        )
+        cards.append(solution.types)
+        converged.append(bool(solution.converged.all()))
+        failures += [failure.split(": ", 1)[-1] for failure in solution.failures]
+    types, handles = joined(cards), joined(flown_handles)
+    return ("solved", version, rules_version, kinds, types, handles, converged, failures)
 
 
 def _characterise_job(versions, report, card, rules, types):
@@ -325,13 +380,32 @@ class _Worker:
             self._process.terminate()
 
 
+def file_handles(files: list, count: int) -> tuple[api.Handles, list[bool]]:
+    """The handles of `count` ship types as their ship files hold them, and which types have
+    a file with every handle (a type past the files takes the first file's, as a stand-in)."""
+    rows = [files[k].handles if k < len(files) else {} for k in range(count)]
+    complete = [all(name in row for name in api.HANDLE_NAMES) for row in rows]
+    first = files[0].handles
+    handles = api.Handles(
+        **{
+            name: torch.tensor(
+                [float(row.get(name, first.get(name, math.nan))) for row in rows],
+                dtype=torch.float64,
+            )
+            for name in api.HANDLE_NAMES
+        }
+    )
+    return handles, complete
+
+
 class Tuner:
     """Live tuning of a `MatchLoop` (see the module). The panel reads `values` (each rule
-    setting's current value), `targets` (each handle's set value, (num_types,) per name;
-    None while measuring), `flying` (each handle's value the applied card actually flies,
-    or None until a measurement or a solve iteration has reported it), `exact` (the applied
-    card is the exact solve of the targets), `status` and `message` (the last refusal or
-    error), and calls `set_setting`, `set_handle` and `update`."""
+    setting's current value), `targets` (each handle's set value, (num_types,) per name; a
+    type's are meaningful once `ready(type)`), `flying` (each handle's value each type's
+    applied card actually flies, by name then type: None until a measurement or a solve
+    iteration has reported it), `exact` (every applied card is the exact solve of its
+    targets), `status` and `message` (the last refusal or error); it calls `show` (the type
+    it shows, measured first), `set_setting`, `set_handle`, `measure_all` and `update`."""
 
     def __init__(self, loop, base: api.Rules) -> None:
         self.loop = loop
@@ -341,26 +415,27 @@ class Tuner:
         self.values = {
             s.key: api.tuning.value(rules, s.key) for s in api.tuning.settings_for(rules)
         }
-        self.targets: api.Handles | None = None
-        self.flying: dict[str, list[float]] | None = None
-        self.exact = False
         self.status = ""
         self.message = ""
         self.shown: dict[str, list[float]] = {}
-        self._anchor: _Anchor | None = None
+        self.focus = 0  # the ship type the panel shows
         self._context = context = multiprocessing.get_context("spawn")
-        self._versions = context.Array("q", 3, lock=False)
+        self._versions = context.Array("q", 2, lock=False)
         self._fast = _Worker(context, "tuning-estimate", self._versions)
         self._slow = _Worker(context, "tuning-solve", self._versions)
+        self._measurer = _Worker(context, "tuning-measure", self._versions)
         self._traits: _Worker | None = None  # the scripted agent's, started when one plays
-        self._warm: _Worker | None = _Worker(context, "tuning-warm", self._versions)
-        self._warm.submit(_warm_job, loop.rules, loop.types)
         self._card = 0  # counts the cards the match has played, for the characteristics
         self._handles_changed: float | None = None
         self._solving: int | None = None  # the handles version a solve is running for
-        self._applied: api.Handles | None = None  # the targets the applied card was made for
+        self._measuring: int | None = None  # the ship type being measured
+        self._wanted: set[int] = set()  # types to measure besides the shown one and the match's
+        self._anchor_version = 0  # names the anchor (and the rules) an estimate is made with
+        self._reset(characterise=False)
+        self._slow.submit(  # dropped if a solve comes first
+            _warm_job, loop.rules, columns(loop.types, [0]), columns(self.targets, [0])
+        )
         self._show()
-        self._measure()
 
     # The version counters, shared with the workers: a job for an older one is stale.
 
@@ -389,15 +464,60 @@ class Tuner:
     def _show(self) -> None:
         """The values shown beside the handles for the card the match plays: its bleed rate
         (closed form, within 1% of the flown one)."""
-        card = api.ShipTypes(**{n: v.double() for n, v in vars(self.loop.types).items()})
+        card = _double(self.loop.types)
         self.shown = {"bleed_rate": api.bleed_rate(self.loop.rules, card)[0].tolist()}
+
+    @property
+    def _count(self) -> int:
+        return int(self.loop.types.max_energy.shape[-1])
+
+    def _reset(self, characterise: bool = True) -> None:
+        """Start over from the card the match plays under its current rules: the types whose
+        card and handle-setting rules are the ship files' take their handles from the files
+        (each solved exact, so nothing is measured to show them); the others are measured
+        when shown. Nothing flown is known yet."""
+        files = api.ships.load(self.ship_set)
+        count = self._count
+        self.targets, complete = file_handles(files, count)
+        rules = self.loop.rules
+        same_rules = all(
+            api.tuning.value(rules, s.key) == api.tuning.value(self.base, s.key)
+            for s in api.tuning.settings_for(rules)
+            if s.key.startswith(SET_BY)
+        )
+        default = api.ship_types(ship_set=self.ship_set)
+        same_card = [
+            k < default.max_energy.shape[-1]
+            and all(
+                torch.equal(value[k], getattr(default, name)[k].to(value.dtype))
+                for name, value in vars(self.loop.types).items()
+            )
+            for k in range(count)
+        ]
+        self._known = [same_rules and complete[k] and same_card[k] for k in range(count)]
+        self._applied = self.targets  # the targets each applied card was made for
+        self._anchor = (self.loop.types, self.targets)  # exact cards and their handles
+        self._anchor_version += 1
+        self._flown: list[dict[str, float] | None] = [None] * count  # each card's flight
+        self.flying = {name: [None] * count for name in api.HANDLE_NAMES}
+        self._estimated: set[int] = set()  # the types whose card is an estimate
+        self._wanted = set()
+        self._unmeasurable: set[int] = set()  # types whose measurement failed
+        self.exact = True
+        self._solving = None
+        self._handles_changed = None
+        self._handles_version += 1
+        if characterise:
+            self._characterise(self.loop.types)
 
     # ---------------------------------------------------------------- reading
 
-    @property
-    def measuring(self) -> bool:
-        """The handles are being measured under new rules (they cannot be set meanwhile)."""
-        return self.targets is None
+    def ready(self, ship_type: int | None = None) -> bool:
+        """Whether a type's handles (every type's, by default) are known under the current
+        rules, so they show and can be set."""
+        if ship_type is None:
+            return all(self._known)
+        return 0 <= ship_type < len(self._known) and self._known[ship_type]
 
     @property
     def tuning(self) -> Tuning:
@@ -407,6 +527,35 @@ class Tuner:
     def default(self, key: str) -> float:
         """A rule setting's value in the game's rules for this match."""
         return api.tuning.value(self.base, key)
+
+    def name(self, ship_type: int) -> str:
+        """A ship type's name (its file's)."""
+        names = api.type_names(self.ship_set)
+        return names[ship_type] if ship_type < len(names) else f"type {ship_type}"
+
+    # ---------------------------------------------------------------- what is measured
+
+    def show(self, ship_type: int) -> None:
+        """The type the panel shows: it is measured first."""
+        self.focus = ship_type
+
+    def measure_all(self) -> None:
+        """Measure every type whose handles are not known (before a save)."""
+        self._wanted |= {k for k in range(self._count) if not self._known[k]}
+
+    def _next_measurement(self) -> int | None:
+        """The type to measure next: the shown one, the ones asked for, then the match's;
+        each once its flight is unknown and its card is not being solved."""
+        team_types = sorted(set(self.loop.rules.team_types))
+        for kind in [self.focus, *sorted(self._wanted), *team_types]:
+            if (
+                0 <= kind < self._count
+                and self._flown[kind] is None
+                and kind not in self._estimated
+                and kind not in self._unmeasurable
+            ):
+                return kind
+        return None
 
     # ---------------------------------------------------------------- rule settings
 
@@ -422,28 +571,33 @@ class Tuner:
         self.message = ""
         self._retune(rules=rules)
         self._rules_version += 1  # what the workers were computing under the old rules is stale
-        if key.startswith(MEASURED_BY) or self.targets is None:
-            self._measure()  # a measurement under way restarts under the new rules
+        self._anchor_version += 1
+        if key.startswith(MEASURED_BY):
+            self._reset()  # each type re-measured when shown
         elif key == "rules.bullet_life":
             self._rerange()
-        if self.targets is not None and (self._solving is not None or not self.exact):
+        if self._solving is not None or not self.exact:
             self._handles_changed = time.monotonic()  # the cancelled solve runs again
 
     def _rerange(self) -> None:
         """A new bullet life: the card is kept, so its gun range (a closed form of the
         bullet's drag, speed and life) changes; the estimate is re-anchored on it."""
-        gun_range = api.gun_range(self.loop.rules, self.loop.types, self.targets.cruise_speed)
-        self.targets = self._applied = self.targets.replace(gun_range=gun_range)
-        if self.flying is not None:
-            self.flying = dict(self.flying, gun_range=gun_range.tolist())
+        rules = self.loop.rules
+        gun_range = api.gun_range(rules, self.loop.types, self.targets.cruise_speed)
+        self.targets = self.targets.replace(gun_range=gun_range)
+        self._applied = self._applied.replace(gun_range=gun_range)
+        anchor, handles = self._anchor
+        anchored = api.gun_range(rules, anchor, handles.cruise_speed)
+        self._anchor = (anchor, handles.replace(gun_range=anchored))
+        self.flying["gun_range"] = [
+            None if value is None else float(gun_range[kind])
+            for kind, value in enumerate(self.flying["gun_range"])
+        ]
         self._handles_version += 1
-        self._fast.submit(
-            _anchor_job, self._rules_version, self.loop.rules, self.loop.types, self.targets
-        )
 
     def load(self, tuning: Tuning) -> None:
         """Play on with a whole tuning (a preset, or the game's numbers): its rules and card
-        from the next tick, the handles re-measured."""
+        from the next tick, the handles re-measured where they are not the files'."""
         rules = api.tuning.tuned(self.base, tuning.rules, bounded=False)
         self.values = {
             s.key: api.tuning.value(rules, s.key) for s in api.tuning.settings_for(rules)
@@ -451,7 +605,7 @@ class Tuner:
         self._retune(rules=rules, types=tuning.types(self.ship_set))
         self.message = ""
         self._rules_version += 1
-        self._measure()
+        self._reset()
 
     def time_scale(self, factor: float) -> str:
         """Make the whole game `factor` times faster with the map's lengths fixed: every rule
@@ -483,23 +637,24 @@ class Tuner:
         self._retune(rules=rules, types=types)
         self.message = ""
         self._rules_version += 1
-        self._measure()
+        self._reset()
         return f"x{factor:g} faster" + ("; snapped: " + ", ".join(snapped) if snapped else "")
 
     def close(self) -> None:
         """Stop the workers (a match that ends): what they are computing is dropped."""
         self._rules_version += 1
         self._handles_version += 1
-        for worker in (self._fast, self._slow, self._traits, self._warm):
+        for worker in (self._fast, self._slow, self._measurer, self._traits):
             if worker is not None:
                 worker.stop()
 
     # ---------------------------------------------------------------- handles
 
     def set_handle(self, name: str, ship_type: int, value: float) -> None:
-        """Set one ship type's handle; the estimate applies within a frame or two, the exact
-        card once the handles settle."""
-        if self.targets is None:
+        """Set one ship type's handle: a combat handle of an exact card whose flight is
+        measured applies exactly at once (the flight does not change); otherwise the
+        estimate applies within a frame or two, the exact card once the handles settle."""
+        if not self.ready(ship_type):
             return
         value = snap_handle(name, value, self.base.tick_length)
         current = getattr(self.targets, name)
@@ -509,20 +664,111 @@ class Tuner:
         changed[ship_type] = value
         self.targets = self.targets.replace(**{name: changed})
         self.message = ""
-        self.exact = False
         self._handles_version += 1
-        self._handles_changed = time.monotonic()
-        self._fast.submit(_estimate, self._handles_version, self._anchor.estimate, self.targets)
+        if self._combat_only(ship_type):
+            self._apply_combat(ship_type)
+            changed = sorted(self._estimated)  # the others' estimates, made stale, run again
+        else:
+            changed = sorted(self._estimated | {ship_type})
+        if changed:
+            self.exact = False
+            self._handles_changed = time.monotonic()
+            self._estimate(changed)
+
+    def _estimate(self, kinds: list[int]) -> None:
+        anchor, handles = self._anchor
+        self._fast.submit(
+            _estimate_job,
+            self._handles_version,
+            kinds,
+            (self._anchor_version, tuple(kinds)),
+            self.loop.rules,
+            columns(anchor, kinds),
+            columns(handles, kinds),
+            columns(self.targets, kinds),
+        )
+
+    def _combat_only(self, kind: int) -> bool:
+        """Whether a type's new targets differ from its exact card's only in combat handles
+        and that card's measured flight meets them (within the solver's acceptance): its
+        exact card is then that card with the combat fields in closed form."""
+        flown = self._flown[kind]
+        if flown is None or kind in self._estimated:
+            return False
+        if any(
+            float(getattr(self.targets, name)[kind]) != float(getattr(self._applied, name)[kind])
+            for name in api.FLIGHT_ONLY_HANDLES
+        ):
+            return False
+        target = columns(self.targets, [kind])
+        wanted = torch.tensor([float(getattr(target, n)[0]) for n in api.FLOWN_HANDLES])
+        scale = torch.maximum(
+            wanted.abs(), api.solve_error_floor(self.loop.rules, target)[0].float()
+        )
+        got = torch.tensor([flown[n] for n in api.FLOWN_HANDLES])
+        return bool(((got - wanted).abs() / scale < api.SOLVE_ACCEPTANCE).all())
+
+    def _apply_combat(self, kind: int) -> None:
+        """Apply a type's exact card for a combat-only change (`_combat_only`), or set the
+        targets back when no card can meet them."""
+        target = columns(self.targets, [kind])
+        try:
+            combat = api.combat_card(self.loop.rules, target, target.cruise_speed)
+        except api.Infeasible as error:
+            self.message = str(error)
+            self.targets = self._applied
+            return
+        card = columns(self.loop.types, [kind])
+        card = dataclasses.replace(
+            card, **{k: v.to(card.max_energy.dtype) for k, v in combat.items()}
+        )
+        types = with_columns(self.loop.types, [kind], card)
+        self._retune(types=types)
+        self._applied = with_columns(self._applied, [kind], target)
+        anchor, handles = self._anchor
+        self._anchor = (
+            with_columns(anchor, [kind], card),
+            with_columns(
+                handles,
+                [kind],
+                target.replace(
+                    **{
+                        n: torch.tensor([self._flown[kind][n]], dtype=torch.float64)
+                        for n in api.FLOWN_HANDLES
+                    }
+                ),
+            ),
+        )
+        self._anchor_version += 1
+        self._set_flying(kind, target, self._flown[kind])
+        self._characterise(types)
+
+    def _set_flying(self, kind: int, handles: api.Handles | None, flown: dict | None) -> None:
+        """A type's flown handles: `flown`'s (the measured ones), the others (closed forms)
+        as `handles` (one type's) hold them; None for unknown."""
+        for name in api.HANDLE_NAMES:
+            if handles is None:
+                value = None
+            elif flown is not None and name in flown:
+                value = flown[name]
+            else:
+                value = float(getattr(handles, name)[0])
+            self.flying[name][kind] = value
 
     # ---------------------------------------------------------------- the frame
 
     def update(self) -> None:
         """Apply what the workers finished and start what is due (each frame, on the main
         thread)."""
+        for result in self._measurer.results():
+            if result[0] != "error":
+                self._apply(result)
+            elif self._measuring is not None:  # not again, until the rules or the card change
+                self.message = f"measuring {self.name(self._measuring)}: {result[1]}"
+                self._unmeasurable.add(self._measuring)
         found = self._fast.results() + self._slow.results()
-        for worker in (self._traits, self._warm):
-            if worker is not None:
-                found += worker.results()
+        if self._traits is not None:
+            found += self._traits.results()
         for result in found:
             self._apply(result)
         now = time.monotonic()
@@ -530,22 +776,38 @@ class Tuner:
             self._handles_changed is not None
             and now - self._handles_changed > SETTLE
             and self._fast.idle
-            and self.targets is not None
+            and self._estimated
             and self._solving != self._handles_version
         ):
             self._handles_changed = None
             self._solve()
+        if self._measurer.idle:
+            self._measuring = self._next_measurement()
+            if self._measuring is not None:
+                kind = self._measuring
+                card = columns(self.loop.types, [kind])
+                self._measurer.submit(
+                    _measure_job, self._rules_version, kind, self.loop.rules, card
+                )
         self.status = self._status()
 
     def _status(self) -> str:
         parts = []
-        if self.targets is None:
-            parts.append("measuring the handles")
-        elif self._solving is not None:
+        if not self.ready(self.focus):
+            parts.append(f"measuring {self.name(self.focus)}'s handles")
+        if self._solving is not None:
             parts.append("solving the card exactly")
         elif not self.exact:
             parts.append("estimated card")
-        return "; ".join(parts) or "exact"
+        else:
+            parts.append("exact")
+        if (
+            self._measuring is not None
+            and self.ready(self.focus)
+            or (self._measuring is not None and self._measuring != self.focus)
+        ):
+            parts.append(f"measuring {self.name(self._measuring)}'s flight")
+        return "; ".join(parts)
 
     def _apply(self, result) -> None:
         kind = result[0]
@@ -554,22 +816,34 @@ class Tuner:
             self._solving = None
             return
         if kind == "measured":
-            _, version, anchor, flying = result
-            if version != self._rules_version:
-                return
-            self._anchor = anchor
-            self.targets = self._applied = anchor.handles
-            self.flying, self.exact = flying, True
-            self._characterise(anchor.types)
+            _, rules_version, ship_type, card, handles = result
+            if (
+                handles is None
+                or rules_version != self._rules_version
+                or ship_type >= self._count
+                or ship_type in self._estimated
+                or not all(
+                    torch.equal(value[ship_type : ship_type + 1], getattr(card, name))
+                    for name, value in vars(self.loop.types).items()
+                )
+            ):
+                return  # measured under other rules, or of a card since changed
+            flown = {name: float(getattr(handles, name)[0]) for name in api.FLOWN_HANDLES}
+            if not self._known[ship_type]:  # its handles are what it flies
+                self.targets = with_columns(self.targets, [ship_type], handles)
+                self._applied = with_columns(self._applied, [ship_type], handles)
+                self._known[ship_type] = True
+            anchor, anchor_handles = self._anchor
+            self._anchor = (
+                with_columns(anchor, [ship_type], card),
+                with_columns(anchor_handles, [ship_type], handles),
+            )
+            self._anchor_version += 1
+            self._flown[ship_type] = flown
+            self._set_flying(ship_type, handles, None)
+            self._wanted.discard(ship_type)
             return
         if kind == "warmed":
-            self._warm.stop()
-            self._warm = None
-            return
-        if kind == "anchored":
-            _, version, anchor = result
-            if version == self._rules_version:
-                self._anchor = anchor
             return
         if kind == "characterised":
             _, card, traits = result
@@ -579,11 +853,14 @@ class Tuner:
                         side.retune(traits)
             return
         if kind == "estimated":
-            _, version, types, targets = result
+            _, version, kinds, types, targets = result
             if version == self._handles_version:
-                self._retune(types=types)
-                self._applied = targets
-                self.flying = None
+                self._retune(types=with_columns(self.loop.types, kinds, types))
+                self._applied = with_columns(self._applied, kinds, targets)
+                self._estimated |= set(kinds)
+                for ship_type in kinds:
+                    self._flown[ship_type] = None
+                    self._set_flying(ship_type, None, None)
             return
         if kind == "refused":
             _, version, reason = result
@@ -591,32 +868,42 @@ class Tuner:
                 self.message = reason
                 self.targets = self._applied  # back to what the applied card was made for
                 self._handles_version += 1
+                self.exact = not self._estimated
             return
         if kind == "progress":
-            _, version, types, flown = result
+            _, version, ship_type, types, flown = result
             if version == self._handles_version:
-                self._retune(types=types)
-                self.flying = self._flying(flown)
+                self._retune(types=with_columns(self.loop.types, [ship_type], types))
+                values = {n: float(flown[..., i][0]) for i, n in enumerate(api.FLOWN_HANDLES)}
+                self._set_flying(ship_type, columns(self.targets, [ship_type]), values)
             return
         if kind == "solved":
-            _, version, rules_version, anchor, converged, reason = result
+            _, version, rules_version, kinds, types, handles, converged, failures = result
             if self._solving == version:
                 self._solving = None
-            if version != self._handles_version or rules_version != self._rules_version:
+            if (
+                types is None
+                or version != self._handles_version
+                or rules_version != self._rules_version
+            ):
                 return
-            self._retune(types=anchor.types)
-            self._anchor = anchor
-            self.exact = converged
-            self.message = "" if converged else reason
-            self._characterise(anchor.types)
-
-    def _flying(self, flown: torch.Tensor) -> dict[str, list[float]]:
-        """Every handle the applied card flies: the flown ones measured by the solve, the
-        others (closed forms) as set."""
-        values = {name: getattr(self.targets, name).tolist() for name in api.HANDLE_NAMES}
-        for index, name in enumerate(api.FLOWN_HANDLES):
-            values[name] = flown[..., index].tolist()
-        return values
+            self._retune(types=with_columns(self.loop.types, kinds, types))
+            anchor, anchor_handles = self._anchor
+            self._anchor = (
+                with_columns(anchor, kinds, types),
+                with_columns(anchor_handles, kinds, handles),
+            )
+            self._anchor_version += 1
+            for index, ship_type in enumerate(kinds):
+                one = columns(handles, [index])
+                flown = {n: float(getattr(one, n)[0]) for n in api.FLOWN_HANDLES}
+                self._flown[ship_type] = flown
+                self._set_flying(ship_type, columns(self.targets, [ship_type]), flown)
+                if converged[index]:
+                    self._estimated.discard(ship_type)
+            self.exact = not self._estimated
+            self.message = "; ".join(failures)
+            self._characterise(self.loop.types)
 
     def _characterise(self, types: api.ShipTypes) -> None:
         """Re-measure the scripted agent's characteristics for this card, when a side uses
@@ -629,25 +916,19 @@ class Tuner:
 
     # ---------------------------------------------------------------- the slow worker
 
-    def _measure(self) -> None:
-        """Measure the applied card's handles under the current rules (slow worker), then
-        anchor the estimate on them."""
-        self.targets = None
-        self.flying = None
-        self._solving = None
-        self._handles_version += 1
-        self._slow.submit(_measure_job, self._rules_version, self.loop.rules, self.loop.types)
-
     def _solve(self) -> None:
-        """The exact card for the current targets, from the applied card (slow worker)."""
+        """The exact cards of the types whose card is an estimate, from the applied cards
+        (slow worker)."""
+        kinds = sorted(self._estimated)
         self._solving = self._handles_version
         self._slow.submit(
             _solve_job,
             self._handles_version,
             self._rules_version,
-            self.targets,
+            kinds,
+            columns(self.targets, kinds),
             self.loop.rules,
-            self.loop.types,
+            columns(self.loop.types, kinds),
         )
 
 

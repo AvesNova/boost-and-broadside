@@ -48,6 +48,7 @@ import torch
 from torch.utils import _pytree
 
 from bnb.contracts import Action, GameConfig, Obs, Outputs, Pool
+from bnb.contracts.obs import SHIP
 from bnb.contracts.tree import contract
 from bnb.controllers.scripted import Scripted, uniform_actions
 from bnb.controllers.scripted_memory import ScriptedCarry
@@ -69,13 +70,25 @@ class Player:
     """One player: its name, and either a policy directory, a ladder entry's rung
     (`bnb.runtime.opponents.Rung`; +inf random), or a teacher (the scripted agent at its
     temperature with a floor); ablations: a network's inference-time ablations (names of
-    `ABLATIONS`, sorted)."""
+    `ABLATIONS`, sorted); ship_type: every ship of its team flies this type (an index into
+    the game's card; None: the game's lineup), so a scripted player with a ship type is a
+    ship type as the scripted agent flies it (`ship_type_players`)."""
 
     name: str
     policy: pathlib.Path | None = None
     rung: Rung | None = None
     teacher: TeacherConfig | None = None
     ablations: tuple[str, ...] = ()
+    ship_type: int | None = None
+
+
+def ship_type_players(ship_set: str, rung: Rung = Rung(1.0)) -> list[Player]:
+    """One player per type of a ship set, named by the type's name: the scripted agent at
+    `rung` (the scripted agent itself by default) flying that type with every ship."""
+    return [
+        Player(name, rung=rung, ship_type=index)
+        for index, name in enumerate(api.type_names(ship_set))
+    ]
 
 
 def teacher_of(name: str) -> TeacherConfig | None:
@@ -166,12 +179,21 @@ class MatchCarry:
     """Per row (R leading): model, the networks' carry by group (the group's controller's; a
     memoryless network has none); scripted, the scripted agent's; finished (R,) bool, the
     row's first game has ended; started (1,) bool, a decision has been made (the first
-    observation's reset is the batch's start, not a game's end)."""
+    observation's reset is the batch's start, not a game's end); statistics (R,
+    len(STATISTICS)) float, the row's team's first game so far (`MatchSeat.count`)."""
 
     model: object
     scripted: ScriptedCarry
     finished: torch.Tensor
     started: torch.Tensor
+    statistics: torch.Tensor
+
+
+# Each row's team's first game, summed (`MatchSeat.count_events`): kills (enemy ships killed by its
+# hits), deaths (its ships', any cause), shots fired, hits (shots of its that damaged an
+# enemy), its living ship-ticks and their proper speeds (m/s, summed: over the ship-ticks
+# it is the mean speed), as each tick's observation shows them.
+STATISTICS = ("kills", "deaths", "shots", "hits", "ship_ticks", "speed")
 
 
 class _Decision(torch.nn.Module):
@@ -288,6 +310,7 @@ class MatchSeat:
             scripted=self.agent.init_carry(views, device),
             finished=torch.zeros(views, dtype=torch.bool, device=device),
             started=torch.zeros(1, dtype=torch.bool, device=device),
+            statistics=torch.zeros((views, len(STATISTICS)), device=device),
         )
 
     def _network(self, group: int, network: torch.Tensor, carry, obs: Obs, reset: torch.Tensor):
@@ -349,11 +372,21 @@ class MatchSeat:
                 if updated is not None:
                     model_carry[str(group)] = updated
             action = torch.where(self.scripted[:, None, None], action, network)
+        finished = carry.finished | (reset & carry.started)
+        own = obs.ships[:, : self.ships_per_team]
+        living = (own[..., SHIP["alive"]] > 0.5).float()
+        playing = (~finished).float()[:, None]
+        observed = torch.stack(
+            [living.sum(-1), (living * own[..., SHIP["proper_speed"]]).sum(-1)], -1
+        )
+        statistics = carry.statistics.clone()
+        statistics[:, STATISTICS.index("ship_ticks") :] += playing * observed
         carry = MatchCarry(
             model=model_carry,
             scripted=scripted_carry,
-            finished=carry.finished | (reset & carry.started),
+            finished=finished,
             started=torch.ones_like(carry.started),
+            statistics=statistics,
         )
         return Action.unpack(action), carry, Outputs()
 
@@ -365,6 +398,32 @@ class MatchSeat:
         counted = (done & ~carry.finished & self.first_seat).to(torch.int64)
         counts = torch.zeros(self.columns * len(OUTCOMES), dtype=torch.int64, device=done.device)
         return counts.index_add(0, self.block_of_row * len(OUTCOMES) + outcome, counted)
+
+    def count_events(
+        self,
+        carry: MatchCarry,
+        events,
+        environments: torch.Tensor,
+        team: torch.Tensor,
+    ) -> None:
+        """Add a tick's events to each row's first-game statistics (`STATISTICS`), in place:
+        `events` the game's (sim order, every environment), `environments` and `team` (R,)
+        each row's environment and team. The tick a game ends is its last counted (the
+        row's `finished` turns at the next decision)."""
+        S = self.ships_per_team
+        ship_team = torch.arange(2 * S, device=team.device) // S  # (N,)
+        own = ship_team[None, :] == team[:, None]  # (R, N)
+        died = events.died[environments]
+        killer = events.killer[environments]
+        killer_team = torch.where(killer >= 0, killer // S, -1)
+        kills = (died & ~own & (killer_team == team[:, None])).sum(-1)
+        deaths = (died & own).sum(-1)
+        shots = (events.fired[environments] & own).sum(-1)
+        damaged = events.damage[environments] > 0.0  # (R, shooter, target)
+        hits = (damaged & own[:, :, None] & ~own[:, None, :]).sum((-1, -2))
+        tick = torch.stack([kills, deaths, shots, hits], -1).float()
+        playing = (~carry.finished).float()[:, None]
+        carry.statistics[:, : STATISTICS.index("ship_ticks")] += playing * tick
 
     # ---- the host's side, between batches
 
@@ -555,7 +614,16 @@ class Arena:
             if one.ablations and not isinstance(self.groups[group], Yemong):
                 raise ValueError(f"{one.name}: only a Yemong network plays ablated")
         self.types = card_of(players, game, device)
-        agent = characteristics(self.types, api.rules_of(game))
+        rules = api.rules_of(game)
+        agent = characteristics(self.types, rules)
+        # each player's team lineup: its ship type on every ship, else the game's
+        self.team_types = [
+            rules.team_types if one.ship_type is None else (one.ship_type,) * game.ships_per_team
+            for one in players
+        ]
+        ship_type = None
+        if any(one.ship_type is not None for one in players):
+            ship_type = torch.tensor(rules.slot_types, dtype=torch.int32).repeat(config.games, 1)
         controllers = [model_controller(template, game) for template in self.groups]
         self.seat = MatchSeat(
             controllers,
@@ -583,6 +651,7 @@ class Arena:
             compiled=config.compiled,
             graph_ticks=config.graph_ticks,
             staggered=False,
+            ship_type=ship_type,
         )
         # environment i seats its block's first player on team i mod 2
         self.seats = torch.arange(config.games, device=device) % 2
@@ -598,11 +667,28 @@ class Arena:
         else:
             self.seat.load_scripted(slot, play)
 
+    def _ship_types(self, matchups: list[tuple[int, int]]) -> torch.Tensor:
+        """(games, N) int32 each ship's type for a batch: each environment's teams fly their
+        players' lineups (`Player.ship_type`), the block's first player on team i mod 2."""
+        rows = []
+        for first, second in matchups:
+            for environment in range(self.config.block_environments):
+                teams = (first, second) if environment % 2 == 0 else (second, first)
+                rows.append(self.team_types[teams[0]] + self.team_types[teams[1]])
+        return torch.tensor(rows, dtype=torch.int32)
+
+    def statistics(self) -> torch.Tensor:
+        """(blocks, 2, len(STATISTICS)) float64 the last batch's first games' statistics per
+        block, its first player's then its second's (`MatchSeat.count_events`), summed over
+        the block's games (a host read)."""
+        rows = self.rollout.carry["controllers"][SEAT].statistics.double().cpu()
+        return rows.reshape(self.config.blocks, 2, self.config.block_environments, -1).sum(2)
+
     def play(self, matchups: list[tuple[int, int]]) -> torch.Tensor:
         """One batch: block b plays `matchups[b]` (its first player, its second; indices into
         the players), every block's games to their end. (blocks, 3) int64: each block's first
-        player's wins, ties and losses. Raises RuntimeError if a game runs past the game
-        clock (plus a margin) without ending."""
+        player's wins, ties and losses (`statistics` then has the games' statistics). Raises
+        RuntimeError if a game runs past the game clock (plus a margin) without ending."""
         if len(matchups) != self.config.blocks:
             raise ValueError(f"{len(matchups)} matchups for {self.config.blocks} blocks")
         for block, (first, second) in enumerate(matchups):
@@ -619,6 +705,8 @@ class Arena:
         for block, (first, second) in enumerate(matchups):
             self._load(2 * block, first)
             self._load(2 * block + 1, second)
+        if self.rollout.ship_type is not None:
+            self.rollout.ship_type.copy_(self._ship_types(matchups))
         self.rollout.restart()
         self.rollout.carry["seat"].copy_(self.seats)
         counts = torch.zeros(self.config.blocks * len(OUTCOMES), dtype=torch.int64)

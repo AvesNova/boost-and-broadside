@@ -7,7 +7,15 @@ it can be rerun.
 
 The agent's defaults are one parameter set per game mode (`MODE_DEFAULTS`), each from a
 search of its own preset (`--preset`: the candidates play only that preset); without
-`--preset` one set is searched over every preset.
+`--preset` one set is searched over every standard preset. A preset plays its ship set's
+card with the game's lineup, or every ship of the type `--ship-type` (an index into the
+set's card); the first generation is the default `ScriptedParameters()` and perturbations
+of it, or with `--from-defaults` the preset's own set in `MODE_DEFAULTS` and perturbations
+of that (the real-scale variant's light retune:
+
+    uv run --no-sync python -m bench.scripted_search --preset real_scale_deathmatch \
+        --ship-type 0 --from-defaults --log real_scale_deathmatch.jsonl
+).
 
 Each generation plays a population of `--population` candidates side by side, one
 parameter-table row per view, so one compiled rollout per preset: every candidate plays
@@ -58,10 +66,12 @@ import torch  # noqa: E402
 from bench.lock import bench_lock  # noqa: E402
 from bnb.contracts import Action, Obs, Outputs, Pool  # noqa: E402
 from bnb.controllers.scripted import Chaser, Scripted  # noqa: E402
+from bnb.controllers.scripted_defaults import MODE_DEFAULTS  # noqa: E402
 from bnb.controllers.scripted_parameters import (  # noqa: E402
     MODES,
     NAMES,
     SCALE_FLOORS,
+    STANDARD_MODES,
     SWITCH_SCALE_FLOORS,
     Logistic,
     Ramp,
@@ -78,7 +88,7 @@ from bnb.game.modes.rules import PRESETS  # noqa: E402
 from bnb.league.ratings import fit_ratings  # noqa: E402
 from bnb.runtime.evaluate import first_results  # noqa: E402
 
-PRESET_NAMES = MODES  # the training presets, one search each (`--preset`)
+PRESET_NAMES = MODES  # the presets with a parameter set each, one search each (`--preset`)
 TEMPERATURES = (1.0, 1.5, 2.0, 3.0)  # each candidate seat's, drawn per game
 SCALE_CEILING = 10.0  # a logistic's or switch's largest scale, in multiples of its floor
 SWITCH_RATES = (1.0, 30.0)  # a switch's fastest rate, per second: its bounds
@@ -92,7 +102,7 @@ SEED_LIMIT = MAXIMUM_GENERATIONS * (MAXIMUM_SEED + 1)  # every search game seed 
 Reference = Callable[[Characteristics, int], object]
 REFERENCES: dict[str, Reference] = {
     "scripted": lambda card, ships: Scripted(card, ships),
-    "chaser": lambda card, ships: Chaser(ships),
+    "chaser": lambda card, ships: Chaser(card, ships),
 }
 
 
@@ -221,11 +231,13 @@ def play(
     games: int,
     reference_share: float,
     device: torch.device,
-    presets: tuple[str, ...] = PRESET_NAMES,
+    presets: tuple[str, ...] = STANDARD_MODES,
+    ship_type: int | None = None,
 ) -> tuple[torch.Tensor, dict]:
     """One generation's games. Returns the win matrix (K, K), K = the candidates then the
     references, a draw half a win each, and per reference each candidate's score against it
-    per preset."""
+    per preset. ship_type: every ship flies this type of the preset's card (None: the
+    game's lineup)."""
     count, references = len(candidates), list(REFERENCES)
     per_reference = round(reference_share * games / len(references))
     against_population = games - per_reference * len(references)
@@ -234,7 +246,8 @@ def play(
     rows = table(candidates, device)
     for preset_index, preset in enumerate(presets):
         game = PRESETS[preset]
-        card = characteristics(api.ship_types(device), api.rules_of(game))
+        types = api.ship_types(device, ship_set=game.ship_set)
+        card = characteristics(types, api.rules_of(game))
         # each candidate's games: against the population, then each reference in turn
         player = torch.arange(count).repeat_interleave(games)
         opponent = torch.empty_like(player)
@@ -263,14 +276,18 @@ def play(
             card, game.ships_per_team, unpack(rows[player.to(device)]), temperature[0]
         )
         torch._dynamo.reset()  # a fresh rollout per preset; the compile cache is not reused
+        lineup = None
+        if ship_type is not None:
+            lineup = torch.full((views, game.num_ships), ship_type, dtype=torch.int32)
         results = first_results(
             game,
-            api.ship_types(device),
+            types,
             (Pool("search", 1.0, ("player", "opponent")),),
             {"player": candidate, "opponent": rival},
             "player",
             views,
             device,
+            ship_type=lineup,
         ).cpu()
         points = (results > 0).double() + 0.5 * (results == 0).double()
         wins.index_put_((player, opponent), points, accumulate=True)
@@ -333,10 +350,21 @@ def main() -> None:
     parser.add_argument(
         "--preset",
         choices=PRESET_NAMES,
-        help="search this preset's parameter set alone (default: one set over every preset)",
+        help="search this preset's parameter set alone (default: one set over every standard "
+        "preset)",
+    )
+    parser.add_argument(
+        "--ship-type", type=int, help="every ship flies this type (default: the game's lineup)"
+    )
+    parser.add_argument(
+        "--from-defaults",
+        action="store_true",
+        help="start from the preset's set in MODE_DEFAULTS (needs --preset)",
     )
     args = parser.parse_args()
-    presets = (args.preset,) if args.preset else PRESET_NAMES
+    presets = (args.preset,) if args.preset else STANDARD_MODES
+    if args.from_defaults and not args.preset:
+        raise SystemExit("--from-defaults needs --preset")
     if not 0 <= args.seed <= MAXIMUM_SEED:
         raise SystemExit(f"seed in [0, {MAXIMUM_SEED}]")
     device = torch.device("cuda")
@@ -355,7 +383,9 @@ def main() -> None:
         )
     else:
         start, tops, generator = 0, [], generator_at(0)
-        first = clamp(ScriptedParameters())
+        first = clamp(
+            MODE_DEFAULTS.sets[args.preset] if args.from_defaults else ScriptedParameters()
+        )
         population = [first] + [
             perturb(first, args.sigma, generator) for _ in range(args.population - 1)
         ]
@@ -363,7 +393,9 @@ def main() -> None:
     with bench_lock(), open(log_path, "a") as log:
         for generation in range(start, min(start + args.generations, MAXIMUM_GENERATIONS)):
             torch.manual_seed(game_seed(args.seed, generation))
-            wins, scores = play(population, args.games, args.reference_share, device, presets)
+            wins, scores = play(
+                population, args.games, args.reference_share, device, presets, args.ship_type
+            )
             anchor = len(population)  # the first reference
             ratings, errors = fit_ratings(wins, anchor, PRIOR_GAMES)
             references = {name: float(ratings[anchor + k]) for k, name in enumerate(REFERENCES)}

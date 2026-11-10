@@ -276,10 +276,13 @@ def table(parameters: list[ScriptedParameters], device=None) -> torch.Tensor:
     return torch.tensor([pack(p) for p in parameters], dtype=torch.float32, device=device)
 
 
-# The game modes the agent is tuned for, one parameter set each: the standard training
-# presets (`bnb.game.modes.rules.PRESETS`), in `mode_index` order. The real-scale presets
-# play the deathmatch and frontline sets (`mode_index` reads the map in gun ranges).
-MODES = ("deathmatch", "deathmatch_wide", "frontline")
+# The game modes the agent is tuned for, one parameter set each, in `mode_index` order: the
+# standard training presets and the real-scale ones (`bnb.game.modes.rules.PRESETS`), each
+# a preset's name. `mode_index` tells them apart by the map in gun ranges, the mode's flag
+# and the card's gravity.
+STANDARD_MODES = ("deathmatch", "deathmatch_wide", "frontline")
+REAL_SCALE_MODES = ("real_scale_deathmatch", "real_scale_frontline")
+MODES = STANDARD_MODES + REAL_SCALE_MODES
 
 
 class ModeParameters:

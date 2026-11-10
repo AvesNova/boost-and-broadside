@@ -26,7 +26,10 @@ sizes (live tuning).
 For live tuning (the play shell's tuning panel): `tuning` (the rules a running match can
 change, by key, and the rules with changed values), the ship card's handles (`Handles`,
 `HANDLE_NAMES`, `FLOWN_HANDLES`, `HANDLE_UNITS`), `measure_handles` (a card's handles),
-`solve_handles` (the card meeting handles, exact, with `SolveProgress` reports), `Estimate`
+`solve_handles` (the card meeting handles, exact, with `SolveProgress` reports; its
+acceptance `SOLVE_ACCEPTANCE` against `solve_error_floor`), `FLIGHT_ONLY_HANDLES` (the
+handles that change the flight, not the guns), `combat_card` (a card's combat fields in
+closed form), `Estimate`
 (an instant estimate of that card, anchored on an exact one), `bleed_rate` (a card's bleed
 rate in closed form, shown beside the handles) and `Infeasible`; `ships` (the ship files:
 one per type, tracked in git, in ship sets: `ships.sets()`; `STANDARD_SHIP_SET` is the
@@ -58,9 +61,12 @@ from .handling import measure as measure_handles
 from .handling import solve as solve_handles
 from .handling.estimate import Estimate
 from .handling.estimate import bleed_rate_now as bleed_rate
+from .handling.handles import FLIGHT as FLIGHT_ONLY_HANDLES
 from .handling.handles import UNITS as HANDLE_UNITS
+from .handling.solver import ACCEPTANCE as SOLVE_ACCEPTANCE
 from .handling.solver import Progress as SolveProgress
-from .handling.weapons import combat_handles
+from .handling.solver import error_floor as solve_error_floor
+from .handling.weapons import combat_card, combat_handles
 from .layout import environment, per_mode
 from .modes import frontline, phase
 from .modes.rules import PRESETS
@@ -80,11 +86,13 @@ from .state import Fields, State, Sweep, replace, ship_team, sweep_like
 __all__ = [
     "DISPLAYED",
     "Estimate",
+    "FLIGHT_ONLY_HANDLES",
     "FLOWN_HANDLES",
     "HANDLE_NAMES",
     "HANDLE_UNITS",
     "Handles",
     "Infeasible",
+    "SOLVE_ACCEPTANCE",
     "SolveProgress",
     "STANDARD_SHIP_SET",
     "LN_SQRT2",
@@ -99,6 +107,7 @@ __all__ = [
     "bleed_rate",
     "bullet_paths",
     "bullet_slots_for",
+    "combat_card",
     "gun_range",
     "core_radius",
     "default_card",
@@ -122,6 +131,7 @@ __all__ = [
     "ship_types",
     "ships",
     "similarity",
+    "solve_error_floor",
     "solve_handles",
     "spread",
     "start_clocks",

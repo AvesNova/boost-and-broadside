@@ -33,7 +33,8 @@ class Characteristics:
         gun_range: how far a bullet fired along the flight path at cruise travels in its
         life (m); bullet_speed: that bullet's launch speed, cruise plus muzzle speed (m/s);
         bullet_drag (1/m); the card's max_energy, bullet_energy_cost (J), max_shield,
-        hit_radius (m) and max_acceleration (m/s^2); vision_range (m).
+        hit_radius (m) and max_acceleration (m/s^2); vision_range (m); gravity (m/s^2), the
+        rules' (the same for every type: the scripted agent tells a real-scale card by it).
     """
 
     cruise_speed: torch.Tensor
@@ -50,6 +51,7 @@ class Characteristics:
     hit_radius: torch.Tensor
     max_acceleration: torch.Tensor
     vision_range: torch.Tensor
+    gravity: torch.Tensor
 
 
 def time_of_flight(
@@ -97,6 +99,7 @@ def measure_characteristics(types: ShipTypes, rules: Rules) -> Characteristics:
         hit_radius=types.hit_radius,
         max_acceleration=types.max_acceleration,
         vision_range=rules.vision_range * types.vision_range_scale,
+        gravity=torch.full_like(types.max_energy, rules.flight.gravity),
     )
     return Characteristics(
         **{

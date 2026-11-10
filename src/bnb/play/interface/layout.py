@@ -64,7 +64,8 @@ class Rect:
 class Layout:
     """The rectangles of one frame's interface. open: which cards are open (the others
     show their tab); replay: the scrubber shows; flying: the flying HUD shows; selected:
-    the selection card has something to show."""
+    the selection card has something to show; fleets_width: the fleets card's width at
+    scale 1 (wider than FLEETS_WIDTH when long ship names need it)."""
 
     width: float
     height: float
@@ -73,6 +74,7 @@ class Layout:
     replay: bool = False
     flying: bool = False
     selected: bool = True
+    fleets_width: float = FLEETS_WIDTH
 
     def _size(self, value: float) -> float:
         return value * self.scale
@@ -110,7 +112,7 @@ class Layout:
         if "fleets" not in self.open:
             return self._tab(True, self._top)
         margin = self._size(MARGIN)
-        return Rect(margin, self._top, self._size(FLEETS_WIDTH), self._bottom - self._top)
+        return Rect(margin, self._top, self._size(self.fleets_width), self._bottom - self._top)
 
     @property
     def minimap(self) -> Rect:
@@ -163,7 +165,7 @@ class Layout:
     @property
     def notice(self) -> Rect:
         """Where a passing notice shows: centred under the top bar."""
-        width = min(self._size(NOTICE[0]), self.width - 2 * self._size(FLEETS_WIDTH))
+        width = min(self._size(NOTICE[0]), self.width - 2 * self._size(self.fleets_width))
         top = self.top_bar.bottom + self._size(MARGIN)
         return Rect(0.5 * (self.width - width), top, width, self._size(NOTICE[1]))
 

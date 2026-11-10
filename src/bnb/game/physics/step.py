@@ -115,11 +115,17 @@ def _vision_ranges(rules: Rules, types: ShipTypes, ship_type: torch.Tensor) -> t
 
 
 def reset(
-    rules: Rules, types: ShipTypes, uniforms: torch.Tensor, fogged: torch.Tensor | None = None
+    rules: Rules,
+    types: ShipTypes,
+    uniforms: torch.Tensor,
+    fogged: torch.Tensor | None = None,
+    ship_type: torch.Tensor | None = None,
 ) -> State:
     """A fresh state from (B, U) tick uniforms: new maps and modes, every ship spawned,
     tick 0. fogged (B,) bool: which environments hide what their teams cannot see (default
-    all); it stays fixed through the episode resets that follow. Raises ValueError for a
+    all); it stays fixed through the episode resets that follow. ship_type (B, N) int32:
+    each ship's type, per environment (default the rules' lineup, `Rules.slot_types`); a
+    ship keeps its type through the episode resets that follow. Raises ValueError for a
     card whose fire rate is not a whole number of ticks at the rules' tick."""
     ticks_between_shots(
         types.fire_rate, rules.tick_length
@@ -127,8 +133,14 @@ def reset(
     B, device = uniforms.shape[0], uniforms.device
     state = blank(rules, B, device)
     arena = environment(rules, B, device)
-    ship_type = torch.tensor(rules.slot_types, dtype=torch.int32, device=device)
-    ships = replace(state.ships, ship_type=ship_type.expand(B, -1).contiguous())
+    if ship_type is None:
+        ship_type = torch.tensor(rules.slot_types, dtype=torch.int32, device=device)
+        ship_type = ship_type.expand(B, -1).contiguous()
+    else:
+        if ship_type.shape != (B, rules.num_ships):
+            raise ValueError(f"ship_type {tuple(ship_type.shape)}: need ({B}, {rules.num_ships})")
+        ship_type = ship_type.to(device=device, dtype=torch.int32, copy=True)
+    ships = replace(state.ships, ship_type=ship_type)
     tick = TickUniforms(rules, uniforms)
     mode, fields, axis_x, axis_y = _new_matches(rules, arena, tick, state.mode)
     everyone = torch.ones_like(state.mode.front, dtype=torch.bool)

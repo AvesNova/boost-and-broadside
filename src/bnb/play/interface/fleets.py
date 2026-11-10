@@ -13,6 +13,7 @@ from ..selection import Selection
 from ..sides import describe, label_of
 from . import cards
 from .controls import bar, right_edge, tooltip, u32
+from .layout import FLEETS_WIDTH
 from .text import TEAM_NAMES, ship_name
 
 if TYPE_CHECKING:
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 
 BAR_WIDTH = 46.0
 BAR_HEIGHT = 6.0
+LONGEST_WAIT = "99.9 s"  # the widest a row's respawn wait reads
 
 
 SCRIPTED_LABELS = {"scripted": "Scripted", "scripted_agent": "Scripted agent"}
@@ -91,6 +93,7 @@ def draw(interface: Interface, layout: Layout) -> None:
     ships = frame.ships
     track = u32(theme.panel_line)
     per_team = loop.rules.ships_per_team
+    names = name_width(ships)
     for team in range(2):
         right = right_edge()
         draw_list = imgui.get_window_draw_list()
@@ -135,7 +138,8 @@ def draw(interface: Interface, layout: Layout) -> None:
                     session.set_temperature(team, value)
         flags = imgui.TableFlags_.sizing_fixed_fit | imgui.TableFlags_.no_pad_outer_x
         if imgui.begin_table(f"team {team}", 5, flags):
-            imgui.table_setup_column("ship", imgui.TableColumnFlags_.width_stretch)
+            # As wide as the longest name of either team, so both teams' bars line up.
+            imgui.table_setup_column("ship", imgui.TableColumnFlags_.width_fixed, names)
             for index in range(team * per_team, (team + 1) * per_team):
                 imgui.table_next_row()
                 imgui.table_next_column()
@@ -181,17 +185,51 @@ def draw(interface: Interface, layout: Layout) -> None:
                 if loop.pilot == index:
                     imgui.text("you")
                 else:
-                    imgui.text_disabled(
-                        short(
-                            controller_label(loop.sides[team])
-                            if loop.sides
-                            else controller_label_of_setup(loop.setup.sides[team])
-                        )
-                    )
+                    imgui.text_disabled(row_controller(loop, team))
             imgui.end_table()
         if team == 0:
             imgui.spacing()
     imgui.end()
+
+
+def row_controller(loop, team: int) -> str:
+    """A team's controller as its ship rows name it."""
+    if loop.sides:
+        return short(controller_label(loop.sides[team]))
+    return short(controller_label_of_setup(loop.setup.sides[team]))
+
+
+def name_width(ships) -> float:
+    """The widest ship name's width, in pixels (the type's name and the slot)."""
+    return max(
+        imgui.calc_text_size(ship_name(ships.team, ships.ship_type, i)).x
+        for i in range(len(ships.team))
+    )
+
+
+def width(interface: Interface) -> float:
+    """The fleets card's width at interface scale 1: FLEETS_WIDTH, or wider so that a row
+    holds its ship's whole name (the type's and the slot's) beside the bars, the wait and
+    the controller."""
+    session = interface.session
+    loop, ships, scale = session.loop, session.frame.ships, session.scale
+    style = imgui.get_style()
+
+    def text(value: str) -> float:
+        return imgui.calc_text_size(value).x
+
+    name = name_width(ships)
+    controller = max(text(row_controller(loop, team)) for team in range(2))
+    row = (
+        name
+        + 2.0 * BAR_WIDTH * scale
+        + text(LONGEST_WAIT)
+        + max(controller, text("you"))
+        + 4.0 * 2.0 * style.cell_padding.x  # between the five columns
+        + 2.0 * style.window_padding.x
+        + style.scrollbar_size
+    )
+    return max(FLEETS_WIDTH, row / scale)
 
 
 def short(label: str) -> str:

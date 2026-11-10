@@ -16,6 +16,7 @@ from bnb.controllers.scripted import Scripted, distribution, mode_index
 from bnb.controllers.scripted_memory import FORGET_WEIGHT, remember, ways_round
 from bnb.controllers.scripted_parameters import (
     MODES,
+    STANDARD_MODES,
     ModeParameters,
     ScriptedParameters,
     Switch,
@@ -236,4 +237,5 @@ def test_the_mode_defaults_lie_within_the_searchs_bounds_and_the_populations_loa
     for parameters in MODE_DEFAULTS.sets.values():
         assert clamp(parameters) == parameters
     stored = populations()
-    assert all(len(stored[mode]) == 32 for mode in MODES)
+    assert set(stored) == set(STANDARD_MODES)
+    assert all(len(stored[mode]) == 32 for mode in STANDARD_MODES)
