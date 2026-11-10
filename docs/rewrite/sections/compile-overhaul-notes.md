@@ -211,3 +211,58 @@ does not depend on the rows), one Yemong build (arm2d's), on the dev GPU:
 - Left: the duplicate forwards in training (lane LIVE is the learner's weights, lane
   league_k a slot's). They are now batch entries of one forward rather than separate graph
   copies, so they cost rows, not compile.
+
+## After the stacked forward and the learner changes (b87dc04f, d0b3f494)
+
+Same cases, same method, cold (`compile-overhaul/after-1/`).
+
+- ratings: first batch **353 s** (was 747 s); second batch 167.9 s (was 175.0 s).
+
+  | Stage | Before | After |
+  |---|---|---|
+  | `_act` | 529.3 s, 65,516 ops | 142.9 s, 5,623 ops |
+  | `_advance` | 12.6 s | 13.7 s |
+  | `_resolve` | 21.9 s | 20.7 s |
+  | `_perceive` | 8.3 s | 8.6 s |
+  | all four | 572 s | 186 s |
+
+  The steady batch barely moved (4%): the network forwards were not what a ratings tick
+  spends its time on (`bench/arena_stages.py` to find what is).
+- The first bc run of this failed: the training lanes' padded rows were taken with a
+  boolean mask inside the act stage, a data-dependent size Inductor rejects ("u4 possible
+  memo disaster"; the CPU tests run uncompiled and missed it). The kept positions are now
+  made in `LaneSeat.__init__`, and a slow test compiles a lane seat whole.
+- bc (d0b3f494): build 31.3 s; first collect 299.7 s (was 447.0), first learn 395.6 s
+  (was 501.9); steady collect 19.0 s (17.8), steady learn 233.0 s (240.7). Compiles
+  383.6 s (was 622): act 206.8 s at 10,923 ops (308.9 s at 18,837), advance 12.5,
+  resolve 31.5, perceive 13.1, tick 6.3, codes 13.1, the loss 63.5 s at 3,162 ops (two
+  variants, 174 s, before; the teacher no longer in it), the heads' sums 36.8 s. The first
+  update now costs 475 s over a steady one (was 723 s).
+- rl (d0b3f494, with the lanes padded): build 27.0 s; first collect 370.9 s (631.5), first
+  learn 453.5 s (524.3); steady collect **28.7 s (24.0: slower)**, steady learn 229.3 s
+  (225.1; the lane tests ran beside it). Compiles 513.8 s (was 839): act 270.9 s at 12,891
+  ops (493.1 s at 42,611), codes 50.7, the loss 65.3 s (two variants, 171 s, before), the
+  heads' sums 62.6 s at 3,825 ops.
+- The slower rl collect was the padding: rl-aux-x0's lane matchups give live and the
+  exponential average 4.75 units of rows each and each league slot 2.25, so padding every
+  player to the most ran about half again as many network rows. bef843eb orders the
+  players by row count and runs one stacked forward per run of equal counts, unpadded
+  (here two runs: two players, four players); measured in `after-2`.
+- The heads' sums in rl (62.6 s, 3,825 ops) are a diagnostic measured on every
+  micro-batch of epoch 0. Sampling a few micro-batches would make them cheap at run time
+  but not at compile time; compiling them is the cost. Left for the author: running them
+  uncompiled on a sample is a change to what the series mean.
+
+## Cold against warm (after-2, bef843eb)
+
+`bench/compile_warm.sh`: one case twice in two processes on the same caches, empty then
+warm (what a repeat run of the same preset and size pays).
+
+- ratings: cold first batch 352.9 s (stages 142.5 + 14.1 + 21.2 + 8.7 = 186 s); **warm
+  first batch 185.3 s** (stages 13.7 + 2.0 + 1.8 + 0.8 = 18 s); steady 166.7 s and 166.9 s.
+  A repeat ratings run now pays about 20 s of compile over its play. Before the stacked
+  forward the warm act stage would still have traced 65k ops (Dynamo alone took 92 s
+  cold), which is why the backlog saw "5-10 minutes even with the cache warm".
+- So each new preset or fleet size is a cold compile (about 3 min for ratings), and each
+  repeat is about 20 s; the play itself (167 s a batch of 1024 frontline games) is now
+  the cost of an evaluation.
