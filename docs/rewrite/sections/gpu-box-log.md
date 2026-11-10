@@ -917,3 +917,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   breaks at 40 in the 2600 m arena (1.2:1 a coin flip, 1.5:1 3%); the nearest MLP fails as fleets
   grow even at even numbers (89% / 31% / 0% at 10 / 20 / 40); crowded frontline erodes the
   champion's edge (1997 / 1875 / 1134 / 526 at 5 / 10 / 20 / 40) below the nearest MLP's at 40.
+- **22:45 KST Disk 9.5 GB free: deleted the old shared compile cache /tmp/torchinductor_root (24 GB, the one corrupted by the earlier prune; no bnb process running).** The campaign cache /tmp/inductor-campaign (7.6 GB) kept.
