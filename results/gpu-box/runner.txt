@@ -146,3 +146,7 @@
 06:46 round13 done
 07:48 tournament10 done
 08:26 fleet 5v5 start (6 players + scripted + ladder; 8 x 256)
+08:55 fleet 5v5 start (6 players + scripted; 8 x 256)
+08:59 crossover start champion frontline
+09:09 crossover start champion frontline
+09:09 crossover start champion frontline

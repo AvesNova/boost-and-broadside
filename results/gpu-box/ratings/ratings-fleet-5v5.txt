@@ -4,3 +4,26 @@ frontline: batch 2, 4096 games, the largest standard error 128.2 (the batch took
 frontline: batch 3, 6144 games, the largest standard error 52.0 (the batch took 162 s); done about 09:08 (4 batches), by 09:26 at the latest (7 batches)
 frontline: batch 4, 8192 games, the largest standard error 40.5 (the batch took 162 s); done about 08:57 (2 batches), by 09:18 at the latest (6 batches)
 frontline: batch 5, 10240 games, the largest standard error 36.5 (the batch took 162 s); done about 08:54 (1 batches), by 09:13 at the latest (5 batches)
+frontline: batch 6, 12288 games, the largest standard error 33.1 (the batch took 162 s); done about 08:52 (0 batches), by 09:09 at the latest (4 batches)
+deathmatch: reused 1024 games of /workspace/boost-and-broadside/runs/ratings/round10/deathmatch.batches.jsonl (9 batches), 7 of its 79 players matched: ['runs/2026-11-09-rl-absolute/policies/step_180355072/uniform_average', 'runs/2026-11-09-rl-absolute/policies/step_20971520/uniform_average', 'runs/2026-11-09-rl-absolute/policies/step_40894464/uniform_average', 'runs/2026-11-09-rl-absolute/policies/step_80740352/uniform_average', 'runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average', 'runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average', 'scripted']
+frontline: reused 3840 games of /workspace/boost-and-broadside/runs/ratings/fleet-5v5-ladder/frontline.batches.jsonl (6 batches), 7 of its 17 players matched: ['runs/2026-11-09-rl-absolute/policies/step_180355072/uniform_average', 'runs/2026-11-09-rl-absolute/policies/step_20971520/uniform_average', 'runs/2026-11-09-rl-absolute/policies/step_40894464/uniform_average', 'runs/2026-11-09-rl-absolute/policies/step_80740352/uniform_average', 'runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average', 'runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average', 'scripted']
+frontline: reused 512 games of /workspace/boost-and-broadside/runs/ratings/round10/frontline.batches.jsonl (8 batches), 7 of its 79 players matched: ['runs/2026-11-09-rl-absolute/policies/step_180355072/uniform_average', 'runs/2026-11-09-rl-absolute/policies/step_20971520/uniform_average', 'runs/2026-11-09-rl-absolute/policies/step_40894464/uniform_average', 'runs/2026-11-09-rl-absolute/policies/step_80740352/uniform_average', 'runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average', 'runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average', 'scripted']
+deathmatch: reused 1024 games of /workspace/boost-and-broadside/runs/ratings/round10/deathmatch.batches.jsonl (9 batches), 7 of its 79 players matched: ['runs/2026-11-09-rl-absolute/policies/step_180355072/uniform_average', 'runs/2026-11-09-rl-absolute/policies/step_20971520/uniform_average', 'runs/2026-11-09-rl-absolute/policies/step_40894464/uniform_average', 'runs/2026-11-09-rl-absolute/policies/step_80740352/uniform_average', 'runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average', 'runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average', 'scripted']
+deathmatch: batch 1, 2048 games, the largest standard error 175.7 (the batch took 674 s); done about 10:48 (9 batches), by 10:48 at the latest (9 batches)
+deathmatch: batch 2, 4096 games, the largest standard error 39.1 (the batch took 172 s); done about 09:17 (1 batches), by 10:06 at the latest (8 batches)
+deathmatch: batch 3, 6144 games, the largest standard error 31.8 (the batch took 162 s); done about 09:12 (0 batches), by 09:52 at the latest (7 batches)
+deathmatch       runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average   2403.8 +-  31.8    1280 games
+deathmatch       runs/2026-11-09-rl-absolute/policies/step_180355072/uniform_average   2234.7 +-  27.8    1792 games
+deathmatch       runs/2026-11-09-rl-absolute/policies/step_80740352/uniform_average   1884.1 +-  22.3    2816 games
+deathmatch       runs/2026-11-09-rl-absolute/policies/step_40894464/uniform_average   1584.3 +-  18.5    1280 games
+deathmatch       runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average   1386.1 +-  15.8    2304 games
+deathmatch       runs/2026-11-09-rl-absolute/policies/step_20971520/uniform_average   1345.5 +-  14.8    2048 games
+deathmatch       scripted                                                       1000.0 +-   0.0    2816 games
+frontline        runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average   1997.2 +-  28.8     768 games
+frontline        runs/2026-11-09-rl-absolute/policies/step_180355072/uniform_average   1875.0 +-  25.3    1024 games
+frontline        runs/2026-11-09-rl-absolute/policies/step_80740352/uniform_average   1679.6 +-  24.2    1024 games
+frontline        runs/2026-11-09-rl-absolute/policies/step_40894464/uniform_average   1567.5 +-  21.3    1024 games
+frontline        runs/2026-11-09-rl-absolute/policies/step_20971520/uniform_average   1476.9 +-  19.1    1792 games
+frontline        runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average   1303.3 +-  18.4    1024 games
+frontline        scripted                                                       1000.0 +-   0.0    2048 games
+runs/ratings/fleet-5v5/artifacts/ratings/20261110-091249

@@ -1,0 +1,234 @@
+{
+ "provenance": {
+  "commit": "8552e6286c4fb8e878116f7c1980104775d7ed93",
+  "dirty": false,
+  "host": "e98bed47fc73",
+  "gpu": "NVIDIA GeForce RTX 3090",
+  "python": "3.14.8",
+  "torch": "2.15.0+cu132",
+  "cuda": "13.2",
+  "command": [
+   ".venv/bin/bnb",
+   "ratings",
+   "2026-11-09-bc-absolute",
+   "--no-league",
+   "--no-ladder",
+   "--with",
+   "runs/2026-11-09-rl-absolute/policies/step_20971520/uniform_average",
+   "runs/2026-11-09-rl-absolute/policies/step_40894464/uniform_average",
+   "runs/2026-11-09-rl-absolute/policies/step_80740352/uniform_average",
+   "runs/2026-11-09-rl-absolute/policies/step_180355072/uniform_average",
+   "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+   "runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average",
+   "--presets",
+   "frontline",
+   "deathmatch",
+   "--target-stderr",
+   "35",
+   "--budget",
+   "20480",
+   "--blocks",
+   "8",
+   "--block-environments",
+   "256",
+   "--reuse",
+   "runs/ratings/round10",
+   "runs/ratings/fleet-5v5-ladder",
+   "--out",
+   "runs/ratings/fleet-5v5"
+  ],
+  "time": "2026-11-10T09:12:49+00:00"
+ },
+ "kind": "ratings",
+ "payload": {
+  "leaderboard": [
+   {
+    "game_version": 1,
+    "mode": "frontline",
+    "map": "frontline",
+    "fleet_size": 5,
+    "player": "scripted",
+    "calibrated_elo": 1000.0,
+    "stderr": 0.0,
+    "games": 2048
+   },
+   {
+    "game_version": 1,
+    "mode": "frontline",
+    "map": "frontline",
+    "fleet_size": 5,
+    "player": "runs/2026-11-09-rl-absolute/policies/step_20971520/uniform_average",
+    "calibrated_elo": 1476.8934457358218,
+    "stderr": 19.06188519958885,
+    "games": 1792
+   },
+   {
+    "game_version": 1,
+    "mode": "frontline",
+    "map": "frontline",
+    "fleet_size": 5,
+    "player": "runs/2026-11-09-rl-absolute/policies/step_40894464/uniform_average",
+    "calibrated_elo": 1567.4659806419938,
+    "stderr": 21.261925805737356,
+    "games": 1024
+   },
+   {
+    "game_version": 1,
+    "mode": "frontline",
+    "map": "frontline",
+    "fleet_size": 5,
+    "player": "runs/2026-11-09-rl-absolute/policies/step_80740352/uniform_average",
+    "calibrated_elo": 1679.584195559602,
+    "stderr": 24.233695357565207,
+    "games": 1024
+   },
+   {
+    "game_version": 1,
+    "mode": "frontline",
+    "map": "frontline",
+    "fleet_size": 5,
+    "player": "runs/2026-11-09-rl-absolute/policies/step_180355072/uniform_average",
+    "calibrated_elo": 1875.0419533380414,
+    "stderr": 25.265807252610294,
+    "games": 1024
+   },
+   {
+    "game_version": 1,
+    "mode": "frontline",
+    "map": "frontline",
+    "fleet_size": 5,
+    "player": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+    "calibrated_elo": 1997.2499392471768,
+    "stderr": 28.816172422181438,
+    "games": 768
+   },
+   {
+    "game_version": 1,
+    "mode": "frontline",
+    "map": "frontline",
+    "fleet_size": 5,
+    "player": "runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average",
+    "calibrated_elo": 1303.2552512881539,
+    "stderr": 18.426501953534604,
+    "games": 1024
+   },
+   {
+    "game_version": 1,
+    "mode": "team_deathmatch",
+    "map": "deathmatch",
+    "fleet_size": 5,
+    "player": "scripted",
+    "calibrated_elo": 1000.0,
+    "stderr": 0.0,
+    "games": 2816
+   },
+   {
+    "game_version": 1,
+    "mode": "team_deathmatch",
+    "map": "deathmatch",
+    "fleet_size": 5,
+    "player": "runs/2026-11-09-rl-absolute/policies/step_20971520/uniform_average",
+    "calibrated_elo": 1345.4700056160705,
+    "stderr": 14.817654751408847,
+    "games": 2048
+   },
+   {
+    "game_version": 1,
+    "mode": "team_deathmatch",
+    "map": "deathmatch",
+    "fleet_size": 5,
+    "player": "runs/2026-11-09-rl-absolute/policies/step_40894464/uniform_average",
+    "calibrated_elo": 1584.2792520898183,
+    "stderr": 18.516841185865058,
+    "games": 1280
+   },
+   {
+    "game_version": 1,
+    "mode": "team_deathmatch",
+    "map": "deathmatch",
+    "fleet_size": 5,
+    "player": "runs/2026-11-09-rl-absolute/policies/step_80740352/uniform_average",
+    "calibrated_elo": 1884.079782696194,
+    "stderr": 22.27946254516947,
+    "games": 2816
+   },
+   {
+    "game_version": 1,
+    "mode": "team_deathmatch",
+    "map": "deathmatch",
+    "fleet_size": 5,
+    "player": "runs/2026-11-09-rl-absolute/policies/step_180355072/uniform_average",
+    "calibrated_elo": 2234.7395105648793,
+    "stderr": 27.757702916518753,
+    "games": 1792
+   },
+   {
+    "game_version": 1,
+    "mode": "team_deathmatch",
+    "map": "deathmatch",
+    "fleet_size": 5,
+    "player": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+    "calibrated_elo": 2403.773975313078,
+    "stderr": 31.79426112546081,
+    "games": 1280
+   },
+   {
+    "game_version": 1,
+    "mode": "team_deathmatch",
+    "map": "deathmatch",
+    "fleet_size": 5,
+    "player": "runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average",
+    "calibrated_elo": 1386.0784883602057,
+    "stderr": 15.799750788745092,
+    "games": 2304
+   }
+  ],
+  "config": {
+   "arena": {
+    "blocks": 8,
+    "block_environments": 256,
+    "length": 32,
+    "compiled": true,
+    "graph_ticks": 8
+   },
+   "target_stderr": 35.0,
+   "budget": 20480
+  },
+  "scripted_plays": null,
+  "reused": {
+   "frontline": [
+    "/workspace/boost-and-broadside/runs/ratings/fleet-5v5-ladder/frontline.batches.jsonl",
+    "/workspace/boost-and-broadside/runs/ratings/round10/frontline.batches.jsonl"
+   ],
+   "deathmatch": [
+    "/workspace/boost-and-broadside/runs/ratings/round10/deathmatch.batches.jsonl"
+   ]
+  }
+ },
+ "inputs": {
+  "runs/2026-11-09-rl-absolute/policies/step_20971520/uniform_average": {
+   "path": "/workspace/boost-and-broadside/runs/2026-11-09-rl-absolute/policies/step_20971520/uniform_average",
+   "sha256": "5fb545c7c8e09d099698fe09c8675a6a33b2026c2f3f59df9857350965b2d494"
+  },
+  "runs/2026-11-09-rl-absolute/policies/step_40894464/uniform_average": {
+   "path": "/workspace/boost-and-broadside/runs/2026-11-09-rl-absolute/policies/step_40894464/uniform_average",
+   "sha256": "adf7d716b9ccaa7c8010c03e6b6ef269df2e844c7bf6c4096ff37d024dc8369f"
+  },
+  "runs/2026-11-09-rl-absolute/policies/step_80740352/uniform_average": {
+   "path": "/workspace/boost-and-broadside/runs/2026-11-09-rl-absolute/policies/step_80740352/uniform_average",
+   "sha256": "b2c44781db1396f7f7dca73254f16009718107b909479453c3b226d241cccc32"
+  },
+  "runs/2026-11-09-rl-absolute/policies/step_180355072/uniform_average": {
+   "path": "/workspace/boost-and-broadside/runs/2026-11-09-rl-absolute/policies/step_180355072/uniform_average",
+   "sha256": "1832cf746eb51a91ee1cb1f9642616323796aa99598c92963891dd781bb46952"
+  },
+  "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average": {
+   "path": "/workspace/boost-and-broadside/runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+   "sha256": "5f4d415afec54ce6fef58675425b23aad808c5919680c5ad3029ee2f263ee1d9"
+  },
+  "runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average": {
+   "path": "/workspace/boost-and-broadside/runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average",
+   "sha256": "0841f6cd486b2602b343aa2adddba40cfd7b81007369e109cb3a66abaf693d4d"
+  }
+ }
+}
