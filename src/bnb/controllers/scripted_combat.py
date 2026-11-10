@@ -17,8 +17,16 @@ from bnb.game.handling.characteristics import Characteristics, time_of_flight
 from bnb.game.rules import Rules
 from bnb.game.ship_types import per_ship
 
-from .scripted_memory import Recall, ScriptedCarry, commit, fresh_carry, remember, ways_round
-from .scripted_parameters import ScriptedParameters, floored, logistic, ramp
+from .scripted_memory import (
+    Recall,
+    ScriptedCarry,
+    commit,
+    fresh_carry,
+    remember,
+    time_unit,
+    ways_round,
+)
+from .scripted_parameters import ScriptedParameters, floored, in_own_time, logistic, ramp
 
 TARGET_SIZE_RANGE = (math.radians(1.0), math.radians(45.0))  # the clamp on its angular size
 COAST, BOOST, REVERSE = 0, 1, 2  # power indices (bnb.game.rules.POWER_MODES)
@@ -59,6 +67,7 @@ class Context(NamedTuple):
     carry: ScriptedCarry  # the memory, before this decision's plan choices
     recall: Recall  # the enemies as the agent believes them
     seconds: float  # a decision's length
+    time_unit: torch.Tensor  # the ship's own time unit in seconds (`time_unit`)
     switching: bool  # the plan choices may switch (else only a forced re-choice)
 
 
@@ -135,6 +144,7 @@ def context(
         carry=carry,
         recall=recall,
         seconds=seconds,
+        time_unit=time_unit(characteristics, own_type, parameters),
         switching=switching,
     )
 
@@ -202,7 +212,7 @@ def stick_marginal(
         sign_left,
         longer,
         forced,
-        parameters.side_switch_in_radians,
+        in_own_time(parameters.side_switch_in_radians, fleet.time_unit),
         temperature,
         fleet.seconds,
         fleet.switching,
@@ -300,12 +310,42 @@ def choose_target(fleet: Context, offset_x: torch.Tensor, offset_y: torch.Tensor
         best,
         advantage,
         fleet.carry.fresh | ~valid,
-        parameters.target_switch_in_log_distance,
+        in_own_time(parameters.target_switch_in_log_distance, fleet.time_unit),
         fleet.temperature,
         fleet.seconds,
         fleet.switching,
     )
     return torch.where(recall.known.any(-1, keepdim=True), target, -1)
+
+
+def energy_fight(
+    fleet: Context,
+    characteristics: Characteristics,
+    parameters: ScriptedParameters,
+    target_of,
+    has_target: torch.Tensor,
+) -> torch.Tensor:
+    """The energy doctrine's weight per own ship (R, S) against its committed target, in
+    [0, energy_fight_strength]: energy_fight_strength times energy_fight_in_advantage at the
+    doctrine's advantage, the product of the own-over-target ratios of the sustained turn
+    rate (the settled full-stick turn), the climb power, the cruise speed and the gun range,
+    each raised to its exponent. The target's type is always observed (`ship_type`), and
+    the card is common knowledge. 0 without a target, and exactly 0 at a strength of 0.
+    target_of: the committed target's value from per-enemy values (R, E)."""
+    log_advantage = torch.zeros_like(fleet.x)
+    for values, exponent in (
+        (characteristics.turn_rate[..., 2], parameters.energy_fight_turn_exponent),
+        (characteristics.climb_power, parameters.energy_fight_climb_exponent),
+        (characteristics.cruise_speed, parameters.energy_fight_speed_exponent),
+        (characteristics.gun_range, parameters.energy_fight_range_exponent),
+    ):
+        own = per_ship(values, fleet.own_type)
+        theirs = torch.where(has_target, target_of(per_ship(values, fleet.enemy_type)), own)
+        log_advantage = log_advantage + exponent * torch.log(own / theirs)
+    weight = parameters.energy_fight_strength * logistic(
+        torch.exp(log_advantage), parameters.energy_fight_in_advantage, fleet.temperature
+    )
+    return torch.where(has_target, weight, 0.0)
 
 
 def combat(
@@ -342,6 +382,20 @@ def combat(
     )
     aim_error = signed_angle(fleet.cos, fleet.sin, aim_x, aim_y)
 
+    # The energy doctrine: rather than turn after a target the nose is far from at close
+    # range, extend (fly away from it, boosting) and come back for another pass; never
+    # reverse. Mixed in linearly by its weight, so a weight of 0 is the agent without it.
+    doctrine = energy_fight(fleet, characteristics, parameters, target, has_target)
+    extend = logistic(
+        distance / fleet.gun_range, parameters.extend_in_gun_range, fleet.temperature
+    ) * logistic(
+        aim_error.abs() / fleet.stall_angle, parameters.extend_in_stall_angle, fleet.temperature
+    )
+    away = torch.sqrt(aim_x * aim_x + aim_y * aim_y) / safe_distance  # aim length over distance
+    turn_away = doctrine * extend
+    aim_x = aim_x + turn_away * (-target_x * away - aim_x)
+    aim_y = aim_y + turn_away * (-target_y * away - aim_y)
+
     # Without a target: head for the centre unless already near it.
     toward_centre = fleet.distance_from_centre > (
         parameters.centre_hold_in_arena_radius * fleet.arena_radius
@@ -368,6 +422,8 @@ def combat(
         0.0,
     )
     power = power_marginal(boost, reverse)
+    energy_power = power_marginal(either(slow(fleet, parameters), extend), torch.zeros_like(boost))
+    power = power + doctrine[..., None] * (energy_power - power)
 
     hit_radius = target(per_ship(characteristics.hit_radius, fleet.enemy_type))
     size = (2.0 * torch.atan(hit_radius / safe_distance)).clamp(*TARGET_SIZE_RANGE)

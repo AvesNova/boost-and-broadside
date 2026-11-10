@@ -68,8 +68,10 @@ from bnb.contracts import Action, Obs, Outputs, Pool  # noqa: E402
 from bnb.controllers.scripted import Chaser, Scripted  # noqa: E402
 from bnb.controllers.scripted_defaults import MODE_DEFAULTS  # noqa: E402
 from bnb.controllers.scripted_parameters import (  # noqa: E402
+    ADDITIVE_BOUNDS,
     MODES,
     NAMES,
+    RELATIVE_TACTICS,
     SCALE_FLOORS,
     STANDARD_MODES,
     SWITCH_SCALE_FLOORS,
@@ -141,7 +143,8 @@ def clamp(parameters: ScriptedParameters) -> ScriptedParameters:
     """The parameters inside the search's bounds: each logistic's and switch's scale between
     its floor and SCALE_CEILING floors, a switch's rate within SWITCH_RATES, the fade's
     centre within FADE_CENTRE, the recovery shield fraction at most 0.9, the combat radius
-    beyond the shoot logistic's centre."""
+    beyond the shoot logistic's centre, each additive number (`ADDITIVE_BOUNDS`: the own
+    time's and the relative tactics') within its bounds."""
 
     def bounded(value: float, low: float, high: float) -> float:
         return min(max(value, low), high)
@@ -165,6 +168,8 @@ def clamp(parameters: ScriptedParameters) -> ScriptedParameters:
                 value.centre,
                 bounded(value.scale, floor, SCALE_CEILING * floor),
             )
+        elif name in ADDITIVE_BOUNDS:
+            value = bounded(value, *ADDITIVE_BOUNDS[name])
         values[name] = value
     values["recovery_shield_fraction"] = min(values["recovery_shield_fraction"], 0.9)
     values["combat_radius_in_gun_range"] = max(
@@ -174,11 +179,17 @@ def clamp(parameters: ScriptedParameters) -> ScriptedParameters:
 
 
 def perturb(
-    parameters: ScriptedParameters, sigma: float, generator: torch.Generator
+    parameters: ScriptedParameters,
+    sigma: float,
+    generator: torch.Generator,
+    frozen: tuple[str, ...] = RELATIVE_TACTICS,
 ) -> ScriptedParameters:
     """Every searched number times exp(sigma N(0, 1)) (a ramp's ends sorted; its values and a
     logistic's direction kept; a switch's rate, centre and scale each), aggression plus
-    2 sigma N(0, 1); then `clamp`."""
+    2 sigma N(0, 1), an additive number (`ADDITIVE_BOUNDS`) plus sigma N(0, 1) times its
+    bounds' width; then `clamp`. The `frozen` fields are kept and draw nothing (by default
+    the own time's and the relative tactics', so a search without them draws as before
+    they existed)."""
 
     def factor() -> float:
         return math.exp(sigma * float(torch.randn(1, generator=generator)))
@@ -186,7 +197,13 @@ def perturb(
     values = {}
     for name in NAMES:
         value = getattr(parameters, name)
-        if isinstance(value, Ramp):
+        if name in frozen:
+            values[name] = value
+        elif name in ADDITIVE_BOUNDS:
+            low, high = ADDITIVE_BOUNDS[name]
+            step = sigma * (high - low) * float(torch.randn(1, generator=generator))
+            values[name] = value + step
+        elif isinstance(value, Ramp):
             low, high = sorted(end * factor() for end in (value.low, value.high))
             values[name] = Ramp(low, max(high, low + 1e-3), value.at_low, value.at_high)
         elif isinstance(value, Logistic):
@@ -213,16 +230,22 @@ def crossover(
 
 
 def next_generation(
-    ranked: list[ScriptedParameters], size: int, keep: int, sigma: float, generator
+    ranked: list[ScriptedParameters],
+    size: int,
+    keep: int,
+    sigma: float,
+    generator,
+    frozen: tuple[str, ...] = RELATIVE_TACTICS,
 ) -> list[ScriptedParameters]:
-    """The top `keep` of `ranked` (best first), and children of them to `size`."""
+    """The top `keep` of `ranked` (best first), and children of them to `size` (`perturb`,
+    with its `frozen` fields kept)."""
     parents, children = ranked[:keep], []
     while len(parents) + len(children) < size:
         first = parents[int(torch.randint(keep, (1,), generator=generator))]
         if len(children) % 2 == 0:
             second = parents[int(torch.randint(keep, (1,), generator=generator))]
             first = crossover(first, second, generator)
-        children.append(perturb(first, sigma, generator))
+        children.append(perturb(first, sigma, generator, frozen))
     return parents + children
 
 
@@ -357,6 +380,11 @@ def main() -> None:
         "--ship-type", type=int, help="every ship flies this type (default: the game's lineup)"
     )
     parser.add_argument(
+        "--relative-tactics",
+        action="store_true",
+        help="search the own time's and the relative tactics' parameters too (default: kept)",
+    )
+    parser.add_argument(
         "--from-defaults",
         action="store_true",
         help="start from the preset's set in MODE_DEFAULTS (needs --preset)",
@@ -365,6 +393,7 @@ def main() -> None:
     presets = (args.preset,) if args.preset else STANDARD_MODES
     if args.from_defaults and not args.preset:
         raise SystemExit("--from-defaults needs --preset")
+    frozen = () if args.relative_tactics else RELATIVE_TACTICS
     if not 0 <= args.seed <= MAXIMUM_SEED:
         raise SystemExit(f"seed in [0, {MAXIMUM_SEED}]")
     device = torch.device("cuda")
@@ -379,7 +408,7 @@ def main() -> None:
     if log_path.exists() and log_path.stat().st_size:
         start, ranked, tops = resume(log_path, args.plateau_on)
         population = next_generation(
-            ranked, args.population, args.keep, sigma_at(start), generator_at(start)
+            ranked, args.population, args.keep, sigma_at(start), generator_at(start), frozen
         )
     else:
         start, tops, generator = 0, [], generator_at(0)
@@ -387,7 +416,7 @@ def main() -> None:
             MODE_DEFAULTS.sets[args.preset] if args.from_defaults else ScriptedParameters()
         )
         population = [first] + [
-            perturb(first, args.sigma, generator) for _ in range(args.population - 1)
+            perturb(first, args.sigma, generator, frozen) for _ in range(args.population - 1)
         ]
     clock = time.perf_counter()
     with bench_lock(), open(log_path, "a") as log:
@@ -436,6 +465,7 @@ def main() -> None:
                 args.keep,
                 sigma_at(generation + 1),
                 generator_at(generation + 1),
+                frozen,
             )
     print("top", repr(ranked[0]))
 

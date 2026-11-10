@@ -35,7 +35,7 @@ from .scripted_combat import (
     stick_marginal,
 )
 from .scripted_memory import commit
-from .scripted_parameters import Ramp, ScriptedParameters, ramp
+from .scripted_parameters import Ramp, ScriptedParameters, in_own_time, ramp
 
 OWN_SPAWN, OWN_DEFENSE, ENEMY_DEFENSE = 0, 1, 3  # zone roles for the viewer (ZONE_COLUMNS)
 
@@ -72,7 +72,7 @@ def _choice(fleet: Context, committed: torch.Tensor, margin: torch.Tensor, shape
         margin > 0.0,
         advantage,
         fleet.carry.fresh,
-        shape,
+        in_own_time(shape, fleet.time_unit),
         fleet.temperature,
         fleet.seconds,
         fleet.switching,
