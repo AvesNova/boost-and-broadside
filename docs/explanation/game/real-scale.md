@@ -277,8 +277,9 @@ share, and kills faster. In Frontline it captures less: in self-play the front m
 drawn on the clock. Every Frontline finalist did the same (0.14 to 0.21 a minute in
 self-play), so it is the search's direction, not one candidate's.
 
-The pass did not cover the other types, the timing parameters' bounds, the decision floors
-or the chaser; the backlog holds a proper retune (`docs/rewrite/backlog.md`).
+The [balancing](real-scale-balance.md) has since replaced both sets with champions
+searched on mixed lineups of every type (its round 1). The pass did not cover the other
+types, the timing parameters' bounds, the decision floors or the chaser; the backlog holds a proper retune (`docs/rewrite/backlog.md`).
 
 With these sets the scripted agent has flown every type against every other: [The ship-type
 tournament](real-scale-tournament.md).

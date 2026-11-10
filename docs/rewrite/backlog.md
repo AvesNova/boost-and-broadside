@@ -58,6 +58,12 @@ worth pursuing. These items wait until then. Each says where it came from.
   anchor per generation, or the population's own median, would fix it). The shot logistic's
   centre moved past one gun range (shooting at targets still closing); whether that is
   wanted, or a sign the shot cost is too low, is open.
+  Since done in part by the balancing (`docs/explanation/game/real-scale-balance.md`, round
+  1): both sets searched against their champions on mixed lineups of every type, with a
+  plateau rule that survives a strong anchor; the Frontline set now captures twice as often
+  as the light retune's (0.69 front moves a minute in self-play). Still open: the timing
+  bounds, the floors, the chaser, and the shooting from beyond a gun range (kept by the
+  author's decision).
 
 ## Later, by agreement
 
