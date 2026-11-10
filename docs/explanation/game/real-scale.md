@@ -231,14 +231,59 @@ angle and the real cones put a burst all on or all off. The scripted chaser, who
 is what lets its rare hits kill.
 These are single seed-1 episodes, a provisional economy for the author to judge in play.
 
+## The scripted agent's real-scale sets
+
+The scripted agent plays the real-scale presets with sets of its own,
+real_scale_deathmatch and real_scale_frontline in
+`bnb.controllers.scripted_defaults.MODE_DEFAULTS`, chosen whenever the card's gravity is the
+real-scale one ([The scripted agent](../scripted-agent.md)); the standard sets are
+unchanged. They are a light retune: each preset's parameter search
+(`bench/scripted_search.py --preset <preset> --ship-type 0 --from-defaults`) started from
+the standard mode's set and played the P-51D lineup (every ship a P-51D), 32 candidates of
+64 games a generation, for 12 generations in deathmatch and 13 in Frontline, about 17
+minutes of GPU time with compiling. Eight finalists of each (the top four of the last
+generation, two of each of the two before) then played 512 games each at T = 1, among
+themselves and against the standard set; all eight were within noise of each other and
+each beat the standard set in 95-100% of its games. Deathmatch keeps the best rated;
+Frontline the one within noise of the best whose self-play drew least and captured second
+most.
+
+The check, `bench/scripted_compare.py`, 512 fresh games per row on the P-51D lineup, fog
+on, seats drawn per game, seeds above the search's (kills are combat deaths, a front move
+is one capture's step of the front):
+
+| Preset | Match | Score of the first | Kills a game | Kills a minute | Shots a game | Hit share | Front moves a minute | Ended by the clock |
+|---|---|---|---|---|---|---|---|---|
+| deathmatch | real-scale set against the standard set | 0.994 +- 0.003 | 32.6 | 4.8 | 2,271 | 0.22 | | 11% |
+| deathmatch | standard set, self-play | | 43.2 | 5.3 | 922 | 0.76 | | 23% |
+| deathmatch | real-scale set, self-play | | 46.4 | 7.0 | 3,284 | 0.21 | | 11% |
+| Frontline | real-scale set against the standard set | 0.969 +- 0.006 | 24.0 | 4.2 | 1,378 | 0.27 | 0.43 | 12% |
+| Frontline | standard set, self-play | | 38.0 | 3.8 | 824 | 0.74 | 0.44 | 97% |
+| Frontline | real-scale set, self-play | | 68.1 | 6.8 | 3,424 | 0.30 | 0.20 | 99% |
+
+(A hit is a shot that damaged an enemy. The real-scale self-play drew 9% of its deathmatch
+games and 69% of its Frontline games, the standard set 3% and 38%.)
+
+What moved most: both sets fire at targets well beyond a gun range (the shot logistic's
+centre from 0.53 to 1.71 gun ranges in deathmatch, 0.73 to 1.90 in Frontline) and accept
+a coarser aim (the aim tolerance about doubled in deathmatch, 0.20 to 0.35 target sizes in Frontline), and fight from further
+(the combat radius 3.0 to 4.7 gun ranges, 4.0 to 4.8). At 0.96 s of charge a shot, spraying
+is cheap: the real-scale set fires three to four times as often for a quarter of the hit
+share, and kills faster. In Frontline it captures less: in self-play the front moves
+0.20 times a minute against the standard set's 0.44, and two thirds of its games end
+drawn on the clock. Every Frontline finalist did the same (0.14 to 0.21 a minute in
+self-play), so it is the search's direction, not one candidate's.
+
+The pass did not cover the other types, the timing parameters' bounds, the decision floors
+or the chaser; the backlog holds a proper retune (`docs/rewrite/backlog.md`).
+
 ## What is not scaled
 
 The model and the learner (Yemong's position and velocity codes, the delta and correction
 bounds, the discounts) are tuned to the standard game; the real-scale variant is for play,
-by people and the scripted agent. The scripted agent classifies the map in gun ranges and
-places its chaser's distances in corner radii and gun ranges, so it plays the real-scale
-maps with its deathmatch and Frontline sets, but its timing parameters (memory fade-in,
-switch rates) are tuned to the standard game's tempo and are not re-tuned. The solver's
+by people and the scripted agent. The scripted agent states its distances in gun ranges,
+corner radii and the like, and plays the real-scale presets with its own lightly retuned
+sets (above); the chaser keeps the standard distances in the card's lengths. The solver's
 windows and error floors follow each card's own scales ([The ship
 card](ship-card.md#measuring)); a 125 kJ store climbs for about an hour of game time, so
 a real-scale card takes minutes to measure or solve on a CPU, where a standard one takes

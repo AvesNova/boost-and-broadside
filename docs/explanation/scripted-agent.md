@@ -223,14 +223,18 @@ each named for the quantity it scales, with the logistics as `Logistic`, the wei
 **One set per game mode.** The agent's defaults are
 `bnb.controllers.scripted_defaults.MODE_DEFAULTS`, a
 `bnb.controllers.scripted_parameters.ModeParameters` with a set for each of the training
-presets (`bnb.controllers.scripted_parameters.MODES`: deathmatch, deathmatch_wide,
-Frontline), each from a search of its own preset. Each view plays its mode's set, chosen
-from its observation (`bnb.controllers.scripted.mode_index`): Frontline by the mode's flag,
-else the wide set when the arena radius is more than `WIDE_ARENA_IN_GUN_RANGES` of the
-card's longest gun range (20.9: the geometric mean of the two deathmatch presets' 2600 and
-8200 m on the standard card, 11.8 and 37.1 of its 220.8 m gun range), else deathmatch's. In
-gun ranges the classification follows the card: a real-scale deathmatch, the standard map
-three times as wide (7800 m) for a 600 m gun range, plays the deathmatch set. So one batch may mix the modes, and every use
+presets and the two real-scale ones (`bnb.controllers.scripted_parameters.MODES`:
+deathmatch, deathmatch_wide, Frontline, real_scale_deathmatch, real_scale_frontline), each
+from a search of its own preset. Each view plays its mode's set, chosen from its
+observation and the card (`bnb.controllers.scripted.mode_index`): on a real-scale card (its
+gravity below `REAL_SCALE_GRAVITY`, 16.3 m/s^2, the geometric mean of 27 and 9.81) the
+real-scale Frontline set by the mode's flag, else the real-scale deathmatch set; otherwise
+Frontline by the mode's flag, else the wide set when the arena radius is more than
+`WIDE_ARENA_IN_GUN_RANGES` of the card's longest gun range (20.9: the geometric mean of the
+two deathmatch presets' 2600 and 8200 m on the standard card, 11.8 and 37.1 of its 220.8 m
+gun range), else deathmatch's. The real-scale sets are a light retune
+([The real-scale variant](game/real-scale.md#the-scripted-agents-real-scale-sets)). So one
+batch may mix the modes, and every use
 plays the mode's set: BC's teacher, the lanes' scripted anchor, the ladder's rungs and the
 head-to-head's `scripted`. Each search's final population (its last generation's 32 sets,
 best first) is kept in `src/bnb/controllers/scripted_populations.json`

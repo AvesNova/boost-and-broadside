@@ -39,6 +39,26 @@ worth pursuing. These items wait until then. Each says where it came from.
   and host storage chosen automatically from the memory probe. Needed before the rented-GPU
   publication run, not for the MVP on the laptop.
 
+## The scripted agent
+
+- **A proper scripted retune for the real-scale deathmatch and Frontline** (2026-11-10). The
+  light pass (`docs/explanation/game/real-scale.md`, "The scripted agent's real-scale
+  sets") searched each preset for 12-13 generations from the standard set, on the P-51D
+  lineup alone, 2,048 games a generation, and chose among eight finalists at T = 1. The new
+  sets beat the standard ones 0.99 and 0.97 and kill faster, but the Frontline set captures
+  less than half as often in self-play (0.20 front moves a minute against 0.44; 69% of its
+  games drawn): a retune should score captures, not only wins.
+  It did not cover: the other 26 types or mixed lineups (the sets are tuned on the P-51D,
+  and the ship-type tournament rates every type with them); the timing parameters' bounds
+  (the memory fade's centre is held to 0.5-2 s, the switch rates to 1-30 per second, both
+  set at the standard tempo); the per-decision floors (`EPSILONS`, not searched); the
+  chaser (still the standard distances in card lengths, a far coarser aim than the real
+  cones); and the search's plateau rule, which fires early once every candidate beats the
+  reference (ratings anchored on a saturated reference are held by the prior: a fresh
+  anchor per generation, or the population's own median, would fix it). The shot logistic's
+  centre moved past one gun range (shooting at targets still closing); whether that is
+  wanted, or a sign the shot cost is too low, is open.
+
 ## Later, by agreement
 
 - The 128-versus-256 width comparison (the tooling comes with the cleanup pass).
