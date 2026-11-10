@@ -762,3 +762,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   `--print-config`: the A/B arms differ only in the model (and RL's memory-only micro-batch, 3840 =
   one per 384-view minibatch). Queued `round12.sh`: nearest BC to 120M after the champion's RL
   (~13:55 KST); RL only after the BC gates.
+- **13:54 KST Champion RL at 180.4M** (last 10 updates Brier 0.570, outcome EV 0.970, PPO KL 0.0062, no skipped steps): both RL runs at 180.4M. **Nearest BC started** (13:55 KST).
