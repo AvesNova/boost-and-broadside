@@ -16,6 +16,7 @@ from bnb.runtime.train import model_controller
 
 
 def main() -> None:
+    """Profile the compiled controller step and print its top kernels."""
     options = dict(a.split("=", 1) for a in sys.argv[1:])
     device = torch.device("cuda")
     rows, top = int(options.get("rows", 2048)), int(options.get("top", 25))
@@ -42,9 +43,15 @@ def main() -> None:
             for _ in range(10):
                 step(carry, obs, reset)
             torch.cuda.synchronize()
-    print(f"parameters {sum(p.numel() for p in model.parameters()) / 1e6:.2f} M; "
-          f"config width {getattr(model.config, 'width', None)}")
-    print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=top, max_name_column_width=70))
+    print(
+        f"parameters {sum(p.numel() for p in model.parameters()) / 1e6:.2f} M; "
+        f"config width {getattr(model.config, 'width', None)}"
+    )
+    print(
+        prof.key_averages().table(
+            sort_by="cuda_time_total", row_limit=top, max_name_column_width=70
+        )
+    )
 
 
 if __name__ == "__main__":

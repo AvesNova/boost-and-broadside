@@ -29,6 +29,7 @@ def _top_times(count: int = 14) -> dict:
 
 
 def main() -> None:
+    """Compile the seat's step and print its compile time, step time and op count."""
     options = dict(a.split("=", 1) for a in sys.argv[1:])
     device = torch.device("cpu" if options.get("cpu") else "cuda")
     lanes = int(options.get("lanes", 16))

@@ -31,6 +31,7 @@ def _timed(function, repeats: int) -> float:
 
 
 def main() -> None:
+    """Build the engine, play a batch, time its parts; print one JSON line."""
     options = dict(a.split("=", 1) for a in sys.argv[1:])
     names = (
         options.get("players", "").split(",")

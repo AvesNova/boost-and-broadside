@@ -33,6 +33,7 @@ EVENTS: list[dict] = []
 
 
 def log(message: str) -> None:
+    """Print `message` to stderr with the seconds since the start."""
     print(f"[{time.perf_counter() - START:7.1f} s] {message}", file=sys.stderr, flush=True)
 
 
@@ -96,6 +97,8 @@ def _time_captures() -> None:
 
 
 def phase(name: str, phases: dict):
+    """A context that times its block into `phases[name]`, the device synchronised."""
+
     class Phase:
         def __enter__(self):
             _synchronize()
@@ -111,6 +114,7 @@ def phase(name: str, phases: dict):
 
 
 def ratings_case(options: dict, phases: dict) -> dict:
+    """The match engine: build, a first batch (compiles, captures) and a second."""
     from bnb.game.api import PRESETS
     from bnb.league.matches import Arena, ArenaConfig, player
 
@@ -144,6 +148,7 @@ def ratings_case(options: dict, phases: dict) -> dict:
 
 
 def train_case(options: dict, phases: dict) -> dict:
+    """A run's TrainConfig: build, then two collects and updates."""
     from bnb.runs.serialise import from_json
     from bnb.runtime import metrics
     from bnb.runtime.train import TrainConfig, Trainer
@@ -177,6 +182,7 @@ def train_case(options: dict, phases: dict) -> dict:
 
 
 def realtime_case(options: dict, phases: dict) -> dict:
+    """The play shell's tick on the CPU: build, the first tick (compiles), 100 more."""
     from bnb.game.api import PRESETS
     from bnb.runtime.realtime import Realtime
 
@@ -193,6 +199,7 @@ def realtime_case(options: dict, phases: dict) -> dict:
 
 
 def main() -> None:
+    """Run the case named on the command line and print its JSON result."""
     case, options = sys.argv[1], dict(a.split("=", 1) for a in sys.argv[2:])
     _time_captures()
     phases: dict = {}
