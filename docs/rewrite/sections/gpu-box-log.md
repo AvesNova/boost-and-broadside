@@ -849,3 +849,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   --preset P [--ships-per-team M] --pairs a:b ...` plays every pair in one batch, sides swapped
   evenly, score = win + draw/2 with a Wilson interval, and interpolates the 0.5 crossing.
   First GPU run started alongside the fleet ratings (champion frontline 5v5, 5..1 vs 5).
+- **17:55 KST The author: drop the temperature ladder** (at 5v5 it cost ~6 frontline batches, the rest reused); fleet ratings restarted with `--no-ladder`, the ladder run's 5v5 frontline games reused (`runs/ratings/fleet-5v5-ladder`). Crossover grids already share one compiled graph per game size (every pair is a per-game bench count).
