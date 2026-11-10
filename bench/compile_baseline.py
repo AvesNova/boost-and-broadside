@@ -8,7 +8,8 @@ then the case's phases (build, first batch or update, a steady one).
 Cases:
   ratings   the match engine: `players` (default: two policies of one build and the
             scripted agent) on `preset`, the default ArenaConfig, two batches
-  train     a run's TrainConfig (`run`: a run directory with config.json), two updates
+  train     a run's TrainConfig (`run`: a run directory with config.json), `steps` updates
+            (default two)
   realtime  the play shell's tick on the CPU (compiled, B = 1), its first call
 
 Usage: python bench/compile_baseline.py CASE [key=value ...] > result.json
@@ -148,7 +149,7 @@ def ratings_case(options: dict, phases: dict) -> dict:
 
 
 def train_case(options: dict, phases: dict) -> dict:
-    """A run's TrainConfig: build, then two collects and updates."""
+    """A run's TrainConfig: build, then `steps` collects and updates (default two)."""
     from bnb.runs.serialise import from_json
     from bnb.runtime import metrics
     from bnb.runtime.train import TrainConfig, Trainer
@@ -168,7 +169,7 @@ def train_case(options: dict, phases: dict) -> dict:
     device = torch.device("cuda")
     with phase("build", phases):
         trainer = Trainer(config, device)
-    for index in (1, 2):
+    for index in range(1, int(options.get("steps", 2)) + 1):
         with phase(f"collect_{index}", phases):
             store, bootstrap = trainer.collect()
         with phase(f"learn_{index}", phases):

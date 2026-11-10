@@ -416,3 +416,16 @@ old), the default ArenaConfig (8 blocks x 128 games), three steady batches:
   differ. The structure is general: the batch waits for its slowest block. Proposal for the
   author (changes how a tournament counts its games, so not done): the started-before-T
   rule at T about 2x the median, or a T from the batch's own game lengths.
+
+### Steady speed after the shrink (warm A/B, `compile_baseline.py train ... steps=4`)
+
+The short real-scale BC run's config, one process per tree on the shared default caches,
+updates 2-4 steady:
+
+| Tree | Learn (s) | Collect (s) |
+|---|---|---|
+| 552dc851 (before) | 240.7, 241.8, 241.0 | 17.8, 17.9, 17.9 |
+| 205c22f6+ (after) | 239.4, 240.0, 239.8 | 17.8, 17.8, 17.8 |
+
+No cost: 0.6% faster, at noise. The 232.9 s of the short run's second update was that run's
+own variation, not the old tree's speed.
