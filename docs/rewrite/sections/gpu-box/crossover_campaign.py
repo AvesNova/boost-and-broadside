@@ -2,12 +2,8 @@
 checkpoint (champion, null, nearest), mode and fleet size (5v5; 10v10, 20v20, 40v40 in the training
 arena and at the training density), the ship-count handicap at which its score against the scripted
 agent crosses 0.5. One `bnb crossover` process compiles one game size and plays every handicap in it
-(a per-game bench count):
-- n <= 10: the whole integer grid at once (A at n .. 1 against the scripted agent's n).
-- n > 10: a coarse grid (A at n x 1.0, 0.9, ..., 0.1), then every integer between the two coarse
-  levels the 0.5 crossing falls between (the same game size: the compile cache's graph).
-- When A loses even at n:n, the grid goes the other way: A gets more ships (n .. 2n against n, at a
-  game size of 2n), and likewise coarse then fine.
+(a per-game bench count). The author (18:10 KST): measure it upwards, "n network ships beat up to
+m scripted ones": the network keeps n ships and the scripted side gets more (`case`).
 Records (each `bnb crossover`'s result.json) under runs/crossover/<agent>/<preset>/; a summary line per
 case to runs/crossover/summary.jsonl. A case already in the summary is skipped (restartable).
 Usage: crossover_campaign.py [AGENT ...]"""
@@ -58,50 +54,63 @@ def run(agent: str, preset: str, size: int, pairs: list[str], games: int, ships:
 
 
 def crossing(rows: list[dict]) -> tuple[dict, dict] | None:
-    """The two neighbouring rows (by A's count) the score crosses 0.5 between, else None."""
-    rows = sorted(rows, key=lambda r: r["first_active"])
+    """The two neighbouring rows (by the scripted side's count) the score crosses 0.5 between."""
+    rows = sorted(rows, key=lambda r: r["second_active"])
     for low, high in zip(rows, rows[1:]):
         if (low["score"] - 0.5) * (high["score"] - 0.5) <= 0 and low["score"] != high["score"]:
             return low, high
     return None
 
 
+def grid(n: int, top: int) -> list[int]:
+    """The scripted side's counts from n to top: every integer while few, else 10 even steps."""
+    if top - n <= 10:
+        return list(range(n, top + 1))
+    return sorted({round(n + (top - n) * f / 10) for f in range(11)})
+
+
 def case(agent: str, preset: str, n: int) -> dict:
+    """A (the network) keeps its n ships; the scripted side gets n .. 2n (3n while A still wins at
+    2n), each at a game size of the larger side; then every integer inside the crossing's
+    bracket. If A loses at n:n, the scripted side gets fewer: n .. 1 (A then needs more ships than
+    the scripted agent to break even)."""
     rows = []
-    if n <= 10:
-        payload = run(agent, preset, n, [f"{a}:{n}" for a in range(n, 0, -1)], 256, None)
+    payload = run(agent, preset, n, [f"{n}:{b}" for b in grid(n, 2 * n)], 256 if n <= 10 else 128,
+                  2 * n)
+    rows += payload["rows"]
+    top = 2 * n
+    if all(r["score"] > 0.5 for r in rows):  # still wins at 2n: up to 3n
+        payload = run(agent, preset, n, [f"{n}:{b}" for b in grid(2 * n, 3 * n)[1:]],
+                      256 if n <= 10 else 128, 3 * n)
+        rows += payload["rows"]
+        top = 3 * n
+    ships = top
+    if min(r["score"] for r in rows if r["second_active"] == n) < 0.5:  # loses at n:n: fewer
+        down = list(range(n - 1, 0, -1)) if n <= 10 else sorted(
+            {max(1, round(n * f / 10)) for f in range(1, 10)}, reverse=True)
+        payload = run(agent, preset, n, [f"{n}:{b}" for b in down], 256 if n <= 10 else 128, None)
         rows += payload["rows"]
         ships = None
-    else:
-        coarse = sorted({max(1, round(n * f / 10)) for f in range(10, 0, -1)}, reverse=True)
-        payload = run(agent, preset, n, [f"{a}:{n}" for a in coarse], 128, None)
-        rows += payload["rows"]
-        ships = None
-    if min(r["score"] for r in rows if r["first_active"] == n) < 0.5:  # loses at n:n: add ships
-        ships = 2 * n
-        grid = range(n, 2 * n + 1) if n <= 10 else sorted({round(n * (1 + f / 10)) for f in range(11)})
-        payload = run(agent, preset, n, [f"{a}:{n}" for a in grid], 256 if n <= 10 else 128, ships)
-        rows += payload["rows"]
     pair = crossing(rows)
-    if pair is not None and n > 10:
-        low, high = (int(r["first_active"]) for r in pair)
-        between = [a for a in range(low + 1, high)]
+    if pair is not None:
+        low, high = (int(r["second_active"]) for r in pair)
+        between = list(range(low + 1, high))
         if between:
-            payload = run(agent, preset, n, [f"{a}:{n}" for a in between], 256, ships)
+            payload = run(agent, preset, n, [f"{n}:{b}" for b in between], 256,
+                          ships if high > n else None)
             rows += payload["rows"]
             pair = crossing(rows)
     result = dict(agent=agent, preset=preset, size=n, rows=sorted(
         [{k: r[k] for k in ("first_active", "second_active", "games", "wins", "draws", "losses",
                             "score", "score_low", "score_high")} for r in rows],
-        key=lambda r: r["first_active"]))
+        key=lambda r: r["second_active"]))
     if pair is None:
         result["crossover"] = None
     else:
         low, high = pair
         t = (0.5 - low["score"]) / (high["score"] - low["score"])
-        active = low["first_active"] + t * (high["first_active"] - low["first_active"])
-        result["crossover"] = dict(active=active, enemy=n, ships_given=n - active,
-                                   fraction_given=(n - active) / n)
+        enemy = low["second_active"] + t * (high["second_active"] - low["second_active"])
+        result["crossover"] = dict(own=n, enemy=enemy, ratio=enemy / n)
     return result
 
 
@@ -125,7 +134,8 @@ def main() -> None:
                 f.write(json.dumps(result) + "\n")
             c = result["crossover"]
             log(f"done {agent} {preset}: " + ("no crossing in the grid" if c is None else
-                f"{c['active']:.2f} vs {n} ({100 * c['fraction_given']:+.0f}% of the fleet given)"))
+                f"{n} network ships break even against {c['enemy']:.2f} scripted "
+                f"(x{c['ratio']:.2f})"))
     log("campaign done")
 
 

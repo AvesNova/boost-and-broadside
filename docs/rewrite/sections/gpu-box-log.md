@@ -857,3 +857,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   2 modes x (5v5; 10v10, 20v20, 40v40 arena and density): a full integer grid at n <= 10, else a
   coarse grid (n x 1.0 .. 0.1) then every integer in the crossing's bracket; A given more ships
   (up to 2n) when it loses at n:n. Summary: runs/crossover/summary.jsonl.
+- **18:15 KST The author: crossover measured upwards** ("n network ships beat up to m scripted ones"): the network keeps n ships, the scripted side gets n .. 2n (3n while it still wins at 2n), each grid at the larger side's game size (benched slots still cost), then every integer inside the crossing's bracket; where it loses at n:n, the scripted side gets fewer. Campaign restarted (the first run was still compiling).
