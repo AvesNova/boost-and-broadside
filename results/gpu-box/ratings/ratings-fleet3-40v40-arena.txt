@@ -1,3 +1,10 @@
 --reuse: ['runs/ratings/fleet-40v40-arena'] are not directories
 frontline_40v40_arena: batch 1, 512 games, the largest standard error 40.3 (the batch took 1425 s); done about 13:26 (1 batches), by 15:48 at the latest (7 batches)
 frontline_40v40_arena: batch 2, 1024 games, the largest standard error 27.5 (the batch took 226 s); done about 13:06 (0 batches), by 14:28 at the latest (6 batches)
+deathmatch_40v40_arena: batch 1, 512 games, the largest standard error 246.0 (the batch took 675 s); done about 14:36 (7 batches), by 14:36 at the latest (7 batches)
+deathmatch_40v40_arena: batch 2, 1024 games, the largest standard error 245.8 (the batch took 176 s); done about 14:03 (6 batches), by 14:03 at the latest (6 batches)
+deathmatch_40v40_arena: batch 3, 1536 games, the largest standard error 245.8 (the batch took 176 s); done about 13:52 (5 batches), by 13:52 at the latest (5 batches)
+deathmatch_40v40_arena: batch 4, 2048 games, the largest standard error 245.7 (the batch took 176 s); done about 13:46 (4 batches), by 13:46 at the latest (4 batches)
+deathmatch_40v40_arena: batch 5, 2560 games, the largest standard error 245.7 (the batch took 176 s); done about 13:43 (3 batches), by 13:43 at the latest (3 batches)
+deathmatch_40v40_arena: batch 6, 3072 games, the largest standard error 245.7 (the batch took 176 s); done about 13:40 (2 batches), by 13:40 at the latest (2 batches)
+deathmatch_40v40_arena: batch 7, 3584 games, the largest standard error 245.7 (the batch took 176 s); done about 13:39 (1 batches), by 13:39 at the latest (1 batches)
