@@ -287,8 +287,10 @@ at the laptop GPU's measured rate (1,152 real-scale 5v5 games in 13 s, about 88 
 that is about 130 s. Sixty generations: about 2.2 h; the confirmation and the exact solves
 add about 25 minutes. Started at 16:00, it would end about 18:40 (worst 20:00, if the
 noise needs 1,024 games a pair for the last 20 generations). A CPU check is not a
-substitute: a real-scale 5v5 game is about 1.6 s of CPU at 256 games a batch, so one
-generation would take over five hours.
+substitute: a real-scale 5v5 game is about 1.6 s of CPU at 256 games a batch (0.14 ms an
+environment tick, uncompiled, eight threads), so one generation would take over five
+hours, and a 64-game pair did not finish in 15 minutes. The energy fight is therefore
+untested in play: the re-measure above is its first test.
 
 ## The second and third cycles, and seven types
 
