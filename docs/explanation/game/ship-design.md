@@ -342,6 +342,15 @@ the estimate's error on a 10% turn change being worth 60 Elo here, so a result i
 only on exact cards. In Frontline the cycle does not hold: Heron (the Mosquito's airframe)
 beats both others (0.75 and 0.64), the ratings spread 99 Elo.
 
+**The continuation** (`stage-1/seed-2.json`: from the best mean, the exact cards' direction,
+the curl term, 128 games an edge, a smaller step; 24 generations, 23 minutes) did not find
+more: its best mean (generation 21) checked at 1,024 games a pair (instant cards) gives
+0.535, 0.537 and 0.485 round the cycle, ratings within 12 Elo, its realism rising to 3.8 as it
+pushed the shield and the turn. Within the envelope, the shield, the damage, the fire rate and
+the turn give these three a curl of about 0.5 at equal ratings; a cycle in the band needs
+about twice that, so it needs a second mechanism on top (the gun-on-airframe dependence of
+the case studies, or the energy fight once the doctrine is per type).
+
 **Does it survive the agent?** (`robust`, decision 6's test: each design flies its own random
 perturbation of the agent's set, a different draw per design, six draws at each size, 256
 games a pair; `stage-1/seed/robust-real_scale_deathmatch.jsonl`):

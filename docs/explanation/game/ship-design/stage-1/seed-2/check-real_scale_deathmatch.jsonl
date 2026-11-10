@@ -1,0 +1,3 @@
+{"kind": "pair", "first": "Heron", "second": "Bastion", "games": 1024, "score": 0.46533203125, "stderr": 0.015587396374165277, "wins": 470, "ties": 13, "losses": 541, "candidate": "21:0", "card": "estimate"}
+{"kind": "pair", "first": "Heron", "second": "Kestrel", "games": 1024, "score": 0.48486328125, "stderr": 0.015617838350791335, "wins": 491, "ties": 11, "losses": 522, "candidate": "21:0", "card": "estimate"}
+{"kind": "pair", "first": "Bastion", "second": "Kestrel", "games": 1024, "score": 0.46337890625, "stderr": 0.015583034127840668, "wins": 472, "ties": 5, "losses": 547, "candidate": "21:0", "card": "estimate"}
