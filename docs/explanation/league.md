@@ -10,7 +10,8 @@ The league chooses the learner's opponents during training, rates the learner as
 and rates finished policies afterwards. The training side is `bnb.league.league.League`,
 attached to a trainer as its hooks; inside the rollout it acts through one controller, the
 league's seat (`bnb.runtime.opponents.OpponentSlots`). The offline side is
-`bnb.league.tournament`, behind `bnb ratings` and `bnb head-to-head`.
+`bnb.league.tournament`, behind `bnb ratings` and `bnb head-to-head`, and
+`bnb.league.crossover`, behind `bnb crossover`.
 
 ## The pool
 
@@ -351,6 +352,28 @@ them under `artifacts/head_to_head/`.
 <!-- not-runnable: needs CUDA and a run -->
 ```bash
 uv run --no-sync bnb head-to-head 2026-11-02-mixed-purple-pumpkin scripted --games 64
+```
+
+**Crossover fights.** `bnb crossover A [B] --pairs a:b ...` (`bnb.league.crossover`) plays
+A (B is `scripted` by default) at unequal ship counts, to find the handicap at which A's
+score crosses one half: each pair `a:b` gives A `a` active ships and B `b`, the rest of
+each team's slots benched ([benched ships](game/modes.md#benched-ships)), in the game of
+`--preset` built at `--ships-per-team` ships per team (default the preset's own; it must
+hold the largest count). The engine is built with benching and gives every block its
+pair's counts on the right sides whatever the seat, so every pair plays in the same
+batches, `--games` games each, split evenly between the seats, from `--seed`. Per pair it
+prints and records A's wins, draws and losses and its score (a draw half a win) with a 95%
+Wilson interval, and where the score crosses one half between neighbouring pairs, in the
+order given, by linear interpolation; `pairs.jsonl`{.plain} and `result.json`{.plain} (with the command and
+the players' SHA-256) go to `artifacts/crossover/<time>/`{.plain}. Refining is explicit: play a
+finer grid, or more games, around the crossing.
+
+<!-- not-runnable: needs CUDA and a policy -->
+```bash
+# A with 5 ships against the scripted agent with 5 to 8, in an 8v8 deathmatch game
+uv run --no-sync bnb crossover POLICY --preset deathmatch --ships-per-team 8 --pairs 5:5 5:6 5:7 5:8
+# A with 5 down to 1 ship against 5, in the 5v5 training deathmatch
+uv run --no-sync bnb crossover POLICY --preset deathmatch --pairs 5:5 4:5 3:5 2:5 1:5
 ```
 
 **Ablated players.** A Yemong policy may play ablated, in `--with` or in head-to-head:

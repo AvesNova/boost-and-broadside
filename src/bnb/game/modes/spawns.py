@@ -134,13 +134,16 @@ def deathmatch_placement(
     alive: torch.Tensor,
     reset: torch.Tensor,
     keys: torch.Tensor,
+    benched: torch.Tensor | None = None,
 ) -> Placement:
     """Team deathmatch spawns, uniform or grouped (modes spec 4).
 
     arena_radius (B,); uniforms: the mode's tick uniforms (B, U_mode); x, y, alive (B, N):
     ship positions and who is alive after the damage phase; reset (B,): environments
     starting a match, whose ships all spawn together; keys (B, N): the formation keys
-    (grouped membership).
+    (grouped membership); benched (B, N) or None: ships that do not play
+    (`bnb.game.physics.step`), whose provisional points a reset's ships do not keep away
+    from.
     """
     B, N, candidates = x.shape[0], rules.num_ships, mode_rules.spawn_candidates
     groups = mode_rules.spawn_groups
@@ -191,7 +194,7 @@ def deathmatch_placement(
     # One pass serves both rules. A reset is symmetric: every ship's candidate 0 is its
     # provisional point, and it keeps away from the provisional points of its rivals (the
     # enemies, of its own group when grouped). A respawn keeps away from the living enemies.
-    target = starting | alive
+    target = (starting if benched is None else starting & ~benched) | alive
     target_x = torch.where(target, torch.where(starting, candidate_x[..., 0], x), INFINITY)
     target_y = torch.where(target, torch.where(starting, candidate_y[..., 0], y), INFINITY)
     place_x, place_y = _farthest_from_enemies(candidate_x, candidate_y, target_x, target_y, counts)
@@ -244,12 +247,13 @@ def placement(
     axis_y,
     rotation,
     keys,
+    benched=None,
 ) -> Placement:
     """The mode's placement for every ship (selected later by the spawn mask); arena_radius
-    and map_scale (B,)."""
+    and map_scale (B,); benched (B, N) or None: ships that do not play."""
     if mode_rules.name == TEAM_DEATHMATCH:
         return deathmatch_placement(
-            rules, mode_rules, arena_radius, uniforms, x, y, alive, reset, keys
+            rules, mode_rules, arena_radius, uniforms, x, y, alive, reset, keys, benched
         )
     if mode_rules.name == FRONTLINE:
         return frontline_placement(rules, mode_rules, map_scale, uniforms, mode)

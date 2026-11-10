@@ -66,7 +66,10 @@ class Rollout:
     environment's clock at a random tick of its episode (else every game starts fresh);
     extra_reads: observation parts the learner's records keep beyond what its controller
     reads (BC's teacher labels the stored observations); lookahead: ticks `run_lookahead`
-    plays (a multiple of the graph's block)."""
+    plays (a multiple of the graph's block); benching: the games take each team's active
+    ship count as an input (`bnb.game.api`; the carry's `active`, (B, 2) int32, every ship
+    until `restart` is given counts), for the crossover's unequal teams; off, the game is
+    called without it."""
 
     def __init__(
         self,
@@ -86,8 +89,10 @@ class Rollout:
         staggered: bool = True,
         extra_reads: tuple[str, ...] = (),
         lookahead: int = 0,
+        benching: bool = False,
     ) -> None:
         self.rules = api.rules_of(config, pools, environments)
+        self.benching = benching
         self.reward_config = reward_config or rewards.RewardConfig()
         self.teams, self.ships_per_team, self.ship_count = (
             api.TEAMS,
@@ -141,10 +146,16 @@ class Rollout:
 
     # ---- carry ------------------------------------------------------------------------
 
-    def _initial_carry(self, types: api.ShipTypes, staggered: bool) -> dict:
+    def _initial_carry(
+        self, types: api.ShipTypes, staggered: bool, active: torch.Tensor | None = None
+    ) -> dict:
         rules, B, device = self.rules, self.environments, self.device
         types = _pytree.tree_map_only(torch.Tensor, lambda x: x.to(device, copy=True), types)
-        state = api.reset(rules, types, api.uniforms(rules, B, device), self.lineup.fogged)
+        if self.benching and active is None:
+            active = torch.full((B, self.teams), self.ships_per_team, dtype=torch.int32)
+        if active is not None:
+            active = active.to(device=device, dtype=torch.int32)
+        state = api.reset(rules, types, api.uniforms(rules, B, device), self.lineup.fogged, active)
         if staggered:
             episode_ticks = api.episode_ticks(rules, B, device)
             state = api.start_clocks(
@@ -231,6 +242,8 @@ class Rollout:
             game=analytics.blank_game(B, self.ship_count, device),
             game_sums=analytics.blank_game_sums(B, device),
         )
+        if active is not None:
+            carry["active"] = active
         if "outcome" in records:  # the learner's critic predicts the match's outcome
             carry["outcome"] = analytics.blank_outcome(views, blocks, device)
             carry["outcome_tables"] = analytics.blank_outcome_tables(device)
@@ -373,7 +386,12 @@ class Rollout:
 
     def _resolve(self, carry: dict) -> None:
         state, events = api.resolve(
-            self.rules, carry["types"], carry["state"], carry["sweep"], carry["uniforms"]
+            self.rules,
+            carry["types"],
+            carry["state"],
+            carry["sweep"],
+            carry["uniforms"],
+            carry.get("active"),
         )
         _assign(carry["state"], state)
         team = api.ship_team(self.ships_per_team, self.device)
@@ -438,7 +456,7 @@ class Rollout:
         )
 
     def _perceive(self, carry: dict) -> None:
-        state, obs, truth = api.perceive(self.rules, carry["state"])
+        state, obs, truth = api.perceive(self.rules, carry["state"], carry.get("active"))
         analytics.perceive_tick(
             carry["game_sums"],
             carry["obs"]["ships"],
@@ -483,12 +501,15 @@ class Rollout:
         return taken
 
     @torch.no_grad()
-    def restart(self) -> None:
+    def restart(self, active: torch.Tensor | None = None) -> None:
         """Every environment starts a fresh game from its clock's start, and the whole carry
         is a new rollout's (every controller's carry, the seats, the tallies, the sums),
         copied in place so a captured graph stays valid: the offline match engine's batch
-        (`bnb.league.matches.Arena`)."""
-        _assign(self.carry, self._initial_carry(self.carry["types"], staggered=False))
+        (`bnb.league.matches.Arena`). active (B, 2) int32: each team's active ships from
+        now on, for a rollout built with benching (None: every ship)."""
+        if active is not None and not self.benching:
+            raise ValueError("active ship counts need a rollout built with benching")
+        _assign(self.carry, self._initial_carry(self.carry["types"], False, active))
 
     # ---- checkpoints --------------------------------------------------------------------
 
@@ -497,8 +518,9 @@ class Rollout:
         controller's carry, the seats, the reward ledger, the counters and the games' running
         state (`game`, the outcome ledger). Not the staging ring or the segment buffers, which
         every segment writes before it reads them, nor the update's sums (the episodes', the
-        games', the outcome tables), which every update takes."""
-        excluded = ("records", "segment", "episodes", "game_sums", "outcome_tables")
+        games', the outcome tables), which every update takes, nor the active ship counts
+        (`benching`: the offline match engine's, which no training run resumes)."""
+        excluded = ("records", "segment", "episodes", "game_sums", "outcome_tables", "active")
         return {name: tree for name, tree in self.carry.items() if name not in excluded}
 
     def load_carry(self, carry: dict) -> None:
