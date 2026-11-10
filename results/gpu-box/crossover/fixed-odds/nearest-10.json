@@ -1,0 +1,73 @@
+{
+ "agent": "runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average",
+ "identity": "sha256:18c3155c5a051baaaf1629ba2718b422f04d986877f948de893995f1be584df6",
+ "preset": "deathmatch_10v10_arena",
+ "own": 10,
+ "built_size": 20,
+ "block_environments": 64,
+ "batches": 1,
+ "seed": 0,
+ "rows": [
+  {
+   "ratio": 1.0,
+   "scripted": 10,
+   "games": 128,
+   "wins": 114,
+   "draws": 0,
+   "losses": 14,
+   "score": 0.890625,
+   "score_low": 0.8247655486183226,
+   "score_high": 0.9337212042929989,
+   "win_rate": 0.890625,
+   "win_low": 0.8247655486183226,
+   "win_high": 0.9337212042929989
+  },
+  {
+   "ratio": 1.2,
+   "scripted": 12,
+   "games": 128,
+   "wins": 24,
+   "draws": 0,
+   "losses": 104,
+   "score": 0.1875,
+   "score_low": 0.12936141696376852,
+   "score_high": 0.2638491807071743,
+   "win_rate": 0.1875,
+   "win_low": 0.12936141696376852,
+   "win_high": 0.2638491807071743,
+   "note": "run as 1.25 x 10 = 12.5, rounded to 12: 1.2:1 (the ratio used at every size)"
+  },
+  {
+   "ratio": 1.5,
+   "scripted": 15,
+   "games": 128,
+   "wins": 0,
+   "draws": 0,
+   "losses": 128,
+   "score": 0.0,
+   "score_low": 0.0,
+   "score_high": 0.029136956273508416,
+   "win_rate": 0.0,
+   "win_low": 0.0,
+   "win_high": 0.029136956273508416
+  },
+  {
+   "ratio": 2.0,
+   "scripted": 20,
+   "games": 128,
+   "wins": 0,
+   "draws": 0,
+   "losses": 128,
+   "score": 0.0,
+   "score_low": 0.0,
+   "score_high": 0.029136956273508416,
+   "win_rate": 0.0,
+   "win_low": 0.0,
+   "win_high": 0.029136956273508416
+  }
+ ],
+ "seconds": {
+  "build": 18.481600284576416,
+  "total": 161.6508767604828
+ }
+}

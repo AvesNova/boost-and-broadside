@@ -1,0 +1,167 @@
+{
+ "provenance": {
+  "commit": "a5531c14d05a404726f27ef1f5565d0bb4fa700f",
+  "dirty": false,
+  "host": "e98bed47fc73",
+  "gpu": "NVIDIA GeForce RTX 3090",
+  "python": "3.14.8",
+  "torch": "2.15.0+cu132",
+  "cuda": "13.2",
+  "command": [
+   ".venv/bin/bnb",
+   "crossover",
+   "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+   "--preset",
+   "deathmatch",
+   "--pairs",
+   "5:5",
+   "5:6",
+   "5:7",
+   "5:8",
+   "5:9",
+   "5:10",
+   "--games",
+   "256",
+   "--blocks",
+   "8",
+   "--block-environments",
+   "64",
+   "--out",
+   "/workspace/boost-and-broadside/runs/crossover/champion/deathmatch",
+   "--ships-per-team",
+   "10"
+  ],
+  "time": "2026-11-10T10:22:36+00:00"
+ },
+ "kind": "crossover",
+ "payload": {
+  "rows": [
+   {
+    "first": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+    "second": "scripted",
+    "first_identity": "sha256:c74c5493cee5b0caaa45993a75efa4e2585876437ee11922121d9fdcd9603a2b",
+    "second_identity": "scripted",
+    "first_active": 5,
+    "second_active": 5,
+    "handicap": 0,
+    "games": 256,
+    "wins": 252,
+    "draws": 0,
+    "losses": 4,
+    "score": 0.984375,
+    "score_low": 0.9605207372908033,
+    "score_high": 0.9939074017966336
+   },
+   {
+    "first": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+    "second": "scripted",
+    "first_identity": "sha256:c74c5493cee5b0caaa45993a75efa4e2585876437ee11922121d9fdcd9603a2b",
+    "second_identity": "scripted",
+    "first_active": 5,
+    "second_active": 6,
+    "handicap": 1,
+    "games": 256,
+    "wins": 197,
+    "draws": 10,
+    "losses": 49,
+    "score": 0.7890625,
+    "score_low": 0.7350001877603728,
+    "score_high": 0.8345778952434203
+   },
+   {
+    "first": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+    "second": "scripted",
+    "first_identity": "sha256:c74c5493cee5b0caaa45993a75efa4e2585876437ee11922121d9fdcd9603a2b",
+    "second_identity": "scripted",
+    "first_active": 5,
+    "second_active": 7,
+    "handicap": 2,
+    "games": 256,
+    "wins": 141,
+    "draws": 12,
+    "losses": 103,
+    "score": 0.57421875,
+    "score_low": 0.5129905510088384,
+    "score_high": 0.6332524703029463
+   },
+   {
+    "first": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+    "second": "scripted",
+    "first_identity": "sha256:c74c5493cee5b0caaa45993a75efa4e2585876437ee11922121d9fdcd9603a2b",
+    "second_identity": "scripted",
+    "first_active": 5,
+    "second_active": 8,
+    "handicap": 3,
+    "games": 256,
+    "wins": 97,
+    "draws": 18,
+    "losses": 141,
+    "score": 0.4140625,
+    "score_low": 0.3554297681158383,
+    "score_high": 0.4752362072073583
+   },
+   {
+    "first": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+    "second": "scripted",
+    "first_identity": "sha256:c74c5493cee5b0caaa45993a75efa4e2585876437ee11922121d9fdcd9603a2b",
+    "second_identity": "scripted",
+    "first_active": 5,
+    "second_active": 9,
+    "handicap": 4,
+    "games": 256,
+    "wins": 58,
+    "draws": 17,
+    "losses": 181,
+    "score": 0.259765625,
+    "score_low": 0.20988161150215937,
+    "score_high": 0.3167528195149586
+   },
+   {
+    "first": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+    "second": "scripted",
+    "first_identity": "sha256:c74c5493cee5b0caaa45993a75efa4e2585876437ee11922121d9fdcd9603a2b",
+    "second_identity": "scripted",
+    "first_active": 5,
+    "second_active": 10,
+    "handicap": 5,
+    "games": 256,
+    "wins": 50,
+    "draws": 13,
+    "losses": 193,
+    "score": 0.220703125,
+    "score_low": 0.17423801122735416,
+    "score_high": 0.27542640857303496
+   }
+  ],
+  "crossings": [
+   {
+    "between": [
+     "5:7",
+     "5:8"
+    ],
+    "first_active": 5.0,
+    "second_active": 7.463414634146342,
+    "handicap": 2.4634146341463414
+   }
+  ],
+  "preset": "deathmatch",
+  "game": {
+   "ships_per_team": 10,
+   "num_fields": 10,
+   "arena_radius": 2600.0,
+   "episode_seconds": null,
+   "respawn_seconds": null,
+   "mode": "team_deathmatch",
+   "spawn_groups": [],
+   "kills_per_ship": 5
+  },
+  "games": 256,
+  "seed": 0
+ },
+ "inputs": {
+  "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average": {
+   "path": "/workspace/boost-and-broadside/runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+   "sha256": "5f4d415afec54ce6fef58675425b23aad808c5919680c5ad3029ee2f263ee1d9"
+  }
+ }
+}

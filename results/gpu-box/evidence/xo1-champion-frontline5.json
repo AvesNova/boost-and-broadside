@@ -1,0 +1,144 @@
+{
+ "provenance": {
+  "commit": "0da4dd7d8a588170aee7f6a4790fda5655c106b1",
+  "dirty": false,
+  "host": "e98bed47fc73",
+  "gpu": "NVIDIA GeForce RTX 3090",
+  "python": "3.14.8",
+  "torch": "2.15.0+cu132",
+  "cuda": "13.2",
+  "command": [
+   ".venv/bin/bnb",
+   "crossover",
+   "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+   "--preset",
+   "frontline",
+   "--pairs",
+   "5:5",
+   "4:5",
+   "3:5",
+   "2:5",
+   "1:5",
+   "--games",
+   "128",
+   "--out",
+   "/tmp/claude-0/-workspace/ea558f98-4441-4fa7-86f6-fc57d4d3408c/scratchpad/xo1"
+  ],
+  "time": "2026-11-10T08:58:11+00:00"
+ },
+ "kind": "crossover",
+ "payload": {
+  "rows": [
+   {
+    "first": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+    "second": "scripted",
+    "first_identity": "sha256:c74c5493cee5b0caaa45993a75efa4e2585876437ee11922121d9fdcd9603a2b",
+    "second_identity": "scripted",
+    "first_active": 5,
+    "second_active": 5,
+    "handicap": 0,
+    "games": 128,
+    "wins": 128,
+    "draws": 0,
+    "losses": 0,
+    "score": 1.0,
+    "score_low": 0.9708630437264916,
+    "score_high": 1.0
+   },
+   {
+    "first": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+    "second": "scripted",
+    "first_identity": "sha256:c74c5493cee5b0caaa45993a75efa4e2585876437ee11922121d9fdcd9603a2b",
+    "second_identity": "scripted",
+    "first_active": 4,
+    "second_active": 5,
+    "handicap": 1,
+    "games": 128,
+    "wins": 88,
+    "draws": 20,
+    "losses": 20,
+    "score": 0.765625,
+    "score_low": 0.6851645688917714,
+    "score_high": 0.8306064230879273
+   },
+   {
+    "first": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+    "second": "scripted",
+    "first_identity": "sha256:c74c5493cee5b0caaa45993a75efa4e2585876437ee11922121d9fdcd9603a2b",
+    "second_identity": "scripted",
+    "first_active": 3,
+    "second_active": 5,
+    "handicap": 2,
+    "games": 128,
+    "wins": 0,
+    "draws": 3,
+    "losses": 125,
+    "score": 0.01171875,
+    "score_low": 0.002710983956458232,
+    "score_high": 0.04918057490438983
+   },
+   {
+    "first": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+    "second": "scripted",
+    "first_identity": "sha256:c74c5493cee5b0caaa45993a75efa4e2585876437ee11922121d9fdcd9603a2b",
+    "second_identity": "scripted",
+    "first_active": 2,
+    "second_active": 5,
+    "handicap": 3,
+    "games": 128,
+    "wins": 0,
+    "draws": 0,
+    "losses": 128,
+    "score": 0.0,
+    "score_low": 0.0,
+    "score_high": 0.029136956273508416
+   },
+   {
+    "first": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+    "second": "scripted",
+    "first_identity": "sha256:c74c5493cee5b0caaa45993a75efa4e2585876437ee11922121d9fdcd9603a2b",
+    "second_identity": "scripted",
+    "first_active": 1,
+    "second_active": 5,
+    "handicap": 4,
+    "games": 128,
+    "wins": 0,
+    "draws": 0,
+    "losses": 128,
+    "score": 0.0,
+    "score_low": 0.0,
+    "score_high": 0.029136956273508416
+   }
+  ],
+  "crossings": [
+   {
+    "between": [
+     "4:5",
+     "3:5"
+    ],
+    "first_active": 3.6476683937823835,
+    "second_active": 5.0,
+    "handicap": 1.3523316062176165
+   }
+  ],
+  "preset": "frontline",
+  "game": {
+   "ships_per_team": 5,
+   "num_fields": 10,
+   "arena_radius": 2600.0,
+   "episode_seconds": null,
+   "respawn_seconds": null,
+   "mode": "frontline",
+   "spawn_groups": [],
+   "kills_per_ship": 5
+  },
+  "games": 128,
+  "seed": 0
+ },
+ "inputs": {
+  "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average": {
+   "path": "/workspace/boost-and-broadside/runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+   "sha256": "5f4d415afec54ce6fef58675425b23aad808c5919680c5ad3029ee2f263ee1d9"
+  }
+ }
+}

@@ -1,0 +1,362 @@
+run 2026-11-09-bc-deadreckon-split-hiddenphysics-nodecay in /workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics-nodecay
+SIGTERM: stopping after this update (again to stop now)
+Traceback (most recent call last):
+  File "/workspace/boost-and-broadside/.venv/bin/bnb", line 10, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/workspace/boost-and-broadside/src/bnb/cli.py", line 403, in main
+    train(tyro.cli(Train, args=arguments, prog="bnb train"), given(arguments))
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/cli.py", line 587, in train
+    _train(options, given_options, stop)
+    ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/cli.py", line 769, in _train
+    status = session.train(
+        run, trainer, log_cloning if cloned else log, recorder=recorder, stop=stop
+    )
+  File "/workspace/boost-and-broadside/src/bnb/runs/session.py", line 235, in train
+    row, reason = cloning.update(trainer) if cloned else (trainer.update(), None)
+                  ~~~~~~~~~~~~~~^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/runtime/cloning.py", line 99, in update
+    row = trainer.update()
+  File "/workspace/boost-and-broadside/src/bnb/runtime/train.py", line 443, in update
+    collector.set(self.ppo.update(store, bootstrap, self.steps_per_update, cadence=cadence))
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/src/bnb/learn/ppo.py", line 1074, in update
+    terms, per_level, statistic, diagnostic, head_part = self.gradient(
+                                                         ~~~~~~~~~~~~~^
+        segments, prepared, chosen, heads=measure_heads and epoch == 0
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/workspace/boost-and-broadside/src/bnb/learn/ppo.py", line 976, in gradient
+    label = self.labels(trajectory, shot_labels)
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/utils/_contextlib.py", line 158, in no_grad
+    return func(*args, **kwargs)
+  File "/workspace/boost-and-broadside/src/bnb/learn/ppo.py", line 452, in labels
+    return self.codes(trajectory, shot_labels["shots"], shot_labels["mask"])
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/eval_frame.py", line 1265, in compile_wrapper
+    result = fn(*args, **kwargs)
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/convert_frame.py", line 2714, in __call__
+    result = self._torchdynamo_orig_backend(
+        frame, cache_entry, self.hooks, frame_state, skip=1
+    )
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/convert_frame.py", line 783, in __call__
+    result = _compile(
+        frame.f_code,
+    ...<18 lines>...
+        convert_frame_box=self._box,
+    )
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/convert_frame.py", line 2169, in _compile
+    guarded_code, tracer_output = compile_inner(code, one_graph, hooks)
+                                  ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_utils_internal.py", line 114, in wrapper_function
+    return function(*args, **kwargs)
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/convert_frame.py", line 1746, in compile_inner
+    result = _compile_inner(code, one_graph, hooks)
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/convert_frame.py", line 1806, in _compile_inner
+    dynamo_output = compile_frame(
+        code,
+    ...<11 lines>...
+        package=package,
+    )
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/convert_frame.py", line 1641, in compile_frame
+    bytecode, tracer_output = transform_code_object(code, transform)
+                              ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/bytecode_transformation.py", line 1849, in transform_code_object
+    tracer_output = transformations(instructions, code_options)
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/convert_frame.py", line 1612, in transform
+    tracer_output = trace_frame(
+        code,
+    ...<14 lines>...
+        package=package,
+    )
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/convert_frame.py", line 374, in _fn
+    return fn(*args, **kwargs)
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/convert_frame.py", line 973, in trace_frame
+    run_tracer()
+    ~~~~~~~~~~^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/convert_frame.py", line 954, in run_tracer
+    tracer.run()
+    ~~~~~~~~~~^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 2218, in run
+    while self.step():
+          ~~~~~~~~~^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1871, in step
+    self.dispatch_table[inst.opcode](self, inst)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1123, in wrapper
+    return inner_fn(self, inst)
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 4951, in CALL
+    self._call(inst)
+    ~~~~~~~~~~^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 4942, in _call
+    self.call_function(fn, args, kwargs)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1761, in call_function
+    self.push(fn.call_function(self, args, kwargs))  # type: ignore[arg-type]
+              ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/variables/lazy.py", line 719, in realize_and_forward
+    return getattr(self.realize(), name)(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/variables/functions.py", line 1089, in call_function
+    return super().call_function(tx, args, kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/variables/functions.py", line 679, in call_function
+    return tx.inline_user_function_return(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<2 lines>...
+        allow_nested_graph_breaks=True,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1789, in inline_user_function_return
+    return InliningInstructionTranslator.inline_call(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<3 lines>...
+        allow_nested_graph_breaks=allow_nested_graph_breaks,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 6207, in inline_call
+    return tracer.inline_call_()
+           ~~~~~~~~~~~~~~~~~~~^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 6445, in inline_call_
+    self.run()
+    ~~~~~~~~^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 2218, in run
+    while self.step():
+          ~~~~~~~~~^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1871, in step
+    self.dispatch_table[inst.opcode](self, inst)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1123, in wrapper
+    return inner_fn(self, inst)
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 4951, in CALL
+    self._call(inst)
+    ~~~~~~~~~~^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 4942, in _call
+    self.call_function(fn, args, kwargs)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1761, in call_function
+    self.push(fn.call_function(self, args, kwargs))  # type: ignore[arg-type]
+              ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/variables/lazy.py", line 719, in realize_and_forward
+    return getattr(self.realize(), name)(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/variables/functions.py", line 1089, in call_function
+    return super().call_function(tx, args, kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/variables/functions.py", line 679, in call_function
+    return tx.inline_user_function_return(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<2 lines>...
+        allow_nested_graph_breaks=True,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1789, in inline_user_function_return
+    return InliningInstructionTranslator.inline_call(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<3 lines>...
+        allow_nested_graph_breaks=allow_nested_graph_breaks,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 6207, in inline_call
+    return tracer.inline_call_()
+           ~~~~~~~~~~~~~~~~~~~^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 6445, in inline_call_
+    self.run()
+    ~~~~~~~~^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 2218, in run
+    while self.step():
+          ~~~~~~~~~^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1871, in step
+    self.dispatch_table[inst.opcode](self, inst)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1123, in wrapper
+    return inner_fn(self, inst)
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 4951, in CALL
+    self._call(inst)
+    ~~~~~~~~~~^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 4942, in _call
+    self.call_function(fn, args, kwargs)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1761, in call_function
+    self.push(fn.call_function(self, args, kwargs))  # type: ignore[arg-type]
+              ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/variables/functions.py", line 2089, in call_function
+    return super().call_function(tx, args, kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/variables/functions.py", line 679, in call_function
+    return tx.inline_user_function_return(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<2 lines>...
+        allow_nested_graph_breaks=True,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1789, in inline_user_function_return
+    return InliningInstructionTranslator.inline_call(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<3 lines>...
+        allow_nested_graph_breaks=allow_nested_graph_breaks,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 6207, in inline_call
+    return tracer.inline_call_()
+           ~~~~~~~~~~~~~~~~~~~^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 6445, in inline_call_
+    self.run()
+    ~~~~~~~~^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 2218, in run
+    while self.step():
+          ~~~~~~~~~^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1871, in step
+    self.dispatch_table[inst.opcode](self, inst)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1123, in wrapper
+    return inner_fn(self, inst)
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 4951, in CALL
+    self._call(inst)
+    ~~~~~~~~~~^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 4942, in _call
+    self.call_function(fn, args, kwargs)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1761, in call_function
+    self.push(fn.call_function(self, args, kwargs))  # type: ignore[arg-type]
+              ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/variables/functions.py", line 2089, in call_function
+    return super().call_function(tx, args, kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/variables/functions.py", line 679, in call_function
+    return tx.inline_user_function_return(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<2 lines>...
+        allow_nested_graph_breaks=True,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1789, in inline_user_function_return
+    return InliningInstructionTranslator.inline_call(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<3 lines>...
+        allow_nested_graph_breaks=allow_nested_graph_breaks,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 6207, in inline_call
+    return tracer.inline_call_()
+           ~~~~~~~~~~~~~~~~~~~^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 6445, in inline_call_
+    self.run()
+    ~~~~~~~~^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 2218, in run
+    while self.step():
+          ~~~~~~~~~^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1871, in step
+    self.dispatch_table[inst.opcode](self, inst)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1123, in wrapper
+    return inner_fn(self, inst)
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 4951, in CALL
+    self._call(inst)
+    ~~~~~~~~~~^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 4942, in _call
+    self.call_function(fn, args, kwargs)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1761, in call_function
+    self.push(fn.call_function(self, args, kwargs))  # type: ignore[arg-type]
+              ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/variables/functions.py", line 1089, in call_function
+    return super().call_function(tx, args, kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/variables/functions.py", line 679, in call_function
+    return tx.inline_user_function_return(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<2 lines>...
+        allow_nested_graph_breaks=True,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1789, in inline_user_function_return
+    return InliningInstructionTranslator.inline_call(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<3 lines>...
+        allow_nested_graph_breaks=allow_nested_graph_breaks,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 6207, in inline_call
+    return tracer.inline_call_()
+           ~~~~~~~~~~~~~~~~~~~^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 6445, in inline_call_
+    self.run()
+    ~~~~~~~~^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 2218, in run
+    while self.step():
+          ~~~~~~~~~^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 1871, in step
+    self.dispatch_table[inst.opcode](self, inst)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 4868, in BINARY_OP
+    return _binary_op_lookup[inst.arg](self, inst)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/symbolic_convert.py", line 552, in impl
+    self.push(fn_var.call_function(self, self.popn(nargs), {}))
+              ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/variables/builtin.py", line 1906, in call_function
+    return handler(tx, args, kwargs)  # type: ignore[return-value]
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/variables/builtin.py", line 1816, in _handle_insert_op_in_graph
+    proxy = tx.output.create_proxy(
+        "call_function",
+        fn,
+        *proxy_args_kwargs(args, kwargs),
+    )
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/output_graph.py", line 1431, in create_proxy
+    return self.current_tracer.create_proxy(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/output_graph.py", line 4056, in create_proxy
+    return self._create_proxy(
+           ~~~~~~~~~~~~~~~~~~^
+        kind, target, args, kwargs, name, type_expr, proxy_factory_fn
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/workspace/boost-and-broadside/.venv/lib/python3.14/site-packages/torch/_dynamo/output_graph.py", line 4258, in _create_proxy
+    msgs = traceback.StackSummary.from_list(filtered_frame_summaries).format()
+  File "/.uv/python_install/cpython-3.14.8-linux-x86_64-gnu/lib/python3.14/traceback.py", line 763, in format
+    formatted_frame = self.format_frame_summary(frame_summary, colorize=colorize)
+  File "/.uv/python_install/cpython-3.14.8-linux-x86_64-gnu/lib/python3.14/traceback.py", line 597, in format_frame_summary
+    show_carets = self._should_show_carets(start_offset, end_offset, all_lines, anchors)
+  File "/.uv/python_install/cpython-3.14.8-linux-x86_64-gnu/lib/python3.14/traceback.py", line 714, in _should_show_carets
+    tree = ast.parse('\n'.join(all_lines))
+  File "/.uv/python_install/cpython-3.14.8-linux-x86_64-gnu/lib/python3.14/ast.py", line 46, in parse
+    return compile(source, filename, mode, flags,
+                   _feature_version=feature_version, optimize=optimize)
+  File "/workspace/boost-and-broadside/src/bnb/runs/session.py", line 71, in _handle
+    raise KeyboardInterrupt
+KeyboardInterrupt

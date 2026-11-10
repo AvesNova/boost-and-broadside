@@ -1,0 +1,62 @@
+{
+ "name": "2026-11-09-rl-deadreckon-split-hiddenphysics",
+ "status": "failed",
+ "pid": 399098,
+ "host": "e98bed47fc73",
+ "message": "OutOfMemoryError: CUDA out of memory. Tried to allocate 158.00 MiB. GPU 0 has a total capacity of 23.56 GiB of which 131.62 MiB is free. Process 3424384 has 23.38 GiB memory in use. Of the allocated memory 22.45 GiB is allocated by PyTorch, with 436.00 MiB allocated in private pools (e.g., CUDA Graphs), and 65.27 MiB is reserved by PyTorch but unallocated. expandable_segments is enabled. If instead the process is running out of virtual address space (VSZ), expandable segments may be over-reserving VA (each segment reserves ~9/8 of device memory, times the number of streams); reduce it via PYTORCH_CUDA_ALLOC_CONF expandable_segments_reserve / expandable_segments_reserve_by_class.",
+ "command": [
+  ".venv/bin/bnb",
+  "train",
+  "--name",
+  "2026-11-09-rl-deadreckon-split-hiddenphysics",
+  "--init-from",
+  "runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average",
+  "--preset",
+  "mixed",
+  "--updates",
+  "58",
+  "--micro-batch-rows",
+  "640",
+  "--set",
+  "host_store=false"
+ ],
+ "wandb_id": null,
+ "parent": {
+  "policy": "/workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average"
+ },
+ "checkpoint_every": null,
+ "update_policies": true,
+ "newest_checkpoint": null,
+ "final_checkpoint": null,
+ "checkpoint_ordinals": {},
+ "probe": null,
+ "segments": [
+  {
+   "commit": "61cd449ba5fdedd2c041b3b4465203817dfb67a2",
+   "dirty": false,
+   "start_step": 0,
+   "start_time": "2026-11-09T15:24:33+00:00",
+   "end_step": 1048576,
+   "end_time": "2026-11-09T16:00:42+00:00",
+   "overrides": {},
+   "rewound_from": null,
+   "command": [
+    ".venv/bin/bnb",
+    "train",
+    "--name",
+    "2026-11-09-rl-deadreckon-split-hiddenphysics",
+    "--init-from",
+    "runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average",
+    "--preset",
+    "mixed",
+    "--updates",
+    "58",
+    "--micro-batch-rows",
+    "640",
+    "--set",
+    "host_store=false"
+   ]
+  }
+ ],
+ "stop_request": null
+}

@@ -1,0 +1,167 @@
+{
+ "provenance": {
+  "commit": "18c5e3b1e36658bbfe56e1ec274a3bb0e53ac7b4",
+  "dirty": false,
+  "host": "e98bed47fc73",
+  "gpu": "NVIDIA GeForce RTX 3090",
+  "python": "3.14.8",
+  "torch": "2.15.0+cu132",
+  "cuda": "13.2",
+  "command": [
+   ".venv/bin/bnb",
+   "crossover",
+   "runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average",
+   "--preset",
+   "frontline",
+   "--pairs",
+   "5:5",
+   "5:6",
+   "5:7",
+   "5:8",
+   "5:9",
+   "5:10",
+   "--games",
+   "256",
+   "--blocks",
+   "8",
+   "--block-environments",
+   "64",
+   "--out",
+   "/workspace/boost-and-broadside/runs/crossover/nearest/frontline",
+   "--ships-per-team",
+   "10"
+  ],
+  "time": "2026-11-10T09:40:34+00:00"
+ },
+ "kind": "crossover",
+ "payload": {
+  "rows": [
+   {
+    "first": "runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average",
+    "second": "scripted",
+    "first_identity": "sha256:18c3155c5a051baaaf1629ba2718b422f04d986877f948de893995f1be584df6",
+    "second_identity": "scripted",
+    "first_active": 5,
+    "second_active": 5,
+    "handicap": 0,
+    "games": 256,
+    "wins": 184,
+    "draws": 43,
+    "losses": 29,
+    "score": 0.802734375,
+    "score_low": 0.7496678214871734,
+    "score_high": 0.8468497654424748
+   },
+   {
+    "first": "runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average",
+    "second": "scripted",
+    "first_identity": "sha256:18c3155c5a051baaaf1629ba2718b422f04d986877f948de893995f1be584df6",
+    "second_identity": "scripted",
+    "first_active": 5,
+    "second_active": 6,
+    "handicap": 1,
+    "games": 256,
+    "wins": 13,
+    "draws": 34,
+    "losses": 209,
+    "score": 0.1171875,
+    "score_low": 0.08333128838163656,
+    "score_high": 0.16236260169442127
+   },
+   {
+    "first": "runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average",
+    "second": "scripted",
+    "first_identity": "sha256:18c3155c5a051baaaf1629ba2718b422f04d986877f948de893995f1be584df6",
+    "second_identity": "scripted",
+    "first_active": 5,
+    "second_active": 7,
+    "handicap": 2,
+    "games": 256,
+    "wins": 1,
+    "draws": 1,
+    "losses": 254,
+    "score": 0.005859375,
+    "score_low": 0.0013543419447187635,
+    "score_high": 0.024975016163661986
+   },
+   {
+    "first": "runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average",
+    "second": "scripted",
+    "first_identity": "sha256:18c3155c5a051baaaf1629ba2718b422f04d986877f948de893995f1be584df6",
+    "second_identity": "scripted",
+    "first_active": 5,
+    "second_active": 8,
+    "handicap": 3,
+    "games": 256,
+    "wins": 0,
+    "draws": 2,
+    "losses": 254,
+    "score": 0.00390625,
+    "score_low": 0.0006898821669617927,
+    "score_high": 0.021790975380582514
+   },
+   {
+    "first": "runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average",
+    "second": "scripted",
+    "first_identity": "sha256:18c3155c5a051baaaf1629ba2718b422f04d986877f948de893995f1be584df6",
+    "second_identity": "scripted",
+    "first_active": 5,
+    "second_active": 9,
+    "handicap": 4,
+    "games": 256,
+    "wins": 0,
+    "draws": 3,
+    "losses": 253,
+    "score": 0.005859375,
+    "score_low": 0.0013543419447187635,
+    "score_high": 0.024975016163661986
+   },
+   {
+    "first": "runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average",
+    "second": "scripted",
+    "first_identity": "sha256:18c3155c5a051baaaf1629ba2718b422f04d986877f948de893995f1be584df6",
+    "second_identity": "scripted",
+    "first_active": 5,
+    "second_active": 10,
+    "handicap": 5,
+    "games": 256,
+    "wins": 0,
+    "draws": 0,
+    "losses": 256,
+    "score": 0.0,
+    "score_low": 0.0,
+    "score_high": 0.01478385642587143
+   }
+  ],
+  "crossings": [
+   {
+    "between": [
+     "5:5",
+     "5:6"
+    ],
+    "first_active": 5.0,
+    "second_active": 5.4415954415954415,
+    "handicap": 0.4415954415954416
+   }
+  ],
+  "preset": "frontline",
+  "game": {
+   "ships_per_team": 10,
+   "num_fields": 10,
+   "arena_radius": 2600.0,
+   "episode_seconds": null,
+   "respawn_seconds": null,
+   "mode": "frontline",
+   "spawn_groups": [],
+   "kills_per_ship": 5
+  },
+  "games": 256,
+  "seed": 0
+ },
+ "inputs": {
+  "runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average": {
+   "path": "/workspace/boost-and-broadside/runs/2026-11-10-rl-nearest/policies/step_40894464/uniform_average",
+   "sha256": "0841f6cd486b2602b343aa2adddba40cfd7b81007369e109cb3a66abaf693d4d"
+  }
+ }
+}

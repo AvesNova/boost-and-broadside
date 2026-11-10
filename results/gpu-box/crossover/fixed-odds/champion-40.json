@@ -1,0 +1,72 @@
+{
+ "agent": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+ "identity": "sha256:c74c5493cee5b0caaa45993a75efa4e2585876437ee11922121d9fdcd9603a2b",
+ "preset": "deathmatch_40v40_arena",
+ "own": 40,
+ "built_size": 80,
+ "block_environments": 16,
+ "batches": 4,
+ "seed": 0,
+ "rows": [
+  {
+   "ratio": 1.0,
+   "scripted": 40,
+   "games": 128,
+   "wins": 124,
+   "draws": 0,
+   "losses": 4,
+   "score": 0.96875,
+   "score_low": 0.9224023687386392,
+   "score_high": 0.9877817347549466,
+   "win_rate": 0.96875,
+   "win_low": 0.9224023687386392,
+   "win_high": 0.9877817347549466
+  },
+  {
+   "ratio": 1.2,
+   "scripted": 48,
+   "games": 128,
+   "wins": 68,
+   "draws": 0,
+   "losses": 60,
+   "score": 0.53125,
+   "score_low": 0.44515370795994524,
+   "score_high": 0.6155252322729605,
+   "win_rate": 0.53125,
+   "win_low": 0.44515370795994524,
+   "win_high": 0.6155252322729605
+  },
+  {
+   "ratio": 1.5,
+   "scripted": 60,
+   "games": 128,
+   "wins": 4,
+   "draws": 0,
+   "losses": 124,
+   "score": 0.03125,
+   "score_low": 0.01221826524505338,
+   "score_high": 0.07759763126136077,
+   "win_rate": 0.03125,
+   "win_low": 0.01221826524505338,
+   "win_high": 0.07759763126136077
+  },
+  {
+   "ratio": 2.0,
+   "scripted": 80,
+   "games": 128,
+   "wins": 0,
+   "draws": 0,
+   "losses": 128,
+   "score": 0.0,
+   "score_low": 0.0,
+   "score_high": 0.029136956273508416,
+   "win_rate": 0.0,
+   "win_low": 0.0,
+   "win_high": 0.029136956273508416
+  }
+ ],
+ "seconds": {
+  "build": 20.92403483390808,
+  "total": 1366.212027311325
+ }
+}

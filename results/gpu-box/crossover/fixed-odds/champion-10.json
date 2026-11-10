@@ -1,0 +1,73 @@
+{
+ "agent": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average",
+ "identity": "sha256:c74c5493cee5b0caaa45993a75efa4e2585876437ee11922121d9fdcd9603a2b",
+ "preset": "deathmatch_10v10_arena",
+ "own": 10,
+ "built_size": 20,
+ "block_environments": 64,
+ "batches": 1,
+ "seed": 0,
+ "rows": [
+  {
+   "ratio": 1.0,
+   "scripted": 10,
+   "games": 128,
+   "wins": 128,
+   "draws": 0,
+   "losses": 0,
+   "score": 1.0,
+   "score_low": 0.9708630437264916,
+   "score_high": 1.0,
+   "win_rate": 1.0,
+   "win_low": 0.9708630437264916,
+   "win_high": 1.0
+  },
+  {
+   "ratio": 1.2,
+   "scripted": 12,
+   "games": 128,
+   "wins": 121,
+   "draws": 1,
+   "losses": 6,
+   "score": 0.94921875,
+   "score_low": 0.896433623617652,
+   "score_high": 0.9758261422303678,
+   "win_rate": 0.9453125,
+   "win_low": 0.8914150997002529,
+   "win_high": 0.9732597986186536,
+   "note": "run as 1.25 x 10 = 12.5, rounded to 12: 1.2:1 (the ratio used at every size)"
+  },
+  {
+   "ratio": 1.5,
+   "scripted": 15,
+   "games": 128,
+   "wins": 94,
+   "draws": 4,
+   "losses": 30,
+   "score": 0.75,
+   "score_low": 0.6684443704768313,
+   "score_high": 0.8169871513864144,
+   "win_rate": 0.734375,
+   "win_low": 0.6518470619103658,
+   "win_high": 0.8032449898364271
+  },
+  {
+   "ratio": 2.0,
+   "scripted": 20,
+   "games": 128,
+   "wins": 55,
+   "draws": 6,
+   "losses": 67,
+   "score": 0.453125,
+   "score_low": 0.36950795637281275,
+   "score_high": 0.5394736332778287,
+   "win_rate": 0.4296875,
+   "win_low": 0.3472117133263662,
+   "win_high": 0.516260671149596
+  }
+ ],
+ "seconds": {
+  "build": 19.087748050689697,
+  "total": 852.2145254611969
+ }
+}
