@@ -135,3 +135,5 @@
 04:55 round11 done
 04:55 start 2026-11-10-bc-nearest (BC 120M, the simple-model A/B)
 05:15 done 2026-11-10-bc-nearest
+05:15 tournament8 start (11 players: nearest BC vs the champion and null BC curves)
+05:16 round12 done
