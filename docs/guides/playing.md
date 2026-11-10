@@ -225,6 +225,13 @@ compare.
   rate is a choice of the rates a ship can hold (whole shots per second, a whole number of
   ticks apart). The bleed rate is shown, not set: the half-lift drag (the drag of a
   half-stick turn over a full one) sets the drag's shape.
+- The sliders show as soon as the panel opens: each type's handles come from its ship
+  file, where its card was solved to them. What the ships actually fly is measured in the
+  background, the chosen type first, then the types in the match, so a type's red dots
+  appear a few seconds after you choose it (tens of seconds for a real-scale type); until
+  then the dot's tooltip says "not measured yet". Once a type is measured, a change to a
+  combat handle (hit damage, fire rate, gun range, shots per store, shield, ...) is exact
+  at once: it does not change how the ship flies.
 - **Save ships** writes every type to its file in the match's ship set (`src/bnb/game/ships/`
   for the standard set, `src/bnb/game/ships/real-scale/` for the real-scale one), tracked
   in git: the handles and the card, and the tuned flight constants and bullet life into
@@ -237,7 +244,10 @@ compare.
   the next tick; those marked with * are drawn at an episode's start. Hover a row for
   the game's value.
 - Changing a flight constant re-measures the handles (the ships keep their card, so what
-  they fly changes); the handles cannot be set until it finishes, a few seconds.
+  they fly changes), each type when it is chosen or plays; a type's handles cannot be set
+  until it is measured, a few seconds (tens of seconds for a real-scale type). **Save
+  ships** and **Add** need every type's handles: they first measure the ones not yet
+  measured, and say so; press again once the status line says exact.
 - **Time scale**: **Apply** makes the whole game the given factor faster with the map's
   lengths fixed (speeds x k, gravity and accelerations x k^2, rates and fire rates x k,
   times / k, energies x k^2, so a store keeps its height). Fire rates snap to whole Hz that
@@ -253,8 +263,8 @@ compare.
 A new match or a restart keeps the tuning, unless it plays another ship set. Ship counts, fields and the lineup are set in
 **New match**. A trained agent given a ship card or lineup it was not trained with plays,
 with a warning. A tuned match is not recorded as a replay. The first time the panel opens
-on a machine, the solver's flights compile in the background (about a minute); after that
-they come from the cache.
+on a machine (and after a flight constant changes), the measurement's and the solver's
+flights compile first (about a minute); after that they come from the cache.
 
 ## Keys
 

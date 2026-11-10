@@ -314,6 +314,7 @@ class Session:
         loop = self.loop
         if self.tuner is None and not loop.replaying:
             self.tuner = Tuner(loop, base_rules(loop.setup.config, loop.setup.lineup))
+            self.tuner.show(self.tuning_panel.ship)  # measured first
 
     def toggle_tuning(self) -> None:
         """Show or hide the tuning panel (a live match's tuner starts when it first shows)."""

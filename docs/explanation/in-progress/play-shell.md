@@ -135,9 +135,10 @@ battlefield, and clicking an object opens a card about it. Every action has a co
 the keys are shortcuts, named in the controls' tooltips.
 
 `bnb.play.interface.layout.Layout` places every card for a screen size and an interface
-scale: the top bar, the fleets card on the left, the selection card and the minimap on the
-right, the kill feed under the top bar, the scrubber along the bottom in a replay, and the
-flying HUD at the bottom while a ship is flown. A card is drawn inside its rectangle, or
+scale: the top bar, the fleets card on the left (wide enough for the longest ship name,
+`bnb.play.interface.fleets.width`), the selection card and the minimap on the right, the
+kill feed under the top bar, the scrubber along the bottom in a replay, and the flying
+HUD at the bottom while a ship is flown. A card is drawn inside its rectangle, or
 as a slim tab on its edge when collapsed, so everything outside the rectangles is
 battlefield; a test renders with and without the interface and checks those pixels are
 unchanged. The cards are Dear ImGui windows themed from the theme file: the panel,
@@ -203,20 +204,31 @@ plays, through `bnb.play.tuning.Tuner` and `MatchLoop.retune`:
   ring is rebuilt for the new radius and ring; shields and stores are capped). The map and
   the spawns follow the rules from the next episode. Sizes (ships, fields, lineup, the
   tick) take a new match.
-- **Handles**, per ship type, go through the card, also an input of the compiled tick. A
-  changed handle applies the instant estimate (`bnb.game.api.Estimate`, about 50 ms, on a
-  worker process) on the next frames; once the handles settle, the exact solve runs on a
-  second worker from that estimate, swapping each better card in and reporting the handles
-  it flies; the panel marks a handle flown more than 0.5% off its set value with a red dot,
-  the flown value in its tooltip. A flight constant re-measures the
-  card's handles (the card is kept); the bullet life changes only the gun range, in closed
-  form.
+- **Handles**, per ship type, go through the card, also an input of the compiled tick. The
+  panel shows a type's handles at once when its card and the rules its handles depend on
+  (the flight constants and the bullet life, `bnb.play.tuning.SET_BY`) are its ship
+  file's: each file's card was solved exact to its handles. Otherwise (a flight constant
+  changed, a preset, the time scale) the type's handles are measured before they show.
+  What each card flies is measured lazily, one type at a time on a measuring worker: the
+  type the panel shows first, then the match's types; no other type is flown.
+- A changed handle applies the instant estimate (`bnb.game.api.Estimate`, about 50 ms, on a
+  worker process) on the next frames; once the handles settle, the exact solve of the
+  changed types runs on a second worker from that estimate, one type at a time, swapping
+  each better card in and reporting the handles it flies; the panel marks a handle flown
+  more than 0.5% off its set value with a red dot, the flown value in its tooltip. A
+  combat handle of an exact card whose flight is measured skips both: the flight does not
+  read the combat fields, so the solve's answer is that card with its combat fields in
+  closed form (`combat_card`), applied at once. A flight constant re-measures the cards'
+  handles (the cards are kept); the bullet life changes only the gun range, in closed form.
 - **The workers are processes**, not threads: the solve and the estimate are thousands of
   small tensor operations, and on a thread each waits for the interpreter lock while the
-  match runs. A warm-up process compiles the flights the solver flies
-  (`bnb.runtime.flights`) into the on-disk cache when the panel first opens; the workers
-  switch to the compiled flights once it is done (a measurement about 1 s instead of
-  12.5 s, a solve about 4 s instead of 40, on the development CPU).
+  match runs. Each worker flies the compiled flight tick (`bnb.runtime.flights`), compiled
+  on its first flight of each batch size (one type's measurement, one type's solve
+  iteration) and flight constants: about a minute the first time on a machine, then
+  seconds from the on-disk cache; the solving worker compiles when the tuner starts, ahead
+  of the first solve. Compiled, one type's measurement takes about 1 s for a standard type
+  and 7-13 s for a real-scale one (its climb lasts about an hour of game time); the game's
+  own tick is about ten times slower.
 - **Bullet slots.** A play-shell match allocates a slot per tick of the longest bullet life
   a setting allows (`bnb.game.tuning.most_bullet_slots`, 45 at 30 Hz), so no fire rate or bullet
   life runs out of them; the compiled 5v5 tick costs the same 0.7-1.0 ms at 6, 15 or 45.

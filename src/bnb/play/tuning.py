@@ -178,13 +178,18 @@ def time_scaled_card(types: api.ShipTypes, rules: api.Rules, factor: float) -> a
     )
 
 
-HANDLES, RULES = 0, 1  # the shared counters' slots
+HANDLES, RULES, FIRST = 0, 1, 2  # the shared counters' slots; FIRST: the type to measure
+CHECK_EVERY = 256  # ticks between a measurement's looks at whether it is still wanted
 _STEP = None  # this worker process's compiled flight tick
 _ESTIMATE: tuple | None = None  # this worker process's estimate: (its anchor's key, Estimate)
 
 
 class _Compiled(Exception):
     """The warm-up's flight stops after its first tick: that call compiled it."""
+
+
+class _Unwanted(Exception):
+    """A measurement stops: the rules changed, or another type is wanted first."""
 
 
 def columns(value, kinds):
@@ -264,11 +269,28 @@ def _estimate_job(versions, report, version, kinds, key, rules, anchor, anchor_h
 
 
 def _measure_job(versions, report, rules_version, kind, rules, card):
-    """One ship type's handles (`card`: its column) under the rules."""
-    step = _step(versions)
-    if versions[RULES] != rules_version:
-        return ("measured", rules_version, kind, card, None)
-    return ("measured", rules_version, kind, card, api.measure_handles(_double(card), rules, step))
+    """One ship type's handles (`card`: its column) under the rules; None if it stopped
+    because the rules changed or another type is wanted first (`versions[FIRST]`, -1 for
+    none), which it looks at every CHECK_EVERY ticks."""
+    step, ticks = _step(versions), [0]
+
+    def unwanted() -> bool:
+        first = versions[FIRST]
+        return versions[RULES] != rules_version or (first >= 0 and first != kind)
+
+    def tick(*arguments):
+        ticks[0] += 1
+        if ticks[0] % CHECK_EVERY == 0 and unwanted():
+            raise _Unwanted
+        return step(*arguments)
+
+    try:
+        if unwanted():
+            raise _Unwanted
+        handles = api.measure_handles(_double(card), rules, tick)
+    except _Unwanted:
+        handles = None
+    return ("measured", rules_version, kind, card, handles)
 
 
 def _solve_job(versions, report, version, rules_version, kinds, targets, rules, start):
@@ -420,7 +442,7 @@ class Tuner:
         self.shown: dict[str, list[float]] = {}
         self.focus = 0  # the ship type the panel shows
         self._context = context = multiprocessing.get_context("spawn")
-        self._versions = context.Array("q", 2, lock=False)
+        self._versions = context.Array("q", 3, lock=False)
         self._fast = _Worker(context, "tuning-estimate", self._versions)
         self._slow = _Worker(context, "tuning-solve", self._versions)
         self._measurer = _Worker(context, "tuning-measure", self._versions)
@@ -781,6 +803,11 @@ class Tuner:
         ):
             self._handles_changed = None
             self._solve()
+        focus = self.focus
+        first = (
+            0 <= focus < self._count and self._flown[focus] is None and focus not in self._estimated
+        )
+        self._versions[FIRST] = focus if first and focus not in self._unmeasurable else -1
         if self._measurer.idle:
             self._measuring = self._next_measurement()
             if self._measuring is not None:

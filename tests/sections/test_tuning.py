@@ -297,3 +297,24 @@ def test_the_fleets_card_widens_for_long_ship_names(scale):
     assert (
         wide.fleets.width == 380.0 * scale and wide.fleets.x == Layout(1920, 1080).fleets.x * scale
     )
+
+
+def test_a_measurement_stops_when_another_type_is_wanted_first(monkeypatch):
+    """The measuring worker drops a type's measurement within CHECK_EVERY ticks once the
+    panel shows another unmeasured type, or the rules change, so that one goes first."""
+    from bnb.play import tuning
+
+    rules = api.rules_of(FRONTLINE)
+    card = tuning.columns(api.ship_types(), [0])
+    assert tuning._measure_job([0, 0, 1], None, 0, 0, rules, card)[-1] is None  # at once
+    versions = [0, 0, -1]
+
+    def step(*arguments):  # the panel shows type 1 while type 0 flies
+        versions[tuning.FIRST] = 1
+        return api.flight_tick(*arguments)
+
+    monkeypatch.setattr(tuning, "_STEP", step)
+    monkeypatch.setattr(tuning, "CHECK_EVERY", 1)
+    assert tuning._measure_job(versions, None, 0, 0, rules, card)[-1] is None
+    versions[:] = [0, 1, -1]  # the rules changed since the job was submitted (version 0)
+    assert tuning._measure_job(versions, None, 0, 0, rules, card)[-1] is None

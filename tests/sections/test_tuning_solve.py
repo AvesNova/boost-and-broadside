@@ -182,7 +182,7 @@ def test_a_combat_handle_of_a_measured_card_applies_exactly_at_once():
         assert frames(lambda: tuner.flying["cruise_speed"][0] is not None, 300.0)
         before = tuner.loop.types
         flown = fly(tuner.loop.rules, _double(before))
-        for name, factor in (("hit_damage", 1.5), ("gun_range", 1.2), ("max_shield", 0.8)):
+        for name, factor in (("hit_damage", 1.5), ("gun_range", 0.9), ("max_shield", 0.8)):
             tuner.set_handle(name, 0, float(getattr(tuner.targets, name)[0]) * factor)
             assert tuner.exact and tuner._solving is None and not tuner.message, name
         after = tuner.loop.types

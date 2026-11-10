@@ -2,7 +2,8 @@
 energy bars, alive or respawning (with the wait), and its controller (you, scripted, the
 scripted agent, or the agent's name). Clicking a row selects its ship. A team's controller
 is changed here: the scripted chaser, the scripted agent or one of the local runs'
-policies, and an agent's sampling temperature."""
+policies, and an agent's sampling temperature. The card is wide enough for the longest
+ship name (`width`), whose column both teams share, so their bars line up."""
 
 from typing import TYPE_CHECKING
 
