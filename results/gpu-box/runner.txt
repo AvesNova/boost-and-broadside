@@ -151,3 +151,6 @@
 09:09 crossover start champion frontline
 09:09 crossover start champion frontline
 09:13 fleet 5v5 done
+09:14 fleet 10v10-arena start (6 players + scripted; 8 x 256)
+09:24 crossover done champion frontline: 5 network ships break even against 6.36 scripted (x1.27)
+09:24 crossover start null frontline
