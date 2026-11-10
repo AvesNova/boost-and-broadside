@@ -782,3 +782,13 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   both RL runs at 60.8M / 121.6M / 180.4M from their training checkpoints (60.8M and 121.6M
   downloaded from the hub), both BC lines at 120.6M from `policy-exponential/`. Nearest's 120.6M
   waits until tournament 8 ends (it is a player). Older snapshots (BC 30M / 60M) not rewritten.
+- **14:40 KST Tournament 8 (gate 3) done.** Frontline: champion BC 120M uniform 986, null 979,
+  **nearest live 914**, nearest uniform 562, its (bugged = uniform) exponential 590. Deathmatch:
+  **nearest live 1037** (beats scripted and the champion's 988), nearest 60M uniform 1020,
+  nearest 120M uniform 628. Gate 3 passed: the BC nearest plays at scripted's level. Its
+  averages are far below its live (the uniform is 0.39 of the live's norm away, the true
+  exponential, decay 0.95, 0.14), unlike Yemong's, so the nearest RL will start from its best BC
+  policy, not by the Yemong runs' type (a deliberate A/B deviation: equal footing, not equal
+  file type). Nearest's true exponential rewritten (4c54d017). Tournament 9 started: the true
+  exponentials (BC 120M; RL 60.8M / 121.6M / 180.4M), the RL 180.4M live and uniform, BC 120M
+  live, nearest live and exponential; reusing tournaments 5-8.
