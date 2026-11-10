@@ -683,3 +683,15 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
 - **08:37 KST Champion RL at 121.6M** (last 10 updates Brier 0.494, outcome EV 0.944, PPO KL 0.0068); **tournament 7 started**: all 60 players present (none missing), 8 x 256, target +-35; reused 768 frontline games (rounds 5-6).
 - **09:00 KST 8 x 256 measured:** steady batch 2048 games in 211 s = **9.7 games/s vs 5.1 on 8 x 128: 1.9x**, fits in memory: the default for future tournaments. Tournament 7's worst error stays at the prior (+-347) until every one of its 60 players has played (8 pairs a batch).
 - **09:30 KST Tournament 7 is bounded by pairings, not games** (my 40-60 min estimate was wrong): pairings per minute ~2.4 for 8 x 128, 2.5 for 16 x 128, 2.3 for 8 x 256: the engine pays per pairing (each pair's two networks), so more games per pairing come nearly free (8 x 256 doubled games/s) but a 61-player field needs ~190 pairings per mode (the tool's projection): ~80 min per mode; frontline ~10:30, deathmatch ~12:00 KST. The engine fix (batch networks across pairings) is what would cut this.
+- **10:05 KST Tournament 7 frontline final** (`runs/ratings/round7-8x256/`, 11 batches, 22,528
+  games, worst +-33.5): uniform averages, champion / null: BC 10.5M 465 / 440, 21.0 728 / 606,
+  30.4 803 / 718, 40.9 840 / 761, 50.3 924 / 877, 60.8 969 / 932, 70.3 997 / 957, 80.7 980 / 978,
+  90.2 976 / 1001, 100.7 1009 / 1013, 110.1 1033 / 989, 120.6 1010 / 948; RL 10.5M 1293 / 1351,
+  21.0 1396 / 1409, 30.4 1436 / 1489, 40.9 1537 / 1531, 50.3 1564 / 1550, 60.8 1573 / 1604, 70.3
+  1677 / 1578, 80.7 1703 / 1630, 90.2 1711 / 1651, 100.7 1770 / 1686, 110.1 1780 / 1700, 121.6
+  1825 / 1719 (+-16-31). Variants live / uniform / exponential: BC 120.6M champion 937 / 1010 /
+  1013, null 873 / 948 / 987; RL 60.8M 1655 / 1573 / 1610, 1586 / 1604 / 1580; RL 121.6M **1868** /
+  1825 / 1837, 1655 / 1719 / 1663. Reading: BC plateaus at the teacher (~1000 by 70-100M); RL +300
+  in its first 10M and still climbing at 121.6M; both pass the MVP's ~1500 by RL ~40M; the null
+  leads early in RL, the champion pulls ahead after ~60M (+106 uniform, +190 live at 121.6M); in RL
+  the champion's live policy is its best (the averages lag a still-improving policy). Deathmatch next.
