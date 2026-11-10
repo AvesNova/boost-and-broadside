@@ -22,6 +22,19 @@ PRESETS = {
     "frontline": GameConfig(5, 10, 2600.0, mode=FRONTLINE),
 }
 
+# Fleet-size evaluation presets (zero-shot: training is 5v5 only): `<mode>_<n>v<n>_arena` keeps
+# the training arena (2600 m), so n ships crowd it n/5 times as densely; `<mode>_<n>v<n>_density`
+# keeps the training crowding, the arena radius growing as sqrt(n / 5) (its 10 fields zoom with
+# the arena, as every map scale's do). Not training presets.
+FLEET_SIZES = (10, 20, 40)
+for _n in FLEET_SIZES:
+    for _name, _mode in (("deathmatch", TEAM_DEATHMATCH), ("frontline", FRONTLINE)):
+        PRESETS[f"{_name}_{_n}v{_n}_arena"] = GameConfig(_n, 10, 2600.0, mode=_mode)
+        PRESETS[f"{_name}_{_n}v{_n}_density"] = GameConfig(
+            _n, 10, round(2600.0 * (_n / 5) ** 0.5, 1), mode=_mode
+        )
+del _n, _name, _mode
+
 
 @dataclasses.dataclass(frozen=True)
 class ModeRules:
