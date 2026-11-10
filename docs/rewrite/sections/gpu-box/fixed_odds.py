@@ -1,5 +1,5 @@
 """fixed_odds.py: win rates at fixed odds (the author, 21:00 KST, for a paper): the network with n
-ships against the scripted agent with n x 1, 1.25, 1.5 and 2 ships (rounded), deathmatch in the
+ships against the scripted agent with n x 1, 1.2, 1.5 and 2 ships (rounded), deathmatch in the
 training arena. One engine built at 2n (one compile); each batch's 8 blocks are 2 per ratio;
 `--batches` batches (128 games per ratio at the default layouts). Per ratio: wins, draws, losses,
 the score (a draw half a win) and its 95% Wilson interval, and the win rate alone with its own.
@@ -21,7 +21,7 @@ from bnb.league.crossover import summary, wilson_interval
 from bnb.league.matches import Arena, ArenaConfig, network_groups
 from bnb.league.tournament import identity
 
-RATIOS = (1.0, 1.25, 1.5, 2.0)
+RATIOS = (1.0, 1.2, 1.5, 2.0)  # the author, 21:10 KST: 1.2 at every size (10 x 1.25 rounded to 12)
 BLOCKS = 8
 
 
