@@ -869,3 +869,4 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   unused 12 h), and the runs since logged TritonBundler "Cubin file not found". The guard now
   never prunes while a bnb process runs. Re-running the failed command with a fresh, empty
   cache to tell a corrupt cache from a miscompile.
+- **19:00 KST Corrupt compile cache confirmed:** the null's failed crossover re-run with a fresh, empty cache ran clean: **null 5 ships break even against 5.87 scripted (x1.17)** (5:5 0.984, 5:6 0.430, 5:7 0.037), recorded in the summary. The campaign restarted on its own fresh cache (/tmp/inductor-campaign; the champion's deathmatch case was mid-run). Re-checking the champion's frontline 5:6 / 5:7 in the fresh cache (seed 1) against the earlier 0.676 / 0.186, so the two results run on the old cache can stand.
