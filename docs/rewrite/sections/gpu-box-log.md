@@ -742,3 +742,13 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   setting equal to the Yemong runs except memory-only ones (micro-batch); expected 4-6x faster (the
   learner was ~85% of an update). Runs after the RL to 180M (~14:05 KST).
 - **11:05 KST The author: treat the nearest-MLP's first run as a bug hunt** (it should get near the scripted agent's level in BC, which has little memory). Gates: (1) first 3 updates: KL falling about as Yemong's did (2.96 -> 1.41 -> 0.72), finite, speed, entropy toward the teacher's; (2) ~10M and ~30M: KL / agreement vs Yemong at the same step and the run's own lane score vs scripted; stop and investigate (features, normalisation, nearest-K, zone roles, padding) if the score is near zero or KL stalls far above Yemong's; (3) before RL: a short rating of BC 120M vs scripted; RL only if BC is sane.
+- **11:40 KST Disk and the hub's integrity.** Disk 15 GB free: deleted 205 RL per-update policy
+  snapshots up to 121.6M that the curve does not use (kept every ~10M, 60.8M, 121.6M), each after its
+  files' SHA-256 matched their records on the hub: 6.3 GB freed, 21 GB free. **3 snapshots failed the
+  check and were kept: the hub held wrong bytes (same size) for 3 policy files whose local copies
+  match their records**, written by a sync commit at 11:17 KST (my full check at ~10:40 had passed
+  one of them). Re-uploading moved no new data ("New Data Upload 0 B"): the right bytes were already
+  in the hub's store and only the path pointed at others: the upload's large multi-part commits can
+  pair a path with the wrong content (the 30.4M checkpoint earlier was likely the same). Repaired
+  and re-verified; `gpu-box/hub_repair.py` now runs after every sync pass (re-uploads any file whose
+  hub hash differs from its record and re-checks).

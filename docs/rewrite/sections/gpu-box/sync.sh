@@ -57,6 +57,9 @@ if (runs / "ratings").exists():
                       path_in_repo="ratings", commit_message="sync ratings")
 print("hub sync ok")
 EOF
+  # an upload is not trusted until its hash is checked: re-upload any file whose hub copy
+  # differs from its checkpoint record (seen 4 times on 2026-11-09/10: same size, wrong bytes)
+  /venv/main/bin/python docs/rewrite/sections/gpu-box/hub_repair.py "$RUNS" 2>&1 | grep "hub repair"
 }
 
 disk_guard() {  # the box has 64 GB: below 15 GB free, prune compile-cache files unused 12 h
