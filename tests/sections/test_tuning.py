@@ -91,20 +91,20 @@ def test_a_retune_keeps_the_sizes():
 
 @pytest.mark.slow
 def test_a_retune_never_recompiles():
-    """The compiled tick takes the rules' live values as tensors: new values run on the same
-    compiled tick, with no new graph, and match a match started with them."""
-    from torch._dynamo.utils import counters
+    """The built tick takes the rules' live values as tensors: new values run on the same
+    built tick, with no new one, and match a match started with them."""
+    from bnb.runtime import realtime as realtime_module
 
     realtime = Realtime(DEATHMATCH, compiled=True)
     actions = torch.zeros(DEATHMATCH.num_ships, 3, dtype=torch.int32)
     realtime.step(actions)
-    graphs = counters["stats"]["unique_graphs"]
+    built = dict(realtime_module._BUILT)
     changes = {"flight.gravity": 33.0, "rules.bullet_life": 0.3, "pool.respawn_seconds": 2.0}
     realtime.retune(rules=api.tuning.tuned(realtime.rules, changes))
     for _ in range(5):
         realtime.step(actions)
     assert realtime.uses_compiled
-    assert counters["stats"]["unique_graphs"] == graphs
+    assert realtime_module._BUILT == built
     assert realtime.rules.flight.gravity == 33.0 and realtime.rules.bullet_moves == 9
 
 

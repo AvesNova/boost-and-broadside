@@ -54,6 +54,16 @@ POLICY_RECORD = "checkpoint.json"
 MODEL_DRAWS_OFFSET = 1_000_003  # the model's own draws: a stream apart from the sampling
 
 
+def _copy_leaves(targets, sources) -> None:
+    """Copy each tensor leaf of `sources` into the same leaf of `targets` (two trees of one
+    shape). A carry's optional fields are None (a leaf to `_pytree`) and are skipped."""
+    for target, source in zip(
+        _pytree.tree_leaves(targets), _pytree.tree_leaves(sources), strict=True
+    ):
+        if target is not None:
+            target.copy_(source)
+
+
 class AgentError(ValueError):
     """A policy file that cannot play this match, with the reason."""
 
@@ -200,12 +210,9 @@ class Agent:
             decision = self.model.step(self.carry, *self._inputs)
             for field in dataclasses.fields(self.carry):
                 if field.name != "previous_action":
-                    for target, new in zip(
-                        _pytree.tree_leaves(getattr(self.carry, field.name)),
-                        _pytree.tree_leaves(getattr(decision.carry, field.name)),
-                        strict=True,
-                    ):
-                        target.copy_(new)
+                    _copy_leaves(
+                        getattr(self.carry, field.name), getattr(decision.carry, field.name)
+                    )
             return decision.policy_logits
 
         with torch.random.fork_rng(devices=[device]):
@@ -216,10 +223,15 @@ class Agent:
             self._graph = torch.cuda.CUDAGraph()
             with torch.cuda.graph(self._graph, capture_error_mode="thread_local"):
                 self._outputs = step()
-        for target, old in zip(
-            _pytree.tree_leaves(self.carry), _pytree.tree_leaves(saved), strict=True
-        ):
-            target.copy_(old)
+        _copy_leaves(self.carry, saved)
+
+    def prepare(self, view: Obs, reset: torch.Tensor) -> None:
+        """Capture the graphed step ahead of play, on a view of the match (the play shell
+        calls this from a thread before the agent plays, so its first tick does not stall
+        the window)."""
+        if self.graphed and self._graph is None:
+            with torch.no_grad():
+                self._capture(view, reset)
 
     def _graphed_logits(self, view: Obs, reset: torch.Tensor) -> torch.Tensor:
         if self._graph is None:

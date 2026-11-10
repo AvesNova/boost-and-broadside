@@ -205,8 +205,11 @@ def perceive(rules: Rules, state: State) -> tuple[State, Obs, Privileged]:
         ticks_since_seen=since,
         previous_velocity_x=velocity_x,
         previous_velocity_y=velocity_y,
-        previous_nose_rate=ships.nose_rate,
-        previous_alive=ships.alive,
+        # Copies, not the ships' own tensors: a state whose leaves share a tensor fails the
+        # compiled tick's guards (traced on cloned, unshared states), which then recompiles
+        # on the caller's thread (the play shell froze for seconds).
+        previous_nose_rate=ships.nose_rate.clone(),
+        previous_alive=ships.alive.clone(),
         previously_seen=visible,
     )
     return replace(state, match=match), obs, truth

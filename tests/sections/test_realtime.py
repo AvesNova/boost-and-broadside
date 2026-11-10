@@ -5,7 +5,9 @@ import pytest
 import torch
 from torch.utils import _pytree
 
+from bnb import cache
 from bnb.contracts import GameConfig
+from bnb.runtime import realtime as realtime_module
 from bnb.runtime.realtime import Realtime
 
 CONFIG = GameConfig(2, 4, 900.0, episode_seconds=2.0)
@@ -96,3 +98,47 @@ def test_the_background_compile_swaps_in_and_keeps_the_states():
             torch.testing.assert_close(got, want, rtol=1e-4, atol=1e-3)
         else:
             assert torch.equal(got, want)
+
+
+@pytest.mark.slow
+def test_the_built_tick_is_the_uncompiled_tick_and_is_kept_on_disk(tmp_path, monkeypatch):
+    """The tick built in a child process gives the uncompiled tick's states, floats to
+    fusion rounding and flags exactly; it is written once, and a later process (this
+    one's loaded ticks forgotten) loads it from disk instead of building it again."""
+    monkeypatch.setattr(cache, "ROOT", tmp_path)
+    monkeypatch.setattr(realtime_module, "_BUILT", {})
+    built, eager = Realtime(CONFIG, compiled=True), Realtime(CONFIG, compiled=False)
+    libraries = list(tmp_path.glob("ticks/*.pt2"))
+    assert len(libraries) == 1
+    generator = torch.Generator().manual_seed(5)
+    for _ in range(10):
+        actions = _actions(generator, CONFIG.num_ships)
+        built.step(actions)
+        eager.step(actions)
+    assert built.uses_compiled
+    for got, want in zip(
+        _pytree.tree_leaves((built.state, built.obs)),
+        _pytree.tree_leaves((eager.state, eager.obs)),
+        strict=True,
+    ):
+        if want.dtype.is_floating_point:
+            torch.testing.assert_close(got, want, rtol=1e-4, atol=1e-3)
+        else:
+            assert torch.equal(got, want)
+
+    monkeypatch.setattr(realtime_module, "_BUILT", {})
+    stamp = libraries[0].stat().st_mtime_ns
+    again = Realtime(CONFIG, compiled=True)
+    again.step(torch.zeros(CONFIG.num_ships, 3, dtype=torch.int32))
+    assert again.uses_compiled
+    assert list(tmp_path.glob("ticks/*.pt2")) == libraries
+    assert libraries[0].stat().st_mtime_ns == stamp
+
+
+def test_a_tick_state_shares_no_tensor_between_its_fields():
+    """A state whose fields share a tensor fails a compiled tick's guards (traced on
+    unshared states) and recompiles on the window's thread."""
+    realtime = Realtime(CONFIG, compiled=False)
+    realtime.step(torch.zeros(CONFIG.num_ships, 3, dtype=torch.int32))
+    leaves = _pytree.tree_leaves(realtime.state)
+    assert len({id(leaf) for leaf in leaves}) == len(leaves)

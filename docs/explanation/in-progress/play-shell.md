@@ -184,11 +184,33 @@ live match; the saved replay is not changed.
 
 ## Compiling in the background
 
-A new kind of match (another mode, map size or fleet) needs its tick compiled, which
-takes several seconds. `Realtime(background=True)` compiles it on a thread while the
-match runs the uncompiled tick, then swaps it in; compiled ticks are shared by every match
-of the same rules in the process, so a restart or a replay of the same game starts
-compiled.
+The window's thread never compiles, traces or measures: Python's interpreter lock is
+shared by the process's threads, so a compile on any thread of the window's process
+starves the frame loop (a cold `torch.compile` of the tick froze the window for 8-18 s,
+and even a compile from warm caches for 2-4 s). Slow work runs in child processes, which
+have their own lock, and the window only waits for their results:
+
+- **The tick.** A new kind of match (another mode, map size or fleet) needs its tick built.
+  `bnb.runtime.realtime.library` exports it and packages it with AOTInductor in a child
+  process (about 30 s), keeps it in the user's cache directory (`bnb.cache`, keyed by the
+  game's code, torch's version and the static rules), and loads it in milliseconds.
+  `Realtime(background=True)` does this on a thread that waits for the child, while the
+  match runs the uncompiled tick (about 5 ms a step with scripted sides: enough up to ×2),
+  then swaps the built tick in (about 0.2 ms). The built tick agrees with the uncompiled
+  one to float32 fusion rounding, and replays repeat each tick as it ran. A built tick is shared by every match of the same static
+  rules, in this process and every later one.
+- **The scripted agent's characteristics** are measured once per card, in a child process
+  (`bnb.game.handling.characteristics.measure_aside`), and kept in the same cache. A side
+  set to a scripted agent whose card is not measured yet (`Session.set_side`, or a match
+  started with one) plays on as it was, the chaser at a match's start, and the agent
+  takes over when the measurement is in.
+- **A GPU agent's CUDA graph** is captured on a thread before the agent plays
+  (`Agent.prepare`); the side plays on as it was meanwhile.
+
+A state the tick returns never shares a tensor between two of its fields
+(`perceive` copies the ships' alive flags and nose rates into the match's "previous"
+fields): a compiled tick traced on unshared inputs would otherwise fail its guards on the
+match's own state and recompile on the window's thread.
 
 ## Live tuning
 

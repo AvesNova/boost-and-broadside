@@ -11,7 +11,7 @@ from bnb.game.api import PRESETS
 from bnb.play import themes
 from bnb.play.app import Options, Session, read_pixels
 from bnb.play.interface.minimap import to_world
-from bnb.play.loop import MatchEvent
+from bnb.play.loop import MatchEvent, SideSetup
 from bnb.play.selection import Selection, shown_ships
 from bnb.play.sides import Agent
 
@@ -309,3 +309,31 @@ def test_the_tuning_panel_adds_and_removes_ships(context, tmp_path, monkeypatch)
     finally:
         monkeypatch.undo()
         api.reload_ships()
+
+
+def test_a_side_slow_to_make_plays_on_until_it_is_made(context, tmp_path, monkeypatch):
+    """A scripted agent whose card is not measured yet: choosing it returns at once, the
+    team plays on with its controller while the measurement runs aside, and the agent takes
+    over when it is in."""
+    import threading
+
+    from bnb.play import app
+
+    measured = threading.Event()
+    monkeypatch.setattr(
+        app, "cached_characteristics", lambda types, rules: object() if measured.is_set() else None
+    )
+    monkeypatch.setattr(app, "measure_aside", lambda types, rules: measured.wait(60))
+    session = _session(context, tmp_path)
+    player = Player(session, context, 1280, 720)
+    assert session.set_side(1, SideSetup("scripted_agent"))
+    player.frames(10)
+    assert session.loop.sides[1].label == "scripted"
+    assert "takes over" in session.notice
+    measured.set()
+    for _ in range(200):
+        player.frames()
+        if session.loop.sides[1].label == "scripted agent":
+            break
+    assert session.loop.sides[1].label == "scripted agent"
+    assert session.loop.setup.sides[1] == SideSetup("scripted_agent")

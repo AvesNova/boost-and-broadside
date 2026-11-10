@@ -3,13 +3,19 @@ ship card's own measurements: the handles (`measure`), the shown top speed and t
 datum's turn rates, all flown in the game's code. The agent states every threshold as a
 dimensionless number times one of these, so it follows the card.
 
-`characteristics` caches them per card and rules.
+`characteristics` caches them per card and rules, in the process and on disk
+(`bnb.cache`); `measure_aside` measures them in a child process, for a caller (the play
+shell) whose thread must not stall.
 """
 
 import dataclasses
+import multiprocessing
+import os
+import pathlib
 
 import torch
 
+from bnb import cache
 from bnb.contracts.tree import contract
 
 from ..physics.flight import airframe_of
@@ -102,11 +108,13 @@ def measure_characteristics(types: ShipTypes, rules: Rules) -> Characteristics:
 
 
 _CACHE: dict = {}
+_CODE = ("game", "contracts")  # the code a measurement flies
 
 
-def characteristics(types: ShipTypes, rules: Rules) -> Characteristics:
-    """`measure_characteristics`, cached per card values, device and the rules it reads."""
-    key = (
+def _key(types: ShipTypes, rules: Rules) -> tuple:
+    """What a measurement depends on: the card's values, its device and the rules it
+    reads."""
+    return (
         tuple(
             tuple(getattr(types, field.name).flatten().tolist())
             for field in dataclasses.fields(types)
@@ -122,6 +130,60 @@ def characteristics(types: ShipTypes, rules: Rules) -> Characteristics:
         rules.shield_recharge_delay,
         rules.head_on_fraction,
     )
+
+
+def _disk_path(key: tuple) -> pathlib.Path:
+    return cache.path("characteristics", key, packages=_CODE, suffix=".pt")
+
+
+def cached(types: ShipTypes, rules: Rules) -> Characteristics | None:
+    """The card's characteristics if this process or an earlier run measured them (on disk
+    in `bnb.cache`), else None; never measures."""
+    key = _key(types, rules)
     if key not in _CACHE:
-        _CACHE[key] = measure_characteristics(types, rules)
+        path = _disk_path(key)
+        if not path.exists():
+            return None
+        try:
+            stored = torch.load(path, map_location=types.max_energy.device, weights_only=True)
+        except Exception:  # a damaged entry: measured again
+            return None
+        _CACHE[key] = Characteristics(**stored)
     return _CACHE[key]
+
+
+def characteristics(types: ShipTypes, rules: Rules) -> Characteristics:
+    """`measure_characteristics`, cached per card values, device and the rules it reads, in
+    this process and on disk (`cached`)."""
+    found = cached(types, rules)
+    if found is not None:
+        return found
+    key = _key(types, rules)
+    measured = _CACHE[key] = measure_characteristics(types, rules)
+    path = _disk_path(key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = path.with_name(f"{path.stem}.{os.getpid()}.partial")
+    fields = {field.name: getattr(measured, field.name) for field in dataclasses.fields(measured)}
+    torch.save(fields, partial)
+    partial.replace(path)
+    return measured
+
+
+def _measure_child(types: ShipTypes, rules: Rules) -> None:
+    torch.set_num_threads(1)
+    characteristics(types, rules)
+
+
+def measure_aside(types: ShipTypes, rules: Rules) -> None:
+    """Measure the card's characteristics in a child process into the disk cache, and wait
+    for it. Called from a thread, the wait holds no interpreter lock, so the process's
+    other threads run on (measuring on a thread of this process would starve them)."""
+    if cached(types, rules) is not None:
+        return
+    child = multiprocessing.get_context("spawn").Process(
+        target=_measure_child, args=(types, rules), name="characteristics", daemon=True
+    )
+    child.start()
+    child.join()
+    if child.exitcode != 0:
+        raise RuntimeError(f"measuring the characteristics failed (exit code {child.exitcode})")

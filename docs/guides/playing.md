@@ -21,9 +21,11 @@ uv run bnb play --agent1 runs/<run>/policy
 ```
 
 The first match comes from the options (a preset, and the sizes that override it); every
-later one from the menu's **New match**. A new kind of match starts at once: its tick
-compiles in the background while the match runs the uncompiled tick, a little slower, for
-the first several seconds. The options:
+later one from the menu's **New match**. A new kind of match starts at once and never
+stalls the window: the first time a game (or a changed version of the code) is played, its
+tick is built in a separate process (about 30 s) while the match runs the uncompiled tick,
+which keeps up to ×2; the built tick is kept in the user's cache directory, so every later
+match of that game starts compiled. The options:
 
 <!-- generated: play-options -->
 
@@ -91,8 +93,10 @@ fields, the lineup (each slot's ship type, the same for both teams), fog, the se
 each side's controller: **Scripted** (the chaser), **Scripted agent** (the scripted agent
 with its memory, `bnb.controllers.scripted.Scripted`: it remembers each enemy it saw and
 dead reckons it while hidden; `--scripted0 scripted_agent` starts with it) or a trained
-agent. The first scripted agent of a process measures the ship card's characteristics,
-which takes about 15 s on a laptop CPU; later ones start at once. The agent list is
+agent. A scripted agent needs its ship card's characteristics, measured once per card in a
+separate process (about 15 s on a laptop CPU) and kept in the user's cache directory; until
+they are measured the side plays on as it was and a notice says the agent will take over.
+An agent that runs on the GPU captures its step aside the same way before it plays. The agent list is
 every policy file of the local runs: `runs/*/policy/`, the training checkpoints and the
 league's snapshots (`--runs` sets the directory). A policy plays only the game it was
 trained on, with the same ship card and the default lineup; otherwise the shell says
