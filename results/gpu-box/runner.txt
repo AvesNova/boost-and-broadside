@@ -139,3 +139,4 @@
 05:16 round12 done
 05:40 tournament8 done
 05:41 tournament9 start (22 players: true exponentials, RL 180.4M, nearest)
+06:31 tournament9 done

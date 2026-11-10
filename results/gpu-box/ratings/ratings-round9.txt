@@ -12,3 +12,53 @@ deathmatch: reused 1536 games of /workspace/boost-and-broadside/runs/ratings/rou
 deathmatch: reused 0 games of /workspace/boost-and-broadside/runs/ratings/round8/deathmatch.batches.jsonl (2 batches), 4 of its 12 players matched: ['runs/2026-11-09-bc-absolute/policies/step_120586240/uniform_average', 'runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average', 'runs/2026-11-10-bc-nearest/policies/step_120586240/live', 'scripted']
 deathmatch: batch 1, 2048 games, the largest standard error 457.1 (the batch took 809 s); done about 08:06 (8 batches), by 08:06 at the latest (8 batches)
 deathmatch: batch 2, 4096 games, the largest standard error 176.9 (the batch took 187 s); done about 07:19 (7 batches), by 07:19 at the latest (7 batches)
+deathmatch: batch 3, 6144 games, the largest standard error 111.2 (the batch took 188 s); done about 07:04 (6 batches), by 07:04 at the latest (6 batches)
+deathmatch: batch 4, 8192 games, the largest standard error 35.0 (the batch took 188 s); done about 06:33 (1 batches), by 06:56 at the latest (5 batches)
+deathmatch: batch 5, 10240 games, the largest standard error 25.7 (the batch took 188 s); done about 06:31 (0 batches), by 06:52 at the latest (4 batches)
+deathmatch       runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average   1941.9 +-  20.4    1792 games
+deathmatch       runs/2026-11-09-rl-absolute/policies/step_180355072/live       1877.5 +-  25.7     512 games
+deathmatch       runs/2026-11-09-rl-absolute/policies/step_180355072/exponential_average   1854.5 +-  23.2    1024 games
+deathmatch       runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_121634816/uniform_average   1793.9 +-  25.4    1024 games
+deathmatch       runs/2026-11-09-rl-absolute/policies/step_180355072/uniform_average   1781.3 +-  22.1    1280 games
+deathmatch       runs/2026-11-09-rl-absolute/policies/step_121634816/exponential_average   1703.6 +-  25.0     512 games
+deathmatch       runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_121634816/exponential_average   1623.5 +-  19.8    1280 games
+deathmatch       runs/2026-11-09-rl-absolute/policies/step_121634816/uniform_average   1612.8 +-  20.1    1280 games
+deathmatch       runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/exponential_average   1571.9 +-  21.2     768 games
+deathmatch       runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_60817408/exponential_average   1509.4 +-  22.5    1024 games
+deathmatch       runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_60817408/uniform_average   1445.1 +-  23.3     768 games
+deathmatch       runs/2026-11-09-rl-absolute/policies/step_60817408/uniform_average   1429.6 +-  18.0    1536 games
+deathmatch       runs/2026-11-09-rl-absolute/policies/step_60817408/exponential_average   1352.6 +-  19.1    1024 games
+deathmatch       runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/live   1185.1 +-  13.5    1280 games
+deathmatch       runs/2026-11-10-bc-nearest/policies/step_120586240/exponential_average   1040.8 +-  14.4    1024 games
+deathmatch       runs/2026-11-10-bc-nearest/policies/step_120586240/live        1012.2 +-  17.0     512 games
+deathmatch       scripted                                                       1000.0 +-   0.0    4992 games
+deathmatch       runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average    980.0 +-  10.8    1280 games
+deathmatch       runs/2026-11-09-bc-absolute/policies/step_120586240/exponential_average    966.4 +-  17.8     768 games
+deathmatch       runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/exponential_average    962.2 +-  17.0    1024 games
+deathmatch       runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/live    955.1 +-  16.9     512 games
+deathmatch       runs/2026-11-09-bc-absolute/policies/step_120586240/live        899.8 +-  16.2     640 games
+deathmatch       runs/2026-11-09-bc-absolute/policies/step_120586240/uniform_average    897.8 +-  12.3    1536 games
+frontline        runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/exponential_average   1893.2 +-  28.7     512 games
+frontline        runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_121634816/exponential_average   1856.6 +-  26.4     768 games
+frontline        runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/uniform_average   1802.5 +-  27.9     512 games
+frontline        runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_180355072/live   1789.3 +-  28.3     512 games
+frontline        runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_121634816/uniform_average   1718.7 +-  26.4     768 games
+frontline        runs/2026-11-09-rl-absolute/policies/step_180355072/live       1712.9 +-  26.0     512 games
+frontline        runs/2026-11-09-rl-absolute/policies/step_180355072/exponential_average   1709.1 +-  25.8     512 games
+frontline        runs/2026-11-09-rl-absolute/policies/step_180355072/uniform_average   1701.6 +-  22.4    1536 games
+frontline        runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_60817408/exponential_average   1628.0 +-  25.2     512 games
+frontline        runs/2026-11-09-rl-absolute/policies/step_121634816/uniform_average   1626.7 +-  22.9    1024 games
+frontline        runs/2026-11-09-rl-absolute/policies/step_121634816/exponential_average   1617.4 +-  23.3    1024 games
+frontline        runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_60817408/uniform_average   1586.7 +-  20.8    1792 games
+frontline        runs/2026-11-09-rl-absolute/policies/step_60817408/uniform_average   1534.8 +-  22.3    1024 games
+frontline        runs/2026-11-09-rl-absolute/policies/step_60817408/exponential_average   1510.0 +-  20.8    1536 games
+frontline        scripted                                                       1000.0 +-   0.0    4992 games
+frontline        runs/2026-11-09-bc-absolute/policies/step_120586240/uniform_average    992.3 +-  12.2     896 games
+frontline        runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average    980.6 +-   9.7    1792 games
+frontline        runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/exponential_average    969.0 +-  17.8     512 games
+frontline        runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/live    959.9 +-  16.5     512 games
+frontline        runs/2026-11-09-bc-absolute/policies/step_120586240/exponential_average    945.4 +-  17.2     768 games
+frontline        runs/2026-11-10-bc-nearest/policies/step_120586240/live         924.7 +-  18.0     512 games
+frontline        runs/2026-11-10-bc-nearest/policies/step_120586240/exponential_average    897.6 +-  17.7     768 games
+frontline        runs/2026-11-09-bc-absolute/policies/step_120586240/live        891.1 +-  17.1     512 games
+runs/ratings/round9/artifacts/ratings/20261110-063115
