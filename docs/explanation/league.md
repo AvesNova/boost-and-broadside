@@ -10,7 +10,8 @@ The league chooses the learner's opponents during training, rates the learner as
 and rates finished policies afterwards. The training side is `bnb.league.league.League`,
 attached to a trainer as its hooks; inside the rollout it acts through one controller, the
 league's seat (`bnb.runtime.opponents.OpponentSlots`). The offline side is
-`bnb.league.tournament`, behind `bnb ratings` and `bnb head-to-head`.
+`bnb.league.tournament`, behind `bnb ratings` and `bnb head-to-head`, and
+`bnb.league.crossover`, behind `bnb crossover`.
 
 ## The pool
 
@@ -310,9 +311,28 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
 - **The record:** after each batch one JSON line is appended, and synced to disk, to
   `<preset>.batches.jsonl` in `--out` (else the run's `artifacts/ratings/`): the batch's
   index, its blocks' matchups and results, the games so far, every player's rating and
-  standard error, the worst error, the batch's seconds and the wall time. A tournament
-  that finds its preset's record rebuilds the games from it and goes on; a finished one
-  plays nothing. Each batch also logs a line with the local clock times it expects to finish
+  standard error, the worst error, the batch's seconds and the wall time, the games reused
+  (`reused_games`) and each player's identity (`identities`, name to identity). A
+  tournament that finds its preset's record rebuilds the games from it and goes on (the
+  record's field must be its own: same names, same order, same identities); a finished one
+  plays nothing.
+- **Reusing earlier games** (`--reuse DIR [DIR ...]`, `bnb.league.tournament.reuse_record`):
+  every `<preset>.batches.jsonl` below the directories (as `--out` writes them; the run's
+  own record is left out) adds each recorded game whose two players are both in the field
+  to the starting games, whatever its field or arena layout. The fit starts from them, and
+  batches are played only while an error is above the target (none when the reused games
+  meet it); `--budget` counts only the games played here. Players are matched by identity
+  (`bnb.league.tournament.identity`): a policy's is the SHA-256 of its
+  weights file as its checkpoint.json records it (with its ablations), so a moved
+  policy still matches and other weights at the same path do not; a scripted player's
+  (the ladder's, a teacher's) is its name. Each record's reused games, matched players and
+  skipped names are logged. A **legacy record** (written before identities were recorded)
+  holds no hashes, so it trusts its paths: each name is resolved as it would be now, and
+  is skipped when it no longer resolves, or when its policy's checkpoint.json `time` is
+  after the record's first batch ended. That catches a rewind, which moves a policy to
+  `policies/rewound_<n>/` and later writes other weights at the old path: the old path's
+  games are skipped, and the moved policy cannot be matched to them either (nothing in the
+  record says which weights played). Each batch also logs a line with the local clock times it expects to finish
   (the errors falling as one over the root of the games) and, at the latest, when the
   budget is spent, at the mean batch's time.
 - **A guard:** a batch whose games run past the game clock's ticks (plus two segments)
@@ -345,6 +365,28 @@ them under `artifacts/head_to_head/`.
 <!-- not-runnable: needs CUDA and a run -->
 ```bash
 uv run --no-sync bnb head-to-head 2026-11-02-mixed-purple-pumpkin scripted --games 64
+```
+
+**Crossover fights.** `bnb crossover A [B] --pairs a:b ...` (`bnb.league.crossover`) plays
+A (B is `scripted` by default) at unequal ship counts, to find the handicap at which A's
+score crosses one half: each pair `a:b` gives A `a` active ships and B `b`, the rest of
+each team's slots benched ([benched ships](game/modes.md#benched-ships)), in the game of
+`--preset` built at `--ships-per-team` ships per team (default the preset's own; it must
+hold the largest count). The engine is built with benching and gives every block its
+pair's counts on the right sides whatever the seat, so every pair plays in the same
+batches, `--games` games each, split evenly between the seats, from `--seed`. Per pair it
+prints and records A's wins, draws and losses and its score (a draw half a win) with a 95%
+Wilson interval, and where the score crosses one half between neighbouring pairs, in the
+order given, by linear interpolation; `pairs.jsonl`{.plain} and `result.json`{.plain} (with the command and
+the players' SHA-256) go to `artifacts/crossover/<time>/`{.plain}. Refining is explicit: play a
+finer grid, or more games, around the crossing.
+
+<!-- not-runnable: needs CUDA and a policy -->
+```bash
+# A with 5 ships against the scripted agent with 5 to 8, in an 8v8 deathmatch game
+uv run --no-sync bnb crossover POLICY --preset deathmatch --ships-per-team 8 --pairs 5:5 5:6 5:7 5:8
+# A with 5 down to 1 ship against 5, in the 5v5 training deathmatch
+uv run --no-sync bnb crossover POLICY --preset deathmatch --pairs 5:5 4:5 3:5 2:5 1:5
 ```
 
 **Ablated players.** A Yemong policy may play ablated, in `--with` or in head-to-head:

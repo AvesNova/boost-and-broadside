@@ -95,10 +95,15 @@ def _hidden_columns(
     )
 
 
-def perceive(rules: Rules, state: State) -> tuple[State, Obs, Privileged]:
+def perceive(
+    rules: Rules, state: State, active: torch.Tensor | None = None
+) -> tuple[State, Obs, Privileged]:
     """Visibility, the per-view observation and the truth. Returns the state with
     `ticks_since_seen` advanced and this tick's velocities, nose rates, life and sight kept
-    for the next tick's accelerations (the only state perception changes)."""
+    for the next tick's accelerations (the only state perception changes). active (B, 2)
+    int32: each team's active ships, as the tick was given (`bnb.game.physics.step`; None,
+    every ship), which sets team deathmatch's winning score; a benched ship's row is a dead
+    ship's, from the state."""
     ships, fields, match = state.ships, state.fields, state.match
     B, N = ships.x.shape
     S, device = rules.ships_per_team, ships.x.device
@@ -179,11 +184,12 @@ def perceive(rules: Rules, state: State) -> tuple[State, Obs, Privileged]:
     mode_part, zones = per_mode(
         rules,
         B,
-        lambda mode_rules, mode: (
-            mode_globals(rules, mode_rules, mode),
+        lambda mode_rules, mode, active: (
+            mode_globals(rules, mode_rules, mode, active),
             zone_rows(mode_rules, mode),
         ),
         state.mode,
+        active,
     )
     globals_ = torch.cat([global_row[:, None].expand(B, TEAMS, -1), mode_part], -1)
     obs = Obs(

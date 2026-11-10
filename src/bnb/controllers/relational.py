@@ -1,10 +1,12 @@
-"""The toy relational model as a controller: sample the joint action (Gumbel-max), report
-its log-probability, entropy and the critic. Stateless."""
+"""The toy relational model (and the nearest-neighbour MLP, which has its outputs) as a
+controller: sample the joint action (Gumbel-max), report its log-probability, entropy and
+the critic. Stateless."""
 
 import torch
 
 from bnb.contracts import Action, Obs, Outputs
 from bnb.contracts.action import from_joint
+from bnb.models.nearest import Nearest
 from bnb.models.relational import Relational, outcome_probabilities
 from bnb.models.yemong import policy
 
@@ -14,7 +16,7 @@ class RelationalController:
     reports its log-probability, the entropy, the critic's values per level and the outcome
     probabilities."""
 
-    def __init__(self, model: Relational) -> None:
+    def __init__(self, model: Relational | Nearest) -> None:
         self.model = model
         self.reads = model.reads
 

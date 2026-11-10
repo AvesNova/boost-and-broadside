@@ -11,6 +11,9 @@ torch.compile, on any device: at any batch size for one game (`rules_of(config)`
 the pools' batch size for several (`rules_of(config, pools, environments)`). The state is
 opaque outside `bnb.game`: other packages hold it and pass it back, and read it only through
 these functions.
+Unequal teams at one static size: `reset`, `resolve`, `step` and `perceive` take `active`
+(B, 2) int32, each team's active ships per environment (None: every ship); a team's last
+S - active slots are benched, kept as dead ships waiting to respawn (`bnb.game.physics.step`).
 The tick's randomness is an explicit input; `spread` and `uniforms` draw it. The ship card
 `types` is an argument of every function that reads it (`reset`, `move`, `resolve`, `step`):
 it is data, which a sweep may change between calls; `default_card` gives the default
@@ -69,7 +72,7 @@ from .handling.solver import error_floor as solve_error_floor
 from .handling.weapons import combat_card, combat_handles
 from .layout import environment, per_mode
 from .modes import frontline, phase
-from .modes.rules import PRESETS
+from .modes.rules import FLEET_PRESETS, PRESETS
 from .perception import sight
 from .perception.observe import perceive, view_order
 from .perception.sight import vision_range
@@ -99,6 +102,7 @@ __all__ = [
     "Launch",
     "MAP_SCALE_RADIUS",
     "PRESETS",
+    "FLEET_PRESETS",
     "Rules",
     "ShipTypes",
     "State",

@@ -5,8 +5,9 @@ reviewed: 2026-11-03 16:00
 
 # Training
 
-Training trains Yemong (`bnb.models.yemong`), or the toy relational model, with the
-learner in `bnb.learn.ppo` (see [The learner](../explanation/learner.md)). How the loop
+Training trains Yemong (`bnb.models.yemong`), the toy relational model or the
+nearest-neighbour MLP, with the learner in `bnb.learn.ppo` (see
+[The learner](../explanation/learner.md)). How the loop
 works is in [The training loop](../explanation/training-loop.md); this page is about running
 and configuring it.
 
@@ -96,7 +97,7 @@ The command's other options set the model and the learner:
 
 | Option | Values | Sets |
 |---|---|---|
-| `--model` | `yemong`, `relational` | `TrainConfig.model`: Yemong or the toy relational model |
+| `--model` | `yemong`, `relational`, `nearest` | `TrainConfig.model`: Yemong, the toy relational model, or the nearest-neighbour MLP |
 | `--precision` | `bfloat16` (default), `float32`, `tf32` | `TrainConfig.precision`: the matmuls' precision |
 | `--environments` | a count | `TrainConfig.environments`: training environments (the rating lanes, `--set lanes.environments=N`, are beyond them) |
 | `--shards` | a count | `TrainConfig.shards`: consecutive segments collected per update; with `--environments` the update's layout (`--set lookahead=N` sets the ticks played after the last shard) |
@@ -109,8 +110,9 @@ uv run --no-sync bnb train --preset mixed --precision tf32 --shards 2 --micro-ba
 ```
 
 The model's settings are `TrainConfig.yemong` (`bnb.models.yemong.model.YemongConfig`) and
-`TrainConfig.relational` (`bnb.models.relational.RelationalConfig`); the run builds the one
-`--model` names. The ship card the run plays is `TrainConfig.ship_card`, its values by
+`TrainConfig.relational` (`bnb.models.relational.RelationalConfig`) and `TrainConfig.nearest`
+(`bnb.models.nearest.NearestConfig`: `hidden`, `allies`, `enemies`, `fields`); the run builds
+the one `--model` names. The ship card the run plays is `TrainConfig.ship_card`, its values by
 field, one per ship type (the default is `bnb.game.api.default_card`). `--set` changes
 either by its dotted path; the run's `config.json`{.plain} and its checkpoints record them:
 

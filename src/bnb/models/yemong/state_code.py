@@ -54,6 +54,7 @@ SPREADS = (
 COVARIANCE_STATE = ("x", "y", "velocity_x", "velocity_y", "heading", "nose_rate")
 COVARIANCE_ENTRIES = len(COVARIANCE_STATE) * (len(COVARIANCE_STATE) + 1) // 2
 SPREAD_INPUTS = ("scalar", "ellipse")  # `YemongConfig.spread_inputs`
+POSITION_INPUTS = ("colour", "fourier")  # `YemongConfig.position_inputs`
 
 POSITION_PERIOD = 4.0 * 3.0**8  # m per axis: 26 244 m, finest level 4 m
 POSITION_LEVELS = 9
@@ -153,7 +154,10 @@ class ShipStateCode(nn.Module):
 
     Runs in order: position 9x9, velocity 3x81, heading 4x4, nose rate 41, the five SCALARS
     of 21 bins each, gun cooldown. spread_fit: how `decode` reads the position's and the
-    heading's spreads (`codes.circular_decode`).
+    heading's spreads (`codes.circular_decode`). position_inputs (POSITION_INPUTS): what the
+    ship token reads for the position and the heading (`inputs`): the code's own runs
+    ("colour"), or Fourier features at the same levels ("fourier"); the code is the same
+    either way.
     """
 
     def __init__(
@@ -162,13 +166,17 @@ class ShipStateCode(nn.Module):
         spread_fit: str = "coarsest",
         covariance: bool = False,
         spread_inputs: str = "scalar",
+        position_inputs: str = "colour",
     ) -> None:
         super().__init__()
         if spread_fit not in codes.SPREAD_FITS:
             raise ValueError(f"spread_fit {spread_fit!r} is not one of {codes.SPREAD_FITS}")
         if spread_inputs not in SPREAD_INPUTS:
             raise ValueError(f"spread_inputs {spread_inputs!r} is not one of {SPREAD_INPUTS}")
+        if position_inputs not in POSITION_INPUTS:
+            raise ValueError(f"position_inputs {position_inputs!r} is not one of {POSITION_INPUTS}")
         self.spread_fit = spread_fit
+        self.position_inputs = position_inputs
         self.covariance = covariance
         self.spread_inputs = spread_inputs
         self.angle_of_attack_limit = ranges.angle_of_attack_limit
@@ -177,6 +185,12 @@ class ShipStateCode(nn.Module):
         self.cooldown_bins = ranges.cooldown_bins
         self.register_buffer("max_shield", torch.tensor(ranges.max_shield, dtype=torch.float32))
         self.register_buffer("max_energy", torch.tensor(ranges.max_energy, dtype=torch.float32))
+        # SCALARS' lows and highs (`_scalar_axis`): made once, on the module's device (a
+        # tensor built from host numbers inside a step is a copy a CUDA graph cannot take)
+        bounds = self._scalar_ranges()
+        for end, name in enumerate(("scalar_low", "scalar_high")):
+            values = [bounds[scalar][end] for scalar in SCALARS]
+            self.register_buffer(name, torch.tensor(values, dtype=torch.float32), persistent=False)
         scalar = (1, SCALAR_BINS)
         self.runs: codes.Runs = (
             (POSITION_LEVELS, 9),
@@ -200,6 +214,25 @@ class ShipStateCode(nn.Module):
     def groups(self) -> int:
         """The softmax groups of the code, summed over runs."""
         return sum(groups for groups, _ in self.runs)
+
+    @property
+    def input_width(self) -> int:
+        """The width the ship token reads (`inputs`): the code's, or with Fourier inputs
+        (cos, sin) per level of each position axis and of the heading in place of their
+        runs (36 for 81, 8 for 16)."""
+        if self.position_inputs == "colour":
+            return self.width
+        position, heading = self.runs[0], self.runs[2]
+        replaced = position[0] * position[1] + heading[0] * heading[1]
+        return self.width - replaced + 2 * (2 * POSITION_LEVELS + HEADING_LEVELS)
+
+    @property
+    def input_groups(self) -> int:
+        """The groups of `inputs` (a Fourier (cos, sin) pair counts as one): what the
+        encoder's first projection scales its code columns by."""
+        if self.position_inputs == "colour":
+            return self.groups
+        return self.groups + POSITION_LEVELS  # a pair per axis and level, not one joint group
 
     @property
     def spread_count(self) -> int:
@@ -267,13 +300,7 @@ class ShipStateCode(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """SCALARS' lows and highs (len(SCALARS),) and divisors (..., len(SCALARS)), for one
         code call over the scalars."""
-        ranges = self._scalar_ranges()
-        low, high = (
-            torch.tensor(
-                [ranges[name][end] for name in SCALARS], dtype=like.dtype, device=like.device
-            )
-            for end in (0, 1)
-        )
+        low, high = self.scalar_low.to(like.dtype), self.scalar_high.to(like.dtype)
         shape = next(iter(maxima.values())).shape if maxima else like.shape[:-1]
         ones = torch.ones(shape, dtype=like.dtype, device=like.device)
         divisor = torch.stack([maxima.get(name, ones) for name in SCALARS], -1)
@@ -299,12 +326,8 @@ class ShipStateCode(nn.Module):
         mean = dict(zip(MEANS, means.unbind(-1), strict=True))
         spread = dict(zip(SPREADS, spreads[..., : len(SPREADS)].unbind(-1), strict=True))
         residual = spreads[..., self.residual_slice]
-        position_sigma = spread["position"]
-        if self.spread_inputs == "ellipse":  # per world axis: the covariance's marginals
-            block, _ = self.blocks(spreads)
-            position_sigma = torch.sqrt(torch.clamp_min(block[..., 0::2], 0.0))
         position = codes.position_encode(
-            means[..., 0:2], position_sigma, (POSITION_PERIOD,) * 2, POSITION_LEVELS
+            means[..., 0:2], self._position_sigma(spreads), (POSITION_PERIOD,) * 2, POSITION_LEVELS
         )
         velocity = codes.velocity_encode(
             means[..., 2:4], spreads[..., 1:4], VELOCITY_BINS, VELOCITY_SPACING, VELOCITY_KNEE
@@ -341,6 +364,47 @@ class ShipStateCode(nn.Module):
             ],
             -1,
         )
+
+    def _position_sigma(self, spreads: torch.Tensor) -> torch.Tensor:
+        """The position's sigma: (...) for both axes, or with ellipse spread inputs (..., 2)
+        per world axis, the covariance's marginals."""
+        if self.spread_inputs == "ellipse":
+            block, _ = self.blocks(spreads)
+            return torch.sqrt(torch.clamp_min(block[..., 0::2], 0.0))
+        return spreads[..., 0]
+
+    def inputs(
+        self, code: torch.Tensor, means: torch.Tensor, spreads: torch.Tensor
+    ) -> torch.Tensor:
+        """What the ship token reads of the state (..., input_width): with colour inputs the
+        code (..., width) itself; with Fourier inputs the code with its position and heading
+        runs replaced by `codes.fourier_encode` of the same means and spreads at the same
+        periods (position per world axis, x first, POSITION_LEVELS levels from
+        POSITION_PERIOD; heading HEADING_LEVELS from 2 pi), each level attenuated by its
+        sigma as the code's is."""
+        if self.position_inputs == "colour":
+            return code
+        sigma = self._position_sigma(spreads)
+        if sigma.dim() < means.dim():
+            sigma = torch.stack([sigma, sigma], -1)
+        position = torch.stack(
+            [
+                codes.fourier_encode(
+                    means[..., axis], sigma[..., axis], POSITION_PERIOD, 3, POSITION_LEVELS
+                )
+                for axis in range(2)
+            ],
+            -3,
+        )
+        heading = codes.fourier_encode(
+            means[..., MEANS.index("heading")],
+            spreads[..., SPREADS.index("heading")],
+            2.0 * math.pi,
+            HEADING_COLOURS,
+            HEADING_LEVELS,
+        )
+        parts = code.split([groups * size for groups, size in self.runs], -1)
+        return torch.cat([position.flatten(-3), parts[1], heading.flatten(-2), *parts[3:]], -1)
 
     def sharp(self, means: torch.Tensor, ship_type: torch.Tensor) -> torch.Tensor:
         """The code of a state known exactly."""

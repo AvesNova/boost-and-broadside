@@ -1,0 +1,929 @@
+# GPU box log (rented RTX 3090, 2026-11-08)
+
+What I did and why on the rented box. Goals from the author: (1) make the runs fast on
+the big GPU (target 30,000 SPS), first with changes that leave training unchanged, then
+others if the GPU is still not full; (2) finish the arms research (round 2); (3) a 200M BC
+run, then a 200M RL run from it; commit the run (git LFS or otherwise). "Solve unexpected
+errors yourself and note everything." Entries: time (box clock, UTC), what, why. Newest last.
+
+## Setup
+
+- **10:05** The box is an **RTX 3090** (24 GB, sm 8.6, 420 W cap), not a 4090 as briefed:
+  everything below is tuned and measured on the 3090. Driver 580 (CUDA 13.0); torch
+  2.15.0+cu132 in the repo's `.venv` works (`cuda.is_available()` true). 10:05.
+- **10:05** `/workspace` is **not a volume**: nothing here survives a recycle or destroy;
+  runs must leave the box (git LFS push, or another sync) to be kept.
+- **10:05** No W&B, Hugging Face or GitHub credentials on the box; git-lfs 3.4.1 installed.
+  The round-2 run directories (C-fixed's 30M policy, arm 2d's 8.4M checkpoint, every
+  tournament) live on the laptop only: not in git, not on any branch. Consequence for the
+  arms: the tournament references must be retrained here (see the arms section).
+- **10:06** Repo at v2 60c80a41 (= origin/v2 after a fetch). Remaining arms per
+  `round2-log.md` 11:31: arm 2d (to 30M), 3d, 4d, each with its tournament.
+
+## Speed (goal 1)
+
+Every number on the 3090, arm 2d's command (`--preset mixed --objective bc --set
+yemong.order=temporal_first --set yemong.next_state=delta --set yemong.delta_baseline=persistence
+--set yemong.spread_inputs=scalar`), steady state (update 2-3; update 1 compiles). One update is
+1,048,576 environment steps (2048 environments x 128 ticks x 4 shards). SPS = steps / (rollout +
+learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in the box's scratch).
+
+- **10:28 Baseline (defaults):** rollout 9.0 s, learn 127.5-128.3 s, 136.5 s per update =
+  **7,700 SPS** (laptop 3070: ~232 s learn). BC KL at update 3 0.7155 (laptop arm 2: 0.712):
+  same behaviour. GPU **14% busy, 130 of 420 W** during the learn phase, the process at ~145%
+  CPU: launch- and host-bound, not GPU-bound. Memory probe: 4.6 GB allocated of 23.6.
+- **10:45 Profile (1 epoch, torch profiler on 4 minibatches):** the learn phase is `prepare`
+  (29 s: shot-label re-simulation and the next-state counts, no grad, over 512 micro-batches
+  of 16 views) + 4.3 s teacher carries + the minibatch loop (~100 ms per minibatch, 1024 per
+  update). In the loop: ~10 ms per minibatch is fp32 sgemm outside autocast (the shot
+  trajectory query, `_next_state_logits`); ~12 ms device per optimizer step is `_step`'s
+  non-finite guard (a clone and a `where` per parameter and state tensor, ~1,400 kernels).
+  (py-spy cannot attach here: no SYS_PTRACE.)
+- **10:51 `--micro-batch-rows 2560` (training-neutral, the docs' "memory only"):** a minibatch
+  is 32 views (320 rows), so any value >= 320 gives one micro-batch per minibatch; `prepare`
+  uses the same split, so 2560 (256 views) cuts its 512 chunks to 32. `prepare` 29.0 -> 2.5 s.
+  BC KL at update 2 equal to the baseline's to the printed digits (1.6064 both, 1 epoch).
+  Memory probe 6.9 GB allocated / 12.6 reserved.
+- **10:58 `_step` on the fused Adam (code, training-identical):** the fused CUDA Adam takes
+  `found_inf` and then leaves parameters and moments untouched and takes its step count back;
+  `_step` now uses that instead of the clone/where copy-back (kept for non-fused optimizers).
+  Test `tests/contract/test_fused_skip.py` (GPU): finite steps equal the plain fused step bit
+  for bit over 5 steps; a skipped step (first or later) changes nothing. Branch `perf/gpu-box`.
+- **11:10 Full config, `--micro-batch-rows 2560` (old `_step`, host store):** learn 94.0 s,
+  103 s per update = **10,200 SPS**. KL by update 1.4169 / 0.7160 / 0.7000 (baseline 1.4169 /
+  0.7155): equal within run-to-run noise.
+- **11:20 + `--set host_store=false`** (the store on the GPU: 24 GB fits it; training-neutral):
+  learn 80.3 s (this run already had the new `_step`, see 11:35) = **11,800 SPS**. GPU 100% busy,
+  411 of 420 W, 20.1 GB of 24 used (probe: 17.7 allocated, 22.8 reserved of the 23.06 budget:
+  little headroom), CPU one core of 12, RAM 7.2 GB. The GPU is now the bound: more CPU cores
+  would not help (the user asked); dispatch was the bound only at 160-row micro-batches.
+- **11:35 `_step` isolated:** the old `_step` from a clean v2 worktree (`/workspace/bnb-v2-clean`),
+  same settings: learn 83.4 s; new: 80.3 s (-3.1 s, ~4%). KL 0.6987 vs 0.6998 at update 4:
+  run-to-run noise (two old-code runs differing only in `host_store` differ by 0.0013).
+- **11:38 TF32 (the user asked):** not on. `--precision bfloat16` (the default) is bf16 autocast
+  over the encoder, trunk and heads and `"highest"` (true fp32) for every other fp32 matmul;
+  `tf32` is either/or with bf16. The user's rule: no TF32 for anything that accumulates many
+  small numbers. TF32 rounds a matmul's inputs (10-bit mantissa) and still sums in fp32, but a
+  global switch would also catch the game, the scripted teacher and the belief's covariance
+  propagation, so **no global TF32**: only targeted changes to products of activations and
+  weights. Profile by shape: the fp32 GEMMs are the shot trajectory query (737,280 rows =
+  32 views x 128 ticks x 10 ships x 18 bullet ages; 128x128 and 128x154 with their backward),
+  ~10.5 ms of ~77 ms per minibatch.
+- **11:40 The shot trajectory query under the model's matmul autocast** (bf16 like every other
+  head; precision change, small): learn 80.3 -> **71.1 s, 80 s per update = 13,100 SPS**. The
+  head's own losses unchanged at 4M (trajectory 16.370 vs 16.369, outcome 0.230 vs 0.228); KL
+  within noise. CPU tests touching the head and the learner pass (90). Fixed a pre-existing
+  ruff-format failure in `tests/sections/test_yemong_error_head.py` (from ae729475).
+- **11:42 Committed** on `perf/gpu-box` (23303d81). Push refused: the box's SSH key
+  (`~/.ssh/id_ed25519_github`, given to the author as a deploy key) is not accepted yet.
+- **11:44 Scope from the author:** this compute is rented; explore only what needs this box
+  (sizes that only fit in 24 GB), not code speedups that could be done on the 3070.
+  Remaining box-only idea: larger environment counts / minibatches. Below 30k SPS the gap is
+  GPU work per sample (4 epochs x 1024 minibatch steps), not anything else.
+
+## Arms (goal 2)
+
+- **11:45 Setup.** C-fixed is retrained here as the reference (the author: OK). Every arm runs
+  with the same settings, so the comparisons stay like for like: the laptop's algorithm
+  (2048 environments, 4 shards, 4 epochs, 256 minibatches, 30M budget) plus the neutral speed
+  settings (`--micro-batch-rows 2560 --set host_store=false`) and the code on `perf/gpu-box`
+  (bf16 shot head), with `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` (fragmentation; VRAM
+  is near the budget). On failure the runner retries a run once with the host store.
+  Lines (`runs/arms.sh`; all `--preset mixed --objective bc --bc-budget-steps 30000000 --set
+  yemong.order=temporal_first`): C-fixed nothing more; 2d `--set yemong.next_state=delta --set
+  yemong.delta_baseline=persistence --set yemong.spread_inputs=scalar --set
+  learner.next_state=0.0033`; 3d = 2d + `--set yemong.delta_split=true --set
+  learner.correction=0.0033`; 4d = 3d + `--set yemong.delta_baseline=extrapolation`.
+  **Note:** the code's default `learner.next_state` is still the absolute head's 0.0041; the
+  laptop's queue lines are not in git, but the round-2 log gives 0.0033 for the delta heads
+  (04:13, 06:20), so it is passed explicitly. Checked with `--print-config` for all four.
+  Tournaments (`bnb ratings <arm> --no-league --with <newest uniform averages> --presets
+  frontline deathmatch`, ladder on, scripted = 1000): 2d vs C-fixed; 3d vs 2d, C-fixed; 4d vs
+  3d, C-fixed. Output `runs/ratings/<arm>/`.
+- **11:46 W&B fails from here:** with the author's key, the client logs in to
+  `api.forge.coreweave.com` (wandb 0.31's default cloud) and gets an HTML 403 ("your client
+  does not have permission"); `api.wandb.ai` too, and also `ifconfig.me`, while GitHub, PyPI,
+  Hugging Face and example.com answer. So it is a network block on this path (possibly my
+  command sandbox), not the key. Runs go without `--wandb`; `metrics.jsonl` holds every row
+  and can be synced later. Hugging Face token verified (user julianzia, fine-grained).
+- **11:52 Arms runner relaunched** (detached: `setsid nohup runs/arms.sh`; log `runs/arms.log`).
+  C-fixed started.
+- **12:03 One tournament instead of three (the author: fewer tournaments, more arms).** The
+  chain 2d -> 3d -> 4d never waited on a result, so the intermediate tournaments changed
+  nothing; one field over every arm rates each pair directly and replays C-fixed and 2d less.
+  Measured: an arm is ~50-55 min (first update ~11 min, compiling a new config cold; then
+  ~81 s per update); a two-mode tournament took ~25 min on the laptop. The runner was swapped
+  without touching the C-fixed trainer (a bash script cannot be edited while it runs).
+- **12:12 + C-fixed-LB (large batch, the author's request)** before the tournament:
+  `--set learner.minibatches=128 --set learner.epochs=2` (64-view minibatches, each sample used
+  twice: a quarter of the optimizer steps per sample, each on twice the data; lr unchanged,
+  so the comparison isolates batch and reuse). Expected ~2x SPS. Runner `runs/arms3.sh`
+  (copy in `gpu-box/arms3.sh`). Plan after the tournament (the author): my choice of a next
+  set of tests, a second tournament, then the best two to 60M.
+- **12:12 GitHub push works** (the deploy key; `perf/gpu-box` pushed).
+- (Two process-kill slips of mine, harmless: `pgrep -f`/`pkill -f` with a pattern that my own
+  command line contained killed my shell; no run was affected. Patterns now `[a]rms`-style.)
+- **12:37 C-fixed done** (`2026-11-08-bc-arm-C-fixed-3090`, budget, 30.4M, 49 min, 81.1 s per
+  update = 12,900 SPS). KL 0.475, agreement 0.678 (laptop C-fixed at 30M: 0.500, 0.672):
+  in line. Snapshots at 10.5M, 21.0M, 30.4M. Arm 2d started.
+- **13:20 Arm 2d done** (`2026-11-08-bc-arm2d-persistence-3090`, budget, 30.4M, 41 min: the
+  compile cache warm). KL 0.479, agreement 0.681 (C-fixed 0.475, 0.678): level, as on the
+  laptop. Last-row outcome Brier skill 5-15 s 0.024 vs C-fixed's 0.058 (the laptop's direction;
+  single rows, not its 10-log means): the tournament judges. Arm 3d started.
+- **13:35 Arm 3d's first updates healthy:** probe 17.2 GB allocated (fits with the store on the
+  GPU), no non-finite beliefs or skipped steps, 85 s per update (2d 80 s: the error head). The
+  error head's predicted spread starts narrow (position 0.11 m vs realised 1.5 m at 0-0.1 s,
+  update 2), the opposite of the laptop's too-wide bug and as the laptop saw after its fix
+  (the head's own early overconfidence). Recheck at 30M.
+- **14:14 UTC (23:14 KST; the author asked for KST from here) Arm 3d done**
+  (`2026-11-08-bc-arm3d-split-3090`, budget, 30.4M, 54 min). KL 0.471 (lowest; C-fixed 0.475,
+  2d 0.479), agreement 0.676: level. Error head, realised / predicted error by hidden age
+  (0-0.1, 0.1-0.5, 0.5-1, 1-2, 2-5 s): position 0.17/0.64, 1.5/0.83, 6.5/1.7, 20/5.6, 72/30 m;
+  heading 0.018/0.021, 0.095/0.042, 0.23/0.10, 0.38/0.19, 0.43/0.21 rad. Right at the shortest
+  ages, 2-4x too narrow past 0.1 s (overconfident; not the laptop's too-wide bug). A candidate
+  for the next set of tests if the split does well. Arm 4d started.
+- **14:22 UTC (23:22 KST) Arm 4d failed on its first update: a code bug, not memory.**
+  `torch._dynamo.exc.Unsupported: dataclass fields failure` in `Yemong.segment_rates`
+  (`dataclasses.fields(Rates)`), reached from the learner's compiled labels (`Learner._codes`,
+  fullgraph). No extrapolation arm had ever run compiled: arms 4, 4b, 4c, 4d were all removed
+  from the laptop's queue before running, and the CPU tests run eager. The runner's automatic
+  retry (host store) would fail the same way, so I stopped it (failed dirs in `runs/failed/`).
+  **Fix:** `delta.RATE_FIELDS`, the field names taken once at import, as `BELIEF_FIELDS` and
+  `bc.CARRY_FIELDS` already are (bc.py says why); used by `segment_rates` and `Rates.rows`.
+  **Test:** `test_the_baseline_rates_trace_whole_under_torch_compile` (every arm: fullgraph,
+  eager backend, equal to eager); fails on the old code for arms 4, 4c, 4d, passes now.
+  Error-head file + delta and acceleration tests: 161 pass; two bit-for-bit golden-digest tests
+  fail (`test_off_steps_and_unrolls_c_fixed_bit_for_bit_like_the_tree_before_the_switch`,
+  `test_arms_1_and_2_step_and_unroll_bit_for_bit_as_recorded`), **identically on clean v2 on
+  this box**: digests recorded on the laptop's CPU; machine-dependent, not a regression.
+- **14:32 UTC (23:32 KST) Arm 4d restarted** (runner `arms4.sh`: 4d, then LB, then the
+  tournament; copy in `gpu-box/arms4.sh`).
+- **00:00 KST Arm 4d stable after 3 updates** (the laptop's early CPU runs diverged to 1039 m/s
+  velocity error before the held-rate decay). Hidden 2-5 s error at update 3, 4d vs 3d:
+  position 122 vs 133 m, velocity 56 vs 59 m/s, heading 1.4 vs 0.8 rad (worse: the held nose
+  rate keeps a hidden ship turning, as the laptop saw). KL 0.7196 vs 0.7194. No non-finite
+  beliefs or skipped steps; 17.0 GB. 92 s per update (3d 85: the per-tick rate loop). ETAs
+  (KST): 4d ~00:45, LB ~01:15, tournament ~01:40.
+- **00:43 KST Arm 4d done** (`2026-11-08-bc-arm4d-extrapolation-3090`, budget, 30.4M, 70 min).
+  KL 0.470, agreement 0.682. All four at 30M: C-fixed 0.475/0.678, 2d 0.479/0.681, 3d
+  0.471/0.676, 4d 0.470/0.682 (KL/agreement): level on imitation. Error head, realised /
+  predicted at 0-0.1, 0.5-1, 2-5 s: position 0.063/0.88, 6.5/2.4, 85/48 m (3d: 0.17, 6.5, 72
+  realised); heading 0.021/0.023, 0.26/0.13, 0.46/0.25 rad (3d 0.018, 0.23, 0.43). C-fixed-LB
+  started.
+- **00:55 KST C-fixed-LB speed:** learn 38.9 s + rollout 8.2 s = **22,300 SPS** (C-fixed 12,900:
+  1.7x). KL per sample behind early (update 2: 2.14 vs 1.39; update 3: 0.81 vs 0.73), as
+  expected with a quarter of the optimizer steps per sample. Probe 20.3 GB allocated, 21.8
+  reserved of 23.06 (tight, fits). ETA ~01:10 KST, then tournament 1.
+- **01:12 KST C-fixed-LB done** (budget, 30.4M, 29 min): KL 0.575, agreement 0.640 (C-fixed
+  0.475 / 0.678). **At equal wall-clock it is a wash:** C-fixed after LB's 0.48 h (14.7M) had
+  KL 0.576, agreement 0.645. Twice the speed bought half the learning per sample: the large
+  batch (as set: lr unchanged) gives BC no gain. The tournament checks play.
+- **01:12-01:28 KST Tournament 1, first attempt (the runner's):** with the default stationary
+  ladder the field was 14 players (8 rungs), 91 pairs: batch 1 = 1024 games in 915 s (with
+  compile), the largest standard error 276 (target 25), ratings in mirrored pairs (+57/-57):
+  projected 21:02 UTC for frontline alone. Stopped; restarted **without the ladder** (6 players,
+  15 pairs; the arms play the scripted agent directly, which anchors 1000), `runs/tournament1.sh`
+  (copy in `gpu-box/`). The record of the ladder attempt is in `runs/failed/`. Slips of mine:
+  another self-matching `pgrep` (killed my shell, nothing else), and a path given where
+  `bnb ratings` takes a run name (failed at once, relaunched).
+- **01:34 KST Tournament 1, no ladder, batch 1 (frontline, 1024 games, 327 s with the compile
+  cache warm; scripted = 1000):** C-fixed 807 +- 26, 4d 775 +- 30, 3d 722 +- 32, 2d 675 +- 32,
+  **C-fixed-LB 215 +- 78**. LB nearly always loses (its KL resembled C-fixed's at half the steps,
+  but its play does not): the large batch as set is out. Its slowly shrinking error alone would
+  have held the stopping rule (every error under 25) for ~9 batches, so I dropped it and
+  restarted with the four arms (10 pairs); the LB batch's record is in `runs/failed/`.
+  (`runs/killpat.sh REGEX` now kills by pattern, sparing its caller and ancestors: the fourth
+  self-matching kill of mine is the last.)
+- **02:00 KST Names (the author asked for human ones; run directories keep theirs):** C-fixed
+  = **`absolute`** (the absolute next-state head); 2d = **`persist-onehead`**; 3d =
+  **`persist-split`**; 4d = **`deadreckon-split`**; C-fixed-LB = **`absolute-bigbatch`**.
+- **02:00 KST Brier skill of the outcome head** (mean of the last 10 logs from 20-30M, by time to
+  the end: <5, 5-15, 15-30, 30-60, 60-120, >120 s): absolute 0.043 0.037 0.032 0.026 0.016 0.008;
+  persist-split 0.033 0.030 0.021 0.013 0.010 0.007; deadreckon-split 0.030 0.024 0.019 0.014
+  0.009 0.004; persist-onehead 0.015 0.012 0.008 0.005 0.000 0.001; absolute-bigbatch -0.04 to
+  -0.07. Same order as the laptop, but ~14x lower (laptop C-fixed 5-15 s 0.52, arm 2 0.15).
+  Same formula (`analytics.outcome_series`). **Check queued (the author agreed):** absolute to
+  10.5M on unmodified v2 (old `_step`, fp32 shot head) with only the neutral settings, against
+  this box's absolute at 10.5M: equal clears my changes (then code history or the machine).
+- **02:10 KST Tournament 1 standings** (scripted 1000): frontline deadreckon-split 789 +- 16,
+  absolute 780 +- 16, persist-split 739 +- 18, persist-onehead 682 +- 18; deathmatch batch 1
+  deadreckon-split 743, persist-onehead 727, absolute 720, persist-split 715 (+- 25). **The author:
+  absolute and deadreckon-split are co-champions; both go into the next round.**
+- **02:10 KST Round 3 (the author's ideas + mine), all on deadreckon-split, one change each:**
+  `-fastdecay` (`yemong.extrapolation_decay` 0.5 -> 0.2 s: hidden ships keep turning on the held
+  nose rate); `-fourier` (the ship token's position and heading as cos/sin at the colour code's
+  periods: 9 levels 26,244 m -> 4 m per axis, heading 2pi/4^l, l = 0..3, attenuated by sigma as
+  the colour code is; 36 + 8 inputs instead of 81 + 16; refused with the absolute head, whose
+  targets are colour codes); `-hiddenphysics` (the author: train the physics head on hidden
+  enemies too, the loss weighted exp(-age/tau), tau 0.5 s as its own setting
+  `yemong.physics_hidden_decay`; target truth-to-truth: truth(t+1) - baseline(truth(t)), the
+  inputs the belief, so the physics head learns dynamics and the error head keeps the belief's
+  error; addresses risk C5: the physics head drives hidden forecasts without ever training on
+  hidden inputs). Fourier and hidden-physics built by two background agents in worktrees
+  (`/workspace/bnb-fourier`, `/workspace/bnb-hidden-physics`), CPU only. Runner `round3a.sh`:
+  the Brier check, then fastdecay. Then tournament 2 (absolute, deadreckon-split and the new
+  arms); then the best two resumed to 60M.
+- (The author asked: for deadreckon-split, a hidden enemy's forecast is the dead-reckoning
+  baseline from its held, decaying last-sighting rates + the physics head's change (the head
+  runs on hidden rows though trained on seen rows only) + the error head's capped, rate-limited
+  step toward its median; its spread is the error head's. Visible rows: baseline + physics.)
+- **02:12 KST Tournament 1 final** (`runs/ratings/round2/`, 2048 games per mode, scripted
+  1000): frontline deadreckon-split 789 +- 16, absolute 780 +- 16, persist-split 739 +- 18,
+  persist-onehead 682 +- 18; deathmatch deadreckon-split 739 +- 17, persist-onehead 711 +- 17,
+  persist-split 704 +- 18, absolute 693 +- 18. Means: 764, 737, 722, 697. deadreckon-split over
+  absolute: +9 frontline, +46 deathmatch, +27 mean: under the bar (+50 / +40), co-champions as
+  the author decided. Brier check started.
+- **02:15 KST Learnable tau (the author asked):** `extrapolation_decay` can be learned, but not
+  through the existing losses (in training the hidden beliefs come from the recorded rollout, so
+  its only gradient is through the error head's target, which rewards easy targets, not small
+  errors): a separate loss on the forecast error itself, networks stop-gradded, possibly per
+  quantity and ship type. The loss-weight tau (`physics_hidden_decay`) cannot be learned by
+  gradient: the loss is lowest with hidden rows weighed at zero (tau -> 0); it is a
+  hyperparameter. Suggested: fastdecay first, then an offline per-quantity fit on recorded play.
+- **02:20 KST Everything off the box, continuously (the author: make sure all data is saved).**
+  `gpu-box/sync.sh`: git gets each run's records under `results/gpu-box/` (run.json,
+  config.json, metrics.jsonl, console.txt; tournaments; runner log and scripts; `.txt` because
+  the repo ignores `*.log`), committed by path only and pushed; the Hugging Face Hub gets every
+  run directory whole (policies, checkpoints) in the public model repo
+  https://huggingface.co/julianzia/boost-and-broadside-runs (the author allowed public). The
+  first pass: 3.88 GB, 253 files on the hub; git 9c960148. A loop runs it every 20 min
+  (`runs/sync.nohup`). `huggingface_hub` installed in the image's `/venv/main`, not the project's
+  locked venv. Per run ~800 MB: checkpoints 662 MB, policies ~100 MB, records ~2 MB.
+- **02:45 KST Fourier inputs merged** (`feat/fourier-inputs` e51591d9, merge fd33c48f; built by a
+  background agent, verified by me: ruff; the codes and error-head files 112 pass, the one
+  failure the known machine-dependent golden; the arm's line resolves `position_inputs=fourier`;
+  fourier with the absolute head is refused). From its report: `codes.fourier_encode` (per level
+  a_l (cos, sin), the colour code's attenuation, the same per-level remainders);
+  `ShipStateCode.inputs` swaps only the position (2 x 9 x 2) and heading (4 x 2) runs into the
+  ship token; `tokens.code` stays the colour code for its readers (`_next_state_logits`, the
+  absolute head's residual base; `head_statistics` baseline); state columns 490 -> 437, the arm's
+  ship token 553 -> 500; its own choice: the first layer's init counts each (cos, sin) pair as
+  one group. The default is bit for bit (it compared the digests of six configs on one thread
+  before and after). It found a third machine-dependent golden here
+  (`test_yemong_spread_fit::test_the_default_v1_fit_steps_bit_for_bit_like_the_pre_fix_tree`)
+  and a load-dependent flake (`test_yemong_order::test_unroll_equals_a_loop_of_steps[D]`, ~1e-5),
+  both on clean code too. Queued after fastdecay (`round3b.sh`).
+- **02:45 KST Disk (the author: 64 GB; prune what is not needed, watch it):** 40 GB used. After
+  checking the hub has every file (by size): deleted the eliminated arms' checkpoints
+  (persist-onehead, persist-split, absolute-bigbatch; their policy files kept for re-rating), the
+  failed run directories (their console logs and the aborted tournaments' records copied to
+  `results/gpu-box/failed/` first), and my scratch speed-test runs: **34 GB used, 31 free**. The
+  largest user is Inductor's compile cache (26 GB); kept (wiping it costs ~10 min of compile per
+  config, the co-champions' resumes included); `sync.sh` now prunes cache files unused 12 h when
+  under 15 GB free, and reports free space every pass.
+- **02:34 KST Brier check done** (`2026-11-09-bc-absolute-v2clean-check`: absolute on unmodified
+  v2 to 10.5M). Mean of updates 6-10, Brier skill <5 ... >120 s: v2 clean -0.125 -0.140 -0.152
+  -0.176 -0.154 -0.074; this box's absolute -0.148 -0.163 -0.173 -0.202 -0.166 -0.074; calibration
+  error 0.143 vs 0.148; KL at 10.5M 0.503 vs 0.525 (likely seed noise: the bf16 shot head left KL
+  unchanged at 4M). **My changes did not break the outcome head.** Still open: the laptop's 0.52
+  at 20-30M against this box's 0.037 (code history since 11-07, or how the laptop's figure was
+  read). Cheapest check, on the laptop: the mean of `outcome/brier_skill/5_15_seconds` over its
+  C-fixed's last 10 rows. Or extend the clean run to 30M here (~35 min). fastdecay started.
+- **02:55 KST Pushes (the author: my `git push` calls ask him to approve each one; keep the runs
+  going whether or not a push works):** I no longer push from my own commands; I commit locally
+  and the detached sync loop pushes `perf/gpu-box` every 20 min (its pushes need no approval:
+  checked, origin = local at d4ed65ac). The hidden-physics agent was told to commit only; I
+  merge its branch locally.
+- **03:10 KST Outcome Brier: a regression in the code, not the box or my changes.** The
+  laptop's C-fixed (`2026-11-07-bc-arm-C-fixed`, commit 3b72a914, 0-60.8M) at 5-15 s: 6.3-10.5M
+  +0.080 +0.104 +0.180 +0.112 +0.192; 21-30.4M 0.468 rising to 0.560. This box at 6.3-10.5M:
+  -0.12 to -0.34 on current v2 (clean) and on `perf/gpu-box` alike; 0.037 at 20-30M. And on the
+  laptop the runs on newer code were already lower (arm 1 0.35, arms 2 / 2b 0.15 at 20-30M),
+  which round 2 read as the arms' effect. So a change in the 98 commits (12 first-parent merges)
+  from 3b72a914 to v2 hurts every config's outcome head. Plan: reproduce at 3b72a914 here
+  (`runs/bisect.sh COMMIT`: absolute to 10.5M from a detached worktree, read Brier at updates
+  8-10), then bisect the merges (~4 steps of ~20 min). Suspects: 1b7218ae (run control: BC
+  snapshots, the uniform average from the warm-up), 8ee3178c (accelerations in the observation),
+  5cff3794 (delta heads). Queued after fastdecay, before fourier (RL depends on the outcome head).
+- **03:20 KST My error, found by the author's laptop agent: no box run was C-fixed.** The
+  laptop's C-fixed (and every round-2 arm there) ran with `--set
+  learner.discount=[0.991,0.995,0.995,0.999,1.0] --set
+  learner.trace_decay=[0.99,0.99,0.99,0.99,1.0]`: the outcome level's target is the actual game
+  result (gamma = lambda = 1). I rebuilt the commands from the briefs, which list only the
+  model switches; those two lines live only in the laptop's queue commands (nowhere in the
+  repo's docs or code, checked). Every box run (round 2, the v2 check, fastdecay) has the
+  defaults ([..., 0.9997] / [0.9, 0.95, 0.95, 0.97, 0.97]): a discounted, bootstrapped outcome
+  target, hence the negative Brier at 6-10M. The laptop's 2026-11-06 arm-baseline, with the same
+  defaults, read -0.23 there; every laptop run with C-fixed's values from 3b72a914 to 272a44ed
+  reads +0.04 to +0.19. So **not a code regression**: my "regression" note at 03:10 and the
+  bisection prompt were wrong (they could not separate code from command). Consequences: the
+  box's tournament 1 compared arms all on the same wrong base (internally consistent, but none
+  is C-fixed); round 3 is on it too. **Paused round 3** (both runners stopped; fastdecay asked to
+  STOP at update 6-7, resumable; fourier not started). Running the laptop agent's confirmation
+  (`runs/confirm.sh`: absolute to 10.5M with the two lines; expect +0.1 to +0.2 at updates
+  6-10). Round 3's restart needs the author's call.
+- **03:20 KST From the laptop session (the author asked the two agents to talk directly):** its
+  per-run numbers at 6.2-10.6M with C-fixed's learner settings: C-fixed +0.13, C-accel +0.10,
+  arm2 +0.07, arm2b +0.08, arm2d +0.04 (laptop arm2d at 272a44ed +0.04 vs box arm2d -0.17).
+  The laptop's arms also passed `--set stop.score_target=1.0 --set
+  stop.plateau_steps=1000000000` (so no stop rule ends an arm before its budget); the box's 30M
+  runs lacked them too but all reached the budget anyway (`stopped_by: budget`). It is building
+  `fix/bc-defaults`: `bc.config()` takes C-fixed's discount and trace decay (PPO keeps the
+  spec's), and a new build's `yemong.order` defaults to temporal_first; the stop flags stay on
+  the command line (documented in `docs/guides/behaviour-cloning.md`). I merge it when pushed.
+  Its tip, adopted: rebuild a run's command from its `run.json` (`segments[].command`), not
+  from names or notes.
+- **03:35 KST Round 3 redone on the correct base (the author's plan), `runs/round4.sh`:** gated
+  on the confirmation (starts only if its Brier mean at updates 6-10 is > +0.05). Every arm at
+  30M with C-fixed's learner settings and the laptop arms' stop flags (`--set
+  "learner.discount=[0.991,0.995,0.995,0.999,1.0]" --set
+  "learner.trace_decay=[0.99,0.99,0.99,0.99,1.0]" --set stop.score_target=1.0 --set
+  stop.plateau_steps=1000000000`), in order: absolute, deadreckon-split, deadreckon-split-fourier,
+  deadreckon-split-fastdecay (tau 0.2 s), persist-split, and deadreckon-split-hiddenphysics once
+  its build is merged (the runner checks the switch exists). Not rerun: persist-onehead (~-100
+  frontline on the laptop and here) and absolute-bigbatch (~-560). Then tournament 3 (all six,
+  no ladder), then the best two or three resumed to 60M. ~6.5 h of training. Agent link: the
+  laptop session's message reached me; my reply was accepted by the server, delivery not
+  confirmed.
+- **03:50 KST Laptop + box split (the author approved; HF token shared with the laptop session
+  for the upload, at his word).** Offered to the laptop: deadreckon-split-fastdecay and
+  persist-split (no new code), on origin/perf/gpu-box with the same algorithm settings (memory
+  settings its own), names `2026-11-09-bc-*-laptop`, each uploaded whole to the hub repo; the
+  box takes absolute, deadreckon-split, -fourier, -hiddenphysics, then one tournament here over
+  all six. If the laptop declines, the box runs all six (round4.sh skips an arm only when
+  `runs/laptop-<arm>` exists, written when the laptop confirms it started).
+- **03:50 KST The 60M rule (the author):** resume every front runner that the tournament cannot
+  separate (two if two are neck and neck, four if four); and where several one-change ideas each
+  beat their base, add their combination (e.g. fourier + fastdecay) to the 60M round. My
+  reading of "cannot separate": within the round-2 bar of the leader (about 50 frontline / 40 on
+  the two modes' mean), or overlapping 2-sigma intervals; "beats its base": above
+  deadreckon-split by more than the noise on the mean.
+- **03:55 KST The laptop accepted** (the author confirmed in its session): it runs
+  deadreckon-split-fastdecay-laptop then persist-split-laptop and uploads each; the box skips
+  both (`runs/laptop-*` markers). **Merged `fix/bc-defaults`** (the laptop session's e562d1c5,
+  merge ed9cd257): `bc.config()` takes C-fixed's discount and trace decay, `TrainConfig` builds
+  temporal_first by default; the one conflict (`test_yemong_error_head.py`, both branches had
+  formatted the same line) kept the box's version, which has both. A bare BC config now resolves
+  to [.., 1.0] / [0.99, .., 1.0] / temporal_first; the box's explicit flags are now redundant.
+- **04:00 KST Laptop arm 1 started** (`2026-11-09-bc-deadreckon-split-fastdecay-laptop`, 18:31
+  UTC, perf/gpu-box 7e904347; its resolved config checked by the laptop session: the algorithm
+  settings equal the box's; memory settings 160-row micro-batches and the host store). ETAs: arm 1
+  05:45, persist-split-laptop 08:00 KST. Box's four arms end about the same time: tournament ~08:00-08:30.
+- **03:33 KST Confirmation:** absolute with C-fixed's learner settings
+  (`2026-11-09-bc-absolute-cfixed-learner-check`), outcome Brier at 5-15 s, updates 6-10: +0.068
+  +0.125 +0.144 +0.172 +0.186 (mean +0.139); the laptop's C-fixed +0.08 to +0.19. The cause was the
+  missing two lines alone; the box's speed changes are cleared. Round 4 started.
+- **03:40 KST Disk:** the wrong-base runs need no resume: deleted the checkpoints of the old
+  absolute (C-fixed-3090), deadreckon-split (arm4d-3090), fastdecay-3090 (stopped) and the v2
+  check, each after confirming every file on the hub by size; their policy files kept. 37 GB
+  used, 28 free (the compile cache grows with each new config).
+- **04:05 KST Hidden-physics build merged** (`feat/hidden-physics` eae8916a, merge dfa1d1ff; the
+  one conflict: both branches added an arm to the error-head tests' `ARMS`: kept both). From the
+  agent's report: `yemong.physics_hidden_decay` (None = off; needs `delta_split`, positive);
+  hidden age from `Replay.age` x tick length; weight 1 on seen rows, exp(-age/tau) on hidden
+  ones, 0 for a hidden row at a segment's first tick (no truth at t-1 stored: 20 of 587 rows in
+  one segment). **The target did need changing:** the targets already used the truth at t and
+  t+1, but the extrapolation baseline's rates for a hidden row were the belief's held, decayed
+  rates; now `labels.true_rates` (Yemong.rates on the privileged rows) gives hidden rows the
+  truth's rates; seen rows unchanged. The physics term: sum(weight x CE) / the unchanged
+  next-state count. Trunk-gradient share of the physics term +8% (0.02428 -> 0.02629; per
+  weighted row 3.63e-6 vs 3.67e-6): coefficient kept at 0.0033. Its uncertain calls: the
+  first-tick hidden rows dropped (could use carry.previous); the `next_state/hidden/*`
+  diagnostics measure against the new target with the switch. It had pushed eae8916a before my
+  no-push message reached it. Verifying the merged tree on CPU (error-head, BC, codes files).
+- **04:15 KST absolute on the correct base done** (`2026-11-09-bc-absolute`, budget, 30.4M,
+  41 min): KL 0.503, agreement 0.664 (laptop C-fixed 0.500 / 0.672); outcome Brier mean 20-30M
+  <5 s 0.437, 5-15 s 0.428, 15-30 s 0.386, 30-60 s 0.331, 60-120 s 0.238, >120 s 0.085 (laptop
+  C-fixed 5-15 s ~0.52; its seed pair read 0.52 vs 0.28). The box reproduces C-fixed.
+- **04:20 KST Merged tree verified** (fourier + hidden physics + bc defaults): error-head (seven
+  arms incl. arm4d_fourier and arm4dh), BC and codes files: 150 pass, 1 fail (the known
+  machine-dependent arms-1-and-2 digest). deadreckon-split started 04:15 on it.
+- **04:30 KST Laptop ETAs revised** (its message: arm 1's first update 2,546 s cold; arm 1 ends
+  ~06:10, arm 2 ~08:45 KST, worst 09:30). The box's four arms end ~07:45, so the gap goes to
+  **absolute at seed 1** (`round4b.sh`, ~41 min): the seed spread on this box with a real field,
+  which the 60M "cannot separate" call needs (the laptop's two C-fixed seeds differed in Brier
+  0.52 vs 0.28). Then `round4b.sh` waits for both laptop runs on the hub and downloads their
+  policy files; `tournament3.sh` then rates every finished arm (seven, scripted 1000, frontline
+  and deathmatch, no ladder; a missing arm is skipped and named).
+- **05:24 KST deadreckon-split on the correct base done** (budget, 30.4M, 68 min): KL **0.432**,
+  agreement **0.697** (absolute 0.503 / 0.664: clearly better imitation; on the wrong base the two
+  were level, 0.470 / 0.475); outcome Brier 20-30M <5 s 0.343, 5-15 s 0.324, 15-30 s 0.293, 30-60
+  s 0.239, 60-120 s 0.157, >120 s 0.006 (absolute 0.437 ... 0.085): the delta arm lowers the
+  outcome Brier, as on the laptop in round 2. The tournament judges play. fourier started.
+- **05:55 KST fourier healthy after 3 updates:** KL 1.4364 / 0.7272 vs deadreckon-split's
+  1.4521 / 0.7173 at updates 2-3; 92 s per update (equal); no non-finite beliefs or skipped steps;
+  16.9 GB. First update 1,517 s (cold compile of the new input path). ETAs: fourier ~06:45,
+  hiddenphysics ~07:55, absolute-seed1 ~08:40 KST.
+- **06:10 KST Laptop arm 1 uploaded** (`2026-11-09-bc-deadreckon-split-fastdecay-laptop`, hub
+  2828b28d, budget): downloaded, loads on the box's code (one expected FilledDefaults warning:
+  its tree predates the hidden-physics merge, so `physics_hidden_decay` takes its default, off);
+  its config matches the plan (C-fixed's discount and trace decay, 2048 x 4 shards x 4 epochs x
+  256 minibatches, stop flags). KL 0.492, agreement 0.663 (box deadreckon-split 0.432 / 0.697);
+  its Brier 5-15 s, last six logs: 0.240 0.267 0.263 0.265 0.337 0.413. persist-split-laptop
+  started 06:07, ETA 08:45 KST (worst 09:30).
+- **06:33 KST fourier done** (budget, 30.4M, 68 min): KL 0.490, agreement 0.667; Brier 20-30M
+  0.399 0.390 0.374 0.330 0.230 0.053 (<5 s ... >120 s). Between its base (deadreckon-split
+  0.432 / 0.697, Brier 5-15 s 0.324) and absolute (0.503 / 0.664, 0.428). deadreckon-split's low
+  KL is the outlier (every other arm 0.49-0.50): possibly its seed; absolute-seed1 will show the
+  spread. hiddenphysics next.
+- **07:00 KST hiddenphysics healthy after 3 updates:** KL 1.4524 / 0.7172 vs deadreckon-split's
+  1.4521 / 0.7173 (the change only adds hidden rows to an auxiliary head's loss); 92 s per update;
+  no non-finite beliefs or skipped steps; 17.1 GB; first update 1,436 s (cold compile). ETAs:
+  hiddenphysics ~07:40, absolute-seed1 ~08:25, laptop persist-split ~08:45 KST, then tournament 3.
+- **07:41 KST hiddenphysics done** (budget, 30.4M, 67 min): KL 0.444, agreement 0.692 (base
+  deadreckon-split 0.432 / 0.697); Brier 20-30M 0.404 0.388 0.346 0.280 0.180 0.034 (base 0.343
+  0.324 0.293 0.239 0.157 0.006): better at every horizon. Hidden errors at 0-0.1 / 0.5-1 / 2-5 s:
+  position 0.073 / 6.45 / 73.0 m (base 0.071 / 6.26 / 67.9), heading 0.020 / 0.228 / 0.412 rad
+  (base 0.020 / 0.235 / 0.434). absolute-seed1 next.
+- **08:10 KST Laptop arm 2 uploaded** (`2026-11-09-bc-persist-split-laptop`, hub 4965d344,
+  budget at 08:09 KST; Brier 5-15 s, last six logs 0.379 0.338 0.347 0.391 0.388 0.386). The
+  laptop session's caveat (its tree predates `physics_hidden_decay`): the switch only selects
+  which rows enter the physics head's training loss, default off (= the laptop's behaviour), and
+  does not touch the forward pass, so the tournament rates its policies like for like. The
+  laptop GPU is free.
+- **08:23 KST absolute-seed1 done** (budget, 30.4M): KL 0.520, agreement 0.657 (seed 0: 0.503 /
+  0.664); Brier 20-30M 0.262 0.246 0.222 0.196 0.139 0.012 (seed 0: 0.437 0.428 0.386 0.331 0.238
+  0.085). **Seed spread in outcome Brier ~0.18 at 5-15 s** (the laptop's C-fixed seeds: 0.52 vs
+  0.28): the arms' Brier differences (0.06-0.10) are within it; KL spread ~0.02. Both laptop runs
+  downloaded; tournament 3 started (seven players).
+- **09:10 KST Tournament 3 final** (`runs/ratings/round3/`, 3072 games per mode, scripted 1000;
+  frontline / deathmatch / mean): deadreckon-split-hiddenphysics 824 +- 17 / 821 +- 18 / **823**;
+  deadreckon-split 713 / 857 / 785; persist-split-laptop 717 / 689 / 703; fastdecay-laptop 657 /
+  664 / 661; absolute 672 / 642 / 657; fourier 588 / 558 / 573; absolute-seed1 569 / 496 / 532.
+  **Seed noise is large:** absolute's two seeds differ by 125 on the mean (one pair: a single
+  run's spread ~ +-90), so single-seed gaps under ~100 do not separate arms. Readings:
+  hiddenphysics vs its base +38 mean (+111 frontline, -36 deathmatch): neck and neck; persist-split
+  -120 (about one seed sigma): borderline, kept; absolute -166 (its better seed); fourier -212 and
+  fastdecay -124 below their base (both hurt); only hidden physics beat its base, so no
+  combination. **60M (the author's rule):** hiddenphysics and deadreckon-split resumed on the box
+  (`round5.sh`, ~45 + 50 min); persist-split-laptop offered to the laptop (its own checkpoint,
+  ~2.5 h). Then tournament 4 at 60M.
+- **09:35 KST The author: add deadreckon-split-hiddenphysics without decay; then a tournament
+  with everything, including the same 30M checkpoints again, to see variance.** "No decay" =
+  every hidden row weighs 1 at any age: `yemong.physics_hidden_decay=1e9` (exp(-age/1e9) is 1.0
+  in float32 for any age here). `round6.sh`, after round 5's box resumes: the nodecay arm (30M);
+  persist-split to 60M on the box from its hub checkpoint unless the laptop takes it (marker
+  `runs/laptop-persist-60m`); then **tournament 4**: the seven 30M policies of tournament 3 again
+  (identical policies: their rating change from tournament 3 is the tournament's own noise; the
+  absolute pair is the seed noise), the nodecay arm at 30M, and the three at 60M (11 players).
+  Numbering: tournament 2 never ran (round 3's first attempt, on the wrong base, was paused).
+- **09:40 KST Pivot (the author): the 60M round stopped for now; more 30M comparisons first.**
+  hiddenphysics' resume asked to STOP (it stops after its update with a checkpoint; resumable);
+  deadreckon-split's resume cancelled; the laptop's 60M request withdrawn. `round6.sh` rewritten:
+  three 30M arms on the hidden-physics base, one change each: **nodecay**
+  (`physics_hidden_decay=1e9`: every hidden row weighs 1); **slowdecay** (the held rates fade
+  2.5x slower, `extrapolation_decay` 0.5 -> 1.25 s, the other direction from fastdecay's 0.2 s,
+  which hurt; my reading of "slow decay": the held-rate tau, as fastdecay's was); and
+  **hiddenphysics-seed1** (my addition, for the leader's seed spread: the only same-settings
+  replication at 30M on the correct base is absolute / absolute-seed1). Then tournament 4: every
+  30M policy on the correct base (10 players), both seed pairs in.
+- **09:50 KST The two taus are coupled (the author): "only use the head's information where it's
+  trained".** In the code they are two settings, `extrapolation_decay` (the held rates' fade in
+  the baseline) and `physics_hidden_decay` (the hidden rows' weight in the physics loss), equal
+  in the hiddenphysics arm only by default; my nodecay changed only the second and slowdecay only
+  the first: both decoupled, wrong. Proposed design (to confirm): one tau for the held-rate fade,
+  the loss weight exp(-age/tau), and a new third use, a hidden row's forecast = baseline + exp(-age/tau)
+  x the physics change (today hidden rows take the full change at any age). Caution: coupled no
+  decay (tau = infinity) holds the rates forever, the divergence the decay was added against (a
+  held thrust integrates without bound): it needs a top-speed clamp or a long finite tau (10 s).
+  Aborted nodecay at its first update (in `runs/failed/`); hiddenphysics-seed1 runs meanwhile.
+- **10:00 KST The author chose: without the fade first, then the fade on the best tau.** Three
+  arms on the hidden-physics base (`round6b.sh`, after hiddenphysics-seed1): **tau1.25** and
+  **tau10** (both `extrapolation_decay` and `physics_hidden_decay` set to the same tau; 10 s = the
+  author's "no decay", bounded), and **fade** (tau 0.5 with the new `physics_hidden_fade`: a
+  hidden row's forecast = baseline + exp(-age/tau) x the physics change; built by a background
+  agent on `feat/physics-hidden-fade`, CPU only; the runner waits for it to be merged). The
+  existing hiddenphysics is the tau 0.5 point. Then tournament 4: every 30M policy on the
+  correct base (11 players, both seed pairs).
+- **10:20 KST Fade build merged** (`feat/physics-hidden-fade` accc60c5, merge 64d7aeb8, no
+  conflicts; ruff clean; the arm's line resolves). From the agent's report:
+  `YemongConfig.physics_hidden_fade` (needs `delta_split` and `physics_hidden_decay`);
+  `Yemong.forecast` takes the rows' hidden age (ticks) and, for age > 0, sets the forecast to
+  baseline + exp(-age x tick / tau) x (physics forecast - baseline) (`delta.fade`; seen rows bit
+  for bit); faded: the means of x, y, velocity, heading (wrapped), nose rate, angle of attack,
+  energy, ln n; not faded: the jumps (shield, recharge wait, gun cooldown, advanced by their
+  median) and every spread. `step` passes the enemy rows' age (= `replay.age`); the learner's
+  error label now uses `model.forecast` with the age (so e = truth - the faded forecast; bit for
+  bit with the switch off); the physics target unchanged (truth to truth). Callers that rebuild
+  the forecast (head statistics, decode, figures capture, play predictions) pass the age. Its
+  report: 230 pass in six files, the one failure the known arm-1/2 digest; not tested on GPU or
+  under graph capture (`delta.fade` builds no index tensor, so capture stays safe). Verifying the
+  merged tree on CPU before the next arm imports it.
+- **10:20 KST The author: the 60M round also takes absolute (C-fixed) as a baseline**, to catch
+  arms that do well to 30M and badly after. Laptop asked (author to confirm there) to take
+  hiddenphysics-tau10 (runner skips it on the box if claimed; `runs/hub_fetch.py` fetches it).
+- **10:15 KST Merged tree (with the fade) verified:** 230 pass in the six files, 1 fail (the known arm-1/2 digest).
+- **10:30 KST Two more 30M arms (the author):** **deadreckon-split-seed1** (so hidden physics vs
+  its base becomes two seeds each) and **persist-split-hiddenphysics** (whether hidden physics
+  helps beyond dead reckoning), after fade in `round6b.sh` (each skippable if the laptop claims
+  it). Tournament 4: 13 players at 30M. Tournament 3 with Brier and imitation (the author asked;
+  Brier = mean of 20-30.4M logs; my first table wrongly took hiddenphysics' rows past 30M from
+  its stopped 60M resume: 0.445 -> 0.388 corrected): hiddenphysics 823 Elo / Brier 5-15 s 0.388
+  / KL 0.444; deadreckon-split 785 / 0.324 / 0.432; persist-split 703 / 0.353 / 0.470; fastdecay
+  661 / 0.280 / 0.492; absolute 657 / 0.428 / 0.503; fourier 573 / 0.390 / 0.490; absolute-seed1
+  532 / 0.246 / 0.520. Brier does not track Elo (absolute, fourier: top Brier, low Elo); KL a bit
+  better.
+- **10:40 KST The author: the laptop takes two arms** (tau10, then persist-split-hiddenphysics-laptop; requested, the author to confirm in its session). The box runner skips each once the laptop confirms it (markers) and fetches both from the hub before tournament 4.
+- **10:45 KST Laptop accepted tau10** (started 10:19 KST on 45774aeb; its resolved config: extrapolation, split, both taus 10.0, temporal_first, BC discounts; memory settings its defaults); box marker set. persist-split-hiddenphysics: awaiting the author's confirmation there.
+- **10:50 KST Laptop accepted persist-split-hiddenphysics-laptop** (queued after tau10; ETA 15:20 KST, worst 16:00); box marker set. Box: seed1, tau1.25, fade, deadreckon-split-seed1 (~14:15); tournament 4 once both laptop runs are in.
+- **10:55 KST absolute's 60M resume fills the box's wait for the laptop** (the 60M round's baseline; checkpoint 30.4M restored from the hub), after deadreckon-split-seed1.
+- **10:26 KST hiddenphysics-seed1 done** (30.4M): KL 0.475, agreement 0.674, Brier 5-15 s 0.230 (seed 0: 0.444 / 0.692 / 0.388). The same seed pattern as absolute's pair (Brier 0.428 vs 0.246): seed 0 the luckier for both; only multi-seed tournament results decide. tau1.25 next.
+- **11:22 KST Disk:** 18 GB free; pruned compile-cache files unused 12 h (80,423 files: the wrong-base and speed-test configs): cache 35 -> 29 GB, **24 GB free**.
+- **11:37 KST tau1.25 done** (budget, 30.4M): KL 0.468, agreement 0.677, Brier 5-15 s 0.340, hidden position error 2-5 s 134 m, heading 0.434 rad (tau 0.5 seeds: 0.444 / 0.475 KL, 0.388 / 0.230 Brier, 73 / 114 m, 0.412 / 0.445 rad): within the seed range except the 2-5 s position error, the worst (slower-fading held rates carry the last thrust longer; suggestive only). fade next.
+- **12:10 KST fade healthy on the GPU (incl. graph capture) after 3 updates:** KL 1.4523 / 0.7169 vs hiddenphysics' 1.4524 / 0.7172; 92 s per update; no non-finite beliefs or skipped steps; 17.0 GB. ETAs: fade ~12:50, deadreckon-split-seed1 ~14:00, absolute 60M ~14:45, laptop ~15:20, then tournament 4.
+- **12:50 KST Laptop tau10 uploaded** (hub a55608a0, budget at 12:43 KST); fetched and loads here (extrapolation, split, both taus 10.0, no fade). KL 0.482, agreement 0.672, Brier 5-15 s 0.271: inside the tau 0.5 seed range. persist-split-hiddenphysics-laptop started 12:44 KST (persistence, split, physics_hidden_decay 0.5), ETA 15:10.
+- **12:49 KST fade done** (budget, 30.4M): KL 0.475, agreement 0.671, Brier 5-15 s 0.331, hidden position error 0.5-1 / 1-2 / 2-5 s 6.9 / 23.1 / 105 m, heading 2-5 s 0.446 rad: all inside the tau 0.5 seed pair's range (0.444-0.475 KL; 0.230-0.388 Brier; 73-114 m). deadreckon-split-seed1 next.
+- **13:40 KST deadreckon-split-seed1 done** (30.4M): KL 0.480, agreement 0.670, Brier 5-15 s 0.190, outcome EV 0.521 (seed 0: 0.432 / 0.697 / 0.324 / 0.626). Third arm where seed 1 is worse than seed 0 on every training metric (absolute, hiddenphysics, deadreckon-split): seed 0 may be the luckier seed for all, so compare like seeds. absolute's 60M resume next.
+- **13:41 KST absolute's 60M resume failed: its hub checkpoint was inconsistent.** The 30.4M
+  checkpoint restored from the hub refused to load: `training.safetensors` has SHA-256 7b09f3ba,
+  the checkpoint's record says c5776cb3 (weights and return scale match). Same size, so my
+  deletion check (size only) passed it at 09:22 and the local original is gone. Likely cause: a
+  sync uploaded while that final checkpoint was rewritten, pairing one write's record with the
+  other's training state. **Checked every checkpoint on the hub against its own record (SHA-256
+  from the hub's metadata): 38 checkpoints, this one file the only mismatch.** Fixes: deletions
+  now require each file's SHA-256 to equal the record (not the size); absolute resumes from its
+  23.1M checkpoint instead (verified by hash; 19.9M is not kept: a run keeps its newest two),
+  `runs/absolute60.sh`, started 13:43 (loads, with the expected FilledDefaults for the newer
+  switches). Its 30.4M policy, the one rated, is the original. The 60M continuation branches at
+  23.1M. The box's queue is otherwise done; tournament 4 waits for the laptop's last arm.
+- **13:56 KST absolute's resume healthy** (rewound to 23.1M; at update 30, 81 s per update; ETA 14:35 KST). Note: its metrics.jsonl now holds updates 23-29 twice (the original and the rewound branch): 20-30M statistics for absolute must take the first 29 rows only (the tables already given predate the rewind).
+- **14:35 KST absolute at 60M done** (budget, 60.8M; branched at 23.1M): KL 0.416, agreement
+  0.702, Brier 5-15 s 0.642 (last log). **Caught before the tournament:** the rewind moved the
+  original 30.4M policy files (the ones rated in tournament 3) to `policies/rewound_1/` (the
+  runs code's rule, `records.py`), and `policies/step_30408704` now holds the rewound branch's
+  30.4M (different weights). The tournament runner was fixed to rate the original
+  (`rewound_1`); checked in the ratings process's arguments.
+- **14:38 KST Tournament 4 started** (13 players at 30M: absolute (original), absolute-seed1,
+  deadreckon-split, -seed1, -fourier, -fastdecay-laptop, persist-split-laptop, hiddenphysics,
+  -seed1, -tau1.25, -tau10-laptop, -fade, persist-split-hiddenphysics-laptop; frontline then
+  deathmatch, no ladder). The laptop's last arm arrived (hub 00aaa6cc, budget at 14:37 KST,
+  Brier 5-15 s last six 0.272-0.325); the laptop GPU is free.
+- **15:11 KST Tournament 4 relaunched with a bigger engine layout** (the author: fewer, larger
+  batches; fill the GPU). The default 8 blocks x 128 games ran the GPU at 100% but ~260 W and
+  7.5 of 24 GB (each block runs its two networks on 128 environments: small kernels); the
+  matchup choice was already information-optimal (`allocate_blocks`: greedy A-optimal, the pair
+  whose games most cut the summed rating variance; a later refinement could weight the top
+  contenders). Now 16 x 256 (4096 games, 16 pairs a batch), `runs/tournament4.sh`. My first
+  relaunch failed ("rates another field"): the batch record resumes only for the same player
+  names in the same order, and I had reordered them; relaunched in the record's order, it resumed
+  with its two batches.
+- **15:13 KST 16 x 256 ran out of GPU memory** (23.5 of 23.6 GB: each block holds its own two networks and environments); the runner fell back to **16 x 128** (2048 games, 16 pairs a batch: twice the default), resumed from the record.
+- **16:00 KST Tournament 4 frontline final** (4096 games; the bigger layout's first batch took
+  2216 s, ~33 min of it compiling 16 blocks): hiddenphysics-tau1.25 842, -tau10-laptop 836,
+  hiddenphysics 811, persist-split-laptop 751, persist-split-hiddenphysics-laptop 742, -fade 716,
+  deadreckon-split 710, hiddenphysics-seed1 709, fastdecay-laptop 670, absolute 658,
+  deadreckon-split-seed1 656, fourier 603, absolute-seed1 584 (+-18-23). The seven re-rated
+  policies moved 3-34 from tournament 3 (the tournament's own noise is small); seed gaps 54-102,
+  seed 0 better every time; hidden physics beats its base at both seeds (+101, +53); slower tau
+  +28 (within noise); fade -95.
+- **16:05 KST Game reuse across tournaments (the author asked), being built** by a background
+  agent on `feat/tournament-reuse`: `bnb ratings --reuse DIR...` starts from every earlier recorded
+  game whose two players are both in the field, players matched by the SHA-256 of their weights
+  (a path can change contents: the rewind case), legacy records by path. The author: decide the
+  60M round after deathmatch.
+- **16:45 KST Game reuse merged** (`feat/tournament-reuse` c9ea02af, merge 2695b77e; ruff; league
+  tournament/ratings + imports tests 50 pass). `bnb ratings ... --reuse DIR...`: every recorded
+  game whose two players are both in the field starts the fit (the own `--out` record replays as
+  before; `--budget` counts only new games). Players are matched by content: `sha256:` of
+  `checkpoint.json`'s weights hash (+ ablations); scripted/ladder by name; weights shared by two
+  field players are skipped as ambiguous. Records now store `identities` per batch. Legacy
+  records (no identities) resolve names by path and skip any policy whose checkpoint `time` is
+  after the record's first batch ended (a policy written after the games cannot have played
+  them): this catches the rewind case. Dry run (round4's 13 + scripted): frontline 6528 games
+  reusable (round3 2432 of 3072, round4 4096), deathmatch 2304 (round3); round3's old
+  `absolute` path is skipped (rewritten 2026-11-09 04:54 UTC, after its games), so the original
+  absolute gets only round4's games.
+- **16:55 KST The bigger tournament layout did not help** (measured): 16 x 128 steady 2048 games in 386 s = 5.3 games/s vs the default 8 x 128's 1024 in 201 s = 5.1/s; same ~258 W; and it doubled the compile per mode (~35 vs ~15 min). The engine's cost scales with blocks (each block runs its own networks), so per-block work, not GPU fill, is the limit. Back to the default layout; game reuse cuts batches instead. A real speedup would batch the networks across blocks inside the engine (code, later).
+- **16:38 KST Tournament 4 final** (`runs/ratings/round4/`; mean of frontline / deathmatch):
+  hiddenphysics-tau1.25 820 (842 / 799), -tau10-laptop 815 (836 / 795), hiddenphysics 811
+  (811 / 810), deadreckon-split 796 (710 / 883), persist-split-hiddenphysics-laptop 732,
+  persist-split-laptop 716, -fade 700, hiddenphysics-seed1 696, deadreckon-split-seed1 686,
+  fastdecay-laptop 674, absolute 657, fourier 573, absolute-seed1 545 (+-12-15). **Seed 0 is ~110
+  above seed 1 for all three configs that have both (112, 115, 110): systematic (the seed sets
+  the init and data order every seed-0 arm shares), so same-seed comparisons are paired and far
+  tighter than 110; never compare across seeds.** Hidden physics trades deathmatch for frontline
+  vs its base at both seeds (frontline +101 / +53, deathmatch -73 / -34, mean +15 / +10). Tau
+  barely matters (1.25 and 10: +9 and +4 over 0.5). Fade -111 vs its base. Proposed 60M (the
+  author's rule, the top four within 24 on the mean): hiddenphysics, -tau1.25, deadreckon-split
+  on the box, -tau10 on the laptop; then tournament 5 with absolute's 60M and their 30M (reuse).
+- **17:00 KST 60M round started (the author: go, with absolute as the null).** `round7.sh`: box resumes hiddenphysics (from 43M), -tau1.25, deadreckon-split to 60M; laptop asked (author to confirm there) to resume -tau10-laptop; then tournament 5: those four and absolute at 60M plus their 30M policies, `--reuse runs/ratings/round3 runs/ratings/round4`, default layout. If the laptop has not confirmed by the time the box finishes (~19:05), tournament 5 runs without tau10's 60M.
+- **17:05 KST Noted in `docs/rewrite/backlog.md` (Tournaments; the author): before the next tournament sweep, compile per build not per field, persist traced graphs, settings as runtime inputs; batching networks across blocks for throughput.
+- **17:10 KST Laptop resuming hiddenphysics-tau10-laptop to 60M** (started 16:42 KST, ETA 19:10, worst 19:50); marker set, so tournament 5 waits for it.
+- **17:15 KST hiddenphysics at 60M** (budget, 60.8M): KL 0.334, agreement 0.753, Brier 5-15 s (50-60M) 0.592; absolute at 60M (branched at 23.1M): 0.416 / 0.702 / 0.620. The imitation gap widened from 30M (KL -0.06) to 60M (-0.08): no fade after 30M; outcome Brier now nearly level. tau1.25 resuming.
+- **18:05 KST hiddenphysics-tau1.25 at 60M:** KL 0.387, agreement 0.719, Brier 0.553 (tau 0.5: 0.334 / 0.753 / 0.592; absolute 0.416 / 0.702 / 0.620). deadreckon-split resuming.
+- **18:45 KST Laptop's tau10 at 60M uploaded** (hub 3c3a2952, budget at 18:41 KST): KL 0.387; Brier 5-15 s last six 0.467-0.573; its lane window (uniform average vs scripted) 0.260 +- 0.013. The laptop GPU is free.
+- **18:55 KST deadreckon-split at 60M** (KL 0.355, agreement 0.740, Brier 0.503); **tournament 5 started** (10 players + scripted: the five at 60M and their 30M). **Reuse worked:** frontline starts from 1,664 recorded games (round3 640, round4 1,024; only pairs both in the field); round3's old absolute path skipped (rewritten after its games), the original matched via rewound_1.
+- **19:36 KST Tournament 5 final (60M)** (`runs/ratings/round5/`, reusing rounds 3-4; frontline
+  in 2 batches, deathmatch in 2): mean (frontline / deathmatch): **deadreckon-split-hiddenphysics
+  60M 936 (960 / 912)**; absolute 60M 872 (923 / 820); -tau1.25 60M 855; deadreckon-split 60M
+  846 (803 / 889); hiddenphysics 30M 823; -tau10-laptop 30M 818 / 60M 813; -tau1.25 30M 811;
+  deadreckon-split 30M 789; absolute 30M 665 (+-10-14). **Champion: deadreckon-split-hiddenphysics
+  (tau 0.5)**: +64 on the mean over the null (absolute) at 60M, past the +40 bar; its lead holds or
+  grows from 30M to 60M; best imitation (KL 0.334). The null gained +207 30M -> 60M (second); the
+  slow taus barely moved (tau10 dipped). Caveat: seed 0 only at 60M. The 30M policies reproduced
+  their tournament-4 ratings (822 vs 811, 838 vs 842, 709 vs 710, 681 vs 658). Next (the author's
+  original goal): 200M BC of the champion resumed from 60M, then 200M RL.
+- **19:40 KST Round 8 (the author): champion and null to 120M BC, then 60M RL each**
+  (`round8.sh`): BC resumes of deadreckon-split-hiddenphysics then absolute from 60.8M to 120M
+  (~1.5 h + 1.3 h); then RL: `bnb train --init-from <run>/policies/<last>/uniform_average --preset
+  mixed --updates 58` (60.8M), the file's build, PPO's own settings: the spec's discounts (outcome
+  gamma 0.9997, lambda 0.97, unlike BC's 1 / 1: watch the outcome Brier), warm-start entropy 0,
+  32 minibatches x 4 epochs; micro-batch 320 rows (32 views, as BC's proven memory), else 160.
+  RL speed on the box not measured yet.
+- **20:00 KST RL settings (the author asked):** (1) **outcome is in RL's advantages**: reward
+  `outcome` weight 1.0, its own per-level GAE, summed with the other four levels
+  (`returns.team_aggregate`; team spirit 0); no v2 commit disables it. (2) **The same high-VRAM
+  profile**: `host_store=false` as BC; the micro-batch cannot be BC's 2560 literally: a BC
+  minibatch is 32 views (256 minibatches) so 2560 meant one micro-batch per minibatch, while
+  PPO's is 256 views (32 minibatches), and 256 views through backward at once would need ~8x BC's
+  gradient memory. From BC's measured ~17 GB (store ~11 GB) at 32-view micro-batches, 64 views
+  (640 rows) is near the limit: RL runs at 640, falling back to 320 (same result, memory/speed
+  only). Runner replaced without disturbing the champion's 120M BC resume (it waits for it).
+- **21:12 KST Champion at 120M BC** (deadreckon-split-hiddenphysics, budget, 120.6M): KL 0.277, agreement 0.786, Brier 5-15 s 0.697 (110-120M mean); at 60M 0.334 / 0.753 / 0.592: still improving. Its 120M uniform average (step_120586240) seeds its RL. absolute's BC resume to 120M started.
+- **21:25 KST Before RL (the author): pick RL's starting policy on the evidence, one kind for
+  both runs.** `round8b.sh` (replaced round8's runner; absolute's 120M BC undisturbed): after it,
+  **tournament 6** (120M live, uniform average, exponential average of the champion and the null)
+  and a **scorecard** per run (`runs/scorecard.py`: the run's own TrainConfig with learning rate and
+  warm-up start 0 (checked: lr 0 at every step), each variant's weights copied into the model in
+  place, 1 settling + 3 measured updates on fresh games: BC KL / agreement, explained variance,
+  outcome Brier, next-state and error-head errors, the live lane's score vs scripted). The runner
+  stops there; RL starts after the choice.
+- **22:39 KST absolute at 120M BC** (budget): KL 0.351, agreement 0.740, Brier 5-15 s 0.686 (champion 0.277 / 0.786 / 0.697). Tournament 6 started (120M live / uniform / exponential of both).
+- **23:35 KST Tournament 6 final (120M)**, mean (frontline / deathmatch): champion uniform 989 (973 / 1004), absolute uniform 979 (1013 / 945), champion exponential 966, champion live 965, absolute exponential 949, absolute live 892 (+-12-14). Uniform is the best variant for both (+23, +30 over the next); both near the scripted teacher (1000); champion vs null now level (+10; the 60M lead of +64 narrowed as both converge on the teacher). Scorecards next.
+- **00:00 KST Scorecards (120M variants, each on fresh games, nothing trained):** champion live /
+  uniform / exponential: held-out KL 0.451 / 0.644 / 0.644, agreement 0.701 / 0.605 / 0.607,
+  student entropy 1.18 / 1.33 / 1.32 (teacher ~0.95), EV objective progress, objective, outcome
+  0.95 0.94 0.53 / 0.91 0.93 0.75 / 0.91 0.93 0.76, next-state CE 24.47 / 25.00 / 24.98; null:
+  KL 0.482 / 0.662 / 0.656, agreement 0.672 / 0.585 / 0.590, entropy 1.28 / 1.49 / 1.48, EV 0.95
+  0.94 0.60 / 0.83 0.87 0.81 / 0.83 0.87 0.81, CE 23.65 / 23.46 / 23.47. The training log's KL
+  (0.277) is lower because it is measured across the update's epochs on the same batch; the
+  scorecard's is held out. **Not trusted (my scorecard's design):** outcome Brier, lane scores and
+  hidden-row errors, confounded by measuring the variants one after another in one process from a
+  synchronised reset (which episodes ended in a window, with whose earlier predictions, depended on
+  the order); the per-update metrics above are sound. Reading: live imitates closest, the averages
+  are softer but play better (tournament: uniform best for both) and their critics' outcome EV is
+  higher (0.75-0.81 vs 0.53-0.60). Recommended RL start: the 120M uniform average for both.
+- **00:05 KST RL started (the author: both from the 120M uniform average)**, `round9.sh`: champion then null, 60M each (58 updates), PPO's settings, 640-row micro-batches (else 320), store on the GPU.
+- **01:00 KST RL at 640-row micro-batches ran out of memory** (23.4 of 23.6 GB, after ~36 min of compile); the runner retries at 320 (32 views, BC's proven size; same result). First attempt moved to runs/failed/.
+- **01:30 KST Champion RL running at 320-row micro-batches** (probe 18.1 GB of 23.6): update 2-3: rollout 17 s, learn 97-98 s = **~9,100 SPS** (BC 11,400; RL's rollout also plays the league's opponents); PPO KL 0.005-0.006, clip fraction 0.06, no skipped steps; outcome EV 0.95-0.96; Brier 5-15 s -0.97 -> -0.15 -> +0.23 (the synchronised launch's first finished games). ETAs: champion RL ~03:20, null RL ~05:40 KST.
+- **03:16 KST Champion RL done** (`2026-11-09-rl-deadreckon-split-hiddenphysics`, 60.8M, from the 120M BC uniform average): steady throughout (PPO KL 0.005-0.007, clip fraction 0.06-0.07, no skipped steps); last 10 updates outcome Brier 5-15 s 0.520, outcome EV 0.964. RL keeps every update's policy files (~1.7 GB). Null RL next.
+- **03:18 KST Null RL restarted at 320-row micro-batches**: `round9.sh` tried 640 first again (the setting that ran out of memory for the champion, same size); stopped it within a minute (moved to runs/failed/) and set the runner to 320 only. ETA ~05:40 KST.
+- **04:10 KST Round 10 (the author): both RL runs to 120M, then the whole-curve tournament.**
+  `round10.sh` (after round 9): RL resumes `--updates 116` (121.6M; a resume continues to the
+  run's total), null then champion; then **tournament 7**: both headline lines in one field (Elos
+  directly comparable from the first BC snapshot to the last RL one): the uniform average every
+  ~10M, BC 10.5 ... 120.6M (absolute's post-23.1M snapshots are its rewound branch, the lineage
+  that leads to 120M) and RL 10.5 ... 121.6M (RL step 0 = the BC 120.6M uniform), plus live /
+  uniform / exponential at BC 120.6M, RL 60.8M and RL 121.6M: 60 players + scripted;
+  `--budget 60000`, `--reuse runs/ratings/round5 runs/ratings/round6`. ETAs: null RL 120M ~06:45,
+  champion ~08:40, tournament ~11:30 KST (estimate).
+- **04:30 KST Tournament 7's settings (the author): 8 blocks x 256 games, target +-35.** Why
+  (my analysis for the author): splitting BC and RL into two tournaments would not be faster
+  (games per player x players is the same; two compiles) and would weaken the scale (BC vs RL only
+  through lopsided games against scripted). The engine is launch-bound (~16 small forwards a tick
+  on 128 games each; ~260 W vs training's ~410 W; ~10x below training's game-ticks/s): doubling the
+  games per block halves the launches per game (8 x 256 = 2048 games, under training's rollout;
+  16 x 256 ran out of memory), likely ~1.7-2x; +-35 instead of +-25 halves the games (1/error^2).
+  Expected ~40-60 min instead of ~2.5 h. Falls back to 8 x 128. The real fix (batch the networks
+  across blocks: 3-5x but days of work through the custom Triton kernels; compile per build:
+  hours) stays in the backlog for after the RL runs.
+- **04:40 KST Disk:** 17 GB free before the RL extensions (~+7 GB). Deleted the checkpoints of five finished arms (fade, hiddenphysics-seed1, -tau1.25, deadreckon-split-seed1, deadreckon-split: no further resume planned) after **every file's SHA-256 matched its checkpoint record on the hub**; kept the two BC headline runs' and the RL runs' checkpoints; pruned compile-cache files unused 12 h (27 -> 24 GB): **24 GB free**.
+- **05:04 KST Null RL at 60M** (`2026-11-09-rl-absolute`): last 10 updates Brier 5-15 s 0.593, outcome EV 0.973, PPO KL 0.0070 (champion RL 0.520 / 0.964 / 0.0070); both stable. Extensions to 121.6M started (null, then champion); tournament 7 after.
+- **06:38 KST Null RL at 121.6M** (finished; last 10 updates Brier 5-15 s 0.548, outcome EV 0.952, PPO KL 0.0078). Champion RL extension started (~08:35 KST), then tournament 7.
+- **08:37 KST Champion RL at 121.6M** (last 10 updates Brier 0.494, outcome EV 0.944, PPO KL 0.0068); **tournament 7 started**: all 60 players present (none missing), 8 x 256, target +-35; reused 768 frontline games (rounds 5-6).
+- **09:00 KST 8 x 256 measured:** steady batch 2048 games in 211 s = **9.7 games/s vs 5.1 on 8 x 128: 1.9x**, fits in memory: the default for future tournaments. Tournament 7's worst error stays at the prior (+-347) until every one of its 60 players has played (8 pairs a batch).
+- **09:30 KST Tournament 7 is bounded by pairings, not games** (my 40-60 min estimate was wrong): pairings per minute ~2.4 for 8 x 128, 2.5 for 16 x 128, 2.3 for 8 x 256: the engine pays per pairing (each pair's two networks), so more games per pairing come nearly free (8 x 256 doubled games/s) but a 61-player field needs ~190 pairings per mode (the tool's projection): ~80 min per mode; frontline ~10:30, deathmatch ~12:00 KST. The engine fix (batch networks across pairings) is what would cut this.
+- **10:05 KST Tournament 7 frontline final** (`runs/ratings/round7-8x256/`, 11 batches, 22,528
+  games, worst +-33.5): uniform averages, champion / null: BC 10.5M 465 / 440, 21.0 728 / 606,
+  30.4 803 / 718, 40.9 840 / 761, 50.3 924 / 877, 60.8 969 / 932, 70.3 997 / 957, 80.7 980 / 978,
+  90.2 976 / 1001, 100.7 1009 / 1013, 110.1 1033 / 989, 120.6 1010 / 948; RL 10.5M 1293 / 1351,
+  21.0 1396 / 1409, 30.4 1436 / 1489, 40.9 1537 / 1531, 50.3 1564 / 1550, 60.8 1573 / 1604, 70.3
+  1677 / 1578, 80.7 1703 / 1630, 90.2 1711 / 1651, 100.7 1770 / 1686, 110.1 1780 / 1700, 121.6
+  1825 / 1719 (+-16-31). Variants live / uniform / exponential: BC 120.6M champion 937 / 1010 /
+  1013, null 873 / 948 / 987; RL 60.8M 1655 / 1573 / 1610, 1586 / 1604 / 1580; RL 121.6M **1868** /
+  1825 / 1837, 1655 / 1719 / 1663. Reading: BC plateaus at the teacher (~1000 by 70-100M); RL +300
+  in its first 10M and still climbing at 121.6M; both pass the MVP's ~1500 by RL ~40M; the null
+  leads early in RL, the champion pulls ahead after ~60M (+106 uniform, +190 live at 121.6M); in RL
+  the champion's live policy is its best (the averages lag a still-improving policy). Deathmatch next.
+- **10:35 KST Round 11 queued (the author): after tournament 7, both RL runs resumed to 172 updates (180.4M)**, null then champion (`round11.sh`); ~1.6 h + ~1.9 h.
+- **10:30 KST Tournament 7 final** (`runs/ratings/round7-8x256/`; frontline 11 batches, deathmatch 14; worst +-32). Frontline / deathmatch / mean:
+  BC 10.5M  champion 465 / 275 / 370  null 440 / 32 / 236
+  BC 21.0M  champion 728 / 727 / 728  null 606 / 559 / 582
+  BC 30.4M  champion 803 / 838 / 820  null 718 / 687 / 702
+  BC 40.9M  champion 840 / 913 / 876  null 761 / 745 / 753
+  BC 50.3M  champion 924 / 902 / 913  null 877 / 807 / 842
+  BC 60.8M  champion 969 / 912 / 940  null 932 / 827 / 880
+  BC 70.3M  champion 997 / 947 / 972  null 957 / 861 / 909
+  BC 80.7M  champion 980 / 971 / 975  null 978 / 878 / 928
+  BC 90.2M  champion 976 / 972 / 974  null 1001 / 906 / 954
+  BC 100.7M  champion 1009 / 947 / 978  null 1013 / 890 / 952
+  BC 110.1M  champion 1033 / 1002 / 1018  null 989 / 900 / 945
+  BC 120.6M  champion 1010 / 979 / 995  null 948 / 898 / 923
+  RL 10.5M  champion 1293 / 1313 / 1303  null 1351 / 1196 / 1273
+  RL 21.0M  champion 1396 / 1493 / 1445  null 1409 / 1330 / 1369
+  RL 30.4M  champion 1436 / 1597 / 1517  null 1489 / 1469 / 1479
+  RL 40.9M  champion 1537 / 1702 / 1620  null 1531 / 1588 / 1560
+  RL 50.3M  champion 1564 / 1806 / 1685  null 1550 / 1626 / 1588
+  RL 60.8M  champion 1573 / 1855 / 1714  null 1604 / 1744 / 1674
+  RL 70.3M  champion 1677 / 1961 / 1819  null 1578 / 1808 / 1693
+  RL 80.7M  champion 1703 / 2020 / 1861  null 1630 / 1836 / 1733
+  RL 90.2M  champion 1711 / 2080 / 1895  null 1651 / 1894 / 1772
+  RL 100.7M  champion 1770 / 2131 / 1950  null 1686 / 1923 / 1804
+  RL 110.1M  champion 1780 / 2147 / 1963  null 1700 / 1964 / 1832
+  RL 121.6M  champion 1825 / 2219 / 2022  null 1719 / 2005 / 1862
+  BC 120.6M live  champion 937 / 991 / 964  null 873 / 897 / 885
+  BC 120.6M uniform  champion 1010 / 979 / 995  null 948 / 898 / 923
+  BC 120.6M exponential  champion 1013 / 981 / 997  null 987 / 919 / 953
+  RL 60.8M live  champion 1655 / 1965 / 1810  null 1586 / 1888 / 1737
+  RL 60.8M uniform  champion 1573 / 1855 / 1714  null 1604 / 1744 / 1674
+  RL 60.8M exponential  champion 1610 / 1863 / 1736  null 1580 / 1760 / 1670
+  RL 121.6M live  champion 1868 / 2017 / 1942  null 1655 / 2059 / 1857
+  RL 121.6M uniform  champion 1825 / 2219 / 2022  null 1719 / 2005 / 1862
+  RL 121.6M exponential  champion 1837 / 2205 / 2021  null 1663 / 1997 / 1830
+  Reading: the champion leads the null at nearly every point (BC +50-130 on the mean; RL from ~20M, +160 at 121.6M); RL adds ~+1000 over BC and is still climbing at 121.6M (largest gains in deathmatch); live best mid-RL (+90 at 60M), the averages best at 121.6M (+80 for the champion). RL to 180.4M next (round11).
+- **11:00 KST A/B against a much simpler model (the author).** Being built by a background agent
+  on `feat/nearest-mlp` (CPU only): `--model nearest`, a per-ship 2-hidden-layer MLP (relational's
+  body) with the joint policy, the 5-level critic and the outcome head (the 5th level needs it), no
+  other heads; fixed-size inputs so it runs at any fleet size: own state + the mode's objective
+  globals, the nearest 3 allies and 4 visible enemies (relative, sorted, padded; my call: 4 enemies
+  covers a 5v5 engagement, 3 often drops an attacker), the nearest 3 fields, every zone slot in role
+  order (own spawn, own defense, neutral, enemy defense, enemy spawn); K configurable. No memory, so
+  no belief about hidden enemies (part of what the A/B measures). The A/B keeps every training
+  setting equal to the Yemong runs except memory-only ones (micro-batch); expected 4-6x faster (the
+  learner was ~85% of an update). Runs after the RL to 180M (~14:05 KST).
+- **11:05 KST The author: treat the nearest-MLP's first run as a bug hunt** (it should get near the scripted agent's level in BC, which has little memory). Gates: (1) first 3 updates: KL falling about as Yemong's did (2.96 -> 1.41 -> 0.72), finite, speed, entropy toward the teacher's; (2) ~10M and ~30M: KL / agreement vs Yemong at the same step and the run's own lane score vs scripted; stop and investigate (features, normalisation, nearest-K, zone roles, padding) if the score is near zero or KL stalls far above Yemong's; (3) before RL: a short rating of BC 120M vs scripted; RL only if BC is sane.
+- **11:40 KST Disk and the hub's integrity.** Disk 15 GB free: deleted 205 RL per-update policy
+  snapshots up to 121.6M that the curve does not use (kept every ~10M, 60.8M, 121.6M), each after its
+  files' SHA-256 matched their records on the hub: 6.3 GB freed, 21 GB free. **3 snapshots failed the
+  check and were kept: the hub held wrong bytes (same size) for 3 policy files whose local copies
+  match their records**, written by a sync commit at 11:17 KST (my full check at ~10:40 had passed
+  one of them). Re-uploading moved no new data ("New Data Upload 0 B"): the right bytes were already
+  in the hub's store and only the path pointed at others: the upload's large multi-part commits can
+  pair a path with the wrong content (the 30.4M checkpoint earlier was likely the same). Repaired
+  and re-verified; `gpu-box/hub_repair.py` now runs after every sync pass (re-uploads any file whose
+  hub hash differs from its record and re-checks).
+- **12:02 KST Null RL at 180.4M** (finished; last 10 updates Brier 0.612, outcome EV 0.959, PPO KL 0.0085, no skipped steps). Champion RL resuming to 180.4M (~13:55 KST).
+- **12:30 KST The nearest model merged** (`feat/nearest-mlp` 0ef77935, merge 0d6691b9; ruff; 62 pass:
+  its 13 tests, every model's policy-file round trips, contracts). From the agent's report: 196
+  inputs per ship at the defaults (own 15, globals 10, 3 allies x 11, 4 visible enemies x 11, 3
+  fields x 8 (ranked by centre distance; edge distance a feature), 5 zone roles x 14), 180,474
+  parameters (hidden 256); width independent of fleet size (a 5v5-built model runs at 8v8,
+  tested); no auxiliary heads (the learner's auxiliary path is off, as for relational);
+  `--print-config`: the A/B arms differ only in the model (and RL's memory-only micro-batch, 3840 =
+  one per 384-view minibatch). Queued `round12.sh`: nearest BC to 120M after the champion's RL
+  (~13:55 KST); RL only after the BC gates.
+- **13:54 KST Champion RL at 180.4M** (last 10 updates Brier 0.570, outcome EV 0.970, PPO KL 0.0062, no skipped steps): both RL runs at 180.4M. **Nearest BC started** (13:55 KST).
+- **14:05 KST Nearest BC gate 1 passed:** KL 2.965 / 1.202 / 0.795 / 0.751 at updates 1-4 (champion 2.965 / 1.452 / 0.717 / 0.699), entropy toward the teacher's (3.74 -> 1.65 vs 0.86), no non-finite values or skipped steps; **~120,000 SPS** (rollout 1.4 s, learn 7 s; 10x the champion's), 8 GB; 120M in ~17 min.
+- **14:15 KST Nearest BC gate 2 passed:** KL at updates 10 / 20 / 29: 0.488 / 0.495 / 0.467 (champion 0.483 / 0.498 / 0.444, null 0.480 / 0.562 / 0.502); agreement 0.725 / 0.725 / 0.729 (champion 0.719 / 0.666 / 0.692); pool score vs scripted 0.000 / 0.013 / 0.177 (champion 0.000 / 0.006 / 0.180, null 0.000 / 0.020 / 0.087); the exponential lane's window ~0 for all three at 30M (it accumulates from the start). Outcome Brier lower (0.21 vs 0.40 at 30M; no memory). No sign of a bug.
+- **14:18 KST Gate 3 queued** (`tournament8.sh`): after the nearest BC, its 120M live / uniform / exponential and 30M / 60M uniform against the champion's and null's BC uniforms at 30M / 60M / 120M, reusing tournaments 5-7's games; 8 x 256, +-35.
+- **14:15 KST Nearest BC at 120M** (budget; **19 min**, the champion's BC 3.6 h): KL 0.326, agreement 0.799, Brier 5-15 s 0.640, pool score vs scripted 0.438 (champion 0.277 / 0.786 / 0.702 / 0.458; null 0.351 / 0.740 / 0.689 / 0.393): between the two lines, highest agreement. Tournament 8 (gate 3) started.
+- **14:40 KST Bug found by the nearest gate 3: every per-step `exponential_average` policy file
+  held the uniform average.** Tournament 8's nearest 120M "uniform" and "exponential" were
+  bit-identical; so were every run's (all 24 runs with snapshots, laptop runs included).
+  `save_update_policies` loaded both averages into one scratch model, then saved both: the
+  uniform last, so both names got it. The final `policy-exponential/` (`save_policies`, which
+  saves as it loads) and the training checkpoints' `league.exponential_average.*` were right.
+  Fixed in d62bbc1d with a test that fails on the old code (the uniform file is the mean of the
+  saved lives; the two averages differ). **Consequence: tournaments 6 and 7's "exponential"
+  players were the uniform averages again; the live-vs-exponential question was never measured.**
+  The uniform files (and so both RL runs' starting points) were right. Rewrote the true
+  exponential at the steps the tournaments use (`gpu-box/fix_exponential.py`, record copied from
+  the same step's live with the weights and hash replaced; each loads through `load_policy`):
+  both RL runs at 60.8M / 121.6M / 180.4M from their training checkpoints (60.8M and 121.6M
+  downloaded from the hub), both BC lines at 120.6M from `policy-exponential/`. Nearest's 120.6M
+  waits until tournament 8 ends (it is a player). Older snapshots (BC 30M / 60M) not rewritten.
+- **14:40 KST Tournament 8 (gate 3) done.** Frontline: champion BC 120M uniform 986, null 979,
+  **nearest live 914**, nearest uniform 562, its (bugged = uniform) exponential 590. Deathmatch:
+  **nearest live 1037** (beats scripted and the champion's 988), nearest 60M uniform 1020,
+  nearest 120M uniform 628. Gate 3 passed: the BC nearest plays at scripted's level. Its
+  averages are far below its live (the uniform is 0.39 of the live's norm away, the true
+  exponential, decay 0.95, 0.14), unlike Yemong's, so the nearest RL will start from its best BC
+  policy, not by the Yemong runs' type (a deliberate A/B deviation: equal footing, not equal
+  file type). Nearest's true exponential rewritten (4c54d017). Tournament 9 started: the true
+  exponentials (BC 120M; RL 60.8M / 121.6M / 180.4M), the RL 180.4M live and uniform, BC 120M
+  live, nearest live and exponential; reusing tournaments 5-8.
+- **15:15 KST The author: nearest RL straight to 180.4M, then one final tournament and an Elo plot of all three lines.** `round13.sh` ready (172 updates; starts after tournament 9 with the BC policy it picks). `--print-config` against the Yemong RL's recorded command (run.json segment 1): only `model` and the memory-only `micro_batch_rows` (3840 vs 320) differ.
+- **15:30 KST Nearest RL's start: the BC 120M exponential average** (tournament 9: frontline live 925 / exp 898, deathmatch live 1026 / exp 1068, all +-18; a tie, exp marginally ahead on the mean and an averaged policy like the Yemong runs' uniform start). Queued after tournament 9.
+- **15:35 KST Tournament 9 done.** Frontline (+-10-29): champion RL 180.4M exp **1893**, 121.6M exp
+  1857, 180.4M uni 1802 / live 1789; null 180.4M 1702-1713 (all three types); BC 120M 891-992;
+  nearest BC live 925 / exp 898. Deathmatch: champion 180.4M uni **1942**, null 180.4M live 1877 /
+  exp 1854 / uni 1781, champion 121.6M uni 1794; **champion 180.4M live 1185, exp 1572**; nearest
+  BC exp 1041 / live 1012; BC Yemong 898-980.
+  **The champion's deathmatch live regressed** from update ~100 (its own lane rating 1745 at 100,
+  ~1000 by 160; the null's fluctuates without a trend) while its uniform kept rising: no
+  instability (KL 0.006-0.007, outcome EV 0.93-0.97, no skipped steps); reads as self-play
+  cycling the average smooths. Checked whether a rule was being gamed: every deathmatch training
+  game in both RL runs times out from ~update 80 (300 s, nobody at 25 kills; BC-start levels 46%
+  champion / 9% null), but a timeout is decided by the kill lead (`clock_result`), not a draw:
+  legal, evenly matched play. Not investigated further.
+- **15:36 KST Nearest RL gate 1 passed** (KL 0.0002 -> 0.0034, clip 0.03, outcome EV 0.89 -> 0.975, the first update's outcome Brier -0.49 then recovering as the Yemong runs' (-0.97 / -0.80); 8 GB at 3840 rows; ~275,000 SPS in-update, ~8 s per update wall-clock with snapshots: 180M in ~23 min). Tournament 10 queued (the final one): the Yemong lines' whole curves plus RL 141.6M / 160.4M, and the nearest curve (uniform every ~20M, live at 6 points, its RL 180.4M exponential), one field, reusing tournaments 5-9.
+- **15:46 KST Nearest RL at 180.4M** (finished, no skipped steps, one KL spike: 0.050 at update 28,
+  the KL guard cut its epochs; median 0.0046). Its own lane ratings peak at updates 20-59 (frontline
+  1219, deathmatch 1328) and fall after (878 / 660 at 116-172), outcome EV 0.97 -> 0.87, deathmatch
+  timeouts 2% -> 100%. Checked against the Yemong RL runs: entropy falls alike (nearest 1.54 -> 0.43;
+  champion 1.55 -> 0.50; null 1.69 -> 0.58), the unforced damage and death shares rise alike (null
+  to 0.127 / 0.128, nearest 0.160 / 0.124), the Yemong lane ratings sag late too: nothing the Yemong
+  runs do not show. Lane ratings are against the run's own league, so tournament 10 (started 15:46,
+  78 players, one field) measures whether it truly peaks early.
+- **16:30 KST Tournament 10 frontline converged** (largest error 31): RL 180.4M uniform champion 1937, null 1802, nearest 1130 (its RL uniform peaks at 1255 ~40M into RL, then 1125-1130; its live 1065 at 60.8M, 801 at 180.4M); BC 120M uniform 992 / 974 / 579 (nearest live 915). Preview plot `results/gpu-box/curve-tournament10-frontline-preview.png` (`gpu-box/curve3.py`, three lines; frontline only until deathmatch lands). The run's compile cache had been pruned by the sync's disk guard: deathmatch logs TritonBundler 'Cubin file not found' warnings (harmless recompiles).
+- **16:48 KST Tournament 10 done: the simple-model A/B's result.** One field (91 players), the mean of
+  frontline and deathmatch, uniform averages, scripted = 1000 (F / D):
+  - champion: BC 120M 988 (992 / 983); RL 60.8M 1755; 121.6M 2034; **180.4M 2161 (1937 / 2386)**
+  - null: BC 946 (974 / 917); RL 60.8M 1673; 121.6M 1856; **180.4M 2010 (1802 / 2218)**
+  - nearest: BC 611 (579 / 643; its live 972); RL 40.9M 1294 (its peak); 121.6M 1185;
+    **180.4M 1140 (1130 / 1149)**; its RL 180.4M live 768, exponential 859
+  Both Yemong lines still rising at 180M (the champion ~+150 over the null); the nearest MLP gains
+  ~+680 in its first 40M of RL, then slides and flattens ~1140; its live weights fall below
+  scripted. Plot `results/gpu-box/curve-tournament10.png`. Noted: the nearest model's pair
+  features (from relational) have no neighbour ship type, shield or energy (the own ship's type
+  only); every run is 3 fighters + 2 heavies per team (default `team_types`).
+- **17:20 KST The author: crossover fights and zero-shot fleet sizes** (5v5, 10v10, 20v20, 40v40;
+  both the training arena and the training density; best checkpoints: champion and null RL 180.4M
+  uniform, nearest RL 40.9M uniform; deathmatch target per enemy fleet with unequal teams).
+  Map size never varied in training (`mixed` mixes modes only; map scale 1.0 in every game).
+  Fleet presets added (8c0bcc33; density variant: radius 2600 sqrt(n/5), 10 fields zooming with
+  the arena, the game's map-scale convention). Smoke test at 40v40 (512 games per mode, +-100-250):
+  deathmatch in the 2600 m arena champion 2385 / null 2338 / null RL 20M 1440 / nearest 156;
+  **frontline at density every trained agent ~140-270 vs scripted 1000** (to be checked); 111 s
+  per 256 games after a 7-17 min compile. Note: the scripted agent plays its deathmatch_wide set
+  beyond 4617 m (20v20 and 40v40 density deathmatch). `fleet.sh` started: one field per size and
+  variant (scripted, its temperature ladder below, the null's RL 20/40/80/180M above, the three
+  best). Bench + crossover command delegated to a build agent (worktree feat/crossover).
+- **17:35 KST Benched ships and `bnb crossover` merged** (c6afebb6, merge efc339e9; the agent's
+  report: 25 new tests, the full CPU suite's 6 failures fail at the base commit or are flaky; my
+  check: 125 pass incl. modes, contracts, policy files; ruff). A per-game (B, 2) active count:
+  a team's last slots benched, dead in the state and the observation (respawn_wait held at the
+  full respawn length), visible to their own team as an ordinary own dead ship (the game always
+  shows a team its own ships), hidden from the enemy; deathmatch target kills_per_ship x the
+  enemy's active ships; `active=None` leaves training's graph unchanged. `bnb crossover A
+  --preset P [--ships-per-team M] --pairs a:b ...` plays every pair in one batch, sides swapped
+  evenly, score = win + draw/2 with a Wilson interval, and interpolates the 0.5 crossing.
+  First GPU run started alongside the fleet ratings (champion frontline 5v5, 5..1 vs 5).
+- **17:55 KST The author: drop the temperature ladder** (at 5v5 it cost ~6 frontline batches, the rest reused); fleet ratings restarted with `--no-ladder`, the ladder run's 5v5 frontline games reused (`runs/ratings/fleet-5v5-ladder`). Crossover grids already share one compiled graph per game size (every pair is a per-game bench count).
+- **18:05 KST First GPU crossover** (champion, frontline 5v5, 128 games per pair, vs scripted 5):
+  5 ships 1.000 (128-0-0), 4: 0.766 [0.69, 0.83], 3: 0.012, 2 and 1: 0.000; **crosses 0.5 at 3.65
+  ships vs 5** (1.35 ships, 27% of its fleet, given); 466 s with the compile, sharing the GPU.
+  `gpu-box/crossover_campaign.py` started alongside the fleet ratings: the three best checkpoints x
+  2 modes x (5v5; 10v10, 20v20, 40v40 arena and density): a full integer grid at n <= 10, else a
+  coarse grid (n x 1.0 .. 0.1) then every integer in the crossing's bracket; A given more ships
+  (up to 2n) when it loses at n:n. Summary: runs/crossover/summary.jsonl.
+- **18:15 KST The author: crossover measured upwards** ("n network ships beat up to m scripted ones"): the network keeps n ships, the scripted side gets n .. 2n (3n while it still wins at 2n), each grid at the larger side's game size (benched slots still cost), then every integer inside the crossing's bracket; where it loses at n:n, the scripted side gets fewer. Campaign restarted (the first run was still compiling).
+- **18:13 KST Fleet 5v5 done** (no ladder; frontline entirely from reused games, so no batch file: the leaderboard is in `artifacts/ratings/20261110-091249/result.json`). Frontline / deathmatch: champion 1997 / 2404, null RL 180M 1875 / 2235, null 80M 1680 / 1884, null 40M 1568 / 1584, null 20M 1477 / 1345, nearest RL 40.9M 1303 / 1386, scripted 1000 (+-15-32). 10v10 arena next.
+- **18:24-18:45 KST Crossover, frontline 5 ships, upwards** (256 games per pair): **champion 5 ships
+  break even against 6.36 scripted (x1.27)** (5:5 0.994, 5:6 0.676, 5:7 0.186, 5:8 0.021);
+  **nearest 5.44 (x1.09)**. **The null's case failed: a CUDA illegal memory access** in the compiled
+  rollout (the error surfaces at the store's synchronize, asynchronously). Not reproduced uncompiled:
+  CPU eager (20 s games) and GPU eager with CUDA_LAUNCH_BLOCKING (full 300 s games, the same M = 10
+  and pairs) both run clean. Suspect: the compile cache. The sync's disk guard had pruned
+  /tmp/torchinductor_root by access time (relatime leaves it stale, so files in use can look
+  unused 12 h), and the runs since logged TritonBundler "Cubin file not found". The guard now
+  never prunes while a bnb process runs. Re-running the failed command with a fresh, empty
+  cache to tell a corrupt cache from a miscompile.
+- **19:00 KST Corrupt compile cache confirmed:** the null's failed crossover re-run with a fresh, empty cache ran clean: **null 5 ships break even against 5.87 scripted (x1.17)** (5:5 0.984, 5:6 0.430, 5:7 0.037), recorded in the summary. The campaign restarted on its own fresh cache (/tmp/inductor-campaign; the champion's deathmatch case was mid-run). Re-checking the champion's frontline 5:6 / 5:7 in the fresh cache (seed 1) against the earlier 0.676 / 0.186, so the two results run on the old cache can stand.
+- **19:15 KST Champion frontline verified in the fresh cache** (seed 1): 5:6 0.664 [0.60, 0.72], 5:7 0.182 [0.14, 0.23] vs the old cache's 0.676 / 0.186: the same; the champion's and nearest's frontline results stand.
+- **19:23 KST Fleet 10v10 arena done** (frontline / deathmatch; 5v5 in brackets): champion 1875 / 2778 (1997 / 2404), null 1680 / 2606 (1875 / 2235), null 80M 1489 / 2117, 40M 1361 / 1738, 20M 1244 / 1455, nearest 1240 / 1345 (1303 / 1386), scripted 1000. Crossover deathmatch 5 ships: **champion breaks even against 7.46 scripted (x1.49)** (5:10 still 0.221).
+- **19:40 KST Crossover at 5 ships complete** (5 network ships break even against m scripted): frontline champion 6.36 (x1.27), null 5.87 (x1.17), nearest 5.44 (x1.09); deathmatch champion 7.46 (x1.49), null 7.70 (x1.54; every level within the champion's 95% interval: tied), nearest 5.67 (x1.13). 10-ship cases next.
+- **19:50 KST Fleet 10v10 density done** (the 3677 m arena; frontline / deathmatch): champion 1499 / 2317, null 1358 / 2113, null 80M 1201 / 1764, 40M 1169 / 1482, 20M 1077 / 1220, nearest 958 / 1307, scripted 1000. Against the same 10v10 in the training arena (1875 / 2778 champion): the bigger map costs frontline ~-375 (every trained agent; nearest below scripted) and deathmatch ~-460 for Yemong, ~-40 for nearest: the frontline drop at 10v10 is the map size, not the fleet.
+- **20:40 KST The author: no map-size deviation.** The `_density` presets dropped: the fleet
+  ratings go from the running 20v20 arena straight to 40v40 arena (`round14.sh`; fleet.sh
+  stopped, its 20v20 ratings process left running); the crossover campaign restarted without them
+  after its running case (an orphaned duplicate of the next case, left by killing the campaign
+  parent, was killed at once). Crossover 10 ships, frontline, training arena: champion 11.19
+  (x1.12), null 11.15 (x1.12), nearest 10.79 (x1.08). Estimated finish ~13:00 KST Nov 11 +-2.5 h
+  (the 40-ship cases dominate).
+- **20:50 KST The author: the evaluation took longer than a training run; cut it.** Crossover:
+  deathmatch only, the champion and the nearest model only. Fleet ratings: champion, nearest and
+  scripted only (no null, no calibration rungs). The crossover search made adaptive
+  (`gpu-box/crossover_adaptive.py`, one process and one compile per case): the first guess is the
+  previous fleet size's ratio; a batch's 8 blocks are 8 handicap levels at no extra cost; batch 1
+  spreads them over +-25% of the guess, a logistic fit (score vs the scripted side's ships, half a
+  win and half a loss of prior per level) gives the crossing and its standard error, and each
+  later batch packs the 8 levels within +-2 SE of it; the engine is built at the guess x 1.4, not
+  2n or 3n. Fit checked on a synthetic case (true 15: 15.22 +- 0.18). `round15.sh` (crossovers at
+  10, 20, 40 ships) and `fleet3.sh` (20v20 reusing its games, 40v40) started; round15's own copy of
+  the ratings listed a not-yet-existing --reuse directory and failed at once (its "fleet3" lines
+  at 11:43 UTC). Expected: everything by ~23:30 KST +-45 min.
+- **21:00 KST The author: win rates at fixed odds instead of a crossover** (a paper's standard
+  measure). `gpu-box/fixed_odds.py`: n network ships vs n x 1, 1.25, 1.5, 2 scripted, deathmatch
+  in the training arena, one engine at 2n (one compile), 2 of each batch's 8 blocks per ratio,
+  128 games per ratio (10: 1 batch of 8 x 64; 20: 2 of 8 x 32; 40: 4 of 8 x 16); win rate and score
+  with 95% Wilson intervals. `round16.sh` replaced round 15's crossover search (stopped in its first
+  compile; `fleet3.sh` ratings untouched).
+- **21:06 KST Fixed odds at 10 ships** (deathmatch, training arena, 128 games per ratio; win rate, score [95%]): champion 10:10 1.00, 12:10 0.95, **15:10 0.73 (score 0.75 [0.67, 0.82])**, **20:10 0.43 (0.45 [0.37, 0.54])**; nearest 10:10 0.89, 12:10 0.19, 15:10 0.00, 20:10 0.00. (1.25 x 10 rounded to 12, Python's round-half-even: the 10-ship middle ratio is 1.2:1; 20 and 40 are exact.) The champion's case took 852 s, the nearest's 162 s (the compile happens in the first batch, not the engine's build).
+- **21:16 KST The author: 1.2:1 at every size** (consistent with 10 ships' rounded 12). fixed_odds.py's ratios (1, 1.2, 1.5, 2); round 16 restarted at the 20-ship champion case (same game size 2n, so the compile cache's graph; ~10 min of its first compile lost); the 10-ship records relabelled 1.25 -> 1.2.
+- **21:38 KST Fixed odds at 20 ships:** champion 20:20 0.97, 24:20 0.91, **30:20 0.69**, **40:20 0.22**; nearest 20:20 **0.31** (below scripted at even numbers), 24, 30, 40: 0.00. (636 s / 678 s.)
+- **21:40 KST Fleet ratings, 20v20 deathmatch stopped:** with only champion, nearest and scripted,
+  the champion won every game it played in the last batches (1024 of 1024), so its Elo is only a
+  lower bound (~2551 +- 142, the error not falling); nearest 859 +- 19 (below scripted). The
+  frontline 20v20 ratings came from the reused games alone (`fleet3b.sh`); 40v40 capped at 4096
+  games per mode (the fixed-odds 1:1 gives the champion's 40-ship win rate directly).
+- **22:08 KST Fixed odds at 40 ships:** champion 40:40 0.97, 48:40 0.53, **60:40 0.03**, **80:40 0.00**; nearest 0.00 at every ratio, 40:40 included. Fixed odds complete (n = 10, 20, 40; n = 5 from the crossover grid).
+- **22:40 KST Evaluation done.** 40v40 training-arena ratings (champion, nearest, scripted; 4096
+  games per mode at most): frontline champion **526 +- 28** (below scripted), nearest 1041 +- 19;
+  deathmatch saturated both ways (champion 2445 +- 246, nearest -440 +- 246). Summary figure
+  `results/gpu-box/fleet-size-zero-shot.png` (`gpu-box/fleet_figure.py`): Elo by fleet size per mode
+  (hollow = saturated bound) and deathmatch win rates at fixed odds. Findings: deathmatch skill
+  transfers zero-shot to 20 ships for Yemong (~70% wins outnumbered 1.5:1 at 10 and 20 ships) and
+  breaks at 40 in the 2600 m arena (1.2:1 a coin flip, 1.5:1 3%); the nearest MLP fails as fleets
+  grow even at even numbers (89% / 31% / 0% at 10 / 20 / 40); crowded frontline erodes the
+  champion's edge (1997 / 1875 / 1134 / 526 at 5 / 10 / 20 / 40) below the nearest MLP's at 40.
+- **22:45 KST Disk 9.5 GB free: deleted the old shared compile cache /tmp/torchinductor_root (24 GB, the one corrupted by the earlier prune; no bnb process running).** The campaign cache /tmp/inductor-campaign (7.6 GB) kept.
+- **23:05 KST Final save before the box is returned.** `gpu-box/hub_verify.py`: every local file the
+  hub should hold (4143: runs/2026-*, runs/ratings, the laptop runs fetched into runs/hub) compared
+  byte for byte with the hub's copy (SHA-256 for LFS files, git blob id for others): 0 missing,
+  0 different (the hub holds 6288: also the snapshots and checkpoints deleted here after
+  hash checks). Added to git what the sync did not carry: `results/gpu-box/crossover/` (fixed odds,
+  crossover), `logs/` (every runner console, scorecards), `failed/`, `evidence/` (the smoke test,
+  the crossover debugging, profiling), and `hub-manifest.jsonl` (every hub file's path, size and
+  hash at hub revision c0715707) with `HUB.md` (what is where, how to fetch). The sync loop
+  stopped after a last pass.

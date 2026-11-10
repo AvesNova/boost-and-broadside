@@ -9,10 +9,16 @@ the record's dataclass); an instance keeps its record as `build`.
 import torch
 
 from bnb.models.mlp import MLP, MLPBuild
+from bnb.models.nearest import Nearest, NearestBuild
 from bnb.models.relational import Relational, RelationalBuild
 from bnb.models.yemong.model import Yemong, YemongBuild
 
-BUILDS: dict[type, type] = {Yemong: YemongBuild, Relational: RelationalBuild, MLP: MLPBuild}
+BUILDS: dict[type, type] = {
+    Yemong: YemongBuild,
+    Relational: RelationalBuild,
+    Nearest: NearestBuild,
+    MLP: MLPBuild,
+}
 MODELS: dict[str, type] = {cls.NAME: cls for cls in BUILDS}
 
 

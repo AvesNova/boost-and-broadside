@@ -33,6 +33,24 @@ worth pursuing. These items wait until then. Each says where it came from.
   the run-control queue's end-to-end check; the GPU path works. Reproduce on v2 without the
   queue, then fix: CPU tournaments are useful for tests and small checks.
 
+## Tournaments
+
+- **Compile once per build, not per field (do before the next tournament sweep; the author,
+  2026-11-09).** Today `bnb.league.matches` compiles one step graph for the whole field (every
+  network group's forward, the lanes, the blocks), so a new mix of builds, block count or mode
+  retraces and recompiles: ~15 min per mode on the 3090, and the 16-block layout took ~33 min with
+  no new cache files (all Inductor cache hits: the cost is dynamo/AOT tracing, paid per process).
+  Fix: (1) compile each build's network forward on its own and keep the engine loop uncompiled,
+  so any field reuses it; (2) persist the traced graphs across processes (PyTorch's precompile /
+  cache-artifact APIs) so a new tournament skips tracing; (3) pass build settings that are only
+  constants of the forward (e.g. `extrapolation_decay`, `physics_hidden_decay`,
+  `physics_hidden_fade`) as runtime inputs so builds differing only there share one group.
+  Measured context: `docs/rewrite/sections/gpu-box-log.md` (2026-11-09, tournament 4). Related:
+  more blocks per batch did not raise throughput (5.3 vs 5.1 games/s), so per-block work, not GPU
+  fill, bounds a batch; batching the networks across blocks would be the throughput fix.
+- **Game reuse is built** (`bnb ratings --reuse`, players matched by weights hash): use it for
+  every sweep.
+
 ## Portability
 
 - **Portable batches** (decisions in `sections/portable-batch.md`): the micro-batch size

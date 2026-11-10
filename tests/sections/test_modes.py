@@ -3,6 +3,7 @@ Frontline's map, protection and an end-to-end capture, the objective and shield 
 the mode's observation, and the tick compiled."""
 
 import math
+import re
 
 import modes_cases as cases
 import pytest
@@ -34,7 +35,10 @@ def test_modes_take_their_clocks_and_presets_build():
     assert game(episode_seconds=2.0).episode_ticks == 60
     for name, config in PRESETS.items():
         rules = api.rules_of(config)
-        assert rules.num_ships == 10, name
+        # the training presets are 5v5; the fleet-size ones (`<mode>_<n>v<n>_<arena|density>`)
+        # are as named
+        fleet = re.fullmatch(r"\w+_(\d+)v\1_(arena|density)", name)
+        assert rules.num_ships == 2 * (int(fleet.group(1)) if fleet else 5), name
     assert api.rules_of(PRESETS["deathmatch_wide"]).pools[0].mode.spawn_groups == (2, 2, 1)
     with pytest.raises(ValueError):
         GameConfig(5, 10, 2600.0, spawn_groups=(2, 2))  # must sum to the team's size

@@ -15,6 +15,7 @@ from bnb.contracts.obs import GLOBAL_COLUMNS, ZONE_COLUMNS
 from ..rules import TEAMS, Rules
 from ..state import ModeState
 from . import frontline
+from .phase import deathmatch_targets
 from .rules import FRONTLINE, TEAM_DEATHMATCH, ModeRules
 
 MODE_GLOBALS = GLOBAL_COLUMNS[GLOBAL_COLUMNS.index("mode_team_deathmatch") :]
@@ -68,14 +69,18 @@ def zone_rows(mode_rules: ModeRules, mode: ModeState) -> torch.Tensor:
     return torch.stack([team0, team1[:, mirrored]], 1)
 
 
-def mode_globals(rules: Rules, mode_rules: ModeRules, mode: ModeState) -> torch.Tensor:
+def mode_globals(
+    rules: Rules, mode_rules: ModeRules, mode: ModeState, active: torch.Tensor | None = None
+) -> torch.Tensor:
     """(B, 2, len(MODE_GLOBALS)): the mode one-hot, the scores by team_relative and the
-    winning score, the front (positive for the viewer) and the winning front."""
+    winning score (the viewer's own: in team deathmatch, kills_per_ship times the enemy's
+    active ships, `phase.deathmatch_targets`; active (B, 2) or None, every ship), the front
+    (positive for the viewer) and the winning front."""
     B = mode.front.shape[0]
     zero = torch.zeros(B, device=mode.front.device)
     name = mode_rules.name
     score = mode.score.float()
-    target = mode_rules.kills_per_ship * rules.ships_per_team if name == TEAM_DEATHMATCH else 0
+    target = deathmatch_targets(rules, mode_rules, active) if name == TEAM_DEATHMATCH else 0
     threshold = mode_rules.front_threshold if name == FRONTLINE else 0
     front = mode.front.float()
     views = [
@@ -85,7 +90,11 @@ def mode_globals(rules: Rules, mode_rules: ModeRules, mode: ModeState) -> torch.
                 zero + float(name == FRONTLINE),
                 score[:, view],
                 score[:, 1 - view],
-                zero + float(target),
+                # per team (B, 2) with benching; else one number (a host 0-d tensor under
+                # live tuning, `bnb.game.tuning`: read as a number, never copied in)
+                target[:, view].float()
+                if isinstance(target, torch.Tensor) and target.dim() == 2
+                else zero + float(target),
                 front if view == 0 else -front,
                 zero + float(threshold),
             ],

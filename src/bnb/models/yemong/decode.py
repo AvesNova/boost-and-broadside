@@ -191,6 +191,7 @@ def next_state(
     rates=None,
     correction_logits: torch.Tensor | None = None,
     hidden: torch.Tensor | None = None,
+    age: torch.Tensor | None = None,
 ) -> ShipForecast:
     """Next-state head logits (..., N, width) of a Yemong to the forecast of the state at
     t + 1, in world coordinates (`ship_forecast`); means and spreads (..., N, ...): the rows'
@@ -198,7 +199,8 @@ def next_state(
     baseline plus the decoded change); ship_type (..., N) int64. rates: the extrapolation
     baseline's (`Yemong.segment_rates`, on the model's device); with the error head's
     logits and the hidden rows (..., N), the hidden rows take the corrected forecast, as the
-    belief stores it (`Yemong.forecast`)."""
+    belief stores it (`Yemong.forecast`); age (..., N): the rows' ticks since seen, which
+    the faded forecast reads (`YemongConfig.physics_hidden_fade`)."""
     if model.delta_code is None:
         means, spreads = model.state_code.decode_logits(logits.float(), ship_type)
     else:  # on the model's device (the play shell decodes on the host)
@@ -212,6 +214,7 @@ def next_state(
                 None if correction_logits is None else correction_logits.float().to(device),
                 moved(hidden),
                 rates,
+                moved(age),
             )
         )
     return ship_forecast(means, spreads, offset, reference)

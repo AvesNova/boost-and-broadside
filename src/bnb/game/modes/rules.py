@@ -41,6 +41,30 @@ PRESETS = {
     },
 }
 
+# Fleet-size evaluation presets (zero-shot: training is 5v5 only), of each base game:
+# `<base>_<n>v<n>_arena` keeps the base's arena, so n ships crowd it n/5 times as densely;
+# `<base>_<n>v<n>_density` keeps its crowding, the arena radius growing as sqrt(n / 5) (its
+# 10 fields zoom with the arena, as every map scale's do). Not training presets, and not maps
+# of the play shell (`FLEET_PRESETS`).
+FLEET_SIZES = (10, 20, 40)
+FLEET_BASES = ("deathmatch", "frontline", "real_scale_deathmatch", "real_scale_frontline")
+FLEET_PRESETS: tuple[str, ...] = tuple(
+    f"{base}_{n}v{n}_{kind}"
+    for base in FLEET_BASES
+    for n in FLEET_SIZES
+    for kind in ("arena", "density")
+)
+for _base in FLEET_BASES:
+    _game = PRESETS[_base]
+    for _n in FLEET_SIZES:
+        PRESETS[f"{_base}_{_n}v{_n}_arena"] = dataclasses.replace(_game, ships_per_team=_n)
+        PRESETS[f"{_base}_{_n}v{_n}_density"] = dataclasses.replace(
+            _game,
+            ships_per_team=_n,
+            arena_radius=round(_game.arena_radius * (_n / _game.ships_per_team) ** 0.5, 1),
+        )
+del _base, _game, _n
+
 
 @dataclasses.dataclass(frozen=True)
 class ModeRules:

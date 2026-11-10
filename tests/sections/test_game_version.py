@@ -13,6 +13,15 @@ from bnb.game.api import PRESETS
 from bnb.runtime.realtime import Realtime
 
 TICKS = 48
+# the game presets the fingerprint plays: the training and rating games (the fleet-size
+# presets are these games at other sizes, and a 40v40 match would make the test slow)
+FINGERPRINTED = (
+    "deathmatch",
+    "deathmatch_wide",
+    "frontline",
+    "real_scale_deathmatch",
+    "real_scale_frontline",
+)
 SIGNIFICANT = 5  # digits kept, so the fingerprint reads the game, not the last bit
 
 
@@ -26,7 +35,7 @@ def _rounded(tensor: torch.Tensor) -> bytes:
 
 def fingerprint() -> str:
     digest = hashlib.sha256()
-    for name in sorted(PRESETS):
+    for name in FINGERPRINTED:
         config = PRESETS[name]
         sim = Realtime(config, compiled=False, generator=torch.Generator().manual_seed(1))
         draws = torch.Generator().manual_seed(2)

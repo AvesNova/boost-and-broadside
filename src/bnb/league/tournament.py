@@ -18,6 +18,11 @@ allowed pair with the fewest games so far, so a budget of every pair's games is 
 round robin; and anchored on another player (`rate`'s `anchor`). The ship-type tournament
 (`bench/ship_type_tournament.py`) is one: the real-scale set's types, each flown by the
 scripted agent (`matches.ship_type_players`), anchored on the P-51D.
+
+Earlier tournaments' games may be reused (`reuse_record`): every recorded game whose two
+players are in the field, matched by identity (`identity`: a policy by the hash of its
+weights, a scripted player by its name), starts the fit, and only the batches still needed
+are played.
 """
 
 import dataclasses
@@ -34,9 +39,10 @@ import torch
 from bnb.contracts import GameConfig
 from bnb.game import VERSION as GAME_VERSION
 from bnb.game.api import PRESETS
+from bnb.runs import checkpoint
 
 from .gauge import GAUGE_TOP
-from .matches import Arena, ArenaConfig, Player, default_lanes, network_groups
+from .matches import Arena, ArenaConfig, Player, default_lanes, network_groups, player
 from .ratings import allocate_blocks, fit_ratings
 
 PRESET_NAMES = ("frontline", "deathmatch", "deathmatch_wide")  # the training mix's games
@@ -153,13 +159,20 @@ def _append(record: pathlib.Path, entry: dict) -> None:
         os.fsync(file.fileno())
 
 
-def _replay(record: pathlib.Path, names: list[str], wins, pair_games) -> tuple[int, int, list]:
+def _replay(
+    record: pathlib.Path, names: list[str], wins, pair_games, identities: list[str] | None = None
+) -> tuple[int, int, list]:
     """The batches a record holds, added to the wins and the pair games: (batches, games,
-    the batch seconds). Its field must be `names`."""
+    the batch seconds). Its field must be `names` (and `identities`, where it records them)."""
     batches, played, seconds = 0, 0, []
     for line in record.read_text().splitlines():
         entry = json.loads(line)
-        if [row["player"] for row in entry["ratings"]] != names:
+        recorded = entry.get("identities")
+        if [row["player"] for row in entry["ratings"]] != names or (
+            recorded is not None
+            and identities is not None
+            and [recorded.get(name) for name in names] != identities
+        ):
             raise ValueError(f"{record} rates another field; move it aside to start over")
         index = {name: number for number, name in enumerate(names)}
         matchups = [(index[first], index[second]) for first, second in entry["matchups"]]
@@ -167,6 +180,122 @@ def _replay(record: pathlib.Path, names: list[str], wins, pair_games) -> tuple[i
         batches += 1
         seconds.append(entry["seconds"])
     return batches, played, seconds
+
+
+def _policy_record(policy: pathlib.Path) -> dict:
+    """A policy's checkpoint.json, unchecked (its files are hashed when it is loaded)."""
+    return json.loads((pathlib.Path(policy) / checkpoint.RECORD).read_text())
+
+
+def identity(player: Player) -> str:
+    """A player's identity across tournaments: a policy's is its weights, `sha256:<hash>` of
+    its `weights.safetensors` as its checkpoint.json records it (then `:<ablations>` for an
+    ablated one), so a policy moved keeps it and a path written anew changes it; a scripted
+    player's (the ladder's, a teacher's) is its name."""
+    if player.policy is None:
+        return player.name
+    weights = "sha256:" + _policy_record(player.policy)["files"]["weights.safetensors"]
+    return ":".join((weights, "+".join(player.ablations))) if player.ablations else weights
+
+
+def _legacy_identities(
+    names: list[str], ended: datetime.datetime, resolve: Callable[[str], Player]
+) -> tuple[dict[str, str], dict[str, str]]:
+    """The identities of a record's `names` that it does not record (`identity` of the player
+    each name means now, by `resolve`), and the names left out with the reason. A record
+    holds no hashes, so it trusts the paths, with one check: a policy whose checkpoint.json
+    was written after the record's first batch ended (`ended`; both times to the second)
+    did not play its games (a rewind moves a policy and writes another at its path), and
+    is left out."""
+    found, skipped = {}, {}
+    for name in names:
+        try:
+            now = resolve(name)
+            if now.policy is not None:
+                written = _policy_record(now.policy).get("time")
+                if written is None or datetime.datetime.fromisoformat(written) > ended:
+                    skipped[name] = f"its policy was written at {written}, after the games"
+                    continue
+            found[name] = identity(now)
+        except (ValueError, OSError, KeyError) as error:
+            skipped[name] = f"not found now ({error})"
+    return found, skipped
+
+
+@dataclasses.dataclass(frozen=True)
+class Reused:
+    """An earlier record's games among a field's players (`reuse_record`): wins and
+    pair_games (K, K) as `fit_field` keeps them, games the games added, batches and recorded
+    the record's batches and players; matched: each recorded name in the field and the
+    field's name for it; skipped: each recorded name left out and why (a name merely not in
+    the field is in neither)."""
+
+    wins: torch.Tensor
+    pair_games: torch.Tensor
+    games: int
+    batches: int
+    recorded: tuple[str, ...]
+    matched: dict[str, str]
+    skipped: dict[str, str]
+
+
+def reuse_record(
+    record: pathlib.Path,
+    names: list[str],
+    identities: list[str],
+    resolve: Callable[[str], Player] = player,
+) -> Reused:
+    """The games of an earlier tournament's `record` (a `<preset>.batches.jsonl`, of any
+    field and layout) whose two players are both in the field `names`, matched by identity
+    (`identity`, the field's `identities`). A record that holds its players' identities is
+    matched by them; a legacy one (none recorded) by the players its names mean now
+    (`resolve`, `_legacy_identities`). A recorded identity that two of the field's players
+    share is left out (ambiguous). A record of another game version (`bnb.game.VERSION`; a
+    record without one is version 1's) is not reused: its games were another game's."""
+    count = len(names)
+    wins = torch.zeros((count, count), dtype=torch.float64)
+    pair_games = torch.zeros((count, count), dtype=torch.float64)
+    entries = [json.loads(line) for line in record.read_text().splitlines() if line.strip()]
+    if not entries:
+        return Reused(wins, pair_games, 0, 0, (), {}, {})
+    first = entries[0]
+    recorded = [row["player"] for row in first["ratings"]]
+    version = first.get("game_version", 1)
+    if version != GAME_VERSION:
+        reason = f"game version {version}, not {GAME_VERSION}"
+        return Reused(
+            wins, pair_games, 0, len(entries), tuple(recorded), {}, dict.fromkeys(recorded, reason)
+        )
+    if "identities" in first:
+        known, skipped = first["identities"], {}
+    else:
+        ended = datetime.datetime.fromisoformat(first["wall_time"])
+        known, skipped = _legacy_identities(recorded, ended, resolve)
+    holders: dict[str, list[int]] = {}
+    for number, value in enumerate(identities):
+        holders.setdefault(value, []).append(number)
+    index = {}
+    for name in recorded:
+        held = holders.get(known.get(name), [])
+        if len(held) == 1:
+            index[name] = held[0]
+        elif held:
+            skipped[name] = f"ambiguous: {[names[number] for number in held]} share its weights"
+    games = 0
+    for entry in entries:
+        kept = [
+            (pair, result)
+            for pair, result in zip(entry["matchups"], entry["results"], strict=True)
+            if all(name in index for name in pair) and index[pair[0]] != index[pair[1]]
+        ]
+        games += _add(
+            wins,
+            pair_games,
+            [(index[one], index[other]) for (one, other), _ in kept],
+            [result for _, result in kept],
+        )
+    matched = {name: names[number] for name, number in index.items()}
+    return Reused(wins, pair_games, games, len(entries), tuple(recorded), matched, skipped)
 
 
 def fit_field(
@@ -179,6 +308,8 @@ def fit_field(
     label: str = "",
     record: pathlib.Path | None = None,
     lanes: tuple[list[int | None], tuple[int, ...]] | None = None,
+    identities: list[str] | None = None,
+    reused: tuple[torch.Tensor, torch.Tensor] | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """The tournament's batches over a field of players `names`: `play` plays one batch (a
     pair per block, first player and second) and gives each block's (wins, ties, losses)
@@ -188,11 +319,16 @@ def fit_field(
 
     record: a JSON-lines file of the batches, one line appended (and synced) after each:
     its index, the blocks' matchups and results, the games so far, every player's rating
-    and standard error, the worst error, the batch's seconds and the wall time. A record
-    that exists already is read first, and the tournament goes on from its games.
+    and standard error, the worst error, the batch's seconds and the wall time, the games
+    reused and the players' identities (`identity`) when `identities` are given. A record
+    that exists already is read first (its field must be this one), and the tournament
+    goes on from its games.
 
     lanes: the engine's network groups and lanes (`allocate_blocks`), which each batch's
-    blocks keep to; None for an engine without lanes."""
+    blocks keep to; None for an engine without lanes. reused: earlier tournaments' wins and
+    pair games (`reuse_record`), added to the record's before the first fit: the batches
+    are played only while an error is above the target (none when the reused games meet
+    it), and the budget counts only the games played here."""
     if not _connected(allowed, anchor):
         raise ValueError("every player must reach the scripted agent through allowed pairs")
     arena, count = config.arena, len(names)
@@ -200,10 +336,15 @@ def fit_field(
     pair_games = torch.zeros((count, count), dtype=torch.float64)
     batches, played, seconds = 0, 0, []
     if record is not None and record.exists():
-        batches, played, seconds = _replay(record, names, wins, pair_games)
+        batches, played, seconds = _replay(record, names, wins, pair_games, identities)
         log(f"{label}: resumed from {record}: {batches} batches, {played} games")
+    reused_games = 0
+    if reused is not None:
+        wins += reused[0]
+        pair_games += reused[1]
+        reused_games = round(float(reused[1].sum()) / 2)
     ratings, stderr = fit_ratings(wins, anchor, PRIOR_GAMES)
-    while batches == 0 or (
+    while (batches == 0 and reused_games == 0) or (
         float(stderr.max()) >= config.target_stderr and played + arena.games <= config.budget
     ):
         started = time.perf_counter()
@@ -233,9 +374,11 @@ def fit_field(
                 record,
                 dict(
                     batch=batches,
+                    game_version=GAME_VERSION,
                     matchups=[[names[first], names[second]] for first, second in matchups],
                     results=results,
                     games=played,
+                    reused_games=reused_games,
                     ratings=[
                         dict(player=name, rating=float(ratings[i]), stderr=float(stderr[i]))
                         for i, name in enumerate(names)
@@ -244,12 +387,14 @@ def fit_field(
                     seconds=seconds[-1],
                     wall_time=datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
                     **extra,
+                    **({} if identities is None else dict(identities=dict(zip(names, identities)))),
                 ),
             )
         batches += 1
         left = (config.budget - played) // arena.games  # the budget's bound
         # the errors fall as one over the root of the games: the batches to the target
-        needed = math.ceil(played * ((worst / config.target_stderr) ** 2 - 1.0) / arena.games)
+        total = played + reused_games
+        needed = math.ceil(total * ((worst / config.target_stderr) ** 2 - 1.0) / arena.games)
         expected = min(left, max(needed, 0))
         mean = sum(seconds) / len(seconds)
         log(
@@ -271,19 +416,42 @@ def rate(
     record: pathlib.Path | None = None,
     anchor: str = ANCHOR,
     statistics: bool = False,
+    reuse: tuple[pathlib.Path, ...] = (),
+    resolve: Callable[[str], Player] = player,
 ) -> list[dict]:
     """The field's ratings in one game preset (`game`: its config, PRESETS[preset] by
     default): a row per player (its name, `calibrated_elo`, its standard error and its
     games) plus the leaderboard's key. The field must hold the anchor (the scripted agent
     by default), rated 1000; allowed (K, K) bool: who may play whom (`allowed_pairs`; every
     pair by default); record: the batches' record (`fit_field`), which with `statistics`
-    also keeps each block's game statistics (`Arena.statistics`, under "statistics"). The
-    engine is built at the first batch, so a finished record plays nothing."""
+    also keeps each block's game statistics (`Arena.statistics`, under "statistics").
+    reuse: earlier tournaments' records of this preset whose games among the field start
+    the fit (`reuse_record`, a legacy record's names resolved by `resolve`; `record` itself
+    is left out of them), each logged. The engine is built at the first batch, so a
+    finished record plays nothing."""
     game = PRESETS[preset] if game is None else game
     names = [p.name for p in players]
     if anchor not in names:
         raise ValueError(f"the field needs its anchor {anchor!r}: it anchors the ratings at 1000")
     allowed = allowed_pairs(names) if allowed is None else allowed
+    identities = [identity(p) for p in players]
+    own = None if record is None else record.resolve()
+    reused = None
+    for earlier in reuse:
+        if earlier.resolve() == own:
+            continue
+        found = reuse_record(earlier, names, identities, resolve)
+        log(
+            f"{preset}: reused {found.games} games of {earlier} ({found.batches} batches), "
+            f"{len(found.matched)} of its {len(found.recorded)} players matched: "
+            f"{sorted(found.matched.values())}"
+            + "".join(f"; skipped {name}: {why}" for name, why in found.skipped.items())
+        )
+        reused = (
+            (found.wins, found.pair_games)
+            if reused is None
+            else (reused[0] + found.wins, reused[1] + found.pair_games)
+        )
     groups = network_groups(players)
     lanes = default_lanes(groups, 2 * config.arena.blocks)
     arenas: list[Arena] = []
@@ -297,7 +465,17 @@ def rate(
         return results, dict(statistics=arenas[0].statistics().tolist())
 
     ratings, stderr, pair_games = fit_field(
-        play, names, names.index(anchor), allowed, config, log, preset, record, (groups, lanes)
+        play,
+        names,
+        names.index(anchor),
+        allowed,
+        config,
+        log,
+        preset,
+        record,
+        (groups, lanes),
+        identities,
+        reused,
     )
     key = dict(
         game_version=GAME_VERSION, mode=game.mode, map=preset, fleet_size=game.ships_per_team

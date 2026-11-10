@@ -123,6 +123,9 @@ assert tuple(component.name for component in EXTRAPOLATION) == CONTINUOUS
 # The quantities that advance by the decoded median (their change is a rare jump: the most
 # likely outcome, decisions D8); the others by the mean.
 MEDIAN = ("shield_recharge_wait", "shield", "gun_cooldown")
+# The means a hidden row's faded forecast scales the change of (`fade`;
+# `YemongConfig.physics_hidden_fade`): the continuous quantities the head moves by its mean.
+FADED = tuple(name for name in MEANS if name not in MEDIAN)
 # The groups of each of the state code's parts, in `head_statistics.STATE_PARTS` order.
 PART_GROUPS = (2, 2, 1, 1, 1, 1, 1, 1, 1, 1)
 
@@ -773,13 +776,12 @@ class Rates:
 
     def rows(self, rows: slice) -> Rates:
         """The rates of the rows `rows` (a slice of the row axis)."""
-        return Rates(
-            **{
-                field.name: _row_slice(getattr(self, field.name), rows, field.name)
-                for field in dataclasses.fields(self)
-            }
-        )
+        return Rates(**{name: _row_slice(getattr(self, name), rows, name) for name in RATE_FIELDS})
 
+
+# the field names of Rates, taken once: torch.compile cannot trace dataclasses.fields (on the
+# class it fails outright, the compiled extrapolation labels hit it)
+RATE_FIELDS = tuple(field.name for field in dataclasses.fields(Rates))
 
 # the fields of Rates with a trailing feature axis (the rest end at the row axis)
 _FEATURED = ("acceleration", "change", "gradient")
@@ -1232,3 +1234,23 @@ class DeltaCode(nn.Module):
                 -1,
             ),
         )
+
+
+def fade(forecast: torch.Tensor, baseline: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
+    """(..., len(MEANS)) the forecast means with only the share weight (...) of the head's
+    change from the baseline (`DeltaCode.baseline`, the same rows): baseline + w (forecast -
+    baseline) on FADED (position, velocity, heading, its change wrapped, nose rate, angle of
+    attack, energy, log refractive index; energy stays in its range, between two values in
+    it); MEDIAN's quantities, the rare jumps advanced by the most likely outcome, as the
+    forecast gives them. w = 1 is the forecast up to rounding: select the rows that fade.
+    Column by column, no index tensor: a captured graph makes none."""
+    weight = weight.to(forecast.dtype)
+    columns = []
+    for name, ahead, base in zip(MEANS, forecast.unbind(-1), baseline.unbind(-1), strict=True):
+        if name not in FADED:
+            columns.append(ahead)
+        elif name == "heading":
+            columns.append(wrap(base + weight * wrap(ahead - base)))
+        else:
+            columns.append(base + weight * (ahead - base))
+    return torch.stack(columns, -1)

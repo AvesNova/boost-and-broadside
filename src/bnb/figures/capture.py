@@ -188,7 +188,8 @@ def head_record(model, trajectory, unrolled) -> dict:
     position = rows[..., [SHIP["x"], SHIP["y"]]]
     _, _, believed_means, believed_spreads = believed(trajectory.obs.ships, trajectory.replay)
     replay = trajectory.replay
-    hidden = torch.cat([torch.zeros_like(replay.age[..., :own]), replay.age], -1) > 0
+    age = torch.cat([torch.zeros_like(replay.age[..., :own]), replay.age], -1)
+    hidden = age > 0
     forecast = decode.next_state(
         model,
         unrolled.next_state_logits,
@@ -200,6 +201,7 @@ def head_record(model, trajectory, unrolled) -> dict:
         labels.rates(model, trajectory),
         getattr(unrolled, "correction_logits", None),
         hidden,
+        age,
     )
     replay = trajectory.replay
     belief = decode.ship_forecast(

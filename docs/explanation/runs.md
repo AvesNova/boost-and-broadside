@@ -103,7 +103,7 @@ rebuilds the model from the file's record, never from the current game or the cu
 defaults, so a model saved before a ship-card change keeps the code ranges it learned with,
 and models of two widths load side by side in one process.
 
-A run's model settings (`TrainConfig.yemong` or `TrainConfig.relational`) and ship card
+A run's model settings (`TrainConfig.yemong`, `TrainConfig.relational` or `TrainConfig.nearest`) and ship card
 (`TrainConfig.ship_card`) are part of its `TrainConfig`, so `config.json`{.plain} and every
 training checkpoint record them; `bnb.runtime.train.model_build` turns them into the build
 record. A resume, a fork and a warm start check that build against the file's
@@ -113,7 +113,7 @@ A fork or a warm start whose command sets no model setting takes the file's
 (`bnb.runs.checkpoint.with_model_of`), so a changed code default does not block it.
 
 - **The registry** (`bnb.runs.registry.MODELS`) maps a model's name (`yemong`,
-  `relational`, `mlp`) to its class. Loading goes by that name, so renaming a class or a
+  `relational`, `nearest`, `mlp`) to its class. Loading goes by that name, so renaming a class or a
   module leaves old files loadable.
 - **Versions:** each model class has `VERSION`{.plain}. A file loads only at its own version; the
   way back to an older one is a worktree at an older commit. A field the record lacks

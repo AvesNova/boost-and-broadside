@@ -18,7 +18,7 @@ from imgui_bundle import imgui
 
 from bnb.contracts import GameConfig
 from bnb.game import api
-from bnb.game.api import PRESETS
+from bnb.game.api import FLEET_PRESETS, PRESETS
 
 from .. import replay as replays
 from ..loop import MatchSetup, SideSetup
@@ -32,6 +32,9 @@ if TYPE_CHECKING:
     from ..app import Session
     from .interface import Interface
 
+# the presets the New match page offers as maps: not the fleet-size evaluation presets (the
+# page sets the fleet size itself)
+MAP_PRESETS = {name: config for name, config in PRESETS.items() if name not in FLEET_PRESETS}
 MODES = (("team_deathmatch", "Team deathmatch"), ("frontline", "Frontline"))
 MODE_WORDS = {"team_deathmatch": "deathmatch", "frontline": "frontline", "sandbox": "sandbox"}
 POLICY_REFRESH_SECONDS = 5.0
@@ -59,9 +62,9 @@ def map_of(preset: str) -> str:
 
 
 def maps() -> tuple[GameMap, ...]:
-    """The maps of the game presets, in the presets' order."""
+    """The maps of the game presets (`MAP_PRESETS`), in the presets' order."""
     found: dict[str, GameMap] = {}
-    for name, config in PRESETS.items():
+    for name, config in MAP_PRESETS.items():
         key = map_of(name)
         if key not in found:
             label = key.replace("_", " ").capitalize()
@@ -96,7 +99,7 @@ class Draft:
         """The game of these choices: the preset of this mode and map with the chosen sizes
         (its spawn groups kept when they fit the fleet), or, for a pair no preset has, a
         preset of the map in this mode."""
-        of_map = [name for name in PRESETS if map_of(name) == self.map]
+        of_map = [name for name in MAP_PRESETS if map_of(name) == self.map]
         exact = [name for name in of_map if PRESETS[name].mode == self.mode]
         preset = PRESETS[(exact or of_map)[0]]
         groups = preset.spawn_groups if self.mode == "team_deathmatch" else ()

@@ -1,5 +1,5 @@
 ---
-covers: [src/bnb/learn/ppo.py, src/bnb/learn/returns.py, src/bnb/learn/losses.py, src/bnb/learn/labels.py, src/bnb/learn/shots.py, src/bnb/runtime/store.py, src/bnb/models/relational.py]
+covers: [src/bnb/learn/ppo.py, src/bnb/learn/returns.py, src/bnb/learn/losses.py, src/bnb/learn/labels.py, src/bnb/learn/shots.py, src/bnb/runtime/store.py, src/bnb/models/relational.py, src/bnb/models/nearest.py]
 reviewed: 2026-11-02
 ---
 
@@ -108,7 +108,7 @@ The coefficients are the fields of `bnb.learn.ppo.LearnerConfig` named after the
 | `policy` | own ships alive at `t` | the surrogate on the scaled advantage under the trust region ([below](#the-trust-region)) |
 | `entropy_power`, `entropy_stick`, `entropy_shoot` | the same | the joint action distribution's entropy by the chain rule in the joint's order: H(power), H(stick given power), H(shoot given both). They sum to the joint entropy, so equal coefficients weigh the joint as one coefficient would; a negative coefficient rewards it |
 | `value` | own ships alive or waiting to respawn; each view-step for the outcome | per level, the cross-entropy against the two-hot of the return, the outcome against its targets |
-| `next_state` | rows whose belief is valid at `t`, where `t` did not end an episode (delta: and whose ship is alive at `t` and `t + 1`; with `YemongConfig.delta_split`, of those only the own rows and the enemies seen at `t`) | absolute: the state code's cross-entropy against the sharp code of the true state at `t + 1`, in the model's shifted frame; delta: the delta code's against the code of the true change from `t` to `t + 1` |
+| `next_state` | rows whose belief is valid at `t`, where `t` did not end an episode (delta: and whose ship is alive at `t` and `t + 1`; with `YemongConfig.delta_split`, of those only the own rows and the enemies seen at `t`; with `YemongConfig.physics_hidden_decay` tau the hidden enemies too, past the segment's first tick, each weighted `exp(-age / tau)`, against the truth-to-truth target) | absolute: the state code's cross-entropy against the sharp code of the true state at `t + 1`, in the model's shifted frame; delta: the delta code's against the code of the true change from `t` to `t + 1` |
 | `correction` | with `YemongConfig.delta_split` only: the next-state rows whose belief at `t` is a forecast (hidden enemies) | the error code's cross-entropy against the code of the physics forecast's error, `truth(t + 1) - forecast(t + 1)` |
 | `enemy_action` | enemy rows alive at `t` | the cross-entropy of the enemy's actual joint action |
 | `density` | each view-step, over its count of valued own ships | Poisson terms over the hex cells, against the counts of living ships at `t` |
@@ -268,12 +268,16 @@ size of the segment):
   model read (`bnb.learn.labels.rates`, `Yemong.segment_rates`). With `YemongConfig.delta_split`, the
   next-state mask split by sight at `t` (`bnb.learn.labels.split_masks`): `physics_mask`,
   the own rows and the enemies seen at `t`, and `correction_mask`, the enemies whose belief
-  at `t` is a forecast.
+  at `t` is a forecast; with `YemongConfig.physics_hidden_decay` also `physics_weight`, the
+  physics head's weight per row (1 seen, `exp(-age / tau)` hidden), and a hidden row's
+  rates in the target are the truth's (`bnb.learn.labels.true_rates`) instead of the
+  belief's held ones.
 - **Error (with `YemongConfig.delta_split`):** built inside the loss, after the unroll, since it
   reads the physics head (`bnb.learn.labels.correction_targets`): the code of each row's
   `e = truth(t + 1) - forecast(t + 1)`, the forecast the physics advance of the row as the
   model read it at `t` (`bnb.models.yemong.inputs.believed`) under the physics head's
-  detached logits, as `step` made it.
+  detached logits, as `step` made it (`Yemong.forecast`: with
+  `YemongConfig.physics_hidden_fade`, a hidden row's forecast faded by its age).
 - **Enemy action:** each enemy row's joint action at `t`.
 - **Density:** the hex counts of the living ships of each side at `t`, in world coordinates
   scaled by each environment's arena radius.
@@ -312,3 +316,27 @@ own ships' hidden states. It is stateless, so its `unroll` is its forward over e
 Trained from scratch against the chaser at 2v2, it must win at least 60% of 256 games after
 the budget in `tests/loop/test_learning.py`; the [training guide](../guides/training.md#the-toy-learner)
 shows how to run it.
+
+## The nearest-neighbour MLP
+
+`bnb.models.nearest.Nearest` (`--model nearest`, settings `TrainConfig.nearest`,
+`NearestConfig`) is the relational model's outputs over an input whose width depends on
+neither the fleet nor the field count, so a model trained at 5v5 plays any size. It is
+stateless and has no memory or belief: it sees only what is visible now. Each own ship
+reads (widths at the defaults, 196 in all, `nearest.input_width`):
+
+| Block | Width | Contents |
+|---|---|---|
+| own state | 15 + 10 | the relational model's own features; the globals (episode progress, arena radius, fog, mode one-hot, scores own, enemy and target, front and threshold), scaled as the MLP's `GLOBAL_SCALE` |
+| allies | 3 x 11 | the nearest living allies, nearest first: the relational model's 10 pair features and a presence flag |
+| enemies | 4 x 11 | the nearest living visible enemies (a hidden one is never a candidate), the same 11 |
+| fields | 3 x 8 | the nearest fields by the distance to their centre: centre offset in the heading frame, centre distance, signed edge distance (centre distance minus radius), radius, band width, level, presence |
+| zones | 5 x 14 | one slot per role (own spawn, own defense, neutral, enemy defense, enemy spawn): centre offset in the heading frame, distance, radius, role one-hot, progress, direction, symlog of the captures to win and to lose, presence |
+
+A missing ally, enemy or field, and a role no present zone has (team deathmatch), are zero
+with presence 0. The own ships are the first half of the view's rows, so the build record
+(`NearestBuild`) holds the config alone. Two hidden GELU layers of `hidden` (256) feed the
+joint policy, the critic and the outcome (the mean of the own ships' hidden states); at the
+defaults it has 180,474 parameters. It plays through
+`bnb.controllers.relational.RelationalController`, and like the relational model has no
+auxiliary heads, so neither PPO nor BC computes those terms (`Learner.auxiliary` is False).

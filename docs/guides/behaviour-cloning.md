@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/cli.py, src/bnb/runtime/cloning.py, src/bnb/learn/bc.py, src/bnb/runs/session.py]
-reviewed: 2026-11-06
+reviewed: 2026-11-09
 ---
 
 # Behaviour cloning
@@ -58,6 +58,26 @@ The averages take the league's settings: the uniform average starts after the ru
 learning-rate warm-up (`LearnerConfig.warmup_steps`), `--set league.uniform_from=20000000` starts
 it elsewhere, `--set league.exponential_decay=0.98` slows the exponential
 one.
+
+## Run a BC experiment to a fixed budget
+
+A comparison between builds (an "arm") trains every build for the same number of
+environment steps, so that neither stop rule ends one early:
+
+<!-- not-runnable: needs CUDA and runs for hours -->
+```bash
+uv run --no-sync bnb train --preset mixed --objective bc --bc-budget-steps 30000000 \
+    --set stop.score_target=1.0 --set stop.plateau_steps=1000000000 \
+    --name 2026-11-09-bc-arm-example
+```
+
+A score target of 1.0 (`StopConfig.score_target`) puts the parity rule out of reach and a
+plateau window of 1e9 steps (`StopConfig.plateau_steps`) the KL plateau, so the budget ends
+the run. The build's own changes go on as more `--set` lines.
+The model and learner settings the arms build on (the trunk order, BC's discounts and
+trace decays) are the defaults: a run copied from an older arm's command line may carry
+them as `--set` lines too, which changes nothing. The exact command of any run is in its
+`run.json`{.plain} (`segments[].command`): copy it from there rather than rebuilding it.
 
 ## Resume a BC run
 

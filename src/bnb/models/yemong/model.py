@@ -30,6 +30,7 @@ from .codes import SPREAD_FITS
 from .correction import CorrectionCode
 from .delta import (
     DELTA_BASELINES,
+    RATE_FIELDS,
     DeltaCode,
     Rates,
     StateDynamics,
@@ -37,6 +38,7 @@ from .delta import (
     state_dynamics,
     to_frame,
 )
+from .delta import fade as delta_fade
 from .delta import velocity_frame as delta_frame
 from .heads import HeadGroup, ShotTrajectoryHead, critic_values, next_state_logits
 from .inputs import (
@@ -62,6 +64,7 @@ from .layers import rotary_tables
 from .network import ORDERS, Encoder, Trunk
 from .state_code import (
     MEANS,
+    POSITION_INPUTS,
     POSITION_LEVELS,
     POSITION_PERIOD,
     SPREAD_INPUTS,
@@ -142,6 +145,14 @@ class YemongConfig:
     covariance's marginal sigmas, and the position and velocity ellipses (log sigma_major,
     log sigma_minor, the doubled angle times the anisotropy; `state_code.ellipse_code`) at
     the end of the ship token.
+    position_inputs (`state_code.POSITION_INPUTS`, "fourier" needs next_state "delta"): what
+    a ship row reads for its position and heading. "colour", the state code's runs.
+    "fourier", (cos, sin) of the phase at each level of the colour code's periods (per world
+    axis P / 3^l for l = 0..8, the finest 4 m; the heading 2 pi / 4^l for l = 0..3), each
+    pair times the level's attenuation by the sigma as in the colour code: 36 and 8 columns
+    in place of 81 and 16 (`ShipStateCode.inputs`). Only the encoder's input changes; the
+    tokens' code, the global, field and zone tokens and every head stay the colour codes.
+    The absolute head predicts the colour code from the colour inputs, so it is excluded.
     delta_split (with next_state "delta"): split the next-state work (arms 3-4). The
     next-state head becomes the physics head, trained on allies and visible enemies only
     (still run on hidden rows: their forecast reads it). A second head on the same tokens,
@@ -151,6 +162,22 @@ class YemongConfig:
     bound) and takes its spread from e's distribution, in place of the physics' F P F^T + Q.
     Off by default. correction_rate (eta, with delta_split): the share of the error head's
     confident median applied per tick (`correction.CorrectionCode.moments`), before the cap.
+    physics_hidden_decay (tau, s, with delta_split; None off): the physics head also trains
+    on the hidden enemies, each row weighted exp(-age / tau) by the time since its ship was
+    last seen, against the truth-to-truth target (`learn.labels.next_state_targets`: the
+    true change from the baseline of the true state at t, under the extrapolation
+    baseline's true rates, as a row seen at t - 1 and t would read them), its inputs still
+    the belief it reads; the error head is unchanged. Only the labels read it.
+    physics_hidden_fade (with physics_hidden_decay tau): use the physics head's change on a
+    hidden row only where it is trained. A hidden row's physics forecast takes the share
+    w = exp(-age / tau) of the head's change from the baseline (age the seconds since the
+    ship was seen, at t): baseline + w (physics - baseline), on the means of position,
+    velocity, heading, nose rate, angle of attack, energy and log refractive index
+    (`delta.fade`); the rare jumps (shield, its recharge wait, the gun cooldown, advanced
+    by their median) and every spread stay the physics forecast's (a hidden row's spread is
+    the error head's). The error head's correction applies on top, and its label is the
+    error of this faded forecast (`learn.labels.correction_targets`); the physics head's
+    target is unchanged. Seen rows (age 0) are untouched, bit for bit. Off by default.
     acceleration_inputs: each ship row also reads its acceleration over the last tick, along
     and across its velocity and of its nose rate (`inputs.accelerations`), as symlog HL-Gauss
     codes and a validity flag at the end of the ship token. A visible row reads the
@@ -185,10 +212,13 @@ class YemongConfig:
     next_state: str = "absolute"  # the next-state head's target: "absolute" or "delta"
     delta_baseline: str = "persistence"  # the delta head's baseline
     spread_inputs: str = "scalar"  # how a row reads its spread: "scalar" or "ellipse"
+    position_inputs: str = "colour"  # a row's position and heading: "colour" or "fourier"
     acceleration_inputs: bool = False  # each ship row reads its acceleration over the last tick
     delta_split: bool = False  # physics head on seen rows, an error head for hidden rows
     extrapolation_decay: float = 0.5  # s: a hidden row's held rates decay with this constant
     correction_rate: float = 0.1  # eta: the error head's step per tick, of its confident median
+    physics_hidden_decay: float | None = None  # s: the physics head's hidden rows, exp(-age/tau)
+    physics_hidden_fade: bool = False  # a hidden row's forecast: exp(-age/tau) of the change
 
     def __post_init__(self) -> None:
         if self.next_state not in NEXT_STATES:
@@ -201,8 +231,23 @@ class YemongConfig:
             raise ValueError(f"extrapolation_decay {self.extrapolation_decay} must be positive")
         if self.delta_split and self.next_state != "delta":
             raise ValueError("delta_split needs next_state 'delta'")
+        if self.physics_hidden_decay is not None:
+            if not self.delta_split:
+                raise ValueError("physics_hidden_decay needs delta_split")
+            if self.physics_hidden_decay <= 0:
+                raise ValueError(
+                    f"physics_hidden_decay {self.physics_hidden_decay} must be positive"
+                )
+        if self.physics_hidden_fade and (not self.delta_split or self.physics_hidden_decay is None):
+            raise ValueError("physics_hidden_fade needs delta_split and physics_hidden_decay")
         if self.spread_inputs not in SPREAD_INPUTS:
             raise ValueError(f"spread_inputs {self.spread_inputs!r} is not one of {SPREAD_INPUTS}")
+        if self.position_inputs not in POSITION_INPUTS:
+            raise ValueError(
+                f"position_inputs {self.position_inputs!r} is not one of {POSITION_INPUTS}"
+            )
+        if self.position_inputs == "fourier" and self.next_state != "delta":
+            raise ValueError("position_inputs 'fourier' needs next_state 'delta'")
         if self.spread_fit not in SPREAD_FITS:
             raise ValueError(f"spread_fit {self.spread_fit!r} is not one of {SPREAD_FITS}")
         if self.order not in ORDERS:
@@ -417,6 +462,7 @@ class Yemong(nn.Module):
             config.spread_fit,
             covariance=delta,
             spread_inputs=config.spread_inputs,
+            position_inputs=config.position_inputs,
         )
         self.delta_code = None
         if delta:
@@ -432,7 +478,7 @@ class Yemong(nn.Module):
         self.bullet_moves = build.bullet_moves
         self.encoder = Encoder(
             ship_inputs(
-                self.state_code.width,
+                self.state_code.input_width,
                 self.ship_types,
                 config.acceleration_inputs,
                 self.state_code.ellipse_width,
@@ -500,8 +546,8 @@ class Yemong(nn.Module):
         starts as "nothing changes" (absolute) or at the measured marginal (delta); the
         density head at an even spread of the ships."""
         with torch.no_grad():
-            self.encoder.ship.first.weight[:, : self.state_code.width].normal_(
-                0.0, self.state_code.groups**-0.5
+            self.encoder.ship.first.weight[:, : self.state_code.input_width].normal_(
+                0.0, self.state_code.input_groups**-0.5
             )
             ellipse = self.state_code.ellipse_width
             end = self.encoder.ship.first.weight.shape[1] - ellipse
@@ -546,6 +592,7 @@ class Yemong(nn.Module):
         correction_logits: torch.Tensor | None = None,
         hidden: torch.Tensor | None = None,
         rates: Rates | None = None,
+        age: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Next-state logits (..., N, next_state_width) to the forecast at t + 1 (means,
         spreads; positions in the shifted frame, as the representative nearest the state at
@@ -554,13 +601,18 @@ class Yemong(nn.Module):
         the error head's logits (..., N, correction width), the rows where hidden (..., N)
         is set (a belief, not the truth, at t) take the corrected forecast
         (`correction.CorrectionCode.correct`); without them every row is the physics'.
-        rates: the extrapolation baseline's (`rates`, required by it)."""
+        rates: the extrapolation baseline's (`rates`, required by it). age (..., N): the
+        ticks since each row's ship was seen (the belief's), required with
+        `YemongConfig.physics_hidden_fade`: the rows with age > 0 take the faded physics
+        forecast (`delta.fade`) before any correction."""
         if self.delta_code is not None:
             if self._extrapolates and rates is None:
                 raise ValueError("the extrapolation baseline needs the rows' rates")
             physics = self.delta_code.advance(
                 means, spreads, logits, ship_type, self.state_code, rates
             )
+            if self.config.physics_hidden_fade:
+                physics = (self._faded(physics[0], means, ship_type, rates, age), physics[1])
             if correction_logits is None:
                 return physics
             if hidden is None:
@@ -576,6 +628,25 @@ class Yemong(nn.Module):
         predicted, predicted_spreads = self.state_code.decode_logits(logits, ship_type)
         position = _nearest(predicted[..., 0:2], means[..., 0:2])
         return torch.cat([position, predicted[..., 2:]], -1), predicted_spreads
+
+    def _faded(
+        self,
+        forecast: torch.Tensor,
+        means: torch.Tensor,
+        ship_type: torch.Tensor,
+        rates: Rates | None,
+        age: torch.Tensor | None,
+    ) -> torch.Tensor:
+        """The physics forecast's means (..., N, len(MEANS)) with each hidden row's (age > 0
+        ticks) change from the baseline faded by exp(-age dt / tau) (`delta.fade`); the
+        other rows the forecast itself."""
+        if age is None:
+            raise ValueError("the faded forecast needs the rows' age")
+        seconds = age.to(forecast.dtype) * self.tick_length
+        weight = torch.exp(-seconds / self.config.physics_hidden_decay)
+        baseline = self.delta_code.baseline(means, rates, ship_type)
+        faded = delta_fade(forecast, baseline, weight)
+        return torch.where((age > 0)[..., None], faded, forecast)
 
     # ------------------------------------------------------------------ carry
 
@@ -772,10 +843,7 @@ class Yemong(nn.Module):
             )
             out.append(rates)
         return Rates(
-            **{
-                field.name: torch.stack([getattr(rates, field.name) for rates in out])
-                for field in dataclasses.fields(Rates)
-            }
+            **{name: torch.stack([getattr(rates, name) for rates in out]) for name in RATE_FIELDS}
         )
 
     def _matmuls(self, device: torch.device):
@@ -1003,6 +1071,7 @@ class Yemong(nn.Module):
                 correction_logits,
                 enemy.age > 0,
                 rates,
+                enemy.age,
             )
             advanced, nonfinite = beliefs.advance(
                 enemy, torch.cat([means, spreads], -1), enemy_action_logits
@@ -1117,6 +1186,14 @@ class Yemong(nn.Module):
 
     def shot_trajectory(self, latents: torch.Tensor, ages: torch.Tensor) -> torch.Tensor:
         """Trajectory code logits (..., ages, trajectory_width) of latents (..., D) at bullet
-        ages (in moves) broadcasting against (..., ages)."""
+        ages (in moves) broadcasting against (..., ages).
+
+        Its products run under the model's matmul autocast like every other head's (bf16
+        when `bfloat16_matmuls`): the query is the head's whole cost, a 128 x 128 and a
+        128 x outputs product at every ship, tick and bullet age (737,280 rows a 32-view
+        minibatch), about an eighth of a BC minibatch's device time in float32. The logits
+        come back in the model's dtype, so the loss over them is float32 as before."""
         features = shots.time_features(ages, float(self.bullet_moves), SHOT_HARMONICS)
-        return self.shot_trajectory_head.query(latents, features)
+        with self._matmuls(latents.device):
+            logits = self.shot_trajectory_head.query(latents, features)
+        return logits.to(self.bins.dtype)

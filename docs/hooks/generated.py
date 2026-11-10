@@ -324,7 +324,7 @@ def train_config() -> str:
     from bnb.runtime.train import TrainConfig
 
     return _dataclass_table(
-        TrainConfig, skip=("pools", "learner", "yemong", "relational", "ship_card")
+        TrainConfig, skip=("pools", "learner", "yemong", "relational", "nearest", "ship_card")
     )
 
 

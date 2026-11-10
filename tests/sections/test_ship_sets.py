@@ -13,7 +13,7 @@ from bnb.contracts import GameConfig
 from bnb.game import api, ships
 from bnb.game.rules import FlightConstants, Rules
 from bnb.league.matches import Player, card_of
-from bnb.play.interface.menus import Draft, map_of, maps
+from bnb.play.interface.menus import MAP_PRESETS, Draft, map_of, maps
 from bnb.play.tuning import Presets, Tuning, changed_card
 from bnb.runs.checkpoint import save_policy
 from bnb.runtime.train import TrainConfig
@@ -156,13 +156,14 @@ def test_a_rated_match_plays_the_policies_card_else_the_sets(trial, tmp_path):
 def test_the_new_match_maps_come_from_the_presets():
     keys = [game_map.key for game_map in maps()]
     assert keys[:2] == ["standard", "wide"]
-    assert {map_of(name) for name in api.PRESETS} == set(keys)
+    assert {map_of(name) for name in MAP_PRESETS} == set(keys)
+    assert not set(api.FLEET_PRESETS) & set(MAP_PRESETS)  # the fleet sizes are no maps
     assert Draft().config() == api.PRESETS["deathmatch"]
     assert Draft(map="wide").config() == api.PRESETS["deathmatch_wide"]
     assert Draft(mode="frontline").config() == api.PRESETS["frontline"]
     wide_frontline = Draft(mode="frontline", map="wide").config()
     assert (wide_frontline.mode, wide_frontline.arena_radius) == ("frontline", 8200.0)
     assert wide_frontline.spawn_groups == ()
-    for name, config in api.PRESETS.items():
+    for name, config in MAP_PRESETS.items():
         setup = Draft(mode=config.mode, map=map_of(name)).setup()
         assert Draft.of(setup).map == map_of(name)

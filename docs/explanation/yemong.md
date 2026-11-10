@@ -90,6 +90,8 @@ mode's zones are key and value memory only.
   one-hots, its flags, the time since it was seen, its respawn wait as Fourier features,
   its pending action, the refractive-index gradient, and the local presence of allies and
   enemies around it; with `YemongConfig.acceleration_inputs`, its acceleration inputs last.
+  With `YemongConfig.position_inputs` "fourier" the position and heading enter as Fourier
+  features in place of their code runs (see below).
 - **The global token** reads the map centre's code, episode progress, the arena radius,
   the fog flag and the mode's block.
 - **A field token** reads its centre's code, radius, band width and level; **a zone token**
@@ -451,6 +453,32 @@ read this covariance. A row seen at `t` takes the
 physics forecast, as without the split. Select the arm with `--set yemong.delta_split=true`
 on arm 2's line.
 
+`YemongConfig.physics_hidden_decay` (tau in seconds, with `delta_split`; off by default)
+also trains the physics head on the hidden enemies, each row weighted `exp(-age / tau)` by
+the time since its ship was last seen (the replay's age at `t`; a row of the segment's
+first tick weighs 0, its truth lacking the tick before). Its target is truth to truth: the
+code of the true change from the baseline of the true state at `t`, the extrapolation
+baseline's rates read off the truth as a row seen at `t - 1` and `t` reads them, which is
+the target a seen row of that ship gets. Its inputs stay the belief it reads; the error
+head is unchanged. The physics term keeps its denominator, so a seen row weighs what it
+did and the hidden rows add on top. Only the labels read the switch; it is in the build
+record, and a policy file without it loads it as off. Select it with `--set
+yemong.physics_hidden_decay=0.5` on the deadreckon-split line.
+
+`YemongConfig.physics_hidden_fade` (with `physics_hidden_decay` tau; off by default) uses the
+physics head's change on a hidden row only where it is trained: the row's physics forecast
+takes the share `w = exp(-age / tau)` of the head's change from the baseline, `baseline +
+w (physics - baseline)`, with `age` the seconds since the ship was seen at `t`
+(`delta.fade`). It fades the means of position, velocity, heading (its change wrapped), nose
+rate, angle of attack, energy and log refractive index; the rare jumps (shield, its recharge
+wait, the gun cooldown, advanced by their median) and every spread stay the physics
+forecast's, a hidden row's spread being the error head's. The error head's correction
+applies on top, and its label is the error of the faded forecast; the physics head's target
+is unchanged. Seen rows (age 0) are untouched, bit for bit. `step`, the labels and the
+decoded forecasts all go through `Yemong.forecast` with the belief's age, so the rollout and
+the learner agree. It is in the build record; a policy file without it loads it as off.
+Select it with `--set yemong.physics_hidden_fade=true` after the hidden decay.
+
 ### Spread inputs: scalar or ellipse
 
 `YemongConfig.spread_inputs` chooses how a ship row reads its belief's spread. The spread
@@ -470,6 +498,22 @@ level, so the first layer sees which levels to trust.
   code's period; velocity: knee 0.1 m/s, bound the velocity code's reach), the angle
   features over [-1, 1]. 168 inputs, their first-projection columns initialised as the
   state code's. Without a covariance (an absolute build) the position ellipse is round.
+
+### Position inputs: colour or Fourier
+
+`YemongConfig.position_inputs` chooses what a ship row reads for its position and heading
+(`ShipStateCode.inputs`). **`"colour"`** (the default) reads the state code's runs.
+**`"fourier"`** reads `a_l (cos, sin)` of the phase at each level of the same periods
+(`bnb.models.yemong.codes.fourier_encode`): per world axis `P / 3^l` for `l = 0..8` (the
+finest 4 m), the heading `2 pi / 4^l` for `l = 0..3`. a_l is the colour code's
+attenuation by the row's sigma, so a blurred level fades toward 0 as the colour level fades
+toward uniform. The phase reduces the value modulo each level's period first, as the colour
+code does, so float32 keeps the 4 m level. 36 position and 8 heading columns replace 81
+and 16 (the ship token 500 wide for 553 on arm 4d). Only the encoder's input changes: the
+tokens' `code`, the global, field and zone tokens, every head and every target stay the
+colour codes. The absolute head predicts the colour code from the colour inputs, so
+"fourier" needs `next_state="delta"`. Select it with `--set yemong.position_inputs=fourier`
+on arm 4d's line.
 
 ### The acceleration inputs
 
@@ -550,12 +594,14 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
 
 ### Trunk order and the rotary read-out
 
-`YemongConfig.order` sets each block's sublayer order: `"spatial_first"` (the default:
-spatial, spatial, temporal) or `"temporal_first"` (temporal, spatial, spatial). Temporal
-first, every spatial sublayer reads tokens that have already passed through the first
-temporal sublayer, so attention can use what the recurrence remembers. Either way `unroll`
-equals a loop of `step`, and the carry is the same shape. Select it with
-`--set yemong.order=temporal_first`.
+`YemongConfig.order` sets each block's sublayer order: `"spatial_first"` (spatial,
+spatial, temporal) or `"temporal_first"` (temporal, spatial, spatial). Temporal first,
+every spatial sublayer reads tokens that have already passed through the first temporal
+sublayer, so attention can use what the recurrence remembers. Either way `unroll` equals a
+loop of `step`, and the carry is the same shape. A new run builds `"temporal_first"` (the
+`TrainConfig.yemong` default, arm C's order); `"spatial_first"` is the config's own
+default, so a build record from before the setting existed loads as it was trained.
+`--set yemong.order=spatial_first` selects the other order.
 
 `YemongConfig.rotary_readout` (off by default; it needs `temporal_first` and `rotary`) adds
 one linear head per block, on that block's temporal sublayer's ship rows: every block does

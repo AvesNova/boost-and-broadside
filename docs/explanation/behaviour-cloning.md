@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/learn/bc.py, src/bnb/runtime/cloning.py]
-reviewed: 2026-11-06 12:00
+reviewed: 2026-11-09 12:00
 ---
 
 # Behaviour cloning
@@ -23,6 +23,13 @@ teacher's labels, in nats per token, over own ships alive, with coefficient 0.02
 `unroll`, micro-batching, mixed batches, the critic on the student's own returns, the
 auxiliary heads at their coefficients, and the return scale, which runs during BC and is
 handed on. There is no policy gradient, no entropy bonus and no KL early stop.
+
+The critic's returns use BC's own discounts and trace decays (`bnb.learn.bc.DISCOUNT`,
+`bnb.learn.bc.TRACE_DECAY`): the outcome undiscounted and every level's trace decay near 1,
+in place of PPO's 0.9997 and 0.97 for the outcome. With PPO's values the outcome head
+predicts the game's result worse than the base rate in the first 10M steps (its Brier skill
+negative); `--set learner.discount=...` and `--set learner.trace_decay=...` still override
+them.
 
 ## The labels
 
