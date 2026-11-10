@@ -52,5 +52,7 @@
   "Heron",
   "Bastion",
   "Kestrel"
- ]
+ ],
+ "games_late": 256,
+ "curl_weight": 1.0
 }

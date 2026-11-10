@@ -64,5 +64,7 @@
   "Rapier",
   "Cudgel"
  ],
- "seed": 103
+ "seed": 103,
+ "games_late": 256,
+ "curl_weight": 1.0
 }

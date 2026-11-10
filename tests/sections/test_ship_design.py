@@ -206,3 +206,11 @@ def test_a_slots_doctrine_is_live_and_compiles_nothing():
     rows = arena.seat._slot_rows(1)
     assert torch.allclose(table[rows][0].cpu(), torch.tensor(pack(timid), dtype=torch.float32))
     assert torch.allclose(table[arena.seat._slot_rows(0)][0].cpu(), torch.tensor(pack(doctrine)))
+
+
+def test_the_curl_shortfall_is_zero_for_a_strong_cycle_and_counts_a_flat_one():
+    spec = dict(cycle=["a", "b", "c"], band=[0.6, 0.7])
+    assert search.curl_shortfall([0.65, 0.65, 0.65], 1024, spec) == 0.0
+    flat = search.curl_shortfall([0.5, 0.5, 0.5], 1024, spec)
+    assert flat == pytest.approx((3 * math.log(1.5)) ** 2)
+    assert search.curl_shortfall([0.5] * 3, 1024, dict(edges=[], band=[0.6, 0.7])) == 0.0

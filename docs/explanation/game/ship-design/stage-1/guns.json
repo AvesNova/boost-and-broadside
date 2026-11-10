@@ -64,5 +64,7 @@
   "Maul",
   "Bastion"
  ],
- "seed": 102
+ "seed": 102,
+ "games_late": 256,
+ "curl_weight": 1.0
 }

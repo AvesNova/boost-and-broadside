@@ -1,0 +1,58 @@
+{
+ "preset": "real_scale_deathmatch",
+ "band": [
+  0.6,
+  0.7
+ ],
+ "games_per_edge": 64,
+ "population": 12,
+ "generations": 30,
+ "sigma": 0.4,
+ "realism_radius": 3.5,
+ "realism_weight": 1.0,
+ "distinct": 1.0,
+ "distinct_weight": 1.0,
+ "seed": 105,
+ "designs": [
+  {
+   "name": "Heron",
+   "base": "mosquito",
+   "knobs": [
+    "max_shield",
+    "damage_per_second",
+    "fire_rate",
+    "sustained_turn_rate"
+   ],
+   "role": "the twin: a big target, a fair turn"
+  },
+  {
+   "name": "Bastion",
+   "base": "zerstorer",
+   "knobs": [
+    "max_shield",
+    "damage_per_second",
+    "fire_rate",
+    "sustained_turn_rate"
+   ],
+   "role": "the armoured destroyer: a shield over the light guns' threshold"
+  },
+  {
+   "name": "Kestrel",
+   "base": "spitfire-ix",
+   "knobs": [
+    "max_shield",
+    "damage_per_second",
+    "fire_rate",
+    "sustained_turn_rate"
+   ],
+   "role": "the light fighter: a small target, the turn"
+  }
+ ],
+ "cycle": [
+  "Heron",
+  "Bastion",
+  "Kestrel"
+ ],
+ "games_late": 256,
+ "curl_weight": 1.0
+}

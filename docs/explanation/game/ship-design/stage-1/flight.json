@@ -70,5 +70,7 @@
   "Osprey",
   "Harrier"
  ],
- "seed": 101
+ "seed": 101,
+ "games_late": 256,
+ "curl_weight": 1.0
 }

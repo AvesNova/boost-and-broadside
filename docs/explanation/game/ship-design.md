@@ -101,8 +101,9 @@ every pair of players is beaten by some third player. The Paley tournament on se
 vertices (type i beats i + 1, i + 2 and i + 4, mod 7) is the smallest tournament with S_2,
 which is why seven types and that tournament are the target. Its matrix of log-odds is
 three rotations (three cyclic planes), and in each plane the seven types sit on one circle
-at angles 2πki/7 (the ship-cycles page on the branch feat/ship-cycles derives it): every type has three wins and three losses, and uniform picking
-is its unique Nash equilibrium. Because S_2 is about picks, the mixed-team test checks it
+at angles 2πki/7 (the ship-cycles page on the branch feat/ship-cycles derives it):
+every type has three wins and three losses, and uniform picking is its unique Nash
+equilibrium. Because S_2 is about picks, the mixed-team test checks it
 in play: a team of A and B together against a team of the D that beats both.
 
 ### Feeling different
@@ -110,8 +111,9 @@ in play: a team of A and B together against a team of the D that beats both.
 Each type is a point in the knobs' normalised space (each knob's log in deviations of the
 real propeller fighters; below). Two measures:
 
-- the distance between any two types, against the real fighters' own spread (median
-  pairwise distance of the 16 propeller fighters);
+- the distance between any two types, against the real fighters' own spread: the 16
+  propeller fighters are 0.95 to 6.5 deviations apart (median 3.4), so a design closer than 1
+  to another is a near copy;
 - each cyclic plane is built from its own group of knobs (flight; guns and armour; speed
   and reach), so no group carries the whole matchup.
 
@@ -283,7 +285,46 @@ speed's steepness against the cruise), and the flight cycle once per-type doctri
 `check` plays the chosen candidate at 1,024 games a pair (a round robin) and the
 mixed-team test, in deathmatch and then in Frontline.
 
-SEARCH_RESULTS
+### The first search: the seed cycle
+
+The balancing's round-2 cycle (Mosquito over Zerstörer over the light fighters over the
+Mosquito, [Case studies](case-studies.md)) as three designs on the paced set, each on its own
+base, searching the shield, the damage per second, the fire rate and the turn
+(`ship-design/stage-1/seed.json`): Heron on the Mosquito, Bastion on the Zerstörer, Kestrel on
+the Spitfire IX. 30 generations of 12 candidates, 64 games an edge, 33 s a generation
+(19 minutes).
+
+At the start, on the paced set, the round-2 cycle was gone (the mean's edges 0.45, 0.69 and
+0.35 the way the search chose round: Bastion over Heron, Kestrel over Bastion, Heron over
+Kestrel). The search's best mean (generation 28):
+
+| Design | Shield | Fire rate | Damage a second | Turn deg/s | Realism |
+|---|---|---|---|---|---|
+| Heron (Mosquito: 110, 10 Hz, 369, 15.0) | 109 | 10 | 379 | 15.3 | 3.11 |
+| Bastion (Zerstörer: 120, 10 Hz, 371, 11.8) | 117 | 10 | 410 | 13.0 | 3.39 |
+| Kestrel (Spitfire IX: 100, 10 Hz, 361, 19.5) | 89 | 15 | 388 | 17.4 | 2.52 |
+
+Checked at 1,024 games a pair (instant cards): Bastion over Heron 0.519 ± 0.016, Kestrel over
+Bastion 0.639 ± 0.015, Heron over Kestrel 0.503 ± 0.016. The ratings are within 32 Elo of
+their mean (the equal-rating target met) but only one edge is in the band: the search found
+a balanced triple, not a cycle. Kestrel is the best pick against the uniform field (it scores
+0.545 against it: exploitability 0.045).
+
+What it says about the method:
+
+- **64 games an edge is too few for a band 0.1 wide.** An edge's standard error at 64 games is
+  0.06; the mean's edges wandered between 0.34 and 0.72 from generation to generation while
+  its knobs moved little. The search now plays `games_late` (256) once its step size has
+  halved.
+- **Equalising is easy, cycling is not.** Every move that evens the three (Bastion's damage,
+  Kestrel's shield and turn) also shrinks what made the round-2 cycle: the Zerstörer's shield
+  over the light guns' threshold went from 130 to 117 and the light type's damage per hit fell
+  with 15 Hz, so the thresholds no longer split them. The loss now has a curl term (`curl_weight`): the
+  triangle's curl (the sum of its three log-odds, which no rating difference can make) must
+  reach three times the band's lower log-odds, so that the search cannot buy equal ratings
+  with the cycle.
+
+ROBUST_RESULTS
 
 ## Running it
 

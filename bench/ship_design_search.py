@@ -18,14 +18,16 @@ The loss of a candidate (a value for every design's searched knobs) is
 
     sum over edges of (the edge's log-odds' distance outside the band)^2
     + realism_weight x sum over designs of max(0, Mahalanobis distance - realism_radius)^2
-    + distinct_weight x sum over design pairs of max(0, distinct - their z distance)^2,
+    + distinct_weight x sum over design pairs of max(0, distinct - their z distance)^2
+    + curl_weight x (for a cycle) max(0, edges x logit(band low) - the curl)^2,
 
-the edges played `games_per_edge` games each (half with each design on each side), every
-ship of a team one design, both teams the scripted agent (its real-scale set for the
-preset, T = 1). Each generation plays the CMA-ES mean and `population - 1` samples; its
-rows (every candidate's knobs, scores and loss) are appended to DIR/search.jsonl and the
-optimiser's state to DIR/state.json as it ends, so a stopped search resumes. The search
-stops at `generations` or `--hours`; each generation prints its ETA.
+the edges played `games_per_edge` games each (`games_late` once the step size has halved)
+(half with each design on each side), every ship of a team one design, both teams the
+scripted agent (its real-scale set for the preset, T = 1). Each generation plays the
+CMA-ES mean and `population - 1` samples; its rows (every candidate's knobs, scores and
+loss) are appended to DIR/search.jsonl and the optimiser's state to DIR/state.json as it
+ends, so a stopped search resumes. The search stops at `generations` or `--hours`; each
+generation prints its ETA.
 
 `check` plays a candidate (by default the best mean of the search) at `--games` games per
 edge on every pair of designs (a round robin), and the mixed-team test: for every pair
@@ -153,6 +155,18 @@ class Space:
             realism=spec["realism_weight"] * realism,
             distinct=spec["distinct_weight"] * close,
         )
+
+
+def curl_shortfall(scores: list[float], games: int, spec: dict) -> float:
+    """For a cycle: the squared shortfall of its curl (the sum of its edges' log-odds, the
+    part no rating difference can make) below the band's lower edge times the edges' count;
+    0 for a spec of edges, or a curl at or above it."""
+    if "cycle" not in spec:
+        return 0.0
+    clipped = [min(max(p, 0.5 / games), 1.0 - 0.5 / games) for p in scores]
+    curl = sum(math.log(p / (1.0 - p)) for p in clipped)
+    low = spec["band"][0]
+    return max(0.0, len(scores) * math.log(low / (1.0 - low)) - curl) ** 2
 
 
 def band_loss(score: float, games: int, band) -> float:
@@ -368,6 +382,10 @@ def search(args) -> None:
     with bench_lock():
         arena = DesignArena(spec.get("preset", "real_scale_deathmatch"), device)
         while cma.generation < spec["generations"]:
+            # more games once the step has halved: the late candidates differ by less than
+            # 64 games resolve
+            if cma.sigma < spec.get("sigma", 0.5) / 2:
+                games = spec.get("games_late", games)
             samples = cma.ask()
             knobs = [space.knobs(x) for x in samples]
             designs = [h for one in knobs for h in space.handles_of(one)]
@@ -399,8 +417,9 @@ def search(args) -> None:
                 if cycle and orientation == -1:
                     scores = [1.0 - p for p in scores]
                 edge_loss = sum(band_loss(s, games, spec["band"]) for s in scores)
+                curl_loss = spec.get("curl_weight", 0.0) * curl_shortfall(scores, games, spec)
                 penalty = space.penalty(knobs[candidate])
-                loss = edge_loss + penalty["realism"] + penalty["distinct"]
+                loss = edge_loss + curl_loss + penalty["realism"] + penalty["distinct"]
                 losses.append(loss)
                 rows.append(
                     dict(
@@ -413,6 +432,7 @@ def search(args) -> None:
                         edge_loss=edge_loss,
                         loss=loss,
                         sigma=cma.sigma,
+                        games=games,
                         **penalty,
                     )
                 )
