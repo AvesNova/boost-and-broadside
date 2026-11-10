@@ -918,3 +918,12 @@ learn). Scratch scripts: `bench`-style in-process profiler (`prof.py`, kept in t
   grow even at even numbers (89% / 31% / 0% at 10 / 20 / 40); crowded frontline erodes the
   champion's edge (1997 / 1875 / 1134 / 526 at 5 / 10 / 20 / 40) below the nearest MLP's at 40.
 - **22:45 KST Disk 9.5 GB free: deleted the old shared compile cache /tmp/torchinductor_root (24 GB, the one corrupted by the earlier prune; no bnb process running).** The campaign cache /tmp/inductor-campaign (7.6 GB) kept.
+- **23:05 KST Final save before the box is returned.** `gpu-box/hub_verify.py`: every local file the
+  hub should hold (4143: runs/2026-*, runs/ratings, the laptop runs fetched into runs/hub) compared
+  byte for byte with the hub's copy (SHA-256 for LFS files, git blob id for others): 0 missing,
+  0 different (the hub holds 6288: also the snapshots and checkpoints deleted here after
+  hash checks). Added to git what the sync did not carry: `results/gpu-box/crossover/` (fixed odds,
+  crossover), `logs/` (every runner console, scorecards), `failed/`, `evidence/` (the smoke test,
+  the crossover debugging, profiling), and `hub-manifest.jsonl` (every hub file's path, size and
+  hash at hub revision c0715707) with `HUB.md` (what is where, how to fetch). The sync loop
+  stopped after a last pass.
