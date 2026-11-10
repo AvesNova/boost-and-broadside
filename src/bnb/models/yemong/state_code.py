@@ -177,6 +177,12 @@ class ShipStateCode(nn.Module):
         self.cooldown_bins = ranges.cooldown_bins
         self.register_buffer("max_shield", torch.tensor(ranges.max_shield, dtype=torch.float32))
         self.register_buffer("max_energy", torch.tensor(ranges.max_energy, dtype=torch.float32))
+        # SCALARS' lows and highs (`_scalar_axis`): made once, on the module's device (a
+        # tensor built from host numbers inside a step is a copy a CUDA graph cannot take)
+        bounds = self._scalar_ranges()
+        for end, name in enumerate(("scalar_low", "scalar_high")):
+            values = [bounds[scalar][end] for scalar in SCALARS]
+            self.register_buffer(name, torch.tensor(values, dtype=torch.float32), persistent=False)
         scalar = (1, SCALAR_BINS)
         self.runs: codes.Runs = (
             (POSITION_LEVELS, 9),
@@ -267,13 +273,7 @@ class ShipStateCode(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """SCALARS' lows and highs (len(SCALARS),) and divisors (..., len(SCALARS)), for one
         code call over the scalars."""
-        ranges = self._scalar_ranges()
-        low, high = (
-            torch.tensor(
-                [ranges[name][end] for name in SCALARS], dtype=like.dtype, device=like.device
-            )
-            for end in (0, 1)
-        )
+        low, high = self.scalar_low.to(like.dtype), self.scalar_high.to(like.dtype)
         shape = next(iter(maxima.values())).shape if maxima else like.shape[:-1]
         ones = torch.ones(shape, dtype=like.dtype, device=like.device)
         divisor = torch.stack([maxima.get(name, ones) for name in SCALARS], -1)
