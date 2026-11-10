@@ -63,11 +63,3 @@ def test_a_stacked_forward_is_each_sets_own_forward(global_generator, bfloat16):
                     assert error <= tolerance * want.float().abs().max().clamp_min(1.0)
                 else:
                     torch.testing.assert_close(got[index], want, rtol=tolerance, atol=tolerance)
-
-
-def test_padded_rows_cover_each_set_once():
-    rows = [torch.tensor([3, 5, 7]), torch.tensor([1]), torch.tensor([], dtype=torch.int64)]
-    index, valid = stacked.padded_rows(rows)
-    assert index.tolist() == [[3, 5, 7], [1, 1, 1], [0, 0, 0]]
-    assert valid.tolist() == [[True] * 3, [True, False, False], [False] * 3]
-    assert sorted(index[valid].tolist()) == [1, 3, 5, 7]

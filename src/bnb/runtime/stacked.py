@@ -11,9 +11,11 @@ batched over the sets: the compile no longer grows with them, and the sets run a
 forward. (Tried first and dropped: `torch.compiler.nested_compile_region` per set; Dynamo
 traced the forward once, but the compile still grew with the sets.)
 
-`call` takes the parameters stacked (sets, ...) and the inputs (sets, rows, ...); the
-random draws differ per set (`randomness="different"`), as separate forwards' did.
-`padded_rows` lays sets with unequal row counts out as one (sets, most) index.
+`call` takes the parameters stacked (sets, ...) and the inputs (sets, rows, ...): every set
+the same number of rows (the training lanes group their players by row count, one call per
+group, rather than pad: padding the league's slots to the live policy's rows ran half again
+as many rows). The random draws differ per set (`randomness="different"`), as separate
+forwards' did.
 """
 
 import torch
@@ -45,17 +47,3 @@ def call(module: torch.nn.Module, parameters: dict[str, torch.Tensor], inputs: t
     others = iter(structure["other"])
     leaves = [next(tensors) if is_tensor else next(others) for is_tensor in structure["tensor"]]
     return _pytree.tree_unflatten(leaves, structure["spec"])
-
-
-def padded_rows(rows: list[torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
-    """Sets of row indices (each (n_s,)) as (sets, most) indices, a short set padded with
-    its own first row (row 0 for an empty set), and (sets, most) bool, the real entries."""
-    most = max(1, max(int(r.numel()) for r in rows))
-    index = torch.stack(
-        [
-            torch.cat([r, (r[:1] if r.numel() else r.new_zeros(1)).expand(most - r.numel())])
-            for r in rows
-        ]
-    )
-    valid = torch.stack([torch.arange(most, device=r.device) < r.numel() for r in rows])
-    return index, valid
