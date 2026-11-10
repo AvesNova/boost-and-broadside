@@ -1,0 +1,68 @@
+{
+ "preset": "real_scale_deathmatch",
+ "band": [
+  0.6,
+  0.7
+ ],
+ "games_per_edge": 64,
+ "population": 12,
+ "generations": 30,
+ "sigma": 0.5,
+ "realism_radius": 3.5,
+ "realism_weight": 1.0,
+ "distinct": 1.0,
+ "distinct_weight": 1.0,
+ "designs": [
+  {
+   "name": "Hornet",
+   "base": "la7",
+   "knobs": [
+    "fire_rate",
+    "damage_per_second",
+    "max_shield"
+   ],
+   "start": {
+    "fire_rate": 15.0,
+    "damage_per_second": 400.0,
+    "max_shield": 80.0
+   },
+   "role": "the sprayer"
+  },
+  {
+   "name": "Maul",
+   "base": "la7",
+   "knobs": [
+    "fire_rate",
+    "damage_per_second",
+    "max_shield"
+   ],
+   "start": {
+    "fire_rate": 5.0,
+    "damage_per_second": 360.0,
+    "max_shield": 120.0
+   },
+   "role": "the cannon"
+  },
+  {
+   "name": "Bastion",
+   "base": "la7",
+   "knobs": [
+    "fire_rate",
+    "damage_per_second",
+    "max_shield"
+   ],
+   "start": {
+    "fire_rate": 10.0,
+    "damage_per_second": 300.0,
+    "max_shield": 200.0
+   },
+   "role": "the armour"
+  }
+ ],
+ "cycle": [
+  "Hornet",
+  "Maul",
+  "Bastion"
+ ],
+ "seed": 102
+}

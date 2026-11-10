@@ -134,6 +134,20 @@ def shield_per_rating() -> tuple[float, dict | None]:
     return (SHIELD_PER_RATING, None) if move is None else (float(move["value"]), move)
 
 
+def pacing() -> tuple[float, float, float | None]:
+    """The set-wide pacing (docs/explanation/game/real-scale-pacing.md), from the balance
+    file's "_rules": (the store's multiplier, the climb rate's multiplier, the engine knee or
+    None for the game's). The shot keeps its cost in J/kg, so a larger store pays for more
+    shots, and the climb's multiplier leaves the shot's cost alone."""
+    rules = balance_moves().get(RULES, {})
+
+    def value(name, default):
+        return float(rules[name]["value"]) if name in rules else default
+
+    knee = value("engine_knee", None)
+    return value("store_multiplier", 1.0), value("climb_multiplier", 1.0), knee
+
+
 def balance_moves(path: pathlib.Path | None = None) -> dict[str, dict[str, dict]]:
     """The balancing moves (empty when the file is absent; `BALANCE_FILE` by default)."""
     path = BALANCE_FILE if path is None else path
@@ -405,6 +419,9 @@ def rule_values(stall_speeds: list[float], tick_length: float = Rules.tick_lengt
         f"flight.{field.name}": getattr(flight, field.name)
         for field in dataclasses.fields(FlightConstants)
     }
+    _, _, knee = pacing()
+    if knee is not None:
+        values["flight.engine_knee"] = knee
     return values
 
 
@@ -459,6 +476,15 @@ def target_handles(
             f"placeholder: the standard {aircraft.like}'s dispersion angle, scaled as the "
             "standard fighter's is to the P-51D's"
         )
+    store, _, _ = pacing()
+    if store != 1.0:  # the pacing's store: the shot keeps its cost in J/kg
+        old = values["ceiling"]
+        values["ceiling"] *= store
+        values["shots_per_store"] *= store
+        notes["ceiling"] = _sentence(notes["ceiling"]) + (
+            f" Paced: {old:.6g} -> {values['ceiling']:.6g} J/kg, x {store:g} "
+            "(docs/explanation/game/real-scale-pacing.md)."
+        )
     if "spawn_energy" not in given:
         values["spawn_energy"] = like["spawn_energy"] / like["ceiling"] * values["ceiling"]
         notes["spawn_energy"] = f"placeholder: the standard {aircraft.like}'s fraction of the store"
@@ -469,6 +495,13 @@ def target_handles(
     values["gun_range"] = math.log1p(drag * launch * life) / drag
     notes["gun_range"] = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
     rate, notes["climb_time"] = climb_rate_of(aircraft, given)
+    _, climb, _ = pacing()
+    if climb != 1.0:
+        notes["climb_time"] = _sentence(notes["climb_time"]) + (
+            f" Paced: the climb rate {rate:.4g} -> {rate * climb:.4g} m/s, x {climb:g} "
+            "(docs/explanation/game/real-scale-pacing.md)."
+        )
+        rate *= climb
     values["climb_time"] = CLIMB_FILL * values["ceiling"] / (GRAVITY * rate)
     return values, notes, rate
 

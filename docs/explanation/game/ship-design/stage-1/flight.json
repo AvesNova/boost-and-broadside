@@ -1,0 +1,74 @@
+{
+ "preset": "real_scale_deathmatch",
+ "band": [
+  0.6,
+  0.7
+ ],
+ "games_per_edge": 64,
+ "population": 12,
+ "generations": 30,
+ "sigma": 0.5,
+ "realism_radius": 3.5,
+ "realism_weight": 1.0,
+ "distinct": 1.0,
+ "distinct_weight": 1.0,
+ "designs": [
+  {
+   "name": "Kestrel",
+   "base": "la7",
+   "knobs": [
+    "stall_speed",
+    "sustained_turn_rate",
+    "climb_rate",
+    "ceiling"
+   ],
+   "start": {
+    "stall_speed": 37.5,
+    "sustained_turn_rate": 0.39269908169872414,
+    "climb_rate": 15.7,
+    "ceiling": 115200.0
+   },
+   "role": "the turner (the Zero's wing)"
+  },
+  {
+   "name": "Osprey",
+   "base": "la7",
+   "knobs": [
+    "stall_speed",
+    "sustained_turn_rate",
+    "climb_rate",
+    "ceiling"
+   ],
+   "start": {
+    "stall_speed": 52.8,
+    "sustained_turn_rate": 0.291469985083053,
+    "climb_rate": 18.1,
+    "ceiling": 131552.0
+   },
+   "role": "the energy fighter (the P-38L's store and wing loading)"
+  },
+  {
+   "name": "Harrier",
+   "base": "la7",
+   "knobs": [
+    "stall_speed",
+    "sustained_turn_rate",
+    "climb_rate",
+    "ceiling"
+   ],
+   "start": {
+    "stall_speed": 43.4,
+    "sustained_turn_rate": 0.3246312408709453,
+    "climb_rate": 25.6,
+    "ceiling": 128600.0
+   },
+   "role": "the climber (the Spitfire XIV's climb)"
+  }
+ ],
+ "cycle": [
+  "Kestrel",
+  "Osprey",
+  "Harrier"
+ ],
+ "seed": 101
+}

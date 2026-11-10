@@ -1,0 +1,68 @@
+{
+ "preset": "real_scale_deathmatch",
+ "band": [
+  0.6,
+  0.7
+ ],
+ "games_per_edge": 64,
+ "population": 12,
+ "generations": 30,
+ "sigma": 0.5,
+ "realism_radius": 3.5,
+ "realism_weight": 1.0,
+ "distinct": 1.0,
+ "distinct_weight": 1.0,
+ "designs": [
+  {
+   "name": "Lance",
+   "base": "la7",
+   "knobs": [
+    "cruise_speed",
+    "muzzle_speed",
+    "dispersion"
+   ],
+   "start": {
+    "cruise_speed": 140.0,
+    "muzzle_speed": 880.0,
+    "dispersion": 0.001
+   },
+   "role": "the sniper"
+  },
+  {
+   "name": "Rapier",
+   "base": "la7",
+   "knobs": [
+    "cruise_speed",
+    "muzzle_speed",
+    "dispersion"
+   ],
+   "start": {
+    "cruise_speed": 168.0,
+    "muzzle_speed": 600.0,
+    "dispersion": 0.002
+   },
+   "role": "the slasher"
+  },
+  {
+   "name": "Cudgel",
+   "base": "la7",
+   "knobs": [
+    "cruise_speed",
+    "muzzle_speed",
+    "dispersion"
+   ],
+   "start": {
+    "cruise_speed": 152.0,
+    "muzzle_speed": 720.0,
+    "dispersion": 0.0016
+   },
+   "role": "the brawler"
+  }
+ ],
+ "cycle": [
+  "Lance",
+  "Rapier",
+  "Cudgel"
+ ],
+ "seed": 103
+}

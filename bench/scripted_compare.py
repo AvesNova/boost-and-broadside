@@ -6,14 +6,16 @@ light retune, docs/explanation/game/real-scale.md).
         --ship-type 0 --first real_scale_deathmatch --second deathmatch --games 512
 
 A set is a mode's in `MODE_DEFAULTS` (its name) or a search log's candidate
-(`LOG.jsonl:GENERATION:INDEX`). Every match is `--games` fresh games at T = 1, fog on, the
-seat drawn per game (`bnb.runtime.evaluate.first_results`'s rollout), seeded with `--seed`,
-on the game's lineup, every ship one type (`--ship-type`) or mixed lineups (`--mixed`, as
-the search draws them): the first set against the second (its score, a draw half a win, with
-its standard error), then each against itself. Per match: the games' kills (combat deaths),
-shots and hits a game over the episodes ended, and kills, front moves (Frontline's captures)
-and shots a minute over every tick played; the share of games ended by the clock. One JSON
-line per match is appended to `--out` as it finishes. Holds the benchmark lock.
+(`LOG.jsonl:GENERATION:INDEX`). Every match is `--games` fresh games at T = 1
+(`--temperatures` sets each side's), fog on, the seat drawn per game
+(`bnb.runtime.evaluate.first_results`'s rollout), seeded with `--seed`, on the game's
+lineup, every ship one type (`--ship-type`) or mixed lineups (`--mixed`, as the search
+draws them): the first set against the second (its score, a draw half a win, with its
+standard error), then each against itself. Per match: the games' kills (combat deaths),
+shots and hits a game over the episodes ended, and kills, front moves (Frontline's
+captures) and shots a minute over every tick played; the share of games ended by the
+clock. One JSON line per match is appended to `--out` as it finishes. Holds the benchmark
+lock.
 """
 
 import argparse
@@ -48,7 +50,18 @@ def parameters_of(name: str):
     raise SystemExit(f"{name}: no such candidate")
 
 
-def match(game, types, card, first, second, games, ship_type, device, pool=None) -> dict:
+def match(
+    game,
+    types,
+    card,
+    first,
+    second,
+    games,
+    ship_type,
+    device,
+    pool=None,
+    temperatures=(1.0, 1.0),
+) -> dict:
     """`games` fresh games of `first` against `second` to every first game's end, and the
     games' statistics (the module docstring)."""
     S = game.ships_per_team
@@ -61,7 +74,10 @@ def match(game, types, card, first, second, games, ship_type, device, pool=None)
         game,
         types,
         (Pool("compare", 1.0, ("first", "second")),),
-        {"first": Scripted(card, S, first), "second": Scripted(card, S, second)},
+        {
+            "first": Scripted(card, S, first, temperature=temperatures[0]),
+            "second": Scripted(card, S, second, temperature=temperatures[1]),
+        },
         "first",
         games,
         32,
@@ -123,7 +139,11 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=1_000_000, help="above the search's seeds")
     parser.add_argument("--self-play", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--out", required=True)
+    parser.add_argument(
+        "--temperatures", default="1,1", help="the first's and the second's, e.g. 1,2"
+    )
     args = parser.parse_args()
+    temperatures = tuple(float(t) for t in args.temperatures.split(","))
     device = torch.device("cuda")
     game = api.PRESETS[args.preset]
     types = api.ship_types(device, ship_set=game.ship_set)
@@ -141,8 +161,25 @@ def main() -> None:
             started = time.perf_counter()
             torch.manual_seed(args.seed)
             torch._dynamo.reset()
-            row = match(game, types, card, one, other, args.games, args.ship_type, device, pool)
-            row = dict(preset=args.preset, first=first_name, second=second_name, **row)
+            row = match(
+                game,
+                types,
+                card,
+                one,
+                other,
+                args.games,
+                args.ship_type,
+                device,
+                pool,
+                temperatures,
+            )
+            row = dict(
+                preset=args.preset,
+                first=first_name,
+                second=second_name,
+                temperatures=temperatures,
+                **row,
+            )
             if pool is not None:
                 row["types"] = [api.type_names(game.ship_set)[k] for k in pool]
             row["seconds"] = time.perf_counter() - started
