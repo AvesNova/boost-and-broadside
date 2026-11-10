@@ -59,6 +59,30 @@ worth pursuing. These items wait until then. Each says where it came from.
   centre moved past one gun range (shooting at targets still closing); whether that is
   wanted, or a sign the shot cost is too low, is open.
 
+## Ship cycles
+
+- **Stage 1: a three-type rock-paper-scissors at equal Elo, each edge 0.57-0.65**
+  (2026-11-10; design in `docs/explanation/game/ship-cycles.md`, branch
+  `feat/ship-cycles`). The tournament already holds cycles hidden by its rating spread:
+  Albatross > Zero > Anvil has a curl of 2.78 ± 0.36 (balanced edges 0.72) at Elo 19, 52
+  and 46. Re-measure it at 1,024 games a pair with the energy fight off and on, then
+  CMA-ES (population 14, about 30 numbers: six to eight handles and four agent numbers a
+  type) on the sum of squared log-odds distances from 0.61, flight handles through the
+  Estimate, combat handles exact, 256 games a pair rising to 1,024, the winner solved
+  exactly and confirmed at 2,048 games a pair. About 2.2 h of laptop GPU plus 25 minutes.
+  Needs a harness (a per-view parameter table per team, a three-type card per candidate:
+  `bench/scripted_search.py`'s `play` with two lineups), not written yet. Wait for the
+  balance pass, and re-run the Hodge split on its tournament first.
+  Open: ranges for the placeholders (recharge, head-on fraction); whether a trained policy
+  sees the cycle.
+- **Stages 2-3: two more cycles on other mechanisms, and their independence** (the burst
+  against the shield on one airframe; gun geometry or a second flight cycle on one gun),
+  tested by crossing: the 9 x 9 round robin of one cycle's guns on the other's airframes
+  should be additive in log-odds.
+- **Stage 4: seven types forming the Paley tournament**: three planes, type i at phase
+  2 pi k i / 7 in plane k, each plane's amplitude 0.31 log-odds for 0.60 edges; needs
+  each mechanism continuous between its corners.
+
 ## Later, by agreement
 
 - The 128-versus-256 width comparison (the tooling comes with the cleanup pass).

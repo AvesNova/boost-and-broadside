@@ -19,6 +19,7 @@ from bnb.controllers.scripted_defaults import MODE_DEFAULTS
 from bnb.controllers.scripted_memory import fresh_carry, remember, time_unit
 from bnb.controllers.scripted_parameters import (
     ADDITIVE_BOUNDS,
+    CENTRE_BOUNDS,
     RELATIVE_TACTICS,
     Logistic,
     ScriptedParameters,
@@ -199,5 +200,7 @@ def test_the_search_keeps_the_relative_tactics_unless_asked_and_bounds_them():
         for name, (low, high) in ADDITIVE_BOUNDS.items():
             assert low <= getattr(child, name) <= high, name
             moved |= {name} if getattr(child, name) != getattr(PARAMETERS, name) else set()
+        for name, (low, high) in CENTRE_BOUNDS.items():
+            assert low <= getattr(child, name).centre <= high, name
         assert child.extend_in_stall_angle.rising and not child.extend_in_gun_range.rising
     assert moved == set(ADDITIVE_BOUNDS)

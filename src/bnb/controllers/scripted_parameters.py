@@ -242,6 +242,13 @@ ADDITIVE_BOUNDS = {
     "energy_fight_speed_exponent": (-2.0, 2.0),
     "energy_fight_range_exponent": (-2.0, 2.0),
 }
+# The relative tactics' logistics' centres: the advantage within a factor 2 either side of
+# an even match, the extend distance 0.3 to 3 gun ranges, its angle 1 to 10 stall angles.
+CENTRE_BOUNDS = {
+    "energy_fight_in_advantage": (0.5, 2.0),
+    "extend_in_gun_range": (0.3, 3.0),
+    "extend_in_stall_angle": (1.0, 10.0),
+}
 # Each switch's smallest scale, in its advantage's unit: about a tenth of the range its
 # advantage spans in play (a log distance ratio, radians of turn, ship strengths, a log
 # margin).

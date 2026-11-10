@@ -97,6 +97,13 @@ with its last seen velocity.
 - **No known enemy:** it heads for the centre and holds its course once within
   `centre_hold_in_arena_radius` of it (an angle error of 0), and does not fire.
 
+- **Relative tactics and own time** (off by default): an energy doctrine against a target
+  that out-turns it (extend from a close target off the nose rather than turn after it),
+  weighted by the own-over-target ratios of the types' turn, climb, cruise and gun range,
+  and the second-based parameters in the ship's own turn time. At their defaults the agent
+  is bitwise as without them; [Ship cycles](game/ship-cycles.md#the-scripted-agents-relative-tactics)
+  describes them and their search ranges.
+
 ## The Frontline layer
 
 Strength is a sum of Gaussian kernels over visible living ships, each weighted by its

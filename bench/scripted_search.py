@@ -69,6 +69,7 @@ from bnb.controllers.scripted import Chaser, Scripted  # noqa: E402
 from bnb.controllers.scripted_defaults import MODE_DEFAULTS  # noqa: E402
 from bnb.controllers.scripted_parameters import (  # noqa: E402
     ADDITIVE_BOUNDS,
+    CENTRE_BOUNDS,
     MODES,
     NAMES,
     RELATIVE_TACTICS,
@@ -144,7 +145,8 @@ def clamp(parameters: ScriptedParameters) -> ScriptedParameters:
     its floor and SCALE_CEILING floors, a switch's rate within SWITCH_RATES, the fade's
     centre within FADE_CENTRE, the recovery shield fraction at most 0.9, the combat radius
     beyond the shoot logistic's centre, each additive number (`ADDITIVE_BOUNDS`: the own
-    time's and the relative tactics') within its bounds."""
+    time's and the relative tactics') and each relative-tactics logistic's centre
+    (`CENTRE_BOUNDS`) within its bounds."""
 
     def bounded(value: float, low: float, high: float) -> float:
         return min(max(value, low), high)
@@ -155,11 +157,11 @@ def clamp(parameters: ScriptedParameters) -> ScriptedParameters:
         if isinstance(value, Logistic):
             floor = SCALE_FLOORS[name]
             scale = bounded(value.scale, floor, SCALE_CEILING * floor)
-            centre = (
-                bounded(value.centre, *FADE_CENTRE)
-                if name == "memory_fade_in_seconds"
-                else value.centre
-            )
+            centre = value.centre
+            if name == "memory_fade_in_seconds":
+                centre = bounded(centre, *FADE_CENTRE)
+            elif name in CENTRE_BOUNDS:
+                centre = bounded(centre, *CENTRE_BOUNDS[name])
             value = Logistic(centre, scale, value.rising)
         elif isinstance(value, Switch):
             floor = SWITCH_SCALE_FLOORS[name]
