@@ -127,8 +127,8 @@ def _trace(artifact, part, directory, numbers) -> pathlib.Path:
         f"view {view}: game result {result} (+1 win); vertical lines: an enemy "
         "killed (orange), an own ship lost (black)"
     )
-    rows = 1 if part is None else 2
-    figure, axes = output.new_figure(rows, 1, size=(11.0, 1.6 * rows), sharex=True)
+    rows, height = (1, 2.2) if part is None else (2, 3.2)  # the values alone, or below the outcome
+    figure, axes = output.new_figure(rows, 1, size=(11.0, height), sharex=True)
     for time, row in torch.nonzero(died).tolist():
         colour = output.TRUE if row >= own else output.INK
         for each in axes[:, 0]:
