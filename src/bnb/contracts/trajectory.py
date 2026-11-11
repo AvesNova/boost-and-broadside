@@ -13,7 +13,7 @@ from .tree import contract
 REWARD_LEVELS = ("damage", "kill_death", "objective_progress", "objective", "outcome")
 # The single value level of a critic over one reward stream, the sum of every level's
 # weighted reward (`bnb.learn.returns.value_rewards`).
-SUMMED_LEVEL = "total"
+SUMMED_LEVEL = "summed_reward"
 
 
 @contract

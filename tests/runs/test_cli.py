@@ -481,7 +481,7 @@ def test_the_probe_on_the_cpu_measures_nothing_and_writes_no_run(monkeypatch, tm
 
 
 def test_the_single_value_arm_trains_from_the_command_line(monkeypatch, tmp_path, global_generator):
-    """`--set yemong.levels=["total"] yemong.outcome_level=null` and one discount, trace
+    """`--set yemong.levels=["summed_reward"] yemong.outcome_level=null` and one discount, trace
     decay and team spirit: one update, and the policy records the arm's layout."""
     options = list(cases.TRAIN_OPTIONS)
     options[options.index("relational")] = "yemong"
@@ -496,7 +496,7 @@ def test_the_single_value_arm_trains_from_the_command_line(monkeypatch, tmp_path
         "--name",
         "single",
         "--set",
-        'yemong.levels=["total"]',
+        'yemong.levels=["summed_reward"]',
         "--set",
         "yemong.outcome_level=null",
         "--set",
@@ -508,5 +508,5 @@ def test_the_single_value_arm_trains_from_the_command_line(monkeypatch, tmp_path
     )
     run = Run.open(tmp_path, "single")
     model = checkpoint.load_policy(run.checkpoint_at(), torch.device("cpu"))
-    assert model.config.levels == ("total",) and model.config.outcome_level is None
+    assert model.config.levels == ("summed_reward",) and model.config.outcome_level is None
     assert model.outcome is None

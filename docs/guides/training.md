@@ -129,7 +129,7 @@ one discount, trace decay and team spirit for its one level:
 
 <!-- not-runnable: needs CUDA -->
 ```bash
-uv run --no-sync bnb train --preset mixed --set 'yemong.levels=["total"]' \
+uv run --no-sync bnb train --preset mixed --set 'yemong.levels=["summed_reward"]' \
   --set yemong.outcome_level=null --set 'learner.discount=[0.999]' \
   --set 'learner.trace_decay=[0.97]' --set 'learner.team_spirit=[0.0]'
 ```

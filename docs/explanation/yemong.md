@@ -640,7 +640,7 @@ The critic gives one value per value level (`YemongConfig.levels`; by default on
 reward level, `bnb.contracts.REWARD_LEVELS`): a per-ship categorical value over
 symlog-spaced bins for each local level, and the outcome level (`YemongConfig.outcome_level`)
 as `P(win) - P(loss)` from the global token (`bnb.models.yemong.critic`). The single value
-arm (`levels` `("total",)`, `outcome_level` None) has one per-ship categorical value over
+arm (`levels` `("summed_reward",)`, `outcome_level` None) has one per-ship categorical value over
 the summed reward levels and no outcome head
 ([the learner](learner.md#the-single-value-arm)).
 

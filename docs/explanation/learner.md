@@ -84,7 +84,7 @@ L ticks give the returns of one segment of N L ticks
 - **The value levels' rewards** (`bnb.learn.returns.value_rewards`). The returns run per
   value level of the critic being trained (`YemongConfig.levels`): by default one per
   reward level, each its own weighted reward. The single value arm has one level,
-  `total`, whose reward is the sum of every level's weighted reward
+  `summed_reward`, whose reward is the sum of every level's weighted reward
   ([below](#the-single-value-arm)).
 - **Values in reward units.** A per-ship level's value is its bin expectation; the outcome
   level's is `P(win) - P(loss)` times the outcome's reward weight.
@@ -103,17 +103,17 @@ in the critic's order; the learner refuses a model whose levels they do not matc
 
 ### The single value arm
 
-`--set yemong.levels='["total"]' --set yemong.outcome_level=null` builds Yemong with one
-value output: one per-ship categorical value head (the same bins, limit and two-hot
+`--set yemong.levels='["summed_reward"]' --set yemong.outcome_level=null` builds Yemong with
+one value output: one per-ship categorical value head (the same bins, limit and two-hot
 cross-entropy as a per-ship level's) and no outcome head. Its reward is one stream, the sum
 of the five weighted reward levels, and it has one discount, trace decay and team spirit,
 which the run sets (`--set learner.discount='[0.999]' --set learner.trace_decay='[0.97]'
---set learner.team_spirit='[0.0]'`, for example). The rewards themselves, their weights and the per-level reward
-series stay per reward level; only the value side is one level. The critic's series name
-the level `total` (`critic/value_loss/total`, `critic/explained_variance/total`, ...), and
-the outcome ledger's series and the outcome figure are absent. The build record holds
-`levels` and `outcome_level`, so a policy file says which layout it has
-(`tests/sections/test_single_value.py`).
+--set learner.team_spirit='[0.0]'`, for example). The rewards themselves, their weights and
+the per-level reward series stay per reward level; only the value side is one level. The
+critic's series name the level `summed_reward` (`critic/value_loss/summed_reward`,
+`critic/explained_variance/summed_reward`, ...), and the outcome ledger's series and the
+outcome figure are absent. The build record holds `levels` and `outcome_level`, so a policy
+file says which layout it has (`tests/sections/test_single_value.py`).
 
 The return scale is the gap between exponential moving averages of the 5th and 95th
 percentiles of the summed returns of living own ships, at least 1, updated once per update
