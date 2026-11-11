@@ -1,0 +1,288 @@
+{
+ "deathmatch": [
+  {
+   "player": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_121634816/uniform_average@T=0.7",
+   "policy": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_121634816/uniform_average",
+   "temperature": 0.7,
+   "elo": 2127.767481573138,
+   "stderr": 11.24725656246342,
+   "games": 3584,
+   "entropy": 0.4057223142884125,
+   "versus_one": -26.154533091248126,
+   "versus_one_stderr": 8.794138105410898
+  },
+  {
+   "player": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_121634816/uniform_average",
+   "policy": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_121634816/uniform_average",
+   "temperature": 1.0,
+   "elo": 2154.873951251758,
+   "stderr": 11.404421514065634,
+   "games": 3584,
+   "entropy": 0.8224477952113622,
+   "versus_one": 0.0,
+   "versus_one_stderr": 0.0
+  },
+  {
+   "player": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_121634816/uniform_average@T=1.4",
+   "policy": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_121634816/uniform_average",
+   "temperature": 1.4,
+   "elo": 2031.6368215363939,
+   "stderr": 10.800595574887417,
+   "games": 4608,
+   "entropy": 1.5059442195829367,
+   "versus_one": -122.25246759150366,
+   "versus_one_stderr": 8.796034114284566
+  },
+  {
+   "player": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_60817408/uniform_average@T=0.7",
+   "policy": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_60817408/uniform_average",
+   "temperature": 0.7,
+   "elo": 1858.0165060582876,
+   "stderr": 9.963177873792143,
+   "games": 5120,
+   "entropy": 0.5745479149606711,
+   "versus_one": 7.516289495737997,
+   "versus_one_stderr": 7.865505958641764
+  },
+  {
+   "player": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_60817408/uniform_average",
+   "policy": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_60817408/uniform_average",
+   "temperature": 1.0,
+   "elo": 1850.5210512552253,
+   "stderr": 10.060374074152687,
+   "games": 5120,
+   "entropy": 1.0402358977718162,
+   "versus_one": 0.0,
+   "versus_one_stderr": 0.0
+  },
+  {
+   "player": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_60817408/uniform_average@T=1.4",
+   "policy": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_60817408/uniform_average",
+   "temperature": 1.4,
+   "elo": 1752.3311435588143,
+   "stderr": 9.921490188651312,
+   "games": 4608,
+   "entropy": 1.659455212207474,
+   "versus_one": -98.23928137105628,
+   "versus_one_stderr": 8.272448019089747
+  },
+  {
+   "player": "runs/2026-11-09-rl-absolute/policies/step_121634816/uniform_average@T=0.7",
+   "policy": "runs/2026-11-09-rl-absolute/policies/step_121634816/uniform_average",
+   "temperature": 0.7,
+   "elo": 1937.4590017624978,
+   "stderr": 10.804925127202258,
+   "games": 3584,
+   "entropy": 0.5092630861435052,
+   "versus_one": -16.235506845899813,
+   "versus_one_stderr": 8.686891769045097
+  },
+  {
+   "player": "runs/2026-11-09-rl-absolute/policies/step_121634816/uniform_average",
+   "policy": "runs/2026-11-09-rl-absolute/policies/step_121634816/uniform_average",
+   "temperature": 1.0,
+   "elo": 1954.0368521222463,
+   "stderr": 10.755596888014818,
+   "games": 4096,
+   "entropy": 0.9635250966346914,
+   "versus_one": 0.0,
+   "versus_one_stderr": 0.0
+  },
+  {
+   "player": "runs/2026-11-09-rl-absolute/policies/step_121634816/uniform_average@T=1.4",
+   "policy": "runs/2026-11-09-rl-absolute/policies/step_121634816/uniform_average",
+   "temperature": 1.4,
+   "elo": 1876.4734158989966,
+   "stderr": 10.49227565581765,
+   "games": 4096,
+   "entropy": 1.5782015633833382,
+   "versus_one": -77.3195442498967,
+   "versus_one_stderr": 8.974675219068478
+  },
+  {
+   "player": "runs/2026-11-09-rl-absolute/policies/step_60817408/uniform_average@T=0.7",
+   "policy": "runs/2026-11-09-rl-absolute/policies/step_60817408/uniform_average",
+   "temperature": 0.7,
+   "elo": 1705.9861795535817,
+   "stderr": 9.790843781788421,
+   "games": 4096,
+   "entropy": 0.6765000010139548,
+   "versus_one": 21.098191982886345,
+   "versus_one_stderr": 9.720035640049161
+  },
+  {
+   "player": "runs/2026-11-09-rl-absolute/policies/step_60817408/uniform_average",
+   "policy": "runs/2026-11-09-rl-absolute/policies/step_60817408/uniform_average",
+   "temperature": 1.0,
+   "elo": 1684.2995195890485,
+   "stderr": 10.102432424737914,
+   "games": 3584,
+   "entropy": 1.1447522920835231,
+   "versus_one": 0.0,
+   "versus_one_stderr": 0.0
+  },
+  {
+   "player": "runs/2026-11-09-rl-absolute/policies/step_60817408/uniform_average@T=1.4",
+   "policy": "runs/2026-11-09-rl-absolute/policies/step_60817408/uniform_average",
+   "temperature": 1.4,
+   "elo": 1553.1129278104559,
+   "stderr": 6.863931995680206,
+   "games": 24576,
+   "entropy": 1.6977751260821,
+   "versus_one": -132.1267253493165,
+   "versus_one_stderr": 7.572031692884807
+  },
+  {
+   "player": "scripted",
+   "policy": "scripted",
+   "temperature": 1.0,
+   "elo": 1000.0,
+   "stderr": 0.0,
+   "games": 19456,
+   "entropy": 0.0
+  }
+ ],
+ "frontline": [
+  {
+   "player": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_121634816/uniform_average@T=0.7",
+   "policy": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_121634816/uniform_average",
+   "temperature": 0.7,
+   "elo": 1740.6008245085125,
+   "stderr": 11.200602967690338,
+   "games": 3072,
+   "entropy": 0.4280331836711786,
+   "versus_one": -13.33154636206999,
+   "versus_one_stderr": 9.598432388419681
+  },
+  {
+   "player": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_121634816/uniform_average",
+   "policy": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_121634816/uniform_average",
+   "temperature": 1.0,
+   "elo": 1754.7430705750119,
+   "stderr": 11.342442274609688,
+   "games": 2560,
+   "entropy": 0.8801429028255855,
+   "versus_one": 0.0,
+   "versus_one_stderr": 0.0
+  },
+  {
+   "player": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_121634816/uniform_average@T=1.4",
+   "policy": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_121634816/uniform_average",
+   "temperature": 1.4,
+   "elo": 1667.4070377911369,
+   "stderr": 11.04078885568825,
+   "games": 2560,
+   "entropy": 1.562759167417633,
+   "versus_one": -86.48519656556604,
+   "versus_one_stderr": 9.823352704944698
+  },
+  {
+   "player": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_60817408/uniform_average@T=0.7",
+   "policy": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_60817408/uniform_average",
+   "temperature": 0.7,
+   "elo": 1576.4472743152614,
+   "stderr": 10.466153574374408,
+   "games": 3072,
+   "entropy": 0.6077020819426101,
+   "versus_one": -2.2584613998844256,
+   "versus_one_stderr": 9.610196594384472
+  },
+  {
+   "player": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_60817408/uniform_average",
+   "policy": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_60817408/uniform_average",
+   "temperature": 1.0,
+   "elo": 1578.8326426576075,
+   "stderr": 10.483312984100962,
+   "games": 2560,
+   "entropy": 1.1238414201926203,
+   "versus_one": 0.0,
+   "versus_one_stderr": 0.0
+  },
+  {
+   "player": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_60817408/uniform_average@T=1.4",
+   "policy": "runs/2026-11-09-rl-deadreckon-split-hiddenphysics/policies/step_60817408/uniform_average",
+   "temperature": 1.4,
+   "elo": 1498.9856232386285,
+   "stderr": 10.084576361418293,
+   "games": 4096,
+   "entropy": 1.7552924038683395,
+   "versus_one": -79.90629020024215,
+   "versus_one_stderr": 9.95462777646625
+  },
+  {
+   "player": "runs/2026-11-09-rl-absolute/policies/step_121634816/uniform_average@T=0.7",
+   "policy": "runs/2026-11-09-rl-absolute/policies/step_121634816/uniform_average",
+   "temperature": 0.7,
+   "elo": 1660.8995594005141,
+   "stderr": 11.074346936787578,
+   "games": 2560,
+   "entropy": 0.5266484987263522,
+   "versus_one": 48.76977480723871,
+   "versus_one_stderr": 10.446559138798532
+  },
+  {
+   "player": "runs/2026-11-09-rl-absolute/policies/step_121634816/uniform_average",
+   "policy": "runs/2026-11-09-rl-absolute/policies/step_121634816/uniform_average",
+   "temperature": 1.0,
+   "elo": 1612.4412920424215,
+   "stderr": 11.364778588935195,
+   "games": 2048,
+   "entropy": 1.0057094173734205,
+   "versus_one": 0.0,
+   "versus_one_stderr": 0.0
+  },
+  {
+   "player": "runs/2026-11-09-rl-absolute/policies/step_121634816/uniform_average@T=1.4",
+   "policy": "runs/2026-11-09-rl-absolute/policies/step_121634816/uniform_average",
+   "temperature": 1.4,
+   "elo": 1478.4298054856165,
+   "stderr": 9.640425394717505,
+   "games": 4608,
+   "entropy": 1.6611713047255154,
+   "versus_one": -133.93705780439447,
+   "versus_one_stderr": 11.564765443145083
+  },
+  {
+   "player": "runs/2026-11-09-rl-absolute/policies/step_60817408/uniform_average@T=0.7",
+   "policy": "runs/2026-11-09-rl-absolute/policies/step_60817408/uniform_average",
+   "temperature": 0.7,
+   "elo": 1559.1664147657389,
+   "stderr": 10.96504157100053,
+   "games": 2560,
+   "entropy": 0.697594655854259,
+   "versus_one": 43.298505419103726,
+   "versus_one_stderr": 12.027318816272405
+  },
+  {
+   "player": "runs/2026-11-09-rl-absolute/policies/step_60817408/uniform_average",
+   "policy": "runs/2026-11-09-rl-absolute/policies/step_60817408/uniform_average",
+   "temperature": 1.0,
+   "elo": 1515.6628634384638,
+   "stderr": 10.63762897301097,
+   "games": 3072,
+   "entropy": 1.2275965463197491,
+   "versus_one": 0.0,
+   "versus_one_stderr": 0.0
+  },
+  {
+   "player": "runs/2026-11-09-rl-absolute/policies/step_60817408/uniform_average@T=1.4",
+   "policy": "runs/2026-11-09-rl-absolute/policies/step_60817408/uniform_average",
+   "temperature": 1.4,
+   "elo": 1386.6432721562037,
+   "stderr": 8.135747280102317,
+   "games": 6144,
+   "entropy": 1.8176104811535647,
+   "versus_one": -129.58025803565644,
+   "versus_one_stderr": 9.80658132636338
+  },
+  {
+   "player": "scripted",
+   "policy": "scripted",
+   "temperature": 1.0,
+   "elo": 1000.0,
+   "stderr": 0.0,
+   "games": 10240,
+   "entropy": 0.0
+  }
+ ]
+}

@@ -14,7 +14,8 @@ whole run.
 `report`: from the records, per preset: each player's Elo and standard error (the fit the
 last batch recorded) and its mean entropy, nats per living ship-decision of the joint
 action distribution it sampled from (`STATISTICS`' entropy over its ship-ticks), as a
-Markdown table of policy by temperature; `sweep.json` in DIR.
+Markdown table of policy by temperature, and each temperature's Elo less the same
+policy's at T = 1 with the difference's own standard error; `sweep.json` in DIR.
 
 A temperature divides the logits of the whole joint action, so it moves every factor at
 once; it rates a policy's sampling, not a policy trained to that entropy.
@@ -30,6 +31,7 @@ import torch
 
 from bnb.league import tournament
 from bnb.league.matches import STATISTICS, ArenaConfig, player, temperature_of
+from bnb.league.ratings import fit_ratings
 
 ANCHOR = "scripted"
 
@@ -89,13 +91,17 @@ def play(args) -> None:
 
 def summary(record: pathlib.Path) -> list[dict]:
     """From a preset's record: each player's name, policy, temperature, Elo and standard
-    error (the last batch's fit, the anchor at 1000), games, and mean entropy (nats per
-    living ship-decision; 0 for the scripted agent)."""
+    error (the last batch's fit, the anchor at 1000), games, mean entropy (nats per living
+    ship-decision; 0 for the scripted agent), and for a network its rating less the same
+    policy's at T = 1 with that difference's standard error (the fit anchored on the T = 1
+    player, whose pinned rating makes every error one relative to it)."""
     lines = [json.loads(line) for line in record.read_text().splitlines() if line.strip()]
     last = lines[-1]
     names = [row["player"] for row in last["ratings"]]
     sums = {name: torch.zeros(len(STATISTICS), dtype=torch.float64) for name in names}
     games = dict.fromkeys(names, 0)
+    index = {name: number for number, name in enumerate(names)}
+    wins = torch.zeros((len(names), len(names)), dtype=torch.float64)
     for line in lines:
         for (first, second), result, (mine, theirs) in zip(
             line["matchups"], line["results"], line["statistics"], strict=True
@@ -104,11 +110,21 @@ def summary(record: pathlib.Path) -> list[dict]:
             sums[second] += torch.tensor(theirs, dtype=torch.float64)
             games[first] += sum(result)
             games[second] += sum(result)
+            won, tied, lost = result
+            wins[index[first], index[second]] += won + tied / 2
+            wins[index[second], index[first]] += lost + tied / 2
     anchor = next(row["rating"] for row in last["ratings"] if row["player"] == ANCHOR)
     entropy, ticks = STATISTICS.index("entropy"), STATISTICS.index("ship_ticks")
     rows = []
     for row in last["ratings"]:
         policy, temperature = temperature_of(row["player"])
+        difference = {}
+        if row["player"] != ANCHOR:
+            relative, relative_stderr = fit_ratings(wins, index[policy], tournament.PRIOR_GAMES)
+            number = index[row["player"]]
+            difference = dict(
+                versus_one=float(relative[number]), versus_one_stderr=float(relative_stderr[number])
+            )
         rows.append(
             dict(
                 player=row["player"],
@@ -120,6 +136,7 @@ def summary(record: pathlib.Path) -> list[dict]:
                 entropy=float(
                     sums[row["player"]][entropy] / sums[row["player"]][ticks].clamp_min(1)
                 ),
+                **difference,
             )
         )
     return rows
@@ -144,6 +161,16 @@ def report(args) -> None:
                 f"{at[policy, t]['elo']:.0f} +- {at[policy, t]['stderr']:.0f} "
                 f"({at[policy, t]['entropy']:.2f})"
                 for t in temperatures
+            ]
+            print(f"| {policy} | " + " | ".join(cells) + " |")
+        print(f"\n{preset}, each temperature less T = 1 (Elo +- the difference's error)\n")
+        print("| policy | " + " | ".join(f"T = {t:g}" for t in temperatures if t != 1) + " |")
+        print("|---|" + "---|" * (len(temperatures) - 1))
+        for policy in policies:
+            cells = [
+                f"{at[policy, t]['versus_one']:+.0f} +- {at[policy, t]['versus_one_stderr']:.0f}"
+                for t in temperatures
+                if t != 1
             ]
             print(f"| {policy} | " + " | ".join(cells) + " |")
     (out / "sweep.json").write_text(json.dumps(result, indent=1) + "\n")
