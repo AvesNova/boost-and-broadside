@@ -150,6 +150,7 @@ def report(args) -> None:
 
 
 def main() -> None:
+    """The command line: `play` or `report`."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     commands = parser.add_subparsers(dest="command", required=True)
     playing = commands.add_parser("play")
