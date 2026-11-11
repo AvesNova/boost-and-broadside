@@ -582,11 +582,11 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
 | Head | Reads | Gives |
 |---|---|---|
 | action | own ships | logits over the joint actions |
-| value | own ships | categorical logits per local reward level |
+| value | own ships | categorical logits per per-ship value level |
 | enemy action | ship rows | the next joint action's logits |
 | next state | ship rows | the next state code, as a change from the current one (absolute), or each quantity's change from persistence (delta) |
 | error (with `delta_split`) | ship rows | the physics forecast's error for a hidden ship, per quantity |
-| outcome | global token | win, tie, loss, unresolved |
+| outcome (with an outcome level) | global token | win, tie, loss, unresolved |
 | density | global token | ally and enemy rates on a hex grid that scales with the arena |
 | shot outcome | ship rows | how a shot fired now would end |
 | shot trajectory | ship rows, at bullet ages | where a shot fired now would be at each age |
@@ -636,9 +636,13 @@ the baseline:
   ship is, not at its last sighting (`--set yemong.order=temporal_first --set
   yemong.rotary_readout=true --set yemong.forecast_feedback=false`).
 
-The critic gives one value per reward level (`bnb.contracts.REWARD_LEVELS`): a per-ship
-categorical value over symlog-spaced bins for each local level, and the outcome level as
-`P(win) - P(loss)` from the global token (`bnb.models.yemong.critic`).
+The critic gives one value per value level (`YemongConfig.levels`; by default one per
+reward level, `bnb.contracts.REWARD_LEVELS`): a per-ship categorical value over
+symlog-spaced bins for each local level, and the outcome level (`YemongConfig.outcome_level`)
+as `P(win) - P(loss)` from the global token (`bnb.models.yemong.critic`). The single value
+arm (`levels` `("total",)`, `outcome_level` None) has one per-ship categorical value over
+the summed reward levels and no outcome head
+([the learner](learner.md#the-single-value-arm)).
 
 ## step and unroll
 

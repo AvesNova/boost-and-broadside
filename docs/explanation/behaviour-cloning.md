@@ -29,7 +29,8 @@ The critic's returns use BC's own discounts and trace decays (`bnb.learn.bc.DISC
 in place of PPO's 0.9997 and 0.97 for the outcome. With PPO's values the outcome head
 predicts the game's result worse than the base rate in the first 10M steps (its Brier skill
 negative); `--set learner.discount=...` and `--set learner.trace_decay=...` still override
-them.
+them, and the single value arm sets one value each
+([the learner](learner.md#the-single-value-arm)).
 
 ## The labels
 

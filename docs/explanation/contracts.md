@@ -146,7 +146,8 @@ scripted agents, random, and later humans.
 
 `bnb.contracts.Outputs` holds what a learner needs per controlled ship: the log-probability
 of the chosen action, the entropy and the value. A controller that gives them adds the
-critic per reward level (`values`), the outcome probabilities and a `replay` record: what
+critic per value level (`values`), the outcome probabilities (a critic with an outcome
+level) and a `replay` record: what
 the decision read from its carry, so the learner can recompute a stored segment without
 replaying it. Under DPPO's exact trust region the learner's controller also gives its whole
 joint action distribution (`probabilities`, float16), which the trajectory keeps
