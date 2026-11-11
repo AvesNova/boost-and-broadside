@@ -131,7 +131,9 @@ def play(args) -> None:
 
 def _summaries(record: pathlib.Path):
     """From a record: the names, the pair counts (K, K, 3) of row's wins, ties and losses
-    against column, and the statistics (K, len(STATISTICS)) and games (K,) per type."""
+    against column, and the statistics (K, len(STATISTICS)) and games (K,) per type. A
+    record written before the entropy column was added holds the columns before it (a
+    scripted player's entropy is 0 in any case)."""
     lines = [json.loads(line) for line in record.read_text().splitlines()]
     names = [row["player"] for row in lines[0]["ratings"]]
     index = {name: number for number, name in enumerate(names)}
@@ -145,8 +147,8 @@ def _summaries(record: pathlib.Path):
             i, j = index[first], index[second]
             counts[i, j] += torch.tensor([won, tied, lost], dtype=torch.float64)
             counts[j, i] += torch.tensor([lost, tied, won], dtype=torch.float64)
-            statistics[i] += torch.tensor(mine, dtype=torch.float64)
-            statistics[j] += torch.tensor(theirs, dtype=torch.float64)
+            statistics[i, : len(mine)] += torch.tensor(mine, dtype=torch.float64)
+            statistics[j, : len(theirs)] += torch.tensor(theirs, dtype=torch.float64)
     return names, counts, statistics, lines
 
 

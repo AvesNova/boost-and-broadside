@@ -342,10 +342,10 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
   each block to the allowed pair with the fewest games, so a budget of every pair's games
   is a full round robin) and, with `statistics`, keeps each block's first-game statistics
   in the record (`bnb.league.matches.STATISTICS`: kills, deaths, shots, hits, living
-  ship-ticks and their summed speed, per side). A player may fly one ship type with every
-  ship of its team (`Player.ship_type`; `bnb.league.matches.ship_type_players` gives the
-  scripted agent flying each type of a set); the engine then sets each environment's ship
-  types per team (`bnb.game.api.reset`'s `ship_type`). The [ship-type
+  ship-ticks, their summed speed and a network's summed entropy, per side). A player may
+  fly one ship type with every ship of its team (`Player.ship_type`;
+  `bnb.league.matches.ship_type_players` gives the scripted agent flying each type of a
+  set); the engine then sets each environment's ship types per team (`bnb.game.api.reset`'s `ship_type`). The [ship-type
   tournament](game/real-scale-tournament.md) is such a field.
 
 <!-- not-runnable: needs CUDA and a run -->
@@ -404,4 +404,22 @@ what a model trained without it would reach.
 <!-- not-runnable: needs CUDA and a run -->
 ```bash
 uv run --no-sync bnb ratings RUN --with POLICY POLICY:rotary POLICY:forecast
+```
+
+**Players at a temperature.** A network may play at a sampling temperature T, in
+`--with` or in head-to-head: `PATH@T=0.7`, after any ablations (`PATH:rotary@T=0.7`).
+Its joint action is drawn from the policy's logits divided by T, the whole 42-way joint
+at once, so power, stick and shoot are tempered alike; T below 1 sharpens the policy
+toward its most likely action, above 1 flattens it toward uniform. Like an ablated
+player it is the same weights and group; the seat holds each row's temperature in place
+(1 on every other row, which samples exactly as without one), so the captured graph stays
+one graph. A tempered player's identity is its weights' and its temperature
+(`sha256:<hash>@T=0.7`), so reused games keep the temperatures apart. Each block's
+statistics also sum the network's entropy (nats, of the distribution it sampled from)
+over its living ship-ticks, so `entropy / ship_ticks` is the mean entropy it played at.
+The scripted agent's own temperature is the teacher's syntax, `scripted@T=<temperature>`.
+
+<!-- not-runnable: needs CUDA and a run -->
+```bash
+uv run --no-sync bnb ratings RUN --with POLICY@T=0.7 POLICY POLICY@T=1.4
 ```

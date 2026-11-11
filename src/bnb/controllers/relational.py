@@ -24,10 +24,16 @@ class RelationalController:
         """No carry: the relational model is stateless."""
         return None
 
-    def step(self, carry: None, obs: Obs, reset: torch.Tensor) -> tuple[Action, None, Outputs]:
-        """One decision for views (R, ...); see `Controller.step`."""
+    def step(
+        self, carry: None, obs: Obs, reset: torch.Tensor, temperature: torch.Tensor | None = None
+    ) -> tuple[Action, None, Outputs]:
+        """One decision for views (R, ...); see `Controller.step`. temperature: (R,) each
+        view's sampling temperature (`policy.tempered`; None: the policy as it is)."""
         decision = self.model(obs)
-        joint, log_probability, entropy = policy.sample(decision.policy_logits)
+        logits = decision.policy_logits
+        if temperature is not None:
+            logits = policy.tempered(logits, temperature)
+        joint, log_probability, entropy = policy.sample(logits)
         outputs = Outputs(
             log_probability=log_probability,
             entropy=entropy,
