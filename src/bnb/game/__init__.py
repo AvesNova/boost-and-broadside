@@ -12,7 +12,7 @@ computes went in under it (the observation's accelerations, whole-Hz fire rates 
 instant bullet life, the time scale, the real-scale card): ratings keyed on version 1 mix
 those games. Version 2 is the game at 2026-11-10. Version 3 (2026-11-11): the shield's
 recharge pauses while the pilot gives an input other than a quiet one
-(`physics.combat.quiet`).
+(`physics.combat.quiet`), and the arena preset's radius is 1950 m (was 1300 m).
 """
 
 VERSION = 3

@@ -43,14 +43,15 @@ PRESETS = {
 
 # The arena: a 2v2 team deathmatch of the real-scale set on a small map with no fields (and
 # no zones: they are frontline's), a ship killed spawning again on the next tick (one tick
-# of the game's 30 Hz). Not a training preset. Its radius from the two ships' numbers: a
-# cruise near 162 m/s, a gun range near 600 m and a full-stick turn radius of 500-600 m
-# (cruise over turn rate), so the map is about two turn circles across and a turning fight
-# meets the boundary. The scripted agent's 2v2s on it (3 seeds, 40 s each) come within gun
-# range 0-7.5 s after the start and first kill 6-14 s in, with 7-18% of the ships' time
-# beyond the boundary; at 1600 m gun range takes up to 10 s, at 1000 m a fifth of the time
-# is spent outside.
-ARENA_RADIUS = 1300.0  # m
+# of the game's 30 Hz). Not a training preset. Its first radius, 1300 m, came from the two
+# ships' numbers: a cruise near 162 m/s, a gun range near 600 m and a full-stick turn radius
+# of 500-600 m (cruise over turn rate), so the map was about two turn circles across and a
+# turning fight met the boundary. The author widened it by half to 1950 m (2026-11-11),
+# about three turn circles across. The scripted agent's 2v2s on it (3 seeds, 40 s each, the
+# shield's recharge pause in play) come within gun range 0-12 s after the start and first
+# kill 9-23 s in, with 3-10% of the ships' time beyond the boundary; at 1300 m the same
+# matches take 0-7.5 s and 6-14 s with 10-16% outside.
+ARENA_RADIUS = 1950.0  # m
 PRESETS["arena"] = GameConfig(
     2,
     0,

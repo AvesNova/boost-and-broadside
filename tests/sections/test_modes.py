@@ -71,7 +71,7 @@ def test_the_arena_is_a_2v2_dogfight_with_no_fields_or_zones():
     on a small map with no fields and no zones, a killed ship respawning after one tick."""
     game = PRESETS["arena"]
     assert (game.mode, game.ships_per_team, game.num_fields) == ("team_deathmatch", 2, 0)
-    assert game.ship_set == "real-scale" and 0.0 < game.arena_radius < 2600.0
+    assert game.ship_set == "real-scale" and game.arena_radius == 1950.0
     lineup = api.preset_lineup("arena")
     names = api.type_names("real-scale")
     assert [names[kind] for kind in lineup] == ["P-51D", "Spitfire XIV"]
