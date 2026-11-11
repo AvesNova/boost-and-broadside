@@ -78,3 +78,12 @@ See the report section at the end. Records of the champion: `champion/*.json` (c
 - **04:58 Interruption 6**, after about 2 min up.
 - **05:04 Back (interruption 6 measured).** The last heartbeat was 04:56:53 and the restart 05:03:43: about **7 min** down. Fresh start 7.
 - **05:14 Interruption 7**, after about 10 min up.
+- **05:14-06:44 Interruptions 7-11** (`downtime.py` on the heartbeat): 7.1, 21.1, 7.9, 7.5
+  and 46.3 min down, with up windows of 10, 1, <1, <1 and <1 min. Several restarts lived less
+  than a minute.
+- **07:03 BC's first update finished** (fresh start 12, from 06:44:34): rollout 101 s,
+  learn 1,001 s (18.4 min, with the cache warmed by the earlier attempts; the cold compile
+  never finished inside one up-window). Memory probe: 16.95 GB allocated, 17.95 GB reserved
+  of a 23.06 GB budget (the champion: 18.2 / 19.3 GB). KL 2.964 at update 1.
+- Tally at 07:04: 11 interruptions in 6.4 h since launch; up 1.67 h (26%), down 4.72 h; one
+  BC update done.
