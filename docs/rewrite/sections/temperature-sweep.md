@@ -25,8 +25,8 @@ trained. Each player samples its joint action from logits / T
 - **Played:** frontline took 6 batches (24,576 games, worst error 11.4); deathmatch took
   11 batches (45,056 games, worst error 11.4).
 - **Records:** the per-batch records with each block's statistics are in
-  `temperature-sweep/<preset>.batches.jsonl`, the tables in `temperature-sweep/sweep.json`
-  and the log in `temperature-sweep/play.log`.
+  `temperature-sweep/<preset>.batches.jsonl`, and the tables in
+  `temperature-sweep/sweep.json`.
 - **Reproduce:** `python -m bench.temperature_sweep report --out
   docs/rewrite/sections/temperature-sweep`.
 - **Entropy:** the mean, over living ship-decisions, of the joint (42-way) entropy of the
