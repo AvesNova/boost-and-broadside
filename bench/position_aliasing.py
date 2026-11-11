@@ -92,10 +92,37 @@ VARIANTS = (
     ("R24576x", 24576.0, 0.0),
     ("K25500x", 25500.0, 0.0),
 )
+
+
+def _wrapped(shift: float, period: float = 8192.0) -> float:
+    """The near twin of a shift: the same rotary phases, within half the coarsest period."""
+    return shift - period * round(shift / period)
+
+
+# The wrapped set: each far shift F with its near twin W (the far shift less a whole number
+# of 8192 m per axis, so every rotary phase is the far one's while the colour code differs),
+# scored against each other: KL(W || F) near 0 says the far enemy reads as the near twin.
+WRAPPED_VARIANTS = (("B", 0.0, 0.0),) + tuple(
+    variant
+    for name, dx, dy in (
+        ("6559x", 6559.0, 0.0),
+        ("9911x", 9911.0, 0.0),
+        ("10930x", 10930.0, 0.0),
+        ("25500x", 25500.0, 0.0),
+        ("26244x", 26244.0, 0.0),
+        ("8748x", 8748.0, 0.0),
+        ("6559_9911", 6559.0, 9911.0),
+    )
+    for variant in (
+        ("F" + name, dx, dy),
+        ("W" + name, _wrapped(dx), _wrapped(dy), "F" + name),
+    )
+)
+VARIANT_SETS = {"main": VARIANTS, "wrapped": WRAPPED_VARIANTS}
 DISTANCE_BINS = (0.0, 500.0, 1000.0, 2000.0, 1e9)  # m, focal ship to the moved enemy in B
 
 
-def alias_table(rotary_period: float = 8192.0, octaves: int = 8) -> dict:
+def alias_table(variants, rotary_period: float = 8192.0, octaves: int = 8) -> dict:
     """Per variant axis shift, the cycle distance (0 = aliased, 0.5 = opposite) of every
     rotary band and every colour level."""
 
@@ -105,7 +132,7 @@ def alias_table(rotary_period: float = 8192.0, octaves: int = 8) -> dict:
 
     rotary = [rotary_period / 2**k for k in range(octaves)]
     colour = [POSITION_PERIOD / 3**level for level in reversed(range(POSITION_LEVELS))]
-    shifts = sorted({abs(v) for _, dx, dy in VARIANTS for v in (dx, dy) if v})
+    shifts = sorted({abs(v) for _, dx, dy, *_ in variants for v in (dx, dy) if v})
     return {
         "rotary_periods": rotary,
         "colour_periods": colour,
@@ -180,9 +207,18 @@ class Probe:
 
     reads = ("ships", "fields", "globals", "zones")
 
-    def __init__(self, model, shifts: torch.Tensor, ships_per_team: int, num_ships: int,
-                 arena: float | None, stride: int) -> None:
+    def __init__(
+        self,
+        model,
+        shifts: torch.Tensor,
+        ships_per_team: int,
+        num_ships: int,
+        arena: float | None,
+        stride: int,
+        partners: torch.Tensor,
+    ) -> None:
         self.model, self.shifts = model, shifts  # (V, 2)
+        self.partners = partners  # (V,) the variant each is also scored against (B: 0)
         self.own, self.num_ships = ships_per_team, num_ships
         self.arena, self.stride = arena, stride
         self.tick = 0
@@ -263,6 +299,7 @@ class Probe:
         base = log_p[0:1]
         kl_from_base = kl(base.expand_as(log_p), log_p)  # KL(B || v)
         kl_to_base = kl(log_p, base.expand_as(log_p))  # KL(v || B)
+        kl_to_partner = kl(log_p, log_p[self.partners])  # KL(v || its partner)
         p = log_p.exp()
         tv_joint = 0.5 * (p - p[0:1]).abs().sum(-1)
         factors = p.unflatten(-1, (NUM_POWER, NUM_STICK, NUM_SHOOT))
@@ -296,6 +333,7 @@ class Probe:
                 "entropy": (-(p[0] * log_p[0]).sum(-1))[r_index, s_index].cpu().numpy(),
                 "kl_from_base": take(kl_from_base),
                 "kl_to_base": take(kl_to_base),
+                "kl_to_partner": take(kl_to_partner),
                 "tv_joint": take(tv_joint),
                 "tv_factors": take(tv_factors),
                 "value_change": take(value - value[0:1]),
@@ -324,9 +362,14 @@ def play(args) -> None:
     if not args.bf16:
         for m in (model, learner):
             m.config = dataclasses.replace(m.config, bfloat16_matmuls=False)
-    shifts = torch.tensor([[dx, dy] for _, dx, dy in VARIANTS], device=device)
+    variants = VARIANT_SETS[args.variants]
+    names = [v[0] for v in variants]
+    shifts = torch.tensor([[v[1], v[2]] for v in variants], device=device)
+    partners = torch.tensor(
+        [names.index(v[3]) if len(v) > 3 else 0 for v in variants], device=device
+    )
     arena = None if args.arena == "actual" else float(args.arena)
-    seat = Probe(model, shifts, game.ships_per_team, game.num_ships, arena, args.stride)
+    seat = Probe(model, shifts, game.ships_per_team, game.num_ships, arena, args.stride, partners)
     length = 30
     fog = round(args.fog * args.environments) / args.environments
     rollout = Rollout(
@@ -351,8 +394,9 @@ def play(args) -> None:
         "stride": args.stride,
         "bf16": args.bf16,
         "seed": args.seed,
-        "variants": [list(v) for v in VARIANTS],
-        "aliasing": alias_table(model.config.rotary_period, model.config.rotary_octaves),
+        "variant_set": args.variants,
+        "variants": [list(v) for v in variants],
+        "aliasing": alias_table(variants, model.config.rotary_period, model.config.rotary_octaves),
         "layers": "block 0 spatial 0, block 0 spatial 1, block 1 spatial 0, block 1 spatial 1",
     }
     (out / "meta.json").write_text(json.dumps(meta, indent=1))
@@ -372,9 +416,12 @@ def play(args) -> None:
         line = f"{datetime.datetime.now():%H:%M:%S} segment {segment + 1}/{segments}"
         if merged is not None:
             kls = merged["kl_to_base"].mean(0)
-            names = [v[0] for v in VARIANTS]
-            line += f" samples {merged['distance'].shape[0]} sanity {merged['sanity_kl'].mean():.2e} "
-            line += " ".join(f"{n} {k:.3f}" for n, k in zip(names, kls, strict=True) if n[0] in "RCK")
+            line += (
+                f" samples {merged['distance'].shape[0]} sanity {merged['sanity_kl'].mean():.2e} "
+            )
+            line += " ".join(
+                f"{n} {k:.3f}" for n, k in zip(names, kls, strict=True) if n[0] in "RCKFW"
+            )
         line += f"; ETA {eta:%H:%M}"
         print(line, flush=True)
         with open(log, "a") as f:
@@ -406,9 +453,8 @@ def _bootstrap(values: np.ndarray, clusters: np.ndarray, draws: int, rng, stat=n
     return estimate, np.std(np.stack(samples), axis=0)
 
 
-def summarise(data: dict, draws: int = 200, seed: int = 0) -> dict:
+def summarise(data: dict, names: list[str], draws: int = 200, seed: int = 0) -> dict:
     rng = np.random.default_rng(seed)
-    names = [v[0] for v in VARIANTS]
     clusters = data["environment"] * 100000 + data["game"]
     attention = data["attention"]  # (n, V, L, H)
     summary = {"samples": int(data["distance"].shape[0]), "games": int(np.unique(clusters).size)}
@@ -420,6 +466,7 @@ def summarise(data: dict, draws: int = 200, seed: int = 0) -> dict:
         metrics = {
             "kl_to_base": data["kl_to_base"][select],
             "kl_from_base": data["kl_from_base"][select],
+            **({"kl_to_partner": data["kl_to_partner"][select]} if "kl_to_partner" in data else {}),
             "tv_joint": data["tv_joint"][select],
             "tv_power": data["tv_factors"][select][..., 0],
             "tv_stick": data["tv_factors"][select][..., 1],
@@ -463,7 +510,9 @@ def summarise(data: dict, draws: int = 200, seed: int = 0) -> dict:
 
 
 def _markdown(meta: dict, summary: dict) -> str:
-    names = [v[0] for v in VARIANTS]
+    variants = meta["variants"]
+    names = [v[0] for v in variants]
+    partner = {v[0]: (v[3] if len(v) > 3 else "B") for v in variants}
     lines = [
         f"# Position-aliasing probe: {meta['policy']}",
         "",
@@ -477,22 +526,23 @@ def _markdown(meta: dict, summary: dict) -> str:
         lines.extend([f"## {title} (n {rows['_n']}, games {rows['_games']})", ""])
         lines.append(
             "| variant | KL(v‖B) | median | TV joint | TV power | TV stick | TV shoot | "
-            "|Δvalue| | attention on moved | ratio to B |"
+            "|Δvalue| | attention on moved | ratio to B | partner | KL(v‖partner) |"
         )
-        lines.append("|---|---|---|---|---|---|---|---|---|---|")
+        lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
         base = rows["B"]["attention_on_moved"]["mean"]
         for name in names:
             r = rows[name]
 
-            def f(key, digits=3):
-                return f"{r[key]['mean']:.{digits}f} ± {r[key]['stderr']:.{digits}f}"
+            def f(key):
+                return f"{r[key]['mean']:.3g} ± {r[key]['stderr']:.2g}"
 
             att = r["attention_on_moved"]
             lines.append(
-                f"| {name} | {f('kl_to_base')} | {r['kl_to_base']['median']:.4f} | "
+                f"| {name} | {f('kl_to_base')} | {r['kl_to_base']['median']:.3g} | "
                 f"{f('tv_joint')} | {f('tv_power')} | {f('tv_stick')} | {f('tv_shoot')} | "
-                f"{f('abs_value_change')} | {att['mean']:.4f} ± {att['stderr']:.4f} | "
-                f"{att['mean'] / base:.2f} |"
+                f"{f('abs_value_change')} | {att['mean']:.4f} ± {att['stderr']:.2g} | "
+                f"{att['mean'] / base:.2f} | {partner[name]} | "
+                + (f"{f('kl_to_partner')} |" if "kl_to_partner" in r else "- |")
             )
         lines.append("")
 
@@ -509,8 +559,10 @@ def _markdown(meta: dict, summary: dict) -> str:
     lines.extend(["", "## Cycle distance of each shift (0 aliased, 0.5 opposite)", ""])
     alias = meta["aliasing"]
     lines.append(
-        "rotary periods " + ", ".join(f"{p:g}" for p in alias["rotary_periods"])
-        + "; colour periods " + ", ".join(f"{p:g}" for p in alias["colour_periods"])
+        "rotary periods "
+        + ", ".join(f"{p:g}" for p in alias["rotary_periods"])
+        + "; colour periods "
+        + ", ".join(f"{p:g}" for p in alias["colour_periods"])
     )
     lines.append("")
     for shift, row in alias["shifts"].items():
@@ -522,7 +574,7 @@ def report(args) -> None:
     out = pathlib.Path(args.out)
     meta = json.loads((out / "meta.json").read_text())
     data = _load(out)
-    summary = summarise(data, args.draws)
+    summary = summarise(data, [v[0] for v in meta["variants"]], args.draws)
     (out / "report.json").write_text(json.dumps(summary, indent=1))
     (out / "report.md").write_text(_markdown(meta, summary))
     print(_markdown(meta, summary))
@@ -535,13 +587,16 @@ def main() -> None:
     run.add_argument("policy", type=pathlib.Path)
     run.add_argument("--out", required=True)
     run.add_argument("--preset", default="deathmatch")
-    run.add_argument("--arena", default="actual", help="'actual' or a radius in m for every variant")
+    run.add_argument(
+        "--arena", default="actual", help="'actual' or a radius in m for every variant"
+    )
     run.add_argument("--fog", type=float, default=0.0)
     run.add_argument("--environments", type=int, default=64)
     run.add_argument("--seconds", type=float, default=120.0)
     run.add_argument("--stride", type=int, default=15)
     run.add_argument("--bf16", action="store_true")
     run.add_argument("--seed", type=int, default=0)
+    run.add_argument("--variants", default="main", choices=sorted(VARIANT_SETS))
     run.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     run.set_defaults(handler=play)
     summary = commands.add_parser("report")
