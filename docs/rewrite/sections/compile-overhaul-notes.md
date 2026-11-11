@@ -768,3 +768,31 @@ outside them: not measured apart here; the candidates are launch-heavy (the labe
 re-simulation scan, 146 compiled tick calls per batch of views, the staging from pinned
 host memory, the optimizer), and the container's CPU quota slows those. A box finding,
 not an Ampere one; the laptop's A/B is to be repeated when it is free.
+
+### Micro-batch scaling on a 24 GB card (2026-11-11 22:00-23:10 KST, the 3090)
+
+`bench/compile_baseline.py train ... steps=3 heads=0` at 100bae5a, per `micro_batch_rows`,
+steady learn and collect of updates 2-3; RL is `rs-rl`, BC real_scale_mixed's BC config,
+both with 32 minibatches (a minibatch of 2,560 rows, so every size divides it; at 256
+minibatches a minibatch is 320 rows). Load 15-21 and 0.1-2% of the CPU periods throttled
+throughout (`3090-micro-batch-scaling.json`). The first update's loss, KL and entropy
+series agree across sizes within 1.3e-7 relative (the approximate KL, about 1e-8, within
+6e-4): the size changes speed and memory only.
+
+| Rows | Steady learn (s) | Collect (s) | Peak allocated / reserved (GB) | Build + first collect + first learn (s), compiles in it |
+|---|---|---|---|---|
+| RL 160 | 219.9 | 8.9 | 4.98 / 5.58 | 362.7, 123.4 |
+| RL 640 | 81.2 | 8.9 | 5.11 / 5.75 | 399.1, 271.0 |
+| RL 1280 | 76.7 | 8.9 | 8.49 / 9.56 | 248.8, 146.8 |
+| RL 2560 | 63.0 | 8.9 | 16.15 / 17.86 | 559.3, 424.5 |
+| BC 640 | 125.6 | 9.0 | 5.99 / 6.81 | 365.4, 201.7 |
+| BC 2560 | 96.5 | 8.9 | 17.47 / 19.15 | 815.9, 654.4 |
+
+At 160 rows the update is dominated by per-micro-batch cost on this host (the step's own
+kernels are 2048 x 18 ms = 37 s of the 220 s at t4), and it falls 2.7x by 640 rows at
+almost no memory. The compiles vary with what the shared caches already hold for a shape
+(a new size autotunes and compiles cold: 2560's 424 and 654 s once; a later run of a size
+starts warm). On a 24 GB card with nothing else on it: **RL 2560** (63 s; 17.9 GB
+reserved) and **BC 2560** (96.5 s; 19.2 GB), with 1280 as the safe RL choice when the card
+is shared (77 s, 9.6 GB). The run config must give a minibatch at least that many rows
+(`learner.minibatches` <= views x 10 / rows).

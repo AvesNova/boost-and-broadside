@@ -1,0 +1,128 @@
+{
+ "gpu": "RTX 3090 (gpubox, 15.4-CPU quota)",
+ "tree": "100bae5a + compile_baseline's memory and series report",
+ "config": "rs-rl (RL) / real_scale_mixed BC print-config at 100bae5a, minibatches 32 (a minibatch 2560 rows), 3 updates, heads off",
+ "runs": {
+  "rl-160": {
+   "steady_learn": [
+    219.65407011599746,
+    220.11152147094253
+   ],
+   "collect": [
+    8.907466455013491,
+    8.911014174926095
+   ],
+   "first": {
+    "build": 9.590566419996321,
+    "collect_1": 99.63183518406004,
+    "learn_1": 253.45513623405714,
+    "compile_seconds": 123.4242508939933,
+    "capture_seconds": 90.8140350660542
+   },
+   "peak_allocated_gb": 4.9795660972595215,
+   "peak_reserved_gb": 5.58203125,
+   "load_and_throttle": "load 20.47 19.61 18.54 throttled 115/8316 gpu-before 1 MiB {"
+  },
+  "rl-640": {
+   "steady_learn": [
+    79.99271923105698,
+    82.33572774496861
+   ],
+   "collect": [
+    8.905702874995768,
+    8.939670087071136
+   ],
+   "first": {
+    "build": 9.705358057050034,
+    "collect_1": 99.50915527401958,
+    "learn_1": 289.8698179490166,
+    "compile_seconds": 270.9895468750037,
+    "capture_seconds": 90.66706069803331
+   },
+   "peak_allocated_gb": 5.112301826477051,
+   "peak_reserved_gb": 5.751953125,
+   "load_and_throttle": "load 18.58 18.58 18.28 throttled 134/5912 gpu-before 1 MiB {"
+  },
+  "rl-1280": {
+   "steady_learn": [
+    77.49113615497481,
+    75.94078567798715
+   ],
+   "collect": [
+    8.900985409040004,
+    8.96154273103457
+   ],
+   "first": {
+    "build": 9.498038449091837,
+    "collect_1": 104.2820042920066,
+    "learn_1": 135.04973040602636,
+    "compile_seconds": 146.7652972380165,
+    "capture_seconds": 95.45890092907939
+   },
+   "peak_allocated_gb": 8.487468719482422,
+   "peak_reserved_gb": 9.564453125,
+   "load_and_throttle": "load 20.29 17.12 16.85 throttled 8/4319 {'build': 9.5, 'coll"
+  },
+  "rl-2560": {
+   "steady_learn": [
+    62.558134366059676,
+    63.48500696592964
+   ],
+   "collect": [
+    8.917877529980615,
+    8.931347129982896
+   ],
+   "first": {
+    "build": 8.359550587949343,
+    "collect_1": 94.65714671602473,
+    "learn_1": 456.23749072500505,
+    "compile_seconds": 424.50755757279694,
+    "capture_seconds": 85.83206414896995
+   },
+   "peak_allocated_gb": 16.152575492858887,
+   "peak_reserved_gb": 17.86328125,
+   "load_and_throttle": "load 19.15 18.48 17.98 throttled 144/7164 gpu-before 1 MiB {"
+  },
+  "bc-640": {
+   "steady_learn": [
+    127.9942537889583,
+    123.28436897904612
+   ],
+   "collect": [
+    8.962132234009914,
+    8.954001940088347
+   ],
+   "first": {
+    "build": 8.701356678036973,
+    "collect_1": 100.9174607640598,
+    "learn_1": 255.76466395903844,
+    "compile_seconds": 201.68037086399272,
+    "capture_seconds": 91.68971388891805
+   },
+   "peak_allocated_gb": 5.9912028312683105,
+   "peak_reserved_gb": 6.80859375,
+   "load_and_throttle": "load 20.56 19.27 18.03 throttled 78/6477 {'build': 8.7, 'col"
+  },
+  "bc-2560": {
+   "steady_learn": [
+    96.72704336303286,
+    96.17941201198846
+   ],
+   "collect": [
+    8.933754625031725,
+    8.956414144020528
+   ],
+   "first": {
+    "build": 9.541760393069126,
+    "collect_1": 444.0108455250738,
+    "learn_1": 362.31842727796175,
+    "compile_seconds": 654.4029104670044,
+    "capture_seconds": 434.82109390804544
+   },
+   "peak_allocated_gb": 17.471801280975342,
+   "peak_reserved_gb": 19.154296875,
+   "load_and_throttle": "load 15.14 16.88 16.86 throttled 139/10404 {'build': 9.5, 'c"
+  }
+ },
+ "series_check": "first update's loss/KL/entropy series across sizes agree within 1.2e-7 relative (RL 160/640/2560; KL ~1e-8 within 6e-4)"
+}

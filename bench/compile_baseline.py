@@ -9,7 +9,8 @@ Cases:
   ratings   the match engine: `players` (default: two policies of one build and the
             scripted agent) on `preset`, the default ArenaConfig, two batches
   train     a run's TrainConfig (`run`: a run directory with config.json), `steps` updates
-            (default two); heads=0 turns the learner's heads' sums off
+            (default two); heads=0 turns the learner's heads' sums off; reports the peak
+            memory allocated and reserved and the first update's series
   realtime  the play shell's tick on the CPU (compiled, B = 1), its first call
 
 Usage: `python bench/compile_baseline.py CASE [key=value ...] > result.json`
@@ -172,16 +173,21 @@ def train_case(options: dict, phases: dict) -> dict:
         trainer = Trainer(config, device)
     if options.get("heads") == "0":  # the heads' sums off, to time their share
         trainer.ppo.measures_heads = False
+    first_update = {}
     for index in range(1, int(options.get("steps", 2)) + 1):
         with phase(f"collect_{index}", phases):
             store, bootstrap = trainer.collect()
         with phase(f"learn_{index}", phases):
-            metrics.read(trainer.ppo.update(store, bootstrap, trainer.steps_per_update))
+            row = metrics.read(trainer.ppo.update(store, bootstrap, trainer.steps_per_update))
+        if index == 1:
+            first_update = {name: value for name, value in row.items() if "time" not in name}
     return dict(
         run=run,
         objective=config.objective,
         filled=filled,
         peak_vram_gb=torch.cuda.max_memory_allocated(device) / 2**30,
+        peak_reserved_gb=torch.cuda.max_memory_reserved(device) / 2**30,
+        first_update=first_update,  # its series, to compare runs that should agree
     )
 
 
