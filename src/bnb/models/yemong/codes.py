@@ -456,15 +456,46 @@ def grouped_log_softmax(logits: torch.Tensor, runs: Runs) -> torch.Tensor:
     return torch.cat([F.log_softmax(part, -1).flatten(-2) for part in split_runs(logits, runs)], -1)
 
 
+class _GroupedCrossEntropy(torch.autograd.Function):
+    """-sum target log p within each group, as lse(z) sum(target) - sum target z, with the
+    gradient g (softmax(z) sum(target) - target): the same mathematics as through the
+    log-softmax, with no log-softmax as wide as the code kept for the backward (the
+    logits, the target and one log-sum-exp per group)."""
+
+    @staticmethod
+    def forward(ctx, logits: torch.Tensor, target: torch.Tensor, runs: Runs) -> torch.Tensor:
+        log_sums, out = [], []
+        for part, target_part in zip(split_runs(logits, runs), split_runs(target, runs)):
+            log_sum = torch.logsumexp(part, -1)
+            log_sums.append(log_sum)
+            out.append(log_sum * target_part.sum(-1) - (target_part * part).sum(-1))
+        ctx.runs = runs
+        ctx.save_for_backward(logits, target, *log_sums)
+        return torch.cat(out, -1)
+
+    @staticmethod
+    def backward(ctx, grad: torch.Tensor):
+        logits, target, *log_sums = ctx.saved_tensors
+        grads = grad.split([groups for groups, _ in ctx.runs], -1)
+        out = [
+            (
+                part_grad[..., None]
+                * (
+                    torch.exp(part - log_sum[..., None]) * target_part.sum(-1, keepdim=True)
+                    - target_part
+                )
+            ).flatten(-2)
+            for part, target_part, log_sum, part_grad in zip(
+                split_runs(logits, ctx.runs), split_runs(target, ctx.runs), log_sums, grads
+            )
+        ]
+        return torch.cat(out, -1), None, None
+
+
 def grouped_cross_entropy(logits: torch.Tensor, target: torch.Tensor, runs: Runs) -> torch.Tensor:
-    """(..., groups in all): -sum target log p within each group."""
-    return torch.cat(
-        [
-            -(target_part * F.log_softmax(part, -1)).sum(-1)
-            for part, target_part in zip(split_runs(logits, runs), split_runs(target, runs))
-        ],
-        -1,
-    )
+    """(..., groups in all): -sum target log p within each group (`_GroupedCrossEntropy`);
+    the target takes no gradient."""
+    return _GroupedCrossEntropy.apply(logits, target, runs)
 
 
 def remove_baseline_floor(

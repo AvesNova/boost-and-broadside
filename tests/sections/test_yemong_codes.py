@@ -384,3 +384,39 @@ def test_fourier_inputs_replace_the_position_and_heading_runs_only(code):
     torch.testing.assert_close(inputs[:, 287:], encoded[:, 340:], rtol=0, atol=0)
     with pytest.raises(ValueError, match="position_inputs"):
         ShipStateCode(state_code_ranges(RULES, TYPES), position_inputs="polar")
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_grouped_cross_entropy_matches_the_log_softmax_form_and_its_gradient(dtype):
+    """The log-sum-exp form (`codes.grouped_cross_entropy`) against -sum target log
+    softmax per group: the values and the logits' gradient within the dtype's rounding,
+    with sharp, soft and unnormalised targets and logits far from zero."""
+    runs = ((8, 9), (5, 4), (1, 41), (1, 21))
+    width = sum(groups * size for groups, size in runs)
+    logits = (20.0 * torch.randn(3, 7, width, dtype=dtype)).requires_grad_()
+    target = torch.rand(3, 7, width, dtype=dtype)
+    target[0] = (target[0] > 0.9).to(dtype)  # sparse, some groups all zero
+    target[1] = shots.trajectory_code(
+        shots.shot_code_parameters(400.0, 300.0, 1.5, 15.0),
+        torch.randn(7, 5, dtype=dtype) * torch.tensor([900.0, 900.0, 300.0, 300.0, 0.3]) + 1.0,
+    ).to(dtype)
+    weight = torch.randn(3, 7, sum(groups for groups, _ in runs), dtype=dtype)
+
+    def log_softmax_form(z):
+        return torch.cat(
+            [
+                -(t * torch.log_softmax(part, -1)).sum(-1)
+                for part, t in zip(codes.split_runs(z, runs), codes.split_runs(target, runs))
+            ],
+            -1,
+        )
+
+    got = codes.grouped_cross_entropy(logits, target, runs)
+    (got_gradient,) = torch.autograd.grad((got * weight).sum(), logits)
+    want = log_softmax_form(logits)
+    (want_gradient,) = torch.autograd.grad((want * weight).sum(), logits)
+    tolerance = (
+        dict(rtol=1e-5, atol=1e-4) if dtype == torch.float32 else dict(rtol=1e-12, atol=1e-10)
+    )
+    torch.testing.assert_close(got, want, **tolerance)
+    torch.testing.assert_close(got_gradient, want_gradient, **tolerance)

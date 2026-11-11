@@ -72,7 +72,7 @@ from bnb.models.yemong.delta import CONTINUOUS, PART_GROUPS
 from bnb.models.yemong.density import poisson_terms
 from bnb.models.yemong.inputs import ACCELERATIONS, believed
 from bnb.models.yemong.inputs import truth as shifted_truth
-from bnb.models.yemong.shots import HIT_ALLY, HIT_ENEMY
+from bnb.models.yemong.shots import HIT_ALLY, HIT_ENEMY, trajectory_code
 from bnb.models.yemong.state_code import (
     LOG_INDEX_SPAN,
     MEANS,
@@ -249,7 +249,8 @@ def sums(
     out.update(_enemy_action(unrolled, trajectory, label, own, visible))
     out.update(_density(unrolled, label))
     if shot_parts is not None:
-        out.update(_shots(unrolled, label, shot_parts, shot_runs, own, alive))
+        target = trajectory_code(model.shot_code, label["shot_snapshots"])
+        out.update(_shots(unrolled, label, target, shot_parts, shot_runs, own, alive))
     if getattr(unrolled, "rotary_readout", None) is not None:
         out.update(_rotary_readout(unrolled, trajectory, label, populations, model.tick_length))
     if getattr(unrolled, "correction_logits", None) is not None:
@@ -589,13 +590,12 @@ def _density(unrolled, label: dict) -> dict:
     return out
 
 
-def _shots(unrolled, label: dict, shot_parts, runs: codes.Runs, own: int, alive) -> dict:
+def _shots(unrolled, label: dict, target, shot_parts, runs: codes.Runs, own: int, alive) -> dict:
     """Group 11's totals: the trajectory's KL per part over the valid ages of the labelled
     shots, and the outcome's three rates, realised and predicted, over own ships' labelled
-    shots."""
+    shots. target: the trajectory code (L, R, N, ages, width) of the labels' snapshots."""
     mask = label["shot_mask"]  # (L, R, N)
     ages = label["shot_ages"] & mask[..., None]  # (L, R, N, ages)
-    target = label["shot_trajectory"]  # (L, R, N, ages, width)
     entropy = _grouped_entropy(target, runs)  # (..., ages, parts)
     out = {
         "shot/age_count": ages.float().sum(),

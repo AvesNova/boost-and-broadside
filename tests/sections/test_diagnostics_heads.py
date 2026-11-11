@@ -132,12 +132,11 @@ def test_the_shot_rates_and_trajectory_kl_match_a_hand_computed_case():
     label = dict(
         shot_mask=torch.tensor([True, False]).expand(1, 1, 2),
         shot_ages=torch.ones((1, 1, 2, 1), dtype=torch.bool),
-        shot_trajectory=target,
         shot_outcome=outcome,
     )
     alive = torch.ones((1, 1, 2), dtype=torch.bool)
     unrolled = SimpleNamespace(shot_outcome_logits=logits)
-    total = head_statistics._shots(unrolled, label, parts, runs, 1, alive)
+    total = head_statistics._shots(unrolled, label, target, parts, runs, 1, alive)
     out = _series(_padded(total))
     assert out["shot/enemy_hit_rate/realised"] == 1.0
     assert out["shot/enemy_hit_rate/predicted"] == pytest.approx(0.5)
