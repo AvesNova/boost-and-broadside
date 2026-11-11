@@ -72,7 +72,7 @@ def _dotted(node: ast.expr) -> str:
 # a spawned child process's target: its process's entry point (the play shell's work aside)
 CHILD_ENTRY_POINTS = {
     ("game/handling/characteristics.py", "_measure_child"),
-    ("runtime/realtime.py", "_build"),
+    ("runtime/built.py", "_build"),
 }
 
 
