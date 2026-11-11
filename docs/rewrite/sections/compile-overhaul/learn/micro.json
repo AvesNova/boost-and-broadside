@@ -317,6 +317,32 @@
    "kernel_ms": null,
    "by_kind_ms": null,
    "power": "performance"
+  },
+  {
+   "run": "f1",
+   "tree": "0b7e591e with the plain lse form (no autograd.Function; caches), load average ~8",
+   "verdict": "dropped (slower)",
+   "median_ms": 53.29,
+   "quartiles_ms": [
+    53.2,
+    53.4
+   ],
+   "kernel_ms": null,
+   "by_kind_ms": null,
+   "power": "performance"
+  },
+  {
+   "run": "e12",
+   "tree": "0b7e591e (the Function), right after f1, load average ~7",
+   "verdict": "kept (reference for f1)",
+   "median_ms": 51.68,
+   "quartiles_ms": [
+    51.6,
+    51.8
+   ],
+   "kernel_ms": null,
+   "by_kind_ms": null,
+   "power": "performance"
   }
  ]
 }

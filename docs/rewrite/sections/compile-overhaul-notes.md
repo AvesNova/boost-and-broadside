@@ -511,7 +511,7 @@ large part of the pointwise and reduction time.
 The spatial-only ablation and the nearest-neighbour MLP both pass the frontline probe
 (4.24 and 3.93 GB allocated).
 
-### Learner speed (`perf/learn-speed`, 2026-11-11 11:15-13:00 KST)
+### Learner speed (`perf/learn-speed`, 2026-11-11 11:15-13:45 KST)
 
 The steady PPO learn of the real-scale RL config (`real_scale_mixed`, the default
 `TrainConfig.yemong`: `temporal_first`, `coarsest`, `absolute`), power profile
@@ -523,16 +523,21 @@ runs it (the label codes, the loss, the backward) with CUDA events, median of 30
 times whole updates (the heads' sums off, as on 9 updates in 10), old tree against new,
 one process each on the shared caches (`steady-before.json`, `steady-after.json`).
 
-**The real update: steady learn 221.6 -> 191.0 s (-13.8%)**, collect unchanged:
+**The real update: steady learn 219.3 -> 189.5 s (-13.6%)**, collect 17.9 -> 18.0 s. The
+two trees back to back (new, then old; 13:07-13:39), the load average 1.2-2.1 and the GPU at
+its 80 W cap (2.1 GHz) throughout but the first seconds (`steady-pair-load.log`, every 5 s):
 
-| Tree | Learn 2, 3, 4 (s) | Collect 2, 3, 4 (s) |
-|---|---|---|
-| b137fc5b (before) | 219.2, 220.6, 224.9 | 17.9, 17.9, 18.0 |
-| 07a05b14 (after) | 190.6, 191.6, 190.9 | 18.0, 18.0, 18.1 |
+| Tree | Learn 2, 3, 4 (s) | Collect 2, 3, 4 (s) | Warm compiles: `_act`, capture, `_loss` (s) |
+|---|---|---|---|
+| b137fc5b (before) | 219.4, 219.4, 219.2 | 17.9, 17.9, 17.9 | 24.6, 33.1, 3.7 |
+| 0b7e591e (after) | 189.3, 189.5, 189.6 | 18.0, 18.0, 18.0 | 27.9, 37.7, 11.1 |
 
-The new tree's first update was cold for the changed graphs: the rollout's 8-tick capture
-took 151.8 s (its Inductor and Triton caches invalidated by the head kernel's new source;
-50.5 s warm before) and the first learn 266.3 s. Both are one-time cache fills.
+An earlier pair, run 40 minutes apart, agrees (219.2, 220.6, 224.9 against 190.6, 191.6,
+190.9 s). A third run of the new tree overlapped another process's CPU test suite (load
+7-9) and gave 212.9, 209.3, 199.3 s: the laptop's CPU and GPU share one power budget, so a
+learn timing needs a quiet CPU too. The first run of the new tree after the head kernel's
+change was cold for the graphs that hold it (the rollout's capture 151.8 s, the first learn
+266.3 s): a one-time cache fill.
 
 **The micro-batch step: 61.8 -> 51.6 ms (-16.6%)**, kept in this order:
 
@@ -573,11 +578,13 @@ took 151.8 s (its Inductor and Triton caches invalidated by the head kernel's ne
 **Its compile cost.** An `autograd.Function` in the loss graph bypasses AOTAutograd's
 cache ("Unsupported call_function target autograd_function_apply"), so a process
 re-traces and re-partitions the loss on warm caches (Inductor's own graph cache still
-hits): `Learner._loss` 3.5 -> 12.2 s warm in `compile_baseline.py`, the micro-batch's first
-step 8.2 -> 12.4 s. The plain form of the same mathematics (lse(z) sum(t) - t.z by
+hits): `Learner._loss` 3.7 -> 11.1 s warm in `compile_baseline.py` (the pair above), the
+micro-batch's first step 8.2 -> 12.4 s. The rollout's warm compiles moved by 3-5 s in that
+pair (`_act` 24.6 -> 27.9 s, the capture 33.1 -> 37.7 s; 25.3 and 34.1 s in another warm run
+of the new tree), about run-to-run variation. The plain form of the same mathematics (lse(z) sum(t) - t.z by
 autograd, the target made of the coordinates in the graph) caches but is slower: 53.29
 against 51.68 ms a step, measured back to back (about 6 s an update). The `Function` stays:
-it repays its 9 s within the first update.
+it repays its 7 s within the first update.
 
 Loss values: identical on the captured micro-batch at every kept step (the loss and every
 term within 1e-7 relative); the parameters' gradient norms within 1.2e-4 relative of the
