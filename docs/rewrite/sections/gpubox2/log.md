@@ -53,3 +53,20 @@ See the report section at the end. Records of the champion: `champion/*.json` (c
   found no checkpoint, moved the partial run to runs/failed/, and started BC fresh at 02:02:53.
   **Lost:** 29 min of compile (00:40-01:09; no update had finished: the first update's compile
   plus graph capture was still running) and 53.5 min of downtime.
+- **02:05 Interruption 2.** The box went down again about 2.5 min after it came back. The
+  laptop's reach log shows it up at 02:03:25 and 02:04:26, and down at 02:05:26.
+- **02:10 Back again (interruption 2 measured).** The last heartbeat was 02:04:53 and the
+  restart 02:09:58, so about **5 min** down after about 2 min up. Same address, same boot_id.
+  The driver started BC fresh again: still no checkpoint.
+- **02:37 Interruption 3**, after about 27 min up. The laptop's reach log shows up at 02:36:45
+  and down at 02:37:45.
+- **02:39 Back (interruption 3 measured).** The last heartbeat was 02:37:01 and the restart
+  02:39:08: about **2 min** down after 29 min up. That attempt also ended inside the first
+  update (27 min of compile, no update). Fresh start 4 at 02:39.
+  - **The first update compiles on one core** (`bnb` at 100% of one CPU; the host is 86% idle).
+    This EPYC 7402P compiles more slowly than the first box (the champion's cold first update
+    took 1,436 s there; here more than 29 min).
+  - The inductor cache in /tmp survives a stop, so each attempt reuses the kernels the last one
+    compiled. On the first box a warm first update took 250-454 s.
+  - The real risk on this box: interruptions every 2-30 min can keep a cold first update from
+    ever finishing.
