@@ -662,3 +662,52 @@ unit) would get each head the same range without it, at the cost of more machine
 done. The explained variance per level is against the lambda-returns (V + A), so it
 measures the critic's agreement with itself; `critic/explained_variance_monte_carlo/{level}`
 (lambda 1) now measures it against the rewards.
+
+### The GPU resume test (2026-11-11 14:40-15:20 KST)
+
+`test_resume.py::test_the_tolerances_pass_one_ulp_and_fail_another_minibatch_order_on_the_gpu[yemong]`
+failed on 5f902a7f (`rows[2].policy/kl` 0.0130 against 0.0113). Two findings:
+
+- **The worker ran another tree's code.** `_run` replaced `PYTHONPATH` with the test's own
+  directory, so the worker imported `bnb` from the editable install's `.pth`, the main
+  checkout's `src` (15fca8d1 then), whatever tree the test ran in. `test_queue.py` did the
+  same. Each child now gets the source of the `bnb` the test process imported (8e627d27).
+- **Not a regression.** With each tree's own code (scratch worktrees, the worker's three
+  damages against one straight run): Yemong's clean GPU resume is exact, every checked
+  float and the weights equal, on b137fc5b (before today's merges) and on 5f902a7f. The
+  separation case fails on both, as it did on 15fca8d1: one ulp decorrelates Yemong within
+  the first update after the resume as much as another minibatch seed does.
+
+| Tree | one ulp: policy/kl (rows 2, 3) | other seed: policy/kl | value losses, ulp / seed | weights (relative L2), ulp / seed |
+|---|---|---|---|---|
+| b137fc5b | 11.6%, 3.3% | 12.1%, 1.4% | 9.1% / 23% | 2.8e-4 / 4.4e-4 |
+| 5f902a7f | 6.3%, 37.7% | 23.5%, 32.7% | 6.9% / 4.0% | 2.7e-4 / 4.1e-4 |
+
+No tolerance on these series tells the two apart, so the GPU separation test runs on the
+relational model only (852aa813); Yemong's resume is held by the exact restore and the
+continuation test, which pass.
+
+### Shot label validity (2026-11-11, measured, no change)
+
+One real update's label pass (the trainer built from the config, one collection, every
+micro-batch's re-simulation recorded; the policy is the fresh model's), shares of the
+(tick, row) shots (`compile-overhaul/learn/shot-validity-*.json`):
+
+| | real_scale_mixed (18 moves) | frontline (12 moves) |
+|---|---|---|
+| shots | 15.7M | 15.7M |
+| shooter dead | 4.0% | 0.0% |
+| whole flight outside the window | 0 | 0 |
+| an episode end inside the flight | 0.10% | 0.13% |
+| **valid** | **95.9%** | **99.9%** |
+| valid enemy shots hidden at t (not in the mask) | 29.6% | 45.9% |
+| **in the loss mask** | **66.3%** | **53.9%** |
+| ages after a hit (of the valid shots' ages) | 0.9% | 4.6% |
+
+The lookahead reaches the labels: every view of the update had its following ticks
+(`followed` 12,288 of 12,288; `available` = 128 + 18 = 146 ticks, 128 + 12 = 140 on
+frontline; the store keeps `bullet_moves` ticks of capture and observation in the
+lookahead), and no shot failed `whole_flight`. The share the loss reads is set by the mask's
+visibility rule, by design: an enemy's shot is labelled only when the enemy is visible at
+`t` (fog on in every pool), and 62% (mixed) to 92% (frontline) of the enemies' valid shots
+were hidden. The ~65% of the earlier micro-batch is this, not lost validity.

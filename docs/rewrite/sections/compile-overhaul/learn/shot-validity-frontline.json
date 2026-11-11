@@ -1,0 +1,64 @@
+{
+ "totals": {
+  "calls": 768,
+  "window_ticks_sum": 107520,
+  "available_none": 0,
+  "available_views": 12288,
+  "available_sum": 1720320,
+  "available_extended_views": 0,
+  "followed_views": 12288,
+  "views": 12288,
+  "segment_length_sum": 98304,
+  "shots": 15728640,
+  "dead": 0,
+  "own_dead": 0,
+  "own_shots": 7864320,
+  "alive_not_whole_flight": 0,
+  "not_whole_flight_any": 0,
+  "alive_whole_crossed": 21055,
+  "valid": 15707585,
+  "valid_enemy_hidden": 7223342,
+  "enemy_alive_hidden": 7233155,
+  "mask": 8484243,
+  "own_valid": 7853805,
+  "enemy_valid": 7853780,
+  "enemy_mask": 630438,
+  "queries": 188743680,
+  "valid_ages": 188491020,
+  "age_valid": 179749074,
+  "masked_age_valid": 97069557,
+  "masked_ages": 101810916,
+  "hits": 1117065,
+  "done_in_segment": 204
+ },
+ "info": {
+  "lookahead_ticks": {
+   "reward": 128,
+   "values": 128,
+   "outcome": 128,
+   "done": 128,
+   "result": 128,
+   "capture": 12,
+   "obs": 12
+  },
+  "length": 128,
+  "shards": 4,
+  "available_values": [
+   140
+  ],
+  "bullet_moves": 12
+ },
+ "seconds": 269.79582929611206,
+ "shares": {
+  "dead": 0.0,
+  "alive_not_whole_flight": 0.0,
+  "alive_whole_crossed": 0.001338640848795573,
+  "valid": 0.9986613591512045,
+  "valid_enemy_hidden": 0.45924771626790367,
+  "mask": 0.5394136428833007,
+  "age_valid_of_queries": 0.9523448626200358,
+  "masked_age_valid_of_queries": 0.5142930189768473,
+  "after_hit_of_valid_ages": 0.04637858079392854,
+  "followed_views": 1.0
+ }
+}
