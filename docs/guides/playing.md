@@ -94,6 +94,11 @@ collapsed), and a small HUD at the bottom shows the shield, energy, power and st
 - A and D: turn left and right, Shift for the full turn, Ctrl for the lightest;
 - Space: shoot.
 
+The shield recharges only while you fly quiet: coasting, the stick straight or at the
+lightest turn (Ctrl), and not shooting. Any other key pauses both its recharge and the delay
+before it (the delay resumes where it stopped); a hit resets the delay
+([Physics](../explanation/game/physics.md)).
+
 **Release** (in the HUD or the selection card) hands the ship back.
 
 ![Flying a ship](../images/play/interface-flying-1920.png)
@@ -107,7 +112,7 @@ The menu (the top bar's menu button, or Escape) pauses a live match and offers *
 [real-scale variant](../explanation/game/real-scale.md), where a metre is a metre and the 27
 types are late-war fighters from the P-51D to the Me 262 and a few invented designs, on a
 map three times the standard one; or **Arena**: a 2v2 dogfight of a P-51D and a Spitfire
-XIV a team on a 1300 m map with no fields, a ship shot down back in the fight on the next
+XIV a team on a 1950 m map with no fields, a ship shot down back in the fight on the next
 tick, the `arena` preset in [Modes](../explanation/game/modes.md#clocks-and-presets)).
 Choosing a map takes its fleet size, fields and lineup; then the ships a side, the fields
 (0 to 64), the lineup (a dropdown per

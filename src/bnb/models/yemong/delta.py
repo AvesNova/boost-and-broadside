@@ -7,8 +7,9 @@ kinematic state.
 Position and velocity are coded along and across the velocity at t (across to the left);
 below SLOW_SPEED the frame is the heading (counted: `slow`). The heading's change is
 wrapped. The countdowns (shield recharge wait, gun cooldown, in s) and the shield are their
-plain changes: a countdown's steady -dt and a reset's jump, the shield's regeneration and a
-hit's drop. Shield and energy are fractions of the type's maximum. The target is the
+plain changes: a countdown's steady -dt, a pause's 0 (the recharge wait holds while the
+pilot gives an input other than a quiet one) and a reset's jump, the shield's regeneration
+and a hit's drop. Shield and energy are fractions of the type's maximum. The target is the
 truth's change on every row; the advance applies the decoded change to the belief at t,
 rotated from the belief's own velocity frame.
 
@@ -921,10 +922,11 @@ class DeltaCode(nn.Module):
         from its frame into the frame at t; heading + omega dt + omega_dot dt^2 / 2; the
         nose rate persistence; the angle of attack and energy last tick's change (energy
         the rule, persistence, after a shot); shield, recharge wait and cooldown last tick's
-        change without an event, else the rule (the shield's recharge after the wait, the
-        countdowns; D2), the events a reset of the wait or a jump of the cooldown (or the
-        observation's shot flag); ln n + grad . v dt where the gradient is known (a visible
-        row), else last tick's change. Where rates are not valid (a first tick, just
+        change without an event, else the rule of a quiet tick (the shield's recharge after
+        the wait, the countdowns; D2), the events a hit (the shield fell or the wait rose: a
+        paused wait holds) or a jump of the cooldown (or the observation's shot flag);
+        ln n + grad . v dt where the gradient is known (a visible row), else last tick's
+        change. Where rates are not valid (a first tick, just
         spotted, spawned) every rate is 0 and the events take the rule; where `rates.rule`
         (a hidden row) the shield and the countdowns take the rule. Shield, energy and the
         countdowns clamped to their ranges."""
@@ -965,8 +967,8 @@ class DeltaCode(nn.Module):
         max_shield, max_energy = self._maxima(ship_type)
         attack = column(means, "angle_of_attack") + change("angle_of_attack")
         wait, cooldown = column(means, "shield_recharge_wait"), column(means, "gun_cooldown")
-        reset = wait - torch.clamp_min(column(previous, "shield_recharge_wait") - tick, 0.0)
-        shield_event = ~valid | rates.rule | (reset > 0.5 * tick)
+        hit = (change("shield") < 0.0) | (change("shield_recharge_wait") > 0.5 * tick)
+        shield_event = ~valid | rates.rule | hit
         jump = cooldown - torch.clamp_min(column(previous, "gun_cooldown") - tick, 0.0)
         fired = ~valid | rates.fired | (jump > 0.5 * tick)  # energy: persistence after a shot
         shield = column(means, "shield")

@@ -52,8 +52,9 @@ class Tick:
         uniforms: torch.Tensor,
     ) -> tuple[api.State, Obs, Events]:
         rules = api.tuning.with_live(self.static, live)
-        moved, sweep = api.move(rules, types, state, Action.unpack(actions[None]), spread)
-        stepped, events = api.resolve(rules, types, moved, sweep, uniforms)
+        action = Action.unpack(actions[None])
+        moved, sweep = api.move(rules, types, state, action, spread)
+        stepped, events = api.resolve(rules, types, moved, sweep, action, uniforms)
         stepped, obs, _ = api.perceive(rules, stepped)
         return stepped, obs, events
 

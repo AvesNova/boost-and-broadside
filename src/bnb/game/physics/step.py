@@ -30,7 +30,7 @@ from ..rules import Rules
 from ..ship_types import ShipTypes, per_ship, ticks_between_shots
 from ..state import Ships, State, Sweep, apply, benched_of, blank, replace, where
 from .bullets import fire, move_bullets
-from .combat import apply_damage, boundary_damage, hits
+from .combat import apply_damage, boundary_damage, hits, quiet
 from .flight import airframe_of, controls, flight_tick
 from .spawning import TickUniforms, new_map, spawn
 
@@ -227,12 +227,14 @@ def resolve(
     types: ShipTypes,
     state: State,
     sweep: Sweep,
+    action: Action,
     uniforms: torch.Tensor,
     active: torch.Tensor | None = None,
 ) -> tuple[State, Events]:
     """Phases 4-8 on the moved state: hits, damage, the mode phase, clocks, death and
-    respawn, episode end. active (B, 2) int32: each team's active ships, as `reset` was
-    given (default every ship)."""
+    respawn, episode end. action: the tick's action, as `move` was given (the shield's
+    recharge runs only on a quiet one, `combat.quiet`). active (B, 2) int32: each team's
+    active ships, as `reset` was given (default every ship)."""
     ships, bullets, match = state.ships, state.bullets, state.match
     B = ships.x.shape[0]
     arena = environment(rules, B, ships.x.device)
@@ -240,7 +242,7 @@ def resolve(
     alive0, flying = ships.alive, bullets.moves_left > 0  # as at tick start: motion keeps them
 
     # 4-5. Hits between the two motions (none deal damage to a protected ship; the bullet
-    # is still spent), then damage, deaths and shields.
+    # is still spent), then damage, deaths and shields (the recharge on quiet actions).
     hit = hits(rules, types, sweep, ships, bullets, alive0)
     damage, first_shooter = hit.damage, hit.first_shooter
     if any(mode.name == FRONTLINE for mode in rules.modes):  # the only mode that protects
@@ -254,7 +256,7 @@ def resolve(
         damage = torch.where(guarded[:, None, :], 0.0, damage)
         first_shooter = torch.where(guarded, -1, first_shooter)
     boundary = boundary_damage(rules, arena.arena_radius, ships, alive0)
-    applied = apply_damage(rules, types, ships, alive0, damage.sum(1) + boundary)
+    applied = apply_damage(rules, types, ships, alive0, damage.sum(1) + boundary, quiet(action))
     ships, died = applied.ships, applied.died
     killer = torch.where(died, first_shooter, -1).to(torch.int32)
 
@@ -342,4 +344,4 @@ def step(
 ) -> tuple[State, Events]:
     """One whole tick (phases 1-8; perception is separate); active as for `resolve`."""
     moved, sweep = move(rules, types, state, action, spread)
-    return resolve(rules, types, moved, sweep, uniforms, active)
+    return resolve(rules, types, moved, sweep, action, uniforms, active)

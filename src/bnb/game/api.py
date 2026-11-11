@@ -3,7 +3,7 @@
     rules = rules_of(config); types = ship_types(device)
     state = reset(rules, types, uniforms(rules, B), fogged)
     moved, sweep = move(rules, types, state, action, spread(rules, B))
-    state, events = resolve(rules, types, moved, sweep, uniforms(rules, B))
+    state, events = resolve(rules, types, moved, sweep, action, uniforms(rules, B))
     state, obs, privileged = perceive(rules, state)
 
 Every function is pure (tensors in, tensors out) and works eagerly or under

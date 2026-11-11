@@ -78,7 +78,8 @@ def test_the_baseline_equals_the_benchs_extrapolation_on_recorded_play(recorded)
     """Pairs alive at t - 1 and t with no reset between and a valid acceleration at t: the
     model's baseline (float32, rates as a visible row's) against the bench's E (float64)
     with E-arc's position; the nose rate is persistence (O3); ln n the gradient baseline.
-    The bench's damage flag is the wait's reset here (a hit always resets the wait)."""
+    The bench's damage flag is the shield's fall here (a hit on a ship that lives always
+    lowers its shield)."""
     rows, trajectory = recorded
     rules, types = api.rules_of(cases.SHORT_SQUAD), api.ship_types()
     code = delta.DeltaCode(
@@ -111,13 +112,13 @@ def test_the_baseline_equals_the_benchs_extrapolation_on_recorded_play(recorded)
     baseline = code.baseline(means[1:].float(), rates, ship_type)[keep].double().numpy()
     state = _bench_state(now[keep].double().numpy(), types)
     previous = _bench_state(before[keep].double().numpy(), types)
-    reset_wait = state["wait"] - np.maximum(previous["wait"] - 1.0 / 30.0, 0.0) > 0.5 / 30.0
+    shield_fell = state["shield"] < previous["shield"]
     bench, (arc_x, arc_y) = core.extrapolate(
         previous,
         state,
         1.0 / 30.0,
         state_fired := (column("fired")[keep] > 0.5).numpy(),
-        reset_wait,
+        shield_fell,
         np.ones_like(state_fired),
     )
     index = {name: i for i, name in enumerate(MEANS)}

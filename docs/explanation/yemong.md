@@ -143,7 +143,8 @@ state code above, are the same either way.
   across the velocity at `t` (across to the left); below 1 m/s the frame is the heading
   (counted, `next_state/slow_frame_share`). The heading's change is wrapped. The shield
   recharge wait and the gun cooldown (in seconds) and the shield are their plain changes:
-  a countdown's steady `-dt` and a reset's jump, the shield's regeneration and a hit's
+  a countdown's steady `-dt`, a paused recharge wait's 0 (it holds while the pilot gives an
+  input other than a quiet one) and a reset's jump, the shield's regeneration and a hit's
   drop, so the model learns the linear regeneration and the countdowns. Shield and energy
   are fractions of the type's maximum.
 
@@ -234,9 +235,9 @@ baselines bench's E with the choices of `docs/rewrite/sections/round2-log.md`, O
   damped nose);
 - angle of attack and energy: last tick's change (energy: persistence after a shot);
 - shield, recharge wait and gun cooldown: last tick's change without an event, else the
-  rule (the shield's recharge once the wait is over, the countdowns; D2). The events are a
-  reset of the wait (a hit always resets it) and a jump of the cooldown or the
-  observation's shot flag;
+  rule of a quiet tick (the shield's recharge once the wait is over, the countdowns; D2).
+  The events are a hit (the shield fell or the wait rose; a paused wait holds, so a pause
+  is last tick's change of 0) and a jump of the cooldown or the observation's shot flag;
 - ln n: `ln n + grad . v dt` where the gradient is known (a visible row's observation),
   else last tick's change.
 

@@ -97,7 +97,8 @@ SHOT_PARTS = ("displacement", "direction", "speed", "refractive_index")
 SHOT_RATES = (("enemy_hit", HIT_ENEMY - 1), ("ally_hit", HIT_ALLY - 1), ("clear_miss", -1))
 TEAMS = ("ally", "enemy")
 # The next state's situations at t (`_next_state_situations`): every living pair, in a field
-# or its band (at t or t + 1), hit (any damage: the recharge wait reset), boosting, coasting.
+# or its band (at t or t + 1), hit (any damage: the shield fell, or the recharge wait rose),
+# boosting, coasting.
 NEXT_STATE_SITUATIONS = ("all", "field", "hit", "boost", "coast")
 # The decoded one-tick forecast's error against persistence.
 ERROR_PREDICTORS = ("head", "persistence")
@@ -426,9 +427,9 @@ def _next_state_situations(
     )
     for column in ("log_index_gradient_x", "log_index_gradient_y"):
         in_field = in_field | (rows[..., SHIP[column]] != 0) | (following[..., SHIP[column]] != 0)
-    wait = MEANS.index("shield_recharge_wait")
-    tick = model.tick_length
-    hit = after[..., wait] > torch.clamp_min(now[..., wait] - tick, 0.0) + 0.5 * tick
+    wait, shield = MEANS.index("shield_recharge_wait"), MEANS.index("shield")
+    tick = model.tick_length  # a paused wait holds, so only a hit raises it
+    hit = (after[..., shield] < now[..., shield]) | (after[..., wait] > now[..., wait] + 0.5 * tick)
     power = trajectory.action.power
     situations = dict(
         all=living,

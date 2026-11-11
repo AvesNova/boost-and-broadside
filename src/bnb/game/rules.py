@@ -21,6 +21,11 @@ from .modes.rules import CLOCKS, ModeRules, mode_rules_of
 
 STICK_LEVELS = (0.0, -0.4, 0.4, -0.75, 0.75, -1.0, 1.0)  # by stick index; + turns left
 POWER_MODES = (0.0, -1.0, 1.0)  # by power index: coast, boost, reverse
+COAST = POWER_MODES.index(0.0)  # the power index that neither boosts nor reverses
+SLIGHT_TURN = min(abs(level) for level in STICK_LEVELS if level != 0.0)  # the lightest level
+# The quiet inputs, which leave the shield recharging (game spec 7.2): coasting, the stick
+# straight or at a slight turn to either side, and not shooting. Any other input pauses it.
+QUIET_STICKS = tuple(index for index, level in enumerate(STICK_LEVELS) if abs(level) <= SLIGHT_TURN)
 FIELD_LEVELS = (-2, -1, 1, 2)
 LN_SQRT2 = 0.5 * math.log(2.0)
 MAP_SCALE_RADIUS = 2600.0  # m: the arena radius of map scale 1 (map_scale = R_a / this)
@@ -81,8 +86,8 @@ class Rules:
     bullet_drag: float = 8e-4  # 1/m [k_b]
     bullet_spread: float = 12.0  # m/s per axis, proper [sigma_b]
     head_on_fraction: float = 0.3  # [f_0]
-    shield_recharge_delay: float = 6.0  # s
-    shield_recharge_rate: float = 12.0  # per s
+    shield_recharge_delay: float = 6.0  # s without a hit, counted on quiet ticks (QUIET_STICKS)
+    shield_recharge_rate: float = 12.0  # per s, on quiet ticks
     boundary_damage_base: float = 5.0  # per s
     boundary_damage_per_metre: float = 0.05  # per s per m of depth
     spawn_speed: float = 30.0  # m/s, proper

@@ -10,8 +10,10 @@ the version is raised.
 Version 1 named the game from 2026-11-03 to 2026-11-10, though 36 changes to what it
 computes went in under it (the observation's accelerations, whole-Hz fire rates and
 instant bullet life, the time scale, the real-scale card): ratings keyed on version 1 mix
-those games. Version 2 is the game at 2026-11-10.
+those games. Version 2 is the game at 2026-11-10. Version 3 (2026-11-11): the shield's
+recharge pauses while the pilot gives an input other than a quiet one
+(`physics.combat.quiet`), and the arena preset's radius is 1950 m (was 1300 m).
 """
 
-VERSION = 2
-FINGERPRINT = "f7a190912e80a08a"
+VERSION = 3
+FINGERPRINT = "6ff805b3cfb25174"
