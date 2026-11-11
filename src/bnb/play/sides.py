@@ -89,6 +89,22 @@ class Inspection:
     unrolled: object = None
 
 
+class Waiting:
+    """A side whose controller is being made aside (`bnb.play.app.Session.start`): its
+    ships coast straight and hold their fire. It needs nothing measured, so a match starts
+    at once."""
+
+    label = "waiting"
+    overlays = ()
+
+    def __init__(self, ships_per_team: int) -> None:
+        self.actions = torch.zeros((ships_per_team, 3), dtype=torch.int32)
+
+    def act(self, view: Obs, reset: torch.Tensor) -> torch.Tensor:
+        """The team's (S, 3) actions: coast, straight, no shot."""
+        return self.actions
+
+
 class Scripted:
     """The scripted chaser: each ship turns toward and shoots at its nearest visible enemy,
     at distances in the card's lengths."""

@@ -49,6 +49,7 @@ import multiprocessing
 import pathlib
 import queue
 import re
+import threading
 import time
 from collections.abc import Callable
 
@@ -60,6 +61,7 @@ from bnb.game.handling.characteristics import characteristics
 from bnb.runtime.flights import compiled_flight_tick
 
 SETTLE = 0.6  # s the handles must be still before the exact solve starts
+STOP_WAIT = 0.5  # s a stopped worker has to finish before it is ended
 PRESETS = pathlib.Path(platformdirs.user_config_dir("boost-and-broadside")) / "tunings"
 NAME = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 TICK_HANDLES = ("shield_recharge_delay",)  # handles held to whole ticks
@@ -395,11 +397,23 @@ class _Worker:
             return found
 
     def stop(self) -> None:
-        """End the process (what it is computing is dropped)."""
+        """End the process (what it is computing is dropped) without waiting for it: a
+        thread asks it to stop, then ends it if it is still busy after STOP_WAIT seconds.
+        Jobs it never read are dropped too: the queues' feeder threads are not joined, so a
+        full pipe to a process that is gone can never hold up this process (at a new match
+        or at exit)."""
+        self._inbox.cancel_join_thread()
+        self._outbox.cancel_join_thread()
         self._inbox.put(None)
-        self._process.join(timeout=0.5)
-        if self._process.is_alive():
-            self._process.terminate()
+        process = self._process
+
+        def end() -> None:
+            process.join(timeout=STOP_WAIT)
+            if process.is_alive():
+                process.terminate()
+                process.join()
+
+        threading.Thread(target=end, name="tuning-stop", daemon=True).start()
 
 
 def file_handles(files: list, count: int) -> tuple[api.Handles, list[bool]]:
