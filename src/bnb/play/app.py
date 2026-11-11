@@ -352,12 +352,15 @@ class Session:
     # Live tuning ------------------------------------------------------------------------
 
     def current_tuning(self) -> Tuning:
-        """What the current match is tuned to (a new match starts from it)."""
-        loop = self.loop
-        config = loop.setup.config
-        return Tuning.of(
-            loop.rules, loop.types, base_rules(config, loop.setup.lineup), config.ship_set
-        )
+        """What the current match is tuned to (a new match starts from it): the tuner's
+        design and time scale, or the match's own tuning while nothing was tuned live."""
+        return self.loop.setup.tuning if self.tuner is None else self.tuner.tuning
+
+    @property
+    def time_factor(self) -> float:
+        """How many times faster than its design (x1) the match plays (the time scale);
+        the interface shows every ship value at x1."""
+        return self.loop.setup.tuning.time_factor if self.tuner is None else self.tuner.time_factor
 
     def _ensure_tuner(self) -> None:
         loop = self.loop
@@ -417,8 +420,20 @@ class Session:
         setup = self.loop.setup
         lineup = setup.lineup or self.loop.rules.team_types
         lineup = tuple(moved.get(kind) or 0 for kind in lineup)
-        tuning = Tuning(rules=self.current_tuning().rules)  # the card is the files' now
+        tuning = dataclasses.replace(self.current_tuning(), card={})  # the files' card now
         self.start(dataclasses.replace(setup, lineup=lineup, tuning=tuning))
+
+    def add_ship(self, ship) -> None:
+        """Write a new ship type's file into the match's ship set at once, last in its order
+        (`api.ships.append`), and start a new match with it on the card. The other types
+        play on as tuned: their unsaved changes stay in the tuning (**Save ships** writes
+        them)."""
+        api.ships.append(ship, self.loop.setup.config.ship_set)
+        api.reload_ships()
+        tuning = self.current_tuning()
+        card = {field: (*values, ship.card[field]) for field, values in tuning.card.items()}
+        tuning = dataclasses.replace(tuning, card=card)
+        self.start(dataclasses.replace(self.loop.setup, tuning=tuning))
 
     def _on_retune(self, realtime) -> None:
         """A live change: the match is tuned from here, so its recording is dropped (a

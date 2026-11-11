@@ -2,7 +2,7 @@
 units of every rule setting and card field (`bnb.game.handling.similarity`), energies with
 gravity; the values held to whole ticks or Hz snap."""
 
-import time
+import dataclasses
 
 import pytest
 import torch
@@ -11,7 +11,7 @@ from bnb.contracts import GameConfig
 from bnb.game import api
 from bnb.game.handling.similarity import CARD_UNITS, HANDLE_UNITS, RULE_UNITS, scale_handles
 from bnb.play.loop import TIME_SCALES, MatchLoop, MatchSetup
-from bnb.play.tuning import Tuner, base_rules, time_scaled_card, time_scaled_settings
+from bnb.play.tuning import Tuner, Tuning, base_rules, time_scaled_card, time_scaled_settings
 
 RULES = api.rules_of(api.PRESETS["frontline"])
 
@@ -83,21 +83,12 @@ def test_playback_runs_from_a_quarter_to_eight_times():
     assert TIME_SCALES[0] == 0.25 and TIME_SCALES[1] == 0.5 and TIME_SCALES[-1] == 8.0
 
 
-@pytest.mark.slow
-def test_make_this_speed_normal_scales_the_live_game_and_resets_playback():
+def test_the_time_scale_scales_the_live_game_and_keeps_the_design():
+    """Faster by 4: the match plays gravity x 16 and stores x 16; the tuner's handles and
+    rules stay the design's (nothing re-measured) and the tuning names the factor."""
     setup = MatchSetup(GameConfig(2, 4, 900.0, mode="frontline"))
     loop = MatchLoop(setup, compiled=False)
     tuner = Tuner(loop, base_rules(setup.config, setup.lineup))
-
-    def frames(done, seconds):
-        end = time.monotonic() + seconds
-        while time.monotonic() < end:
-            tuner.update()
-            if done():
-                return True
-            time.sleep(0.01)
-        return False
-
     try:
         assert tuner.ready()
         cruise = tuner.targets.cruise_speed.clone()
@@ -106,9 +97,80 @@ def test_make_this_speed_normal_scales_the_live_game_and_resets_playback():
         assert loop.rules.flight.gravity == 16.0 * gravity
         assert torch.allclose(loop.types.max_energy, 16.0 * store)
         assert "fire rate" in done  # 15 Hz x 4 is past the tick rate
-        assert not tuner.ready()  # re-measured: both types play
-        assert frames(lambda: tuner.ready(), 300.0), tuner.message
-        assert torch.allclose(tuner.targets.cruise_speed, 4.0 * cruise, rtol=0.03)
-        assert tuner.tuning.rules["flight.gravity"] == 16.0 * gravity
+        assert tuner.ready() and torch.equal(tuner.targets.cruise_speed, cruise)
+        assert tuner.tuning.rules.get("flight.gravity", gravity) == gravity
+        assert tuner.tuning.time_factor == 4.0
+        tuner.time_scale(0.25)  # back to x1: the game's own numbers
+        assert loop.rules.flight.gravity == gravity and not tuner.tuning
+    finally:
+        tuner.close()
+
+
+def test_a_tuning_plays_its_design_k_times_faster():
+    """A tuning holds the design (x1) and the factor; the match plays the scaled rules and
+    card, past the sliders' ends where the scaling carries them."""
+    setup = MatchSetup(
+        GameConfig(2, 4, 900.0, mode="frontline"),
+        tuning=Tuning(rules={"flight.gravity": 12.0}, time_factor=3.0),
+    )
+    loop = MatchLoop(setup, compiled=False)
+    assert loop.rules.flight.gravity == pytest.approx(9.0 * 12.0)
+    card = api.ship_types()
+    assert torch.allclose(loop.types.engine_power, 27.0 * card.engine_power)
+    assert torch.allclose(loop.types.muzzle_speed, 3.0 * card.muzzle_speed)
+    settings, types = Tuning().played(base_rules(setup.config, None))
+    assert settings == {} and types is None  # x1 and untuned: the game's own
+
+
+def test_under_a_time_scale_the_tuner_keeps_the_design_and_saves_the_same_files(
+    tmp_path, monkeypatch
+):
+    """The tuner works on the design at x1: a time scale changes what the match plays, not
+    the values the panel shows or a save writes (the ship files and the tuning are the same
+    as at x1, here written and compared byte for byte), and an edit under x k sets the x1
+    value. A new match from the tuning plays it at the same factor, its tuner showing the
+    same values."""
+    from bnb.game import ships
+    from bnb.play.tuning_panel import TuningPanel
+
+    setup = MatchSetup(GameConfig(2, 4, 900.0, mode="frontline"))
+    loop = MatchLoop(setup, compiled=False)
+    tuner = Tuner(loop, base_rules(setup.config, setup.lineup))
+    panel = TuningPanel()
+    try:
+        assert tuner.ready()
+
+        def written(directory):
+            """The ship files Save writes now, as text by name (into `directory`)."""
+            files = panel._current(tuner)
+            monkeypatch.setattr(ships, "SHIPS", directory)
+            ships.write(files)
+            monkeypatch.undo()
+            return {path.name: path.read_text() for path in directory.iterdir()}
+
+        at_one, values, tuning = written(tmp_path / "x1"), dict(tuner.values), tuner.tuning
+        gravity, store = loop.rules.flight.gravity, loop.types.max_energy.clone()
+        done = tuner.time_scale(2.0)
+        assert "x2" in done and "fire rate" in done  # 15 Hz x 2 is past the tick rate
+        assert loop.rules.flight.gravity == 4.0 * gravity
+        assert torch.allclose(loop.types.max_energy, 4.0 * store)
+        assert tuner.ready() and tuner.values == values  # nothing to re-measure
+        assert written(tmp_path / "x2") == at_one
+        assert tuner.tuning == dataclasses.replace(tuning, time_factor=2.0)
+
+        tuner.set_setting("flight.gravity", 2.0 * gravity)  # the x1 value
+        assert tuner.values["flight.gravity"] == 2.0 * gravity
+        assert loop.rules.flight.gravity == pytest.approx(8.0 * gravity)
+        assert tuner.tuning.rules["flight.gravity"] == 2.0 * gravity
+
+        again = MatchLoop(dataclasses.replace(setup, tuning=tuner.tuning), compiled=False)
+        assert again.rules.flight.gravity == pytest.approx(8.0 * gravity)
+        assert torch.equal(again.types.fire_rate, loop.types.fire_rate)
+        follower = Tuner(again, base_rules(setup.config, setup.lineup))
+        try:
+            assert follower.time_factor == 2.0 and follower.values == tuner.values
+            assert follower.tuning == tuner.tuning
+        finally:
+            follower.close()
     finally:
         tuner.close()

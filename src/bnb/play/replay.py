@@ -27,6 +27,7 @@ from bnb.runs.serialise import from_json, named_tensors, to_json
 from bnb.runtime.realtime import Keyframe, Realtime
 
 from .loop import MatchEvent, MatchLoop, MatchSetup
+from .tuning import base_rules
 
 FORMAT = 1
 KEYFRAME_TICKS = 90  # 3 s at 30 Hz
@@ -209,10 +210,11 @@ class Replay:
 
 def tuned(setup: MatchSetup) -> dict:
     """The rule settings and the card a recorded match played (its ship set's default card
-    unless it was tuned), as `Realtime` takes them."""
-    tuning = setup.tuning
-    types = tuning.types(setup.config.ship_set) if tuning.card else None
-    return dict(settings=tuning.rules, types=types)
+    unless it was tuned), as `Realtime` takes them (`Tuning.played`)."""
+    settings, types = setup.tuning.played(
+        base_rules(setup.config, setup.lineup), setup.config.ship_set
+    )
+    return dict(settings=settings, types=types)
 
 
 class ReplayLoop(MatchLoop):

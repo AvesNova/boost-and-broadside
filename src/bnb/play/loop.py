@@ -26,7 +26,7 @@ from bnb.runtime.realtime import Realtime
 
 from .interpolate import interpolate
 from .snapshot import Snapshot, snapshot
-from .tuning import Tuning
+from .tuning import Tuning, base_rules
 
 TIME_SCALES = (0.25, 0.5, 1.0, 2.0, 4.0, 8.0)  # playback speeds, times real time
 TIME_SCALE_LABELS = {0.25: "×¼", 0.5: "×½"}  # the others are written "×<n>"
@@ -49,7 +49,7 @@ class MatchSetup:
     """Everything a match starts from: the game, the lineup (each slot's ship type, the
     same for both teams; None for the game's default), fog, the seed of the match's
     generator, each side's controller, and the tuning it starts from (`Tuning`: the rules'
-    settings and the ship card where they differ from the game's)."""
+    settings and the ship card where they differ from the game's, and the time scale)."""
 
     config: GameConfig
     lineup: tuple[int, ...] | None = None
@@ -134,6 +134,9 @@ class MatchLoop:
 
         self.setup = setup
         if realtime is None:
+            settings, types = setup.tuning.played(
+                base_rules(setup.config, setup.lineup), setup.config.ship_set
+            )
             realtime = Realtime(
                 setup.config,
                 compiled=compiled,
@@ -141,8 +144,8 @@ class MatchLoop:
                 generator=torch.Generator().manual_seed(setup.seed),
                 lineup=setup.lineup,
                 background=background,
-                settings=setup.tuning.rules,
-                types=setup.tuning.types(setup.config.ship_set) if setup.tuning.card else None,
+                settings=settings,
+                types=types,
             )
         self.realtime = realtime
         self.rules, self.types = realtime.rules, realtime.types

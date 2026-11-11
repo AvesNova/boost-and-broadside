@@ -1,12 +1,13 @@
 """The selection card (right): what the player selected, on the battlefield, the minimap
 or a card.
 
-- A ship: its team, type and controller, its live state (shield, energy, speed, angle of
-  attack, power and stick, the last shot), kills and deaths; "Take control" (or
-  "Release" on the flown ship) and "Follow". With the prediction overlays' readouts on
-  (`bnb.play.overlays`), what the predicting side's agent thinks of it: an enemy's action
-  distribution (power, stick, P(shoot)) beside the action it took; an own ship's value per
-  reward level, the outcome head, and its next shot's P(enemy hit).
+- A ship: its team, type and controller, its live state (shield, energy, speed at x1
+  under a time scale, angle of attack, power and stick, the last shot), kills and
+  deaths; "Take control" (or "Release" on the flown ship) and "Follow". With the
+  prediction overlays' readouts on (`bnb.play.overlays`), what the predicting side's
+  agent thinks of it: an enemy's action distribution (power, stick, P(shoot)) beside the
+  action it took; an own ship's value per reward level, the outcome head, and its next
+  shot's P(enemy hit).
 - A field: its refractive index, radius and core.
 - A zone: its role and owner, its progress, and the ships contesting it.
 
@@ -126,7 +127,7 @@ def _ship(interface: Interface, index: int) -> None:
                 current.x[index] - previous.x[index], current.y[index] - previous.y[index]
             )
             speed = 0.0 if current.spawned[index] else moved / loop.tick_length
-            _row("speed", f"{speed:.0f} m/s", scale)
+            _row("speed", f"{speed / session.time_factor:.0f} m/s", scale)  # at x1
             _row(
                 "angle of attack",
                 f"{math.degrees(float(ships.angle_of_attack[index])):+.1f}°",

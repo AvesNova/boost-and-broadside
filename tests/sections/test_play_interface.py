@@ -383,9 +383,10 @@ def test_typed_letters_reach_the_text_boxes_and_call_no_shortcut(context, tmp_pa
 
 
 def test_the_tuning_panel_adds_and_removes_ships(context, tmp_path, monkeypatch):
-    """Adding a copy of a ship type writes its file and starts a match with three types;
-    **Remove** asks first (Cancel keeps the type), and confirming goes back to two (the
-    ship files here are a copy)."""
+    """Adding a copy of a ship type writes its file at once (under a time scale, the
+    design's x1 values: the original's own) and starts a match with three types at the
+    same time scale; **Remove** asks first (Cancel keeps the type), and confirming goes
+    back to two (the ship files here are a copy)."""
     import shutil
     import time
 
@@ -403,11 +404,19 @@ def test_the_tuning_panel_adds_and_removes_ships(context, tmp_path, monkeypatch)
             player.frames()
             time.sleep(0.02)
         panel = session.tuning_panel
-        panel.new_ship = "Scout"
-        panel._add(session, session.tuner)
-        assert api.type_names() == ("Fighter", "Heavy", "Scout")
-        assert (copy / "scout.toml").is_file()
+        session.time_scale(2.0)
+        player.frames(2)
+        player.click("tuning/new ship")
+        player.type("Scout 1001")
+        player.click("tuning/add")
+        assert api.type_names() == ("Fighter", "Heavy", "Scout 1001")
+        scout, fighter = ships.load()[2], ships.load()[0]
+        assert scout.key == "scout-1001" and (copy / "scout-1001.toml").is_file()
+        assert scout.card == pytest.approx(fighter.card, rel=1e-6)  # the card is float32
+        assert scout.handles == fighter.handles
+        assert panel.message.startswith("added Scout 1001, a copy of Fighter: saved")
         assert session.loop.types.max_energy.shape == (3,)
+        assert session.time_factor == 2.0
         player.frames(3)
         panel.ship = 2
         player.frames(2)
@@ -415,10 +424,10 @@ def test_the_tuning_panel_adds_and_removes_ships(context, tmp_path, monkeypatch)
         assert session.interface.controls.shown("tuning/remove/confirm")
         player.click("tuning/remove/cancel")
         assert not session.interface.controls.shown("tuning/remove/confirm")
-        assert api.type_names() == ("Fighter", "Heavy", "Scout")
+        assert api.type_names() == ("Fighter", "Heavy", "Scout 1001")
         player.click("tuning/remove")
         player.click("tuning/remove/confirm")
-        assert api.type_names() == ("Fighter", "Heavy") and not (copy / "scout.toml").exists()
+        assert api.type_names() == ("Fighter", "Heavy") and not (copy / "scout-1001.toml").exists()
         assert session.loop.types.max_energy.shape == (2,)
         player.frames(3)
         session.close()

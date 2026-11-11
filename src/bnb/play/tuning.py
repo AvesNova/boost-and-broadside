@@ -37,9 +37,16 @@ slower). Each worker flies the compiled flight tick, compiled on its first fligh
 the on-disk cache after the first time on a machine, in seconds); the slow worker compiles
 a solve's flights when the tuner starts, ahead of the first solve.
 
+The **time scale** (`Tuner.time_scale`) makes the game k times faster at fixed map lengths.
+The tuner keeps working on the design, at x1: its rule settings (`values`, `rules`), its
+card (`card`), the handles' targets and what they fly (measured at x1) are the design's,
+and the match plays the design k times faster (`Tuner.played`: speeds x k, rates x k,
+energies x k^2, powers x k^3, the values held to whole ticks or Hz snapped). So the panel
+shows and edits x1 values whatever k is, and a save writes the same files as at x1.
+
 `Tuning` is what a match was tuned to (the rules' settings and the card, where they differ
-from the game's), as `MatchSetup.tuning`, replays and presets hold it; `Presets` saves and
-loads named tunings.
+from the game's, and the time scale's factor), as `MatchSetup.tuning`, replays and presets
+hold it; `Presets` saves and loads named tunings.
 """
 
 import dataclasses
@@ -76,18 +83,37 @@ class Tuning:
     """A match's tuned numbers, where they differ from the game's: rule settings by
     `api.tuning` key, and ship-card fields by name, one value per ship type (the form
     `TrainConfig.ship_card` and `bnb ship-card --card` read), relative to the default card of
-    the match's ship set."""
+    the match's ship set; both the design's, at x1. `time_factor`: the match plays the
+    design that many times faster (`played`)."""
 
     rules: dict[str, float] = dataclasses.field(default_factory=dict)
     card: dict[str, tuple[float, ...]] = dataclasses.field(default_factory=dict)
+    time_factor: float = 1.0
 
     def __bool__(self) -> bool:
-        return bool(self.rules or self.card)
+        return bool(self.rules or self.card or self.time_factor != 1.0)
 
     def types(self, ship_set: str = api.STANDARD_SHIP_SET) -> api.ShipTypes:
         """The tuned ship card (the set's default card's other fields)."""
         values = {name: values for name, values in self.card.items()}
         return api.ship_types(ship_set=ship_set, **values)
+
+    def played(
+        self, base: api.Rules, ship_set: str = api.STANDARD_SHIP_SET
+    ) -> tuple[dict[str, float], api.ShipTypes | None]:
+        """The rule settings and the card a match of this tuning plays, as `Realtime` takes
+        them (None: the set's default card): the design itself at x1; otherwise every
+        setting and the card `time_factor` times faster (`time_scaled_settings`,
+        `time_scaled_card`)."""
+        types = self.types(ship_set) if self.card else None
+        if self.time_factor == 1.0:
+            return self.rules, types
+        rules = api.tuning.tuned(base, self.rules, bounded=False)
+        card = api.ship_types(ship_set=ship_set) if types is None else types
+        return (
+            time_scaled_settings(settings_of(rules), self.time_factor, rules.tick_length),
+            time_scaled_card(card, rules, self.time_factor),
+        )
 
     @classmethod
     def of(
@@ -96,10 +122,20 @@ class Tuning:
         types: api.ShipTypes,
         base: api.Rules,
         ship_set: str = api.STANDARD_SHIP_SET,
+        time_factor: float = 1.0,
     ) -> Tuning:
         """The tuning that makes `base` into `rules` and the set's default card into
-        `types`."""
-        return cls(rules=api.tuning.changed(rules, base), card=changed_card(types, ship_set))
+        `types` (the design), played `time_factor` times faster."""
+        return cls(
+            rules=api.tuning.changed(rules, base),
+            card=changed_card(types, ship_set),
+            time_factor=time_factor,
+        )
+
+
+def settings_of(rules: api.Rules) -> dict[str, float]:
+    """Every rule setting's value in these rules, by key."""
+    return {s.key: api.tuning.value(rules, s.key) for s in api.tuning.settings_for(rules)}
 
 
 def changed_card(
@@ -435,22 +471,28 @@ def file_handles(files: list, count: int) -> tuple[api.Handles, list[bool]]:
 
 
 class Tuner:
-    """Live tuning of a `MatchLoop` (see the module). The panel reads `values` (each rule
-    setting's current value), `targets` (each handle's set value, (num_types,) per name; a
-    type's are meaningful once `ready(type)`), `flying` (each handle's value each type's
-    applied card actually flies, by name then type: None until a measurement or a solve
-    iteration has reported it), `exact` (every applied card is the exact solve of its
-    targets), `status` and `message` (the last refusal or error); it calls `show` (the type
-    it shows, measured first), `set_setting`, `set_handle`, `measure_all` and `update`."""
+    """Live tuning of a `MatchLoop` (see the module), on the design at x1: `rules` and
+    `card` are the design's, and the match plays them `time_factor` times faster
+    (`played`). The panel reads `values` (each rule setting's design value), `targets`
+    (each handle's set value, (num_types,) per name; a type's are meaningful once
+    `ready(type)`), `flying` (each handle's value each type's applied card actually flies
+    at x1, by name then type: None until a measurement or a solve iteration has reported
+    it), `exact` (every applied card is the exact solve of its targets), `status` and
+    `message` (the last refusal or error); it calls `show` (the type it shows, measured
+    first), `set_setting`, `set_handle`, `measure_all` and `update`."""
 
     def __init__(self, loop, base: api.Rules) -> None:
         self.loop = loop
         self.ship_set = loop.setup.config.ship_set
         self.base = dataclasses.replace(base, bullet_slots=loop.rules.bullet_slots)
-        rules = loop.rules
-        self.values = {
-            s.key: api.tuning.value(rules, s.key) for s in api.tuning.settings_for(rules)
-        }
+        tuning = loop.setup.tuning
+        self.time_factor = tuning.time_factor
+        if self.time_factor == 1.0:
+            self.rules, self.card = loop.rules, loop.types
+        else:
+            self.rules = api.tuning.tuned(self.base, tuning.rules, bounded=False)
+            self.card = tuning.types(self.ship_set)
+        self.values = settings_of(self.rules)
         self.status = ""
         self.message = ""
         self.shown: dict[str, list[float]] = {}
@@ -469,7 +511,7 @@ class Tuner:
         self._anchor_version = 0  # names the anchor (and the rules) an estimate is made with
         self._reset(characterise=False)
         self._slow.submit(  # dropped if a solve comes first
-            _warm_job, loop.rules, columns(loop.types, [0]), columns(self.targets, [0])
+            _warm_job, self.rules, columns(self.card, [0]), columns(self.targets, [0])
         )
         self._show()
 
@@ -492,30 +534,49 @@ class Tuner:
         self._versions[RULES] = value
 
     def _retune(self, rules=None, types=None) -> None:
-        self.loop.retune(rules=rules, types=types)
+        """Take new design rules and/or a new design card; the match plays them from the
+        next tick (`played`; under a time scale both, as the card's scaling reads the
+        rules)."""
+        if rules is not None:
+            self.rules = rules
+        if types is not None:
+            self.card = types
+        if self.time_factor == 1.0:
+            self.loop.retune(rules=rules, types=types)
+        else:
+            self.loop.retune(*self.played())
         if types is not None:
             self._card += 1
         self._show()
 
+    def played(self) -> tuple[api.Rules, api.ShipTypes]:
+        """The rules and the card the match plays: the design `time_factor` times faster
+        (`time_scaled_settings`, `time_scaled_card`)."""
+        if self.time_factor == 1.0:
+            return self.rules, self.card
+        values = time_scaled_settings(self.values, self.time_factor, self.base.tick_length)
+        rules = api.tuning.tuned(self.base, values, bounded=False)
+        return rules, time_scaled_card(self.card, self.rules, self.time_factor)
+
     def _show(self) -> None:
-        """The values shown beside the handles for the card the match plays: its bleed rate
+        """The values shown beside the handles for the design's card: its bleed rate
         (closed form, within 1% of the flown one)."""
-        card = _double(self.loop.types)
-        self.shown = {"bleed_rate": api.bleed_rate(self.loop.rules, card)[0].tolist()}
+        card = _double(self.card)
+        self.shown = {"bleed_rate": api.bleed_rate(self.rules, card)[0].tolist()}
 
     @property
     def _count(self) -> int:
-        return int(self.loop.types.max_energy.shape[-1])
+        return int(self.card.max_energy.shape[-1])
 
     def _reset(self, characterise: bool = True) -> None:
-        """Start over from the card the match plays under its current rules: the types whose
+        """Start over from the design's card under its current rules: the types whose
         card and handle-setting rules are the ship files' take their handles from the files
         (each solved exact, so nothing is measured to show them); the others are measured
         when shown. Nothing flown is known yet."""
         files = api.ships.load(self.ship_set)
         count = self._count
         self.targets, complete = file_handles(files, count)
-        rules = self.loop.rules
+        rules = self.rules
         same_rules = all(
             api.tuning.value(rules, s.key) == api.tuning.value(self.base, s.key)
             for s in api.tuning.settings_for(rules)
@@ -526,13 +587,13 @@ class Tuner:
             k < default.max_energy.shape[-1]
             and all(
                 torch.equal(value[k], getattr(default, name)[k].to(value.dtype))
-                for name, value in vars(self.loop.types).items()
+                for name, value in vars(self.card).items()
             )
             for k in range(count)
         ]
         self._known = [same_rules and complete[k] and same_card[k] for k in range(count)]
         self._applied = self.targets  # the targets each applied card was made for
-        self._anchor = (self.loop.types, self.targets)  # exact cards and their handles
+        self._anchor = (self.card, self.targets)  # exact cards and their handles
         self._anchor_version += 1
         self._flown: list[dict[str, float] | None] = [None] * count  # each card's flight
         self.flying = {name: [None] * count for name in api.HANDLE_NAMES}
@@ -544,7 +605,7 @@ class Tuner:
         self._handles_changed = None
         self._handles_version += 1
         if characterise:
-            self._characterise(self.loop.types)
+            self._characterise()
 
     # ---------------------------------------------------------------- reading
 
@@ -557,8 +618,8 @@ class Tuner:
 
     @property
     def tuning(self) -> Tuning:
-        """What the match is tuned to now."""
-        return Tuning.of(self.loop.rules, self.loop.types, self.base, self.ship_set)
+        """What the match is tuned to now: the design and the time scale's factor."""
+        return Tuning.of(self.rules, self.card, self.base, self.ship_set, self.time_factor)
 
     def default(self, key: str) -> float:
         """A rule setting's value in the game's rules for this match."""
@@ -596,7 +657,8 @@ class Tuner:
     # ---------------------------------------------------------------- rule settings
 
     def set_setting(self, key: str, value: float) -> None:
-        """Set a rule setting; it applies on the next tick (or the next episode)."""
+        """Set a rule setting's design value (x1); it applies on the next tick (or the next
+        episode), time scaled."""
         setting = api.tuning.BY_KEY[key]
         value = api.tuning.snap(setting, value, self.base.tick_length)
         if value == self.values.get(key):
@@ -618,8 +680,8 @@ class Tuner:
     def _rerange(self) -> None:
         """A new bullet life: the card is kept, so its gun range (a closed form of the
         bullet's drag, speed and life) changes; the estimate is re-anchored on it."""
-        rules = self.loop.rules
-        gun_range = api.gun_range(rules, self.loop.types, self.targets.cruise_speed)
+        rules = self.rules
+        gun_range = api.gun_range(rules, self.card, self.targets.cruise_speed)
         self.targets = self.targets.replace(gun_range=gun_range)
         self._applied = self._applied.replace(gun_range=gun_range)
         anchor, handles = self._anchor
@@ -632,49 +694,51 @@ class Tuner:
         self._handles_version += 1
 
     def load(self, tuning: Tuning) -> None:
-        """Play on with a whole tuning (a preset, or the game's numbers): its rules and card
-        from the next tick, the handles re-measured where they are not the files'."""
+        """Play on with a whole tuning (a preset, or the game's numbers): its rules, card and
+        time scale from the next tick, the handles re-measured where they are not the
+        files'."""
         rules = api.tuning.tuned(self.base, tuning.rules, bounded=False)
-        self.values = {
-            s.key: api.tuning.value(rules, s.key) for s in api.tuning.settings_for(rules)
-        }
+        self.values = settings_of(rules)
+        self.time_factor = tuning.time_factor
         self._retune(rules=rules, types=tuning.types(self.ship_set))
         self.message = ""
         self._rules_version += 1
         self._reset()
 
     def time_scale(self, factor: float) -> str:
-        """Make the whole game `factor` times faster with the map's lengths fixed: every rule
-        setting and the card by their units (`time_scaled_settings`, `time_scaled_card`),
-        energies with gravity (an exact similarity, up to the tick and the values held to
-        whole ticks or Hz, which snap); the handles are then re-measured. Returns what it
-        did, naming the values that snapped."""
+        """Make the whole game `factor` times faster than now with the map's lengths fixed:
+        the match plays the design `time_factor` (now that many times larger) times faster
+        (`played`: every rule setting and the card by their units, energies with gravity;
+        an exact similarity up to the tick and the values held to whole ticks or Hz, which
+        snap). The design, its handles and their measurements stay. Returns what it did,
+        naming the values that snapped."""
         if factor <= 0.0 or factor == 1.0:
             return ""
-        tick = self.base.tick_length
-        exact = api.similarity.scale_rules(self.values, 1.0, 1.0 / factor)
-        values = time_scaled_settings(self.values, factor, tick)
-        types = time_scaled_card(self.loop.types, self.loop.rules, factor)
-        rules = api.tuning.tuned(self.base, values, bounded=False)
-        self.values = {
-            s.key: api.tuning.value(rules, s.key) for s in api.tuning.settings_for(rules)
-        }
+        total = self.time_factor * factor
+        self.time_factor = 1.0 if math.isclose(total, 1.0, rel_tol=1e-9) else total
+        rules, types = self.played()
+        self.loop.retune(rules=rules, types=types)
+        self._card += 1
+        self._characterise()
+        self.message = ""
+        exact = api.similarity.scale_rules(self.values, 1.0, 1.0 / self.time_factor)
         snapped = [
-            f"{api.tuning.BY_KEY[key].label} {exact[key]:.4g} -> {values[key]:.4g} s"
-            for key in values
-            if abs(values[key] - exact[key]) > 1e-9 * max(1.0, abs(exact[key]))
+            f"{api.tuning.BY_KEY[key].label} {exact[key]:.4g} -> {self._played_value(key):.4g} s"
+            for key in exact
+            if abs(self._played_value(key) - exact[key]) > 1e-9 * max(1.0, abs(exact[key]))
         ]
-        wanted = self.loop.types.fire_rate * factor
+        wanted = self.card.fire_rate * self.time_factor
         snapped += [
             f"fire rate {float(a):.4g} -> {float(b):.4g} Hz"
             for a, b in zip(wanted.flatten(), types.fire_rate.flatten())
             if abs(float(a) - float(b)) > 1e-6 * float(a)
         ]
-        self._retune(rules=rules, types=types)
-        self.message = ""
-        self._rules_version += 1
-        self._reset()
-        return f"x{factor:g} faster" + ("; snapped: " + ", ".join(snapped) if snapped else "")
+        done = f"the game runs x{self.time_factor:g} (values stay at x1)"
+        return done + ("; snapped: " + ", ".join(snapped) if snapped else "")
+
+    def _played_value(self, key: str) -> float:
+        """A rule setting's value as the match plays it (time scaled)."""
+        return api.tuning.value(self.loop.rules, key)
 
     def close(self) -> None:
         """Stop the workers (a match that ends): what they are computing is dropped."""
@@ -718,7 +782,7 @@ class Tuner:
             self._handles_version,
             kinds,
             (self._anchor_version, tuple(kinds)),
-            self.loop.rules,
+            self.rules,
             columns(anchor, kinds),
             columns(handles, kinds),
             columns(self.targets, kinds),
@@ -738,9 +802,7 @@ class Tuner:
             return False
         target = columns(self.targets, [kind])
         wanted = torch.tensor([float(getattr(target, n)[0]) for n in api.FLOWN_HANDLES])
-        scale = torch.maximum(
-            wanted.abs(), api.solve_error_floor(self.loop.rules, target)[0].float()
-        )
+        scale = torch.maximum(wanted.abs(), api.solve_error_floor(self.rules, target)[0].float())
         got = torch.tensor([flown[n] for n in api.FLOWN_HANDLES])
         return bool(((got - wanted).abs() / scale < api.SOLVE_ACCEPTANCE).all())
 
@@ -749,16 +811,16 @@ class Tuner:
         targets back when no card can meet them."""
         target = columns(self.targets, [kind])
         try:
-            combat = api.combat_card(self.loop.rules, target, target.cruise_speed)
+            combat = api.combat_card(self.rules, target, target.cruise_speed)
         except api.Infeasible as error:
             self.message = str(error)
             self.targets = self._applied
             return
-        card = columns(self.loop.types, [kind])
+        card = columns(self.card, [kind])
         card = dataclasses.replace(
             card, **{k: v.to(card.max_energy.dtype) for k, v in combat.items()}
         )
-        types = with_columns(self.loop.types, [kind], card)
+        types = with_columns(self.card, [kind], card)
         self._retune(types=types)
         self._applied = with_columns(self._applied, [kind], target)
         anchor, handles = self._anchor
@@ -777,7 +839,7 @@ class Tuner:
         )
         self._anchor_version += 1
         self._set_flying(kind, target, self._flown[kind])
-        self._characterise(types)
+        self._characterise()
 
     def _set_flying(self, kind: int, handles: api.Handles | None, flown: dict | None) -> None:
         """A type's flown handles: `flown`'s (the measured ones), the others (closed forms)
@@ -826,10 +888,8 @@ class Tuner:
             self._measuring = self._next_measurement()
             if self._measuring is not None:
                 kind = self._measuring
-                card = columns(self.loop.types, [kind])
-                self._measurer.submit(
-                    _measure_job, self._rules_version, kind, self.loop.rules, card
-                )
+                card = columns(self.card, [kind])
+                self._measurer.submit(_measure_job, self._rules_version, kind, self.rules, card)
         self.status = self._status()
 
     def _status(self) -> str:
@@ -865,7 +925,7 @@ class Tuner:
                 or ship_type in self._estimated
                 or not all(
                     torch.equal(value[ship_type : ship_type + 1], getattr(card, name))
-                    for name, value in vars(self.loop.types).items()
+                    for name, value in vars(self.card).items()
                 )
             ):
                 return  # measured under other rules, or of a card since changed
@@ -896,7 +956,7 @@ class Tuner:
         if kind == "estimated":
             _, version, kinds, types, targets = result
             if version == self._handles_version:
-                self._retune(types=with_columns(self.loop.types, kinds, types))
+                self._retune(types=with_columns(self.card, kinds, types))
                 self._applied = with_columns(self._applied, kinds, targets)
                 self._estimated |= set(kinds)
                 for ship_type in kinds:
@@ -914,7 +974,7 @@ class Tuner:
         if kind == "progress":
             _, version, ship_type, types, flown = result
             if version == self._handles_version:
-                self._retune(types=with_columns(self.loop.types, [ship_type], types))
+                self._retune(types=with_columns(self.card, [ship_type], types))
                 values = {n: float(flown[..., i][0]) for i, n in enumerate(api.FLOWN_HANDLES)}
                 self._set_flying(ship_type, columns(self.targets, [ship_type]), values)
             return
@@ -928,7 +988,7 @@ class Tuner:
                 or rules_version != self._rules_version
             ):
                 return
-            self._retune(types=with_columns(self.loop.types, kinds, types))
+            self._retune(types=with_columns(self.card, kinds, types))
             anchor, anchor_handles = self._anchor
             self._anchor = (
                 with_columns(anchor, kinds, types),
@@ -944,16 +1004,17 @@ class Tuner:
                     self._estimated.discard(ship_type)
             self.exact = not self._estimated
             self.message = "; ".join(failures)
-            self._characterise(self.loop.types)
+            self._characterise()
 
-    def _characterise(self, types: api.ShipTypes) -> None:
-        """Re-measure the scripted agent's characteristics for this card, when a side uses
-        them (on a worker of their own, so the next solve does not wait for them)."""
+    def _characterise(self) -> None:
+        """Re-measure the scripted agent's characteristics for the card the match plays
+        (time scaled), when a side uses them (on a worker of their own, so the next solve
+        does not wait for them)."""
         if not any(hasattr(side, "retune") for side in self.loop.sides):
             return
         if self._traits is None:
             self._traits = _Worker(self._context, "tuning-traits", self._versions)
-        self._traits.submit(_characterise_job, self._card, self.loop.rules, types)
+        self._traits.submit(_characterise_job, self._card, self.loop.rules, self.loop.types)
 
     # ---------------------------------------------------------------- the slow worker
 
@@ -968,8 +1029,8 @@ class Tuner:
             self._rules_version,
             kinds,
             columns(self.targets, kinds),
-            self.loop.rules,
-            columns(self.loop.types, kinds),
+            self.rules,
+            columns(self.card, kinds),
         )
 
 
@@ -1000,12 +1061,15 @@ class Presets:
         types: api.ShipTypes,
         ship_set: str = api.STANDARD_SHIP_SET,
     ) -> pathlib.Path:
-        """Write a preset: its ship set, the tuning's rule settings and every card field (so
-        the file is a whole `ship_card` for training)."""
+        """Write a preset: its ship set, the tuning's rule settings and every field of the
+        design's card `types` (so the file is a whole `ship_card` for training), at x1, and
+        the time scale's factor when it is not 1."""
         path = self.path(name)
         path.parent.mkdir(parents=True, exist_ok=True)
         card = {name: [float(v) for v in value.tolist()] for name, value in vars(types).items()}
         data = {"ship_set": ship_set, "rules": tuning.rules, "ship_card": card}
+        if tuning.time_factor != 1.0:
+            data["time_factor"] = tuning.time_factor
         path.write_text(json.dumps(data, indent=2))
         return path
 
@@ -1027,4 +1091,8 @@ class Presets:
         values = {field: tuple(values) for field, values in stored.items()}
         types = api.ship_types(ship_set=ship_set, **values)
         card = changed_card(types, ship_set)
-        return Tuning(rules={k: float(v) for k, v in data.get("rules", {}).items()}, card=card)
+        return Tuning(
+            rules={k: float(v) for k, v in data.get("rules", {}).items()},
+            card=card,
+            time_factor=float(data.get("time_factor", 1.0)),
+        )

@@ -11,14 +11,18 @@ tall as the room under the top bar (never taller; its contents scroll). Each row
   than 0.5% off its set value; its tooltip gives the flown value, or that the type is not
   measured yet (the sliders show at once; the chosen type is measured first). The fire
   rate is a choice of the rates a card can hold; the bleed rate is shown, not set. **Save
-  ships** writes every type to its ship file (`src/bnb/game/ships/`, tracked in git);
-  **Add** copies the chosen type under a new name and **Remove** deletes it (after a popup
-  asks; the last type stays), each starting a new match. Save and Add need every type's
-  handles, and first measure the ones not known (after a flight constant changed).
+  ships** writes every type to its ship file (`src/bnb/game/ships/`, tracked in git;
+  it needs every type's handles, and first measures the ones not known, after a flight
+  constant changed); **Add a copy as this name** writes a copy of the chosen type under a
+  new name to its own file at once (the other files untouched) and **Remove** deletes a
+  type (after a popup asks; the last type stays), each starting a new match.
 - **Rules**, by group: each setting a slider and a number box within its bounds; "*" marks
   those drawn at an episode's start, and the tooltip gives the game's value.
-- **Presets**: save the tuning under a name (the rules' settings and the whole card), load
-  one, or go back to the game's numbers (the ship files' and the rules' own).
+- **Time scale**: make the game k times faster at fixed map lengths. Every value in the
+  panel stays the design's, at x1 (what a save writes); a line at the top names k.
+- **Presets**: save the tuning under a name (the rules' settings and the whole card, and
+  the time scale), load one, or go back to the game's numbers (the ship files' and the
+  rules' own, at the same time scale).
 """
 
 import math
@@ -29,7 +33,7 @@ from imgui_bundle import imgui
 from bnb.game import api
 
 from .interface.layout import MARGIN, TOP_BAR, Rect
-from .tuning import Presets, Tuning, fire_rates
+from .tuning import SET_BY, Presets, Tuning, fire_rates
 
 PANEL_WIDTH = 400.0  # pixels at interface scale 1, like every size here
 LABEL_WIDTH = 150.0  # the label column
@@ -252,6 +256,10 @@ class TuningPanel:
         imgui.end()
 
     def _status(self, tuner) -> None:
+        if tuner.time_factor != 1.0:
+            imgui.text_colored(
+                DIM, f"Values at x1; the game runs x{tuner.time_factor:.4g} (time scale)."
+            )
         imgui.text_wrapped(tuner.status)
         message = tuner.message or self.message
         if message:
@@ -290,6 +298,7 @@ class TuningPanel:
         imgui.same_line()
         if imgui.button("Add a copy as this name"):
             self._add(session, tuner)
+        controls.record("tuning/add")
         kind = self.ship
         targets = tuner.targets
         if kind >= targets.ceiling.shape[-1]:
@@ -341,20 +350,25 @@ class TuningPanel:
         imgui.end_table()
 
     def _current(self, tuner) -> list:
-        """The ship types as the match plays them: the card's columns, and the handles they
-        fly (the measured ones where known)."""
-        types, files = tuner.loop.types, self._saved(tuner.ship_set)
-        out = []
-        for kind, ship in enumerate(files):
-            handles = {}
-            for name in api.HANDLE_NAMES:
-                flown = tuner.flying[name][kind]
-                handles[name] = float(
-                    getattr(tuner.targets, name)[kind] if flown is None else flown
-                )
-            card = {field: float(value[kind]) for field, value in vars(types).items()}
-            out.append(api.ships.Ship(ship.key, ship.name, handles, card, dict(ship.notes)))
-        return out
+        """The ship types as the match's design has them (`_type`)."""
+        files = self._saved(tuner.ship_set)
+        return [
+            self._type(tuner, kind, ship.key, ship.name, ship.notes)
+            for kind, ship in enumerate(files)
+        ]
+
+    @staticmethod
+    def _type(tuner, kind: int, key: str, name: str, notes: dict) -> api.ships.Ship:
+        """A ship type as the design has it, at x1: its card's column, and the handles it
+        flies (the measured ones where known)."""
+        handles = {}
+        for handle in api.HANDLE_NAMES:
+            flown = tuner.flying[handle][kind]
+            handles[handle] = float(
+                getattr(tuner.targets, handle)[kind] if flown is None else flown
+            )
+        card = {field: float(value[kind]) for field, value in vars(tuner.card).items()}
+        return api.ships.Ship(key, name, handles, card, dict(notes))
 
     def _measured(self, tuner) -> bool:
         """Whether every type's handles are known, so the files can be written; if not,
@@ -379,24 +393,33 @@ class TuningPanel:
         self.message = f"saved {len(api.type_names(tuner.ship_set))} ships to {directory}"
 
     def _add(self, session, tuner) -> None:
+        """Write a copy of the shown type under the typed name to the set's files at once
+        (`Session.add_ship`); it needs only the shown type's handles and exact card."""
         name = self.new_ship.strip()
         key = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
         if not key:
             self.message = "type the new ship's name first"
             return
-        if not self._measured(tuner):
-            return
-        current = self._current(tuner)
-        if key in [ship.key for ship in current]:
+        files, kind = self._saved(tuner.ship_set), self.ship
+        if key in [ship.key for ship in files]:
             self.message = f"a ship {key!r} exists already"
             return
-        copy = current[self.ship]
-        current.append(api.ships.Ship(key, name, dict(copy.handles), dict(copy.card)))
-        moved = {kind: kind for kind in range(len(current) - 1)}
-        session.save_ships(current, moved)
+        original = tuner.name(kind)
+        if not tuner.ready(kind) or not tuner.exact:
+            self.message = f"wait for {original}'s exact card (the status line), then add"
+            return
+        if any(
+            value != tuner.default(setting)
+            for setting, value in tuner.values.items()
+            if setting.startswith(SET_BY)
+        ):
+            self.message = "the rules the cards are solved under changed: Save ships first"
+            return
+        session.add_ship(self._type(tuner, kind, key, name, {}))
         self._files = None
-        self.ship, self.new_ship = len(current) - 1, ""
-        self.message = f"added {name}: a copy of {copy.name}, in a new match"
+        self.ship, self.new_ship = len(files), ""
+        path = api.ships.directory_of(tuner.ship_set) / f"{key}.toml"
+        self.message = f"added {name}, a copy of {original}: saved {path}; a new match plays it"
 
     def _confirm_remove(self, session, tuner, names: tuple) -> None:
         """The modal that asks before **Remove** deletes a ship type's file."""
@@ -469,8 +492,9 @@ class TuningPanel:
     # Time scale --------------------------------------------------------------------------
 
     def _time_scale(self, session, tuner) -> None:
-        """A factor and **Apply** (the game that many times faster, map lengths fixed), and
-        **Make this speed 1×** (the playback speed becomes the game's own)."""
+        """The time scale now, a factor and **Apply** (the game that many times faster
+        again, map lengths fixed), and **Make this speed 1×** (the playback speed becomes
+        the game's own)."""
         if not imgui.collapsing_header("Time scale"):
             return
         controls = session.interface.controls
@@ -479,9 +503,11 @@ class TuningPanel:
             "x k, accelerations and gravity x k^2, rates and fire rates x k, times / k, "
             "energies x k^2 (a store keeps its height, energy / g) and powers x k^3. Fire "
             "rates snap to whole Hz dividing the tick rate and bullet life, clocks and shield "
-            "delays to whole ticks; the handles are re-measured."
+            "delays to whole ticks. The panel's values stay the design's, at x1: an edit sets "
+            "the x1 value and a save writes it."
         )
         width = 80.0 * session.scale
+        imgui.text_colored(DIM, f"the game runs x{tuner.time_factor:.4g}; values at x1")
         imgui.align_text_to_frame_padding()
         imgui.text("faster by")
         imgui.same_line()
@@ -517,7 +543,7 @@ class TuningPanel:
         if imgui.button("Save##preset"):
             try:
                 path = self.presets.save(
-                    self.name.strip(), tuner.tuning, session.loop.types, tuner.ship_set
+                    self.name.strip(), tuner.tuning, tuner.card, tuner.ship_set
                 )
                 self.message = f"saved {path}"
             except (ValueError, OSError) as error:
@@ -535,5 +561,5 @@ class TuningPanel:
                 except (ValueError, OSError, KeyError) as error:
                     self.message = str(error)
         if imgui.button("Game's numbers"):
-            session.retune_to(Tuning())
+            session.retune_to(Tuning(time_factor=tuner.time_factor))
             self.message = "back to the ship files' and the rules' own numbers"
