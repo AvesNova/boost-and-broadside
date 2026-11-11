@@ -2,16 +2,19 @@
 # check_config.sh bc|rl: the arm's resolved configuration (`bnb train ... --print-config`)
 # against the champion's recorded config.json (champion/<stage>-config.json); exits 1 on any
 # difference besides the expected ones: yemong.heads (2 -> 1), and for BC stop.budget_steps
-# (the champion's was 30M at creation, raised to 60M then 120M by its resumes).
+# (the champion's was 30M at creation, raised to 60M then 120M by its resumes), and for BC
+# yemong.physics_hidden_fade absent -> False (the switch was merged after the champion's BC
+# started on fadd6065; False is its default, the champion's later segments ran with it off).
 set -u
 cd /workspace/boost-and-broadside
 stage=$1
 here=docs/rewrite/sections/gpubox2
 out=runs/check-config-$stage.json
+mkdir -p runs
 if [ "$stage" = bc ]; then
   eval "$(sed -n '/^BC_ARGS=(/,/)$/p' $here/pipeline.sh)"
   .venv/bin/bnb train --name check "${BC_ARGS[@]}" --print-config > $out || exit 1
-  allowed="yemong.heads stop.budget_steps"
+  allowed="yemong.heads stop.budget_steps yemong.physics_hidden_fade"
 else
   INIT=runs/2026-11-12-bc-onehead/policies/step_120586240/uniform_average
   eval "$(sed -n '/^RL_ARGS=(/,/)$/p' $here/pipeline.sh)"
