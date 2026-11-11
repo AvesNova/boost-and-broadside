@@ -34,6 +34,8 @@ GAMES = {
     "deathmatch_wide": dict(preset="deathmatch_wide"),
     "frontline": dict(preset="frontline"),
     "50v50": dict(preset="deathmatch", ships_per_team=50, fields=40, arena_radius=8222.0),
+    "real_scale_deathmatch": dict(preset="real_scale_deathmatch"),
+    "real_scale_frontline": dict(preset="real_scale_frontline"),
 }
 
 
