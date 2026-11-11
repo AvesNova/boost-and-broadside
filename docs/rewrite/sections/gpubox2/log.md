@@ -87,3 +87,19 @@ See the report section at the end. Records of the champion: `champion/*.json` (c
   of a 23.06 GB budget (the champion: 18.2 / 19.3 GB). KL 2.964 at update 1.
 - Tally at 07:04: 11 interruptions in 6.4 h since launch; up 1.67 h (26%), down 4.72 h; one
   BC update done.
+- **07:09 Steady BC:** 108 s per update (rollout 10.9 s, learn 97 s), about 9,700 SPS; the
+  champion's was 92.6 s and 11,330 SPS. KL by update (arm / champion): 2.964/2.965,
+  1.459/1.452, 0.721/0.717, 0.696/0.699, 0.661/0.661. Checkpoint step_4194304 is 344 MB.
+  - **Speed confound: this host caps the GPU at 275 W.** nvidia-smi gives power.limit 275 W
+    (max 375), active throttle reason 0x4 (SW power cap), 87-100% utilisation at 258-274 W,
+    SM clock 1530-1815 MHz. The first box drew up to 411 of 420 W. The container cannot raise
+    the limit.
+- **07:10 Deliberate resume test:** kill -9 of the driver and the trainer mid-update 5.
+  - Supervisor restarted the driver within a second. It marked the stale record stopped and
+    resumed from step_4194304.
+  - Interruptions 12 (07:11-07:14) and 13 (07:14-07:35) then hit the restarted process. Each
+    later restart resumed from the same checkpoint on its own.
+  - Update 5 finished at 07:41. The warm restart's first update took 102 s rollout + 227 s
+    learn (5.5 min, against 108 s steady). KL 0.6605 (champion 0.6609).
+  - run.json carries one segment per attempt (start 4194304; the killed ones have no end).
+- Tally at 07:42: 13 interruptions in 7.0 h; up 1.92 h (27%), down 5.11 h.
