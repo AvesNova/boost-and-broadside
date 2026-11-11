@@ -23,9 +23,10 @@ tall as the room under the top bar (never taller; its contents scroll). Each row
   ("faster by" k sets the factor itself, relative to x1: 2 gives x2 whatever it is now, 1
   goes back to the design's speed). Every value in the panel stays the design's, at x1
   (what a save writes); a line at the top names k.
-- **Presets**: save the tuning under a name (the rules' settings and the whole card, and
-  the time scale), load one, or go back to the game's numbers (the ship files' and the
-  rules' own, at the same time scale).
+- **Maps**: **Save as a map** opens the menu's Maps page with this match, its tuning
+  included (the rules' settings, the changed ship cards and the time scale), to save under
+  a name (`bnb.play.maps`); **Game's numbers** goes back to the ship files' and the rules'
+  own numbers, at the same time scale.
 """
 
 import math
@@ -36,7 +37,7 @@ from imgui_bundle import imgui
 from bnb.game import api
 
 from .interface.layout import MARGIN, TOP_BAR, Rect
-from .tuning import SET_BY, Presets, Tuning, fire_rates
+from .tuning import SET_BY, Tuning, fire_rates
 
 PANEL_WIDTH = 400.0  # pixels at interface scale 1, like every size here
 LABEL_WIDTH = 150.0  # the label column
@@ -226,13 +227,10 @@ class TuningPanel:
     """open: whether the window shows; `ship`: the ship type shown. The tuner it drives is
     the session's (created when the panel first opens on a live match)."""
 
-    def __init__(self, presets: Presets | None = None) -> None:
+    def __init__(self) -> None:
         self.open = False
-        self.presets = Presets() if presets is None else presets
         self.ship = 0
-        self.name = ""
         self.new_ship = ""
-        self.chosen = 0
         self.removing = 0  # the ship type the remove popup asks about
         self.factor = 2.0  # the time scale's factor
         self.window: Rect | None = None  # where the window was last drawn
@@ -267,7 +265,7 @@ class TuningPanel:
                 self._ships(session, tuner)
                 self._rules(tuner, session.scale)
                 self._time_scale(session, tuner)
-                self._presets(session, tuner)
+                self._maps(session, tuner)
         imgui.end()
 
     def _status(self, tuner) -> None:
@@ -558,35 +556,24 @@ class TuningPanel:
             "and playback goes back to ×1, so the match looks the same.\n" + help
         )
 
-    # Presets -----------------------------------------------------------------------------
+    # Maps and the game's numbers --------------------------------------------------------
 
-    def _presets(self, session, tuner) -> None:
-        if not imgui.collapsing_header("Presets"):
+    def _maps(self, session, tuner) -> None:
+        """**Save as a map** (the menu's Maps page, its form this match with its tuning) and
+        **Game's numbers** (the ship files' and the rules' own, at the same time scale)."""
+        if not imgui.collapsing_header("Maps"):
             return
-        width = 150.0 * session.scale
-        imgui.set_next_item_width(width)
-        _, self.name = imgui.input_text_with_hint("##preset name", "preset's name", self.name)
+        controls = session.interface.controls
+        if imgui.button("Save as a map"):
+            session.interface.menu.show("maps")
+        controls.record("tuning/save as map")
+        tooltip(
+            "The menu's Maps page, starting from this match: its game, lineup and this "
+            "tuning (the rule settings, the changed ship cards and the time scale), to save "
+            "under a name"
+        )
         imgui.same_line()
-        if imgui.button("Save##preset"):
-            try:
-                path = self.presets.save(
-                    self.name.strip(), tuner.tuning, tuner.card, tuner.ship_set
-                )
-                self.message = f"saved {path}"
-            except (ValueError, OSError) as error:
-                self.message = str(error)
-        names = self.presets.names()
-        if names:
-            self.chosen = min(self.chosen, len(names) - 1)
-            imgui.set_next_item_width(width)
-            _, self.chosen = imgui.combo("##presets", self.chosen, names)
-            imgui.same_line()
-            if imgui.button("Load"):
-                try:
-                    session.retune_to(self.presets.load(names[self.chosen], tuner.ship_set))
-                    self.message = f"loaded {names[self.chosen]}"
-                except (ValueError, OSError, KeyError) as error:
-                    self.message = str(error)
         if imgui.button("Game's numbers"):
             session.retune_to(Tuning(time_factor=tuner.time_factor))
             self.message = "back to the ship files' and the rules' own numbers"
+        controls.record("tuning/game's numbers")

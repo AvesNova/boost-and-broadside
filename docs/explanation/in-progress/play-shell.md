@@ -294,13 +294,24 @@ the game reads, in the order of `order.toml`. A match plays its config's set
 writes the match's set, and the tuned flight constants and bullet life with it (into the
 set's `rules.toml`: the rules its cards fly under); **Add** copies the chosen type under a
 new name and **Remove** deletes one (after a confirmation popup; the last type stays),
-each starting a new match with the lineup remapped. Rule presets
-(`bnb.play.tuning.Presets`) save the ship set, the rule settings and the whole card to the
-user's configuration directory; a preset loads only into a match of its set.
+each starting a new match with the lineup remapped.
+
+**Maps** (`bnb.play.maps`) are the games the shell starts by name: the game presets
+(`bnb.game.api.PRESETS`, read-only) and the saved maps, one JSON file each in the user's
+configuration directory or in the project (`bnb.play.maps.PROJECT`, beside the ship sets in
+`src/bnb/game/`, tracked in git). A saved
+map is a whole game: a `GameConfig`, a lineup by type name (beside the config, as
+`bnb.game.api.LINEUPS` keeps the presets', since a policy record treats a config field it lacks as
+another game) and a `Tuning` (the rule settings, the changed cards by type key, the time
+scale), the tuned arena radius, clocks and kills to win folded into the config. They
+replace the tuning panel's former rule presets: a map made from a tuned match carries the
+same numbers. The menu's Maps page (`bnb.play.interface.map_editor`) makes, edits, saves,
+renames and deletes them; `bnb play --preset big-sky` starts the saved map `big-sky`.
 
 **New match** offers one map per game preset's map (`bnb.play.interface.menus.maps`: a
-preset's name without its mode's word, so Standard, Wide and Real scale), and a dropdown
-per lineup slot listing the map's ship set's types by name, five to a row.
+preset's name without its mode's word, so Standard, Wide, Real scale and Arena), then the
+saved maps (each in its own mode, with its tuning), and a dropdown per lineup slot listing
+the map's ship set's types by name, five to a row (`bnb.play.interface.lineups`).
 
 ## Themes
 

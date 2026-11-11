@@ -15,7 +15,8 @@ from bnb.game.rules import FlightConstants, Rules
 from bnb.league.matches import Player, card_of
 from bnb.play.interface.menus import MAP_PRESETS, Draft, default_lineup, map_of, maps
 from bnb.play.loop import MatchLoop
-from bnb.play.tuning import Presets, Tuning, changed_card
+from bnb.play.maps import Map, Maps
+from bnb.play.tuning import Tuning, changed_card
 from bnb.runs.checkpoint import save_policy
 from bnb.runtime.train import TrainConfig
 
@@ -110,7 +111,7 @@ def test_training_takes_its_games_set_card(trial):
     assert TrainConfig(game=api.PRESETS["deathmatch"]).ship_card == api.default_card()
 
 
-def test_a_tuning_and_a_preset_are_relative_to_their_set(trial, tmp_path):
+def test_a_tuning_and_a_saved_map_are_relative_to_their_set(trial, tmp_path):
     types = api.ship_types(ship_set=trial)
     assert changed_card(types, trial) == {}
     assert set(changed_card(types)) == set(api.default_card())  # 12 types against 2
@@ -118,11 +119,11 @@ def test_a_tuning_and_a_preset_are_relative_to_their_set(trial, tmp_path):
     tuning = Tuning(card=changed_card(tuned, trial))
     assert set(tuning.card) == {"hit_damage"}
     assert torch.equal(tuning.types(trial).hit_damage, tuned.hit_damage)
-    presets = Presets(tmp_path / "presets")
-    presets.save("doubled", tuning, tuned, trial)
-    assert presets.load("doubled", trial) == tuning
-    with pytest.raises(ValueError, match="trial"):
-        presets.load("doubled")
+    maps = Maps(tmp_path / "user", tmp_path / "project")
+    saved = Map("doubled", GameConfig(2, 2, 1500.0, ship_set=trial), tuning=tuning, place="user")
+    maps.save(saved)
+    assert maps.find("doubled") == saved
+    assert torch.equal(maps.find("doubled").tuning.types(trial).hit_damage, tuned.hit_damage)
 
 
 def test_a_rated_match_plays_the_policies_card_else_the_sets(trial, tmp_path):

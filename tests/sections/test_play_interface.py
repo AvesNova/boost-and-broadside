@@ -2,6 +2,8 @@
 synthetic mouse input on named controls, as a player would click them. Needs an OpenGL
 3.3 context (EGL)."""
 
+import dataclasses
+
 import numpy as np
 import pytest
 import torch
@@ -13,8 +15,10 @@ from bnb.play import themes
 from bnb.play.app import Options, Session, read_pixels
 from bnb.play.interface.minimap import to_world
 from bnb.play.loop import MatchEvent, SideSetup
+from bnb.play.maps import Maps
 from bnb.play.selection import Selection, shown_ships
 from bnb.play.sides import Agent
+from bnb.play.tuning import Tuning
 
 pytestmark = pytest.mark.gpu
 FRAME = 1.0 / 60.0
@@ -109,7 +113,14 @@ def _session(context, tmp_path, width=1280, height=720, **options) -> Session:
         runs=tmp_path / "runs",
         **options,
     )
-    return Session(options, context, width, height, library=themes.Library(tmp_path / "themes"))
+    return Session(
+        options,
+        context,
+        width,
+        height,
+        library=themes.Library(tmp_path / "themes"),
+        maps=Maps(tmp_path / "maps", tmp_path / "project maps"),
+    )
 
 
 def test_a_match_is_set_up_watched_flown_and_replayed_from_the_interface(context, tmp_path):
@@ -654,3 +665,81 @@ def test_the_dot_grid_is_chosen_in_the_top_bar_the_settings_and_with_g(context, 
     assert session.grid == "triangle"
     assert (battlefield() != bare).any()  # the dots
     session.close()
+
+
+def test_a_map_is_made_saved_played_edited_renamed_and_deleted_in_the_menu(context, tmp_path):
+    """Menu > Maps: start from the arena, change it, save it as "duel" (yours); it shows on
+    New match and plays from there and from `--preset duel`; edited and saved again, moved
+    to the project, renamed and deleted (after the popup asks). A match's tuning goes with
+    the map made from it."""
+    session = _session(context, tmp_path, preset="arena")
+    player = Player(session, context, 1280, 720)
+    library = session.maps
+    player.click("menu")
+    player.click("menu/maps")
+    player.click("maps/start from")
+    player.click("maps/start from/arena")
+    editor = session.interface.menu.editor
+    assert editor.form.ships_per_team == 2 and editor.form.lineup == [0, 5]
+    editor.form.num_fields = 3
+    player.click("maps/name")
+    player.type("duel")
+    player.click("maps/save")
+    duel = library.find("duel")
+    assert duel.place == "user" and (tmp_path / "maps" / "duel.json").is_file()
+    assert duel.config == dataclasses.replace(PRESETS["arena"], num_fields=3)
+    assert duel.lineup == ("P-51D", "Spitfire XIV")
+
+    player.click("menu/back")
+    player.click("menu/new match")
+    player.click("new match/map/duel")
+    player.click("new match/start")
+    assert session.loop.setup.config == duel.config
+    assert session.loop.setup.lineup == (0, 5)
+
+    player.click("menu")
+    player.click("menu/maps")
+    player.click("maps/start from")
+    player.click("maps/start from/duel")
+    assert editor.name == "duel"
+    editor.form.kills_per_ship = 2
+    player.click("maps/place/project")
+    player.click("maps/save")  # the same name: the map edited, and moved to the project
+    assert library.find("duel").config.kills_per_ship == 2
+    assert library.place_of("duel") == "project" and not (tmp_path / "maps" / "duel.json").exists()
+    player.click("maps/name")
+    player.type("-two")
+    player.click("maps/rename")
+    assert library.place_of("duel") is None and library.find("duel-two").place == "project"
+    player.click("maps/delete")
+    assert session.interface.controls.shown("maps/delete/confirm")
+    player.click("maps/delete/cancel")
+    assert library.place_of("duel-two") == "project"
+
+    # A tuned match's map keeps the tuning.
+    setup = dataclasses.replace(session.loop.setup, tuning=Tuning(time_factor=2.0))
+    assert session.new_match(setup, tuned=True)
+    player.click("menu")
+    player.click("menu/maps")
+    assert editor.form.tuning == Tuning(time_factor=2.0)
+    player.click("maps/name")
+    player.type("fast-duel")
+    player.click("maps/save")
+    assert library.find("fast-duel").tuning.time_factor == 2.0
+    session.close()
+
+    again = _session(context, tmp_path, preset="duel-two")  # `bnb play --preset duel-two`
+    assert again.loop.setup.config.kills_per_ship == 2
+    player = Player(again, context, 1280, 720)
+    player.click("menu")
+    player.click("menu/maps")
+    player.click("maps/start from")
+    player.click("maps/start from/duel-two")
+    player.click("maps/delete")
+    player.click("maps/delete/confirm")
+    assert library.place_of("duel-two") is None
+    player.click("menu/back")
+    player.click("menu/new match")
+    assert not again.interface.controls.shown("new match/map/duel-two")
+    assert again.interface.controls.shown("new match/map/fast-duel")
+    again.close()
