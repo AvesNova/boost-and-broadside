@@ -128,3 +128,31 @@ def test_a_refired_slot_draws_from_its_launch_point():
         frame = interpolate(previous, refired, alpha)
         assert np.isclose(frame.bullets.x[flying], launch_x + alpha * offset_x, atol=1e-3)
         assert np.isclose(frame.bullets.y[flying], launch_y + alpha * offset_y, atol=1e-3)
+
+
+def test_a_bullets_age_and_speed_follow_its_flight():
+    """A bullet's age counts from its firing (one tick flown on the tick it is fired), back
+    from the later tick by the part of the tick not yet drawn; its speed is its last move's
+    length over the tick (from its launch point when just fired); 0 in a tick's snapshot."""
+    previous, current = _shooting(4)
+    tick = current.tick_length
+    bullets = current.bullets
+    new = bullets.active & ~previous.bullets.active
+    flying = bullets.active & previous.bullets.active
+    assert np.allclose(bullets.age[new], tick) and not bullets.speed.any()
+    assert np.allclose(bullets.age[flying], previous.bullets.age[flying] + tick)
+    for alpha in (0.0, 0.5, 1.0):
+        frame = interpolate(previous, current, alpha).bullets
+        assert np.allclose(frame.age[new], alpha * tick)
+        assert np.allclose(frame.age[flying], bullets.age[flying] - (1.0 - alpha) * tick)
+        moved = np.hypot(
+            bullets.x[flying] - previous.bullets.x[flying],
+            bullets.y[flying] - previous.bullets.y[flying],
+        )
+        assert np.allclose(frame.speed[flying], moved / tick, rtol=1e-5)
+        owner = bullets.owner[new]
+        launched = np.hypot(
+            bullets.x[new] - previous.ships.x[owner], bullets.y[new] - previous.ships.y[owner]
+        )
+        assert np.allclose(frame.speed[new], launched / tick, rtol=1e-5)
+        assert not frame.speed[~bullets.active].any()

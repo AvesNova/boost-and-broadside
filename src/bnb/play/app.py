@@ -920,6 +920,7 @@ class Session:
             outline,
             self.overlay_drawing(),
             self.true_size,
+            self.loop.time_scale,
         )
         imgui.set_current_context(self.imgui_context)
         imgui.get_io().delta_time = max(self.elapsed, 1e-4)

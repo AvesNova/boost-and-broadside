@@ -18,6 +18,7 @@ from bnb.play.app import Options, read_pixels, run_offscreen
 from bnb.play.camera import Camera
 from bnb.play.index_map import build
 from bnb.play.loop import MatchLoop, MatchSetup
+from bnb.play.render.bullets import TRAIL_SECONDS, tracer_lengths
 from bnb.play.render.renderer import SPECTATOR, Renderer
 from bnb.play.render.ships import MINIMUM_RING_PIXELS, ring_radius, silhouette_size
 from bnb.play.render.silhouettes import WINGTIPS, polygon, silhouette_of
@@ -288,6 +289,42 @@ def _with_bullets(frame, owner: int, x, y, direction_x: float = 1.0, direction_y
     return dataclasses.replace(frame, bullets=dataclasses.replace(bullets, active=active, **values))
 
 
+def test_a_bullet_draws_a_round_head_and_a_fading_trail_behind_it(renderer, context):
+    """A tracer: the head where the bullet is, a trail behind it as long as the bullet
+    flew in the last TRAIL_SECONDS (fading toward its end), none ahead; a bullet just
+    fired trails back only to where it was fired from; no speed known (a tick's snapshot):
+    the head alone."""
+    loop = _loop(PRESETS["deathmatch"], ticks=0, seed=1)
+    frame = _without_bullets(loop.current)
+    theme = themes.load(themes.DEFAULT)
+    x, y = 0.0, 0.0
+    camera = Camera(WIDTH, HEIGHT, x, y, 0.5)  # 2 px per metre
+    speed = 300.0  # m/s: the trail is 300 x TRAIL_SECONDS = 24 m, 48 px
+    background = _draw(renderer, context, frame, SPECTATOR, camera, theme)
+
+    def drawn(age: float, speed: float = speed):
+        bullet = _with_bullets(frame, 0, np.array([x]), np.array([y]))
+        bullets = bullet.bullets
+        slot = np.flatnonzero(bullets.active)
+        values = {"age": bullets.age.copy(), "speed": bullets.speed.copy()}
+        values["age"][slot], values["speed"][slot] = age, speed
+        bullet = dataclasses.replace(bullet, bullets=dataclasses.replace(bullets, **values))
+        image = _draw(renderer, context, bullet, SPECTATOR, camera, theme)
+        row, column = _pixel_of(camera, x, y)
+        return lambda pixels: bool(
+            (image[row, column + pixels] != background[row, column + pixels]).any()
+        )
+
+    assert TRAIL_SECONDS * speed == pytest.approx(24.0)
+    tracer = drawn(age=1.0)
+    assert tracer(0) and tracer(-10) and tracer(-40)  # the head and the trail behind it
+    assert not tracer(-60) and not tracer(8)  # past the trail's end, and ahead
+    just_fired = drawn(age=0.01)  # 3 m flown: 6 px
+    assert just_fired(-4) and not just_fired(-12)
+    head_only = drawn(age=1.0, speed=0.0)
+    assert head_only(0) and not head_only(-10)
+
+
 def _without_bullets(frame):
     bullets = frame.bullets
     return dataclasses.replace(
@@ -372,9 +409,9 @@ def test_a_bullet_in_the_fog_draws_at_full_brightness(renderer, context):
     spectator_without = _draw(renderer, context, frame, SPECTATOR, camera, theme)
     # The ground around the bullet is fogged...
     assert team_without.sum() < spectator_without.sum()
-    # ...but the bullet's own pixels are the spectator's, to rounding.
+    # ...but the bullet's opaque pixels (its head's middle) are the spectator's, to rounding.
     change = np.abs(spectator - spectator_without).max(-1)
-    solid = change > 100
+    solid = change >= 0.9 * change.max()
     assert solid.any()
     assert np.abs(team[solid] - spectator[solid]).max() <= 2
 
@@ -601,3 +638,9 @@ def test_a_hex_code_typed_into_the_editor_applies(context, tmp_path):
     assert session.theme.sky == Colour.from_hex("#204060")
     assert session.theme.thin_air == themes.load(themes.DEFAULT).thin_air
     session.close()
+
+
+def test_a_tracer_spans_its_seconds_up_to_where_it_was_fired():
+    speed = np.array([600.0, 600.0, 0.0], np.float32)
+    age = np.array([1.0, 0.02, 1.0], np.float32)
+    assert tracer_lengths(speed, age, 0.1) == pytest.approx([60.0, 12.0, 0.0])

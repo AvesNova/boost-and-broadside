@@ -1,19 +1,33 @@
-"""Pass 8: bullets, short streaks along their direction in the shooter's team colour. Every
-bullet draws in every view."""
+"""Pass 8: bullets, as tracers: a round head in the shooter's team colour and a short trail
+behind it along its direction of flight, tapering and fading to nothing as a ship's trail
+does (`trails`), in the team's trail colour. Every bullet draws in every view.
+
+The trail spans the last TRAIL_SECONDS of the bullet's flight as the screen shows it (that
+many seconds of play times the playback speed), never past the point it was fired from,
+so a fast bullet reads as one continuous streak at any time scale or playback speed. A
+bullet has no size in the game (hits are tested against the ship's hit radius), so the
+tracer is a fixed few pixels wide at every zoom, the true-size view included."""
 
 import moderngl
 import numpy as np
 
 from ..themes import Theme
 from .programs import program, set_uniforms
+from .trails import NEWEST_PIXELS, OLDEST_PIXELS
 
-LENGTH_PIXELS = 10.0
-WIDTH_PIXELS = 2.5
-FLOATS = 8
+TRAIL_SECONDS = 0.08  # of the screen's time
+HEAD_PIXELS = 2.5  # the head's radius
+FLOATS = 13
+
+
+def tracer_lengths(speed: np.ndarray, age: np.ndarray, seconds: float) -> np.ndarray:
+    """Each tracer's trail (m): the distance the bullet flew in the last `seconds` of play,
+    at its speed, up to where it was fired (its `age` ago)."""
+    return (speed * np.clip(np.minimum(seconds, age), 0.0, None)).astype(np.float32)
 
 
 class BulletsPass:
-    """Pass 8: the bullets, one instanced streak per active bullet in its shooter's team colour."""
+    """Pass 8: the bullets, one instanced tracer per active bullet."""
 
     def __init__(self, context: moderngl.Context, capacity: int = 1024) -> None:
         self.context = context
@@ -35,7 +49,15 @@ class BulletsPass:
             self.program,
             [
                 (self.corners, "2f", "corner"),
-                (self.instances, "2f 2f 4f/i", "tip", "direction", "tint"),
+                (
+                    self.instances,
+                    "2f 2f 1f 4f 4f/i",
+                    "head",
+                    "direction",
+                    "trail_metres",
+                    "head_tint",
+                    "trail_tint",
+                ),
             ],
         )
 
@@ -47,17 +69,25 @@ class BulletsPass:
         y: np.ndarray,
         direction_x: np.ndarray,
         direction_y: np.ndarray,
+        trail: np.ndarray,
         team: np.ndarray,
     ) -> None:
-        """The listed bullets (arrays of one length)."""
+        """The listed bullets (arrays of one length): head position, unit direction of
+        flight, trail length (m, `tracer_lengths`) and team."""
         if len(x) == 0:
             return
         self._reserve(len(x))
-        colours = np.array([c.floats() for c in theme.team], np.float32)[team]
+        heads = np.array([c.floats() for c in theme.team], np.float32)[team]
+        trails = np.array([c.floats() for c in theme.trail], np.float32)[team]
         table = np.concatenate(
-            [np.stack([x, y, direction_x, direction_y], -1), colours], -1
+            [np.stack([x, y, direction_x, direction_y, trail], -1), heads, trails], -1
         ).astype(np.float32)
         self.instances.orphan()  # fresh storage: no wait on the last frame's draw
         self.instances.write(table.tobytes())
-        set_uniforms(self.program, **camera, length_pixels=LENGTH_PIXELS, width_pixels=WIDTH_PIXELS)
+        set_uniforms(
+            self.program,
+            **camera,
+            head_pixels=HEAD_PIXELS,
+            trail_pixels=(OLDEST_PIXELS, NEWEST_PIXELS),
+        )
         self.vertex_array.render(moderngl.TRIANGLE_STRIP, vertices=4, instances=len(x))
