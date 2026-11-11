@@ -21,3 +21,12 @@
   Committed reports.
 - Didn't: the 60.8M runs (stopped at 6/40 to free CPU for arena/fog/bf16 checks; ETA 01:30).
 - Next: arena-input 12500, fog, bf16, wrapped (champion and null). ETA 00:45 (worst 01:00).
+- 00:52 All runs done. Arena input 12500 for every variant: unchanged (R8192 KL 1.9e-5).
+  Fog on every game (moved enemy visible samples only, 11.9k): R8192 3.7e-5, controls
+  0.42-0.56. bf16 matmuls (deployed precision, 16 games): R8192 3e-4, controls 0.17-0.30.
+  Wrapped set: each far shift against its near twin (mod 8192 m): KL 1e-5 to 2e-5 (champion),
+  7e-5 to 4e-4 (null), while each is 0.17-0.31 from B.
+- Verdict: the policy reads relative position only through rotary attention, and so sees an
+  8192 m torus per axis; the colour code contributes ~1e-4 of the effect (a whole 26 244 m
+  colour alias changes the policy as much as any control).
+- Not done: 60.8M checkpoints (stopped for CPU; same script, ~35 min each).
