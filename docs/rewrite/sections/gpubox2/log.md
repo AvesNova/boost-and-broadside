@@ -70,3 +70,8 @@ See the report section at the end. Records of the champion: `champion/*.json` (c
     compiled. On the first box a warm first update took 250-454 s.
   - The real risk on this box: interruptions every 2-30 min can keep a cold first update from
     ever finishing.
+- **02:47 Interruption 4**, after about 8 min up. The first update had still not finished.
+- **02:51 Back (interruption 4 measured).** The last heartbeat was 02:47:09 and the restart
+  02:51:13: about **4 min** down. The compile cache has grown to 6.2 GB. Fresh start 5.
+- **02:55 Interruption 5**, after about 4 min up.
+- **04:56 Back (interruption 5 measured).** The last heartbeat was 02:54:13 and the restart 04:55:53: **2 h 02 min** down. Fresh start 6. Up so far: about 77 min of 4 h 16 min since launch, and still no finished update.
