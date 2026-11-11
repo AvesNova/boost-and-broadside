@@ -20,6 +20,7 @@ SHORTCUTS = (
     (imgui.Key.c, "C", "toggle_control", "take control of the selected ship, or release it"),
     (imgui.Key.home, "Home", "fit", "fit the arena in the view"),
     (imgui.Key.z, "Z", "toggle_true_size", "ships at their true size, or never too small to see"),
+    (imgui.Key.g, "G", "cycle_grid", "dot grid: off, square, triangle, hex"),
     (imgui.Key.t, "T", "cycle_theme", "next theme"),
     (imgui.Key.e, "E", "toggle_editor", "theme editor"),
     (imgui.Key.f2, "F2", "toggle_tuning", "tuning panel: the ships' handles and the rules"),

@@ -3,6 +3,7 @@
 sky = "#FFFFFF"
 outside = "#EEF0F3"
 boundary = "#F49AC1"
+grid = "#2A2F3A33"
 thin_air = "#7FD3B4"
 thick_air = "#F49AC1"
 thin_contour = "#528279BF"
