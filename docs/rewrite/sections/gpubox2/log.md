@@ -40,3 +40,9 @@ See the report section at the end. Records of the champion: `champion/*.json` (c
 - **00:38 Restarted BC once by hand** (dirty tree: an edit not yet committed). Found:
   `supervisorctl stop` lets `bnb train` finish its graceful stop (SIGTERM -> stop after the
   update), so the trainer outlives the stop for minutes; killed it. Fresh start 00:40 on 9f11922.
+- **00:40 BC fresh start** (`2026-11-12-bc-onehead`, commit 9f11922). Compiling to at least
+  00:53 KST (GPU 0%, 9.2 GB held; the heartbeat's 00:52 line shows the first GPU work, 110 W).
+- **~00:55-01:10 Interruption 1.** The direct port (80.188.223.200:30148) and the proxy
+  (ssh9.vast.ai:22629) both refuse connections. The last contact was 00:53 KST. The laptop's
+  pull at 01:11 found the box unreachable. Lost: the compile, about 15 min, and no update
+  (there was no checkpoint yet). `reach.sh` on the laptop now logs both ports every minute.
