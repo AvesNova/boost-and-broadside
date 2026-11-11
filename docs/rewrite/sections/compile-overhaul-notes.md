@@ -416,6 +416,12 @@ old), the default ArenaConfig (8 blocks x 128 games), three steady batches:
   differ. The structure is general: the batch waits for its slowest block. Proposal for the
   author (changes how a tournament counts its games, so not done): the started-before-T
   rule at T about 2x the median, or a T from the batch's own game lengths.
+- **Author's decision (2026-11-11 10:00 KST): adopt the started-before-T rule.** The
+  measure is games per unit of time, not per batch. The simulated "games per batch tick"
+  is that measure: every row ticks together, so a batch's time is its ticks times a fixed
+  steady tick. T is to be picked on games per second. Each later batch keeps reallocating
+  its blocks to the most informative pairs, as the adaptive tournament does now. Not built
+  yet.
 
 ### Steady speed after the shrink (warm A/B, `compile_baseline.py train ... steps=4`)
 
@@ -484,3 +490,8 @@ The real-scale RL config, warm, expandable_segments, steady updates 2-3: learn 2
 an update, 4.1% of the learn, 3.8% of the update** (collect 17.8 s both). Measuring them
 every 10th update (as the cadence diagnostics are) would save about 3.4%; it is the
 author's call (it thins the heads' series).
+
+**Author's decision: on the cadence.** The trainer now measures the heads' sums on the one
+diagnostics cadence (`metrics.due`, every 10th update and the first), with the gradient and
+representation groups; `Learner.update(heads=...)`, the trainer passing its cadence. The
+heads' losses stay every update's.

@@ -1045,11 +1045,14 @@ class Learner:
         bootstrap,
         environment_steps: int = 0,
         cadence: bool = False,
+        heads: bool = True,
     ) -> dict:
         """One update from the store's shards and the lookahead after them, and the bootstrap
         (the learner's Outputs on the observation after the last tick). environment_steps:
         environment steps this update collected (the warmup counts them). cadence: also
-        measure the cadence groups (`cadence`), after the steps. Returns the update's series
+        measure the cadence groups (`cadence`), after the steps. heads: measure the heads' sums
+        (in the first epoch, when the learner measures them; the trainer passes its cadence,
+        as they cost about 4% of a learn). Returns the update's series
         on the device (`bnb.contracts.series`), for the caller to read back once."""
         config, device = self.config, self.device
         views = segments.views
@@ -1070,7 +1073,7 @@ class Learner:
         diagnostics_total = None
         last_moments = None  # the last completed epoch's fit moments
         head_total: dict = {}  # the heads' sums, over the first epoch
-        measure_heads = self.measures_heads
+        measure_heads = self.measures_heads and heads
         drift = self.drift(segments, prepared)
         skipped = torch.zeros((), dtype=torch.int64, device=device)
         nonfinite_terms = torch.zeros(len(TERMS), dtype=torch.int64, device=device)

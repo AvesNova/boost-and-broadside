@@ -118,13 +118,20 @@ def test_the_cadence_measures_its_groups_and_does_not_change_the_update(segment,
     for cadence in (True, False):
         model = copy.deepcopy(net)
         learner = lc.with_micro_batch(lc.learner(model, runner, epochs=2, minibatches=2), 2)
-        out = metrics.read(learner.update(runner.store, runner.bootstrap(), cadence=cadence))
+        out = metrics.read(
+            learner.update(runner.store, runner.bootstrap(), cadence=cadence, heads=cadence)
+        )
         results.append((out, [p.detach().clone() for p in model.parameters()]))
         if cadence:  # the cadence's gradients are taken with autograd.grad, and .grad cleared
             assert all(p.grad is None for p in model.parameters())
     (on, on_weights), (off, off_weights) = results
     assert all(torch.equal(a, b) for a, b in zip(on_weights, off_weights, strict=True))
     assert not any(name.startswith(("gradient/", "representation/")) for name in off)
+    # the trainer measures the heads' sums at the cadence too (about 4% of a learn); their
+    # losses are every update's
+    heads = [name for name in on if name.startswith(("next_state/", "enemy_action/"))]
+    assert any(name.startswith("next_state/kl/") for name in heads)
+    assert {name for name in heads if name in off} == {"next_state/loss", "enemy_action/loss"}
     top = ("policy", "entropy_power", "entropy_stick", "entropy_shoot", "value", "next_state")
     top += ("enemy_action", "density")
     top += ("shot_trajectory", "shot_outcome")

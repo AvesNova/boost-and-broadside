@@ -462,7 +462,9 @@ class Trainer:
             self.league.collected(self)
         collected = time.perf_counter()
         cadence = self.ppo.diagnostics and metrics.due(self.updates_done + 1)
-        collector.set(self.ppo.update(store, bootstrap, self.steps_per_update, cadence=cadence))
+        collector.set(
+            self.ppo.update(store, bootstrap, self.steps_per_update, cadence=cadence, heads=cadence)
+        )
         self.updates_done += 1
         collector.set(
             {

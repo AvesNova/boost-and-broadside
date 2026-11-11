@@ -110,7 +110,7 @@ with the author.**
 
 | ID | Diagnostic | Question it answers | Status | Cost |
 |---|---|---|---|---|
-| F1 | Each auxiliary head vs its trivial baseline | Does the head learn anything beyond persistence or a prior? | have for next state and enemy action; decided for density (3e); partial for shots | U |
+| F1 | Each auxiliary head vs its trivial baseline | Does the head learn anything beyond persistence or a prior? | have for next state and enemy action; decided for density (3e); partial for shots | C (heads' sums on the diagnostics cadence since 2026-11-11; their losses U) |
 | F2 | Effective rank of trunk features | Is the representation collapsing? With SIGReg dropped, nothing else watches this. | missing | C |
 | F3 | Belief error, visible vs hidden | Does the model track what it cannot see? | have | U |
 
