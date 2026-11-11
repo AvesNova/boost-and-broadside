@@ -14,3 +14,10 @@
   far enemy is read as its near twin mod 8192 m: the policy sees an 8192 m torus.
 - 22:56 Launched 9 runs (64 envs x 40 s, stride 15 ticks, CPU, 4 at a time) + 2 wrapped
   runs (32 envs x 30 s). Wave 1 ETA 23:45 (worst 23:55); wave 2 ~00:35 (worst 00:50).
+- 23:56 Wave 1 done (champion + null 121.6M, deathmatch + frontline; 22-24k samples, 64
+  games each): R8192x/y/xy and R24576 KL(v||B) 1.4e-5 to 3e-4; every other far shift
+  (C8748, C26244, K controls) 0.07-0.31, as large as a genuine 1-3 km move. Attention on the
+  moved enemy identical to B for R shifts (ratio 1.00), 0.43-0.86 for the others.
+  Committed reports.
+- Didn't: the 60.8M runs (stopped at 6/40 to free CPU for arena/fog/bf16 checks; ETA 01:30).
+- Next: arena-input 12500, fog, bf16, wrapped (champion and null). ETA 00:45 (worst 01:00).
