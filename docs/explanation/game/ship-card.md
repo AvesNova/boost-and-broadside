@@ -48,7 +48,12 @@ The ship types live in tracked files, one per type, grouped in **ship sets**
 a subdirectory of it named after the set (`src/bnb/game/ships/real-scale/`). In each set,
 `order.toml` lists the types: a type's index (its card column, its lineup entry) is its
 place there. A type's file holds its display name, its handles, its card and, optionally,
-`[notes]`: where each handle's value comes from, kept through a save.
+`[notes]`: where each handle's value comes from, kept through a save. A set is one pool:
+types a player adds (the tuning panel's **Add a copy as this name** appends one) join the
+set's own, after them, so an index never moves when a type is added. The number of types
+is the card's width, which a model's ship-type input is sized by (Yemong's one-hot), so a
+policy trained before a type was added plays the old types as trained but does not know
+the new one, and a training checkpoint does not resume on the wider card.
 
 A game names its set, `GameConfig.ship_set` ("standard" by default); the whole batch
 shares it. `bnb.game.ship_types.ship_types`, `default_card` and `type_names` take the set

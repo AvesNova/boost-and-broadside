@@ -64,8 +64,19 @@ as types are added.
 
 ## The ships
 
-The set holds 27 types: the P-51D first, the heavy placeholder second (the game's default
-lineup alternates the first two), then 17 more late-war fighters and 8 invented designs.
+The set opens with its 27 researched types: the P-51D first, the heavy placeholder second
+(the game's default lineup alternates the first two), then 17 more late-war fighters and 8
+invented designs. Player-made types share the pool: a type made with the tuning panel's
+**Add a copy as this name** (or written by hand) goes after them, in the set's
+`order.toml`. The rules on this page hold for the researched types only (`real_scale.AIRCRAFT`:
+first and in order, each file the module's targets, every one within 5% of the P-51D's
+damage per second); a player's type has only to be a valid ship file (every handle and
+card field, a fire rate the tick can hold), and solving the set again keeps it after the
+researched ones (`real_scale.player_types`). The balance rounds never move one. Two
+things do follow the whole set: the type count is the width of Yemong's ship-type input
+(a model trained on the set with another count does not load into it), and the spawn speed
+is 1.3 times the researched types' fastest stall, so a player's type that stalls faster
+than every researched one starts in a stall.
 Their researched quantities, each with a confidence and a source, are in
 `bnb.game.real_scale_aircraft`; the research itself (sources, notes and the gun data) is
 in [real-scale-research/](real-scale-research/aircraft.json). `bnb.game.real_scale`

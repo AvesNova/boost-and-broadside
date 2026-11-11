@@ -3,6 +3,7 @@ and its presets, and that its cards fly their handles."""
 
 import json
 import math
+import shutil
 
 import pytest
 import torch
@@ -55,12 +56,54 @@ def test_the_first_type_is_the_researched_p51d_with_a_600_m_gun():
     assert p51.notes["stall_speed"].startswith("researched (medium)")
 
 
-def test_every_type_is_written_with_a_note_for_every_handle():
-    """The set is the module's aircraft in order, each ship file's handles are the module's
-    targets (the climb time solved), and each note says where its value comes from."""
+def researched() -> list[ships.Ship]:
+    """The set's researched types (`real_scale.AIRCRAFT`): its first, in their order."""
+    return ships.load(SET)[: len(real_scale.AIRCRAFT)]
+
+
+def test_the_set_starts_with_the_researched_aircraft_and_may_hold_player_types():
+    """The pool rule: the module's aircraft come first, in order; any type after them is a
+    player's (made with the tuning panel's Add, or by hand) and only has to be a valid ship
+    file: a unique key and name, every handle and every card field, a fire rate the tick
+    can hold."""
     found = ships.load(SET)
-    assert [ship.key for ship in found] == [one.key for one in real_scale.AIRCRAFT]
-    assert len(found) == 27 and len(set(api.type_names(SET))) == 27
+    assert [ship.key for ship in found[: len(real_scale.AIRCRAFT)]] == [
+        one.key for one in real_scale.AIRCRAFT
+    ]
+    assert len({ship.name for ship in found}) == len(found)
+    assert len({ship.key for ship in found}) == len(found)
+    card_fields = set(api.default_card(SET))
+    for ship in found[len(real_scale.AIRCRAFT) :]:
+        assert set(ship.handles) == set(api.HANDLE_NAMES), ship.key
+        assert set(ship.card) == card_fields, ship.key
+        assert all(math.isfinite(value) for value in ship.card.values()), ship.key
+        assert 30.0 % ship.handles["fire_rate"] == 0.0, ship.key
+
+
+def test_a_player_type_after_the_researched_ones_passes_the_pool_rule(tmp_path, monkeypatch):
+    """A copy of the P-51D written after the researched types under another name (as Add
+    writes one) keeps the researched types first and in order, is a valid type, and is
+    one of the types a new solve of the set keeps after the researched ones."""
+    shutil.copytree(ships.SHIPS, tmp_path / "ships")
+    monkeypatch.setattr(ships, "SHIPS", tmp_path / "ships")
+    p51 = ships.load(SET)[0]
+    ships.append(ships.Ship("test-copy", "Test copy", p51.handles, p51.card, {}), SET)
+    found = ships.load(SET)
+    assert found[-1].key == "test-copy"
+    assert real_scale.player_types()[-1].key == "test-copy"  # kept when the set is solved again
+    assert not {one.key for one in real_scale.player_types()} & {
+        one.key for one in real_scale.AIRCRAFT
+    }
+    assert [ship.key for ship in found[: len(real_scale.AIRCRAFT)]] == [
+        one.key for one in real_scale.AIRCRAFT
+    ]
+    test_the_set_starts_with_the_researched_aircraft_and_may_hold_player_types()
+
+
+def test_every_type_is_written_with_a_note_for_every_handle():
+    """Each researched type's ship file's handles are the module's targets (the climb time
+    solved), and each note says where its value comes from."""
+    found = researched()
     rules = api.rules_of(api.PRESETS["real_scale_frontline"])
     combat = real_scale.combat_constants()
     kinds = ("researched", "estimated", "derived", "invented", "placeholder", "proposal")
@@ -112,13 +155,13 @@ def test_the_combat_economy_follows_the_weight_of_fire_and_the_climb_charge():
 
 
 def test_every_type_deals_about_the_p51s_damage_per_second():
-    """The equal-damage rule: (w / w_P-51)^0.05 within 5% of 360 per second, at the type's
-    own fire rate; the note records the value before it."""
+    """The equal-damage rule, for the researched types: (w / w_P-51)^0.05 within 5% of 360
+    per second, at the type's own fire rate; the note records the value before it."""
     rule = real_scale.balanced_damage_per_second
     assert rule(360.0, 360.0) == 360.0
     assert rule(720.0, 360.0) == pytest.approx(360.0 * 2.0**0.05)
     assert rule(1e6, 360.0) == pytest.approx(378.0) and rule(1.0, 360.0) == pytest.approx(342.0)
-    for ship in ships.load(SET):
+    for ship in researched():
         per_second = ship.handles["hit_damage"] * ship.handles["fire_rate"]
         assert 342.0 - 1e-6 <= per_second <= 378.0 + 1e-6, ship.key
         assert "Balanced (round 1)" in ship.notes["hit_damage"], ship.key
@@ -165,7 +208,7 @@ def test_each_real_scale_card_flies_its_handles():
     rules = api.rules_of(api.PRESETS["real_scale_frontline"])
     card = api.ship_types(dtype=torch.float64, ship_set=SET)
     flown = api.measure_handles(card, rules)
-    for index, ship in enumerate(ships.load(SET)):
+    for index, ship in enumerate(researched()):
         for name in api.FLOWN_HANDLES:
             if "MISSED" in ship.notes[name]:
                 continue

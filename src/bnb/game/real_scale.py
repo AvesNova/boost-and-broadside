@@ -651,6 +651,7 @@ def solve_set(
     """Write the set's rules.toml, then solve each type in its own process, writing its ship
         file as it finishes, and finally the set's order: the solves, in the set's order. A type
     that fails stops no other; the order is then left as it was and Infeasible names them.
+    The players' types (`player_types`) stay, after the solved ones.
         resume: keep a written card whose targets (all but the climb time) match, its notes
         and name refreshed, and re-arm one whose flight targets match (its combat card
         fields in closed form, no flight);
@@ -727,8 +728,18 @@ def solve_set(
             + "; ".join(f"{key}: {reason}" for key, reason in failed.items())
         )
     ordered = [results[one.key] for one in aircraft]
-    ships.write([solved.ship for solved in ordered], SHIP_SET)
+    ships.write([solved.ship for solved in ordered] + player_types(aircraft), SHIP_SET)
     return ordered
+
+
+def player_types(aircraft=AIRCRAFT) -> list[ships.Ship]:
+    """The set's types that are not the researched aircraft (made by players: the tuning
+    panel's Add, or by hand), in the set's order: they stay after the researched ones when
+    the set is solved again (the pool rule, docs/explanation/game/real-scale.md)."""
+    keys = {one.key for one in aircraft}
+    if not (ships.directory_of(SHIP_SET) / ships.ORDER).is_file():
+        return []
+    return [ship for ship in ships.load(SHIP_SET) if ship.key not in keys]
 
 
 def main() -> None:

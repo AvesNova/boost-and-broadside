@@ -264,10 +264,13 @@ def analyse(round_number: int, log_file: pathlib.Path) -> None:
 
 
 def loosely_known(key: str) -> bool:
-    """Whether a type has no researched datum (an invented design or a placeholder)."""
+    """Whether a type has no researched datum (an invented design or a placeholder); False
+    for a player's type (not in `real_scale.AIRCRAFT`), which the rounds never move."""
     from bnb.game.real_scale import AIRCRAFT
 
-    aircraft = next(one for one in AIRCRAFT if one.key == key)
+    aircraft = next((one for one in AIRCRAFT if one.key == key), None)
+    if aircraft is None:
+        return False
     return all(datum.confidence == "invented" for datum in aircraft.data.values())
 
 

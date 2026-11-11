@@ -7,13 +7,17 @@ import sys
 import pytest
 import torch
 
+from bnb.game import real_scale
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))  # `bench`
 from bench import ship_type_tournament as tournament  # noqa: E402
 
 
 def test_the_features_follow_the_ship_files():
     features = tournament.features("real-scale")
-    assert len(features) == 27
+    assert list(features)[: len(real_scale.AIRCRAFT)] == [
+        one.name for one in real_scale.AIRCRAFT
+    ]  # the researched types first; player-made ones may follow
     p51 = features["P-51D"]
     assert p51["weight_of_fire"] == pytest.approx(360.0)
     assert p51["climb_rate"] == pytest.approx(15.2, rel=1e-3)  # its researched climb
