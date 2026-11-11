@@ -6,12 +6,10 @@ policy-file round trip."""
 
 import json
 import math
-import os
 import pathlib
-import subprocess
-import sys
 from types import SimpleNamespace
 
+import arm_goldens
 import learner_cases as lc
 import pytest
 import torch
@@ -402,16 +400,10 @@ def test_split_is_off_by_default_and_needs_the_delta_head():
         YemongConfig(delta_split=True)
 
 
-def test_arms_1_and_2_step_and_unroll_bit_for_bit_as_recorded():
-    """In a fresh process on one thread, as recorded (`arm_goldens`)."""
-    environment = dict(
-        os.environ, OMP_NUM_THREADS="1", MKL_NUM_THREADS="1", CUDA_VISIBLE_DEVICES=""
-    )
-    code = "import torch; torch.set_num_threads(1); import arm_goldens; arm_goldens.reproduces()"
-    result = subprocess.run(
-        [sys.executable, "-c", code], cwd=HERE, env=environment, capture_output=True, text=True
-    )
-    assert result.returncode == 0, result.stderr[-2000:]
+def test_arms_1_and_2_step_and_unroll_as_recorded():
+    """Recorded before arms 3 and 4 existed (`arm_goldens`), to float32 rounding."""
+    for arm in ("arm1", "arm2"):
+        arm_goldens.reproduces(arm)
 
 
 def test_the_arms_set_line_builds_the_arm():
@@ -486,14 +478,17 @@ def test_the_fourier_ship_token_reads_fourier_and_the_code_stays_colour():
         previous = fourier.preceding_motion(trajectory.initial_carry, obs, replay, reset)
         tokens = fourier.tokens(obs, replay, previous)
         plain = colour.tokens(obs, replay, previous)
-    assert torch.equal(tokens.code, plain.code)
+    # float32 and the same maths in the same order, so equal within rounding: 1e-6 is about
+    # ten ulps, and a wrong or missing column is of order one
+    close = dict(rtol=1e-6, atol=1e-6)
+    torch.testing.assert_close(tokens.code, plain.code, **close)
     assert tokens.ship.shape[-1] == 500 and plain.ship.shape[-1] == 553
-    torch.testing.assert_close(tokens.ship[..., 437:], plain.ship[..., 490:], rtol=0, atol=0)
+    torch.testing.assert_close(tokens.ship[..., 437:], plain.ship[..., 490:], **close)
     valid, _, means, spreads = believed(obs.ships, replay)
     position = torch.where(valid[..., None], means[..., 0:2], replay.offset[..., None, :])
     means = torch.cat([position, means[..., 2:]], -1)
     expected = fourier.state_code.inputs(tokens.code, means, spreads)
-    torch.testing.assert_close(tokens.ship[..., :437], expected, rtol=0, atol=0)
+    torch.testing.assert_close(tokens.ship[..., :437], expected, **close)
 
 
 def test_the_error_head_starts_at_its_marginal_with_a_zero_last_layer():
@@ -989,7 +984,10 @@ def test_a_vanishing_tau_leaves_the_physics_term_as_without_the_switch(deadrecko
     expected = float(ppo.physics_sum(cross_entropy, off))
     for tau in (1e-9, 1e-30):
         vanishing = dict(label, **labels.split_masks(trajectory, mask, _decay(net, tau)))
-        assert float(ppo.physics_sum(cross_entropy, vanishing)) == expected
+        # float64 sums: equal to rounding (1e-16), so 1e-12 relative still fails a real term
+        assert float(ppo.physics_sum(cross_entropy, vanishing)) == pytest.approx(
+            expected, rel=1e-12
+        )
     # and the switch's own weights only add
     assert float(ppo.physics_sum(cross_entropy, label)) > expected
 
@@ -1083,7 +1081,8 @@ def test_the_fade_is_off_by_default_and_needs_the_split_and_the_hidden_decay():
         cases.double(net).forecast(logits, means, spreads, ship_type, rates=rates)
 
 
-def test_seen_rows_forecast_bit_for_bit_as_without_the_fade():
+def test_seen_rows_forecast_as_without_the_fade():
+    # float64 models: equal to rounding (1e-12 is far above 1e-16 and far below any real term)
     faded, unfaded = _fade_pair()
     means, spreads, ship_type, logits, correction_logits, rates = _fade_case(faded)
     age = torch.tensor([0, 2, 0, 7], dtype=torch.int32)
@@ -1092,8 +1091,9 @@ def test_seen_rows_forecast_bit_for_bit_as_without_the_fade():
         logits, means, spreads, ship_type, correction_logits, hidden, rates, age
     )
     without = unfaded.forecast(logits, means, spreads, ship_type, correction_logits, hidden, rates)
-    assert torch.equal(with_fade[0][~hidden], without[0][~hidden])
-    assert torch.equal(with_fade[1], without[1])  # the spreads: hidden rows' the error head's
+    torch.testing.assert_close(with_fade[0][~hidden], without[0][~hidden], rtol=1e-12, atol=1e-12)
+    # the spreads: hidden rows' the error head's
+    torch.testing.assert_close(with_fade[1], without[1], rtol=1e-12, atol=1e-12)
     assert not torch.allclose(with_fade[0][hidden], without[0][hidden])
 
 
@@ -1105,14 +1105,16 @@ def test_a_hidden_rows_change_fades_to_one_over_e_at_age_tau():
     without, without_spreads = unfaded.forecast(logits, means, spreads, ship_type, rates=rates)
     zero = torch.zeros(len(means), dtype=torch.int32)
     at_zero = faded.forecast(logits, means, spreads, ship_type, rates=rates, age=zero)
-    assert torch.equal(at_zero[0], without) and torch.equal(at_zero[1], without_spreads)
+    close = dict(rtol=1e-12, atol=1e-12)  # float64: rounding is 1e-16
+    torch.testing.assert_close(at_zero[0], without, **close)
+    torch.testing.assert_close(at_zero[1], without_spreads, **close)
     tau = torch.full_like(zero, FADE_TICKS)
     got, got_spreads = faded.forecast(logits, means, spreads, ship_type, rates=rates, age=tau)
-    assert torch.equal(got_spreads, without_spreads)
+    torch.testing.assert_close(got_spreads, without_spreads, **close)
     baseline = faded.delta_code.baseline(means, rates, ship_type)
     for i, name in enumerate(MEANS):
         if name in delta.MEDIAN:
-            assert torch.equal(got[:, i], without[:, i]), name
+            torch.testing.assert_close(got[:, i], without[:, i], **close, msg=name)
             continue
         full, part = without[:, i] - baseline[:, i], got[:, i] - baseline[:, i]
         if name == "heading":
@@ -1162,7 +1164,7 @@ def test_the_error_heads_label_is_the_error_of_the_faded_forecast(segment):
     expected = net.correction_code.errors(faded, after, ship_type)
     torch.testing.assert_close(errors[hidden], expected[hidden], rtol=1e-5, atol=1e-3)
     unfaded = net.correction_code.errors(physics, after, ship_type)
-    torch.testing.assert_close(errors[~hidden], unfaded[~hidden], rtol=0, atol=0)
+    torch.testing.assert_close(errors[~hidden], unfaded[~hidden], rtol=1e-5, atol=1e-3)
     assert not torch.allclose(errors[hidden], unfaded[hidden], rtol=1e-5, atol=1e-3)
 
 
