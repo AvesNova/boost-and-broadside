@@ -19,7 +19,8 @@ the critic's levels.
 <!-- generated: reward-levels -->
 
 A level's reward is its weight times the sum of its events. The weights are
-`bnb.learn.rewards.RewardConfig`:
+`bnb.learn.rewards.RewardConfig`, v1's times 10, so the returns are of the order of 1 the
+critic's bins and the return scale assume ([the learner](../learner.md)):
 
 <!-- generated: reward-config -->
 

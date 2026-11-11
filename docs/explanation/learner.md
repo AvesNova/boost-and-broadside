@@ -118,7 +118,19 @@ file says which layout it has (`tests/sections/test_single_value.py`).
 The return scale is the gap between exponential moving averages of the 5th and 95th
 percentiles of the summed returns of living own ships, at least 1, updated once per update
 (`bnb.models.yemong.critic.ReturnScale`). Advantages are divided by it, with no mean
-subtracted.
+subtracted, so a factor common to every reward weight leaves the policy's gradient as it
+was. The weights set the units the critic works in: each per-ship level's value is
+categorical over 77 symlog bins to +-3 (+-19 in reward units, `YemongConfig.value_bins` and
+`value_limit`), the bins 0.079 apart in symlog, so returns of order 1 span many of them. A
+different factor per level would change the levels' mix, which is the reward's design, not
+its units.
+
+The explained variance per level (`critic/explained_variance/{level}`) is against the
+lambda-returns the critic trains on, which are its own values plus the advantage, so a
+smooth critic scores high whatever it predicts. `critic/explained_variance_monte_carlo/{level}`
+is against the lambda 1 returns, the discounted rewards bootstrapped only after the update's
+last tick: whether the value predicts the rewards. Ticks near that last tick are bootstrapped
+sooner, most of all for the outcome's long horizon.
 
 ## Losses
 

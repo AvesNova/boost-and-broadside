@@ -30,6 +30,7 @@ from bnb.learn.ppo import (
     explained_variance,
     random_stream,
 )
+from bnb.learn.rewards import RewardConfig
 from bnb.models.relational import RelationalConfig
 from bnb.models.yemong import critic, policy
 from bnb.models.yemong.density import HexGrid, poisson_terms
@@ -548,7 +549,9 @@ def test_the_explained_variance_matches_an_independent_computation(segment):
     critic explains everything, and returns that never vary give 0."""
     net, runner, _, prepared = segment
     trajectory = lc.whole(runner)
-    returns, values = prepared["derived"]["level_returns"], trajectory.values  # weight 1
+    returns = prepared["derived"]["level_returns"]
+    values = trajectory.values.clone()  # in reward units: the outcome's P(win) - P(loss)
+    values[..., -1] *= RewardConfig().outcome  # times its weight
     valued = trajectory.valued
     expected = torch.stack(
         [

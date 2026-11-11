@@ -40,15 +40,19 @@ __all__ = [
 
 @dataclasses.dataclass(frozen=True)
 class RewardConfig:
-    """Level weights (rewards spec 1, v1's values), in REWARD_LEVELS order: damage per
-    damage_unit points, kill/death per death, each objective level per unit of the mode's
-    events, the outcome per match result."""
+    """Level weights (rewards spec 1), in REWARD_LEVELS order: damage per damage_unit
+    points, kill/death per death, each objective level per unit of the mode's events, the
+    outcome per match result. v1's values times 10, the same factor for every level: with
+    v1's the returns were about a tenth of the units the critic's bins and the return
+    scale's floor assume (each level's 5th to 95th percentile within +-0.6, so the bins near
+    0 resolved little; compile-overhaul notes, "Return units"). The advantages are divided
+    by the return scale, so the factor leaves the policy's gradient as it was."""
 
-    damage: float = 0.274
-    kill_death: float = 0.283
-    objective_progress: float = 2.0
-    objective: float = 2.0
-    outcome: float = 1.0
+    damage: float = 2.74
+    kill_death: float = 2.83
+    objective_progress: float = 20.0
+    objective: float = 20.0
+    outcome: float = 10.0
     damage_unit: float = 100.0  # points, for every ship type
 
     @property

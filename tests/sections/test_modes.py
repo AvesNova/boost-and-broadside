@@ -578,12 +578,11 @@ def test_frontline_capture_end_to_end_through_the_game():
 
 
 def _outcome(events, num_ships: int) -> torch.Tensor:
-    """The outcome level each ship is paid on this tick."""
+    """The outcome each ship is paid on this tick, in match results (over its weight)."""
     team = torch.arange(num_ships) // (num_ships // 2)
-    levels, _ = rewards.reward_step(
-        rewards.RewardConfig(), rewards.blank_ledger(1, num_ships), events, team
-    )
-    return levels[0, :, REWARD_LEVELS.index("outcome")]
+    config = rewards.RewardConfig()
+    levels, _ = rewards.reward_step(config, rewards.blank_ledger(1, num_ships), events, team)
+    return levels[0, :, REWARD_LEVELS.index("outcome")] / config.outcome
 
 
 @pytest.mark.parametrize("captures, team, result", [(1, 0, 1), (0, 0, 0), (1, 1, -1)])

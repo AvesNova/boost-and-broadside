@@ -510,3 +510,29 @@ large part of the pointwise and reduction time.
 
 The spatial-only ablation and the nearest-neighbour MLP both pass the frontline probe
 (4.24 and 3.93 GB allocated).
+
+### Return units (2026-11-11, the author's decision)
+
+The three RL runs on the hub (`julianzia/boost-and-broadside-runs`: rl-absolute,
+rl-deadreckon-split-hiddenphysics, rl-nearest; 172 updates each) never clipped the value
+support (`critic/support_clip/*` 0 on every update; `alerts/support_clipping` never fired),
+but their returns were about a tenth of the critic's units. Each level's 5th to 95th
+percentile (rl-absolute, first and last 10% of the run): damage -0.06..+0.07 then
+-0.03..+0.03; kill_death -0.12..+0.08 then -0.02..+0.02; objective_progress -0.08..+0.08
+then -0.12..+0.13; objective -0.14..+0.16 then -0.24..+0.29; outcome -0.53..+0.64 then
+-0.22..+0.40. The return scale (5th to 95th of the summed returns) was 1.22 then 1.12, just
+above its floor of 1; the normalised advantage's RMS about 0.06. Reasons: every level is
+zero-sum and most games are mirror matches; damage's horizon is 3.7 s (gamma 0.991) and its
+lambda 0.90 leans on the critic; lasting damage only (recharge refunds); deaths rare (the
+alive share 0.90 -> 0.97); the outcome +-1 once, about 0.35 of it on average after
+discounting over a 300 s game, and frontline self-play drew 88% of its games early on.
+
+Decided: every reward weight times 10 (one factor, so the levels' mix and, through the
+return scale, the policy's gradient are unchanged), and the value support widened to keep
+its spacing: 77 symlog bins to +-3 (+-19 in reward units) in place of 51 to +-2, for Yemong,
+the relational model and the nearest-neighbour MLP. A factor per level would change the
+reward's design; a per-level critic unit (the head predicting a level's return over its own
+unit) would get each head the same range without it, at the cost of more machinery: not
+done. The explained variance per level is against the lambda-returns (V + A), so it
+measures the critic's agreement with itself; `critic/explained_variance_monte_carlo/{level}`
+(lambda 1) now measures it against the rewards.

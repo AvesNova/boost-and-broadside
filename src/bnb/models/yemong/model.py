@@ -200,8 +200,8 @@ class YemongConfig:
     spatial_per_block: int = 2
     heads: int = 2
     map_width: int = 64
-    value_bins: int = 51
-    value_limit: float = 2.0
+    value_bins: int = 77  # symlog bins 0.079 apart, one at 0 (as 51 over +-2 were)
+    value_limit: float = 3.0  # symlog: +-19 in reward units
     levels: tuple[str, ...] = REWARD_LEVELS
     outcome_level: str | None = "outcome"
     hex_rings: int = 10

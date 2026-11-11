@@ -17,7 +17,7 @@ from bnb.contracts import REWARD_LEVELS, Action
 from bnb.contracts.action import NUM_JOINT
 from bnb.contracts.series import Deferred, Mean, Table
 from bnb.league.league import entry_kind, normalised_entropy
-from bnb.learn import statistics
+from bnb.learn import returns, statistics
 from bnb.runs import sinks
 from bnb.runtime import analytics, metrics
 
@@ -263,6 +263,22 @@ def test_the_targets_series_match_a_hand_computed_case(segment, global_generator
     assert f"critic/support_clip/{REWARD_LEVELS[learner.outcome_level]}" not in out
 
 
+def test_a_trace_decay_of_one_gives_the_discounted_rewards():
+    """The Monte Carlo returns (`critic/explained_variance_monte_carlo`): with lambda 1 the
+    return is the discounted reward sum, bootstrapped only after the last step, and cut at
+    an episode's end; the values drop out."""
+    rewards = torch.tensor([1.0, 2.0, 4.0, 8.0]).reshape(4, 1, 1, 1)
+    values = torch.tensor([5.0, -3.0, 7.0, 0.5]).reshape(4, 1, 1, 1)
+    done = torch.tensor([False, True, False, False]).reshape(4, 1)
+    bootstrap = torch.tensor([10.0]).reshape(1, 1, 1)
+    gamma, one = torch.tensor([0.5]), torch.tensor([1.0])
+    _, monte_carlo = returns.per_level_gae(
+        rewards, values, done, bootstrap, torch.tensor([False]), gamma, one
+    )
+    expected = [1 + 0.5 * 2, 2, 4 + 0.5 * 8 + 0.25 * 10, 8 + 0.5 * 10]
+    assert monte_carlo.flatten().tolist() == pytest.approx(expected)
+
+
 @pytest.mark.slow
 def test_the_learners_series_are_named_and_finite(segment, global_generator):
     net, runner = segment
@@ -288,6 +304,8 @@ def test_the_learners_series_are_named_and_finite(segment, global_generator):
     assert out["policy/epochs_completed"] == 2 and out["policy/minibatch_steps"] == 4
     assert out["train/skipped_steps"] == 0
     assert all(out[name] > 0 for name in out if name.startswith("train/parameter_norm/"))
+    for level in REWARD_LEVELS:  # the critic against the rewards (lambda 1), not itself
+        assert out[f"critic/explained_variance_monte_carlo/{level}"] <= 1.0
 
 
 @pytest.mark.slow

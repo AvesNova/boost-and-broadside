@@ -22,7 +22,7 @@ WEIGHTS = torch.tensor(CONFIG.weights)
 
 def test_levels_and_weights():
     assert REWARD_LEVELS == ("damage", "kill_death", "objective_progress", "objective", "outcome")
-    assert CONFIG.weights == (0.274, 0.283, 2.0, 2.0, 1.0) and CONFIG.damage_unit == 100.0
+    assert CONFIG.weights == (2.74, 2.83, 20.0, 20.0, 10.0) and CONFIG.damage_unit == 100.0
 
 
 # ------------------------------------------------------------------ real play
@@ -201,7 +201,8 @@ def test_damage_to_a_respawned_target_starts_afresh():
 def test_the_outcome_pays_every_ship_of_both_teams():
     match = Match(4)
     levels = match.tick(done=True, result=-1)
-    torch.testing.assert_close(levels[:, LEVEL["outcome"]], torch.tensor([-1.0, -1.0, 1.0, 1.0]))
+    paid = CONFIG.outcome * torch.tensor([-1.0, -1.0, 1.0, 1.0])
+    torch.testing.assert_close(levels[:, LEVEL["outcome"]], paid)
     match.tick(hits=[(0, 2, 10.0)], lost=[(2, 10.0)], done=True, result=0)
     assert _largest(match.ledger) == 0  # a finished match clears the ledger
 

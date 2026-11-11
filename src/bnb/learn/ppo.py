@@ -337,6 +337,7 @@ class Learner:
             self.shot_runs = model.shot_code.trajectory_runs
         self.discount = torch.tensor(config.discount, device=device)
         self.trace_decay = torch.tensor(config.trace_decay, device=device)
+        self.every_trace = torch.ones_like(self.trace_decay)  # λ = 1: the rewards themselves
         self.team_spirit = torch.tensor(config.team_spirit, device=device)
         self.ages = torch.arange(1, rules.bullet_moves + 1, dtype=torch.float32, device=device)
         self.loss = stage(self._loss)
@@ -377,14 +378,10 @@ class Learner:
         trained = alive.shape[0]
         values = self._in_reward_units(chain["values"])
         done = chain["done"]
+        rewards = returns.value_rewards(chain["reward"], self.levels)
+        following = self._in_reward_units(bootstrap.values)
         advantages, level_returns = returns.per_level_gae(
-            returns.value_rewards(chain["reward"], self.levels),
-            values,
-            done,
-            self._in_reward_units(bootstrap.values),
-            done[-1],
-            self.discount,
-            self.trace_decay,
+            rewards, values, done, following, done[-1], self.discount, self.trace_decay
         )
         advantages, level_returns = advantages[:trained], level_returns[:trained]
         own_alive = alive[..., : values.shape[-2]]
@@ -398,6 +395,11 @@ class Learner:
             level_returns=level_returns,
             values=values[:trained],
         )
+        if self.diagnostics:  # the critic against the rewards, not against itself
+            _, monte_carlo = returns.per_level_gae(
+                rewards, values, done, following, done[-1], self.discount, self.every_trace
+            )
+            out["monte_carlo_returns"] = monte_carlo[:trained]
         if level is not None:
             targets = critic.outcome_targets(
                 chain["outcome"],
@@ -925,6 +927,10 @@ class Learner:
             if self.diagnostics
             else {}
         )
+        if "monte_carlo_returns" in chained:  # the λ = 1 returns, bootstrapped at the end
+            monte_carlo = explained_variance(joined("monte_carlo_returns", parts), values, valued)
+            for index, name in enumerate(self.levels):
+                series[f"critic/explained_variance_monte_carlo/{name}"] = monte_carlo[index]
         series.update(head_statistics.belief_series(belief_total))
         series.update(head_statistics.input_series(belief_total))
         series.update(head_statistics.acceleration_series(belief_total))
