@@ -629,3 +629,10 @@ Proposals (not done):
    count varies by micro-batch: a fixed capacity either drops queries when it overflows
    (a different loss) or sizes for the worst case (no saving), and a varying one
    recompiles. Left as a design question.
+
+Tests: the full non-slow CPU suite on ad75cf47, 1,907 passed and 7 failed: the 6 known
+documentation references and `test_yemong_error_head.py::test_arms_1_and_2_step_and_unroll_bit_for_bit_as_recorded`,
+which fails the same way in the full suite on b137fc5b (1,903 passed, the same 7) and
+passes alone or with its own file: an order dependence that predates this work.
+`test_yemong_kernels.py` (GPU) 26 passed, with the staged head's own comparison, its
+repeatability and every autotune configuration.
