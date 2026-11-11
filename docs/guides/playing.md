@@ -101,8 +101,9 @@ leads it: the middle of the view sits ahead of the ship along its velocity, abou
 will be 4 s on, never more than 35% of the way from the middle to the nearer edge of the
 window, so you see what you are flying into. The lead eases with a critically damped
 spring (about 2 s to settle, no overshoot, the same at any frame rate), so a turn or a
-change of speed slides the ship across the view gently. It is held in pixels, so zooming
-keeps the ship where it is on screen. **Settings** → **Look ahead** chooses **Always** (the
+change of speed slides the ship across the view gently. It is held in pixels, so a zoom
+leaves the ship where it is on screen, and the lead then eases to the new zoom's (4 s of
+travel is more pixels zoomed in). **Settings** → **Look ahead** chooses **Always** (the
 default), **Flying** (only the ship you fly) or **Off** (the ship stays in the middle);
 the option is `--look-ahead`. Panning, the minimap or **Home** stop following, as before.
 
