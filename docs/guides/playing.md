@@ -117,10 +117,12 @@ scale**), fog, the seed, and each side's controller: **Scripted agent** (the def
 scripted agent, the BC teacher and the ratings' anchor, `bnb.controllers.scripted.Scripted`:
 it plays the mode's objectives, remembers each enemy it saw and dead reckons it while
 hidden), **Chaser** (`--scripted0 scripted`: it turns toward the nearest visible enemy and
-fires, and reads no zones) or a trained agent. A scripted agent needs its ship card's
-characteristics, measured once per card in a separate process (about 15 s on a laptop CPU)
-and kept in the user's cache directory; until they are measured the side plays on as it was
-and a notice says the agent will take over. An agent that runs on the GPU captures its step
+fires, and reads no zones) or a trained agent. The scripted agent and the chaser need their
+ship card's characteristics, measured once per card in a separate process (about 15 s for
+the standard set and about 2 minutes for the 27 real-scale types on a laptop CPU) and kept
+in the user's cache directory; until they are measured the side plays on as it was (in a
+new match its ships coast straight and hold their fire) and a notice says it will take
+over. An agent that runs on the GPU captures its step
 aside the same way before it plays. The agent list is every policy file of the local runs:
 `runs/*/policy/`, the training checkpoints and the league's snapshots (`--runs` sets the
 directory). A policy plays only the game it was trained on, with the same ship card and the
