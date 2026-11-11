@@ -36,17 +36,18 @@ def circular_coordinates(
     past it.
 
     The spec's coordinate is (m mod P) / p_l * c. Only its fraction and its floor mod c are
-    used, so each level reduces the position modulo its own period first (m mod p_l, by
-    remainders level after level) and the coordinate stays below c. That changes nothing in
-    exact arithmetic, but in float32 a coordinate near c^(l + 1) (about 2e4 at the position
-    code's finest level) keeps only 1e-3 of a colour, and fused and unfused kernels round
-    it differently. The remainders are exact for the code's integer-metre periods.
+    used, so each level reduces the position modulo its own period first (m mod p_l, one
+    remainder per level) and the coordinate stays below c. That changes nothing in exact
+    arithmetic, but in float32 a coordinate near c^(l + 1) (about 2e4 at the position
+    code's finest level) keeps only 1e-3 of a colour. A remainder is within about an ulp of
+    the mean, so each level's coordinate is within ulp(m) / p_l * c of float64's: under 5e-4
+    of a colour at the position code's finest level (measured; a chain of remainders, level
+    after level, is no closer).
     """
-    reduced, coordinates = mean, []
-    for level in range(levels):
-        level_period = period / colours**level
-        reduced = torch.remainder(reduced, level_period)
-        coordinates.append(reduced * (colours / level_period))
+    coordinates = [
+        torch.remainder(mean, period / colours**level) * (colours ** (level + 1) / period)
+        for level in range(levels)
+    ]
     position = torch.stack(coordinates, -1)
     lower = torch.floor(position)
     return torch.remainder(lower, colours), position - lower
@@ -143,14 +144,14 @@ def fourier_encode(
     """(...) mean and sigma to (..., levels, 2): per level l of period p_l = period /
     refinement^l, a_l (cos, sin) of 2 pi m / p_l, a_l the circular code's attenuation
     exp(-(2 pi sigma / p_l)^2 / 2), so a blurred level fades toward 0 as the circular
-    code's fades toward uniform. The phase reduces m modulo each level's period first, by
-    remainders level after level as `circular_encode` does, so float32 keeps the finest
+    code's fades toward uniform. The phase reduces m modulo each level's period first, one
+    remainder per level as `circular_coordinates` does, so float32 keeps the finest
     level's phase."""
-    reduced, phases = mean, []
-    for level in range(levels):
-        level_period = period / refinement**level
-        reduced = torch.remainder(reduced, level_period)
-        phases.append(reduced * (2.0 * math.pi / level_period))
+    phases = [
+        torch.remainder(mean, period / refinement**level)
+        * (2.0 * math.pi * refinement**level / period)
+        for level in range(levels)
+    ]
     phase = torch.stack(phases, -1)
     level_periods = period / refinement ** torch.arange(
         levels, dtype=mean.dtype, device=mean.device
@@ -478,47 +479,42 @@ def grouped_log_softmax(logits: torch.Tensor, runs: Runs) -> torch.Tensor:
     return torch.cat([F.log_softmax(part, -1).flatten(-2) for part in split_runs(logits, runs)], -1)
 
 
+# The dtype the grouped cross-entropy keeps its gradient's factor in for the backward.
+KEPT_FACTOR = torch.bfloat16
+
+
 class _GroupedCrossEntropy(torch.autograd.Function):
     """-sum target log p within each group, as lse(z) sum(target) - sum target z, with the
     gradient g (softmax(z) sum(target) - target): the same mathematics as through the
-    log-softmax, with no log-softmax as wide as the code kept for the backward (the
-    logits, the target's source and one log-sum-exp per group). The target is
-    encode(source), made again in the backward (encode None: the source is the target).
-    Compiled, the partitioner may instead compute the gradient's factor softmax(z)
-    sum(target) - target in the forward and keep that (one code-wide float32 tensor)."""
+    log-softmax. The forward (float32 in, float32 out) makes the factor softmax(z)
+    sum(target) - target too and keeps only that for the backward, in KEPT_FACTOR (bf16:
+    half the bytes of a code-wide float32 tensor; the gradient it makes is rounded to bf16
+    for the head's backward anyway). The target is encode(source) (encode None: the source
+    is the target), made once."""
 
     @staticmethod
     def forward(
         ctx, logits: torch.Tensor, source: torch.Tensor, runs: Runs, encode
     ) -> torch.Tensor:
         target = source if encode is None else encode(source)
-        log_sums, out = [], []
+        out, factors = [], []
         for part, target_part in zip(split_runs(logits, runs), split_runs(target, runs)):
             log_sum = torch.logsumexp(part, -1)
-            log_sums.append(log_sum)
-            out.append(log_sum * target_part.sum(-1) - (target_part * part).sum(-1))
-        ctx.runs, ctx.encode = runs, encode
-        ctx.save_for_backward(logits, source, *log_sums)
+            total = target_part.sum(-1)
+            out.append(log_sum * total - (target_part * part).sum(-1))
+            factor = torch.exp(part - log_sum[..., None]) * total[..., None] - target_part
+            factors.append(factor.to(KEPT_FACTOR))
+        ctx.save_for_backward(*factors)
         return torch.cat(out, -1)
 
     @staticmethod
     def backward(ctx, grad: torch.Tensor):
-        logits, source, *log_sums = ctx.saved_tensors
-        target = source if ctx.encode is None else ctx.encode(source)
-        grads = grad.split([groups for groups, _ in ctx.runs], -1)
+        factors = ctx.saved_tensors
+        grads = grad.split([factor.shape[-2] for factor in factors], -1)
         out = [
-            (
-                part_grad[..., None]
-                * (
-                    torch.exp(part - log_sum[..., None]) * target_part.sum(-1, keepdim=True)
-                    - target_part
-                )
-            ).flatten(-2)
-            for part, target_part, log_sum, part_grad in zip(
-                split_runs(logits, ctx.runs), split_runs(target, ctx.runs), log_sums, grads
-            )
+            (part_grad[..., None] * factor).flatten(-2) for factor, part_grad in zip(factors, grads)
         ]
-        return torch.cat(out, -1), None, None, None
+        return torch.cat(out, -1).to(grad.dtype), None, None, None
 
 
 def grouped_cross_entropy(
@@ -526,7 +522,7 @@ def grouped_cross_entropy(
 ) -> torch.Tensor:
     """(..., groups in all): -sum target log p within each group (`_GroupedCrossEntropy`);
     the target takes no gradient. With `encode`, `target` is what encode makes the target
-    of: a cheap encoding of a narrow source is made twice rather than its wide code kept."""
+    of: the wide code of a narrow source is made inside the loss rather than passed in."""
     return _GroupedCrossEntropy.apply(logits, target, runs, encode)
 
 
