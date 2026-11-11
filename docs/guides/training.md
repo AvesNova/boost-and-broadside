@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/cli.py, src/bnb/runs/chain.py, src/bnb/runtime/train.py, src/bnb/contracts/pools.py, src/bnb/contracts/config.py, src/bnb/game/modes/rules.py]
-reviewed: 2026-11-11 17:00
+reviewed: 2026-11-11 15:15
 ---
 
 # Training

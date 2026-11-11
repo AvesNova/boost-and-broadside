@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/runs/, src/bnb/runtime/rollout.py, src/bnb/models/yemong/model.py, src/bnb/models/relational.py, src/bnb/models/mlp.py, tests/runs/]
-reviewed: 2026-11-11 17:00
+reviewed: 2026-11-11 15:15
 ---
 
 # Runs and checkpoints
