@@ -1,0 +1,99 @@
+{
+ "name": "2026-11-09-rl-deadreckon-split-hiddenphysics",
+ "status": "finished",
+ "pid": 595669,
+ "host": "e98bed47fc73",
+ "message": null,
+ "command": [
+  ".venv/bin/bnb",
+  "train",
+  "--name",
+  "2026-11-09-rl-deadreckon-split-hiddenphysics",
+  "--init-from",
+  "runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average",
+  "--preset",
+  "mixed",
+  "--updates",
+  "58",
+  "--micro-batch-rows",
+  "320",
+  "--set",
+  "host_store=false"
+ ],
+ "wandb_id": null,
+ "parent": {
+  "policy": "/workspace/boost-and-broadside/runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average"
+ },
+ "checkpoint_every": 16777216,
+ "update_policies": true,
+ "newest_checkpoint": 180355072,
+ "final_checkpoint": 180355072,
+ "checkpoint_ordinals": {
+  "167772160": 11,
+  "180355072": 12
+ },
+ "probe": {
+  "allocated": 16735010304,
+  "reserved": 17341349888,
+  "total": 25296044032,
+  "budget": 24759173120
+ },
+ "segments": [
+  {
+   "commit": "6af08e09ece071d1f57992460ecfda6637955706",
+   "dirty": false,
+   "start_step": 0,
+   "start_time": "2026-11-09T16:01:15+00:00",
+   "end_step": 60817408,
+   "end_time": "2026-11-09T18:16:22+00:00",
+   "overrides": {},
+   "rewound_from": null,
+   "command": [
+    ".venv/bin/bnb",
+    "train",
+    "--name",
+    "2026-11-09-rl-deadreckon-split-hiddenphysics",
+    "--init-from",
+    "runs/2026-11-09-bc-deadreckon-split-hiddenphysics/policies/step_120586240/uniform_average",
+    "--preset",
+    "mixed",
+    "--updates",
+    "58",
+    "--micro-batch-rows",
+    "320",
+    "--set",
+    "host_store=false"
+   ]
+  },
+  {
+   "commit": "82e12ff95453eeeacf9d828b9025a6a1654b69eb",
+   "dirty": false,
+   "start_step": 60817408,
+   "start_time": "2026-11-09T21:39:35+00:00",
+   "end_step": 121634816,
+   "end_time": "2026-11-09T23:36:13+00:00",
+   "overrides": {
+    "updates": 116
+   },
+   "rewound_from": null,
+   "command": null
+  },
+  {
+   "commit": "f45ada61ae7987bc80fcff4e6fa758371670d39c",
+   "dirty": false,
+   "start_step": 121634816,
+   "start_time": "2026-11-10T03:04:18+00:00",
+   "end_step": 180355072,
+   "end_time": "2026-11-10T04:54:49+00:00",
+   "overrides": {
+    "updates": 172
+   },
+   "rewound_from": null,
+   "command": null
+  }
+ ],
+ "stop_request": null,
+ "hours": 6.036190384996848,
+ "skipped_steps": 0,
+ "snapshot_every": 16777216
+}
