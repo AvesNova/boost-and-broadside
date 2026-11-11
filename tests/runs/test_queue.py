@@ -15,11 +15,13 @@ import time
 
 import pytest
 
+import bnb
 from bnb import cli
 from bnb.runs import queue as job_queue
 from bnb.runs.queue import Queue, Runner
 
 STAND_INS = pathlib.Path(__file__).with_name("queue_stand_ins.py")
+SOURCE = pathlib.Path(bnb.__file__).parents[1]  # the bnb under test, for child processes
 BNB = [sys.executable, str(STAND_INS), "bnb"]
 LOCK = STAND_INS  # run as `python queue_stand_ins.py lock COMMAND...` through `lock_wrapper`
 
@@ -201,7 +203,7 @@ def test_removing_a_running_job_stops_it_gracefully(place):
 
 def test_a_stopped_runner_stops_its_job_queues_it_again_and_exits(place):
     add(place, "train", "--name", "a", "--updates", "60")
-    environment = dict(os.environ, PYTHONPATH=str(STAND_INS.parent))
+    environment = dict(os.environ, PYTHONPATH=os.pathsep.join([str(STAND_INS.parent), str(SOURCE)]))
     process = subprocess.Popen(
         [
             sys.executable,

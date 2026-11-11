@@ -30,7 +30,12 @@ import pytest
 import safetensors.torch
 import torch
 
+import bnb
+
 WORKER = pathlib.Path(__file__).with_name("resume_worker.py")
+# The worker imports the bnb this process tests (the tree's `src`), not the one an editable
+# install points at: a worktree's run of the test must run the worktree's code.
+SOURCE = pathlib.Path(bnb.__file__).parents[1]
 UPDATES = 2
 # Chosen from measurements on the RTX 4060 Laptop (both models, the two updates after the
 # resume, `resume_worker.py`'s "ulp" and "order_seed" damages against the straight run):
@@ -81,7 +86,7 @@ def _run(
     *damage: str,
     objective: str = "ppo",
 ) -> None:
-    environment = dict(os.environ, PYTHONPATH=str(WORKER.parent))
+    environment = dict(os.environ, PYTHONPATH=os.pathsep.join([str(WORKER.parent), str(SOURCE)]))
     arguments = [mode, str(directory), device, model, objective, str(UPDATES), *damage]
     done = subprocess.run(
         [sys.executable, str(WORKER), *arguments],
