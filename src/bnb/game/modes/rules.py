@@ -73,7 +73,7 @@ LINEUPS = {"arena": ("P-51D", "Spitfire XIV")}
 # `<base>_<n>v<n>_density` keeps its crowding, the arena radius growing as sqrt(n / 5) (its
 # 10 fields zoom with the arena, as every map scale's do). Not training presets, and not maps
 # of the play shell (`FLEET_PRESETS`).
-FLEET_SIZES = (10, 20, 40)
+FLEET_SIZES = (10, 20, 50)  # the largest is 10x the trained 5v5 (the zero-shot claim)
 FLEET_BASES = ("deathmatch", "frontline", "real_scale_deathmatch", "real_scale_frontline")
 FLEET_PRESETS: tuple[str, ...] = tuple(
     f"{base}_{n}v{n}_{kind}"

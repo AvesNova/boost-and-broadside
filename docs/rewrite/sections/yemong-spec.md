@@ -265,6 +265,24 @@ Positions are the belief means; "valid" is the belief's valid flag; there is no 
   text inverted this, giving periods from 64 m down to 0.5 m);
 - 20 pairs, 40 of the 64 head dims.
 
+**Sizing the position codes** (the rotary bands and the position colour code). Revisit
+both whenever ship speeds, the tick length or the largest map change:
+- **Finest period: Nyquist.** It must exceed twice the largest distance a ship moves in one
+  tick. Otherwise the level's phase change per tick is ambiguous, and the level reads as
+  pseudo-random noise from tick to tick. Real scale: about 320 m/s at most (the velocity
+  code's reach) at 30 Hz is 10.7 m a tick, so above 21 m; standard ships, about 10 m. For
+  the rotary bands, which relate ships at the same tick, the smallest separation worth
+  resolving binds too; gun geometry puts it at tens of metres.
+- **Coarsest period: the largest map.** It must exceed the largest separation on one axis:
+  the largest map's diameter plus the overshoot past the boundary. Otherwise a far ship
+  aliases onto a near one. The largest preset is real-scale 50v50 density, about 49 km
+  across.
+- **Status (2026-11-11):** today's values predate real scale (map x3) and break both rules.
+  The rotary coarsest, 8192 m, is under the real-scale map's 15.6 km. The colour code's
+  4 m and 12 m levels fail Nyquist at real-scale speeds (4 m already did at standard
+  speeds), and its coarsest, 26 244 m, is under 49 km. Proposed, not yet adopted: rotary
+  65 536 m down to 128 m (10 octaves); colour 8 levels, 36 m to 78 732 m.
+
 **Initialising the encoder's code columns** (v1): each first projection's columns for
 code inputs are drawn from `N(0, 1/G)`, where `G` is the number of softmax groups in that
 kind's input (ships 23, fields 9).

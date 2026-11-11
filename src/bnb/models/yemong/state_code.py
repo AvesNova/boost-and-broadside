@@ -56,6 +56,17 @@ COVARIANCE_ENTRIES = len(COVARIANCE_STATE) * (len(COVARIANCE_STATE) + 1) // 2
 SPREAD_INPUTS = ("scalar", "ellipse")  # `YemongConfig.spread_inputs`
 POSITION_INPUTS = ("colour", "fourier")  # `YemongConfig.position_inputs`
 
+# Sizing rule for the position codes (this colour code and `YemongConfig.rotary_period` /
+# `rotary_octaves`); revisit both whenever ship speeds, the tick or the largest map change:
+# - finest period > 2 x the largest distance a ship moves in one tick (Nyquist), else that
+#   level's phase change per tick is ambiguous and the level reads as noise. Real scale: up
+#   to about 320 m/s (the velocity code's reach) at 30 Hz is 10.7 m a tick, so above 21 m;
+# - coarsest period > the largest separation on one axis: the largest map's diameter plus
+#   the overshoot past the boundary. The largest preset is real-scale 50v50 density (arena
+#   radius 7800 sqrt(10) = 24.7 km, about 49 km across).
+# Today's values predate real scale and break both: the 4 m and 12 m levels fail Nyquist at
+# real-scale speeds (4 m already did at standard speeds), and 26 244 m is under 49 km.
+# Proposed (2026-11-11, not yet adopted): 8 levels, 36 m to 78 732 m.
 POSITION_PERIOD = 4.0 * 3.0**8  # m per axis: 26 244 m, finest level 4 m
 POSITION_LEVELS = 9
 VELOCITY_KNEE = 50.0  # m/s

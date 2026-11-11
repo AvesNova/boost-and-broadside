@@ -206,6 +206,9 @@ class YemongConfig:
     outcome_level: str | None = "outcome"
     hex_rings: int = 10
     presence_radius: float = 150.0  # m
+    # Sized by the rule beside `state_code.POSITION_PERIOD` (Nyquist at the finest, the
+    # largest map at the coarsest). 8192 m is under the real-scale map's 15.6 km, so far
+    # pairs alias; proposed (2026-11-11, not yet adopted): 65 536 m down to 128 m.
     rotary_period: float = 8192.0  # m, the coarsest
     rotary_octaves: int = 8
     heading_harmonics: tuple[int, ...] = (1, 2, 4, 8)
