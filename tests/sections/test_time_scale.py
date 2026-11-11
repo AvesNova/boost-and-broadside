@@ -100,8 +100,32 @@ def test_the_time_scale_scales_the_live_game_and_keeps_the_design():
         assert tuner.ready() and torch.equal(tuner.targets.cruise_speed, cruise)
         assert tuner.tuning.rules.get("flight.gravity", gravity) == gravity
         assert tuner.tuning.time_factor == 4.0
-        tuner.time_scale(0.25)  # back to x1: the game's own numbers
+        tuner.time_scale(1.0)  # back to x1: the game's own numbers
         assert loop.rules.flight.gravity == gravity and not tuner.tuning
+    finally:
+        tuner.close()
+
+
+def test_faster_by_sets_the_factor_relative_to_the_design():
+    """Faster by k sets x k against the design, whatever the factor was: 2 then 2 is x2
+    (not x4), 3 is x3, 1 is the design's own speed and numbers again."""
+    setup = MatchSetup(GameConfig(2, 4, 900.0, mode="frontline"))
+    loop = MatchLoop(setup, compiled=False)
+    tuner = Tuner(loop, base_rules(setup.config, setup.lineup))
+    try:
+        gravity = loop.rules.flight.gravity
+        tuner.time_scale(2.0)
+        assert "already" in tuner.time_scale(2.0)
+        assert tuner.time_factor == 2.0 and loop.rules.flight.gravity == 4.0 * gravity
+        tuner.time_scale(3.0)
+        assert tuner.time_factor == 3.0 and loop.rules.flight.gravity == pytest.approx(
+            9.0 * gravity
+        )
+        tuner.time_scale(0.5)
+        assert tuner.time_factor == 0.5 and loop.rules.flight.gravity == 0.25 * gravity
+        tuner.time_scale(1.0)
+        assert tuner.time_factor == 1.0 and loop.rules.flight.gravity == gravity
+        assert not tuner.tuning
     finally:
         tuner.close()
 
@@ -174,3 +198,29 @@ def test_under_a_time_scale_the_tuner_keeps_the_design_and_saves_the_same_files(
             follower.close()
     finally:
         tuner.close()
+
+
+@pytest.mark.parametrize("factor", [1.0, 2.0, 0.5])
+def test_the_clocks_count_the_seconds_played_at_x1_playback(factor):
+    """Every time readout counts ticks times the tick (1/30 s): the seconds a player sees
+    pass at x1 playback. Under a time scale k the tick stays, so 30 ticks are 1 s on the
+    clock however fast the game runs, and the match length and the respawn wait are the
+    design's (x1, what the panel shows) over k. Playback x p runs p times as many ticks per
+    second of the display, so the clock runs p times faster than the wall clock."""
+    config = api.PRESETS["frontline"]
+    loop = MatchLoop(MatchSetup(config, tuning=Tuning(time_factor=factor)), compiled=False)
+    design = api.rules_of(config).pools[0]
+    for _ in range(30):
+        loop.step()
+    frame = loop.current
+    assert frame.clock == pytest.approx(1.0)  # the top bar's clock
+    assert frame.episode_length == pytest.approx(design.episode_ticks / 30.0 / factor)
+    respawn = loop.rules.pools[0].respawn_ticks * loop.tick_length  # "respawns in" at a death
+    assert respawn == pytest.approx(design.respawn_ticks / 30.0 / factor)
+    assert loop.ticks * loop.tick_length == pytest.approx(1.0)  # "last shot ... ago"'s now
+    for playback in (0.5, 2.0, 8.0):
+        loop.time_scale = playback
+        before = loop.current.clock
+        for _ in range(60):  # one second of the display at 60 frames a second
+            loop.advance(1.0 / 60.0)
+        assert loop.current.clock - before == pytest.approx(playback, abs=loop.tick_length)

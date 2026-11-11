@@ -8,6 +8,11 @@ from .app import Options, run_offscreen
 
 def main(arguments: list[str] | None = None) -> None:
     options = tyro.cli(Options, args=arguments, prog="bnb play")
+    if options.replay is None:
+        try:
+            options.game()  # an unknown preset or map stops here, naming the known ones
+        except ValueError as error:
+            raise SystemExit(str(error)) from error
     torch.set_num_threads(options.threads)
     if options.offscreen is not None:
         paths = run_offscreen(options)

@@ -151,7 +151,7 @@ def command(arguments: str) -> str | None:
     `Figures`, and
     `FiguresVideo` and `FiguresWatch` for `bnb figures video` and `bnb figures watch`;
     `bnb queue`'s own, `bnb.cli.QUEUE_FLAGS`, and for `bnb queue add KIND` the job's
-    command's), with a known preset and mode."""
+    command's), with a known preset and mode (for `bnb play`, also a saved map's name)."""
     import shlex
 
     from bnb.cli import (
@@ -170,6 +170,7 @@ def command(arguments: str) -> str | None:
     from bnb.contracts.config import MODES
     from bnb.game.modes.rules import PRESETS
     from bnb.play.app import Options as Play
+    from bnb.play.maps import NAME as SAVED_MAP
 
     tokens = shlex.split(arguments)
     if not tokens or tokens == ["..."]:  # the command itself, or `bnb ...`
@@ -208,5 +209,7 @@ def command(arguments: str) -> str | None:
         if not value and index + 1 < len(tokens):
             value = tokens[index + 1]
         if flag in values and value not in values[flag]:
+            if tokens[0] == "play" and flag == "--preset" and SAVED_MAP.fullmatch(value):
+                continue  # a saved map's name (`bnb.play.maps`)
             return f"bnb {flag} {value!r} is not one of {sorted(values[flag])}"
     return None

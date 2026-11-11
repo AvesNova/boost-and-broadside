@@ -1,6 +1,6 @@
 """Live tuning (`bnb.game.tuning`, `Realtime.retune`, `bnb.play.tuning`): the settings round
 trip, a running match takes new rules and a new card from the next tick (never
-recompiling) and refuses new sizes, presets round trip, and the panel shows the ship
+recompiling) and refuses new sizes, and the panel shows the ship
 files' handles without measuring them."""
 
 import math
@@ -13,7 +13,6 @@ from bnb.game import api
 from bnb.play.interface.layout import FLEETS_WIDTH, Layout
 from bnb.play.loop import MatchLoop, MatchSetup
 from bnb.play.tuning import (
-    Presets,
     Tuning,
     base_rules,
     columns,
@@ -204,20 +203,6 @@ def test_the_tuning_panel_opens_inside_the_display(width, height, scale):
     assert x >= 0.0 and y > 0.0
     assert x + panel_width < width and y + panel_height < height
     assert panel_width == pytest.approx(min(400.0 * scale, width - 16.0 * scale))
-
-
-def test_presets_round_trip(tmp_path):
-    presets = Presets(tmp_path)
-    tuning = Tuning(rules={"rules.bullet_life": 0.5}, card={"hit_damage": (20.0, 25.0)})
-    path = presets.save("fast-guns", tuning, tuning.types())
-    assert presets.names() == ["fast-guns"]
-    assert presets.load("fast-guns") == tuning
-    with pytest.raises(ValueError, match="lowercase"):
-        presets.save("Fast Guns", tuning, tuning.types())
-    assert set(__import__("json").loads(path.read_text())["ship_card"]) == set(api.default_card())
-    faster = Tuning(rules=tuning.rules, card=tuning.card, time_factor=3.0)
-    presets.save("faster-guns", faster, faster.types())  # the design's card, at x1
-    assert presets.load("faster-guns") == faster
 
 
 # ------------------------------------------------------------------ the ship files

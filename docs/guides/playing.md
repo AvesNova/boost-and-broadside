@@ -1,5 +1,5 @@
 ---
-covers: [src/bnb/play/app.py, src/bnb/play/camera.py, src/bnb/play/render/grid.py, src/bnb/play/window.py, src/bnb/play/interface/, src/bnb/play/sides.py, src/bnb/play/replay.py, src/bnb/play/themes.py, src/bnb/play/themes/, src/bnb/play/theme_editor.py, src/bnb/play/overlays.py, src/bnb/play/predictions.py, src/bnb/play/render/predictions.py, src/bnb/play/tuning.py, src/bnb/play/tuning_panel.py, src/bnb/game/ships/]
+covers: [src/bnb/play/app.py, src/bnb/play/camera.py, src/bnb/play/render/grid.py, src/bnb/play/window.py, src/bnb/play/interface/, src/bnb/play/sides.py, src/bnb/play/replay.py, src/bnb/play/themes.py, src/bnb/play/themes/, src/bnb/play/theme_editor.py, src/bnb/play/overlays.py, src/bnb/play/predictions.py, src/bnb/play/render/predictions.py, src/bnb/play/tuning.py, src/bnb/play/tuning_panel.py, src/bnb/play/maps.py, src/bnb/game/ships/]
 ---
 
 # Playing and spectating
@@ -138,15 +138,18 @@ before it (the delay resumes where it stopped); a hit resets the delay
 ## New match and trained agents
 
 The menu (the top bar's menu button, or Escape) pauses a live match and offers **Resume**,
-**Restart**, **New match**, **Replays**, **Save replay**, **Settings** and **Quit**.
+**Restart**, **New match**, **Maps**, **Replays**, **Save replay**, **Tune the game**,
+**Settings** and **Quit**.
 
 **New match** chooses the mode, the map (**Standard**, **Wide**, **Real scale**: the
 [real-scale variant](../explanation/game/real-scale.md), where a metre is a metre and the 27
-types are late-war fighters from the P-51D to the Me 262 and a few invented designs, on a
+researched types are late-war fighters from the P-51D to the Me 262 and a few invented
+designs (with any type a player added after them), on a
 map three times the standard one; or **Arena**: a 2v2 dogfight of a P-51D and a Spitfire
 XIV a team on a 1950 m map with no fields, a ship shot down back in the fight on the next
-tick, the `arena` preset in [Modes](../explanation/game/modes.md#clocks-and-presets)).
-Choosing a map takes its fleet size, fields and lineup; then the ships a side, the fields
+tick, the `arena` preset in [Modes](../explanation/game/modes.md#clocks-and-presets); then
+your [saved maps](#making-and-saving-maps), each in its own mode).
+Choosing a map takes its fleet size, fields and lineup (and a saved map's mode and tuning); then the ships a side, the fields
 (0 to 64), the lineup (a dropdown per
 slot of the map's ship types, the same for both teams; **Default** alternates the P-51D and
 the Spitfire XIV, or a set's first two types where it has not both; the map starts at **Real
@@ -173,6 +176,46 @@ more deterministic, 0 always takes its most likely action. A team's controller c
 be changed in the fleets card during a match.
 
 ![New match](../images/play/interface-new-match-1280.png)
+
+## Making and saving maps
+
+A map is a whole game: the mode, the ship set, the ships a side, the fields, the arena
+radius, the match length, the respawn wait, team deathmatch's spawn groups and kills to
+win, the lineup, and optionally a tuning (rule settings such as gravity, changed ship
+cards, the time scale). The menu's **Maps** page makes and edits them:
+
+- **Start from** chooses what the form starts as: **This match** (its game and lineup, and
+  its tuning, the tuning panel's changes included), a game preset, or a saved map.
+- The form changes any of the game's numbers. The match length and the respawn wait are
+  seconds at ×1, held to whole ticks (1/30 s); left at the mode's own, they follow the
+  mode. Spawn groups are typed as `2, 2, 1` (empty: uniform spawns) and must sum to the
+  ships a side. A tuning that came with the form is named in one line; **Drop** removes it.
+- **Name** (lowercase words joined by hyphens, as `big-sky`; never a game preset's) and
+  **Saved**: **Yours** (one JSON file per map in your configuration directory,
+  `maps/<name>.json` beside the themes) or **In the project** (`bnb.play.maps.PROJECT`:
+  `maps/` beside the ship sets in `src/bnb/game/`, tracked in git; the place for a map to
+  keep with the code, to review in a diff or, later, to train on).
+- **Save** writes the form under the name. When the form started from a saved map and the
+  name is still its own, Save replaces it (edits it; it moves when **Saved** changed);
+  otherwise it makes a new map and refuses a name already saved. **Rename** gives the chosen
+  saved map the typed name, in its place. **Delete** removes it, after a popup asks.
+  **Play** starts a match of the form, saved or not.
+
+The tuning panel's **Save as a map** opens the page on this match. A saved map shows on
+**New match** after the game presets' maps, in its own mode, and starts from the command
+line by name:
+
+<!-- not-runnable: opens a window -->
+```bash
+uv run bnb play --preset big-sky
+```
+
+A saved map's tuning plays instead of the current match's (a game preset's map keeps the
+current match's tuning, as before). The file holds the config's fields, the lineup by type
+name, and the tuning where there is one: the rule settings and the time scale's factor at
+×1, and the ship cards it changes by type key (only the fields that differ from the type's
+file), so a map stays valid when a type is added to the set. Training does not read saved
+maps yet.
 
 ## Prediction overlays
 
@@ -316,26 +359,38 @@ compare.
   until it is measured, a few seconds (tens of seconds for a real-scale type). **Save
   ships** needs every type's handles: it first measures the ones not yet measured, and
   says so; press again once the status line says exact.
-- **Time scale**: **Apply** makes the whole game the given factor faster with the map's
-  lengths fixed (speeds x k, gravity and accelerations x k^2, rates and fire rates x k,
+- **Time scale**: **Apply** makes the whole game the given factor faster than its design
+  (×1) with the map's lengths fixed (speeds x k, gravity and accelerations x k^2, rates and fire rates x k,
   times / k, energies x k^2, so a store keeps its height). Fire rates snap to whole Hz that
   divide 30, and bullet life, clocks and shield delays to whole ticks; the message says
   what snapped. **Make this speed 1×** takes the playback speed (×¼ to ×8 in the top bar)
   as the factor and sets playback back to ×1: pick the speed at which the game feels
-  right, then make it the game's own. Applying again multiplies the factor (×2 then ×2 is
-  ×4; ×0.25 from ×4 is ×1).
+  right, then make it the game's own. The factor is always against ×1: **Apply** 2 gives ×2
+  whatever the game runs at now (2 then 2 is still ×2), and 1 goes back to the design's
+  own speed. **Make this speed 1×** is the one that compounds: playback ×2 of a ×0.5 game
+  makes it ×1.
 - Under a time scale every value in the panel stays the design's, at ×1: the handles,
   what the ships fly (measured at ×1), the rules and the fire-rate choices, and the
   selection card's speed. An edit sets the ×1 value, and **Save ships** writes the same
   files as at ×1; the match plays the design k times faster. A line at the top of the
   panel names it ("Values at x1; the game runs xk"). Nothing is re-measured when the
-  factor changes. A new match, a restart, **Add** and a preset keep the factor; **Game's
+  factor changes. A new match, a restart and **Add** keep the factor (a saved map plays its own); **Game's
   numbers** keeps it too.
-- **Presets**: **Save** writes the ship set, the rule settings and the whole card (the
-  design's, at ×1) to your configuration directory (`tunings/<name>.json`; the card is what
-  training's `ship_card` takes), and the time scale's factor when it is not 1. **Load**
-  applies one to a match of the same set; **Game's numbers** goes back to the ship files'
-  and the rules' own.
+- The clocks are the exception: they count the seconds played, what a player sees pass at
+  ×1 playback. The top bar's clock and its match length, the fleets card's and the flying
+  card's respawn wait, the selection card's "respawns in" and "last shot ... ago", and the
+  replay scrubber are all ticks times the tick (1/30 s, which a time scale never changes).
+  So under ×k a match the design makes 600 s long shows "/ 10:00" at ×1 and "/ 5:00" at ×2,
+  a 10 s respawn waits 5 s, and the clock runs at the wall clock's pace. The panel's status
+  line says so, and each rule's tooltip gives the value it plays as (the match length in
+  the clock's seconds). The playback speeds (×¼ to ×8) are a different thing: they run more
+  or fewer ticks per second of the display without changing the game, so every clock runs
+  that many times faster or slower than the wall clock (at ×8 the clock gains 8 s a second;
+  the kill feed's lines, 6 s of play, last 0.75 s). Paused, every clock stops.
+- **Maps**: **Save as a map** opens the menu's Maps page on this match, its tuning
+  included (the design's values, at ×1), to save under a name (see
+  [Making and saving maps](#making-and-saving-maps)); **Game's numbers** goes back to the
+  ship files' and the rules' own, at the same time scale.
 
 A new match or a restart keeps the tuning, unless it plays another ship set. Ship counts, fields and the lineup are set in
 **New match**. A trained agent given a ship card or lineup it was not trained with plays,

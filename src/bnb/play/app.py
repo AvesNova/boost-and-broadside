@@ -25,7 +25,6 @@ from imgui_bundle import imgui
 from bnb.contracts import GameConfig
 from bnb.contracts.obs import GLOBAL
 from bnb.game import api
-from bnb.game.api import PRESETS
 from bnb.game.handling.characteristics import cached as cached_characteristics
 from bnb.game.handling.characteristics import measure_aside
 from bnb.runtime.built import clone
@@ -36,10 +35,11 @@ from .camera import Camera, LookAhead
 from .index_map import IndexBuilder, build
 from .interface.interface import Interface
 from .interface.kill_feed import FEED_SECONDS
-from .interface.menus import default_lineup
+from .interface.lineups import default_lineup
 from .interface.style import load_fonts
 from .interface.text import TEAM_NAMES, show_ship_set
 from .loop import TIME_SCALES, MatchEvent, MatchLoop, MatchSetup, SideSetup, team_view
+from .maps import Maps
 from .overlays import NAMES as OVERLAY_NAMES
 from .overlays import OverlaySettings, Predictions, offered, offered_by, provider
 from .png import write_png
@@ -65,17 +65,16 @@ SEEK_BEFORE_MARKER = 3.0  # seconds before an event a marker seeks to
 SOLVED_UNDER = ("flight.", "rules.bullet_life")  # the rules a card's handles depend on
 
 
-PresetName = Literal[tuple(PRESETS)]  # the game presets' names (`api.PRESETS`)
 GridPattern = Literal[tuple(GRID_PATTERNS)]  # the dot grid's patterns (`render.grid`)
 LOOK_AHEADS = ("off", "flying", "always")  # when the camera leads a followed ship
 
 
 @dataclasses.dataclass
 class Options:
-    """Play or watch a match. The game comes from a preset, or from the sizes (which
-    override the preset's)."""
+    """Play or watch a match. The game comes from a preset (a game preset or a saved map),
+    and the sizes, which override its."""
 
-    preset: PresetName = "real_scale_deathmatch"
+    preset: str = "real_scale_deathmatch"  # a game preset (api.PRESETS) or a saved map's name
     ships_per_team: int | None = None
     fields: int | None = None
     arena_radius: float | None = None  # m
@@ -108,9 +107,10 @@ class Options:
     grid: GridPattern = "triangle"  # the dot grid fixed to the map, or "off"
     look_ahead: Literal[LOOK_AHEADS] = "always"  # lead a followed ship: off, flown only, always
 
-    def game(self) -> GameConfig:
-        """The game configuration: the preset with any sizes given overriding it."""
-        preset = PRESETS[self.preset]
+    def game(self, maps: Maps | None = None) -> GameConfig:
+        """The game configuration: the preset's (`Maps.find`) with any sizes given
+        overriding it; fails naming the presets and maps for an unknown name."""
+        preset = (Maps() if maps is None else maps).find(self.preset).config
         sizes = dict(
             ships_per_team=self.ships_per_team,
             num_fields=self.fields,
@@ -121,19 +121,24 @@ class Options:
             changed["spawn_groups"] = ()
         return dataclasses.replace(preset, **changed)
 
-    def setup(self) -> MatchSetup:
-        """The first match's setup."""
+    def setup(self, maps: Maps | None = None) -> MatchSetup:
+        """The first match's setup: the preset's game at the sizes given, its lineup (the
+        play shell's default when it has none or the size changed) and its tuning."""
+        maps = Maps() if maps is None else maps
         sides = tuple(
             SideSetup(scripted)
             if policy is None
             else SideSetup("agent", str(policy), self.temperature)
             for policy, scripted in ((self.agent0, self.scripted0), (self.agent1, self.scripted1))
         )
-        game = self.game()
-        lineup = api.preset_lineup(self.preset)
+        game_map = maps.find(self.preset)
+        game = self.game(maps)
+        lineup = game_map.lineup_types()
         if lineup is None or len(lineup) != game.ships_per_team:
             lineup = tuple(default_lineup(game.ships_per_team, game.ship_set))
-        return MatchSetup(game, lineup, fogged=self.fog, seed=self.seed, sides=sides)
+        return MatchSetup(
+            game, lineup, fogged=self.fog, seed=self.seed, sides=sides, tuning=game_map.tuning
+        )
 
 
 @dataclasses.dataclass
@@ -159,8 +164,10 @@ class Session:
         width: int,
         height: int,
         library: themes.Library | None = None,
+        maps: Maps | None = None,
     ) -> None:
         self.options = options
+        self.maps = Maps() if maps is None else maps  # the saved maps (`bnb.play.maps`)
         self.context = context
         self.imgui_context = imgui.create_context()
         imgui.set_current_context(self.imgui_context)
@@ -215,7 +222,7 @@ class Session:
             self.open_replay(options.replay, whole=True)
         else:
             pilot = 0 if options.fly else None
-            if not self.start(options.setup(), pilot=pilot, whole=True):
+            if not self.start(options.setup(self.maps), pilot=pilot, whole=True):
                 raise AgentError(self.notice)
         self.interface.restyle()
 
@@ -300,12 +307,15 @@ class Session:
             self._measure_aside(team, setup.sides[team])
         return True
 
-    def new_match(self, setup: MatchSetup) -> bool:
-        """Start a new match from the menu's setup, tuned as the current match is when it
-        plays the same ship set (untuned otherwise); the menu closes when it starts."""
-        same_ships = setup.config.ship_set == self.loop.setup.config.ship_set
-        tuning = self.current_tuning() if same_ships else Tuning()  # a tuning is of one set
-        started = self.start(dataclasses.replace(setup, tuning=tuning))
+    def new_match(self, setup: MatchSetup, tuned: bool = False) -> bool:
+        """Start a new match from the menu's setup: `tuned`, with the setup's own tuning (a
+        saved map's); otherwise tuned as the current match is when it plays the same ship
+        set (untuned otherwise). The menu closes when it starts."""
+        if not tuned:
+            same_ships = setup.config.ship_set == self.loop.setup.config.ship_set
+            tuning = self.current_tuning() if same_ships else Tuning()  # a tuning is of one set
+            setup = dataclasses.replace(setup, tuning=tuning)
+        started = self.start(setup)
         if started:
             self.selection = None
             self.interface.close_menu()
@@ -389,19 +399,20 @@ class Session:
             self.tuner.load(tuning)
 
     def time_scale(self, factor: float) -> str:
-        """Make the game `factor` times faster at fixed map lengths (`Tuner.time_scale`);
-        returns what it did."""
+        """Make the game `factor` times faster than its design (x1) at fixed map lengths,
+        whatever the factor was (`Tuner.time_scale`; 1 is the design); returns what it
+        did."""
         self._ensure_tuner()
         return "" if self.tuner is None else self.tuner.time_scale(factor)
 
     def make_speed_normal(self) -> str:
         """Make the current playback speed the game's own: the game becomes that many times
-        faster (`time_scale`) and playback goes back to x1, so it looks the same; returns
-        what it did."""
-        factor = self.loop.time_scale
-        if factor == 1.0 or self.loop.replaying:
+        faster than now (`time_scale` of the factor times the playback speed) and playback
+        goes back to x1, so it looks the same; returns what it did."""
+        playback = self.loop.time_scale
+        if playback == 1.0 or self.loop.replaying:
             return ""
-        done = self.time_scale(factor)
+        done = self.time_scale(self.time_factor * playback)
         self.loop.time_scale = 1.0
         return done
 
@@ -740,6 +751,7 @@ class Session:
         if self.loop.replaying:
             self.loop.seek(tick)
             self.feed = []
+            self.last_shot[:] = -np.inf  # "last shot" counts from the shots seen since
             self.trails.clear()
             self.frame = self.loop.frame()
             if self._map_changed():

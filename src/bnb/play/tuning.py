@@ -45,22 +45,18 @@ energies x k^2, powers x k^3, the values held to whole ticks or Hz snapped). So 
 shows and edits x1 values whatever k is, and a save writes the same files as at x1.
 
 `Tuning` is what a match was tuned to (the rules' settings and the card, where they differ
-from the game's, and the time scale's factor), as `MatchSetup.tuning`, replays and presets
-hold it; `Presets` saves and loads named tunings.
+from the game's, and the time scale's factor), as `MatchSetup.tuning`, replays and saved
+maps (`bnb.play.maps`) hold it.
 """
 
 import dataclasses
-import json
 import math
 import multiprocessing
-import pathlib
 import queue
-import re
 import threading
 import time
 from collections.abc import Callable
 
-import platformdirs
 import torch
 
 from bnb.game import api
@@ -69,8 +65,6 @@ from bnb.runtime.flights import compiled_flight_tick
 
 SETTLE = 0.6  # s the handles must be still before the exact solve starts
 STOP_WAIT = 0.5  # s a stopped worker has to finish before it is ended
-PRESETS = pathlib.Path(platformdirs.user_config_dir("boost-and-broadside")) / "tunings"
-NAME = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 TICK_HANDLES = ("shield_recharge_delay",)  # handles held to whole ticks
 # Rule settings that change what a card flies: the card is kept and its handles re-measured.
 MEASURED_BY = ("flight.",)
@@ -706,16 +700,18 @@ class Tuner:
         self._reset()
 
     def time_scale(self, factor: float) -> str:
-        """Make the whole game `factor` times faster than now with the map's lengths fixed:
-        the match plays the design `time_factor` (now that many times larger) times faster
-        (`played`: every rule setting and the card by their units, energies with gravity;
-        an exact similarity up to the tick and the values held to whole ticks or Hz, which
-        snap). The design, its handles and their measurements stay. Returns what it did,
-        naming the values that snapped."""
-        if factor <= 0.0 or factor == 1.0:
+        """Make the whole game `factor` times faster than its design (x1) with the map's
+        lengths fixed, whatever the factor was: the match plays the design `time_factor`
+        (now `factor`; 1 is the design itself) times faster (`played`: every rule setting
+        and the card by their units, energies with gravity; an exact similarity up to the
+        tick and the values held to whole ticks or Hz, which snap). The design, its handles
+        and their measurements stay. Returns what it did, naming the values that snapped."""
+        if factor <= 0.0:
             return ""
-        total = self.time_factor * factor
-        self.time_factor = 1.0 if math.isclose(total, 1.0, rel_tol=1e-9) else total
+        factor = 1.0 if math.isclose(factor, 1.0, rel_tol=1e-9) else factor
+        if factor == self.time_factor:
+            return f"the game runs x{factor:g} already"
+        self.time_factor = factor
         rules, types = self.played()
         self.loop.retune(rules=rules, types=types)
         self._card += 1
@@ -723,9 +719,9 @@ class Tuner:
         self.message = ""
         exact = api.similarity.scale_rules(self.values, 1.0, 1.0 / self.time_factor)
         snapped = [
-            f"{api.tuning.BY_KEY[key].label} {exact[key]:.4g} -> {self._played_value(key):.4g} s"
+            f"{api.tuning.BY_KEY[key].label} {exact[key]:.4g} -> {self.played_value(key):.4g} s"
             for key in exact
-            if abs(self._played_value(key) - exact[key]) > 1e-9 * max(1.0, abs(exact[key]))
+            if abs(self.played_value(key) - exact[key]) > 1e-9 * max(1.0, abs(exact[key]))
         ]
         wanted = self.card.fire_rate * self.time_factor
         snapped += [
@@ -736,7 +732,7 @@ class Tuner:
         done = f"the game runs x{self.time_factor:g} (values stay at x1)"
         return done + ("; snapped: " + ", ".join(snapped) if snapped else "")
 
-    def _played_value(self, key: str) -> float:
+    def played_value(self, key: str) -> float:
         """A rule setting's value as the match plays it (time scaled)."""
         return api.tuning.value(self.loop.rules, key)
 
@@ -1031,68 +1027,4 @@ class Tuner:
             columns(self.targets, kinds),
             self.rules,
             columns(self.card, kinds),
-        )
-
-
-class Presets:
-    """Named tunings saved as JSON under `directory` (the user's config by default): the
-    rules' settings and the full ship card, by field."""
-
-    def __init__(self, directory: str | pathlib.Path = PRESETS) -> None:
-        self.directory = pathlib.Path(directory)
-
-    def names(self) -> list[str]:
-        """The saved presets' names, sorted."""
-        if not self.directory.is_dir():
-            return []
-        return sorted(path.stem for path in self.directory.glob("*.json"))
-
-    def path(self, name: str) -> pathlib.Path:
-        """Where the preset of this name lives; fails for a name that is not lowercase
-        words joined by hyphens."""
-        if NAME.fullmatch(name) is None:
-            raise ValueError(f"preset name {name!r}: use lowercase words joined by hyphens")
-        return self.directory / f"{name}.json"
-
-    def save(
-        self,
-        name: str,
-        tuning: Tuning,
-        types: api.ShipTypes,
-        ship_set: str = api.STANDARD_SHIP_SET,
-    ) -> pathlib.Path:
-        """Write a preset: its ship set, the tuning's rule settings and every field of the
-        design's card `types` (so the file is a whole `ship_card` for training), at x1, and
-        the time scale's factor when it is not 1."""
-        path = self.path(name)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        card = {name: [float(v) for v in value.tolist()] for name, value in vars(types).items()}
-        data = {"ship_set": ship_set, "rules": tuning.rules, "ship_card": card}
-        if tuning.time_factor != 1.0:
-            data["time_factor"] = tuning.time_factor
-        path.write_text(json.dumps(data, indent=2))
-        return path
-
-    def load(self, name: str, ship_set: str = api.STANDARD_SHIP_SET) -> Tuning:
-        """The tuning a preset holds (its card reduced to the fields that differ from the
-        set's default); fails naming any entry it does not know, and for a preset of another
-        ship set (a preset without one is the standard set's)."""
-        data = json.loads(self.path(name).read_text())
-        stored_set = data.get("ship_set", api.STANDARD_SHIP_SET)
-        if stored_set != ship_set:
-            raise ValueError(f"preset {name} tunes the {stored_set} ships, not the {ship_set} ones")
-        stored = data.get("ship_card", {})
-        unknown = sorted(set(stored) - set(api.default_card(ship_set))) + sorted(
-            set(data.get("rules", {})) - set(api.tuning.BY_KEY)
-        )
-        if unknown:
-            raise ValueError(f"preset {name}: unknown entries {unknown}")
-        # The card as the match holds it (float32), with only the fields that differ kept.
-        values = {field: tuple(values) for field, values in stored.items()}
-        types = api.ship_types(ship_set=ship_set, **values)
-        card = changed_card(types, ship_set)
-        return Tuning(
-            rules={k: float(v) for k, v in data.get("rules", {}).items()},
-            card=card,
-            time_factor=float(data.get("time_factor", 1.0)),
         )
