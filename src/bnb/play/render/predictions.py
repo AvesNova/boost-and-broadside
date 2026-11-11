@@ -211,13 +211,15 @@ def overlay_drawing(
     frame,
     selected: int | None,
     metres_per_pixel: float,
+    true_size: bool = False,
 ) -> OverlayDrawing:
     """The tables of the overlays to draw this frame. drawn: overlay name to (team, its
     arrays) (`BulletPaths` with team -1, or the providing team's `Predictions` field);
     frame: the snapshot drawn (each ship's team, type and hit radius); selected: the
-    selected ship (the shot path's), or None."""
+    selected ship (the shot path's), or None; true_size: the ships are drawn at true size
+    (`ships`), the ghosts' rings with them."""
     ships = frame.ships
-    size = ring_radius(ships.hit_radius, metres_per_pixel)
+    size = ring_radius(ships.hit_radius, metres_per_pixel, true_size)
     lines, circles, ghosts, density = [segments(0)], [arcs(0)], [], np.zeros((0, 6), np.float32)
     if "bullet_paths" in drawn:
         lines.append(bullet_path_segments(theme, drawn["bullet_paths"][1]))

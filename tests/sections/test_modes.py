@@ -2,6 +2,7 @@
 Frontline's map, protection and an end-to-end capture, the objective and shield events,
 the mode's observation, and the tick compiled."""
 
+import dataclasses
 import math
 import re
 
@@ -14,11 +15,14 @@ from bnb.contracts.obs import GLOBAL, SHIP, ZONE
 from bnb.game import api
 from bnb.game.modes import frontline, spawns
 from bnb.game.modes.rules import PRESETS
+from bnb.game.physics.medium import medium
 from bnb.game.physics.spawning import TickUniforms, formation_rank
 from bnb.game.state import by_team, replace
 from bnb.learn import rewards
+from bnb.runtime.train import TRAINING_MIXES
 
 TYPES = cases.TYPES
+REAL_SCALE = api.ship_types(ship_set="real-scale")
 
 # ------------------------------------------------------------------ configuration
 
@@ -36,9 +40,10 @@ def test_modes_take_their_clocks_and_presets_build():
     for name, config in PRESETS.items():
         rules = api.rules_of(config)
         # the training presets are 5v5; the fleet-size ones (`<mode>_<n>v<n>_<arena|density>`)
-        # are as named
+        # are as named, and the arena is a 2v2
         fleet = re.fullmatch(r"\w+_(\d+)v\1_(arena|density)", name)
-        assert rules.num_ships == 2 * (int(fleet.group(1)) if fleet else 5), name
+        size = int(fleet.group(1)) if fleet else 2 if name == "arena" else 5
+        assert rules.num_ships == 2 * size, name
     assert api.rules_of(PRESETS["deathmatch_wide"]).pools[0].mode.spawn_groups == (2, 2, 1)
     with pytest.raises(ValueError):
         GameConfig(5, 10, 2600.0, spawn_groups=(2, 2))  # must sum to the team's size
@@ -59,6 +64,47 @@ def test_tick_uniform_counts_are_exact_functions_of_the_sizes():
         api.rules_of(GameConfig(5, M, 2600.0, mode="frontline")).tick_uniform_count
         == game + 2 + 2 * N
     )
+
+
+def test_the_arena_is_a_2v2_dogfight_with_no_fields_or_zones():
+    """The arena preset: team deathmatch of a P-51D and a Spitfire XIV a team, real-scale,
+    on a small map with no fields and no zones, a killed ship respawning after one tick."""
+    game = PRESETS["arena"]
+    assert (game.mode, game.ships_per_team, game.num_fields) == ("team_deathmatch", 2, 0)
+    assert game.ship_set == "real-scale" and 0.0 < game.arena_radius < 2600.0
+    lineup = api.preset_lineup("arena")
+    names = api.type_names("real-scale")
+    assert [names[kind] for kind in lineup] == ["P-51D", "Spitfire XIV"]
+    assert api.preset_lineup("real_scale_deathmatch") is None
+    assert "arena" not in {name for mix in TRAINING_MIXES.values() for name, _ in mix}
+    rules = dataclasses.replace(api.rules_of(game), team_types=lineup)
+    (pool,) = rules.pools
+    assert pool.respawn_ticks == 1 and rules.num_fields == 0
+    state = api.reset(rules, REAL_SCALE, api.uniforms(rules, 4, generator=torch.Generator()))
+    assert state.fields.x.shape == (4, 0)
+    assert not state.mode.zone_radius.any()  # no zone in team deathmatch
+    assert torch.equal(state.ships.ship_type[0], torch.tensor(lineup * 2, dtype=torch.int32))
+    log_index, gradient_x, gradient_y = medium(state.fields, state.ships.x, state.ships.y)
+    assert not (log_index.any() or gradient_x.any() or gradient_y.any())  # a uniform medium
+
+
+def test_an_arena_ship_killed_spawns_again_on_the_next_tick():
+    """A ship that dies (here at the boundary, its shield already broken) is back on the
+    next tick: the arena's respawn wait is one tick."""
+    rules = api.rules_of(PRESETS["arena"])
+    state = api.reset(rules, REAL_SCALE, api.uniforms(rules, 1, generator=torch.Generator()))
+    far = torch.tensor([[10.0 * rules.pools[0].arena_radius, 0.0, 0.0, 0.0]])
+    state = cases.edit_ships(
+        state,
+        x=state.ships.x + far,
+        shield=torch.where(far > 0.0, 0.0, state.ships.shield),
+    )
+    state, events = cases.tick(rules, state, types=REAL_SCALE)
+    assert events.died[0, 0] and not state.ships.alive[0, 0]
+    assert state.ships.respawn_wait[0, 0] == 1
+    state, events = cases.tick(rules, state, types=REAL_SCALE)
+    assert state.ships.alive[0, 0] and state.ships.spawned[0, 0]
+    assert state.ships.x[0, 0].abs() <= rules.pools[0].arena_radius
 
 
 # ------------------------------------------------------------------ team deathmatch

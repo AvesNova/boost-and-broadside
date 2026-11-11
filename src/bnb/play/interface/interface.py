@@ -36,7 +36,6 @@ class Interface:
     def __init__(self, session: Session) -> None:
         self.session = session
         self.open = set(CARDS)
-        self.opened_while_flying: set[str] = set()
         self.controls = Controls()
         self.menu = menus.Menu(session)
         self.pressed_on_battlefield = False
@@ -59,17 +58,11 @@ class Interface:
             self.open.discard(card)
         else:
             self.open.add(card)
-            if self.session.loop.pilot is not None:
-                self.opened_while_flying.add(card)
 
     def reveal(self, card: str) -> None:
         """Open a card the player asked for (a selection opens its card)."""
         if card not in self.open and self.session.loop.pilot is None:
             self.open.add(card)
-
-    def collapse_for_flying(self) -> None:
-        """While the player flies, the cards stay collapsed unless opened."""
-        self.open -= {"fleets", "selection"}
 
     def layout(self) -> Layout:
         """This frame's layout."""

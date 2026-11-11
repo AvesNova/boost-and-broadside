@@ -260,8 +260,8 @@ def mode_rules() -> str:
 
 
 def game_presets() -> str:
-    """The training game presets."""
-    from bnb.game.modes.rules import CLOCKS, PRESETS
+    """The game presets."""
+    from bnb.game.modes.rules import CLOCKS, LINEUPS, PRESETS
 
     rows = []
     for name, game in PRESETS.items():
@@ -269,9 +269,10 @@ def game_presets() -> str:
         rows.append((_code(name), _code(game.mode), game.ships_per_team, game.num_fields,
                      _number(game.arena_radius), _code(game.spawn_groups) if game.spawn_groups
                      else "uniform", _number(game.episode_seconds if game.episode_seconds else episode),
-                     _number(game.respawn_seconds if game.respawn_seconds else respawn)))
+                     _number(game.respawn_seconds if game.respawn_seconds else respawn),
+                     " / ".join(LINEUPS[name]) if name in LINEUPS else "default"))
     return _table(("Preset", "Mode", "Ships per team", "Fields", "Arena radius (m)",
-                   "Spawn groups", "Episode (s)", "Respawn wait (s)"), rows)
+                   "Spawn groups", "Episode (s)", "Respawn wait (s)", "Lineup"), rows)
 
 
 def game_config() -> str:

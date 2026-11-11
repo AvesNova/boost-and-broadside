@@ -101,6 +101,7 @@ class Options:
     overlays: tuple[str, ...] = ()  # prediction overlays on at the start (bnb.play.overlays)
     overlay_side: int | None = None  # whose predictions they draw (None: the default)
     truth: bool = False  # draw the truth beside the predictions
+    true_size: bool = False  # draw the ships at their size in metres (no minimum on screen)
 
     def game(self) -> GameConfig:
         """The game configuration: the preset with any sizes given overriding it."""
@@ -124,7 +125,9 @@ class Options:
             for policy, scripted in ((self.agent0, self.scripted0), (self.agent1, self.scripted1))
         )
         game = self.game()
-        lineup = tuple(default_lineup(game.ships_per_team, game.ship_set))
+        lineup = api.preset_lineup(self.preset)
+        if lineup is None or len(lineup) != game.ships_per_team:
+            lineup = tuple(default_lineup(game.ships_per_team, game.ship_set))
         return MatchSetup(game, lineup, fogged=self.fog, seed=self.seed, sides=sides)
 
 
@@ -164,6 +167,7 @@ class Session:
         self.camera = Camera(width, height)
         self.minimap_camera = Camera(1, 1)
         self.view = VIEWS.index(options.view)
+        self.true_size = options.true_size  # the ships at their size in metres (`render.ships`)
         self.library = themes.Library() if library is None else library
         self.theme_names = self.library.names()
         self.theme = self.library.load(options.theme)
@@ -562,6 +566,11 @@ class Session:
         """Switch to the next view: spectator, team 0, team 1."""
         self.view = (self.view + 1) % len(VIEWS)
 
+    def toggle_true_size(self) -> None:
+        """Draw the ships at their size in metres, or never smaller than a minimum on
+        screen (the default)."""
+        self.true_size = not self.true_size
+
     def cycle_theme(self) -> None:
         """Switch to the next theme in the library."""
         names = self.theme_names
@@ -660,7 +669,6 @@ class Session:
         self.loop.pilot = ship
         self.follow(ship)
         self.camera.zoom_in_to(FLYING_ZOOM)
-        self.interface.collapse_for_flying()
 
     def release(self) -> None:
         """Stop flying: the ship returns to its side's controller."""
@@ -794,6 +802,7 @@ class Session:
             self.frame,
             self.selected_ship(),
             self.camera.metres_per_pixel,
+            self.true_size,
         )
 
     # The map ----------------------------------------------------------------------------
@@ -875,7 +884,13 @@ class Session:
         ):
             return None
         return outline_table(
-            self.theme, self.frame, selection.kind, selection.index, metres_per_pixel, ship_pixels
+            self.theme,
+            self.frame,
+            selection.kind,
+            selection.index,
+            metres_per_pixel,
+            ship_pixels,
+            self.true_size,
         )
 
     def draw(self, target: moderngl.Framebuffer) -> None:
@@ -891,6 +906,7 @@ class Session:
             target,
             outline,
             self.overlay_drawing(),
+            self.true_size,
         )
         imgui.set_current_context(self.imgui_context)
         imgui.get_io().delta_time = max(self.elapsed, 1e-4)

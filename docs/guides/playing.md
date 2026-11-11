@@ -18,6 +18,7 @@ in [The play shell](../explanation/in-progress/play-shell.md).
 uv run bnb play
 uv run bnb play --preset frontline --view team0 --seed 3
 uv run bnb play --preset real_scale_frontline
+uv run bnb play --preset arena
 uv run bnb play --agent1 runs/<run>/policy
 ```
 
@@ -34,8 +35,9 @@ compiled. The options:
 
 ## The screen
 
-- **The top bar** (always shown): the menu button, the view selector and the
-  **Overlays** button (see [Prediction overlays](#prediction-overlays)) on the left; the
+- **The top bar** (always shown): the menu button, the view selector, the
+  **Overlays** button (see [Prediction overlays](#prediction-overlays)) and **True size**
+  (see [Ship size](#ship-size)) on the left; the
   score, or Frontline's front and zones (captioned "Front" and "Zones", each zone numbered
   in its owner's colour, with a tooltip saying what it shows), and the clock in the middle; the speed controls
   on the right: pause or play, one tick while paused, and ×1, ×2, ×4, ×8.
@@ -72,11 +74,21 @@ Without fog of war every ship is visible to both teams (see
 [Perception and fog](../explanation/game/perception.md)), so a team's view looks like the
 spectator's.
 
+## Ship size
+
+A ship is drawn as a silhouette inside a ring at its hitbox, whose radius is half the
+type's wingspan (the ship card's `hit_radius`). Zoomed out, the ring is never smaller than
+14 pixels in radius, so every ship stays visible. **True size** in the top bar (or Z) draws
+the ships at their size in metres at any zoom instead: the ring at the hitbox and the
+silhouette grown to reach it from wingtip to wingtip, so the drawn span is the real one.
+Trails, ghosts and the selection's outline follow it. Zoomed out, a true-size ship is a
+few pixels across; clicking still selects it from as far as the default size reaches.
+
 ## Flying a ship
 
 Select a ship and press **Take control**. Its side keeps controlling every other ship. The
-camera follows it, zoomed in from the whole-arena view, the cards collapse (their tabs open them), and a small HUD at the
-bottom shows the shield, energy, power and stick:
+camera follows it, zoomed in from the whole-arena view, every card stays as it was (open or
+collapsed), and a small HUD at the bottom shows the shield, energy, power and stick:
 
 - W and S: boost and reverse (neither: coast);
 - A and D: turn left and right, Shift for the full turn, Ctrl for the lightest;
@@ -91,10 +103,14 @@ bottom shows the shield, energy, power and stick:
 The menu (the top bar's menu button, or Escape) pauses a live match and offers **Resume**,
 **Restart**, **New match**, **Replays**, **Save replay**, **Settings** and **Quit**.
 
-**New match** chooses the mode, the map (**Standard**, **Wide**, or **Real scale**: the
+**New match** chooses the mode, the map (**Standard**, **Wide**, **Real scale**: the
 [real-scale variant](../explanation/game/real-scale.md), where a metre is a metre and the 27
 types are late-war fighters from the P-51D to the Me 262 and a few invented designs, on a
-map three times the standard one), the ships a side, the fields, the lineup (a dropdown per
+map three times the standard one; or **Arena**: a 2v2 dogfight of a P-51D and a Spitfire
+XIV a team on a 1300 m map with no fields, a ship shot down back in the fight on the next
+tick, the `arena` preset in [Modes](../explanation/game/modes.md#clocks-and-presets)).
+Choosing a map takes its fleet size, fields and lineup; then the ships a side, the fields
+(0 to 64), the lineup (a dropdown per
 slot of the map's ship types, the same for both teams; **Default** alternates the P-51D and
 the Spitfire XIV, or a set's first two types where it has not both; the map starts at **Real
 scale**), fog, the seed, and each side's controller: **Scripted agent** (the default: the

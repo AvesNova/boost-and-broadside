@@ -408,3 +408,38 @@ def test_a_side_slow_to_make_plays_on_until_it_is_made(context, tmp_path, monkey
             break
     assert session.loop.sides[1].label == "scripted agent"
     assert session.loop.setup.sides[1] == SideSetup("scripted_agent")
+
+
+def test_the_arena_is_chosen_flown_and_drawn_at_true_size(context, tmp_path):
+    """New match offers the arena as a map (2v2, no fields, a P-51D and a Spitfire XIV a
+    team); taking control of a ship keeps every card as it was, open or collapsed; the top
+    bar's True size switches the ships' drawing."""
+    session = _session(context, tmp_path)
+    player = Player(session, context, 1280, 720)
+    player.click("menu")
+    player.click("menu/new match")
+    player.click("new match/map/arena")
+    player.click("new match/start")
+    assert session.loop.setup.config == PRESETS["arena"]
+    assert session.loop.rules.team_types == api.preset_lineup("arena")
+    player.frames(10)
+
+    player.click("fleet/ship/1")
+    assert session.selection == Selection("ship", 1)
+    assert {"fleets", "selection"} <= session.interface.open
+    player.click("selection/take control")
+    assert session.loop.pilot == 1
+    assert {"fleets", "selection", "minimap"} <= session.interface.open
+    player.click("flying/release")
+    player.click("fleets/collapse")
+    assert "fleets" not in session.interface.open
+    player.click("selection/take control")
+    assert session.loop.pilot == 1
+    assert "fleets" not in session.interface.open and "selection" in session.interface.open
+
+    assert not session.true_size
+    player.click("true size")
+    assert session.true_size
+    player.click("true size")
+    assert not session.true_size
+    session.close()

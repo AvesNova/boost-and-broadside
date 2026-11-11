@@ -28,9 +28,9 @@ if TYPE_CHECKING:
 POPUP = "overlays popup"
 
 
-def draw_button(interface: Interface) -> float:
-    """The top bar's Overlays button (shown chosen while an overlay is on) and its submenu;
-    returns the button's right edge (screen x)."""
+def draw_button(interface: Interface) -> None:
+    """The top bar's Overlays button (shown chosen while an overlay is on) and its
+    submenu."""
     session, controls = interface.session, interface.controls
     if button(
         controls,
@@ -46,7 +46,6 @@ def draw_button(interface: Interface) -> float:
     if imgui.begin_popup(POPUP):
         _submenu(interface)
         imgui.end_popup()
-    return high.x
 
 
 def _team_text(interface: Interface, team: int) -> None:

@@ -1,5 +1,5 @@
-"""The top bar, always shown, one row: the menu button, the view selector and the overlays
-button (its submenu, `overlays`) on the left;
+"""The top bar, always shown, one row: the menu button, the view selector, the overlays
+button (its submenu, `overlays`) and the true-size switch on the left;
 the score or the mode's objective and the clock in the middle; the speed controls on the
 right (pause or play, a tick while paused, x1 to x8).
 
@@ -74,7 +74,19 @@ def draw(interface: Interface, layout: Layout) -> None:
         if view:
             imgui.pop_style_color()
     imgui.same_line(0.0, 14.0 * scale)
-    left_end = overlays.draw_button(interface)
+    overlays.draw_button(interface)
+    imgui.same_line(0.0, 2.0 * scale)
+    if button(
+        controls,
+        "true size",
+        "True size",
+        "Draw the ships at their size in metres, the ring at the hitbox and the wingspan "
+        "the real one (off: never smaller than a minimum on screen)",
+        shortcut("toggle_true_size"),
+        active=session.true_size,
+    ):
+        session.toggle_true_size()
+    left_end = imgui.get_item_rect_max().x
 
     # Right: the speed controls.
     spacing = imgui.get_style().item_spacing.x

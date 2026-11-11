@@ -29,7 +29,7 @@ from .imgui_renderer import ImguiRenderer
 from .lines import LinesPass
 from .minimap import MinimapPass
 from .rings import ring_table
-from .ships import ShipsPass, ring_radius
+from .ships import ShipsPass, ring_radius, silhouette_size
 from .sky import SkyPass
 from .trails import TrailsPass
 from .triangles import TrianglesPass
@@ -131,16 +131,19 @@ class Renderer:
         target: moderngl.Framebuffer,
         overlay: np.ndarray | None = None,
         predictions: OverlayDrawing | None = None,
+        true_size: bool = False,
     ) -> None:
         """Draw the frame as `view` (SPECTATOR or a team) sees it onto `target`; `now`:
         game time (s), for the trails; overlay: an arcs table drawn last (the selection's
-        outline); predictions: the prediction overlays' tables (None: none on)."""
+        outline); predictions: the prediction overlays' tables (None: none on); true_size:
+        the ships at their size in metres, with no minimum on screen (`ships`)."""
         context, uniforms = self.context, camera.uniforms()
         ships, pixel = frame.ships, camera.metres_per_pixel
         team_view = view != SPECTATOR
         fogged = team_view and frame.fogged
         shown = ships.alive & ships.visible[view] if team_view else ships.alive.copy()
-        size = ring_radius(ships.hit_radius, pixel)
+        size = ring_radius(ships.hit_radius, pixel, true_size)
+        body = silhouette_size(size, ships.ship_type, true_size)
         if fogged:
             with self._measure("fog mask"):
                 team = ships.alive & (ships.team == view)
@@ -166,7 +169,7 @@ class Renderer:
             self.arcs.draw(uniforms, zone_table(theme, frame.zones, pixel))
         with self._measure("trails"):
             seen = trails.seen[view] if team_view else np.ones_like(trails.seen[0])
-            self.trails.draw(uniforms, theme, trails, now, seen, ships.team, ships.ship_type, size)
+            self.trails.draw(uniforms, theme, trails, now, seen, ships.team, ships.ship_type, body)
         with self._measure("ships"):
             self.ships.draw(
                 uniforms,
@@ -174,7 +177,7 @@ class Renderer:
                 ships.x[shown],
                 ships.y[shown],
                 ships.heading[shown],
-                size[shown],
+                body[shown],
                 ships.team[shown],
                 ships.ship_type[shown],
             )
@@ -220,7 +223,7 @@ class Renderer:
                     ghosts["x"],
                     ghosts["y"],
                     ghosts["heading"],
-                    ghosts["size"],
+                    silhouette_size(ghosts["size"], ghosts["ship_type"], true_size),
                     ghosts["team"].astype(np.int64),
                     ghosts["ship_type"].astype(np.int64),
                     ghosts["opacity"],

@@ -7,6 +7,7 @@ from torch.utils import _pytree
 
 from bnb.contracts import GameConfig
 from bnb.contracts.obs import GLOBAL
+from bnb.game import api
 from bnb.game.modes.rules import PRESETS
 from bnb.play.loop import TIME_SCALES, MatchLoop, MatchSetup, SideSetup, team_view
 from bnb.runtime.realtime import Realtime
@@ -102,3 +103,17 @@ def test_the_pilot_flies_and_hands_over():
 def _first_view(loop):
     observation = loop.realtime.obs
     return team_view(observation, 0), observation.globals[:, 0, GLOBAL["reset"]] > 0.5
+
+
+def test_an_arena_match_of_the_scripted_agent_fights():
+    """The arena (no fields, no zones) with the scripted agent on both sides: the ships
+    close and shoot each other down within seconds, and a ship is never dead two ticks
+    running (it respawns on the next)."""
+    game = PRESETS["arena"]
+    loop = MatchLoop(MatchSetup(game, lineup=api.preset_lineup("arena"), seed=1), compiled=False)
+    for _ in range(12 * 30):
+        dead = ~loop.realtime.state.ships.alive[0]
+        loop.step()
+        assert loop.realtime.state.ships.alive[0][dead].all()
+    kills = [event for event in loop.events if event.kind == "kill"]
+    assert any(event.other >= 0 for event in kills)  # shot down, not only by the boundary
