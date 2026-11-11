@@ -127,10 +127,12 @@ def shot_cross_entropy(
     outcome_logits: torch.Tensor,
     outcome_target: torch.Tensor,
     runs: codes.Runs,
+    encode=None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """The trajectory cross-entropy per part (..., parts), each summed over its softmax
-    groups (runs: (groups, size) per part), and the outcome code's (...)."""
-    per_group = codes.grouped_cross_entropy(trajectory_logits, trajectory_target, runs)
+    groups (runs: (groups, size) per part), and the outcome code's (...). encode: the
+    trajectory target is encode(trajectory_target) (`codes.grouped_cross_entropy`)."""
+    per_group = codes.grouped_cross_entropy(trajectory_logits, trajectory_target, runs, encode)
     parts = torch.stack(
         [part.sum(-1) for part in per_group.split([groups for groups, _ in runs], -1)], -1
     )

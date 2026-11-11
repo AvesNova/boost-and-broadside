@@ -74,35 +74,72 @@ def shot_code_parameters(
     )
 
 
-def trajectory_code(parameters: ShotCodeParameters, snapshots: torch.Tensor) -> torch.Tensor:
-    """(..., 5) snapshots (displacement x, y; velocity x, y; refractive index) to
-    (..., trajectory_width)."""
+def trajectory_coordinates(parameters: ShotCodeParameters, snapshots: torch.Tensor) -> torch.Tensor:
+    """(..., 5) snapshots (displacement x, y; velocity x, y; refractive index) to the
+    coordinates of their sharp trajectory code, (..., 46): the displacement's colours per
+    level (x's, then y's), their fractions, the direction's colours and fractions per level,
+    then the speed's lower bin and fraction and the log index's (`trajectory_code_at` makes
+    the code of them; the code is two-hot within every group, so 46 numbers hold its 154)."""
     displacement, velocity, index = snapshots[..., :2], snapshots[..., 2:4], snapshots[..., 4]
-    zero = torch.zeros_like(index)
     period = parameters.displacement_period
-    position = codes.position_encode(
-        displacement, zero, (period, period), parameters.displacement_levels
-    )
-    direction = codes.circular_encode(
+    position = codes.circular_coordinates(
+        displacement, period, 3, parameters.displacement_levels
+    )  # (..., 2, levels) each
+    direction = codes.circular_coordinates(
         torch.atan2(velocity[..., 1], velocity[..., 0]),
-        zero,
         2.0 * math.pi,
         4,
         parameters.direction_levels,
     )
-    speed = codes.scalar_sharp(
+    speed_lower, speed_fraction = codes.scalar_sharp_coordinates(
         torch.hypot(velocity[..., 0], velocity[..., 1]),
         0.0,
         parameters.top_speed,
         parameters.speed_bins,
     )
-    log_index = codes.scalar_sharp(
+    index_lower, index_fraction = codes.scalar_sharp_coordinates(
         torch.log(torch.clamp_min(index, 1e-6)),
         -parameters.index_span,
         parameters.index_span,
         parameters.index_bins,
     )
-    return torch.cat([position.flatten(-2), direction.flatten(-2), speed, log_index], -1)
+    return torch.cat(
+        [
+            *(part.flatten(-2) for part in position),
+            *direction,
+            torch.stack([speed_lower, speed_fraction, index_lower, index_fraction], -1),
+        ],
+        -1,
+    )
+
+
+def trajectory_code_at(parameters: ShotCodeParameters, coordinates: torch.Tensor) -> torch.Tensor:
+    """(..., 46) coordinates (`trajectory_coordinates`) to the sharp trajectory code (...,
+    trajectory_width): the displacement's 3 x 3 outer products, the direction, speed and log
+    index two-hots."""
+    levels, directions = parameters.displacement_levels, parameters.direction_levels
+    colour, fraction, direction_colour, direction_fraction, scalars = coordinates.split(
+        [2 * levels, 2 * levels, directions, directions, 4], -1
+    )
+    x, y = codes.circular_sharp(
+        colour.unflatten(-1, (2, levels)), fraction.unflatten(-1, (2, levels)), 3
+    ).unbind(-3)
+    speed_lower, speed_fraction, index_lower, index_fraction = scalars.unbind(-1)
+    return torch.cat(
+        [
+            (x[..., :, None] * y[..., None, :]).flatten(-3),
+            codes.circular_sharp(direction_colour, direction_fraction, 4).flatten(-2),
+            codes.two_hot_at(speed_lower, speed_fraction, parameters.speed_bins),
+            codes.two_hot_at(index_lower, index_fraction, parameters.index_bins),
+        ],
+        -1,
+    )
+
+
+def trajectory_code(parameters: ShotCodeParameters, snapshots: torch.Tensor) -> torch.Tensor:
+    """(..., 5) snapshots (displacement x, y; velocity x, y; refractive index) to
+    (..., trajectory_width): the displacement, direction, speed and log-index codes."""
+    return trajectory_code_at(parameters, trajectory_coordinates(parameters, snapshots))
 
 
 def outcome_code(

@@ -28,10 +28,12 @@ def _one_hot(index: torch.Tensor, size: int, dtype: torch.dtype) -> torch.Tensor
 # --------------------------------------------------------------------------- circular
 
 
-def circular_encode(
-    mean: torch.Tensor, sigma: torch.Tensor, period: float, colours: int, levels: int
-) -> torch.Tensor:
-    """(...) mean and sigma to (..., levels, colours) probabilities.
+def circular_coordinates(
+    mean: torch.Tensor, period: float, colours: int, levels: int
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """(...) mean to its sharp code's coordinates per level, (colour, fraction) (..., levels):
+    the colour below the coordinate (a whole number, in the mean's dtype) and the fraction
+    past it.
 
     The spec's coordinate is (m mod P) / p_l * c. Only its fraction and its floor mod c are
     used, so each level reduces the position modulo its own period first (m mod p_l, by
@@ -46,13 +48,26 @@ def circular_encode(
         reduced = torch.remainder(reduced, level_period)
         coordinates.append(reduced * (colours / level_period))
     position = torch.stack(coordinates, -1)
-    level_periods = period / colours ** torch.arange(levels, dtype=mean.dtype, device=mean.device)
     lower = torch.floor(position)
-    fraction = position - lower
-    colour = torch.remainder(lower, colours).long()
-    sharp = (1.0 - fraction)[..., None] * _one_hot(colour, colours, mean.dtype) + fraction[
+    return torch.remainder(lower, colours), position - lower
+
+
+def circular_sharp(colour: torch.Tensor, fraction: torch.Tensor, colours: int) -> torch.Tensor:
+    """(..., levels) coordinates (`circular_coordinates`) to the sharp code (..., levels,
+    colours): 1 - fraction on the colour, fraction on the next (cyclically)."""
+    colour = colour.long()
+    return (1.0 - fraction)[..., None] * _one_hot(colour, colours, fraction.dtype) + fraction[
         ..., None
-    ] * _one_hot(torch.remainder(colour + 1, colours), colours, mean.dtype)
+    ] * _one_hot(torch.remainder(colour + 1, colours), colours, fraction.dtype)
+
+
+def circular_encode(
+    mean: torch.Tensor, sigma: torch.Tensor, period: float, colours: int, levels: int
+) -> torch.Tensor:
+    """(...) mean and sigma to (..., levels, colours) probabilities: the sharp code at the
+    mean's coordinates (`circular_coordinates`) attenuated toward uniform by sigma."""
+    sharp = circular_sharp(*circular_coordinates(mean, period, colours, levels), colours)
+    level_periods = period / colours ** torch.arange(levels, dtype=mean.dtype, device=mean.device)
     attenuation = torch.exp(-0.5 * (2.0 * math.pi * sigma[..., None] / level_periods) ** 2)
     return sharp * attenuation[..., None] + ((1.0 - attenuation) / colours)[..., None]
 
@@ -213,11 +228,18 @@ def two_hot_at(lower: torch.Tensor, fraction: torch.Tensor, bins: int) -> torch.
     ] * _one_hot(lower + 1, bins, fraction.dtype)
 
 
+def scalar_sharp_coordinates(
+    values: torch.Tensor, low: Bound, high: Bound, bins: int
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """(...) to the sharp code's (lower bin, fraction) (...), its `two_hot_at` arguments."""
+    _, lower, fraction, _ = _scalar_coordinate(values, low, high, bins)
+    return lower, fraction
+
+
 def scalar_sharp(values: torch.Tensor, low: Bound, high: Bound, bins: int) -> torch.Tensor:
     """(...) to (..., bins): two-hot on the bins either side (low and high: numbers, or
     tensors that broadcast against the values, one code call for several scalars)."""
-    _, lower, fraction, _ = _scalar_coordinate(values, low, high, bins)
-    return two_hot_at(lower, fraction, bins)
+    return two_hot_at(*scalar_sharp_coordinates(values, low, high, bins), bins)
 
 
 def match_moments(
@@ -460,22 +482,27 @@ class _GroupedCrossEntropy(torch.autograd.Function):
     """-sum target log p within each group, as lse(z) sum(target) - sum target z, with the
     gradient g (softmax(z) sum(target) - target): the same mathematics as through the
     log-softmax, with no log-softmax as wide as the code kept for the backward (the
-    logits, the target and one log-sum-exp per group)."""
+    logits, the target's source and one log-sum-exp per group). The target is
+    encode(source), made again in the backward (encode None: the source is the target)."""
 
     @staticmethod
-    def forward(ctx, logits: torch.Tensor, target: torch.Tensor, runs: Runs) -> torch.Tensor:
+    def forward(
+        ctx, logits: torch.Tensor, source: torch.Tensor, runs: Runs, encode
+    ) -> torch.Tensor:
+        target = source if encode is None else encode(source)
         log_sums, out = [], []
         for part, target_part in zip(split_runs(logits, runs), split_runs(target, runs)):
             log_sum = torch.logsumexp(part, -1)
             log_sums.append(log_sum)
             out.append(log_sum * target_part.sum(-1) - (target_part * part).sum(-1))
-        ctx.runs = runs
-        ctx.save_for_backward(logits, target, *log_sums)
+        ctx.runs, ctx.encode = runs, encode
+        ctx.save_for_backward(logits, source, *log_sums)
         return torch.cat(out, -1)
 
     @staticmethod
     def backward(ctx, grad: torch.Tensor):
-        logits, target, *log_sums = ctx.saved_tensors
+        logits, source, *log_sums = ctx.saved_tensors
+        target = source if ctx.encode is None else ctx.encode(source)
         grads = grad.split([groups for groups, _ in ctx.runs], -1)
         out = [
             (
@@ -489,13 +516,16 @@ class _GroupedCrossEntropy(torch.autograd.Function):
                 split_runs(logits, ctx.runs), split_runs(target, ctx.runs), log_sums, grads
             )
         ]
-        return torch.cat(out, -1), None, None
+        return torch.cat(out, -1), None, None, None
 
 
-def grouped_cross_entropy(logits: torch.Tensor, target: torch.Tensor, runs: Runs) -> torch.Tensor:
+def grouped_cross_entropy(
+    logits: torch.Tensor, target: torch.Tensor, runs: Runs, encode=None
+) -> torch.Tensor:
     """(..., groups in all): -sum target log p within each group (`_GroupedCrossEntropy`);
-    the target takes no gradient."""
-    return _GroupedCrossEntropy.apply(logits, target, runs)
+    the target takes no gradient. With `encode`, `target` is what encode makes the target
+    of: a cheap encoding of a narrow source is made twice rather than its wide code kept."""
+    return _GroupedCrossEntropy.apply(logits, target, runs, encode)
 
 
 def remove_baseline_floor(

@@ -14,7 +14,8 @@ Two cases, one process each:
 
 Usage: `python bench/learn_micro.py capture run=DIR batch=PATH` then
 `python bench/learn_micro.py time run=DIR batch=PATH [repeats=30] [warmup=5] [profile=0]
-[top=30] [values=PATH]`. Prints one JSON line last.
+[top=30] [values=PATH] [ages=N]`; ages=N queries the shot trajectory head at the first N
+bullet ages only (a diagnostic of the head's share). Prints one JSON line last.
 """
 
 import json
@@ -97,8 +98,18 @@ def time_step(options: dict) -> None:
     part, denominator, scale = saved["part"], saved["denominator"], saved["scale"]
     log("built and loaded")
 
+    ages = int(options.get("ages", 0))  # a diagnostic: the shot head at the first ages only
+    if ages:
+        learner.ages = learner.ages[:ages]
+
     def step():
         label = learner.labels(trajectory, shot_labels)
+        if ages:
+            label = dict(
+                label,
+                shot_snapshots=label["shot_snapshots"][..., :ages, :],
+                shot_ages=label["shot_ages"][..., :ages],
+            )
         out = learner.loss(trajectory, label, part, denominator, scale)
         out[0].backward()
         return out

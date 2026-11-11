@@ -22,6 +22,7 @@ such field (or None) and that term is skipped.
 """
 
 import dataclasses
+import functools
 import math
 import zlib
 from collections.abc import Callable, Iterator
@@ -607,10 +608,11 @@ class Learner:
         if _head(unrolled, "shot_latents") is not None:
             parts, outcome = losses.shot_cross_entropy(
                 model.shot_trajectory(unrolled.shot_latents, self.ages),
-                shot_codes.trajectory_code(model.shot_code, label["shot_snapshots"]),
+                shot_codes.trajectory_coordinates(model.shot_code, label["shot_snapshots"]),
                 unrolled.shot_outcome_logits,
                 label["shot_outcome"],
                 self.shot_runs,
+                functools.partial(shot_codes.trajectory_code_at, model.shot_code),
             )
             ages = label["shot_ages"]
             per_shot = torch.where(ages, parts.sum(-1), 0.0).sum(-1) / ages.sum(-1).clamp_min(1)
