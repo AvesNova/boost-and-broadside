@@ -38,7 +38,12 @@ BC_ARGS=(--preset mixed --objective bc --bc-budget-steps 120000000
   --set yemong.heads=1)
 BC_EVERY=4194304
 # The champion's RL command (its run.json, segment 0); the model's settings from the file.
-RL_ARGS=(--init-from $INIT --preset mixed --updates 58 --micro-batch-rows 320
+# Micro-batch rows: memory and speed only (micro-batches add up to the minibatch). RL's
+# minibatch is 2560 rows (32 minibatches of 256 views); the champion's 640 ran out of memory
+# on this code (gpu-box-log 01:00 KST), so 640 is tried first and 320 (the champion's) after
+# an out-of-memory failure (runs/rl-rows records the choice).
+RL_ROWS=$(cat runs/rl-rows 2>/dev/null || echo 640)
+RL_ARGS=(--init-from $INIT --preset mixed --updates 58 --micro-batch-rows $RL_ROWS
   --set host_store=false)
 RL_EVERY=3145728
 
@@ -87,6 +92,13 @@ stage() {  # name, budget check (a command), fresh args..., -- resume args...
       $BNB train --name $name "${fresh[@]}" >> runs/$name.out 2>&1
     fi
     say "$name: process exited with $?"
+    # RL at 640 rows out of memory: the next fresh attempt takes 320 rows
+    if [ "$name" = "$RL" ] && [ "$RL_ROWS" = 640 ] && ! has_checkpoint $name && \
+        tail -50 runs/$name.out | grep -q "OutOfMemoryError\|out of memory\|MemoryBudgetError"; then
+      say "$name: out of memory at 640 rows; fresh start at 320"
+      echo 320 > runs/rl-rows; RL_ROWS=320
+      for i in "${!fresh[@]}"; do [ "${fresh[$i]}" = 640 ] && fresh[$i]=320; done
+    fi
   done
   $done_check && return 0
   say "$name: FAILED after 3 attempts (runs/$name.out); the pipeline stops"
