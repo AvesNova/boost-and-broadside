@@ -3,11 +3,11 @@ plain twins: a head of `HeadGroup`, the tail of `ShotTrajectoryHead.query` and t
 encoder's `KindProjection` followed by its `shared` projection.
 
 Staged (`staged_head`, the whole of `ShotTrajectoryHead.query` at ages shared by every
-row): x itself is gelu(RMSNorm(latent + age)) of a latent row and an age row (row r a of
-the output is latent r at age a), made in the kernel from the two (as h is), so neither x
-nor its norm's gradient is written; the backward forms the input norm's gradient in
-registers too and writes the gradient of latent + age, summed over the ages and the rows
-afterwards.
+row): x itself is gelu(RMSNorm(latent + age)) of a latent row and an age row (output row
+r A + a is latent row r at age a), made in the kernel from the two, as h is. The forward
+writes no x; the backward forms the input norm's gradient in registers too, and writes x
+(for W1's gradient) and the gradient of latent + age, summed over the ages and over the
+rows afterwards.
 
 Every row's whole hidden vector (H = 64, 128 or 256) fits in one program's registers, so the
 forward computes h = W1 x + b1, the norm, the gelu and the output product without writing h

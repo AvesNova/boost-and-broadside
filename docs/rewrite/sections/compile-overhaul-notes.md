@@ -570,6 +570,15 @@ took 151.8 s (its Inductor and Triton caches invalidated by the head kernel's ne
   to the plain query's error against float64, and to bitwise repeatability.
   `fast-yemong-notes.md`'s kernel table names it.
 
+**Its compile cost.** An `autograd.Function` in the loss graph bypasses AOTAutograd's
+cache ("Unsupported call_function target autograd_function_apply"), so a process
+re-traces and re-partitions the loss on warm caches (Inductor's own graph cache still
+hits): `Learner._loss` 3.5 -> 12.2 s warm in `compile_baseline.py`, the micro-batch's first
+step 8.2 -> 12.4 s. The plain form of the same mathematics (lse(z) sum(t) - t.z by
+autograd, the target made of the coordinates in the graph) caches but is slower: 53.29
+against 51.68 ms a step, measured back to back (about 6 s an update). The `Function` stays:
+it repays its 9 s within the first update.
+
 Loss values: identical on the captured micro-batch at every kept step (the loss and every
 term within 1e-7 relative); the parameters' gradient norms within 1.2e-4 relative of the
 old tree's (the bf16 trunk; the padding switch alone moves them 8e-5).
