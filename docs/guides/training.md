@@ -124,6 +124,17 @@ uv run --no-sync bnb train --preset mixed --set ship_card.hit_damage=[14,18]
 
 `bfloat16_matmuls` is not set there: `--precision` sets it.
 
+The ablations are settings of the same code. Yemong without temporal layers keeps its
+spatial sublayers and drops each block's temporal one (`YemongConfig.order`
+`"spatial_only"`), so the fed-back beliefs are its only memory. The nearest-neighbour MLP is
+`--model nearest`:
+
+<!-- not-runnable: needs CUDA -->
+```bash
+uv run --no-sync bnb train --preset mixed --set 'yemong.order="spatial_only"'
+uv run --no-sync bnb train --preset mixed --model nearest
+```
+
 ## Configure a run in Python
 
 `bnb.runtime.train.TrainConfig` holds the loop's settings, and `bnb.runtime.train.train`

@@ -103,7 +103,9 @@ class YemongConfig:
     tables, in the plain and the fused kernel path alike), so attention reads no relative
     position or heading; the model trains and plays that way.
     order: per trunk block, the spatial sublayers then the temporal one ("spatial_first")
-    or the temporal one then the spatial ones ("temporal_first"; `network.ORDERS`).
+    or the temporal one then the spatial ones ("temporal_first"; `network.ORDERS`), or the
+    spatial ones alone ("spatial_only", the ablation without temporal layers: the beliefs,
+    the forecasts fed back, are then the model's only memory).
     rotary_readout (temporal_first and rotary only): in every block, a linear head of its
     own on that block's temporal sublayer's ship rows gives a (cos, sin) pair per rotary
     frequency, unnormalised (a pair shorter than 1 is the model unsure at that frequency).
@@ -206,7 +208,7 @@ class YemongConfig:
     bfloat16_matmuls: bool = False
     forecast_feedback: bool = True  # store the forecast as the next tick's belief
     rotary: bool = True  # rotary attention (off: the identity rotation)
-    order: str = "spatial_first"  # per block: "spatial_first" or "temporal_first"
+    order: str = "spatial_first"  # per block: "spatial_first", "temporal_first", "spatial_only"
     rotary_readout: bool = False  # hidden ships' rotary pairs from each block's temporal layer
     spread_fit: str = "v1"  # the belief's spread decoding; training builds "coarsest"
     next_state: str = "absolute"  # the next-state head's target: "absolute" or "delta"
@@ -656,7 +658,7 @@ class Yemong(nn.Module):
         config, dtype = self.config, self.bins.dtype
         queries = num_ships + 1
         state = torch.zeros(
-            (views, config.blocks, queries, config.width), dtype=dtype, device=device
+            (views, self.trunk.temporal_blocks, queries, config.width), dtype=dtype, device=device
         )
         belief = beliefs.blank(
             (views, num_ships),

@@ -168,11 +168,13 @@ def sampled(tokens: torch.Tensor, count: int = REPRESENTATION_TOKENS) -> torch.T
 def last_sublayer(block: torch.nn.Module, order: str) -> torch.nn.Module | None:
     """The sublayer whose output is `block`'s output in the trunk's `order`: the temporal one
     when it runs last ("spatial_first", or a block without spatial sublayers), else the last
-    spatial one ("temporal_first"). None for a block without either."""
+    spatial one ("temporal_first", or a block without a temporal sublayer, "spatial_only").
+    None for a block without either."""
     spatial = getattr(block, "spatial", None)
-    if order == "temporal_first" and spatial:
+    temporal = getattr(block, "temporal", None)
+    if spatial and (order == "temporal_first" or temporal is None):
         return spatial[-1]
-    return getattr(block, "temporal", None)
+    return temporal
 
 
 @contextlib.contextmanager

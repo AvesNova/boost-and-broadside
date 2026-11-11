@@ -105,8 +105,9 @@ def test_the_read_out_adds_only_one_head_per_block_and_leaves_the_rest_initialis
         dict(order="temporal_first"),
         dict(order="temporal_first", rotary_readout=True),
         dict(order="temporal_first", rotary_readout=True, forecast_feedback=False),
+        dict(order="spatial_only"),
     ],
-    ids=["spatial_first", "C", "temporal_readout", "D"],
+    ids=["spatial_first", "C", "temporal_readout", "D", "spatial_only"],
 )
 def test_unroll_equals_a_loop_of_steps(segment, settings):
     net = cases.double(cases.model(**settings))
@@ -160,11 +161,28 @@ def test_the_order_is_the_blocks_sublayer_order(segment, monkeypatch, order):
     block = [*net.trunk.blocks]
     spatial_first = [*block[0].spatial, block[0].temporal, *block[1].spatial, block[1].temporal]
     temporal_first = [block[0].temporal, *block[0].spatial, block[1].temporal, *block[1].spatial]
-    expected = spatial_first if order == "spatial_first" else temporal_first
+    spatial_only = [*block[0].spatial, *block[1].spatial]
+    expected = dict(
+        spatial_first=spatial_first, temporal_first=temporal_first, spatial_only=spatial_only
+    )[order]
     sublayers = len(expected)
     assert len(log) % sublayers == 0 and len(log) > sublayers
     for start in range(0, len(log), sublayers):  # every step and the unroll
         assert all(a is b for a, b in zip(log[start : start + sublayers], expected, strict=True))
+
+
+def test_spatial_only_has_no_temporal_layers_and_no_trunk_carry():
+    """The ablation without temporal layers: the spatial sublayers and every other
+    parameter as the default build's, none of the temporal ones, and a trunk carry of no
+    blocks (the beliefs remain)."""
+    net = cases.model(order="spatial_only")
+    default = cases.model()
+    names = set(net.state_dict())
+    assert names == {name for name in default.state_dict() if ".temporal." not in name}
+    assert all(block.temporal is None for block in net.trunk.blocks)
+    carry = net.initial_carry(3, OWN, 10)
+    assert carry.state.shape == (3, 0, 11, net.config.width)
+    assert carry.convolution_buffer.shape == (3, 0, 11, 3, net.config.width)
 
 
 def test_the_read_out_sets_the_hidden_ships_tables_and_visible_ships_keep_theirs(

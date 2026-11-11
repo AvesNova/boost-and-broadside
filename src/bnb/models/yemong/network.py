@@ -106,19 +106,21 @@ class Encoder(nn.Module):
         return queries, memory
 
 
-ORDERS = ("spatial_first", "temporal_first")
+ORDERS = ("spatial_first", "temporal_first", "spatial_only")
 
 
 class Block(nn.Module):
-    """One trunk block: spatial_per_block spatial sublayers and one temporal sublayer, in the
-    trunk's order (`ORDERS`)."""
+    """One trunk block: spatial_per_block spatial sublayers and one temporal sublayer (none
+    when not `temporal`), in the trunk's order (`ORDERS`)."""
 
-    def __init__(self, width: int, heads: int, map_width: int, spatial_per_block: int) -> None:
+    def __init__(
+        self, width: int, heads: int, map_width: int, spatial_per_block: int, temporal: bool
+    ) -> None:
         super().__init__()
         self.spatial = nn.ModuleList(
             SpatialBlock(width, heads, map_width) for _ in range(spatial_per_block)
         )
-        self.temporal = TemporalBlock(width)
+        self.temporal = TemporalBlock(width) if temporal else None
 
     def attend(self, tokens, map_memory, token_tables, map_tables):
         """The tokens (..., Q, D) after each of the block's spatial sublayers in turn, each
@@ -131,8 +133,10 @@ class Block(nn.Module):
 class Trunk(nn.Module):
     """Blocks of spatial sublayers and one temporal sublayer each: per block the spatial
     sublayers then the temporal one ("spatial_first"), or the temporal one then the spatial
-    ones ("temporal_first"). The trunk carry is state (..., blocks, Q, D) and
-    convolution_buffer (..., blocks, Q, 3, D).
+    ones ("temporal_first"); or the spatial sublayers alone ("spatial_only", the ablation
+    without temporal layers: the carry holds no trunk state, only the model's beliefs).
+    The trunk carry is state (..., temporal_blocks, Q, D) and convolution_buffer
+    (..., temporal_blocks, Q, 3, D).
 
     retable (temporal_first only): a function of a block's index and its temporal
     sublayer's output (..., Q, D) giving the token tables of that block's spatial
@@ -151,9 +155,17 @@ class Trunk(nn.Module):
         if order not in ORDERS:
             raise ValueError(f"order {order!r} is not one of {ORDERS}")
         self.order = order
+        temporal = order != "spatial_only"
+        self.temporal_blocks = blocks if temporal else 0  # the carry's blocks
         self.blocks = nn.ModuleList(
-            Block(width, heads, map_width, spatial_per_block) for _ in range(blocks)
+            Block(width, heads, map_width, spatial_per_block, temporal) for _ in range(blocks)
         )
+
+    def _attend(self, tokens, map_memory, token_tables, map_tables) -> torch.Tensor:
+        """Every block's spatial sublayers in turn ("spatial_only")."""
+        for block in self.blocks:
+            tokens = block.attend(tokens, map_memory, token_tables, map_tables)
+        return tokens
 
     def step(
         self,
@@ -166,6 +178,8 @@ class Trunk(nn.Module):
         retable: Callable[[int, torch.Tensor], Tables] | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """One decision: tokens (..., Q, D). Returns (tokens, state, buffer)."""
+        if not self.temporal_blocks:
+            return self._attend(tokens, map_memory, token_tables, map_tables), state, buffer
         states, buffers = [], []
         temporal_first = self.order == "temporal_first"
         for index, block in enumerate(self.blocks):
@@ -195,6 +209,8 @@ class Trunk(nn.Module):
         """A segment: tokens (L, ..., Q, D), the carry at its start (..., blocks, Q, ...),
         starts (L, ...) (the first is ignored). The spatial sublayers run over every step at
         once; the temporal ones scan over time. Returns (tokens, final state, final buffer)."""
+        if not self.temporal_blocks:
+            return self._attend(tokens, map_memory, token_tables, map_tables), state, buffer
         starts = starts[..., None]  # per query token
         states, buffers = [], []
         temporal_first = self.order == "temporal_first"
