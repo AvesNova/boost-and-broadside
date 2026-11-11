@@ -870,8 +870,9 @@ def _train(options: Train, given_options: set[str], stop) -> None:
 
 def log_cloning(row: dict) -> None:
     """Print one behaviour-cloning update's row on one line: the timings (ms), the BC KL and the
-    teacher's and student's entropies (nats), each score, and the score stop's window once one
-    is full (the average it reads)."""
+    teacher's and student's entropies (nats), each score, the score stop's window once one
+    is full (the average it reads), and the plateau's fraction once it reads one (the
+    recent improvement over the improvement since its start) with how long it has held."""
     scores = " ".join(
         f"{name.split('/')[-1]} {value:.3f}"
         for name, value in row.items()
@@ -885,12 +886,18 @@ def log_cloning(row: dict) -> None:
         if "bc/stop/window_score" in row and read
         else ""
     )
+    plateau = (
+        f"  plateau {row['bc/stop/plateau/fraction']:.3f} "
+        f"held {row['bc/stop/plateau/held_steps']:,}"
+        if "bc/stop/plateau/fraction" in row
+        else ""
+    )
     print(
         f"update {row['counters/updates']:4d}  steps {row['counters/environment_steps']:>11,}  "
         f"rollout {row['train/time/rollout_seconds'] * 1e3:6.0f} ms  "
         f"learn {row['train/time/learner_seconds'] * 1e3:6.0f} ms  "
         f"bc kl {row['bc/kl']:.4f}  teacher {row['bc/entropy/target']:.3f}  "
-        f"student {row['bc/entropy/student']:.3f}  scores: {scores}{window}",
+        f"student {row['bc/entropy/student']:.3f}  scores: {scores}{window}{plateau}",
         flush=True,
     )
 

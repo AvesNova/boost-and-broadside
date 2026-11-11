@@ -378,20 +378,29 @@ def calibrate(
 
 @dataclasses.dataclass(frozen=True)
 class StopConfig:
-    """When BC stops (scripted spec B4), whichever comes first: the score against the raw
-    scripted agent in the rating lanes, over the last score_window finished games, of the
-    better of the players `reads` names (the averages of the live weights; decisions: BC
-    round three), reaches score_target; the KL's EMA (kl_decay per update) improved by less
-    than plateau_fraction over the last plateau_steps environment steps; or budget_steps
-    environment steps (a run stopped by its budget resumes with a larger one). `reads` is
-    in order of preference: an equal score goes to the earlier."""
+    """When BC stops (scripted spec B4), whichever comes first: BC's imitation has
+    plateaued (`Plateau`: the BC KL's trailing mean over plateau_smoothing_steps improved
+    by less than plateau_fraction of its improvement since plateau_from_steps over the
+    last plateau_window_steps, at every update for plateau_hold_steps; the default rule,
+    None turns it off); the score against the raw scripted agent in the rating lanes,
+    over the last score_window finished games, of the better of the players `reads` names
+    (the averages of the live weights; decisions: BC round three), reaches score_target
+    (None, the default, turns it off: the window is still kept and logged, and names the
+    average `policy/` holds); or budget_steps environment steps (a run stopped by its
+    budget resumes with a larger one). `reads` is in order of preference: an equal score
+    goes to the earlier."""
 
-    # parity with the scripted agent (author, 2026-11-04), a plain score
-    score_target: float = 0.5
+    # the hub's BC runs (2026-11-09, 2026-11-10): offline, 5% over 10M steps since 5M
+    # matched the calibrated Elo's plateau (author, 2026-11-11); online, a held condition
+    # stands for the offline "stays below thereafter" (docs/explanation/behaviour-cloning.md)
+    plateau_fraction: float | None = 0.05
+    plateau_window_steps: int = 10_000_000
+    plateau_from_steps: int = 5_000_000
+    plateau_smoothing_steps: int = 5_000_000
+    plateau_hold_steps: int = 10_000_000
+    # parity with the scripted agent was 0.5 (author, 2026-11-04); off since the plateau
+    score_target: float | None = None
     score_window: int = 1000
-    plateau_fraction: float = 0.01
-    plateau_steps: int = 20_000_000
-    kl_decay: float = 0.9
     # v1's time to parity (author, 2026-11-04)
     budget_steps: int = 50_000_000
     # the lane players `bnb.runtime.lanes.EXPONENTIAL_AVERAGE` and `UNIFORM_AVERAGE`
@@ -402,6 +411,106 @@ class StopConfig:
             raise ValueError(f"the score window needs two games for its spread, got {self}")
         if not self.reads or len(set(self.reads)) != len(self.reads):
             raise ValueError(f"the score stop reads distinct players, got {self.reads}")
+        if self.plateau_fraction is not None and not 0.0 < self.plateau_fraction < 1.0:
+            raise ValueError(f"the plateau fraction is in (0, 1) or None, got {self}")
+        if self.plateau_window_steps < 1 or self.plateau_smoothing_steps < 1:
+            raise ValueError(f"the plateau's window and smoothing need a step, got {self}")
+        if self.plateau_from_steps < 0 or self.plateau_hold_steps < 0:
+            raise ValueError(f"the plateau's start and hold are not negative, got {self}")
+
+
+class Plateau:
+    """BC's plateau rule on the BC KL, fed once per update (`observe`) with the run's
+    environment steps and the update's KL; it reads only the past.
+
+    The KL is smoothed by its trailing mean over the updates of the last `smoothing` steps
+    (`StopConfig.plateau_smoothing_steps`). Its improvement since `from`
+    (`plateau_from_steps`) is measured from a baseline, the plain mean of the updates
+    within half a smoothing on either side of `from` (fixed once the updates past it are
+    in; the first update's KL, the untrained policy's, lies before it); its recent
+    improvement is the fall of the trailing mean since the newest update at least
+    `window` steps back. The condition: the improvement since `from` is positive and the
+    recent one is below `fraction` of it. The rule fires once the condition has held at
+    every update for `hold` steps: offline, the condition was read on centred means and
+    had to stay true for the rest of the run; online, a hold stands for that, and keeps
+    a run from stopping in a temporary plateau (every hub run has one at 20-30M steps,
+    4M steps long).
+
+    Its state (`state`: the updates the smoothing still reads, the trailing means the
+    window still reads, the baseline and the step the condition began holding) is plain
+    JSON, kept in the training checkpoint so that a resume decides as one process would."""
+
+    def __init__(self, config: StopConfig, state: dict | None = None) -> None:
+        self.config = config
+        self.values: list[tuple[int, float]] = []  # (environment steps, the update's KL)
+        self.means: list[tuple[int, float]] = []  # (environment steps, the trailing mean)
+        self.baseline: float | None = None
+        self.held_from: int | None = None  # the first step of the condition's current hold
+        self.fraction: float | None = None  # recent improvement / improvement since `from`
+        if state is not None:
+            self.values = [(steps, value) for steps, value in state["values"]]
+            self.means = [(steps, mean) for steps, mean in state["means"]]
+            self.baseline, self.held_from = state["baseline"], state["held_from"]
+            self.fraction = state["fraction"]
+
+    @property
+    def state(self) -> dict:
+        """The rule's state as JSON (floats round-trip exactly through JSON)."""
+        return dict(
+            values=[list(entry) for entry in self.values],
+            means=[list(entry) for entry in self.means],
+            baseline=self.baseline,
+            held_from=self.held_from,
+            fraction=self.fraction,
+        )
+
+    @property
+    def mean(self) -> float | None:
+        """The KL's trailing mean after the last update."""
+        return self.means[-1][1] if self.means else None
+
+    def held_steps(self, environment_steps: int) -> int:
+        """How long the condition has held, in environment steps (0 when it does not)."""
+        return 0 if self.held_from is None else environment_steps - self.held_from
+
+    def observe(self, environment_steps: int, kl: float) -> bool:
+        """environment_steps: the run's total after this update; kl: its BC KL. Whether the
+        rule fires."""
+        config = self.config
+        half = config.plateau_smoothing_steps / 2
+        start = config.plateau_from_steps
+        self.values.append((environment_steps, kl))
+        if self.baseline is None and environment_steps >= start + half:
+            around = [value for steps, value in self.values if start - half < steps <= start + half]
+            self.baseline = sum(around) / len(around) if around else kl
+        recent_values = [
+            entry
+            for entry in self.values
+            if entry[0] > environment_steps - config.plateau_smoothing_steps
+        ]
+        mean = sum(value for _, value in recent_values) / len(recent_values)
+        self.means.append((environment_steps, mean))
+        cutoff = environment_steps - config.plateau_window_steps
+        past = [average for steps, average in self.means if steps <= cutoff]
+        self.fraction, holds = None, False
+        if self.baseline is not None and past:
+            total = self.baseline - mean
+            if total > 0.0:
+                self.fraction = (past[-1] - mean) / total
+                holds = config.plateau_fraction is not None and (
+                    self.fraction < config.plateau_fraction
+                )
+        if holds:
+            self.held_from = environment_steps if self.held_from is None else self.held_from
+        else:
+            self.held_from = None
+        # The window reads the newest mean at or before the cutoff, which only rises, and
+        # the smoothing the values of the last smoothing steps (the baseline's lie among
+        # them until it is fixed): the rest is never read again.
+        while len(self.means) > 1 and self.means[1][0] <= cutoff:
+            self.means.pop(0)
+        self.values = recent_values
+        return holds and self.held_steps(environment_steps) >= config.plateau_hold_steps
 
 
 class ScoreWindow:
@@ -467,36 +576,31 @@ class ScoreWindow:
 class StopRule:
     """Fed once per update; `observe` names the rule that fires, or returns None.
 
-    Each lane player's games against the scripted agent fill a score window of its own
-    (`ScoreWindow`, `windows` by player). The score stop reads the window of the best of
-    the players `StopConfig.reads` names whose window is full (`read`; an equal score goes
-    to the earlier in `reads`); the others' windows, the live clone's among them, are
-    logged.
+    The plateau rule reads the BC KL (`Plateau`). Each lane player's games against the
+    scripted agent fill a score window of its own (`ScoreWindow`, `windows` by player).
+    The score stop, when it has a target, reads the window of the best of the players
+    `StopConfig.reads` names whose window is full (`read`; an equal score goes to the
+    earlier in `reads`); the others' windows, the live clone's among them, are logged.
 
-    Its state (`state`: the windows, the KL's EMA and its history) is plain JSON, kept in
-    the training checkpoint so that a resume continues the same windows."""
+    Its state (`state`: the windows and the plateau's) is plain JSON, kept in the training
+    checkpoint so that a resume continues the same windows."""
 
     def __init__(self, config: StopConfig, state: dict | None = None) -> None:
         self.config = config
         self.windows: dict[str, ScoreWindow] = {}
-        self.kl_average: float | None = None
-        self.history: list[tuple[int, float]] = []  # (environment steps, the KL's EMA)
+        self.plateau = Plateau(config, None if state is None else state["plateau"])
         if state is not None:
             self.windows = {
                 player: ScoreWindow(config.score_window, updates)
                 for player, updates in state["windows"].items()
             }
-            self.kl_average = state["kl_average"]
-            self.history = [(steps, average) for steps, average in state["history"]]
 
     @property
     def state(self) -> dict:
-        """The rule's state as JSON: each player's window, the KL's EMA and its history
-        (floats round-trip exactly through JSON)."""
+        """The rule's state as JSON: each player's window and the plateau's state."""
         return dict(
             windows={player: window.state for player, window in self.windows.items()},
-            kl_average=self.kl_average,
-            history=[list(entry) for entry in self.history],
+            plateau=self.plateau.state,
         )
 
     @property
@@ -530,25 +634,16 @@ class StopRule:
     ) -> str | None:
         """environment_steps: the total so far; results: each lane player's games finished
         against the raw scripted agent this update, (wins, draws, losses) from its side (a
-        player left out played none that count); kl: this update's BC KL."""
+        player left out played none that count); kl: this update's BC KL. The rule that
+        fires: "plateau", "score" or "budget", or None."""
         config = self.config
         for player, games in results.items():
             self.windows.setdefault(player, ScoreWindow(config.score_window)).add(*games)
-        decay = config.kl_decay
-        self.kl_average = (
-            kl if self.kl_average is None else decay * self.kl_average + (1.0 - decay) * kl
-        )
-        self.history.append((environment_steps, self.kl_average))
-        if self.score is not None and self.score >= config.score_target:
+        if self.plateau.observe(environment_steps, kl):
+            return "plateau"
+        target = config.score_target
+        if target is not None and self.score is not None and self.score >= target:
             return "score"
-        cutoff = environment_steps - config.plateau_steps
-        past = [average for steps, average in self.history if steps <= cutoff]
-        # the plateau reads the newest average at or before the cutoff, which only rises:
-        # the older ones are never read again
-        while len(self.history) > 1 and self.history[1][0] <= cutoff:
-            self.history.pop(0)
-        if past and self.kl_average > (1.0 - config.plateau_fraction) * past[-1]:
-            return "kl_plateau"
         if environment_steps >= config.budget_steps:
             return "budget"
         return None

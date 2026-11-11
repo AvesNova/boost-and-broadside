@@ -120,7 +120,7 @@ HEADLINE = (
         (
             panel("policy/entropy/joint"),
             rl("policy/kl and clip fraction", "policy/kl", "policy/clip_fraction"),
-            bc("bc/kl", "bc/kl", "bc/stop/kl_average"),
+            bc("bc/kl", "bc/kl", "bc/stop/plateau/kl_mean"),
             panel("critic/explained_variance", "critic/explained_variance/*"),
             panel(
                 "gradient norm and clip fire rate", "train/gradient_norm", "train/clip_fire_rate"
@@ -162,7 +162,9 @@ CURATED = (
     Section(
         "bc/",
         (
-            bc("bc/kl", "bc/kl", "bc/stop/kl_average"),
+            bc("bc/kl", "bc/kl", "bc/stop/plateau/kl_mean"),
+            bc("bc/stop/plateau/fraction", "bc/stop/plateau/fraction"),
+            bc("bc/stop/plateau/held_steps", "bc/stop/plateau/held_steps"),
             bc("bc/agreement", "bc/agreement/*"),
             bc("bc/entropy", "bc/entropy/*"),
             bc("bc/score", "bc/score/*", "bc/stop/window_score", "bc/stop/window_stderr"),
