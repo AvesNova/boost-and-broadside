@@ -45,7 +45,8 @@ UPDATES = 2
 #                      relational   yemong
 #   (a) one ulp          4e-3        4.5e-2   (value losses; entropy 8e-4, KL 1e-3 and 3.6e-2)
 #   (b) other seed       1.5e-1      2.6e-1   (approximate KL; the value losses 1e-3 and 2e-2)
-# so 0.1 sits between. The final weights' relative L2 distance is 1.8e-4 and 1.9e-4 for (a),
+# so 0.1 sits between (for Yemong as it was then; today's separates no longer, see the
+# separation test). The final weights' relative L2 distance is 1.8e-4 and 1.9e-4 for (a),
 # 5.3e-2 for (b) on the relational model but 4.2e-4 on Yemong: that one cannot tell the two
 # apart, and 3e-3 only stops gross drift. Yemong is chaotic at one ulp: the sampled actions
 # change, so do the rollouts (a pool's reward rate moves by 44%), and the losses on mean-zero
@@ -261,11 +262,16 @@ def test_the_tolerances_pass_one_ulp_and_fail_another_minibatch_order_on_the_cpu
     _tolerance_separates(tmp_path, "cpu", "relational")
 
 
+# Not on Yemong: one ulp decorrelates it within the first update after the resume, as much as
+# another minibatch seed does, so no tolerance on these series separates the two (measured
+# 2026-11-11, the two updates after the resume, b137fc5b and 5f902a7f: policy/kl 6-38% for
+# one ulp against 12-33% for the other seed, the value losses up to 9% against 4-23%, the
+# weights 2.7-2.8e-4 against 4.1-4.4e-4). Its resume is held by the exact restore and the
+# continuation test (`test_a_resumed_run_restores_exactly_and_continues_as_one_run_on_the_gpu`).
 @pytest.mark.gpu
 @pytest.mark.slow
-@pytest.mark.parametrize("model", ["relational", "yemong"])
-def test_the_tolerances_pass_one_ulp_and_fail_another_minibatch_order_on_the_gpu(tmp_path, model):
-    _tolerance_separates(tmp_path, "cuda", model)
+def test_the_tolerances_pass_one_ulp_and_fail_another_minibatch_order_on_the_gpu(tmp_path):
+    _tolerance_separates(tmp_path, "cuda", "relational")
 
 
 @pytest.mark.slow
