@@ -24,9 +24,11 @@ uv run bnb play --agent1 runs/<run>/policy
 The first match comes from the options (a preset, `real_scale_deathmatch` by default, and
 the sizes that override it); every later one from the menu's **New match**. A new kind of
 match starts at once and never stalls the window: the first time a game (or a changed
-version of the code) is played, its tick is built in a separate process (about 30 s) while
-the match runs the uncompiled tick, which keeps up to ×2; the built tick is kept in the
-user's cache directory, so every later match of that game starts compiled. The options:
+version of the code) is played, its tick and the scripted agent's step are built in
+separate processes (about 30 s and 15 s) while the match runs them uncompiled, slower
+(about 14 ms a tick instead of 1.5, so a frame that holds a tick can miss the
+display's); both are kept in the user's cache directory, so every later match of that game starts
+compiled. The options:
 
 <!-- generated: play-options -->
 
@@ -160,8 +162,9 @@ steps eagerly instead of from its CUDA graph. Off, the overlays cost nothing.
 
 With a Yemong agent and the scripted agent on the CPU (one torch thread, the tick
 uncompiled), every overlay on adds about 5 ms a frame at ×1 (the predictions are made once
-a tick: about 4 ms for the agent's heads and 4 ms for the bullet paths) to the shell's
-12 to 14 ms.
+a tick: about 4 ms for the agent's heads and 4 ms for the bullet paths). Without overlays a
+Yemong agent's decision takes about 2.2 ms a tick on a laptop GPU (its CUDA graph) and
+6.6 ms on one CPU thread; the scripted agent's, built, 0.2 ms.
 
 `--overlays`, `--overlay-side` and `--truth` turn them on from the start:
 
