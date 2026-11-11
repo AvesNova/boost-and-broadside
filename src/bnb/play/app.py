@@ -32,7 +32,7 @@ from bnb.runtime.built import clone
 
 from . import predictions, themes
 from . import replay as replays
-from .camera import Camera
+from .camera import Camera, LookAhead
 from .index_map import IndexBuilder, build
 from .interface.interface import Interface
 from .interface.kill_feed import FEED_SECONDS
@@ -43,6 +43,7 @@ from .loop import TIME_SCALES, MatchEvent, MatchLoop, MatchSetup, SideSetup, tea
 from .overlays import NAMES as OVERLAY_NAMES
 from .overlays import OverlaySettings, Predictions, offered, offered_by, provider
 from .png import write_png
+from .render.grid import PATTERNS as GRID_PATTERNS
 from .render.minimap import DOT_PIXELS
 from .render.overlay import outline_table
 from .render.predictions import OverlayDrawing, overlay_drawing
@@ -65,6 +66,8 @@ SOLVED_UNDER = ("flight.", "rules.bullet_life")  # the rules a card's handles de
 
 
 PresetName = Literal[tuple(PRESETS)]  # the game presets' names (`api.PRESETS`)
+GridPattern = Literal[tuple(GRID_PATTERNS)]  # the dot grid's patterns (`render.grid`)
+LOOK_AHEADS = ("off", "flying", "always")  # when the camera leads a followed ship
 
 
 @dataclasses.dataclass
@@ -102,6 +105,8 @@ class Options:
     overlay_side: int | None = None  # whose predictions they draw (None: the default)
     truth: bool = False  # draw the truth beside the predictions
     true_size: bool = False  # draw the ships at their size in metres (no minimum on screen)
+    grid: GridPattern = "triangle"  # the dot grid fixed to the map, or "off"
+    look_ahead: Literal[LOOK_AHEADS] = "always"  # lead a followed ship: off, flown only, always
 
     def game(self) -> GameConfig:
         """The game configuration: the preset with any sizes given overriding it."""
@@ -168,6 +173,9 @@ class Session:
         self.minimap_camera = Camera(1, 1)
         self.view = VIEWS.index(options.view)
         self.true_size = options.true_size  # the ships at their size in metres (`render.ships`)
+        self.grid = options.grid  # the dot grid's pattern, or "off" (`render.grid`)
+        self.look_ahead = options.look_ahead  # when the camera leads a followed ship
+        self.lead = LookAhead()
         self.library = themes.Library() if library is None else library
         self.theme_names = self.library.names()
         self.theme = self.library.load(options.theme)
@@ -584,6 +592,26 @@ class Session:
         screen (the default)."""
         self.true_size = not self.true_size
 
+    def set_grid(self, pattern: str) -> None:
+        """Draw the dot grid in this pattern ("off": none)."""
+        self.grid = pattern
+
+    def cycle_grid(self) -> None:
+        """Switch the dot grid to the next pattern: off, square, triangle, hex."""
+        patterns = ("off", *GRID_PATTERNS)
+        self.grid = patterns[(patterns.index(self.grid) + 1) % len(patterns)]
+
+    def set_look_ahead(self, when: str) -> None:
+        """Lead a followed ship's view in its direction of travel: "off", "flying" (the
+        flown ship only) or "always"."""
+        self.look_ahead = when
+
+    def leading(self) -> bool:
+        """Whether the camera leads the followed ship now."""
+        if self.look_ahead == "always":
+            return True
+        return self.look_ahead == "flying" and self.following == self.loop.pilot
+
     def cycle_theme(self) -> None:
         """Switch to the next theme in the library."""
         names = self.theme_names
@@ -877,7 +905,20 @@ class Session:
         self.loop.restarted[:] = False
         following = self.following
         if following is not None and frame.ships.alive[following]:
-            self.camera.follow(float(frame.ships.x[following]), float(frame.ships.y[following]))
+            x, y = float(frame.ships.x[following]), float(frame.ships.y[following])
+            lead_x, lead_y = self.lead.update(
+                following,
+                x,
+                y,
+                self.loop.game_time,
+                elapsed,
+                self.camera,
+                self.leading(),
+                bool(frame.ships.spawned[following]),
+            )
+            self.camera.follow(x + lead_x, y + lead_y)
+        else:
+            self.lead.ship = None  # following again starts from no lead
         now = self.loop.ticks * self.loop.tick_length
         self.feed = [(when, event) for when, event in self.feed if now - when < FEED_SECONDS]
         self.frame = frame
@@ -921,6 +962,7 @@ class Session:
             self.overlay_drawing(),
             self.true_size,
             self.loop.time_scale,
+            self.grid,
         )
         imgui.set_current_context(self.imgui_context)
         imgui.get_io().delta_time = max(self.elapsed, 1e-4)
@@ -983,7 +1025,8 @@ def read_pixels(framebuffer: moderngl.Framebuffer) -> np.ndarray:
 
 def run_offscreen(options: Options) -> list[pathlib.Path]:
     """Render options.frames frames at 60 frames per second of game display time; write
-    each to options.offscreen/frame_NNNN.png."""
+    each to options.offscreen/frame_NNNN.png. The context is its own, made current and
+    released at the end: a caller with a context of its own makes that current again."""
     context = offscreen_context()
     size = (options.width, options.height)
     target = context.framebuffer(color_attachments=[context.texture(size, 4)])
@@ -997,4 +1040,5 @@ def run_offscreen(options: Options) -> list[pathlib.Path]:
         write_png(path, read_pixels(target))
         paths.append(path)
     session.close()
+    context.release()
     return paths

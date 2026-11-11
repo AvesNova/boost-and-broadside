@@ -1,5 +1,5 @@
 ---
-covers: [src/bnb/play/app.py, src/bnb/play/window.py, src/bnb/play/interface/, src/bnb/play/sides.py, src/bnb/play/replay.py, src/bnb/play/themes.py, src/bnb/play/themes/, src/bnb/play/theme_editor.py, src/bnb/play/overlays.py, src/bnb/play/predictions.py, src/bnb/play/render/predictions.py, src/bnb/play/tuning.py, src/bnb/play/tuning_panel.py, src/bnb/game/ships/]
+covers: [src/bnb/play/app.py, src/bnb/play/camera.py, src/bnb/play/render/grid.py, src/bnb/play/window.py, src/bnb/play/interface/, src/bnb/play/sides.py, src/bnb/play/replay.py, src/bnb/play/themes.py, src/bnb/play/themes/, src/bnb/play/theme_editor.py, src/bnb/play/overlays.py, src/bnb/play/predictions.py, src/bnb/play/render/predictions.py, src/bnb/play/tuning.py, src/bnb/play/tuning_panel.py, src/bnb/game/ships/]
 ---
 
 # Playing and spectating
@@ -36,8 +36,8 @@ compiled. The options:
 ## The screen
 
 - **The top bar** (always shown): the menu button, the view selector, the
-  **Overlays** button (see [Prediction overlays](#prediction-overlays)) and **True size**
-  (see [Ship size](#ship-size)) on the left; the
+  **Overlays** button (see [Prediction overlays](#prediction-overlays)), **True size**
+  (see [Ship size](#ship-size)) and **Grid** (see [The camera and the grid](#the-camera-and-the-grid)) on the left; the
   score, or Frontline's front and zones (captioned "Front" and "Zones", each zone numbered
   in its owner's colour, with a tooltip saying what it shows), and the clock in the middle; the speed controls
   on the right: pause or play, one tick while paused, and ×1, ×2, ×4, ×8.
@@ -91,6 +91,30 @@ the ships at their size in metres at any zoom instead: the ring at the hitbox an
 silhouette grown to reach it from wingtip to wingtip, so the drawn span is the real one.
 Trails, ghosts and the selection's outline follow it. Zoomed out, a true-size ship is a
 few pixels across; clicking still selects it from as far as the default size reaches.
+
+## The camera and the grid
+
+Where no ship, field or zone is near, two things show how the view moves.
+
+**The look-ahead.** A camera that follows a ship (the flown one, or one you **Follow**)
+leads it: the middle of the view sits ahead of the ship along its velocity, about where it
+will be 4 s on, never more than 35% of the way from the middle to the nearer edge of the
+window, so you see what you are flying into. The lead eases with a critically damped
+spring (about 2 s to settle, no overshoot, the same at any frame rate), so a turn or a
+change of speed slides the ship across the view gently. It is held in pixels, so a zoom
+leaves the ship where it is on screen, and the lead then eases to the new zoom's (4 s of
+travel is more pixels zoomed in). **Settings** → **Look ahead** chooses **Always** (the
+default), **Flying** (only the ship you fly) or **Off** (the ship stays in the middle);
+the option is `--look-ahead`. Panning, the minimap or **Home** stop following, as before.
+
+**The dot grid.** Faint dots fixed to the map, inside the arena, under everything else
+(they scroll with the world, so speed reads from them). Three patterns: **Square**,
+**Triangle** (each dot with six equidistant neighbours; the default) and **Hex** (the
+corners of a honeycomb). As you zoom, the spacing steps by the pattern's factor (×2 for
+square and triangle, ×3 for hex) and the finer dots fade out across a step, so the density
+on screen stays about the same, as in a map app. **Grid** in the top bar (or G) goes to the
+next pattern, **Settings** → **Dot grid** picks one, and `--grid off|square|triangle|hex`
+starts with one. The dots' colour and opacity are the theme's `grid` (alpha: how faint).
 
 ## Flying a ship
 
@@ -225,7 +249,8 @@ itself is untouched.
 
 ## Settings and themes
 
-**Settings** chooses the theme, fog in new matches, the interface scale (0.75 to 2; the
+**Settings** chooses the theme, the dot grid, the look-ahead, fog in new matches, the
+interface scale (0.75 to 2; the
 layout works from 1280 × 720 to 2560 × 1440) and shows the key list. The shipped themes
 are in `src/bnb/play/themes/`; your own live in your configuration directory
 (`bnb.play.themes.USER`; on Linux, ~/.config/boost-and-broadside/themes).

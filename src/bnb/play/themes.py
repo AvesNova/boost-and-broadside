@@ -69,7 +69,8 @@ def _pair(label: str, alpha: bool = False):
 @dataclasses.dataclass(frozen=True)
 class Theme:
     """A whole look. Colours are `Colour`s; a pair holds team 0's then team 1's. fog
-    multiplies what a team cannot see (#999999 darkens to 60%, saturation kept). The
+    multiplies what a team cannot see (#999999 darkens to 60%, saturation kept). grid
+    colours the dot grid over the sky, its alpha how faint (`render.grid`). The
     interface's cards draw with panel (their fill, semi-opaque), panel_line (outlines and
     separators), control (buttons and fields), control_active (a pressed or chosen control)
     and the HUD text; selection outlines the selected ship, field or zone. The prediction
@@ -83,6 +84,7 @@ class Theme:
     sky: Colour = _colour("sky")
     outside: Colour = _colour("outside the arena")
     boundary: Colour = _colour("boundary hatching")
+    grid: Colour = _colour("grid dots", alpha=True)
     thin_air: Colour = _colour("thin air")
     thick_air: Colour = _colour("thick air")
     thin_contour: Colour = _colour("thin-air contours", alpha=True)

@@ -1,5 +1,6 @@
 """The top bar, always shown, one row: the menu button, the view selector, the overlays
-button (its submenu, `overlays`) and the true-size switch on the left;
+button (its submenu, `overlays`), the true-size switch and the dot grid's pattern on the
+left;
 the score or the mode's objective and the clock in the middle; the speed controls on the
 right (pause or play, a tick while paused, x1 to x8).
 
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
 
 LUMA = (0.2126, 0.7152, 0.0722)
 VIEW_BUTTONS = ("Spectator", "Team 0", "Team 1")
+GRID_LABELS = {"off": "Off", "square": "Square", "triangle": "Triangle", "hex": "Hex"}
 
 
 def draw(interface: Interface, layout: Layout) -> None:
@@ -86,6 +88,17 @@ def draw(interface: Interface, layout: Layout) -> None:
         active=session.true_size,
     ):
         session.toggle_true_size()
+    imgui.same_line(0.0, 2.0 * scale)
+    if button(
+        controls,
+        "grid",
+        f"Grid: {GRID_LABELS[session.grid]}###grid",  # one ID whatever the pattern
+        "Faint dots fixed to the map, so movement shows where nothing else is near: "
+        "off, square, triangle or hex (click for the next)",
+        shortcut("cycle_grid"),
+        active=session.grid != "off",
+    ):
+        session.cycle_grid()
     left_end = imgui.get_item_rect_max().x
 
     # Right: the speed controls.

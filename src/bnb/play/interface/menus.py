@@ -6,8 +6,8 @@
   size, fields and lineup), fleet size, fields, lineup (each slot's ship type, a dropdown of
   the map's ship set, both teams), fog, seed, and each side's controller; "Start";
 - Replays: the saved replays, newest first; "Open";
-- Settings: theme (and the theme editor), fog in new matches, interface scale, the key
-  list.
+- Settings: theme (and the theme editor), the dot grid, the look-ahead camera, fog in new
+  matches, interface scale, the key list.
 """
 
 import dataclasses
@@ -25,8 +25,10 @@ from ..loop import MatchSetup, SideSetup
 from ..sides import policy_choices
 from .controls import button, tooltip
 from .fleets import controller_combo
+from .shortcuts import shortcut
 from .style import SCALES
 from .text import TEAM_NAMES
+from .top_bar import GRID_LABELS
 
 if TYPE_CHECKING:
     from ..app import Session
@@ -39,6 +41,7 @@ MODES = (("team_deathmatch", "Team deathmatch"), ("frontline", "Frontline"))
 MODE_WORDS = {"team_deathmatch": "deathmatch", "frontline": "frontline", "sandbox": "sandbox"}
 POLICY_REFRESH_SECONDS = 5.0
 WIDTH = 460.0  # the menu's width at scale 1
+LOOK_AHEAD_LABELS = {"off": "Off", "flying": "Flying", "always": "Always"}
 LINEUP_PER_ROW = 5  # lineup dropdowns per row
 
 
@@ -322,7 +325,7 @@ class Menu:
                 ("tune", "Tune the game", "Change the ships' handles and the rules as it plays")
             )
         entries += [
-            ("settings", "Settings", "Theme, fog, interface scale"),
+            ("settings", "Settings", "Theme, dot grid, look ahead, fog, interface scale"),
             ("quit", "Quit", "Close the game (a live match's replay is saved)"),
         ]
         for key, label, help in entries:
@@ -495,6 +498,31 @@ class Menu:
         if not self.session.open_replay(path):
             self.message = self.session.notice
 
+    def _choices(
+        self,
+        interface: Interface,
+        title: str,
+        name: str,
+        labels: dict[str, str],
+        chosen: str,
+        choose,
+        help: str,
+        key: str | None = None,
+    ) -> None:
+        """A settings row: a button per value (labels: value to label), the chosen one
+        active; `choose` takes the value clicked."""
+        scale = self.session.scale
+        imgui.align_text_to_frame_padding()
+        imgui.text(title)
+        imgui.same_line(140.0 * scale)
+        for index, (value, label) in enumerate(labels.items()):
+            if index:
+                imgui.same_line(0.0, 3.0 * scale)
+            on = chosen == value
+            labelled = f"{label}###{name}/{value}"  # two rows may share a label (Off)
+            if button(interface.controls, f"{name}/{value}", labelled, help, key, active=on):
+                choose(value)
+
     def _settings(self, interface: Interface) -> None:
         session, controls = self.session, interface.controls
         self._title("Settings")
@@ -512,6 +540,26 @@ class Menu:
         imgui.same_line()
         if button(controls, "settings/editor", "Edit", "The theme editor", "E"):
             session.toggle_editor()
+        self._choices(
+            interface,
+            "Dot grid",
+            "settings/grid",
+            GRID_LABELS,
+            session.grid,
+            session.set_grid,
+            "Faint dots fixed to the map, so movement shows where nothing else is near",
+            shortcut("cycle_grid"),
+        )
+        self._choices(
+            interface,
+            "Look ahead",
+            "settings/look ahead",
+            LOOK_AHEAD_LABELS,
+            session.look_ahead,
+            session.set_look_ahead,
+            "Lead a followed ship's view in its direction of travel: never, while flying it, "
+            "or always",
+        )
         imgui.align_text_to_frame_padding()
         imgui.text("Fog of war")
         imgui.same_line(140.0 * session.scale)

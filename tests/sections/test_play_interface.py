@@ -288,8 +288,8 @@ def test_the_interface_draws_only_inside_its_layout(
 
 def test_taking_control_puts_the_camera_on_the_flown_ship_and_keeps_it_there(context, tmp_path):
     """Spec 4: flying follows the flown ship by default, zoomed in from the fitted view:
-    the ship is at the middle of the view, now and as it flies."""
-    session = _session(context, tmp_path, 1920, 1080, preset="frontline")
+    with the look-ahead off, the ship is at the middle of the view, now and as it flies."""
+    session = _session(context, tmp_path, 1920, 1080, preset="frontline", look_ahead="off")
     player = Player(session, context, 1920, 1080)
     player.frames(20)
     fitted = session.camera.metres_per_pixel
@@ -336,8 +336,8 @@ def test_the_tuning_panel_opens_from_the_menu_and_a_restart_keeps_the_tuning(con
 
 def test_typed_letters_reach_the_text_boxes_and_call_no_shortcut(context, tmp_path):
     """Letters typed into a text box (each a shortcut or a flight key elsewhere: Z, T, E,
-    V, P, F, C, N, W, A, S, D, space) go into the box only: the view, theme, true size,
-    pause, editor and the pilot's inputs stay as they were."""
+    V, P, F, C, N, G, W, A, S, D, space) go into the box only: the view, theme, true size,
+    grid, pause, editor and the pilot's inputs stay as they were."""
     session = _session(context, tmp_path, preset="frontline")
     player = Player(session, context, 1280, 720)
     session.toggle_tuning()
@@ -347,6 +347,7 @@ def test_typed_letters_reach_the_text_boxes_and_call_no_shortcut(context, tmp_pa
         loop = session.loop
         return (
             session.true_size,
+            session.grid,
             session.theme.name,
             session.view_name,
             session.editor.open,
@@ -358,7 +359,7 @@ def test_typed_letters_reach_the_text_boxes_and_call_no_shortcut(context, tmp_pa
         )
 
     before = state()
-    text = "Zeta Paw Fencer 1001 vwasdcnt"
+    text = "Zeta Paw Fencer 1001 vwasdcntg"
     player.click("tuning/new ship")
     player.type(text)
     assert session.tuning_panel.new_ship == text
@@ -577,4 +578,73 @@ def test_start_never_measures_in_the_windows_thread(context, tmp_path, monkeypat
         if all(side.label == "scripted agent" for side in session.loop.sides):
             break
     assert [side.label for side in session.loop.sides] == ["scripted agent"] * 2
+    session.close()
+
+
+def test_the_camera_leads_the_flown_ship_in_its_direction_of_travel(context, tmp_path):
+    """The look-ahead: flying, the view's middle moves ahead of the ship along its
+    velocity, within the cap; set to Off in the settings, it eases back onto the ship."""
+    from bnb.play.camera import LEAD_CAP
+
+    session = _session(context, tmp_path, 1280, 720, preset="frontline")
+    player = Player(session, context, 1280, 720)
+    player.frames(10)
+    ship = int(np.flatnonzero(session.frame.ships.alive)[3])
+    session.take_control(ship)
+    session.loop.inputs[:] = torch.tensor([True, False, False, False, False, False, False])
+    player.frames(150)
+    frame, camera = session.frame, session.camera
+    x, y = float(frame.ships.x[ship]), float(frame.ships.y[ship])
+    lead_x, lead_y = camera.centre_x - x, camera.centre_y - y  # m
+    lead = np.hypot(lead_x, lead_y) / camera.metres_per_pixel
+    assert 20.0 < lead <= LEAD_CAP * 360.0
+    path = frame.ships.flight_path[ship]
+    assert lead_x * np.cos(path) + lead_y * np.sin(path) > 0.95 * lead * camera.metres_per_pixel
+    player.click("menu")
+    player.click("menu/settings")
+    player.click("settings/look ahead/off")
+    assert session.look_ahead == "off"
+    player.click("menu/back")
+    player.click("menu/resume")
+    player.frames(300)
+    frame = session.frame
+    px, py = camera.pixel(float(frame.ships.x[ship]), float(frame.ships.y[ship]))
+    assert abs(px - 640.0) < 2.0 and abs(py - 360.0) < 2.0
+    session.close()
+
+
+def test_the_dot_grid_is_chosen_in_the_top_bar_the_settings_and_with_g(context, tmp_path):
+    """The top bar's Grid button and G go to the next pattern (off, square, triangle, hex);
+    the settings choose one; the battlefield changes with it."""
+    session = _session(context, tmp_path, preset="arena", grid="off")
+    player = Player(session, context, 1280, 720)
+    seen = []
+    for _ in range(4):
+        player.click("grid")
+        seen.append(session.grid)
+    assert seen == ["square", "triangle", "hex", "off"]
+    player.io.add_key_event(imgui_key("g"), True)
+    player.frames()
+    player.io.add_key_event(imgui_key("g"), False)
+    player.frames()
+    assert session.grid == "square"
+    player.click("menu")
+    player.click("menu/settings")
+    player.click("settings/grid/hex")
+    assert session.grid == "hex"
+    player.click("settings/grid/off")
+    assert session.grid == "off"
+
+    def battlefield():  # the menu paused the match: only the grid changes it
+        session.show_interface = False
+        player.frames()
+        pixels = player.pixels()
+        session.show_interface = True
+        player.frames(2)
+        return pixels
+
+    bare = battlefield()
+    player.click("settings/grid/triangle")
+    assert session.grid == "triangle"
+    assert (battlefield() != bare).any()  # the dots
     session.close()

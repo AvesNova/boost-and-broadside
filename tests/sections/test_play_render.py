@@ -19,6 +19,7 @@ from bnb.play.camera import Camera
 from bnb.play.index_map import build
 from bnb.play.loop import MatchLoop, MatchSetup
 from bnb.play.render.bullets import TRAIL_SECONDS, tracer_lengths
+from bnb.play.render.grid import GRID_PIXELS, PATTERNS
 from bnb.play.render.renderer import SPECTATOR, Renderer
 from bnb.play.render.ships import MINIMUM_RING_PIXELS, ring_radius, silhouette_size
 from bnb.play.render.silhouettes import WINGTIPS, polygon, silhouette_of
@@ -76,13 +77,26 @@ def _loop(config, fogged=True, ticks=0, seed=0):
     return loop
 
 
-def _draw(renderer, context, frame, view, camera, theme, trails=None, now=0.0, true_size=False):
+def _draw(
+    renderer,
+    context,
+    frame,
+    view,
+    camera,
+    theme,
+    trails=None,
+    now=0.0,
+    true_size=False,
+    grid_pattern="off",
+):
     grid, values = build(frame.fields, frame.arena_radius)
     renderer.set_map(frame, grid, values)
     target = _target(context)
     if trails is None:
         trails = Trails(len(frame.ships.x), frame.stall_angle)
-    renderer.draw(frame, view, camera, theme, trails, now, target, true_size=true_size)
+    renderer.draw(
+        frame, view, camera, theme, trails, now, target, true_size=true_size, grid=grid_pattern
+    )
     assert context.error == "GL_NO_ERROR"
     return read_pixels(target).astype(int)
 
@@ -580,7 +594,7 @@ def test_an_edited_colour_draws_on_the_next_frame(renderer, context):
     pytest.fail("no clear sky in the scenario")
 
 
-def test_offscreen_frames_are_written(tmp_path):
+def test_offscreen_frames_are_written(context, tmp_path):
     paths = run_offscreen(
         Options(
             offscreen=tmp_path,
@@ -594,6 +608,7 @@ def test_offscreen_frames_are_written(tmp_path):
             view="team1",
         )
     )
+    context.__enter__()  # run_offscreen made a context of its own current
     assert [p.name for p in paths] == ["frame_0000.png", "frame_0001.png", "frame_0002.png"]
     assert all(p.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n" for p in paths)
 
@@ -644,3 +659,73 @@ def test_a_tracer_spans_its_seconds_up_to_where_it_was_fired():
     speed = np.array([600.0, 600.0, 0.0], np.float32)
     age = np.array([1.0, 0.02, 1.0], np.float32)
     assert tracer_lengths(speed, age, 0.1) == pytest.approx([60.0, 12.0, 0.0])
+
+
+ROOT3 = math.sqrt(3.0)
+
+
+def _empty_arena():
+    """The arena (no fields) with every ship and bullet gone: the sky alone."""
+    frame = _without_bullets(_loop(PRESETS["arena"]).current)
+    ships = dataclasses.replace(frame.ships, alive=np.zeros_like(frame.ships.alive))
+    return dataclasses.replace(frame, ships=ships)
+
+
+def _lattice(pattern: str, spacing: float, reach: int = 12):
+    """The pattern's dots (a list of (x, y)) and points farthest from them (the square's
+    cell centres, the triangles' centroids, the hexagons' centres), near the origin."""
+    steps = range(-reach, reach + 1)
+    if pattern == "square":
+        dots = [(i * spacing, j * spacing) for i in steps for j in steps]
+        return dots, [(x + 0.5 * spacing, y + 0.5 * spacing) for x, y in dots]
+
+    def triangle(side, shift_x=0.0, shift_y=0.0):
+        return [
+            (i * side + 0.5 * j * side + shift_x, 0.5 * ROOT3 * j * side + shift_y)
+            for i in steps
+            for j in steps
+        ]
+
+    if pattern == "triangle":
+        return triangle(spacing), triangle(spacing, 0.5 * spacing, ROOT3 / 6 * spacing)
+    side = ROOT3 * spacing  # the honeycomb: two triangular lattices, then the hexagons' centres
+    dots = triangle(side) + triangle(side, 0.0, spacing)
+    return dots, triangle(side, 0.5 * side, 0.5 * spacing)
+
+
+@pytest.mark.parametrize("pattern", sorted(PATTERNS))
+def test_the_grid_draws_its_dots_at_the_lattice_points_and_nothing_between(
+    renderer, context, pattern
+):
+    """At a zoom where the fine level is exactly GRID_PIXELS apart (no fade), every dot of
+    the pattern is drawn and the points farthest from them are the bare sky."""
+    frame = _empty_arena()
+    factor = PATTERNS[pattern][1]
+    spacing = factor ** (4 if pattern == "hex" else 6)  # 81 m or 64 m
+    camera = Camera(WIDTH, HEIGHT, 0.6 * spacing, -0.3 * spacing, spacing / GRID_PIXELS)
+    theme = with_colour(themes.load(themes.DEFAULT), "grid", Colour(0, 0, 0))
+    sky = np.array(theme.sky.floats()[:3]) * 255
+    off = _draw(renderer, context, frame, SPECTATOR, camera, theme)
+    assert np.abs(off - sky).max() <= 1  # nothing drawn with the grid off
+    pixels = _draw(renderer, context, frame, SPECTATOR, camera, theme, grid_pattern=pattern)
+    dots, gaps = _lattice(pattern, spacing)
+
+    def in_view(points):
+        rows_columns = [_pixel_of(camera, x, y) for x, y in points]
+        return [(r, c) for r, c in rows_columns if 3 <= r < HEIGHT - 3 and 3 <= c < WIDTH - 3]
+
+    drawn, bare = in_view(dots), in_view(gaps)
+    assert len(drawn) > 20 and len(bare) > 10
+    assert all((pixels[r, c] < 0.5 * sky).all() for r, c in drawn)
+    assert all(np.abs(pixels[r, c] - sky).max() <= 1 for r, c in bare)
+
+
+def test_the_grid_draws_nothing_beyond_the_arena(renderer, context):
+    frame = _empty_arena()
+    theme = with_colour(themes.load(themes.DEFAULT), "grid", Colour(0, 0, 0))
+    camera = Camera(WIDTH, HEIGHT, frame.arena_radius, 0.0, 1.0)  # the edge down the middle
+    off = _draw(renderer, context, frame, SPECTATOR, camera, theme)
+    on = _draw(renderer, context, frame, SPECTATOR, camera, theme, grid_pattern="square")
+    changed = np.abs(on - off).max(-1) > 0
+    assert changed[:, : WIDTH // 2 - 4].any()
+    assert not changed[:, WIDTH // 2 :].any()

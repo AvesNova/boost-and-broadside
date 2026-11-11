@@ -8,7 +8,7 @@ import math
 import numpy as np
 
 from ..themes import Theme
-from .arcs import arcs
+from .arcs import FLOATS, arcs
 
 SHIELD_HALF_SPAN = math.radians(120.0) - 0.1  # rad; 0.1 rad leaves a gap for the round ends
 ENERGY_HALF_SPAN = math.radians(60.0) - 0.1
@@ -30,7 +30,7 @@ def ring_table(
     """The arcs of the listed ships (arrays of one length; size the ring radius in m,
     shield and energy fractions): shield track, shield, energy track, energy."""
     count = len(x)
-    table = arcs(4 * count).reshape(count, 4, -1)
+    table = arcs(4 * count).reshape(count, 4, FLOATS)  # FLOATS, not -1: count may be 0
     table[:, :, 0], table[:, :, 1] = x[:, None], y[:, None]
     table[:, :, 2] = size[:, None]
     table[:, :, 3] = WIDTH_FRACTION * size[:, None]
@@ -52,4 +52,4 @@ def ring_table(
     table[:, 3, 13], table[:, 3, 14] = tail, ENERGY_HALF_SPAN * np.clip(energy, 0.0, 1.0)
     table[:, 1, 12] *= shield > 0.0  # an empty shield draws no arc
     table[:, 3, 12] *= energy > 0.0
-    return table.reshape(4 * count, -1)
+    return table.reshape(4 * count, FLOATS)
