@@ -104,18 +104,18 @@ def test_a_retune_keeps_the_sizes():
 def test_a_retune_never_recompiles():
     """The built tick takes the rules' live values as tensors: new values run on the same
     built tick, with no new one, and match a match started with them."""
-    from bnb.runtime import realtime as realtime_module
+    from bnb.runtime import built as built_module
 
     realtime = Realtime(DEATHMATCH, compiled=True)
     actions = torch.zeros(DEATHMATCH.num_ships, 3, dtype=torch.int32)
     realtime.step(actions)
-    built = dict(realtime_module._BUILT)
+    loaded = dict(built_module._LOADED)
     changes = {"flight.gravity": 33.0, "rules.bullet_life": 0.3, "pool.respawn_seconds": 2.0}
     realtime.retune(rules=api.tuning.tuned(realtime.rules, changes))
     for _ in range(5):
         realtime.step(actions)
     assert realtime.uses_compiled
-    assert realtime_module._BUILT == built
+    assert built_module._LOADED == loaded
     assert realtime.rules.flight.gravity == 33.0 and realtime.rules.bullet_moves == 9
 
 

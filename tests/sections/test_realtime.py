@@ -7,7 +7,7 @@ from torch.utils import _pytree
 
 from bnb import cache
 from bnb.contracts import GameConfig
-from bnb.runtime import realtime as realtime_module
+from bnb.runtime import built as built_module
 from bnb.runtime.realtime import Realtime
 
 CONFIG = GameConfig(2, 4, 900.0, episode_seconds=2.0)
@@ -106,7 +106,7 @@ def test_the_built_tick_is_the_uncompiled_tick_and_is_kept_on_disk(tmp_path, mon
     fusion rounding and flags exactly; it is written once, and a later process (this
     one's loaded ticks forgotten) loads it from disk instead of building it again."""
     monkeypatch.setattr(cache, "ROOT", tmp_path)
-    monkeypatch.setattr(realtime_module, "_BUILT", {})
+    monkeypatch.setattr(built_module, "_LOADED", {})
     built, eager = Realtime(CONFIG, compiled=True), Realtime(CONFIG, compiled=False)
     libraries = list(tmp_path.glob("ticks/*.pt2"))
     assert len(libraries) == 1
@@ -126,7 +126,7 @@ def test_the_built_tick_is_the_uncompiled_tick_and_is_kept_on_disk(tmp_path, mon
         else:
             assert torch.equal(got, want)
 
-    monkeypatch.setattr(realtime_module, "_BUILT", {})
+    monkeypatch.setattr(built_module, "_LOADED", {})
     stamp = libraries[0].stat().st_mtime_ns
     again = Realtime(CONFIG, compiled=True)
     again.step(torch.zeros(CONFIG.num_ships, 3, dtype=torch.int32))
