@@ -36,6 +36,7 @@ from .camera import Camera
 from .index_map import IndexBuilder, build
 from .interface.interface import Interface
 from .interface.kill_feed import FEED_SECONDS
+from .interface.menus import default_lineup
 from .interface.style import load_fonts
 from .interface.text import TEAM_NAMES, show_ship_set
 from .loop import TIME_SCALES, MatchEvent, MatchLoop, MatchSetup, SideSetup, team_view
@@ -71,7 +72,7 @@ class Options:
     """Play or watch a match. The game comes from a preset, or from the sizes (which
     override the preset's)."""
 
-    preset: PresetName = "deathmatch"
+    preset: PresetName = "real_scale_deathmatch"
     ships_per_team: int | None = None
     fields: int | None = None
     arena_radius: float | None = None  # m
@@ -82,8 +83,8 @@ class Options:
     fly: bool = False  # start flying team 0's first ship
     agent0: pathlib.Path | None = None  # a policy file for team 0 (scripted without one)
     agent1: pathlib.Path | None = None  # a policy file for team 1
-    scripted0: Literal["scripted", "scripted_agent"] = "scripted"  # team 0 without an agent
-    scripted1: Literal["scripted", "scripted_agent"] = "scripted"  # the chaser or the agent
+    scripted0: Literal["scripted", "scripted_agent"] = "scripted_agent"  # team 0 without an agent
+    scripted1: Literal["scripted", "scripted_agent"] = "scripted_agent"  # the agent or the chaser
     temperature: float = 1.0  # the agents' sampling temperature
     replay: pathlib.Path | None = None  # open this replay instead of a match
     replays: pathlib.Path = pathlib.Path("replays")  # where matches are recorded
@@ -122,7 +123,9 @@ class Options:
             else SideSetup("agent", str(policy), self.temperature)
             for policy, scripted in ((self.agent0, self.scripted0), (self.agent1, self.scripted1))
         )
-        return MatchSetup(self.game(), fogged=self.fog, seed=self.seed, sides=sides)
+        game = self.game()
+        lineup = tuple(default_lineup(game.ships_per_team, game.ship_set))
+        return MatchSetup(game, lineup, fogged=self.fog, seed=self.seed, sides=sides)
 
 
 @dataclasses.dataclass
@@ -251,7 +254,9 @@ class Session:
         played = dataclasses.replace(
             setup,
             sides=tuple(
-                SideSetup() if team in deferred else side for team, side in enumerate(setup.sides)
+                # a slow side plays as the chaser (no characteristics to wait for) meanwhile
+                SideSetup("scripted") if team in deferred else side
+                for team, side in enumerate(setup.sides)
             ),
         )
         try:

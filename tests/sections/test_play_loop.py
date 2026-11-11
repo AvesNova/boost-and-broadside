@@ -8,7 +8,7 @@ from torch.utils import _pytree
 from bnb.contracts import GameConfig
 from bnb.contracts.obs import GLOBAL
 from bnb.game.modes.rules import PRESETS
-from bnb.play.loop import TIME_SCALES, MatchLoop, MatchSetup, team_view
+from bnb.play.loop import TIME_SCALES, MatchLoop, MatchSetup, SideSetup, team_view
 from bnb.runtime.realtime import Realtime
 
 # The code under test draws from torch's default generator (model initialisation, the
@@ -87,7 +87,8 @@ def test_fixed_timestep_pause_step_and_time_scale():
 
 
 def test_the_pilot_flies_and_hands_over():
-    loop = MatchLoop(MatchSetup(PRESETS["deathmatch"]), compiled=False, pilot=0)
+    chasers = (SideSetup("scripted"), SideSetup("scripted"))  # the released ship plays its side
+    loop = MatchLoop(MatchSetup(PRESETS["deathmatch"], sides=chasers), compiled=False, pilot=0)
     loop.inputs[:] = torch.tensor([True, False, False, True, True, False, True])
     actions = loop.actions()
     assert actions[0].tolist() == [1, 5, 1]  # boost, full right, shoot

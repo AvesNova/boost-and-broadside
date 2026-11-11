@@ -39,7 +39,7 @@ class SideSetup:
     "scripted_agent" (the scripted agent, with its memory), or "agent" with the policy
     file's directory and the sampling temperature."""
 
-    controller: str = "scripted"  # "scripted", "scripted_agent" or "agent"
+    controller: str = "scripted_agent"  # "scripted_agent", "scripted" (the chaser) or "agent"
     policy: str | None = None
     temperature: float = 1.0
 

@@ -97,7 +97,7 @@ def test_each_controller_offers_what_it_can_provide():
 
 def test_a_setup_names_the_scripted_agent():
     sides = build_sides(
-        MatchSetup(SMALL, sides=(SideSetup("scripted_agent"), SideSetup())),
+        MatchSetup(SMALL, sides=(SideSetup("scripted_agent"), SideSetup("scripted"))),
         api.rules_of(SMALL),
         api.ship_types(),
     )

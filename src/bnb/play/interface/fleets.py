@@ -26,7 +26,7 @@ BAR_HEIGHT = 6.0
 LONGEST_WAIT = "99.9 s"  # the widest a row's respawn wait reads
 
 
-SCRIPTED_LABELS = {"scripted": "Scripted", "scripted_agent": "Scripted agent"}
+SCRIPTED_LABELS = {"scripted": "Chaser", "scripted_agent": "Scripted agent"}
 
 
 def controller_label(controller) -> str:

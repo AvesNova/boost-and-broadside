@@ -311,6 +311,8 @@ def ship_card(types: api.ShipTypes) -> dict:
 def _close(saved, given) -> bool:
     if isinstance(saved, list) and isinstance(given, list):
         return len(saved) == len(given) and all(map(_close, saved, given))
+    if saved is None or given is None:  # a field one record lacks: not the same game
+        return saved is given
     if isinstance(saved, float) or isinstance(given, float):
         return math.isclose(float(saved), float(given), rel_tol=1e-6, abs_tol=1e-9)
     return saved == given

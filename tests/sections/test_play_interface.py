@@ -73,6 +73,7 @@ class Player:
 
 
 def _session(context, tmp_path, width=1280, height=720, **options) -> Session:
+    options.setdefault("preset", "deathmatch")  # the standard game, as the tiny policy's
     options = Options(
         compile=False,
         width=width,

@@ -43,6 +43,18 @@ def test_a_policy_for_another_game_is_refused_with_the_reason(tmp_path):
         MatchLoop(setup, compiled=False)
 
 
+def test_a_policy_whose_game_lacks_a_field_is_refused_not_crashed():
+    """A record from before a game field existed (that field None): another game, said."""
+    from bnb.game import api
+    from bnb.play.sides import mismatch
+    from bnb.runs.serialise import to_json
+
+    game = to_json(SMALL)
+    game.pop("arena_radius")
+    reason = mismatch({"game": game}, SMALL, api.rules_of(SMALL), api.ship_types(), card=False)
+    assert reason is not None and "arena_radius None" in reason
+
+
 def test_a_policy_trained_with_another_card_or_lineup_plays_with_a_warning(tmp_path):
     from bnb.play.tuning import Tuning
 

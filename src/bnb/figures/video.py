@@ -76,8 +76,8 @@ def encoder(path: pathlib.Path, config: VideoConfig) -> subprocess.Popen:
 
 
 def setup_of(policy: pathlib.Path, preset: str, config: VideoConfig) -> MatchSetup:
-    """The match: the preset's game with fog, the policy's side and the scripted one."""
-    sides = [SideSetup(), SideSetup()]
+    """The match: the preset's game with fog, the policy's side and the chaser."""
+    sides = [SideSetup("scripted"), SideSetup("scripted")]
     sides[POLICY_TEAM] = SideSetup("agent", str(policy), config.temperature)
     return MatchSetup(PRESETS[preset], fogged=True, seed=config.seed, sides=tuple(sides))
 
@@ -173,7 +173,7 @@ def render(
         config.seed + POLICY_TEAM,
         any_mode=True,
     )
-    sides = [Scripted(loop.rules.ships_per_team), Scripted(loop.rules.ships_per_team)]
+    sides = [Scripted(loop.rules, loop.types), Scripted(loop.rules, loop.types)]
     sides[POLICY_TEAM] = agent
     session.start(setup, whole=True, sides=sides)
     session.show_interface = config.interface

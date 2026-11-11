@@ -21,12 +21,12 @@ uv run bnb play --preset real_scale_frontline
 uv run bnb play --agent1 runs/<run>/policy
 ```
 
-The first match comes from the options (a preset, and the sizes that override it); every
-later one from the menu's **New match**. A new kind of match starts at once and never
-stalls the window: the first time a game (or a changed version of the code) is played, its
-tick is built in a separate process (about 30 s) while the match runs the uncompiled tick,
-which keeps up to ×2; the built tick is kept in the user's cache directory, so every later
-match of that game starts compiled. The options:
+The first match comes from the options (a preset, `real_scale_deathmatch` by default, and
+the sizes that override it); every later one from the menu's **New match**. A new kind of
+match starts at once and never stalls the window: the first time a game (or a changed
+version of the code) is played, its tick is built in a separate process (about 30 s) while
+the match runs the uncompiled tick, which keeps up to ×2; the built tick is kept in the
+user's cache directory, so every later match of that game starts compiled. The options:
 
 <!-- generated: play-options -->
 
@@ -90,24 +90,25 @@ The menu (the top bar's menu button, or Escape) pauses a live match and offers *
 **Restart**, **New match**, **Replays**, **Save replay**, **Settings** and **Quit**.
 
 **New match** chooses the mode, the map (**Standard**, **Wide**, or **Real scale**: the
-[real-scale variant](../explanation/game/real-scale.md), where a metre is a metre and the
-27 types are late-war fighters from the P-51D to the Me 262 and a few invented designs,
-on a map three times the standard one), the ships a side, the
-fields, the lineup (a dropdown per slot of the map's ship types, the same for both teams;
-**Default** alternates the first two), fog, the seed, and
-each side's controller: **Scripted** (the chaser), **Scripted agent** (the scripted agent
-with its memory, `bnb.controllers.scripted.Scripted`: it remembers each enemy it saw and
-dead reckons it while hidden; `--scripted0 scripted_agent` starts with it) or a trained
-agent. A scripted agent needs its ship card's characteristics, measured once per card in a
-separate process (about 15 s on a laptop CPU) and kept in the user's cache directory; until
-they are measured the side plays on as it was and a notice says the agent will take over.
-An agent that runs on the GPU captures its step aside the same way before it plays. The agent list is
-every policy file of the local runs: `runs/*/policy/`, the training checkpoints and the
-league's snapshots (`--runs` sets the directory). A policy plays only the game it was
-trained on, with the same ship card and the default lineup; otherwise the shell says
-what differs and keeps the match as it was. A policy trained on a mixed batch records the
-batch's first game (frontline), so the shell plays it there;
-[`bnb figures video`](figures.md#videos) plays it in any mode.
+[real-scale variant](../explanation/game/real-scale.md), where a metre is a metre and the 27
+types are late-war fighters from the P-51D to the Me 262 and a few invented designs, on a
+map three times the standard one), the ships a side, the fields, the lineup (a dropdown per
+slot of the map's ship types, the same for both teams; **Default** alternates the P-51D and
+the Spitfire XIV, or a set's first two types where it has not both; the map starts at **Real
+scale**), fog, the seed, and each side's controller: **Scripted agent** (the default: the
+scripted agent, the BC teacher and the ratings' anchor, `bnb.controllers.scripted.Scripted`:
+it plays the mode's objectives, remembers each enemy it saw and dead reckons it while
+hidden), **Chaser** (`--scripted0 scripted`: it turns toward the nearest visible enemy and
+fires, and reads no zones) or a trained agent. A scripted agent needs its ship card's
+characteristics, measured once per card in a separate process (about 15 s on a laptop CPU)
+and kept in the user's cache directory; until they are measured the side plays on as it was
+and a notice says the agent will take over. An agent that runs on the GPU captures its step
+aside the same way before it plays. The agent list is every policy file of the local runs:
+`runs/*/policy/`, the training checkpoints and the league's snapshots (`--runs` sets the
+directory). A policy plays only the game it was trained on, with the same ship card and the
+default lineup; otherwise the shell says what differs and keeps the match as it was. A
+policy trained on a mixed batch records the batch's first game (frontline), so the shell
+plays it there; [`bnb figures video`](figures.md#videos) plays it in any mode.
 
 An agent runs on the GPU when there is one (the CPU otherwise) at one decision per tick, with its memory kept from tick to tick
 as in training. Its card row has a temperature: 1 samples the policy as trained, lower is
@@ -135,7 +136,7 @@ the submenu lists only those the sides being played can provide (`bnb.play.overl
 
 ![A fight: the true bullet paths, the selected ship's predicted shot and its critic](../images/play/overlays-fight-1600.png)
 
-Scripted against scripted (the chaser) offers the bullet paths only; a relational agent
+The chaser against the chaser offers the bullet paths only; a relational agent
 provides nothing; a replay runs no controllers, so it offers the bullet paths only.
 
 **Whose.** Each side's agent has its own predictions. An overlay draws the side picked

@@ -72,9 +72,24 @@ def maps() -> tuple[GameMap, ...]:
     return tuple(found.values())
 
 
+# The play shell's default pair of types, alternating, in a set that has both.
+DEFAULT_PAIR = ("P-51D", "Spitfire XIV")
+DEFAULT_MAP = "real_scale"  # the New match page's map at the start
+
+
 def default_lineup(size: int, ship_set: str) -> list[int]:
-    """The game's lineup: the set's first two types alternating."""
-    return [i % min(2, len(api.type_names(ship_set))) for i in range(size)]
+    """The play shell's lineup: `DEFAULT_PAIR` alternating, or the set's first two types
+    in a set without both."""
+    names = api.type_names(ship_set)
+    pair = [names.index(name) for name in DEFAULT_PAIR if name in names]
+    if len(pair) < len(DEFAULT_PAIR):
+        pair = list(range(min(2, len(names))))
+    return [pair[i % len(pair)] for i in range(size)]
+
+
+def _ship_set_of(key: str) -> str:
+    """The ship set of the map `key`."""
+    return {game_map.key: game_map for game_map in maps()}[key].ship_set
 
 
 @dataclasses.dataclass
@@ -82,10 +97,12 @@ class Draft:
     """The New match page's choices."""
 
     mode: str = "team_deathmatch"
-    map: str = "standard"
+    map: str = DEFAULT_MAP
     ships_per_team: int = 5
     fields: int = 10
-    lineup: list[int] = dataclasses.field(default_factory=lambda: [i % 2 for i in range(5)])
+    lineup: list[int] = dataclasses.field(
+        default_factory=lambda: default_lineup(5, _ship_set_of(DEFAULT_MAP))
+    )
     fogged: bool = True
     seed: int = 0
     sides: list[SideSetup] = dataclasses.field(default_factory=lambda: [SideSetup(), SideSetup()])
@@ -93,7 +110,7 @@ class Draft:
     @property
     def ship_set(self) -> str:
         """The chosen map's ship set."""
-        return {game_map.key: game_map for game_map in maps()}[self.map].ship_set
+        return _ship_set_of(self.map)
 
     def config(self) -> GameConfig:
         """The game of these choices: the preset of this mode and map with the chosen sizes
@@ -415,7 +432,7 @@ class Menu:
             controls,
             "new match/lineup/default",
             "Default",
-            "The set's first two types alternating, as the game sets them",
+            "The P-51D and the Spitfire XIV alternating (else the set's first two types)",
         ):
             draft.lineup = default_lineup(draft.ships_per_team, draft.ship_set)
         imgui.end_group()
