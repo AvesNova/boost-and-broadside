@@ -13,6 +13,9 @@ set -u
 REPO=/workspace/boost-and-broadside
 cd "$REPO"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+# every cache on the persistent volume (gpubox3: /workspace is a volume, the overlay 50 GB)
+export TORCHINDUCTOR_CACHE_DIR=/workspace/cache/inductor TRITON_CACHE_DIR=/workspace/cache/triton
+export UV_CACHE_DIR=/workspace/cache/uv
 LOG=runs/pipeline.log
 mkdir -p runs runs/failed
 say() { echo "$(date -u +%FT%TZ) $*" | tee -a "$LOG"; }
