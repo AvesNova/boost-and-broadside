@@ -188,6 +188,45 @@ def _uncovered_equal(player: Player, layout) -> tuple[int, int]:
     "width, height, scale, collapsed",
     [(1280, 720, 1.0, False), (1920, 1080, 1.5, True), (2560, 1440, 2.0, False)],
 )
+class _StaleScreen:
+    """A window's framebuffer as moderngl gives it: `size` stays what it was when the
+    context was made, whatever size the window has since taken."""
+
+    def __init__(self, framebuffer, stale_size: tuple[int, int]) -> None:
+        self.framebuffer, self.size = framebuffer, stale_size
+
+    def __getattr__(self, name: str):
+        return getattr(self.framebuffer, name)  # everything but the size: the framebuffer's
+
+
+def test_the_interface_fills_a_window_resized_after_it_opened(context, tmp_path):
+    """A window opened at 1280 x 720 and then maximised (its framebuffer 1600 x 900, the
+    screen's size still 1280 x 720): the interface draws over the whole new size, its
+    right-hand controls past the old width included."""
+    session = _session(context, tmp_path)
+    session.resize(1600, 900)
+    framebuffer = context.framebuffer(color_attachments=[context.texture((1600, 900), 4)])
+    screen = _StaleScreen(framebuffer, (1280, 720))
+
+    def drawn(interface: bool) -> np.ndarray:
+        session.show_interface = interface
+        for _ in range(3):
+            session.update(FRAME)
+            session.draw(screen)
+        return read_pixels(framebuffer).astype(int)
+
+    bare, with_interface = drawn(False), drawn(True)
+    rect = session.interface.controls.rect("speed/8")
+    assert rect.x > 1280  # laid out in the new width
+    x, y = (int(v) for v in rect.centre())
+    assert (
+        np.abs(
+            with_interface[y - 3 : y + 4, x - 3 : x + 4] - bare[y - 3 : y + 4, x - 3 : x + 4]
+        ).sum()
+        > 0
+    )
+
+
 def test_the_interface_draws_only_inside_its_layout(
     context, tmp_path, width, height, scale, collapsed
 ):

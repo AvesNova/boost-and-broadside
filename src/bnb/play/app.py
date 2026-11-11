@@ -890,7 +890,11 @@ class Session:
         imgui.render()
         self.timings["interface"] = time.perf_counter() - started
         target.use()
-        self.context.viewport = (0, 0, *target.size)
+        # The session's size, not target.size: moderngl's window framebuffer (context.screen)
+        # keeps the size it had when the context was made, so after the window is resized
+        # (or maximised at start) its size is stale and the interface drew into that corner,
+        # its clip rectangles (in the display size) cutting most of it away.
+        self.context.viewport = (0, 0, *self.renderer.size)
         self.renderer.draw_imgui(imgui.get_draw_data())
 
     def draw_minimap(self, side: int) -> int:
