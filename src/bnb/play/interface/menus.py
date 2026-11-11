@@ -6,8 +6,8 @@
   size, fields and lineup), fleet size, fields, lineup (each slot's ship type, a dropdown of
   the map's ship set, both teams), fog, seed, and each side's controller; "Start";
 - Replays: the saved replays, newest first; "Open";
-- Settings: theme (and the theme editor), the dot grid, the look-ahead camera, fog in new
-  matches, interface scale, the key list.
+- Settings: theme (and the theme editor), the dot grid, the distance contours, the
+  look-ahead camera, fog in new matches, interface scale, the key list.
 """
 
 import dataclasses
@@ -28,7 +28,7 @@ from .fleets import controller_combo
 from .shortcuts import shortcut
 from .style import SCALES
 from .text import TEAM_NAMES
-from .top_bar import GRID_LABELS
+from .top_bar import CONTOUR_HELP, CONTOUR_LABELS, GRID_LABELS
 
 if TYPE_CHECKING:
     from ..app import Session
@@ -325,7 +325,7 @@ class Menu:
                 ("tune", "Tune the game", "Change the ships' handles and the rules as it plays")
             )
         entries += [
-            ("settings", "Settings", "Theme, dot grid, look ahead, fog, interface scale"),
+            ("settings", "Settings", "Theme, dot grid, contours, look ahead, fog, interface scale"),
             ("quit", "Quit", "Close the game (a live match's replay is saved)"),
         ]
         for key, label, help in entries:
@@ -549,6 +549,16 @@ class Menu:
             session.set_grid,
             "Faint dots fixed to the map, so movement shows where nothing else is near",
             shortcut("cycle_grid"),
+        )
+        self._choices(
+            interface,
+            "Contours",
+            "settings/contours",
+            CONTOUR_LABELS,
+            session.contours,
+            session.set_contours,
+            CONTOUR_HELP,
+            shortcut("cycle_contours"),
         )
         self._choices(
             interface,

@@ -25,7 +25,7 @@ import numpy as np
 import torch
 import tyro
 
-from .app import Options, Session, offscreen_context
+from .app import ContourShapes, Options, Session, offscreen_context
 from .render.renderer import PassTimer
 from .selection import Selection
 
@@ -53,6 +53,7 @@ class Benchmark:
     threads: int = 1
     output: pathlib.Path | None = None  # also append the results here, one JSON line each
     interface: bool = True  # draw the interface, every card open
+    contours: ContourShapes = "off"  # the distance contours (`render.contours`), or "off"
 
 
 def _percentiles(values: list[float]) -> dict:
@@ -143,6 +144,7 @@ def main() -> None:
                     width=benchmark.width,
                     height=benchmark.height,
                     record=False,
+                    contours=benchmark.contours,
                 )
                 started = time.perf_counter()
                 session = Session(options, context, *size)
@@ -155,7 +157,7 @@ def main() -> None:
                 setup = time.perf_counter() - started
                 session.show_interface = benchmark.interface
                 session.select(Selection("ship", 0))
-                result_interface = dict(interface=benchmark.interface)
+                result_interface = dict(interface=benchmark.interface, contours=benchmark.contours)
                 result = (
                     dict(game=game, view=view, setup_s=setup, renderer=context.info["GL_RENDERER"])
                     | result_interface

@@ -11,7 +11,7 @@ uniform float spacing;  // the fine level's (m)
 uniform float factor;
 uniform float fade;
 
-const float DOT_RADIUS = 1.25;  // pixels
+const float DOT_RADIUS = 1.5;  // pixels
 const float EDGE_GAP = 3.0;  // pixels: no dot this close to the arena's edge
 const float ROOT3 = 1.7320508;
 

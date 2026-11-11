@@ -1,15 +1,15 @@
 """The renderer: the passes in draw order, into a multisampled scene resolved onto the
 target, then the ImGui layer (HUD and panels) on top.
 
-Draw order: sky and arena, the dot grid (`grid.py`), fields, zones, trails, ships, rings,
-fog, the density overlay, bullets, the other prediction overlays (`predictions.py`), the
-selection's outline; then the minimap into its own texture (`minimap.py`). A spectator
-sees everything; a team's view draws only the ships that team sees (its observation's
-`visible`) and the parts of their trails it saw, and in a fogged match darkens what it
-cannot see. Every bullet is drawn in every view, above the fog at full brightness: agents
-never see bullets, so this is an advantage human players have. In a match without fog
-every ship is visible to both teams, so a team's view draws no fog. Rendering reads
-snapshots (numpy) and never imports torch.
+Draw order: sky and arena, the dot grid (`grid.py`), fields, the distance contours
+(`contours.py`), zones, trails, ships, rings, fog, the density overlay, bullets, the other
+prediction overlays (`predictions.py`), the selection's outline; then the minimap into its
+own texture (`minimap.py`). A spectator sees everything; a team's view draws only the
+ships that team sees (its observation's `visible`) and the parts of their trails it saw,
+and in a fogged match darkens what it cannot see. Every bullet is drawn in every view,
+above the fog at full brightness: agents never see bullets, so this is an advantage human
+players have. In a match without fog every ship is visible to both teams, so a team's view
+draws no fog. Rendering reads snapshots (numpy) and never imports torch.
 """
 
 import contextlib
@@ -23,6 +23,7 @@ from ..camera import Camera
 from ..themes import Theme
 from .arcs import ArcProgram
 from .bullets import TRAIL_SECONDS, BulletsPass, tracer_lengths
+from .contours import ContoursPass
 from .fields import FieldsPass
 from .fog import FogPass
 from .grid import GridPass
@@ -80,6 +81,7 @@ class Renderer:
         self.arcs = ArcProgram(context)
         self.sky = SkyPass(context)
         self.grid = GridPass(context)
+        self.contours = ContoursPass(context)
         self.fields = FieldsPass(context, self.arcs)
         self.trails = TrailsPass(context)
         self.bullets = BulletsPass(context)
@@ -108,8 +110,9 @@ class Renderer:
 
     def set_map(self, frame: Snapshot, grid: IndexGrid, values: np.ndarray | None = None):
         """A new map: the fields' geometry and index texture (built whole, or zero until
-        `write_index` brings its tiles)."""
+        `write_index` brings its tiles), and the circles the contours measure from."""
         self.fields.set_map(frame.fields, grid, values)
+        self.contours.set_map(frame.fields, frame.zones)
         fields = frame.fields
         self.cores = np.stack(
             [fields.x, fields.y, fields.core_radius**2, np.zeros_like(fields.x)], -1
@@ -136,13 +139,15 @@ class Renderer:
         true_size: bool = False,
         playback: float = 1.0,
         grid: str = "off",
+        contours: str = "off",
     ) -> None:
         """Draw the frame as `view` (SPECTATOR or a team) sees it onto `target`; `now`:
         game time (s), for the trails; overlay: an arcs table drawn last (the selection's
         outline); predictions: the prediction overlays' tables (None: none on); true_size:
         the ships at their size in metres, with no minimum on screen (`ships`); playback:
         the playback speed (seconds of play per second shown), for the bullets' tracers; grid:
-        the dot grid's pattern, or "off"."""
+        the dot grid's pattern, or "off"; contours: the distance contours' shape set, or
+        "off"."""
         context, uniforms = self.context, camera.uniforms()
         ships, pixel = frame.ships, camera.metres_per_pixel
         team_view = view != SPECTATOR
@@ -174,6 +179,9 @@ class Renderer:
                 self.grid.draw(uniforms, theme, frame.arena_radius, grid)
         with self._measure("fields"):
             self.fields.draw(uniforms, theme, frame.log_index_per_level)
+        if contours != "off":
+            with self._measure("contours"):
+                self.contours.draw(uniforms, theme, frame.arena_radius, contours)
         with self._measure("zones"):
             self.arcs.draw(uniforms, zone_table(theme, frame.zones, pixel))
         with self._measure("trails"):
