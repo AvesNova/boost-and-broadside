@@ -68,8 +68,35 @@ class Player:
     def click(self, name: str) -> None:
         self.click_at(*self.session.interface.controls.rect(name).centre())
 
+    def type(self, text: str) -> None:
+        """Type `text` as the window passes keys on: each key's press (with Shift for a
+        capital) and its character, then its release, a frame each."""
+        import glfw
+
+        from bnb.play.window import IMGUI_KEYS
+
+        for character in text:
+            key = IMGUI_KEYS.get(getattr(glfw, f"KEY_{character.upper()}", None))
+            if key is None and character == " ":
+                key = IMGUI_KEYS[glfw.KEY_SPACE]
+            self.io.add_key_event(imgui_key("mod_shift"), character.isupper())
+            if key is not None:
+                self.io.add_key_event(key, True)
+            self.io.add_input_character(ord(character))
+            self.frames()
+            if key is not None:
+                self.io.add_key_event(key, False)
+            self.io.add_key_event(imgui_key("mod_shift"), False)
+            self.frames()
+
     def pixels(self) -> np.ndarray:
         return read_pixels(self.target).astype(int)
+
+
+def imgui_key(name: str):
+    from imgui_bundle import imgui
+
+    return getattr(imgui.Key, name)
 
 
 def _session(context, tmp_path, width=1280, height=720, **options) -> Session:
@@ -307,10 +334,59 @@ def test_the_tuning_panel_opens_from_the_menu_and_a_restart_keeps_the_tuning(con
     session.close()
 
 
+def test_typed_letters_reach_the_text_boxes_and_call_no_shortcut(context, tmp_path):
+    """Letters typed into a text box (each a shortcut or a flight key elsewhere: Z, T, E,
+    V, P, F, C, N, W, A, S, D, space) go into the box only: the view, theme, true size,
+    pause, editor and the pilot's inputs stay as they were."""
+    session = _session(context, tmp_path, preset="frontline")
+    player = Player(session, context, 1280, 720)
+    session.toggle_tuning()
+    player.frames(3)
+
+    def state():
+        loop = session.loop
+        return (
+            session.true_size,
+            session.theme.name,
+            session.view_name,
+            session.editor.open,
+            session.show_keys,
+            loop.paused,
+            loop.time_scale,
+            session.following,
+            bool(loop.inputs.any()),
+        )
+
+    before = state()
+    text = "Zeta Paw Fencer 1001 vwasdcnt"
+    player.click("tuning/new ship")
+    player.type(text)
+    assert session.tuning_panel.new_ship == text
+    assert state() == before
+    session.toggle_tuning()
+    player.click("menu")
+    player.click("menu/new match")
+    before = state()  # the menu pauses the match
+    player.click("new match/seed")
+    player.type("12")
+    player.io.add_key_event(imgui_key("enter"), True)  # a number box takes its text on Enter
+    player.frames()
+    player.io.add_key_event(imgui_key("enter"), False)
+    player.frames()
+    assert session.interface.menu.draft.seed == 12 and state() == before
+    player.click("new match/side1")
+    player.click("new match/side1/path")
+    player.type("runs/zeta-1")
+    assert session.interface.typed_policy == "runs/zeta-1"
+    assert state() == before  # "-" is the slower key elsewhere
+    session.close()
+
+
 def test_the_tuning_panel_adds_and_removes_ships(context, tmp_path, monkeypatch):
-    """Adding a copy of a ship type writes its file and starts a match with three types;
-    **Remove** asks first (Cancel keeps the type), and confirming goes back to two (the
-    ship files here are a copy)."""
+    """Adding a copy of a ship type writes its file at once (under a time scale, the
+    design's x1 values: the original's own) and starts a match with three types at the
+    same time scale; **Remove** asks first (Cancel keeps the type), and confirming goes
+    back to two (the ship files here are a copy)."""
     import shutil
     import time
 
@@ -328,11 +404,19 @@ def test_the_tuning_panel_adds_and_removes_ships(context, tmp_path, monkeypatch)
             player.frames()
             time.sleep(0.02)
         panel = session.tuning_panel
-        panel.new_ship = "Scout"
-        panel._add(session, session.tuner)
-        assert api.type_names() == ("Fighter", "Heavy", "Scout")
-        assert (copy / "scout.toml").is_file()
+        session.time_scale(2.0)
+        player.frames(2)
+        player.click("tuning/new ship")
+        player.type("Scout 1001")
+        player.click("tuning/add")
+        assert api.type_names() == ("Fighter", "Heavy", "Scout 1001")
+        scout, fighter = ships.load()[2], ships.load()[0]
+        assert scout.key == "scout-1001" and (copy / "scout-1001.toml").is_file()
+        assert scout.card == pytest.approx(fighter.card, rel=1e-6)  # the card is float32
+        assert scout.handles == fighter.handles
+        assert panel.message.startswith("added Scout 1001, a copy of Fighter: saved")
         assert session.loop.types.max_energy.shape == (3,)
+        assert session.time_factor == 2.0
         player.frames(3)
         panel.ship = 2
         player.frames(2)
@@ -340,10 +424,10 @@ def test_the_tuning_panel_adds_and_removes_ships(context, tmp_path, monkeypatch)
         assert session.interface.controls.shown("tuning/remove/confirm")
         player.click("tuning/remove/cancel")
         assert not session.interface.controls.shown("tuning/remove/confirm")
-        assert api.type_names() == ("Fighter", "Heavy", "Scout")
+        assert api.type_names() == ("Fighter", "Heavy", "Scout 1001")
         player.click("tuning/remove")
         player.click("tuning/remove/confirm")
-        assert api.type_names() == ("Fighter", "Heavy") and not (copy / "scout.toml").exists()
+        assert api.type_names() == ("Fighter", "Heavy") and not (copy / "scout-1001.toml").exists()
         assert session.loop.types.max_energy.shape == (2,)
         player.frames(3)
         session.close()

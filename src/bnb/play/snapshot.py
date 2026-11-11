@@ -48,7 +48,9 @@ class Ships:
 @dataclasses.dataclass(frozen=True)
 class Bullets:
     """(N K,) per bullet slot, by owner then slot: position, unit direction, active,
-    moves_left, and the shooter (sim index) and its team."""
+    moves_left, the shooter (sim index) and its team; age: seconds since it was fired (0
+    for an idle slot), and speed (m/s): 0 in a tick's snapshot, the distance it flew over
+    the tick in a drawn frame (`bnb.play.interpolate`)."""
 
     x: np.ndarray
     y: np.ndarray
@@ -58,6 +60,8 @@ class Bullets:
     moves_left: np.ndarray
     owner: np.ndarray
     team: np.ndarray
+    age: np.ndarray
+    speed: np.ndarray
 
 
 @dataclasses.dataclass(frozen=True)
@@ -159,15 +163,20 @@ def _bullets(rules: Rules, values: dict) -> Bullets:
         return _numpy(values[f"bullets.{name}"][0].reshape(-1))
 
     moves_left = value("moves_left")
+    active = moves_left > 0
+    # A bullet fired on a tick has bullet_moves - 1 moves left after it: one tick flown.
+    flown = np.where(active, rules.bullet_moves - moves_left, 0) * rules.tick_length
     return Bullets(
         x=value("x"),
         y=value("y"),
         direction_x=value("direction_x"),
         direction_y=value("direction_y"),
-        active=moves_left > 0,
+        active=active,
         moves_left=moves_left,
         owner=_numpy(owner),
         team=_numpy(owner // rules.ships_per_team),
+        age=flown.astype(np.float32),
+        speed=np.zeros(N * K, np.float32),
     )
 
 

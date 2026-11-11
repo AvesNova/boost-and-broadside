@@ -45,7 +45,7 @@ compiled. The options:
   respawn wait, and who controls it. Click a row to select the ship. Each team's
   controller is chosen here (see below).
 - **The selection card** (right): what you selected. A ship shows its live state (shield,
-  energy, speed, angle of attack, power and stick, the last shot), kills and deaths, and
+  energy, speed (at ×1 under a [time scale](#tuning-the-game)), angle of attack, power and stick, the last shot), kills and deaths, and
   the buttons **Take control** and **Follow**; a field its refractive index and core; a
   zone its owner, progress and the ships contesting it.
 - **The minimap** (lower right): the whole arena, with the camera's view as a rectangle.
@@ -73,6 +73,14 @@ The view selector (or V) chooses:
 Without fog of war every ship is visible to both teams (see
 [Perception and fog](../explanation/game/perception.md)), so a team's view looks like the
 spectator's.
+
+A bullet draws as a tracer: a round head in its team's colour where it is, between ticks
+too (it flies straight within a tick), and a short trail behind it in the team's trail
+colour, tapering and fading as a ship's trail does. The trail spans the last 0.08 s of the
+bullet's flight as the screen shows it (times the playback speed), never back past where
+it was fired, so a burst reads as continuous streaks at any time scale or playback speed.
+A bullet has no size in the game, so the tracer is a few pixels wide at every zoom,
+**True size** included.
 
 ## Ship size
 
@@ -266,9 +274,13 @@ compare.
 - **Save ships** writes every type to its file in the match's ship set (`src/bnb/game/ships/`
   for the standard set, `src/bnb/game/ships/real-scale/` for the real-scale one), tracked
   in git: the handles and the card, and the tuned flight constants and bullet life into
-  the set's `rules.toml`, as the cards fly under them. **Add a copy as this name** copies the chosen type under the
-  name in the field, and **Remove** deletes the chosen type after asking; each starts a new
-  match. The last type cannot be removed.
+  the set's `rules.toml`, as the cards fly under them. **Add a copy as this name** writes a
+  copy of the chosen type under the name in the field to its own file in the set at once
+  (the panel names the file); the other types' files are left as they are, and their
+  unsaved changes play on in the new match until **Save ships**. It waits only for the
+  chosen type's exact card, and asks for **Save ships** first when the flight constants or
+  bullet life were changed. **Remove** deletes the chosen type after asking. Each starts a
+  new match; the last type cannot be removed.
 - **Rules**, by group: the arena and the clocks, bullet life, the flight constants every
   type shares, spawns, and the current mode's rules (Frontline's zone radius and capture
   time, team deathmatch's kills to win). Each has a slider and a number box, and applies on
@@ -277,19 +289,28 @@ compare.
 - Changing a flight constant re-measures the handles (the ships keep their card, so what
   they fly changes), each type when it is chosen or plays; a type's handles cannot be set
   until it is measured, a few seconds (tens of seconds for a real-scale type). **Save
-  ships** and **Add** need every type's handles: they first measure the ones not yet
-  measured, and say so; press again once the status line says exact.
+  ships** needs every type's handles: it first measures the ones not yet measured, and
+  says so; press again once the status line says exact.
 - **Time scale**: **Apply** makes the whole game the given factor faster with the map's
   lengths fixed (speeds x k, gravity and accelerations x k^2, rates and fire rates x k,
   times / k, energies x k^2, so a store keeps its height). Fire rates snap to whole Hz that
   divide 30, and bullet life, clocks and shield delays to whole ticks; the message says
   what snapped. **Make this speed 1×** takes the playback speed (×¼ to ×8 in the top bar)
   as the factor and sets playback back to ×1: pick the speed at which the game feels
-  right, then make it the game's own. Save ships and a preset keep the result.
-- **Presets**: **Save** writes the ship set, the rule settings and the whole card to your
-  configuration directory (`tunings/<name>.json`; the card is what training's `ship_card`
-  takes). **Load** applies one to a match of the same set; **Game's numbers** goes back to
-  the ship files' and the rules' own.
+  right, then make it the game's own. Applying again multiplies the factor (×2 then ×2 is
+  ×4; ×0.25 from ×4 is ×1).
+- Under a time scale every value in the panel stays the design's, at ×1: the handles,
+  what the ships fly (measured at ×1), the rules and the fire-rate choices, and the
+  selection card's speed. An edit sets the ×1 value, and **Save ships** writes the same
+  files as at ×1; the match plays the design k times faster. A line at the top of the
+  panel names it ("Values at x1; the game runs xk"). Nothing is re-measured when the
+  factor changes. A new match, a restart, **Add** and a preset keep the factor; **Game's
+  numbers** keeps it too.
+- **Presets**: **Save** writes the ship set, the rule settings and the whole card (the
+  design's, at ×1) to your configuration directory (`tunings/<name>.json`; the card is what
+  training's `ship_card` takes), and the time scale's factor when it is not 1. **Load**
+  applies one to a match of the same set; **Game's numbers** goes back to the ship files'
+  and the rules' own.
 
 A new match or a restart keeps the tuning, unless it plays another ship set. Ship counts, fields and the lineup are set in
 **New match**. A trained agent given a ship card or lineup it was not trained with plays,
@@ -300,7 +321,8 @@ flights compile first (about a minute); after that they come from the cache.
 ## Keys
 
 The keys are shortcuts for the controls above; F1 shows this list in the window. They do
-nothing while you type into a field.
+nothing while you type into a field. The window takes the keys without the desktop's
+input method (IBus, for example), so a field gets the letters you type as they are.
 
 <!-- generated: play-keys -->
 

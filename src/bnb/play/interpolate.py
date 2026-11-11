@@ -4,7 +4,10 @@ shield and energy linear, everything else from the later tick.
 A ship that spawned or respawned draws at its new state (no interpolation across a
 teleport; an episode reset spawns every ship), and a bullet fired on the later tick draws
 from its launch point, the shooter's position at the earlier tick, which is where the game
-fires it from (a reset clears every bullet).
+fires it from (a reset clears every bullet). A bullet flies straight within a tick (a
+field bends it only between moves), so the drawn bullet is exact at both ticks and on its
+path between them; its speed is that move's length over the tick, and its age counts back
+from the later tick.
 """
 
 import dataclasses
@@ -50,10 +53,14 @@ def _bullets(previous: Snapshot, current: Snapshot, alpha: float) -> Bullets:
     fresh = after.active & (~before.active | (after.moves_left >= before.moves_left))
     start_x = np.where(fresh, previous.ships.x[after.owner], before.x)
     start_y = np.where(fresh, previous.ships.y[after.owner], before.y)
+    tick = current.tick_length
+    moved = np.hypot(after.x - start_x, after.y - start_y)
     return dataclasses.replace(
         after,
         x=lerp(start_x, after.x, alpha).astype(after.x.dtype),
         y=lerp(start_y, after.y, alpha).astype(after.y.dtype),
+        age=np.where(after.active, after.age - (1.0 - alpha) * tick, 0.0).astype(np.float32),
+        speed=np.where(after.active, moved / tick, 0.0).astype(np.float32),
     )
 
 

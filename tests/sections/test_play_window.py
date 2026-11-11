@@ -2,12 +2,14 @@
 (`bnb.play.interface.shortcuts`): ImGui hears every key, and every shortcut calls a
 session method. Needs only the GLFW and ImGui modules, not a display."""
 
+import os
+
 import glfw
 
 from bnb.controllers.human import INPUTS
 from bnb.play.app import Session
 from bnb.play.interface.shortcuts import FLIGHT_KEYS, SHORTCUTS
-from bnb.play.window import IMGUI_KEYS
+from bnb.play.window import IMGUI_KEYS, without_input_method
 
 UNMAPPED = {"KEY_UNKNOWN", "KEY_LAST", "KEY_WORLD_1", "KEY_WORLD_2", "KEY_F25"}  # not in ImGui
 
@@ -36,3 +38,16 @@ def test_every_shortcut_calls_a_session_method():
 def test_no_shortcut_is_a_flight_key():
     flight = {key for keys in FLIGHT_KEYS.values() for key in keys}
     assert not flight & {key for key, *_ in SHORTCUTS}
+
+
+def test_the_window_starts_glfw_without_an_input_method(monkeypatch):
+    """X reads XMODIFIERS when GLFW starts: it names no input method then, and the
+    desktop's is back afterwards."""
+    monkeypatch.setenv("XMODIFIERS", "@im=ibus")
+    with without_input_method():
+        assert os.environ["XMODIFIERS"] == "@im=none"
+    assert os.environ["XMODIFIERS"] == "@im=ibus"
+    monkeypatch.delenv("XMODIFIERS")
+    with without_input_method():
+        assert os.environ["XMODIFIERS"] == "@im=none"
+    assert "XMODIFIERS" not in os.environ

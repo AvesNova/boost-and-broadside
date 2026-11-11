@@ -215,6 +215,9 @@ def test_presets_round_trip(tmp_path):
     with pytest.raises(ValueError, match="lowercase"):
         presets.save("Fast Guns", tuning, tuning.types())
     assert set(__import__("json").loads(path.read_text())["ship_card"]) == set(api.default_card())
+    faster = Tuning(rules=tuning.rules, card=tuning.card, time_factor=3.0)
+    presets.save("faster-guns", faster, faster.types())  # the design's card, at x1
+    assert presets.load("faster-guns") == faster
 
 
 # ------------------------------------------------------------------ the ship files
@@ -260,6 +263,19 @@ def test_ship_files_round_trip_and_a_new_type_joins_the_card(ship_files):
     ships.write(files[:1])
     api.reload_ships()
     assert api.type_names() == ("Fighter",) and not (ship_files / "heavy.toml").exists()
+
+
+def test_a_ship_appended_joins_the_set_and_leaves_the_others_files(ship_files):
+    from bnb.game import ships
+
+    heavy = (ship_files / "heavy.toml").read_text()
+    files = ships.load()
+    ships.append(ships.Ship("1001", "1001", dict(files[0].handles), dict(files[0].card)))
+    api.reload_ships()
+    assert api.type_names() == ("Fighter", "Heavy", "1001")
+    assert (ship_files / "heavy.toml").read_text() == heavy
+    with pytest.raises(ValueError, match="already"):
+        ships.append(ships.load()[2])
 
 
 def test_the_panel_takes_each_types_handles_from_its_ship_file():

@@ -125,8 +125,8 @@ class Realtime:
         rules = api.rules_of(config)
         if lineup is not None:
             rules = dataclasses.replace(rules, team_types=tuple(lineup))
-        if settings:
-            rules = api.tuning.tuned(rules, settings)
+        if settings:  # as live tuning holds them: a time scale carries some past a slider's end
+            rules = api.tuning.tuned(rules, settings, bounded=False)
         if bullet_slots is None:  # room for any fire rate and bullet life live tuning allows
             bullet_slots = api.tuning.most_bullet_slots(rules.tick_length)
         rules = dataclasses.replace(rules, bullet_slots=bullet_slots)

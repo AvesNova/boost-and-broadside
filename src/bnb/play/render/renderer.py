@@ -22,7 +22,7 @@ import numpy as np
 from ..camera import Camera
 from ..themes import Theme
 from .arcs import ArcProgram
-from .bullets import BulletsPass
+from .bullets import TRAIL_SECONDS, BulletsPass, tracer_lengths
 from .fields import FieldsPass
 from .fog import FogPass
 from .imgui_renderer import ImguiRenderer
@@ -132,11 +132,13 @@ class Renderer:
         overlay: np.ndarray | None = None,
         predictions: OverlayDrawing | None = None,
         true_size: bool = False,
+        playback: float = 1.0,
     ) -> None:
         """Draw the frame as `view` (SPECTATOR or a team) sees it onto `target`; `now`:
         game time (s), for the trails; overlay: an arcs table drawn last (the selection's
         outline); predictions: the prediction overlays' tables (None: none on); true_size:
-        the ships at their size in metres, with no minimum on screen (`ships`)."""
+        the ships at their size in metres, with no minimum on screen (`ships`); playback:
+        the playback speed (seconds of play per second shown), for the bullets' tracers."""
         context, uniforms = self.context, camera.uniforms()
         ships, pixel = frame.ships, camera.metres_per_pixel
         team_view = view != SPECTATOR
@@ -204,6 +206,9 @@ class Renderer:
         with self._measure("bullets"):
             bullets = frame.bullets
             active = bullets.active
+            trail = tracer_lengths(
+                bullets.speed[active], bullets.age[active], TRAIL_SECONDS * playback
+            )
             self.bullets.draw(
                 uniforms,
                 theme,
@@ -211,6 +216,7 @@ class Renderer:
                 bullets.y[active],
                 bullets.direction_x[active],
                 bullets.direction_y[active],
+                trail,
                 bullets.team[active],
             )
         if predictions is not None:

@@ -12,9 +12,9 @@ ship type's index (the card's column, a lineup's entry) is its place there. A se
 - `[card]`: the physics parameters the game reads (`bnb.game.ship_types.ShipTypes`), solved
   from the handles: the default card is these, column by column.
 
-The files are written by `write` (the tuning panel's Save), and read when a set's default
-card is first asked for (`bnb.game.ship_types.defaults`); `reload` reads them again after a
-save.
+The files are written by `write` (the tuning panel's Save) and `append` (its Add), and
+read when a set's default card is first asked for (`bnb.game.ship_types.defaults`);
+`reload` reads them again after a save.
 """
 
 import dataclasses
@@ -151,14 +151,29 @@ def write(ships: list[Ship], ship_set: str = STANDARD) -> None:
     for ship in ships:
         write_ship(ship, ship_set)
     keys = [ship.key for ship in ships]
+    _write_order(keys, directory)
+    for path in directory.glob("*.toml"):
+        if path.name not in (ORDER, RULES) and path.stem not in keys:
+            path.unlink()
+
+
+def append(ship: Ship, ship_set: str = STANDARD) -> None:
+    """Add a ship type to a set: its file, and its key last in the set's order (the other
+    types' files are left as they are). Fails for a key the set has already."""
+    directory = directory_of(ship_set)
+    keys = tomllib.loads((directory / ORDER).read_text())["order"]
+    if ship.key in keys:
+        raise ValueError(f"the {ship_set} set has a ship {ship.key!r} already")
+    write_ship(ship, ship_set)
+    _write_order([*keys, ship.key], directory)
+
+
+def _write_order(keys: list[str], directory: pathlib.Path) -> None:
     listed = ", ".join(f'"{key}"' for key in keys)
     (directory / ORDER).write_text(
         "# The ship types in order: a type's index is its place here (bnb.game.ships).\n"
         f"order = [{listed}]\n"
     )
-    for path in directory.glob("*.toml"):
-        if path.name not in (ORDER, RULES) and path.stem not in keys:
-            path.unlink()
 
 
 def write_ship(ship: Ship, ship_set: str = STANDARD) -> None:

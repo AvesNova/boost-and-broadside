@@ -3,8 +3,15 @@
 Every key, character, mouse move, button and wheel step goes to ImGui's input state; the
 session reads it there (its interface, the battlefield's clicks, drags and wheel, the
 flight keys and the shortcuts), so the window adds no behaviour of its own.
+
+The window opens without the desktop's input method (`without_input_method`): on X11 an
+input method such as IBus with a Hangul engine takes the letter keys, and GLFW, which has no
+composition support, then hands ImGui garbled text (digits pass straight through). Typed
+text is the key's own character.
 """
 
+import contextlib
+import os
 import string
 import time
 
@@ -93,11 +100,29 @@ MODIFIERS = (
 )
 
 
+@contextlib.contextmanager
+def without_input_method():
+    """GLFW's start without an X input method: XMODIFIERS, which X reads when GLFW
+    starts, names none (and is restored afterwards, so other programs started from here
+    keep the desktop's)."""
+    saved = os.environ.get("XMODIFIERS")
+    os.environ["XMODIFIERS"] = "@im=none"
+    try:
+        yield
+    finally:
+        if saved is None:
+            os.environ.pop("XMODIFIERS", None)
+        else:
+            os.environ["XMODIFIERS"] = saved
+
+
 class Window:
     """The desktop window: GLFW's window and input, feeding one session."""
 
     def __init__(self, options: Options) -> None:
-        if not glfw.init():
+        with without_input_method():
+            started = glfw.init()
+        if not started:
             raise RuntimeError("GLFW could not start (is there a display?)")
         glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 3)
         glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
