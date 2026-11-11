@@ -511,6 +511,132 @@ large part of the pointwise and reduction time.
 The spatial-only ablation and the nearest-neighbour MLP both pass the frontline probe
 (4.24 and 3.93 GB allocated).
 
+### Learner speed (`perf/learn-speed`, 2026-11-11 11:15-13:45 KST)
+
+The steady PPO learn of the real-scale RL config (`real_scale_mixed`, the default
+`TrainConfig.yemong`: `temporal_first`, `coarsest`, `absolute`), power profile
+`performance` throughout, every timing warm. Two benches: `bench/learn_micro.py` captures
+one real micro-batch (16 views x 128 ticks x 10 ships, 18 bullet ages: 368,640 shot
+queries, a 154-wide code each, 56.8M elements) and times its step as `Learner.gradient`
+runs it (the label codes, the loss, the backward) with CUDA events, median of 30
+(`compile-overhaul/learn/micro.json`); `compile_baseline.py train ... steps=4 heads=0`
+times whole updates (the heads' sums off, as on 9 updates in 10), old tree against new,
+one process each on the shared caches (`steady-before.json`, `steady-after.json`).
+
+**The real update: steady learn 219.3 -> 189.5 s (-13.6%)**, collect 17.9 -> 18.0 s. The
+two trees back to back (new, then old; 13:07-13:39), the load average 1.2-2.1 and the GPU at
+its 80 W cap (2.1 GHz) throughout but the first seconds (`steady-pair-load.log`, every 5 s):
+
+| Tree | Learn 2, 3, 4 (s) | Collect 2, 3, 4 (s) | Warm compiles: `_act`, capture, `_loss` (s) |
+|---|---|---|---|
+| b137fc5b (before) | 219.4, 219.4, 219.2 | 17.9, 17.9, 17.9 | 24.6, 33.1, 3.7 |
+| 0b7e591e (after) | 189.3, 189.5, 189.6 | 18.0, 18.0, 18.0 | 27.9, 37.7, 11.1 |
+
+An earlier pair, run 40 minutes apart, agrees (219.2, 220.6, 224.9 against 190.6, 191.6,
+190.9 s). A third run of the new tree overlapped another process's CPU test suite (load
+7-9) and gave 212.9, 209.3, 199.3 s: the laptop's CPU and GPU share one power budget, so a
+learn timing needs a quiet CPU too. The first run of the new tree after the head kernel's
+change was cold for the graphs that hold it (the rollout's capture 151.8 s, the first learn
+266.3 s): a one-time cache fill.
+
+**The micro-batch step: 61.8 -> 51.6 ms (-16.6%)**, kept in this order:
+
+| Change | Step (ms) | Commit |
+|---|---|---|
+| before | 61.79 | b137fc5b |
+| the shot trajectory code made inside the loss (the label carries the 18 x 5 snapshots, not the 18 x 154 code) | 60.67 | 27147fcf |
+| `codes.grouped_cross_entropy` as lse(z) sum(t) - t.z (an `autograd.Function`: no code-wide log-softmax kept for the backward) | 60.30 | 27147fcf |
+| the learner's compile without Inductor's comprehensive padding | 56.62 | 27147fcf |
+| the shot cross-entropy from the code's 46 coordinates (`shots.trajectory_coordinates`; the code, two-hot in every group, made of them in the loss) | 54.38 | 8a5edea7 |
+| the staged head kernel: the whole `ShotTrajectoryHead.query` in `_head_forward` / `_head_backward` | 51.56 | 07a05b14 |
+
+- **Padding.** Inductor padded the row stride of the shot logits' gradient (L, R, N,
+  ages, 154) to 128 bytes, so the head kernel's and the weight gradient's (rows, 154)
+  views of it each needed a copy (two 113 MB passes a micro-batch). The learner's
+  `compiler` turns `comprehensive_padding` off for its stages (the loss, the label codes,
+  the shot tick, the heads' sums); the rollout keeps its own compile. Alone, on the old
+  tree: 61.79 -> 58.65 ms (-5.1%).
+- **Coordinates.** The shot labels' trajectory code was a 227 MB float32 tensor written by
+  the label stage, read by the loss and kept for its backward. Now the loss makes it from
+  46 numbers per query (`trajectory_coordinates`: colour and fraction per level, lower bin
+  and fraction per scalar), bit for bit the encoders' code (a test). The compiler still
+  keeps one code-wide float32 tensor for the backward, softmax(z) sum(t) - t, which it
+  computes in the forward: AOTAutograd's partitioner will not recompute a chain further
+  than `max_dist_from_bw` (3) nodes from the backward.
+- **Staged head.** `x = gelu(first_norm(latent + age))` (368,640 x 128) was Inductor's,
+  and its backward five more passes over it (the gelu and norm gradients, the norm scale's
+  column sums, the ages' and rows' sums). The head kernel now makes x in registers from a
+  latent row and an age row (the forward and the recomputing backward), and the backward
+  forms the input norm's gradient there too, writing the gradient of latent + age (summed
+  over ages and rows by Inductor) and x for the first weight's gradient. It applies where
+  every row shares the ages (`age_features` (ages, F): the learner's); a per-row query
+  takes the plain path. latent + age, its norm and gelu run in float32 and x is rounded
+  once, where the plain bf16 path rounds the sum and the norm too; the kernel tests hold it
+  to the plain query's error against float64, and to bitwise repeatability.
+  `fast-yemong-notes.md`'s kernel table names it.
+
+**Its compile cost.** An `autograd.Function` in the loss graph bypasses AOTAutograd's
+cache ("Unsupported call_function target autograd_function_apply"), so a process
+re-traces and re-partitions the loss on warm caches (Inductor's own graph cache still
+hits): `Learner._loss` 3.7 -> 11.1 s warm in `compile_baseline.py` (the pair above), the
+micro-batch's first step 8.2 -> 12.4 s. The rollout's warm compiles moved by 3-5 s in that
+pair (`_act` 24.6 -> 27.9 s, the capture 33.1 -> 37.7 s; 25.3 and 34.1 s in another warm run
+of the new tree, against 24.4 and 32.8 s in the earlier old run): within a second or two
+once the new tree's first seconds at load 8 are set aside. The plain form of the same mathematics (lse(z) sum(t) - t.z by
+autograd, the target made of the coordinates in the graph) caches but is slower: 53.29
+against 51.68 ms a step, measured back to back (about 6 s an update). The `Function` stays:
+it repays its 7 s within the first update.
+
+Loss values: identical on the captured micro-batch at every kept step (the loss and every
+term within 1e-7 relative); the parameters' gradient norms within 1.2e-4 relative of the
+old tree's (the bf16 trunk; the padding switch alone moves them 8e-5).
+
+Tried and dropped:
+
+| Attempt | Step (ms) | Why dropped |
+|---|---|---|
+| the target encoded from the snapshots inside the `Function` (forward and backward) | 57.89 (against 57.08) | the partitioner still moved softmax sum(t) - t into the forward and kept it; the remainder chain ran twice |
+| bf16 logits into the `Function` (the upcast inside) | 57.80 | the same choice by the partitioner |
+| g target built in the backward (`encode(source, g)`, so nothing code-wide is free of the gradient) | 56.15 (against 54.38) | the partitioner did recompute, but building the two-hot code is ALU-bound: slower than reading the kept float32 |
+| the shot logits flattened to (rows, 154) for the loss | 51.46 (against 51.56) | noise: the gradient is still written in two layouts (one for the head kernel, one for the weight GEMM) |
+| more head-kernel autotune configurations (a one-off sweep of the old kernel at the shot shape: BLOCK_M 32-128, BLOCK_K 32-128, BLOCK_O 32-256, 4 or 8 warps, 1-3 stages; `head-configs.json`) | best forward 0.96 against the current configurations' best 1.16 ms, backward 1.67 against 1.71 | under 0.5% of a step, for more autotuning |
+
+Where the step goes now (`ages=1`, a diagnostic that queries the shot head at one age):
+36.3 ms of the 51.6 are the rest of the model and its heads with one age, 15.3 ms the
+shot head's other 17 ages (17.8 ms before the staged kernel). The rest is spread thin: no kernel over 2.7 ms (the gated MLP's backward), GEMMs
+9.0 ms, the heads' kernel 3.5, attention 2.8, RMSNorm backwards about 2.2.
+
+Proposals (not done):
+
+1. **The grouped cross-entropy's kept factor in bf16.** Compiled, the backward's
+   softmax(z) sum(t) - t is computed in the forward and kept in float32 (for the shot code
+   227 MB written and read a micro-batch); the gradient it makes is rounded to bf16 for the
+   head kernel anyway. Computing that factor in the forward and keeping it in bf16 (every
+   grouped cross-entropy: next state, correction, shots), measured on the captured
+   micro-batch: step 51.07 -> 50.17 ms (-1.8%); the loss and every term unchanged (the
+   forward stays float32); the parameters' gradient norms within 5.5e-4 relative (the
+   next-state head's last layer and the shot head's latent move most), against 1.2e-4 for
+   everything kept here. A precision decision for the author; not landed.
+2. **The coordinate remainders.** `circular_coordinates`' level-by-level remainders are
+   recomputed by every level's element of the stacked output (36 remainders where 8 would
+   do; 1.2 ms a micro-batch). Direct remainders per level would be the same mathematics but
+   not the same float32 bits as the chain (the chain is there for exactly that), so it is
+   left.
+3. **Queries that no loss reads.** The shot head runs at every (tick, row, age); the loss
+   reads only the labelled shots' valid ages: 64.5% of the captured micro-batch's queries
+   (64.8% of its rows are labelled: dead ships and shots whose flight leaves the window
+   are not). Querying only those would cut about a third of the head's 16 ms, but their
+   count varies by micro-batch: a fixed capacity either drops queries when it overflows
+   (a different loss) or sizes for the worst case (no saving), and a varying one
+   recompiles. Left as a design question.
+
+Tests: the full non-slow CPU suite on ad75cf47, 1,907 passed and 7 failed: the 6 known
+documentation references and `test_yemong_error_head.py::test_arms_1_and_2_step_and_unroll_bit_for_bit_as_recorded`,
+which fails the same way in the full suite on b137fc5b (1,903 passed, the same 7) and
+passes alone or with its own file: an order dependence that predates this work.
+`test_yemong_kernels.py` (GPU) 26 passed, with the staged head's own comparison, its
+repeatability and every autotune configuration.
+
 ### Return units (2026-11-11, the author's decision)
 
 The three RL runs on the hub (`julianzia/boost-and-broadside-runs`: rl-absolute,

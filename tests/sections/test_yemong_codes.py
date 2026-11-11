@@ -384,3 +384,101 @@ def test_fourier_inputs_replace_the_position_and_heading_runs_only(code):
     torch.testing.assert_close(inputs[:, 287:], encoded[:, 340:], rtol=0, atol=0)
     with pytest.raises(ValueError, match="position_inputs"):
         ShipStateCode(state_code_ranges(RULES, TYPES), position_inputs="polar")
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_grouped_cross_entropy_matches_the_log_softmax_form_and_its_gradient(dtype):
+    """The log-sum-exp form (`codes.grouped_cross_entropy`) against -sum target log
+    softmax per group: the values and the logits' gradient within the dtype's rounding,
+    with sharp, soft and unnormalised targets and logits far from zero."""
+    runs = ((8, 9), (5, 4), (1, 41), (1, 21))
+    width = sum(groups * size for groups, size in runs)
+    logits = (20.0 * torch.randn(3, 7, width, dtype=dtype)).requires_grad_()
+    target = torch.rand(3, 7, width, dtype=dtype)
+    target[0] = (target[0] > 0.9).to(dtype)  # sparse, some groups all zero
+    target[1] = shots.trajectory_code(
+        shots.shot_code_parameters(400.0, 300.0, 1.5, 15.0),
+        torch.randn(7, 5, dtype=dtype) * torch.tensor([900.0, 900.0, 300.0, 300.0, 0.3]) + 1.0,
+    ).to(dtype)
+    weight = torch.randn(3, 7, sum(groups for groups, _ in runs), dtype=dtype)
+
+    def log_softmax_form(z):
+        return torch.cat(
+            [
+                -(t * torch.log_softmax(part, -1)).sum(-1)
+                for part, t in zip(codes.split_runs(z, runs), codes.split_runs(target, runs))
+            ],
+            -1,
+        )
+
+    got = codes.grouped_cross_entropy(logits, target, runs)
+    (got_gradient,) = torch.autograd.grad((got * weight).sum(), logits)
+    want = log_softmax_form(logits)
+    (want_gradient,) = torch.autograd.grad((want * weight).sum(), logits)
+    tolerance = (
+        dict(rtol=1e-5, atol=1e-4) if dtype == torch.float32 else dict(rtol=1e-12, atol=1e-10)
+    )
+    torch.testing.assert_close(got, want, **tolerance)
+    torch.testing.assert_close(got_gradient, want_gradient, **tolerance)
+
+
+def test_the_trajectory_code_of_its_coordinates_is_the_encoders_code_bit_for_bit():
+    """`shots.trajectory_code` (made of `trajectory_coordinates`, 46 numbers) equals the
+    general encoders' code at zero spread: position_encode, circular_encode, scalar_sharp."""
+    parameters = shots.shot_code_parameters(400.0, 300.0, 1.5, 15.0)
+    snapshots = torch.randn(5000, 5) * torch.tensor([3000.0, 3000.0, 500.0, 500.0, 0.4])
+    snapshots[:, 4] += 1.0
+    snapshots[:20, :4] = 0.0  # on the bins' edges
+    displacement, velocity, index = snapshots[:, :2], snapshots[:, 2:4], snapshots[:, 4]
+    zero = torch.zeros_like(index)
+    period = parameters.displacement_period
+    want = torch.cat(
+        [
+            codes.position_encode(
+                displacement, zero, (period, period), parameters.displacement_levels
+            ).flatten(-2),
+            codes.circular_encode(
+                torch.atan2(velocity[:, 1], velocity[:, 0]),
+                zero,
+                2.0 * math.pi,
+                4,
+                parameters.direction_levels,
+            ).flatten(-2),
+            codes.scalar_sharp(
+                torch.hypot(velocity[:, 0], velocity[:, 1]),
+                0.0,
+                parameters.top_speed,
+                parameters.speed_bins,
+            ),
+            codes.scalar_sharp(
+                torch.log(torch.clamp_min(index, 1e-6)),
+                -parameters.index_span,
+                parameters.index_span,
+                parameters.index_bins,
+            ),
+        ],
+        -1,
+    )
+    coordinates = shots.trajectory_coordinates(parameters, snapshots)
+    assert coordinates.shape == (5000, 46)
+    assert torch.equal(shots.trajectory_code(parameters, snapshots), want)
+
+
+def test_grouped_cross_entropy_of_an_encoded_target_matches_the_plain_target():
+    """With `encode`, the cross-entropy and its gradient are the plain target's."""
+    parameters = shots.shot_code_parameters(400.0, 300.0, 1.5, 15.0)
+    snapshots = torch.randn(64, 5) * torch.tensor([3000.0, 3000.0, 500.0, 500.0, 0.4]) + 1.0
+    coordinates = shots.trajectory_coordinates(parameters, snapshots)
+    runs = parameters.trajectory_runs
+    logits = (5.0 * torch.randn(64, parameters.trajectory_width)).requires_grad_()
+    weight = torch.randn(64, sum(groups for groups, _ in runs))
+    plain = codes.grouped_cross_entropy(
+        logits, shots.trajectory_code_at(parameters, coordinates), runs
+    )
+    encoded = codes.grouped_cross_entropy(
+        logits, coordinates, runs, lambda source: shots.trajectory_code_at(parameters, source)
+    )
+    (plain_gradient,) = torch.autograd.grad((plain * weight).sum(), logits)
+    (encoded_gradient,) = torch.autograd.grad((encoded * weight).sum(), logits)
+    assert torch.equal(plain, encoded)
+    assert torch.equal(plain_gradient, encoded_gradient)

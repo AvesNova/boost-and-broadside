@@ -1,0 +1,348 @@
+{
+ "bench": "bench/learn_micro.py time (repeats=30, warmup=5)",
+ "config": "real_scale_mixed RL (rs-rl), one captured micro-batch of 160 rows (16 views x 128 ticks, 18 bullet ages)",
+ "runs": [
+  {
+   "run": "time0",
+   "tree": "b137fc5b (before)",
+   "verdict": "kept baseline",
+   "median_ms": 61.79,
+   "quartiles_ms": [
+    61.58,
+    61.99
+   ],
+   "kernel_ms": 61.17,
+   "by_kind_ms": {
+    "triton pointwise": 17.94,
+    "triton reduction": 16.56,
+    "triton other": 0.01,
+    "other": 11.07,
+    "gemm": 12.84,
+    "attention": 2.75,
+    "copy": 0.0
+   },
+   "power": "performance"
+  },
+  {
+   "run": "p0",
+   "tree": "b137fc5b with comprehensive padding off (env)",
+   "verdict": "ablation",
+   "median_ms": 58.65,
+   "quartiles_ms": [
+    58.58,
+    58.82
+   ],
+   "kernel_ms": 57.99,
+   "by_kind_ms": {
+    "triton pointwise": 15.79,
+    "triton reduction": 16.73,
+    "triton other": 0.01,
+    "other": 11.06,
+    "gemm": 11.68,
+    "attention": 2.72,
+    "copy": 0.0
+   },
+   "power": "performance"
+  },
+  {
+   "run": "e1",
+   "tree": "trajectory code made inside the loss (label carries snapshots)",
+   "verdict": "kept",
+   "median_ms": 60.67,
+   "quartiles_ms": [
+    60.56,
+    60.77
+   ],
+   "kernel_ms": 59.76,
+   "by_kind_ms": {
+    "triton pointwise": 16.5,
+    "triton reduction": 16.65,
+    "triton other": 0.01,
+    "other": 11.13,
+    "gemm": 12.74,
+    "attention": 2.72,
+    "copy": 0.0
+   },
+   "power": "performance"
+  },
+  {
+   "run": "e2",
+   "tree": "e1 + grouped cross-entropy in its log-sum-exp form (autograd.Function)",
+   "verdict": "kept",
+   "median_ms": 60.3,
+   "quartiles_ms": [
+    60.11,
+    60.54
+   ],
+   "kernel_ms": 58.9,
+   "by_kind_ms": {
+    "triton pointwise": 17.03,
+    "triton reduction": 15.4,
+    "triton other": 0.01,
+    "other": 11.02,
+    "gemm": 12.72,
+    "attention": 2.72,
+    "copy": 0.0
+   },
+   "power": "performance"
+  },
+  {
+   "run": "e3",
+   "tree": "e2 + comprehensive padding off (env)",
+   "verdict": "kept",
+   "median_ms": 57.08,
+   "quartiles_ms": [
+    56.98,
+    57.18
+   ],
+   "kernel_ms": 56.29,
+   "by_kind_ms": {
+    "triton pointwise": 15.38,
+    "triton reduction": 15.28,
+    "triton other": 0.01,
+    "other": 11.26,
+    "gemm": 11.63,
+    "attention": 2.73,
+    "copy": 0.0
+   },
+   "power": "performance"
+  },
+  {
+   "run": "e4",
+   "tree": "e3 + target encoded from snapshots inside the Function",
+   "verdict": "dropped",
+   "median_ms": 57.89,
+   "quartiles_ms": [
+    57.8,
+    58.08
+   ],
+   "kernel_ms": 57.42,
+   "by_kind_ms": {
+    "triton pointwise": 15.16,
+    "triton reduction": 16.63,
+    "triton other": 0.01,
+    "other": 11.27,
+    "gemm": 11.62,
+    "attention": 2.73,
+    "copy": 0.0
+   },
+   "power": "performance"
+  },
+  {
+   "run": "e5",
+   "tree": "e4 + bf16 logits into the Function",
+   "verdict": "dropped",
+   "median_ms": 57.8,
+   "quartiles_ms": [
+    57.63,
+    57.91
+   ],
+   "kernel_ms": 56.89,
+   "by_kind_ms": {
+    "triton pointwise": 14.75,
+    "triton reduction": 16.53,
+    "triton other": 0.01,
+    "other": 11.13,
+    "gemm": 11.74,
+    "attention": 2.74,
+    "copy": 0.0
+   },
+   "power": "performance"
+  },
+  {
+   "run": "e6",
+   "tree": "e3 with the padding switch in compiler() (27147fcf)",
+   "verdict": "kept",
+   "median_ms": 56.62,
+   "quartiles_ms": [
+    56.44,
+    56.84
+   ],
+   "kernel_ms": 55.74,
+   "by_kind_ms": {
+    "triton pointwise": 15.09,
+    "triton reduction": 15.25,
+    "triton other": 0.01,
+    "other": 11.03,
+    "gemm": 11.62,
+    "attention": 2.73,
+    "copy": 0.0
+   },
+   "power": "performance"
+  },
+  {
+   "run": "e7",
+   "tree": "e6 + cross-entropy from the 46 coordinates (8a5edea7)",
+   "verdict": "kept",
+   "median_ms": 54.38,
+   "quartiles_ms": [
+    54.22,
+    54.48
+   ],
+   "kernel_ms": 53.64,
+   "by_kind_ms": {
+    "triton pointwise": 13.2,
+    "triton reduction": 14.85,
+    "triton other": 0.01,
+    "other": 11.22,
+    "gemm": 11.63,
+    "attention": 2.73,
+    "copy": 0.0
+   },
+   "power": "performance"
+  },
+  {
+   "run": "e8",
+   "tree": "e7 + g target built in the backward (encode with a scale)",
+   "verdict": "dropped",
+   "median_ms": 56.15,
+   "quartiles_ms": [
+    56.05,
+    56.45
+   ],
+   "kernel_ms": 55.1,
+   "by_kind_ms": {
+    "triton pointwise": 13.32,
+    "triton reduction": 16.42,
+    "triton other": 0.01,
+    "other": 11.01,
+    "gemm": 11.61,
+    "attention": 2.72,
+    "copy": 0.0
+   },
+   "power": "performance"
+  },
+  {
+   "run": "e9",
+   "tree": "e7 + staged head kernel (07a05b14)",
+   "verdict": "kept",
+   "median_ms": 51.56,
+   "quartiles_ms": [
+    51.41,
+    51.71
+   ],
+   "kernel_ms": 50.57,
+   "by_kind_ms": {
+    "triton pointwise": 12.05,
+    "triton reduction": 12.09,
+    "triton other": 0.01,
+    "other": 12.8,
+    "gemm": 10.88,
+    "attention": 2.73
+   },
+   "power": "performance"
+  },
+  {
+   "run": "e10",
+   "tree": "e9 + logits flattened to (rows, width) for the loss",
+   "verdict": "dropped",
+   "median_ms": 51.46,
+   "quartiles_ms": [
+    51.41,
+    51.6
+   ],
+   "kernel_ms": 50.91,
+   "by_kind_ms": {
+    "triton pointwise": 12.24,
+    "triton reduction": 12.08,
+    "triton other": 0.01,
+    "other": 13.0,
+    "gemm": 10.83,
+    "attention": 2.74
+   },
+   "power": "performance"
+  },
+  {
+   "run": "a1",
+   "tree": "e7 at ages=1 (diagnostic)",
+   "verdict": "diagnostic",
+   "median_ms": 36.62,
+   "quartiles_ms": [
+    36.53,
+    36.79
+   ],
+   "kernel_ms": null,
+   "by_kind_ms": null,
+   "power": "performance"
+  },
+  {
+   "run": "a2",
+   "tree": "e9 at ages=1 (diagnostic)",
+   "verdict": "diagnostic",
+   "median_ms": 36.31,
+   "quartiles_ms": [
+    36.26,
+    36.58
+   ],
+   "kernel_ms": 35.58,
+   "by_kind_ms": {
+    "triton pointwise": 7.18,
+    "triton reduction": 8.02,
+    "gemm": 9.01,
+    "triton other": 0.01,
+    "other": 8.6,
+    "attention": 2.76
+   },
+   "power": "performance"
+  },
+  {
+   "run": "e11",
+   "tree": "07a05b14 again (the reference for b1)",
+   "verdict": "kept (repeat)",
+   "median_ms": 51.07,
+   "quartiles_ms": [
+    51.0,
+    51.19
+   ],
+   "kernel_ms": 50.61,
+   "by_kind_ms": {
+    "triton pointwise": 12.02,
+    "triton reduction": 12.13,
+    "triton other": 0.01,
+    "other": 12.93,
+    "gemm": 10.78,
+    "attention": 2.73
+   },
+   "power": "performance"
+  },
+  {
+   "run": "b1",
+   "tree": "07a05b14 + the cross-entropy's kept factor in bf16",
+   "verdict": "proposal, not landed",
+   "median_ms": 50.17,
+   "quartiles_ms": [
+    50.07,
+    50.3
+   ],
+   "kernel_ms": null,
+   "by_kind_ms": null,
+   "power": "performance"
+  },
+  {
+   "run": "f1",
+   "tree": "0b7e591e with the plain lse form (no autograd.Function; caches), load average ~8",
+   "verdict": "dropped (slower)",
+   "median_ms": 53.29,
+   "quartiles_ms": [
+    53.2,
+    53.4
+   ],
+   "kernel_ms": null,
+   "by_kind_ms": null,
+   "power": "performance"
+  },
+  {
+   "run": "e12",
+   "tree": "0b7e591e (the Function), right after f1, load average ~7",
+   "verdict": "kept (reference for f1)",
+   "median_ms": 51.68,
+   "quartiles_ms": [
+    51.6,
+    51.8
+   ],
+   "kernel_ms": null,
+   "by_kind_ms": null,
+   "power": "performance"
+  }
+ ]
+}

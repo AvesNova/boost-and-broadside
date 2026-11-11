@@ -1,0 +1,1979 @@
+{
+ "what": "the head kernel (b137fc5b) alone at the shot head's shape, M=368640, K=H=128, N=154, bf16, 20 launches each; None: the configuration does not run (shared memory, or BLOCK_M not a multiple of GROUP)",
+ "current": [
+  [
+   32,
+   64,
+   64,
+   4,
+   2
+  ],
+  [
+   64,
+   64,
+   64,
+   4,
+   2
+  ],
+  [
+   64,
+   64,
+   64,
+   8,
+   2
+  ],
+  [
+   128,
+   32,
+   64,
+   8,
+   2
+  ]
+ ],
+ "rows": [
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.067,
+   "backward_ms": 1.74
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 0.968,
+   "backward_ms": 1.667
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 1.102,
+   "backward_ms": 1.682
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.223,
+   "backward_ms": 2.166
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.263,
+   "backward_ms": 1.953
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 1.242,
+   "backward_ms": 1.894
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.351,
+   "backward_ms": 2.099
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.237,
+   "backward_ms": 1.84
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 1.332,
+   "backward_ms": 1.836
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.672,
+   "backward_ms": 3.119
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.326,
+   "backward_ms": 1.983
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 1.482,
+   "backward_ms": 1.89
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.735,
+   "backward_ms": 2.201
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.667,
+   "backward_ms": 1.887
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 2.258,
+   "backward_ms": 2.896
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.964,
+   "backward_ms": 3.455
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.809,
+   "backward_ms": 2.95
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 2.389,
+   "backward_ms": 2.914
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 2.634,
+   "backward_ms": 3.471
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 2.498,
+   "backward_ms": 3.033
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 2.657,
+   "backward_ms": 3.446
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 2.628,
+   "backward_ms": 2.887
+  },
+  {
+   "block_m": 32,
+   "block_k": 32,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.099,
+   "backward_ms": 1.977
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.025,
+   "backward_ms": 1.839
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 1.319,
+   "backward_ms": 1.878
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.148,
+   "backward_ms": 1.988
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.233,
+   "backward_ms": 1.899
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 1.519,
+   "backward_ms": 1.923
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.25,
+   "backward_ms": 1.838
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.157,
+   "backward_ms": 1.803
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 1.339,
+   "backward_ms": 1.811
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.538,
+   "backward_ms": 2.894
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.219,
+   "backward_ms": 1.815
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 1.53,
+   "backward_ms": 1.839
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.621,
+   "backward_ms": 1.965
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.589,
+   "backward_ms": 1.847
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 2.296,
+   "backward_ms": 2.738
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.792,
+   "backward_ms": 3.143
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.676,
+   "backward_ms": 2.848
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 2.375,
+   "backward_ms": 2.736
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 2.43,
+   "backward_ms": 3.201
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 2.354,
+   "backward_ms": 2.971
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 2.461,
+   "backward_ms": 3.067
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 2.416,
+   "backward_ms": 2.721
+  },
+  {
+   "block_m": 32,
+   "block_k": 64,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.504,
+   "backward_ms": 1.952
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.505,
+   "backward_ms": 1.869
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 2.139,
+   "backward_ms": 2.727
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.481,
+   "backward_ms": 1.975
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.548,
+   "backward_ms": 1.913
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 2.116,
+   "backward_ms": 2.84
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.581,
+   "backward_ms": 1.972
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.447,
+   "backward_ms": 1.796
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 2.137,
+   "backward_ms": 2.663
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.689,
+   "backward_ms": 2.863
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.561,
+   "backward_ms": 1.879
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 2.195,
+   "backward_ms": 2.715
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.59,
+   "backward_ms": 2.11
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.569,
+   "backward_ms": 1.838
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 2.344,
+   "backward_ms": 2.757
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 2.559,
+   "backward_ms": 3.068
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.643,
+   "backward_ms": 2.71
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 2.382,
+   "backward_ms": 2.767
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 2.362,
+   "backward_ms": 3.087
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 2.372,
+   "backward_ms": 2.904
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 2.369,
+   "backward_ms": 3.042
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 2.43,
+   "backward_ms": 2.661
+  },
+  {
+   "block_m": 32,
+   "block_k": 128,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.068,
+   "backward_ms": 2.154
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 0.983,
+   "backward_ms": 2.052
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 1.093,
+   "backward_ms": 1.953
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.079,
+   "backward_ms": 2.582
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.207,
+   "backward_ms": 2.302
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 1.246,
+   "backward_ms": 2.323
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.133,
+   "backward_ms": 2.231
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.224,
+   "backward_ms": 2.275
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 1.644,
+   "backward_ms": 2.308
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.321,
+   "backward_ms": 2.59
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.282,
+   "backward_ms": 2.332
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 1.692,
+   "backward_ms": 2.237
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.402,
+   "backward_ms": 2.384
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.959,
+   "backward_ms": 2.175
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 1.888,
+   "backward_ms": 2.93
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 2.136,
+   "backward_ms": 2.705
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.966,
+   "backward_ms": 2.455
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 1.927,
+   "backward_ms": 2.388
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 2.407,
+   "backward_ms": 4.794
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.889,
+   "backward_ms": 3.919
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 2.118,
+   "backward_ms": 3.299
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": null,
+   "backward_ms": 2.791
+  },
+  {
+   "block_m": 64,
+   "block_k": 32,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.055,
+   "backward_ms": 2.097
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 0.956,
+   "backward_ms": 2.149
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 1.125,
+   "backward_ms": 2.273
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.184,
+   "backward_ms": 2.359
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.193,
+   "backward_ms": 2.235
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 1.205,
+   "backward_ms": 2.214
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.054,
+   "backward_ms": 1.902
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.202,
+   "backward_ms": 1.71
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 1.731,
+   "backward_ms": 1.951
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.245,
+   "backward_ms": 2.42
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.205,
+   "backward_ms": 2.269
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 1.72,
+   "backward_ms": 2.336
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.358,
+   "backward_ms": 2.157
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.92,
+   "backward_ms": 2.21
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 1.943,
+   "backward_ms": 3.024
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 2.032,
+   "backward_ms": 2.545
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.929,
+   "backward_ms": 2.419
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 1.936,
+   "backward_ms": 2.419
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 2.285,
+   "backward_ms": 4.474
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.897,
+   "backward_ms": 3.908
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.938,
+   "backward_ms": 3.189
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": null,
+   "backward_ms": 2.807
+  },
+  {
+   "block_m": 64,
+   "block_k": 64,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.227,
+   "backward_ms": 2.206
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.178,
+   "backward_ms": 2.309
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 1.723,
+   "backward_ms": 3.009
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.272,
+   "backward_ms": 2.322
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.236,
+   "backward_ms": 2.253
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 1.709,
+   "backward_ms": 2.292
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.203,
+   "backward_ms": 2.183
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.207,
+   "backward_ms": 2.29
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 1.751,
+   "backward_ms": 3.166
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.202,
+   "backward_ms": 2.345
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.168,
+   "backward_ms": 2.254
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 1.768,
+   "backward_ms": 2.297
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.412,
+   "backward_ms": 2.223
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.934,
+   "backward_ms": 2.087
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 2.03,
+   "backward_ms": 3.046
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 2.013,
+   "backward_ms": 2.517
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.98,
+   "backward_ms": 2.427
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 1.971,
+   "backward_ms": 2.442
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 2.292,
+   "backward_ms": 4.337
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.936,
+   "backward_ms": 3.915
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.889,
+   "backward_ms": 3.161
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": null,
+   "backward_ms": 2.698
+  },
+  {
+   "block_m": 64,
+   "block_k": 128,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.119,
+   "backward_ms": 3.612
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.118,
+   "backward_ms": 4.22
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 1.468,
+   "backward_ms": 4.117
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.14,
+   "backward_ms": 2.236
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.468,
+   "backward_ms": 2.214
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 1.408,
+   "backward_ms": 2.188
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.246,
+   "backward_ms": 4.694
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.526,
+   "backward_ms": 5.052
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 1.437,
+   "backward_ms": 4.713
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.414,
+   "backward_ms": 2.213
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.532,
+   "backward_ms": 2.602
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 1.5,
+   "backward_ms": 2.563
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 2.594,
+   "backward_ms": 4.714
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 2.13,
+   "backward_ms": 4.921
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": 4.83
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.553,
+   "backward_ms": 2.296
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.751,
+   "backward_ms": 2.6
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": 2.551
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 30.551,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 2.518,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 32,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.135,
+   "backward_ms": 3.773
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.059,
+   "backward_ms": 3.993
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 1.775,
+   "backward_ms": 4.188
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.514,
+   "backward_ms": 2.306
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.477,
+   "backward_ms": 2.317
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 1.449,
+   "backward_ms": 2.443
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.241,
+   "backward_ms": 3.932
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.686,
+   "backward_ms": 3.837
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": 1.657,
+   "backward_ms": 4.432
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.302,
+   "backward_ms": 1.981
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.556,
+   "backward_ms": 2.346
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": 1.533,
+   "backward_ms": 2.31
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 2.544,
+   "backward_ms": 4.555
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 2.214,
+   "backward_ms": 4.722
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": 4.847
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.49,
+   "backward_ms": 2.106
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.743,
+   "backward_ms": 2.603
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": 2.57
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 4.173,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 2.397,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 64,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.875,
+   "backward_ms": 4.455
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.554,
+   "backward_ms": 4.455
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 32,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.49,
+   "backward_ms": 2.501
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.585,
+   "backward_ms": 2.755
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 32,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 1.888,
+   "backward_ms": 5.13
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 1.938,
+   "backward_ms": 5.157
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 64,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.556,
+   "backward_ms": 2.461
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.626,
+   "backward_ms": 2.717
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 64,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 2.536,
+   "backward_ms": 4.645
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": 2.616,
+   "backward_ms": 4.859
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 128,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 1.781,
+   "backward_ms": 2.453
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": 1.805,
+   "backward_ms": 2.687
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 128,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 1,
+   "forward_ms": 4.051,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 2,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 256,
+   "warps": 4,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 1,
+   "forward_ms": 2.422,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 2,
+   "forward_ms": null,
+   "backward_ms": null
+  },
+  {
+   "block_m": 128,
+   "block_k": 128,
+   "block_o": 256,
+   "warps": 8,
+   "stages": 3,
+   "forward_ms": null,
+   "backward_ms": null
+  }
+ ]
+}

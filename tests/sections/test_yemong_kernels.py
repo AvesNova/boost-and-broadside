@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:  # `bench` is a top-level package of the repositor
 
 from bench.yemong_synthetic import random_segment, time_slice  # noqa: E402
 from bnb.models.yemong import kernels  # noqa: E402
-from bnb.models.yemong.heads import HeadGroup  # noqa: E402
+from bnb.models.yemong.heads import HeadGroup, ShotTrajectoryHead  # noqa: E402
 from bnb.models.yemong.kernels import attention, gated, scan, temporal  # noqa: E402
 from bnb.models.yemong.kernels import heads as head_kernel  # noqa: E402
 from bnb.models.yemong.layers import GatedMLP  # noqa: E402
@@ -342,6 +342,66 @@ def test_heads_are_bitwise_repeatable():
     _assert_identical(first[0] + first[1], second[0] + second[1])
 
 
+def _shot_head(seed: int = 0, width: int = 128, outputs: int = 154) -> ShotTrajectoryHead:
+    torch.manual_seed(seed)
+    head = ShotTrajectoryHead(width, 9, outputs).to(CUDA)
+    with torch.no_grad():
+        for parameter in head.parameters():
+            parameter.add_(0.1 * torch.randn_like(parameter))  # a live last, norms and biases
+    return head
+
+
+def _shot_head_run(head: ShotTrajectoryHead, latent, features, bfloat16: bool):
+    """The query's output and the gradients of the latent, the features and every
+    parameter."""
+    head.zero_grad(set_to_none=True)
+    latent = latent.detach().requires_grad_()
+    features = features.detach().requires_grad_()
+    with torch.autocast("cuda", torch.bfloat16, enabled=bfloat16):
+        out = head.query(latent, features)
+    _weighted_sum((out,)).backward()
+    return [out.detach()], [latent.grad, features.grad] + [p.grad for p in head.parameters()]
+
+
+def _shot_head_inputs(seed: int = 0):
+    generator = _generator(seed)
+    latent = torch.randn(7, 37, 128, generator=generator, device=CUDA)
+    features = torch.randn(18, 9, generator=generator, device=CUDA)
+    return latent, features
+
+
+def test_the_staged_shot_head_in_bf16_is_as_close_as_the_plain_query():
+    """ShotTrajectoryHead.query at shared ages (the staged head kernel, the whole query)
+    against its plain twin, both measured against float64."""
+    head = _shot_head()
+    latent, features = _shot_head_inputs()
+    expected = _shot_head_run(
+        copy.deepcopy(head).double(), latent.double(), features.double(), False
+    )
+    with kernels.plain():
+        plain = _shot_head_run(head, latent, features, True)
+    with torch.autocast("cuda", torch.bfloat16):
+        assert head_kernel.staged_applies(latent, head.age(features), 128)
+    fast = _shot_head_run(head, latent, features, True)
+    for got, slow, want in zip(
+        fast[0] + fast[1], plain[0] + plain[1], expected[0] + expected[1], strict=True
+    ):
+        if want is None:  # `latent` (the query reads its output)
+            assert slow is None and got is None
+            continue
+        _assert_as_close(got, slow, want)
+
+
+def test_the_staged_shot_head_is_bitwise_repeatable():
+    head = _shot_head(seed=1)
+    latent, features = _shot_head_inputs(seed=1)
+    first, second = (_shot_head_run(head, latent, features, True) for _ in range(2))
+    _assert_identical(
+        first[0] + [g for g in first[1] if g is not None],
+        second[0] + [g for g in second[1] if g is not None],
+    )
+
+
 # ------------------------------------------------------------------ the whole model
 
 
@@ -478,7 +538,10 @@ CONFIGURED = {
     "temporal mix": ((temporal._temporal_forward, temporal._temporal_backward), _temporal_both),
     "heads": (
         (head_kernel._head_forward, head_kernel._head_backward),
-        test_heads_in_bf16_are_as_close_as_the_plain_heads,
+        lambda: (
+            test_heads_in_bf16_are_as_close_as_the_plain_heads(),
+            test_the_staged_shot_head_in_bf16_is_as_close_as_the_plain_query(),
+        ),
     ),
 }
 
