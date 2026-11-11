@@ -13,7 +13,9 @@ file lock on every state change, so a crash or a reboot loses nothing. The runne
 `~/.local/share/bnb/locked.py`) with its output in `logs/queue/<job>.log` beside the queue
 file. A job that was running when the runner died is marked interrupted at the runner's next
 start and, for training, re-queued as a resume; one whose process is still alive is waited
-for first. `eta` reads a job's progress from its own log lines.
+for first. `eta` reads a job's progress from its own log lines. A chain
+(`bnb train --objective chain`, `bnb.runs.chain`) is one job: its run is the stage it is
+in, and it goes back into the queue as a resume of the chain.
 """
 
 import contextlib
@@ -28,6 +30,7 @@ import subprocess
 import sys
 import time
 
+from .chain import Chain
 from .records import Run, write_json
 
 DATA = pathlib.Path.home() / ".local" / "share" / "bnb"
@@ -226,7 +229,8 @@ def next_job(queue: dict) -> dict | None:
 
 def run_of(job: dict, log: pathlib.Path) -> Run | None:
     """The run a train or resume job trains, once it exists: the name its arguments give or
-    its log's first line (`run NAME in DIRECTORY`)."""
+    its log's first line (`run NAME in DIRECTORY`); for a chain, or a chain's stage, the
+    run of the stage the chain is in (`bnb.runs.chain.Chain.current_run`)."""
     if job["kind"] == "ratings":
         return None
     name, directory = job.get("run"), job.get("runs_directory")
@@ -240,20 +244,28 @@ def run_of(job: dict, log: pathlib.Path) -> Run | None:
                     break
     if name is None or directory is None:
         return None
+    directory = pathlib.Path(directory)
     try:
-        return Run.open(pathlib.Path(directory), name)
+        if Chain.exists(directory, name):
+            return Chain.open(directory, name).current_run()
+        run = Run.open(directory, name)
+        chain = run.record.get("chain")
+        if chain is not None and Chain.exists(directory, chain["name"]):
+            return Chain.open(directory, chain["name"]).current_run()
+        return run
     except FileNotFoundError, json.JSONDecodeError:
         return None
 
 
 def resume_arguments(job: dict, run: Run) -> list[str]:
     """A resume's arguments for a job that trained `run`: a resume job's own; for a new
-    run's, its name, the runs directory and the options a checkpoint does not keep
-    (`CARRIED`: the device and the W&B stream). The budget and every setting come from the
-    checkpoint."""
+    run's, its name (a chain's stage: the chain's), the runs directory and the options a
+    checkpoint does not keep (`CARRIED`: the device and the W&B stream). The budget and
+    every setting come from the checkpoint (a chain's from its record)."""
     if job["kind"] == "resume":
         return list(job["arguments"])
-    arguments = [run.record["name"], "--runs-directory", str(run.directory.parent)]
+    name = (run.record.get("chain") or {}).get("name", run.record["name"])
+    arguments = [name, "--runs-directory", str(run.directory.parent)]
     for name, takes_value in CARRIED.items():
         value = option(job["arguments"], name)
         if takes_value and value is not None:
@@ -266,10 +278,11 @@ def resume_arguments(job: dict, run: Run) -> list[str]:
 def as_resume(job: dict, run: Run, note: str) -> None:
     """Queue `job` again as a resume of `run` (to its own budget, in the checkpoint), with
     the same id, place, dependency and background flag."""
+    arguments = resume_arguments(job, run)
     job.update(
         kind="resume",
-        arguments=resume_arguments(job, run),
-        run=run.record["name"],
+        arguments=arguments,
+        run=arguments[0],
         runs_directory=str(run.directory.parent),
         state="queued",
         pid=None,

@@ -169,6 +169,28 @@ def test_a_chain_resumes_in_bc(monkeypatch, tmp_path):
     assert [row["counters/updates"] for row in rows(bc_run)] == [1, 2]
 
 
+def test_a_chain_resumes_in_bc_from_its_start(monkeypatch, tmp_path):
+    """A BC stage that failed in its first update, before any checkpoint of its cadence,
+    resumes from its step-0 checkpoint."""
+    plateau_at(monkeypatch, STEPS)
+    update = Trainer.update
+
+    def failing(self):
+        raise RuntimeError("the first BC update broke")
+
+    monkeypatch.setattr(Trainer, "update", failing)
+    with pytest.raises(RuntimeError, match="the first BC update broke"):
+        chain(monkeypatch, tmp_path, 2 * STEPS)
+    bc_run = Run.open(tmp_path, "c-bc")
+    assert bc_run.record["status"] == "failed" and bc_run.checkpoint_steps() == [0]
+    monkeypatch.setattr(Trainer, "update", update)
+    chained = resume(monkeypatch, tmp_path)
+    bc_run = Run.open(tmp_path, "c-bc")
+    assert bc_run.record["segments"][-1]["start_step"] == 0
+    assert chained.record["handover"]["step"] == STEPS
+    assert Run.open(tmp_path, "c-rl").record["status"] == "finished"
+
+
 def test_a_chain_resumes_at_the_handover(monkeypatch, tmp_path):
     """The BC stage finished and the handover recorded, but the RL stage failed before its
     first update: the resume takes the RL stage up from its step-0 checkpoint."""
@@ -254,3 +276,29 @@ def test_a_chains_resume_takes_its_settings_from_its_record(monkeypatch, tmp_pat
     chain(monkeypatch, tmp_path, STEPS)
     with pytest.raises(SystemExit, match="--environments from the chain's record"):
         resume(monkeypatch, tmp_path, "--environments", "32")
+
+
+def test_the_queue_resumes_a_chain_by_its_name(monkeypatch, tmp_path):
+    """A queued chain is one job: its run is the stage the chain is in (from the job's
+    --name, or from a stage's `run NAME in DIRECTORY` line in its log), and a preempted
+    chain goes back into the queue as a resume of the chain, which finishes it."""
+    from bnb.runs import queue
+
+    plateau_at(monkeypatch, STEPS)
+    stop_at_update(monkeypatch, 2)  # BC's one update, then RL's first
+    chain(monkeypatch, tmp_path, 3 * STEPS)
+    arguments = [*CHAIN_OPTIONS, "--chain-budget-steps", str(3 * STEPS), "--name", "c"]
+    job = dict(kind="train", arguments=arguments, run="c", runs_directory=str(tmp_path))
+    log = tmp_path / "job.log"
+    log.write_text(f"chain c in {tmp_path / 'c'}\nrun c-bc in {tmp_path / 'c-bc'}\n")
+    by_line = dict(job, run=None, runs_directory=None)
+    for each in (job, by_line):
+        run = queue.run_of(each, log)
+        assert run.record["name"] == "c-rl" and run.record["status"] == "stopped"
+    resumed = queue.resume_arguments(job, run)
+    assert resumed == ["c", "--runs-directory", str(tmp_path), "--device", "cpu"]
+    monkeypatch.undo()
+    monkeypatch.setattr(sys, "argv", ["bnb", "train", "--resume", *resumed])
+    with torch.random.fork_rng(devices=[]):
+        cli.main()
+    assert queue.run_of(job, log).record["status"] == "finished"

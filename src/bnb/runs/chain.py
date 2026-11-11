@@ -23,7 +23,7 @@ checkpoint) and in RL.
 import json
 import pathlib
 
-from .records import write_json
+from .records import Run, write_json
 
 RECORD = "chain.json"
 STAGES = ("bc", "rl")
@@ -91,6 +91,16 @@ class Chain:
     def stage_run(self, stage: str) -> str:
         """The run name of a stage ("bc" or "rl")."""
         return self.record["stages"][stage]
+
+    def current_run(self) -> Run | None:
+        """The run of the stage the chain is in: the RL stage's once it exists, else the
+        BC stage's (None before either exists)."""
+        runs_directory = self.directory.parent
+        for stage in reversed(STAGES):
+            name = self.stage_run(stage)
+            if (runs_directory / name).exists():
+                return Run.open(runs_directory, name)
+        return None
 
     def stage_record(self, stage: str, start_step: int) -> dict:
         """The `chain` entry of a stage's run.json."""
