@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/learn/bc.py, src/bnb/runtime/cloning.py]
-reviewed: 2026-11-09 12:00
+reviewed: 2026-11-11 17:00
 ---
 
 # Behaviour cloning
@@ -109,29 +109,70 @@ its retained checkpoints from 66M to 151M steps, built offline, 0.350.
 
 `bnb.learn.bc.StopRule`, fed once per update by `bnb.runtime.cloning.update`, names the
 first rule to fire (`bnb.learn.bc.StopConfig`, the run's `TrainConfig.stop`). Its state is
-part of the training checkpoint, so a resumed run continues the same window:
+part of the training checkpoint, so a resumed run continues the same windows:
 
-- **score:** the score against the raw scripted agent in the lanes (wins plus half the
-  draws) over the last 1000 finished lane games of the better of the two averages reaches
-  parity, 0.5, even if the KL is still falling. Each player keeps its own window
-  (`bnb.learn.bc.ScoreWindow`): the live clone's too, which is logged and never read. The
-  rule reads, of the averages `StopConfig.reads` names, the one whose full window scores
-  higher (`StopRule.read`). Against one opponent a rating is a monotone function of the
-  score, so this is the better-rated average over the stop's own window, not the lanes'
-  ten-update rating window. An equal score goes to the exponential average, the first in
-  `reads`. The uniform average's games count only from the first update that began with
-  it past its warm-up: before that it is the live clone, and the rule reads the
-  exponential average alone. It is the plain score; its standard error (the sample
-  deviation of the per-game scores over the square root of 1000) is reported beside it
-  (`bc/stop/window_stderr`{.plain}). A window keeps each update's games, points and
-  squared points, drops the oldest updates whole and counts the oldest one it keeps by the
-  share of its games the window needs, so trimming favours no result;
-- **KL plateau:** the BC KL, `KL(labels ‖ student) = CE − H(labels)` per token, as an
-  exponential average over updates, improved by less than 1% over the last 20M
-  environment steps;
-- **budget:** 50M environment steps, v1's time to parity. A run stopped by its budget ends
-  with a checkpoint and its policy files; `bnb train --resume RUN --bc-budget-steps N`
-  with a larger budget continues it.
+- **plateau** (the default): BC's imitation has stopped improving, read on the BC KL,
+  `KL(labels ‖ student) = CE − H(labels)` per token (`bnb.learn.bc.Plateau`). Over the
+  last 10M environment steps its trailing mean improved by less than 5% of its
+  improvement since 5M steps, and that has held at every update for 10M steps
+  (`plateau_window_steps`, `plateau_fraction`, `plateau_from_steps`,
+  `plateau_hold_steps`). The trailing mean is over the updates of the last 5M steps
+  (`plateau_smoothing_steps`); the improvement since 5M is measured from the plain mean of
+  the updates within 2.5M steps of 5M, which leaves out the untrained policy's first
+  updates. It reads neither the teacher nor the model, so it applies to every model and
+  teacher. `--set stop.plateau_fraction=null` turns it off;
+- **score** (off by default, `StopConfig.score_target`): the score against the raw scripted
+  agent in the lanes (wins plus half the draws) over the last 1000 finished lane games of
+  the better of the two averages reaches the target (parity, 0.5, was the default before
+  the plateau). Each player keeps its own window (`bnb.learn.bc.ScoreWindow`), kept and
+  logged whether or not the rule has a target: the live clone's too, which is never read.
+  The rule reads, of the averages `StopConfig.reads` names, the one whose full window
+  scores higher (`StopRule.read`), and that average is the run's `policy/`. Against one
+  opponent a rating is a monotone function of the score, so this is the better-rated
+  average over the stop's own window, not the lanes' ten-update rating window. An equal
+  score goes to the exponential average, the first in `reads`. The uniform average's
+  games count only from the first update that began with it past its warm-up: before that
+  it is the live clone, and the rule reads the exponential average alone. It is the plain
+  score; its standard error (the sample deviation of the per-game scores over the square
+  root of 1000) is reported beside it (`bc/stop/window_stderr`{.plain}). A window keeps
+  each update's games, points and squared points, drops the oldest updates whole and
+  counts the oldest one it keeps by the share of its games the window needs, so trimming
+  favours no result;
+- **budget:** 50M environment steps, v1's time to parity: a cap. A run stopped by its
+  budget ends with a checkpoint and its policy files; `bnb train --resume RUN
+  --bc-budget-steps N` with a larger budget continues it. In a chain
+  ([Training](../guides/training.md#chain-bc-and-rl)) the budget is the chain's combined
+  one.
+
+### Why the plateau reads like this
+
+The rule was chosen offline on the hub's BC runs of 2026-11-09 and 2026-11-10, against the
+calibrated Elo of their averages: "over the last 10M environment steps the KL improved by
+less than 5% of its improvement since 5M", on centred five-update means and staying true
+for the rest of the run, matched the Elo's plateau in both arms that reached one (the
+KL: 86M steps against the Elo's 80.7M for the null arm, 69M against 70.3M for the
+champion; the joint agreement: 85M and 67M). The 5% was chosen after looking at these arms.
+
+Online only the past is known, so the means trail and a hold stands for "staying true".
+Without the hold the rule fires at 20-25M steps on every run: the KL falls to about 0.48
+by 10M, climbs back to 0.55 and stalls until about 22M (a temporary plateau the improvement
+since 5M counts as one). On the KL that stall holds the condition for at most 4M steps;
+the hold of 10M, one window, waits it out with room to spare. Replayed on the runs'
+records (`bench/bc_plateau.py`, the test `tests/sections/test_bc_plateau.py`):
+
+| Run | Ended | Fires on the KL | on the agreement |
+| --- | --- | --- | --- |
+| `2026-11-09-bc-absolute` (null) | 120.6M | 98.6M | 97.5M |
+| `2026-11-09-bc-deadreckon-split-hiddenphysics` (champion) | 120.6M | 81.8M | 79.7M |
+| `2026-11-09-bc-deadreckon-split` (still improving at its end) | 60.8M | never | never |
+| `2026-11-10-bc-nearest` (nearest-neighbour MLP) | 120.6M | 80.7M | 80.7M |
+
+So the online rule fires 11-13M steps after the offline reading: the hold (10M) and half
+the smoothing (2.5M), the price of not knowing the future. A hold of 5M fires 5M earlier
+on each (93.3M, 76.5M, never, 75.5M) with a margin of 1M over the stall. The rule reads
+the KL alone: it is the quantity BC minimises, and the agreement, an argmax, holds its
+condition through the stall for 7M steps (a hold of 5M fires it at 26-29M on two runs)
+and on `deadreckon-split` at 56M, close to that run's end while it still improved.
 
 ## Metrics
 
@@ -145,7 +186,10 @@ opponent kind (`bc/score/<kind>`{.plain}); the lanes' games, scores and ratings
 and `rating/uniform_average/<mode>`{.plain}); and the stop's windows: the read average's
 score and error (`bc/stop/window_score`{.plain}, `bc/stop/window_stderr`{.plain}), every
 full window's (`bc/stop/window_score/<player>`{.plain}) and which average the stop reads
-(`bc/stop/reads/<average>`{.plain}, 1 for the read one).
+(`bc/stop/reads/<average>`{.plain}, 1 for the read one); and the plateau's reading: the
+KL's trailing mean (`bc/stop/plateau/kl_mean`{.plain}), the recent improvement over the
+improvement since 5M, once there is one (`bc/stop/plateau/fraction`{.plain}, which fires
+the rule below 0.05), and how long it has been below (`bc/stop/plateau/held_steps`{.plain}).
 
 ## The hand-off
 
@@ -154,7 +198,7 @@ full window's (`bc/stop/window_score/<player>`{.plain}) and which average the st
 its weights, the return scale's state, the step counts and its own lane rating per mode,
 where the RL run's live rating starts:
 
-- `policy/`{.plain}: the run's policy, the average the score stop read last (before any
+- `policy/`{.plain}: the run's policy, the average the score window read last (before any
   window filled, the exponential average); `run.json`{.plain} names it as
   `policy_player`;
 - `policy-uniform/`{.plain} and `policy-exponential/`{.plain}: each average;
@@ -166,7 +210,9 @@ players of every 10M environment steps and of each end stay under
 `policies/step_<steps>/` (`TrainConfig.policy_snapshot_every`,
 [Runs and checkpoints](runs.md#every-updates-policy-files)). The return scale is the learner's in all four. `bnb train
 --init-from` starts reinforcement learning from any of them (`bnb.runs.checkpoint.warm_start`): the weights and return scale, a fresh
-optimizer, fresh step counts and no cloning term ([Runs and checkpoints](runs.md)). In
+optimizer, fresh step counts and no cloning term ([Runs and checkpoints](runs.md)); a
+chain starts it from `policy-exponential/`{.plain} for every model
+([Training](../guides/training.md#chain-bc-and-rl)). In
 Python, `bnb.runtime.cloning.warm_start` does the same in memory, copying into a trainer in
 place so the rollout's captured graphs keep reading the weights.
 

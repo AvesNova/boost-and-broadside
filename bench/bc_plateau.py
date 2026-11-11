@@ -61,6 +61,7 @@ def fires(config: StopConfig, series: list[tuple[int, float]]) -> int | None:
 
 
 def main() -> None:
+    """Print each run's fire steps (and write the fixture) for the command line's rule."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--records", type=pathlib.Path, required=True)
     parser.add_argument("--runs", nargs="+", default=RUNS)

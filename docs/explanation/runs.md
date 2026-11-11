@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/runs/, src/bnb/runtime/rollout.py, src/bnb/models/yemong/model.py, src/bnb/models/relational.py, src/bnb/models/mlp.py, tests/runs/]
-reviewed: 2026-11-06 12:00
+reviewed: 2026-11-11 17:00
 ---
 
 # Runs and checkpoints
@@ -150,6 +150,12 @@ A fork or a warm start whose command sets no model setting takes the file's
   (`policy/` and `policy-<variant>/`) are written again when it stops and replace the
   earlier ones. A BC run does not start from
   another run (`--from`) or a policy file (`--init-from`).
+- **A chain** (`bnb train --objective chain`, `bnb.runs.chain`) is a BC run and a PPO
+  run warm-started from its exponential average, `<name>-bc` and `<name>-rl`, with the
+  chain's record in `<name>/chain.json`{.plain}; each stage's `run.json`{.plain} carries a
+  `chain` entry (the chain, the stage, the chain's steps before it) and starts with a
+  checkpoint at its step 0, so `--resume <name>` continues it in BC, at the handover or in
+  RL ([Training](../guides/training.md#chain-bc-and-rl)).
 - **A fork's** update count starts at zero, so `--updates` is the number of updates the
   fork trains; its environment-step count goes on from the parent's, so the learning
   rate's warm-up does not restart.

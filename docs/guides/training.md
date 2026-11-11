@@ -1,6 +1,6 @@
 ---
-covers: [src/bnb/cli.py, src/bnb/runtime/train.py, src/bnb/contracts/pools.py, src/bnb/contracts/config.py, src/bnb/game/modes/rules.py]
-reviewed: 2026-11-03 16:00
+covers: [src/bnb/cli.py, src/bnb/runs/chain.py, src/bnb/runtime/train.py, src/bnb/contracts/pools.py, src/bnb/contracts/config.py, src/bnb/game/modes/rules.py]
+reviewed: 2026-11-11 17:00
 ---
 
 # Training
@@ -146,6 +146,63 @@ spatial sublayers and drops each block's temporal one (`YemongConfig.order`
 uv run --no-sync bnb train --preset mixed --set 'yemong.order="spatial_only"'
 uv run --no-sync bnb train --preset mixed --model nearest
 ```
+
+## Chain BC and RL
+
+A model is trained in two stages: behaviour cloning of the scripted agent until its
+imitation plateaus, then PPO from the clone. `--objective chain` runs both in one command,
+to a combined budget of environment steps:
+
+<!-- not-runnable: needs CUDA and runs for hours -->
+```bash
+uv run --no-sync bnb train --objective chain --preset mixed --chain-budget-steps 200000000 \
+    --bc-set learner.micro_batch_rows=2560 --rl-set learner.micro_batch_rows=320 \
+    --name 2026-11-12-chain-example
+uv run --no-sync bnb train --resume 2026-11-12-chain-example
+uv run --no-sync bnb train --resume 2026-11-12-chain-example --chain-budget-steps 300000000
+```
+
+The BC stage is `bnb train --objective bc` with the combined budget as its own, a cap: in a
+chain that goes as planned its plateau rule stops it first
+([When it stops](../explanation/behaviour-cloning.md#when-it-stops)). The RL stage is a warm
+start (`--init-from`) from the BC stage's exponential average, `policy-exponential/`{.plain},
+for every model: a fresh optimizer and step count, so the learning-rate warm-up runs again,
+the warm start's entropy coefficients (`bnb.learn.ppo.WARM_START_ENTROPY`) and no term
+pulling it towards the clone. It trains the whole updates that fit in what the combined
+budget leaves (`bnb.runs.chain.reinforcement_updates`), none when BC used it all.
+
+Every other option (`--preset`, `--model`, `--environments`, `--set`, `--wandb`, ...)
+applies to both stages; `--bc-set` and `--rl-set` are `--set` lines for one stage, applied
+after the shared ones. `--updates`, `--bc-budget-steps`, `--from` and `--init-from` are the
+chain's to set and are refused. `--print-config` prints both stages' configurations, as
+`{"bc": ..., "rl": ...}`.
+
+A chain is two ordinary runs and a record (`bnb.runs.chain`):
+
+<!-- not-runnable: a directory layout -->
+```text
+runs/2026-11-12-chain-example/chain.json   the chain: its command, budget, stages, handover
+runs/2026-11-12-chain-example-bc/          the BC stage, a BC run
+runs/2026-11-12-chain-example-rl/          the RL stage, a PPO run
+```
+
+The handover is in `chain.json`{.plain}: the BC stage's last environment step, the rule that
+stopped it and the policy file the RL stage started from. Each stage's
+`run.json`{.plain} names the chain, its stage and its `start_step`, the chain's steps
+before it, and the RL stage's `parent` is the policy file. Each stage's records count
+their own environment steps from 0 and carry `counters/chain_environment_steps`, the step
+on the chain's axis, so the two `metrics.jsonl`{.plain} files plot as one curve.
+
+`--resume NAME` continues the chain where it is: the BC stage from its newest checkpoint,
+the handover (a finished BC stage with no RL stage yet), or the RL stage. Each stage
+writes a checkpoint at its step 0, so an RL stage that failed before its first cadence
+checkpoint resumes from its start. A resume takes its settings from the chain's record;
+it may change `--chain-budget-steps` (the RL stage's updates follow; a BC stage not yet
+finished gets it as its budget), `--device`, `--runs-directory`, `--checkpoint-every` and
+`--wandb`. A stop request (Ctrl-C, SIGTERM, or a `STOP`{.plain} file in the running stage's
+directory) ends the process after the stage in progress, with its checkpoint; so does a
+BC stage that did not finish. Each stage's run can also be resumed alone as a plain run,
+which does not go on to the next stage.
 
 ## Configure a run in Python
 
