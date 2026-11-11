@@ -21,7 +21,8 @@ interface, views, agents, replays, themes and offscreen renders.
 `bnb.play.loop.MatchLoop` holds a `bnb.runtime.realtime.Realtime` match, compiled, at its
 fixed tick, set up by a `MatchSetup` (the game, the lineup, fog, the seed, and each
 side's controller). Each side is played by its controller (`bnb.play.sides`): the
-scripted `bnb.controllers.scripted.Chaser`, or a trained agent. At most one ship, the
+scripted agent (`bnb.controllers.scripted.Scripted`, the default), the chaser
+(`bnb.controllers.scripted.Chaser`), or a trained agent. At most one ship, the
 pilot, is flown from the keyboard instead; its action replaces that ship's only.
 
 The loop runs on one thread with a fixed timestep:
@@ -193,13 +194,22 @@ have their own lock, and the window only waits for their results:
 
 - **The tick.** A new kind of match (another mode, map size or fleet) needs its tick built.
   `bnb.runtime.realtime.library` exports it and packages it with AOTInductor in a child
-  process (about 30 s), keeps it in the user's cache directory (`bnb.cache`, keyed by the
-  game's code, torch's version and the static rules), and loads it in milliseconds.
-  `Realtime(background=True)` does this on a thread that waits for the child, while the
-  match runs the uncompiled tick (about 5 ms a step with scripted sides: enough up to ×2),
-  then swaps the built tick in (about 0.2 ms). The built tick agrees with the uncompiled
-  one to float32 fusion rounding, and replays repeat each tick as it ran. A built tick is shared by every match of the same static
-  rules, in this process and every later one.
+  process (`bnb.runtime.built`, about 30 s), keeps it in the user's cache directory
+  (`bnb.cache`, keyed by the game's code, torch's version and the static rules), and loads
+  it in milliseconds. `Realtime(background=True)` does this on a thread that waits for the
+  child, while the match runs the uncompiled tick (about 5 ms a step), then swaps the built
+  tick in (about 0.4 ms). The built tick agrees with the uncompiled one to float32 fusion
+  rounding, and replays repeat each tick as it ran. A built tick is shared by every match of
+  the same static rules, in this process and every later one.
+- **The scripted agent's step.** Uncompiled, a scripted agent's decision is a few hundred
+  small torch operations: about 4.3 ms a side on one CPU thread, flat over the match, so two
+  scripted sides held a frame with a tick to 12-15 ms. It is built the same way
+  (`bnb.runtime.scripted_step`, about 15 s): from the shapes of the agent's first step,
+  with the ship characteristics an input (a tuned card plays on the same library), keyed by
+  the code, the parameters and the shapes. Built, it takes about 0.1 ms a side. Its random
+  draws come from torch's default generator, as uncompiled, so the agent's own generator,
+  swapped in, gives the same actions either way. Until it is in, the agent steps
+  uncompiled.
 - **The scripted agent's characteristics** are measured once per card, in a child process
   (`bnb.game.handling.characteristics.measure_aside`), and kept in the same cache. A side
   set to a scripted agent whose card is not measured yet (`Session.set_side`, or a match

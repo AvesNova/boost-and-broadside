@@ -28,7 +28,7 @@ from bnb.game import api
 from bnb.game.api import PRESETS
 from bnb.game.handling.characteristics import cached as cached_characteristics
 from bnb.game.handling.characteristics import measure_aside
-from bnb.runtime.realtime import clone
+from bnb.runtime.built import clone
 
 from . import predictions, themes
 from . import replay as replays
@@ -443,7 +443,7 @@ class Session:
             )
             return True
         try:
-            controller = controller_of(side, team, loop.setup, loop.rules, loop.types)
+            controller = self._controller(side, team, loop.setup)
         except AgentError as error:
             self.say(str(error))
             return False
@@ -455,6 +455,14 @@ class Session:
             return True
         self._install(team, side, controller)
         return True
+
+    def _controller(self, side: SideSetup, team: int, setup: MatchSetup):
+        """The controller of a side for the current match's rules and card (a scripted
+        agent's step is built in the background when the tick is compiled)."""
+        loop = self.loop
+        return controller_of(
+            side, team, setup, loop.rules, loop.types, self.options.compile, background=True
+        )
 
     def slow_side(self, side: SideSetup, setup: MatchSetup) -> bool:
         """Whether this side's controller takes seconds to make: a scripted agent whose
@@ -505,9 +513,7 @@ class Session:
             controller = pending.controller
             if controller is None:
                 try:
-                    controller = controller_of(
-                        pending.side, team, loop.setup, loop.rules, loop.types
-                    )
+                    controller = self._controller(pending.side, team, loop.setup)
                 except AgentError as error:
                     self.say(str(error))
                     continue
@@ -634,7 +640,7 @@ class Session:
         sides, chosen = [], []
         for team, side in enumerate(setup.sides):
             try:
-                sides.append(controller_of(side, team, setup, self.loop.rules, self.loop.types))
+                sides.append(self._controller(side, team, setup))
                 chosen.append(side)
                 continue
             except AgentError as error:

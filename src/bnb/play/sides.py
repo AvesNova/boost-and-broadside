@@ -31,6 +31,7 @@ import dataclasses
 import json
 import math
 import pathlib
+import threading
 
 import torch
 from torch.utils import _pytree
@@ -45,6 +46,9 @@ from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
 from bnb.runs import checkpoint
 from bnb.runs.serialise import to_json
+from bnb.runtime import built
+from bnb.runtime.built import clone
+from bnb.runtime.scripted_step import ScriptedStep, library_path
 
 from .overlays import MEMORY, NETWORK
 
@@ -108,33 +112,92 @@ class ScriptedAgent:
     """The scripted agent (`bnb.controllers.scripted.Scripted`, memory on, temperature 1):
     it remembers each enemy it saw and dead reckons it while hidden. Its draws come from
     its own generator, swapped in for torch's default one and back, so it is reproducible
-    from its seed and leaves the process's generator alone."""
+    from its seed and leaves the process's generator alone.
+
+    compiled: step with the built step (`bnb.runtime.scripted_step`) for the shapes of its
+    first step, which runs uncompiled; without `background` it is built or loaded right
+    after that step. background: get it on a thread (which waits on the child process that
+    builds it) while the agent steps uncompiled, then swap it in (`uses_compiled` says which
+    ran last). The two agree to float32 fusion rounding and draw the same numbers.
+    """
 
     label = "scripted agent"
     overlays = MEMORY
 
-    def __init__(self, rules: api.Rules, types: api.ShipTypes, seed: int = 0) -> None:
+    def __init__(
+        self,
+        rules: api.Rules,
+        types: api.ShipTypes,
+        seed: int = 0,
+        compiled: bool = False,
+        background: bool = False,
+    ) -> None:
         self.characteristics = characteristics(types, rules)
         self.controller = scripted.Scripted(self.characteristics, rules.ships_per_team)
         self.carry: ScriptedCarry = self.controller.init_carry(1, torch.device("cpu"))
         self.draws = torch.Generator().manual_seed(seed + MODEL_DRAWS_OFFSET)
         self.inspection: Inspection | None = None
+        self.step = ScriptedStep(rules.ships_per_team)
+        self.compiled, self.background = compiled, background
+        self.uses_compiled = False
+        self._path: pathlib.Path | None = None  # the built step's, from the first view
+        self._compile_error: BaseException | None = None
+        self._thread: threading.Thread | None = None
 
     def retune(self, traits) -> None:
         """Play on with the characteristics of a tuned card (live tuning), keeping what the
-        agent remembers."""
+        agent remembers (the built step takes them as an input: nothing rebuilds)."""
         self.characteristics = self.controller.characteristics = traits
+
+    def _compile(self, arguments: tuple, outputs: tuple) -> None:
+        """Load the built step (`bnb.runtime.built.library`: built in a child process first
+        when no earlier run built it)."""
+        try:
+            built.library(self._path, self.step, arguments, outputs, name="scripted-step-build")
+        except BaseException as error:  # reported by `compiling`; the agent stays uncompiled
+            self._compile_error = error
+
+    @property
+    def compiling(self) -> bool:
+        """The built step is still being built or loaded in the background."""
+        if self._compile_error is not None:
+            raise RuntimeError("building the scripted step failed") from self._compile_error
+        return self._thread is not None and self._thread.is_alive()
+
+    def wait_compiled(self) -> None:
+        """Block until a background build finishes."""
+        if self._thread is not None:
+            self._thread.join()
+        _ = self.compiling  # raises a failed build's error
+
+    def _start_compiling(self, arguments: tuple, outputs: tuple) -> None:
+        """Get the built step for the shapes of a step's arguments (the first one's), on a
+        thread with `background`."""
+        self._path = library_path(self.step, arguments)
+        if self.background and built.loaded(self._path) is None:
+            work = (clone(arguments), clone(outputs))
+            self._thread = threading.Thread(target=self._compile, args=work, daemon=True)
+            self._thread.start()
+        else:
+            self._compile(arguments, outputs)
+            _ = self.compiling  # raises a failed build's error
 
     @torch.no_grad()
     def act(self, view: Obs, reset: torch.Tensor) -> torch.Tensor:
         """The team's (S, 3) actions for its view (1, ...); the carry moves on."""
         before = self.carry
+        arguments = (before, view, reset, self.characteristics)
+        loaded = built.loaded(self._path) if self._path is not None else None
+        self.uses_compiled = loaded is not None
+        step = self.step if loaded is None else loaded
         with torch.random.fork_rng(devices=[]):
             torch.default_generator.set_state(self.draws.get_state())
-            action, self.carry, _ = self.controller.step(before, view, reset)
+            actions, self.carry = step(*arguments)
             self.draws.set_state(torch.default_generator.get_state())
         self.inspection = Inspection(before, view, reset)
-        return action.packed()[0]
+        if self.compiled and self._path is None:
+            self._start_compiling(arguments, (actions, self.carry))
+        return actions
 
 
 def agent_device() -> torch.device:
@@ -439,18 +502,32 @@ def describe(directory: pathlib.Path) -> str:
     return f"{model}" + (f", {steps / 1e6:.1f}M steps" if steps else "")
 
 
-def controller_of(side, team: int, setup, rules: api.Rules, types: api.ShipTypes):
+def controller_of(
+    side,
+    team: int,
+    setup,
+    rules: api.Rules,
+    types: api.ShipTypes,
+    compiled: bool = False,
+    background: bool = False,
+):
     """The controller of one `SideSetup` for team `team` of the setup's match (raises
-    AgentError for an agent that cannot play it)."""
+    AgentError for an agent that cannot play it). compiled, background: a scripted agent's
+    built step (`ScriptedAgent`)."""
     seed = setup.seed + team
     if side.controller == "agent":
         return load_agent(side.policy, setup.config, rules, types, side.temperature, seed)
     if side.controller == "scripted_agent":
-        return ScriptedAgent(rules, types, seed)
+        return ScriptedAgent(rules, types, seed, compiled=compiled, background=background)
     return Scripted(rules, types)
 
 
-def build_sides(setup, rules: api.Rules, types: api.ShipTypes) -> list:
+def build_sides(
+    setup, rules: api.Rules, types: api.ShipTypes, compiled: bool = False, background: bool = False
+) -> list:
     """Each side's controller from the setup's `SideSetup`s (raises AgentError for an
-    agent that cannot play)."""
-    return [controller_of(side, team, setup, rules, types) for team, side in enumerate(setup.sides)]
+    agent that cannot play); compiled, background: see `controller_of`."""
+    return [
+        controller_of(side, team, setup, rules, types, compiled, background)
+        for team, side in enumerate(setup.sides)
+    ]

@@ -1,14 +1,14 @@
 """`python -m bnb.play.benchmark`: the renderer's frame time, offscreen, holding the
 benchmark lock (run from the repository root, where `bench` imports).
 
-For each game and view it plays a match on the display clock with no frame cap (each
-frame waits for the GPU to finish, as a swap without vsync would), and reports the frame
-time's percentiles and whether the sim kept its real-time tick rate. A second, shorter
-run times each pass with GPU timer queries (which stall the pipeline, so they are not
-part of the frame times) and the CPU stages (sim tick, controllers, snapshot, index
-tiles, interpolation, and each pass's own Python, which includes its uploads). Last, it
-rebuilds the map's index texture as a map change does, a few tiles per frame, and reports
-those frames.
+For each game and view it plays a match on the display clock, its tick and its scripted
+agents' steps built first, with no frame cap (each frame waits for the GPU to finish, as a
+swap without vsync would), and reports the frame time's percentiles and whether the sim
+kept its real-time tick rate. A second, shorter run times each pass with GPU timer queries
+(which stall the pipeline, so they are not part of the frame times) and the CPU stages (sim
+tick, controllers, snapshot, index tiles, interpolation, and each pass's own Python, which
+includes its uploads). Last, it rebuilds the map's index texture as a map change does, a
+few tiles per frame, and reports those frames.
 
 The interface is drawn as a player sees it with everything open: every card, the minimap
 and a selected ship. The stage `interface` is its own CPU time (building the ImGui frame,
@@ -147,6 +147,11 @@ def main() -> None:
                 started = time.perf_counter()
                 session = Session(options, context, *size)
                 session.loop.realtime.wait_compiled()
+                # a scripted agent's step is built from its first one
+                session.update(session.loop.tick_length)
+                for side in session.loop.sides:
+                    if hasattr(side, "wait_compiled"):
+                        side.wait_compiled()
                 setup = time.perf_counter() - started
                 session.show_interface = benchmark.interface
                 session.select(Selection("ship", 0))

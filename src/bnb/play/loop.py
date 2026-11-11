@@ -114,7 +114,9 @@ class MatchLoop:
     ticks. `events` holds this episode's `MatchEvent`s (`kills` and `deaths` count them per
     ship), and `on_tick`, when set, is called after every tick with the actions, the
     realtime match and the tick's events (the replay recorder); `on_retune`, when set, is
-    called after every live change (`retune`) with the realtime match.
+    called after every live change (`retune`) with the realtime match. compiled,
+    background: the tick's and the scripted agents' built functions (`Realtime`,
+    `bnb.play.sides.ScriptedAgent`).
     """
 
     replaying = False
@@ -144,7 +146,9 @@ class MatchLoop:
             )
         self.realtime = realtime
         self.rules, self.types = realtime.rules, realtime.types
-        self.sides = build_sides(setup, self.rules, self.types) if sides is None else sides
+        if sides is None:
+            sides = build_sides(setup, self.rules, self.types, compiled, background)
+        self.sides = sides
         self.pilot = pilot
         self.inputs = torch.zeros(len(INPUTS), dtype=torch.bool)
         self.time_scale = 1.0

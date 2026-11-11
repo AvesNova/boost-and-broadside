@@ -1,14 +1,12 @@
 """One match on the CPU for interactive play: the same game functions at B = 1.
 
-The tick is one compiled library (AOTInductor's C++), shared by every match of the same
-rules in the process. It is built in a child process and kept on disk (`library_path`, in
-`bnb.cache`: keyed by the game's code, torch's version and the rules), then loaded in
-milliseconds. Building it in this process would trace and compile on the interpreter lock
-for tens of seconds and freeze the window's thread however the work was threaded; a child
-has its own. With `background=True` the match runs the uncompiled tick until the library is
-ready, so a new match starts at once. The library agrees with the uncompiled tick to
-float32 fusion rounding; a replay repeats each tick as it ran (`uses_compiled`), so it
-reproduces the match either way. The match draws its randomness from its own
+The tick is one compiled library (`bnb.runtime.built`: AOTInductor's C++), shared by every
+match of the same rules in the process. It is built in a child process and kept on disk
+(`library_path`, in `bnb.cache`: keyed by the game's code, torch's version and the rules),
+then loaded in milliseconds. With `background=True` the match runs the uncompiled tick until
+the library is ready, so a new match starts at once. The library agrees with the uncompiled
+tick to float32 fusion rounding; a replay repeats each tick as it ran (`uses_compiled`), so
+it reproduces the match either way. The match draws its randomness from its own
 `torch.Generator`, outside the tick, so a seed, a keyframe and the actions decide every
 state. Process-wide settings (thread count) belong to the entry point.
 
@@ -20,31 +18,32 @@ next tick, never a rebuild.
 """
 
 import dataclasses
-import multiprocessing
-import os
 import pathlib
 import threading
 from collections.abc import Callable
 
 import torch
-from torch.utils import _pytree
 
 from bnb import cache
 from bnb.contracts import Action, Events, GameConfig, Obs
 from bnb.game import api
+from bnb.runtime import built
+from bnb.runtime.built import clone
 
 TickFunction = Callable[..., tuple[api.State, Obs, Events]]
 
-_TICK_CODE = ("game", "contracts", "runtime/realtime.py")  # the code the built tick holds
-_BUILT: dict[api.Rules, Library] = {}  # this process's loaded libraries, by static rules
-_LOCK = threading.Lock()
+_TICK_CODE = ("game", "contracts", "runtime/realtime.py", "runtime/built.py")  # what it holds
 
 
-def _tick_of(static: api.Rules) -> TickFunction:
+@dataclasses.dataclass(frozen=True)
+class Tick:
     """The tick for these static rules: move, resolve and perceive, with the rules' live
     values, the card and the draws as inputs."""
 
-    def tick(
+    static: api.Rules
+
+    def __call__(
+        self,
         state: api.State,
         types: api.ShipTypes,
         live: dict[str, torch.Tensor],
@@ -52,18 +51,11 @@ def _tick_of(static: api.Rules) -> TickFunction:
         spread: torch.Tensor,
         uniforms: torch.Tensor,
     ) -> tuple[api.State, Obs, Events]:
-        rules = api.tuning.with_live(static, live)
+        rules = api.tuning.with_live(self.static, live)
         moved, sweep = api.move(rules, types, state, Action.unpack(actions[None]), spread)
         stepped, events = api.resolve(rules, types, moved, sweep, uniforms)
         stepped, obs, _ = api.perceive(rules, stepped)
         return stepped, obs, events
-
-    return tick
-
-
-def clone(tree):
-    """A deep copy of a tensor tree (a state, an observation)."""
-    return _pytree.tree_map(torch.clone, tree)
 
 
 def _throwaway_inputs(rules: api.Rules) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -81,85 +73,13 @@ def library_path(static: api.Rules) -> pathlib.Path:
     return cache.path("ticks", static, packages=_TICK_CODE, suffix=".pt2")
 
 
-def _tensor_positions(leaves: list) -> list[int]:
-    return [index for index, leaf in enumerate(leaves) if isinstance(leaf, torch.Tensor)]
-
-
-class _Flat(torch.nn.Module):
-    """The tick on its inputs' tensor leaves, returning its outputs' tensor leaves (what
-    export packages: the trees themselves are rebuilt by `Library`)."""
-
-    def __init__(self, static: api.Rules, arguments: tuple) -> None:
-        super().__init__()
-        self.tick = _tick_of(static)
-        self.leaves, self.spec = _pytree.tree_flatten(arguments)
-        self.positions = _tensor_positions(self.leaves)
-
-    def forward(self, *tensors: torch.Tensor) -> tuple[torch.Tensor, ...]:
-        leaves = list(self.leaves)
-        for position, tensor in zip(self.positions, tensors, strict=True):
-            leaves[position] = tensor
-        out = self.tick(*_pytree.tree_unflatten(leaves, self.spec))
-        return tuple(leaf for leaf in _pytree.tree_leaves(out) if isinstance(leaf, torch.Tensor))
-
-
-def _build(path: pathlib.Path, rules: api.Rules, static: api.Rules, state, types, live) -> None:
-    """In a child process: export the tick for these static rules and package it at `path`
-    (written aside, then moved in, so a reader never meets half a file)."""
-    torch.set_num_threads(1)
-    arguments = (state, types, live, *_throwaway_inputs(rules))
-    module = _Flat(static, arguments)
-    tensors = tuple(module.leaves[position] for position in module.positions)
-    with torch.no_grad():
-        program = torch.export.export(module, tensors, strict=True)
-    partial = path.with_name(f"{path.stem}.{os.getpid()}.partial.pt2")
-    torch._inductor.aoti_compile_and_package(program, package_path=str(partial))
-    partial.replace(path)
-
-
-class Library:
-    """A built tick, loaded: called like the uncompiled tick, on trees of the same shapes."""
-
-    def __init__(self, path: pathlib.Path, static: api.Rules, arguments: tuple) -> None:
-        self._run = torch._inductor.aoti_load_package(str(path))
-        self._positions = _tensor_positions(_pytree.tree_leaves(arguments))
-        with torch.no_grad():  # the outputs' tree: the uncompiled tick's, once
-            out = _tick_of(static)(*clone(arguments))
-        self._out_leaves, self._out_spec = _pytree.tree_flatten(out)
-        self._out_positions = _tensor_positions(self._out_leaves)
-
-    def __call__(self, *arguments):
-        leaves = _pytree.tree_leaves(arguments)
-        tensors = self._run(*[leaves[position] for position in self._positions])
-        out = list(self._out_leaves)
-        for position, tensor in zip(self._out_positions, tensors, strict=True):
-            out[position] = tensor
-        return _pytree.tree_unflatten(out, self._out_spec)
-
-
-def library(rules: api.Rules, static: api.Rules, state, types, live) -> Library:
-    """The process's built tick for these static rules: loaded if this process has it,
-    read from disk if it was built before, else built in a child process first (the
-    calling thread waits without holding the interpreter lock)."""
-    with _LOCK:
-        if static in _BUILT:
-            return _BUILT[static]
-    path = library_path(static)
-    if not path.exists():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        child = multiprocessing.get_context("spawn").Process(
-            target=_build,
-            args=(path, rules, static, state, types, live),
-            name="tick-build",
-            daemon=True,
-        )
-        child.start()
-        child.join()
-        if child.exitcode != 0 or not path.exists():
-            raise RuntimeError(f"building the compiled tick failed (exit code {child.exitcode})")
-    loaded = Library(path, static, (state, types, live, *_throwaway_inputs(rules)))
-    with _LOCK:
-        return _BUILT.setdefault(static, loaded)
+def library(rules: api.Rules, static: api.Rules, state, types, live) -> built.Library:
+    """The process's built tick for these static rules (`bnb.runtime.built.library`: built
+    in a child process when no earlier run built it)."""
+    tick, arguments = Tick(static), (state, types, live, *_throwaway_inputs(rules))
+    with torch.no_grad():  # the outputs' structure: the uncompiled tick's (it draws nothing)
+        outputs = tick(*clone(arguments))
+    return built.library(library_path(static), tick, arguments, outputs, name="tick-build")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -218,12 +138,13 @@ class Realtime:
         self.state = api.reset(rules, self.types, uniforms, fog_flags)
         self.state, self.obs, _ = api.perceive(rules, self.state)
         self.events: Events | None = None
-        self._eager = _tick_of(self.static)
+        self._eager = Tick(self.static)
+        self._path = library_path(self.static)
         self.compiled = compiled
         self.uses_compiled = False
         self._compile_error: BaseException | None = None
         self._thread: threading.Thread | None = None
-        if compiled and background and self.static not in _BUILT:
+        if compiled and background and built.loaded(self._path) is None:
             self._thread = threading.Thread(target=self._compile, daemon=True)
             self._thread.start()
         elif compiled:
@@ -260,9 +181,9 @@ class Realtime:
         _ = self.compiling  # raises a failed build's error
 
     def _tick(self, eager: bool) -> TickFunction:
-        built = _BUILT.get(self.static) if self.compiled and not eager else None
-        self.uses_compiled = built is not None
-        return self._eager if built is None else built
+        loaded = built.loaded(self._path) if self.compiled and not eager else None
+        self.uses_compiled = loaded is not None
+        return self._eager if loaded is None else loaded
 
     # Stepping, keyframes ------------------------------------------------------------------
 
