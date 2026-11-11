@@ -25,10 +25,10 @@ from bnb.figures.video import VideoConfig
 
 @dataclasses.dataclass(frozen=True)
 class Train:
-    """Train a model with PPO (learner spec), or clone the scripted agent (BC), in a run
-    directory (runs spec): Yemong (--model yemong), the toy relational model (relational), or
-    the nearest-neighbour MLP (nearest; its settings `--set nearest.hidden=...`, `allies`,
-    `enemies`, `fields`).
+    """Train a model with PPO (learner spec), clone the scripted agent (BC), or chain the
+    two, in a run directory (runs spec): Yemong (--model yemong), the toy relational model
+    (relational), or the nearest-neighbour MLP (nearest; its settings
+    `--set nearest.hidden=...`, `allies`, `enemies`, `fields`).
 
     preset: a game preset (deathmatch, deathmatch_wide, frontline, real_scale_deathmatch,
     real_scale_frontline), which sets the mode, the sizes, the map and the ship set, or a
@@ -41,11 +41,11 @@ class Train:
     seed: the run's seed (TrainConfig.seed: the process and the learner's streams).
     set: TrainConfig fields by dotted path, such as learner.entropy_shoot=-0.01 or
     yemong.width=256 (JSON values); fields inside tuples (such as pools) cannot be set.
-    resume: continue the run named (PPO or BC), from its newest checkpoint or the one at
-    --at, with every setting from the checkpoint; only the budget (--updates, or
-    --bc-budget-steps), the precision, the micro-batch rows, the checkpoint cadence and
-    --set of OVERRIDABLE fields (the learning rate, the warm-up, the loss coefficients, the
-    reward weights) may change.
+    resume: continue the run named (PPO or BC; a chain: see objective), from its newest
+    checkpoint or the one at --at, with every setting from the checkpoint; only the budget
+    (--updates, or --bc-budget-steps), the precision, the micro-batch rows, the checkpoint
+    cadence and --set of OVERRIDABLE fields (the learning rate, the warm-up, the loss
+    coefficients, the reward weights) may change.
     fork (--from): a new run with these settings, starting from the named run's checkpoint
     (newest, or at --at): its model, optimizer, return scale, league slot and environment
     steps; --updates counts from the fork.
@@ -69,6 +69,14 @@ class Train:
     temperature, its labels mixed with uniform by the floor; T = 1 and floor 0 by
     default); bc_budget_steps: BC's budget in environment steps
     (TrainConfig.stop.budget_steps).
+    Or chain (`bnb.runs.chain`): BC until its stop rule fires, then PPO from the clone's
+    exponential average (a warm start: a fresh optimizer, its warm-up and
+    WARM_START_ENTROPY), to chain_budget_steps environment steps in all (BC's budget is
+    the same number, a cap), as two runs, `<name>-bc` and `<name>-rl`, with the chain's
+    record in `<name>/`. Every other option applies to both stages; bc_set and rl_set are
+    --set lines for one stage (after --set). `--resume NAME` continues the chain at the
+    stage it reached; it takes only --chain-budget-steps (raised, or lowered before the
+    handover), --device, --runs-directory, --checkpoint-every and --wandb.
     wandb: stream each update's record to W&B (project `boost-and-broadside-v2`, the run's
     name) as well as to the run's metrics.jsonl; without it nothing leaves the machine.
     calibrate_entropy: print the scripted agent's natural entropy over its own games of the
@@ -106,6 +114,9 @@ class Train:
     teacher_temperature: float = 1.0
     teacher_floor: float = 0.0
     bc_budget_steps: int = 50_000_000
+    chain_budget_steps: int | None = None
+    bc_set: Annotated[tuple[str, ...], tyro.conf.UseAppendAction] = ()
+    rl_set: Annotated[tuple[str, ...], tyro.conf.UseAppendAction] = ()
     calibrate_entropy: float | None = None
     calibration_segments: int = 4
     wandb: bool = False
@@ -127,6 +138,18 @@ RESUME_OPTIONS = (
     "wandb",
     "bc_budget_steps",
 )
+# What a chain's resume may be given besides --resume: the rest comes from its record.
+CHAIN_RESUME_OPTIONS = (
+    "resume",
+    "objective",
+    "chain_budget_steps",
+    "device",
+    "runs_directory",
+    "checkpoint_every",
+    "wandb",
+)
+# The options a chain sets for its stages, which its own command cannot.
+CHAIN_SETS = ("updates", "bc_budget_steps", "fork", "init_from", "at", "probe", "calibrate_entropy")
 # The resume options that set a TrainConfig field: their paths.
 RESUME_FIELDS = {
     "updates": "updates",
@@ -662,18 +685,29 @@ def set_precision(precision: str) -> None:
 
 
 def train(options: Train, given_options: set[str]) -> None:
-    """`bnb train`: a new run, a resume, a fork or a warm start, logging a line per update;
-    exits with the reason for a setting that does not fit. SIGINT, SIGTERM or the run's
-    STOP file stops it after the update in progress, with a checkpoint
-    (`bnb.runs.session.StopRequest`), from the start: a request during the setup stops the
-    run after no update."""
+    """`bnb train`: a new run, a resume, a fork, a warm start or a chain, logging a line per
+    update; exits with the reason for a setting that does not fit. SIGINT, SIGTERM or the
+    run's STOP file (a chain's: the running stage's) stops it after the update in progress,
+    with a checkpoint (`bnb.runs.session.StopRequest`), from the start: a request during the
+    setup stops the run after no update."""
+    from bnb.runs.chain import Chain
     from bnb.runs.session import StopRequest
 
     with StopRequest() as stop:
-        _train(options, given_options, stop)
+        resumes_chain = options.resume is not None and Chain.exists(
+            runs_directory_of(options.runs_directory), options.resume
+        )
+        if options.objective == "chain" or resumes_chain:
+            chain(options, given_options, stop)
+        else:
+            _train(options, given_options, stop)
 
 
-def _train(options: Train, given_options: set[str], stop) -> None:
+def _train(options: Train, given_options: set[str], stop, chain_entry: dict | None = None):
+    """One run: a new one, a resume, a fork or a warm start (`train`); returns its `Run`
+    (None for --print-config, --calibrate-entropy and --probe). chain_entry: a chain's new
+    stage (`bnb.runs.chain.Chain.stage_record`), recorded in its run.json; the stage
+    writes a checkpoint at its start, so it resumes from any point."""
     import torch
 
     from bnb.runs import checkpoint, probe, session
@@ -800,6 +834,8 @@ def _train(options: Train, given_options: set[str], stop) -> None:
                 parent,
                 keep_policies,
             )
+            if chain_entry is not None:
+                run.update(chain=chain_entry)
             run.start_segment(trainer.ppo.environment_steps)
             print(f"run {name} in {run.directory}", flush=True)
     except (
@@ -851,6 +887,8 @@ def _train(options: Train, given_options: set[str], stop) -> None:
     )
     recorder = Recorder(run, trainer, sinks, rules)
     cloned = config.objective == "bc"
+    if chain_entry is not None and not options.resume:
+        session.save(run, trainer, recorder=recorder)
     try:
         status = session.train(
             run, trainer, log_cloning if cloned else log, recorder=recorder, stop=stop
@@ -866,6 +904,136 @@ def _train(options: Train, given_options: set[str], stop) -> None:
     finally:
         sinks.close()
     print(f"run {run.record['name']} {status} at step {trainer.ppo.environment_steps}")
+    return run
+
+
+def chain(options: Train, given_options: set[str], stop) -> None:
+    """`bnb train --objective chain` (`bnb.runs.chain`): a new chain, or `--resume` of one,
+    continued at the stage it reached. The BC stage trains to its stop rule with the
+    combined budget as its own; the handover is recorded; the RL stage is a warm start from
+    the BC stage's exponential average whose update budget is what the combined budget
+    leaves (`bnb.runs.chain.reinforcement_updates`). A stop request, or a BC stage that did
+    not finish, ends the process after the stage."""
+    import gc
+
+    import torch
+
+    from bnb.runs.chain import HANDOVER_VARIANT, Chain, reinforcement_updates
+    from bnb.runs.records import Run, run_name
+
+    runs_directory = runs_directory_of(options.runs_directory)
+    if options.resume:
+        fixed = sorted(given_options - set(CHAIN_RESUME_OPTIONS))
+        if fixed:
+            flags = ", ".join("--" + name.replace("_", "-") for name in fixed)
+            raise SystemExit(
+                f"a chain's resume takes {flags} from the chain's record and cannot change it"
+            )
+        chained = Chain.open(runs_directory, options.resume)
+        if "chain_budget_steps" in given_options:
+            chained.update(budget_steps=options.chain_budget_steps)
+    else:
+        fixed = sorted(given_options & set(CHAIN_SETS))
+        if fixed:
+            flags = ", ".join(
+                "--from" if name == "fork" else "--" + name.replace("_", "-") for name in fixed
+            )
+            raise SystemExit(f"a chain sets its stages' {flags} itself: leave them out")
+        if options.chain_budget_steps is None:
+            raise SystemExit("a chain needs --chain-budget-steps, its combined budget")
+        if options.print_config:
+            print(json.dumps(chain_configs(options), indent=1))
+            return
+        name = options.name or run_name(options.preset or options.mode, runs_directory)
+        try:
+            chained = Chain.create(runs_directory, name, sys.argv[2:], options.chain_budget_steps)
+        except FileExistsError as error:
+            raise SystemExit(str(error)) from error
+        print(f"chain {name} in {chained.directory}", flush=True)
+    budget = chained.record["budget_steps"]
+    original = chained_options(chained)
+    # what a resume may change, from its command line, else from the chain's own: passed on
+    # to the stage it resumes or begins
+    passed = {
+        name: getattr(options if name in given_options else original, name)
+        for name in ("device", "checkpoint_every", "wandb")
+    }
+    passed["runs_directory"] = str(runs_directory)
+    base = dataclasses.replace(original, **passed)
+    if chained.record["handover"] is None:
+        stage = chained.stage_run("bc")
+        bc_run = Run.open(runs_directory, stage) if (runs_directory / stage).exists() else None
+        if bc_run is None or bc_run.record["status"] != "finished":
+            if bc_run is None:
+                bc_options = stage_options(base, "bc", name=stage, bc_budget_steps=budget)
+                given_stage, entry = set(), chained.stage_record("bc", 0)
+            else:
+                bc_options = Train(resume=stage, bc_budget_steps=budget, **passed)
+                given_stage, entry = {"resume", "bc_budget_steps"}, None
+            bc_run = _train(bc_options, given_stage, stop, entry)
+        if stop.by is not None or bc_run.record["status"] != "finished":
+            return
+        step = bc_run.record["segments"][-1]["end_step"]
+        policy = bc_run.variant_policy_path(HANDOVER_VARIANT)
+        chained.hand_over(step, bc_run.record["stopped_by"], policy)
+        print(
+            f"handover at step {step:,} (stopped by {bc_run.record['stopped_by']}): RL from "
+            f"{policy}",
+            flush=True,
+        )
+        del bc_run
+        gc.collect()  # the BC stage's trainer and its compiled graphs
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    handover = chained.record["handover"]
+    rl_config = chain_configs(base)["rl"]
+    steps_per_update = rl_config["environments"] * rl_config["length"] * rl_config["shards"]
+    updates = reinforcement_updates(budget, handover["step"], steps_per_update)
+    stage = chained.stage_run("rl")
+    rl_run = Run.open(runs_directory, stage) if (runs_directory / stage).exists() else None
+    if rl_run is None:
+        rl_options = stage_options(
+            base, "rl", name=stage, updates=updates, init_from=handover["policy"]
+        )
+        _train(rl_options, set(), stop, chained.stage_record("rl", handover["step"]))
+    else:
+        rl_options = Train(resume=stage, updates=updates, **passed)
+        _train(rl_options, {"resume", "updates"}, stop)
+
+
+def chained_options(chained) -> Train:
+    """The options a chain was started with, parsed from its record's arguments."""
+    return tyro.cli(Train, args=chained.record["arguments"], prog="bnb train")
+
+
+def stage_options(options: Train, stage: str, **changes) -> Train:
+    """A chain's options as one stage's ("bc" or "rl"): the stage's objective, its --set
+    lines after the shared ones, and `changes` (the run's name among them)."""
+    sets = options.bc_set if stage == "bc" else options.rl_set
+    return dataclasses.replace(
+        options,
+        objective="bc" if stage == "bc" else "ppo",
+        set=options.set + sets,
+        bc_set=(),
+        rl_set=(),
+        chain_budget_steps=None,
+        resume=None,
+        print_config=False,
+        **changes,
+    )
+
+
+def chain_configs(options: Train) -> dict:
+    """Both stages' resolved TrainConfigs as JSON (`--print-config`): BC's with the
+    combined budget as its own, RL's with the warm start's entropy coefficients (the model's
+    settings, which a warm start takes from the clone, are the same run's)."""
+    from bnb.runs.serialise import to_json
+
+    budget = options.chain_budget_steps
+    bc_config = _requested(stage_options(options, "bc", bc_budget_steps=budget))
+    rl_options = stage_options(options, "rl")
+    rl_config = warm_start_entropy(_requested(rl_options), rl_options.set)
+    return dict(bc=to_json(bc_config), rl=to_json(rl_config))
 
 
 def log_cloning(row: dict) -> None:
