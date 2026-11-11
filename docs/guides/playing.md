@@ -316,14 +316,16 @@ compare.
   until it is measured, a few seconds (tens of seconds for a real-scale type). **Save
   ships** needs every type's handles: it first measures the ones not yet measured, and
   says so; press again once the status line says exact.
-- **Time scale**: **Apply** makes the whole game the given factor faster with the map's
-  lengths fixed (speeds x k, gravity and accelerations x k^2, rates and fire rates x k,
+- **Time scale**: **Apply** makes the whole game the given factor faster than its design
+  (×1) with the map's lengths fixed (speeds x k, gravity and accelerations x k^2, rates and fire rates x k,
   times / k, energies x k^2, so a store keeps its height). Fire rates snap to whole Hz that
   divide 30, and bullet life, clocks and shield delays to whole ticks; the message says
   what snapped. **Make this speed 1×** takes the playback speed (×¼ to ×8 in the top bar)
   as the factor and sets playback back to ×1: pick the speed at which the game feels
-  right, then make it the game's own. Applying again multiplies the factor (×2 then ×2 is
-  ×4; ×0.25 from ×4 is ×1).
+  right, then make it the game's own. The factor is always against ×1: **Apply** 2 gives ×2
+  whatever the game runs at now (2 then 2 is still ×2), and 1 goes back to the design's
+  own speed. **Make this speed 1×** is the one that compounds: playback ×2 of a ×0.5 game
+  makes it ×1.
 - Under a time scale every value in the panel stays the design's, at ×1: the handles,
   what the ships fly (measured at ×1), the rules and the fire-rate choices, and the
   selection card's speed. An edit sets the ×1 value, and **Save ships** writes the same
@@ -331,6 +333,17 @@ compare.
   panel names it ("Values at x1; the game runs xk"). Nothing is re-measured when the
   factor changes. A new match, a restart, **Add** and a preset keep the factor; **Game's
   numbers** keeps it too.
+- The clocks are the exception: they count the seconds played, what a player sees pass at
+  ×1 playback. The top bar's clock and its match length, the fleets card's and the flying
+  card's respawn wait, the selection card's "respawns in" and "last shot ... ago", and the
+  replay scrubber are all ticks times the tick (1/30 s, which a time scale never changes).
+  So under ×k a match the design makes 600 s long shows "/ 10:00" at ×1 and "/ 5:00" at ×2,
+  a 10 s respawn waits 5 s, and the clock runs at the wall clock's pace. The panel's status
+  line says so, and each rule's tooltip gives the value it plays as (the match length in
+  the clock's seconds). The playback speeds (×¼ to ×8) are a different thing: they run more
+  or fewer ticks per second of the display without changing the game, so every clock runs
+  that many times faster or slower than the wall clock (at ×8 the clock gains 8 s a second;
+  the kill feed's lines, 6 s of play, last 0.75 s). Paused, every clock stops.
 - **Presets**: **Save** writes the ship set, the rule settings and the whole card (the
   design's, at ×1) to your configuration directory (`tunings/<name>.json`; the card is what
   training's `ship_card` takes), and the time scale's factor when it is not 1. **Load**

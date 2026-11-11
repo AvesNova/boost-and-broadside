@@ -389,19 +389,20 @@ class Session:
             self.tuner.load(tuning)
 
     def time_scale(self, factor: float) -> str:
-        """Make the game `factor` times faster at fixed map lengths (`Tuner.time_scale`);
-        returns what it did."""
+        """Make the game `factor` times faster than its design (x1) at fixed map lengths,
+        whatever the factor was (`Tuner.time_scale`; 1 is the design); returns what it
+        did."""
         self._ensure_tuner()
         return "" if self.tuner is None else self.tuner.time_scale(factor)
 
     def make_speed_normal(self) -> str:
         """Make the current playback speed the game's own: the game becomes that many times
-        faster (`time_scale`) and playback goes back to x1, so it looks the same; returns
-        what it did."""
-        factor = self.loop.time_scale
-        if factor == 1.0 or self.loop.replaying:
+        faster than now (`time_scale` of the factor times the playback speed) and playback
+        goes back to x1, so it looks the same; returns what it did."""
+        playback = self.loop.time_scale
+        if playback == 1.0 or self.loop.replaying:
             return ""
-        done = self.time_scale(factor)
+        done = self.time_scale(self.time_factor * playback)
         self.loop.time_scale = 1.0
         return done
 
@@ -740,6 +741,7 @@ class Session:
         if self.loop.replaying:
             self.loop.seek(tick)
             self.feed = []
+            self.last_shot[:] = -np.inf  # "last shot" counts from the shots seen since
             self.trails.clear()
             self.frame = self.loop.frame()
             if self._map_changed():

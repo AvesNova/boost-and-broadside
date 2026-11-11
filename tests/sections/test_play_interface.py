@@ -186,6 +186,8 @@ def test_a_match_is_set_up_watched_flown_and_replayed_from_the_interface(context
     player.click(f"replay/marker/{kill}")
     want = max(markers[kill].tick - 90, 0)  # three seconds before; it plays on from there
     assert want <= session.loop.position <= want + 8
+    session.seek(0)
+    assert not np.isfinite(session.last_shot).any()  # "last shot": none seen since the seek
     session.close()
 
 
@@ -464,6 +466,10 @@ def test_a_real_scale_match_is_chosen_with_a_dropdown_lineup_and_sped_up(context
     assert session.loop.time_scale == 1.0
     assert session.loop.rules.flight.gravity == pytest.approx(0.25 * gravity)
     assert session.loop.rules.pools[0].episode_ticks == 2 * 600 * 30
+    player.click("speed/2")  # x2 playback of the x0.5 game: the design's own speed
+    session.make_speed_normal()  # relative to now, unlike Faster by
+    assert session.time_factor == 1.0 and session.loop.time_scale == 1.0
+    assert session.loop.rules.flight.gravity == pytest.approx(gravity)
     session.close()
 
 

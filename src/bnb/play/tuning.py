@@ -706,16 +706,18 @@ class Tuner:
         self._reset()
 
     def time_scale(self, factor: float) -> str:
-        """Make the whole game `factor` times faster than now with the map's lengths fixed:
-        the match plays the design `time_factor` (now that many times larger) times faster
-        (`played`: every rule setting and the card by their units, energies with gravity;
-        an exact similarity up to the tick and the values held to whole ticks or Hz, which
-        snap). The design, its handles and their measurements stay. Returns what it did,
-        naming the values that snapped."""
-        if factor <= 0.0 or factor == 1.0:
+        """Make the whole game `factor` times faster than its design (x1) with the map's
+        lengths fixed, whatever the factor was: the match plays the design `time_factor`
+        (now `factor`; 1 is the design itself) times faster (`played`: every rule setting
+        and the card by their units, energies with gravity; an exact similarity up to the
+        tick and the values held to whole ticks or Hz, which snap). The design, its handles
+        and their measurements stay. Returns what it did, naming the values that snapped."""
+        if factor <= 0.0:
             return ""
-        total = self.time_factor * factor
-        self.time_factor = 1.0 if math.isclose(total, 1.0, rel_tol=1e-9) else total
+        factor = 1.0 if math.isclose(factor, 1.0, rel_tol=1e-9) else factor
+        if factor == self.time_factor:
+            return f"the game runs x{factor:g} already"
+        self.time_factor = factor
         rules, types = self.played()
         self.loop.retune(rules=rules, types=types)
         self._card += 1
@@ -723,9 +725,9 @@ class Tuner:
         self.message = ""
         exact = api.similarity.scale_rules(self.values, 1.0, 1.0 / self.time_factor)
         snapped = [
-            f"{api.tuning.BY_KEY[key].label} {exact[key]:.4g} -> {self._played_value(key):.4g} s"
+            f"{api.tuning.BY_KEY[key].label} {exact[key]:.4g} -> {self.played_value(key):.4g} s"
             for key in exact
-            if abs(self._played_value(key) - exact[key]) > 1e-9 * max(1.0, abs(exact[key]))
+            if abs(self.played_value(key) - exact[key]) > 1e-9 * max(1.0, abs(exact[key]))
         ]
         wanted = self.card.fire_rate * self.time_factor
         snapped += [
@@ -736,7 +738,7 @@ class Tuner:
         done = f"the game runs x{self.time_factor:g} (values stay at x1)"
         return done + ("; snapped: " + ", ".join(snapped) if snapped else "")
 
-    def _played_value(self, key: str) -> float:
+    def played_value(self, key: str) -> float:
         """A rule setting's value as the match plays it (time scaled)."""
         return api.tuning.value(self.loop.rules, key)
 
