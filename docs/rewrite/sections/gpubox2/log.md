@@ -75,3 +75,6 @@ See the report section at the end. Records of the champion: `champion/*.json` (c
   02:51:13: about **4 min** down. The compile cache has grown to 6.2 GB. Fresh start 5.
 - **02:55 Interruption 5**, after about 4 min up.
 - **04:56 Back (interruption 5 measured).** The last heartbeat was 02:54:13 and the restart 04:55:53: **2 h 02 min** down. Fresh start 6. Up so far: about 77 min of 4 h 16 min since launch, and still no finished update.
+- **04:58 Interruption 6**, after about 2 min up.
+- **05:04 Back (interruption 6 measured).** The last heartbeat was 04:56:53 and the restart 05:03:43: about **7 min** down. Fresh start 7.
+- **05:14 Interruption 7**, after about 10 min up.
