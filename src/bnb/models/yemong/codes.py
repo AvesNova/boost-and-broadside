@@ -483,7 +483,9 @@ class _GroupedCrossEntropy(torch.autograd.Function):
     gradient g (softmax(z) sum(target) - target): the same mathematics as through the
     log-softmax, with no log-softmax as wide as the code kept for the backward (the
     logits, the target's source and one log-sum-exp per group). The target is
-    encode(source), made again in the backward (encode None: the source is the target)."""
+    encode(source), made again in the backward (encode None: the source is the target).
+    Compiled, the partitioner may instead compute the gradient's factor softmax(z)
+    sum(target) - target in the forward and keep that (one code-wide float32 tensor)."""
 
     @staticmethod
     def forward(
