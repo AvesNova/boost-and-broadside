@@ -192,16 +192,17 @@ class EnemyActions:
 class Critic:
     """The critic for the own ships (S, sim index `ship`): values (S, levels) in the
     critic's units, by level name (`levels`), and the outcome head's P(win), P(tie),
-    P(loss), P(unresolved) and its value P(win) - P(loss)."""
+    P(loss), P(unresolved) and its value P(win) - P(loss) (each None for a critic without
+    an outcome head)."""
 
     ship: np.ndarray
     levels: tuple[str, ...]
     values: np.ndarray
-    win: float
-    tie: float
-    loss: float
-    unresolved: float
-    value: float
+    win: float | None = None
+    tie: float | None = None
+    loss: float | None = None
+    unresolved: float | None = None
+    value: float | None = None
 
 
 @dataclasses.dataclass(frozen=True)

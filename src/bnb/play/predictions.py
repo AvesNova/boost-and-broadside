@@ -217,16 +217,18 @@ def network(agent, team: int, observed: Snapshot, following: Snapshot) -> Predic
         stick=_numpy(action.stick),
         shoot=_numpy(action.shoot),
     )
-    outcome = decode.outcome(unrolled.outcome_logits)
+    outcome = {}
+    if unrolled.outcome_logits is not None:
+        decoded = decode.outcome(unrolled.outcome_logits)
+        outcome = {
+            name: float(getattr(decoded, name))
+            for name in ("win", "tie", "loss", "unresolved", "value")
+        }
     critic = Critic(
         ship=order[:own],
         levels=tuple(model.config.levels),
         values=_numpy(unrolled.values),
-        win=float(outcome.win),
-        tie=float(outcome.tie),
-        loss=float(outcome.loss),
-        unresolved=float(outcome.unresolved),
-        value=float(outcome.value),
+        **outcome,
     )
     return Predictions(
         team=team,

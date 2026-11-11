@@ -13,7 +13,7 @@ import yemong_cases as cases
 from scripted_cases import CHARACTERISTICS
 from torch.utils import _pytree
 
-from bnb.contracts import Obs, Pool, Trajectory
+from bnb.contracts import SUMMED_LEVEL, Obs, Pool, Trajectory
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.controllers.scripted import Scripted, distribution, joint
 from bnb.controllers.scripted_defaults import MODE_DEFAULTS
@@ -61,9 +61,8 @@ def _cloning(net, runner: Rollout, teacher_config=bc.TeacherConfig(), **config):
     )
 
 
-@pytest.fixture(scope="module")
-def segment(module_global_generator):
-    net = cases.model()
+def _segment(net) -> Rollout:
+    """Two runs of 8 views, 32 ticks, the model as the learner against the scripted agent."""
     controllers = {
         "learner": cases.controller(net, cases.SHORT_SQUAD),
         "scripted": Scripted(CHARACTERISTICS, 5, PARAMETERS),
@@ -82,9 +81,27 @@ def segment(module_global_generator):
     )
     for _ in range(2):
         runner.run()
+    return runner
+
+
+@pytest.fixture(scope="module")
+def segment(module_global_generator):
+    net = cases.model()
+    runner = _segment(net)
     learner = _cloning(net, runner)
     prepared = learner.prepare(runner.store, runner.bootstrap())
     return net, runner, learner, prepared
+
+
+def test_bc_trains_the_single_value_arm():
+    """The single value arm (one value level over the summed rewards, no outcome head)
+    clones with one discount and trace decay, and reports its one level's critic."""
+    net = cases.model(levels=(SUMMED_LEVEL,), outcome_level=None)
+    runner = _segment(net)
+    learner = _cloning(net, runner, discount=(1.0,), trace_decay=(0.99,), team_spirit=(0.0,))
+    out = metrics.read(learner.update(runner.store, runner.bootstrap()))
+    assert math.isfinite(out[f"critic/value_loss/{SUMMED_LEVEL}"])
+    assert not any(key.startswith("critic/") and key.endswith("/outcome") for key in out)
 
 
 def test_the_bc_loss_matches_an_independent_computation(segment):

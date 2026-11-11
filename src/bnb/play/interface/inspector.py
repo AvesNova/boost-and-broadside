@@ -253,10 +253,11 @@ def _predictions(interface: Interface, index: int) -> None:
             tooltip("The value per reward level (the critic's units) and the outcome head")
             for level, value in zip(critic.levels, critic.values[row], strict=True):
                 _row(level.replace("_", " "), f"{float(value):+.3f}", scale, LEVEL_COLUMN)
-            _meter("P(win)", critic.win, theme.team[team], theme, scale)
-            _meter("P(tie)", critic.tie, theme.panel_line, theme, scale)
-            _meter("P(loss)", critic.loss, theme.team[1 - team], theme, scale)
-            _meter("P(unresolved)", critic.unresolved, theme.panel_line, theme, scale)
+            if critic.win is not None:  # a critic with an outcome head
+                _meter("P(win)", critic.win, theme.team[team], theme, scale)
+                _meter("P(tie)", critic.tie, theme.panel_line, theme, scale)
+                _meter("P(loss)", critic.loss, theme.team[1 - team], theme, scale)
+                _meter("P(unresolved)", critic.unresolved, theme.panel_line, theme, scale)
     if "shot_path" in drawn:
         shot = drawn["shot_path"][1]
         _meter("next shot hits", float(shot.enemy_hit[index]), colour, theme, scale)

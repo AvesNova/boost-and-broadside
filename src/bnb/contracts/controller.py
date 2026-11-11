@@ -22,9 +22,10 @@ class Outputs:
 
     log_probability: of the chosen action; entropy: of the policy; value: the critic,
     the sum of `values` over levels when a controller gives them.
-    values (R, S, levels): the critic per reward level, in raw units and the configured level
+    values (R, S, levels): the critic per value level, in raw units and the configured level
         order (an outcome level is P(win) - P(loss)).
-    outcome (R, 4): the outcome probabilities (win, tie, loss, unresolved).
+    outcome (R, 4): the outcome probabilities (win, tie, loss, unresolved), when the critic
+        has an outcome level.
     replay: an opaque pytree with leading (R,), what the decision read from the controller's
         carry, so the learner can recompute a segment without replaying it.
     probabilities (R, S, NUM_JOINT) float16: the whole joint action distribution, when the

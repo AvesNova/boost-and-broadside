@@ -267,6 +267,6 @@ def test_the_fit_explained_variance_comes_from_the_moments():
     moments[1] = target.sum()
     moments[2] = (target**2).sum()
     moments[3, 0], moments[4, 0] = residual.sum(), (residual**2).sum()
-    out = metrics.read(fit_series(moments.flatten()))
+    out = metrics.read(fit_series(moments.flatten(), REWARD_LEVELS))
     assert out[f"critic/explained_variance_fit/{REWARD_LEVELS[0]}"] == pytest.approx(0.0)
     assert out[f"critic/explained_variance_fit/{REWARD_LEVELS[1]}"] == pytest.approx(1.0)

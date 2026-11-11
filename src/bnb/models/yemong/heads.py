@@ -70,16 +70,20 @@ def next_state_logits(code: torch.Tensor, change: torch.Tensor) -> torch.Tensor:
 
 def critic_values(
     local_logits: torch.Tensor,
-    outcome_logits: torch.Tensor,
+    outcome_logits: torch.Tensor | None,
     bins: torch.Tensor,
     local_levels: tuple[int, ...],
-    outcome_level: int,
+    outcome_level: int | None,
 ) -> torch.Tensor:
     """(..., S, levels) values in the configured level order.
 
-    local_logits (..., S, levels - 1, bins): per-ship levels, each the expectation over the bins;
-    outcome_logits (..., 4): the outcome level P(win) - P(loss), the same for every ship.
+    local_logits (..., S, per-ship levels, bins): per-ship levels, each the expectation over
+    the bins; outcome_logits (..., 4): the outcome level P(win) - P(loss), the same for every
+    ship. Without an outcome level (outcome_logits and outcome_level None) every level is
+    per-ship, in order.
     """
+    if outcome_level is None:
+        return critic.expectation(local_logits, bins)
     local = critic.expectation(local_logits, bins).unbind(-1)
     outcome = critic.outcome_values(torch.softmax(outcome_logits, -1))[..., None]
     outcome = outcome.expand(local[0].shape)  # levels >= 2: at least one per-ship level

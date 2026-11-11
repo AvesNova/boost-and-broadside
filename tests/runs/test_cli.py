@@ -478,3 +478,35 @@ def test_the_probe_on_the_cpu_measures_nothing_and_writes_no_run(monkeypatch, tm
     bnb(monkeypatch, tmp_path, "train", *cases.TRAIN_OPTIONS, "--probe")
     assert "memory probe: CPU run, nothing measured" in capsys.readouterr().out
     assert not tmp_path.exists() or not any(tmp_path.iterdir())
+
+
+def test_the_single_value_arm_trains_from_the_command_line(monkeypatch, tmp_path, global_generator):
+    """`--set yemong.levels=["total"] yemong.outcome_level=null` and one discount, trace
+    decay and team spirit: one update, and the policy records the arm's layout."""
+    options = list(cases.TRAIN_OPTIONS)
+    options[options.index("relational")] = "yemong"
+    options[options.index("relational.hidden=16")] = "yemong.blocks=1"
+    bnb(
+        monkeypatch,
+        tmp_path,
+        "train",
+        *options,
+        "--updates",
+        "1",
+        "--name",
+        "single",
+        "--set",
+        'yemong.levels=["total"]',
+        "--set",
+        "yemong.outcome_level=null",
+        "--set",
+        "learner.discount=[0.999]",
+        "--set",
+        "learner.trace_decay=[0.97]",
+        "--set",
+        "learner.team_spirit=[0.0]",
+    )
+    run = Run.open(tmp_path, "single")
+    model = checkpoint.load_policy(run.checkpoint_at(), torch.device("cpu"))
+    assert model.config.levels == ("total",) and model.config.outcome_level is None
+    assert model.outcome is None

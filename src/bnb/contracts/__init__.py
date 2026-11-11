@@ -9,7 +9,7 @@ from .controller import Controller, Outputs
 from .events import Events
 from .obs import Obs, Privileged
 from .pools import Pool
-from .trajectory import REWARD_LEVELS, Trajectory
+from .trajectory import REWARD_LEVELS, SUMMED_LEVEL, Trajectory
 
 __all__ = [
     "Action",
@@ -21,6 +21,7 @@ __all__ = [
     "Pool",
     "Privileged",
     "REWARD_LEVELS",
+    "SUMMED_LEVEL",
     "Trajectory",
     "ticks_of",
 ]

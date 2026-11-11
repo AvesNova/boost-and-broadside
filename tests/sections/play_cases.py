@@ -13,9 +13,9 @@ from bnb.runs.checkpoint import save_policy
 SMALL = GameConfig(3, 4, 900.0, episode_seconds=20.0)  # quick kills in a small arena
 
 
-def tiny_model(name: str, game: GameConfig, seed: int = 0) -> torch.nn.Module:
+def tiny_model(name: str, game: GameConfig, seed: int = 0, **settings) -> torch.nn.Module:
     """The smallest Yemong or relational model for this game, every weight drawn from
-    `seed` (so every output depends on its inputs)."""
+    `seed` (so every output depends on its inputs); settings: further YemongConfig fields."""
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(seed)
         if name == "yemong":
@@ -29,6 +29,7 @@ def tiny_model(name: str, game: GameConfig, seed: int = 0) -> torch.nn.Module:
                 hex_rings=1,
                 rotary_octaves=1,
                 heading_harmonics=(1,),
+                **settings,
             )
             model = Yemong(yemong_build(config, api.rules_of(game), api.ship_types()))
         else:

@@ -85,6 +85,7 @@ def meta_of(policy: pathlib.Path, record: dict, config: CaptureConfig, model) ->
         bullet_moves=model.bullet_moves,
         hit_radius=model.shot_code.collision_radius,
         hex_rings=model.config.hex_rings,
+        levels=tuple(model.config.levels),
     )
 
 
@@ -288,20 +289,23 @@ def capture(
 def _critic_part(model, trajectory) -> dict:
     reset = trajectory.obs.globals[..., GLOBAL["reset"]] > 0.5
     unrolled = model.unroll(trajectory.initial_carry, trajectory.obs, trajectory.replay, reset)
-    return dict(
-        outcome=dataclasses.asdict(decode.outcome(unrolled.outcome_logits)),
+    part = dict(
         values=unrolled.values.float(),
         done=trajectory.done.clone(),
         result=trajectory.result.clone(),
         alive=trajectory.alive.clone(),
     )
+    if unrolled.outcome_logits is not None:
+        part["outcome"] = dataclasses.asdict(decode.outcome(unrolled.outcome_logits))
+    return part
 
 
 @torch.no_grad()
 def games_record(model, rollout, trajectory, segments: int) -> dict:
     """The critic over the first segment and `segments` more of the same games (L', R, ...)
-    leading: outcome (`bnb.models.yemong.decode.Outcome` by field), values (S, levels),
-    done, result (the view's team's, nonzero where done) and alive (N)."""
+    leading: outcome (`bnb.models.yemong.decode.Outcome` by field; only with an outcome
+    head), values (S, levels; their names the meta's `levels`), done, result (the view's
+    team's, nonzero where done) and alive (N)."""
     parts = [_critic_part(model, trajectory)]
     for _ in range(segments):
         parts.append(_critic_part(model, rollout.run()))
