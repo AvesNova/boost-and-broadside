@@ -48,7 +48,8 @@ display draws, by name), `log_index` and `log_index_gradient` (the medium at poi
 `vision_range`, `per_ship` and `type_names` (the ship types' names, from the ship files);
 `bullet_paths` (each live bullet's flight ahead, by the game's own transport); and the
 constants `TEAMS`, `LN_SQRT2` (ln n per field level),
-`MAP_SCALE_RADIUS` (the arena radius of map scale 1) and the game presets `PRESETS`.
+`MAP_SCALE_RADIUS` (the arena radius of map scale 1), the game presets `PRESETS` and the
+lineups of those whose lineup is their own (`LINEUPS`, as type indices by `preset_lineup`).
 """
 
 import torch
@@ -72,7 +73,7 @@ from .handling.solver import error_floor as solve_error_floor
 from .handling.weapons import combat_card, combat_handles
 from .layout import environment, per_mode
 from .modes import frontline, phase
-from .modes.rules import FLEET_PRESETS, PRESETS
+from .modes.rules import FLEET_PRESETS, LINEUPS, PRESETS
 from .perception import sight
 from .perception.observe import perceive, view_order
 from .perception.sight import vision_range
@@ -103,6 +104,7 @@ __all__ = [
     "MAP_SCALE_RADIUS",
     "PRESETS",
     "FLEET_PRESETS",
+    "LINEUPS",
     "Rules",
     "ShipTypes",
     "State",
@@ -126,6 +128,7 @@ __all__ = [
     "per_ship",
     "perceive",
     "perceived",
+    "preset_lineup",
     "reset",
     "reload_ships",
     "resolve",
@@ -154,6 +157,16 @@ __all__ = [
 def spread(rules: Rules, batch: int, device=None, generator=None) -> torch.Tensor:
     """(B, N, 2) standard normals: the bullet spread of one tick."""
     return torch.randn((batch, rules.num_ships, 2), device=device, generator=generator)
+
+
+def preset_lineup(name: str) -> tuple[int, ...] | None:
+    """The lineup of the preset `name` as ship type indices of its set (each slot's, the
+    same for both teams: `Rules.team_types`), or None for one that plays the game's
+    default."""
+    if name not in LINEUPS:
+        return None
+    names = type_names(PRESETS[name].ship_set)
+    return tuple(names.index(type_name) for type_name in LINEUPS[name])
 
 
 def uniforms(rules: Rules, batch: int, device=None, generator=None) -> torch.Tensor:

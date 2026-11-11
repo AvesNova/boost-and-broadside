@@ -13,7 +13,8 @@ from bnb.contracts import GameConfig
 from bnb.game import api, ships
 from bnb.game.rules import FlightConstants, Rules
 from bnb.league.matches import Player, card_of
-from bnb.play.interface.menus import MAP_PRESETS, Draft, map_of, maps
+from bnb.play.interface.menus import MAP_PRESETS, Draft, default_lineup, map_of, maps
+from bnb.play.loop import MatchLoop
 from bnb.play.tuning import Presets, Tuning, changed_card
 from bnb.runs.checkpoint import save_policy
 from bnb.runtime.train import TrainConfig
@@ -155,15 +156,44 @@ def test_a_rated_match_plays_the_policies_card_else_the_sets(trial, tmp_path):
 
 def test_the_new_match_maps_come_from_the_presets():
     keys = [game_map.key for game_map in maps()]
-    assert keys[:2] == ["standard", "wide"]
+    assert keys == ["standard", "wide", "real_scale", "arena"]
     assert {map_of(name) for name in MAP_PRESETS} == set(keys)
     assert not set(api.FLEET_PRESETS) & set(MAP_PRESETS)  # the fleet sizes are no maps
-    assert Draft().config() == api.PRESETS["deathmatch"]
+    assert Draft().config() == api.PRESETS["real_scale_deathmatch"]
+    assert Draft(map="standard").config() == api.PRESETS["deathmatch"]
     assert Draft(map="wide").config() == api.PRESETS["deathmatch_wide"]
-    assert Draft(mode="frontline").config() == api.PRESETS["frontline"]
+    assert Draft(mode="frontline", map="standard").config() == api.PRESETS["frontline"]
     wide_frontline = Draft(mode="frontline", map="wide").config()
     assert (wide_frontline.mode, wide_frontline.arena_radius) == ("frontline", 8200.0)
     assert wide_frontline.spawn_groups == ()
     for name, config in MAP_PRESETS.items():
         setup = Draft(mode=config.mode, map=map_of(name)).setup()
         assert Draft.of(setup).map == map_of(name)
+
+
+def test_choosing_the_arena_takes_its_fleet_fields_and_lineup():
+    """The arena map is the arena preset: 2v2 at no fields, a P-51D and a Spitfire XIV a
+    team; the other maps give back their own sizes."""
+    draft = Draft()
+    draft.choose_map("arena")
+    assert (draft.ships_per_team, draft.fields) == (2, 0)
+    assert draft.lineup == list(api.preset_lineup("arena"))
+    setup = draft.setup()
+    assert setup.config == api.PRESETS["arena"]
+    assert MatchLoop(setup, compiled=False).rules.team_types == api.preset_lineup("arena")
+    assert Draft.of(setup).map == "arena"
+    draft.choose_map("real_scale")
+    assert (draft.ships_per_team, draft.fields) == (5, 10)
+
+
+def test_the_lineup_shown_is_the_lineup_played():
+    """The New match page's default lineup (the P-51D and the Spitfire XIV alternating)
+    reaches the match; only the game's own lineup is passed as None."""
+    names = api.type_names("real-scale")
+    draft = Draft()
+    rules = MatchLoop(draft.setup(), compiled=False).rules
+    assert [names[kind] for kind in rules.team_types] == [
+        names[kind] for kind in default_lineup(5, "real-scale")
+    ]
+    draft.lineup = list(api.rules_of(draft.config()).team_types)
+    assert draft.setup().lineup is None

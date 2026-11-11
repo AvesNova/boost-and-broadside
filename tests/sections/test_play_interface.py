@@ -399,7 +399,7 @@ def test_a_side_slow_to_make_plays_on_until_it_is_made(context, tmp_path, monkey
     player = Player(session, context, 1280, 720)
     assert session.set_side(1, SideSetup("scripted_agent"))
     player.frames(10)
-    assert session.loop.sides[1].label == "scripted"
+    assert session.loop.sides[1].label == "waiting"
     assert "takes over" in session.notice
     measured.set()
     for _ in range(200):
@@ -408,3 +408,89 @@ def test_a_side_slow_to_make_plays_on_until_it_is_made(context, tmp_path, monkey
             break
     assert session.loop.sides[1].label == "scripted agent"
     assert session.loop.setup.sides[1] == SideSetup("scripted_agent")
+
+
+def test_the_arena_is_chosen_flown_and_drawn_at_true_size(context, tmp_path):
+    """New match offers the arena as a map (2v2, no fields, a P-51D and a Spitfire XIV a
+    team); taking control of a ship keeps every card as it was, open or collapsed; the top
+    bar's True size switches the ships' drawing."""
+    session = _session(context, tmp_path)
+    player = Player(session, context, 1280, 720)
+    player.click("menu")
+    player.click("menu/new match")
+    player.click("new match/map/arena")
+    player.click("new match/start")
+    assert session.loop.setup.config == PRESETS["arena"]
+    assert session.loop.rules.team_types == api.preset_lineup("arena")
+    player.frames(10)
+
+    player.click("fleet/ship/1")
+    assert session.selection == Selection("ship", 1)
+    assert {"fleets", "selection"} <= session.interface.open
+    player.click("selection/take control")
+    assert session.loop.pilot == 1
+    assert {"fleets", "selection", "minimap"} <= session.interface.open
+    player.click("flying/release")
+    player.click("fleets/collapse")
+    assert "fleets" not in session.interface.open
+    player.click("selection/take control")
+    assert session.loop.pilot == 1
+    assert "fleets" not in session.interface.open and "selection" in session.interface.open
+
+    assert not session.true_size
+    player.click("true size")
+    assert session.true_size
+    player.click("true size")
+    assert not session.true_size
+    session.close()
+
+
+def test_start_never_measures_in_the_windows_thread(context, tmp_path, monkeypatch):
+    """The author's hang: with the tuning panel open on a tuned card, New match -> Arena ->
+    Start measured the card's characteristics for the scripted sides in the window's
+    thread (minutes for the real-scale set) and joined the tuner's workers. Now Start
+    returns at once, both sides wait (coasting) while the card is measured aside, and the
+    scripted agents take over when it is in."""
+    import threading
+    import time
+
+    from bnb.play import app, sides
+
+    measured = threading.Event()
+    monkeypatch.setattr(
+        app, "cached_characteristics", lambda types, rules: object() if measured.is_set() else None
+    )
+    monkeypatch.setattr(app, "measure_aside", lambda types, rules: measured.wait(60))
+    measure = sides.characteristics
+
+    def characteristics(types, rules):
+        assert measured.is_set(), "a card measured in the window's thread"
+        return measure(types, rules)
+
+    monkeypatch.setattr(sides, "characteristics", characteristics)
+    measured.set()  # the first match's card is measured
+    session = _session(context, tmp_path, preset="arena")
+    player = Player(session, context, 1280, 720)
+    session.toggle_tuning()
+    player.frames(5)
+    session.take_control(1)
+    measured.clear()  # a card no run has measured yet
+    player.click("menu")
+    player.click("menu/new match")
+    player.click("new match/map/arena")
+    assert session.interface.menu.draft.lineup == list(api.preset_lineup("arena"))
+    player.click("new match/fog/off")
+    started = time.perf_counter()
+    player.click("new match/start")
+    assert time.perf_counter() - started < 5.0
+    assert session.loop.setup.config == PRESETS["arena"] and not session.interface.menu.is_open
+    assert [side.label for side in session.loop.sides] == ["waiting", "waiting"]
+    assert "takes over" in session.notice
+    player.frames(10)
+    measured.set()
+    for _ in range(200):
+        player.frames()
+        if all(side.label == "scripted agent" for side in session.loop.sides):
+            break
+    assert [side.label for side in session.loop.sides] == ["scripted agent"] * 2
+    session.close()

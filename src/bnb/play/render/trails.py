@@ -65,7 +65,8 @@ class TrailsPass:
         size: np.ndarray,
     ) -> None:
         """Every ship's trail at game time `now` (s). seen (N, SAMPLES): the samples the
-        view saw; team, ship_type and size (the ring radius, m) are per ship."""
+        view saw; team, ship_type and size (the silhouette's scale, m:
+        `ships.silhouette_size`) are per ship."""
         ships, samples = trails.x.shape
         self._resize(ships, samples)
         age = np.where(np.isfinite(trails.time), now - trails.time, NEVER)

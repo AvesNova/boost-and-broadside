@@ -48,7 +48,7 @@ from .render.overlay import outline_table
 from .render.predictions import OverlayDrawing, overlay_drawing
 from .render.renderer import SPECTATOR, Renderer
 from .selection import Selection, shown_ships
-from .sides import AgentError, Scripted, controller_of
+from .sides import AgentError, Scripted, Waiting, controller_of
 from .theme_editor import ThemeEditor
 from .trails import Trails
 from .tuning import Tuner, Tuning, base_rules
@@ -101,6 +101,7 @@ class Options:
     overlays: tuple[str, ...] = ()  # prediction overlays on at the start (bnb.play.overlays)
     overlay_side: int | None = None  # whose predictions they draw (None: the default)
     truth: bool = False  # draw the truth beside the predictions
+    true_size: bool = False  # draw the ships at their size in metres (no minimum on screen)
 
     def game(self) -> GameConfig:
         """The game configuration: the preset with any sizes given overriding it."""
@@ -124,7 +125,9 @@ class Options:
             for policy, scripted in ((self.agent0, self.scripted0), (self.agent1, self.scripted1))
         )
         game = self.game()
-        lineup = tuple(default_lineup(game.ships_per_team, game.ship_set))
+        lineup = api.preset_lineup(self.preset)
+        if lineup is None or len(lineup) != game.ships_per_team:
+            lineup = tuple(default_lineup(game.ships_per_team, game.ship_set))
         return MatchSetup(game, lineup, fogged=self.fog, seed=self.seed, sides=sides)
 
 
@@ -164,6 +167,7 @@ class Session:
         self.camera = Camera(width, height)
         self.minimap_camera = Camera(1, 1)
         self.view = VIEWS.index(options.view)
+        self.true_size = options.true_size  # the ships at their size in metres (`render.ships`)
         self.library = themes.Library() if library is None else library
         self.theme_names = self.library.names()
         self.theme = self.library.load(options.theme)
@@ -243,31 +247,37 @@ class Session:
     ) -> bool:
         """Start a live match (its tick compiles in the background when its graph is new);
         returns False, with a notice, when a side's agent cannot play it. realtime and
-        sides: continue this match with these controllers (a replay forked). A side whose
-        controller takes long to make (`slow_side`) starts as the scripted chaser and takes
-        over once it is made aside."""
-        deferred = {}
-        if sides is None:
-            deferred = {
-                team: side for team, side in enumerate(setup.sides) if self.slow_side(side, setup)
-            }
-        played = dataclasses.replace(
-            setup,
-            sides=tuple(
-                # a slow side plays as the chaser (no characteristics to wait for) meanwhile
-                SideSetup("scripted") if team in deferred else side
-                for team, side in enumerate(setup.sides)
-            ),
-        )
+        sides: continue this match with these controllers (a replay forked). A scripted
+        side whose card is not measured yet (`unmeasured`) starts waiting (`Waiting`: its
+        ships coast) while the card is measured in a child process, and takes over then: a
+        measurement takes seconds to minutes, and Start never waits for it."""
         try:
             loop = MatchLoop(
-                played,
-                sides=sides,
+                setup,
+                sides=sides if sides is not None else [],
                 compiled=self.options.compile,
                 background=True,
                 pilot=pilot,
                 realtime=realtime,
             )
+            deferred = []
+            if sides is None:
+                for team, side in enumerate(setup.sides):
+                    if self.unmeasured(side, loop):
+                        deferred.append(team)
+                        loop.sides.append(Waiting(loop.rules.ships_per_team))
+                    else:
+                        loop.sides.append(
+                            controller_of(
+                                side,
+                                team,
+                                setup,
+                                loop.rules,
+                                loop.types,
+                                self.options.compile,
+                                background=True,
+                            )
+                        )
         except AgentError as error:
             self.say(str(error))
             return False
@@ -277,9 +287,9 @@ class Session:
         self._adopt(loop, whole, fit=realtime is None)
         self._warn(loop.sides)
         if self.options.record and not setup.tuning:  # a tuned match is not recorded
-            self.recorder = replays.Recorder(played, loop.realtime, self._match_name())
-        for team, side in deferred.items():
-            self.set_side(team, side)
+            self.recorder = replays.Recorder(setup, loop.realtime, self._match_name())
+        for team in deferred:
+            self._measure_aside(team, setup.sides[team])
         return True
 
     def new_match(self, setup: MatchSetup) -> bool:
@@ -435,12 +445,8 @@ class Session:
         if loop.replaying:
             return False
         self._pending.pop(team, None)  # a side chosen again replaces one still being made
-        if side.controller == "scripted_agent" and self.slow_side(side, loop.setup):
-            self._make_aside(team, side, None, lambda: measure_aside(loop.types, loop.rules))
-            self.say(
-                f"{TEAM_NAMES[team]}: measuring the ships for the scripted agent; "
-                "it takes over when done"
-            )
+        if self.unmeasured(side, loop):
+            self._measure_aside(team, side)
             return True
         try:
             controller = self._controller(side, team, loop.setup)
@@ -464,24 +470,20 @@ class Session:
             side, team, setup, loop.rules, loop.types, self.options.compile, background=True
         )
 
-    def slow_side(self, side: SideSetup, setup: MatchSetup) -> bool:
-        """Whether this side's controller takes seconds to make: a scripted agent whose
-        ship characteristics no earlier run measured for this card."""
-        if side.controller != "scripted_agent":
+    def unmeasured(self, side: SideSetup, loop: MatchLoop) -> bool:
+        """Whether this side's controller needs ship characteristics that no earlier run
+        measured for the match's card (a scripted agent's or the chaser's)."""
+        if side.controller == "agent":
             return False
+        return cached_characteristics(loop.types, loop.rules) is None
+
+    def _measure_aside(self, team: int, side: SideSetup) -> None:
+        """Measure the match's card for a scripted side in a child process; the side takes
+        over when it is done, the team playing on as it was meanwhile."""
         loop = self.loop
-        if (
-            loop is not None
-            and loop.setup.config == setup.config
-            and loop.setup.lineup == setup.lineup
-        ):
-            rules, types = loop.rules, loop.types
-        else:
-            rules = base_rules(setup.config, setup.lineup)
-            if setup.tuning.rules:
-                rules = api.tuning.tuned(rules, setup.tuning.rules)
-            types = setup.tuning.types() if setup.tuning.card else api.ship_types()
-        return cached_characteristics(types, rules) is None
+        self._make_aside(team, side, None, lambda: measure_aside(loop.types, loop.rules))
+        name = "scripted agent" if side.controller == "scripted_agent" else "chaser"
+        self.say(f"{TEAM_NAMES[team]}: measuring the ships for the {name}; it takes over when done")
 
     def _make_aside(self, team: int, side: SideSetup, controller, work) -> None:
         """Run `work` on a thread (it waits on a child process, or captures a CUDA graph);
@@ -561,6 +563,11 @@ class Session:
     def cycle_view(self) -> None:
         """Switch to the next view: spectator, team 0, team 1."""
         self.view = (self.view + 1) % len(VIEWS)
+
+    def toggle_true_size(self) -> None:
+        """Draw the ships at their size in metres, or never smaller than a minimum on
+        screen (the default)."""
+        self.true_size = not self.true_size
 
     def cycle_theme(self) -> None:
         """Switch to the next theme in the library."""
@@ -660,7 +667,6 @@ class Session:
         self.loop.pilot = ship
         self.follow(ship)
         self.camera.zoom_in_to(FLYING_ZOOM)
-        self.interface.collapse_for_flying()
 
     def release(self) -> None:
         """Stop flying: the ship returns to its side's controller."""
@@ -794,6 +800,7 @@ class Session:
             self.frame,
             self.selected_ship(),
             self.camera.metres_per_pixel,
+            self.true_size,
         )
 
     # The map ----------------------------------------------------------------------------
@@ -875,7 +882,13 @@ class Session:
         ):
             return None
         return outline_table(
-            self.theme, self.frame, selection.kind, selection.index, metres_per_pixel, ship_pixels
+            self.theme,
+            self.frame,
+            selection.kind,
+            selection.index,
+            metres_per_pixel,
+            ship_pixels,
+            self.true_size,
         )
 
     def draw(self, target: moderngl.Framebuffer) -> None:
@@ -891,6 +904,7 @@ class Session:
             target,
             outline,
             self.overlay_drawing(),
+            self.true_size,
         )
         imgui.set_current_context(self.imgui_context)
         imgui.get_io().delta_time = max(self.elapsed, 1e-4)

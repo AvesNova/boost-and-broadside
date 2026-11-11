@@ -136,7 +136,7 @@ from the match's seed. Loading builds the model inside `fork_rng` for the same r
   `--fog/--no-fog`, on by default.
 - **Collapsing:** a chevron in each card's header, a tab on the edge; remembered for the
   session.
-- **While flying:** the fleets and selection cards collapse; the flying HUD (below).
+- **While flying:** the flying HUD (below); every card keeps its open or collapsed state.
 - **Scale:** 0.75, 1, 1.25, 1.5, 2 (proposal: font and every size multiplied).
 
 ### 3. Selection and hit testing

@@ -41,6 +41,32 @@ PRESETS = {
     },
 }
 
+# The arena: a 2v2 team deathmatch of the real-scale set on a small map with no fields (and
+# no zones: they are frontline's), a ship killed spawning again on the next tick (one tick
+# of the game's 30 Hz). Not a training preset. Its radius from the two ships' numbers: a
+# cruise near 162 m/s, a gun range near 600 m and a full-stick turn radius of 500-600 m
+# (cruise over turn rate), so the map is about two turn circles across and a turning fight
+# meets the boundary. The scripted agent's 2v2s on it (3 seeds, 40 s each) come within gun
+# range 0-7.5 s after the start and first kill 6-14 s in, with 7-18% of the ships' time
+# beyond the boundary; at 1600 m gun range takes up to 10 s, at 1000 m a fifth of the time
+# is spent outside.
+ARENA_RADIUS = 1300.0  # m
+PRESETS["arena"] = GameConfig(
+    2,
+    0,
+    ARENA_RADIUS,
+    episode_seconds=REAL_SCALE_CLOCK * CLOCKS[TEAM_DEATHMATCH][0],
+    respawn_seconds=1.0 / 30.0,  # one tick (`Rules.tick_length`)
+    mode=TEAM_DEATHMATCH,
+    ship_set=REAL_SCALE,
+)
+
+# The presets whose lineup is not the game's default (`Rules.team_types`): each slot's ship
+# type name in the preset's set, the same for both teams (`bnb.game.api.preset_lineup`
+# gives the type indices). Kept beside the config, not in it: a policy file records its
+# game's every config field, and one without a field is another game.
+LINEUPS = {"arena": ("P-51D", "Spitfire XIV")}
+
 # Fleet-size evaluation presets (zero-shot: training is 5v5 only), of each base game:
 # `<base>_<n>v<n>_arena` keeps the base's arena, so n ships crowd it n/5 times as densely;
 # `<base>_<n>v<n>_density` keeps its crowding, the arena radius growing as sqrt(n / 5) (its

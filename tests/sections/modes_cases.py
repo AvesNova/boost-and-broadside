@@ -79,14 +79,14 @@ def still(batch: int, ships: int) -> Action:
     return Action(zero, zero, zero)
 
 
-def tick(rules, state, action=None, seed: int = 0):
+def tick(rules, state, action=None, seed: int = 0, types=TYPES):
     """One step with fresh random draws (the spread and uniforms barely matter here)."""
     B, N = state.ships.x.shape
     generator = torch.Generator().manual_seed(seed)
     action = still(B, N) if action is None else action
     return api.step(
         rules,
-        TYPES,
+        types,
         state,
         action,
         api.spread(rules, B, generator=generator),

@@ -8,7 +8,7 @@ in vec2 miter;  // how far a vertex moves per unit of outline width
 in float outline;
 in vec2 centre;
 in float heading;
-in float size;  // the ring radius (m)
+in float size;  // the silhouette's scale (m per unit): the ring radius, unless at true size
 in vec4 fill;
 
 uniform vec4 outline_colour;

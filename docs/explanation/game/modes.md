@@ -24,7 +24,19 @@ A match ends when its clock runs out or when the win rule ends it. The clocks by
 
 <!-- generated: mode-clocks -->
 
-The training presets (`bnb.game.modes.rules.PRESETS`):
+The game presets (`bnb.game.modes.rules.PRESETS`): the training ones (5v5 at 10 fields),
+the fleet-size evaluation ones (`<base>_<n>v<n>_arena` and `_density`), and `arena`, a 2v2
+team deathmatch of the real-scale ships on a 1300 m map with no fields, where a ship killed
+spawns again on the next tick. Its lineup, one P-51D and one Spitfire XIV a team, is its
+own (`LINEUPS`, as type indices by `bnb.game.api.preset_lineup`); every other preset plays
+the game's default, the set's first two types alternating (`Rules.team_types`). The lineup
+is kept beside the config, not in it, because a policy file records every field of its
+game's config and one recorded without a field is another game. The arena's radius is
+about two full-stick turn circles of its two ships across (each turns at about 500-600 m
+at its 162 m/s cruise), so a turning fight meets the boundary, and its ships come within
+gun range (about 600 m) within a few seconds of spawning: in the scripted agent's 2v2s on
+it, 0-7.5 s after the start. A config's fields may be 0 to 64; with none the medium is
+uniform (an index of 1 everywhere) and nothing blocks sight.
 
 <!-- generated: game-presets -->
 

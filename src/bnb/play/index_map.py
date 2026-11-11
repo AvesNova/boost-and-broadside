@@ -81,7 +81,8 @@ class IndexBuilder:
 
         gap_x, gap_y = gap(fields.x), gap(fields.y)
         touches = gap_y[:, :, None] ** 2 + gap_x[:, None, :] ** 2 < outer[:, None, None] ** 2
-        touches = touches.reshape(len(outer), -1).T  # (tiles^2, M), tile = row * tiles + column
+        # (tiles^2, M), tile = row * tiles + column; with no fields no tile is touched
+        touches = touches.reshape(len(outer), tiles * tiles).T
         self.tiles = np.flatnonzero(touches.any(-1))
         self.touches = touches[self.tiles]
         self.fields = fields

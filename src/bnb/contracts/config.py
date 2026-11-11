@@ -44,8 +44,8 @@ class GameConfig:
     def __post_init__(self) -> None:
         if not 1 <= self.ships_per_team or self.num_ships > MAX_SHIPS:
             raise ValueError(f"need 1 <= ships per team and at most {MAX_SHIPS} ships")
-        if not 1 <= self.num_fields <= MAX_FIELDS:
-            raise ValueError(f"need 1 to {MAX_FIELDS} fields, got {self.num_fields}")
+        if not 0 <= self.num_fields <= MAX_FIELDS:
+            raise ValueError(f"need 0 to {MAX_FIELDS} fields, got {self.num_fields}")
         if not self.arena_radius > 0.0:
             raise ValueError("arena radius must be positive")
         if self.mode not in MODES:

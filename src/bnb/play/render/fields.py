@@ -50,6 +50,9 @@ class FieldsPass:
             dtype="f4",
         )
         self.index_texture.filter = (moderngl.NEAREST, moderngl.NEAREST)
+        self.resources, self.vertex_array = (self.index_texture,), None
+        if self.count == 0:  # a map without fields: the uniform medium, nothing to draw
+            return
         outer = fields.radius + 0.5 * fields.band_width
         discs = np.stack([fields.x, fields.y, outer, np.zeros_like(outer)], -1).astype(np.float32)
         self.outer_discs = context.texture((self.count, 1), 4, discs.tobytes(), dtype="f4")

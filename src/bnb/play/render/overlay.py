@@ -26,15 +26,16 @@ def outline_table(
     index: int,
     metres_per_pixel: float,
     ship_pixels: float | None = None,
+    true_size: bool = False,
 ) -> np.ndarray:
     """The outline's arcs (a halo and the line) around the selected object; empty for a
     ship that is not alive. ship_pixels: a ship's drawn radius in pixels where it is not
-    its ring (the minimap's dots)."""
+    its ring (the minimap's dots); true_size: the ships are drawn at true size (`ships`)."""
     if kind == "ship":
         ships = frame.ships
         if not ships.alive[index]:
             return arcs(0)
-        radius = ring_radius(ships.hit_radius[index : index + 1], metres_per_pixel)[0]
+        radius = ring_radius(ships.hit_radius[index : index + 1], metres_per_pixel, true_size)[0]
         if ship_pixels is not None:
             radius = ship_pixels * metres_per_pixel
         centre = ships.x[index], ships.y[index]

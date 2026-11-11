@@ -19,7 +19,8 @@ from bnb.play.camera import Camera
 from bnb.play.index_map import build
 from bnb.play.loop import MatchLoop, MatchSetup
 from bnb.play.render.renderer import SPECTATOR, Renderer
-from bnb.play.render.ships import ring_radius
+from bnb.play.render.ships import MINIMUM_RING_PIXELS, ring_radius, silhouette_size
+from bnb.play.render.silhouettes import WINGTIPS, polygon, silhouette_of
 from bnb.play.theme_editor import with_colour
 from bnb.play.themes import Colour
 from bnb.play.trails import SAMPLE_SECONDS, Trails
@@ -74,13 +75,13 @@ def _loop(config, fogged=True, ticks=0, seed=0):
     return loop
 
 
-def _draw(renderer, context, frame, view, camera, theme, trails=None, now=0.0):
+def _draw(renderer, context, frame, view, camera, theme, trails=None, now=0.0, true_size=False):
     grid, values = build(frame.fields, frame.arena_radius)
     renderer.set_map(frame, grid, values)
     target = _target(context)
     if trails is None:
         trails = Trails(len(frame.ships.x), frame.stall_angle)
-    renderer.draw(frame, view, camera, theme, trails, now, target)
+    renderer.draw(frame, view, camera, theme, trails, now, target, true_size=true_size)
     assert context.error == "GL_NO_ERROR"
     return read_pixels(target).astype(int)
 
@@ -185,6 +186,48 @@ def test_a_ship_draws_in_its_team_colour(renderer, context):
     )
     colour = np.array(theme.team[int(ships.team[chosen])].floats()[:3]) * 255
     assert np.abs(pixels[row, column] - colour).max() <= 1
+
+
+@pytest.mark.parametrize("metres_per_pixel", [0.1, 2.0])
+def test_true_size_draws_a_ship_at_its_wingspan_in_metres(renderer, context, metres_per_pixel):
+    """At true size a ship's silhouette spans its wingspan (twice its hit radius) at the
+    zoom, its ring at the hitbox; off, the ring keeps its minimum on screen and the
+    silhouette sits inside it. The drawn fill is the silhouette's area at its scale."""
+    game = PRESETS["arena"]
+    loop = MatchLoop(MatchSetup(game, lineup=api.preset_lineup("arena")), compiled=False)
+    ships = loop.current.ships
+    empty = np.zeros_like(ships.shield)  # empty rings draw only their faint tracks
+    ships = dataclasses.replace(ships, shield=empty, energy=empty)
+    frame = dataclasses.replace(loop.current, ships=ships)
+    theme = themes.load(themes.DEFAULT)
+    distance = np.hypot(ships.x[:, None] - ships.x, ships.y[:, None] - ships.y)
+    distance[np.diag_indices_from(distance)] = np.inf
+    chosen = int(np.argmax(distance.min(1) * ships.alive))  # the most isolated ship
+    hit_radius = ships.hit_radius[chosen : chosen + 1]
+    silhouette = int(silhouette_of(ships.ship_type[chosen : chosen + 1])[0])
+    camera = Camera(WIDTH, HEIGHT, float(ships.x[chosen]), float(ships.y[chosen]), metres_per_pixel)
+    colour = np.array(theme.team[int(ships.team[chosen])].floats()[:3]) * 255
+    for true_size in (False, True):
+        ring = ring_radius(hit_radius, metres_per_pixel, true_size)
+        scale = float(silhouette_size(ring, ships.ship_type[chosen : chosen + 1], true_size)[0])
+        if true_size:
+            assert ring[0] == hit_radius[0]
+            assert math.isclose(WINGTIPS[silhouette] * scale, hit_radius[0], rel_tol=1e-6)
+        else:
+            assert ring[0] == max(hit_radius[0], MINIMUM_RING_PIXELS * metres_per_pixel)
+            assert scale == ring[0]
+        pixels = _draw(renderer, context, frame, SPECTATOR, camera, theme, true_size=true_size)
+        filled = (np.abs(pixels - colour).max(-1) <= 2).sum()
+        outline = polygon(silhouette)  # the shoelace area, in silhouette units
+        area = 0.5 * abs(
+            np.sum(
+                outline[:, 0] * np.roll(outline[:, 1], -1)
+                - np.roll(outline[:, 0], -1) * outline[:, 1]
+            )
+        )
+        want = area * (scale / metres_per_pixel) ** 2
+        if want > 200.0:  # large enough to count: the fill's edge pixels blend
+            assert 0.8 * want <= filled <= 1.05 * want, (true_size, filled, want)
 
 
 def test_fog_darkens_what_the_team_cannot_see(renderer, context):
