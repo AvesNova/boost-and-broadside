@@ -608,7 +608,7 @@ shot head's other 17 ages (17.8 ms before the staged kernel). The rest is spread
 
 Proposals (not done):
 
-1. **The grouped cross-entropy's kept factor in bf16.** Compiled, the backward's
+1. **The grouped cross-entropy's kept factor in bf16** (done: 876c6372, "Learner speed, round 2"). Compiled, the backward's
    softmax(z) sum(t) - t is computed in the forward and kept in float32 (for the shot code
    227 MB written and read a micro-batch); the gradient it makes is rounded to bf16 for the
    head kernel anyway. Computing that factor in the forward and keeping it in bf16 (every
@@ -617,12 +617,12 @@ Proposals (not done):
    forward stays float32); the parameters' gradient norms within 5.5e-4 relative (the
    next-state head's last layer and the shot head's latent move most), against 1.2e-4 for
    everything kept here. A precision decision for the author; not landed.
-2. **The coordinate remainders.** `circular_coordinates`' level-by-level remainders are
+2. **The coordinate remainders** (done: 876c6372, "Learner speed, round 2"). `circular_coordinates`' level-by-level remainders are
    recomputed by every level's element of the stacked output (36 remainders where 8 would
    do; 1.2 ms a micro-batch). Direct remainders per level would be the same mathematics but
    not the same float32 bits as the chain (the chain is there for exactly that), so it is
    left.
-3. **Queries that no loss reads.** The shot head runs at every (tick, row, age); the loss
+3. **Queries that no loss reads** (superseded: 4 sampled ages per shot, 100bae5a). The shot head runs at every (tick, row, age); the loss
    reads only the labelled shots' valid ages: 64.5% of the captured micro-batch's queries
    (64.8% of its rows are labelled: dead ships and shots whose flight leaves the window
    are not). Querying only those would cut about a third of the head's 16 ms, but their
@@ -711,3 +711,60 @@ lookahead), and no shot failed `whole_flight`. The share the loss reads is set b
 visibility rule, by design: an enemy's shot is labelled only when the enemy is visible at
 `t` (fog on in every pool), and 62% (mixed) to 92% (frontline) of the enemies' valid shots
 were hidden. The ~65% of the earlier micro-batch is this, not lost validity.
+
+### Learner speed, round 2 (2026-11-11 19:15-22:00 KST, on the 3090)
+
+Three changes on one base (5f902a7f, the game before the shield pause), timed on the rented
+RTX 3090 (`gpubox`: a container with a 15.4-CPU quota, other tenants' load 13-24; the
+laptop was in use). Every run logs the load and the container's CPU throttling
+(`cpu.stat` nr_throttled of nr_periods: 1-7% of the periods throughout). Trees: old
+(5f902a7f), factor (old with the bf16 factor alone), t2 (876c6372: the factor and the
+remainders), t4 (100bae5a: t2 and the 4 sampled shot ages). The run config is
+`rs-rl` (real-scale RL, 160-row micro-batches, 256 minibatches, no KL early stop; it
+predates the return units: v1's reward weights and 51 value bins, which change neither
+the work nor its shapes).
+
+- **The kept factor in bf16** (`codes.KEPT_FACTOR`): the forward makes softmax(z) sum(t)
+  - t and keeps only that, in bf16, for every grouped cross-entropy (next state,
+  correction, shots). Loss and terms equal to the old tree's; the parameters' gradient
+  norms within 6.3e-4 relative (the ship heads' last layer most; median 1.6e-5).
+- **One remainder per level** (`codes.circular_coordinates`, and `fourier_encode`, not on
+  the default path): m mod p_l directly. Against float64 the finest level's coordinate is
+  within 3.9e-4 of a colour (position, 8 levels) and 2.6e-4 (map), the chain's 2.7e-4 and
+  4.8e-4: the same size, eager and compiled, CPU and CUDA (`remainder/accuracy.py` in the
+  scratch work). Loss within 1.7e-7 relative, terms 2.6e-6.
+- **4 sampled shot ages** (100bae5a; the learner page's "Shot labels").
+
+The micro-batch step (`bench/learn_micro.py`, the captured micro-batch of `rs-rl`;
+`3090-micro.json`). On the 3090 the step's wall time is host-bound: 26-36 ms, bimodal,
+the same for every tree (the median moves by more between repeats than between trees),
+so the GPU's kernel time per step (`profile=1`, two interleaved rounds) is the measure:
+
+| Tree | Kernels a step (ms), rounds 1, 2 | Change |
+|---|---|---|
+| old | 23.09, 23.03 | |
+| factor | 22.92, 22.93 | -0.6% |
+| t2 (factor + remainders) | 22.42, 22.36 | -2.2% more (pointwise 4.48 -> 3.89 ms) |
+| t4 (+ 4 shot ages) | 17.79, 17.76 | -20.6% (GEMM 6.2 -> 5.6, other 6.2 -> 4.3, reductions 5.2 -> 4.0, pointwise 3.9 -> 3.0) |
+
+The real update (`compile_baseline.py train run=rs-rl steps=4 heads=0`, interleaved old,
+t2, t4 twice; `3090-update-*.json`), steady learn of updates 2-4, collect 8.9 s each:
+
+| Tree | Round 1 (s) | Round 2 (s) | Compile + first update, round 2 (warm): compiles, capture, learn_1 (s) |
+|---|---|---|---|
+| old | 265.8, 270.1, 262.4 | 288.5, 281.3, 282.9 | 128.0, 90.0, 319.8 |
+| t2 | 258.9, 260.1, 259.6 | 277.9, 282.6, 290.6 | 124.4, 90.8, 328.2 |
+| t4 | 224.3, 223.9, 223.1 | 219.3, 216.4, 224.6 | 119.0, 87.2, 249.2 |
+
+The box drifts by 7% between rounds (old 266 -> 284 s); within a round, t2 against old is
+-2.5% and -0.2%, t4 against t2 -13.8% and -22.4%. `Learner._loss`'s warm compile: 32.7,
+28.2, 27.0 s. Peak memory 4.96 GB (t4 4.98). Read with the kernel times: the two
+approved changes are -2.8% of the step's kernels and within the box's noise on the
+update; the 4 sampled ages are -21% of the kernels and -14 to -22% of the update.
+
+The 3090 runs this update slower than the laptop's 4060 (steady 260-285 s against 189 s):
+the micro-batch steps' kernels are 2048 x 23 ms = 47 s of it, so most of the update is
+outside them: not measured apart here; the candidates are launch-heavy (the label pass's
+re-simulation scan, 146 compiled tick calls per batch of views, the staging from pinned
+host memory, the optimizer), and the container's CPU quota slows those. A box finding,
+not an Ampere one; the laptop's A/B is to be repeated when it is free.
