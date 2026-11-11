@@ -85,8 +85,12 @@ class YemongConfig:
     """Production defaults (v1's known-good run). Nothing in the weights depends on the
     numbers of ships or fields or on the arena.
 
-    levels: the reward levels in their configured order; outcome_level names the one read
-    off the global token (the others are per-ship categorical values).
+    levels: the critic's value levels in their configured order; outcome_level names the one
+    read off the global token (the others are per-ship categorical values). None: no
+    outcome head, every level per-ship. The learner reads each level's reward by its name
+    (`bnb.learn.returns.value_rewards`): the reward levels' own (the default), or the single
+    level `bnb.contracts.SUMMED_LEVEL` over their sum, with outcome_level None (the single
+    value arm: one per-ship value over one reward stream, and no outcome head).
     rotary_period: the coarsest period (m) of the position frequencies (2 pi / p) 2^k,
     k < rotary_octaves; heading_harmonics: the heading's.
     bfloat16_matmuls: run the matrix products of the encoder, the trunk and the heads under
@@ -199,7 +203,7 @@ class YemongConfig:
     value_bins: int = 51
     value_limit: float = 2.0
     levels: tuple[str, ...] = REWARD_LEVELS
-    outcome_level: str = "outcome"
+    outcome_level: str | None = "outcome"
     hex_rings: int = 10
     presence_radius: float = 150.0  # m
     rotary_period: float = 8192.0  # m, the coarsest
@@ -256,10 +260,13 @@ class YemongConfig:
             raise ValueError(f"order {self.order!r} is not one of {ORDERS}")
         if self.rotary_readout and (self.order != "temporal_first" or not self.rotary):
             raise ValueError("rotary_readout needs order temporal_first and rotary on")
-        if self.outcome_level not in self.levels:
-            raise ValueError(f"outcome level {self.outcome_level!r} is not in {self.levels}")
-        if len(self.levels) < 2:
-            raise ValueError("the critic needs at least one per-ship level besides the outcome")
+        if not self.levels or len(set(self.levels)) != len(self.levels):
+            raise ValueError(f"the critic's levels {self.levels} must be distinct, and some")
+        if self.outcome_level is not None:
+            if self.outcome_level not in self.levels:
+                raise ValueError(f"outcome level {self.outcome_level!r} is not in {self.levels}")
+            if len(self.levels) < 2:
+                raise ValueError("the critic needs at least one per-ship level besides the outcome")
         pairs = 2 * self.rotary_octaves + len(self.heading_harmonics)
         if 2 * pairs > self.width // self.heads:
             raise ValueError(
@@ -273,8 +280,8 @@ class YemongConfig:
 
     @property
     def local_levels(self) -> tuple[int, ...]:
-        """The indices into levels of every level but outcome_level: the levels with a value
-        distribution."""
+        """The indices into levels of every level but outcome_level (every level without
+        one): the levels with a value distribution."""
         return tuple(i for i, name in enumerate(self.levels) if name != self.outcome_level)
 
 
@@ -324,15 +331,16 @@ class Ablations:
 class Decision:
     """One step's outputs, per view: policy_logits (R, S, NUM_JOINT); enemy_action_logits and
     next_state_logits (R, N - S, ...) for the enemy rows; values (R, S, levels) in the configured
-    level order; outcome_probabilities (R, 4); the next carry (previous_action not yet
-    replaced by the sample); the replay record; correction_logits (R, N - S, ...), the error
-    head's, for the enemy rows (None without `YemongConfig.delta_split`)."""
+    level order; outcome_probabilities (R, 4) (None without an outcome level); the next carry
+    (previous_action not yet replaced by the sample); the replay record; correction_logits
+    (R, N - S, ...), the error head's, for the enemy rows (None without
+    `YemongConfig.delta_split`)."""
 
     policy_logits: torch.Tensor
     enemy_action_logits: torch.Tensor
     next_state_logits: torch.Tensor
     values: torch.Tensor
-    outcome_probabilities: torch.Tensor
+    outcome_probabilities: torch.Tensor | None
     carry: Carry
     replay: Replay
     correction_logits: torch.Tensor | None = None
@@ -341,19 +349,20 @@ class Decision:
 @contract
 class Unrolled:
     """A segment's outputs, (L, R, ...) leading: policy_logits (S rows), enemy_action_logits
-    and next_state_logits (every row), value_logits (S, levels - 1, bins), values (S, levels),
-    outcome_logits (4), density_log_rates (2 cells: ally cells, then enemy cells),
-    shot_outcome_logits (N, 19) and shot_latents (N, D) for `Yemong.shot_trajectory`;
-    rotary_readout (N, blocks, 2, pairs), each block's read-out (cos, sin) rows per ship
-    (None without `YemongConfig.rotary_readout`); correction_logits (N, ...), the error
-    head's (every row; None without `YemongConfig.delta_split`)."""
+    and next_state_logits (every row), value_logits (S, per-ship levels, bins), values
+    (S, levels), outcome_logits (4; None without an outcome level), density_log_rates
+    (2 cells: ally cells, then enemy cells), shot_outcome_logits (N, 19) and shot_latents
+    (N, D) for `Yemong.shot_trajectory`; rotary_readout (N, blocks, 2, pairs), each block's
+    read-out (cos, sin) rows per ship (None without `YemongConfig.rotary_readout`);
+    correction_logits (N, ...), the error head's (every row; None without
+    `YemongConfig.delta_split`)."""
 
     policy_logits: torch.Tensor
     enemy_action_logits: torch.Tensor
     next_state_logits: torch.Tensor
     value_logits: torch.Tensor
     values: torch.Tensor
-    outcome_logits: torch.Tensor
+    outcome_logits: torch.Tensor | None
     density_log_rates: torch.Tensor
     shot_outcome_logits: torch.Tensor
     shot_latents: torch.Tensor
@@ -499,11 +508,13 @@ class Yemong(nn.Module):
             config.spatial_per_block,
             config.order,
         )
-        levels = len(config.levels) - 1
+        levels = len(config.local_levels)
         # Heads grouped by the token they read: own ships, every ship, the global token.
         self.own_heads = HeadGroup(width, hidden, (NUM_JOINT, levels * config.value_bins))
         self.ship_heads = HeadGroup(width, hidden, (NUM_JOINT, self.next_state_width))
-        self.outcome = HeadGroup(width, hidden, (critic.OUTCOMES,))
+        self.outcome = (
+            None if config.outcome_level is None else HeadGroup(width, hidden, (critic.OUTCOMES,))
+        )
         cells = density.cell_count(config.hex_rings)
         self.density = HeadGroup(width, hidden, (2 * cells,))
         self.shot_outcome = HeadGroup(width, hidden, (self.shot_code.outcome_width,))
@@ -966,14 +977,22 @@ class Yemong(nn.Module):
 
         return retable
 
-    def _values(self, value_logits: torch.Tensor, outcome_logits: torch.Tensor):
+    def _outcome_logits(self, global_hidden: torch.Tensor) -> torch.Tensor | None:
+        """The outcome head's logits (..., 4) on the global token (None without one)."""
+        if self.outcome is None:
+            return None
+        (outcome_logits,) = self.outcome(global_hidden)
+        return outcome_logits
+
+    def _values(self, value_logits: torch.Tensor, outcome_logits: torch.Tensor | None):
         value_logits = value_logits.unflatten(-1, (-1, self.config.value_bins))
+        config = self.config
         values = critic_values(
             value_logits,
             outcome_logits,
             self.bins,
-            self.config.local_levels,
-            self.config.levels.index(self.config.outcome_level),
+            config.local_levels,
+            None if config.outcome_level is None else config.levels.index(config.outcome_level),
         )
         return value_logits, values
 
@@ -1036,7 +1055,7 @@ class Yemong(nn.Module):
             correction_logits = every_correction = None
             if self.correction_head is not None:
                 (correction_logits,) = self.correction_head(hidden[:, own:ships_count])
-            (outcome_logits,) = self.outcome(hidden[:, ships_count])
+            outcome_logits = self._outcome_logits(hidden[:, ships_count])
             if inspect:
                 every_action_logits, every_change = self.ship_heads(hidden[:, :ships_count])
                 if self.correction_head is not None:
@@ -1047,7 +1066,7 @@ class Yemong(nn.Module):
         policy_logits, enemy_action_logits, outcome_logits = (
             policy_logits.to(dtype),
             enemy_action_logits.to(dtype),
-            outcome_logits.to(dtype),
+            _cast(outcome_logits, dtype),
         )
         value_logits, values = self._values(value_logits.to(dtype), outcome_logits)
         forecast_logits = self._next_state_logits(tokens.code[:, own:], change.to(dtype))
@@ -1113,7 +1132,9 @@ class Yemong(nn.Module):
             enemy_action_logits=enemy_action_logits,
             next_state_logits=forecast_logits,
             values=values,
-            outcome_probabilities=torch.softmax(outcome_logits, -1),
+            outcome_probabilities=(
+                None if outcome_logits is None else torch.softmax(outcome_logits, -1)
+            ),
             carry=carry,
             replay=replay,
             correction_logits=correction_logits,
@@ -1163,14 +1184,14 @@ class Yemong(nn.Module):
             policy_logits, value_logits = self.own_heads(hidden[..., :own, :])
             ship_hidden = hidden[..., :ships, :]
             enemy_action_logits, change = self.ship_heads(ship_hidden)
-            (outcome_logits,) = self.outcome(hidden[..., ships, :])
+            outcome_logits = self._outcome_logits(hidden[..., ships, :])
             (density_log_rates,) = self.density(hidden[..., ships, :])
             (shot_outcome_logits,) = self.shot_outcome(ship_hidden)
             shot_latents = self.shot_trajectory_head.latent(ship_hidden)
             correction_logits = None
             if self.correction_head is not None:
                 (correction_logits,) = self.correction_head(ship_hidden)
-        outcome_logits = outcome_logits.to(dtype)
+        outcome_logits = _cast(outcome_logits, dtype)
         value_logits, values = self._values(value_logits.to(dtype), outcome_logits)
         return Unrolled(
             policy_logits=policy_logits.to(dtype),

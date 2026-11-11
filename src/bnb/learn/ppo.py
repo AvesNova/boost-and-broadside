@@ -30,7 +30,7 @@ from typing import Protocol
 import torch
 from torch.utils import _pytree
 
-from bnb.contracts import REWARD_LEVELS, Trajectory
+from bnb.contracts import Trajectory
 from bnb.contracts.action import to_joint
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.contracts.series import Mean, Stopwatch
@@ -60,9 +60,10 @@ TERMS = (
 # waiting to respawn); view-steps; valid beliefs at non-final steps; enemies alive; shots;
 # every living ship (the rotary read-out's tokens).
 COUNTS = ("policy", "valued", "steps", "next_state", "enemy_action", "shots", "ships")
-# The per-tick records the returns read, staged whole per shard.
+# The per-tick records the returns read, staged whole per shard (the outcome only with an
+# outcome level: `Learner.small_names`).
 SMALL = ("reward", "values", "outcome", "done", "result", "log_probability", "alive", "valued")
-# What the returns read of the lookahead.
+# What the returns read of the lookahead (likewise: `Learner.lookahead_names`).
 LOOKAHEAD = ("reward", "values", "outcome", "done", "result")
 # What the shot re-simulation reads of the ticks after a segment.
 FOLLOWING = ("capture", "obs", "done")
@@ -106,7 +107,10 @@ class Adam(torch.optim.Adam):
 
 @dataclasses.dataclass(frozen=True)
 class LearnerConfig:
-    """Learner spec 3-4, v1's values. Per-level tuples follow REWARD_LEVELS. A coefficient
+    """Learner spec 3-4, v1's values. The per-level tuples (discount, trace_decay,
+    team_spirit) give one value per value level of the critic it trains, in its order (the
+    model's `config.levels`: by default REWARD_LEVELS; one for the single value level,
+    `bnb.contracts.SUMMED_LEVEL`). A coefficient
     multiplies its term's mean in nats per token. The entropy has one coefficient per action
     factor, on its chain-rule part (`entropy_power` on H(power), `entropy_stick` on
     H(stick | power), `entropy_shoot` on H(shoot | power, stick)), so three equal coefficients
@@ -184,9 +188,6 @@ class LearnerConfig:
     def records_distribution(self) -> bool:
         """Whether the rollout records the learner's whole joint action distribution."""
         return self.trust_region == "dppo_tv"
-        for name in ("discount", "trace_decay", "team_spirit"):
-            if len(getattr(self, name)) != len(REWARD_LEVELS):
-                raise ValueError(f"{name} needs one value per reward level")
 
 
 # The entropy coefficients of a warm start from a policy file (`bnb train --init-from`), in
@@ -277,7 +278,8 @@ def _own_joint(trajectory: Trajectory) -> torch.Tensor:
 
 class Learner:
     """model: the learner's module, with `unroll(carry, obs, replay, reset)`, the critic's
-    `bins` and `config.levels`, `outcome_level` and `local_levels`; Yemong's auxiliary heads
+    `bins` and `config.levels` (one of `returns.VALUE_LAYOUTS`), `outcome_level` (None: no
+    outcome head) and `local_levels`; Yemong's auxiliary heads
     also need `state_code`, `shot_code`, `shot_trajectory` and `config.hex_rings`. rules and
     types: the game's (for the shot re-simulation). outcome_weight: the outcome level's
     reward weight (its value in reward units is P(win) - P(loss) times it). stage: how the
@@ -301,10 +303,24 @@ class Learner:
         KL (none of them changes the update)."""
         self.model, self.config, self.rules, self.types = model, config, rules, types
         self.device, self.outcome_weight = device, outcome_weight
-        levels = model.config.levels
-        if tuple(levels) != REWARD_LEVELS:
-            raise ValueError(f"the model's levels {levels} are not {REWARD_LEVELS}")
-        self.outcome_level = levels.index(model.config.outcome_level)
+        levels = tuple(model.config.levels)
+        if levels not in returns.VALUE_LAYOUTS:
+            raise ValueError(f"the model's levels {levels} are not one of {returns.VALUE_LAYOUTS}")
+        for name in ("discount", "trace_decay", "team_spirit"):
+            if len(getattr(config, name)) != len(levels):
+                raise ValueError(
+                    f"learner {name} {getattr(config, name)} needs one value per value level "
+                    f"of the model, {levels}"
+                )
+        self.levels = levels
+        outcome = model.config.outcome_level
+        self.outcome_level = None if outcome is None else levels.index(outcome)
+        # what the returns read of the store: the outcome's records only with its head
+        self.small_names, self.lookahead_names = (
+            tuple(name for name in names if outcome is not None or name != "outcome")
+            for names in (SMALL, LOOKAHEAD)
+        )
+        self.moments = 5 * len(levels)  # the fit's moments at the end of the diagnostics
         self.local_levels = model.config.local_levels
         self.local_index = torch.tensor(self.local_levels, device=device)  # no copy per use
         self.optimizer = Adam(
@@ -343,23 +359,26 @@ class Learner:
 
     def _in_reward_units(self, values: torch.Tensor) -> torch.Tensor:
         """The outcome level's value is P(win) - P(loss); times its weight it is in reward
-        units like the others."""
+        units like the others. Without an outcome level every value already is."""
+        if self.outcome_level is None:
+            return values
         scale = torch.ones(values.shape[-1], device=values.device)
         scale[self.outcome_level] = self.outcome_weight
         return values * scale
 
     def chained_returns(self, chain: dict, alive: torch.Tensor, bootstrap) -> dict:
-        """Per-level GAE, team mixing and the outcome targets over consecutive ticks of the
-        same rows: `chain` the LOOKAHEAD records (T, R, ...), the trained ticks first, then
-        any that are played only for their targets; `alive` (T', R, N) the trained ticks'
-        (T' <= T), which the results cover; bootstrapped from `bootstrap` (the learner's
-        Outputs after the last tick)."""
+        """Per-level GAE, team mixing and the outcome targets (with an outcome level) over
+        consecutive ticks of the same rows: `chain` the LOOKAHEAD records (T, R, ...), the
+        trained ticks first, then any that are played only for their targets; `alive`
+        (T', R, N) the trained ticks' (T' <= T), which the results cover; bootstrapped from
+        `bootstrap` (the learner's Outputs after the last tick). Each value level's reward
+        is `returns.value_rewards`'."""
         level, config = self.outcome_level, self.config
         trained = alive.shape[0]
         values = self._in_reward_units(chain["values"])
         done = chain["done"]
         advantages, level_returns = returns.per_level_gae(
-            chain["reward"],
+            returns.value_rewards(chain["reward"], self.levels),
             values,
             done,
             self._in_reward_units(bootstrap.values),
@@ -367,27 +386,29 @@ class Learner:
             self.discount,
             self.trace_decay,
         )
-        targets = critic.outcome_targets(
-            chain["outcome"],
-            chain["result"],
-            done,
-            bootstrap.outcome,
-            config.discount[level],
-            config.trace_decay[level],
-        )
         advantages, level_returns = advantages[:trained], level_returns[:trained]
         own_alive = alive[..., : values.shape[-2]]
         team = torch.zeros_like(own_alive, dtype=torch.int64)  # a view's own ships: one team
         advantage, total = returns.team_aggregate(
             team, own_alive, advantages, level_returns, self.team_spirit
         )
-        return dict(
+        out = dict(
             advantage=advantage,
             total=total,
             level_returns=level_returns,
             values=values[:trained],
-            outcome_targets=targets[:trained],
         )
+        if level is not None:
+            targets = critic.outcome_targets(
+                chain["outcome"],
+                chain["result"],
+                done,
+                bootstrap.outcome,
+                config.discount[level],
+                config.trace_decay[level],
+            )
+            out["outcome_targets"] = targets[:trained]
+        return out
 
     @staticmethod
     def _counts(small: dict) -> torch.Tensor:
@@ -567,7 +588,7 @@ class Learner:
             unrolled.value_logits,
             unrolled.outcome_logits,
             derived["level_returns"].index_select(-1, self.local_index),
-            derived["outcome_targets"],
+            derived.get("outcome_targets"),
             trajectory.valued,
             model.bins,
             self.local_levels,
@@ -653,14 +674,15 @@ class Learner:
             critic.two_hot(
                 derived["level_returns"].index_select(-1, self.local_index), self.model.bins
             )
-        )  # (L, R, S, levels - 1)
+        )  # (L, R, S, per-ship levels)
         local = torch.where(trajectory.valued[..., None], local, 0.0).flatten(0, -2).sum(0)
         columns = dict(
             zip(self.local_levels, (local / denominator["valued"]).unbind(), strict=True)
         )
-        columns[self.outcome_level] = (
-            statistics.target_entropy(derived["outcome_targets"]).sum() / denominator["steps"]
-        )
+        if self.outcome_level is not None:
+            columns[self.outcome_level] = (
+                statistics.target_entropy(derived["outcome_targets"]).sum() / denominator["steps"]
+            )
         targets = torch.stack([columns[level] for level in range(len(columns))])
         # the fit's moments per level over the valued ships (raw sums): count, target, its
         # square, residual, its square
@@ -681,8 +703,6 @@ class Learner:
             .sum(1)
         )  # (5, levels)
         return torch.cat([sums / denominator["policy"], targets, moments.flatten()])
-
-    MOMENTS = 5 * len(REWARD_LEVELS)  # the fit's moments at the end of the diagnostics
 
     # what `_policy` reports per minibatch, each a sum over the own living ships over the
     # minibatch's count: the trust region's rate (the ratio past the clip's bounds, or the
@@ -812,11 +832,12 @@ class Learner:
         lookahead's, or the last shard's without one)."""
         config, device = self.config, self.device
         shards, length = segments.shards, segments.length
-        small = [segments.shard(SMALL, shard) for shard in range(shards)]
-        chain = {name: torch.cat([part[name] for part in small], 0) for name in LOOKAHEAD}
-        if all(segments.lookahead_ticks.get(name, 0) > 0 for name in LOOKAHEAD):
-            tail = segments.lookahead(LOOKAHEAD)
-            chain = {name: torch.cat([chain[name], tail[name]], 0) for name in LOOKAHEAD}
+        lookahead = self.lookahead_names
+        small = [segments.shard(self.small_names, shard) for shard in range(shards)]
+        chain = {name: torch.cat([part[name] for part in small], 0) for name in lookahead}
+        if all(segments.lookahead_ticks.get(name, 0) > 0 for name in lookahead):
+            tail = segments.lookahead(lookahead)
+            chain = {name: torch.cat([chain[name], tail[name]], 0) for name in lookahead}
         chained = self.chained_returns(
             chain, torch.cat([part["alive"] for part in small], 0), bootstrap
         )
@@ -831,7 +852,9 @@ class Learner:
             return torch.cat([part[name] for part in source], 1)
 
         derived = {
-            name: joined(name, parts) for name in ("advantage", "level_returns", "outcome_targets")
+            name: joined(name, parts)
+            for name in ("advantage", "level_returns", "outcome_targets")
+            if name in chained
         }
         rollout_log_probability = joined("log_probability", small)
         derived["old_log_probability"] = rollout_log_probability.clone()
@@ -937,7 +960,7 @@ class Learner:
         outside = ((level_returns < bins[0]) | (level_returns > bins[-1])).float()
         flat = torch.where(mask, level_returns, torch.nan).flatten(0, 2)  # (tokens, levels)
         quantiles = torch.nanquantile(flat, self.return_quantiles, dim=0)  # (3, levels)
-        for index, level in enumerate(REWARD_LEVELS):
+        for index, level in enumerate(self.levels):
 
             def total(x: torch.Tensor) -> torch.Tensor:
                 return torch.where(mask[..., index], x[..., index], 0.0).sum()
@@ -973,7 +996,7 @@ class Learner:
         denominator = dict(zip(COUNTS, total.unbind()))
         micro = self._micro_batches(chosen)
         terms_sum = torch.zeros(len(TERMS), device=device)
-        levels_sum = torch.zeros(len(REWARD_LEVELS), device=device)
+        levels_sum = torch.zeros(len(self.levels), device=device)
         statistic_sum = torch.zeros(len(self.STATISTICS), device=device)
         diagnostic_sum = None
         head_sum: dict = {}
@@ -1068,7 +1091,7 @@ class Learner:
             else None
         )
         terms_total = torch.zeros(len(TERMS), device=device)
-        levels_total = torch.zeros(len(REWARD_LEVELS), device=device)
+        levels_total = torch.zeros(len(self.levels), device=device)
         statistics_total = torch.zeros(len(self.STATISTICS), device=device)
         diagnostics_total = None
         last_moments = None  # the last completed epoch's fit moments
@@ -1106,7 +1129,7 @@ class Learner:
                 epoch_statistics += statistic
                 statistics_total += statistic
                 if self.diagnostics:
-                    diagnostic, moments = diagnostic[: -self.MOMENTS], diagnostic[-self.MOMENTS :]
+                    diagnostic, moments = diagnostic[: -self.moments], diagnostic[-self.moments :]
                     epoch_moments = moments if epoch_moments is None else epoch_moments + moments
                 diagnostics_total = (
                     diagnostic if diagnostics_total is None else diagnostics_total + diagnostic
@@ -1131,7 +1154,7 @@ class Learner:
             for index, term in enumerate(TERMS)
             if term in HEAD_SERIES
         }
-        for index, level in enumerate(REWARD_LEVELS):
+        for index, level in enumerate(self.levels):
             out[f"critic/value_loss/{level}"] = Mean(levels_total[index], steps)
             out[f"critic/explained_variance/{level}"] = prepared["explained_variance"][index]
         out.update(self.report(first_epoch, epoch_statistics, statistics_total / steps))
@@ -1155,7 +1178,7 @@ class Learner:
             out[f"train/nonfinite_steps/{term}"] = nonfinite_terms[index]
         if self.diagnostics:
             out.update(self._diagnostic_series(prepared, diagnostics_total, steps, levels_total))
-            out.update(fit_series(last_moments))
+            out.update(fit_series(last_moments, self.levels))
             out.update(self._parameter_series(before))
             out.update(head_statistics.series(head_total, self.model))
             if cadence:
@@ -1195,7 +1218,8 @@ class Learner:
         """The policy's diagnostic means over the update's steps (`statistics.POLICY_SUMS`,
         the entropy quantiles from its histogram, the factor coupling), the value KL per
         level, and the series `prepare` measured before any step."""
-        policy_part, targets = total[: -len(REWARD_LEVELS)], total[-len(REWARD_LEVELS) :]
+        levels = len(self.levels)
+        policy_part, targets = total[:-levels], total[-levels:]
         sums, histogram = (
             policy_part[: len(statistics.POLICY_SUMS)],
             policy_part[len(statistics.POLICY_SUMS) :],
@@ -1214,7 +1238,7 @@ class Learner:
             strict=True,
         ):
             out[f"policy/entropy_quantile/p{round(quantile * 100)}"] = value
-        for index, level in enumerate(REWARD_LEVELS):
+        for index, level in enumerate(self.levels):
             out[f"critic/value_kl/{level}"] = Mean(levels_total[index] - targets[index], steps)
         out.update(prepared["series"])
         return out
@@ -1260,7 +1284,7 @@ class Learner:
         basic = {}
         for term in TERMS:
             if term == "value":
-                for level, loss in zip(REWARD_LEVELS, per_level.unbind(), strict=True):
+                for level, loss in zip(self.levels, per_level.unbind(), strict=True):
                     basic[f"value_{level}"] = config.value * loss
             elif term == "next_state" and terms[term].requires_grad:
                 cross_entropy = self._next_state_cross_entropy(unrolled, label)
@@ -1378,10 +1402,11 @@ def divergence_quantiles(counts: torch.Tensor, quantiles: torch.Tensor) -> torch
     return torch.where(total > 0, 10.0**exponent, torch.nan)
 
 
-def fit_series(moments: torch.Tensor) -> dict:
+def fit_series(moments: torch.Tensor, levels: tuple[str, ...]) -> dict:
     """`critic/explained_variance_fit/{level}`: the explained variance of the learner's own
-    values during the last completed epoch (moments (5 * levels,) from `_diagnostics`),
-    against the returns it fits (0 where the returns do not vary)."""
+    values during the last completed epoch (moments (5 * levels,) from `_diagnostics`, for
+    the critic's value levels `levels`), against the returns it fits (0 where the returns
+    do not vary)."""
     count, target, target_square, residual, residual_square = moments.view(5, -1)
 
     def variance(total: torch.Tensor, square: torch.Tensor) -> torch.Tensor:
@@ -1393,7 +1418,7 @@ def fit_series(moments: torch.Tensor) -> dict:
     fit = torch.where(varies, 1.0 - fitted / torch.where(varies, total, 1.0), 0.0)
     return {
         f"critic/explained_variance_fit/{level}": value
-        for level, value in zip(REWARD_LEVELS, fit.unbind(), strict=True)
+        for level, value in zip(levels, fit.unbind(), strict=True)
     }
 
 

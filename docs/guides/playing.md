@@ -131,7 +131,7 @@ the submenu lists only those the sides being played can provide (`bnb.play.overl
 | Dead-reckoning ghosts | the scripted agent | each remembered enemy it cannot see, at its recalled position, with a line back to its last sighting; its opacity is the agent's weight on it (the memory states no sigma) |
 | Density | a Yemong agent | the density head's expected ships per hex cell |
 | Enemy action | a Yemong agent | in the selection card, for a selected enemy: the power, stick and shoot marginals, the action it took outlined |
-| Value and outcome | a Yemong agent | in the selection card, for a selected own ship: the critic's value per reward level, the outcome head's P(win), P(tie), P(loss) and P(unresolved), and the next shot's P(enemy hit) |
+| Value and outcome | a Yemong agent | in the selection card, for a selected own ship: the critic's value per value level, the outcome head's P(win), P(tie), P(loss) and P(unresolved) (a critic with one), and the next shot's P(enemy hit) |
 
 ![A fight: the true bullet paths, the selected ship's predicted shot and its critic](../images/play/overlays-fight-1600.png)
 

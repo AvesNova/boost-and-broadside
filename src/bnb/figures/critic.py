@@ -7,14 +7,14 @@ on "unresolved", so its probability of a win is the discounted chance of winning
 figures read the resolved probabilities renormalised, P(win) / (P(win) + P(tie) + P(loss)),
 as its forecast of the match result, scored on the ticks of games that ended inside the
 capture: a reliability diagram, and the Brier skill against the capture's result
-frequencies by the time left to the game's end.
+frequencies by the time left to the game's end. A critic without an outcome head (the
+single value arm, `bnb.models.yemong.model.YemongConfig`) draws the values alone.
 """
 
 import pathlib
 
 import torch
 
-from bnb.contracts import REWARD_LEVELS
 from bnb.models.yemong.critic import LOSS, TIE, WIN
 
 from . import output
@@ -58,10 +58,13 @@ def _brier(probabilities: torch.Tensor, outcome: torch.Tensor) -> torch.Tensor:
 def measures(artifact: dict) -> dict:
     """The games that ended, the ticks scored, the result frequencies, the Brier score of
     the renormalised outcome head and of the frequencies, overall and per HORIZONS bucket
-    (seconds left), and the Brier skill 1 - head / frequencies."""
+    (seconds left), and the Brier skill 1 - head / frequencies. Without an outcome head,
+    the games that ended alone."""
+    games = int(artifact["games"]["done"].sum())
+    if "outcome" not in artifact["games"]:
+        return dict(games_ended=games)
     part = ended_games(artifact)
     ended = part["ended"]
-    games = int(artifact["games"]["done"].sum())
     out = dict(games_ended=games, ticks_scored=int(ended.sum()))
     if not ended.any():
         return out
@@ -93,8 +96,11 @@ def measures(artifact: dict) -> dict:
 
 def render(artifact: dict, directory: pathlib.Path) -> tuple[list[pathlib.Path], dict]:
     """The critic figures: critic_trace (one view's game: the values and the outcome head,
-    kills and deaths marked) and critic_outcome (reliability and Brier skill)."""
+    kills and deaths marked) and critic_outcome (reliability and Brier skill); without an
+    outcome head, critic_trace of the values alone."""
     numbers = measures(artifact)
+    if "outcome" not in artifact["games"]:
+        return [_trace(artifact, None, directory, numbers)], numbers
     part = ended_games(artifact)
     return [
         _trace(artifact, part, directory, numbers),
@@ -116,9 +122,33 @@ def _trace(artifact, part, directory, numbers) -> pathlib.Path:
     seconds = torch.arange(stop) * tick
     alive = games["alive"][:stop, view]
     died = alive[:-1] & ~alive[1:]  # (stop - 1, N) a ship died on that tick
-    figure, axes = output.new_figure(2, 1, size=(11.0, 3.2), sharex=True)
-    axis = axes[0, 0]
-    outcome = games["outcome"]
+    result = int(games["result"][stop - 1, view]) if ends[view] >= 0 else None
+    title = (
+        f"view {view}: game result {result} (+1 win); vertical lines: an enemy "
+        "killed (orange), an own ship lost (black)"
+    )
+    rows, height = (1, 2.2) if part is None else (2, 3.2)  # the values alone, or below the outcome
+    figure, axes = output.new_figure(rows, 1, size=(11.0, height), sharex=True)
+    for time, row in torch.nonzero(died).tolist():
+        colour = output.TRUE if row >= own else output.INK
+        for each in axes[:, 0]:
+            each.axvline(float((time + 1) * tick), color=colour, linewidth=0.8, alpha=0.6)
+    if part is not None:
+        _outcome_trace(axes[0, 0], games["outcome"], part, view, stop, seconds)
+    axes[0, 0].set_title(title, fontsize=9)
+    axis = axes[-1, 0]
+    values = games["values"][:stop, view].mean(1)  # (stop, levels): the own ships' mean
+    for level, name in enumerate(meta["levels"]):
+        axis.plot(seconds, values[:, level], linewidth=1, label=name)
+    axis.set_ylabel("critic value per level\n(own ships' mean)")
+    axis.set_xlabel("seconds")
+    axis.legend(frameon=False, fontsize=7, ncol=values.shape[-1])
+    figure.tight_layout()
+    return output.save(figure, directory, "critic_trace", meta, numbers)
+
+
+def _outcome_trace(axis, outcome: dict, part: dict, view: int, stop: int, seconds) -> None:
+    """The outcome head over one view's game, on `axis`."""
     axis.plot(
         seconds,
         outcome["value"][:stop, view],
@@ -138,27 +168,8 @@ def _trace(artifact, part, directory, numbers) -> pathlib.Path:
         linestyle="--",
         label="P(unresolved)",
     )
-    for time, row in torch.nonzero(died).tolist():
-        colour = output.TRUE if row >= own else output.INK
-        for each in axes[:, 0]:
-            each.axvline(float((time + 1) * tick), color=colour, linewidth=0.8, alpha=0.6)
     axis.set_ylabel("outcome head")
     axis.legend(frameon=False, fontsize=7, loc="upper left")
-    result = int(games["result"][stop - 1, view]) if ends[view] >= 0 else None
-    axis.set_title(
-        f"view {view}: game result {result} (+1 win); vertical lines: an enemy "
-        "killed (orange), an own ship lost (black)",
-        fontsize=9,
-    )
-    axis = axes[1, 0]
-    values = games["values"][:stop, view].mean(1)  # (stop, levels): the own ships' mean
-    for level in range(values.shape[-1]):
-        axis.plot(seconds, values[:, level], linewidth=1, label=REWARD_LEVELS[level])
-    axis.set_ylabel("critic value per level\n(own ships' mean)")
-    axis.set_xlabel("seconds")
-    axis.legend(frameon=False, fontsize=7, ncol=values.shape[-1])
-    figure.tight_layout()
-    return output.save(figure, directory, "critic_trace", meta, numbers)
 
 
 def _outcome(artifact, part, directory, numbers) -> pathlib.Path:

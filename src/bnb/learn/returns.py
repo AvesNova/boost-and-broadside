@@ -1,10 +1,27 @@
-"""Returns (learner spec 3): per-level GAE, team mixing with the level sum, and the outcome
-level's categorical targets. v1's math; fixtures `learner_gae` and `learner_team_aggregate`.
+"""Returns (learner spec 3): each value level's reward, per-level GAE, and team mixing with
+the level sum. v1's math; fixtures `learner_gae` and `learner_team_aggregate`.
 
-Shapes are time-major, (L, R, S, ...) per ship, with the reward levels last.
+Shapes are time-major, (L, R, S, ...) per ship, with the critic's value levels last.
 """
 
 import torch
+
+from bnb.contracts import REWARD_LEVELS, SUMMED_LEVEL
+
+# The critic's value levels the returns support: one per reward level, or the single level
+# over their sum.
+VALUE_LAYOUTS = (REWARD_LEVELS, (SUMMED_LEVEL,))
+
+
+def value_rewards(rewards: torch.Tensor, levels: tuple[str, ...]) -> torch.Tensor:
+    """The reward of each of the critic's value levels (..., len(levels)), from the
+    weighted rewards per reward level (..., len(REWARD_LEVELS)): the reward levels as
+    they are, or for the single level (`SUMMED_LEVEL`) their sum."""
+    if levels == REWARD_LEVELS:
+        return rewards
+    if levels == (SUMMED_LEVEL,):
+        return rewards.sum(-1, keepdim=True)
+    raise ValueError(f"the critic's levels {levels} are not one of {VALUE_LAYOUTS}")
 
 
 def per_level_gae(

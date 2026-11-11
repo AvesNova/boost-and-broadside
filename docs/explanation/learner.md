@@ -35,7 +35,8 @@ has the policy and the critic only.
 An update consumes `shards` segments of `length` ticks each, collected one after another,
 each continuing from the carry the last one ended with, and the lookahead after them: the
 ticks the rollout plays after the last shard, never trained on, of which the store keeps the
-returns' records (rewards, values, outcome probabilities, `done`, results) and, for a
+returns' records (rewards, values, outcome probabilities with an outcome head, `done`,
+results) and, for a
 bullet's flight, the shot capture and the observation. The rollout records the learner's
 views into a staging ring of two graph blocks on the device, and after each block copies the
 block into a `bnb.runtime.store.SegmentStore` on a copy stream. The store keeps the segments
@@ -58,8 +59,8 @@ host once per epoch, for the early stop, and once at its end, for its results
 A segment holds, per view and tick:
 
 - the observation parts the model reads, every row's action in view order, the
-  log-probability, value, values per level, outcome probabilities, rewards and `done`, and
-  the model's replay record;
+  log-probability, value, values per value level, outcome probabilities (with an outcome
+  head), rewards per reward level and `done`, and the model's replay record;
 - the label inputs: the enemy rows of the fog-off privileged view (`truth`; an own ship is
   always visible, so its row is the observation's), every row's `alive` flag and each own
   ship's `valued` flag;
@@ -80,6 +81,11 @@ bootstraps, so every trained tick has the lookahead's ticks, at least, after it.
 L ticks give the returns of one segment of N L ticks
 (`tests/sections/test_lanes.py::test_chained_returns_over_shards_equal_one_segments`).
 
+- **The value levels' rewards** (`bnb.learn.returns.value_rewards`). The returns run per
+  value level of the critic being trained (`YemongConfig.levels`): by default one per
+  reward level, each its own weighted reward. The single value arm has one level,
+  `total`, whose reward is the sum of every level's weighted reward
+  ([below](#the-single-value-arm)).
 - **Values in reward units.** A per-ship level's value is its bin expectation; the outcome
   level's is `P(win) - P(loss)` times the outcome's reward weight.
 - **Per-level GAE** (`bnb.learn.returns.per_level_gae`), each level with its own discount and
@@ -88,8 +94,26 @@ L ticks give the returns of one segment of N L ticks
 - **Team mixing and the level sum** (`bnb.learn.returns.team_aggregate`): a ship's advantage
   is the sum over levels of its own advantage plus each level's team spirit times the mean
   over its living teammates. Team spirit is 0 on every level by default.
-- **The outcome's targets:** lambda targets of the outcome distribution
-  (`bnb.models.yemong.critic.outcome_targets`), with the view's result at an episode end.
+- **The outcome's targets** (with an outcome level): lambda targets of the outcome
+  distribution (`bnb.models.yemong.critic.outcome_targets`), with the view's result at an
+  episode end.
+
+`LearnerConfig.discount`, `trace_decay` and `team_spirit` hold one value per value level,
+in the critic's order; the learner refuses a model whose levels they do not match.
+
+### The single value arm
+
+`--set yemong.levels='["total"]' --set yemong.outcome_level=null` builds Yemong with one
+value output: one per-ship categorical value head (the same bins, limit and two-hot
+cross-entropy as a per-ship level's) and no outcome head. Its reward is one stream, the sum
+of the five weighted reward levels, and it has one discount, trace decay and team spirit,
+which the run sets (`--set learner.discount='[0.999]' --set learner.trace_decay='[0.97]'
+--set learner.team_spirit='[0.0]'`, for example). The rewards themselves, their weights and the per-level reward
+series stay per reward level; only the value side is one level. The critic's series name
+the level `total` (`critic/value_loss/total`, `critic/explained_variance/total`, ...), and
+the outcome ledger's series and the outcome figure are absent. The build record holds
+`levels` and `outcome_level`, so a policy file says which layout it has
+(`tests/sections/test_single_value.py`).
 
 The return scale is the gap between exponential moving averages of the 5th and 95th
 percentiles of the summed returns of living own ships, at least 1, updated once per update
@@ -107,7 +131,7 @@ The coefficients are the fields of `bnb.learn.ppo.LearnerConfig` named after the
 |---|---|---|
 | `policy` | own ships alive at `t` | the surrogate on the scaled advantage under the trust region ([below](#the-trust-region)) |
 | `entropy_power`, `entropy_stick`, `entropy_shoot` | the same | the joint action distribution's entropy by the chain rule in the joint's order: H(power), H(stick given power), H(shoot given both). They sum to the joint entropy, so equal coefficients weigh the joint as one coefficient would; a negative coefficient rewards it |
-| `value` | own ships alive or waiting to respawn; each view-step for the outcome | per level, the cross-entropy against the two-hot of the return, the outcome against its targets |
+| `value` | own ships alive or waiting to respawn; each view-step for the outcome | per value level, the cross-entropy against the two-hot of the return, the outcome against its targets |
 | `next_state` | rows whose belief is valid at `t`, where `t` did not end an episode (delta: and whose ship is alive at `t` and `t + 1`; with `YemongConfig.delta_split`, of those only the own rows and the enemies seen at `t`; with `YemongConfig.physics_hidden_decay` tau the hidden enemies too, past the segment's first tick, each weighted `exp(-age / tau)`, against the truth-to-truth target) | absolute: the state code's cross-entropy against the sharp code of the true state at `t + 1`, in the model's shifted frame; delta: the delta code's against the code of the true change from `t` to `t + 1` |
 | `correction` | with `YemongConfig.delta_split` only: the next-state rows whose belief at `t` is a forecast (hidden enemies) | the error code's cross-entropy against the code of the physics forecast's error, `truth(t + 1) - forecast(t + 1)` |
 | `enemy_action` | enemy rows alive at `t` | the cross-entropy of the enemy's actual joint action |

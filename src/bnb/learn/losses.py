@@ -95,26 +95,29 @@ def index_cross_entropy(logits: torch.Tensor, index: torch.Tensor) -> torch.Tens
 
 def critic_losses(
     local_logits: torch.Tensor,
-    outcome_logits: torch.Tensor,
+    outcome_logits: torch.Tensor | None,
     local_returns: torch.Tensor,
-    outcome_targets: torch.Tensor,
+    outcome_targets: torch.Tensor | None,
     valued: torch.Tensor,
     bins: torch.Tensor,
     local_levels: tuple[int, ...],
-    outcome_level: int,
+    outcome_level: int | None,
     valued_denominator: torch.Tensor | float,
     step_denominator: torch.Tensor | float,
 ) -> torch.Tensor:
     """(levels,) one loss per level, in level order.
 
-    Per-ship levels (local_logits (..., S, levels - 1, bins), local_returns (..., S, levels - 1)):
-    the cross-entropy against the two-hot of the realised return over the valued ships (alive, or
-    waiting to respawn), divided by valued_denominator. The outcome (outcome_logits and
-    outcome_targets (..., 4)): the cross-entropy against its categorical targets per
-    environment-step, divided by step_denominator.
+    Per-ship levels (local_logits (..., S, per-ship levels, bins), local_returns
+    (..., S, per-ship levels)): the cross-entropy against the two-hot of the realised return
+    over the valued ships (alive, or waiting to respawn), divided by valued_denominator. The
+    outcome (outcome_logits and outcome_targets (..., 4)): the cross-entropy against its
+    categorical targets per environment-step, divided by step_denominator. Without an
+    outcome level (outcome_level, its logits and targets None) every level is per-ship.
     """
-    local = cross_entropy(local_logits, critic.two_hot(local_returns, bins))  # (..., S, levels - 1)
+    local = cross_entropy(local_logits, critic.two_hot(local_returns, bins))  # (..., S, levels)
     local = torch.where(valued[..., None], local, 0.0).flatten(0, -2).sum(0) / valued_denominator
+    if outcome_level is None:
+        return local
     outcome = cross_entropy(outcome_logits, outcome_targets).sum() / step_denominator
     columns = dict(zip(local_levels, local.unbind(-1), strict=True))
     columns[outcome_level] = outcome
