@@ -17,6 +17,14 @@ the same weights, with the ablations applied on that player's rows only
 and weights. An ablation is inference-time: it measures how much a policy trained with the
 feature relies on it, not what one trained without it would reach.
 
+A network may play at a sampling temperature, `<policy>@T=<temperature>` (after any
+ablations, `PATH:rotary@T=0.7`; `temperature_of`): the same weights, its joint action drawn
+from logits / T on that player's rows only (`bnb.models.yemong.policy.tempered`; each row's
+temperature held in place, 1 for every other row, which samples exactly as without one).
+Like an ablated copy it shares its policy's group and weights. Each row's first game also
+sums its network's entropy (`STATISTICS`), so a field of temperatures measures the
+entropy each one plays at.
+
 The engine (`Arena`) is one rollout of one game preset, built once: `blocks` matchup blocks
 of `block_environments` environments each. Each block is a pool of its own whose two seats
 are both the one controller `MatchSeat`; block b's first seat is slot 2b and its second
@@ -47,6 +55,7 @@ with the seats, so one graph plays every handicap at once.
 """
 
 import dataclasses
+import math
 import pathlib
 
 import torch
@@ -78,7 +87,8 @@ class Player:
     """One player: its name, and either a policy directory, a ladder entry's rung
     (`bnb.runtime.opponents.Rung`; +inf random), or a teacher (the scripted agent at its
     temperature with a floor); ablations: a network's inference-time ablations (names of
-    `ABLATIONS`, sorted); ship_type: every ship of its team flies this type (an index into
+    `ABLATIONS`, sorted); temperature: a network's sampling temperature (1: its policy as it
+    is); ship_type: every ship of its team flies this type (an index into
     the game's card; None: the game's lineup), so a scripted player with a ship type is a
     ship type as the scripted agent flies it (`ship_type_players`); a tuple gives each ship
     of the team its own type (a mixed team, one entry per ship); parameters: a scripted
@@ -90,6 +100,7 @@ class Player:
     rung: Rung | None = None
     teacher: TeacherConfig | None = None
     ablations: tuple[str, ...] = ()
+    temperature: float = 1.0
     ship_type: int | tuple[int, ...] | None = None
     parameters: ScriptedParameters | None = None
 
@@ -135,11 +146,42 @@ def ablations_of(name: str) -> tuple[str, tuple[str, ...]]:
     return policy, tuple(sorted(parts))
 
 
+def temperature_of(name: str) -> tuple[str, float | None]:
+    """A name's player part and its sampling temperature: `<player>@T=<temperature>` gives
+    (player, temperature); a name without the suffix, or a teacher's (`scripted@...`,
+    `teacher_of`), (name, None). Raises ValueError for a temperature that is not a positive
+    finite number."""
+    base, at, suffix = name.rpartition("@")
+    if not at or not base or not suffix.startswith("T=") or name.startswith("scripted@"):
+        return name, None
+    try:
+        temperature = float(suffix[len("T=") :])
+    except ValueError:
+        raise ValueError(
+            f"{name!r}: {suffix[len('T=') :]!r} is not a number (a temperature comes after "
+            "any ablations: <policy>[:<ablation>...]@T=<temperature>)"
+        ) from None
+    if not (math.isfinite(temperature) and temperature > 0.0):
+        raise ValueError(f"{name!r}: a temperature must be positive and finite")
+    return base, temperature
+
+
 def player(name: str, runs_directory: pathlib.Path | None = None) -> Player:
     """The player a command-line name means: a ladder entry, a policy directory (one with a
     checkpoint.json; a path, or one inside `runs_directory` such as
     `RUN/policies/step_<steps>/uniform_average`), or a run's newest checkpoint; either of
-    the last two with ablations (`ablations_of`)."""
+    the last two with ablations (`ablations_of`) and at a temperature (`temperature_of`)."""
+    base, temperature = temperature_of(name)
+    if temperature is not None:
+        network = player(base, runs_directory)
+        if network.policy is None:
+            raise ValueError(
+                f"{name!r}: only a network plays at a temperature (the scripted agent's is "
+                "scripted@T=<temperature>)"
+            )
+        if network.temperature != 1.0:
+            raise ValueError(f"{name!r}: a temperature is named twice")
+        return dataclasses.replace(network, name=name, temperature=temperature)
     base, ablations = ablations_of(name)
     if ablations:
         network = player(base, runs_directory)
@@ -209,8 +251,10 @@ class MatchCarry:
 # Each row's team's first game, summed (`MatchSeat.count_events`): kills (enemy ships killed by its
 # hits), deaths (its ships', any cause), shots fired, hits (shots of its that damaged an
 # enemy), its living ship-ticks and their proper speeds (m/s, summed: over the ship-ticks
-# it is the mean speed), as each tick's observation shows them.
-STATISTICS = ("kills", "deaths", "shots", "hits", "ship_ticks", "speed")
+# it is the mean speed), as each tick's observation shows them, and a network's entropy (nats,
+# its sampled joint action distribution's, at its temperature) summed over the same
+# ship-ticks (over them it is the mean entropy; 0 for a scripted player).
+STATISTICS = ("kills", "deaths", "shots", "hits", "ship_ticks", "speed", "entropy")
 
 
 class _Decision(torch.nn.Module):
@@ -221,12 +265,23 @@ class _Decision(torch.nn.Module):
         self.model = controller.model
         self.controller = controller
 
-    def forward(self, carry, obs: Obs, reset: torch.Tensor, ablations: Ablations | None = None):
+    def forward(
+        self,
+        carry,
+        obs: Obs,
+        reset: torch.Tensor,
+        temperature: torch.Tensor,
+        ablations: Ablations | None = None,
+    ):
         if ablations is None:
-            action, carry, _ = self.controller.step(carry, obs, reset)
+            action, carry, outputs = self.controller.step(
+                carry, obs, reset, temperature=temperature
+            )
         else:
-            action, carry, _ = self.controller.step(carry, obs, reset, ablations)
-        return action.packed(), carry
+            action, carry, outputs = self.controller.step(
+                carry, obs, reset, ablations, temperature=temperature
+            )
+        return action.packed(), carry, outputs.entropy
 
 
 class MatchSeat:
@@ -240,7 +295,9 @@ class MatchSeat:
     player brings none (None: the mode's set, and no player may bring one); ablations: a
     network slot may play ablated (each row's ablations held
     in place and passed to every Yemong group's network as `Ablations`; else the networks
-    are called without them). Every slot starts as the scripted agent, every lane idle."""
+    are called without them). Each row's network sampling temperature is held in place
+    (`network_temperature`, 1 but on a tempered player's rows). Every slot starts as the
+    scripted agent, every lane idle."""
 
     def __init__(
         self,
@@ -266,6 +323,8 @@ class MatchSeat:
         self.share = torch.ones(self.rows, device=device)
         self.floor = torch.zeros(self.rows, device=device)
         self.scripted = torch.ones(self.rows, dtype=torch.bool, device=device)
+        # each network row's sampling temperature (written in place; 1 samples as without)
+        self.network_temperature = torch.ones(self.rows, device=device)
         # with a doctrine, each row plays its slot's parameter set (a table written in place:
         # the slot's player's set, else the doctrine); else every row the mode's set
         self.doctrine, self.doctrine_table = doctrine, None
@@ -344,13 +403,22 @@ class MatchSeat:
             statistics=torch.zeros((views, len(STATISTICS)), device=device),
         )
 
-    def _network(self, group: int, network: torch.Tensor, carry, obs: Obs, reset: torch.Tensor):
+    def _network(
+        self,
+        group: int,
+        network: torch.Tensor,
+        entropy: torch.Tensor,
+        carry,
+        obs: Obs,
+        reset: torch.Tensor,
+    ):
         """Group `group`'s network on its lanes, as one forward over the lanes' stacked
-        weights (`bnb.runtime.stacked`), each lane on its slot's rows: `network`, the
-        packed actions (R, S, 3), with the active lanes' rows written, and the group's
-        network carry with theirs (an idle lane's rows keep their values; a group's lanes
-        are always on different slots)."""
-        arguments = (carry, obs, reset)
+        weights (`bnb.runtime.stacked`), each lane on its slot's rows at their temperatures:
+        `network`, the packed actions (R, S, 3), and `entropy`, the sampled distributions'
+        entropies (R, S), with the active lanes' rows written, and the group's network carry
+        with theirs (an idle lane's rows keep their values; a group's lanes are always on
+        different slots)."""
+        arguments = (carry, obs, reset, self.network_temperature)
         if self.ablations is not None and self.ablatable[group]:
             arguments += (self.ablations,)
         lanes, slots = self.lanes[group], self.lane_slot[group]
@@ -361,7 +429,9 @@ class MatchSeat:
             lambda x: x.index_select(0, rows).unflatten(0, (lanes, self.slot_rows)),
             arguments,
         )
-        action, lane_carry = stacked.call(self.decisions[group], self.parameters[group], inputs)
+        action, lane_carry, lane_entropy = stacked.call(
+            self.decisions[group], self.parameters[group], inputs
+        )
 
         def written(full: torch.Tensor | None, part: torch.Tensor | None) -> torch.Tensor | None:
             if full is None:  # a memoryless network's carry
@@ -371,8 +441,9 @@ class MatchSeat:
             return full.index_copy(0, rows, torch.where(mask, part.flatten(0, 1), kept))
 
         network = written(network, action)
+        entropy = written(entropy, lane_entropy.to(entropy.dtype))
         updated = None if lane_carry is None else _pytree.tree_map(written, carry, lane_carry)
-        return network, updated
+        return network, entropy, updated
 
     def step(self, carry: MatchCarry, obs: Obs, reset: torch.Tensor):
         """One decision for every row; see `Controller.step`. The rollout probes its
@@ -389,21 +460,28 @@ class MatchSeat:
             uniform[..., None], uniform_actions(action.shape[:-1], action.device), action
         )
         model_carry = dict(carry.model)
+        entropy = torch.zeros(action.shape[:-1], device=action.device)
         if self.decisions:
             network = torch.zeros_like(action)
             for group in range(len(self.decisions)):
-                network, updated = self._network(
-                    group, network, carry.model.get(str(group)), obs, reset
+                network, entropy, updated = self._network(
+                    group, network, entropy, carry.model.get(str(group)), obs, reset
                 )
                 if updated is not None:
                     model_carry[str(group)] = updated
             action = torch.where(self.scripted[:, None, None], action, network)
+            entropy = torch.where(self.scripted[:, None], 0.0, entropy)
         finished = carry.finished | (reset & carry.started)
         own = obs.ships[:, : self.ships_per_team]
         living = (own[..., SHIP["alive"]] > 0.5).float()
         playing = (~finished).float()[:, None]
         observed = torch.stack(
-            [living.sum(-1), (living * own[..., SHIP["proper_speed"]]).sum(-1)], -1
+            [
+                living.sum(-1),
+                (living * own[..., SHIP["proper_speed"]]).sum(-1),
+                (living * entropy).sum(-1),
+            ],
+            -1,
         )
         statistics = carry.statistics.clone()
         statistics[:, STATISTICS.index("ship_ticks") :] += playing * observed
@@ -467,11 +545,12 @@ class MatchSeat:
         group: int,
         state: dict[str, torch.Tensor],
         ablations: tuple[str, ...] = (),
+        temperature: float = 1.0,
     ) -> None:
         """Slot `slot` plays a network of group `group`: on the group's first idle lane, its
         state (its model's state dict) copied into the lane in place, with `ablations` (names
-        of `ABLATIONS`) on its rows. Raises ValueError when every lane of the group plays
-        (`clear` idles them)."""
+        of `ABLATIONS`) on its rows, sampling at `temperature`. Raises ValueError when every
+        lane of the group plays (`clear` idles them)."""
         if not 0 <= group < len(self.decisions):
             raise ValueError(f"the seat was built with {len(self.decisions)} network groups")
         if ablations and (self.ablations is None or not self.ablatable[group]):
@@ -494,6 +573,7 @@ class MatchSeat:
         self.lane_of[slot] = (group, lane)
         rows = self._slot_rows(slot)
         self.scripted[rows] = False
+        self.network_temperature[rows] = temperature
         if self.ablations is not None:
             for name in ABLATIONS:
                 getattr(self.ablations, name)[rows] = name in ablations
@@ -506,6 +586,7 @@ class MatchSeat:
         self.share[rows] = play.share
         self.floor[rows] = play.floor
         self.scripted[rows] = True
+        self.network_temperature[rows] = 1.0
         if self.doctrine_table is not None:
             own = self.doctrine if play.parameters is None else play.parameters
             self.doctrine_table[rows] = table([own], self.doctrine_table.device)
@@ -630,15 +711,15 @@ def team_lineup(player: Player, rules) -> tuple[int, ...]:
 class Arena:
     """The match engine over `players` in `game` (a game preset's config), built once (see
     the module docstring). Each network player's weights are read once and kept on the
-    host (an ablated copy shares its policy's, and its group); a batch copies them into its
-    slots' lanes, with the player's ablations. `groups`: a template model per build, in the
-    order the builds first appear among the players (`group_of` maps a network player's index
-    to its group, as `network_groups`); lanes: each group's lanes, the most of its slots a
-    batch may hold (`default_lanes` by default); card: the card to play (the players' by
-    default, `card_of`); doctrine: the scripted agent's set for scripted players without
-    their own (`Player.parameters`; None: the mode's set, and no player may bring one);
-    benching: the batches may give the players active ship counts (`play`). `set_card`
-    writes a new card in place."""
+    host (an ablated or tempered copy shares its policy's, and its group); a batch copies
+    them into its slots' lanes, with the player's ablations and temperature. `groups`: a
+    template model per build, in the order the builds first appear among the players
+    (`group_of` maps a network player's index to its group, as `network_groups`); lanes:
+    each group's lanes, the most of its slots a batch may hold (`default_lanes` by default);
+    card: the card to play (the players' by default, `card_of`); doctrine: the scripted
+    agent's set for scripted players without their own (`Player.parameters`; None: the
+    mode's set, and no player may bring one); benching: the batches may give the players
+    active ship counts (`play`). `set_card` writes a new card in place."""
 
     def __init__(
         self,
@@ -661,7 +742,7 @@ class Arena:
         loaded: dict[pathlib.Path, int] = {}  # a policy's first player
         for index, group in self.group_of.items():
             one = players[index]
-            if one.policy in loaded:  # an ablated copy (or a repeat): the same weights
+            if one.policy in loaded:  # an ablated or tempered copy (or a repeat): the same weights
                 self.states[index] = self.states[loaded[one.policy]]
             else:
                 loaded[one.policy] = index
@@ -749,8 +830,9 @@ class Arena:
     def _load(self, slot: int, index: int) -> None:
         play = scripted_play(self.players[index])
         if play is None:
+            one = self.players[index]
             self.seat.load_network(
-                slot, self.group_of[index], self.states[index], self.players[index].ablations
+                slot, self.group_of[index], self.states[index], one.ablations, one.temperature
             )
         else:
             self.seat.load_scripted(slot, play)

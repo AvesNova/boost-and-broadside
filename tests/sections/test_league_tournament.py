@@ -366,6 +366,101 @@ def test_a_block_without_ablations_plays_as_in_an_engine_without_them(tmp_path):
     assert any(not torch.equal(one, two) for one, two in zip(states[0][1], states[1][1]))
 
 
+# ---- players at a temperature
+
+
+def test_a_tempered_name_is_its_policy_at_its_temperature(tmp_path):
+    from bnb.league.matches import temperature_of
+
+    base = _yemong(tmp_path / "a")
+    cold = player(f"{base.name}@T=0.7")
+    assert cold == Player(f"{base.name}@T=0.7", policy=base.policy, temperature=0.7)
+    ablated = player(f"{base.name}:rotary@T=0.7")
+    assert (ablated.ablations, ablated.temperature) == (("rotary",), 0.7)
+    assert temperature_of("scripted@T=0.7") == ("scripted@T=0.7", None)  # a teacher's
+    assert player("scripted@T=0.7").teacher.temperature == 0.7
+    assert temperature_of("a@b") == ("a@b", None)
+    for bad, match in (
+        ("rung_T2@T=0.5", "only a network"),
+        (f"{base.name}@T=0", "positive"),
+        (f"{base.name}@T=inf", "positive"),
+        (f"{base.name}@T=x", "not a number"),
+        (f"{base.name}@T=0.7:rotary", "after any ablations"),  # the temperature comes last
+        (f"{base.name}@T=0.5@T=2", "twice"),
+    ):
+        with pytest.raises(ValueError, match=match):
+            player(bad)
+    weights = tournament.identity(base)
+    assert tournament.identity(cold) == f"{weights}@T=0.7"
+    assert tournament.identity(player(f"{base.name}:rotary@T=2")) == f"{weights}:rotary@T=2.0"
+
+
+def test_temperature_one_samples_exactly_as_without_one():
+    """Logits / 1 are the logits, in their own dtype, so the same draws give the same
+    sample, log-probability and entropy; a controller at T = 1 decides as without one."""
+    from bnb.controllers.relational import RelationalController
+    from bnb.game import api
+
+    logits = torch.randn(6, 2, 42).to(torch.bfloat16)
+    tempered = policy.tempered(logits, torch.ones(6))
+    assert tempered.dtype == torch.bfloat16 and torch.equal(tempered, logits)
+    torch.manual_seed(0)
+    model = Relational(RelationalBuild(RelationalConfig(hidden=16), 2, 4))
+    with torch.no_grad():
+        for parameter in model.parameters():
+            parameter.normal_()
+    controller = RelationalController(model)
+    rules = api.rules_of(GAME)
+    state = api.reset(rules, api.ship_types(), api.uniforms(rules, 3))
+    _, obs, _ = api.perceive(rules, state)
+    reset = torch.ones(obs.ships.shape[0], dtype=torch.bool)
+    decisions = []
+    for temperature in (None, torch.ones(obs.ships.shape[0])):
+        torch.manual_seed(3)
+        action, _, outputs = controller.step(None, obs, reset, temperature=temperature)
+        decisions.append((action.packed(), outputs.log_probability, outputs.entropy))
+    for one, two in zip(*decisions, strict=True):
+        assert torch.equal(one, two)
+
+
+def test_a_low_temperature_concentrates_and_a_high_one_flattens_only_its_rows(tmp_path):
+    """Each row samples at its slot's player's temperature: the mean entropy a block's
+    statistics record falls below the untempered policy's at T = 0.25 and rises above it at
+    T = 4, the scripted agent's is 0, and a block without a tempered player plays the same
+    games as in an engine without one."""
+    from bnb.league.matches import STATISTICS
+
+    base = _network(tmp_path / "a", 1)
+    cold, hot = player(f"{base.name}@T=0.25"), player(f"{base.name}@T=4")
+    arena = Arena([base, cold, hot, SCRIPTED], GAME, CPU, SMALL, lanes=(4,))
+    assert arena.states[0] is arena.states[1] is arena.states[2]
+    arena.play([(1, 0), (2, 3)])
+    rows = arena.seat.slot_rows
+    assert arena.seat.network_temperature.tolist() == (
+        [0.25] * rows + [1.0] * rows + [4.0] * rows + [1.0] * rows
+    )
+    statistics = arena.statistics()
+    entropy = (
+        statistics[..., STATISTICS.index("entropy")]
+        / statistics[..., STATISTICS.index("ship_ticks")]
+    )
+    assert entropy[0, 0] < entropy[0, 1] < entropy[1, 0]
+    assert entropy[1, 1] == 0.0  # the scripted agent's
+    states = []
+    for players, matchups in (
+        ([base, SCRIPTED], [(0, 1), (0, 1)]),
+        ([base, SCRIPTED, hot], [(0, 1), (2, 1)]),
+    ):
+        engine = Arena(players, GAME, CPU, SMALL, lanes=(4,))
+        torch.manual_seed(5)
+        engine.play(matchups)
+        states.append((_block_state(engine, 0), _block_state(engine, 1)))
+    assert states[0][0]
+    for one, two in zip(states[0][0], states[1][0], strict=True):
+        assert torch.equal(one, two)
+    assert any(not torch.equal(one, two) for one, two in zip(states[0][1], states[1][1]))
+
+
 # ---- the allocation of blocks and the allowed pairs
 
 

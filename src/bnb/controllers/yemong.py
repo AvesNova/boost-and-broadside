@@ -50,12 +50,22 @@ class YemongController:
         )
 
     def step(
-        self, carry: Carry, obs: Obs, reset: torch.Tensor, ablations: Ablations | None = None
+        self,
+        carry: Carry,
+        obs: Obs,
+        reset: torch.Tensor,
+        ablations: Ablations | None = None,
+        temperature: torch.Tensor | None = None,
     ) -> tuple[Action, Carry, Outputs]:
         """One decision for views (R, ...); see `Controller.step`. ablations: the model's
-        inference-time ablations per view (`Ablations`; none by default)."""
+        inference-time ablations per view (`Ablations`; none by default); temperature: (R,)
+        each view's sampling temperature (`policy.tempered`; None: the policy as it is), the
+        outputs' log-probability and entropy then the tempered distribution's."""
         decision = self.model.step(carry, obs, reset, ablations)
-        joint, log_probability, entropy = policy.sample(decision.policy_logits)
+        logits = decision.policy_logits
+        if temperature is not None:
+            logits = policy.tempered(logits, temperature)
+        joint, log_probability, entropy = policy.sample(logits)
         carry = dataclasses.replace(decision.carry, previous_action=joint)
         outputs = Outputs(
             log_probability=log_probability,
@@ -65,9 +75,7 @@ class YemongController:
             outcome=decision.outcome_probabilities,
             replay=decision.replay,
             probabilities=(
-                torch.softmax(decision.policy_logits.float(), -1).to(torch.float16)
-                if self.distribution
-                else None
+                torch.softmax(logits.float(), -1).to(torch.float16) if self.distribution else None
             ),
         )
         return from_joint(joint), carry, outputs

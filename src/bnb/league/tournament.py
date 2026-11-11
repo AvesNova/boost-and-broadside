@@ -190,12 +190,17 @@ def _policy_record(policy: pathlib.Path) -> dict:
 def identity(player: Player) -> str:
     """A player's identity across tournaments: a policy's is its weights, `sha256:<hash>` of
     its `weights.safetensors` as its checkpoint.json records it (then `:<ablations>` for an
-    ablated one), so a policy moved keeps it and a path written anew changes it; a scripted
-    player's (the ladder's, a teacher's) is its name."""
+    ablated one and `@T=<temperature>` for a tempered one), so a policy moved keeps it and a
+    path written anew changes it; a scripted player's (the ladder's, a teacher's) is its
+    name."""
     if player.policy is None:
         return player.name
     weights = "sha256:" + _policy_record(player.policy)["files"]["weights.safetensors"]
-    return ":".join((weights, "+".join(player.ablations))) if player.ablations else weights
+    if player.ablations:
+        weights = ":".join((weights, "+".join(player.ablations)))
+    if player.temperature != 1.0:
+        weights = f"{weights}@T={player.temperature!r}"
+    return weights
 
 
 def _legacy_identities(

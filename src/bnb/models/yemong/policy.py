@@ -19,6 +19,15 @@ def sample(logits: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tens
     return joint.to(torch.int32), log_probability, entropy
 
 
+def tempered(logits: torch.Tensor, temperature: torch.Tensor) -> torch.Tensor:
+    """(R, ..., NUM_JOINT) logits at each view's sampling temperature (R,): logits / T over
+    the whole joint action, so every factor of it (power, stick, shoot) is tempered alike.
+    Divided in float32 and returned in the logits' dtype, so T = 1 gives the logits exactly
+    (and the sample drawn from them is the one drawn without a temperature)."""
+    scale = temperature.reshape(temperature.shape + (1,) * (logits.dim() - temperature.dim()))
+    return (logits.float() / scale).to(logits.dtype)
+
+
 def evaluate(logits: torch.Tensor, joint: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """(log-prob of `joint`, entropy), each (...)."""
     log_probabilities = F.log_softmax(logits, -1)

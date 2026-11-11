@@ -190,6 +190,9 @@ class Ratings:
     A Yemong policy may play ablated: `PATH:rotary`, `PATH:forecast` or
     `PATH:rotary+forecast` (`bnb.league.matches.ablations_of`), the same weights with the
     rotary rotation as the identity or the forecast not fed back, on its own rows only.
+    A network may play at a sampling temperature, `PATH@T=0.7` (after any ablations,
+    `PATH:rotary@T=0.7`; `bnb.league.matches.temperature_of`): its joint action drawn from
+    logits / T, on its own rows only.
 
     run: the run; with_: more players; presets: the game presets; target_stderr: rating
     points; budget: games per preset at most; blocks and block_environments: the engine's
@@ -239,7 +242,8 @@ class HeadToHead:
     floor to 0: the scripted agent at its own temperature T, then a uniform joint action
     with probability floor, drawn as BC's teacher opponent does, so "scripted" is BC's
     default teacher and "scripted@T=2" plays as "rung_T2"), or a Yemong policy ablated,
-    "PATH:rotary", "PATH:forecast" or "PATH:rotary+forecast". Prints and records, per pair,
+    "PATH:rotary", "PATH:forecast" or "PATH:rotary+forecast", or a network at a sampling
+    temperature, "PATH@T=0.7" (after any ablations). Prints and records, per pair,
     the wins, losses and draws, the score with its standard error and the split by preset;
     the result goes to the first named run's `artifacts/head_to_head/` (else the runs
     directory's).
