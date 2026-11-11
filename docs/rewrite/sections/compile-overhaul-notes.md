@@ -581,7 +581,8 @@ re-traces and re-partitions the loss on warm caches (Inductor's own graph cache 
 hits): `Learner._loss` 3.7 -> 11.1 s warm in `compile_baseline.py` (the pair above), the
 micro-batch's first step 8.2 -> 12.4 s. The rollout's warm compiles moved by 3-5 s in that
 pair (`_act` 24.6 -> 27.9 s, the capture 33.1 -> 37.7 s; 25.3 and 34.1 s in another warm run
-of the new tree), about run-to-run variation. The plain form of the same mathematics (lse(z) sum(t) - t.z by
+of the new tree, against 24.4 and 32.8 s in the earlier old run): within a second or two
+once the new tree's first seconds at load 8 are set aside. The plain form of the same mathematics (lse(z) sum(t) - t.z by
 autograd, the target made of the coordinates in the graph) caches but is slower: 53.29
 against 51.68 ms a step, measured back to back (about 6 s an update). The `Function` stays:
 it repays its 7 s within the first update.
