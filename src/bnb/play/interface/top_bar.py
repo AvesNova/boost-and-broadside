@@ -1,6 +1,6 @@
 """The top bar, always shown, one row: the menu button, the view selector, the overlays
-button (its submenu, `overlays`), the true-size switch and the dot grid's pattern on the
-left;
+button (its submenu, `overlays`), the true-size switch, the dot grid's pattern and the
+distance contours' shapes on the left;
 the score or the mode's objective and the clock in the middle; the speed controls on the
 right (pause or play, a tick while paused, x1 to x8).
 
@@ -31,6 +31,18 @@ if TYPE_CHECKING:
 LUMA = (0.2126, 0.7152, 0.0722)
 VIEW_BUTTONS = ("Spectator", "Team 0", "Team 1")
 GRID_LABELS = {"off": "Off", "square": "Square", "triangle": "Triangle", "hex": "Hex"}
+CONTOUR_LABELS = {
+    "off": "Off",
+    "fields": "Fields",
+    "edge": "Edge",
+    "fields+edge": "Fields + edge",
+    "fields+edge+zones": "All",
+    "zones": "Zones",
+}
+CONTOUR_HELP = (
+    "Faint lines at equal distances from the map's shapes, inside and outside them: the "
+    "fields, the map edge, both, all three with the zones, or the zones"
+)
 
 
 def draw(interface: Interface, layout: Layout) -> None:
@@ -99,6 +111,16 @@ def draw(interface: Interface, layout: Layout) -> None:
         active=session.grid != "off",
     ):
         session.cycle_grid()
+    imgui.same_line(0.0, 2.0 * scale)
+    if button(
+        controls,
+        "contours",
+        f"Contours: {CONTOUR_LABELS[session.contours]}###contours",
+        CONTOUR_HELP + " (click for the next)",
+        shortcut("cycle_contours"),
+        active=session.contours != "off",
+    ):
+        session.cycle_contours()
     left_end = imgui.get_item_rect_max().x
 
     # Right: the speed controls.

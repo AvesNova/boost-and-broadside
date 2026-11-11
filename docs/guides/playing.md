@@ -1,5 +1,5 @@
 ---
-covers: [src/bnb/play/app.py, src/bnb/play/camera.py, src/bnb/play/render/grid.py, src/bnb/play/window.py, src/bnb/play/interface/, src/bnb/play/sides.py, src/bnb/play/replay.py, src/bnb/play/themes.py, src/bnb/play/themes/, src/bnb/play/theme_editor.py, src/bnb/play/overlays.py, src/bnb/play/predictions.py, src/bnb/play/render/predictions.py, src/bnb/play/tuning.py, src/bnb/play/tuning_panel.py, src/bnb/play/maps.py, src/bnb/game/ships/]
+covers: [src/bnb/play/app.py, src/bnb/play/camera.py, src/bnb/play/render/grid.py, src/bnb/play/render/contours.py, src/bnb/play/render/bullets.py, src/bnb/play/window.py, src/bnb/play/interface/, src/bnb/play/sides.py, src/bnb/play/replay.py, src/bnb/play/themes.py, src/bnb/play/themes/, src/bnb/play/theme_editor.py, src/bnb/play/overlays.py, src/bnb/play/predictions.py, src/bnb/play/render/predictions.py, src/bnb/play/tuning.py, src/bnb/play/tuning_panel.py, src/bnb/play/maps.py, src/bnb/game/ships/]
 ---
 
 # Playing and spectating
@@ -37,7 +37,7 @@ compiled. The options:
 
 - **The top bar** (always shown): the menu button, the view selector, the
   **Overlays** button (see [Prediction overlays](#prediction-overlays)), **True size**
-  (see [Ship size](#ship-size)) and **Grid** (see [The camera and the grid](#the-camera-and-the-grid)) on the left; the
+  (see [Ship size](#ship-size)), **Grid** and **Contours** (see [The camera and the grid](#the-camera-and-the-grid)) on the left; the
   score, or Frontline's front and zones (captioned "Front" and "Zones", each zone numbered
   in its owner's colour, with a tooltip saying what it shows), and the clock in the middle; the speed controls
   on the right: pause or play, one tick while paused, and ×1, ×2, ×4, ×8.
@@ -76,7 +76,8 @@ spectator's.
 
 A bullet draws as a tracer: a round head in its team's colour where it is, between ticks
 too (it flies straight within a tick), and a short trail behind it in the team's trail
-colour, tapering and fading as a ship's trail does. The trail spans the last 0.08 s of the
+colour. The trail leaves the head as wide as the head (5 px) and tapers and fades to a
+thin tail (0.5 px) as a ship's trail does. It spans the last 0.04 s of the
 bullet's flight as the screen shows it (times the playback speed), never back past where
 it was fired, so a burst reads as continuous streaks at any time scale or playback speed.
 A bullet has no size in the game, so the tracer is a few pixels wide at every zoom,
@@ -94,7 +95,7 @@ few pixels across; clicking still selects it from as far as the default size rea
 
 ## The camera and the grid
 
-Where no ship, field or zone is near, two things show how the view moves.
+Where no ship, field or zone is near, three things show how the view moves.
 
 **The look-ahead.** A camera that follows a ship (the flown one, or one you **Follow**)
 leads it: the middle of the view sits ahead of the ship along its velocity, about where it
@@ -115,6 +116,19 @@ square and triangle, ×3 for hex) and the finer dots fade out across a step, so 
 on screen stays about the same, as in a map app. **Grid** in the top bar (or G) goes to the
 next pattern, **Settings** → **Dot grid** picks one, and `--grid off|square|triangle|hex`
 starts with one. The dots' colour and opacity are the theme's `grid` (alpha: how faint).
+
+**The contours.** Faint lines at equal distances from the map's shapes, as a topographic
+map draws heights: around the fields, parallel to the map edge, around the zones, inside
+each shape and outside it (the edge's lines continue beyond the arena). Where two shapes'
+lines meet they join in one rounded line instead of a sharp corner (a smooth union of the
+distances, rounded over about 8% of the arena radius), so close fields read as one hill.
+The spacing steps by ×2 with the zoom, as the grid's does, and every fifth line is a little
+stronger. The lines draw over the fields' fill and under the zones, trails, ships and
+bullets. **Contours** in the top bar (or O) goes to the next set of shapes, **Settings** →
+**Contours** picks one: **Off** (the default), **Fields**, **Edge**, **Fields + edge**,
+**All** (fields, edge and zones) or **Zones**; `--contours
+off|fields|edge|fields+edge|fields+edge+zones|zones` starts with one. They can be on with
+the dot grid. Their colour and opacity are the theme's `contours`.
 
 ## Flying a ship
 
@@ -292,7 +306,7 @@ itself is untouched.
 
 ## Settings and themes
 
-**Settings** chooses the theme, the dot grid, the look-ahead, fog in new matches, the
+**Settings** chooses the theme, the dot grid, the contours, the look-ahead, fog in new matches, the
 interface scale (0.75 to 2; the
 layout works from 1280 × 720 to 2560 × 1440) and shows the key list. The shipped themes
 are in `src/bnb/play/themes/`; your own live in your configuration directory
@@ -421,7 +435,8 @@ uv run bnb play --offscreen /tmp/frames --frames 120 --preset frontline --view t
 
 `python -m bnb.play.benchmark` measures the frame time offscreen at each game and view,
 with every card open, with the [benchmark lock](benchmarking.md) held, and breaks it down
-by pass and by stage (`--no-interface` measures the battlefield alone).
+by pass and by stage (`--no-interface` measures the battlefield alone; `--contours
+SHAPES` draws the contours, timed as their own pass).
 
 <!-- not-runnable: needs the GPU and the benchmark lock -->
 ```bash

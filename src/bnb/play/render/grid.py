@@ -23,16 +23,21 @@ PATTERNS = {"square": (0, 2.0), "triangle": (1, 2.0), "hex": (2, 3.0)}
 GRID_PIXELS = 48.0  # the fine level's spacing on screen just as a coarser level takes over
 
 
-def grid_level(pattern: str, metres_per_pixel: float) -> tuple[float, float]:
-    """The fine level's spacing (m) at this zoom, and how far its own dots have faded, in
-    [0, 1]: the fine spacing is the largest power of the pattern's factor (in metres) at
-    most GRID_PIXELS on screen; the fade runs smoothly from 0, just after a level change,
-    to 1, when the fine spacing has shrunk by the factor and the coarse level takes over."""
-    factor = PATTERNS[pattern][1]
-    level = math.log(GRID_PIXELS * metres_per_pixel, factor)
+def zoom_level(factor: float, pixels: float, metres_per_pixel: float) -> tuple[float, float]:
+    """The fine level's spacing (m) at this zoom, for levels `factor` apart, and how far
+    its own marks have faded, in [0, 1]: the fine spacing is the largest power of `factor`
+    (in metres) at most `pixels` on screen; the fade runs smoothly from 0, just after a
+    level change, to 1, when the fine spacing has shrunk by the factor and the coarse level
+    takes over. The contours (`contours`) step the same way."""
+    level = math.log(pixels * metres_per_pixel, factor)
     floor = math.floor(level)
     within = level - floor
     return factor**floor, within * within * (3.0 - 2.0 * within)
+
+
+def grid_level(pattern: str, metres_per_pixel: float) -> tuple[float, float]:
+    """The pattern's fine spacing (m) and fade at this zoom (`zoom_level`, GRID_PIXELS)."""
+    return zoom_level(PATTERNS[pattern][1], GRID_PIXELS, metres_per_pixel)
 
 
 class GridPass:

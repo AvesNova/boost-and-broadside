@@ -43,6 +43,7 @@ from .maps import Maps
 from .overlays import NAMES as OVERLAY_NAMES
 from .overlays import OverlaySettings, Predictions, offered, offered_by, provider
 from .png import write_png
+from .render.contours import SHAPE_SETS as CONTOUR_SHAPE_SETS
 from .render.grid import PATTERNS as GRID_PATTERNS
 from .render.minimap import DOT_PIXELS
 from .render.overlay import outline_table
@@ -65,7 +66,8 @@ SEEK_BEFORE_MARKER = 3.0  # seconds before an event a marker seeks to
 SOLVED_UNDER = ("flight.", "rules.bullet_life")  # the rules a card's handles depend on
 
 
-GridPattern = Literal[tuple(GRID_PATTERNS)]  # the dot grid's patterns (`render.grid`)
+GridPattern = Literal[("off", *GRID_PATTERNS)]  # the dot grid's patterns (`render.grid`)
+ContourShapes = Literal[("off", *CONTOUR_SHAPE_SETS)]  # the contours' shapes (`render.contours`)
 LOOK_AHEADS = ("off", "flying", "always")  # when the camera leads a followed ship
 
 
@@ -105,6 +107,7 @@ class Options:
     truth: bool = False  # draw the truth beside the predictions
     true_size: bool = False  # draw the ships at their size in metres (no minimum on screen)
     grid: GridPattern = "triangle"  # the dot grid fixed to the map, or "off"
+    contours: ContourShapes = "off"  # the distance contours' shape set, or "off"
     look_ahead: Literal[LOOK_AHEADS] = "always"  # lead a followed ship: off, flown only, always
 
     def game(self, maps: Maps | None = None) -> GameConfig:
@@ -181,6 +184,7 @@ class Session:
         self.view = VIEWS.index(options.view)
         self.true_size = options.true_size  # the ships at their size in metres (`render.ships`)
         self.grid = options.grid  # the dot grid's pattern, or "off" (`render.grid`)
+        self.contours = options.contours  # the contours' shapes, or "off" (`render.contours`)
         self.look_ahead = options.look_ahead  # when the camera leads a followed ship
         self.lead = LookAhead()
         self.library = themes.Library() if library is None else library
@@ -612,6 +616,16 @@ class Session:
         patterns = ("off", *GRID_PATTERNS)
         self.grid = patterns[(patterns.index(self.grid) + 1) % len(patterns)]
 
+    def set_contours(self, shapes: str) -> None:
+        """Draw the distance contours from this shape set ("off": none)."""
+        self.contours = shapes
+
+    def cycle_contours(self) -> None:
+        """Switch the distance contours to the next shape set: off, fields, edge, fields
+        and edge, fields, edge and zones, zones."""
+        sets = ("off", *CONTOUR_SHAPE_SETS)
+        self.contours = sets[(sets.index(self.contours) + 1) % len(sets)]
+
     def set_look_ahead(self, when: str) -> None:
         """Lead a followed ship's view in its direction of travel: "off", "flying" (the
         flown ship only) or "always"."""
@@ -975,6 +989,7 @@ class Session:
             self.true_size,
             self.loop.time_scale,
             self.grid,
+            self.contours,
         )
         imgui.set_current_context(self.imgui_context)
         imgui.get_io().delta_time = max(self.elapsed, 1e-4)

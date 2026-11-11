@@ -18,7 +18,8 @@ from bnb.play.app import Options, read_pixels, run_offscreen
 from bnb.play.camera import Camera
 from bnb.play.index_map import build
 from bnb.play.loop import MatchLoop, MatchSetup
-from bnb.play.render.bullets import TRAIL_SECONDS, tracer_lengths
+from bnb.play.render.bullets import HEAD_PIXELS, TRAIL_PIXELS, TRAIL_SECONDS, tracer_lengths
+from bnb.play.render.contours import CONTOUR_PIXELS, SMOOTHING_FRACTION, contour_level
 from bnb.play.render.grid import GRID_PIXELS, PATTERNS
 from bnb.play.render.renderer import SPECTATOR, Renderer
 from bnb.play.render.ships import MINIMUM_RING_PIXELS, ring_radius, silhouette_size
@@ -88,6 +89,7 @@ def _draw(
     now=0.0,
     true_size=False,
     grid_pattern="off",
+    contours="off",
 ):
     grid, values = build(frame.fields, frame.arena_radius)
     renderer.set_map(frame, grid, values)
@@ -95,7 +97,16 @@ def _draw(
     if trails is None:
         trails = Trails(len(frame.ships.x), frame.stall_angle)
     renderer.draw(
-        frame, view, camera, theme, trails, now, target, true_size=true_size, grid=grid_pattern
+        frame,
+        view,
+        camera,
+        theme,
+        trails,
+        now,
+        target,
+        true_size=true_size,
+        grid=grid_pattern,
+        contours=contours,
     )
     assert context.error == "GL_NO_ERROR"
     return read_pixels(target).astype(int)
@@ -313,7 +324,7 @@ def test_a_bullet_draws_a_round_head_and_a_fading_trail_behind_it(renderer, cont
     theme = themes.load(themes.DEFAULT)
     x, y = 0.0, 0.0
     camera = Camera(WIDTH, HEIGHT, x, y, 0.5)  # 2 px per metre
-    speed = 300.0  # m/s: the trail is 300 x TRAIL_SECONDS = 24 m, 48 px
+    speed = 600.0  # m/s: the trail is 600 x TRAIL_SECONDS = 24 m, 48 px
     background = _draw(renderer, context, frame, SPECTATOR, camera, theme)
 
     def drawn(age: float, speed: float = speed):
@@ -333,10 +344,38 @@ def test_a_bullet_draws_a_round_head_and_a_fading_trail_behind_it(renderer, cont
     tracer = drawn(age=1.0)
     assert tracer(0) and tracer(-10) and tracer(-40)  # the head and the trail behind it
     assert not tracer(-60) and not tracer(8)  # past the trail's end, and ahead
-    just_fired = drawn(age=0.01)  # 3 m flown: 6 px
+    just_fired = drawn(age=0.005)  # 3 m flown: 6 px
     assert just_fired(-4) and not just_fired(-12)
     head_only = drawn(age=1.0, speed=0.0)
     assert head_only(0) and not head_only(-10)
+
+
+def test_a_tracers_trail_leaves_the_head_as_wide_as_the_head(renderer, context):
+    """The trail's width at the head is the head's diameter: just behind the head the trail
+    covers as many rows as the head does through its middle, and it thins toward its end."""
+    assert TRAIL_PIXELS[1] == 2.0 * HEAD_PIXELS
+    loop = _loop(PRESETS["deathmatch"], ticks=0, seed=1)
+    frame = _without_bullets(loop.current)
+    theme = themes.load(themes.DEFAULT)
+    camera = Camera(WIDTH, HEIGHT, 0.0, 0.0, 0.5)
+    x = y = 0.25  # a pixel's centre
+    background = _draw(renderer, context, frame, SPECTATOR, camera, theme)
+    bullet = _with_bullets(frame, 0, np.array([x]), np.array([y]))
+    bullets = bullet.bullets
+    slot = np.flatnonzero(bullets.active)
+    values = {"age": bullets.age.copy(), "speed": bullets.speed.copy()}
+    values["age"][slot], values["speed"][slot] = 1.0, 2400.0  # a trail 96 m, 192 px long
+    bullet = dataclasses.replace(bullet, bullets=dataclasses.replace(bullets, **values))
+    changed = np.abs(_draw(renderer, context, bullet, SPECTATOR, camera, theme) - background)
+    changed = changed.max(-1) > 0
+    row, column = _pixel_of(camera, x, y)
+
+    def rows(behind: int) -> int:
+        return int(changed[row - 8 : row + 9, column - behind].sum())
+
+    assert rows(0) == 5  # the head: 5 px across
+    assert rows(4) == rows(0)
+    assert rows(150) < rows(4)
 
 
 def _without_bullets(frame):
@@ -729,3 +768,132 @@ def test_the_grid_draws_nothing_beyond_the_arena(renderer, context):
     changed = np.abs(on - off).max(-1) > 0
     assert changed[:, : WIDTH // 2 - 4].any()
     assert not changed[:, WIDTH // 2 :].any()
+
+
+def _smooth_minimum(a, b, k):
+    """The quadratic smooth minimum, by hand: min(a, b) less h²k/4, h = 1 - |a - b|/k."""
+    h = np.maximum(k - np.abs(a - b), 0.0) / k
+    return np.minimum(a, b) - h * h * k / 4.0
+
+
+def _circle_distance(x, y, circle):
+    centre_x, centre_y, radius = circle
+    return np.hypot(x - centre_x, y - centre_y) - radius
+
+
+def test_the_smooth_minimum_by_hand():
+    """Two values far apart: the plain minimum; equal: less k/4; in between, smooth."""
+    assert _smooth_minimum(np.array(0.0), np.array(10.0), 4.0) == 0.0
+    assert _smooth_minimum(np.array(-3.0), np.array(-3.0), 4.0) == -4.0
+    assert _smooth_minimum(np.array(0.0), np.array(2.0), 4.0) == pytest.approx(-0.25)
+
+
+def _with_shapes(frame, fields=(), zones=()):
+    """The frame with these fields and present zones, (x, y, radius) each (m)."""
+    template = _loop(PRESETS["deathmatch"]).current.fields
+
+    def column(values, like):
+        return np.array(values, like.dtype).reshape(-1)
+
+    count = len(fields)
+    replaced = dataclasses.replace(
+        template,
+        x=column([f[0] for f in fields], template.x),
+        y=column([f[1] for f in fields], template.y),
+        radius=column([f[2] for f in fields], template.radius),
+        band_width=column([10.0] * count, template.band_width),
+        level=column([1] * count, template.level),
+        core_radius=column([0.0] * count, template.core_radius),
+    )
+    present = np.zeros_like(frame.zones.present)
+    values = {name: getattr(frame.zones, name).copy() for name in ("x", "y", "radius")}
+    for index, (x, y, radius) in enumerate(zones):
+        present[index] = True
+        values["x"][index], values["y"][index], values["radius"][index] = x, y, radius
+    zones_now = dataclasses.replace(frame.zones, present=present, **values)
+    return dataclasses.replace(frame, fields=replaced, zones=zones_now)
+
+
+def _contour_drawing(renderer, context, frame, camera, shapes):
+    """Which pixels the contours of `shapes` change, drawn in opaque black."""
+    theme = with_colour(themes.load(themes.DEFAULT), "contours", Colour(0, 0, 0))
+    off = _draw(renderer, context, frame, SPECTATOR, camera, theme)
+    on = _draw(renderer, context, frame, SPECTATOR, camera, theme, contours=shapes)
+    return np.abs(on - off).max(-1) > 0
+
+
+ARENA = PRESETS["arena"].arena_radius
+
+
+@pytest.mark.parametrize(
+    "shapes, fields, zones, centre",
+    [
+        ("fields", [(-35.0, 5.0, 25.0), (30.0, -5.0, 18.0)], [], (0.0, 0.0)),
+        ("fields", [(-15.0, 0.0, 25.0), (15.0, 0.0, 25.0)], [], (0.0, 0.0)),  # overlapping
+        ("edge", [], [], (ARENA, 0.0)),
+        (
+            "fields+edge+zones",
+            [(ARENA - 50.0, 10.0, 20.0)],
+            [(ARENA - 40.0, -45.0, 15.0)],
+            (ARENA - 20.0, 0.0),
+        ),
+        ("zones", [(-30.0, 0.0, 20.0)], [(30.0, 0.0, 20.0)], (0.0, 0.0)),
+    ],
+)
+def test_the_contours_are_the_smooth_union_of_the_signed_distances(
+    renderer, context, shapes, fields, zones, centre
+):
+    """At a zoom where the fine spacing is exactly CONTOUR_PIXELS (no fade), a line is drawn
+    wherever the hand-computed signed distance (negative inside a circle and beyond the
+    arena; the circles' and the edge's joined by the smooth minimum) is a multiple of the
+    spacing, and nothing where it is more than 1.5 px from one. Inside the overlapping
+    circles the union falls below either circle's distance, so a sign error shows."""
+    frame = _with_shapes(_empty_arena(), fields, zones)
+    spacing = 32.0
+    camera = Camera(WIDTH, HEIGHT, *centre, spacing / CONTOUR_PIXELS)
+    assert contour_level(camera.metres_per_pixel) == (pytest.approx(spacing), pytest.approx(0.0))
+    drawn = _contour_drawing(renderer, context, frame, camera, shapes)
+    pixel = camera.metres_per_pixel
+    columns, rows = np.meshgrid(np.arange(WIDTH) + 0.5, np.arange(HEIGHT) + 0.5)
+    x = camera.centre_x + (columns - 0.5 * WIDTH) * pixel
+    y = camera.centre_y + (0.5 * HEIGHT - rows) * pixel
+
+    def distance(x, y):
+        with_fields, with_edge, with_zones = {
+            "fields": (1, 0, 0),
+            "edge": (0, 1, 0),
+            "fields+edge+zones": (1, 1, 1),
+            "zones": (0, 0, 1),
+        }[shapes]
+        total = ARENA - np.hypot(x, y) if with_edge else np.full_like(x, 1e9)
+        circles = (fields if with_fields else []) + (zones if with_zones else [])
+        for circle in circles:
+            total = _smooth_minimum(
+                total, _circle_distance(x, y, circle), SMOOTHING_FRACTION * ARENA
+            )
+        return total
+
+    value = distance(x, y)
+    gradient = np.hypot(
+        distance(x + 0.5 * pixel, y) - distance(x - 0.5 * pixel, y),
+        distance(x, y + 0.5 * pixel) - distance(x, y - 0.5 * pixel),
+    )  # metres of distance per pixel
+    off_line = np.abs(value - spacing * np.round(value / spacing)) / np.maximum(gradient, 1e-9)
+    smooth = gradient > 0.5 * pixel  # away from a circle's centre and the union's ridges
+    on, bare = smooth & (off_line < 0.25), smooth & (off_line > 1.5)
+    on[:2], on[-2:], on[:, :2], on[:, -2:] = False, False, False, False
+    assert on.sum() > 100 and bare.sum() > 1000
+    assert drawn[on].mean() > 0.99
+    assert not drawn[bare].any()
+    if shapes == "fields" and fields[0][0] == -15.0:
+        assert (on & (value < -spacing + 1.0)).any()  # a line inside both circles
+
+
+def test_no_contours_draw_when_off_or_for_shapes_the_map_has_not(renderer, context):
+    """Off: nothing; the arena has no fields or zones, so those sets draw nothing there,
+    while its edge does."""
+    frame = _empty_arena()
+    camera = Camera(WIDTH, HEIGHT, 0.6 * ARENA, 0.0, 2.0)
+    for shapes in ("off", "fields", "zones"):
+        assert not _contour_drawing(renderer, context, frame, camera, shapes).any()
+    assert _contour_drawing(renderer, context, frame, camera, "edge").any()

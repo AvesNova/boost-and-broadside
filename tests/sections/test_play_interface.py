@@ -349,8 +349,8 @@ def test_the_tuning_panel_opens_from_the_menu_and_a_restart_keeps_the_tuning(con
 
 def test_typed_letters_reach_the_text_boxes_and_call_no_shortcut(context, tmp_path):
     """Letters typed into a text box (each a shortcut or a flight key elsewhere: Z, T, E,
-    V, P, F, C, N, G, W, A, S, D, space) go into the box only: the view, theme, true size,
-    grid, pause, editor and the pilot's inputs stay as they were."""
+    V, P, F, C, N, G, O, W, A, S, D, space) go into the box only: the view, theme, true
+    size, grid, contours, pause, editor and the pilot's inputs stay as they were."""
     session = _session(context, tmp_path, preset="frontline")
     player = Player(session, context, 1280, 720)
     session.toggle_tuning()
@@ -361,6 +361,7 @@ def test_typed_letters_reach_the_text_boxes_and_call_no_shortcut(context, tmp_pa
         return (
             session.true_size,
             session.grid,
+            session.contours,
             session.theme.name,
             session.view_name,
             session.editor.open,
@@ -372,7 +373,7 @@ def test_typed_letters_reach_the_text_boxes_and_call_no_shortcut(context, tmp_pa
         )
 
     before = state()
-    text = "Zeta Paw Fencer 1001 vwasdcntg"
+    text = "Zeta Paw Fencer 1001 vwasdcntgo"
     player.click("tuning/new ship")
     player.type(text)
     assert session.tuning_panel.new_ship == text
@@ -743,3 +744,38 @@ def test_a_map_is_made_saved_played_edited_renamed_and_deleted_in_the_menu(conte
     assert not again.interface.controls.shown("new match/map/duel-two")
     assert again.interface.controls.shown("new match/map/fast-duel")
     again.close()
+
+
+def test_the_contours_are_chosen_in_the_top_bar_the_settings_and_with_o(context, tmp_path):
+    """The top bar's Contours button and O go to the next shape set (off, fields, edge,
+    fields and edge, all, zones); the settings choose one; the battlefield changes with it."""
+    session = _session(context, tmp_path, preset="frontline", contours="off")
+    player = Player(session, context, 1280, 720)
+    seen = []
+    for _ in range(6):
+        player.click("contours")
+        seen.append(session.contours)
+    assert seen == ["fields", "edge", "fields+edge", "fields+edge+zones", "zones", "off"]
+    player.io.add_key_event(imgui_key("o"), True)
+    player.frames()
+    player.io.add_key_event(imgui_key("o"), False)
+    player.frames()
+    assert session.contours == "fields"
+    player.click("menu")
+    player.click("menu/settings")
+    player.click("settings/contours/off")
+    assert session.contours == "off"
+
+    def battlefield():  # the menu paused the match: only the contours change it
+        session.show_interface = False
+        player.frames()
+        pixels = player.pixels()
+        session.show_interface = True
+        player.frames(2)
+        return pixels
+
+    bare = battlefield()
+    player.click("settings/contours/fields+edge+zones")
+    assert session.contours == "fields+edge+zones"
+    assert (battlefield() != bare).any()  # the lines
+    session.close()

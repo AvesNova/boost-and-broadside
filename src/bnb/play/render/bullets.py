@@ -1,6 +1,7 @@
 """Pass 8: bullets, as tracers: a round head in the shooter's team colour and a short trail
-behind it along its direction of flight, tapering and fading to nothing as a ship's trail
-does (`trails`), in the team's trail colour. Every bullet draws in every view.
+behind it along its direction of flight, in the team's trail colour, leaving the head as
+wide as the head (its diameter) and tapering and fading to a thin tail as a ship's trail
+does (`trails`). Every bullet draws in every view.
 
 The trail spans the last TRAIL_SECONDS of the bullet's flight as the screen shows it (that
 many seconds of play times the playback speed), never past the point it was fired from,
@@ -13,10 +14,11 @@ import numpy as np
 
 from ..themes import Theme
 from .programs import program, set_uniforms
-from .trails import NEWEST_PIXELS, OLDEST_PIXELS
+from .trails import OLDEST_PIXELS
 
-TRAIL_SECONDS = 0.08  # of the screen's time
+TRAIL_SECONDS = 0.04  # of the screen's time
 HEAD_PIXELS = 2.5  # the head's radius
+TRAIL_PIXELS = (OLDEST_PIXELS, 2.0 * HEAD_PIXELS)  # the trail's width at its tail and at the head
 FLOATS = 13
 
 
@@ -88,6 +90,6 @@ class BulletsPass:
             self.program,
             **camera,
             head_pixels=HEAD_PIXELS,
-            trail_pixels=(OLDEST_PIXELS, NEWEST_PIXELS),
+            trail_pixels=TRAIL_PIXELS,
         )
         self.vertex_array.render(moderngl.TRIANGLE_STRIP, vertices=4, instances=len(x))

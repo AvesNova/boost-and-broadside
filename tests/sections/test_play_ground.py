@@ -1,7 +1,8 @@
 """What grounds the view where nothing else is near: the look-ahead camera's lead and spring
-(`bnb.play.camera`), the dot grid's spacing levels (`bnb.play.render.grid`) and the options
-that choose them. No GPU: the grid's drawing is tested in `test_play_render.py`, the
-controls in `test_play_interface.py`."""
+(`bnb.play.camera`), the dot grid's and the distance contours' spacing levels
+(`bnb.play.render.grid`, `bnb.play.render.contours`) and the options that choose them. No
+GPU: their drawing is tested in `test_play_render.py`, the controls in
+`test_play_interface.py`."""
 
 import math
 
@@ -18,6 +19,7 @@ from bnb.play.camera import (
     lead_target,
     spring_step,
 )
+from bnb.play.render.contours import CONTOUR_FACTOR, CONTOUR_PIXELS, SHAPE_SETS, contour_level
 from bnb.play.render.grid import GRID_PIXELS, PATTERNS, grid_level
 
 WIDTH, HEIGHT = 1280, 720
@@ -135,10 +137,35 @@ def test_the_grid_crosses_a_level_without_a_jump(pattern):
     assert math.isclose(before_spacing * factor, after_spacing)
 
 
-def test_the_grid_and_look_ahead_are_options():
-    options = tyro.cli(Options, args=["--grid", "hex", "--look-ahead", "flying"])
+def test_the_contour_spacing_steps_by_two_and_crosses_a_level_without_a_jump():
+    """The contours step as the grid does: the fine spacing a power of 2 between half of
+    CONTOUR_PIXELS and CONTOUR_PIXELS on screen, the fine lines faded out just before a
+    level change and the coarse ones taking over at full strength just after."""
+    for metres_per_pixel in (0.05, 1.0, 17.0, 46.8):
+        spacing, fade = contour_level(metres_per_pixel)
+        assert math.log2(spacing) == pytest.approx(round(math.log2(spacing)))
+        assert CONTOUR_PIXELS / 2 < spacing / metres_per_pixel <= CONTOUR_PIXELS * (1 + 1e-9)
+        assert 0.0 <= fade <= 1.0
+    boundary = CONTOUR_FACTOR**9 / CONTOUR_PIXELS
+    before_spacing, before_fade = contour_level(boundary * (1 - 1e-7))
+    after_spacing, after_fade = contour_level(boundary * (1 + 1e-7))
+    assert before_fade > 1 - 1e-6 and after_fade < 1e-6
+    assert math.isclose(before_spacing * CONTOUR_FACTOR, after_spacing)
+
+
+def test_the_grid_contours_and_look_ahead_are_options():
+    options = tyro.cli(
+        Options, args=["--grid", "hex", "--contours", "fields+edge", "--look-ahead", "flying"]
+    )
     assert options.grid == "hex" and options.look_ahead == "flying"
+    assert options.contours == "fields+edge"
+    for shapes in ("off", *SHAPE_SETS):
+        assert tyro.cli(Options, args=["--contours", shapes]).contours == shapes
+    assert tyro.cli(Options, args=["--grid", "off"]).grid == "off"
     defaults = Options()
     assert defaults.grid in PATTERNS and defaults.look_ahead == "always"
+    assert defaults.contours == "off"  # until a shape set is chosen as the default
     with pytest.raises(SystemExit):
         tyro.cli(Options, args=["--grid", "hexagon"])
+    with pytest.raises(SystemExit):
+        tyro.cli(Options, args=["--contours", "everything"])
