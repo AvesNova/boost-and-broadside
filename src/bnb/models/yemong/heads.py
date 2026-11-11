@@ -116,8 +116,16 @@ class ShotTrajectoryHead(nn.Module):
 
     def query(self, latent: torch.Tensor, age_features: torch.Tensor) -> torch.Tensor:
         """latent (..., D) from `self.latent`; age_features (..., ages, F) broadcasting
-        against latent[..., None, :]. Returns (..., ages, outputs)."""
-        hidden = F.gelu(self.first_norm(latent[..., None, :] + self.age(age_features)))
+        against latent[..., None, :]. Returns (..., ages, outputs). Ages shared by every
+        row (age_features (ages, F)) take the staged head kernel, the whole query in one."""
+        age = self.age(age_features)
+        if kernels.switches.heads and head_kernel.staged_applies(
+            latent, age, self.middle.out_features
+        ):
+            return head_kernel.staged_head(
+                latent, age, self.first_norm, self.middle, self.middle_norm, self.last
+            )
+        hidden = F.gelu(self.first_norm(latent[..., None, :] + age))
         if kernels.switches.heads and head_kernel.applies(hidden, self.middle.out_features):
             return head_kernel.head(hidden, self.middle, self.middle_norm, self.last)
         return self.last(F.gelu(self.middle_norm(self.middle(hidden))))
