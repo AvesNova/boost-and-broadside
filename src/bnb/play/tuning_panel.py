@@ -286,6 +286,7 @@ class TuningPanel:
         _, self.new_ship = imgui.input_text_with_hint(
             "##new ship", "new ship's name", self.new_ship
         )
+        controls.record("tuning/new ship")
         imgui.same_line()
         if imgui.button("Add a copy as this name"):
             self._add(session, tuner)

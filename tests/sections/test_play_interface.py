@@ -68,8 +68,35 @@ class Player:
     def click(self, name: str) -> None:
         self.click_at(*self.session.interface.controls.rect(name).centre())
 
+    def type(self, text: str) -> None:
+        """Type `text` as the window passes keys on: each key's press (with Shift for a
+        capital) and its character, then its release, a frame each."""
+        import glfw
+
+        from bnb.play.window import IMGUI_KEYS
+
+        for character in text:
+            key = IMGUI_KEYS.get(getattr(glfw, f"KEY_{character.upper()}", None))
+            if key is None and character == " ":
+                key = IMGUI_KEYS[glfw.KEY_SPACE]
+            self.io.add_key_event(imgui_key("mod_shift"), character.isupper())
+            if key is not None:
+                self.io.add_key_event(key, True)
+            self.io.add_input_character(ord(character))
+            self.frames()
+            if key is not None:
+                self.io.add_key_event(key, False)
+            self.io.add_key_event(imgui_key("mod_shift"), False)
+            self.frames()
+
     def pixels(self) -> np.ndarray:
         return read_pixels(self.target).astype(int)
+
+
+def imgui_key(name: str):
+    from imgui_bundle import imgui
+
+    return getattr(imgui.Key, name)
 
 
 def _session(context, tmp_path, width=1280, height=720, **options) -> Session:
@@ -304,6 +331,54 @@ def test_the_tuning_panel_opens_from_the_menu_and_a_restart_keeps_the_tuning(con
     session.toggle_tuning()
     assert not session.tuning_panel.open
     player.frames(2)
+    session.close()
+
+
+def test_typed_letters_reach_the_text_boxes_and_call_no_shortcut(context, tmp_path):
+    """Letters typed into a text box (each a shortcut or a flight key elsewhere: Z, T, E,
+    V, P, F, C, N, W, A, S, D, space) go into the box only: the view, theme, true size,
+    pause, editor and the pilot's inputs stay as they were."""
+    session = _session(context, tmp_path, preset="frontline")
+    player = Player(session, context, 1280, 720)
+    session.toggle_tuning()
+    player.frames(3)
+
+    def state():
+        loop = session.loop
+        return (
+            session.true_size,
+            session.theme.name,
+            session.view_name,
+            session.editor.open,
+            session.show_keys,
+            loop.paused,
+            loop.time_scale,
+            session.following,
+            bool(loop.inputs.any()),
+        )
+
+    before = state()
+    text = "Zeta Paw Fencer 1001 vwasdcnt"
+    player.click("tuning/new ship")
+    player.type(text)
+    assert session.tuning_panel.new_ship == text
+    assert state() == before
+    session.toggle_tuning()
+    player.click("menu")
+    player.click("menu/new match")
+    before = state()  # the menu pauses the match
+    player.click("new match/seed")
+    player.type("12")
+    player.io.add_key_event(imgui_key("enter"), True)  # a number box takes its text on Enter
+    player.frames()
+    player.io.add_key_event(imgui_key("enter"), False)
+    player.frames()
+    assert session.interface.menu.draft.seed == 12 and state() == before
+    player.click("new match/side1")
+    player.click("new match/side1/path")
+    player.type("runs/zeta-1")
+    assert session.interface.typed_policy == "runs/zeta-1"
+    assert state() == before  # "-" is the slower key elsewhere
     session.close()
 
 
