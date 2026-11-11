@@ -3,12 +3,12 @@ benchmark lock (run from the repository root, where `bench` imports).
 
 For each game and view it plays a match on the display clock, its tick and its scripted
 agents' steps built first, with no frame cap (each frame waits for the GPU to finish, as a
-swap without vsync would), and reports the frame time's percentiles and whether the sim kept its real-time tick rate. A second, shorter
-run times each pass with GPU timer queries (which stall the pipeline, so they are not
-part of the frame times) and the CPU stages (sim tick, controllers, snapshot, index
-tiles, interpolation, and each pass's own Python, which includes its uploads). Last, it
-rebuilds the map's index texture as a map change does, a few tiles per frame, and reports
-those frames.
+swap without vsync would), and reports the frame time's percentiles and whether the sim
+kept its real-time tick rate. A second, shorter run times each pass with GPU timer queries
+(which stall the pipeline, so they are not part of the frame times) and the CPU stages (sim
+tick, controllers, snapshot, index tiles, interpolation, and each pass's own Python, which
+includes its uploads). Last, it rebuilds the map's index texture as a map change does, a
+few tiles per frame, and reports those frames.
 
 The interface is drawn as a player sees it with everything open: every card, the minimap
 and a selected ship. The stage `interface` is its own CPU time (building the ImGui frame,
