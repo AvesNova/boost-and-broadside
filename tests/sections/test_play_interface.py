@@ -184,10 +184,6 @@ def _uncovered_equal(player: Player, layout) -> tuple[int, int]:
     return int((differs & ~covered).sum()), int((differs & covered).sum())
 
 
-@pytest.mark.parametrize(
-    "width, height, scale, collapsed",
-    [(1280, 720, 1.0, False), (1920, 1080, 1.5, True), (2560, 1440, 2.0, False)],
-)
 class _StaleScreen:
     """A window's framebuffer as moderngl gives it: `size` stays what it was when the
     context was made, whatever size the window has since taken."""
@@ -227,6 +223,10 @@ def test_the_interface_fills_a_window_resized_after_it_opened(context, tmp_path)
     )
 
 
+@pytest.mark.parametrize(
+    "width, height, scale, collapsed",
+    [(1280, 720, 1.0, False), (1920, 1080, 1.5, True), (2560, 1440, 2.0, False)],
+)
 def test_the_interface_draws_only_inside_its_layout(
     context, tmp_path, width, height, scale, collapsed
 ):
