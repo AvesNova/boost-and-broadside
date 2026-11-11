@@ -495,3 +495,18 @@ author's call (it thins the heads' series).
 diagnostics cadence (`metrics.due`, every 10th update and the first), with the gradient and
 representation groups; `Learner.update(heads=...)`, the trainer passing its cadence. The
 heads' losses stay every update's.
+
+### Where the steady learn goes (`bench/learn_profile.py`; `compile-overhaul/learn/`)
+
+The real-scale RL config, warm, two profiled minibatch steps of a steady update (1,024
+steps, 222.6 s; three micro-batches of 160 rows a step): **227 ms wall, 220 ms of kernels**,
+so the learn is GPU-bound, not launch-bound. By kind: Triton reductions 30%, Triton
+pointwise 28%, GEMMs 19%, the model's own kernels (the heads', the gated feedforward's,
+the scan's) 16%, attention 4%, copies 3% (the micro-batches' pinned uploads), the fused
+Adam 0.3%. No kernel holds more than 5%. The largest (11.7 ms a step) is the shot
+trajectory head's cross-entropy gradient: 37.8M float32 elements a micro-batch, 154 code
+columns per age query. The loss tails of the auxiliary heads' codes, in float32, are a
+large part of the pointwise and reduction time.
+
+The spatial-only ablation and the nearest-neighbour MLP both pass the frontline probe
+(4.24 and 3.93 GB allocated).
