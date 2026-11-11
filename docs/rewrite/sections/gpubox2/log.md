@@ -46,3 +46,10 @@ See the report section at the end. Records of the champion: `champion/*.json` (c
   (ssh9.vast.ai:22629) both refuse connections. The last contact was 00:53 KST. The laptop's
   pull at 01:11 found the box unreachable. Lost: the compile, about 15 min, and no update
   (there was no checkpoint yet). `reach.sh` on the laptop now logs both ports every minute.
+- **02:03 Back on its own (interruption 1 measured).** The box's last heartbeat was 01:09:26 KST
+  and its first after the restart 02:02:53, so it was down **53.5 min**. Same address and SSH port
+  (80.188.223.200:30148; the proxy came back too). The same kernel boot_id means a container
+  stop/start, not a host reboot. Supervisor restarted `heartbeat` and `onehead`. The driver
+  found no checkpoint, moved the partial run to runs/failed/, and started BC fresh at 02:02:53.
+  **Lost:** 29 min of compile (00:40-01:09; no update had finished: the first update's compile
+  plus graph capture was still running) and 53.5 min of downtime.
