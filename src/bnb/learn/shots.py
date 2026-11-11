@@ -5,8 +5,10 @@ following ticks.
 The scan keeps one bullet per (row, age), newest first, as the game keeps one per slot: each
 tick every row fires a fresh bullet from its captured launch state, every bullet moves, and
 the swept test runs against the tick's captured ship motion. Every bullet flies all its
-moves; a shot's first contact is its hit (the game spends the bullet there), so its later
-ages are invalid. Rows are in the view's order, so a shooter's side is its block.
+moves; a shot's first contact is its hit (the game spends the bullet there) and its outcome,
+while its path is labelled at every age: past a hit, the straight-on flight it would have
+had. The trajectory head learns a shot at QUERIES of its ages (`query_ages`). Rows are in
+the view's order, so a shooter's side is its block.
 """
 
 import dataclasses
@@ -36,20 +38,41 @@ class ShotCapture:
     alive: torch.Tensor
 
 
+# The ages the trajectory head is queried at per shot (`query_ages`).
+QUERIES = 4
+
+
 @contract
 class Shots:
-    """One shot per (tick, row), (L, R, N) leading: valid, the shooter was alive, the
-    longest flight from its launch ends inside the segment, and its own flight (to its hit,
-    or all its moves) ends inside the episode;
-    snapshots (L, R, N, A, 5), after each move: the displacement and velocity (m, m/s) in
-    the launch heading's frame (forward, left) and the refractive index; age_valid
-    (L, R, N, A), the shot is valid and the age is not after its hit; hit (HIT_*), the first
-    hit's side relative to the shooter; distance (m), the closest pass of a shot that hit
-    nothing, and side (SIDE_*) that ship's."""
+    """One shot per (tick, row), (L, R, N) leading: valid, the shooter was alive and its
+    whole flight (all its moves) ends inside the window and inside the episode, so every
+    age of a valid shot is labelled; snapshots (L, R, N, A, 5), after each move: the
+    displacement and velocity (m, m/s) in the launch heading's frame (forward, left) and
+    the refractive index; hit (HIT_*), the first hit's side relative to the shooter, and
+    hit_age its age index (0: after the first move; A for none); distance (m), the closest
+    pass to another living ship (any side; inf with none), side (SIDE_*) that ship's and
+    closest_age its age index; bend_age, the age index of the first move whose refractive
+    index differs from the one before it (the launch's, for the first move): the first
+    move into or through a field's band, -1 for none."""
 
     valid: torch.Tensor
     snapshots: torch.Tensor
-    age_valid: torch.Tensor
+    hit: torch.Tensor
+    hit_age: torch.Tensor
+    distance: torch.Tensor
+    side: torch.Tensor
+    closest_age: torch.Tensor
+    bend_age: torch.Tensor
+
+
+@contract
+class ShotLabels:
+    """What the loss reads of the shots, (L, R, N) leading: ages (..., QUERIES) uint8, the
+    queried age indices (`query_ages`); snapshots (..., QUERIES, 5) at them; hit, distance
+    and side as `Shots`'."""
+
+    ages: torch.Tensor
+    snapshots: torch.Tensor
     hit: torch.Tensor
     distance: torch.Tensor
     side: torch.Tensor
@@ -197,19 +220,16 @@ def resimulate(
     contact = shot.hit & inside
     hit_age = torch.where(contact, torch.arange(ages, device=device), ages).min(-1).values
     hit_any = hit_age < ages
-    flight_end = torch.where(hit_any, hit_age, ages - 1)  # the age index of its last move
-    # Episode ends strictly inside the flight: done on ticks t .. end - 1, from the count of
-    # ends before each tick.
+    # Episode ends strictly inside the whole flight (every age is labelled, past a hit too):
+    # done on ticks t .. t + A - 2, from the count of ends before each tick.
     ended = torch.cat([done.new_zeros((1, views)), done], 0).to(torch.int32).cumsum(0)
-    ended = ended[:, :, None].expand(-1, -1, rows)  # (L + 1, R, N)
-    end_tick = launch_tick[:, :, None] + flight_end  # (L, R, N)
-    crossed = ended.gather(0, end_tick.clamp_max(length)) - ended[:-1]
-    # A shot launched within the longest flight of the segment's end is invalid whatever it
+    end_tick = (launch_tick + ages - 1).clamp_max(length)  # (L, 1)
+    crossed = (ended.gather(0, end_tick.expand(-1, views)) - ended[:-1])[:, :, None]
+    # A shot launched within the longest flight of the window's end is invalid whatever it
     # hit: keeping the ones that hit in time would bias the tail's labels toward hits.
     end = length if available is None else available[:, None]  # () or (R, 1)
     whole_flight = launch_tick[:, :, None] + ages - 1 < end  # (L, 1 or R, 1)
     valid = capture.alive & whole_flight & (crossed == 0)
-    age_valid = valid[..., None] & (torch.arange(ages, device=device) <= flight_end[..., None])
 
     start = capture.launch
     cos, sin = start.heading_cos[..., None], start.heading_sin[..., None]
@@ -237,11 +257,50 @@ def resimulate(
     closest, closest_age = miss.min(-1)
     nearest = shot.nearest.gather(-1, closest_age[..., None])[..., 0]
     side = torch.where(same_side(nearest), SIDE_ALLY, SIDE_ENEMY)
+    before = torch.cat([torch.exp(start.log_refractive_index)[..., None], shot.index[..., :-1]], -1)
+    bent = shot.index != before  # the index is constant outside the fields' bands
+    bend_age = torch.where(bent.any(-1), torch.argmax(bent.to(torch.int32), -1), -1)
     return Shots(
         valid=valid,
         snapshots=snapshots,
-        age_valid=age_valid,
         hit=hit,
+        hit_age=hit_age,
         distance=torch.sqrt(closest),
         side=side,
+        closest_age=closest_age,
+        bend_age=bend_age,
+    )
+
+
+def query_ages(shots: Shots, drawn: torch.Tensor) -> torch.Tensor:
+    """(L, R, N, QUERIES) the age indices each shot's trajectory is learnt at: its last
+    move; one uniform over its whole flight (it may repeat another); its closest pass to
+    another ship; its first move into a field's band (`Shots.bend_age`). The last two fall
+    back to a uniform age of their own when the shot passed no ship or met no band.
+    drawn (L, R, N, 3): uniform age indices in [0, A) (the learner's draw), one per use."""
+    ages = shots.snapshots.shape[-2]
+    drawn = drawn.long()
+    return torch.stack(
+        [
+            torch.full_like(shots.closest_age, ages - 1),
+            drawn[..., 0],
+            torch.where(torch.isfinite(shots.distance), shots.closest_age, drawn[..., 1]),
+            torch.where(shots.bend_age >= 0, shots.bend_age, drawn[..., 2]),
+        ],
+        -1,
+    )
+
+
+def labels(shots: Shots, drawn: torch.Tensor) -> ShotLabels:
+    """The loss's labels of `shots`: the snapshots at `query_ages(shots, drawn)`."""
+    ages = query_ages(shots, drawn)
+    snapshots = shots.snapshots.gather(
+        -2, ages[..., None].expand(*ages.shape, shots.snapshots.shape[-1])
+    )
+    return ShotLabels(
+        ages=ages.to(torch.uint8),
+        snapshots=snapshots,
+        hit=shots.hit,
+        distance=shots.distance,
+        side=shots.side,
     )

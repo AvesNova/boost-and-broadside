@@ -203,8 +203,8 @@ def with_map(ships: torch.Tensor, fields: torch.Tensor) -> torch.Tensor:
 
 def _one_shot(rules, types, start: Launch, fields: torch.Tensor, rows: int, spread):
     """The flight of one shot fired from `start` (one row's launch state, scalars), alone,
-    through fields (M, 5): snapshots (draws, A, 5) and age_valid (draws, A) for spread
-    (draws, 2) standard normals."""
+    through fields (M, 5): snapshots (draws, A, 5) and age_valid (draws, A), every age of a
+    valid shot, for spread (draws, 2) standard normals."""
     draws, ages = spread.shape[0], rules.bullet_moves
     shape = (ages, draws, rows)
 
@@ -232,7 +232,7 @@ def _one_shot(rules, types, start: Launch, fields: torch.Tensor, rows: int, spre
         noise,
         rows,
     )
-    return result.snapshots[0, :, 0], result.age_valid[0, :, 0]
+    return result.snapshots[0, :, 0], result.valid[0, :, 0, None].expand(-1, ages)
 
 
 @torch.no_grad()
@@ -298,7 +298,7 @@ def measure(model, rules, types, trajectory, config) -> dict:
     )
     reset = obs.globals[..., GLOBAL["reset"]] > 0.5
     unrolled = model.unroll(carry, obs, replay, reset)
-    ages = torch.arange(1, model.bullet_moves + 1, dtype=torch.float32)
+    ages = torch.arange(1, model.bullet_moves + 1)
     logits = model.shot_trajectory(unrolled.shot_latents[tick, :, row], ages)
     path = decode.shot_path(model.shot_code, logits)
     return dict(

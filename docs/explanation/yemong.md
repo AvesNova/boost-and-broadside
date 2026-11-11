@@ -589,7 +589,7 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
 | outcome (with an outcome level) | global token | win, tie, loss, unresolved |
 | density | global token | ally and enemy rates on a hex grid that scales with the arena |
 | shot outcome | ship rows | how a shot fired now would end |
-| shot trajectory | ship rows, at bullet ages | where a shot fired now would be at each age |
+| shot trajectory | ship rows, at bullet ages (in training, 4 per shot) | where a shot fired now would be at each age |
 | rotary read-out (optional) | ship rows, after each block's temporal sublayer | per block, a (cos, sin) pair per rotary frequency |
 
 ### Trunk order and the rotary read-out

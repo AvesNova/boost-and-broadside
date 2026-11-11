@@ -1,6 +1,7 @@
 """Shot labels (learner spec 6, acceptance item 4): a shot re-simulated from captured state
 is the bullet the game fires from that state, tick by tick (position, velocity, hit),
-including friendly fire, fields and flights that an episode end cuts short."""
+including friendly fire, fields and flights that an episode end cuts short; and the ages the
+trajectory head is queried at."""
 
 import pytest
 import torch
@@ -12,7 +13,8 @@ from bnb.game import api
 from bnb.game.physics.bullets import Launch, launch_state
 from bnb.game.physics.combat import hits
 from bnb.learn import labels
-from bnb.learn.shots import ShotCapture, resimulate
+from bnb.learn.shots import QUERIES, ShotCapture, query_ages, resimulate
+from bnb.learn.shots import labels as shot_labels
 from bnb.models.yemong.shots import HIT_ALLY, HIT_ENEMY, HIT_NONE, SIDE_ALLY, SIDE_ENEMY
 
 # Whole vector widths of environments, so eager CPU kernels take one code path everywhere
@@ -115,8 +117,12 @@ def test_a_resimulated_shot_is_the_bullet_the_game_fires(played):
     compared = 0
     for tick, environment, ship, slot in _fired(game):
         launch = torch.utils._pytree.tree_map(lambda x: x[tick, environment, ship], capture.launch)
-        for age in range(12):
-            if tick + age >= TICKS or not shots.age_valid[tick, environment, ship, age]:
+        for age in range(MOVES):  # the game's bullet flies to its hit, the shot's on past it
+            if (
+                tick + age >= TICKS
+                or not shots.valid[tick, environment, ship]
+                or age > shots.hit_age[tick, environment, ship]
+            ):
                 break
             record = game[tick + age]
             expected = _frame(
@@ -136,15 +142,14 @@ def test_a_resimulated_shot_is_the_bullet_the_game_fires(played):
 
 
 def test_a_resimulated_hit_is_the_games_hit_with_its_side(played):
-    """Hits tick by tick: the game's bullet hits on the age where the shot's flight ends in
-    a hit, on the side the re-simulation names (the game's damage matrix says whom)."""
+    """Hits tick by tick: the game's bullet hits on the shot's hit age, on the side the
+    re-simulation names (the game's damage matrix says whom)."""
     _, _, shots, game, _ = played
     sides = {HIT_ENEMY: 0, HIT_ALLY: 0}
     for tick, environment, ship, slot in _fired(game):
-        valid = shots.age_valid[tick, environment, ship]
         if not shots.valid[tick, environment, ship]:
             continue
-        last = int(valid.nonzero().max())
+        last = min(int(shots.hit_age[tick, environment, ship]), MOVES - 1)
         for age in range(last + 1):
             game_hit = bool(game[tick + age]["hit"][environment, ship, slot])
             ends_in_hit = age == last and shots.hit[tick, environment, ship] != HIT_NONE
@@ -162,36 +167,31 @@ def test_a_resimulated_hit_is_the_games_hit_with_its_side(played):
 
 def test_flights_cross_fields(played):
     _, _, shots, _, _ = played
-    index = shots.snapshots[..., 4][shots.age_valid]
+    index = shots.snapshots[..., 4][shots.valid]
     assert ((index - 1.0).abs() > 0.01).any()
 
 
 def test_a_flight_an_episode_end_cuts_short_is_invalid(played):
-    """The game clears every bullet at an episode end; a shot whose flight would continue
-    past it is invalid, and one that hit before it is not."""
+    """The game clears every bullet at an episode end; every age of a shot is labelled (past
+    its hit, the straight-on flight), so a shot whose whole flight would continue past an
+    end is invalid, whether or not it hit before it, and a living shooter's shot whose
+    flight no end cuts is valid (inside the segment)."""
     capture, done, shots, _, _ = played
-    cut = hit_first = 0
-    for tick in range(TICKS - 12):
+    cut = cut_after_hit = kept = 0
+    for tick in range(TICKS - (MOVES - 1)):
         for environment in range(ENVS):
-            ends = done[tick : tick + 11, environment].nonzero()
-            if not ends.numel():
-                continue
-            end = tick + int(ends[0])  # the episode ends after this tick
+            ended = bool(done[tick : tick + MOVES - 1, environment].any())
             for ship in range(2 * OWN):
                 if not capture.alive[tick, environment, ship]:
                     assert not shots.valid[tick, environment, ship]  # a dead ship fires nothing
-                    continue
-                last_age = (
-                    int(shots.age_valid[tick, environment, ship].nonzero().max())
-                    if shots.valid[tick, environment, ship]
-                    else None
-                )
-                if last_age is None:
+                elif ended:
+                    assert not shots.valid[tick, environment, ship]
                     cut += 1
+                    cut_after_hit += int(shots.hit[tick, environment, ship] != HIT_NONE)
                 else:
-                    assert tick + last_age <= end and shots.hit[tick, environment, ship] != HIT_NONE
-                    hit_first += 1
-    assert cut > 0 and hit_first > 0
+                    assert shots.valid[tick, environment, ship]
+                    kept += 1
+    assert cut > 0 and cut_after_hit > 0 and kept > 0
 
 
 # ------------------------------------------------------------------ the rollout's capture
@@ -259,9 +259,8 @@ def test_a_shot_launched_near_the_segments_end_is_invalid_whatever_it_hit(played
     assert torch.equal(short.valid[body], long.valid[body])
     valid = short.valid[body]
     assert valid.any()
-    for name in ("hit", "distance", "side"):
+    for name in ("hit", "hit_age", "distance", "side", "closest_age", "bend_age"):
         assert torch.equal(getattr(short, name)[body][valid], getattr(long, name)[body][valid])
-    assert torch.equal(short.age_valid[body], long.age_valid[body])
 
 
 def _still(rows: int, length: int, positions: list[tuple[float, float]]) -> ShotCapture:
@@ -325,3 +324,91 @@ def test_a_miss_records_its_closest_pass_and_that_ships_side(shooter, positions,
         shots.distance[0, 0, shooter], torch.tensor(distance), rtol=0, atol=1e-3
     )
     assert shots.side[0, 0, shooter] == side
+
+
+# ------------------------------------------------------------------ the queried ages
+
+
+def _straight_shot(positions, field_rows, alive=None):
+    """The shots of ships standing at `positions` (2v2) through `field_rows` (M, 5), the
+    first fired along +x at tick 0; alive (rows,) which stand alive (all by default)."""
+    rules, types = api.rules_of(GameConfig(2, 2, 1500.0)), api.ship_types()
+    length, rows = MOVES, len(positions)
+    capture = _still(rows, length, positions)
+    if alive is not None:
+        capture = ShotCapture(
+            launch=capture.launch,
+            displacement_x=capture.displacement_x,
+            displacement_y=capture.displacement_y,
+            alive=torch.tensor(alive).expand(length, 1, rows).clone(),
+        )
+    fields = torch.tensor(field_rows, dtype=torch.float32).expand(length, 1, -1, 5)
+    return resimulate(
+        rules,
+        types,
+        capture,
+        fields,
+        torch.zeros(length, 1, dtype=torch.bool),
+        torch.zeros(length, 1, rows, 2),
+        2,
+    )
+
+
+NO_BAND = [[1e5, 1e5, 1.0, 1.0, 0.0]]
+STANDING = [(0, 0), (50, 30), (100, 2000), (-100, 2000)]  # 2v2, the shooter at the origin
+BAND_ON_THE_LINE = [[150.0, 0.0, 15.0, 10.0, 2.0]]  # on the shooter's line, ahead of the ship
+
+
+def test_the_closest_and_bend_ages_are_where_the_flight_passes_the_ship_and_meets_the_band():
+    """A straight shot past a ship standing 30 m beside its line at x = 50 m: the closest
+    pass is on the move that crosses x = 50 (from the shot's own positions). Through a
+    field centred on the line at x = 150 m (radius 15 m, band 10 m): the first move that
+    ends inside the band's outer edge (20 m from the centre) is the bend age, worked out
+    from the positions alone; with no field there, none (-1)."""
+    shots = _straight_shot(STANDING, BAND_ON_THE_LINE)
+    forward = shots.snapshots[0, 0, 0, :, 0]
+    assert shots.valid[0, 0, 0] and forward[-1] > 135.0  # the flight enters the field
+    previous = torch.cat([torch.zeros(1), forward[:-1]])
+    crossing = int(((previous < 50.0) & (forward >= 50.0)).nonzero()[0])
+    assert shots.closest_age[0, 0, 0] == crossing
+    inside_band = (forward - 150.0).abs() < 20.0  # on the line: distance to the centre
+    assert shots.bend_age[0, 0, 0] == int(inside_band.nonzero()[0])
+    straight = _straight_shot(STANDING, NO_BAND)
+    assert straight.bend_age[0, 0, 0] == -1
+
+
+def test_the_queried_ages_are_the_last_a_uniform_the_closest_and_the_bend():
+    """`query_ages`: the last move, the first draw, the closest pass and the bend; with no
+    other ship alive the closest pass falls back to the second draw, through no band the
+    bend to the third."""
+    drawn = torch.tensor([3, 5, 7], dtype=torch.uint8).expand(MOVES, 1, 4, 3)
+    shots = _straight_shot(STANDING, BAND_ON_THE_LINE)
+    ages = query_ages(shots, drawn)[0, 0, 0]
+    assert ages.tolist() == [
+        MOVES - 1,
+        3,
+        int(shots.closest_age[0, 0, 0]),
+        int(shots.bend_age[0, 0, 0]),
+    ]
+    alone = _straight_shot(STANDING, NO_BAND, alive=[True, False, False, False])
+    assert not torch.isfinite(alone.distance[0, 0, 0])
+    assert query_ages(alone, drawn)[0, 0, 0].tolist() == [MOVES - 1, 3, 5, 7]
+
+
+def test_the_labels_hold_the_snapshots_at_the_queried_ages(played):
+    """`labels`: each query's snapshot is the shot's at that age, the outcome the shot's."""
+    _, _, shots, _, _ = played
+    generator = torch.Generator().manual_seed(3)
+    drawn = torch.randint(MOVES, shots.valid.shape + (3,), dtype=torch.uint8, generator=generator)
+    queried = shot_labels(shots, drawn)
+    ages = query_ages(shots, drawn)
+    assert torch.equal(queried.ages, ages.to(torch.uint8))
+    tick, environment, ship = 5, 3, 1
+    for query in range(QUERIES):
+        age = int(ages[tick, environment, ship, query])
+        assert torch.equal(
+            queried.snapshots[tick, environment, ship, query],
+            shots.snapshots[tick, environment, ship, age],
+        )
+    for name in ("hit", "distance", "side"):
+        assert torch.equal(getattr(queried, name), getattr(shots, name))

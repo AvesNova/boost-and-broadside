@@ -84,7 +84,7 @@ micro-batches equals one unsplit minibatch exactly.
 | next state | 0.0041 | every row whose belief is valid at `t`, where `t` did not end an episode | the code's cross-entropy summed over its groups, against the sharp code of the true state at `t + 1` |
 | enemy action | 0.11 | enemy rows alive at `t` | the cross-entropy of the enemy's actual joint action at `t` |
 | density | 0.021 | per view-step, divided by the valued-ship count | Poisson terms summed over cells, against the hex counts of living ships at `t` |
-| shot trajectory | 0.007 **(v2)** | valid shots of own ships and of visible enemies | the cross-entropy summed over parts, **averaged over the valid ages** (v1 summed two ages at 0.0035) |
+| shot trajectory | 0.007 **(v2)** | valid shots of own ships and of visible enemies | the cross-entropy summed over parts, **averaged over 4 queried ages** (the last, a uniform one, the closest pass, the first bend; v1 summed two ages at 0.0035) |
 | shot outcome | 0.019 | the same shots | the outcome code's cross-entropy |
 
 - **The next-state target** is in the model's frame: the true position plus the view's
@@ -119,10 +119,13 @@ state and enemy action are row-aligned with the view, as the model's rows are.
 - **Each shot records,** at every age `a = 1 … 12`, the snapshot: the displacement and
   velocity in the launch attitude's frame, and the refractive index. It also records its
   first hit (enemy or ally of the shooter), or else its closest pass and that ship's side.
-  - Ages after a hit are invalid.
-  - A shot is invalid if its flight crosses an episode end or the segment's end.
-- **Targets** are Yemong's shot codes: the trajectory code at every valid age, and the
-  outcome code. The trajectory head is queried at all ages at once.
+  - Every age of a valid shot is labelled: past a hit, the bullet's straight-on flight
+    (the trajectory code has no hit component; the outcome code keeps the first hit).
+  - A shot is invalid if its whole flight crosses an episode end or the window's end.
+- **Targets** are Yemong's shot codes: the trajectory code at 4 ages per shot, and the
+  outcome code. The ages: the last move, one uniform over the flight, the closest pass to
+  another living ship and the first move into a field's band (each of the last two a
+  uniform age of its own when there is none), drawn by the learner's generator.
 
 ## 7. Mixed batches and metrics
 

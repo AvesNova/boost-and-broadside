@@ -131,7 +131,7 @@ def test_the_shot_rates_and_trajectory_kl_match_a_hand_computed_case():
     parts = torch.tensor([math.log(2), 1.0, 2.0, 3.0]).expand(1, 1, 2, 1, 4)  # the CE
     label = dict(
         shot_mask=torch.tensor([True, False]).expand(1, 1, 2),
-        shot_ages=torch.ones((1, 1, 2, 1), dtype=torch.bool),
+        shot_ages=torch.ones((1, 1, 2, 1), dtype=torch.long),  # one query, at the first move
         shot_outcome=outcome,
     )
     alive = torch.ones((1, 1, 2), dtype=torch.bool)

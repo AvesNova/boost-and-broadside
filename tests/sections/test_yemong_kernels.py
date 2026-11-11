@@ -351,38 +351,49 @@ def _shot_head(seed: int = 0, width: int = 128, outputs: int = 154) -> ShotTraje
     return head
 
 
-def _shot_head_run(head: ShotTrajectoryHead, latent, features, bfloat16: bool):
-    """The query's output and the gradients of the latent, the features and every
-    parameter."""
+def _shot_head_run(head: ShotTrajectoryHead, latent, features, ages, bfloat16: bool):
+    """The query's output and the gradients of the latent, the age table's features and
+    every parameter."""
     head.zero_grad(set_to_none=True)
     latent = latent.detach().requires_grad_()
     features = features.detach().requires_grad_()
     with torch.autocast("cuda", torch.bfloat16, enabled=bfloat16):
-        out = head.query(latent, features)
+        out = head.query(latent, features, ages)
     _weighted_sum((out,)).backward()
     return [out.detach()], [latent.grad, features.grad] + [p.grad for p in head.parameters()]
 
 
-def _shot_head_inputs(seed: int = 0):
+def _shot_head_inputs(seed: int = 0, shared: bool = True):
+    """A latent (7, 37, 128), an age table of 18 ages and the ages queried: all 18 in order
+    for every row (shared) or 4 of each row's own, repeats included."""
     generator = _generator(seed)
     latent = torch.randn(7, 37, 128, generator=generator, device=CUDA)
     features = torch.randn(18, 9, generator=generator, device=CUDA)
-    return latent, features
+    if shared:
+        ages = torch.arange(18, device=CUDA)
+    else:
+        ages = torch.randint(18, (7, 37, 4), generator=generator, device=CUDA)
+    return latent, features, ages
 
 
-def test_the_staged_shot_head_in_bf16_is_as_close_as_the_plain_query():
-    """ShotTrajectoryHead.query at shared ages (the staged head kernel, the whole query)
-    against its plain twin, both measured against float64."""
+@pytest.mark.parametrize("shared", [True, False], ids=["shared ages", "per-row ages"])
+def test_the_staged_shot_head_in_bf16_is_as_close_as_the_plain_query(shared):
+    """ShotTrajectoryHead.query (the staged head kernel, the whole query) against its plain
+    twin, both measured against float64, at ages shared by every row and at each row's own."""
+    _staged_shot_head_check(shared)
+
+
+def _staged_shot_head_check(shared: bool) -> None:
     head = _shot_head()
-    latent, features = _shot_head_inputs()
+    latent, features, ages = _shot_head_inputs(shared=shared)
     expected = _shot_head_run(
-        copy.deepcopy(head).double(), latent.double(), features.double(), False
+        copy.deepcopy(head).double(), latent.double(), features.double(), ages, False
     )
     with kernels.plain():
-        plain = _shot_head_run(head, latent, features, True)
+        plain = _shot_head_run(head, latent, features, ages, True)
     with torch.autocast("cuda", torch.bfloat16):
         assert head_kernel.staged_applies(latent, head.age(features), 128)
-    fast = _shot_head_run(head, latent, features, True)
+    fast = _shot_head_run(head, latent, features, ages, True)
     for got, slow, want in zip(
         fast[0] + fast[1], plain[0] + plain[1], expected[0] + expected[1], strict=True
     ):
@@ -394,8 +405,8 @@ def test_the_staged_shot_head_in_bf16_is_as_close_as_the_plain_query():
 
 def test_the_staged_shot_head_is_bitwise_repeatable():
     head = _shot_head(seed=1)
-    latent, features = _shot_head_inputs(seed=1)
-    first, second = (_shot_head_run(head, latent, features, True) for _ in range(2))
+    latent, features, ages = _shot_head_inputs(seed=1, shared=False)
+    first, second = (_shot_head_run(head, latent, features, ages, True) for _ in range(2))
     _assert_identical(
         first[0] + [g for g in first[1] if g is not None],
         second[0] + [g for g in second[1] if g is not None],
@@ -457,7 +468,7 @@ def _model_run(segment, precision: str):
     carry, obs, replay = (cases.cast(tree, dtype) for tree in (carry, obs, replay))
     unrolled = model.unroll(carry, obs, replay, reset)
     outputs = [getattr(unrolled, name) for name in OUTPUTS]
-    outputs.append(model.shot_trajectory(unrolled.shot_latents, ages.to(dtype)))
+    outputs.append(model.shot_trajectory(unrolled.shot_latents, ages))
     _weighted_sum(outputs).backward()
     gradients = [parameter.grad for _, parameter in model.named_parameters()]
     names = [name for name, _ in model.named_parameters()]
@@ -540,7 +551,8 @@ CONFIGURED = {
         (head_kernel._head_forward, head_kernel._head_backward),
         lambda: (
             test_heads_in_bf16_are_as_close_as_the_plain_heads(),
-            test_the_staged_shot_head_in_bf16_is_as_close_as_the_plain_query(),
+            _staged_shot_head_check(shared=True),
+            _staged_shot_head_check(shared=False),
         ),
     ),
 }

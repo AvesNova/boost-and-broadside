@@ -2,12 +2,12 @@
 plain twins: a head of `HeadGroup`, the tail of `ShotTrajectoryHead.query` and the
 encoder's `KindProjection` followed by its `shared` projection.
 
-Staged (`staged_head`, the whole of `ShotTrajectoryHead.query` at ages shared by every
-row): x itself is gelu(RMSNorm(latent + age)) of a latent row and an age row (output row
-r A + a is latent row r at age a), made in the kernel from the two, as h is. The forward
-writes no x; the backward forms the input norm's gradient in registers too, and writes x
-(for W1's gradient) and the gradient of latent + age, summed over the ages and over the
-rows afterwards.
+Staged (`staged_head`, the whole of `ShotTrajectoryHead.query`): x itself is
+gelu(RMSNorm(latent + age)) of a latent row and a row of the age table (output row r Q + q
+is latent row r at its q-th queried age, the table row an index names), made in the kernel
+from the two, as h is. The forward writes no x; the backward forms the input norm's
+gradient in registers too, and writes x (for W1's gradient) and the gradient of latent +
+age, summed over the queries and, by a one-hot product, into the table's rows afterwards.
 
 Every row's whole hidden vector (H = 64, 128 or 256) fits in one program's registers, so the
 forward computes h = W1 x + b1, the norm, the gelu and the output product without writing h
@@ -59,15 +59,17 @@ def _hidden(x, first_weight, first_bias, rows, M, K, HIDDEN: tl.constexpr,
 
 
 @triton.jit
-def _staged_input(latent, age, input_norm, rows, M, AGES, INPUTS: tl.constexpr):
-    """x = gelu(RMSNorm(latent[row // AGES] + age[row % AGES])) for the rows, float32
+def _staged_input(latent, age, age_index, input_norm, rows, M, QUERIES,
+                  INPUTS: tl.constexpr):
+    """x = gelu(RMSNorm(latent[row // QUERIES] + age[age_index[row]])) for the rows, float32
     (BLOCK_M, INPUTS), with what its backward reads: the norm's output and unit vector, the
     gelu's cumulative and the inverse rms."""
     inner = tl.arange(0, INPUTS)
     mask = rows[:, None] < M
-    pre = (tl.load(latent + (rows // AGES)[:, None] * INPUTS + inner[None, :], mask=mask,
+    table_rows = tl.load(age_index + rows, mask=rows < M, other=0)
+    pre = (tl.load(latent + (rows // QUERIES)[:, None] * INPUTS + inner[None, :], mask=mask,
                    other=0.0).to(tl.float32)
-           + tl.load(age + (rows % AGES)[:, None] * INPUTS + inner[None, :], mask=mask,
+           + tl.load(age + table_rows[:, None] * INPUTS + inner[None, :], mask=mask,
                      other=0.0).to(tl.float32))
     inverse_rms = tl.rsqrt(tl.sum(pre * pre, 1) / INPUTS + EPSILON)
     unit = pre * inverse_rms[:, None]
@@ -90,13 +92,15 @@ def _staged_hidden(x, first_weight, first_bias, INPUTS: tl.constexpr, HIDDEN: tl
 @triton.autotune(configs=CONFIGS, key=KEY, cache_results=True)
 @triton.jit
 def _head_forward(x, first_weight, first_bias, norm_weight, last_weight, last_bias, out, M, K,
-                  N, age, input_norm, AGES, HIDDEN: tl.constexpr, STAGED: tl.constexpr,
+                  N, age, age_index, input_norm, QUERIES, HIDDEN: tl.constexpr,
+                  STAGED: tl.constexpr,
                   INPUTS: tl.constexpr, BLOCK_M: tl.constexpr, BLOCK_K: tl.constexpr,
                   BLOCK_O: tl.constexpr):
     rows = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
     hidden_index = tl.arange(0, HIDDEN)
-    if STAGED:  # x is the latent (M // AGES, INPUTS); age (AGES, INPUTS)
-        staged, _, _, _, _ = _staged_input(x, age, input_norm, rows, M, AGES, INPUTS)
+    if STAGED:  # x is the latent (M // QUERIES, INPUTS); age the table (T, INPUTS)
+        staged, _, _, _, _ = _staged_input(x, age, age_index, input_norm, rows, M, QUERIES,
+                                           INPUTS)
         h = _staged_hidden(staged, first_weight, first_bias, INPUTS, HIDDEN)
     else:
         h = _hidden(x, first_weight, first_bias, rows, M, K, HIDDEN, BLOCK_M, BLOCK_K)
@@ -117,8 +121,9 @@ def _head_forward(x, first_weight, first_bias, norm_weight, last_weight, last_bi
 @triton.autotune(configs=CONFIGS, key=KEY, cache_results=True)
 @triton.jit
 def _head_backward(x, first_weight, first_bias, norm_weight, last_weight, grad_out,
-                   grad_hidden, activation_out, norm_partial, M, K, N, age, input_norm, AGES,
-                   input_out, grad_input, input_partial, HIDDEN: tl.constexpr,
+                   grad_hidden, activation_out, norm_partial, M, K, N, age, age_index,
+                   input_norm, QUERIES, input_out, grad_input, input_partial,
+                   HIDDEN: tl.constexpr,
                    GROUP: tl.constexpr, STAGED: tl.constexpr, INPUTS: tl.constexpr,
                    BLOCK_M: tl.constexpr, BLOCK_K: tl.constexpr, BLOCK_O: tl.constexpr):
     rows = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
@@ -126,7 +131,7 @@ def _head_backward(x, first_weight, first_bias, norm_weight, last_weight, grad_o
     hidden_index = tl.arange(0, HIDDEN)
     if STAGED:
         staged, staged_normed, staged_cumulative, staged_unit, staged_inverse_rms = (
-            _staged_input(x, age, input_norm, rows, M, AGES, INPUTS))
+            _staged_input(x, age, age_index, input_norm, rows, M, QUERIES, INPUTS))
         h = _staged_hidden(staged, first_weight, first_bias, INPUTS, HIDDEN)
     else:
         h = _hidden(x, first_weight, first_bias, rows, M, K, HIDDEN, BLOCK_M, BLOCK_K)
@@ -194,7 +199,7 @@ def fused_head(x: torch.Tensor, first_weight: torch.Tensor, first_bias: torch.Te
     out = torch.empty(rows, outputs, dtype=x.dtype, device=x.device)
     torch.library.wrap_triton(_head_forward)[_grid(rows)](
         x, first_weight, first_bias, norm_weight, last_weight, last_bias, out, rows, inputs,
-        outputs, x, first_bias, 1, HIDDEN=hidden, STAGED=False, INPUTS=1)
+        outputs, x, x, first_bias, 1, HIDDEN=hidden, STAGED=False, INPUTS=1)
     return out
 
 
@@ -213,8 +218,8 @@ def fused_head_backward(x: torch.Tensor, first_weight: torch.Tensor, first_bias:
     partial = torch.zeros(groups, hidden, dtype=torch.float32, device=x.device)
     torch.library.wrap_triton(_head_backward)[_grid(rows)](
         x, first_weight, first_bias, norm_weight, last_weight, grad_out, grad_hidden,
-        activation, partial, rows, inputs, outputs, x, first_bias, 1, grad_hidden, grad_hidden,
-        partial, HIDDEN=hidden, GROUP=GROUP, STAGED=False, INPUTS=1)
+        activation, partial, rows, inputs, outputs, x, x, first_bias, 1, grad_hidden,
+        grad_hidden, partial, HIDDEN=hidden, GROUP=GROUP, STAGED=False, INPUTS=1)
     return grad_hidden, activation, partial
 
 
@@ -238,36 +243,37 @@ fused_head.register_autograd(_backward, setup_context=_setup_context)
 
 
 @torch.library.triton_op("yemong::fused_staged_head", mutates_args=())
-def fused_staged_head(latent: torch.Tensor, age: torch.Tensor, input_norm_weight: torch.Tensor,
-                      first_weight: torch.Tensor, first_bias: torch.Tensor,
-                      norm_weight: torch.Tensor, last_weight: torch.Tensor,
-                      last_bias: torch.Tensor) -> torch.Tensor:
-    """latent (R, K) and age (A, K) contiguous 16-bit; the input norm's scale float32; the
-    rest as `fused_head`'s. Returns (R A, N) in latent's dtype, row r A + a of latent r at
-    age a."""
+def fused_staged_head(latent: torch.Tensor, age: torch.Tensor, age_index: torch.Tensor,
+                      input_norm_weight: torch.Tensor, first_weight: torch.Tensor,
+                      first_bias: torch.Tensor, norm_weight: torch.Tensor,
+                      last_weight: torch.Tensor, last_bias: torch.Tensor) -> torch.Tensor:
+    """latent (R, K) and the age table (T, K) contiguous 16-bit; age_index (R Q,) int32,
+    each query's table row; the input norm's scale float32; the rest as `fused_head`'s.
+    Returns (R Q, N) in latent's dtype, row r Q + q of latent r at its q-th age."""
     inputs = latent.shape[1]
-    rows = latent.shape[0] * age.shape[0]
+    rows = age_index.shape[0]
     hidden, outputs = first_weight.shape[0], last_weight.shape[0]
     out = torch.empty(rows, outputs, dtype=latent.dtype, device=latent.device)
     torch.library.wrap_triton(_head_forward)[_grid(rows)](
         latent, first_weight, first_bias, norm_weight, last_weight, last_bias, out, rows,
-        inputs, outputs, age, input_norm_weight, age.shape[0], HIDDEN=hidden, STAGED=True,
-        INPUTS=inputs)
+        inputs, outputs, age, age_index, input_norm_weight, rows // latent.shape[0],
+        HIDDEN=hidden, STAGED=True, INPUTS=inputs)
     return out
 
 
 @torch.library.triton_op("yemong::fused_staged_head_backward", mutates_args=())
 def fused_staged_head_backward(latent: torch.Tensor, age: torch.Tensor,
-                               input_norm_weight: torch.Tensor, first_weight: torch.Tensor,
+                               age_index: torch.Tensor, input_norm_weight: torch.Tensor,
+                               first_weight: torch.Tensor,
                                first_bias: torch.Tensor, norm_weight: torch.Tensor,
                                last_weight: torch.Tensor, grad_out: torch.Tensor
                                ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor,
                                           torch.Tensor, torch.Tensor, torch.Tensor]:
-    """grad_out (R A, N) contiguous in latent's dtype. Returns (dh (R A, H), activation
-    (R A, H), norm scale partial sums (groups, H) float32, x (R A, K), the gradient of
-    latent + age (R A, K), the input norm scale's partial sums (groups, K) float32)."""
+    """grad_out (R Q, N) contiguous in latent's dtype. Returns (dh (R Q, H), activation
+    (R Q, H), norm scale partial sums (groups, H) float32, x (R Q, K), the gradient of
+    latent + age (R Q, K), the input norm scale's partial sums (groups, K) float32)."""
     inputs = latent.shape[1]
-    rows = latent.shape[0] * age.shape[0]
+    rows = age_index.shape[0]
     hidden, outputs = first_weight.shape[0], last_weight.shape[0]
     groups = triton.cdiv(rows, LARGEST_BLOCK_M) * (LARGEST_BLOCK_M // GROUP)  # any configuration
     grad_hidden = torch.empty(rows, hidden, dtype=latent.dtype, device=latent.device)
@@ -278,9 +284,9 @@ def fused_staged_head_backward(latent: torch.Tensor, age: torch.Tensor,
     input_partial = torch.zeros(groups, inputs, dtype=torch.float32, device=latent.device)
     torch.library.wrap_triton(_head_backward)[_grid(rows)](
         latent, first_weight, first_bias, norm_weight, last_weight, grad_out, grad_hidden,
-        activation, partial, rows, inputs, outputs, age, input_norm_weight, age.shape[0],
-        staged, grad_input, input_partial, HIDDEN=hidden, GROUP=GROUP, STAGED=True,
-        INPUTS=inputs)
+        activation, partial, rows, inputs, outputs, age, age_index, input_norm_weight,
+        rows // latent.shape[0], staged, grad_input, input_partial, HIDDEN=hidden, GROUP=GROUP,
+        STAGED=True, INPUTS=inputs)
     return grad_hidden, activation, partial, staged, grad_input, input_partial
 
 
@@ -289,14 +295,17 @@ def _staged_setup_context(ctx, inputs, output):
 
 
 def _staged_backward(ctx, grad_out):
-    latent, age, input_norm_weight, first_weight, first_bias, norm_weight, last_weight = (
-        ctx.saved_tensors)
+    (latent, age, age_index, input_norm_weight, first_weight, first_bias, norm_weight,
+     last_weight) = ctx.saved_tensors
     grad_out = grad_out.to(latent.dtype).contiguous()
     grad_hidden, activation, partial, staged, grad_input, input_partial = (
-        fused_staged_head_backward(latent, age, input_norm_weight, first_weight, first_bias,
-                                   norm_weight, last_weight, grad_out))
-    by_age = grad_input.view(latent.shape[0], age.shape[0], -1)
-    return (by_age.float().sum(1).to(latent.dtype), by_age.float().sum(0).to(age.dtype),
+        fused_staged_head_backward(latent, age, age_index, input_norm_weight, first_weight,
+                                   first_bias, norm_weight, last_weight, grad_out))
+    by_query = grad_input.view(latent.shape[0], -1, grad_input.shape[-1])
+    # Into the table's rows by a one-hot product (fixed order, float32 accumulation).
+    rows_of = (age_index[None, :] == torch.arange(age.shape[0], device=age.device)[:, None])
+    return (by_query.float().sum(1).to(latent.dtype),
+            (rows_of.to(grad_input.dtype) @ grad_input).to(age.dtype), None,
             input_partial.sum(0), grad_hidden.t() @ staged, grad_hidden.float().sum(0),
             partial.sum(0), grad_out.t() @ activation, grad_out.float().sum(0))
 
@@ -305,8 +314,8 @@ fused_staged_head.register_autograd(_staged_backward, setup_context=_staged_setu
 
 
 def staged_applies(latent: torch.Tensor, age: torch.Tensor, hidden: int) -> bool:
-    """`applies`, with the input a width of 64, 128 or 256 and one age table (ages, K) for
-    every latent row (`staged_head`)."""
+    """`applies`, with the input a width of 64, 128 or 256 and an age table (T, K)
+    (`staged_head`)."""
     return (applies(latent, hidden) and age.dim() == 2 and age.shape[-1] == latent.shape[-1]
             and latent.shape[-1] in (64, 128, 256))
 
@@ -332,15 +341,18 @@ def head(inputs: torch.Tensor, first: torch.nn.Linear | tuple, norm: torch.nn.RM
     return out.view(*inputs.shape[:-1], last.weight.shape[0])
 
 
-def staged_head(latent: torch.Tensor, age: torch.Tensor, input_norm: torch.nn.RMSNorm,
-                first: torch.nn.Linear, norm: torch.nn.RMSNorm,
+def staged_head(latent: torch.Tensor, age: torch.Tensor, ages: torch.Tensor,
+                input_norm: torch.nn.RMSNorm, first: torch.nn.Linear, norm: torch.nn.RMSNorm,
                 last: torch.nn.Linear) -> torch.Tensor:
-    """last(gelu(norm(first(gelu(input_norm(latent[..., None, :] + age)))))) for latent
-    (..., K) and age (ages, K): (..., ages, outputs) in the autocast dtype (`staged_applies`)."""
+    """last(gelu(norm(first(gelu(input_norm(latent[..., None, :] + age[ages])))))) for latent
+    (..., K), the age table (T, K) and ages (Q,) or (..., Q) indices into it: (..., Q,
+    outputs) in the autocast dtype (`staged_applies`)."""
     dtype = torch.get_autocast_dtype("cuda")
     flat = latent.reshape(-1, latent.shape[-1]).to(dtype).contiguous()
-    out = fused_staged_head(flat, age.to(dtype).contiguous(), input_norm.weight.float(),
+    queries = ages.shape[-1]
+    index = ages.expand(*latent.shape[:-1], queries).reshape(-1).to(torch.int32).contiguous()
+    out = fused_staged_head(flat, age.to(dtype).contiguous(), index, input_norm.weight.float(),
                             first.weight.to(dtype).contiguous(), first.bias.float(),
                             norm.weight.float(), last.weight.to(dtype).contiguous(),
                             last.bias.float())
-    return out.view(*latent.shape[:-1], age.shape[0], last.weight.shape[0])
+    return out.view(*latent.shape[:-1], queries, last.weight.shape[0])

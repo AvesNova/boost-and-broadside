@@ -168,7 +168,7 @@ def test_the_shot_path_is_the_decoded_path_from_the_ships_launch_point(match):
     loop, agent, made = match
     model, unrolled = agent.model, _unrolled(agent)
     order = api.view_order(S, torch.device("cpu"))[1]
-    ages = torch.arange(1, model.bullet_moves + 1, dtype=torch.float32)
+    ages = torch.arange(1, model.bullet_moves + 1)
     with torch.no_grad():
         path = decode.shot_path(model.shot_code, model.shot_trajectory(unrolled.shot_latents, ages))
     ships = loop.previous.ships

@@ -248,24 +248,18 @@ def test_each_loss_term_matches_an_independent_computation(segment):
     per_step = (per_cell - saturated).sum(-1) / valued.sum(-1).clamp_min(1)
     assert math.isclose(got["density"], per_step.mean().item(), rel_tol=1e-5)
 
-    # shots: valid shots of own ships and visible enemies, the trajectory averaged over
-    # each shot's valid ages
-    shot = shot_labels["shots"]
-    visible = ships[..., SHIP["visible"]] > 0.5
-    shooters = shot.valid & torch.cat([torch.ones_like(visible[..., :OWN]), visible[..., OWN:]], -1)
+    # shots: the stored mask (valid shots of own ships and visible enemies), the trajectory
+    # averaged over each shot's queried ages, read here from the head at every age
+    shot, shooters = shot_labels["shots"], shot_labels["mask"]
     assert shooters.any() and (shot.hit[shooters] > 0).any()
-    ages = torch.arange(1, 13, dtype=torch.float32)
-    logits = net.shot_trajectory(out.shot_latents, ages)
+    every_age = net.shot_trajectory(out.shot_latents, torch.arange(1, 13))  # (..., 12, width)
+    ages = shot.ages.long()  # (..., QUERIES)
+    logits = every_age.gather(-2, ages[..., None].expand(*ages.shape, every_age.shape[-1]))
     from bnb.models.yemong import shots as shot_codes
 
     goal = shot_codes.trajectory_code(net.shot_code, shot.snapshots)
-    per_age = _grouped_cross_entropy(logits, goal, learner.shot_runs)  # (..., ages)
-    per_shot = torch.stack(
-        [
-            per_age[tuple(index)][shot.age_valid[tuple(index)]].mean()
-            for index in shooters.nonzero().unbind(0)
-        ]
-    )
+    per_query = _grouped_cross_entropy(logits, goal, learner.shot_runs)  # (..., QUERIES)
+    per_shot = per_query.mean(-1)[shooters]
     assert math.isclose(got["shot_trajectory"], per_shot.mean().item(), rel_tol=1e-5)
     outcome_goal = shot_codes.outcome_code(net.shot_code, shot.hit, shot.distance, shot.side)
     outcome = -(outcome_goal * out.shot_outcome_logits.log_softmax(-1)).sum(-1)
@@ -475,18 +469,22 @@ def test_an_update_consumes_several_shards():
 
 
 def test_the_stored_shot_labels_are_the_updates_resimulation(segment):
-    """prepare re-simulates every view once, from the learner's own spread stream and with
-    the bullet flight after its segment where the store has it, and stores the labels; each
-    epoch's micro-batch reads them back unchanged."""
+    """prepare re-simulates every view once, from the learner's own spread stream (the
+    spread, then the queried ages' draws) and with the bullet flight after its segment
+    where the store has it, and stores the labels; each epoch's micro-batch reads them back
+    unchanged."""
     _, runner, learner, _ = segment
     store = runner.store
-    spread = torch.randn(
-        (store.length, store.views, 10, 2), generator=random_stream(0, "shot_spread")
+    stream = random_stream(0, "shot_spread")
+    spread = torch.randn((store.length, store.views, 10, 2), generator=stream)
+    moves = runner.rules.bullet_moves
+    drawn = torch.randint(
+        moves, (store.length, store.views, 10, 3), dtype=torch.uint8, generator=stream
     )
     views = torch.arange(3, 7)  # not one of prepare's micro-batches
     trajectory, stored = next(learner.staged(store, [views]))
-    following, followed = store.following(FOLLOWING, views, runner.rules.bullet_moves)
-    shot, mask = learner.shots(trajectory, spread[:, views], following, followed)
+    following, followed = store.following(FOLLOWING, views, moves)
+    shot, mask = learner.shots(trajectory, spread[:, views], drawn[:, views], following, followed)
     assert mask.any() and torch.equal(stored["mask"], mask)
     for a, b in zip(_pytree.tree_leaves(stored["shots"]), _pytree.tree_leaves(shot), strict=True):
         assert torch.equal(a, b)

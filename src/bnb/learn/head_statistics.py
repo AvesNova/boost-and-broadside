@@ -591,11 +591,12 @@ def _density(unrolled, label: dict) -> dict:
 
 
 def _shots(unrolled, label: dict, target, shot_parts, runs: codes.Runs, own: int, alive) -> dict:
-    """Group 11's totals: the trajectory's KL per part over the valid ages of the labelled
-    shots, and the outcome's three rates, realised and predicted, over own ships' labelled
-    shots. target: the trajectory code (L, R, N, ages, width) of the labels' snapshots."""
+    """Group 11's totals: the trajectory's KL per part over the queried ages of the
+    labelled shots, and the outcome's three rates, realised and predicted, over own ships'
+    labelled shots. target: the trajectory code (L, R, N, Q, width) of the labels'
+    snapshots."""
     mask = label["shot_mask"]  # (L, R, N)
-    ages = label["shot_ages"] & mask[..., None]  # (L, R, N, ages)
+    ages = mask[..., None].expand(shot_parts.shape[:-1])  # (L, R, N, Q)
     entropy = _grouped_entropy(target, runs)  # (..., ages, parts)
     out = {
         "shot/age_count": ages.float().sum(),

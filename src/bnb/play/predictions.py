@@ -171,7 +171,7 @@ def network(agent, team: int, observed: Snapshot, following: Snapshot) -> Predic
         observed,
     )
 
-    ages = torch.arange(1, model.bullet_moves + 1, dtype=torch.float32)
+    ages = torch.arange(1, model.bullet_moves + 1)
     path = decode.shot_path(model.shot_code, model.shot_trajectory(unrolled.shot_latents, ages))
     ships = observed.ships
     launch_x = torch.from_numpy(ships.x[order]).float()

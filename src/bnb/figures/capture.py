@@ -115,6 +115,12 @@ def _in_chunks(function, length: int, size: int = 32) -> dict:
     return {name: torch.cat([part[name] for part in parts], 0) for name in parts[0]}
 
 
+def every_age(shot: shots.Shots) -> torch.Tensor:
+    """(L, R, N, A) the ages labelled: every age of a valid shot (past a hit, its
+    straight-on flight)."""
+    return shot.valid[..., None].expand(shot.snapshots.shape[:-1])
+
+
 @torch.no_grad()
 def shot_record(model, rules, types, trajectory, unrolled, config: CaptureConfig) -> dict:
     """The shots of the segment: the launch state, the launch velocity in the launch frame
@@ -137,7 +143,7 @@ def shot_record(model, rules, types, trajectory, unrolled, config: CaptureConfig
     heading_cos, heading_sin = capture.launch.heading_cos, capture.launch.heading_sin
     visible = trajectory.obs.ships[..., SHIP["visible"]] > 0.5
     rows = torch.arange(visible.shape[-1], device=visible.device) < own
-    ages = torch.arange(1, model.bullet_moves + 1, dtype=torch.float32, device=done.device)
+    ages = torch.arange(1, model.bullet_moves + 1, device=done.device)
 
     def predicted(times: slice) -> dict:
         logits = model.shot_trajectory(unrolled.shot_latents[times], ages)
@@ -158,10 +164,10 @@ def shot_record(model, rules, types, trajectory, unrolled, config: CaptureConfig
         labelled=learner.valid & (rows | visible),
         valid=exact.valid,
         exact_snapshots=exact.snapshots,
-        exact_age_valid=exact.age_valid,
+        exact_age_valid=every_age(exact),
         exact_hit=exact.hit,
         learner_snapshots=learner.snapshots,
-        learner_age_valid=learner.age_valid,
+        learner_age_valid=every_age(learner),
         learner_hit=learner.hit,
         learner_distance=learner.distance,
         learner_side=learner.side,
@@ -169,7 +175,7 @@ def shot_record(model, rules, types, trajectory, unrolled, config: CaptureConfig
             model.shot_code, learner.hit, learner.distance, learner.side
         ),
         fan=torch.stack([draw.snapshots[..., :2] for draw in draws[1:]]),
-        fan_age_valid=torch.stack([draw.age_valid for draw in draws[1:]]),
+        fan_age_valid=torch.stack([every_age(draw) for draw in draws[1:]]),
         predicted=_in_chunks(predicted, length),
         predicted_outcome=outcome,
         outcome_probabilities=torch.softmax(unrolled.shot_outcome_logits.float(), -1),

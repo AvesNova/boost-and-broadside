@@ -330,7 +330,7 @@ class Learner:
         self.return_scale = critic.ReturnScale(
             config.return_scale_decay, config.return_scale_floor, device
         )
-        self.spread_generator = random_stream(seed, "shot_spread", device)
+        self.spread_generator = random_stream(seed, "shot_spread", device)  # spread, ages
         self.order_generator = random_stream(seed, "minibatch_order")  # host indices
         self.auxiliary = hasattr(model, "state_code")
         if self.auxiliary:
@@ -340,7 +340,6 @@ class Learner:
         self.trace_decay = torch.tensor(config.trace_decay, device=device)
         self.every_trace = torch.ones_like(self.trace_decay)  # λ = 1: the rewards themselves
         self.team_spirit = torch.tensor(config.team_spirit, device=device)
-        self.ages = torch.arange(1, rules.bullet_moves + 1, dtype=torch.float32, device=device)
         self.loss = stage(self._loss)
         self.head_sums = stage(self._head_sums)
         self.cadence_terms = stage(self._terms)  # the cadence groups' own compiled function
@@ -433,13 +432,15 @@ class Learner:
         self,
         trajectory: Trajectory,
         spread: torch.Tensor,
+        drawn: torch.Tensor,
         following: dict | None = None,
         followed: torch.Tensor | None = None,
     ):
-        """The re-simulated shots and the loss mask: valid shots of own ships and of enemies
-        visible at t. following: the FOLLOWING records of the ticks after the segment
-        ({name: (A, n, ...)}), where a shot fired near its end flies on; followed (n,) which
-        views have them (None: none do)."""
+        """The re-simulated shots' labels (`shots.ShotLabels`, at `shots.query_ages`, the
+        random ages from drawn (L, n, N, 3)) and the loss mask: valid shots of own ships and of
+        enemies visible at t. following: the FOLLOWING records of the ticks after the
+        segment ({name: (A, n, ...)}), where a shot fired near its end flies on; followed
+        (n,) which views have them (None: none do)."""
         own, length = trajectory.log_probability.shape[-1], trajectory.done.shape[0]
         capture, fields, done = trajectory.capture, trajectory.obs.fields, trajectory.done
         available = None
@@ -468,7 +469,7 @@ class Learner:
         shot = _pytree.tree_map_only(torch.Tensor, lambda x: x[:length], shot)
         visible = trajectory.obs.ships[..., SHIP["visible"]] > 0.5
         rows = torch.arange(visible.shape[-1], device=visible.device) < own
-        return shot, shot.valid & (rows | visible)
+        return shots.labels(shot, drawn), shot.valid & (rows | visible)
 
     @torch.no_grad()
     def labels(self, trajectory: Trajectory, shot_labels: dict | None) -> dict:
@@ -490,9 +491,11 @@ class Learner:
                 stored = _pytree.tree_map_only(torch.Tensor, lambda x: x.transpose(0, 1), stored)
             yield Trajectory(**batch), stored
 
-    def _codes(self, trajectory: Trajectory, shot: shots.Shots, shot_mask: torch.Tensor) -> dict:
-        """The targets as the heads' codes, from the stored rows and the re-simulated shots
-        (a stage the runtime may compile)."""
+    def _codes(
+        self, trajectory: Trajectory, shot: shots.ShotLabels, shot_mask: torch.Tensor
+    ) -> dict:
+        """The targets as the heads' codes, from the stored rows and the re-simulated shots'
+        labels (a stage the runtime may compile)."""
         model = self.model
         rows = labels.privileged_rows(trajectory)
         enemy, enemy_mask = labels.enemy_actions(trajectory)
@@ -513,7 +516,7 @@ class Learner:
             enemy_mask=enemy_mask,
             density=labels.density_targets(self.grid, trajectory, rows),
             shot_snapshots=shot.snapshots,
-            shot_ages=shot.age_valid,
+            shot_ages=shot.ages.long() + 1,  # in moves
             shot_mask=shot_mask,
             shot_outcome=shot_codes.outcome_code(code, shot.hit, shot.distance, shot.side),
         )
@@ -630,15 +633,14 @@ class Learner:
             ]
         if _head(unrolled, "shot_latents") is not None:
             parts, outcome = losses.shot_cross_entropy(
-                model.shot_trajectory(unrolled.shot_latents, self.ages),
+                model.shot_trajectory(unrolled.shot_latents, label["shot_ages"]),
                 shot_codes.trajectory_coordinates(model.shot_code, label["shot_snapshots"]),
                 unrolled.shot_outcome_logits,
                 label["shot_outcome"],
                 self.shot_runs,
                 functools.partial(shot_codes.trajectory_code_at, model.shot_code),
             )
-            ages = label["shot_ages"]
-            per_shot = torch.where(ages, parts.sum(-1), 0.0).sum(-1) / ages.sum(-1).clamp_min(1)
+            per_shot = parts.sum(-1).mean(-1)  # the mean over the queried ages
             terms["shot_trajectory"] = (
                 losses.masked_sum(per_shot, label["shot_mask"]) / denominator["shots"]
             )
@@ -868,9 +870,17 @@ class Learner:
         recompute = config.old_log_probabilities == "recomputed"
         belief_total: dict = {}
         if self.auxiliary or recompute:
-            # One spread draw per update: each epoch reads the same stored labels.
+            # One spread and one draw of uniform ages per update: each epoch reads the same
+            # stored labels.
             spread = torch.randn(
                 (segments.length, segments.views, self.rules.num_ships, 2),
+                device=device,
+                generator=self.spread_generator,
+            )
+            drawn = torch.randint(
+                self.rules.bullet_moves,
+                (segments.length, segments.views, self.rules.num_ships, 3),
+                dtype=torch.uint8,
                 device=device,
                 generator=self.spread_generator,
             )
@@ -886,7 +896,7 @@ class Learner:
                             FOLLOWING, host_views, self.rules.bullet_moves
                         )
                         shot, shot_mask = self.shots(
-                            trajectory, spread[:, views], following, followed
+                            trajectory, spread[:, views], drawn[:, views], following, followed
                         )
                         counts[views, COUNTS.index("next_state")] = (
                             labels.next_state_mask(trajectory, self.model).sum((0, 2)).float()

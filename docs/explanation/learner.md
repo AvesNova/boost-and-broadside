@@ -148,7 +148,7 @@ The coefficients are the fields of `bnb.learn.ppo.LearnerConfig` named after the
 | `correction` | with `YemongConfig.delta_split` only: the next-state rows whose belief at `t` is a forecast (hidden enemies) | the error code's cross-entropy against the code of the physics forecast's error, `truth(t + 1) - forecast(t + 1)` |
 | `enemy_action` | enemy rows alive at `t` | the cross-entropy of the enemy's actual joint action |
 | `density` | each view-step, over its count of valued own ships | Poisson terms over the hex cells, against the counts of living ships at `t` |
-| `shot_trajectory` | valid shots of own ships and of enemies visible at `t` | the trajectory code's cross-entropy, averaged over the shot's valid ages |
+| `shot_trajectory` | valid shots of own ships and of enemies visible at `t` | the trajectory code's cross-entropy, averaged over the shot's 4 queried ages ([below](#shot-labels)) |
 | `shot_outcome` | the same shots | the outcome code's cross-entropy |
 | `rotary_readout` | every ship alive at `t`, visible or hidden (with Yemong's rotary read-out only) | the squared distance between a block's read-out (cos, sin) pair and the true one, averaged over the rotary frequencies (`bnb.learn.losses.phasor_square_error`), then over the blocks' read-outs; not in nats |
 
@@ -260,8 +260,8 @@ uv run --no-sync bnb train ... --set learner.trust_region=dppo_tv --set learner.
 
 ## Shot labels
 
-Every tick, each living ship's shot is labelled at every age of its flight, by firing it
-again with the game's own code (`bnb.learn.shots.resimulate`):
+Every tick, each living ship's shot is labelled along its whole flight, by firing it again
+with the game's own code (`bnb.learn.shots.resimulate`):
 
 - **Capture.** The rollout stores each ship's launch state as `fire` reads it
   (`bnb.game.physics.bullets.launch_state`), its move that tick, and whether it was alive.
@@ -270,12 +270,15 @@ again with the game's own code (`bnb.learn.shots.resimulate`):
   `bnb.game.physics.bullets.move_bullets`, and the game's swept test
   (`bnb.game.physics.combat.contacts`, `bnb.game.physics.combat.first_contact`) runs it against
   the tick's stored ship motion. The spread is drawn from the learner's own generator, once
-  per update. The re-simulation runs once per update, before the epochs, and its labels go
+  per update, and so are the queried ages' uniform draws (below). The re-simulation runs once per update, before the epochs, and its labels go
   into the store beside the segments; every epoch reads them back.
 - **Each shot records** at every age its displacement and velocity in the launch heading's
   frame and the refractive index, and its first hit (an enemy or an ally of the shooter), or
-  else its closest pass and that ship's side. Ages after a hit are invalid. A shot whose
-  flight crosses an episode end is invalid, and so is every shot launched within the
+  else its closest pass and that ship's side. Every age is labelled, past a hit too: the
+  bullet flies all its moves in the re-simulation, and past its hit the snapshots are its
+  straight-on flight (the trajectory code has no hit component; the outcome code keeps the
+  first hit), so a barely-hit and a barely-missed shot train the same path. A shot whose
+  whole flight crosses an episode end is invalid, and so is every shot launched within the
   longest flight of the ticks played after it, whatever it hit: keeping the ones that hit in
   time would bias the labels toward hits. The re-simulation flies on into the bullet flight
   after the segment (the next shard's first ticks, or the lookahead's after the last shard;
@@ -285,8 +288,14 @@ again with the game's own code (`bnb.learn.shots.resimulate`):
 
 A re-simulated shot is the bullet the game fires from that state, position, velocity and
 hit, tick by tick, including friendly fire and fields (`tests/sections/test_learner_shots.py`).
-The targets are Yemong's shot codes (`bnb.models.yemong.shots`), and the trajectory head is
-queried at every age at once.
+The targets are Yemong's shot codes (`bnb.models.yemong.shots`). The trajectory head is
+queried at 4 ages per shot (`bnb.learn.shots.query_ages`), chosen with the labels: the last
+move; one uniform over the whole flight (it may repeat another); the closest pass to
+another living ship, of either side; the first move into a field's band, where the
+refractive index first changes and the path bends. Each of the last two is a uniform age of
+its own when the shot passes no ship or meets no band. The loss is the mean over the 4,
+and the head runs the 4 queries in one kernel (`bnb.models.yemong.kernels.heads`, each
+row's own ages from a table of every age).
 
 ## The other labels
 

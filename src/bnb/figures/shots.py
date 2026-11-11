@@ -26,7 +26,7 @@ ONE_SIGMA_DISC = 1.0 - torch.exp(torch.tensor(-0.5)).item()  # P(|e| < sigma), i
 
 def geometry(shots: dict, tick_length: float) -> dict:
     """The three paths of every shot, (L, R, N, A, 2) m in the launch frame, and what the
-    measures read: age_valid (the shot is labelled and the age is not after its hit),
+    measures read: age_valid (the shot is labelled: every age of it, past a hit too),
     last (the last valid age's index, -1 for none), unit (the launch velocity's direction),
     lateral and predicted_lateral (L, R, N, A): the true and the predicted path's offset
     to the left of the straight line, bend (L, R, N): the true lateral offset at the last

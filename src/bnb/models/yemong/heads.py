@@ -118,18 +118,20 @@ class ShotTrajectoryHead(nn.Module):
             if layer.bias is not None:
                 nn.init.zeros_(layer.bias)
 
-    def query(self, latent: torch.Tensor, age_features: torch.Tensor) -> torch.Tensor:
-        """latent (..., D) from `self.latent`; age_features (..., ages, F) broadcasting
-        against latent[..., None, :]. Returns (..., ages, outputs). Ages shared by every
-        row (age_features (ages, F)) take the staged head kernel, the whole query in one."""
-        age = self.age(age_features)
+    def query(
+        self, latent: torch.Tensor, age_features: torch.Tensor, ages: torch.Tensor
+    ) -> torch.Tensor:
+        """latent (..., D) from `self.latent`; age_features (T, F), a table of the ages;
+        ages (Q,) or (..., Q), int64 indices into it, the same for every row or each row's
+        own. Returns (..., Q, outputs). The staged head kernel makes the whole query in one."""
+        age = self.age(age_features)  # (T, D)
         if kernels.switches.heads and head_kernel.staged_applies(
             latent, age, self.middle.out_features
         ):
             return head_kernel.staged_head(
-                latent, age, self.first_norm, self.middle, self.middle_norm, self.last
+                latent, age, ages, self.first_norm, self.middle, self.middle_norm, self.last
             )
-        hidden = F.gelu(self.first_norm(latent[..., None, :] + age))
+        hidden = F.gelu(self.first_norm(latent[..., None, :] + age[ages]))
         if kernels.switches.heads and head_kernel.applies(hidden, self.middle.out_features):
             return head_kernel.head(hidden, self.middle, self.middle_norm, self.last)
         return self.last(F.gelu(self.middle_norm(self.middle(hidden))))
