@@ -114,7 +114,7 @@ full-store power instead.
 The combat handles are the damage, the fire rate in shots per second, the muzzle speed, the
 spread, the gun range (the distance a bullet fired at cruise along the flight path travels
 in its 0.4 s life), the shots a full store pays for, the shield capacity, recharge rate and
-delay, the head-on fraction, the hit radius and the spawn energy. They map to the card in
+delay (both run on quiet ticks only, [Physics](physics.md)), the head-on fraction, the hit radius and the spawn energy. They map to the card in
 closed form (`bnb.game.handling.weapons`).
 
 ## Measuring

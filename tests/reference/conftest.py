@@ -1,7 +1,11 @@
 """The race acceptance tests (physics-race, branch v3-general) run against bnb.game.
 
 The race tests speak the race interface (numpy in, numpy out, race observation layout);
-`race_arm.RaceArm` translates. Goldens come from the race's float64 oracle.
+`race_arm.RaceArm` translates. Goldens come from the race's float64 oracle, amended for one
+later rule (game version 3, the shield's recharge pause): in the step goldens, a ship alive
+at tick start that took no damage, gave an input other than a quiet one, did not spawn and
+whose environment did not end keeps its tick-start shield and recharge wait in the expected
+state and its observed shield.
 """
 
 import json

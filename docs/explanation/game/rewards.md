@@ -61,8 +61,9 @@ stage.
 3. **Kill and death.** A dead ship's kill is shared half by the final tick's raw hits and
    half by the outstanding damage in the ledger. Shares held by enemies are kills; shares
    held by allies blame them.
-4. **Recharge.** A shield's recharge is attributed pro rata over its column of the ledger:
-   the target is refunded and each attacker is charged back its share.
+4. **Recharge.** A shield's recharge (only on a ship's quiet ticks, see
+   [Physics](physics.md)) is attributed pro rata over its column of the ledger: the target
+   is refunded and each attacker is charged back its share.
 5. **Damage**, from the applied damage and the attribution.
 6. **Objective** levels from the mode's events, and the **outcome** on done environments.
 7. **Clear.** A dead ship's column is zeroed, because its death made that damage stick. A

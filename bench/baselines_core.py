@@ -147,7 +147,7 @@ def extrapolate(previous, state, dt, shot_last, damage_last, has_previous):
     )
     energy = np.clip(2.0 * state["energy"] - previous["energy"], 0.0, 1.0)
     out["energy"] = np.where(shot_last, fallback["energy"], energy)
-    reset = state["wait"] - np.maximum(previous["wait"] - dt, 0.0) > 0.5 * dt
+    reset = state["wait"] - previous["wait"] > 0.5 * dt  # a hit; a paused wait holds
     shield_event = damage_last | reset
     shield = np.clip(2.0 * state["shield"] - previous["shield"], 0.0, 1.0)
     out["shield"] = np.where(shield_event, fallback["shield"], shield)

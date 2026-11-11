@@ -25,8 +25,9 @@ types = api.ship_types()
 batch = 3
 state = api.reset(rules, types, api.uniforms(rules, batch))
 idle = torch.zeros((batch, rules.num_ships), dtype=torch.int32)
-moved, sweep = api.move(rules, types, state, Action(idle, idle, idle), api.spread(rules, batch))
-state, events = api.resolve(rules, types, moved, sweep, api.uniforms(rules, batch))
+action = Action(idle, idle, idle)
+moved, sweep = api.move(rules, types, state, action, api.spread(rules, batch))
+state, events = api.resolve(rules, types, moved, sweep, action, api.uniforms(rules, batch))
 state, obs, privileged = api.perceive(rules, state)
 print(obs.ships.shape, events.damage.shape)
 ```
@@ -141,7 +142,12 @@ which blocks sight (see [Perception and fog](perception.md)).
   damage; from the side or rear, nearly all of it.
 - **Shields.** Damage beyond the current shield breaks it, and the overkill is ignored.
   Any damage to a ship whose shield was already broken at tick start kills it. After a
-  delay without damage, the shield recharges at a fixed rate; both are per type.
+  delay without damage, the shield recharges at a fixed rate; both are per type. The delay
+  counts down and the shield recharges only on a **quiet** tick: the ship coasts, its stick
+  straight or at a slight turn (the lightest level, either side), and holds its fire
+  (`bnb.game.rules.QUIET_STICKS`, `bnb.game.physics.combat.quiet`). Any other input (boost,
+  reverse, a normal or sharp turn, a shot) pauses both: the delay holds where it is, it is
+  not reset, and the shield gains nothing that tick. A hit resets the delay.
 - **The arena** is a disc with no wall. A ship outside it takes boundary damage that grows
   with its depth.
 - **The killer** of a ship is the owner of its earliest hit this tick, ties to the lower

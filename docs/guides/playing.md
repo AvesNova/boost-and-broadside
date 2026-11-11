@@ -94,6 +94,11 @@ collapsed), and a small HUD at the bottom shows the shield, energy, power and st
 - A and D: turn left and right, Shift for the full turn, Ctrl for the lightest;
 - Space: shoot.
 
+The shield recharges only while you fly quiet: coasting, the stick straight or at the
+lightest turn (Ctrl), and not shooting. Any other key pauses both its recharge and the delay
+before it (the delay resumes where it stopped); a hit resets the delay
+([Physics](../explanation/game/physics.md)).
+
 **Release** (in the HUD or the selection card) hands the ship back.
 
 ![Flying a ship](../images/play/interface-flying-1920.png)

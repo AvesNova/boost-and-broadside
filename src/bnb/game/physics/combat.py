@@ -4,12 +4,16 @@ Friendly fire is on: every bullet is paired with every ship but its own shooter,
 (B, N K, N) pair tensors that the compiled stage reduces without storing.
 """
 
+import functools
 import math
+import operator
 from typing import NamedTuple
 
 import torch
 
-from ..rules import Rules
+from bnb.contracts import Action
+
+from ..rules import COAST, QUIET_STICKS, Rules
 from ..ship_types import ShipTypes, per_ship
 from ..state import Bullets, Ships, Sweep, replace
 
@@ -161,6 +165,14 @@ def boundary_damage(
     return torch.where(alive_at_start & (depth > 0.0), rate * rules.tick_length, 0.0)
 
 
+def quiet(action: Action) -> torch.Tensor:
+    """(B, N) bool: the ship's action is quiet (game spec 7.2), coasting with the stick
+    straight or at a slight turn and not shooting, so its shield's recharge runs. Any other
+    input (boost, reverse, a normal or sharp turn, a shot) pauses it."""
+    steady = functools.reduce(operator.or_, (action.stick == index for index in QUIET_STICKS))
+    return (action.power == COAST) & steady & (action.shoot == 0)
+
+
 class Damage(NamedTuple):
     """What apply_damage returns: the ships after the damage and the recharge, and per ship
     (B, N) died, shield_lost and shield_restored."""
@@ -172,12 +184,20 @@ class Damage(NamedTuple):
 
 
 def apply_damage(
-    rules: Rules, types: ShipTypes, ships: Ships, alive_at_start: torch.Tensor, total: torch.Tensor
+    rules: Rules,
+    types: ShipTypes,
+    ships: Ships,
+    alive_at_start: torch.Tensor,
+    total: torch.Tensor,
+    quiet_input: torch.Tensor,
 ) -> Damage:
     """Phase 5 for ships alive at tick start: shields, recharge, and who dies.
 
     Damage beyond the shield breaks it (the overkill is ignored); any damage to a shield
-    already broken at tick start kills. Ships dead at tick start lose and restore nothing.
+    already broken at tick start kills. A hit resets the recharge wait to the delay. An
+    unhurt ship on a quiet tick (quiet_input (B, N), see `quiet`) counts its wait down and
+    recharges once the wait is over; on any other tick its wait holds where it is and
+    nothing recharges. Ships dead at tick start lose and restore nothing.
     """
     tick_length = rules.tick_length
     shield0, wait0 = ships.shield, ships.shield_recharge_wait
@@ -192,8 +212,10 @@ def apply_damage(
         per_ship(types.max_shield, ships.ship_type) - shield,
         rate * (tick_length - wait0).clamp(0.0, tick_length),
     )
-    restored = torch.where(alive_at_start & ~hurt, recharge, 0.0)  # an unhurt ship cannot have died
-    wait = torch.where(hurt, delay, (wait0 - tick_length).clamp_min(0.0))
+    # an unhurt ship cannot have died
+    restored = torch.where(alive_at_start & ~hurt & quiet_input, recharge, 0.0)
+    counted = torch.where(quiet_input, (wait0 - tick_length).clamp_min(0.0), wait0)
+    wait = torch.where(hurt, delay, counted)
     ships = replace(
         ships,
         shield=torch.where(alive_at_start, shield + restored, shield0),

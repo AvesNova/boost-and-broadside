@@ -400,6 +400,7 @@ class Rollout:
             carry["types"],
             carry["state"],
             carry["sweep"],
+            Action.unpack(carry["actions"]),
             carry["uniforms"],
             carry.get("active"),
         )

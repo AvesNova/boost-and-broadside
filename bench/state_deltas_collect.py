@@ -121,10 +121,11 @@ def main() -> None:
                 dy = shown["ships.y"][:, :, None] - shown["mode.zone_y"][:, None, :]
                 inside = (dx * dx + dy * dy < shown["mode.zone_radius"][:, None, :] ** 2).any(-1)
                 zone[t] = inside[:, order].numpy()
-            moved, sweep = api.move(
-                rules, types, state, action.unpack(packed), api.spread(rules, B)
+            tick_action = action.unpack(packed)
+            moved, sweep = api.move(rules, types, state, tick_action, api.spread(rules, B))
+            state, events = api.resolve(
+                rules, types, moved, sweep, tick_action, api.uniforms(rules, B)
             )
-            state, events = api.resolve(rules, types, moved, sweep, api.uniforms(rules, B))
             hit[t] = (events.damage.sum(1) > 0)[:, order].numpy()
             boundary[t] = (events.boundary_damage > 0)[:, order].numpy()
             done[t] = events.done.numpy()

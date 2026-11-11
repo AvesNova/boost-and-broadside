@@ -50,8 +50,8 @@ FIELDS = dict(
     vision_range_scale="of rules.vision_range; the observer's [V]",
     bullet_spread_scale="of rules.bullet_spread; the shooter's [sigma_b]",
     bullet_drag_scale="of rules.bullet_drag; the shooter's [k_b]",
-    shield_recharge_rate_scale="of rules.shield_recharge_rate",
-    shield_recharge_delay_scale="of rules.shield_recharge_delay",
+    shield_recharge_rate_scale="of rules.shield_recharge_rate; on quiet ticks only",
+    shield_recharge_delay_scale="of rules.shield_recharge_delay; counted on quiet ticks only",
     head_on_fraction_scale="of rules.head_on_fraction; the target's [f_0]",
     engine_knee_scale="of flight.engine_knee [e_k]",
 )

@@ -61,7 +61,7 @@ def played():
         moved, sweep = api.move(rules, types, state, action, spread)
         hit = hits(rules, types, sweep, moved.ships, moved.bullets, alive)
         state, events = api.resolve(
-            rules, types, moved, sweep, api.uniforms(rules, ENVS, generator=generator)
+            rules, types, moved, sweep, action, api.uniforms(rules, ENVS, generator=generator)
         )
         bullets = moved.bullets
         index = torch.exp(bullets.log_refractive_index)

@@ -390,10 +390,13 @@ For each ship alive at tick start, with `S⁰` its tick-start shield:
   - damage equal to the shield also breaks it;
   - any damage to an already broken shield kills.
 - `S ← max(S⁰ − total, 0)`.
-- Shield recharge: let `W⁰` be the tick-start `shield_wait`. If `total > 0`,
-  `shield_wait ← 6`; else `shield_wait ← max(W⁰ − h, 0)`. If the ship took no damage and
-  did not die, `S ← S + min(S_max − S, 12 · clip(h − W⁰, 0, h))` with the ship's own
-`S_max`.
+- Shield recharge: let `W⁰` be the tick-start `shield_wait`. A ship is **quiet** this
+  tick when its action coasts, holds the stick straight or at a slight turn (the lightest
+  level, either side) and does not shoot; any other input (boost, reverse, a normal or
+  sharp turn, a shot) pauses the recharge. If `total > 0`, `shield_wait ← 6`; else if
+  quiet, `shield_wait ← max(W⁰ − h, 0)`; else `shield_wait ← W⁰` (paused, not reset). If
+  the ship took no damage, did not die and is quiet,
+  `S ← S + min(S_max − S, 12 · clip(h − W⁰, 0, h))` with the ship's own `S_max`.
 - `killer` = owner of the first hit among the bullets that hit it, in the order of
   section 7.1 (the smallest `τ`, then the smaller miss distance **(v2)**, an exact tie in
   both to the lowest bullet index `o·K + slot`), when it died and was hit; else −1.

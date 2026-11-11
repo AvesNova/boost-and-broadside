@@ -257,9 +257,9 @@ def test_shield_recharge_rate_and_delay_are_per_type():
         ship_type=torch.tensor([[0, 1]], dtype=torch.int32),
     )
     alive = torch.ones(1, 2, dtype=torch.bool)
-    hurt = apply_damage(rules, types, ships, alive, torch.tensor([[1.0, 1.0]]))
+    hurt = apply_damage(rules, types, ships, alive, torch.tensor([[1.0, 1.0]]), alive)
     assert hurt.ships.shield_recharge_wait.tolist() == [[6.0, 3.0]]
-    healed = apply_damage(rules, types, ships, alive, torch.zeros(1, 2))
+    healed = apply_damage(rules, types, ships, alive, torch.zeros(1, 2), alive)
     assert torch.allclose(healed.shield_restored, torch.tensor([[12.0, 24.0]]) * rules.tick_length)
 
 

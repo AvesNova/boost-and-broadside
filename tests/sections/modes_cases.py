@@ -41,12 +41,18 @@ def lively(config: GameConfig):
 
 
 def play(config: GameConfig, batch: int = 16, ticks: int = 300, seed: int = 0):
-    """Lively random play: yields (before, events, after) for every tick, eager on the CPU."""
+    """Lively random play: yields (before, events, after) for every tick, eager on the CPU.
+    In every fourth environment every third ship flies quiet (coasting straight, holding its
+    fire), so shields recharge: any other input pauses the recharge, and random inputs are
+    quiet too rarely to sit out the delay."""
     rules = lively(config)
     generator = torch.Generator().manual_seed(seed)
     state = api.reset(rules, LIVELY_TYPES, api.uniforms(rules, batch, generator=generator))
+    environment, ship = torch.arange(batch)[:, None], torch.arange(rules.num_ships)[None]
+    calm = (environment % 4 == 1) & (ship % 3 == 2)
     for _ in range(ticks):
-        action = random_actions(batch, rules.num_ships, generator)
+        drawn = random_actions(batch, rules.num_ships, generator)
+        action = Action(*(torch.where(calm, 0, part) for part in drawn.packed().unbind(-1)))
         after, events = api.step(
             rules,
             LIVELY_TYPES,
