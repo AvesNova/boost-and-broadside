@@ -782,7 +782,10 @@ def test_shield_events_match_the_shield_changes(mode):
     spawn; nothing is lost or restored by the dead; deaths, respawns (none in elimination)
     and resets in play."""
     seen = dict(lost=0, restored=0, deaths=0, respawns=0, resets=0)
-    for before, events, after in cases.play(cases.MODES[mode], ticks=250, seed=1):
+    # Since game v5 a recharge needs the delay's length of unbroken quiet flight after a hit,
+    # which only the calm ships (a quarter of the environments) give and few of them survive
+    # unhit; a batch of 128 sees it in every mode (16 saw none in team deathmatch).
+    for before, events, after in cases.play(cases.MODES[mode], batch=128, ticks=250, seed=1):
         alive0 = before.ships.alive
         kept = alive0 & ~after.ships.spawned
         expected = before.ships.shield - events.shield_lost + events.shield_restored
