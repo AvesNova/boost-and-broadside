@@ -24,7 +24,7 @@ import re
 import statistics
 
 FAMILIES = (
-    ("play vs scripted", re.compile(r"^lanes/score/[^/]+/(live|uniform_average|exponential_average)_vs_scripted$")),
+    ("play vs scripted", re.compile(r"^lanes/score/[^/]+/(live|\w+_average)_vs_scripted$")),
     ("reward share", re.compile(r"^reward/level_share/")),
     ("reward rate", re.compile(r"^reward/rate/")),
     ("episodes", re.compile(r"^episode/(end|length_seconds|result)/")),
