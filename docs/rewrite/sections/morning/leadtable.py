@@ -45,9 +45,10 @@ def main() -> None:
                 continue
             mean = sum(x[0] for x in scores) / 4
             error = math.sqrt(sum(x[1] ** 2 for x in scores)) / 4
+            spread = 400 / math.log(10) * error / (mean * (1 - mean))
             cells.append(
                 " / ".join(f"{x[0]:.3f}" for x in scores)
-                + f" ({mean:.3f}, {elo(mean):+.0f} ± {400 / math.log(10) * error / (mean * (1 - mean)):.0f})"
+                + f" ({mean:.3f}, {elo(mean):+.0f} ± {spread:.0f})"
             )
         tilt = " / ".join(
             f"{selfplay[(name, s)][0]:.3f}" if (name, s) in selfplay else "" for s in sizes
