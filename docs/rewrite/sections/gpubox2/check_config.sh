@@ -7,6 +7,12 @@
 # started on fadd6065; False is its default, the champion's later segments ran with it off).
 set -u
 cd /workspace/boost-and-broadside
+# A hold (runs/HOLD-RL): the pipeline stops before RL starts (this check fails, the driver
+# exits 2, which supervisor does not restart).
+if [ "$1" = rl ] && [ -f runs/HOLD-RL ]; then
+  echo "$(date -u +%FT%TZ) RL held (runs/HOLD-RL): the pipeline stops after BC" | tee -a runs/pipeline.log
+  exit 1
+fi
 stage=$1
 here=docs/rewrite/sections/gpubox2
 out=runs/check-config-$stage.json
