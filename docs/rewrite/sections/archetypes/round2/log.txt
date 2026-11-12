@@ -1,0 +1,78 @@
+## 1v1: 51 jobs, B 8192, 00:48 KST
+W1112 15:49:16.871000 16000 /workspace/arch/venv/lib/python3.14/site-packages/torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+  batch 1/4 133 s; ETA 00:57 KST
+  batch 2/4 155 s; ETA 00:53 KST
+  batch 3/4 177 s; ETA 00:52 KST
+  batch 4/4 199 s; ETA 00:51 KST
+1v1                           D2   energy v turn v c0: score 0.490 ± 0.014  kills m/o/f/t 0.25 / 0.67 / 0.08 / 0.00  life 285 s  kpm/ship 0.20  trades 0.00
+1v1                           D2     turn mirror v c0: score 0.509 ± 0.013  kills m/o/f/t 0.62 / 0.32 / 0.06 / 0.00  life 256 s  kpm/ship 0.23  trades 0.03
+1v1                           D2   energy mirror v c0: score 0.505 ± 0.011  kills m/o/f/t 0.36 / 0.51 / 0.13 / 0.00  life 274 s  kpm/ship 0.21  trades 0.00
+1v1                  same ship M   energy v turn v c1: score 0.537 ± 0.013  kills m/o/f/t 0.64 / 0.32 / 0.03 / 0.00  life 250 s  kpm/ship 0.23  trades 0.02
+1v1                  same ship M     turn mirror v c1: score 0.499 ± 0.014  kills m/o/f/t 0.65 / 0.32 / 0.03 / 0.00  life 236 s  kpm/ship 0.24  trades 0.01
+1v1                  same ship M   energy mirror v c1: score 0.515 ± 0.013  kills m/o/f/t 0.66 / 0.30 / 0.04 / 0.00  life 260 s  kpm/ship 0.22  trades 0.01
+1v1    D2, arming 100, dmg x1.25   energy v turn v c2: score 0.512 ± 0.014  kills m/o/f/t 0.23 / 0.70 / 0.07 / 0.00  life 258 s  kpm/ship 0.22  trades 0.00
+1v1    D2, arming 100, dmg x1.25     turn mirror v c2: score 0.506 ± 0.012  kills m/o/f/t 0.64 / 0.31 / 0.05 / 0.00  life 262 s  kpm/ship 0.22  trades 0.02
+1v1    D2, arming 100, dmg x1.25   energy mirror v c2: score 0.500 ± 0.013  kills m/o/f/t 0.34 / 0.53 / 0.12 / 0.00  life 235 s  kpm/ship 0.25  trades 0.01
+1v1     D2, arming 100, dmg x1.5   energy v turn v c3: score 0.456 ± 0.015  kills m/o/f/t 0.30 / 0.62 / 0.08 / 0.00  life 225 s  kpm/ship 0.26  trades 0.00
+1v1     D2, arming 100, dmg x1.5     turn mirror v c3: score 0.501 ± 0.014  kills m/o/f/t 0.68 / 0.28 / 0.04 / 0.00  life 224 s  kpm/ship 0.26  trades 0.03
+1v1     D2, arming 100, dmg x1.5   energy mirror v c3: score 0.517 ± 0.014  kills m/o/f/t 0.47 / 0.41 / 0.12 / 0.00  life 195 s  kpm/ship 0.29  trades 0.02
+1v1       D2, arming 100, dmg x2   energy v turn v c4: score 0.421 ± 0.015  kills m/o/f/t 0.41 / 0.51 / 0.08 / 0.00  life 166 s  kpm/ship 0.34  trades 0.00
+1v1       D2, arming 100, dmg x2     turn mirror v c4: score 0.502 ± 0.015  kills m/o/f/t 0.73 / 0.22 / 0.05 / 0.00  life 159 s  kpm/ship 0.36  trades 0.03
+1v1       D2, arming 100, dmg x2   energy mirror v c4: score 0.525 ± 0.015  kills m/o/f/t 0.59 / 0.30 / 0.11 / 0.00  life 149 s  kpm/ship 0.38  trades 0.03
+1v1    D2, arming 150, dmg x1.25   energy v turn v c5: score 0.507 ± 0.014  kills m/o/f/t 0.18 / 0.73 / 0.09 / 0.00  life 273 s  kpm/ship 0.21  trades 0.00
+1v1    D2, arming 150, dmg x1.25     turn mirror v c5: score 0.508 ± 0.011  kills m/o/f/t 0.38 / 0.55 / 0.07 / 0.00  life 568 s  kpm/ship 0.10  trades 0.00
+1v1    D2, arming 150, dmg x1.25   energy mirror v c5: score 0.510 ± 0.012  kills m/o/f/t 0.31 / 0.58 / 0.11 / 0.00  life 302 s  kpm/ship 0.19  trades 0.01
+1v1     D2, arming 150, dmg x1.5   energy v turn v c6: score 0.518 ± 0.014  kills m/o/f/t 0.23 / 0.70 / 0.08 / 0.00  life 233 s  kpm/ship 0.25  trades 0.00
+1v1     D2, arming 150, dmg x1.5     turn mirror v c6: score 0.473 ± 0.013  kills m/o/f/t 0.59 / 0.37 / 0.04 / 0.00  life 266 s  kpm/ship 0.22  trades 0.01
+1v1     D2, arming 150, dmg x1.5   energy mirror v c6: score 0.492 ± 0.013  kills m/o/f/t 0.41 / 0.46 / 0.12 / 0.00  life 217 s  kpm/ship 0.26  trades 0.00
+1v1       D2, arming 150, dmg x2   energy v turn v c7: score 0.470 ± 0.016  kills m/o/f/t 0.35 / 0.57 / 0.08 / 0.00  life 183 s  kpm/ship 0.31  trades 0.00
+1v1       D2, arming 150, dmg x2     turn mirror v c7: score 0.494 ± 0.016  kills m/o/f/t 0.70 / 0.25 / 0.06 / 0.00  life 200 s  kpm/ship 0.29  trades 0.03
+1v1       D2, arming 150, dmg x2   energy mirror v c7: score 0.476 ± 0.014  kills m/o/f/t 0.56 / 0.32 / 0.12 / 0.00  life 158 s  kpm/ship 0.36  trades 0.04
+1v1    D2, arming 200, dmg x1.25   energy v turn v c8: score 0.481 ± 0.014  kills m/o/f/t 0.17 / 0.74 / 0.09 / 0.00  life 308 s  kpm/ship 0.19  trades 0.00
+1v1    D2, arming 200, dmg x1.25     turn mirror v c8: score 0.496 ± 0.009  kills m/o/f/t 0.28 / 0.66 / 0.06 / 0.00  life 899 s  kpm/ship 0.07  trades 0.00
+1v1    D2, arming 200, dmg x1.25   energy mirror v c8: score 0.478 ± 0.011  kills m/o/f/t 0.21 / 0.64 / 0.14 / 0.00  life 424 s  kpm/ship 0.14  trades 0.00
+1v1     D2, arming 200, dmg x1.5   energy v turn v c9: score 0.520 ± 0.015  kills m/o/f/t 0.19 / 0.74 / 0.08 / 0.00  life 257 s  kpm/ship 0.22  trades 0.00
+1v1     D2, arming 200, dmg x1.5     turn mirror v c9: score 0.484 ± 0.010  kills m/o/f/t 0.35 / 0.60 / 0.05 / 0.00  life 587 s  kpm/ship 0.10  trades 0.00
+1v1     D2, arming 200, dmg x1.5   energy mirror v c9: score 0.521 ± 0.012  kills m/o/f/t 0.33 / 0.55 / 0.11 / 0.00  life 282 s  kpm/ship 0.21  trades 0.01
+1v1       D2, arming 200, dmg x2   energy v turn v c10: score 0.495 ± 0.015  kills m/o/f/t 0.30 / 0.60 / 0.09 / 0.00  life 197 s  kpm/ship 0.29  trades 0.00
+1v1       D2, arming 200, dmg x2     turn mirror v c10: score 0.518 ± 0.014  kills m/o/f/t 0.63 / 0.32 / 0.05 / 0.00  life 247 s  kpm/ship 0.23  trades 0.01
+1v1       D2, arming 200, dmg x2   energy mirror v c10: score 0.479 ± 0.014  kills m/o/f/t 0.50 / 0.40 / 0.10 / 0.00  life 183 s  kpm/ship 0.31  trades 0.02
+1v1 same ship M, arming 100, dmg x1.5   energy v turn v c11: score 0.502 ± 0.015  kills m/o/f/t 0.70 / 0.25 / 0.05 / 0.00  life 183 s  kpm/ship 0.31  trades 0.02
+1v1 same ship M, arming 100, dmg x1.5     turn mirror v c11: score 0.506 ± 0.015  kills m/o/f/t 0.67 / 0.28 / 0.05 / 0.00  life 174 s  kpm/ship 0.33  trades 0.03
+1v1 same ship M, arming 100, dmg x1.5   energy mirror v c11: score 0.492 ± 0.014  kills m/o/f/t 0.69 / 0.26 / 0.05 / 0.00  life 185 s  kpm/ship 0.31  trades 0.02
+1v1 same ship M, arming 150, dmg x1.5   energy v turn v c12: score 0.498 ± 0.014  kills m/o/f/t 0.64 / 0.31 / 0.05 / 0.00  life 214 s  kpm/ship 0.27  trades 0.02
+1v1 same ship M, arming 150, dmg x1.5     turn mirror v c12: score 0.507 ± 0.014  kills m/o/f/t 0.65 / 0.30 / 0.04 / 0.00  life 205 s  kpm/ship 0.28  trades 0.03
+1v1 same ship M, arming 150, dmg x1.5   energy mirror v c12: score 0.490 ± 0.014  kills m/o/f/t 0.66 / 0.29 / 0.06 / 0.00  life 220 s  kpm/ship 0.26  trades 0.02
+1v1 same ship M, arming 150, dmg x2   energy v turn v c13: score 0.546 ± 0.015  kills m/o/f/t 0.70 / 0.25 / 0.06 / 0.00  life 150 s  kpm/ship 0.38  trades 0.03
+1v1 same ship M, arming 150, dmg x2     turn mirror v c13: score 0.490 ± 0.016  kills m/o/f/t 0.70 / 0.25 / 0.05 / 0.00  life 145 s  kpm/ship 0.39  trades 0.02
+1v1 same ship M, arming 150, dmg x2   energy mirror v c13: score 0.524 ± 0.015  kills m/o/f/t 0.68 / 0.27 / 0.05 / 0.00  life 153 s  kpm/ship 0.37  trades 0.02
+1v1 D2, cone 0.085 12deg p8, arming 100, dmg x2   energy v turn v c14: score 0.497 ± 0.016  kills m/o/f/t 0.10 / 0.82 / 0.08 / 0.00  life 214 s  kpm/ship 0.27  trades 0.00
+1v1 D2, cone 0.085 12deg p8, arming 100, dmg x2     turn mirror v c14: score 0.487 ± 0.015  kills m/o/f/t 0.43 / 0.50 / 0.07 / 0.00  life 285 s  kpm/ship 0.20  trades 0.00
+1v1 D2, cone 0.085 12deg p8, arming 100, dmg x2   energy mirror v c14: score 0.509 ± 0.011  kills m/o/f/t 0.10 / 0.74 / 0.16 / 0.00  life 329 s  kpm/ship 0.18  trades 0.00
+1v1 D2, cone 0.15 12deg p8, arming 150, dmg x2   energy v turn v c15: score 0.538 ± 0.015  kills m/o/f/t 0.20 / 0.72 / 0.08 / 0.00  life 191 s  kpm/ship 0.30  trades 0.00
+1v1 D2, cone 0.15 12deg p8, arming 150, dmg x2     turn mirror v c15: score 0.495 ± 0.016  kills m/o/f/t 0.61 / 0.33 / 0.06 / 0.00  life 189 s  kpm/ship 0.30  trades 0.02
+1v1 D2, cone 0.15 12deg p8, arming 150, dmg x2   energy mirror v c15: score 0.489 ± 0.014  kills m/o/f/t 0.32 / 0.57 / 0.12 / 0.00  life 201 s  kpm/ship 0.28  trades 0.01
+1v1 D2, cone 0.15 12deg p8, arming 100, dmg x1.5   energy v turn v c16: score 0.536 ± 0.015  kills m/o/f/t 0.17 / 0.75 / 0.08 / 0.00  life 218 s  kpm/ship 0.26  trades 0.00
+1v1 D2, cone 0.15 12deg p8, arming 100, dmg x1.5     turn mirror v c16: score 0.504 ± 0.015  kills m/o/f/t 0.61 / 0.35 / 0.05 / 0.00  life 218 s  kpm/ship 0.26  trades 0.03
+1v1 D2, cone 0.15 12deg p8, arming 100, dmg x1.5   energy mirror v c16: score 0.484 ± 0.012  kills m/o/f/t 0.24 / 0.63 / 0.13 / 0.00  life 255 s  kpm/ship 0.23  trades 0.00
+| Candidate | E v T 1v1 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|
+| D2 | 0.490 ± 0.014 | 0.010 | 0.25 / 0.67 / 0.08 / 0.00 | 0.00 | 285 | 0.20 | 3.33 |
+| same ship M | 0.537 ± 0.013 | 0.037 | 0.64 / 0.32 / 0.03 / 0.00 | 0.02 | 250 | 0.23 | 3.03 |
+| D2, arming 100, dmg x1.25 | 0.512 ± 0.014 | 0.012 | 0.23 / 0.70 / 0.07 / 0.00 | 0.00 | 258 | 0.22 | 3.02 |
+| D2, arming 100, dmg x1.5 | 0.456 ± 0.015 | 0.044 | 0.30 / 0.62 / 0.08 / 0.00 | 0.00 | 225 | 0.26 | 2.66 |
+| D2, arming 100, dmg x2 | 0.421 ± 0.015 | 0.079 | 0.41 / 0.51 / 0.08 / 0.00 | 0.00 | 166 | 0.34 | 1.92 |
+| D2, arming 150, dmg x1.25 | 0.507 ± 0.014 | 0.007 | 0.18 / 0.73 / 0.09 / 0.00 | 0.00 | 273 | 0.21 | 3.22 |
+| D2, arming 150, dmg x1.5 | 0.518 ± 0.014 | 0.018 | 0.23 / 0.70 / 0.08 / 0.00 | 0.00 | 233 | 0.25 | 2.79 |
+| D2, arming 150, dmg x2 | 0.470 ± 0.016 | 0.030 | 0.35 / 0.57 / 0.08 / 0.00 | 0.00 | 183 | 0.31 | 2.23 |
+| D2, arming 200, dmg x1.25 | 0.481 ± 0.014 | 0.019 | 0.17 / 0.74 / 0.09 / 0.00 | 0.00 | 308 | 0.19 | 3.69 |
+| D2, arming 200, dmg x1.5 | 0.520 ± 0.015 | 0.020 | 0.19 / 0.74 / 0.08 / 0.00 | 0.00 | 257 | 0.22 | 3.05 |
+| D2, arming 200, dmg x2 | 0.495 ± 0.015 | 0.005 | 0.30 / 0.60 / 0.09 / 0.00 | 0.00 | 197 | 0.29 | 2.38 |
+| same ship M, arming 100, dmg x1.5 | 0.502 ± 0.015 | 0.002 | 0.70 / 0.25 / 0.05 / 0.00 | 0.02 | 183 | 0.31 | 2.21 |
+| same ship M, arming 150, dmg x1.5 | 0.498 ± 0.014 | 0.002 | 0.64 / 0.31 / 0.05 / 0.00 | 0.02 | 214 | 0.27 | 2.5 |
+| same ship M, arming 150, dmg x2 | 0.546 ± 0.015 | 0.046 | 0.70 / 0.25 / 0.06 / 0.00 | 0.03 | 150 | 0.38 | 1.69 |
+| D2, cone 0.085 12deg p8, arming 100, dmg x2 | 0.497 ± 0.016 | 0.003 | 0.10 / 0.82 / 0.08 / 0.00 | 0.00 | 214 | 0.27 | 2.58 |
+| D2, cone 0.15 12deg p8, arming 150, dmg x2 | 0.538 ± 0.015 | 0.038 | 0.20 / 0.72 / 0.08 / 0.00 | 0.00 | 191 | 0.30 | 2.28 |
+| D2, cone 0.15 12deg p8, arming 100, dmg x1.5 | 0.536 ± 0.015 | 0.036 | 0.17 / 0.75 / 0.08 / 0.00 | 0.00 | 218 | 0.26 | 2.57 |
+
+251 s

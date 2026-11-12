@@ -2,9 +2,9 @@
 Yongma row), ship B in the second (the Jujak row), each a hull and a set of factors.
 
 A hull replaces the slot's flight fields with absolute values: "Y" and "J" are the ship
-files' (the frozen cards), "M" the geometric mean of the two in flight, shield, damage and size (a neutral ship,
-the same in both slots), "D2" the
-balance-sizes D2 card's (Yongma's flight, Jujak's with induced drag x1.6). Factors then
+files' (the frozen cards), "M" the geometric mean of the two in flight, shield, damage and
+size (a neutral ship, the same in both slots), "D2J" the Jujak's with induced drag x1.6.
+Factors then
 multiply the hulled row (a field -> factor, or {"set": value}).
 
     python docs/rewrite/sections/archetypes/pairs.py round1   # writes round1/candidates.json
@@ -204,8 +204,11 @@ def round2() -> list[dict]:
         for d in (1.25, 1.5, 2.0):
             extra = merge(arm(x), {"hit_damage": d})
             out.append(
-                pair(f"D2, arming {x}, dmg x{d:g}", (None, merge(D2_A, extra)),
-                     (None, merge(D2_B, extra)))
+                pair(
+                    f"D2, arming {x}, dmg x{d:g}",
+                    (None, merge(D2_A, extra)),
+                    (None, merge(D2_B, extra)),
+                )
             )
     for x, d in ((100, 1.5), (150, 1.5), (150, 2.0)):
         extra = merge(arm(x), {"hit_damage": d})
@@ -213,13 +216,116 @@ def round2() -> list[dict]:
     for f0, x, d in ((0.085, 100, 2.0), (0.15, 150, 2.0), (0.15, 100, 1.5)):
         extra = merge(cone(f0, 12, 8), arm(x), {"hit_damage": d})
         out.append(
-            pair(f"D2, cone {f0} 12deg p8, arming {x}, dmg x{d:g}", (None, merge(D2_A, extra)),
-                 (None, merge(D2_B, extra)))
+            pair(
+                f"D2, cone {f0} 12deg p8, arming {x}, dmg x{d:g}",
+                (None, merge(D2_A, extra)),
+                (None, merge(D2_B, extra)),
+            )
         )
     return out
 
 
-ROUNDS = {"round1": round1, "round2": round2}
+SLASHER = {
+    "hit_damage": 2.0,
+    "fire_rate": {"set": 7.5},
+    "bullet_energy_cost": 2.0,
+    "zero_lift_drag": 0.8,
+    "max_lift_coefficient": 0.85,
+}
+DOGFIGHTER = {
+    "hit_damage": 0.5,
+    "fire_rate": {"set": 30.0},
+    "bullet_energy_cost": 0.5,
+    "max_lift_coefficient": 1.1,
+    "zero_lift_drag": 1.1,
+}
+
+
+def round3() -> list[dict]:
+    """Balance grids, every size: slasher v dogfighter (vision and shield on the slasher, the
+    dogfighter's bleed), gunner v brawler (the damage split), scout v brawler, a milder rate v
+    sustained pair, and a sniper v shotgun pair (spread, fire rate, range)."""
+    out = []
+    for av, ash, bi in (
+        (1.4, 0.8, 1),
+        (1.4, 0.65, 1),
+        (1.8, 0.65, 1),
+        (1, 0.65, 1.3),
+        (1.4, 0.75, 1.3),
+        (1.8, 0.8, 1.3),
+    ):
+        out.append(
+            pair(
+                f"slasher v dogfighter (M), S vision x{av:g} shield x{ash:g}, D induced x{bi:g}",
+                ("M", merge(SLASHER, {"vision_range_scale": av, "max_shield": ash})),
+                ("M", merge(DOGFIGHTER, {"induced_drag_scale": bi})),
+            )
+        )
+    for gl, gd, bl, bd in (
+        (1.6, 0.8, 0.5, 1.3),
+        (1.6, 0.9, 0.5, 1.2),
+        (1.6, 1.0, 0.5, 1.3),
+        (1.3, 0.85, 0.6, 1.3),
+    ):
+        out.append(
+            pair(
+                f"gunner v brawler (M), G life x{gl:g} dmg x{gd:g}, B life x{bl:g} dmg x{bd:g}",
+                ("M", {"bullet_life": gl, "hit_damage": gd}),
+                ("M", {"bullet_life": bl, "hit_damage": bd}),
+            )
+        )
+    for sv, ssh, bv, bd, bsh in (
+        (1.3, 1.0, 1.0, 1.25, 1.0),
+        (1.3, 0.9, 0.8, 1.15, 1.0),
+        (1.6, 1.0, 1.0, 1.25, 1.1),
+    ):
+        out.append(
+            pair(
+                f"scout v brawler (M), S vision x{sv:g} shield x{ssh:g}, "
+                f"B vision x{bv:g} dmg x{bd:g} shield x{bsh:g}",
+                ("M", {"vision_range_scale": sv, "max_shield": ssh}),
+                ("M", {"vision_range_scale": bv, "hit_damage": bd, "max_shield": bsh}),
+            )
+        )
+    for cl, ind, rd, scl, sind in (
+        (1.2, 1.3, 1.0, 0.9, 0.8),
+        (1.2, 1.3, 1.25, 0.9, 0.8),
+        (1.3, 1.4, 1.25, 0.85, 0.75),
+    ):
+        out.append(
+            pair(
+                f"rate CL x{cl:g} ind x{ind:g} dmg x{rd:g} v sustained "
+                f"CL x{scl:g} ind x{sind:g} (M)",
+                ("M", {"max_lift_coefficient": cl, "induced_drag_scale": ind, "hit_damage": rd}),
+                ("M", {"max_lift_coefficient": scl, "induced_drag_scale": sind}),
+            )
+        )
+    sniper = {
+        "bullet_spread_scale": 0.3,
+        "fire_rate": {"set": 7.5},
+        "hit_damage": 2.0,
+        "bullet_energy_cost": 2.0,
+        "bullet_life": 1.4,
+    }
+    shotgun = {
+        "bullet_spread_scale": 3.0,
+        "fire_rate": {"set": 30.0},
+        "hit_damage": 0.6,
+        "bullet_energy_cost": 0.5,
+        "bullet_life": 0.6,
+    }
+    out.append(pair("sniper v shotgun (M)", ("M", sniper), ("M", shotgun)))
+    out.append(
+        pair(
+            "sniper v shotgun (M), shotgun dmg x0.75",
+            ("M", sniper),
+            ("M", merge(shotgun, {"hit_damage": 0.75 / 0.6})),
+        )
+    )
+    return out
+
+
+ROUNDS = {"round1": round1, "round2": round2, "round3": round3}
 
 if __name__ == "__main__":
     name = sys.argv[1]
