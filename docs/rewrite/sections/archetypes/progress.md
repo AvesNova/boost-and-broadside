@@ -449,3 +449,20 @@ The players beat r9 0.80-0.85 at 5v5 on every one of these cards.
   enemies recharge too). Round 11 gives it damage.
 - On one hull, the classic energy v turn pair is the frozen card's: the turn fighter takes
   the duel (0.02).
+
+## 02:22-02:27 KST: round 11 (`round11/`): zoomer v level, hit-and-run
+
+512 games (10v10 256), kit2 on both:
+
+| Pair | A v B 1v1 / 2v2 / 5v5 / 10v10 | Duel life | AA; BB mutual, life | v r9 |
+|---|---|---|---|---|
+| zoomer v level | 0.58 / 0.36 / 0.47 / 0.24 | 204 s | 0.20, 310 s; 0.60, 248 s | 0.47 / 0.50 |
+| zoomer (dmg x1.05) v level (cone f0 0.12) | 0.60 / 0.43 / 0.49 / 0.29 | 186 s | 0.18, 273 s; 0.68, 171 s | 0.52 / 0.48 |
+| hit-and-run (dmg x1.1) v standard | 0.50 / 0.47 / 0.45 / 0.40 | 254 s | 0.50, 206 s; 0.35, 288 s | 0.52 / 0.48 |
+| **hit-and-run (recharge x4 after 0.4 of the delay, shield x0.8, dmg x1.2) v standard** | **0.49 / 0.51 / 0.49 / 0.49** | 245 s | 0.53, 186 s; 0.34, 313 s | 0.49 / 0.50 |
+
+- **Hit-and-run v standard is flat across sizes at 512 games** (0.49-0.51): a fragile ship
+  that hits harder and recharges four times faster after a short break, against the plain
+  ship. Its own mirror is the more jousty (0.53). Confirming (`confirm3/`, with both
+  doctrines and 20v20).
+- The zoomer zigzags with the fleet size (2v2 and 10v10 to the level ship): not carried.
