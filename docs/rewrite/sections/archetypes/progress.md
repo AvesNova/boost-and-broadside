@@ -648,3 +648,44 @@ Hit-and-run at damage x1.2 with its cone at f0 0.07; small at damage x0.88. 1024
   duel (0.61-0.63) and loses to it at 20v20 (0.38-0.41), while both are even with the
   standard. Each pair has to be balanced on its own; the three-ship set {standard,
   brawler, small} (set 4's cards) is the tight one: 0.43-0.54 on every cell.
+
+## 03:35-03:45 KST: roster 2 (`roster2/`): flight-distinct ships against the standard
+
+512 games (10v10 256), r9, M + kit2 + the flight change (characteristics: lift x1.2 keeps the
+sustained turn at 0.273 rad/s and lowers the corner speed from 134 to 122 m/s; drag x0.85 lifts
+cruise 163 to 171 m/s and top 385 to 407 m/s):
+
+| Ship v standard | 1v1 / 2v2 / 5v5 / 10v10 | Its mirror mutual, life | Duel life |
+|---|---|---|---|
+| rate (lift x1.2) | **0.71** / 0.50 / 0.45 / 0.43 | 0.43, 226 s | 214 s |
+| rate (lift x1.2, induced x1.05) | 0.48 / 0.43 / 0.35 / 0.29 | 0.40, 223 s | 228 s |
+| rate (lift x1.3, induced x1.1) | 0.26 / 0.40 / 0.27 / 0.17 | 0.43, 213 s | 213 s |
+| **speed (drag x0.85)** | **0.53 / 0.50 / 0.55 / 0.57** | 0.34, 338 s | 299 s |
+| speed (drag x0.85, induced x1.1) | 0.18 / 0.41 / 0.41 / 0.42 | 0.34, 298 s | 194 s |
+| power (engine x1.15, induced x1.15) | 0.15 / 0.37 / 0.41 / 0.42 | 0.32, 309 s | 200 s |
+| sustained (lift x0.85, induced x0.9) | 0.60 / 0.59 / 0.69 / 0.73 | 0.23, 552 s | 321 s |
+| sustained (lift x0.85) | **0.23** / 0.46 / 0.59 / 0.61 | 0.21, 445 s | 234 s |
+
+- **The lift coefficient trades the duel for the crowds** at sustained-turn parity: more
+  lift (a lower corner speed, the slow lift-limited fight the maneuvers branch measured)
+  wins duels (0.71) and loses crowds (0.43); less lift the reverse (0.23 against 0.61).
+  This is the lever the flight-distinct pairs lacked: round 13 (running) pairs a rate
+  fighter (lift up, damage up) with a speed fighter (drag x0.85).
+- A low-drag ship at equal turn is close to even with the standard everywhere (0.50-0.57);
+  any bleed bought for speed or power loses the duel (0.15-0.18).
+
+## 03:36-03:45 KST: the set under the crowd extension (`set3ce/`)
+
+1024 games, every ship flying CE (crowd extension + lead turn):
+
+| A v B | 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | AA; BB mutual, life | v r9 |
+|---|---|---|---|
+| **hit-and-run (set 4b) v standard** | **0.53 / 0.48 / 0.50 / 0.50 / 0.49** | 0.38, 243 s; 0.24, 370 s | 0.79 / 0.81 |
+| standard v brawler | 0.53 / 0.57 / 0.58 / 0.61 / 0.59 | 0.21, 394 s; 0.26, 311 s | 0.81 / 0.82 |
+| standard v small | 0.54 / 0.53 / 0.49 / 0.46 / 0.49 | 0.19, 380 s; 0.32, 349 s | 0.85 / 0.84 |
+| brawler v small | 0.51 / 0.46 / 0.41 / 0.43 / 0.37 | 0.24, 350 s; 0.33, 365 s | 0.83 / 0.82 |
+
+- **Hit-and-run v standard stays flat under the stronger doctrine** (0.48-0.53): with r9
+  (set 4b) and CE it is within 0.48-0.53 at every size; confirm 3 had it even under the
+  duel one-circle doctrine too (at f0 0.08). The brawler (short sight) loses ground when
+  ships extend (0.37-0.43 against the small ship, 0.39-0.47 against the standard).
