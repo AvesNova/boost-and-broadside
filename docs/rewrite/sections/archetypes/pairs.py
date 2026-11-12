@@ -436,7 +436,8 @@ def round4() -> list[dict]:
     for sd, bi, si in ((1, 1.25, 1), (1, 1.45, 1), (0.9, 1.45, 1), (1, 1, 0.85)):
         out.append(
             pair(
-                f"sniper v shotgun (M), sniper dmg x{sd:g} induced x{si:g}, shotgun induced x{bi:g}",
+                f"sniper v shotgun (M), sniper dmg x{sd:g} induced x{si:g}, "
+                f"shotgun induced x{bi:g}",
                 ("M", merge(SNIPER, {"hit_damage": sd, "induced_drag_scale": si})),
                 ("M", merge(SHOTGUN, {"induced_drag_scale": bi})),
             )
@@ -449,7 +450,8 @@ def round4() -> list[dict]:
     ):
         out.append(
             pair(
-                f"scout v brawler (M), S vision x{sv:g} shield x{ssh:g}, B vision x{bv:g} dmg x{bd:g}",
+                f"scout v brawler (M), S vision x{sv:g} shield x{ssh:g}, "
+                f"B vision x{bv:g} dmg x{bd:g}",
                 ("M", {"vision_range_scale": sv, "max_shield": ssh}),
                 ("M", {"vision_range_scale": bv, "hit_damage": bd}),
             )
@@ -466,6 +468,30 @@ def round4() -> list[dict]:
 
 
 ROUNDS["round4"] = round4
+
+
+def mirror_study_3() -> list[dict]:
+    """Short sight (flank kills) with damage for the pace, and the cone for the joust, on M."""
+    out = []
+    for v, d, f0 in (
+        (0.8, 1.6, None),
+        (0.8, 2.0, None),
+        (0.85, 1.6, None),
+        (0.8, 1.6, 0.15),
+        (0.8, 2.0, 0.15),
+        (0.8, 2.0, 0.1),
+        (0.85, 2.0, 0.1),
+        (0.9, 2.0, 0.1),
+        (1.0, 2.0, 0.1),
+        (1.0, 2.0, 0.15),
+    ):
+        f = merge({"vision_range_scale": v, "hit_damage": d}, cone(f0, 12, 8) if f0 else {})
+        name = f"M, vision x{v:g}, dmg x{d:g}" + (f", cone {f0:g} 12deg p8" if f0 else "")
+        out.append(pair(name, ("M", f), ("M", f)))
+    return out
+
+
+ROUNDS["mirror3"] = mirror_study_3
 
 
 if __name__ == "__main__":

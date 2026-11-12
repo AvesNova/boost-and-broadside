@@ -1,0 +1,1118 @@
+[
+ {
+  "name": "M, vision x0.8, dmg x1.6",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 4.782366976474096
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.8
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 4.782366976474096
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.8
+  }
+ },
+ {
+  "name": "M, vision x0.8, dmg x2",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 5.9779587205926195
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.8
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 5.9779587205926195
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.8
+  }
+ },
+ {
+  "name": "M, vision x0.85, dmg x1.6",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 4.782366976474096
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.85
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 4.782366976474096
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.85
+  }
+ },
+ {
+  "name": "M, vision x0.8, dmg x1.6, cone 0.15 12deg p8",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 4.782366976474096
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.8,
+   "head_on_fraction_scale": {
+    "set": 0.5
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 4.782366976474096
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.8,
+   "head_on_fraction_scale": {
+    "set": 0.5
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "M, vision x0.8, dmg x2, cone 0.15 12deg p8",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 5.9779587205926195
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.8,
+   "head_on_fraction_scale": {
+    "set": 0.5
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 5.9779587205926195
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.8,
+   "head_on_fraction_scale": {
+    "set": 0.5
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "M, vision x0.8, dmg x2, cone 0.1 12deg p8",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 5.9779587205926195
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.8,
+   "head_on_fraction_scale": {
+    "set": 0.33333333333333337
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 5.9779587205926195
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.8,
+   "head_on_fraction_scale": {
+    "set": 0.33333333333333337
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "M, vision x0.85, dmg x2, cone 0.1 12deg p8",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 5.9779587205926195
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.85,
+   "head_on_fraction_scale": {
+    "set": 0.33333333333333337
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 5.9779587205926195
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.85,
+   "head_on_fraction_scale": {
+    "set": 0.33333333333333337
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "M, vision x0.9, dmg x2, cone 0.1 12deg p8",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 5.9779587205926195
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.9,
+   "head_on_fraction_scale": {
+    "set": 0.33333333333333337
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 5.9779587205926195
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.9,
+   "head_on_fraction_scale": {
+    "set": 0.33333333333333337
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "M, vision x1, dmg x2, cone 0.1 12deg p8",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 5.9779587205926195
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 1.0,
+   "head_on_fraction_scale": {
+    "set": 0.33333333333333337
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 5.9779587205926195
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 1.0,
+   "head_on_fraction_scale": {
+    "set": 0.33333333333333337
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "M, vision x1, dmg x2, cone 0.15 12deg p8",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 5.9779587205926195
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 1.0,
+   "head_on_fraction_scale": {
+    "set": 0.5
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 5.9779587205926195
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 1.0,
+   "head_on_fraction_scale": {
+    "set": 0.5
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ }
+]
