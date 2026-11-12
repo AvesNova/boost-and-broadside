@@ -76,3 +76,38 @@ splits r9m2's change into what r9m brought and what the duel extension adds.
    0.59 / 0.63 / 0.69 and 0.61 / 0.69 / 0.70 (r9: 0.51 / 0.52 / 0.51, 0.58 / 0.53 / 0.51).
    r9m already tips them (0.56-0.60, 0.60-0.68: the crowd extension, as archetypes' CE rows
    0.57-0.61 and 0.57-0.68 showed); r9m2's duel extension adds 0.03-0.09 on the brawler pair.
+
+## 05:55-06:00 KST: gate diagnostic (`../maneuvers-2/r9m2-gates/`): one duel gate on both slots
+
+On the two pairs that tip, r9m2 with one shield gate for the duel extension on both slots
+(r9m2 has Yongma 1.0, Jujak 0.4); 1024 games:
+
+| Map, gate | A v B 1v1 / 2v2 / 5v5 / 10v10 | AA mutual, life, H | BB mutual, life, H |
+|---|---|---|---|
+| standard v brawler, r9m2 (1.0 / 0.4) | 0.53 / 0.59 / 0.63 / 0.69 | 0.35, 188 s, 1.59 | 0.43, 173 s, 0.66 |
+| standard v brawler, 0.4 both | 0.54 / 0.57 / 0.58 / 0.60 | 0.48, 182 s, 0.56 | 0.42, 170 s, 0.67 |
+| standard v brawler, **1.0 both** | 0.56 / 0.53 / 0.56 / 0.60 | 0.35, 187 s, 1.59 | **0.32, 183 s, 1.60** |
+| gunner v close, r9m2 (1.0 / 0.4) | 0.53 / 0.61 / 0.69 / 0.70 | 0.32, 196 s, 1.59 | 0.40, 198 s, 0.64 |
+| gunner v close, 0.4 both | 0.54 / 0.63 / 0.66 / 0.69 | 0.48, 284 s, 0.39 | 0.41, 196 s, 0.65 |
+| gunner v close, **1.0 both** | 0.54 / 0.61 / 0.63 / 0.64 | 0.33, 197 s, 1.59 | **0.29, 215 s, 1.60** |
+
+- **The mirror's joust and entropy follow the gate, not the ship**: at 1.0 either mirror is
+  0.29-0.35 mutual with 1.6 bits; at 0.4 either is 0.41-0.48 with 0.4-0.7 bits. On the
+  one-hull pairs the slot (Yongma / Jujak doctrine) is arbitrary, so r9m2's split gate gives
+  ship B the worse mirror. The 1.0 gate on both is r9's level in both mirrors (brawler
+  0.34 / 0.36 under r9; the gunner pair a little above r9's 0.18 / 0.22) with the shorter life.
+- **The crowd tilt stays**: 1.0 on both brings standard v brawler back to r9m's tilt (0.53-0.60)
+  and gunner v close to 0.61-0.64; the rest is the crowd extension, which no duel gate fixes.
+
+## State (06:00 KST)
+
+Nothing stored: no doctrine, ship or map file changed. For the author:
+1. On the four maps that hold balance under r9m2 (hit-and-run, rate v speed, armour-tank,
+   D2) r9m2 adds decisions (A mirror and crowds ~1.6-1.8 bits) and shortens mirrors, but
+   jousts at r9's level or more in the A mirror and more in the B mirror.
+2. Standard v brawler and gunner v close lean to ship A in crowds under any doctrine with the
+   crowd extension (0.56-0.70); a crowd-side counter or a card retune is needed if those
+   ships are played with r9m-family scripted agents.
+3. For the one-hull pairs a single duel gate (1.0) on both slots is the better r9m2 variant
+   (both mirrors 0.29-0.35 mutual, 1.6 bits). It was not run on the other maps or against
+   the league.
