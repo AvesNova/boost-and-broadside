@@ -13,7 +13,12 @@ import sys
 
 HERE = pathlib.Path(__file__).parent
 
-D2_ENERGY = {"max_shield": 0.5, "bullet_life": 0.75, "head_on_fraction_scale": 0.7, "hit_damage": 1.1}
+D2_ENERGY = {
+    "max_shield": 0.5,
+    "bullet_life": 0.75,
+    "head_on_fraction_scale": 0.7,
+    "hit_damage": 1.1,
+}
 D2_TURN = {"induced_drag_scale": 1.6, "head_on_fraction_scale": 0.5}
 CONE = {"head_on_angle_scale": {"set": 0.28388928317955997}, "head_on_sharpness": {"set": 8}}
 
@@ -45,9 +50,11 @@ def lead(seconds, stick=1.0, one_circle=0.0, crossing=0.5):
     )
 
 
-def yoyo(after=20.0, phase=1.5, climb=4.0, dive=4.0, ease=0.4):
+def yoyo(after=20.0, phase=1.5, climb=4.0, dive=4.0, ease=0.4, low=0.0, to=10.0):
     return dict(
         yoyo=1.0,
+        yoyo_low=low,
+        yoyo_to_corner_speed=to,
         yoyo_after_seconds=after,
         yoyo_phase=phase,
         yoyo_climb_seconds=climb,
@@ -71,6 +78,21 @@ ROUNDS = {
         ("yoyo 20 s climb 8", yoyo(climb=8.0, dive=6.0)),
         ("yoyo 20 s phase 0.5", yoyo(phase=0.5)),
         ("brake", dict(brake=1.0)),
+    ],
+    "round2": [
+        ("r9", {}),
+        ("lead 0.5 s", lead(0.5)),
+        ("lead 1 s", lead(1.0)),
+        ("lead 1 s stick 0.6", lead(1.0, stick=0.6)),
+        ("lead 1.5 s", lead(1.5)),
+        ("low 10 s ph1.5 4 s", yoyo(10.0, 1.5, 4.0, 2.0, 0.0, 1.0, 1.0)),
+        ("low 10 s ph3.1 4 s", yoyo(10.0, 3.1, 4.0, 2.0, 0.0, 1.0, 1.0)),
+        ("low 20 s ph1.5 6 s", yoyo(20.0, 1.5, 6.0, 2.0, 0.0, 1.0, 1.0)),
+        ("low 10 s ph1.5 3 s ease 0.4 to 0.8", yoyo(10.0, 1.5, 3.0, 2.0, 0.4, 1.0, 0.8)),
+        ("low 5 s ph1.5 4 s", yoyo(5.0, 1.5, 4.0, 2.0, 0.0, 1.0, 1.0)),
+        ("low 10 s ph0.5 4 s", yoyo(10.0, 0.5, 4.0, 2.0, 0.0, 1.0, 1.0)),
+        ("low 10 s ph1.5 8 s to 1.3", yoyo(10.0, 1.5, 8.0, 2.0, 0.0, 1.0, 1.3)),
+        ("high 20 s (gated)", yoyo()),
     ],
 }
 

@@ -37,7 +37,12 @@ and `in_advantage`, so they fly in the mirrors too; each reads the committed tar
   carry's stalemate clock: the nose never on the target while the target's nose is off the
   ship), when the target comes within `yoyo_phase` radians of the nose, ease the stick to
   `yoyo_ease` and climb (reverse: speed into the store) for `yoyo_climb_seconds`, then
-  full stick and dive (boost: the store back into speed) for `yoyo_dive_seconds`.
+  full stick and dive (boost: the store back into speed) for `yoyo_dive_seconds`. The
+  low yo-yo (`yoyo_low` above 1/2) dives in the first phase instead (the unloaded
+  extension: in the slow lift-limited turn the turn rate grows with the speed) and leaves
+  the second's power to the combat layer. The first phase ends early above
+  `yoyo_to_corner_speed` corner speeds; a yo-yo never starts with the target's nose within
+  2 of its stall angles of the ship.
 - **Brake** (overshoot forcing): with the target in the rear hemisphere, its nose on the
   ship (`brake_in_stall_angle`, its stall angles) within `brake_in_gun_range` and closing,
   reverse (the store as a speed brake) while the combat layer turns toward it.
@@ -101,6 +106,8 @@ class Doctrine:
     yoyo_climb_seconds: float = 4.0
     yoyo_ease: float = 0.4
     yoyo_dive_seconds: float = 4.0
+    yoyo_low: float = 0.0
+    yoyo_to_corner_speed: float = 10.0
     brake: float = 0.0
     brake_in_stall_angle: Logistic = Logistic(1.5, 0.2, False)
     brake_in_gun_range: Logistic = Logistic(1.0, 0.2, False)
@@ -111,7 +118,7 @@ _DEFAULT = Doctrine()
 # The element weights and the strength, each in [0, 1]; the exponents in [-2, 2].
 WEIGHTS = ("strength", "extend", "slash", "bleed", "lag", "deny", "lead_turn", "yoyo", "brake")
 # The maneuvers' fractions, each in [0, 1] (searched like a weight).
-FRACTIONS = ("lead_turn_stick", "lead_turn_one_circle", "yoyo_ease")
+FRACTIONS = ("lead_turn_stick", "lead_turn_one_circle", "yoyo_ease", "yoyo_low")
 EXPONENTS = ("turn_exponent", "climb_exponent", "speed_exponent", "range_exponent")
 # Each logistic's smallest scale (a tenth of a factor e in its quantity, near the combat
 # layer's floors in stall angles).

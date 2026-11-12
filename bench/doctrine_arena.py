@@ -617,6 +617,7 @@ MULTIPLICATIVE_BOUNDS = {
     "yoyo_phase": (0.05, 3.1),
     "yoyo_climb_seconds": (0.3, 20.0),
     "yoyo_dive_seconds": (0.3, 20.0),
+    "yoyo_to_corner_speed": (0.3, 10.0),
 }
 SCALE_CEILING = 10.0
 

@@ -1,0 +1,2184 @@
+[
+ {
+  "name": "frozen | r9",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {},
+   "turn": {}
+  }
+ },
+ {
+  "name": "frozen | lead 0.5 s",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     0.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   },
+   "turn": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     0.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   }
+  }
+ },
+ {
+  "name": "frozen | lead 1 s",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.0,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   },
+   "turn": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.0,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   }
+  }
+ },
+ {
+  "name": "frozen | lead 1 s stick 0.6",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.0,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 0.6,
+    "lead_turn_one_circle": 0.0
+   },
+   "turn": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.0,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 0.6,
+    "lead_turn_one_circle": 0.0
+   }
+  }
+ },
+ {
+  "name": "frozen | lead 1.5 s",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   },
+   "turn": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   }
+  }
+ },
+ {
+  "name": "frozen | low 10 s ph1.5 4 s",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "frozen | low 10 s ph3.1 4 s",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 3.1,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 3.1,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "frozen | low 20 s ph1.5 6 s",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 20.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 6.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 20.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 6.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "frozen | low 10 s ph1.5 3 s ease 0.4 to 0.8",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 0.8,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 3.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.4
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 0.8,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 3.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.4
+   }
+  }
+ },
+ {
+  "name": "frozen | low 5 s ph1.5 4 s",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 5.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 5.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "frozen | low 10 s ph0.5 4 s",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 0.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 0.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "frozen | low 10 s ph1.5 8 s to 1.3",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.3,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 8.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.3,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 8.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "frozen | high 20 s (gated)",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "yoyo_after_seconds": 20.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_ease": 0.4
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "yoyo_after_seconds": 20.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_ease": 0.4
+   }
+  }
+ },
+ {
+  "name": "D2 | r9",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {},
+   "turn": {}
+  }
+ },
+ {
+  "name": "D2 | lead 0.5 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     0.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   },
+   "turn": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     0.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 | lead 1 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.0,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   },
+   "turn": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.0,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 | lead 1 s stick 0.6",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.0,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 0.6,
+    "lead_turn_one_circle": 0.0
+   },
+   "turn": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.0,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 0.6,
+    "lead_turn_one_circle": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 | lead 1.5 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   },
+   "turn": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 | low 10 s ph1.5 4 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 | low 10 s ph3.1 4 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 3.1,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 3.1,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 | low 20 s ph1.5 6 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 20.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 6.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 20.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 6.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 | low 10 s ph1.5 3 s ease 0.4 to 0.8",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 0.8,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 3.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.4
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 0.8,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 3.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.4
+   }
+  }
+ },
+ {
+  "name": "D2 | low 5 s ph1.5 4 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 5.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 5.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 | low 10 s ph0.5 4 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 0.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 0.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 | low 10 s ph1.5 8 s to 1.3",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.3,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 8.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.3,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 8.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 | high 20 s (gated)",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "yoyo_after_seconds": 20.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_ease": 0.4
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "yoyo_after_seconds": 20.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_ease": 0.4
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | r9",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {},
+   "turn": {}
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | lead 0.5 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     0.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   },
+   "turn": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     0.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | lead 1 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.0,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   },
+   "turn": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.0,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | lead 1 s stick 0.6",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.0,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 0.6,
+    "lead_turn_one_circle": 0.0
+   },
+   "turn": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.0,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 0.6,
+    "lead_turn_one_circle": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | lead 1.5 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   },
+   "turn": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | low 10 s ph1.5 4 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | low 10 s ph3.1 4 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 3.1,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 3.1,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | low 20 s ph1.5 6 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 20.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 6.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 20.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 6.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | low 10 s ph1.5 3 s ease 0.4 to 0.8",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 0.8,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 3.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.4
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 0.8,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 3.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.4
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | low 5 s ph1.5 4 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 5.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 5.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | low 10 s ph0.5 4 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 0.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 0.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | low 10 s ph1.5 8 s to 1.3",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.3,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 8.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.3,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 8.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | high 20 s (gated)",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "yoyo_after_seconds": 20.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_ease": 0.4
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "yoyo_after_seconds": 20.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_ease": 0.4
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | r9",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {},
+   "turn": {}
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | lead 0.5 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     0.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   },
+   "turn": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     0.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | lead 1 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.0,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   },
+   "turn": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.0,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | lead 1 s stick 0.6",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.0,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 0.6,
+    "lead_turn_one_circle": 0.0
+   },
+   "turn": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.0,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 0.6,
+    "lead_turn_one_circle": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | lead 1.5 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   },
+   "turn": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | low 10 s ph1.5 4 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | low 10 s ph3.1 4 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 3.1,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 3.1,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | low 20 s ph1.5 6 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 20.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 6.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 20.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 6.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | low 10 s ph1.5 3 s ease 0.4 to 0.8",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 0.8,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 3.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.4
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 0.8,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 3.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.4
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | low 5 s ph1.5 4 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 5.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 5.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | low 10 s ph0.5 4 s",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 0.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.0,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 0.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | low 10 s ph1.5 8 s to 1.3",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.3,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 8.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 1.0,
+    "yoyo_to_corner_speed": 1.3,
+    "yoyo_after_seconds": 10.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 8.0,
+    "yoyo_dive_seconds": 2.0,
+    "yoyo_ease": 0.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | high 20 s (gated)",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "yoyo": 1.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "yoyo_after_seconds": 20.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_ease": 0.4
+   },
+   "turn": {
+    "yoyo": 1.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "yoyo_after_seconds": 20.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_ease": 0.4
+   }
+  }
+ }
+]

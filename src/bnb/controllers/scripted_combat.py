@@ -538,6 +538,13 @@ def maneuvers(
         )
         running = carry.yoyo_seconds >= 0.0
         clock = torch.where(running, carry.yoyo_seconds + fleet.seconds, -1.0)
+        # the first phase ends early at the wanted speed
+        fast = fleet.speed > doctrine.yoyo_to_corner_speed * fleet.corner_speed
+        clock = torch.where(
+            running & fast & (clock < doctrine.yoyo_climb_seconds),
+            doctrine.yoyo_climb_seconds,
+            clock,
+        )
         done = clock > doctrine.yoyo_climb_seconds + doctrine.yoyo_dive_seconds
         start = (
             ~running
@@ -545,6 +552,7 @@ def maneuvers(
             & engaged
             & (stalemate > doctrine.yoyo_after_seconds)
             & (aim_error.abs() < doctrine.yoyo_phase)
+            & (off_its_nose > GAINED_OFF_ITS_NOSE_IN_STALL_ANGLES)  # never under its guns
         )
         clock = torch.where(start, 0.0, torch.where(done, -1.0, clock))
         stalemate = torch.where(done, 0.0, stalemate)
@@ -557,11 +565,15 @@ def maneuvers(
     boost = power_marginal(torch.ones_like(distance), torch.zeros_like(distance))
 
     # Yo-yo: the high phase eases the stick and climbs, the low phase dives.
-    climbing = ((clock >= 0.0) & (clock < doctrine.yoyo_climb_seconds)).float() * doctrine.yoyo
-    diving = (clock >= doctrine.yoyo_climb_seconds).float() * doctrine.yoyo
-    stick = stick + climbing[..., None] * (commanded_stick(left, doctrine.yoyo_ease) - stick)
-    power = power + climbing[..., None] * (reverse - power)
-    power = power + diving[..., None] * (boost - power)
+    # (the low yo-yo, `yoyo_low` above 1/2: the first phase dives, the second leaves the power
+    # to the combat layer)
+    first = ((clock >= 0.0) & (clock < doctrine.yoyo_climb_seconds)).float() * doctrine.yoyo
+    second = (clock >= doctrine.yoyo_climb_seconds).float() * doctrine.yoyo
+    low = doctrine.yoyo_low > 0.5
+    stick = stick + first[..., None] * (commanded_stick(left, doctrine.yoyo_ease) - stick)
+    first_power = torch.where(low[..., None], boost, reverse)
+    power = power + first[..., None] * (first_power - power)
+    power = power + torch.where(low, 0.0, second)[..., None] * (boost - power)
 
     # Lead turn: on a head-on approach, turn before the merge.
     own_speed = torch.sqrt(

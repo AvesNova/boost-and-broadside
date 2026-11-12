@@ -255,14 +255,15 @@ def test_a_lead_turn_turns_before_the_merge_to_the_passing_side_or_away():
 
 
 def test_a_yoyo_climbs_with_the_stick_eased_after_a_stalemate_then_dives():
-    """A head-on target inside the fight's range: once the stalemate clock passes
+    """A crossing target inside the fight's range, its nose off the ship: once the
+    stalemate clock passes
     yoyo_after_seconds the ship climbs (reverse) at the eased stick for
     yoyo_climb_seconds, then dives (boost); a re-read carry gives the same marginals."""
     yoyo = Doctrine(
         yoyo=1.0, yoyo_after_seconds=5.0, yoyo_climb_seconds=0.05, yoyo_dive_seconds=0.05
     )
     doctrines = _every_type(yoyo)
-    obs = _duel(STIFF, STIFF, 0.3, 2.0, enemy_heading=math.pi)
+    obs = _duel(STIFF, STIFF, 0.6, 2.0, enemy_heading=0.6 + 0.5 * math.pi)
     _, carry = decide(obs, CHARACTERISTICS, PARAMETERS, switching=True, doctrines=doctrines)
     assert float(carry.stalemate_seconds[0, 0]) == 0.0  # fresh
     _, carry = decide(
@@ -291,6 +292,18 @@ def test_a_yoyo_climbs_with_the_stick_eased_after_a_stalemate_then_dives():
         )
     assert float(carry.yoyo_seconds[0, 0]) < 0.0  # done: the clocks start over
     assert float(carry.stalemate_seconds[0, 0]) < 1.0
+    # the low yo-yo dives first; never under the target's guns
+    low = dataclasses.replace(yoyo, yoyo_low=1.0)
+    stalled = dataclasses.replace(carry, stalemate_seconds=torch.full_like(carry.yoyo_seconds, 9.0))
+    dive = decide(
+        obs, CHARACTERISTICS, PARAMETERS, carry=stalled, switching=True, doctrines=_every_type(low)
+    )[0]
+    assert float(dive.power[0, 0, 1]) > 0.9
+    head_on = _duel(STIFF, STIFF, 0.6, 2.0, enemy_heading=0.6 + math.pi)
+    _, after = decide(
+        head_on, CHARACTERISTICS, PARAMETERS, carry=stalled, switching=True, doctrines=doctrines
+    )
+    assert float(after.yoyo_seconds[0, 0]) < 0.0
 
 
 def test_a_brake_reverses_with_a_closing_target_on_the_tail():

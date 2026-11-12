@@ -1073,6 +1073,13 @@ def summary(out: dict, mask: torch.Tensor, seconds: float) -> dict:
         killer_first_hit=share(float(out["killer_first"][mask].sum()), total_kills),
         first_hit_wins=share(float(first_wins[decided].sum()), float(decided.sum())),
         ttk_median=median_of(out["ttk"][mask].sum(0)),
+        damage_by_side=[  # enemy damage taken a game by side A, B (side, aspect shares)
+            (
+                float(damage_kind[v].sum()) / max(n, 1),
+                (damage_kind[v].sum(0) / damage_kind[v].sum().clamp_min(1e-9)).tolist(),
+            )
+            for v in range(2)
+        ],
         circles=(circles / circles.sum().clamp_min(1)).tolist(),
         circle_count=float(circles.sum()),
         trade_fraction=float(out["traded"][mask].sum() / out["deaths"][mask].sum().clamp_min(1)),
