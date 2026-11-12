@@ -136,8 +136,9 @@ variants: the shield at 90, 130 and 160; the recharge delay halved and doubled, 
 times and a third; 5 and 15 Hz (the damage per second held); and the four crossings of 5 or
 15 Hz with a shield of 90 or 130. 16,128 games ([case-studies/armour/](case-studies/armour/report.json)). Measured
 in game version 2, when the recharge ran on every tick without a hit; since version 3 it
-pauses while the pilot gives an input other than a quiet one ([Physics](physics.md)), so in
-a fight it runs less than it did here.
+pauses while the pilot gives an input other than a quiet one, and since version 5 such an
+input restarts its delay ([Physics](physics.md)), so in a fight it runs less than it did
+here.
 
 | Variant | Elo against the La-7 |
 |---|---|

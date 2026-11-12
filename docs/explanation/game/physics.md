@@ -151,14 +151,18 @@ which blocks sight (see [Perception and fog](perception.md)).
   counts down and the shield recharges only on a **quiet** tick: the ship coasts, its stick
   straight or at a slight turn (the lightest level, either side), and holds its fire
   (`bnb.game.rules.QUIET_STICKS`, `bnb.game.physics.combat.quiet`). Any other input (boost,
-  reverse, a normal or sharp turn, a shot) pauses both: the delay holds where it is, it is
-  not reset, and the shield gains nothing that tick. A hit resets the delay.
+  reverse, a normal or sharp turn, a shot) resets the delay, as a hit does, and the shield
+  gains nothing that tick: the recharge needs the whole delay of unbroken quiet flight, a
+  real disengagement (game version 5; in version 3 and 4 such an input only paused the
+  delay, so quiet stretches between passes added up and the shield refilled between them).
 - **The arena** is a disc with no wall. A ship outside it takes boundary damage that grows
   with its depth.
 - **The killer** of a ship is the owner of its earliest hit this tick, ties to the lower
   bullet index.
-- **Aspect statistics.** For the statistics only, each hit is classed by `θ`: head-on
-  under 45 degrees, tail over 135, the flank between (`bnb.contracts.ASPECTS`). The tick's
+- **Aspect statistics.** For the statistics only, each hit is classed by `θ`: a mutual
+  head-on under 10 degrees (the shooter in front of the target's guns, both can fire), an
+  offset head-on from 10 to 45 (only the shooter can), the flank to 135, the tail beyond
+  (`bnb.contracts.ASPECTS`). The tick's
   events carry the enemy damage each ship took by class and the class of its killing hit;
   the training series (`combat/damage_share/{aspect}`, `combat/kill_share/{aspect}`, per
   pool too), the match statistics (`damage_{aspect}`, `kills_{aspect}`) and the

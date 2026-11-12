@@ -24,8 +24,12 @@ so the version stayed 3; the fingerprint now covers the two new presets as well.
 (2026-11-12): a random spawn heading leaves room to turn away from the edge
 (`modes.spawns._heading`, `Rules.spawn_turn_distance`): within that distance of it a
 heading's outward cosine is at most the distance over it, so team deathmatch's and
-elimination's spawns change in every preset with random headings.
+elimination's spawns change in every preset with random headings. Version 5 (2026-11-12):
+an input other than a quiet one restarts the shield's recharge wait at the delay, as a hit
+does (it only paused it in versions 3 and 4), so a shield recharges after the delay's
+length of unbroken quiet flight (`physics.combat.apply_damage`). The real-scale set gained
+two types (Yongma and Jujak) the same day; a new type changes no existing game's numbers.
 """
 
-VERSION = 4
-FINGERPRINT = "85912f2a4ebdafa9"
+VERSION = 5
+FINGERPRINT = "110aa8dae4e626f2"

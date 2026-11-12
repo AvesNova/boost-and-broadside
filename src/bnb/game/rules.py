@@ -24,7 +24,8 @@ POWER_MODES = (0.0, -1.0, 1.0)  # by power index: coast, boost, reverse
 COAST = POWER_MODES.index(0.0)  # the power index that neither boosts nor reverses
 SLIGHT_TURN = min(abs(level) for level in STICK_LEVELS if level != 0.0)  # the lightest level
 # The quiet inputs, which leave the shield recharging (game spec 7.2): coasting, the stick
-# straight or at a slight turn to either side, and not shooting. Any other input pauses it.
+# straight or at a slight turn to either side, and not shooting. Any other input restarts
+# its delay.
 QUIET_STICKS = tuple(index for index, level in enumerate(STICK_LEVELS) if abs(level) <= SLIGHT_TURN)
 FIELD_LEVELS = (-2, -1, 1, 2)
 LN_SQRT2 = 0.5 * math.log(2.0)

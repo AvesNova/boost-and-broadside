@@ -245,8 +245,8 @@ def apply_damage(
     )
     # an unhurt ship cannot have died
     restored = torch.where(alive_at_start & ~hurt & quiet_input, recharge, 0.0)
-    counted = torch.where(quiet_input, (wait0 - tick_length).clamp_min(0.0), wait0)
-    wait = torch.where(hurt, delay, counted)
+    counted = (wait0 - tick_length).clamp_min(0.0)
+    wait = torch.where(hurt | ~quiet_input, delay, counted)
     ships = replace(
         ships,
         shield=torch.where(alive_at_start, shield + restored, shield0),

@@ -148,8 +148,8 @@ collapsed), and a small HUD at the bottom shows the shield, energy, power and st
 - Space: shoot.
 
 The shield recharges only while you fly quiet: coasting, the stick straight or at the
-lightest turn (Ctrl), and not shooting. Any other key pauses both its recharge and the delay
-before it (the delay resumes where it stopped); a hit resets the delay
+lightest turn (Ctrl), and not shooting. Any other key, like a hit, restarts the delay
+before it: the shield comes back only after the whole delay of quiet flight
 ([Physics](../explanation/game/physics.md)).
 
 **Release** (in the HUD or the selection card) hands the ship back.
