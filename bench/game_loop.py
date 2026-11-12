@@ -834,13 +834,18 @@ def search(
     generation the parent, `children` perturbations of its Yongma doctrine and `children`
     of its Jujak doctrine each play `games` games per league opponent and lineup
     (SEARCH_LINEUPS) as side A; a candidate's score is its weighted mean
-    (`weighted_score`). The parent's games accumulate over generations; the best child of
-    each type that beats the parent by `margin` standard errors replaces that type's
-    doctrine (both may change in one generation). Every candidate is a line of the log."""
+    (`weighted_score`). The parent's games accumulate over generations. The best child (of
+    either type) that beats the parent by `margin` standard errors becomes the parent on
+    probation: the next generation replays it on fresh games beside the old parent (the
+    incumbent, its games still accumulating), and it stays only if its fresh score beats
+    the incumbent's (the best-of-children's selection bias removed); otherwise the incumbent
+    returns. A search ending on probation returns the incumbent. Every candidate is a line
+    of the log."""
     from bench.doctrine_arena import perturb
 
     generator = torch.Generator().manual_seed(seed)
     parent_rows: list[dict] = []
+    incumbent, incumbent_rows = None, []
     started = time.time()
     for generation in range(generations):
         if deadline is not None and time.time() > deadline:
@@ -848,6 +853,8 @@ def search(
             break
         s = max(sigma * decay**generation, minimum_sigma)
         candidates = [dataclasses.replace(parent, name="parent")]
+        if incumbent is not None:
+            candidates.append(dataclasses.replace(incumbent, name="incumbent"))
         for number in range(children):
             candidates.append(
                 dataclasses.replace(
@@ -877,6 +884,16 @@ def search(
             by_candidate.setdefault(r["a"], []).append(r)
         parent_rows += by_candidate["parent"]
         parent_score = weighted_score(parent_rows)
+        verdict = ""
+        if incumbent is not None:
+            incumbent_rows += by_candidate["incumbent"]
+            kept = weighted_score(incumbent_rows)
+            if parent_score[0] < kept[0]:
+                verdict = f" (probation failed: {parent_score[0]:.3f} < {kept[0]:.3f})"
+                parent, parent_rows, parent_score = incumbent, incumbent_rows, kept
+            else:
+                verdict = f" (probation passed: {parent_score[0]:.3f} >= {kept[0]:.3f})"
+            incumbent, incumbent_rows = None, []
         scores = {name: weighted_score(mine) for name, mine in by_candidate.items()}
         with log_path.open("a") as handle:
             for candidate in candidates:
@@ -899,31 +916,26 @@ def search(
                     )
                     + "\n"
                 )
-        promoted = []
-        new_energy, new_turn = parent.energy, parent.turn
-        for prefix in ("e", "t"):
-            best = max((n for n in scores if n.startswith(prefix)), key=lambda n: scores[n][0])
-            score, error = scores[best]
-            if score > parent_score[0] + margin * math.hypot(error, parent_score[1]):
-                promoted.append(f"{best} {score:.3f}")
-                chosen = candidates[[c.name for c in candidates].index(best)]
-                if prefix == "e":
-                    new_energy = chosen.energy
-                else:
-                    new_turn = chosen.turn
+        children_scores = {n: v for n, v in scores.items() if n[0] in "et"}
+        best = max(children_scores, key=lambda n: children_scores[n][0])
+        score, error = children_scores[best]
+        promoted = score > parent_score[0] + margin * math.hypot(error, parent_score[1])
         elapsed = time.time() - started
         left = elapsed / (generation + 1) * (generations - generation - 1)
         log(
             f"{datetime.datetime.now(KST):%H:%M:%S} generation {generation}: parent "
-            f"{parent_score[0]:.3f} ± {parent_score[1]:.3f}, best e "
+            f"{parent_score[0]:.3f} ± {parent_score[1]:.3f}{verdict}, best e "
             f"{max(v[0] for n, v in scores.items() if n.startswith('e')):.3f}, best t "
             f"{max(v[0] for n, v in scores.items() if n.startswith('t')):.3f}"
-            f"{' -> ' + ', '.join(promoted) if promoted else ''}; "
+            f"{f' -> {best} {score:.3f} on probation' if promoted else ''}; "
             f"{time.time() - generation_started:.0f} s; ETA {clock(left)} KST"
         )
         if promoted:
-            parent = dataclasses.replace(parent, energy=new_energy, turn=new_turn)
-            parent_rows = []
+            incumbent, incumbent_rows = parent, parent_rows
+            chosen = candidates[[c.name for c in candidates].index(best)]
+            parent, parent_rows = dataclasses.replace(chosen, name=parent.name), []
+    if incumbent is not None:
+        parent = incumbent
     return parent
 
 
