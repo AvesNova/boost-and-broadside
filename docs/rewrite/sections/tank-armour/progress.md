@@ -146,3 +146,26 @@ layer's aim point and power like the others):
   least 0.5 (a best response, not an avoidance), and the mirror life must fall back under
   300 s with the tank cone on. A stronger dive exchange is what would make the low phase
   pay; on its own (round 1) it costs the Yongma, because r9 never climbs into the store.
+
+**Round 2 crowds** (`round2/table.md`): E v T 1v1 / 2v2 / 5v5, strength against r9 (5v5 mixed /
+reversed):
+
+| Card | E v T | v r9 |
+|---|---|---|
+| D2: r9 | 0.50 / 0.46 / 0.54 | 0.511 / 0.488 |
+| D2: 0.01, 12 deg p8 | 0.50 / 0.52 / 0.61 | 0.482 / 0.504 |
+| D2: ... damage x1.5; x2; shield x0.5 | 0.56 / 0.52 / 0.61; 0.51 / 0.53 / 0.68; 0.52 / 0.50 / 0.66 | 0.475-0.502 / 0.508-0.521 |
+| D2: 0.05, 12 deg p8; damage x1.5 | 0.54 / 0.53 / 0.57; 0.51 / 0.48 / 0.64 | 0.507 / 0.474; 0.522 / 0.506 |
+| D2: 0.1, 12 deg p6, damage x1.5 | 0.54 / 0.51 / 0.66 | 0.503 / 0.509 |
+| D2: 18 / 24 deg, damage x2 | 0.54 / 0.50 / 0.64; 0.50 / 0.52 / 0.66 | 0.476-0.527 |
+| D2: cone + damage x1.5 + both dive 9.8 | 0.40 / 0.40 / 0.39 | 0.519 / 0.493 |
+| D2: Y dive 9.8; both dive 9.8 | 0.23 / 0.18 / 0.07; 0.41 / 0.40 / 0.31 | 0.445 / 0.487; 0.515 / 0.506 |
+| C: r9; C + any cone | 0.38 / 0.53 / 0.62; 0.21-0.30 / 0.39-0.45 / 0.54-0.59 | 0.46-0.54 |
+
+- **Strength holds** on every arm (0.46-0.54 against r9): the card is shared, so the
+  scripted agent loses nothing to it.
+- **The cone leans the 5v5 toward the Yongma** (D2 0.54 to 0.57-0.61 alone, 0.64-0.68 with
+  more damage or less shield): in a crowd the Yongma's flank and tail shots are what kill,
+  and the armour removes the head-on hits the Jujak trades with.
+- **A stronger dive is a Yongma loss at every size** (5v5 0.07 with the Yongma's alone).
+- C does not take the cone (1v1 0.21-0.30): its Yongma's short guns need the head-on.
