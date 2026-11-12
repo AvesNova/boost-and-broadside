@@ -1,0 +1,128 @@
+[
+ {
+  "name": "frozen",
+  "energy": {},
+  "turn": {},
+  "player": "r9"
+ },
+ {
+  "name": "J lift x0.85",
+  "energy": {},
+  "turn": {
+   "max_lift_coefficient": 0.85
+  },
+  "player": "r9"
+ },
+ {
+  "name": "Y lift x1.2",
+  "energy": {
+   "max_lift_coefficient": 1.2
+  },
+  "turn": {},
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.6",
+  "energy": {},
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9"
+ },
+ {
+  "name": "Y induced x0.7",
+  "energy": {
+   "induced_drag_scale": 0.7
+  },
+  "turn": {},
+  "player": "r9"
+ },
+ {
+  "name": "Y shield x1.3",
+  "energy": {
+   "max_shield": 1.3
+  },
+  "turn": {},
+  "player": "r9"
+ },
+ {
+  "name": "Y damage x1.3",
+  "energy": {
+   "hit_damage": 1.3
+  },
+  "turn": {},
+  "player": "r9"
+ },
+ {
+  "name": "J shield x0.8",
+  "energy": {},
+  "turn": {
+   "max_shield": 0.8
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J bullet life x0.8",
+  "energy": {},
+  "turn": {
+   "bullet_life": 0.8
+  },
+  "player": "r9"
+ },
+ {
+  "name": "Y head-on fraction x0.5",
+  "energy": {
+   "head_on_fraction_scale": 0.5
+  },
+  "turn": {},
+  "player": "r9"
+ },
+ {
+  "name": "Y recharge rate x2",
+  "energy": {
+   "shield_recharge_rate_scale": 2.0
+  },
+  "turn": {},
+  "player": "r9"
+ },
+ {
+  "name": "Y recharge delay x0.5",
+  "energy": {
+   "shield_recharge_delay_scale": 0.5
+  },
+  "turn": {},
+  "player": "r9"
+ },
+ {
+  "name": "Y static thrust x1.5",
+  "energy": {
+   "static_thrust": 1.5
+  },
+  "turn": {},
+  "player": "r9"
+ },
+ {
+  "name": "Y nose frequency x1.3",
+  "energy": {
+   "corner_nose_frequency": 1.3
+  },
+  "turn": {},
+  "player": "r9"
+ },
+ {
+  "name": "J nose frequency x0.75",
+  "energy": {},
+  "turn": {
+   "corner_nose_frequency": 0.75
+  },
+  "player": "r9"
+ },
+ {
+  "name": "Y engine x1.5",
+  "energy": {
+   "engine_power": 1.5
+  },
+  "turn": {},
+  "player": "r9"
+ }
+]

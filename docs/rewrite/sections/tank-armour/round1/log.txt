@@ -1,0 +1,203 @@
+## 1v1: 135 jobs, B 8192, 23:07 KST
+W1112 23:08:32.005000 1725273 torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+/home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+  warn_once(FP_FUSION_DEFAULT_WARNING)
+  batch 1/9 169 s; ETA 23:32 KST
+  batch 2/9 189 s; ETA 23:21 KST
+  batch 3/9 208 s; ETA 23:17 KST
+  batch 4/9 228 s; ETA 23:15 KST
+  batch 5/9 247 s; ETA 23:14 KST
+  batch 6/9 267 s; ETA 23:13 KST
+  batch 7/9 286 s; ETA 23:13 KST
+  batch 8/9 306 s; ETA 23:12 KST
+  batch 9/9 326 s; ETA 23:12 KST
+1v1                  frozen | r9   energy v turn v c0: score 0.005 ± 0.002  kills m/o/f/t 0.14 / 0.13 / 0.42 / 0.31  life 174 s  kpm/ship 0.33  trades 0.00
+1v1                  frozen | r9     turn mirror v c0: score 0.507 ± 0.015  kills m/o/f/t 0.80 / 0.18 / 0.02 / 0.00  life 151 s  kpm/ship 0.37  trades 0.03
+1v1                  frozen | r9   energy mirror v c0: score 0.494 ± 0.009  kills m/o/f/t 0.31 / 0.59 / 0.10 / 0.00  life 853 s  kpm/ship 0.07  trades 0.00
+1v1 frozen | armour 0.01 6 deg p4   energy v turn v c1: score 0.003 ± 0.002  kills m/o/f/t 0.01 / 0.10 / 0.46 / 0.43  life 220 s  kpm/ship 0.26  trades 0.00
+1v1 frozen | armour 0.01 6 deg p4     turn mirror v c1: score 0.504 ± 0.008  kills m/o/f/t 0.28 / 0.67 / 0.06 / 0.00  life 1119 s  kpm/ship 0.05  trades 0.00
+1v1 frozen | armour 0.01 6 deg p4   energy mirror v c1: score 0.491 ± 0.008  kills m/o/f/t 0.06 / 0.83 / 0.11 / 0.00  life 1103 s  kpm/ship 0.05  trades 0.00
+1v1 frozen | armour 0.01 6 deg p6   energy v turn v c2: score 0.009 ± 0.003  kills m/o/f/t 0.01 / 0.09 / 0.48 / 0.42  life 220 s  kpm/ship 0.26  trades 0.00
+1v1 frozen | armour 0.01 6 deg p6     turn mirror v c2: score 0.507 ± 0.008  kills m/o/f/t 0.23 / 0.71 / 0.06 / 0.00  life 1064 s  kpm/ship 0.06  trades 0.00
+1v1 frozen | armour 0.01 6 deg p6   energy mirror v c2: score 0.492 ± 0.009  kills m/o/f/t 0.08 / 0.82 / 0.10 / 0.00  life 1004 s  kpm/ship 0.06  trades 0.00
+1v1 frozen | armour 0.01 6 deg p8   energy v turn v c3: score 0.003 ± 0.002  kills m/o/f/t 0.01 / 0.09 / 0.47 / 0.43  life 224 s  kpm/ship 0.26  trades 0.00
+1v1 frozen | armour 0.01 6 deg p8     turn mirror v c3: score 0.509 ± 0.008  kills m/o/f/t 0.28 / 0.63 / 0.09 / 0.00  life 1145 s  kpm/ship 0.05  trades 0.00
+1v1 frozen | armour 0.01 6 deg p8   energy mirror v c3: score 0.499 ± 0.008  kills m/o/f/t 0.11 / 0.78 / 0.11 / 0.00  life 1083 s  kpm/ship 0.05  trades 0.00
+1v1 frozen | armour 0.01 9 deg p4   energy v turn v c4: score 0.008 ± 0.003  kills m/o/f/t 0.01 / 0.07 / 0.46 / 0.46  life 228 s  kpm/ship 0.25  trades 0.00
+1v1 frozen | armour 0.01 9 deg p4     turn mirror v c4: score 0.497 ± 0.009  kills m/o/f/t 0.15 / 0.77 / 0.07 / 0.00  life 1320 s  kpm/ship 0.05  trades 0.00
+1v1 frozen | armour 0.01 9 deg p4   energy mirror v c4: score 0.496 ± 0.008  kills m/o/f/t 0.04 / 0.88 / 0.08 / 0.00  life 1199 s  kpm/ship 0.05  trades 0.00
+1v1 frozen | armour 0.01 9 deg p6   energy v turn v c5: score 0.004 ± 0.002  kills m/o/f/t 0.00 / 0.07 / 0.47 / 0.45  life 228 s  kpm/ship 0.25  trades 0.00
+1v1 frozen | armour 0.01 9 deg p6     turn mirror v c5: score 0.498 ± 0.008  kills m/o/f/t 0.15 / 0.74 / 0.11 / 0.00  life 1687 s  kpm/ship 0.04  trades 0.00
+1v1 frozen | armour 0.01 9 deg p6   energy mirror v c5: score 0.495 ± 0.008  kills m/o/f/t 0.04 / 0.90 / 0.06 / 0.00  life 1331 s  kpm/ship 0.04  trades 0.00
+1v1 frozen | armour 0.01 9 deg p8   energy v turn v c6: score 0.004 ± 0.002  kills m/o/f/t 0.01 / 0.07 / 0.48 / 0.45  life 226 s  kpm/ship 0.25  trades 0.00
+1v1 frozen | armour 0.01 9 deg p8     turn mirror v c6: score 0.507 ± 0.009  kills m/o/f/t 0.10 / 0.80 / 0.10 / 0.00  life 1481 s  kpm/ship 0.04  trades 0.00
+1v1 frozen | armour 0.01 9 deg p8   energy mirror v c6: score 0.503 ± 0.008  kills m/o/f/t 0.02 / 0.86 / 0.12 / 0.00  life 1265 s  kpm/ship 0.05  trades 0.00
+1v1 frozen | armour 0.01 12 deg p4   energy v turn v c7: score 0.013 ± 0.004  kills m/o/f/t 0.01 / 0.07 / 0.46 / 0.47  life 232 s  kpm/ship 0.25  trades 0.00
+1v1 frozen | armour 0.01 12 deg p4     turn mirror v c7: score 0.500 ± 0.009  kills m/o/f/t 0.09 / 0.78 / 0.13 / 0.01  life 1496 s  kpm/ship 0.04  trades 0.00
+1v1 frozen | armour 0.01 12 deg p4   energy mirror v c7: score 0.502 ± 0.007  kills m/o/f/t 0.01 / 0.86 / 0.13 / 0.00  life 1766 s  kpm/ship 0.03  trades 0.00
+1v1 frozen | armour 0.01 12 deg p6   energy v turn v c8: score 0.003 ± 0.002  kills m/o/f/t 0.00 / 0.06 / 0.48 / 0.45  life 233 s  kpm/ship 0.25  trades 0.00
+1v1 frozen | armour 0.01 12 deg p6     turn mirror v c8: score 0.488 ± 0.009  kills m/o/f/t 0.05 / 0.86 / 0.09 / 0.00  life 1898 s  kpm/ship 0.03  trades 0.00
+1v1 frozen | armour 0.01 12 deg p6   energy mirror v c8: score 0.506 ± 0.008  kills m/o/f/t 0.00 / 0.85 / 0.15 / 0.00  life 1426 s  kpm/ship 0.04  trades 0.00
+1v1 frozen | armour 0.01 12 deg p8   energy v turn v c9: score 0.003 ± 0.002  kills m/o/f/t 0.00 / 0.07 / 0.47 / 0.46  life 235 s  kpm/ship 0.24  trades 0.00
+1v1 frozen | armour 0.01 12 deg p8     turn mirror v c9: score 0.509 ± 0.009  kills m/o/f/t 0.04 / 0.86 / 0.11 / 0.00  life 1633 s  kpm/ship 0.04  trades 0.00
+1v1 frozen | armour 0.01 12 deg p8   energy mirror v c9: score 0.497 ± 0.008  kills m/o/f/t 0.00 / 0.86 / 0.14 / 0.00  life 1489 s  kpm/ship 0.04  trades 0.00
+1v1 frozen | armour 0.001 9 deg p6   energy v turn v c10: score 0.002 ± 0.001  kills m/o/f/t 0.00 / 0.07 / 0.47 / 0.45  life 227 s  kpm/ship 0.25  trades 0.00
+1v1 frozen | armour 0.001 9 deg p6     turn mirror v c10: score 0.500 ± 0.009  kills m/o/f/t 0.13 / 0.80 / 0.07 / 0.00  life 1386 s  kpm/ship 0.04  trades 0.00
+1v1 frozen | armour 0.001 9 deg p6   energy mirror v c10: score 0.497 ± 0.008  kills m/o/f/t 0.03 / 0.88 / 0.09 / 0.00  life 1167 s  kpm/ship 0.05  trades 0.00
+1v1 frozen | armour 0.001 12 deg p8   energy v turn v c11: score 0.001 ± 0.001  kills m/o/f/t 0.00 / 0.07 / 0.45 / 0.48  life 234 s  kpm/ship 0.25  trades 0.00
+1v1 frozen | armour 0.001 12 deg p8     turn mirror v c11: score 0.493 ± 0.009  kills m/o/f/t 0.01 / 0.86 / 0.13 / 0.00  life 2094 s  kpm/ship 0.03  trades 0.00
+1v1 frozen | armour 0.001 12 deg p8   energy mirror v c11: score 0.495 ± 0.008  kills m/o/f/t 0.00 / 0.84 / 0.16 / 0.00  life 1209 s  kpm/ship 0.05  trades 0.00
+1v1          frozen | Y dive 7.8   energy v turn v c12: score 0.011 ± 0.003  kills m/o/f/t 0.15 / 0.13 / 0.42 / 0.30  life 185 s  kpm/ship 0.31  trades 0.00
+1v1          frozen | Y dive 7.8     turn mirror v c12: score 0.506 ± 0.016  kills m/o/f/t 0.83 / 0.15 / 0.02 / 0.00  life 151 s  kpm/ship 0.37  trades 0.03
+1v1          frozen | Y dive 7.8   energy mirror v c12: score 0.498 ± 0.006  kills m/o/f/t 0.20 / 0.59 / 0.21 / 0.00  life 2184 s  kpm/ship 0.03  trades 0.00
+1v1          frozen | Y dive 9.8   energy v turn v c13: score 0.007 ± 0.003  kills m/o/f/t 0.15 / 0.11 / 0.43 / 0.31  life 195 s  kpm/ship 0.29  trades 0.00
+1v1          frozen | Y dive 9.8     turn mirror v c13: score 0.504 ± 0.016  kills m/o/f/t 0.81 / 0.17 / 0.03 / 0.00  life 151 s  kpm/ship 0.37  trades 0.02
+1v1          frozen | Y dive 9.8   energy mirror v c13: score 0.497 ± 0.005  kills m/o/f/t 0.12 / 0.65 / 0.23 / 0.00  life 2708 s  kpm/ship 0.02  trades 0.00
+1v1       frozen | both dive 9.8   energy v turn v c14: score 0.043 ± 0.006  kills m/o/f/t 0.13 / 0.05 / 0.23 / 0.58  life 275 s  kpm/ship 0.21  trades 0.00
+1v1       frozen | both dive 9.8     turn mirror v c14: score 0.496 ± 0.013  kills m/o/f/t 0.51 / 0.40 / 0.09 / 0.00  life 262 s  kpm/ship 0.22  trades 0.01
+1v1       frozen | both dive 9.8   energy mirror v c14: score 0.503 ± 0.005  kills m/o/f/t 0.33 / 0.55 / 0.12 / 0.00  life 5196 s  kpm/ship 0.01  trades 0.00
+1v1                       C | r9   energy v turn v c15: score 0.415 ± 0.016  kills m/o/f/t 0.55 / 0.35 / 0.09 / 0.00  life 164 s  kpm/ship 0.34  trades 0.01
+1v1                       C | r9     turn mirror v c15: score 0.519 ± 0.016  kills m/o/f/t 0.78 / 0.18 / 0.04 / 0.00  life 117 s  kpm/ship 0.47  trades 0.03
+1v1                       C | r9   energy mirror v c15: score 0.484 ± 0.013  kills m/o/f/t 0.65 / 0.27 / 0.07 / 0.00  life 198 s  kpm/ship 0.29  trades 0.06
+1v1     C | armour 0.01 6 deg p4   energy v turn v c16: score 0.282 ± 0.014  kills m/o/f/t 0.23 / 0.65 / 0.12 / 0.00  life 280 s  kpm/ship 0.21  trades 0.00
+1v1     C | armour 0.01 6 deg p4     turn mirror v c16: score 0.514 ± 0.012  kills m/o/f/t 0.26 / 0.69 / 0.05 / 0.00  life 642 s  kpm/ship 0.09  trades 0.00
+1v1     C | armour 0.01 6 deg p4   energy mirror v c16: score 0.490 ± 0.010  kills m/o/f/t 0.16 / 0.76 / 0.08 / 0.00  life 489 s  kpm/ship 0.12  trades 0.00
+1v1     C | armour 0.01 6 deg p6   energy v turn v c17: score 0.282 ± 0.013  kills m/o/f/t 0.21 / 0.66 / 0.12 / 0.00  life 275 s  kpm/ship 0.21  trades 0.00
+1v1     C | armour 0.01 6 deg p6     turn mirror v c17: score 0.494 ± 0.011  kills m/o/f/t 0.28 / 0.65 / 0.07 / 0.00  life 670 s  kpm/ship 0.09  trades 0.00
+1v1     C | armour 0.01 6 deg p6   energy mirror v c17: score 0.505 ± 0.010  kills m/o/f/t 0.16 / 0.75 / 0.09 / 0.00  life 495 s  kpm/ship 0.12  trades 0.00
+1v1     C | armour 0.01 6 deg p8   energy v turn v c18: score 0.282 ± 0.014  kills m/o/f/t 0.24 / 0.64 / 0.12 / 0.00  life 255 s  kpm/ship 0.23  trades 0.00
+1v1     C | armour 0.01 6 deg p8     turn mirror v c18: score 0.521 ± 0.011  kills m/o/f/t 0.33 / 0.62 / 0.05 / 0.00  life 679 s  kpm/ship 0.09  trades 0.00
+1v1     C | armour 0.01 6 deg p8   energy mirror v c18: score 0.507 ± 0.010  kills m/o/f/t 0.16 / 0.75 / 0.09 / 0.00  life 495 s  kpm/ship 0.12  trades 0.00
+1v1     C | armour 0.01 9 deg p4   energy v turn v c19: score 0.283 ± 0.013  kills m/o/f/t 0.09 / 0.79 / 0.13 / 0.00  life 284 s  kpm/ship 0.20  trades 0.00
+1v1     C | armour 0.01 9 deg p4     turn mirror v c19: score 0.510 ± 0.010  kills m/o/f/t 0.15 / 0.77 / 0.08 / 0.00  life 907 s  kpm/ship 0.07  trades 0.00
+1v1     C | armour 0.01 9 deg p4   energy mirror v c19: score 0.497 ± 0.009  kills m/o/f/t 0.10 / 0.82 / 0.08 / 0.00  life 612 s  kpm/ship 0.10  trades 0.00
+1v1     C | armour 0.01 9 deg p6   energy v turn v c20: score 0.267 ± 0.014  kills m/o/f/t 0.08 / 0.77 / 0.15 / 0.00  life 293 s  kpm/ship 0.20  trades 0.00
+1v1     C | armour 0.01 9 deg p6     turn mirror v c20: score 0.489 ± 0.011  kills m/o/f/t 0.14 / 0.78 / 0.08 / 0.00  life 899 s  kpm/ship 0.07  trades 0.00
+1v1     C | armour 0.01 9 deg p6   energy mirror v c20: score 0.507 ± 0.010  kills m/o/f/t 0.09 / 0.82 / 0.09 / 0.00  life 466 s  kpm/ship 0.13  trades 0.00
+1v1     C | armour 0.01 9 deg p8   energy v turn v c21: score 0.261 ± 0.013  kills m/o/f/t 0.08 / 0.78 / 0.14 / 0.00  life 311 s  kpm/ship 0.19  trades 0.00
+1v1     C | armour 0.01 9 deg p8     turn mirror v c21: score 0.507 ± 0.011  kills m/o/f/t 0.12 / 0.79 / 0.09 / 0.00  life 855 s  kpm/ship 0.07  trades 0.00
+1v1     C | armour 0.01 9 deg p8   energy mirror v c21: score 0.500 ± 0.009  kills m/o/f/t 0.09 / 0.82 / 0.09 / 0.00  life 525 s  kpm/ship 0.11  trades 0.01
+1v1    C | armour 0.01 12 deg p4   energy v turn v c22: score 0.287 ± 0.013  kills m/o/f/t 0.04 / 0.84 / 0.12 / 0.00  life 321 s  kpm/ship 0.18  trades 0.00
+1v1    C | armour 0.01 12 deg p4     turn mirror v c22: score 0.489 ± 0.011  kills m/o/f/t 0.08 / 0.83 / 0.09 / 0.00  life 1095 s  kpm/ship 0.05  trades 0.00
+1v1    C | armour 0.01 12 deg p4   energy mirror v c22: score 0.509 ± 0.009  kills m/o/f/t 0.02 / 0.87 / 0.11 / 0.00  life 638 s  kpm/ship 0.09  trades 0.00
+1v1    C | armour 0.01 12 deg p6   energy v turn v c23: score 0.272 ± 0.013  kills m/o/f/t 0.02 / 0.83 / 0.15 / 0.00  life 319 s  kpm/ship 0.18  trades 0.00
+1v1    C | armour 0.01 12 deg p6     turn mirror v c23: score 0.512 ± 0.012  kills m/o/f/t 0.05 / 0.88 / 0.07 / 0.00  life 959 s  kpm/ship 0.06  trades 0.00
+1v1    C | armour 0.01 12 deg p6   energy mirror v c23: score 0.515 ± 0.009  kills m/o/f/t 0.01 / 0.88 / 0.11 / 0.00  life 654 s  kpm/ship 0.09  trades 0.00
+1v1    C | armour 0.01 12 deg p8   energy v turn v c24: score 0.271 ± 0.013  kills m/o/f/t 0.02 / 0.86 / 0.13 / 0.00  life 318 s  kpm/ship 0.18  trades 0.00
+1v1    C | armour 0.01 12 deg p8     turn mirror v c24: score 0.503 ± 0.012  kills m/o/f/t 0.03 / 0.88 / 0.09 / 0.00  life 1024 s  kpm/ship 0.06  trades 0.00
+1v1    C | armour 0.01 12 deg p8   energy mirror v c24: score 0.498 ± 0.009  kills m/o/f/t 0.01 / 0.91 / 0.09 / 0.00  life 633 s  kpm/ship 0.09  trades 0.00
+1v1    C | armour 0.001 9 deg p6   energy v turn v c25: score 0.286 ± 0.013  kills m/o/f/t 0.08 / 0.79 / 0.13 / 0.00  life 294 s  kpm/ship 0.20  trades 0.00
+1v1    C | armour 0.001 9 deg p6     turn mirror v c25: score 0.498 ± 0.011  kills m/o/f/t 0.13 / 0.79 / 0.08 / 0.00  life 918 s  kpm/ship 0.06  trades 0.00
+1v1    C | armour 0.001 9 deg p6   energy mirror v c25: score 0.511 ± 0.010  kills m/o/f/t 0.09 / 0.80 / 0.11 / 0.00  life 525 s  kpm/ship 0.11  trades 0.00
+1v1   C | armour 0.001 12 deg p8   energy v turn v c26: score 0.294 ± 0.014  kills m/o/f/t 0.01 / 0.84 / 0.15 / 0.00  life 330 s  kpm/ship 0.18  trades 0.00
+1v1   C | armour 0.001 12 deg p8     turn mirror v c26: score 0.515 ± 0.012  kills m/o/f/t 0.01 / 0.85 / 0.14 / 0.00  life 1136 s  kpm/ship 0.05  trades 0.00
+1v1   C | armour 0.001 12 deg p8   energy mirror v c26: score 0.479 ± 0.009  kills m/o/f/t 0.01 / 0.89 / 0.11 / 0.00  life 627 s  kpm/ship 0.09  trades 0.00
+1v1               C | Y dive 7.8   energy v turn v c27: score 0.384 ± 0.015  kills m/o/f/t 0.49 / 0.38 / 0.14 / 0.00  life 164 s  kpm/ship 0.34  trades 0.00
+1v1               C | Y dive 7.8     turn mirror v c27: score 0.523 ± 0.016  kills m/o/f/t 0.76 / 0.19 / 0.04 / 0.00  life 118 s  kpm/ship 0.47  trades 0.02
+1v1               C | Y dive 7.8   energy mirror v c27: score 0.501 ± 0.012  kills m/o/f/t 0.55 / 0.35 / 0.09 / 0.00  life 255 s  kpm/ship 0.23  trades 0.04
+1v1               C | Y dive 9.8   energy v turn v c28: score 0.252 ± 0.014  kills m/o/f/t 0.38 / 0.46 / 0.16 / 0.00  life 156 s  kpm/ship 0.36  trades 0.00
+1v1               C | Y dive 9.8     turn mirror v c28: score 0.514 ± 0.017  kills m/o/f/t 0.77 / 0.19 / 0.04 / 0.00  life 117 s  kpm/ship 0.47  trades 0.03
+1v1               C | Y dive 9.8   energy mirror v c28: score 0.493 ± 0.011  kills m/o/f/t 0.46 / 0.42 / 0.12 / 0.00  life 342 s  kpm/ship 0.17  trades 0.02
+1v1            C | both dive 9.8   energy v turn v c29: score 0.354 ± 0.013  kills m/o/f/t 0.28 / 0.46 / 0.26 / 0.00  life 294 s  kpm/ship 0.20  trades 0.00
+1v1            C | both dive 9.8     turn mirror v c29: score 0.482 ± 0.015  kills m/o/f/t 0.40 / 0.42 / 0.18 / 0.00  life 198 s  kpm/ship 0.29  trades 0.00
+1v1            C | both dive 9.8   energy mirror v c29: score 0.476 ± 0.012  kills m/o/f/t 0.49 / 0.39 / 0.12 / 0.00  life 338 s  kpm/ship 0.17  trades 0.02
+1v1                      D2 | r9   energy v turn v c30: score 0.504 ± 0.014  kills m/o/f/t 0.24 / 0.68 / 0.08 / 0.00  life 288 s  kpm/ship 0.20  trades 0.00
+1v1                      D2 | r9     turn mirror v c30: score 0.492 ± 0.012  kills m/o/f/t 0.65 / 0.30 / 0.05 / 0.00  life 259 s  kpm/ship 0.22  trades 0.02
+1v1                      D2 | r9   energy mirror v c30: score 0.498 ± 0.011  kills m/o/f/t 0.36 / 0.54 / 0.10 / 0.00  life 285 s  kpm/ship 0.20  trades 0.01
+1v1    D2 | armour 0.01 6 deg p4   energy v turn v c31: score 0.523 ± 0.015  kills m/o/f/t 0.20 / 0.72 / 0.08 / 0.00  life 263 s  kpm/ship 0.22  trades 0.00
+1v1    D2 | armour 0.01 6 deg p4     turn mirror v c31: score 0.493 ± 0.011  kills m/o/f/t 0.23 / 0.70 / 0.06 / 0.00  life 685 s  kpm/ship 0.09  trades 0.00
+1v1    D2 | armour 0.01 6 deg p4   energy mirror v c31: score 0.507 ± 0.009  kills m/o/f/t 0.15 / 0.75 / 0.11 / 0.00  life 469 s  kpm/ship 0.13  trades 0.00
+1v1    D2 | armour 0.01 6 deg p6   energy v turn v c32: score 0.522 ± 0.016  kills m/o/f/t 0.20 / 0.72 / 0.08 / 0.00  life 278 s  kpm/ship 0.21  trades 0.00
+1v1    D2 | armour 0.01 6 deg p6     turn mirror v c32: score 0.489 ± 0.011  kills m/o/f/t 0.28 / 0.66 / 0.06 / 0.00  life 818 s  kpm/ship 0.07  trades 0.00
+1v1    D2 | armour 0.01 6 deg p6   energy mirror v c32: score 0.507 ± 0.009  kills m/o/f/t 0.14 / 0.72 / 0.14 / 0.00  life 461 s  kpm/ship 0.13  trades 0.00
+1v1    D2 | armour 0.01 6 deg p8   energy v turn v c33: score 0.524 ± 0.015  kills m/o/f/t 0.20 / 0.72 / 0.08 / 0.00  life 267 s  kpm/ship 0.22  trades 0.00
+1v1    D2 | armour 0.01 6 deg p8     turn mirror v c33: score 0.500 ± 0.011  kills m/o/f/t 0.26 / 0.67 / 0.07 / 0.00  life 805 s  kpm/ship 0.07  trades 0.00
+1v1    D2 | armour 0.01 6 deg p8   energy mirror v c33: score 0.489 ± 0.009  kills m/o/f/t 0.15 / 0.73 / 0.12 / 0.00  life 521 s  kpm/ship 0.11  trades 0.00
+1v1    D2 | armour 0.01 9 deg p4   energy v turn v c34: score 0.526 ± 0.015  kills m/o/f/t 0.10 / 0.81 / 0.08 / 0.00  life 303 s  kpm/ship 0.19  trades 0.00
+1v1    D2 | armour 0.01 9 deg p4     turn mirror v c34: score 0.476 ± 0.011  kills m/o/f/t 0.16 / 0.74 / 0.11 / 0.00  life 978 s  kpm/ship 0.06  trades 0.00
+1v1    D2 | armour 0.01 9 deg p4   energy mirror v c34: score 0.518 ± 0.008  kills m/o/f/t 0.07 / 0.82 / 0.11 / 0.00  life 510 s  kpm/ship 0.12  trades 0.00
+1v1    D2 | armour 0.01 9 deg p6   energy v turn v c35: score 0.547 ± 0.014  kills m/o/f/t 0.10 / 0.83 / 0.07 / 0.00  life 297 s  kpm/ship 0.20  trades 0.00
+1v1    D2 | armour 0.01 9 deg p6     turn mirror v c35: score 0.500 ± 0.011  kills m/o/f/t 0.12 / 0.81 / 0.07 / 0.00  life 1087 s  kpm/ship 0.05  trades 0.00
+1v1    D2 | armour 0.01 9 deg p6   energy mirror v c35: score 0.503 ± 0.009  kills m/o/f/t 0.08 / 0.79 / 0.13 / 0.00  life 522 s  kpm/ship 0.11  trades 0.00
+1v1    D2 | armour 0.01 9 deg p8   energy v turn v c36: score 0.540 ± 0.014  kills m/o/f/t 0.08 / 0.82 / 0.10 / 0.00  life 312 s  kpm/ship 0.19  trades 0.00
+1v1    D2 | armour 0.01 9 deg p8     turn mirror v c36: score 0.480 ± 0.011  kills m/o/f/t 0.10 / 0.81 / 0.09 / 0.00  life 1021 s  kpm/ship 0.06  trades 0.00
+1v1    D2 | armour 0.01 9 deg p8   energy mirror v c36: score 0.492 ± 0.009  kills m/o/f/t 0.07 / 0.81 / 0.12 / 0.00  life 506 s  kpm/ship 0.12  trades 0.00
+1v1   D2 | armour 0.01 12 deg p4   energy v turn v c37: score 0.503 ± 0.013  kills m/o/f/t 0.05 / 0.86 / 0.09 / 0.00  life 377 s  kpm/ship 0.16  trades 0.00
+1v1   D2 | armour 0.01 12 deg p4     turn mirror v c37: score 0.501 ± 0.011  kills m/o/f/t 0.04 / 0.85 / 0.11 / 0.00  life 1349 s  kpm/ship 0.04  trades 0.00
+1v1   D2 | armour 0.01 12 deg p4   energy mirror v c37: score 0.498 ± 0.009  kills m/o/f/t 0.04 / 0.81 / 0.15 / 0.00  life 564 s  kpm/ship 0.10  trades 0.00
+1v1   D2 | armour 0.01 12 deg p6   energy v turn v c38: score 0.501 ± 0.014  kills m/o/f/t 0.02 / 0.89 / 0.09 / 0.00  life 381 s  kpm/ship 0.15  trades 0.00
+1v1   D2 | armour 0.01 12 deg p6     turn mirror v c38: score 0.510 ± 0.011  kills m/o/f/t 0.06 / 0.88 / 0.07 / 0.00  life 1292 s  kpm/ship 0.05  trades 0.00
+1v1   D2 | armour 0.01 12 deg p6   energy mirror v c38: score 0.504 ± 0.009  kills m/o/f/t 0.02 / 0.85 / 0.13 / 0.00  life 571 s  kpm/ship 0.10  trades 0.00
+1v1   D2 | armour 0.01 12 deg p8   energy v turn v c39: score 0.522 ± 0.013  kills m/o/f/t 0.02 / 0.88 / 0.10 / 0.00  life 362 s  kpm/ship 0.16  trades 0.00
+1v1   D2 | armour 0.01 12 deg p8     turn mirror v c39: score 0.506 ± 0.011  kills m/o/f/t 0.02 / 0.92 / 0.06 / 0.00  life 1453 s  kpm/ship 0.04  trades 0.00
+1v1   D2 | armour 0.01 12 deg p8   energy mirror v c39: score 0.499 ± 0.008  kills m/o/f/t 0.01 / 0.87 / 0.12 / 0.00  life 618 s  kpm/ship 0.10  trades 0.00
+1v1   D2 | armour 0.001 9 deg p6   energy v turn v c40: score 0.543 ± 0.015  kills m/o/f/t 0.10 / 0.83 / 0.07 / 0.00  life 315 s  kpm/ship 0.18  trades 0.00
+1v1   D2 | armour 0.001 9 deg p6     turn mirror v c40: score 0.488 ± 0.012  kills m/o/f/t 0.07 / 0.85 / 0.08 / 0.00  life 1035 s  kpm/ship 0.06  trades 0.00
+1v1   D2 | armour 0.001 9 deg p6   energy mirror v c40: score 0.498 ± 0.009  kills m/o/f/t 0.05 / 0.84 / 0.11 / 0.00  life 475 s  kpm/ship 0.12  trades 0.00
+1v1  D2 | armour 0.001 12 deg p8   energy v turn v c41: score 0.505 ± 0.013  kills m/o/f/t 0.01 / 0.91 / 0.07 / 0.00  life 366 s  kpm/ship 0.16  trades 0.00
+1v1  D2 | armour 0.001 12 deg p8     turn mirror v c41: score 0.506 ± 0.011  kills m/o/f/t 0.01 / 0.91 / 0.08 / 0.00  life 1249 s  kpm/ship 0.05  trades 0.00
+1v1  D2 | armour 0.001 12 deg p8   energy mirror v c41: score 0.493 ± 0.010  kills m/o/f/t 0.00 / 0.88 / 0.11 / 0.00  life 545 s  kpm/ship 0.11  trades 0.00
+1v1              D2 | Y dive 7.8   energy v turn v c42: score 0.407 ± 0.013  kills m/o/f/t 0.19 / 0.68 / 0.12 / 0.00  life 276 s  kpm/ship 0.21  trades 0.00
+1v1              D2 | Y dive 7.8     turn mirror v c42: score 0.491 ± 0.012  kills m/o/f/t 0.64 / 0.32 / 0.05 / 0.00  life 255 s  kpm/ship 0.23  trades 0.02
+1v1              D2 | Y dive 7.8   energy mirror v c42: score 0.493 ± 0.012  kills m/o/f/t 0.25 / 0.60 / 0.15 / 0.00  life 363 s  kpm/ship 0.16  trades 0.00
+1v1              D2 | Y dive 9.8   energy v turn v c43: score 0.263 ± 0.013  kills m/o/f/t 0.17 / 0.70 / 0.13 / 0.00  life 282 s  kpm/ship 0.21  trades 0.00
+1v1              D2 | Y dive 9.8     turn mirror v c43: score 0.500 ± 0.012  kills m/o/f/t 0.63 / 0.33 / 0.05 / 0.00  life 262 s  kpm/ship 0.22  trades 0.03
+1v1              D2 | Y dive 9.8   energy mirror v c43: score 0.486 ± 0.010  kills m/o/f/t 0.17 / 0.60 / 0.23 / 0.00  life 750 s  kpm/ship 0.08  trades 0.00
+1v1           D2 | both dive 9.8   energy v turn v c44: score 0.396 ± 0.010  kills m/o/f/t 0.10 / 0.60 / 0.29 / 0.00  life 633 s  kpm/ship 0.09  trades 0.00
+1v1           D2 | both dive 9.8     turn mirror v c44: score 0.499 ± 0.009  kills m/o/f/t 0.11 / 0.62 / 0.27 / 0.00  life 725 s  kpm/ship 0.08  trades 0.00
+1v1           D2 | both dive 9.8   energy mirror v c44: score 0.503 ± 0.010  kills m/o/f/t 0.21 / 0.60 / 0.19 / 0.00  life 841 s  kpm/ship 0.07  trades 0.00
+## 2v2: 45 jobs, B 8192, 23:12 KST
+  batch 1/3 148 s; ETA 23:20 KST
+  batch 2/3 182 s; ETA 23:17 KST
+  batch 3/3 214 s; ETA 23:16 KST
+2v2                  frozen | r9   energy v turn v c0: score 0.361 ± 0.019  kills m/o/f/t 0.10 / 0.17 / 0.52 / 0.21  life 111 s  kpm/ship 0.49  trades 0.02
+2v2 frozen | armour 0.01 6 deg p4   energy v turn v c1: score 0.308 ± 0.018  kills m/o/f/t 0.03 / 0.20 / 0.55 / 0.22  life 119 s  kpm/ship 0.47  trades 0.01
+2v2 frozen | armour 0.01 6 deg p6   energy v turn v c2: score 0.316 ± 0.018  kills m/o/f/t 0.04 / 0.21 / 0.54 / 0.22  life 120 s  kpm/ship 0.46  trades 0.02
+2v2 frozen | armour 0.01 6 deg p8   energy v turn v c3: score 0.341 ± 0.019  kills m/o/f/t 0.04 / 0.22 / 0.53 / 0.22  life 117 s  kpm/ship 0.47  trades 0.01
+2v2 frozen | armour 0.01 9 deg p4   energy v turn v c4: score 0.336 ± 0.019  kills m/o/f/t 0.02 / 0.21 / 0.54 / 0.24  life 121 s  kpm/ship 0.46  trades 0.02
+2v2 frozen | armour 0.01 9 deg p6   energy v turn v c5: score 0.331 ± 0.019  kills m/o/f/t 0.02 / 0.21 / 0.55 / 0.22  life 119 s  kpm/ship 0.47  trades 0.01
+2v2 frozen | armour 0.01 9 deg p8   energy v turn v c6: score 0.299 ± 0.018  kills m/o/f/t 0.02 / 0.20 / 0.55 / 0.24  life 120 s  kpm/ship 0.46  trades 0.01
+2v2 frozen | armour 0.01 12 deg p4   energy v turn v c7: score 0.287 ± 0.018  kills m/o/f/t 0.01 / 0.19 / 0.56 / 0.24  life 124 s  kpm/ship 0.45  trades 0.01
+2v2 frozen | armour 0.01 12 deg p6   energy v turn v c8: score 0.322 ± 0.018  kills m/o/f/t 0.01 / 0.21 / 0.55 / 0.23  life 122 s  kpm/ship 0.46  trades 0.01
+2v2 frozen | armour 0.01 12 deg p8   energy v turn v c9: score 0.299 ± 0.018  kills m/o/f/t 0.01 / 0.20 / 0.55 / 0.24  life 122 s  kpm/ship 0.45  trades 0.02
+2v2 frozen | armour 0.001 9 deg p6   energy v turn v c10: score 0.313 ± 0.018  kills m/o/f/t 0.02 / 0.20 / 0.55 / 0.23  life 122 s  kpm/ship 0.45  trades 0.01
+2v2 frozen | armour 0.001 12 deg p8   energy v turn v c11: score 0.271 ± 0.017  kills m/o/f/t 0.01 / 0.20 / 0.54 / 0.25  life 123 s  kpm/ship 0.45  trades 0.02
+2v2          frozen | Y dive 7.8   energy v turn v c12: score 0.272 ± 0.017  kills m/o/f/t 0.10 / 0.17 / 0.54 / 0.20  life 116 s  kpm/ship 0.48  trades 0.01
+2v2          frozen | Y dive 9.8   energy v turn v c13: score 0.156 ± 0.014  kills m/o/f/t 0.08 / 0.16 / 0.55 / 0.22  life 122 s  kpm/ship 0.45  trades 0.01
+2v2       frozen | both dive 9.8   energy v turn v c14: score 0.343 ± 0.018  kills m/o/f/t 0.07 / 0.13 / 0.45 / 0.35  life 151 s  kpm/ship 0.37  trades 0.01
+2v2                       C | r9   energy v turn v c15: score 0.518 ± 0.020  kills m/o/f/t 0.18 / 0.25 / 0.48 / 0.09  life 97 s  kpm/ship 0.56  trades 0.02
+2v2     C | armour 0.01 6 deg p4   energy v turn v c16: score 0.459 ± 0.020  kills m/o/f/t 0.06 / 0.31 / 0.52 / 0.11  life 107 s  kpm/ship 0.51  trades 0.01
+2v2     C | armour 0.01 6 deg p6   energy v turn v c17: score 0.474 ± 0.020  kills m/o/f/t 0.06 / 0.31 / 0.52 / 0.11  life 105 s  kpm/ship 0.52  trades 0.02
+2v2     C | armour 0.01 6 deg p8   energy v turn v c18: score 0.435 ± 0.020  kills m/o/f/t 0.06 / 0.32 / 0.52 / 0.11  life 106 s  kpm/ship 0.52  trades 0.02
+2v2     C | armour 0.01 9 deg p4   energy v turn v c19: score 0.432 ± 0.020  kills m/o/f/t 0.03 / 0.32 / 0.54 / 0.11  life 107 s  kpm/ship 0.51  trades 0.02
+2v2     C | armour 0.01 9 deg p6   energy v turn v c20: score 0.461 ± 0.020  kills m/o/f/t 0.03 / 0.32 / 0.54 / 0.11  life 110 s  kpm/ship 0.50  trades 0.02
+2v2     C | armour 0.01 9 deg p8   energy v turn v c21: score 0.433 ± 0.019  kills m/o/f/t 0.03 / 0.33 / 0.53 / 0.11  life 112 s  kpm/ship 0.49  trades 0.02
+2v2    C | armour 0.01 12 deg p4   energy v turn v c22: score 0.479 ± 0.020  kills m/o/f/t 0.02 / 0.32 / 0.56 / 0.11  life 112 s  kpm/ship 0.49  trades 0.01
+2v2    C | armour 0.01 12 deg p6   energy v turn v c23: score 0.430 ± 0.020  kills m/o/f/t 0.02 / 0.32 / 0.55 / 0.12  life 110 s  kpm/ship 0.50  trades 0.01
+2v2    C | armour 0.01 12 deg p8   energy v turn v c24: score 0.442 ± 0.019  kills m/o/f/t 0.02 / 0.32 / 0.55 / 0.12  life 111 s  kpm/ship 0.49  trades 0.02
+2v2    C | armour 0.001 9 deg p6   energy v turn v c25: score 0.423 ± 0.019  kills m/o/f/t 0.03 / 0.33 / 0.54 / 0.10  life 106 s  kpm/ship 0.52  trades 0.01
+2v2   C | armour 0.001 12 deg p8   energy v turn v c26: score 0.486 ± 0.020  kills m/o/f/t 0.01 / 0.31 / 0.55 / 0.12  life 110 s  kpm/ship 0.50  trades 0.02
+2v2               C | Y dive 7.8   energy v turn v c27: score 0.336 ± 0.019  kills m/o/f/t 0.16 / 0.24 / 0.50 / 0.10  life 98 s  kpm/ship 0.55  trades 0.01
+2v2               C | Y dive 9.8   energy v turn v c28: score 0.206 ± 0.016  kills m/o/f/t 0.14 / 0.24 / 0.51 / 0.11  life 103 s  kpm/ship 0.53  trades 0.01
+2v2            C | both dive 9.8   energy v turn v c29: score 0.367 ± 0.018  kills m/o/f/t 0.11 / 0.22 / 0.54 / 0.13  life 127 s  kpm/ship 0.44  trades 0.01
+2v2                      D2 | r9   energy v turn v c30: score 0.451 ± 0.019  kills m/o/f/t 0.07 / 0.23 / 0.56 / 0.13  life 113 s  kpm/ship 0.49  trades 0.01
+2v2    D2 | armour 0.01 6 deg p4   energy v turn v c31: score 0.518 ± 0.020  kills m/o/f/t 0.06 / 0.28 / 0.54 / 0.12  life 111 s  kpm/ship 0.50  trades 0.02
+2v2    D2 | armour 0.01 6 deg p6   energy v turn v c32: score 0.483 ± 0.020  kills m/o/f/t 0.05 / 0.29 / 0.53 / 0.12  life 110 s  kpm/ship 0.50  trades 0.02
+2v2    D2 | armour 0.01 6 deg p8   energy v turn v c33: score 0.523 ± 0.019  kills m/o/f/t 0.05 / 0.29 / 0.52 / 0.13  life 110 s  kpm/ship 0.50  trades 0.01
+2v2    D2 | armour 0.01 9 deg p4   energy v turn v c34: score 0.498 ± 0.020  kills m/o/f/t 0.03 / 0.30 / 0.55 / 0.13  life 113 s  kpm/ship 0.49  trades 0.02
+2v2    D2 | armour 0.01 9 deg p6   energy v turn v c35: score 0.465 ± 0.019  kills m/o/f/t 0.03 / 0.31 / 0.54 / 0.12  life 112 s  kpm/ship 0.49  trades 0.01
+2v2    D2 | armour 0.01 9 deg p8   energy v turn v c36: score 0.491 ± 0.019  kills m/o/f/t 0.03 / 0.31 / 0.54 / 0.12  life 117 s  kpm/ship 0.47  trades 0.01
+2v2   D2 | armour 0.01 12 deg p4   energy v turn v c37: score 0.486 ± 0.020  kills m/o/f/t 0.02 / 0.30 / 0.56 / 0.12  life 117 s  kpm/ship 0.47  trades 0.02
+2v2   D2 | armour 0.01 12 deg p6   energy v turn v c38: score 0.476 ± 0.019  kills m/o/f/t 0.02 / 0.29 / 0.56 / 0.14  life 116 s  kpm/ship 0.48  trades 0.01
+2v2   D2 | armour 0.01 12 deg p8   energy v turn v c39: score 0.519 ± 0.020  kills m/o/f/t 0.01 / 0.29 / 0.56 / 0.13  life 118 s  kpm/ship 0.47  trades 0.01
+2v2   D2 | armour 0.001 9 deg p6   energy v turn v c40: score 0.472 ± 0.020  kills m/o/f/t 0.03 / 0.30 / 0.53 / 0.14  life 115 s  kpm/ship 0.48  trades 0.01
+2v2  D2 | armour 0.001 12 deg p8   energy v turn v c41: score 0.512 ± 0.019  kills m/o/f/t 0.01 / 0.29 / 0.57 / 0.13  life 116 s  kpm/ship 0.48  trades 0.02
+2v2              D2 | Y dive 7.8   energy v turn v c42: score 0.323 ± 0.018  kills m/o/f/t 0.07 / 0.23 / 0.57 / 0.13  life 120 s  kpm/ship 0.46  trades 0.01
+2v2              D2 | Y dive 9.8   energy v turn v c43: score 0.204 ± 0.015  kills m/o/f/t 0.07 / 0.22 / 0.57 / 0.14  life 126 s  kpm/ship 0.44  trades 0.01
+2v2           D2 | both dive 9.8   energy v turn v c44: score 0.406 ± 0.018  kills m/o/f/t 0.05 / 0.20 / 0.59 / 0.16  life 151 s  kpm/ship 0.37  trades 0.01
+## 5v5: 135 jobs, B 4096, 23:16 KST
+  batch 1/17 234 s; ETA 00:22 KST
+  batch 2/17 269 s; ETA 23:54 KST
+  batch 3/17 305 s; ETA 23:45 KST
+  batch 4/17 341 s; ETA 23:40 KST
+  batch 5/17 377 s; ETA 23:37 KST

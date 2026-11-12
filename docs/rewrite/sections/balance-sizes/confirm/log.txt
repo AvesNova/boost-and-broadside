@@ -1,0 +1,41 @@
+## 1v1: 6 jobs, B 8192, 21:22 KST
+W1112 21:22:53.515000 1675742 torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+/home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+  warn_once(FP_FUSION_DEFAULT_WARNING)
+1v1 C: J induced x1.5, J shield x0.8 | Y shield x0.45, Y damage x1.6, Y bullet life x0.45   energy v turn v c0: score 0.391 ± 0.011  kills m/o/f/t 0.56 / 0.35 / 0.08 / 0.00  life 166 s  kpm/ship 0.34  trades 0.01
+1v1 C: J induced x1.5, J shield x0.8 | Y shield x0.45, Y damage x1.6, Y bullet life x0.45     turn mirror v c0: score 0.509 ± 0.012  kills m/o/f/t 0.78 / 0.18 / 0.04 / 0.00  life 117 s  kpm/ship 0.47  trades 0.04
+1v1 C: J induced x1.5, J shield x0.8 | Y shield x0.45, Y damage x1.6, Y bullet life x0.45   energy mirror v c0: score 0.499 ± 0.009  kills m/o/f/t 0.64 / 0.30 / 0.06 / 0.00  life 191 s  kpm/ship 0.30  trades 0.05
+1v1 D: A + both head-on fractions x0.5, Y damage x1.1, Y bullet life x0.75   energy v turn v c1: score 0.533 ± 0.010  kills m/o/f/t 0.18 / 0.74 / 0.08 / 0.00  life 305 s  kpm/ship 0.19  trades 0.00
+1v1 D: A + both head-on fractions x0.5, Y damage x1.1, Y bullet life x0.75     turn mirror v c1: score 0.495 ± 0.009  kills m/o/f/t 0.64 / 0.30 / 0.05 / 0.00  life 256 s  kpm/ship 0.23  trades 0.02
+1v1 D: A + both head-on fractions x0.5, Y damage x1.1, Y bullet life x0.75   energy mirror v c1: score 0.499 ± 0.007  kills m/o/f/t 0.20 / 0.67 / 0.12 / 0.00  life 484 s  kpm/ship 0.12  trades 0.00
+## 2v2: 6 jobs, B 8192, 21:23 KST
+2v2 C: J induced x1.5, J shield x0.8 | Y shield x0.45, Y damage x1.6, Y bullet life x0.45   energy v turn v c0: score 0.506 ± 0.014  kills m/o/f/t 0.18 / 0.25 / 0.48 / 0.09  life 96 s  kpm/ship 0.57  trades 0.02
+2v2 C: J induced x1.5, J shield x0.8 | Y shield x0.45, Y damage x1.6, Y bullet life x0.45     turn mirror v c0: score 0.513 ± 0.014  kills m/o/f/t 0.21 / 0.24 / 0.45 / 0.10  life 88 s  kpm/ship 0.61  trades 0.03
+2v2 C: J induced x1.5, J shield x0.8 | Y shield x0.45, Y damage x1.6, Y bullet life x0.45   energy mirror v c0: score 0.498 ± 0.013  kills m/o/f/t 0.22 / 0.22 / 0.47 / 0.10  life 110 s  kpm/ship 0.50  trades 0.02
+2v2 D: A + both head-on fractions x0.5, Y damage x1.1, Y bullet life x0.75   energy v turn v c1: score 0.517 ± 0.014  kills m/o/f/t 0.06 / 0.23 / 0.57 / 0.14  life 116 s  kpm/ship 0.48  trades 0.01
+2v2 D: A + both head-on fractions x0.5, Y damage x1.1, Y bullet life x0.75     turn mirror v c1: score 0.501 ± 0.014  kills m/o/f/t 0.07 / 0.21 / 0.57 / 0.15  life 107 s  kpm/ship 0.51  trades 0.02
+2v2 D: A + both head-on fractions x0.5, Y damage x1.1, Y bullet life x0.75   energy mirror v c1: score 0.517 ± 0.013  kills m/o/f/t 0.07 / 0.24 / 0.57 / 0.12  life 122 s  kpm/ship 0.45  trades 0.01
+## 5v5: 6 jobs, B 4096, 21:24 KST
+  batch 1/2 65 s; ETA 21:27 KST
+  batch 2/2 94 s; ETA 21:26 KST
+5v5 C: J induced x1.5, J shield x0.8 | Y shield x0.45, Y damage x1.6, Y bullet life x0.45   energy v turn v c0: score 0.610 ± 0.014  kills m/o/f/t 0.09 / 0.21 / 0.54 / 0.15  life 94 s  kpm/ship 0.58  trades 0.05
+5v5 C: J induced x1.5, J shield x0.8 | Y shield x0.45, Y damage x1.6, Y bullet life x0.45     turn mirror v c0: score 0.497 ± 0.015  kills m/o/f/t 0.11 / 0.22 / 0.52 / 0.16  life 85 s  kpm/ship 0.63  trades 0.07
+5v5 C: J induced x1.5, J shield x0.8 | Y shield x0.45, Y damage x1.6, Y bullet life x0.45   energy mirror v c0: score 0.528 ± 0.014  kills m/o/f/t 0.11 / 0.20 / 0.52 / 0.17  life 105 s  kpm/ship 0.52  trades 0.04
+5v5 D: A + both head-on fractions x0.5, Y damage x1.1, Y bullet life x0.75   energy v turn v c1: score 0.560 ± 0.014  kills m/o/f/t 0.05 / 0.17 / 0.59 / 0.19  life 103 s  kpm/ship 0.53  trades 0.04
+5v5 D: A + both head-on fractions x0.5, Y damage x1.1, Y bullet life x0.75     turn mirror v c1: score 0.507 ± 0.015  kills m/o/f/t 0.05 / 0.18 / 0.58 / 0.20  life 96 s  kpm/ship 0.57  trades 0.05
+5v5 D: A + both head-on fractions x0.5, Y damage x1.1, Y bullet life x0.75   energy mirror v c1: score 0.490 ± 0.014  kills m/o/f/t 0.05 / 0.18 / 0.59 / 0.19  life 106 s  kpm/ship 0.52  trades 0.04
+## 10v10: 6 jobs, B 2048, 21:26 KST
+  batch 1/2 78 s; ETA 21:29 KST
+  batch 2/2 108 s; ETA 21:28 KST
+10v10 C: J induced x1.5, J shield x0.8 | Y shield x0.45, Y damage x1.6, Y bullet life x0.45   energy v turn v c0: score 0.485 ± 0.021  kills m/o/f/t 0.07 / 0.21 / 0.54 / 0.18  life 110 s  kpm/ship 0.50  trades 0.09
+10v10 C: J induced x1.5, J shield x0.8 | Y shield x0.45, Y damage x1.6, Y bullet life x0.45     turn mirror v c0: score 0.520 ± 0.021  kills m/o/f/t 0.09 / 0.21 / 0.52 / 0.18  life 97 s  kpm/ship 0.56  trades 0.12
+10v10 C: J induced x1.5, J shield x0.8 | Y shield x0.45, Y damage x1.6, Y bullet life x0.45   energy mirror v c0: score 0.537 ± 0.021  kills m/o/f/t 0.08 / 0.18 / 0.51 / 0.23  life 131 s  kpm/ship 0.43  trades 0.08
+10v10 D: A + both head-on fractions x0.5, Y damage x1.1, Y bullet life x0.75   energy v turn v c1: score 0.490 ± 0.021  kills m/o/f/t 0.04 / 0.18 / 0.56 / 0.23  life 120 s  kpm/ship 0.46  trades 0.08
+10v10 D: A + both head-on fractions x0.5, Y damage x1.1, Y bullet life x0.75     turn mirror v c1: score 0.464 ± 0.021  kills m/o/f/t 0.05 / 0.17 / 0.56 / 0.22  life 106 s  kpm/ship 0.52  trades 0.10
+10v10 D: A + both head-on fractions x0.5, Y damage x1.1, Y bullet life x0.75   energy mirror v c1: score 0.509 ± 0.021  kills m/o/f/t 0.04 / 0.17 / 0.56 / 0.23  life 124 s  kpm/ship 0.45  trades 0.08
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| C: J induced x1.5, J shield x0.8 | Y shield x0.45, Y damage x1.6, Y bullet life x0.45 | 0.391 ± 0.011 | 0.506 ± 0.014 | 0.610 ± 0.014 | 0.485 ± 0.021 | 0.110 | 0.09 / 0.21 / 0.54 / 0.15 | 0.05 | 166 / 96 / 94 / 110 | 0.34 / 0.57 / 0.58 / 0.50 | 2.03 |
+| D: A + both head-on fractions x0.5, Y damage x1.1, Y bullet life x0.75 | 0.533 ± 0.010 | 0.517 ± 0.014 | 0.560 ± 0.014 | 0.490 ± 0.021 | 0.060 | 0.05 / 0.17 / 0.59 / 0.19 | 0.04 | 305 / 116 / 103 / 120 | 0.19 / 0.48 / 0.53 / 0.46 | 3.6 |
+
+352 s

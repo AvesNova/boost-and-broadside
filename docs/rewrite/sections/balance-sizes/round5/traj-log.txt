@@ -1,0 +1,2 @@
+J1.7 Ys0.5 | deny, 1v1 energy v turn: 107 fights, 64 kills; merges a kill mean 2.73, seconds 91, extensions 0.00, edge s 3.8
+J1.7 Ys0.5 | deny, 1v1 turn mirror: 114 fights, 71 kills; merges a kill mean 5.10, seconds 129, extensions 0.00, edge s 4.8

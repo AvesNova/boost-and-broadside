@@ -229,3 +229,174 @@ def test_a_doctrine_packs_and_names_both_ways():
     assert from_named({}) == Doctrine()
     with pytest.raises(ValueError):
         from_row(pack(doctrine)[:-1])
+
+
+LEFT_LEVELS, RIGHT_LEVELS = (2, 4, 6), (1, 3, 5)
+
+
+def test_a_lead_turn_turns_before_the_merge_to_the_passing_side_or_away():
+    """A target one gun range ahead flying at the ship, offset a little to the left: the
+    agent flies at it; the lead turn turns left at full stick (the side it will pass on: the
+    two-circle sense), or right in the one-circle sense; far from the merge it does not."""
+    lead = Doctrine(lead_turn=1.0, lead_turn_in_seconds=Logistic(3.0, 0.1, False))
+    obs = _duel(STIFF, STIFF, 0.05, 1.0, enemy_heading=math.pi)
+    agent = _decide(obs)
+    two = _decide(obs, _every_type(lead))
+    one = _decide(obs, _every_type(dataclasses.replace(lead, lead_turn_one_circle=1.0)))
+    assert float(agent.stick[0, 0, 6]) < 0.5
+    assert float(two.stick[0, 0, 6]) > 0.9
+    assert float(one.stick[0, 0, 5]) > 0.9
+    far = _duel(STIFF, STIFF, 0.05, 6.0, enemy_heading=math.pi)
+    torch.testing.assert_close(
+        _decide(far).stick, _decide(far, _every_type(lead)).stick, atol=0.02, rtol=0.0
+    )
+    half = _decide(obs, _every_type(dataclasses.replace(lead, lead_turn_stick=0.4)))
+    assert float(half.stick[0, 0, 2]) > 0.9
+
+
+def test_a_yoyo_climbs_with_the_stick_eased_after_a_stalemate_then_dives():
+    """A crossing target inside the fight's range, its nose off the ship: once the
+    stalemate clock passes
+    yoyo_after_seconds the ship climbs (reverse) at the eased stick for
+    yoyo_climb_seconds, then dives (boost); a re-read carry gives the same marginals."""
+    yoyo = Doctrine(
+        yoyo=1.0, yoyo_after_seconds=5.0, yoyo_climb_seconds=0.05, yoyo_dive_seconds=0.05
+    )
+    doctrines = _every_type(yoyo)
+    obs = _duel(STIFF, STIFF, 0.6, 2.0, enemy_heading=0.6 + 0.5 * math.pi)
+    _, carry = decide(obs, CHARACTERISTICS, PARAMETERS, switching=True, doctrines=doctrines)
+    assert float(carry.stalemate_seconds[0, 0]) == 0.0  # fresh
+    _, carry = decide(
+        obs, CHARACTERISTICS, PARAMETERS, carry=carry, switching=True, doctrines=doctrines
+    )
+    assert float(carry.stalemate_seconds[0, 0]) > 0.0
+    assert float(carry.yoyo_seconds[0, 0]) < 0.0
+    carry = dataclasses.replace(
+        carry, stalemate_seconds=torch.full_like(carry.stalemate_seconds, 9.0)
+    )
+    climb, carry = decide(
+        obs, CHARACTERISTICS, PARAMETERS, carry=carry, switching=True, doctrines=doctrines
+    )
+    assert float(carry.yoyo_seconds[0, 0]) == 0.0
+    assert float(climb.power[0, 0, 2]) > 0.9  # reverse: speed into the store
+    again = decide(obs, CHARACTERISTICS, PARAMETERS, carry=carry, doctrines=doctrines)[0]
+    torch.testing.assert_close(again.power, climb.power)
+    for _ in range(2):
+        dive, carry = decide(
+            obs, CHARACTERISTICS, PARAMETERS, carry=carry, switching=True, doctrines=doctrines
+        )
+    assert float(dive.power[0, 0, 1]) > 0.9  # boost: the store into speed
+    for _ in range(2):
+        _, carry = decide(
+            obs, CHARACTERISTICS, PARAMETERS, carry=carry, switching=True, doctrines=doctrines
+        )
+    assert float(carry.yoyo_seconds[0, 0]) < 0.0  # done: the clocks start over
+    assert float(carry.stalemate_seconds[0, 0]) < 1.0
+    # the low yo-yo dives first; never under the target's guns
+    low = dataclasses.replace(yoyo, yoyo_low=1.0)
+    stalled = dataclasses.replace(carry, stalemate_seconds=torch.full_like(carry.yoyo_seconds, 9.0))
+    dive = decide(
+        obs, CHARACTERISTICS, PARAMETERS, carry=stalled, switching=True, doctrines=_every_type(low)
+    )[0]
+    assert float(dive.power[0, 0, 1]) > 0.9
+    head_on = _duel(STIFF, STIFF, 0.6, 2.0, enemy_heading=0.6 + math.pi)
+    _, after = decide(
+        head_on, CHARACTERISTICS, PARAMETERS, carry=stalled, switching=True, doctrines=doctrines
+    )
+    assert float(after.yoyo_seconds[0, 0]) < 0.0
+
+
+def test_a_brake_reverses_with_a_closing_target_on_the_tail():
+    """A faster target half a gun range behind, nose on the ship: braking reverses."""
+    brake = Doctrine(brake=1.0)
+    distance = 0.5 * value("gun_range", STIFF)
+    enemy = ship(
+        x=-distance,
+        heading=0.0,
+        speed=2.0 * value("cruise_speed", STIFF),
+        ship_type=STIFF,
+        team_relative=1,
+    )
+    obs = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, absent(STIFF)])
+    assert float(_decide(obs).power[0, 0, 2]) < 0.5
+    assert float(_decide(obs, _every_type(brake)).power[0, 0, 2]) > 0.9
+
+
+def test_the_sense_turns_with_or_against_the_targets_rotation_after_the_merge():
+    """A target just passed (behind, its tail to the ship's tail) turning left: the
+    two-circle sense turns left (with its rotation), the one-circle sense right."""
+    distance = 0.5 * value("gun_range", STIFF)
+    enemy = ship(x=-distance, y=-30.0, heading=math.pi, ship_type=STIFF, team_relative=1)
+    enemy[SHIP["nose_rate"]] = 0.3
+    obs = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, absent(STIFF)])
+    two = _decide(obs, _every_type(Doctrine(sense=1.0)))
+    one = _decide(obs, _every_type(Doctrine(sense=1.0, sense_one_circle=1.0)))
+    assert float(two.stick[0, 0, 6]) > 0.9
+    assert float(one.stick[0, 0, 5]) > 0.9
+
+
+def test_the_sense_gates_by_the_lift_ratio_and_the_mirror():
+    """Against a target of the other type: the mirror-only sense does not act, nor does a
+    sense whose lift-ratio gate the pair's ratio is below."""
+    distance = 0.5 * value("gun_range", STIFF)
+    other = AGILE if AGILE != STIFF else STIFF
+    enemy = ship(x=-distance, y=-30.0, heading=math.pi, ship_type=other, team_relative=1)
+    enemy[SHIP["nose_rate"]] = 0.3
+    obs = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, absent(other)])
+    agent = _decide(obs)
+    one = Doctrine(sense=1.0, sense_one_circle=1.0)
+    mirror_only = _decide(obs, _every_type(dataclasses.replace(one, sense_mirror_only=1.0)))
+    torch.testing.assert_close(mirror_only.stick, agent.stick)
+    lift = CHARACTERISTICS.max_acceleration / CHARACTERISTICS.corner_speed**2
+    ratio = float(lift[STIFF] / lift[other])
+    gated = dataclasses.replace(one, sense_in_lift_ratio=Logistic(ratio * 10.0, 0.05, True))
+    torch.testing.assert_close(
+        _decide(obs, _every_type(gated)).stick, agent.stick, atol=1e-3, rtol=0
+    )
+    assert float(_decide(obs, _every_type(one)).stick[0, 0, 5]) > 0.9
+
+
+def test_the_sense_hands_over_to_the_crowd_sense_with_another_enemy_near():
+    """The one-circle sense alone with its target; with another enemy near, the crowd
+    sense flies straight (stick 0) and boosts."""
+    gun = value("gun_range", STIFF)
+    enemy = ship(x=-0.5 * gun, y=-30.0, heading=math.pi, ship_type=STIFF, team_relative=1)
+    enemy[SHIP["nose_rate"]] = 0.3
+    doctrine = Doctrine(
+        sense=1.0,
+        sense_one_circle=1.0,
+        sense_in_crowd=Logistic(0.5, 0.1, False),
+        crowd_sense=1.0,
+        crowd_sense_boost=1.0,
+    )
+    alone = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, absent(STIFF)])
+    assert float(_decide(alone, _every_type(doctrine)).stick[0, 0, 5]) > 0.9
+    other = ship(x=-2.0 * gun, y=2.0 * gun, heading=0.0, ship_type=STIFF, team_relative=1)
+    crowd = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, other])
+    flown = _decide(crowd, _every_type(doctrine))
+    assert float(flown.stick[0, 0, 0]) > 0.9
+    assert float(flown.power[0, 0, 1]) > 0.8
+
+
+def test_the_sense_draws_its_choice_once_as_its_gate_opens():
+    """At sense_one_circle 1/2 the choice is drawn once when the gate opens and kept: a
+    re-read carry gives the same stick; over many views both choices are made."""
+    distance = 0.5 * value("gun_range", STIFF)
+    enemy = ship(x=-distance, y=-30.0, heading=math.pi, ship_type=STIFF, team_relative=1)
+    enemy[SHIP["nose_rate"]] = 0.3
+    obs = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, absent(STIFF)])
+    obs = Obs(
+        **{
+            k: None if v is None else v.expand(256, *v.shape[1:])
+            for k, v in dataclasses.asdict(obs).items()
+        }
+    )
+    doctrines = _every_type(Doctrine(sense=1.0, sense_one_circle=0.5))
+    parts, carry = decide(obs, CHARACTERISTICS, PARAMETERS, switching=True, doctrines=doctrines)
+    draw = carry.sense_draw[:, 0]
+    assert bool((draw >= 0.0).all())
+    one = parts.stick[:, 0, 5] > 0.9
+    torch.testing.assert_close(one, draw < 0.5)
+    assert 50 < int(one.sum()) < 206
+    again = decide(obs, CHARACTERISTICS, PARAMETERS, carry=carry, doctrines=doctrines)[0]
+    torch.testing.assert_close(again.stick, parts.stick, atol=0.01, rtol=0.0)

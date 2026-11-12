@@ -1,0 +1,76 @@
+## 1v1: 16 jobs, B 8192, 19:37 KST
+W1112 19:38:00.979000 1615574 torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+/home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+  warn_once(FP_FUSION_DEFAULT_WARNING)
+1v1                       frozen   energy v turn v c0: score 0.012 ± 0.003  kills m/o/f/t 0.17 / 0.13 / 0.41 / 0.29  life 168 s  kpm/ship 0.34  trades 0.00
+1v1                 J lift x0.85   energy v turn v c1: score 0.028 ± 0.005  kills m/o/f/t 0.16 / 0.15 / 0.43 / 0.26  life 202 s  kpm/ship 0.28  trades 0.00
+1v1                  Y lift x1.2   energy v turn v c2: score 0.016 ± 0.004  kills m/o/f/t 0.19 / 0.20 / 0.47 / 0.14  life 167 s  kpm/ship 0.34  trades 0.00
+1v1               J induced x1.6   energy v turn v c3: score 0.658 ± 0.012  kills m/o/f/t 0.33 / 0.59 / 0.08 / 0.00  life 307 s  kpm/ship 0.19  trades 0.00
+1v1               Y induced x0.7   energy v turn v c4: score 0.194 ± 0.011  kills m/o/f/t 0.25 / 0.43 / 0.32 / 0.00  life 307 s  kpm/ship 0.19  trades 0.00
+1v1                Y shield x1.3   energy v turn v c5: score 0.036 ± 0.006  kills m/o/f/t 0.15 / 0.07 / 0.40 / 0.39  life 207 s  kpm/ship 0.28  trades 0.00
+1v1                Y damage x1.3   energy v turn v c6: score 0.034 ± 0.006  kills m/o/f/t 0.22 / 0.14 / 0.43 / 0.21  life 147 s  kpm/ship 0.38  trades 0.00
+1v1                J shield x0.8   energy v turn v c7: score 0.037 ± 0.006  kills m/o/f/t 0.21 / 0.14 / 0.42 / 0.23  life 148 s  kpm/ship 0.38  trades 0.00
+1v1           J bullet life x0.8   energy v turn v c8: score 0.011 ± 0.003  kills m/o/f/t 0.15 / 0.06 / 0.40 / 0.39  life 169 s  kpm/ship 0.34  trades 0.00
+1v1      Y head-on fraction x0.5   energy v turn v c9: score 0.013 ± 0.003  kills m/o/f/t 0.16 / 0.05 / 0.44 / 0.36  life 186 s  kpm/ship 0.31  trades 0.00
+1v1           Y recharge rate x2   energy v turn v c10: score 0.006 ± 0.002  kills m/o/f/t 0.16 / 0.14 / 0.41 / 0.30  life 172 s  kpm/ship 0.33  trades 0.00
+1v1        Y recharge delay x0.5   energy v turn v c11: score 0.006 ± 0.003  kills m/o/f/t 0.15 / 0.12 / 0.42 / 0.32  life 174 s  kpm/ship 0.33  trades 0.00
+1v1         Y static thrust x1.5   energy v turn v c12: score 0.031 ± 0.005  kills m/o/f/t 0.19 / 0.25 / 0.52 / 0.04  life 256 s  kpm/ship 0.23  trades 0.00
+1v1        Y nose frequency x1.3   energy v turn v c13: score 0.012 ± 0.003  kills m/o/f/t 0.17 / 0.13 / 0.44 / 0.26  life 163 s  kpm/ship 0.35  trades 0.00
+1v1       J nose frequency x0.75   energy v turn v c14: score 0.015 ± 0.004  kills m/o/f/t 0.16 / 0.08 / 0.46 / 0.31  life 189 s  kpm/ship 0.30  trades 0.00
+1v1                Y engine x1.5   energy v turn v c15: score 0.021 ± 0.005  kills m/o/f/t 0.17 / 0.17 / 0.41 / 0.25  life 218 s  kpm/ship 0.26  trades 0.00
+## 2v2: 16 jobs, B 8192, 19:38 KST
+2v2                       frozen   energy v turn v c0: score 0.375 ± 0.019  kills m/o/f/t 0.10 / 0.16 / 0.54 / 0.20  life 112 s  kpm/ship 0.49  trades 0.01
+2v2                 J lift x0.85   energy v turn v c1: score 0.391 ± 0.019  kills m/o/f/t 0.10 / 0.17 / 0.53 / 0.20  life 120 s  kpm/ship 0.46  trades 0.01
+2v2                  Y lift x1.2   energy v turn v c2: score 0.369 ± 0.019  kills m/o/f/t 0.11 / 0.17 / 0.53 / 0.19  life 110 s  kpm/ship 0.50  trades 0.02
+2v2               J induced x1.6   energy v turn v c3: score 0.866 ± 0.012  kills m/o/f/t 0.11 / 0.20 / 0.51 / 0.18  life 136 s  kpm/ship 0.41  trades 0.01
+2v2               Y induced x0.7   energy v turn v c4: score 0.684 ± 0.018  kills m/o/f/t 0.12 / 0.21 / 0.53 / 0.14  life 127 s  kpm/ship 0.44  trades 0.01
+2v2                Y shield x1.3   energy v turn v c5: score 0.502 ± 0.019  kills m/o/f/t 0.09 / 0.15 / 0.52 / 0.24  life 122 s  kpm/ship 0.45  trades 0.02
+2v2                Y damage x1.3   energy v turn v c6: score 0.519 ± 0.019  kills m/o/f/t 0.12 / 0.17 / 0.52 / 0.18  life 105 s  kpm/ship 0.52  trades 0.02
+2v2                J shield x0.8   energy v turn v c7: score 0.486 ± 0.020  kills m/o/f/t 0.11 / 0.18 / 0.53 / 0.18  life 107 s  kpm/ship 0.52  trades 0.02
+2v2           J bullet life x0.8   energy v turn v c8: score 0.393 ± 0.019  kills m/o/f/t 0.11 / 0.15 / 0.53 / 0.21  life 116 s  kpm/ship 0.48  trades 0.01
+2v2      Y head-on fraction x0.5   energy v turn v c9: score 0.448 ± 0.020  kills m/o/f/t 0.09 / 0.15 / 0.55 / 0.21  life 114 s  kpm/ship 0.48  trades 0.01
+2v2           Y recharge rate x2   energy v turn v c10: score 0.357 ± 0.019  kills m/o/f/t 0.10 / 0.17 / 0.54 / 0.19  life 112 s  kpm/ship 0.49  trades 0.01
+2v2        Y recharge delay x0.5   energy v turn v c11: score 0.369 ± 0.019  kills m/o/f/t 0.10 / 0.16 / 0.54 / 0.20  life 111 s  kpm/ship 0.50  trades 0.02
+2v2         Y static thrust x1.5   energy v turn v c12: score 0.461 ± 0.019  kills m/o/f/t 0.11 / 0.19 / 0.54 / 0.17  life 115 s  kpm/ship 0.48  trades 0.02
+2v2        Y nose frequency x1.3   energy v turn v c13: score 0.409 ± 0.019  kills m/o/f/t 0.10 / 0.18 / 0.53 / 0.19  life 109 s  kpm/ship 0.51  trades 0.02
+2v2       J nose frequency x0.75   energy v turn v c14: score 0.462 ± 0.020  kills m/o/f/t 0.10 / 0.16 / 0.54 / 0.20  life 117 s  kpm/ship 0.47  trades 0.02
+2v2                Y engine x1.5   energy v turn v c15: score 0.514 ± 0.019  kills m/o/f/t 0.11 / 0.18 / 0.54 / 0.17  life 114 s  kpm/ship 0.49  trades 0.02
+## 5v5: 16 jobs, B 4096, 19:40 KST
+  batch 1/2 98 s; ETA 19:43 KST
+  batch 2/2 130 s; ETA 19:42 KST
+5v5                       frozen   energy v turn v c0: score 0.517 ± 0.021  kills m/o/f/t 0.06 / 0.17 / 0.54 / 0.23  life 109 s  kpm/ship 0.50  trades 0.04
+5v5                 J lift x0.85   energy v turn v c1: score 0.497 ± 0.020  kills m/o/f/t 0.07 / 0.17 / 0.53 / 0.23  life 114 s  kpm/ship 0.48  trades 0.04
+5v5                  Y lift x1.2   energy v turn v c2: score 0.525 ± 0.020  kills m/o/f/t 0.08 / 0.17 / 0.54 / 0.21  life 106 s  kpm/ship 0.52  trades 0.04
+5v5               J induced x1.6   energy v turn v c3: score 0.959 ± 0.008  kills m/o/f/t 0.06 / 0.17 / 0.52 / 0.25  life 121 s  kpm/ship 0.46  trades 0.03
+5v5               Y induced x0.7   energy v turn v c4: score 0.828 ± 0.015  kills m/o/f/t 0.07 / 0.18 / 0.53 / 0.23  life 120 s  kpm/ship 0.46  trades 0.03
+5v5                Y shield x1.3   energy v turn v c5: score 0.749 ± 0.017  kills m/o/f/t 0.06 / 0.16 / 0.51 / 0.27  life 120 s  kpm/ship 0.46  trades 0.04
+5v5                Y damage x1.3   energy v turn v c6: score 0.736 ± 0.018  kills m/o/f/t 0.08 / 0.18 / 0.52 / 0.22  life 105 s  kpm/ship 0.52  trades 0.04
+5v5                J shield x0.8   energy v turn v c7: score 0.712 ± 0.019  kills m/o/f/t 0.07 / 0.17 / 0.53 / 0.22  life 107 s  kpm/ship 0.51  trades 0.05
+5v5           J bullet life x0.8   energy v turn v c8: score 0.595 ± 0.020  kills m/o/f/t 0.06 / 0.16 / 0.53 / 0.24  life 112 s  kpm/ship 0.49  trades 0.04
+5v5      Y head-on fraction x0.5   energy v turn v c9: score 0.597 ± 0.020  kills m/o/f/t 0.06 / 0.16 / 0.54 / 0.24  life 111 s  kpm/ship 0.50  trades 0.04
+5v5           Y recharge rate x2   energy v turn v c10: score 0.541 ± 0.021  kills m/o/f/t 0.07 / 0.17 / 0.54 / 0.23  life 110 s  kpm/ship 0.50  trades 0.04
+5v5        Y recharge delay x0.5   energy v turn v c11: score 0.531 ± 0.021  kills m/o/f/t 0.07 / 0.17 / 0.53 / 0.23  life 109 s  kpm/ship 0.51  trades 0.04
+5v5         Y static thrust x1.5   energy v turn v c12: score 0.651 ± 0.020  kills m/o/f/t 0.07 / 0.17 / 0.54 / 0.22  life 112 s  kpm/ship 0.49  trades 0.04
+5v5        Y nose frequency x1.3   energy v turn v c13: score 0.598 ± 0.020  kills m/o/f/t 0.07 / 0.17 / 0.54 / 0.22  life 109 s  kpm/ship 0.51  trades 0.04
+5v5       J nose frequency x0.75   energy v turn v c14: score 0.596 ± 0.020  kills m/o/f/t 0.06 / 0.16 / 0.54 / 0.24  life 115 s  kpm/ship 0.48  trades 0.04
+5v5                Y engine x1.5   energy v turn v c15: score 0.712 ± 0.019  kills m/o/f/t 0.07 / 0.16 / 0.53 / 0.23  life 115 s  kpm/ship 0.48  trades 0.04
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|
+| frozen | 0.012 ± 0.003 | 0.375 ± 0.019 | 0.517 ± 0.021 | 0.488 | 0.06 / 0.17 / 0.54 / 0.23 | 0.04 | 168 / 112 / 109 | 0.34 / 0.49 / 0.50 | 2.77 |
+| J lift x0.85 | 0.028 ± 0.005 | 0.391 ± 0.019 | 0.497 ± 0.020 | 0.472 | 0.07 / 0.17 / 0.53 / 0.23 | 0.04 | 202 / 120 / 114 | 0.28 / 0.46 / 0.48 | 3.65 |
+| Y lift x1.2 | 0.016 ± 0.004 | 0.369 ± 0.019 | 0.525 ± 0.020 | 0.484 | 0.08 / 0.17 / 0.54 / 0.21 | 0.04 | 167 / 110 / 106 | 0.34 / 0.50 / 0.52 | 2.84 |
+| J induced x1.6 | 0.658 ± 0.012 | 0.866 ± 0.012 | 0.959 ± 0.008 | 0.459 | 0.06 / 0.17 / 0.52 / 0.25 | 0.03 | 307 / 136 / 121 | 0.19 / 0.41 / 0.46 | 3.13 |
+| Y induced x0.7 | 0.194 ± 0.011 | 0.684 ± 0.018 | 0.828 ± 0.015 | 0.328 | 0.07 / 0.18 / 0.53 / 0.23 | 0.03 | 307 / 127 / 120 | 0.19 / 0.44 / 0.46 | 2.62 |
+| Y shield x1.3 | 0.036 ± 0.006 | 0.502 ± 0.019 | 0.749 ± 0.017 | 0.464 | 0.06 / 0.16 / 0.51 / 0.27 | 0.04 | 207 / 122 / 120 | 0.28 / 0.45 / 0.46 | 3.4 |
+| Y damage x1.3 | 0.034 ± 0.006 | 0.519 ± 0.019 | 0.736 ± 0.018 | 0.466 | 0.08 / 0.18 / 0.52 / 0.22 | 0.04 | 147 / 105 / 105 | 0.38 / 0.52 / 0.52 | 2.38 |
+| J shield x0.8 | 0.037 ± 0.006 | 0.486 ± 0.020 | 0.712 ± 0.019 | 0.463 | 0.07 / 0.17 / 0.53 / 0.22 | 0.05 | 148 / 107 / 107 | 0.38 / 0.52 / 0.51 | 2.41 |
+| J bullet life x0.8 | 0.011 ± 0.003 | 0.393 ± 0.019 | 0.595 ± 0.020 | 0.489 | 0.06 / 0.16 / 0.53 / 0.24 | 0.04 | 169 / 116 / 112 | 0.34 / 0.48 / 0.49 | 3.05 |
+| Y head-on fraction x0.5 | 0.013 ± 0.003 | 0.448 ± 0.020 | 0.597 ± 0.020 | 0.487 | 0.06 / 0.16 / 0.54 / 0.24 | 0.04 | 186 / 114 / 111 | 0.31 / 0.48 / 0.50 | 3.17 |
+| Y recharge rate x2 | 0.006 ± 0.002 | 0.357 ± 0.019 | 0.541 ± 0.021 | 0.494 | 0.07 / 0.17 / 0.54 / 0.23 | 0.04 | 172 / 112 / 110 | 0.33 / 0.49 / 0.50 | 2.9 |
+| Y recharge delay x0.5 | 0.006 ± 0.003 | 0.369 ± 0.019 | 0.531 ± 0.021 | 0.494 | 0.07 / 0.17 / 0.53 / 0.23 | 0.04 | 174 / 111 / 109 | 0.33 / 0.50 / 0.51 | 2.91 |
+| Y static thrust x1.5 | 0.031 ± 0.005 | 0.461 ± 0.019 | 0.651 ± 0.020 | 0.469 | 0.07 / 0.17 / 0.54 / 0.22 | 0.04 | 256 / 115 / 112 | 0.23 / 0.48 / 0.49 | 2.43 |
+| Y nose frequency x1.3 | 0.012 ± 0.003 | 0.409 ± 0.019 | 0.598 ± 0.020 | 0.488 | 0.07 / 0.17 / 0.54 / 0.22 | 0.04 | 163 / 109 / 109 | 0.35 / 0.51 / 0.51 | 2.77 |
+| J nose frequency x0.75 | 0.015 ± 0.004 | 0.462 ± 0.020 | 0.596 ± 0.020 | 0.485 | 0.06 / 0.16 / 0.54 / 0.24 | 0.04 | 189 / 117 / 115 | 0.30 / 0.47 / 0.48 | 3.25 |
+| Y engine x1.5 | 0.021 ± 0.005 | 0.514 ± 0.019 | 0.712 ± 0.019 | 0.479 | 0.07 / 0.16 / 0.53 / 0.23 | 0.04 | 218 / 114 / 115 | 0.26 / 0.49 / 0.48 | 3.01 |
+
+335 s

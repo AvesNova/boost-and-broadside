@@ -1,0 +1,103 @@
+[
+ {
+  "name": "J1.45 Ys0.4 Yd1.2 Js1.0 | r9",
+  "energy": {
+   "max_shield": 0.4,
+   "hit_damage": 1.2
+  },
+  "turn": {
+   "induced_drag_scale": 1.45
+  },
+  "player": "r9",
+  "doctrine": {}
+ },
+ {
+  "name": "J1.45 Ys0.4 Yd1.0 Js0.85 | r9",
+  "energy": {
+   "max_shield": 0.4
+  },
+  "turn": {
+   "induced_drag_scale": 1.45,
+   "max_shield": 0.85
+  },
+  "player": "r9",
+  "doctrine": {}
+ },
+ {
+  "name": "J1.45 Ys0.4 Yd1.2 Js0.85 | r9",
+  "energy": {
+   "max_shield": 0.4,
+   "hit_damage": 1.2
+  },
+  "turn": {
+   "induced_drag_scale": 1.45,
+   "max_shield": 0.85
+  },
+  "player": "r9",
+  "doctrine": {}
+ },
+ {
+  "name": "J1.45 Ys0.35 Yd1.3 Js0.85 | r9",
+  "energy": {
+   "max_shield": 0.35,
+   "hit_damage": 1.3
+  },
+  "turn": {
+   "induced_drag_scale": 1.45,
+   "max_shield": 0.85
+  },
+  "player": "r9",
+  "doctrine": {}
+ },
+ {
+  "name": "J1.5 Ys0.45 Yd1.15 Js0.9 | r9",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.15
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.9
+  },
+  "player": "r9",
+  "doctrine": {}
+ },
+ {
+  "name": "J1.5 Ys0.4 Yd1.2 Js0.85 | r9",
+  "energy": {
+   "max_shield": 0.4,
+   "hit_damage": 1.2
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.85
+  },
+  "player": "r9",
+  "doctrine": {}
+ },
+ {
+  "name": "J1.55 Ys0.45 Yd1.1 Js0.9 | r9",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.55,
+   "max_shield": 0.9
+  },
+  "player": "r9",
+  "doctrine": {}
+ },
+ {
+  "name": "J1.6 Ys0.5 Yb0.85 | r9",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.85
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9",
+  "doctrine": {}
+ }
+]

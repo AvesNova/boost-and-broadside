@@ -66,6 +66,8 @@ HANDLE_UNITS = dict(
     shield_recharge_delay=TIME,
     head_on_fraction=NONE,
     head_on_angle=NONE,
+    head_on_sharpness=NONE,
+    arming_distance=LENGTH,
     hit_radius=LENGTH,
     spawn_energy=ENERGY,
 )
@@ -101,6 +103,8 @@ CARD_UNITS = dict(
     shield_recharge_delay_scale=NONE,
     head_on_fraction_scale=NONE,
     head_on_angle_scale=NONE,
+    head_on_sharpness=NONE,
+    arming_distance=LENGTH,
     engine_knee_scale=NONE,
 )
 FLIGHT_UNITS = dict(

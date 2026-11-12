@@ -1,0 +1,2 @@
+D, Y head-on fraction x0.7, 1v1 energy v turn: 93 fights, 65 kills; merges a kill mean 3.51, seconds 91, extensions 0.09, edge s 3.4
+D, Y head-on fraction x0.7, 1v1 turn mirror: 107 fights, 77 kills; merges a kill mean 3.95, seconds 90, extensions 0.00, edge s 4.4

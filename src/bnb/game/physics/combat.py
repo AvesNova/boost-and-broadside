@@ -187,12 +187,25 @@ def hits(
     )
     radius = per_ship(types.hit_radius, ships.ship_type).gather(1, target)  # the target's
     full = full * closeness(impact_squared(sweep, target, K), radius)
+    # The shooter's arming distance X: the damage ramps as a smoothstep of the distance the
+    # bullet has travelled over [0, X] (a minimum effective range; X = 0 is full damage at
+    # once). The distance is its moves so far, this one included, at its present speed:
+    # exact without drag, and the drag is small this early in a bullet's life.
+    arming = shooters(types.arming_distance)
+    life = torch.round(shooters(types.bullet_life) / rules.tick_length)
+    moves = life - bullets.moves_left.reshape(B, N * K).to(life.dtype) + 1.0
+    travelled = moves * rules.tick_length * bullets.proper_speed.reshape(B, N * K)
+    armed = (travelled / arming.clamp_min(1e-6)).clamp(0.0, 1.0)
+    full = full * torch.where(arming > 0.0, armed * armed * (3.0 - 2.0 * armed), 1.0)
     head_on = rules.head_on_fraction * per_ship(types.head_on_fraction_scale, ships.ship_type)
     head_on = head_on.gather(1, target)  # the target's armour
     # Its half-strength angle: the aspect is halfway from the head-on fraction to 1 there.
     half = rules.head_on_angle * per_ship(types.head_on_angle_scale, ships.ship_type)
     ratio = theta / half.gather(1, target)
-    aspect = 1.0 - (1.0 - head_on) * torch.exp(-LN_2 * ratio * ratio)
+    # The cone's sharpness p: exp(-ln2 ratio^p), 2 a Gaussian cone; higher, a flat-topped
+    # armoured nose that falls away quickly past its half-strength angle.
+    sharpness = per_ship(types.head_on_sharpness, ships.ship_type).gather(1, target)
+    aspect = 1.0 - (1.0 - head_on) * torch.exp(-LN_2 * ratio.pow(sharpness))
     bullet_damage = torch.where(hit, full * aspect, 0.0)
 
     # Scatter each bullet's hit to its (shooter, target): O(bullets), not O(bullets x ships).

@@ -63,3 +63,23 @@ def test_ratings_pin_the_anchor():
     elo = ratings(rows)
     assert elo["off"][0] == 1000.0 and elo["x"][0] < 1000.0
     assert torch.isfinite(torch.tensor(elo["x"][1]))
+
+
+def test_the_pace_counts_the_ships_a_game():
+    from bench.game_loop import PACE_BINS, pace
+
+    B = 2
+    out = dict(
+        gaps=torch.zeros((B, PACE_BINS)),
+        deaths=torch.tensor([3.0, 3.0]),
+        alive_ticks=torch.zeros(B),
+        engage=torch.zeros((B, PACE_BINS)),
+        first_hit_tick=torch.full((B,), -1.0),
+        first_kill_tick=torch.full((B,), -1.0),
+        ships=torch.full((B,), 2.0),
+    )
+    mask = torch.ones(B, dtype=torch.bool)
+    # 6 deaths over 2 games of 2 ships for a minute: 1.5 a minute a ship
+    assert math.isclose(pace(out, mask, 60.0)["kills_per_minute_per_ship"], 1.5)
+    del out["ships"]  # a 5v5 record from before the count: 10 ships
+    assert math.isclose(pace(out, mask, 60.0)["kills_per_minute_per_ship"], 0.3)

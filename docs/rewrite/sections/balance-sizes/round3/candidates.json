@@ -1,0 +1,114 @@
+[
+ {
+  "name": "frozen",
+  "energy": {},
+  "turn": {},
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.3, Y shield x1.0",
+  "energy": {},
+  "turn": {
+   "induced_drag_scale": 1.3
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.3, Y shield x0.8",
+  "energy": {
+   "max_shield": 0.8
+  },
+  "turn": {
+   "induced_drag_scale": 1.3
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.3, Y shield x0.65",
+  "energy": {
+   "max_shield": 0.65
+  },
+  "turn": {
+   "induced_drag_scale": 1.3
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.45, Y shield x1.0",
+  "energy": {},
+  "turn": {
+   "induced_drag_scale": 1.45
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.45, Y shield x0.8",
+  "energy": {
+   "max_shield": 0.8
+  },
+  "turn": {
+   "induced_drag_scale": 1.45
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.45, Y shield x0.65",
+  "energy": {
+   "max_shield": 0.65
+  },
+  "turn": {
+   "induced_drag_scale": 1.45
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.6, Y shield x1.0",
+  "energy": {},
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.6, Y shield x0.8",
+  "energy": {
+   "max_shield": 0.8
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.6, Y shield x0.65",
+  "energy": {
+   "max_shield": 0.65
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.45, Y shield x0.8, Y engine x0.85",
+  "energy": {
+   "max_shield": 0.8,
+   "engine_power": 0.85
+  },
+  "turn": {
+   "induced_drag_scale": 1.45
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.6, Y shield x0.8, Y damage x0.85",
+  "energy": {
+   "max_shield": 0.8,
+   "hit_damage": 0.85
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9"
+ }
+]

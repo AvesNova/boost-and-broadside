@@ -1,0 +1,57 @@
+{
+  "game": {
+    "ships_per_team": 5,
+    "num_fields": 10,
+    "arena_radius": 7800.0,
+    "episode_seconds": 600.0,
+    "respawn_seconds": 10.0,
+    "mode": "team_deathmatch",
+    "spawn_groups": [],
+    "kills_per_ship": 5,
+    "ship_set": "real-scale",
+    "layout": null
+  },
+  "lineup": null,
+  "ships": {
+    "yongma": {
+      "max_lift_coefficient": 0.0049096886068582535,
+      "zero_lift_drag": 4.967039785697125e-05,
+      "engine_power": 1369.9053955078125,
+      "engine_power_full_store": 334.950927734375,
+      "static_thrust": 18.26384925842285,
+      "corner_nose_frequency": 5.432675838470459,
+      "max_shield": 106.3484878540039,
+      "hit_radius": 10.0,
+      "hit_damage": 7.472448348999023,
+      "explosive_share": 0.25,
+      "reference_bullet_speed": 876.8519287109375,
+      "induced_drag_scale": 3.042593240737915,
+      "coast_exchange_scale": 5.827264785766602,
+      "dive_exchange_scale": 0.4433835744857788,
+      "climb_exchange_scale": 1.5299285650253296,
+      "head_on_fraction_scale": 0.2666666805744171,
+      "head_on_angle_scale": 0.2838892936706543,
+      "head_on_sharpness": 8.0
+    },
+    "jujak": {
+      "max_lift_coefficient": 0.0049096886068582535,
+      "zero_lift_drag": 4.967039785697125e-05,
+      "engine_power": 1369.9053955078125,
+      "engine_power_full_store": 334.950927734375,
+      "static_thrust": 18.26384925842285,
+      "corner_nose_frequency": 5.432675838470459,
+      "max_shield": 106.3484878540039,
+      "hit_radius": 8.0,
+      "hit_damage": 6.725203514099121,
+      "explosive_share": 0.25,
+      "reference_bullet_speed": 876.8519287109375,
+      "induced_drag_scale": 3.042593240737915,
+      "coast_exchange_scale": 5.827264785766602,
+      "dive_exchange_scale": 0.4433835744857788,
+      "climb_exchange_scale": 1.5299285650253296,
+      "head_on_fraction_scale": 0.3333333432674408,
+      "head_on_angle_scale": 0.2838892936706543,
+      "head_on_sharpness": 8.0
+    }
+  }
+}

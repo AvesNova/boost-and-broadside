@@ -1,0 +1,118 @@
+[
+ {
+  "name": "D",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.5,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "player": "r9"
+ },
+ {
+  "name": "D, Y head-on fraction x0.7",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "player": "r9"
+ },
+ {
+  "name": "D, Y shield x0.45",
+  "energy": {
+   "max_shield": 0.45,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.5,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "player": "r9"
+ },
+ {
+  "name": "D, Y fraction x0.7, Y shield x0.45",
+  "energy": {
+   "max_shield": 0.45,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "player": "r9"
+ },
+ {
+  "name": "E: C + both head-on fractions x0.5",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45,
+   "head_on_fraction_scale": 0.5
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8,
+   "head_on_fraction_scale": 0.5
+  },
+  "player": "r9"
+ },
+ {
+  "name": "E: C + both fractions x0.5, Y damage x1.7",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.7,
+   "bullet_life": 0.45,
+   "head_on_fraction_scale": 0.5
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8,
+   "head_on_fraction_scale": 0.5
+  },
+  "player": "r9"
+ },
+ {
+  "name": "E: C + both fractions x0.5, Y damage x1.7, Y shield x0.4",
+  "energy": {
+   "max_shield": 0.4,
+   "hit_damage": 1.7,
+   "bullet_life": 0.45,
+   "head_on_fraction_scale": 0.5
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8,
+   "head_on_fraction_scale": 0.5
+  },
+  "player": "r9"
+ },
+ {
+  "name": "E: C + both fractions x0.5, J induced x1.55",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45,
+   "head_on_fraction_scale": 0.5
+  },
+  "turn": {
+   "induced_drag_scale": 1.55,
+   "max_shield": 0.8,
+   "head_on_fraction_scale": 0.5
+  },
+  "player": "r9"
+ }
+]

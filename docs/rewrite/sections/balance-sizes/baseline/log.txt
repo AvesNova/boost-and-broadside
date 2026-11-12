@@ -1,0 +1,32 @@
+## 1v1: 3 jobs, B 8192, 19:15 KST
+W1112 19:16:20.835000 1602032 torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+/home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+  warn_once(FP_FUSION_DEFAULT_WARNING)
+1v1                  frozen (r9)   energy v turn v c0: score 0.013 ± 0.003  kills m/o/f/t 0.16 / 0.14 / 0.41 / 0.30  life 168 s  kpm/ship 0.34  trades 0.00
+1v1                  frozen (r9)     turn mirror v c0: score 0.498 ± 0.011  kills m/o/f/t 0.81 / 0.17 / 0.02 / 0.00  life 152 s  kpm/ship 0.37  trades 0.03
+1v1                  frozen (r9)   energy mirror v c0: score 0.505 ± 0.006  kills m/o/f/t 0.40 / 0.52 / 0.08 / 0.00  life 1076 s  kpm/ship 0.06  trades 0.00
+## 2v2: 3 jobs, B 8192, 19:16 KST
+2v2                  frozen (r9)   energy v turn v c0: score 0.364 ± 0.013  kills m/o/f/t 0.10 / 0.17 / 0.53 / 0.20  life 111 s  kpm/ship 0.50  trades 0.01
+2v2                  frozen (r9)     turn mirror v c0: score 0.507 ± 0.014  kills m/o/f/t 0.20 / 0.23 / 0.47 / 0.10  life 95 s  kpm/ship 0.57  trades 0.02
+2v2                  frozen (r9)   energy mirror v c0: score 0.509 ± 0.012  kills m/o/f/t 0.11 / 0.21 / 0.49 / 0.19  life 221 s  kpm/ship 0.26  trades 0.01
+## 5v5: 5 jobs, B 4096, 19:18 KST
+  batch 1/2 95 s; ETA 19:21 KST
+  batch 2/2 137 s; ETA 19:20 KST
+5v5                  frozen (r9)   energy v turn v c0: score 0.524 ± 0.014  kills m/o/f/t 0.06 / 0.17 / 0.53 / 0.24  life 110 s  kpm/ship 0.50  trades 0.04
+5v5                  frozen (r9)     turn mirror v c0: score 0.490 ± 0.015  kills m/o/f/t 0.10 / 0.20 / 0.55 / 0.15  life 91 s  kpm/ship 0.59  trades 0.06
+5v5                  frozen (r9)   energy mirror v c0: score 0.515 ± 0.014  kills m/o/f/t 0.06 / 0.16 / 0.49 / 0.29  life 161 s  kpm/ship 0.35  trades 0.03
+5v5                  frozen (r9)           mixed v off: score 0.482 ± 0.015  kills m/o/f/t 0.07 / 0.16 / 0.53 / 0.24  life 114 s  kpm/ship 0.48  trades 0.04
+5v5                  frozen (r9)  mixed reversed v off: score 0.493 ± 0.015  kills m/o/f/t 0.08 / 0.18 / 0.53 / 0.21  life 104 s  kpm/ship 0.53  trades 0.05
+## 10v10: 3 jobs, B 2048, 19:20 KST
+10v10                  frozen (r9)   energy v turn v c0: score 0.518 ± 0.021  kills m/o/f/t 0.05 / 0.17 / 0.51 / 0.27  life 125 s  kpm/ship 0.45  trades 0.08
+10v10                  frozen (r9)     turn mirror v c0: score 0.489 ± 0.021  kills m/o/f/t 0.08 / 0.20 / 0.54 / 0.18  life 103 s  kpm/ship 0.53  trades 0.10
+10v10                  frozen (r9)   energy mirror v c0: score 0.500 ± 0.021  kills m/o/f/t 0.05 / 0.15 / 0.46 / 0.34  life 219 s  kpm/ship 0.26  trades 0.05
+## 20v20: 3 jobs, B 1024, 19:22 KST
+20v20                  frozen (r9)   energy v turn v c0: score 0.189 ± 0.024  kills m/o/f/t 0.05 / 0.16 / 0.50 / 0.30  life 158 s  kpm/ship 0.36  trades 0.12
+20v20                  frozen (r9)     turn mirror v c0: score 0.559 ± 0.030  kills m/o/f/t 0.07 / 0.20 / 0.52 / 0.21  life 124 s  kpm/ship 0.45  trades 0.17
+20v20                  frozen (r9)   energy mirror v c0: score 0.447 ± 0.030  kills m/o/f/t 0.05 / 0.15 / 0.43 / 0.38  life 374 s  kpm/ship 0.16  trades 0.07
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | E v T 20v20 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| frozen (r9) | 0.013 ± 0.003 | 0.364 ± 0.013 | 0.524 ± 0.014 | 0.518 ± 0.021 | 0.189 ± 0.024 | 0.487 | 0.06 / 0.17 / 0.53 / 0.24 | 0.04 | 168 / 111 / 110 / 125 / 158 | 0.34 / 0.50 / 0.50 / 0.45 / 0.36 | 2.84 |
+
+515 s

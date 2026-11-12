@@ -1,0 +1,126 @@
+[
+ {
+  "name": "J induced x1.6, Y shield x0.65",
+  "energy": {
+   "max_shield": 0.65
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.6, Y shield x0.5",
+  "energy": {
+   "max_shield": 0.5
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.6, Y shield x0.4",
+  "energy": {
+   "max_shield": 0.4
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.5, Y shield x0.5",
+  "energy": {
+   "max_shield": 0.5
+  },
+  "turn": {
+   "induced_drag_scale": 1.5
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.5, Y shield x0.4",
+  "energy": {
+   "max_shield": 0.4
+  },
+  "turn": {
+   "induced_drag_scale": 1.5
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.55, Y shield x0.45",
+  "energy": {
+   "max_shield": 0.45
+  },
+  "turn": {
+   "induced_drag_scale": 1.55
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.7, Y shield x0.5",
+  "energy": {
+   "max_shield": 0.5
+  },
+  "turn": {
+   "induced_drag_scale": 1.7
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.7, Y shield x0.4",
+  "energy": {
+   "max_shield": 0.4
+  },
+  "turn": {
+   "induced_drag_scale": 1.7
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.6, Y shield x0.5, Y bullet life x0.85",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.85
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.6, Y shield x0.65, Y bullet life x0.8",
+  "energy": {
+   "max_shield": 0.65,
+   "bullet_life": 0.8
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.6, Y shield x0.5, Y damage x0.9",
+  "energy": {
+   "max_shield": 0.5,
+   "hit_damage": 0.9
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J induced x1.6, Y shield x0.5, Y static thrust x0.8",
+  "energy": {
+   "max_shield": 0.5,
+   "static_thrust": 0.8
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9"
+ }
+]

@@ -1,0 +1,29 @@
+[
+ {
+  "name": "C: J induced x1.5, J shield x0.8 | Y shield x0.45, Y damage x1.6, Y bullet life x0.45",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8
+  },
+  "player": "r9"
+ },
+ {
+  "name": "D: A + both head-on fractions x0.5, Y damage x1.1, Y bullet life x0.75",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.5,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "player": "r9"
+ }
+]

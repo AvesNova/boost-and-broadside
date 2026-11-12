@@ -1,0 +1,43 @@
+## 1v1: 12 jobs, B 8192, 05:06 KST
+  batch 1/2 34 s; ETA 05:07 KST
+  batch 2/2 53 s; ETA 05:06 KST
+1v1 armed gunner (arming 100, life x1.3, dmg x0.85, vision x1.2) v standard (roster 3, M, kit2)   energy v turn v c0: score 0.498 ± 0.010  kills m/o/f/t 0.34 / 0.60 / 0.05 / 0.00  life 293 s  kpm/ship 0.20  trades 0.00
+1v1 armed gunner (arming 100, life x1.3, dmg x0.85, vision x1.2) v standard (roster 3, M, kit2)     turn mirror v c0: score 0.520 ± 0.010  kills m/o/f/t 0.35 / 0.56 / 0.09 / 0.00  life 284 s  kpm/ship 0.20  trades 0.00
+1v1 armed gunner (arming 100, life x1.3, dmg x0.85, vision x1.2) v standard (roster 3, M, kit2)   energy mirror v c0: score 0.491 ± 0.008  kills m/o/f/t 0.19 / 0.77 / 0.04 / 0.00  life 545 s  kpm/ship 0.11  trades 0.00
+1v1 close fighter (life x0.8, dmg x1.05) v standard (roster 3, M, kit2)   energy v turn v c1: score 0.531 ± 0.010  kills m/o/f/t 0.30 / 0.61 / 0.09 / 0.00  life 311 s  kpm/ship 0.19  trades 0.00
+1v1 close fighter (life x0.8, dmg x1.05) v standard (roster 3, M, kit2)     turn mirror v c1: score 0.496 ± 0.010  kills m/o/f/t 0.36 / 0.56 / 0.08 / 0.00  life 285 s  kpm/ship 0.20  trades 0.00
+1v1 close fighter (life x0.8, dmg x1.05) v standard (roster 3, M, kit2)   energy mirror v c1: score 0.511 ± 0.010  kills m/o/f/t 0.28 / 0.64 / 0.08 / 0.00  life 352 s  kpm/ship 0.17  trades 0.00
+1v1 rate (lift x1.03, dmg x1.1, f0 0.065) v standard (roster 3, M, kit2)   energy v turn v c2: score 0.578 ± 0.010  kills m/o/f/t 0.32 / 0.60 / 0.09 / 0.00  life 276 s  kpm/ship 0.21  trades 0.00
+1v1 rate (lift x1.03, dmg x1.1, f0 0.065) v standard (roster 3, M, kit2)     turn mirror v c2: score 0.494 ± 0.010  kills m/o/f/t 0.36 / 0.56 / 0.08 / 0.00  life 286 s  kpm/ship 0.20  trades 0.00
+1v1 rate (lift x1.03, dmg x1.1, f0 0.065) v standard (roster 3, M, kit2)   energy mirror v c2: score 0.509 ± 0.009  kills m/o/f/t 0.24 / 0.68 / 0.08 / 0.00  life 360 s  kpm/ship 0.16  trades 0.00
+1v1 speed (drag x0.85, vision x1.04, dmg x0.92, f0 0.07) v standard (roster 3, M, kit2)   energy v turn v c3: score 0.519 ± 0.009  kills m/o/f/t 0.26 / 0.67 / 0.08 / 0.00  life 367 s  kpm/ship 0.16  trades 0.00
+1v1 speed (drag x0.85, vision x1.04, dmg x0.92, f0 0.07) v standard (roster 3, M, kit2)     turn mirror v c3: score 0.501 ± 0.010  kills m/o/f/t 0.35 / 0.55 / 0.09 / 0.00  life 290 s  kpm/ship 0.20  trades 0.00
+1v1 speed (drag x0.85, vision x1.04, dmg x0.92, f0 0.07) v standard (roster 3, M, kit2)   energy mirror v c3: score 0.497 ± 0.009  kills m/o/f/t 0.15 / 0.76 / 0.09 / 0.00  life 441 s  kpm/ship 0.13  trades 0.00
+## 2v2: 4 jobs, B 8192, 05:06 KST
+2v2 armed gunner (arming 100, life x1.3, dmg x0.85, vision x1.2) v standard (roster 3, M, kit2)   energy v turn v c0: score 0.527 ± 0.014  kills m/o/f/t 0.08 / 0.33 / 0.50 / 0.09  life 92 s  kpm/ship 0.59  trades 0.02
+2v2 close fighter (life x0.8, dmg x1.05) v standard (roster 3, M, kit2)   energy v turn v c1: score 0.486 ± 0.014  kills m/o/f/t 0.07 / 0.33 / 0.51 / 0.09  life 93 s  kpm/ship 0.58  trades 0.03
+2v2 rate (lift x1.03, dmg x1.1, f0 0.065) v standard (roster 3, M, kit2)   energy v turn v c2: score 0.577 ± 0.014  kills m/o/f/t 0.07 / 0.34 / 0.50 / 0.09  life 90 s  kpm/ship 0.60  trades 0.02
+2v2 speed (drag x0.85, vision x1.04, dmg x0.92, f0 0.07) v standard (roster 3, M, kit2)   energy v turn v c3: score 0.517 ± 0.014  kills m/o/f/t 0.07 / 0.34 / 0.49 / 0.10  life 94 s  kpm/ship 0.58  trades 0.02
+## 5v5: 4 jobs, B 4096, 05:07 KST
+5v5 armed gunner (arming 100, life x1.3, dmg x0.85, vision x1.2) v standard (roster 3, M, kit2)   energy v turn v c0: score 0.484 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.52 / 0.13  life 84 s  kpm/ship 0.64  trades 0.06
+5v5 close fighter (life x0.8, dmg x1.05) v standard (roster 3, M, kit2)   energy v turn v c1: score 0.510 ± 0.015  kills m/o/f/t 0.05 / 0.29 / 0.53 / 0.12  life 84 s  kpm/ship 0.64  trades 0.07
+5v5 rate (lift x1.03, dmg x1.1, f0 0.065) v standard (roster 3, M, kit2)   energy v turn v c2: score 0.548 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.12  life 82 s  kpm/ship 0.65  trades 0.07
+5v5 speed (drag x0.85, vision x1.04, dmg x0.92, f0 0.07) v standard (roster 3, M, kit2)   energy v turn v c3: score 0.527 ± 0.015  kills m/o/f/t 0.05 / 0.28 / 0.54 / 0.13  life 84 s  kpm/ship 0.64  trades 0.07
+## 10v10: 4 jobs, B 2048, 05:08 KST
+10v10 armed gunner (arming 100, life x1.3, dmg x0.85, vision x1.2) v standard (roster 3, M, kit2)   energy v turn v c0: score 0.440 ± 0.021  kills m/o/f/t 0.05 / 0.28 / 0.52 / 0.15  life 92 s  kpm/ship 0.59  trades 0.13
+10v10 close fighter (life x0.8, dmg x1.05) v standard (roster 3, M, kit2)   energy v turn v c1: score 0.536 ± 0.021  kills m/o/f/t 0.05 / 0.28 / 0.52 / 0.15  life 93 s  kpm/ship 0.59  trades 0.12
+10v10 rate (lift x1.03, dmg x1.1, f0 0.065) v standard (roster 3, M, kit2)   energy v turn v c2: score 0.524 ± 0.021  kills m/o/f/t 0.05 / 0.28 / 0.52 / 0.14  life 90 s  kpm/ship 0.60  trades 0.13
+10v10 speed (drag x0.85, vision x1.04, dmg x0.92, f0 0.07) v standard (roster 3, M, kit2)   energy v turn v c3: score 0.593 ± 0.021  kills m/o/f/t 0.05 / 0.28 / 0.52 / 0.15  life 93 s  kpm/ship 0.58  trades 0.12
+## 20v20: 4 jobs, B 1024, 05:08 KST
+20v20 armed gunner (arming 100, life x1.3, dmg x0.85, vision x1.2) v standard (roster 3, M, kit2)   energy v turn v c0: score 0.424 ± 0.030  kills m/o/f/t 0.05 / 0.28 / 0.51 / 0.16  life 112 s  kpm/ship 0.49  trades 0.19
+20v20 close fighter (life x0.8, dmg x1.05) v standard (roster 3, M, kit2)   energy v turn v c1: score 0.527 ± 0.030  kills m/o/f/t 0.05 / 0.27 / 0.51 / 0.17  life 112 s  kpm/ship 0.49  trades 0.20
+20v20 rate (lift x1.03, dmg x1.1, f0 0.065) v standard (roster 3, M, kit2)   energy v turn v c2: score 0.594 ± 0.030  kills m/o/f/t 0.06 / 0.28 / 0.50 / 0.16  life 111 s  kpm/ship 0.50  trades 0.20
+20v20 speed (drag x0.85, vision x1.04, dmg x0.92, f0 0.07) v standard (roster 3, M, kit2)   energy v turn v c3: score 0.576 ± 0.030  kills m/o/f/t 0.05 / 0.27 / 0.51 / 0.17  life 113 s  kpm/ship 0.49  trades 0.19
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | E v T 20v20 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| armed gunner (arming 100, life x1.3, dmg x0.85, vision x1.2) v standard (roster 3, M, kit2) | 0.498 ± 0.010 | 0.527 ± 0.014 | 0.484 ± 0.015 | 0.440 ± 0.021 | 0.424 ± 0.030 | 0.076 | 0.06 / 0.29 / 0.52 / 0.13 | 0.06 | 293 / 92 / 84 / 92 / 112 | 0.20 / 0.59 / 0.64 / 0.59 / 0.49 | 3.73 |
+| close fighter (life x0.8, dmg x1.05) v standard (roster 3, M, kit2) | 0.531 ± 0.010 | 0.486 ± 0.014 | 0.510 ± 0.015 | 0.536 ± 0.021 | 0.527 ± 0.030 | 0.036 | 0.05 / 0.29 / 0.53 / 0.12 | 0.07 | 311 / 93 / 84 / 93 / 112 | 0.19 / 0.58 / 0.64 / 0.59 / 0.49 | 3.09 |
+| rate (lift x1.03, dmg x1.1, f0 0.065) v standard (roster 3, M, kit2) | 0.578 ± 0.010 | 0.577 ± 0.014 | 0.548 ± 0.015 | 0.524 ± 0.021 | 0.594 ± 0.030 | 0.094 | 0.06 / 0.29 / 0.53 / 0.12 | 0.07 | 276 / 90 / 82 / 90 / 111 | 0.21 / 0.60 / 0.65 / 0.60 / 0.50 | 3.15 |
+| speed (drag x0.85, vision x1.04, dmg x0.92, f0 0.07) v standard (roster 3, M, kit2) | 0.519 ± 0.009 | 0.517 ± 0.014 | 0.527 ± 0.015 | 0.593 ± 0.021 | 0.576 ± 0.030 | 0.093 | 0.05 / 0.28 / 0.54 / 0.13 | 0.07 | 367 / 94 / 84 / 93 / 113 | 0.16 / 0.58 / 0.64 / 0.58 / 0.49 | 3.21 |
+
+247 s

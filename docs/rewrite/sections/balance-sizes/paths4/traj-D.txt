@@ -1,0 +1,2 @@
+D: A + both head-on fractions x0.5, Y damage x1.1, Y bullet life x0.75, 1v1 energy v turn: 88 fights, 58 kills; merges a kill mean 3.38, seconds 96, extensions 0.12, edge s 2.8
+D: A + both head-on fractions x0.5, Y damage x1.1, Y bullet life x0.75, 1v1 turn mirror: 103 fights, 73 kills; merges a kill mean 4.07, seconds 91, extensions 0.01, edge s 3.2

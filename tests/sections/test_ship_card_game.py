@@ -208,7 +208,7 @@ def test_bullet_drag_and_spread_are_the_shooters():
 FIGHTER_DAMAGE, HEAVY_DAMAGE = api.default_card()["hit_damage"]  # a centre hit's
 
 
-def _head_on_damage(types, nose_angles=(0.0, 0.0)) -> torch.Tensor:
+def _head_on_damage(types, nose_angles=(0.0, 0.0), moves_left: int = 1) -> torch.Tensor:
     """(B, N, N) damage of one bullet each way between two ships 100 m apart on the x axis,
     each through the other's nose turned by its nose angle (rad): the hit's aspect angle.
     Centre hits, all explosive share (flat in speed): the armour alone."""
@@ -225,7 +225,7 @@ def _head_on_damage(types, nose_angles=(0.0, 0.0)) -> torch.Tensor:
     K = rules.bullet_slots
     zeros = torch.zeros(1, 2, K)
     live = torch.zeros(1, 2, K, dtype=torch.int32)
-    live[0, :, 0] = 1
+    live[0, :, 0] = moves_left
     along = torch.tensor([1.0, -1.0])[None, :, None] + zeros
     bullets = Bullets(
         x=zeros,
@@ -279,6 +279,37 @@ def test_head_on_angle_is_where_the_targets_armour_is_half():
     old = 1.0 - 0.7 * math.exp(-4.0 * theta * theta / math.pi)
     damage = _head_on_damage(api.ship_types(), (theta, theta))
     assert torch.allclose(damage[0, 1, 0], torch.tensor(HEAVY_DAMAGE * old))
+
+
+def test_head_on_sharpness_is_the_exponent_of_the_targets_cone():
+    """The cone is exp(-ln2 (theta / theta_h)^p): half strength at theta_h whatever p, a
+    higher p keeps the armour nearer full inside theta_h and drops it faster outside."""
+    p = 6.0
+    types = api.ship_types(head_on_sharpness=(p, p))
+    half = 1.0 - 0.7 * 0.5
+    damage = _head_on_damage(types, (HEAD_ON_ANGLE, HEAD_ON_ANGLE))
+    assert torch.allclose(damage[0, 1, 0], torch.tensor(HEAVY_DAMAGE * half))
+    for theta in (0.5 * HEAD_ON_ANGLE, 1.5 * HEAD_ON_ANGLE):
+        aspect = 1.0 - 0.7 * math.exp(-math.log(2.0) * (theta / HEAD_ON_ANGLE) ** p)
+        damage = _head_on_damage(types, (theta, theta))
+        assert torch.allclose(damage[0, 1, 0], torch.tensor(HEAVY_DAMAGE * aspect))
+
+
+def test_arming_distance_ramps_the_shooters_damage_over_the_first_metres():
+    """A bullet's damage is a smoothstep of the distance it has travelled over the shooter's
+    arming distance X (its moves so far, this one included, at its speed): full past X, and
+    none of the other ship's damage changes."""
+    rules = api.rules_of(GameConfig(1, 1, 1000.0))
+    life = round(api.default_card()["bullet_life"][0] / rules.tick_length)
+    step = 500.0 * rules.tick_length  # the test bullets fly at 500 m/s
+    X = 4.0 * step
+    types = api.ship_types(arming_distance=(X, 0.0))
+    full = _head_on_damage(api.ship_types(), moves_left=life)
+    for moves, s in ((1, 0.25), (2, 0.5), (3, 0.75), (4, 1.0), (6, 1.0)):
+        damage = _head_on_damage(types, moves_left=life - moves + 1)
+        ramp = s * s * (3.0 - 2.0 * s)
+        assert torch.allclose(damage[0, 0, 1], full[0, 0, 1] * ramp)
+        assert torch.allclose(damage[0, 1, 0], full[0, 1, 0])
 
 
 def _aspect_hits(nose_angles, ships_per_team=1):

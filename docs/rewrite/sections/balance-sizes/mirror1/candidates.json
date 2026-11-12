@@ -1,0 +1,193 @@
+[
+ {
+  "name": "J1.6 Ys0.65",
+  "player": "r9",
+  "doctrine": {},
+  "energy": {
+   "max_shield": 0.65
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  }
+ },
+ {
+  "name": "+ head-on fraction x0.5",
+  "player": "r9",
+  "doctrine": {},
+  "energy": {
+   "max_shield": 0.65,
+   "head_on_fraction_scale": 0.5
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  }
+ },
+ {
+  "name": "+ head-on fraction x0.33",
+  "player": "r9",
+  "doctrine": {},
+  "energy": {
+   "max_shield": 0.65,
+   "head_on_fraction_scale": 0.333
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.333
+  }
+ },
+ {
+  "name": "+ head-on fraction x0.05",
+  "player": "r9",
+  "doctrine": {},
+  "energy": {
+   "max_shield": 0.65,
+   "head_on_fraction_scale": 0.05
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.05
+  }
+ },
+ {
+  "name": "+ head-on angle x1.5",
+  "player": "r9",
+  "doctrine": {},
+  "energy": {
+   "max_shield": 0.65,
+   "head_on_angle_scale": 1.5
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_angle_scale": 1.5
+  }
+ },
+ {
+  "name": "+ J doctrine open",
+  "player": "r9",
+  "doctrine": {
+   "turn": {
+    "in_advantage": [
+     0.5,
+     0.1
+    ]
+   }
+  },
+  "energy": {
+   "max_shield": 0.65
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  }
+ },
+ {
+  "name": "+ J deny only",
+  "player": "r9",
+  "doctrine": {
+   "turn": {
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0
+   }
+  },
+  "energy": {
+   "max_shield": 0.65
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  }
+ },
+ {
+  "name": "+ deny both types",
+  "player": "r9",
+  "doctrine": {
+   "turn": {
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0
+   },
+   "energy": {
+    "turn_exponent": 0.0,
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389
+   }
+  },
+  "energy": {
+   "max_shield": 0.65
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  }
+ },
+ {
+  "name": "+ fraction x0.33, deny both",
+  "player": "r9",
+  "doctrine": {
+   "turn": {
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0
+   },
+   "energy": {
+    "turn_exponent": 0.0,
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389
+   }
+  },
+  "energy": {
+   "max_shield": 0.65,
+   "head_on_fraction_scale": 0.333
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.333
+  }
+ }
+]

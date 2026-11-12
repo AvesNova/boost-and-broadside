@@ -1,0 +1,81 @@
+## 1v1: 18 jobs, B 8192, 03:26 KST
+  batch 1/3 35 s; ETA 03:28 KST
+  batch 2/3 54 s; ETA 03:28 KST
+  batch 3/3 74 s; ETA 03:27 KST
+1v1 standard v hit-and-run (set b, M, kit2)   energy v turn v c0: score 0.480 ± 0.010  kills m/o/f/t 0.43 / 0.48 / 0.09 / 0.00  life 245 s  kpm/ship 0.24  trades 0.00
+1v1 standard v hit-and-run (set b, M, kit2)     turn mirror v c0: score 0.499 ± 0.011  kills m/o/f/t 0.51 / 0.40 / 0.09 / 0.00  life 209 s  kpm/ship 0.27  trades 0.01
+1v1 standard v hit-and-run (set b, M, kit2)   energy mirror v c0: score 0.498 ± 0.009  kills m/o/f/t 0.34 / 0.57 / 0.09 / 0.00  life 324 s  kpm/ship 0.18  trades 0.01
+1v1 standard v brawler (set b, M, kit2)   energy v turn v c1: score 0.535 ± 0.010  kills m/o/f/t 0.36 / 0.54 / 0.10 / 0.00  life 282 s  kpm/ship 0.21  trades 0.00
+1v1 standard v brawler (set b, M, kit2)     turn mirror v c1: score 0.503 ± 0.010  kills m/o/f/t 0.35 / 0.52 / 0.14 / 0.00  life 274 s  kpm/ship 0.21  trades 0.00
+1v1 standard v brawler (set b, M, kit2)   energy mirror v c1: score 0.517 ± 0.009  kills m/o/f/t 0.32 / 0.60 / 0.08 / 0.00  life 323 s  kpm/ship 0.18  trades 0.00
+1v1 standard v small (set b, M, kit2)   energy v turn v c2: score 0.556 ± 0.010  kills m/o/f/t 0.37 / 0.56 / 0.06 / 0.00  life 276 s  kpm/ship 0.21  trades 0.00
+1v1 standard v small (set b, M, kit2)     turn mirror v c2: score 0.494 ± 0.009  kills m/o/f/t 0.42 / 0.51 / 0.06 / 0.00  life 294 s  kpm/ship 0.20  trades 0.00
+1v1 standard v small (set b, M, kit2)   energy mirror v c2: score 0.498 ± 0.010  kills m/o/f/t 0.32 / 0.60 / 0.08 / 0.00  life 320 s  kpm/ship 0.18  trades 0.00
+1v1 hit-and-run v brawler (set b, M, kit2)   energy v turn v c3: score 0.582 ± 0.010  kills m/o/f/t 0.39 / 0.49 / 0.12 / 0.00  life 241 s  kpm/ship 0.24  trades 0.01
+1v1 hit-and-run v brawler (set b, M, kit2)     turn mirror v c3: score 0.511 ± 0.010  kills m/o/f/t 0.35 / 0.53 / 0.12 / 0.00  life 284 s  kpm/ship 0.20  trades 0.00
+1v1 hit-and-run v brawler (set b, M, kit2)   energy mirror v c3: score 0.509 ± 0.011  kills m/o/f/t 0.46 / 0.46 / 0.08 / 0.00  life 223 s  kpm/ship 0.26  trades 0.01
+1v1 hit-and-run v small (set b, M, kit2)   energy v turn v c4: score 0.630 ± 0.010  kills m/o/f/t 0.43 / 0.50 / 0.07 / 0.00  life 228 s  kpm/ship 0.25  trades 0.00
+1v1 hit-and-run v small (set b, M, kit2)     turn mirror v c4: score 0.485 ± 0.010  kills m/o/f/t 0.42 / 0.52 / 0.06 / 0.00  life 291 s  kpm/ship 0.20  trades 0.01
+1v1 hit-and-run v small (set b, M, kit2)   energy mirror v c4: score 0.502 ± 0.011  kills m/o/f/t 0.46 / 0.44 / 0.09 / 0.00  life 219 s  kpm/ship 0.26  trades 0.01
+1v1 brawler v small (set b, M, kit2)   energy v turn v c5: score 0.500 ± 0.010  kills m/o/f/t 0.33 / 0.57 / 0.10 / 0.00  life 259 s  kpm/ship 0.22  trades 0.00
+1v1 brawler v small (set b, M, kit2)     turn mirror v c5: score 0.499 ± 0.010  kills m/o/f/t 0.43 / 0.52 / 0.05 / 0.00  life 293 s  kpm/ship 0.20  trades 0.01
+1v1 brawler v small (set b, M, kit2)   energy mirror v c5: score 0.502 ± 0.010  kills m/o/f/t 0.33 / 0.52 / 0.15 / 0.00  life 297 s  kpm/ship 0.20  trades 0.00
+## 2v2: 6 jobs, B 8192, 03:27 KST
+2v2 standard v hit-and-run (set b, M, kit2)   energy v turn v c0: score 0.515 ± 0.014  kills m/o/f/t 0.09 / 0.34 / 0.48 / 0.09  life 89 s  kpm/ship 0.61  trades 0.03
+2v2 standard v brawler (set b, M, kit2)   energy v turn v c1: score 0.528 ± 0.014  kills m/o/f/t 0.07 / 0.33 / 0.51 / 0.09  life 92 s  kpm/ship 0.59  trades 0.02
+2v2 standard v small (set b, M, kit2)   energy v turn v c2: score 0.517 ± 0.014  kills m/o/f/t 0.07 / 0.33 / 0.50 / 0.10  life 96 s  kpm/ship 0.57  trades 0.02
+2v2 hit-and-run v brawler (set b, M, kit2)   energy v turn v c3: score 0.542 ± 0.014  kills m/o/f/t 0.08 / 0.33 / 0.50 / 0.09  life 89 s  kpm/ship 0.61  trades 0.03
+2v2 hit-and-run v small (set b, M, kit2)   energy v turn v c4: score 0.498 ± 0.014  kills m/o/f/t 0.09 / 0.33 / 0.49 / 0.09  life 91 s  kpm/ship 0.59  trades 0.02
+2v2 brawler v small (set b, M, kit2)   energy v turn v c5: score 0.479 ± 0.014  kills m/o/f/t 0.07 / 0.33 / 0.50 / 0.10  life 96 s  kpm/ship 0.57  trades 0.02
+## 5v5: 18 jobs, B 4096, 03:28 KST
+  batch 1/5 41 s; ETA 03:31 KST
+  batch 2/5 69 s; ETA 03:31 KST
+  batch 3/5 97 s; ETA 03:31 KST
+  batch 4/5 125 s; ETA 03:31 KST
+  batch 5/5 153 s; ETA 03:31 KST
+5v5 standard v hit-and-run (set b, M, kit2)   energy v turn v c0: score 0.498 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.12  life 80 s  kpm/ship 0.67  trades 0.07
+5v5 standard v brawler (set b, M, kit2)   energy v turn v c1: score 0.524 ± 0.015  kills m/o/f/t 0.06 / 0.28 / 0.53 / 0.13  life 83 s  kpm/ship 0.65  trades 0.07
+5v5 standard v small (set b, M, kit2)   energy v turn v c2: score 0.469 ± 0.015  kills m/o/f/t 0.06 / 0.28 / 0.53 / 0.13  life 85 s  kpm/ship 0.63  trades 0.06
+5v5 hit-and-run v brawler (set b, M, kit2)   energy v turn v c3: score 0.541 ± 0.015  kills m/o/f/t 0.06 / 0.30 / 0.52 / 0.12  life 80 s  kpm/ship 0.67  trades 0.08
+5v5 hit-and-run v small (set b, M, kit2)   energy v turn v c4: score 0.484 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.52 / 0.13  life 82 s  kpm/ship 0.65  trades 0.07
+5v5 brawler v small (set b, M, kit2)   energy v turn v c5: score 0.464 ± 0.015  kills m/o/f/t 0.05 / 0.28 / 0.54 / 0.13  life 84 s  kpm/ship 0.64  trades 0.07
+5v5 standard v hit-and-run (set b, M, kit2)           mixed v r9: score 0.512 ± 0.015  kills m/o/f/t 0.06 / 0.30 / 0.52 / 0.12  life 81 s  kpm/ship 0.66  trades 0.07
+5v5 standard v hit-and-run (set b, M, kit2)  mixed reversed v r9: score 0.507 ± 0.015  kills m/o/f/t 0.06 / 0.30 / 0.52 / 0.12  life 80 s  kpm/ship 0.67  trades 0.08
+5v5 standard v brawler (set b, M, kit2)           mixed v r9: score 0.488 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.13  life 83 s  kpm/ship 0.65  trades 0.07
+5v5 standard v brawler (set b, M, kit2)  mixed reversed v r9: score 0.510 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.12  life 82 s  kpm/ship 0.65  trades 0.07
+5v5 standard v small (set b, M, kit2)           mixed v r9: score 0.512 ± 0.015  kills m/o/f/t 0.06 / 0.28 / 0.53 / 0.13  life 85 s  kpm/ship 0.63  trades 0.06
+5v5 standard v small (set b, M, kit2)  mixed reversed v r9: score 0.480 ± 0.015  kills m/o/f/t 0.05 / 0.28 / 0.53 / 0.14  life 85 s  kpm/ship 0.63  trades 0.07
+5v5 hit-and-run v brawler (set b, M, kit2)           mixed v r9: score 0.505 ± 0.015  kills m/o/f/t 0.07 / 0.30 / 0.52 / 0.11  life 80 s  kpm/ship 0.67  trades 0.08
+5v5 hit-and-run v brawler (set b, M, kit2)  mixed reversed v r9: score 0.526 ± 0.015  kills m/o/f/t 0.06 / 0.30 / 0.52 / 0.12  life 80 s  kpm/ship 0.67  trades 0.07
+5v5 hit-and-run v small (set b, M, kit2)           mixed v r9: score 0.506 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.52 / 0.12  life 81 s  kpm/ship 0.66  trades 0.07
+5v5 hit-and-run v small (set b, M, kit2)  mixed reversed v r9: score 0.515 ± 0.015  kills m/o/f/t 0.06 / 0.28 / 0.53 / 0.13  life 83 s  kpm/ship 0.65  trades 0.07
+5v5 brawler v small (set b, M, kit2)           mixed v r9: score 0.505 ± 0.015  kills m/o/f/t 0.05 / 0.28 / 0.53 / 0.13  life 84 s  kpm/ship 0.64  trades 0.07
+5v5 brawler v small (set b, M, kit2)  mixed reversed v r9: score 0.496 ± 0.015  kills m/o/f/t 0.06 / 0.28 / 0.53 / 0.14  life 85 s  kpm/ship 0.63  trades 0.07
+## 10v10: 6 jobs, B 2048, 03:31 KST
+  batch 1/2 41 s; ETA 03:32 KST
+  batch 2/2 69 s; ETA 03:32 KST
+10v10 standard v hit-and-run (set b, M, kit2)   energy v turn v c0: score 0.487 ± 0.021  kills m/o/f/t 0.06 / 0.29 / 0.51 / 0.14  life 89 s  kpm/ship 0.61  trades 0.13
+10v10 standard v brawler (set b, M, kit2)   energy v turn v c1: score 0.482 ± 0.021  kills m/o/f/t 0.06 / 0.28 / 0.52 / 0.15  life 91 s  kpm/ship 0.60  trades 0.13
+10v10 standard v small (set b, M, kit2)   energy v turn v c2: score 0.511 ± 0.021  kills m/o/f/t 0.05 / 0.27 / 0.52 / 0.16  life 94 s  kpm/ship 0.58  trades 0.12
+10v10 hit-and-run v brawler (set b, M, kit2)   energy v turn v c3: score 0.553 ± 0.021  kills m/o/f/t 0.06 / 0.29 / 0.52 / 0.13  life 87 s  kpm/ship 0.62  trades 0.14
+10v10 hit-and-run v small (set b, M, kit2)   energy v turn v c4: score 0.476 ± 0.021  kills m/o/f/t 0.06 / 0.28 / 0.51 / 0.14  life 91 s  kpm/ship 0.60  trades 0.13
+10v10 brawler v small (set b, M, kit2)   energy v turn v c5: score 0.465 ± 0.021  kills m/o/f/t 0.05 / 0.27 / 0.52 / 0.15  life 93 s  kpm/ship 0.58  trades 0.12
+## 20v20: 6 jobs, B 1024, 03:32 KST
+  batch 1/2 60 s; ETA 03:34 KST
+  batch 2/2 107 s; ETA 03:33 KST
+20v20 standard v hit-and-run (set b, M, kit2)   energy v turn v c0: score 0.506 ± 0.030  kills m/o/f/t 0.06 / 0.29 / 0.50 / 0.15  life 106 s  kpm/ship 0.52  trades 0.21
+20v20 standard v brawler (set b, M, kit2)   energy v turn v c1: score 0.551 ± 0.031  kills m/o/f/t 0.06 / 0.28 / 0.51 / 0.16  life 109 s  kpm/ship 0.50  trades 0.21
+20v20 standard v small (set b, M, kit2)   energy v turn v c2: score 0.527 ± 0.030  kills m/o/f/t 0.05 / 0.26 / 0.51 / 0.18  life 115 s  kpm/ship 0.48  trades 0.19
+20v20 hit-and-run v brawler (set b, M, kit2)   energy v turn v c3: score 0.480 ± 0.031  kills m/o/f/t 0.06 / 0.29 / 0.50 / 0.15  life 107 s  kpm/ship 0.51  trades 0.23
+20v20 hit-and-run v small (set b, M, kit2)   energy v turn v c4: score 0.377 ± 0.029  kills m/o/f/t 0.06 / 0.28 / 0.50 / 0.16  life 109 s  kpm/ship 0.50  trades 0.20
+20v20 brawler v small (set b, M, kit2)   energy v turn v c5: score 0.426 ± 0.030  kills m/o/f/t 0.05 / 0.27 / 0.51 / 0.18  life 114 s  kpm/ship 0.49  trades 0.20
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | E v T 20v20 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| standard v hit-and-run (set b, M, kit2) | 0.480 ± 0.010 | 0.515 ± 0.014 | 0.498 ± 0.015 | 0.487 ± 0.021 | 0.506 ± 0.030 | 0.020 | 0.06 / 0.29 / 0.53 / 0.12 | 0.07 | 245 / 89 / 80 / 89 / 106 | 0.24 / 0.61 / 0.67 / 0.61 / 0.52 | 2.86 |
+| standard v brawler (set b, M, kit2) | 0.535 ± 0.010 | 0.528 ± 0.014 | 0.524 ± 0.015 | 0.482 ± 0.021 | 0.551 ± 0.031 | 0.051 | 0.06 / 0.28 / 0.53 / 0.13 | 0.07 | 282 / 92 / 83 / 91 / 109 | 0.21 / 0.59 / 0.65 / 0.60 / 0.50 | 3.02 |
+| standard v small (set b, M, kit2) | 0.556 ± 0.010 | 0.517 ± 0.014 | 0.469 ± 0.015 | 0.511 ± 0.021 | 0.527 ± 0.030 | 0.056 | 0.06 / 0.28 / 0.53 / 0.13 | 0.06 | 276 / 96 / 85 / 94 / 115 | 0.21 / 0.57 / 0.63 / 0.58 / 0.48 | 3.26 |
+| hit-and-run v brawler (set b, M, kit2) | 0.582 ± 0.010 | 0.542 ± 0.014 | 0.541 ± 0.015 | 0.553 ± 0.021 | 0.480 ± 0.031 | 0.082 | 0.06 / 0.30 / 0.52 / 0.12 | 0.08 | 241 / 89 / 80 / 87 / 107 | 0.24 / 0.61 / 0.67 / 0.62 / 0.51 | 2.64 |
+| hit-and-run v small (set b, M, kit2) | 0.630 ± 0.010 | 0.498 ± 0.014 | 0.484 ± 0.015 | 0.476 ± 0.021 | 0.377 ± 0.029 | 0.130 | 0.06 / 0.29 / 0.52 / 0.13 | 0.07 | 228 / 91 / 82 / 91 / 109 | 0.25 / 0.59 / 0.65 / 0.60 / 0.50 | 2.85 |
+| brawler v small (set b, M, kit2) | 0.500 ± 0.010 | 0.479 ± 0.014 | 0.464 ± 0.015 | 0.465 ± 0.021 | 0.426 ± 0.030 | 0.074 | 0.05 / 0.28 / 0.54 / 0.13 | 0.07 | 259 / 96 / 84 / 93 / 114 | 0.22 / 0.57 / 0.64 / 0.58 / 0.49 | 2.98 |
+
+459 s

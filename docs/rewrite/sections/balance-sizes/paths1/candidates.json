@@ -1,0 +1,164 @@
+[
+ {
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.85
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9",
+  "name": "A"
+ },
+ {
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.85
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9",
+  "name": "A + shoot range 0.7 (r9 1.04)",
+  "parameters": {
+   "14": 0.7
+  }
+ },
+ {
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.85
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9",
+  "name": "A + shoot range 0.5",
+  "parameters": {
+   "14": 0.5
+  }
+ },
+ {
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.85
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9",
+  "name": "A + aim cone 0.6 target sizes (r9 1.01)",
+  "parameters": {
+   "12": 0.6
+  }
+ },
+ {
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.85
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9",
+  "name": "A + aim cone 2.0",
+  "parameters": {
+   "12": 2.0
+  }
+ },
+ {
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.85
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9",
+  "name": "A + reverse range 0.5 (r9 0.21)",
+  "parameters": {
+   "10": 0.5
+  }
+ },
+ {
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.85
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9",
+  "name": "A + side commit 2.5 stall angles (r9 5.0)",
+  "parameters": {
+   "38": 2.5
+  }
+ },
+ {
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.85
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9",
+  "name": "A + side commit 10",
+  "parameters": {
+   "38": 10.0
+  }
+ },
+ {
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.85
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9",
+  "name": "A + aggression 1.5 (r9 2.84)",
+  "parameters": {
+   "27": 1.5
+  }
+ },
+ {
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.85
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9",
+  "name": "A + lead cap 2 gun ranges (r9 4.78)",
+  "parameters": {
+   "16": 2.0
+  }
+ },
+ {
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.85,
+   "head_on_angle_scale": 0.5
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_angle_scale": 0.5
+  },
+  "player": "r9",
+  "name": "A + head-on angle x0.5 both"
+ },
+ {
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.85
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "player": "r9",
+  "name": "A + J head-on fraction x0.5"
+ }
+]

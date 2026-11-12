@@ -1,0 +1,7 @@
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2, cone f0 0.06) v standard (M), kit2 | 0.569 ± 0.015 | 0.527 ± 0.020 | 0.522 ± 0.021 | 0.514 ± 0.030 | 0.069 | 0.06 / 0.29 / 0.53 / 0.12 | 0.07 | 240 / 88 / 80 / 89 | 0.24 / 0.61 / 0.67 / 0.61 | 2.95 |
+| hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2, cone f0 0.05) v standard (M), kit2 | 0.578 ± 0.014 | 0.521 ± 0.021 | 0.535 ± 0.021 | 0.486 ± 0.030 | 0.078 | 0.06 / 0.30 / 0.53 / 0.12 | 0.07 | 263 / 90 / 80 / 88 | 0.22 / 0.60 / 0.67 / 0.61 | 3.06 |
+| hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.3, cone f0 0.05) v standard (M), kit2 | 0.582 ± 0.015 | 0.549 ± 0.020 | 0.556 ± 0.021 | 0.496 ± 0.030 | 0.082 | 0.06 / 0.30 / 0.52 / 0.12 | 0.07 | 236 / 89 / 80 / 89 | 0.24 / 0.61 / 0.67 / 0.61 | 2.95 |
+| hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.3, cone f0 0.04) v standard (M), kit2 | 0.589 ± 0.015 | 0.567 ± 0.020 | 0.537 ± 0.021 | 0.529 ± 0.030 | 0.089 | 0.06 / 0.30 / 0.53 / 0.12 | 0.08 | 238 / 89 / 80 / 88 | 0.24 / 0.61 / 0.67 / 0.61 | 2.9 |
+| hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.25, cone f0 0.05) v standard (cone f0 0.07) (M), kit2 | 0.563 ± 0.014 | 0.536 ± 0.020 | 0.539 ± 0.021 | 0.500 ± 0.030 | 0.063 | 0.06 / 0.30 / 0.52 / 0.12 | 0.07 | 286 / 90 / 81 / 88 | 0.20 / 0.60 / 0.66 / 0.61 | 3.16 |

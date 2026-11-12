@@ -1,0 +1,199 @@
+[
+ {
+  "name": "J1.7 Ys0.5 | r9",
+  "energy": {
+   "max_shield": 0.5
+  },
+  "turn": {
+   "induced_drag_scale": 1.7
+  },
+  "player": "r9",
+  "doctrine": {}
+ },
+ {
+  "name": "J1.7 Ys0.5 | deny",
+  "energy": {
+   "max_shield": 0.5
+  },
+  "turn": {
+   "induced_drag_scale": 1.7
+  },
+  "player": "r9",
+  "doctrine": {
+   "turn": {
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0
+   },
+   "energy": {
+    "turn_exponent": 0.0,
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389
+   }
+  }
+ },
+ {
+  "name": "J1.6 Ys0.5 Yb0.85 | r9",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.85
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9",
+  "doctrine": {}
+ },
+ {
+  "name": "J1.6 Ys0.5 Yb0.85 | deny",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.85
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9",
+  "doctrine": {
+   "turn": {
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0
+   },
+   "energy": {
+    "turn_exponent": 0.0,
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389
+   }
+  }
+ },
+ {
+  "name": "J1.7 Ys0.45 | deny",
+  "energy": {
+   "max_shield": 0.45
+  },
+  "turn": {
+   "induced_drag_scale": 1.7
+  },
+  "player": "r9",
+  "doctrine": {
+   "turn": {
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0
+   },
+   "energy": {
+    "turn_exponent": 0.0,
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389
+   }
+  }
+ },
+ {
+  "name": "J1.6 Ys0.5 Yd0.9 | deny",
+  "energy": {
+   "max_shield": 0.5,
+   "hit_damage": 0.9
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9",
+  "doctrine": {
+   "turn": {
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0
+   },
+   "energy": {
+    "turn_exponent": 0.0,
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389
+   }
+  }
+ }
+]

@@ -1,0 +1,25 @@
+## 1v1: 6 jobs, B 8192, 04:43 KST
+1v1                           D2   energy v turn v c0: score 0.495 ± 0.010  kills m/o/f/t 0.22 / 0.70 / 0.08 / 0.00  life 282 s  kpm/ship 0.21  trades 0.00
+1v1                           D2     turn mirror v c0: score 0.495 ± 0.008  kills m/o/f/t 0.66 / 0.28 / 0.06 / 0.00  life 255 s  kpm/ship 0.23  trades 0.02
+1v1                           D2   energy mirror v c0: score 0.496 ± 0.008  kills m/o/f/t 0.36 / 0.54 / 0.11 / 0.00  life 283 s  kpm/ship 0.20  trades 0.01
+1v1                     D2, kit2   energy v turn v c1: score 0.517 ± 0.011  kills m/o/f/t 0.17 / 0.74 / 0.09 / 0.00  life 184 s  kpm/ship 0.31  trades 0.00
+1v1                     D2, kit2     turn mirror v c1: score 0.496 ± 0.012  kills m/o/f/t 0.65 / 0.29 / 0.05 / 0.00  life 185 s  kpm/ship 0.31  trades 0.03
+1v1                     D2, kit2   energy mirror v c1: score 0.507 ± 0.009  kills m/o/f/t 0.26 / 0.61 / 0.13 / 0.00  life 210 s  kpm/ship 0.27  trades 0.00
+## 2v2: 2 jobs, B 8192, 04:44 KST
+2v2                           D2   energy v turn v c0: score 0.476 ± 0.014  kills m/o/f/t 0.07 / 0.24 / 0.55 / 0.14  life 113 s  kpm/ship 0.49  trades 0.02
+2v2                     D2, kit2   energy v turn v c1: score 0.501 ± 0.014  kills m/o/f/t 0.07 / 0.35 / 0.48 / 0.10  life 90 s  kpm/ship 0.60  trades 0.02
+## 5v5: 2 jobs, B 4096, 04:45 KST
+5v5                           D2   energy v turn v c0: score 0.572 ± 0.014  kills m/o/f/t 0.05 / 0.18 / 0.58 / 0.19  life 102 s  kpm/ship 0.53  trades 0.04
+5v5                     D2, kit2   energy v turn v c1: score 0.689 ± 0.013  kills m/o/f/t 0.06 / 0.30 / 0.51 / 0.13  life 84 s  kpm/ship 0.64  trades 0.07
+## 10v10: 2 jobs, B 2048, 04:46 KST
+10v10                           D2   energy v turn v c0: score 0.447 ± 0.021  kills m/o/f/t 0.04 / 0.18 / 0.56 / 0.22  life 119 s  kpm/ship 0.47  trades 0.08
+10v10                     D2, kit2   energy v turn v c1: score 0.730 ± 0.018  kills m/o/f/t 0.06 / 0.29 / 0.50 / 0.15  life 96 s  kpm/ship 0.57  trades 0.12
+## 20v20: 2 jobs, B 1024, 04:47 KST
+20v20                           D2   energy v turn v c0: score 0.090 ± 0.017  kills m/o/f/t 0.04 / 0.18 / 0.53 / 0.25  life 156 s  kpm/ship 0.36  trades 0.13
+20v20                     D2, kit2   energy v turn v c1: score 0.211 ± 0.025  kills m/o/f/t 0.06 / 0.29 / 0.49 / 0.16  life 121 s  kpm/ship 0.46  trades 0.17
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | E v T 20v20 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| D2 | 0.495 ± 0.010 | 0.476 ± 0.014 | 0.572 ± 0.014 | 0.447 ± 0.021 | 0.090 ± 0.017 | 0.410 | 0.05 / 0.18 / 0.58 / 0.19 | 0.04 | 282 / 113 / 102 / 119 / 156 | 0.21 / 0.49 / 0.53 / 0.47 / 0.36 | 3.39 |
+| D2, kit2 | 0.517 ± 0.011 | 0.501 ± 0.014 | 0.689 ± 0.013 | 0.730 ± 0.018 | 0.211 ± 0.025 | 0.289 | 0.06 / 0.30 / 0.51 / 0.13 | 0.07 | 184 / 90 / 84 / 96 / 121 | 0.31 / 0.60 / 0.64 / 0.57 / 0.46 | 2.17 |
+
+345 s

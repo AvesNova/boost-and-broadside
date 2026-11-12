@@ -1,0 +1,65 @@
+## 1v1: 10 jobs, B 8192, 20:18 KST
+W1112 20:18:30.628000 1637166 torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+/home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+  warn_once(FP_FUSION_DEFAULT_WARNING)
+1v1      J1.5 Ys0.4 Yd1.4 Js0.75   energy v turn v c0: score 0.502 ± 0.017  kills m/o/f/t 0.57 / 0.35 / 0.08 / 0.00  life 115 s  kpm/ship 0.48  trades 0.01
+1v1     J1.5 Ys0.35 Yd1.4 Js0.75   energy v turn v c1: score 0.455 ± 0.017  kills m/o/f/t 0.58 / 0.34 / 0.08 / 0.00  life 111 s  kpm/ship 0.50  trades 0.01
+1v1      J1.5 Ys0.4 Yd1.6 Js0.75   energy v turn v c2: score 0.578 ± 0.017  kills m/o/f/t 0.57 / 0.35 / 0.08 / 0.00  life 115 s  kpm/ship 0.48  trades 0.01
+1v1      J1.5 Ys0.3 Yd1.6 Js0.65   energy v turn v c3: score 0.533 ± 0.017  kills m/o/f/t 0.62 / 0.30 / 0.08 / 0.00  life 99 s  kpm/ship 0.55  trades 0.04
+1v1      J1.5 Ys0.45 Yd1.3 Js0.7   energy v turn v c4: score 0.558 ± 0.016  kills m/o/f/t 0.57 / 0.34 / 0.09 / 0.00  life 121 s  kpm/ship 0.46  trades 0.01
+1v1     J1.45 Ys0.35 Yd1.5 Js0.7   energy v turn v c5: score 0.480 ± 0.017  kills m/o/f/t 0.59 / 0.31 / 0.09 / 0.00  life 98 s  kpm/ship 0.56  trades 0.02
+1v1     J1.45 Ys0.3 Yd1.6 Js0.65   energy v turn v c6: score 0.479 ± 0.017  kills m/o/f/t 0.62 / 0.29 / 0.09 / 0.00  life 91 s  kpm/ship 0.60  trades 0.04
+1v1     J1.45 Ys0.4 Yd1.4 Js0.65   energy v turn v c7: score 0.529 ± 0.018  kills m/o/f/t 0.57 / 0.33 / 0.10 / 0.00  life 101 s  kpm/ship 0.54  trades 0.01
+1v1      J1.5 Ys0.4 Yd1.3 Js0.65   energy v turn v c8: score 0.526 ± 0.017  kills m/o/f/t 0.57 / 0.36 / 0.07 / 0.00  life 111 s  kpm/ship 0.50  trades 0.01
+1v1     J1.5 Ys0.35 Yd1.5 Js0.65   energy v turn v c9: score 0.567 ± 0.017  kills m/o/f/t 0.59 / 0.33 / 0.08 / 0.00  life 105 s  kpm/ship 0.52  trades 0.02
+## 2v2: 10 jobs, B 8192, 20:19 KST
+2v2      J1.5 Ys0.4 Yd1.4 Js0.75   energy v turn v c0: score 0.651 ± 0.019  kills m/o/f/t 0.22 / 0.24 / 0.44 / 0.09  life 86 s  kpm/ship 0.62  trades 0.03
+2v2     J1.5 Ys0.35 Yd1.4 Js0.75   energy v turn v c1: score 0.601 ± 0.020  kills m/o/f/t 0.23 / 0.25 / 0.44 / 0.09  life 84 s  kpm/ship 0.64  trades 0.03
+2v2      J1.5 Ys0.4 Yd1.6 Js0.75   energy v turn v c2: score 0.721 ± 0.017  kills m/o/f/t 0.24 / 0.24 / 0.43 / 0.09  life 85 s  kpm/ship 0.63  trades 0.03
+2v2      J1.5 Ys0.3 Yd1.6 Js0.65   energy v turn v c3: score 0.696 ± 0.018  kills m/o/f/t 0.29 / 0.24 / 0.39 / 0.08  life 79 s  kpm/ship 0.68  trades 0.03
+2v2      J1.5 Ys0.45 Yd1.3 Js0.7   energy v turn v c4: score 0.688 ± 0.018  kills m/o/f/t 0.20 / 0.25 / 0.45 / 0.10  life 87 s  kpm/ship 0.62  trades 0.02
+2v2     J1.45 Ys0.35 Yd1.5 Js0.7   energy v turn v c5: score 0.691 ± 0.018  kills m/o/f/t 0.25 / 0.24 / 0.43 / 0.09  life 81 s  kpm/ship 0.66  trades 0.03
+2v2     J1.45 Ys0.3 Yd1.6 Js0.65   energy v turn v c6: score 0.651 ± 0.019  kills m/o/f/t 0.29 / 0.24 / 0.39 / 0.08  life 79 s  kpm/ship 0.68  trades 0.04
+2v2     J1.45 Ys0.4 Yd1.4 Js0.65   energy v turn v c7: score 0.682 ± 0.019  kills m/o/f/t 0.24 / 0.25 / 0.43 / 0.08  life 84 s  kpm/ship 0.64  trades 0.03
+2v2      J1.5 Ys0.4 Yd1.3 Js0.65   energy v turn v c8: score 0.697 ± 0.019  kills m/o/f/t 0.22 / 0.25 / 0.43 / 0.09  life 86 s  kpm/ship 0.63  trades 0.02
+2v2     J1.5 Ys0.35 Yd1.5 Js0.65   energy v turn v c9: score 0.725 ± 0.017  kills m/o/f/t 0.27 / 0.24 / 0.41 / 0.08  life 82 s  kpm/ship 0.66  trades 0.03
+## 5v5: 10 jobs, B 4096, 20:20 KST
+  batch 1/2 77 s; ETA 20:22 KST
+  batch 2/2 107 s; ETA 20:22 KST
+5v5      J1.5 Ys0.4 Yd1.4 Js0.75   energy v turn v c0: score 0.840 ± 0.015  kills m/o/f/t 0.13 / 0.21 / 0.51 / 0.15  life 86 s  kpm/ship 0.63  trades 0.06
+5v5     J1.5 Ys0.35 Yd1.4 Js0.75   energy v turn v c1: score 0.757 ± 0.018  kills m/o/f/t 0.14 / 0.22 / 0.50 / 0.14  life 84 s  kpm/ship 0.64  trades 0.07
+5v5      J1.5 Ys0.4 Yd1.6 Js0.75   energy v turn v c2: score 0.905 ± 0.012  kills m/o/f/t 0.15 / 0.22 / 0.49 / 0.14  life 85 s  kpm/ship 0.63  trades 0.07
+5v5      J1.5 Ys0.3 Yd1.6 Js0.65   energy v turn v c3: score 0.863 ± 0.014  kills m/o/f/t 0.18 / 0.23 / 0.47 / 0.12  life 80 s  kpm/ship 0.67  trades 0.07
+5v5      J1.5 Ys0.45 Yd1.3 Js0.7   energy v turn v c4: score 0.836 ± 0.015  kills m/o/f/t 0.12 / 0.21 / 0.52 / 0.15  life 88 s  kpm/ship 0.61  trades 0.06
+5v5     J1.45 Ys0.35 Yd1.5 Js0.7   energy v turn v c5: score 0.831 ± 0.015  kills m/o/f/t 0.15 / 0.23 / 0.49 / 0.13  life 82 s  kpm/ship 0.65  trades 0.07
+5v5     J1.45 Ys0.3 Yd1.6 Js0.65   energy v turn v c6: score 0.824 ± 0.015  kills m/o/f/t 0.19 / 0.23 / 0.47 / 0.12  life 80 s  kpm/ship 0.67  trades 0.08
+5v5     J1.45 Ys0.4 Yd1.4 Js0.65   energy v turn v c7: score 0.880 ± 0.013  kills m/o/f/t 0.15 / 0.22 / 0.49 / 0.13  life 84 s  kpm/ship 0.64  trades 0.07
+5v5      J1.5 Ys0.4 Yd1.3 Js0.65   energy v turn v c8: score 0.855 ± 0.015  kills m/o/f/t 0.14 / 0.22 / 0.50 / 0.14  life 86 s  kpm/ship 0.63  trades 0.06
+5v5     J1.5 Ys0.35 Yd1.5 Js0.65   energy v turn v c9: score 0.887 ± 0.013  kills m/o/f/t 0.16 / 0.23 / 0.48 / 0.13  life 83 s  kpm/ship 0.65  trades 0.06
+## 10v10: 10 jobs, B 2048, 20:22 KST
+  batch 1/2 105 s; ETA 20:25 KST
+  batch 2/2 148 s; ETA 20:24 KST
+10v10      J1.5 Ys0.4 Yd1.4 Js0.75   energy v turn v c0: score 0.863 ± 0.020  kills m/o/f/t 0.10 / 0.23 / 0.50 / 0.17  life 97 s  kpm/ship 0.56  trades 0.10
+10v10     J1.5 Ys0.35 Yd1.4 Js0.75   energy v turn v c1: score 0.789 ± 0.024  kills m/o/f/t 0.11 / 0.23 / 0.50 / 0.16  life 96 s  kpm/ship 0.57  trades 0.12
+10v10      J1.5 Ys0.4 Yd1.6 Js0.75   energy v turn v c2: score 0.895 ± 0.018  kills m/o/f/t 0.11 / 0.22 / 0.51 / 0.16  life 96 s  kpm/ship 0.57  trades 0.12
+10v10      J1.5 Ys0.3 Yd1.6 Js0.65   energy v turn v c3: score 0.891 ± 0.019  kills m/o/f/t 0.15 / 0.25 / 0.47 / 0.13  life 92 s  kpm/ship 0.59  trades 0.14
+10v10      J1.5 Ys0.45 Yd1.3 Js0.7   energy v turn v c4: score 0.836 ± 0.022  kills m/o/f/t 0.10 / 0.21 / 0.51 / 0.18  life 100 s  kpm/ship 0.55  trades 0.11
+10v10     J1.45 Ys0.35 Yd1.5 Js0.7   energy v turn v c5: score 0.834 ± 0.022  kills m/o/f/t 0.12 / 0.23 / 0.50 / 0.15  life 96 s  kpm/ship 0.57  trades 0.13
+10v10     J1.45 Ys0.3 Yd1.6 Js0.65   energy v turn v c6: score 0.891 ± 0.018  kills m/o/f/t 0.15 / 0.24 / 0.47 / 0.14  life 91 s  kpm/ship 0.60  trades 0.14
+10v10     J1.45 Ys0.4 Yd1.4 Js0.65   energy v turn v c7: score 0.877 ± 0.020  kills m/o/f/t 0.11 / 0.23 / 0.50 / 0.16  life 96 s  kpm/ship 0.57  trades 0.12
+10v10      J1.5 Ys0.4 Yd1.3 Js0.65   energy v turn v c8: score 0.877 ± 0.020  kills m/o/f/t 0.11 / 0.23 / 0.50 / 0.16  life 97 s  kpm/ship 0.56  trades 0.11
+10v10     J1.5 Ys0.35 Yd1.5 Js0.65   energy v turn v c9: score 0.922 ± 0.016  kills m/o/f/t 0.13 / 0.24 / 0.49 / 0.15  life 94 s  kpm/ship 0.58  trades 0.13
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| J1.5 Ys0.4 Yd1.4 Js0.75 | 0.502 ± 0.017 | 0.651 ± 0.019 | 0.840 ± 0.015 | 0.863 ± 0.020 | 0.363 | 0.13 / 0.21 / 0.51 / 0.15 | 0.06 | 115 / 86 / 86 / 97 | 0.48 / 0.62 / 0.63 / 0.56 | 1.19 |
+| J1.5 Ys0.35 Yd1.4 Js0.75 | 0.455 ± 0.017 | 0.601 ± 0.020 | 0.757 ± 0.018 | 0.789 ± 0.024 | 0.289 | 0.14 / 0.22 / 0.50 / 0.14 | 0.07 | 111 / 84 / 84 / 96 | 0.50 / 0.64 / 0.64 / 0.57 | 1.14 |
+| J1.5 Ys0.4 Yd1.6 Js0.75 | 0.578 ± 0.017 | 0.721 ± 0.017 | 0.905 ± 0.012 | 0.895 ± 0.018 | 0.405 | 0.15 / 0.22 / 0.49 / 0.14 | 0.07 | 115 / 85 / 85 / 96 | 0.48 / 0.63 / 0.63 / 0.57 | 1.18 |
+| J1.5 Ys0.3 Yd1.6 Js0.65 | 0.533 ± 0.017 | 0.696 ± 0.018 | 0.863 ± 0.014 | 0.891 ± 0.019 | 0.391 | 0.18 / 0.23 / 0.47 / 0.12 | 0.07 | 99 / 79 / 80 / 92 | 0.55 / 0.68 / 0.67 / 0.59 | 0.99 |
+| J1.5 Ys0.45 Yd1.3 Js0.7 | 0.558 ± 0.016 | 0.688 ± 0.018 | 0.836 ± 0.015 | 0.836 ± 0.022 | 0.336 | 0.12 / 0.21 / 0.52 / 0.15 | 0.06 | 121 / 87 / 88 / 100 | 0.46 / 0.62 / 0.61 / 0.55 | 1.29 |
+| J1.45 Ys0.35 Yd1.5 Js0.7 | 0.480 ± 0.017 | 0.691 ± 0.018 | 0.831 ± 0.015 | 0.834 ± 0.022 | 0.334 | 0.15 / 0.23 / 0.49 / 0.13 | 0.07 | 98 / 81 / 82 / 96 | 0.56 / 0.66 / 0.65 / 0.57 | 0.98 |
+| J1.45 Ys0.3 Yd1.6 Js0.65 | 0.479 ± 0.017 | 0.651 ± 0.019 | 0.824 ± 0.015 | 0.891 ± 0.018 | 0.391 | 0.19 / 0.23 / 0.47 / 0.12 | 0.08 | 91 / 79 / 80 / 91 | 0.60 / 0.68 / 0.67 / 0.60 | 0.86 |
+| J1.45 Ys0.4 Yd1.4 Js0.65 | 0.529 ± 0.018 | 0.682 ± 0.019 | 0.880 ± 0.013 | 0.877 ± 0.020 | 0.380 | 0.15 / 0.22 / 0.49 / 0.13 | 0.07 | 101 / 84 / 84 / 96 | 0.54 / 0.64 / 0.64 / 0.57 | 1.03 |
+| J1.5 Ys0.4 Yd1.3 Js0.65 | 0.526 ± 0.017 | 0.697 ± 0.019 | 0.855 ± 0.015 | 0.877 ± 0.020 | 0.377 | 0.14 / 0.22 / 0.50 / 0.14 | 0.06 | 111 / 86 / 86 / 97 | 0.50 / 0.63 / 0.63 / 0.56 | 1.14 |
+| J1.5 Ys0.35 Yd1.5 Js0.65 | 0.567 ± 0.017 | 0.725 ± 0.017 | 0.887 ± 0.013 | 0.922 ± 0.016 | 0.422 | 0.16 / 0.23 / 0.48 / 0.13 | 0.06 | 105 / 82 / 83 / 94 | 0.52 / 0.66 / 0.65 / 0.58 | 1.04 |
+
+411 s

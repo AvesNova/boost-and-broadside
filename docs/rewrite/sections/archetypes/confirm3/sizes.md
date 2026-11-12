@@ -1,0 +1,5 @@
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | E v T 20v20 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | 0.488 ± 0.010 | 0.481 ± 0.014 | 0.473 ± 0.015 | 0.494 ± 0.021 | 0.443 ± 0.030 | 0.057 | 0.06 / 0.30 / 0.52 / 0.12 | 0.07 | 241 / 89 / 80 / 89 / 107 | 0.24 / 0.61 / 0.67 / 0.61 / 0.52 | 2.75 |
+| hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | crowd extend + lead | 0.501 ± 0.010 | 0.501 ± 0.014 | 0.508 ± 0.015 | 0.492 ± 0.021 | 0.553 ± 0.030 | 0.053 | 0.08 / 0.31 / 0.43 / 0.18 | 0.06 | 265 / 95 / 98 / 110 / 131 | 0.22 / 0.57 / 0.56 / 0.50 / 0.43 | 2.68 |
+| hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | duel one-circle + crowd extend + lead | 0.495 ± 0.010 | 0.492 ± 0.014 | 0.506 ± 0.014 | 0.485 ± 0.021 | 0.500 ± 0.031 | 0.015 | 0.08 / 0.30 / 0.43 / 0.19 | 0.06 | 267 / 95 / 97 / 110 / 131 | 0.22 / 0.57 / 0.56 / 0.50 / 0.43 | 2.71 |

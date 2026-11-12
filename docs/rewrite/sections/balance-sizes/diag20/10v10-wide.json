@@ -1,0 +1,198 @@
+{
+ "candidates": [
+  {
+   "name": "frozen (r9)",
+   "energy": {},
+   "turn": {},
+   "player": "r9"
+  }
+ ],
+ "sizes": {
+  "10": [
+   {
+    "variant": 0,
+    "lineup": "energy v turn",
+    "a": "c0",
+    "b": "c0",
+    "games": 512,
+    "score": [
+     0.12890625,
+     0.014298805966973305
+    ],
+    "kill_score": [
+     0.41080009937286377,
+     0.003412402467802167
+    ],
+    "kills_per_minute_mean": 6.400781154632568,
+    "kills_per_minute_median": 6.400000095367432,
+    "kills_per_game": 32.00390625,
+    "kill_share": [
+     0.04863908141851425,
+     0.14213353395462036,
+     0.5072622895240784,
+     0.3019650876522064
+    ],
+    "damage_share": [
+     0.09030473232269287,
+     0.17706674337387085,
+     0.49582505226135254,
+     0.23680350184440613
+    ],
+    "kill_share_by_pair": {
+     "Y on Y": [
+      [
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      0.0
+     ],
+     "Y on J": [
+      [
+       0.06266587972640991,
+       0.1592450588941574,
+       0.5328811407089233,
+       0.24520790576934814
+      ],
+      6782.0
+     ],
+     "J on Y": [
+      [
+       0.03873386234045029,
+       0.13004997372627258,
+       0.48917117714881897,
+       0.34204497933387756
+      ],
+      9604.0
+     ],
+     "J on J": [
+      [
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      0.0
+     ]
+    },
+    "damage_share_by_victim": {
+     "yongma": [
+      0.07518010586500168,
+      0.17237558960914612,
+      0.5029005408287048,
+      0.24954375624656677
+     ],
+     "jujak": [
+      0.1281789243221283,
+      0.18881402909755707,
+      0.4781070351600647,
+      0.2049000859260559
+     ]
+    },
+    "passes_per_kill": 0.30281949043273926,
+    "no_merge_kills": [
+     0.72836567801782,
+     0.003474806162286187
+    ],
+    "first_merge_kills": [
+     0.15604784572195776,
+     0.0028349886632197084
+    ],
+    "killer_first_hit": [
+     0.9191382887831075,
+     0.0021297342618547335
+    ],
+    "first_hit_wins": [
+     0.5093167701863354,
+     0.02274683777960412
+    ],
+    "ttk_median": 27.5,
+    "circles": [
+     0.33023107051849365,
+     0.6432804465293884,
+     0.02648848667740822
+    ],
+    "circle_count": 25143.0,
+    "trade_fraction": 0.05683626979589462,
+    "death_gap_mean": 7.949936389923096,
+    "death_gap_median": 5.5,
+    "life_seconds": 171.29733702808403,
+    "kills_per_minute_per_ship": 0.33126953125,
+    "spawn_to_engagement_median": 61.5,
+    "first_hit_median": 29.333333333333332,
+    "first_kill_median": 40.766666666666666,
+    "engagement": {
+     "gun range": {
+      "engagements": 108880.0,
+      "kills": 16375.0,
+      "merges_per_kill_mean": 0.22906869649887085,
+      "merges_per_kill_median": 0.0,
+      "first_pass_kill_share": 0.9457709789276123,
+      "merges_per_kill_p90": 1.0,
+      "merges_per_engagement_mean": 0.8707659840583801,
+      "to_damage_median": 1.5,
+      "to_death_median": 2.5,
+      "length_median": 7.5,
+      "circles_turned_mean": 0.46805083751678467,
+      "one_two_scissors": [
+       0.29255232214927673,
+       0.6629788279533386,
+       0.04446881636977196
+      ]
+     },
+     "two turn diameters": {
+      "engagements": 116306.0,
+      "kills": 16375.0,
+      "merges_per_kill_mean": 0.7438167929649353,
+      "merges_per_kill_median": 0.0,
+      "first_pass_kill_share": 0.8095877766609192,
+      "merges_per_kill_p90": 2.0,
+      "merges_per_engagement_mean": 1.2765291929244995,
+      "to_damage_median": 12.5,
+      "to_death_median": 17.5,
+      "length_median": 23.5,
+      "circles_turned_mean": 1.2336745262145996,
+      "one_two_scissors": [
+       0.3590615689754486,
+       0.5383705496788025,
+       0.1025678962469101
+      ]
+     }
+    },
+    "wins": 58.0,
+    "draws": 16.0,
+    "candidate": "frozen (r9)"
+   }
+  ]
+ },
+ "versus": [],
+ "card_passes": [
+  {
+   "Y on Y": {
+    "head_on_passes": 9.661322875076898,
+    "tail_seconds": 5.266666666666667
+   },
+   "Y on J": {
+    "head_on_passes": 5.244755051160763,
+    "tail_seconds": 2.933333333333333
+   },
+   "J on Y": {
+    "head_on_passes": 11.729823796852788,
+    "tail_seconds": 6.6
+   },
+   "J on J": {
+    "head_on_passes": 6.452564447903802,
+    "tail_seconds": 3.6666666666666665
+   },
+   "gun_range": [
+    612.3208618164062,
+    607.4852905273438
+   ],
+   "head_on_angle_degrees": [
+    21.137338770742158,
+    21.137338770742158
+   ]
+  }
+ ]
+}

@@ -1,0 +1,133 @@
+[
+ {
+  "name": "C range: J1.5 Js0.75 | Ys0.4 Yd1.4 Yb0.5",
+  "energy": {
+   "max_shield": 0.4,
+   "hit_damage": 1.4,
+   "bullet_life": 0.5
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.75
+  },
+  "player": "r9"
+ },
+ {
+  "name": "C range: J1.5 Js0.75 | Ys0.45 Yd1.4 Yb0.5",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.4,
+   "bullet_life": 0.5
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.75
+  },
+  "player": "r9"
+ },
+ {
+  "name": "C range: J1.5 Js0.75 | Ys0.4 Yd1.5 Yb0.55",
+  "energy": {
+   "max_shield": 0.4,
+   "hit_damage": 1.5,
+   "bullet_life": 0.55
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.75
+  },
+  "player": "r9"
+ },
+ {
+  "name": "C range: J1.5 Js0.8 | Ys0.45 Yd1.5 Yb0.5",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.5,
+   "bullet_life": 0.5
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8
+  },
+  "player": "r9"
+ },
+ {
+  "name": "C range: J1.45 Js0.75 | Ys0.4 Yd1.5 Yb0.5",
+  "energy": {
+   "max_shield": 0.4,
+   "hit_damage": 1.5,
+   "bullet_life": 0.5
+  },
+  "turn": {
+   "induced_drag_scale": 1.45,
+   "max_shield": 0.75
+  },
+  "player": "r9"
+ },
+ {
+  "name": "C range: J1.5 Js0.75 | Ys0.35 Yd1.4 Yb0.6",
+  "energy": {
+   "max_shield": 0.35,
+   "hit_damage": 1.4,
+   "bullet_life": 0.6
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.75
+  },
+  "player": "r9"
+ },
+ {
+  "name": "D head-on: A + J fraction x0.5, Y damage x1.1",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.85,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "player": "r9"
+ },
+ {
+  "name": "D head-on: A + J fraction x0.5, Y damage x1.15, Y shield x0.45",
+  "energy": {
+   "max_shield": 0.45,
+   "bullet_life": 0.85,
+   "hit_damage": 1.15
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "player": "r9"
+ },
+ {
+  "name": "D head-on: A + both fractions x0.5, Y damage x1.1",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.85,
+   "hit_damage": 1.1,
+   "head_on_fraction_scale": 0.5
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "player": "r9"
+ },
+ {
+  "name": "D head-on: A + J fraction x0.4, Y damage x1.2",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.85,
+   "hit_damage": 1.2
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.4
+  },
+  "player": "r9"
+ }
+]
