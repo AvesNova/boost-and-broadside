@@ -377,3 +377,20 @@ run (the release game's), and round 8 was rerun fogged (`round8/cards-fog.*`; 17
 - **Round 9** (running, 17:10): ES from r7 on damage x0.3 (Yongma's x0.85 more, as at
   lower damage Yongma gains): life ~140 s, tail ~0.25, to re-tune the agent for slower
   fights; then a card round to rebalance.
+
+## 17:22 KST: the author's regime idea (noted; not run yet)
+
+- The distinctness measure now also splits by regime against the nearest seen enemy:
+  own specific energy (v^2/2 + store) ahead or behind, and inside or outside two own
+  full-stick turn radii (`distinctness`; the final run reports it). A CPU smoke on r7
+  (4 games, 30 s) already shows the split is informative: Jujak ships differ most when
+  energy-ahead and inside (KL 7.0, agreement 0.33), Yongma ships least when outside
+  (0.3, 0.95); samples tiny.
+- **Can today's doctrine express a selector?** Partly. The gate (`strength x
+  in_advantage`) is a logistic in the *card* ratios (turn, climb, speed, range), so it
+  depends on the matchup but not the situation; only extend's re-engage rule reads the
+  live energy ratio, and bleed / deny read the nose angles and range. There is no switch
+  between two whole control sets (energy-fight and turn-fight) by energy state and
+  relative position, with the type moving the boundary. That **needs code**: a logistic
+  selector in the live energy ratio and the range in turn radii (per-type centres) that
+  blends two shared element sets. One rebuild; the ES then tunes the boundaries.
