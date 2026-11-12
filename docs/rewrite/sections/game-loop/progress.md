@@ -394,3 +394,18 @@ run (the release game's), and round 8 was rerun fogged (`round8/cards-fog.*`; 17
   relative position, with the type moving the boundary. That **needs code**: a logistic
   selector in the live energy ratio and the range in turn radii (per-type centres) that
   blends two shared element sets. One rebuild; the ES then tunes the boundaries.
+
+## 2026-11-12 17:10-17:37 KST: round 9 (ES on damage x0.3)
+
+Card: round-7 card with both types' damage x0.3 and Yongma's x0.85 more (`round9/card.json`).
+
+- ES from r7, 16 generations: 0.609 -> 0.636 (penalised kill share); KL 1.1.
+- **Elo** (this card): **r9-r7 1234 ± 6**, r7 1215 ± 6, r4 1208, r2 1206, hot 1006, off
+  1000, r1 991, r1-hand 984, hand 633, random 516. **Improvement over r7: +19 ± 8 Elo
+  (~2.3 SE): small but real.** The whole scale compresses at low lethality (random 108 ->
+  516: fewer kills a game, more draws), so r9 v off is 0.65-0.88 by lineup rather than
+  0.75-0.91. r9 joined the league.
+- Distinctness: KL 0.08 on Yongma ships (agreement 0.97), 2.59 on Jujak ships (0.66).
+- r9 self-play: energy v turn **0.579 ± 0.010** (Yongma ahead: round 10 rebalances); kills
+  mutual 0.03-0.05, offset 0.16-0.19, flank 0.51-0.59, **tail 0.17-0.31**; trades
+  0.04-0.06; life 115-189 s; gap between deaths 9.3-13.7 s.
