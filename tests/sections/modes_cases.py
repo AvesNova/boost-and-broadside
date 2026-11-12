@@ -24,6 +24,7 @@ MODES = {
     "frontline": GameConfig(
         3, 3, 300.0, mode="frontline", episode_seconds=8.0, respawn_seconds=0.5
     ),
+    "elimination": GameConfig(3, 3, 900.0, mode="elimination", episode_seconds=6.0),
 }
 
 

@@ -32,8 +32,8 @@ GAMES = ("frontline", "team_deathmatch", "grouped", "sandbox")
 VECTOR_ALIGNED = 32  # environments per game: a multiple of every CPU's vector loop width
 
 
-# Each pool's own respawn wait (modes_cases' games all wait 0.5 s).
-RESPAWN_S = dict(frontline=0.8, team_deathmatch=0.5, grouped=0.3, sandbox=1.0)
+# Each pool's own respawn wait (modes_cases' games all wait 0.5 s; elimination has none).
+RESPAWN_S = dict(frontline=0.8, team_deathmatch=0.5, grouped=0.3, sandbox=1.0, elimination=None)
 
 
 def _pools(share: float = 0.25, names=GAMES) -> tuple[Pool, ...]:
@@ -318,6 +318,15 @@ def test_one_slice_of_several_arenas_and_clocks_equals_each_game_alone():
     pool's arena, map scale, episode length and respawn wait (bit for bit)."""
     seen = _one_slice_each(ticks=240)
     assert seen["done"] > 64 and seen["died"] > 500, seen
+
+
+def test_an_elimination_pool_equals_its_game_alone():
+    """Elimination beside team deathmatch and Frontline, its pool inheriting no respawn wait
+    from the base config: bit for bit (whole vector widths), through deaths and resets."""
+    pools = _pools(1 / 3, ("frontline", "team_deathmatch", "elimination"))
+    assert pool_game(BASE, pools[-1]).respawn_seconds is None  # BASE waits 0.5 s
+    seen = _against_alone(pools, VECTOR_ALIGNED, ticks=200, seed=5)
+    assert seen["done"] > 0 and seen["died"] > 0, seen
 
 
 def test_one_slice_of_several_arenas_equals_each_game_alone_over_its_first_ticks():

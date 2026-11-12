@@ -769,7 +769,8 @@ def test_deathmatch_respawn_keeps_away_from_the_enemies_alive_after_this_ticks_d
 @pytest.mark.parametrize("mode", list(cases.MODES))
 def test_shield_events_match_the_shield_changes(mode):
     """shield = shield0 - lost + restored for every ship alive at tick start that did not
-    spawn; nothing is lost or restored by the dead; deaths, respawns and resets in play."""
+    spawn; nothing is lost or restored by the dead; deaths, respawns (none in elimination)
+    and resets in play."""
     seen = dict(lost=0, restored=0, deaths=0, respawns=0, resets=0)
     for before, events, after in cases.play(cases.MODES[mode], ticks=250, seed=1):
         alive0 = before.ships.alive
@@ -786,6 +787,8 @@ def test_shield_events_match_the_shield_changes(mode):
         seen["deaths"] += int(events.died.sum())
         seen["respawns"] += int((after.ships.spawned & ~events.done[:, None]).sum())
         seen["resets"] += int(events.done.sum())
+    if mode == "elimination":
+        assert seen.pop("respawns") == 0, seen
     assert all(count > 0 for count in seen.values()), seen
 
 

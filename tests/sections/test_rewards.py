@@ -70,7 +70,10 @@ def test_levels_are_zero_sum_and_the_ledger_holds_every_deficit(mode):
         seen["respawns"] += int((after.ships.spawned & ~events.done[:, None]).sum())
         seen["resets"] += int(events.done.sum())
         seen["recharge"] += int((events.shield_restored > 0).sum())
-    # every kind of death, in every mode (Frontline included), plus respawns and resets
+    # every kind of death, in every mode (Frontline included), plus respawns (none in
+    # elimination) and resets
+    if mode == "elimination":
+        assert seen.pop("respawns") == 0, seen
     assert all(count > 0 for count in seen.values()), seen
 
 

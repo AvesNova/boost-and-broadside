@@ -283,3 +283,16 @@ def test_a_new_build_reads_the_elimination_flag_and_an_older_one_does_not():
             first = net.step(carry, view, reset).policy_logits
             second = net.step(carry, no_mode, reset).policy_logits
         assert torch.equal(first, second) != reads, modes
+
+
+def test_real_scale_elimination_fits_the_real_scale_training_batch():
+    """Its sizes and ship set are the real-scale mix's, so a mix may take it (its share is
+    the author's call); its pools then wait no respawn."""
+    from bnb.runtime.train import TRAINING_MIXES, mixed
+
+    mix = TRAINING_MIXES["real_scale_mixed"]
+    with_elimination = tuple((name, 0.45) for name, _ in mix) + (("real_scale_elimination", 0.1),)
+    game, pools = mixed(mix=with_elimination)
+    rules = api.rules_of(game, pools, 40)
+    games = [pool for pool in rules.pools if pool.mode.name == "elimination"]
+    assert games and all(pool.respawn_ticks == pool.episode_ticks == 5400 for pool in games)

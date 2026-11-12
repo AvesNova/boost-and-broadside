@@ -5,7 +5,7 @@ import dataclasses
 import math
 from fractions import Fraction
 
-from .config import GameConfig
+from .config import ELIMINATION, GameConfig
 
 
 @dataclasses.dataclass(frozen=True)
@@ -38,8 +38,11 @@ GAME_FIELDS = ("mode", "arena_radius", "spawn_groups", "episode_seconds", "respa
 
 def pool_game(config: GameConfig, pool: Pool) -> GameConfig:
     """The game a pool plays: the config with the pool's settings where it gives them. The
-    config validates the result (spawn groups only in team deathmatch, and so on)."""
+    config validates the result (spawn groups only in team deathmatch, and so on). An
+    elimination pool inherits no respawn wait (it has none)."""
     given = {name: getattr(pool, name) for name in GAME_FIELDS if getattr(pool, name) is not None}
+    if given.get("mode", config.mode) == ELIMINATION and pool.respawn_seconds is None:
+        given["respawn_seconds"] = None
     return dataclasses.replace(config, **given)
 
 
