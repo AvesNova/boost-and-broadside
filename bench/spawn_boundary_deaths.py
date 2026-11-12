@@ -26,6 +26,7 @@ from bnb.game.handling.characteristics import characteristics
 
 
 def measure(preset: str, environments: int, ticks: int, hold: int, window: int, seed: int) -> dict:
+    """The module's measurement of one preset's spawns (the module docstring): a dict."""
     torch.manual_seed(seed)  # the agent's draws
     config = api.PRESETS[preset]
     types = api.ship_types(ship_set=config.ship_set)

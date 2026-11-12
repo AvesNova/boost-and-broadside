@@ -37,8 +37,13 @@ kinetic energy, (proper speed / reference speed)^2, times the closeness of the p
 rules' is the floor; the real-scale and design-seed sets' is 5e-4 1/m, the .50 cal's), its
 bullet life the whole ticks that fly its gun range under it (no drag trim). Every set's
 cards were re-solved: hit damage x 15/8 (the closeness's mean is 8/15), the reference
-distance 300 m in the real-scale sets (`Rules.damage_reference_distance`).
+distance 300 m in the real-scale sets (`Rules.damage_reference_distance`). Version 7
+(2026-11-12): elimination spawns by team side (`modes.spawns.side_placement`): each team
+in a disc of `ModeRules.side_area_fraction` arena radii around its centre,
+`Rules.spawn_offset` arena radii out on the spawn axis, nose toward the enemy area within
+`side_heading_jitter`, keeping the edge's turn room; it was team deathmatch's uniform
+draw. Team deathmatch, Frontline and fixed layouts (Clover) compute the same numbers.
 """
 
-VERSION = 6
-FINGERPRINT = "9b5f586137e7dadd"
+VERSION = 7
+FINGERPRINT = "2581fdc8196942e9"

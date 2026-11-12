@@ -244,12 +244,14 @@ def mirror_fields(
     cos2, sin2 = torch.cos(2.0 * rotation)[:, None], torch.sin(2.0 * rotation)[:, None]
     x, y = fields.x[:, :P], fields.y[:, :P]
     reflected_x, reflected_y = cos2 * x + sin2 * y, sin2 * x - cos2 * y
-    along = disc_fraction * arena_radius * (2.0 * map_uniforms[:, 4 * (M - 1)] - 1.0)
-    on_axis = (along * torch.cos(rotation))[:, None], (along * torch.sin(rotation))[:, None]
-    keep = M - 2 * P  # 1 for an odd M
+    if M % 2:  # an odd last field on the axis (with no field there is no uniform to read)
+        along = disc_fraction * arena_radius * (2.0 * map_uniforms[:, 4 * (M - 1)] - 1.0)
+        on_axis = [(along * torch.cos(rotation))[:, None], (along * torch.sin(rotation))[:, None]]
+    else:
+        on_axis = [x[:, :0], y[:, :0]]
     return Fields(
-        x=torch.cat([x, reflected_x, on_axis[0][:, :keep]], 1),
-        y=torch.cat([y, reflected_y, on_axis[1][:, :keep]], 1),
+        x=torch.cat([x, reflected_x, on_axis[0]], 1),
+        y=torch.cat([y, reflected_y, on_axis[1]], 1),
         radius=fields.radius,
         band_width=fields.band_width,
         level=fields.level,

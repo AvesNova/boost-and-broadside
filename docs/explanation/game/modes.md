@@ -104,7 +104,13 @@ deathmatch, every death a point for the other team, with one kill per enemy ship
   many alive, more total shield over the living ships wins (the shield is the game's only
   health: a ship whose shield is gone dies to any damage, so the side behind on it has to
   attack); equal again, a draw.
-- **Spawns:** team deathmatch's uniform spawns, at the start only; or a fixed layout's.
+- **Spawns, by team side** (game version 7; `bnb.game.modes.spawns.side_placement`): the
+  teams start on opposite sides, not as a lottery. Each team's area is a disc of
+  `ModeRules.side_area_fraction` (0.15) arena radii around its centre, `Rules.spawn_offset`
+  (0.8) arena radii out along the match's spawn axis; each ship a uniform point in it,
+  nose toward the enemy area's centre within `side_heading_jitter` (15 degrees), turned
+  the least that keeps team deathmatch's edge rule. A fixed layout's spawns (Clover)
+  replace it.
 - **Observation:** the `mode_elimination` flag; the scores are the kills and the winning
   score is the enemy's (active) ships.
 - **Clock:** 90 s by default, 180 s at real scale (both presets): a short episode.

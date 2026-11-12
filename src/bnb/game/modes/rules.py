@@ -170,17 +170,21 @@ del _base, _game, _n
 
 @dataclasses.dataclass(frozen=True)
 class ModeRules:
-    """name: the mode. Team deathmatch (and elimination, its variant: uniform spawns, and one
-    kill per enemy ship wins): kills_per_ship, spawn_groups (ships per team per
+    """name: the mode. Team deathmatch (and elimination, its variant: spawns by team side,
+    and one kill per enemy ship wins): kills_per_ship, spawn_groups (ships per team per
     group; empty for uniform spawns), spawn_candidates (C, the best of C), the group centres'
     disc (group_centre_fraction of the arena radius), the members' disc (group_radius), the
     respawn ring around an anchor (anchor_distance_min to _max), and spawn_margin, how far
-    inside the arena edge a grouped candidate is clipped to. Frontline: the zone
-    ring (zone_ring_fraction of the arena radius), zone_radius (m before map scaling),
-    capture_seconds (a lead of one), front_threshold (captures ahead that win) and the
-    spawn disc (spawn_zone_fraction of the zone radius). layout: the game's fixed map
-    (`MapLayout`), or None for a random one; part of the mode's rules, so games of one mode
-    with different layouts are different slices of the batch (`layout.per_mode`)."""
+    inside the arena edge a grouped candidate is clipped to. Elimination spawns by team
+    side (`modes.spawns.side_placement`): each team's area a disc of side_area_fraction
+    arena radii around its centre at `Rules.spawn_offset` arena radii on the spawn axis,
+    the noses toward the enemy area's centre within side_heading_jitter (radians).
+    Frontline: the zone ring (zone_ring_fraction of the arena radius), zone_radius (m
+    before map scaling), capture_seconds (a lead of one), front_threshold (captures ahead
+    that win) and the spawn disc (spawn_zone_fraction of the zone radius). layout: the
+    game's fixed map (`MapLayout`), or None for a random one; part of the mode's rules, so
+    games of one mode with different layouts are different slices of the batch
+    (`layout.per_mode`)."""
 
     name: str
     kills_per_ship: int = 5
@@ -196,6 +200,8 @@ class ModeRules:
     capture_seconds: float = 10.0
     front_threshold: int = 3
     spawn_zone_fraction: float = 0.35
+    side_area_fraction: float = 0.15
+    side_heading_jitter: float = math.radians(15.0)
     layout: MapLayout | None = None
 
     def uniform_count(self, num_ships: int) -> int:

@@ -14,7 +14,7 @@ import torch
 
 from ..physics.spawning import Placement, formation, formation_rank, uniform_disc
 from ..rules import Rules
-from ..state import ModeState, by_team, enemy
+from ..state import ModeState, by_team, enemy, ship_team
 from .frontline import TEAM0_DEFENSE, TEAM0_SPAWN, TEAM1_DEFENSE, TEAM1_SPAWN
 from .rules import ELIMINATION, FRONTLINE, TEAM_DEATHMATCH, ModeRules
 
@@ -93,6 +93,21 @@ def _heading(rules: Rules, arena_radius: torch.Tensor, x: torch.Tensor, y: torch
     off_normal = torch.copysign(least + drawn.abs() * (1.0 - least / math.pi), drawn)
     angle = torch.atan2(y, x) + off_normal
     return torch.cos(angle), torch.sin(angle)
+
+
+def _edge_safe(rules: Rules, arena_radius: torch.Tensor, x: torch.Tensor, y: torch.Tensor, angle):
+    """A chosen heading angle (B, N) for a ship spawning at (x, y) (B, N), turned the least
+    that leaves it room to turn away from the edge (`_heading`'s bound, modes spec 4):
+    within `spawn_turn_distance` D of the edge its angle off the outward normal is raised to
+    at least acos(d / D), toward its own side of the normal; a heading already inside the
+    bound is unchanged. (cos, sin) (B, N)."""
+    distance = torch.sqrt(x * x + y * y)
+    room = (arena_radius[:, None] - distance) / rules.spawn_turn_distance
+    least = torch.acos(room.clamp(0.0, 1.0))
+    normal = torch.atan2(y, x)
+    off_normal = torch.remainder(angle - normal + math.pi, 2.0 * math.pi) - math.pi
+    off_normal = torch.copysign(torch.maximum(off_normal.abs(), least), off_normal)
+    return torch.cos(normal + off_normal), torch.sin(normal + off_normal)
 
 
 def _group_of_rank(groups: tuple[int, ...], rank: torch.Tensor) -> torch.Tensor:
@@ -222,6 +237,41 @@ def deathmatch_placement(
     return Placement(x=place_x, y=place_y, heading_cos=heading_cos, heading_sin=heading_sin)
 
 
+def side_placement(
+    rules: Rules,
+    mode_rules: ModeRules,
+    arena_radius: torch.Tensor,
+    uniforms: torch.Tensor,
+    axis_x: torch.Tensor,
+    axis_y: torch.Tensor,
+) -> Placement:
+    """Elimination's spawns by team side (modes spec 4, game version 7): each team's area is
+    the disc of side_area_fraction arena radii around its centre, `Rules.spawn_offset` arena
+    radii from the map centre along the spawn axis (B,), team 0 on the -axis side and team 1
+    on the + side as the sandbox formation's; each ship a uniform point in its team's area
+    (the mode's candidate 0 radius and angle uniforms), nose toward the enemy area's centre
+    turned by a uniform angle within side_heading_jitter (its heading uniform), then turned
+    the least that leaves it room to turn away from the edge (`_edge_safe`). Team 1's
+    placement is team 0's turned half a turn in distribution. arena_radius (B,)."""
+    B, N, S = uniforms.shape[0], rules.num_ships, rules.ships_per_team
+    candidates = mode_rules.spawn_candidates
+    per_ship = uniforms.reshape(B, N, -1)
+    team = ship_team(S, uniforms.device)
+    side = (2 * team - 1).to(torch.float32)  # (N,) -1 for team 0, +1 for team 1
+    offset = (rules.spawn_offset * arena_radius)[:, None]
+    centre_x, centre_y = side * offset * axis_x[:, None], side * offset * axis_y[:, None]
+    offset_x, offset_y = uniform_disc(
+        (mode_rules.side_area_fraction * arena_radius)[:, None],
+        per_ship[..., 0],
+        per_ship[..., candidates],
+    )
+    x, y = centre_x + offset_x, centre_y + offset_y
+    toward = torch.atan2(-centre_y - y, -centre_x - x)  # the enemy area's centre
+    swing = mode_rules.side_heading_jitter * (2.0 * per_ship[..., 2 * candidates] - 1.0)
+    heading_cos, heading_sin = _edge_safe(rules, arena_radius, x, y, toward + swing)
+    return Placement(x=x, y=y, heading_cos=heading_cos, heading_sin=heading_sin)
+
+
 def frontline_placement(
     rules: Rules,
     mode_rules: ModeRules,
@@ -316,10 +366,12 @@ def placement(
     """The mode's placement for every ship (selected later by the spawn mask); arena_radius
     and map_scale (B,); benched (B, N) or None: ships that do not play. A fixed layout's
     spawn points (`layout_placement`) take the place of the mode's own; elimination
-    places as team deathmatch does."""
+    places by team side (`side_placement`)."""
     if mode_rules.layout is not None and mode_rules.layout.spawns:
         return layout_placement(rules, mode_rules, uniforms, axis_x, axis_y)
-    if mode_rules.name in (TEAM_DEATHMATCH, ELIMINATION):
+    if mode_rules.name == ELIMINATION:
+        return side_placement(rules, mode_rules, arena_radius, uniforms, axis_x, axis_y)
+    if mode_rules.name == TEAM_DEATHMATCH:
         return deathmatch_placement(
             rules, mode_rules, arena_radius, uniforms, x, y, alive, reset, keys, benched
         )
