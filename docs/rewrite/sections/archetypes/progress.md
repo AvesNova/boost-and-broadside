@@ -772,3 +772,31 @@ kit2 on both, with one ship's cone f0 changed (kit2's is 0.08):
 - Several arms are within 0.45-0.53 at every size; the trade left is the two mirrors: the
   harder the speed fighter's nose, the slower its mirror. Confirm 9 (running) takes the
   speed nose at f0 0.07 to 1024 games, 20v20 and the crowd extension.
+
+## 03:59-04:13 KST: confirm 8 (`confirm8/`): the hit-and-run mirror fixed
+
+1024 games, r9; hit-and-run with its cone at f0 0.06 and the duel edge taken back by sight:
+
+| Hit-and-run v standard | 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | AA (hit-and-run); BB mutual, life, merges | Duel life | v r9 |
+|---|---|---|---|---|
+| dmg x1.2, vision x0.97 | 0.54 / 0.50 / 0.49 / 0.44 / 0.47 | 0.37, 271 s, 2.9; 0.34, 288 s, 3.1 | 261 s | 0.48 / 0.50 |
+| **dmg x1.22, vision x0.96** | **0.53 / 0.48 / 0.47 / 0.47 / 0.46** | **0.34, 260 s**, 2.7; 0.36, 295 s, 3.2 | 257 s | 0.50 / 0.53 |
+
+- Both mirrors now 0.34-0.36 mutual in 260-295 s, the balance within 0.46-0.53. Its play
+  map `arch-standard-hit-and-run` carries this card (the hit-and-run ship in the Yongma slot).
+
+## 04:08-04:16 KST: confirm 9 (`confirm9/`): rate v speed at 1024 games
+
+Rate (lift x1.03, dmg x1.25) v speed (drag x0.85, vision x1.04, cone f0 0.07), kit2:
+
+| Arm | 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | AA (rate); BB (speed) mutual, life, merges | Duel life | v r9 |
+|---|---|---|---|---|
+| **r9** | **0.55 / 0.50 / 0.50 / 0.49 / 0.42** | 0.47, 229 s, 2.7; 0.26, 367 s, 3.3 | 259 s | 0.49 / 0.51 |
+| **CE** | **0.53 / 0.50 / 0.48 / 0.47 / 0.47** | 0.37, 256 s; 0.17, 414 s | 309 s | 0.82 / 0.84 |
+| r9, rate cone f0 0.09 | 0.52 / 0.55 / 0.51 / 0.50 / 0.42 | 0.53, 193 s; 0.28, 394 s | 248 s | 0.48 / 0.49 |
+
+- **A flight-distinct pair within 0.47-0.55 from 1v1 to 10v10** under both r9 and the crowd
+  extension; 20v20 leans to the speed fighter (0.42 under r9, 256 games, ±0.03). The rate
+  fighter wins slow turning fights at a lower corner speed and hits harder; the speed
+  fighter cruises faster, sees a little farther and takes the merge on a harder nose. The
+  speed mirror is slow (367 s). Play map `arch-rate-speed`.
