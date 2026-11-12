@@ -70,6 +70,15 @@ TTK_BINS = 32  # seconds from the first hit taken: [0, 1), ..., [31, inf)
 CIRCLE_WINDOW = 3.0  # s after a merge's end
 TURNING = 0.05  # rad/s: a nose rate below this is not a turn
 CIRCLES = ("one circle", "two circle", "scissors")
+# Engagements (the author's definition): a pair of enemy ships within the threshold (two
+# definitions: the pair's longer gun range; two of the pair's larger full-stick turn
+# diameters) is engaged until it stays beyond it ENGAGE_APART seconds or either dies. A
+# merge: a closing -> least distance -> opening cycle (MERGE_HYSTERESIS metres each way).
+ENGAGEMENTS = ("gun range", "two turn diameters")
+ENGAGE_APART = 3.0  # s
+MERGE_HYSTERESIS = 30.0  # m
+MERGE_BINS = 16  # merges in an engagement: 0..14, 15 and more
+TURN_BINS = 32  # circles turned by a ship in an engagement, quarter circles: 0..7.75, 8+
 PACE_BINS = 121  # whole seconds 0..119, and 120 or more
 TRADE_WINDOW = 0.5  # s: a death with one on the other team this close is a trade
 # The base card: the ship files' with these factors (the author's 2026-11-12 decision:
@@ -177,14 +186,26 @@ class Group:
         return dict(variant=self.variant, lineup=self.lineup, a=self.a.name, b=self.b.name)
 
 
-def layout(groups: list[Group], variants: int, device) -> dict:
+def teams_of(lineup: str, ships_per_team: int = 5) -> tuple[tuple[int, ...], ...]:
+    """A lineup's two teams of slot kinds at a team size (`LINEUPS` at 5; the patterns
+    repeated or cut at others)."""
+    first, second = LINEUPS[lineup]
+    if ships_per_team == 5:
+        return first, second
+    S = ships_per_team
+    return tuple(first[i % 2 if len(set(first)) > 1 else 0] for i in range(S)), tuple(
+        second[i % 2 if len(set(second)) > 1 else 0] for i in range(S)
+    )
+
+
+def layout(groups: list[Group], variants: int, device, ships_per_team: int = 5) -> dict:
     """The per-environment tensors of a list of groups: ship types (B, N) int32, side A on
     team 0 (B,), the group index (B,), and the view doctrine table (2B, 2K, WIDTH)."""
     ship_type, a_on_zero, group_index, view_rows, temperature = [], [], [], [], []
     parameter_rows = []
     default = default_parameters()
     for number, group in enumerate(groups):
-        first, second = LINEUPS[group.lineup]
+        first, second = teams_of(group.lineup, ships_per_team)
         rows = {side: player.rows() for side, player in (("a", group.a), ("b", group.b))}
         heat = {"a": group.a.temperature, "b": group.b.temperature}
         sets = {
@@ -230,6 +251,27 @@ def tally_like(B: int, S: int, device) -> dict:
         circles=torch.zeros((B, len(CIRCLES)), **zeros),
         first_game_hit=torch.full((B,), -1.0, **zeros),  # 0 A, 1 B, 2 both
         deaths=torch.zeros((B,), **zeros),
+        # engagements, per definition (ENGAGEMENTS)
+        engagements=torch.zeros((B, 2), **zeros),
+        engagement_kills=torch.zeros((B, 2), **zeros),
+        merges_per_kill=torch.zeros((B, 2, MERGE_BINS), **zeros),
+        merges_per_engagement=torch.zeros((B, 2, MERGE_BINS), **zeros),
+        to_damage=torch.zeros((B, 2, PACE_BINS), **zeros),
+        to_death=torch.zeros((B, 2, PACE_BINS), **zeros),
+        engagement_length=torch.zeros((B, 2, PACE_BINS), **zeros),
+        engagement_turning=torch.zeros((B, 2, TURN_BINS), **zeros),
+        merge_kinds=torch.zeros((B, 2, 3), **zeros),  # one circle, two circle, scissors
+        eng_on=torch.zeros((B, 2, S, S), dtype=torch.bool, device=device),
+        eng_apart=torch.zeros((B, 2, S, S), **zeros),
+        eng_start=torch.zeros((B, 2, S, S), **zeros),
+        eng_damage=torch.full((B, 2, S, S), -1.0, **zeros),
+        eng_merges=torch.zeros((B, 2, S, S), **zeros),
+        eng_closing=torch.ones((B, 2, S, S), dtype=torch.bool, device=device),
+        eng_extreme=torch.zeros((B, 2, S, S), **zeros),
+        eng_turn_i=torch.zeros((B, 2, S, S), **zeros),
+        eng_turn_j=torch.zeros((B, 2, S, S), **zeros),
+        eng_sign_i=torch.zeros((B, 2, S, S), **zeros),
+        eng_sign_j=torch.zeros((B, 2, S, S), **zeros),
         gaps=torch.zeros((B, PACE_BINS), **zeros),  # seconds between deaths (any team)
         engage=torch.zeros((B, PACE_BINS), **zeros),  # a life's spawn to its first hit
         alive_ticks=torch.zeros((B,), **zeros),
@@ -259,6 +301,15 @@ def tally_like(B: int, S: int, device) -> dict:
 
 
 STATISTICS = (
+    "engagements",
+    "engagement_kills",
+    "merges_per_kill",
+    "merges_per_engagement",
+    "to_damage",
+    "to_death",
+    "engagement_length",
+    "engagement_turning",
+    "merge_kinds",
     "gaps",
     "engage",
     "alive_ticks",
@@ -282,10 +333,28 @@ class Loop:
     """A compiled sweep of one size: B environments, K variants per type."""
 
     def __init__(
-        self, environments: int, variants: int, seconds: float, device="cuda", compiled: bool = True
+        self,
+        environments: int,
+        variants: int,
+        seconds: float,
+        device="cuda",
+        compiled: bool = True,
+        ships_per_team: int = 5,
+        fog: bool = False,
     ) -> None:
         self.device = torch.device(device)
-        game = dataclasses.replace(api.PRESETS[PRESET], num_fields=0, episode_seconds=seconds)
+        base_game = api.PRESETS[PRESET]
+        # the fleet presets' density rule: the arena radius grows as sqrt(n / 5)
+        radius = base_game.arena_radius * math.sqrt(ships_per_team / base_game.ships_per_team)
+        game = dataclasses.replace(
+            base_game,
+            ships_per_team=ships_per_team,
+            arena_radius=radius,
+            num_fields=0,
+            episode_seconds=seconds,
+            kills_per_ship=1000,  # no early win: every game runs the whole clock
+        )
+        self.fog = fog
         self.game = game
         self.base = base_card(self.device)
         self.K = variants
@@ -312,6 +381,7 @@ class Loop:
         self.ship_type = torch.zeros((self.B, self.N), dtype=torch.int32, device=self.device)
         self.a_on_zero = torch.zeros((self.B,), dtype=torch.bool, device=self.device)
         self.grace = float(round(MERGE_GRACE / self.rules.tick_length))
+        self.apart_ticks = float(round(ENGAGE_APART / self.rules.tick_length))
         self.window_ticks = float(round(CIRCLE_WINDOW / self.rules.tick_length))
         self._tick = (
             torch.compile(self.tick, fullgraph=True, dynamic=False) if compiled else self.tick
@@ -332,7 +402,7 @@ class Loop:
         """A fresh game in every environment of the layout."""
         if sum(g.environments for g in groups) != self.B:
             raise ValueError("the groups' environments must sum to B")
-        placed = layout(groups, self.K, self.device)
+        placed = layout(groups, self.K, self.device, self.S)
         self.ship_type.copy_(placed["ship_type"])
         self.a_on_zero.copy_(placed["a_on_zero"])
         self.doctrines.copy_(placed["doctrines"])
@@ -343,6 +413,7 @@ class Loop:
             self.rules,
             self.types,
             api.uniforms(self.rules, self.B, self.device),
+            torch.full((self.B,), self.fog, dtype=torch.bool, device=self.device),
             ship_type=self.ship_type,
         )
         state, observation, _ = api.perceive(self.rules, state)
@@ -572,6 +643,103 @@ class Loop:
             torch.nn.functional.one_hot(ttk_bin, TTK_BINS).float(),
         )
 
+        # engagements (two definitions), their merges, turning and ends
+        diameter = 2.0 * per_type(
+            self.card.cruise_speed / self.card.turn_rate[..., 2], self.ship_type
+        )
+        pair_diameter = torch.maximum(
+            diameter[:, team0][:, :, None], diameter[:, team1][:, None, :]
+        )
+        threshold = torch.stack([pair_reach, 2.0 * pair_diameter], 1)  # (B, 2, S, S)
+        d = distance[:, None].expand_as(threshold)
+        pair_alive = both[:, None].expand_as(threshold)
+        inside = pair_alive & (d < threshold)
+        on = tally["eng_on"]
+        starting = inside & ~on
+        on = on | starting
+        apart = torch.where(on & ~inside, tally["eng_apart"] + 1, 0.0)
+        start = torch.where(starting, tick, tally["eng_start"])
+        damaged_pair = (hit_ij | hit_ji)[:, None]
+        eng_damage = torch.where(starting, -1.0, tally["eng_damage"])
+        eng_damage = torch.where(on & damaged_pair & (eng_damage < 0), tick, eng_damage)
+        merges_n = torch.where(starting, 0.0, tally["eng_merges"])
+        closing = torch.where(starting, True, tally["eng_closing"])
+        extreme = torch.where(starting, d, tally["eng_extreme"])
+        turn_i = torch.where(starting, 0.0, tally["eng_turn_i"])
+        turn_j = torch.where(starting, 0.0, tally["eng_turn_j"])
+        sign_i = torch.where(starting, 0.0, tally["eng_sign_i"])
+        sign_j = torch.where(starting, 0.0, tally["eng_sign_j"])
+        dt = rules.tick_length
+        turn_i = turn_i + on * turn.abs()[:, team0][:, None, :, None] * dt
+        turn_j = turn_j + on * turn.abs()[:, team1][:, None, None, :] * dt
+        # merges: closing to a least distance, then opening by the hysteresis
+        least = torch.minimum(extreme, d)
+        most = torch.maximum(extreme, d)
+        merged = on & closing & (d > least + MERGE_HYSTERESIS)
+        reclosing = on & ~closing & (d < most - MERGE_HYSTERESIS)
+        extreme = torch.where(closing, least, most)
+        extreme = torch.where(merged | reclosing, d, extreme)
+        closing = torch.where(merged, False, torch.where(reclosing, True, closing))
+        merges_n = merges_n + merged.float()
+        now_i = sign[:, team0][:, None, :, None].expand_as(d)
+        now_j = sign[:, team1][:, None, None, :].expand_as(d)
+        product = now_i * now_j
+        scissor = merged & (sign_i * now_i < 0) & (sign_j * now_j < 0)
+        kinds = torch.stack(
+            [merged & ~scissor & (product < 0), merged & ~scissor & (product > 0), scissor], -1
+        ).float()
+        tally["merge_kinds"] = tally["merge_kinds"] + kinds.sum((2, 3))
+        sign_i = torch.where(merged & (now_i != 0), now_i, sign_i)
+        sign_j = torch.where(merged & (now_j != 0), now_j, sign_j)
+        # ends: apart too long, or either ship died; a kill of one by the other
+        died_i = died[:, team0][:, None, :, None]
+        died_j = died[:, team1][:, None, None, :]
+        killer_of = events.killer.long()
+        j_index = torch.arange(S, device=x.device)
+        killed_j = died[:, team1][:, None, :] & (
+            killer_of[:, team1][:, None, :] == j_index[:, None]
+        )  # (B, S_i, S_j): j killed by i
+        killed_i = died[:, team0][:, :, None] & (
+            killer_of[:, team0][:, :, None] == (S + j_index)[None, None, :]
+        )  # (B, S_i, S_j): i killed by j
+        kill_pair = (killed_i | killed_j)[:, None] & on
+        ending = on & ((apart > self.apart_ticks) | died_i | died_j | ~pair_alive)
+        length = ((tick - start) * dt).clamp(0, PACE_BINS - 1).long()
+        tally["engagements"] = tally["engagements"] + ending.float().sum((2, 3))
+        tally["engagement_kills"] = tally["engagement_kills"] + kill_pair.float().sum((2, 3))
+
+        def histogram(mask: torch.Tensor, index: torch.Tensor, bins: int) -> torch.Tensor:
+            onehot = torch.nn.functional.one_hot(index.clamp(0, bins - 1), bins).float()
+            return (mask.float()[..., None] * onehot).sum((2, 3))
+
+        merge_index = merges_n.long()
+        tally["merges_per_kill"] = tally["merges_per_kill"] + histogram(
+            kill_pair, merge_index, MERGE_BINS
+        )
+        tally["merges_per_engagement"] = tally["merges_per_engagement"] + histogram(
+            ending, merge_index, MERGE_BINS
+        )
+        tally["to_death"] = tally["to_death"] + histogram(kill_pair, length, PACE_BINS)
+        tally["engagement_length"] = tally["engagement_length"] + histogram(
+            ending, length, PACE_BINS
+        )
+        to_damage = ((eng_damage - start) * dt).clamp(0, PACE_BINS - 1).long()
+        tally["to_damage"] = tally["to_damage"] + histogram(
+            ending & (eng_damage >= 0), to_damage, PACE_BINS
+        )
+        quarter = lambda radians: (radians / (2 * math.pi) * 4).long()  # noqa: E731
+        tally["engagement_turning"] = (
+            tally["engagement_turning"]
+            + histogram(ending, quarter(turn_i), TURN_BINS)
+            + histogram(ending, quarter(turn_j), TURN_BINS)
+        )
+        on = on & ~ending
+        tally["eng_on"], tally["eng_apart"], tally["eng_start"] = on, apart, start
+        tally["eng_damage"], tally["eng_merges"] = eng_damage, merges_n
+        tally["eng_closing"], tally["eng_extreme"] = closing, extreme
+        tally["eng_turn_i"], tally["eng_turn_j"] = turn_i, turn_j
+        tally["eng_sign_i"], tally["eng_sign_j"] = sign_i, sign_j
+
         # a dead ship's pairs start again when it spawns
         gone = died | events.spawned | ~shown["ships.alive"].bool()
         reset_pair = gone[:, team0][:, :, None] | gone[:, team1][:, None, :]
@@ -637,6 +805,48 @@ def median_of(histogram: torch.Tensor) -> float | None:
         return None
     cumulative = histogram.cumsum(0)
     return float((cumulative < total / 2).sum()) + 0.5
+
+
+def quantile_of(histogram: torch.Tensor, q: float) -> float | None:
+    """The bin index at quantile q of a histogram of whole bins."""
+    total = float(histogram.sum())
+    if total <= 0:
+        return None
+    return float((histogram.cumsum(0) < q * total).sum())
+
+
+def engagements_summary(out: dict, mask: torch.Tensor) -> dict:
+    """Per engagement definition (ENGAGEMENTS): engagements and kills in them, merges per
+    kill (mean, median, first-pass share, 90th percentile), merges per engagement, the
+    medians of start to first damage, start to death and the length (s, whole-second bins),
+    circles turned per ship and engagement (mean), and the merges' kinds."""
+    if "engagements" not in out:
+        return {}
+    result = {}
+    for k, name in enumerate(ENGAGEMENTS):
+        per_kill = out["merges_per_kill"][mask][:, k].sum(0)
+        per_engagement = out["merges_per_engagement"][mask][:, k].sum(0)
+        counts = torch.arange(MERGE_BINS, dtype=torch.float32)
+        turning = out["engagement_turning"][mask][:, k].sum(0)
+        quarters = (torch.arange(TURN_BINS, dtype=torch.float32) + 0.5) / 4
+        kinds = out["merge_kinds"][mask][:, k].sum(0)
+        result[name] = dict(
+            engagements=float(out["engagements"][mask][:, k].sum()),
+            kills=float(out["engagement_kills"][mask][:, k].sum()),
+            merges_per_kill_mean=float((per_kill * counts).sum() / per_kill.sum().clamp_min(1)),
+            merges_per_kill_median=quantile_of(per_kill, 0.5),
+            first_pass_kill_share=float(per_kill[:2].sum() / per_kill.sum().clamp_min(1)),
+            merges_per_kill_p90=quantile_of(per_kill, 0.9),
+            merges_per_engagement_mean=float(
+                (per_engagement * counts).sum() / per_engagement.sum().clamp_min(1)
+            ),
+            to_damage_median=median_of(out["to_damage"][mask][:, k].sum(0)),
+            to_death_median=median_of(out["to_death"][mask][:, k].sum(0)),
+            length_median=median_of(out["engagement_length"][mask][:, k].sum(0)),
+            circles_turned_mean=float((turning * quarters).sum() / turning.sum().clamp_min(1)),
+            one_two_scissors=(kinds / kinds.sum().clamp_min(1)).tolist(),
+        )
+    return result
 
 
 def pace(out: dict, mask: torch.Tensor, seconds: float) -> dict:
@@ -722,6 +932,7 @@ def summary(out: dict, mask: torch.Tensor, seconds: float) -> dict:
         circle_count=float(circles.sum()),
         trade_fraction=float(out["traded"][mask].sum() / out["deaths"][mask].sum().clamp_min(1)),
         **pace(out, mask, seconds),
+        engagement=engagements_summary(out, mask),
     )
 
 

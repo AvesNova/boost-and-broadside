@@ -18,10 +18,35 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
 import league  # noqa: E402
 
-from bench.game_loop import Job, Loop, card_passes, job_summary, run  # noqa: E402
+from bench.game_loop import ENGAGEMENTS, Job, Loop, card_passes, job_summary, run  # noqa: E402
 
 HERE = pathlib.Path(__file__).parent
 LINEUPS = ("energy v turn", "turn mirror", "energy mirror", "mixed", "mixed reversed")
+
+
+def engagement_cells(rows: list[dict]) -> str:
+    """The engagement columns from job summaries (games-weighted means)."""
+    if not rows or not rows[0].get("engagement"):
+        return " | | | "
+    total = sum(r["games"] for r in rows)
+
+    def mean(definition: str, key: str, index=None) -> float:
+        values = []
+        for r in rows:
+            value = r["engagement"][definition][key]
+            value = value[index] if index is not None else value
+            values.append((value if value is not None else float("nan")) * r["games"])
+        return sum(values) / total
+
+    merges = "; ".join(
+        f"{mean(d, 'merges_per_kill_mean'):.2f} / {mean(d, 'merges_per_kill_median'):.1f} / "
+        f"{mean(d, 'first_pass_kill_share'):.2f} / {mean(d, 'merges_per_kill_p90'):.1f}"
+        for d in ENGAGEMENTS
+    )
+    death = "; ".join(f"{mean(d, 'to_death_median'):.1f}" for d in ENGAGEMENTS)
+    turned = "; ".join(f"{mean(d, 'circles_turned_mean'):.2f}" for d in ENGAGEMENTS)
+    kinds = " / ".join(f"{mean(ENGAGEMENTS[1], 'one_two_scissors', i):.2f}" for i in range(3))
+    return f"{merges} | {death} | {turned} | {kinds}"
 
 
 def mix(shares: list[float]) -> float:
@@ -72,8 +97,9 @@ def main() -> None:
         "Damage m / o / f / t (all) | Kill mix | Passes a kill | First-merge | Card head-on "
         "passes Y-Y / J-J / Y-J / J-Y | Gun range Y / J | Circles 1 / 2 / sc | Trades "
         "| Life s | Death gap mean (median) s | Kills/min/ship | Spawn to hit s "
-        "| First hit / kill s |",
-        "|---" * 19 + "|",
+        "| First hit / kill s | Merges a kill mean / median / first-pass / p90 (gun range; "
+        "2 turn diameters) | Engagement to death median s | Circles turned | 1 / 2 / sc merges |",
+        "|---" * 23 + "|",
     ]
     out = []
     for k, variant in enumerate(variants):
@@ -104,6 +130,7 @@ def main() -> None:
             circles = [sum(r["circles"][c] * r["circle_count"] for r in mine) for c in range(3)]
             circles = [c / max(sum(circles), 1) for c in circles]
             trades = sum(r["trade_fraction"] * r["games"] for r in mine) / total
+            engaged = engagement_cells(mine)
             paced = {
                 key: sum(r[key] * r["games"] for r in mine) / total
                 for key in (
@@ -152,7 +179,8 @@ def main() -> None:
                 f"| {paced['life_seconds']:.0f} | {paced['death_gap_mean']:.1f} "
                 f"({paced['death_gap_median']}) | {paced['kills_per_minute_per_ship']:.2f} "
                 f"| {paced['spawn_to_engagement_median']} "
-                f"| {paced['first_hit_median']:.1f} / {paced['first_kill_median']:.1f} |"
+                f"| {paced['first_hit_median']:.1f} / {paced['first_kill_median']:.1f} "
+                f"| {engaged} |"
             )
     (out_dir / f"{args.tag}.json").write_text(json.dumps(out, indent=1))
     (out_dir / f"{args.tag}.md").write_text("\n".join(table) + "\n")
