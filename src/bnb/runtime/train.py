@@ -153,13 +153,9 @@ class TrainConfig:
     same for both teams, in every game of the batch (the rating lanes' too); None plays the
     game's own lineup (`Rules.team_types`). A tournament of such policies plays the same
     lineup (`bnb ratings --lineup`).
-    compile_regions, compile_split: how the compiled run cuts its graphs (compile time
-    only: the same arithmetic within float rounding, `docs/rewrite/sections/compile-split`).
-    compile_regions: the learner's Yemong trunk runs each block as one nested compile
-    region (`Trunk.regional`), compiled once and reused by the other blocks, in the
-    rollout's act stage and the learner's loss (the opponents' and the lanes' copies, run
-    under vmap, stay inlined). compile_split: the learner's micro-batch loss compiles as
-    two units, the unroll and the loss over its outputs (`Learner`'s split)."""
+    compile_split: the learner's micro-batch loss compiles as two units, the unroll and the
+    loss over its outputs (`Learner`'s split; compile time only, the same arithmetic within
+    float rounding, `docs/rewrite/sections/compile-split`)."""
 
     game: GameConfig
     environments: int = 2048
@@ -195,7 +191,6 @@ class TrainConfig:
     host_store: bool = True
     seed: int = 0
     compiled: bool = True
-    compile_regions: bool = False
     compile_split: bool = False
     objective: str = "ppo"
     teacher: TeacherConfig = TeacherConfig()
@@ -413,8 +408,6 @@ class Trainer:
         self.controllers = {
             name: build() for name, build in builders.items() if name in seated or name == LEARNER
         }
-        if config.compile_regions and isinstance(self.model, Yemong):  # after the copies
-            self.model.trunk.regional = True
         self.opponents: OpponentSlots | None = self.controllers.get(OPPONENTS)
         self.lane_seat: LaneSeat | None = self.controllers.get(LANES)
         # the last update's lane games, {Lane: (wins, ties, losses)} from the first player's side

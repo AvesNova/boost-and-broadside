@@ -1,6 +1,6 @@
-"""The compile layout's switches (`TrainConfig.compile_regions`, `compile_split`): the same
-arithmetic whatever the cut. Eager, each switch must give the default's numbers exactly
-(the plumbing); compiled (slow), within float rounding."""
+"""The compile layout: `TrainConfig.compile_split` is the same arithmetic as the whole loss
+(eager exactly, the plumbing; compiled within float rounding, slow), and the micro-batches
+are of one shape where they can be."""
 
 import learner_cases as lc
 import pytest
@@ -20,10 +20,9 @@ def segment(module_global_generator):
     return net, runner
 
 
-def _gradient(net, runner, compiled: bool, split: bool, regional: bool):
+def _gradient(net, runner, compiled: bool, split: bool):
     """(terms, every parameter's gradient) of one minibatch of every view, the learner
-    built with the switches."""
-    net.trunk.regional = regional
+    built with the switch."""
     learner = lc.learner(net, runner)
     learner = Learner(
         net,
@@ -38,7 +37,6 @@ def _gradient(net, runner, compiled: bool, split: bool, regional: bool):
     prepared = learner.prepare(runner.store, runner.bootstrap())
     terms, *_ = learner.gradient(runner.store, prepared, torch.arange(runner.store.views))
     gradients = [parameter.grad.clone() for parameter in net.parameters()]
-    net.trunk.regional = False
     return terms, gradients
 
 
@@ -51,20 +49,16 @@ def _check(case, reference, relative: float):
         assert (a - b).abs().max().item() <= relative * scale + 1e-8
 
 
-@pytest.mark.parametrize(("split", "regional"), [(True, False), (False, True), (True, True)])
-def test_the_switches_change_nothing_eager(segment, split, regional):
+def test_the_split_changes_nothing_eager(segment):
     net, runner = segment
-    reference = _gradient(net, runner, False, False, False)
-    _check(_gradient(net, runner, False, split, regional), reference, 0.0)
+    _check(_gradient(net, runner, False, True), _gradient(net, runner, False, False), 0.0)
 
 
 @pytest.mark.slow
 @pytest.mark.usefixtures("fresh_compiler")
-@pytest.mark.parametrize(("split", "regional"), [(True, False), (False, True), (True, True)])
-def test_the_switches_compile_to_the_same_arithmetic(segment, split, regional):
+def test_the_split_compiles_to_the_same_arithmetic(segment):
     net, runner = segment
-    reference = _gradient(net, runner, True, False, False)
-    _check(_gradient(net, runner, True, split, regional), reference, 1e-4)
+    _check(_gradient(net, runner, True, True), _gradient(net, runner, True, False), 1e-4)
 
 
 @pytest.mark.parametrize(
