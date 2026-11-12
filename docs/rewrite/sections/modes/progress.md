@@ -444,3 +444,39 @@ later than with fog on (36.6 s).
 
 Lock 30 s with threshold 2 meets both targets at 5v5 (a near-random walk, 79% by the
 front) in the 600 s clock; threshold 3 would need a clock well past 1200 s.
+
+## Step 2l: softer holds against the hard lock (5v5, fog off, 256 games each)
+
+| variant | P(same team next) | ended by the front | captures / game |
+|---|---|---|---|
+| hard lock 30 s | 0.546 ± 0.016 | 0.387 ± 0.030 | 4.8 |
+| (a) soft hold H = N = 30 s | 0.159 ± 0.008 | 0.121 ± 0.020 | 8.6 |
+| (a) soft hold H = N = 60 s | 0.541 ± 0.016 | 0.465 ± 0.031 | 4.7 |
+| (b) flat extension E = 10 s | 0.193 ± 0.009 | 0.121 ± 0.020 | 7.8 |
+| (b) flat extension E = 20 s | 0.321 ± 0.013 | 0.262 ± 0.027 | 6.2 |
+| (b) flat extension E = 30 s | 0.518 ± 0.016 | 0.406 ± 0.031 | 4.7 |
+
+Soft hold (decaying over N with drain): H = N = 60 s ≈ the hard 30 s lock (0.54); 30 s is
+far too weak (an attacking majority drains it in seconds and it decays meanwhile). The
+flat extension reaches a random walk at E ≈ 30 s (0.52). Either softer form needs about
+twice the hard lock's nominal time (soft) or the same (flat) for the same walk.
+
+## Step 2m: the lock by distance (λ s/km of the adjacent zones' centre distance d)
+
+d = 2 x 0.615 R sin 36° = 0.723 R: 5.64 km at 5v5 (7800 m), 7.98 km at 10v10 (11031 m),
+11.28 km at 20v20 (15600 m). λ = 30 s / 5.64 km = 5.3 s/km; κ = 20 s / 5.64 km = 3.5 s/km
+(the author's parametrisation, 17:55).
+
+| map | lock (s) | capture (s) | P(same team next) | ended by the front | captures / game |
+|---|---|---|---|---|---|
+| 5v5, d 5.64 km | 30 (λ 5.3) | 20 | 0.546 ± 0.016 | 0.387 ± 0.030 | 4.8 |
+| 10v10, d 7.98 km | 30 (λ 3.8) | 20 | 0.066 ± 0.005 | 0.047 ± 0.013 | 11.8 |
+| 10v10 | **42 (λ 5.3)** | 20 | **0.476 ± 0.014** | 0.543 ± 0.031 | 6.0 |
+| 10v10 | 60 (λ 7.5) | 20 | 0.894 ± 0.012 | 0.918 ± 0.017 | 3.7 |
+
+One λ ≈ 5.3 s/km gives a near-random walk at both 5v5 and 10v10 (0.55 and 0.48) with the
+capture time unscaled: no fleet term is needed at 10v10 within ±0.03. The walk is steep in
+λ (10v10: 3.8 → 5.3 → 7.5 s/km gives 0.07 → 0.48 → 0.89), so λ must be set carefully and
+re-measured after the freeze. Running (ETA 18:25 KST, worst 18:45): 10v10 with κ too
+(lock 42.3 s, capture 28.2 s), 20v20 (lock 59.8 s, capture 39.5 s), and 10v10 κ-scaled with
+threshold 2.
