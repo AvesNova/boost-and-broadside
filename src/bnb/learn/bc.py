@@ -206,6 +206,7 @@ class BehaviourCloning(Learner):
         stage: Callable = lambda function: function,
         seed: int = 0,
         diagnostics: bool = True,
+        split: bool = False,
     ) -> None:
         self.teacher, self.teacher_config, self.pools = teacher, teacher_config, pools
         self.teacher_carry: ScriptedCarry | None = None  # (R, ...) after the last update
@@ -215,7 +216,7 @@ class BehaviourCloning(Learner):
             None
         ]
         super().__init__(
-            model, config, rules, types, outcome_weight, device, stage, seed, diagnostics
+            model, config, rules, types, outcome_weight, device, stage, seed, diagnostics, split
         )
 
     def prepare(self, segments, bootstrap) -> dict:

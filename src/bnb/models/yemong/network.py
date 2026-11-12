@@ -127,6 +127,33 @@ class Block(nn.Module):
             tokens = layer(tokens, map_memory, token_tables, map_tables)
         return tokens
 
+    def step(self, tokens, map_memory, token_tables, map_tables, state, buffer, temporal_first):
+        """One decision through the block, its temporal sublayer before (`temporal_first`) or
+        after its spatial ones: (tokens, the block's state, its buffer)."""
+        if not temporal_first:
+            tokens = self.attend(tokens, map_memory, token_tables, map_tables)
+        tokens, state, buffer = self.temporal.step(tokens, state, buffer)
+        if temporal_first:
+            tokens = self.attend(tokens, map_memory, token_tables, map_tables)
+        return tokens, state, buffer
+
+    def sequence(
+        self, tokens, map_memory, token_tables, map_tables, state, buffer, starts, temporal_first
+    ):
+        """A segment through the block (see `Trunk.sequence`): (tokens, the block's final
+        state, its final buffer)."""
+        if not temporal_first:
+            tokens = self.attend(tokens, map_memory, token_tables, map_tables)
+        tokens, state, buffer = self.temporal.sequence(tokens, state, buffer, starts)
+        if temporal_first:
+            tokens = self.attend(tokens, map_memory, token_tables, map_tables)
+        return tokens, state, buffer
+
+    # The same functions as compile regions (`Trunk.regional`): traced and compiled once,
+    # reused by every block (the blocks differ only in their weights).
+    regional_step = torch.compiler.nested_compile_region(step)
+    regional_sequence = torch.compiler.nested_compile_region(sequence)
+
 
 class Trunk(nn.Module):
     """Blocks of spatial sublayers and one temporal sublayer each: per block the spatial
@@ -134,7 +161,13 @@ class Trunk(nn.Module):
     ones ("temporal_first"); or the spatial sublayers alone ("spatial_only", the ablation
     without temporal layers: the carry holds no trunk state, only the model's beliefs).
     The trunk carry is state (..., temporal_blocks, Q, D) and convolution_buffer
-    (..., temporal_blocks, Q, 3, D)."""
+    (..., temporal_blocks, Q, 3, D).
+
+    regional: under torch.compile, each block runs as one nested compile region
+    (`torch.compiler.nested_compile_region`), so the compiler traces and compiles one block
+    and reuses it for the others rather than inlining every block (a compile-time choice:
+    the same arithmetic; eager it changes nothing). Set by the runtime
+    (`bnb.runtime.train.TrainConfig.compile_regions`), not part of the build."""
 
     def __init__(
         self,
@@ -154,6 +187,7 @@ class Trunk(nn.Module):
         self.blocks = nn.ModuleList(
             Block(width, heads, map_width, spatial_per_block, temporal) for _ in range(blocks)
         )
+        self.regional = False
 
     def _attend(self, tokens, map_memory, token_tables, map_tables) -> torch.Tensor:
         """Every block's spatial sublayers in turn ("spatial_only")."""
@@ -176,13 +210,16 @@ class Trunk(nn.Module):
         states, buffers = [], []
         temporal_first = self.order == "temporal_first"
         for index, block in enumerate(self.blocks):
-            if not temporal_first:
-                tokens = block.attend(tokens, map_memory, token_tables, map_tables)
-            tokens, block_state, block_buffer = block.temporal.step(
-                tokens, state[..., index, :, :], buffer[..., index, :, :, :]
+            run = block.regional_step if self.regional else block.step
+            tokens, block_state, block_buffer = run(
+                tokens,
+                map_memory,
+                token_tables,
+                map_tables,
+                state[..., index, :, :],
+                buffer[..., index, :, :, :],
+                temporal_first,
             )
-            if temporal_first:
-                tokens = block.attend(tokens, map_memory, token_tables, map_tables)
             states.append(block_state)
             buffers.append(block_buffer)
         return tokens, torch.stack(states, -3), torch.stack(buffers, -4)
@@ -206,13 +243,17 @@ class Trunk(nn.Module):
         states, buffers = [], []
         temporal_first = self.order == "temporal_first"
         for index, block in enumerate(self.blocks):
-            if not temporal_first:
-                tokens = block.attend(tokens, map_memory, token_tables, map_tables)
-            tokens, block_state, block_buffer = block.temporal.sequence(
-                tokens, state[..., index, :, :], buffer[..., index, :, :, :], starts
+            run = block.regional_sequence if self.regional else block.sequence
+            tokens, block_state, block_buffer = run(
+                tokens,
+                map_memory,
+                token_tables,
+                map_tables,
+                state[..., index, :, :],
+                buffer[..., index, :, :, :],
+                starts,
+                temporal_first,
             )
-            if temporal_first:
-                tokens = block.attend(tokens, map_memory, token_tables, map_tables)
             states.append(block_state)
             buffers.append(block_buffer)
         return tokens, torch.stack(states, -3), torch.stack(buffers, -4)
