@@ -87,6 +87,8 @@ def de(shield=0.6, scale=0.1, energy=None) -> dict:
 
 
 MIRROR = dict(duel_extend_mirror_only=1.0)
+# against another type only with another known enemy anywhere (never in a lone 1v1)
+TEAM = dict(duel_extend_cross_in_others=[0.5, 0.1])
 ROUNDS = {
     "round1": [
         ("r9m", {}),
@@ -145,6 +147,14 @@ ROUNDS = {
         ("DE Y 0.7 / J 0.4", (de(0.7), de(0.4))),
         ("DE Y 1.0 / J 0.4 mirror", (de(1.0), dict(de(0.4), **MIRROR))),
         ("DE Y 0.7 / J 0.6", (de(0.7), de(0.6))),
+    ],
+    "round6": [
+        ("r9m", {}),
+        ("DE Y 0.7 / J 0.4", (de(0.7), de(0.4))),
+        ("DE Y 0.7 team / J 0.4", (dict(de(0.7), **TEAM), de(0.4))),
+        ("DE Y 0.85 team / J 0.4", (dict(de(0.85), **TEAM), de(0.4))),
+        ("DE Y 1.0 team / J 0.4", (dict(de(1.0), **TEAM), de(0.4))),
+        ("DE Y 0.7 team / J 0.4 mirror", (dict(de(0.7), **TEAM), dict(de(0.4), **MIRROR))),
     ],
 }
 

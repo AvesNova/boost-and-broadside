@@ -67,7 +67,9 @@ and `in_advantage`, so they fly in the mirrors too; each reads the committed tar
   extension** (`duel_extend`) flies the crowd extension's stick and boost instead of the
   sense's turn when any of the energy, shield or lift ratio is below its gate
   (`duel_extend_in_energy_ratio`, `_in_shield_ratio`, `_in_lift_ratio`; falling, closed by
-  default); with `duel_extend_mirror_only` above 1/2, only against the own type.
+  default); with `duel_extend_mirror_only` above 1/2, only against the own type; against
+  another type, weighted by `duel_extend_cross_in_others`, rising in the count of the other
+  known enemies at any range (open by default; at a centre of 1/2, never in a lone 1v1).
 - **Hold fire** (`hold_fire`): on a closing approach with the target's nose on the ship
   (`hold_fire_in_stall_angle`, its stall angles) inside `hold_fire_in_gun_range`, the
   shot's probability falls by the weight: the nose-to-nose meeting of a one-circle is not
@@ -156,6 +158,7 @@ class Doctrine:
     duel_extend_in_shield_ratio: Logistic = Logistic(1e-6, 0.1, False)
     duel_extend_in_lift_ratio: Logistic = Logistic(1e-6, 0.1, False)
     duel_extend_mirror_only: float = 0.0
+    duel_extend_cross_in_others: Logistic = Logistic(1e-9, 0.1, True)
     hold_fire: float = 0.0
     hold_fire_in_stall_angle: Logistic = Logistic(1.0, 0.2, False)
     hold_fire_in_gun_range: Logistic = Logistic(0.5, 0.2, False)
@@ -219,6 +222,7 @@ SCALE_FLOORS = {
     "duel_extend_in_energy_ratio": 0.03,
     "duel_extend_in_shield_ratio": 0.05,
     "duel_extend_in_lift_ratio": 0.03,
+    "duel_extend_cross_in_others": 0.1,
     "hold_fire_in_stall_angle": 0.158,
     "hold_fire_in_gun_range": 0.1,
 }

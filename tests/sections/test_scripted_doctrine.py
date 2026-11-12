@@ -459,6 +459,15 @@ def test_the_duel_extension_flies_straight_behind_on_the_lift_ratio():
     mirror = dataclasses.replace(behind, duel_extend_mirror_only=1.0, sense_mirror_only=0.0)
     hurt = dataclasses.replace(mirror, duel_extend_in_shield_ratio=Logistic(10.0, 0.05, False))
     assert float(_decide(other, _every_type(hurt)).stick[0, 0, 0]) < 0.5
+    # against another type, gated on another known enemy anywhere: none here, so the turn
+    crossed = dataclasses.replace(
+        hurt, duel_extend_mirror_only=0.0, duel_extend_cross_in_others=Logistic(0.5, 0.1, True)
+    )
+    assert float(_decide(other, _every_type(crossed)).stick[0, 0, 0]) < 0.5
+    gun = value("gun_range", STIFF)
+    far = ship(x=8.0 * gun, y=8.0 * gun, ship_type=AGILE, team_relative=1)
+    team = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [_passed_target(AGILE), far])
+    assert float(_decide(team, _every_type(crossed)).stick[0, 0, 0]) > 0.9
 
 
 def test_hold_fire_withholds_the_shot_at_a_nose_to_nose_meeting():

@@ -698,10 +698,14 @@ def maneuvers(
         ),
         logistic(lift_ratio, doctrine.duel_extend_in_lift_ratio, temperature),
     )
-    duel_extending = torch.where(
-        same_type | (doctrine.duel_extend_mirror_only <= 0.5),
-        doctrine.duel_extend * geometry_gate * alone * behind,
+    anywhere = torch.isfinite(enemies).float().sum(-1)  # the other known enemies
+    cross = torch.where(
+        doctrine.duel_extend_mirror_only <= 0.5,
+        logistic(anywhere, doctrine.duel_extend_cross_in_others, temperature),
         0.0,
+    )
+    duel_extending = (
+        doctrine.duel_extend * geometry_gate * alone * behind * torch.where(same_type, 1.0, cross)
     )
     sensing = (
         doctrine.sense
