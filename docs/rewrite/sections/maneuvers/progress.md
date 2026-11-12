@@ -35,7 +35,7 @@ centre 1.68, Yongma 1.3 at an advantage of 1), so r9 flies the bare combat layer
 
 The clocks advance only on a switching decision (a re-read carry gives the same
 marginals) and reset on a fresh ship or a lost target. The doctrine table grew from 33 to 66 columns by the end (the sense and the yo-yo variants added later)
-wider (the play shell's compiled tick needs a rebuild). Tests:
+(the play shell's compiled tick needs a rebuild). Tests:
 `test_a_lead_turn_turns_before_the_merge_to_the_passing_side_or_away`,
 `test_a_yoyo_climbs_with_the_stick_eased_after_a_stalemate_then_dives`,
 `test_a_brake_reverses_with_a_closing_target_on_the_tail`.
