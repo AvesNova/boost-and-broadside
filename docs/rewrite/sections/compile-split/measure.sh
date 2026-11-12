@@ -4,7 +4,7 @@
 # state before and after). MODE cold: empty inductor and Triton caches (removed first);
 # warm: the same caches a cold run of the variant and stage filled. SETS: the variant's
 # config switches (`compile_baseline.py`'s set=, ';'-separated, may be empty).
-set -euo pipefail
+set -uo pipefail
 VARIANT=$1; STAGE=$2; MODE=$3; CONFIG=$4; STEPS=$5; SETS=${6:-}
 ROOT=${ROOT:-/workspace/cs}; RECORDS=${RECORDS:-$ROOT/records}
 cd /workspace/boost-and-broadside
@@ -13,7 +13,7 @@ CACHE=$ROOT/cache/$VARIANT-$STAGE
 mkdir -p "$CACHE/inductor" "$CACHE/triton" "$RECORDS" "$ROOT/logs"
 export TORCHINDUCTOR_CACHE_DIR=$CACHE/inductor TRITON_CACHE_DIR=$CACHE/triton
 export TORCHINDUCTOR_COMPILE_THREADS=${TORCHINDUCTOR_COMPILE_THREADS:-10} OMP_NUM_THREADS=10
-export TRITON_DEFAULT_FP_FUSION=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export TRITON_DEFAULT_FP_FUSION=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True PYTHONFAULTHANDLER=1
 gpu() { nvidia-smi --query-gpu=pstate,clocks.sm,clocks.mem,clocks.max.sm,power.draw,power.limit,temperature.gpu,clocks_throttle_reasons.active --format=csv,noheader; }
 NAME=$VARIANT-$STAGE-$MODE-$(date +%H%M)
 BEFORE=$(gpu)
@@ -26,7 +26,14 @@ AFTER=$(gpu)
   "$(git rev-parse --short HEAD)" >> "$RECORDS/records.jsonl" <<'PY'
 import json, sys
 path, variant, stage, mode, start, end, before, after, sets, commit = sys.argv[1:]
-r = json.load(open(path))
+try:
+    r = json.load(open(path))
+except ValueError:  # the process died: what its log says
+    log = open(path[:-5] + ".log").read().splitlines()
+    print(json.dumps(dict(variant=variant, stage=stage, mode=mode, sets=sets, commit=commit,
+        failed=True, process_seconds=float(end) - float(start), gpu_before=before,
+        gpu_after=after, last_lines=[l for l in log if "] " in l or "Error" in l][-8:])))
+    sys.exit(0)
 p, d = r["phases"], r["details"]
 steady = [k for k in p if k.startswith("collect_") and not k.endswith("since_start") and k != "collect_1"]
 seconds = [p[k] + p[k.replace("collect", "learn")] for k in steady]
@@ -46,6 +53,7 @@ print(json.dumps(dict(
     steady_steps_per_second=(len(seconds) * d["steps_per_update"] / sum(seconds)) if seconds else None,
     steady_update_seconds=[round(s, 2) for s in seconds],
     peak_allocated_gb=round(d["peak_vram_gb"], 3), peak_reserved_gb=round(d["peak_reserved_gb"], 3),
+    head_sums=d.get("head_sums"),
     compile_seconds=round(r["compile_seconds"], 1), capture_seconds=round(r["capture_seconds"], 1),
     compiles={k: [round(v[0], 1), v[1], v[2]] for k, v in compiles.items()},
     gpu_before=before, gpu_after=after, torch=r["torch"], log=path,
