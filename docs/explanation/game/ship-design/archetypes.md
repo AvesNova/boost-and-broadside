@@ -453,8 +453,12 @@ never turns its speed into separation: extension loses in teams, and top-end spe
 widens its circles. So a card even from 1v1 to 10v10 needs the sustained turns at parity
 and the toughness gap closed (`docs/rewrite/sections/balance-sizes/progress.md`).
 
-Opt-in candidates are saved as play maps (`bnb play --preset balance-a`, and others listed
-there). The ship files stay the frozen card. Open:
-- the same-type duels joust (Jujak v Jujak 0.76-0.80 mutual head-on kills), and the
-  scripted agent's deny element ends that only at about -150 Elo;
-- 20v20 favours Jujak on every card tried.
+Opt-in candidates are saved as play maps (`bnb play --preset balance-a` to `balance-d`,
+described there). The ship files stay the frozen card. Of these, A and D hold 0.47-0.57
+from 1v1 to 10v10, but only by giving the Yongma the better sustained turn. B and C keep
+the Jujak's edge and lean Yongma in crowds. Open:
+- the same-type duels joust (Jujak v Jujak 0.76-0.80 mutual head-on kills). Halving the
+  frontal fraction on both types (D) brings it to 0.64; the agent's deny element ends it,
+  but at about -150 Elo;
+- the arena's radius moves the balance as much as the fleet size does: a wide arena under
+  fog favours the Jujak (10v10 in the 20v20 arena 0.13, 20v20 in the 10v10 arena 0.66).
