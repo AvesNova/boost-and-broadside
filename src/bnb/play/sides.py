@@ -41,7 +41,9 @@ from bnb.contracts.action import from_joint
 from bnb.contracts.pools import GAME_FIELDS
 from bnb.controllers import scripted
 from bnb.controllers.scripted import Chaser
+from bnb.controllers.scripted_defaults import MODE_DEFAULTS
 from bnb.controllers.scripted_memory import ScriptedCarry
+from bnb.controllers.scripted_parameters import ModeParameters
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
 from bnb.runs import checkpoint
@@ -73,6 +75,27 @@ class AgentError(ValueError):
 
 
 CONTROLLERS = ("scripted", "scripted_agent", "agent")  # a SideSetup's controller kinds
+
+# The play shell's scripted agent fires at aim errors this many times wider than the trained
+# defaults' (playtesting: more, riskier shots than the tuned agent takes). The window is in
+# units of the target's angular size, so it still widens with the hit radius. Training, the
+# Elo anchor and the BC data keep the defaults.
+PLAY_FIRE_ANGLE_SCALE = 1.5
+
+
+def wider_fire(parameters: ModeParameters, scale: float) -> ModeParameters:
+    """Each mode's set with its fire window (`aim_in_target_size`'s centre) times scale."""
+    return ModeParameters(
+        {
+            mode: dataclasses.replace(
+                one,
+                aim_in_target_size=one.aim_in_target_size._replace(
+                    centre=one.aim_in_target_size.centre * scale
+                ),
+            )
+            for mode, one in parameters.sets.items()
+        }
+    )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -149,11 +172,12 @@ class ScriptedAgent:
         background: bool = False,
     ) -> None:
         self.characteristics = characteristics(types, rules)
-        self.controller = scripted.Scripted(self.characteristics, rules.ships_per_team)
+        parameters = wider_fire(MODE_DEFAULTS, PLAY_FIRE_ANGLE_SCALE)
+        self.controller = scripted.Scripted(self.characteristics, rules.ships_per_team, parameters)
         self.carry: ScriptedCarry = self.controller.init_carry(1, torch.device("cpu"))
         self.draws = torch.Generator().manual_seed(seed + MODEL_DRAWS_OFFSET)
         self.inspection: Inspection | None = None
-        self.step = ScriptedStep(rules.ships_per_team)
+        self.step = ScriptedStep(rules.ships_per_team, parameters)
         self.compiled, self.background = compiled, background
         self.uses_compiled = False
         self._path: pathlib.Path | None = None  # the built step's, from the first view
