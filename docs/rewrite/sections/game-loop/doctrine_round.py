@@ -52,6 +52,10 @@ def main() -> None:
     parser.add_argument("--minutes", type=float, default=40.0, help="the search's bound")
     parser.add_argument("--method", choices=("es", "mutation"), default="es")
     parser.add_argument("--pairs", type=int, default=16, help="the ES's antithetic pairs")
+    parser.add_argument(
+        "--parts", nargs="+", default=["energy", "turn"], help="what the ES searches"
+    )
+    parser.add_argument("--label", default="", help="appended to the results' names")
     parser.add_argument("--card", help="a JSON file of card factors {energy: {}, turn: {}}")
     args = parser.parse_args()
     out_dir = HERE / f"round{args.round}"
@@ -87,6 +91,7 @@ def main() -> None:
                 seed=args.round * 100 + len(results),
                 deadline=deadline,
                 log=lambda line: print(line, flush=True),
+                parts=tuple(args.parts),
             )
         else:
             found = search(
@@ -103,7 +108,7 @@ def main() -> None:
                 deadline=deadline,
                 log=lambda line: print(line, flush=True),
             )
-        results.append(dataclasses.replace(found, name=f"r{args.round}-{start}"))
+        results.append(dataclasses.replace(found, name=f"r{args.round}-{start}{args.label}"))
     # the league's Elo, every pair, the mixed lineups
     field = players + results
     jobs = [

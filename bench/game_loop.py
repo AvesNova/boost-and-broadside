@@ -89,6 +89,8 @@ class Player:
     energy: Doctrine = Doctrine()
     turn: Doctrine = Doctrine()
     temperature: float = 1.0  # the scripted agent's (inf: uniform random play)
+    # the scripted agent's parameters (`scripted_parameters.pack`), None: the mode's default
+    parameters: tuple[float, ...] | None = None
 
     def rows(self) -> tuple[list[float], list[float]]:
         return pack(self.energy), pack(self.turn)
@@ -96,12 +98,15 @@ class Player:
     def named(self) -> dict:
         from bnb.controllers.scripted_doctrine import named
 
-        return {
+        out = {
             "name": self.name,
             "temperature": self.temperature,
             ENERGY: named(self.energy),
             TURN: named(self.turn),
         }
+        if self.parameters is not None:
+            out["parameters"] = list(self.parameters)
+        return out
 
 
 def player_from(entry: dict) -> Player:
@@ -111,7 +116,16 @@ def player_from(entry: dict) -> Player:
         from_named(entry[ENERGY]),
         from_named(entry[TURN]),
         float(entry.get("temperature", 1.0)),
+        tuple(entry["parameters"]) if "parameters" in entry else None,
     )
+
+
+def default_parameters() -> tuple[float, ...]:
+    """The scripted agent's real-scale deathmatch set, packed."""
+    from bnb.controllers.scripted_defaults import MODE_DEFAULTS
+    from bnb.controllers.scripted_parameters import pack as pack_parameters
+
+    return tuple(pack_parameters(MODE_DEFAULTS.sets[PRESET]))
 
 
 def base_card(device) -> tuple[ShipTypes, dict]:
@@ -165,10 +179,16 @@ def layout(groups: list[Group], variants: int, device) -> dict:
     """The per-environment tensors of a list of groups: ship types (B, N) int32, side A on
     team 0 (B,), the group index (B,), and the view doctrine table (2B, 2K, WIDTH)."""
     ship_type, a_on_zero, group_index, view_rows, temperature = [], [], [], [], []
+    parameter_rows = []
+    default = default_parameters()
     for number, group in enumerate(groups):
         first, second = LINEUPS[group.lineup]
         rows = {side: player.rows() for side, player in (("a", group.a), ("b", group.b))}
         heat = {"a": group.a.temperature, "b": group.b.temperature}
+        sets = {
+            side: list(player.parameters or default)
+            for side, player in (("a", group.a), ("b", group.b))
+        }
 
         def types_of(team):
             return [group.variant + kind * variants for kind in team]
@@ -183,12 +203,14 @@ def layout(groups: list[Group], variants: int, device) -> dict:
                 energy_row, turn_row = rows[team_side]
                 view_rows.append([energy_row] * variants + [turn_row] * variants)
                 temperature.append(heat[team_side])
+                parameter_rows.append(sets[team_side])
     return dict(
         ship_type=torch.tensor(ship_type, dtype=torch.int32, device=device),
         a_on_zero=torch.tensor(a_on_zero, device=device),
         group=torch.tensor(group_index, device=device),
         doctrines=torch.tensor(view_rows, dtype=torch.float32, device=device),
         temperature=torch.tensor(temperature, dtype=torch.float32, device=device),
+        parameters=torch.tensor(parameter_rows, dtype=torch.float32, device=device),
     )
 
 
@@ -253,8 +275,17 @@ class Loop:
         self.card = characteristics(self.types, self.rules)
         self.doctrines = torch.zeros((2 * self.B, 2 * variants, WIDTH), device=self.device)
         self.temperature = torch.ones((2 * self.B,), device=self.device)
+        from bnb.controllers.scripted_parameters import unpack
+
+        self.parameters = torch.tensor(
+            [default_parameters()] * (2 * self.B), dtype=torch.float32, device=self.device
+        )
         self.agent = scripted.Scripted(
-            self.card, self.S, temperature=self.temperature, doctrines=self.doctrines
+            self.card,
+            self.S,
+            parameters=unpack(self.parameters),
+            temperature=self.temperature,
+            doctrines=self.doctrines,
         )
         self.ship_type = torch.zeros((self.B, self.N), dtype=torch.int32, device=self.device)
         self.a_on_zero = torch.zeros((self.B,), dtype=torch.bool, device=self.device)
@@ -284,6 +315,7 @@ class Loop:
         self.a_on_zero.copy_(placed["a_on_zero"])
         self.doctrines.copy_(placed["doctrines"])
         self.temperature.copy_(placed["temperature"])
+        self.parameters.copy_(placed["parameters"])
         self.group = placed["group"]
         state = api.reset(
             self.rules,
@@ -1030,6 +1062,79 @@ def decode(vector: list[float], like: Doctrine) -> Doctrine:
     return clamp(Doctrine(**values))
 
 
+# The scripted parameters the ES searches (the combat layer's and the memory's; Frontline's
+# and the boundary's are left as they are).
+SEARCHED_PARAMETERS = (
+    "turn_in_stall_angle",
+    "level_two_in_stall_angle",
+    "level_three_in_stall_angle",
+    "boost_slow_in_corner_speed",
+    "boost_far_in_store_gun_ranges",
+    "reverse_in_gun_range",
+    "aim_in_target_size",
+    "shoot_in_gun_range",
+    "lead_cap_in_gun_range",
+    "separation_radius_in_gun_range",
+    "separation_weight",
+    "target_switch_in_log_distance",
+    "side_commit_in_stall_angle",
+    "side_switch_in_radians",
+)
+
+
+def encode_parameters(row: tuple[float, ...]) -> list[float]:
+    """The searched scripted parameters of a packed row, as logs (a logistic's centre and
+    scale, a switch's rate, centre and scale, a float)."""
+    from bnb.controllers.scripted_parameters import from_row
+
+    parameters = from_row(list(row))
+    out = []
+    for name in SEARCHED_PARAMETERS:
+        value = getattr(parameters, name)
+        numbers = (
+            (value.centre, value.scale)
+            if hasattr(value, "rising")
+            else tuple(value)
+            if isinstance(value, tuple)
+            else (value,)
+        )
+        out.extend(math.log(max(n, 1e-6)) for n in numbers)
+    return out
+
+
+def decode_parameters(vector: list[float], like: tuple[float, ...]) -> tuple[float, ...]:
+    """`encode_parameters`' inverse into the packed row `like`, each logistic's and
+    switch's scale held at its floor or above."""
+    from bnb.controllers.scripted_parameters import (
+        SCALE_FLOORS as PARAMETER_FLOORS,
+    )
+    from bnb.controllers.scripted_parameters import (
+        SWITCH_SCALE_FLOORS,
+        Logistic,
+        Switch,
+        from_row,
+    )
+    from bnb.controllers.scripted_parameters import pack as pack_parameters
+
+    parameters = from_row(list(like))
+    values, column = {}, 0
+    for name in SEARCHED_PARAMETERS:
+        value = getattr(parameters, name)
+        if isinstance(value, Logistic):
+            centre, scale = (math.exp(v) for v in vector[column : column + 2])
+            scale = max(scale, PARAMETER_FLOORS.get(name, 0.0))
+            values[name] = Logistic(centre, scale, value.rising)
+            column += 2
+        elif isinstance(value, Switch):
+            rate, centre, scale = (math.exp(v) for v in vector[column : column + 3])
+            values[name] = Switch(rate, centre, max(scale, SWITCH_SCALE_FLOORS.get(name, 0.0)))
+            column += 3
+        else:
+            values[name] = math.exp(vector[column])
+            column += 1
+    return tuple(pack_parameters(dataclasses.replace(parameters, **values)))
+
+
 def es_search(
     loop: Loop,
     parent: Player,
@@ -1046,8 +1151,10 @@ def es_search(
     log=print,
     objective: str = "kill_score",
     lineups: tuple[str, ...] = SEARCH_LINEUPS,
+    parts: tuple[str, ...] = ("energy", "turn"),
 ) -> Player:
-    """An evolution strategy over both types' doctrines at once (`encode`'s space): each
+    """An evolution strategy over `parts` of a player at once (the two types' doctrines in
+    `encode`'s space, the scripted parameters in `encode_parameters`'): each
     generation `pairs` antithetic pairs of perturbations (sigma N(0, 1) per number) play
     `games` games per opponent and lineup as side A, beside the parent; the gradient is the
     pairs' score differences times their directions; the parent on probation moves `step`
@@ -1055,20 +1162,28 @@ def es_search(
     the next generation beats the incumbent's (whose games accumulate), else the incumbent
     returns and the step halves. Every candidate is a line of the log."""
     generator = torch.Generator().manual_seed(seed)
-    size_e = len(encode(parent.energy))
-    centre = torch.tensor(encode(parent.energy) + encode(parent.turn), dtype=torch.float64)
+    base_parameters = parent.parameters or default_parameters()
+    encoded = {
+        "energy": encode(parent.energy),
+        "turn": encode(parent.turn),
+        "parameters": encode_parameters(base_parameters),
+    }
+    sizes = {part: len(encoded[part]) for part in parts}
+    centre = torch.tensor([v for part in parts for v in encoded[part]], dtype=torch.float64)
     parent_rows: list[dict] = []
     incumbent = None  # (centre, rows)
     started = time.time()
 
     def player_at(vector: torch.Tensor, name: str) -> Player:
-        values = vector.tolist()
-        return dataclasses.replace(
-            parent,
-            name=name,
-            energy=decode(values[:size_e], parent.energy),
-            turn=decode(values[size_e:], parent.turn),
-        )
+        values, column, changes = vector.tolist(), 0, {}
+        for part in parts:
+            piece = values[column : column + sizes[part]]
+            column += sizes[part]
+            if part == "parameters":
+                changes[part] = decode_parameters(piece, base_parameters)
+            else:
+                changes[part] = decode(piece, getattr(parent, part))
+        return dataclasses.replace(parent, name=name, **changes)
 
     for generation in range(generations):
         if deadline is not None and time.time() > deadline:
