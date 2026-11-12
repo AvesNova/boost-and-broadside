@@ -1040,3 +1040,20 @@ noses set:
 - A harder nose on both ships takes the rate mirror's joust down (0.48 to 0.15-0.35) without
   moving the balance; the fourth arm keeps both mirrors near 300 s. Confirm 12 (running)
   takes it to 1024 games, 20v20 and both doctrines.
+
+## 04:55-05:01 KST: round 19 (`round19/`): a wider rate v speed
+
+512 games (10v10 256), r9; rate (lift x1.1-1.15, nose f0 0.065) v speed (drag x0.8, vision
+x1.06, damage x1.05):
+
+| Rate lift, dmg; speed f0 | 1v1 / 2v2 / 5v5 / 10v10 | AA; BB mutual, life |
+|---|---|---|
+| x1.1, x1.3; 0.06 | 0.62 / 0.52 / 0.45 / 0.37 | 0.39, 227 s; 0.18, 449 s |
+| x1.1, x1.4; 0.06 | 0.64 / 0.56 / 0.45 / 0.43 | 0.44, 214 s; 0.17, 508 s |
+| x1.1, x1.3; 0.055 | 0.62 / 0.51 / 0.46 / 0.42 | 0.39, 229 s; 0.14, 437 s |
+| x1.1, x1.4; 0.065 | 0.65 / 0.54 / 0.50 / 0.43 | 0.43, 214 s; 0.25, 371 s |
+| x1.15, x1.45; 0.055 | 0.69 / 0.55 / 0.52 / 0.46 | 0.49, 203 s; 0.14, 411 s |
+
+- **A wider flight gap widens the duel-crowd split** (0.62-0.69 against 0.37-0.46) and the
+  speed fighter's nose no longer pays it back. Under r9 the flight-distinct pair stays near
+  equal flight (lift x1.03, drag x0.85).
