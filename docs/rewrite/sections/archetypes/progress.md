@@ -280,3 +280,30 @@ Every ship M plus its factors plus the kit (vision x0.9, cone f0 0.08 12° p8, d
   (no damage inside 150 m, more damage and range) against a close fighter gives the best
   mirror shapes seen with kills in band (0.24 / 0.24 mutual at 319 / 360 s), but leans
   to the gunner in crowds (0.57-0.66) and away in the duel (0.44).
+
+## 01:20-01:37 KST: round 5 (`round5/`): refinements, and the kit on live pairs
+
+512 games (10v10 256); strength = the candidate pair flown by r9 against r9 itself on the
+same card (5v5 mixed / reversed), a sanity check that the card does not break the agent:
+
+| Pair | A v B 1v1 / 2v2 / 5v5 / 10v10 | A v B duel life | AA; BB mutual, life | v r9 |
+|---|---|---|---|---|
+| scout (vision x1.15) v brawler (vision x0.9, dmg x1.1) | **0.57 / 0.53 / 0.46 / 0.44** | 240 s | 0.78, 196 s; 0.57, 281 s | 0.50 / 0.52 |
+| scout (vision x1.1) v brawler (vision x0.85, dmg x1.1) | 0.62 / 0.52 / 0.50 / 0.45 | 267 s | 0.73, 210 s; 0.53, 357 s | 0.50 / 0.49 |
+| scout (vision x1.15) v brawler (vision x0.85, dmg x1.1) | 0.61 / 0.52 / 0.49 / 0.54 | 277 s | 0.77, 210 s; 0.54, 313 s | 0.48 / 0.49 |
+| the same, kit | 0.77 / 0.68 / 0.62 / 0.71 | 334 s | 0.33, 311 s; 0.12, 743 s | 0.48 / 0.52 |
+| sniper (induced x0.9) v shotgun | 0.68 / 0.58 / 0.61 / 0.60 | 320 s | 0.70, 246 s; 0.65, 263 s | 0.50 / 0.49 |
+| the same, kit | 0.72 / 0.57 / 0.61 / 0.56 | 331 s | **0.34, 323 s; 0.25, 344 s** | 0.52 / 0.52 |
+| sniper (induced x0.85, dmg x0.9) v shotgun | 0.62 / 0.46 / 0.41 / 0.44 | 648 s | 0.71, 320 s; 0.67, 268 s | 0.49 / 0.53 |
+| slasher (induced x0.8, shield x0.55) v dogfighter | 0.57 / 0.32 / 0.46 / 0.49 | 403 s | 0.69, 258 s; 0.69, 214 s | 0.53 / 0.54 |
+| the same, kit | 0.65 / 0.49 / 0.70 / 0.84 | 293 s | 0.35, 351 s; 0.30, 275 s | 0.51 / 0.52 |
+| gunner (dmg x0.9, induced x0.95, vision x1.25) v brawler (dmg x1.2) | 0.47 / 0.57 / 0.60 / 0.58 | 260 s | 0.90, 170 s; 0.64, 364 s | 0.52 / 0.47 |
+
+- **Scout v brawler reaches the band without the kit**: 0.57 / 0.53 / 0.46 / 0.44, a 240 s
+  duel, both mirrors in pace (196 / 281 s), strength even. Its fault is the scout mirror:
+  a 0.78 mutual joust (long sight finds the other ship nose-on).
+- **The kit fixes the mirrors and moves the balance**: every pair's mirrors drop to 0.12-0.37
+  mutual, and the pair leans to the ship with the sight or the speed (scout 0.62-0.77,
+  slasher 0.70-0.84 in crowds). The kit's x0.9 sight hurts the short-sighted ship most (its
+  mirror: 743 s).
+- Strength holds everywhere (0.47-0.54 against r9).
