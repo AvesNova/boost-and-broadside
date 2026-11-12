@@ -1182,6 +1182,9 @@ SEARCHED_PARAMETERS = (
     "target_switch_in_log_distance",
     "side_commit_in_stall_angle",
     "side_switch_in_radians",
+    "memory_fade_in_seconds",
+    "boundary_margin_in_turn_radius",
+    "centre_hold_in_arena_radius",
 )
 
 
