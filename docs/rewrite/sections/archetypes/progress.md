@@ -887,3 +887,13 @@ vision x1.04, f0 0.07) fighters of confirm 9 against each set ship:
 - The trades at 20v20 (0.18-0.22 on every card of the kit) are probably density more than
   mutual kills: the bench counts any death on the other team within 0.5 s as a trade, and
   these cards' 20v20 games have about 100 kills against the frozen card's 68.
+
+## 04:32-04:40 KST: set 7 (`set7/`): the final hit-and-run ship against the brawler and the small ship
+
+| A v B | 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | AA; BB mutual, life |
+|---|---|---|
+| hit-and-run (final) v brawler | 0.59 / 0.52 / 0.50 / 0.50 / 0.43 | 0.36, 254 s; 0.35, 286 s |
+| hit-and-run (final) v small | 0.57 / 0.49 / 0.43 / 0.44 / 0.37 | 0.36, 260 s; 0.43, 288 s |
+
+- The same shape as set 4: the hit-and-run ship wins duels and fades in big crowds against
+  every ship but the standard. It is a pair ship (with the standard), not a set member.
