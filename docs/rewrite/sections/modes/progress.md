@@ -432,3 +432,15 @@ Wider spacing makes the fight less sharp: from first hit to wipe 11.4 → 15.9 �
 (the centre alone: 12.1 s), every game still a wipe. The ±30° jitter changes nothing
 measurable (it stays inside the author's 30° look). With fog off the first hit comes ~4 s
 later than with fog on (36.6 s).
+
+## Step 2k: lock 30 s toward ~80% by the front (5v5, fog off, 256 games each)
+
+| variant | P(same team next) | ended by the front | median length (s) | captures / game |
+|---|---|---|---|---|
+| lock 30, threshold 3, 600 s | 0.546 ± 0.016 | 0.387 ± 0.030 | 600 | 4.8 |
+| **lock 30, threshold 2, 600 s** | **0.553 ± 0.020** | **0.793 ± 0.025** | 342 | 3.4 |
+| lock 30, threshold 3, 900 s | 0.531 ± 0.014 | 0.594 ± 0.031 | 750 | 6.3 |
+| lock 30, threshold 3, 1200 s | 0.527 ± 0.012 | 0.688 ± 0.029 | 750 | 7.2 |
+
+Lock 30 s with threshold 2 meets both targets at 5v5 (a near-random walk, 79% by the
+front) in the 600 s clock; threshold 3 would need a clock well past 1200 s.
