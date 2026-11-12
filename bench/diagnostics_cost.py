@@ -57,6 +57,8 @@ def game_sums_seconds(trainer, repeats: int = 50) -> float:
         objective_progress=torch.zeros((B, N), device=device),
         objective=torch.zeros((B, N), device=device),
         result=torch.zeros(B, dtype=torch.int32, device=device),
+        enemy_damage_by_aspect=torch.zeros((B, N, 3), device=device),
+        kill_aspect=torch.full((B, N), -1, dtype=torch.int32, device=device),
     )
     reward = torch.zeros((B, N, len(REWARD_LEVELS)), device=device)
     event_rewards = torch.zeros((B, N, len(REWARD_EVENTS)), device=device)

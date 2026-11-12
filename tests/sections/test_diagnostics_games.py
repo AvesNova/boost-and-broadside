@@ -32,6 +32,8 @@ def _events(**given) -> Events:
         objective_progress=torch.zeros((B, N)),
         objective=torch.zeros((B, N)),
         result=torch.zeros(B, dtype=torch.int32),
+        enemy_damage_by_aspect=torch.zeros((B, N, 3)),
+        kill_aspect=torch.full((B, N), -1, dtype=torch.int32),
     )
     fields.update(given)
     return Events(**fields)
@@ -98,6 +100,34 @@ def test_the_resolve_sums_match_a_hand_computed_episode():
     # the running state restarted with the episode in environment 0 and goes on in 1
     assert game["life_ticks"][0].tolist() == [0.0, 0.0]
     assert game["life_ticks"][1].tolist() == [3.0, 3.0]
+
+
+def test_the_aspect_shares_count_enemy_damage_and_enemy_kills():
+    """Environment 0: ship 1 takes 10 head-on and 30 from the tail, and dies to the tail
+    hit; environment 1: ship 0 takes 20 on the flank and dies to its teammate's (itself
+    here: a killer on its own team is no enemy kill)."""
+    game, sums = analytics.blank_game(B, N, "cpu"), analytics.blank_game_sums(B, "cpu")
+    by_aspect = torch.zeros((B, N, 3))
+    by_aspect[0, 1] = torch.tensor([10.0, 0.0, 30.0])
+    by_aspect[1, 0, 1] = 20.0
+    died = torch.tensor([[False, True], [True, False]])
+    killer = torch.tensor([[-1, 0], [0, -1]], dtype=torch.int32)
+    kill_aspect = torch.tensor([[-1, 2], [1, -1]], dtype=torch.int32)
+    events = _events(
+        died=died, killer=killer, kill_aspect=kill_aspect, enemy_damage_by_aspect=by_aspect
+    )
+    zero = torch.zeros((B, N, len(REWARD_LEVELS)))
+    analytics.resolve_tick(
+        game, sums, events, zero, torch.zeros((B, N, len(REWARD_EVENTS))), _rows(), TICK
+    )
+    series = metrics.read(_two_slices().games(sums, None))
+    assert series["combat/damage_share/head_on/a"] == pytest.approx(0.25)
+    assert series["combat/damage_share/tail/a"] == pytest.approx(0.75)
+    assert series["combat/damage_share/flank/b"] == pytest.approx(1.0)
+    assert series["combat/damage_share/flank"] == pytest.approx(20.0 / 60.0)
+    assert series["combat/kill_share/tail/a"] == pytest.approx(1.0)
+    assert series["combat/kill_share/tail"] == pytest.approx(1.0)  # b's kill is no enemy's
+    assert "combat/kill_share/flank/b" not in series
 
 
 def test_the_perceive_sums_match_a_hand_computed_case():

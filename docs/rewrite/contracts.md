@@ -379,6 +379,10 @@ cut; where they differ, this section and the code win.
     viewer's own ring order, so the order reveals no seat. (Since section 3c, `Z` is 5 in
     every mode; see below.) `GLOBAL_COLUMNS` gains `mode_team_deathmatch`, `mode_frontline`, `score_own`,
     `score_enemy`, `score_target`, `front` and `front_threshold`. All are team-relative.
+  - **`Events` (schema 3, 2026-11-12)** gains `enemy_damage_by_aspect` (B, N, 3) and
+    `kill_aspect` (B, N) int32, the hit's aspect class (`ASPECTS`: head-on, flank, tail)
+    for the statistics. The game's numbers are unchanged; the fingerprint, which hashes
+    the state and the observation, stays.
   - **`REWARD_LEVELS`** (`bnb.contracts.trajectory`): damage, kill_death,
     objective_progress, objective, outcome. `Trajectory.reward` is
     `(L, R, S, len(REWARD_LEVELS))`, per level and weighted.

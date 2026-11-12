@@ -6,7 +6,7 @@ import pytest
 import torch
 from torch.utils import _pytree
 
-from bnb.contracts import GameConfig
+from bnb.contracts import ASPECTS, GameConfig
 from bnb.contracts.action import Action
 from bnb.contracts.config import MODES, TEAMS
 from bnb.contracts.obs import FIELD_COLUMNS, GLOBAL_COLUMNS, SHIP_COLUMNS, ZONE_COLUMNS, ZONE_SLOTS
@@ -56,6 +56,8 @@ def _expected(batch: int) -> dict:
             objective_progress=(floats, (B, N)),
             objective=(floats, (B, N)),
             result=(ints, (B,)),
+            enemy_damage_by_aspect=(floats, (B, N, len(ASPECTS))),
+            kill_aspect=(ints, (B, N)),
         ),
         "observation": dict(
             ships=(floats, (B, T, N, len(SHIP_COLUMNS))),

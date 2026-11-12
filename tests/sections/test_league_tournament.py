@@ -461,6 +461,25 @@ def test_a_low_temperature_concentrates_and_a_high_one_flattens_only_its_rows(tm
     assert any(not torch.equal(one, two) for one, two in zip(states[0][1], states[1][1]))
 
 
+def test_the_aspect_statistics_split_each_rows_kills_and_hit_damage():
+    """Each row's kills by aspect class sum to its kills (every kill is a hit's), and its
+    damage by class is positive where it landed hits."""
+    from bnb.contracts import ASPECTS
+    from bnb.league.matches import STATISTICS
+
+    game = dataclasses.replace(GAME, arena_radius=600.0, episode_seconds=12.0)
+    arena = Arena([SCRIPTED, SCRIPTED], game, CPU, SMALL)
+    torch.manual_seed(3)
+    arena.play([(0, 1), (1, 0)])
+    statistics = arena.statistics()  # (blocks, 2, len(STATISTICS))
+    column = {name: statistics[..., number] for number, name in enumerate(STATISTICS)}
+    kills = sum(column[f"kills_{aspect}"] for aspect in ASPECTS)
+    damage = sum(column[f"damage_{aspect}"] for aspect in ASPECTS)
+    assert float(column["hits"].sum()) > 0.0 and float(column["kills"].sum()) > 0.0
+    torch.testing.assert_close(kills, column["kills"])
+    assert torch.equal(damage > 0.0, column["hits"] > 0.0)
+
+
 # ---- the allocation of blocks and the allowed pairs
 
 

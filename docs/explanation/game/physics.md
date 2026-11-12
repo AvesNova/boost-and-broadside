@@ -157,6 +157,12 @@ which blocks sight (see [Perception and fog](perception.md)).
   with its depth.
 - **The killer** of a ship is the owner of its earliest hit this tick, ties to the lower
   bullet index.
+- **Aspect statistics.** For the statistics only, each hit is classed by `θ`: head-on
+  under 45 degrees, tail over 135, the flank between (`bnb.contracts.ASPECTS`). The tick's
+  events carry the enemy damage each ship took by class and the class of its killing hit;
+  the training series (`combat/damage_share/{aspect}`, `combat/kill_share/{aspect}`, per
+  pool too), the match statistics (`damage_{aspect}`, `kills_{aspect}`) and the
+  gun-lethality bench report the shares.
 
 The shared constants, from `bnb.game.rules.Rules`. The card scales the spread, the
 bullet drag, the head-on fraction and angle, the shield recharge rate and delay, and the vision range
