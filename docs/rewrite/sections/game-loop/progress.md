@@ -409,3 +409,23 @@ Card: round-7 card with both types' damage x0.3 and Yongma's x0.85 more (`round9
 - r9 self-play: energy v turn **0.579 ± 0.010** (Yongma ahead: round 10 rebalances); kills
   mutual 0.03-0.05, offset 0.16-0.19, flank 0.51-0.59, **tail 0.17-0.31**; trades
   0.04-0.06; life 115-189 s; gap between deaths 9.3-13.7 s.
+
+## 17:37-17:40 KST: round 10 cards (balance at damage x0.3, on r9)
+
+| Variant (on the round-9 card) | r9 v off kill share | E v T | Kills m / o / f / t | Trades | Life s | Kills/min/ship | Merges a kill, 2 turn diameters: mean / median / first-pass / p90 |
+|---|---|---|---|---|---|---|---|
+| round-9 card | 0.668 | 0.618 ± 0.014 | 0.04 / 0.16 / 0.55 / 0.25 | 0.05 | 141 | 0.41 | 0.69 / 0 / 0.84 / 2.0 |
+| **Y damage x0.9** | 0.660 | **0.508 ± 0.015** | 0.03 / 0.16 / 0.55 / 0.25 | 0.04 | 148 | 0.40 | 0.72 / 0.4 / 0.83 / 2.0 |
+| Y damage x0.8 | 0.672 | 0.469 | 0.03 / 0.16 / 0.55 / 0.26 | 0.04 | 157 | 0.38 | 0.78 / 0.6 / 0.81 / 2.0 |
+| Y damage x0.7 | 0.670 | 0.343 | 0.03 / 0.15 / 0.55 / 0.27 | 0.04 | 168 | 0.37 | 0.82 / 0.8 / 0.79 / 2.0 |
+| J damage x1.15 | 0.680 | 0.499 | 0.03 / 0.17 / 0.56 / 0.24 | 0.05 | 137 | 0.42 | 0.66 / 0 / 0.85 / 1.8 |
+| J damage x1.3 | 0.671 | 0.412 | 0.04 / 0.18 / 0.56 / 0.22 | 0.05 | 132 | 0.44 | 0.62 / 0 / 0.86 / 1.8 |
+| Y shield x0.9 | 0.672 | 0.526 | 0.04 / 0.17 / 0.56 / 0.23 | 0.05 | 135 | 0.42 | 0.65 / 0 / 0.85 / 2.0 |
+| Y x0.85, J x1.1 damage | 0.678 | 0.457 | 0.03 / 0.16 / 0.55 / 0.25 | 0.04 | 148 | 0.40 | 0.71 / 0.4 / 0.83 / 1.8 |
+
+- Damage is the clean balance knob here (about 0.11 of energy v turn per 10% of Yongma's
+  damage). **Card for round 11 and the final: Yongma damage x0.9 more (energy v turn
+  0.508)**; both types' damage factors now ~0.30 of the ship files' x 0.65 (Yongma
+  0.298, Jujak 0.300), shields Yongma x1.3, Jujak x0.87.
+- **Round 11** (running, 17:40, ETA ~18:08): ES from r9 on this card. Then the final
+  measurement (~18:10-18:45), the freeze, and the report. **Expected stop ~19:15 KST.**
