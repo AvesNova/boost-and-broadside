@@ -29,6 +29,7 @@ import zoneinfo
 import torch
 
 from bnb.cli import compile_limits
+from bnb.game import ships as ship_sets
 from bnb.game.api import PRESETS
 from bnb.league.matches import STATISTICS, Arena, ArenaConfig, player
 from bnb.runtime.opponents import Rung, ladder_name
@@ -48,6 +49,13 @@ def radius_of(kind: str, base_radius: float, base_ships: int, ships: int) -> flo
     if kind == "density":
         return round(base_radius * math.sqrt(ships / base_ships), 1)
     return float(kind)
+
+
+def lineup_of(lineup: str, game) -> tuple[int, ...]:
+    """A team's ship types: the keys cycled over its slots."""
+    keys = [ship.key for ship in ship_sets.load(game.ship_set)]
+    chosen = [keys.index(key) for key in lineup.split(",")]
+    return tuple(chosen[slot % len(chosen)] for slot in range(game.ships_per_team))
 
 
 def score(counts: list[int]) -> tuple[float, float]:
@@ -75,6 +83,9 @@ def main() -> None:
     parser.add_argument("--environments", type=int, default=256, help="games per batch")
     parser.add_argument("--hours", type=float, default=3.0)
     parser.add_argument("--fields", type=int, default=0)
+    parser.add_argument(
+        "--lineup", default=None, help="type keys cycled over each team's slots (both teams)"
+    )
     arguments = parser.parse_args()
     compile_limits()
     arguments.out.mkdir(parents=True, exist_ok=True)
@@ -100,6 +111,8 @@ def main() -> None:
         radius = radius_of(kind, base.arena_radius, base.ships_per_team, ships)
         mode = arguments.mode or base.mode
         cell = f"{mode}_{ships}v{ships}_R{radius:.0f}_T{arguments.temperature:g}"
+        if arguments.lineup:
+            cell += f"_{arguments.lineup.replace(',', '-')}"
         counts = done.setdefault(cell, [0, 0, 0])
         if score(counts)[1] < arguments.stderr or sum(counts) >= arguments.max_games:
             print(f"{cell}: done {score(counts)}", flush=True)
@@ -113,6 +126,12 @@ def main() -> None:
         environments = arguments.environments
         built = time.time()
         arena = Arena(players, game, device, ArenaConfig(blocks=1, block_environments=environments))
+        if arguments.lineup:
+            team = lineup_of(arguments.lineup, game)
+            arena.team_types = [team, team]
+            arena.rollout.ship_type = torch.tensor(
+                team + team, dtype=torch.int32, device=device
+            ).repeat(environments, 1)
         print(f"{cell}: built in {time.time() - built:.0f} s", flush=True)
         while score(counts)[1] >= arguments.stderr and sum(counts) < arguments.max_games:
             started = time.time()
@@ -133,6 +152,7 @@ def main() -> None:
                 radius=radius,
                 kind=kind,
                 temperature=arguments.temperature,
+                lineup=arguments.lineup,
                 counts=result,
                 seconds=seconds,
                 statistics=columns,
