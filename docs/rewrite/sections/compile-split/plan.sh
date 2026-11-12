@@ -10,7 +10,9 @@ wait_for B-bc-cold
 say "round 1 B done; A (its first learn failed for memory) and BC bc cold"
 bash $D/round.sh bc cold $E/bc.json 1 3 A BC
 wait_for C-bc-cold
-say "C bc done; the trace-only ablations"
+say "C bc's warm caches: does its first learn run (the cold one crashed after compiling)?"
+TORCHINDUCTOR_COMPILE_THREADS=3 bash $D/measure.sh C bc warm $E/bc.json 1 "compile_split=true" >> /workspace/cs/rounds.out 2>&1
+say "the trace-only ablations"
 bash $D/ablate.sh eager bc-full bc-nolanes bc-frontline bc-frontline-nolanes ppo-full ppo-nolanes ppo-nolanes-slot1 ppo-frontline ppo-frontline-nolanes-slot1 >> /workspace/cs/rounds.out 2>&1
 say "C bc and the ablations done; PPO A, C cold"
 bash $D/round.sh ppo cold $E/ppo.json 1 3 A C
