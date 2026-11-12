@@ -1078,6 +1078,33 @@ def confirm3() -> list[dict]:
 ROUNDS["confirm3"] = confirm3
 
 
+def screen3() -> list[dict]:
+    """Jouster v turner, flight-distinct: A an armoured, hard-hitting nose and a slightly worse
+    sustained turn (it wants the merge); B the better sustained turn (it wants the tail).
+    Kit2 on both, then A's own cone. 1v1 and 5v5."""
+    out = []
+    for ai, ad, f0, deg in (
+        (1.0, 1.2, 0.03, 20),
+        (1.1, 1.3, 0.03, 20),
+        (1.1, 1.5, 0.03, 20),
+        (1.0, 1.3, 0.05, 30),
+        (1.15, 1.5, 0.03, 30),
+    ):
+        a = merge(kit(*KIT2), {"induced_drag_scale": ai, "hit_damage": ad}, cone(f0, deg, 8))
+        out.append(
+            pair(
+                f"jouster (induced x{ai:g}, dmg x{ad:g}, cone {f0:g} {deg} deg) v turner "
+                "(induced x0.9) (M), kit2",
+                ("M", a),
+                ("M", merge(kit(*KIT2), {"induced_drag_scale": 0.9})),
+            )
+        )
+    return out
+
+
+ROUNDS["screen3"] = screen3
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
