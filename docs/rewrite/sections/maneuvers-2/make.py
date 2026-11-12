@@ -78,6 +78,13 @@ def hold(gun_ranges: float, stall_angles: float = 1.0) -> dict:
     )
 
 
+def de(shield=0.6, scale=0.1, energy=None) -> dict:
+    out = dict(duel_extend=1.0, duel_extend_in_shield_ratio=[shield, scale])
+    if energy:
+        out["duel_extend_in_energy_ratio"] = [energy, 0.05]
+    return out
+
+
 ROUNDS = {
     "round1": [
         ("r9m", {}),
@@ -93,6 +100,17 @@ ROUNDS = {
         ("duel extend lift 0.95, any type", dict(duel_extend(lift=0.95), sense_mirror_only=0.0)),
         ("hold 1 gr", hold(1.0)),
         ("hold 0.5 gr", hold(0.5)),
+    ],
+    "round2": [
+        ("r9m", {}),
+        ("DE shield 0.4", de(0.4)),
+        ("DE shield 0.6", de(0.6)),
+        ("DE shield 0.8", de(0.8)),
+        ("DE shield 1.0", de(1.0)),
+        ("DE shield 0.6 soft", de(0.6, 0.3)),
+        ("DE shield 0.6 + energy 0.6", de(0.6, energy=0.6)),
+        ("DE shield 0.6, Yongma only", (de(0.6), {})),
+        ("DE shield 0.6 + energy 0.8, Yongma only", (de(0.6, energy=0.8), {})),
     ],
 }
 

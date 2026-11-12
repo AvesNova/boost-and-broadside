@@ -4,3 +4,511 @@ W1113 02:40:24.907000 1846747 torch/_inductor/utils.py:2143] [0/0] Not enough SM
   warn_once(FP_FUSION_DEFAULT_WARNING)
   batch 1/13 57 s; ETA 02:52 KST
   batch 2/13 74 s; ETA 02:48 KST
+  batch 3/13 90 s; ETA 02:46 KST
+  batch 4/13 107 s; ETA 02:45 KST
+  batch 5/13 123 s; ETA 02:45 KST
+  batch 6/13 140 s; ETA 02:45 KST
+  batch 7/13 157 s; ETA 02:44 KST
+  batch 8/13 173 s; ETA 02:44 KST
+  batch 9/13 190 s; ETA 02:44 KST
+  batch 10/13 206 s; ETA 02:44 KST
+  batch 11/13 223 s; ETA 02:44 KST
+  batch 12/13 240 s; ETA 02:44 KST
+  batch 13/13 256 s; ETA 02:44 KST
+1v1                     D2 | r9m   energy v turn v c0: score 0.496 ± 0.014  kills m/o/f/t 0.24 / 0.69 / 0.07 / 0.00  life 285 s  kpm/ship 0.20  trades 0.00
+1v1                     D2 | r9m     turn mirror v c0: score 0.519 ± 0.016  kills m/o/f/t 0.83 / 0.06 / 0.00 / 0.11  life 211 s  kpm/ship 0.27  trades 0.03
+1v1                     D2 | r9m   energy mirror v c0: score 0.495 ± 0.015  kills m/o/f/t 0.75 / 0.12 / 0.03 / 0.10  life 136 s  kpm/ship 0.41  trades 0.02
+1v1        D2 | press energy 1.3   energy v turn v c1: score 0.516 ± 0.014  kills m/o/f/t 0.24 / 0.69 / 0.07 / 0.00  life 293 s  kpm/ship 0.20  trades 0.00
+1v1        D2 | press energy 1.3     turn mirror v c1: score 0.492 ± 0.016  kills m/o/f/t 0.83 / 0.06 / 0.00 / 0.11  life 206 s  kpm/ship 0.28  trades 0.03
+1v1        D2 | press energy 1.3   energy mirror v c1: score 0.521 ± 0.016  kills m/o/f/t 0.73 / 0.13 / 0.03 / 0.11  life 136 s  kpm/ship 0.41  trades 0.02
+1v1        D2 | press energy 1.0   energy v turn v c2: score 0.503 ± 0.014  kills m/o/f/t 0.24 / 0.69 / 0.06 / 0.00  life 290 s  kpm/ship 0.20  trades 0.00
+1v1        D2 | press energy 1.0     turn mirror v c2: score 0.479 ± 0.016  kills m/o/f/t 0.84 / 0.06 / 0.00 / 0.10  life 211 s  kpm/ship 0.27  trades 0.03
+1v1        D2 | press energy 1.0   energy mirror v c2: score 0.496 ± 0.016  kills m/o/f/t 0.74 / 0.13 / 0.03 / 0.10  life 137 s  kpm/ship 0.41  trades 0.02
+1v1        D2 | press shield 1.5   energy v turn v c3: score 0.489 ± 0.014  kills m/o/f/t 0.24 / 0.67 / 0.09 / 0.00  life 283 s  kpm/ship 0.21  trades 0.00
+1v1        D2 | press shield 1.5     turn mirror v c3: score 0.510 ± 0.016  kills m/o/f/t 0.84 / 0.06 / 0.00 / 0.10  life 212 s  kpm/ship 0.27  trades 0.02
+1v1        D2 | press shield 1.5   energy mirror v c3: score 0.478 ± 0.015  kills m/o/f/t 0.73 / 0.13 / 0.03 / 0.11  life 131 s  kpm/ship 0.43  trades 0.03
+1v1        D2 | press shield 1.0   energy v turn v c4: score 0.480 ± 0.014  kills m/o/f/t 0.24 / 0.67 / 0.09 / 0.00  life 300 s  kpm/ship 0.19  trades 0.00
+1v1        D2 | press shield 1.0     turn mirror v c4: score 0.512 ± 0.016  kills m/o/f/t 0.82 / 0.05 / 0.00 / 0.12  life 204 s  kpm/ship 0.28  trades 0.03
+1v1        D2 | press shield 1.0   energy mirror v c4: score 0.526 ± 0.016  kills m/o/f/t 0.75 / 0.12 / 0.03 / 0.11  life 132 s  kpm/ship 0.42  trades 0.02
+1v1          D2 | threat 0.8 rad   energy v turn v c5: score 0.495 ± 0.014  kills m/o/f/t 0.23 / 0.69 / 0.08 / 0.00  life 281 s  kpm/ship 0.21  trades 0.00
+1v1          D2 | threat 0.8 rad     turn mirror v c5: score 0.508 ± 0.016  kills m/o/f/t 0.82 / 0.07 / 0.00 / 0.10  life 205 s  kpm/ship 0.28  trades 0.03
+1v1          D2 | threat 0.8 rad   energy mirror v c5: score 0.481 ± 0.016  kills m/o/f/t 0.74 / 0.12 / 0.03 / 0.11  life 133 s  kpm/ship 0.42  trades 0.02
+1v1          D2 | threat 0.4 rad   energy v turn v c6: score 0.490 ± 0.014  kills m/o/f/t 0.24 / 0.68 / 0.07 / 0.00  life 288 s  kpm/ship 0.20  trades 0.00
+1v1          D2 | threat 0.4 rad     turn mirror v c6: score 0.502 ± 0.017  kills m/o/f/t 0.83 / 0.06 / 0.00 / 0.11  life 202 s  kpm/ship 0.28  trades 0.03
+1v1          D2 | threat 0.4 rad   energy mirror v c6: score 0.511 ± 0.015  kills m/o/f/t 0.74 / 0.12 / 0.03 / 0.10  life 129 s  kpm/ship 0.43  trades 0.02
+1v1                D2 | allies 1   energy v turn v c7: score 0.498 ± 0.013  kills m/o/f/t 0.23 / 0.68 / 0.09 / 0.00  life 284 s  kpm/ship 0.20  trades 0.00
+1v1                D2 | allies 1     turn mirror v c7: score 0.521 ± 0.017  kills m/o/f/t 0.82 / 0.07 / 0.00 / 0.11  life 207 s  kpm/ship 0.28  trades 0.05
+1v1                D2 | allies 1   energy mirror v c7: score 0.507 ± 0.015  kills m/o/f/t 0.72 / 0.13 / 0.04 / 0.11  life 134 s  kpm/ship 0.42  trades 0.03
+1v1  D2 | duel extend shield 0.6   energy v turn v c8: score 0.327 ± 0.015  kills m/o/f/t 0.56 / 0.32 / 0.07 / 0.04  life 222 s  kpm/ship 0.26  trades 0.00
+1v1  D2 | duel extend shield 0.6     turn mirror v c8: score 0.529 ± 0.016  kills m/o/f/t 0.57 / 0.28 / 0.04 / 0.11  life 223 s  kpm/ship 0.26  trades 0.02
+1v1  D2 | duel extend shield 0.6   energy mirror v c8: score 0.502 ± 0.016  kills m/o/f/t 0.56 / 0.23 / 0.03 / 0.18  life 154 s  kpm/ship 0.37  trades 0.02
+1v1  D2 | duel extend energy 0.8   energy v turn v c9: score 0.313 ± 0.014  kills m/o/f/t 0.55 / 0.25 / 0.14 / 0.06  life 248 s  kpm/ship 0.23  trades 0.00
+1v1  D2 | duel extend energy 0.8     turn mirror v c9: score 0.503 ± 0.017  kills m/o/f/t 0.70 / 0.13 / 0.03 / 0.13  life 191 s  kpm/ship 0.30  trades 0.02
+1v1  D2 | duel extend energy 0.8   energy mirror v c9: score 0.484 ± 0.016  kills m/o/f/t 0.64 / 0.18 / 0.03 / 0.15  life 160 s  kpm/ship 0.35  trades 0.02
+1v1 D2 | duel extend lift 0.95, any type   energy v turn v c10: score 0.333 ± 0.016  kills m/o/f/t 0.61 / 0.16 / 0.02 / 0.20  life 216 s  kpm/ship 0.27  trades 0.00
+1v1 D2 | duel extend lift 0.95, any type     turn mirror v c10: score 0.513 ± 0.017  kills m/o/f/t 0.83 / 0.08 / 0.01 / 0.08  life 189 s  kpm/ship 0.30  trades 0.03
+1v1 D2 | duel extend lift 0.95, any type   energy mirror v c10: score 0.474 ± 0.016  kills m/o/f/t 0.73 / 0.12 / 0.02 / 0.13  life 128 s  kpm/ship 0.44  trades 0.02
+1v1               D2 | hold 1 gr   energy v turn v c11: score 0.473 ± 0.013  kills m/o/f/t 0.07 / 0.82 / 0.11 / 0.00  life 413 s  kpm/ship 0.14  trades 0.00
+1v1               D2 | hold 1 gr     turn mirror v c11: score 0.503 ± 0.006  kills m/o/f/t 0.13 / 0.19 / 0.02 / 0.66  life 1163 s  kpm/ship 0.05  trades 0.11
+1v1               D2 | hold 1 gr   energy mirror v c11: score 0.508 ± 0.011  kills m/o/f/t 0.28 / 0.28 / 0.10 / 0.34  life 691 s  kpm/ship 0.09  trades 0.02
+1v1             D2 | hold 0.5 gr   energy v turn v c12: score 0.472 ± 0.014  kills m/o/f/t 0.10 / 0.81 / 0.09 / 0.00  life 353 s  kpm/ship 0.17  trades 0.00
+1v1             D2 | hold 0.5 gr     turn mirror v c12: score 0.494 ± 0.007  kills m/o/f/t 0.14 / 0.21 / 0.02 / 0.63  life 1209 s  kpm/ship 0.05  trades 0.11
+1v1             D2 | hold 0.5 gr   energy mirror v c12: score 0.484 ± 0.011  kills m/o/f/t 0.45 / 0.24 / 0.06 / 0.25  life 557 s  kpm/ship 0.11  trades 0.02
+1v1             cone 0.085 | r9m   energy v turn v c13: score 0.538 ± 0.015  kills m/o/f/t 0.09 / 0.82 / 0.09 / 0.00  life 226 s  kpm/ship 0.25  trades 0.00
+1v1             cone 0.085 | r9m     turn mirror v c13: score 0.476 ± 0.012  kills m/o/f/t 0.72 / 0.17 / 0.00 / 0.10  life 244 s  kpm/ship 0.24  trades 0.01
+1v1             cone 0.085 | r9m   energy mirror v c13: score 0.515 ± 0.015  kills m/o/f/t 0.53 / 0.30 / 0.05 / 0.13  life 184 s  kpm/ship 0.31  trades 0.01
+1v1 cone 0.085 | press energy 1.3   energy v turn v c14: score 0.543 ± 0.015  kills m/o/f/t 0.10 / 0.81 / 0.09 / 0.00  life 230 s  kpm/ship 0.25  trades 0.00
+1v1 cone 0.085 | press energy 1.3     turn mirror v c14: score 0.512 ± 0.012  kills m/o/f/t 0.72 / 0.16 / 0.00 / 0.12  life 253 s  kpm/ship 0.23  trades 0.02
+1v1 cone 0.085 | press energy 1.3   energy mirror v c14: score 0.490 ± 0.016  kills m/o/f/t 0.53 / 0.30 / 0.05 / 0.12  life 185 s  kpm/ship 0.31  trades 0.01
+1v1 cone 0.085 | press energy 1.0   energy v turn v c15: score 0.543 ± 0.014  kills m/o/f/t 0.11 / 0.81 / 0.08 / 0.00  life 227 s  kpm/ship 0.25  trades 0.00
+1v1 cone 0.085 | press energy 1.0     turn mirror v c15: score 0.487 ± 0.013  kills m/o/f/t 0.72 / 0.16 / 0.01 / 0.11  life 244 s  kpm/ship 0.24  trades 0.01
+1v1 cone 0.085 | press energy 1.0   energy mirror v c15: score 0.530 ± 0.015  kills m/o/f/t 0.55 / 0.28 / 0.05 / 0.12  life 189 s  kpm/ship 0.30  trades 0.00
+1v1 cone 0.085 | press shield 1.5   energy v turn v c16: score 0.535 ± 0.015  kills m/o/f/t 0.10 / 0.83 / 0.08 / 0.00  life 233 s  kpm/ship 0.25  trades 0.00
+1v1 cone 0.085 | press shield 1.5     turn mirror v c16: score 0.499 ± 0.011  kills m/o/f/t 0.73 / 0.16 / 0.00 / 0.11  life 254 s  kpm/ship 0.23  trades 0.01
+1v1 cone 0.085 | press shield 1.5   energy mirror v c16: score 0.517 ± 0.016  kills m/o/f/t 0.52 / 0.31 / 0.05 / 0.12  life 179 s  kpm/ship 0.32  trades 0.01
+1v1 cone 0.085 | press shield 1.0   energy v turn v c17: score 0.531 ± 0.015  kills m/o/f/t 0.10 / 0.82 / 0.08 / 0.00  life 221 s  kpm/ship 0.26  trades 0.00
+1v1 cone 0.085 | press shield 1.0     turn mirror v c17: score 0.496 ± 0.013  kills m/o/f/t 0.74 / 0.15 / 0.00 / 0.11  life 250 s  kpm/ship 0.23  trades 0.01
+1v1 cone 0.085 | press shield 1.0   energy mirror v c17: score 0.495 ± 0.015  kills m/o/f/t 0.54 / 0.29 / 0.05 / 0.12  life 182 s  kpm/ship 0.31  trades 0.01
+1v1  cone 0.085 | threat 0.8 rad   energy v turn v c18: score 0.520 ± 0.016  kills m/o/f/t 0.10 / 0.82 / 0.08 / 0.00  life 229 s  kpm/ship 0.25  trades 0.00
+1v1  cone 0.085 | threat 0.8 rad     turn mirror v c18: score 0.489 ± 0.012  kills m/o/f/t 0.73 / 0.15 / 0.01 / 0.12  life 247 s  kpm/ship 0.23  trades 0.01
+1v1  cone 0.085 | threat 0.8 rad   energy mirror v c18: score 0.500 ± 0.015  kills m/o/f/t 0.54 / 0.31 / 0.04 / 0.11  life 178 s  kpm/ship 0.32  trades 0.00
+1v1  cone 0.085 | threat 0.4 rad   energy v turn v c19: score 0.528 ± 0.015  kills m/o/f/t 0.10 / 0.81 / 0.10 / 0.00  life 228 s  kpm/ship 0.25  trades 0.00
+1v1  cone 0.085 | threat 0.4 rad     turn mirror v c19: score 0.488 ± 0.012  kills m/o/f/t 0.72 / 0.14 / 0.01 / 0.12  life 250 s  kpm/ship 0.23  trades 0.02
+1v1  cone 0.085 | threat 0.4 rad   energy mirror v c19: score 0.472 ± 0.015  kills m/o/f/t 0.56 / 0.30 / 0.05 / 0.10  life 183 s  kpm/ship 0.31  trades 0.00
+1v1        cone 0.085 | allies 1   energy v turn v c20: score 0.518 ± 0.015  kills m/o/f/t 0.11 / 0.83 / 0.07 / 0.00  life 231 s  kpm/ship 0.25  trades 0.00
+1v1        cone 0.085 | allies 1     turn mirror v c20: score 0.502 ± 0.012  kills m/o/f/t 0.73 / 0.16 / 0.01 / 0.11  life 251 s  kpm/ship 0.23  trades 0.01
+1v1        cone 0.085 | allies 1   energy mirror v c20: score 0.494 ± 0.016  kills m/o/f/t 0.56 / 0.28 / 0.05 / 0.11  life 183 s  kpm/ship 0.31  trades 0.01
+1v1 cone 0.085 | duel extend shield 0.6   energy v turn v c21: score 0.449 ± 0.016  kills m/o/f/t 0.27 / 0.61 / 0.09 / 0.03  life 229 s  kpm/ship 0.25  trades 0.00
+1v1 cone 0.085 | duel extend shield 0.6     turn mirror v c21: score 0.495 ± 0.015  kills m/o/f/t 0.46 / 0.39 / 0.04 / 0.11  life 235 s  kpm/ship 0.25  trades 0.01
+1v1 cone 0.085 | duel extend shield 0.6   energy mirror v c21: score 0.523 ± 0.016  kills m/o/f/t 0.34 / 0.46 / 0.03 / 0.17  life 186 s  kpm/ship 0.31  trades 0.00
+1v1 cone 0.085 | duel extend energy 0.8   energy v turn v c22: score 0.367 ± 0.014  kills m/o/f/t 0.25 / 0.50 / 0.21 / 0.05  life 264 s  kpm/ship 0.22  trades 0.00
+1v1 cone 0.085 | duel extend energy 0.8     turn mirror v c22: score 0.529 ± 0.016  kills m/o/f/t 0.50 / 0.31 / 0.05 / 0.14  life 190 s  kpm/ship 0.30  trades 0.01
+1v1 cone 0.085 | duel extend energy 0.8   energy mirror v c22: score 0.531 ± 0.016  kills m/o/f/t 0.39 / 0.35 / 0.06 / 0.20  life 195 s  kpm/ship 0.29  trades 0.01
+1v1 cone 0.085 | duel extend lift 0.95, any type   energy v turn v c23: score 0.382 ± 0.015  kills m/o/f/t 0.36 / 0.38 / 0.05 / 0.21  life 283 s  kpm/ship 0.21  trades 0.00
+1v1 cone 0.085 | duel extend lift 0.95, any type     turn mirror v c23: score 0.485 ± 0.013  kills m/o/f/t 0.69 / 0.17 / 0.01 / 0.13  life 227 s  kpm/ship 0.25  trades 0.01
+1v1 cone 0.085 | duel extend lift 0.95, any type   energy mirror v c23: score 0.484 ± 0.015  kills m/o/f/t 0.52 / 0.29 / 0.03 / 0.15  life 169 s  kpm/ship 0.34  trades 0.01
+1v1       cone 0.085 | hold 1 gr   energy v turn v c24: score 0.560 ± 0.015  kills m/o/f/t 0.04 / 0.89 / 0.06 / 0.00  life 293 s  kpm/ship 0.20  trades 0.00
+1v1       cone 0.085 | hold 1 gr     turn mirror v c24: score 0.514 ± 0.009  kills m/o/f/t 0.16 / 0.48 / 0.08 / 0.29  life 941 s  kpm/ship 0.06  trades 0.08
+1v1       cone 0.085 | hold 1 gr   energy mirror v c24: score 0.475 ± 0.013  kills m/o/f/t 0.09 / 0.53 / 0.13 / 0.25  life 679 s  kpm/ship 0.09  trades 0.02
+1v1     cone 0.085 | hold 0.5 gr   energy v turn v c25: score 0.531 ± 0.015  kills m/o/f/t 0.07 / 0.85 / 0.08 / 0.00  life 253 s  kpm/ship 0.23  trades 0.00
+1v1     cone 0.085 | hold 0.5 gr     turn mirror v c25: score 0.505 ± 0.009  kills m/o/f/t 0.13 / 0.54 / 0.02 / 0.31  life 997 s  kpm/ship 0.06  trades 0.10
+1v1     cone 0.085 | hold 0.5 gr   energy mirror v c25: score 0.518 ± 0.012  kills m/o/f/t 0.20 / 0.41 / 0.13 / 0.26  life 590 s  kpm/ship 0.10  trades 0.01
+1v1            big v small | r9m   energy v turn v c26: score 0.601 ± 0.014  kills m/o/f/t 0.37 / 0.49 / 0.14 / 0.00  life 262 s  kpm/ship 0.22  trades 0.00
+1v1            big v small | r9m     turn mirror v c26: score 0.501 ± 0.016  kills m/o/f/t 0.64 / 0.15 / 0.06 / 0.15  life 169 s  kpm/ship 0.34  trades 0.01
+1v1            big v small | r9m   energy mirror v c26: score 0.532 ± 0.017  kills m/o/f/t 0.52 / 0.23 / 0.10 / 0.14  life 134 s  kpm/ship 0.42  trades 0.01
+1v1 big v small | press energy 1.3   energy v turn v c27: score 0.603 ± 0.015  kills m/o/f/t 0.35 / 0.51 / 0.14 / 0.00  life 236 s  kpm/ship 0.24  trades 0.00
+1v1 big v small | press energy 1.3     turn mirror v c27: score 0.504 ± 0.016  kills m/o/f/t 0.62 / 0.16 / 0.06 / 0.16  life 170 s  kpm/ship 0.33  trades 0.01
+1v1 big v small | press energy 1.3   energy mirror v c27: score 0.481 ± 0.017  kills m/o/f/t 0.53 / 0.22 / 0.12 / 0.13  life 132 s  kpm/ship 0.42  trades 0.01
+1v1 big v small | press energy 1.0   energy v turn v c28: score 0.588 ± 0.015  kills m/o/f/t 0.37 / 0.50 / 0.13 / 0.00  life 259 s  kpm/ship 0.22  trades 0.00
+1v1 big v small | press energy 1.0     turn mirror v c28: score 0.522 ± 0.016  kills m/o/f/t 0.64 / 0.16 / 0.06 / 0.15  life 173 s  kpm/ship 0.33  trades 0.02
+1v1 big v small | press energy 1.0   energy mirror v c28: score 0.507 ± 0.016  kills m/o/f/t 0.54 / 0.21 / 0.11 / 0.14  life 133 s  kpm/ship 0.42  trades 0.02
+1v1 big v small | press shield 1.5   energy v turn v c29: score 0.580 ± 0.015  kills m/o/f/t 0.36 / 0.50 / 0.15 / 0.00  life 262 s  kpm/ship 0.22  trades 0.00
+1v1 big v small | press shield 1.5     turn mirror v c29: score 0.506 ± 0.016  kills m/o/f/t 0.64 / 0.16 / 0.05 / 0.15  life 171 s  kpm/ship 0.33  trades 0.02
+1v1 big v small | press shield 1.5   energy mirror v c29: score 0.505 ± 0.017  kills m/o/f/t 0.53 / 0.23 / 0.11 / 0.12  life 137 s  kpm/ship 0.41  trades 0.02
+1v1 big v small | press shield 1.0   energy v turn v c30: score 0.591 ± 0.015  kills m/o/f/t 0.38 / 0.49 / 0.13 / 0.00  life 244 s  kpm/ship 0.24  trades 0.00
+1v1 big v small | press shield 1.0     turn mirror v c30: score 0.531 ± 0.016  kills m/o/f/t 0.65 / 0.14 / 0.05 / 0.15  life 170 s  kpm/ship 0.33  trades 0.02
+1v1 big v small | press shield 1.0   energy mirror v c30: score 0.501 ± 0.017  kills m/o/f/t 0.53 / 0.22 / 0.12 / 0.13  life 130 s  kpm/ship 0.43  trades 0.01
+1v1 big v small | threat 0.8 rad   energy v turn v c31: score 0.593 ± 0.015  kills m/o/f/t 0.36 / 0.52 / 0.12 / 0.00  life 259 s  kpm/ship 0.22  trades 0.00
+1v1 big v small | threat 0.8 rad     turn mirror v c31: score 0.512 ± 0.016  kills m/o/f/t 0.60 / 0.17 / 0.07 / 0.16  life 171 s  kpm/ship 0.33  trades 0.01
+1v1 big v small | threat 0.8 rad   energy mirror v c31: score 0.536 ± 0.017  kills m/o/f/t 0.53 / 0.23 / 0.11 / 0.13  life 132 s  kpm/ship 0.42  trades 0.02
+1v1 big v small | threat 0.4 rad   energy v turn v c32: score 0.605 ± 0.014  kills m/o/f/t 0.36 / 0.49 / 0.15 / 0.00  life 256 s  kpm/ship 0.23  trades 0.00
+1v1 big v small | threat 0.4 rad     turn mirror v c32: score 0.528 ± 0.016  kills m/o/f/t 0.63 / 0.18 / 0.05 / 0.14  life 167 s  kpm/ship 0.34  trades 0.01
+1v1 big v small | threat 0.4 rad   energy mirror v c32: score 0.495 ± 0.017  kills m/o/f/t 0.53 / 0.22 / 0.11 / 0.13  life 129 s  kpm/ship 0.43  trades 0.02
+1v1       big v small | allies 1   energy v turn v c33: score 0.580 ± 0.015  kills m/o/f/t 0.36 / 0.49 / 0.15 / 0.00  life 245 s  kpm/ship 0.24  trades 0.00
+1v1       big v small | allies 1     turn mirror v c33: score 0.498 ± 0.016  kills m/o/f/t 0.64 / 0.17 / 0.06 / 0.13  life 169 s  kpm/ship 0.34  trades 0.02
+1v1       big v small | allies 1   energy mirror v c33: score 0.503 ± 0.017  kills m/o/f/t 0.55 / 0.22 / 0.10 / 0.14  life 134 s  kpm/ship 0.42  trades 0.01
+1v1 big v small | duel extend shield 0.6   energy v turn v c34: score 0.578 ± 0.016  kills m/o/f/t 0.39 / 0.45 / 0.14 / 0.03  life 233 s  kpm/ship 0.25  trades 0.00
+1v1 big v small | duel extend shield 0.6     turn mirror v c34: score 0.487 ± 0.017  kills m/o/f/t 0.33 / 0.44 / 0.04 / 0.19  life 191 s  kpm/ship 0.30  trades 0.01
+1v1 big v small | duel extend shield 0.6   energy mirror v c34: score 0.498 ± 0.017  kills m/o/f/t 0.31 / 0.45 / 0.06 / 0.18  life 147 s  kpm/ship 0.38  trades 0.00
+1v1 big v small | duel extend energy 0.8   energy v turn v c35: score 0.587 ± 0.016  kills m/o/f/t 0.38 / 0.42 / 0.14 / 0.05  life 222 s  kpm/ship 0.26  trades 0.00
+1v1 big v small | duel extend energy 0.8     turn mirror v c35: score 0.519 ± 0.017  kills m/o/f/t 0.47 / 0.29 / 0.03 / 0.21  life 173 s  kpm/ship 0.33  trades 0.02
+1v1 big v small | duel extend energy 0.8   energy mirror v c35: score 0.490 ± 0.018  kills m/o/f/t 0.35 / 0.40 / 0.08 / 0.18  life 148 s  kpm/ship 0.38  trades 0.01
+1v1 big v small | duel extend lift 0.95, any type   energy v turn v c36: score 0.675 ± 0.016  kills m/o/f/t 0.55 / 0.19 / 0.07 / 0.19  life 143 s  kpm/ship 0.39  trades 0.00
+1v1 big v small | duel extend lift 0.95, any type     turn mirror v c36: score 0.474 ± 0.016  kills m/o/f/t 0.59 / 0.16 / 0.04 / 0.21  life 164 s  kpm/ship 0.34  trades 0.01
+1v1 big v small | duel extend lift 0.95, any type   energy mirror v c36: score 0.487 ± 0.018  kills m/o/f/t 0.52 / 0.24 / 0.09 / 0.15  life 124 s  kpm/ship 0.45  trades 0.02
+1v1      big v small | hold 1 gr   energy v turn v c37: score 0.523 ± 0.012  kills m/o/f/t 0.10 / 0.66 / 0.24 / 0.00  life 770 s  kpm/ship 0.08  trades 0.00
+1v1      big v small | hold 1 gr     turn mirror v c37: score 0.499 ± 0.012  kills m/o/f/t 0.11 / 0.40 / 0.11 / 0.38  life 739 s  kpm/ship 0.08  trades 0.01
+1v1      big v small | hold 1 gr   energy mirror v c37: score 0.520 ± 0.015  kills m/o/f/t 0.13 / 0.37 / 0.25 / 0.25  life 548 s  kpm/ship 0.11  trades 0.01
+1v1    big v small | hold 0.5 gr   energy v turn v c38: score 0.548 ± 0.011  kills m/o/f/t 0.07 / 0.68 / 0.25 / 0.00  life 752 s  kpm/ship 0.08  trades 0.00
+1v1    big v small | hold 0.5 gr     turn mirror v c38: score 0.497 ± 0.014  kills m/o/f/t 0.14 / 0.36 / 0.10 / 0.40  life 676 s  kpm/ship 0.09  trades 0.01
+1v1    big v small | hold 0.5 gr   energy mirror v c38: score 0.519 ± 0.015  kills m/o/f/t 0.14 / 0.37 / 0.26 / 0.24  life 498 s  kpm/ship 0.12  trades 0.00
+1v1                     D2 | r9m           mixed v r9m: score 0.490 ± 0.016  kills m/o/f/t 0.73 / 0.13 / 0.03 / 0.11  life 132 s  kpm/ship 0.42  trades 0.03
+1v1                     D2 | r9m  mixed reversed v r9m: score 0.499 ± 0.016  kills m/o/f/t 0.82 / 0.08 / 0.01 / 0.09  life 209 s  kpm/ship 0.27  trades 0.03
+1v1        D2 | press energy 1.3           mixed v r9m: score 0.497 ± 0.016  kills m/o/f/t 0.77 / 0.12 / 0.03 / 0.09  life 131 s  kpm/ship 0.42  trades 0.03
+1v1        D2 | press energy 1.3  mixed reversed v r9m: score 0.477 ± 0.016  kills m/o/f/t 0.83 / 0.06 / 0.00 / 0.10  life 206 s  kpm/ship 0.28  trades 0.04
+1v1        D2 | press energy 1.0           mixed v r9m: score 0.520 ± 0.015  kills m/o/f/t 0.73 / 0.12 / 0.04 / 0.11  life 136 s  kpm/ship 0.41  trades 0.02
+1v1        D2 | press energy 1.0  mixed reversed v r9m: score 0.515 ± 0.017  kills m/o/f/t 0.82 / 0.06 / 0.01 / 0.11  life 210 s  kpm/ship 0.27  trades 0.03
+1v1        D2 | press shield 1.5           mixed v r9m: score 0.493 ± 0.016  kills m/o/f/t 0.75 / 0.12 / 0.03 / 0.10  life 129 s  kpm/ship 0.43  trades 0.02
+1v1        D2 | press shield 1.5  mixed reversed v r9m: score 0.492 ± 0.017  kills m/o/f/t 0.86 / 0.05 / 0.00 / 0.09  life 205 s  kpm/ship 0.28  trades 0.04
+1v1        D2 | press shield 1.0           mixed v r9m: score 0.495 ± 0.016  kills m/o/f/t 0.73 / 0.13 / 0.03 / 0.11  life 136 s  kpm/ship 0.41  trades 0.02
+1v1        D2 | press shield 1.0  mixed reversed v r9m: score 0.459 ± 0.017  kills m/o/f/t 0.84 / 0.05 / 0.00 / 0.10  life 204 s  kpm/ship 0.28  trades 0.03
+1v1          D2 | threat 0.8 rad           mixed v r9m: score 0.502 ± 0.015  kills m/o/f/t 0.75 / 0.13 / 0.03 / 0.09  life 132 s  kpm/ship 0.42  trades 0.02
+1v1          D2 | threat 0.8 rad  mixed reversed v r9m: score 0.504 ± 0.016  kills m/o/f/t 0.83 / 0.06 / 0.00 / 0.11  life 205 s  kpm/ship 0.28  trades 0.03
+1v1          D2 | threat 0.4 rad           mixed v r9m: score 0.473 ± 0.015  kills m/o/f/t 0.76 / 0.11 / 0.03 / 0.09  life 137 s  kpm/ship 0.41  trades 0.04
+1v1          D2 | threat 0.4 rad  mixed reversed v r9m: score 0.499 ± 0.016  kills m/o/f/t 0.84 / 0.06 / 0.00 / 0.10  life 211 s  kpm/ship 0.27  trades 0.03
+1v1                D2 | allies 1           mixed v r9m: score 0.490 ± 0.016  kills m/o/f/t 0.75 / 0.12 / 0.03 / 0.10  life 129 s  kpm/ship 0.43  trades 0.02
+1v1                D2 | allies 1  mixed reversed v r9m: score 0.520 ± 0.016  kills m/o/f/t 0.83 / 0.07 / 0.00 / 0.10  life 206 s  kpm/ship 0.28  trades 0.03
+1v1  D2 | duel extend shield 0.6           mixed v r9m: score 0.566 ± 0.016  kills m/o/f/t 0.66 / 0.20 / 0.03 / 0.12  life 144 s  kpm/ship 0.39  trades 0.02
+1v1  D2 | duel extend shield 0.6  mixed reversed v r9m: score 0.519 ± 0.016  kills m/o/f/t 0.72 / 0.16 / 0.02 / 0.10  life 220 s  kpm/ship 0.26  trades 0.02
+1v1  D2 | duel extend energy 0.8           mixed v r9m: score 0.514 ± 0.016  kills m/o/f/t 0.70 / 0.16 / 0.02 / 0.12  life 149 s  kpm/ship 0.38  trades 0.03
+1v1  D2 | duel extend energy 0.8  mixed reversed v r9m: score 0.408 ± 0.016  kills m/o/f/t 0.77 / 0.10 / 0.02 / 0.12  life 199 s  kpm/ship 0.29  trades 0.02
+1v1 D2 | duel extend lift 0.95, any type           mixed v r9m: score 0.351 ± 0.015  kills m/o/f/t 0.67 / 0.18 / 0.04 / 0.11  life 137 s  kpm/ship 0.41  trades 0.00
+1v1 D2 | duel extend lift 0.95, any type  mixed reversed v r9m: score 0.471 ± 0.011  kills m/o/f/t 0.74 / 0.11 / 0.03 / 0.11  life 254 s  kpm/ship 0.23  trades 0.01
+1v1               D2 | hold 1 gr           mixed v r9m: score 0.207 ± 0.013  kills m/o/f/t 0.71 / 0.14 / 0.04 / 0.12  life 217 s  kpm/ship 0.26  trades 0.01
+1v1               D2 | hold 1 gr  mixed reversed v r9m: score 0.087 ± 0.009  kills m/o/f/t 0.82 / 0.04 / 0.00 / 0.13  life 436 s  kpm/ship 0.13  trades 0.00
+1v1             D2 | hold 0.5 gr           mixed v r9m: score 0.233 ± 0.013  kills m/o/f/t 0.67 / 0.17 / 0.03 / 0.13  life 195 s  kpm/ship 0.29  trades 0.01
+1v1             D2 | hold 0.5 gr  mixed reversed v r9m: score 0.098 ± 0.009  kills m/o/f/t 0.80 / 0.05 / 0.00 / 0.14  life 435 s  kpm/ship 0.13  trades 0.01
+1v1             cone 0.085 | r9m           mixed v r9m: score 0.486 ± 0.015  kills m/o/f/t 0.52 / 0.30 / 0.05 / 0.13  life 182 s  kpm/ship 0.31  trades 0.01
+1v1             cone 0.085 | r9m  mixed reversed v r9m: score 0.481 ± 0.013  kills m/o/f/t 0.70 / 0.18 / 0.01 / 0.12  life 242 s  kpm/ship 0.24  trades 0.01
+1v1 cone 0.085 | press energy 1.3           mixed v r9m: score 0.488 ± 0.015  kills m/o/f/t 0.56 / 0.28 / 0.05 / 0.11  life 179 s  kpm/ship 0.32  trades 0.00
+1v1 cone 0.085 | press energy 1.3  mixed reversed v r9m: score 0.502 ± 0.013  kills m/o/f/t 0.71 / 0.17 / 0.01 / 0.12  life 243 s  kpm/ship 0.24  trades 0.01
+1v1 cone 0.085 | press energy 1.0           mixed v r9m: score 0.520 ± 0.015  kills m/o/f/t 0.55 / 0.29 / 0.05 / 0.11  life 176 s  kpm/ship 0.32  trades 0.00
+1v1 cone 0.085 | press energy 1.0  mixed reversed v r9m: score 0.503 ± 0.013  kills m/o/f/t 0.71 / 0.19 / 0.00 / 0.10  life 242 s  kpm/ship 0.24  trades 0.02
+1v1 cone 0.085 | press shield 1.5           mixed v r9m: score 0.522 ± 0.015  kills m/o/f/t 0.52 / 0.31 / 0.05 / 0.11  life 182 s  kpm/ship 0.31  trades 0.01
+1v1 cone 0.085 | press shield 1.5  mixed reversed v r9m: score 0.509 ± 0.013  kills m/o/f/t 0.72 / 0.16 / 0.01 / 0.12  life 248 s  kpm/ship 0.23  trades 0.01
+1v1 cone 0.085 | press shield 1.0           mixed v r9m: score 0.469 ± 0.015  kills m/o/f/t 0.54 / 0.29 / 0.06 / 0.11  life 179 s  kpm/ship 0.32  trades 0.00
+1v1 cone 0.085 | press shield 1.0  mixed reversed v r9m: score 0.492 ± 0.013  kills m/o/f/t 0.72 / 0.17 / 0.01 / 0.10  life 248 s  kpm/ship 0.23  trades 0.01
+1v1  cone 0.085 | threat 0.8 rad           mixed v r9m: score 0.494 ± 0.016  kills m/o/f/t 0.54 / 0.30 / 0.05 / 0.10  life 178 s  kpm/ship 0.32  trades 0.00
+1v1  cone 0.085 | threat 0.8 rad  mixed reversed v r9m: score 0.506 ± 0.012  kills m/o/f/t 0.72 / 0.15 / 0.01 / 0.12  life 245 s  kpm/ship 0.24  trades 0.02
+1v1  cone 0.085 | threat 0.4 rad           mixed v r9m: score 0.497 ± 0.015  kills m/o/f/t 0.56 / 0.27 / 0.06 / 0.11  life 189 s  kpm/ship 0.30  trades 0.01
+1v1  cone 0.085 | threat 0.4 rad  mixed reversed v r9m: score 0.478 ± 0.012  kills m/o/f/t 0.73 / 0.14 / 0.01 / 0.12  life 247 s  kpm/ship 0.23  trades 0.01
+1v1        cone 0.085 | allies 1           mixed v r9m: score 0.514 ± 0.015  kills m/o/f/t 0.54 / 0.31 / 0.04 / 0.11  life 182 s  kpm/ship 0.31  trades 0.00
+1v1        cone 0.085 | allies 1  mixed reversed v r9m: score 0.490 ± 0.013  kills m/o/f/t 0.73 / 0.15 / 0.01 / 0.11  life 245 s  kpm/ship 0.24  trades 0.01
+1v1 cone 0.085 | duel extend shield 0.6           mixed v r9m: score 0.558 ± 0.015  kills m/o/f/t 0.44 / 0.36 / 0.05 / 0.16  life 184 s  kpm/ship 0.31  trades 0.00
+1v1 cone 0.085 | duel extend shield 0.6  mixed reversed v r9m: score 0.485 ± 0.014  kills m/o/f/t 0.59 / 0.28 / 0.02 / 0.11  life 241 s  kpm/ship 0.24  trades 0.01
+1v1 cone 0.085 | duel extend energy 0.8           mixed v r9m: score 0.526 ± 0.016  kills m/o/f/t 0.47 / 0.33 / 0.05 / 0.15  life 193 s  kpm/ship 0.30  trades 0.00
+1v1 cone 0.085 | duel extend energy 0.8  mixed reversed v r9m: score 0.454 ± 0.015  kills m/o/f/t 0.61 / 0.25 / 0.02 / 0.12  life 216 s  kpm/ship 0.27  trades 0.01
+1v1 cone 0.085 | duel extend lift 0.95, any type           mixed v r9m: score 0.343 ± 0.014  kills m/o/f/t 0.45 / 0.37 / 0.06 / 0.12  life 178 s  kpm/ship 0.32  trades 0.00
+1v1 cone 0.085 | duel extend lift 0.95, any type  mixed reversed v r9m: score 0.372 ± 0.013  kills m/o/f/t 0.59 / 0.28 / 0.02 / 0.12  life 237 s  kpm/ship 0.24  trades 0.00
+1v1       cone 0.085 | hold 1 gr           mixed v r9m: score 0.353 ± 0.015  kills m/o/f/t 0.46 / 0.36 / 0.05 / 0.12  life 260 s  kpm/ship 0.22  trades 0.00
+1v1       cone 0.085 | hold 1 gr  mixed reversed v r9m: score 0.187 ± 0.012  kills m/o/f/t 0.69 / 0.16 / 0.01 / 0.14  life 436 s  kpm/ship 0.13  trades 0.00
+1v1     cone 0.085 | hold 0.5 gr           mixed v r9m: score 0.369 ± 0.015  kills m/o/f/t 0.47 / 0.33 / 0.07 / 0.12  life 250 s  kpm/ship 0.23  trades 0.01
+1v1     cone 0.085 | hold 0.5 gr  mixed reversed v r9m: score 0.168 ± 0.011  kills m/o/f/t 0.73 / 0.13 / 0.01 / 0.13  life 455 s  kpm/ship 0.13  trades 0.01
+1v1            big v small | r9m           mixed v r9m: score 0.485 ± 0.018  kills m/o/f/t 0.52 / 0.23 / 0.11 / 0.14  life 132 s  kpm/ship 0.42  trades 0.02
+1v1            big v small | r9m  mixed reversed v r9m: score 0.510 ± 0.016  kills m/o/f/t 0.63 / 0.16 / 0.06 / 0.16  life 167 s  kpm/ship 0.34  trades 0.02
+1v1 big v small | press energy 1.3           mixed v r9m: score 0.521 ± 0.017  kills m/o/f/t 0.54 / 0.22 / 0.11 / 0.12  life 133 s  kpm/ship 0.42  trades 0.02
+1v1 big v small | press energy 1.3  mixed reversed v r9m: score 0.485 ± 0.016  kills m/o/f/t 0.62 / 0.17 / 0.07 / 0.14  life 170 s  kpm/ship 0.33  trades 0.02
+1v1 big v small | press energy 1.0           mixed v r9m: score 0.499 ± 0.017  kills m/o/f/t 0.54 / 0.22 / 0.11 / 0.12  life 132 s  kpm/ship 0.42  trades 0.02
+1v1 big v small | press energy 1.0  mixed reversed v r9m: score 0.475 ± 0.016  kills m/o/f/t 0.62 / 0.19 / 0.05 / 0.14  life 171 s  kpm/ship 0.33  trades 0.02
+1v1 big v small | press shield 1.5           mixed v r9m: score 0.496 ± 0.017  kills m/o/f/t 0.52 / 0.22 / 0.12 / 0.13  life 133 s  kpm/ship 0.42  trades 0.01
+1v1 big v small | press shield 1.5  mixed reversed v r9m: score 0.496 ± 0.016  kills m/o/f/t 0.63 / 0.17 / 0.05 / 0.15  life 170 s  kpm/ship 0.33  trades 0.03
+1v1 big v small | press shield 1.0           mixed v r9m: score 0.494 ± 0.017  kills m/o/f/t 0.52 / 0.24 / 0.11 / 0.13  life 131 s  kpm/ship 0.43  trades 0.01
+1v1 big v small | press shield 1.0  mixed reversed v r9m: score 0.515 ± 0.016  kills m/o/f/t 0.64 / 0.16 / 0.04 / 0.15  life 174 s  kpm/ship 0.33  trades 0.01
+1v1 big v small | threat 0.8 rad           mixed v r9m: score 0.464 ± 0.017  kills m/o/f/t 0.53 / 0.23 / 0.11 / 0.13  life 135 s  kpm/ship 0.42  trades 0.02
+1v1 big v small | threat 0.8 rad  mixed reversed v r9m: score 0.510 ± 0.016  kills m/o/f/t 0.62 / 0.18 / 0.06 / 0.15  life 168 s  kpm/ship 0.34  trades 0.02
+1v1 big v small | threat 0.4 rad           mixed v r9m: score 0.508 ± 0.017  kills m/o/f/t 0.54 / 0.22 / 0.10 / 0.13  life 132 s  kpm/ship 0.42  trades 0.02
+1v1 big v small | threat 0.4 rad  mixed reversed v r9m: score 0.486 ± 0.016  kills m/o/f/t 0.64 / 0.15 / 0.06 / 0.15  life 171 s  kpm/ship 0.33  trades 0.02
+1v1       big v small | allies 1           mixed v r9m: score 0.482 ± 0.017  kills m/o/f/t 0.52 / 0.22 / 0.12 / 0.14  life 131 s  kpm/ship 0.43  trades 0.01
+1v1       big v small | allies 1  mixed reversed v r9m: score 0.488 ± 0.016  kills m/o/f/t 0.61 / 0.18 / 0.06 / 0.16  life 167 s  kpm/ship 0.34  trades 0.02
+1v1 big v small | duel extend shield 0.6           mixed v r9m: score 0.580 ± 0.018  kills m/o/f/t 0.45 / 0.32 / 0.09 / 0.14  life 136 s  kpm/ship 0.41  trades 0.01
+1v1 big v small | duel extend shield 0.6  mixed reversed v r9m: score 0.555 ± 0.016  kills m/o/f/t 0.49 / 0.29 / 0.05 / 0.17  life 179 s  kpm/ship 0.32  trades 0.01
+1v1 big v small | duel extend energy 0.8           mixed v r9m: score 0.563 ± 0.017  kills m/o/f/t 0.45 / 0.31 / 0.10 / 0.15  life 133 s  kpm/ship 0.42  trades 0.01
+1v1 big v small | duel extend energy 0.8  mixed reversed v r9m: score 0.479 ± 0.017  kills m/o/f/t 0.52 / 0.24 / 0.04 / 0.20  life 174 s  kpm/ship 0.33  trades 0.02
+1v1 big v small | duel extend lift 0.95, any type           mixed v r9m: score 0.310 ± 0.016  kills m/o/f/t 0.41 / 0.34 / 0.09 / 0.16  life 128 s  kpm/ship 0.44  trades 0.00
+1v1 big v small | duel extend lift 0.95, any type  mixed reversed v r9m: score 0.322 ± 0.015  kills m/o/f/t 0.50 / 0.25 / 0.05 / 0.20  life 179 s  kpm/ship 0.32  trades 0.00
+1v1      big v small | hold 1 gr           mixed v r9m: score 0.289 ± 0.015  kills m/o/f/t 0.46 / 0.28 / 0.11 / 0.15  life 200 s  kpm/ship 0.29  trades 0.00
+1v1      big v small | hold 1 gr  mixed reversed v r9m: score 0.214 ± 0.014  kills m/o/f/t 0.55 / 0.20 / 0.05 / 0.20  life 293 s  kpm/ship 0.20  trades 0.00
+1v1    big v small | hold 0.5 gr           mixed v r9m: score 0.317 ± 0.015  kills m/o/f/t 0.45 / 0.28 / 0.11 / 0.16  life 190 s  kpm/ship 0.30  trades 0.00
+1v1    big v small | hold 0.5 gr  mixed reversed v r9m: score 0.183 ± 0.013  kills m/o/f/t 0.58 / 0.18 / 0.06 / 0.17  life 300 s  kpm/ship 0.19  trades 0.00
+## 2v2: 117 jobs, B 8192, 02:44 KST
+  batch 1/8 71 s; ETA 02:53 KST
+  batch 2/8 94 s; ETA 02:50 KST
+  batch 3/8 116 s; ETA 02:49 KST
+  batch 4/8 139 s; ETA 02:49 KST
+  batch 5/8 162 s; ETA 02:48 KST
+  batch 6/8 185 s; ETA 02:48 KST
+  batch 7/8 208 s; ETA 02:48 KST
+  batch 8/8 231 s; ETA 02:48 KST
+2v2                     D2 | r9m   energy v turn v c0: score 0.470 ± 0.019  kills m/o/f/t 0.10 / 0.24 / 0.48 / 0.19  life 117 s  kpm/ship 0.47  trades 0.01
+2v2        D2 | press energy 1.3   energy v turn v c1: score 0.414 ± 0.019  kills m/o/f/t 0.08 / 0.25 / 0.48 / 0.19  life 112 s  kpm/ship 0.49  trades 0.01
+2v2        D2 | press energy 1.0   energy v turn v c2: score 0.394 ± 0.019  kills m/o/f/t 0.09 / 0.23 / 0.51 / 0.17  life 112 s  kpm/ship 0.49  trades 0.02
+2v2        D2 | press shield 1.5   energy v turn v c3: score 0.453 ± 0.019  kills m/o/f/t 0.09 / 0.23 / 0.49 / 0.19  life 115 s  kpm/ship 0.48  trades 0.02
+2v2        D2 | press shield 1.0   energy v turn v c4: score 0.456 ± 0.019  kills m/o/f/t 0.09 / 0.24 / 0.49 / 0.18  life 113 s  kpm/ship 0.49  trades 0.01
+2v2          D2 | threat 0.8 rad   energy v turn v c5: score 0.483 ± 0.020  kills m/o/f/t 0.09 / 0.23 / 0.57 / 0.11  life 117 s  kpm/ship 0.47  trades 0.01
+2v2          D2 | threat 0.4 rad   energy v turn v c6: score 0.492 ± 0.019  kills m/o/f/t 0.08 / 0.22 / 0.58 / 0.12  life 115 s  kpm/ship 0.48  trades 0.02
+2v2                D2 | allies 1   energy v turn v c7: score 0.465 ± 0.020  kills m/o/f/t 0.09 / 0.24 / 0.53 / 0.14  life 118 s  kpm/ship 0.47  trades 0.01
+2v2  D2 | duel extend shield 0.6   energy v turn v c8: score 0.436 ± 0.019  kills m/o/f/t 0.13 / 0.21 / 0.41 / 0.25  life 131 s  kpm/ship 0.42  trades 0.01
+2v2  D2 | duel extend energy 0.8   energy v turn v c9: score 0.457 ± 0.019  kills m/o/f/t 0.14 / 0.20 / 0.34 / 0.32  life 145 s  kpm/ship 0.39  trades 0.01
+2v2 D2 | duel extend lift 0.95, any type   energy v turn v c10: score 0.659 ± 0.018  kills m/o/f/t 0.16 / 0.18 / 0.17 / 0.49  life 163 s  kpm/ship 0.35  trades 0.01
+2v2               D2 | hold 1 gr   energy v turn v c11: score 0.482 ± 0.019  kills m/o/f/t 0.02 / 0.23 / 0.52 / 0.23  life 132 s  kpm/ship 0.42  trades 0.01
+2v2             D2 | hold 0.5 gr   energy v turn v c12: score 0.492 ± 0.019  kills m/o/f/t 0.04 / 0.24 / 0.50 / 0.22  life 127 s  kpm/ship 0.44  trades 0.02
+2v2             cone 0.085 | r9m   energy v turn v c13: score 0.533 ± 0.020  kills m/o/f/t 0.06 / 0.33 / 0.46 / 0.15  life 107 s  kpm/ship 0.52  trades 0.01
+2v2 cone 0.085 | press energy 1.3   energy v turn v c14: score 0.497 ± 0.019  kills m/o/f/t 0.05 / 0.31 / 0.47 / 0.16  life 102 s  kpm/ship 0.54  trades 0.01
+2v2 cone 0.085 | press energy 1.0   energy v turn v c15: score 0.454 ± 0.020  kills m/o/f/t 0.05 / 0.32 / 0.48 / 0.14  life 101 s  kpm/ship 0.54  trades 0.01
+2v2 cone 0.085 | press shield 1.5   energy v turn v c16: score 0.518 ± 0.020  kills m/o/f/t 0.06 / 0.32 / 0.47 / 0.15  life 104 s  kpm/ship 0.53  trades 0.02
+2v2 cone 0.085 | press shield 1.0   energy v turn v c17: score 0.508 ± 0.020  kills m/o/f/t 0.06 / 0.31 / 0.49 / 0.14  life 101 s  kpm/ship 0.54  trades 0.01
+2v2  cone 0.085 | threat 0.8 rad   energy v turn v c18: score 0.486 ± 0.020  kills m/o/f/t 0.05 / 0.32 / 0.53 / 0.10  life 102 s  kpm/ship 0.54  trades 0.02
+2v2  cone 0.085 | threat 0.4 rad   energy v turn v c19: score 0.546 ± 0.020  kills m/o/f/t 0.05 / 0.33 / 0.52 / 0.10  life 104 s  kpm/ship 0.53  trades 0.02
+2v2        cone 0.085 | allies 1   energy v turn v c20: score 0.499 ± 0.020  kills m/o/f/t 0.06 / 0.34 / 0.49 / 0.12  life 104 s  kpm/ship 0.53  trades 0.02
+2v2 cone 0.085 | duel extend shield 0.6   energy v turn v c21: score 0.521 ± 0.020  kills m/o/f/t 0.08 / 0.31 / 0.40 / 0.20  life 117 s  kpm/ship 0.47  trades 0.01
+2v2 cone 0.085 | duel extend energy 0.8   energy v turn v c22: score 0.558 ± 0.020  kills m/o/f/t 0.08 / 0.31 / 0.34 / 0.26  life 128 s  kpm/ship 0.43  trades 0.01
+2v2 cone 0.085 | duel extend lift 0.95, any type   energy v turn v c23: score 0.752 ± 0.017  kills m/o/f/t 0.08 / 0.26 / 0.19 / 0.47  life 146 s  kpm/ship 0.38  trades 0.02
+2v2       cone 0.085 | hold 1 gr   energy v turn v c24: score 0.541 ± 0.020  kills m/o/f/t 0.01 / 0.33 / 0.49 / 0.17  life 110 s  kpm/ship 0.50  trades 0.02
+2v2     cone 0.085 | hold 0.5 gr   energy v turn v c25: score 0.555 ± 0.020  kills m/o/f/t 0.03 / 0.32 / 0.48 / 0.17  life 110 s  kpm/ship 0.50  trades 0.02
+2v2            big v small | r9m   energy v turn v c26: score 0.487 ± 0.020  kills m/o/f/t 0.09 / 0.34 / 0.45 / 0.12  life 100 s  kpm/ship 0.55  trades 0.02
+2v2 big v small | press energy 1.3   energy v turn v c27: score 0.532 ± 0.020  kills m/o/f/t 0.08 / 0.32 / 0.48 / 0.12  life 94 s  kpm/ship 0.58  trades 0.02
+2v2 big v small | press energy 1.0   energy v turn v c28: score 0.497 ± 0.020  kills m/o/f/t 0.08 / 0.33 / 0.47 / 0.12  life 95 s  kpm/ship 0.57  trades 0.02
+2v2 big v small | press shield 1.5   energy v turn v c29: score 0.512 ± 0.020  kills m/o/f/t 0.08 / 0.33 / 0.47 / 0.12  life 95 s  kpm/ship 0.57  trades 0.02
+2v2 big v small | press shield 1.0   energy v turn v c30: score 0.522 ± 0.020  kills m/o/f/t 0.08 / 0.33 / 0.47 / 0.12  life 94 s  kpm/ship 0.58  trades 0.03
+2v2 big v small | threat 0.8 rad   energy v turn v c31: score 0.476 ± 0.020  kills m/o/f/t 0.08 / 0.33 / 0.51 / 0.08  life 95 s  kpm/ship 0.57  trades 0.02
+2v2 big v small | threat 0.4 rad   energy v turn v c32: score 0.505 ± 0.020  kills m/o/f/t 0.08 / 0.33 / 0.51 / 0.08  life 95 s  kpm/ship 0.57  trades 0.02
+2v2       big v small | allies 1   energy v turn v c33: score 0.560 ± 0.020  kills m/o/f/t 0.08 / 0.34 / 0.49 / 0.09  life 96 s  kpm/ship 0.57  trades 0.03
+2v2 big v small | duel extend shield 0.6   energy v turn v c34: score 0.522 ± 0.020  kills m/o/f/t 0.09 / 0.33 / 0.40 / 0.18  life 110 s  kpm/ship 0.50  trades 0.02
+2v2 big v small | duel extend energy 0.8   energy v turn v c35: score 0.521 ± 0.020  kills m/o/f/t 0.09 / 0.33 / 0.36 / 0.22  life 114 s  kpm/ship 0.48  trades 0.02
+2v2 big v small | duel extend lift 0.95, any type   energy v turn v c36: score 0.535 ± 0.020  kills m/o/f/t 0.11 / 0.28 / 0.21 / 0.39  life 110 s  kpm/ship 0.50  trades 0.02
+2v2      big v small | hold 1 gr   energy v turn v c37: score 0.512 ± 0.020  kills m/o/f/t 0.02 / 0.35 / 0.50 / 0.13  life 104 s  kpm/ship 0.53  trades 0.02
+2v2    big v small | hold 0.5 gr   energy v turn v c38: score 0.488 ± 0.020  kills m/o/f/t 0.03 / 0.35 / 0.49 / 0.13  life 103 s  kpm/ship 0.53  trades 0.02
+2v2                     D2 | r9m           mixed v r9m: score 0.517 ± 0.019  kills m/o/f/t 0.11 / 0.20 / 0.35 / 0.34  life 120 s  kpm/ship 0.46  trades 0.01
+2v2                     D2 | r9m  mixed reversed v r9m: score 0.488 ± 0.019  kills m/o/f/t 0.10 / 0.21 / 0.34 / 0.34  life 122 s  kpm/ship 0.46  trades 0.01
+2v2        D2 | press energy 1.3           mixed v r9m: score 0.480 ± 0.019  kills m/o/f/t 0.10 / 0.20 / 0.34 / 0.36  life 118 s  kpm/ship 0.47  trades 0.01
+2v2        D2 | press energy 1.3  mixed reversed v r9m: score 0.479 ± 0.020  kills m/o/f/t 0.10 / 0.20 / 0.35 / 0.35  life 117 s  kpm/ship 0.47  trades 0.02
+2v2        D2 | press energy 1.0           mixed v r9m: score 0.456 ± 0.020  kills m/o/f/t 0.11 / 0.19 / 0.35 / 0.35  life 115 s  kpm/ship 0.48  trades 0.02
+2v2        D2 | press energy 1.0  mixed reversed v r9m: score 0.444 ± 0.020  kills m/o/f/t 0.10 / 0.20 / 0.36 / 0.35  life 116 s  kpm/ship 0.48  trades 0.02
+2v2        D2 | press shield 1.5           mixed v r9m: score 0.501 ± 0.020  kills m/o/f/t 0.11 / 0.19 / 0.35 / 0.35  life 119 s  kpm/ship 0.46  trades 0.02
+2v2        D2 | press shield 1.5  mixed reversed v r9m: score 0.498 ± 0.020  kills m/o/f/t 0.11 / 0.20 / 0.34 / 0.35  life 120 s  kpm/ship 0.46  trades 0.02
+2v2        D2 | press shield 1.0           mixed v r9m: score 0.463 ± 0.020  kills m/o/f/t 0.10 / 0.19 / 0.35 / 0.36  life 119 s  kpm/ship 0.47  trades 0.01
+2v2        D2 | press shield 1.0  mixed reversed v r9m: score 0.412 ± 0.019  kills m/o/f/t 0.11 / 0.20 / 0.35 / 0.34  life 119 s  kpm/ship 0.47  trades 0.01
+2v2          D2 | threat 0.8 rad           mixed v r9m: score 0.490 ± 0.019  kills m/o/f/t 0.11 / 0.21 / 0.35 / 0.34  life 121 s  kpm/ship 0.46  trades 0.01
+2v2          D2 | threat 0.8 rad  mixed reversed v r9m: score 0.526 ± 0.019  kills m/o/f/t 0.11 / 0.20 / 0.34 / 0.35  life 120 s  kpm/ship 0.46  trades 0.01
+2v2          D2 | threat 0.4 rad           mixed v r9m: score 0.470 ± 0.019  kills m/o/f/t 0.09 / 0.20 / 0.36 / 0.35  life 120 s  kpm/ship 0.46  trades 0.02
+2v2          D2 | threat 0.4 rad  mixed reversed v r9m: score 0.470 ± 0.020  kills m/o/f/t 0.10 / 0.19 / 0.36 / 0.35  life 118 s  kpm/ship 0.47  trades 0.02
+2v2                D2 | allies 1           mixed v r9m: score 0.455 ± 0.020  kills m/o/f/t 0.11 / 0.20 / 0.35 / 0.35  life 118 s  kpm/ship 0.47  trades 0.02
+2v2                D2 | allies 1  mixed reversed v r9m: score 0.484 ± 0.020  kills m/o/f/t 0.11 / 0.21 / 0.35 / 0.33  life 121 s  kpm/ship 0.46  trades 0.01
+2v2  D2 | duel extend shield 0.6           mixed v r9m: score 0.541 ± 0.019  kills m/o/f/t 0.12 / 0.19 / 0.32 / 0.37  life 125 s  kpm/ship 0.45  trades 0.01
+2v2  D2 | duel extend shield 0.6  mixed reversed v r9m: score 0.543 ± 0.019  kills m/o/f/t 0.11 / 0.19 / 0.32 / 0.37  life 127 s  kpm/ship 0.44  trades 0.01
+2v2  D2 | duel extend energy 0.8           mixed v r9m: score 0.557 ± 0.019  kills m/o/f/t 0.12 / 0.19 / 0.30 / 0.39  life 132 s  kpm/ship 0.42  trades 0.01
+2v2  D2 | duel extend energy 0.8  mixed reversed v r9m: score 0.574 ± 0.019  kills m/o/f/t 0.11 / 0.19 / 0.32 / 0.38  life 131 s  kpm/ship 0.42  trades 0.01
+2v2 D2 | duel extend lift 0.95, any type           mixed v r9m: score 0.548 ± 0.019  kills m/o/f/t 0.12 / 0.19 / 0.26 / 0.43  life 132 s  kpm/ship 0.42  trades 0.01
+2v2 D2 | duel extend lift 0.95, any type  mixed reversed v r9m: score 0.517 ± 0.019  kills m/o/f/t 0.11 / 0.18 / 0.29 / 0.42  life 131 s  kpm/ship 0.43  trades 0.01
+2v2               D2 | hold 1 gr           mixed v r9m: score 0.456 ± 0.019  kills m/o/f/t 0.07 / 0.21 / 0.35 / 0.37  life 129 s  kpm/ship 0.43  trades 0.01
+2v2               D2 | hold 1 gr  mixed reversed v r9m: score 0.419 ± 0.019  kills m/o/f/t 0.07 / 0.20 / 0.35 / 0.37  life 129 s  kpm/ship 0.43  trades 0.01
+2v2             D2 | hold 0.5 gr           mixed v r9m: score 0.455 ± 0.020  kills m/o/f/t 0.08 / 0.19 / 0.36 / 0.36  life 127 s  kpm/ship 0.44  trades 0.01
+2v2             D2 | hold 0.5 gr  mixed reversed v r9m: score 0.450 ± 0.020  kills m/o/f/t 0.08 / 0.20 / 0.35 / 0.37  life 124 s  kpm/ship 0.45  trades 0.01
+2v2             cone 0.085 | r9m           mixed v r9m: score 0.517 ± 0.019  kills m/o/f/t 0.07 / 0.29 / 0.34 / 0.30  life 111 s  kpm/ship 0.50  trades 0.02
+2v2             cone 0.085 | r9m  mixed reversed v r9m: score 0.482 ± 0.019  kills m/o/f/t 0.06 / 0.29 / 0.33 / 0.32  life 110 s  kpm/ship 0.50  trades 0.01
+2v2 cone 0.085 | press energy 1.3           mixed v r9m: score 0.489 ± 0.020  kills m/o/f/t 0.07 / 0.30 / 0.34 / 0.29  life 107 s  kpm/ship 0.52  trades 0.01
+2v2 cone 0.085 | press energy 1.3  mixed reversed v r9m: score 0.471 ± 0.020  kills m/o/f/t 0.07 / 0.28 / 0.36 / 0.30  life 108 s  kpm/ship 0.51  trades 0.02
+2v2 cone 0.085 | press energy 1.0           mixed v r9m: score 0.438 ± 0.020  kills m/o/f/t 0.07 / 0.29 / 0.33 / 0.31  life 106 s  kpm/ship 0.52  trades 0.02
+2v2 cone 0.085 | press energy 1.0  mixed reversed v r9m: score 0.480 ± 0.020  kills m/o/f/t 0.06 / 0.30 / 0.34 / 0.30  life 107 s  kpm/ship 0.51  trades 0.02
+2v2 cone 0.085 | press shield 1.5           mixed v r9m: score 0.482 ± 0.020  kills m/o/f/t 0.06 / 0.29 / 0.35 / 0.30  life 109 s  kpm/ship 0.51  trades 0.02
+2v2 cone 0.085 | press shield 1.5  mixed reversed v r9m: score 0.457 ± 0.020  kills m/o/f/t 0.07 / 0.30 / 0.34 / 0.30  life 109 s  kpm/ship 0.50  trades 0.02
+2v2 cone 0.085 | press shield 1.0           mixed v r9m: score 0.452 ± 0.019  kills m/o/f/t 0.06 / 0.30 / 0.36 / 0.28  life 106 s  kpm/ship 0.52  trades 0.02
+2v2 cone 0.085 | press shield 1.0  mixed reversed v r9m: score 0.465 ± 0.020  kills m/o/f/t 0.07 / 0.28 / 0.36 / 0.30  life 109 s  kpm/ship 0.50  trades 0.02
+2v2  cone 0.085 | threat 0.8 rad           mixed v r9m: score 0.468 ± 0.019  kills m/o/f/t 0.07 / 0.29 / 0.34 / 0.30  life 107 s  kpm/ship 0.51  trades 0.02
+2v2  cone 0.085 | threat 0.8 rad  mixed reversed v r9m: score 0.518 ± 0.020  kills m/o/f/t 0.07 / 0.29 / 0.34 / 0.29  life 109 s  kpm/ship 0.50  trades 0.02
+2v2  cone 0.085 | threat 0.4 rad           mixed v r9m: score 0.489 ± 0.020  kills m/o/f/t 0.07 / 0.30 / 0.34 / 0.30  life 107 s  kpm/ship 0.51  trades 0.02
+2v2  cone 0.085 | threat 0.4 rad  mixed reversed v r9m: score 0.462 ± 0.020  kills m/o/f/t 0.07 / 0.29 / 0.35 / 0.30  life 107 s  kpm/ship 0.51  trades 0.02
+2v2        cone 0.085 | allies 1           mixed v r9m: score 0.452 ± 0.020  kills m/o/f/t 0.07 / 0.29 / 0.35 / 0.30  life 111 s  kpm/ship 0.50  trades 0.02
+2v2        cone 0.085 | allies 1  mixed reversed v r9m: score 0.468 ± 0.020  kills m/o/f/t 0.07 / 0.29 / 0.35 / 0.30  life 112 s  kpm/ship 0.49  trades 0.02
+2v2 cone 0.085 | duel extend shield 0.6           mixed v r9m: score 0.522 ± 0.020  kills m/o/f/t 0.07 / 0.29 / 0.34 / 0.31  life 116 s  kpm/ship 0.48  trades 0.02
+2v2 cone 0.085 | duel extend shield 0.6  mixed reversed v r9m: score 0.509 ± 0.019  kills m/o/f/t 0.07 / 0.30 / 0.33 / 0.30  life 116 s  kpm/ship 0.48  trades 0.02
+2v2 cone 0.085 | duel extend energy 0.8           mixed v r9m: score 0.538 ± 0.020  kills m/o/f/t 0.07 / 0.29 / 0.33 / 0.31  life 118 s  kpm/ship 0.47  trades 0.01
+2v2 cone 0.085 | duel extend energy 0.8  mixed reversed v r9m: score 0.521 ± 0.020  kills m/o/f/t 0.07 / 0.29 / 0.31 / 0.33  life 119 s  kpm/ship 0.47  trades 0.01
+2v2 cone 0.085 | duel extend lift 0.95, any type           mixed v r9m: score 0.569 ± 0.019  kills m/o/f/t 0.07 / 0.28 / 0.27 / 0.38  life 124 s  kpm/ship 0.45  trades 0.01
+2v2 cone 0.085 | duel extend lift 0.95, any type  mixed reversed v r9m: score 0.520 ± 0.020  kills m/o/f/t 0.07 / 0.28 / 0.28 / 0.37  life 119 s  kpm/ship 0.47  trades 0.02
+2v2       cone 0.085 | hold 1 gr           mixed v r9m: score 0.457 ± 0.020  kills m/o/f/t 0.04 / 0.28 / 0.37 / 0.31  life 114 s  kpm/ship 0.49  trades 0.02
+2v2       cone 0.085 | hold 1 gr  mixed reversed v r9m: score 0.483 ± 0.020  kills m/o/f/t 0.04 / 0.29 / 0.36 / 0.31  life 115 s  kpm/ship 0.48  trades 0.02
+2v2     cone 0.085 | hold 0.5 gr           mixed v r9m: score 0.478 ± 0.020  kills m/o/f/t 0.04 / 0.30 / 0.36 / 0.30  life 114 s  kpm/ship 0.49  trades 0.02
+2v2     cone 0.085 | hold 0.5 gr  mixed reversed v r9m: score 0.493 ± 0.020  kills m/o/f/t 0.04 / 0.30 / 0.35 / 0.30  life 112 s  kpm/ship 0.49  trades 0.02
+2v2            big v small | r9m           mixed v r9m: score 0.503 ± 0.020  kills m/o/f/t 0.09 / 0.31 / 0.33 / 0.27  life 104 s  kpm/ship 0.53  trades 0.02
+2v2            big v small | r9m  mixed reversed v r9m: score 0.515 ± 0.020  kills m/o/f/t 0.09 / 0.31 / 0.34 / 0.26  life 102 s  kpm/ship 0.54  trades 0.02
+2v2 big v small | press energy 1.3           mixed v r9m: score 0.484 ± 0.020  kills m/o/f/t 0.09 / 0.31 / 0.34 / 0.26  life 100 s  kpm/ship 0.55  trades 0.02
+2v2 big v small | press energy 1.3  mixed reversed v r9m: score 0.438 ± 0.020  kills m/o/f/t 0.08 / 0.29 / 0.35 / 0.27  life 101 s  kpm/ship 0.54  trades 0.02
+2v2 big v small | press energy 1.0           mixed v r9m: score 0.441 ± 0.020  kills m/o/f/t 0.09 / 0.29 / 0.34 / 0.27  life 100 s  kpm/ship 0.55  trades 0.02
+2v2 big v small | press energy 1.0  mixed reversed v r9m: score 0.431 ± 0.020  kills m/o/f/t 0.08 / 0.29 / 0.35 / 0.28  life 99 s  kpm/ship 0.55  trades 0.02
+2v2 big v small | press shield 1.5           mixed v r9m: score 0.494 ± 0.020  kills m/o/f/t 0.09 / 0.30 / 0.34 / 0.27  life 102 s  kpm/ship 0.54  trades 0.02
+2v2 big v small | press shield 1.5  mixed reversed v r9m: score 0.460 ± 0.020  kills m/o/f/t 0.09 / 0.32 / 0.34 / 0.26  life 103 s  kpm/ship 0.53  trades 0.02
+2v2 big v small | press shield 1.0           mixed v r9m: score 0.480 ± 0.020  kills m/o/f/t 0.09 / 0.29 / 0.36 / 0.26  life 102 s  kpm/ship 0.54  trades 0.02
+2v2 big v small | press shield 1.0  mixed reversed v r9m: score 0.456 ± 0.020  kills m/o/f/t 0.08 / 0.31 / 0.35 / 0.26  life 101 s  kpm/ship 0.54  trades 0.02
+2v2 big v small | threat 0.8 rad           mixed v r9m: score 0.482 ± 0.020  kills m/o/f/t 0.09 / 0.30 / 0.35 / 0.27  life 103 s  kpm/ship 0.53  trades 0.02
+2v2 big v small | threat 0.8 rad  mixed reversed v r9m: score 0.496 ± 0.020  kills m/o/f/t 0.09 / 0.30 / 0.34 / 0.26  life 100 s  kpm/ship 0.55  trades 0.03
+2v2 big v small | threat 0.4 rad           mixed v r9m: score 0.487 ± 0.020  kills m/o/f/t 0.09 / 0.29 / 0.35 / 0.26  life 102 s  kpm/ship 0.54  trades 0.02
+2v2 big v small | threat 0.4 rad  mixed reversed v r9m: score 0.487 ± 0.020  kills m/o/f/t 0.09 / 0.31 / 0.34 / 0.26  life 100 s  kpm/ship 0.55  trades 0.02
+2v2       big v small | allies 1           mixed v r9m: score 0.461 ± 0.020  kills m/o/f/t 0.09 / 0.30 / 0.35 / 0.26  life 102 s  kpm/ship 0.54  trades 0.02
+2v2       big v small | allies 1  mixed reversed v r9m: score 0.433 ± 0.020  kills m/o/f/t 0.08 / 0.30 / 0.35 / 0.26  life 103 s  kpm/ship 0.53  trades 0.02
+2v2 big v small | duel extend shield 0.6           mixed v r9m: score 0.532 ± 0.020  kills m/o/f/t 0.09 / 0.32 / 0.31 / 0.28  life 109 s  kpm/ship 0.50  trades 0.02
+2v2 big v small | duel extend shield 0.6  mixed reversed v r9m: score 0.548 ± 0.020  kills m/o/f/t 0.09 / 0.30 / 0.33 / 0.28  life 109 s  kpm/ship 0.51  trades 0.02
+2v2 big v small | duel extend energy 0.8           mixed v r9m: score 0.521 ± 0.020  kills m/o/f/t 0.09 / 0.31 / 0.31 / 0.29  life 112 s  kpm/ship 0.49  trades 0.02
+2v2 big v small | duel extend energy 0.8  mixed reversed v r9m: score 0.550 ± 0.020  kills m/o/f/t 0.09 / 0.29 / 0.32 / 0.29  life 112 s  kpm/ship 0.49  trades 0.02
+2v2 big v small | duel extend lift 0.95, any type           mixed v r9m: score 0.495 ± 0.020  kills m/o/f/t 0.09 / 0.29 / 0.30 / 0.32  life 105 s  kpm/ship 0.52  trades 0.02
+2v2 big v small | duel extend lift 0.95, any type  mixed reversed v r9m: score 0.501 ± 0.020  kills m/o/f/t 0.10 / 0.31 / 0.28 / 0.31  life 106 s  kpm/ship 0.52  trades 0.02
+2v2      big v small | hold 1 gr           mixed v r9m: score 0.492 ± 0.020  kills m/o/f/t 0.06 / 0.30 / 0.37 / 0.28  life 107 s  kpm/ship 0.52  trades 0.02
+2v2      big v small | hold 1 gr  mixed reversed v r9m: score 0.457 ± 0.020  kills m/o/f/t 0.05 / 0.31 / 0.36 / 0.28  life 107 s  kpm/ship 0.51  trades 0.02
+2v2    big v small | hold 0.5 gr           mixed v r9m: score 0.455 ± 0.020  kills m/o/f/t 0.06 / 0.32 / 0.34 / 0.29  life 104 s  kpm/ship 0.53  trades 0.02
+2v2    big v small | hold 0.5 gr  mixed reversed v r9m: score 0.488 ± 0.020  kills m/o/f/t 0.05 / 0.31 / 0.36 / 0.27  life 107 s  kpm/ship 0.51  trades 0.02
+## 5v5: 117 jobs, B 4096, 02:48 KST
+  batch 1/15 102 s; ETA 03:13 KST
+  batch 2/15 133 s; ETA 03:04 KST
+  batch 3/15 165 s; ETA 03:02 KST
+  batch 4/15 197 s; ETA 03:00 KST
+  batch 5/15 229 s; ETA 02:59 KST
+  batch 6/15 261 s; ETA 02:59 KST
+  batch 7/15 293 s; ETA 02:58 KST
+  batch 8/15 325 s; ETA 02:58 KST
+  batch 9/15 357 s; ETA 02:58 KST
+  batch 10/15 389 s; ETA 02:57 KST
+  batch 11/15 421 s; ETA 02:57 KST
+  batch 12/15 453 s; ETA 02:57 KST
+  batch 13/15 485 s; ETA 02:57 KST
+  batch 14/15 517 s; ETA 02:57 KST
+  batch 15/15 549 s; ETA 02:57 KST
+5v5                     D2 | r9m   energy v turn v c0: score 0.528 ± 0.020  kills m/o/f/t 0.07 / 0.19 / 0.42 / 0.31  life 124 s  kpm/ship 0.45  trades 0.03
+5v5        D2 | press energy 1.3   energy v turn v c1: score 0.646 ± 0.020  kills m/o/f/t 0.07 / 0.19 / 0.47 / 0.26  life 114 s  kpm/ship 0.48  trades 0.04
+5v5        D2 | press energy 1.0   energy v turn v c2: score 0.640 ± 0.020  kills m/o/f/t 0.07 / 0.19 / 0.50 / 0.25  life 113 s  kpm/ship 0.49  trades 0.04
+5v5        D2 | press shield 1.5   energy v turn v c3: score 0.571 ± 0.020  kills m/o/f/t 0.07 / 0.19 / 0.44 / 0.30  life 119 s  kpm/ship 0.47  trades 0.04
+5v5        D2 | press shield 1.0   energy v turn v c4: score 0.606 ± 0.020  kills m/o/f/t 0.07 / 0.19 / 0.48 / 0.26  life 114 s  kpm/ship 0.48  trades 0.04
+5v5          D2 | threat 0.8 rad   energy v turn v c5: score 0.551 ± 0.020  kills m/o/f/t 0.06 / 0.19 / 0.52 / 0.22  life 119 s  kpm/ship 0.47  trades 0.03
+5v5          D2 | threat 0.4 rad   energy v turn v c6: score 0.570 ± 0.020  kills m/o/f/t 0.06 / 0.19 / 0.53 / 0.21  life 114 s  kpm/ship 0.48  trades 0.04
+5v5                D2 | allies 1   energy v turn v c7: score 0.537 ± 0.020  kills m/o/f/t 0.06 / 0.19 / 0.54 / 0.21  life 113 s  kpm/ship 0.49  trades 0.04
+5v5  D2 | duel extend shield 0.6   energy v turn v c8: score 0.564 ± 0.020  kills m/o/f/t 0.08 / 0.18 / 0.39 / 0.35  life 131 s  kpm/ship 0.43  trades 0.03
+5v5  D2 | duel extend energy 0.8   energy v turn v c9: score 0.625 ± 0.020  kills m/o/f/t 0.08 / 0.17 / 0.35 / 0.40  life 139 s  kpm/ship 0.40  trades 0.03
+5v5 D2 | duel extend lift 0.95, any type   energy v turn v c10: score 0.700 ± 0.018  kills m/o/f/t 0.08 / 0.15 / 0.27 / 0.50  life 154 s  kpm/ship 0.37  trades 0.03
+5v5               D2 | hold 1 gr   energy v turn v c11: score 0.583 ± 0.020  kills m/o/f/t 0.01 / 0.18 / 0.46 / 0.35  life 133 s  kpm/ship 0.42  trades 0.03
+5v5             D2 | hold 0.5 gr   energy v turn v c12: score 0.538 ± 0.020  kills m/o/f/t 0.03 / 0.18 / 0.45 / 0.34  life 132 s  kpm/ship 0.42  trades 0.03
+5v5             cone 0.085 | r9m   energy v turn v c13: score 0.692 ± 0.019  kills m/o/f/t 0.05 / 0.28 / 0.43 / 0.24  life 108 s  kpm/ship 0.51  trades 0.04
+5v5 cone 0.085 | press energy 1.3   energy v turn v c14: score 0.757 ± 0.018  kills m/o/f/t 0.05 / 0.28 / 0.46 / 0.21  life 102 s  kpm/ship 0.54  trades 0.05
+5v5 cone 0.085 | press energy 1.0   energy v turn v c15: score 0.724 ± 0.018  kills m/o/f/t 0.05 / 0.28 / 0.47 / 0.20  life 99 s  kpm/ship 0.55  trades 0.05
+5v5 cone 0.085 | press shield 1.5   energy v turn v c16: score 0.694 ± 0.019  kills m/o/f/t 0.05 / 0.28 / 0.43 / 0.23  life 104 s  kpm/ship 0.53  trades 0.05
+5v5 cone 0.085 | press shield 1.0   energy v turn v c17: score 0.760 ± 0.017  kills m/o/f/t 0.05 / 0.28 / 0.48 / 0.19  life 101 s  kpm/ship 0.54  trades 0.05
+5v5  cone 0.085 | threat 0.8 rad   energy v turn v c18: score 0.673 ± 0.019  kills m/o/f/t 0.05 / 0.28 / 0.50 / 0.17  life 102 s  kpm/ship 0.53  trades 0.05
+5v5  cone 0.085 | threat 0.4 rad   energy v turn v c19: score 0.692 ± 0.019  kills m/o/f/t 0.05 / 0.28 / 0.52 / 0.16  life 100 s  kpm/ship 0.55  trades 0.04
+5v5        cone 0.085 | allies 1   energy v turn v c20: score 0.684 ± 0.019  kills m/o/f/t 0.05 / 0.27 / 0.51 / 0.16  life 99 s  kpm/ship 0.55  trades 0.05
+5v5 cone 0.085 | duel extend shield 0.6   energy v turn v c21: score 0.700 ± 0.019  kills m/o/f/t 0.06 / 0.28 / 0.39 / 0.27  life 112 s  kpm/ship 0.49  trades 0.03
+5v5 cone 0.085 | duel extend energy 0.8   energy v turn v c22: score 0.771 ± 0.017  kills m/o/f/t 0.07 / 0.25 / 0.36 / 0.33  life 119 s  kpm/ship 0.46  trades 0.04
+5v5 cone 0.085 | duel extend lift 0.95, any type   energy v turn v c23: score 0.818 ± 0.016  kills m/o/f/t 0.06 / 0.25 / 0.28 / 0.41  life 133 s  kpm/ship 0.42  trades 0.03
+5v5       cone 0.085 | hold 1 gr   energy v turn v c24: score 0.701 ± 0.019  kills m/o/f/t 0.01 / 0.27 / 0.46 / 0.26  life 113 s  kpm/ship 0.49  trades 0.04
+5v5     cone 0.085 | hold 0.5 gr   energy v turn v c25: score 0.670 ± 0.019  kills m/o/f/t 0.02 / 0.28 / 0.45 / 0.26  life 111 s  kpm/ship 0.50  trades 0.04
+5v5            big v small | r9m   energy v turn v c26: score 0.475 ± 0.021  kills m/o/f/t 0.08 / 0.29 / 0.44 / 0.20  life 99 s  kpm/ship 0.55  trades 0.05
+5v5 big v small | press energy 1.3   energy v turn v c27: score 0.467 ± 0.021  kills m/o/f/t 0.07 / 0.29 / 0.47 / 0.18  life 90 s  kpm/ship 0.60  trades 0.06
+5v5 big v small | press energy 1.0   energy v turn v c28: score 0.496 ± 0.021  kills m/o/f/t 0.07 / 0.30 / 0.47 / 0.17  life 87 s  kpm/ship 0.62  trades 0.07
+5v5 big v small | press shield 1.5   energy v turn v c29: score 0.507 ± 0.021  kills m/o/f/t 0.07 / 0.29 / 0.44 / 0.19  life 95 s  kpm/ship 0.57  trades 0.05
+5v5 big v small | press shield 1.0   energy v turn v c30: score 0.462 ± 0.021  kills m/o/f/t 0.07 / 0.29 / 0.47 / 0.17  life 90 s  kpm/ship 0.60  trades 0.06
+5v5 big v small | threat 0.8 rad   energy v turn v c31: score 0.488 ± 0.021  kills m/o/f/t 0.07 / 0.30 / 0.49 / 0.14  life 93 s  kpm/ship 0.58  trades 0.06
+5v5 big v small | threat 0.4 rad   energy v turn v c32: score 0.487 ± 0.021  kills m/o/f/t 0.07 / 0.30 / 0.51 / 0.13  life 90 s  kpm/ship 0.60  trades 0.06
+5v5       big v small | allies 1   energy v turn v c33: score 0.493 ± 0.021  kills m/o/f/t 0.07 / 0.30 / 0.51 / 0.13  life 88 s  kpm/ship 0.62  trades 0.07
+5v5 big v small | duel extend shield 0.6   energy v turn v c34: score 0.507 ± 0.021  kills m/o/f/t 0.08 / 0.30 / 0.40 / 0.23  life 104 s  kpm/ship 0.53  trades 0.05
+5v5 big v small | duel extend energy 0.8   energy v turn v c35: score 0.502 ± 0.021  kills m/o/f/t 0.08 / 0.28 / 0.36 / 0.28  life 107 s  kpm/ship 0.52  trades 0.05
+5v5 big v small | duel extend lift 0.95, any type   energy v turn v c36: score 0.544 ± 0.021  kills m/o/f/t 0.08 / 0.27 / 0.27 / 0.38  life 114 s  kpm/ship 0.49  trades 0.05
+5v5      big v small | hold 1 gr   energy v turn v c37: score 0.483 ± 0.021  kills m/o/f/t 0.02 / 0.30 / 0.47 / 0.22  life 104 s  kpm/ship 0.53  trades 0.04
+5v5    big v small | hold 0.5 gr   energy v turn v c38: score 0.495 ± 0.020  kills m/o/f/t 0.03 / 0.30 / 0.45 / 0.22  life 102 s  kpm/ship 0.54  trades 0.05
+5v5                     D2 | r9m           mixed v r9m: score 0.502 ± 0.020  kills m/o/f/t 0.07 / 0.18 / 0.35 / 0.40  life 130 s  kpm/ship 0.43  trades 0.03
+5v5                     D2 | r9m  mixed reversed v r9m: score 0.498 ± 0.021  kills m/o/f/t 0.07 / 0.18 / 0.36 / 0.39  life 127 s  kpm/ship 0.44  trades 0.03
+5v5        D2 | press energy 1.3           mixed v r9m: score 0.312 ± 0.019  kills m/o/f/t 0.07 / 0.17 / 0.37 / 0.39  life 121 s  kpm/ship 0.46  trades 0.04
+5v5        D2 | press energy 1.3  mixed reversed v r9m: score 0.332 ± 0.019  kills m/o/f/t 0.07 / 0.18 / 0.39 / 0.37  life 118 s  kpm/ship 0.47  trades 0.04
+5v5        D2 | press energy 1.0           mixed v r9m: score 0.296 ± 0.018  kills m/o/f/t 0.07 / 0.17 / 0.36 / 0.39  life 121 s  kpm/ship 0.46  trades 0.04
+5v5        D2 | press energy 1.0  mixed reversed v r9m: score 0.243 ± 0.018  kills m/o/f/t 0.07 / 0.17 / 0.38 / 0.37  life 118 s  kpm/ship 0.47  trades 0.04
+5v5        D2 | press shield 1.5           mixed v r9m: score 0.393 ± 0.020  kills m/o/f/t 0.07 / 0.18 / 0.36 / 0.39  life 128 s  kpm/ship 0.44  trades 0.04
+5v5        D2 | press shield 1.5  mixed reversed v r9m: score 0.417 ± 0.020  kills m/o/f/t 0.07 / 0.19 / 0.38 / 0.36  life 122 s  kpm/ship 0.45  trades 0.03
+5v5        D2 | press shield 1.0           mixed v r9m: score 0.347 ± 0.019  kills m/o/f/t 0.07 / 0.18 / 0.36 / 0.38  life 124 s  kpm/ship 0.45  trades 0.04
+5v5        D2 | press shield 1.0  mixed reversed v r9m: score 0.272 ± 0.018  kills m/o/f/t 0.07 / 0.19 / 0.39 / 0.36  life 121 s  kpm/ship 0.46  trades 0.04
+5v5          D2 | threat 0.8 rad           mixed v r9m: score 0.359 ± 0.020  kills m/o/f/t 0.07 / 0.18 / 0.38 / 0.37  life 126 s  kpm/ship 0.44  trades 0.04
+5v5          D2 | threat 0.8 rad  mixed reversed v r9m: score 0.359 ± 0.020  kills m/o/f/t 0.08 / 0.19 / 0.37 / 0.37  life 122 s  kpm/ship 0.45  trades 0.03
+5v5          D2 | threat 0.4 rad           mixed v r9m: score 0.365 ± 0.019  kills m/o/f/t 0.07 / 0.18 / 0.37 / 0.38  life 126 s  kpm/ship 0.44  trades 0.04
+5v5          D2 | threat 0.4 rad  mixed reversed v r9m: score 0.313 ± 0.019  kills m/o/f/t 0.07 / 0.18 / 0.38 / 0.37  life 122 s  kpm/ship 0.45  trades 0.04
+5v5                D2 | allies 1           mixed v r9m: score 0.321 ± 0.019  kills m/o/f/t 0.07 / 0.18 / 0.38 / 0.37  life 124 s  kpm/ship 0.45  trades 0.04
+5v5                D2 | allies 1  mixed reversed v r9m: score 0.275 ± 0.018  kills m/o/f/t 0.07 / 0.19 / 0.38 / 0.36  life 122 s  kpm/ship 0.46  trades 0.04
+5v5  D2 | duel extend shield 0.6           mixed v r9m: score 0.567 ± 0.020  kills m/o/f/t 0.08 / 0.18 / 0.34 / 0.40  life 133 s  kpm/ship 0.42  trades 0.03
+5v5  D2 | duel extend shield 0.6  mixed reversed v r9m: score 0.555 ± 0.020  kills m/o/f/t 0.08 / 0.18 / 0.36 / 0.38  life 131 s  kpm/ship 0.43  trades 0.04
+5v5  D2 | duel extend energy 0.8           mixed v r9m: score 0.571 ± 0.020  kills m/o/f/t 0.08 / 0.17 / 0.33 / 0.43  life 133 s  kpm/ship 0.42  trades 0.03
+5v5  D2 | duel extend energy 0.8  mixed reversed v r9m: score 0.563 ± 0.020  kills m/o/f/t 0.08 / 0.18 / 0.34 / 0.40  life 132 s  kpm/ship 0.42  trades 0.04
+5v5 D2 | duel extend lift 0.95, any type           mixed v r9m: score 0.531 ± 0.021  kills m/o/f/t 0.07 / 0.17 / 0.31 / 0.45  life 138 s  kpm/ship 0.41  trades 0.04
+5v5 D2 | duel extend lift 0.95, any type  mixed reversed v r9m: score 0.606 ± 0.020  kills m/o/f/t 0.08 / 0.17 / 0.33 / 0.42  life 134 s  kpm/ship 0.42  trades 0.03
+5v5               D2 | hold 1 gr           mixed v r9m: score 0.416 ± 0.020  kills m/o/f/t 0.04 / 0.17 / 0.36 / 0.42  life 136 s  kpm/ship 0.41  trades 0.03
+5v5               D2 | hold 1 gr  mixed reversed v r9m: score 0.407 ± 0.020  kills m/o/f/t 0.04 / 0.18 / 0.37 / 0.41  life 133 s  kpm/ship 0.42  trades 0.04
+5v5             D2 | hold 0.5 gr           mixed v r9m: score 0.461 ± 0.020  kills m/o/f/t 0.05 / 0.17 / 0.36 / 0.42  life 134 s  kpm/ship 0.42  trades 0.03
+5v5             D2 | hold 0.5 gr  mixed reversed v r9m: score 0.438 ± 0.020  kills m/o/f/t 0.06 / 0.18 / 0.37 / 0.40  life 130 s  kpm/ship 0.43  trades 0.03
+5v5             cone 0.085 | r9m           mixed v r9m: score 0.501 ± 0.020  kills m/o/f/t 0.06 / 0.26 / 0.36 / 0.32  life 114 s  kpm/ship 0.48  trades 0.04
+5v5             cone 0.085 | r9m  mixed reversed v r9m: score 0.518 ± 0.021  kills m/o/f/t 0.06 / 0.27 / 0.37 / 0.31  life 112 s  kpm/ship 0.49  trades 0.04
+5v5 cone 0.085 | press energy 1.3           mixed v r9m: score 0.344 ± 0.020  kills m/o/f/t 0.05 / 0.26 / 0.37 / 0.33  life 109 s  kpm/ship 0.50  trades 0.05
+5v5 cone 0.085 | press energy 1.3  mixed reversed v r9m: score 0.305 ± 0.019  kills m/o/f/t 0.06 / 0.27 / 0.38 / 0.30  life 105 s  kpm/ship 0.52  trades 0.05
+5v5 cone 0.085 | press energy 1.0           mixed v r9m: score 0.275 ± 0.018  kills m/o/f/t 0.05 / 0.26 / 0.37 / 0.32  life 106 s  kpm/ship 0.52  trades 0.05
+5v5 cone 0.085 | press energy 1.0  mixed reversed v r9m: score 0.253 ± 0.018  kills m/o/f/t 0.06 / 0.27 / 0.38 / 0.30  life 105 s  kpm/ship 0.52  trades 0.05
+5v5 cone 0.085 | press shield 1.5           mixed v r9m: score 0.432 ± 0.020  kills m/o/f/t 0.05 / 0.27 / 0.36 / 0.32  life 112 s  kpm/ship 0.49  trades 0.05
+5v5 cone 0.085 | press shield 1.5  mixed reversed v r9m: score 0.417 ± 0.021  kills m/o/f/t 0.06 / 0.27 / 0.37 / 0.30  life 109 s  kpm/ship 0.51  trades 0.05
+5v5 cone 0.085 | press shield 1.0           mixed v r9m: score 0.354 ± 0.020  kills m/o/f/t 0.06 / 0.27 / 0.37 / 0.31  life 110 s  kpm/ship 0.50  trades 0.05
+5v5 cone 0.085 | press shield 1.0  mixed reversed v r9m: score 0.300 ± 0.019  kills m/o/f/t 0.06 / 0.27 / 0.38 / 0.29  life 106 s  kpm/ship 0.52  trades 0.05
+5v5  cone 0.085 | threat 0.8 rad           mixed v r9m: score 0.388 ± 0.020  kills m/o/f/t 0.05 / 0.27 / 0.37 / 0.31  life 112 s  kpm/ship 0.49  trades 0.04
+5v5  cone 0.085 | threat 0.8 rad  mixed reversed v r9m: score 0.376 ± 0.020  kills m/o/f/t 0.06 / 0.28 / 0.37 / 0.30  life 107 s  kpm/ship 0.51  trades 0.04
+5v5  cone 0.085 | threat 0.4 rad           mixed v r9m: score 0.337 ± 0.019  kills m/o/f/t 0.05 / 0.27 / 0.37 / 0.31  life 109 s  kpm/ship 0.51  trades 0.05
+5v5  cone 0.085 | threat 0.4 rad  mixed reversed v r9m: score 0.340 ± 0.019  kills m/o/f/t 0.06 / 0.28 / 0.37 / 0.29  life 107 s  kpm/ship 0.51  trades 0.04
+5v5        cone 0.085 | allies 1           mixed v r9m: score 0.326 ± 0.019  kills m/o/f/t 0.05 / 0.27 / 0.37 / 0.31  life 110 s  kpm/ship 0.50  trades 0.04
+5v5        cone 0.085 | allies 1  mixed reversed v r9m: score 0.274 ± 0.018  kills m/o/f/t 0.06 / 0.28 / 0.37 / 0.29  life 108 s  kpm/ship 0.51  trades 0.04
+5v5 cone 0.085 | duel extend shield 0.6           mixed v r9m: score 0.546 ± 0.020  kills m/o/f/t 0.05 / 0.26 / 0.36 / 0.32  life 116 s  kpm/ship 0.48  trades 0.04
+5v5 cone 0.085 | duel extend shield 0.6  mixed reversed v r9m: score 0.540 ± 0.021  kills m/o/f/t 0.06 / 0.27 / 0.36 / 0.31  life 113 s  kpm/ship 0.49  trades 0.04
+5v5 cone 0.085 | duel extend energy 0.8           mixed v r9m: score 0.578 ± 0.020  kills m/o/f/t 0.06 / 0.27 / 0.33 / 0.34  life 117 s  kpm/ship 0.47  trades 0.04
+5v5 cone 0.085 | duel extend energy 0.8  mixed reversed v r9m: score 0.582 ± 0.020  kills m/o/f/t 0.06 / 0.27 / 0.35 / 0.31  life 114 s  kpm/ship 0.48  trades 0.04
+5v5 cone 0.085 | duel extend lift 0.95, any type           mixed v r9m: score 0.598 ± 0.020  kills m/o/f/t 0.05 / 0.25 / 0.32 / 0.37  life 121 s  kpm/ship 0.46  trades 0.04
+5v5 cone 0.085 | duel extend lift 0.95, any type  mixed reversed v r9m: score 0.549 ± 0.021  kills m/o/f/t 0.06 / 0.27 / 0.33 / 0.34  life 117 s  kpm/ship 0.47  trades 0.04
+5v5       cone 0.085 | hold 1 gr           mixed v r9m: score 0.427 ± 0.021  kills m/o/f/t 0.03 / 0.26 / 0.37 / 0.33  life 117 s  kpm/ship 0.47  trades 0.04
+5v5       cone 0.085 | hold 1 gr  mixed reversed v r9m: score 0.483 ± 0.021  kills m/o/f/t 0.04 / 0.27 / 0.37 / 0.32  life 113 s  kpm/ship 0.49  trades 0.04
+5v5     cone 0.085 | hold 0.5 gr           mixed v r9m: score 0.504 ± 0.021  kills m/o/f/t 0.04 / 0.27 / 0.37 / 0.32  life 116 s  kpm/ship 0.48  trades 0.04
+5v5     cone 0.085 | hold 0.5 gr  mixed reversed v r9m: score 0.476 ± 0.021  kills m/o/f/t 0.04 / 0.28 / 0.37 / 0.30  life 113 s  kpm/ship 0.49  trades 0.04
+5v5            big v small | r9m           mixed v r9m: score 0.491 ± 0.021  kills m/o/f/t 0.08 / 0.29 / 0.36 / 0.27  life 102 s  kpm/ship 0.53  trades 0.05
+5v5            big v small | r9m  mixed reversed v r9m: score 0.505 ± 0.020  kills m/o/f/t 0.07 / 0.28 / 0.34 / 0.30  life 108 s  kpm/ship 0.51  trades 0.05
+5v5 big v small | press energy 1.3           mixed v r9m: score 0.309 ± 0.019  kills m/o/f/t 0.07 / 0.30 / 0.36 / 0.27  life 98 s  kpm/ship 0.56  trades 0.05
+5v5 big v small | press energy 1.3  mixed reversed v r9m: score 0.318 ± 0.020  kills m/o/f/t 0.07 / 0.28 / 0.36 / 0.30  life 102 s  kpm/ship 0.54  trades 0.06
+5v5 big v small | press energy 1.0           mixed v r9m: score 0.242 ± 0.018  kills m/o/f/t 0.07 / 0.28 / 0.37 / 0.28  life 96 s  kpm/ship 0.56  trades 0.06
+5v5 big v small | press energy 1.0  mixed reversed v r9m: score 0.248 ± 0.018  kills m/o/f/t 0.07 / 0.27 / 0.37 / 0.29  life 99 s  kpm/ship 0.55  trades 0.05
+5v5 big v small | press shield 1.5           mixed v r9m: score 0.426 ± 0.021  kills m/o/f/t 0.08 / 0.29 / 0.36 / 0.27  life 100 s  kpm/ship 0.54  trades 0.05
+5v5 big v small | press shield 1.5  mixed reversed v r9m: score 0.416 ± 0.020  kills m/o/f/t 0.07 / 0.28 / 0.35 / 0.30  life 105 s  kpm/ship 0.52  trades 0.05
+5v5 big v small | press shield 1.0           mixed v r9m: score 0.324 ± 0.019  kills m/o/f/t 0.08 / 0.29 / 0.37 / 0.26  life 98 s  kpm/ship 0.56  trades 0.05
+5v5 big v small | press shield 1.0  mixed reversed v r9m: score 0.313 ± 0.019  kills m/o/f/t 0.07 / 0.28 / 0.37 / 0.28  life 103 s  kpm/ship 0.53  trades 0.05
+5v5 big v small | threat 0.8 rad           mixed v r9m: score 0.352 ± 0.020  kills m/o/f/t 0.08 / 0.29 / 0.36 / 0.27  life 99 s  kpm/ship 0.55  trades 0.05
+5v5 big v small | threat 0.8 rad  mixed reversed v r9m: score 0.357 ± 0.020  kills m/o/f/t 0.07 / 0.28 / 0.36 / 0.28  life 105 s  kpm/ship 0.52  trades 0.05
+5v5 big v small | threat 0.4 rad           mixed v r9m: score 0.338 ± 0.019  kills m/o/f/t 0.08 / 0.29 / 0.36 / 0.27  life 99 s  kpm/ship 0.55  trades 0.05
+5v5 big v small | threat 0.4 rad  mixed reversed v r9m: score 0.293 ± 0.019  kills m/o/f/t 0.07 / 0.28 / 0.37 / 0.28  life 102 s  kpm/ship 0.53  trades 0.05
+5v5       big v small | allies 1           mixed v r9m: score 0.293 ± 0.019  kills m/o/f/t 0.07 / 0.30 / 0.37 / 0.26  life 98 s  kpm/ship 0.56  trades 0.05
+5v5       big v small | allies 1  mixed reversed v r9m: score 0.254 ± 0.018  kills m/o/f/t 0.07 / 0.29 / 0.36 / 0.28  life 102 s  kpm/ship 0.54  trades 0.05
+5v5 big v small | duel extend shield 0.6           mixed v r9m: score 0.546 ± 0.021  kills m/o/f/t 0.08 / 0.30 / 0.35 / 0.27  life 106 s  kpm/ship 0.52  trades 0.05
+5v5 big v small | duel extend shield 0.6  mixed reversed v r9m: score 0.554 ± 0.020  kills m/o/f/t 0.08 / 0.28 / 0.35 / 0.29  life 109 s  kpm/ship 0.50  trades 0.05
+5v5 big v small | duel extend energy 0.8           mixed v r9m: score 0.588 ± 0.020  kills m/o/f/t 0.08 / 0.29 / 0.34 / 0.29  life 105 s  kpm/ship 0.52  trades 0.05
+5v5 big v small | duel extend energy 0.8  mixed reversed v r9m: score 0.598 ± 0.020  kills m/o/f/t 0.07 / 0.29 / 0.34 / 0.30  life 111 s  kpm/ship 0.50  trades 0.05
+5v5 big v small | duel extend lift 0.95, any type           mixed v r9m: score 0.549 ± 0.021  kills m/o/f/t 0.07 / 0.29 / 0.31 / 0.32  life 106 s  kpm/ship 0.52  trades 0.05
+5v5 big v small | duel extend lift 0.95, any type  mixed reversed v r9m: score 0.580 ± 0.020  kills m/o/f/t 0.07 / 0.27 / 0.32 / 0.34  life 112 s  kpm/ship 0.49  trades 0.04
+5v5      big v small | hold 1 gr           mixed v r9m: score 0.412 ± 0.020  kills m/o/f/t 0.05 / 0.29 / 0.37 / 0.29  life 104 s  kpm/ship 0.53  trades 0.05
+5v5      big v small | hold 1 gr  mixed reversed v r9m: score 0.429 ± 0.020  kills m/o/f/t 0.04 / 0.29 / 0.36 / 0.31  life 111 s  kpm/ship 0.50  trades 0.04
+5v5    big v small | hold 0.5 gr           mixed v r9m: score 0.466 ± 0.021  kills m/o/f/t 0.05 / 0.29 / 0.37 / 0.28  life 104 s  kpm/ship 0.53  trades 0.05
+5v5    big v small | hold 0.5 gr  mixed reversed v r9m: score 0.475 ± 0.021  kills m/o/f/t 0.05 / 0.28 / 0.37 / 0.30  life 109 s  kpm/ship 0.51  trades 0.04
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|
+| D2 | r9m | 0.496 ± 0.014 | 0.470 ± 0.019 | 0.528 ± 0.020 | 0.030 | 0.07 / 0.19 / 0.42 / 0.31 | 0.03 | 285 / 117 / 124 | 0.20 / 0.47 / 0.45 | 3.36 |
+| D2 | press energy 1.3 | 0.516 ± 0.014 | 0.414 ± 0.019 | 0.646 ± 0.020 | 0.146 | 0.07 / 0.19 / 0.47 / 0.26 | 0.04 | 293 / 112 / 114 | 0.20 / 0.49 / 0.48 | 3.46 |
+| D2 | press energy 1.0 | 0.503 ± 0.014 | 0.394 ± 0.019 | 0.640 ± 0.020 | 0.140 | 0.07 / 0.19 / 0.50 / 0.25 | 0.04 | 290 / 112 / 113 | 0.20 / 0.49 / 0.49 | 3.46 |
+| D2 | press shield 1.5 | 0.489 ± 0.014 | 0.453 ± 0.019 | 0.571 ± 0.020 | 0.071 | 0.07 / 0.19 / 0.44 / 0.30 | 0.04 | 283 / 115 / 119 | 0.21 / 0.48 / 0.47 | 3.5 |
+| D2 | press shield 1.0 | 0.480 ± 0.014 | 0.456 ± 0.019 | 0.606 ± 0.020 | 0.106 | 0.07 / 0.19 / 0.48 / 0.26 | 0.04 | 300 / 113 / 114 | 0.19 / 0.49 / 0.48 | 3.53 |
+| D2 | threat 0.8 rad | 0.495 ± 0.014 | 0.483 ± 0.020 | 0.551 ± 0.020 | 0.051 | 0.06 / 0.19 / 0.52 / 0.22 | 0.03 | 281 / 117 / 119 | 0.21 / 0.47 / 0.47 | 3.27 |
+| D2 | threat 0.4 rad | 0.490 ± 0.014 | 0.492 ± 0.019 | 0.570 ± 0.020 | 0.070 | 0.06 / 0.19 / 0.53 / 0.21 | 0.04 | 288 / 115 / 114 | 0.20 / 0.48 / 0.48 | 3.42 |
+| D2 | allies 1 | 0.498 ± 0.013 | 0.465 ± 0.020 | 0.537 ± 0.020 | 0.037 | 0.06 / 0.19 / 0.54 / 0.21 | 0.04 | 284 / 118 / 113 | 0.20 / 0.47 / 0.49 | 3.5 |
+| D2 | duel extend shield 0.6 | 0.327 ± 0.015 | 0.436 ± 0.019 | 0.564 ± 0.020 | 0.173 | 0.08 / 0.18 / 0.39 / 0.35 | 0.03 | 222 / 131 / 131 | 0.26 / 0.42 / 0.43 | 2.61 |
+| D2 | duel extend energy 0.8 | 0.313 ± 0.014 | 0.457 ± 0.019 | 0.625 ± 0.020 | 0.187 | 0.08 / 0.17 / 0.35 / 0.40 | 0.03 | 248 / 145 / 139 | 0.23 / 0.39 / 0.40 | 2.81 |
+| D2 | duel extend lift 0.95, any type | 0.333 ± 0.016 | 0.659 ± 0.018 | 0.700 ± 0.018 | 0.200 | 0.08 / 0.15 / 0.27 / 0.50 | 0.03 | 216 / 163 / 154 | 0.27 / 0.35 / 0.37 | 2.31 |
+| D2 | hold 1 gr | 0.473 ± 0.013 | 0.482 ± 0.019 | 0.583 ± 0.020 | 0.083 | 0.01 / 0.18 / 0.46 / 0.35 | 0.03 | 413 / 132 / 133 | 0.14 / 0.42 / 0.42 | 4.39 |
+| D2 | hold 0.5 gr | 0.472 ± 0.014 | 0.492 ± 0.019 | 0.538 ± 0.020 | 0.038 | 0.03 / 0.18 / 0.45 / 0.34 | 0.03 | 353 / 127 / 132 | 0.17 / 0.44 / 0.42 | 3.96 |
+| cone 0.085 | r9m | 0.538 ± 0.015 | 0.533 ± 0.020 | 0.692 ± 0.019 | 0.192 | 0.05 / 0.28 / 0.43 / 0.24 | 0.04 | 226 / 107 / 108 | 0.25 / 0.52 / 0.51 | 2.61 |
+| cone 0.085 | press energy 1.3 | 0.543 ± 0.015 | 0.497 ± 0.019 | 0.757 ± 0.018 | 0.257 | 0.05 / 0.28 / 0.46 / 0.21 | 0.05 | 230 / 102 / 102 | 0.25 / 0.54 / 0.54 | 2.65 |
+| cone 0.085 | press energy 1.0 | 0.543 ± 0.014 | 0.454 ± 0.020 | 0.724 ± 0.018 | 0.224 | 0.05 / 0.28 / 0.47 / 0.20 | 0.05 | 227 / 101 / 99 | 0.25 / 0.54 / 0.55 | 2.71 |
+| cone 0.085 | press shield 1.5 | 0.535 ± 0.015 | 0.518 ± 0.020 | 0.694 ± 0.019 | 0.194 | 0.05 / 0.28 / 0.43 / 0.23 | 0.05 | 233 / 104 / 104 | 0.25 / 0.53 / 0.53 | 2.81 |
+| cone 0.085 | press shield 1.0 | 0.531 ± 0.015 | 0.508 ± 0.020 | 0.760 ± 0.017 | 0.260 | 0.05 / 0.28 / 0.48 / 0.19 | 0.05 | 221 / 101 / 101 | 0.26 / 0.54 / 0.54 | 2.72 |
+| cone 0.085 | threat 0.8 rad | 0.520 ± 0.016 | 0.486 ± 0.020 | 0.673 ± 0.019 | 0.173 | 0.05 / 0.28 / 0.50 / 0.17 | 0.05 | 229 / 102 / 102 | 0.25 / 0.54 / 0.53 | 2.77 |
+| cone 0.085 | threat 0.4 rad | 0.528 ± 0.015 | 0.546 ± 0.020 | 0.692 ± 0.019 | 0.192 | 0.05 / 0.28 / 0.52 / 0.16 | 0.04 | 228 / 104 / 100 | 0.25 / 0.53 / 0.55 | 2.68 |
+| cone 0.085 | allies 1 | 0.518 ± 0.015 | 0.499 ± 0.020 | 0.684 ± 0.019 | 0.184 | 0.05 / 0.27 / 0.51 / 0.16 | 0.05 | 231 / 104 / 99 | 0.25 / 0.53 / 0.55 | 2.79 |
+| cone 0.085 | duel extend shield 0.6 | 0.449 ± 0.016 | 0.521 ± 0.020 | 0.700 ± 0.019 | 0.200 | 0.06 / 0.28 / 0.39 / 0.27 | 0.03 | 229 / 117 / 112 | 0.25 / 0.47 / 0.49 | 2.6 |
+| cone 0.085 | duel extend energy 0.8 | 0.367 ± 0.014 | 0.558 ± 0.020 | 0.771 ± 0.017 | 0.271 | 0.07 / 0.25 / 0.36 / 0.33 | 0.04 | 264 / 128 / 119 | 0.22 / 0.43 / 0.46 | 2.67 |
+| cone 0.085 | duel extend lift 0.95, any type | 0.382 ± 0.015 | 0.752 ± 0.017 | 0.818 ± 0.016 | 0.318 | 0.06 / 0.25 / 0.28 / 0.41 | 0.03 | 283 / 146 / 133 | 0.21 / 0.38 / 0.42 | 2.84 |
+| cone 0.085 | hold 1 gr | 0.560 ± 0.015 | 0.541 ± 0.020 | 0.701 ± 0.019 | 0.201 | 0.01 / 0.27 / 0.46 / 0.26 | 0.04 | 293 / 110 / 113 | 0.20 / 0.50 / 0.49 | 3.29 |
+| cone 0.085 | hold 0.5 gr | 0.531 ± 0.015 | 0.555 ± 0.020 | 0.670 ± 0.019 | 0.170 | 0.02 / 0.28 / 0.45 / 0.26 | 0.04 | 253 / 110 / 111 | 0.23 / 0.50 / 0.50 | 2.99 |
+| big v small | r9m | 0.601 ± 0.014 | 0.487 ± 0.020 | 0.475 ± 0.021 | 0.101 | 0.08 / 0.29 / 0.44 / 0.20 | 0.05 | 262 / 100 / 99 | 0.22 / 0.55 / 0.55 | 2.79 |
+| big v small | press energy 1.3 | 0.603 ± 0.015 | 0.532 ± 0.020 | 0.467 ± 0.021 | 0.103 | 0.07 / 0.29 / 0.47 / 0.18 | 0.06 | 236 / 94 / 90 | 0.24 / 0.58 / 0.60 | 2.65 |
+| big v small | press energy 1.0 | 0.588 ± 0.015 | 0.497 ± 0.020 | 0.496 ± 0.021 | 0.088 | 0.07 / 0.30 / 0.47 / 0.17 | 0.07 | 259 / 95 / 87 | 0.22 / 0.57 / 0.62 | 2.68 |
+| big v small | press shield 1.5 | 0.580 ± 0.015 | 0.512 ± 0.020 | 0.507 ± 0.021 | 0.080 | 0.07 / 0.29 / 0.44 / 0.19 | 0.05 | 262 / 95 / 95 | 0.22 / 0.57 / 0.57 | 2.69 |
+| big v small | press shield 1.0 | 0.591 ± 0.015 | 0.522 ± 0.020 | 0.462 ± 0.021 | 0.091 | 0.07 / 0.29 / 0.47 / 0.17 | 0.06 | 244 / 94 / 90 | 0.24 / 0.58 / 0.60 | 2.66 |
+| big v small | threat 0.8 rad | 0.593 ± 0.015 | 0.476 ± 0.020 | 0.488 ± 0.021 | 0.093 | 0.07 / 0.30 / 0.49 / 0.14 | 0.06 | 259 / 95 / 93 | 0.22 / 0.57 / 0.58 | 2.72 |
+| big v small | threat 0.4 rad | 0.605 ± 0.014 | 0.505 ± 0.020 | 0.487 ± 0.021 | 0.105 | 0.07 / 0.30 / 0.51 / 0.13 | 0.06 | 256 / 95 / 90 | 0.23 / 0.57 / 0.60 | 2.71 |
+| big v small | allies 1 | 0.580 ± 0.015 | 0.560 ± 0.020 | 0.493 ± 0.021 | 0.080 | 0.07 / 0.30 / 0.51 / 0.13 | 0.07 | 245 / 96 / 88 | 0.24 / 0.57 / 0.62 | 2.67 |
+| big v small | duel extend shield 0.6 | 0.578 ± 0.016 | 0.522 ± 0.020 | 0.507 ± 0.021 | 0.078 | 0.08 / 0.30 / 0.40 / 0.23 | 0.05 | 233 / 110 / 104 | 0.25 / 0.50 / 0.53 | 2.24 |
+| big v small | duel extend energy 0.8 | 0.587 ± 0.016 | 0.521 ± 0.020 | 0.502 ± 0.021 | 0.087 | 0.08 / 0.28 / 0.36 / 0.28 | 0.05 | 222 / 114 / 107 | 0.26 / 0.48 / 0.52 | 2.27 |
+| big v small | duel extend lift 0.95, any type | 0.675 ± 0.016 | 0.535 ± 0.020 | 0.544 ± 0.021 | 0.175 | 0.08 / 0.27 / 0.27 / 0.38 | 0.05 | 143 / 110 / 114 | 0.39 / 0.50 / 0.49 | 2.75 |
+| big v small | hold 1 gr | 0.523 ± 0.012 | 0.512 ± 0.020 | 0.483 ± 0.021 | 0.023 | 0.02 / 0.30 / 0.47 / 0.22 | 0.04 | 770 / 104 / 104 | 0.08 / 0.53 / 0.53 | 2.23 |
+| big v small | hold 0.5 gr | 0.548 ± 0.011 | 0.488 ± 0.020 | 0.495 ± 0.020 | 0.048 | 0.03 / 0.30 / 0.45 / 0.22 | 0.05 | 752 / 103 / 102 | 0.08 / 0.53 / 0.54 | 2.42 |
+
+1050 s
