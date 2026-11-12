@@ -53,7 +53,7 @@ from .evaluate import first_results, shares
 from .lanes import LANES, LIVE, LaneConfig, LaneSeat
 from .lineup import Lineup
 from .metrics import Collector
-from .opponents import OPPONENTS, LeagueConfig, OpponentSlots, stream_key
+from .opponents import OPPONENTS, LeagueConfig, OpponentSlots
 from .rollout import Rollout
 
 LEARNER = "learner"
@@ -392,7 +392,6 @@ class Trainer:
                 self.characteristics,
                 game.ships_per_team,
                 config.league,
-                stream_key(config.seed, "league.ladder"),
             ),
             "chaser": lambda: Chaser(self.characteristics, game.ships_per_team),
             "random": lambda: Random(game.ships_per_team),

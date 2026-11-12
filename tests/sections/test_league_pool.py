@@ -7,14 +7,13 @@ import torch
 
 from bnb.league.pool import (
     RECENT_SNAPSHOTS,
+    SCRIPTED_ENTRY,
     Entry,
     average_into,
-    ladder_entries,
-    ladder_name,
     retained,
     sampling_weights,
 )
-from bnb.runtime.opponents import Rung, ladder_rung, strength_order
+from bnb.runtime.opponents import Rung, ladder_name, ladder_rung
 
 
 def _apply_after_every_snapshot(count: int) -> set[int]:
@@ -70,10 +69,9 @@ def test_a_pool_of_sure_results_samples_evenly():
 
 def test_the_ladder_names_random_rungs_and_scripted():
     rungs = (Rung(math.inf), Rung(2.0, 0.25), Rung(4.0), Rung(1.5), Rung(1.0))
-    names = [entry.name for entry in ladder_entries(rungs)]
+    names = [ladder_name(rung) for rung in rungs]
     assert names == ["random", "rung_T2_p0.25", "rung_T4", "rung_T1.5", "scripted"]
     assert ladder_name(Rung(2.5)) == "rung_T2.5"
-    assert list(rungs) == sorted(rungs, key=strength_order)  # weakest first
     for rung in (Rung(math.inf), Rung(8.0), Rung(1.25), Rung(1.0), Rung(2.0, 0.1)):
         assert ladder_rung(ladder_name(rung)) == rung
     for other in (
@@ -88,11 +86,14 @@ def test_the_ladder_names_random_rungs_and_scripted():
         assert ladder_rung(other) is None
 
 
-def test_only_a_ladder_entry_has_a_rung():
+def test_the_pools_scripted_entry_is_the_full_strength_scripted_agent():
+    assert SCRIPTED_ENTRY.name == ladder_name(Rung(1.0)) == "scripted"
+    assert not SCRIPTED_ENTRY.network
+    for name, kind in (("random", "scripted"), ("rung_T2", "scripted"), ("scripted", "average")):
+        with pytest.raises(ValueError):
+            Entry(name, kind)
     with pytest.raises(ValueError):
-        Entry("snapshot_1", "checkpoint", rung=Rung(2.0))
-    with pytest.raises(ValueError):
-        Entry("rung", "ladder")
+        Entry("rung_T2", "ladder")  # no ladder kind
 
 
 def test_the_averages_follow_their_definitions():

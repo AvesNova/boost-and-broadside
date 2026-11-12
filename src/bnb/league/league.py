@@ -10,9 +10,9 @@ every `cut_every` updates the clean cut of `cut_slots` slots (round robin, each 
 entry from the sampling weights), and the metrics.
 
 A slot's entry is drawn from the modes' sampling weights mixed by the modes' shares of the
-opponent rows (a slot plays every mode); a ladder row draws its rung in the graph, from its
-own mode's weights over the ladder. The host's draws use the same counter-based uniforms as
-the graph (`bnb.runtime.opponents.counter_uniform`), keyed by the run's seed.
+opponent rows (a slot plays every mode), by counter-based uniforms
+(`bnb.runtime.opponents.counter_uniform`) keyed by the run's seed. The pool's one scripted
+entry is the full-strength scripted agent: no weaker rung and no random player.
 """
 
 import copy
@@ -30,32 +30,32 @@ from bnb.runs.records import Run
 from bnb.runs.session import CADENCE_UPDATES
 from bnb.runtime.lanes import UNIFORM_AVERAGE, league_slot
 from bnb.runtime.opponents import (
-    LADDER_KIND,
     NETWORK,
     OPPONENTS,
     OUTCOMES,
+    SCRIPTED_KIND,
+    SCRIPTED_PLAYER,
     counter_uniform,
     draw,
     stream_key,
 )
 from bnb.runtime.train import Trainer
 
-from .gauge import Gauge, Record, gauge_rating
+from .gauge import GAUGE_TOP, Gauge, Record
 from .lanes import RunRatings
 from .pool import (
     AVERAGES,
+    SCRIPTED_ENTRY,
     Averages,
     Entry,
-    ladder_entries,
     retained,
     sampling_weights,
     snapshot_name,
 )
 
 # The opponent kinds the league's scores and game shares are sliced by (diagnostics audit,
-# group 20): the scripted agent, the ladder's other rungs (random among them), the averages
-# and the checkpoints.
-ENTRY_KINDS = ("scripted", "rung", "average", "checkpoint")
+# group 20): the scripted agent, the averages and the checkpoints.
+ENTRY_KINDS = ("scripted", "average", "checkpoint")
 SNAPSHOT_SECONDS = 30 * 60  # the measured snapshot cadence's target (league spec 5)
 SNAPSHOT_DIRECTORY = "step_{steps}"
 # an entry rated further than this from the live policy after it has played is an anomaly
@@ -94,8 +94,6 @@ class League:
         self.modes = trainer.modes
         rows = torch.tensor(trainer.mode_rows, dtype=torch.float64)
         self.mode_shares = rows / rows.sum()
-        # the stationary ladder in the training pool (the rating lanes play it either way)
-        self.ladder = ladder_entries(self.config.ladder) if self.config.ladder_in_pool else []
         self.swap_key = stream_key(trainer.config.seed, "league.swap")
         self.scratch = copy.deepcopy(trainer.model).cpu()  # writes the snapshots' files
         self.device = trainer.rollout.device
@@ -121,11 +119,10 @@ class League:
 
     def _start(self, trainer: Trainer, ratings: dict[str, float]) -> None:
         weights = trainer.model.state_dict()
-        self.entries: dict[str, Entry] = {entry.name: entry for entry in self.ladder}
+        self.entries: dict[str, Entry] = {SCRIPTED_PLAYER: SCRIPTED_ENTRY}
         self.gauges = {mode: Gauge(ratings.get(mode, 0.0)) for mode in self.modes}
         for gauge in self.gauges.values():
-            for entry in self.ladder:
-                gauge.add(entry.name, "ladder", gauge_rating(entry.rung))
+            gauge.add(SCRIPTED_PLAYER, "scripted", GAUGE_TOP)
         self.averages = Averages(weights, self.config, trainer.config.uniform_start())
         for name in AVERAGES:
             self.entries[name] = Entry(name, "average")
@@ -141,16 +138,10 @@ class League:
         self.last_cut = dict.fromkeys(CUT_SERIES, 0)
         self._weigh()
         self.held: list[str | None] = [None] * self.config.slots
-        carry = trainer.rollout.carry["controllers"][OPPONENTS]
         for slot in range(self.config.slots):
             entry = self._draw()
             self._load(slot, entry)
             self.held[slot] = entry.name
-            if entry.kind == "ladder":
-                uniform = counter_uniform(
-                    self.swap_key, torch.tensor(-1 - slot), self.opponents.rows.cpu()
-                )
-                self.opponents.draw_ladder(carry, slot, uniform)
 
     def _restore(self, trainer: Trainer, record: dict, tensors: dict[str, torch.Tensor]) -> None:
         self.entries = {item["name"]: Entry(**item) for item in record["entries"]}
@@ -191,8 +182,8 @@ class League:
     # ---- sampling
 
     def _weigh(self) -> None:
-        """Each mode's sampling weights over the entries (in `entries` order), the slots'
-        mix of them, and the ladder rows' weights on the device."""
+        """Each mode's sampling weights over the entries (in `entries` order) and the
+        slots' mix of them."""
         names = list(self.entries)
         self.weights = {}
         for mode, gauge in self.gauges.items():
@@ -201,11 +192,6 @@ class League:
         self.mixed = sum(
             share * self.weights[mode] for share, mode in zip(self.mode_shares.tolist(), self.modes)
         )
-        if self.ladder:
-            ladder = [names.index(entry.name) for entry in self.ladder]
-            self.opponents.set_ladder_weights(
-                torch.stack([self.weights[mode][ladder] for mode in self.modes]).float()
-            )
 
     def _draw(self) -> Entry:
         """The next slot's entry, from the mixed weights (the swap counter's uniform)."""
@@ -229,8 +215,8 @@ class League:
     def _load_lanes(self, fresh: bool = True) -> None:
         """The averages' weights into the lanes that play them, and each network slot's
         entry into its lane player (`league_<k>`): a snapshot or an average, which the lanes
-        rate as that entry (an average's weights moving on with it); a ladder entry, which
-        they leave unrated. fresh: games in progress were played by the previous entry
+        rate as that entry (an average's weights moving on with it); the scripted agent,
+        which they leave unrated. fresh: games in progress were played by the previous entry
         (`LaneSeat.load`)."""
         if self.lane_seat is None:
             return
@@ -255,7 +241,7 @@ class League:
     def _load(self, slot: int, entry: Entry) -> None:
         if entry.network:
             self.opponents.load(slot, self._weights_of(entry))
-        self.opponents.set_kind(slot, NETWORK if entry.network else LADDER_KIND)
+        self.opponents.set_kind(slot, NETWORK if entry.network else SCRIPTED_KIND)
 
     def _cut(self, trainer: Trainer) -> None:
         """The clean cut, when due: `cut_slots` slots (round robin) each draw an entry; a
@@ -281,11 +267,6 @@ class League:
             self.held[slot] = entry.name
             keep = self.config.carry_at_cut == "keep" and same_build(old, entry)
             self.last_cut["uncredited_games"] += self.opponents.cut(carry, slot, keep)
-            if entry.kind == "ladder":
-                uniform = counter_uniform(
-                    self.swap_key, torch.tensor(-1 - self.swaps), self.opponents.rows.cpu()
-                )
-                self.opponents.draw_ladder(carry, slot, uniform)
             self.last_cut["cuts"] += 1
             self.last_cut["cut_rows"] += rows_per_slot
             self.last_cut["carries_reset"] += 0 if keep else rows_per_slot
@@ -296,11 +277,8 @@ class League:
         """Read the shard's results."""
         slots = self.config.slots
         tally = trainer.rollout.take_tally(OPPONENTS).reshape(-1, len(self.modes), len(OUTCOMES))
-        ladder_names = [entry.name for entry in self.ladder]
         for column, row in enumerate(tally.tolist()):
-            if column >= slots + len(ladder_names):
-                break  # the ladder's columns, when it is out of the pool
-            name = self.held[column] if column < slots else ladder_names[column - slots]
+            name = self.held[column] if column < slots else SCRIPTED_PLAYER
             for mode, (wins, ties, losses) in zip(self.modes, row):
                 if wins + ties + losses == 0 or name not in self.entries:
                     continue  # no games, or against an entry retention has dropped
@@ -416,7 +394,7 @@ class League:
         Per mode: the run's ratings (`rating/live`, `rating/average` and every rated player's,
         with their standard errors: `bnb.league.lanes.RunRatings.series`), the update's
         training games against the entries and the sampling distribution's normalised
-        entropy. By opponent kind (`entry_kind`): the live policy's score and its share of
+        entropy. By opponent kind (ENTRY_KINDS): the live policy's score and its share of
         the games. The pool's size, its snapshots; the update's cut (`pool/cut/*`: the slots
         drawn, the slots that took another entry, their rows, the games left uncredited and
         the rows whose opponent carry was reset) and the slots' mix after it
@@ -437,7 +415,7 @@ class League:
                 games = self.record[mode].get(name)
                 played = games.games if games is not None else 0.0
                 score = (games.wins + games.ties / 2) / played if played else None
-                kind = entry_kind(name, rated.kind)
+                kind = rated.kind
                 if played:
                     games_by_kind[kind] += played
                     points_by_kind[kind] += games.wins + games.ties / 2
@@ -460,9 +438,9 @@ class League:
             out[f"pool/cut/{name}"] = value
         held = [self.entries[name] for name in self.held if name in self.entries]
         for kind in ENTRY_KINDS:
-            out[f"pool/slot_share/{kind}"] = sum(
-                entry_kind(entry.name, entry.kind) == kind for entry in held
-            ) / len(self.held)
+            out[f"pool/slot_share/{kind}"] = sum(entry.kind == kind for entry in held) / len(
+                self.held
+            )
         out["pool/distinct_held"] = len({entry.name for entry in held})
         out["pool/entries"] = Table(
             (
@@ -526,16 +504,9 @@ class League:
 def same_build(old: Entry | None, new: Entry) -> bool:
     """Whether a cut from `old` to `new` may keep the opponent's model carry: both are
     networks, and every network of the training league (snapshots and averages of the live
-    policy, in its one stacked template) has the live policy's build. A ladder entry's
-    carry is the scripted agent's own, so a cut to or from one resets."""
+    policy, in its one stacked template) has the live policy's build. The scripted
+    agent's carry is its own, so a cut to or from it resets."""
     return old is not None and old.network and new.network
-
-
-def entry_kind(name: str, kind: str) -> str:
-    """An entry's kind for the series (ENTRY_KINDS): a ladder entry is "scripted" or "rung"."""
-    if kind == "ladder":
-        return "scripted" if name == "scripted" else "rung"
-    return kind
 
 
 def normalised_entropy(weights: list[float]) -> float:

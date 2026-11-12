@@ -1268,11 +1268,10 @@ def ratings(options: Ratings) -> None:
 
     from bnb.league import tournament
     from bnb.league.matches import ArenaConfig, Player, player
-    from bnb.league.pool import ladder_entries
     from bnb.runs import provenance
     from bnb.runs.records import Run
     from bnb.runtime.lanes import SCRIPTED_PLAYER
-    from bnb.runtime.opponents import LADDER
+    from bnb.runtime.opponents import LADDER, ladder_name
 
     _check_presets(options.presets)
     if options.seed is not None:
@@ -1289,9 +1288,9 @@ def ratings(options: Ratings) -> None:
         if (policy / "checkpoint.json").exists()
     ]
     field += [
-        Player(e.name, rung=e.rung)
-        for e in ladder_entries(LADDER)
-        if options.ladder or e.name == SCRIPTED_PLAYER
+        Player(ladder_name(rung), rung=rung)
+        for rung in LADDER
+        if options.ladder or ladder_name(rung) == SCRIPTED_PLAYER
     ]
     field += [
         p for p in _players(options.with_, runs_directory) if p.name not in {f.name for f in field}

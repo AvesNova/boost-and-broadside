@@ -3,7 +3,7 @@ training, one gauge per mode and map.
 
 Every rating comes from the run's one fit (`bnb.league.lanes.RunRatings`: the lanes' games
 and the league's), read once per update (`update`). An entry the fit does not rate this
-update holds its last rating: a ladder rung its prior `1000 / T` (random 0) until the fit
+update holds its last rating: the scripted agent its fixed 1000 (GAUGE_TOP) until the fit
 first rates it; a snapshot the live rating of the update it was taken at, until its games
 rate it; an average the live rating until the fit first rates it (it is an average of the
 live weights). The live rating starts at a warm start's parent's (0 without one) and holds
@@ -19,17 +19,8 @@ from bnb.runtime.lanes import LIVE
 
 from .ratings import win_probability
 
-GAUGE_TOP = (
-    1000.0  # the scripted agent's fixed rating; rung (T, share)'s prior is share GAUGE_TOP / T
-)
-KINDS = ("checkpoint", "average", "ladder")
-
-
-def gauge_rating(rung) -> float:
-    """A ladder entry's prior rating (`bnb.runtime.opponents.Rung`), until the fit rates it:
-    share GAUGE_TOP / T, so random (+inf) at 0 and the scripted agent (1) at GAUGE_TOP. A
-    placeholder, not a measurement: the fit's rating replaces it."""
-    return rung.share * GAUGE_TOP / rung.temperature
+GAUGE_TOP = 1000.0  # the scripted agent's fixed rating, its start in the gauge
+KINDS = ("checkpoint", "average", "scripted")
 
 
 @dataclasses.dataclass

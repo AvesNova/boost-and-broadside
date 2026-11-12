@@ -1,8 +1,10 @@
 """The league's seat in the rollout (league spec 2, 3; acceptance 3 and 4): the draws' shares
-and repeatability, the ladder in or out of the pool, and the clean cut: it swaps the right
+and repeatability, the pool's one scripted entry (the full-strength scripted agent), and
+the clean cut: it swaps the right
 slot at the right update and nothing else, leaves the games it cuts uncredited, and resets
 or keeps the opponent's memory."""
 
+import dataclasses
 import pathlib
 import sys
 
@@ -16,11 +18,11 @@ from bnb.contracts.obs import GLOBAL
 from bnb.league.league import same_build
 from bnb.league.pool import EXPONENTIAL_AVERAGE, UNIFORM_AVERAGE, Entry, sampling_weights
 from bnb.runtime.opponents import (
-    LADDER_KIND,
     NETWORK,
     OPPONENTS,
+    SCRIPTED_KIND,
+    SCRIPTED_PLAYER,
     LeagueConfig,
-    Rung,
     counter_uniform,
     draw,
     stream_key,
@@ -75,32 +77,33 @@ def _view(trainer) -> Obs:
     return rollout._view(rollout.carry, OPPONENTS, trainer.opponents.reads + ("globals",))
 
 
-def test_ladder_rows_draw_their_rung_from_their_own_modes_weights(tmp_path):
-    trainer, _ = cases.league(
-        tmp_path, league=LeagueConfig(snapshot_every=256, ladder_in_pool=True)
-    )
+def test_a_slot_holding_the_scripted_agent_plays_it_at_full_strength(tmp_path):
+    """The rows of a slot holding the scripted agent play its action and tally to its
+    column (the one after the slots'); the other slots' rows play their networks."""
+    trainer, _ = cases.league(tmp_path)
     opponents = trainer.opponents
-    opponents.kind.fill_(LADDER_KIND)  # every slot holds the ladder
+    slots = opponents.slots
+    opponents.set_kind(0, SCRIPTED_KIND)
+    assert opponents.scripted_agent.temperature == 1.0
+    assert opponents.scripted_agent.share == 1.0
     rows = opponents.modes.shape[0]
-    opponents.modes.copy_(torch.arange(rows) % 2)  # two modes over the rows
-    rungs = len(opponents.config.ladder)
-    weights = torch.tensor(
-        [[8.0, 1.0, 0.0, 1.0] + [0.0] * (rungs - 4), [0.0, 1.0, 1.0, 2.0] + [0.0] * (rungs - 4)]
-    )
-    opponents.ladder_weights = weights
-    opponents.mode_count = 2
     view = _view(trainer)
     carry = trainer.rollout.carry["controllers"][OPPONENTS]
     reset = torch.ones(rows, dtype=torch.bool)
-    counts = torch.zeros((2, rungs), dtype=torch.float64)
-    for _ in range(600):
-        _, carry, _ = opponents.step(carry, view, reset)
-        for mode in range(2):
-            counts[mode] += torch.bincount(
-                carry.ladder_index[opponents.modes == mode], minlength=rungs
-            )
-    for mode in range(2):
-        _assert_shares(counts[mode], weights[mode].double())
+    scripted_step = opponents.scripted_agent.step
+    recorded_outputs = []
+
+    def step(*arguments):
+        outputs = scripted_step(*arguments)
+        recorded_outputs.append(outputs[0].packed())
+        return outputs
+
+    opponents.scripted_agent.step = step
+    action, after, _ = opponents.step(carry, view, reset)
+    scripted = opponents.slot_of_row == 0
+    expected = torch.where(scripted, slots, opponents.slot_of_row)
+    assert torch.equal(after.column, expected)
+    assert torch.equal(action.packed()[scripted], recorded_outputs[0][scripted])
 
 
 def _run_league(directory, seed: int, updates: int = 3) -> dict:
@@ -115,7 +118,7 @@ def _run_league(directory, seed: int, updates: int = 3) -> dict:
         trainer.ppo.environment_steps += trainer.steps_per_update
         rows.append(league.updated(trainer))
     carry = trainer.rollout.carry["controllers"][OPPONENTS]
-    return dict(rows=rows, state=league.state()[0], ladder=carry.ladder_index.tolist())
+    return dict(rows=rows, state=league.state()[0], column=carry.column.tolist())
 
 
 def test_the_same_seed_draws_the_same_opponents(tmp_path):
@@ -123,36 +126,36 @@ def test_the_same_seed_draws_the_same_opponents(tmp_path):
     second = _run_league(tmp_path / "second", 0)
     other = _run_league(tmp_path / "other", 1)
     assert first == second
-    assert first["state"]["held"] != other["state"]["held"] or first["ladder"] != other["ladder"]
+    assert first["state"]["held"] != other["state"]["held"] or first["column"] != other["column"]
 
 
-# ---- the ladder in or out of the pool
+# ---- the pool's one scripted entry
 
 
-def test_the_ladder_is_out_of_the_training_pool_by_default(tmp_path, monkeypatch):
-    """Without `ladder_in_pool` the pool holds no rung, no slot holds the ladder and the seat
-    runs no scripted pass; with it, every rung is an entry."""
-    trainer, league = cases.league(tmp_path)
-    assert not any(entry.kind == "ladder" for entry in league.entries.values())
-    assert all(gauge.names() == list(league.entries) for gauge in league.gauges.values())
-    assert (trainer.opponents.kind == NETWORK).all()
-
-    def scripted_pass(*arguments):
-        raise AssertionError("the seat ran the ladder's scripted pass")
-
-    monkeypatch.setattr(trainer.opponents.ladder_agent, "step", scripted_pass)
-    for _ in range(4):
+def test_the_pool_holds_the_full_strength_scripted_agent_and_no_rung(tmp_path):
+    """The training pool's only scripted entry is the full-strength scripted agent (the
+    author, 2026-11-12): no weaker rung and no random player, beside the averages and,
+    as the run takes them, the snapshots. The league's configuration has no ladder."""
+    trainer, league = cases.league(tmp_path, league=LeagueConfig(snapshot_every=1))
+    for _ in range(3):
         trainer.collect()
         league.collected(trainer)
         trainer.ppo.environment_steps += trainer.steps_per_update
         league.updated(trainer)
-    carry = trainer.rollout.carry["controllers"][OPPONENTS]
-    assert (carry.column < league.config.slots).all()
-    _, inside = cases.league(
-        tmp_path / "inside", league=LeagueConfig(snapshot_every=256, ladder_in_pool=True)
-    )
-    ladder = {entry.name for entry in inside.entries.values() if entry.kind == "ladder"}
-    assert len(ladder) == len(inside.config.ladder) and "scripted" in ladder
+    kinds = {name: entry.kind for name, entry in league.entries.items()}
+    assert [name for name, kind in kinds.items() if kind == "scripted"] == [SCRIPTED_PLAYER]
+    assert {name for name, kind in kinds.items() if kind == "average"} == {
+        EXPONENTIAL_AVERAGE,
+        UNIFORM_AVERAGE,
+    }
+    assert {kind for kind in kinds.values()} == {"scripted", "average", "checkpoint"}
+    assert all(name.startswith("snapshot_") for name, kind in kinds.items() if kind == "checkpoint")
+    assert "random" not in kinds and not any(name.startswith("rung_") for name in kinds)
+    assert all(gauge.names() == list(league.entries) for gauge in league.gauges.values())
+    assert trainer.opponents.columns == league.config.slots + 1
+    assert not {"ladder", "ladder_in_pool"} & {
+        field.name for field in dataclasses.fields(LeagueConfig)
+    }
 
 
 # ---- the clean cut
@@ -160,9 +163,8 @@ def test_the_ladder_is_out_of_the_training_pool_by_default(tmp_path, monkeypatch
 
 def _names(league, carry) -> list[str]:
     slots = league.config.slots
-    ladder = [entry.name for entry in league.ladder]
     return [
-        league.held[column] if column < slots else ladder[column - slots]
+        league.held[column] if column < slots else SCRIPTED_PLAYER
         for column in carry.column.tolist()
     ]
 
@@ -217,9 +219,13 @@ def test_a_cut_swaps_the_next_slot_every_cut_every_updates_and_nothing_else(tmp_
         assert torch.equal(carry.whole[~rows], whole[~rows])
         assert row["pool/cut/uncredited_games"] == int(whole[rows].sum())
         entry = league.entries[league.held[slot]]
-        assert torch.equal(
-            opponents.parameters[f"model.{key}"][slot], league._weights_of(entry)[key]
-        )
+        if entry.network:
+            assert int(opponents.kind[slot]) == NETWORK
+            assert torch.equal(
+                opponents.parameters[f"model.{key}"][slot], league._weights_of(entry)[key]
+            )
+        else:  # the scripted agent: the slot's set is left as it was
+            assert int(opponents.kind[slot]) == SCRIPTED_KIND
         for other in set(range(4)) - {slot}:
             if league.entries[held[other]].kind != "average":  # an average follows its weights
                 assert torch.equal(opponents.parameters[f"model.{key}"][other], stacked[other])
@@ -324,9 +330,9 @@ def test_a_cut_resets_the_opponents_memory_or_keeps_it(tmp_path, monkeypatch, ca
 def test_a_cut_keeps_the_memory_only_between_networks():
     snapshot = Entry("snapshot_1", "checkpoint", steps=1, ordinal=0)
     average = Entry(EXPONENTIAL_AVERAGE, "average")
-    rung = Entry("scripted", "ladder", rung=Rung(1.0))
+    scripted = Entry(SCRIPTED_PLAYER, "scripted")
     assert same_build(snapshot, average) and same_build(average, snapshot)
-    assert not same_build(rung, snapshot) and not same_build(snapshot, rung)
+    assert not same_build(scripted, snapshot) and not same_build(snapshot, scripted)
     assert not same_build(None, snapshot)
 
 
@@ -378,9 +384,7 @@ def test_the_leagues_games_join_the_runs_fit(tmp_path):
         snapshot = f"snapshot_{trainer.ppo.environment_steps}"
         for name, outcomes in played.items():
             assert games[f"{mode}|live|{name}"] == outcomes, (update, name)
-            stationary = name in {entry.name for entry in league.ladder} or name.startswith(
-                "snapshot_"
-            )
+            stationary = name == SCRIPTED_PLAYER or name.startswith("snapshot_")
             credited = league.ratings.whole if stationary else games
             if name != snapshot:
                 assert credited[f"{mode}|{snapshot}|{name}"][0] >= outcomes[0]
