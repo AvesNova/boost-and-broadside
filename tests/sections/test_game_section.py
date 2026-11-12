@@ -499,12 +499,14 @@ def test_defaults_match_the_spec_table():
     # The ship card's additions: the bleed exponent (2) and per-type scales (1) of values
     # that are shared in the spec's table; the fire rate replaces the ticks between shots,
     # and the bullet life (s) the table's shared bullet moves; the damage's speed terms
-    # (game v6): no explosive share, and each bullet's speed at the reference distance.
+    # (game v6): no explosive share, and each bullet's speed at the reference distance; the
+    # armour cone's sharpness (2, the table's Gaussian cone).
     assert set(CARD.values()) - {"ticks_between_shots"} == (
         set(DEFAULTS)
         - {"bleed_exponent", "fire_rate", "bullet_life", *SCALED}
-        - {"explosive_share", "reference_bullet_speed"}
+        - {"explosive_share", "reference_bullet_speed", "head_on_sharpness"}
     )
+    assert TYPES.head_on_sharpness.tolist() == [2.0, 2.0]
     assert TYPES.explosive_share.tolist() == [0.0, 0.0]
     moves = api.bullet_moves(TYPES.bullet_life, rules.tick_length)
     assert moves.tolist() == [preset["bullet_moves"]] * 2

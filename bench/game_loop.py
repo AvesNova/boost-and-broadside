@@ -70,6 +70,17 @@ TTK_BINS = 32  # seconds from the first hit taken: [0, 1), ..., [31, inf)
 CIRCLE_WINDOW = 3.0  # s after a merge's end
 TURNING = 0.05  # rad/s: a nose rate below this is not a turn
 CIRCLES = ("one circle", "two circle", "scissors")
+# A two-circle fight's turn circles (each ship's mean turn centre and radius over the
+# post-merge window): overlapping when the centres are nearer than the radii's sum, side by
+# side otherwise.
+TWO_CIRCLES = ("overlapping", "side by side")
+# Each ship's choice after a merge (over the post-merge window): turning in the bandit's
+# rotation sense (the two-circle choice), the opposite sense (one-circle), extending (turning
+# less than half the window), or turning while the bandit extends.
+CHOICES = ("same sense", "opposite sense", "extend", "turn v extender")
+# A choice's outcome, until the pair's next merge ends, either ship dies or respawns: the
+# chooser kills the bandit, the bandit kills the chooser, neither.
+OUTCOMES = ("kills", "killed", "neither")
 # Engagements (the author's definition): a pair of enemy ships within the threshold (two
 # definitions: the pair's longer gun range; two of the pair's larger full-stick turn
 # diameters) is engaged until it stays beyond it ENGAGE_APART seconds or either dies. A
@@ -250,6 +261,18 @@ def tally_like(B: int, S: int, device) -> dict:
         killer_first=torch.zeros((B,), **zeros),
         ttk=torch.zeros((B, TTK_BINS), **zeros),
         circles=torch.zeros((B, len(CIRCLES)), **zeros),
+        # two-circle fights by kind and their outcome (a kill in the pair, none)
+        two_circle_outcome=torch.zeros((B, len(TWO_CIRCLES), 2), **zeros),
+        # post-merge choices by the chooser's kind (0 Yongma, 1 Jujak) and outcome
+        choice_outcome=torch.zeros((B, 2, len(CHOICES), len(OUTCOMES)), **zeros),
+        post_turn=torch.zeros((B, S, S, 2), **zeros),  # ticks turning, i and j
+        post_sign=torch.zeros((B, S, S, 2), **zeros),  # summed turn signs, i and j
+        post_both=torch.zeros((B, S, S), **zeros),  # ticks both turning
+        post_centre=torch.zeros((B, S, S, 4), **zeros),  # summed turn centres x_i y_i x_j y_j
+        post_radius=torch.zeros((B, S, S, 2), **zeros),  # summed turn radii
+        pending_choice=torch.full((B, S, S, 2), -1, dtype=torch.long, device=device),
+        pending_circle=torch.full((B, S, S), -1, dtype=torch.long, device=device),
+        position=torch.zeros((B, 2 * S, 2), **zeros),
         first_game_hit=torch.full((B,), -1.0, **zeros),  # 0 A, 1 B, 2 both
         deaths=torch.zeros((B,), **zeros),
         # engagements, per definition (ENGAGEMENTS)
@@ -326,6 +349,8 @@ STATISTICS = (
     "killer_first",
     "ttk",
     "circles",
+    "two_circle_outcome",
+    "choice_outcome",
     "first_game_hit",
 )
 
@@ -467,6 +492,10 @@ class Loop:
         )
         sign = torch.where(turn.abs() > TURNING, torch.sign(turn), 0.0)
         tally["heading"] = torch.stack([cos, sin], -1)
+        # the flight path's velocity this tick (from the move), for the turn circles
+        moved_x = (x - tally["position"][..., 0]) / rules.tick_length
+        moved_y = (y - tally["position"][..., 1]) / rules.tick_length
+        tally["position"] = torch.stack([x, y], -1)
 
         # merges of every enemy pair
         reach = per_type(self.card.gun_range, self.ship_type)
@@ -524,6 +553,53 @@ class Loop:
             tally["circles"]
             + torch.stack([one.sum((1, 2)), two.sum((1, 2)), scissors.sum((1, 2))], -1).float()
         )
+        post_close, two_circle = closing, two
+        # the window's turning and turn circles, per pair (reset when a merge opens one)
+        post_turn = torch.where(opened[..., None], 0.0, tally["post_turn"])
+        post_sign = torch.where(opened[..., None], 0.0, tally["post_sign"])
+        post_both = torch.where(opened, 0.0, tally["post_both"])
+        post_centre = torch.where(opened[..., None], 0.0, tally["post_centre"])
+        post_radius = torch.where(opened[..., None], 0.0, tally["post_radius"])
+        turning_ship = sign != 0  # (B, N)
+        turning_pair = torch.stack(
+            [
+                turning_ship[:, team0][:, :, None].expand(B, S, S),
+                turning_ship[:, team1][:, None, :].expand(B, S, S),
+            ],
+            -1,
+        )
+        post_turn = post_turn + (active[..., None] & turning_pair).float()
+        post_sign = post_sign + active[..., None].float() * torch.stack(
+            [si_.expand(B, S, S), sj_.expand(B, S, S)], -1
+        )
+        # a turning ship's centre: its position plus speed / rate along its left normal
+        speed_now = torch.sqrt(moved_x * moved_x + moved_y * moved_y)
+        safe_turn = torch.where(turning_ship, turn, 1.0)
+        radius_now = torch.where(turning_ship, speed_now / safe_turn.abs(), 0.0)
+        reach_now = torch.where(turning_ship, speed_now / safe_turn, 0.0)  # signed
+        unit_x = moved_x / speed_now.clamp_min(1e-3)
+        unit_y = moved_y / speed_now.clamp_min(1e-3)
+        centre_x, centre_y = x - reach_now * unit_y, y + reach_now * unit_x
+        both_turning = active & turning_pair.all(-1)
+        post_both = post_both + both_turning.float()
+        centres = torch.stack(
+            [
+                centre_x[:, team0][:, :, None].expand(B, S, S),
+                centre_y[:, team0][:, :, None].expand(B, S, S),
+                centre_x[:, team1][:, None, :].expand(B, S, S),
+                centre_y[:, team1][:, None, :].expand(B, S, S),
+            ],
+            -1,
+        )
+        radii = torch.stack(
+            [
+                radius_now[:, team0][:, :, None].expand(B, S, S),
+                radius_now[:, team1][:, None, :].expand(B, S, S),
+            ],
+            -1,
+        )
+        post_centre = post_centre + both_turning[..., None].float() * centres
+        post_radius = post_radius + both_turning[..., None].float() * radii
         window = torch.where(both, (window - 1).clamp_min(0), 0.0)
 
         # hits
@@ -746,6 +822,67 @@ class Loop:
         # a dead ship's pairs start again when it spawns
         gone = died | events.spawned | ~shown["ships.alive"].bool()
         reset_pair = gone[:, team0][:, :, None] | gone[:, team1][:, None, :]
+
+        # post-merge choices and two-circle fights: their outcomes, then the new ones
+        pending_choice, pending_circle = tally["pending_choice"], tally["pending_circle"]
+        j_killed_by_i = killed_j  # (B, S_i, S_j)
+        i_killed_by_j = killed_i
+        finished = j_killed_by_i | i_killed_by_j | opened | reset_pair
+        outcome_i = torch.where(j_killed_by_i, 0, torch.where(i_killed_by_j, 1, 2))
+        outcome_j = torch.where(i_killed_by_j, 0, torch.where(j_killed_by_i, 1, 2))
+        kind_i = kind[:, team0][:, :, None].expand(B, S, S)
+        kind_j = kind[:, team1][:, None, :].expand(B, S, S)
+        cells = 2 * len(CHOICES) * len(OUTCOMES)
+
+        def counted(mask, index, bins):
+            onehot = torch.nn.functional.one_hot(index.clamp(0, bins - 1), bins).float()
+            return (mask.float()[..., None] * onehot).sum((1, 2))
+
+        choice_count = torch.zeros((B, cells), device=x.device)
+        for side, (chooser_kind, outcome) in enumerate(((kind_i, outcome_i), (kind_j, outcome_j))):
+            choice = pending_choice[..., side]
+            index = (chooser_kind * len(CHOICES) + choice) * len(OUTCOMES) + outcome
+            choice_count = choice_count + counted(finished & (choice >= 0), index, cells)
+        tally["choice_outcome"] = tally["choice_outcome"] + choice_count.reshape(
+            B, 2, len(CHOICES), len(OUTCOMES)
+        )
+        a_kill = (j_killed_by_i | i_killed_by_j).long()
+        tally["two_circle_outcome"] = tally["two_circle_outcome"] + counted(
+            finished & (pending_circle >= 0), pending_circle * 2 + (1 - a_kill), 4
+        ).reshape(B, 2, 2)
+        pending_choice = torch.where(finished[..., None], -1, pending_choice)
+        pending_circle = torch.where(finished, -1, pending_circle)
+        # the window just closed: each ship's choice, and a two-circle fight's circles
+        half_window = 0.5 * self.window_ticks
+        turned_side = post_turn > half_window  # (B, S, S, 2)
+        sense = torch.sign(post_sign)
+        same_sense = sense[..., 0] == sense[..., 1]
+        choices = []
+        for side in (0, 1):
+            other = 1 - side
+            choice = torch.where(
+                ~turned_side[..., side],
+                2,
+                torch.where(~turned_side[..., other], 3, torch.where(same_sense, 0, 1)),
+            )
+            choices.append(choice)
+        new_choice = torch.stack(choices, -1)
+        pending_choice = torch.where(
+            (post_close & ~reset_pair)[..., None], new_choice, pending_choice
+        )
+        samples = post_both.clamp_min(1.0)
+        mean_centre = post_centre / samples[..., None]
+        centre_gap = torch.sqrt(
+            (mean_centre[..., 0] - mean_centre[..., 2]) ** 2
+            + (mean_centre[..., 1] - mean_centre[..., 3]) ** 2
+        )
+        radius_sum = post_radius.sum(-1) / samples
+        circle_kind = torch.where(centre_gap < radius_sum, 0, 1)
+        new_fight = post_close & two_circle & (post_both > 0) & ~reset_pair
+        pending_circle = torch.where(new_fight, circle_kind, pending_circle)
+        tally["pending_choice"], tally["pending_circle"] = pending_choice, pending_circle
+        tally["post_turn"], tally["post_sign"], tally["post_both"] = post_turn, post_sign, post_both
+        tally["post_centre"], tally["post_radius"] = post_centre, post_radius
         tally["merges"] = torch.where(reset_pair, 0.0, merges)
         tally["in_merge"] = in_merge & ~reset_pair
         tally["first_merge_end"] = torch.where(reset_pair, -1.0, first_merge_end)
@@ -941,6 +1078,42 @@ def summary(out: dict, mask: torch.Tensor, seconds: float) -> dict:
         trade_fraction=float(out["traded"][mask].sum() / out["deaths"][mask].sum().clamp_min(1)),
         **pace(out, mask, seconds),
         engagement=engagements_summary(out, mask),
+        **fight_choices(out, mask),
+    )
+
+
+def fight_choices(out: dict, mask: torch.Tensor) -> dict:
+    """Two-circle fights split by their circles (`TWO_CIRCLES`: count, share, the share
+    ending in a kill), and the post-merge choices by the chooser's kind (`CHOICES`: count,
+    share of the kind's choices, outcome shares `OUTCOMES`)."""
+    if "choice_outcome" not in out:
+        return {}
+    circles = out["two_circle_outcome"][mask].sum(0)  # (kind of fight, kill / none)
+    fights = circles.sum(-1)
+    choices = out["choice_outcome"][mask].sum(0)  # (chooser kind, choice, outcome)
+    by_kind = {}
+    for k, kind_name in enumerate(KINDS):
+        made = choices[k].sum(-1)
+        if float(made.sum()) == 0:
+            continue
+        by_kind[kind_name] = {
+            name: dict(
+                count=float(made[c]),
+                share=float(made[c] / made.sum()),
+                outcome=(choices[k, c] / made[c].clamp_min(1)).tolist(),
+            )
+            for c, name in enumerate(CHOICES)
+        }
+    return dict(
+        two_circles={
+            name: dict(
+                count=float(fights[c]),
+                share=float(fights[c] / fights.sum().clamp_min(1)),
+                kill=float(circles[c, 0] / fights[c].clamp_min(1)),
+            )
+            for c, name in enumerate(TWO_CIRCLES)
+        },
+        post_merge_choices=by_kind,
     )
 
 

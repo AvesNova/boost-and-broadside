@@ -1,0 +1,1086 @@
+[
+ {
+  "name": "frozen | r9",
+  "energy": {},
+  "turn": {}
+ },
+ {
+  "name": "frozen | armour 0.01 6 deg p4",
+  "energy": {
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.14194464158977999
+   },
+   "head_on_sharpness": {
+    "set": 4
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.14194464158977999
+   },
+   "head_on_sharpness": {
+    "set": 4
+   }
+  }
+ },
+ {
+  "name": "frozen | armour 0.01 6 deg p6",
+  "energy": {
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.14194464158977999
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.14194464158977999
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  }
+ },
+ {
+  "name": "frozen | armour 0.01 6 deg p8",
+  "energy": {
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.14194464158977999
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.14194464158977999
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "frozen | armour 0.01 9 deg p4",
+  "energy": {
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 4
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 4
+   }
+  }
+ },
+ {
+  "name": "frozen | armour 0.01 9 deg p6",
+  "energy": {
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  }
+ },
+ {
+  "name": "frozen | armour 0.01 9 deg p8",
+  "energy": {
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "frozen | armour 0.01 12 deg p4",
+  "energy": {
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 4
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 4
+   }
+  }
+ },
+ {
+  "name": "frozen | armour 0.01 12 deg p6",
+  "energy": {
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  }
+ },
+ {
+  "name": "frozen | armour 0.01 12 deg p8",
+  "energy": {
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "frozen | armour 0.001 9 deg p6",
+  "energy": {
+   "head_on_fraction_scale": {
+    "set": 0.0033333333333333335
+   },
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": {
+    "set": 0.0033333333333333335
+   },
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  }
+ },
+ {
+  "name": "frozen | armour 0.001 12 deg p8",
+  "energy": {
+   "head_on_fraction_scale": {
+    "set": 0.0033333333333333335
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": {
+    "set": 0.0033333333333333335
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "frozen | Y dive 7.8",
+  "energy": {
+   "dive_exchange_scale": {
+    "set": 0.8
+   }
+  },
+  "turn": {}
+ },
+ {
+  "name": "frozen | Y dive 9.8",
+  "energy": {
+   "dive_exchange_scale": {
+    "set": 1.0
+   }
+  },
+  "turn": {}
+ },
+ {
+  "name": "frozen | both dive 9.8",
+  "energy": {
+   "dive_exchange_scale": {
+    "set": 1.0
+   }
+  },
+  "turn": {
+   "dive_exchange_scale": {
+    "set": 1.0
+   }
+  }
+ },
+ {
+  "name": "C | r9",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8
+  }
+ },
+ {
+  "name": "C | armour 0.01 6 deg p4",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.14194464158977999
+   },
+   "head_on_sharpness": {
+    "set": 4
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.14194464158977999
+   },
+   "head_on_sharpness": {
+    "set": 4
+   }
+  }
+ },
+ {
+  "name": "C | armour 0.01 6 deg p6",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.14194464158977999
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.14194464158977999
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  }
+ },
+ {
+  "name": "C | armour 0.01 6 deg p8",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.14194464158977999
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.14194464158977999
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "C | armour 0.01 9 deg p4",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 4
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 4
+   }
+  }
+ },
+ {
+  "name": "C | armour 0.01 9 deg p6",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  }
+ },
+ {
+  "name": "C | armour 0.01 9 deg p8",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "C | armour 0.01 12 deg p4",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 4
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 4
+   }
+  }
+ },
+ {
+  "name": "C | armour 0.01 12 deg p6",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  }
+ },
+ {
+  "name": "C | armour 0.01 12 deg p8",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "C | armour 0.001 9 deg p6",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45,
+   "head_on_fraction_scale": {
+    "set": 0.0033333333333333335
+   },
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8,
+   "head_on_fraction_scale": {
+    "set": 0.0033333333333333335
+   },
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  }
+ },
+ {
+  "name": "C | armour 0.001 12 deg p8",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45,
+   "head_on_fraction_scale": {
+    "set": 0.0033333333333333335
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8,
+   "head_on_fraction_scale": {
+    "set": 0.0033333333333333335
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "C | Y dive 7.8",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45,
+   "dive_exchange_scale": {
+    "set": 0.8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8
+  }
+ },
+ {
+  "name": "C | Y dive 9.8",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45,
+   "dive_exchange_scale": {
+    "set": 1.0
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8
+  }
+ },
+ {
+  "name": "C | both dive 9.8",
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45,
+   "dive_exchange_scale": {
+    "set": 1.0
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8,
+   "dive_exchange_scale": {
+    "set": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 | r9",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  }
+ },
+ {
+  "name": "D2 | armour 0.01 6 deg p4",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.1,
+   "head_on_angle_scale": {
+    "set": 0.14194464158977999
+   },
+   "head_on_sharpness": {
+    "set": 4
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.14194464158977999
+   },
+   "head_on_sharpness": {
+    "set": 4
+   }
+  }
+ },
+ {
+  "name": "D2 | armour 0.01 6 deg p6",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.1,
+   "head_on_angle_scale": {
+    "set": 0.14194464158977999
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.14194464158977999
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  }
+ },
+ {
+  "name": "D2 | armour 0.01 6 deg p8",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.1,
+   "head_on_angle_scale": {
+    "set": 0.14194464158977999
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.14194464158977999
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "D2 | armour 0.01 9 deg p4",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.1,
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 4
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 4
+   }
+  }
+ },
+ {
+  "name": "D2 | armour 0.01 9 deg p6",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.1,
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  }
+ },
+ {
+  "name": "D2 | armour 0.01 9 deg p8",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.1,
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "D2 | armour 0.01 12 deg p4",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.1,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 4
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 4
+   }
+  }
+ },
+ {
+  "name": "D2 | armour 0.01 12 deg p6",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.1,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  }
+ },
+ {
+  "name": "D2 | armour 0.01 12 deg p8",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.1,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "D2 | armour 0.001 9 deg p6",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.0033333333333333335
+   },
+   "hit_damage": 1.1,
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.0033333333333333335
+   },
+   "head_on_angle_scale": {
+    "set": 0.21291696238466995
+   },
+   "head_on_sharpness": {
+    "set": 6
+   }
+  }
+ },
+ {
+  "name": "D2 | armour 0.001 12 deg p8",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.0033333333333333335
+   },
+   "hit_damage": 1.1,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.0033333333333333335
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "D2 | Y dive 7.8",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1,
+   "dive_exchange_scale": {
+    "set": 0.8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  }
+ },
+ {
+  "name": "D2 | Y dive 9.8",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1,
+   "dive_exchange_scale": {
+    "set": 1.0
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  }
+ },
+ {
+  "name": "D2 | both dive 9.8",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1,
+   "dive_exchange_scale": {
+    "set": 1.0
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5,
+   "dive_exchange_scale": {
+    "set": 1.0
+   }
+  }
+ }
+]

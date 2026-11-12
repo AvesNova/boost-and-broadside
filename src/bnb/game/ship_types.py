@@ -60,6 +60,8 @@ FIELDS = dict(
     shield_recharge_delay_scale="of rules.shield_recharge_delay; counted on quiet ticks only",
     head_on_fraction_scale="of rules.head_on_fraction; the target's [f_0]",
     head_on_angle_scale="of rules.head_on_angle; the target's [theta_h]",
+    head_on_sharpness="the exponent p of the armour's cone exp(-ln2 (theta/theta_h)^p); 2 a "
+    "Gaussian; the target's",
     engine_knee_scale="of flight.engine_knee [e_k]",
 )
 
@@ -163,6 +165,7 @@ class ShipTypes:
     shield_recharge_delay_scale: torch.Tensor
     head_on_fraction_scale: torch.Tensor
     head_on_angle_scale: torch.Tensor
+    head_on_sharpness: torch.Tensor
     engine_knee_scale: torch.Tensor
 
 

@@ -123,7 +123,8 @@ range (the distance a bullet fired at cruise along the flight path travels in it
 the bullet drag (1/m, the type's own; the rules' drag is the floor), the shots a full store pays for, the shield capacity, recharge rate and
 delay (both run on quiet ticks only, [Physics](physics.md)), the head-on fraction and the
 head-on angle (the angle off the nose at which the target's armour is at half strength, 5
-to 90 degrees on the panel's slider), the hit radius and the spawn energy. They map to the card in
+to 90 degrees on the panel's slider), the head-on sharpness (the armour cone's exponent, 2 a
+Gaussian, higher a flat-topped nose that falls away quickly past the angle), the hit radius and the spawn energy. They map to the card in
 closed form (`bnb.game.handling.weapons`).
 
 **The gun range sets the bullet life.** A bullet launched at w0 (cruise plus muzzle speed)

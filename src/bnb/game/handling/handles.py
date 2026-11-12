@@ -45,6 +45,7 @@ class Handles:
     shield_recharge_delay: torch.Tensor  # s
     head_on_fraction: torch.Tensor  # damage taken from dead ahead
     head_on_angle: torch.Tensor  # rad off the nose where armour is at half strength
+    head_on_sharpness: torch.Tensor  # the armour cone's exponent p (2 a Gaussian)
     hit_radius: torch.Tensor  # m
     spawn_energy: torch.Tensor  # J
 
@@ -103,6 +104,7 @@ UNITS = dict(
     shield_recharge_delay=("s", 1.0),
     head_on_fraction=("", 1.0),
     head_on_angle=("deg", DEGREES),
+    head_on_sharpness=("", 1.0),
     hit_radius=("m", 1.0),
     spawn_energy=("J", 1.0),
 )

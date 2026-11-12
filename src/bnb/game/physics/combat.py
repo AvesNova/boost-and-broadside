@@ -192,7 +192,10 @@ def hits(
     # Its half-strength angle: the aspect is halfway from the head-on fraction to 1 there.
     half = rules.head_on_angle * per_ship(types.head_on_angle_scale, ships.ship_type)
     ratio = theta / half.gather(1, target)
-    aspect = 1.0 - (1.0 - head_on) * torch.exp(-LN_2 * ratio * ratio)
+    # The cone's sharpness p: exp(-ln2 ratio^p), 2 a Gaussian cone; higher, a flat-topped
+    # armoured nose that falls away quickly past its half-strength angle.
+    sharpness = per_ship(types.head_on_sharpness, ships.ship_type).gather(1, target)
+    aspect = 1.0 - (1.0 - head_on) * torch.exp(-LN_2 * ratio.pow(sharpness))
     bullet_damage = torch.where(hit, full * aspect, 0.0)
 
     # Scatter each bullet's hit to its (shooter, target): O(bullets), not O(bullets x ships).
