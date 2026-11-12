@@ -1585,6 +1585,30 @@ def confirm10() -> list[dict]:
 ROUNDS["confirm10"] = confirm10
 
 
+def set5() -> list[dict]:
+    """Do the rate and speed fighters (confirm 9) join the set? Each against the standard,
+    the final hit-and-run ship, the brawler and the small ship; 1024 games, 1v1-20v20."""
+    rs = rate_speed_nose(sf=0.07)
+    ships = {
+        "rate": rs["energy"],
+        "speed": rs["turn"],
+    }
+    others = {
+        "standard": kit(*KIT2),
+        "hit-and-run": hit_and_run_final_2()["energy"],
+        "brawler": set_ship("brawler"),
+        "small": set_ship("small"),
+    }
+    return [
+        pair(f"{a} v {b} (set 5, M, kit2)", ("M", fa), ("M", fb))
+        for a, fa in ships.items()
+        for b, fb in others.items()
+    ]
+
+
+ROUNDS["set5"] = set5
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
