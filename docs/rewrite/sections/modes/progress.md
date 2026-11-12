@@ -79,3 +79,30 @@ itself; run long jobs in tmux.
 T = 2 is the sweep's weaker rung (a clear edge, far from saturation).
 Sweep launched 16:01 KST: sizes 5/10/20/35/50 per side at the fixed 7800 m arena and at the
 `_density` radii (7800 sqrt(n / 5)); ±0.025 or 1536 games per cell; bounded at 3 h.
+
+## Step 2c: deathmatch kill rate, 5v5 (rough, default lineup)
+
+`bench/mode_dynamics.py deathmatch --label dm_5v5` (real_scale_deathmatch, no fields, the
+game's lineup P-51D/Heavy alternating, scripted mirror T = 1, tickets off, 600 s), 512
+games; record `records/dynamics.jsonl`, report `bench/mode_dynamics_report.py`.
+
+- Kills per minute (both teams): mean 8.60, median 8.60, quartiles 8.4-8.8, 5-95% 8.2-9.1.
+  First point at a median 12.8 s.
+- **Trades**: 95.5% of deaths have an enemy death within 0.5 s (97.6% within 3 s): ships
+  die in pairs in head-on merges. Final |margin| <= 2 in 97% of games, a tie in 41%. A
+  combat-layer matter (the gun study's trades, much stronger at 5v5); flagged to the
+  coordinator. Re-measure after the combat freeze.
+- Share of games a team's tickets end, by clock (columns: tickets per team):
+
+| clock (s) | T=20 | T=25 | T=30 | T=35 | T=40 | T=45 | T for 80% |
+|---|---|---|---|---|---|---|---|
+| 300 | 0.97 | 0.01 | 0 | 0 | 0 | 0 | 21 |
+| 400 | 1.00 | 1.00 | 0.29 | 0 | 0 | 0 | 28 |
+| 500 | 1.00 | 1.00 | 1.00 | 0.90 | 0.01 | 0 | 35 |
+| 600 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 0.21 | 42 |
+
+  The kill count is far less spread than a Poisson count (sd ~0.3/min against ~0.9), so the
+  share ended by tickets drops from 1 to 0 within a few tickets: "80% by tickets" sits on a
+  knife edge and moves with any change in kill rate. Today's 25 tickets in 600 s end every
+  game by tickets, at ~5.8 min.
+- Next: the same with the Yongma/Jujak lineup (queued), then Frontline.
