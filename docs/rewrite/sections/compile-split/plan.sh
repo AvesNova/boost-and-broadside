@@ -6,11 +6,12 @@ E=/workspace/cs/configs/e200
 say() { echo "$(TZ=Asia/Seoul date +%H:%M:%S) $*" >> /workspace/cs/plan.log; }
 wait_for() { while tmux ls 2>/dev/null | grep -qE "^($(echo "$@" | tr ' ' '|')):"; do sleep 20; done; }
 say "plan start"
-wait_for A-bc-cold B-bc-cold
-say "round 1 A, B done; BC bc cold and the trace-only ablations"
-bash $D/round.sh bc cold $E/bc.json 1 3 BC
-tmux new -d -s ablate-eager "bash $D/ablate.sh eager bc-full bc-nolanes bc-frontline bc-frontline-nolanes ppo-full ppo-nolanes ppo-nolanes-slot1 ppo-frontline ppo-frontline-nolanes-slot1 >> /workspace/cs/rounds.out 2>&1"
-wait_for C-bc-cold ablate-eager
+wait_for B-bc-cold
+say "round 1 B done; A (its first learn failed for memory) and BC bc cold"
+bash $D/round.sh bc cold $E/bc.json 1 3 A BC
+wait_for C-bc-cold
+say "C bc done; the trace-only ablations"
+bash $D/ablate.sh eager bc-full bc-nolanes bc-frontline bc-frontline-nolanes ppo-full ppo-nolanes ppo-nolanes-slot1 ppo-frontline ppo-frontline-nolanes-slot1 >> /workspace/cs/rounds.out 2>&1
 say "C bc and the ablations done; PPO A, C cold"
 bash $D/round.sh ppo cold $E/ppo.json 1 3 A C
 wait_for BC-bc-cold A-ppo-cold C-ppo-cold
