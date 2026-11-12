@@ -1,0 +1,128 @@
+[
+ {
+  "name": "J1.5 Js0.75 | Ys0.35 Yd1.4 Yzld0.7",
+  "energy": {
+   "max_shield": 0.35,
+   "hit_damage": 1.4,
+   "zero_lift_drag": 0.7
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.75
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J1.5 Js0.75 | Ys0.35 Yd1.2 Yzld0.6",
+  "energy": {
+   "max_shield": 0.35,
+   "hit_damage": 1.2,
+   "zero_lift_drag": 0.6
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.75
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J1.4 | Ys0.5 Yzld0.6",
+  "energy": {
+   "max_shield": 0.5,
+   "zero_lift_drag": 0.6
+  },
+  "turn": {
+   "induced_drag_scale": 1.4
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J1.4 | Ys0.4 Yd1.2 Yzld0.5",
+  "energy": {
+   "max_shield": 0.4,
+   "hit_damage": 1.2,
+   "zero_lift_drag": 0.5
+  },
+  "turn": {
+   "induced_drag_scale": 1.4
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J1.45 | Ys0.4 Yzld0.6 Yengine1.3",
+  "energy": {
+   "max_shield": 0.4,
+   "zero_lift_drag": 0.6,
+   "engine_power": 1.3
+  },
+  "turn": {
+   "induced_drag_scale": 1.45
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J1.3 | Ys0.5 Yzld0.5",
+  "energy": {
+   "max_shield": 0.5,
+   "zero_lift_drag": 0.5
+  },
+  "turn": {
+   "induced_drag_scale": 1.3
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J1.5 Js0.75 | Ys0.35 Yd1.4 Yb0.85 Yzld0.7",
+  "energy": {
+   "max_shield": 0.35,
+   "hit_damage": 1.4,
+   "bullet_life": 0.85,
+   "zero_lift_drag": 0.7
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.75
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J1.45 Js0.8 | Ys0.35 Yd1.3 Yb0.85 Yzld0.6",
+  "energy": {
+   "max_shield": 0.35,
+   "hit_damage": 1.3,
+   "bullet_life": 0.85,
+   "zero_lift_drag": 0.6
+  },
+  "turn": {
+   "induced_drag_scale": 1.45,
+   "max_shield": 0.8
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J1.5 Js0.75 | Ys0.35 Yd1.4 Yb0.7",
+  "energy": {
+   "max_shield": 0.35,
+   "hit_damage": 1.4,
+   "bullet_life": 0.7
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.75
+  },
+  "player": "r9"
+ },
+ {
+  "name": "J1.5 Js0.75 | Ys0.4 Yd1.4 Yb0.6",
+  "energy": {
+   "max_shield": 0.4,
+   "hit_damage": 1.4,
+   "bullet_life": 0.6
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.75
+  },
+  "player": "r9"
+ }
+]

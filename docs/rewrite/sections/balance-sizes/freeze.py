@@ -25,6 +25,7 @@ sys.path.insert(0, str(HERE.parent / "game-loop"))
 from bench.game_loop import PRESET, base_card, variant_types  # noqa: E402
 from bnb.game import api, ships  # noqa: E402
 from bnb.game.handling import Handles  # noqa: E402
+from bnb.game.handling.errors import Infeasible  # noqa: E402
 
 SET = "real-scale"
 NOTE = "the size balance (docs/rewrite/sections/balance-sizes/progress.md): "
@@ -60,14 +61,23 @@ def main() -> None:
                 print(f"{key} {name}: {old:.6g} -> {new:.6g}")
         if args.dry:
             continue
-        solution = api.solve_handles(
-            Handles(**{n: torch.tensor([v], dtype=torch.float64) for n, v in handles.items()}),
-            rules,
-        )
-        card = {
-            field: float(getattr(solution.types, field)[0])
-            for field in api.ship_types(ship_set=SET).__dataclass_fields__
-        }
+        try:
+            solution = api.solve_handles(
+                Handles(**{n: torch.tensor([v], dtype=torch.float64) for n, v in handles.items()}),
+                rules,
+            )
+            card = {
+                field: float(getattr(solution.types, field)[0])
+                for field in api.ship_types(ship_set=SET).__dataclass_fields__
+            }
+        except Infeasible as error:
+            # the solver cannot re-fit these handles: the variant card itself, whose flown
+            # handles these are (consistent by construction)
+            print(f"  {key}: the solve failed ({error}); the variant card is written")
+            card = {
+                field: float(getattr(types, field)[row])
+                for field in api.ship_types(ship_set=SET).__dataclass_fields__
+            }
         for field in ("induced_drag_scale", "max_shield", "bullet_life", "engine_power"):
             print(f"  {key} card {field}: {float(getattr(types, field)[row]):.6g} (variant) "
                   f"{card[field]:.6g} (solved)")  # fmt: skip

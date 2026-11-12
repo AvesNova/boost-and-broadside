@@ -1,0 +1,4816 @@
+{
+ "candidate": {
+  "name": "A: J induced x1.6, Y shield x0.5, Y bullet life x0.85",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.85
+  },
+  "turn": {
+   "induced_drag_scale": 1.6
+  },
+  "player": "r9"
+ },
+ "size": 1,
+ "lineup": "energy v turn",
+ "games": 48,
+ "fights": [
+  {
+   "environment": 0,
+   "start": 0,
+   "end": 4032,
+   "seconds": 134.4,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 5,
+   "merge_ticks": [
+    572,
+    1167,
+    1879,
+    2610,
+    3332
+   ],
+   "circles": [
+    5.253721403909112,
+    5.315962337521752
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 8.493292434958207,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 0,
+   "start": 4332,
+   "end": 5523,
+   "seconds": 39.7,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 2,
+   "merge_ticks": [
+    4815,
+    5517
+   ],
+   "circles": [
+    1.1942515185145872,
+    1.2798614890264808
+   ],
+   "reversals": [
+    0,
+    0
+   ],
+   "max_separation": 6.593817857290371,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 0,
+   "start": 5823,
+   "end": 7056,
+   "seconds": 41.1,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 2,
+   "merge_ticks": [
+    6450,
+    7011
+   ],
+   "circles": [
+    1.2298546384731863,
+    1.5499465969024242
+   ],
+   "reversals": [
+    0,
+    1
+   ],
+   "max_separation": 5.716190976807974,
+   "extensions": 0,
+   "edge_seconds": 2.1666666666666665
+  },
+  {
+   "environment": 0,
+   "start": 7356,
+   "end": 8999,
+   "seconds": 54.766666666666666,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 2,
+   "merge_ticks": [
+    7994,
+    8312
+   ],
+   "circles": [
+    1.9397555104458346,
+    1.8924567540074595
+   ],
+   "reversals": [
+    0,
+    2
+   ],
+   "max_separation": 7.897084706447576,
+   "extensions": 0,
+   "edge_seconds": 7.1
+  },
+  {
+   "environment": 1,
+   "start": 0,
+   "end": 2499,
+   "seconds": 83.3,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 4,
+   "merge_ticks": [
+    725,
+    1058,
+    1670,
+    2405
+   ],
+   "circles": [
+    3.0188971678592798,
+    2.91144372114475
+   ],
+   "reversals": [
+    2,
+    0
+   ],
+   "max_separation": 9.984098622977985,
+   "extensions": 0,
+   "edge_seconds": 5.0
+  },
+  {
+   "environment": 1,
+   "start": 2799,
+   "end": 3494,
+   "seconds": 23.166666666666668,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 1,
+   "merge_ticks": [
+    3452
+   ],
+   "circles": [
+    0.44981857613618853,
+    0.530050341859128
+   ],
+   "reversals": [
+    1,
+    0
+   ],
+   "max_separation": 7.236194692102185,
+   "extensions": 0,
+   "edge_seconds": 4.433333333333334
+  },
+  {
+   "environment": 1,
+   "start": 3794,
+   "end": 5004,
+   "seconds": 40.333333333333336,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 1,
+   "merge_ticks": [
+    4394
+   ],
+   "circles": [
+    1.4626432707133028,
+    1.3529615127275516
+   ],
+   "reversals": [
+    1,
+    0
+   ],
+   "max_separation": 5.875094192366345,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 1,
+   "start": 5304,
+   "end": 7256,
+   "seconds": 65.06666666666666,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 3,
+   "merge_ticks": [
+    5901,
+    6440,
+    7159
+   ],
+   "circles": [
+    2.178444363654971,
+    2.5293790278642816
+   ],
+   "reversals": [
+    0,
+    1
+   ],
+   "max_separation": 6.7965763399461325,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 1,
+   "start": 7556,
+   "end": 8772,
+   "seconds": 40.53333333333333,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 2,
+   "merge_ticks": [
+    8198,
+    8698
+   ],
+   "circles": [
+    1.4779574655243608,
+    1.4141335976260752
+   ],
+   "reversals": [
+    1,
+    0
+   ],
+   "max_separation": 6.105766288677949,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 2,
+   "start": 0,
+   "end": 4134,
+   "seconds": 137.8,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 1,
+   "merge_ticks": [
+    2301
+   ],
+   "circles": [
+    4.115507109966024,
+    4.391188419501931
+   ],
+   "reversals": [
+    3,
+    3
+   ],
+   "max_separation": 6.163329511868289,
+   "extensions": 0,
+   "edge_seconds": 3.7333333333333334
+  },
+  {
+   "environment": 2,
+   "start": 4434,
+   "end": 6802,
+   "seconds": 78.93333333333334,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 2,
+   "merge_ticks": [
+    6035,
+    6755
+   ],
+   "circles": [
+    2.255021257207541,
+    2.374517693466638
+   ],
+   "reversals": [
+    0,
+    2
+   ],
+   "max_separation": 5.480612966006907,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 2,
+   "start": 7102,
+   "end": 8999,
+   "seconds": 63.233333333333334,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 2,
+   "merge_ticks": [
+    7744,
+    8428
+   ],
+   "circles": [
+    2.2063406776090817,
+    2.1003929081515857
+   ],
+   "reversals": [
+    0,
+    0
+   ],
+   "max_separation": 6.035243922010879,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 3,
+   "start": 0,
+   "end": 2070,
+   "seconds": 69.0,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 3,
+   "merge_ticks": [
+    741,
+    1301,
+    1959
+   ],
+   "circles": [
+    2.3670920635829815,
+    2.596079619658995
+   ],
+   "reversals": [
+    2,
+    1
+   ],
+   "max_separation": 8.424811836171143,
+   "extensions": 0,
+   "edge_seconds": 5.333333333333333
+  },
+  {
+   "environment": 3,
+   "start": 2370,
+   "end": 4936,
+   "seconds": 85.53333333333333,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 4,
+   "merge_ticks": [
+    2901,
+    3459,
+    4199,
+    4922
+   ],
+   "circles": [
+    3.4299118456098197,
+    3.2323654716671535
+   ],
+   "reversals": [
+    2,
+    0
+   ],
+   "max_separation": 5.995879886675307,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 3,
+   "start": 5236,
+   "end": 6345,
+   "seconds": 36.96666666666667,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 2,
+   "merge_ticks": [
+    5702,
+    6217
+   ],
+   "circles": [
+    1.082587032503772,
+    1.293155313881049
+   ],
+   "reversals": [
+    0,
+    0
+   ],
+   "max_separation": 6.179258013825908,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 3,
+   "start": 6645,
+   "end": 7365,
+   "seconds": 24.0,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    0.7114192989161328,
+    0.4681646160288243
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 6.107098287409653,
+   "extensions": 0,
+   "edge_seconds": 6.5
+  },
+  {
+   "environment": 3,
+   "start": 7665,
+   "end": 8999,
+   "seconds": 44.46666666666667,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 2,
+   "merge_ticks": [
+    8218,
+    8501
+   ],
+   "circles": [
+    1.5330909042866852,
+    1.3890995882801445
+   ],
+   "reversals": [
+    2,
+    0
+   ],
+   "max_separation": 7.040411016751497,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 4,
+   "start": 0,
+   "end": 4252,
+   "seconds": 141.73333333333332,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 6,
+   "merge_ticks": [
+    471,
+    956,
+    2109,
+    2764,
+    3460,
+    4201
+   ],
+   "circles": [
+    5.631082373581165,
+    5.487836610668026
+   ],
+   "reversals": [
+    1,
+    3
+   ],
+   "max_separation": 7.395609582582175,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 4,
+   "start": 4552,
+   "end": 5547,
+   "seconds": 33.166666666666664,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 2,
+   "merge_ticks": [
+    5174,
+    5493
+   ],
+   "circles": [
+    1.122395879389302,
+    0.998500953086699
+   ],
+   "reversals": [
+    2,
+    2
+   ],
+   "max_separation": 6.733684710845104,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 4,
+   "start": 5847,
+   "end": 7662,
+   "seconds": 60.5,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 3,
+   "merge_ticks": [
+    6378,
+    6912,
+    7614
+   ],
+   "circles": [
+    2.2956469188268143,
+    2.164385254049398
+   ],
+   "reversals": [
+    0,
+    1
+   ],
+   "max_separation": 5.876674014373339,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 4,
+   "start": 7962,
+   "end": 8999,
+   "seconds": 34.56666666666666,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 1,
+   "merge_ticks": [
+    8581
+   ],
+   "circles": [
+    1.3688239440559893,
+    0.9371918090588305
+   ],
+   "reversals": [
+    2,
+    1
+   ],
+   "max_separation": 7.712798715921988,
+   "extensions": 0,
+   "edge_seconds": 4.933333333333334
+  },
+  {
+   "environment": 5,
+   "start": 0,
+   "end": 3097,
+   "seconds": 103.23333333333333,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 5,
+   "merge_ticks": [
+    677,
+    979,
+    1617,
+    2351,
+    3073
+   ],
+   "circles": [
+    3.700393408021587,
+    3.906186097022182
+   ],
+   "reversals": [
+    2,
+    1
+   ],
+   "max_separation": 10.419169438581646,
+   "extensions": 0,
+   "edge_seconds": 4.1
+  },
+  {
+   "environment": 5,
+   "start": 3397,
+   "end": 4085,
+   "seconds": 22.933333333333334,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 1,
+   "merge_ticks": [
+    4028
+   ],
+   "circles": [
+    0.4037428789051903,
+    0.5756759675693178
+   ],
+   "reversals": [
+    0,
+    0
+   ],
+   "max_separation": 7.121637047401442,
+   "extensions": 0,
+   "edge_seconds": 4.433333333333334
+  },
+  {
+   "environment": 5,
+   "start": 4385,
+   "end": 6366,
+   "seconds": 66.03333333333333,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 3,
+   "merge_ticks": [
+    5062,
+    5595,
+    6310
+   ],
+   "circles": [
+    2.343781235073654,
+    2.469462483517188
+   ],
+   "reversals": [
+    1,
+    2
+   ],
+   "max_separation": 7.676625559374737,
+   "extensions": 0,
+   "edge_seconds": 7.233333333333333
+  },
+  {
+   "environment": 5,
+   "start": 6666,
+   "end": 7700,
+   "seconds": 34.46666666666667,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 2,
+   "merge_ticks": [
+    7023,
+    7556
+   ],
+   "circles": [
+    1.1254627861086193,
+    1.221565824460422
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 6.651245866786565,
+   "extensions": 0,
+   "edge_seconds": 3.6
+  },
+  {
+   "environment": 5,
+   "start": 8000,
+   "end": 8999,
+   "seconds": 33.3,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 1,
+   "merge_ticks": [
+    8931
+   ],
+   "circles": [
+    0.9728716548091062,
+    0.9383521823078249
+   ],
+   "reversals": [
+    2,
+    0
+   ],
+   "max_separation": 5.703241285960318,
+   "extensions": 0,
+   "edge_seconds": 7.066666666666666
+  },
+  {
+   "environment": 6,
+   "start": 0,
+   "end": 3704,
+   "seconds": 123.46666666666667,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 6,
+   "merge_ticks": [
+    516,
+    822,
+    1489,
+    2199,
+    2929,
+    3643
+   ],
+   "circles": [
+    4.803992910378977,
+    4.735201673570313
+   ],
+   "reversals": [
+    0,
+    3
+   ],
+   "max_separation": 8.816670985422197,
+   "extensions": 0,
+   "edge_seconds": 3.6
+  },
+  {
+   "environment": 6,
+   "start": 4004,
+   "end": 5077,
+   "seconds": 35.766666666666666,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 1,
+   "merge_ticks": [
+    4752
+   ],
+   "circles": [
+    1.1055313834186327,
+    1.1018617504505572
+   ],
+   "reversals": [
+    2,
+    1
+   ],
+   "max_separation": 7.003488225620282,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 6,
+   "start": 5377,
+   "end": 6935,
+   "seconds": 51.93333333333333,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 3,
+   "merge_ticks": [
+    5830,
+    6136,
+    6789
+   ],
+   "circles": [
+    1.800630021204011,
+    1.7773574417540356
+   ],
+   "reversals": [
+    0,
+    3
+   ],
+   "max_separation": 6.63837302992312,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 6,
+   "start": 7235,
+   "end": 8786,
+   "seconds": 51.699999999999996,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    1.1351801721317871,
+    1.289175893888618
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 6.07342843363155,
+   "extensions": 0,
+   "edge_seconds": 6.333333333333333
+  },
+  {
+   "environment": 7,
+   "start": 0,
+   "end": 4474,
+   "seconds": 149.13333333333333,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 2,
+   "merge_ticks": [
+    3029,
+    3727
+   ],
+   "circles": [
+    4.208659051250436,
+    4.165907531197492
+   ],
+   "reversals": [
+    2,
+    2
+   ],
+   "max_separation": 5.769915610626481,
+   "extensions": 0,
+   "edge_seconds": 5.766666666666667
+  },
+  {
+   "environment": 7,
+   "start": 4774,
+   "end": 6792,
+   "seconds": 67.26666666666667,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 3,
+   "merge_ticks": [
+    5374,
+    5991,
+    6747
+   ],
+   "circles": [
+    2.577320884558509,
+    2.3933653728083155
+   ],
+   "reversals": [
+    2,
+    0
+   ],
+   "max_separation": 5.95702670429361,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 7,
+   "start": 7092,
+   "end": 8999,
+   "seconds": 63.56666666666666,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 3,
+   "merge_ticks": [
+    7632,
+    7956,
+    8701
+   ],
+   "circles": [
+    2.258936928767719,
+    2.317433704459339
+   ],
+   "reversals": [
+    3,
+    1
+   ],
+   "max_separation": 7.331967085945564,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 8,
+   "start": 0,
+   "end": 8319,
+   "seconds": 277.3,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 4,
+   "merge_ticks": [
+    3551,
+    6797,
+    7507,
+    8246
+   ],
+   "circles": [
+    11.24128683203536,
+    11.163742024786409
+   ],
+   "reversals": [
+    1,
+    4
+   ],
+   "max_separation": 5.666271642667606,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 8,
+   "start": 8619,
+   "end": 8999,
+   "seconds": 12.666666666666666,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    0.24732828359929485,
+    0.4648064776323968
+   ],
+   "reversals": [
+    0,
+    0
+   ],
+   "max_separation": 7.490569872292927,
+   "extensions": 0,
+   "edge_seconds": 4.533333333333333
+  },
+  {
+   "environment": 9,
+   "start": 0,
+   "end": 7626,
+   "seconds": 254.2,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 6,
+   "merge_ticks": [
+    2547,
+    3234,
+    3958,
+    6111,
+    6796,
+    7546
+   ],
+   "circles": [
+    9.781730655044923,
+    10.15659268617264
+   ],
+   "reversals": [
+    3,
+    3
+   ],
+   "max_separation": 2.868107055545087,
+   "extensions": 0,
+   "edge_seconds": 2.433333333333333
+  },
+  {
+   "environment": 9,
+   "start": 7926,
+   "end": 8999,
+   "seconds": 35.766666666666666,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 1,
+   "merge_ticks": [
+    8195
+   ],
+   "circles": [
+    1.3189133232790011,
+    1.324348484256534
+   ],
+   "reversals": [
+    2,
+    3
+   ],
+   "max_separation": 5.0295125464129224,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 10,
+   "start": 0,
+   "end": 2347,
+   "seconds": 78.23333333333333,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 4,
+   "merge_ticks": [
+    612,
+    919,
+    1588,
+    2302
+   ],
+   "circles": [
+    2.931253698249492,
+    2.7821212229636916
+   ],
+   "reversals": [
+    1,
+    2
+   ],
+   "max_separation": 8.341050856993846,
+   "extensions": 0,
+   "edge_seconds": 4.533333333333333
+  },
+  {
+   "environment": 10,
+   "start": 2647,
+   "end": 3366,
+   "seconds": 23.966666666666665,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    0.8773168529746832,
+    0.6123345414821609
+   ],
+   "reversals": [
+    0,
+    2
+   ],
+   "max_separation": 5.673334811505329,
+   "extensions": 0,
+   "edge_seconds": 0.7333333333333333
+  },
+  {
+   "environment": 10,
+   "start": 3666,
+   "end": 4907,
+   "seconds": 41.36666666666667,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 2,
+   "merge_ticks": [
+    4486,
+    4822
+   ],
+   "circles": [
+    1.3745086346112,
+    1.3929891533394942
+   ],
+   "reversals": [
+    0,
+    2
+   ],
+   "max_separation": 7.2138256618741154,
+   "extensions": 0,
+   "edge_seconds": 6.233333333333333
+  },
+  {
+   "environment": 10,
+   "start": 5207,
+   "end": 7514,
+   "seconds": 76.9,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 2,
+   "merge_ticks": [
+    5871,
+    6358
+   ],
+   "circles": [
+    3.0139087012534658,
+    2.6564144751472565
+   ],
+   "reversals": [
+    2,
+    3
+   ],
+   "max_separation": 7.218413063862167,
+   "extensions": 0,
+   "edge_seconds": 5.433333333333334
+  },
+  {
+   "environment": 10,
+   "start": 7814,
+   "end": 8775,
+   "seconds": 32.03333333333333,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 2,
+   "merge_ticks": [
+    8386,
+    8680
+   ],
+   "circles": [
+    0.8666584945568598,
+    1.0520415917345765
+   ],
+   "reversals": [
+    0,
+    2
+   ],
+   "max_separation": 7.582362298312233,
+   "extensions": 0,
+   "edge_seconds": 3.966666666666667
+  },
+  {
+   "environment": 11,
+   "start": 0,
+   "end": 313,
+   "seconds": 10.433333333333334,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    0.48588785650564115,
+    0.27336762090006067
+   ],
+   "reversals": [
+    0,
+    0
+   ],
+   "max_separation": 1.61815673322071,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 11,
+   "start": 613,
+   "end": 5999,
+   "seconds": 179.53333333333333,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 5,
+   "merge_ticks": [
+    1232,
+    3740,
+    4471,
+    5220,
+    5953
+   ],
+   "circles": [
+    6.9971062436414115,
+    7.286763941602944
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 6.659563358404035,
+   "extensions": 0,
+   "edge_seconds": 4.866666666666666
+  },
+  {
+   "environment": 11,
+   "start": 6299,
+   "end": 7320,
+   "seconds": 34.03333333333333,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 2,
+   "merge_ticks": [
+    6716,
+    7193
+   ],
+   "circles": [
+    1.0469379226047615,
+    1.1632986949068957
+   ],
+   "reversals": [
+    1,
+    0
+   ],
+   "max_separation": 6.413189623232589,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 11,
+   "start": 7620,
+   "end": 8301,
+   "seconds": 22.7,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    0.551200553861008,
+    0.8828455116528546
+   ],
+   "reversals": [
+    2,
+    1
+   ],
+   "max_separation": 5.508831529696359,
+   "extensions": 0,
+   "edge_seconds": 0.7333333333333333
+  },
+  {
+   "environment": 11,
+   "start": 8601,
+   "end": 8999,
+   "seconds": 13.266666666666666,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    0.507393162453371,
+    0.2937819179643671
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 5.38680630802707,
+   "extensions": 0,
+   "edge_seconds": 4.1
+  },
+  {
+   "environment": 12,
+   "start": 0,
+   "end": 2550,
+   "seconds": 85.0,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 4,
+   "merge_ticks": [
+    519,
+    1073,
+    1819,
+    2518
+   ],
+   "circles": [
+    3.326452086393987,
+    3.1763594382928644
+   ],
+   "reversals": [
+    2,
+    2
+   ],
+   "max_separation": 6.1779699903685925,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 12,
+   "start": 2850,
+   "end": 4074,
+   "seconds": 40.8,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 2,
+   "merge_ticks": [
+    3413,
+    4034
+   ],
+   "circles": [
+    1.4570027487147248,
+    1.3201939078573877
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 7.329205274320433,
+   "extensions": 0,
+   "edge_seconds": 1.4666666666666666
+  },
+  {
+   "environment": 12,
+   "start": 4374,
+   "end": 5525,
+   "seconds": 38.36666666666667,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 2,
+   "merge_ticks": [
+    4915,
+    5393
+   ],
+   "circles": [
+    1.060460179341571,
+    1.3664921174733469
+   ],
+   "reversals": [
+    2,
+    1
+   ],
+   "max_separation": 6.797738191354502,
+   "extensions": 0,
+   "edge_seconds": 1.7
+  },
+  {
+   "environment": 12,
+   "start": 5825,
+   "end": 8083,
+   "seconds": 75.26666666666667,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 2,
+   "merge_ticks": [
+    7269,
+    7960
+   ],
+   "circles": [
+    2.174220726454217,
+    2.351357584464995
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 7.198901193517716,
+   "extensions": 0,
+   "edge_seconds": 3.5
+  },
+  {
+   "environment": 12,
+   "start": 8383,
+   "end": 8999,
+   "seconds": 20.53333333333333,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 1,
+   "merge_ticks": [
+    8756
+   ],
+   "circles": [
+    0.6091401378983368,
+    0.5220090083672905
+   ],
+   "reversals": [
+    2,
+    0
+   ],
+   "max_separation": 6.927438125864222,
+   "extensions": 0,
+   "edge_seconds": 3.533333333333333
+  },
+  {
+   "environment": 13,
+   "start": 0,
+   "end": 2814,
+   "seconds": 93.8,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 4,
+   "merge_ticks": [
+    550,
+    1437,
+    2035,
+    2760
+   ],
+   "circles": [
+    3.0947508202697365,
+    3.094042301979834
+   ],
+   "reversals": [
+    3,
+    2
+   ],
+   "max_separation": 9.66895865522789,
+   "extensions": 1,
+   "edge_seconds": 2.2333333333333334
+  },
+  {
+   "environment": 13,
+   "start": 3114,
+   "end": 3854,
+   "seconds": 24.666666666666668,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 1,
+   "merge_ticks": [
+    3779
+   ],
+   "circles": [
+    0.6089650194371168,
+    0.5506371391454726
+   ],
+   "reversals": [
+    0,
+    0
+   ],
+   "max_separation": 7.235440947679493,
+   "extensions": 0,
+   "edge_seconds": 7.233333333333333
+  },
+  {
+   "environment": 13,
+   "start": 4154,
+   "end": 6645,
+   "seconds": 83.03333333333333,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 3,
+   "merge_ticks": [
+    5189,
+    5838,
+    6553
+   ],
+   "circles": [
+    2.8095263704254876,
+    2.905184232225387
+   ],
+   "reversals": [
+    0,
+    1
+   ],
+   "max_separation": 4.021160326658202,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 13,
+   "start": 6945,
+   "end": 8234,
+   "seconds": 42.96666666666667,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 2,
+   "merge_ticks": [
+    7573,
+    8177
+   ],
+   "circles": [
+    1.381035259818101,
+    1.4756213890462349
+   ],
+   "reversals": [
+    1,
+    0
+   ],
+   "max_separation": 7.245307026529625,
+   "extensions": 0,
+   "edge_seconds": 6.033333333333333
+  },
+  {
+   "environment": 13,
+   "start": 8534,
+   "end": 8999,
+   "seconds": 15.5,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    0.5989703656791417,
+    0.3300135291630937
+   ],
+   "reversals": [
+    0,
+    0
+   ],
+   "max_separation": 5.356630639135405,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 14,
+   "start": 0,
+   "end": 8999,
+   "seconds": 299.96666666666664,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 5,
+   "merge_ticks": [
+    3526,
+    4218,
+    7126,
+    7822,
+    8556
+   ],
+   "circles": [
+    12.09490991056125,
+    12.064280306683283
+   ],
+   "reversals": [
+    0,
+    1
+   ],
+   "max_separation": 6.603344052477709,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 15,
+   "start": 0,
+   "end": 2008,
+   "seconds": 66.93333333333334,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 3,
+   "merge_ticks": [
+    566,
+    1234,
+    1938
+   ],
+   "circles": [
+    2.7671540017624703,
+    2.8086171963559683
+   ],
+   "reversals": [
+    3,
+    1
+   ],
+   "max_separation": 1.442443763535497,
+   "extensions": 0,
+   "edge_seconds": 30.3
+  },
+  {
+   "environment": 15,
+   "start": 2308,
+   "end": 5940,
+   "seconds": 121.06666666666666,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 3,
+   "merge_ticks": [
+    4438,
+    5158,
+    5909
+   ],
+   "circles": [
+    4.687004216019146,
+    4.655722253184451
+   ],
+   "reversals": [
+    1,
+    2
+   ],
+   "max_separation": 8.297757815834428,
+   "extensions": 0,
+   "edge_seconds": 3.6
+  },
+  {
+   "environment": 15,
+   "start": 6240,
+   "end": 8999,
+   "seconds": 91.96666666666667,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 1,
+   "merge_ticks": [
+    8395
+   ],
+   "circles": [
+    2.290380842976734,
+    2.5539586019574343
+   ],
+   "reversals": [
+    3,
+    3
+   ],
+   "max_separation": 6.230032194421675,
+   "extensions": 0,
+   "edge_seconds": 6.3
+  },
+  {
+   "environment": 16,
+   "start": 0,
+   "end": 7327,
+   "seconds": 244.23333333333332,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 4,
+   "merge_ticks": [
+    2656,
+    5860,
+    6555,
+    7307
+   ],
+   "circles": [
+    9.966082621330939,
+    9.660532135644658
+   ],
+   "reversals": [
+    1,
+    3
+   ],
+   "max_separation": 6.366647343574915,
+   "extensions": 0,
+   "edge_seconds": 4.066666666666666
+  },
+  {
+   "environment": 16,
+   "start": 7627,
+   "end": 8677,
+   "seconds": 35.0,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 2,
+   "merge_ticks": [
+    8109,
+    8591
+   ],
+   "circles": [
+    1.0759184152531254,
+    1.0994320244898115
+   ],
+   "reversals": [
+    1,
+    2
+   ],
+   "max_separation": 7.188042999598674,
+   "extensions": 0,
+   "edge_seconds": 1.5
+  },
+  {
+   "environment": 17,
+   "start": 0,
+   "end": 2400,
+   "seconds": 80.0,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 4,
+   "merge_ticks": [
+    612,
+    886,
+    1544,
+    2280
+   ],
+   "circles": [
+    2.806189595342964,
+    3.000408301122
+   ],
+   "reversals": [
+    3,
+    2
+   ],
+   "max_separation": 9.274010551188965,
+   "extensions": 0,
+   "edge_seconds": 3.6333333333333333
+  },
+  {
+   "environment": 17,
+   "start": 2700,
+   "end": 3349,
+   "seconds": 21.633333333333333,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 1,
+   "merge_ticks": [
+    3301
+   ],
+   "circles": [
+    0.38639564034218266,
+    0.5966239680262699
+   ],
+   "reversals": [
+    0,
+    1
+   ],
+   "max_separation": 7.628664563388201,
+   "extensions": 0,
+   "edge_seconds": 3.3
+  },
+  {
+   "environment": 17,
+   "start": 3649,
+   "end": 6706,
+   "seconds": 101.9,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 5,
+   "merge_ticks": [
+    4259,
+    4548,
+    5206,
+    5946,
+    6690
+   ],
+   "circles": [
+    3.8734779906887877,
+    3.9397429681964358
+   ],
+   "reversals": [
+    1,
+    0
+   ],
+   "max_separation": 7.5659171896265205,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 17,
+   "start": 7006,
+   "end": 8439,
+   "seconds": 47.766666666666666,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 1,
+   "merge_ticks": [
+    8422
+   ],
+   "circles": [
+    1.0691115246172815,
+    1.1165380814841268
+   ],
+   "reversals": [
+    0,
+    1
+   ],
+   "max_separation": 6.8185812384629125,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 17,
+   "start": 8739,
+   "end": 8999,
+   "seconds": 8.666666666666666,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    0.47185265256216347,
+    0.11529742568484952
+   ],
+   "reversals": [
+    0,
+    0
+   ],
+   "max_separation": 5.216768306403273,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 18,
+   "start": 0,
+   "end": 6903,
+   "seconds": 230.1,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 9,
+   "merge_ticks": [
+    1456,
+    1837,
+    2498,
+    3192,
+    3934,
+    4631,
+    5364,
+    6118,
+    6855
+   ],
+   "circles": [
+    8.73292444802919,
+    8.394229634594524
+   ],
+   "reversals": [
+    2,
+    4
+   ],
+   "max_separation": 5.680232353842319,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 18,
+   "start": 7203,
+   "end": 7694,
+   "seconds": 16.366666666666667,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 1,
+   "merge_ticks": [
+    7667
+   ],
+   "circles": [
+    0.22928011584546237,
+    0.4258778524034045
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 6.722928029942641,
+   "extensions": 0,
+   "edge_seconds": 0.9333333333333333
+  },
+  {
+   "environment": 18,
+   "start": 7994,
+   "end": 8999,
+   "seconds": 33.5,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 2,
+   "merge_ticks": [
+    8501,
+    8989
+   ],
+   "circles": [
+    1.2775424121302892,
+    1.0098791375520508
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 6.311839356267741,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 19,
+   "start": 0,
+   "end": 2559,
+   "seconds": 85.3,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 3,
+   "merge_ticks": [
+    1059,
+    1742,
+    2428
+   ],
+   "circles": [
+    3.4368233899219462,
+    3.615885450586779
+   ],
+   "reversals": [
+    2,
+    1
+   ],
+   "max_separation": 1.4420044217754873,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 19,
+   "start": 2859,
+   "end": 4096,
+   "seconds": 41.233333333333334,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 1,
+   "merge_ticks": [
+    3522
+   ],
+   "circles": [
+    1.2057153080175365,
+    1.3518498614946366
+   ],
+   "reversals": [
+    0,
+    1
+   ],
+   "max_separation": 8.34292987526023,
+   "extensions": 0,
+   "edge_seconds": 3.6666666666666665
+  },
+  {
+   "environment": 19,
+   "start": 4396,
+   "end": 5610,
+   "seconds": 40.46666666666667,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 2,
+   "merge_ticks": [
+    5016,
+    5603
+   ],
+   "circles": [
+    1.2045082618092138,
+    1.6566887932513834
+   ],
+   "reversals": [
+    2,
+    1
+   ],
+   "max_separation": 6.367481640836672,
+   "extensions": 0,
+   "edge_seconds": 3.2
+  },
+  {
+   "environment": 19,
+   "start": 5910,
+   "end": 8957,
+   "seconds": 101.56666666666666,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 5,
+   "merge_ticks": [
+    6512,
+    6798,
+    7459,
+    8187,
+    8902
+   ],
+   "circles": [
+    3.93981946631514,
+    3.8483292341648005
+   ],
+   "reversals": [
+    1,
+    0
+   ],
+   "max_separation": 7.2577886067461765,
+   "extensions": 0,
+   "edge_seconds": 0.2
+  },
+  {
+   "environment": 20,
+   "start": 0,
+   "end": 2503,
+   "seconds": 83.43333333333334,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 4,
+   "merge_ticks": [
+    600,
+    1068,
+    1746,
+    2469
+   ],
+   "circles": [
+    3.0888085556918257,
+    2.9576085143989213
+   ],
+   "reversals": [
+    1,
+    2
+   ],
+   "max_separation": 9.853310403173124,
+   "extensions": 0,
+   "edge_seconds": 2.8
+  },
+  {
+   "environment": 20,
+   "start": 2803,
+   "end": 3738,
+   "seconds": 31.166666666666668,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 2,
+   "merge_ticks": [
+    3391,
+    3670
+   ],
+   "circles": [
+    1.1130434531407851,
+    0.8070161443594468
+   ],
+   "reversals": [
+    1,
+    2
+   ],
+   "max_separation": 7.711260814270018,
+   "extensions": 0,
+   "edge_seconds": 3.7666666666666666
+  },
+  {
+   "environment": 20,
+   "start": 4038,
+   "end": 8490,
+   "seconds": 148.4,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 7,
+   "merge_ticks": [
+    4621,
+    4946,
+    5649,
+    6312,
+    7040,
+    7766,
+    8471
+   ],
+   "circles": [
+    6.027595193685934,
+    5.745750017879044
+   ],
+   "reversals": [
+    1,
+    3
+   ],
+   "max_separation": 7.06292800117377,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 20,
+   "start": 8790,
+   "end": 8999,
+   "seconds": 6.966666666666667,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    0.07276310564751212,
+    0.16668685830813612
+   ],
+   "reversals": [
+    0,
+    0
+   ],
+   "max_separation": 6.402451847588274,
+   "extensions": 0,
+   "edge_seconds": 1.3666666666666667
+  },
+  {
+   "environment": 21,
+   "start": 0,
+   "end": 1289,
+   "seconds": 42.96666666666667,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 2,
+   "merge_ticks": [
+    666,
+    1250
+   ],
+   "circles": [
+    1.3315854491371166,
+    1.455569775026856
+   ],
+   "reversals": [
+    0,
+    0
+   ],
+   "max_separation": 8.478803609506961,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 21,
+   "start": 1589,
+   "end": 4346,
+   "seconds": 91.9,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 4,
+   "merge_ticks": [
+    2133,
+    2740,
+    3474,
+    4230
+   ],
+   "circles": [
+    3.349434610477209,
+    3.732430030868578
+   ],
+   "reversals": [
+    2,
+    1
+   ],
+   "max_separation": 5.628177136515075,
+   "extensions": 0,
+   "edge_seconds": 2.433333333333333
+  },
+  {
+   "environment": 21,
+   "start": 4646,
+   "end": 7581,
+   "seconds": 97.83333333333333,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 5,
+   "merge_ticks": [
+    5121,
+    5427,
+    6094,
+    6794,
+    7535
+   ],
+   "circles": [
+    3.6846399561559062,
+    3.867936126978221
+   ],
+   "reversals": [
+    2,
+    3
+   ],
+   "max_separation": 6.035844780432893,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 21,
+   "start": 7881,
+   "end": 8502,
+   "seconds": 20.7,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 1,
+   "merge_ticks": [
+    8465
+   ],
+   "circles": [
+    0.539278003318806,
+    0.5026652296188974
+   ],
+   "reversals": [
+    0,
+    0
+   ],
+   "max_separation": 7.228492032358404,
+   "extensions": 0,
+   "edge_seconds": 1.4
+  },
+  {
+   "environment": 21,
+   "start": 8802,
+   "end": 8999,
+   "seconds": 6.566666666666666,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    0.030413656063709722,
+    0.25440811618347153
+   ],
+   "reversals": [
+    0,
+    0
+   ],
+   "max_separation": 7.090183629649281,
+   "extensions": 0,
+   "edge_seconds": 4.6
+  },
+  {
+   "environment": 22,
+   "start": 0,
+   "end": 3928,
+   "seconds": 130.93333333333334,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 5,
+   "merge_ticks": [
+    1066,
+    1737,
+    2439,
+    3180,
+    3898
+   ],
+   "circles": [
+    5.192698976044403,
+    4.963600770903835
+   ],
+   "reversals": [
+    0,
+    2
+   ],
+   "max_separation": 7.07580166000496,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 22,
+   "start": 4228,
+   "end": 5368,
+   "seconds": 38.0,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 2,
+   "merge_ticks": [
+    4683,
+    5257
+   ],
+   "circles": [
+    1.3187588092217772,
+    1.1962702947602706
+   ],
+   "reversals": [
+    1,
+    2
+   ],
+   "max_separation": 5.736652219898565,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 22,
+   "start": 5668,
+   "end": 7798,
+   "seconds": 71.0,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 3,
+   "merge_ticks": [
+    6229,
+    7141,
+    7716
+   ],
+   "circles": [
+    2.098880704269345,
+    2.367812269085464
+   ],
+   "reversals": [
+    2,
+    2
+   ],
+   "max_separation": 7.57936129407314,
+   "extensions": 1,
+   "edge_seconds": 3.466666666666667
+  },
+  {
+   "environment": 22,
+   "start": 8098,
+   "end": 8999,
+   "seconds": 30.03333333333333,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 1,
+   "merge_ticks": [
+    8716
+   ],
+   "circles": [
+    0.80547897234124,
+    0.9502388364113888
+   ],
+   "reversals": [
+    1,
+    0
+   ],
+   "max_separation": 6.945176189813724,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 23,
+   "start": 0,
+   "end": 8999,
+   "seconds": 299.96666666666664,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    12.754896822553317,
+    12.98536622611526
+   ],
+   "reversals": [
+    1,
+    0
+   ],
+   "max_separation": 0.8010766647261378,
+   "extensions": 0,
+   "edge_seconds": 277.76666666666665
+  },
+  {
+   "environment": 24,
+   "start": 0,
+   "end": 8999,
+   "seconds": 299.96666666666664,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    12.332188860943715,
+    12.314040592973047
+   ],
+   "reversals": [
+    2,
+    1
+   ],
+   "max_separation": 7.328070136863794,
+   "extensions": 0,
+   "edge_seconds": 2.933333333333333
+  },
+  {
+   "environment": 25,
+   "start": 0,
+   "end": 6223,
+   "seconds": 207.43333333333334,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 5,
+   "merge_ticks": [
+    1480,
+    3942,
+    4647,
+    5433,
+    6181
+   ],
+   "circles": [
+    7.740606030397205,
+    7.7739646743035475
+   ],
+   "reversals": [
+    3,
+    1
+   ],
+   "max_separation": 3.9944106193300923,
+   "extensions": 0,
+   "edge_seconds": 6.6
+  },
+  {
+   "environment": 25,
+   "start": 6523,
+   "end": 7614,
+   "seconds": 36.36666666666667,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 2,
+   "merge_ticks": [
+    7024,
+    7557
+   ],
+   "circles": [
+    1.2020600943377089,
+    1.1146566679317513
+   ],
+   "reversals": [
+    2,
+    1
+   ],
+   "max_separation": 7.369587727692771,
+   "extensions": 0,
+   "edge_seconds": 1.4333333333333333
+  },
+  {
+   "environment": 25,
+   "start": 7914,
+   "end": 8999,
+   "seconds": 36.166666666666664,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 2,
+   "merge_ticks": [
+    8415,
+    8688
+   ],
+   "circles": [
+    1.0230009175305255,
+    1.1973228269113696
+   ],
+   "reversals": [
+    2,
+    1
+   ],
+   "max_separation": 7.663824233705157,
+   "extensions": 0,
+   "edge_seconds": 2.1666666666666665
+  },
+  {
+   "environment": 26,
+   "start": 0,
+   "end": 2694,
+   "seconds": 89.8,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 4,
+   "merge_ticks": [
+    705,
+    1197,
+    1936,
+    2656
+   ],
+   "circles": [
+    3.3958941643395617,
+    3.154941179311557
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 8.605402259712628,
+   "extensions": 0,
+   "edge_seconds": 4.966666666666667
+  },
+  {
+   "environment": 26,
+   "start": 2994,
+   "end": 4171,
+   "seconds": 39.233333333333334,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 2,
+   "merge_ticks": [
+    3570,
+    4136
+   ],
+   "circles": [
+    1.4763118452803323,
+    1.0819581238631955
+   ],
+   "reversals": [
+    1,
+    0
+   ],
+   "max_separation": 7.45010522214603,
+   "extensions": 0,
+   "edge_seconds": 3.0666666666666664
+  },
+  {
+   "environment": 26,
+   "start": 4471,
+   "end": 5357,
+   "seconds": 29.53333333333333,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 1,
+   "merge_ticks": [
+    5315
+   ],
+   "circles": [
+    0.8592324852182496,
+    0.9496559177112236
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 6.869738867011989,
+   "extensions": 0,
+   "edge_seconds": 6.033333333333333
+  },
+  {
+   "environment": 26,
+   "start": 5657,
+   "end": 8999,
+   "seconds": 111.39999999999999,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 5,
+   "merge_ticks": [
+    6203,
+    6854,
+    7599,
+    8300,
+    8996
+   ],
+   "circles": [
+    4.131618767308176,
+    4.359145725375678
+   ],
+   "reversals": [
+    0,
+    0
+   ],
+   "max_separation": 6.839118513569968,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 27,
+   "start": 0,
+   "end": 6024,
+   "seconds": 200.8,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 2,
+   "merge_ticks": [
+    628,
+    2062
+   ],
+   "circles": [
+    6.792609165635378,
+    7.245068217013703
+   ],
+   "reversals": [
+    2,
+    5
+   ],
+   "max_separation": 11.306952963512236,
+   "extensions": 1,
+   "edge_seconds": 7.133333333333333
+  },
+  {
+   "environment": 27,
+   "start": 6324,
+   "end": 8679,
+   "seconds": 78.5,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 4,
+   "merge_ticks": [
+    6900,
+    7231,
+    7888,
+    8661
+   ],
+   "circles": [
+    2.8394246887163197,
+    3.0447298539921572
+   ],
+   "reversals": [
+    3,
+    2
+   ],
+   "max_separation": 6.517914067793023,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 28,
+   "start": 0,
+   "end": 432,
+   "seconds": 14.4,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    0.35535057123520064,
+    0.6609899632171776
+   ],
+   "reversals": [
+    3,
+    1
+   ],
+   "max_separation": 2.1986611789360078,
+   "extensions": 0,
+   "edge_seconds": 2.1
+  },
+  {
+   "environment": 28,
+   "start": 732,
+   "end": 7170,
+   "seconds": 214.6,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 8,
+   "merge_ticks": [
+    1004,
+    2750,
+    3410,
+    4155,
+    4866,
+    5555,
+    6302,
+    7051
+   ],
+   "circles": [
+    8.838442067350957,
+    8.593699693371429
+   ],
+   "reversals": [
+    2,
+    2
+   ],
+   "max_separation": 6.11891859457489,
+   "extensions": 0,
+   "edge_seconds": 2.5666666666666664
+  },
+  {
+   "environment": 28,
+   "start": 7470,
+   "end": 8999,
+   "seconds": 50.96666666666667,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 2,
+   "merge_ticks": [
+    7974,
+    8256
+   ],
+   "circles": [
+    1.724830099615025,
+    1.531331751120453
+   ],
+   "reversals": [
+    2,
+    2
+   ],
+   "max_separation": 8.616022904953198,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 29,
+   "start": 0,
+   "end": 1316,
+   "seconds": 43.86666666666667,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 2,
+   "merge_ticks": [
+    611,
+    1257
+   ],
+   "circles": [
+    1.5901509117408978,
+    1.5448755608986435
+   ],
+   "reversals": [
+    1,
+    2
+   ],
+   "max_separation": 4.629053559623793,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 29,
+   "start": 1616,
+   "end": 3123,
+   "seconds": 50.233333333333334,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 3,
+   "merge_ticks": [
+    2040,
+    2355,
+    3018
+   ],
+   "circles": [
+    1.7375292426658573,
+    1.8019086326166371
+   ],
+   "reversals": [
+    3,
+    0
+   ],
+   "max_separation": 7.14726600170846,
+   "extensions": 0,
+   "edge_seconds": 0.5333333333333333
+  },
+  {
+   "environment": 29,
+   "start": 3423,
+   "end": 8999,
+   "seconds": 185.86666666666667,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 5,
+   "merge_ticks": [
+    5789,
+    6383,
+    7138,
+    7896,
+    8631
+   ],
+   "circles": [
+    5.973189245961207,
+    5.978586613225332
+   ],
+   "reversals": [
+    2,
+    0
+   ],
+   "max_separation": 5.984354665930732,
+   "extensions": 0,
+   "edge_seconds": 3.3
+  },
+  {
+   "environment": 30,
+   "start": 0,
+   "end": 2983,
+   "seconds": 99.43333333333334,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 4,
+   "merge_ticks": [
+    709,
+    1550,
+    2178,
+    2905
+   ],
+   "circles": [
+    3.3121721340052503,
+    3.290358331180008
+   ],
+   "reversals": [
+    0,
+    1
+   ],
+   "max_separation": 10.810510748152987,
+   "extensions": 1,
+   "edge_seconds": 6.266666666666667
+  },
+  {
+   "environment": 30,
+   "start": 3283,
+   "end": 3858,
+   "seconds": 19.166666666666668,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 1,
+   "merge_ticks": [
+    3809
+   ],
+   "circles": [
+    0.27138181928987026,
+    0.30252171418982926
+   ],
+   "reversals": [
+    1,
+    0
+   ],
+   "max_separation": 7.834446654396058,
+   "extensions": 0,
+   "edge_seconds": 3.8
+  },
+  {
+   "environment": 30,
+   "start": 4158,
+   "end": 5980,
+   "seconds": 60.733333333333334,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 3,
+   "merge_ticks": [
+    4741,
+    5249,
+    5953
+   ],
+   "circles": [
+    2.0911929469035417,
+    2.254712229093094
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 7.270295667962841,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 30,
+   "start": 6280,
+   "end": 7409,
+   "seconds": 37.63333333333333,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 2,
+   "merge_ticks": [
+    6842,
+    7393
+   ],
+   "circles": [
+    1.467596523899396,
+    1.0747251812051242
+   ],
+   "reversals": [
+    1,
+    0
+   ],
+   "max_separation": 7.059931106773405,
+   "extensions": 0,
+   "edge_seconds": 3.533333333333333
+  },
+  {
+   "environment": 30,
+   "start": 7709,
+   "end": 8999,
+   "seconds": 43.0,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 2,
+   "merge_ticks": [
+    8286,
+    8571
+   ],
+   "circles": [
+    1.3797630232487001,
+    1.561136571710647
+   ],
+   "reversals": [
+    0,
+    1
+   ],
+   "max_separation": 6.674204247888211,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 31,
+   "start": 0,
+   "end": 3305,
+   "seconds": 110.16666666666667,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 5,
+   "merge_ticks": [
+    461,
+    1092,
+    1780,
+    2510,
+    3220
+   ],
+   "circles": [
+    4.303721016990747,
+    4.3492568257133515
+   ],
+   "reversals": [
+    1,
+    0
+   ],
+   "max_separation": 3.034641214161436,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 31,
+   "start": 3605,
+   "end": 4053,
+   "seconds": 14.933333333333334,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 1,
+   "merge_ticks": [
+    4009
+   ],
+   "circles": [
+    0.2622935695802513,
+    0.446179185727938
+   ],
+   "reversals": [
+    1,
+    2
+   ],
+   "max_separation": 5.9836025654435305,
+   "extensions": 0,
+   "edge_seconds": 1.1333333333333333
+  },
+  {
+   "environment": 31,
+   "start": 4353,
+   "end": 8999,
+   "seconds": 154.86666666666667,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    6.466987030708153,
+    6.23815565829116
+   ],
+   "reversals": [
+    0,
+    1
+   ],
+   "max_separation": 6.628729293348164,
+   "extensions": 0,
+   "edge_seconds": 2.3666666666666667
+  },
+  {
+   "environment": 32,
+   "start": 0,
+   "end": 760,
+   "seconds": 25.333333333333332,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 1,
+   "merge_ticks": [
+    723
+   ],
+   "circles": [
+    0.7081424777163238,
+    0.6555509317991149
+   ],
+   "reversals": [
+    2,
+    2
+   ],
+   "max_separation": 4.525317531277414,
+   "extensions": 0,
+   "edge_seconds": 3.433333333333333
+  },
+  {
+   "environment": 32,
+   "start": 1060,
+   "end": 1869,
+   "seconds": 26.966666666666665,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    0.8570964573918143,
+    0.6571547361072247
+   ],
+   "reversals": [
+    0,
+    1
+   ],
+   "max_separation": 6.944695338682562,
+   "extensions": 0,
+   "edge_seconds": 6.833333333333333
+  },
+  {
+   "environment": 32,
+   "start": 2169,
+   "end": 4218,
+   "seconds": 68.3,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 3,
+   "merge_ticks": [
+    2581,
+    3612,
+    4159
+   ],
+   "circles": [
+    2.0218014123578247,
+    1.9496483564396812
+   ],
+   "reversals": [
+    1,
+    2
+   ],
+   "max_separation": 7.059504505513451,
+   "extensions": 1,
+   "edge_seconds": 0.4
+  },
+  {
+   "environment": 32,
+   "start": 4518,
+   "end": 6800,
+   "seconds": 76.06666666666666,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 3,
+   "merge_ticks": [
+    5318,
+    5976,
+    6743
+   ],
+   "circles": [
+    2.5136445487462957,
+    2.6431957823735583
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 6.753615373755926,
+   "extensions": 0,
+   "edge_seconds": 5.266666666666667
+  },
+  {
+   "environment": 32,
+   "start": 7100,
+   "end": 8999,
+   "seconds": 63.3,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 3,
+   "merge_ticks": [
+    7643,
+    7959,
+    8634
+   ],
+   "circles": [
+    2.3076659268182946,
+    2.1967737075296356
+   ],
+   "reversals": [
+    1,
+    2
+   ],
+   "max_separation": 7.339502886236993,
+   "extensions": 0,
+   "edge_seconds": 0.5333333333333333
+  },
+  {
+   "environment": 33,
+   "start": 0,
+   "end": 1318,
+   "seconds": 43.93333333333333,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 2,
+   "merge_ticks": [
+    571,
+    1237
+   ],
+   "circles": [
+    1.6378298820430706,
+    1.6014683834136274
+   ],
+   "reversals": [
+    2,
+    2
+   ],
+   "max_separation": 3.599651567872651,
+   "extensions": 0,
+   "edge_seconds": 3.8
+  },
+  {
+   "environment": 33,
+   "start": 1618,
+   "end": 4123,
+   "seconds": 83.5,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 3,
+   "merge_ticks": [
+    2366,
+    3461,
+    4120
+   ],
+   "circles": [
+    2.695294036850711,
+    2.492708804684354
+   ],
+   "reversals": [
+    4,
+    3
+   ],
+   "max_separation": 6.819691716887183,
+   "extensions": 1,
+   "edge_seconds": 6.466666666666667
+  },
+  {
+   "environment": 33,
+   "start": 4423,
+   "end": 6102,
+   "seconds": 55.96666666666667,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 1,
+   "merge_ticks": [
+    5007
+   ],
+   "circles": [
+    1.8349363918031878,
+    2.1646429798540803
+   ],
+   "reversals": [
+    2,
+    1
+   ],
+   "max_separation": 6.0486539147960565,
+   "extensions": 0,
+   "edge_seconds": 0.13333333333333333
+  },
+  {
+   "environment": 33,
+   "start": 6402,
+   "end": 8560,
+   "seconds": 71.93333333333334,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 3,
+   "merge_ticks": [
+    6884,
+    7943,
+    8480
+   ],
+   "circles": [
+    2.093235021683394,
+    2.1727332630349694
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 7.461062874162287,
+   "extensions": 1,
+   "edge_seconds": 2.8
+  },
+  {
+   "environment": 33,
+   "start": 8860,
+   "end": 8999,
+   "seconds": 4.633333333333333,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    0.1652678106170752,
+    0.05143659887405508
+   ],
+   "reversals": [
+    0,
+    0
+   ],
+   "max_separation": 5.355097669289909,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 34,
+   "start": 0,
+   "end": 2005,
+   "seconds": 66.83333333333333,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 3,
+   "merge_ticks": [
+    581,
+    1258,
+    1900
+   ],
+   "circles": [
+    2.029778314398492,
+    2.273405242595566
+   ],
+   "reversals": [
+    4,
+    3
+   ],
+   "max_separation": 9.956112265176658,
+   "extensions": 0,
+   "edge_seconds": 5.233333333333333
+  },
+  {
+   "environment": 34,
+   "start": 2305,
+   "end": 3016,
+   "seconds": 23.7,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 2,
+   "merge_ticks": [
+    2661,
+    2968
+   ],
+   "circles": [
+    0.7620061084209521,
+    0.6655301417404667
+   ],
+   "reversals": [
+    0,
+    1
+   ],
+   "max_separation": 5.487511741295516,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 34,
+   "start": 3316,
+   "end": 5188,
+   "seconds": 62.4,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 3,
+   "merge_ticks": [
+    3903,
+    4385,
+    5120
+   ],
+   "circles": [
+    2.3718961150812055,
+    2.1504519717065356
+   ],
+   "reversals": [
+    1,
+    0
+   ],
+   "max_separation": 5.924362939036091,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 34,
+   "start": 5488,
+   "end": 6225,
+   "seconds": 24.566666666666666,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 1,
+   "merge_ticks": [
+    6217
+   ],
+   "circles": [
+    0.7666265796124841,
+    0.5716734008246995
+   ],
+   "reversals": [
+    0,
+    1
+   ],
+   "max_separation": 6.633106682577222,
+   "extensions": 0,
+   "edge_seconds": 3.933333333333333
+  },
+  {
+   "environment": 34,
+   "start": 6525,
+   "end": 7488,
+   "seconds": 32.1,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 2,
+   "merge_ticks": [
+    7055,
+    7378
+   ],
+   "circles": [
+    0.9407975418126711,
+    0.9306472735781058
+   ],
+   "reversals": [
+    0,
+    1
+   ],
+   "max_separation": 6.438166757117368,
+   "extensions": 0,
+   "edge_seconds": 3.3666666666666667
+  },
+  {
+   "environment": 34,
+   "start": 7788,
+   "end": 8999,
+   "seconds": 40.36666666666667,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 1,
+   "merge_ticks": [
+    8398
+   ],
+   "circles": [
+    1.3063389450170075,
+    1.3060623982466129
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 6.917905765918793,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 35,
+   "start": 0,
+   "end": 8999,
+   "seconds": 299.96666666666664,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 1,
+   "merge_ticks": [
+    607
+   ],
+   "circles": [
+    12.192965927669734,
+    12.4905448236847
+   ],
+   "reversals": [
+    4,
+    3
+   ],
+   "max_separation": 5.5556199886938336,
+   "extensions": 0,
+   "edge_seconds": 4.366666666666666
+  },
+  {
+   "environment": 36,
+   "start": 0,
+   "end": 2528,
+   "seconds": 84.26666666666667,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 4,
+   "merge_ticks": [
+    710,
+    1011,
+    1686,
+    2409
+   ],
+   "circles": [
+    3.1331689647492613,
+    3.0446791588103177
+   ],
+   "reversals": [
+    0,
+    2
+   ],
+   "max_separation": 7.7777596488225,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 36,
+   "start": 2828,
+   "end": 3392,
+   "seconds": 18.8,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 1,
+   "merge_ticks": [
+    3371
+   ],
+   "circles": [
+    0.5672894439059268,
+    0.3285906110315031
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 6.993512003092243,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 36,
+   "start": 3692,
+   "end": 5463,
+   "seconds": 59.03333333333333,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 2,
+   "merge_ticks": [
+    4250,
+    4752
+   ],
+   "circles": [
+    1.952907115583685,
+    2.2427842902905466
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 7.023390530643883,
+   "extensions": 0,
+   "edge_seconds": 4.033333333333333
+  },
+  {
+   "environment": 36,
+   "start": 5763,
+   "end": 6909,
+   "seconds": 38.2,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 2,
+   "merge_ticks": [
+    6309,
+    6864
+   ],
+   "circles": [
+    1.4975733134746927,
+    1.1057842521999048
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 7.191633354711344,
+   "extensions": 0,
+   "edge_seconds": 2.3
+  },
+  {
+   "environment": 36,
+   "start": 7209,
+   "end": 8345,
+   "seconds": 37.86666666666667,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 2,
+   "merge_ticks": [
+    7757,
+    8329
+   ],
+   "circles": [
+    1.083736932796039,
+    1.3878499672259952
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 6.4992377276619475,
+   "extensions": 0,
+   "edge_seconds": 3.8666666666666667
+  },
+  {
+   "environment": 36,
+   "start": 8645,
+   "end": 8999,
+   "seconds": 11.8,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    0.33328716294129,
+    0.12996795105762451
+   ],
+   "reversals": [
+    0,
+    0
+   ],
+   "max_separation": 7.954864107155003,
+   "extensions": 0,
+   "edge_seconds": 2.8666666666666667
+  },
+  {
+   "environment": 37,
+   "start": 0,
+   "end": 2549,
+   "seconds": 84.96666666666667,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 4,
+   "merge_ticks": [
+    719,
+    1039,
+    1710,
+    2447
+   ],
+   "circles": [
+    3.197289262857525,
+    3.1822850068528044
+   ],
+   "reversals": [
+    3,
+    1
+   ],
+   "max_separation": 6.5326482506163215,
+   "extensions": 0,
+   "edge_seconds": 3.0666666666666664
+  },
+  {
+   "environment": 37,
+   "start": 2849,
+   "end": 4280,
+   "seconds": 47.7,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 1,
+   "merge_ticks": [
+    4242
+   ],
+   "circles": [
+    0.9648140806452422,
+    1.2766418896337184
+   ],
+   "reversals": [
+    0,
+    1
+   ],
+   "max_separation": 6.145746799822701,
+   "extensions": 0,
+   "edge_seconds": 2.933333333333333
+  },
+  {
+   "environment": 37,
+   "start": 4580,
+   "end": 5724,
+   "seconds": 38.13333333333333,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 2,
+   "merge_ticks": [
+    5094,
+    5623
+   ],
+   "circles": [
+    1.3360873027100628,
+    1.0991036441727153
+   ],
+   "reversals": [
+    1,
+    2
+   ],
+   "max_separation": 6.801170317676149,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 37,
+   "start": 6024,
+   "end": 6598,
+   "seconds": 19.133333333333333,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    0.2287162837294778,
+    0.5863195651894348
+   ],
+   "reversals": [
+    0,
+    0
+   ],
+   "max_separation": 4.992955530928489,
+   "extensions": 0,
+   "edge_seconds": 1.4
+  },
+  {
+   "environment": 37,
+   "start": 6898,
+   "end": 8999,
+   "seconds": 70.03333333333333,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 2,
+   "merge_ticks": [
+    7545,
+    8613
+   ],
+   "circles": [
+    2.374580227643039,
+    2.726265757315106
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 6.865741637865259,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 38,
+   "start": 0,
+   "end": 8144,
+   "seconds": 271.46666666666664,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 9,
+   "merge_ticks": [
+    657,
+    1124,
+    2283,
+    2944,
+    3699,
+    5853,
+    6543,
+    7294,
+    8047
+   ],
+   "circles": [
+    10.766067161830849,
+    10.774962800205873
+   ],
+   "reversals": [
+    0,
+    4
+   ],
+   "max_separation": 8.892912603662976,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 38,
+   "start": 8444,
+   "end": 8923,
+   "seconds": 15.966666666666667,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 1,
+   "merge_ticks": [
+    8862
+   ],
+   "circles": [
+    0.33633505896741744,
+    0.19349197365134654
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 6.296470203360985,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 39,
+   "start": 0,
+   "end": 4827,
+   "seconds": 160.9,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 6,
+   "merge_ticks": [
+    155,
+    1953,
+    2626,
+    3379,
+    4097,
+    4807
+   ],
+   "circles": [
+    6.5519175491796116,
+    6.828552353123653
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 1.7604496245765069,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 39,
+   "start": 5127,
+   "end": 7303,
+   "seconds": 72.53333333333333,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 3,
+   "merge_ticks": [
+    5824,
+    6477,
+    7245
+   ],
+   "circles": [
+    2.518021485748421,
+    2.5415968702516003
+   ],
+   "reversals": [
+    0,
+    2
+   ],
+   "max_separation": 6.090352749512933,
+   "extensions": 0,
+   "edge_seconds": 2.1333333333333333
+  },
+  {
+   "environment": 39,
+   "start": 7603,
+   "end": 8999,
+   "seconds": 46.53333333333333,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 2,
+   "merge_ticks": [
+    8185,
+    8526
+   ],
+   "circles": [
+    1.559495504926065,
+    1.5801783802067346
+   ],
+   "reversals": [
+    2,
+    2
+   ],
+   "max_separation": 7.682890597531507,
+   "extensions": 0,
+   "edge_seconds": 4.933333333333334
+  },
+  {
+   "environment": 40,
+   "start": 0,
+   "end": 1825,
+   "seconds": 60.833333333333336,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 3,
+   "merge_ticks": [
+    589,
+    1086,
+    1792
+   ],
+   "circles": [
+    2.031238760625022,
+    2.104540047233636
+   ],
+   "reversals": [
+    2,
+    1
+   ],
+   "max_separation": 8.787550312131977,
+   "extensions": 0,
+   "edge_seconds": 3.8333333333333335
+  },
+  {
+   "environment": 40,
+   "start": 2125,
+   "end": 3247,
+   "seconds": 37.4,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 2,
+   "merge_ticks": [
+    2623,
+    3167
+   ],
+   "circles": [
+    1.3762998137755404,
+    1.1284961490100127
+   ],
+   "reversals": [
+    1,
+    2
+   ],
+   "max_separation": 6.919078713891728,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 40,
+   "start": 3547,
+   "end": 8999,
+   "seconds": 181.73333333333332,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 5,
+   "merge_ticks": [
+    4098,
+    5127,
+    6842,
+    7540,
+    8260
+   ],
+   "circles": [
+    6.7967764917209745,
+    6.909291260392465
+   ],
+   "reversals": [
+    2,
+    4
+   ],
+   "max_separation": 7.3787937664432075,
+   "extensions": 1,
+   "edge_seconds": 1.0333333333333332
+  },
+  {
+   "environment": 41,
+   "start": 0,
+   "end": 2516,
+   "seconds": 83.86666666666666,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 4,
+   "merge_ticks": [
+    777,
+    1093,
+    1710,
+    2448
+   ],
+   "circles": [
+    2.9952395175220974,
+    3.02463058043057
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 9.989835957842097,
+   "extensions": 0,
+   "edge_seconds": 3.5
+  },
+  {
+   "environment": 41,
+   "start": 2816,
+   "end": 3459,
+   "seconds": 21.433333333333334,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 1,
+   "merge_ticks": [
+    3419
+   ],
+   "circles": [
+    0.4221203756135035,
+    0.47685846025937045
+   ],
+   "reversals": [
+    0,
+    0
+   ],
+   "max_separation": 7.45259989425385,
+   "extensions": 0,
+   "edge_seconds": 5.0
+  },
+  {
+   "environment": 41,
+   "start": 3759,
+   "end": 8999,
+   "seconds": 174.66666666666666,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 6,
+   "merge_ticks": [
+    4357,
+    4910,
+    5633,
+    6364,
+    8135,
+    8864
+   ],
+   "circles": [
+    7.054302551315062,
+    6.855887680873933
+   ],
+   "reversals": [
+    3,
+    1
+   ],
+   "max_separation": 7.419370204203502,
+   "extensions": 0,
+   "edge_seconds": 3.2
+  },
+  {
+   "environment": 42,
+   "start": 0,
+   "end": 8999,
+   "seconds": 299.96666666666664,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 7,
+   "merge_ticks": [
+    957,
+    2076,
+    2757,
+    6358,
+    7054,
+    7791,
+    8535
+   ],
+   "circles": [
+    12.021301720785932,
+    11.815616493428278
+   ],
+   "reversals": [
+    1,
+    4
+   ],
+   "max_separation": 8.131461411388486,
+   "extensions": 0,
+   "edge_seconds": 3.966666666666667
+  },
+  {
+   "environment": 43,
+   "start": 0,
+   "end": 6117,
+   "seconds": 203.9,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 6,
+   "merge_ticks": [
+    647,
+    1383,
+    3860,
+    4551,
+    5254,
+    6020
+   ],
+   "circles": [
+    7.790513767316543,
+    7.692189399664671
+   ],
+   "reversals": [
+    5,
+    1
+   ],
+   "max_separation": 10.980290651904674,
+   "extensions": 1,
+   "edge_seconds": 7.766666666666667
+  },
+  {
+   "environment": 43,
+   "start": 6417,
+   "end": 8999,
+   "seconds": 86.06666666666666,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 2,
+   "merge_ticks": [
+    6954,
+    8678
+   ],
+   "circles": [
+    3.38334240159282,
+    3.264006854234173
+   ],
+   "reversals": [
+    3,
+    1
+   ],
+   "max_separation": 4.948541736747979,
+   "extensions": 0,
+   "edge_seconds": 1.7
+  },
+  {
+   "environment": 44,
+   "start": 0,
+   "end": 4277,
+   "seconds": 142.56666666666666,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 4,
+   "merge_ticks": [
+    2023,
+    2700,
+    3455,
+    4210
+   ],
+   "circles": [
+    4.5255491687787535,
+    4.528939067554822
+   ],
+   "reversals": [
+    2,
+    0
+   ],
+   "max_separation": 9.26354854572329,
+   "extensions": 0,
+   "edge_seconds": 4.133333333333333
+  },
+  {
+   "environment": 44,
+   "start": 4577,
+   "end": 6901,
+   "seconds": 77.46666666666667,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 1,
+   "merge_ticks": [
+    6205
+   ],
+   "circles": [
+    2.151071090409302,
+    2.1738206291508355
+   ],
+   "reversals": [
+    0,
+    2
+   ],
+   "max_separation": 4.961017974174184,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 44,
+   "start": 7201,
+   "end": 7826,
+   "seconds": 20.833333333333332,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    0.6143579091327864,
+    0.4065384753324765
+   ],
+   "reversals": [
+    2,
+    2
+   ],
+   "max_separation": 6.583190636307836,
+   "extensions": 0,
+   "edge_seconds": 6.866666666666666
+  },
+  {
+   "environment": 44,
+   "start": 8126,
+   "end": 8999,
+   "seconds": 29.099999999999998,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 1,
+   "merge_ticks": [
+    8746
+   ],
+   "circles": [
+    0.802212396425186,
+    1.0586598932583373
+   ],
+   "reversals": [
+    1,
+    2
+   ],
+   "max_separation": 6.586035877659143,
+   "extensions": 0,
+   "edge_seconds": 4.3
+  },
+  {
+   "environment": 45,
+   "start": 0,
+   "end": 2106,
+   "seconds": 70.2,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Jujak",
+   "victim_index": 0,
+   "merges": 3,
+   "merge_ticks": [
+    655,
+    1468,
+    2022
+   ],
+   "circles": [
+    2.0371619006732575,
+    2.088344909801628
+   ],
+   "reversals": [
+    3,
+    1
+   ],
+   "max_separation": 11.090004440680746,
+   "extensions": 1,
+   "edge_seconds": 6.1
+  },
+  {
+   "environment": 45,
+   "start": 2406,
+   "end": 3565,
+   "seconds": 38.63333333333333,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 2,
+   "merge_ticks": [
+    2972,
+    3449
+   ],
+   "circles": [
+    1.2365529291012272,
+    1.1138072959629648
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 7.882768494222902,
+   "extensions": 0,
+   "edge_seconds": 7.266666666666667
+  },
+  {
+   "environment": 45,
+   "start": 3865,
+   "end": 8828,
+   "seconds": 165.43333333333334,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 5,
+   "merge_ticks": [
+    5807,
+    6479,
+    7238,
+    7980,
+    8722
+   ],
+   "circles": [
+    5.490963319488077,
+    5.41357515124409
+   ],
+   "reversals": [
+    1,
+    2
+   ],
+   "max_separation": 5.4887549675106975,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 46,
+   "start": 0,
+   "end": 2302,
+   "seconds": 76.73333333333333,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 4,
+   "merge_ticks": [
+    544,
+    826,
+    1482,
+    2221
+   ],
+   "circles": [
+    2.8137204101398385,
+    2.658611367548296
+   ],
+   "reversals": [
+    2,
+    2
+   ],
+   "max_separation": 9.548206661596495,
+   "extensions": 0,
+   "edge_seconds": 0.7666666666666666
+  },
+  {
+   "environment": 46,
+   "start": 2602,
+   "end": 3235,
+   "seconds": 21.1,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 1,
+   "merge_ticks": [
+    3197
+   ],
+   "circles": [
+    0.5666918023535508,
+    0.433823183791908
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 7.454017788614966,
+   "extensions": 0,
+   "edge_seconds": 1.9
+  },
+  {
+   "environment": 46,
+   "start": 3535,
+   "end": 5877,
+   "seconds": 78.06666666666666,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Jujak",
+   "victim_index": 1,
+   "merges": 4,
+   "merge_ticks": [
+    4075,
+    4364,
+    5027,
+    5772
+   ],
+   "circles": [
+    2.853711015948282,
+    2.984329125123901
+   ],
+   "reversals": [
+    1,
+    1
+   ],
+   "max_separation": 7.07075888788586,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  },
+  {
+   "environment": 46,
+   "start": 6177,
+   "end": 6914,
+   "seconds": 24.566666666666666,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": "Yongma",
+   "victim_index": 0,
+   "merges": 1,
+   "merge_ticks": [
+    6905
+   ],
+   "circles": [
+    0.7813387311937009,
+    0.5694546138728209
+   ],
+   "reversals": [
+    1,
+    0
+   ],
+   "max_separation": 7.802491014351351,
+   "extensions": 0,
+   "edge_seconds": 7.933333333333334
+  },
+  {
+   "environment": 46,
+   "start": 7214,
+   "end": 8999,
+   "seconds": 59.5,
+   "types": [
+    "Yongma",
+    "Jujak"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 0,
+   "merge_ticks": [],
+   "circles": [
+    1.3205991657481417,
+    1.2019232628813363
+   ],
+   "reversals": [
+    0,
+    1
+   ],
+   "max_separation": 7.044663055899355,
+   "extensions": 0,
+   "edge_seconds": 3.933333333333333
+  },
+  {
+   "environment": 47,
+   "start": 0,
+   "end": 7079,
+   "seconds": 235.96666666666667,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": "Yongma",
+   "victim_index": 1,
+   "merges": 6,
+   "merge_ticks": [
+    1631,
+    3353,
+    4078,
+    4837,
+    5593,
+    6340
+   ],
+   "circles": [
+    8.402716675875201,
+    8.684148397564332
+   ],
+   "reversals": [
+    3,
+    2
+   ],
+   "max_separation": 6.86482473284507,
+   "extensions": 0,
+   "edge_seconds": 3.6666666666666665
+  },
+  {
+   "environment": 47,
+   "start": 7379,
+   "end": 8999,
+   "seconds": 54.0,
+   "types": [
+    "Jujak",
+    "Yongma"
+   ],
+   "victim": null,
+   "victim_index": null,
+   "merges": 2,
+   "merge_ticks": [
+    7774,
+    8834
+   ],
+   "circles": [
+    1.8699224421157719,
+    2.1286692841875126
+   ],
+   "reversals": [
+    3,
+    1
+   ],
+   "max_separation": 5.924989689442091,
+   "extensions": 0,
+   "edge_seconds": 0.0
+  }
+ ]
+}

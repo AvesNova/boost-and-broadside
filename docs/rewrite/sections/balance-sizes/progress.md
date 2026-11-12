@@ -322,3 +322,73 @@ Round 7 (`round7/sizes.{json,md}`, 512 games, E v T):
   Js x0.75) with crowd reducers from round 2: Yongma engine down (round 2: x1.5 gave -0.034
   in the duel and +0.033 at 5v5, so less engine should help the duel and cool the crowds),
   Jujak nose frequency up, and Yongma bullet life down.
+
+## 20:25-20:28 KST: round 8 (crowd reducers on the B base): B does not reach the band
+
+`round8/sizes.{json,md}`, 512 games, E v T:
+
+| B base (J1.5, Ys x0.35, Yd x1.4, Js x0.75) plus | 1v1 | 2v2 | 5v5 | 10v10 | Worst |
+|---|---|---|---|---|---|
+| nothing | 0.47 | 0.61 | 0.80 | 0.80 | 0.30 |
+| **Y bullet life x0.85** | **0.45** | **0.56** | **0.73** | **0.72** | **0.23** |
+| J nose frequency x1.3 | 0.38 | 0.53 | 0.75 | 0.77 | 0.27 |
+| Y engine x0.75 | 0.26 | 0.49 | 0.57 | 0.61 | 0.24 |
+| Y engine x0.75, J nose x1.3 | 0.21 | 0.42 | 0.56 | 0.51 | 0.29 |
+| Y engine x0.6 | 0.21 | 0.35 | 0.41 | 0.39 | 0.29 |
+| Y shield x0.3, Y engine x0.75 | 0.19 | 0.38 | 0.48 | 0.48 | 0.31 |
+| Y engine x0.5 | 0.18 | 0.30 | 0.25 | 0.18 | 0.32 |
+
+- Less Yongma engine cools the crowds, but on this base it **also costs the duel** (0.47
+  to 0.26 at x0.75). That is the opposite of round 2's sign on the frozen card: there the
+  Yongma lost the turn fight anyway, and here engine power is its sustained turn margin.
+- **No B variant gets within 0.42-0.58 at every size.** The best, B with Y bullet life
+  x0.85, is 0.45 / 0.56 / 0.73 / 0.72. With the sustained turns at parity, 1v1 needs the
+  Yongma's damage up and the Jujak's shield down, and those levers also win the crowds.
+- **Conclusion (with this agent):** a duel goes to the better sustained turner. A card
+  balanced from 1v1 to 10v10 needs the sustained turns at parity *and* the toughness gap
+  closed (card A: J 0.232 v Y 0.241, Yongma shield 142 to 71). Keeping Jujak's sustained
+  edge (B: 0.242 v 0.241, essentially parity already) leaves the crowds to the Yongma
+  (0.72-0.73). An archetype-true card at every size needs the energy fighter's duel tool
+  (extend and return at speed) to work in the agent. Round 1 showed the stored extend
+  element loses badly in teams, so that needs a duel-aware doctrine (code), not card
+  tuning.
+- Final measurement (running 20:28, ETA 20:55 (worst 21:10)): frozen, A and B at 1024
+  games, 1v1 to 20v20, every lineup, against r9.
+
+## 20:28-20:44 KST: final measurement (`final/`): frozen, candidate A and the best B
+
+1024 games a size and lineup (10v10 512, 20v20 256), 300 s, flown by r9. Cells give E v T
+score / kill share; JJ and YY are the mirrors' mutual head-on kill share and life:
+
+| Card | 1v1 | 2v2 | 5v5 | 10v10 | 20v20 |
+|---|---|---|---|---|---|
+| frozen | **0.01** / 0.186; JJ 0.80, 156 s; YY 0.32, **927 s** | 0.37 / 0.464 | 0.54 / 0.505 | 0.49 / 0.493 | **0.19** / 0.441 |
+| **A** (J induced x1.6, Y shield x0.5, Y bullet life x0.85) | **0.50** / 0.473; JJ 0.76, 144 s; YY 0.51, 207 s | **0.47** / 0.492 | **0.57** / 0.507 | **0.47** / 0.493 | **0.12** / 0.429 |
+| B (J induced x1.5, J shield x0.75, Y shield x0.35, Y damage x1.4, Y bullet life x0.85) | 0.43 / 0.461; JJ 0.78, 110 s; YY 0.65, 130 s | 0.57 / 0.512 | 0.76 / 0.532 | 0.75 / 0.527 | 0.27 / 0.470 |
+
+SE: ±0.01 (1v1), ±0.015 (2v2, 5v5), ±0.02 (10v10), ±0.03 (20v20). Strength against r9
+(5v5, mixed / reversed): frozen 0.50 / 0.51, A 0.49 / 0.51, B 0.49 / 0.47.
+
+E v T pace and shape (self-play):
+
+| Size | Card | Kills/min/ship | Life s | Trades | Kills m / o / f / t | Merges a kill mean / median / first-pass / p90 | Circles a ship |
+|---|---|---|---|---|---|---|---|
+| 1v1 | frozen | 0.33 | 172 | 0.00 | 0.15 / 0.12 / 0.42 / 0.31 | 2.9 / 3 / 0.23 / 6 | 2.3 |
+| 1v1 | A | 0.26 | 225 | 0.00 | 0.43 / 0.50 / 0.07 / 0.00 | 2.6 / 2 / 0.44 / 6 | 2.3 |
+| 1v1 | B | 0.49 | 111 | 0.02 | 0.59 / 0.33 / 0.08 / 0.00 | 1.2 / 1 / 0.79 / 3 | 1.1 |
+| 5v5 | frozen | 0.51 | 109 | 0.04 | 0.07 / 0.16 / 0.54 / 0.24 | 0.64 / 0 / 0.86 / 2 | 1.1 |
+| 5v5 | A | 0.55 | 99 | 0.05 | 0.08 / 0.19 / 0.55 / 0.18 | 0.35 / 0 / 0.95 / 1 | 0.8 |
+| 5v5 | B | 0.63 | 85 | 0.07 | 0.13 / 0.23 / 0.51 / 0.14 | 0.25 / 0 / 0.98 / 1 | 0.6 |
+| 20v20 | A | 0.37 | 152 | 0.13 | 0.06 / 0.20 / 0.51 / 0.23 | 0.34 / 0 / 0.94 / 1 | 0.9 |
+
+- **A holds 0.47-0.57 from 1v1 to 10v10**, with no strength cost, pace in band, and the
+  Yongma mirror's stalemate gone (927 s to 207 s). Its costs: the inverted sustained turn,
+  jousting duels (mixed 1v1 0.43 mutual, JJ 0.76), and fewer merges a kill in crowds
+  (5v5 0.35).
+- **20v20 fails on every card**, frozen included: Yongma's kill share is 0.43-0.47, a
+  0.12-0.27 score at ~70 kills a game. Something about the 20v20 game (the arena twice
+  as wide, longer approaches, or the agent's view of 40 ships) favours Jujak independently
+  of the card. Not diagnosed; 50v50 not run.
+- **Candidate A is saved as a play map**: `src/bnb/game/maps/balance-a.json` (the real-scale
+  deathmatch with A's card fields as the map's tuning; the ship files and the play default
+  stay the frozen card). Launch: `bnb play --preset balance-a`.
