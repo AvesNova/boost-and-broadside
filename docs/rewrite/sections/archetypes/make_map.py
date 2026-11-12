@@ -3,7 +3,7 @@ deathmatch game on the real-scale set, with the candidate's Yongma and Jujak car
 as the map's card tuning (`bnb.play.maps`; the ship files and the play default untouched).
 
     PYTHONPATH=src:. uv run --no-sync --active python \
-        docs/rewrite/sections/tank-armour/make_map.py round1/candidates.json 1 armour-x
+        docs/rewrite/sections/archetypes/make_map.py round1/candidates.json 1 armour-x
     bnb play --preset armour-x
 """
 
