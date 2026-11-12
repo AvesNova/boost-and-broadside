@@ -1,0 +1,78 @@
+## 1v1: 27 jobs, B 8192, 01:38 KST
+W1112 16:38:56.190000 27021 /workspace/arch/venv/lib/python3.14/site-packages/torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+  batch 1/2 130 s; ETA 01:42 KST
+  batch 2/2 172 s; ETA 01:41 KST
+1v1 scout v brawler (M), S vision x1.15, B vision x0.9 dmg x1.1, kit2   energy v turn v c0: score 0.621 ± 0.014  kills m/o/f/t 0.30 / 0.60 / 0.09 / 0.00  life 269 s  kpm/ship 0.22  trades 0.01
+1v1 scout v brawler (M), S vision x1.15, B vision x0.9 dmg x1.1, kit2     turn mirror v c0: score 0.520 ± 0.014  kills m/o/f/t 0.35 / 0.52 / 0.13 / 0.00  life 287 s  kpm/ship 0.20  trades 0.01
+1v1 scout v brawler (M), S vision x1.15, B vision x0.9 dmg x1.1, kit2   energy mirror v c0: score 0.483 ± 0.012  kills m/o/f/t 0.45 / 0.52 / 0.03 / 0.00  life 330 s  kpm/ship 0.18  trades 0.00
+1v1 scout v brawler (M), S vision x1.1, B vision x0.9 dmg x1.15, kit2   energy v turn v c1: score 0.653 ± 0.013  kills m/o/f/t 0.31 / 0.60 / 0.10 / 0.00  life 270 s  kpm/ship 0.21  trades 0.00
+1v1 scout v brawler (M), S vision x1.1, B vision x0.9 dmg x1.15, kit2     turn mirror v c1: score 0.494 ± 0.015  kills m/o/f/t 0.35 / 0.49 / 0.15 / 0.00  life 274 s  kpm/ship 0.21  trades 0.00
+1v1 scout v brawler (M), S vision x1.1, B vision x0.9 dmg x1.15, kit2   energy mirror v c1: score 0.498 ± 0.012  kills m/o/f/t 0.43 / 0.54 / 0.03 / 0.00  life 332 s  kpm/ship 0.18  trades 0.00
+1v1 scout v brawler (M), S vision x1.05, B vision x0.9 dmg x1.1, kit2   energy v turn v c2: score 0.582 ± 0.014  kills m/o/f/t 0.30 / 0.59 / 0.12 / 0.00  life 270 s  kpm/ship 0.21  trades 0.00
+1v1 scout v brawler (M), S vision x1.05, B vision x0.9 dmg x1.1, kit2     turn mirror v c2: score 0.474 ± 0.014  kills m/o/f/t 0.35 / 0.49 / 0.16 / 0.00  life 289 s  kpm/ship 0.20  trades 0.00
+1v1 scout v brawler (M), S vision x1.05, B vision x0.9 dmg x1.1, kit2   energy mirror v c2: score 0.492 ± 0.013  kills m/o/f/t 0.38 / 0.59 / 0.04 / 0.00  life 366 s  kpm/ship 0.16  trades 0.00
+1v1 scout v brawler (M), S vision x1.1, B vision x0.95 dmg x1.1, kit2   energy v turn v c3: score 0.572 ± 0.014  kills m/o/f/t 0.37 / 0.55 / 0.08 / 0.00  life 272 s  kpm/ship 0.21  trades 0.00
+1v1 scout v brawler (M), S vision x1.1, B vision x0.95 dmg x1.1, kit2     turn mirror v c3: score 0.478 ± 0.015  kills m/o/f/t 0.36 / 0.52 / 0.12 / 0.00  life 263 s  kpm/ship 0.22  trades 0.01
+1v1 scout v brawler (M), S vision x1.1, B vision x0.95 dmg x1.1, kit2   energy mirror v c3: score 0.505 ± 0.014  kills m/o/f/t 0.38 / 0.58 / 0.04 / 0.00  life 315 s  kpm/ship 0.18  trades 0.00
+1v1 sniper v shotgun (M), sniper induced x0.9 dmg x1, kit2   energy v turn v c4: score 0.739 ± 0.014  kills m/o/f/t 0.28 / 0.65 / 0.06 / 0.00  life 250 s  kpm/ship 0.23  trades 0.00
+1v1 sniper v shotgun (M), sniper induced x0.9 dmg x1, kit2     turn mirror v c4: score 0.483 ± 0.012  kills m/o/f/t 0.33 / 0.59 / 0.08 / 0.00  life 340 s  kpm/ship 0.17  trades 0.00
+1v1 sniper v shotgun (M), sniper induced x0.9 dmg x1, kit2   energy mirror v c4: score 0.507 ± 0.014  kills m/o/f/t 0.43 / 0.47 / 0.09 / 0.00  life 290 s  kpm/ship 0.20  trades 0.00
+1v1 sniper v shotgun (M), sniper induced x0.95 dmg x1, kit2   energy v turn v c5: score 0.546 ± 0.013  kills m/o/f/t 0.38 / 0.54 / 0.08 / 0.00  life 313 s  kpm/ship 0.19  trades 0.00
+1v1 sniper v shotgun (M), sniper induced x0.95 dmg x1, kit2     turn mirror v c5: score 0.487 ± 0.012  kills m/o/f/t 0.38 / 0.55 / 0.06 / 0.00  life 342 s  kpm/ship 0.17  trades 0.00
+1v1 sniper v shotgun (M), sniper induced x0.95 dmg x1, kit2   energy mirror v c5: score 0.520 ± 0.014  kills m/o/f/t 0.43 / 0.48 / 0.09 / 0.00  life 265 s  kpm/ship 0.22  trades 0.00
+1v1 sniper v shotgun (M), sniper induced x0.95 dmg x0.95, kit2   energy v turn v c6: score 0.498 ± 0.013  kills m/o/f/t 0.31 / 0.59 / 0.09 / 0.00  life 326 s  kpm/ship 0.18  trades 0.00
+1v1 sniper v shotgun (M), sniper induced x0.95 dmg x0.95, kit2     turn mirror v c6: score 0.486 ± 0.013  kills m/o/f/t 0.34 / 0.60 / 0.06 / 0.00  life 359 s  kpm/ship 0.16  trades 0.00
+1v1 sniper v shotgun (M), sniper induced x0.95 dmg x0.95, kit2   energy mirror v c6: score 0.497 ± 0.013  kills m/o/f/t 0.40 / 0.51 / 0.09 / 0.00  life 287 s  kpm/ship 0.20  trades 0.01
+1v1 slasher v dogfighter (M), S induced x0.8 shield x0.45, kit   energy v turn v c7: score 0.616 ± 0.016  kills m/o/f/t 0.18 / 0.68 / 0.14 / 0.00  life 267 s  kpm/ship 0.22  trades 0.00
+1v1 slasher v dogfighter (M), S induced x0.8 shield x0.45, kit     turn mirror v c7: score 0.470 ± 0.014  kills m/o/f/t 0.35 / 0.54 / 0.11 / 0.00  life 273 s  kpm/ship 0.21  trades 0.01
+1v1 slasher v dogfighter (M), S induced x0.8 shield x0.45, kit   energy mirror v c7: score 0.497 ± 0.015  kills m/o/f/t 0.39 / 0.41 / 0.20 / 0.00  life 306 s  kpm/ship 0.19  trades 0.02
+1v1 slasher v dogfighter (M), S induced x0.85 shield x0.5, kit   energy v turn v c8: score 0.567 ± 0.016  kills m/o/f/t 0.21 / 0.66 / 0.13 / 0.00  life 257 s  kpm/ship 0.22  trades 0.00
+1v1 slasher v dogfighter (M), S induced x0.85 shield x0.5, kit     turn mirror v c8: score 0.519 ± 0.015  kills m/o/f/t 0.36 / 0.54 / 0.09 / 0.00  life 261 s  kpm/ship 0.22  trades 0.00
+1v1 slasher v dogfighter (M), S induced x0.85 shield x0.5, kit   energy mirror v c8: score 0.482 ± 0.015  kills m/o/f/t 0.38 / 0.42 / 0.21 / 0.00  life 311 s  kpm/ship 0.19  trades 0.02
+## 2v2: 9 jobs, B 8192, 01:41 KST
+2v2 scout v brawler (M), S vision x1.15, B vision x0.9 dmg x1.1, kit2   energy v turn v c0: score 0.639 ± 0.020  kills m/o/f/t 0.08 / 0.32 / 0.51 / 0.09  life 93 s  kpm/ship 0.58  trades 0.02
+2v2 scout v brawler (M), S vision x1.1, B vision x0.9 dmg x1.15, kit2   energy v turn v c1: score 0.555 ± 0.020  kills m/o/f/t 0.08 / 0.33 / 0.50 / 0.09  life 91 s  kpm/ship 0.60  trades 0.02
+2v2 scout v brawler (M), S vision x1.05, B vision x0.9 dmg x1.1, kit2   energy v turn v c2: score 0.571 ± 0.020  kills m/o/f/t 0.07 / 0.34 / 0.50 / 0.09  life 91 s  kpm/ship 0.59  trades 0.02
+2v2 scout v brawler (M), S vision x1.1, B vision x0.95 dmg x1.1, kit2   energy v turn v c3: score 0.555 ± 0.021  kills m/o/f/t 0.08 / 0.34 / 0.49 / 0.09  life 92 s  kpm/ship 0.59  trades 0.02
+2v2 sniper v shotgun (M), sniper induced x0.9 dmg x1, kit2   energy v turn v c4: score 0.623 ± 0.020  kills m/o/f/t 0.08 / 0.33 / 0.49 / 0.10  life 95 s  kpm/ship 0.57  trades 0.02
+2v2 sniper v shotgun (M), sniper induced x0.95 dmg x1, kit2   energy v turn v c5: score 0.557 ± 0.020  kills m/o/f/t 0.08 / 0.33 / 0.49 / 0.09  life 96 s  kpm/ship 0.57  trades 0.02
+2v2 sniper v shotgun (M), sniper induced x0.95 dmg x0.95, kit2   energy v turn v c6: score 0.550 ± 0.020  kills m/o/f/t 0.08 / 0.32 / 0.51 / 0.09  life 97 s  kpm/ship 0.56  trades 0.02
+2v2 slasher v dogfighter (M), S induced x0.8 shield x0.45, kit   energy v turn v c7: score 0.438 ± 0.020  kills m/o/f/t 0.09 / 0.34 / 0.47 / 0.09  life 99 s  kpm/ship 0.55  trades 0.02
+2v2 slasher v dogfighter (M), S induced x0.85 shield x0.5, kit   energy v turn v c8: score 0.537 ± 0.020  kills m/o/f/t 0.08 / 0.36 / 0.48 / 0.08  life 96 s  kpm/ship 0.57  trades 0.02
+## 5v5: 9 jobs, B 4096, 01:43 KST
+  batch 1/2 126 s; ETA 01:47 KST
+  batch 2/2 178 s; ETA 01:46 KST
+5v5 scout v brawler (M), S vision x1.15, B vision x0.9 dmg x1.1, kit2   energy v turn v c0: score 0.653 ± 0.020  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.13  life 82 s  kpm/ship 0.65  trades 0.07
+5v5 scout v brawler (M), S vision x1.1, B vision x0.9 dmg x1.15, kit2   energy v turn v c1: score 0.578 ± 0.021  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.12  life 82 s  kpm/ship 0.66  trades 0.07
+5v5 scout v brawler (M), S vision x1.05, B vision x0.9 dmg x1.1, kit2   energy v turn v c2: score 0.521 ± 0.021  kills m/o/f/t 0.06 / 0.28 / 0.54 / 0.12  life 83 s  kpm/ship 0.65  trades 0.07
+5v5 scout v brawler (M), S vision x1.1, B vision x0.95 dmg x1.1, kit2   energy v turn v c3: score 0.578 ± 0.021  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.12  life 82 s  kpm/ship 0.65  trades 0.07
+5v5 sniper v shotgun (M), sniper induced x0.9 dmg x1, kit2   energy v turn v c4: score 0.626 ± 0.020  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.13  life 86 s  kpm/ship 0.63  trades 0.06
+5v5 sniper v shotgun (M), sniper induced x0.95 dmg x1, kit2   energy v turn v c5: score 0.591 ± 0.020  kills m/o/f/t 0.06 / 0.28 / 0.53 / 0.13  life 86 s  kpm/ship 0.63  trades 0.06
+5v5 sniper v shotgun (M), sniper induced x0.95 dmg x0.95, kit2   energy v turn v c6: score 0.529 ± 0.021  kills m/o/f/t 0.05 / 0.28 / 0.53 / 0.13  life 85 s  kpm/ship 0.63  trades 0.06
+5v5 slasher v dogfighter (M), S induced x0.8 shield x0.45, kit   energy v turn v c7: score 0.637 ± 0.020  kills m/o/f/t 0.07 / 0.30 / 0.50 / 0.13  life 87 s  kpm/ship 0.62  trades 0.06
+5v5 slasher v dogfighter (M), S induced x0.85 shield x0.5, kit   energy v turn v c8: score 0.682 ± 0.020  kills m/o/f/t 0.06 / 0.30 / 0.52 / 0.12  life 86 s  kpm/ship 0.63  trades 0.07
+## 10v10: 9 jobs, B 2048, 01:46 KST
+  batch 1/2 185 s; ETA 01:52 KST
+  batch 2/2 242 s; ETA 01:50 KST
+10v10 scout v brawler (M), S vision x1.15, B vision x0.9 dmg x1.1, kit2   energy v turn v c0: score 0.676 ± 0.028  kills m/o/f/t 0.06 / 0.28 / 0.52 / 0.15  life 91 s  kpm/ship 0.59  trades 0.12
+10v10 scout v brawler (M), S vision x1.1, B vision x0.9 dmg x1.15, kit2   energy v turn v c1: score 0.629 ± 0.029  kills m/o/f/t 0.06 / 0.28 / 0.52 / 0.14  life 90 s  kpm/ship 0.60  trades 0.13
+10v10 scout v brawler (M), S vision x1.05, B vision x0.9 dmg x1.1, kit2   energy v turn v c2: score 0.508 ± 0.030  kills m/o/f/t 0.06 / 0.28 / 0.52 / 0.14  life 90 s  kpm/ship 0.60  trades 0.13
+10v10 scout v brawler (M), S vision x1.1, B vision x0.95 dmg x1.1, kit2   energy v turn v c3: score 0.582 ± 0.029  kills m/o/f/t 0.06 / 0.28 / 0.52 / 0.14  life 90 s  kpm/ship 0.60  trades 0.13
+10v10 sniper v shotgun (M), sniper induced x0.9 dmg x1, kit2   energy v turn v c4: score 0.592 ± 0.029  kills m/o/f/t 0.06 / 0.28 / 0.52 / 0.15  life 95 s  kpm/ship 0.57  trades 0.12
+10v10 sniper v shotgun (M), sniper induced x0.95 dmg x1, kit2   energy v turn v c5: score 0.504 ± 0.030  kills m/o/f/t 0.06 / 0.28 / 0.52 / 0.15  life 95 s  kpm/ship 0.57  trades 0.12
+10v10 sniper v shotgun (M), sniper induced x0.95 dmg x0.95, kit2   energy v turn v c6: score 0.432 ± 0.030  kills m/o/f/t 0.05 / 0.28 / 0.52 / 0.15  life 94 s  kpm/ship 0.58  trades 0.12
+10v10 slasher v dogfighter (M), S induced x0.8 shield x0.45, kit   energy v turn v c7: score 0.777 ± 0.025  kills m/o/f/t 0.06 / 0.30 / 0.50 / 0.14  life 96 s  kpm/ship 0.57  trades 0.11
+10v10 slasher v dogfighter (M), S induced x0.85 shield x0.5, kit   energy v turn v c8: score 0.826 ± 0.022  kills m/o/f/t 0.06 / 0.29 / 0.51 / 0.14  life 94 s  kpm/ship 0.58  trades 0.12
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| scout v brawler (M), S vision x1.15, B vision x0.9 dmg x1.1, kit2 | 0.621 ± 0.014 | 0.639 ± 0.020 | 0.653 ± 0.020 | 0.676 ± 0.028 | 0.176 | 0.06 / 0.29 / 0.53 / 0.13 | 0.07 | 269 / 93 / 82 / 91 | 0.22 / 0.58 / 0.65 / 0.59 | 3.0 |
+| scout v brawler (M), S vision x1.1, B vision x0.9 dmg x1.15, kit2 | 0.653 ± 0.013 | 0.555 ± 0.020 | 0.578 ± 0.021 | 0.629 ± 0.029 | 0.153 | 0.06 / 0.29 / 0.53 / 0.12 | 0.07 | 270 / 91 / 82 / 90 | 0.21 / 0.60 / 0.66 / 0.60 | 2.94 |
+| scout v brawler (M), S vision x1.05, B vision x0.9 dmg x1.1, kit2 | 0.582 ± 0.014 | 0.571 ± 0.020 | 0.521 ± 0.021 | 0.508 ± 0.030 | 0.082 | 0.06 / 0.28 / 0.54 / 0.12 | 0.07 | 270 / 91 / 83 / 90 | 0.21 / 0.59 / 0.65 / 0.60 | 2.84 |
+| scout v brawler (M), S vision x1.1, B vision x0.95 dmg x1.1, kit2 | 0.572 ± 0.014 | 0.555 ± 0.021 | 0.578 ± 0.021 | 0.582 ± 0.029 | 0.082 | 0.06 / 0.29 / 0.53 / 0.12 | 0.07 | 272 / 92 / 82 / 90 | 0.21 / 0.59 / 0.65 / 0.60 | 3.11 |
+| sniper v shotgun (M), sniper induced x0.9 dmg x1, kit2 | 0.739 ± 0.014 | 0.623 ± 0.020 | 0.626 ± 0.020 | 0.592 ± 0.029 | 0.239 | 0.06 / 0.29 / 0.53 / 0.13 | 0.06 | 250 / 95 / 86 / 95 | 0.23 / 0.57 / 0.63 / 0.57 | 2.91 |
+| sniper v shotgun (M), sniper induced x0.95 dmg x1, kit2 | 0.546 ± 0.013 | 0.557 ± 0.020 | 0.591 ± 0.020 | 0.504 ± 0.030 | 0.091 | 0.06 / 0.28 / 0.53 / 0.13 | 0.06 | 313 / 96 / 86 / 95 | 0.19 / 0.57 / 0.63 / 0.57 | 3.16 |
+| sniper v shotgun (M), sniper induced x0.95 dmg x0.95, kit2 | 0.498 ± 0.013 | 0.550 ± 0.020 | 0.529 ± 0.021 | 0.432 ± 0.030 | 0.068 | 0.05 / 0.28 / 0.53 / 0.13 | 0.06 | 326 / 97 / 85 / 94 | 0.18 / 0.56 / 0.63 / 0.58 | 3.2 |
+| slasher v dogfighter (M), S induced x0.8 shield x0.45, kit | 0.616 ± 0.016 | 0.438 ± 0.020 | 0.637 ± 0.020 | 0.777 ± 0.025 | 0.277 | 0.07 / 0.30 / 0.50 / 0.13 | 0.06 | 267 / 99 / 87 / 96 | 0.22 / 0.55 / 0.62 / 0.57 | 2.79 |
+| slasher v dogfighter (M), S induced x0.85 shield x0.5, kit | 0.567 ± 0.016 | 0.537 ± 0.020 | 0.682 ± 0.020 | 0.826 ± 0.022 | 0.326 | 0.06 / 0.30 / 0.52 / 0.12 | 0.07 | 257 / 96 / 86 / 94 | 0.22 / 0.57 / 0.63 / 0.58 | 2.61 |
+
+754 s

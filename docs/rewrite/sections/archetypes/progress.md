@@ -307,3 +307,41 @@ same card (5v5 mixed / reversed), a sanity check that the card does not break th
   slasher 0.70-0.84 in crowds). The kit's x0.9 sight hurts the short-sighted ship most (its
   mirror: 743 s).
 - Strength holds everywhere (0.47-0.54 against r9).
+
+## 01:30-01:43 KST: round 6 (`round6/`): big v small, the armed gunner, the interceptor (kit)
+
+512 games (10v10 256), every ship M + factors + the kit:
+
+| Pair | A v B 1v1 / 2v2 / 5v5 / 10v10 | Duel kills m / o / f / t; life | AA; BB mutual, life |
+|---|---|---|---|
+| big (radius x1.4, dmg x1.4) v small (radius x0.75, dmg x0.85) | 0.57 / 0.50 / 0.49 / 0.47 | 0.32 / 0.54 / 0.14 / 0; 282 s | 0.40, 209 s; 0.17, 502 s |
+| **big (x1.3, x1.3) v small (x0.8, x0.9)** | **0.55 / 0.48 / 0.47 / 0.48** | 0.32 / 0.55 / 0.13 / 0; 277 s | 0.39, 231 s; 0.23, 468 s |
+| big (x1.4, x1.4) v small (x0.8, x0.9) | 0.54 / 0.45 / 0.50 / 0.48 | 0.32 / 0.56 / 0.12 / 0; 270 s | 0.41, 217 s; 0.23, 420 s |
+| big (x1.5, x1.5) v small (x0.75, x0.9) | 0.58 / 0.51 / 0.45 / 0.49 | 254 s | 0.44, 193 s; 0.19, 432 s |
+| big (x1.4, x1.4) v small (x0.75, x0.95) | 0.54 / 0.46 / 0.40 / 0.41 | 269 s | 0.44, 213 s; 0.24, 427 s |
+| armed gunner (dmg x1.0, vision x1.2) v close fighter | 0.52 / 0.58 / 0.59 / 0.54 | 0.24 / 0.67 / 0.09 / 0; 316 s | 0.13, 485 s; 0.22, 393 s |
+| armed gunner (dmg x1.1, vision x1.15) v close fighter | 0.53 / 0.58 / 0.62 / 0.59 | 300 s | 0.16, 449 s; 0.21, 353 s |
+| interceptor (vision x1, dmg x0.8) v brawler | 0.60 / 0.51 / 0.52 / 0.55 | 0.15 / 0.63 / 0.22 / 0; 456 s | 0.15, 482 s; 0.16, 580 s |
+
+- **Big v small holds 0.47-0.58 at every size in every variant**: the size of the target and
+  the weight of the gun trade evenly in duels and in crowds. The small ship's mirror is its
+  one fault (420-500 s: small targets and light guns).
+- The armed gunner's mirrors are the least jousty of all (0.13-0.22) but slow (350-485 s).
+
+## 01:37-01:48 KST: round 7 (`round7/`): the kit at full sight (KIT2: cone f0 0.08, dmg x2.5)
+
+| Pair | A v B 1v1 / 2v2 / 5v5 / 10v10 | Duel life | AA; BB mutual, life |
+|---|---|---|---|
+| **sniper (induced x0.95, dmg x0.95) v shotgun** | **0.50 / 0.55 / 0.53 / 0.43** | 326 s | 0.40, 287 s; 0.34, 359 s |
+| sniper (induced x0.95) v shotgun | 0.55 / 0.56 / 0.59 / 0.50 | 313 s | 0.43, 265 s; 0.38, 342 s |
+| sniper (induced x0.9) v shotgun | 0.74 / 0.62 / 0.63 / 0.59 | 250 s | 0.43, 290 s; 0.33, 340 s |
+| **scout (vision x1.05) v brawler (vision x0.9, dmg x1.1)** | **0.58 / 0.57 / 0.52 / 0.51** | 270 s | 0.38, 366 s; 0.35, 289 s |
+| scout (x1.1) v brawler (x0.95, dmg x1.1) | 0.57 / 0.55 / 0.58 / 0.58 | 272 s | 0.38, 315 s; 0.36, 263 s |
+| scout (x1.15) v brawler (x0.9, dmg x1.1) | 0.62 / 0.64 / 0.65 / 0.68 | 269 s | 0.45, 330 s; 0.35, 287 s |
+| slasher (induced x0.8, shield x0.45) v dogfighter (kit) | 0.62 / 0.44 / 0.64 / 0.78 | 267 s | 0.39, 306 s; 0.35, 273 s |
+
+- **At full sight the kit keeps the mirrors' pace** (263-366 s against 290-743 s at x0.9)
+  with 0.34-0.45 mutual: the sniper v shotgun and scout v brawler pairs now have all three
+  matchups near the band. Sniper = tight spread, 7.5 Hz, damage x2, range x1.4, a slightly
+  better sustained turn; shotgun = spread x3, 30 Hz, damage x0.6, range x0.6.
+- Slasher v dogfighter keeps a 1v1-2v2-10v10 zigzag (0.62 / 0.44 / 0.78): not followed.
