@@ -17,7 +17,7 @@ from bnb.controllers.scripted_defaults import MODE_DEFAULTS, read_real_scale
 from bnb.controllers.scripted_parameters import MODES as SCRIPTED_MODES
 from bnb.controllers.scripted_parameters import pack
 from bnb.game import api
-from bnb.game.modes import phase
+from bnb.game.modes import phase, spawns
 from bnb.game.modes.rules import CLOVER_FIELD_DISTANCE, CLOVER_SPAWN_DISTANCE, PRESETS
 from bnb.game.state import by_team
 from bnb.game.tuning import tuned
@@ -71,8 +71,10 @@ def test_a_wipe_ends_the_match_for_the_team_with_ships_left():
 
 
 def test_played_out_a_match_won_by_its_rule_leaves_the_loser_with_no_ship():
+    """Random play rarely wipes a team that spawns across the map: both teams' areas sit at
+    the centre here (a spawn offset of 0), so the fights come quickly."""
     won = 0
-    for before, events, _ in cases.play(ELIMINATION, batch=16, ticks=400, seed=4):
+    for before, events, _ in cases.play(ELIMINATION, batch=16, ticks=400, seed=4, spawn_offset=0.0):
         living = by_team(before.ships.alive & ~events.died).sum(-1)  # (B, 2) after the tick
         by_rule = events.done & (living == 0).any(-1)
         loser = torch.where(events.result > 0, 1, 0)
@@ -296,3 +298,81 @@ def test_real_scale_elimination_fits_the_real_scale_training_batch():
     rules = api.rules_of(game, pools, 40)
     games = [pool for pool in rules.pools if pool.mode.name == "elimination"]
     assert games and all(pool.respawn_ticks == pool.episode_ticks == 5400 for pool in games)
+
+
+SIDES = PRESETS["real_scale_elimination"]
+
+
+def _side_placement(mode_rules=None, batch=256, seed=11):
+    rules = api.rules_of(SIDES, types=REAL_SCALE)
+    mode_rules = rules.modes[0] if mode_rules is None else mode_rules
+    generator = torch.Generator().manual_seed(seed)
+    angle = 2.0 * math.pi * torch.rand(batch, generator=generator)
+    radius = torch.full((batch,), SIDES.arena_radius)
+    placed = spawns.side_placement(
+        rules,
+        mode_rules,
+        radius,
+        torch.rand(batch, mode_rules.uniform_count(rules.num_ships), generator=generator),
+        torch.cos(angle),
+        torch.sin(angle),
+    )
+    return rules, mode_rules, angle, placed
+
+
+def test_elimination_teams_spawn_in_their_own_areas_on_opposite_sides():
+    rules, mode_rules, angle, placed = _side_placement()
+    offset = rules.spawn_offset * SIDES.arena_radius
+    area = mode_rules.side_area_fraction * SIDES.arena_radius
+    side = torch.tensor([-1.0, 1.0]).repeat_interleave(rules.ships_per_team)
+    centre_x = side * offset * torch.cos(angle)[:, None]
+    centre_y = side * offset * torch.sin(angle)[:, None]
+    from_centre = torch.hypot(placed.x - centre_x, placed.y - centre_y)
+    assert float(from_centre.max()) <= area * (1.0 + 1e-5)
+    assert float(from_centre.max()) > 0.9 * area  # the whole area is used
+    # along the spawn axis team 0 is on the - side and team 1 on the +, apart by the gap
+    along = by_team(placed.x * torch.cos(angle)[:, None] + placed.y * torch.sin(angle)[:, None])
+    assert float(along[:, 0].max()) < -(offset - area) + 1e-2
+    assert float(along[:, 1].min()) > (offset - area) - 1e-2
+
+
+def test_elimination_spawns_face_the_enemy_area_within_the_jitter():
+    rules, mode_rules, angle, placed = _side_placement()
+    side = torch.tensor([-1.0, 1.0]).repeat_interleave(rules.ships_per_team)
+    enemy_x = -side * rules.spawn_offset * SIDES.arena_radius * torch.cos(angle)[:, None]
+    enemy_y = -side * rules.spawn_offset * SIDES.arena_radius * torch.sin(angle)[:, None]
+    to_x, to_y = enemy_x - placed.x, enemy_y - placed.y
+    off = torch.atan2(
+        placed.heading_cos * to_y - placed.heading_sin * to_x,
+        placed.heading_cos * to_x + placed.heading_sin * to_y,
+    ).abs()
+    assert float(off.max()) <= mode_rules.side_heading_jitter + 1e-4
+    assert float(off.max()) > 0.9 * mode_rules.side_heading_jitter
+
+
+def test_elimination_spawns_near_the_edge_leave_room_to_turn():
+    """An area reaching the edge, with every heading allowed: the edge rule turns the
+    outward ones the least that keeps the outward cosine at most d / D."""
+    rules = api.rules_of(SIDES, types=REAL_SCALE)
+    wide = dataclasses.replace(rules.modes[0], side_area_fraction=0.2, side_heading_jitter=math.pi)
+    _, _, _, placed = _side_placement(wide)
+    distance = torch.hypot(placed.x, placed.y)
+    outward = (placed.heading_cos * placed.x + placed.heading_sin * placed.y) / distance
+    room = (SIDES.arena_radius - distance) / rules.spawn_turn_distance
+    assert bool((outward <= room + 1e-4).all())
+    near = room < 1.0
+    assert bool(near.any())
+    assert float((outward - room)[near].max()) > -1e-2  # the bound is reached
+
+
+def test_an_elimination_match_spawns_by_side_and_clover_keeps_its_layout():
+    rules = api.rules_of(SIDES, types=REAL_SCALE)
+    generator = torch.Generator().manual_seed(4)
+    state = api.reset(rules, REAL_SCALE, api.uniforms(rules, 8, generator=generator))
+    shown = api.display(state)
+    x, y = by_team(shown["ships.x"]), by_team(shown["ships.y"])
+    # the teams' mean points are about 2 spawn offsets apart, through the centre
+    gap = torch.hypot(x[:, 0].mean(-1) - x[:, 1].mean(-1), y[:, 0].mean(-1) - y[:, 1].mean(-1))
+    assert float(gap.min()) > 2.0 * (rules.spawn_offset - rules.modes[0].side_area_fraction) * (
+        SIDES.arena_radius
+    )

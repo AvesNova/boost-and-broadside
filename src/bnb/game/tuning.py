@@ -34,6 +34,7 @@ from .rules import LONGEST_BULLET_LIFE, FlightConstants, PoolRules, Rules
 
 NOW, EPISODE = "now", "episode"
 TEAM_DEATHMATCH_GROUP, FRONTLINE_GROUP = "Team deathmatch", "Frontline"
+ELIMINATION_GROUP = "Elimination"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -121,6 +122,26 @@ SETTINGS = (
             ("anchor_distance_max", "respawn distance, farthest", "m", 0.0, 3000.0),
             ("spawn_margin", "spawn margin", "m", 0.0, 500.0),
         )
+    ),
+    _s(
+        "mode.side_area_fraction",
+        ELIMINATION_GROUP,
+        "team spawn area (arena fraction)",
+        "",
+        0.02,
+        0.5,
+        when=EPISODE,
+        modes=("elimination",),
+    ),
+    _s(
+        "mode.side_heading_jitter",
+        ELIMINATION_GROUP,
+        "spawn heading jitter",
+        "rad",
+        0.0,
+        math.pi,
+        when=EPISODE,
+        modes=("elimination",),
     ),
     _s(
         "mode.zone_radius",

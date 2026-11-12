@@ -112,6 +112,17 @@ once never crosses the edge. It is a tunable rule (`rules.spawn_turn_distance`, 
 Frontline's headings and a fixed layout's are not random and keep their own: each points at
 a point inside the arena (a zone, or the centre), and the straight path to it stays inside.
 
+### Elimination, by team side (game version 7)
+
+Each team's area is the disc of `side_area_fraction` (0.15) arena radii around its centre,
+`Rules.spawn_offset` (0.8) arena radii from the map centre along the spawn axis (team 0 on
+the −axis side, team 1 on the +, as the sandbox formation's). Each ship takes a uniform
+point in its team's area (its candidate-0 radius and angle uniforms) and points at the
+enemy area's centre, turned by a uniform angle within `side_heading_jitter` (15°, its
+heading uniform), then turned the least that keeps the edge rule below (the outward
+cosine at most d / D). The match starts once, so there is no respawn rule. A fixed
+layout's spawns (Clover) replace it.
+
 ### Frontline
 
 - **Position:** a uniform point in the disc of radius `0.35 × zone radius` around the
