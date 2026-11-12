@@ -1526,6 +1526,32 @@ def confirm8() -> list[dict]:
 ROUNDS["confirm8"] = confirm8
 
 
+def rate_speed_nose(sf=None, rf=None, rd=1.25, sd=1.0) -> dict:
+    c = rate_speed(1.03, rd, sv=1.04, rate_extra=cone(rf, 12, 8) if rf else None)
+    c["turn"] = merge(c["turn"], {"hit_damage": sd}, cone(sf, 12, 8) if sf else {})
+    c["name"] += (
+        (f", speed cone f0 {sf:g}" if sf else "")
+        + (f", speed dmg x{sd:g}" if sd != 1 else "")
+        + (f", rate cone f0 {rf:g}" if rf else "")
+    )
+    return c
+
+
+def round16() -> list[dict]:
+    """Rate v speed between round 15's arms: the speed fighter's nose (its duel) against its
+    mirror's pace, the rate fighter's softer nose."""
+    return [
+        rate_speed_nose(sf=0.07),
+        rate_speed_nose(sf=0.07, rf=0.09),
+        rate_speed_nose(rf=0.11),
+        rate_speed_nose(sf=0.06, rd=1.35, sd=1.1),
+        rate_speed_nose(sf=0.065, rf=0.09),
+    ]
+
+
+ROUNDS["round16"] = round16
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
