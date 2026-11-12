@@ -178,6 +178,42 @@ against r9m and r9; the duel H (JJ; YY); self-play energy v turn 1v1 / 2v2 / 5v5
   0.25-0.32): **item 3 does not fall out of it**. Round 4 gates the duel extension to the
   mirror, as the duel one-circle is.
 
-## 03:43- KST: round 4 (`round4/`): the duel extension in the mirror only
+## 03:43-03:52 KST: round 4 (`round4/`): the duel extension in the mirror only
 
-512 games, four cards. ETA 03:58 KST (worst 04:08).
+512 games, four cards. "mirror": the duel extension only against the own type
+(`duel_extend_mirror_only`). Worst against r9m; the 5v5 against r9m; E v T 1v1 / 2v2 / 5v5;
+the duel H (JJ; YY):
+
+| Card: candidate | worst v r9m | 5v5 v r9m | E v T 1/2/5 | JJ; YY mutual, H |
+|---|---|---|---|---|
+| D2: r9m | 0.491 | 0.529 / 0.492 | 0.51 / 0.44 / 0.56 | 0.84, 0.09; 0.75, 0.15 |
+| D2: DE 0.4 | 0.518 | 0.537 / 0.518 | 0.43 / 0.45 / 0.53 | 0.64, 0.43; 0.59, 0.85 |
+| D2: DE 0.4 mirror | 0.511 | 0.511 / 0.519 | 0.50 / 0.43 / 0.51 | 0.66, 0.40; 0.58, 0.85 |
+| D2: DE 0.5 mirror | 0.480 | 0.515 / 0.542 | 0.48 / 0.45 / 0.57 | 0.62, 0.46 |
+| D2: DE Y 1.0 / J 0.4 mirror | 0.489 | 0.507 / 0.489 | 0.51 / 0.46 / 0.57 | 0.65, 0.42 |
+| cone: r9m | 0.466 | 0.498 / 0.466 | 0.54 / 0.52 / 0.66 | 0.71, 0.09 |
+| cone: DE 0.4 | 0.509 | 0.552 / 0.530 | 0.50 / 0.49 / 0.66 | 0.55, 0.43 |
+| cone: DE 0.4 mirror | 0.499 | 0.502 / 0.536 | 0.53 / 0.53 / 0.70 | 0.53, 0.44 |
+| cone: DE 0.5 mirror | 0.488 | 0.521 / 0.507 | 0.51 / 0.48 / 0.64 | 0.50, 0.48 |
+| big v small: r9m | 0.475 | 0.475 / 0.488 | 0.59 / 0.55 / 0.52 | 0.62, 0.14 |
+| big v small: DE 0.4 | 0.493 | 0.505 / 0.519 | 0.56 / 0.54 / 0.50 | 0.44, 0.63 |
+| big v small: DE 0.4 mirror | 0.489 | 0.562 / 0.523 | 0.58 / 0.50 / 0.51 | 0.43, 0.62 |
+| big v small: DE Y 1.0 / J 0.4 mirror | 0.507 | 0.547 / 0.507 | 0.60 / 0.52 / 0.52 | 0.43, 0.58 |
+| frozen: r9m | 0.485 | 0.511 / 0.496 | 0.01 / 0.44 / 0.32 | 0.87, 0.22 |
+| frozen: DE 0.4 | 0.535 | 0.542 / 0.552 | 0.31 / 0.40 / 0.30 | 0.78, 0.83 |
+| frozen: DE 0.4 mirror | 0.474 | 0.532 / 0.512 | 0.01 / 0.42 / 0.33 | 0.79, 0.81 |
+| frozen: DE 0.5 mirror | 0.504 | 0.504 / 0.517 | 0.01 / 0.46 / 0.37 | 0.76, 0.91 |
+
+- **In the mirror only, the duel extension leaves the type balance as r9m's** (D2 E v T
+  0.50 / 0.43 / 0.51 against r9m's 0.51 / 0.44 / 0.56; frozen 1v1 0.01) and keeps the duel's
+  gains (the mirrors' H 0.40-0.91, the mutual share down, 1v1 mirrors 0.50-0.59 against r9m).
+  Its 2v2 / 5v5 against r9m is even (0.47-0.56).
+- **The crowd edge of the high Yongma gate came from the cross-type duels**: mirror-only, DE
+  Y 1.0 / J 0.4 is even at 5v5 (0.49-0.55) where round 3's any-type version took 0.58-0.61.
+  A hurt Yongma leaving a Jujak in a crowd wins the crowd, and loses the lone duel (D2 E v T
+  1v1 0.34).
+
+## 03:55- KST: confirm (`confirm/`): 1024 games, 1v1 / 2v2 / 5v5 (10v10 self-play)
+
+r9m, DE 0.4, DE 0.4 mirror, DE 0.5 mirror, DE Y 1.0 / J 0.4 on four cards, against r9m and r9;
+the mirrors at 1v1 and 5v5. ETA 04:30 KST (worst 04:45).

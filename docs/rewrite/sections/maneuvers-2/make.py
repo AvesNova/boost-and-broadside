@@ -131,6 +131,13 @@ ROUNDS = {
         ("DE Y 0.6 / J 0.4 mirror", (dict(de(0.6), **MIRROR), dict(de(0.4), **MIRROR))),
         ("DE Y 1.0 / J 0.4 mirror", (dict(de(1.0), **MIRROR), dict(de(0.4), **MIRROR))),
     ],
+    "confirm": [
+        ("r9m", {}),
+        ("DE 0.4", de(0.4)),
+        ("DE 0.4 mirror", dict(de(0.4), **MIRROR)),
+        ("DE 0.5 mirror", dict(de(0.5), **MIRROR)),
+        ("DE Y 1.0 / J 0.4", (de(1.0), de(0.4))),
+    ],
 }
 
 
