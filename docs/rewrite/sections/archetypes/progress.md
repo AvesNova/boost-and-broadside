@@ -466,3 +466,37 @@ The players beat r9 0.80-0.85 at 5v5 on every one of these cards.
   ship. Its own mirror is the more jousty (0.53). Confirming (`confirm3/`, with both
   doctrines and 20v20).
 - The zoomer zigzags with the fleet size (2v2 and 10v10 to the level ship): not carried.
+
+## 02:28-02:38 KST: screens 3-4 (`screen3/`, `screen4/`): flight-distinct pairs on one hull
+
+Kit2 on both, 512 games, A v B 1v1 / 5v5:
+
+| Pair | A v B | AA; BB mutual, life |
+|---|---|---|
+| jouster (armoured nose f0 0.03 at 20°, dmg x1.2) v turner (induced x0.9) | 0.22 / 0.56 | 0.05, 751 s; 0.39, 346 s |
+| jouster (induced x1.1, dmg x1.5, 20°) v turner | 0.09 / 0.50 | 0.06, 649 s; 0.37, 327 s |
+| jouster (dmg x1.3, cone 0.05 at 30°) v turner | 0.32 / 0.70 | 0.08, 1326 s; 0.37, 316 s |
+| hunter (induced x1.05, vision x1.15, drag x0.9) v turner | 0.35 / 0.54 | 0.47, 314 s; 0.35, 303 s |
+| hunter (induced x1.1, vision x1.35, drag x0.9) v turner | 0.25 / 0.54 | 0.64, 337 s; 0.34, 287 s |
+| hunter (induced x1.05, vision x1.2) v turner (induced x0.95) | 0.19 / 0.43 | 0.48, 330 s; 0.35, 321 s |
+
+- **A sustained-turn gap of 5-10% decides the duel** whatever is set against it: an armoured,
+  harder-hitting nose (0.07-0.32) or the longest sight (0.19-0.35). The crowds stay near even.
+  Under r9 a flight-distinct pair balances in the duel only the D2 way, where the better
+  instantaneous turner bleeds to below the other's sustained turn.
+- An armoured nose makes its own mirror a stalemate (650-1330 s).
+
+## 02:22-02:40 KST: confirm 2 (`confirm2/`): 1024 games, 1v1-20v20
+
+| Pair | Doctrine | A v B 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | AA; BB mutual, life, merges | Duel life | v r9 |
+|---|---|---|---|---|---|
+| big v small (small induced x0.98, f0 0.10) | r9 | 0.54 / 0.49 / 0.47 / 0.43 / **0.36** | 0.37, 234 s, 2.3; 0.36, 335 s, 3.2 | 263 s | 0.49 / 0.50 |
+| the same | CE | 0.49 / 0.49 / 0.47 / 0.44 / 0.43 | 0.31, 273 s; 0.28, 393 s | 274 s | 0.80 / 0.81 |
+| the same | DCL | 0.51 / 0.50 / 0.49 / 0.48 / 0.38 | 0.49, 140 s; 0.60, 184 s | 271 s | 0.82 / 0.81 |
+| **scout (x1.03) v brawler (x0.92, dmg x1.12)** | r9 | **0.56 / 0.56 / 0.55 / 0.54 / 0.55** | 0.36, 328 s, 3.3; 0.35, 276 s, 2.9 | 283 s | 0.47 / 0.50 |
+| armed gunner (dmg x0.85) v close fighter | r9 | 0.52 / 0.54 / 0.52 / 0.44 / 0.47 | 0.17, 511 s; 0.22, 408 s | 317 s | 0.49 / 0.48 |
+
+- The small ship's x0.98 induced drag also helps it in the crowds (10v10 0.50 to 0.43, 20v20
+  0.47 to 0.36): the agility is a lever at every size, not a duel-only one.
+- **Scout v brawler is flat at 0.54-0.56 from 1v1 to 20v20**: one uniform lean to take out.
+  Confirm 4 (running) moves the brawler's damage and the scout's sight.
