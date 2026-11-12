@@ -81,9 +81,10 @@ MERGE_BINS = 16  # merges in an engagement: 0..14, 15 and more
 TURN_BINS = 32  # circles turned by a ship in an engagement, quarter circles: 0..7.75, 8+
 PACE_BINS = 121  # whole seconds 0..119, and 120 or more
 TRADE_WINDOW = 0.5  # s: a death with one on the other team this close is a trade
-# The base card: the ship files' with these factors (the author's 2026-11-12 decision:
-# hit damage x 0.65 restores v5's damage per landed hit).
-BASE_FACTORS = {"hit_damage": 0.65}
+# The base card: the ship files' with these factors. The tuning ran on the files before
+# the freeze with hit damage x 0.65 (the author's 2026-11-12 decision: v5's damage per
+# landed hit); the frozen files carry it, so none now.
+BASE_FACTORS: dict[str, float] = {}
 KST = zoneinfo.ZoneInfo("Asia/Seoul")
 
 
