@@ -57,3 +57,20 @@ records.
   during the first compile: no room for side-by-side runs). Its build phase alone took
   207 s (single-core).
 - 18:18 round 1: A, B, C, BC bc cold side by side at 200 environments.
+- 18:28 round 1's rollout compiles (4-way): `_act` A 617.5 s at 27,291 ops; C 629.9 s
+  (same graph); B and BC 628-631 s at 27,047 ops. **B removes 244 of 27k act ops and is not
+  faster.** `_advance` 26-28 s (3,485 ops), `_resolve` 63-75 s (3,254), `_perceive` 14-16 s
+  (854), the shot tick 11 s (763); the first collect 742-759 s in all.
+- 18:30 C and BC ran out of memory in the first learn (four processes on 7.5 GB usable);
+  relaunched C; BC's relaunch ran out at build (three others held 6.3 GB). From here at
+  most three GPU processes (`plan.sh` chains the rest).
+- **The build phase does not grow with environments.** The aborted 1020-environment run's
+  207 s build was the cold measurement of the ship card's characteristics (two files written
+  09:14 and 09:15 UTC into `~/.cache/boost-and-broadside/characteristics`, the `bnb.cache`
+  disk cache, which the compile caches' reset does not touch); every later run found them
+  there and built in 34 s. So a fresh box pays about 170 s once per card (and the rule set it
+  reads), then never again; `cache.sh` could carry that directory with the compile caches.
+  The cold numbers below exclude it.
+- 18:35 next (the coordinator's list): the act-stage ablations, trace-only op counts first
+  (`ablate.sh eager`: lanes off; PPO one league slot; frontline only), then a real compile of
+  the largest cut to check time against ops.

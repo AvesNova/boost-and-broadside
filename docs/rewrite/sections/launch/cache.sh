@@ -1,5 +1,6 @@
 #!/bin/bash
-# cache.sh export ARCHIVE | import ARCHIVE: the compile caches (inductor and Triton) as one
+# cache.sh export ARCHIVE | import ARCHIVE: the compile caches (inductor and Triton) and bnb's
+# own (`bnb.cache`: the ship card's characteristics) as one
 # zstd tar, with a manifest of what they are valid for: the GPU model, torch, Triton, CUDA
 # and the code's commit. A cache entry is keyed by all of those and by the shapes, so it
 # helps only a box of the same GPU model running the same tree (the import warns on any
@@ -25,7 +26,8 @@ PY
 case "$action" in
   export)
     manifest > $WORKSPACE/cache/manifest.json
-    tar -C $WORKSPACE/cache -I "zstd -T0 -3" -cf "$archive" manifest.json inductor triton
+    mkdir -p "$BNB_CACHE"
+    tar -C $WORKSPACE/cache -I "zstd -T0 -3" -cf "$archive" manifest.json inductor triton bnb
     echo "exported $(du -h "$archive" | cut -f1) to $archive: $(cat $WORKSPACE/cache/manifest.json)"
     ;;
   import)
@@ -37,6 +39,7 @@ case "$action" in
     fi
     mkdir -p "$TORCHINDUCTOR_CACHE_DIR" "$TRITON_CACHE_DIR"
     tar -C $WORKSPACE/cache -I zstd -xf "$archive" inductor triton
+    tar -C $WORKSPACE/cache -I zstd -xf "$archive" bnb 2> /dev/null || true  # older archives lack it
     echo "imported $archive into $WORKSPACE/cache"
     ;;
   *) echo "usage: cache.sh export|import ARCHIVE"; exit 2 ;;
