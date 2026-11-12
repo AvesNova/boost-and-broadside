@@ -203,6 +203,35 @@ def test_denying_turns_off_the_line_of_a_target_whose_nose_is_on_the_ship():
     )
 
 
+def test_a_crowd_gated_deny_denies_in_a_duel_only():
+    """The same nose-on target with a second enemy near it: the deny gated by the crowd
+    (`deny_in_crowd`) turns off the line alone with the target, and flies as the agent
+    without a doctrine when the other enemy is within the crowd's range."""
+    doctrine = Doctrine(
+        strength=1.0,
+        in_advantage=ALWAYS,
+        deny=1.0,
+        deny_angle=0.6,
+        deny_in_gun_range=Logistic(3.0, 0.1, False),
+        deny_crowd_in_gun_range=Logistic(1.5, 0.1, False),
+        deny_in_crowd=Logistic(0.5, 0.1, False),
+    )
+    alone = _duel(AGILE, STIFF, 0.0, 2.0, enemy_heading=math.pi - 0.02)
+    assert float(_decide(alone, _every_type(doctrine)).stick[0, 0, 0]) < 0.1
+    gun_range = value("gun_range", AGILE)
+    target = ship(x=2.0 * gun_range, heading=math.pi - 0.02, ship_type=STIFF, team_relative=1)
+    for other_gun_ranges, gated in ((2.6, True), (6.0, False)):
+        other = ship(
+            x=other_gun_ranges * gun_range, y=0.3 * gun_range, ship_type=STIFF, team_relative=1
+        )
+        crowded = observation([ship(ship_type=AGILE), absent(AGILE, 0)], [target, other])
+        deny = _decide(crowded, _every_type(doctrine))
+        if gated:  # the other enemy 0.6 gun ranges from the target: no denial
+            torch.testing.assert_close(_decide(crowded).stick, deny.stick, atol=0.02, rtol=0.0)
+        else:  # far from both: the duel's denial
+            assert float(deny.stick[0, 0, 0]) < 0.1
+
+
 def test_each_ship_flies_its_own_types_doctrine():
     """A team of the two types: a doctrine on one type moves that ship only."""
     distance = 0.3 * value("gun_range", STIFF)

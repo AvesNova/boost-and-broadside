@@ -23,7 +23,10 @@ and not another. Within it:
 - **Deny**: when the target's nose is on the ship (`deny_in_stall_angle`, its angle off the
   target's nose in the target's stall angles) within `deny_in_gun_range`, turn
   `deny_angle` off the line to it, to the side it is already off, so the pass is not a
-  mutual head-on.
+  mutual head-on. `deny_in_crowd` gates it to duels: a falling logistic in the crowd, the
+  soft count of the other known enemies near the ship or near its target (each enemy's
+  nearness a falling logistic in its distance, `deny_crowd_in_gun_range`, from the nearer
+  of the two); its default centre is far above any count, so the gate is open.
 
 Each element's weight (`extend`, `slash`, `bleed`, `lag`, `deny`) is 0 by default, as is
 `strength`: the default doctrine is off. A `table` packs one doctrine per ship type (T, D),
@@ -72,6 +75,8 @@ class Doctrine:
     deny_in_stall_angle: Logistic = Logistic(1.0, 0.2, False)
     deny_in_gun_range: Logistic = Logistic(3.0, 0.2, False)
     deny_angle: float = 0.5  # rad
+    deny_crowd_in_gun_range: Logistic = Logistic(2.0, 0.1, False)
+    deny_in_crowd: Logistic = Logistic(1.0e4, 0.2, False)
 
 
 NAMES = tuple(field.name for field in dataclasses.fields(Doctrine))
@@ -92,6 +97,8 @@ SCALE_FLOORS = {
     "bleed_in_stall_angle": 0.158,
     "deny_in_stall_angle": 0.158,
     "deny_in_gun_range": 0.1,
+    "deny_crowd_in_gun_range": 0.1,
+    "deny_in_crowd": 0.1,
 }
 
 

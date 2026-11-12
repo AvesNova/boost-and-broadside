@@ -28,7 +28,7 @@ from .scripted_memory import (
     time_unit,
     ways_round,
 )
-from .scripted_parameters import ScriptedParameters, floored, in_own_time, logistic, ramp
+from .scripted_parameters import Logistic, ScriptedParameters, floored, in_own_time, logistic, ramp
 
 TARGET_SIZE_RANGE = (math.radians(1.0), math.radians(45.0))  # the clamp on its angular size
 COAST, BOOST, REVERSE = 0, 1, 2  # power indices (bnb.game.rules.POWER_MODES)
@@ -349,6 +349,12 @@ def advantage_weight(
     return torch.where(has_target, weight, 0.0)
 
 
+def per_pair(value):
+    """A per-ship value (R, S) (or a view's (R, 1)) broadcast over the enemies (R, S, 1); a
+    float as it is."""
+    return value[..., None] if isinstance(value, torch.Tensor) else value
+
+
 def rotated(x: torch.Tensor, y: torch.Tensor, angle: torch.Tensor):
     """(x, y) turned by `angle` (positive left)."""
     cos, sin = torch.cos(angle), torch.sin(angle)
@@ -376,9 +382,13 @@ def doctrinal(
     geometry: tuple,
     boost: torch.Tensor,
     reverse: torch.Tensor,
+    others: tuple | None = None,
 ) -> Doctrinal:
     """The doctrine's elements (`bnb.controllers.scripted_doctrine`) on the attack: geometry
-    is (target_x, target_y, distance, aim_x, aim_y, aim_error, target velocity x, y)."""
+    is (target_x, target_y, distance, aim_x, aim_y, aim_error, target velocity x, y); others
+    is (offset x, offset y, other) per pair (R, S, E): each enemy's believed offset from the
+    ship and whether it is a known enemy other than the target (None: no other enemy, the
+    crowd 0)."""
     target_x, target_y, distance, aim_x, aim_y, aim_error, target_vx, target_vy = geometry
     temperature = fleet.temperature
     weight = advantage_weight(fleet, characteristics, doctrine, target_of, has_target)
@@ -420,11 +430,27 @@ def doctrinal(
     on_its_nose = logistic(
         off_its_nose.abs() / target_stall.clamp_min(TINY), doctrine.deny_in_stall_angle, temperature
     )
+    # the crowd: the soft count of the other known enemies near the ship or its target
+    crowd = torch.zeros_like(distance)
+    if others is not None:
+        offset_x, offset_y, other = others
+        from_ship = torch.sqrt(offset_x * offset_x + offset_y * offset_y)
+        from_x, from_y = offset_x - target_x[..., None], offset_y - target_y[..., None]
+        from_target = torch.sqrt(from_x * from_x + from_y * from_y)
+        nearer = torch.minimum(from_ship, from_target) / fleet.gun_range[..., None]
+        shape = doctrine.deny_crowd_in_gun_range
+        near = logistic(
+            nearer,
+            Logistic(per_pair(shape.centre), per_pair(shape.scale), shape.rising),
+            per_pair(temperature),
+        )
+        crowd = torch.where(other, near, 0.0).sum(-1)
     deny_weight = (
         weight
         * doctrine.deny
         * on_its_nose
         * logistic(in_gun_ranges, doctrine.deny_in_gun_range, temperature)
+        * logistic(crowd, doctrine.deny_in_crowd, temperature)
     )
     # the ship is off the target's nose to the target's left when off_its_nose > 0: seen
     # from the ship, that side is its right, so it turns right (negative)
@@ -513,8 +539,17 @@ def combat(
             target(recall.velocity_y),
         )
         doctrine = doctrine_of(doctrines, fleet.own_type)
+        other = recall.known[:, None, :] & ~pick
         shaped = doctrinal(
-            fleet, characteristics, doctrine, target, has_target, geometry, boost, reverse
+            fleet,
+            characteristics,
+            doctrine,
+            target,
+            has_target,
+            geometry,
+            boost,
+            reverse,
+            (offset_x, offset_y, other),
         )
         aim_x, aim_y = shaped.aim_x, shaped.aim_y
         attack = power_marginal(shaped.boost, shaped.reverse)
