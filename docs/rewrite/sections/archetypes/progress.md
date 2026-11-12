@@ -911,3 +911,101 @@ vision x1.04, f0 0.07) fighters of confirm 9 against each set ship:
 - The second arm keeps both mirrors in pace (223 / 299 s) and every size within 0.45-0.55:
   it is the card on the play map `arch-rate-speed` (the rate fighter in the Yongma slot).
   Set 6's damage-trimmed version is flatter (0.50-0.52) with a 437 s speed mirror.
+
+## Summary (05:00 KST)
+
+**Ranked pairs** (1024 games a cell, 10v10 at 512, 20v20 at 256; A's score at 1v1 / 2v2 /
+5v5 / 10v10 / 20v20 under r9; a cell's real run-to-run spread is about ±0.03-0.04, see
+confirms 5-6). None is flagged PERFECT: every pair meets the balance goals, but none has
+mirrors without a joust *and* ships that fly differently.
+
+| Rank | Pair (map) | r9 | Other doctrines | Mirrors: mutual, life, merges a kill | Why not perfect |
+|---|---|---|---|---|---|
+| 1 | **hit-and-run v standard** (`arch-standard-hit-and-run`) | 0.53 / 0.48 / 0.47 / 0.47 / 0.46 | CE 0.51 / 0.46 / 0.46 / 0.48 / 0.44; DCL 0.51 / 0.48 / 0.49 / 0.47 / 0.47 | 0.34, 260 s, 2.7; 0.36, 295 s, 3.2 | the two fly alike (shield, recharge, damage, nose and sight differ, not flight); the hit-and-run mirror's median is one merge a kill |
+| 2 | **rate v speed** (`arch-rate-speed`) | 0.55 / 0.52 / 0.46 / 0.48 / 0.45 | (confirm 11) | 0.48, 223 s, 2.7; 0.38, 299 s, 3.3 | the rate mirror jousts (0.48); a tier above the set's ships |
+| 3 | **standard v brawler** (`arch-standard-brawler`) | 0.52 / 0.52 / 0.52 / 0.53 / 0.52 (repeat 0.54 / 0.52 / 0.53 / 0.52 / 0.46) | CE 0.53 / 0.57 / 0.58 / 0.61 / 0.59; DCL 0.53-0.61 | 0.33, 327-335 s, 3.2; 0.35, 270-282 s, 2.9 | leans 0.57-0.61 to the standard once ships extend; differs in sight and damage only |
+| 4 | **standard v small** (`arch-standard-small`) | 0.54 / 0.50 / 0.47 / 0.48 / 0.47 | CE 0.54 / 0.53 / 0.49 / 0.46 / 0.49 | 0.33, 320 s; 0.42, 281 s | size and gun weight only |
+| 5 | **brawler v small** (`arch-brawler-small`) | 0.51 / 0.47 / 0.43 / 0.47 / 0.46 | CE 0.51 / 0.46 / 0.41 / 0.43 / 0.37 | 0.33, 303 s; 0.44, 294 s | 0.37 at 20v20 under CE |
+| 6 | big v small (`arch-big-small`) | 0.59 / 0.51 / 0.49 / 0.50 / 0.47 (small induced x0.98: 0.54 / 0.49 / 0.47 / 0.43 / 0.36) | CE 0.49-0.57; DCL 0.48-0.57 | 0.36, 236 s; 0.38, 326 s | duel and 20v20 pull opposite ways |
+| 7 | armed gunner v close fighter (`arch-gunner-close`) | 0.52 / 0.54 / 0.52 / 0.44 / 0.47 (gunner dmg x0.85) | CE 0.57-0.68 | **0.15-0.17**, 458-511 s; 0.22, 376-408 s | the least jousty mirrors, but the gunner's is slow; leans to the gunner under CE |
+| - | D2 (`balance-d2`, reference) | 0.49 / 0.48 / 0.55 / 0.45 / 0.10 (balance-sizes) | | 0.65 Jujak mirror | 20v20; the Jujak mirror joust |
+
+Rate v speed: rate = lift x1.03 (corner 132 against 134 m/s, the same sustained turn),
+damage x1.25; speed = drag x0.85 (cruise 174, top 407 m/s), vision x1.04, damage x1.05, its
+nose cone at f0 0.075. Hit-and-run (final) = shield x0.8, recharge x4 starting after 0.4 of
+the delay, damage x1.22, vision x0.96, nose cone f0 0.06. Brawler = vision x0.92, damage
+x1.12. Small = hit radius x0.8, damage x0.9, nose cone f0 0.10. Standard = M with kit2. All
+on the neutral hull M (sustained turn 0.274 rad/s, cruise 163 m/s, shield 106) with kit2
+(cone f0 0.08 at 12° p8, damage x2.5).
+
+**A set**: standard, brawler and small are pairwise within 0.43-0.54 at every size under r9
+(set 4); the hit-and-run ship is even with the standard only (it wins duels and fades in
+crowds against the others: sets 4, 4b, 7); rate and speed are even with each other and
+0.53-0.72 against every set ship (sets 5-6).
+
+**How each ship flies** (what the numbers say; the scripted agent does not yet use most of it):
+
+- **Hit-and-run**: fragile (shield 85) and hard-hitting, with an armoured nose and a shield
+  that refills four times as fast after a 2.4 s break. It wins the head-on merge and the
+  duel, and wants to break off, recharge and re-enter rather than stay in a furball, where it
+  is the first to die. **Standard**: the steady ship: full shield, normal recharge, no edges;
+  it wins by staying in the fight and outlasting the hit-and-run ship's burst.
+- **Rate fighter**: the same sustained turn, a little more lift (a lower corner speed) and
+  heavier guns: it wants the slow, tight turning fight after the merge, where lift is turn
+  rate. **Speed fighter**: 7% faster in cruise and at the top, a harder nose and slightly
+  longer sight: it wants to take the merge nose-on, keep its speed and not be dragged into
+  a slow circle.
+- **Brawler**: shorter sight (x0.92) and heavier hits: it wants the close, committed fight
+  and loses when the enemy sees it first. **Small**: a 20% smaller target with lighter guns
+  and a softer nose: hard to hit in a crowd, weak in a head-on duel.
+
+**Arming distance** (the author's idea, `arming_distance`, a per-type card field):
+
+- On both ships it is a fight-shape knob, not a balance knob (balance within 0.04 at 50-150 m,
+  arming 2). It takes the pay out of the joust exactly like the armour cone: 50 m does
+  nothing; 150 m halves the D2 mirrors' mutual head-on (0.65 to 0.31) and triples their life
+  (252 to 873 s); 300 m ends the joust (0.02-0.29) at 950-2400 s duels. Damage buys the pace
+  back and the joust with it (round 2: every arming x damage cell lies on the cone's curve).
+  The removed kills become offset head-on kills, not flank or tail ones: the r9 agent has no
+  non-joust kill in a mirror.
+- On the frozen card 300 m kills the duel pace (the Jujak's close tail kills are the hits it
+  removes: mirrors 2100-3500 s).
+- As **one ship's trait** it makes an archetype: the armed gunner (no damage inside 100-150 m,
+  range x1.3, sight x1.2) against a close fighter has the least jousty mirrors of the night
+  (0.12-0.22) and balances to 0.44-0.57 under r9; its own mirror is slow (450-625 s).
+
+**What moved what** (one hull, r9):
+
+1. **The sustained turn decides the duel**: a 5-10% gap beats an armoured, harder-hitting
+   nose (0.07-0.32) or the longest sight (0.19-0.35) (screens 3-4); near parity between
+   different ships it makes stalemates (round 4: 1000-4900 s duels at a 0.50 score).
+2. **The lift coefficient trades the duel for the crowds** at equal sustained turn (lift
+   x1.2: 0.71 duel, 0.43 at 10v10; x0.85: 0.23 and 0.61): the lever that makes a
+   flight-distinct pair possible.
+3. **The nose cone (f0) is a duel lever and a mirror lever**: a harder nose wins the joust
+   (a duel's kills are ~0.35-0.45 mutual) and slows the ship's own mirror.
+4. **Sight is a duel lever under r9 and a crowd lever under the crowd extension**; short sight
+   is the only lever that brings flank kills into a mirror (0.2-0.46 of its kills), at the
+   cost of search time.
+5. **Damage and shield move the crowds** more than the duel; recharge is worth about damage
+   x1.2 for shield x0.8.
+6. **The mirror kit** (cone f0 0.08 at 12° p8, damage x2.5; x0.9 sight optional) moves a
+   neutral ship's mirror off the joust-pace curve: 0.66 mutual at 262 s to 0.29-0.38 at
+   290-350 s with 3 merges a kill. The Yongma/Jujak D2 Jujak mirror resists it (0.57-0.66).
+7. **Pairs on one hull hold at 20v20** (0.42-0.55), where every Yongma/Jujak card failed
+   (0.07-0.27): the arena-size lean balance-sizes found belongs to the two hulls.
+8. No flight field alone moves a mirror off the joust (speed, lift, bleed, engine, stall:
+   0.60-0.76 mutual); speed or power bought with bleed loses the duel (0.15-0.18).
+
+**Caveats.** The quoted SE understates the run-to-run spread (the same card in two runs:
+0.034 apart at 1v1, 0.061 at 5v5); differences under ~0.05 are not resolved. Trades reach
+0.20-0.22 at 20v20 on every kit card (the frozen card: 0.12), probably the density of ~100
+kills a game inside the 0.5 s trade window. Post-merge choice entropy stays at 0.5-0.7 bits
+under r9 (no ship extends); under CE it falls to ~0.1 (the extension is nearly the only
+choice made). Every result is r9 or the maneuvers doctrines, not a trained agent.
+
+**Next**: a playtest of `arch-standard-hit-and-run` and `arch-rate-speed`; a doctrine that
+uses the hit-and-run recharge (break off, recharge, re-enter) and the rate fighter's slow
+fight, which r9 never does; the trade window at 20v20 (count mutual kills, not coincident
+deaths); bring rate and speed down to the set (damage x1.1 / x0.88 is 0.52-0.58 against the
+standard); a seventh ship by the roster method (each candidate against the standard first).
