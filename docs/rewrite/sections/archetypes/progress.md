@@ -558,3 +558,49 @@ Kit2 on both, 512 games, A v B 1v1 / 5v5:
   size** (all nine 1v1-20v20 cells of the three pairs within 0.44-0.54). Under the
   maneuvers doctrines the hit-and-run ship gains on the brawler in big crowds (0.56-0.61):
   the extension out of a furball is where a fast recharge pays.
+
+## 02:51-03:09 KST: confirms 5-6 (`confirm5/`, `confirm6/`): the armoured-nose hit-and-run ship
+
+1024 games (10v10 512, 20v20 256), r9 unless named. "Hit-and-run 2" = recharge x4 after 0.4
+of the delay, shield x0.8, damage x1.15, its own cone at f0 0.06:
+
+| Pair | A v B 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | AA; BB mutual, life, merges | Duel life | v r9 |
+|---|---|---|---|---|
+| hit-and-run 2 v standard (confirm 5) | 0.56 / 0.48 / 0.50 / 0.48 / 0.48 | 0.37, 277 s, 2.9; 0.36, 298 s, 3.2 | 262 s | 0.48 / 0.50 |
+| hit-and-run 2 v standard (confirm 6, the same card) | 0.53 / 0.49 / 0.44 / 0.47 / 0.43 | 0.34, 266 s; 0.39, 304 s | 265 s | 0.49 / 0.50 |
+| hit-and-run 2 v brawler | 0.60 / 0.53 / 0.49 / 0.46 / 0.53 | 0.36, 261 s; 0.36, 281 s | 256 s | 0.48 / 0.48 |
+| hit-and-run 2 (vision x0.96) v standard | 0.50 / 0.45 / 0.44 / 0.42 / 0.41 | 0.34, 277 s; 0.38, 293 s | 274 s | 0.50 / 0.50 |
+| hit-and-run 2 (vision x0.96) v brawler | 0.55 / 0.49 / 0.47 / 0.41 / 0.43 | | 270 s | 0.52 / 0.47 |
+| hit-and-run 2 (vision x0.96) v standard, CE | 0.51 / 0.44 / 0.44 / 0.43 / 0.40 | 0.19, 320 s; 0.23, 363 s | 296 s | 0.79 / 0.82 |
+| hit-and-run 3 (f0 0.06, dmg x1.12) v standard | 0.54 / 0.49 / 0.46 / 0.45 / 0.39 | 0.34, 270 s | 273 s | 0.49 / 0.50 |
+| hit-and-run 3 (f0 0.05, dmg x1.12) v standard | 0.55 / 0.50 / 0.49 / 0.44 / 0.46 | 0.18, 364 s | 280 s | 0.49 / 0.48 |
+| standard v brawler, CE | 0.54 / 0.57 / 0.58 / 0.55 / 0.59 | 0.20, 401 s; 0.27, 331 s | 322 s | 0.81 / 0.83 |
+| standard v brawler, DCL | 0.53 / 0.57 / 0.58 / 0.61 / 0.56 | 0.68, 186 s; 0.55, 166 s | 317 s | 0.83 / 0.84 |
+
+- **The run-to-run spread is larger than the quoted SE.** The same card in confirm 5 and
+  confirm 6 differs by 0.034 at 1v1 (SE 0.010) and 0.061 at 5v5 (SE 0.015). A cell's real
+  uncertainty at 1024 games is nearer ±0.03-0.04 than ±0.015; set 4 repeats one card to
+  measure it. Differences under ~0.05 between candidates are not resolved.
+- With the hit-and-run ship's nose at f0 0.06, all of its matchups have mirrors at 0.33-0.39
+  mutual and 260-305 s, with 3 merges a kill.
+- Standard v brawler leans to the standard under the doctrines (0.53-0.61): sight pays more
+  when ships extend and come back.
+
+## 02:55-03:08 KST: roster 1 (`roster1/`): every ship against the standard
+
+512 games (10v10 256), r9, every ship M + kit2 + its own factors, against the standard:
+
+| Ship v standard | 1v1 / 2v2 / 5v5 / 10v10 | Its mirror: mutual, life, merges | Duel life |
+|---|---|---|---|
+| big (radius x1.3, dmg x1.3) | 0.59 / 0.54 / 0.53 / 0.49 | 0.48, 199 s, 2.4 | 224 s |
+| **small (radius x0.8, dmg x0.9, f0 0.10)** | **0.45 / 0.50 / 0.49 / 0.52** | 0.37, 308 s, 3.2 | 268 s |
+| armed gunner (arming 100 m) | 0.51 / 0.60 / 0.52 / 0.48 | 0.17, 625 s | 287 s |
+| close fighter (range x0.8) | 0.54 / 0.52 / 0.47 / 0.45 | 0.29, 450 s | 330 s |
+| sniper | 0.63 / 0.53 / 0.49 / 0.39 | 0.37, 325 s | 296 s |
+| shotgun | 0.59 / 0.50 / 0.46 / 0.43 | 0.32, 366 s | 282 s |
+| zoomer | 0.43 / 0.37 / 0.38 / 0.17 | 0.20, 309 s | 203 s |
+| level | 0.37 / 0.46 / 0.38 / 0.31 | 0.60, 266 s | 217 s |
+| glass cannon (shield x0.6, dmg x1.5) | 0.43 / 0.48 / 0.46 / 0.40 | 0.63, 116 s, 1.2 | 171 s |
+
+- The small ship is the next set member (within 0.45-0.52 of the standard). Set 4 (running)
+  plays every pair of standard, hit-and-run 2, brawler and small.
