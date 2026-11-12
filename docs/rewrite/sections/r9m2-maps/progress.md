@@ -167,7 +167,7 @@ both, so the 1v1 energy mirror against r9m2 is a null check (0.50-0.53).
    extend at full shield, which a turn fighter's opponent punishes in a duel but which pays in
    crowds.
 
-## State (06:25 KST)
+## State (06:19 KST)
 
 Nothing stored: no doctrine, ship or map file changed. For the author (a proposal):
 - **On the one-hull pairs (hit-and-run v standard, standard v brawler, gunner v close) gate1
@@ -179,3 +179,44 @@ Nothing stored: no doctrine, ship or map file changed. For the author (a proposa
   matters (a 1v1 play mode, Elo at 1v1), keep the split gate there, or gate by the card
   (1.0 for Yongma-like and one-hull ships, 0.4 for the turn fighter) rather than by slot;
   that variant was not run.
+
+## 06:20-06:32 KST: run 4 (`../maneuvers-2/r9m2-card-maps/`): the gate by card
+
+**r9m2-card**: r9m2 with the duel-extension gate set by the ship, not the slot: 0.4 (r9m2's
+Jujak gate) for a real turn fighter, 1.0 (r9m2's Yongma gate) for every other ship
+(`make.py`'s `TURN_FIGHTER`). The turn fighter is Jujak on armour-tank and D2, and the rate
+ship (the Yongma slot: higher lift coefficient, same hull) on rate v speed. **On armour-tank
+and D2 the card gate is r9m2 itself** (Yongma 1.0, Jujak 0.4), so run 3's same-run r9m2 rows
+are its rows there; only rate v speed is new. That map ran here with r9m2 and r9m2-gate1
+beside it (same run), 1024 games, the strength cells as run 3. 670 s.
+
+| rate v speed | A v B 1v1/2v2/5v5/10v10 | AA (rate) mutual, life, H | BB (speed) mutual, life, H | 5v5 life, kills/min/ship, trades | v r9 1v1 / 5v5 | v r9m2 1v1 / 5v5 |
+|---|---|---|---|---|---|---|
+| r9m2 (rate 1.0, speed 0.4) | 0.56/0.50/0.52/0.52 | 0.32, 181 s, 1.58 | 0.51, 193 s, 0.56 | 104, 0.53, 0.04 | 0.566 / 0.859 | 0.504 / 0.506 |
+| gate1 (1.0 both) | 0.56/0.50/0.47/0.45 | 0.33, 179 s, 1.59 | 0.35, 191 s, 1.59 | 106, 0.52, 0.04 | 0.520 / 0.866 | 0.486 / 0.533 |
+| **card (rate 0.4, speed 1.0)** | 0.56/0.48/**0.45/0.36** | **0.47, 178 s, 0.56** | 0.37, 191 s, 1.59 | 104, 0.53, 0.05 | 0.553 / 0.849 | 0.500 / 0.490 |
+
+(The r9m2 and gate1 rows repeat runs 1 and 3 within ±0.05; 10v10 cells are the noisiest.)
+
+- **The card gate moves the joust, it does not remove it**: the rate mirror goes back to 0.47
+  mutual and 0.56 bits, the speed mirror is gate1's 0.37 and 1.6 bits. Whichever ship has the
+  0.4 gate jousts its mirror.
+- **It tips the crowds to the speed ship**: 5v5 0.45, 10v10 0.36 (r9m2 0.52 / 0.52, gate1
+  0.47 / 0.45).
+- **Strength**: level with r9m2 at 1v1 (0.500), a little below it at 5v5 (0.490), and below
+  gate1 in crowds (gate1 0.533 against r9m2). The 0.4 gate wins the 1v1 mirror for either
+  ship here (the card's rate mirror 0.56 against r9m2's; r9m2's speed mirror 0.54 against
+  gate1's and 0.74 against r9), so the rate ship is no more a "turn fighter" for the gate
+  than the speed ship.
+
+## State (06:33 KST)
+
+Nothing stored. For the author (a proposal):
+- **The card gate reduces to: gate1 on the one-hull pairs, r9m2 on armour-tank and D2.** On
+  rate v speed, gating the rate ship at 0.4 is worse than either alternative (rate mirror
+  re-jousts, 10v10 0.36); treat that pair as one-hull (gate1).
+- **So the open choice is only armour-tank and D2**: r9m2 (the card gate) keeps the Jujak
+  1v1 duel strong (0.59-0.61 against gate1's Jujak) at the price of a 0.53-0.64 Jujak-mirror
+  joust at 0.4 bits; gate1 de-jousts it (0.29 / 0.46, 1.6 bits) and is +0.02 in crowds, but
+  its Jujak loses 1v1 duels 0.38-0.45. A gate between 0.4 and 1.0 for the Jujak on those two
+  cards is the untried middle.

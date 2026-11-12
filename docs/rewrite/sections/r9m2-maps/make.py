@@ -1,6 +1,6 @@
 """The play maps as maneuvers-2 `sizes.py` candidates, each flown by r9 and by r9m2.
 
-    python docs/rewrite/sections/r9m2-maps/make.py [r9m2-maps] [r9 r9m2 r9m r9m2-gate1]
+    python docs/rewrite/sections/r9m2-maps/make.py [r9m2-maps] [r9 r9m2 r9m r9m2-gate1 r9m2-card]
 
 Each map's Yongma and Jujak card fields become absolute card values ({"set": value}) on
 `bench.game_loop`'s base card (the real-scale Yongma and Jujak rows: the map's unlisted
@@ -16,6 +16,8 @@ import sys
 
 HERE = pathlib.Path(__file__).parent
 ROOT = HERE.parents[3]
+# the slot that flies a real turn fighter on each map (the rest are Yongma-like or one hull)
+TURN_FIGHTER = {"arch-rate-speed": "yongma", "armour-tank": "jujak", "balance-d2": "jujak"}
 MAPS = (
     "arch-standard-hit-and-run",
     "arch-rate-speed",
@@ -54,6 +56,21 @@ def main() -> None:
     for name in MAPS:
         data = json.loads((ROOT / "src/bnb/game/maps" / f"{name}.json").read_text())
         energy, turn = card(data["ships"], "yongma"), card(data["ships"], "jujak")
+        # r9m2 gated by the card: the duel-extension gate 0.4 (r9m2's Jujak) for the map's
+        # turn fighter, 1.0 (r9m2's Yongma) for every other ship
+        gate = {
+            slot: champion["jujak" if TURN_FIGHTER.get(name) == slot else "yongma"][
+                "duel_extend_in_shield_ratio"
+            ]
+            for slot in ("yongma", "jujak")
+        }
+        extra["r9m2-card"] = dict(
+            r9m2,
+            doctrine=dict(
+                energy=dict(champion["yongma"], duel_extend_in_shield_ratio=gate["yongma"]),
+                turn=dict(champion["jujak"], duel_extend_in_shield_ratio=gate["jujak"]),
+            ),
+        )
         for doctrine in doctrines:
             out.append(
                 dict(name=f"{name} | {doctrine}", energy=energy, turn=turn, **extra[doctrine])

@@ -1,0 +1,92 @@
+## 1v1: 33 jobs, B 8192, 06:21 KST
+W1113 06:21:32.055000 1948367 torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+/home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+  warn_once(FP_FUSION_DEFAULT_WARNING)
+  batch 1/5 52 s; ETA 06:25 KST
+  batch 2/5 67 s; ETA 06:24 KST
+  batch 3/5 82 s; ETA 06:23 KST
+  batch 4/5 97 s; ETA 06:23 KST
+  batch 5/5 113 s; ETA 06:23 KST
+1v1  arch-rate-speed | r9m2-card   energy v turn v c0: score 0.565 ± 0.010  kills m/o/f/t 0.34 / 0.59 / 0.07 / 0.00  life 275 s  kpm/ship 0.21  trades 0.00
+1v1  arch-rate-speed | r9m2-card     turn mirror v c0: score 0.498 ± 0.012  kills m/o/f/t 0.37 / 0.46 / 0.04 / 0.13  life 191 s  kpm/ship 0.30  trades 0.00
+1v1  arch-rate-speed | r9m2-card   energy mirror v c0: score 0.489 ± 0.012  kills m/o/f/t 0.47 / 0.38 / 0.04 / 0.11  life 178 s  kpm/ship 0.32  trades 0.02
+1v1       arch-rate-speed | r9m2   energy v turn v c1: score 0.555 ± 0.010  kills m/o/f/t 0.35 / 0.57 / 0.08 / 0.00  life 265 s  kpm/ship 0.22  trades 0.00
+1v1       arch-rate-speed | r9m2     turn mirror v c1: score 0.500 ± 0.012  kills m/o/f/t 0.51 / 0.36 / 0.04 / 0.10  life 193 s  kpm/ship 0.30  trades 0.02
+1v1       arch-rate-speed | r9m2   energy mirror v c1: score 0.524 ± 0.012  kills m/o/f/t 0.32 / 0.50 / 0.05 / 0.14  life 181 s  kpm/ship 0.31  trades 0.00
+1v1 arch-rate-speed | r9m2-gate1   energy v turn v c2: score 0.556 ± 0.010  kills m/o/f/t 0.33 / 0.60 / 0.07 / 0.00  life 270 s  kpm/ship 0.21  trades 0.00
+1v1 arch-rate-speed | r9m2-gate1     turn mirror v c2: score 0.487 ± 0.012  kills m/o/f/t 0.35 / 0.47 / 0.05 / 0.13  life 191 s  kpm/ship 0.30  trades 0.00
+1v1 arch-rate-speed | r9m2-gate1   energy mirror v c2: score 0.511 ± 0.012  kills m/o/f/t 0.33 / 0.49 / 0.04 / 0.14  life 179 s  kpm/ship 0.32  trades 0.00
+1v1  arch-rate-speed | r9m2-card   energy v turn v r9: score 0.559 ± 0.010  kills m/o/f/t 0.32 / 0.61 / 0.07 / 0.00  life 259 s  kpm/ship 0.22  trades 0.00
+1v1  arch-rate-speed | r9m2-card   turn v energy v r9: score 0.436 ± 0.010  kills m/o/f/t 0.34 / 0.59 / 0.07 / 0.00  life 262 s  kpm/ship 0.22  trades 0.00
+1v1  arch-rate-speed | r9m2-card           mixed v r9: score 0.701 ± 0.011  kills m/o/f/t 0.57 / 0.34 / 0.04 / 0.05  life 176 s  kpm/ship 0.32  trades 0.00
+1v1  arch-rate-speed | r9m2-card  mixed reversed v r9: score 0.515 ± 0.012  kills m/o/f/t 0.42 / 0.49 / 0.06 / 0.03  life 178 s  kpm/ship 0.32  trades 0.00
+1v1       arch-rate-speed | r9m2   energy v turn v r9: score 0.570 ± 0.010  kills m/o/f/t 0.34 / 0.58 / 0.08 / 0.00  life 270 s  kpm/ship 0.21  trades 0.00
+1v1       arch-rate-speed | r9m2   turn v energy v r9: score 0.431 ± 0.010  kills m/o/f/t 0.33 / 0.60 / 0.07 / 0.00  life 260 s  kpm/ship 0.22  trades 0.00
+1v1       arch-rate-speed | r9m2           mixed v r9: score 0.524 ± 0.012  kills m/o/f/t 0.39 / 0.50 / 0.08 / 0.03  life 162 s  kpm/ship 0.35  trades 0.00
+1v1       arch-rate-speed | r9m2  mixed reversed v r9: score 0.739 ± 0.010  kills m/o/f/t 0.60 / 0.32 / 0.04 / 0.04  life 187 s  kpm/ship 0.31  trades 0.00
+1v1 arch-rate-speed | r9m2-gate1   energy v turn v r9: score 0.552 ± 0.010  kills m/o/f/t 0.35 / 0.58 / 0.07 / 0.00  life 269 s  kpm/ship 0.22  trades 0.00
+1v1 arch-rate-speed | r9m2-gate1   turn v energy v r9: score 0.465 ± 0.010  kills m/o/f/t 0.32 / 0.60 / 0.08 / 0.00  life 273 s  kpm/ship 0.21  trades 0.00
+1v1 arch-rate-speed | r9m2-gate1           mixed v r9: score 0.544 ± 0.012  kills m/o/f/t 0.40 / 0.49 / 0.08 / 0.03  life 162 s  kpm/ship 0.35  trades 0.00
+1v1 arch-rate-speed | r9m2-gate1  mixed reversed v r9: score 0.520 ± 0.012  kills m/o/f/t 0.41 / 0.48 / 0.07 / 0.04  life 175 s  kpm/ship 0.33  trades 0.00
+1v1  arch-rate-speed | r9m2-card   energy v turn v r9m2: score 0.554 ± 0.010  kills m/o/f/t 0.34 / 0.59 / 0.08 / 0.00  life 270 s  kpm/ship 0.21  trades 0.00
+1v1  arch-rate-speed | r9m2-card   turn v energy v r9m2: score 0.427 ± 0.010  kills m/o/f/t 0.33 / 0.60 / 0.08 / 0.00  life 260 s  kpm/ship 0.22  trades 0.00
+1v1  arch-rate-speed | r9m2-card           mixed v r9m2: score 0.557 ± 0.012  kills m/o/f/t 0.28 / 0.53 / 0.05 / 0.14  life 165 s  kpm/ship 0.34  trades 0.00
+1v1  arch-rate-speed | r9m2-card  mixed reversed v r9m2: score 0.462 ± 0.012  kills m/o/f/t 0.29 / 0.53 / 0.05 / 0.13  life 175 s  kpm/ship 0.33  trades 0.00
+1v1       arch-rate-speed | r9m2   energy v turn v r9m2: score 0.564 ± 0.010  kills m/o/f/t 0.34 / 0.59 / 0.07 / 0.00  life 261 s  kpm/ship 0.22  trades 0.00
+1v1       arch-rate-speed | r9m2   turn v energy v r9m2: score 0.451 ± 0.010  kills m/o/f/t 0.32 / 0.60 / 0.07 / 0.00  life 259 s  kpm/ship 0.22  trades 0.00
+1v1       arch-rate-speed | r9m2           mixed v r9m2: score 0.495 ± 0.012  kills m/o/f/t 0.33 / 0.49 / 0.05 / 0.13  life 181 s  kpm/ship 0.32  trades 0.00
+1v1       arch-rate-speed | r9m2  mixed reversed v r9m2: score 0.505 ± 0.012  kills m/o/f/t 0.51 / 0.36 / 0.04 / 0.10  life 194 s  kpm/ship 0.29  trades 0.02
+1v1 arch-rate-speed | r9m2-gate1   energy v turn v r9m2: score 0.559 ± 0.010  kills m/o/f/t 0.34 / 0.59 / 0.08 / 0.00  life 269 s  kpm/ship 0.22  trades 0.00
+1v1 arch-rate-speed | r9m2-gate1   turn v energy v r9m2: score 0.423 ± 0.010  kills m/o/f/t 0.35 / 0.58 / 0.08 / 0.00  life 266 s  kpm/ship 0.22  trades 0.00
+1v1 arch-rate-speed | r9m2-gate1           mixed v r9m2: score 0.504 ± 0.012  kills m/o/f/t 0.33 / 0.49 / 0.05 / 0.13  life 182 s  kpm/ship 0.31  trades 0.00
+1v1 arch-rate-speed | r9m2-gate1  mixed reversed v r9m2: score 0.457 ± 0.012  kills m/o/f/t 0.30 / 0.53 / 0.05 / 0.12  life 173 s  kpm/ship 0.33  trades 0.00
+## 2v2: 3 jobs, B 8192, 06:23 KST
+2v2  arch-rate-speed | r9m2-card   energy v turn v c0: score 0.484 ± 0.014  kills m/o/f/t 0.09 / 0.35 / 0.43 / 0.12  life 97 s  kpm/ship 0.56  trades 0.02
+2v2       arch-rate-speed | r9m2   energy v turn v c1: score 0.503 ± 0.014  kills m/o/f/t 0.09 / 0.35 / 0.44 / 0.12  life 98 s  kpm/ship 0.56  trades 0.02
+2v2 arch-rate-speed | r9m2-gate1   energy v turn v c2: score 0.500 ± 0.014  kills m/o/f/t 0.09 / 0.36 / 0.43 / 0.12  life 98 s  kpm/ship 0.56  trades 0.02
+## 5v5: 27 jobs, B 4096, 06:24 KST
+  batch 1/7 82 s; ETA 06:33 KST
+  batch 2/7 113 s; ETA 06:30 KST
+  batch 3/7 145 s; ETA 06:29 KST
+  batch 4/7 176 s; ETA 06:29 KST
+  batch 5/7 208 s; ETA 06:29 KST
+  batch 6/7 239 s; ETA 06:28 KST
+  batch 7/7 271 s; ETA 06:28 KST
+5v5  arch-rate-speed | r9m2-card   energy v turn v c0: score 0.447 ± 0.014  kills m/o/f/t 0.07 / 0.30 / 0.41 / 0.21  life 104 s  kpm/ship 0.53  trades 0.05
+5v5       arch-rate-speed | r9m2   energy v turn v c1: score 0.517 ± 0.015  kills m/o/f/t 0.07 / 0.30 / 0.41 / 0.22  life 104 s  kpm/ship 0.53  trades 0.04
+5v5 arch-rate-speed | r9m2-gate1   energy v turn v c2: score 0.472 ± 0.015  kills m/o/f/t 0.07 / 0.30 / 0.40 / 0.22  life 106 s  kpm/ship 0.52  trades 0.04
+5v5  arch-rate-speed | r9m2-card   energy v turn v r9: score 0.804 ± 0.012  kills m/o/f/t 0.07 / 0.31 / 0.49 / 0.14  life 93 s  kpm/ship 0.58  trades 0.06
+5v5  arch-rate-speed | r9m2-card   turn v energy v r9: score 0.853 ± 0.010  kills m/o/f/t 0.07 / 0.31 / 0.48 / 0.13  life 95 s  kpm/ship 0.57  trades 0.06
+5v5  arch-rate-speed | r9m2-card           mixed v r9: score 0.856 ± 0.010  kills m/o/f/t 0.07 / 0.31 / 0.46 / 0.15  life 98 s  kpm/ship 0.55  trades 0.05
+5v5  arch-rate-speed | r9m2-card  mixed reversed v r9: score 0.885 ± 0.009  kills m/o/f/t 0.08 / 0.31 / 0.46 / 0.15  life 101 s  kpm/ship 0.54  trades 0.05
+5v5       arch-rate-speed | r9m2   energy v turn v r9: score 0.840 ± 0.011  kills m/o/f/t 0.07 / 0.31 / 0.48 / 0.14  life 95 s  kpm/ship 0.57  trades 0.06
+5v5       arch-rate-speed | r9m2   turn v energy v r9: score 0.852 ± 0.010  kills m/o/f/t 0.08 / 0.31 / 0.48 / 0.13  life 93 s  kpm/ship 0.58  trades 0.06
+5v5       arch-rate-speed | r9m2           mixed v r9: score 0.870 ± 0.010  kills m/o/f/t 0.08 / 0.31 / 0.46 / 0.15  life 100 s  kpm/ship 0.55  trades 0.05
+5v5       arch-rate-speed | r9m2  mixed reversed v r9: score 0.874 ± 0.010  kills m/o/f/t 0.07 / 0.31 / 0.46 / 0.16  life 98 s  kpm/ship 0.55  trades 0.05
+5v5 arch-rate-speed | r9m2-gate1   energy v turn v r9: score 0.839 ± 0.011  kills m/o/f/t 0.07 / 0.31 / 0.47 / 0.14  life 95 s  kpm/ship 0.57  trades 0.05
+5v5 arch-rate-speed | r9m2-gate1   turn v energy v r9: score 0.854 ± 0.010  kills m/o/f/t 0.07 / 0.31 / 0.48 / 0.13  life 95 s  kpm/ship 0.57  trades 0.06
+5v5 arch-rate-speed | r9m2-gate1           mixed v r9: score 0.890 ± 0.009  kills m/o/f/t 0.07 / 0.32 / 0.46 / 0.15  life 100 s  kpm/ship 0.55  trades 0.05
+5v5 arch-rate-speed | r9m2-gate1  mixed reversed v r9: score 0.881 ± 0.009  kills m/o/f/t 0.07 / 0.31 / 0.47 / 0.15  life 102 s  kpm/ship 0.54  trades 0.05
+5v5  arch-rate-speed | r9m2-card   energy v turn v r9m2: score 0.450 ± 0.014  kills m/o/f/t 0.08 / 0.30 / 0.41 / 0.21  life 101 s  kpm/ship 0.54  trades 0.05
+5v5  arch-rate-speed | r9m2-card   turn v energy v r9m2: score 0.507 ± 0.014  kills m/o/f/t 0.07 / 0.30 / 0.40 / 0.23  life 106 s  kpm/ship 0.52  trades 0.05
+5v5  arch-rate-speed | r9m2-card           mixed v r9m2: score 0.494 ± 0.015  kills m/o/f/t 0.08 / 0.30 / 0.35 / 0.28  life 112 s  kpm/ship 0.49  trades 0.05
+5v5  arch-rate-speed | r9m2-card  mixed reversed v r9m2: score 0.509 ± 0.014  kills m/o/f/t 0.08 / 0.30 / 0.35 / 0.28  life 115 s  kpm/ship 0.48  trades 0.05
+5v5       arch-rate-speed | r9m2   energy v turn v r9m2: score 0.511 ± 0.015  kills m/o/f/t 0.08 / 0.30 / 0.40 / 0.22  life 103 s  kpm/ship 0.53  trades 0.05
+5v5       arch-rate-speed | r9m2   turn v energy v r9m2: score 0.483 ± 0.014  kills m/o/f/t 0.07 / 0.30 / 0.41 / 0.22  life 104 s  kpm/ship 0.53  trades 0.05
+5v5       arch-rate-speed | r9m2           mixed v r9m2: score 0.518 ± 0.015  kills m/o/f/t 0.08 / 0.29 / 0.35 / 0.28  life 113 s  kpm/ship 0.49  trades 0.04
+5v5       arch-rate-speed | r9m2  mixed reversed v r9m2: score 0.511 ± 0.015  kills m/o/f/t 0.07 / 0.29 / 0.35 / 0.29  life 113 s  kpm/ship 0.49  trades 0.04
+5v5 arch-rate-speed | r9m2-gate1   energy v turn v r9m2: score 0.521 ± 0.014  kills m/o/f/t 0.08 / 0.29 / 0.41 / 0.22  life 104 s  kpm/ship 0.53  trades 0.05
+5v5 arch-rate-speed | r9m2-gate1   turn v energy v r9m2: score 0.526 ± 0.014  kills m/o/f/t 0.08 / 0.30 / 0.40 / 0.23  life 105 s  kpm/ship 0.52  trades 0.05
+5v5 arch-rate-speed | r9m2-gate1           mixed v r9m2: score 0.532 ± 0.014  kills m/o/f/t 0.08 / 0.29 / 0.36 / 0.27  life 114 s  kpm/ship 0.49  trades 0.04
+5v5 arch-rate-speed | r9m2-gate1  mixed reversed v r9m2: score 0.552 ± 0.014  kills m/o/f/t 0.08 / 0.29 / 0.34 / 0.29  life 115 s  kpm/ship 0.48  trades 0.04
+## 10v10: 3 jobs, B 2048, 06:28 KST
+10v10  arch-rate-speed | r9m2-card   energy v turn v c0: score 0.360 ± 0.020  kills m/o/f/t 0.08 / 0.30 / 0.38 / 0.24  life 117 s  kpm/ship 0.47  trades 0.10
+10v10       arch-rate-speed | r9m2   energy v turn v c1: score 0.524 ± 0.021  kills m/o/f/t 0.08 / 0.29 / 0.38 / 0.25  life 117 s  kpm/ship 0.47  trades 0.09
+10v10 arch-rate-speed | r9m2-gate1   energy v turn v c2: score 0.451 ± 0.021  kills m/o/f/t 0.08 / 0.29 / 0.37 / 0.26  life 122 s  kpm/ship 0.46  trades 0.09
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| arch-rate-speed | r9m2-card | 0.565 ± 0.010 | 0.484 ± 0.014 | 0.447 ± 0.014 | 0.360 ± 0.020 | 0.140 | 0.07 / 0.30 / 0.41 / 0.21 | 0.05 | 275 / 97 / 104 / 117 | 0.21 / 0.56 / 0.53 / 0.47 | 3.25 |
+| arch-rate-speed | r9m2 | 0.555 ± 0.010 | 0.503 ± 0.014 | 0.517 ± 0.015 | 0.524 ± 0.021 | 0.055 | 0.07 / 0.30 / 0.41 / 0.22 | 0.04 | 265 / 98 / 104 / 117 | 0.22 / 0.56 / 0.53 / 0.47 | 3.21 |
+| arch-rate-speed | r9m2-gate1 | 0.556 ± 0.010 | 0.500 ± 0.014 | 0.472 ± 0.015 | 0.451 ± 0.021 | 0.056 | 0.07 / 0.30 / 0.40 / 0.22 | 0.04 | 270 / 98 / 106 / 122 | 0.21 / 0.56 / 0.52 / 0.46 | 3.17 |
+
+674 s
