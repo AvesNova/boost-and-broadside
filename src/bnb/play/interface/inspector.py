@@ -2,12 +2,12 @@
 or a card.
 
 - A ship: its team, type and controller, its live state (shield, energy, speed at x1
-  under a time scale, angle of attack, power and stick, the last shot), kills and
-  deaths; "Take control" (or "Release" on the flown ship) and "Follow". With the
-  prediction overlays' readouts on (`bnb.play.overlays`), what the predicting side's
-  agent thinks of it: an enemy's action distribution (power, stick, P(shoot)) beside the
-  action it took; an own ship's value per reward level, the outcome head, and its next
-  shot's P(enemy hit).
+  under a time scale, angle of attack, the flight path's turn rate and radius, power and
+  stick, the last shot), kills and deaths; "Take control" (or "Release" on the flown ship)
+  and "Follow". With the prediction overlays' readouts on (`bnb.play.overlays`), what the
+  predicting side's agent thinks of it: an enemy's action distribution (power, stick,
+  P(shoot)) beside the action it took; an own ship's value per reward level, the outcome
+  head, and its next shot's P(enemy hit).
 - A field: its refractive index, radius and core.
 - A zone: its role and owner, its progress, and the ships contesting it.
 
@@ -42,6 +42,24 @@ def stick_text(stick: int) -> str:
         return "centred"
     level = (stick + 1) // 2
     return f"{'right' if stick % 2 else 'left'} {level}"
+
+
+STRAIGHT_RADIUS = 100_000.0  # m: a turn wider than this reads as flying straight
+
+
+def _wrapped(angle: float) -> float:
+    """The angle (rad) in [-pi, pi)."""
+    return (angle + math.pi) % (2.0 * math.pi) - math.pi
+
+
+def _turn_radius_text(moved: float, turned: float) -> str:
+    """The radius of the flight path's turn over one tick: the distance flown over the
+    angle the velocity turned (the time scale cancels)."""
+    if moved <= 0.0:
+        return "-"
+    if abs(turned) * STRAIGHT_RADIUS <= moved:
+        return "straight"
+    return f"{moved / abs(turned):.0f} m"
 
 
 def _row(label: str, value: str, scale: float, column: float = LABEL_COLUMN) -> None:
@@ -131,6 +149,16 @@ def _ship(interface: Interface, index: int) -> None:
             _row(
                 "angle of attack",
                 f"{math.degrees(float(ships.angle_of_attack[index])):+.1f}°",
+                scale,
+            )
+            turned = _wrapped(
+                float(current.flight_path[index]) - float(previous.flight_path[index])
+            )
+            turn_rate = 0.0 if current.spawned[index] else turned / loop.tick_length
+            _row("turn rate", f"{math.degrees(turn_rate / session.time_factor):+.1f}°/s", scale)
+            _row(
+                "turn radius",
+                "-" if current.spawned[index] else _turn_radius_text(moved, turned),
                 scale,
             )
             power, stick, shoot = (int(value) for value in loop.last_actions[index])
