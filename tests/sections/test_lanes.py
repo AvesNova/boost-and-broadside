@@ -794,3 +794,22 @@ def test_a_lane_seat_with_unequal_players_compiles_whole_and_plays_as_uncompiled
         torch.manual_seed(3)
         compiled_action, _, _ = compiled(carry, obs, reset)
     assert torch.equal(eager_action.packed(), compiled_action.packed())
+
+
+def test_rls_lanes_rate_every_network_player_against_the_scripted_agent_in_one_run():
+    """RL's default lanes: the live policy, both averages and each league slot against the
+    full-strength scripted agent at equal weight, so every network player has the same
+    rows (to the split's rounding) and they stack as one run."""
+    from bnb.runtime.lanes import RL_MATCHUPS, UNIFORM_AVERAGE, league_slot
+
+    players = [matchup.first for matchup in RL_MATCHUPS]
+    assert players == [
+        LIVE,
+        EXPONENTIAL_AVERAGE,
+        UNIFORM_AVERAGE,
+        *(league_slot(index) for index in range(4)),
+    ]
+    assert {matchup.second for matchup in RL_MATCHUPS} == {SCRIPTED_PLAYER}
+    assert {matchup.weight for matchup in RL_MATCHUPS} == {1.0}
+    sizes = split(1024 // 3, [matchup.weight for matchup in RL_MATCHUPS])
+    assert max(sizes) - min(sizes) <= 1

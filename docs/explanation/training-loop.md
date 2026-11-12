@@ -133,17 +133,14 @@ sets how many (`environments`, beyond the training ones) and what they play (`ma
   shapes are fixed at capture: which row plays which player is static, only a network
   player's weights change, copied in place between segments (`LaneSeat.load`).
 - **Defaults:** a reinforcement-learning run's lanes (`bnb.runtime.lanes.RL_MATCHUPS`) play,
-  per mode: the live policy and the averaged agent against each of the league's four slot
-  entries and each other; the slot entries and both against the scripted agent, the
-  anchor (the slots' share sized so each of the six network players has the same lane rows,
-  one stacked run with no padding); and the ladder chained from the scripted agent down (each rung against
-  the next one up), which calibrates the ladder. A game tells the rating fit `p (1 − p)`
-  about its players' gap: 0.25 at even odds, 0.004 at the 950 points v1's policy reached
-  above the scripted agent. The league draws its slots' entries by `p (1 − p)` against the
-  live policy, so they are near-even opponents, and older entries, which played lower ones
-  before they cycled out, chain the newer to the scripted agent. BC's
-  (`bnb.runtime.cloning.LANES`) play the live clone, the uniform average and the
-  exponential average against the scripted agent alone, a third of each mode's lanes each.
+  per mode, every network player (the live policy, the exponential and the uniform
+  average, each of the league's four slot entries) against the full-strength scripted
+  agent, at equal weight: each player has the same lane rows, so the seven stack as one
+  network run with no padding. A game tells the rating fit `p (1 − p)` about its players'
+  gap: 0.25 at even odds, 0.004 at the 950 points v1's policy reached above the scripted
+  agent. BC's (`bnb.runtime.cloning.LANES`) play the live clone, the uniform average and
+  the exponential average against the scripted agent, a third of each mode's lanes each;
+  the launch runs BC with no lanes (`lanes.environments=0`).
 - **A game counts once, by the weights that played it:** each lane row stamps its player's
   weight generation when its game begins, and loading another entry into a slot's lane
   player (`LaneSeat.load` with `fresh`) starts a new generation, so a game in progress then

@@ -39,7 +39,9 @@ set = [
 # BC only (bnb train --bc-set). BC is capped at 100M (author, 2026-11-12; v1's target was
 # BC under 100M) so that a BC stage whose plateau never fires still leaves RL 50M; without
 # a cap BC's budget is the combined one and RL would get nothing.
-bc_set = ["stop.budget_steps=100000000"]
+# BC has no rating lanes (the author, 2026-11-12): its policy file and RL's start are the
+# exponential average
+bc_set = ["stop.budget_steps=100000000", "lanes.environments=0"]
 # RL only (bnb train --rl-set)
 rl_set = []
 # other bnb train options for every arm

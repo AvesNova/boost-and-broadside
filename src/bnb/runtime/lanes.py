@@ -30,7 +30,6 @@ from bnb.game.handling.characteristics import Characteristics
 
 from . import stacked
 from .opponents import (
-    LADDER,
     OUTCOMES,
     SCRIPTED_PLAYER,
     Rung,
@@ -42,7 +41,7 @@ from .opponents import (
 LANES = "lanes"  # the lanes' controller name
 LIVE = "live"  # the player the learner trains
 # the averages of the live weights the league (and behaviour cloning) keeps
-# (`bnb.league.pool.Averages`); RL's lanes rate the exponential one
+# (`bnb.league.pool.Averages`); RL's lanes rate both
 UNIFORM_AVERAGE = "uniform_average"
 EXPONENTIAL_AVERAGE = "exponential_average"
 LEAGUE_PREFIX = "league_"  # a league slot's player: the entry the league's slot k holds
@@ -84,28 +83,22 @@ def league_slot(index: int) -> str:
 
 
 LEAGUE_SLOTS = 4  # `bnb.runtime.opponents.LeagueConfig.slots`' default
-# The default matchups of a reinforcement-learning run (author, 2026-11-05). A game tells the
-# rating fit p (1 - p) about its players' gap, 0.25 at even odds and 0.004 at the 950 points
-# v1's policy reached above the scripted agent. The league's slots hold entries it draws by
-# p (1 - p) against the live policy, so near-even opponents: per mode, the live policy and
-# the averaged agent play each slot's entry and each other; the slots' entries and both
-# play the scripted agent, the anchor (older entries gathered games against lower
-# ones before they cycled out, which chains the newer to it); and the ladder's rungs chained
-# up to the scripted agent calibrate the ladder.
-RL_MATCHUPS = (
-    *(
-        Matchup(player, league_slot(index), 1.0)
-        for index in range(LEAGUE_SLOTS)
-        for player in (LIVE, EXPONENTIAL_AVERAGE)
-    ),
-    Matchup(LIVE, EXPONENTIAL_AVERAGE, 0.5),
-    Matchup(LIVE, SCRIPTED_PLAYER, 0.25),
-    Matchup(EXPONENTIAL_AVERAGE, SCRIPTED_PLAYER, 0.25),
-    # 2.75 = 2 x 1.0 + 0.5 + 0.25: each slot's lane rows equal the live policy's and the
-    # average's (4.75 units each), so the six network players stack as one run with no
-    # padding (`LaneSeat.network_runs`; the author, 2026-11-12)
-    *(Matchup(league_slot(index), SCRIPTED_PLAYER, 2.75) for index in range(LEAGUE_SLOTS)),
-    *ladder_chain(LADDER[:-1], 0.05),
+# The default matchups of a reinforcement-learning run (the author, 2026-11-12): every
+# network player (the live policy, both averages, each league slot's entry) against the
+# full-strength scripted agent, at equal weight, so each has the same lane rows and the
+# seven stack as one network run with no padding (`LaneSeat.network_runs`). A game tells
+# the rating fit p (1 - p) about its players' gap, 0.25 at even odds and 0.004 at the 950
+# points v1's policy reached above the scripted agent. (The ladder's rung pairs and the
+# network-against-network matchups of 2026-11-05 are gone; the training pool's ladder is
+# unchanged.)
+RL_MATCHUPS = tuple(
+    Matchup(player, SCRIPTED_PLAYER, 1.0)
+    for player in (
+        LIVE,
+        EXPONENTIAL_AVERAGE,
+        UNIFORM_AVERAGE,
+        *(league_slot(index) for index in range(LEAGUE_SLOTS)),
+    )
 )
 # Behaviour cloning's: the live clone and both averages of its weights against the raw
 # scripted agent (decisions: BC round three), a third of each mode's lanes each (the
@@ -245,8 +238,8 @@ class _Decision(torch.nn.Module):
 # within this fraction of the run's first player's: the padding it costs against the network
 # copy a run of its own would add to the compiled stage (about 8,000 traced ops, 2.5-3 min
 # of a cold compile, `compile-split` notes). Up to about twice (2.05x, room for the splits'
-# rounding): BC's lanes (three players of equal rows) are one run, and RL's six (live, the
-# exponential average and the league's four slots at 4.75 units each, `RL_MATCHUPS`).
+# rounding): BC's lanes (three players of equal rows) are one run, and RL's seven
+# (`RL_MATCHUPS`).
 RUN_SLACK = 1.05
 
 
