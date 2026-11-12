@@ -1,0 +1,17 @@
+[
+ {
+  "label": "dm_m5",
+  "respawn_minimum": 5
+ },
+ {
+  "label": "dm_m8",
+  "respawn_minimum": 8
+ },
+ {
+  "label": "dm_fixed10"
+ },
+ {
+  "label": "dm_m16",
+  "respawn_minimum": 16
+ }
+]

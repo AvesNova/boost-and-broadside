@@ -2,12 +2,13 @@
 # The respawn-wave runs on the box: one process per variant set (each compiles once).
 # usage: run.sh NAME KIND SHIPS RADIUS SLOTS PER_SLOT GAMES EPISODE_SECONDS
 set -u
-cd /workspace/box7/bnb
+root=${WAVES_ROOT:-/workspace/waves2}
+cd $root/bnb
 name=$1
-out=/workspace/box7/results/respawn-waves
+out=$root/results/respawn-waves
 mkdir -p $out
-export TRITON_DEFAULT_FP_FUSION=1 TORCHINDUCTOR_COMPILE_THREADS=4 PYTHONPATH=src
-export TORCHINDUCTOR_CACHE_DIR=/workspace/box7/cache/inductor TRITON_CACHE_DIR=/workspace/box7/cache/triton
+export TRITON_DEFAULT_FP_FUSION=1 TORCHINDUCTOR_COMPILE_THREADS=3 PYTHONPATH=src PYTHONUNBUFFERED=1
+export TORCHINDUCTOR_CACHE_DIR=$root/cache/inductor TRITON_CACHE_DIR=$root/cache/triton
 .venv/bin/python -m bench.frontline_design --kind $2 \
   --variants docs/rewrite/sections/respawn-waves/variants/$name.json \
   --out $out/$name.jsonl \

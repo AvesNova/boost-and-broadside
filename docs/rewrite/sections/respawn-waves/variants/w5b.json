@@ -1,0 +1,38 @@
+[
+ {
+  "label": "m5w15",
+  "lock": 45,
+  "respawn_minimum": 5,
+  "wave_interval": 15
+ },
+ {
+  "label": "m5w20",
+  "lock": 45,
+  "respawn_minimum": 5,
+  "wave_interval": 20
+ },
+ {
+  "label": "m5w25",
+  "lock": 45,
+  "respawn_minimum": 5,
+  "wave_interval": 25
+ },
+ {
+  "label": "m5w30",
+  "lock": 45,
+  "respawn_minimum": 5,
+  "wave_interval": 30
+ },
+ {
+  "label": "m8w25",
+  "lock": 45,
+  "respawn_minimum": 8,
+  "wave_interval": 25
+ },
+ {
+  "label": "m10w25",
+  "lock": 45,
+  "respawn_minimum": 10,
+  "wave_interval": 25
+ }
+]
