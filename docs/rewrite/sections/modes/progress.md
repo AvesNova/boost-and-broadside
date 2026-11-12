@@ -210,3 +210,23 @@ lives ~1 min, almost all of it before its first hit: from first contact to death
 seconds (life median 62.5 s against first contact 59.5 s): the fights are short and
 decisive; the time is travel. Includes the respawn's time to find a fight (respawns land
 farthest from enemies).
+
+### Frontline (5v5, 7800 m, zones 990 m, capture 20 s, threshold 3, 600 s; release lineup; 512 games; provisional zone sizes)
+
+| quantity | mean | median | quartiles | 5-95% |
+|---|---|---|---|---|
+| a ship's spawn to its first zone other than its spawn zone (s) | 36.9 | 34.5 | 26.5-50.5 | 1.5-75.5 |
+| leaving a zone to entering another (s), contested and not | 32.9 | 28.5 | 19.5-41.5 | 17.5-66.5 |
+| contested capture: last all-zero meters to the capture (s) | 17.5 | 14.5 | 12.5-17.5 | 11.5-38.5 |
+| first capture of the match (s) | 109.6 | 87.5 | 80-124 | 69-226 |
+| a ship's spawn to its first hit dealt or taken (s) | 58.2 | 49.5 | 34.5-70.5 | 26.5-124.5 |
+| a ship's spawn to its death (s) | 72.2 | 64.5 | 48.5-86.5 | 34.5-139.5 |
+
+- Uncontested transit: the fastest zone-to-zone legs (5% 17.5 s, quartile 19.5 s) are the
+  boosted uncontested ones, against the flight-only numbers (step 2a): adjacent zones edge
+  to edge 3659 m, ~22 s at cruise, ~14-16 s boosting from the zone edge. The median 28.5 s
+  includes legs broken by fights.
+- Capture: a capture takes 14.5 s median once a meter starts moving (20 s for a lead of
+  one; more attackers fill faster), and the first capture of a match comes at ~87 s.
+- Capture dynamics: P(next capture by the same team) 0.143 ± 0.005; 9% of games end by
+  the front (step 2e/2f).
