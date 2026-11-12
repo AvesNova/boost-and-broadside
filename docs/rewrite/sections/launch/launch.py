@@ -481,6 +481,9 @@ def status(arguments) -> None:
     )
     for job in store.read()["jobs"]:
         name = job.get("run") or " ".join(job["arguments"])[:28]
+        if job["kind"] == "ratings" and "--presets" in job["arguments"]:
+            out = job["arguments"][job["arguments"].index("--out") + 1]
+            name = "ratings " + pathlib.Path(out).parent.name + "/" + pathlib.Path(out).name
         slot = "-" if job.get("slot") is None else str(job["slot"])
         info = run_progress(runs_directory, job["run"]) if job.get("run") else None
         if not info or "steps" not in info:

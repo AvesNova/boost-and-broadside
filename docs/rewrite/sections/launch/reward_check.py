@@ -24,7 +24,7 @@ import re
 import statistics
 
 FAMILIES = (
-    ("play vs scripted", re.compile(r"^lanes/score/.*_vs_scripted$")),
+    ("play vs scripted", re.compile(r"^lanes/score/[^/]+/(live|uniform_average|exponential_average)_vs_scripted$")),
     ("reward share", re.compile(r"^reward/level_share/")),
     ("reward rate", re.compile(r"^reward/rate/")),
     ("episodes", re.compile(r"^episode/(end|length_seconds|result)/")),
@@ -88,7 +88,7 @@ def main() -> None:
         raise SystemExit(f"no records for {arguments.run}")
     size = int(arguments.window * 1e6)
     groups = windows(rows, size)
-    header = " | ".join(f"{(w + 1) * size / 1e6:.0f}M {g[0]['_stage']}" for w, g in groups)
+    header = " | ".join(f"{(w + 1) * size / 1e6:g}M {g[0]['_stage']}" for w, g in groups)
     print(f"# reward check: {arguments.run} ({len(rows)} updates)\n")
     flags = []
     series = {}
