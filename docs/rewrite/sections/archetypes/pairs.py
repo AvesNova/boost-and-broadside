@@ -1739,6 +1739,16 @@ def round18() -> list[dict]:
 ROUNDS["round18"] = round18
 
 
+def confirm12() -> list[dict]:
+    """Rate (nose f0 0.065) v speed (nose f0 0.07, dmg x1.05), round 18's: 1024 games,
+    1v1-20v20, r9 and both maneuvers doctrines."""
+    c = rate_speed_nose(sf=0.07, rf=0.065, rd=1.25, sd=1.05)
+    return [c] + [flown(c, d) for d in DOCTRINES]
+
+
+ROUNDS["confirm12"] = confirm12
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
