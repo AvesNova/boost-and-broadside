@@ -938,8 +938,9 @@ x1.12. Small = hit radius x0.8, damage x0.9, nose cone f0 0.10. Standard = M wit
 on the neutral hull M (sustained turn 0.274 rad/s, cruise 163 m/s, shield 106) with kit2
 (cone f0 0.08 at 12° p8, damage x2.5).
 
-**A set**: standard, brawler and small are pairwise within 0.43-0.54 at every size under r9
-(set 4); the hit-and-run ship is even with the standard only (it wins duels and fades in
+**A set**: standard, brawler, small and the close fighter (range x0.8, damage x1.05) are
+pairwise within 0.43-0.57 on every cell under r9 (sets 4 and 8, roster 3; under CE the
+brawler slips to 0.37-0.43 against the small ship); the hit-and-run ship is even with the standard only (it wins duels and fades in
 crowds against the others: sets 4, 4b, 7); rate and speed are even with each other and
 0.53-0.72 against every set ship (sets 5-6).
 
@@ -955,6 +956,9 @@ crowds against the others: sets 4, 4b, 7); rate and speed are even with each oth
   rate. **Speed fighter**: 7% faster in cruise and at the top, a harder nose and slightly
   longer sight: it wants to take the merge nose-on, keep its speed and not be dragged into
   a slow circle.
+- **Close fighter**: guns with 80% of the range (about 490 m) and a little more punch: it
+  wants to close inside the other ship's range before it fires, and its own duels are long
+  (311-352 s) and seldom nose to nose (0.28 mutual).
 - **Brawler**: shorter sight (x0.92) and heavier hits: it wants the close, committed fight
   and loses when the enemy sees it first. **Small**: a 20% smaller target with lighter guns
   and a softer nose: hard to hit in a crowd, weak in a head-on duel.
@@ -1084,3 +1088,15 @@ vision x1.04, dmg x1.05, f0 0.07):
 
 - The close fighter is even with the standard at every size; set 8 (running) plays it
   against the brawler and the small ship.
+
+## 05:10-05:15 KST: set 8 (`set8/`): the close fighter in the set
+
+| A v B | 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | AA; BB mutual, life |
+|---|---|---|
+| close fighter v brawler | 0.57 / 0.54 / 0.53 / 0.51 / 0.57 | 0.28, 371 s; 0.37, 272 s |
+| close fighter v small | 0.57 / 0.50 / 0.47 / 0.49 / 0.49 | 0.29, 349 s; 0.44, 281 s |
+
+- **A four-ship set under r9**: standard, brawler, small and the close fighter (range x0.8,
+  damage x1.05) are pairwise within 0.43-0.57 on all 30 cells (six pairs, 1v1-20v20; sets 4,
+  8 and roster 3), every mirror 0.28-0.44 mutual at 270-370 s. Play map
+  `arch-close-standard` (the close fighter in the Yongma slot).
