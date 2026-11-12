@@ -1105,6 +1105,42 @@ def screen3() -> list[dict]:
 ROUNDS["screen3"] = screen3
 
 
+def screen4() -> list[dict]:
+    """Hunter v turner, flight-distinct: A sees farther and is faster in a straight line but
+    turns worse (sight is the duel lever that answers a sustained-turn deficit); B turns
+    better. Kit2 on both. 1v1 and 5v5."""
+    out = []
+    for ai, av, ad, bi in (
+        (1.05, 1.15, 1.0, 1.0),
+        (1.1, 1.25, 1.0, 1.0),
+        (1.1, 1.35, 1.0, 1.0),
+        (1.05, 1.2, 1.0, 0.95),
+        (1.1, 1.3, 0.9, 1.0),
+    ):
+        a = merge(
+            kit(*KIT2),
+            {
+                "induced_drag_scale": ai,
+                "vision_range_scale": av,
+                "zero_lift_drag": 0.9,
+                "hit_damage": ad,
+            },
+        )
+        b = merge(kit(*KIT2), {"induced_drag_scale": bi})
+        out.append(
+            pair(
+                f"hunter (induced x{ai:g}, vision x{av:g}, drag x0.9, dmg x{ad:g}) v "
+                f"turner (induced x{bi:g}) (M), kit2",
+                ("M", a),
+                ("M", b),
+            )
+        )
+    return out
+
+
+ROUNDS["screen4"] = screen4
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
