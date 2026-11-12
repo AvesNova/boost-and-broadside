@@ -1449,7 +1449,7 @@ def rate_speed(cl, d, drag=0.85, sv=1.0, rate_extra=None):
         + (f", vision x{sv:g}" if sv != 1 else "")
         + ") (M), kit2"
     )
-    a = merge({"max_lift_coefficient": cl, "hit_damage": d}, rate_extra or {}, kit(*KIT2))
+    a = merge({"max_lift_coefficient": cl, "hit_damage": d}, kit(*KIT2), rate_extra or {})
     b = merge({"zero_lift_drag": drag, "vision_range_scale": sv}, kit(*KIT2))
     return pair(name, ("M", a), ("M", b))
 
@@ -1482,6 +1482,24 @@ def confirm7() -> list[dict]:
 
 
 ROUNDS["confirm7"] = confirm7
+
+
+def round15() -> list[dict]:
+    """Rate v speed: the joust as the duel lever (the duel's kills are 0.4 mutual head-on),
+    a harder nose on the speed fighter or a softer one on the rate fighter."""
+    out = []
+    for sf, rf in ((0.06, None), (0.05, None), (None, 0.10), (0.06, 0.10), (None, 0.12)):
+        c = rate_speed(1.03, 1.25, sv=1.04, rate_extra=cone(rf, 12, 8) if rf else None)
+        if sf:
+            c["turn"] = merge(c["turn"], cone(sf, 12, 8))
+        c["name"] += (f", speed cone f0 {sf:g}" if sf else "") + (
+            f", rate cone f0 {rf:g}" if rf else ""
+        )
+        out.append(c)
+    return out
+
+
+ROUNDS["round15"] = round15
 
 
 if __name__ == "__main__":
