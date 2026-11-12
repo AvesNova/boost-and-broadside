@@ -1,0 +1,69 @@
+## 1v1: 15 jobs, B 8192, 03:00 KST
+  batch 1/2 43 s; ETA 03:01 KST
+  batch 2/2 67 s; ETA 03:01 KST
+1v1 hit-and-run 2 (f0 0.06, dmg x1.15, vision x1) v standard (M), kit2   energy v turn v c0: score 0.530 ± 0.010  kills m/o/f/t 0.36 / 0.57 / 0.08 / 0.00  life 265 s  kpm/ship 0.22  trades 0.00
+1v1 hit-and-run 2 (f0 0.06, dmg x1.15, vision x1) v standard (M), kit2     turn mirror v c0: score 0.499 ± 0.010  kills m/o/f/t 0.39 / 0.54 / 0.08 / 0.00  life 304 s  kpm/ship 0.19  trades 0.00
+1v1 hit-and-run 2 (f0 0.06, dmg x1.15, vision x1) v standard (M), kit2   energy mirror v c0: score 0.501 ± 0.010  kills m/o/f/t 0.34 / 0.57 / 0.09 / 0.00  life 266 s  kpm/ship 0.22  trades 0.00
+1v1 hit-and-run 2 (f0 0.06, dmg x1.15, vision x1) v brawler (M), kit2   energy v turn v c1: score 0.598 ± 0.010  kills m/o/f/t 0.35 / 0.54 / 0.11 / 0.00  life 256 s  kpm/ship 0.23  trades 0.00
+1v1 hit-and-run 2 (f0 0.06, dmg x1.15, vision x1) v brawler (M), kit2     turn mirror v c1: score 0.503 ± 0.010  kills m/o/f/t 0.36 / 0.50 / 0.14 / 0.00  life 281 s  kpm/ship 0.21  trades 0.00
+1v1 hit-and-run 2 (f0 0.06, dmg x1.15, vision x1) v brawler (M), kit2   energy mirror v c1: score 0.483 ± 0.010  kills m/o/f/t 0.36 / 0.55 / 0.09 / 0.00  life 261 s  kpm/ship 0.22  trades 0.00
+1v1 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v standard (M), kit2   energy v turn v c2: score 0.502 ± 0.010  kills m/o/f/t 0.34 / 0.56 / 0.09 / 0.00  life 274 s  kpm/ship 0.21  trades 0.00
+1v1 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v standard (M), kit2     turn mirror v c2: score 0.512 ± 0.010  kills m/o/f/t 0.38 / 0.55 / 0.07 / 0.00  life 293 s  kpm/ship 0.20  trades 0.00
+1v1 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v standard (M), kit2   energy mirror v c2: score 0.513 ± 0.010  kills m/o/f/t 0.34 / 0.55 / 0.11 / 0.00  life 277 s  kpm/ship 0.21  trades 0.01
+1v1 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v brawler (M), kit2   energy v turn v c3: score 0.546 ± 0.010  kills m/o/f/t 0.35 / 0.52 / 0.12 / 0.00  life 270 s  kpm/ship 0.21  trades 0.00
+1v1 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v brawler (M), kit2     turn mirror v c3: score 0.500 ± 0.010  kills m/o/f/t 0.35 / 0.51 / 0.14 / 0.00  life 277 s  kpm/ship 0.21  trades 0.00
+1v1 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v brawler (M), kit2   energy mirror v c3: score 0.498 ± 0.010  kills m/o/f/t 0.33 / 0.55 / 0.12 / 0.00  life 274 s  kpm/ship 0.21  trades 0.00
+1v1 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v standard (M), kit2 | crowd extend + lead   energy v turn v c4: score 0.509 ± 0.010  kills m/o/f/t 0.23 / 0.65 / 0.12 / 0.00  life 296 s  kpm/ship 0.20  trades 0.00
+1v1 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v standard (M), kit2 | crowd extend + lead     turn mirror v c4: score 0.502 ± 0.009  kills m/o/f/t 0.23 / 0.69 / 0.09 / 0.00  life 363 s  kpm/ship 0.16  trades 0.00
+1v1 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v standard (M), kit2 | crowd extend + lead   energy mirror v c4: score 0.495 ± 0.010  kills m/o/f/t 0.19 / 0.68 / 0.13 / 0.00  life 320 s  kpm/ship 0.18  trades 0.00
+## 2v2: 5 jobs, B 8192, 03:01 KST
+2v2 hit-and-run 2 (f0 0.06, dmg x1.15, vision x1) v standard (M), kit2   energy v turn v c0: score 0.494 ± 0.014  kills m/o/f/t 0.08 / 0.34 / 0.49 / 0.09  life 90 s  kpm/ship 0.60  trades 0.02
+2v2 hit-and-run 2 (f0 0.06, dmg x1.15, vision x1) v brawler (M), kit2   energy v turn v c1: score 0.534 ± 0.014  kills m/o/f/t 0.07 / 0.34 / 0.50 / 0.09  life 91 s  kpm/ship 0.60  trades 0.02
+2v2 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v standard (M), kit2   energy v turn v c2: score 0.451 ± 0.014  kills m/o/f/t 0.07 / 0.34 / 0.50 / 0.09  life 91 s  kpm/ship 0.59  trades 0.02
+2v2 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v brawler (M), kit2   energy v turn v c3: score 0.486 ± 0.014  kills m/o/f/t 0.07 / 0.34 / 0.51 / 0.09  life 91 s  kpm/ship 0.59  trades 0.02
+2v2 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v standard (M), kit2 | crowd extend + lead   energy v turn v c4: score 0.438 ± 0.014  kills m/o/f/t 0.08 / 0.36 / 0.45 / 0.11  life 97 s  kpm/ship 0.56  trades 0.02
+## 5v5: 15 jobs, B 4096, 03:02 KST
+  batch 1/4 41 s; ETA 03:04 KST
+  batch 2/4 83 s; ETA 03:04 KST
+  batch 3/4 142 s; ETA 03:05 KST
+  batch 4/4 191 s; ETA 03:05 KST
+5v5 hit-and-run 2 (f0 0.06, dmg x1.15, vision x1) v standard (M), kit2   energy v turn v c0: score 0.437 ± 0.015  kills m/o/f/t 0.06 / 0.30 / 0.53 / 0.11  life 81 s  kpm/ship 0.66  trades 0.07
+5v5 hit-and-run 2 (f0 0.06, dmg x1.15, vision x1) v brawler (M), kit2   energy v turn v c1: score 0.486 ± 0.015  kills m/o/f/t 0.06 / 0.30 / 0.52 / 0.12  life 80 s  kpm/ship 0.67  trades 0.08
+5v5 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v standard (M), kit2   energy v turn v c2: score 0.439 ± 0.015  kills m/o/f/t 0.06 / 0.30 / 0.52 / 0.12  life 81 s  kpm/ship 0.66  trades 0.07
+5v5 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v brawler (M), kit2   energy v turn v c3: score 0.466 ± 0.015  kills m/o/f/t 0.06 / 0.30 / 0.53 / 0.12  life 81 s  kpm/ship 0.66  trades 0.07
+5v5 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v standard (M), kit2 | crowd extend + lead   energy v turn v c4: score 0.438 ± 0.014  kills m/o/f/t 0.07 / 0.31 / 0.43 / 0.19  life 98 s  kpm/ship 0.56  trades 0.05
+5v5 hit-and-run 2 (f0 0.06, dmg x1.15, vision x1) v standard (M), kit2           mixed v r9: score 0.495 ± 0.015  kills m/o/f/t 0.06 / 0.30 / 0.53 / 0.12  life 80 s  kpm/ship 0.66  trades 0.07
+5v5 hit-and-run 2 (f0 0.06, dmg x1.15, vision x1) v standard (M), kit2  mixed reversed v r9: score 0.501 ± 0.015  kills m/o/f/t 0.06 / 0.30 / 0.53 / 0.12  life 81 s  kpm/ship 0.66  trades 0.07
+5v5 hit-and-run 2 (f0 0.06, dmg x1.15, vision x1) v brawler (M), kit2           mixed v r9: score 0.475 ± 0.015  kills m/o/f/t 0.06 / 0.30 / 0.52 / 0.12  life 80 s  kpm/ship 0.67  trades 0.07
+5v5 hit-and-run 2 (f0 0.06, dmg x1.15, vision x1) v brawler (M), kit2  mixed reversed v r9: score 0.481 ± 0.015  kills m/o/f/t 0.06 / 0.30 / 0.53 / 0.12  life 81 s  kpm/ship 0.66  trades 0.07
+5v5 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v standard (M), kit2           mixed v r9: score 0.505 ± 0.015  kills m/o/f/t 0.06 / 0.30 / 0.53 / 0.12  life 81 s  kpm/ship 0.66  trades 0.07
+5v5 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v standard (M), kit2  mixed reversed v r9: score 0.500 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.12  life 81 s  kpm/ship 0.66  trades 0.08
+5v5 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v brawler (M), kit2           mixed v r9: score 0.521 ± 0.015  kills m/o/f/t 0.06 / 0.30 / 0.52 / 0.12  life 80 s  kpm/ship 0.67  trades 0.08
+5v5 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v brawler (M), kit2  mixed reversed v r9: score 0.475 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.12  life 81 s  kpm/ship 0.66  trades 0.07
+5v5 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v standard (M), kit2 | crowd extend + lead           mixed v r9: score 0.793 ± 0.012  kills m/o/f/t 0.07 / 0.31 / 0.49 / 0.13  life 90 s  kpm/ship 0.60  trades 0.06
+5v5 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v standard (M), kit2 | crowd extend + lead  mixed reversed v r9: score 0.823 ± 0.011  kills m/o/f/t 0.07 / 0.31 / 0.49 / 0.13  life 92 s  kpm/ship 0.59  trades 0.06
+## 10v10: 5 jobs, B 2048, 03:05 KST
+  batch 1/2 40 s; ETA 03:06 KST
+  batch 2/2 68 s; ETA 03:06 KST
+10v10 hit-and-run 2 (f0 0.06, dmg x1.15, vision x1) v standard (M), kit2   energy v turn v c0: score 0.468 ± 0.021  kills m/o/f/t 0.06 / 0.29 / 0.51 / 0.13  life 89 s  kpm/ship 0.61  trades 0.14
+10v10 hit-and-run 2 (f0 0.06, dmg x1.15, vision x1) v brawler (M), kit2   energy v turn v c1: score 0.462 ± 0.021  kills m/o/f/t 0.06 / 0.29 / 0.51 / 0.14  life 89 s  kpm/ship 0.61  trades 0.14
+10v10 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v standard (M), kit2   energy v turn v c2: score 0.424 ± 0.021  kills m/o/f/t 0.06 / 0.29 / 0.52 / 0.14  life 89 s  kpm/ship 0.61  trades 0.13
+10v10 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v brawler (M), kit2   energy v turn v c3: score 0.406 ± 0.021  kills m/o/f/t 0.06 / 0.30 / 0.51 / 0.13  life 88 s  kpm/ship 0.61  trades 0.14
+10v10 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v standard (M), kit2 | crowd extend + lead   energy v turn v c4: score 0.426 ± 0.021  kills m/o/f/t 0.08 / 0.30 / 0.40 / 0.22  life 110 s  kpm/ship 0.50  trades 0.10
+## 20v20: 5 jobs, B 1024, 03:06 KST
+  batch 1/2 79 s; ETA 03:08 KST
+  batch 2/2 178 s; ETA 03:09 KST
+20v20 hit-and-run 2 (f0 0.06, dmg x1.15, vision x1) v standard (M), kit2   energy v turn v c0: score 0.426 ± 0.030  kills m/o/f/t 0.06 / 0.29 / 0.50 / 0.16  life 107 s  kpm/ship 0.51  trades 0.21
+20v20 hit-and-run 2 (f0 0.06, dmg x1.15, vision x1) v brawler (M), kit2   energy v turn v c1: score 0.529 ± 0.030  kills m/o/f/t 0.06 / 0.29 / 0.50 / 0.15  life 107 s  kpm/ship 0.51  trades 0.22
+20v20 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v standard (M), kit2   energy v turn v c2: score 0.408 ± 0.030  kills m/o/f/t 0.06 / 0.29 / 0.50 / 0.15  life 109 s  kpm/ship 0.50  trades 0.21
+20v20 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v brawler (M), kit2   energy v turn v c3: score 0.432 ± 0.030  kills m/o/f/t 0.06 / 0.29 / 0.51 / 0.15  life 106 s  kpm/ship 0.52  trades 0.22
+20v20 hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v standard (M), kit2 | crowd extend + lead   energy v turn v c4: score 0.404 ± 0.030  kills m/o/f/t 0.08 / 0.30 / 0.39 / 0.24  life 130 s  kpm/ship 0.43  trades 0.18
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | E v T 20v20 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| hit-and-run 2 (f0 0.06, dmg x1.15, vision x1) v standard (M), kit2 | 0.530 ± 0.010 | 0.494 ± 0.014 | 0.437 ± 0.015 | 0.468 ± 0.021 | 0.426 ± 0.030 | 0.074 | 0.06 / 0.30 / 0.53 / 0.11 | 0.07 | 265 / 90 / 81 / 89 / 107 | 0.22 / 0.60 / 0.66 / 0.61 / 0.51 | 3.02 |
+| hit-and-run 2 (f0 0.06, dmg x1.15, vision x1) v brawler (M), kit2 | 0.598 ± 0.010 | 0.534 ± 0.014 | 0.486 ± 0.015 | 0.462 ± 0.021 | 0.529 ± 0.030 | 0.098 | 0.06 / 0.30 / 0.52 / 0.12 | 0.08 | 256 / 91 / 80 / 89 / 107 | 0.23 / 0.60 / 0.67 / 0.61 / 0.51 | 2.85 |
+| hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v standard (M), kit2 | 0.502 ± 0.010 | 0.451 ± 0.014 | 0.439 ± 0.015 | 0.424 ± 0.021 | 0.408 ± 0.030 | 0.092 | 0.06 / 0.30 / 0.52 / 0.12 | 0.07 | 274 / 91 / 81 / 89 / 109 | 0.21 / 0.59 / 0.66 / 0.61 / 0.50 | 2.98 |
+| hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v brawler (M), kit2 | 0.546 ± 0.010 | 0.486 ± 0.014 | 0.466 ± 0.015 | 0.406 ± 0.021 | 0.432 ± 0.030 | 0.094 | 0.06 / 0.30 / 0.53 / 0.12 | 0.07 | 270 / 91 / 81 / 88 / 106 | 0.21 / 0.59 / 0.66 / 0.61 / 0.52 | 2.82 |
+| hit-and-run 2 (f0 0.06, dmg x1.15, vision x0.96) v standard (M), kit2 | crowd extend + lead | 0.509 ± 0.010 | 0.438 ± 0.014 | 0.438 ± 0.014 | 0.426 ± 0.021 | 0.404 ± 0.030 | 0.096 | 0.07 / 0.31 / 0.43 / 0.19 | 0.05 | 296 / 97 / 98 / 110 / 130 | 0.20 / 0.56 / 0.56 / 0.50 / 0.43 | 2.71 |
+
+567 s

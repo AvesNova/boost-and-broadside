@@ -1302,6 +1302,35 @@ def confirm6() -> list[dict]:
 ROUNDS["confirm6"] = confirm6
 
 
+SET4 = {
+    "standard": {},
+    "hit-and-run": merge(HIT_AND_RUN_2, cone(0.06, 12, 8)),
+    "brawler": BRAWLER_SIGHT,
+    "small": merge({"hit_radius": 0.8, "hit_damage": 0.9}, cone(0.10, 12, 8)),
+}
+
+
+def set_ship(name: str) -> dict:
+    """A set ship: kit2, then the ship's own factors (its cone over the kit's)."""
+    return merge(kit(*KIT2), SET4[name])
+
+
+def set4() -> list[dict]:
+    """Every pair of the four-ship set at 1024 games, 1v1-20v20, r9; standard v brawler twice
+    (the run-to-run spread of one card)."""
+    names = list(SET4)
+    out = [
+        pair(f"{a} v {b} (set, M, kit2)", ("M", set_ship(a)), ("M", set_ship(b)))
+        for k, a in enumerate(names)
+        for b in names[k + 1 :]
+    ]
+    out.append(dict(out[1], name="standard v brawler (set, M, kit2), repeat"))
+    return out
+
+
+ROUNDS["set4"] = set4
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
