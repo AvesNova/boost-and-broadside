@@ -54,7 +54,8 @@ and `in_advantage`, so they fly in the mirrors too; each reads the committed tar
   with `sense_mirror_only` above 1/2, only against the own type. In a crowd (the soft
   count of the other known enemies within `sense_crowd_in_gun_range`, through the falling
   `sense_in_crowd`; open by default) the sense hands over to `crowd_sense`: the same side at
-  `crowd_sense_stick` of full stick, boosting with weight `crowd_sense_boost`.
+  `crowd_sense_stick` of full stick, boosting with weight `crowd_sense_boost` (whatever
+  the types and lift ratio).
 
 Each element's weight (`extend`, `slash`, `bleed`, `lag`, `deny`, and the maneuvers'
 `lead_turn`, `yoyo`, `brake`, `sense`) is 0 by default, as is

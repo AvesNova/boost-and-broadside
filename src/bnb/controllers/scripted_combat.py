@@ -635,13 +635,13 @@ def maneuvers(
     ).clamp_min(TINY)
     same_type = fleet.own_type == target_of(fleet.enemy_type.float()).round().to(torch.int32)
     geometry_gate = torch.where(
-        has_target
-        & seen
-        & (bearing.abs() > 0.5 * math.pi)
-        & (target_rate.abs() > TURNING_RATE)
-        & (same_type | (doctrine.sense_mirror_only <= 0.5)),
-        logistic(distance / fleet.gun_range, doctrine.sense_in_gun_range, temperature)
-        * logistic(lift_ratio, doctrine.sense_in_lift_ratio, temperature),
+        has_target & seen & (bearing.abs() > 0.5 * math.pi) & (target_rate.abs() > TURNING_RATE),
+        logistic(distance / fleet.gun_range, doctrine.sense_in_gun_range, temperature),
+        0.0,
+    )
+    duel_gate = torch.where(
+        same_type | (doctrine.sense_mirror_only <= 0.5),
+        logistic(lift_ratio, doctrine.sense_in_lift_ratio, temperature),
         0.0,
     )
     sense_left = (target_rate > 0.0) ^ (doctrine.sense_one_circle > 0.5)
@@ -652,7 +652,7 @@ def maneuvers(
     near = logistic(others, per_enemy, heat)
     crowd = torch.where(torch.isfinite(others), near, 0.0).sum(-1)
     alone = logistic(crowd, doctrine.sense_in_crowd, temperature)
-    sensing = doctrine.sense * geometry_gate * alone
+    sensing = doctrine.sense * geometry_gate * duel_gate * alone
     in_crowd = doctrine.crowd_sense * geometry_gate * (1.0 - alone)
     stick = stick + sensing[..., None] * (commanded_stick(sense_left, 1.0) - stick)
     left = torch.where(sensing > 0.5, sense_left, left)
