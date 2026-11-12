@@ -48,7 +48,10 @@ and `in_advantage`, so they fly in the mirrors too; each reads the committed tar
   reverse (the store as a speed brake) while the combat layer turns toward it.
 - **Sense** (the post-merge choice): with the target behind the ship's 3-9 line within
   `sense_in_gun_range` and turning, turn at full stick in its rotation sense (the
-  two-circle), or against it with `sense_one_circle` above 1/2 (the one-circle).
+  two-circle), or against it with `sense_one_circle` above 1/2 (the one-circle); weighted
+  by `sense_in_lift_ratio`, rising in the own maximum lift coefficient over the target's
+  (the inverse of the slow turn's radius: the one-circle goes to the smaller radius), and,
+  with `sense_mirror_only` above 1/2, only against the own type.
 
 Each element's weight (`extend`, `slash`, `bleed`, `lag`, `deny`, and the maneuvers'
 `lead_turn`, `yoyo`, `brake`, `sense`) is 0 by default, as is
@@ -117,6 +120,8 @@ class Doctrine:
     sense: float = 0.0
     sense_one_circle: float = 0.0
     sense_in_gun_range: Logistic = Logistic(2.0, 0.2, False)
+    sense_in_lift_ratio: Logistic = Logistic(1e-3, 0.05, True)
+    sense_mirror_only: float = 0.0
 
 
 NAMES = tuple(field.name for field in dataclasses.fields(Doctrine))
@@ -141,6 +146,7 @@ FRACTIONS = (
     "yoyo_ease",
     "yoyo_low",
     "sense_one_circle",
+    "sense_mirror_only",
 )
 EXPONENTS = ("turn_exponent", "climb_exponent", "speed_exponent", "range_exponent")
 # Each logistic's smallest scale (a tenth of a factor e in its quantity, near the combat
@@ -161,6 +167,7 @@ SCALE_FLOORS = {
     "brake_in_stall_angle": 0.158,
     "brake_in_gun_range": 0.1,
     "sense_in_gun_range": 0.1,
+    "sense_in_lift_ratio": 0.03,
 }
 
 

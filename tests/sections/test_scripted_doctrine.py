@@ -333,3 +333,24 @@ def test_the_sense_turns_with_or_against_the_targets_rotation_after_the_merge():
     one = _decide(obs, _every_type(Doctrine(sense=1.0, sense_one_circle=1.0)))
     assert float(two.stick[0, 0, 6]) > 0.9
     assert float(one.stick[0, 0, 5]) > 0.9
+
+
+def test_the_sense_gates_by_the_lift_ratio_and_the_mirror():
+    """Against a target of the other type: the mirror-only sense does not act, nor does a
+    sense whose lift-ratio gate the pair's ratio is below."""
+    distance = 0.5 * value("gun_range", STIFF)
+    other = AGILE if AGILE != STIFF else STIFF
+    enemy = ship(x=-distance, y=-30.0, heading=math.pi, ship_type=other, team_relative=1)
+    enemy[SHIP["nose_rate"]] = 0.3
+    obs = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, absent(other)])
+    agent = _decide(obs)
+    one = Doctrine(sense=1.0, sense_one_circle=1.0)
+    mirror_only = _decide(obs, _every_type(dataclasses.replace(one, sense_mirror_only=1.0)))
+    torch.testing.assert_close(mirror_only.stick, agent.stick)
+    lift = CHARACTERISTICS.max_acceleration / CHARACTERISTICS.corner_speed**2
+    ratio = float(lift[STIFF] / lift[other])
+    gated = dataclasses.replace(one, sense_in_lift_ratio=Logistic(ratio * 10.0, 0.05, True))
+    torch.testing.assert_close(
+        _decide(obs, _every_type(gated)).stick, agent.stick, atol=1e-3, rtol=0
+    )
+    assert float(_decide(obs, _every_type(one)).stick[0, 0, 5]) > 0.9

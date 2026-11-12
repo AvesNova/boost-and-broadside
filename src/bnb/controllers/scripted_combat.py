@@ -618,10 +618,22 @@ def maneuvers(
     # Sense: after the merge, the turn's rotation sense against the target's.
     target_rate = target_of(column(fleet.enemy, "nose_rate"))
     seen = target_of(fleet.enemy_seen.float()) > 0.5
+    lift = characteristics.max_acceleration / (
+        characteristics.corner_speed * characteristics.corner_speed
+    )  # the maximum lift coefficient by type
+    lift_ratio = per_ship(lift, fleet.own_type) / target_of(
+        per_ship(lift, fleet.enemy_type)
+    ).clamp_min(TINY)
+    same_type = fleet.own_type == target_of(fleet.enemy_type.float()).round().to(torch.int32)
     sensing = torch.where(
-        has_target & seen & (bearing.abs() > 0.5 * math.pi) & (target_rate.abs() > TURNING_RATE),
+        has_target
+        & seen
+        & (bearing.abs() > 0.5 * math.pi)
+        & (target_rate.abs() > TURNING_RATE)
+        & (same_type | (doctrine.sense_mirror_only <= 0.5)),
         doctrine.sense
-        * logistic(distance / fleet.gun_range, doctrine.sense_in_gun_range, temperature),
+        * logistic(distance / fleet.gun_range, doctrine.sense_in_gun_range, temperature)
+        * logistic(lift_ratio, doctrine.sense_in_lift_ratio, temperature),
         0.0,
     )
     sense_left = (target_rate > 0.0) ^ (doctrine.sense_one_circle > 0.5)

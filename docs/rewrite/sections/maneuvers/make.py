@@ -124,6 +124,11 @@ ROUNDS = {
         ("lead 0.5 s + sense two-circle", dict(lead(0.5), sense=1.0)),
         ("lead 0.5 s + sense one-circle", dict(lead(0.5), sense=1.0, sense_one_circle=1.0)),
     ],
+    "confirm": [
+        ("r9", {}),
+        ("lead 0.5 s", lead(0.5)),
+        ("lead 0.5 s cross 1.0", lead(0.5, crossing=1.0)),
+    ],
 }
 
 
