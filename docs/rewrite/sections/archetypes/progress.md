@@ -814,3 +814,42 @@ The finals' crowds (confirm 8 and 9, A v B under r9): kills m / o / f / t about
 kills a minute a ship, life 81-109 s; **trades 0.07 at 5v5, 0.13-0.14 at 10v10 and 0.20-0.22 at
 20v20**, above the frozen card's (0.04 / 0.08 / 0.12): the kit's damage x2.5 makes crowds
 lethal enough that two ships often die together.
+
+## 04:15-04:27 KST: set 5 (`set5/`): do the rate and speed fighters join the set?
+
+1024 games (10v10 512, 20v20 256), r9; the rate (lift x1.03, dmg x1.25) and speed (drag x0.85,
+vision x1.04, f0 0.07) fighters of confirm 9 against each set ship:
+
+| A v B | 1v1 / 2v2 / 5v5 / 10v10 / 20v20 |
+|---|---|
+| rate v standard | 0.61 / 0.59 / 0.59 / 0.64 / 0.66 |
+| rate v hit-and-run (final) | 0.61 / 0.60 / 0.67 / 0.67 / 0.72 |
+| rate v brawler | 0.65 / 0.60 / 0.63 / 0.64 / 0.64 |
+| rate v small | 0.68 / 0.57 / 0.55 / 0.56 / 0.58 |
+| speed v standard | 0.56 / 0.55 / 0.57 / 0.62 / 0.68 |
+| speed v hit-and-run | 0.53 / 0.58 / 0.62 / 0.67 / 0.69 |
+| speed v brawler | 0.58 / 0.57 / 0.60 / 0.64 / 0.68 |
+| speed v small | 0.59 / 0.54 / 0.55 / 0.58 / 0.57 |
+
+- **Rate and speed are even with each other and a tier above the set** (0.53-0.72 against
+  every set ship): their damage x1.25 and low drag are plain gains. Set 6 (running) trims
+  them toward the standard.
+
+## 04:21-04:27 KST: arming 2 (`arming2/`): the arming distance on the final pairs
+
+512 games, r9, arming on both ships; A v B 1v1 / 5v5 and both mirrors:
+
+| Pair, arming | A v B | AA; BB mutual, life | Duel kills m / o / f / t; life |
+|---|---|---|---|
+| hit-and-run v standard, none (confirm 8) | 0.53 / 0.47 | 0.34, 260 s; 0.36, 295 s | 0.35 / 0.54 / 0.11 / 0; 257 s |
+| the same, 50 m | 0.52 / 0.47 | 0.34, 283 s; 0.31, 307 s | 0.31 / 0.60 / 0.09 / 0; 280 s |
+| the same, 100 m | 0.53 / 0.47 | 0.21, 357 s; 0.18, 416 s | 0.23 / 0.66 / 0.11 / 0; 376 s |
+| the same, 150 m | 0.48 / 0.47 | 0.11, 420 s; 0.10, 511 s | 0.12 / 0.76 / 0.11 / 0; 413 s |
+| rate v speed, 50 m | 0.52 / 0.48 | 0.43, 246 s; 0.16, 432 s | 285 s |
+| rate v speed, 100 m | 0.50 / 0.54 | 0.31, 295 s; 0.15, 506 s | 384 s |
+| rate v speed, 150 m | 0.51 / 0.50 | 0.17, 369 s; 0.12, 549 s | 450 s |
+
+- **On both ships the arming distance does not move the balance** (within 0.04 at either
+  size): it is a fight-shape knob. On the kit's ships it keeps its trade: 100 m takes the
+  hit-and-run pair's mirrors to 0.18-0.21 mutual at 357-416 s, 150 m to 0.10-0.11 at 420-511 s.
+  The kills it removes become offset head-on kills, not flank or tail ones.
