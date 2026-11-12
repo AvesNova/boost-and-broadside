@@ -902,8 +902,8 @@ def markdown(rows: list[dict]) -> str:
         "| Variant | Lineup | A v B | Games | A scores | Kills/min mean (median) "
         "| Damage m / o / f / t | Kills m / o / f / t | Passes a kill | First-merge kills "
         "| Killer hit first | P(win \\| first hit) | TTK median s | Circles 1 / 2 / scissors (n) "
-        "| Trades |",
-        "|---" * 15 + "|",
+        "| Trades | Life s | Death gap mean (median) s | Spawn to hit s |",
+        "|---" * 18 + "|",
     ]
     for r in rows:
         lines.append(
@@ -914,7 +914,9 @@ def markdown(rows: list[dict]) -> str:
             f"| {r['passes_per_kill']:.2f} | {r['first_merge_kills'][0]:.2f} "
             f"| {r['killer_first_hit'][0]:.2f} | {r['first_hit_wins'][0]:.2f} "
             f"| {r['ttk_median']} | {shares(r['circles'])} ({r['circle_count']:.0f}) "
-            f"| {r.get('trade_fraction', float('nan')):.2f} |"
+            f"| {r.get('trade_fraction', float('nan')):.2f} | {r.get('life_seconds', 0):.0f} "
+            f"| {r.get('death_gap_mean', 0):.1f} ({r.get('death_gap_median')}) "
+            f"| {r.get('spawn_to_engagement_median')} |"
         )
     return "\n".join(lines)
 

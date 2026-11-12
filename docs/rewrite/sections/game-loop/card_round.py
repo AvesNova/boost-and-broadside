@@ -70,8 +70,10 @@ def main() -> None:
         f"| Variant | Player | v {versus.name}: kill share (score) | E v T (Yongma) "
         "| Kills/min mean (median) | Kills m / o / f / t (all) | "
         "Damage m / o / f / t (all) | Kill mix | Passes a kill | First-merge | Card head-on "
-        "passes Y-Y / J-J / Y-J / J-Y | Gun range Y / J | Circles 1 / 2 / sc | Trades |",
-        "|---" * 14 + "|",
+        "passes Y-Y / J-J / Y-J / J-Y | Gun range Y / J | Circles 1 / 2 / sc | Trades "
+        "| Life s | Death gap mean (median) s | Kills/min/ship | Spawn to hit s "
+        "| First hit / kill s |",
+        "|---" * 19 + "|",
     ]
     out = []
     for k, variant in enumerate(variants):
@@ -102,6 +104,18 @@ def main() -> None:
             circles = [sum(r["circles"][c] * r["circle_count"] for r in mine) for c in range(3)]
             circles = [c / max(sum(circles), 1) for c in circles]
             trades = sum(r["trade_fraction"] * r["games"] for r in mine) / total
+            paced = {
+                key: sum(r[key] * r["games"] for r in mine) / total
+                for key in (
+                    "life_seconds",
+                    "death_gap_mean",
+                    "death_gap_median",
+                    "kills_per_minute_per_ship",
+                    "spawn_to_engagement_median",
+                    "first_hit_median",
+                    "first_kill_median",
+                )
+            }
             per_minute = sum(r["kills_per_minute_mean"] * r["games"] for r in mine) / total
             median = sorted(r["kills_per_minute_median"] for r in mine)[len(mine) // 2]
             p = passes[k]
@@ -119,6 +133,7 @@ def main() -> None:
                 first_merge=sum(r["first_merge_kills"][0] * r["games"] for r in mine) / total,
                 card=p,
                 trade_fraction=trades,
+                pace=paced,
                 circles=circles,
                 rows=mine,
             )
@@ -133,7 +148,11 @@ def main() -> None:
                 f"| {p['Y on Y']['head_on_passes']:.2f} / {p['J on J']['head_on_passes']:.2f} / "
                 f"{p['Y on J']['head_on_passes']:.2f} / {p['J on Y']['head_on_passes']:.2f} "
                 f"| {p['gun_range'][0]:.0f} / {p['gun_range'][1]:.0f} "
-                f"| {' / '.join(f'{v:.2f}' for v in circles)} | {trades:.2f} |"
+                f"| {' / '.join(f'{v:.2f}' for v in circles)} | {trades:.2f} "
+                f"| {paced['life_seconds']:.0f} | {paced['death_gap_mean']:.1f} "
+                f"({paced['death_gap_median']}) | {paced['kills_per_minute_per_ship']:.2f} "
+                f"| {paced['spawn_to_engagement_median']} "
+                f"| {paced['first_hit_median']:.1f} / {paced['first_kill_median']:.1f} |"
             )
     (out_dir / f"{args.tag}.json").write_text(json.dumps(out, indent=1))
     (out_dir / f"{args.tag}.md").write_text("\n".join(table) + "\n")

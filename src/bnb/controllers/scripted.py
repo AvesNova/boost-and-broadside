@@ -19,11 +19,13 @@ from bnb.game.rules import FlightConstants, Rules, rules_of
 
 from .scripted_combat import Marginals, combat, context
 from .scripted_defaults import MODE_DEFAULTS
+from .scripted_doctrine import for_card
 from .scripted_frontline import frontline
 from .scripted_memory import ScriptedCarry, forgotten, fresh_carry, remember
 from .scripted_parameters import MODES, ModeParameters, ScriptedParameters
 
 REDRAW = 0.1  # sticky random: per-tick probability of a new action
+STORED = "stored"  # the scripted agent's default doctrines: the stored ones of its card's set
 # The standard card's lengths from its characteristics at 30 Hz, to the last bit
 # (`gun_range` and `corner_radius`): its longest gun range (the fighter's) and its largest
 # corner radius (the heavy's: the corner speed squared over the g limit's acceleration, the
@@ -310,7 +312,8 @@ class Scripted:
     size. parameters: per mode (the default, `MODE_DEFAULTS`: each view plays its game
     mode's set), one set, or per view (`scripted_parameters.unpack` of a table). doctrines:
     each ship type's doctrine, a table (T, D) or per view (R, T, D)
-    (`bnb.controllers.scripted_doctrine`; None, the default, flies none). memory:
+    (`bnb.controllers.scripted_doctrine`); STORED, the default, the stored tuned ones of the
+    card's ship set (`scripted_doctrine.for_card`); None flies none. memory:
     with False, every decision is the memoryless agent's (each plan choice made afresh,
     only visible enemies known); the carry still holds the ships' agent flags. seconds: a
     decision's length (the switches' rates are per second).
@@ -327,8 +330,12 @@ class Scripted:
         share: float | torch.Tensor = 1.0,
         memory: bool = True,
         seconds: float = Rules.tick_length,
-        doctrines: torch.Tensor | None = None,
+        doctrines: torch.Tensor | str | None = STORED,
     ) -> None:
+        if isinstance(doctrines, str):
+            if doctrines != STORED:
+                raise ValueError(f"doctrines {doctrines!r}: a table, None or {STORED!r}")
+            doctrines = for_card(characteristics)
         if not isinstance(temperature, torch.Tensor) and not temperature > 0.0:
             raise ValueError(f"the scripted agent's temperature {temperature} must be positive")
         if not isinstance(share, torch.Tensor) and not 0.0 <= share <= 1.0:
