@@ -1169,6 +1169,35 @@ def confirm4() -> list[dict]:
 ROUNDS["confirm4"] = confirm4
 
 
+def round12() -> list[dict]:
+    """The hit-and-run mirror's joust: a harder nose on the hit-and-run ship (its cone's f0),
+    with damage to keep the pace and the balance; and the standard ship's mirror."""
+    out = []
+    for f0, d, bf0 in (
+        (0.06, 1.2, None),
+        (0.05, 1.2, None),
+        (0.05, 1.3, None),
+        (0.04, 1.3, None),
+        (0.05, 1.25, 0.07),
+    ):
+        a = merge(HIT_AND_RUN, {"hit_damage": d / 1.2}, kit(*KIT2), cone(f0, 12, 8))
+        b = merge(kit(*KIT2), cone(bf0, 12, 8) if bf0 else {})
+        out.append(
+            pair(
+                f"hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x{d:g}, "
+                f"cone f0 {f0:g}) v standard"
+                + (f" (cone f0 {bf0:g})" if bf0 else "")
+                + " (M), kit2",
+                ("M", a),
+                ("M", b),
+            )
+        )
+    return out
+
+
+ROUNDS["round12"] = round12
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
