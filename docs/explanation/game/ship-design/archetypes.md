@@ -9,37 +9,90 @@ the vermilion bird; the turn fighter) and Yongma (용마, the dragon-horse; the 
 fighter), and the conditions under which their matchup is decided by doctrine rather than
 by who fires first. Nothing here is a ship file yet; every value is a proposal.
 
-## 1. The two fighters of the Second World War
+## 1. The two fighters of the Second World War, in numbers
 
-**The turn fighter** (Spitfire, A6M Zero, Yak-3, Ki-43). Light wing loading, so a low stall
-speed and a small turn radius; a light airframe, often lightly armoured; modest top speed.
-Its doctrine is to slow the fight down and stay in it: draw the opponent into a turning
-contest at low speed, where its turn rate and radius bring its guns to bear first.
-
-**The energy fighter** (P-47, Fw 190, F4U Corsair, P-51 at altitude). High wing loading, a
-heavy airframe, a strong engine and low drag, so a high top speed, a fast dive and a long
-zoom; heavy armament and armour. It turns worse at any speed it shares with the turn
-fighter. Its doctrine keeps the fight fast: slash (a high-speed firing pass), extend (fly
-away faster than the opponent can follow), climb or turn wide, and re-engage. Its real
-advantage is initiative: it chooses when a fight happens and when it ends. Altitude gave it
-both safety (a turn fighter below could not reach it) and stored energy (a dive converts
-height into speed for the next pass).
-
-**The trade-offs that separate them.**
-
-| Quantity | Turn fighter | Energy fighter | What it buys |
-|---|---|---|---|
-| wing loading | low | high | low: turn radius and rate, low stall speed; high: less drag at speed, a faster dive |
-| mass | low | high | high: dives faster, keeps speed in a zoom, carries armour and guns |
-| power | moderate | high (power-to-weight) | climb and sustained speed |
-| drag | higher | lower | lower: top speed, energy kept in gentle turns |
-| dive and zoom | short | long | the energy fighter's escape and its re-attack |
-| armament | lighter, often cannon on centreline | heavy (8 x .50, 4 x 20 mm) | a brief firing pass must be enough |
-
-Each wins on its own terms and loses on the other's: a turn fighter that chases an energy
-fighter in a dive is left behind; an energy fighter that turns with a turn fighter is shot
-from behind. Doctrine (Thach weave, "never turn with a Zero", boom-and-zoom) is the
+**The turn fighter** (Spitfire, A6M Zero, Yak-3, Ki-43) slows the fight down and stays in
+it: it draws the opponent into a turning contest at low speed, where its turn rate and
+radius bring its guns to bear first. **The energy fighter** (P-47, Fw 190, F4U Corsair,
+Tempest) keeps the fight fast: slash (a high-speed firing pass), extend (fly away faster
+than the opponent can follow), climb or turn wide, and re-engage. Its advantage is
+initiative: it chooses when a fight happens and when it ends. Each wins on its own terms
+and loses on the other's; doctrine ("never turn with a Zero", boom-and-zoom) is the
 discipline of staying on one's own terms.
+
+The numbers below are the set's research (`real-scale-research/aircraft.json`, every value
+with its source and confidence; sea level, military power, combat mass) and figures derived
+from it by `docs/rewrite/sections/gun-study/archetypes_ww2.py` (`archetypes_ww2.json`):
+the instantaneous turn at the corner speed (the stall speed times the root of the g limit)
+and at 100 m/s (the lift limit or the g limit, whichever is lower), the sustained turn's
+radius at the research model's best-rate speed, and the ballistic coefficient W/S over
+C_D0, which sets the drag per unit weight at a given speed (how fast a type loses speed
+when it turns gently, and how fast it accelerates and how far it goes in a dive).
+
+| Type | W/S (kg/m²) | Power / mass (kW/kg) | Top speed, sea level / altitude (m/s) | Climb (m/s) | Stall (m/s) | Sustained turn (°/s; radius m) | Instant turn at 100 m/s (°/s) | Corner radius (m) | Roll (°/s) | Dive limit (m/s) | W/S / C_D0 (t/m²) | Weight of fire (kg/s) | Survivability (1-5) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Spitfire IX | 147 | 0.36 | 150 / 182 | 23.5 | 41.1 | 19.5; 183 | 32.8 | 174 | 90 | 201 | 7.6 | 3.83 | 2 |
+| Spitfire XIV (leaning mixed) | 170 | 0.37 | 162 / 200 | 25.6 | 43.4 | 18.6; 205 | 29.3 | 194 | 90 | 210 | 9.1 | 3.83 | 2 |
+| A6M5 Zero | 127 | 0.31 | 131 / 157 | 15.7 | 37.5 | 22.5; 152 | 38.9 | 145 | 80 | 183 | 5.8 | 2.37 | 1 |
+| Yak-3 (light, fast low down: mixed) | 181 | 0.35 | 158 / 179 | 21.0 | 45.8 | 19.5; 228 | 26.2 | 216 | 100 | 194 | 8.9 | 2.48 | 2 |
+| Ki-84 (mixed) | 171 | 0.37 | 156 / 173 | 18.5 | 44.4 | 18.7; 212 | 28.0 | 203 | 90 | 222 | 8.2 | 3.04 | 3 |
+| P-47D | 220 | 0.24 | 152 / 198 | 14.1 | 49.2 | 14.4; 285 | 22.5 | 249 | 85 | 224 | 10.4 | 4.91 | 5 |
+| Fw 190A-8 | 230 | 0.30 | 155 / 181 | 14.4 | 52.8 | 15.7; 310 | 19.4 | 287 | 150 | 236 | 10.2 | 4.95 | 4 |
+| Fw 190D-9 | 233 | 0.30 | 151 / 182 | 17.0 | 52.8 | 16.0; 312 | 19.4 | 287 | 130 | 236 | 9.5 | 2.74 | 3 |
+| F4U-1D Corsair | 187 | 0.27 | 156 / 187 | 16.5 | 45.4 | 14.7; 235 | 26.7 | 212 | 85 | 210 | 11.3 | 3.68 | 4 |
+| Tempest V (low altitude) | 184 | 0.31 | 168 / 193 | 22.3 | 45.2 | 15.7; 226 | 26.9 | 210 | 100 | 241 | 12.2 | 6.50 | 4 |
+| Me 262 (extreme) | 295 | 0.48 (thrust power) | 228 / 241 | 20.0 | 55.6 | 14.1; 350 | 17.3 | 318 | 60 | 278 | 15.4 | 13.64 | 3 |
+| **P-51D (mixed reference)** | 201 | 0.26 | 163 / 198 | 15.2 | 44.7 | 15.7; 229 | 27.6 | 205 | 95 | 226 | 12.3 | 3.68 | 2 |
+
+The archetypes as ratios (geometric means of each group: turn the first five, energy the
+next five; the fleet is all 18 researched types), with the handle each maps to:
+
+| Quantity | Turn / fleet | Energy / fleet | Turn / P-51D | Energy / P-51D | **Turn / energy** | Handle (`handles.py`) | How strongly |
+|---|---|---|---|---|---|---|---|
+| survivability | 0.71 | 1.48 | 0.94 | 1.97 | **0.48** | `max_shield` (the set's rule, 100 x (1 + 0.2 a step): 0.71) | directly |
+| mass | 0.72 | 1.13 | 0.73 | 1.15 | **0.64** | none (per unit mass) | through the rows below |
+| weight of fire | 0.74 | 1.07 | 0.83 | 1.19 | **0.70** | `hit_damage` (the set balances it to equal damage per second) | directly |
+| wing loading | 0.81 | 1.08 | 0.79 | 1.04 | **0.75** | `stall_speed` (as its square root) | directly |
+| W/S / C_D0 | 0.81 | 1.11 | 0.63 | 0.87 | **0.73** | `zero_lift_drag` (rho C_D0 / 2 W/S: its inverse) | directly |
+| sustained turn | 1.16 | 0.90 | 1.26 | 0.97 | **1.29** | `sustained_turn_rate` | directly |
+| instant turn at 100 m/s | 1.21 | 0.90 | 1.11 | 0.82 | **1.35** | follows `stall_speed` and `g_limit` | through them |
+| instant turn at corner | 1.12 | 0.95 | 1.03 | 0.88 | **1.17** | follows `stall_speed` and `g_limit` | through them |
+| low-speed acceleration | 1.34 | 0.87 | 1.60 | 1.04 | **1.54** | `low_speed_acceleration` | directly |
+| power / mass | 1.04 | 0.84 | 1.37 | 1.12 | **1.23** | the engine (solved from cruise and climb) | through them |
+| climb | 1.07 | 0.87 | 1.35 | 1.09 | **1.24** | `climb_time` (the store's charge) | directly |
+| dive limit | 0.93 | 1.05 | 0.89 | 1.01 | **0.88** | `dive_acceleration` (store into speed) | loosely: a rate, not a limit |
+| roll | 0.97 | 1.15 | 0.95 | 1.13 | 0.84 | `nose_reversal_time` (the set's stand-in; 2D has no roll) | weak: the Fw 190s alone |
+| stall speed | 0.91 | 1.05 | 0.95 | 1.10 | 0.86 | `stall_speed` | directly |
+| top speed, altitude / sea level | 0.94 / 0.94 | 0.99 / 0.97 | 0.90 / 0.93 | 0.95 / 0.96 | 0.94 / 0.96 | `cruise_speed` | directly |
+| service ceiling | 1.01 | 0.97 | 0.91 | 0.87 | 1.05 | `ceiling` (the store) | shared |
+| unpowered zoom, 200 to 60 m/s | 0.97 | 1.01 | 0.95 | 0.99 | 0.96 | `zoom_acceleration` | shared |
+| g limit | 1.04 | 1.01 | 0.96 | 0.94 | 1.03 | `g_limit` | shared |
+| half span | 0.93 | 0.99 | 0.97 | 1.03 | 0.94 | `hit_radius` | directly |
+
+**What separates them** is weight and what it buys. The energy fighter is half again as
+heavy (1.56 times) on a wing a third more loaded, so it turns worse at every speed
+(sustained 1.29 times slower, at 100 m/s 1.35 times), stalls faster and needs 1.4 times the
+room to turn; in exchange its drag is a smaller share of its weight (W/S over C_D0 1.37
+times the turn fighter's), so it keeps speed in gentle manoeuvres, accelerates harder in a
+dive and can be taken faster before it is limited (dive limit 1.14 times). It carries 1.4
+times the weight of fire and is twice as tough. **What they share** is surprising: level top
+speed (within 4-6%), the ceiling, the g limit and a zoom from equal speed. The turn fighters
+climb and accelerate better at low speed and have more power per kilogram (1.23 times): the
+energy fighter is neither the faster nor the better climber in level flight. Its speed
+advantage was vertical, from height kept and a dive the other could not follow (the RAE's
+and AFDU's 1942 trials of a captured Fw 190A-3 against the Spitfire IX: the Fw 190 faster in
+the initial dive and the roll, the Spitfire better in the turn and, at most heights, the
+climb; recalled, not re-checked). The famous pairs spread wider than the groups: the P-47D
+over the Zero is 1.73 times the wing loading, 0.64 times the sustained turn and 1.27 times
+the top speed at altitude; the Fw 190A-8 over the Spitfire IX 1.56, 0.81 and 1.00 (and roll
+1.67, climb 0.61).
+
+**What maps.** Wing loading, the turn, drag over weight, low-speed acceleration, the
+charge (climb), armour and guns map directly onto handles. The dive maps loosely: our
+dive is a boost (the store into speed), whose rate is a handle and whose top speed follows
+from it and the drag. Roll has no 2D analogue (the set's nose reversal time stands in for
+it, and only the Fw 190s separate on it). The ceiling and the zoom are shared. Altitude,
+the energy fighter's real sanctuary, has none: the store stands in for it, equal in both.
 
 ## 2. The paradigm in our 2D game
 
@@ -156,9 +209,9 @@ Standard errors are binomial; at 512 duels a share near 0.97 has ±0.01, near 0.
 In every mirror 96-99% of the damage lands in the front hemisphere (inside the head-on
 angle). The Anvil's tail TTK is 0: one hit from behind breaks its shield. vizia's
 P(win | first hit) stays at 0.87 although its first merge rarely kills: its 10 m hit
-radius (the P-51D's is 5.6 m) makes it an easy target (hit fraction 0.79), so the first
-hit is usually the start of a won tail chase; the P-51D with vizia's guns alone gives 0.59
-(below).
+radius (the P-51D's is 5.6 m) makes it an easy target (hit fraction 0.79), so the ship
+that lands first tends to win the following head-on passes too (no tail chase: see
+"Damage and kills by aspect" below); the P-51D with vizia's guns alone gives 0.59 (below).
 
 Cross pairs (the first type's score; the head-on race is decided by the cards):
 
@@ -225,49 +278,109 @@ These are the scripted agent's duels on one type's card; the threshold should be
 on the other speeds and gun ranges (the pass time scales with them) and with learned
 agents before it becomes a rule.
 
+### Damage and kills by aspect
+
+The aspect statistics (`bnb.contracts.ASPECTS`: head-on under 45 degrees off the target's
+nose, tail over 135, the flank between; a first kill's class is its killing hit's) for
+the same duels, 512 each (`docs/rewrite/sections/gun-study/aspect/`; the Yongma and Jujak
+cards of section 4, s = 1, as temporary cards in the bench):
+
+| Duels | Damage head-on / flank / tail | First kills head-on / flank / tail (n) | First type wins |
+|---|---|---|---|
+| P-51D mirror | 0.99 / 0.01 / 0.00 | 0.99 / 0.01 / 0.00 (657) | |
+| P-51D with vizia's guns | 0.99 / 0.01 / 0.00 | 0.99 / 0.01 / 0.00 (477) | |
+| vizia mirror | 0.97 / 0.03 / 0.00 | 0.98 / 0.02 / 0.00 (501) | |
+| Yongma mirror | 0.95 / 0.05 / 0.00 | 0.94 / 0.06 / 0.00 (498) | |
+| Jujak mirror | 0.98 / 0.02 / 0.00 | 0.99 / 0.01 / 0.00 (514) | |
+| Yongma v Jujak | 0.83 / 0.17 / 0.00 (Yongma's 0.98 / 0.02, Jujak's 0.76 / 0.24) | 0.60 / 0.40 / 0.00 (505) | 0.08 ± 0.01 |
+
+**No duel has a tail shot.** Not one hit of these 4,608 duels comes from behind; an
+independent check of 6,793 hits in 64 vizia duels finds none more than about 72 degrees
+off the nose. The long fights of the lethal-target cards (vizia's median 21 s from first
+hit to kill) are repeated head-on passes, not tail chases: the scripted agent turns to
+face its target, and a target that turns to face back meets it nose to nose. The flank
+appears only where the turn rates differ: Jujak, turning inside Yongma, takes a quarter of
+its damage and two fifths of the kills from the flank, and wins 92% of the duels. With
+the speed group at s = 2 nothing changes (0.08 ± 0.01): without a doctrine Yongma is the
+worse turn fighter whatever its speed, as condition (a)'s failure case says. Both valid
+strategies the author wants, the flank snap and the tail track, need doctrine (or learned
+play) to appear; these statistics are now in every training run (`combat/damage_share/`,
+`combat/kill_share/`), the match statistics and this bench to track them.
+
 ## 4. Proposed starting points: two variants of vizia
 
-Handle deltas from `vizia` (src/bnb/game/ships/real-scale/vizia.toml); every handle not
-named is vizia's, including its guns (which meet the lethality target). Both cards solve
-(`docs/rewrite/sections/gun-study/variants_solved.json`, worst flown error below 1e-4):
+Handle deltas from `vizia` (src/bnb/game/ships/real-scale/vizia.toml), scaled from the
+real split of section 1 (`docs/rewrite/sections/gun-study/archetypes_solve.py`): a mapped
+handle is vizia's times r^(s/2) for Jujak and r^(-s/2) for Yongma, r the turn-over-energy
+ratio of its real quantity, so vizia sits at the geometric midpoint and the pair's split
+is the real split to the power s.
 
-| Handle | vizia | Yongma (energy) | Jujak (turn) |
+- **s = 1 for flight**: the real group split. It is about the split of the famous pairs'
+  milder half (the Fw 190A over the Spitfire IX turns 0.81 times as fast; the groups 0.78);
+  the pairs' wider split (the P-47D over the Zero, 0.64) is the room the tuning loop has.
+- **s = 1/2 for armour and guns**: the full split (shield and damage each about 1.19 times
+  either way) would leave Jujak's head-on kill of Yongma at 3.3 passes, outside the
+  lethality target; at a half it is 2.7. The shield and the damage scale together, so each
+  mirror keeps vizia's time to kill exactly.
+- **Not used**: the ceiling (the store), the zoom and the g limit, which the archetypes
+  share; the nose reversal (roll: only the Fw 190s separate); the half-lift drag (no real
+  basis: the energy fighter keeps its energy in gentle turns through its lower zero-lift
+  drag, here). The fire rate stays vizia's 15 Hz.
+
+| Handle (from the real quantity) | vizia | Yongma (energy) | Jujak (turn) |
 |---|---|---|---|
-| stall speed (m/s) | 44.7 | 50.0 (wing loading +25%) | 40.0 (-20%) |
-| cruise speed (m/s) | 162.7 | 182.0 (+12%) | 150.0 (-8%) |
-| sustained turn rate (deg/s) | 15.7 | 13.5 | 18.5 |
-| half-lift drag | 0.25 | 0.20 (keeps energy in gentle turns) | 0.30 (spreads the cost) |
-| zero-lift drag (1/m) | 4.97e-5 | x 0.9 | x 1.1 |
-| store (`ceiling`, J/kg) | 124,391 | x 1.2 | x 0.9 |
-| spawn energy | 0.4 of the store | x 1.2 (the same share) | x 0.9 |
-| climb time (s) | 600 | 600 (the charge rate x 1.2) | 600 (x 0.9) |
-| dive acceleration (m/s^2) | 10.9 | x 1.2 | x 0.85 |
-| low-speed acceleration (m/s^2) | 2.73 | | x 1.1 |
-| nose reversal time (s) | 0.79 | | 0.70 |
-| shield | 100 | 120 | 90 |
-| hit radius (m) | 10 | 11 | 9 |
+| stall speed (stall speed, r 0.86) | 44.7 m/s | 48.1 (x 1.075) | 41.6 (x 0.930) |
+| sustained turn rate (sustained turn, 1.29) | 15.7 °/s | 13.8 (x 0.881) | 17.8 (x 1.136) |
+| low-speed acceleration (1.54) | 2.73 m/s² | 2.20 (x 0.806) | 3.38 (x 1.241) |
+| climb time (climb rate, 1.24) | 600 s | 667 (x 1.112: charges slower) | 540 (x 0.899) |
+| cruise speed (top speed at altitude, 0.94) | 162.7 m/s | 167.5 (x 1.029) | 158.1 (x 0.972) |
+| zero-lift drag (W/S over C_D0, 0.73) | 4.97e-5 /m | 4.25e-5 (x 0.855) | 5.81e-5 (x 1.169) |
+| dive acceleration (dive limit, 0.88) | 10.9 m/s² | 11.6 (x 1.066) | 10.2 (x 0.938) |
+| hit radius (half span, 0.94) | 10 m | 10.33 (x 1.033) | 9.68 (x 0.968) |
+| max shield (survivability by the set's rule, 0.71; s = 1/2) | 100 | 109.2 (x 1.092) | 91.6 (x 0.916) |
+| hit damage (weight of fire, 0.70; s = 1/2) | 8.0 | 8.76 (x 1.094) | 7.31 (x 0.914) |
 
-What the solved cards fly:
+Both cards solve (worst flown error 0; `archetypes_solved.json`). What they fly, and the
+time-to-kill budget (card, 100% hits; a pass is the longer gun range over the two cruises):
 
 | | vizia | Yongma | Jujak |
 |---|---|---|---|
-| cruise (m/s) | 162.7 | 182.0 | 150.0 |
-| top speed, a straight boost from cruise (m/s) | 389 | 444 | 344 |
-| corner speed (m/s) | 134 | 150 | 120 |
-| sustained turn, sticks 1-3 (deg/s) | 10.1, 12.9, 15.7 | 9.1, 11.0, 13.5 | 11.2, 15.3, 18.5 |
-| instantaneous turn (deg/s) | 37.7 | 33.7 | 42.2 |
-| 180° sustained / instantaneous (s) | 11.5 / 4.8 | 13.3 / 5.3 | 9.7 / 4.3 |
-| turn circle at cruise, sustained (m) | 1,187 | 1,545 | 929 |
-| head-on TTK in the mirror (s) | 4.1 | 4.9 | 3.7 |
+| cruise (m/s) | 162.7 | 167.4 | 158.1 |
+| top speed, a straight boost from cruise (m/s) | 389 | 422 | 350 |
+| corner speed (m/s) | 134 | 144 | 125 |
+| sustained turn, sticks 1-3 (°/s) | 10.1, 12.9, 15.7 | 8.7, 11.2, 13.8 | 11.5, 14.9, 17.8 |
+| instantaneous turn (°/s) | 37.7 | 35.1 | 40.6 |
+| 180° sustained / instantaneous (s) | 11.5 / 4.8 | 13.0 / 5.1 | 10.1 / 4.4 |
+| turn circle at cruise, sustained (m) | 1,187 | 1,388 | 1,016 |
+| store (J/kg) | 124,391 | the same | the same |
+
+| Shooter on target | Head-on TTK (s) | Head-on passes | Tail TTK (s) | Tail TTK / target's 180° instantaneous |
+|---|---|---|---|---|
+| Yongma on Yongma | 4.13 | 2.36 | 0.80 | 0.16 |
+| Jujak on Jujak | 4.13 | 2.23 | 0.80 | 0.18 |
+| Yongma on Jujak | 3.47 | 1.92 | 0.67 | 0.15 |
+| Jujak on Yongma | 4.93 | 2.74 | 0.93 | 0.18 |
+
+Every mirror keeps vizia's lethality inside the target, and every tail kill is under a
+fifth of the target's turn. The cross pair is lopsided head-on by design: Yongma wins a
+head-on exchange (1.9 against 2.7 passes), as a P-47 did against a Zero, so Jujak's
+doctrine is to deny the head-on and take the tail.
 
 The intended matchup: **Yongma wins if disciplined, Jujak wins if it drags the fight in.**
-The cruise gap is 21% (182 against 150), about the P-47D's over the Zero at altitude, and
-the turn gap 37% (18.5 against 13.5 deg/s). Jujak's boost peaks at 344 m/s, above Yongma's
-cruise, so it can chase while its store lasts; the larger store and the faster dive are
-what let Yongma out-run that chase (condition (a) is an energy gap, not a speed gap).
-Yongma's turn circle, 1.5 km at cruise, sets the room it needs to extend and come back
-(condition (c)): within the 1v1 arena's 7 km across, not within the 3.9 km of the 2v2
-arena preset. The deltas are a first guess for the loop below to adjust, not a balance.
+Jujak turns 29% faster (17.8 against 13.8 °/s sustained, 16% instantaneous) in a 27%
+smaller circle, and charges its store 24% faster; Yongma cruises only 6% faster, as the
+real pairs did in level flight, and its escape is the dive: its boost from cruise peaks at
+422 m/s against 350 (1.21 times), from the lower drag and the faster exchange, with equal
+stores (condition (a) is an energy-retention gap, not a cruise gap). Yongma's turn circle,
+1.4 km at cruise, sets the room it needs to extend and come back (condition (c)).
+
+**If the doctrine is not distinct enough** (the loop's step 3 finds Yongma unable to
+disengage), the first knob is the speed group at s = 2 (cruise, zero-lift drag and dive
+acceleration), standing in for the vertical that 2D lacks: cruise 172.3 against 153.6 m/s
+(12%) and boost tops 448 against 317 m/s (1.41 times), the turn and the guns unchanged
+(also solved, `archetypes_solved.json`, "s1-speed2"). The earlier draft's deltas (a 21%
+cruise gap, a 37% turn gap, a 20% larger store) were about s = 3 on the cruise and 1.2 on
+the turn, with a store the real types do not support.
 
 ## 5. The scripted agent
 

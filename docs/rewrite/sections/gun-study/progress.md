@@ -66,3 +66,19 @@ the first head-on pass, so that who fires first decides every duel?
   guns), aspect-cards-s1 and aspect-cards-s1-speed2 (Yongma and Jujak mirrors and cross
   pair, temporary cards), 512 duels each, records and logs in `aspect/`, one line per
   matchup, resumable; ETA 13:10 KST (worst 13:30), bound 14:48 (RuntimeMaxSec).
+
+## 2026-11-12 13:05 KST: aspect shares measured
+
+- Worked: all five units finished (12:57); `aspect/table.md` and `aspect/gun_lethality.json`.
+  Damage head-on / flank / tail: P-51D mirror 0.99 / 0.01 / 0.00, P-51D with vizia's guns
+  0.99 / 0.01 / 0.00, vizia 0.97 / 0.03 / 0.00, Yongma 0.95 / 0.05 / 0.00, Jujak
+  0.98 / 0.02 / 0.00, Yongma v Jujak 0.83 / 0.17 / 0.00 (Jujak's own 0.76 / 0.24; kills
+  0.60 / 0.40 / 0.00); Jujak wins the cross pair 92% (s = 1 and s = 1-speed-2 alike).
+- No tail hit in 4,608 duels; an independent check (hit multipliers of 64 vizia duels,
+  6,793 hits) finds none beyond ~72 degrees. The scripted agent's long fights are
+  repeated head-on passes; the archetypes.md sentence that called them tail chases is
+  corrected.
+- vizia's mirror here: P(win | first hit) 0.82 ± 0.02 against 0.87 in the first run (the
+  `--pairs` run seeds it differently); within about two standard errors.
+- Next (the author's call): the doctrines of section 5 (the flank and tail strategies
+  appear only with them or with learned play); the aspect series now track it in training.

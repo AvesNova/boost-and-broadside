@@ -1,0 +1,989 @@
+{
+ "arena_radius": 3488.3,
+ "card": {
+  "P-51D": {
+   "damage_per_second": 360.0,
+   "max_shield": 100.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.8666666666666667,
+   "ttk_tail": 0.26666666666666666,
+   "turn_180_sustained": 11.466856928190515,
+   "turn_180_instantaneous": 5.061082258971816,
+   "pass_time": 1.8038196563720703,
+   "gun_range": 586.885009765625,
+   "cruise_speed": 162.67840576171875,
+   "sustained_deg": 15.697413958090104,
+   "instantaneous_deg": 35.56551559321383
+  },
+  "Heavy": {
+   "damage_per_second": 357.88612365722656,
+   "max_shield": 140.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.3,
+   "ttk_tail": 0.3,
+   "turn_180_sustained": 11.051391097458973,
+   "turn_180_instantaneous": 6.514495656466253,
+   "pass_time": 1.628083348274231,
+   "gun_range": 541.3406982421875,
+   "cruise_speed": 166.25091552734375,
+   "sustained_deg": 16.287542302379208,
+   "instantaneous_deg": 27.63068846647138
+  },
+  "P-47D": {
+   "damage_per_second": 365.2280902862549,
+   "max_shield": 130.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.1333333333333333,
+   "ttk_tail": 0.3333333333333333,
+   "turn_180_sustained": 12.50075386433884,
+   "turn_180_instantaneous": 5.570587008464146,
+   "pass_time": 1.9113045930862427,
+   "gun_range": 580.9612426757812,
+   "cruise_speed": 151.98028564453125,
+   "sustained_deg": 14.399131600654082,
+   "instantaneous_deg": 32.312573114198145
+  },
+  "P-38L": {
+   "damage_per_second": 360.860595703125,
+   "max_shield": 120.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.0666666666666667,
+   "ttk_tail": 0.26666666666666666,
+   "turn_180_sustained": 10.778035133917585,
+   "turn_180_instantaneous": 6.174249498400494,
+   "pass_time": 1.9554545879364014,
+   "gun_range": 578.7462768554688,
+   "cruise_speed": 147.9825439453125,
+   "sustained_deg": 16.70063214338158,
+   "instantaneous_deg": 29.15334083059503
+  },
+  "Spitfire IX": {
+   "damage_per_second": 360.7198715209961,
+   "max_shield": 100.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.9,
+   "ttk_tail": 0.2,
+   "turn_180_sustained": 9.23054992807266,
+   "turn_180_instantaneous": 4.653478180701567,
+   "pass_time": 1.9750564098358154,
+   "gun_range": 593.2516479492188,
+   "cruise_speed": 150.18600463867188,
+   "sustained_deg": 19.500463287953206,
+   "instantaneous_deg": 38.680744383089134
+  },
+  "Spitfire XIV": {
+   "damage_per_second": 360.7198715209961,
+   "max_shield": 100.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.9,
+   "ttk_tail": 0.2,
+   "turn_180_sustained": 9.693381174466134,
+   "turn_180_instantaneous": 4.91389167801641,
+   "pass_time": 1.853277325630188,
+   "gun_range": 599.6629028320312,
+   "cruise_speed": 161.78445434570312,
+   "sustained_deg": 18.569371900297067,
+   "instantaneous_deg": 36.630844103722815
+  },
+  "Tempest V": {
+   "damage_per_second": 370.38702964782715,
+   "max_shield": 120.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.0666666666666667,
+   "ttk_tail": 0.26666666666666666,
+   "turn_180_sustained": 11.466856928190515,
+   "turn_180_instantaneous": 5.117693694179259,
+   "pass_time": 1.7284157276153564,
+   "gun_range": 581.014892578125,
+   "cruise_speed": 168.07730102539062,
+   "sustained_deg": 15.697413958090104,
+   "instantaneous_deg": 35.172093281926514
+  },
+  "Mosquito": {
+   "damage_per_second": 369.12166595458984,
+   "max_shield": 110.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.9,
+   "ttk_tail": 0.2,
+   "turn_180_sustained": 12.029647452273483,
+   "turn_180_instantaneous": 6.432359923567749,
+   "pass_time": 1.9957109689712524,
+   "gun_range": 592.253662109375,
+   "cruise_speed": 148.38162231445312,
+   "sustained_deg": 14.963032018530333,
+   "instantaneous_deg": 27.98350871823756
+  },
+  "Fw 190A": {
+   "damage_per_second": 365.37628173828125,
+   "max_shield": 120.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.0,
+   "ttk_tail": 0.3,
+   "turn_180_sustained": 11.466856928190515,
+   "turn_180_instantaneous": 6.390955148309275,
+   "pass_time": 1.7912781238555908,
+   "gun_range": 554.1571044921875,
+   "cruise_speed": 154.68203735351562,
+   "sustained_deg": 15.697413958090104,
+   "instantaneous_deg": 28.1648041369245
+  },
+  "Fw 190D": {
+   "damage_per_second": 354.7297668457031,
+   "max_shield": 110.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.0,
+   "ttk_tail": 0.3,
+   "turn_180_sustained": 11.250678477904955,
+   "turn_180_instantaneous": 6.390955148309275,
+   "pass_time": 1.8242567777633667,
+   "gun_range": 552.3226928710938,
+   "cruise_speed": 151.3829345703125,
+   "sustained_deg": 15.999035111837868,
+   "instantaneous_deg": 28.1648041369245
+  },
+  "Bf 109K": {
+   "damage_per_second": 362.85572052001953,
+   "max_shield": 100.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.9,
+   "ttk_tail": 0.2,
+   "turn_180_sustained": 10.227889525368141,
+   "turn_180_instantaneous": 5.713126981319442,
+   "pass_time": 1.2099419832229614,
+   "gun_range": 399.9720764160156,
+   "cruise_speed": 165.28564453125,
+   "sustained_deg": 17.598938623021656,
+   "instantaneous_deg": 31.506388810988614
+  },
+  "Zero": {
+   "damage_per_second": 352.16609954833984,
+   "max_shield": 90.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.8,
+   "ttk_tail": 0.2,
+   "turn_180_sustained": 7.998734115993034,
+   "turn_180_instantaneous": 4.539030651360287,
+   "pass_time": 1.9528887271881104,
+   "gun_range": 510.0479431152344,
+   "cruise_speed": 130.58807373046875,
+   "sustained_deg": 22.50356086222441,
+   "instantaneous_deg": 39.656044170148185
+  },
+  "Me 262": {
+   "damage_per_second": 377.99999237060547,
+   "max_shield": 110.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.9,
+   "ttk_tail": 0.2,
+   "turn_180_sustained": 12.76821185399446,
+   "turn_180_instantaneous": 6.729869693030029,
+   "pass_time": 0.955687940120697,
+   "gun_range": 435.3779296875,
+   "cruise_speed": 227.782470703125,
+   "sustained_deg": 14.097510446906318,
+   "instantaneous_deg": 26.74643168595402
+  },
+  "Ki-84": {
+   "damage_per_second": 356.5773868560791,
+   "max_shield": 110.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.0,
+   "ttk_tail": 0.26666666666666666,
+   "turn_180_sustained": 9.6051978607726,
+   "turn_180_instantaneous": 5.191982477454807,
+   "pass_time": 1.6840144395828247,
+   "gun_range": 524.0176391601562,
+   "cruise_speed": 155.58584594726562,
+   "sustained_deg": 18.739853421980584,
+   "instantaneous_deg": 34.6688381136908
+  },
+  "Yak-3": {
+   "damage_per_second": 352.9658603668213,
+   "max_shield": 100.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.9333333333333333,
+   "ttk_tail": 0.26666666666666666,
+   "turn_180_sustained": 9.23054992807266,
+   "turn_180_instantaneous": 5.185627411693181,
+   "pass_time": 1.8436264991760254,
+   "gun_range": 580.6868896484375,
+   "cruise_speed": 157.48495483398438,
+   "sustained_deg": 19.500463287953206,
+   "instantaneous_deg": 34.71132530542287
+  },
+  "Corsair": {
+   "damage_per_second": 360.0,
+   "max_shield": 120.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.0666666666666667,
+   "ttk_tail": 0.26666666666666666,
+   "turn_180_sustained": 12.24427095722038,
+   "turn_180_instantaneous": 5.308918708789882,
+   "pass_time": 1.8735136985778809,
+   "gun_range": 582.9536743164062,
+   "cruise_speed": 155.57763671875,
+   "sustained_deg": 14.700752754401844,
+   "instantaneous_deg": 33.905209304105036
+  },
+  "La-7": {
+   "damage_per_second": 348.4778594970703,
+   "max_shield": 110.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.0,
+   "ttk_tail": 0.3,
+   "turn_180_sustained": 9.525210092327582,
+   "turn_180_instantaneous": 5.185627411693181,
+   "pass_time": 1.67326819896698,
+   "gun_range": 538.0728759765625,
+   "cruise_speed": 160.78500366210938,
+   "sustained_deg": 18.89722098045768,
+   "instantaneous_deg": 34.71132530542287
+  },
+  "Me 163": {
+   "damage_per_second": 371.27811431884766,
+   "max_shield": 90.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.8,
+   "ttk_tail": 0.2,
+   "turn_180_sustained": 9.327779641891977,
+   "turn_180_instantaneous": 5.374212283805527,
+   "pass_time": 0.9475001096725464,
+   "gun_range": 436.96282958984375,
+   "cruise_speed": 230.58721923828125,
+   "sustained_deg": 19.297196858253624,
+   "instantaneous_deg": 33.49328059526157
+  },
+  "Hellcat": {
+   "damage_per_second": 360.0,
+   "max_shield": 130.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.2,
+   "ttk_tail": 0.3333333333333333,
+   "turn_180_sustained": 11.686528516853167,
+   "turn_180_instantaneous": 5.0750459058949975,
+   "pass_time": 2.023920774459839,
+   "gun_range": 575.5316162109375,
+   "cruise_speed": 142.18234252929688,
+   "sustained_deg": 15.402349785945553,
+   "instantaneous_deg": 35.46765947297506
+  },
+  "Hammerhead": {
+   "damage_per_second": 358.10848236083984,
+   "max_shield": 160.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.4,
+   "ttk_tail": 0.4,
+   "turn_180_sustained": 15.183437768854033,
+   "turn_180_instantaneous": 6.763760489399748,
+   "pass_time": 1.1389826536178589,
+   "gun_range": 407.7565002441406,
+   "cruise_speed": 179.00030517578125,
+   "sustained_deg": 11.855022738607731,
+   "instantaneous_deg": 26.612414836701905
+  },
+  "Wren": {
+   "damage_per_second": 342.5460433959961,
+   "max_shield": 100.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.9333333333333333,
+   "ttk_tail": 0.26666666666666666,
+   "turn_180_sustained": 7.906582801292653,
+   "turn_180_instantaneous": 3.258869256718486,
+   "pass_time": 2.052560806274414,
+   "gun_range": 574.260009765625,
+   "cruise_speed": 139.888671875,
+   "sustained_deg": 22.765840126352902,
+   "instantaneous_deg": 55.233882006438876
+  },
+  "Anvil": {
+   "damage_per_second": 354.6194152832031,
+   "max_shield": 160.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.5,
+   "ttk_tail": 0.0,
+   "turn_180_sustained": 14.327586370609652,
+   "turn_180_instantaneous": 6.721293247230348,
+   "pass_time": 1.5134506225585938,
+   "gun_range": 443.0539855957031,
+   "cruise_speed": 146.37213134765625,
+   "sustained_deg": 12.563176751754654,
+   "instantaneous_deg": 26.78056043368928
+  },
+  "Albatross": {
+   "damage_per_second": 347.7370834350586,
+   "max_shield": 120.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.1,
+   "ttk_tail": 0.3,
+   "turn_180_sustained": 10.98945375744119,
+   "turn_180_instantaneous": 4.328419606473706,
+   "pass_time": 1.9347114562988281,
+   "gun_range": 579.7723388671875,
+   "cruise_speed": 149.83432006835938,
+   "sustained_deg": 16.37934004482418,
+   "instantaneous_deg": 41.58561700690639
+  },
+  "Firecracker": {
+   "damage_per_second": 358.10848236083984,
+   "max_shield": 120.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.0,
+   "ttk_tail": 0.2,
+   "turn_180_sustained": 11.051391097458973,
+   "turn_180_instantaneous": 5.567190217580856,
+   "pass_time": 0.945444643497467,
+   "gun_range": 437.36676025390625,
+   "cruise_speed": 231.30215454101562,
+   "sustained_deg": 16.287542302379208,
+   "instantaneous_deg": 32.33228845523738
+  },
+  "Zerst\u00f6rer": {
+   "damage_per_second": 370.6333541870117,
+   "max_shield": 120.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.0,
+   "ttk_tail": 0.3,
+   "turn_180_sustained": 15.293401385007293,
+   "turn_180_instantaneous": 6.737720359702969,
+   "pass_time": 1.8582369089126587,
+   "gun_range": 586.38818359375,
+   "cruise_speed": 157.78079223632812,
+   "sustained_deg": 11.769781977765973,
+   "instantaneous_deg": 26.715267240318543
+  },
+  "Shrike": {
+   "damage_per_second": 363.2967758178711,
+   "max_shield": 120.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.1,
+   "ttk_tail": 0.3,
+   "turn_180_sustained": 13.022606966834958,
+   "turn_180_instantaneous": 5.343803449973161,
+   "pass_time": 1.6748182773590088,
+   "gun_range": 561.3233642578125,
+   "cruise_speed": 167.577392578125,
+   "sustained_deg": 13.822117219571403,
+   "instantaneous_deg": 33.68387360895619
+  },
+  "Lantern": {
+   "damage_per_second": 342.5460433959961,
+   "max_shield": 100.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.9333333333333333,
+   "ttk_tail": 0.26666666666666666,
+   "turn_180_sustained": 12.466691864708489,
+   "turn_180_instantaneous": 5.061082258971816,
+   "pass_time": 1.6046206951141357,
+   "gun_range": 600.3773803710938,
+   "cruise_speed": 187.07766723632812,
+   "sustained_deg": 14.438473490273354,
+   "instantaneous_deg": 35.56551559321383
+  },
+  "vizia": {
+   "damage_per_second": 120.0,
+   "max_shield": 100.0,
+   "head_on_fraction": 0.20000001788139343,
+   "ttk_head_on": 4.133333333333334,
+   "ttk_tail": 0.8,
+   "turn_180_sustained": 11.466856928190515,
+   "turn_180_instantaneous": 4.771634471720658,
+   "pass_time": 1.8038349151611328,
+   "gun_range": 586.8841552734375,
+   "cruise_speed": 162.67678833007812,
+   "sustained_deg": 15.697413958090104,
+   "instantaneous_deg": 37.72292305011615
+  }
+ },
+ "duels": [
+  {
+   "pair": [
+    "P-51D",
+    "P-51D"
+   ],
+   "environments": 512,
+   "shot_kills": 339,
+   "trades": 159,
+   "trade_share": [
+    0.3192771084337349,
+    0.02089076756862421
+   ],
+   "boundary": 6,
+   "timeouts": 8,
+   "merges": 487,
+   "first_merge_share": [
+    0.9718875502008032,
+    0.007407005796571965
+   ],
+   "before_merge_share": [
+    0.02610441767068273,
+    0.007144939098157525
+   ],
+   "first_kill_seconds": 22.666667938232422,
+   "first_hitter_wins": [
+    0.9392712550607287,
+    0.01519652161315736
+   ],
+   "first_type_wins": [
+    0.4837758112094395,
+    0.02714197218288792
+   ],
+   "ttk_median": 0.7000000476837158,
+   "ttk_quartiles": [
+    0.7000000476837158,
+    0.7000000476837158
+   ],
+   "hit_fraction": 0.3864383372462367,
+   "front_damage_share": 0.9859259772250566,
+   "damage_aspect_share": [
+    0.987167156400727,
+    0.012832843599272944,
+    0.0
+   ],
+   "damage_aspect_share_by_type": [
+    [
+     0.9832912207238517,
+     0.016708779276148333,
+     0.0
+    ],
+    [
+     0.9910621183159996,
+     0.008937881684000436,
+     0.0
+    ]
+   ],
+   "kill_aspect_share": [
+    0.9863013698630136,
+    0.0136986301369863,
+    0.0
+   ],
+   "kill_aspect_count": 657
+  },
+  {
+   "pair": [
+    "vizia",
+    "vizia"
+   ],
+   "environments": 512,
+   "shot_kills": 489,
+   "trades": 6,
+   "trade_share": [
+    0.012121212121212121,
+    0.004918381999271404
+   ],
+   "boundary": 6,
+   "timeouts": 11,
+   "merges": 469,
+   "first_merge_share": [
+    0.06060606060606061,
+    0.010724555607461108
+   ],
+   "before_merge_share": [
+    0.06464646464646465,
+    0.011052427792637725
+   ],
+   "first_kill_seconds": 45.06666946411133,
+   "first_hitter_wins": [
+    0.8173302107728337,
+    0.01869899227900473
+   ],
+   "first_type_wins": [
+    0.5153374233128835,
+    0.022600141314057777
+   ],
+   "ttk_median": 20.733333587646484,
+   "ttk_quartiles": [
+    12.533333778381348,
+    31.066667556762695
+   ],
+   "hit_fraction": 0.7979888842484018,
+   "front_damage_share": 0.9696157613847327,
+   "damage_aspect_share": [
+    0.9748636007605589,
+    0.02513639923944106,
+    0.0
+   ],
+   "damage_aspect_share_by_type": [
+    [
+     0.9707419670839269,
+     0.0292580329160731,
+     0.0
+    ],
+    [
+     0.9789766553501387,
+     0.02102334464986137,
+     0.0
+    ]
+   ],
+   "kill_aspect_share": [
+    0.9760479041916168,
+    0.023952095808383235,
+    0.0
+   ],
+   "kill_aspect_count": 501
+  },
+  {
+   "pair": [
+    "P-51D",
+    "P-51D"
+   ],
+   "environments": 512,
+   "shot_kills": 447,
+   "trades": 15,
+   "trade_share": [
+    0.032467532467532464,
+    0.008245868938562679
+   ],
+   "boundary": 23,
+   "timeouts": 27,
+   "merges": 489,
+   "first_merge_share": [
+    0.015151515151515152,
+    0.005683184496177674
+   ],
+   "before_merge_share": [
+    0.01948051948051948,
+    0.0064299469882097325
+   ],
+   "first_kill_seconds": 54.13333511352539,
+   "first_hitter_wins": [
+    0.5894736842105263,
+    0.029139378302185468
+   ],
+   "first_type_wins": [
+    0.5055928411633109,
+    0.023647708958548022
+   ],
+   "ttk_median": 30.33333396911621,
+   "ttk_quartiles": [
+    29.616668701171875,
+    38.45000076293945
+   ],
+   "hit_fraction": 0.719231054335203,
+   "front_damage_share": 0.9898997040663403,
+   "damage_aspect_share": [
+    0.9907866782274191,
+    0.00921332177258098,
+    0.0
+   ],
+   "damage_aspect_share_by_type": [
+    [
+     0.9880065422524649,
+     0.011993457747535173,
+     0.0
+    ],
+    [
+     0.9935856105710837,
+     0.0064143894289162414,
+     0.0
+    ]
+   ],
+   "kill_aspect_share": [
+    0.9874213836477987,
+    0.012578616352201259,
+    0.0
+   ],
+   "kill_aspect_count": 477,
+   "variant": "vizia guns (damage x 1/3, head-on 0.2)"
+  },
+  {
+   "pair": [
+    "Yongma",
+    "Yongma"
+   ],
+   "environments": 512,
+   "shot_kills": 492,
+   "trades": 3,
+   "trade_share": [
+    0.006060606060606061,
+    0.0034884731153230534
+   ],
+   "boundary": 7,
+   "timeouts": 10,
+   "merges": 445,
+   "first_merge_share": [
+    0.08888888888888889,
+    0.012791068089517863
+   ],
+   "before_merge_share": [
+    0.10707070707070707,
+    0.01389764682923237
+   ],
+   "first_kill_seconds": 47.43333435058594,
+   "first_hitter_wins": [
+    0.8703703703703703,
+    0.016160779909881698
+   ],
+   "first_type_wins": [
+    0.4959349593495935,
+    0.022540995869879305
+   ],
+   "ttk_median": 22.900001525878906,
+   "ttk_quartiles": [
+    13.3583345413208,
+    34.60833740234375
+   ],
+   "hit_fraction": 0.7735379940259337,
+   "front_damage_share": 0.9403265229217883,
+   "damage_aspect_share": [
+    0.9472799632610821,
+    0.05272003673891784,
+    0.0
+   ],
+   "damage_aspect_share_by_type": [
+    [
+     0.9466500181703574,
+     0.05334998182964257,
+     0.0
+    ],
+    [
+     0.9478994377678578,
+     0.05210056223214226,
+     0.0
+    ]
+   ],
+   "kill_aspect_share": [
+    0.9397590361445783,
+    0.060240963855421686,
+    0.0
+   ],
+   "kill_aspect_count": 498,
+   "scaling": "s1"
+  },
+  {
+   "pair": [
+    "Jujak",
+    "Jujak"
+   ],
+   "environments": 512,
+   "shot_kills": 504,
+   "trades": 5,
+   "trade_share": [
+    0.009823182711198428,
+    0.004371430689412743
+   ],
+   "boundary": 1,
+   "timeouts": 2,
+   "merges": 493,
+   "first_merge_share": [
+    0.060903732809430254,
+    0.010600299152403554
+   ],
+   "before_merge_share": [
+    0.03732809430255403,
+    0.008402299675652895
+   ],
+   "first_kill_seconds": 41.333335876464844,
+   "first_hitter_wins": [
+    0.7844036697247706,
+    0.019694603685481295
+   ],
+   "first_type_wins": [
+    0.47619047619047616,
+    0.02224650438815032
+   ],
+   "ttk_median": 18.033334732055664,
+   "ttk_quartiles": [
+    11.300000190734863,
+    19.375
+   ],
+   "hit_fraction": 0.8174547020641708,
+   "front_damage_share": 0.9810266303489555,
+   "damage_aspect_share": [
+    0.9846829451795155,
+    0.015317054820484536,
+    0.0
+   ],
+   "damage_aspect_share_by_type": [
+    [
+     0.9825247163287136,
+     0.017475283671286385,
+     0.0
+    ],
+    [
+     0.9868199361269016,
+     0.013180063873098403,
+     0.0
+    ]
+   ],
+   "kill_aspect_share": [
+    0.9863813229571985,
+    0.013618677042801557,
+    0.0
+   ],
+   "kill_aspect_count": 514,
+   "scaling": "s1"
+  },
+  {
+   "pair": [
+    "Yongma",
+    "Yongma"
+   ],
+   "environments": 512,
+   "shot_kills": 488,
+   "trades": 5,
+   "trade_share": [
+    0.010141987829614604,
+    0.004512576051620665
+   ],
+   "boundary": 7,
+   "timeouts": 12,
+   "merges": 448,
+   "first_merge_share": [
+    0.0872210953346856,
+    0.012707792235299734
+   ],
+   "before_merge_share": [
+    0.10141987829614604,
+    0.013596166875892692
+   ],
+   "first_kill_seconds": 47.43333435058594,
+   "first_hitter_wins": [
+    0.8642533936651584,
+    0.016291981288547107
+   ],
+   "first_type_wins": [
+    0.5061475409836066,
+    0.022632225670737246
+   ],
+   "ttk_median": 22.80000114440918,
+   "ttk_quartiles": [
+    13.491667747497559,
+    34.5
+   ],
+   "hit_fraction": 0.7743736430368404,
+   "front_damage_share": 0.9460069605264974,
+   "damage_aspect_share": [
+    0.9520761510392816,
+    0.047923848960718454,
+    0.0
+   ],
+   "damage_aspect_share_by_type": [
+    [
+     0.9511148482914886,
+     0.04888515170851137,
+     0.0
+    ],
+    [
+     0.9530425768239891,
+     0.04695742317601096,
+     0.0
+    ]
+   ],
+   "kill_aspect_share": [
+    0.9437751004016064,
+    0.05622489959839357,
+    0.0
+   ],
+   "kill_aspect_count": 498,
+   "scaling": "s1-speed2"
+  },
+  {
+   "pair": [
+    "Jujak",
+    "Jujak"
+   ],
+   "environments": 512,
+   "shot_kills": 504,
+   "trades": 7,
+   "trade_share": [
+    0.0136986301369863,
+    0.005142010250053598
+   ],
+   "boundary": 0,
+   "timeouts": 1,
+   "merges": 490,
+   "first_merge_share": [
+    0.07240704500978473,
+    0.011464594083545276
+   ],
+   "before_merge_share": [
+    0.043052837573385516,
+    0.008979133317181595
+   ],
+   "first_kill_seconds": 41.66666793823242,
+   "first_hitter_wins": [
+    0.8265765765765766,
+    0.01796817379258026
+   ],
+   "first_type_wins": [
+    0.5138888888888888,
+    0.022263175997304797
+   ],
+   "ttk_median": 18.166667938232422,
+   "ttk_quartiles": [
+    11.266667366027832,
+    20.308334350585938
+   ],
+   "hit_fraction": 0.8120928806805119,
+   "front_damage_share": 0.9789173826674714,
+   "damage_aspect_share": [
+    0.9810256162433376,
+    0.01897438375666233,
+    0.0
+   ],
+   "damage_aspect_share_by_type": [
+    [
+     0.9798470068454203,
+     0.020152993154579763,
+     0.0
+    ],
+    [
+     0.9822002660062374,
+     0.017799733993762515,
+     0.0
+    ]
+   ],
+   "kill_aspect_share": [
+    0.974903474903475,
+    0.025096525096525095,
+    0.0
+   ],
+   "kill_aspect_count": 518,
+   "scaling": "s1-speed2"
+  },
+  {
+   "pair": [
+    "Yongma",
+    "Jujak"
+   ],
+   "environments": 512,
+   "shot_kills": 505,
+   "trades": 0,
+   "trade_share": [
+    0.0,
+    4.449941594899848e-08
+   ],
+   "boundary": 5,
+   "timeouts": 2,
+   "merges": 468,
+   "first_merge_share": [
+    0.0891089108910891,
+    0.01267792287785416
+   ],
+   "before_merge_share": [
+    0.08118811881188119,
+    0.012153849422853817
+   ],
+   "first_kill_seconds": 40.233333587646484,
+   "first_hitter_wins": [
+    0.6355555555555555,
+    0.022687475319020534
+   ],
+   "first_type_wins": [
+    0.07524752475247524,
+    0.011738515328651737
+   ],
+   "ttk_median": 17.26666831970215,
+   "ttk_quartiles": [
+    11.033333778381348,
+    18.83333396911621
+   ],
+   "hit_fraction": 0.7099577482979391,
+   "front_damage_share": 0.7866362999478108,
+   "damage_aspect_share": [
+    0.8343605931512902,
+    0.16555258381981752,
+    8.68230288923216e-05
+   ],
+   "damage_aspect_share_by_type": [
+    [
+     0.9786169276417308,
+     0.021383072358269226,
+     0.0
+    ],
+    [
+     0.7571290418213705,
+     0.24273765208030243,
+     0.00013330609832703526
+    ]
+   ],
+   "kill_aspect_share": [
+    0.596039603960396,
+    0.403960396039604,
+    0.0
+   ],
+   "kill_aspect_count": 505,
+   "scaling": "s1"
+  },
+  {
+   "pair": [
+    "Yongma",
+    "Jujak"
+   ],
+   "environments": 512,
+   "shot_kills": 504,
+   "trades": 0,
+   "trade_share": [
+    0.0,
+    4.45435403187374e-08
+   ],
+   "boundary": 8,
+   "timeouts": 0,
+   "merges": 466,
+   "first_merge_share": [
+    0.08333333333333333,
+    0.012311184172609976
+   ],
+   "before_merge_share": [
+    0.08134920634920635,
+    0.012176896626786548
+   ],
+   "first_kill_seconds": 40.900001525878906,
+   "first_hitter_wins": [
+    0.7035398230088495,
+    0.021481188541873517
+   ],
+   "first_type_wins": [
+    0.07539682539682539,
+    0.011760856527638724
+   ],
+   "ttk_median": 17.63333511352539,
+   "ttk_quartiles": [
+    16.26666831970215,
+    19.450000762939453
+   ],
+   "hit_fraction": 0.7068132997962069,
+   "front_damage_share": 0.796607809409378,
+   "damage_aspect_share": [
+    0.8329001772881008,
+    0.1670998227118992,
+    0.0
+   ],
+   "damage_aspect_share_by_type": [
+    [
+     0.963285561245832,
+     0.036714438754168015,
+     0.0
+    ],
+    [
+     0.7635884424753875,
+     0.23641155752461257,
+     0.0
+    ]
+   ],
+   "kill_aspect_share": [
+    0.5793650793650794,
+    0.42063492063492064,
+    0.0
+   ],
+   "kill_aspect_count": 504,
+   "scaling": "s1-speed2"
+  }
+ ],
+ "variant_cards": [
+  {
+   "damage_per_second": 120.0,
+   "max_shield": 100.0,
+   "head_on_fraction": 0.20000001788139343,
+   "ttk_head_on": 4.133333333333334,
+   "ttk_tail": 0.8,
+   "turn_180_sustained": 11.466856928190515,
+   "turn_180_instantaneous": 5.061082258971816,
+   "pass_time": 1.8038196563720703,
+   "gun_range": 586.885009765625,
+   "cruise_speed": 162.67840576171875,
+   "sustained_deg": 15.697413958090104,
+   "instantaneous_deg": 35.56551559321383
+  }
+ ]
+}

@@ -523,6 +523,8 @@ def report(args) -> None:
     rows = [summarise(line, rules.tick_length) for line in lines]
     cards = []
     for line, row in zip(lines, rows):
+        if "scaling" in line:
+            row["scaling"] = line["scaling"]
         if "variant" in line:
             row["variant"] = line["variant"]
             factors = VARIANTS[line["variant"]]
@@ -560,6 +562,8 @@ def report(args) -> None:
         name = a if a == b else f"{a} v {b}"
         if "variant" in row:
             name = f"{a}: {row['variant']}"
+        if "scaling" in row:
+            name = f"{name} ({row['scaling']})"
         if a == "vizia" and a == b:
             name = "**vizia**"
 
@@ -577,8 +581,9 @@ def report(args) -> None:
         )
     for row in rows:
         if row["pair"][0] != row["pair"][1]:
+            scaling = f" ({row['scaling']})" if "scaling" in row else ""
             print(
-                f"{row['pair']}: first type wins {row['first_type_wins'][0]:.2f} ± "
+                f"{row['pair']}{scaling}: first type wins {row['first_type_wins'][0]:.2f} ± "
                 f"{row['first_type_wins'][1]:.2f}; timeouts {row['timeouts']}, "
                 f"boundary {row['boundary']}"
             )
@@ -595,6 +600,8 @@ def report(args) -> None:
         name = a if a == b else f"{a} v {b}"
         if "variant" in row:
             name = f"{a}: {row['variant']}"
+        if "scaling" in row:
+            name = f"{name} ({row['scaling']})"
 
         def shares(values):
             return " / ".join(f"{value:.2f}" for value in values)
