@@ -1023,3 +1023,20 @@ standard); a seventh ship by the roster method (each candidate against the stand
 - **D2 fails 20v20 (0.09)** as balance-sizes found for its siblings, and the kit does not
   fix it (0.21, and it breaks the 5v5-10v10 balance: 0.69-0.73). The 20v20 hold of the
   night's pairs comes from putting both ships on one hull, not from the kit.
+
+## 04:50-04:54 KST: round 18 (`round18/`): rate v speed with harder noses on both
+
+512 games (10v10 256), r9; rate (lift x1.03) v speed (drag x0.85, vision x1.04), kit2, both
+noses set:
+
+| Rate f0, dmg; speed f0, dmg | 1v1 / 2v2 / 5v5 / 10v10 | AA (rate); BB (speed) mutual, life, merges | Duel life |
+|---|---|---|---|
+| 0.06, x1.25; 0.06, x1.05 | 0.52 / 0.54 / 0.48 / 0.48 | 0.25, 320 s; 0.16, 423 s | 322 s |
+| 0.06, x1.25; 0.065, x1.1 | 0.53 / 0.51 / 0.47 / 0.41 | 0.30, 313 s; 0.25, 361 s | 293 s |
+| 0.06, x1.3; 0.06, x1.1 | 0.50 / 0.47 / 0.52 / 0.47 | 0.30, 284 s; 0.21, 442 s | 306 s |
+| **0.065, x1.25; 0.07, x1.05** | **0.52 / 0.52 / 0.50 / 0.46** | **0.35, 280 s, 3.1; 0.32, 315 s, 3.3** | 268 s |
+| 0.05, x1.35; 0.055, x1.15 | 0.54 / 0.54 / 0.51 / 0.47 | 0.15, 347 s; 0.16, 395 s | 335 s |
+
+- A harder nose on both ships takes the rate mirror's joust down (0.48 to 0.15-0.35) without
+  moving the balance; the fourth arm keeps both mirrors near 300 s. Confirm 12 (running)
+  takes it to 1024 games, 20v20 and both doctrines.
