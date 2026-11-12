@@ -389,6 +389,85 @@ def mirror_study_2() -> list[dict]:
 
 ROUNDS["mirror2"] = mirror_study_2
 
+GUNNER = {"bullet_life": 1.6}
+BRAWLER = {"bullet_life": 0.5}
+SNIPER = {
+    "bullet_spread_scale": 0.3,
+    "fire_rate": {"set": 7.5},
+    "hit_damage": 2.0,
+    "bullet_energy_cost": 2.0,
+    "bullet_life": 1.4,
+}
+SHOTGUN = {
+    "bullet_spread_scale": 3.0,
+    "fire_rate": {"set": 30.0},
+    "hit_damage": 0.6,
+    "bullet_energy_cost": 0.5,
+    "bullet_life": 0.6,
+}
+
+
+def round4() -> list[dict]:
+    """Two levers a pair: the sustained turn (induced drag, the duel lever) and damage,
+    shield or sight (the crowd levers)."""
+    out = []
+    for gd, bd, gi, bi, gv in (
+        (0.9, 1.2, 1, 1.25, 1),
+        (0.9, 1.2, 1, 1.45, 1),
+        (0.85, 1.2, 1, 1.45, 1),
+        (0.9, 1.2, 0.85, 1, 1),
+        (0.9, 1.2, 1, 1, 1.25),
+        (0.85, 1.25, 1, 1.25, 1.2),
+    ):
+        out.append(
+            pair(
+                f"gunner v brawler (M), G dmg x{gd:g} induced x{gi:g} vision x{gv:g}, "
+                f"B dmg x{bd:g} induced x{bi:g}",
+                (
+                    "M",
+                    merge(
+                        GUNNER,
+                        {"hit_damage": gd, "induced_drag_scale": gi, "vision_range_scale": gv},
+                    ),
+                ),
+                ("M", merge(BRAWLER, {"hit_damage": bd, "induced_drag_scale": bi})),
+            )
+        )
+    for sd, bi, si in ((1, 1.25, 1), (1, 1.45, 1), (0.9, 1.45, 1), (1, 1, 0.85)):
+        out.append(
+            pair(
+                f"sniper v shotgun (M), sniper dmg x{sd:g} induced x{si:g}, shotgun induced x{bi:g}",
+                ("M", merge(SNIPER, {"hit_damage": sd, "induced_drag_scale": si})),
+                ("M", merge(SHOTGUN, {"induced_drag_scale": bi})),
+            )
+        )
+    for sv, ssh, bv, bd in (
+        (1.3, 1.1, 0.8, 1.15),
+        (1.3, 1.0, 0.8, 1.0),
+        (1.2, 1.0, 0.85, 1.1),
+        (1.15, 1.0, 1.0, 1.15),
+    ):
+        out.append(
+            pair(
+                f"scout v brawler (M), S vision x{sv:g} shield x{ssh:g}, B vision x{bv:g} dmg x{bd:g}",
+                ("M", {"vision_range_scale": sv, "max_shield": ssh}),
+                ("M", {"vision_range_scale": bv, "hit_damage": bd}),
+            )
+        )
+    for si, ssh in ((0.8, 0.8), (0.8, 0.65), (0.7, 0.65), (0.7, 0.5)):
+        out.append(
+            pair(
+                f"slasher v dogfighter (M), S induced x{si:g} shield x{ssh:g}",
+                ("M", merge(SLASHER, {"induced_drag_scale": si, "max_shield": ssh})),
+                ("M", DOGFIGHTER),
+            )
+        )
+    return out
+
+
+ROUNDS["round4"] = round4
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
