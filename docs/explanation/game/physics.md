@@ -137,7 +137,9 @@ which blocks sight (see [Perception and fog](perception.md)).
 - **Drag.** Bullets slow quadratically on their proper speed, dw/dt = -k w² / n, so over
   distance w(s) = w0 exp(-k s): each type's own drag `k` (the `bullet_drag` handle; the
   card holds it as a scale of the rules' bullet drag, the floor). The real-scale sets' floor
-  is the .50 cal's 5e-4 1/m (86% of the speed left at 300 m, 74% at 600 m); the 20 mm
+  is the .50 cal's 5e-4 1/m (86% of the speed left at 300 m, 74% at 600 m; Lake City M33
+  ball falls from 2940 to 2309 ft/s in 500 yd, ammo.com's .50 BMG ballistics table, so
+  k = ln(2940/2309) / 457 m = 5.3e-4); the 20 mm
   Hispano's is 5.5e-4, the MK 108's 6.5e-4, the MG 151/20 high-explosive shell's 9e-4. A
   type's gun range and drag set its bullet life ([The ship card](ship-card.md)).
 - **Hits.** A swept test between each bullet's and each ship's straight motion this tick

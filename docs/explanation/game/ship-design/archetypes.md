@@ -109,7 +109,7 @@ the energy fighter's real sanctuary, has none: the store stands in for it, equal
 | power / climb | `climb_time` (empty to full, coasting from cruise: store over climb power) | `coast_exchange_scale` (and the engine power below the knee) |
 | dive | `dive_acceleration` (boost from cruise: store into speed) | `dive_exchange_scale` |
 | zoom | `zoom_acceleration` (reverse from cruise: speed into store) | `climb_exchange_scale` |
-| armament | `hit_damage`, `fire_rate`, `muzzle_speed`, `bullet_spread`, `gun_range` | `hit_damage`, `fire_rate`, `bullet_life`, `bullet_drag_scale`, `bullet_spread_scale` |
+| armament | `hit_damage`, `explosive_share`, `fire_rate`, `muzzle_speed`, `bullet_spread`, `gun_range`, `bullet_drag` | `hit_damage`, `explosive_share`, `reference_bullet_speed`, `fire_rate`, `bullet_life`, `bullet_drag_scale`, `bullet_spread_scale` |
 | armour | `max_shield`, `head_on_fraction`, `head_on_angle`, recharge | the shield and the head-on aspect |
 | size | `hit_radius` | itself |
 
@@ -164,8 +164,13 @@ neutral spawn at full shields (a later kill starts from unequal shields).
   past 1.2 gun ranges; a kill up to 2 s after that is a first-merge kill. A trade is both
   ships dying on one tick (it counts as a first-merge kill when it is one).
 - **Time to kill (card)**: from full shield at 100% hits, (hits needed - 1) / fire rate,
-  the hits needed being the shield over the damage times the aspect (the target's head-on
-  fraction head-on, 1 from the tail). **Measured**: from the victim's first hit taken to
+  the hits needed being the shield over the expected hit times the aspect (the target's
+  head-on fraction head-on, 1 from the tail). Since game version 6 the card's damage is a
+  centre hit's at the reference distance (300 m), and the expected hit is 8/15 of it (the
+  closeness `(1 - (b/R)^2)^2` averaged over a uniform impact parameter); the cards were
+  rescaled by 15/8, so the expected hit and these times are as before at 300 m. Closer
+  in a .50 cal hits up to 1.35 times harder (at the muzzle), at 600 m 0.74 times
+  ([Physics](../physics.md)). **Measured**: from the victim's first hit taken to
   its death (median).
 - **Turn**: 180 degrees at the sustained turn rate, and at the instantaneous rate
   (a_max / corner speed). **Pass**: the time a head-on pass spends in gun range, gun range
