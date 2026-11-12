@@ -726,6 +726,58 @@ def round7() -> list[dict]:
 ROUNDS["round7"] = round7
 
 
+def round8() -> list[dict]:
+    """Big v small: the small mirror's pace (full sight, a softer nose, harder hits); the
+    armed gunner's crowd lean."""
+    out = []
+
+    def big_small(name, br, bd, sr, sd, k_big=KIT, k_small=KIT, small_extra=None):
+        a = merge({"hit_radius": br, "hit_damage": bd}, kit(*k_big))
+        b = merge({"hit_radius": sr, "hit_damage": sd}, kit(*k_small), small_extra or {})
+        out.append(
+            pair(
+                f"big (radius x{br:g}, dmg x{bd:g}) v small (radius x{sr:g}, "
+                f"dmg x{sd:g}) (M), {name}",
+                ("M", a),
+                ("M", b),
+            )
+        )
+
+    big_small("kit2", 1.3, 1.3, 0.8, 0.9, KIT2, KIT2)
+    big_small("kit, small cone f0 0.12", 1.3, 1.3, 0.8, 0.9, small_extra=cone(0.12, 12, 8))
+    big_small("kit2, small cone f0 0.12", 1.3, 1.3, 0.8, 0.9, KIT2, KIT2, cone(0.12, 12, 8))
+    big_small("kit", 1.4, 1.4, 0.75, 1.0)
+    big_small("kit", 1.5, 1.5, 0.7, 1.1)
+    big_small("kit2", 1.5, 1.5, 0.7, 1.1, KIT2, KIT2)
+    for gd, gv, k, tag in (
+        (0.95, 1.2, KIT2, "kit2"),
+        (1.0, 1.1, KIT2, "kit2"),
+        (0.9, 1.2, KIT, "kit"),
+    ):
+        a = merge(
+            {
+                "arming_distance": {"set": 150.0},
+                "hit_damage": gd,
+                "bullet_life": 1.3,
+                "vision_range_scale": gv,
+            },
+            kit(*k),
+        )
+        b = merge({"bullet_life": 0.8}, kit(*k))
+        out.append(
+            pair(
+                f"armed gunner (arming 150, life x1.3, dmg x{gd:g}, vision x{gv:g}) v "
+                f"close fighter (life x0.8) (M), {tag}",
+                ("M", a),
+                ("M", b),
+            )
+        )
+    return out
+
+
+ROUNDS["round8"] = round8
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
