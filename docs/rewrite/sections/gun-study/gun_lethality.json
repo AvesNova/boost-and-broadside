@@ -1,0 +1,1760 @@
+{
+ "arena_radius": 3488.3,
+ "card": {
+  "P-51D": {
+   "damage_per_second": 360.0,
+   "max_shield": 100.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.8666666666666667,
+   "ttk_tail": 0.26666666666666666,
+   "turn_180_sustained": 11.466856928190515,
+   "turn_180_instantaneous": 5.061082258971816,
+   "pass_time": 1.8038196563720703,
+   "gun_range": 586.885009765625,
+   "cruise_speed": 162.67840576171875,
+   "sustained_deg": 15.697413958090104,
+   "instantaneous_deg": 35.56551559321383
+  },
+  "Heavy": {
+   "damage_per_second": 357.88612365722656,
+   "max_shield": 140.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.3,
+   "ttk_tail": 0.3,
+   "turn_180_sustained": 11.051391097458973,
+   "turn_180_instantaneous": 6.514495656466253,
+   "pass_time": 1.628083348274231,
+   "gun_range": 541.3406982421875,
+   "cruise_speed": 166.25091552734375,
+   "sustained_deg": 16.287542302379208,
+   "instantaneous_deg": 27.63068846647138
+  },
+  "P-47D": {
+   "damage_per_second": 365.2280902862549,
+   "max_shield": 130.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.1333333333333333,
+   "ttk_tail": 0.3333333333333333,
+   "turn_180_sustained": 12.50075386433884,
+   "turn_180_instantaneous": 5.570587008464146,
+   "pass_time": 1.9113045930862427,
+   "gun_range": 580.9612426757812,
+   "cruise_speed": 151.98028564453125,
+   "sustained_deg": 14.399131600654082,
+   "instantaneous_deg": 32.312573114198145
+  },
+  "P-38L": {
+   "damage_per_second": 360.860595703125,
+   "max_shield": 120.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.0666666666666667,
+   "ttk_tail": 0.26666666666666666,
+   "turn_180_sustained": 10.778035133917585,
+   "turn_180_instantaneous": 6.174249498400494,
+   "pass_time": 1.9554545879364014,
+   "gun_range": 578.7462768554688,
+   "cruise_speed": 147.9825439453125,
+   "sustained_deg": 16.70063214338158,
+   "instantaneous_deg": 29.15334083059503
+  },
+  "Spitfire IX": {
+   "damage_per_second": 360.7198715209961,
+   "max_shield": 100.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.9,
+   "ttk_tail": 0.2,
+   "turn_180_sustained": 9.23054992807266,
+   "turn_180_instantaneous": 4.653478180701567,
+   "pass_time": 1.9750564098358154,
+   "gun_range": 593.2516479492188,
+   "cruise_speed": 150.18600463867188,
+   "sustained_deg": 19.500463287953206,
+   "instantaneous_deg": 38.680744383089134
+  },
+  "Spitfire XIV": {
+   "damage_per_second": 360.7198715209961,
+   "max_shield": 100.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.9,
+   "ttk_tail": 0.2,
+   "turn_180_sustained": 9.693381174466134,
+   "turn_180_instantaneous": 4.91389167801641,
+   "pass_time": 1.853277325630188,
+   "gun_range": 599.6629028320312,
+   "cruise_speed": 161.78445434570312,
+   "sustained_deg": 18.569371900297067,
+   "instantaneous_deg": 36.630844103722815
+  },
+  "Tempest V": {
+   "damage_per_second": 370.38702964782715,
+   "max_shield": 120.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.0666666666666667,
+   "ttk_tail": 0.26666666666666666,
+   "turn_180_sustained": 11.466856928190515,
+   "turn_180_instantaneous": 5.117693694179259,
+   "pass_time": 1.7284157276153564,
+   "gun_range": 581.014892578125,
+   "cruise_speed": 168.07730102539062,
+   "sustained_deg": 15.697413958090104,
+   "instantaneous_deg": 35.172093281926514
+  },
+  "Mosquito": {
+   "damage_per_second": 369.12166595458984,
+   "max_shield": 110.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.9,
+   "ttk_tail": 0.2,
+   "turn_180_sustained": 12.029647452273483,
+   "turn_180_instantaneous": 6.432359923567749,
+   "pass_time": 1.9957109689712524,
+   "gun_range": 592.253662109375,
+   "cruise_speed": 148.38162231445312,
+   "sustained_deg": 14.963032018530333,
+   "instantaneous_deg": 27.98350871823756
+  },
+  "Fw 190A": {
+   "damage_per_second": 365.37628173828125,
+   "max_shield": 120.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.0,
+   "ttk_tail": 0.3,
+   "turn_180_sustained": 11.466856928190515,
+   "turn_180_instantaneous": 6.390955148309275,
+   "pass_time": 1.7912781238555908,
+   "gun_range": 554.1571044921875,
+   "cruise_speed": 154.68203735351562,
+   "sustained_deg": 15.697413958090104,
+   "instantaneous_deg": 28.1648041369245
+  },
+  "Fw 190D": {
+   "damage_per_second": 354.7297668457031,
+   "max_shield": 110.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.0,
+   "ttk_tail": 0.3,
+   "turn_180_sustained": 11.250678477904955,
+   "turn_180_instantaneous": 6.390955148309275,
+   "pass_time": 1.8242567777633667,
+   "gun_range": 552.3226928710938,
+   "cruise_speed": 151.3829345703125,
+   "sustained_deg": 15.999035111837868,
+   "instantaneous_deg": 28.1648041369245
+  },
+  "Bf 109K": {
+   "damage_per_second": 362.85572052001953,
+   "max_shield": 100.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.9,
+   "ttk_tail": 0.2,
+   "turn_180_sustained": 10.227889525368141,
+   "turn_180_instantaneous": 5.713126981319442,
+   "pass_time": 1.2099419832229614,
+   "gun_range": 399.9720764160156,
+   "cruise_speed": 165.28564453125,
+   "sustained_deg": 17.598938623021656,
+   "instantaneous_deg": 31.506388810988614
+  },
+  "Zero": {
+   "damage_per_second": 352.16609954833984,
+   "max_shield": 90.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.8,
+   "ttk_tail": 0.2,
+   "turn_180_sustained": 7.998734115993034,
+   "turn_180_instantaneous": 4.539030651360287,
+   "pass_time": 1.9528887271881104,
+   "gun_range": 510.0479431152344,
+   "cruise_speed": 130.58807373046875,
+   "sustained_deg": 22.50356086222441,
+   "instantaneous_deg": 39.656044170148185
+  },
+  "Me 262": {
+   "damage_per_second": 377.99999237060547,
+   "max_shield": 110.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.9,
+   "ttk_tail": 0.2,
+   "turn_180_sustained": 12.76821185399446,
+   "turn_180_instantaneous": 6.729869693030029,
+   "pass_time": 0.955687940120697,
+   "gun_range": 435.3779296875,
+   "cruise_speed": 227.782470703125,
+   "sustained_deg": 14.097510446906318,
+   "instantaneous_deg": 26.74643168595402
+  },
+  "Ki-84": {
+   "damage_per_second": 356.5773868560791,
+   "max_shield": 110.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.0,
+   "ttk_tail": 0.26666666666666666,
+   "turn_180_sustained": 9.6051978607726,
+   "turn_180_instantaneous": 5.191982477454807,
+   "pass_time": 1.6840144395828247,
+   "gun_range": 524.0176391601562,
+   "cruise_speed": 155.58584594726562,
+   "sustained_deg": 18.739853421980584,
+   "instantaneous_deg": 34.6688381136908
+  },
+  "Yak-3": {
+   "damage_per_second": 352.9658603668213,
+   "max_shield": 100.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.9333333333333333,
+   "ttk_tail": 0.26666666666666666,
+   "turn_180_sustained": 9.23054992807266,
+   "turn_180_instantaneous": 5.185627411693181,
+   "pass_time": 1.8436264991760254,
+   "gun_range": 580.6868896484375,
+   "cruise_speed": 157.48495483398438,
+   "sustained_deg": 19.500463287953206,
+   "instantaneous_deg": 34.71132530542287
+  },
+  "Corsair": {
+   "damage_per_second": 360.0,
+   "max_shield": 120.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.0666666666666667,
+   "ttk_tail": 0.26666666666666666,
+   "turn_180_sustained": 12.24427095722038,
+   "turn_180_instantaneous": 5.308918708789882,
+   "pass_time": 1.8735136985778809,
+   "gun_range": 582.9536743164062,
+   "cruise_speed": 155.57763671875,
+   "sustained_deg": 14.700752754401844,
+   "instantaneous_deg": 33.905209304105036
+  },
+  "La-7": {
+   "damage_per_second": 348.4778594970703,
+   "max_shield": 110.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.0,
+   "ttk_tail": 0.3,
+   "turn_180_sustained": 9.525210092327582,
+   "turn_180_instantaneous": 5.185627411693181,
+   "pass_time": 1.67326819896698,
+   "gun_range": 538.0728759765625,
+   "cruise_speed": 160.78500366210938,
+   "sustained_deg": 18.89722098045768,
+   "instantaneous_deg": 34.71132530542287
+  },
+  "Me 163": {
+   "damage_per_second": 371.27811431884766,
+   "max_shield": 90.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.8,
+   "ttk_tail": 0.2,
+   "turn_180_sustained": 9.327779641891977,
+   "turn_180_instantaneous": 5.374212283805527,
+   "pass_time": 0.9475001096725464,
+   "gun_range": 436.96282958984375,
+   "cruise_speed": 230.58721923828125,
+   "sustained_deg": 19.297196858253624,
+   "instantaneous_deg": 33.49328059526157
+  },
+  "Hellcat": {
+   "damage_per_second": 360.0,
+   "max_shield": 130.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.2,
+   "ttk_tail": 0.3333333333333333,
+   "turn_180_sustained": 11.686528516853167,
+   "turn_180_instantaneous": 5.0750459058949975,
+   "pass_time": 2.023920774459839,
+   "gun_range": 575.5316162109375,
+   "cruise_speed": 142.18234252929688,
+   "sustained_deg": 15.402349785945553,
+   "instantaneous_deg": 35.46765947297506
+  },
+  "Hammerhead": {
+   "damage_per_second": 358.10848236083984,
+   "max_shield": 160.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.4,
+   "ttk_tail": 0.4,
+   "turn_180_sustained": 15.183437768854033,
+   "turn_180_instantaneous": 6.763760489399748,
+   "pass_time": 1.1389826536178589,
+   "gun_range": 407.7565002441406,
+   "cruise_speed": 179.00030517578125,
+   "sustained_deg": 11.855022738607731,
+   "instantaneous_deg": 26.612414836701905
+  },
+  "Wren": {
+   "damage_per_second": 342.5460433959961,
+   "max_shield": 100.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.9333333333333333,
+   "ttk_tail": 0.26666666666666666,
+   "turn_180_sustained": 7.906582801292653,
+   "turn_180_instantaneous": 3.258869256718486,
+   "pass_time": 2.052560806274414,
+   "gun_range": 574.260009765625,
+   "cruise_speed": 139.888671875,
+   "sustained_deg": 22.765840126352902,
+   "instantaneous_deg": 55.233882006438876
+  },
+  "Anvil": {
+   "damage_per_second": 354.6194152832031,
+   "max_shield": 160.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.5,
+   "ttk_tail": 0.0,
+   "turn_180_sustained": 14.327586370609652,
+   "turn_180_instantaneous": 6.721293247230348,
+   "pass_time": 1.5134506225585938,
+   "gun_range": 443.0539855957031,
+   "cruise_speed": 146.37213134765625,
+   "sustained_deg": 12.563176751754654,
+   "instantaneous_deg": 26.78056043368928
+  },
+  "Albatross": {
+   "damage_per_second": 347.7370834350586,
+   "max_shield": 120.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.1,
+   "ttk_tail": 0.3,
+   "turn_180_sustained": 10.98945375744119,
+   "turn_180_instantaneous": 4.328419606473706,
+   "pass_time": 1.9347114562988281,
+   "gun_range": 579.7723388671875,
+   "cruise_speed": 149.83432006835938,
+   "sustained_deg": 16.37934004482418,
+   "instantaneous_deg": 41.58561700690639
+  },
+  "Firecracker": {
+   "damage_per_second": 358.10848236083984,
+   "max_shield": 120.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.0,
+   "ttk_tail": 0.2,
+   "turn_180_sustained": 11.051391097458973,
+   "turn_180_instantaneous": 5.567190217580856,
+   "pass_time": 0.945444643497467,
+   "gun_range": 437.36676025390625,
+   "cruise_speed": 231.30215454101562,
+   "sustained_deg": 16.287542302379208,
+   "instantaneous_deg": 32.33228845523738
+  },
+  "Zerst\u00f6rer": {
+   "damage_per_second": 370.6333541870117,
+   "max_shield": 120.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.0,
+   "ttk_tail": 0.3,
+   "turn_180_sustained": 15.293401385007293,
+   "turn_180_instantaneous": 6.737720359702969,
+   "pass_time": 1.8582369089126587,
+   "gun_range": 586.38818359375,
+   "cruise_speed": 157.78079223632812,
+   "sustained_deg": 11.769781977765973,
+   "instantaneous_deg": 26.715267240318543
+  },
+  "Shrike": {
+   "damage_per_second": 363.2967758178711,
+   "max_shield": 120.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 1.1,
+   "ttk_tail": 0.3,
+   "turn_180_sustained": 13.022606966834958,
+   "turn_180_instantaneous": 5.343803449973161,
+   "pass_time": 1.6748182773590088,
+   "gun_range": 561.3233642578125,
+   "cruise_speed": 167.577392578125,
+   "sustained_deg": 13.822117219571403,
+   "instantaneous_deg": 33.68387360895619
+  },
+  "Lantern": {
+   "damage_per_second": 342.5460433959961,
+   "max_shield": 100.0,
+   "head_on_fraction": 0.30000001192092896,
+   "ttk_head_on": 0.9333333333333333,
+   "ttk_tail": 0.26666666666666666,
+   "turn_180_sustained": 12.466691864708489,
+   "turn_180_instantaneous": 5.061082258971816,
+   "pass_time": 1.6046206951141357,
+   "gun_range": 600.3773803710938,
+   "cruise_speed": 187.07766723632812,
+   "sustained_deg": 14.438473490273354,
+   "instantaneous_deg": 35.56551559321383
+  },
+  "vizia": {
+   "damage_per_second": 120.0,
+   "max_shield": 100.0,
+   "head_on_fraction": 0.20000001788139343,
+   "ttk_head_on": 4.133333333333334,
+   "ttk_tail": 0.8,
+   "turn_180_sustained": 11.466856928190515,
+   "turn_180_instantaneous": 4.771634471720658,
+   "pass_time": 1.8038349151611328,
+   "gun_range": 586.8841552734375,
+   "cruise_speed": 162.67678833007812,
+   "sustained_deg": 15.697413958090104,
+   "instantaneous_deg": 37.72292305011615
+  }
+ },
+ "duels": [
+  {
+   "pair": [
+    "P-51D",
+    "P-51D"
+   ],
+   "environments": 512,
+   "shot_kills": 338,
+   "trades": 159,
+   "trade_share": [
+    0.3199195171026157,
+    0.02092292167137488
+   ],
+   "boundary": 6,
+   "timeouts": 9,
+   "merges": 486,
+   "first_merge_share": [
+    0.971830985915493,
+    0.0074216932464156084
+   ],
+   "before_merge_share": [
+    0.026156941649899398,
+    0.007159122173044526
+   ],
+   "first_kill_seconds": 22.666667938232422,
+   "first_hitter_wins": [
+    0.9390243902439024,
+    0.01525629082175901
+   ],
+   "first_type_wins": [
+    0.48520710059171596,
+    0.027184509279270113
+   ],
+   "ttk_median": 0.7000000476837158,
+   "ttk_quartiles": [
+    0.7000000476837158,
+    0.7000000476837158
+   ],
+   "hit_fraction": 0.38677105234037845,
+   "front_damage_share": 0.9859104859370306
+  },
+  {
+   "pair": [
+    "Heavy",
+    "Heavy"
+   ],
+   "environments": 512,
+   "shot_kills": 318,
+   "trades": 179,
+   "trade_share": [
+    0.36016096579476864,
+    0.02153304720088706
+   ],
+   "boundary": 2,
+   "timeouts": 13,
+   "merges": 490,
+   "first_merge_share": [
+    0.9778672032193159,
+    0.006599026830172017
+   ],
+   "before_merge_share": [
+    0.022132796780684104,
+    0.006599026830172011
+   ],
+   "first_kill_seconds": 22.30000114440918,
+   "first_hitter_wins": [
+    0.9700374531835206,
+    0.010433451065749264
+   ],
+   "first_type_wins": [
+    0.5408805031446541,
+    0.027944733443727925
+   ],
+   "ttk_median": 1.0,
+   "ttk_quartiles": [
+    1.0,
+    1.033333420753479
+   ],
+   "hit_fraction": 0.5062314973867914,
+   "front_damage_share": 0.988427616143998
+  },
+  {
+   "pair": [
+    "P-47D",
+    "P-47D"
+   ],
+   "environments": 512,
+   "shot_kills": 292,
+   "trades": 200,
+   "trade_share": [
+    0.4065040650406504,
+    0.022144137497318712
+   ],
+   "boundary": 12,
+   "timeouts": 8,
+   "merges": 488,
+   "first_merge_share": [
+    0.9776422764227642,
+    0.006665323407409815
+   ],
+   "before_merge_share": [
+    0.018292682926829267,
+    0.00604153319361975
+   ],
+   "first_kill_seconds": 21.500001907348633,
+   "first_hitter_wins": [
+    0.9330143540669856,
+    0.01729266365062762
+   ],
+   "first_type_wins": [
+    0.5102739726027398,
+    0.029254109036223976
+   ],
+   "ttk_median": 0.9000000357627869,
+   "ttk_quartiles": [
+    0.8666667342185974,
+    0.9000000357627869
+   ],
+   "hit_fraction": 0.47653086184872123,
+   "front_damage_share": 0.9887618537293479
+  },
+  {
+   "pair": [
+    "P-38L",
+    "P-38L"
+   ],
+   "environments": 512,
+   "shot_kills": 304,
+   "trades": 183,
+   "trade_share": [
+    0.3757700205338809,
+    0.021946683209661345
+   ],
+   "boundary": 6,
+   "timeouts": 19,
+   "merges": 475,
+   "first_merge_share": [
+    0.9650924024640657,
+    0.00831725367945364
+   ],
+   "before_merge_share": [
+    0.03285420944558522,
+    0.008077500676650876
+   ],
+   "first_kill_seconds": 21.166667938232422,
+   "first_hitter_wins": [
+    0.9414414414414415,
+    0.015758517470699302
+   ],
+   "first_type_wins": [
+    0.47039473684210525,
+    0.028626653502769137
+   ],
+   "ttk_median": 0.8333333730697632,
+   "ttk_quartiles": [
+    0.8333333730697632,
+    0.8333333730697632
+   ],
+   "hit_fraction": 0.46980335032774945,
+   "front_damage_share": 0.977656020935918
+  },
+  {
+   "pair": [
+    "Spitfire IX",
+    "Spitfire IX"
+   ],
+   "environments": 512,
+   "shot_kills": 357,
+   "trades": 146,
+   "trade_share": [
+    0.29025844930417494,
+    0.020237579059420707
+   ],
+   "boundary": 3,
+   "timeouts": 6,
+   "merges": 489,
+   "first_merge_share": [
+    0.9662027833001988,
+    0.008057320103039141
+   ],
+   "before_merge_share": [
+    0.03180914512922465,
+    0.007824786459191933
+   ],
+   "first_kill_seconds": 22.733333587646484,
+   "first_hitter_wins": [
+    0.948051948051948,
+    0.012645189507658333
+   ],
+   "first_type_wins": [
+    0.5294117647058824,
+    0.026416983125827756
+   ],
+   "ttk_median": 0.7666667103767395,
+   "ttk_quartiles": [
+    0.7333333492279053,
+    0.7666667103767395
+   ],
+   "hit_fraction": 0.37783225614738875,
+   "front_damage_share": 0.9847890896734403
+  },
+  {
+   "pair": [
+    "Spitfire XIV",
+    "Spitfire XIV"
+   ],
+   "environments": 512,
+   "shot_kills": 335,
+   "trades": 170,
+   "trade_share": [
+    0.33663366336633666,
+    0.02102857273796381
+   ],
+   "boundary": 1,
+   "timeouts": 6,
+   "merges": 492,
+   "first_merge_share": [
+    0.9663366336633663,
+    0.008025965794697979
+   ],
+   "before_merge_share": [
+    0.0297029702970297,
+    0.007554515252360372
+   ],
+   "first_kill_seconds": 22.066667556762695,
+   "first_hitter_wins": [
+    0.9195804195804196,
+    0.01608024800463681
+   ],
+   "first_type_wins": [
+    0.48656716417910445,
+    0.02730805790663747
+   ],
+   "ttk_median": 0.7666667103767395,
+   "ttk_quartiles": [
+    0.7333333492279053,
+    0.7666667103767395
+   ],
+   "hit_fraction": 0.38877005347593585,
+   "front_damage_share": 0.9850999726446528
+  },
+  {
+   "pair": [
+    "Tempest V",
+    "Tempest V"
+   ],
+   "environments": 512,
+   "shot_kills": 318,
+   "trades": 180,
+   "trade_share": [
+    0.3614457831325301,
+    0.02152810477392547
+   ],
+   "boundary": 5,
+   "timeouts": 9,
+   "merges": 487,
+   "first_merge_share": [
+    0.9718875502008032,
+    0.007407005796571965
+   ],
+   "before_merge_share": [
+    0.024096385542168676,
+    0.0068717087406268695
+   ],
+   "first_kill_seconds": 22.33333396911621,
+   "first_hitter_wins": [
+    0.9155555555555556,
+    0.0185368797862128
+   ],
+   "first_type_wins": [
+    0.5220125786163522,
+    0.02801142210775682
+   ],
+   "ttk_median": 0.8333333730697632,
+   "ttk_quartiles": [
+    0.8333333730697632,
+    0.8666667342185974
+   ],
+   "hit_fraction": 0.4481561238223419,
+   "front_damage_share": 0.9847947771189826
+  },
+  {
+   "pair": [
+    "Mosquito",
+    "Mosquito"
+   ],
+   "environments": 512,
+   "shot_kills": 346,
+   "trades": 154,
+   "trade_share": [
+    0.308,
+    0.020646355610615643
+   ],
+   "boundary": 1,
+   "timeouts": 11,
+   "merges": 484,
+   "first_merge_share": [
+    0.96,
+    0.008763560920082661
+   ],
+   "before_merge_share": [
+    0.034,
+    0.008104813384649889
+   ],
+   "first_kill_seconds": 23.000001907348633,
+   "first_hitter_wins": [
+    0.9673202614379085,
+    0.01016397798738862
+   ],
+   "first_type_wins": [
+    0.47398843930635837,
+    0.026843767573575896
+   ],
+   "ttk_median": 0.7666667103767395,
+   "ttk_quartiles": [
+    0.7666667103767395,
+    0.7666667103767395
+   ],
+   "hit_fraction": 0.37349893382215404,
+   "front_damage_share": 0.9766212826261613
+  },
+  {
+   "pair": [
+    "Fw 190A",
+    "Fw 190A"
+   ],
+   "environments": 512,
+   "shot_kills": 351,
+   "trades": 135,
+   "trade_share": [
+    0.2777777777777778,
+    0.02031730211741924
+   ],
+   "boundary": 7,
+   "timeouts": 19,
+   "merges": 471,
+   "first_merge_share": [
+    0.9588477366255144,
+    0.00901059671017068
+   ],
+   "before_merge_share": [
+    0.037037037037037035,
+    0.008566526746774208
+   ],
+   "first_kill_seconds": 21.733333587646484,
+   "first_hitter_wins": [
+    0.9288135593220339,
+    0.014971037727872599
+   ],
+   "first_type_wins": [
+    0.48148148148148145,
+    0.0266697148082628
+   ],
+   "ttk_median": 0.8000000715255737,
+   "ttk_quartiles": [
+    0.8000000715255737,
+    0.8000000715255737
+   ],
+   "hit_fraction": 0.44261952524239384,
+   "front_damage_share": 0.9752308294529642
+  },
+  {
+   "pair": [
+    "Fw 190D",
+    "Fw 190D"
+   ],
+   "environments": 512,
+   "shot_kills": 349,
+   "trades": 143,
+   "trade_share": [
+    0.29065040650406504,
+    0.02047071811660563
+   ],
+   "boundary": 8,
+   "timeouts": 12,
+   "merges": 478,
+   "first_merge_share": [
+    0.9634146341463414,
+    0.008464041210667581
+   ],
+   "before_merge_share": [
+    0.034552845528455285,
+    0.008234241712135116
+   ],
+   "first_kill_seconds": 21.033334732055664,
+   "first_hitter_wins": [
+    0.9461279461279462,
+    0.013100216628077576
+   ],
+   "first_type_wins": [
+    0.49570200573065903,
+    0.026763397536451846
+   ],
+   "ttk_median": 0.8000000715255737,
+   "ttk_quartiles": [
+    0.8000000715255737,
+    0.8000000715255737
+   ],
+   "hit_fraction": 0.44551724137931037,
+   "front_damage_share": 0.9814420726768588
+  },
+  {
+   "pair": [
+    "Bf 109K",
+    "Bf 109K"
+   ],
+   "environments": 512,
+   "shot_kills": 316,
+   "trades": 185,
+   "trade_share": [
+    0.36926147704590817,
+    0.021561194471028958
+   ],
+   "boundary": 3,
+   "timeouts": 8,
+   "merges": 494,
+   "first_merge_share": [
+    0.9800399201596807,
+    0.0062486206147437705
+   ],
+   "before_merge_share": [
+    0.017964071856287425,
+    0.005933995563746068
+   ],
+   "first_kill_seconds": 22.100000381469727,
+   "first_hitter_wins": [
+    0.9409448818897638,
+    0.01479087970945661
+   ],
+   "first_type_wins": [
+    0.5348101265822784,
+    0.028058948745573613
+   ],
+   "ttk_median": 0.6333333849906921,
+   "ttk_quartiles": [
+    0.6333333849906921,
+    0.6666666865348816
+   ],
+   "hit_fraction": 0.5149291243591032,
+   "front_damage_share": 0.9916552457410899
+  },
+  {
+   "pair": [
+    "Zero",
+    "Zero"
+   ],
+   "environments": 512,
+   "shot_kills": 356,
+   "trades": 154,
+   "trade_share": [
+    0.30196078431372547,
+    0.02032965905650307
+   ],
+   "boundary": 0,
+   "timeouts": 2,
+   "merges": 500,
+   "first_merge_share": [
+    0.9784313725490196,
+    0.006432671167923158
+   ],
+   "before_merge_share": [
+    0.021568627450980392,
+    0.006432671167923153
+   ],
+   "first_kill_seconds": 24.433334350585938,
+   "first_hitter_wins": [
+    0.9362416107382551,
+    0.014153195510414456
+   ],
+   "first_type_wins": [
+    0.5028089887640449,
+    0.02649952880554817
+   ],
+   "ttk_median": 0.6666666865348816,
+   "ttk_quartiles": [
+    0.6666666865348816,
+    0.7000000476837158
+   ],
+   "hit_fraction": 0.3684272117334998,
+   "front_damage_share": 0.9885362336018321
+  },
+  {
+   "pair": [
+    "Me 262",
+    "Me 262"
+   ],
+   "environments": 512,
+   "shot_kills": 274,
+   "trades": 207,
+   "trade_share": [
+    0.4303534303534304,
+    0.02257578391574767
+   ],
+   "boundary": 13,
+   "timeouts": 18,
+   "merges": 483,
+   "first_merge_share": [
+    0.9812889812889813,
+    0.006178380334254928
+   ],
+   "before_merge_share": [
+    0.008316008316008316,
+    0.004140679065326113
+   ],
+   "first_kill_seconds": 21.233333587646484,
+   "first_hitter_wins": [
+    0.9646017699115044,
+    0.012291661213055697
+   ],
+   "first_type_wins": [
+    0.5072992700729927,
+    0.03020288577214053
+   ],
+   "ttk_median": 0.6000000238418579,
+   "ttk_quartiles": [
+    0.6000000238418579,
+    0.6333333849906921
+   ],
+   "hit_fraction": 0.5125581395348837,
+   "front_damage_share": 0.996556411159352
+  },
+  {
+   "pair": [
+    "Ki-84",
+    "Ki-84"
+   ],
+   "environments": 512,
+   "shot_kills": 306,
+   "trades": 197,
+   "trade_share": [
+    0.39165009940357853,
+    0.021764156931063774
+   ],
+   "boundary": 2,
+   "timeouts": 7,
+   "merges": 498,
+   "first_merge_share": [
+    0.9860834990059643,
+    0.005223214733792366
+   ],
+   "before_merge_share": [
+    0.011928429423459244,
+    0.004840629486640759
+   ],
+   "first_kill_seconds": 21.96666717529297,
+   "first_hitter_wins": [
+    0.9527896995708155,
+    0.013894372832405305
+   ],
+   "first_type_wins": [
+    0.48366013071895425,
+    0.028567830568178455
+   ],
+   "ttk_median": 0.7666667103767395,
+   "ttk_quartiles": [
+    0.7666667103767395,
+    0.8000000715255737
+   ],
+   "hit_fraction": 0.46038239722719393,
+   "front_damage_share": 0.9932038924121535
+  },
+  {
+   "pair": [
+    "Yak-3",
+    "Yak-3"
+   ],
+   "environments": 512,
+   "shot_kills": 350,
+   "trades": 150,
+   "trade_share": [
+    0.3,
+    0.020493901531919195
+   ],
+   "boundary": 3,
+   "timeouts": 9,
+   "merges": 485,
+   "first_merge_share": [
+    0.97,
+    0.007628892449104264
+   ],
+   "before_merge_share": [
+    0.03,
+    0.00762889244910426
+   ],
+   "first_kill_seconds": 21.100000381469727,
+   "first_hitter_wins": [
+    0.8818565400843882,
+    0.020966678687094155
+   ],
+   "first_type_wins": [
+    0.5228571428571429,
+    0.026698183513405027
+   ],
+   "ttk_median": 0.7333333492279053,
+   "ttk_quartiles": [
+    0.7333333492279053,
+    0.7666667103767395
+   ],
+   "hit_fraction": 0.4216973875388166,
+   "front_damage_share": 0.985362937547658
+  },
+  {
+   "pair": [
+    "Corsair",
+    "Corsair"
+   ],
+   "environments": 512,
+   "shot_kills": 310,
+   "trades": 189,
+   "trade_share": [
+    0.3787575150300601,
+    0.021715054844287374
+   ],
+   "boundary": 5,
+   "timeouts": 8,
+   "merges": 487,
+   "first_merge_share": [
+    0.9659318637274549,
+    0.008120769083525077
+   ],
+   "before_merge_share": [
+    0.028056112224448898,
+    0.007392376345849378
+   ],
+   "first_kill_seconds": 23.100000381469727,
+   "first_hitter_wins": [
+    0.9656652360515021,
+    0.011928954196019219
+   ],
+   "first_type_wins": [
+    0.47419354838709676,
+    0.028360241766972508
+   ],
+   "ttk_median": 0.8666667342185974,
+   "ttk_quartiles": [
+    0.8333333730697632,
+    0.8666667342185974
+   ],
+   "hit_fraction": 0.43637859645397603,
+   "front_damage_share": 0.9830878890169337
+  },
+  {
+   "pair": [
+    "La-7",
+    "La-7"
+   ],
+   "environments": 512,
+   "shot_kills": 332,
+   "trades": 161,
+   "trade_share": [
+    0.3265720081135903,
+    0.02112086015127967
+   ],
+   "boundary": 4,
+   "timeouts": 15,
+   "merges": 479,
+   "first_merge_share": [
+    0.9655172413793104,
+    0.00821783766816787
+   ],
+   "before_merge_share": [
+    0.030425963488843813,
+    0.007735514399940204
+   ],
+   "first_kill_seconds": 21.96666717529297,
+   "first_hitter_wins": [
+    0.9202898550724637,
+    0.0163028891503671
+   ],
+   "first_type_wins": [
+    0.5150602409638554,
+    0.027428614309843734
+   ],
+   "ttk_median": 0.8000000715255737,
+   "ttk_quartiles": [
+    0.8000000715255737,
+    0.8000000715255737
+   ],
+   "hit_fraction": 0.4479366504755296,
+   "front_damage_share": 0.9806270876394595
+  },
+  {
+   "pair": [
+    "Me 163",
+    "Me 163"
+   ],
+   "environments": 512,
+   "shot_kills": 365,
+   "trades": 133,
+   "trade_share": [
+    0.26706827309236947,
+    0.019825686686975017
+   ],
+   "boundary": 1,
+   "timeouts": 13,
+   "merges": 497,
+   "first_merge_share": [
+    0.9899598393574297,
+    0.004467498832339093
+   ],
+   "before_merge_share": [
+    0.008032128514056224,
+    0.003999902967093637
+   ],
+   "first_kill_seconds": 19.033334732055664,
+   "first_hitter_wins": [
+    0.8816793893129771,
+    0.019954226605947412
+   ],
+   "first_type_wins": [
+    0.5315068493150685,
+    0.026119185120511607
+   ],
+   "ttk_median": 0.5,
+   "ttk_quartiles": [
+    0.46666669845581055,
+    0.5333333611488342
+   ],
+   "hit_fraction": 0.5589101158784842,
+   "front_damage_share": 0.9933019244468784
+  },
+  {
+   "pair": [
+    "Hellcat",
+    "Hellcat"
+   ],
+   "environments": 512,
+   "shot_kills": 318,
+   "trades": 187,
+   "trade_share": [
+    0.3702970297029703,
+    0.021488064358925456
+   ],
+   "boundary": 1,
+   "timeouts": 6,
+   "merges": 488,
+   "first_merge_share": [
+    0.9603960396039604,
+    0.008678582573161661
+   ],
+   "before_merge_share": [
+    0.03564356435643564,
+    0.008250184597563248
+   ],
+   "first_kill_seconds": 24.400001525878906,
+   "first_hitter_wins": [
+    0.9294605809128631,
+    0.016493882864821396
+   ],
+   "first_type_wins": [
+    0.4968553459119497,
+    0.028038053159984127
+   ],
+   "ttk_median": 0.9666666984558105,
+   "ttk_quartiles": [
+    0.9666666984558105,
+    1.0
+   ],
+   "hit_fraction": 0.466437348887061,
+   "front_damage_share": 0.983311144623823
+  },
+  {
+   "pair": [
+    "Hammerhead",
+    "Hammerhead"
+   ],
+   "environments": 512,
+   "shot_kills": 391,
+   "trades": 22,
+   "trade_share": [
+    0.053268765133171914,
+    0.0110503145786255
+   ],
+   "boundary": 20,
+   "timeouts": 79,
+   "merges": 463,
+   "first_merge_share": [
+    0.24939467312348668,
+    0.021289937268886294
+   ],
+   "before_merge_share": [
+    0.012106537530266344,
+    0.0053813347218067105
+   ],
+   "first_kill_seconds": 40.93333435058594,
+   "first_hitter_wins": [
+    0.6923076923076923,
+    0.02612947001872144
+   ],
+   "first_type_wins": [
+    0.5038363171355499,
+    0.025285342572926906
+   ],
+   "ttk_median": 14.333333969116211,
+   "ttk_quartiles": [
+    1.2000000476837158,
+    27.30000114440918
+   ],
+   "hit_fraction": 0.5174410588721908,
+   "front_damage_share": 0.9945613008117619
+  },
+  {
+   "pair": [
+    "Wren",
+    "Wren"
+   ],
+   "environments": 512,
+   "shot_kills": 399,
+   "trades": 112,
+   "trade_share": [
+    0.2191780821917808,
+    0.018300548604189785
+   ],
+   "boundary": 0,
+   "timeouts": 1,
+   "merges": 506,
+   "first_merge_share": [
+    0.9902152641878669,
+    0.004354405906310045
+   ],
+   "before_merge_share": [
+    0.009784735812133072,
+    0.004354405906310033
+   ],
+   "first_kill_seconds": 23.500001907348633,
+   "first_hitter_wins": [
+    0.7250859106529209,
+    0.026172592155850997
+   ],
+   "first_type_wins": [
+    0.49624060150375937,
+    0.02503060116725829
+   ],
+   "ttk_median": 0.8000000715255737,
+   "ttk_quartiles": [
+    0.7666667103767395,
+    0.8000000715255737
+   ],
+   "hit_fraction": 0.39682954219007077,
+   "front_damage_share": 0.99449721261516
+  },
+  {
+   "pair": [
+    "Anvil",
+    "Anvil"
+   ],
+   "environments": 512,
+   "shot_kills": 463,
+   "trades": 19,
+   "trade_share": [
+    0.03941908713692946,
+    0.008863326313095323
+   ],
+   "boundary": 15,
+   "timeouts": 15,
+   "merges": 490,
+   "first_merge_share": [
+    0.11410788381742738,
+    0.014481872677279888
+   ],
+   "before_merge_share": [
+    0.016597510373443983,
+    0.00581920433148301
+   ],
+   "first_kill_seconds": 39.26667022705078,
+   "first_hitter_wins": [
+    0.6193853427895981,
+    0.02360766493745365
+   ],
+   "first_type_wins": [
+    0.468682505399568,
+    0.023191344857746203
+   ],
+   "ttk_median": 12.033333778381348,
+   "ttk_quartiles": [
+    11.666666984558105,
+    22.283334732055664
+   ],
+   "hit_fraction": 0.4756617317182593,
+   "front_damage_share": 0.988734711612362
+  },
+  {
+   "pair": [
+    "Albatross",
+    "Albatross"
+   ],
+   "environments": 512,
+   "shot_kills": 353,
+   "trades": 158,
+   "trade_share": [
+    0.30919765166340507,
+    0.020444879064913653
+   ],
+   "boundary": 0,
+   "timeouts": 1,
+   "merges": 498,
+   "first_merge_share": [
+    0.974559686888454,
+    0.006965543316876358
+   ],
+   "before_merge_share": [
+    0.025440313111545987,
+    0.006965543316876352
+   ],
+   "first_kill_seconds": 27.933334350585938,
+   "first_hitter_wins": [
+    0.9553264604810997,
+    0.012110291324521835
+   ],
+   "first_type_wins": [
+    0.5070821529745042,
+    0.026609645054776775
+   ],
+   "ttk_median": 0.9333333969116211,
+   "ttk_quartiles": [
+    0.9333333969116211,
+    0.9666666984558105
+   ],
+   "hit_fraction": 0.38107504189684066,
+   "front_damage_share": 0.9858520465358123
+  },
+  {
+   "pair": [
+    "Firecracker",
+    "Firecracker"
+   ],
+   "environments": 512,
+   "shot_kills": 305,
+   "trades": 74,
+   "trade_share": [
+    0.19525065963060687,
+    0.020361368534881068
+   ],
+   "boundary": 17,
+   "timeouts": 116,
+   "merges": 491,
+   "first_merge_share": [
+    0.9630606860158312,
+    0.009688390499243173
+   ],
+   "before_merge_share": [
+    0.005277044854881266,
+    0.0037215757055499236
+   ],
+   "first_kill_seconds": 21.866668701171875,
+   "first_hitter_wins": [
+    0.8834586466165414,
+    0.019673984418860688
+   ],
+   "first_type_wins": [
+    0.5081967213114754,
+    0.028626069384262254
+   ],
+   "ttk_median": 0.7000000476837158,
+   "ttk_quartiles": [
+    0.7000000476837158,
+    0.7000000476837158
+   ],
+   "hit_fraction": 0.5299787931366878,
+   "front_damage_share": 0.9935669014587646
+  },
+  {
+   "pair": [
+    "Zerst\u00f6rer",
+    "Zerst\u00f6rer"
+   ],
+   "environments": 512,
+   "shot_kills": 336,
+   "trades": 146,
+   "trade_share": [
+    0.3029045643153527,
+    0.020930302697795028
+   ],
+   "boundary": 13,
+   "timeouts": 17,
+   "merges": 472,
+   "first_merge_share": [
+    0.966804979253112,
+    0.008159854076946312
+   ],
+   "before_merge_share": [
+    0.024896265560165973,
+    0.007096905047100425
+   ],
+   "first_kill_seconds": 24.033334732055664,
+   "first_hitter_wins": [
+    0.9662162162162162,
+    0.010501357656280255
+   ],
+   "first_type_wins": [
+    0.5,
+    0.027277236279499045
+   ],
+   "ttk_median": 0.8333333730697632,
+   "ttk_quartiles": [
+    0.8000000715255737,
+    0.8333333730697632
+   ],
+   "hit_fraction": 0.41658018679651954,
+   "front_damage_share": 0.9846557411208318
+  },
+  {
+   "pair": [
+    "Shrike",
+    "Shrike"
+   ],
+   "environments": 512,
+   "shot_kills": 340,
+   "trades": 154,
+   "trade_share": [
+    0.3117408906882591,
+    0.020840560526992815
+   ],
+   "boundary": 7,
+   "timeouts": 11,
+   "merges": 481,
+   "first_merge_share": [
+    0.9635627530364372,
+    0.008430421824573257
+   ],
+   "before_merge_share": [
+    0.03441295546558704,
+    0.008201498821461992
+   ],
+   "first_kill_seconds": 22.000001907348633,
+   "first_hitter_wins": [
+    0.9163636363636364,
+    0.016694182145455188
+   ],
+   "first_type_wins": [
+    0.4676470588235294,
+    0.02705948171307229
+   ],
+   "ttk_median": 0.8666667342185974,
+   "ttk_quartiles": [
+    0.8333333730697632,
+    0.8666667342185974
+   ],
+   "hit_fraction": 0.47431963175321007,
+   "front_damage_share": 0.9844567293700566
+  },
+  {
+   "pair": [
+    "Lantern",
+    "Lantern"
+   ],
+   "environments": 512,
+   "shot_kills": 315,
+   "trades": 188,
+   "trade_share": [
+    0.37375745526838966,
+    0.02157159331091576
+   ],
+   "boundary": 3,
+   "timeouts": 6,
+   "merges": 488,
+   "first_merge_share": [
+    0.9701789264413518,
+    0.0075840914814709216
+   ],
+   "before_merge_share": [
+    0.02982107355864811,
+    0.007584091481470915
+   ],
+   "first_kill_seconds": 22.700000762939453,
+   "first_hitter_wins": [
+    0.9285714285714286,
+    0.016693798301528662
+   ],
+   "first_type_wins": [
+    0.45396825396825397,
+    0.02805216673052269
+   ],
+   "ttk_median": 0.7333333492279053,
+   "ttk_quartiles": [
+    0.7333333492279053,
+    0.7666667103767395
+   ],
+   "hit_fraction": 0.40336111639019356,
+   "front_damage_share": 0.9820436895629248
+  },
+  {
+   "pair": [
+    "vizia",
+    "vizia"
+   ],
+   "environments": 512,
+   "shot_kills": 497,
+   "trades": 9,
+   "trade_share": [
+    0.017786561264822136,
+    0.005875890228271236
+   ],
+   "boundary": 3,
+   "timeouts": 3,
+   "merges": 469,
+   "first_merge_share": [
+    0.08300395256916997,
+    0.0122647262800857
+   ],
+   "before_merge_share": [
+    0.08102766798418973,
+    0.01213088901893797
+   ],
+   "first_kill_seconds": 44.70000076293945,
+   "first_hitter_wins": [
+    0.8691588785046729,
+    0.016300458856362676
+   ],
+   "first_type_wins": [
+    0.4949698189134809,
+    0.022426930189906314
+   ],
+   "ttk_median": 20.566667556762695,
+   "ttk_quartiles": [
+    12.300000190734863,
+    31.033334732055664
+   ],
+   "hit_fraction": 0.7949712690322371,
+   "front_damage_share": 0.9599114605323177
+  },
+  {
+   "pair": [
+    "P-51D",
+    "Spitfire XIV"
+   ],
+   "environments": 512,
+   "shot_kills": 369,
+   "trades": 139,
+   "trade_share": [
+    0.2736220472440945,
+    0.01977994204479286
+   ],
+   "boundary": 2,
+   "timeouts": 2,
+   "merges": 483,
+   "first_merge_share": [
+    0.9468503937007874,
+    0.009953111100042341
+   ],
+   "before_merge_share": [
+    0.051181102362204724,
+    0.009777202827209739
+   ],
+   "first_kill_seconds": 22.100000381469727,
+   "first_hitter_wins": [
+    0.7392857142857143,
+    0.02623672092280857
+   ],
+   "first_type_wins": [
+    0.6341463414634146,
+    0.025074672170876194
+   ],
+   "ttk_median": 0.7333333492279053,
+   "ttk_quartiles": [
+    0.7000000476837158,
+    0.7666667103767395
+   ],
+   "hit_fraction": 0.3840277103363439,
+   "front_damage_share": 0.965602823534116
+  },
+  {
+   "pair": [
+    "P-47D",
+    "Spitfire IX"
+   ],
+   "environments": 512,
+   "shot_kills": 511,
+   "trades": 0,
+   "trade_share": [
+    0.0,
+    4.423739552038088e-08
+   ],
+   "boundary": 1,
+   "timeouts": 0,
+   "merges": 492,
+   "first_merge_share": [
+    0.9530332681017613,
+    0.009359200502033056
+   ],
+   "before_merge_share": [
+    0.03718199608610567,
+    0.008370049023271821
+   ],
+   "first_kill_seconds": 22.83333396911621,
+   "first_hitter_wins": [
+    0.2759493670886076,
+    0.022490578274446366
+   ],
+   "first_type_wins": [
+    0.923679060665362,
+    0.011745511992425881
+   ],
+   "ttk_median": 0.7000000476837158,
+   "ttk_quartiles": [
+    0.7000000476837158,
+    0.7333333492279053
+   ],
+   "hit_fraction": 0.39448209099709586,
+   "front_damage_share": 0.9646289175818481
+  },
+  {
+   "pair": [
+    "Fw 190A",
+    "Yak-3"
+   ],
+   "environments": 512,
+   "shot_kills": 377,
+   "trades": 126,
+   "trade_share": [
+    0.2504970178926441,
+    0.019319859780738278
+   ],
+   "boundary": 6,
+   "timeouts": 3,
+   "merges": 484,
+   "first_merge_share": [
+    0.9502982107355865,
+    0.009690182916074225
+   ],
+   "before_merge_share": [
+    0.0437375745526839,
+    0.009118678438843997
+   ],
+   "first_kill_seconds": 21.066667556762695,
+   "first_hitter_wins": [
+    0.5342465753424658,
+    0.026109735342662338
+   ],
+   "first_type_wins": [
+    0.519893899204244,
+    0.025730919008766086
+   ],
+   "ttk_median": 0.7666667103767395,
+   "ttk_quartiles": [
+    0.7333333492279053,
+    0.8333333730697632
+   ],
+   "hit_fraction": 0.4212922879589546,
+   "front_damage_share": 0.9684554702674466
+  },
+  {
+   "pair": [
+    "Me 262",
+    "Zero"
+   ],
+   "environments": 512,
+   "shot_kills": 504,
+   "trades": 1,
+   "trade_share": [
+    0.0019801980198019802,
+    0.001978236456150847
+   ],
+   "boundary": 7,
+   "timeouts": 0,
+   "merges": 478,
+   "first_merge_share": [
+    0.9366336633663367,
+    0.01084097873036667
+   ],
+   "before_merge_share": [
+    0.055445544554455446,
+    0.010183595441972984
+   ],
+   "first_kill_seconds": 21.700000762939453,
+   "first_hitter_wins": [
+    0.9861111111111112,
+    0.005212924196572229
+   ],
+   "first_type_wins": [
+    0.007936507936507936,
+    0.003952475559968233
+   ],
+   "ttk_median": 0.8000000715255737,
+   "ttk_quartiles": [
+    0.7666667103767395,
+    0.8000000715255737
+   ],
+   "hit_fraction": 0.3829344432882414,
+   "front_damage_share": 0.9509415840065577
+  },
+  {
+   "pair": [
+    "vizia",
+    "P-51D"
+   ],
+   "environments": 512,
+   "shot_kills": 504,
+   "trades": 0,
+   "trade_share": [
+    0.0,
+    4.45435403187374e-08
+   ],
+   "boundary": 3,
+   "timeouts": 5,
+   "merges": 480,
+   "first_merge_share": [
+    0.9424603174603174,
+    0.010372895414090366
+   ],
+   "before_merge_share": [
+    0.051587301587301584,
+    0.009852689978175323
+   ],
+   "first_kill_seconds": 24.600000381469727,
+   "first_hitter_wins": [
+    0.8864197530864197,
+    0.01576680169268236
+   ],
+   "first_type_wins": [
+    0.023809523809523808,
+    0.00679090053895178
+   ],
+   "ttk_median": 1.0666667222976685,
+   "ttk_quartiles": [
+    1.033333420753479,
+    1.100000023841858
+   ],
+   "hit_fraction": 0.5033911283706175,
+   "front_damage_share": 0.9634383694326095
+  },
+  {
+   "pair": [
+    "vizia",
+    "Spitfire XIV"
+   ],
+   "environments": 512,
+   "shot_kills": 509,
+   "trades": 0,
+   "trade_share": [
+    0.0,
+    4.4324220717793624e-08
+   ],
+   "boundary": 3,
+   "timeouts": 0,
+   "merges": 486,
+   "first_merge_share": [
+    0.9390962671905697,
+    0.010600299152403557
+   ],
+   "before_merge_share": [
+    0.047151277013752456,
+    0.009395065595495527
+   ],
+   "first_kill_seconds": 23.433334350585938,
+   "first_hitter_wins": [
+    0.9671052631578947,
+    0.008352522616398166
+   ],
+   "first_type_wins": [
+    0.009823182711198428,
+    0.004371430689412743
+   ],
+   "ttk_median": 1.0666667222976685,
+   "ttk_quartiles": [
+    1.033333420753479,
+    1.100000023841858
+   ],
+   "hit_fraction": 0.4948048574582765,
+   "front_damage_share": 0.9635473228091974
+  }
+ ],
+ "variant_cards": []
+}
