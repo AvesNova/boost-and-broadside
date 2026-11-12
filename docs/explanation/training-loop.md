@@ -57,7 +57,8 @@ default lineup (`bnb.runtime.train.LINEUP`) is self-play and the league's seat, 
 - `learner`: the model being trained, through `bnb.controllers.yemong.YemongController` or
   `bnb.controllers.relational.RelationalController` (the relational and nearest models);
 - `opponents`: the league's seat, `bnb.runtime.opponents.OpponentSlots`: network slots
-  and the stationary ladder in one controller (see [The league](league.md));
+  and the full-strength scripted agent in one controller; the training pool holds no
+  weaker rung and no random player (see [The league](league.md));
 - `chaser`: `bnb.controllers.scripted.Chaser`, which turns toward and shoots at the nearest
   visible living enemy, boosting when far and reversing when close; its distances are in
   the card's lengths (the race's 600, 120 and 250 m on the standard card), from the same
@@ -140,7 +141,10 @@ sets how many (`environments`, beyond the training ones) and what they play (`ma
   gap: 0.25 at even odds, 0.004 at the 950 points v1's policy reached above the scripted
   agent. BC's (`bnb.runtime.cloning.LANES`) play the live clone, the uniform average and
   the exponential average against the scripted agent, a third of each mode's lanes each;
-  the launch runs BC with no lanes (`lanes.environments=0`).
+  the launch runs BC with no lanes (`lanes.environments=0`), so its score stop never fires
+  and it stops on its plateau or budget
+  ([Behaviour cloning](behaviour-cloning.md#rollouts)). Whatever the lanes play, BC hands
+  RL its exponential average ([The hand-off](behaviour-cloning.md#the-hand-off)).
 - **A game counts once, by the weights that played it:** each lane row stamps its player's
   weight generation when its game begins, and loading another entry into a slot's lane
   player (`LaneSeat.load` with `fresh`) starts a new generation, so a game in progress then

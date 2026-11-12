@@ -98,6 +98,12 @@ L=docs/rewrite/sections/launch; source $L/env.sh
   probed rows per stage, priority = the arm's cost (the longest start first), and a warm
   key per model (a second job of the same model waits until the first has logged its first
   update, so it reads the first one's compiles).
+- What a chain does: BC (no rating lanes, `bc_set`'s `lanes.environments=0`) stops on its
+  plateau or at its 100M cap, never on its score stop, whose windows need lanes; RL then
+  starts from BC's exponential average (`policy-exponential/`{.plain}, the same weights as
+  `policy/`{.plain}), always, and its live rating starts at 0, since a BC run without
+  lanes rates nothing. RL's training pool is its snapshots, both averages and the
+  full-strength scripted agent: no weaker rung and no random player.
 
 ## 3. Watch
 

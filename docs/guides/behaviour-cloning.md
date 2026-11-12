@@ -45,7 +45,7 @@ counts and its own lane ratings
 
 | Directory | Holds |
 | --- | --- |
-| `runs/<run>/policy/`{.plain} | the run's policy: the average the stop rule read last |
+| `runs/<run>/policy/`{.plain} | the run's policy and the hand-off to RL: always the exponential average |
 | `runs/<run>/policy-uniform/`{.plain} | the uniform average (after the warm-up) |
 | `runs/<run>/policy-exponential/`{.plain} | the exponential moving average |
 | `runs/<run>/policy-live/`{.plain} | the live clone |
@@ -58,7 +58,7 @@ never replaced, so a run resumed past its budget keeps its earlier averages; `bn
 ([Runs and checkpoints](../explanation/runs.md#every-updates-policy-files)).
 
 `run.json`{.plain} records the rule as `stopped_by` (`interrupted` for a stop request) and the
-average in `policy/` as `policy_player` (`uniform_average` or `exponential_average`).
+average in `policy/` as `policy_player` (always `exponential_average`).
 The averages take the league's settings: the uniform average starts after the run's
 learning-rate warm-up (`LearnerConfig.warmup_steps`), `--set league.uniform_from=20000000` starts
 it elsewhere, `--set league.exponential_decay=0.98` slows the exponential

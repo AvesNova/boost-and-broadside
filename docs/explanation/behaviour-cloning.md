@@ -78,6 +78,12 @@ matchups' weights 0.5, 1 and 1; of the default 1,024 lanes in one mode, 205, 410
 score stop and the ratings read those games (at the default teacher, the scripted agent
 is the teacher). There are no separate evaluation rollouts.
 
+The launch runs BC with no rating lanes (`lanes.environments=0` in
+`docs/rewrite/sections/launch/launch.toml`'s `bc_set`, the author, 2026-11-12). Then no
+score window fills: the score stop cannot fire (it is off by default anyway), BC stops on
+its plateau or its budget, the `bc/stop/window_*`{.plain} series are absent, and the
+policy files carry no lane rating, so the RL run's live rating starts at 0.
+
 ## The averages
 
 The averaged agents are the product of BC, as in reinforcement learning (decisions,
@@ -127,7 +133,8 @@ part of the training checkpoint, so a resumed run continues the same windows:
   the plateau). Each player keeps its own window (`bnb.learn.bc.ScoreWindow`), kept and
   logged whether or not the rule has a target: the live clone's too, which is never read.
   The rule reads, of the averages `StopConfig.reads` names, the one whose full window
-  scores higher (`StopRule.read`), and that average is the run's `policy/`. Against one
+  scores higher (`StopRule.read`); which average RL starts from is not its choice (see
+  [The hand-off](#the-hand-off)). Against one
   opponent a rating is a monotone function of the score, so this is the better-rated
   average over the stop's own window, not the lanes' ten-update rating window. An equal
   score goes to the exponential average, the first in `reads`. The uniform average's
@@ -198,14 +205,15 @@ the rule below 0.05), and how long it has been below (`bc/stop/plateau/held_step
 its weights, the return scale's state, the step counts and its own lane rating per mode,
 where the RL run's live rating starts:
 
-- `policy/`{.plain}: the run's policy, the average the score window read last (before any
-  window filled, the exponential average); `run.json`{.plain} names it as
-  `policy_player`;
+- `policy/`{.plain}: the run's policy, the hand-off, always the exponential average
+  (`bnb.runs.session.HANDOFF_PLAYER`, the author, 2026-11-12), whatever
+  `StopConfig.reads` names and whichever average the score stop reads; `run.json`{.plain}
+  names it as `policy_player`;
 - `policy-uniform/`{.plain} and `policy-exponential/`{.plain}: each average;
 - `policy-live/`{.plain}: the live clone.
 
-`policy/` duplicates one of the averages' files, so that the hand-off has one path
-whichever average won. A resumed run replaces these four at its next end; the three
+`policy/` duplicates `policy-exponential/`, so that the hand-off has one path. A
+resumed run replaces these four at its next end; the three
 players of every 10M environment steps and of each end stay under
 `policies/step_<steps>/` (`TrainConfig.policy_snapshot_every`,
 [Runs and checkpoints](runs.md#every-updates-policy-files)). The return scale is the learner's in all four. `bnb train
