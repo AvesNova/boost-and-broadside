@@ -9,9 +9,12 @@ A setting marked * applies from the next episode, so **New map** and **Restart m
 are what show it. Opens with F3 or the top bar's **Map / mode**.
 """
 
+import dataclasses
 import math
 
 from imgui_bundle import imgui
+
+from bnb.game.physics.spawning import field_radius_summary
 
 from .interface.layout import MARGIN, TOP_BAR, Rect
 from .maps import MODES
@@ -63,7 +66,23 @@ class MapPanel:
                 self._mode(session)
                 imgui.separator()
                 draw_rules(tuner, scale, lambda group: group in MAP_GROUPS, open_groups=True)
+                imgui.text_colored(DIM, self.radius_line(tuner))
         imgui.end()
+
+    @staticmethod
+    def radius_line(tuner) -> str:
+        """The field radii the current settings draw, at map scale 1."""
+        names = (
+            "field_radius_min",
+            "field_radius_max",
+            "field_radius_distribution",
+            "field_radius_median",
+            "field_radius_log_sigma",
+        )
+        changes = {name: tuner.values[f"rules.{name}"] for name in names}
+        changes["field_radius_distribution"] = int(changes["field_radius_distribution"])
+        mean, low, high = field_radius_summary(dataclasses.replace(tuner.base, **changes))
+        return f"field radius: mean {mean:.0f} m, 10th {low:.0f} m, 90th {high:.0f} m (map scale 1)"
 
     def _buttons(self, session) -> None:
         controls = session.interface.controls

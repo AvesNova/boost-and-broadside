@@ -121,6 +121,14 @@ class Rules:
     # of point-symmetric fields shares its level, so any shares leave the map fair.
     field_radius_min: float = 30.0  # m
     field_radius_max: float = 490.0  # m
+    # How the one uniform drawn per field becomes its radius (the draws are the same for
+    # every choice): 0 uniform between min and max; 1 triangular (densest at the smallest
+    # radius, falling linearly to none at the largest); 2 lognormal (log radius normal with
+    # median `field_radius_median` m at map scale 1 and spread `field_radius_log_sigma`,
+    # clamped to [min, max]). The default median is the geometric mean of min and max.
+    field_radius_distribution: int = 0
+    field_radius_median: float = (30.0 * 490.0) ** 0.5  # m
+    field_radius_log_sigma: float = 0.6
     field_disc_fraction: float = 0.85
     field_high_share: float = 0.5
     field_strong_share: float = 0.5
