@@ -21,6 +21,46 @@ REPOSITORY = pathlib.Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(REPOSITORY / "src"))
 
 
+def match_loop(setup):
+    """The match of `setup` as `bnb.play.loop.MatchLoop` builds it, but its agents load with
+    `any_mode`: a policy of a mixed batch records the batch's first game only and plays
+    every mode of the mix (`bnb.play.sides`)."""
+    import torch
+
+    from bnb.play.loop import MatchLoop
+    from bnb.play.sides import ScriptedAgent, load_agent
+    from bnb.play.tuning import base_rules
+    from bnb.runtime.realtime import Realtime
+
+    settings, types = setup.tuning.played(
+        base_rules(setup.config, setup.lineup), setup.config.ship_set
+    )
+    realtime = Realtime(
+        setup.config,
+        compiled=False,
+        fogged=setup.fogged,
+        generator=torch.Generator().manual_seed(setup.seed),
+        lineup=setup.lineup,
+        settings=settings,
+        types=types,
+    )
+    sides = [
+        load_agent(
+            side.policy,
+            setup.config,
+            realtime.rules,
+            realtime.types,
+            side.temperature,
+            setup.seed + team,
+            any_mode=True,
+        )
+        if side.controller == "agent"
+        else ScriptedAgent(realtime.rules, realtime.types, setup.seed + team)
+        for team, side in enumerate(setup.sides)
+    ]
+    return MatchLoop(setup, sides=sides, realtime=realtime)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--policy", action="append", required=True)
@@ -40,7 +80,7 @@ def main() -> None:
 
     from bnb.game.api import PRESETS
     from bnb.play import replay
-    from bnb.play.loop import MatchLoop, MatchSetup, SideSetup
+    from bnb.play.loop import MatchSetup, SideSetup
     from bnb.runtime.train import lineup_indices
 
     torch.set_num_threads(4)
@@ -56,7 +96,7 @@ def main() -> None:
                 agent = SideSetup("agent", policy)
                 other = agent if arguments.opponent == "self" else SideSetup("scripted_agent")
                 setup = MatchSetup(config, lineup=lineup, seed=seed, sides=(agent, other))
-                loop = MatchLoop(setup, compiled=False)
+                loop = match_loop(setup)
                 name = f"{pathlib.Path(policy).parent.parent.parent.name}-{arguments.opponent}"
                 recorder = replay.Recorder(setup, loop.realtime, name)
                 loop.on_tick = recorder.record

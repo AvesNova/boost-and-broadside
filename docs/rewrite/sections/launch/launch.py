@@ -489,7 +489,7 @@ def status(arguments) -> None:
                 + ("-" if not info else info["stage"])
             )
             continue
-        steps = f"{info['steps'] / 1e6:.1f}/{(info['budget'] or 0) / 1e6:.0f}M"
+        steps = f"{info['steps'] / 1e6:.2f}/{(info['budget'] or 0) / 1e6:g}M"
         eta = info["eta"].strftime("%a %H:%M") if "eta" in info and info["eta"] else "-"
         if job["state"] != "running":
             eta = info["status"]
