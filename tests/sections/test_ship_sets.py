@@ -157,7 +157,7 @@ def test_a_rated_match_plays_the_policies_card_else_the_sets(trial, tmp_path):
 
 def test_the_new_match_maps_come_from_the_presets():
     keys = [game_map.key for game_map in maps()]
-    assert keys == ["standard", "wide", "real_scale", "arena"]
+    assert keys == ["standard", "wide", "real_scale", "arena", "clover"]
     assert {map_of(name) for name in MAP_PRESETS} == set(keys)
     assert not set(api.FLEET_PRESETS) & set(MAP_PRESETS)  # the fleet sizes are no maps
     assert Draft().config() == api.PRESETS["real_scale_deathmatch"]
