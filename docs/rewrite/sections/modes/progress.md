@@ -50,3 +50,32 @@ Adjacent zones (centre to centre) take about 0.66 of these. Against the 600 s re
 clock: a 5v5 attack leg is 6-10% of the clock coasting; at 50v50 density it is 28-34%
 coasting, 15% boosting, so a round trip (respawn, fly back) eats a large share of the
 match. The `_arena` presets keep 7800 m (the 5v5 numbers).
+
+## Box (gpubox4, vast.ai)
+
+RTX 5060 Ti 16 GB (Blackwell, sm_120, 180 W, driver 595.99.02), i5-12400F with a 5.76-core
+CPU quota, 31 GB. The locked env: torch 2.15.0+cu132, Triton 3.9.0, Python 3.14; sm_120 is
+in torch's arch list and `torch.compile` works out of the box. No Blackwell problem so far.
+Notes: Triton 3.9 warns that `TRITON_DEFAULT_FP_FUSION` is unset (fusion stays on; set it to
+1 to keep today's numerics and silence it). A compile (inductor workers + ptxas) takes the
+whole CPU quota: an eager loop beside it ran at 0.65 s/tick, so eager measurement loops are
+out and every sim here runs on the compiled rollout (CUDA graphs). The match engine builds
+a 5v5 real-scale arena in ~3 min cold, 1 s warm; a 256-game batch of 5v5 real-scale
+deathmatch then takes ~5 s. Gotchas: `pkill -f "uv sync"` over ssh kills the ssh command
+itself; run long jobs in tmux.
+
+## Step 2b: weaker rung, 5v5 (done)
+
+`bench/density_sweep.py --sizes 5 --radii fixed` (real_scale_deathmatch, no fields, 5v5,
+7800 m, current tickets 25 / 600 s): the scripted agent (T = 1) against `rung_T<t>`,
+512 games each, score = wins + ties / 2:
+
+| rung | score | ± |
+|---|---|---|
+| T = 1.5 | 0.610 | 0.021 |
+| T = 2 | 0.697 | 0.020 |
+| T = 3 | 0.900 | 0.018 |
+
+T = 2 is the sweep's weaker rung (a clear edge, far from saturation).
+Sweep launched 16:01 KST: sizes 5/10/20/35/50 per side at the fixed 7800 m arena and at the
+`_density` radii (7800 sqrt(n / 5)); ±0.025 or 1536 games per cell; bounded at 3 h.
