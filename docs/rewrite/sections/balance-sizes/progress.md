@@ -218,3 +218,31 @@ mean / median / first-pass / p90, circles turned a ship:
   reversal to force an overshoot), not a card issue. Not built here.
 - Opening Jujak's whole stored doctrine breaks the mirror: its extend element makes both
   ships run, giving 1v1 life of 23 618 s.
+
+## 20:00-20:13 KST: round 5 (confirm at 1024 games; the deny element): **champion confirmed**
+
+`round5/sizes.{json,md}`, 1024 games a size and lineup (10v10 512), E v T score / kill
+share, then the mirrors (JJ, YY): mutual head-on kill share and life:
+
+| Card \| doctrine | 1v1 | 2v2 | 5v5 | 10v10 | Worst \|E v T - 0.5\| |
+|---|---|---|---|---|---|
+| **J induced x1.6, Y shield x0.5, Y bullet life x0.85 \| r9** | **0.51** / 0.480; JJ 0.76, 142 s; YY 0.51, 206 s | **0.53** / 0.500 | **0.55** / 0.505 | **0.47** / 0.492 | **0.05** |
+| J induced x1.7, Y shield x0.5 \| r9 | 0.58 / 0.513; JJ 0.78, 145 s; YY 0.52, 200 s | 0.43 / 0.481 | 0.55 / 0.505 | 0.40 / 0.486 | 0.10 |
+| J induced x1.6, Y shield x0.5, Y bullet life x0.85 \| deny | 0.61; JJ 0.02, 368 s; YY 0.01, 535 s | 0.53 | 0.65 | 0.60 | 0.15 |
+| J induced x1.7, Y shield x0.5 \| deny | 0.80; JJ 0.02, 384 s; YY 0.00, 480 s | 0.63 | 0.75 | 0.74 | 0.30 |
+| J induced x1.6, Y shield x0.5, Y damage x0.9 \| deny | 0.60 | 0.52 | 0.66 | 0.54 | 0.16 |
+
+E v T SE: ±0.01 at 1v1, ±0.014 at 2v2 and 5v5, ±0.02 at 10v10.
+
+- **Champion: J induced x1.6, Y shield x0.5, Y bullet life x0.85, flown by r9.** Every size
+  is within 0.45-0.55: 0.51 / 0.53 / 0.55 / 0.47. The frozen card's worst size was 0.49 off
+  0.5 (1v1 0.01); this card's worst is 0.05.
+- **Strength**: the agent is r9 unchanged, so the card changes nothing the agent knows.
+  Against r9 on the new card it scores 0.503 / 0.482 (mixed / reversed, 5v5, 1024 games).
+- **The deny element costs strength.** Played against r9 at 5v5 it scores **0.25-0.32**
+  (about -150 Elo). It ends the mirror joust, but the ships turn away from shots they could
+  have traded. **Not carried forward**; a weaker or shorter-range deny is being measured
+  (`deny2/`).
+- Pace on the champion: life 91-142 s (1v1-10v10 self-play, both mirrors included) and the
+  YY 1v1 206 s, all within 45-300 s. Kills a minute a ship 0.53-0.59 at 5v5. Trades
+  0.02-0.06.

@@ -404,7 +404,7 @@ def main() -> None:
             made += 1
             if made >= args.plots:
                 break
-    out.with_suffix(".json").write_text(json.dumps(result, indent=1))
+    out.with_name(out.name + ".json").write_text(json.dumps(result, indent=1))
     if "fights" in result:
         fights = result["fights"]
         killed = [f for f in fights if f["victim"]]
