@@ -1,0 +1,11 @@
+{
+ "candidate": {
+  "name": "frozen (r9)",
+  "energy": {},
+  "turn": {},
+  "player": "r9"
+ },
+ "size": 5,
+ "lineup": "energy v turn",
+ "games": 4
+}
