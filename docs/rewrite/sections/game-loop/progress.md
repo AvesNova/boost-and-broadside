@@ -495,3 +495,64 @@ v turn: 0.823 (off's Yongma wins). Note: energy v turn under r9 was 0.508 in 120
   0.05-0.21, p90 4-11); 2v2 1.3-1.8 (median 1, p90 3-4); 5v5 0.5-1.0 (first-pass
   0.76-0.91): in a crowd a third ship ends the fight. The 1v1 mirrors almost never
   resolve (life 1079-3713 s: head-on stalemates, mutual + offset kills 0.81-0.94).
+
+## 18:20-18:37 KST: round 12 (frontal armour back toward 3-4 passes), the freeze
+
+Round 12 (300 s games, r9, on the round-11 card; `round12/cards.*`):
+
+| Variant | E v T | Kills m / o / f / t | Trades | Life s | Kills/min/ship | Card head-on passes YY / JJ / YJ / JY |
+|---|---|---|---|---|---|---|
+| round-11 card | 0.446 ± 0.014 | 0.03 / 0.16 / 0.55 / 0.25 | 0.04 | 130 | 0.45 | 30.5 / 19.4 / 16.6 / 35.3 |
+| Y damage x1.05 | 0.458 | 0.03 / 0.16 / 0.55 / 0.25 | 0.04 | 127 | 0.46 | 29.0 / 19.4 / 15.8 / 35.3 |
+| Y damage x1.1 | 0.527 | 0.03 / 0.16 / 0.55 / 0.25 | 0.04 | 124 | 0.46 | 27.7 / 19.4 / 15.1 / 35.3 |
+| fraction x2 | 0.464 | 0.05 / 0.16 / 0.54 / 0.24 | 0.04 | 123 | 0.47 | 15.2 / 9.7 / 8.3 / 17.6 |
+| fraction x4 | 0.510 | 0.10 / 0.18 / 0.51 / 0.22 | 0.05 | 114 | 0.50 | 7.6 / 4.8 / 4.1 / 8.8 |
+| fraction x6 | 0.612 | 0.14 / 0.18 / 0.48 / 0.19 | 0.05 | 106 | 0.53 | 5.1 / 3.2 / 2.8 / 5.8 |
+| fraction x4, cone x2 | 0.475 | 0.10 / 0.14 / 0.52 / 0.24 | 0.04 | 123 | 0.47 | 7.6 / 4.8 / 4.1 / 8.8 |
+| **fraction x3, Y damage x1.05** | **0.513 ± 0.015** | 0.08 / 0.18 / 0.52 / 0.23 | 0.04 | 116 | 0.49 | 9.7 / 6.5 / 5.2 / 11.7 |
+
+- The head-on TTK target and mutual head-on near zero trade off directly: 3-4 card passes
+  (fraction x6) brings mutual head-on kills to 0.14 and Yongma to 0.61. **Chosen
+  compromise: fraction x3 with Yongma damage x1.05**: card head-on 5-12 passes, mutual
+  0.08, energy v turn 0.513 in 5v5 300 s games.
+
+**Frozen** (commit 4c5397fa; `freeze.py` re-solved the cards from the handles):
+
+- Yongma: hit damage 16.42 -> **3.343** (centre hit at 300 m; the x0.65 base x 0.3133),
+  explosive share 0 -> **0.5**, shield 109.2 -> **141.9**, head-on fraction 0.2 -> **0.3**,
+  half-strength angle 42.3 -> **21.1 degrees**; recharge 12/s after 6 s unchanged.
+- Jujak: hit damage 13.71 -> **2.673** (x0.65 x 0.30), shield 91.6 -> **79.7**, head-on
+  fraction 0.2 -> **0.3**, angle 42.3 -> **21.1 degrees**, explosive 0.
+- vizia: hit damage 15 -> 9.75 (x0.65 only, as decided; not tuned further).
+- `scripted_doctrines.json`: r9's Yongma and Jujak doctrines; `scripted_real_scale.json`:
+  r9's real-scale deathmatch parameters (to 3 figures; elimination and frontline sets
+  untouched). **Doctrines on by default**: `Scripted(doctrines=STORED)` flies the stored
+  doctrines of the card's set (`scripted_doctrine.for_card`, by type count); None flies
+  none.
+- `bench/game_loop.BASE_FACTORS` is now empty (the files carry the x0.65).
+
+**Check of the frozen files** (`round12/verify-frozen.*`, 2048 games a lineup, 300 s, 5v5):
+energy v turn **0.538 ± 0.010** (round 12 had 0.513 ± 0.015 for this card: within 1.5
+SE), kills 0.07 / 0.17 / 0.53 / 0.23, trades 0.04, life 116 s, 0.49 kills a minute a ship,
+4.82 kills a minute a game (median 5.0), gap between deaths 11.3 s (median 8.5). **r9 v
+off is now 0.499**: `off` flies r9's parameters since the freeze (the default set), so
+r9's doctrines add nothing over its parameters. The +230 Elo is the parameters'; the
+doctrines are distinct (Jujak KL 2.6) but Elo-neutral.
+
+## Final state against the targets (5v5, r9, frozen card unless noted)
+
+| Target | Result |
+|---|---|
+| Scripted agent Elo (max) | r9 1230 ± 4 vs off 1000 on the round-11 card (final league, 1024 games a pair and order); +300 Elo at full damage (round 4). Rounds 7-11 added +11, +19, 0 |
+| Doctrines distinct | Jujak KL 2.6 / agreement 0.65; Yongma 0.08 / 0.97 (the energy doctrine barely differs from the turn one on Yongma ships) |
+| League | off, hand, random, hot, r1, r1-hand, r2, r4, r7, r9 (`league.json`) |
+| Energy v turn 45-55 | 5v5 0.538 ± 0.010 (300 s) / 0.508 (120 s, round 10); **2v2 0.28, 1v1 0.00 (missed: the turn fighter wins small fights)** |
+| Mutual head-on near zero | kills 0.07-0.08, damage 0.14 |
+| Mix offset / flank / tail | kills 0.17-0.18 / 0.52-0.53 / 0.23 (tail above the author's 10-14% hope) |
+| Head-on TTK 3-4 passes | card 5.2-11.7 passes (missed; traded against mutual head-on) |
+| Trades 10-20% or less | 0.04 |
+| Life 45-300 s; 0.2-1.4 kills/min/ship | 116 s; 0.49 |
+| Merges a kill ~3 with spread | 5v5 mean 0.63, median 0, first-pass 0.86, p90 1.8 (2 TD); 2v2 ~1.3; 1v1 3-5 (missed in 5v5) |
+| Pace (kills/min a game) | 4.8 mean, 5.0 median (5v5, 300 s) |
+
+Stopped at 18:37 KST (clean stop; no unit running).
