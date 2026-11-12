@@ -98,18 +98,23 @@ ELLIPSE_KNEE = dict(position=1.0, velocity=0.1)
 
 def pack_covariance(matrix: torch.Tensor) -> torch.Tensor:
     """(..., 6, 6) to its upper triangle (..., COVARIANCE_ENTRIES), row-major."""
-    rows, columns = torch.triu_indices(len(COVARIANCE_STATE), len(COVARIANCE_STATE))
+    size = len(COVARIANCE_STATE)
+    rows, columns = torch.triu_indices(size, size, device=matrix.device)  # no host copy
     return matrix[..., rows, columns]
 
 
 def unpack_covariance(packed: torch.Tensor) -> torch.Tensor:
     """The inverse of `pack_covariance`: (..., COVARIANCE_ENTRIES) to symmetric (..., 6, 6)."""
     size = len(COVARIANCE_STATE)
-    rows, columns = torch.triu_indices(size, size)
-    index = torch.zeros((size, size), dtype=torch.long)
-    index[rows, columns] = torch.arange(COVARIANCE_ENTRIES)
-    index[columns, rows] = torch.arange(COVARIANCE_ENTRIES)
-    return packed[..., index.to(packed.device)]
+    # made on the packed tensor's device: no host-to-device copy (which a CUDA graph's
+    # capture, the uncompiled rollout's, refuses)
+    device = packed.device
+    rows, columns = torch.triu_indices(size, size, device=device)
+    entries = torch.arange(COVARIANCE_ENTRIES, device=device)
+    index = torch.zeros((size, size), dtype=torch.long, device=device)
+    index[rows, columns] = entries
+    index[columns, rows] = entries
+    return packed[..., index]
 
 
 def ellipse(packed: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:

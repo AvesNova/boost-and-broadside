@@ -312,6 +312,8 @@ def probe(arguments) -> None:
                 found.setdefault(key, {})[stage] = rows
                 found[key].setdefault("runs", []).append(run["run"])
                 out.write_text(json.dumps(found, indent=1))
+            elif process.returncode != 0 and not out_of_memory(log.read_text(errors="replace")):
+                raise SystemExit(f"{run['run']} {stage}: the probe failed, not for memory ({log})")
             elif len(candidates) > 1:
                 start(gpu, key, stage, run, candidates[1:])
             else:
@@ -326,6 +328,12 @@ def probe_peaks(text: str) -> tuple[float, float] | None:
             words = line.split()
             return float(words[6]), float(words[11])
     return None
+
+
+def out_of_memory(text: str) -> bool:
+    """Whether a probe's log ends in an out-of-memory failure (the device's, or the
+    probe's budget)."""
+    return any(sign in text for sign in ("OutOfMemoryError", "out of memory", "MemoryBudgetError"))
 
 
 def gpu_count() -> int:
