@@ -117,6 +117,7 @@ def combat_card(rules: Rules, handles, cruise_speed: torch.Tensor) -> dict[str, 
         head_on_fraction_scale=handles.head_on_fraction / rules.head_on_fraction,
         head_on_angle_scale=handles.head_on_angle / rules.head_on_angle,
         head_on_sharpness=handles.head_on_sharpness,
+        arming_distance=handles.arming_distance,
         hit_radius=handles.hit_radius,
         spawn_energy=handles.spawn_energy,
     )
@@ -146,6 +147,7 @@ def combat_handles(rules: Rules, types: ShipTypes, cruise_speed: torch.Tensor) -
         head_on_fraction=rules.head_on_fraction * types.head_on_fraction_scale,
         head_on_angle=rules.head_on_angle * types.head_on_angle_scale,
         head_on_sharpness=types.head_on_sharpness,
+        arming_distance=types.arming_distance,
         hit_radius=types.hit_radius,
         spawn_energy=types.spawn_energy,
     )

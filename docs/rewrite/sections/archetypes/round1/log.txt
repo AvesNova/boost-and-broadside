@@ -1,0 +1,137 @@
+## 1v1: 60 jobs, B 8192, 00:39 KST
+W1112 15:40:13.935000 14207 /workspace/arch/venv/lib/python3.14/site-packages/torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+  batch 1/4 133 s; ETA 00:48 KST
+  batch 2/4 153 s; ETA 00:44 KST
+  batch 3/4 174 s; ETA 00:43 KST
+  batch 4/4 194 s; ETA 00:42 KST
+1v1                           D2   energy v turn v c0: score 0.478 ± 0.014  kills m/o/f/t 0.23 / 0.68 / 0.08 / 0.00  life 296 s  kpm/ship 0.20  trades 0.00
+1v1                           D2     turn mirror v c0: score 0.515 ± 0.012  kills m/o/f/t 0.65 / 0.30 / 0.05 / 0.00  life 252 s  kpm/ship 0.23  trades 0.02
+1v1                           D2   energy mirror v c0: score 0.493 ± 0.012  kills m/o/f/t 0.38 / 0.53 / 0.08 / 0.00  life 298 s  kpm/ship 0.19  trades 0.01
+1v1                D2, arming 50   energy v turn v c1: score 0.505 ± 0.013  kills m/o/f/t 0.23 / 0.69 / 0.08 / 0.00  life 293 s  kpm/ship 0.20  trades 0.00
+1v1                D2, arming 50     turn mirror v c1: score 0.514 ± 0.012  kills m/o/f/t 0.62 / 0.32 / 0.06 / 0.00  life 274 s  kpm/ship 0.21  trades 0.02
+1v1                D2, arming 50   energy mirror v c1: score 0.504 ± 0.012  kills m/o/f/t 0.35 / 0.55 / 0.10 / 0.00  life 290 s  kpm/ship 0.20  trades 0.01
+1v1               D2, arming 150   energy v turn v c2: score 0.469 ± 0.013  kills m/o/f/t 0.17 / 0.76 / 0.07 / 0.00  life 337 s  kpm/ship 0.17  trades 0.00
+1v1               D2, arming 150     turn mirror v c2: score 0.485 ± 0.009  kills m/o/f/t 0.31 / 0.61 / 0.07 / 0.00  life 873 s  kpm/ship 0.07  trades 0.00
+1v1               D2, arming 150   energy mirror v c2: score 0.498 ± 0.010  kills m/o/f/t 0.16 / 0.73 / 0.11 / 0.00  life 448 s  kpm/ship 0.13  trades 0.00
+1v1               D2, arming 300   energy v turn v c3: score 0.449 ± 0.010  kills m/o/f/t 0.05 / 0.84 / 0.10 / 0.00  life 716 s  kpm/ship 0.08  trades 0.00
+1v1               D2, arming 300     turn mirror v c3: score 0.491 ± 0.008  kills m/o/f/t 0.29 / 0.60 / 0.11 / 0.00  life 2371 s  kpm/ship 0.03  trades 0.00
+1v1               D2, arming 300   energy mirror v c3: score 0.498 ± 0.007  kills m/o/f/t 0.02 / 0.83 / 0.15 / 0.00  life 953 s  kpm/ship 0.06  trades 0.00
+1v1 D2 + armour 0.085 12deg p8 dmg x1.5, arming 150   energy v turn v c4: score 0.528 ± 0.016  kills m/o/f/t 0.07 / 0.85 / 0.09 / 0.00  life 229 s  kpm/ship 0.25  trades 0.00
+1v1 D2 + armour 0.085 12deg p8 dmg x1.5, arming 150     turn mirror v c4: score 0.515 ± 0.012  kills m/o/f/t 0.17 / 0.75 / 0.08 / 0.00  life 668 s  kpm/ship 0.09  trades 0.00
+1v1 D2 + armour 0.085 12deg p8 dmg x1.5, arming 150   energy mirror v c4: score 0.494 ± 0.009  kills m/o/f/t 0.05 / 0.79 / 0.16 / 0.00  life 451 s  kpm/ship 0.13  trades 0.00
+1v1 D2 + armour 0.085 12deg p8 dmg x1.5, arming 300   energy v turn v c5: score 0.522 ± 0.015  kills m/o/f/t 0.04 / 0.85 / 0.10 / 0.00  life 298 s  kpm/ship 0.19  trades 0.00
+1v1 D2 + armour 0.085 12deg p8 dmg x1.5, arming 300     turn mirror v c5: score 0.502 ± 0.011  kills m/o/f/t 0.11 / 0.82 / 0.07 / 0.00  life 959 s  kpm/ship 0.06  trades 0.00
+1v1 D2 + armour 0.085 12deg p8 dmg x1.5, arming 300   energy mirror v c5: score 0.494 ± 0.010  kills m/o/f/t 0.02 / 0.82 / 0.16 / 0.00  life 465 s  kpm/ship 0.13  trades 0.00
+1v1           frozen, arming 300   energy v turn v c6: score 0.003 ± 0.002  kills m/o/f/t 0.03 / 0.04 / 0.44 / 0.49  life 277 s  kpm/ship 0.21  trades 0.00
+1v1           frozen, arming 300     turn mirror v c6: score 0.495 ± 0.007  kills m/o/f/t 0.27 / 0.65 / 0.08 / 0.00  life 2123 s  kpm/ship 0.03  trades 0.00
+1v1           frozen, arming 300   energy mirror v c6: score 0.502 ± 0.005  kills m/o/f/t 0.03 / 0.72 / 0.26 / 0.00  life 3481 s  kpm/ship 0.02  trades 0.00
+1v1                  same ship M   energy v turn v c7: score 0.525 ± 0.014  kills m/o/f/t 0.66 / 0.31 / 0.03 / 0.00  life 246 s  kpm/ship 0.23  trades 0.01
+1v1                  same ship M     turn mirror v c7: score 0.500 ± 0.014  kills m/o/f/t 0.65 / 0.32 / 0.03 / 0.00  life 232 s  kpm/ship 0.25  trades 0.02
+1v1                  same ship M   energy mirror v c7: score 0.507 ± 0.013  kills m/o/f/t 0.66 / 0.31 / 0.03 / 0.00  life 261 s  kpm/ship 0.22  trades 0.01
+1v1      same ship M, arming 150   energy v turn v c8: score 0.502 ± 0.010  kills m/o/f/t 0.47 / 0.50 / 0.03 / 0.00  life 531 s  kpm/ship 0.11  trades 0.00
+1v1      same ship M, arming 150     turn mirror v c8: score 0.497 ± 0.011  kills m/o/f/t 0.46 / 0.49 / 0.05 / 0.00  life 486 s  kpm/ship 0.12  trades 0.01
+1v1      same ship M, arming 150   energy mirror v c8: score 0.494 ± 0.010  kills m/o/f/t 0.43 / 0.53 / 0.03 / 0.00  life 590 s  kpm/ship 0.10  trades 0.00
+1v1     slasher v dogfighter (M)   energy v turn v c9: score 0.257 ± 0.012  kills m/o/f/t 0.33 / 0.58 / 0.09 / 0.00  life 328 s  kpm/ship 0.18  trades 0.00
+1v1     slasher v dogfighter (M)     turn mirror v c9: score 0.497 ± 0.016  kills m/o/f/t 0.67 / 0.32 / 0.01 / 0.00  life 214 s  kpm/ship 0.27  trades 0.02
+1v1     slasher v dogfighter (M)   energy mirror v c9: score 0.520 ± 0.010  kills m/o/f/t 0.61 / 0.36 / 0.04 / 0.00  life 495 s  kpm/ship 0.12  trades 0.02
+1v1 slasher v dogfighter (M), arming 150   energy v turn v c10: score 0.304 ± 0.011  kills m/o/f/t 0.24 / 0.69 / 0.08 / 0.00  life 423 s  kpm/ship 0.14  trades 0.00
+1v1 slasher v dogfighter (M), arming 150     turn mirror v c10: score 0.518 ± 0.011  kills m/o/f/t 0.46 / 0.53 / 0.01 / 0.00  life 431 s  kpm/ship 0.14  trades 0.00
+1v1 slasher v dogfighter (M), arming 150   energy mirror v c10: score 0.504 ± 0.007  kills m/o/f/t 0.36 / 0.62 / 0.02 / 0.00  life 1474 s  kpm/ship 0.04  trades 0.00
+1v1         gunner v brawler (M)   energy v turn v c11: score 0.144 ± 0.010  kills m/o/f/t 0.60 / 0.37 / 0.03 / 0.00  life 261 s  kpm/ship 0.22  trades 0.00
+1v1         gunner v brawler (M)     turn mirror v c11: score 0.503 ± 0.013  kills m/o/f/t 0.70 / 0.27 / 0.03 / 0.00  life 222 s  kpm/ship 0.26  trades 0.02
+1v1         gunner v brawler (M)   energy mirror v c11: score 0.512 ± 0.008  kills m/o/f/t 0.74 / 0.25 / 0.02 / 0.00  life 466 s  kpm/ship 0.13  trades 0.02
+1v1 gunner arming 300 v brawler (M)   energy v turn v c12: score 0.068 ± 0.008  kills m/o/f/t 0.57 / 0.41 / 0.02 / 0.00  life 467 s  kpm/ship 0.13  trades 0.00
+1v1 gunner arming 300 v brawler (M)     turn mirror v c12: score 0.491 ± 0.013  kills m/o/f/t 0.72 / 0.26 / 0.02 / 0.00  life 219 s  kpm/ship 0.26  trades 0.03
+1v1 gunner arming 300 v brawler (M)   energy mirror v c12: score 0.503 ± 0.002  kills m/o/f/t 0.20 / 0.80 / 0.00 / 0.00  life 19188 s  kpm/ship 0.00  trades 0.00
+1v1 gunner arming 300 v brawler (M), J armour   energy v turn v c13: score 0.066 ± 0.008  kills m/o/f/t 0.56 / 0.42 / 0.02 / 0.00  life 498 s  kpm/ship 0.12  trades 0.00
+1v1 gunner arming 300 v brawler (M), J armour     turn mirror v c13: score 0.494 ± 0.010  kills m/o/f/t 0.03 / 0.94 / 0.03 / 0.00  life 904 s  kpm/ship 0.07  trades 0.00
+1v1 gunner arming 300 v brawler (M), J armour   energy mirror v c13: score 0.499 ± 0.002  kills m/o/f/t 0.40 / 0.60 / 0.00 / 0.00  life 18059 s  kpm/ship 0.00  trades 0.00
+1v1    zoomer v level (D2 hulls)   energy v turn v c14: score 0.191 ± 0.011  kills m/o/f/t 0.49 / 0.43 / 0.08 / 0.00  life 607 s  kpm/ship 0.10  trades 0.00
+1v1    zoomer v level (D2 hulls)     turn mirror v c14: score 0.516 ± 0.012  kills m/o/f/t 0.75 / 0.19 / 0.06 / 0.00  life 252 s  kpm/ship 0.23  trades 0.03
+1v1    zoomer v level (D2 hulls)   energy mirror v c14: score 0.472 ± 0.008  kills m/o/f/t 0.26 / 0.37 / 0.37 / 0.00  life 1735 s  kpm/ship 0.03  trades 0.00
+1v1      hit-and-run v tough (M)   energy v turn v c15: score 0.236 ± 0.013  kills m/o/f/t 0.67 / 0.30 / 0.03 / 0.00  life 231 s  kpm/ship 0.25  trades 0.00
+1v1      hit-and-run v tough (M)     turn mirror v c15: score 0.501 ± 0.011  kills m/o/f/t 0.61 / 0.36 / 0.03 / 0.00  life 385 s  kpm/ship 0.15  trades 0.01
+1v1      hit-and-run v tough (M)   energy mirror v c15: score 0.525 ± 0.015  kills m/o/f/t 0.71 / 0.24 / 0.05 / 0.00  life 172 s  kpm/ship 0.33  trades 0.02
+1v1          scout v brawler (M)   energy v turn v c16: score 0.741 ± 0.013  kills m/o/f/t 0.56 / 0.33 / 0.11 / 0.00  life 177 s  kpm/ship 0.32  trades 0.01
+1v1          scout v brawler (M)     turn mirror v c16: score 0.519 ± 0.011  kills m/o/f/t 0.46 / 0.19 / 0.35 / 0.00  life 870 s  kpm/ship 0.07  trades 0.01
+1v1          scout v brawler (M)   energy mirror v c16: score 0.487 ± 0.013  kills m/o/f/t 0.99 / 0.01 / 0.00 / 0.00  life 116 s  kpm/ship 0.48  trades 0.03
+1v1    armoured nose v agile (M)   energy v turn v c17: score 0.019 ± 0.004  kills m/o/f/t 0.07 / 0.55 / 0.36 / 0.02  life 328 s  kpm/ship 0.18  trades 0.00
+1v1    armoured nose v agile (M)     turn mirror v c17: score 0.502 ± 0.014  kills m/o/f/t 0.66 / 0.31 / 0.03 / 0.00  life 198 s  kpm/ship 0.29  trades 0.01
+1v1    armoured nose v agile (M)   energy mirror v c17: score 0.500 ± 0.011  kills m/o/f/t 0.02 / 0.92 / 0.05 / 0.00  life 679 s  kpm/ship 0.09  trades 0.00
+1v1         rate v sustained (M)   energy v turn v c18: score 0.486 ± 0.004  kills m/o/f/t 0.00 / 0.00 / 0.00 / 1.00  life 9024 s  kpm/ship 0.01  trades 0.00
+1v1         rate v sustained (M)     turn mirror v c18: score 0.497 ± 0.010  kills m/o/f/t 0.65 / 0.32 / 0.03 / 0.00  life 537 s  kpm/ship 0.11  trades 0.02
+1v1         rate v sustained (M)   energy mirror v c18: score 0.500 ± 0.000  kills m/o/f/t 0.00 / 0.00 / 0.00 / 0.00  life 13952 s  kpm/ship 0.00  trades 0.00
+1v1 rate v sustained (M), arming 150   energy v turn v c19: score 0.489 ± 0.003  kills m/o/f/t 0.00 / 0.00 / 0.00 / 1.00  life 12277 s  kpm/ship 0.00  trades 0.00
+1v1 rate v sustained (M), arming 150     turn mirror v c19: score 0.505 ± 0.007  kills m/o/f/t 0.41 / 0.54 / 0.04 / 0.00  life 1374 s  kpm/ship 0.04  trades 0.00
+1v1 rate v sustained (M), arming 150   energy mirror v c19: score 0.500 ± 0.000  kills m/o/f/t 0.00 / 0.00 / 0.00 / 0.00  life 19188 s  kpm/ship 0.00  trades 0.00
+## 2v2: 20 jobs, B 8192, 00:42 KST
+  batch 1/2 171 s; ETA 00:48 KST
+  batch 2/2 197 s; ETA 00:45 KST
+2v2                           D2   energy v turn v c0: score 0.457 ± 0.019  kills m/o/f/t 0.07 / 0.23 / 0.56 / 0.14  life 114 s  kpm/ship 0.49  trades 0.02
+2v2                D2, arming 50   energy v turn v c1: score 0.464 ± 0.020  kills m/o/f/t 0.07 / 0.23 / 0.57 / 0.13  life 112 s  kpm/ship 0.49  trades 0.01
+2v2               D2, arming 150   energy v turn v c2: score 0.423 ± 0.019  kills m/o/f/t 0.06 / 0.23 / 0.58 / 0.14  life 119 s  kpm/ship 0.47  trades 0.02
+2v2               D2, arming 300   energy v turn v c3: score 0.392 ± 0.018  kills m/o/f/t 0.05 / 0.20 / 0.59 / 0.16  life 141 s  kpm/ship 0.40  trades 0.01
+2v2 D2 + armour 0.085 12deg p8 dmg x1.5, arming 150   energy v turn v c4: score 0.519 ± 0.020  kills m/o/f/t 0.04 / 0.32 / 0.54 / 0.10  life 103 s  kpm/ship 0.53  trades 0.02
+2v2 D2 + armour 0.085 12deg p8 dmg x1.5, arming 300   energy v turn v c5: score 0.508 ± 0.020  kills m/o/f/t 0.03 / 0.30 / 0.55 / 0.12  life 106 s  kpm/ship 0.52  trades 0.02
+2v2           frozen, arming 300   energy v turn v c6: score 0.347 ± 0.018  kills m/o/f/t 0.05 / 0.14 / 0.54 / 0.27  life 135 s  kpm/ship 0.41  trades 0.01
+2v2                  same ship M   energy v turn v c7: score 0.470 ± 0.019  kills m/o/f/t 0.15 / 0.22 / 0.51 / 0.13  life 122 s  kpm/ship 0.46  trades 0.02
+2v2      same ship M, arming 150   energy v turn v c8: score 0.449 ± 0.019  kills m/o/f/t 0.11 / 0.21 / 0.53 / 0.15  life 134 s  kpm/ship 0.42  trades 0.02
+2v2     slasher v dogfighter (M)   energy v turn v c9: score 0.688 ± 0.017  kills m/o/f/t 0.13 / 0.22 / 0.47 / 0.18  life 152 s  kpm/ship 0.37  trades 0.01
+2v2 slasher v dogfighter (M), arming 150   energy v turn v c10: score 0.713 ± 0.017  kills m/o/f/t 0.10 / 0.23 / 0.50 / 0.17  life 176 s  kpm/ship 0.32  trades 0.01
+2v2         gunner v brawler (M)   energy v turn v c11: score 0.078 ± 0.009  kills m/o/f/t 0.15 / 0.22 / 0.44 / 0.18  life 155 s  kpm/ship 0.36  trades 0.01
+2v2 gunner arming 300 v brawler (M)   energy v turn v c12: score 0.044 ± 0.007  kills m/o/f/t 0.12 / 0.22 / 0.48 / 0.18  life 182 s  kpm/ship 0.31  trades 0.01
+2v2 gunner arming 300 v brawler (M), J armour   energy v turn v c13: score 0.047 ± 0.007  kills m/o/f/t 0.11 / 0.24 / 0.47 / 0.19  life 187 s  kpm/ship 0.30  trades 0.01
+2v2    zoomer v level (D2 hulls)   energy v turn v c14: score 0.018 ± 0.004  kills m/o/f/t 0.09 / 0.24 / 0.51 / 0.16  life 176 s  kpm/ship 0.32  trades 0.01
+2v2      hit-and-run v tough (M)   energy v turn v c15: score 0.115 ± 0.012  kills m/o/f/t 0.18 / 0.21 / 0.47 / 0.14  life 120 s  kpm/ship 0.46  trades 0.01
+2v2          scout v brawler (M)   energy v turn v c16: score 0.553 ± 0.019  kills m/o/f/t 0.20 / 0.22 / 0.48 / 0.10  life 103 s  kpm/ship 0.53  trades 0.02
+2v2    armoured nose v agile (M)   energy v turn v c17: score 0.241 ± 0.017  kills m/o/f/t 0.07 / 0.23 / 0.55 / 0.15  life 112 s  kpm/ship 0.49  trades 0.01
+2v2         rate v sustained (M)   energy v turn v c18: score 0.480 ± 0.004  kills m/o/f/t 0.00 / 0.00 / 0.00 / 1.00  life 4474 s  kpm/ship 0.01  trades 0.04
+2v2 rate v sustained (M), arming 150   energy v turn v c19: score 0.485 ± 0.004  kills m/o/f/t 0.00 / 0.00 / 0.00 / 1.00  life 5475 s  kpm/ship 0.01  trades 0.02
+## 5v5: 20 jobs, B 4096, 00:45 KST
+  batch 1/3 175 s; ETA 00:54 KST
+  batch 2/3 202 s; ETA 00:50 KST
+  batch 3/3 229 s; ETA 00:49 KST
+5v5                           D2   energy v turn v c0: score 0.554 ± 0.021  kills m/o/f/t 0.05 / 0.18 / 0.58 / 0.19  life 103 s  kpm/ship 0.53  trades 0.04
+5v5                D2, arming 50   energy v turn v c1: score 0.592 ± 0.020  kills m/o/f/t 0.05 / 0.18 / 0.57 / 0.20  life 103 s  kpm/ship 0.53  trades 0.04
+5v5               D2, arming 150   energy v turn v c2: score 0.518 ± 0.020  kills m/o/f/t 0.04 / 0.16 / 0.59 / 0.20  life 107 s  kpm/ship 0.51  trades 0.04
+5v5               D2, arming 300   energy v turn v c3: score 0.423 ± 0.020  kills m/o/f/t 0.03 / 0.15 / 0.59 / 0.23  life 117 s  kpm/ship 0.47  trades 0.04
+5v5 D2 + armour 0.085 12deg p8 dmg x1.5, arming 150   energy v turn v c4: score 0.673 ± 0.019  kills m/o/f/t 0.04 / 0.26 / 0.54 / 0.16  life 94 s  kpm/ship 0.58  trades 0.05
+5v5 D2 + armour 0.085 12deg p8 dmg x1.5, arming 300   energy v turn v c5: score 0.645 ± 0.020  kills m/o/f/t 0.03 / 0.24 / 0.57 / 0.17  life 97 s  kpm/ship 0.56  trades 0.05
+5v5           frozen, arming 300   energy v turn v c6: score 0.539 ± 0.021  kills m/o/f/t 0.04 / 0.14 / 0.55 / 0.27  life 129 s  kpm/ship 0.43  trades 0.03
+5v5                  same ship M   energy v turn v c7: score 0.502 ± 0.021  kills m/o/f/t 0.08 / 0.18 / 0.53 / 0.21  life 108 s  kpm/ship 0.51  trades 0.05
+5v5      same ship M, arming 150   energy v turn v c8: score 0.521 ± 0.021  kills m/o/f/t 0.06 / 0.18 / 0.54 / 0.22  life 113 s  kpm/ship 0.49  trades 0.04
+5v5     slasher v dogfighter (M)   energy v turn v c9: score 0.885 ± 0.013  kills m/o/f/t 0.07 / 0.17 / 0.51 / 0.25  life 130 s  kpm/ship 0.43  trades 0.04
+5v5 slasher v dogfighter (M), arming 150   energy v turn v c10: score 0.880 ± 0.013  kills m/o/f/t 0.06 / 0.16 / 0.52 / 0.26  life 138 s  kpm/ship 0.41  trades 0.03
+5v5         gunner v brawler (M)   energy v turn v c11: score 0.040 ± 0.008  kills m/o/f/t 0.08 / 0.17 / 0.49 / 0.26  life 131 s  kpm/ship 0.43  trades 0.03
+5v5 gunner arming 300 v brawler (M)   energy v turn v c12: score 0.012 ± 0.004  kills m/o/f/t 0.07 / 0.17 / 0.49 / 0.27  life 144 s  kpm/ship 0.39  trades 0.03
+5v5 gunner arming 300 v brawler (M), J armour   energy v turn v c13: score 0.015 ± 0.004  kills m/o/f/t 0.06 / 0.18 / 0.49 / 0.26  life 146 s  kpm/ship 0.38  trades 0.03
+5v5    zoomer v level (D2 hulls)   energy v turn v c14: score 0.000 ± 0.000  kills m/o/f/t 0.07 / 0.23 / 0.49 / 0.22  life 181 s  kpm/ship 0.31  trades 0.02
+5v5      hit-and-run v tough (M)   energy v turn v c15: score 0.061 ± 0.010  kills m/o/f/t 0.08 / 0.19 / 0.53 / 0.20  life 109 s  kpm/ship 0.50  trades 0.04
+5v5          scout v brawler (M)   energy v turn v c16: score 0.408 ± 0.020  kills m/o/f/t 0.09 / 0.20 / 0.54 / 0.18  life 97 s  kpm/ship 0.56  trades 0.05
+5v5    armoured nose v agile (M)   energy v turn v c17: score 0.183 ± 0.016  kills m/o/f/t 0.05 / 0.18 / 0.55 / 0.22  life 105 s  kpm/ship 0.52  trades 0.04
+5v5         rate v sustained (M)   energy v turn v c18: score 0.457 ± 0.006  kills m/o/f/t 0.00 / 0.00 / 0.02 / 0.98  life 2479 s  kpm/ship 0.02  trades 0.03
+5v5 rate v sustained (M), arming 150   energy v turn v c19: score 0.467 ± 0.006  kills m/o/f/t 0.00 / 0.00 / 0.00 / 1.00  life 2229 s  kpm/ship 0.03  trades 0.04
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|
+| D2 | 0.478 ± 0.014 | 0.457 ± 0.019 | 0.554 ± 0.021 | 0.054 | 0.05 / 0.18 / 0.58 / 0.19 | 0.04 | 296 / 114 / 103 | 0.20 / 0.49 / 0.53 | 3.51 |
+| D2, arming 50 | 0.505 ± 0.013 | 0.464 ± 0.020 | 0.592 ± 0.020 | 0.092 | 0.05 / 0.18 / 0.57 / 0.20 | 0.04 | 293 / 112 / 103 | 0.20 / 0.49 / 0.53 | 3.53 |
+| D2, arming 150 | 0.469 ± 0.013 | 0.423 ± 0.019 | 0.518 ± 0.020 | 0.077 | 0.04 / 0.16 / 0.59 / 0.20 | 0.04 | 337 / 119 / 107 | 0.17 / 0.47 / 0.51 | 3.83 |
+| D2, arming 300 | 0.449 ± 0.010 | 0.392 ± 0.018 | 0.423 ± 0.020 | 0.108 | 0.03 / 0.15 / 0.59 / 0.23 | 0.04 | 716 / 141 / 117 | 0.08 / 0.40 / 0.47 | 4.49 |
+| D2 + armour 0.085 12deg p8 dmg x1.5, arming 150 | 0.528 ± 0.016 | 0.519 ± 0.020 | 0.673 ± 0.019 | 0.173 | 0.04 / 0.26 / 0.54 / 0.16 | 0.05 | 229 / 103 / 94 | 0.25 / 0.53 / 0.58 | 2.71 |
+| D2 + armour 0.085 12deg p8 dmg x1.5, arming 300 | 0.522 ± 0.015 | 0.508 ± 0.020 | 0.645 ± 0.020 | 0.145 | 0.03 / 0.24 / 0.57 / 0.17 | 0.05 | 298 / 106 / 97 | 0.19 / 0.52 / 0.56 | 3.22 |
+| frozen, arming 300 | 0.003 ± 0.002 | 0.347 ± 0.018 | 0.539 ± 0.021 | 0.497 | 0.04 / 0.14 / 0.55 / 0.27 | 0.03 | 277 / 135 / 129 | 0.21 / 0.41 / 0.43 | 4.09 |
+| same ship M | 0.525 ± 0.014 | 0.470 ± 0.019 | 0.502 ± 0.021 | 0.030 | 0.08 / 0.18 / 0.53 / 0.21 | 0.05 | 246 / 122 / 108 | 0.23 / 0.46 / 0.51 | 3.12 |
+| same ship M, arming 150 | 0.502 ± 0.010 | 0.449 ± 0.019 | 0.521 ± 0.021 | 0.051 | 0.06 / 0.18 / 0.54 / 0.22 | 0.04 | 531 / 134 / 113 | 0.11 / 0.42 / 0.49 | 4.18 |
+| slasher v dogfighter (M) | 0.257 ± 0.012 | 0.688 ± 0.017 | 0.885 ± 0.013 | 0.385 | 0.07 / 0.17 / 0.51 / 0.25 | 0.04 | 328 / 152 / 130 | 0.18 / 0.37 / 0.43 | 3.36 |
+| slasher v dogfighter (M), arming 150 | 0.304 ± 0.011 | 0.713 ± 0.017 | 0.880 ± 0.013 | 0.380 | 0.06 / 0.16 / 0.52 / 0.26 | 0.03 | 423 / 176 / 138 | 0.14 / 0.32 / 0.41 | 4.02 |
+| gunner v brawler (M) | 0.144 ± 0.010 | 0.078 ± 0.009 | 0.040 ± 0.008 | 0.460 | 0.08 / 0.17 / 0.49 / 0.26 | 0.03 | 261 / 155 / 131 | 0.22 / 0.36 / 0.43 | 3.4 |
+| gunner arming 300 v brawler (M) | 0.068 ± 0.008 | 0.044 ± 0.007 | 0.012 ± 0.004 | 0.488 | 0.07 / 0.17 / 0.49 / 0.27 | 0.03 | 467 / 182 / 144 | 0.13 / 0.31 / 0.39 | 3.89 |
+| gunner arming 300 v brawler (M), J armour | 0.066 ± 0.008 | 0.047 ± 0.007 | 0.015 ± 0.004 | 0.485 | 0.06 / 0.18 / 0.49 / 0.26 | 0.03 | 498 / 187 / 146 | 0.12 / 0.30 / 0.38 | 3.86 |
+| zoomer v level (D2 hulls) | 0.191 ± 0.011 | 0.018 ± 0.004 | 0.000 ± 0.000 | 0.500 | 0.07 / 0.23 / 0.49 / 0.22 | 0.02 | 607 / 176 / 181 | 0.10 / 0.32 / 0.31 | 5.58 |
+| hit-and-run v tough (M) | 0.236 ± 0.013 | 0.115 ± 0.012 | 0.061 ± 0.010 | 0.439 | 0.08 / 0.19 / 0.53 / 0.20 | 0.04 | 231 / 120 / 109 | 0.25 / 0.46 / 0.50 | 2.81 |
+| scout v brawler (M) | 0.741 ± 0.013 | 0.553 ± 0.019 | 0.408 ± 0.020 | 0.241 | 0.09 / 0.20 / 0.54 / 0.18 | 0.05 | 177 / 103 / 97 | 0.32 / 0.53 / 0.56 | 2.08 |
+| armoured nose v agile (M) | 0.019 ± 0.004 | 0.241 ± 0.017 | 0.183 ± 0.016 | 0.481 | 0.05 / 0.18 / 0.55 / 0.22 | 0.04 | 328 / 112 / 105 | 0.18 / 0.49 / 0.52 | 2.34 |
+| rate v sustained (M) | 0.486 ± 0.004 | 0.480 ± 0.004 | 0.457 ± 0.006 | 0.043 | 0.00 / 0.00 / 0.02 / 0.98 | 0.03 | 9024 / 4474 / 2479 | 0.01 / 0.01 / 0.02 | 0.0 |
+| rate v sustained (M), arming 150 | 0.489 ± 0.003 | 0.485 ± 0.004 | 0.467 ± 0.006 | 0.033 | 0.00 / 0.00 / 0.00 / 1.00 | 0.04 | 12277 / 5475 / 2229 | 0.00 / 0.01 / 0.03 | 0.0 |
+
+623 s

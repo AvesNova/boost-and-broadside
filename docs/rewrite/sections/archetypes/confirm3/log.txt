@@ -1,0 +1,45 @@
+## 1v1: 9 jobs, B 8192, 02:28 KST
+W1112 17:29:21.466000 38179 /workspace/arch/venv/lib/python3.14/site-packages/torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+  batch 1/2 103 s; ETA 02:32 KST
+  batch 2/2 129 s; ETA 02:31 KST
+1v1 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2   energy v turn v c0: score 0.488 ± 0.010  kills m/o/f/t 0.46 / 0.46 / 0.08 / 0.00  life 241 s  kpm/ship 0.24  trades 0.01
+1v1 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2     turn mirror v c0: score 0.494 ± 0.010  kills m/o/f/t 0.35 / 0.57 / 0.08 / 0.00  life 292 s  kpm/ship 0.20  trades 0.00
+1v1 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2   energy mirror v c0: score 0.505 ± 0.011  kills m/o/f/t 0.55 / 0.37 / 0.07 / 0.00  life 189 s  kpm/ship 0.30  trades 0.01
+1v1 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | crowd extend + lead   energy v turn v c1: score 0.501 ± 0.010  kills m/o/f/t 0.36 / 0.55 / 0.09 / 0.00  life 265 s  kpm/ship 0.22  trades 0.01
+1v1 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | crowd extend + lead     turn mirror v c1: score 0.498 ± 0.009  kills m/o/f/t 0.22 / 0.69 / 0.09 / 0.00  life 359 s  kpm/ship 0.16  trades 0.00
+1v1 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | crowd extend + lead   energy mirror v c1: score 0.501 ± 0.011  kills m/o/f/t 0.46 / 0.45 / 0.09 / 0.00  life 215 s  kpm/ship 0.27  trades 0.01
+1v1 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | duel one-circle + crowd extend + lead   energy v turn v c2: score 0.495 ± 0.010  kills m/o/f/t 0.34 / 0.58 / 0.08 / 0.00  life 267 s  kpm/ship 0.22  trades 0.00
+1v1 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | duel one-circle + crowd extend + lead     turn mirror v c2: score 0.520 ± 0.011  kills m/o/f/t 0.69 / 0.17 / 0.04 / 0.11  life 182 s  kpm/ship 0.31  trades 0.01
+1v1 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | duel one-circle + crowd extend + lead   energy mirror v c2: score 0.490 ± 0.012  kills m/o/f/t 0.67 / 0.19 / 0.05 / 0.09  life 128 s  kpm/ship 0.44  trades 0.03
+## 2v2: 3 jobs, B 8192, 02:31 KST
+2v2 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2   energy v turn v c0: score 0.481 ± 0.014  kills m/o/f/t 0.09 / 0.34 / 0.49 / 0.09  life 89 s  kpm/ship 0.61  trades 0.03
+2v2 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | crowd extend + lead   energy v turn v c1: score 0.501 ± 0.014  kills m/o/f/t 0.10 / 0.36 / 0.43 / 0.11  life 95 s  kpm/ship 0.57  trades 0.02
+2v2 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | duel one-circle + crowd extend + lead   energy v turn v c2: score 0.492 ± 0.014  kills m/o/f/t 0.09 / 0.37 / 0.43 / 0.11  life 95 s  kpm/ship 0.57  trades 0.02
+## 5v5: 9 jobs, B 4096, 02:33 KST
+  batch 1/3 165 s; ETA 02:41 KST
+  batch 2/3 196 s; ETA 02:37 KST
+  batch 3/3 243 s; ETA 02:37 KST
+5v5 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2   energy v turn v c0: score 0.473 ± 0.015  kills m/o/f/t 0.06 / 0.30 / 0.52 / 0.12  life 80 s  kpm/ship 0.67  trades 0.07
+5v5 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | crowd extend + lead   energy v turn v c1: score 0.508 ± 0.015  kills m/o/f/t 0.08 / 0.31 / 0.43 / 0.18  life 98 s  kpm/ship 0.56  trades 0.06
+5v5 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | duel one-circle + crowd extend + lead   energy v turn v c2: score 0.506 ± 0.014  kills m/o/f/t 0.08 / 0.30 / 0.43 / 0.19  life 97 s  kpm/ship 0.56  trades 0.06
+5v5 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2           mixed v r9: score 0.497 ± 0.015  kills m/o/f/t 0.07 / 0.30 / 0.52 / 0.11  life 79 s  kpm/ship 0.67  trades 0.08
+5v5 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2  mixed reversed v r9: score 0.500 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.52 / 0.12  life 81 s  kpm/ship 0.66  trades 0.08
+5v5 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | crowd extend + lead           mixed v r9: score 0.814 ± 0.011  kills m/o/f/t 0.08 / 0.32 / 0.48 / 0.12  life 89 s  kpm/ship 0.61  trades 0.06
+5v5 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | crowd extend + lead  mixed reversed v r9: score 0.804 ± 0.012  kills m/o/f/t 0.07 / 0.32 / 0.48 / 0.13  life 91 s  kpm/ship 0.60  trades 0.06
+5v5 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | duel one-circle + crowd extend + lead           mixed v r9: score 0.829 ± 0.011  kills m/o/f/t 0.08 / 0.31 / 0.45 / 0.15  life 92 s  kpm/ship 0.59  trades 0.06
+5v5 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | duel one-circle + crowd extend + lead  mixed reversed v r9: score 0.829 ± 0.011  kills m/o/f/t 0.08 / 0.31 / 0.45 / 0.16  life 94 s  kpm/ship 0.58  trades 0.06
+## 10v10: 3 jobs, B 2048, 02:37 KST
+10v10 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2   energy v turn v c0: score 0.494 ± 0.021  kills m/o/f/t 0.06 / 0.30 / 0.50 / 0.13  life 89 s  kpm/ship 0.61  trades 0.13
+10v10 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | crowd extend + lead   energy v turn v c1: score 0.492 ± 0.021  kills m/o/f/t 0.08 / 0.30 / 0.40 / 0.21  life 110 s  kpm/ship 0.50  trades 0.10
+10v10 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | duel one-circle + crowd extend + lead   energy v turn v c2: score 0.485 ± 0.021  kills m/o/f/t 0.08 / 0.30 / 0.40 / 0.22  life 110 s  kpm/ship 0.50  trades 0.10
+## 20v20: 3 jobs, B 1024, 02:39 KST
+20v20 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2   energy v turn v c0: score 0.443 ± 0.030  kills m/o/f/t 0.06 / 0.29 / 0.50 / 0.15  life 107 s  kpm/ship 0.52  trades 0.22
+20v20 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | crowd extend + lead   energy v turn v c1: score 0.553 ± 0.030  kills m/o/f/t 0.08 / 0.30 / 0.39 / 0.23  life 131 s  kpm/ship 0.43  trades 0.17
+20v20 hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | duel one-circle + crowd extend + lead   energy v turn v c2: score 0.500 ± 0.031  kills m/o/f/t 0.08 / 0.31 / 0.38 / 0.23  life 131 s  kpm/ship 0.43  trades 0.17
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | E v T 20v20 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | 0.488 ± 0.010 | 0.481 ± 0.014 | 0.473 ± 0.015 | 0.494 ± 0.021 | 0.443 ± 0.030 | 0.057 | 0.06 / 0.30 / 0.52 / 0.12 | 0.07 | 241 / 89 / 80 / 89 / 107 | 0.24 / 0.61 / 0.67 / 0.61 / 0.52 | 2.75 |
+| hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | crowd extend + lead | 0.501 ± 0.010 | 0.501 ± 0.014 | 0.508 ± 0.015 | 0.492 ± 0.021 | 0.553 ± 0.030 | 0.053 | 0.08 / 0.31 / 0.43 / 0.18 | 0.06 | 265 / 95 / 98 / 110 / 131 | 0.22 / 0.57 / 0.56 / 0.50 / 0.43 | 2.68 |
+| hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2 | duel one-circle + crowd extend + lead | 0.495 ± 0.010 | 0.492 ± 0.014 | 0.506 ± 0.014 | 0.485 ± 0.021 | 0.500 ± 0.031 | 0.015 | 0.08 / 0.30 / 0.43 / 0.19 | 0.06 | 267 / 95 / 97 / 110 / 131 | 0.22 / 0.57 / 0.56 / 0.50 / 0.43 | 2.71 |
+
+892 s

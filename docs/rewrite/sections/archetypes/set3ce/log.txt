@@ -1,0 +1,54 @@
+## 1v1: 12 jobs, B 8192, 03:36 KST
+  batch 1/2 34 s; ETA 03:37 KST
+  batch 2/2 54 s; ETA 03:37 KST
+1v1 standard v brawler (set, M, kit2) | crowd extend + lead   energy v turn v c0: score 0.526 ± 0.010  kills m/o/f/t 0.23 / 0.65 / 0.12 / 0.00  life 333 s  kpm/ship 0.18  trades 0.00
+1v1 standard v brawler (set, M, kit2) | crowd extend + lead     turn mirror v c0: score 0.504 ± 0.010  kills m/o/f/t 0.26 / 0.60 / 0.14 / 0.00  life 311 s  kpm/ship 0.19  trades 0.00
+1v1 standard v brawler (set, M, kit2) | crowd extend + lead   energy mirror v c0: score 0.495 ± 0.009  kills m/o/f/t 0.21 / 0.69 / 0.10 / 0.00  life 394 s  kpm/ship 0.15  trades 0.00
+1v1 standard v small (set, M, kit2) | crowd extend + lead   energy v turn v c1: score 0.539 ± 0.009  kills m/o/f/t 0.28 / 0.65 / 0.07 / 0.00  life 323 s  kpm/ship 0.18  trades 0.00
+1v1 standard v small (set, M, kit2) | crowd extend + lead     turn mirror v c1: score 0.486 ± 0.009  kills m/o/f/t 0.32 / 0.60 / 0.07 / 0.00  life 349 s  kpm/ship 0.17  trades 0.00
+1v1 standard v small (set, M, kit2) | crowd extend + lead   energy mirror v c1: score 0.496 ± 0.009  kills m/o/f/t 0.19 / 0.71 / 0.09 / 0.00  life 380 s  kpm/ship 0.15  trades 0.00
+1v1 brawler v small (set, M, kit2) | crowd extend + lead   energy v turn v c2: score 0.511 ± 0.010  kills m/o/f/t 0.28 / 0.63 / 0.09 / 0.00  life 289 s  kpm/ship 0.20  trades 0.00
+1v1 brawler v small (set, M, kit2) | crowd extend + lead     turn mirror v c2: score 0.485 ± 0.009  kills m/o/f/t 0.33 / 0.60 / 0.07 / 0.00  life 365 s  kpm/ship 0.16  trades 0.00
+1v1 brawler v small (set, M, kit2) | crowd extend + lead   energy mirror v c2: score 0.520 ± 0.009  kills m/o/f/t 0.24 / 0.61 / 0.15 / 0.00  life 350 s  kpm/ship 0.17  trades 0.00
+1v1 hit-and-run v standard (set b, M, kit2) | crowd extend + lead   energy v turn v c3: score 0.534 ± 0.009  kills m/o/f/t 0.31 / 0.61 / 0.08 / 0.00  life 286 s  kpm/ship 0.20  trades 0.00
+1v1 hit-and-run v standard (set b, M, kit2) | crowd extend + lead     turn mirror v c3: score 0.495 ± 0.009  kills m/o/f/t 0.24 / 0.66 / 0.09 / 0.00  life 370 s  kpm/ship 0.16  trades 0.00
+1v1 hit-and-run v standard (set b, M, kit2) | crowd extend + lead   energy mirror v c3: score 0.506 ± 0.010  kills m/o/f/t 0.38 / 0.53 / 0.09 / 0.00  life 243 s  kpm/ship 0.24  trades 0.01
+## 2v2: 4 jobs, B 8192, 03:37 KST
+2v2 standard v brawler (set, M, kit2) | crowd extend + lead   energy v turn v c0: score 0.565 ± 0.014  kills m/o/f/t 0.08 / 0.35 / 0.46 / 0.12  life 98 s  kpm/ship 0.55  trades 0.02
+2v2 standard v small (set, M, kit2) | crowd extend + lead   energy v turn v c1: score 0.531 ± 0.014  kills m/o/f/t 0.09 / 0.34 / 0.44 / 0.13  life 101 s  kpm/ship 0.54  trades 0.02
+2v2 brawler v small (set, M, kit2) | crowd extend + lead   energy v turn v c2: score 0.465 ± 0.014  kills m/o/f/t 0.08 / 0.34 / 0.46 / 0.13  life 100 s  kpm/ship 0.55  trades 0.02
+2v2 hit-and-run v standard (set b, M, kit2) | crowd extend + lead   energy v turn v c3: score 0.483 ± 0.014  kills m/o/f/t 0.09 / 0.36 / 0.44 / 0.11  life 95 s  kpm/ship 0.57  trades 0.02
+## 5v5: 12 jobs, B 4096, 03:37 KST
+  batch 1/3 59 s; ETA 03:40 KST
+  batch 2/3 87 s; ETA 03:40 KST
+  batch 3/3 115 s; ETA 03:39 KST
+5v5 standard v brawler (set, M, kit2) | crowd extend + lead   energy v turn v c0: score 0.580 ± 0.014  kills m/o/f/t 0.07 / 0.29 / 0.43 / 0.21  life 101 s  kpm/ship 0.54  trades 0.05
+5v5 standard v small (set, M, kit2) | crowd extend + lead   energy v turn v c1: score 0.486 ± 0.014  kills m/o/f/t 0.07 / 0.29 / 0.42 / 0.23  life 107 s  kpm/ship 0.51  trades 0.04
+5v5 brawler v small (set, M, kit2) | crowd extend + lead   energy v turn v c2: score 0.413 ± 0.014  kills m/o/f/t 0.07 / 0.29 / 0.42 / 0.22  life 105 s  kpm/ship 0.52  trades 0.04
+5v5 hit-and-run v standard (set b, M, kit2) | crowd extend + lead   energy v turn v c3: score 0.501 ± 0.015  kills m/o/f/t 0.08 / 0.31 / 0.43 / 0.19  life 97 s  kpm/ship 0.56  trades 0.05
+5v5 standard v brawler (set, M, kit2) | crowd extend + lead           mixed v r9: score 0.812 ± 0.011  kills m/o/f/t 0.07 / 0.30 / 0.49 / 0.14  life 93 s  kpm/ship 0.58  trades 0.05
+5v5 standard v brawler (set, M, kit2) | crowd extend + lead  mixed reversed v r9: score 0.817 ± 0.011  kills m/o/f/t 0.07 / 0.30 / 0.50 / 0.14  life 92 s  kpm/ship 0.59  trades 0.05
+5v5 standard v small (set, M, kit2) | crowd extend + lead           mixed v r9: score 0.846 ± 0.011  kills m/o/f/t 0.07 / 0.30 / 0.49 / 0.15  life 97 s  kpm/ship 0.56  trades 0.05
+5v5 standard v small (set, M, kit2) | crowd extend + lead  mixed reversed v r9: score 0.837 ± 0.011  kills m/o/f/t 0.07 / 0.29 / 0.49 / 0.15  life 97 s  kpm/ship 0.56  trades 0.05
+5v5 brawler v small (set, M, kit2) | crowd extend + lead           mixed v r9: score 0.829 ± 0.011  kills m/o/f/t 0.07 / 0.30 / 0.49 / 0.14  life 95 s  kpm/ship 0.57  trades 0.05
+5v5 brawler v small (set, M, kit2) | crowd extend + lead  mixed reversed v r9: score 0.817 ± 0.011  kills m/o/f/t 0.07 / 0.30 / 0.49 / 0.15  life 96 s  kpm/ship 0.57  trades 0.05
+5v5 hit-and-run v standard (set b, M, kit2) | crowd extend + lead           mixed v r9: score 0.790 ± 0.012  kills m/o/f/t 0.08 / 0.32 / 0.48 / 0.13  life 89 s  kpm/ship 0.61  trades 0.06
+5v5 hit-and-run v standard (set b, M, kit2) | crowd extend + lead  mixed reversed v r9: score 0.814 ± 0.011  kills m/o/f/t 0.07 / 0.31 / 0.49 / 0.13  life 90 s  kpm/ship 0.60  trades 0.05
+## 10v10: 4 jobs, B 2048, 03:39 KST
+10v10 standard v brawler (set, M, kit2) | crowd extend + lead   energy v turn v c0: score 0.613 ± 0.021  kills m/o/f/t 0.07 / 0.29 / 0.40 / 0.24  life 114 s  kpm/ship 0.49  trades 0.09
+10v10 standard v small (set, M, kit2) | crowd extend + lead   energy v turn v c1: score 0.462 ± 0.021  kills m/o/f/t 0.07 / 0.28 / 0.38 / 0.27  life 121 s  kpm/ship 0.46  trades 0.08
+10v10 brawler v small (set, M, kit2) | crowd extend + lead   energy v turn v c2: score 0.428 ± 0.021  kills m/o/f/t 0.07 / 0.28 / 0.39 / 0.26  life 119 s  kpm/ship 0.47  trades 0.09
+10v10 hit-and-run v standard (set b, M, kit2) | crowd extend + lead   energy v turn v c3: score 0.495 ± 0.021  kills m/o/f/t 0.08 / 0.31 / 0.40 / 0.22  life 109 s  kpm/ship 0.50  trades 0.10
+## 20v20: 4 jobs, B 1024, 03:40 KST
+20v20 standard v brawler (set, M, kit2) | crowd extend + lead   energy v turn v c0: score 0.586 ± 0.030  kills m/o/f/t 0.07 / 0.29 / 0.39 / 0.25  life 135 s  kpm/ship 0.41  trades 0.16
+20v20 standard v small (set, M, kit2) | crowd extend + lead   energy v turn v c1: score 0.490 ± 0.031  kills m/o/f/t 0.07 / 0.28 / 0.38 / 0.27  life 145 s  kpm/ship 0.39  trades 0.14
+20v20 brawler v small (set, M, kit2) | crowd extend + lead   energy v turn v c2: score 0.367 ± 0.029  kills m/o/f/t 0.07 / 0.28 / 0.38 / 0.27  life 143 s  kpm/ship 0.39  trades 0.15
+20v20 hit-and-run v standard (set b, M, kit2) | crowd extend + lead   energy v turn v c3: score 0.486 ± 0.030  kills m/o/f/t 0.08 / 0.30 / 0.39 / 0.23  life 133 s  kpm/ship 0.42  trades 0.17
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | E v T 20v20 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| standard v brawler (set, M, kit2) | crowd extend + lead | 0.526 ± 0.010 | 0.565 ± 0.014 | 0.580 ± 0.014 | 0.613 ± 0.021 | 0.586 ± 0.030 | 0.113 | 0.07 / 0.29 / 0.43 / 0.21 | 0.05 | 333 / 98 / 101 / 114 / 135 | 0.18 / 0.55 / 0.54 / 0.49 / 0.41 | 2.85 |
+| standard v small (set, M, kit2) | crowd extend + lead | 0.539 ± 0.009 | 0.531 ± 0.014 | 0.486 ± 0.014 | 0.462 ± 0.021 | 0.490 ± 0.031 | 0.039 | 0.07 / 0.29 / 0.42 / 0.23 | 0.04 | 323 / 101 / 107 / 121 / 145 | 0.18 / 0.54 / 0.51 / 0.46 / 0.39 | 3.04 |
+| brawler v small (set, M, kit2) | crowd extend + lead | 0.511 ± 0.010 | 0.465 ± 0.014 | 0.413 ± 0.014 | 0.428 ± 0.021 | 0.367 ± 0.029 | 0.133 | 0.07 / 0.29 / 0.42 / 0.22 | 0.04 | 289 / 100 / 105 / 119 / 143 | 0.20 / 0.55 / 0.52 / 0.47 / 0.39 | 2.88 |
+| hit-and-run v standard (set b, M, kit2) | crowd extend + lead | 0.534 ± 0.009 | 0.483 ± 0.014 | 0.501 ± 0.015 | 0.495 ± 0.021 | 0.486 ± 0.030 | 0.034 | 0.08 / 0.31 / 0.43 / 0.19 | 0.05 | 286 / 95 / 97 / 109 / 133 | 0.20 / 0.57 / 0.56 / 0.50 / 0.42 | 2.71 |
+
+352 s

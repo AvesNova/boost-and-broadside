@@ -8,7 +8,7 @@ from torch.utils import _pytree
 
 from bnb.contracts import GameConfig, Obs, Pool
 from bnb.contracts.action import to_joint
-from bnb.contracts.obs import COLUMNS_BEFORE_RECORDS, GLOBAL, SHIP_COLUMNS
+from bnb.contracts.obs import COLUMNS_BEFORE_RECORDS, GLOBAL, GLOBAL_COLUMNS, SHIP_COLUMNS
 from bnb.controllers.scripted import Chaser
 from bnb.controllers.yemong import YemongController
 from bnb.game import api
@@ -125,17 +125,43 @@ def scale_error(actual: torch.Tensor, expected: torch.Tensor) -> float:
     return ((actual - expected).abs().max() / expected.abs().max().clamp_min(1.0)).item()
 
 
+def assert_matches_golden(actual: dict, expected: dict, tolerance: float = 2e-4) -> None:
+    """Every named output of a recorded run: floats to `tolerance` of the output's own scale
+    (`scale_error`), flags and counts exactly. The goldens run a float64 network for 40
+    ticks; the replay stores the enemy actions as int16 fixed point (`store_action`), so a
+    rounding flip (one unit in ACTION_SCALE) feeds back into the belief: one thread against
+    all threads, the outputs differ by 1e-6 of their scale and the worst (arm 1's carried
+    state) by 3e-5. A wrong formula or a missing term moves an output by a good fraction (the
+    stale goldens of this tree differed by 1). The stored actions themselves match to one
+    unit."""
+    assert actual.keys() == expected.keys()
+    for name, want in expected.items():
+        got = actual[name]
+        if name == "replay.enemy_action":  # round(p ACTION_SCALE): a rounding flip is one unit
+            assert (got.int() - want.int()).abs().max() <= 1, name
+        elif want.is_floating_point():
+            error = scale_error(got.double(), want.double())
+            assert error <= tolerance, (name, error)
+        else:
+            assert torch.equal(got, want), name
+
+
+def _in_todays_layout(recorded: torch.Tensor, part: str, columns: tuple[str, ...]) -> torch.Tensor:
+    """recorded's last axis, the columns of COLUMNS_BEFORE_RECORDS[part], in `columns`: each
+    column moved by name, the columns added since zero."""
+    before = {name: i for i, name in enumerate(COLUMNS_BEFORE_RECORDS[part])}
+    assert recorded.shape[-1] == len(before)
+    zero = torch.zeros_like(recorded[..., 0])
+    return torch.stack(
+        [recorded[..., before[name]] if name in before else zero for name in columns], -1
+    )
+
+
 def golden_obs(golden: dict) -> Obs:
-    """A golden file's observation, its ship rows recorded with the columns of
-    COLUMNS_BEFORE_RECORDS, in today's layout: each column moved by name, the columns added
-    since (the accelerations) zero, as for a ship the team did not see move."""
-    ships = golden["ships"]
-    recorded = {name: i for i, name in enumerate(COLUMNS_BEFORE_RECORDS["ships"])}
-    assert ships.shape[-1] == len(recorded)
-    zero = torch.zeros_like(ships[..., 0])
-    ships = torch.stack(
-        [ships[..., recorded[name]] if name in recorded else zero for name in SHIP_COLUMNS], -1
-    )
-    return Obs(
-        ships=ships, fields=golden["fields"], globals=golden["globals"], zones=golden["zones"]
-    )
+    """A golden file's observation, recorded with the columns of COLUMNS_BEFORE_RECORDS, in
+    today's layout: each column moved by name, the columns added since zero (the ships'
+    accelerations, as for a ship the team did not see move; the globals' mode_elimination, as
+    in the golden's team deathmatch)."""
+    ships = _in_todays_layout(golden["ships"], "ships", SHIP_COLUMNS)
+    globals_ = _in_todays_layout(golden["globals"], "globals", GLOBAL_COLUMNS)
+    return Obs(ships=ships, fields=golden["fields"], globals=globals_, zones=golden["zones"])

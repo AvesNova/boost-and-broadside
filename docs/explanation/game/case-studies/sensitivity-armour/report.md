@@ -1,3 +1,7 @@
+---
+covers: [bench/case_study.py]
+---
+
 # sensitivity: shield and body: 41472 games
 
 | Slot | Elo against its airframe's baseline |

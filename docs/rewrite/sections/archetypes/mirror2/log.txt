@@ -1,0 +1,53 @@
+## 1v1: 33 jobs, B 8192, 01:02 KST
+W1112 16:02:58.473000 19317 /workspace/arch/venv/lib/python3.14/site-packages/torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+  batch 1/3 140 s; ETA 01:09 KST
+  batch 2/3 176 s; ETA 01:06 KST
+  batch 3/3 198 s; ETA 01:05 KST
+1v1      M, vision x0.75, dmg x1   energy v turn v c0: score 0.511 ± 0.010  kills m/o/f/t 0.44 / 0.34 / 0.22 / 0.00  life 1038 s  kpm/ship 0.06  trades 0.03
+1v1      M, vision x0.75, dmg x1     turn mirror v c0: score 0.495 ± 0.010  kills m/o/f/t 0.37 / 0.38 / 0.25 / 0.00  life 1024 s  kpm/ship 0.06  trades 0.01
+1v1      M, vision x0.75, dmg x1   energy mirror v c0: score 0.501 ± 0.009  kills m/o/f/t 0.40 / 0.39 / 0.21 / 0.00  life 1239 s  kpm/ship 0.05  trades 0.02
+1v1    M, vision x0.75, dmg x1.3   energy v turn v c1: score 0.496 ± 0.012  kills m/o/f/t 0.45 / 0.32 / 0.23 / 0.00  life 633 s  kpm/ship 0.09  trades 0.03
+1v1    M, vision x0.75, dmg x1.3     turn mirror v c1: score 0.482 ± 0.012  kills m/o/f/t 0.41 / 0.33 / 0.26 / 0.00  life 670 s  kpm/ship 0.09  trades 0.02
+1v1    M, vision x0.75, dmg x1.3   energy mirror v c1: score 0.501 ± 0.011  kills m/o/f/t 0.47 / 0.30 / 0.23 / 0.00  life 698 s  kpm/ship 0.08  trades 0.02
+1v1       M, vision x0.8, dmg x1   energy v turn v c2: score 0.507 ± 0.011  kills m/o/f/t 0.39 / 0.46 / 0.15 / 0.00  life 736 s  kpm/ship 0.08  trades 0.00
+1v1       M, vision x0.8, dmg x1     turn mirror v c2: score 0.496 ± 0.011  kills m/o/f/t 0.36 / 0.50 / 0.14 / 0.00  life 723 s  kpm/ship 0.08  trades 0.01
+1v1       M, vision x0.8, dmg x1   energy mirror v c2: score 0.511 ± 0.010  kills m/o/f/t 0.37 / 0.52 / 0.11 / 0.00  life 823 s  kpm/ship 0.07  trades 0.02
+1v1     M, vision x0.8, dmg x1.3   energy v turn v c3: score 0.507 ± 0.012  kills m/o/f/t 0.40 / 0.40 / 0.20 / 0.00  life 498 s  kpm/ship 0.12  trades 0.04
+1v1     M, vision x0.8, dmg x1.3     turn mirror v c3: score 0.512 ± 0.013  kills m/o/f/t 0.39 / 0.43 / 0.18 / 0.00  life 482 s  kpm/ship 0.12  trades 0.04
+1v1     M, vision x0.8, dmg x1.3   energy mirror v c3: score 0.503 ± 0.012  kills m/o/f/t 0.42 / 0.41 / 0.18 / 0.00  life 556 s  kpm/ship 0.11  trades 0.04
+1v1      M, vision x0.85, dmg x1   energy v turn v c4: score 0.521 ± 0.013  kills m/o/f/t 0.54 / 0.37 / 0.10 / 0.00  life 370 s  kpm/ship 0.16  trades 0.02
+1v1      M, vision x0.85, dmg x1     turn mirror v c4: score 0.511 ± 0.013  kills m/o/f/t 0.55 / 0.36 / 0.09 / 0.00  life 362 s  kpm/ship 0.16  trades 0.02
+1v1      M, vision x0.85, dmg x1   energy mirror v c4: score 0.496 ± 0.013  kills m/o/f/t 0.54 / 0.38 / 0.08 / 0.00  life 386 s  kpm/ship 0.15  trades 0.02
+1v1    M, vision x0.85, dmg x1.3   energy v turn v c5: score 0.513 ± 0.013  kills m/o/f/t 0.55 / 0.32 / 0.13 / 0.00  life 308 s  kpm/ship 0.19  trades 0.02
+1v1    M, vision x0.85, dmg x1.3     turn mirror v c5: score 0.500 ± 0.013  kills m/o/f/t 0.56 / 0.33 / 0.11 / 0.00  life 301 s  kpm/ship 0.19  trades 0.03
+1v1    M, vision x0.85, dmg x1.3   energy mirror v c5: score 0.483 ± 0.013  kills m/o/f/t 0.55 / 0.34 / 0.10 / 0.00  life 312 s  kpm/ship 0.19  trades 0.02
+1v1       M, vision x0.9, dmg x1   energy v turn v c6: score 0.514 ± 0.013  kills m/o/f/t 0.61 / 0.34 / 0.06 / 0.00  life 335 s  kpm/ship 0.17  trades 0.01
+1v1       M, vision x0.9, dmg x1     turn mirror v c6: score 0.503 ± 0.013  kills m/o/f/t 0.59 / 0.34 / 0.07 / 0.00  life 310 s  kpm/ship 0.19  trades 0.02
+1v1       M, vision x0.9, dmg x1   energy mirror v c6: score 0.486 ± 0.013  kills m/o/f/t 0.59 / 0.33 / 0.08 / 0.00  life 345 s  kpm/ship 0.17  trades 0.02
+1v1     M, vision x0.9, dmg x1.3   energy v turn v c7: score 0.496 ± 0.014  kills m/o/f/t 0.66 / 0.27 / 0.07 / 0.00  life 254 s  kpm/ship 0.23  trades 0.02
+1v1     M, vision x0.9, dmg x1.3     turn mirror v c7: score 0.490 ± 0.014  kills m/o/f/t 0.62 / 0.30 / 0.08 / 0.00  life 237 s  kpm/ship 0.24  trades 0.02
+1v1     M, vision x0.9, dmg x1.3   energy mirror v c7: score 0.484 ± 0.014  kills m/o/f/t 0.64 / 0.27 / 0.09 / 0.00  life 253 s  kpm/ship 0.23  trades 0.01
+1v1              D2, vision x0.7   energy v turn v c8: score 0.372 ± 0.012  kills m/o/f/t 0.25 / 0.29 / 0.46 / 0.00  life 888 s  kpm/ship 0.07  trades 0.00
+1v1              D2, vision x0.7     turn mirror v c8: score 0.507 ± 0.014  kills m/o/f/t 0.13 / 0.55 / 0.32 / 0.00  life 716 s  kpm/ship 0.08  trades 0.00
+1v1              D2, vision x0.7   energy mirror v c8: score 0.510 ± 0.010  kills m/o/f/t 0.38 / 0.19 / 0.43 / 0.00  life 1239 s  kpm/ship 0.05  trades 0.02
+1v1              D2, vision x0.8   energy v turn v c9: score 0.347 ± 0.013  kills m/o/f/t 0.16 / 0.57 / 0.27 / 0.00  life 570 s  kpm/ship 0.10  trades 0.00
+1v1              D2, vision x0.8     turn mirror v c9: score 0.481 ± 0.013  kills m/o/f/t 0.51 / 0.37 / 0.12 / 0.00  life 291 s  kpm/ship 0.20  trades 0.02
+1v1              D2, vision x0.8   energy mirror v c9: score 0.497 ± 0.011  kills m/o/f/t 0.29 / 0.33 / 0.38 / 0.00  life 1057 s  kpm/ship 0.06  trades 0.01
+1v1              D2, vision x0.9   energy v turn v c10: score 0.446 ± 0.014  kills m/o/f/t 0.20 / 0.67 / 0.13 / 0.00  life 345 s  kpm/ship 0.17  trades 0.00
+1v1              D2, vision x0.9     turn mirror v c10: score 0.500 ± 0.013  kills m/o/f/t 0.54 / 0.38 / 0.08 / 0.00  life 261 s  kpm/ship 0.22  trades 0.02
+1v1              D2, vision x0.9   energy mirror v c10: score 0.485 ± 0.012  kills m/o/f/t 0.44 / 0.33 / 0.23 / 0.00  life 597 s  kpm/ship 0.10  trades 0.02
+| Candidate | E v T 1v1 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|
+| M, vision x0.75, dmg x1 | 0.511 ± 0.010 | 0.011 | 0.44 / 0.34 / 0.22 / 0.00 | 0.03 | 1038 | 0.06 | 2.4 |
+| M, vision x0.75, dmg x1.3 | 0.496 ± 0.012 | 0.004 | 0.45 / 0.32 / 0.23 / 0.00 | 0.03 | 633 | 0.09 | 2.09 |
+| M, vision x0.8, dmg x1 | 0.507 ± 0.011 | 0.007 | 0.39 / 0.46 / 0.15 / 0.00 | 0.00 | 736 | 0.08 | 2.49 |
+| M, vision x0.8, dmg x1.3 | 0.507 ± 0.012 | 0.007 | 0.40 / 0.40 / 0.20 / 0.00 | 0.04 | 498 | 0.12 | 2.26 |
+| M, vision x0.85, dmg x1 | 0.521 ± 0.013 | 0.021 | 0.54 / 0.37 / 0.10 / 0.00 | 0.02 | 370 | 0.16 | 3.27 |
+| M, vision x0.85, dmg x1.3 | 0.513 ± 0.013 | 0.013 | 0.55 / 0.32 / 0.13 / 0.00 | 0.02 | 308 | 0.19 | 2.52 |
+| M, vision x0.9, dmg x1 | 0.514 ± 0.013 | 0.014 | 0.61 / 0.34 / 0.06 / 0.00 | 0.01 | 335 | 0.17 | 3.33 |
+| M, vision x0.9, dmg x1.3 | 0.496 ± 0.014 | 0.004 | 0.66 / 0.27 / 0.07 / 0.00 | 0.02 | 254 | 0.23 | 2.44 |
+| D2, vision x0.7 | 0.372 ± 0.012 | 0.128 | 0.25 / 0.29 / 0.46 / 0.00 | 0.00 | 888 | 0.07 | 3.9 |
+| D2, vision x0.8 | 0.347 ± 0.013 | 0.153 | 0.16 / 0.57 / 0.27 / 0.00 | 0.00 | 570 | 0.10 | 3.78 |
+| D2, vision x0.9 | 0.446 ± 0.014 | 0.054 | 0.20 / 0.67 / 0.13 / 0.00 | 0.00 | 345 | 0.17 | 3.77 |
+
+199 s

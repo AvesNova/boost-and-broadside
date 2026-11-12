@@ -32,6 +32,7 @@ shield_recharge_delay = 6.0
 head_on_fraction = 0.3
 head_on_angle = 0.737832313317803
 head_on_sharpness = 2.0
+arming_distance = 0.0
 hit_radius = 8.256
 spawn_energy = 35641.69200000001
 
@@ -69,6 +70,7 @@ shield_recharge_delay_scale = 1.0
 head_on_fraction_scale = 1.0
 head_on_angle_scale = 1.0
 head_on_sharpness = 2.0
+arming_distance = 0.0
 engine_knee_scale = 1.0
 
 [notes]
@@ -100,5 +102,7 @@ shield_recharge_rate = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-
 shield_recharge_delay = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
 head_on_fraction = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
 head_on_angle = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
+head_on_sharpness = "placeholder: the standard fighter's"
+arming_distance = "placeholder: the standard fighter's"
 hit_radius = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"
 spawn_energy = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base mosquito's"

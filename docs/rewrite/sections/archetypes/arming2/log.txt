@@ -1,0 +1,38 @@
+## 1v1: 18 jobs, B 8192, 04:21 KST
+  batch 1/2 38 s; ETA 04:22 KST
+  batch 2/2 58 s; ETA 04:22 KST
+1v1 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2, arming 50 both   energy v turn v c0: score 0.517 ± 0.014  kills m/o/f/t 0.31 / 0.60 / 0.09 / 0.00  life 280 s  kpm/ship 0.21  trades 0.00
+1v1 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2, arming 50 both     turn mirror v c0: score 0.504 ± 0.014  kills m/o/f/t 0.31 / 0.60 / 0.09 / 0.00  life 307 s  kpm/ship 0.19  trades 0.00
+1v1 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2, arming 50 both   energy mirror v c0: score 0.519 ± 0.014  kills m/o/f/t 0.34 / 0.55 / 0.12 / 0.00  life 283 s  kpm/ship 0.21  trades 0.00
+1v1 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2, arming 100 both   energy v turn v c1: score 0.527 ± 0.013  kills m/o/f/t 0.23 / 0.66 / 0.11 / 0.00  life 376 s  kpm/ship 0.16  trades 0.00
+1v1 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2, arming 100 both     turn mirror v c1: score 0.488 ± 0.012  kills m/o/f/t 0.18 / 0.72 / 0.10 / 0.00  life 416 s  kpm/ship 0.14  trades 0.00
+1v1 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2, arming 100 both   energy mirror v c1: score 0.510 ± 0.013  kills m/o/f/t 0.21 / 0.66 / 0.13 / 0.00  life 357 s  kpm/ship 0.16  trades 0.00
+1v1 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2, arming 150 both   energy v turn v c2: score 0.481 ± 0.012  kills m/o/f/t 0.12 / 0.76 / 0.11 / 0.00  life 413 s  kpm/ship 0.14  trades 0.00
+1v1 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2, arming 150 both     turn mirror v c2: score 0.505 ± 0.012  kills m/o/f/t 0.10 / 0.79 / 0.10 / 0.00  life 511 s  kpm/ship 0.12  trades 0.00
+1v1 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2, arming 150 both   energy mirror v c2: score 0.493 ± 0.012  kills m/o/f/t 0.11 / 0.76 / 0.14 / 0.00  life 420 s  kpm/ship 0.14  trades 0.00
+1v1 rate (lift x1.03, dmg x1.25) v speed (drag x0.85, vision x1.04) (M), kit2, speed cone f0 0.07, arming 50 both   energy v turn v c3: score 0.518 ± 0.014  kills m/o/f/t 0.33 / 0.59 / 0.08 / 0.00  life 285 s  kpm/ship 0.20  trades 0.00
+1v1 rate (lift x1.03, dmg x1.25) v speed (drag x0.85, vision x1.04) (M), kit2, speed cone f0 0.07, arming 50 both     turn mirror v c3: score 0.494 ± 0.013  kills m/o/f/t 0.16 / 0.76 / 0.07 / 0.00  life 432 s  kpm/ship 0.14  trades 0.00
+1v1 rate (lift x1.03, dmg x1.25) v speed (drag x0.85, vision x1.04) (M), kit2, speed cone f0 0.07, arming 50 both   energy mirror v c3: score 0.504 ± 0.015  kills m/o/f/t 0.43 / 0.50 / 0.08 / 0.00  life 246 s  kpm/ship 0.23  trades 0.01
+1v1 rate (lift x1.03, dmg x1.25) v speed (drag x0.85, vision x1.04) (M), kit2, speed cone f0 0.07, arming 100 both   energy v turn v c4: score 0.495 ± 0.013  kills m/o/f/t 0.22 / 0.69 / 0.09 / 0.00  life 384 s  kpm/ship 0.15  trades 0.00
+1v1 rate (lift x1.03, dmg x1.25) v speed (drag x0.85, vision x1.04) (M), kit2, speed cone f0 0.07, arming 100 both     turn mirror v c4: score 0.485 ± 0.011  kills m/o/f/t 0.15 / 0.78 / 0.06 / 0.00  life 506 s  kpm/ship 0.12  trades 0.00
+1v1 rate (lift x1.03, dmg x1.25) v speed (drag x0.85, vision x1.04) (M), kit2, speed cone f0 0.07, arming 100 both   energy mirror v c4: score 0.516 ± 0.013  kills m/o/f/t 0.31 / 0.61 / 0.09 / 0.00  life 295 s  kpm/ship 0.20  trades 0.00
+1v1 rate (lift x1.03, dmg x1.25) v speed (drag x0.85, vision x1.04) (M), kit2, speed cone f0 0.07, arming 150 both   energy v turn v c5: score 0.509 ± 0.012  kills m/o/f/t 0.13 / 0.78 / 0.09 / 0.00  life 450 s  kpm/ship 0.13  trades 0.00
+1v1 rate (lift x1.03, dmg x1.25) v speed (drag x0.85, vision x1.04) (M), kit2, speed cone f0 0.07, arming 150 both     turn mirror v c5: score 0.492 ± 0.011  kills m/o/f/t 0.12 / 0.78 / 0.10 / 0.00  life 549 s  kpm/ship 0.11  trades 0.00
+1v1 rate (lift x1.03, dmg x1.25) v speed (drag x0.85, vision x1.04) (M), kit2, speed cone f0 0.07, arming 150 both   energy mirror v c5: score 0.491 ± 0.013  kills m/o/f/t 0.17 / 0.72 / 0.10 / 0.00  life 369 s  kpm/ship 0.16  trades 0.00
+## 5v5: 6 jobs, B 4096, 04:22 KST
+5v5 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2, arming 50 both   energy v turn v c0: score 0.468 ± 0.021  kills m/o/f/t 0.06 / 0.30 / 0.53 / 0.12  life 81 s  kpm/ship 0.66  trades 0.07
+5v5 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2, arming 100 both   energy v turn v c1: score 0.469 ± 0.021  kills m/o/f/t 0.06 / 0.30 / 0.53 / 0.12  life 81 s  kpm/ship 0.66  trades 0.07
+5v5 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2, arming 150 both   energy v turn v c2: score 0.473 ± 0.021  kills m/o/f/t 0.06 / 0.29 / 0.54 / 0.11  life 82 s  kpm/ship 0.65  trades 0.08
+5v5 rate (lift x1.03, dmg x1.25) v speed (drag x0.85, vision x1.04) (M), kit2, speed cone f0 0.07, arming 50 both   energy v turn v c3: score 0.478 ± 0.021  kills m/o/f/t 0.06 / 0.29 / 0.52 / 0.12  life 82 s  kpm/ship 0.66  trades 0.07
+5v5 rate (lift x1.03, dmg x1.25) v speed (drag x0.85, vision x1.04) (M), kit2, speed cone f0 0.07, arming 100 both   energy v turn v c4: score 0.541 ± 0.021  kills m/o/f/t 0.06 / 0.30 / 0.52 / 0.13  life 81 s  kpm/ship 0.66  trades 0.07
+5v5 rate (lift x1.03, dmg x1.25) v speed (drag x0.85, vision x1.04) (M), kit2, speed cone f0 0.07, arming 150 both   energy v turn v c5: score 0.497 ± 0.021  kills m/o/f/t 0.05 / 0.29 / 0.53 / 0.12  life 82 s  kpm/ship 0.65  trades 0.07
+| Candidate | E v T 1v1 | E v T 5v5 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|
+| hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2, arming 50 both | 0.517 ± 0.014 | 0.468 ± 0.021 | 0.032 | 0.06 / 0.30 / 0.53 / 0.12 | 0.07 | 280 / 81 | 0.21 / 0.66 | 3.04 |
+| hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2, arming 100 both | 0.527 ± 0.013 | 0.469 ± 0.021 | 0.031 | 0.06 / 0.30 / 0.53 / 0.12 | 0.07 | 376 / 81 | 0.16 / 0.66 | 3.02 |
+| hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2, arming 150 both | 0.481 ± 0.012 | 0.473 ± 0.021 | 0.027 | 0.06 / 0.29 / 0.54 / 0.11 | 0.08 | 413 / 82 | 0.14 / 0.65 | 2.76 |
+| rate (lift x1.03, dmg x1.25) v speed (drag x0.85, vision x1.04) (M), kit2, speed cone f0 0.07, arming 50 both | 0.518 ± 0.014 | 0.478 ± 0.021 | 0.022 | 0.06 / 0.29 / 0.52 / 0.12 | 0.07 | 285 / 82 | 0.20 / 0.66 | 3.13 |
+| rate (lift x1.03, dmg x1.25) v speed (drag x0.85, vision x1.04) (M), kit2, speed cone f0 0.07, arming 100 both | 0.495 ± 0.013 | 0.541 ± 0.021 | 0.041 | 0.06 / 0.30 / 0.52 / 0.13 | 0.07 | 384 / 81 | 0.15 / 0.66 | 3.14 |
+| rate (lift x1.03, dmg x1.25) v speed (drag x0.85, vision x1.04) (M), kit2, speed cone f0 0.07, arming 150 both | 0.509 ± 0.012 | 0.497 ± 0.021 | 0.009 | 0.05 / 0.29 / 0.53 / 0.12 | 0.07 | 450 / 82 | 0.13 / 0.65 | 2.83 |
+
+137 s

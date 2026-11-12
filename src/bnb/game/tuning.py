@@ -97,6 +97,34 @@ SETTINGS = (
     _s("rules.field_radius_min", MAP, "field radius, smallest", "m", 5.0, 1000.0, when=EPISODE),
     _s("rules.field_radius_max", MAP, "field radius, largest", "m", 5.0, 2000.0, when=EPISODE),
     _s(
+        "rules.field_radius_distribution",
+        MAP,
+        "field radius law (0 uniform, 1 triangular, 2 lognormal)",
+        "",
+        0,
+        2,
+        integer=True,
+        when=EPISODE,
+    ),
+    _s(
+        "rules.field_radius_median",
+        MAP,
+        "field radius median (lognormal)",
+        "m",
+        5.0,
+        2000.0,
+        when=EPISODE,
+    ),
+    _s(
+        "rules.field_radius_log_sigma",
+        MAP,
+        "field radius log spread (lognormal)",
+        "",
+        0.05,
+        2.0,
+        when=EPISODE,
+    ),
+    _s(
         "rules.field_disc_fraction",
         MAP,
         "field centres' disc",
@@ -332,6 +360,9 @@ LIVE_RULES = (
     "field_band_width",
     "field_radius_min",
     "field_radius_max",
+    "field_radius_distribution",
+    "field_radius_median",
+    "field_radius_log_sigma",
     "field_disc_fraction",
     "field_high_share",
     "field_strong_share",
@@ -351,7 +382,13 @@ LIVE_MODE = (
     "spawn_zone_fraction",
 )
 LIVE_POOL = ("arena_radius", "episode_ticks", "respawn_ticks")
-_INTEGERS = {"kills_per_ship", "front_threshold", "episode_ticks", "respawn_ticks"}
+_INTEGERS = {
+    "field_radius_distribution",
+    "kills_per_ship",
+    "front_threshold",
+    "episode_ticks",
+    "respawn_ticks",
+}
 
 
 def _tensor(name: str, number) -> torch.Tensor:

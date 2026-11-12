@@ -1,0 +1,78 @@
+## 1v1: 27 jobs, B 8192, 01:43 KST
+  batch 1/2 36 s; ETA 01:44 KST
+  batch 2/2 55 s; ETA 01:44 KST
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit2   energy v turn v c0: score 0.572 ± 0.014  kills m/o/f/t 0.37 / 0.55 / 0.07 / 0.00  life 250 s  kpm/ship 0.23  trades 0.00
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit2     turn mirror v c0: score 0.499 ± 0.012  kills m/o/f/t 0.27 / 0.68 / 0.05 / 0.00  life 405 s  kpm/ship 0.14  trades 0.00
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit2   energy mirror v c0: score 0.504 ± 0.016  kills m/o/f/t 0.49 / 0.43 / 0.08 / 0.00  life 198 s  kpm/ship 0.29  trades 0.01
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit, small cone f0 0.12   energy v turn v c1: score 0.651 ± 0.014  kills m/o/f/t 0.42 / 0.47 / 0.11 / 0.00  life 242 s  kpm/ship 0.24  trades 0.00
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit, small cone f0 0.12     turn mirror v c1: score 0.524 ± 0.014  kills m/o/f/t 0.44 / 0.45 / 0.11 / 0.00  life 288 s  kpm/ship 0.20  trades 0.01
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit, small cone f0 0.12   energy mirror v c1: score 0.528 ± 0.015  kills m/o/f/t 0.37 / 0.47 / 0.15 / 0.00  life 230 s  kpm/ship 0.25  trades 0.01
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit2, small cone f0 0.12   energy v turn v c2: score 0.713 ± 0.013  kills m/o/f/t 0.50 / 0.44 / 0.06 / 0.00  life 194 s  kpm/ship 0.29  trades 0.00
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit2, small cone f0 0.12     turn mirror v c2: score 0.514 ± 0.014  kills m/o/f/t 0.51 / 0.42 / 0.07 / 0.00  life 241 s  kpm/ship 0.24  trades 0.01
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit2, small cone f0 0.12   energy mirror v c2: score 0.521 ± 0.015  kills m/o/f/t 0.51 / 0.40 / 0.09 / 0.00  life 201 s  kpm/ship 0.28  trades 0.01
+1v1 big (radius x1.4, dmg x1.4) v small (radius x0.75, dmg x1) (M), kit   energy v turn v c3: score 0.536 ± 0.015  kills m/o/f/t 0.34 / 0.51 / 0.15 / 0.00  life 268 s  kpm/ship 0.22  trades 0.00
+1v1 big (radius x1.4, dmg x1.4) v small (radius x0.75, dmg x1) (M), kit     turn mirror v c3: score 0.511 ± 0.013  kills m/o/f/t 0.28 / 0.57 / 0.15 / 0.00  life 393 s  kpm/ship 0.15  trades 0.00
+1v1 big (radius x1.4, dmg x1.4) v small (radius x0.75, dmg x1) (M), kit   energy mirror v c3: score 0.520 ± 0.016  kills m/o/f/t 0.40 / 0.44 / 0.16 / 0.00  life 226 s  kpm/ship 0.25  trades 0.01
+1v1 big (radius x1.5, dmg x1.5) v small (radius x0.7, dmg x1.1) (M), kit   energy v turn v c4: score 0.517 ± 0.015  kills m/o/f/t 0.39 / 0.46 / 0.15 / 0.00  life 260 s  kpm/ship 0.22  trades 0.01
+1v1 big (radius x1.5, dmg x1.5) v small (radius x0.7, dmg x1.1) (M), kit     turn mirror v c4: score 0.511 ± 0.013  kills m/o/f/t 0.32 / 0.54 / 0.14 / 0.00  life 335 s  kpm/ship 0.17  trades 0.01
+1v1 big (radius x1.5, dmg x1.5) v small (radius x0.7, dmg x1.1) (M), kit   energy mirror v c4: score 0.507 ± 0.016  kills m/o/f/t 0.43 / 0.42 / 0.15 / 0.00  life 188 s  kpm/ship 0.30  trades 0.01
+1v1 big (radius x1.5, dmg x1.5) v small (radius x0.7, dmg x1.1) (M), kit2   energy v turn v c5: score 0.592 ± 0.015  kills m/o/f/t 0.49 / 0.44 / 0.08 / 0.00  life 212 s  kpm/ship 0.27  trades 0.00
+1v1 big (radius x1.5, dmg x1.5) v small (radius x0.7, dmg x1.1) (M), kit2     turn mirror v c5: score 0.503 ± 0.013  kills m/o/f/t 0.43 / 0.52 / 0.05 / 0.00  life 307 s  kpm/ship 0.19  trades 0.00
+1v1 big (radius x1.5, dmg x1.5) v small (radius x0.7, dmg x1.1) (M), kit2   energy mirror v c5: score 0.510 ± 0.016  kills m/o/f/t 0.56 / 0.34 / 0.09 / 0.00  life 160 s  kpm/ship 0.35  trades 0.02
+1v1 armed gunner (arming 150, life x1.3, dmg x0.95, vision x1.2) v close fighter (life x0.8) (M), kit2   energy v turn v c6: score 0.492 ± 0.014  kills m/o/f/t 0.28 / 0.66 / 0.06 / 0.00  life 324 s  kpm/ship 0.18  trades 0.00
+1v1 armed gunner (arming 150, life x1.3, dmg x0.95, vision x1.2) v close fighter (life x0.8) (M), kit2     turn mirror v c6: score 0.484 ± 0.013  kills m/o/f/t 0.26 / 0.66 / 0.08 / 0.00  life 349 s  kpm/ship 0.17  trades 0.00
+1v1 armed gunner (arming 150, life x1.3, dmg x0.95, vision x1.2) v close fighter (life x0.8) (M), kit2   energy mirror v c6: score 0.511 ± 0.011  kills m/o/f/t 0.19 / 0.78 / 0.03 / 0.00  life 623 s  kpm/ship 0.09  trades 0.00
+1v1 armed gunner (arming 150, life x1.3, dmg x1, vision x1.1) v close fighter (life x0.8) (M), kit2   energy v turn v c7: score 0.481 ± 0.014  kills m/o/f/t 0.28 / 0.67 / 0.06 / 0.00  life 330 s  kpm/ship 0.18  trades 0.00
+1v1 armed gunner (arming 150, life x1.3, dmg x1, vision x1.1) v close fighter (life x0.8) (M), kit2     turn mirror v c7: score 0.500 ± 0.013  kills m/o/f/t 0.27 / 0.65 / 0.08 / 0.00  life 354 s  kpm/ship 0.17  trades 0.00
+1v1 armed gunner (arming 150, life x1.3, dmg x1, vision x1.1) v close fighter (life x0.8) (M), kit2   energy mirror v c7: score 0.510 ± 0.012  kills m/o/f/t 0.15 / 0.80 / 0.06 / 0.00  life 480 s  kpm/ship 0.12  trades 0.00
+1v1 armed gunner (arming 150, life x1.3, dmg x0.9, vision x1.2) v close fighter (life x0.8) (M), kit   energy v turn v c8: score 0.525 ± 0.014  kills m/o/f/t 0.23 / 0.68 / 0.09 / 0.00  life 330 s  kpm/ship 0.18  trades 0.00
+1v1 armed gunner (arming 150, life x1.3, dmg x0.9, vision x1.2) v close fighter (life x0.8) (M), kit     turn mirror v c8: score 0.496 ± 0.013  kills m/o/f/t 0.22 / 0.62 / 0.16 / 0.00  life 372 s  kpm/ship 0.16  trades 0.00
+1v1 armed gunner (arming 150, life x1.3, dmg x0.9, vision x1.2) v close fighter (life x0.8) (M), kit   energy mirror v c8: score 0.483 ± 0.012  kills m/o/f/t 0.12 / 0.82 / 0.05 / 0.00  life 475 s  kpm/ship 0.12  trades 0.00
+## 2v2: 9 jobs, B 8192, 01:44 KST
+2v2 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit2   energy v turn v c0: score 0.480 ± 0.020  kills m/o/f/t 0.08 / 0.34 / 0.49 / 0.09  life 92 s  kpm/ship 0.59  trades 0.02
+2v2 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit, small cone f0 0.12   energy v turn v c1: score 0.567 ± 0.020  kills m/o/f/t 0.08 / 0.33 / 0.50 / 0.09  life 94 s  kpm/ship 0.58  trades 0.02
+2v2 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit2, small cone f0 0.12   energy v turn v c2: score 0.562 ± 0.020  kills m/o/f/t 0.10 / 0.33 / 0.48 / 0.09  life 90 s  kpm/ship 0.60  trades 0.03
+2v2 big (radius x1.4, dmg x1.4) v small (radius x0.75, dmg x1) (M), kit   energy v turn v c3: score 0.480 ± 0.020  kills m/o/f/t 0.07 / 0.33 / 0.51 / 0.09  life 93 s  kpm/ship 0.58  trades 0.02
+2v2 big (radius x1.5, dmg x1.5) v small (radius x0.7, dmg x1.1) (M), kit   energy v turn v c4: score 0.459 ± 0.020  kills m/o/f/t 0.07 / 0.34 / 0.50 / 0.09  life 91 s  kpm/ship 0.59  trades 0.02
+2v2 big (radius x1.5, dmg x1.5) v small (radius x0.7, dmg x1.1) (M), kit2   energy v turn v c5: score 0.411 ± 0.020  kills m/o/f/t 0.09 / 0.34 / 0.48 / 0.08  life 88 s  kpm/ship 0.61  trades 0.03
+2v2 armed gunner (arming 150, life x1.3, dmg x0.95, vision x1.2) v close fighter (life x0.8) (M), kit2   energy v turn v c6: score 0.573 ± 0.020  kills m/o/f/t 0.07 / 0.34 / 0.50 / 0.09  life 93 s  kpm/ship 0.58  trades 0.03
+2v2 armed gunner (arming 150, life x1.3, dmg x1, vision x1.1) v close fighter (life x0.8) (M), kit2   energy v turn v c7: score 0.557 ± 0.020  kills m/o/f/t 0.07 / 0.34 / 0.49 / 0.10  life 93 s  kpm/ship 0.58  trades 0.02
+2v2 armed gunner (arming 150, life x1.3, dmg x0.9, vision x1.2) v close fighter (life x0.8) (M), kit   energy v turn v c8: score 0.532 ± 0.020  kills m/o/f/t 0.06 / 0.32 / 0.52 / 0.10  life 95 s  kpm/ship 0.57  trades 0.02
+## 5v5: 9 jobs, B 4096, 01:45 KST
+  batch 1/2 65 s; ETA 01:47 KST
+  batch 2/2 91 s; ETA 01:46 KST
+5v5 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit2   energy v turn v c0: score 0.505 ± 0.021  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.12  life 82 s  kpm/ship 0.66  trades 0.07
+5v5 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit, small cone f0 0.12   energy v turn v c1: score 0.513 ± 0.021  kills m/o/f/t 0.06 / 0.28 / 0.53 / 0.12  life 82 s  kpm/ship 0.65  trades 0.08
+5v5 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit2, small cone f0 0.12   energy v turn v c2: score 0.529 ± 0.021  kills m/o/f/t 0.07 / 0.29 / 0.52 / 0.12  life 81 s  kpm/ship 0.66  trades 0.07
+5v5 big (radius x1.4, dmg x1.4) v small (radius x0.75, dmg x1) (M), kit   energy v turn v c3: score 0.384 ± 0.021  kills m/o/f/t 0.06 / 0.29 / 0.52 / 0.12  life 82 s  kpm/ship 0.66  trades 0.07
+5v5 big (radius x1.5, dmg x1.5) v small (radius x0.7, dmg x1.1) (M), kit   energy v turn v c4: score 0.340 ± 0.020  kills m/o/f/t 0.06 / 0.30 / 0.52 / 0.12  life 81 s  kpm/ship 0.66  trades 0.07
+5v5 big (radius x1.5, dmg x1.5) v small (radius x0.7, dmg x1.1) (M), kit2   energy v turn v c5: score 0.340 ± 0.020  kills m/o/f/t 0.07 / 0.29 / 0.52 / 0.11  life 80 s  kpm/ship 0.67  trades 0.07
+5v5 armed gunner (arming 150, life x1.3, dmg x0.95, vision x1.2) v close fighter (life x0.8) (M), kit2   energy v turn v c6: score 0.493 ± 0.021  kills m/o/f/t 0.05 / 0.29 / 0.53 / 0.13  life 84 s  kpm/ship 0.64  trades 0.06
+5v5 armed gunner (arming 150, life x1.3, dmg x1, vision x1.1) v close fighter (life x0.8) (M), kit2   energy v turn v c7: score 0.526 ± 0.021  kills m/o/f/t 0.05 / 0.29 / 0.54 / 0.12  life 84 s  kpm/ship 0.64  trades 0.07
+5v5 armed gunner (arming 150, life x1.3, dmg x0.9, vision x1.2) v close fighter (life x0.8) (M), kit   energy v turn v c8: score 0.521 ± 0.021  kills m/o/f/t 0.05 / 0.28 / 0.53 / 0.13  life 85 s  kpm/ship 0.63  trades 0.06
+## 10v10: 9 jobs, B 2048, 01:46 KST
+W1112 16:47:08.262000 28516 /workspace/arch/venv/lib/python3.14/site-packages/torch/_inductor/utils.py:2143] [0/3] Not enough SMs to use max_autotune_gemm mode
+  batch 1/2 160 s; ETA 01:51 KST
+  batch 2/2 215 s; ETA 01:50 KST
+10v10 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit2   energy v turn v c0: score 0.471 ± 0.030  kills m/o/f/t 0.06 / 0.29 / 0.52 / 0.14  life 90 s  kpm/ship 0.60  trades 0.13
+10v10 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit, small cone f0 0.12   energy v turn v c1: score 0.486 ± 0.029  kills m/o/f/t 0.07 / 0.29 / 0.50 / 0.15  life 90 s  kpm/ship 0.60  trades 0.13
+10v10 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit2, small cone f0 0.12   energy v turn v c2: score 0.514 ± 0.030  kills m/o/f/t 0.06 / 0.29 / 0.51 / 0.14  life 89 s  kpm/ship 0.61  trades 0.14
+10v10 big (radius x1.4, dmg x1.4) v small (radius x0.75, dmg x1) (M), kit   energy v turn v c3: score 0.367 ± 0.029  kills m/o/f/t 0.06 / 0.29 / 0.52 / 0.14  life 90 s  kpm/ship 0.60  trades 0.14
+10v10 big (radius x1.5, dmg x1.5) v small (radius x0.7, dmg x1.1) (M), kit   energy v turn v c4: score 0.312 ± 0.027  kills m/o/f/t 0.07 / 0.29 / 0.51 / 0.13  life 89 s  kpm/ship 0.61  trades 0.14
+10v10 big (radius x1.5, dmg x1.5) v small (radius x0.7, dmg x1.1) (M), kit2   energy v turn v c5: score 0.279 ± 0.027  kills m/o/f/t 0.07 / 0.30 / 0.50 / 0.13  life 88 s  kpm/ship 0.61  trades 0.14
+10v10 armed gunner (arming 150, life x1.3, dmg x0.95, vision x1.2) v close fighter (life x0.8) (M), kit2   energy v turn v c6: score 0.486 ± 0.030  kills m/o/f/t 0.05 / 0.28 / 0.52 / 0.14  life 93 s  kpm/ship 0.58  trades 0.12
+10v10 armed gunner (arming 150, life x1.3, dmg x1, vision x1.1) v close fighter (life x0.8) (M), kit2   energy v turn v c7: score 0.459 ± 0.030  kills m/o/f/t 0.05 / 0.28 / 0.52 / 0.15  life 93 s  kpm/ship 0.58  trades 0.12
+10v10 armed gunner (arming 150, life x1.3, dmg x0.9, vision x1.2) v close fighter (life x0.8) (M), kit   energy v turn v c8: score 0.463 ± 0.030  kills m/o/f/t 0.05 / 0.28 / 0.52 / 0.15  life 94 s  kpm/ship 0.58  trades 0.11
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit2 | 0.572 ± 0.014 | 0.480 ± 0.020 | 0.505 ± 0.021 | 0.471 ± 0.030 | 0.072 | 0.06 / 0.29 / 0.53 / 0.12 | 0.07 | 250 / 92 / 82 / 90 | 0.23 / 0.59 / 0.66 / 0.60 | 2.99 |
+| big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit, small cone f0 0.12 | 0.651 ± 0.014 | 0.567 ± 0.020 | 0.513 ± 0.021 | 0.486 ± 0.029 | 0.151 | 0.06 / 0.28 / 0.53 / 0.12 | 0.08 | 242 / 94 / 82 / 90 | 0.24 / 0.58 / 0.65 / 0.60 | 2.56 |
+| big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit2, small cone f0 0.12 | 0.713 ± 0.013 | 0.562 ± 0.020 | 0.529 ± 0.021 | 0.514 ± 0.030 | 0.213 | 0.07 / 0.29 / 0.52 / 0.12 | 0.07 | 194 / 90 / 81 / 89 | 0.29 / 0.60 / 0.66 / 0.61 | 2.48 |
+| big (radius x1.4, dmg x1.4) v small (radius x0.75, dmg x1) (M), kit | 0.536 ± 0.015 | 0.480 ± 0.020 | 0.384 ± 0.021 | 0.367 ± 0.029 | 0.133 | 0.06 / 0.29 / 0.52 / 0.12 | 0.07 | 268 / 93 / 82 / 90 | 0.22 / 0.58 / 0.66 / 0.60 | 2.69 |
+| big (radius x1.5, dmg x1.5) v small (radius x0.7, dmg x1.1) (M), kit | 0.517 ± 0.015 | 0.459 ± 0.020 | 0.340 ± 0.020 | 0.312 ± 0.027 | 0.188 | 0.06 / 0.30 / 0.52 / 0.12 | 0.07 | 260 / 91 / 81 / 89 | 0.22 / 0.59 / 0.66 / 0.61 | 2.67 |
+| big (radius x1.5, dmg x1.5) v small (radius x0.7, dmg x1.1) (M), kit2 | 0.592 ± 0.015 | 0.411 ± 0.020 | 0.340 ± 0.020 | 0.279 ± 0.027 | 0.221 | 0.07 / 0.29 / 0.52 / 0.11 | 0.07 | 212 / 88 / 80 / 88 | 0.27 / 0.61 / 0.67 / 0.61 | 2.61 |
+| armed gunner (arming 150, life x1.3, dmg x0.95, vision x1.2) v close fighter (life x0.8) (M), kit2 | 0.492 ± 0.014 | 0.573 ± 0.020 | 0.493 ± 0.021 | 0.486 ± 0.030 | 0.073 | 0.05 / 0.29 / 0.53 / 0.13 | 0.06 | 324 / 93 / 84 / 93 | 0.18 / 0.58 / 0.64 / 0.58 | 3.64 |
+| armed gunner (arming 150, life x1.3, dmg x1, vision x1.1) v close fighter (life x0.8) (M), kit2 | 0.481 ± 0.014 | 0.557 ± 0.020 | 0.526 ± 0.021 | 0.459 ± 0.030 | 0.057 | 0.05 / 0.29 / 0.54 / 0.12 | 0.07 | 330 / 93 / 84 / 93 | 0.18 / 0.58 / 0.64 / 0.58 | 3.43 |
+| armed gunner (arming 150, life x1.3, dmg x0.9, vision x1.2) v close fighter (life x0.8) (M), kit | 0.525 ± 0.014 | 0.532 ± 0.020 | 0.521 ± 0.021 | 0.463 ± 0.030 | 0.037 | 0.05 / 0.28 / 0.53 / 0.13 | 0.06 | 330 / 95 / 85 / 94 | 0.18 / 0.57 / 0.63 / 0.58 | 3.32 |
+
+433 s

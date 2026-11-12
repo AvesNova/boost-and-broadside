@@ -1,0 +1,32 @@
+## 1v1: 15 jobs, B 8192, 02:29 KST
+W1112 17:30:15.289000 38509 /workspace/arch/venv/lib/python3.14/site-packages/torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+1v1 jouster (induced x1, dmg x1.2, cone 0.03 20 deg) v turner (induced x0.9) (M), kit2   energy v turn v c0: score 0.220 ± 0.013  kills m/o/f/t 0.22 / 0.68 / 0.11 / 0.00  life 239 s  kpm/ship 0.24  trades 0.00
+1v1 jouster (induced x1, dmg x1.2, cone 0.03 20 deg) v turner (induced x0.9) (M), kit2     turn mirror v c0: score 0.495 ± 0.013  kills m/o/f/t 0.39 / 0.52 / 0.09 / 0.00  life 346 s  kpm/ship 0.17  trades 0.00
+1v1 jouster (induced x1, dmg x1.2, cone 0.03 20 deg) v turner (induced x0.9) (M), kit2   energy mirror v c0: score 0.498 ± 0.011  kills m/o/f/t 0.05 / 0.78 / 0.17 / 0.00  life 751 s  kpm/ship 0.08  trades 0.00
+1v1 jouster (induced x1.1, dmg x1.3, cone 0.03 20 deg) v turner (induced x0.9) (M), kit2   energy v turn v c1: score 0.073 ± 0.009  kills m/o/f/t 0.12 / 0.73 / 0.16 / 0.00  life 227 s  kpm/ship 0.25  trades 0.00
+1v1 jouster (induced x1.1, dmg x1.3, cone 0.03 20 deg) v turner (induced x0.9) (M), kit2     turn mirror v c1: score 0.487 ± 0.014  kills m/o/f/t 0.35 / 0.56 / 0.09 / 0.00  life 328 s  kpm/ship 0.18  trades 0.00
+1v1 jouster (induced x1.1, dmg x1.3, cone 0.03 20 deg) v turner (induced x0.9) (M), kit2   energy mirror v c1: score 0.491 ± 0.012  kills m/o/f/t 0.02 / 0.83 / 0.15 / 0.00  life 720 s  kpm/ship 0.08  trades 0.00
+1v1 jouster (induced x1.1, dmg x1.5, cone 0.03 20 deg) v turner (induced x0.9) (M), kit2   energy v turn v c2: score 0.089 ± 0.009  kills m/o/f/t 0.13 / 0.69 / 0.17 / 0.00  life 190 s  kpm/ship 0.30  trades 0.00
+1v1 jouster (induced x1.1, dmg x1.5, cone 0.03 20 deg) v turner (induced x0.9) (M), kit2     turn mirror v c2: score 0.513 ± 0.013  kills m/o/f/t 0.37 / 0.54 / 0.09 / 0.00  life 327 s  kpm/ship 0.18  trades 0.00
+1v1 jouster (induced x1.1, dmg x1.5, cone 0.03 20 deg) v turner (induced x0.9) (M), kit2   energy mirror v c2: score 0.495 ± 0.012  kills m/o/f/t 0.06 / 0.81 / 0.13 / 0.00  life 649 s  kpm/ship 0.09  trades 0.00
+1v1 jouster (induced x1, dmg x1.3, cone 0.05 30 deg) v turner (induced x0.9) (M), kit2   energy v turn v c3: score 0.320 ± 0.015  kills m/o/f/t 0.22 / 0.64 / 0.14 / 0.00  life 282 s  kpm/ship 0.21  trades 0.00
+1v1 jouster (induced x1, dmg x1.3, cone 0.05 30 deg) v turner (induced x0.9) (M), kit2     turn mirror v c3: score 0.528 ± 0.014  kills m/o/f/t 0.37 / 0.55 / 0.08 / 0.00  life 316 s  kpm/ship 0.18  trades 0.00
+1v1 jouster (induced x1, dmg x1.3, cone 0.05 30 deg) v turner (induced x0.9) (M), kit2   energy mirror v c3: score 0.483 ± 0.010  kills m/o/f/t 0.08 / 0.70 / 0.21 / 0.00  life 1326 s  kpm/ship 0.04  trades 0.00
+1v1 jouster (induced x1.15, dmg x1.5, cone 0.03 30 deg) v turner (induced x0.9) (M), kit2   energy v turn v c4: score 0.090 ± 0.009  kills m/o/f/t 0.10 / 0.48 / 0.42 / 0.00  life 231 s  kpm/ship 0.25  trades 0.00
+1v1 jouster (induced x1.15, dmg x1.5, cone 0.03 30 deg) v turner (induced x0.9) (M), kit2     turn mirror v c4: score 0.503 ± 0.013  kills m/o/f/t 0.37 / 0.55 / 0.08 / 0.00  life 298 s  kpm/ship 0.20  trades 0.00
+1v1 jouster (induced x1.15, dmg x1.5, cone 0.03 30 deg) v turner (induced x0.9) (M), kit2   energy mirror v c4: score 0.496 ± 0.011  kills m/o/f/t 0.06 / 0.72 / 0.23 / 0.00  life 1158 s  kpm/ship 0.05  trades 0.00
+## 5v5: 5 jobs, B 4096, 02:31 KST
+5v5 jouster (induced x1, dmg x1.2, cone 0.03 20 deg) v turner (induced x0.9) (M), kit2   energy v turn v c0: score 0.563 ± 0.021  kills m/o/f/t 0.05 / 0.27 / 0.55 / 0.12  life 83 s  kpm/ship 0.64  trades 0.07
+5v5 jouster (induced x1.1, dmg x1.3, cone 0.03 20 deg) v turner (induced x0.9) (M), kit2   energy v turn v c1: score 0.407 ± 0.021  kills m/o/f/t 0.05 / 0.27 / 0.55 / 0.13  life 83 s  kpm/ship 0.65  trades 0.07
+5v5 jouster (induced x1.1, dmg x1.5, cone 0.03 20 deg) v turner (induced x0.9) (M), kit2   energy v turn v c2: score 0.504 ± 0.021  kills m/o/f/t 0.06 / 0.28 / 0.54 / 0.13  life 82 s  kpm/ship 0.65  trades 0.07
+5v5 jouster (induced x1, dmg x1.3, cone 0.05 30 deg) v turner (induced x0.9) (M), kit2   energy v turn v c3: score 0.699 ± 0.019  kills m/o/f/t 0.05 / 0.24 / 0.57 / 0.13  life 86 s  kpm/ship 0.63  trades 0.07
+5v5 jouster (induced x1.15, dmg x1.5, cone 0.03 30 deg) v turner (induced x0.9) (M), kit2   energy v turn v c4: score 0.585 ± 0.021  kills m/o/f/t 0.05 / 0.24 / 0.58 / 0.13  life 84 s  kpm/ship 0.64  trades 0.07
+| Candidate | E v T 1v1 | E v T 5v5 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|
+| jouster (induced x1, dmg x1.2, cone 0.03 20 deg) v turner (induced x0.9) (M), kit2 | 0.220 ± 0.013 | 0.563 ± 0.021 | 0.280 | 0.05 / 0.27 / 0.55 / 0.12 | 0.07 | 239 / 83 | 0.24 / 0.64 | 2.95 |
+| jouster (induced x1.1, dmg x1.3, cone 0.03 20 deg) v turner (induced x0.9) (M), kit2 | 0.073 ± 0.009 | 0.407 ± 0.021 | 0.427 | 0.05 / 0.27 / 0.55 / 0.13 | 0.07 | 227 / 83 | 0.25 / 0.65 | 2.16 |
+| jouster (induced x1.1, dmg x1.5, cone 0.03 20 deg) v turner (induced x0.9) (M), kit2 | 0.089 ± 0.009 | 0.504 ± 0.021 | 0.411 | 0.06 / 0.28 / 0.54 / 0.13 | 0.07 | 190 / 82 | 0.30 / 0.65 | 1.95 |
+| jouster (induced x1, dmg x1.3, cone 0.05 30 deg) v turner (induced x0.9) (M), kit2 | 0.320 ± 0.015 | 0.699 ± 0.019 | 0.199 | 0.05 / 0.24 / 0.57 / 0.13 | 0.07 | 282 / 86 | 0.21 / 0.63 | 3.09 |
+| jouster (induced x1.15, dmg x1.5, cone 0.03 30 deg) v turner (induced x0.9) (M), kit2 | 0.090 ± 0.009 | 0.585 ± 0.021 | 0.410 | 0.05 / 0.24 / 0.58 / 0.13 | 0.07 | 231 / 84 | 0.25 / 0.64 | 2.24 |
+
+350 s

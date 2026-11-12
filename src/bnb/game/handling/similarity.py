@@ -67,6 +67,7 @@ HANDLE_UNITS = dict(
     head_on_fraction=NONE,
     head_on_angle=NONE,
     head_on_sharpness=NONE,
+    arming_distance=LENGTH,
     hit_radius=LENGTH,
     spawn_energy=ENERGY,
 )
@@ -103,6 +104,7 @@ CARD_UNITS = dict(
     head_on_fraction_scale=NONE,
     head_on_angle_scale=NONE,
     head_on_sharpness=NONE,
+    arming_distance=LENGTH,
     engine_knee_scale=NONE,
 )
 FLIGHT_UNITS = dict(
@@ -138,6 +140,9 @@ RULE_UNITS = {
     "rules.field_band_width": LENGTH,
     "rules.field_radius_min": LENGTH,
     "rules.field_radius_max": LENGTH,
+    "rules.field_radius_distribution": NONE,
+    "rules.field_radius_median": LENGTH,
+    "rules.field_radius_log_sigma": NONE,
     "rules.field_disc_fraction": NONE,
     "rules.field_high_share": NONE,
     "rules.field_strong_share": NONE,

@@ -1,3 +1,7 @@
+---
+covers: [bench/case_study.py]
+---
+
 # trade-off pairs: 18432 games
 
 | Slot | Elo against its airframe's baseline |

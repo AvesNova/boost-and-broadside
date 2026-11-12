@@ -73,9 +73,9 @@ compile):
 
 Watch it no faster than every few minutes: `tail -2 $OUT/unit.log` prints each generation's
 mean loss, edge scores, realism, best loss, sigma and the ETA. It resumes from
-`$OUT/state.json` and `$OUT/search.jsonl` if rerun after a stop. The bound is `--hours`.
+`$OUT/state.json` and `$OUT/search.jsonl`{.plain} if rerun after a stop. The bound is `--hours`.
 
-**Stopping rule** (read off `search.jsonl`; the search stops itself at the spec's
+**Stopping rule** (read off `search.jsonl`{.plain}; the search stops itself at the spec's
 `generations`): stop early, by `systemctl --user stop design-$SPEC`, when the mean's loss
 has been 0 in three generations in a row (every edge in the band and no penalty). Report a
 search whose last five means all have a loss above 1 as **failed**: the mechanism does not
@@ -117,7 +117,7 @@ once; then report.
 ## 3b. Continuing a search
 
 To continue from a search's best mean with other settings (more games, a fixed direction),
-write a new spec whose designs' `start` values are that mean's knobs (`search.jsonl`, the
+write a new spec whose designs' `start` values are that mean's knobs (`search.jsonl`{.plain}, the
 row with `"mean": true` of lowest loss in the last five generations), `edges` in the
 direction the exact cards went round, `"edges_are_cycle": true`, and a smaller `sigma`
 (`stage-1/seed-2.json` continues `seed.json` this way). Run steps 1 to 3 with it.

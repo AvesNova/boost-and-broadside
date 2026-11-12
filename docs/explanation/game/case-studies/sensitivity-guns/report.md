@@ -1,3 +1,7 @@
+---
+covers: [bench/case_study.py]
+---
+
 # sensitivity: the gun's values: 34560 games
 
 | Slot | Elo against its airframe's baseline |

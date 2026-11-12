@@ -116,9 +116,11 @@ class Player:
     parameters: tuple[float, ...] | None = None
 
     def rows(self) -> tuple[list[float], list[float]]:
+        """The energy and turn doctrines packed as parameter rows."""
         return pack(self.energy), pack(self.turn)
 
     def named(self) -> dict:
+        """The player as a name-keyed dict (`player_from` reads it back)."""
         from bnb.controllers.scripted_doctrine import named
 
         out = {
@@ -195,6 +197,7 @@ class Group:
     environments: int
 
     def key(self) -> dict:
+        """The group's identity as a dict: variant, lineup and the players' names."""
         return dict(variant=self.variant, lineup=self.lineup, a=self.a.name, b=self.b.name)
 
 
@@ -1308,6 +1311,7 @@ def ratings(
 
 
 def main() -> None:
+    """The command line: its subcommands run the game-loop measurements."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
     one = sub.add_parser("speed")

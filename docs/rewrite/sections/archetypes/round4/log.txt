@@ -1,0 +1,146 @@
+## 1v1: 54 jobs, B 8192, 01:10 KST
+  batch 1/4 40 s; ETA 01:13 KST
+  batch 2/4 60 s; ETA 01:12 KST
+  batch 3/4 81 s; ETA 01:12 KST
+  batch 4/4 101 s; ETA 01:12 KST
+1v1 gunner v brawler (M), G dmg x0.9 induced x1 vision x1, B dmg x1.2 induced x1.25   energy v turn v c0: score 0.629 ± 0.010  kills m/o/f/t 0.16 / 0.05 / 0.79 / 0.00  life 1276 s  kpm/ship 0.05  trades 0.00
+1v1 gunner v brawler (M), G dmg x0.9 induced x1 vision x1, B dmg x1.2 induced x1.25     turn mirror v c0: score 0.500 ± 0.012  kills m/o/f/t 0.57 / 0.42 / 0.02 / 0.00  life 340 s  kpm/ship 0.17  trades 0.01
+1v1 gunner v brawler (M), G dmg x0.9 induced x1 vision x1, B dmg x1.2 induced x1.25   energy mirror v c0: score 0.485 ± 0.014  kills m/o/f/t 0.71 / 0.27 / 0.02 / 0.00  life 255 s  kpm/ship 0.23  trades 0.03
+1v1 gunner v brawler (M), G dmg x0.9 induced x1 vision x1, B dmg x1.2 induced x1.45   energy v turn v c1: score 0.159 ± 0.011  kills m/o/f/t 0.06 / 0.00 / 0.01 / 0.93  life 290 s  kpm/ship 0.20  trades 0.01
+1v1 gunner v brawler (M), G dmg x0.9 induced x1 vision x1, B dmg x1.2 induced x1.45     turn mirror v c1: score 0.497 ± 0.013  kills m/o/f/t 0.59 / 0.38 / 0.02 / 0.00  life 306 s  kpm/ship 0.19  trades 0.02
+1v1 gunner v brawler (M), G dmg x0.9 induced x1 vision x1, B dmg x1.2 induced x1.45   energy mirror v c1: score 0.527 ± 0.014  kills m/o/f/t 0.71 / 0.27 / 0.02 / 0.00  life 245 s  kpm/ship 0.24  trades 0.02
+1v1 gunner v brawler (M), G dmg x0.85 induced x1 vision x1, B dmg x1.2 induced x1.45   energy v turn v c2: score 0.182 ± 0.011  kills m/o/f/t 0.05 / 0.00 / 0.02 / 0.93  life 279 s  kpm/ship 0.21  trades 0.01
+1v1 gunner v brawler (M), G dmg x0.85 induced x1 vision x1, B dmg x1.2 induced x1.45     turn mirror v c2: score 0.487 ± 0.013  kills m/o/f/t 0.58 / 0.40 / 0.03 / 0.00  life 307 s  kpm/ship 0.19  trades 0.01
+1v1 gunner v brawler (M), G dmg x0.85 induced x1 vision x1, B dmg x1.2 induced x1.45   energy mirror v c2: score 0.504 ± 0.014  kills m/o/f/t 0.71 / 0.26 / 0.03 / 0.00  life 248 s  kpm/ship 0.23  trades 0.03
+1v1 gunner v brawler (M), G dmg x0.9 induced x0.85 vision x1, B dmg x1.2 induced x1   energy v turn v c3: score 0.503 ± 0.003  kills m/o/f/t 0.45 / 0.40 / 0.15 / 0.00  life 4866 s  kpm/ship 0.01  trades 0.00
+1v1 gunner v brawler (M), G dmg x0.9 induced x0.85 vision x1, B dmg x1.2 induced x1     turn mirror v c3: score 0.485 ± 0.011  kills m/o/f/t 0.65 / 0.33 / 0.02 / 0.00  life 378 s  kpm/ship 0.15  trades 0.01
+1v1 gunner v brawler (M), G dmg x0.9 induced x0.85 vision x1, B dmg x1.2 induced x1   energy mirror v c3: score 0.492 ± 0.013  kills m/o/f/t 0.76 / 0.21 / 0.02 / 0.00  life 298 s  kpm/ship 0.19  trades 0.03
+1v1 gunner v brawler (M), G dmg x0.9 induced x1 vision x1.25, B dmg x1.2 induced x1   energy v turn v c4: score 0.282 ± 0.013  kills m/o/f/t 0.60 / 0.38 / 0.02 / 0.00  life 196 s  kpm/ship 0.29  trades 0.00
+1v1 gunner v brawler (M), G dmg x0.9 induced x1 vision x1.25, B dmg x1.2 induced x1     turn mirror v c4: score 0.496 ± 0.012  kills m/o/f/t 0.66 / 0.32 / 0.01 / 0.00  life 387 s  kpm/ship 0.15  trades 0.01
+1v1 gunner v brawler (M), G dmg x0.9 induced x1 vision x1.25, B dmg x1.2 induced x1   energy mirror v c4: score 0.505 ± 0.012  kills m/o/f/t 0.89 / 0.10 / 0.01 / 0.00  life 166 s  kpm/ship 0.34  trades 0.03
+1v1 gunner v brawler (M), G dmg x0.85 induced x1 vision x1.2, B dmg x1.25 induced x1.25   energy v turn v c5: score 0.604 ± 0.009  kills m/o/f/t 0.17 / 0.02 / 0.81 / 0.00  life 1697 s  kpm/ship 0.04  trades 0.00
+1v1 gunner v brawler (M), G dmg x0.85 induced x1 vision x1.2, B dmg x1.25 induced x1.25     turn mirror v c5: score 0.502 ± 0.012  kills m/o/f/t 0.61 / 0.37 / 0.02 / 0.00  life 308 s  kpm/ship 0.19  trades 0.02
+1v1 gunner v brawler (M), G dmg x0.85 induced x1 vision x1.2, B dmg x1.25 induced x1.25   energy mirror v c5: score 0.495 ± 0.015  kills m/o/f/t 0.83 / 0.16 / 0.01 / 0.00  life 187 s  kpm/ship 0.30  trades 0.03
+1v1 sniper v shotgun (M), sniper dmg x1 induced x1, shotgun induced x1.25   energy v turn v c6: score 0.657 ± 0.010  kills m/o/f/t 0.18 / 0.03 / 0.78 / 0.01  life 1024 s  kpm/ship 0.06  trades 0.01
+1v1 sniper v shotgun (M), sniper dmg x1 induced x1, shotgun induced x1.25     turn mirror v c6: score 0.498 ± 0.014  kills m/o/f/t 0.65 / 0.33 / 0.02 / 0.00  life 232 s  kpm/ship 0.25  trades 0.03
+1v1 sniper v shotgun (M), sniper dmg x1 induced x1, shotgun induced x1.25   energy mirror v c6: score 0.496 ± 0.014  kills m/o/f/t 0.70 / 0.26 / 0.04 / 0.00  life 219 s  kpm/ship 0.26  trades 0.01
+1v1 sniper v shotgun (M), sniper dmg x1 induced x1, shotgun induced x1.45   energy v turn v c7: score 0.113 ± 0.009  kills m/o/f/t 0.04 / 0.00 / 0.03 / 0.94  life 274 s  kpm/ship 0.21  trades 0.01
+1v1 sniper v shotgun (M), sniper dmg x1 induced x1, shotgun induced x1.45     turn mirror v c7: score 0.502 ± 0.015  kills m/o/f/t 0.57 / 0.39 / 0.04 / 0.00  life 233 s  kpm/ship 0.25  trades 0.02
+1v1 sniper v shotgun (M), sniper dmg x1 induced x1, shotgun induced x1.45   energy mirror v c7: score 0.508 ± 0.014  kills m/o/f/t 0.70 / 0.27 / 0.03 / 0.00  life 220 s  kpm/ship 0.26  trades 0.02
+1v1 sniper v shotgun (M), sniper dmg x0.9 induced x1, shotgun induced x1.45   energy v turn v c8: score 0.123 ± 0.010  kills m/o/f/t 0.04 / 0.00 / 0.03 / 0.92  life 276 s  kpm/ship 0.21  trades 0.01
+1v1 sniper v shotgun (M), sniper dmg x0.9 induced x1, shotgun induced x1.45     turn mirror v c8: score 0.499 ± 0.015  kills m/o/f/t 0.59 / 0.38 / 0.03 / 0.00  life 225 s  kpm/ship 0.26  trades 0.02
+1v1 sniper v shotgun (M), sniper dmg x0.9 induced x1, shotgun induced x1.45   energy mirror v c8: score 0.510 ± 0.014  kills m/o/f/t 0.69 / 0.29 / 0.02 / 0.00  life 266 s  kpm/ship 0.22  trades 0.02
+1v1 sniper v shotgun (M), sniper dmg x1 induced x0.85, shotgun induced x1   energy v turn v c9: score 0.672 ± 0.011  kills m/o/f/t 0.34 / 0.36 / 0.30 / 0.00  life 466 s  kpm/ship 0.13  trades 0.00
+1v1 sniper v shotgun (M), sniper dmg x1 induced x0.85, shotgun induced x1     turn mirror v c9: score 0.490 ± 0.012  kills m/o/f/t 0.69 / 0.28 / 0.03 / 0.00  life 266 s  kpm/ship 0.22  trades 0.02
+1v1 sniper v shotgun (M), sniper dmg x1 induced x0.85, shotgun induced x1   energy mirror v c9: score 0.509 ± 0.013  kills m/o/f/t 0.71 / 0.26 / 0.04 / 0.00  life 262 s  kpm/ship 0.22  trades 0.02
+1v1 scout v brawler (M), S vision x1.3 shield x1.1, B vision x0.8 dmg x1.15   energy v turn v c10: score 0.761 ± 0.012  kills m/o/f/t 0.41 / 0.45 / 0.13 / 0.00  life 276 s  kpm/ship 0.21  trades 0.00
+1v1 scout v brawler (M), S vision x1.3 shield x1.1, B vision x0.8 dmg x1.15     turn mirror v c10: score 0.505 ± 0.012  kills m/o/f/t 0.38 / 0.42 / 0.19 / 0.00  life 543 s  kpm/ship 0.11  trades 0.02
+1v1 scout v brawler (M), S vision x1.3 shield x1.1, B vision x0.8 dmg x1.15   energy mirror v c10: score 0.470 ± 0.013  kills m/o/f/t 0.87 / 0.13 / 0.00 / 0.00  life 218 s  kpm/ship 0.26  trades 0.02
+1v1 scout v brawler (M), S vision x1.3 shield x1, B vision x0.8 dmg x1   energy v turn v c11: score 0.763 ± 0.012  kills m/o/f/t 0.41 / 0.45 / 0.13 / 0.00  life 261 s  kpm/ship 0.22  trades 0.00
+1v1 scout v brawler (M), S vision x1.3 shield x1, B vision x0.8 dmg x1     turn mirror v c11: score 0.511 ± 0.011  kills m/o/f/t 0.30 / 0.52 / 0.18 / 0.00  life 671 s  kpm/ship 0.09  trades 0.02
+1v1 scout v brawler (M), S vision x1.3 shield x1, B vision x0.8 dmg x1   energy mirror v c11: score 0.498 ± 0.013  kills m/o/f/t 0.91 / 0.09 / 0.01 / 0.00  life 182 s  kpm/ship 0.31  trades 0.02
+1v1 scout v brawler (M), S vision x1.2 shield x1, B vision x0.85 dmg x1.1   energy v turn v c12: score 0.641 ± 0.013  kills m/o/f/t 0.58 / 0.37 / 0.05 / 0.00  life 249 s  kpm/ship 0.23  trades 0.01
+1v1 scout v brawler (M), S vision x1.2 shield x1, B vision x0.85 dmg x1.1     turn mirror v c12: score 0.504 ± 0.013  kills m/o/f/t 0.55 / 0.36 / 0.10 / 0.00  life 319 s  kpm/ship 0.18  trades 0.04
+1v1 scout v brawler (M), S vision x1.2 shield x1, B vision x0.85 dmg x1.1   energy mirror v c12: score 0.495 ± 0.013  kills m/o/f/t 0.83 / 0.16 / 0.01 / 0.00  life 187 s  kpm/ship 0.30  trades 0.02
+1v1 scout v brawler (M), S vision x1.15 shield x1, B vision x1 dmg x1.15   energy v turn v c13: score 0.517 ± 0.013  kills m/o/f/t 0.71 / 0.27 / 0.03 / 0.00  life 195 s  kpm/ship 0.29  trades 0.01
+1v1 scout v brawler (M), S vision x1.15 shield x1, B vision x1 dmg x1.15     turn mirror v c13: score 0.494 ± 0.013  kills m/o/f/t 0.69 / 0.27 / 0.04 / 0.00  life 195 s  kpm/ship 0.29  trades 0.03
+1v1 scout v brawler (M), S vision x1.15 shield x1, B vision x1 dmg x1.15   energy mirror v c13: score 0.498 ± 0.013  kills m/o/f/t 0.77 / 0.21 / 0.02 / 0.00  life 203 s  kpm/ship 0.28  trades 0.01
+1v1 slasher v dogfighter (M), S induced x0.8 shield x0.8   energy v turn v c14: score 0.678 ± 0.011  kills m/o/f/t 0.32 / 0.55 / 0.13 / 0.00  life 629 s  kpm/ship 0.09  trades 0.00
+1v1 slasher v dogfighter (M), S induced x0.8 shield x0.8     turn mirror v c14: score 0.523 ± 0.016  kills m/o/f/t 0.68 / 0.30 / 0.01 / 0.00  life 212 s  kpm/ship 0.27  trades 0.02
+1v1 slasher v dogfighter (M), S induced x0.8 shield x0.8   energy mirror v c14: score 0.497 ± 0.012  kills m/o/f/t 0.70 / 0.26 / 0.04 / 0.00  life 396 s  kpm/ship 0.15  trades 0.04
+1v1 slasher v dogfighter (M), S induced x0.8 shield x0.65   energy v turn v c15: score 0.601 ± 0.011  kills m/o/f/t 0.41 / 0.49 / 0.09 / 0.00  life 506 s  kpm/ship 0.12  trades 0.00
+1v1 slasher v dogfighter (M), S induced x0.8 shield x0.65     turn mirror v c15: score 0.489 ± 0.015  kills m/o/f/t 0.71 / 0.28 / 0.01 / 0.00  life 225 s  kpm/ship 0.26  trades 0.01
+1v1 slasher v dogfighter (M), S induced x0.8 shield x0.65   energy mirror v c15: score 0.510 ± 0.013  kills m/o/f/t 0.70 / 0.24 / 0.06 / 0.00  life 291 s  kpm/ship 0.20  trades 0.05
+1v1 slasher v dogfighter (M), S induced x0.7 shield x0.65   energy v turn v c16: score 0.497 ± 0.005  kills m/o/f/t 0.35 / 0.35 / 0.29 / 0.00  life 3521 s  kpm/ship 0.02  trades 0.00
+1v1 slasher v dogfighter (M), S induced x0.7 shield x0.65     turn mirror v c16: score 0.481 ± 0.015  kills m/o/f/t 0.68 / 0.30 / 0.02 / 0.00  life 214 s  kpm/ship 0.27  trades 0.03
+1v1 slasher v dogfighter (M), S induced x0.7 shield x0.65   energy mirror v c16: score 0.530 ± 0.013  kills m/o/f/t 0.71 / 0.25 / 0.05 / 0.00  life 298 s  kpm/ship 0.19  trades 0.04
+1v1 slasher v dogfighter (M), S induced x0.7 shield x0.5   energy v turn v c17: score 0.428 ± 0.008  kills m/o/f/t 0.44 / 0.37 / 0.19 / 0.00  life 1565 s  kpm/ship 0.04  trades 0.01
+1v1 slasher v dogfighter (M), S induced x0.7 shield x0.5     turn mirror v c17: score 0.501 ± 0.015  kills m/o/f/t 0.67 / 0.31 / 0.02 / 0.00  life 214 s  kpm/ship 0.27  trades 0.02
+1v1 slasher v dogfighter (M), S induced x0.7 shield x0.5   energy mirror v c17: score 0.494 ± 0.014  kills m/o/f/t 0.70 / 0.23 / 0.07 / 0.00  life 237 s  kpm/ship 0.24  trades 0.08
+## 2v2: 18 jobs, B 8192, 01:12 KST
+  batch 1/2 48 s; ETA 01:14 KST
+  batch 2/2 99 s; ETA 01:14 KST
+2v2 gunner v brawler (M), G dmg x0.9 induced x1 vision x1, B dmg x1.2 induced x1.25   energy v turn v c0: score 0.427 ± 0.017  kills m/o/f/t 0.14 / 0.12 / 0.44 / 0.30  life 249 s  kpm/ship 0.23  trades 0.01
+2v2 gunner v brawler (M), G dmg x0.9 induced x1 vision x1, B dmg x1.2 induced x1.45   energy v turn v c1: score 0.048 ± 0.007  kills m/o/f/t 0.02 / 0.00 / 0.04 / 0.94  life 359 s  kpm/ship 0.16  trades 0.01
+2v2 gunner v brawler (M), G dmg x0.85 induced x1 vision x1, B dmg x1.2 induced x1.45   energy v turn v c2: score 0.032 ± 0.006  kills m/o/f/t 0.02 / 0.00 / 0.03 / 0.95  life 361 s  kpm/ship 0.16  trades 0.01
+2v2 gunner v brawler (M), G dmg x0.9 induced x0.85 vision x1, B dmg x1.2 induced x1   energy v turn v c3: score 0.496 ± 0.016  kills m/o/f/t 0.17 / 0.15 / 0.46 / 0.22  life 255 s  kpm/ship 0.23  trades 0.01
+2v2 gunner v brawler (M), G dmg x0.9 induced x1 vision x1.25, B dmg x1.2 induced x1   energy v turn v c4: score 0.520 ± 0.019  kills m/o/f/t 0.17 / 0.23 / 0.44 / 0.16  life 143 s  kpm/ship 0.39  trades 0.01
+2v2 gunner v brawler (M), G dmg x0.85 induced x1 vision x1.2, B dmg x1.25 induced x1.25   energy v turn v c5: score 0.415 ± 0.018  kills m/o/f/t 0.14 / 0.12 / 0.45 / 0.29  life 245 s  kpm/ship 0.24  trades 0.01
+2v2 sniper v shotgun (M), sniper dmg x1 induced x1, shotgun induced x1.25   energy v turn v c6: score 0.359 ± 0.018  kills m/o/f/t 0.14 / 0.13 / 0.48 / 0.26  life 192 s  kpm/ship 0.30  trades 0.01
+2v2 sniper v shotgun (M), sniper dmg x1 induced x1, shotgun induced x1.45   energy v turn v c7: score 0.025 ± 0.005  kills m/o/f/t 0.02 / 0.00 / 0.06 / 0.92  life 332 s  kpm/ship 0.18  trades 0.01
+2v2 sniper v shotgun (M), sniper dmg x0.9 induced x1, shotgun induced x1.45   energy v turn v c8: score 0.016 ± 0.004  kills m/o/f/t 0.01 / 0.00 / 0.05 / 0.94  life 340 s  kpm/ship 0.17  trades 0.00
+2v2 sniper v shotgun (M), sniper dmg x1 induced x0.85, shotgun induced x1   energy v turn v c9: score 0.538 ± 0.019  kills m/o/f/t 0.16 / 0.19 / 0.48 / 0.18  life 166 s  kpm/ship 0.34  trades 0.01
+2v2 scout v brawler (M), S vision x1.3 shield x1.1, B vision x0.8 dmg x1.15   energy v turn v c10: score 0.621 ± 0.019  kills m/o/f/t 0.14 / 0.23 / 0.50 / 0.13  life 120 s  kpm/ship 0.46  trades 0.02
+2v2 scout v brawler (M), S vision x1.3 shield x1, B vision x0.8 dmg x1   energy v turn v c11: score 0.639 ± 0.018  kills m/o/f/t 0.14 / 0.22 / 0.51 / 0.13  life 122 s  kpm/ship 0.45  trades 0.01
+2v2 scout v brawler (M), S vision x1.2 shield x1, B vision x0.85 dmg x1.1   energy v turn v c12: score 0.535 ± 0.019  kills m/o/f/t 0.15 / 0.23 / 0.50 / 0.12  life 116 s  kpm/ship 0.48  trades 0.01
+2v2 scout v brawler (M), S vision x1.15 shield x1, B vision x1 dmg x1.15   energy v turn v c13: score 0.398 ± 0.019  kills m/o/f/t 0.18 / 0.22 / 0.49 / 0.12  life 111 s  kpm/ship 0.50  trades 0.02
+2v2 slasher v dogfighter (M), S induced x0.8 shield x0.8   energy v turn v c14: score 0.645 ± 0.018  kills m/o/f/t 0.16 / 0.20 / 0.44 / 0.19  life 180 s  kpm/ship 0.32  trades 0.01
+2v2 slasher v dogfighter (M), S induced x0.8 shield x0.65   energy v turn v c15: score 0.513 ± 0.019  kills m/o/f/t 0.17 / 0.21 / 0.44 / 0.18  life 161 s  kpm/ship 0.35  trades 0.02
+2v2 slasher v dogfighter (M), S induced x0.7 shield x0.65   energy v turn v c16: score 0.263 ± 0.015  kills m/o/f/t 0.15 / 0.19 / 0.43 / 0.23  life 222 s  kpm/ship 0.26  trades 0.01
+2v2 slasher v dogfighter (M), S induced x0.7 shield x0.5   energy v turn v c17: score 0.141 ± 0.012  kills m/o/f/t 0.18 / 0.19 / 0.44 / 0.19  life 184 s  kpm/ship 0.31  trades 0.01
+## 5v5: 18 jobs, B 4096, 01:14 KST
+  batch 1/3 46 s; ETA 01:16 KST
+  batch 2/3 74 s; ETA 01:15 KST
+  batch 3/3 103 s; ETA 01:15 KST
+5v5 gunner v brawler (M), G dmg x0.9 induced x1 vision x1, B dmg x1.2 induced x1.25   energy v turn v c0: score 0.350 ± 0.020  kills m/o/f/t 0.07 / 0.11 / 0.44 / 0.38  life 177 s  kpm/ship 0.32  trades 0.02
+5v5 gunner v brawler (M), G dmg x0.9 induced x1 vision x1, B dmg x1.2 induced x1.45   energy v turn v c1: score 0.003 ± 0.002  kills m/o/f/t 0.01 / 0.01 / 0.05 / 0.92  life 470 s  kpm/ship 0.13  trades 0.02
+5v5 gunner v brawler (M), G dmg x0.85 induced x1 vision x1, B dmg x1.2 induced x1.45   energy v turn v c2: score 0.006 ± 0.002  kills m/o/f/t 0.01 / 0.01 / 0.06 / 0.91  life 469 s  kpm/ship 0.13  trades 0.02
+5v5 gunner v brawler (M), G dmg x0.9 induced x0.85 vision x1, B dmg x1.2 induced x1   energy v turn v c3: score 0.476 ± 0.020  kills m/o/f/t 0.08 / 0.14 / 0.48 / 0.29  life 154 s  kpm/ship 0.37  trades 0.03
+5v5 gunner v brawler (M), G dmg x0.9 induced x1 vision x1.25, B dmg x1.2 induced x1   energy v turn v c4: score 0.588 ± 0.020  kills m/o/f/t 0.09 / 0.18 / 0.50 / 0.24  life 124 s  kpm/ship 0.45  trades 0.04
+5v5 gunner v brawler (M), G dmg x0.85 induced x1 vision x1.2, B dmg x1.25 induced x1.25   energy v turn v c5: score 0.267 ± 0.018  kills m/o/f/t 0.08 / 0.13 / 0.44 / 0.36  life 179 s  kpm/ship 0.32  trades 0.02
+5v5 sniper v shotgun (M), sniper dmg x1 induced x1, shotgun induced x1.25   energy v turn v c6: score 0.223 ± 0.017  kills m/o/f/t 0.08 / 0.13 / 0.47 / 0.33  life 150 s  kpm/ship 0.38  trades 0.03
+5v5 sniper v shotgun (M), sniper dmg x1 induced x1, shotgun induced x1.45   energy v turn v c7: score 0.001 ± 0.001  kills m/o/f/t 0.01 / 0.02 / 0.10 / 0.88  life 411 s  kpm/ship 0.14  trades 0.03
+5v5 sniper v shotgun (M), sniper dmg x0.9 induced x1, shotgun induced x1.45   energy v turn v c8: score 0.002 ± 0.001  kills m/o/f/t 0.01 / 0.02 / 0.08 / 0.88  life 428 s  kpm/ship 0.14  trades 0.02
+5v5 sniper v shotgun (M), sniper dmg x1 induced x0.85, shotgun induced x1   energy v turn v c9: score 0.534 ± 0.021  kills m/o/f/t 0.09 / 0.17 / 0.49 / 0.25  life 128 s  kpm/ship 0.44  trades 0.04
+5v5 scout v brawler (M), S vision x1.3 shield x1.1, B vision x0.8 dmg x1.15   energy v turn v c10: score 0.580 ± 0.020  kills m/o/f/t 0.08 / 0.18 / 0.54 / 0.21  life 108 s  kpm/ship 0.51  trades 0.04
+5v5 scout v brawler (M), S vision x1.3 shield x1, B vision x0.8 dmg x1   energy v turn v c11: score 0.618 ± 0.020  kills m/o/f/t 0.08 / 0.18 / 0.53 / 0.21  life 107 s  kpm/ship 0.51  trades 0.04
+5v5 scout v brawler (M), S vision x1.2 shield x1, B vision x0.85 dmg x1.1   energy v turn v c12: score 0.498 ± 0.020  kills m/o/f/t 0.08 / 0.18 / 0.54 / 0.20  life 104 s  kpm/ship 0.53  trades 0.05
+5v5 scout v brawler (M), S vision x1.15 shield x1, B vision x1 dmg x1.15   energy v turn v c13: score 0.380 ± 0.020  kills m/o/f/t 0.08 / 0.18 / 0.54 / 0.20  life 102 s  kpm/ship 0.54  trades 0.05
+5v5 slasher v dogfighter (M), S induced x0.8 shield x0.8   energy v turn v c14: score 0.759 ± 0.017  kills m/o/f/t 0.09 / 0.17 / 0.48 / 0.27  life 137 s  kpm/ship 0.41  trades 0.03
+5v5 slasher v dogfighter (M), S induced x0.8 shield x0.65   energy v turn v c15: score 0.615 ± 0.020  kills m/o/f/t 0.10 / 0.17 / 0.49 / 0.24  life 126 s  kpm/ship 0.44  trades 0.04
+5v5 slasher v dogfighter (M), S induced x0.7 shield x0.65   energy v turn v c16: score 0.226 ± 0.017  kills m/o/f/t 0.09 / 0.16 / 0.44 / 0.31  life 165 s  kpm/ship 0.34  trades 0.03
+5v5 slasher v dogfighter (M), S induced x0.7 shield x0.5   energy v turn v c17: score 0.079 ± 0.011  kills m/o/f/t 0.11 / 0.17 / 0.46 / 0.26  life 147 s  kpm/ship 0.38  trades 0.03
+## 10v10: 18 jobs, B 2048, 01:15 KST
+  batch 1/3 77 s; ETA 01:19 KST
+  batch 2/3 136 s; ETA 01:19 KST
+  batch 3/3 165 s; ETA 01:18 KST
+10v10 gunner v brawler (M), G dmg x0.9 induced x1 vision x1, B dmg x1.2 induced x1.25   energy v turn v c0: score 0.266 ± 0.026  kills m/o/f/t 0.06 / 0.11 / 0.43 / 0.40  life 192 s  kpm/ship 0.30  trades 0.05
+10v10 gunner v brawler (M), G dmg x0.9 induced x1 vision x1, B dmg x1.2 induced x1.45   energy v turn v c1: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.02 / 0.09 / 0.87  life 517 s  kpm/ship 0.11  trades 0.02
+10v10 gunner v brawler (M), G dmg x0.85 induced x1 vision x1, B dmg x1.2 induced x1.45   energy v turn v c2: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.03 / 0.09 / 0.87  life 536 s  kpm/ship 0.11  trades 0.03
+10v10 gunner v brawler (M), G dmg x0.9 induced x0.85 vision x1, B dmg x1.2 induced x1   energy v turn v c3: score 0.490 ± 0.030  kills m/o/f/t 0.07 / 0.14 / 0.45 / 0.34  life 166 s  kpm/ship 0.34  trades 0.05
+10v10 gunner v brawler (M), G dmg x0.9 induced x1 vision x1.25, B dmg x1.2 induced x1   energy v turn v c4: score 0.574 ± 0.030  kills m/o/f/t 0.06 / 0.17 / 0.49 / 0.27  life 141 s  kpm/ship 0.40  trades 0.06
+10v10 gunner v brawler (M), G dmg x0.85 induced x1 vision x1.2, B dmg x1.25 induced x1.25   energy v turn v c5: score 0.270 ± 0.026  kills m/o/f/t 0.06 / 0.12 / 0.43 / 0.39  life 197 s  kpm/ship 0.29  trades 0.05
+10v10 sniper v shotgun (M), sniper dmg x1 induced x1, shotgun induced x1.25   energy v turn v c6: score 0.227 ± 0.025  kills m/o/f/t 0.06 / 0.13 / 0.45 / 0.36  life 163 s  kpm/ship 0.35  trades 0.06
+10v10 sniper v shotgun (M), sniper dmg x1 induced x1, shotgun induced x1.45   energy v turn v c7: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.02 / 0.13 / 0.83  life 439 s  kpm/ship 0.13  trades 0.03
+10v10 sniper v shotgun (M), sniper dmg x0.9 induced x1, shotgun induced x1.45   energy v turn v c8: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.02 / 0.13 / 0.84  life 455 s  kpm/ship 0.13  trades 0.03
+10v10 sniper v shotgun (M), sniper dmg x1 induced x0.85, shotgun induced x1   energy v turn v c9: score 0.582 ± 0.030  kills m/o/f/t 0.07 / 0.16 / 0.48 / 0.29  life 140 s  kpm/ship 0.40  trades 0.06
+10v10 scout v brawler (M), S vision x1.3 shield x1.1, B vision x0.8 dmg x1.15   energy v turn v c10: score 0.654 ± 0.029  kills m/o/f/t 0.06 / 0.18 / 0.52 / 0.24  life 120 s  kpm/ship 0.46  trades 0.08
+10v10 scout v brawler (M), S vision x1.3 shield x1, B vision x0.8 dmg x1   energy v turn v c11: score 0.666 ± 0.029  kills m/o/f/t 0.06 / 0.19 / 0.51 / 0.25  life 123 s  kpm/ship 0.45  trades 0.08
+10v10 scout v brawler (M), S vision x1.2 shield x1, B vision x0.85 dmg x1.1   energy v turn v c12: score 0.568 ± 0.030  kills m/o/f/t 0.06 / 0.18 / 0.53 / 0.23  life 118 s  kpm/ship 0.47  trades 0.08
+10v10 scout v brawler (M), S vision x1.15 shield x1, B vision x1 dmg x1.15   energy v turn v c13: score 0.359 ± 0.029  kills m/o/f/t 0.07 / 0.18 / 0.53 / 0.22  life 117 s  kpm/ship 0.47  trades 0.09
+10v10 slasher v dogfighter (M), S induced x0.8 shield x0.8   energy v turn v c14: score 0.875 ± 0.019  kills m/o/f/t 0.07 / 0.16 / 0.48 / 0.30  life 149 s  kpm/ship 0.38  trades 0.06
+10v10 slasher v dogfighter (M), S induced x0.8 shield x0.65   energy v turn v c15: score 0.725 ± 0.027  kills m/o/f/t 0.07 / 0.17 / 0.49 / 0.27  life 141 s  kpm/ship 0.40  trades 0.06
+10v10 slasher v dogfighter (M), S induced x0.7 shield x0.65   energy v turn v c16: score 0.189 ± 0.023  kills m/o/f/t 0.08 / 0.15 / 0.44 / 0.33  life 185 s  kpm/ship 0.31  trades 0.06
+10v10 slasher v dogfighter (M), S induced x0.7 shield x0.5   energy v turn v c17: score 0.062 ± 0.014  kills m/o/f/t 0.09 / 0.17 / 0.46 / 0.28  life 173 s  kpm/ship 0.33  trades 0.06
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| gunner v brawler (M), G dmg x0.9 induced x1 vision x1, B dmg x1.2 induced x1.25 | 0.629 ± 0.010 | 0.427 ± 0.017 | 0.350 ± 0.020 | 0.266 ± 0.026 | 0.234 | 0.07 / 0.11 / 0.44 / 0.38 | 0.02 | 1276 / 249 / 177 / 192 | 0.05 / 0.23 / 0.32 / 0.30 | 7.46 |
+| gunner v brawler (M), G dmg x0.9 induced x1 vision x1, B dmg x1.2 induced x1.45 | 0.159 ± 0.011 | 0.048 ± 0.007 | 0.003 ± 0.002 | 0.000 ± 0.000 | 0.500 | 0.01 / 0.01 / 0.05 / 0.92 | 0.02 | 290 / 359 / 470 / 517 | 0.20 / 0.16 / 0.13 / 0.11 | 1.65 |
+| gunner v brawler (M), G dmg x0.85 induced x1 vision x1, B dmg x1.2 induced x1.45 | 0.182 ± 0.011 | 0.032 ± 0.006 | 0.006 ± 0.002 | 0.000 ± 0.000 | 0.500 | 0.01 / 0.01 / 0.06 / 0.91 | 0.02 | 279 / 361 / 469 / 536 | 0.21 / 0.16 / 0.13 / 0.11 | 1.58 |
+| gunner v brawler (M), G dmg x0.9 induced x0.85 vision x1, B dmg x1.2 induced x1 | 0.503 ± 0.003 | 0.496 ± 0.016 | 0.476 ± 0.020 | 0.490 ± 0.030 | 0.024 | 0.08 / 0.14 / 0.48 / 0.29 | 0.03 | 4866 / 255 / 154 / 166 | 0.01 / 0.23 / 0.37 / 0.34 | 3.64 |
+| gunner v brawler (M), G dmg x0.9 induced x1 vision x1.25, B dmg x1.2 induced x1 | 0.282 ± 0.013 | 0.520 ± 0.019 | 0.588 ± 0.020 | 0.574 ± 0.030 | 0.218 | 0.09 / 0.18 / 0.50 / 0.24 | 0.04 | 196 / 143 / 124 / 141 | 0.29 / 0.39 / 0.45 / 0.40 | 2.9 |
+| gunner v brawler (M), G dmg x0.85 induced x1 vision x1.2, B dmg x1.25 induced x1.25 | 0.604 ± 0.009 | 0.415 ± 0.018 | 0.267 ± 0.018 | 0.270 ± 0.026 | 0.233 | 0.08 / 0.13 / 0.44 / 0.36 | 0.02 | 1697 / 245 / 179 / 197 | 0.04 / 0.24 / 0.32 / 0.29 | 7.74 |
+| sniper v shotgun (M), sniper dmg x1 induced x1, shotgun induced x1.25 | 0.657 ± 0.010 | 0.359 ± 0.018 | 0.223 ± 0.017 | 0.227 ± 0.025 | 0.277 | 0.08 / 0.13 / 0.47 / 0.33 | 0.03 | 1024 / 192 / 150 / 163 | 0.06 / 0.30 / 0.38 / 0.35 | 6.45 |
+| sniper v shotgun (M), sniper dmg x1 induced x1, shotgun induced x1.45 | 0.113 ± 0.009 | 0.025 ± 0.005 | 0.001 ± 0.001 | 0.000 ± 0.000 | 0.500 | 0.01 / 0.02 / 0.10 / 0.88 | 0.03 | 274 / 332 / 411 / 439 | 0.21 / 0.18 / 0.14 / 0.13 | 1.65 |
+| sniper v shotgun (M), sniper dmg x0.9 induced x1, shotgun induced x1.45 | 0.123 ± 0.010 | 0.016 ± 0.004 | 0.002 ± 0.001 | 0.000 ± 0.000 | 0.500 | 0.01 / 0.02 / 0.08 / 0.88 | 0.02 | 276 / 340 / 428 / 455 | 0.21 / 0.17 / 0.14 / 0.13 | 1.65 |
+| sniper v shotgun (M), sniper dmg x1 induced x0.85, shotgun induced x1 | 0.672 ± 0.011 | 0.538 ± 0.019 | 0.534 ± 0.021 | 0.582 ± 0.030 | 0.172 | 0.09 / 0.17 / 0.49 / 0.25 | 0.04 | 466 / 166 / 128 / 140 | 0.13 / 0.34 / 0.44 / 0.40 | 3.71 |
+| scout v brawler (M), S vision x1.3 shield x1.1, B vision x0.8 dmg x1.15 | 0.761 ± 0.012 | 0.621 ± 0.019 | 0.580 ± 0.020 | 0.654 ± 0.029 | 0.261 | 0.08 / 0.18 / 0.54 / 0.21 | 0.04 | 276 / 120 / 108 / 120 | 0.21 / 0.46 / 0.51 / 0.46 | 3.02 |
+| scout v brawler (M), S vision x1.3 shield x1, B vision x0.8 dmg x1 | 0.763 ± 0.012 | 0.639 ± 0.018 | 0.618 ± 0.020 | 0.666 ± 0.029 | 0.263 | 0.08 / 0.18 / 0.53 / 0.21 | 0.04 | 261 / 122 / 107 / 123 | 0.22 / 0.45 / 0.51 / 0.45 | 3.03 |
+| scout v brawler (M), S vision x1.2 shield x1, B vision x0.85 dmg x1.1 | 0.641 ± 0.013 | 0.535 ± 0.019 | 0.498 ± 0.020 | 0.568 ± 0.030 | 0.141 | 0.08 / 0.18 / 0.54 / 0.20 | 0.05 | 249 / 116 / 104 / 118 | 0.23 / 0.48 / 0.53 / 0.47 | 2.94 |
+| scout v brawler (M), S vision x1.15 shield x1, B vision x1 dmg x1.15 | 0.517 ± 0.013 | 0.398 ± 0.019 | 0.380 ± 0.020 | 0.359 ± 0.029 | 0.141 | 0.08 / 0.18 / 0.54 / 0.20 | 0.05 | 195 / 111 / 102 / 117 | 0.29 / 0.50 / 0.54 / 0.47 | 2.72 |
+| slasher v dogfighter (M), S induced x0.8 shield x0.8 | 0.678 ± 0.011 | 0.645 ± 0.018 | 0.759 ± 0.017 | 0.875 ± 0.019 | 0.375 | 0.09 / 0.17 / 0.48 / 0.27 | 0.03 | 629 / 180 / 137 / 149 | 0.09 / 0.32 / 0.41 / 0.38 | 4.16 |
+| slasher v dogfighter (M), S induced x0.8 shield x0.65 | 0.601 ± 0.011 | 0.513 ± 0.019 | 0.615 ± 0.020 | 0.725 ± 0.027 | 0.225 | 0.10 / 0.17 / 0.49 / 0.24 | 0.04 | 506 / 161 / 126 / 141 | 0.12 / 0.35 / 0.44 / 0.40 | 3.72 |
+| slasher v dogfighter (M), S induced x0.7 shield x0.65 | 0.497 ± 0.005 | 0.263 ± 0.015 | 0.226 ± 0.017 | 0.189 ± 0.023 | 0.311 | 0.09 / 0.16 / 0.44 / 0.31 | 0.03 | 3521 / 222 / 165 / 185 | 0.02 / 0.26 / 0.34 / 0.31 | 5.72 |
+| slasher v dogfighter (M), S induced x0.7 shield x0.5 | 0.428 ± 0.008 | 0.141 ± 0.012 | 0.079 ± 0.011 | 0.062 ± 0.014 | 0.438 | 0.11 / 0.17 / 0.46 / 0.26 | 0.03 | 1565 / 184 / 147 / 173 | 0.04 / 0.31 / 0.38 / 0.33 | 5.57 |
+
+491 s

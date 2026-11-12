@@ -203,6 +203,7 @@ def _uniform_layout(rules, uniforms):
 
 def test_deathmatch_respawn_takes_the_candidate_farthest_from_living_enemies():
     rules = api.rules_of(GameConfig(4, 2, 2600.0))
+    (pool,) = rules.pools
     generator = torch.Generator().manual_seed(3)
     B, N = 256, rules.num_ships
     uniforms = api.uniforms(rules, B, generator=generator)
@@ -238,8 +239,17 @@ def test_deathmatch_respawn_takes_the_candidate_farthest_from_living_enemies():
                 k = 0
             assert math.isclose(place.x[b, i], cx[b, i, k], abs_tol=1e-3)
             assert math.isclose(place.y[b, i], cy[b, i, k], abs_tol=1e-3)
-    torch.testing.assert_close(place.heading_cos, heading.cos())
-    torch.testing.assert_close(place.heading_sin, heading.sin())
+    # Game v4: the heading is the uniform draw spread over the directions that leave room to
+    # turn away from the edge (modes spec 4), not the plain uniform angle; written out here from
+    # the spec (angle off the outward normal, at least acos(d / D) within D of the edge).
+    distance = place.x.hypot(place.y)
+    room = ((pool.arena_radius - distance) / rules.spawn_turn_distance).clamp(0.0, 1.0)
+    least = room.acos()
+    drawn = math.pi * (2.0 * heading / (2.0 * math.pi) - 1.0)
+    off_normal = torch.copysign(least + drawn.abs() * (1.0 - least / math.pi), drawn)
+    angle = torch.atan2(place.y, place.x) + off_normal
+    torch.testing.assert_close(place.heading_cos, angle.cos(), atol=1e-4, rtol=0)
+    torch.testing.assert_close(place.heading_sin, angle.sin(), atol=1e-4, rtol=0)
 
 
 def test_deathmatch_reset_is_one_symmetric_pass():
@@ -772,7 +782,10 @@ def test_shield_events_match_the_shield_changes(mode):
     spawn; nothing is lost or restored by the dead; deaths, respawns (none in elimination)
     and resets in play."""
     seen = dict(lost=0, restored=0, deaths=0, respawns=0, resets=0)
-    for before, events, after in cases.play(cases.MODES[mode], ticks=250, seed=1):
+    # Since game v5 a recharge needs the delay's length of unbroken quiet flight after a hit,
+    # which only the calm ships (a quarter of the environments) give and few of them survive
+    # unhit; a batch of 128 sees it in every mode (16 saw none in team deathmatch).
+    for before, events, after in cases.play(cases.MODES[mode], batch=128, ticks=250, seed=1):
         alive0 = before.ships.alive
         kept = alive0 & ~after.ships.spawned
         expected = before.ships.shield - events.shield_lost + events.shield_restored

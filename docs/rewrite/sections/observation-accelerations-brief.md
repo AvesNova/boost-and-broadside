@@ -58,7 +58,7 @@ Read first: `docs/rewrite/sections/round2-plan.md` (5.1, 8), `acceleration-input
   memory per environment step.
 - Tests: the columns on scripted motion (straight push, steady turn), each invalid case,
   just spotted, the equivalence above, `unroll` equals a loop of `step`, the off path
-  unchanged bit for bit (C-fixed's digests in `tests/sections/golden/yemong_c_fixed_steps.json`),
+  unchanged (C-fixed's recorded outputs in `tests/sections/golden/yemong_arms_steps.pt`, to rounding),
   the MLP with the wider observation (through Part 1), the quick tier
   (`pytest -m "not slow and not gpu"`), ruff, docs (the observation contract page, `yemong.md`,
   the runs spec).

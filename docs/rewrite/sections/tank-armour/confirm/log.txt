@@ -1,0 +1,62 @@
+## 1v1: 15 jobs, B 8192, 00:13 KST
+W1112 15:14:01.154000 9343 .venv/lib/python3.14/site-packages/torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+  batch 1/2 88 s; ETA 00:16 KST
+  batch 2/2 108 s; ETA 00:15 KST
+1v1                      D2 | r9   energy v turn v c0: score 0.492 ± 0.010  kills m/o/f/t 0.22 / 0.70 / 0.08 / 0.00  life 285 s  kpm/ship 0.20  trades 0.00
+1v1                      D2 | r9     turn mirror v c0: score 0.492 ± 0.009  kills m/o/f/t 0.65 / 0.30 / 0.05 / 0.00  life 258 s  kpm/ship 0.22  trades 0.03
+1v1                      D2 | r9   energy mirror v c0: score 0.492 ± 0.008  kills m/o/f/t 0.38 / 0.51 / 0.11 / 0.00  life 282 s  kpm/ship 0.21  trades 0.01
+1v1 D2 | armour 0.085 12 deg p8, damage x1.5, Y bullet life x0.7   energy v turn v c1: score 0.550 ± 0.011  kills m/o/f/t 0.09 / 0.83 / 0.08 / 0.00  life 233 s  kpm/ship 0.25  trades 0.00
+1v1 D2 | armour 0.085 12 deg p8, damage x1.5, Y bullet life x0.7     turn mirror v c1: score 0.515 ± 0.010  kills m/o/f/t 0.45 / 0.49 / 0.05 / 0.00  life 289 s  kpm/ship 0.20  trades 0.00
+1v1 D2 | armour 0.085 12 deg p8, damage x1.5, Y bullet life x0.7   energy mirror v c1: score 0.503 ± 0.007  kills m/o/f/t 0.05 / 0.81 / 0.14 / 0.00  life 453 s  kpm/ship 0.13  trades 0.00
+1v1 D2 | armour 0.085 12 deg p8, damage Y x1.25 J x1.5   energy v turn v c2: score 0.517 ± 0.011  kills m/o/f/t 0.10 / 0.83 / 0.07 / 0.00  life 239 s  kpm/ship 0.24  trades 0.00
+1v1 D2 | armour 0.085 12 deg p8, damage Y x1.25 J x1.5     turn mirror v c2: score 0.486 ± 0.010  kills m/o/f/t 0.49 / 0.46 / 0.05 / 0.00  life 298 s  kpm/ship 0.20  trades 0.00
+1v1 D2 | armour 0.085 12 deg p8, damage Y x1.25 J x1.5   energy mirror v c2: score 0.510 ± 0.007  kills m/o/f/t 0.06 / 0.80 / 0.14 / 0.00  life 415 s  kpm/ship 0.14  trades 0.00
+1v1 D2 | armour 0.085 12 deg p8, damage x1.5, Y bullet life x0.8, Y shield x0.8   energy v turn v c3: score 0.514 ± 0.011  kills m/o/f/t 0.11 / 0.80 / 0.08 / 0.00  life 219 s  kpm/ship 0.26  trades 0.00
+1v1 D2 | armour 0.085 12 deg p8, damage x1.5, Y bullet life x0.8, Y shield x0.8     turn mirror v c3: score 0.501 ± 0.009  kills m/o/f/t 0.50 / 0.44 / 0.06 / 0.00  life 306 s  kpm/ship 0.19  trades 0.00
+1v1 D2 | armour 0.085 12 deg p8, damage x1.5, Y bullet life x0.8, Y shield x0.8   energy mirror v c3: score 0.502 ± 0.008  kills m/o/f/t 0.11 / 0.76 / 0.13 / 0.00  life 327 s  kpm/ship 0.18  trades 0.00
+1v1 D2 | armour 0.085 12 deg p8, damage Y x1.25 J x1.5, Y shield x0.8   energy v turn v c4: score 0.482 ± 0.011  kills m/o/f/t 0.11 / 0.80 / 0.08 / 0.00  life 217 s  kpm/ship 0.26  trades 0.00
+1v1 D2 | armour 0.085 12 deg p8, damage Y x1.25 J x1.5, Y shield x0.8     turn mirror v c4: score 0.507 ± 0.010  kills m/o/f/t 0.48 / 0.46 / 0.06 / 0.00  life 295 s  kpm/ship 0.20  trades 0.01
+1v1 D2 | armour 0.085 12 deg p8, damage Y x1.25 J x1.5, Y shield x0.8   energy mirror v c4: score 0.493 ± 0.008  kills m/o/f/t 0.09 / 0.78 / 0.13 / 0.00  life 329 s  kpm/ship 0.18  trades 0.00
+## 2v2: 5 jobs, B 8192, 00:15 KST
+2v2                      D2 | r9   energy v turn v c0: score 0.489 ± 0.014  kills m/o/f/t 0.08 / 0.24 / 0.55 / 0.13  life 113 s  kpm/ship 0.49  trades 0.01
+2v2 D2 | armour 0.085 12 deg p8, damage x1.5, Y bullet life x0.7   energy v turn v c1: score 0.463 ± 0.014  kills m/o/f/t 0.04 / 0.32 / 0.53 / 0.11  life 103 s  kpm/ship 0.53  trades 0.02
+2v2 D2 | armour 0.085 12 deg p8, damage Y x1.25 J x1.5   energy v turn v c2: score 0.459 ± 0.014  kills m/o/f/t 0.04 / 0.32 / 0.53 / 0.11  life 102 s  kpm/ship 0.54  trades 0.02
+2v2 D2 | armour 0.085 12 deg p8, damage x1.5, Y bullet life x0.8, Y shield x0.8   energy v turn v c3: score 0.445 ± 0.014  kills m/o/f/t 0.05 / 0.33 / 0.52 / 0.11  life 99 s  kpm/ship 0.55  trades 0.02
+2v2 D2 | armour 0.085 12 deg p8, damage Y x1.25 J x1.5, Y shield x0.8   energy v turn v c4: score 0.402 ± 0.014  kills m/o/f/t 0.05 / 0.32 / 0.51 / 0.11  life 99 s  kpm/ship 0.55  trades 0.02
+## 5v5: 15 jobs, B 4096, 00:17 KST
+  batch 1/4 134 s; ETA 00:26 KST
+  batch 2/4 159 s; ETA 00:22 KST
+  batch 3/4 184 s; ETA 00:21 KST
+  batch 4/4 208 s; ETA 00:20 KST
+5v5                      D2 | r9   energy v turn v c0: score 0.564 ± 0.014  kills m/o/f/t 0.05 / 0.18 / 0.58 / 0.19  life 103 s  kpm/ship 0.53  trades 0.04
+5v5 D2 | armour 0.085 12 deg p8, damage x1.5, Y bullet life x0.7   energy v turn v c1: score 0.560 ± 0.014  kills m/o/f/t 0.04 / 0.26 / 0.55 / 0.16  life 95 s  kpm/ship 0.57  trades 0.05
+5v5 D2 | armour 0.085 12 deg p8, damage Y x1.25 J x1.5   energy v turn v c2: score 0.586 ± 0.014  kills m/o/f/t 0.04 / 0.26 / 0.54 / 0.16  life 93 s  kpm/ship 0.58  trades 0.05
+5v5 D2 | armour 0.085 12 deg p8, damage x1.5, Y bullet life x0.8, Y shield x0.8   energy v turn v c3: score 0.533 ± 0.015  kills m/o/f/t 0.04 / 0.27 / 0.54 / 0.15  life 91 s  kpm/ship 0.59  trades 0.05
+5v5 D2 | armour 0.085 12 deg p8, damage Y x1.25 J x1.5, Y shield x0.8   energy v turn v c4: score 0.521 ± 0.015  kills m/o/f/t 0.04 / 0.27 / 0.53 / 0.15  life 91 s  kpm/ship 0.59  trades 0.05
+5v5                      D2 | r9           mixed v r9: score 0.518 ± 0.015  kills m/o/f/t 0.05 / 0.19 / 0.58 / 0.18  life 100 s  kpm/ship 0.55  trades 0.05
+5v5                      D2 | r9  mixed reversed v r9: score 0.496 ± 0.015  kills m/o/f/t 0.05 / 0.18 / 0.58 / 0.18  life 98 s  kpm/ship 0.55  trades 0.05
+5v5 D2 | armour 0.085 12 deg p8, damage x1.5, Y bullet life x0.7           mixed v r9: score 0.478 ± 0.015  kills m/o/f/t 0.03 / 0.26 / 0.55 / 0.15  life 93 s  kpm/ship 0.59  trades 0.05
+5v5 D2 | armour 0.085 12 deg p8, damage x1.5, Y bullet life x0.7  mixed reversed v r9: score 0.506 ± 0.015  kills m/o/f/t 0.04 / 0.27 / 0.55 / 0.15  life 90 s  kpm/ship 0.60  trades 0.06
+5v5 D2 | armour 0.085 12 deg p8, damage Y x1.25 J x1.5           mixed v r9: score 0.483 ± 0.015  kills m/o/f/t 0.04 / 0.27 / 0.54 / 0.15  life 91 s  kpm/ship 0.59  trades 0.05
+5v5 D2 | armour 0.085 12 deg p8, damage Y x1.25 J x1.5  mixed reversed v r9: score 0.480 ± 0.015  kills m/o/f/t 0.04 / 0.26 / 0.55 / 0.15  life 90 s  kpm/ship 0.60  trades 0.06
+5v5 D2 | armour 0.085 12 deg p8, damage x1.5, Y bullet life x0.8, Y shield x0.8           mixed v r9: score 0.512 ± 0.015  kills m/o/f/t 0.04 / 0.27 / 0.55 / 0.14  life 89 s  kpm/ship 0.61  trades 0.06
+5v5 D2 | armour 0.085 12 deg p8, damage x1.5, Y bullet life x0.8, Y shield x0.8  mixed reversed v r9: score 0.480 ± 0.015  kills m/o/f/t 0.04 / 0.27 / 0.54 / 0.14  life 88 s  kpm/ship 0.61  trades 0.06
+5v5 D2 | armour 0.085 12 deg p8, damage Y x1.25 J x1.5, Y shield x0.8           mixed v r9: score 0.511 ± 0.015  kills m/o/f/t 0.04 / 0.27 / 0.55 / 0.14  life 88 s  kpm/ship 0.61  trades 0.05
+5v5 D2 | armour 0.085 12 deg p8, damage Y x1.25 J x1.5, Y shield x0.8  mixed reversed v r9: score 0.452 ± 0.015  kills m/o/f/t 0.04 / 0.27 / 0.54 / 0.14  life 87 s  kpm/ship 0.62  trades 0.06
+## 10v10: 5 jobs, B 2048, 00:20 KST
+  batch 1/2 114 s; ETA 00:24 KST
+  batch 2/2 148 s; ETA 00:23 KST
+10v10                      D2 | r9   energy v turn v c0: score 0.471 ± 0.021  kills m/o/f/t 0.05 / 0.18 / 0.56 / 0.22  life 118 s  kpm/ship 0.47  trades 0.08
+10v10 D2 | armour 0.085 12 deg p8, damage x1.5, Y bullet life x0.7   energy v turn v c1: score 0.471 ± 0.021  kills m/o/f/t 0.04 / 0.26 / 0.53 / 0.18  life 109 s  kpm/ship 0.50  trades 0.09
+10v10 D2 | armour 0.085 12 deg p8, damage Y x1.25 J x1.5   energy v turn v c2: score 0.515 ± 0.021  kills m/o/f/t 0.04 / 0.25 / 0.53 / 0.18  life 106 s  kpm/ship 0.52  trades 0.09
+10v10 D2 | armour 0.085 12 deg p8, damage x1.5, Y bullet life x0.8, Y shield x0.8   energy v turn v c3: score 0.478 ± 0.021  kills m/o/f/t 0.04 / 0.26 / 0.53 / 0.17  life 104 s  kpm/ship 0.53  trades 0.10
+10v10 D2 | armour 0.085 12 deg p8, damage Y x1.25 J x1.5, Y shield x0.8   energy v turn v c4: score 0.438 ± 0.021  kills m/o/f/t 0.05 / 0.27 / 0.52 / 0.17  life 103 s  kpm/ship 0.53  trades 0.10
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| D2 | r9 | 0.492 ± 0.010 | 0.489 ± 0.014 | 0.564 ± 0.014 | 0.471 ± 0.021 | 0.064 | 0.05 / 0.18 / 0.58 / 0.19 | 0.04 | 285 / 113 / 103 / 118 | 0.20 / 0.49 / 0.53 / 0.47 | 3.41 |
+| D2 | armour 0.085 12 deg p8, damage x1.5, Y bullet life x0.7 | 0.550 ± 0.011 | 0.463 ± 0.014 | 0.560 ± 0.014 | 0.471 ± 0.021 | 0.060 | 0.04 / 0.26 / 0.55 / 0.16 | 0.05 | 233 / 103 / 95 / 109 | 0.25 / 0.53 / 0.57 / 0.50 | 2.76 |
+| D2 | armour 0.085 12 deg p8, damage Y x1.25 J x1.5 | 0.517 ± 0.011 | 0.459 ± 0.014 | 0.586 ± 0.014 | 0.515 ± 0.021 | 0.086 | 0.04 / 0.26 / 0.54 / 0.16 | 0.05 | 239 / 102 / 93 / 106 | 0.24 / 0.54 / 0.58 / 0.52 | 2.81 |
+| D2 | armour 0.085 12 deg p8, damage x1.5, Y bullet life x0.8, Y shield x0.8 | 0.514 ± 0.011 | 0.445 ± 0.014 | 0.533 ± 0.015 | 0.478 ± 0.021 | 0.055 | 0.04 / 0.27 / 0.54 / 0.15 | 0.05 | 219 / 99 / 91 / 104 | 0.26 / 0.55 / 0.59 / 0.53 | 2.63 |
+| D2 | armour 0.085 12 deg p8, damage Y x1.25 J x1.5, Y shield x0.8 | 0.482 ± 0.011 | 0.402 ± 0.014 | 0.521 ± 0.015 | 0.438 ± 0.021 | 0.098 | 0.04 / 0.27 / 0.53 / 0.15 | 0.05 | 217 / 99 / 91 / 103 | 0.26 / 0.55 / 0.59 / 0.53 | 2.62 |
+
+629 s

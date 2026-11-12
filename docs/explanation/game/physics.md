@@ -151,7 +151,7 @@ which blocks sight (see [Perception and fog](perception.md)).
 
   with `D` the shooter's hit damage, a centre hit's at the reference distance. The speed
   term: `w` is the bullet's own proper speed (through the medium, not relative to the
-  target, which would favour the head-on pass), `w_ref` its type's speed at the rules'
+  target, which would favour the head-on pass), `w_ref`{.plain} its type's speed at the rules'
   damage reference distance from a shot at cruise (the card's `reference_bullet_speed`;
   300 m in the real-scale sets), and `x` the type's explosive share (0 by default: pure
   kinetic energy). The closeness term: `b` is the closest approach of the bullet's path
@@ -160,12 +160,15 @@ which blocks sight (see [Perception and fog](perception.md)).
   miss, graze, hit and centre are continuous. Its mean over a uniform `b` is 8/15, so the
   expected hit is `8/15 D` at the reference distance. The aspect
   `A(θ) = 1 - (1 - f_0) exp(-ln 2 (θ / θ_h)^p)`, with `θ` the angle between the bullet's
-  reversed direction and the target's nose: the target's head-on fraction `f_0` from dead
+  reversed direction and the target's nose: the target's head-on fraction `f_0`{.plain} from dead
   ahead, half way to full damage at the target's head-on angle `θ_h` (42.27 degrees by
   default, the old fixed curve's `exp(-4θ²/π)`), and nearly all of it from the side or
   rear. The target's head-on sharpness `p` (2 by default, a Gaussian cone) shapes the
   cone: a higher `p` keeps the armour near `f_0` across the cone and drops it quickly past
-  `θ_h` (a tank's armoured nose). A bullet is consumed by its hit (game version 6).
+  `θ_h` (a tank's armoured nose). The shooter's arming distance `X` (0 by default, off)
+  ramps the damage as a smoothstep of the distance the bullet has travelled over `[0, X]`: a
+  minimum effective range, like a fuse's arming time. A bullet is consumed by its hit (game
+  version 6).
 - **Shields.** Damage beyond the current shield breaks it, and the overkill is ignored.
   Any damage to a ship whose shield was already broken at tick start kills it. After a
   delay without damage, the shield recharges at a fixed rate; both are per type. The delay

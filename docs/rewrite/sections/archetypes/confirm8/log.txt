@@ -1,0 +1,32 @@
+## 1v1: 6 jobs, B 8192, 04:00 KST
+W1112 19:01:21.537000 56356 /workspace/arch/venv/lib/python3.14/site-packages/torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+1v1 hit-and-run (f0 0.06, dmg x1.2, vision x0.97) v standard (M), kit2   energy v turn v c0: score 0.535 ± 0.010  kills m/o/f/t 0.36 / 0.55 / 0.09 / 0.00  life 261 s  kpm/ship 0.22  trades 0.00
+1v1 hit-and-run (f0 0.06, dmg x1.2, vision x0.97) v standard (M), kit2     turn mirror v c0: score 0.506 ± 0.010  kills m/o/f/t 0.34 / 0.57 / 0.09 / 0.00  life 288 s  kpm/ship 0.20  trades 0.00
+1v1 hit-and-run (f0 0.06, dmg x1.2, vision x0.97) v standard (M), kit2   energy mirror v c0: score 0.491 ± 0.010  kills m/o/f/t 0.37 / 0.51 / 0.12 / 0.00  life 271 s  kpm/ship 0.21  trades 0.00
+1v1 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2   energy v turn v c1: score 0.527 ± 0.010  kills m/o/f/t 0.35 / 0.54 / 0.11 / 0.00  life 257 s  kpm/ship 0.22  trades 0.00
+1v1 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2     turn mirror v c1: score 0.498 ± 0.010  kills m/o/f/t 0.36 / 0.56 / 0.08 / 0.00  life 295 s  kpm/ship 0.20  trades 0.01
+1v1 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2   energy mirror v c1: score 0.509 ± 0.010  kills m/o/f/t 0.34 / 0.54 / 0.11 / 0.00  life 260 s  kpm/ship 0.22  trades 0.01
+## 2v2: 2 jobs, B 8192, 04:02 KST
+2v2 hit-and-run (f0 0.06, dmg x1.2, vision x0.97) v standard (M), kit2   energy v turn v c0: score 0.500 ± 0.014  kills m/o/f/t 0.07 / 0.34 / 0.50 / 0.09  life 89 s  kpm/ship 0.61  trades 0.02
+2v2 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2   energy v turn v c1: score 0.484 ± 0.014  kills m/o/f/t 0.07 / 0.35 / 0.50 / 0.08  life 90 s  kpm/ship 0.60  trades 0.02
+## 5v5: 6 jobs, B 4096, 04:04 KST
+  batch 1/2 170 s; ETA 04:10 KST
+  batch 2/2 198 s; ETA 04:08 KST
+5v5 hit-and-run (f0 0.06, dmg x1.2, vision x0.97) v standard (M), kit2   energy v turn v c0: score 0.490 ± 0.015  kills m/o/f/t 0.06 / 0.30 / 0.52 / 0.12  life 80 s  kpm/ship 0.67  trades 0.08
+5v5 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2   energy v turn v c1: score 0.467 ± 0.015  kills m/o/f/t 0.06 / 0.30 / 0.52 / 0.12  life 81 s  kpm/ship 0.66  trades 0.07
+5v5 hit-and-run (f0 0.06, dmg x1.2, vision x0.97) v standard (M), kit2           mixed v r9: score 0.476 ± 0.015  kills m/o/f/t 0.06 / 0.30 / 0.52 / 0.12  life 80 s  kpm/ship 0.67  trades 0.08
+5v5 hit-and-run (f0 0.06, dmg x1.2, vision x0.97) v standard (M), kit2  mixed reversed v r9: score 0.502 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.12  life 81 s  kpm/ship 0.66  trades 0.07
+5v5 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2           mixed v r9: score 0.502 ± 0.015  kills m/o/f/t 0.06 / 0.30 / 0.52 / 0.12  life 80 s  kpm/ship 0.67  trades 0.07
+5v5 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2  mixed reversed v r9: score 0.530 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.52 / 0.12  life 81 s  kpm/ship 0.66  trades 0.07
+## 10v10: 2 jobs, B 2048, 04:08 KST
+10v10 hit-and-run (f0 0.06, dmg x1.2, vision x0.97) v standard (M), kit2   energy v turn v c0: score 0.444 ± 0.021  kills m/o/f/t 0.06 / 0.29 / 0.51 / 0.14  life 89 s  kpm/ship 0.61  trades 0.14
+10v10 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2   energy v turn v c1: score 0.471 ± 0.021  kills m/o/f/t 0.06 / 0.29 / 0.51 / 0.13  life 89 s  kpm/ship 0.61  trades 0.14
+## 20v20: 2 jobs, B 1024, 04:10 KST
+20v20 hit-and-run (f0 0.06, dmg x1.2, vision x0.97) v standard (M), kit2   energy v turn v c0: score 0.475 ± 0.030  kills m/o/f/t 0.06 / 0.29 / 0.50 / 0.15  life 107 s  kpm/ship 0.51  trades 0.22
+20v20 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2   energy v turn v c1: score 0.461 ± 0.030  kills m/o/f/t 0.06 / 0.29 / 0.50 / 0.15  life 107 s  kpm/ship 0.52  trades 0.22
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | E v T 20v20 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| hit-and-run (f0 0.06, dmg x1.2, vision x0.97) v standard (M), kit2 | 0.535 ± 0.010 | 0.500 ± 0.014 | 0.490 ± 0.015 | 0.444 ± 0.021 | 0.475 ± 0.030 | 0.056 | 0.06 / 0.30 / 0.52 / 0.12 | 0.08 | 261 / 89 / 80 / 89 / 107 | 0.22 / 0.61 / 0.67 / 0.61 / 0.51 | 2.96 |
+| hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | 0.527 ± 0.010 | 0.484 ± 0.014 | 0.467 ± 0.015 | 0.471 ± 0.021 | 0.461 ± 0.030 | 0.039 | 0.06 / 0.30 / 0.52 / 0.12 | 0.07 | 257 / 90 / 81 / 89 / 107 | 0.22 / 0.60 / 0.66 / 0.61 / 0.52 | 2.95 |
+
+808 s

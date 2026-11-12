@@ -1,0 +1,31 @@
+## 1v1: 6 jobs, B 8192, 04:14 KST
+1v1 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | crowd extend + lead   energy v turn v c0: score 0.510 ± 0.010  kills m/o/f/t 0.26 / 0.63 / 0.11 / 0.00  life 289 s  kpm/ship 0.20  trades 0.00
+1v1 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | crowd extend + lead     turn mirror v c0: score 0.500 ± 0.010  kills m/o/f/t 0.23 / 0.67 / 0.10 / 0.00  life 346 s  kpm/ship 0.17  trades 0.00
+1v1 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | crowd extend + lead   energy mirror v c0: score 0.513 ± 0.010  kills m/o/f/t 0.27 / 0.62 / 0.11 / 0.00  life 303 s  kpm/ship 0.19  trades 0.00
+1v1 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | duel one-circle + crowd extend + lead   energy v turn v c1: score 0.506 ± 0.010  kills m/o/f/t 0.27 / 0.62 / 0.11 / 0.00  life 292 s  kpm/ship 0.20  trades 0.00
+1v1 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | duel one-circle + crowd extend + lead     turn mirror v c1: score 0.483 ± 0.011  kills m/o/f/t 0.68 / 0.18 / 0.04 / 0.10  life 186 s  kpm/ship 0.31  trades 0.01
+1v1 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | duel one-circle + crowd extend + lead   energy mirror v c1: score 0.514 ± 0.011  kills m/o/f/t 0.60 / 0.22 / 0.07 / 0.11  life 163 s  kpm/ship 0.35  trades 0.02
+## 2v2: 2 jobs, B 8192, 04:15 KST
+2v2 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | crowd extend + lead   energy v turn v c0: score 0.462 ± 0.014  kills m/o/f/t 0.08 / 0.36 / 0.46 / 0.11  life 96 s  kpm/ship 0.57  trades 0.02
+2v2 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | duel one-circle + crowd extend + lead   energy v turn v c1: score 0.476 ± 0.014  kills m/o/f/t 0.08 / 0.36 / 0.45 / 0.11  life 96 s  kpm/ship 0.57  trades 0.02
+## 5v5: 6 jobs, B 4096, 04:15 KST
+  batch 1/2 63 s; ETA 04:17 KST
+  batch 2/2 118 s; ETA 04:17 KST
+5v5 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | crowd extend + lead   energy v turn v c0: score 0.460 ± 0.014  kills m/o/f/t 0.07 / 0.31 / 0.43 / 0.19  life 97 s  kpm/ship 0.56  trades 0.05
+5v5 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | duel one-circle + crowd extend + lead   energy v turn v c1: score 0.491 ± 0.014  kills m/o/f/t 0.07 / 0.31 / 0.43 / 0.19  life 97 s  kpm/ship 0.56  trades 0.05
+5v5 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | crowd extend + lead           mixed v r9: score 0.819 ± 0.011  kills m/o/f/t 0.07 / 0.32 / 0.49 / 0.12  life 90 s  kpm/ship 0.60  trades 0.06
+5v5 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | crowd extend + lead  mixed reversed v r9: score 0.815 ± 0.011  kills m/o/f/t 0.07 / 0.31 / 0.49 / 0.13  life 91 s  kpm/ship 0.59  trades 0.05
+5v5 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | duel one-circle + crowd extend + lead           mixed v r9: score 0.818 ± 0.011  kills m/o/f/t 0.07 / 0.31 / 0.46 / 0.16  life 93 s  kpm/ship 0.59  trades 0.06
+5v5 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | duel one-circle + crowd extend + lead  mixed reversed v r9: score 0.816 ± 0.011  kills m/o/f/t 0.08 / 0.31 / 0.46 / 0.16  life 95 s  kpm/ship 0.57  trades 0.06
+## 10v10: 2 jobs, B 2048, 04:17 KST
+10v10 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | crowd extend + lead   energy v turn v c0: score 0.478 ± 0.021  kills m/o/f/t 0.07 / 0.31 / 0.40 / 0.21  life 110 s  kpm/ship 0.50  trades 0.10
+10v10 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | duel one-circle + crowd extend + lead   energy v turn v c1: score 0.467 ± 0.021  kills m/o/f/t 0.08 / 0.30 / 0.40 / 0.22  life 110 s  kpm/ship 0.50  trades 0.10
+## 20v20: 2 jobs, B 1024, 04:18 KST
+20v20 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | crowd extend + lead   energy v turn v c0: score 0.441 ± 0.030  kills m/o/f/t 0.07 / 0.31 / 0.39 / 0.22  life 133 s  kpm/ship 0.42  trades 0.18
+20v20 hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | duel one-circle + crowd extend + lead   energy v turn v c1: score 0.469 ± 0.031  kills m/o/f/t 0.08 / 0.30 / 0.39 / 0.23  life 129 s  kpm/ship 0.43  trades 0.17
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | E v T 20v20 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | crowd extend + lead | 0.510 ± 0.010 | 0.462 ± 0.014 | 0.460 ± 0.014 | 0.478 ± 0.021 | 0.441 ± 0.030 | 0.059 | 0.07 / 0.31 / 0.43 / 0.19 | 0.05 | 289 / 96 / 97 / 110 / 133 | 0.20 / 0.57 / 0.56 / 0.50 / 0.42 | 2.72 |
+| hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | duel one-circle + crowd extend + lead | 0.506 ± 0.010 | 0.476 ± 0.014 | 0.491 ± 0.014 | 0.467 ± 0.021 | 0.469 ± 0.031 | 0.033 | 0.07 / 0.31 / 0.43 / 0.19 | 0.05 | 292 / 96 / 97 / 110 / 129 | 0.20 / 0.57 / 0.56 / 0.50 / 0.43 | 2.74 |
+
+358 s

@@ -76,8 +76,7 @@ def new_map(
     drawn = torch.cat(
         [per_field[:, :P], per_field[:, :P], per_field[:, 2 * P :]], 1
     )  # pairs, centre
-    span = rules.field_radius_max - rules.field_radius_min
-    radius = map_scale[:, None] * (rules.field_radius_min + span * drawn[..., 2])
+    radius = map_scale[:, None] * field_radius(rules, drawn[..., 2])
     level = field_level(rules, drawn[..., 3])
     centre = torch.zeros((B, M - 2 * P), device=uniforms.device)
     fields = Fields(
@@ -89,6 +88,33 @@ def new_map(
     )
     axis = 2.0 * math.pi * uniforms[:, 4 * M]
     return fields, torch.cos(axis), torch.sin(axis)
+
+
+def field_radius(rules: Rules, u: torch.Tensor) -> torch.Tensor:
+    """A field's radius in metres at map scale 1 from its uniform draw `u` in [0, 1), by
+    the rules' `field_radius_distribution` (every branch is computed and the rule's value
+    selects one, so the choice is live data in the compiled tick)."""
+    low, high = rules.field_radius_min, rules.field_radius_max
+    span = high - low
+    code = torch.as_tensor(rules.field_radius_distribution, device=u.device)
+    uniform = low + span * u
+    triangular = low + span * (1.0 - torch.sqrt(1.0 - u))
+    eps = 1e-6
+    z = math.sqrt(2.0) * torch.erfinv(2.0 * u.clamp(eps, 1.0 - eps) - 1.0)
+    lognormal = rules.field_radius_median * torch.exp(rules.field_radius_log_sigma * z)
+    lognormal = torch.maximum(
+        torch.minimum(lognormal, torch.as_tensor(high, device=u.device, dtype=u.dtype)),
+        torch.as_tensor(low, device=u.device, dtype=u.dtype),
+    )
+    return torch.where(code == 0, uniform, torch.where(code == 1, triangular, lognormal))
+
+
+def field_radius_summary(rules: Rules) -> tuple[float, float, float]:
+    """(mean, 10th percentile, 90th percentile) of a field's radius in metres at map scale
+    1 under these rules, on the CPU from the same formula (a midpoint grid of the uniform)."""
+    grid = (torch.arange(4000, dtype=torch.float64) + 0.5) / 4000.0
+    radius = field_radius(rules, grid)
+    return radius.mean().item(), radius[400].item(), radius[3599].item()
 
 
 def formation_rank(rules: Rules, keys: torch.Tensor) -> torch.Tensor:

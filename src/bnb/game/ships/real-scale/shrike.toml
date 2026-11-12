@@ -32,6 +32,7 @@ shield_recharge_delay = 6.0
 head_on_fraction = 0.3
 head_on_angle = 0.737832313317803
 head_on_sharpness = 2.0
+arming_distance = 0.0
 hit_radius = 5.645
 spawn_energy = 44772.840000000004
 
@@ -69,6 +70,7 @@ shield_recharge_delay_scale = 1.0
 head_on_fraction_scale = 1.0
 head_on_angle_scale = 1.0
 head_on_sharpness = 2.0
+arming_distance = 0.0
 engine_knee_scale = 1.0
 
 [notes]
@@ -100,5 +102,7 @@ shield_recharge_rate = "placeholder: the standard fighter's"
 shield_recharge_delay = "placeholder: the standard fighter's"
 head_on_fraction = "placeholder: the standard fighter's"
 head_on_angle = "placeholder: the standard fighter's"
+head_on_sharpness = "placeholder: the standard fighter's"
+arming_distance = "placeholder: the standard fighter's"
 hit_radius = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
 spawn_energy = "placeholder: the standard fighter's fraction of the store"

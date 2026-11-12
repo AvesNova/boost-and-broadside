@@ -1,0 +1,67 @@
+## 1v1: 24 jobs, B 8192, 03:35 KST
+W1112 18:36:40.022000 52327 /workspace/arch/venv/lib/python3.14/site-packages/torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+  batch 1/2 122 s; ETA 03:40 KST
+  batch 2/2 161 s; ETA 03:38 KST
+1v1 rate (lift x1.2) v standard (M), kit2   energy v turn v c0: score 0.707 ± 0.014  kills m/o/f/t 0.21 / 0.73 / 0.06 / 0.00  life 214 s  kpm/ship 0.27  trades 0.00
+1v1 rate (lift x1.2) v standard (M), kit2     turn mirror v c0: score 0.479 ± 0.014  kills m/o/f/t 0.36 / 0.54 / 0.09 / 0.00  life 300 s  kpm/ship 0.19  trades 0.00
+1v1 rate (lift x1.2) v standard (M), kit2   energy mirror v c0: score 0.513 ± 0.014  kills m/o/f/t 0.43 / 0.51 / 0.06 / 0.00  life 226 s  kpm/ship 0.25  trades 0.00
+1v1 rate (lift x1.2, induced x1.05) v standard (M), kit2   energy v turn v c1: score 0.480 ± 0.015  kills m/o/f/t 0.29 / 0.64 / 0.07 / 0.00  life 228 s  kpm/ship 0.25  trades 0.00
+1v1 rate (lift x1.2, induced x1.05) v standard (M), kit2     turn mirror v c1: score 0.486 ± 0.014  kills m/o/f/t 0.35 / 0.57 / 0.09 / 0.00  life 288 s  kpm/ship 0.20  trades 0.00
+1v1 rate (lift x1.2, induced x1.05) v standard (M), kit2   energy mirror v c1: score 0.500 ± 0.015  kills m/o/f/t 0.40 / 0.53 / 0.07 / 0.00  life 223 s  kpm/ship 0.26  trades 0.01
+1v1 rate (lift x1.3, induced x1.1) v standard (M), kit2   energy v turn v c2: score 0.256 ± 0.014  kills m/o/f/t 0.21 / 0.72 / 0.07 / 0.00  life 213 s  kpm/ship 0.27  trades 0.00
+1v1 rate (lift x1.3, induced x1.1) v standard (M), kit2     turn mirror v c2: score 0.502 ± 0.014  kills m/o/f/t 0.33 / 0.58 / 0.09 / 0.00  life 270 s  kpm/ship 0.21  trades 0.01
+1v1 rate (lift x1.3, induced x1.1) v standard (M), kit2   energy mirror v c2: score 0.497 ± 0.016  kills m/o/f/t 0.43 / 0.51 / 0.06 / 0.00  life 213 s  kpm/ship 0.27  trades 0.01
+1v1 speed (drag x0.85, induced x1.1) v standard (M), kit2   energy v turn v c3: score 0.176 ± 0.012  kills m/o/f/t 0.25 / 0.67 / 0.08 / 0.00  life 194 s  kpm/ship 0.29  trades 0.00
+1v1 speed (drag x0.85, induced x1.1) v standard (M), kit2     turn mirror v c3: score 0.487 ± 0.014  kills m/o/f/t 0.37 / 0.55 / 0.09 / 0.00  life 293 s  kpm/ship 0.20  trades 0.00
+1v1 speed (drag x0.85, induced x1.1) v standard (M), kit2   energy mirror v c3: score 0.499 ± 0.013  kills m/o/f/t 0.34 / 0.58 / 0.08 / 0.00  life 298 s  kpm/ship 0.20  trades 0.00
+1v1 speed (drag x0.85) v standard (M), kit2   energy v turn v c4: score 0.527 ± 0.014  kills m/o/f/t 0.33 / 0.58 / 0.09 / 0.00  life 299 s  kpm/ship 0.19  trades 0.00
+1v1 speed (drag x0.85) v standard (M), kit2     turn mirror v c4: score 0.505 ± 0.014  kills m/o/f/t 0.39 / 0.54 / 0.07 / 0.00  life 304 s  kpm/ship 0.19  trades 0.01
+1v1 speed (drag x0.85) v standard (M), kit2   energy mirror v c4: score 0.493 ± 0.014  kills m/o/f/t 0.34 / 0.58 / 0.08 / 0.00  life 338 s  kpm/ship 0.17  trades 0.00
+1v1 power (engine x1.15, induced x1.15) v standard (M), kit2   energy v turn v c5: score 0.153 ± 0.011  kills m/o/f/t 0.24 / 0.65 / 0.11 / 0.00  life 200 s  kpm/ship 0.29  trades 0.00
+1v1 power (engine x1.15, induced x1.15) v standard (M), kit2     turn mirror v c5: score 0.499 ± 0.015  kills m/o/f/t 0.37 / 0.54 / 0.09 / 0.00  life 279 s  kpm/ship 0.21  trades 0.00
+1v1 power (engine x1.15, induced x1.15) v standard (M), kit2   energy mirror v c5: score 0.510 ± 0.014  kills m/o/f/t 0.32 / 0.60 / 0.08 / 0.00  life 309 s  kpm/ship 0.19  trades 0.00
+1v1 sustained (lift x0.85, induced x0.9) v standard (M), kit2   energy v turn v c6: score 0.596 ± 0.014  kills m/o/f/t 0.15 / 0.76 / 0.09 / 0.00  life 321 s  kpm/ship 0.18  trades 0.00
+1v1 sustained (lift x0.85, induced x0.9) v standard (M), kit2     turn mirror v c6: score 0.484 ± 0.014  kills m/o/f/t 0.34 / 0.55 / 0.11 / 0.00  life 304 s  kpm/ship 0.19  trades 0.00
+1v1 sustained (lift x0.85, induced x0.9) v standard (M), kit2   energy mirror v c6: score 0.514 ± 0.012  kills m/o/f/t 0.23 / 0.66 / 0.11 / 0.00  life 552 s  kpm/ship 0.11  trades 0.00
+1v1 sustained (lift x0.85) v standard (M), kit2   energy v turn v c7: score 0.234 ± 0.013  kills m/o/f/t 0.15 / 0.76 / 0.09 / 0.00  life 234 s  kpm/ship 0.25  trades 0.00
+1v1 sustained (lift x0.85) v standard (M), kit2     turn mirror v c7: score 0.499 ± 0.014  kills m/o/f/t 0.35 / 0.57 / 0.08 / 0.00  life 284 s  kpm/ship 0.20  trades 0.00
+1v1 sustained (lift x0.85) v standard (M), kit2   energy mirror v c7: score 0.501 ± 0.013  kills m/o/f/t 0.21 / 0.67 / 0.11 / 0.00  life 445 s  kpm/ship 0.13  trades 0.00
+## 2v2: 8 jobs, B 8192, 03:38 KST
+2v2 rate (lift x1.2) v standard (M), kit2   energy v turn v c0: score 0.496 ± 0.020  kills m/o/f/t 0.07 / 0.34 / 0.49 / 0.10  life 91 s  kpm/ship 0.60  trades 0.02
+2v2 rate (lift x1.2, induced x1.05) v standard (M), kit2   energy v turn v c1: score 0.433 ± 0.020  kills m/o/f/t 0.07 / 0.34 / 0.50 / 0.10  life 90 s  kpm/ship 0.60  trades 0.02
+2v2 rate (lift x1.3, induced x1.1) v standard (M), kit2   energy v turn v c2: score 0.398 ± 0.020  kills m/o/f/t 0.07 / 0.34 / 0.49 / 0.10  life 90 s  kpm/ship 0.60  trades 0.02
+2v2 speed (drag x0.85, induced x1.1) v standard (M), kit2   energy v turn v c3: score 0.406 ± 0.020  kills m/o/f/t 0.07 / 0.32 / 0.51 / 0.10  life 92 s  kpm/ship 0.59  trades 0.02
+2v2 speed (drag x0.85) v standard (M), kit2   energy v turn v c4: score 0.502 ± 0.020  kills m/o/f/t 0.07 / 0.34 / 0.50 / 0.09  life 94 s  kpm/ship 0.58  trades 0.02
+2v2 power (engine x1.15, induced x1.15) v standard (M), kit2   energy v turn v c5: score 0.368 ± 0.019  kills m/o/f/t 0.07 / 0.33 / 0.51 / 0.09  life 91 s  kpm/ship 0.59  trades 0.02
+2v2 sustained (lift x0.85, induced x0.9) v standard (M), kit2   energy v turn v c6: score 0.593 ± 0.020  kills m/o/f/t 0.07 / 0.33 / 0.50 / 0.10  life 96 s  kpm/ship 0.57  trades 0.01
+2v2 sustained (lift x0.85) v standard (M), kit2   energy v turn v c7: score 0.465 ± 0.020  kills m/o/f/t 0.06 / 0.34 / 0.50 / 0.10  life 93 s  kpm/ship 0.58  trades 0.03
+## 5v5: 8 jobs, B 4096, 03:40 KST
+5v5 rate (lift x1.2) v standard (M), kit2   energy v turn v c0: score 0.451 ± 0.020  kills m/o/f/t 0.06 / 0.28 / 0.53 / 0.13  life 82 s  kpm/ship 0.65  trades 0.07
+5v5 rate (lift x1.2, induced x1.05) v standard (M), kit2   energy v turn v c1: score 0.347 ± 0.020  kills m/o/f/t 0.05 / 0.28 / 0.53 / 0.13  life 81 s  kpm/ship 0.66  trades 0.07
+5v5 rate (lift x1.3, induced x1.1) v standard (M), kit2   energy v turn v c2: score 0.269 ± 0.018  kills m/o/f/t 0.06 / 0.28 / 0.53 / 0.13  life 82 s  kpm/ship 0.65  trades 0.08
+5v5 speed (drag x0.85, induced x1.1) v standard (M), kit2   energy v turn v c3: score 0.407 ± 0.021  kills m/o/f/t 0.05 / 0.29 / 0.54 / 0.12  life 83 s  kpm/ship 0.65  trades 0.07
+5v5 speed (drag x0.85) v standard (M), kit2   energy v turn v c4: score 0.553 ± 0.021  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.12  life 83 s  kpm/ship 0.65  trades 0.07
+5v5 power (engine x1.15, induced x1.15) v standard (M), kit2   energy v turn v c5: score 0.414 ± 0.021  kills m/o/f/t 0.05 / 0.28 / 0.54 / 0.13  life 82 s  kpm/ship 0.65  trades 0.07
+5v5 sustained (lift x0.85, induced x0.9) v standard (M), kit2   energy v turn v c6: score 0.687 ± 0.019  kills m/o/f/t 0.05 / 0.29 / 0.53 / 0.13  life 85 s  kpm/ship 0.64  trades 0.06
+5v5 sustained (lift x0.85) v standard (M), kit2   energy v turn v c7: score 0.594 ± 0.020  kills m/o/f/t 0.05 / 0.29 / 0.53 / 0.13  life 84 s  kpm/ship 0.64  trades 0.06
+## 10v10: 8 jobs, B 2048, 03:43 KST
+10v10 rate (lift x1.2) v standard (M), kit2   energy v turn v c0: score 0.434 ± 0.029  kills m/o/f/t 0.06 / 0.28 / 0.52 / 0.15  life 91 s  kpm/ship 0.60  trades 0.13
+10v10 rate (lift x1.2, induced x1.05) v standard (M), kit2   energy v turn v c1: score 0.291 ± 0.027  kills m/o/f/t 0.06 / 0.28 / 0.52 / 0.15  life 90 s  kpm/ship 0.60  trades 0.13
+10v10 rate (lift x1.3, induced x1.1) v standard (M), kit2   energy v turn v c2: score 0.168 ± 0.022  kills m/o/f/t 0.06 / 0.29 / 0.51 / 0.14  life 92 s  kpm/ship 0.59  trades 0.12
+10v10 speed (drag x0.85, induced x1.1) v standard (M), kit2   energy v turn v c3: score 0.416 ± 0.030  kills m/o/f/t 0.05 / 0.28 / 0.52 / 0.15  life 90 s  kpm/ship 0.60  trades 0.13
+10v10 speed (drag x0.85) v standard (M), kit2   energy v turn v c4: score 0.574 ± 0.030  kills m/o/f/t 0.06 / 0.28 / 0.52 / 0.14  life 92 s  kpm/ship 0.59  trades 0.12
+10v10 power (engine x1.15, induced x1.15) v standard (M), kit2   energy v turn v c5: score 0.420 ± 0.029  kills m/o/f/t 0.06 / 0.27 / 0.53 / 0.15  life 91 s  kpm/ship 0.60  trades 0.13
+10v10 sustained (lift x0.85, induced x0.9) v standard (M), kit2   energy v turn v c6: score 0.730 ± 0.027  kills m/o/f/t 0.05 / 0.28 / 0.52 / 0.15  life 94 s  kpm/ship 0.58  trades 0.12
+10v10 sustained (lift x0.85) v standard (M), kit2   energy v turn v c7: score 0.613 ± 0.029  kills m/o/f/t 0.06 / 0.28 / 0.52 / 0.14  life 92 s  kpm/ship 0.59  trades 0.12
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| rate (lift x1.2) v standard (M), kit2 | 0.707 ± 0.014 | 0.496 ± 0.020 | 0.451 ± 0.020 | 0.434 ± 0.029 | 0.207 | 0.06 / 0.28 / 0.53 / 0.13 | 0.07 | 214 / 91 / 82 / 91 | 0.27 / 0.60 / 0.65 / 0.60 | 2.84 |
+| rate (lift x1.2, induced x1.05) v standard (M), kit2 | 0.480 ± 0.015 | 0.433 ± 0.020 | 0.347 ± 0.020 | 0.291 ± 0.027 | 0.209 | 0.05 / 0.28 / 0.53 / 0.13 | 0.07 | 228 / 90 / 81 / 90 | 0.25 / 0.60 / 0.66 / 0.60 | 3.16 |
+| rate (lift x1.3, induced x1.1) v standard (M), kit2 | 0.256 ± 0.014 | 0.398 ± 0.020 | 0.269 ± 0.018 | 0.168 ± 0.022 | 0.332 | 0.06 / 0.28 / 0.53 / 0.13 | 0.08 | 213 / 90 / 82 / 92 | 0.27 / 0.60 / 0.65 / 0.59 | 2.94 |
+| speed (drag x0.85, induced x1.1) v standard (M), kit2 | 0.176 ± 0.012 | 0.406 ± 0.020 | 0.407 ± 0.021 | 0.416 ± 0.030 | 0.324 | 0.05 / 0.29 / 0.54 / 0.12 | 0.07 | 194 / 92 / 83 / 90 | 0.29 / 0.59 / 0.65 / 0.60 | 2.52 |
+| speed (drag x0.85) v standard (M), kit2 | 0.527 ± 0.014 | 0.502 ± 0.020 | 0.553 ± 0.021 | 0.574 ± 0.030 | 0.074 | 0.06 / 0.29 / 0.53 / 0.12 | 0.07 | 299 / 94 / 83 / 92 | 0.19 / 0.58 / 0.65 / 0.59 | 3.24 |
+| power (engine x1.15, induced x1.15) v standard (M), kit2 | 0.153 ± 0.011 | 0.368 ± 0.019 | 0.414 ± 0.021 | 0.420 ± 0.029 | 0.347 | 0.05 / 0.28 / 0.54 / 0.13 | 0.07 | 200 / 91 / 82 / 91 | 0.29 / 0.59 / 0.65 / 0.60 | 2.52 |
+| sustained (lift x0.85, induced x0.9) v standard (M), kit2 | 0.596 ± 0.014 | 0.593 ± 0.020 | 0.687 ± 0.019 | 0.730 ± 0.027 | 0.230 | 0.05 / 0.29 / 0.53 / 0.13 | 0.06 | 321 / 96 / 85 / 94 | 0.18 / 0.57 / 0.64 / 0.58 | 3.13 |
+| sustained (lift x0.85) v standard (M), kit2 | 0.234 ± 0.013 | 0.465 ± 0.020 | 0.594 ± 0.020 | 0.613 ± 0.029 | 0.266 | 0.05 / 0.29 / 0.53 / 0.13 | 0.06 | 234 / 93 / 84 / 92 | 0.25 / 0.58 / 0.64 / 0.59 | 2.85 |
+
+575 s

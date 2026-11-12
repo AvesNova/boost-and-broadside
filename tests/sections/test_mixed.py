@@ -11,7 +11,7 @@ import torch
 from torch.utils import _pytree
 
 from bnb.contracts import GameConfig, Pool
-from bnb.contracts.obs import GLOBAL, SHIP, ZONE
+from bnb.contracts.obs import GLOBAL, SHIP, SHIP_COLUMNS, ZONE
 from bnb.contracts.pools import environment_multiple, pool_game
 from bnb.game import api
 from bnb.game.layout import environment, slices
@@ -158,7 +158,24 @@ def _same(mixed, alone, where: str, tolerance: float = 0.0) -> None:
     for index, (got, want) in enumerate(zip(mixed_leaves, alone_leaves, strict=True)):
         label = f"{where} leaf {index}"
         if tolerance and got.is_floating_point():
-            torch.testing.assert_close(got, want, rtol=tolerance, atol=tolerance, msg=label)
+            atol = tolerance
+            if got.shape[-1] == len(SHIP_COLUMNS):
+                # An acceleration is a velocity's change over a tick (a difference quotient,
+                # divided by the tick length): float32 rounding of a velocity of hundreds of m/s
+                # (an ulp is 3e-5) is 30 times that in the acceleration, so those columns get
+                # an absolute 1e-3 (seen: 1e-4, in 2 of 440 thousand elements over 260 ticks).
+                accelerations = torch.zeros(len(SHIP_COLUMNS), dtype=torch.bool)
+                accelerations[[SHIP["acceleration_x"], SHIP["acceleration_y"]]] = True
+                torch.testing.assert_close(
+                    got[..., ~accelerations],
+                    want[..., ~accelerations],
+                    rtol=tolerance,
+                    atol=tolerance,
+                    msg=label,
+                )
+                atol = 1e-3
+                got, want = got[..., accelerations], want[..., accelerations]
+            torch.testing.assert_close(got, want, rtol=tolerance, atol=atol, msg=label)
         else:
             assert torch.equal(got, want), label
 
@@ -246,7 +263,9 @@ def test_a_mixed_batch_equals_each_game_run_alone():
     the tail of a tensor that is not one with scalar code, whose exp or sin can differ from
     the vectorised result in the last bit, and play then amplifies it."""
     seen = _against_alone(_pools(), VECTOR_ALIGNED, ticks=300, seed=7)
-    assert seen["done"] > 64 and seen["died"] > 800 and seen["objective"] > 0, seen
+    # coverage guards, not physics: random play kills less since the edge-safe spawn headings
+    # (game v4), so 652 deaths here, not the 800 and more of before
+    assert seen["done"] > 64 and seen["died"] > 500 and seen["objective"] > 0, seen
 
 
 @pytest.mark.slow  # over 10 s; the quick tier runs the first 60 ticks (next test)
@@ -317,7 +336,7 @@ def test_one_slice_of_several_arenas_and_clocks_equals_each_game_alone():
     """Adjacent pools of one mode share a slice; each environment still plays its own
     pool's arena, map scale, episode length and respawn wait (bit for bit)."""
     seen = _one_slice_each(ticks=240)
-    assert seen["done"] > 64 and seen["died"] > 500, seen
+    assert seen["done"] > 64 and seen["died"] > 300, seen  # a coverage guard: 434 since game v4
 
 
 def test_an_elimination_pool_equals_its_game_alone():
