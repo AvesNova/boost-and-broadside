@@ -95,9 +95,14 @@ class Arm:
     def rotary_tables(self, frequencies_x, frequencies_y, frequencies_heading, position,
                       heading):
         angle = torch.atan2(heading[..., 1], heading[..., 0])  # 0 for (0, 0)
-        # Ours takes the position frequencies as periods, 2 pi / f.
-        return layers.rotary_tables(position, angle, 2 * math.pi / frequencies_x,
-                                    2 * math.pi / frequencies_y, frequencies_heading)
+        # Ours takes the position frequencies as periods, 2 pi / f, each along its axis:
+        # here the world's x, then y.
+        periods = torch.cat([2 * math.pi / frequencies_x, 2 * math.pi / frequencies_y])
+        axes = torch.cat([
+            torch.tensor([[1.0, 0.0]]).expand(frequencies_x.shape[0], 2),
+            torch.tensor([[0.0, 1.0]]).expand(frequencies_y.shape[0], 2),
+        ]).to(periods.dtype)
+        return layers.rotary_tables(position, angle, axes, periods, frequencies_heading)
 
     def apply_rotary(self, values, cos, sin):
         return layers.apply_rotary(values, cos, sin)
