@@ -647,3 +647,27 @@ def test_the_drift_never_unrolls_more_views_than_a_micro_batch(segment):
     # the 5090's BC: 12 288 views in 256 minibatches of 48, at 2560 rows (256 views)
     learner = lc.with_micro_batch(lc.learner(net, runner, minibatches=256), 256)
     assert learner.first_micro_batch(12288) == 48
+
+
+def test_the_heads_sums_read_a_sample_of_head_sum_views_views(segment, monkeypatch):
+    """The heads' sums run on the first epoch's first micro-batches until they hold
+    `HEAD_SUM_VIEWS` views, not on every micro-batch (eager, they cost ~8% of RL's steady
+    time); with more views than the update has, on the whole first epoch."""
+    from bnb.learn import ppo
+
+    net, runner, _, _ = segment
+    views = runner.store.views
+    for budget, expected in ((2, 2), (10 * views, views)):
+        monkeypatch.setattr(ppo, "HEAD_SUM_VIEWS", budget)
+        learner = lc.with_micro_batch(lc.learner(net, runner, epochs=2), 1)
+        assert learner.measures_heads
+        calls = []
+        sums = learner.head_sums
+
+        def counted(*arguments, sums=sums, calls=calls):
+            calls.append(1)
+            return sums(*arguments)
+
+        learner.head_sums = counted
+        learner.update(runner.store, runner.bootstrap(), heads=True)
+        assert len(calls) == expected, (budget, len(calls))
