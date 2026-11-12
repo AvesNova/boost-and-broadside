@@ -8,7 +8,7 @@ from torch.utils import _pytree
 
 from bnb.contracts import GameConfig, Obs, Pool
 from bnb.contracts.action import to_joint
-from bnb.contracts.obs import COLUMNS_BEFORE_RECORDS, GLOBAL, SHIP_COLUMNS
+from bnb.contracts.obs import COLUMNS_BEFORE_RECORDS, GLOBAL, GLOBAL_COLUMNS, SHIP_COLUMNS
 from bnb.controllers.scripted import Chaser
 from bnb.controllers.yemong import YemongController
 from bnb.game import api
@@ -146,17 +146,22 @@ def assert_matches_golden(actual: dict, expected: dict, tolerance: float = 2e-4)
             assert torch.equal(got, want), name
 
 
+def _in_todays_layout(recorded: torch.Tensor, part: str, columns: tuple[str, ...]) -> torch.Tensor:
+    """recorded's last axis, the columns of COLUMNS_BEFORE_RECORDS[part], in `columns`: each
+    column moved by name, the columns added since zero."""
+    before = {name: i for i, name in enumerate(COLUMNS_BEFORE_RECORDS[part])}
+    assert recorded.shape[-1] == len(before)
+    zero = torch.zeros_like(recorded[..., 0])
+    return torch.stack([recorded[..., before[name]] if name in before else zero for name in columns], -1)
+
+
 def golden_obs(golden: dict) -> Obs:
-    """A golden file's observation, its ship rows recorded with the columns of
-    COLUMNS_BEFORE_RECORDS, in today's layout: each column moved by name, the columns added
-    since (the accelerations) zero, as for a ship the team did not see move."""
-    ships = golden["ships"]
-    recorded = {name: i for i, name in enumerate(COLUMNS_BEFORE_RECORDS["ships"])}
-    assert ships.shape[-1] == len(recorded)
-    zero = torch.zeros_like(ships[..., 0])
-    ships = torch.stack(
-        [ships[..., recorded[name]] if name in recorded else zero for name in SHIP_COLUMNS], -1
-    )
+    """A golden file's observation, recorded with the columns of COLUMNS_BEFORE_RECORDS, in
+    today's layout: each column moved by name, the columns added since zero (the ships'
+    accelerations, as for a ship the team did not see move; the globals' mode_elimination, as
+    in the golden's team deathmatch)."""
+    ships = _in_todays_layout(golden["ships"], "ships", SHIP_COLUMNS)
+    globals_ = _in_todays_layout(golden["globals"], "globals", GLOBAL_COLUMNS)
     return Obs(
-        ships=ships, fields=golden["fields"], globals=golden["globals"], zones=golden["zones"]
+        ships=ships, fields=golden["fields"], globals=globals_, zones=golden["zones"]
     )
