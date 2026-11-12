@@ -640,6 +640,55 @@ def screen1() -> list[dict]:
 ROUNDS["screen1"] = screen1
 
 
+def round6() -> list[dict]:
+    """Screen 1's live ideas at every size, with the kit: big gun big target v small light,
+    the armed gunner v the close fighter, the interceptor v the brawler."""
+    out = []
+
+    def add(name, a, b):
+        out.append(pair(name + ", kit", ("M", merge(a, kit(*KIT))), ("M", merge(b, kit(*KIT)))))
+
+    for br, bd, sr, sd in (
+        (1.4, 1.4, 0.75, 0.85),
+        (1.4, 1.4, 0.75, 0.95),
+        (1.4, 1.4, 0.8, 0.9),
+        (1.3, 1.3, 0.8, 0.9),
+        (1.5, 1.5, 0.75, 0.9),
+    ):
+        add(
+            f"big (radius x{br:g}, dmg x{bd:g}) v small (radius x{sr:g}, dmg x{sd:g}) (M)",
+            {"hit_radius": br, "hit_damage": bd},
+            {"hit_radius": sr, "hit_damage": sd},
+        )
+    for gd, gv in ((1.1, 1.15), (1.2, 1.15), (1.0, 1.2)):
+        add(
+            f"armed gunner (arming 150, life x1.3, dmg x{gd:g}, vision x{gv:g}) v close fighter "
+            "(life x0.8) (M)",
+            {
+                "arming_distance": {"set": 150.0},
+                "hit_damage": gd,
+                "bullet_life": 1.3,
+                "vision_range_scale": gv,
+            },
+            {"bullet_life": 0.8},
+        )
+    for iv, idmg in ((1.0, 0.8), (1.0, 0.9)):
+        add(
+            f"interceptor (vision x{iv:g}, dmg x{idmg:g}) v brawler (M)",
+            {
+                "zero_lift_drag": 0.8,
+                "engine_power_full_store": 1.15,
+                "vision_range_scale": iv,
+                "hit_damage": idmg,
+            },
+            {"zero_lift_drag": 1.15, "vision_range_scale": 0.85, "hit_damage": 1.2},
+        )
+    return out
+
+
+ROUNDS["round6"] = round6
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
