@@ -327,6 +327,51 @@ def round3() -> list[dict]:
 
 ROUNDS = {"round1": round1, "round2": round2, "round3": round3}
 
+
+def mirror_study() -> list[dict]:
+    """One ship a candidate (slot A, played as the A mirror at 1v1): what shapes a mirror.
+    The neutral ship M with single changes, and the D2 Yongma with its parts removed."""
+    singles = {
+        "vision x0.7": {"vision_range_scale": 0.7},
+        "vision x1.3": {"vision_range_scale": 1.3},
+        "drag x0.8 (faster)": {"zero_lift_drag": 0.8},
+        "CL x1.15": {"max_lift_coefficient": 1.15},
+        "induced x0.8": {"induced_drag_scale": 0.8},
+        "induced x1.25": {"induced_drag_scale": 1.25},
+        "explosive 0.5": {"explosive_share": {"set": 0.5}},
+        "bullet life x0.7": {"bullet_life": 0.7},
+        "bullet life x1.4": {"bullet_life": 1.4},
+        "damage x1.5": {"hit_damage": 1.5},
+        "shield x0.6": {"max_shield": 0.6},
+        "fire 30 Hz dmg x0.5": {"fire_rate": {"set": 30.0}, "hit_damage": 0.5},
+        "fire 7.5 Hz dmg x2": {"fire_rate": {"set": 7.5}, "hit_damage": 2.0},
+        "spread x3": {"bullet_spread_scale": 3.0},
+        "head-on fraction x0.5": {"head_on_fraction_scale": 0.5},
+        "head-on angle x2": {"head_on_angle_scale": 2.0},
+        "hit radius x1.5": {"hit_radius": 1.5},
+        "engine x1.3": {"engine_power": 1.3, "engine_power_full_store": 1.3},
+        "bleed exponent 1.5": {"bleed_exponent": {"set": 1.5}},
+        "stall angle x1.2": {"stall_angle_scale": 1.2},
+    }
+    out = [pair("M", ("M", {}), ("M", {}))]
+    out += [pair(f"M, {k}", ("M", v), ("M", v)) for k, v in singles.items()]
+    d2y = {
+        "D2 Yongma": {},
+        "D2 Yongma, explosive 0": {"explosive_share": {"set": 0.0}},
+        "D2 Yongma, bullet life x1.33": {"bullet_life": 1 / 0.75},
+        "D2 Yongma, head-on fraction x1.43": {"head_on_fraction_scale": 1 / 0.7},
+        "D2 Yongma, shield x2": {"max_shield": 2.0},
+        "frozen Yongma": None,
+    }
+    for k, v in d2y.items():
+        a = (None, {}) if v is None else (None, merge(D2_A, v))
+        out.append(pair(k, a, a))
+    return out
+
+
+ROUNDS["mirror"] = mirror_study
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
