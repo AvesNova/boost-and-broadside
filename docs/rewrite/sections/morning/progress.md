@@ -144,3 +144,43 @@ under r9m2: r9m2's slower crowds.)
   crowd extension takes the close committed fight away from the short-sighted ship. The
   standard + close and standard + small teams lean 0.54 (+28 Elo), about 2 SE. The
   control's 0.527 says that is near the spread.
+
+## Item 3: the lead turn on top of r9m2 (`lead.py`, `leadtable.py`, 08:40-08:53 KST)
+
+Re-scoped by the coordinator at 08:40 (the author: 0.5 s may be early). The lead turn
+(two-circle sense, full stick, crossing gate 0.5 rad as in maneuvers' round 3) at 0.1 /
+0.2 / 0.3 / 0.5 s before the merge, on top of r9m2, on balance-d2, the frozen card (the
+ship files) and hit-and-run v standard. Each was played against r9m2 at 1v1 / 2v2 / 5v5 in
+four lineups (E v T, T v E, mixed, mixed reversed), plus self-play E v T. 512 games a cell.
+r9m2 against itself is the same-run control. (A first launch at 08:34 failed on shell
+quoting; a first item-3 run, 0.5 s only against r9 and r9m2, was stopped at the re-scope.)
+Table in `lead/table.md`. The mean of the four lineups as Elo:
+
+| Card: doctrine | 1v1 | 2v2 | 5v5 | self-play E v T 1v1 / 2v2 / 5v5 |
+|---|---|---|---|---|
+| D2: r9m2 (control) | +4 ± 5 | -12 ± 7 | -11 ± 7 | 0.505 / 0.456 / 0.619 |
+| D2: lead 0.1 s | -2 | -1 | -27 | 0.569 / 0.427 / 0.556 |
+| D2: lead 0.2 s | +7 | -12 | -31 | 0.572 / 0.424 / 0.557 |
+| D2: lead 0.3 s | +1 | +2 | -23 | 0.543 / 0.444 / 0.559 |
+| D2: lead 0.5 s | +2 | -9 | -20 | 0.562 / 0.439 / 0.548 |
+| frozen: r9m2 (control) | -4 ± 4 | -3 ± 7 | +3 ± 7 | 0.013 / 0.438 / 0.353 |
+| frozen: lead 0.1 s | -12 | +6 | -10 | 0.014 / 0.426 / 0.322 |
+| frozen: lead 0.2 s | +2 | -13 | -27 | 0.009 / 0.411 / 0.334 |
+| frozen: lead 0.3 s | -3 | -11 | -29 | 0.010 / 0.414 / 0.357 |
+| frozen: lead 0.5 s | +0 | -9 | -23 | 0.008 / 0.451 / 0.338 |
+| hit-and-run: r9m2 (control) | -4 ± 5 | -7 ± 7 | +3 ± 7 | 0.514 / 0.447 / 0.536 |
+| hit-and-run: lead 0.1 s | -2 | +2 | -29 | 0.522 / 0.443 / 0.516 |
+| hit-and-run: lead 0.2 s | **+22** | -16 | -26 | 0.505 / 0.431 / 0.512 |
+| hit-and-run: lead 0.3 s | +4 | -1 | -16 | 0.497 / 0.474 / 0.524 |
+| hit-and-run: lead 0.5 s | +13 | -16 | -30 | 0.500 / 0.480 / 0.507 |
+
+- **No lead time helps r9m2.** At 1v1 and 2v2 every setting is within the noise of the
+  control (one exception: hit-and-run 0.2 s at 1v1, +22 ± 5, not repeated on the other
+  cards or at 2v2). **At 5v5 every setting loses**: -10 to -31 Elo, against controls of -11
+  to +3, so about -10 to -30 net on every card. Shorter is no better than 0.5 s. Turning
+  before a crowd merge seems to cost what r9m2's crowd extension gains.
+- **The tilt**: on D2 the lead turn moves the 1v1 E v T toward the Yongma (0.505 to
+  0.54-0.57) and the 5v5 toward even (0.62 to 0.55-0.56). On frozen and hit-and-run the
+  balance moves by at most 0.03.
+- None is at least neutral overall. The least bad is 0.3 s (even at 1v1 and 2v2 on all
+  three, -16 to -29 at 5v5), and it is not recommended.
