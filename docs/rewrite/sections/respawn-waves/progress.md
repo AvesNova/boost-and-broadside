@@ -90,3 +90,27 @@ Deathmatch 5v5 (`dm5b`), fixed timers, no waves, 512 games each:
 The timer moves the kill rate (+6% at 5 s, +3% at 8 s, -6% at 16 s against 10 s) and
 little else: life, engagement and trades barely move. A dead ship is out for 5.6 / 8.5 /
 10.4 / 15.5% of its time at 5 / 8 / 10 / 16 s.
+
+## 2026-11-13 08:50 KST: capture effects at 5v5 (e5b; lock 45, 576 games each)
+
+On a capture, the team that lost the zone has its wave clock reset (next wave a full
+interval away), delayed 10 s, or pushed back one interval (a wave skipped). Threshold 2 /
+clock 1200 s, threshold 3 / clock 900 s in brackets:
+
+| variant | P(same team next) | by the front | median length (s) | first capture (s) | wait mean / p90 (s) |
+|---|---|---|---|---|---|
+| min 8, waves 20, none | 0.483 (0.471) | 0.86 (0.35) | 549 | 177 | 17.8 / 26.0 |
+| min 8, waves 20, reset | 0.539 (0.538) | 0.90 (0.42) | 512 | 175 | 18.7 / 27.2 |
+| min 8, waves 20, delay 10 | 0.516 (0.520) | 0.90 (0.42) | 527 | 164 | 18.6 / 27.0 |
+| min 8, waves 20, skip | 0.619 (0.608) | 0.94 (0.54) | 430 | 170 | 19.5 / 27.8 |
+| min 5, waves 30, none | 0.468 (0.468) | 0.89 (0.42) | 499 | 153 | 19.8 / 32.2 |
+| min 5, waves 30, reset | 0.586 (0.589) | 0.95 (0.58) | 429 | 164 | 22.3 / 35.0 |
+| min 5, waves 30, delay 10 | 0.524 (0.521) | 0.92 (0.45) | 474 | 162 | 21.0 / 33.5 |
+| min 5, waves 30, skip | 0.682 (0.690) | 0.97 (0.70) | 344 | 162 | 24.3 / 46.5 |
+
+(± 0.011-0.015 on P.) Every capture effect is momentum: the team that just captured is
+likelier to capture next, as much as the effect costs the losing team in time (delay 10 <
+reset ≈ I/2 < skip = I). The effects end more games by the front and shorten them, but
+they undo the lock's calibration (the lock was set where P = 0.5). Without an effect the
+waves keep P at 0.47-0.49. Mean wait rises by the effect (skip at 30 s: p90 46.5 s, over
+the Hell Let Loose bound).
