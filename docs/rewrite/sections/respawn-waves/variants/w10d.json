@@ -1,0 +1,28 @@
+[
+ {
+  "label": "fixed16L57",
+  "lock": 57
+ },
+ {
+  "label": "fixed16L58",
+  "lock": 58
+ },
+ {
+  "label": "m8w20L57",
+  "lock": 57,
+  "respawn_minimum": 8,
+  "wave_interval": 20
+ },
+ {
+  "label": "m8w20L58",
+  "lock": 58,
+  "respawn_minimum": 8,
+  "wave_interval": 20
+ },
+ {
+  "label": "m5w20L58",
+  "lock": 58,
+  "respawn_minimum": 5,
+  "wave_interval": 20
+ }
+]
