@@ -1,7 +1,7 @@
-"""The shield's recharge pause (game spec 7.2, game version 3): the recharge wait counts down
-and the shield recharges only on a quiet tick (coasting, the stick straight or at a slight
-turn, no shot); any other input holds the wait where it is and recharges nothing; a hit
-resets the wait. Hand-computed cases at the default card's fighter (12 a second after 6 s)."""
+"""The shield's recharge (game spec 7.2, game version 5): the recharge wait counts down and
+the shield recharges only on a quiet tick (coasting, the stick straight or at a slight turn,
+no shot); any other input, like a hit, resets the wait to the delay and recharges nothing.
+Hand-computed cases at the default card's fighter (12 a second after 6 s)."""
 
 import modes_cases as cases
 import pytest
@@ -65,17 +65,17 @@ def test_the_quiet_actions_are_coasting_straight_or_slightly_turning_without_a_s
 
 
 @pytest.mark.parametrize("wait", [1.0, 0.01, 0.0])
-def test_a_quiet_tick_counts_down_and_recharges_and_every_other_input_pauses_both(wait):
+def test_a_quiet_tick_counts_down_and_recharges_and_every_other_input_restarts_the_wait(wait):
     """Eight ships, one per input, shield 50: a quiet one's wait falls by a tick and its
     shield gains 12 a second for the part of the tick past the wait; a shot, boost, reverse,
-    a normal or a sharp turn keeps the wait and the shield as they were."""
+    a normal or a sharp turn sets the wait to the delay and keeps the shield."""
     rules, ships = _ships(wait)
     action, calm = _mixed()
     alive = torch.ones_like(calm)
     damage = apply_damage(rules, api.ship_types(), ships, alive, torch.zeros(1, 8), quiet(action))
     assert torch.equal(quiet(action), calm)
     gained = RATE * min(max(TICK - wait, 0.0), TICK)  # 0, 12 (1/30 - 0.01), 0.4
-    expected_wait = torch.where(calm, max(wait - TICK, 0.0), wait)
+    expected_wait = torch.where(calm, max(wait - TICK, 0.0), DELAY)
     expected_restored = torch.where(calm, gained, 0.0)
     torch.testing.assert_close(damage.ships.shield_recharge_wait, expected_wait)
     torch.testing.assert_close(damage.shield_restored, expected_restored)
@@ -96,26 +96,30 @@ def test_a_hit_resets_the_wait_whatever_the_input():
     assert not damage.shield_restored.any()
 
 
-def test_the_wait_resumes_where_it_paused():
-    """A wait of three ticks: one quiet tick (two left), five boosting (still two), two
-    quiet (none left), then a quiet tick recharges a whole tick's 0.4."""
+def test_the_wait_starts_again_after_any_other_input():
+    """A wait of three ticks: one quiet tick (two left), five boosting (the delay each),
+    then quiet: the whole delay counts down before a quiet tick recharges a tick's 0.4."""
     rules, ships = _ships(3 * TICK, count=2)
     types, alive = api.ship_types(), torch.ones(1, 2, dtype=torch.bool)
     calm, boost = (torch.ones(1, 2, dtype=torch.bool), torch.zeros(1, 2, dtype=torch.bool))
     waits, restored = [], []
-    for step in [calm] + [boost] * 5 + [calm] * 3:
+    delay_ticks = round(DELAY / TICK)
+    steps = [calm] + [boost] * 5 + [calm] * (delay_ticks + 1)
+    for step in steps:
         damage = apply_damage(rules, types, ships, alive, torch.zeros(1, 2), step)
         ships = damage.ships
         waits.append(float(ships.shield_recharge_wait[0, 0]))
         restored.append(float(damage.shield_restored[0, 0]))
-    assert waits == pytest.approx([2 * TICK] * 6 + [TICK, 0.0, 0.0], abs=1e-6)
-    assert restored == pytest.approx([0.0] * 8 + [RATE * TICK], abs=1e-6)
+    counted = [max(DELAY - (n + 1) * TICK, 0.0) for n in range(delay_ticks + 1)]
+    assert waits == pytest.approx([2 * TICK] + [DELAY] * 5 + counted, abs=1e-4)
+    assert restored[:-1] == pytest.approx([0.0] * (len(steps) - 1), abs=1e-6)
+    assert restored[-1] == pytest.approx(RATE * TICK, abs=1e-4)
 
 
-def test_a_whole_tick_pauses_on_the_inputs_and_the_observation_shows_the_held_wait():
-    """`api.step` with the eight inputs (no ship near another, so no hits): each pausing
-    ship's wait and shield hold, each quiet one's count down, and the team's observation
-    of its own ships carries the held wait."""
+def test_a_whole_tick_restarts_the_wait_on_the_inputs_and_the_observation_shows_it():
+    """`api.step` with the eight inputs (no ship near another, so no hits): each other
+    input's ship waits the whole delay again and keeps its shield, each quiet one's wait
+    counts down, and the team's observation of its own ships carries the wait."""
     rules = api.rules_of(GameConfig(4, 0, 1e5))
     state = api.reset(rules, cases.TYPES, api.uniforms(rules, 1, generator=torch.Generator()))
     spaced = torch.arange(8, dtype=torch.float32)[None] * 500.0
@@ -129,7 +133,7 @@ def test_a_whole_tick_pauses_on_the_inputs_and_the_observation_shows_the_held_wa
     action, calm = _mixed()
     state, events = cases.tick(rules, state, action)
     assert not events.damage.any()
-    wait = torch.where(calm, 1.0 - TICK, 1.0)
+    wait = torch.where(calm, 1.0 - TICK, DELAY)
     torch.testing.assert_close(state.ships.shield_recharge_wait, wait)
     assert not events.shield_restored.any()
     _, obs, _ = api.perceive(rules, state)

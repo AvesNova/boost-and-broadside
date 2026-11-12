@@ -3,6 +3,7 @@ hit test against brute force (with its order: tau, then the miss distance), the 
 against a float64 reference, the defaults against the spec's table, the batch-1 realtime
 path, and fresh randomness in CUDA-graph replays."""
 
+import dataclasses
 import json
 import math
 import pathlib
@@ -13,7 +14,7 @@ import torch
 from bnb.contracts import Action, GameConfig
 from bnb.contracts.action import NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.game import api
-from bnb.game.physics.combat import hits
+from bnb.game.physics.combat import MEAN_CLOSENESS, hits
 from bnb.game.physics.medium import medium
 from bnb.game.physics.spawning import formation_rank
 from bnb.game.rules import LN_SQRT2, FlightConstants
@@ -182,11 +183,17 @@ def test_hits_match_brute_force_with_friendly_fire():
         direction_x=angle.cos(),
         direction_y=angle.sin(),
     )
+    bullets = replace(
+        bullets, proper_speed=300.0 + 400.0 * torch.rand(B, N, K, generator=generator)
+    )
     ships = replace(ships, alive=torch.rand(B, N, generator=generator) < 0.85)
-    got = hits(rules, TYPES, sweep, ships, bullets, ships.alive)
+    types = dataclasses.replace(TYPES, explosive_share=TYPES.explosive_share + 0.3)
+    got = hits(rules, types, sweep, ships, bullets, ships.alive)
 
     radius = TYPES.hit_radius[ships.ship_type.long()].double()
     full = TYPES.hit_damage[ships.ship_type.long()].double()
+    share = TYPES.explosive_share[ships.ship_type.long()].double() + 0.3  # a mixed share
+    reference = TYPES.reference_bullet_speed[ships.ship_type.long()].double()
     damage = torch.zeros(B, N, N, dtype=torch.float64)
     first = torch.full((B, N), -1)
     best = torch.full((B, N, 2), math.inf, dtype=torch.float64)
@@ -225,6 +232,9 @@ def test_hits_match_brute_force_with_friendly_fire():
                     if miss_squared < float(radius[b, t]) ** 2:
                         if (tau, miss_squared) < hit_order:
                             hit_order, target = (tau, miss_squared), t
+                            cross = float(start[0] * relative[1] - start[1] * relative[0])
+                            line = cross * cross / max(float(relative @ relative), 1e-12)
+                            impact = min(line, float(start @ start))  # b^2, the path's
                 assert bool(got.bullet_hit[b, owner, k]) == (target >= 0), (b, owner, k)
                 if target < 0:
                     continue
@@ -237,8 +247,17 @@ def test_hits_match_brute_force_with_friendly_fire():
                 theta = math.atan2(
                     abs(dx * nose_sin - dy * nose_cos), -(dx * nose_cos + dy * nose_sin)
                 )
-                damage[b, owner, target] += float(full[b, owner]) * (
-                    1.0 - (1.0 - rules.head_on_fraction) * math.exp(-4.0 * theta * theta / math.pi)
+                speed = float(bullets.proper_speed[b, owner, k]) / float(reference[b, owner])
+                kinetic = float(share[b, owner]) + (1.0 - float(share[b, owner])) * speed * speed
+                closeness = (1.0 - impact / float(radius[b, target]) ** 2) ** 2
+                damage[b, owner, target] += (
+                    float(full[b, owner])
+                    * kinetic
+                    * closeness
+                    * (
+                        1.0
+                        - (1.0 - rules.head_on_fraction) * math.exp(-4.0 * theta * theta / math.pi)
+                    )
                 )
                 if hit_order < tuple(best[b, target].tolist()):  # strict: exact ties keep
                     best[b, target] = torch.tensor(hit_order)  # the lower bullet index
@@ -329,6 +348,7 @@ def test_a_tau_tie_goes_to_the_closer_pass_whatever_the_index(swap):
         moves_left=moves_left,
         direction_x=torch.ones(1, N, K),
         direction_y=torch.zeros(1, N, K),
+        proper_speed=torch.full((1, N, K), 500.0),
     )
     got = hits(rules, TYPES, sweep, ships, bullets, ships.alive)
     assert got.damage[0, 1, near] > 0 and got.damage[0, 1, far] == 0
@@ -473,13 +493,19 @@ def test_defaults_match_the_spec_table():
                 want = spec["flight"].get(key, preset.get(key))
             if field == "ticks_between_shots":  # the card holds the rate: 1 / interval
                 field, want = "fire_rate", 1.0 / (want * rules.tick_length)
+            if field == "hit_damage":  # a centre hit's since game v6: the table's mean hit
+                want /= MEAN_CLOSENESS
             assert math.isclose(float(getattr(TYPES, field)[t]), want, rel_tol=1e-6), (name, key)
     # The ship card's additions: the bleed exponent (2) and per-type scales (1) of values
     # that are shared in the spec's table; the fire rate replaces the ticks between shots,
-    # and the bullet life (s) the table's shared bullet moves.
+    # and the bullet life (s) the table's shared bullet moves; the damage's speed terms
+    # (game v6): no explosive share, and each bullet's speed at the reference distance.
     assert set(CARD.values()) - {"ticks_between_shots"} == (
-        set(DEFAULTS) - {"bleed_exponent", "fire_rate", "bullet_life", *SCALED}
+        set(DEFAULTS)
+        - {"bleed_exponent", "fire_rate", "bullet_life", *SCALED}
+        - {"explosive_share", "reference_bullet_speed"}
     )
+    assert TYPES.explosive_share.tolist() == [0.0, 0.0]
     moves = api.bullet_moves(TYPES.bullet_life, rules.tick_length)
     assert moves.tolist() == [preset["bullet_moves"]] * 2
     assert TYPES.bleed_exponent.tolist() == [2.0, 2.0]

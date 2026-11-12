@@ -133,32 +133,55 @@ which blocks sight (see [Perception and fog](perception.md)).
   shot's energy cost. The bullet starts at the ship's position with the ship's velocity plus
   the muzzle speed along the nose, plus the shooter's random spread. It lives its shooter's
   type's bullet life (the card's `bullet_life`, a whole number of moves at the rules'
-  tick; 0.4 s for the standard types, 0.6 s for the real-scale ones).
-- **Drag.** Bullets slow quadratically on their proper speed, with the game's bullet drag
-  times the shooter's drag scale, so a shot has a range. A type's gun range sets both its
-  bullet life and its drag scale ([The ship card](ship-card.md)).
+  tick; 0.4 s for the standard types, 0.67 to 0.77 s for the real-scale ones).
+- **Drag.** Bullets slow quadratically on their proper speed, dw/dt = -k w² / n, so over
+  distance w(s) = w0 exp(-k s): each type's own drag `k` (the `bullet_drag` handle; the
+  card holds it as a scale of the rules' bullet drag, the floor). The real-scale sets' floor
+  is the .50 cal's 5e-4 1/m (86% of the speed left at 300 m, 74% at 600 m; Lake City M33
+  ball falls from 2940 to 2309 ft/s in 500 yd, ammo.com's .50 BMG ballistics table, so
+  k = ln(2940/2309) / 457 m = 5.3e-4); the 20 mm
+  Hispano's is 5.5e-4, the MK 108's 6.5e-4, the MG 151/20 high-explosive shell's 9e-4. A
+  type's gun range and drag set its bullet life ([The ship card](ship-card.md)).
 - **Hits.** A swept test between each bullet's and each ship's straight motion this tick
   finds contacts within the target's hit radius. A bullet hits only its first contact.
   **Friendly fire is on:** a bullet can hit any ship but its own shooter.
-- **Damage.** A hit deals the shooter's damage times the aspect
-  `1 - (1 - f_0) exp(-ln 2 (θ / θ_h)²)`, with `θ` the angle between the bullet's reversed
-  direction and the target's nose: the target's head-on fraction `f_0` from dead ahead,
-  half way to full damage at the target's head-on angle `θ_h` (42.27 degrees by default,
-  the old fixed curve's `exp(-4θ²/π)`), and nearly all of it from the side or rear.
+- **Damage.** A hit deals
+
+      D (x + (1 - x) (w / w_ref)²) (1 - (b / R)²)² A(θ)
+
+  with `D` the shooter's hit damage, a centre hit's at the reference distance. The speed
+  term: `w` is the bullet's own proper speed (through the medium, not relative to the
+  target, which would favour the head-on pass), `w_ref` its type's speed at the rules'
+  damage reference distance from a shot at cruise (the card's `reference_bullet_speed`;
+  300 m in the real-scale sets), and `x` the type's explosive share (0 by default: pure
+  kinetic energy). The closeness term: `b` is the closest approach of the bullet's path
+  relative to the target (this tick's swept line) to the target's centre, `R` the target's
+  hit radius; 1 through the centre, 0 with zero slope at the rim, so a graze does little and
+  miss, graze, hit and centre are continuous. Its mean over a uniform `b` is 8/15, so the
+  expected hit is `8/15 D` at the reference distance. The aspect
+  `A(θ) = 1 - (1 - f_0) exp(-ln 2 (θ / θ_h)²)`, with `θ` the angle between the bullet's
+  reversed direction and the target's nose: the target's head-on fraction `f_0` from dead
+  ahead, half way to full damage at the target's head-on angle `θ_h` (42.27 degrees by
+  default, the old fixed curve's `exp(-4θ²/π)`), and nearly all of it from the side or
+  rear. A bullet is consumed by its hit (game version 6).
 - **Shields.** Damage beyond the current shield breaks it, and the overkill is ignored.
   Any damage to a ship whose shield was already broken at tick start kills it. After a
   delay without damage, the shield recharges at a fixed rate; both are per type. The delay
   counts down and the shield recharges only on a **quiet** tick: the ship coasts, its stick
   straight or at a slight turn (the lightest level, either side), and holds its fire
   (`bnb.game.rules.QUIET_STICKS`, `bnb.game.physics.combat.quiet`). Any other input (boost,
-  reverse, a normal or sharp turn, a shot) pauses both: the delay holds where it is, it is
-  not reset, and the shield gains nothing that tick. A hit resets the delay.
+  reverse, a normal or sharp turn, a shot) resets the delay, as a hit does, and the shield
+  gains nothing that tick: the recharge needs the whole delay of unbroken quiet flight, a
+  real disengagement (game version 5; in version 3 and 4 such an input only paused the
+  delay, so quiet stretches between passes added up and the shield refilled between them).
 - **The arena** is a disc with no wall. A ship outside it takes boundary damage that grows
   with its depth.
 - **The killer** of a ship is the owner of its earliest hit this tick, ties to the lower
   bullet index.
-- **Aspect statistics.** For the statistics only, each hit is classed by `θ`: head-on
-  under 45 degrees, tail over 135, the flank between (`bnb.contracts.ASPECTS`). The tick's
+- **Aspect statistics.** For the statistics only, each hit is classed by `θ`: a mutual
+  head-on under 10 degrees (the shooter in front of the target's guns, both can fire), an
+  offset head-on from 10 to 45 (only the shooter can), the flank to 135, the tail beyond
+  (`bnb.contracts.ASPECTS`). The tick's
   events carry the enemy damage each ship took by class and the class of its killing hit;
   the training series (`combat/damage_share/{aspect}`, `combat/kill_share/{aspect}`, per
   pool too), the match statistics (`damage_{aspect}`, `kills_{aspect}`) and the

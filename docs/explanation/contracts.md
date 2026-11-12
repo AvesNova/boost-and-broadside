@@ -128,11 +128,12 @@ observation order. Rewards and diagnostics read it; controllers never do.
 - `objective_progress` and `objective`: the mode's two objective amounts, each summing to
   zero over the environment.
 - `result (B,)`: the match result for team 0, nonzero only where `done`.
-- `enemy_damage_by_aspect (B, N, 3)` and `kill_aspect`: for the statistics, the hit damage
+- `enemy_damage_by_aspect (B, N, 4)` and `kill_aspect`: for the statistics, the hit damage
   each ship took from the enemy team by the hit's aspect class, and the class of the hit
   that killed it (-1 if none). The classes (`bnb.contracts.ASPECTS`) split the angle
-  between the bullet's reversed direction and the target's nose: head-on under 45 degrees,
-  tail over 135, the flank between. The damage itself follows the smooth aspect curve
+  between the bullet's reversed direction and the target's nose: a mutual head-on under
+  10 degrees (both ships can fire), an offset head-on from 10 to 45 (only the shooter
+  can), the flank to 135, the tail beyond. The damage itself follows the smooth aspect curve
   ([Physics](game/physics.md)); the classes only count it.
 
 ## Controllers

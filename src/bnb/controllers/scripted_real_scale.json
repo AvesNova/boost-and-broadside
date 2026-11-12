@@ -81,24 +81,7 @@
     0.284,
     0.0605
    ],
-   "time_unit_exponent": 0.0,
-   "energy_fight_strength": 0.0,
-   "energy_fight_turn_exponent": -1.0,
-   "energy_fight_climb_exponent": 0.0,
-   "energy_fight_speed_exponent": 0.0,
-   "energy_fight_range_exponent": 0.0,
-   "energy_fight_in_advantage": [
-    1.0,
-    0.1
-   ],
-   "extend_in_gun_range": [
-    1.0,
-    0.2
-   ],
-   "extend_in_stall_angle": [
-    4.0,
-    0.2
-   ]
+   "time_unit_exponent": 0.0
   }
  },
  "real_scale_frontline": {
@@ -183,24 +166,7 @@
     0.19,
     0.0673
    ],
-   "time_unit_exponent": 0.0,
-   "energy_fight_strength": 0.0,
-   "energy_fight_turn_exponent": -1.0,
-   "energy_fight_climb_exponent": 0.0,
-   "energy_fight_speed_exponent": 0.0,
-   "energy_fight_range_exponent": 0.0,
-   "energy_fight_in_advantage": [
-    1.0,
-    0.1
-   ],
-   "extend_in_gun_range": [
-    1.0,
-    0.2
-   ],
-   "extend_in_stall_angle": [
-    4.0,
-    0.2
-   ]
+   "time_unit_exponent": 0.0
   }
  },
  "real_scale_elimination": {
@@ -285,24 +251,7 @@
     0.284,
     0.0605
    ],
-   "time_unit_exponent": 0.0,
-   "energy_fight_strength": 0.0,
-   "energy_fight_turn_exponent": -1.0,
-   "energy_fight_climb_exponent": 0.0,
-   "energy_fight_speed_exponent": 0.0,
-   "energy_fight_range_exponent": 0.0,
-   "energy_fight_in_advantage": [
-    1.0,
-    0.1
-   ],
-   "extend_in_gun_range": [
-    1.0,
-    0.2
-   ],
-   "extend_in_stall_angle": [
-    4.0,
-    0.2
-   ]
+   "time_unit_exponent": 0.0
   }
  }
 }

@@ -90,7 +90,7 @@ from bnb.controllers.scripted_parameters import (  # noqa: E402
     ADDITIVE_BOUNDS,
     MODES,
     NAMES,
-    RELATIVE_TACTICS,
+    OWN_TIME,
     SCALE_FLOORS,
     STANDARD_MODES,
     SWITCH_SCALE_FLOORS,
@@ -191,7 +191,7 @@ def clamp(parameters: ScriptedParameters) -> ScriptedParameters:
     its floor and SCALE_CEILING floors, a switch's rate within SWITCH_RATES, the fade's
     centre within FADE_CENTRE, the recovery shield fraction at most 0.9, the combat radius
     beyond the shoot logistic's centre, each additive number (`ADDITIVE_BOUNDS`: the own
-    time's and the relative tactics') within its bounds."""
+    time's) within its bounds."""
 
     def bounded(value: float, low: float, high: float) -> float:
         return min(max(value, low), high)
@@ -229,14 +229,13 @@ def perturb(
     parameters: ScriptedParameters,
     sigma: float,
     generator: torch.Generator,
-    frozen: tuple[str, ...] = RELATIVE_TACTICS,
+    frozen: tuple[str, ...] = OWN_TIME,
 ) -> ScriptedParameters:
     """Every searched number times exp(sigma N(0, 1)) (a ramp's ends sorted; its values and a
     logistic's direction kept; a switch's rate, centre and scale each), aggression plus
     2 sigma N(0, 1), an additive number (`ADDITIVE_BOUNDS`) plus sigma N(0, 1) times its
     bounds' width; then `clamp`. The `frozen` fields are kept and draw nothing (by default
-    the own time's and the relative tactics', so a search without them draws as before
-    they existed)."""
+    the own time's, so a search without it draws as before it existed)."""
 
     def factor() -> float:
         return math.exp(sigma * float(torch.randn(1, generator=generator)))
@@ -282,7 +281,7 @@ def next_generation(
     keep: int,
     sigma: float,
     generator,
-    frozen: tuple[str, ...] = RELATIVE_TACTICS,
+    frozen: tuple[str, ...] = OWN_TIME,
 ) -> list[ScriptedParameters]:
     """The top `keep` of `ranked` (best first), and children of them to `size` (`perturb`,
     with its `frozen` fields kept)."""
@@ -484,9 +483,9 @@ def main() -> None:
         help="with --champion: the median score against it that promotes the top candidate",
     )
     parser.add_argument(
-        "--relative-tactics",
+        "--own-time",
         action="store_true",
-        help="search the own time's and the relative tactics' parameters too (default: kept)",
+        help="search the own time's exponent too (default: kept)",
     )
     parser.add_argument(
         "--from-defaults",
@@ -500,7 +499,7 @@ def main() -> None:
     pool = None
     if args.mixed:
         pool = type_pool(PRESETS[args.preset].ship_set, args.types, args.hold_out)
-    frozen = () if args.relative_tactics else RELATIVE_TACTICS
+    frozen = () if args.own_time else OWN_TIME
     if not 0 <= args.seed <= MAXIMUM_SEED:
         raise SystemExit(f"seed in [0, {MAXIMUM_SEED}]")
     device = torch.device("cuda")

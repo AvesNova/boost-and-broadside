@@ -12,11 +12,12 @@ from .tree import contract
 
 # A hit's aspect class, for the statistics (the damage itself follows the smooth aspect of
 # `bnb.game.physics.combat.hits`): theta, the angle between the bullet's reversed direction
-# and the target's nose (0 head-on), under 45 degrees is head-on, over 135 tail, between
-# them the flank. 45 degrees is near the armour's half-strength angle (42 degrees at the
-# standard head-on angle).
-ASPECTS = ("head_on", "flank", "tail")
-ASPECT_BOUNDS = (math.pi / 4, 3 * math.pi / 4)
+# and the target's nose (0: the shooter dead ahead of the target's guns). Under 10 degrees
+# a mutual head-on (both ships can fire), 10 to 45 an offset head-on (only the shooter can),
+# 45 to 135 the flank, over 135 the tail. ASPECT_BOUNDS are the classes' upper edges but the
+# last, each class taking theta above the one before and up to its own (the first from 0).
+ASPECTS = ("mutual_head_on", "offset_head_on", "flank", "tail")
+ASPECT_BOUNDS = (math.radians(10.0), math.pi / 4, 3 * math.pi / 4)
 
 
 @contract
@@ -54,4 +55,4 @@ class Events:
     result: torch.Tensor
     enemy_damage_by_aspect: torch.Tensor
     kill_aspect: torch.Tensor
-    SCHEMA_VERSION: ClassVar[int] = 3  # 3: the aspect statistics
+    SCHEMA_VERSION: ClassVar[int] = 4  # 3: the aspect statistics; 4: four classes

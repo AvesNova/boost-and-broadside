@@ -155,7 +155,7 @@ def _summaries(record: pathlib.Path):
 
 def aspect_shares(column: dict, k: int) -> dict:
     """Type k's damage dealt and kills by the hit's aspect class, as shares of its total
-    (`damage_share_head_on`, ..., `kill_share_tail`; 0 from a record without them)."""
+    (`damage_share_mutual_head_on`, ..., `kill_share_tail`; 0 from a record without them)."""
     out = {}
     for kind, name in (("damage", "damage_share"), ("kills", "kill_share")):
         whole = sum(float(column[f"{kind}_{aspect}"][k]) for aspect in ASPECTS)
@@ -237,7 +237,8 @@ def report(args) -> None:
     header = (
         "| Rank | Type | Elo (95% interval) | Score | W / D / L | Kills / deaths a game "
         "| Kill ratio | Shots a game | Hit share | Mean speed m/s "
-        "| Damage head-on / flank / tail | Kills head-on / flank / tail |\n"
+        "| Damage mutual / offset head-on / flank / tail "
+        "| Kills mutual / offset head-on / flank / tail |\n"
         "|---|---|---|---|---|---|---|---|---|---|---|---|\n"
     )
     body = "".join(

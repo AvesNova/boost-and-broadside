@@ -32,11 +32,13 @@ class Handles:
     stall_angle: torch.Tensor  # rad, the angle-of-attack limit
     vision_range: torch.Tensor  # m
     zero_lift_drag: torch.Tensor  # 1/m, held by the solver
-    hit_damage: torch.Tensor
+    hit_damage: torch.Tensor  # a centre hit's, by a bullet at the reference distance
+    explosive_share: torch.Tensor  # in [0, 1]: the hit damage's share that does not fall with speed
     fire_rate: torch.Tensor  # shots/s
     muzzle_speed: torch.Tensor  # m/s, proper
     bullet_spread: torch.Tensor  # m/s per axis, proper
     gun_range: torch.Tensor  # m, a bullet fired at cruise along the flight path, in its life
+    bullet_drag: torch.Tensor  # 1/m, the type's quadratic drag k_b: w(s) = w0 exp(-k_b s)
     shots_per_store: torch.Tensor  # shots a full store pays for
     max_shield: torch.Tensor
     shield_recharge_rate: torch.Tensor  # per s
@@ -89,10 +91,12 @@ UNITS = dict(
     vision_range=("m", 1.0),
     zero_lift_drag=("1/m", 1.0),
     hit_damage=("", 1.0),
+    explosive_share=("", 1.0),
     fire_rate=("Hz", 1.0),
     muzzle_speed=("m/s", 1.0),
     bullet_spread=("m/s", 1.0),
     gun_range=("m", 1.0),
+    bullet_drag=("1/m", 1.0),
     shots_per_store=("", 1.0),
     max_shield=("", 1.0),
     shield_recharge_rate=("1/s", 1.0),

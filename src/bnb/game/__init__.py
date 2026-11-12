@@ -24,8 +24,21 @@ so the version stayed 3; the fingerprint now covers the two new presets as well.
 (2026-11-12): a random spawn heading leaves room to turn away from the edge
 (`modes.spawns._heading`, `Rules.spawn_turn_distance`): within that distance of it a
 heading's outward cosine is at most the distance over it, so team deathmatch's and
-elimination's spawns change in every preset with random headings.
+elimination's spawns change in every preset with random headings. Version 5 (2026-11-12):
+an input other than a quiet one restarts the shield's recharge wait at the delay, as a hit
+does (it only paused it in versions 3 and 4), so a shield recharges after the delay's
+length of unbroken quiet flight (`physics.combat.apply_damage`). The real-scale set gained
+two types (Yongma and Jujak) the same day; a new type changes no existing game's numbers.
+Version 6 (2026-11-12): bullet damage. A hit's damage is the card's (a centre hit's, by a
+bullet at its reference speed) times the explosive share plus the rest times the bullet's
+kinetic energy, (proper speed / reference speed)^2, times the closeness of the pass,
+(1 - (b / R)^2)^2 for the relative path's closest approach b to the target's centre
+(`physics.combat.kinetic`, `closeness`). Each type's bullet drag is its own handle (the
+rules' is the floor; the real-scale and design-seed sets' is 5e-4 1/m, the .50 cal's), its
+bullet life the whole ticks that fly its gun range under it (no drag trim). Every set's
+cards were re-solved: hit damage x 15/8 (the closeness's mean is 8/15), the reference
+distance 300 m in the real-scale sets (`Rules.damage_reference_distance`).
 """
 
-VERSION = 4
-FINGERPRINT = "85912f2a4ebdafa9"
+VERSION = 6
+FINGERPRINT = "9b5f586137e7dadd"

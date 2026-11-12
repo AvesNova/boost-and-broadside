@@ -2,11 +2,12 @@
 # game's own rules elsewhere. Times in s, lengths in m, per unit mass.
 
 [rules]
-bullet_drag = 0.0001374570446735395
+bullet_drag = 0.0005
 vision_range = 3072.0
 spawn_speed = 72.644
 field_band_width = 120.0
 spawn_turn_distance = 436.5
+damage_reference_distance = 300.0
 
 [flight]
 mass = 1.0

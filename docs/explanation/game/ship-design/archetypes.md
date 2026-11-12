@@ -109,7 +109,7 @@ the energy fighter's real sanctuary, has none: the store stands in for it, equal
 | power / climb | `climb_time` (empty to full, coasting from cruise: store over climb power) | `coast_exchange_scale` (and the engine power below the knee) |
 | dive | `dive_acceleration` (boost from cruise: store into speed) | `dive_exchange_scale` |
 | zoom | `zoom_acceleration` (reverse from cruise: speed into store) | `climb_exchange_scale` |
-| armament | `hit_damage`, `fire_rate`, `muzzle_speed`, `bullet_spread`, `gun_range` | `hit_damage`, `fire_rate`, `bullet_life`, `bullet_drag_scale`, `bullet_spread_scale` |
+| armament | `hit_damage`, `explosive_share`, `fire_rate`, `muzzle_speed`, `bullet_spread`, `gun_range`, `bullet_drag` | `hit_damage`, `explosive_share`, `reference_bullet_speed`, `fire_rate`, `bullet_life`, `bullet_drag_scale`, `bullet_spread_scale` |
 | armour | `max_shield`, `head_on_fraction`, `head_on_angle`, recharge | the shield and the head-on aspect |
 | size | `hit_radius` | itself |
 
@@ -164,8 +164,13 @@ neutral spawn at full shields (a later kill starts from unequal shields).
   past 1.2 gun ranges; a kill up to 2 s after that is a first-merge kill. A trade is both
   ships dying on one tick (it counts as a first-merge kill when it is one).
 - **Time to kill (card)**: from full shield at 100% hits, (hits needed - 1) / fire rate,
-  the hits needed being the shield over the damage times the aspect (the target's head-on
-  fraction head-on, 1 from the tail). **Measured**: from the victim's first hit taken to
+  the hits needed being the shield over the expected hit times the aspect (the target's
+  head-on fraction head-on, 1 from the tail). Since game version 6 the card's damage is a
+  centre hit's at the reference distance (300 m), and the expected hit is 8/15 of it (the
+  closeness `(1 - (b/R)^2)^2` averaged over a uniform impact parameter); the cards were
+  rescaled by 15/8, so the expected hit and these times are as before at 300 m. Closer
+  in a .50 cal hits up to 1.35 times harder (at the muzzle), at 600 m 0.74 times
+  ([Physics](../physics.md)). **Measured**: from the victim's first hit taken to
   its death (median).
 - **Turn**: 180 degrees at the sustained turn rate, and at the instantaneous rate
   (a_max / corner speed). **Pass**: the time a head-on pass spends in gun range, gun range
@@ -384,19 +389,15 @@ the turn, with a store the real types do not support.
 
 ## 5. The scripted agent
 
-**What exists.** The combat layer (`bnb.controllers.scripted_combat.combat`) already has an
-energy doctrine, `energy_fight`, off in every set today (`energy_fight_strength` 0 in
-`scripted_real_scale.json`). Its weight against the committed target is
-`energy_fight_strength` times a logistic (`energy_fight_in_advantage`) of an advantage, the
-product of the own-over-target ratios of the sustained turn rate, the climb power, the
-cruise speed and the gun range, each raised to an exponent (by default only the turn, at
--1: the worse turner has the advantage). With that weight the ship extends rather than
-turns after a target its nose is far from at close range: the aim point is mirrored away
-from the target with weight `extend_in_gun_range` (falling through 1 gun range) times
-`extend_in_stall_angle` (rising through 4 stall angles of aim error), the power is mixed
-toward boost while extending, and it never reverses (it keeps its speed). The league arena
-already plays each scripted player with its own parameter set (`Player.parameters`, in an
-arena built with a `doctrine`), so per-type doctrines need no new machinery.
+**What exists.** One agent with a doctrine per ship type
+(`bnb.controllers.scripted_doctrine.Doctrine`, [Doctrines](../../scripted-agent.md#doctrines)):
+a table the agent reads per own ship, so a mixed team flies each type by its own. A
+doctrine's weight against its target is a strength times a logistic of an advantage (the
+own-over-target ratios of the turn, the climb, the cruise and the gun range, each to an
+exponent), and its elements are extend (with an energy and store rule for re-engaging),
+slash, bleed, lag and deny. The tuned doctrines are in
+`src/bnb/controllers/scripted_doctrines.json`; the tuning loop is below and in
+`docs/rewrite/sections/doctrines/`.
 
 **What each doctrine needs, beyond it.** One agent, with per-type doctrine parameters:
 
@@ -415,7 +416,7 @@ arena built with a `doctrine`), so per-type doctrines need no new machinery.
   closure), to deny the tail shot.
 
 Each of these is a parameter (a logistic or a distance) the search can tune; the defaults
-keep today's agent exactly (strength 0), as `energy_fight` does.
+keep today's agent (strength 0).
 
 **A capped tune loop.** Four rounds, each the same four steps, stopping early if the
 targets below are met:

@@ -36,7 +36,7 @@ def game_sums_seconds(trainer, repeats: int = 50) -> float:
     """Seconds per tick of the rollout's game sums (`analytics.resolve_tick`,
     `perceive_tick` and the outcome ledger) on the rollout's own buffers, with zero
     events."""
-    from bnb.contracts import REWARD_LEVELS, Events
+    from bnb.contracts import ASPECTS, REWARD_LEVELS, Events
     from bnb.game import api
     from bnb.learn.rewards import REWARD_EVENTS
     from bnb.runtime import analytics
@@ -57,7 +57,7 @@ def game_sums_seconds(trainer, repeats: int = 50) -> float:
         objective_progress=torch.zeros((B, N), device=device),
         objective=torch.zeros((B, N), device=device),
         result=torch.zeros(B, dtype=torch.int32, device=device),
-        enemy_damage_by_aspect=torch.zeros((B, N, 3), device=device),
+        enemy_damage_by_aspect=torch.zeros((B, N, len(ASPECTS)), device=device),
         kill_aspect=torch.full((B, N), -1, dtype=torch.int32, device=device),
     )
     reward = torch.zeros((B, N, len(REWARD_LEVELS)), device=device)

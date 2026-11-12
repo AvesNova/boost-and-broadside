@@ -35,12 +35,17 @@ FIELDS = dict(
     corner_nose_frequency="rad/s at corner speed [omega_c]",
     max_shield="[shield_max]",
     hit_radius="m",
-    hit_damage="[damage]",
+    hit_damage="a centre hit's damage by a bullet at its reference speed [damage]",
     muzzle_speed="m/s, proper",
     bullet_energy_cost="J [bullet_cost]",
     fire_rate="shots/s; 2 and 3 ticks between shots at 30 Hz [fire_interval]",
     bullet_life="s, whole ticks; the shooter's bullets', from its gun range",
     spawn_energy="J",
+    explosive_share="in [0, 1]: the share of the hit's damage that does not fall with speed",
+    reference_bullet_speed=(
+        "m/s, proper: the shooter's bullet's speed at rules.damage_reference_distance, fired "
+        "at cruise along the flight path; a hit's kinetic damage is (speed / this)^2"
+    ),
     bleed_exponent="e: induced drag k (C^2 + (z/u^2)^2)^(e/2)",
     # Per-type scales of shared values (SCALED), 1 by default.
     induced_drag_scale="of flight.induced_drag_factor [k]",
@@ -143,6 +148,8 @@ class ShipTypes:
     fire_rate: torch.Tensor
     bullet_life: torch.Tensor
     spawn_energy: torch.Tensor
+    explosive_share: torch.Tensor
+    reference_bullet_speed: torch.Tensor
     bleed_exponent: torch.Tensor
     induced_drag_scale: torch.Tensor
     stall_angle_scale: torch.Tensor

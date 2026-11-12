@@ -14,7 +14,7 @@ by game and by opponent (`batch/token_share/mode/{mode}`, `.../opponent/{opponen
 committed actions' use (`policy/usage/{factor}/{option}`) and how often a ship changes a
 factor from one step to the next (`policy/switch_rate/{factor}`).
 Per slice and over every game: the enemy hit damage and the kills by the hit's aspect class
-(`bnb.contracts.events.ASPECTS`: head-on, flank, tail), as shares of their totals
+(`bnb.contracts.events.ASPECTS`: mutual and offset head-on, flank, tail), as shares of their totals
 (`combat/damage_share/{aspect}`, `combat/kill_share/{aspect}`, each also `/{slice}`).
 """
 

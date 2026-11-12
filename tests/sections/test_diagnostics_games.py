@@ -9,7 +9,7 @@ import pytest
 import torch
 import yemong_cases as cases
 
-from bnb.contracts import REWARD_LEVELS, Events
+from bnb.contracts import ASPECTS, REWARD_LEVELS, Events
 from bnb.contracts.obs import GLOBAL, GLOBAL_COLUMNS, SHIP, SHIP_COLUMNS
 from bnb.learn.rewards import REWARD_EVENTS
 from bnb.runtime import analytics, metrics
@@ -32,7 +32,7 @@ def _events(**given) -> Events:
         objective_progress=torch.zeros((B, N)),
         objective=torch.zeros((B, N)),
         result=torch.zeros(B, dtype=torch.int32),
-        enemy_damage_by_aspect=torch.zeros((B, N, 3)),
+        enemy_damage_by_aspect=torch.zeros((B, N, len(ASPECTS))),
         kill_aspect=torch.full((B, N), -1, dtype=torch.int32),
     )
     fields.update(given)
@@ -103,16 +103,16 @@ def test_the_resolve_sums_match_a_hand_computed_episode():
 
 
 def test_the_aspect_shares_count_enemy_damage_and_enemy_kills():
-    """Environment 0: ship 1 takes 10 head-on and 30 from the tail, and dies to the tail
-    hit; environment 1: ship 0 takes 20 on the flank and dies to its teammate's (itself
+    """Environment 0: ship 1 takes 10 mutual head-on and 30 from the tail, and dies to the
+    tail hit; environment 1: ship 0 takes 20 on the flank and dies to its teammate's (itself
     here: a killer on its own team is no enemy kill)."""
     game, sums = analytics.blank_game(B, N, "cpu"), analytics.blank_game_sums(B, "cpu")
-    by_aspect = torch.zeros((B, N, 3))
-    by_aspect[0, 1] = torch.tensor([10.0, 0.0, 30.0])
-    by_aspect[1, 0, 1] = 20.0
+    by_aspect = torch.zeros((B, N, len(ASPECTS)))
+    by_aspect[0, 1] = torch.tensor([10.0, 0.0, 0.0, 30.0])
+    by_aspect[1, 0, 2] = 20.0
     died = torch.tensor([[False, True], [True, False]])
     killer = torch.tensor([[-1, 0], [0, -1]], dtype=torch.int32)
-    kill_aspect = torch.tensor([[-1, 2], [1, -1]], dtype=torch.int32)
+    kill_aspect = torch.tensor([[-1, 3], [2, -1]], dtype=torch.int32)
     events = _events(
         died=died, killer=killer, kill_aspect=kill_aspect, enemy_damage_by_aspect=by_aspect
     )
@@ -121,7 +121,7 @@ def test_the_aspect_shares_count_enemy_damage_and_enemy_kills():
         game, sums, events, zero, torch.zeros((B, N, len(REWARD_EVENTS))), _rows(), TICK
     )
     series = metrics.read(_two_slices().games(sums, None))
-    assert series["combat/damage_share/head_on/a"] == pytest.approx(0.25)
+    assert series["combat/damage_share/mutual_head_on/a"] == pytest.approx(0.25)
     assert series["combat/damage_share/tail/a"] == pytest.approx(0.75)
     assert series["combat/damage_share/flank/b"] == pytest.approx(1.0)
     assert series["combat/damage_share/flank"] == pytest.approx(20.0 / 60.0)

@@ -338,7 +338,10 @@ def similarity_inputs(rules: Rules, handles, view: Shown) -> dict[str, torch.Ten
         muzzle_speed=handles.muzzle_speed,
         gun_range=handles.gun_range,
         flight_time=whole_tick_life(
-            rules, handles.gun_range, handles.cruise_speed + handles.muzzle_speed
+            rules,
+            handles.gun_range,
+            handles.cruise_speed + handles.muzzle_speed,
+            handles.bullet_drag,
         ),
     )
 

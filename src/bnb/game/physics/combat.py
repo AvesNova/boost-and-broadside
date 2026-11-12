@@ -85,6 +85,48 @@ def contacts(
     return Contacts(tau=tau, miss_squared=miss_squared, contact=contact)
 
 
+def kinetic(
+    speed: torch.Tensor, reference_speed: torch.Tensor, explosive_share: torch.Tensor
+) -> torch.Tensor:
+    """A hit's damage over its type's (at the reference speed): the explosive share holds,
+    the rest goes as the bullet's kinetic energy, (speed / reference_speed)^2. speed: the
+    bullet's own proper speed through the medium, not its speed relative to the target
+    (which would favour the head-on pass)."""
+    ratio = speed / reference_speed
+    return explosive_share + (1.0 - explosive_share) * ratio * ratio
+
+
+def closeness(impact_squared: torch.Tensor, radius: torch.Tensor) -> torch.Tensor:
+    """A hit's damage over a centre hit's, (1 - (b / R)^2)^2 for the closest approach b of
+    the bullet's relative path to the target's centre and the target's hit radius R: 1 at
+    the centre, 0 with zero slope at the rim (a graze does little, and miss, graze, hit and
+    centre are continuous). Its mean over a uniform b in [0, R] is 8/15 (`MEAN_CLOSENESS`)."""
+    left = (1.0 - impact_squared / (radius * radius)).clamp_min(0.0)
+    return left * left
+
+
+MEAN_CLOSENESS = 8.0 / 15.0  # closeness averaged over a uniform impact parameter
+
+
+def impact_squared(sweep: Sweep, target: torch.Tensor, K: int) -> torch.Tensor:
+    """(B, N K) the squared distance b^2 from each bullet's target's centre to the bullet's
+    relative path this tick, the line through its swept move (the target is any ship index
+    for a bullet that hit nothing; its value is then unused). b^2 = (D0 x Delta)^2 / |Delta|^2,
+    at most |D0|^2, the start distance, should the relative move vanish."""
+    B, N = sweep.ship_x.shape
+    start_x = sweep.bullet_x.reshape(B, N * K) - sweep.ship_x.gather(1, target)
+    start_y = sweep.bullet_y.reshape(B, N * K) - sweep.ship_y.gather(1, target)
+    relative_x = sweep.bullet_displacement_x.reshape(B, N * K) - sweep.ship_displacement_x.gather(
+        1, target
+    )
+    relative_y = sweep.bullet_displacement_y.reshape(B, N * K) - sweep.ship_displacement_y.gather(
+        1, target
+    )
+    cross = start_x * relative_y - start_y * relative_x
+    line = cross * cross / (relative_x * relative_x + relative_y * relative_y).clamp_min(1e-12)
+    return torch.minimum(line, start_x * start_x + start_y * start_y)
+
+
 def contact_order(tau: torch.Tensor, miss_squared: torch.Tensor) -> torch.Tensor:
     """The int64 key that orders contacts in time: smallest tau first, ties (the clamp puts
     many contacts at exactly tau = 0 or 1) to the closer pass, the smaller miss distance.
@@ -132,7 +174,19 @@ def hits(
         (direction_x * nose_sin - direction_y * nose_cos).abs(),
         -(direction_x * nose_cos + direction_y * nose_sin),
     )
-    full = per_ship(types.hit_damage, ships.ship_type).repeat_interleave(K, 1)  # the shooter's
+
+    # The shooter's damage: a centre hit's at its bullet's reference speed (`kinetic`), times
+    # the closeness of the pass to the target's centre (`closeness`).
+    def shooters(table):
+        return per_ship(table, ships.ship_type).repeat_interleave(K, 1)
+
+    full = shooters(types.hit_damage) * kinetic(
+        bullets.proper_speed.reshape(B, N * K),
+        shooters(types.reference_bullet_speed),
+        shooters(types.explosive_share),
+    )
+    radius = per_ship(types.hit_radius, ships.ship_type).gather(1, target)  # the target's
+    full = full * closeness(impact_squared(sweep, target, K), radius)
     head_on = rules.head_on_fraction * per_ship(types.head_on_fraction_scale, ships.ship_type)
     head_on = head_on.gather(1, target)  # the target's armour
     # Its half-strength angle: the aspect is halfway from the head-on fraction to 1 there.
@@ -162,7 +216,7 @@ def hits(
 
     # The statistics' aspect classes (`bnb.contracts.events.ASPECTS`): each bullet's, the
     # enemy damage each target took by class, and the class of each target's earliest hit.
-    aspect_class = (theta >= ASPECT_BOUNDS[0]).long() + (theta > ASPECT_BOUNDS[1]).long()
+    aspect_class = sum((theta > bound).long() for bound in ASPECT_BOUNDS)
     team = ship_team(rules.ships_per_team, bullet_damage.device)
     from_enemy = team.repeat_interleave(K) != team[target]  # (B, N K)
     classes = len(ASPECTS)
@@ -198,7 +252,7 @@ def boundary_damage(
 def quiet(action: Action) -> torch.Tensor:
     """(B, N) bool: the ship's action is quiet (game spec 7.2), coasting with the stick
     straight or at a slight turn and not shooting, so its shield's recharge runs. Any other
-    input (boost, reverse, a normal or sharp turn, a shot) pauses it."""
+    input (boost, reverse, a normal or sharp turn, a shot) resets its wait to the delay."""
     steady = functools.reduce(operator.or_, (action.stick == index for index in QUIET_STICKS))
     return (action.power == COAST) & steady & (action.shoot == 0)
 
@@ -224,10 +278,11 @@ def apply_damage(
     """Phase 5 for ships alive at tick start: shields, recharge, and who dies.
 
     Damage beyond the shield breaks it (the overkill is ignored); any damage to a shield
-    already broken at tick start kills. A hit resets the recharge wait to the delay. An
-    unhurt ship on a quiet tick (quiet_input (B, N), see `quiet`) counts its wait down and
-    recharges once the wait is over; on any other tick its wait holds where it is and
-    nothing recharges. Ships dead at tick start lose and restore nothing.
+    already broken at tick start kills. A hit resets the recharge wait to the delay, and so
+    does any input that is not quiet (quiet_input (B, N), see `quiet`): an unhurt ship on a
+    quiet tick counts its wait down and recharges once the wait is over, so the recharge
+    needs the delay's length of unbroken quiet flight. Ships dead at tick start lose and
+    restore nothing.
     """
     tick_length = rules.tick_length
     shield0, wait0 = ships.shield, ships.shield_recharge_wait
@@ -244,8 +299,8 @@ def apply_damage(
     )
     # an unhurt ship cannot have died
     restored = torch.where(alive_at_start & ~hurt & quiet_input, recharge, 0.0)
-    counted = torch.where(quiet_input, (wait0 - tick_length).clamp_min(0.0), wait0)
-    wait = torch.where(hurt, delay, counted)
+    counted = (wait0 - tick_length).clamp_min(0.0)
+    wait = torch.where(hurt | ~quiet_input, delay, counted)
     ships = replace(
         ships,
         shield=torch.where(alive_at_start, shield + restored, shield0),

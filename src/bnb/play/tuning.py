@@ -679,20 +679,27 @@ class Tuner:
             self._handles_changed = time.monotonic()  # the cancelled solve runs again
 
     def _rerange(self) -> None:
-        """A new bullet drag: the card is kept (each type's bullet life and drag scale), so
-        its gun range (a closed form of the bullet's drag, speed and life) changes; the
-        estimate is re-anchored on it."""
+        """A new bullet drag (the floor): the card is kept (each type's bullet life and drag
+        scale), so each type's drag and its gun range (a closed form of the bullet's drag,
+        speed and life) change; the estimate is re-anchored on them."""
         rules = self.rules
         gun_range = api.gun_range(rules, self.card, self.targets.cruise_speed)
-        self.targets = self.targets.replace(gun_range=gun_range)
-        self._applied = self._applied.replace(gun_range=gun_range)
+        drag = rules.bullet_drag * self.card.bullet_drag_scale
+        self.targets = self.targets.replace(gun_range=gun_range, bullet_drag=drag)
+        self._applied = self._applied.replace(gun_range=gun_range, bullet_drag=drag)
         anchor, handles = self._anchor
         anchored = api.gun_range(rules, anchor, handles.cruise_speed)
-        self._anchor = (anchor, handles.replace(gun_range=anchored))
-        self.flying["gun_range"] = [
-            None if value is None else float(gun_range[kind])
-            for kind, value in enumerate(self.flying["gun_range"])
-        ]
+        self._anchor = (
+            anchor,
+            handles.replace(
+                gun_range=anchored, bullet_drag=rules.bullet_drag * anchor.bullet_drag_scale
+            ),
+        )
+        for name, values in (("gun_range", gun_range), ("bullet_drag", drag)):
+            self.flying[name] = [
+                None if value is None else float(values[kind])
+                for kind, value in enumerate(self.flying[name])
+            ]
         self._handles_version += 1
 
     def load(self, tuning: Tuning) -> None:

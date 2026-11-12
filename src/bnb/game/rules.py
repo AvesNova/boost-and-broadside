@@ -24,7 +24,8 @@ POWER_MODES = (0.0, -1.0, 1.0)  # by power index: coast, boost, reverse
 COAST = POWER_MODES.index(0.0)  # the power index that neither boosts nor reverses
 SLIGHT_TURN = min(abs(level) for level in STICK_LEVELS if level != 0.0)  # the lightest level
 # The quiet inputs, which leave the shield recharging (game spec 7.2): coasting, the stick
-# straight or at a slight turn to either side, and not shooting. Any other input pauses it.
+# straight or at a slight turn to either side, and not shooting. Any other input restarts
+# its delay.
 QUIET_STICKS = tuple(index for index, level in enumerate(STICK_LEVELS) if abs(level) <= SLIGHT_TURN)
 FIELD_LEVELS = (-2, -1, 1, 2)
 LN_SQRT2 = 0.5 * math.log(2.0)
@@ -90,7 +91,13 @@ class Rules:
     # The longest bullet life on the card, in moves (rules_of reads the card; 12 is the
     # standard card's): the static size of what follows a shot (its labels, the lookahead).
     longest_bullet_moves: int = 12
-    bullet_drag: float = 8e-4  # 1/m [k_b]
+    bullet_drag: float = (
+        8e-4  # 1/m [k_b], the floor of the card's (bullet_drag_scale >= 1 by design)
+    )
+    # m: the distance at which a card's hit damage holds (its reference bullet speed's, from a
+    # shot at cruise; ship-card spec 3): 300 real metres, the real-scale sets' value, over the
+    # standard metre's 5.82. Only the card's solve reads it (the game reads the card's speed).
+    damage_reference_distance: float = 300.0 / 5.82
     bullet_spread: float = 12.0  # m/s per axis, proper [sigma_b]
     head_on_fraction: float = 0.3  # [f_0]
     head_on_angle: float = HEAD_ON_ANGLE  # rad, armour at half strength [theta_h]

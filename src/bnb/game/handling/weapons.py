@@ -4,10 +4,16 @@ form both ways.
 Times are stated in seconds, and the fire rate in shots per second; each must be a whole
 number of ticks at the rules' tick, or the conversion fails with the reason (spec 5). The
 gun's range is the distance a bullet fired at cruise along the flight path travels in its
-life: s = ln(1 + k_b w0 t) / k_b at n = 1, with w0 = cruise + muzzle speed. The range sets
-both the type's bullet life and its drag: the life is the whole ticks at or above the time
-the rules' drag takes to cover the range, t = expm1(k_b R) / (k_b w0), and the type's drag
-scale (1 or more: drag only shortens) trims the range to R in that life, by bisection.
+life: s = ln(1 + k_b w0 t) / k_b at n = 1, with w0 = cruise + muzzle speed and k_b the
+type's own bullet drag (the `bullet_drag` handle; the card holds it as a scale of the
+rules' drag, the floor). The life is the whole ticks at or above the time the type's drag
+takes to cover the range, t = expm1(k_b R) / (k_b w0) rounded up, so the flown range is the
+handle's to within one tick of travel; the card's handles read back the flown one.
+
+The hit damage is a centre hit's by a bullet at its reference speed: the speed a shot at
+cruise has at the rules' damage reference distance d, w0 exp(-k_b d) (the card's
+`reference_bullet_speed`). The game scales it by the bullet's kinetic energy at the hit and
+the closeness of the pass (`physics.combat.kinetic`, `closeness`).
 """
 
 import math
@@ -20,32 +26,27 @@ from ..rules import LONGEST_BULLET_LIFE, Rules
 from ..ship_types import ShipTypes, bullet_moves, ticks_between_shots
 from .errors import Infeasible
 
-DRAG_BISECTIONS = 200
-DRAG_RANGE = (1e-12, 10.0)  # 1/m
-
-
 # Ticks: a range's flight time this close above a whole tick is that tick (the float error of
 # a range measured from a card, whose life covers it exactly).
 LIFE_TOLERANCE = 1e-4
 
 
 def whole_tick_life(
-    rules: Rules, distance: torch.Tensor, launch_speed: torch.Tensor
+    rules: Rules, distance: torch.Tensor, launch_speed: torch.Tensor, drag=None
 ) -> torch.Tensor:
-    """The bullet life (s, whole ticks) that covers `distance` at this launch speed under the
-    rules' drag: the time t = expm1(k_b R) / (k_b w0) rounded up to a tick, so that the
-    type's drag scale, 1 or more, trims the range to R (`bullet_life` checks it)."""
-    drag, tick = rules.bullet_drag, rules.tick_length
+    """The bullet life (s, whole ticks) that covers `distance` at this launch speed under
+    this drag (1/m; the rules' by default): t = expm1(k_b R) / (k_b w0) rounded up to a
+    tick."""
+    drag = rules.bullet_drag if drag is None else drag
     flight = torch.expm1(drag * distance) / (drag * launch_speed)
-    ticks = torch.ceil(flight / tick - LIFE_TOLERANCE)
-    # At a drag near 0 the time is the drag-free one, which no drag scale can trim to: a tick more.
-    ticks = torch.where(launch_speed * ticks * tick <= distance, ticks + 1, ticks)
-    return ticks * tick
+    return torch.ceil(flight / rules.tick_length - LIFE_TOLERANCE) * rules.tick_length
 
 
-def bullet_life(rules: Rules, distance: torch.Tensor, launch_speed: torch.Tensor) -> torch.Tensor:
+def bullet_life(
+    rules: Rules, distance: torch.Tensor, launch_speed: torch.Tensor, drag=None
+) -> torch.Tensor:
     """`whole_tick_life`, or Infeasible with the reason past LONGEST_BULLET_LIFE."""
-    life = whole_tick_life(rules, distance, launch_speed)
+    life = whole_tick_life(rules, distance, launch_speed, drag)
     if (life > LONGEST_BULLET_LIFE + 0.5 * rules.tick_length).any():
         raise Infeasible(
             f"a gun range needs a bullet life of {float(life.max()):.3g} s at this cruise and "
@@ -60,17 +61,13 @@ def gun_range(drag: torch.Tensor, launch_speed: torch.Tensor, life) -> torch.Ten
     return torch.log1p(drag * launch_speed * life) / drag
 
 
-def range_drag(distance: torch.Tensor, launch_speed: torch.Tensor, life) -> torch.Tensor:
-    """The drag k_b at which a bullet launched at this speed travels `distance` in its life
-    (bisection in log k_b: the range falls as the drag grows). The distance must lie short
-    of the drag-free reach, launch speed x life (`bullet_life` sees to it)."""
-    low = torch.full_like(distance, DRAG_RANGE[0]).log()
-    high = torch.full_like(distance, DRAG_RANGE[1]).log()
-    for _ in range(DRAG_BISECTIONS):
-        middle = 0.5 * (low + high)
-        too_far = gun_range(middle.exp(), launch_speed, life) > distance
-        low, high = torch.where(too_far, middle, low), torch.where(too_far, high, middle)
-    return (0.5 * (low + high)).exp()
+def reference_bullet_speed(
+    rules: Rules, drag: torch.Tensor, launch_speed: torch.Tensor
+) -> torch.Tensor:
+    """The proper speed (m/s) of a bullet launched at this speed once it has flown the rules'
+    damage reference distance, n = 1: w(s) = w0 exp(-k_b s). Past its range it is the speed
+    the bullet would have there."""
+    return launch_speed * torch.exp(-drag * rules.damage_reference_distance)
 
 
 def whole_ticks(seconds: torch.Tensor, rules: Rules, what: str) -> torch.Tensor:
@@ -90,6 +87,10 @@ def combat_card(rules: Rules, handles, cruise_speed: torch.Tensor) -> dict[str, 
         raise Infeasible("a head-on fraction must lie in [0, 1]")
     if ((handles.head_on_angle <= 0.0) | (handles.head_on_angle > math.pi)).any():
         raise Infeasible("a head-on angle must lie in (0, 180] degrees")
+    if ((handles.explosive_share < 0.0) | (handles.explosive_share > 1.0)).any():
+        raise Infeasible("an explosive share must lie in [0, 1]")
+    if (handles.bullet_drag <= 0.0).any():
+        raise Infeasible("a bullet drag must be positive")
     if (handles.shots_per_store < 1.0).any():
         raise Infeasible("a full store must pay for at least one shot")
     whole_ticks(handles.shield_recharge_delay, rules, "shield recharge delay")
@@ -98,10 +99,12 @@ def combat_card(rules: Rules, handles, cruise_speed: torch.Tensor) -> dict[str, 
     except ValueError as error:
         raise Infeasible(str(error)) from error
     launch_speed = cruise_speed + handles.muzzle_speed
-    life = bullet_life(rules, handles.gun_range, launch_speed)
-    drag = range_drag(handles.gun_range, launch_speed, life)
+    drag = handles.bullet_drag
+    life = bullet_life(rules, handles.gun_range, launch_speed, drag)
     return dict(
         hit_damage=handles.hit_damage,
+        explosive_share=handles.explosive_share,
+        reference_bullet_speed=reference_bullet_speed(rules, drag, launch_speed),
         fire_rate=handles.fire_rate,
         bullet_life=life,
         muzzle_speed=handles.muzzle_speed,
@@ -119,15 +122,18 @@ def combat_card(rules: Rules, handles, cruise_speed: torch.Tensor) -> dict[str, 
 
 
 def combat_handles(rules: Rules, types: ShipTypes, cruise_speed: torch.Tensor) -> dict:
-    """The combat handles of a card (fields (B, num_types)) flying at this cruise."""
+    """The combat handles of a card (fields (B, num_types)) flying at this cruise: the gun
+    range is the one flown in the card's life (the handle's to within a tick of travel)."""
     drag = rules.bullet_drag * types.bullet_drag_scale
     life = bullet_moves(types.bullet_life, rules.tick_length) * rules.tick_length
     return dict(
         hit_damage=types.hit_damage,
+        explosive_share=types.explosive_share,
         fire_rate=types.fire_rate,
         muzzle_speed=types.muzzle_speed,
         bullet_spread=rules.bullet_spread * types.bullet_spread_scale,
-        gun_range=gun_range(drag, cruise_speed + types.muzzle_speed, life),
+        gun_range=gun_range(drag, cruise_speed + types.muzzle_speed, life),  # the flown range
+        bullet_drag=drag,
         shots_per_store=types.max_energy / types.bullet_energy_cost,
         max_shield=types.max_shield,
         shield_recharge_rate=rules.shield_recharge_rate * types.shield_recharge_rate_scale,
