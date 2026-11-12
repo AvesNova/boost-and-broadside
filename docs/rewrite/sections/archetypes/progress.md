@@ -922,7 +922,7 @@ mirrors without a joust *and* ships that fly differently.
 | Rank | Pair (map) | r9 | Other doctrines | Mirrors: mutual, life, merges a kill | Why not perfect |
 |---|---|---|---|---|---|
 | 1 | **hit-and-run v standard** (`arch-standard-hit-and-run`) | 0.53 / 0.48 / 0.47 / 0.47 / 0.46 | CE 0.51 / 0.46 / 0.46 / 0.48 / 0.44; DCL 0.51 / 0.48 / 0.49 / 0.47 / 0.47 | 0.34, 260 s, 2.7; 0.36, 295 s, 3.2 | the two fly alike (shield, recharge, damage, nose and sight differ, not flight); the hit-and-run mirror's median is one merge a kill |
-| 2 | **rate v speed** (`arch-rate-speed`) | 0.55 / 0.52 / 0.46 / 0.48 / 0.45 | CE 0.53 / 0.48 / 0.46 / 0.42 / 0.45; DCL 0.54 / 0.49 / 0.46 / 0.42 / 0.42 | 0.48, 223 s, 2.7; 0.38, 299 s, 3.3 | the rate mirror jousts (0.48); a tier above the set's ships |
+| 2 | **rate v speed** (`arch-rate-speed`, confirm 12) | 0.56 / 0.50 / 0.49 / 0.47 / 0.44 | CE 0.53 / 0.49 / 0.47 / 0.46 / 0.45; DCL 0.53 / 0.51 / 0.50 / 0.40 / 0.37 | 0.35, 287 s, 3.1; 0.32, 341 s, 3.4 | flight differs only a little (lift x1.03, drag x0.85); a tier above the set's ships; the speed mirror runs 341 s |
 | 3 | **standard v brawler** (`arch-standard-brawler`) | 0.52 / 0.52 / 0.52 / 0.53 / 0.52 (repeat 0.54 / 0.52 / 0.53 / 0.52 / 0.46) | CE 0.53 / 0.57 / 0.58 / 0.61 / 0.59; DCL 0.53-0.61 | 0.33, 327-335 s, 3.2; 0.35, 270-282 s, 2.9 | leans 0.57-0.61 to the standard once ships extend; differs in sight and damage only |
 | 4 | **standard v small** (`arch-standard-small`) | 0.54 / 0.50 / 0.47 / 0.48 / 0.47 | CE 0.54 / 0.53 / 0.49 / 0.46 / 0.49 | 0.33, 320 s; 0.42, 281 s | size and gun weight only |
 | 5 | **brawler v small** (`arch-brawler-small`) | 0.51 / 0.47 / 0.43 / 0.47 / 0.46 | CE 0.51 / 0.46 / 0.41 / 0.43 / 0.37 | 0.33, 303 s; 0.44, 294 s | 0.37 at 20v20 under CE |
@@ -931,8 +931,8 @@ mirrors without a joust *and* ships that fly differently.
 | - | D2 (`balance-d2`, reference; Yongma v Jujak) | 0.49 / 0.48 / 0.57 / 0.45 / **0.09** (d2kit) | D2 with kit2: 0.52 / 0.50 / 0.69 / 0.73 / 0.21 | 0.36, 283 s; 0.66, 255 s | 20v20; the Jujak mirror joust |
 
 Rate v speed: rate = lift x1.03 (corner 132 against 134 m/s, the same sustained turn),
-damage x1.25; speed = drag x0.85 (cruise 174, top 407 m/s), vision x1.04, damage x1.05, its
-nose cone at f0 0.075. Hit-and-run (final) = shield x0.8, recharge x4 starting after 0.4 of
+damage x1.25, nose cone f0 0.065; speed = drag x0.85 (cruise 174, top 407 m/s), vision x1.04,
+damage x1.05, nose cone f0 0.07. Hit-and-run (final) = shield x0.8, recharge x4 starting after 0.4 of
 the delay, damage x1.22, vision x0.96, nose cone f0 0.06. Brawler = vision x0.92, damage
 x1.12. Small = hit radius x0.8, damage x0.9, nose cone f0 0.10. Standard = M with kit2. All
 on the neutral hull M (sustained turn 0.274 rad/s, cruise 163 m/s, shield 106) with kit2
@@ -1057,3 +1057,18 @@ x1.06, damage x1.05):
 - **A wider flight gap widens the duel-crowd split** (0.62-0.69 against 0.37-0.46) and the
   speed fighter's nose no longer pays it back. Under r9 the flight-distinct pair stays near
   equal flight (lift x1.03, drag x0.85).
+
+## 04:54-05:02 KST: confirm 12 (`confirm12/`): rate v speed with both noses
+
+1024 games (10v10 512, 20v20 256); rate (lift x1.03, dmg x1.25, f0 0.065) v speed (drag x0.85,
+vision x1.04, dmg x1.05, f0 0.07):
+
+| Doctrine | 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | AA (rate); BB (speed) mutual, life, merges | Duel kills m / o / f / t; life | v r9 |
+|---|---|---|---|---|
+| **r9** | **0.56 / 0.50 / 0.49 / 0.47 / 0.44** | **0.35, 287 s, 3.1; 0.32, 341 s, 3.4** | 0.33 / 0.58 / 0.09 / 0; 260 s | 0.51 / 0.51 |
+| CE | 0.53 / 0.49 / 0.47 / 0.46 / 0.45 | 0.21, 331 s; 0.16, 399 s | 0.23 / 0.68 / 0.08 / 0; 330 s | 0.80 / 0.83 |
+| DCL | 0.53 / 0.51 / 0.50 / 0.40 / 0.37 | 0.64, 184 s; 0.70, 206 s | 313 s | 0.83 / 0.85 |
+
+- The rate mirror's joust falls from 0.48 to 0.35 with the balance unchanged under r9 and CE
+  (0.44-0.56); the duel one-circle doctrine tips 10v10-20v20 to the speed fighter (0.37-0.40).
+  The play map `arch-rate-speed` now carries this card.
