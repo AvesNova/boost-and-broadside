@@ -935,6 +935,7 @@ def round10() -> list[dict]:
 
 
 ROUNDS["round10"] = round10
+ROUNDS["confirm1"] = lambda: list(finalists().values())
 
 
 if __name__ == "__main__":
