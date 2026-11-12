@@ -33,7 +33,9 @@ a first-merge kill. A pair's merges count from when both last spawned.
 import argparse
 import dataclasses
 import datetime
+import json
 import math
+import pathlib
 import time
 import zoneinfo
 
@@ -127,7 +129,7 @@ def base_card(device) -> tuple[ShipTypes, dict]:
 
 def variant_types(base: ShipTypes, energy: list[dict], turn: list[dict]) -> ShipTypes:
     """The variant table (2K,): K Yongma rows then K Jujak rows, each the base row with its
-    dict's fields multiplied (a field name -> factor)."""
+    dict's fields multiplied (a field name -> factor, or {"set": value})."""
     if len(energy) != len(turn):
         raise ValueError("as many Yongma variants as Jujak variants")
     rows = []
@@ -135,7 +137,10 @@ def variant_types(base: ShipTypes, energy: list[dict], turn: list[dict]) -> Ship
         for factors in variants:
             row = {f.name: getattr(base, f.name)[kind].clone() for f in dataclasses.fields(base)}
             for name, factor in factors.items():
-                row[name] = row[name] * factor
+                if isinstance(factor, dict):  # {"set": value}: an absolute value
+                    row[name] = torch.full_like(row[name], factor["set"])
+                else:
+                    row[name] = row[name] * factor
             rows.append(row)
     return ShipTypes(
         **{f.name: torch.stack([row[f.name] for row in rows]) for f in dataclasses.fields(base)}
@@ -773,3 +778,184 @@ def markdown(rows: list[dict]) -> str:
             f"| {r['ttk_median']} | {shares(r['circles'])} ({r['circle_count']:.0f}) |"
         )
     return "\n".join(lines)
+
+
+SEARCH_LINEUPS = (
+    "mixed",
+    "mixed reversed",
+    "energy v turn",
+    "turn v energy",
+    "energy mirror",
+    "turn mirror",
+)
+# a candidate's score: the mixed lineups (the training lineup, the Elo) half, the four
+# single-type lineups the other half
+LINEUP_WEIGHTS = {"mixed": 0.25, "mixed reversed": 0.25} | {
+    lineup: 0.125 for lineup in SEARCH_LINEUPS[2:]
+}
+
+
+def weighted_score(rows: list[dict]) -> tuple[float, float]:
+    """A player's weighted mean score over job summaries (its side A), and the standard
+    error."""
+    total, variance, weight = 0.0, 0.0, 0.0
+    by_lineup: dict[str, list[dict]] = {}
+    for r in rows:
+        by_lineup.setdefault(r["lineup"], []).append(r)
+    for lineup, mine in by_lineup.items():
+        w = LINEUP_WEIGHTS.get(lineup, 0.0)
+        games = sum(r["games"] for r in mine)
+        mean = sum(r["score"][0] * r["games"] for r in mine) / games
+        se2 = sum((r["score"][1] * r["games"]) ** 2 for r in mine) / games**2
+        total += w * mean
+        variance += w * w * se2
+        weight += w
+    return total / weight, math.sqrt(variance) / weight
+
+
+def search(
+    loop: Loop,
+    parent: Player,
+    opponents: list[Player],
+    log_path: pathlib.Path,
+    generations: int,
+    children: int,
+    games: int,
+    sigma: float,
+    decay: float = 0.85,
+    minimum_sigma: float = 0.06,
+    margin: float = 1.0,
+    seed: int = 5,
+    variant: int = 0,
+    deadline: float | None = None,
+    log=print,
+) -> Player:
+    """A (1 + lambda) search of both types' doctrines at once against a fixed league: each
+    generation the parent, `children` perturbations of its Yongma doctrine and `children`
+    of its Jujak doctrine each play `games` games per league opponent and lineup
+    (SEARCH_LINEUPS) as side A; a candidate's score is its weighted mean
+    (`weighted_score`). The parent's games accumulate over generations; the best child of
+    each type that beats the parent by `margin` standard errors replaces that type's
+    doctrine (both may change in one generation). Every candidate is a line of the log."""
+    from bench.doctrine_arena import perturb
+
+    generator = torch.Generator().manual_seed(seed)
+    parent_rows: list[dict] = []
+    started = time.time()
+    for generation in range(generations):
+        if deadline is not None and time.time() > deadline:
+            log("past the deadline: stopping the search")
+            break
+        s = max(sigma * decay**generation, minimum_sigma)
+        candidates = [dataclasses.replace(parent, name="parent")]
+        for number in range(children):
+            candidates.append(
+                dataclasses.replace(
+                    parent, name=f"e{number}", energy=perturb(parent.energy, s, generator)
+                )
+            )
+        for number in range(children):
+            candidates.append(
+                dataclasses.replace(
+                    parent, name=f"t{number}", turn=perturb(parent.turn, s, generator)
+                )
+            )
+        jobs = [
+            Job(variant, lineup, candidate, opponent, games)
+            for candidate in candidates
+            for opponent in opponents
+            for lineup in SEARCH_LINEUPS
+        ]
+        generation_started = time.time()
+        outs = run(loop, jobs, log=lambda line: None)
+        rows = [
+            job_summary(job, out, loop.ticks * loop.rules.tick_length)
+            for job, out in zip(jobs, outs, strict=True)
+        ]
+        by_candidate: dict[str, list[dict]] = {}
+        for r in rows:
+            by_candidate.setdefault(r["a"], []).append(r)
+        parent_rows += by_candidate["parent"]
+        parent_score = weighted_score(parent_rows)
+        scores = {name: weighted_score(mine) for name, mine in by_candidate.items()}
+        with log_path.open("a") as handle:
+            for candidate in candidates:
+                handle.write(
+                    json.dumps(
+                        dict(
+                            generation=generation,
+                            name=candidate.name,
+                            sigma=s,
+                            score=scores[candidate.name],
+                            parent_score=parent_score if candidate.name == "parent" else None,
+                            player=candidate.named(),
+                            by_opponent={
+                                o.name: weighted_score(
+                                    [r for r in by_candidate[candidate.name] if r["b"] == o.name]
+                                )[0]
+                                for o in opponents
+                            },
+                        )
+                    )
+                    + "\n"
+                )
+        promoted = []
+        new_energy, new_turn = parent.energy, parent.turn
+        for prefix in ("e", "t"):
+            best = max((n for n in scores if n.startswith(prefix)), key=lambda n: scores[n][0])
+            score, error = scores[best]
+            if score > parent_score[0] + margin * math.hypot(error, parent_score[1]):
+                promoted.append(f"{best} {score:.3f}")
+                chosen = candidates[[c.name for c in candidates].index(best)]
+                if prefix == "e":
+                    new_energy = chosen.energy
+                else:
+                    new_turn = chosen.turn
+        elapsed = time.time() - started
+        left = elapsed / (generation + 1) * (generations - generation - 1)
+        log(
+            f"{datetime.datetime.now(KST):%H:%M:%S} generation {generation}: parent "
+            f"{parent_score[0]:.3f} ± {parent_score[1]:.3f}, best e "
+            f"{max(v[0] for n, v in scores.items() if n.startswith('e')):.3f}, best t "
+            f"{max(v[0] for n, v in scores.items() if n.startswith('t')):.3f}"
+            f"{' -> ' + ', '.join(promoted) if promoted else ''}; "
+            f"{time.time() - generation_started:.0f} s; ETA {clock(left)} KST"
+        )
+        if promoted:
+            parent = dataclasses.replace(parent, energy=new_energy, turn=new_turn)
+            parent_rows = []
+    return parent
+
+
+def card_passes(loop: Loop) -> list[dict]:
+    """Each variant's closed-form head-on time to kill in passes (100% hits, the expected
+    hit D x 8/15 x the kinetic factor at the reference distance, 1), shooter on target, and
+    its tail TTK in seconds: (ceil(shield / (hit x aspect)) - 1) / fire rate over the pass
+    time (the pair's longer gun range over the two cruises)."""
+    from bnb.game.physics.combat import MEAN_CLOSENESS
+
+    types, rules, card = loop.types, loop.rules, characteristics(loop.types, loop.rules)
+    fraction = rules.head_on_fraction * types.head_on_fraction_scale
+    out = []
+    for v in range(loop.K):
+        row = {}
+        for shooter, i in ((ENERGY, v), (TURN, v + loop.K)):
+            for target, j in ((ENERGY, v), (TURN, v + loop.K)):
+                damage = float(types.hit_damage[i]) * MEAN_CLOSENESS
+                rate, shield = float(types.fire_rate[i]), float(types.max_shield[j])
+
+                def ttk(aspect: float) -> float:
+                    return (math.ceil(shield / (damage * aspect) - 1e-9) - 1) / rate
+
+                reach = max(float(card.gun_range[i]), float(card.gun_range[j]))
+                passing = reach / float(card.cruise_speed[i] + card.cruise_speed[j])
+                row[f"{shooter[0].upper()} on {target[0].upper()}"] = dict(
+                    head_on_passes=ttk(float(fraction[j])) / passing, tail_seconds=ttk(1.0)
+                )
+        row["gun_range"] = [float(card.gun_range[v]), float(card.gun_range[v + loop.K])]
+        row["head_on_angle_degrees"] = [
+            math.degrees(rules.head_on_angle * float(types.head_on_angle_scale[k]))
+            for k in (v, v + loop.K)
+        ]
+        out.append(row)
+    return out

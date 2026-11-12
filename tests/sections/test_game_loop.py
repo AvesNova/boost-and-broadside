@@ -1,0 +1,65 @@
+"""The game loop's GPU harness (`bench.game_loop`), on the CPU uncompiled: the layout, the
+card variants and a short batch of games with its statistics."""
+
+import math
+
+import torch
+
+from bench.game_loop import (
+    FILLER,
+    Group,
+    Job,
+    Loop,
+    Player,
+    base_card,
+    batches,
+    job_summary,
+    layout,
+    ratings,
+    run,
+    variant_types,
+)
+
+
+def test_variants_multiply_or_set_the_base_rows():
+    base = base_card("cpu")
+    types = variant_types(
+        base, [{}, {"hit_damage": 0.5, "explosive_share": {"set": 0.4}}], [{}, {}]
+    )
+    assert types.hit_damage.shape == (4,)
+    assert math.isclose(float(types.hit_damage[1]), 0.5 * float(base.hit_damage[0]), rel_tol=1e-6)
+    assert math.isclose(float(types.explosive_share[1]), 0.4, rel_tol=1e-6)
+    assert float(types.hit_damage[2]) == float(base.hit_damage[1])
+
+
+def test_the_layout_gives_each_side_its_doctrines_and_seats():
+    hand = Player("x", temperature=2.0)
+    placed = layout([Group(1, "energy v turn", hand, Player("off"), 4)], 2, "cpu")
+    # side A (Yongma, variant 1 -> row 1) on team 0 in the even environments
+    assert placed["ship_type"][0].tolist() == [1] * 5 + [3] * 5
+    assert placed["ship_type"][1].tolist() == [3] * 5 + [1] * 5
+    assert placed["a_on_zero"].tolist() == [True, False, True, False]
+    assert placed["temperature"].tolist() == [2.0, 1.0, 1.0, 2.0] * 2
+    assert placed["doctrines"].shape[:2] == (8, 4)
+
+
+def test_batches_pad_with_filler():
+    plan = batches([Job(0, "mixed", Player("a"), Player("b"), 6)], 4)
+    assert [sum(g.environments for _, g in batch) for batch in plan] == [4, 4]
+    assert plan[1][-1][0] == -1 and plan[1][-1][1].a is FILLER
+
+
+def test_a_short_batch_counts_its_games(global_generator):
+    loop = Loop(4, 1, 2.0, device="cpu", compiled=False)
+    jobs = [Job(0, "mixed", Player("off"), Player("off"), 4)]
+    (out,) = run(loop, jobs)
+    assert out["kills_side"].shape == (4, 2)
+    row = job_summary(jobs[0], out, 2.0)
+    assert row["games"] == 4 and 0.0 <= row["score"][0] <= 1.0
+
+
+def test_ratings_pin_the_anchor():
+    rows = [dict(a="off", b="x", games=100, wins=75.0, draws=0.0)]
+    elo = ratings(rows)
+    assert elo["off"][0] == 1000.0 and elo["x"][0] < 1000.0
+    assert torch.isfinite(torch.tensor(elo["x"][1]))

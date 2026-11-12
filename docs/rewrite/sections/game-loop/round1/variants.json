@@ -1,0 +1,231 @@
+[
+ {
+  "name": "f1 a1",
+  "energy": {},
+  "turn": {}
+ },
+ {
+  "name": "f1 a1 slow",
+  "energy": {
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85
+  },
+  "turn": {
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85
+  }
+ },
+ {
+  "name": "f1 a1 Yx0.5",
+  "energy": {
+   "explosive_share": {
+    "set": 0.5
+   }
+  },
+  "turn": {}
+ },
+ {
+  "name": "f1 a1 Yx0.5 slow",
+  "energy": {
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85,
+   "explosive_share": {
+    "set": 0.5
+   }
+  },
+  "turn": {
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85
+  }
+ },
+ {
+  "name": "f1 a0.35",
+  "energy": {
+   "head_on_angle_scale": 0.35
+  },
+  "turn": {
+   "head_on_angle_scale": 0.35
+  }
+ },
+ {
+  "name": "f1 a0.35 slow",
+  "energy": {
+   "head_on_angle_scale": 0.35,
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85
+  },
+  "turn": {
+   "head_on_angle_scale": 0.35,
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85
+  }
+ },
+ {
+  "name": "f1 a0.35 Yx0.5",
+  "energy": {
+   "head_on_angle_scale": 0.35,
+   "explosive_share": {
+    "set": 0.5
+   }
+  },
+  "turn": {
+   "head_on_angle_scale": 0.35
+  }
+ },
+ {
+  "name": "f1 a0.35 Yx0.5 slow",
+  "energy": {
+   "head_on_angle_scale": 0.35,
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85,
+   "explosive_share": {
+    "set": 0.5
+   }
+  },
+  "turn": {
+   "head_on_angle_scale": 0.35,
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85
+  }
+ },
+ {
+  "name": "f0.65 a1",
+  "energy": {
+   "head_on_fraction_scale": 0.65
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.65
+  }
+ },
+ {
+  "name": "f0.65 a1 slow",
+  "energy": {
+   "head_on_fraction_scale": 0.65,
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.65,
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85
+  }
+ },
+ {
+  "name": "f0.65 a1 Yx0.5",
+  "energy": {
+   "head_on_fraction_scale": 0.65,
+   "explosive_share": {
+    "set": 0.5
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.65
+  }
+ },
+ {
+  "name": "f0.65 a1 Yx0.5 slow",
+  "energy": {
+   "head_on_fraction_scale": 0.65,
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85,
+   "explosive_share": {
+    "set": 0.5
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.65,
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85
+  }
+ },
+ {
+  "name": "f0.65 a0.35",
+  "energy": {
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.35
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.35
+  }
+ },
+ {
+  "name": "f0.65 a0.35 slow",
+  "energy": {
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.35,
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.35,
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85
+  }
+ },
+ {
+  "name": "f0.65 a0.35 Yx0.5",
+  "energy": {
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.35,
+   "explosive_share": {
+    "set": 0.5
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.35
+  }
+ },
+ {
+  "name": "f0.65 a0.35 Yx0.5 slow",
+  "energy": {
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.35,
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85,
+   "explosive_share": {
+    "set": 0.5
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.35,
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85
+  }
+ }
+]
