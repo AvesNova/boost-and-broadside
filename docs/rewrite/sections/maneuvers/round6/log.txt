@@ -1,1 +1,359 @@
 ## 1v1: 180 jobs, B 8192, 01:10 KST
+W1113 01:10:41.551000 1798300 torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+/home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+  warn_once(FP_FUSION_DEFAULT_WARNING)
+  batch 1/12 62 s; ETA 01:22 KST
+  batch 2/12 81 s; ETA 01:18 KST
+  batch 3/12 100 s; ETA 01:17 KST
+  batch 4/12 119 s; ETA 01:16 KST
+  batch 5/12 138 s; ETA 01:15 KST
+  batch 6/12 157 s; ETA 01:15 KST
+  batch 7/12 176 s; ETA 01:15 KST
+  batch 8/12 195 s; ETA 01:15 KST
+  batch 9/12 214 s; ETA 01:15 KST
+  batch 10/12 233 s; ETA 01:15 KST
+  batch 11/12 252 s; ETA 01:14 KST
+  batch 12/12 271 s; ETA 01:14 KST
+1v1                  frozen | r9   energy v turn v c0: score 0.010 ± 0.003  kills m/o/f/t 0.15 / 0.12 / 0.43 / 0.30  life 171 s  kpm/ship 0.33  trades 0.00
+1v1                  frozen | r9     turn mirror v c0: score 0.487 ± 0.015  kills m/o/f/t 0.80 / 0.17 / 0.03 / 0.00  life 164 s  kpm/ship 0.35  trades 0.03
+1v1                  frozen | r9   energy mirror v c0: score 0.501 ± 0.009  kills m/o/f/t 0.37 / 0.54 / 0.09 / 0.00  life 953 s  kpm/ship 0.06  trades 0.00
+1v1 frozen | one-circle mirror duel   energy v turn v c1: score 0.011 ± 0.003  kills m/o/f/t 0.17 / 0.13 / 0.41 / 0.29  life 168 s  kpm/ship 0.34  trades 0.00
+1v1 frozen | one-circle mirror duel     turn mirror v c1: score 0.500 ± 0.015  kills m/o/f/t 0.88 / 0.05 / 0.01 / 0.06  life 108 s  kpm/ship 0.51  trades 0.05
+1v1 frozen | one-circle mirror duel   energy mirror v c1: score 0.463 ± 0.014  kills m/o/f/t 0.78 / 0.08 / 0.01 / 0.13  life 192 s  kpm/ship 0.30  trades 0.02
+1v1 frozen | one-circle mirror duel, crowd straight boost   energy v turn v c2: score 0.014 ± 0.004  kills m/o/f/t 0.15 / 0.13 / 0.43 / 0.29  life 170 s  kpm/ship 0.33  trades 0.00
+1v1 frozen | one-circle mirror duel, crowd straight boost     turn mirror v c2: score 0.498 ± 0.015  kills m/o/f/t 0.86 / 0.05 / 0.02 / 0.07  life 110 s  kpm/ship 0.50  trades 0.05
+1v1 frozen | one-circle mirror duel, crowd straight boost   energy mirror v c2: score 0.482 ± 0.014  kills m/o/f/t 0.78 / 0.09 / 0.02 / 0.11  life 195 s  kpm/ship 0.29  trades 0.01
+1v1 frozen | one-circle mirror duel, crowd straight   energy v turn v c3: score 0.010 ± 0.003  kills m/o/f/t 0.16 / 0.12 / 0.43 / 0.29  life 165 s  kpm/ship 0.34  trades 0.00
+1v1 frozen | one-circle mirror duel, crowd straight     turn mirror v c3: score 0.515 ± 0.015  kills m/o/f/t 0.87 / 0.06 / 0.01 / 0.06  life 110 s  kpm/ship 0.50  trades 0.05
+1v1 frozen | one-circle mirror duel, crowd straight   energy mirror v c3: score 0.524 ± 0.014  kills m/o/f/t 0.78 / 0.10 / 0.01 / 0.11  life 206 s  kpm/ship 0.28  trades 0.02
+1v1 frozen | one-circle mirror duel 5 gr, crowd straight boost   energy v turn v c4: score 0.007 ± 0.003  kills m/o/f/t 0.15 / 0.13 / 0.42 / 0.30  life 170 s  kpm/ship 0.33  trades 0.00
+1v1 frozen | one-circle mirror duel 5 gr, crowd straight boost     turn mirror v c4: score 0.480 ± 0.015  kills m/o/f/t 0.87 / 0.05 / 0.01 / 0.07  life 109 s  kpm/ship 0.51  trades 0.05
+1v1 frozen | one-circle mirror duel 5 gr, crowd straight boost   energy mirror v c4: score 0.514 ± 0.014  kills m/o/f/t 0.80 / 0.07 / 0.01 / 0.13  life 193 s  kpm/ship 0.30  trades 0.03
+1v1 frozen | one-circle mirror duel, crowd half one-circle   energy v turn v c5: score 0.004 ± 0.002  kills m/o/f/t 0.15 / 0.13 / 0.43 / 0.29  life 169 s  kpm/ship 0.34  trades 0.00
+1v1 frozen | one-circle mirror duel, crowd half one-circle     turn mirror v c5: score 0.507 ± 0.015  kills m/o/f/t 0.88 / 0.05 / 0.01 / 0.06  life 109 s  kpm/ship 0.50  trades 0.07
+1v1 frozen | one-circle mirror duel, crowd half one-circle   energy mirror v c5: score 0.492 ± 0.015  kills m/o/f/t 0.79 / 0.10 / 0.01 / 0.10  life 197 s  kpm/ship 0.29  trades 0.01
+1v1 frozen | one-circle at 0.5 (round 4)   energy v turn v c6: score 0.049 ± 0.007  kills m/o/f/t 0.25 / 0.08 / 0.03 / 0.64  life 154 s  kpm/ship 0.37  trades 0.00
+1v1 frozen | one-circle at 0.5 (round 4)     turn mirror v c6: score 0.490 ± 0.016  kills m/o/f/t 0.88 / 0.06 / 0.02 / 0.05  life 112 s  kpm/ship 0.49  trades 0.03
+1v1 frozen | one-circle at 0.5 (round 4)   energy mirror v c6: score 0.474 ± 0.014  kills m/o/f/t 0.74 / 0.12 / 0.02 / 0.13  life 224 s  kpm/ship 0.26  trades 0.01
+1v1 frozen | crowd straight boost only   energy v turn v c7: score 0.006 ± 0.002  kills m/o/f/t 0.16 / 0.13 / 0.40 / 0.30  life 168 s  kpm/ship 0.34  trades 0.00
+1v1 frozen | crowd straight boost only     turn mirror v c7: score 0.532 ± 0.016  kills m/o/f/t 0.80 / 0.17 / 0.02 / 0.00  life 154 s  kpm/ship 0.37  trades 0.03
+1v1 frozen | crowd straight boost only   energy mirror v c7: score 0.491 ± 0.008  kills m/o/f/t 0.32 / 0.58 / 0.10 / 0.00  life 1014 s  kpm/ship 0.06  trades 0.00
+1v1 frozen | lead + one-circle mirror duel, crowd straight boost   energy v turn v c8: score 0.014 ± 0.004  kills m/o/f/t 0.16 / 0.15 / 0.42 / 0.27  life 172 s  kpm/ship 0.33  trades 0.00
+1v1 frozen | lead + one-circle mirror duel, crowd straight boost     turn mirror v c8: score 0.522 ± 0.016  kills m/o/f/t 0.87 / 0.05 / 0.01 / 0.07  life 118 s  kpm/ship 0.47  trades 0.05
+1v1 frozen | lead + one-circle mirror duel, crowd straight boost   energy mirror v c8: score 0.511 ± 0.013  kills m/o/f/t 0.77 / 0.09 / 0.01 / 0.13  life 221 s  kpm/ship 0.26  trades 0.01
+1v1                      D2 | r9   energy v turn v c9: score 0.511 ± 0.014  kills m/o/f/t 0.23 / 0.69 / 0.08 / 0.00  life 279 s  kpm/ship 0.21  trades 0.00
+1v1                      D2 | r9     turn mirror v c9: score 0.500 ± 0.011  kills m/o/f/t 0.68 / 0.27 / 0.05 / 0.00  life 263 s  kpm/ship 0.22  trades 0.03
+1v1                      D2 | r9   energy mirror v c9: score 0.496 ± 0.011  kills m/o/f/t 0.40 / 0.49 / 0.10 / 0.00  life 285 s  kpm/ship 0.20  trades 0.01
+1v1  D2 | one-circle mirror duel   energy v turn v c10: score 0.499 ± 0.014  kills m/o/f/t 0.23 / 0.70 / 0.07 / 0.00  life 284 s  kpm/ship 0.20  trades 0.00
+1v1  D2 | one-circle mirror duel     turn mirror v c10: score 0.510 ± 0.016  kills m/o/f/t 0.84 / 0.05 / 0.00 / 0.10  life 201 s  kpm/ship 0.28  trades 0.03
+1v1  D2 | one-circle mirror duel   energy mirror v c10: score 0.496 ± 0.016  kills m/o/f/t 0.75 / 0.12 / 0.04 / 0.10  life 135 s  kpm/ship 0.41  trades 0.03
+1v1 D2 | one-circle mirror duel, crowd straight boost   energy v turn v c11: score 0.508 ± 0.013  kills m/o/f/t 0.22 / 0.70 / 0.08 / 0.00  life 275 s  kpm/ship 0.21  trades 0.00
+1v1 D2 | one-circle mirror duel, crowd straight boost     turn mirror v c11: score 0.530 ± 0.017  kills m/o/f/t 0.85 / 0.05 / 0.00 / 0.10  life 206 s  kpm/ship 0.28  trades 0.03
+1v1 D2 | one-circle mirror duel, crowd straight boost   energy mirror v c11: score 0.497 ± 0.016  kills m/o/f/t 0.76 / 0.12 / 0.03 / 0.09  life 132 s  kpm/ship 0.42  trades 0.02
+1v1 D2 | one-circle mirror duel, crowd straight   energy v turn v c12: score 0.496 ± 0.014  kills m/o/f/t 0.23 / 0.68 / 0.08 / 0.00  life 277 s  kpm/ship 0.21  trades 0.00
+1v1 D2 | one-circle mirror duel, crowd straight     turn mirror v c12: score 0.527 ± 0.016  kills m/o/f/t 0.82 / 0.06 / 0.01 / 0.11  life 205 s  kpm/ship 0.28  trades 0.05
+1v1 D2 | one-circle mirror duel, crowd straight   energy mirror v c12: score 0.485 ± 0.015  kills m/o/f/t 0.74 / 0.13 / 0.03 / 0.09  life 132 s  kpm/ship 0.42  trades 0.02
+1v1 D2 | one-circle mirror duel 5 gr, crowd straight boost   energy v turn v c13: score 0.499 ± 0.014  kills m/o/f/t 0.23 / 0.70 / 0.07 / 0.00  life 286 s  kpm/ship 0.20  trades 0.00
+1v1 D2 | one-circle mirror duel 5 gr, crowd straight boost     turn mirror v c13: score 0.507 ± 0.017  kills m/o/f/t 0.85 / 0.06 / 0.00 / 0.09  life 203 s  kpm/ship 0.28  trades 0.03
+1v1 D2 | one-circle mirror duel 5 gr, crowd straight boost   energy mirror v c13: score 0.520 ± 0.016  kills m/o/f/t 0.74 / 0.12 / 0.03 / 0.10  life 136 s  kpm/ship 0.41  trades 0.02
+1v1 D2 | one-circle mirror duel, crowd half one-circle   energy v turn v c14: score 0.498 ± 0.015  kills m/o/f/t 0.23 / 0.68 / 0.08 / 0.00  life 288 s  kpm/ship 0.20  trades 0.00
+1v1 D2 | one-circle mirror duel, crowd half one-circle     turn mirror v c14: score 0.495 ± 0.016  kills m/o/f/t 0.83 / 0.06 / 0.01 / 0.11  life 210 s  kpm/ship 0.27  trades 0.03
+1v1 D2 | one-circle mirror duel, crowd half one-circle   energy mirror v c14: score 0.474 ± 0.016  kills m/o/f/t 0.71 / 0.14 / 0.03 / 0.11  life 133 s  kpm/ship 0.42  trades 0.01
+1v1 D2 | one-circle at 0.5 (round 4)   energy v turn v c15: score 0.134 ± 0.011  kills m/o/f/t 0.28 / 0.27 / 0.10 / 0.36  life 228 s  kpm/ship 0.25  trades 0.00
+1v1 D2 | one-circle at 0.5 (round 4)     turn mirror v c15: score 0.496 ± 0.016  kills m/o/f/t 0.80 / 0.09 / 0.04 / 0.07  life 213 s  kpm/ship 0.27  trades 0.02
+1v1 D2 | one-circle at 0.5 (round 4)   energy mirror v c15: score 0.491 ± 0.015  kills m/o/f/t 0.71 / 0.16 / 0.04 / 0.08  life 148 s  kpm/ship 0.38  trades 0.02
+1v1 D2 | crowd straight boost only   energy v turn v c16: score 0.498 ± 0.014  kills m/o/f/t 0.23 / 0.69 / 0.08 / 0.00  life 280 s  kpm/ship 0.21  trades 0.00
+1v1 D2 | crowd straight boost only     turn mirror v c16: score 0.507 ± 0.012  kills m/o/f/t 0.67 / 0.28 / 0.06 / 0.00  life 263 s  kpm/ship 0.22  trades 0.03
+1v1 D2 | crowd straight boost only   energy mirror v c16: score 0.499 ± 0.012  kills m/o/f/t 0.36 / 0.53 / 0.10 / 0.00  life 301 s  kpm/ship 0.19  trades 0.00
+1v1 D2 | lead + one-circle mirror duel, crowd straight boost   energy v turn v c17: score 0.562 ± 0.014  kills m/o/f/t 0.22 / 0.71 / 0.07 / 0.00  life 250 s  kpm/ship 0.23  trades 0.00
+1v1 D2 | lead + one-circle mirror duel, crowd straight boost     turn mirror v c17: score 0.509 ± 0.015  kills m/o/f/t 0.82 / 0.06 / 0.01 / 0.11  life 221 s  kpm/ship 0.26  trades 0.03
+1v1 D2 | lead + one-circle mirror duel, crowd straight boost   energy mirror v c17: score 0.489 ± 0.015  kills m/o/f/t 0.74 / 0.12 / 0.03 / 0.11  life 138 s  kpm/ship 0.41  trades 0.03
+1v1           D2 cone 0.085 | r9   energy v turn v c18: score 0.542 ± 0.015  kills m/o/f/t 0.10 / 0.81 / 0.08 / 0.00  life 222 s  kpm/ship 0.26  trades 0.00
+1v1           D2 cone 0.085 | r9     turn mirror v c18: score 0.479 ± 0.014  kills m/o/f/t 0.45 / 0.50 / 0.05 / 0.00  life 288 s  kpm/ship 0.20  trades 0.01
+1v1           D2 cone 0.085 | r9   energy mirror v c18: score 0.510 ± 0.010  kills m/o/f/t 0.09 / 0.76 / 0.15 / 0.00  life 379 s  kpm/ship 0.15  trades 0.00
+1v1 D2 cone 0.085 | one-circle mirror duel   energy v turn v c19: score 0.534 ± 0.015  kills m/o/f/t 0.09 / 0.83 / 0.08 / 0.00  life 236 s  kpm/ship 0.24  trades 0.00
+1v1 D2 cone 0.085 | one-circle mirror duel     turn mirror v c19: score 0.499 ± 0.013  kills m/o/f/t 0.71 / 0.17 / 0.00 / 0.11  life 243 s  kpm/ship 0.24  trades 0.01
+1v1 D2 cone 0.085 | one-circle mirror duel   energy mirror v c19: score 0.518 ± 0.016  kills m/o/f/t 0.54 / 0.31 / 0.04 / 0.11  life 182 s  kpm/ship 0.31  trades 0.02
+1v1 D2 cone 0.085 | one-circle mirror duel, crowd straight boost   energy v turn v c20: score 0.548 ± 0.015  kills m/o/f/t 0.09 / 0.83 / 0.08 / 0.00  life 227 s  kpm/ship 0.25  trades 0.00
+1v1 D2 cone 0.085 | one-circle mirror duel, crowd straight boost     turn mirror v c20: score 0.490 ± 0.012  kills m/o/f/t 0.70 / 0.17 / 0.01 / 0.13  life 246 s  kpm/ship 0.23  trades 0.01
+1v1 D2 cone 0.085 | one-circle mirror duel, crowd straight boost   energy mirror v c20: score 0.478 ± 0.015  kills m/o/f/t 0.54 / 0.31 / 0.05 / 0.11  life 179 s  kpm/ship 0.32  trades 0.01
+1v1 D2 cone 0.085 | one-circle mirror duel, crowd straight   energy v turn v c21: score 0.539 ± 0.015  kills m/o/f/t 0.10 / 0.81 / 0.10 / 0.00  life 228 s  kpm/ship 0.25  trades 0.00
+1v1 D2 cone 0.085 | one-circle mirror duel, crowd straight     turn mirror v c21: score 0.506 ± 0.012  kills m/o/f/t 0.72 / 0.16 / 0.01 / 0.11  life 251 s  kpm/ship 0.23  trades 0.02
+1v1 D2 cone 0.085 | one-circle mirror duel, crowd straight   energy mirror v c21: score 0.493 ± 0.015  kills m/o/f/t 0.56 / 0.28 / 0.04 / 0.12  life 181 s  kpm/ship 0.31  trades 0.00
+1v1 D2 cone 0.085 | one-circle mirror duel 5 gr, crowd straight boost   energy v turn v c22: score 0.544 ± 0.015  kills m/o/f/t 0.11 / 0.81 / 0.08 / 0.00  life 226 s  kpm/ship 0.25  trades 0.00
+1v1 D2 cone 0.085 | one-circle mirror duel 5 gr, crowd straight boost     turn mirror v c22: score 0.511 ± 0.013  kills m/o/f/t 0.73 / 0.16 / 0.01 / 0.10  life 251 s  kpm/ship 0.23  trades 0.01
+1v1 D2 cone 0.085 | one-circle mirror duel 5 gr, crowd straight boost   energy mirror v c22: score 0.520 ± 0.015  kills m/o/f/t 0.56 / 0.28 / 0.06 / 0.10  life 179 s  kpm/ship 0.32  trades 0.01
+1v1 D2 cone 0.085 | one-circle mirror duel, crowd half one-circle   energy v turn v c23: score 0.543 ± 0.015  kills m/o/f/t 0.09 / 0.83 / 0.07 / 0.00  life 221 s  kpm/ship 0.26  trades 0.00
+1v1 D2 cone 0.085 | one-circle mirror duel, crowd half one-circle     turn mirror v c23: score 0.497 ± 0.012  kills m/o/f/t 0.74 / 0.15 / 0.00 / 0.11  life 249 s  kpm/ship 0.23  trades 0.02
+1v1 D2 cone 0.085 | one-circle mirror duel, crowd half one-circle   energy mirror v c23: score 0.502 ± 0.016  kills m/o/f/t 0.55 / 0.29 / 0.05 / 0.11  life 185 s  kpm/ship 0.31  trades 0.01
+1v1 D2 cone 0.085 | one-circle at 0.5 (round 4)   energy v turn v c24: score 0.093 ± 0.009  kills m/o/f/t 0.13 / 0.43 / 0.10 / 0.34  life 217 s  kpm/ship 0.27  trades 0.00
+1v1 D2 cone 0.085 | one-circle at 0.5 (round 4)     turn mirror v c24: score 0.493 ± 0.014  kills m/o/f/t 0.65 / 0.22 / 0.06 / 0.08  life 241 s  kpm/ship 0.24  trades 0.01
+1v1 D2 cone 0.085 | one-circle at 0.5 (round 4)   energy mirror v c24: score 0.526 ± 0.014  kills m/o/f/t 0.49 / 0.34 / 0.06 / 0.11  life 215 s  kpm/ship 0.27  trades 0.00
+1v1 D2 cone 0.085 | crowd straight boost only   energy v turn v c25: score 0.533 ± 0.015  kills m/o/f/t 0.08 / 0.84 / 0.08 / 0.00  life 226 s  kpm/ship 0.25  trades 0.00
+1v1 D2 cone 0.085 | crowd straight boost only     turn mirror v c25: score 0.479 ± 0.013  kills m/o/f/t 0.49 / 0.47 / 0.05 / 0.00  life 303 s  kpm/ship 0.19  trades 0.00
+1v1 D2 cone 0.085 | crowd straight boost only   energy mirror v c25: score 0.493 ± 0.010  kills m/o/f/t 0.08 / 0.79 / 0.13 / 0.00  life 352 s  kpm/ship 0.17  trades 0.00
+1v1 D2 cone 0.085 | lead + one-circle mirror duel, crowd straight boost   energy v turn v c26: score 0.583 ± 0.014  kills m/o/f/t 0.11 / 0.82 / 0.08 / 0.00  life 199 s  kpm/ship 0.29  trades 0.00
+1v1 D2 cone 0.085 | lead + one-circle mirror duel, crowd straight boost     turn mirror v c26: score 0.494 ± 0.012  kills m/o/f/t 0.73 / 0.15 / 0.00 / 0.12  life 277 s  kpm/ship 0.21  trades 0.01
+1v1 D2 cone 0.085 | lead + one-circle mirror duel, crowd straight boost   energy mirror v c26: score 0.490 ± 0.015  kills m/o/f/t 0.52 / 0.31 / 0.05 / 0.12  life 206 s  kpm/ship 0.28  trades 0.01
+1v1            D2 cone 0.01 | r9   energy v turn v c27: score 0.506 ± 0.015  kills m/o/f/t 0.03 / 0.89 / 0.08 / 0.00  life 272 s  kpm/ship 0.21  trades 0.00
+1v1            D2 cone 0.01 | r9     turn mirror v c27: score 0.491 ± 0.012  kills m/o/f/t 0.04 / 0.86 / 0.10 / 0.00  life 987 s  kpm/ship 0.06  trades 0.00
+1v1            D2 cone 0.01 | r9   energy mirror v c27: score 0.509 ± 0.010  kills m/o/f/t 0.01 / 0.85 / 0.14 / 0.00  life 424 s  kpm/ship 0.14  trades 0.00
+1v1 D2 cone 0.01 | one-circle mirror duel   energy v turn v c28: score 0.541 ± 0.014  kills m/o/f/t 0.02 / 0.89 / 0.09 / 0.00  life 263 s  kpm/ship 0.22  trades 0.00
+1v1 D2 cone 0.01 | one-circle mirror duel     turn mirror v c28: score 0.513 ± 0.010  kills m/o/f/t 0.14 / 0.46 / 0.01 / 0.40  life 975 s  kpm/ship 0.06  trades 0.09
+1v1 D2 cone 0.01 | one-circle mirror duel   energy mirror v c28: score 0.506 ± 0.012  kills m/o/f/t 0.06 / 0.46 / 0.16 / 0.32  life 725 s  kpm/ship 0.08  trades 0.03
+1v1 D2 cone 0.01 | one-circle mirror duel, crowd straight boost   energy v turn v c29: score 0.519 ± 0.015  kills m/o/f/t 0.02 / 0.89 / 0.08 / 0.00  life 285 s  kpm/ship 0.20  trades 0.00
+1v1 D2 cone 0.01 | one-circle mirror duel, crowd straight boost     turn mirror v c29: score 0.507 ± 0.009  kills m/o/f/t 0.10 / 0.46 / 0.02 / 0.42  life 944 s  kpm/ship 0.06  trades 0.07
+1v1 D2 cone 0.01 | one-circle mirror duel, crowd straight boost   energy mirror v c29: score 0.545 ± 0.012  kills m/o/f/t 0.05 / 0.52 / 0.19 / 0.25  life 658 s  kpm/ship 0.09  trades 0.03
+1v1 D2 cone 0.01 | one-circle mirror duel, crowd straight   energy v turn v c30: score 0.532 ± 0.015  kills m/o/f/t 0.02 / 0.88 / 0.10 / 0.00  life 260 s  kpm/ship 0.22  trades 0.00
+1v1 D2 cone 0.01 | one-circle mirror duel, crowd straight     turn mirror v c30: score 0.495 ± 0.010  kills m/o/f/t 0.14 / 0.59 / 0.03 / 0.24  life 921 s  kpm/ship 0.06  trades 0.10
+1v1 D2 cone 0.01 | one-circle mirror duel, crowd straight   energy mirror v c30: score 0.485 ± 0.013  kills m/o/f/t 0.06 / 0.46 / 0.18 / 0.30  life 762 s  kpm/ship 0.08  trades 0.02
+1v1 D2 cone 0.01 | one-circle mirror duel 5 gr, crowd straight boost   energy v turn v c31: score 0.517 ± 0.015  kills m/o/f/t 0.01 / 0.89 / 0.09 / 0.00  life 271 s  kpm/ship 0.21  trades 0.00
+1v1 D2 cone 0.01 | one-circle mirror duel 5 gr, crowd straight boost     turn mirror v c31: score 0.506 ± 0.009  kills m/o/f/t 0.12 / 0.50 / 0.01 / 0.37  life 1024 s  kpm/ship 0.06  trades 0.10
+1v1 D2 cone 0.01 | one-circle mirror duel 5 gr, crowd straight boost   energy mirror v c31: score 0.497 ± 0.013  kills m/o/f/t 0.08 / 0.52 / 0.19 / 0.21  life 668 s  kpm/ship 0.09  trades 0.01
+1v1 D2 cone 0.01 | one-circle mirror duel, crowd half one-circle   energy v turn v c32: score 0.524 ± 0.015  kills m/o/f/t 0.03 / 0.86 / 0.11 / 0.00  life 276 s  kpm/ship 0.21  trades 0.00
+1v1 D2 cone 0.01 | one-circle mirror duel, crowd half one-circle     turn mirror v c32: score 0.503 ± 0.009  kills m/o/f/t 0.12 / 0.45 / 0.03 / 0.41  life 1031 s  kpm/ship 0.06  trades 0.11
+1v1 D2 cone 0.01 | one-circle mirror duel, crowd half one-circle   energy mirror v c32: score 0.488 ± 0.012  kills m/o/f/t 0.06 / 0.41 / 0.19 / 0.34  life 758 s  kpm/ship 0.08  trades 0.02
+1v1 D2 cone 0.01 | one-circle at 0.5 (round 4)   energy v turn v c33: score 0.099 ± 0.010  kills m/o/f/t 0.01 / 0.38 / 0.13 / 0.48  life 270 s  kpm/ship 0.21  trades 0.00
+1v1 D2 cone 0.01 | one-circle at 0.5 (round 4)     turn mirror v c33: score 0.493 ± 0.010  kills m/o/f/t 0.12 / 0.40 / 0.14 / 0.34  life 1735 s  kpm/ship 0.03  trades 0.01
+1v1 D2 cone 0.01 | one-circle at 0.5 (round 4)   energy mirror v c33: score 0.488 ± 0.013  kills m/o/f/t 0.05 / 0.59 / 0.10 / 0.26  life 708 s  kpm/ship 0.08  trades 0.01
+1v1 D2 cone 0.01 | crowd straight boost only   energy v turn v c34: score 0.534 ± 0.015  kills m/o/f/t 0.02 / 0.90 / 0.08 / 0.00  life 272 s  kpm/ship 0.21  trades 0.00
+1v1 D2 cone 0.01 | crowd straight boost only     turn mirror v c34: score 0.513 ± 0.012  kills m/o/f/t 0.05 / 0.89 / 0.06 / 0.00  life 1028 s  kpm/ship 0.06  trades 0.00
+1v1 D2 cone 0.01 | crowd straight boost only   energy mirror v c34: score 0.516 ± 0.009  kills m/o/f/t 0.01 / 0.83 / 0.16 / 0.00  life 386 s  kpm/ship 0.15  trades 0.00
+1v1 D2 cone 0.01 | lead + one-circle mirror duel, crowd straight boost   energy v turn v c35: score 0.611 ± 0.014  kills m/o/f/t 0.02 / 0.91 / 0.07 / 0.00  life 230 s  kpm/ship 0.25  trades 0.00
+1v1 D2 cone 0.01 | lead + one-circle mirror duel, crowd straight boost     turn mirror v c35: score 0.481 ± 0.009  kills m/o/f/t 0.15 / 0.51 / 0.03 / 0.32  life 1209 s  kpm/ship 0.05  trades 0.08
+1v1 D2 cone 0.01 | lead + one-circle mirror duel, crowd straight boost   energy mirror v c35: score 0.485 ± 0.013  kills m/o/f/t 0.04 / 0.48 / 0.20 / 0.28  life 611 s  kpm/ship 0.10  trades 0.04
+1v1                  frozen | r9           mixed v r9: score 0.501 ± 0.008  kills m/o/f/t 0.30 / 0.59 / 0.11 / 0.00  life 1018 s  kpm/ship 0.06  trades 0.00
+1v1                  frozen | r9  mixed reversed v r9: score 0.485 ± 0.016  kills m/o/f/t 0.82 / 0.15 / 0.03 / 0.00  life 155 s  kpm/ship 0.36  trades 0.04
+1v1 frozen | one-circle mirror duel           mixed v r9: score 0.630 ± 0.014  kills m/o/f/t 0.82 / 0.10 / 0.01 / 0.07  life 228 s  kpm/ship 0.25  trades 0.00
+1v1 frozen | one-circle mirror duel  mixed reversed v r9: score 0.645 ± 0.014  kills m/o/f/t 0.88 / 0.07 / 0.02 / 0.03  life 109 s  kpm/ship 0.50  trades 0.02
+1v1 frozen | one-circle mirror duel, crowd straight boost           mixed v r9: score 0.597 ± 0.014  kills m/o/f/t 0.81 / 0.11 / 0.01 / 0.06  life 227 s  kpm/ship 0.25  trades 0.00
+1v1 frozen | one-circle mirror duel, crowd straight boost  mixed reversed v r9: score 0.683 ± 0.013  kills m/o/f/t 0.88 / 0.07 / 0.01 / 0.03  life 108 s  kpm/ship 0.51  trades 0.01
+1v1 frozen | one-circle mirror duel, crowd straight           mixed v r9: score 0.630 ± 0.014  kills m/o/f/t 0.80 / 0.12 / 0.01 / 0.06  life 225 s  kpm/ship 0.26  trades 0.01
+1v1 frozen | one-circle mirror duel, crowd straight  mixed reversed v r9: score 0.649 ± 0.014  kills m/o/f/t 0.88 / 0.07 / 0.01 / 0.03  life 110 s  kpm/ship 0.50  trades 0.01
+1v1 frozen | one-circle mirror duel 5 gr, crowd straight boost           mixed v r9: score 0.606 ± 0.013  kills m/o/f/t 0.82 / 0.10 / 0.02 / 0.06  life 220 s  kpm/ship 0.26  trades 0.00
+1v1 frozen | one-circle mirror duel 5 gr, crowd straight boost  mixed reversed v r9: score 0.658 ± 0.014  kills m/o/f/t 0.87 / 0.08 / 0.02 / 0.04  life 110 s  kpm/ship 0.50  trades 0.02
+1v1 frozen | one-circle mirror duel, crowd half one-circle           mixed v r9: score 0.647 ± 0.014  kills m/o/f/t 0.84 / 0.10 / 0.01 / 0.04  life 224 s  kpm/ship 0.26  trades 0.00
+1v1 frozen | one-circle mirror duel, crowd half one-circle  mixed reversed v r9: score 0.640 ± 0.015  kills m/o/f/t 0.88 / 0.08 / 0.01 / 0.04  life 112 s  kpm/ship 0.49  trades 0.02
+1v1 frozen | one-circle at 0.5 (round 4)           mixed v r9: score 0.445 ± 0.013  kills m/o/f/t 0.73 / 0.19 / 0.03 / 0.04  life 200 s  kpm/ship 0.29  trades 0.02
+1v1 frozen | one-circle at 0.5 (round 4)  mixed reversed v r9: score 0.390 ± 0.015  kills m/o/f/t 0.85 / 0.10 / 0.03 / 0.02  life 106 s  kpm/ship 0.52  trades 0.03
+1v1 frozen | crowd straight boost only           mixed v r9: score 0.502 ± 0.009  kills m/o/f/t 0.35 / 0.54 / 0.10 / 0.00  life 904 s  kpm/ship 0.07  trades 0.01
+1v1 frozen | crowd straight boost only  mixed reversed v r9: score 0.490 ± 0.016  kills m/o/f/t 0.80 / 0.17 / 0.03 / 0.00  life 152 s  kpm/ship 0.37  trades 0.02
+1v1 frozen | lead + one-circle mirror duel, crowd straight boost           mixed v r9: score 0.562 ± 0.014  kills m/o/f/t 0.81 / 0.11 / 0.01 / 0.07  life 222 s  kpm/ship 0.26  trades 0.00
+1v1 frozen | lead + one-circle mirror duel, crowd straight boost  mixed reversed v r9: score 0.646 ± 0.014  kills m/o/f/t 0.88 / 0.07 / 0.01 / 0.03  life 107 s  kpm/ship 0.51  trades 0.02
+1v1                      D2 | r9           mixed v r9: score 0.503 ± 0.012  kills m/o/f/t 0.36 / 0.53 / 0.11 / 0.00  life 271 s  kpm/ship 0.21  trades 0.01
+1v1                      D2 | r9  mixed reversed v r9: score 0.515 ± 0.012  kills m/o/f/t 0.65 / 0.30 / 0.05 / 0.00  life 262 s  kpm/ship 0.22  trades 0.02
+1v1  D2 | one-circle mirror duel           mixed v r9: score 0.598 ± 0.015  kills m/o/f/t 0.74 / 0.17 / 0.04 / 0.06  life 142 s  kpm/ship 0.40  trades 0.01
+1v1  D2 | one-circle mirror duel  mixed reversed v r9: score 0.573 ± 0.013  kills m/o/f/t 0.84 / 0.08 / 0.02 / 0.06  life 246 s  kpm/ship 0.23  trades 0.01
+1v1 D2 | one-circle mirror duel, crowd straight boost           mixed v r9: score 0.615 ± 0.015  kills m/o/f/t 0.74 / 0.18 / 0.04 / 0.05  life 135 s  kpm/ship 0.42  trades 0.01
+1v1 D2 | one-circle mirror duel, crowd straight boost  mixed reversed v r9: score 0.575 ± 0.013  kills m/o/f/t 0.83 / 0.08 / 0.02 / 0.07  life 236 s  kpm/ship 0.24  trades 0.01
+1v1 D2 | one-circle mirror duel, crowd straight           mixed v r9: score 0.607 ± 0.015  kills m/o/f/t 0.72 / 0.17 / 0.05 / 0.06  life 140 s  kpm/ship 0.40  trades 0.01
+1v1 D2 | one-circle mirror duel, crowd straight  mixed reversed v r9: score 0.586 ± 0.013  kills m/o/f/t 0.83 / 0.09 / 0.02 / 0.05  life 240 s  kpm/ship 0.24  trades 0.01
+1v1 D2 | one-circle mirror duel 5 gr, crowd straight boost           mixed v r9: score 0.628 ± 0.015  kills m/o/f/t 0.75 / 0.16 / 0.04 / 0.05  life 140 s  kpm/ship 0.40  trades 0.01
+1v1 D2 | one-circle mirror duel 5 gr, crowd straight boost  mixed reversed v r9: score 0.564 ± 0.013  kills m/o/f/t 0.83 / 0.09 / 0.02 / 0.06  life 237 s  kpm/ship 0.24  trades 0.01
+1v1 D2 | one-circle mirror duel, crowd half one-circle           mixed v r9: score 0.604 ± 0.015  kills m/o/f/t 0.74 / 0.16 / 0.04 / 0.06  life 142 s  kpm/ship 0.39  trades 0.01
+1v1 D2 | one-circle mirror duel, crowd half one-circle  mixed reversed v r9: score 0.561 ± 0.013  kills m/o/f/t 0.84 / 0.08 / 0.02 / 0.05  life 241 s  kpm/ship 0.24  trades 0.01
+1v1 D2 | one-circle at 0.5 (round 4)           mixed v r9: score 0.394 ± 0.015  kills m/o/f/t 0.71 / 0.20 / 0.05 / 0.04  life 142 s  kpm/ship 0.40  trades 0.01
+1v1 D2 | one-circle at 0.5 (round 4)  mixed reversed v r9: score 0.300 ± 0.015  kills m/o/f/t 0.79 / 0.14 / 0.04 / 0.03  life 198 s  kpm/ship 0.29  trades 0.00
+1v1 D2 | crowd straight boost only           mixed v r9: score 0.507 ± 0.012  kills m/o/f/t 0.37 / 0.54 / 0.09 / 0.00  life 276 s  kpm/ship 0.21  trades 0.01
+1v1 D2 | crowd straight boost only  mixed reversed v r9: score 0.500 ± 0.011  kills m/o/f/t 0.64 / 0.30 / 0.06 / 0.00  life 274 s  kpm/ship 0.21  trades 0.01
+1v1 D2 | lead + one-circle mirror duel, crowd straight boost           mixed v r9: score 0.603 ± 0.016  kills m/o/f/t 0.75 / 0.16 / 0.04 / 0.05  life 134 s  kpm/ship 0.42  trades 0.01
+1v1 D2 | lead + one-circle mirror duel, crowd straight boost  mixed reversed v r9: score 0.556 ± 0.014  kills m/o/f/t 0.83 / 0.09 / 0.02 / 0.05  life 238 s  kpm/ship 0.24  trades 0.01
+1v1           D2 cone 0.085 | r9           mixed v r9: score 0.495 ± 0.010  kills m/o/f/t 0.07 / 0.79 / 0.14 / 0.00  life 365 s  kpm/ship 0.16  trades 0.00
+1v1           D2 cone 0.085 | r9  mixed reversed v r9: score 0.503 ± 0.014  kills m/o/f/t 0.46 / 0.48 / 0.06 / 0.00  life 281 s  kpm/ship 0.21  trades 0.01
+1v1 D2 cone 0.085 | one-circle mirror duel           mixed v r9: score 0.611 ± 0.015  kills m/o/f/t 0.51 / 0.37 / 0.06 / 0.06  life 192 s  kpm/ship 0.30  trades 0.00
+1v1 D2 cone 0.085 | one-circle mirror duel  mixed reversed v r9: score 0.519 ± 0.012  kills m/o/f/t 0.72 / 0.19 / 0.03 / 0.06  life 259 s  kpm/ship 0.22  trades 0.00
+1v1 D2 cone 0.085 | one-circle mirror duel, crowd straight boost           mixed v r9: score 0.571 ± 0.016  kills m/o/f/t 0.48 / 0.39 / 0.05 / 0.08  life 179 s  kpm/ship 0.32  trades 0.00
+1v1 D2 cone 0.085 | one-circle mirror duel, crowd straight boost  mixed reversed v r9: score 0.508 ± 0.012  kills m/o/f/t 0.69 / 0.20 / 0.03 / 0.07  life 248 s  kpm/ship 0.23  trades 0.00
+1v1 D2 cone 0.085 | one-circle mirror duel, crowd straight           mixed v r9: score 0.579 ± 0.015  kills m/o/f/t 0.48 / 0.41 / 0.05 / 0.06  life 177 s  kpm/ship 0.32  trades 0.00
+1v1 D2 cone 0.085 | one-circle mirror duel, crowd straight  mixed reversed v r9: score 0.524 ± 0.013  kills m/o/f/t 0.71 / 0.22 / 0.03 / 0.05  life 250 s  kpm/ship 0.23  trades 0.00
+1v1 D2 cone 0.085 | one-circle mirror duel 5 gr, crowd straight boost           mixed v r9: score 0.559 ± 0.015  kills m/o/f/t 0.50 / 0.39 / 0.05 / 0.06  life 189 s  kpm/ship 0.30  trades 0.00
+1v1 D2 cone 0.085 | one-circle mirror duel 5 gr, crowd straight boost  mixed reversed v r9: score 0.528 ± 0.012  kills m/o/f/t 0.69 / 0.20 / 0.05 / 0.06  life 258 s  kpm/ship 0.22  trades 0.01
+1v1 D2 cone 0.085 | one-circle mirror duel, crowd half one-circle           mixed v r9: score 0.618 ± 0.015  kills m/o/f/t 0.49 / 0.40 / 0.05 / 0.06  life 186 s  kpm/ship 0.31  trades 0.00
+1v1 D2 cone 0.085 | one-circle mirror duel, crowd half one-circle  mixed reversed v r9: score 0.524 ± 0.013  kills m/o/f/t 0.67 / 0.23 / 0.04 / 0.06  life 246 s  kpm/ship 0.23  trades 0.01
+1v1 D2 cone 0.085 | one-circle at 0.5 (round 4)           mixed v r9: score 0.409 ± 0.015  kills m/o/f/t 0.48 / 0.42 / 0.06 / 0.03  life 172 s  kpm/ship 0.33  trades 0.01
+1v1 D2 cone 0.085 | one-circle at 0.5 (round 4)  mixed reversed v r9: score 0.373 ± 0.015  kills m/o/f/t 0.63 / 0.28 / 0.05 / 0.03  life 222 s  kpm/ship 0.26  trades 0.00
+1v1 D2 cone 0.085 | crowd straight boost only           mixed v r9: score 0.509 ± 0.011  kills m/o/f/t 0.11 / 0.75 / 0.14 / 0.00  life 330 s  kpm/ship 0.18  trades 0.00
+1v1 D2 cone 0.085 | crowd straight boost only  mixed reversed v r9: score 0.495 ± 0.014  kills m/o/f/t 0.47 / 0.46 / 0.07 / 0.00  life 299 s  kpm/ship 0.19  trades 0.00
+1v1 D2 cone 0.085 | lead + one-circle mirror duel, crowd straight boost           mixed v r9: score 0.568 ± 0.014  kills m/o/f/t 0.53 / 0.37 / 0.04 / 0.05  life 188 s  kpm/ship 0.30  trades 0.01
+1v1 D2 cone 0.085 | lead + one-circle mirror duel, crowd straight boost  mixed reversed v r9: score 0.511 ± 0.012  kills m/o/f/t 0.69 / 0.22 / 0.03 / 0.06  life 265 s  kpm/ship 0.22  trades 0.00
+1v1            D2 cone 0.01 | r9           mixed v r9: score 0.512 ± 0.010  kills m/o/f/t 0.01 / 0.82 / 0.17 / 0.00  life 433 s  kpm/ship 0.14  trades 0.00
+1v1            D2 cone 0.01 | r9  mixed reversed v r9: score 0.501 ± 0.012  kills m/o/f/t 0.04 / 0.85 / 0.11 / 0.00  life 1136 s  kpm/ship 0.05  trades 0.00
+1v1 D2 cone 0.01 | one-circle mirror duel           mixed v r9: score 0.485 ± 0.011  kills m/o/f/t 0.08 / 0.61 / 0.18 / 0.13  life 858 s  kpm/ship 0.07  trades 0.02
+1v1 D2 cone 0.01 | one-circle mirror duel  mixed reversed v r9: score 0.519 ± 0.010  kills m/o/f/t 0.10 / 0.66 / 0.10 / 0.13  life 1910 s  kpm/ship 0.03  trades 0.00
+1v1 D2 cone 0.01 | one-circle mirror duel, crowd straight boost           mixed v r9: score 0.476 ± 0.011  kills m/o/f/t 0.09 / 0.59 / 0.19 / 0.13  life 875 s  kpm/ship 0.07  trades 0.02
+1v1 D2 cone 0.01 | one-circle mirror duel, crowd straight boost  mixed reversed v r9: score 0.503 ± 0.010  kills m/o/f/t 0.11 / 0.65 / 0.08 / 0.16  life 2052 s  kpm/ship 0.03  trades 0.00
+1v1 D2 cone 0.01 | one-circle mirror duel, crowd straight           mixed v r9: score 0.470 ± 0.012  kills m/o/f/t 0.08 / 0.61 / 0.16 / 0.15  life 953 s  kpm/ship 0.06  trades 0.01
+1v1 D2 cone 0.01 | one-circle mirror duel, crowd straight  mixed reversed v r9: score 0.521 ± 0.010  kills m/o/f/t 0.10 / 0.70 / 0.04 / 0.16  life 1886 s  kpm/ship 0.03  trades 0.00
+1v1 D2 cone 0.01 | one-circle mirror duel 5 gr, crowd straight boost           mixed v r9: score 0.493 ± 0.011  kills m/o/f/t 0.08 / 0.60 / 0.17 / 0.15  life 959 s  kpm/ship 0.06  trades 0.02
+1v1 D2 cone 0.01 | one-circle mirror duel 5 gr, crowd straight boost  mixed reversed v r9: score 0.502 ± 0.010  kills m/o/f/t 0.10 / 0.66 / 0.04 / 0.20  life 1745 s  kpm/ship 0.03  trades 0.00
+1v1 D2 cone 0.01 | one-circle mirror duel, crowd half one-circle           mixed v r9: score 0.467 ± 0.012  kills m/o/f/t 0.05 / 0.63 / 0.16 / 0.16  life 873 s  kpm/ship 0.07  trades 0.01
+1v1 D2 cone 0.01 | one-circle mirror duel, crowd half one-circle  mixed reversed v r9: score 0.535 ± 0.010  kills m/o/f/t 0.11 / 0.70 / 0.08 / 0.12  life 1776 s  kpm/ship 0.03  trades 0.00
+1v1 D2 cone 0.01 | one-circle at 0.5 (round 4)           mixed v r9: score 0.369 ± 0.012  kills m/o/f/t 0.05 / 0.69 / 0.15 / 0.10  life 390 s  kpm/ship 0.15  trades 0.07
+1v1 D2 cone 0.01 | one-circle at 0.5 (round 4)  mixed reversed v r9: score 0.465 ± 0.011  kills m/o/f/t 0.12 / 0.64 / 0.09 / 0.15  life 881 s  kpm/ship 0.07  trades 0.04
+1v1 D2 cone 0.01 | crowd straight boost only           mixed v r9: score 0.510 ± 0.010  kills m/o/f/t 0.02 / 0.81 / 0.17 / 0.00  life 411 s  kpm/ship 0.14  trades 0.00
+1v1 D2 cone 0.01 | crowd straight boost only  mixed reversed v r9: score 0.506 ± 0.011  kills m/o/f/t 0.05 / 0.83 / 0.12 / 0.00  life 1249 s  kpm/ship 0.05  trades 0.00
+1v1 D2 cone 0.01 | lead + one-circle mirror duel, crowd straight boost           mixed v r9: score 0.476 ± 0.012  kills m/o/f/t 0.08 / 0.60 / 0.18 / 0.14  life 870 s  kpm/ship 0.07  trades 0.00
+1v1 D2 cone 0.01 | lead + one-circle mirror duel, crowd straight boost  mixed reversed v r9: score 0.526 ± 0.009  kills m/o/f/t 0.14 / 0.66 / 0.06 / 0.13  life 2024 s  kpm/ship 0.03  trades 0.00
+## 5v5: 108 jobs, B 4096, 01:14 KST
+  batch 1/14 104 s; ETA 01:39 KST
+  batch 2/14 136 s; ETA 01:30 KST
+  batch 3/14 169 s; ETA 01:28 KST
+  batch 4/14 201 s; ETA 01:26 KST
+  batch 5/14 234 s; ETA 01:25 KST
+  batch 6/14 266 s; ETA 01:25 KST
+  batch 7/14 299 s; ETA 01:24 KST
+  batch 8/14 332 s; ETA 01:24 KST
+  batch 9/14 364 s; ETA 01:24 KST
+  batch 10/14 397 s; ETA 01:24 KST
+  batch 11/14 430 s; ETA 01:24 KST
+  batch 12/14 463 s; ETA 01:23 KST
+  batch 13/14 496 s; ETA 01:23 KST
+  batch 14/14 528 s; ETA 01:23 KST
+5v5                  frozen | r9   energy v turn v c0: score 0.495 ± 0.020  kills m/o/f/t 0.07 / 0.17 / 0.53 / 0.24  life 110 s  kpm/ship 0.50  trades 0.04
+5v5 frozen | one-circle mirror duel   energy v turn v c1: score 0.532 ± 0.020  kills m/o/f/t 0.07 / 0.17 / 0.54 / 0.23  life 109 s  kpm/ship 0.50  trades 0.04
+5v5 frozen | one-circle mirror duel, crowd straight boost   energy v turn v c2: score 0.354 ± 0.019  kills m/o/f/t 0.10 / 0.15 / 0.34 / 0.41  life 148 s  kpm/ship 0.38  trades 0.03
+5v5 frozen | one-circle mirror duel, crowd straight   energy v turn v c3: score 0.368 ± 0.020  kills m/o/f/t 0.09 / 0.15 / 0.35 / 0.42  life 144 s  kpm/ship 0.39  trades 0.03
+5v5 frozen | one-circle mirror duel 5 gr, crowd straight boost   energy v turn v c4: score 0.294 ± 0.018  kills m/o/f/t 0.09 / 0.13 / 0.31 / 0.47  life 158 s  kpm/ship 0.36  trades 0.03
+5v5 frozen | one-circle mirror duel, crowd half one-circle   energy v turn v c5: score 0.466 ± 0.020  kills m/o/f/t 0.07 / 0.14 / 0.36 / 0.43  life 117 s  kpm/ship 0.47  trades 0.04
+5v5 frozen | one-circle at 0.5 (round 4)   energy v turn v c6: score 0.381 ± 0.020  kills m/o/f/t 0.07 / 0.13 / 0.29 / 0.51  life 122 s  kpm/ship 0.46  trades 0.04
+5v5 frozen | crowd straight boost only   energy v turn v c7: score 0.337 ± 0.019  kills m/o/f/t 0.09 / 0.15 / 0.33 / 0.43  life 145 s  kpm/ship 0.39  trades 0.03
+5v5 frozen | lead + one-circle mirror duel, crowd straight boost   energy v turn v c8: score 0.320 ± 0.019  kills m/o/f/t 0.09 / 0.15 / 0.34 / 0.42  life 149 s  kpm/ship 0.38  trades 0.03
+5v5                      D2 | r9   energy v turn v c9: score 0.529 ± 0.020  kills m/o/f/t 0.05 / 0.18 / 0.58 / 0.19  life 102 s  kpm/ship 0.53  trades 0.04
+5v5  D2 | one-circle mirror duel   energy v turn v c10: score 0.571 ± 0.021  kills m/o/f/t 0.05 / 0.19 / 0.57 / 0.19  life 102 s  kpm/ship 0.54  trades 0.05
+5v5 D2 | one-circle mirror duel, crowd straight boost   energy v turn v c11: score 0.556 ± 0.020  kills m/o/f/t 0.07 / 0.19 / 0.42 / 0.31  life 122 s  kpm/ship 0.45  trades 0.03
+5v5 D2 | one-circle mirror duel, crowd straight   energy v turn v c12: score 0.600 ± 0.020  kills m/o/f/t 0.07 / 0.19 / 0.44 / 0.30  life 121 s  kpm/ship 0.46  trades 0.04
+5v5 D2 | one-circle mirror duel 5 gr, crowd straight boost   energy v turn v c13: score 0.561 ± 0.020  kills m/o/f/t 0.07 / 0.18 / 0.40 / 0.35  life 132 s  kpm/ship 0.42  trades 0.03
+5v5 D2 | one-circle mirror duel, crowd half one-circle   energy v turn v c14: score 0.620 ± 0.020  kills m/o/f/t 0.06 / 0.18 / 0.45 / 0.32  life 106 s  kpm/ship 0.52  trades 0.04
+5v5 D2 | one-circle at 0.5 (round 4)   energy v turn v c15: score 0.634 ± 0.020  kills m/o/f/t 0.06 / 0.17 / 0.39 / 0.38  life 111 s  kpm/ship 0.50  trades 0.04
+5v5 D2 | crowd straight boost only   energy v turn v c16: score 0.541 ± 0.020  kills m/o/f/t 0.07 / 0.19 / 0.43 / 0.31  life 123 s  kpm/ship 0.45  trades 0.03
+5v5 D2 | lead + one-circle mirror duel, crowd straight boost   energy v turn v c17: score 0.546 ± 0.021  kills m/o/f/t 0.07 / 0.19 / 0.43 / 0.32  life 124 s  kpm/ship 0.45  trades 0.03
+5v5           D2 cone 0.085 | r9   energy v turn v c18: score 0.664 ± 0.020  kills m/o/f/t 0.04 / 0.26 / 0.54 / 0.16  life 92 s  kpm/ship 0.59  trades 0.06
+5v5 D2 cone 0.085 | one-circle mirror duel   energy v turn v c19: score 0.683 ± 0.019  kills m/o/f/t 0.04 / 0.26 / 0.54 / 0.16  life 92 s  kpm/ship 0.59  trades 0.06
+5v5 D2 cone 0.085 | one-circle mirror duel, crowd straight boost   energy v turn v c20: score 0.671 ± 0.019  kills m/o/f/t 0.06 / 0.28 / 0.42 / 0.24  life 109 s  kpm/ship 0.51  trades 0.04
+5v5 D2 cone 0.085 | one-circle mirror duel, crowd straight   energy v turn v c21: score 0.677 ± 0.019  kills m/o/f/t 0.05 / 0.27 / 0.43 / 0.24  life 107 s  kpm/ship 0.51  trades 0.04
+5v5 D2 cone 0.085 | one-circle mirror duel 5 gr, crowd straight boost   energy v turn v c22: score 0.672 ± 0.019  kills m/o/f/t 0.05 / 0.27 / 0.41 / 0.27  life 113 s  kpm/ship 0.49  trades 0.04
+5v5 D2 cone 0.085 | one-circle mirror duel, crowd half one-circle   energy v turn v c23: score 0.698 ± 0.019  kills m/o/f/t 0.05 / 0.25 / 0.45 / 0.25  life 96 s  kpm/ship 0.56  trades 0.05
+5v5 D2 cone 0.085 | one-circle at 0.5 (round 4)   energy v turn v c24: score 0.771 ± 0.018  kills m/o/f/t 0.05 / 0.26 / 0.39 / 0.30  life 98 s  kpm/ship 0.55  trades 0.05
+5v5 D2 cone 0.085 | crowd straight boost only   energy v turn v c25: score 0.665 ± 0.019  kills m/o/f/t 0.05 / 0.27 / 0.43 / 0.24  life 108 s  kpm/ship 0.51  trades 0.04
+5v5 D2 cone 0.085 | lead + one-circle mirror duel, crowd straight boost   energy v turn v c26: score 0.632 ± 0.020  kills m/o/f/t 0.05 / 0.27 / 0.44 / 0.24  life 109 s  kpm/ship 0.51  trades 0.04
+5v5            D2 cone 0.01 | r9   energy v turn v c27: score 0.646 ± 0.019  kills m/o/f/t 0.02 / 0.27 / 0.55 / 0.16  life 93 s  kpm/ship 0.58  trades 0.05
+5v5 D2 cone 0.01 | one-circle mirror duel   energy v turn v c28: score 0.685 ± 0.019  kills m/o/f/t 0.03 / 0.27 / 0.54 / 0.16  life 94 s  kpm/ship 0.58  trades 0.05
+5v5 D2 cone 0.01 | one-circle mirror duel, crowd straight boost   energy v turn v c29: score 0.672 ± 0.019  kills m/o/f/t 0.03 / 0.28 / 0.44 / 0.25  life 111 s  kpm/ship 0.49  trades 0.04
+5v5 D2 cone 0.01 | one-circle mirror duel, crowd straight   energy v turn v c30: score 0.703 ± 0.019  kills m/o/f/t 0.03 / 0.27 / 0.44 / 0.25  life 109 s  kpm/ship 0.50  trades 0.04
+5v5 D2 cone 0.01 | one-circle mirror duel 5 gr, crowd straight boost   energy v turn v c31: score 0.687 ± 0.019  kills m/o/f/t 0.04 / 0.27 / 0.42 / 0.28  life 117 s  kpm/ship 0.47  trades 0.04
+5v5 D2 cone 0.01 | one-circle mirror duel, crowd half one-circle   energy v turn v c32: score 0.697 ± 0.019  kills m/o/f/t 0.03 / 0.26 / 0.46 / 0.25  life 98 s  kpm/ship 0.56  trades 0.05
+5v5 D2 cone 0.01 | one-circle at 0.5 (round 4)   energy v turn v c33: score 0.744 ± 0.018  kills m/o/f/t 0.03 / 0.25 / 0.40 / 0.31  life 100 s  kpm/ship 0.54  trades 0.05
+5v5 D2 cone 0.01 | crowd straight boost only   energy v turn v c34: score 0.673 ± 0.019  kills m/o/f/t 0.03 / 0.28 / 0.44 / 0.26  life 112 s  kpm/ship 0.49  trades 0.04
+5v5 D2 cone 0.01 | lead + one-circle mirror duel, crowd straight boost   energy v turn v c35: score 0.647 ± 0.020  kills m/o/f/t 0.03 / 0.28 / 0.44 / 0.25  life 110 s  kpm/ship 0.50  trades 0.04
+5v5                  frozen | r9           mixed v r9: score 0.481 ± 0.020  kills m/o/f/t 0.07 / 0.16 / 0.53 / 0.24  life 116 s  kpm/ship 0.48  trades 0.04
+5v5                  frozen | r9  mixed reversed v r9: score 0.489 ± 0.021  kills m/o/f/t 0.07 / 0.18 / 0.54 / 0.20  life 105 s  kpm/ship 0.52  trades 0.05
+5v5 frozen | one-circle mirror duel           mixed v r9: score 0.461 ± 0.021  kills m/o/f/t 0.07 / 0.16 / 0.52 / 0.25  life 114 s  kpm/ship 0.48  trades 0.04
+5v5 frozen | one-circle mirror duel  mixed reversed v r9: score 0.526 ± 0.020  kills m/o/f/t 0.08 / 0.17 / 0.52 / 0.23  life 106 s  kpm/ship 0.52  trades 0.05
+5v5 frozen | one-circle mirror duel, crowd straight boost           mixed v r9: score 0.724 ± 0.018  kills m/o/f/t 0.10 / 0.16 / 0.43 / 0.31  life 148 s  kpm/ship 0.38  trades 0.03
+5v5 frozen | one-circle mirror duel, crowd straight boost  mixed reversed v r9: score 0.796 ± 0.017  kills m/o/f/t 0.11 / 0.18 / 0.44 / 0.26  life 132 s  kpm/ship 0.42  trades 0.03
+5v5 frozen | one-circle mirror duel, crowd straight           mixed v r9: score 0.714 ± 0.018  kills m/o/f/t 0.10 / 0.17 / 0.42 / 0.31  life 141 s  kpm/ship 0.40  trades 0.03
+5v5 frozen | one-circle mirror duel, crowd straight  mixed reversed v r9: score 0.819 ± 0.016  kills m/o/f/t 0.11 / 0.18 / 0.44 / 0.27  life 128 s  kpm/ship 0.43  trades 0.04
+5v5 frozen | one-circle mirror duel 5 gr, crowd straight boost           mixed v r9: score 0.699 ± 0.019  kills m/o/f/t 0.10 / 0.15 / 0.42 / 0.32  life 163 s  kpm/ship 0.35  trades 0.03
+5v5 frozen | one-circle mirror duel 5 gr, crowd straight boost  mixed reversed v r9: score 0.801 ± 0.016  kills m/o/f/t 0.12 / 0.18 / 0.44 / 0.27  life 142 s  kpm/ship 0.39  trades 0.03
+5v5 frozen | one-circle mirror duel, crowd half one-circle           mixed v r9: score 0.486 ± 0.021  kills m/o/f/t 0.08 / 0.15 / 0.42 / 0.35  life 121 s  kpm/ship 0.46  trades 0.04
+5v5 frozen | one-circle mirror duel, crowd half one-circle  mixed reversed v r9: score 0.616 ± 0.020  kills m/o/f/t 0.09 / 0.16 / 0.45 / 0.31  life 110 s  kpm/ship 0.50  trades 0.04
+5v5 frozen | one-circle at 0.5 (round 4)           mixed v r9: score 0.546 ± 0.020  kills m/o/f/t 0.08 / 0.15 / 0.42 / 0.36  life 119 s  kpm/ship 0.46  trades 0.04
+5v5 frozen | one-circle at 0.5 (round 4)  mixed reversed v r9: score 0.643 ± 0.020  kills m/o/f/t 0.09 / 0.17 / 0.43 / 0.31  life 110 s  kpm/ship 0.50  trades 0.05
+5v5 frozen | crowd straight boost only           mixed v r9: score 0.720 ± 0.018  kills m/o/f/t 0.10 / 0.17 / 0.45 / 0.28  life 142 s  kpm/ship 0.40  trades 0.03
+5v5 frozen | crowd straight boost only  mixed reversed v r9: score 0.832 ± 0.015  kills m/o/f/t 0.11 / 0.18 / 0.47 / 0.24  life 125 s  kpm/ship 0.44  trades 0.04
+5v5 frozen | lead + one-circle mirror duel, crowd straight boost           mixed v r9: score 0.692 ± 0.019  kills m/o/f/t 0.10 / 0.17 / 0.42 / 0.31  life 149 s  kpm/ship 0.38  trades 0.03
+5v5 frozen | lead + one-circle mirror duel, crowd straight boost  mixed reversed v r9: score 0.785 ± 0.017  kills m/o/f/t 0.11 / 0.17 / 0.45 / 0.27  life 133 s  kpm/ship 0.42  trades 0.04
+5v5                      D2 | r9           mixed v r9: score 0.475 ± 0.020  kills m/o/f/t 0.05 / 0.19 / 0.59 / 0.18  life 100 s  kpm/ship 0.55  trades 0.04
+5v5                      D2 | r9  mixed reversed v r9: score 0.516 ± 0.021  kills m/o/f/t 0.05 / 0.18 / 0.59 / 0.18  life 98 s  kpm/ship 0.56  trades 0.05
+5v5  D2 | one-circle mirror duel           mixed v r9: score 0.505 ± 0.020  kills m/o/f/t 0.05 / 0.18 / 0.56 / 0.20  life 101 s  kpm/ship 0.54  trades 0.04
+5v5  D2 | one-circle mirror duel  mixed reversed v r9: score 0.509 ± 0.021  kills m/o/f/t 0.05 / 0.18 / 0.57 / 0.20  life 99 s  kpm/ship 0.55  trades 0.05
+5v5 D2 | one-circle mirror duel, crowd straight boost           mixed v r9: score 0.772 ± 0.017  kills m/o/f/t 0.08 / 0.19 / 0.49 / 0.24  life 118 s  kpm/ship 0.47  trades 0.04
+5v5 D2 | one-circle mirror duel, crowd straight boost  mixed reversed v r9: score 0.832 ± 0.015  kills m/o/f/t 0.07 / 0.19 / 0.50 / 0.23  life 117 s  kpm/ship 0.47  trades 0.04
+5v5 D2 | one-circle mirror duel, crowd straight           mixed v r9: score 0.771 ± 0.017  kills m/o/f/t 0.07 / 0.19 / 0.50 / 0.24  life 115 s  kpm/ship 0.48  trades 0.04
+5v5 D2 | one-circle mirror duel, crowd straight  mixed reversed v r9: score 0.803 ± 0.016  kills m/o/f/t 0.07 / 0.20 / 0.49 / 0.23  life 114 s  kpm/ship 0.48  trades 0.04
+5v5 D2 | one-circle mirror duel 5 gr, crowd straight boost           mixed v r9: score 0.784 ± 0.017  kills m/o/f/t 0.07 / 0.20 / 0.48 / 0.25  life 125 s  kpm/ship 0.44  trades 0.03
+5v5 D2 | one-circle mirror duel 5 gr, crowd straight boost  mixed reversed v r9: score 0.804 ± 0.016  kills m/o/f/t 0.07 / 0.19 / 0.50 / 0.24  life 122 s  kpm/ship 0.46  trades 0.04
+5v5 D2 | one-circle mirror duel, crowd half one-circle           mixed v r9: score 0.598 ± 0.020  kills m/o/f/t 0.06 / 0.18 / 0.50 / 0.26  life 103 s  kpm/ship 0.53  trades 0.05
+5v5 D2 | one-circle mirror duel, crowd half one-circle  mixed reversed v r9: score 0.604 ± 0.020  kills m/o/f/t 0.06 / 0.18 / 0.51 / 0.26  life 102 s  kpm/ship 0.54  trades 0.04
+5v5 D2 | one-circle at 0.5 (round 4)           mixed v r9: score 0.681 ± 0.019  kills m/o/f/t 0.06 / 0.18 / 0.49 / 0.27  life 105 s  kpm/ship 0.52  trades 0.05
+5v5 D2 | one-circle at 0.5 (round 4)  mixed reversed v r9: score 0.666 ± 0.019  kills m/o/f/t 0.06 / 0.18 / 0.50 / 0.26  life 103 s  kpm/ship 0.53  trades 0.05
+5v5 D2 | crowd straight boost only           mixed v r9: score 0.804 ± 0.016  kills m/o/f/t 0.07 / 0.20 / 0.53 / 0.20  life 112 s  kpm/ship 0.49  trades 0.04
+5v5 D2 | crowd straight boost only  mixed reversed v r9: score 0.814 ± 0.016  kills m/o/f/t 0.06 / 0.21 / 0.53 / 0.20  life 111 s  kpm/ship 0.50  trades 0.04
+5v5 D2 | lead + one-circle mirror duel, crowd straight boost           mixed v r9: score 0.748 ± 0.017  kills m/o/f/t 0.07 / 0.19 / 0.49 / 0.25  life 119 s  kpm/ship 0.47  trades 0.04
+5v5 D2 | lead + one-circle mirror duel, crowd straight boost  mixed reversed v r9: score 0.854 ± 0.014  kills m/o/f/t 0.07 / 0.20 / 0.50 / 0.23  life 114 s  kpm/ship 0.48  trades 0.04
+5v5           D2 cone 0.085 | r9           mixed v r9: score 0.493 ± 0.021  kills m/o/f/t 0.04 / 0.27 / 0.54 / 0.15  life 89 s  kpm/ship 0.61  trades 0.06
+5v5           D2 cone 0.085 | r9  mixed reversed v r9: score 0.478 ± 0.021  kills m/o/f/t 0.05 / 0.27 / 0.54 / 0.15  life 89 s  kpm/ship 0.61  trades 0.06
+5v5 D2 cone 0.085 | one-circle mirror duel           mixed v r9: score 0.510 ± 0.021  kills m/o/f/t 0.04 / 0.26 / 0.53 / 0.17  life 89 s  kpm/ship 0.61  trades 0.06
+5v5 D2 cone 0.085 | one-circle mirror duel  mixed reversed v r9: score 0.479 ± 0.021  kills m/o/f/t 0.05 / 0.26 / 0.52 / 0.17  life 90 s  kpm/ship 0.60  trades 0.06
+5v5 D2 cone 0.085 | one-circle mirror duel, crowd straight boost           mixed v r9: score 0.808 ± 0.016  kills m/o/f/t 0.05 / 0.28 / 0.48 / 0.19  life 103 s  kpm/ship 0.53  trades 0.05
+5v5 D2 cone 0.085 | one-circle mirror duel, crowd straight boost  mixed reversed v r9: score 0.812 ± 0.016  kills m/o/f/t 0.06 / 0.29 / 0.47 / 0.19  life 102 s  kpm/ship 0.54  trades 0.05
+5v5 D2 cone 0.085 | one-circle mirror duel, crowd straight           mixed v r9: score 0.793 ± 0.017  kills m/o/f/t 0.05 / 0.28 / 0.47 / 0.20  life 103 s  kpm/ship 0.53  trades 0.05
+5v5 D2 cone 0.085 | one-circle mirror duel, crowd straight  mixed reversed v r9: score 0.801 ± 0.016  kills m/o/f/t 0.06 / 0.29 / 0.47 / 0.18  life 101 s  kpm/ship 0.54  trades 0.05
+5v5 D2 cone 0.085 | one-circle mirror duel 5 gr, crowd straight boost           mixed v r9: score 0.799 ± 0.016  kills m/o/f/t 0.06 / 0.27 / 0.46 / 0.20  life 108 s  kpm/ship 0.51  trades 0.04
+5v5 D2 cone 0.085 | one-circle mirror duel 5 gr, crowd straight boost  mixed reversed v r9: score 0.800 ± 0.016  kills m/o/f/t 0.06 / 0.29 / 0.47 / 0.18  life 107 s  kpm/ship 0.51  trades 0.05
+5v5 D2 cone 0.085 | one-circle mirror duel, crowd half one-circle           mixed v r9: score 0.618 ± 0.020  kills m/o/f/t 0.04 / 0.27 / 0.48 / 0.21  life 93 s  kpm/ship 0.58  trades 0.06
+5v5 D2 cone 0.085 | one-circle mirror duel, crowd half one-circle  mixed reversed v r9: score 0.630 ± 0.020  kills m/o/f/t 0.05 / 0.27 / 0.47 / 0.20  life 92 s  kpm/ship 0.59  trades 0.05
+5v5 D2 cone 0.085 | one-circle at 0.5 (round 4)           mixed v r9: score 0.680 ± 0.019  kills m/o/f/t 0.05 / 0.27 / 0.48 / 0.20  life 94 s  kpm/ship 0.58  trades 0.05
+5v5 D2 cone 0.085 | one-circle at 0.5 (round 4)  mixed reversed v r9: score 0.665 ± 0.020  kills m/o/f/t 0.05 / 0.28 / 0.47 / 0.19  life 93 s  kpm/ship 0.59  trades 0.06
+5v5 D2 cone 0.085 | crowd straight boost only           mixed v r9: score 0.782 ± 0.017  kills m/o/f/t 0.05 / 0.28 / 0.50 / 0.16  life 99 s  kpm/ship 0.55  trades 0.05
+5v5 D2 cone 0.085 | crowd straight boost only  mixed reversed v r9: score 0.797 ± 0.016  kills m/o/f/t 0.05 / 0.29 / 0.50 / 0.16  life 98 s  kpm/ship 0.55  trades 0.05
+5v5 D2 cone 0.085 | lead + one-circle mirror duel, crowd straight boost           mixed v r9: score 0.810 ± 0.016  kills m/o/f/t 0.05 / 0.28 / 0.47 / 0.20  life 102 s  kpm/ship 0.53  trades 0.04
+5v5 D2 cone 0.085 | lead + one-circle mirror duel, crowd straight boost  mixed reversed v r9: score 0.821 ± 0.016  kills m/o/f/t 0.06 / 0.28 / 0.47 / 0.19  life 102 s  kpm/ship 0.54  trades 0.05
+5v5            D2 cone 0.01 | r9           mixed v r9: score 0.495 ± 0.021  kills m/o/f/t 0.02 / 0.27 / 0.56 / 0.15  life 91 s  kpm/ship 0.59  trades 0.06
+5v5            D2 cone 0.01 | r9  mixed reversed v r9: score 0.494 ± 0.021  kills m/o/f/t 0.03 / 0.27 / 0.56 / 0.15  life 90 s  kpm/ship 0.60  trades 0.06
+5v5 D2 cone 0.01 | one-circle mirror duel           mixed v r9: score 0.500 ± 0.021  kills m/o/f/t 0.03 / 0.27 / 0.54 / 0.17  life 92 s  kpm/ship 0.59  trades 0.06
+5v5 D2 cone 0.01 | one-circle mirror duel  mixed reversed v r9: score 0.489 ± 0.021  kills m/o/f/t 0.03 / 0.27 / 0.54 / 0.17  life 91 s  kpm/ship 0.59  trades 0.05
+5v5 D2 cone 0.01 | one-circle mirror duel, crowd straight boost           mixed v r9: score 0.794 ± 0.016  kills m/o/f/t 0.03 / 0.28 / 0.48 / 0.21  life 107 s  kpm/ship 0.51  trades 0.04
+5v5 D2 cone 0.01 | one-circle mirror duel, crowd straight boost  mixed reversed v r9: score 0.822 ± 0.015  kills m/o/f/t 0.04 / 0.28 / 0.48 / 0.20  life 105 s  kpm/ship 0.52  trades 0.05
+5v5 D2 cone 0.01 | one-circle mirror duel, crowd straight           mixed v r9: score 0.762 ± 0.017  kills m/o/f/t 0.03 / 0.27 / 0.49 / 0.21  life 107 s  kpm/ship 0.51  trades 0.04
+5v5 D2 cone 0.01 | one-circle mirror duel, crowd straight  mixed reversed v r9: score 0.803 ± 0.016  kills m/o/f/t 0.03 / 0.29 / 0.48 / 0.20  life 104 s  kpm/ship 0.53  trades 0.05
+5v5 D2 cone 0.01 | one-circle mirror duel 5 gr, crowd straight boost           mixed v r9: score 0.825 ± 0.015  kills m/o/f/t 0.03 / 0.29 / 0.48 / 0.21  life 113 s  kpm/ship 0.49  trades 0.04
+5v5 D2 cone 0.01 | one-circle mirror duel 5 gr, crowd straight boost  mixed reversed v r9: score 0.821 ± 0.016  kills m/o/f/t 0.04 / 0.29 / 0.48 / 0.20  life 110 s  kpm/ship 0.50  trades 0.05
+5v5 D2 cone 0.01 | one-circle mirror duel, crowd half one-circle           mixed v r9: score 0.610 ± 0.020  kills m/o/f/t 0.03 / 0.26 / 0.49 / 0.22  life 96 s  kpm/ship 0.57  trades 0.05
+5v5 D2 cone 0.01 | one-circle mirror duel, crowd half one-circle  mixed reversed v r9: score 0.613 ± 0.020  kills m/o/f/t 0.03 / 0.27 / 0.49 / 0.21  life 94 s  kpm/ship 0.58  trades 0.06
+5v5 D2 cone 0.01 | one-circle at 0.5 (round 4)           mixed v r9: score 0.644 ± 0.020  kills m/o/f/t 0.03 / 0.27 / 0.49 / 0.22  life 97 s  kpm/ship 0.56  trades 0.05
+5v5 D2 cone 0.01 | one-circle at 0.5 (round 4)  mixed reversed v r9: score 0.679 ± 0.019  kills m/o/f/t 0.03 / 0.28 / 0.48 / 0.21  life 94 s  kpm/ship 0.58  trades 0.06
+5v5 D2 cone 0.01 | crowd straight boost only           mixed v r9: score 0.791 ± 0.017  kills m/o/f/t 0.03 / 0.28 / 0.52 / 0.17  life 103 s  kpm/ship 0.53  trades 0.04
+5v5 D2 cone 0.01 | crowd straight boost only  mixed reversed v r9: score 0.818 ± 0.016  kills m/o/f/t 0.03 / 0.28 / 0.52 / 0.16  life 101 s  kpm/ship 0.54  trades 0.05
+5v5 D2 cone 0.01 | lead + one-circle mirror duel, crowd straight boost           mixed v r9: score 0.771 ± 0.017  kills m/o/f/t 0.03 / 0.28 / 0.48 / 0.21  life 107 s  kpm/ship 0.51  trades 0.04
+5v5 D2 cone 0.01 | lead + one-circle mirror duel, crowd straight boost  mixed reversed v r9: score 0.813 ± 0.016  kills m/o/f/t 0.03 / 0.28 / 0.48 / 0.20  life 105 s  kpm/ship 0.52  trades 0.05
+| Candidate | E v T 1v1 | E v T 5v5 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|
+| frozen | r9 | 0.010 ± 0.003 | 0.495 ± 0.020 | 0.490 | 0.07 / 0.17 / 0.53 / 0.24 | 0.04 | 171 / 110 | 0.33 / 0.50 | 2.86 |
+| frozen | one-circle mirror duel | 0.011 ± 0.003 | 0.532 ± 0.020 | 0.489 | 0.07 / 0.17 / 0.54 / 0.23 | 0.04 | 168 / 109 | 0.34 / 0.50 | 2.83 |
+| frozen | one-circle mirror duel, crowd straight boost | 0.014 ± 0.004 | 0.354 ± 0.019 | 0.486 | 0.10 / 0.15 / 0.34 / 0.41 | 0.03 | 170 / 148 | 0.33 / 0.38 | 2.86 |
+| frozen | one-circle mirror duel, crowd straight | 0.010 ± 0.003 | 0.368 ± 0.020 | 0.490 | 0.09 / 0.15 / 0.35 / 0.42 | 0.03 | 165 / 144 | 0.34 / 0.39 | 2.81 |
+| frozen | one-circle mirror duel 5 gr, crowd straight boost | 0.007 ± 0.003 | 0.294 ± 0.018 | 0.493 | 0.09 / 0.13 / 0.31 / 0.47 | 0.03 | 170 / 158 | 0.33 / 0.36 | 2.84 |
+| frozen | one-circle mirror duel, crowd half one-circle | 0.004 ± 0.002 | 0.466 ± 0.020 | 0.496 | 0.07 / 0.14 / 0.36 / 0.43 | 0.04 | 169 / 117 | 0.34 / 0.47 | 2.84 |
+| frozen | one-circle at 0.5 (round 4) | 0.049 ± 0.007 | 0.381 ± 0.020 | 0.451 | 0.07 / 0.13 / 0.29 / 0.51 | 0.04 | 154 / 122 | 0.37 / 0.46 | 3.31 |
+| frozen | crowd straight boost only | 0.006 ± 0.002 | 0.337 ± 0.019 | 0.494 | 0.09 / 0.15 / 0.33 / 0.43 | 0.03 | 168 / 145 | 0.34 / 0.39 | 2.84 |
+| frozen | lead + one-circle mirror duel, crowd straight boost | 0.014 ± 0.004 | 0.320 ± 0.019 | 0.486 | 0.09 / 0.15 / 0.34 / 0.42 | 0.03 | 172 / 149 | 0.33 / 0.38 | 2.8 |
+| D2 | r9 | 0.511 ± 0.014 | 0.529 ± 0.020 | 0.029 | 0.05 / 0.18 / 0.58 / 0.19 | 0.04 | 279 / 102 | 0.21 / 0.53 | 3.22 |
+| D2 | one-circle mirror duel | 0.499 ± 0.014 | 0.571 ± 0.021 | 0.071 | 0.05 / 0.19 / 0.57 / 0.19 | 0.05 | 284 / 102 | 0.20 / 0.54 | 3.46 |
+| D2 | one-circle mirror duel, crowd straight boost | 0.508 ± 0.013 | 0.556 ± 0.020 | 0.056 | 0.07 / 0.19 / 0.42 / 0.31 | 0.03 | 275 / 122 | 0.21 / 0.45 | 3.42 |
+| D2 | one-circle mirror duel, crowd straight | 0.496 ± 0.014 | 0.600 ± 0.020 | 0.100 | 0.07 / 0.19 / 0.44 / 0.30 | 0.04 | 277 / 121 | 0.21 / 0.46 | 3.28 |
+| D2 | one-circle mirror duel 5 gr, crowd straight boost | 0.499 ± 0.014 | 0.561 ± 0.020 | 0.061 | 0.07 / 0.18 / 0.40 / 0.35 | 0.03 | 286 / 132 | 0.20 / 0.42 | 3.37 |
+| D2 | one-circle mirror duel, crowd half one-circle | 0.498 ± 0.015 | 0.620 ± 0.020 | 0.120 | 0.06 / 0.18 / 0.45 / 0.32 | 0.04 | 288 / 106 | 0.20 / 0.52 | 3.45 |
+| D2 | one-circle at 0.5 (round 4) | 0.134 ± 0.011 | 0.634 ± 0.020 | 0.366 | 0.06 / 0.17 / 0.39 / 0.38 | 0.04 | 228 / 111 | 0.25 / 0.50 | 3.48 |
+| D2 | crowd straight boost only | 0.498 ± 0.014 | 0.541 ± 0.020 | 0.041 | 0.07 / 0.19 / 0.43 / 0.31 | 0.03 | 280 / 123 | 0.21 / 0.45 | 3.31 |
+| D2 | lead + one-circle mirror duel, crowd straight boost | 0.562 ± 0.014 | 0.546 ± 0.021 | 0.062 | 0.07 / 0.19 / 0.43 / 0.32 | 0.03 | 250 / 124 | 0.23 / 0.45 | 2.94 |
+| D2 cone 0.085 | r9 | 0.542 ± 0.015 | 0.664 ± 0.020 | 0.164 | 0.04 / 0.26 / 0.54 / 0.16 | 0.06 | 222 / 92 | 0.26 / 0.59 | 2.75 |
+| D2 cone 0.085 | one-circle mirror duel | 0.534 ± 0.015 | 0.683 ± 0.019 | 0.183 | 0.04 / 0.26 / 0.54 / 0.16 | 0.06 | 236 / 92 | 0.24 / 0.59 | 2.77 |
+| D2 cone 0.085 | one-circle mirror duel, crowd straight boost | 0.548 ± 0.015 | 0.671 ± 0.019 | 0.171 | 0.06 / 0.28 / 0.42 / 0.24 | 0.04 | 227 / 109 | 0.25 / 0.51 | 2.73 |
+| D2 cone 0.085 | one-circle mirror duel, crowd straight | 0.539 ± 0.015 | 0.677 ± 0.019 | 0.177 | 0.05 / 0.27 / 0.43 / 0.24 | 0.04 | 228 / 107 | 0.25 / 0.51 | 2.7 |
+| D2 cone 0.085 | one-circle mirror duel 5 gr, crowd straight boost | 0.544 ± 0.015 | 0.672 ± 0.019 | 0.172 | 0.05 / 0.27 / 0.41 / 0.27 | 0.04 | 226 / 113 | 0.25 / 0.49 | 2.69 |
+| D2 cone 0.085 | one-circle mirror duel, crowd half one-circle | 0.543 ± 0.015 | 0.698 ± 0.019 | 0.198 | 0.05 / 0.25 / 0.45 / 0.25 | 0.05 | 221 / 96 | 0.26 / 0.56 | 2.66 |
+| D2 cone 0.085 | one-circle at 0.5 (round 4) | 0.093 ± 0.009 | 0.771 ± 0.018 | 0.407 | 0.05 / 0.26 / 0.39 / 0.30 | 0.05 | 217 / 98 | 0.27 / 0.55 | 3.24 |
+| D2 cone 0.085 | crowd straight boost only | 0.533 ± 0.015 | 0.665 ± 0.019 | 0.165 | 0.05 / 0.27 / 0.43 / 0.24 | 0.04 | 226 / 108 | 0.25 / 0.51 | 2.68 |
+| D2 cone 0.085 | lead + one-circle mirror duel, crowd straight boost | 0.583 ± 0.014 | 0.632 ± 0.020 | 0.132 | 0.05 / 0.27 / 0.44 / 0.24 | 0.04 | 199 / 109 | 0.29 / 0.51 | 2.25 |
+| D2 cone 0.01 | r9 | 0.506 ± 0.015 | 0.646 ± 0.019 | 0.146 | 0.02 / 0.27 / 0.55 / 0.16 | 0.05 | 272 / 93 | 0.21 / 0.58 | 3.05 |
+| D2 cone 0.01 | one-circle mirror duel | 0.541 ± 0.014 | 0.685 ± 0.019 | 0.185 | 0.03 / 0.27 / 0.54 / 0.16 | 0.05 | 263 / 94 | 0.22 / 0.58 | 2.83 |
+| D2 cone 0.01 | one-circle mirror duel, crowd straight boost | 0.519 ± 0.015 | 0.672 ± 0.019 | 0.172 | 0.03 / 0.28 / 0.44 / 0.25 | 0.04 | 285 / 111 | 0.20 / 0.49 | 2.97 |
+| D2 cone 0.01 | one-circle mirror duel, crowd straight | 0.532 ± 0.015 | 0.703 ± 0.019 | 0.203 | 0.03 / 0.27 / 0.44 / 0.25 | 0.04 | 260 / 109 | 0.22 / 0.50 | 2.81 |
+| D2 cone 0.01 | one-circle mirror duel 5 gr, crowd straight boost | 0.517 ± 0.015 | 0.687 ± 0.019 | 0.187 | 0.04 / 0.27 / 0.42 / 0.28 | 0.04 | 271 / 117 | 0.21 / 0.47 | 3.0 |
+| D2 cone 0.01 | one-circle mirror duel, crowd half one-circle | 0.524 ± 0.015 | 0.697 ± 0.019 | 0.197 | 0.03 / 0.26 / 0.46 / 0.25 | 0.05 | 276 / 98 | 0.21 / 0.56 | 3.07 |
+| D2 cone 0.01 | one-circle at 0.5 (round 4) | 0.099 ± 0.010 | 0.744 ± 0.018 | 0.401 | 0.03 / 0.25 / 0.40 / 0.31 | 0.05 | 270 / 100 | 0.21 / 0.54 | 3.73 |
+| D2 cone 0.01 | crowd straight boost only | 0.534 ± 0.015 | 0.673 ± 0.019 | 0.173 | 0.03 / 0.28 / 0.44 / 0.26 | 0.04 | 272 / 112 | 0.21 / 0.49 | 2.92 |
+| D2 cone 0.01 | lead + one-circle mirror duel, crowd straight boost | 0.611 ± 0.014 | 0.647 ± 0.020 | 0.147 | 0.03 / 0.28 / 0.44 / 0.25 | 0.04 | 230 / 110 | 0.25 / 0.50 | 2.56 |
+
+800 s

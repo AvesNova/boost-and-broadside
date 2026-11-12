@@ -129,8 +129,15 @@ ROUNDS = {
     ],
     "confirm": [
         ("r9", {}),
-        ("lead 0.5 s", lead(0.5)),
-        ("lead 0.5 s cross 1.0", lead(0.5, crossing=1.0)),
+        ("lead", lead(0.5)),
+        ("crowd extend", dict(DUEL, sense=0.0, **STRAIGHT)),
+        ("crowd extend + lead", dict(DUEL, sense=0.0, **STRAIGHT, **lead(0.5))),
+        ("duel one-circle + crowd extend", dict(DUEL, **STRAIGHT)),
+        ("duel one-circle + crowd extend + lead", dict(DUEL, **STRAIGHT, **lead(0.5))),
+        (
+            "duel one-circle p0.7 + crowd extend + lead",
+            dict(DUEL, **STRAIGHT, **lead(0.5), sense_one_circle=0.7),
+        ),
     ],
     "round5": [
         ("r9", {}),

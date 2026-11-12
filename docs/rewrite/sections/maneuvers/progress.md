@@ -280,3 +280,36 @@ mirror-only 0.35-0.40 (frozen), 0.43-0.47 (D2), 0.45-0.48 (cone 0.085), 0.47-0.4
 0.46-0.52; about 0.49 averaged with round 3's). Energy v turn 2v2 / 5v5 stays near r9's
 with the mirror gate (D2 0.44 / 0.56 against 0.46 / 0.54); the lift gate tips the 5v5 to
 the Yongma on frozen (0.76) while the 1v1 goes to the Jujak.
+
+## 01:05-01:24 KST: round 6 (`round6/`): the crowd gate; the extension in the crowd
+
+512 games. "Duel" = the one-circle sense, mirror only, 4 gun ranges, open only with no other
+known enemy within 3 own gun ranges (`sense_in_crowd` [0.5, 0.1]); "crowd straight boost" =
+the crowd sense: with the target passed behind the 3-9 line and turning and another enemy
+near, fly straight (`crowd_sense_stick` 0) and boost. Against r9: 1v1 JJ / YY, then 5v5
+mixed / reversed; energy v turn 5v5 and its life:
+
+| Candidate | frozen | D2 | cone 0.085 | cone 0.01 |
+|---|---|---|---|---|
+| r9 | 0.485 / 0.501; 0.481 / 0.489; 0.50, 110 s | 0.515 / 0.503; 0.475 / 0.516; 0.53, 102 s | 0.503 / 0.495; 0.493 / 0.478; 0.66, 92 s | 0.501 / 0.512; 0.495 / 0.494; 0.65, 93 s |
+| duel | 0.645 / 0.630; 0.461 / 0.526; 0.53 | 0.573 / 0.598; 0.505 / 0.509; 0.57 | 0.519 / 0.611; 0.510 / 0.479; 0.68 | 0.519 / 0.485; 0.500 / 0.489; 0.68 |
+| **duel + crowd straight boost** | 0.683 / 0.597; **0.724 / 0.796**; 0.35, 148 s | 0.575 / 0.615; **0.772 / 0.832**; 0.56, 122 s | 0.508 / 0.571; **0.808 / 0.812**; 0.67, 109 s | 0.503 / 0.476; **0.794 / 0.822**; 0.67, 111 s |
+| duel + crowd straight (no boost) | 0.649 / 0.630; 0.714 / 0.819 | 0.586 / 0.607; 0.771 / 0.803 | 0.524 / 0.579; 0.793 / 0.801 | 0.521 / 0.470; 0.762 / 0.803 |
+| duel, crowd 5 gr, straight boost | 0.658 / 0.606; 0.699 / 0.801 | 0.564 / 0.628; 0.784 / 0.804 | 0.528 / 0.559; 0.799 / 0.800 | 0.502 / 0.493; 0.825 / 0.821 |
+| duel + crowd half one-circle | 0.640 / 0.647; 0.486 / 0.616 | 0.561 / 0.604; 0.598 / 0.604 | 0.524 / 0.618; 0.618 / 0.630 | 0.535 / 0.467; 0.610 / 0.613 |
+| crowd straight boost only | 0.490 / 0.502; 0.720 / 0.832; 0.34, 145 s | 0.500 / 0.507; 0.804 / 0.814; 0.54, 123 s | 0.495 / 0.509; 0.782 / 0.797; 0.67, 108 s | 0.506 / 0.510; 0.791 / 0.818; 0.67, 112 s |
+| lead + duel + crowd straight boost | 0.646 / 0.562; 0.692 / 0.785 | 0.556 / 0.603; 0.748 / 0.854 | 0.511 / 0.568; 0.810 / 0.821 | 0.526 / 0.476; 0.771 / 0.813 |
+
+- **The crowd gate gives the duel its edge back without the crowd's loss**: the duel arm
+  alone is even at 5v5 (0.46-0.53) and keeps 0.52-0.65 at 1v1.
+- **The extension in the crowd is the strongest maneuver found: 0.70-0.85 against r9 at
+  5v5 on every card**, by itself (the duel arm adds nothing at 5v5). r9 turns after any
+  target that passes it, and in a crowd a slow turning fight is where it is shot by the
+  others; the extension keeps the ship's speed and leaves the furball, to come back on a
+  new target with its speed. The boost barely matters (straight alone 0.71-0.82). Round
+  4's sense at weight 0.5 was a weaker version of it (its 50/50 stick draws averaged to
+  nearly straight).
+- **Costs**: on the frozen card the crowd extension moves energy v turn 5v5 from 0.50 to
+  0.34-0.35 (the Jujaks extend better? to be checked) and lengthens the 5v5 life (110 to
+  145-148 s; D2 102 to 122 s, cones 92 to 108-111 s). On D2 and the cones energy v turn
+  5v5 is unchanged.
