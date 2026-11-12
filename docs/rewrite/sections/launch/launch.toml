@@ -11,10 +11,11 @@
 # baseline, split, hidden physics decay 0.5), each a BC -> RL chain.
 
 # The ship lineup, one type name per slot of a team (both teams fly it, in every mode),
-# names as `bnb.game.api.type_names("real-scale")` gives them. It arrives from the game
-# branch (Yongma + Jujak, 2 + 3); launch.py refuses to check, probe or queue anything while
-# it is this placeholder. Example: ["Yongma", "Yongma", "Jujak", "Jujak", "Jujak"].
-lineup = "PLACEHOLDER"
+# names as `bnb.game.api.type_names("real-scale")` gives them: two Yongma (the energy
+# fighter) and three Jujak (the turn fighter), set 2026-11-12 (the ship cards' numbers may
+# still change; the names do not). launch.py refuses to check, probe or queue anything while
+# it is the placeholder "PLACEHOLDER".
+lineup = ["Yongma", "Yongma", "Jujak", "Jujak", "Jujak"]
 
 preset = "real_scale_all_modes"
 # 2040, not 2048: the mix's shares split the batch into whole environments only at a
