@@ -111,3 +111,71 @@ Nothing stored: no doctrine, ship or map file changed. For the author:
 3. For the one-hull pairs a single duel gate (1.0) on both slots is the better r9m2 variant
    (both mirrors 0.29-0.35 mutual, 1.6 bits). It was not run on the other maps or against
    the league.
+
+## 06:02-06:18 KST: run 3 (`../maneuvers-2/r9m2-gate1-maps/`): gate 1.0 on both slots, six maps
+
+**r9m2-gate1**: r9m2 with the Jujak slot's `duel_extend_in_shield_ratio` set to the Yongma
+slot's (1.0, 0.1) in place of (0.4, 0.1); nothing else changed (the cross-type extension is
+still team-gated). `make.py r9m2-gate1-maps r9m2-gate1 r9m2`, the r9m2 rows kept on
+armour-tank and D2 only as a same-run baseline. 1024 games a cell (10v10 512), the self-play
+lineups as runs 1-2, and **strength**: each candidate against r9 and against r9m2 (`sizes.py`
+now also loads `champion2.json` as the player r9m2) at 1v1 and 5v5 in four lineups: energy v
+turn, turn v energy, mixed, mixed reversed (at 1v1 mixed is the Yongma-slot mirror, mixed
+reversed the Jujak-slot mirror). `table.md` there (both tables, `table.py` now prints the
+versus table). 915 s.
+
+| Map | A v B 1v1/2v2/5v5/10v10: r9m2 → gate1 | AA mutual, life, H: r9m2 → gate1 | BB mutual, life, H: r9m2 → gate1 | 5v5 life s, kills/min/ship, trades: r9m2 → gate1 | 5v5 H |
+|---|---|---|---|---|---|
+| hit-and-run v standard | 0.54/0.47/0.52/0.54 → 0.53/0.50/0.49/0.48 | 0.31, 169 s, 1.58 → 0.30, 169 s, 1.58 | 0.49, 181 s, 0.57 → **0.37, 191 s, 1.59** | 101, 0.54, 0.05 → 102, 0.53, 0.05 | 1.79 → 1.77 |
+| rate v speed | 0.56/0.53/0.48/0.47 → 0.56/0.50/0.46/0.45 | 0.32, 176 s, 1.59 → 0.33, 180 s, 1.59 | 0.51, 193 s, 0.54 → **0.37, 192 s, 1.59** | 103, 0.53, 0.05 → 106, 0.52, 0.04 | 1.77 → 1.76 |
+| standard v brawler | 0.53/0.59/0.63/0.69 → 0.53/0.56/0.56/0.65 | 0.35, 188 s, 1.59 → 0.34, 188 s, 1.59 | 0.43, 173 s, 0.66 → **0.31, 184 s, 1.59** | 103, 0.53, 0.05 → 106, 0.52, 0.05 | 1.79 → 1.77 |
+| gunner v close | 0.53/0.61/0.69/0.70 → 0.52/0.65/0.66/0.64 | 0.32, 196 s, 1.59 → 0.35, 198 s, 1.59 | 0.40, 198 s, 0.64 → **0.29, 213 s, 1.60** | 109, 0.50, 0.04 → 113, 0.49, 0.04 | 1.73 → 1.73 |
+| armour-tank (same run) | 0.50/0.42/0.56/0.52 → 0.50/0.42/0.58/0.50 | 0.33, 210 s, 1.60 → 0.34, 213 s, 1.60 | 0.53, 249 s, 0.43 → **0.29, 215 s, 1.57** | 113, 0.49, 0.04 → 114, 0.48, 0.04 | 1.75 → 1.75 |
+| balance-d2 (same run) | 0.51/0.44/0.56/0.54 → 0.50/0.46/0.55/0.49 | 0.63, 189 s, 1.60 → 0.65, 189 s, 1.59 | 0.64, 223 s, 0.40 → **0.46, 228 s, 1.59** | 133, 0.42, 0.03 → 134, 0.42, 0.03 | 1.74 → 1.74 |
+
+(r9m2 columns of the four archetype maps from run 1; the gate1 rows of standard v brawler and
+gunner v close repeat the 05:55 diagnostic within ±0.04, the 10v10 cells' spread.)
+
+**Strength** (candidate's score, four-lineup mean ± SE; the Jujak-slot mirror in brackets):
+
+| Map | gate1 v r9 1v1 | r9m2 v r9 1v1 | gate1 v r9m2 1v1 | gate1 v r9 5v5 | r9m2 v r9 5v5 | gate1 v r9m2 5v5 |
+|---|---|---|---|---|---|---|
+| hit-and-run v standard | 0.514 (0.53) | | 0.498 (0.49) | 0.858 | | 0.527 |
+| rate v speed | 0.513 (0.52) | | 0.494 (**0.44**) | 0.868 | | 0.519 |
+| standard v brawler | 0.511 (0.52) | | 0.506 (0.50) | 0.852 | | 0.530 |
+| gunner v close | 0.501 (0.54) | | 0.493 (0.49) | 0.849 | | 0.515 |
+| armour-tank | 0.486 (**0.38**) | 0.518 (0.53) | 0.483 (**0.39**) | 0.799 | 0.789 | 0.523 |
+| balance-d2 | 0.516 (**0.45**) | 0.546 (0.59) | 0.484 (**0.43**) | 0.790 | 0.781 | 0.521 |
+
+SE ±0.005-0.006 at 1v1, ±0.007 at 5v5; a Jujak-mirror cell ±0.011-0.012. r9m2 v r9m2 (same
+run) 0.500 / 0.502 at 1v1 and 0.495 / 0.492 at 5v5. The Yongma-slot doctrine is r9m2's in
+both, so the 1v1 energy mirror against r9m2 is a null check (0.50-0.53).
+
+1. **Mirrors: the 1.0 gate de-jousts the B mirror on all six maps** (mutual 0.40-0.64 →
+   0.29-0.46, entropy 0.40-0.66 → 1.57-1.60 bits) and leaves the A mirror as it was. D2's A
+   mirror stays a 0.63-0.65 joust under either gate (the card; r9 0.38).
+2. **Balance and pace: unchanged within noise** (every A v B cell within ±0.07, all 10v10;
+   the brawler and gunner crowds a little less tipped, 0.63 / 0.69 → 0.56 / 0.66 at 5v5, still
+   0.64-0.65 at 10v10; 5v5 life +1-4 s, kills/min −0.01).
+3. **Strength in crowds: gate1 is the stronger doctrine**: 0.515-0.530 against r9m2 at 5v5 on
+   every map (+2-4 SE), and +0.01 over r9m2 against r9.
+4. **Strength in the Jujak duel: gate1 loses on the two-hull maps**: in the 1v1 Jujak mirror
+   r9m2's Jujak beats gate1's 0.61 (armour-tank), 0.57 (D2), 0.56 (rate v speed); on the
+   one-hull pairs the cell is 0.49-0.50. Against r9 the same cell falls 0.53 → 0.38
+   (armour-tank) and 0.59 → 0.45 (D2), so gate1's 1v1 mean against r9 is 0.03 below r9m2's.
+   The 0.4 gate is what makes a real turn fighter's 1v1 duel strong; the 1.0 gate makes it
+   extend at full shield, which a turn fighter's opponent punishes in a duel but which pays in
+   crowds.
+
+## State (06:25 KST)
+
+Nothing stored: no doctrine, ship or map file changed. For the author (a proposal):
+- **On the one-hull pairs (hit-and-run v standard, standard v brawler, gunner v close) gate1
+  should replace r9m2's split gate**: both mirrors de-jousted, balance held, no 1v1 cost,
+  +0.02-0.03 in 5v5.
+- **On the Yongma/Jujak cards (armour-tank, D2) and rate v speed it is a trade**: the B mirror
+  de-jousts (0.53-0.64 → 0.29-0.46, 1.6 bits) and crowds gain +0.02, but a Jujak-flown ship
+  loses its 1v1 duel to r9m2's (0.39-0.44) and to r9 (0.38 / 0.45). If 1v1 Jujak duel strength
+  matters (a 1v1 play mode, Elo at 1v1), keep the split gate there, or gate by the card
+  (1.0 for Yongma-like and one-hull ships, 0.4 for the turn fighter) rather than by slot;
+  that variant was not run.

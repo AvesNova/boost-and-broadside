@@ -1,6 +1,6 @@
 """The play maps as maneuvers-2 `sizes.py` candidates, each flown by r9 and by r9m2.
 
-    python docs/rewrite/sections/r9m2-maps/make.py [r9m2-maps] [r9 r9m2 r9m]
+    python docs/rewrite/sections/r9m2-maps/make.py [r9m2-maps] [r9 r9m2 r9m r9m2-gate1]
 
 Each map's Yongma and Jujak card fields become absolute card values ({"set": value}) on
 `bench.game_loop`'s base card (the real-scale Yongma and Jujak rows: the map's unlisted
@@ -38,7 +38,18 @@ def main() -> None:
     )
     tag = sys.argv[1] if len(sys.argv) > 1 else "r9m2-maps"
     doctrines = sys.argv[2:] or ["r9", "r9m2"]
-    extra = {"r9": {}, "r9m2": r9m2, "r9m": dict(player="r9m")}
+    # r9m2 with the Yongma slot's duel-extension gate (1.0 of the target's shield) on both
+    one_gate = dict(
+        r9m2,
+        doctrine=dict(
+            energy=champion["yongma"],
+            turn=dict(
+                champion["jujak"],
+                duel_extend_in_shield_ratio=champion["yongma"]["duel_extend_in_shield_ratio"],
+            ),
+        ),
+    )
+    extra = {"r9": {}, "r9m2": r9m2, "r9m": dict(player="r9m"), "r9m2-gate1": one_gate}
     out = []
     for name in MAPS:
         data = json.loads((ROOT / "src/bnb/game/maps" / f"{name}.json").read_text())
