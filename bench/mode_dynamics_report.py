@@ -69,6 +69,17 @@ def deathmatch(entries: list[dict]) -> dict:
             + " | ".join(f"{shares[t]:.2f}" for t in range(5, 61, 5))
             + f" | {eighty} |"
         )
+    mean_rate = statistics.fmean(rates)
+    ratios = [
+        row["tickets_for_80"] / (mean_rate * seconds / 60.0)
+        for seconds, row in table.items()
+        if row["tickets_for_80"]
+    ]
+    if ratios:
+        print(
+            f"T for 80% = {statistics.fmean(ratios):.3f} x kills per minute (both teams) x "
+            f"clock minutes (ratios {', '.join(f'{r:.3f}' for r in ratios)})"
+        )
     return dict(games=len(games), kills_per_minute=rates, table=table)
 
 
