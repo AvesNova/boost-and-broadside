@@ -438,3 +438,24 @@ extension grows with the crowd. Against r9 (mixed / reversed) and energy v turn,
 
 The type balance holds at 10v10 on D2 and the cones (within 0.07 of r9's); on the frozen
 card the Jujak takes the crowd (0.48 to 0.22).
+
+## 02:10-02:24 KST: robustness (`robust/`): r9m against the league
+
+1024 games. r9 and r9m (the confirmed champion: duel one-circle + crowd extension) against
+the league's r9, r7, r4, `hand` and `off` (1v1 JJ / YY; 5v5 mixed / reversed):
+
+| Card: player | r9 | r7 | r4 | hand | off |
+|---|---|---|---|---|---|
+| frozen: r9 | 0.51 / 0.50; 0.50 / 0.48 | 0.57 / 0.53; 0.55 / 0.51 | 0.56 / 0.53; 0.55 / 0.55 | 0.48 / 0.51; 0.51 / 0.52 | 0.49 / 0.50; 0.53 / 0.49 |
+| frozen: r9m | 0.66 / 0.61; 0.73 / 0.82 | 0.68 / 0.64; 0.72 / 0.84 | 0.67 / 0.63; 0.73 / 0.82 | 0.66 / 0.62; 0.73 / 0.82 | 0.66 / 0.60; 0.74 / 0.81 |
+| D2: r9 | 0.52 / 0.51; 0.51 / 0.51 | 0.54 / 0.51; 0.57 / 0.55 | 0.52 / 0.53; 0.60 / 0.58 | 0.50 / 0.49; 0.52 / 0.50 | 0.50 / 0.50; 0.48 / 0.49 |
+| D2: r9m | 0.59 / 0.62; 0.76 / 0.83 | 0.58 / 0.61; 0.80 / 0.86 | 0.57 / 0.62; 0.84 / 0.86 | 0.56 / 0.62; 0.77 / 0.81 | 0.57 / 0.60; 0.76 / 0.83 |
+| cone 0.085: r9 | 0.48 / 0.51; 0.51 / 0.50 | 0.52 / 0.50; 0.56 / 0.53 | 0.51 / 0.52; 0.58 / 0.55 | 0.49 / 0.49; 0.51 / 0.52 | 0.49 / 0.51; 0.51 / 0.50 |
+| cone 0.085: r9m | 0.52 / 0.57; 0.79 / 0.81 | 0.53 / 0.59; 0.79 / 0.83 | 0.53 / 0.61; 0.81 / 0.84 | 0.53 / 0.58; 0.79 / 0.80 | 0.53 / 0.57; 0.80 / 0.81 |
+
+**r9m beats every league player** at 1v1 (0.52-0.68) and 5v5 (0.72-0.86), on every card:
+the edge is not a reply to r9 alone. (In the mirrors every league player flies the bare
+combat layer, the doctrines' advantage gates being shut, so the 1v1 columns differ by noise.)
+On the frozen card's energy v turn, the extension turns the crowd into duels, which the
+frozen card's Jujak wins (its 1v1 is 0.01): that is why the frozen 5v5 and 10v10 tip to the
+Jujak while D2, balanced at 1v1, holds.
