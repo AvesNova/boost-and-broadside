@@ -24,7 +24,8 @@ types = variant_types(
 card = characteristics(types, api.rules_of(api.PRESETS[PRESET], types=types))
 K = len(entries)
 print(
-    "| Card | Ship | Sustained turn rad/s | Cruise m/s | Top m/s | Corner m/s | Shield | Hit damage | Gun range m |"
+    "| Card | Ship | Sustained turn rad/s | Cruise m/s | Top m/s | Corner m/s | Shield "
+    "| Hit damage | Gun range m |"
 )
 print("|---|---|---|---|---|---|---|---|---|")
 for k, entry in enumerate(entries):

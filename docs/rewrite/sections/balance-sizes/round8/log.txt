@@ -14,3 +14,16 @@
 1v1 B J1.5 Ys0.35 Yd1.4 Js0.75, Y engine x0.5   energy v turn v c10: score 0.179 ± 0.014  kills m/o/f/t 0.38 / 0.34 / 0.28 / 0.00  life 87 s  kpm/ship 0.62  trades 0.00
 1v1 B J1.5 Ys0.35 Yd1.4 Js0.75, Y engine x0.5, J nose x1.3   energy v turn v c11: score 0.165 ± 0.013  kills m/o/f/t 0.40 / 0.32 / 0.28 / 0.00  life 85 s  kpm/ship 0.64  trades 0.00
 ## 2v2: 12 jobs, B 8192, 20:25 KST
+2v2   B J1.5 Ys0.35 Yd1.4 Js0.75   energy v turn v c0: score 0.610 ± 0.019  kills m/o/f/t 0.24 / 0.25 / 0.43 / 0.08  life 83 s  kpm/ship 0.64  trades 0.02
+2v2 B J1.5 Ys0.35 Yd1.4 Js0.75, Y engine x0.75   energy v turn v c1: score 0.489 ± 0.020  kills m/o/f/t 0.25 / 0.25 / 0.43 / 0.08  life 82 s  kpm/ship 0.65  trades 0.03
+2v2 B J1.5 Ys0.35 Yd1.4 Js0.75, Y engine x0.6   energy v turn v c2: score 0.346 ± 0.019  kills m/o/f/t 0.24 / 0.27 / 0.42 / 0.07  life 81 s  kpm/ship 0.66  trades 0.03
+2v2 B J1.5 Ys0.35 Yd1.4 Js0.75, J nose x1.3   energy v turn v c3: score 0.530 ± 0.019  kills m/o/f/t 0.25 / 0.26 / 0.41 / 0.09  life 83 s  kpm/ship 0.65  trades 0.03
+2v2 B J1.5 Ys0.35 Yd1.4 Js0.75, Y bullet life x0.85   energy v turn v c4: score 0.556 ± 0.019  kills m/o/f/t 0.24 / 0.24 / 0.43 / 0.09  life 86 s  kpm/ship 0.63  trades 0.03
+2v2 B J1.5 Ys0.35 Yd1.4 Js0.75, Y engine x0.75, J nose x1.3   energy v turn v c5: score 0.423 ± 0.020  kills m/o/f/t 0.24 / 0.27 / 0.42 / 0.07  life 80 s  kpm/ship 0.67  trades 0.03
+2v2 B J1.5 Ys0.35 Yd1.4 Js0.75, Y engine x0.6, Y bullet life x0.85   energy v turn v c6: score 0.324 ± 0.018  kills m/o/f/t 0.24 / 0.26 / 0.43 / 0.07  life 82 s  kpm/ship 0.65  trades 0.03
+2v2 B J1.5 Ys0.35 Yd1.4 Js0.75, Y engine x0.75, Y damage x1.3 (not 1.4)   energy v turn v c7: score 0.399 ± 0.019  kills m/o/f/t 0.23 / 0.26 / 0.43 / 0.08  life 83 s  kpm/ship 0.65  trades 0.03
+2v2 B J1.5 Ys0.35 Yd1.4 Js0.75, Y engine x0.6, J nose x1.3, Y bullet life x0.85   energy v turn v c8: score 0.287 ± 0.018  kills m/o/f/t 0.25 / 0.27 / 0.42 / 0.06  life 80 s  kpm/ship 0.67  trades 0.03
+2v2 B J1.5 Ys0.35 Yd1.4 Js0.75, Y shield x0.3, Y engine x0.75   energy v turn v c9: score 0.380 ± 0.019  kills m/o/f/t 0.27 / 0.26 / 0.41 / 0.07  life 80 s  kpm/ship 0.67  trades 0.03
+2v2 B J1.5 Ys0.35 Yd1.4 Js0.75, Y engine x0.5   energy v turn v c10: score 0.301 ± 0.018  kills m/o/f/t 0.26 / 0.25 / 0.41 / 0.07  life 82 s  kpm/ship 0.65  trades 0.02
+2v2 B J1.5 Ys0.35 Yd1.4 Js0.75, Y engine x0.5, J nose x1.3   energy v turn v c11: score 0.236 ± 0.017  kills m/o/f/t 0.26 / 0.26 / 0.43 / 0.06  life 80 s  kpm/ship 0.67  trades 0.03
+## 5v5: 12 jobs, B 4096, 20:26 KST
