@@ -1,0 +1,962 @@
+{
+ "types": [
+  "standard",
+  "close",
+  "brawler",
+  "small"
+ ],
+ "sources": {
+  "standard": [
+   "arch-standard-brawler",
+   "yongma"
+  ],
+  "close": [
+   "arch-close-standard",
+   "yongma"
+  ],
+  "brawler": [
+   "arch-standard-brawler",
+   "jujak"
+  ],
+  "small": [
+   "arch-standard-small",
+   "jujak"
+  ]
+ },
+ "lineups": {
+  "one of each v one of each": [
+   [
+    0,
+    2,
+    3,
+    1
+   ],
+   [
+    0,
+    2,
+    3,
+    1
+   ]
+  ],
+  "2 standard + 2 brawler v 2 small + 2 close": [
+   [
+    0,
+    0,
+    2,
+    2
+   ],
+   [
+    3,
+    3,
+    1,
+    1
+   ]
+  ],
+  "2 standard + 2 small v 2 brawler + 2 close": [
+   [
+    0,
+    0,
+    3,
+    3
+   ],
+   [
+    2,
+    2,
+    1,
+    1
+   ]
+  ],
+  "2 standard + 2 close v 2 brawler + 2 small": [
+   [
+    0,
+    0,
+    1,
+    1
+   ],
+   [
+    2,
+    2,
+    3,
+    3
+   ]
+  ],
+  "4 standard v one of each": [
+   [
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    2,
+    3,
+    1
+   ]
+  ],
+  "4 brawler v one of each": [
+   [
+    2,
+    2,
+    2,
+    2
+   ],
+   [
+    0,
+    2,
+    3,
+    1
+   ]
+  ],
+  "4 small v one of each": [
+   [
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    0,
+    2,
+    3,
+    1
+   ]
+  ],
+  "4 close v one of each": [
+   [
+    1,
+    1,
+    1,
+    1
+   ],
+   [
+    0,
+    2,
+    3,
+    1
+   ]
+  ]
+ },
+ "players": {
+  "r9": [
+   {
+    "lineup": "one of each v one of each",
+    "games": 1024,
+    "wins": 457.0,
+    "draws": 129.0,
+    "score": 0.50927734375,
+    "stderr": 0.015622310108868052,
+    "kills_per_game": 25.72265625,
+    "types": {
+     "A standard": {
+      "ships": 1,
+      "kills": 3346.0,
+      "deaths": 3254.0,
+      "kill_share": 0.1270311313591496,
+      "kd": 1.0282728948985864,
+      "kills_per_minute_per_ship": 0.653515625
+     },
+     "A close": {
+      "ships": 1,
+      "kills": 3197.0,
+      "deaths": 3291.0,
+      "kill_share": 0.12137433561123766,
+      "kd": 0.9714372531145549,
+      "kills_per_minute_per_ship": 0.6244140625
+     },
+     "A brawler": {
+      "ships": 1,
+      "kills": 3527.0,
+      "deaths": 3283.0,
+      "kill_share": 0.1339028094153379,
+      "kd": 1.0743222662199208,
+      "kills_per_minute_per_ship": 0.6888671875
+     },
+     "A small": {
+      "ships": 1,
+      "kills": 3177.0,
+      "deaths": 3265.0,
+      "kill_share": 0.12061503416856492,
+      "kd": 0.9730474732006126,
+      "kills_per_minute_per_ship": 0.6205078125
+     },
+     "B standard": {
+      "ships": 1,
+      "kills": 3268.0,
+      "deaths": 3352.0,
+      "kill_share": 0.12406985573272589,
+      "kd": 0.9749403341288783,
+      "kills_per_minute_per_ship": 0.63828125
+     },
+     "B close": {
+      "ships": 1,
+      "kills": 3203.0,
+      "deaths": 3305.0,
+      "kill_share": 0.12160212604403949,
+      "kd": 0.9691376701966717,
+      "kills_per_minute_per_ship": 0.6255859375
+     },
+     "B brawler": {
+      "ships": 1,
+      "kills": 3451.0,
+      "deaths": 3317.0,
+      "kill_share": 0.13101746393318148,
+      "kd": 1.0403979499547784,
+      "kills_per_minute_per_ship": 0.6740234375
+     },
+     "B small": {
+      "ships": 1,
+      "kills": 3171.0,
+      "deaths": 3273.0,
+      "kill_share": 0.1203872437357631,
+      "kd": 0.9688359303391384,
+      "kills_per_minute_per_ship": 0.6193359375
+     }
+    }
+   },
+   {
+    "lineup": "2 standard + 2 brawler v 2 small + 2 close",
+    "games": 1024,
+    "wins": 439.0,
+    "draws": 115.0,
+    "score": 0.48486328125,
+    "stderr": 0.015617838350791335,
+    "kills_per_game": 25.6025390625,
+    "types": {
+     "A standard": {
+      "ships": 2,
+      "kills": 6477.0,
+      "deaths": 6544.0,
+      "kill_share": 0.24705343860853646,
+      "kd": 0.9897616136919315,
+      "kills_per_minute_per_ship": 0.63251953125
+     },
+     "A brawler": {
+      "ships": 2,
+      "kills": 6590.0,
+      "deaths": 6606.0,
+      "kill_share": 0.25136361902582294,
+      "kd": 0.9975779594308205,
+      "kills_per_minute_per_ship": 0.6435546875
+     },
+     "B close": {
+      "ships": 2,
+      "kills": 6571.0,
+      "deaths": 6570.0,
+      "kill_share": 0.2506388984246863,
+      "kd": 1.000152207001522,
+      "kills_per_minute_per_ship": 0.64169921875
+     },
+     "B small": {
+      "ships": 2,
+      "kills": 6579.0,
+      "deaths": 6497.0,
+      "kill_share": 0.2509440439409543,
+      "kd": 1.0126212097891334,
+      "kills_per_minute_per_ship": 0.64248046875
+     }
+    }
+   },
+   {
+    "lineup": "2 standard + 2 small v 2 brawler + 2 close",
+    "games": 1024,
+    "wins": 481.0,
+    "draws": 117.0,
+    "score": 0.52685546875,
+    "stderr": 0.015602445715430227,
+    "kills_per_game": 25.3779296875,
+    "types": {
+     "A standard": {
+      "ships": 2,
+      "kills": 6649.0,
+      "deaths": 6508.0,
+      "kill_share": 0.2558586985800593,
+      "kd": 1.0216656422864168,
+      "kills_per_minute_per_ship": 0.64931640625
+     },
+     "A small": {
+      "ships": 2,
+      "kills": 6388.0,
+      "deaths": 6442.0,
+      "kill_share": 0.24581521529995767,
+      "kd": 0.9916175100900342,
+      "kills_per_minute_per_ship": 0.623828125
+     },
+     "B close": {
+      "ships": 2,
+      "kills": 6275.0,
+      "deaths": 6488.0,
+      "kill_share": 0.24146688728979873,
+      "kd": 0.967170160295931,
+      "kills_per_minute_per_ship": 0.61279296875
+     },
+     "B brawler": {
+      "ships": 2,
+      "kills": 6675.0,
+      "deaths": 6549.0,
+      "kill_share": 0.2568591988301843,
+      "kd": 1.0192395785616124,
+      "kills_per_minute_per_ship": 0.65185546875
+     }
+    }
+   },
+   {
+    "lineup": "2 standard + 2 close v 2 brawler + 2 small",
+    "games": 1024,
+    "wins": 441.0,
+    "draws": 133.0,
+    "score": 0.49560546875,
+    "stderr": 0.015624396491316521,
+    "kills_per_game": 25.4951171875,
+    "types": {
+     "A standard": {
+      "ships": 2,
+      "kills": 6622.0,
+      "deaths": 6559.0,
+      "kill_share": 0.25364844677672654,
+      "kd": 1.0096051227321239,
+      "kills_per_minute_per_ship": 0.6466796875
+     },
+     "A close": {
+      "ships": 2,
+      "kills": 6374.0,
+      "deaths": 6552.0,
+      "kill_share": 0.24414907879112882,
+      "kd": 0.9728327228327228,
+      "kills_per_minute_per_ship": 0.6224609375
+     },
+     "B brawler": {
+      "ships": 2,
+      "kills": 6820.0,
+      "deaths": 6575.0,
+      "kill_share": 0.2612326196039376,
+      "kd": 1.0372623574144486,
+      "kills_per_minute_per_ship": 0.666015625
+     },
+     "B small": {
+      "ships": 2,
+      "kills": 6291.0,
+      "deaths": 6421.0,
+      "kill_share": 0.240969854828207,
+      "kd": 0.979753932409282,
+      "kills_per_minute_per_ship": 0.61435546875
+     }
+    }
+   },
+   {
+    "lineup": "4 standard v one of each",
+    "games": 1024,
+    "wins": 451.0,
+    "draws": 102.0,
+    "score": 0.490234375,
+    "stderr": 0.015622019483489914,
+    "kills_per_game": 25.666015625,
+    "types": {
+     "A standard": {
+      "ships": 4,
+      "kills": 13072.0,
+      "deaths": 13210.0,
+      "kill_share": 0.4973746290236664,
+      "kd": 0.989553368660106,
+      "kills_per_minute_per_ship": 0.63828125
+     },
+     "B standard": {
+      "ships": 1,
+      "kills": 3286.0,
+      "deaths": 3287.0,
+      "kill_share": 0.1250285366410471,
+      "kd": 0.9996957712199575,
+      "kills_per_minute_per_ship": 0.641796875
+     },
+     "B close": {
+      "ships": 1,
+      "kills": 3193.0,
+      "deaths": 3284.0,
+      "kill_share": 0.12148999315120615,
+      "kd": 0.9722898903775883,
+      "kills_per_minute_per_ship": 0.6236328125
+     },
+     "B brawler": {
+      "ships": 1,
+      "kills": 3515.0,
+      "deaths": 3254.0,
+      "kill_share": 0.13374172437409634,
+      "kd": 1.0802089735709897,
+      "kills_per_minute_per_ship": 0.6865234375
+     },
+     "B small": {
+      "ships": 1,
+      "kills": 3216.0,
+      "deaths": 3247.0,
+      "kill_share": 0.12236511680998402,
+      "kd": 0.9904527255928549,
+      "kills_per_minute_per_ship": 0.628125
+     }
+    }
+   },
+   {
+    "lineup": "4 brawler v one of each",
+    "games": 1024,
+    "wins": 440.0,
+    "draws": 116.0,
+    "score": 0.486328125,
+    "stderr": 0.015619157652555254,
+    "kills_per_game": 25.87109375,
+    "types": {
+     "A brawler": {
+      "ships": 4,
+      "kills": 13167.0,
+      "deaths": 13325.0,
+      "kill_share": 0.49701796768835876,
+      "kd": 0.9881425891181989,
+      "kills_per_minute_per_ship": 0.642919921875
+     },
+     "B standard": {
+      "ships": 1,
+      "kills": 3317.0,
+      "deaths": 3334.0,
+      "kill_share": 0.12520760984448134,
+      "kd": 0.9949010197960408,
+      "kills_per_minute_per_ship": 0.6478515625
+     },
+     "B close": {
+      "ships": 1,
+      "kills": 3273.0,
+      "deaths": 3297.0,
+      "kill_share": 0.12354673108863053,
+      "kd": 0.9927206551410374,
+      "kills_per_minute_per_ship": 0.6392578125
+     },
+     "B brawler": {
+      "ships": 1,
+      "kills": 3434.0,
+      "deaths": 3298.0,
+      "kill_share": 0.1296240374452665,
+      "kd": 1.041237113402062,
+      "kills_per_minute_per_ship": 0.670703125
+     },
+     "B small": {
+      "ships": 1,
+      "kills": 3301.0,
+      "deaths": 3238.0,
+      "kill_share": 0.12460365393326288,
+      "kd": 1.0194564546016058,
+      "kills_per_minute_per_ship": 0.6447265625
+     }
+    }
+   },
+   {
+    "lineup": "4 small v one of each",
+    "games": 1024,
+    "wins": 483.0,
+    "draws": 118.0,
+    "score": 0.529296875,
+    "stderr": 0.015598154848662263,
+    "kills_per_game": 25.3505859375,
+    "types": {
+     "A small": {
+      "ships": 4,
+      "kills": 13115.0,
+      "deaths": 12844.0,
+      "kill_share": 0.5052197696367349,
+      "kd": 1.0210993459981315,
+      "kills_per_minute_per_ship": 0.640380859375
+     },
+     "B standard": {
+      "ships": 1,
+      "kills": 3284.0,
+      "deaths": 3299.0,
+      "kill_share": 0.12650718440617897,
+      "kd": 0.9954531676265534,
+      "kills_per_minute_per_ship": 0.64140625
+     },
+     "B close": {
+      "ships": 1,
+      "kills": 3094.0,
+      "deaths": 3294.0,
+      "kill_share": 0.1191879502292076,
+      "kd": 0.9392835458409229,
+      "kills_per_minute_per_ship": 0.604296875
+     },
+     "B brawler": {
+      "ships": 1,
+      "kills": 3359.0,
+      "deaths": 3259.0,
+      "kill_share": 0.12939635579182557,
+      "kd": 1.0306842589751457,
+      "kills_per_minute_per_ship": 0.6560546875
+     },
+     "B small": {
+      "ships": 1,
+      "kills": 3107.0,
+      "deaths": 3263.0,
+      "kill_share": 0.119688739936053,
+      "kd": 0.952191235059761,
+      "kills_per_minute_per_ship": 0.6068359375
+     }
+    }
+   },
+   {
+    "lineup": "4 close v one of each",
+    "games": 1024,
+    "wins": 468.0,
+    "draws": 101.0,
+    "score": 0.50634765625,
+    "stderr": 0.015623740801140503,
+    "kills_per_game": 25.64453125,
+    "types": {
+     "A close": {
+      "ships": 4,
+      "kills": 13116.0,
+      "deaths": 13144.0,
+      "kill_share": 0.4994668697638995,
+      "kd": 0.9978697504564821,
+      "kills_per_minute_per_ship": 0.6404296875
+     },
+     "B standard": {
+      "ships": 1,
+      "kills": 3356.0,
+      "deaths": 3272.0,
+      "kill_share": 0.1277989337395278,
+      "kd": 1.0256723716381417,
+      "kills_per_minute_per_ship": 0.65546875
+     },
+     "B close": {
+      "ships": 1,
+      "kills": 3208.0,
+      "deaths": 3272.0,
+      "kill_share": 0.12216298552932216,
+      "kd": 0.980440097799511,
+      "kills_per_minute_per_ship": 0.6265625
+     },
+     "B brawler": {
+      "ships": 1,
+      "kills": 3484.0,
+      "deaths": 3291.0,
+      "kill_share": 0.13267326732673268,
+      "kd": 1.0586447888179884,
+      "kills_per_minute_per_ship": 0.68046875
+     },
+     "B small": {
+      "ships": 1,
+      "kills": 3096.0,
+      "deaths": 3281.0,
+      "kill_share": 0.1178979436405179,
+      "kd": 0.9436147516001219,
+      "kills_per_minute_per_ship": 0.6046875
+     }
+    }
+   }
+  ],
+  "r9m2": [
+   {
+    "lineup": "one of each v one of each",
+    "games": 1024,
+    "wins": 453.0,
+    "draws": 174.0,
+    "score": 0.52734375,
+    "stderr": 0.015601617483501556,
+    "kills_per_game": 19.8935546875,
+    "types": {
+     "A standard": {
+      "ships": 1,
+      "kills": 2554.0,
+      "deaths": 2461.0,
+      "kill_share": 0.12537430661234109,
+      "kd": 1.037789516456725,
+      "kills_per_minute_per_ship": 0.498828125
+     },
+     "A close": {
+      "ships": 1,
+      "kills": 2545.0,
+      "deaths": 2520.0,
+      "kill_share": 0.12493250208629915,
+      "kd": 1.0099206349206349,
+      "kills_per_minute_per_ship": 0.4970703125
+     },
+     "A brawler": {
+      "ships": 1,
+      "kills": 2711.0,
+      "deaths": 2612.0,
+      "kill_share": 0.1330813411221835,
+      "kd": 1.0379019908116387,
+      "kills_per_minute_per_ship": 0.5294921875
+     },
+     "A small": {
+      "ships": 1,
+      "kills": 2444.0,
+      "deaths": 2524.0,
+      "kill_share": 0.11997447351627313,
+      "kd": 0.9683042789223455,
+      "kills_per_minute_per_ship": 0.47734375
+     },
+     "B standard": {
+      "ships": 1,
+      "kills": 2547.0,
+      "deaths": 2511.0,
+      "kill_share": 0.12503068086986402,
+      "kd": 1.014336917562724,
+      "kills_per_minute_per_ship": 0.4974609375
+     },
+     "B close": {
+      "ships": 1,
+      "kills": 2476.0,
+      "deaths": 2488.0,
+      "kill_share": 0.12154533405331108,
+      "kd": 0.9951768488745981,
+      "kills_per_minute_per_ship": 0.48359375
+     },
+     "B brawler": {
+      "ships": 1,
+      "kills": 2614.0,
+      "deaths": 2702.0,
+      "kill_share": 0.12831967011928722,
+      "kd": 0.9674315321983715,
+      "kills_per_minute_per_ship": 0.510546875
+     },
+     "B small": {
+      "ships": 1,
+      "kills": 2480.0,
+      "deaths": 2553.0,
+      "kill_share": 0.12174169162044082,
+      "kd": 0.9714061887974932,
+      "kills_per_minute_per_ship": 0.484375
+     }
+    }
+   },
+   {
+    "lineup": "2 standard + 2 brawler v 2 small + 2 close",
+    "games": 1024,
+    "wins": 367.0,
+    "draws": 158.0,
+    "score": 0.435546875,
+    "stderr": 0.015494637261484213,
+    "kills_per_game": 20.8759765625,
+    "types": {
+     "A standard": {
+      "ships": 2,
+      "kills": 5194.0,
+      "deaths": 5361.0,
+      "kill_share": 0.24297141787902887,
+      "kd": 0.9688490953180376,
+      "kills_per_minute_per_ship": 0.5072265625
+     },
+     "A brawler": {
+      "ships": 2,
+      "kills": 5259.0,
+      "deaths": 5563.0,
+      "kill_share": 0.24601206904617112,
+      "kd": 0.9453532266762538,
+      "kills_per_minute_per_ship": 0.51357421875
+     },
+     "B close": {
+      "ships": 2,
+      "kills": 5542.0,
+      "deaths": 5239.0,
+      "kill_share": 0.25925059643542125,
+      "kd": 1.0578354647833557,
+      "kills_per_minute_per_ship": 0.5412109375
+     },
+     "B small": {
+      "ships": 2,
+      "kills": 5382.0,
+      "deaths": 5214.0,
+      "kill_share": 0.25176591663937875,
+      "kd": 1.0322209436133487,
+      "kills_per_minute_per_ship": 0.5255859375
+     }
+    }
+   },
+   {
+    "lineup": "2 standard + 2 small v 2 brawler + 2 close",
+    "games": 1024,
+    "wins": 467.0,
+    "draws": 166.0,
+    "score": 0.537109375,
+    "stderr": 0.01558190601955535,
+    "kills_per_game": 20.8486328125,
+    "types": {
+     "A standard": {
+      "ships": 2,
+      "kills": 5536.0,
+      "deaths": 5252.0,
+      "kill_share": 0.25930956953487283,
+      "kd": 1.0540746382330541,
+      "kills_per_minute_per_ship": 0.540625
+     },
+     "A small": {
+      "ships": 2,
+      "kills": 5261.0,
+      "deaths": 5300.0,
+      "kill_share": 0.24642840414070916,
+      "kd": 0.9926415094339622,
+      "kills_per_minute_per_ship": 0.51376953125
+     },
+     "B close": {
+      "ships": 2,
+      "kills": 5097.0,
+      "deaths": 5323.0,
+      "kill_share": 0.23874654550564428,
+      "kd": 0.9575427390569228,
+      "kills_per_minute_per_ship": 0.49775390625
+     },
+     "B brawler": {
+      "ships": 2,
+      "kills": 5455.0,
+      "deaths": 5474.0,
+      "kill_share": 0.25551548081877373,
+      "kd": 0.9965290464011691,
+      "kills_per_minute_per_ship": 0.53271484375
+     }
+    }
+   },
+   {
+    "lineup": "2 standard + 2 close v 2 brawler + 2 small",
+    "games": 1024,
+    "wins": 487.0,
+    "draws": 140.0,
+    "score": 0.5439453125,
+    "stderr": 0.015564533298059523,
+    "kills_per_game": 20.921875,
+    "types": {
+     "A standard": {
+      "ships": 2,
+      "kills": 5464.0,
+      "deaths": 5228.0,
+      "kill_share": 0.25504107542942495,
+      "kd": 1.045141545524101,
+      "kills_per_minute_per_ship": 0.53359375
+     },
+     "A close": {
+      "ships": 2,
+      "kills": 5456.0,
+      "deaths": 5276.0,
+      "kill_share": 0.2546676624346527,
+      "kd": 1.0341167551175132,
+      "kills_per_minute_per_ship": 0.5328125
+     },
+     "B brawler": {
+      "ships": 2,
+      "kills": 5378.0,
+      "deaths": 5545.0,
+      "kill_share": 0.2510268857356236,
+      "kd": 0.9698827772768259,
+      "kills_per_minute_per_ship": 0.5251953125
+     },
+     "B small": {
+      "ships": 2,
+      "kills": 5126.0,
+      "deaths": 5375.0,
+      "kill_share": 0.23926437640029874,
+      "kd": 0.9536744186046512,
+      "kills_per_minute_per_ship": 0.5005859375
+     }
+    }
+   },
+   {
+    "lineup": "4 standard v one of each",
+    "games": 1024,
+    "wins": 457.0,
+    "draws": 171.0,
+    "score": 0.52978515625,
+    "stderr": 0.015597251750708006,
+    "kills_per_game": 19.3779296875,
+    "types": {
+     "A standard": {
+      "ships": 4,
+      "kills": 10043.0,
+      "deaths": 9800.0,
+      "kill_share": 0.5061230660686388,
+      "kd": 1.024795918367347,
+      "kills_per_minute_per_ship": 0.490380859375
+     },
+     "B standard": {
+      "ships": 1,
+      "kills": 2276.0,
+      "deaths": 2170.0,
+      "kill_share": 0.11470039812528347,
+      "kd": 1.0488479262672812,
+      "kills_per_minute_per_ship": 0.44453125
+     },
+     "B close": {
+      "ships": 1,
+      "kills": 2443.0,
+      "deaths": 2618.0,
+      "kill_share": 0.1231164642443179,
+      "kd": 0.9331550802139037,
+      "kills_per_minute_per_ship": 0.4771484375
+     },
+     "B brawler": {
+      "ships": 1,
+      "kills": 2588.0,
+      "deaths": 2668.0,
+      "kill_share": 0.13042382704228192,
+      "kd": 0.9700149925037481,
+      "kills_per_minute_per_ship": 0.50546875
+     },
+     "B small": {
+      "ships": 1,
+      "kills": 2493.0,
+      "deaths": 2587.0,
+      "kill_share": 0.1256362445194779,
+      "kd": 0.9636644762272903,
+      "kills_per_minute_per_ship": 0.4869140625
+     }
+    }
+   },
+   {
+    "lineup": "4 brawler v one of each",
+    "games": 1024,
+    "wins": 355.0,
+    "draws": 166.0,
+    "score": 0.427734375,
+    "stderr": 0.01546094119325876,
+    "kills_per_game": 20.599609375,
+    "types": {
+     "A brawler": {
+      "ships": 4,
+      "kills": 10285.0,
+      "deaths": 10809.0,
+      "kill_share": 0.4875794064662937,
+      "kd": 0.9515218799148858,
+      "kills_per_minute_per_ship": 0.502197265625
+     },
+     "B standard": {
+      "ships": 1,
+      "kills": 2780.0,
+      "deaths": 2633.0,
+      "kill_share": 0.13179103062482223,
+      "kd": 1.055829851879985,
+      "kills_per_minute_per_ship": 0.54296875
+     },
+     "B close": {
+      "ships": 1,
+      "kills": 2768.0,
+      "deaths": 2638.0,
+      "kill_share": 0.13122214847824026,
+      "kd": 1.0492797573919637,
+      "kills_per_minute_per_ship": 0.540625
+     },
+     "B brawler": {
+      "ships": 1,
+      "kills": 2655.0,
+      "deaths": 2381.0,
+      "kill_share": 0.12586517493126007,
+      "kd": 1.115077698446031,
+      "kills_per_minute_per_ship": 0.5185546875
+     },
+     "B small": {
+      "ships": 1,
+      "kills": 2606.0,
+      "deaths": 2633.0,
+      "kill_share": 0.12354223949938371,
+      "kd": 0.9897455374097988,
+      "kills_per_minute_per_ship": 0.508984375
+     }
+    }
+   },
+   {
+    "lineup": "4 small v one of each",
+    "games": 1024,
+    "wins": 430.0,
+    "draws": 153.0,
+    "score": 0.49462890625,
+    "stderr": 0.015624098453738631,
+    "kills_per_game": 19.4560546875,
+    "types": {
+     "A small": {
+      "ships": 4,
+      "kills": 9946.0,
+      "deaths": 9977.0,
+      "kill_share": 0.4992220047181649,
+      "kd": 0.9968928535631953,
+      "kills_per_minute_per_ship": 0.48564453125
+     },
+     "B standard": {
+      "ships": 1,
+      "kills": 2610.0,
+      "deaths": 2527.0,
+      "kill_share": 0.13100436681222707,
+      "kd": 1.0328452710724179,
+      "kills_per_minute_per_ship": 0.509765625
+     },
+     "B close": {
+      "ships": 1,
+      "kills": 2579.0,
+      "deaths": 2567.0,
+      "kill_share": 0.12944837624855696,
+      "kd": 1.0046747175691468,
+      "kills_per_minute_per_ship": 0.5037109375
+     },
+     "B brawler": {
+      "ships": 1,
+      "kills": 2532.0,
+      "deaths": 2647.0,
+      "kill_share": 0.12708929378105707,
+      "kd": 0.9565545901020023,
+      "kills_per_minute_per_ship": 0.49453125
+     },
+     "B small": {
+      "ships": 1,
+      "kills": 2256.0,
+      "deaths": 2205.0,
+      "kill_share": 0.11323595843999398,
+      "kd": 1.0231292517006803,
+      "kills_per_minute_per_ship": 0.440625
+     }
+    }
+   },
+   {
+    "lineup": "4 close v one of each",
+    "games": 1024,
+    "wins": 438.0,
+    "draws": 159.0,
+    "score": 0.50537109375,
+    "stderr": 0.015624098453738631,
+    "kills_per_game": 19.3798828125,
+    "types": {
+     "A close": {
+      "ships": 4,
+      "kills": 9981.0,
+      "deaths": 9864.0,
+      "kill_share": 0.5029478458049886,
+      "kd": 1.0118613138686132,
+      "kills_per_minute_per_ship": 0.487353515625
+     },
+     "B standard": {
+      "ships": 1,
+      "kills": 2581.0,
+      "deaths": 2524.0,
+      "kill_share": 0.13005794910556814,
+      "kd": 1.0225832012678289,
+      "kills_per_minute_per_ship": 0.5041015625
+     },
+     "B close": {
+      "ships": 1,
+      "kills": 2254.0,
+      "deaths": 2202.0,
+      "kill_share": 0.11358024691358025,
+      "kd": 1.0236148955495004,
+      "kills_per_minute_per_ship": 0.440234375
+     },
+     "B brawler": {
+      "ships": 1,
+      "kills": 2598.0,
+      "deaths": 2695.0,
+      "kill_share": 0.1309145880574452,
+      "kd": 0.9640074211502783,
+      "kills_per_minute_per_ship": 0.507421875
+     },
+     "B small": {
+      "ships": 1,
+      "kills": 2431.0,
+      "deaths": 2560.0,
+      "kill_share": 0.12249937011841774,
+      "kd": 0.949609375,
+      "kills_per_minute_per_ship": 0.4748046875
+     }
+    }
+   }
+  ]
+ }
+}

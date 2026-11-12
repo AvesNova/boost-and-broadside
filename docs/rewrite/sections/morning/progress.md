@@ -93,3 +93,54 @@ The same runs' r9m-against-r9m control rows lie within 0.460-0.544 (worst ±31 E
 1-2 spread units. The pooled per-size means are clear. These are the maneuvers-2 cards (D2,
 cone, big v small, frozen), not the play maps: the r9m2-maps runs played self-play, and r9m2
 against r9m on the play maps was not recorded.
+
+## Item 4: the four-ship set in mixed 4v4 (`fourship.py`, 08:37-08:41 KST)
+
+**Harness.** `bench.game_loop` flew two types a game (a Yongma slot and a Jujak slot per card
+variant) and tallied kills by those two kinds. Added (tested in
+`tests/sections/test_game_loop.py`): `ROW_LINEUPS`, lineups that name each ship's row of
+the variant table, so a game can fly all 2K rows; and `kills_by_row` (killer side x
+killer row x victim row). `fourship.py` builds the 4-type table with K = 2: rows standard
+and close fighter (Yongma slot, the Yongma doctrine, as on their maps) and brawler and small
+(Jujak slot, the Jujak doctrine; on `arch-brawler-small` the brawler flies the Yongma slot).
+The cards come from the play maps (`arch-standard-brawler`, `arch-close-standard`,
+`arch-standard-small`). Every field that differs between the two ship files is set on
+these maps, so each type is one ship whichever slot it fills. Self-play, 4v4 team
+deathmatch, 300 s, fog, the density rule's arena, 1024 games a lineup (SE ±0.016; the
+symmetric lineup is the noise check). Per side and type: share of all kills, K/D, kills a
+minute a ship. Each type has about 3,000 kills a lineup, so K/D is good to about ±0.04.
+
+| Lineup (A v B) | r9: A score | r9m2: A score |
+|---|---|---|
+| one of each v one of each (control) | 0.509 | 0.527 |
+| 2 standard + 2 brawler v 2 small + 2 close | 0.485 | **0.436** |
+| 2 standard + 2 small v 2 brawler + 2 close | 0.527 | 0.537 |
+| 2 standard + 2 close v 2 brawler + 2 small | 0.496 | 0.544 |
+| 4 standard v one of each | 0.490 | 0.530 |
+| 4 brawler v one of each | 0.486 | **0.428** |
+| 4 small v one of each | 0.529 | 0.495 |
+| 4 close v one of each | 0.506 | 0.505 |
+
+One of each on both sides, kill share and K/D per type (A side; B agrees within 0.07):
+
+| Type | r9 | r9m2 |
+|---|---|---|
+| standard | 0.13, 1.03 | 0.13, 1.04 |
+| close fighter | 0.12, 0.97 | 0.12, 1.01 |
+| brawler | 0.13, 1.07 | 0.13, 1.04 |
+| small | 0.12, 0.97 | 0.12, 0.97 |
+
+(full per-side rows in `fourship.md`; kills a minute a ship 0.60-0.69 under r9, 0.44-0.54
+under r9m2: r9m2's slower crowds.)
+
+- **Under r9 every type is viable and none dominates.** In the one-of-each game every type
+  takes 0.12-0.13 of the kills at K/D 0.97-1.07. Every unequal composition is within
+  0.485-0.529 (at most 1.8 SE off even), and so is every four-of-a-kind against a mixed team.
+  Composition does not matter under r9.
+- **Under r9m2 the brawler is the weak stack.** Two brawlers + two standards lose to small +
+  close (0.436, -45 Elo), and four brawlers lose to one of each (0.428, -50 Elo). In both,
+  the brawlers' K/D is 0.95. A single brawler in a mixed team holds (K/D 1.04 / 0.97). This
+  is archetypes' "under CE the brawler slips against the small ship" (0.37-0.43): the
+  crowd extension takes the close committed fight away from the short-sighted ship. The
+  standard + close and standard + small teams lean 0.54 (+28 Elo), about 2 SE. The
+  control's 0.527 says that is near the spread.
