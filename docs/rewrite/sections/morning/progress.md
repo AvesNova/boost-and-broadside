@@ -42,7 +42,36 @@ BC snapshot up to 20M lost all its direct games against the scripted agent (0 / 
 This is a reading error. The sign is right (the fit gives scripted 0 and the snapshots
 negative before the shift).
 
-Direct games (this morning, 512): see below.
+**Direct games (08:27-08:32 KST, 512 games).** `runs/h2h_bc.sh`: `bnb ratings bc-mb256
+--no-league --no-ladder --presets real_scale_frontline --budget 512 --blocks 2
+--block-environments 256 --lineup Yongma Yongma Jujak Jujak Jujak --with <30M EMA>` on the
+`calib/overnight` tree (bnb-calib's venv, the code the policy was trained on). The 30M EMA
+against the scripted agent, frontline 5v5: **20 W / 59 D / 433 L, score 0.097 ± 0.013**
+(-387 Elo; the fit: 613 ± 26). By seat: 10 / 29 / 217 and 10 / 30 / 216. This agrees with the
+box's 29 / 145 / 850 (0.085). **BC is not beating its teacher. It loses about 85% of frontline
+games to it.**
+
+**The dip at 10M.** In the BC-against-BC games the 10M EMA loses to the 5M EMA: 32 W /
+120 D / 104 L (bc-mb256; mb64 and mb32 show the same). The training log's frontline games
+against the teacher (`metrics.jsonl`, per update, learner side) show why:
+
+| Steps | KL | shots | hits | combat deaths | boundary deaths | life s |
+|---|---|---|---|---|---|---|
+| 3-5M | 0.65-0.78 | 2,400 | 50-70 | 0.2-0.3 | 5-8 | 75-111 |
+| 6.3-7.3M | 0.50-0.62 | 190-610 | 60-90 | 0.3-0.5 | 0.0-3.4 | 118-129 |
+| 9.4-11M | 0.38-0.41 | 1,450-1,800 | 660-810 | 5.4-7.8 | 0.5-0.6 | 108-127 |
+| 20M | 0.41 | 4,700 | 2,100 | 21 | 0 | 161 |
+| 30M | 0.39 | 6,100 | 2,900 | 31 | 0 | 132 |
+
+Up to about 7M the clone sprays fire, rarely fights (0.2-0.5 combat deaths a game) and
+mostly dies at the boundary. Between 7 and 10M it learns to close and engage (hits x10,
+combat deaths x15) before it wins the engagement. Against an earlier clone that does not
+fight, that loses: it trades into the 5M policy's fire instead of drawing. The KL falls
+steadily through the dip (0.68 to 0.39), so this is a phase of imitation (approach learned
+before the fight), not a training fault. Every snapshot up to 20M lost every direct game
+against the scripted agent (0 W). The ratings below about 400 rest on BC-against-BC games
+only, so their place against the anchor is weakly set (the prior and the chain through
+20-30M).
 
 ## Item 2: what "extend when outgunned" adds (r9m2 minus r9m)
 
