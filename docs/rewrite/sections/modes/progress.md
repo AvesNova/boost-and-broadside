@@ -339,3 +339,48 @@ fleet's edge is 0.05-0.09 below its 3900 m one, and at 20 a side 7800 → 3900 �
 0.88 → 0.90 → 0.82. No critical density sets a floor on the map size in this range. The
 v1 hypothesis (an edge collapsing to a spawn lottery past a critical density) does not
 reproduce with this agent, these cards and this game.
+
+## Step 2h: Frontline candidate mechanics (fog off, no fields, release lineup, 256 games each)
+
+`bench/mode_dynamics.py frontline --fog 0` plus the candidate (record
+`records/candidates.jsonl`). The candidates are bench-only experiments (`Experiments`:
+`capture_step` and the resolve output wrapped inside the compiled tick); none is in the
+game. 5v5 at 7800 m, zones 990 m, capture 20 s, threshold 3, respawn 16 s, 600 s.
+
+| candidate | P(same team next) | ended by the front | captures / game | first capture median (s) |
+|---|---|---|---|---|
+| baseline, fog off | 0.139 ± 0.007 | 0.090 ± 0.018 | 9.4 | 90 |
+| (a) lock 20 s | 0.218 ± 0.010 | 0.180 ± 0.024 | 7.6 | 90 |
+| (a) lock 40 s | 0.701 ± 0.017 | 0.598 ± 0.031 | 4.0 | 90 |
+| (a) lock 60 s | 0.781 ± 0.016 | 0.645 ± 0.030 | 3.7 | 90 |
+| (b) respawn pause 10 s | 0.173 ± 0.009 | 0.090 ± 0.018 | 8.7 | 90 |
+| (b) respawn pause 20 s | 0.248 ± 0.010 | 0.180 ± 0.024 | 8.9 | 90 |
+| (c) rear respawn 10 s | 0.233 ± 0.009 | 0.156 ± 0.023 | 10.4 | 90 |
+| (c) rear respawn 20 s | 0.254 ± 0.009 | 0.191 ± 0.025 | 10.6 | 90 |
+| (d) blast 1.0 zone radius | 0.158 ± 0.008 | 0.094 ± 0.018 | 8.9 | 90 |
+| (d) blast 1.5 zone radii | 0.202 ± 0.009 | 0.184 ± 0.024 | 8.0 | 90 |
+| (e) respawn 32 s (x2) | 0.281 ± 0.011 | 0.266 ± 0.028 | 7.9 | 88 |
+| (e) respawn 8 s (x0.5) | 0.054 ± 0.004 | 0.023 ± 0.009 | 11.4 | 127 |
+| 1v1 (R 3488 m) | - | 0.000 | 0.0 | - |
+| 2v2 (R 4933 m) | 0.335 ± 0.033 | 0.008 ± 0.006 | 1.4 | 271 |
+
+(f) one contested centre zone with two neutral zones: not run (needs a new role table and
+rotation: real code). The first capture is the same in every variant whose rule acts only
+after a capture (same seeds, same play until then).
+
+- **Worked:** the capture lock, and only the lock, moves the walk past 0.5: between 20 s
+  (0.22) and 40 s (0.70). Refining at 25 / 30 / 35 s and lock 30 s at 1v1, 2v2 and 10v10
+  (queued, ETA ~17:45 KST).
+- **Partly:** a longer respawn (x2: 0.28, 27% by the front) and the pause and rear spawn
+  (0.17-0.25): they slow the loser's return, but the zone is still retaken. A short
+  respawn (8 s) makes it worse (0.05).
+- **Small fleets:** at 1v1 the scripted agent never captures (0 captures in 256 x 600 s)
+  and at 2v2 barely (1.4 a game): a lone attacker fights the defender instead (the combat
+  layer takes over near an enemy) and a capture needs a strict majority in the zone.
+  Frontline as it stands does not work below ~5 a side with this agent.
+- **Doctrine (is the reversal the agent's?):** the default set against itself with one side
+  more defensive: the default wins 0.619 ± 0.026 against defensive_floor 0.9 (from
+  0.298) and 0.934 ± 0.013 against defensive_margin 1.2 (from 0.378); aggression 0.9 or
+  3.6 (from 1.81) changes nothing (0.52 ± 0.03, identical captures: the attack rule does
+  not bind). Holding ships back on defense loses: with these rules capturing is simply
+  easier than defending, so the reversal is the rules', not a doctrine mistake.
