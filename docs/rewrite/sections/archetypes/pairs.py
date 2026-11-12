@@ -1629,6 +1629,31 @@ def arming2() -> list[dict]:
 ROUNDS["arming2"] = arming2
 
 
+KIT3 = (1.0, 0.10, 2.0)  # a milder kit: the trades at 20v20
+
+
+def kit3_pairs() -> list[dict]:
+    """The final pairs on a milder kit (cone f0 0.10, damage x2), the ships' own noses moved
+    in proportion, for fewer trades in big crowds; 1024 games, 1v1-20v20, r9."""
+    hr = merge(
+        kit(*KIT3),
+        HIT_AND_RUN,
+        {"hit_damage": 1.22 / 1.2, "vision_range_scale": 0.96},
+        cone(0.075, 12, 8),
+    )
+    rate = merge({"max_lift_coefficient": 1.03, "hit_damage": 1.25}, kit(*KIT3))
+    speed = merge(
+        {"zero_lift_drag": 0.85, "vision_range_scale": 1.04}, kit(*KIT3), cone(0.0875, 12, 8)
+    )
+    return [
+        pair("hit-and-run v standard, kit3 (f0 0.10, dmg x2)", ("M", hr), ("M", kit(*KIT3))),
+        pair("rate v speed, kit3 (f0 0.10, dmg x2)", ("M", rate), ("M", speed)),
+    ]
+
+
+ROUNDS["kit3"] = kit3_pairs
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
