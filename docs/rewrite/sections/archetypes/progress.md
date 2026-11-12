@@ -953,10 +953,11 @@ crowds against the others: sets 4, 4b, 7); rate and speed are even with each oth
   is the first to die. **Standard**: the steady ship: full shield, normal recharge, no edges;
   it wins by staying in the fight and outlasting the hit-and-run ship's burst.
 - **Rate fighter**: the same sustained turn, a little more lift (a lower corner speed) and
-  heavier guns: it wants the slow, tight turning fight after the merge, where lift is turn
-  rate. **Speed fighter**: 7% faster in cruise and at the top, a harder nose and slightly
-  longer sight: it wants to take the merge nose-on, keep its speed and not be dragged into
-  a slow circle.
+  heavier guns (x1.25): it wants the slow, tight turning fight after the merge, where lift is
+  turn rate. **Speed fighter**: 7% faster in cruise and 6% at the top, slightly longer sight
+  and lighter guns (x1.05): it wants to see first, take the merge at speed and not be dragged
+  into a slow circle. Both carry armoured noses (f0 0.065 and 0.07 against the kit's 0.08):
+  without them the speed fighter loses the duel (0.58-0.60) and the rate mirror jousts (0.48).
 - **Close fighter**: guns with 80% of the range (about 490 m) and a little more punch: it
   wants to close inside the other ship's range before it fires, and its own duels are long
   (311-352 s) and seldom nose to nose (0.28 mutual).
