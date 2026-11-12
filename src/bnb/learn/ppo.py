@@ -557,9 +557,10 @@ class Learner:
         entropy histogram, then the critic targets' entropy per level; empty without
         diagnostics), what the heads' sums read (the unrolled outputs and the shot parts,
         detached; None unless the learner measures the heads)), every sum over its tokens
-        divided by its minibatch-total denominator. The heads' sums are their own compiled
-        function (`_head_sums`), so every epoch runs this one graph."""
-        return self._loss_of(self.unroll(trajectory), trajectory, label, derived, denominator, scale)
+        divided by its minibatch-total denominator. The heads' sums are their own function
+        (`_head_sums`, eager), so every epoch runs this one graph."""
+        unrolled = self.unroll(trajectory)
+        return self._loss_of(unrolled, trajectory, label, derived, denominator, scale)
 
     def _loss_of(
         self,

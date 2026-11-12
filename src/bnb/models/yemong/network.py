@@ -157,7 +157,7 @@ class Trunk(nn.Module):
     without temporal layers: the carry holds no trunk state, only the model's beliefs).
     The trunk carry is state (..., temporal_blocks, Q, D) and convolution_buffer
     (..., temporal_blocks, Q, 3, D).
-"""
+    """
 
     def __init__(
         self,

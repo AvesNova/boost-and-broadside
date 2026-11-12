@@ -10,8 +10,9 @@ Cases:
             scripted agent) on `preset`, the default ArenaConfig, two batches
   train     a run's TrainConfig (`run`: a run directory with config.json, or `config`: a
             config file, `bnb train --print-config`'s), `steps` updates (default two);
-            heads=0 turns the learner's heads' sums off; learn=0 collects only; `set` overrides fields
-            (`path=value;path=value`, JSON values, e.g. `compile_regions=true`); reports the
+            heads=0 turns the learner's heads' sums off; learn=0 collects only; `set`
+            overrides fields (`path=value;path=value`, JSON values, e.g.
+            `compile_split=true`); reports the
             peak memory allocated and reserved, the first update's series, the steps per
             update and, with `process_start` (the shell's epoch seconds), each phase's end
             in seconds since the process started
