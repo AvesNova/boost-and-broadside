@@ -1,0 +1,58 @@
+[
+ {
+  "label": "m8w20none",
+  "lock": 45,
+  "respawn_minimum": 8,
+  "wave_interval": 20
+ },
+ {
+  "label": "m8w20reset",
+  "lock": 45,
+  "respawn_minimum": 8,
+  "wave_interval": 20,
+  "wave_effect": 1
+ },
+ {
+  "label": "m8w20delay10",
+  "lock": 45,
+  "respawn_minimum": 8,
+  "wave_interval": 20,
+  "wave_effect": 2,
+  "wave_delay": 10
+ },
+ {
+  "label": "m8w20skip",
+  "lock": 45,
+  "respawn_minimum": 8,
+  "wave_interval": 20,
+  "wave_effect": 3
+ },
+ {
+  "label": "m5w30none",
+  "lock": 45,
+  "respawn_minimum": 5,
+  "wave_interval": 30
+ },
+ {
+  "label": "m5w30reset",
+  "lock": 45,
+  "respawn_minimum": 5,
+  "wave_interval": 30,
+  "wave_effect": 1
+ },
+ {
+  "label": "m5w30delay10",
+  "lock": 45,
+  "respawn_minimum": 5,
+  "wave_interval": 30,
+  "wave_effect": 2,
+  "wave_delay": 10
+ },
+ {
+  "label": "m5w30skip",
+  "lock": 45,
+  "respawn_minimum": 5,
+  "wave_interval": 30,
+  "wave_effect": 3
+ }
+]
