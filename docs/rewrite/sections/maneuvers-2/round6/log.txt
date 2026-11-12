@@ -1,0 +1,2 @@
+## 1v1: 120 jobs, B 8192, 04:40 KST
+W1113 04:40:47.052000 1900617 torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode

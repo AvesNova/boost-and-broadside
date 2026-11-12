@@ -293,6 +293,28 @@ already at 1.7-1.8 bits.)
   the extender's engagement nets -0.01 to -0.03 a choice (it does not win the engagement
   it leaves; it wins the game by not being in the turning fight when hurt or crowded).
 
-## 04:30- KST: round 5 (`round5/`): the gates per type for the balance
+## 04:28-04:39 KST: round 5 (`round5/`): the gates per type for the balance
 
-512 games against r9m; 1v1 / 2v2 / 5v5 (10v10 self-play). ETA 04:50 KST (worst 05:00).
+512 games. Worst against r9m (1v1 / 2v2 / 5v5); E v T 1 / 2 / 5 / 10v10; the 1v1 mirrors'
+H (JJ; YY):
+
+| Candidate | D2 worst; E v T | cone 0.085 worst; E v T | big v small worst; E v T | frozen worst; E v T | H (D2) |
+|---|---|---|---|---|---|
+| r9m | 0.489; 0.49/0.44/0.56/0.46 | 0.477; 0.55/0.51/0.68/0.54 | 0.456; 0.57/0.51/0.50/0.54 | 0.466; 0.00/0.44/0.36/0.21 | 0.11; 0.13 |
+| DE Y 1.0 / J 0.4 | 0.531; 0.35/0.58/0.65/0.59 | 0.515; 0.40/0.64/0.75/0.71 | 0.570; 0.61/0.61/0.66/0.63 | 0.549; 0.46/0.41/0.31/0.23 | 0.38; 1.59 |
+| DE Y 1.0 / J 0.6 | 0.521; 0.34/0.54/0.60/0.59 | 0.502; 0.40/0.58/0.73/0.71 | 0.562; 0.60/0.58/0.63/0.66 | 0.552; 0.49/0.35/0.22/0.13 | 0.57; 1.58 |
+| DE Y 0.7 / J 0.4 | 0.509; 0.32/0.48/0.55/0.50 | 0.505; 0.45/0.54/0.71/0.63 | 0.514; 0.57/0.55/0.53/0.52 | 0.519; 0.38/0.39/0.28/0.23 | 0.40; 1.30 |
+| DE Y 1.0 / J 0.4 mirror | 0.535; 0.36/0.57/0.65/0.60 | 0.511; 0.43/0.61/0.77/0.73 | 0.553; 0.65/0.66/0.62/0.63 | 0.533; 0.23/0.49/0.39/0.30 | 0.41; 1.60 |
+| DE Y 0.7 / J 0.6 | 0.507; 0.30/0.48/0.54/0.47 | 0.483; 0.38/0.52/0.69/0.69 | 0.522; 0.60/0.52/0.52/0.56 | 0.544; 0.45/0.32/0.22/0.16 | 0.55; 1.30 |
+
+- The Yongma's cross-type duel extension is what moves the balance: at 1v1 it hands the
+  duel to the Jujak (D2 0.49 to 0.30-0.36, whatever the Jujak's gate), from 2v2 up it gives
+  the crowd to the Yongma, the more the higher its gate (D2 5v5: 0.55 at 0.7, 0.65 at 1.0).
+  The Jujak's gate barely moves it (0.4 to 0.6: the frozen crowd tips further to the Jujak).
+- So the cross-type extension wins in a team game and loses in a lone duel. Round 6 gates
+  it on another known enemy anywhere (`duel_extend_cross_in_others`, centre 1/2: never in a
+  lone 1v1), to keep the 1v1 balance and the crowd gain.
+
+## 04:41- KST: round 6 (`round6/`): the cross-type extension in team games only
+
+512 games, as round 5. ETA 04:55 KST (worst 05:05).
