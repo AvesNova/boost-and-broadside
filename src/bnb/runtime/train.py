@@ -152,7 +152,10 @@ class TrainConfig:
     lineup: each slot's ship type by name in the game's ship set (`api.type_names`), the
     same for both teams, in every game of the batch (the rating lanes' too); None plays the
     game's own lineup (`Rules.team_types`). A tournament of such policies plays the same
-    lineup (`bnb ratings --lineup`)."""
+    lineup (`bnb ratings --lineup`).
+    compile_split: the learner's micro-batch loss compiles as two units, the unroll and the
+    loss over its outputs (`Learner`'s split; compile time only, the same arithmetic within
+    float rounding, `docs/rewrite/sections/compile-split`)."""
 
     game: GameConfig
     environments: int = 2048
@@ -188,6 +191,7 @@ class TrainConfig:
     host_store: bool = True
     seed: int = 0
     compiled: bool = True
+    compile_split: bool = False
     objective: str = "ppo"
     teacher: TeacherConfig = TeacherConfig()
     stop: StopConfig = StopConfig()
@@ -450,6 +454,7 @@ class Trainer:
                 stage=stage,
                 seed=config.seed,
                 diagnostics=diagnostics,
+                split=config.compile_split,
             )
         else:
             self.ppo = Learner(
@@ -462,6 +467,7 @@ class Trainer:
                 stage=stage,
                 seed=config.seed,
                 diagnostics=diagnostics,
+                split=config.compile_split,
             )
         self.updates_done = 0
         # BC's stop rule (`bnb.runtime.cloning.update` feeds it): its window is part of the

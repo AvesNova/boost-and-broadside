@@ -127,6 +127,28 @@ class Block(nn.Module):
             tokens = layer(tokens, map_memory, token_tables, map_tables)
         return tokens
 
+    def step(self, tokens, map_memory, token_tables, map_tables, state, buffer, temporal_first):
+        """One decision through the block, its temporal sublayer before (`temporal_first`) or
+        after its spatial ones: (tokens, the block's state, its buffer)."""
+        if not temporal_first:
+            tokens = self.attend(tokens, map_memory, token_tables, map_tables)
+        tokens, state, buffer = self.temporal.step(tokens, state, buffer)
+        if temporal_first:
+            tokens = self.attend(tokens, map_memory, token_tables, map_tables)
+        return tokens, state, buffer
+
+    def sequence(
+        self, tokens, map_memory, token_tables, map_tables, state, buffer, starts, temporal_first
+    ):
+        """A segment through the block (see `Trunk.sequence`): (tokens, the block's final
+        state, its final buffer)."""
+        if not temporal_first:
+            tokens = self.attend(tokens, map_memory, token_tables, map_tables)
+        tokens, state, buffer = self.temporal.sequence(tokens, state, buffer, starts)
+        if temporal_first:
+            tokens = self.attend(tokens, map_memory, token_tables, map_tables)
+        return tokens, state, buffer
+
 
 class Trunk(nn.Module):
     """Blocks of spatial sublayers and one temporal sublayer each: per block the spatial
@@ -134,7 +156,8 @@ class Trunk(nn.Module):
     ones ("temporal_first"); or the spatial sublayers alone ("spatial_only", the ablation
     without temporal layers: the carry holds no trunk state, only the model's beliefs).
     The trunk carry is state (..., temporal_blocks, Q, D) and convolution_buffer
-    (..., temporal_blocks, Q, 3, D)."""
+    (..., temporal_blocks, Q, 3, D).
+"""
 
     def __init__(
         self,
@@ -176,13 +199,15 @@ class Trunk(nn.Module):
         states, buffers = [], []
         temporal_first = self.order == "temporal_first"
         for index, block in enumerate(self.blocks):
-            if not temporal_first:
-                tokens = block.attend(tokens, map_memory, token_tables, map_tables)
-            tokens, block_state, block_buffer = block.temporal.step(
-                tokens, state[..., index, :, :], buffer[..., index, :, :, :]
+            tokens, block_state, block_buffer = block.step(
+                tokens,
+                map_memory,
+                token_tables,
+                map_tables,
+                state[..., index, :, :],
+                buffer[..., index, :, :, :],
+                temporal_first,
             )
-            if temporal_first:
-                tokens = block.attend(tokens, map_memory, token_tables, map_tables)
             states.append(block_state)
             buffers.append(block_buffer)
         return tokens, torch.stack(states, -3), torch.stack(buffers, -4)
@@ -206,13 +231,16 @@ class Trunk(nn.Module):
         states, buffers = [], []
         temporal_first = self.order == "temporal_first"
         for index, block in enumerate(self.blocks):
-            if not temporal_first:
-                tokens = block.attend(tokens, map_memory, token_tables, map_tables)
-            tokens, block_state, block_buffer = block.temporal.sequence(
-                tokens, state[..., index, :, :], buffer[..., index, :, :, :], starts
+            tokens, block_state, block_buffer = block.sequence(
+                tokens,
+                map_memory,
+                token_tables,
+                map_tables,
+                state[..., index, :, :],
+                buffer[..., index, :, :, :],
+                starts,
+                temporal_first,
             )
-            if temporal_first:
-                tokens = block.attend(tokens, map_memory, token_tables, map_tables)
             states.append(block_state)
             buffers.append(block_buffer)
         return tokens, torch.stack(states, -3), torch.stack(buffers, -4)

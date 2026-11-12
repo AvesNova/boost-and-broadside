@@ -239,8 +239,13 @@ class _Decision(torch.nn.Module):
 
 # A run of lane players (`LaneSeat.network_runs`) takes the next player while its rows are
 # within this fraction of the run's first player's: the padding it costs against the network
-# copy a run of its own would add to the compiled stage.
-RUN_SLACK = 0.1
+# copy a run of its own would add to the compiled stage (about 8,000 traced ops, 2.5-3 min
+# of a cold compile, `compile-split` notes). Up to about twice (2.05x, room for the splits'
+# rounding): BC's lanes (live at half the averages' weight) are one run, the live rows
+# padded (+20% of the lanes' network rows); RL's (live and the exponential average at 4.75
+# units, the league's slots at 2.25) stay two, as padding the slots would run about half
+# again as many network rows.
+RUN_SLACK = 1.05
 
 
 class LaneSeat:

@@ -8,12 +8,18 @@ then the case's phases (build, first batch or update, a steady one).
 Cases:
   ratings   the match engine: `players` (default: two policies of one build and the
             scripted agent) on `preset`, the default ArenaConfig, two batches
-  train     a run's TrainConfig (`run`: a run directory with config.json), `steps` updates
-            (default two); heads=0 turns the learner's heads' sums off; reports the peak
-            memory allocated and reserved and the first update's series
+  train     a run's TrainConfig (`run`: a run directory with config.json, or `config`: a
+            config file, `bnb train --print-config`'s), `steps` updates (default two);
+            heads=0 turns the learner's heads' sums off; learn=0 collects only; `set` overrides fields
+            (`path=value;path=value`, JSON values, e.g. `compile_regions=true`); reports the
+            peak memory allocated and reserved, the first update's series, the steps per
+            update and, with `process_start` (the shell's epoch seconds), each phase's end
+            in seconds since the process started
   realtime  the play shell's tick on the CPU (compiled, B = 1), its first call
 
 Usage: `python bench/compile_baseline.py CASE [key=value ...] > result.json`
+(BENCH_BACKEND=eager: Dynamo's backend "eager", so each compile is the trace alone, with
+its op count, and no Inductor.)
 Run it with fresh TORCHINDUCTOR_CACHE_DIR and TRITON_CACHE_DIR for a cold measurement
 (`bench/compile_baseline.sh` does). Prints progress lines to stderr and one JSON object
 to stdout.
@@ -32,6 +38,9 @@ import torch  # noqa: E402
 import torch._dynamo.utils as dynamo_utils  # noqa: E402
 
 START = time.perf_counter()
+PROCESS_START = next(
+    (float(a.split("=", 1)[1]) for a in sys.argv if a.startswith("process_start=")), None
+)
 EVENTS: list[dict] = []
 
 
@@ -59,6 +68,8 @@ _compile = torch.compile
 def _timed_compile(function=None, **options):
     if function is None:
         return lambda f: _timed_compile(f, **options)
+    if os.environ.get("BENCH_BACKEND") == "eager":  # Dynamo's trace alone: count the ops
+        options = {k: v for k, v in options.items() if k != "options"} | {"backend": "eager"}
     compiled = _compile(function, **options)
     label = getattr(function, "__qualname__", repr(function))
 
@@ -112,6 +123,8 @@ def phase(name: str, phases: dict):
             _synchronize()
             phases[name] = time.perf_counter() - self.started
             log(f"{name}: {phases[name]:.1f} s")
+            if PROCESS_START is not None:  # the phase's end, since the process started
+                phases[f"{name}_end_since_start"] = time.time() - PROCESS_START
 
     return Phase()
 
@@ -156,9 +169,19 @@ def train_case(options: dict, phases: dict) -> dict:
     from bnb.runtime import metrics
     from bnb.runtime.train import TrainConfig, Trainer
 
-    run = options["run"]
-    with open(os.path.join(run, "config.json")) as file:
+    run = options.get("run")
+    path = options.get("config") or os.path.join(run, "config.json")
+    with open(path) as file:
         data = json.load(file)
+    for setting in filter(None, options.get("set", "").split(";")):
+        name, value = setting.split("=", 1)
+        *parents, leaf = name.split(".")
+        node = data
+        for parent in parents:
+            node = node[parent]
+        if leaf not in node:
+            raise SystemExit(f"set {name}: the config has no such field")
+        node[leaf] = json.loads(value)
     for name in options.get("drop", "").split(","):  # fields the current code reads differently
         if name:
             data.pop(name)
@@ -173,17 +196,34 @@ def train_case(options: dict, phases: dict) -> dict:
         trainer = Trainer(config, device)
     if options.get("heads") == "0":  # the heads' sums off, to time their share
         trainer.ppo.measures_heads = False
+    head_sums = dict(calls=0, seconds=0.0)  # the heads' sums' own time (device synchronised)
+    sums = trainer.ppo.head_sums
+
+    def timed_sums(*arguments):
+        _synchronize()
+        started = time.perf_counter()
+        result = sums(*arguments)
+        _synchronize()
+        head_sums["calls"] += 1
+        head_sums["seconds"] += time.perf_counter() - started
+        return result
+
+    trainer.ppo.head_sums = timed_sums
     first_update = {}
     for index in range(1, int(options.get("steps", 2)) + 1):
         with phase(f"collect_{index}", phases):
             store, bootstrap = trainer.collect()
+        if options.get("learn") == "0":  # the rollout's compiles alone
+            continue
         with phase(f"learn_{index}", phases):
             row = metrics.read(trainer.ppo.update(store, bootstrap, trainer.steps_per_update))
         if index == 1:
             first_update = {name: value for name, value in row.items() if "time" not in name}
     return dict(
-        run=run,
+        run=run or path,
         objective=config.objective,
+        steps_per_update=trainer.steps_per_update,
+        head_sums=head_sums,
         filled=filled,
         peak_vram_gb=torch.cuda.max_memory_allocated(device) / 2**30,
         peak_reserved_gb=torch.cuda.max_memory_reserved(device) / 2**30,

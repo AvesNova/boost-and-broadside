@@ -5,6 +5,9 @@ export WORKSPACE=${WORKSPACE:-/workspace}
 export TORCHINDUCTOR_CACHE_DIR=$WORKSPACE/cache/inductor
 export TRITON_CACHE_DIR=$WORKSPACE/cache/triton
 export UV_CACHE_DIR=$WORKSPACE/cache/uv
+# bnb's own disk cache (`bnb.cache`: the ship card's characteristics, about 3 min of a cold
+# build on a single core, measured once per card), on the volume and in cache.sh's archive
+export BNB_CACHE=$WORKSPACE/cache/bnb
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export PATH=$WORKSPACE/bin:$PATH
 # Inductor's compile workers and torch's CPU threads: the machine's CPUs shared by its jobs

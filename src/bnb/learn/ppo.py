@@ -287,7 +287,9 @@ class Learner:
     types: the game's (for the shot re-simulation). outcome_weight: the outcome level's
     reward weight (its value in reward units is P(win) - P(loss) times it). stage: how the
     runtime compiles the micro-batch loss, the shot re-simulation's tick and the label codes
-    (identity: eager)."""
+    (identity: eager). split: compile the micro-batch loss as two units, the model's unroll
+    and the loss over its outputs, rather than one graph (the same arithmetic; a
+    compile-time choice, `bnb.runtime.train.TrainConfig.compile_split`)."""
 
     def __init__(
         self,
@@ -300,6 +302,7 @@ class Learner:
         stage: Callable = lambda function: function,
         seed: int = 0,
         diagnostics: bool = True,
+        split: bool = False,
     ) -> None:
         """seed: the learner's random streams (the shot spread, the minibatch order).
         diagnostics: measure the diagnostic series beyond the losses and the early stop's
@@ -342,9 +345,19 @@ class Learner:
         self.trace_decay = torch.tensor(config.trace_decay, device=device)
         self.every_trace = torch.ones_like(self.trace_decay)  # λ = 1: the rewards themselves
         self.team_spirit = torch.tensor(config.team_spirit, device=device)
-        self.loss = stage(self._loss)
-        self.head_sums = stage(self._head_sums)
-        self.cadence_terms = stage(self._terms)  # the cadence groups' own compiled function
+        if split:  # the unroll one unit, shared by the loss and the cadence terms
+            unroll, loss_of = stage(self.unroll), stage(self._loss_of)
+            terms_of = stage(self._terms_of)
+            self.loss = lambda trajectory, *rest: loss_of(unroll(trajectory), trajectory, *rest)
+            self.cadence_terms = lambda trajectory, *rest: terms_of(
+                unroll(trajectory), trajectory, *rest
+            )
+        else:
+            self.loss = stage(self._loss)
+            self.cadence_terms = stage(self._terms)  # the cadence groups' own compiled function
+        # Eager: a diagnostic on the cadence's updates only, of about 40k traced ops; compiled
+        # it was the largest single compile of a cold start (554 s, `compile-split` notes).
+        self.head_sums = self._head_sums
         self.cadence_stopwatch = Stopwatch(device)
         self.shot_tick = stage(shots.tick)
         self.codes = stage(self._codes)
@@ -546,8 +559,20 @@ class Learner:
         detached; None unless the learner measures the heads)), every sum over its tokens
         divided by its minibatch-total denominator. The heads' sums are their own compiled
         function (`_head_sums`), so every epoch runs this one graph."""
-        terms, per_level, statistic, unrolled, shot_parts = self._terms(
-            trajectory, label, derived, denominator, scale
+        return self._loss_of(self.unroll(trajectory), trajectory, label, derived, denominator, scale)
+
+    def _loss_of(
+        self,
+        unrolled,
+        trajectory: Trajectory,
+        label: dict,
+        derived: dict,
+        denominator: dict,
+        scale: torch.Tensor,
+    ):
+        """`_loss` given the model's outputs over the micro-batch (`unroll`)."""
+        terms, per_level, statistic, unrolled, shot_parts = self._terms_of(
+            unrolled, trajectory, label, derived, denominator, scale
         )
         loss = sum(getattr(self.config, term) * terms[term] for term in TERMS)
         heads_read = None
@@ -584,8 +609,21 @@ class Learner:
         value loss per level (levels,), statistics (STATISTICS,), the model's outputs, the
         shot trajectory's cross-entropy per part (L, R, N, ages, parts) or None), with their
         graph."""
+        return self._terms_of(
+            self.unroll(trajectory), trajectory, label, derived, denominator, scale
+        )
+
+    def _terms_of(
+        self,
+        unrolled,
+        trajectory: Trajectory,
+        label: dict,
+        derived: dict,
+        denominator: dict,
+        scale: torch.Tensor,
+    ):
+        """`_terms` given the model's outputs over the micro-batch (`unroll`)."""
         model = self.model
-        unrolled = self.unroll(trajectory)
         own = trajectory.log_probability.shape[-1]
         terms = dict.fromkeys(TERMS, unrolled.policy_logits.new_zeros(()))
         terms["policy"], entropies, statistic = self._policy(
@@ -823,7 +861,16 @@ class Learner:
         return max(1, self.config.micro_batch_rows // self.rules.num_ships)
 
     def _micro_batches(self, views: torch.Tensor) -> list[torch.Tensor]:
-        return list(views.split(self.micro_views))
+        """The views in micro-batches of at most micro_views, all of one size where up to
+        twice the fewest micro-batches divide them evenly (255 views at 64: five of 51):
+        under a compile of fixed shapes a smaller last micro-batch is a second compile of
+        every learner stage. Otherwise micro_views each, the last smaller."""
+        count, most = len(views), self.micro_views
+        fewest = -(-count // most)
+        for parts in range(fewest, 2 * fewest + 1):
+            if count % parts == 0:
+                return list(views.split(count // parts))
+        return list(views.split(most))
 
     def _on_device(self, views: torch.Tensor) -> torch.Tensor:
         """Host view indices on the device, from pinned memory: no wait on the queued work
@@ -1129,8 +1176,8 @@ class Learner:
         steps, stopped, epochs = 0, False, 0
         first_kl = first_epoch = epoch_statistics = None
         for epoch in range(config.epochs):
-            # Minibatches as equal as the views allow (micro-batches of micro_views views,
-            # each minibatch's last one smaller where they do not divide).
+            # Minibatches as equal as the views allow (micro-batches of at most micro_views
+            # views, `_micro_batches`).
             order = torch.randperm(views, generator=self.order_generator)
             epoch_statistics = torch.zeros(len(self.STATISTICS), device=device)
             epoch_moments = None
