@@ -545,6 +545,11 @@ def summary(out: dict, mask: torch.Tensor, seconds: float) -> dict:
     points = torch.where(difference > 0, 1.0, torch.where(difference < 0, 0.0, 0.5))
     score = float(points.mean())
     score_se = float(points.std() / math.sqrt(max(n, 1))) if n > 1 else 0.5
+    # A's share of the game's kills (0.5 in a game without one): the search's finer signal
+    kill_points = torch.where(
+        kills.sum(1) > 0, kills[:, 0] / kills.sum(1).clamp_min(1.0), torch.tensor(0.5)
+    )
+    kill_se = float(kill_points.std() / math.sqrt(max(n, 1))) if n > 1 else 0.5
     per_minute = kills.sum(1) / (seconds / 60.0)
     kills_kind = out["kills_kind"][mask].sum(0)  # (killer kind, victim kind, aspect)
     damage_kind = out["damage_kind"][mask].sum(0)  # (victim side, victim kind, aspect)
@@ -560,6 +565,7 @@ def summary(out: dict, mask: torch.Tensor, seconds: float) -> dict:
     return dict(
         games=n,
         score=(score, score_se),
+        kill_score=(float(kill_points.mean()), kill_se),
         kills_per_minute_mean=float(per_minute.mean()),
         kills_per_minute_median=float(per_minute.median()),
         kills_per_game=float(kills.sum(1).mean()),
@@ -795,9 +801,9 @@ LINEUP_WEIGHTS = {"mixed": 0.25, "mixed reversed": 0.25} | {
 }
 
 
-def weighted_score(rows: list[dict]) -> tuple[float, float]:
-    """A player's weighted mean score over job summaries (its side A), and the standard
-    error."""
+def weighted_score(rows: list[dict], key: str = "score") -> tuple[float, float]:
+    """A player's weighted mean score (`key`: the game score, or `kill_score` A's share of
+    the kills) over job summaries (its side A), and the standard error."""
     total, variance, weight = 0.0, 0.0, 0.0
     by_lineup: dict[str, list[dict]] = {}
     for r in rows:
@@ -805,8 +811,8 @@ def weighted_score(rows: list[dict]) -> tuple[float, float]:
     for lineup, mine in by_lineup.items():
         w = LINEUP_WEIGHTS.get(lineup, 0.0)
         games = sum(r["games"] for r in mine)
-        mean = sum(r["score"][0] * r["games"] for r in mine) / games
-        se2 = sum((r["score"][1] * r["games"]) ** 2 for r in mine) / games**2
+        mean = sum(r[key][0] * r["games"] for r in mine) / games
+        se2 = sum((r[key][1] * r["games"]) ** 2 for r in mine) / games**2
         total += w * mean
         variance += w * w * se2
         weight += w
@@ -829,18 +835,19 @@ def search(
     variant: int = 0,
     deadline: float | None = None,
     log=print,
+    objective: str = "kill_score",
 ) -> Player:
     """A (1 + lambda) search of both types' doctrines at once against a fixed league: each
     generation the parent, `children` perturbations of its Yongma doctrine and `children`
     of its Jujak doctrine each play `games` games per league opponent and lineup
     (SEARCH_LINEUPS) as side A; a candidate's score is its weighted mean
-    (`weighted_score`). The parent's games accumulate over generations. The best child (of
-    either type) that beats the parent by `margin` standard errors becomes the parent on
-    probation: the next generation replays it on fresh games beside the old parent (the
-    incumbent, its games still accumulating), and it stays only if its fresh score beats
-    the incumbent's (the best-of-children's selection bias removed); otherwise the incumbent
-    returns. A search ending on probation returns the incumbent. Every candidate is a line
-    of the log."""
+    (`weighted_score` of `objective`). The parent's games accumulate over generations. The
+    best child (of either type) that beats the parent by `margin` standard errors becomes
+    the parent on probation: the next generation replays it on fresh games beside the old
+    parent (the incumbent, its games still accumulating), and it stays only if its fresh
+    score beats the incumbent's (the best-of-children's selection bias removed); otherwise
+    the incumbent returns. A search ending on probation returns the incumbent. Every
+    candidate is a line of the log."""
     from bench.doctrine_arena import perturb
 
     generator = torch.Generator().manual_seed(seed)
@@ -883,18 +890,18 @@ def search(
         for r in rows:
             by_candidate.setdefault(r["a"], []).append(r)
         parent_rows += by_candidate["parent"]
-        parent_score = weighted_score(parent_rows)
+        parent_score = weighted_score(parent_rows, objective)
         verdict = ""
         if incumbent is not None:
             incumbent_rows += by_candidate["incumbent"]
-            kept = weighted_score(incumbent_rows)
+            kept = weighted_score(incumbent_rows, objective)
             if parent_score[0] < kept[0]:
                 verdict = f" (probation failed: {parent_score[0]:.3f} < {kept[0]:.3f})"
                 parent, parent_rows, parent_score = incumbent, incumbent_rows, kept
             else:
                 verdict = f" (probation passed: {parent_score[0]:.3f} >= {kept[0]:.3f})"
             incumbent, incumbent_rows = None, []
-        scores = {name: weighted_score(mine) for name, mine in by_candidate.items()}
+        scores = {name: weighted_score(mine, objective) for name, mine in by_candidate.items()}
         with log_path.open("a") as handle:
             for candidate in candidates:
                 handle.write(
@@ -908,7 +915,8 @@ def search(
                             player=candidate.named(),
                             by_opponent={
                                 o.name: weighted_score(
-                                    [r for r in by_candidate[candidate.name] if r["b"] == o.name]
+                                    [r for r in by_candidate[candidate.name] if r["b"] == o.name],
+                                    objective,
                                 )[0]
                                 for o in opponents
                             },
@@ -971,3 +979,179 @@ def card_passes(loop: Loop) -> list[dict]:
         ]
         out.append(row)
     return out
+
+
+def encode(doctrine: Doctrine) -> list[float]:
+    """A doctrine's searched numbers in the evolution strategy's space: a weight as itself,
+    an exponent over 4, a logistic's centre and scale and the other positive numbers as
+    logs (the fields `bench.doctrine_arena.FROZEN` left out)."""
+    from bench.doctrine_arena import FROZEN
+    from bnb.controllers.scripted_doctrine import EXPONENTS, NAMES, WEIGHTS
+    from bnb.controllers.scripted_parameters import Logistic
+
+    out = []
+    for name in NAMES:
+        value = getattr(doctrine, name)
+        if name in FROZEN:
+            continue
+        if name in WEIGHTS:
+            out.append(value)
+        elif name in EXPONENTS:
+            out.append(value / 4.0)
+        elif isinstance(value, Logistic):
+            out.extend((math.log(value.centre), math.log(value.scale)))
+        else:
+            out.append(math.log(value))
+    return out
+
+
+def decode(vector: list[float], like: Doctrine) -> Doctrine:
+    """`encode`'s inverse (the frozen fields from `like`), clamped to the search's bounds."""
+    from bench.doctrine_arena import FROZEN, clamp
+    from bnb.controllers.scripted_doctrine import EXPONENTS, NAMES, WEIGHTS
+    from bnb.controllers.scripted_parameters import Logistic
+
+    values, column = {}, 0
+    for name in NAMES:
+        value = getattr(like, name)
+        if name in FROZEN:
+            values[name] = value
+        elif name in WEIGHTS:
+            values[name], column = vector[column], column + 1
+        elif name in EXPONENTS:
+            values[name], column = 4.0 * vector[column], column + 1
+        elif isinstance(value, Logistic):
+            values[name] = Logistic(
+                math.exp(vector[column]), math.exp(vector[column + 1]), value.rising
+            )
+            column += 2
+        else:
+            values[name], column = math.exp(vector[column]), column + 1
+    return clamp(Doctrine(**values))
+
+
+def es_search(
+    loop: Loop,
+    parent: Player,
+    opponents: list[Player],
+    log_path: pathlib.Path,
+    generations: int,
+    pairs: int,
+    games: int,
+    sigma: float,
+    step: float = 1.0,
+    seed: int = 5,
+    variant: int = 0,
+    deadline: float | None = None,
+    log=print,
+    objective: str = "kill_score",
+    lineups: tuple[str, ...] = SEARCH_LINEUPS,
+) -> Player:
+    """An evolution strategy over both types' doctrines at once (`encode`'s space): each
+    generation `pairs` antithetic pairs of perturbations (sigma N(0, 1) per number) play
+    `games` games per opponent and lineup as side A, beside the parent; the gradient is the
+    pairs' score differences times their directions; the parent on probation moves `step`
+    sigma along the normalised gradient. The moved parent stays only if its fresh score in
+    the next generation beats the incumbent's (whose games accumulate), else the incumbent
+    returns and the step halves. Every candidate is a line of the log."""
+    generator = torch.Generator().manual_seed(seed)
+    size_e = len(encode(parent.energy))
+    centre = torch.tensor(encode(parent.energy) + encode(parent.turn), dtype=torch.float64)
+    parent_rows: list[dict] = []
+    incumbent = None  # (centre, rows)
+    started = time.time()
+
+    def player_at(vector: torch.Tensor, name: str) -> Player:
+        values = vector.tolist()
+        return dataclasses.replace(
+            parent,
+            name=name,
+            energy=decode(values[:size_e], parent.energy),
+            turn=decode(values[size_e:], parent.turn),
+        )
+
+    for generation in range(generations):
+        if deadline is not None and time.time() > deadline:
+            log("past the deadline: stopping the search")
+            break
+        noise = torch.randn((pairs, centre.shape[0]), generator=generator, dtype=torch.float64)
+        candidates = [player_at(centre, "parent")]
+        if incumbent is not None:
+            candidates.append(player_at(incumbent[0], "incumbent"))
+        for number in range(pairs):
+            candidates.append(player_at(centre + sigma * noise[number], f"p{number}"))
+            candidates.append(player_at(centre - sigma * noise[number], f"m{number}"))
+        jobs = [
+            Job(variant, lineup, candidate, opponent, games)
+            for candidate in candidates
+            for opponent in opponents
+            for lineup in lineups
+        ]
+        generation_started = time.time()
+        outs = run(loop, jobs, log=lambda line: None)
+        seconds = loop.ticks * loop.rules.tick_length
+        rows = [job_summary(j, o, seconds) for j, o in zip(jobs, outs, strict=True)]
+        by: dict[str, list[dict]] = {}
+        for r in rows:
+            by.setdefault(r["a"], []).append(r)
+        parent_rows += by["parent"]
+        parent_score = weighted_score(parent_rows, objective)
+        verdict = ""
+        if incumbent is not None:
+            incumbent_rows = incumbent[1] + by["incumbent"]
+            kept = weighted_score(incumbent_rows, objective)
+            if parent_score[0] < kept[0]:
+                verdict = f" (probation failed: {parent_score[0]:.3f} < {kept[0]:.3f})"
+                centre, parent_rows, parent_score = incumbent[0], incumbent_rows, kept
+                step *= 0.5
+            else:
+                verdict = f" (probation passed: {parent_score[0]:.3f} >= {kept[0]:.3f})"
+            incumbent = None
+        scores = {name: weighted_score(mine, objective)[0] for name, mine in by.items()}
+        difference = torch.tensor(
+            [scores[f"p{n}"] - scores[f"m{n}"] for n in range(pairs)], dtype=torch.float64
+        )
+        gradient = (difference[:, None] * noise).sum(0) / (2 * pairs * sigma)
+        with log_path.open("a") as handle:
+            handle.write(
+                json.dumps(
+                    dict(
+                        generation=generation,
+                        parent_score=parent_score,
+                        verdict=verdict,
+                        sigma=sigma,
+                        step=step,
+                        gradient_norm=float(gradient.norm()),
+                        mean_child=float(sum(scores.values()) / len(scores)),
+                        best_child=max(v for n, v in scores.items() if n[0] in "pm"),
+                        parent=player_at(centre, parent.name).named(),
+                        by_opponent={
+                            o.name: weighted_score(
+                                [r for r in by["parent"] if r["b"] == o.name], objective
+                            )[0]
+                            for o in opponents
+                        },
+                    )
+                )
+                + "\n"
+            )
+        elapsed = time.time() - started
+        left = elapsed / (generation + 1) * (generations - generation - 1)
+        log(
+            f"{datetime.datetime.now(KST):%H:%M:%S} generation {generation}: parent "
+            f"{parent_score[0]:.3f} ± {parent_score[1]:.3f}{verdict}; children mean "
+            f"{float(sum(scores.values()) / len(scores)):.3f} best "
+            f"{max(v for n, v in scores.items() if n[0] in 'pm'):.3f}; |g| "
+            f"{float(gradient.norm()):.3f}, step {step:.2f}; "
+            f"{time.time() - generation_started:.0f} s; ETA {clock(left)} KST"
+        )
+        if generation < generations - 1 and float(gradient.norm()) > 0:
+            incumbent = (centre, parent_rows)
+            centre = (
+                centre
+                + step * sigma * gradient / gradient.norm() * math.sqrt(centre.shape[0]) ** 0.5
+            )
+            parent_rows = []
+    if incumbent is not None:
+        centre = incumbent[0]
+    return player_at(centre, parent.name)

@@ -37,6 +37,9 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--round", type=int, required=True)
     parser.add_argument("--player", required=True)
+    parser.add_argument(
+        "--versus", default="off", help="the doctrine value: --player against it, mixed"
+    )
     parser.add_argument("--variants", required=True)
     parser.add_argument("--games", type=int, default=1024)
     parser.add_argument("--environments", type=int, default=8192)
@@ -51,19 +54,32 @@ def main() -> None:
     loop = Loop(args.environments, K, args.seconds)
     loop.set_types([v["energy"] for v in variants], [v["turn"] for v in variants])
     player = {p.name: p for p in league.load()}[args.player]
+    versus = {p.name: p for p in league.load()}[args.versus]
     jobs = [Job(k, lineup, player, player, args.games) for k in range(K) for lineup in LINEUPS]
+    jobs += [
+        Job(k, lineup, player, versus, args.games // 2)
+        for k in range(K)
+        for lineup in ("mixed", "mixed reversed")
+    ]
     outs = run(loop, jobs, log=lambda line: print(line, flush=True))
     rows = [job_summary(j, o, args.seconds) for j, o in zip(jobs, outs, strict=True)]
     passes = card_passes(loop)
     table = [
-        "| Variant | E v T (Yongma) | Kills/min mean (median) | Kills m / o / f / t (all) | "
+        f"| Variant | {player.name} v {versus.name} kill share (score) | E v T (Yongma) "
+        "| Kills/min mean (median) | Kills m / o / f / t (all) | "
         "Damage m / o / f / t (all) | Kill mix | Passes a kill | First-merge | Card head-on "
         "passes Y-Y / J-J / Y-J / J-Y | Gun range Y / J | Circles 1 / 2 / sc |",
-        "|---" * 11 + "|",
+        "|---" * 12 + "|",
     ]
     out = []
     for k, variant in enumerate(variants):
-        mine = [r for r in rows if r["variant"] == k]
+        mine = [r for r in rows if r["variant"] == k and r["b"] == player.name]
+        value = [r for r in rows if r["variant"] == k and r["b"] == versus.name]
+        value_games = sum(r["games"] for r in value)
+        doctrine_value = (
+            sum(r["kill_score"][0] * r["games"] for r in value) / value_games,
+            sum(r["score"][0] * r["games"] for r in value) / value_games,
+        )
         evt = next(r for r in mine if r["lineup"] == "energy v turn")
         weights = [r["games"] for r in mine]
         total = sum(weights)
@@ -95,7 +111,8 @@ def main() -> None:
         )
         out.append(entry)
         table.append(
-            f"| {variant['name']} | {evt['score'][0]:.3f} ± {evt['score'][1]:.3f} "
+            f"| {variant['name']} | {doctrine_value[0]:.3f} ({doctrine_value[1]:.3f}) "
+            f"| {evt['score'][0]:.3f} ± {evt['score'][1]:.3f} "
             f"| {per_minute:.2f} ({median:.2f}) | {' / '.join(f'{v:.2f}' for v in kills)} "
             f"| {' / '.join(f'{v:.2f}' for v in damage)} | {entry['kill_mix']:.2f} "
             f"| {entry['passes_per_kill']:.2f} | {entry['first_merge']:.2f} "

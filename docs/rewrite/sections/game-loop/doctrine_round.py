@@ -24,6 +24,7 @@ from bench.game_loop import (  # noqa: E402
     Loop,
     clock,
     distinctness,
+    es_search,
     job_summary,
     markdown,
     ratings,
@@ -49,6 +50,8 @@ def main() -> None:
     parser.add_argument("--seconds", type=float, default=120.0)
     parser.add_argument("--elo-games", type=int, default=512)
     parser.add_argument("--minutes", type=float, default=40.0, help="the search's bound")
+    parser.add_argument("--method", choices=("es", "mutation"), default="es")
+    parser.add_argument("--pairs", type=int, default=16, help="the ES's antithetic pairs")
     parser.add_argument("--card", help="a JSON file of card factors {energy: {}, turn: {}}")
     args = parser.parse_args()
     out_dir = HERE / f"round{args.round}"
@@ -71,20 +74,35 @@ def main() -> None:
         log_path = out_dir / f"search-{start}.jsonl"
         log_path.unlink(missing_ok=True)
         print(f"search from {start} against {[o.name for o in opponents]}", flush=True)
-        found = search(
-            loop,
-            by[start],
-            opponents,
-            log_path,
-            args.generations,
-            args.children,
-            args.games,
-            args.sigma,
-            margin=args.margin,
-            seed=args.round * 100 + len(results),
-            deadline=deadline,
-            log=lambda line: print(line, flush=True),
-        )
+        if args.method == "es":
+            found = es_search(
+                loop,
+                by[start],
+                opponents,
+                log_path,
+                args.generations,
+                args.pairs,
+                args.games,
+                args.sigma,
+                seed=args.round * 100 + len(results),
+                deadline=deadline,
+                log=lambda line: print(line, flush=True),
+            )
+        else:
+            found = search(
+                loop,
+                by[start],
+                opponents,
+                log_path,
+                args.generations,
+                args.children,
+                args.games,
+                args.sigma,
+                margin=args.margin,
+                seed=args.round * 100 + len(results),
+                deadline=deadline,
+                log=lambda line: print(line, flush=True),
+            )
         results.append(dataclasses.replace(found, name=f"r{args.round}-{start}"))
     # the league's Elo, every pair, the mixed lineups
     field = players + results
