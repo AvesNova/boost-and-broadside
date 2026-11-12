@@ -167,3 +167,59 @@ See the report section at the end. Records of the champion: `champion/*.json` (c
   - Probe: 17.37 GB allocated, 18.06 GB reserved, of a 23.07 GB budget.
   - **Not comparable to the champion's speed** (a 3090 at 420 W, 11,330 SPS).
   - KL 2.964 / 1.463 / 0.722 / 0.697 (champion 2.965 / 1.452 / 0.717 / 0.699).
+- **11:30 Hold before RL** (the coordinator: no RL until the author decides). `runs/HOLD-RL` makes the RL config check fail, so the driver exits 2 after BC and supervisor does not restart it. `check_config.sh` was updated on the box from the branch; `pipeline.sh` is untouched (it is running). BC was at update 64 (67.1M), KL 0.427.
+- **12:37 BC done** (`2026-11-12-bc-onehead`: finished by the budget at 120,586,240 steps, 115
+  updates; final checkpoint step_120586240; one segment on 04563a5, clean, no skipped steps
+  or non-finite beliefs). The pipeline then stopped at the RL hold, and supervisor's
+  `onehead` and `heartbeat` were stopped by hand. **The author ended the A/B after BC: no RL,
+  no tournament.**
+  - Steady speed: median 69.6 s per update, 15,070 SPS (the champion's 3090: 92.4 s, 11,350
+    SPS). Not comparable: a different GPU at full power.
+  - Peak memory: 18.1 GB (the champion's 18.0).
+- **Records kept** in this branch (`onehead-bc/`): run.json, config.json, metrics.jsonl.gz,
+  the console, the gpubox3 pipeline and heartbeat logs, and the config check. The policy files
+  of every 10M snapshot (live, uniform average) are on the laptop at
+  `~/avesnova/runs-gpubox3/runs/2026-11-12-bc-onehead/policies/`; the final uniform average's
+  weights SHA-256 is 1de87e6f... and matches the box's copy. The training checkpoints and the
+  4090 compile cache stayed on the box (not needed: an RL warm start reads the policy file).
+- **Known bug, not this run's:** at every snapshot the arm's `exponential_average/` holds the
+  uniform average's weights. `save_update_policies` on this tree loads both averages into one
+  scratch model before saving. The champion's BC snapshots (30.4M, 60.8M, 110.1M on the hub)
+  show the same; it was fixed on 2026-11-10, after these commits. The uniform average, the
+  policy the comparison and RL use, is right.
+
+## Verdict (BC): one head is worse
+
+Same updates, the champion's records against the arm's (`curves.py`-style window means;
+single seed each):
+
+| updates (steps) | BC KL champion / one head | joint agreement champion / one head | outcome Brier skill 5-15 s | outcome EV |
+|---|---|---|---|---|
+| 1-10 (10.5M) | 0.943 / 0.950 (+0.007) | 0.524 / 0.516 | -0.161 / -0.156 | 0.337 / 0.325 |
+| 20-29 (30.4M) | 0.464 / 0.536 (+0.071) | 0.683 / 0.654 | 0.388 / 0.510 | 0.667 / 0.768 |
+| 49-58 (60.8M) | 0.345 / 0.441 (+0.095) | 0.747 / 0.692 | 0.592 / 0.569 | 0.766 / 0.784 |
+| 78-87 (91.2M) | 0.300 / 0.399 (+0.098) | 0.773 / 0.714 | 0.702 / 0.641 | 0.814 / 0.810 |
+| **106-115 (120.6M)** | **0.280 / 0.369 (+0.089)** | **0.784 / 0.731 (-0.053)** | 0.702 / 0.676 | 0.823 / 0.822 |
+
+- Final update (115): KL 0.277 vs 0.369; agreement 0.786 vs 0.730.
+- The arm's KL is higher at 109 of 114 updates from update 2 on. Over the last 10 updates the
+  gap is +0.089 with a standard deviation of 0.006 (all ten positive).
+- The gap opens between 10M and 30M, then holds at +0.09 from 40M to 120M: one head learns
+  more slowly and does not catch up.
+- **Size against the noise we know:** the champion's two seeds at 30M differed by 0.031 in KL
+  (0.444 / 0.475). The arm at 30M (0.512) is 0.068 worse than seed 0, over twice that
+  spread. At 120M one head imitates worse (KL 0.369, agreement 0.730) than even the null,
+  absolute positions with two heads (0.351 / 0.740 at 120M).
+- **The value side is level:** outcome Brier skill and explained variance end level (0.68 vs
+  0.70, 0.82 vs 0.82). The arm was ahead at 20-40M, behind at 60-90M. Only the policy's
+  imitation is clearly worse.
+- **Training-time lane scores** (the averages and live against the scripted agent, last 10
+  updates; noisy, not a rating) mostly read lower too. For example, the uniform average in
+  frontline scored 0.378 vs 0.430, and in deathmatch 0.288 vs 0.455.
+- **Confounds:**
+  - One seed per arm.
+  - Different GPU (4090 vs 3090) and one uninterrupted segment against the champion's four
+    resumed segments. Resumes restore the generators, and the GPU changes rounding only.
+  - Commits: the arm ran on 6af08e09's src; the champion's first 43M on fadd6065/6736d1d4
+    (differing only by the off fade switch and tournament code).
+  - No tournament was played, so no Elo; RL was not run.

@@ -1,0 +1,119 @@
+run 2026-11-12-bc-onehead in /workspace/boost-and-broadside/runs/2026-11-12-bc-onehead
+memory probe: allocated 17.37 GB, reserved 18.06 GB, budget 23.07 GB of 23.57 GB
+update    1  steps   1,048,576  rollout 1378368 ms  learn 3017185 ms  bc kl 2.9638  teacher 0.772  student 3.738  scores: learner 0.500 scripted 0.382
+update    2  steps   2,097,152  rollout   6076 ms  learn  62529 ms  bc kl 1.4634  teacher 0.762  student 3.003  scores: learner 0.500 scripted 0.185
+update    3  steps   3,145,728  rollout   6032 ms  learn  62952 ms  bc kl 0.7216  teacher 0.755  student 1.562  scores: learner 0.500 scripted 0.000
+update    4  steps   4,194,304  rollout   6044 ms  learn  63166 ms  bc kl 0.6974  teacher 0.760  student 1.479  scores: learner 0.500 scripted 0.000
+update    5  steps   5,242,880  rollout   6030 ms  learn  62925 ms  bc kl 0.6743  teacher 0.760  student 1.449  scores: learner 0.500 scripted 0.000
+update    6  steps   6,291,456  rollout   6227 ms  learn  62420 ms  bc kl 0.6520  teacher 0.760  student 1.418  scores: learner 0.500 scripted 0.000
+update    7  steps   7,340,032  rollout   6037 ms  learn  62669 ms  bc kl 0.6550  teacher 0.807  student 1.463  scores: learner 0.500 scripted 0.000
+update    8  steps   8,388,608  rollout   6039 ms  learn  62510 ms  bc kl 0.6165  teacher 0.847  student 1.467  scores: learner 0.500 scripted 0.000
+update    9  steps   9,437,184  rollout   6039 ms  learn  64152 ms  bc kl 0.5663  teacher 0.899  student 1.468  scores: learner 0.500 scripted 0.000
+update   10  steps  10,485,760  rollout   6185 ms  learn  71731 ms  bc kl 0.4872  teacher 0.921  student 1.410  scores: learner 0.500 scripted 0.000
+update   11  steps  11,534,336  rollout   6192 ms  learn  63047 ms  bc kl 0.4696  teacher 0.931  student 1.402  scores: learner 0.500 scripted 0.000
+update   12  steps  12,582,912  rollout   6040 ms  learn  71472 ms  bc kl 0.5424  teacher 0.936  student 1.480  scores: learner 0.500 scripted 0.000
+update   13  steps  13,631,488  rollout   6045 ms  learn  75231 ms  bc kl 0.5495  teacher 0.947  student 1.497  scores: learner 0.500 scripted 0.000
+update   14  steps  14,680,064  rollout   6039 ms  learn  63395 ms  bc kl 0.5469  teacher 0.945  student 1.491  scores: learner 0.500 scripted 0.000
+update   15  steps  15,728,640  rollout   6041 ms  learn  63177 ms  bc kl 0.5828  teacher 0.959  student 1.543  scores: learner 0.500 scripted 0.000
+update   16  steps  16,777,216  rollout   6040 ms  learn  63170 ms  bc kl 0.5671  teacher 0.962  student 1.529  scores: learner 0.500 scripted 0.000
+update   17  steps  17,825,792  rollout   6039 ms  learn  63320 ms  bc kl 0.5733  teacher 0.965  student 1.537  scores: learner 0.500 scripted 0.000
+update   18  steps  18,874,368  rollout   6031 ms  learn  63637 ms  bc kl 0.5552  teacher 0.962  student 1.517  scores: learner 0.500 scripted 0.007
+update   19  steps  19,922,944  rollout   6040 ms  learn  63094 ms  bc kl 0.5506  teacher 0.970  student 1.521  scores: learner 0.500 scripted 0.010
+update   20  steps  20,971,520  rollout   6040 ms  learn  64256 ms  bc kl 0.5479  teacher 0.979  student 1.525  scores: learner 0.500 scripted 0.006
+update   21  steps  22,020,096  rollout   6040 ms  learn  64272 ms  bc kl 0.5476  teacher 0.983  student 1.529  scores: learner 0.500 scripted 0.000
+update   22  steps  23,068,672  rollout   6050 ms  learn  63570 ms  bc kl 0.5447  teacher 0.984  student 1.527  scores: learner 0.500 scripted 0.026
+update   23  steps  24,117,248  rollout   6050 ms  learn  70472 ms  bc kl 0.5297  teacher 0.985  student 1.512  scores: learner 0.500 scripted 0.050  window exponential_average 0.000 (+- 0.000)
+update   24  steps  25,165,824  rollout   6042 ms  learn  64193 ms  bc kl 0.5420  teacher 0.988  student 1.527  scores: learner 0.500 scripted 0.034  window exponential_average 0.000 (+- 0.000)
+update   25  steps  26,214,400  rollout   6044 ms  learn  63684 ms  bc kl 0.5408  teacher 0.990  student 1.528  scores: learner 0.500 scripted 0.051  window exponential_average 0.000 (+- 0.000)
+update   26  steps  27,262,976  rollout   6058 ms  learn  62786 ms  bc kl 0.5361  teacher 0.990  student 1.524  scores: learner 0.500 scripted 0.033  window exponential_average 0.000 (+- 0.000)
+update   27  steps  28,311,552  rollout   6051 ms  learn  63325 ms  bc kl 0.5314  teacher 0.995  student 1.524  scores: learner 0.500 scripted 0.074  window exponential_average 0.000 (+- 0.000)
+update   28  steps  29,360,128  rollout   6041 ms  learn  63875 ms  bc kl 0.5255  teacher 0.998  student 1.520  scores: learner 0.500 scripted 0.073  window exponential_average 0.000 (+- 0.000)
+update   29  steps  30,408,704  rollout   6041 ms  learn  64078 ms  bc kl 0.5118  teacher 0.999  student 1.509  scores: learner 0.500 scripted 0.025  window exponential_average 0.000 (+- 0.000)
+update   30  steps  31,457,280  rollout   6044 ms  learn  65248 ms  bc kl 0.5028  teacher 0.996  student 1.496  scores: learner 0.500 scripted 0.066  window exponential_average 0.000 (+- 0.000)
+update   31  steps  32,505,856  rollout   6041 ms  learn  63253 ms  bc kl 0.5026  teacher 0.998  student 1.499  scores: learner 0.500 scripted 0.109  window exponential_average 0.000 (+- 0.000)
+update   32  steps  33,554,432  rollout   6246 ms  learn  62783 ms  bc kl 0.4988  teacher 0.997  student 1.493  scores: learner 0.500 scripted 0.103  window exponential_average 0.000 (+- 0.000)
+update   33  steps  34,603,008  rollout   6041 ms  learn  63537 ms  bc kl 0.4964  teacher 0.995  student 1.490  scores: learner 0.500 scripted 0.102  window exponential_average 0.000 (+- 0.000)
+update   34  steps  35,651,584  rollout   6052 ms  learn  64219 ms  bc kl 0.4965  teacher 1.001  student 1.494  scores: learner 0.500 scripted 0.112  window exponential_average 0.000 (+- 0.000)
+update   35  steps  36,700,160  rollout   6053 ms  learn  63961 ms  bc kl 0.4963  teacher 1.001  student 1.495  scores: learner 0.500 scripted 0.098  window exponential_average 0.000 (+- 0.000)
+update   36  steps  37,748,736  rollout   6042 ms  learn  63745 ms  bc kl 0.4807  teacher 0.999  student 1.478  scores: learner 0.500 scripted 0.113  window exponential_average 0.000 (+- 0.000)
+update   37  steps  38,797,312  rollout   6040 ms  learn  62758 ms  bc kl 0.4665  teacher 1.005  student 1.469  scores: learner 0.500 scripted 0.152  window exponential_average 0.000 (+- 0.000)
+update   38  steps  39,845,888  rollout   6039 ms  learn  62494 ms  bc kl 0.4730  teacher 1.000  student 1.469  scores: learner 0.500 scripted 0.147  window exponential_average 0.000 (+- 0.000)
+update   39  steps  40,894,464  rollout   6041 ms  learn  62362 ms  bc kl 0.4691  teacher 0.999  student 1.465  scores: learner 0.500 scripted 0.163  window exponential_average 0.001 (+- 0.001)
+update   40  steps  41,943,040  rollout   6041 ms  learn  63268 ms  bc kl 0.4796  teacher 0.995  student 1.470  scores: learner 0.500 scripted 0.153  window uniform_average 0.067 (+- 0.007)
+update   41  steps  42,991,616  rollout   6041 ms  learn  62655 ms  bc kl 0.4665  teacher 0.996  student 1.460  scores: learner 0.500 scripted 0.153  window uniform_average 0.070 (+- 0.008)
+update   42  steps  44,040,192  rollout   6041 ms  learn  63427 ms  bc kl 0.4738  teacher 0.991  student 1.463  scores: learner 0.500 scripted 0.162  window uniform_average 0.074 (+- 0.008)
+update   43  steps  45,088,768  rollout   6041 ms  learn  62940 ms  bc kl 0.4678  teacher 0.996  student 1.461  scores: learner 0.500 scripted 0.103  window uniform_average 0.078 (+- 0.008)
+update   44  steps  46,137,344  rollout   6048 ms  learn  63310 ms  bc kl 0.4718  teacher 0.991  student 1.460  scores: learner 0.500 scripted 0.152  window uniform_average 0.084 (+- 0.008)
+update   45  steps  47,185,920  rollout   6042 ms  learn  62740 ms  bc kl 0.4608  teacher 0.995  student 1.453  scores: learner 0.500 scripted 0.116  window uniform_average 0.091 (+- 0.009)
+update   46  steps  48,234,496  rollout   6041 ms  learn  62416 ms  bc kl 0.4617  teacher 0.993  student 1.451  scores: learner 0.500 scripted 0.128  window uniform_average 0.095 (+- 0.009)
+update   47  steps  49,283,072  rollout   6040 ms  learn  62838 ms  bc kl 0.4654  teacher 0.990  student 1.451  scores: learner 0.500 scripted 0.185  window uniform_average 0.102 (+- 0.009)
+update   48  steps  50,331,648  rollout   6040 ms  learn  63048 ms  bc kl 0.4667  teacher 0.993  student 1.456  scores: learner 0.500 scripted 0.196  window uniform_average 0.106 (+- 0.009)
+update   49  steps  51,380,224  rollout   6041 ms  learn  62444 ms  bc kl 0.4521  teacher 0.996  student 1.446  scores: learner 0.500 scripted 0.234  window uniform_average 0.116 (+- 0.009)
+update   50  steps  52,428,800  rollout   6040 ms  learn  63634 ms  bc kl 0.4554  teacher 0.987  student 1.438  scores: learner 0.500 scripted 0.123  window uniform_average 0.117 (+- 0.010)
+update   51  steps  53,477,376  rollout   6040 ms  learn  63171 ms  bc kl 0.4491  teacher 0.993  student 1.440  scores: learner 0.500 scripted 0.188  window uniform_average 0.122 (+- 0.010)
+update   52  steps  54,525,952  rollout   6041 ms  learn  62612 ms  bc kl 0.4450  teacher 0.987  student 1.429  scores: learner 0.500 scripted 0.180  window uniform_average 0.123 (+- 0.010)
+update   53  steps  55,574,528  rollout   6041 ms  learn  62761 ms  bc kl 0.4432  teacher 0.987  student 1.428  scores: learner 0.500 scripted 0.243  window uniform_average 0.128 (+- 0.010)
+update   54  steps  56,623,104  rollout   6040 ms  learn  63554 ms  bc kl 0.4459  teacher 0.986  student 1.428  scores: learner 0.500 scripted 0.233  window uniform_average 0.134 (+- 0.010)
+update   55  steps  57,671,680  rollout   6039 ms  learn  63006 ms  bc kl 0.4402  teacher 0.987  student 1.424  scores: learner 0.500 scripted 0.169  window uniform_average 0.136 (+- 0.010)
+update   56  steps  58,720,256  rollout   6040 ms  learn  62825 ms  bc kl 0.4289  teacher 0.985  student 1.410  scores: learner 0.500 scripted 0.200  window uniform_average 0.143 (+- 0.010)
+update   57  steps  59,768,832  rollout   6040 ms  learn  62762 ms  bc kl 0.4240  teacher 0.992  student 1.412  scores: learner 0.500 scripted 0.143  window uniform_average 0.149 (+- 0.011)
+update   58  steps  60,817,408  rollout   6043 ms  learn  62965 ms  bc kl 0.4224  teacher 0.992  student 1.410  scores: learner 0.500 scripted 0.266  window uniform_average 0.154 (+- 0.011)
+update   59  steps  61,865,984  rollout   6040 ms  learn  63056 ms  bc kl 0.4290  teacher 0.991  student 1.417  scores: learner 0.500 scripted 0.262  window uniform_average 0.155 (+- 0.011)
+update   60  steps  62,914,560  rollout   6042 ms  learn  64855 ms  bc kl 0.4274  teacher 0.991  student 1.416  scores: learner 0.500 scripted 0.336  window uniform_average 0.162 (+- 0.011)
+update   61  steps  63,963,136  rollout   6040 ms  learn  63506 ms  bc kl 0.4241  teacher 0.989  student 1.410  scores: learner 0.500 scripted 0.194  window uniform_average 0.162 (+- 0.011)
+update   62  steps  65,011,712  rollout   6041 ms  learn  63594 ms  bc kl 0.4219  teacher 0.988  student 1.407  scores: learner 0.500 scripted 0.228  window uniform_average 0.166 (+- 0.011)
+update   63  steps  66,060,288  rollout   6047 ms  learn  63953 ms  bc kl 0.4258  teacher 0.991  student 1.413  scores: learner 0.500 scripted 0.227  window uniform_average 0.170 (+- 0.011)
+update   64  steps  67,108,864  rollout   6039 ms  learn  63683 ms  bc kl 0.4274  teacher 0.986  student 1.409  scores: learner 0.500 scripted 0.250  window uniform_average 0.177 (+- 0.011)
+update   65  steps  68,157,440  rollout   6041 ms  learn  63383 ms  bc kl 0.4154  teacher 0.984  student 1.396  scores: learner 0.500 scripted 0.253  window uniform_average 0.181 (+- 0.011)
+update   66  steps  69,206,016  rollout   6041 ms  learn  63651 ms  bc kl 0.4211  teacher 0.978  student 1.396  scores: learner 0.500 scripted 0.238  window uniform_average 0.183 (+- 0.011)
+update   67  steps  70,254,592  rollout   6040 ms  learn  64179 ms  bc kl 0.4131  teacher 0.979  student 1.388  scores: learner 0.500 scripted 0.239  window uniform_average 0.189 (+- 0.012)
+update   68  steps  71,303,168  rollout   6056 ms  learn  63518 ms  bc kl 0.4188  teacher 0.977  student 1.393  scores: learner 0.500 scripted 0.309  window uniform_average 0.200 (+- 0.012)
+update   69  steps  72,351,744  rollout   6040 ms  learn  63280 ms  bc kl 0.4146  teacher 0.972  student 1.384  scores: learner 0.500 scripted 0.331  window uniform_average 0.202 (+- 0.012)
+update   70  steps  73,400,320  rollout   6040 ms  learn  64053 ms  bc kl 0.4188  teacher 0.976  student 1.392  scores: learner 0.500 scripted 0.310  window uniform_average 0.207 (+- 0.012)
+update   71  steps  74,448,896  rollout   6040 ms  learn  62721 ms  bc kl 0.4086  teacher 0.983  student 1.389  scores: learner 0.500 scripted 0.191  window uniform_average 0.213 (+- 0.012)
+update   72  steps  75,497,472  rollout   6041 ms  learn  63877 ms  bc kl 0.4030  teacher 0.979  student 1.380  scores: learner 0.500 scripted 0.302  window uniform_average 0.220 (+- 0.012)
+update   73  steps  76,546,048  rollout   6040 ms  learn  63756 ms  bc kl 0.4116  teacher 0.980  student 1.387  scores: learner 0.500 scripted 0.333  window uniform_average 0.226 (+- 0.012)
+update   74  steps  77,594,624  rollout   6039 ms  learn  63393 ms  bc kl 0.4084  teacher 0.977  student 1.382  scores: learner 0.500 scripted 0.319  window uniform_average 0.231 (+- 0.012)
+update   75  steps  78,643,200  rollout   6096 ms  learn  62599 ms  bc kl 0.4141  teacher 0.976  student 1.386  scores: learner 0.500 scripted 0.209  window uniform_average 0.234 (+- 0.012)
+update   76  steps  79,691,776  rollout   6041 ms  learn  63016 ms  bc kl 0.4150  teacher 0.972  student 1.383  scores: learner 0.500 scripted 0.259  window uniform_average 0.239 (+- 0.013)
+update   77  steps  80,740,352  rollout   6048 ms  learn  63750 ms  bc kl 0.4085  teacher 0.976  student 1.381  scores: learner 0.500 scripted 0.343  window uniform_average 0.244 (+- 0.013)
+update   78  steps  81,788,928  rollout   6065 ms  learn  62846 ms  bc kl 0.4044  teacher 0.977  student 1.378  scores: learner 0.500 scripted 0.394  window uniform_average 0.243 (+- 0.013)
+update   79  steps  82,837,504  rollout   6335 ms  learn  63332 ms  bc kl 0.4017  teacher 0.979  student 1.378  scores: learner 0.500 scripted 0.339  window uniform_average 0.244 (+- 0.013)
+update   80  steps  83,886,080  rollout   6040 ms  learn  66665 ms  bc kl 0.4050  teacher 0.973  student 1.374  scores: learner 0.500 scripted 0.278  window uniform_average 0.247 (+- 0.013)
+update   81  steps  84,934,656  rollout   6041 ms  learn  64093 ms  bc kl 0.3975  teacher 0.970  student 1.363  scores: learner 0.500 scripted 0.266  window uniform_average 0.250 (+- 0.013)
+update   82  steps  85,983,232  rollout   6040 ms  learn  64841 ms  bc kl 0.4018  teacher 0.974  student 1.373  scores: learner 0.500 scripted 0.276  window uniform_average 0.263 (+- 0.013)
+update   83  steps  87,031,808  rollout   6041 ms  learn  64967 ms  bc kl 0.3937  teacher 0.973  student 1.364  scores: learner 0.500 scripted 0.242  window uniform_average 0.265 (+- 0.013)
+update   84  steps  88,080,384  rollout   6040 ms  learn  66488 ms  bc kl 0.3998  teacher 0.968  student 1.364  scores: learner 0.500 scripted 0.336  window uniform_average 0.265 (+- 0.013)
+update   85  steps  89,128,960  rollout   6031 ms  learn  64963 ms  bc kl 0.3914  teacher 0.970  student 1.357  scores: learner 0.500 scripted 0.373  window uniform_average 0.268 (+- 0.013)
+update   86  steps  90,177,536  rollout   6040 ms  learn  64848 ms  bc kl 0.3990  teacher 0.972  student 1.367  scores: learner 0.500 scripted 0.297  window uniform_average 0.270 (+- 0.013)
+update   87  steps  91,226,112  rollout   6042 ms  learn  64202 ms  bc kl 0.3940  teacher 0.970  student 1.360  scores: learner 0.500 scripted 0.364  window uniform_average 0.273 (+- 0.013)
+update   88  steps  92,274,688  rollout   6041 ms  learn  64145 ms  bc kl 0.3901  teacher 0.974  student 1.361  scores: learner 0.500 scripted 0.265  window uniform_average 0.275 (+- 0.013)
+update   89  steps  93,323,264  rollout   6067 ms  learn  63960 ms  bc kl 0.3975  teacher 0.968  student 1.362  scores: learner 0.500 scripted 0.310  window uniform_average 0.272 (+- 0.013)
+update   90  steps  94,371,840  rollout   6086 ms  learn  64718 ms  bc kl 0.3914  teacher 0.970  student 1.357  scores: learner 0.500 scripted 0.304  window uniform_average 0.280 (+- 0.013)
+update   91  steps  95,420,416  rollout   6042 ms  learn  63782 ms  bc kl 0.3847  teacher 0.974  student 1.356  scores: learner 0.500 scripted 0.293  window uniform_average 0.283 (+- 0.013)
+update   92  steps  96,468,992  rollout   6041 ms  learn  63765 ms  bc kl 0.3784  teacher 0.980  student 1.355  scores: learner 0.500 scripted 0.286  window uniform_average 0.291 (+- 0.013)
+update   93  steps  97,517,568  rollout   6033 ms  learn  64919 ms  bc kl 0.3808  teacher 0.971  student 1.349  scores: learner 0.500 scripted 0.425  window uniform_average 0.293 (+- 0.013)
+update   94  steps  98,566,144  rollout   6043 ms  learn  64002 ms  bc kl 0.3828  teacher 0.962  student 1.340  scores: learner 0.500 scripted 0.236  window uniform_average 0.292 (+- 0.013)
+update   95  steps  99,614,720  rollout   6042 ms  learn  64247 ms  bc kl 0.3807  teacher 0.967  student 1.344  scores: learner 0.500 scripted 0.353  window uniform_average 0.294 (+- 0.013)
+update   96  steps 100,663,296  rollout   6041 ms  learn  62966 ms  bc kl 0.3828  teacher 0.962  student 1.341  scores: learner 0.500 scripted 0.315  window uniform_average 0.294 (+- 0.013)
+update   97  steps 101,711,872  rollout   6044 ms  learn  62730 ms  bc kl 0.3843  teacher 0.963  student 1.343  scores: learner 0.500 scripted 0.333  window uniform_average 0.290 (+- 0.013)
+update   98  steps 102,760,448  rollout   6041 ms  learn  63021 ms  bc kl 0.3754  teacher 0.965  student 1.337  scores: learner 0.500 scripted 0.331  window exponential_average 0.297 (+- 0.013)
+update   99  steps 103,809,024  rollout   6041 ms  learn  62898 ms  bc kl 0.3738  teacher 0.967  student 1.337  scores: learner 0.500 scripted 0.254  window exponential_average 0.304 (+- 0.013)
+update  100  steps 104,857,600  rollout   6039 ms  learn  63065 ms  bc kl 0.3773  teacher 0.969  student 1.342  scores: learner 0.500 scripted 0.300  window exponential_average 0.306 (+- 0.013)
+update  101  steps 105,906,176  rollout   6067 ms  learn  62696 ms  bc kl 0.3766  teacher 0.964  student 1.337  scores: learner 0.500 scripted 0.213  window exponential_average 0.314 (+- 0.014)
+update  102  steps 106,954,752  rollout   6040 ms  learn  62894 ms  bc kl 0.3757  teacher 0.966  student 1.337  scores: learner 0.500 scripted 0.373  window exponential_average 0.316 (+- 0.014)
+update  103  steps 108,003,328  rollout   6040 ms  learn  63223 ms  bc kl 0.3753  teacher 0.969  student 1.341  scores: learner 0.500 scripted 0.325  window exponential_average 0.324 (+- 0.014)
+update  104  steps 109,051,904  rollout   6040 ms  learn  62459 ms  bc kl 0.3784  teacher 0.969  student 1.343  scores: learner 0.500 scripted 0.284  window exponential_average 0.327 (+- 0.014)
+update  105  steps 110,100,480  rollout   6093 ms  learn  62590 ms  bc kl 0.3681  teacher 0.975  student 1.340  scores: learner 0.500 scripted 0.293  window exponential_average 0.328 (+- 0.014)
+update  106  steps 111,149,056  rollout   6041 ms  learn  62986 ms  bc kl 0.3750  teacher 0.967  student 1.338  scores: learner 0.500 scripted 0.431  window exponential_average 0.327 (+- 0.014)
+update  107  steps 112,197,632  rollout   6050 ms  learn  63188 ms  bc kl 0.3680  teacher 0.968  student 1.332  scores: learner 0.500 scripted 0.358  window exponential_average 0.332 (+- 0.014)
+update  108  steps 113,246,208  rollout   6041 ms  learn  62606 ms  bc kl 0.3705  teacher 0.962  student 1.328  scores: learner 0.500 scripted 0.280  window exponential_average 0.346 (+- 0.014)
+update  109  steps 114,294,784  rollout   6040 ms  learn  62510 ms  bc kl 0.3715  teacher 0.964  student 1.333  scores: learner 0.500 scripted 0.305  window exponential_average 0.351 (+- 0.014)
+update  110  steps 115,343,360  rollout   6039 ms  learn  63275 ms  bc kl 0.3734  teacher 0.959  student 1.328  scores: learner 0.500 scripted 0.385  window exponential_average 0.358 (+- 0.014)
+update  111  steps 116,391,936  rollout   6040 ms  learn  63014 ms  bc kl 0.3672  teacher 0.965  student 1.329  scores: learner 0.500 scripted 0.336  window exponential_average 0.363 (+- 0.014)
+update  112  steps 117,440,512  rollout   6040 ms  learn  62908 ms  bc kl 0.3653  teacher 0.963  student 1.326  scores: learner 0.500 scripted 0.375  window exponential_average 0.368 (+- 0.014)
+update  113  steps 118,489,088  rollout   6041 ms  learn  63341 ms  bc kl 0.3578  teacher 0.960  student 1.314  scores: learner 0.500 scripted 0.438  window exponential_average 0.372 (+- 0.014)
+update  114  steps 119,537,664  rollout   6039 ms  learn  62450 ms  bc kl 0.3673  teacher 0.958  student 1.321  scores: learner 0.500 scripted 0.293  window exponential_average 0.380 (+- 0.014)
+update  115  steps 120,586,240  rollout   6040 ms  learn  63153 ms  bc kl 0.3689  teacher 0.964  student 1.330  scores: learner 0.500 scripted 0.302  window exponential_average 0.378 (+- 0.014)
+stopped by budget; the policy is /workspace/boost-and-broadside/runs/2026-11-12-bc-onehead/policy (the exponential_average)
+run 2026-11-12-bc-onehead finished at step 120586240
