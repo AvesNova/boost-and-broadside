@@ -203,6 +203,7 @@ def _uniform_layout(rules, uniforms):
 
 def test_deathmatch_respawn_takes_the_candidate_farthest_from_living_enemies():
     rules = api.rules_of(GameConfig(4, 2, 2600.0))
+    (pool,) = rules.pools
     generator = torch.Generator().manual_seed(3)
     B, N = 256, rules.num_ships
     uniforms = api.uniforms(rules, B, generator=generator)
@@ -238,8 +239,17 @@ def test_deathmatch_respawn_takes_the_candidate_farthest_from_living_enemies():
                 k = 0
             assert math.isclose(place.x[b, i], cx[b, i, k], abs_tol=1e-3)
             assert math.isclose(place.y[b, i], cy[b, i, k], abs_tol=1e-3)
-    torch.testing.assert_close(place.heading_cos, heading.cos())
-    torch.testing.assert_close(place.heading_sin, heading.sin())
+    # Game v4: the heading is the uniform draw spread over the directions that leave room to
+    # turn away from the edge (modes spec 4), not the plain uniform angle; written out here from
+    # the spec (angle off the outward normal, at least acos(d / D) within D of the edge).
+    distance = place.x.hypot(place.y)
+    room = ((pool.arena_radius - distance) / rules.spawn_turn_distance).clamp(0.0, 1.0)
+    least = room.acos()
+    drawn = math.pi * (2.0 * heading / (2.0 * math.pi) - 1.0)
+    off_normal = torch.copysign(least + drawn.abs() * (1.0 - least / math.pi), drawn)
+    angle = torch.atan2(place.y, place.x) + off_normal
+    torch.testing.assert_close(place.heading_cos, angle.cos(), atol=1e-4, rtol=0)
+    torch.testing.assert_close(place.heading_sin, angle.sin(), atol=1e-4, rtol=0)
 
 
 def test_deathmatch_reset_is_one_symmetric_pass():
