@@ -24,9 +24,9 @@ HERE = pathlib.Path(__file__).parent
 sys.path.insert(0, str(HERE.parent / "game-loop"))
 sys.path.insert(0, str(HERE.parent / "maneuvers-2"))
 
+import league  # noqa: E402
 from sizes import cells, player_of  # noqa: E402
 
-import league  # noqa: E402
 from bench.game_loop import ROW_LINEUPS, Job, Loop, clock, job_summary, player_from, run  # noqa: E402
 
 ENVIRONMENTS = {1: 8192, 5: 4096, 10: 2048}
@@ -83,7 +83,8 @@ def main() -> None:
             rows.append(row)
             log(
                 f"{size}v{size} {job.lineup:>12}: A {row['score'][0]:.3f} ± {row['score'][1]:.3f}"
-                f"  life {row['life_seconds']:.0f} s  kpm/ship {row['kills_per_minute_per_ship']:.2f}"
+                f"  life {row['life_seconds']:.0f} s"
+                f"  kpm/ship {row['kills_per_minute_per_ship']:.2f}"
             )
         result["sizes"][str(size)] = rows
         out_path.write_text(json.dumps(result, indent=1))
