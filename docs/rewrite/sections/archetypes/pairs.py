@@ -1654,6 +1654,26 @@ def kit3_pairs() -> list[dict]:
 ROUNDS["kit3"] = kit3_pairs
 
 
+def set6() -> list[dict]:
+    """The rate and speed fighters brought down to the set (they beat every set ship 0.55-0.72):
+    their damage trimmed, against the standard and each other; 1024 games, 1v1-20v20."""
+    out = []
+    std = kit(*KIT2)
+    for rd, sd in ((1.1, 0.88), (1.15, 0.92)):
+        rs = rate_speed_nose(sf=0.07, rd=rd, sd=sd)
+        out += [
+            pair(
+                f"rate (dmg x{rd:g}) v standard (set 6, M, kit2)", ("M", rs["energy"]), ("M", std)
+            ),
+            pair(f"speed (dmg x{sd:g}) v standard (set 6, M, kit2)", ("M", rs["turn"]), ("M", std)),
+            dict(rs, name=f"rate (dmg x{rd:g}) v speed (dmg x{sd:g}) (set 6, M, kit2)"),
+        ]
+    return out
+
+
+ROUNDS["set6"] = set6
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
