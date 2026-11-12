@@ -1562,6 +1562,29 @@ def confirm9() -> list[dict]:
 ROUNDS["confirm9"] = confirm9
 
 
+def hit_and_run_final_2() -> dict:
+    a = merge(
+        kit(*KIT2),
+        HIT_AND_RUN,
+        {"hit_damage": 1.22 / 1.2, "vision_range_scale": 0.96},
+        cone(0.06, 12, 8),
+    )
+    return pair(
+        "hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2",
+        ("M", a),
+        ("M", kit(*KIT2)),
+    )
+
+
+def confirm10() -> list[dict]:
+    """The final hit-and-run v standard under both maneuvers doctrines, 1024 games."""
+    c = hit_and_run_final_2()
+    return [flown(c, d) for d in DOCTRINES]
+
+
+ROUNDS["confirm10"] = confirm10
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
