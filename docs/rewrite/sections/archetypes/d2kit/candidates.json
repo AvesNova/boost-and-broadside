@@ -1,0 +1,47 @@
+[
+ {
+  "name": "D2",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  }
+ },
+ {
+  "name": "D2, kit2",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "hit_damage": 2.75,
+   "vision_range_scale": 1.0,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "vision_range_scale": 1.0,
+   "hit_damage": 2.5,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ }
+]

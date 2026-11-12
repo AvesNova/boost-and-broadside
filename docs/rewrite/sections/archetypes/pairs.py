@@ -1709,6 +1709,18 @@ def confirm11() -> list[dict]:
 ROUNDS["confirm11"] = confirm11
 
 
+def d2kit() -> list[dict]:
+    """The Yongma v Jujak D2 card (balance-d2) with kit2 on both ships, and plain D2, at
+    1024 games, 1v1-20v20: does the kit carry over to the two-hull pair (its 20v20 lean)?"""
+    return [
+        pair("D2", (None, D2_A), (None, D2_B)),
+        pair("D2, kit2", (None, merge(D2_A, kit(*KIT2))), (None, merge(D2_B, kit(*KIT2)))),
+    ]
+
+
+ROUNDS["d2kit"] = d2kit
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
