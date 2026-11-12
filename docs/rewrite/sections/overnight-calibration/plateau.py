@@ -81,10 +81,11 @@ def grid():
 
 
 def describe(config: StopConfig) -> str:
+    window, start = config.plateau_window_steps / MILLION, config.plateau_from_steps / MILLION
+    smoothing, hold = config.plateau_smoothing_steps / MILLION, config.plateau_hold_steps / MILLION
     return (
-        f"fraction {config.plateau_fraction:g}, window {config.plateau_window_steps / MILLION:g}M, "
-        f"from {config.plateau_from_steps / MILLION:g}M, smoothing "
-        f"{config.plateau_smoothing_steps / MILLION:g}M, hold {config.plateau_hold_steps / MILLION:g}M"
+        f"fraction {config.plateau_fraction:g}, window {window:g}M, from {start:g}M, "
+        f"smoothing {smoothing:g}M, hold {hold:g}M"
     )
 
 
@@ -155,7 +156,8 @@ def main() -> None:
         }
         config = dataclasses.replace(DEFAULTS, **given)
         step = fires(series(options.metrics), config)
-        print(f"{describe(config)}: fires at {'never' if step is None else f'{step / MILLION:.1f}M'}")
+        at = "never" if step is None else f"{step / MILLION:.1f}M"
+        print(f"{describe(config)}: fires at {at}")
     else:
         print(json.dumps(fit(options.elo, options.metrics, options.top), indent=1))
 
