@@ -1,0 +1,26 @@
+[
+ {
+  "label": "ext45",
+  "extension": 45
+ },
+ {
+  "label": "ext60",
+  "extension": 60
+ },
+ {
+  "label": "ext80",
+  "extension": 80
+ },
+ {
+  "label": "hold60",
+  "hold": 60
+ },
+ {
+  "label": "hold90",
+  "hold": 90
+ },
+ {
+  "label": "lock55",
+  "lock": 55
+ }
+]

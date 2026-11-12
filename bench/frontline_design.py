@@ -18,7 +18,13 @@ Each variant is a JSON object (every field optional, off by default):
 - `progressive` g: a zone's capture time times (1 + g)^depth, depth = the attacker's lead
   in captures (the front in its frame, at least 0);
 - `count_scale` c: the meter rate H(c |net|) instead of H(|net|) (c = 5 / n is a capture
-  by the 5v5-equivalent lead).
+  by the 5v5-equivalent lead);
+- `extension` E (s): a flat extension, on a capture the captured zone's next recapture
+  needs E s more: its meter waits while E is drained by an attacking majority in the zone
+  at the capture rate (H_n s a second for n ahead, a lone attacker 1 s a second); E never
+  decays or recharges;
+- `hold` H (s): a decaying hold, the extension H that also decays 1 s a second (gone
+  after H s with no attacker).
 
 All parameters are per-environment tensors read inside the compiled tick, so `--slots`
 variants run side by side in one batch of slots x per-slot environments and every variant
@@ -47,9 +53,10 @@ from bnb.game.handling.characteristics import characteristics
 from bnb.game.modes import frontline
 from bnb.runtime.rollout import Rollout
 
-FIELDS = ("lock", "early", "stale", "forward", "capture_scale", "progressive", "count_scale")
+FIELDS = ("lock", "early", "stale", "forward", "capture_scale", "progressive", "count_scale",
+          "extension", "hold")  # fmt: skip
 DEFAULTS = dict(lock=0.0, early=0.0, stale=0.0, forward=0.0, capture_scale=1.0,
-                progressive=0.0, count_scale=1.0)  # fmt: skip
+                progressive=0.0, count_scale=1.0, extension=0.0, hold=0.0)  # fmt: skip
 
 
 class GroupProbe(dynamics.Probe):
@@ -92,6 +99,7 @@ class Design:
         self.buffers = dict(
             lock_zone=torch.full((environments,), -1, dtype=torch.long, device=device),
             lock_left=torch.zeros(environments, dtype=torch.float32, device=device),
+            extra_left=torch.zeros(environments, dtype=torch.float32, device=device),
             winner=torch.zeros(environments, dtype=torch.long, device=device),
             stale=torch.zeros((environments, N), dtype=torch.bool, device=device),
             front=torch.zeros(environments, dtype=torch.long, device=device),
@@ -112,6 +120,7 @@ class Design:
         b = self.buffers
         b["lock_zone"].fill_(-1)
         b["lock_left"].zero_()
+        b["extra_left"].zero_()
         b["winner"].zero_()
         b["stale"].fill_(False)
         b["front"].zero_()
@@ -129,16 +138,26 @@ class Design:
             in_held = (inside & held[:, None, :]).any(-1)  # (B, N): inside the held zone
             winner_in = (in_held & on_winner).any(-1)
             lock_left = torch.where((p["early"] > 0) & ~winner_in, 0.0, b["lock_left"])
-            locked = held & (lock_left > 0)[:, None]
             stale = b["stale"] & in_held  # a stale ship stops being stale once it leaves
-            counted = inside & ~locked[:, None, :] & ~(stale[:, :, None] & held[:, None, :])
+            eligible = inside & ~(stale[:, :, None] & held[:, None, :])
+            # the extension or hold: an attacking majority in the held zone drains it at the
+            # capture rate while the meter waits; a hold also decays 1 s a second
+            on_team0 = (team == 0)[None, None, :]
+            eligible_present = eligible.transpose(-1, -2)
+            net = (eligible_present & on_team0).sum(-1) - (eligible_present & ~on_team0).sum(-1)
+            team0_attacks = roles == frontline.TEAM1_DEFENSE
+            ahead = torch.where(team0_attacks, net, -net)
+            rate = frontline.harmonic(ahead.clamp_min(0)) * (ahead > 0)
+            drained = torch.where(held, rate, 0.0).sum(-1) * tick
+            decay = torch.where(p["hold"] > 0, tick, 0.0)
+            extra_left = b["extra_left"]
+            locked = held & ((lock_left > 0) | (extra_left > 0))[:, None]
+            counted = eligible & ~locked[:, None, :]
 
             # the capture time: scale, progressive depth, count scale
-            on_team0 = (team == 0)[None, None, :]
             net = (present & counted.transpose(-1, -2) & on_team0).sum(-1) - (
                 present & counted.transpose(-1, -2) & ~on_team0
             ).sum(-1)
-            team0_attacks = roles == frontline.TEAM1_DEFENSE
             depth = torch.where(team0_attacks, front[:, None], -front[:, None]).clamp_min(0)
             lead = net.abs().clamp_min(1)
             count = frontline.harmonic(lead) / frontline.harmonic(lead * p["count_scale"][:, None])
@@ -166,6 +185,13 @@ class Design:
             b["lock_zone"].copy_(torch.where(done, taken, b["lock_zone"]))
             b["winner"].copy_(torch.where(done, winner, b["winner"]))
             b["lock_left"].copy_(torch.where(done, p["lock"], (lock_left - tick).clamp_min(0.0)))
+            b["extra_left"].copy_(
+                torch.where(
+                    done,
+                    p["extension"] + p["hold"],
+                    (extra_left - drained - decay).clamp_min(0.0),
+                )
+            )
             return capture
 
         return step

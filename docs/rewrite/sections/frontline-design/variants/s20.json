@@ -1,0 +1,18 @@
+[
+ {
+  "label": "ext60",
+  "extension": 60
+ },
+ {
+  "label": "ext80",
+  "extension": 80
+ },
+ {
+  "label": "hold90",
+  "hold": 90
+ },
+ {
+  "label": "lock60_repeat",
+  "lock": 59.8
+ }
+]
