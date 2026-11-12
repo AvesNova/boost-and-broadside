@@ -955,3 +955,14 @@ def test_eager_cuda_graph_capture_in_every_mode(mode):
         graph.replay()
         ticks.append(state.match.episode_tick.clone())
     assert not torch.equal(ticks[0], ticks[1])
+
+
+def test_frontline_plays_with_no_fields():
+    """A frontline map of no fields (the scripted agent's measurements play them): the
+    mirror's odd field reads no uniform, so a match resets and steps."""
+    config = dataclasses.replace(PRESETS["frontline"], num_fields=0)
+    rules = api.rules_of(config)
+    generator = torch.Generator().manual_seed(0)
+    state = api.reset(rules, api.ship_types(), api.uniforms(rules, 2, generator=generator))
+    assert state.fields.x.shape == (2, 0)
+    assert bool(torch.isfinite(state.mode.zone_x).all())
