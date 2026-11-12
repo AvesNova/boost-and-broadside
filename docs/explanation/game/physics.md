@@ -149,7 +149,7 @@ which blocks sight (see [Perception and fog](perception.md)).
 
       D (x + (1 - x) (w / w_ref)²) (1 - (b / R)²)² A(θ)
 
-  with `D` the shooter's hit damage, a centre hit's at the reference distance. The speed
+  with D the shooter's hit damage, a centre hit's at the reference distance. The speed
   term: `w` is the bullet's own proper speed (through the medium, not relative to the
   target, which would favour the head-on pass), `w_ref`{.plain} its type's speed at the rules'
   damage reference distance from a shot at cruise (the card's `reference_bullet_speed`;
