@@ -269,3 +269,17 @@ fleet) should. The v1 hypothesis is not reproduced in this range. Next: the `_de
 radii (running), then much denser cells (20 and 50 a side at 3900 m and 1950 m; 5v5 there
 too) to find a critical density if there is one. ETA ~18:00 KST (worst 18:30): each new
 size or radius compiles for 5-10 min on the box.
+
+## Step 3b: density sweep at the `_density` radii (R = 7800 sqrt(n / 5))
+
+| per side | R (m) | ships / km² | score (T = 1 vs T = 3) |
+|---|---|---|---|
+| 5 | 7800 | 0.052 | 0.699 ± 0.029 |
+| 10 | 11031 | 0.052 | 0.785 ± 0.026 |
+| 20 | 15600 | 0.052 | 0.865 ± 0.021 |
+| 35 | 20637 | 0.052 | 0.902 ± 0.018 |
+| 50 | 24666 | 0.052 | 0.924 ± 0.016 |
+
+At equal density the edge also grows with the fleet, a little less than on the fixed map
+(0.83 / 0.88 / 0.96 / 0.96 at 10 / 20 / 35 / 50): crowding helps the better side, if
+anything. Dense cells (3900 m, 1950 m) running.
