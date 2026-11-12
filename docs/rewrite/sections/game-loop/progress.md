@@ -117,3 +117,37 @@ summed over the lineups:
   plays.
 - The doctrine value (r1-hand v off) is 0.49-0.51 on every card: no card here makes the
   doctrine pay.
+
+## 2026-11-12 15:29-15:36 KST: round 2 card sweep (fraction x damage at a constant head-on TTK)
+
+`card_round.py --round 2 --player r1 hand` (8 variants, K = 8: 401 s; `round2/cards.*`).
+s = head-on fraction scale, d = hit damage factor (on the x 0.65 base), a = cone scale;
+d x s = 1 keeps the card's head-on TTK (3.3-4.0 passes; Yongma on Jujak 2.8).
+
+| Variant | Player | v off kill share | E v T | Kills/min | Kills m / o / f / t | Damage m / o / f / t | Passes a kill |
+|---|---|---|---|---|---|---|---|
+| s1 d1 a1 | r1 (off-like) | 0.506 | 0.541 | 5.60 | 0.33 / 0.26 / 0.35 / 0.06 | 0.52 / 0.21 / 0.24 / 0.03 | 0.59 |
+| s1 d1 a1 | hand | 0.235 | 0.118 | 3.18 | 0.08 / 0.14 / 0.20 / 0.58 | 0.16 / 0.15 / 0.19 / 0.50 | 0.32 |
+| s0.5 d2 a1 | r1 | 0.501 | 0.556 | 5.80 | 0.36 / 0.27 / 0.33 / 0.04 | 0.50 / 0.22 / 0.25 / 0.03 | 0.59 |
+| s0.5 d2 a0.5 | r1 | 0.500 | 0.502 | 5.89 | 0.37 / 0.30 / 0.30 / 0.04 | 0.47 / 0.27 / 0.23 / 0.02 | 0.60 |
+| s0.35 d2.86 a0.25 | r1 | 0.504 | 0.480 | 6.03 | 0.37 / 0.33 / 0.27 / 0.03 | 0.44 / 0.32 / 0.22 / 0.02 | 0.62 |
+| s0.35 d2.86 a0.25 | hand | 0.200 | 0.184 | 3.83 | 0.11 / 0.24 / 0.18 / 0.47 | 0.15 / 0.25 / 0.19 / 0.41 | 0.40 |
+| s0.5 d1.5 a0.5 | r1 | 0.497 | 0.506 | 5.66 | 0.29 / 0.31 / 0.34 / 0.05 | 0.41 / 0.29 / 0.27 / 0.03 | 0.56 |
+| s0.5 d2 a0.5 slow | r1 | 0.499 | 0.498 | 5.74 | 0.34 / 0.30 / 0.32 / 0.04 | 0.48 / 0.26 / 0.24 / 0.03 | 0.59 |
+
+- At a constant head-on damage, raising the side damage does not cut mutual head-on (0.33
+  -> 0.37 of kills): the off-like agent jousts whatever the card, and the mix follows the
+  head-on damage itself (round 1: fraction 0.4 -> mutual 0.13-0.21). Pace rises a little
+  with damage (5.6 -> 6.0 kills/min).
+- The hand doctrine keeps its tail-heavy mix on every card and loses to off on every card
+  (kill share 0.20-0.24): no card here makes it pay.
+- **So the mix needs an agent that avoids the joust because it pays**: the head-on
+  damage down (fraction 0.5, d = 1: card 5.4 head-on passes, but the aimed fire's damage
+  per hit is ~1.9x the card's mean closeness, so the measured joust is about half that)
+  and a search that can find strength in flank and tail play.
+- Card for round 2's search: s0.5 a0.5 d1, Yongma explosive share 0.5 (round 1: balances
+  energy v turn to 0.50 at fraction 0.65).
+
+**Round 2 search** (running, 15:36): the ES over both doctrines and the combat/memory
+scripted parameters (27 numbers) at once, from hand and from r1-hand, against off, hand,
+r1, r1-hand; 16 antithetic pairs, 16 games per candidate x opponent x lineup, kill share.
