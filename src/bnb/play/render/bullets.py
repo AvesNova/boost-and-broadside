@@ -9,7 +9,8 @@ so a fast bullet reads as one continuous streak at any time scale or playback sp
 bullet has no size in the game (hits are tested against the ship's hit radius), so the
 tracer is a fixed few pixels wide at every zoom, the true-size view included.
 
-The look is a setting of the theme (`BulletLook`, the Settings menu; `Theme.bullet_*`): the style (a tracer, or the trail
+The look is a setting of the theme (`BulletLook`, the Settings menu; `Theme.bullet_*`):
+the style (a tracer, or the trail
 alone with no head), the head's size, the trail's width at its two ends and its length in
 seconds; the defaults are the tracer above."""
 
