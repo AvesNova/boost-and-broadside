@@ -1674,6 +1674,18 @@ def set6() -> list[dict]:
 ROUNDS["set6"] = set6
 
 
+def set7() -> list[dict]:
+    """The final hit-and-run ship (confirm 8) against the brawler and the small ship."""
+    hr = hit_and_run_final_2()["energy"]
+    return [
+        pair(f"hit-and-run (final) v {b} (set 7, M, kit2)", ("M", hr), ("M", set_ship(b)))
+        for b in ("brawler", "small")
+    ]
+
+
+ROUNDS["set7"] = set7
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
