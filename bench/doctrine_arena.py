@@ -202,6 +202,7 @@ def games(
     games_first_hit = first_game_hit.clone()  # by game, kept as rows leave
     damage_by_victim_type = torch.zeros((len(KEYS), len(ASPECTS)), dtype=torch.float64)
     damage_by_shooter_side = torch.zeros((2, len(ASPECTS)), dtype=torch.float64)
+    restored = torch.zeros((), dtype=torch.float64)  # the shield every ship recharged
     type_slot = torch.full((len(keys),), -1, dtype=torch.long)
     for slot, key in enumerate(KEYS):
         type_slot[keys.index(key)] = slot
@@ -291,6 +292,7 @@ def games(
 
             # shield recharges: each spell's start
             spell = events.shield_restored > 0.0
+            restored += torch.where(live[:, None], events.shield_restored, 0.0).sum()
             recharges = recharges + (spell & ~restoring & (victim_hit_tick >= 0)).long()
             restoring = spell
 
@@ -396,6 +398,7 @@ def games(
         first_game_hit=games_first_hit.tolist(),
         damage_by_victim_type=damage_by_victim_type.tolist(),
         damage_by_shooter_side=damage_by_shooter_side.tolist(),
+        restored=float(restored),
         kills=kills,
     )
 
@@ -500,6 +503,7 @@ def summary(lines: list[dict]) -> dict:
         killer_first_hit=share(sum(1 for k in shot if k["killer_first_hit"]), len(shot)),
         first_hit_wins_game=share(first_wins, len(decided)),
         recharges_per_kill=sum(k["recharges"] for k in shot) / max(len(shot), 1),
+        restored_per_game=sum(line.get("restored", 0.0) for line in lines) / max(n, 1),
         ttk_median=ttk[len(ttk) // 2] if ttk else None,
         kills_by_side={
             side: sum(1 for k in shot if k["killer_side"] == side) for side in ("A", "B")
@@ -522,9 +526,9 @@ def report(args) -> None:
             "| Lineup | Games | A scores | Timeouts | Median s | Kills a game | Damage "
             "mutual / offset / flank / tail | Kills mutual / offset / flank / tail | Passes "
             "a kill | No-merge kills | First-merge kills | Killer hit first | First hit wins "
-            "game | Recharges a kill | TTK median s |"
+            "game | Recharges a kill | Shield recharged a game | TTK median s |"
         )
-        print("|---" * 15 + "|")
+        print("|---" * 16 + "|")
         out[label] = {}
         for lineup in LINEUPS:
             mine = [line for line in lines if line["label"] == label and line["lineup"] == lineup]
@@ -547,6 +551,7 @@ def report(args) -> None:
                 f"| {row['passes_per_kill']:.2f} | {pm(row['no_merge_kills'])} "
                 f"| {pm(row['first_merge_kills'])} | {pm(row['killer_first_hit'])} "
                 f"| {pm(row['first_hit_wins_game'])} | {row['recharges_per_kill']:.2f} "
+                f"| {row['restored_per_game']:.0f} "
                 f"| {ttk if ttk is None else round(ttk, 1)} |"
             )
         print()
