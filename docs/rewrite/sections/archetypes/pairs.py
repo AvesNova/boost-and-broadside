@@ -197,7 +197,29 @@ def knobs(name: str, a: dict, b: dict, a_knobs: dict, b_knobs: dict) -> dict:
     }
 
 
-ROUNDS = {"round1": round1}
+def round2() -> list[dict]:
+    """The mirror fix: arming and damage (and the cone) on D2 and on one neutral ship, 1v1."""
+    out = [pair("D2", (None, D2_A), (None, D2_B)), pair("same ship M", ("M", {}), ("M", {}))]
+    for x in (100, 150, 200):
+        for d in (1.25, 1.5, 2.0):
+            extra = merge(arm(x), {"hit_damage": d})
+            out.append(
+                pair(f"D2, arming {x}, dmg x{d:g}", (None, merge(D2_A, extra)),
+                     (None, merge(D2_B, extra)))
+            )
+    for x, d in ((100, 1.5), (150, 1.5), (150, 2.0)):
+        extra = merge(arm(x), {"hit_damage": d})
+        out.append(pair(f"same ship M, arming {x}, dmg x{d:g}", ("M", extra), ("M", extra)))
+    for f0, x, d in ((0.085, 100, 2.0), (0.15, 150, 2.0), (0.15, 100, 1.5)):
+        extra = merge(cone(f0, 12, 8), arm(x), {"hit_damage": d})
+        out.append(
+            pair(f"D2, cone {f0} 12deg p8, arming {x}, dmg x{d:g}", (None, merge(D2_A, extra)),
+                 (None, merge(D2_B, extra)))
+        )
+    return out
+
+
+ROUNDS = {"round1": round1, "round2": round2}
 
 if __name__ == "__main__":
     name = sys.argv[1]
