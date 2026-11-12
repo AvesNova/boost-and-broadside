@@ -97,6 +97,83 @@ the shot tick compile again at that size.
   so **about 5,700 SPS weighted (-0.8% against plain)**. Not yet confirmed on the GPU
   (needs the final tree's rollout compile; command below).
 - 23:52 BEFORE RL on a copy of AFTER RL's caches (`timed=0`, 12 updates), alone.
+- 00:29 **BEFORE RL done.**
+  - Update 1: 1,210 s. Of that, **822 s is the compile of `head_sums`** (the 40k-op graph;
+    the copied caches covered everything else: rollout 143 s, against AFTER's warm 138 s).
+  - Plain updates 2-12: 89.9-91.2 s, rollout 16.25 s, learn 74.5 s: **5,776 SPS**.
+  - Cadence update 10: 104.7 s, with the compiled heads' sums **7.78 s (192 calls, 0.04 s
+    each)** and the cadence 4.7 s. **5,688 SPS** weighted.
+  - Peak memory: the same as AFTER's (10.19 GB allocated, 10.69 GB reserved).
+  - The `.gpu` file has no exit line: `run.sh` was copied over while it ran.
+
+## Results (gpubox4, RTX 5060 Ti 16 GB, sm_120; RL, 1024 environments, 320 rows, old lanes)
+
+| Tree | Cold to the first update | Warm start | Plain SPS | SPS, one cadence in ten | Rollout / learn (plain) | Cadence update | Peak reserved |
+|---|---|---|---|---|---|---|---|
+| BEFORE 9f8c20fc | not measured cold; +822 s for `head_sums` over AFTER's units | 1,210 s (with the `head_sums` compile) | 5,776 | 5,688 | 16.25 / 74.5 s | 104.7 s (heads 7.8) | 10.69 GB |
+| AFTER cbf0584e | 3,216 s (contended until 23:05) | 449 s | 5,747 | **5,323 (-6.4%)** | 16.25 / 75.0 s | 163.8 s (heads 67.4) | 10.69 GB |
+| AFTER + heads' sample (b234a644) | the same as AFTER | the same | about 5,750 | **about 5,700 (projected)** | the same | about 99 s (heads about 2.8) | the same |
+
+- The plain updates are the same within 0.5% (BEFORE 90.9 s, AFTER 91.2 s mean of updates
+  2-12). Only the eager heads' sums separate the trees. The other fixes cannot show at
+  1024 environments: the micro-batches are one size in both trees, and RUN_SLACK leaves
+  RL's old lanes at two runs in both.
+- Per call, the compiled heads' sums take 0.041 s and the eager ones 0.351 s. The 256-view
+  sample (8 eager calls, about 2.8 s) costs less than BEFORE's compiled whole epoch (7.8 s)
+  and has no compile.
+- BC is not measured: two learn phases do not fit one 16 GB GPU at 1024 environments, and
+  the BC runs lost the race for memory twice (log). Command in `queue.sh` (`bc`).
+
+## Rating precision of RL's lanes (analytic, calibrated on the champion BC run)
+
+Calibration is the champion BC run (onehead-bc, 2048 environments, 1024 lanes over 2
+modes). Its exponential average against the scripted agent had 205 lanes per mode and
+played 19.8 (frontline) and 18.4 (deathmatch) games an update. Over the 10-update window
+the run's own standard error was a median 44 Elo: k = SE x sqrt(games in the window), about
+620. The ideal Bradley-Terry value at even odds is k = 347. Elimination's rate (0.15 games
+per lane per update) is an estimate from its 180 s cap. RL's new lanes give each of 7
+players a 21st of the lanes per mode. One window is 10 updates, about 10.5M steps at 2048
+environments.
+
+| Lane environments | Lanes per (mode, player) | Games per window, frontline | SE per mode, frontline (ideal) | SE over 3 modes pooled |
+|---|---|---|---|---|
+| 1024 | 48.8 | 47 | 90 (50) | about 52 (29) |
+| 512 | 24.4 | 24 | 127 (71) | about 73 (41) |
+| 256 | 12.2 | 12 | 180 (101) | about 104 (58) |
+| 0 | none | none | no rating | no rating |
+
+**The target of +-25 Elo per 10M steps looks wrong for this layout.** Per mode and per
+player it needs about 615 frontline games a window: about 13,300 lane environments (4,200
+at ideal odds). Pooled over the three modes, 1024 lanes reach about 29-52. To rate the
+product, the exponential average, to +-25 would take either a longer window for the
+averages or more of the lanes for the averages. The second breaks the equal rows that make
+the one stacked run.
+
+## Projection for the 5090 (not measured: assumed factors)
+
+Assumptions (none measured on a 5090):
+- RL about 22,000 SPS at 2048 environments and 640 rows. That is about 4x the 5060 Ti: the
+  memory bandwidth is 4.0x and the SMs 4.7x.
+- BC about 24,000 SPS: the champion's 3090 ran 11,350 SPS, and a 5090 is about 2.1x a 3090.
+- Cold compile per stage about 55 min for AFTER, single-threaded tracing as here. BEFORE
+  as shipped (2040 environments) adds 14 min for `head_sums` and about 20 min for the second
+  micro-batch shape (`_codes`, `_loss` again).
+
+| Job | BEFORE as shipped | AFTER (eager heads' sums, every micro-batch) | AFTER + sample (final) |
+|---|---|---|---|
+| 100M BC | 69 min steady + about 1.5 h compile = about 2.6 h | about 2.0 h (+6% steady) | **about 1.9 h** |
+| 500M BC -> RL (100M + 400M) | 6.2 h steady + about 3.0 h compile = about 9.2 h | about 7.7 h (+24 min) | **about 7.2 h** |
+| 8-arm suite (150M chains, 8 GPUs at once) | about 3.4 h wall | about 3.0 h | **about 2.8 h wall** |
+
+The steady differences come from the heads' sums alone (BEFORE's compiled whole epoch 1.5%,
+AFTER's eager whole epoch 7-8%, the sample about 0.6% of steady time). The compile
+differences come from BEFORE's `head_sums` graph and from its second micro-batch shape at
+2040 environments; the 2048 environments remove the second for both trees. Not in these
+numbers:
+- the final tree's rollout: the new lanes (7 network players in one run, no network-vs-
+  network rows) and the pool's always-on scripted pass;
+- the drift fix's saving in BC.
+Both are in `queue.sh`.
 
 ## The author's decisions applied on this branch (2026-11-12, evening)
 
