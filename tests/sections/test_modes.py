@@ -890,7 +890,7 @@ def test_deathmatch_globals_carry_the_scores_by_team_relative():
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("mode", ["frontline", "grouped", "sandbox"])
+@pytest.mark.parametrize("mode", ["frontline", "grouped", "sandbox", "elimination"])
 def test_compiled_tick_matches_eager_in_every_mode(mode):
     """One tick plus perception from mid-game, as test_game_section's for the default
     mode: floats to fusion rounding, flags, counters and indices exactly."""
