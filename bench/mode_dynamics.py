@@ -175,10 +175,12 @@ class Probe:
             b["since_zone"].copy_(torch.where(outside, b["since_zone"] + 1, 0))
             last = torch.where(zone >= 0, zone, b["last_zone"])
             b["last_zone"].copy_(torch.where(events.spawned | ~alive, -1, last))
-            quiet = (mode.progress.abs() == 0).all(-1)
-            b["quiet_tick"].copy_(torch.where(quiet, b["tick"], b["quiet_tick"]))
+            # a capture resets the meters, so the contest is timed from the last all-zero
+            # tick before this one
             captured = (mode.front.long() != b["front"]) & b["live"] & ~events.done
             self._count("contest", b["tick"] - b["quiet_tick"], captured)
+            quiet = (mode.progress.abs() == 0).all(-1)
+            b["quiet_tick"].copy_(torch.where(quiet, b["tick"], b["quiet_tick"]))
             b["front"].copy_(mode.front.long())
         b["engaged"].copy_(engaged & ~events.spawned & alive)
         b["since_spawn"].copy_(torch.where(events.spawned, 0, since))
