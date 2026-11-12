@@ -590,3 +590,28 @@ The frozen card, E v T, 256 games (±0.03), 300 s unless noted:
 **Confirm at 1024 games (`confirm/`, 21:25-21:28):** D 0.53 / 0.52 / 0.56 / 0.49 (JJ 1v1
 0.64 mutual, 256 s; YY 0.20, 484 s); C 0.39 / 0.51 / 0.61 / 0.49 (JJ 0.78). D holds the
 band at every size from 1v1 to 10v10; C misses at 1v1 and 5v5 by about 0.1.
+
+## 21:29-21:35 KST: path run 5 (`paths5/`): D's mirror life; head-on on C (E)
+
+512 games; E v T at 1v1 / 2v2 / 5v5 / 10v10; mirrors' 1v1 mutual head-on and life; mixed 1v1
+kills m / o / f / t and merges a kill; strength against r9:
+
+| Card | E v T | JJ 1v1 | YY 1v1 | Mixed 1v1: kills; life; merges | v r9 |
+|---|---|---|---|---|---|
+| D | 0.54 / 0.52 / 0.57 / 0.48 | 0.64, 259 s | 0.15, **500 s** | 0.17 / 0.75 / 0.08 / 0; 305 s; 3.6 / 3 / 0.29 / 8 | 0.51 / 0.52 |
+| **D2: D with Yongma's head-on fraction x0.7 (not x0.5)** | **0.49 / 0.48 / 0.55 / 0.45** | **0.64, 260 s** | 0.39, **290 s** | 0.24 / 0.69 / 0.07 / 0; 288 s; **3.4 / 3 / 0.32 / 8** | 0.50 / 0.52 |
+| D, Y shield x0.45 | 0.51 / 0.47 / 0.56 / 0.40 | 0.65, 257 s | 0.23, 388 s | 0.20 / 0.72 / 0.08 / 0; 290 s | 0.51 / 0.50 |
+| D, Y fraction x0.7, Y shield x0.45 | 0.49 / 0.42 / 0.52 / 0.31 | 0.65 | 0.42, 256 s | | 0.51 / 0.51 |
+| E: C + both fractions x0.5 | 0.34 / 0.48 / 0.58 / 0.49 | 0.70, 208 s | 0.35, 366 s | 0.33 / 0.54 / 0.13 / 0; 256 s | 0.53 / 0.49 |
+| E: C + both fractions x0.5, Y damage x1.7 | 0.38 / 0.52 / 0.61 / 0.44 | 0.72 | 0.37, 385 s | | 0.53 / 0.49 |
+| E: C + both fractions x0.5, J induced x1.55 | 0.50 / 0.53 / 0.63 / 0.50 | 0.70 | 0.35, 391 s | 0.25 / 0.65 / 0.10 / 0 | 0.51 / 0.52 |
+
+- **D2 meets the most targets at once**: E v T 0.45-0.55 from 1v1 to 10v10 (512 games,
+  ±0.014-0.03), strength even with r9, both mirrors' 1v1 life inside 300 s (260 / 290 s),
+  mixed 1v1 mutual head-on 0.24 (A 0.43), and duel merges a kill 3.4 (median 3,
+  first-pass 0.32, p90 8). Saved as the map `balance-d2` (`bnb play --preset balance-d2`).
+  Still open on D2: the inverted sustained turn (A's), Jujak mirror mutual head-on 0.64, and
+  20v20 (not run on D2; every card fails it, see the arena diagnosis).
+- E (head-on on the range card, keeping Jujak's edge at x1.5) moves the duel the wrong way
+  (1v1 0.39 to 0.34): with Jujak's sustained edge, the Yongma needs the joust.
+  At J induced x1.55 (sustained 0.237, a slight inversion) it is 0.50 / 0.53 / 0.63 / 0.50.
