@@ -273,3 +273,10 @@ one-circle and the crowd to `crowd_sense` (a set stick and a boost).
   one-circling the Yongma still takes the duel (D2 0.50 to 0.14). One-circle is the turn
   fighter's move (the archetype), and on a card balanced for r9 it is too strong. Gating it
   to the mirror is the choice that leaves the cards' balance alone.
+
+Round 5's 5v5 against r9 (mixed / reversed): the type gates do not save the crowd. One-circle
+mirror-only 0.35-0.40 (frozen), 0.43-0.47 (D2), 0.45-0.48 (cone 0.085), 0.47-0.48 (cone
+0.01); ungated 0.21-0.45. The lead turn alone: 0.47-0.52 (frozen, D2 0.45-0.51, cones
+0.46-0.52; about 0.49 averaged with round 3's). Energy v turn 2v2 / 5v5 stays near r9's
+with the mirror gate (D2 0.44 / 0.56 against 0.46 / 0.54); the lift gate tips the 5v5 to
+the Yongma on frozen (0.76) while the 1v1 goes to the Jujak.
