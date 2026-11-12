@@ -1,0 +1,2 @@
+D2 | r9, 1v1 turn mirror: 107 fights, 77 kills; merges a kill mean 3.65, seconds 87, extensions 0.01, edge s 3.5
+D2 | duel deny 0.8, crowd 8 gun ranges, 1v1 turn mirror: 73 fights, 43 kills; merges a kill mean 5.47, seconds 136, extensions 0.00, edge s 2.9

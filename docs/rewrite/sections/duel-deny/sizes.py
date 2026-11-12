@@ -102,6 +102,13 @@ def main() -> None:
         default=None,
         help="play the lineups other than energy v turn only at these sizes (default: all)",
     )
+    parser.add_argument(
+        "--versus-lineups",
+        nargs="+",
+        default=["mixed", "mixed reversed"],
+        help="the lineups against --versus",
+    )
+    parser.add_argument("--versus-sizes", type=int, nargs="+", default=[5])
     parser.add_argument("--arena-scale", type=float, default=1.0, help="off the density rule")
     parser.add_argument("--fog", type=int, default=1)
     args = parser.parse_args()
@@ -144,12 +151,12 @@ def main() -> None:
             for lineup in args.lineups
             if lineup == "energy v turn" or args.mirror_sizes is None or size in args.mirror_sizes
         ]
-        if args.versus and size == 5:
+        if args.versus and size in args.versus_sizes:
             versus = by[args.versus]
             jobs += [
                 Job(card_of[n], lineup, player, versus, args.games)
                 for n, player in enumerate(players)
-                for lineup in ("mixed", "mixed reversed")
+                for lineup in args.versus_lineups
             ]
         log(f"## {size}v{size}: {len(jobs)} jobs, B {B}, {clock(0)} KST")
         outs = run(loop, jobs, log)

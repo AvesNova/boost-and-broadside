@@ -1,1 +1,94 @@
 ## 1v1: 27 jobs, B 8192, 21:58 KST
+/home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+  warn_once(FP_FUSION_DEFAULT_WARNING)
+  batch 1/4 23 s; ETA 22:00 KST
+  batch 2/4 39 s; ETA 21:59 KST
+  batch 3/4 55 s; ETA 21:59 KST
+  batch 4/4 71 s; ETA 21:59 KST
+1v1                  frozen | r9   energy v turn v c0: score 0.006 ± 0.002  kills m/o/f/t 0.16 / 0.12 / 0.41 / 0.30  life 167 s  kpm/ship 0.34  trades 0.00
+1v1                  frozen | r9     turn mirror v c0: score 0.496 ± 0.011  kills m/o/f/t 0.79 / 0.18 / 0.03 / 0.00  life 154 s  kpm/ship 0.37  trades 0.03
+1v1                  frozen | r9   energy mirror v c0: score 0.501 ± 0.006  kills m/o/f/t 0.35 / 0.56 / 0.08 / 0.00  life 1042 s  kpm/ship 0.06  trades 0.00
+1v1 frozen | duel deny 0.8, crowd 8 gun ranges   energy v turn v c1: score 0.002 ± 0.001  kills m/o/f/t 0.00 / 0.05 / 0.49 / 0.45  life 221 s  kpm/ship 0.26  trades 0.00
+1v1 frozen | duel deny 0.8, crowd 8 gun ranges     turn mirror v c1: score 0.510 ± 0.011  kills m/o/f/t 0.07 / 0.89 / 0.04 / 0.00  life 528 s  kpm/ship 0.11  trades 0.00
+1v1 frozen | duel deny 0.8, crowd 8 gun ranges   energy mirror v c1: score 0.503 ± 0.006  kills m/o/f/t 0.01 / 0.74 / 0.25 / 0.00  life 1219 s  kpm/ship 0.05  trades 0.00
+1v1 frozen | duel deny 0.8, crowd 12 gun ranges   energy v turn v c2: score 0.001 ± 0.001  kills m/o/f/t 0.00 / 0.05 / 0.50 / 0.45  life 220 s  kpm/ship 0.26  trades 0.00
+1v1 frozen | duel deny 0.8, crowd 12 gun ranges     turn mirror v c2: score 0.499 ± 0.011  kills m/o/f/t 0.06 / 0.91 / 0.02 / 0.00  life 530 s  kpm/ship 0.11  trades 0.00
+1v1 frozen | duel deny 0.8, crowd 12 gun ranges   energy mirror v c2: score 0.496 ± 0.005  kills m/o/f/t 0.00 / 0.81 / 0.19 / 0.00  life 1419 s  kpm/ship 0.04  trades 0.00
+1v1                       C | r9   energy v turn v c3: score 0.397 ± 0.011  kills m/o/f/t 0.55 / 0.35 / 0.10 / 0.00  life 169 s  kpm/ship 0.34  trades 0.01
+1v1                       C | r9     turn mirror v c3: score 0.481 ± 0.012  kills m/o/f/t 0.76 / 0.20 / 0.04 / 0.00  life 115 s  kpm/ship 0.48  trades 0.03
+1v1                       C | r9   energy mirror v c3: score 0.480 ± 0.009  kills m/o/f/t 0.65 / 0.28 / 0.06 / 0.00  life 195 s  kpm/ship 0.29  trades 0.06
+1v1 C | duel deny 0.8, crowd 8 gun ranges   energy v turn v c4: score 0.372 ± 0.011  kills m/o/f/t 0.02 / 0.86 / 0.12 / 0.00  life 284 s  kpm/ship 0.20  trades 0.00
+1v1 C | duel deny 0.8, crowd 8 gun ranges     turn mirror v c4: score 0.506 ± 0.011  kills m/o/f/t 0.03 / 0.93 / 0.04 / 0.00  life 332 s  kpm/ship 0.18  trades 0.00
+1v1 C | duel deny 0.8, crowd 8 gun ranges   energy mirror v c4: score 0.494 ± 0.008  kills m/o/f/t 0.01 / 0.85 / 0.14 / 0.00  life 565 s  kpm/ship 0.10  trades 0.00
+1v1 C | duel deny 0.8, crowd 12 gun ranges   energy v turn v c5: score 0.380 ± 0.011  kills m/o/f/t 0.01 / 0.87 / 0.12 / 0.00  life 291 s  kpm/ship 0.20  trades 0.00
+1v1 C | duel deny 0.8, crowd 12 gun ranges     turn mirror v c5: score 0.508 ± 0.011  kills m/o/f/t 0.03 / 0.93 / 0.04 / 0.00  life 333 s  kpm/ship 0.18  trades 0.00
+1v1 C | duel deny 0.8, crowd 12 gun ranges   energy mirror v c5: score 0.511 ± 0.008  kills m/o/f/t 0.01 / 0.87 / 0.12 / 0.00  life 616 s  kpm/ship 0.10  trades 0.00
+1v1                      D2 | r9   energy v turn v c6: score 0.496 ± 0.010  kills m/o/f/t 0.24 / 0.66 / 0.09 / 0.00  life 285 s  kpm/ship 0.20  trades 0.00
+1v1                      D2 | r9     turn mirror v c6: score 0.493 ± 0.009  kills m/o/f/t 0.64 / 0.31 / 0.05 / 0.00  life 257 s  kpm/ship 0.23  trades 0.02
+1v1                      D2 | r9   energy mirror v c6: score 0.491 ± 0.008  kills m/o/f/t 0.37 / 0.52 / 0.11 / 0.00  life 285 s  kpm/ship 0.20  trades 0.01
+1v1 D2 | duel deny 0.8, crowd 8 gun ranges   energy v turn v c7: score 0.614 ± 0.010  kills m/o/f/t 0.00 / 0.91 / 0.08 / 0.00  life 274 s  kpm/ship 0.21  trades 0.00
+1v1 D2 | duel deny 0.8, crowd 8 gun ranges     turn mirror v c7: score 0.495 ± 0.010  kills m/o/f/t 0.01 / 0.94 / 0.05 / 0.00  life 434 s  kpm/ship 0.14  trades 0.00
+1v1 D2 | duel deny 0.8, crowd 8 gun ranges   energy mirror v c7: score 0.506 ± 0.008  kills m/o/f/t 0.01 / 0.85 / 0.14 / 0.00  life 502 s  kpm/ship 0.12  trades 0.00
+1v1 D2 | duel deny 0.8, crowd 12 gun ranges   energy v turn v c8: score 0.610 ± 0.010  kills m/o/f/t 0.00 / 0.91 / 0.08 / 0.00  life 281 s  kpm/ship 0.21  trades 0.00
+1v1 D2 | duel deny 0.8, crowd 12 gun ranges     turn mirror v c8: score 0.500 ± 0.010  kills m/o/f/t 0.01 / 0.94 / 0.05 / 0.00  life 447 s  kpm/ship 0.13  trades 0.00
+1v1 D2 | duel deny 0.8, crowd 12 gun ranges   energy mirror v c8: score 0.490 ± 0.008  kills m/o/f/t 0.00 / 0.85 / 0.15 / 0.00  life 552 s  kpm/ship 0.11  trades 0.00
+## 2v2: 9 jobs, B 8192, 21:59 KST
+  batch 1/2 27 s; ETA 22:00 KST
+  batch 2/2 47 s; ETA 22:00 KST
+2v2                  frozen | r9   energy v turn v c0: score 0.375 ± 0.013  kills m/o/f/t 0.10 / 0.17 / 0.53 / 0.20  life 111 s  kpm/ship 0.50  trades 0.02
+2v2 frozen | duel deny 0.8, crowd 8 gun ranges   energy v turn v c1: score 0.304 ± 0.013  kills m/o/f/t 0.04 / 0.17 / 0.56 / 0.23  life 116 s  kpm/ship 0.48  trades 0.01
+2v2 frozen | duel deny 0.8, crowd 12 gun ranges   energy v turn v c2: score 0.328 ± 0.013  kills m/o/f/t 0.04 / 0.18 / 0.56 / 0.22  life 116 s  kpm/ship 0.48  trades 0.02
+2v2                       C | r9   energy v turn v c3: score 0.506 ± 0.014  kills m/o/f/t 0.19 / 0.25 / 0.47 / 0.10  life 95 s  kpm/ship 0.57  trades 0.02
+2v2 C | duel deny 0.8, crowd 8 gun ranges   energy v turn v c4: score 0.526 ± 0.014  kills m/o/f/t 0.05 / 0.29 / 0.55 / 0.11  life 103 s  kpm/ship 0.53  trades 0.02
+2v2 C | duel deny 0.8, crowd 12 gun ranges   energy v turn v c5: score 0.508 ± 0.014  kills m/o/f/t 0.05 / 0.29 / 0.55 / 0.11  life 104 s  kpm/ship 0.53  trades 0.02
+2v2                      D2 | r9   energy v turn v c6: score 0.480 ± 0.014  kills m/o/f/t 0.08 / 0.23 / 0.56 / 0.13  life 112 s  kpm/ship 0.49  trades 0.01
+2v2 D2 | duel deny 0.8, crowd 8 gun ranges   energy v turn v c7: score 0.566 ± 0.014  kills m/o/f/t 0.03 / 0.24 / 0.59 / 0.14  life 114 s  kpm/ship 0.49  trades 0.02
+2v2 D2 | duel deny 0.8, crowd 12 gun ranges   energy v turn v c8: score 0.554 ± 0.014  kills m/o/f/t 0.03 / 0.23 / 0.60 / 0.14  life 115 s  kpm/ship 0.48  trades 0.01
+## 5v5: 27 jobs, B 4096, 22:00 KST
+  batch 1/7 37 s; ETA 22:04 KST
+  batch 2/7 69 s; ETA 22:04 KST
+  batch 3/7 101 s; ETA 22:04 KST
+  batch 4/7 132 s; ETA 22:04 KST
+  batch 5/7 164 s; ETA 22:04 KST
+  batch 6/7 196 s; ETA 22:04 KST
+  batch 7/7 228 s; ETA 22:04 KST
+5v5                  frozen | r9   energy v turn v c0: score 0.500 ± 0.014  kills m/o/f/t 0.06 / 0.17 / 0.53 / 0.23  life 109 s  kpm/ship 0.50  trades 0.04
+5v5 frozen | duel deny 0.8, crowd 8 gun ranges   energy v turn v c1: score 0.546 ± 0.015  kills m/o/f/t 0.05 / 0.16 / 0.54 / 0.24  life 110 s  kpm/ship 0.50  trades 0.04
+5v5 frozen | duel deny 0.8, crowd 12 gun ranges   energy v turn v c2: score 0.519 ± 0.014  kills m/o/f/t 0.05 / 0.16 / 0.54 / 0.24  life 110 s  kpm/ship 0.50  trades 0.04
+5v5                       C | r9   energy v turn v c3: score 0.634 ± 0.014  kills m/o/f/t 0.09 / 0.21 / 0.54 / 0.15  life 94 s  kpm/ship 0.58  trades 0.05
+5v5 C | duel deny 0.8, crowd 8 gun ranges   energy v turn v c4: score 0.627 ± 0.014  kills m/o/f/t 0.06 / 0.21 / 0.57 / 0.16  life 95 s  kpm/ship 0.57  trades 0.05
+5v5 C | duel deny 0.8, crowd 12 gun ranges   energy v turn v c5: score 0.621 ± 0.014  kills m/o/f/t 0.06 / 0.21 / 0.56 / 0.17  life 95 s  kpm/ship 0.57  trades 0.05
+5v5                      D2 | r9   energy v turn v c6: score 0.549 ± 0.014  kills m/o/f/t 0.05 / 0.18 / 0.58 / 0.19  life 102 s  kpm/ship 0.53  trades 0.04
+5v5 D2 | duel deny 0.8, crowd 8 gun ranges   energy v turn v c7: score 0.619 ± 0.014  kills m/o/f/t 0.04 / 0.18 / 0.59 / 0.20  life 102 s  kpm/ship 0.54  trades 0.05
+5v5 D2 | duel deny 0.8, crowd 12 gun ranges   energy v turn v c8: score 0.638 ± 0.014  kills m/o/f/t 0.04 / 0.17 / 0.59 / 0.20  life 101 s  kpm/ship 0.54  trades 0.05
+5v5                  frozen | r9           mixed v r9: score 0.494 ± 0.015  kills m/o/f/t 0.07 / 0.17 / 0.52 / 0.25  life 115 s  kpm/ship 0.48  trades 0.04
+5v5                  frozen | r9  mixed reversed v r9: score 0.491 ± 0.015  kills m/o/f/t 0.08 / 0.18 / 0.54 / 0.21  life 105 s  kpm/ship 0.52  trades 0.05
+5v5 frozen | duel deny 0.8, crowd 8 gun ranges           mixed v r9: score 0.460 ± 0.014  kills m/o/f/t 0.06 / 0.16 / 0.53 / 0.24  life 115 s  kpm/ship 0.48  trades 0.04
+5v5 frozen | duel deny 0.8, crowd 8 gun ranges  mixed reversed v r9: score 0.432 ± 0.014  kills m/o/f/t 0.07 / 0.18 / 0.54 / 0.21  life 105 s  kpm/ship 0.52  trades 0.04
+5v5 frozen | duel deny 0.8, crowd 12 gun ranges           mixed v r9: score 0.457 ± 0.014  kills m/o/f/t 0.07 / 0.16 / 0.53 / 0.25  life 115 s  kpm/ship 0.48  trades 0.04
+5v5 frozen | duel deny 0.8, crowd 12 gun ranges  mixed reversed v r9: score 0.447 ± 0.015  kills m/o/f/t 0.07 / 0.18 / 0.54 / 0.21  life 105 s  kpm/ship 0.52  trades 0.05
+5v5                       C | r9           mixed v r9: score 0.517 ± 0.015  kills m/o/f/t 0.10 / 0.21 / 0.54 / 0.15  life 93 s  kpm/ship 0.58  trades 0.05
+5v5                       C | r9  mixed reversed v r9: score 0.494 ± 0.015  kills m/o/f/t 0.10 / 0.21 / 0.54 / 0.15  life 90 s  kpm/ship 0.60  trades 0.06
+5v5 C | duel deny 0.8, crowd 8 gun ranges           mixed v r9: score 0.420 ± 0.014  kills m/o/f/t 0.09 / 0.22 / 0.54 / 0.16  life 94 s  kpm/ship 0.58  trades 0.05
+5v5 C | duel deny 0.8, crowd 8 gun ranges  mixed reversed v r9: score 0.449 ± 0.015  kills m/o/f/t 0.09 / 0.22 / 0.54 / 0.15  life 90 s  kpm/ship 0.60  trades 0.06
+5v5 C | duel deny 0.8, crowd 12 gun ranges           mixed v r9: score 0.423 ± 0.014  kills m/o/f/t 0.09 / 0.21 / 0.54 / 0.16  life 94 s  kpm/ship 0.58  trades 0.05
+5v5 C | duel deny 0.8, crowd 12 gun ranges  mixed reversed v r9: score 0.416 ± 0.014  kills m/o/f/t 0.08 / 0.22 / 0.54 / 0.16  life 90 s  kpm/ship 0.60  trades 0.06
+5v5                      D2 | r9           mixed v r9: score 0.496 ± 0.015  kills m/o/f/t 0.05 / 0.18 / 0.59 / 0.18  life 100 s  kpm/ship 0.55  trades 0.05
+5v5                      D2 | r9  mixed reversed v r9: score 0.495 ± 0.015  kills m/o/f/t 0.05 / 0.18 / 0.59 / 0.18  life 99 s  kpm/ship 0.55  trades 0.05
+5v5 D2 | duel deny 0.8, crowd 8 gun ranges           mixed v r9: score 0.462 ± 0.014  kills m/o/f/t 0.05 / 0.19 / 0.58 / 0.18  life 99 s  kpm/ship 0.55  trades 0.05
+5v5 D2 | duel deny 0.8, crowd 8 gun ranges  mixed reversed v r9: score 0.466 ± 0.014  kills m/o/f/t 0.04 / 0.18 / 0.59 / 0.19  life 98 s  kpm/ship 0.56  trades 0.05
+5v5 D2 | duel deny 0.8, crowd 12 gun ranges           mixed v r9: score 0.435 ± 0.014  kills m/o/f/t 0.04 / 0.19 / 0.58 / 0.19  life 100 s  kpm/ship 0.55  trades 0.05
+5v5 D2 | duel deny 0.8, crowd 12 gun ranges  mixed reversed v r9: score 0.455 ± 0.015  kills m/o/f/t 0.04 / 0.18 / 0.59 / 0.19  life 98 s  kpm/ship 0.56  trades 0.05
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|
+| frozen | r9 | 0.006 ± 0.002 | 0.375 ± 0.013 | 0.500 ± 0.014 | 0.494 | 0.06 / 0.17 / 0.53 / 0.23 | 0.04 | 167 / 111 / 109 | 0.34 / 0.50 / 0.50 | 2.83 |
+| frozen | duel deny 0.8, crowd 8 gun ranges | 0.002 ± 0.001 | 0.304 ± 0.013 | 0.546 ± 0.015 | 0.498 | 0.05 / 0.16 / 0.54 / 0.24 | 0.04 | 221 / 116 / 110 | 0.26 / 0.48 / 0.50 | 3.67 |
+| frozen | duel deny 0.8, crowd 12 gun ranges | 0.001 ± 0.001 | 0.328 ± 0.013 | 0.519 ± 0.014 | 0.499 | 0.05 / 0.16 / 0.54 / 0.24 | 0.04 | 220 / 116 / 110 | 0.26 / 0.48 / 0.50 | 3.6 |
+| C | r9 | 0.397 ± 0.011 | 0.506 ± 0.014 | 0.634 ± 0.014 | 0.134 | 0.09 / 0.21 / 0.54 / 0.15 | 0.05 | 169 / 95 / 94 | 0.34 / 0.57 / 0.58 | 2.13 |
+| C | duel deny 0.8, crowd 8 gun ranges | 0.372 ± 0.011 | 0.526 ± 0.014 | 0.627 ± 0.014 | 0.128 | 0.06 / 0.21 / 0.57 / 0.16 | 0.05 | 284 / 103 / 95 | 0.20 / 0.53 / 0.57 | 3.79 |
+| C | duel deny 0.8, crowd 12 gun ranges | 0.380 ± 0.011 | 0.508 ± 0.014 | 0.621 ± 0.014 | 0.121 | 0.06 / 0.21 / 0.56 / 0.17 | 0.05 | 291 / 104 / 95 | 0.20 / 0.53 / 0.57 | 3.95 |
+| D2 | r9 | 0.496 ± 0.010 | 0.480 ± 0.014 | 0.549 ± 0.014 | 0.049 | 0.05 / 0.18 / 0.58 / 0.19 | 0.04 | 285 / 112 / 102 | 0.20 / 0.49 / 0.53 | 3.4 |
+| D2 | duel deny 0.8, crowd 8 gun ranges | 0.614 ± 0.010 | 0.566 ± 0.014 | 0.619 ± 0.014 | 0.119 | 0.04 / 0.18 / 0.59 / 0.20 | 0.05 | 274 / 114 / 102 | 0.21 / 0.49 / 0.54 | 3.26 |
+| D2 | duel deny 0.8, crowd 12 gun ranges | 0.610 ± 0.010 | 0.554 ± 0.014 | 0.638 ± 0.014 | 0.138 | 0.04 / 0.17 / 0.59 / 0.20 | 0.05 | 281 / 115 / 101 | 0.21 / 0.48 / 0.54 | 3.32 |
+
+347 s

@@ -54,7 +54,8 @@ def main() -> None:
             if r["candidate"] == name and r["lineup"] == lineup
         )
         lines.append(
-            f"| {name} | {mirror('turn mirror')} | {mirror('energy mirror')} | {evt} | {versus} |"
+            f"| {name.replace(' | ', ': ')} | {mirror('turn mirror')} | "
+            f"{mirror('energy mirror')} | {evt} | {versus} |"
         )
     print("\n".join(lines))
 
