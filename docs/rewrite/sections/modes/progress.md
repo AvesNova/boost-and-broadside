@@ -230,3 +230,18 @@ farthest from enemies).
   one; more attackers fill faster), and the first capture of a match comes at ~87 s.
 - Capture dynamics: P(next capture by the same team) 0.143 ± 0.005; 9% of games end by
   the front (step 2e/2f).
+
+### Elimination with side spawns (5v5, 7800 m, no fields, release lineup, scripted mirror, 512 games, 180 s)
+
+`bench.mode_dynamics deathmatch --preset real_scale_elimination` (record
+`records/elimination.jsonl`). With the teams' areas 12.5 km apart (spawn offset 0.8):
+
+- First enemy hit at 36.7 s mean (median 36.6, quartiles 35.6-37.6): the fleets fly
+  straight at each other and meet mid-map; first death 37.6 s median.
+- 99.8% of games end by a wipe, at 47.5 s median (quartiles 46-55 s); essentially none run
+  out the 180 s clock. The fight itself lasts ~10 s from first hit to wipe.
+- Note: the trace misses the deaths of the tick a match ends on (that tick's state is the
+  new match's), so per-game winners of a wipe are not read here; the timings are.
+- If a shorter approach is wanted, `Rules.spawn_offset` (shared with the sandbox formation)
+  or a separate elimination offset sets it: at 0.5 the areas are 7.8 km apart, ~22 s to
+  contact. The author's call.
