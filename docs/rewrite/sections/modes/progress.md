@@ -184,3 +184,29 @@ One knob changed from the 5v5 baseline (990 m zones, capture 20 s, threshold 3, 
   next target is not the zone it just lost. Either is a rule change (game version). I can
   measure a lock in an hour if wanted. With a near-random walk (P ≈ 0.5) a symmetric walk
   needs ~9 captures to reach ±3, which at ~1 capture per 55 s fits a 600 s clock.
+
+## Step 2g: the author's per-mode quantities (release lineup; tickets and clocks dropped)
+
+The author (16:20): no more ticket/clock calibration until the ships are final; measure the
+quantities below on the tree's default cards, to be checked against real-game bands and
+re-measured after the freeze. Record `records/probes.jsonl` (per-ship probe histograms in
+1 s bins; `bench/mode_dynamics_report.py`).
+
+### Deathmatch (5v5, 7800 m, no fields, 2 Yongma + 3 Jujak a team, scripted mirror, 512 games, 600 s, tickets off)
+
+| quantity | mean | median | quartiles | 5-95% |
+|---|---|---|---|---|
+| kills per minute (both teams) | 7.19 | 7.20 | 7.0-7.4 | 6.7-7.6 |
+| match start to the first enemy hit (s) | 24.6 | 29.8 | 6.8-38.3 | 2.2-44.8 |
+| match start to the first death (s) | 27.0 | 32.6 | 10.2-40.4 | 4.4-46.2 |
+| time between deaths, any team (s) | 7.95 | 4.47 | 2.2-10.1 | 0.3-28.8 |
+| a ship's spawn to its first hit dealt or taken (s) | 64.9 | 59.5 | 50.5-71.5 | 37.5-113.5 |
+| a ship's spawn to its death (s) | 68.8 | 62.5 | 54.5-77.5 | 41.5-116.5 |
+
+Trade share (deaths with an enemy death within the window): 0.140 at 0.5 s, 0.203 at
+1 s, 0.347 at 2 s. Readings: the start is bimodal (a quarter of games see a hit within 7 s:
+deathmatch's random spawns can land enemies close; the rest meet at ~30-40 s). A ship
+lives ~1 min, almost all of it before its first hit: from first contact to death is a few
+seconds (life median 62.5 s against first contact 59.5 s): the fights are short and
+decisive; the time is travel. Includes the respawn's time to find a fight (respawns land
+farthest from enemies).
