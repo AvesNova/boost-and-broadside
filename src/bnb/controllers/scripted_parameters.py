@@ -157,16 +157,8 @@ class ScriptedParameters:
     ship's own time, its corner turn time over the card's first type's (`time_unit`),
     raised to this; 0 (the default) is seconds, as every set was tuned.
 
-    Relative tactics (the energy fight): energy_fight_strength, the largest weight of the
-    energy doctrine against the committed target (0, the default, is off: the agent as
-    without it, bitwise); the doctrine's advantage is the product of the own-over-target
-    ratios of the sustained turn rate, the climb power, the cruise speed and the gun range,
-    each raised to its exponent (energy_fight_turn_exponent and the others), and its weight
-    is energy_fight_strength times energy_fight_in_advantage, a logistic in that product.
-    In the doctrine a ship extends (flies away from the target, boosting) rather than
-    turning after it, with weight extend_in_gun_range (by the target's distance in gun
-    ranges, falling) times extend_in_stall_angle (by the aim error in stall angles,
-    rising), and never reverses: it keeps its speed.
+    How a ship fights by its type (the energy and turn fighters' doctrines) is not here:
+    it is a per-type table of `bnb.controllers.scripted_doctrine.Doctrine`s.
     """
 
     turn_in_stall_angle: Logistic = Logistic(0.0398, 0.306, True)
@@ -198,14 +190,6 @@ class ScriptedParameters:
     goal_switch_in_strength: Switch = Switch(8.0, 0.3, 0.06)
     recovery_switch_in_log_ratio: Switch = Switch(8.0, 0.3, 0.06)
     time_unit_exponent: float = 0.0
-    energy_fight_strength: float = 0.0
-    energy_fight_turn_exponent: float = -1.0
-    energy_fight_climb_exponent: float = 0.0
-    energy_fight_speed_exponent: float = 0.0
-    energy_fight_range_exponent: float = 0.0
-    energy_fight_in_advantage: Logistic = Logistic(1.0, 0.1, True)
-    extend_in_gun_range: Logistic = Logistic(1.0, 0.2, False)
-    extend_in_stall_angle: Logistic = Logistic(4.0, 0.2, True)
 
 
 # Each logistic's smallest scale: 0.1 x the standard deviation of the logarithm of its
@@ -224,24 +208,10 @@ SCALE_FLOORS = {
     # the memory's: a tenth of a factor e in time, the turn logistics' in stall angles
     "memory_fade_in_seconds": 0.1,
     "side_commit_in_stall_angle": 0.158,
-    # the relative tactics' (not measured: each a tenth of a factor e in its quantity, near
-    # the turn logistics' in stall angles)
-    "energy_fight_in_advantage": 0.05,
-    "extend_in_gun_range": 0.1,
-    "extend_in_stall_angle": 0.158,
 }
-# The relative tactics' and own time's searched bounds (the search adds to them rather
-# than multiplying: each default is an exact 0 or a sign). The exponents of the doctrine's
-# ratios span an inverse square to a square; the strength and the own time's exponent run
-# from off to whole.
-ADDITIVE_BOUNDS = {
-    "time_unit_exponent": (0.0, 1.0),
-    "energy_fight_strength": (0.0, 1.0),
-    "energy_fight_turn_exponent": (-2.0, 2.0),
-    "energy_fight_climb_exponent": (-2.0, 2.0),
-    "energy_fight_speed_exponent": (-2.0, 2.0),
-    "energy_fight_range_exponent": (-2.0, 2.0),
-}
+# The own time's searched bounds (the search adds to it rather than multiplying: its default
+# is an exact 0), from off to whole.
+ADDITIVE_BOUNDS = {"time_unit_exponent": (0.0, 1.0)}
 # Each switch's smallest scale, in its advantage's unit: about a tenth of the range its
 # advantage spans in play (a log distance ratio, radians of turn, ship strengths, a log
 # margin).
@@ -253,8 +223,8 @@ SWITCH_SCALE_FLOORS = {
 }
 
 NAMES = tuple(field.name for field in dataclasses.fields(ScriptedParameters))
-# The own time's and the relative tactics' fields: off by default, searched only on request.
-RELATIVE_TACTICS = NAMES[NAMES.index("time_unit_exponent") :]
+# The own time's field: off by default, searched only on request.
+OWN_TIME = ("time_unit_exponent",)
 _DEFAULT = ScriptedParameters()  # the logistics' directions (`unpack`)
 
 

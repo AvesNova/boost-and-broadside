@@ -195,6 +195,7 @@ def decide(
     reset: torch.Tensor | None = None,
     seconds: float = Rules.tick_length,
     switching: bool = False,
+    doctrines: torch.Tensor | None = None,
 ) -> tuple[Marginals, ScriptedCarry]:
     """The scripted agent's power, stick and shoot marginals per own ship at a temperature (a
     float, or (R, 1) per view), given its carry, and the carry after the decision: the
@@ -206,7 +207,9 @@ def decide(
     views whose episode reset before this observation. With `switching` the plan choices may
     switch (a decision); without, only a fresh ship or a lost target re-chooses, so a carry
     `decide` returned gives the same marginals again (a label's re-reading). parameters: one
-    set, per view, or per mode (`ModeParameters`: each view its mode's)."""
+    set, per view, or per mode (`ModeParameters`: each view its mode's). doctrines: each
+    ship type's doctrine (`bnb.controllers.scripted_doctrine`), a table (T, D) or per view
+    (R, T, D); None flies none."""
     parameters = resolved(parameters, obs, characteristics)
     ships = obs.ships
     views, S = ships.shape[0], ships.shape[-2] // 2
@@ -218,7 +221,7 @@ def decide(
     fleet = context(
         obs, characteristics, parameters, temperature, carry, recall, seconds, switching
     )
-    fighting = combat(fleet, characteristics, parameters)
+    fighting = combat(fleet, characteristics, parameters, doctrines)
     strategy = frontline(fleet, obs.zones, characteristics, parameters, fighting)
     in_frontline = (obs.globals[:, None, GLOBAL["mode_frontline"]] > 0.5)[..., None]
     alive = (fleet.own[..., SHIP["alive"]] > 0.5)[..., None]
@@ -258,10 +261,11 @@ def marginals(
     parameters: ScriptedParameters | ModeParameters,
     temperature: torch.Tensor | float = 1.0,
     carry: ScriptedCarry | None = None,
+    doctrines: torch.Tensor | None = None,
 ) -> Marginals:
     """The marginals `decide` gives (without switching): with carry None, the memoryless
     agent's, from the observation alone."""
-    return decide(obs, characteristics, parameters, temperature, carry)[0]
+    return decide(obs, characteristics, parameters, temperature, carry, doctrines=doctrines)[0]
 
 
 def joint(parts: Marginals) -> torch.Tensor:
@@ -304,7 +308,9 @@ class Scripted:
     probability, drawn at each episode reset, else uniformly (a mixture rung; 1 is the
     agent). The league may change either tensor in place. ships_per_team: S, the carry's
     size. parameters: per mode (the default, `MODE_DEFAULTS`: each view plays its game
-    mode's set), one set, or per view (`scripted_parameters.unpack` of a table). memory:
+    mode's set), one set, or per view (`scripted_parameters.unpack` of a table). doctrines:
+    each ship type's doctrine, a table (T, D) or per view (R, T, D)
+    (`bnb.controllers.scripted_doctrine`; None, the default, flies none). memory:
     with False, every decision is the memoryless agent's (each plan choice made afresh,
     only visible enemies known); the carry still holds the ships' agent flags. seconds: a
     decision's length (the switches' rates are per second).
@@ -321,6 +327,7 @@ class Scripted:
         share: float | torch.Tensor = 1.0,
         memory: bool = True,
         seconds: float = Rules.tick_length,
+        doctrines: torch.Tensor | None = None,
     ) -> None:
         if not isinstance(temperature, torch.Tensor) and not temperature > 0.0:
             raise ValueError(f"the scripted agent's temperature {temperature} must be positive")
@@ -332,6 +339,7 @@ class Scripted:
         self.ships_per_team = ships_per_team
         self.temperature, self.share = temperature, share
         self.memory, self.seconds = memory, seconds
+        self.doctrines = doctrines
 
     def init_carry(self, views: int, device: torch.device) -> ScriptedCarry:
         """Nothing committed or remembered (the first observation's reset draws the agent
@@ -368,11 +376,19 @@ class Scripted:
             reset,
             self.seconds,
             switching=True,
+            doctrines=self.doctrines,
         )
 
     def marginals(self, obs: Obs, carry: ScriptedCarry | None = None) -> Marginals:
         """The marginals given a carry `decide` returned (None: the memoryless agent's)."""
-        return marginals(obs, self.characteristics, self.parameters, self._temperature(), carry)
+        return marginals(
+            obs,
+            self.characteristics,
+            self.parameters,
+            self._temperature(),
+            carry,
+            self.doctrines,
+        )
 
     def action_distribution(self, obs: Obs, carry: ScriptedCarry | None = None) -> torch.Tensor:
         """(R, S, NUM_JOINT) the distribution given a carry `decide` returned."""

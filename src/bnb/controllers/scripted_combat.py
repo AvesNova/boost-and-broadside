@@ -17,6 +17,8 @@ from bnb.game.handling.characteristics import Characteristics, time_of_flight
 from bnb.game.rules import Rules
 from bnb.game.ship_types import per_ship
 
+from .scripted_doctrine import Doctrine
+from .scripted_doctrine import per_ship as doctrine_of
 from .scripted_memory import (
     Recall,
     ScriptedCarry,
@@ -318,42 +320,151 @@ def choose_target(fleet: Context, offset_x: torch.Tensor, offset_y: torch.Tensor
     return torch.where(recall.known.any(-1, keepdim=True), target, -1)
 
 
-def energy_fight(
+def advantage_weight(
     fleet: Context,
     characteristics: Characteristics,
-    parameters: ScriptedParameters,
+    doctrine: Doctrine,
     target_of,
     has_target: torch.Tensor,
 ) -> torch.Tensor:
-    """The energy doctrine's weight per own ship (R, S) against its committed target, in
-    [0, energy_fight_strength]: energy_fight_strength times energy_fight_in_advantage at the
-    doctrine's advantage, the product of the own-over-target ratios of the sustained turn
-    rate (the settled full-stick turn), the climb power, the cruise speed and the gun range,
-    each raised to its exponent. The target's type is always observed (`ship_type`), and
-    the card is common knowledge. 0 without a target, and exactly 0 at a strength of 0.
-    target_of: the committed target's value from per-enemy values (R, E)."""
+    """The doctrine's weight per own ship (R, S) against its committed target, in [0,
+    strength]: its strength times in_advantage at the doctrine's advantage, the product of
+    the own-over-target ratios of the sustained turn rate (the settled full-stick turn), the
+    climb power, the cruise speed and the gun range, each raised to its exponent. The
+    target's type is always observed (`ship_type`), and the card is common knowledge. 0
+    without a target. target_of: the committed target's value from per-enemy values (R, E)."""
     log_advantage = torch.zeros_like(fleet.x)
     for values, exponent in (
-        (characteristics.turn_rate[..., 2], parameters.energy_fight_turn_exponent),
-        (characteristics.climb_power, parameters.energy_fight_climb_exponent),
-        (characteristics.cruise_speed, parameters.energy_fight_speed_exponent),
-        (characteristics.gun_range, parameters.energy_fight_range_exponent),
+        (characteristics.turn_rate[..., 2], doctrine.turn_exponent),
+        (characteristics.climb_power, doctrine.climb_exponent),
+        (characteristics.cruise_speed, doctrine.speed_exponent),
+        (characteristics.gun_range, doctrine.range_exponent),
     ):
         own = per_ship(values, fleet.own_type)
         theirs = torch.where(has_target, target_of(per_ship(values, fleet.enemy_type)), own)
         log_advantage = log_advantage + exponent * torch.log(own / theirs)
-    weight = parameters.energy_fight_strength * logistic(
-        torch.exp(log_advantage), parameters.energy_fight_in_advantage, fleet.temperature
+    weight = doctrine.strength * logistic(
+        torch.exp(log_advantage), doctrine.in_advantage, fleet.temperature
     )
     return torch.where(has_target, weight, 0.0)
 
 
+def rotated(x: torch.Tensor, y: torch.Tensor, angle: torch.Tensor):
+    """(x, y) turned by `angle` (positive left)."""
+    cos, sin = torch.cos(angle), torch.sin(angle)
+    return cos * x - sin * y, sin * x + cos * y
+
+
+class Doctrinal(NamedTuple):
+    """What a doctrine makes of the attack: the aim point and P(boost), P(reverse) on the
+    attack, and the weight of extending (flying away, boosting)."""
+
+    aim_x: torch.Tensor
+    aim_y: torch.Tensor
+    boost: torch.Tensor
+    reverse: torch.Tensor
+    extending: torch.Tensor
+    close: torch.Tensor
+
+
+def doctrinal(
+    fleet: Context,
+    characteristics: Characteristics,
+    doctrine: Doctrine,
+    target_of,
+    has_target: torch.Tensor,
+    geometry: tuple,
+    boost: torch.Tensor,
+    reverse: torch.Tensor,
+) -> Doctrinal:
+    """The doctrine's elements (`bnb.controllers.scripted_doctrine`) on the attack: geometry
+    is (target_x, target_y, distance, aim_x, aim_y, aim_error, target velocity x, y)."""
+    target_x, target_y, distance, aim_x, aim_y, aim_error, target_vx, target_vy = geometry
+    temperature = fleet.temperature
+    weight = advantage_weight(fleet, characteristics, doctrine, target_of, has_target)
+    safe = distance.clamp_min(TINY)
+    in_gun_ranges = distance / fleet.gun_range
+    off_nose = aim_error.abs() / fleet.stall_angle
+    close = logistic(in_gun_ranges, doctrine.fight_in_gun_range, temperature)
+
+    # Extend: off the nose, or without the energy to engage, fly away while close.
+    store = column(fleet.own, "energy")
+    own_energy = 0.5 * fleet.speed * fleet.speed + store
+    seen = target_of(fleet.enemy_seen.float()) > 0.5
+    target_speed = target_of(column(fleet.enemy, "proper_speed"))
+    target_energy = 0.5 * target_speed * target_speed + target_of(column(fleet.enemy, "energy"))
+    ratio = torch.where(seen, own_energy / target_energy.clamp_min(1.0), 1.0)
+    engage = logistic(ratio, doctrine.engage_in_energy_ratio, temperature) * logistic(
+        fleet.energy_fraction, doctrine.engage_in_store_fraction, temperature
+    )
+    turning = logistic(off_nose, doctrine.extend_in_stall_angle, temperature)
+    extending = weight * doctrine.extend * close * either(turning, 1.0 - engage)
+
+    # Lag: aim behind the target along its track, the more the farther from its tail.
+    target_speed_now = torch.sqrt(target_vx * target_vx + target_vy * target_vy).clamp_min(TINY)
+    # cos of the angle between the target's track and the line from it to the ship: -1
+    # dead astern
+    astern = -(target_vx * target_x + target_vy * target_y) / (target_speed_now * safe)
+    behind = doctrine.lag_in_gun_range * fleet.gun_range / target_speed_now
+    lag_weight = weight * doctrine.lag * 0.5 * (1.0 + astern)
+    aim_x = aim_x + lag_weight * (target_x - behind * target_vx - aim_x)
+    aim_y = aim_y + lag_weight * (target_y - behind * target_vy - aim_y)
+
+    # Deny: with the target's nose on the ship, turn off the line to it, to the side the
+    # ship is already off its nose.
+    target_heading = torch.atan2(target_vy, target_vx)
+    off_its_nose = signed_angle(
+        torch.cos(target_heading), torch.sin(target_heading), -target_x, -target_y
+    )
+    target_stall = target_of(per_ship(characteristics.stall_angle, fleet.enemy_type))
+    on_its_nose = logistic(
+        off_its_nose.abs() / target_stall.clamp_min(TINY), doctrine.deny_in_stall_angle, temperature
+    )
+    deny_weight = (
+        weight
+        * doctrine.deny
+        * on_its_nose
+        * logistic(in_gun_ranges, doctrine.deny_in_gun_range, temperature)
+    )
+    # the ship is off the target's nose to the target's left when off_its_nose > 0: seen
+    # from the ship, that side is its right, so it turns right (negative)
+    side = torch.where(off_its_nose >= 0.0, -1.0, 1.0)
+    denied_x, denied_y = rotated(aim_x, aim_y, side * doctrine.deny_angle)
+    aim_x = aim_x + deny_weight * (denied_x - aim_x)
+    aim_y = aim_y + deny_weight * (denied_y - aim_y)
+    # extending overrides the attack's aim: away from the target
+    away = torch.sqrt(aim_x * aim_x + aim_y * aim_y) / safe  # aim length over distance
+    aim_x = aim_x + extending * (-target_x * away - aim_x)
+    aim_y = aim_y + extending * (-target_y * away - aim_y)
+
+    # Slash: boost into the attack, never reverse; bleed: reverse to the corner speed in a
+    # turning fight.
+    slashing = weight * doctrine.slash
+    boost = either(
+        boost, slashing * logistic(in_gun_ranges, doctrine.slash_in_gun_range, temperature)
+    )
+    bleeding = (
+        weight
+        * doctrine.bleed
+        * close
+        * logistic(off_nose, doctrine.bleed_in_stall_angle, temperature)
+        * logistic(fleet.speed / fleet.corner_speed, doctrine.bleed_in_corner_speed, temperature)
+    )
+    reverse = either((1.0 - slashing) * reverse, bleeding)
+    return Doctrinal(aim_x, aim_y, boost, reverse, extending, close)
+
+
 def combat(
-    fleet: Context, characteristics: Characteristics, parameters: ScriptedParameters
+    fleet: Context,
+    characteristics: Characteristics,
+    parameters: ScriptedParameters,
+    doctrines: torch.Tensor | None = None,
 ) -> Combat:
     """The combat layer. The target is the committed one (`choose_target`), aimed at where
     the agent believes it is; P(shoot) is scaled by its weight, so a dead-reckoned target
-    draws fewer shots the staler it is."""
+    draws fewer shots the staler it is. doctrines: a doctrine table per type (T, D) or per
+    view and type (R, T, D) (`bnb.controllers.scripted_doctrine`), each own ship flying its
+    type's; None flies none (the agent without doctrines)."""
     recall = fleet.recall
     offset_x = recall.x[:, None, :] - fleet.x[..., None]  # (R, S, E)
     offset_y = recall.y[:, None, :] - fleet.y[..., None]
@@ -381,20 +492,36 @@ def combat(
         target(recall.velocity_y),
     )
     aim_error = signed_angle(fleet.cos, fleet.sin, aim_x, aim_y)
-
-    # The energy doctrine: rather than turn after a target the nose is far from at close
-    # range, extend (fly away from it, boosting) and come back for another pass; never
-    # reverse. Mixed in linearly by its weight, so a weight of 0 is the agent without it.
-    doctrine = energy_fight(fleet, characteristics, parameters, target, has_target)
-    extend = logistic(
-        distance / fleet.gun_range, parameters.extend_in_gun_range, fleet.temperature
-    ) * logistic(
-        aim_error.abs() / fleet.stall_angle, parameters.extend_in_stall_angle, fleet.temperature
+    boost = either(
+        slow(fleet, parameters), torch.where(has_target, far(fleet, distance, parameters), 0.0)
     )
-    away = torch.sqrt(aim_x * aim_x + aim_y * aim_y) / safe_distance  # aim length over distance
-    turn_away = doctrine * extend
-    aim_x = aim_x + turn_away * (-target_x * away - aim_x)
-    aim_y = aim_y + turn_away * (-target_y * away - aim_y)
+    reverse = torch.where(
+        has_target,
+        logistic(distance / fleet.gun_range, parameters.reverse_in_gun_range, fleet.temperature),
+        0.0,
+    )
+    power = None
+    if doctrines is not None:  # the own types' doctrines shape the aim point and the power
+        geometry = (
+            target_x,
+            target_y,
+            distance,
+            aim_x,
+            aim_y,
+            aim_error,
+            target(recall.velocity_x),
+            target(recall.velocity_y),
+        )
+        doctrine = doctrine_of(doctrines, fleet.own_type)
+        shaped = doctrinal(
+            fleet, characteristics, doctrine, target, has_target, geometry, boost, reverse
+        )
+        aim_x, aim_y = shaped.aim_x, shaped.aim_y
+        attack = power_marginal(shaped.boost, shaped.reverse)
+        extend = power_marginal(
+            either(slow(fleet, parameters), shaped.close), torch.zeros_like(boost)
+        )
+        power = attack + shaped.extending[..., None] * (extend - attack)
 
     # Without a target: head for the centre unless already near it.
     toward_centre = fleet.distance_from_centre > (
@@ -412,18 +539,8 @@ def combat(
     hold = (~has_target & ~toward_centre)[..., None]
     held, _ = stick_marginal(fleet, torch.zeros_like(fleet.x), parameters)
     stick = torch.where(hold, held, steered)
-
-    boost = either(
-        slow(fleet, parameters), torch.where(has_target, far(fleet, distance, parameters), 0.0)
-    )
-    reverse = torch.where(
-        has_target,
-        logistic(distance / fleet.gun_range, parameters.reverse_in_gun_range, fleet.temperature),
-        0.0,
-    )
-    power = power_marginal(boost, reverse)
-    energy_power = power_marginal(either(slow(fleet, parameters), extend), torch.zeros_like(boost))
-    power = power + doctrine[..., None] * (energy_power - power)
+    if power is None:
+        power = power_marginal(boost, reverse)
 
     hit_radius = target(per_ship(characteristics.hit_radius, fleet.enemy_type))
     size = (2.0 * torch.atan(hit_radius / safe_distance)).clamp(*TARGET_SIZE_RANGE)

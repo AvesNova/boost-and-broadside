@@ -1,5 +1,5 @@
 ---
-covers: [src/bnb/controllers/scripted.py, src/bnb/controllers/scripted_parameters.py, src/bnb/controllers/scripted_defaults.py, src/bnb/controllers/scripted_memory.py, src/bnb/controllers/scripted_combat.py, src/bnb/controllers/scripted_frontline.py, src/bnb/game/handling/characteristics.py, src/bnb/runtime/evaluate.py]
+covers: [src/bnb/controllers/scripted.py, src/bnb/controllers/scripted_parameters.py, src/bnb/controllers/scripted_defaults.py, src/bnb/controllers/scripted_memory.py, src/bnb/controllers/scripted_combat.py, src/bnb/controllers/scripted_doctrine.py, src/bnb/controllers/scripted_frontline.py, src/bnb/game/handling/characteristics.py, src/bnb/runtime/evaluate.py]
 reviewed: 2026-11-03 09:45
 ---
 
@@ -96,6 +96,37 @@ with its last seen velocity.
   depth into the margin.
 - **No known enemy:** it heads for the centre and holds its course once within
   `centre_hold_in_arena_radius` of it (an angle error of 0), and does not fire.
+
+## Doctrines
+
+How a ship fights can depend on its type: `bnb.controllers.scripted_doctrine.Doctrine` is
+one type's doctrine, and the agent reads a table of them (`doctrines`, one row per type, or
+per view and type) and flies each own ship by its own type's row, so a mixed team flies
+each type its own way. Without a table (the default) no ship has a doctrine. The tuned
+doctrines of the real-scale set's Yongma (the energy fighter) and Jujak (the turn fighter)
+are in `src/bnb/controllers/scripted_doctrines.json`
+(`bnb.controllers.scripted_doctrine.set_table` builds a set's table from it); the tuning is
+in [the archetypes page](game/ship-design/archetypes.md#5-the-scripted-agent).
+
+A doctrine changes the aim point and the power, never the shot (a shot still needs the
+nose on the lead point). Its weight against the committed target is `strength` times
+`in_advantage`, a logistic in the product of the own-over-target ratios of the sustained
+turn rate, the climb power, the cruise speed and the gun range, each raised to its
+exponent, so it can act against one opponent type and not another. Its elements, each with
+a weight of its own:
+
+- **Extend**: within the fight's range (`fight_in_gun_range`), rather than turn after a
+  target its nose is far from, or engage without an energy advantage (own over target
+  specific energy, speed²/2 plus the store, of a seen target; and a store floor), fly
+  away from the target, boosting; come back from beyond the fight's range.
+- **Slash**: boost into the attack within `slash_in_gun_range`, and never reverse.
+- **Bleed**: within the fight's range, the nose far off the target and faster than the
+  corner speed, reverse to slow toward it, where the turn is fastest.
+- **Lag**: aim behind the target along its track, the more the farther the ship is from
+  its tail (none dead astern), to come round onto it.
+- **Deny**: when the target's nose is on the ship within `deny_in_gun_range`, turn
+  `deny_angle` off the line to it, to the side the ship is already off its nose, so the
+  pass is an offset one, not a mutual head-on.
 
 ## The Frontline layer
 

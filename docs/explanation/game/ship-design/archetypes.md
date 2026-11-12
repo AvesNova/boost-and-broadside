@@ -384,19 +384,15 @@ the turn, with a store the real types do not support.
 
 ## 5. The scripted agent
 
-**What exists.** The combat layer (`bnb.controllers.scripted_combat.combat`) already has an
-energy doctrine, `energy_fight`, off in every set today (`energy_fight_strength` 0 in
-`scripted_real_scale.json`). Its weight against the committed target is
-`energy_fight_strength` times a logistic (`energy_fight_in_advantage`) of an advantage, the
-product of the own-over-target ratios of the sustained turn rate, the climb power, the
-cruise speed and the gun range, each raised to an exponent (by default only the turn, at
--1: the worse turner has the advantage). With that weight the ship extends rather than
-turns after a target its nose is far from at close range: the aim point is mirrored away
-from the target with weight `extend_in_gun_range` (falling through 1 gun range) times
-`extend_in_stall_angle` (rising through 4 stall angles of aim error), the power is mixed
-toward boost while extending, and it never reverses (it keeps its speed). The league arena
-already plays each scripted player with its own parameter set (`Player.parameters`, in an
-arena built with a `doctrine`), so per-type doctrines need no new machinery.
+**What exists.** One agent with a doctrine per ship type
+(`bnb.controllers.scripted_doctrine.Doctrine`, [Doctrines](../../scripted-agent.md#doctrines)):
+a table the agent reads per own ship, so a mixed team flies each type by its own. A
+doctrine's weight against its target is a strength times a logistic of an advantage (the
+own-over-target ratios of the turn, the climb, the cruise and the gun range, each to an
+exponent), and its elements are extend (with an energy and store rule for re-engaging),
+slash, bleed, lag and deny. The tuned doctrines are in
+`src/bnb/controllers/scripted_doctrines.json`; the tuning loop is below and in
+`docs/rewrite/sections/doctrines/`.
 
 **What each doctrine needs, beyond it.** One agent, with per-type doctrine parameters:
 
@@ -415,7 +411,7 @@ arena built with a `doctrine`), so per-type doctrines need no new machinery.
   closure), to deny the tail shot.
 
 Each of these is a parameter (a logistic or a distance) the search can tune; the defaults
-keep today's agent exactly (strength 0), as `energy_fight` does.
+keep today's agent (strength 0).
 
 **A capped tune loop.** Four rounds, each the same four steps, stopping early if the
 targets below are met:
