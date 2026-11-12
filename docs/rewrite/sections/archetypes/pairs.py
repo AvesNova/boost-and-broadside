@@ -380,21 +380,10 @@ def mirror_study_2() -> list[dict]:
             f = {"vision_range_scale": v, "hit_damage": d}
             out.append(pair(f"M, vision x{v:g}, dmg x{d:g}", ("M", f), ("M", f)))
     for v in (0.7, 0.8, 0.9):
+        vision = {"vision_range_scale": v}
         out.append(
-            pair(
-                f"D2 Yongma, vision x{v:g}",
-                (None, merge(D2_A, {"vision_range_scale": v})),
-                (None, merge(D2_A, {"vision_range_scale": v})),
-            )
+            pair(f"D2, vision x{v:g}", (None, merge(D2_A, vision)), (None, merge(D2_B, vision)))
         )
-        jj = (
-            "D2J",
-            merge(
-                {k: v2 for k, v2 in D2_B.items() if k != "induced_drag_scale"},
-                {"vision_range_scale": v},
-            ),
-        )
-        out.append(pair(f"D2 Jujak, vision x{v:g}", jj, jj))
     return out
 
 
