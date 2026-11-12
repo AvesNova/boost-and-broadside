@@ -106,3 +106,27 @@ games; record `records/dynamics.jsonl`, report `bench/mode_dynamics_report.py`.
   knife edge and moves with any change in kill rate. Today's 25 tickets in 600 s end every
   game by tickets, at ~5.8 min.
 - Next: the same with the Yongma/Jujak lineup (queued), then Frontline.
+
+## Step 2d: deathmatch, the release lineup (2 Yongma + 3 Jujak a team; game v6/v7 cards)
+
+`--label dm_5v5_yj --lineup jujak,yongma` (slots J, Y, J, Y, J; both teams), otherwise as 2c.
+512 games. The default-lineup numbers above (P-51D/Heavy) do not carry over.
+
+- Kills per minute (both teams): mean 7.19, median 7.20, quartiles 7.0-7.4, 5-95% 6.7-7.6.
+- Trades: 14% of deaths have an enemy death within 0.5 s, 49% within 3 s (95% / 98% with
+  P-51D/Heavy). Final |margin|: median 2, a tie in 12.5%.
+- Tickets (per team) by clock, share of games ended by tickets:
+
+| clock (s) | T=15 | T=20 | T=25 | T=30 | T=35 | T=40 | T for 80% |
+|---|---|---|---|---|---|---|---|
+| 300 | 1.00 | 0.16 | 0 | 0 | 0 | 0 | 17 |
+| 400 | 1.00 | 1.00 | 0.62 | 0 | 0 | 0 | 24 |
+| 500 | 1.00 | 1.00 | 1.00 | 0.82 | 0.02 | 0 | 30 |
+| 600 | 1.00 | 1.00 | 1.00 | 1.00 | 0.96 | 0.08 | 36 |
+
+- **The function for the freeze**: T(80% by tickets) ≈ 0.49 x k x C, k the kills per
+  minute of both teams, C the clock in minutes (0.488 with P-51D/Heavy, 0.494 here; it is
+  just under k C / 2 because a symmetric mirror's leader is barely ahead and the kill count
+  is far tighter than Poisson). After the freeze: rerun `bench.mode_dynamics deathmatch`
+  (8 s per 256 games warm on the box) and read k and T off the report.
+  Today's 25 tickets in 600 s: every game ends by tickets (at about 7 min).
