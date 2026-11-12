@@ -981,12 +981,43 @@ def distinctness(
             total = total + ((p - q) * (p.log() - q.log())).sum(-1)
             match = p.argmax(-1) == q.argmax(-1)
             same = match if same is None else same & match
+        # regimes (the author's split): against the nearest seen living enemy, own
+        # specific energy (v^2 / 2 + store) above or below its, and inside or outside two
+        # own full-stick turn radii of it
+        enemy = view.ships[:, loop.S :]
+        seen = (enemy[..., SHIP["visible"]] > 0.5) & (enemy[..., SHIP["alive"]] > 0.5)
+        dx = enemy[:, None, :, SHIP["x"]] - own[:, :, None, SHIP["x"]]
+        dy = enemy[:, None, :, SHIP["y"]] - own[:, :, None, SHIP["y"]]
+        squared = torch.where(seen[:, None, :], dx * dx + dy * dy, float("inf"))
+        nearest = squared.argmin(-1)
+        has = torch.isfinite(squared.min(-1).values)
+        distance = squared.min(-1).values.clamp_max(1e12).sqrt()
+
+        def energy_of(ships):
+            speed = ships[..., SHIP["proper_speed"]]
+            return 0.5 * speed * speed + ships[..., SHIP["energy"]]
+
+        theirs = torch.gather(energy_of(enemy), 1, nearest)
+        ahead = energy_of(own) > theirs
+        own_type = own[..., SHIP["ship_type"]].round().long().clamp(0, 2 * loop.K - 1)
+        radius = (loop.card.cruise_speed / loop.card.turn_rate[..., 2])[own_type]
+        inside = distance < 2.0 * radius
         for k, kind in enumerate(KINDS):
             mine = alive & (own_kind == bool(k))
             kl[kind].append(total[mine].float().cpu())
             agree[kind].append(same[mine].float().cpu())
+            for regime, where in (
+                ("energy ahead, inside", ahead & inside),
+                ("energy ahead, outside", ahead & ~inside),
+                ("energy behind, inside", ~ahead & inside),
+                ("energy behind, outside", ~ahead & ~inside),
+            ):
+                key = f"{kind}: {regime}"
+                chosen = mine & has & where
+                kl.setdefault(key, []).append(total[chosen].float().cpu())
+                agree.setdefault(key, []).append(same[chosen].float().cpu())
     out = {}
-    for kind in KINDS:
+    for kind in kl:
         values, matches = torch.cat(kl[kind]), torch.cat(agree[kind])
         out[kind] = dict(
             symmetric_kl=float(values.mean()) if len(values) else None,
