@@ -151,3 +151,39 @@ d x s = 1 keeps the card's head-on TTK (3.3-4.0 passes; Yongma on Jujak 2.8).
 **Round 2 search** (running, 15:36): the ES over both doctrines and the combat/memory
 scripted parameters (27 numbers) at once, from hand and from r1-hand, against off, hand,
 r1, r1-hand; 16 antithetic pairs, 16 games per candidate x opponent x lineup, kill share.
+
+## 2026-11-12 15:36-16:02 KST: round 2 (ES over doctrines + scripted parameters)
+
+Card: s0.5 a0.5 d1, Yongma explosive share 0.5 (`round2/card.json`). ES (`es_search`, 16
+antithetic pairs, sigma 0.15, 16 games a candidate x opponent x lineup, kill share, ~35-67
+s a generation, 15 generations a start) over both doctrines and 27 scripted parameters,
+against off, hand, r1, r1-hand.
+
+- From hand: kill share 0.28 -> 0.68 (by opponent at gen 8: off 0.63, r1 0.61, r1-hand
+  0.61, hand 0.81). From r1-hand: 0.56 -> 0.66.
+- **Elo** (mixed, both orders, 512 games a pair and order): **r2-hand 1296 ± 8**,
+  r2-r1-hand 1240 ± 7, hot 1017, r1-hand 1007, r1 1002, off 1000, hand 506, random 108.
+  The first real gain: +300 Elo over the anchor. r2-hand joined the league as `r2`.
+- What moved: mostly the scripted parameters: boost while slower than 1.87 corner speeds
+  (was 0.93: fly fast), shoot within 1.24 gun ranges (was 1.47), aim gate wider (0.78 ->
+  0.99 target sizes), side commitment 3.2 -> 4.2 stall angles. Doctrines: Yongma extend
+  0.95, slash 0.97, Jujak bleed 0.55, lag 0.32, deny 0.63, but both gated by
+  in_advantage centres 1.47 / 1.85 (rarely active).
+- **Distinctness collapsed**: r2's energy v turn doctrine KL 0.0001 / 0.0005 (agreement
+  0.999): the doctrines are written distinct but gated off; the strength is in the shared
+  parameters. r2-r1-hand keeps 0.61 on Yongma ships. The next search penalises collapse.
+- **r2 self-play aspect mix (the wanted shape)**: kills mutual / offset / flank / tail
+  0.07-0.11 / 0.25-0.27 / 0.52-0.55 / 0.11-0.13 in every lineup; damage mutual 0.14-0.18.
+  Pace 5.7-6.2 kills/min (mean ~ median). But **energy v turn 0.335 ± 0.010** (Yongma
+  loses) and passes a kill 0.30-0.39.
+- r2 v off: 0.73 (energy v turn), 0.87 (turn mirror), 0.76 (energy mirror), 0.84-0.86
+  (mixed).
+
+**Next**: round 3 cards on r2 (running, 16:02: fraction 0.35-0.65, cone 0.25-1, Yongma
+explosive 0 / 0.5, damage x 1.25, slow bullets) to rebalance energy v turn; then an ES with
+a distinctness penalty from r2.
+
+**Stop plan** (the author's 20:00-21:00 window): last search round ends by ~19:15; the
+final measurement (tight error bars, 300 s pace games) 19:15-19:50; freeze and commit by
+~20:00. Expected stop **~20:00 KST**, later only if a final run is in flight (hard limit
+21:00).
