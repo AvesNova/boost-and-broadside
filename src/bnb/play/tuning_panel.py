@@ -233,6 +233,63 @@ def played_seconds(tuner) -> str:
     )
 
 
+MAP_GROUPS = (
+    api.tuning.ARENA,
+    api.tuning.SPAWNS,
+    api.tuning.MAP,
+    api.tuning.TEAM_DEATHMATCH_GROUP,
+    api.tuning.FRONTLINE_GROUP,
+)  # the rule groups of the Map / mode panel; the tuning panel keeps the rest
+
+
+def draw_rules(tuner, scale: float, wanted, open_groups: bool = False) -> None:
+    """The rule settings of the groups `wanted(group)` accepts, a collapsing header each
+    (open at first with `open_groups`), in the current ImGui frame."""
+    groups: dict[str, list] = {}
+    for setting in api.tuning.settings_for(tuner.base):
+        if wanted(setting.group):
+            groups.setdefault(setting.group, []).append(setting)
+    flag = imgui.TreeNodeFlags_.default_open if open_groups else 0
+    for group, settings in groups.items():
+        if not imgui.collapsing_header(group, flag) or not begin_rows(group, scale):
+            continue
+        for setting in settings:
+            episode = setting.when == api.tuning.EPISODE
+            played = ""
+            if tuner.time_factor != 1.0:
+                unit = f" {setting.unit}" if setting.unit else ""
+                played = (
+                    f"plays as {short(tuner.played_value(setting.key))}{unit} "
+                    f"at x{tuner.time_factor:.4g}"
+                )
+            help = "\n".join(
+                line
+                for line in (
+                    setting.label + (f", {setting.unit}" if setting.unit else ""),
+                    f"game's value: {short(tuner.default(setting.key))}",
+                    played,
+                    "applies from the next episode" if episode else "",
+                )
+                if line
+            )
+            changed, new = number(
+                setting.label.split(" (")[0],
+                setting.key,
+                tuner.values[setting.key],
+                setting.low,
+                setting.high,
+                setting.integer,
+                log=setting.log,
+                help=help,
+                mark=EPISODE_MARK if episode else "",
+            )
+            if changed and math.isfinite(new):
+                tuner.set_setting(setting.key, new)
+        imgui.end_table()
+        if any(setting.when == api.tuning.EPISODE for setting in settings):
+            imgui.text_colored(DIM, "* applies from the next episode")
+
+
 class TuningPanel:
     """open: whether the window shows; `ship`: the ship type shown. The tuner it drives is
     the session's (created when the panel first opens on a live match)."""
@@ -263,7 +320,7 @@ class TuningPanel:
         imgui.set_next_window_size((width, height), imgui.Cond_.first_use_ever)
         # Never taller than the room below the top bar: the contents scroll instead.
         imgui.set_next_window_size_constraints((0.0, 0.0), (math.inf, height))
-        expanded, self.open = imgui.begin("Tuning###tuning", self.open)
+        expanded, self.open = imgui.begin("Ships and flight###tuning", self.open)
         position, size = imgui.get_window_pos(), imgui.get_window_size()
         self.window = Rect(position.x, position.y, size.x, size.y)
         if expanded:
@@ -486,47 +543,7 @@ class TuningPanel:
     # Rules -------------------------------------------------------------------------------
 
     def _rules(self, tuner, scale: float) -> None:
-        groups: dict[str, list] = {}
-        for setting in api.tuning.settings_for(tuner.base):
-            groups.setdefault(setting.group, []).append(setting)
-        for group, settings in groups.items():
-            if not imgui.collapsing_header(group) or not begin_rows(group, scale):
-                continue
-            for setting in settings:
-                episode = setting.when == api.tuning.EPISODE
-                played = ""
-                if tuner.time_factor != 1.0:
-                    unit = f" {setting.unit}" if setting.unit else ""
-                    played = (
-                        f"plays as {short(tuner.played_value(setting.key))}{unit} "
-                        f"at x{tuner.time_factor:.4g}"
-                    )
-                help = "\n".join(
-                    line
-                    for line in (
-                        setting.label + (f", {setting.unit}" if setting.unit else ""),
-                        f"game's value: {short(tuner.default(setting.key))}",
-                        played,
-                        "applies from the next episode" if episode else "",
-                    )
-                    if line
-                )
-                changed, new = number(
-                    setting.label.split(" (")[0],
-                    setting.key,
-                    tuner.values[setting.key],
-                    setting.low,
-                    setting.high,
-                    setting.integer,
-                    log=setting.log,
-                    help=help,
-                    mark=EPISODE_MARK if episode else "",
-                )
-                if changed and math.isfinite(new):
-                    tuner.set_setting(setting.key, new)
-            imgui.end_table()
-            if any(setting.when == api.tuning.EPISODE for setting in settings):
-                imgui.text_colored(DIM, "* applies from the next episode")
+        draw_rules(tuner, scale, lambda group: group not in MAP_GROUPS)
 
     # Time scale --------------------------------------------------------------------------
 
@@ -574,20 +591,11 @@ class TuningPanel:
     # Maps and the game's numbers --------------------------------------------------------
 
     def _maps(self, session, tuner) -> None:
-        """**Save as a map** (the menu's Maps page, its form this match with its tuning) and
-        **Game's numbers** (the ship files' and the rules' own, at the same time scale)."""
-        if not imgui.collapsing_header("Maps"):
+        """**Game's numbers** (the ship files' and the rules' own, at the same time scale);
+        saving a map is the Map / mode panel's."""
+        if not imgui.collapsing_header("Game's numbers"):
             return
         controls = session.interface.controls
-        if imgui.button("Save as a map"):
-            session.interface.menu.show("maps")
-        controls.record("tuning/save as map")
-        tooltip(
-            "The menu's Maps page, starting from this match: its game, lineup and this "
-            "tuning (the rule settings, the changed ship cards and the time scale), to save "
-            "under a name"
-        )
-        imgui.same_line()
         if imgui.button("Game's numbers"):
             session.retune_to(Tuning(time_factor=tuner.time_factor))
             self.message = "back to the ship files' and the rules' own numbers"

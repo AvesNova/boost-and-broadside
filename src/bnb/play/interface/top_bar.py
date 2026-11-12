@@ -121,6 +121,39 @@ def draw(interface: Interface, layout: Layout) -> None:
         active=session.contours != "off",
     ):
         session.cycle_contours()
+    imgui.same_line(0.0, 14.0 * scale)
+    if button(
+        controls,
+        "map panel",
+        "Map / mode",
+        "The map and mode panel: game mode, arena, field randomisation, zones, clocks, "
+        "tickets, spawns, New map, Restart and Save map",
+        shortcut("toggle_map_panel"),
+        active=session.map_panel.open,
+    ):
+        session.toggle_map_panel()
+    imgui.same_line(0.0, 2.0 * scale)
+    if button(
+        controls,
+        "ship panel",
+        "Ships",
+        "Ship editing: the ship types' handles, bullets and flight constants",
+        shortcut("toggle_tuning"),
+        active=session.tuning_panel.open,
+    ):
+        session.toggle_tuning()
+    if not loop.replaying:
+        imgui.same_line(0.0, 14.0 * scale)
+        if button(
+            controls,
+            "new map",
+            "New map",
+            "A new match on a freshly drawn map (fields, spawn axis, zone ring), as it is tuned",
+        ):
+            session.new_map()
+        imgui.same_line(0.0, 2.0 * scale)
+        if button(controls, "restart", "Restart", "The same map and setup, a fresh match"):
+            session.restart()
     left_end = imgui.get_item_rect_max().x
 
     # Right: the speed controls.

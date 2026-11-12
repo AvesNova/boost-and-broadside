@@ -348,6 +348,33 @@ def test_the_tuning_panel_opens_from_the_menu_and_a_restart_keeps_the_tuning(con
     session.close()
 
 
+def test_the_map_panel_redraws_the_map_restarts_and_switches_the_mode(context, tmp_path):
+    """**New map** is a fresh seed (new fields) with the tuning kept, **Restart match** the
+    same map again, a mode button a new match in that mode; the panel's rule groups are
+    the map's and the ship panel's are the rest."""
+    session = _session(context, tmp_path, preset="frontline")
+    player = Player(session, context, 1280, 720)
+    session.toggle_map_panel()
+    player.frames(3)
+    assert session.map_panel.open and session.tuner is not None
+    session.tuner.set_setting("rules.field_high_share", 1.0)
+    fields = session.loop.current.fields.level.copy()
+    player.click("map/new map")
+    player.frames(2)
+    assert session.loop.setup.seed != 0
+    assert (session.loop.current.fields.level > 0).all() and not (fields > 0).all()
+    seed, radius = session.loop.setup.seed, session.loop.current.fields.radius.copy()
+    player.click("map/restart")
+    assert session.loop.setup.seed == seed
+    assert np.array_equal(session.loop.current.fields.radius, radius)
+    player.click("map/mode/elimination")
+    assert session.loop.setup.config.mode == "elimination"
+    assert session.loop.setup.tuning.rules["rules.field_high_share"] == 1.0
+    window = session.map_panel.window
+    assert window.right <= 1280 and window.bottom <= 720
+    session.close()
+
+
 def test_typed_letters_reach_the_text_boxes_and_call_no_shortcut(context, tmp_path):
     """Letters typed into a text box (each a shortcut or a flight key elsewhere: Z, T, E,
     V, P, F, C, N, G, O, W, A, S, D, space) go into the box only: the view, theme, true

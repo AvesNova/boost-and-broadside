@@ -13,6 +13,7 @@ call the session's methods (`toggle_pause`, `select`, `take_control`, `new_match
 """
 
 import dataclasses
+import os
 import pathlib
 import threading
 import time
@@ -39,6 +40,7 @@ from .interface.lineups import default_lineup
 from .interface.style import load_fonts
 from .interface.text import TEAM_NAMES, show_ship_set
 from .loop import TIME_SCALES, MatchEvent, MatchLoop, MatchSetup, SideSetup, team_view
+from .map_panel import MapPanel
 from .maps import Maps
 from .overlays import NAMES as OVERLAY_NAMES
 from .overlays import OverlaySettings, Predictions, offered, offered_by, provider
@@ -206,6 +208,7 @@ class Session:
         self.theme = dataclasses.replace(self.original, **options.look_overrides())
         self.editor = ThemeEditor(self.library)
         self.tuning_panel = TuningPanel()
+        self.map_panel = MapPanel()
         self.tuner: Tuner | None = None
         self.scale = options.scale
         self.fog_default = options.fog
@@ -254,7 +257,7 @@ class Session:
         show_ship_set(loop.setup.config.ship_set)
         self.loop.on_tick = self._on_tick
         self.loop.on_retune = self._on_retune
-        if self.tuning_panel.open:
+        if self.tuning_panel.open or self.map_panel.open:
             self._ensure_tuner()
         self.predicted, self.bullet_paths, self.predicted_at = {}, None, None
         self.trails = Trails(loop.rules.num_ships, loop.current.stall_angle)
@@ -408,6 +411,38 @@ class Session:
         self.tuning_panel.open = not self.tuning_panel.open
         if self.tuning_panel.open:
             self._ensure_tuner()
+
+    def toggle_map_panel(self) -> None:
+        """Show or hide the Map / mode panel (a live match's tuner starts when it shows)."""
+        self.map_panel.open = not self.map_panel.open
+        if self.map_panel.open:
+            self._ensure_tuner()
+
+    def new_map(self) -> None:
+        """A new match on a fresh map: the same setup (mode, sizes, tuning, so a changed
+        field rule applies) under a new seed, which redraws the fields, the spawn axis and
+        a frontline's zone ring."""
+        seed = int.from_bytes(os.urandom(4), "little") & 0x7FFFFFFF
+        self.new_match(dataclasses.replace(self.loop.setup, seed=seed))
+
+    def set_mode(self, mode: str) -> bool:
+        """A new match of the same game in this mode (a fixed layout and spawn groups do
+        not carry over to Frontline; Elimination has no respawn wait); False, with a
+        notice, when the game cannot be made."""
+        setup = self.loop.setup
+        config = setup.config
+        try:
+            config = dataclasses.replace(
+                config,
+                mode=mode,
+                spawn_groups=config.spawn_groups if mode == "team_deathmatch" else (),
+                layout=None if mode == "frontline" else config.layout,
+                respawn_seconds=None if mode == "elimination" else config.respawn_seconds,
+            )
+        except ValueError as error:
+            self.say(str(error))
+            return False
+        return self.new_match(dataclasses.replace(setup, config=config))
 
     def retune_to(self, tuning: Tuning) -> None:
         """Play on with a whole tuning (a preset, or the game's numbers)."""

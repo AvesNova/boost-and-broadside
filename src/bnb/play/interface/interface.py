@@ -114,6 +114,7 @@ class Interface:
         self.menu.draw(self)
         self._editor()
         session.tuning_panel.draw(session)
+        session.map_panel.draw(session)
         self._keys()
         self._notice(layout)
         self._battlefield()
