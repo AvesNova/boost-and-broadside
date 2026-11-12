@@ -12,6 +12,7 @@ rows only (own ships are always visible, so truth replaces their forecast on the
 
 import dataclasses
 import math
+from typing import ClassVar
 
 import torch
 import torch.nn as nn
@@ -24,10 +25,11 @@ from bnb.game.rules import Rules
 from bnb.game.ship_types import ShipTypes
 
 from . import belief as beliefs
-from . import critic, density, shots
+from . import critic, density, geometry, shots
 from .belief import Belief
 from .codes import SPREAD_FITS
 from .correction import CorrectionCode
+from .decode import nearest_representative
 from .delta import (
     DELTA_BASELINES,
     RATE_FIELDS,
@@ -43,6 +45,7 @@ from .delta import velocity_frame as delta_frame
 from .heads import HeadGroup, ShotTrajectoryHead, critic_values, next_state_logits
 from .inputs import (
     ACCELERATION_INPUTS,
+    ARENA_CODE,
     FIELD_INPUTS,
     MODE_INPUTS,
     POSITION_CODE,
@@ -79,6 +82,18 @@ SHOT_HARMONICS = 4  # the trajectory head's age features
 # a row's held rates: acceleration along, across, the nose's, the change, the turn's share
 HELD = 4 + len(MEANS)
 NEXT_STATES = ("absolute", "delta")  # `YemongConfig.next_state`
+# A new run's rotary bands (`bnb.runtime.train.TrainConfig.yemong`; the sizing rule beside
+# `state_code.POSITION_PERIOD`): eight at ratio 3.405 from 48 m (r, r^2, r^3, r^4 each at
+# least 0.4 from a whole number, so a one-cycle misread of a coarse band shows in the finer
+# ones), each band's axes turned ROTARY_TURN degrees from the coarser band's. The turn is
+# the aliasing sweep's pick (bench/rotary_aliasing.py, docs/rewrite/sections/position-codes):
+# its neighbourhood, 33.75-38.75 degrees, is good on every summary at ratios 3.35-3.45.
+ROTARY_RATIO = 3.405
+ROTARY_FINEST = 48.0  # m
+ROTARY_BANDS = 8
+ROTARY_TURN = 35.0  # degrees
+ROTARY_COARSEST = ROTARY_FINEST * ROTARY_RATIO ** (ROTARY_BANDS - 1)  # 254 771 m
+COLOUR_PERIOD = 36.0 * 3.0**8  # m: a new run's colour code, 36 m to 236 196 m
 
 
 @dataclasses.dataclass(frozen=True)
@@ -92,8 +107,27 @@ class YemongConfig:
     (`bnb.learn.returns.value_rewards`): the reward levels' own (the default), or the single
     level `bnb.contracts.SUMMED_LEVEL` over their sum, with outcome_level None (the single
     value arm: one per-ship value over one reward stream, and no outcome head).
-    rotary_period: the coarsest period (m) of the position frequencies (2 pi / p) 2^k,
-    k < rotary_octaves; heading_harmonics: the heading's.
+    rotary_period, rotary_octaves, rotary_ratio, rotary_turn: the rotary position bands.
+    Band k < rotary_octaves (the bands, octaves at ratio 2) has the period rotary_period /
+    rotary_ratio^k (m; the first is the coarsest) and reads the relative position along two
+    axes, turned k rotary_turn degrees from the world's x and y (the alias lattices of
+    different bands then do not line up; a fixed rotation, so attention still reads only
+    differences). heading_harmonics: the heading's. The defaults, eight octaves from
+    8192 m on the world axes with harmonics 1, 2, 4, 8, are every build's from before
+    2026-11-12; a new run's build (`bnb.runtime.train.TrainConfig`) has eight bands at
+    ratio 3.405 from 48 m to 254 771 m, each turned ROTARY_TURN from the last, and
+    harmonics 1, 2, 4 (the sizing rule beside `state_code.POSITION_PERIOD`).
+    position_period (m per axis): the coarsest period of the position colour code
+    (`state_code.POSITION_LEVELS` levels of 3 colours, so the finest is the period over
+    3^8), and the range of the view's random position offset. The default, 26 244 m (4 m
+    finest), is every build's from before 2026-11-12; a new run's is 236 196 m (36 m).
+    arena_code: the global token also reads log(arena radius / ARENA_CODE_RADIUS) as an
+    HL-Gauss code (`inputs.arena_code`, 0.25x to 8x with 2 padding bins per side), at its
+    end. Off by default (every build from before 2026-11-12); a new run's build reads it.
+    geometry_head: a training-only head (`geometry.GeometryHead`) on the trunk's ship rows
+    predicting, for pairs of ships the view sees, their range, antenna train angle, aspect,
+    heading crossing angle and closure rate as categorical codes (`geometry.GeometryCode`;
+    the learner's `geometry` term). Off by default; a new run's build has it.
     bfloat16_matmuls: run the matrix products of the encoder, the trunk and the heads under
     bf16 autocast. Off by default. On, `step` and `unroll` agree only to bf16 rounding (the
     fix-round notes measure it), where float32 gives float32 rounding.
@@ -111,16 +145,6 @@ class YemongConfig:
     or the temporal one then the spatial ones ("temporal_first"; `network.ORDERS`), or the
     spatial ones alone ("spatial_only", the ablation without temporal layers: the beliefs,
     the forecasts fed back, are then the model's only memory).
-    rotary_readout (temporal_first and rotary only): in every block, a linear head of its
-    own on that block's temporal sublayer's ship rows gives a (cos, sin) pair per rotary
-    frequency, unnormalised (a pair shorter than 1 is the model unsure at that frequency).
-    That block's spatial sublayers (which follow its temporal one) rotate a hidden ship's
-    row by the block's read-out pairs in place of its belief's tables; visible ships keep
-    their true tables and the global token and the map memory their exact ones, in every
-    block. The read-outs enter the tables detached: they train only on their own loss (the
-    learner's `rotary_readout` term, the mean over blocks, against the true phasors), which
-    keeps each optimum the expected phasor and the fused attention kernel usable in the
-    learner.
     spread_fit (`codes.SPREAD_FITS`): how the belief decodes a forecast's position and
     heading spreads. "coarsest" reads each at the coarsest level of its code that has
     broadened, and comes out honest on a forecast that is not Gaussian. "v1" is v1's fit,
@@ -198,7 +222,13 @@ class YemongConfig:
     (`inputs.MODE_INPUTS`). The default, team deathmatch and frontline, is every build's
     from before elimination (2026-11-12), which reads an elimination match as no mode (as
     sandbox); a new run's build reads all three (`bnb.runtime.train.TrainConfig`).
+
+    Retired (`RETIRED`): rotary_readout, the per-block rotary read-out (2026-11-07 to
+    2026-11-12, replaced by the geometry head); a build record without it, or with it off,
+    still reads.
     """
+
+    RETIRED: ClassVar[dict] = {"rotary_readout": (False,)}
 
     width: int = 128
     blocks: int = 2
@@ -211,17 +241,20 @@ class YemongConfig:
     outcome_level: str | None = "outcome"
     hex_rings: int = 10
     presence_radius: float = 150.0  # m
-    # Sized by the rule beside `state_code.POSITION_PERIOD` (Nyquist at the finest, the
-    # largest map at the coarsest). 8192 m is under the real-scale map's 15.6 km, so far
-    # pairs alias; proposed (2026-11-11, not yet adopted): 65 536 m down to 128 m.
-    rotary_period: float = 8192.0  # m, the coarsest
-    rotary_octaves: int = 8
+    # The record defaults (builds before 2026-11-12); new runs' bands: `TrainConfig.yemong`
+    # and the sizing rule beside `state_code.POSITION_PERIOD`.
+    rotary_period: float = 8192.0  # m, the coarsest band's
+    rotary_octaves: int = 8  # the bands
+    rotary_ratio: float = 2.0  # each band's period over the next finer one's
+    rotary_turn: float = 0.0  # degrees each band's axes turn from the coarser band's
     heading_harmonics: tuple[int, ...] = (1, 2, 4, 8)
+    position_period: float = POSITION_PERIOD  # m: the colour code's coarsest, the offset's range
+    arena_code: bool = False  # the global token reads the arena radius's log code
+    geometry_head: bool = False  # the pairwise geometry head (training only)
     bfloat16_matmuls: bool = False
     forecast_feedback: bool = True  # store the forecast as the next tick's belief
     rotary: bool = True  # rotary attention (off: the identity rotation)
     order: str = "spatial_first"  # per block: "spatial_first", "temporal_first", "spatial_only"
-    rotary_readout: bool = False  # hidden ships' rotary pairs from each block's temporal layer
     spread_fit: str = "v1"  # the belief's spread decoding; training builds "coarsest"
     next_state: str = "absolute"  # the next-state head's target: "absolute" or "delta"
     delta_baseline: str = "persistence"  # the delta head's baseline
@@ -272,8 +305,13 @@ class YemongConfig:
             self.mode_inputs
         ):
             raise ValueError(f"mode_inputs {self.mode_inputs} must be distinct, of {MODE_INPUTS}")
-        if self.rotary_readout and (self.order != "temporal_first" or not self.rotary):
-            raise ValueError("rotary_readout needs order temporal_first and rotary on")
+        if self.rotary_octaves < 1 or self.rotary_ratio <= 1.0 or self.rotary_period <= 0.0:
+            raise ValueError(
+                f"rotary bands: {self.rotary_octaves} from {self.rotary_period} m at ratio "
+                f"{self.rotary_ratio} (at least one band, a positive period, a ratio above 1)"
+            )
+        if self.position_period <= 0.0:
+            raise ValueError(f"position_period {self.position_period} must be positive")
         if not self.levels or len(set(self.levels)) != len(self.levels):
             raise ValueError(f"the critic's levels {self.levels} must be distinct, and some")
         if self.outcome_level is not None:
@@ -289,8 +327,24 @@ class YemongConfig:
 
     @property
     def rotary_pairs(self) -> int:
-        """The rotary frequencies: x and y per octave, then the heading harmonics."""
+        """The rotary frequencies: two axes per band, then the heading harmonics."""
         return 2 * self.rotary_octaves + len(self.heading_harmonics)
+
+    def rotary_periods(self) -> tuple[float, ...]:
+        """The bands' periods (m), coarsest first: rotary_period / rotary_ratio^k."""
+        return tuple(self.rotary_period / self.rotary_ratio**k for k in range(self.rotary_octaves))
+
+    def rotary_axes(self) -> tuple[tuple[float, float], ...]:
+        """Each rotary position pair's axis (a unit vector in the world frame), in the
+        tables' order: every band's first axis (cos, sin of k rotary_turn), then every
+        band's second (-sin, cos). Without a turn, exactly x and y."""
+        first, second = [], []
+        for band in range(self.rotary_octaves):
+            angle = math.radians(band * self.rotary_turn)
+            cos, sin = (1.0, 0.0) if angle == 0.0 else (math.cos(angle), math.sin(angle))
+            first.append((cos, sin))
+            second.append((-sin, cos))
+        return tuple(first + second)
 
     @property
     def local_levels(self) -> tuple[int, ...]:
@@ -366,8 +420,8 @@ class Unrolled:
     and next_state_logits (every row), value_logits (S, per-ship levels, bins), values
     (S, levels), outcome_logits (4; None without an outcome level), density_log_rates
     (2 cells: ally cells, then enemy cells), shot_outcome_logits (N, 19) and shot_latents
-    (N, D) for `Yemong.shot_trajectory`; rotary_readout (N, blocks, 2, pairs), each block's
-    read-out (cos, sin) rows per ship (None without `YemongConfig.rotary_readout`);
+    (N, D) for `Yemong.shot_trajectory`; geometry_latents (N, 2 D) for `Yemong.geometry`
+    (None without `YemongConfig.geometry_head`);
     correction_logits (N, ...), the error head's (every row; None without
     `YemongConfig.delta_split`)."""
 
@@ -380,7 +434,7 @@ class Unrolled:
     density_log_rates: torch.Tensor
     shot_outcome_logits: torch.Tensor
     shot_latents: torch.Tensor
-    rotary_readout: torch.Tensor | None = None
+    geometry_latents: torch.Tensor | None = None
     correction_logits: torch.Tensor | None = None
 
 
@@ -396,20 +450,8 @@ def _where_views(off: torch.Tensor, ablated: torch.Tensor, kept: torch.Tensor) -
     return torch.where(off.view(off.shape + (1,) * (kept.dim() - 1)), ablated, kept)
 
 
-def _nearest(position: torch.Tensor, reference: torch.Tensor) -> torch.Tensor:
-    """The representative of position (mod P) nearest to reference: decoded positions come
-    back in [0, P), and the belief's frame is continuous."""
-    return position + POSITION_PERIOD * torch.round((reference - position) / POSITION_PERIOD)
-
-
 def _cast(tensor: torch.Tensor | None, dtype: torch.dtype) -> torch.Tensor | None:
     return None if tensor is None else tensor.to(dtype)
-
-
-def _blocks(store: dict) -> torch.Tensor | None:
-    """The blocks' read-outs (..., N, 2, pairs) stacked as (..., N, blocks, 2, pairs)."""
-    readouts = store.get("readout")
-    return None if readouts is None else torch.stack(readouts, -3)
 
 
 def _zero_angles(tables: tuple[torch.Tensor, torch.Tensor]):
@@ -489,6 +531,7 @@ class Yemong(nn.Module):
             covariance=delta,
             spread_inputs=config.spread_inputs,
             position_inputs=config.position_inputs,
+            position_period=config.position_period,
         )
         self.delta_code = None
         if delta:
@@ -509,7 +552,7 @@ class Yemong(nn.Module):
                 config.acceleration_inputs,
                 self.state_code.ellipse_width,
             ),
-            global_inputs(config.mode_inputs),
+            global_inputs(config.mode_inputs, config.arena_code),
             FIELD_INPUTS,
             width,
             config.map_width,
@@ -537,9 +580,15 @@ class Yemong(nn.Module):
             width, 1 + 2 * SHOT_HARMONICS, self.shot_code.trajectory_width
         )
         self._initialise(build.num_ships, cells)
-        # Frequencies (2 pi / period) 2^k, held as their periods (exact powers of two metres).
-        octaves = 2.0 ** torch.arange(config.rotary_octaves, dtype=torch.float32)
-        self.register_buffer("position_periods", config.rotary_period / octaves, persistent=False)
+        # The rotary position pairs' periods and axes (`YemongConfig.rotary_axes`): each
+        # band's period on both its axes. At ratio 2 the periods are exact powers of two.
+        periods = torch.tensor(config.rotary_periods(), dtype=torch.float64).float()
+        self.register_buffer("position_periods", periods.repeat(2), persistent=False)
+        self.register_buffer(
+            "position_axes",
+            torch.tensor(config.rotary_axes(), dtype=torch.float32),
+            persistent=False,
+        )
         self.register_buffer(
             "heading_frequencies",
             torch.tensor(config.heading_harmonics, dtype=torch.float32),
@@ -553,12 +602,6 @@ class Yemong(nn.Module):
         # gradient is 1 / sqrt(eps)).
         with torch.no_grad():
             self.encoder.absent_zone.normal_()
-        # After every other draw, so the rest initialise as they would without it.
-        self.rotary_readout = (
-            nn.ModuleList(nn.Linear(width, 2 * config.rotary_pairs) for _ in range(config.blocks))
-            if config.rotary_readout
-            else None
-        )
         # The error head (`delta_split`), after every other draw, so the rest initialise as
         # they would without it: its last layer zero, its bias the measured marginal.
         self.correction_code, self.correction_head = None, None
@@ -568,6 +611,8 @@ class Yemong(nn.Module):
             with torch.no_grad():
                 nn.init.zeros_(self.correction_head.lasts[0].weight)
                 self.correction_head.lasts[0].bias.copy_(self.correction_code.marginal_logits())
+        # The geometry head, likewise after every other draw.
+        self.geometry_head = geometry.GeometryHead(width) if config.geometry_head else None
 
     def _initialise(self, num_ships: int, cells: int) -> None:
         """Code columns of each first projection ~ N(0, 1 / groups); the next-state head
@@ -587,6 +632,8 @@ class Yemong(nn.Module):
                 self.encoder.ship.first.weight[:, end:].normal_(0.0, self.state_code.groups**-0.5)
             for kind in (self.encoder.field, self.encoder.global_token, self.encoder.zone):
                 kind.first.weight[:, :POSITION_CODE].normal_(0.0, POSITION_LEVELS**-0.5)
+            if self.config.arena_code:  # the arena radius's code ends the token: one group
+                self.encoder.global_token.first.weight[:, -ARENA_CODE:].normal_(0.0, 1.0)
             nn.init.zeros_(self.ship_heads.lasts[1].weight)
             if self.delta_code is not None:
                 self.ship_heads.lasts[1].bias.copy_(self.delta_code.marginal_logits())
@@ -654,7 +701,10 @@ class Yemong(nn.Module):
                 torch.where(rows, corrected[1], physics[1]),
             )
         predicted, predicted_spreads = self.state_code.decode_logits(logits, ship_type)
-        position = _nearest(predicted[..., 0:2], means[..., 0:2])
+        # decoded positions come back in [0, P): the representative nearest the state at t
+        position = nearest_representative(
+            predicted[..., 0:2], means[..., 0:2], self.config.position_period
+        )
         return torch.cat([position, predicted[..., 2:]], -1), predicted_spreads
 
     def _faded(
@@ -707,7 +757,7 @@ class Yemong(nn.Module):
             convolution_buffer=state.new_zeros(state.shape[:-1] + (3, config.width)),
             belief=belief,
             previous_action=torch.zeros((views, ships_per_team), dtype=torch.int32, device=device),
-            offset=POSITION_PERIOD * torch.rand((views, 2), dtype=dtype, device=device),
+            offset=config.position_period * torch.rand((views, 2), dtype=dtype, device=device),
             nonfinite=torch.zeros(views, dtype=torch.int64, device=device),
             motion=rows,
             previous=(
@@ -727,8 +777,7 @@ class Yemong(nn.Module):
             ),
         )
 
-    @staticmethod
-    def _cleared(carry: Carry, reset: torch.Tensor) -> Carry:
+    def _cleared(self, carry: Carry, reset: torch.Tensor) -> Carry:
         """The carry with every view whose environment reset made fresh, with a new offset
         drawn (from the default generator: a captured graph draws afresh on each replay)."""
         keep = ~reset
@@ -746,7 +795,9 @@ class Yemong(nn.Module):
             action=masked(prior.action, 1.0 / NUM_JOINT),
         )
         offset = torch.where(
-            keep[..., None], carry.offset, POSITION_PERIOD * torch.rand_like(carry.offset)
+            keep[..., None],
+            carry.offset,
+            self.config.position_period * torch.rand_like(carry.offset),
         )
         rows = carry.motion
         if rows is not None:  # nothing is present before a reset
@@ -894,6 +945,7 @@ class Yemong(nn.Module):
             previous if self._tracks_motion else None,
             self.config.acceleration_inputs,
             self.config.mode_inputs,
+            self.config.arena_code,
         )
 
     def preceding_motion(
@@ -927,7 +979,7 @@ class Yemong(nn.Module):
         queries, memory = self.encoder(
             tokens.ship, tokens.global_token, tokens.field, tokens.zone, tokens.zone_present
         )
-        frequencies = (self.position_periods, self.position_periods, self.heading_frequencies)
+        frequencies = (self.position_axes, self.position_periods, self.heading_frequencies)
         token_tables = rotary_tables(tokens.query_position, tokens.query_heading, *frequencies)
         map_tables = rotary_tables(
             tokens.memory_position, torch.zeros_like(tokens.memory_position[..., 0]), *frequencies
@@ -942,56 +994,6 @@ class Yemong(nn.Module):
                 _identity(map_tables, rotary_off),
             )
         return queries, memory, token_tables, map_tables
-
-    def phasors(self, position: torch.Tensor, heading: torch.Tensor) -> torch.Tensor:
-        """(..., tokens, 2, pairs): the (cos, sin) rows of the rotary angles of positions
-        (..., tokens, 2) in the shifted frame and headings (..., tokens): the tables the
-        rotary read-out is trained against."""
-        cos, sin = rotary_tables(
-            position,
-            heading,
-            self.position_periods,
-            self.position_periods,
-            self.heading_frequencies,
-        )
-        return torch.cat([cos, sin], -2)
-
-    def _readout(
-        self,
-        ships: torch.Tensor,
-        token_tables: tuple[torch.Tensor, torch.Tensor],
-        rotary_off: torch.Tensor | None,
-        store: dict,
-    ):
-        """The trunk's `retable` for the rotary read-out (None without it): from block k's
-        temporal sublayer output, the token tables with every hidden ship's row replaced by
-        block k's read-out pairs (detached), rotary_off's views made the identity again;
-        block k's read-out (..., N, 2, pairs) goes into store["readout"][k]. ships (..., N,
-        columns): the observation's rows."""
-        if self.rotary_readout is None:
-            return None
-        hidden = ships[..., SHIP["visible"]] <= 0.5  # (..., N)
-        count = hidden.shape[-1]
-
-        store["readout"] = []
-
-        def retable(index: int, tokens: torch.Tensor):
-            readout = self.rotary_readout[index](tokens[..., :count, :]).unflatten(-1, (2, -1))
-            store["readout"].append(readout)
-            cos, sin = (part.detach().to(token_tables[0].dtype) for part in readout.unbind(-2))
-            rows = torch.cat([hidden, torch.zeros_like(hidden[..., :1])], -1)[..., None, None]
-            pad = token_tables[0][..., count:, :, :]
-            tables = (
-                torch.where(rows, torch.cat([cos[..., None, :], pad], -3), token_tables[0]),
-                torch.where(
-                    rows,
-                    torch.cat([sin[..., None, :], token_tables[1][..., count:, :, :]], -3),
-                    token_tables[1],
-                ),
-            )
-            return tables if rotary_off is None else _identity(tables, rotary_off)
-
-        return retable
 
     def _outcome_logits(self, global_hidden: torch.Tensor) -> torch.Tensor | None:
         """The outcome head's logits (..., 4) on the global token (None without one)."""
@@ -1054,7 +1056,6 @@ class Yemong(nn.Module):
         tokens = self.tokens(obs, replay, carry.motion)
         ships_count = tokens.code.shape[-2]
         rotary_off = None if ablations is None else ablations.rotary
-        readout: dict = {}
         with self._matmuls(ships.device):
             queries, memory, token_tables, map_tables = self._encode(tokens, rotary_off)
             hidden, state, buffer = self.trunk.step(
@@ -1064,7 +1065,6 @@ class Yemong(nn.Module):
                 map_tables,
                 carry.state,
                 carry.convolution_buffer,
-                self._readout(ships, token_tables, rotary_off, readout),
             )
             policy_logits, value_logits = self.own_heads(hidden[:, :own])
             enemy_action_logits, change = self.ship_heads(hidden[:, own:ships_count])
@@ -1079,6 +1079,7 @@ class Yemong(nn.Module):
                 (density_log_rates,) = self.density(hidden[:, ships_count])
                 (shot_outcome_logits,) = self.shot_outcome(hidden[:, :ships_count])
                 shot_latents = self.shot_trajectory_head.latent(hidden[:, :ships_count])
+                geometry_latents = self._geometry_latents(hidden[:, :ships_count])
         policy_logits, enemy_action_logits, outcome_logits = (
             policy_logits.to(dtype),
             enemy_action_logits.to(dtype),
@@ -1167,7 +1168,7 @@ class Yemong(nn.Module):
             density_log_rates=density_log_rates.to(dtype),
             shot_outcome_logits=shot_outcome_logits.to(dtype),
             shot_latents=shot_latents.to(dtype),
-            rotary_readout=_cast(_blocks(readout), dtype),
+            geometry_latents=_cast(geometry_latents, dtype),
             correction_logits=_cast(every_correction, dtype),
         )
         return decision, torch.utils._pytree.tree_map(lambda tensor: tensor[None], unrolled)
@@ -1184,7 +1185,6 @@ class Yemong(nn.Module):
         tokens = self.tokens(obs, replay, self.preceding_motion(carry, obs, replay, reset))
         own, ships = replay.previous_action.shape[-1], tokens.code.shape[-2]
         dtype = self.bins.dtype
-        readout: dict = {}
         with self._matmuls(obs.ships.device):
             queries, memory, token_tables, map_tables = self._encode(tokens)
             hidden, _, _ = self.trunk.sequence(
@@ -1195,7 +1195,6 @@ class Yemong(nn.Module):
                 state,
                 buffer,
                 reset,
-                self._readout(obs.ships, token_tables, None, readout),
             )
             policy_logits, value_logits = self.own_heads(hidden[..., :own, :])
             ship_hidden = hidden[..., :ships, :]
@@ -1204,6 +1203,7 @@ class Yemong(nn.Module):
             (density_log_rates,) = self.density(hidden[..., ships, :])
             (shot_outcome_logits,) = self.shot_outcome(ship_hidden)
             shot_latents = self.shot_trajectory_head.latent(ship_hidden)
+            geometry_latents = self._geometry_latents(ship_hidden)
             correction_logits = None
             if self.correction_head is not None:
                 (correction_logits,) = self.correction_head(ship_hidden)
@@ -1219,9 +1219,24 @@ class Yemong(nn.Module):
             density_log_rates=density_log_rates.to(dtype),
             shot_outcome_logits=shot_outcome_logits.to(dtype),
             shot_latents=shot_latents.to(dtype),
-            rotary_readout=_cast(_blocks(readout), dtype),
+            geometry_latents=_cast(geometry_latents, dtype),
             correction_logits=_cast(correction_logits, dtype),
         )
+
+    def _geometry_latents(self, ship_hidden: torch.Tensor) -> torch.Tensor | None:
+        """The geometry head's per-row latents (..., N, 2 D) (None without the head)."""
+        if self.geometry_head is None:
+            return None
+        return self.geometry_head.latent(ship_hidden)
+
+    def geometry(self, latents: torch.Tensor, partners: torch.Tensor) -> torch.Tensor:
+        """The geometry head's pair logits (..., S, K, `geometry.WIDTH`) of latents
+        (..., N, 2 D) (`Unrolled.geometry_latents`) for each anchor (the first S rows) and
+        its partners (..., S, K) (`geometry.pairs`), under the model's matmul autocast, in
+        the model's dtype."""
+        with self._matmuls(latents.device):
+            logits = self.geometry_head.query(latents, partners)
+        return logits.to(self.bins.dtype)
 
     def shot_trajectory(self, latents: torch.Tensor, ages: torch.Tensor) -> torch.Tensor:
         """Trajectory code logits (..., Q, trajectory_width) of latents (..., D) at bullet

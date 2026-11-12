@@ -158,7 +158,11 @@ def network(agent, team: int, observed: Snapshot, following: Snapshot) -> Predic
     )
 
     belief = decode.ship_forecast(
-        replay.means[0].float().cpu(), replay.spreads[0].float().cpu(), offset, origin[own:]
+        replay.means[0].float().cpu(),
+        replay.spreads[0].float().cpu(),
+        offset,
+        origin[own:],
+        model.config.position_period,
     )
     hidden = replay.valid[0].cpu() & alive[own:] & ~visible[own:]
     believed = _ghosts(

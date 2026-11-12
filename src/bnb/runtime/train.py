@@ -36,7 +36,17 @@ from bnb.learn.rewards import RewardConfig
 from bnb.models.nearest import Nearest, NearestBuild, NearestConfig
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
 from bnb.models.yemong.inputs import MODE_INPUTS
-from bnb.models.yemong.model import Yemong, YemongBuild, YemongConfig, yemong_build
+from bnb.models.yemong.model import (
+    COLOUR_PERIOD,
+    ROTARY_BANDS,
+    ROTARY_COARSEST,
+    ROTARY_RATIO,
+    ROTARY_TURN,
+    Yemong,
+    YemongBuild,
+    YemongConfig,
+    yemong_build,
+)
 
 from . import analytics, lanes, metrics
 from .evaluate import first_results, shares
@@ -103,10 +113,13 @@ class TrainConfig:
     their `bfloat16_matmuls` stays False, as `precision`
     sets it, and a new run's Yemong decodes its belief's spreads with
     `spread_fit="coarsest"`, runs each block's temporal sublayer first
-    (`order="temporal_first"`, arm C's order, the champion's since 2026-11-07) and reads
-    every mode's flag (`mode_inputs`, elimination's since 2026-11-12); the config's own
-    defaults, "v1", "spatial_first" and the two older modes, are what older build records
-    hold. ship_card:
+    (`order="temporal_first"`, arm C's order, the champion's since 2026-11-07), reads
+    every mode's flag (`mode_inputs`, elimination's since 2026-11-12), and has the position
+    codes of 2026-11-12: the rotary bands (ROTARY_*: eight at ratio 3.405 from 48 m, each
+    turned 35 degrees, heading harmonics 1, 2, 4), the colour code to 236 196 m
+    (`position_period`), the arena radius's code (`arena_code`) and the geometry head
+    (`geometry_head`); the config's own defaults, "v1", "spatial_first", the two older
+    modes and the older codes, are what older build records hold. ship_card:
     the ship card's values by field, one per ship type, every field given
     (`bnb.game.api.default_card`). environments: the training environments; length: ticks
     per segment; shards: consecutive segments per update (v1's batch, twice over:
@@ -141,7 +154,17 @@ class TrainConfig:
     model: str = "yemong"
     # a new build's settings that differ from the record defaults (see the docstring)
     yemong: YemongConfig = YemongConfig(
-        spread_fit="coarsest", order="temporal_first", mode_inputs=MODE_INPUTS
+        spread_fit="coarsest",
+        order="temporal_first",
+        mode_inputs=MODE_INPUTS,
+        rotary_period=ROTARY_COARSEST,
+        rotary_octaves=ROTARY_BANDS,
+        rotary_ratio=ROTARY_RATIO,
+        rotary_turn=ROTARY_TURN,
+        heading_harmonics=(1, 2, 4),
+        position_period=COLOUR_PERIOD,
+        arena_code=True,
+        geometry_head=True,
     )
     relational: RelationalConfig = RelationalConfig()
     nearest: NearestConfig = NearestConfig()

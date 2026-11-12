@@ -36,11 +36,9 @@ EXEMPT = (
     "input/acceleration/invalid_share",
     "input/acceleration/slow_frame",
     "input/acceleration/padding_share/*",
-    # logged with `YemongConfig.rotary_readout` only (off in this run)
-    "rotary_readout/loss",
-    "rotary_readout/error/*",
-    "rotary_readout/hidden_error/*",
-    "rotary_readout/hidden_length/*",
+    # logged with `YemongConfig.geometry_head` only (off in this run)
+    "geometry/loss",
+    "geometry/cross_entropy/*",
     # logged with `YemongConfig.next_state` "delta" only (absolute in this run)
     "next_state/support_clip/*",
     "next_state/support_padding/*",

@@ -8,6 +8,7 @@ import torch
 from bnb.contracts import Trajectory
 from bnb.contracts.action import to_joint
 from bnb.contracts.obs import GLOBAL, SHIP
+from bnb.models.yemong import geometry
 from bnb.models.yemong.delta import RATE_FIELDS, Rates
 from bnb.models.yemong.density import HexGrid
 from bnb.models.yemong.inputs import Accelerations, believed
@@ -122,12 +123,13 @@ def next_state_targets(model, trajectory: Trajectory, rows: torch.Tensor) -> dic
     return dict(next_state=code, next_state_clipped=clipped, next_state_slow=slow)
 
 
-def rotary_targets(model, trajectory: Trajectory, rows: torch.Tensor) -> torch.Tensor:
-    """(L, R, N, 2, pairs): the true (cos, sin) of every row's rotary angles at t (its true
-    position in the model's frame, the view's offset added, and its true heading): the
-    rotary read-out's target. Read where the row is alive at t (`trajectory.alive`)."""
-    means = shifted_truth(rows, trajectory.replay.offset)
-    return model.phasors(means[..., 0:2], means[..., 4])
+def geometry_pairs(trajectory: Trajectory) -> tuple[torch.Tensor, ...]:
+    """The geometry head's pairs of a segment (`bnb.models.yemong.geometry.pairs`): the own
+    rows as anchors, partners alive and seen at t (never a hidden ship), from the stored
+    observation and its truth's alive column. (partners (L, R, S, K) int64, mask (L, R, S,
+    K), the quantities (L, R, S, K, 5))."""
+    own = trajectory.log_probability.shape[-1]
+    return geometry.pairs(trajectory.obs.ships, trajectory.alive, own)
 
 
 def next_state_mask(trajectory: Trajectory, model=None) -> torch.Tensor:

@@ -20,8 +20,8 @@ from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.controllers.scripted import Chaser
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
-from bnb.models.yemong import model as yemong_model
 from bnb.models.yemong.critic import symlog
+from bnb.models.yemong.decode import nearest_representative
 from bnb.models.yemong.inputs import NULL_ACTION, compose, store_action
 from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
 from bnb.models.yemong.state_code import POSITION_PERIOD
@@ -213,7 +213,7 @@ def test_the_nearest_image_crosses_the_period_boundary():
     period = POSITION_PERIOD
     position = torch.tensor([3.0, period - 3.0, 100.0])
     reference = torch.tensor([period - 5.0, 5.0, 100.0 + 2.0 * period])
-    got = yemong_model._nearest(position, reference)
+    got = nearest_representative(position, reference, period)
     torch.testing.assert_close(got, torch.tensor([period + 3.0, -3.0, 100.0 + 2.0 * period]))
 
 
