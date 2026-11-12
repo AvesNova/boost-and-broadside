@@ -386,10 +386,12 @@ class StopConfig:
     None turns it off); the score against the raw scripted agent in the rating lanes,
     over the last score_window finished games, of the better of the players `reads` names
     (the averages of the live weights; decisions: BC round three), reaches score_target
-    (None, the default, turns it off: the window is still kept and logged, and names the
-    average `policy/` holds); or budget_steps environment steps (a run stopped by its
-    budget resumes with a larger one). `reads` is in order of preference: an equal score
-    goes to the earlier."""
+    (None, the default, turns it off: the windows are still kept and logged); or
+    budget_steps environment steps (a run stopped by its budget resumes with a larger one).
+    `reads` is in order of preference: an equal score goes to the earlier. The windows need
+    rating lanes: with none (`LaneConfig.environments` 0) they never fill and the score
+    stop never fires. Which policy RL starts from is not the stop's choice: it is always
+    the exponential average (`bnb.runs.session.HANDOFF_PLAYER`)."""
 
     # the hub's BC runs (2026-11-09, 2026-11-10): offline, 5% over 10M steps since 5M
     # matched the calibrated Elo's plateau (author, 2026-11-11); online, a held condition

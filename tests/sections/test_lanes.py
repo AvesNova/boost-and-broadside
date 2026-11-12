@@ -650,10 +650,11 @@ def test_the_uniform_average_starts_at_the_first_update_past_the_warm_up(explici
     assert counts[-1] == len(counts) - first
 
 
-def test_a_clone_saves_the_read_average_as_its_policy_and_every_player_beside_it(tmp_path):
-    """`policy/` holds the average the score stop read, with that average's lane ratings
-    (where a warm start's rating starts); `policy-live/`, `policy-uniform/` and
-    `policy-exponential/` hold each player with its own."""
+def test_a_clone_hands_off_the_exponential_average_whatever_the_stop_reads(tmp_path):
+    """`policy/`, the BC -> RL hand-off, holds the exponential average with its lane ratings
+    (where a warm start's rating starts) whatever `StopConfig.reads` says and whichever
+    average the score stop reads (the author, 2026-11-12); `policy-live/`,
+    `policy-uniform/` and `policy-exponential/` hold each player with its own."""
     from bnb.runs import checkpoint, session
 
     trainer = _bc_trainer()
@@ -677,17 +678,24 @@ def test_a_clone_saves_the_read_average_as_its_policy_and_every_player_beside_it
             for player in (UNIFORM_AVERAGE, EXPONENTIAL_AVERAGE)
         },
     }
-    # the windows hold 40 games, under the default 1000: no average is read yet, so
-    # `policy/` holds the first the stop reads
-    assert session.save_policies(run, trainer) == EXPONENTIAL_AVERAGE
-    trainer.stop_rule = type(trainer.stop_rule)(
-        dataclasses.replace(trainer.config.stop, score_window=40), trainer.stop_rule.state
-    )
-    assert trainer.stop_rule.read == UNIFORM_AVERAGE
-    assert session.save_policies(run, trainer) == UNIFORM_AVERAGE
+    assert session.HANDOFF_PLAYER == EXPONENTIAL_AVERAGE
+    # the windows hold 40 games, under the default 1000: no average is read yet
+    assert trainer.stop_rule.read is None
+    session.save_policies(run, trainer)
+    # with full windows the stop reads the better scoring uniform average, and with `reads`
+    # reordered it prefers the uniform one: `policy/` still holds the exponential average
+    for reads in (
+        (EXPONENTIAL_AVERAGE, UNIFORM_AVERAGE),
+        (UNIFORM_AVERAGE, EXPONENTIAL_AVERAGE),
+        (UNIFORM_AVERAGE,),
+    ):
+        stop = dataclasses.replace(trainer.config.stop, score_window=40, reads=reads)
+        trainer.stop_rule = type(trainer.stop_rule)(stop, trainer.stop_rule.state)
+        assert trainer.stop_rule.read == UNIFORM_AVERAGE
+        session.save_policies(run, trainer)
     assert not (tmp_path / "policy.replaced").exists()
     for directory, player in (
-        ("policy", UNIFORM_AVERAGE),
+        ("policy", EXPONENTIAL_AVERAGE),
         ("policy-live", LIVE),
         ("policy-uniform", UNIFORM_AVERAGE),
         ("policy-exponential", EXPONENTIAL_AVERAGE),
@@ -697,7 +705,7 @@ def test_a_clone_saves_the_read_average_as_its_policy_and_every_player_beside_it
             assert torch.equal(policy.state_dict()[key], value.cpu()), (directory, key)
         ratings = checkpoint.read_policy(tmp_path / directory).ratings
         assert ratings[MODE] == pytest.approx(hooks.ratings.rating(MODE, player)[0])
-    assert checkpoint.read_policy(tmp_path / "policy").ratings[MODE] > 1000.0
+    assert checkpoint.read_policy(tmp_path / "policy").ratings[MODE] < 1000.0
 
 
 def test_bcs_stop_reads_each_players_lane_games_against_the_scripted_agent():

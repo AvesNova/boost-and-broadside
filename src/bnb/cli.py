@@ -944,8 +944,9 @@ def chain(options: Train, given_options: set[str], stop) -> None:
 
     import torch
 
-    from bnb.runs.chain import HANDOVER_VARIANT, Chain, reinforcement_updates
+    from bnb.runs.chain import Chain, reinforcement_updates
     from bnb.runs.records import Run, run_name
+    from bnb.runs.session import HANDOFF_PLAYER, POLICY_VARIANTS
 
     runs_directory = runs_directory_of(options.runs_directory)
     if options.resume:
@@ -1002,7 +1003,7 @@ def chain(options: Train, given_options: set[str], stop) -> None:
         if stop.by is not None or bc_run.record["status"] != "finished":
             return
         step = bc_run.record["segments"][-1]["end_step"]
-        policy = bc_run.variant_policy_path(HANDOVER_VARIANT)
+        policy = bc_run.variant_policy_path(POLICY_VARIANTS[HANDOFF_PLAYER])
         chained.hand_over(step, bc_run.record["stopped_by"], policy)
         print(
             f"handover at step {step:,} (stopped by {bc_run.record['stopped_by']}): RL from "

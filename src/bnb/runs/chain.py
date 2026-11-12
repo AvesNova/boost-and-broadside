@@ -27,9 +27,6 @@ from .records import Run, write_json
 
 RECORD = "chain.json"
 STAGES = ("bc", "rl")
-# the BC stage's policy file the RL stage starts from, for every model (author,
-# 2026-11-11): the exponential average (`bnb.runs.session.POLICY_VARIANTS`)
-HANDOVER_VARIANT = "exponential"
 
 
 class Chain:

@@ -680,7 +680,7 @@ def test_bnb_train_objective_bc_saves_the_clone_as_a_policy_file(monkeypatch, tm
     record = checkpoint.read_record(run.policy_path)
     assert record["kind"] == "policy" and record["return_scale"]
     assert record["steps"] == dict(environment_steps=2 * 16 * 16, updates=2)
-    # no window filled: `policy/` holds the first average the stop reads, every player beside it
+    # `policy/` holds the exponential average (the hand-off), every player beside it
     assert run.record["policy_player"] == "exponential_average"
     for variant in ("live", "uniform", "exponential"):
         assert checkpoint.read_record(run.variant_policy_path(variant))["kind"] == "policy"

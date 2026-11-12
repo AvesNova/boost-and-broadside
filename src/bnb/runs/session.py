@@ -39,6 +39,9 @@ CADENCE_SECONDS = 30 * 60
 CADENCE_UPDATES = 3
 # a BC run's policy files beside `policy/`, `policy-<variant>/`, by the lane player they hold
 POLICY_VARIANTS = {LIVE: "live", UNIFORM_AVERAGE: "uniform", EXPONENTIAL_AVERAGE: "exponential"}
+# the BC -> RL hand-off, a BC run's `policy/`: always the exponential average, for every
+# model, never chosen by the score stop's windows (the author, 2026-11-11 and 2026-11-12)
+HANDOFF_PLAYER = EXPONENTIAL_AVERAGE
 # the file in a run directory that asks its process to stop after the update in progress
 STOP_FILE = "STOP"
 BY_STOP_FILE = "STOP file"  # a `StopRequest.by`, beside the signals' names
@@ -147,13 +150,6 @@ def act(run: Run, trainer: Trainer, recorder: Recorder, record: dict) -> None:
     print(f"skipped a non-finite step: checkpoint and batch dump in {dumped}", flush=True)
 
 
-def policy_player(trainer: Trainer) -> str:
-    """The lane player a BC run's `policy/` holds: the average its score stop read last
-    (`bnb.learn.bc.StopRule.read`), or before any window filled, the first it reads."""
-    rule = trainer.stop_rule
-    return rule.read or rule.config.reads[0]
-
-
 def _replace_policy(
     path: pathlib.Path, trainer: Trainer, model: torch.nn.Module, ratings: dict | None
 ) -> None:
@@ -176,15 +172,14 @@ def _replace_policy(
 
 
 @torch.no_grad()
-def save_policies(run: Run, trainer: Trainer) -> str:
+def save_policies(run: Run, trainer: Trainer) -> None:
     """A BC run's policy files, for the BC -> RL hand-off (`bnb train --init-from`): each of
     the live clone and the two averages of its weights (`bnb.league.lanes.LaneHooks`) at
-    `policy-<variant>/` (POLICY_VARIANTS), and at `policy/` the one `policy_player` names.
-    Each holds its weights, the return scale, the step counts and its own lane rating per
-    mode (where a warm start's live rating starts). A resumed run's earlier files are
-    replaced. Returns the player `policy/` holds."""
+    `policy-<variant>/` (POLICY_VARIANTS), and at `policy/` the hand-off, always the
+    exponential average (HANDOFF_PLAYER), whatever the score stop reads. Each holds its
+    weights, the return scale, the step counts and its own lane rating per mode (where a
+    warm start's live rating starts). A resumed run's earlier files are replaced."""
     hooks = trainer.league  # BC's (`LaneHooks`): the lanes' ratings and the averages
-    chosen = policy_player(trainer)
     scratch = copy.deepcopy(trainer.model).cpu()
     for player, variant in POLICY_VARIANTS.items():
         if player == LIVE:
@@ -194,9 +189,8 @@ def save_policies(run: Run, trainer: Trainer) -> str:
             model = scratch
         ratings = hooks.ratings.of(player)
         _replace_policy(run.variant_policy_path(variant), trainer, model, ratings)
-        if player == chosen:
+        if player == HANDOFF_PLAYER:
             _replace_policy(run.policy_path, trainer, model, ratings)
-    return chosen
 
 
 def micro_batch_note(trainer: Trainer) -> str:
@@ -230,7 +224,8 @@ def train(
     or "stopped"). PPO's budget is the update count (`trainer.config.updates`, the run's
     total); BC trains until its stop rule fires (`bnb.runtime.cloning.update`), records the
     rule (or "interrupted") as the run's `stopped_by` and saves its policy files
-    (`save_policies`), recording the player `policy/` holds as `policy_player`.
+    (`save_policies`), recording the player `policy/` holds (HANDOFF_PLAYER) as
+    `policy_player`.
     recorder: builds and writes each update's record (`log` gets the record); without one
     `log` gets the trainer's row. stop: the entry point's entered `StopRequest` (else one is
     entered for the loop). A STOP file left by an earlier process is removed at the start;
@@ -293,11 +288,11 @@ def train(
         if not run.update_policies_path(step).exists():  # the segment's end
             save_update_policies(run, trainer, scratch, recorder)
         if cloned:
-            player = save_policies(run, trainer)
+            save_policies(run, trainer)
             run.update(
                 stopped_by=reason or "interrupted",
                 policy=str(run.policy_path),
-                policy_player=player,
+                policy_player=HANDOFF_PLAYER,
             )
         if stop.by is not None and not finished:
             run.update(stop_request=dict(by=stop.by, step=step))
