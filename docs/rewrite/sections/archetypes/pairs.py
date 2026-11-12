@@ -1198,6 +1198,23 @@ def round12() -> list[dict]:
 ROUNDS["round12"] = round12
 
 
+BRAWLER_SIGHT = {"vision_range_scale": 0.92, "hit_damage": 1.12}  # confirm 4's brawler
+
+
+def triangle() -> list[dict]:
+    """The third side of a three-ship set: standard (M, kit2), hit-and-run and the
+    short-sighted brawler are each even against the standard; is hit-and-run v brawler?"""
+    c = pair(
+        "hit-and-run v brawler (vision x0.92, dmg x1.12) (M), kit2",
+        ("M", merge(HIT_AND_RUN, kit(*KIT2))),
+        ("M", merge(BRAWLER_SIGHT, kit(*KIT2))),
+    )
+    return [c, flown(c, "crowd extend + lead"), flown(c, "duel one-circle + crowd extend + lead")]
+
+
+ROUNDS["triangle"] = triangle
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"

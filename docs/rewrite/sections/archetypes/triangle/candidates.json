@@ -1,0 +1,471 @@
+[
+ {
+  "name": "hit-and-run v brawler (vision x0.92, dmg x1.12) (M), kit2",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 85.07878831537175
+   },
+   "hit_damage": {
+    "set": 8.96693808088893
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "shield_recharge_rate_scale": 4.0,
+   "shield_recharge_delay_scale": 0.4,
+   "vision_range_scale": 1.0,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 8.369142208829668
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.92,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "hit-and-run v brawler (vision x0.92, dmg x1.12) (M), kit2 | crowd extend + lead",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 85.07878831537175
+   },
+   "hit_damage": {
+    "set": 8.96693808088893
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "shield_recharge_rate_scale": 4.0,
+   "shield_recharge_delay_scale": 0.4,
+   "vision_range_scale": 1.0,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 8.369142208829668
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.92,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 0.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     0.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   },
+   "turn": {
+    "sense": 0.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     0.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   }
+  }
+ },
+ {
+  "name": "hit-and-run v brawler (vision x0.92, dmg x1.12) (M), kit2 | duel one-circle + crowd extend + lead",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 85.07878831537175
+   },
+   "hit_damage": {
+    "set": 8.96693808088893
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "shield_recharge_rate_scale": 4.0,
+   "shield_recharge_delay_scale": 0.4,
+   "vision_range_scale": 1.0,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 8.369142208829668
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.92,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     0.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     0.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0
+   }
+  }
+ }
+]
