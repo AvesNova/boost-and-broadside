@@ -10,10 +10,22 @@
 #   train       other bnb train options (such as ["--model", "nearest"])
 #   objective   "chain" (default) or "ppo"
 #   needs       a switch the code does not have yet: launch.py refuses to queue the arm
+#   chain_budget_steps   the arm's own combined budget (launch.toml's otherwise)
 #
 # The learning rate is a warm-up then constant on environment steps (bnb.learn.ppo
 # .learning_rate), so a chain stopped at 150M continues to 500M by `bnb train --resume
 # <run> --chain-budget-steps 500000000`, as the same run.
+
+# ---------------------------------------------------------------- the mainline (1 GPU)
+
+[[arm]]
+# the dry run's one full run (2026-11-12): the final config (the control's settings) to
+# 300M on the single 5090; at matched steps it is one more seed of the control
+name = "mainline"
+group = "mainline"
+seeds = [0]
+cost = 2.0
+chain_budget_steps = 300_000_000
 
 # ---------------------------------------------------------------- Stage A (8 GPUs)
 

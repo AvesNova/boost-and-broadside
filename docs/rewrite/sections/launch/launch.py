@@ -121,7 +121,7 @@ def train_arguments(config: dict, run: dict, runs_directory: str, micro: dict | 
             "--objective",
             "chain",
             "--chain-budget-steps",
-            str(config["chain_budget_steps"]),
+            str(run.get("chain_budget_steps", config["chain_budget_steps"])),
         ]
         bc_sets, rl_sets = [*config["bc_set"], *run["bc_set"]], [*config["rl_set"], *run["rl_set"]]
         if micro is not None:

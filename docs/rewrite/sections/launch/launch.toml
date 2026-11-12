@@ -66,7 +66,8 @@ fraction = 0.9
 # BC included) at which each run's policies are rated, and the variants (the averaged
 # agent, the product, and the live weights, both labelled)
 presets = ["real_scale_frontline", "real_scale_deathmatch", "real_scale_elimination"]
-steps = [25_000_000, 50_000_000, 75_000_000, 100_000_000, 125_000_000, 150_000_000]
+steps = [25_000_000, 50_000_000, 75_000_000, 100_000_000, 125_000_000, 150_000_000,
+         200_000_000, 250_000_000, 300_000_000]
 variants = ["uniform_average", "live"]
 blocks = 8
 block_environments = 256
