@@ -82,3 +82,67 @@ stopped at 23:22 for the author's playtest, so this round has 1v1 and 2v2 only (
   (D2: Jujak kills 0.19, Yongma 0.01); the two-circle fights are even (0.12 / 0.15). The
   armour cuts the kill rate of both kinds of two-circle fight (D2 JJ side by side 0.19 to
   0.01).
+
+## 23:25- KST: round 2 (`round2/`, gpubox7): pace compensators, milder and wider cones
+
+512 games on gpubox7 (RTX 5060 Ti, shared with a respawn-waves agent). On C and D2:
+the 12-degree p8 cone with damage x1.5 / x2 or shield x0.5; `f0` 0.05 and 0.1; 18 and 24
+degrees with damage x2; the cone with both dives at 9.8; and round 1's D2 armour and dive
+arms again for their 5v5.
+
+1v1 first (the crowds below when they land):
+
+| D2 + | JJ 1v1 mutual, life; merges m / med / first / p90 | YY 1v1 mutual, life | E v T 1v1 |
+|---|---|---|---|
+| r9 | 0.63, 253 s; 3.2 / 2 / 0.39 / 7 | 0.39, 289 s | 0.50 |
+| 0.01, 12 deg p8 | 0.03, 1557 s; 1.6 / 1 / 0.63 / 4 | 0.02, 580 s | 0.50 |
+| ... damage x1.5 | 0.05, 1031 s; 1.5 / 1 / 0.69 / 6 | 0.01, 441 s | 0.56 |
+| ... damage x2 | 0.05, 1024 s; 1.8 / 1 / 0.71 / 7 | 0.02, 364 s | 0.51 |
+| ... shield x0.5 | 0.05, 915 s; 1.7 / 1 / 0.70 / 6 | 0.02, 395 s | 0.52 |
+| 0.05, 12 deg p8 | 0.11, 1095 s | 0.02, 514 s | 0.54 |
+| ... damage x1.5 | 0.18, 704 s; 2.6 / 1 / 0.52 / 7 | 0.03, 449 s | 0.51 |
+| 0.1, 12 deg p6, damage x1.5 | 0.58, 233 s; 3.0 / 2 / 0.49 / 7 | 0.14, 315 s | 0.54 |
+| 0.01, 18 deg p8, damage x2 | 0.03, 1286 s | 0.00, 522 s | 0.54 |
+| 0.01, 24 deg p8, damage x2 | 0.04, 1852 s | 0.00, 572 s | 0.50 |
+| 0.01, 12 deg p8, damage x1.5, both dive 9.8 | 0.01, 522 s; 1.7 / 2 / 0.44 / 3 | 0.00, 677 s | 0.40 |
+
+**Why the Jujak mirror never ends: a side-by-side two-circle stalemate.** On D2 with the
+12-degree cone, the Jujak mirror plays 3,823 two-circle fights in 512 games (7.5 a game),
+83% of them side by side, and 1% of those end in a kill (r9 on D2: 21%). The pair circles
+apart, passes nose to nose once a lap (harmless now), and nobody gains: in a mirror under
+one agent the circles are equal, and r9 has no move that breaks the symmetry (no ship ever
+extends, yo-yos or reverses after a merge). Engagements by the two-turn-diameter
+definition fall from 1,201 to 219: the two circles sit farther apart than two turn
+diameters. Today the joust *is* the stalemate breaker, which is why taking its pay away
+costs the pace. More damage does not help (x2: 1557 to 1024 s), because almost no shots
+land in a side-by-side fight. The mixed duel keeps its pace (E v T 1v1 life 230 s at damage
+x2: the Yongma and Jujak circles differ, so one side gains). The trade-off between the mirror
+joust and the mirror pace is set by `f0` alone (0.01: 0.03, 1557 s; 0.05: 0.18, 704 s; 0.1:
+0.58, 233 s); round 3 maps it between 0.05 and 0.1.
+
+## Sketch (not built): a scripted yo-yo stalemate breaker
+
+The stalemate above is the case it is for. As a doctrine element beside extend / slash /
+bleed / lag / deny (`scripted_doctrine.Doctrine`, the weight multiplied into the combat
+layer's aim point and power like the others):
+
+- **Trigger** (a logistic gate, per pair, like `deny_in_crowd`): the pair is in a
+  two-circle fight (both turning, opposite world sides of the merge line, the same sense)
+  for longer than `yoyo_after_laps` (say 1.5 laps, counted from the pair's merges in the
+  tracker the combat layer already keeps for deny) and the nose is far off the target
+  (`yoyo_in_stall_angle`, above about 3 stall angles: no shot coming).
+- **High phase**: ease the stick toward `yoyo_ease` of full (say 0.5), which widens the
+  circle and stops the bleed, and set the power to the store-filling setting (the climb
+  into the store: speed traded for store at the climb exchange) for `yoyo_hold` seconds or
+  until the store is above `yoyo_in_store_fraction`.
+- **Low phase**: full stick back toward the target's lead point with the dive (store
+  spent for speed at the dive exchange), so the ship comes back inside the bandit's circle
+  with more energy and a better angle: the vertical's geometry folded into the store.
+- **Phase memory**: two per-ship scalars in the agent's carry (phase, ticks in phase);
+  the doctrine table gains the six fields above, per-type tensors, so the ES and the game
+  loop sweep them without a recompile, and `deny_in_crowd`'s crowd gate keeps it a duel
+  move.
+- **Its test** is duel-deny's: the yo-yo ship against r9 in the 1v1 mirror must score at
+  least 0.5 (a best response, not an avoidance), and the mirror life must fall back under
+  300 s with the tank cone on. A stronger dive exchange is what would make the low phase
+  pay; on its own (round 1) it costs the Yongma, because r9 never climbs into the store.
