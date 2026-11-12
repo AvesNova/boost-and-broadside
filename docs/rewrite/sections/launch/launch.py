@@ -32,6 +32,7 @@ import json
 import math
 import os
 import pathlib
+import re
 import shlex
 import statistics
 import subprocess
@@ -310,7 +311,9 @@ def probe(arguments) -> None:
             )
             if fits:
                 found.setdefault(key, {})[stage] = rows
-                found[key].setdefault("runs", []).append(run["run"])
+                found[key].setdefault("runs", [])
+                if run["run"] not in found[key]["runs"]:
+                    found[key]["runs"].append(run["run"])
                 out.write_text(json.dumps(found, indent=1))
             elif process.returncode != 0 and not out_of_memory(log.read_text(errors="replace")):
                 raise SystemExit(f"{run['run']} {stage}: the probe failed, not for memory ({log})")
@@ -324,9 +327,11 @@ def probe(arguments) -> None:
 def probe_peaks(text: str) -> tuple[float, float] | None:
     """(reserved, total) GB from a probe's `memory probe:` line."""
     for line in text.splitlines():
-        if line.startswith("memory probe: allocated"):
-            words = line.split()
-            return float(words[6]), float(words[11])
+        found = re.match(
+            r"memory probe: allocated [\d.]+ GB, reserved ([\d.]+) GB, .* of ([\d.]+) GB", line
+        )
+        if found:
+            return float(found.group(1)), float(found.group(2))
     return None
 
 
@@ -456,7 +461,7 @@ def run_progress(runs_directory: pathlib.Path, name: str) -> dict | None:
     info["kl"] = last.get("bc/kl", last.get("policy/kl"))
     by_player = {}
     for key, value in last.items():
-        if key.startswith("lanes/score/") and key.endswith("_vs_scripted"):
+        if key.startswith("lanes/score/") and key.endswith("_vs_scripted") and "league" not in key:
             by_player.setdefault(key.split("/")[-1].replace("_vs_scripted", ""), []).append(value)
     info["lanes"] = {player: statistics.fmean(values) for player, values in by_player.items()}
     if budget:

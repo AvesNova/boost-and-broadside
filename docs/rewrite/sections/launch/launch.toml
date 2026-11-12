@@ -56,9 +56,11 @@ queue_file = "/workspace/queue/queue.json"
 [probe]
 # micro-batch rows tried per stage, largest first: the largest whose first update reserves
 # at most `fraction` of the GPU's memory is used (micro-batches add up to the minibatch:
-# memory and speed only, the update's math is the same)
-bc = [5120, 2560, 1280, 640]
-rl = [1280, 640, 320, 160]
+# memory and speed only, the update's math is the same). Each try compiles its shapes
+# (tens of minutes cold), so the lists start at what should fit 32 GB: on the 24 GB 3090
+# the champion's BC fit 2560 rows (18 GB) and its RL 320 (640 ran out of memory).
+bc = [2560, 1280, 640]
+rl = [640, 320, 160]
 fraction = 0.9
 
 [tournament]

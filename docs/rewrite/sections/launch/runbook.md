@@ -17,6 +17,23 @@ GPU (supervisor programs), so the box resumes on its own after a restart.
 | `reward_check.py` | a run's reward, play and episode series by window, and the reward-hacking flags |
 | `pull.sh` | the laptop's pull of results over the box's direct address |
 
+## The dry run on one 5090, in short
+
+```bash
+# box (root), once the game tree is frozen and launch.toml's lineup is set and pushed
+bash /workspace/bootstrap.sh REF
+cd /workspace/boost-and-broadside; L=docs/rewrite/sections/launch; source $L/env.sh
+.venv/bin/python $L/launch.py check
+.venv/bin/python $L/launch.py probe --group mainline        # compiles: fills the cache
+bash $L/cache.sh export /workspace/compile-cache.tar.zst    # for the 8x box (same GPU model)
+.venv/bin/python $L/launch.py enqueue --group mainline      # the chain to 300M, on runner-0
+.venv/bin/python $L/launch.py status
+# laptop: pull.sh (section 3); after the run: section 5 (tournament, replays, reward check)
+```
+
+Export the cache again after the run's first updates (the run compiles a few graphs the
+probe does not: the RL warm start, the lanes' snapshots); the archive replaces the old one.
+
 ## 1. Rent and bootstrap
 
 1. Rent the box. Note its **direct** ssh address (vast's "Direct ssh connect": `root@IP -p
