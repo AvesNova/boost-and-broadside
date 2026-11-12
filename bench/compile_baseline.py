@@ -18,6 +18,8 @@ Cases:
   realtime  the play shell's tick on the CPU (compiled, B = 1), its first call
 
 Usage: `python bench/compile_baseline.py CASE [key=value ...] > result.json`
+(BENCH_BACKEND=eager: Dynamo's backend "eager", so each compile is the trace alone, with
+its op count, and no Inductor.)
 Run it with fresh TORCHINDUCTOR_CACHE_DIR and TRITON_CACHE_DIR for a cold measurement
 (`bench/compile_baseline.sh` does). Prints progress lines to stderr and one JSON object
 to stdout.
@@ -66,6 +68,8 @@ _compile = torch.compile
 def _timed_compile(function=None, **options):
     if function is None:
         return lambda f: _timed_compile(f, **options)
+    if os.environ.get("BENCH_BACKEND") == "eager":  # Dynamo's trace alone: count the ops
+        options = {k: v for k, v in options.items() if k != "options"} | {"backend": "eager"}
     compiled = _compile(function, **options)
     label = getattr(function, "__qualname__", repr(function))
 
