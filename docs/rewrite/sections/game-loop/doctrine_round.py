@@ -55,6 +55,8 @@ def main() -> None:
     parser.add_argument(
         "--parts", nargs="+", default=["energy", "turn"], help="what the ES searches"
     )
+    parser.add_argument("--distinct-floor", type=float, default=0.0)
+    parser.add_argument("--distinct-weight", type=float, default=0.1)
     parser.add_argument("--label", default="", help="appended to the results' names")
     parser.add_argument("--card", help="a JSON file of card factors {energy: {}, turn: {}}")
     args = parser.parse_args()
@@ -92,6 +94,8 @@ def main() -> None:
                 deadline=deadline,
                 log=lambda line: print(line, flush=True),
                 parts=tuple(args.parts),
+                distinct_floor=args.distinct_floor,
+                distinct_weight=args.distinct_weight,
             )
         else:
             found = search(

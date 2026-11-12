@@ -1135,6 +1135,64 @@ def decode_parameters(vector: list[float], like: tuple[float, ...]) -> tuple[flo
     return tuple(pack_parameters(dataclasses.replace(parameters, **values)))
 
 
+PARTS_READ = ("ships", "fields", "globals", "zones")
+
+
+def snapshots(loop: Loop, player: Player, every: int = 450, keep: int = 4096) -> Obs:
+    """Observations of `player`'s mixed self-play: every `every` ticks, `keep` views
+    (living or not) drawn at random, concatenated (the distinctness penalty's situations)."""
+    state, observation, carry, tally = loop.start([Group(0, "mixed", player, player, loop.B)])
+    taken = []
+    for number in range(loop.ticks - 1):
+        state, observation, carry, tally = loop._tick(state, observation, carry, tally)
+        if number % every == every - 1:
+            view = Obs(
+                **{
+                    n: getattr(observation, n).flatten(0, 1)
+                    for n in ("ships", "fields", "globals", "zones")
+                }
+            )
+            index = torch.randperm(view.ships.shape[0], device=loop.device)[:keep]
+            taken.append(Obs(**{n: getattr(view, n)[index].clone() for n in PARTS_READ}))
+    return Obs(**{n: torch.cat([getattr(t, n) for t in taken]) for n in PARTS_READ})
+
+
+def doctrine_kl(loop: Loop, views: Obs, player: Player) -> float:
+    """The mean symmetric KL (power + stick marginals, nats) between the player's energy and
+    turn doctrines flown by every living own ship of `views` (the memoryless agent, the
+    player's parameters)."""
+    from bnb.contracts.obs import SHIP
+    from bnb.controllers.scripted_parameters import unpack
+
+    rows = views.ships.shape[0]
+    parameters = unpack(
+        torch.tensor(
+            [list(player.parameters or default_parameters())] * rows,
+            dtype=torch.float32,
+            device=loop.device,
+        )
+    )
+    with torch.no_grad():
+        parts = [
+            scripted.marginals(
+                views,
+                loop.card,
+                parameters,
+                1.0,
+                None,
+                doctrines=torch.tensor([pack(d)] * (2 * loop.K), device=loop.device),
+            )
+            for d in (player.energy, player.turn)
+        ]
+    alive = views.ships[:, : loop.S, SHIP["alive"]] > 0.5
+    total = 0.0
+    for part in ("power", "stick"):
+        p = getattr(parts[0], part).clamp_min(1e-6)
+        q = getattr(parts[1], part).clamp_min(1e-6)
+        total = total + ((p - q) * (p.log() - q.log())).sum(-1)
+    return float(total[alive].mean())
+
+
 def es_search(
     loop: Loop,
     parent: Player,
@@ -1152,6 +1210,8 @@ def es_search(
     objective: str = "kill_score",
     lineups: tuple[str, ...] = SEARCH_LINEUPS,
     parts: tuple[str, ...] = ("energy", "turn"),
+    distinct_floor: float = 0.0,
+    distinct_weight: float = 0.1,
 ) -> Player:
     """An evolution strategy over `parts` of a player at once (the two types' doctrines in
     `encode`'s space, the scripted parameters in `encode_parameters`'): each
@@ -1160,7 +1220,10 @@ def es_search(
     pairs' score differences times their directions; the parent on probation moves `step`
     sigma along the normalised gradient. The moved parent stays only if its fresh score in
     the next generation beats the incumbent's (whose games accumulate), else the incumbent
-    returns and the step halves. Every candidate is a line of the log."""
+    returns and the step halves. With `distinct_floor` > 0, each candidate's score loses
+    distinct_weight x max(0, 1 - KL / distinct_floor), KL its two doctrines' `doctrine_kl`
+    on the parent's situations (`snapshots`, taken once): the doctrines may not collapse
+    into one. Every candidate is a line of the log."""
     generator = torch.Generator().manual_seed(seed)
     base_parameters = parent.parameters or default_parameters()
     encoded = {
@@ -1173,6 +1236,13 @@ def es_search(
     parent_rows: list[dict] = []
     incumbent = None  # (centre, rows)
     started = time.time()
+    views = snapshots(loop, parent) if distinct_floor > 0 else None
+
+    def penalty(player: Player) -> tuple[float, float]:
+        if views is None:
+            return 0.0, 0.0
+        kl = doctrine_kl(loop, views, player)
+        return distinct_weight * max(0.0, 1.0 - kl / distinct_floor), kl
 
     def player_at(vector: torch.Tensor, name: str) -> Player:
         values, column, changes = vector.tolist(), 0, {}
@@ -1209,12 +1279,18 @@ def es_search(
         by: dict[str, list[dict]] = {}
         for r in rows:
             by.setdefault(r["a"], []).append(r)
+        penalties = {c.name: penalty(c) for c in candidates}
+
+        def scored(name: str, mine: list[dict]) -> tuple[float, float]:
+            mean, error = weighted_score(mine, objective)
+            return mean - penalties[name][0], error
+
         parent_rows += by["parent"]
-        parent_score = weighted_score(parent_rows, objective)
+        parent_score = scored("parent", parent_rows)
         verdict = ""
         if incumbent is not None:
             incumbent_rows = incumbent[1] + by["incumbent"]
-            kept = weighted_score(incumbent_rows, objective)
+            kept = scored("incumbent", incumbent_rows)
             if parent_score[0] < kept[0]:
                 verdict = f" (probation failed: {parent_score[0]:.3f} < {kept[0]:.3f})"
                 centre, parent_rows, parent_score = incumbent[0], incumbent_rows, kept
@@ -1222,7 +1298,7 @@ def es_search(
             else:
                 verdict = f" (probation passed: {parent_score[0]:.3f} >= {kept[0]:.3f})"
             incumbent = None
-        scores = {name: weighted_score(mine, objective)[0] for name, mine in by.items()}
+        scores = {name: scored(name, mine)[0] for name, mine in by.items()}
         difference = torch.tensor(
             [scores[f"p{n}"] - scores[f"m{n}"] for n in range(pairs)], dtype=torch.float64
         )
@@ -1237,6 +1313,7 @@ def es_search(
                         sigma=sigma,
                         step=step,
                         gradient_norm=float(gradient.norm()),
+                        parent_kl=penalties["parent"][1],
                         mean_child=float(sum(scores.values()) / len(scores)),
                         best_child=max(v for n, v in scores.items() if n[0] in "pm"),
                         parent=player_at(centre, parent.name).named(),
@@ -1257,7 +1334,7 @@ def es_search(
             f"{parent_score[0]:.3f} ± {parent_score[1]:.3f}{verdict}; children mean "
             f"{float(sum(scores.values()) / len(scores)):.3f} best "
             f"{max(v for n, v in scores.items() if n[0] in 'pm'):.3f}; |g| "
-            f"{float(gradient.norm()):.3f}, step {step:.2f}; "
+            f"{float(gradient.norm()):.3f}, step {step:.2f}, KL {penalties['parent'][1]:.3f}; "
             f"{time.time() - generation_started:.0f} s; ETA {clock(left)} KST"
         )
         if generation < generations - 1 and float(gradient.norm()) > 0:
