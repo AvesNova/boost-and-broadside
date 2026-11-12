@@ -812,8 +812,8 @@ Rate (lift x1.03, dmg x1.25) v speed (drag x0.85, vision x1.04, cone f0 0.07), k
 The finals' crowds (confirm 8 and 9, A v B under r9): kills m / o / f / t about
 0.06 / 0.30 / 0.51 / 0.13 at 5v5-20v20 (0.07-0.08 / 0.35 / 0.50 / 0.08 at 2v2), 0.5-0.66
 kills a minute a ship, life 81-109 s; **trades 0.07 at 5v5, 0.13-0.14 at 10v10 and 0.20-0.22 at
-20v20**, above the frozen card's (0.04 / 0.08 / 0.12): the kit's damage x2.5 makes crowds
-lethal enough that two ships often die together.
+20v20**, above the frozen card's (0.04 / 0.08 / 0.12). The kit's damage is not the cause
+on its own: the milder kit 3 (damage x2) gives the same trades (below).
 
 ## 04:15-04:27 KST: set 5 (`set5/`): do the rate and speed fighters join the set?
 
@@ -853,3 +853,16 @@ vision x1.04, f0 0.07) fighters of confirm 9 against each set ship:
   size): it is a fight-shape knob. On the kit's ships it keeps its trade: 100 m takes the
   hit-and-run pair's mirrors to 0.18-0.21 mutual at 357-416 s, 150 m to 0.10-0.11 at 420-511 s.
   The kills it removes become offset head-on kills, not flank or tail ones.
+
+## 04:22-04:28 KST: kit 3 (`kit3/`): the final pairs on a milder kit (cone f0 0.10, damage x2)
+
+1024 games, r9 (the ships' own noses moved in proportion: hit-and-run f0 0.075, speed 0.0875):
+
+| Pair | 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | AA; BB mutual, life | Trades 5v5 / 10v10 / 20v20 |
+|---|---|---|---|
+| hit-and-run v standard | 0.52 / 0.50 / 0.47 / 0.46 / 0.45 | 0.37, 280 s; 0.37, 297 s | 0.07 / 0.12 / 0.20 |
+| rate v speed | 0.55 / 0.52 / 0.54 / 0.56 / 0.48 | 0.47, 224 s; 0.27, 387 s | 0.07 / 0.12 / 0.20 |
+
+- Both pairs keep their balance on the milder kit (0.45-0.56) and their mirrors; the trades
+  do not fall. Why big crowds trade more on these cards than on the frozen card is open
+  (the neutral hull, or the sharp armour cones, are the suspects; not measured).
