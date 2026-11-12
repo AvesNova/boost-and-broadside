@@ -7,6 +7,7 @@ import torch
 
 from bench.game_loop import (
     FILLER,
+    ROW_LINEUPS,
     Group,
     Job,
     Loop,
@@ -43,6 +44,16 @@ def test_the_layout_gives_each_side_its_doctrines_and_seats():
     assert placed["doctrines"].shape[:2] == (8, 4)
 
 
+def test_a_row_lineup_places_the_rows_themselves():
+    ROW_LINEUPS["test rows"] = ((0, 2, 3, 1), (1, 1, 3, 3))
+    try:
+        placed = layout([Group(0, "test rows", Player("a"), Player("b"), 2)], 2, "cpu", 4)
+    finally:
+        del ROW_LINEUPS["test rows"]
+    assert placed["ship_type"][0].tolist() == [0, 2, 3, 1, 1, 1, 3, 3]
+    assert placed["ship_type"][1].tolist() == [1, 1, 3, 3, 0, 2, 3, 1]
+
+
 def test_batches_pad_with_filler():
     plan = batches([Job(0, "mixed", Player("a"), Player("b"), 6)], 4)
     assert [sum(g.environments for _, g in batch) for batch in plan] == [4, 4]
@@ -54,6 +65,8 @@ def test_a_short_batch_counts_its_games(global_generator):
     jobs = [Job(0, "mixed", Player("off"), Player("off"), 4)]
     (out,) = run(loop, jobs)
     assert out["kills_side"].shape == (4, 2)
+    # the kills by type row are the kills by side
+    assert torch.equal(out["kills_by_row"].sum((2, 3)), out["kills_side"])
     row = job_summary(jobs[0], out, 2.0)
     assert row["games"] == 4 and 0.0 <= row["score"][0] <= 1.0
 
