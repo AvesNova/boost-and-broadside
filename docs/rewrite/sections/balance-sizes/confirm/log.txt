@@ -1,0 +1,11 @@
+## 1v1: 6 jobs, B 8192, 21:22 KST
+W1112 21:22:53.515000 1675742 torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+/home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+  warn_once(FP_FUSION_DEFAULT_WARNING)
+1v1 C: J induced x1.5, J shield x0.8 | Y shield x0.45, Y damage x1.6, Y bullet life x0.45   energy v turn v c0: score 0.391 ± 0.011  kills m/o/f/t 0.56 / 0.35 / 0.08 / 0.00  life 166 s  kpm/ship 0.34  trades 0.01
+1v1 C: J induced x1.5, J shield x0.8 | Y shield x0.45, Y damage x1.6, Y bullet life x0.45     turn mirror v c0: score 0.509 ± 0.012  kills m/o/f/t 0.78 / 0.18 / 0.04 / 0.00  life 117 s  kpm/ship 0.47  trades 0.04
+1v1 C: J induced x1.5, J shield x0.8 | Y shield x0.45, Y damage x1.6, Y bullet life x0.45   energy mirror v c0: score 0.499 ± 0.009  kills m/o/f/t 0.64 / 0.30 / 0.06 / 0.00  life 191 s  kpm/ship 0.30  trades 0.05
+1v1 D: A + both head-on fractions x0.5, Y damage x1.1, Y bullet life x0.75   energy v turn v c1: score 0.533 ± 0.010  kills m/o/f/t 0.18 / 0.74 / 0.08 / 0.00  life 305 s  kpm/ship 0.19  trades 0.00
+1v1 D: A + both head-on fractions x0.5, Y damage x1.1, Y bullet life x0.75     turn mirror v c1: score 0.495 ± 0.009  kills m/o/f/t 0.64 / 0.30 / 0.05 / 0.00  life 256 s  kpm/ship 0.23  trades 0.02
+1v1 D: A + both head-on fractions x0.5, Y damage x1.1, Y bullet life x0.75   energy mirror v c1: score 0.499 ± 0.007  kills m/o/f/t 0.20 / 0.67 / 0.12 / 0.00  life 484 s  kpm/ship 0.12  trades 0.00
+## 2v2: 6 jobs, B 8192, 21:23 KST

@@ -561,3 +561,28 @@ How each plays:
 None of the candidates keeps Jujak's sustained edge *and* holds 0.42-0.58 at every size:
 B and C come closest and lean Yongma at 5v5. Every card fails 20v20 (0.07-0.27), frozen
 included.
+
+## 21:17-21:24 KST: why 20v20 fails (`diag20/`): the arena's size, not the fleet
+
+The frozen card, E v T, 256 games (±0.03), 300 s unless noted:
+
+| Game | Arena radius | E v T |
+|---|---|---|
+| 10v10, the density rule | 11.0 km | 0.49-0.53 |
+| **10v10 in the 20v20 arena** | 15.6 km | **0.13** |
+| 20v20, the density rule | 15.6 km | 0.19 |
+| **20v20 in the 10v10 arena** | 11.0 km | **0.66** |
+| 20v20, no fog | 15.6 km | 0.41 |
+| 20v20, 600 s games | 15.6 km | 0.11 |
+
+- **The energy v turn result follows the arena's radius**, not the ship count: the same
+  10v10 goes from even to 0.13 in the wider arena, and 20v20 goes from 0.19 to 0.66 in the
+  narrower one. Fog is part of it (0.19 to 0.41 without fog). Longer games make it worse,
+  so it is not a slow start. A likely mechanism: in a wide arena under fog, ships arrive
+  and search one by one (the fog search flies back through the centre), and the scattered
+  fights are duels, which the Jujak wins. Not tested further.
+- **For the zero-shot plan this matters more than the fleet size.** Map size moves the
+  balance as much as 1v1 against 5v5 does. The density rule ties the two together, so a
+  "20v20 balance" is really a map-size balance. The size table should be read per arena
+  radius, and the map-size generalization (training on smaller and larger maps) will
+  meet the same lean.
