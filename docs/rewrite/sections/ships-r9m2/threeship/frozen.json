@@ -1,0 +1,108 @@
+{
+ "yongma": {},
+ "jujak": {},
+ "middle_energy": {
+  "max_lift_coefficient": {
+   "set": 0.0049096885596293105
+  },
+  "zero_lift_drag": {
+   "set": 4.967039823692225e-05
+  },
+  "engine_power": {
+   "set": 1369.9054400413486
+  },
+  "engine_power_full_store": {
+   "set": 334.9509220345242
+  },
+  "static_thrust": {
+   "set": 18.26384968972947
+  },
+  "corner_nose_frequency": {
+   "set": 5.43267567152869
+  },
+  "induced_drag_scale": {
+   "set": 3.0425931629625267
+  },
+  "coast_exchange_scale": {
+   "set": 5.827264883151506
+  },
+  "dive_exchange_scale": {
+   "set": 0.443383570178651
+  },
+  "climb_exchange_scale": {
+   "set": 1.5299285427612306
+  },
+  "max_shield": {
+   "set": 106.34848539421468
+  },
+  "hit_damage": {
+   "set": 2.9889793602963097
+  },
+  "reference_bullet_speed": {
+   "set": 876.851946797867
+  },
+  "hit_radius": {
+   "set": 10.000000121726089
+  },
+  "explosive_share": {
+   "set": 0.25
+  }
+ },
+ "middle_turn": {
+  "max_lift_coefficient": {
+   "set": 0.0049096885596293105
+  },
+  "zero_lift_drag": {
+   "set": 4.967039823692225e-05
+  },
+  "engine_power": {
+   "set": 1369.9054400413486
+  },
+  "engine_power_full_store": {
+   "set": 334.9509220345242
+  },
+  "static_thrust": {
+   "set": 18.26384968972947
+  },
+  "corner_nose_frequency": {
+   "set": 5.43267567152869
+  },
+  "induced_drag_scale": {
+   "set": 3.0425931629625267
+  },
+  "coast_exchange_scale": {
+   "set": 5.827264883151506
+  },
+  "dive_exchange_scale": {
+   "set": 0.443383570178651
+  },
+  "climb_exchange_scale": {
+   "set": 1.5299285427612306
+  },
+  "max_shield": {
+   "set": 106.34848539421468
+  },
+  "hit_damage": {
+   "set": 2.9889793602963097
+  },
+  "reference_bullet_speed": {
+   "set": 876.851946797867
+  },
+  "hit_radius": {
+   "set": 10.000000121726089
+  },
+  "explosive_share": {
+   "set": 0.25
+  }
+ },
+ "player": {
+  "doctrine": {
+   "turn": {
+    "duel_extend_in_shield_ratio": [
+     0.7,
+     0.1
+    ]
+   }
+  }
+ }
+}
