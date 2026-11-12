@@ -239,3 +239,27 @@ penalty (floor 0.5 nats, weight 0.1 kill share), against off, hand, r1, r1-hand,
   levers (Yongma damage x1.15 / x1.3, shield x1.15, Jujak damage x0.85, shield x0.87,
   Yongma frontal armour x0.7) with the pace statistics added (gap between deaths, life
   length, kills per minute per ship, spawn to first hit, first hit and kill).
+
+## 2026-11-12 16:32-16:37 KST: round 5 cards (balance levers, on r4)
+
+`card_round.py --round 5 --player r4` (275 s; `round5/cards.*`); the round-2 card plus one
+type lever each. Pace columns now measured (120 s games from a cold start, so the first
+engagement is in every game).
+
+| Variant | E v T (Yongma) | Kills m / o / f / t | Trades | Life s | Death gap mean (median) s | Kills/min/ship | Spawn to first hit s | Game's first hit / kill s |
+|---|---|---|---|---|---|---|---|---|
+| round-2 card | 0.313 ± 0.013 | 0.08 / 0.26 / 0.54 / 0.12 | 0.08 | 89 | 7.7 (4.7) | 0.61 | 37.5 | 25.0 / 29.6 |
+| Y damage x1.15 | 0.362 | 0.09 / 0.26 / 0.53 / 0.12 | 0.08 | 88 | 7.6 (4.7) | 0.62 | 37.5 | 25.1 / 29.6 |
+| Y damage x1.3 | 0.386 | 0.09 / 0.26 / 0.53 / 0.11 | 0.08 | 87 | 7.6 (4.5) | 0.62 | 37.5 | 25.0 / 29.5 |
+| J damage x0.85 | 0.340 | 0.08 / 0.25 / 0.55 / 0.13 | 0.08 | 91 | 7.8 (4.7) | 0.60 | 37.5 | 25.5 / 30.3 |
+| Y shield x1.15 | 0.376 | 0.08 / 0.26 / 0.54 / 0.13 | 0.08 | 91 | 7.9 (4.9) | 0.60 | 37.5 | 24.6 / 29.6 |
+| Y shield + damage x1.15 | 0.409 | 0.08 / 0.26 / 0.54 / 0.12 | 0.08 | 89 | 7.7 (4.7) | 0.61 | 37.5 | 25.0 / 29.6 |
+| J shield x0.87 | 0.359 | 0.09 / 0.26 / 0.54 / 0.12 | 0.08 | 88 | 7.7 (4.7) | 0.62 | 37.5 | 25.3 / 29.5 |
+| Y frontal fraction x0.7 | 0.319 | 0.08 / 0.26 / 0.55 / 0.12 | 0.08 | 90 | 7.8 (4.7) | 0.60 | 37.5 | 25.5 / 29.9 |
+
+- Each lever moves energy v turn by only +0.03-0.07; the best pair (Yongma shield and
+  damage x1.15) reaches 0.41. The mix, trades (0.08) and pace do not move. Round 6
+  (running) stacks them: Yongma shield/damage x1.2-1.4 with Jujak shield x0.8-0.9.
+- Pace inside the author's bands: life 87-91 s (band 45-300 s), 0.60-0.62 kills a minute
+  a ship (band 0.2-1.4); the gap between deaths 7.7 s mean, 4.7 s median (whole-second
+  bins); a ship's spawn to its first hit 37.5 s median (the 7800 m map's approach).
