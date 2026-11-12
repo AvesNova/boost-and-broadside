@@ -232,6 +232,57 @@ def play(args) -> None:
         )
 
 
+# Card variants of one mirror, to find which values make a pass lethal: each a type and its
+# card fields multiplied (on that type only). The vizia guns: a third of the damage and
+# two thirds of the head-on fraction (0.2 against 0.3).
+VARIANT_TYPE = "P-51D"
+VARIANTS = {
+    "damage x 1/2": dict(hit_damage=0.5),
+    "damage x 1/3": dict(hit_damage=1 / 3),
+    "damage x 1/6": dict(hit_damage=1 / 6),
+    "head-on fraction 0.15": dict(head_on_fraction_scale=0.5),
+    "head-on fraction 0.1": dict(head_on_fraction_scale=1 / 3),
+    "head-on angle x 2": dict(head_on_angle_scale=2.0),
+    "shield x 2": dict(max_shield=2.0),
+    "vizia guns (damage x 1/3, head-on 0.2)": dict(hit_damage=1 / 3, head_on_fraction_scale=2 / 3),
+    "damage x 1/3, head-on 0.1": dict(hit_damage=1 / 3, head_on_fraction_scale=1 / 3),
+}
+
+
+def variant_types(types, index: int, factors: dict):
+    values = {}
+    for field, factor in factors.items():
+        value = getattr(types, field).clone()
+        value[index] = value[index] * factor
+        values[field] = value
+    return dataclasses.replace(types, **values)
+
+
+def variants(args) -> None:
+    game, types, rules = setup()
+    names = api.type_names(game.ship_set)
+    index = names.index(VARIANT_TYPE)
+    record = pathlib.Path(args.record)
+    done = set()
+    if record.exists():
+        done = {json.loads(line)["variant"] for line in record.read_text().splitlines()}
+    todo = [name for name in VARIANTS if name not in done]
+    started = time.time()
+    for number, name in enumerate(todo):
+        batch_started = time.time()
+        card = variant_types(types, index, VARIANTS[name])
+        result = duels(rules, card, index, index, args.environments, args.seconds, args.seed)
+        result.update(pair=[VARIANT_TYPE, VARIANT_TYPE], variant=name, environments=args.environments)
+        with record.open("a") as handle:
+            handle.write(json.dumps(result) + "\n")
+        left = (time.time() - started) / (number + 1) * (len(todo) - number - 1)
+        print(
+            f"{datetime.datetime.now(KST):%H:%M:%S} {name}: {time.time() - batch_started:.0f} s; "
+            f"{number + 1}/{len(todo)}, ETA {_clock(left)} KST",
+            flush=True,
+        )
+
+
 def card_table(types, rules):
     c = characteristics(types, rules)
     names = api.type_names("real-scale")
@@ -316,12 +367,38 @@ def report(args) -> None:
         for line in pathlib.Path(record).read_text().splitlines()
     ]
     order = {name: number for number, name in enumerate(api.type_names(game.ship_set))}
-    lines.sort(key=lambda line: (line["pair"][0] != line["pair"][1], order[line["pair"][0]]))
+    lines.sort(
+        key=lambda line: (
+            "variant" in line,
+            line["pair"][0] != line["pair"][1],
+            order[line["pair"][0]],
+            list(VARIANTS).index(line["variant"]) if "variant" in line else 0,
+        )
+    )
     rows = [summarise(line, rules.tick_length) for line in lines]
+    cards = []
+    for line, row in zip(lines, rows):
+        if "variant" in line:
+            row["variant"] = line["variant"]
+            factors = VARIANTS[line["variant"]]
+            index = order[line["pair"][0]]
+            cards.append(card_table(variant_types(types, index, factors), rules))
+        else:
+            cards.append(card)
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "gun_lethality.json").write_text(
-        json.dumps(dict(arena_radius=ARENA_RADIUS, card=card, duels=rows), indent=1)
+        json.dumps(
+            dict(
+                arena_radius=ARENA_RADIUS,
+                card=card,
+                duels=rows,
+                variant_cards=[
+                    table[row["pair"][0]] for row, table in zip(rows, cards) if "variant" in row
+                ],
+            ),
+            indent=1,
+        )
     )
     print(
         "| type | TTK head-on (s) | TTK tail (s) | 180° sustained (s) | 180° instant (s) | "
@@ -329,10 +406,12 @@ def report(args) -> None:
         "| P(win \\| first hit) | measured TTK median (s) | hit fraction | front damage share |"
     )
     print("|---" * 14 + "|")
-    for row in rows:
+    for row, table in zip(rows, cards):
         a, b = row["pair"]
-        c = card[a]
+        c = table[a]
         name = a if a == b else f"{a} v {b}"
+        if "variant" in row:
+            name = f"{a}: {row['variant']}"
         if a == "vizia" and a == b:
             name = "**vizia**"
 
@@ -367,11 +446,16 @@ def main() -> None:
     one.add_argument("--seed", type=int, default=11)
     one.add_argument("--hours", type=float, default=3.0)
     one.add_argument("--shard", default="0/1", help="i/n: play every n-th matchup from the i-th")
+    three = sub.add_parser("variants")
+    three.add_argument("--record", required=True)
+    three.add_argument("--environments", type=int, default=512)
+    three.add_argument("--seconds", type=float, default=90.0)
+    three.add_argument("--seed", type=int, default=11)
     two = sub.add_parser("report")
     two.add_argument("--record", required=True, nargs="+")
     two.add_argument("--out", required=True)
     args = parser.parse_args()
-    {"play": play, "report": report}[args.command](args)
+    {"play": play, "report": report, "variants": variants}[args.command](args)
 
 
 if __name__ == "__main__":
