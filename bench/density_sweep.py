@@ -71,6 +71,7 @@ def score(counts: list[int]) -> tuple[float, float]:
 
 
 def main() -> None:
+    """The sweep the module describes."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=pathlib.Path, required=True)
     parser.add_argument("--base", default="real_scale_deathmatch")

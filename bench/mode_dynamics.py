@@ -133,6 +133,7 @@ class Probe:
         self.ticks_per_bin = 30
 
     def clear(self) -> None:
+        """Zero the buffers for a new batch (in place: the graph reads them)."""
         for name, value in self.buffers.items():
             if name in ("first_hit", "last_zone"):
                 value.fill_(-1)
@@ -146,6 +147,7 @@ class Probe:
         self.buffers[name].index_add_(0, bins.flatten(), mask.flatten().long())
 
     def observe(self, state, events, frontline_mode: bool) -> None:
+        """Count one tick's timings (inside the compiled resolve)."""
         b = self.buffers
         live = b["live"][:, None]
         S = self.S
@@ -238,13 +240,17 @@ class Experiments:
 
     @property
     def active(self) -> bool:
+        """Whether any candidate rule acts after the resolve or holds a zone."""
         return bool(self.lock or self.pause or self.rear or self.blast)
 
     def clear(self) -> None:
+        """Reset the buffers for a new batch (in place)."""
         for name, value in self.buffers.items():
             value.fill_(-1 if name == "lock_zone" else 0)
 
     def capture_step(self, original):
+        """`frontline.capture_step` with the just-captured zone held (lock or hold)."""
+
         def step(team, inside, roles, progress, *rest):
             b = self.buffers
             zone = torch.arange(roles.shape[-1], device=roles.device)
@@ -379,6 +385,7 @@ def trace_stage(length: int):
 
 
 def blank_trace(environments: int, length: int, device) -> dict:
+    """The trace stage's buffers: zeros (the tick counter included)."""
     return dict(
         tick=torch.zeros(1, dtype=torch.long, device=device),
         score=torch.zeros((environments, length, 2), dtype=torch.int16, device=device),
@@ -426,6 +433,7 @@ def first_games(trace: dict, episode: int, threshold: int, kind: str) -> list[di
 
 
 def main() -> None:
+    """The run the module describes."""
     parser = argparse.ArgumentParser()
     parser.add_argument("kind", choices=("deathmatch", "frontline"))
     parser.add_argument("--out", type=pathlib.Path, required=True)

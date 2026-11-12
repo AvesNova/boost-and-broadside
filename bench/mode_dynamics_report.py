@@ -19,6 +19,7 @@ import statistics
 
 
 def quantiles(values: list[float]) -> str:
+    """Mean, median, quartiles and 5-95% of the values, as text."""
     ordered = sorted(values)
 
     def at(q):
@@ -59,6 +60,7 @@ def histogram_summary(entries: list[dict], name: str) -> str | None:
 
 
 def probes(entries: list[dict], names: tuple[str, ...]) -> None:
+    """Print the named probe histograms' summaries."""
     labels = dict(
         engage="spawn to first enemy hit dealt or taken (s)",
         life="spawn to death (s)",
@@ -116,6 +118,7 @@ def elimination(entries: list[dict]) -> dict:
 
 
 def deathmatch(entries: list[dict]) -> dict:
+    """Kill rate, timings and the ticket table of deathmatch records."""
     tick = entries[0]["tick_length"]
     episode = entries[0]["episode_ticks"]
     games = [game for entry in entries for game in entry["games"]]
@@ -171,6 +174,7 @@ def deathmatch(entries: list[dict]) -> dict:
 
 
 def frontline(entries: list[dict]) -> dict:
+    """Front endings, captures, timings and capture dynamics of Frontline records."""
     tick = entries[0]["tick_length"]
     episode = entries[0]["episode_ticks"]
     games = [game for entry in entries for game in entry["games"]]
@@ -228,6 +232,7 @@ def frontline(entries: list[dict]) -> dict:
 
 
 def main() -> None:
+    """Report every label of a record (or one)."""
     parser = argparse.ArgumentParser()
     parser.add_argument("file")
     parser.add_argument("--label", default=None)

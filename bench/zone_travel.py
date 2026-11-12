@@ -88,6 +88,7 @@ def flights(type_indices: list[int]) -> torch.Tensor:
 
 
 def main() -> None:
+    """The table and JSON the module describes."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--types", default="yongma,jujak,vizia")
     parser.add_argument("--out", default=None)
