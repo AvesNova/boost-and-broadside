@@ -59,8 +59,10 @@ queue_file = "/workspace/queue/queue.json"
 # memory and speed only, the update's math is the same). Each try compiles its shapes
 # (tens of minutes cold), so the lists start at what should fit 32 GB: on the 24 GB 3090
 # the champion's BC fit 2560 rows (18 GB) and its RL 320 (640 ran out of memory).
-bc = [2560, 1280, 640]
-rl = [640, 320, 160]
+# A cold compile takes about an hour per stage (single-threaded tracing), so keep the lists
+# short: the dry run's lists below cost one compile each when the first fits.
+bc = [2560, 1280]
+rl = [640, 320]
 fraction = 0.9
 
 [tournament]

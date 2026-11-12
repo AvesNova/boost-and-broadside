@@ -65,7 +65,23 @@ Branch `feat/launch` (from `integrate/next-runs` abcecd53). Worktree
   (elimination round 2: scripted 0 games, so its ratings hang on the prior); real rounds
   (thousands of games) do not have this, but read `games` in the leaderboard.
 
+## 15:55-16:35 The compiled path (de-risking)
+
+- A compiled probe of the same tiny config (unit `launch-e2e-compiled`, log
+  `<scratchpad>/e2e-compiled/ws/runs/launch/probe/a5ba74900d1e-bc-1280.log`), still
+  compiling the BC stage at 16:35: 40 minutes, **one CPU core at 90%** (Dynamo's tracing is
+  single-threaded; the inductor cache grew to 3.8 GB, inductor + Triton), no error so far.
+  As on gpubox3 (73-minute cold compile), **expect about an hour per stage on the box
+  whatever its core count**: the probe's first fitting candidate per stage is that compile,
+  so each extra candidate tried costs about as much again. On the dry run, start each list
+  where it should fit (BC 2560, RL 640 then 320).
+- Quick tier of the touched files (CPU): 269 passed, 1 failed:
+  `test_yemong_error_head.py::test_arms_1_and_2_step_and_unroll_bit_for_bit_as_recorded`,
+  which fails the same on `feat/position-codes` itself (its goldens predate the new codes):
+  not from this branch. Also failing before this branch: the game docs' reference checks
+  (`physics.md` `f_0`, `ship-design/runbook.md`, the case-study reports' front matter).
+
 ## Next
 
-- A compiled probe on the laptop (the e2e above ran `compiled=false` to keep it short): the
-  production path compiles; launched 15:57.
+- The dry run on the rented 5090 once the game is frozen and the lineup is set
+  (`runbook.md`, "The dry run on one 5090").
