@@ -689,3 +689,22 @@ cruise 163 to 171 m/s and top 385 to 407 m/s):
   (set 4b) and CE it is within 0.48-0.53 at every size; confirm 3 had it even under the
   duel one-circle doctrine too (at f0 0.08). The brawler (short sight) loses ground when
   ships extend (0.37-0.43 against the small ship, 0.39-0.47 against the standard).
+
+## 03:46-03:51 KST: round 13 (`round13/`): rate v speed, flight-distinct on one hull
+
+512 games (10v10 256), r9, kit2 on both. Rate = lift up (lower corner speed, the same
+sustained turn), damage up; speed = drag x0.85 (cruise 171, top 407 m/s):
+
+| Pair | A v B 1v1 / 2v2 / 5v5 / 10v10 | AA (rate); BB (speed) mutual, life | Duel life |
+|---|---|---|---|
+| rate (lift x1.05) v speed | 0.55 / 0.50 / 0.40 / 0.42 | 0.31, 288 s; 0.37, 288 s | 269 s |
+| rate (lift x1.05, dmg x1.1) | 0.61 / 0.55 / 0.48 / 0.39 | 0.41, 246 s; 0.38, 294 s | 254 s |
+| **rate (lift x1.05, dmg x1.2)** | **0.63 / 0.56 / 0.52 / 0.50** | 0.46, 232 s; 0.36, 306 s | 235 s |
+| rate (lift x1.1, dmg x1.1) | 0.65 / 0.51 / 0.49 / 0.46 | 0.46, 242 s; 0.35, 300 s | 229 s |
+| rate (lift x1.1, dmg x1.2) | 0.68 / 0.55 / 0.53 / 0.45 | 0.49, 214 s; 0.37, 311 s | 209 s |
+| rate (lift x1.15, dmg x1.2) | 0.73 / 0.55 / 0.50 / 0.43 | 0.50, 208 s; 0.35, 293 s | 201 s |
+
+- **The first flight-distinct pair on one hull with the crowds even**: the rate fighter's
+  lift buys the duel, its damage the crowds, and the speed fighter's low drag holds both.
+  The duel still leans to the rate fighter (0.63); round 14 (running) gives the speed fighter
+  sight or more speed, or the rate fighter less lift.
