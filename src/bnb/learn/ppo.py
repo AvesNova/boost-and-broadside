@@ -355,7 +355,9 @@ class Learner:
         else:
             self.loss = stage(self._loss)
             self.cadence_terms = stage(self._terms)  # the cadence groups' own compiled function
-        self.head_sums = stage(self._head_sums)
+        # Eager: a diagnostic on the cadence's updates only, of about 40k traced ops; compiled
+        # it was the largest single compile of a cold start (554 s, `compile-split` notes).
+        self.head_sums = self._head_sums
         self.cadence_stopwatch = Stopwatch(device)
         self.shot_tick = stage(shots.tick)
         self.codes = stage(self._codes)
@@ -859,7 +861,16 @@ class Learner:
         return max(1, self.config.micro_batch_rows // self.rules.num_ships)
 
     def _micro_batches(self, views: torch.Tensor) -> list[torch.Tensor]:
-        return list(views.split(self.micro_views))
+        """The views in micro-batches of at most micro_views, all of one size where up to
+        twice the fewest micro-batches divide them evenly (255 views at 64: five of 51):
+        under a compile of fixed shapes a smaller last micro-batch is a second compile of
+        every learner stage. Otherwise micro_views each, the last smaller."""
+        count, most = len(views), self.micro_views
+        fewest = -(-count // most)
+        for parts in range(fewest, 2 * fewest + 1):
+            if count % parts == 0:
+                return list(views.split(count // parts))
+        return list(views.split(most))
 
     def _on_device(self, views: torch.Tensor) -> torch.Tensor:
         """Host view indices on the device, from pinned memory: no wait on the queued work
@@ -1165,8 +1176,8 @@ class Learner:
         steps, stopped, epochs = 0, False, 0
         first_kl = first_epoch = epoch_statistics = None
         for epoch in range(config.epochs):
-            # Minibatches as equal as the views allow (micro-batches of micro_views views,
-            # each minibatch's last one smaller where they do not divide).
+            # Minibatches as equal as the views allow (micro-batches of at most micro_views
+            # views, `_micro_batches`).
             order = torch.randperm(views, generator=self.order_generator)
             epoch_statistics = torch.zeros(len(self.STATISTICS), device=device)
             epoch_moments = None

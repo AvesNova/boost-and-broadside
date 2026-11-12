@@ -196,6 +196,19 @@ def train_case(options: dict, phases: dict) -> dict:
         trainer = Trainer(config, device)
     if options.get("heads") == "0":  # the heads' sums off, to time their share
         trainer.ppo.measures_heads = False
+    head_sums = dict(calls=0, seconds=0.0)  # the heads' sums' own time (device synchronised)
+    sums = trainer.ppo.head_sums
+
+    def timed_sums(*arguments):
+        _synchronize()
+        started = time.perf_counter()
+        result = sums(*arguments)
+        _synchronize()
+        head_sums["calls"] += 1
+        head_sums["seconds"] += time.perf_counter() - started
+        return result
+
+    trainer.ppo.head_sums = timed_sums
     first_update = {}
     for index in range(1, int(options.get("steps", 2)) + 1):
         with phase(f"collect_{index}", phases):
@@ -210,6 +223,7 @@ def train_case(options: dict, phases: dict) -> dict:
         run=run or path,
         objective=config.objective,
         steps_per_update=trainer.steps_per_update,
+        head_sums=head_sums,
         filled=filled,
         peak_vram_gb=torch.cuda.max_memory_allocated(device) / 2**30,
         peak_reserved_gb=torch.cuda.max_memory_reserved(device) / 2**30,

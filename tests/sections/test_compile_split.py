@@ -65,3 +65,17 @@ def test_the_switches_compile_to_the_same_arithmetic(segment, split, regional):
     net, runner = segment
     reference = _gradient(net, runner, True, False, False)
     _check(_gradient(net, runner, True, split, regional), reference, 1e-4)
+
+
+@pytest.mark.parametrize(
+    ("views", "most", "sizes"),
+    [(255, 64, [51] * 5), (255, 256, [255]), (256, 64, [64] * 4), (25, 16, [16, 9])],
+)
+def test_micro_batches_are_of_one_size_where_they_can_be(segment, views, most, sizes):
+    """One shape of micro-batch where up to twice the fewest divide the views (a smaller
+    last one is a second compile of every learner stage), never above micro_views."""
+    net, runner = segment
+    learner = lc.with_micro_batch(lc.learner(net, runner), most)
+    batches = learner._micro_batches(torch.arange(views))
+    assert [len(batch) for batch in batches] == sizes
+    assert torch.equal(torch.cat(batches), torch.arange(views))
