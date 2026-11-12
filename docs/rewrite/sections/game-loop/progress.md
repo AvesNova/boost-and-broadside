@@ -342,3 +342,38 @@ Card: round-2 card + Yongma shield x1.3 and damage x1.3, Jujak shield x0.87.
   kills come on the first pass. The author wants ~3 with spread: that is a lethality
   question. **Round 8** (running, 17:03): lethality on the round-7 card (damage x0.35-0.7,
   shields x1.5-2, damage x0.5 with more frontal armour or a faster recharge).
+
+## 2026-11-12 17:03-17:10 KST: round 8 (lethality, on r7)
+
+**Fog off is not neutral.** The first run of round 8 had fog off (the author's suggestion);
+on the unchanged round-7 card r7's energy v turn went 0.507 -> **0.702**, mutual head-on
+kills 0.09 -> 0.21, r7 v off 0.861 -> 0.729 (`round8/cards.*`). r7's parameters were
+tuned fogged and the game differs materially without fog, so **fog is back on** for every
+run (the release game's), and round 8 was rerun fogged (`round8/cards-fog.*`; 177 s):
+
+| Variant (on the round-7 card, both types) | r7 v off kill share | E v T | Kills m / o / f / t | Trades | Life s | Death gap mean (median) | Kills/min/ship | Merges a kill, gun range: mean / median / first-pass / p90 | ... two turn diameters | Engagement to death median s (gun range; 2 TD) | Circles turned (gun; 2 TD) | Merges 1-circle / 2-circle / scissors |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| round-7 card | 0.646 | 0.507 ± 0.014 | 0.09 / 0.26 / 0.53 / 0.12 | 0.08 | 87 | 7.6 (4.5) | 0.62 | 0.05 / 0 / 1.00 / 0 | 0.28 / 0 / 0.97 / 1 | 1.5; 11.9 | 0.27; 0.60 | 0.33 / 0.64 / 0.03 |
+| damage x0.5 | 0.670 | 0.550 | 0.05 / 0.21 / 0.57 / 0.16 | 0.06 | 104 | 8.8 (5.9) | 0.53 | 0.09 / 0 / 0.99 / 0 | 0.42 / 0 / 0.93 / 1 | 2.3; 13.7 | 0.34; 0.78 | 0.32 / 0.62 / 0.05 |
+| damage x0.35 | 0.669 | 0.614 | 0.04 / 0.18 / 0.56 / 0.21 | 0.05 | 123 | 9.9 (7.1) | 0.46 | 0.13 / 0 / 0.98 / 0.8 | 0.56 / 0 / 0.89 / 1.8 | 2.5; 15.5 | 0.40; 0.93 | 0.32 / 0.61 / 0.07 |
+| damage x0.25 | 0.660 | 0.664 | 0.03 / 0.15 / 0.54 / 0.27 | 0.04 | 154 | 11.7 (9.1) | 0.38 | 0.19 / 0 / 0.96 / 1.0 | 0.76 / 0.2 / 0.82 / 2.0 | 2.5; 18.7 | 0.47; 1.12 | 0.32 / 0.59 / 0.10 |
+| damage x0.15 | 0.616 | 0.597 | 0.02 / 0.12 / 0.46 / 0.40 | 0.03 | 244 | 15.6 (12.5) | 0.25 | 0.42 / 0 / 0.89 / 1.6 | 1.27 / 1.0 / 0.64 / 3.0 | 3.9; 28.9 | 0.59; 1.43 | 0.32 / 0.55 / 0.13 |
+| damage x0.1 | 0.601 | 0.531 | 0.02 / 0.09 / 0.41 / 0.48 | 0.02 | 398 | 19.3 (15.5) | 0.17 | 0.67 / 0 / 0.81 / 2.0 | 1.74 / 1.8 / 0.49 / 3.8 | 6.7; 38.1 | 0.68; 1.61 | 0.32 / 0.52 / 0.15 |
+| damage x0.25, fraction x0.7 | 0.652 | 0.659 | 0.03 / 0.16 / 0.54 / 0.28 | 0.04 | 154 | 11.7 (9.1) | 0.38 | 0.20 / 0 / 0.96 / 1.0 | 0.76 / 0.4 / 0.81 / 2.0 | 2.5; 18.7 | 0.47; 1.13 | 0.32 / 0.58 / 0.10 |
+| damage x0.25, cone x2 | 0.644 | 0.604 | 0.03 / 0.08 / 0.55 / 0.34 | 0.04 | 176 | 12.9 (10.1) | 0.33 | 0.26 / 0 / 0.94 / 1.0 | 0.89 / 1.0 / 0.77 / 2.4 | 3.1; 20.7 | 0.51; 1.23 | 0.31 / 0.58 / 0.10 |
+
+- **At today's lethality kills come on the first pass** (first-pass share 0.97-1.00; a
+  kill 1.5 s into a gun-range engagement). Lowering the damage lengthens fights, raises
+  the tail share (0.12 -> 0.48), lowers trades (0.08 -> 0.02) and mutual head-on (0.09 ->
+  0.02), and shifts energy v turn toward Yongma (0.51 -> 0.66 at x0.25).
+- **Merges a kill near 3 is not reachable inside the pace band with this agent**: at x0.15
+  (life 244 s, 0.25 kills/min/ship, the band's slow end) the mean is 1.27 (2 turn
+  diameters; median 1, p90 3, first-pass 0.64); at x0.1 (life 398 s, outside the band)
+  1.74. The agent kills from the flank and tail after one pass rather than over repeated
+  passes; more passes need the agent to make repeated passes pay (or the game to make the
+  first one not decide), not only less damage.
+- The head-on TTK target (3-4 passes on the card) pulls the other way: less damage at the
+  same frontal armour means more head-on passes on the card (x0.3: ~20 card passes).
+- **Round 9** (running, 17:10): ES from r7 on damage x0.3 (Yongma's x0.85 more, as at
+  lower damage Yongma gains): life ~140 s, tail ~0.25, to re-tune the agent for slower
+  fights; then a card round to rebalance.
