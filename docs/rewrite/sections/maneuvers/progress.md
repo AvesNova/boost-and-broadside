@@ -425,3 +425,16 @@ Against r9 (2v2; 5v5, mixed / reversed) and energy v turn 5v5 with its life:
   (0.70-0.78) give some of it away. The base setting stays.
 - A wider crowd radius lengthens the 5v5 (8 gun ranges: frozen 165 s) and on the frozen card
   tips energy v turn further to the Jujak (0.27).
+
+10v10 (512 games against r9, 256 energy v turn; the arena by the density rule): the
+extension grows with the crowd. Against r9 (mixed / reversed) and energy v turn, life:
+
+| Variant | frozen | D2 | cone 0.085 | cone 0.01 |
+|---|---|---|---|---|
+| r9 | 0.53 / 0.50; 0.48, 126 s | 0.53 / 0.50; 0.42, 117 s | 0.47 / 0.48; 0.61, 104 s | 0.51 / 0.50; 0.61, 104 s |
+| base | 0.86 / 0.89; 0.22, 168 s | 0.89 / 0.89; 0.43, 147 s | 0.89 / 0.93; 0.62, 126 s | 0.89 / 0.92; 0.58, 129 s |
+| crowd 8 gr | 0.89 / 0.91; 0.21, 186 s | 0.92 / 0.94; 0.47, 161 s | 0.92 / 0.93; 0.69, 136 s | 0.95 / 0.95; 0.59, 142 s |
+| stick 0.4 | 0.59 / 0.59 | 0.67 / 0.68 | 0.70 / 0.73 | 0.73 / 0.71 |
+
+The type balance holds at 10v10 on D2 and the cones (within 0.07 of r9's); on the frozen
+card the Jujak takes the crowd (0.48 to 0.22).
