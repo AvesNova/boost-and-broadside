@@ -756,3 +756,19 @@ kit2 on both, with one ship's cone f0 changed (kit2's is 0.08):
 - **The nose is the duel lever this pair needed**: a harder nose on the speed fighter takes
   the rate fighter's duel edge away (0.58 to 0.49) and leaves the crowds (0.48-0.51). It
   slows the speed fighter's own mirror (485 s); round 16 looks between.
+
+## 04:03-04:08 KST: round 16 (`round16/`): rate v speed, the noses between
+
+512 games (10v10 256), r9; rate (lift x1.03, dmg x1.25) v speed (drag x0.85, vision x1.04):
+
+| Noses | A v B 1v1 / 2v2 / 5v5 / 10v10 | AA (rate); BB (speed) mutual, life, merges | Duel life |
+|---|---|---|---|
+| **speed f0 0.07** | **0.53 / 0.48 / 0.53 / 0.49** | 0.47, 224 s, 2.7; 0.23, 343 s, 3.2 | 257 s |
+| speed f0 0.07, rate f0 0.09 | 0.51 / 0.51 / 0.51 / 0.48 | 0.54, 197 s; 0.30, 399 s | 257 s |
+| speed f0 0.065, rate f0 0.09 | 0.50 / 0.49 / 0.50 / 0.50 | 0.52, 205 s; 0.19, 424 s | 270 s |
+| rate f0 0.11 | 0.52 / 0.50 / 0.47 / 0.45 | 0.62, 162 s; 0.38, 274 s | 213 s |
+| speed f0 0.06, dmg x1.1; rate dmg x1.35 | 0.49 / 0.52 / 0.51 / 0.49 | 0.51, 207 s; 0.17, 430 s | 260 s |
+
+- Several arms are within 0.45-0.53 at every size; the trade left is the two mirrors: the
+  harder the speed fighter's nose, the slower its mirror. Confirm 9 (running) takes the
+  speed nose at f0 0.07 to 1024 games, 20v20 and the crowd extension.
