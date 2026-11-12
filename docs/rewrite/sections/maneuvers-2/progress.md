@@ -483,9 +483,10 @@ the Jujak mirror).
    leaves every card's balance exactly as r9m's, at r9m's crowd strength (worst 0.485-0.499,
    within the noise) with the same duel gains.
 2. Item 3 (the frozen card's crowd tipping to the Jujak) does not fall out: r9m2 tips it a
-   little further at 10v10 (0.26 to 0.21). It is the frozen card's (its Jujak wins duels);
-   D2, the cone and big v small hold within about 0.06 to 10v10 except cone's 10v10
-   (0.59 to 0.68).
+   little further at 10v10 (0.26 to 0.18-0.21). It is the frozen card's (its Jujak wins
+   duels). On D2, the cone and big v small r9m2 holds r9m's balance within 0.06 from 1v1 to
+   5v5; at 10v10 it moves toward the Yongma by 0.05-0.12 (D2 0.43 to 0.50-0.55, toward even;
+   cone 0.59-0.62 to 0.68, away from it).
 3. The bench's per-choice outcome is pair-symmetric in self-play, so "how often each choice
    wins" is measurable only for extend against the chase (the extender nets -0.01 to -0.03 a
    choice: it wins the game, not the engagement it leaves). A per-player choice tally in
