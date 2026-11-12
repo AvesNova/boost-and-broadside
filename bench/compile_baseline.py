@@ -10,7 +10,7 @@ Cases:
             scripted agent) on `preset`, the default ArenaConfig, two batches
   train     a run's TrainConfig (`run`: a run directory with config.json, or `config`: a
             config file, `bnb train --print-config`'s), `steps` updates (default two);
-            heads=0 turns the learner's heads' sums off; `set` overrides fields
+            heads=0 turns the learner's heads' sums off; learn=0 collects only; `set` overrides fields
             (`path=value;path=value`, JSON values, e.g. `compile_regions=true`); reports the
             peak memory allocated and reserved, the first update's series, the steps per
             update and, with `process_start` (the shell's epoch seconds), each phase's end
@@ -196,6 +196,8 @@ def train_case(options: dict, phases: dict) -> dict:
     for index in range(1, int(options.get("steps", 2)) + 1):
         with phase(f"collect_{index}", phases):
             store, bootstrap = trainer.collect()
+        if options.get("learn") == "0":  # the rollout's compiles alone
+            continue
         with phase(f"learn_{index}", phases):
             row = metrics.read(trainer.ppo.update(store, bootstrap, trainer.steps_per_update))
         if index == 1:
