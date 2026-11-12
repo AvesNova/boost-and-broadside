@@ -1275,6 +1275,33 @@ def roster1() -> list[dict]:
 ROUNDS["roster1"] = roster1
 
 
+HIT_AND_RUN_2 = merge(HIT_AND_RUN, {"hit_damage": 1.15 / 1.2})  # confirm 5's, with its f0 0.06
+
+
+def hit_and_run_2(vision: float = 1.0) -> dict:
+    return merge(HIT_AND_RUN_2, {"vision_range_scale": vision}, kit(*KIT2), cone(0.06, 12, 8))
+
+
+def confirm6() -> list[dict]:
+    """The armoured-nose hit-and-run ship (f0 0.06, dmg x1.15), its duel trimmed by sight,
+    against the standard and the brawler; 1024 games, 1v1-20v20, r9 (and CE v standard)."""
+    out = []
+    for v in (1.0, 0.96):
+        h = hit_and_run_2(v)
+        tag = f"hit-and-run 2 (f0 0.06, dmg x1.15, vision x{v:g})"
+        vs_standard = pair(f"{tag} v standard (M), kit2", ("M", h), ("M", kit(*KIT2)))
+        out.append(vs_standard)
+        out.append(
+            pair(f"{tag} v brawler (M), kit2", ("M", h), ("M", merge(BRAWLER_SIGHT, kit(*KIT2))))
+        )
+        if v == 0.96:
+            out.append(flown(vs_standard, "crowd extend + lead"))
+    return out
+
+
+ROUNDS["confirm6"] = confirm6
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
