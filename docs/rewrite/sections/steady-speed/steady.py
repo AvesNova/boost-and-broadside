@@ -98,7 +98,7 @@ def main() -> None:
     torch.manual_seed(0)
     device = torch.device("cuda")
     if "memory_fraction" in OPTIONS:  # emulate a smaller GPU (e.g. 8 GB: 8/16.3 here)
-        torch.cuda.set_per_process_memory_fraction(float(OPTIONS["memory_fraction"]), device)
+        torch.cuda.set_per_process_memory_fraction(float(OPTIONS["memory_fraction"]), 0)
     log("build ...")
     started = time.perf_counter()
     trainer = Trainer(config, device)
