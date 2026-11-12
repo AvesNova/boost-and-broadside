@@ -315,6 +315,31 @@ H (JJ; YY):
   it on another known enemy anywhere (`duel_extend_cross_in_others`, centre 1/2: never in a
   lone 1v1), to keep the 1v1 balance and the crowd gain.
 
-## 04:41- KST: round 6 (`round6/`): the cross-type extension in team games only
+## 04:41-04:54 KST: round 6 (`round6/`): the cross-type extension in team games only
 
-512 games, as round 5. ETA 04:55 KST (worst 05:05).
+512 games. "team": the Yongma's duel extension against a Jujak only with another known
+enemy anywhere (`duel_extend_cross_in_others` [0.5, 0.1]). Worst against r9m; E v T 1 / 2 /
+5 / 10v10; the 1v1 mirrors' H (JJ; YY):
+
+| Candidate | D2 worst; E v T | cone 0.085 worst; E v T | big v small worst; E v T | frozen worst; E v T | H (D2) |
+|---|---|---|---|---|---|
+| r9m | 0.465; 0.52/0.44/0.57/0.42 | 0.476; 0.52/0.51/0.68/0.60 | 0.467; 0.57/0.53/0.50/0.51 | 0.492; 0.02/0.40/0.33/0.24 | 0.10; 0.12 |
+| DE Y 0.7 / J 0.4 | 0.516; 0.33/0.47/0.58/0.48 | 0.505; 0.44/0.53/0.71/0.60 | 0.482; 0.58/0.54/0.58/0.56 | 0.526; 0.41/0.39/0.30/0.21 | 0.41; 1.28 |
+| DE Y 0.7 team / J 0.4 | 0.525; 0.46/0.42/0.57/0.46 | 0.482; 0.51/0.52/0.69/0.64 | 0.495; 0.57/0.51/0.47/0.49 | 0.513; 0.21/0.37/0.30/0.22 | 0.39; 1.30 |
+| DE Y 0.85 team / J 0.4 | 0.485; 0.50/0.40/0.55/0.48 | 0.489; 0.52/0.51/0.67/0.67 | 0.510; 0.56/0.52/0.52/0.48 | 0.503; 0.20/0.37/0.30/0.21 | 0.41; 1.53 |
+| **DE Y 1.0 team / J 0.4** | **0.521; 0.49/0.43/0.58/0.56** | 0.486; 0.54/0.50/0.70/0.63 | **0.513; 0.58/0.50/0.48/0.55** | **0.528; 0.21/0.37/0.31/0.23** | 0.42; 1.61 |
+| DE Y 0.7 team / J 0.4 mirror | 0.501; 0.51/0.48/0.59/0.50 | 0.483; 0.53/0.53/0.69/0.58 | 0.500; 0.57/0.51/0.52/0.52 | 0.516; 0.00/0.44/0.36/0.23 | 0.41; 1.27 |
+
+- **The team gate gives the 1v1 balance back** (D2 E v T 1v1 0.33-0.36 to 0.46-0.50; cone
+  0.40-0.45 to 0.51-0.54) and keeps the rest within about 0.05 of r9m's at every size; D2's
+  10v10 moves toward even (0.42 to 0.46-0.56).
+- It costs part of the crowd edge (5v5 against r9m 0.52-0.58 where round 5's ungated
+  version took 0.57-0.62); the high Yongma gate (1.0) keeps the most.
+- The frozen card's 1v1 rises from 0.02 to 0.20-0.21 with the Jujak's any-type gate (a
+  hurt frozen Jujak leaves a Yongma); its crowd is unchanged (item 3 stays open).
+
+## 04:56- KST: confirm 2 (`confirm2/`): the team-gated duel extension at 1024 games
+
+r9m; DE Y 1.0 team / J 0.4; the same with the Jujak's gate team too; DE Y 0.85 team / J 0.4;
+four cards, against r9m and r9 at 1v1 / 2v2 / 5v5, self-play to 10v10. ETA 05:25 KST (worst
+05:40).
