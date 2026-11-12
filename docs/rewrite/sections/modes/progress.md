@@ -28,3 +28,25 @@ worktree, left alone).
   shield-events case passes after this change.
 - Real scale: the areas' centres are 12.5 km apart (2 x 0.8 x 7800 m), nearest points
   10.1 km: about 30 s of closing at cruise for each side. Measured below.
+
+## Step 2a: zone travel times (done, provisional zone sizes)
+
+`bench/zone_travel.py` (CPU, the flight tick alone: straight, stick centred, no field).
+Table: `records/zone_travel.md`, JSON `records/zone_travel.json`. Geometry: ring at 0.615 R,
+zone radius 330 m x map scale (R / 2600 m) = 0.127 R, so everything scales with R; the
+fleet `_density` presets grow R as sqrt(n / 5). "attack entry": spawn-zone centre to the
+edge of the zone it attacks (two places round the ring, chord 2 x 0.615 R sin 72° less the
+zone radius). Seconds, start from spawn (spawn speed and energy) / from cruise with a full
+store:
+
+| map | R (m) | zone r (m) | Yongma coast / boost | Jujak | vizia | Zero (slowest, 131 m/s) | Firecracker (fastest, 231 m/s) |
+|---|---|---|---|---|---|---|---|
+| real_scale_frontline (5v5) | 7800 | 990 | 59 / 33 | 59 / 36 | 59 / 34 | 69 / 38 | 47 / 29 |
+| 10v10 density | 11031 | 1400 | 80 / 43 | 81 / 46 | 80 / 44 | 95 / 52 | 63 / 38 |
+| 20v20 density | 15600 | 1980 | 109 / 57 | 111 / 61 | 110 / 59 | 131 / 74 | 85 / 50 |
+| 50v50 density | 24666 | 3131 | 166 / 87 | 171 / 91 | 168 / 89 | 204 / 121 | 127 / 73 |
+
+Adjacent zones (centre to centre) take about 0.66 of these. Against the 600 s real-scale
+clock: a 5v5 attack leg is 6-10% of the clock coasting; at 50v50 density it is 28-34%
+coasting, 15% boosting, so a round trip (respawn, fly back) eats a large share of the
+match. The `_arena` presets keep 7800 m (the 5v5 numbers).
