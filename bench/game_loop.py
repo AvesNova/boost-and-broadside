@@ -70,6 +70,7 @@ TTK_BINS = 32  # seconds from the first hit taken: [0, 1), ..., [31, inf)
 CIRCLE_WINDOW = 3.0  # s after a merge's end
 TURNING = 0.05  # rad/s: a nose rate below this is not a turn
 CIRCLES = ("one circle", "two circle", "scissors")
+PACE_BINS = 121  # whole seconds 0..119, and 120 or more
 TRADE_WINDOW = 0.5  # s: a death with one on the other team this close is a trade
 # The base card: the ship files' with these factors (the author's 2026-11-12 decision:
 # hit damage x 0.65 restores v5's damage per landed hit).
@@ -229,6 +230,14 @@ def tally_like(B: int, S: int, device) -> dict:
         circles=torch.zeros((B, len(CIRCLES)), **zeros),
         first_game_hit=torch.full((B,), -1.0, **zeros),  # 0 A, 1 B, 2 both
         deaths=torch.zeros((B,), **zeros),
+        gaps=torch.zeros((B, PACE_BINS), **zeros),  # seconds between deaths (any team)
+        engage=torch.zeros((B, PACE_BINS), **zeros),  # a life's spawn to its first hit
+        alive_ticks=torch.zeros((B,), **zeros),
+        first_kill_tick=torch.full((B,), -1.0, **zeros),
+        first_hit_tick=torch.full((B,), -1.0, **zeros),
+        last_any_death=torch.full((B,), -1.0, **zeros),
+        spawn_tick=torch.zeros((B, 2 * S), **zeros),
+        engaged=torch.zeros((B, 2 * S), dtype=torch.bool, device=device),
         traded=torch.zeros((B,), **zeros),  # deaths with an enemy death within TRADE_WINDOW
         last_death=torch.full((B, 2), -1e9, **zeros),  # by team: its last death's tick
         last_deaths=torch.zeros((B, 2), **zeros),  # how many died then
@@ -250,6 +259,11 @@ def tally_like(B: int, S: int, device) -> dict:
 
 
 STATISTICS = (
+    "gaps",
+    "engage",
+    "alive_ticks",
+    "first_kill_tick",
+    "first_hit_tick",
     "deaths",
     "traded",
     "kills_side",
@@ -350,6 +364,7 @@ class Loop:
             }
         )
         reset = first_tick.expand(2 * B)
+        alive_start = api.display(state)["ships.alive"].bool()
         action, carry, _ = self.agent.step(carry, view, reset)
         action = Action.unpack(action.packed().reshape(B, N, 3).to(torch.int32))
         moved, sweep = api.move(rules, types, state, action, api.spread(rules, B, self.device))
@@ -489,6 +504,34 @@ class Loop:
         tally["last_death"] = torch.where(dying, tick, tally["last_death"])
         tally["last_deaths"] = torch.where(dying, team_deaths, tally["last_deaths"])
         tally["deaths"] = tally["deaths"] + team_deaths.sum(-1)
+        # pace: the gaps between deaths (several on one tick: gaps of 0), each life's spawn
+        # to its first hit dealt or taken, the game's first hit and first kill
+        count = team_deaths.sum(-1)
+        last_any = tally["last_any_death"]
+        gap = ((tick - last_any) * rules.tick_length).clamp(0, PACE_BINS - 1).long()
+        bins = torch.nn.functional.one_hot(gap, PACE_BINS).float()
+        zero = torch.nn.functional.one_hot(torch.zeros_like(gap), PACE_BINS).float()
+        first_gap = ((count > 0) & (last_any >= 0)).float()
+        tally["gaps"] = (
+            tally["gaps"]
+            + first_gap[:, None] * bins
+            + (count - (count > 0).float()).clamp_min(0)[:, None] * zero
+        )
+        tally["last_any_death"] = torch.where(count > 0, tick, last_any)
+        involved = (damage.sum(2) > 0) | (damage.sum(1) > 0)  # dealt or taken
+        fresh = involved & ~tally["engaged"] & alive_start
+        since = ((tick - tally["spawn_tick"]) * rules.tick_length).clamp(0, PACE_BINS - 1).long()
+        tally["engage"] = tally["engage"] + torch.einsum(
+            "bn,bnk->bk", fresh.float(), torch.nn.functional.one_hot(since, PACE_BINS).float()
+        )
+        tally["engaged"] = tally["engaged"] | fresh
+        tally["first_hit_tick"] = torch.where(
+            (tally["first_hit_tick"] < 0) & involved.any(1), tick, tally["first_hit_tick"]
+        )
+        tally["first_kill_tick"] = torch.where(
+            (tally["first_kill_tick"] < 0) & enemy_kill.any(1), tick, tally["first_kill_tick"]
+        )
+        tally["alive_ticks"] = tally["alive_ticks"] + alive_start.float().sum(1)
         tally["traded"] = tally["traded"] + traded_now
         tally["kills_side"] = tally["kills_side"] + torch.stack(
             [(kill * killer_side_a).sum(1), (kill * ~killer_side_a).sum(1)], -1
@@ -537,6 +580,8 @@ class Loop:
         tally["first_merge_end"] = torch.where(reset_pair, -1.0, first_merge_end)
         tally["first_hit"] = torch.where(reset_pair, -1.0, first_hit)
         tally["victim_hit_tick"] = torch.where(gone, -1.0, victim_hit_tick)
+        tally["spawn_tick"] = torch.where(events.spawned, tick, tally["spawn_tick"])
+        tally["engaged"] = tally["engaged"] & ~events.spawned
         tally["window"] = window
         tally["same"], tally["opposite"], tally["reversals"] = same, opposite, reversals
         tally["tick"] = tick + 1
@@ -594,6 +639,33 @@ def median_of(histogram: torch.Tensor) -> float | None:
     return float((cumulative < total / 2).sum()) + 0.5
 
 
+def pace(out: dict, mask: torch.Tensor, seconds: float) -> dict:
+    """The pacing numbers: the gap between deaths (any team; mean and median, s), the life
+    length (ship-seconds alive per death), kills per minute per ship, a life's spawn to its
+    first hit (median, s), the game's first hit and first kill (median, s)."""
+    if "gaps" not in out:
+        return {}
+    gaps = out["gaps"][mask].sum(0)
+    centres = torch.arange(PACE_BINS, dtype=torch.float32) + 0.5
+    deaths = float(out["deaths"][mask].sum())
+    ships_alive_seconds = float(out["alive_ticks"][mask].sum()) / 30.0
+    ships = 10
+
+    def median_tick(values: torch.Tensor) -> float | None:
+        values = values[values >= 0]
+        return float(values.median()) / 30.0 if len(values) else None
+
+    return dict(
+        death_gap_mean=float((gaps * centres).sum() / gaps.sum().clamp_min(1)),
+        death_gap_median=median_of(gaps),
+        life_seconds=ships_alive_seconds / max(deaths, 1),
+        kills_per_minute_per_ship=deaths / (mask.sum().item() * ships * seconds / 60.0),
+        spawn_to_engagement_median=median_of(out["engage"][mask].sum(0)),
+        first_hit_median=median_tick(out["first_hit_tick"][mask]),
+        first_kill_median=median_tick(out["first_kill_tick"][mask]),
+    )
+
+
 def summary(out: dict, mask: torch.Tensor, seconds: float) -> dict:
     """A set of environments' statistics (mask (B,) bool)."""
     kills = out["kills_side"][mask]
@@ -649,6 +721,7 @@ def summary(out: dict, mask: torch.Tensor, seconds: float) -> dict:
         circles=(circles / circles.sum().clamp_min(1)).tolist(),
         circle_count=float(circles.sum()),
         trade_fraction=float(out["traded"][mask].sum() / out["deaths"][mask].sum().clamp_min(1)),
+        **pace(out, mask, seconds),
     )
 
 
