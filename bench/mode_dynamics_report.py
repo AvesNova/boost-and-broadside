@@ -30,6 +30,73 @@ def quantiles(values: list[float]) -> str:
     )
 
 
+def histogram_summary(entries: list[dict], name: str) -> str | None:
+    """Mean, median and quartiles (s) of a probe histogram (1 s bins, summed over batches;
+    a bin's middle stands for its times)."""
+    counts = None
+    for entry in entries:
+        values = entry.get("histograms", {}).get(name)
+        if values is None:
+            continue
+        counts = values if counts is None else [a + b for a, b in zip(counts, values)]
+    if not counts or sum(counts) == 0:
+        return None
+    total = sum(counts)
+    mean = sum((index + 0.5) * count for index, count in enumerate(counts)) / total
+
+    def at(q):
+        running = 0
+        for index, count in enumerate(counts):
+            running += count
+            if running >= q * total:
+                return index + 0.5
+        return len(counts) - 0.5
+
+    return (
+        f"mean {mean:.1f}, median {at(0.5):.1f}, quartiles {at(0.25):.1f}-{at(0.75):.1f}, "
+        f"5-95% {at(0.05):.1f}-{at(0.95):.1f} (n {total})"
+    )
+
+
+def probes(entries: list[dict], names: tuple[str, ...]) -> None:
+    labels = dict(
+        engage="spawn to first enemy hit dealt or taken (s)",
+        life="spawn to death (s)",
+        objective="spawn to first zone other than the spawn zone (s)",
+        zone_to_zone="leaving a zone to entering another (s)",
+        contest="all meters at zero to a capture (s)",
+    )
+    for name in names:
+        summary = histogram_summary(entries, name)
+        if summary:
+            print(f"{labels[name]}: {summary}")
+
+
+def deathmatch_timing(entries: list[dict]) -> None:
+    """Game starts' first hit and first kill, time between deaths, trade shares."""
+    tick = entries[0]["tick_length"]
+    games = [game for entry in entries for game in entry["games"]]
+    hits = [game["first_hit"] * tick for game in games if game.get("first_hit", -1) >= 0]
+    if hits:
+        print(f"match start to first enemy hit (s): {quantiles(hits)}")
+    kills = [game["events"][0][0] * tick for game in games if game["events"]]
+    print(f"match start to first death (s): {quantiles(kills)}")
+    gaps = []
+    for game in games:
+        ticks = sorted(at for at, _ in game["events"])
+        gaps += [(b - a) * tick for a, b in zip(ticks, ticks[1:])]
+    print(f"time between deaths (s): {quantiles(gaps)}")
+    for window in (0.5, 1.0, 2.0):
+        reach = round(window / tick)
+        trades = total = 0
+        for game in games:
+            events = game["events"]
+            for at, team in events:
+                total += 1
+                trades += any(abs(other - at) <= reach and t != team for other, t in events)
+        print(f"trade share (an enemy death within {window} s): {trades / total:.3f}")
+
+
 def deathmatch(entries: list[dict]) -> dict:
     tick = entries[0]["tick_length"]
     episode = entries[0]["episode_ticks"]
@@ -42,6 +109,8 @@ def deathmatch(entries: list[dict]) -> dict:
         max(sum(1 for _, team in game["events"] if team == t) for t in (0, 1)) for game in games
     ]
     print(f"the leading team's points at the clock: {quantiles([float(v) for v in per_team])}")
+    deathmatch_timing(entries)
+    probes(entries, ("engage", "life"))
 
     def ended(tickets: int, clock_ticks: int) -> float:
         count = 0
@@ -111,6 +180,7 @@ def frontline(entries: list[dict]) -> dict:
     print(f"captures per game: {quantiles([float(c) for c in captures])}")
     if first_capture:
         print(f"first capture (s): {quantiles(first_capture)}")
+    probes(entries, ("engage", "life", "objective", "zone_to_zone", "contest"))
     print(
         f"P(next capture by the same team | a capture): {p_same:.3f} +- {p_error:.3f} "
         f"over {pairs} pairs; P(reversal) {1 - p_same:.3f}"
