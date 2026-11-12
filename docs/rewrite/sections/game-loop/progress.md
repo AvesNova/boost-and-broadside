@@ -263,3 +263,24 @@ engagement is in every game).
 - Pace inside the author's bands: life 87-91 s (band 45-300 s), 0.60-0.62 kills a minute
   a ship (band 0.2-1.4); the gap between deaths 7.7 s mean, 4.7 s median (whole-second
   bins); a ship's spawn to its first hit 37.5 s median (the 7800 m map's approach).
+
+## 2026-11-12 16:37-16:40 KST: round 6 cards (stacked balance levers, on r4)
+
+| Variant (on the round-2 card) | r4 v off kill share | E v T (Yongma) | Kills m / o / f / t | Trades | Life s | Death gap mean (median) | Kills/min/ship |
+|---|---|---|---|---|---|---|---|
+| Y shield, damage x1.15 | 0.644 | 0.371 ± 0.014 | 0.09 / 0.26 / 0.54 / 0.12 | 0.08 | 89 | 7.8 (4.7) | 0.61 |
+| Y x1.3, x1.3 | 0.648 | 0.479 | 0.09 / 0.25 / 0.54 / 0.12 | 0.08 | 89 | 7.7 (4.7) | 0.61 |
+| Y x1.15, x1.15; J shield x0.87 | 0.632 | 0.453 | 0.09 / 0.26 / 0.53 / 0.12 | 0.08 | 88 | 7.7 (4.7) | 0.62 |
+| Y x1.3, x1.15; J shield x0.87 | 0.642 | 0.493 | 0.09 / 0.25 / 0.54 / 0.12 | 0.08 | 89 | 7.8 (4.7) | 0.61 |
+| Y x1.2, x1.2; J x0.9, x0.9 | 0.644 | 0.490 | 0.09 / 0.25 / 0.54 / 0.12 | 0.08 | 89 | 7.7 (4.7) | 0.61 |
+| **Y x1.3, x1.3; J shield x0.87** | 0.631 | **0.503** | 0.09 / 0.26 / 0.54 / 0.12 | 0.08 | 88 | 7.7 (4.7) | 0.62 |
+| Y shield x1.4, damage x1.3; J shield x0.87 | 0.629 | 0.555 | 0.09 / 0.25 / 0.54 / 0.12 | 0.08 | 89 | 7.8 (4.7) | 0.61 |
+| Y x1.3, x1.3; J shield x0.8, damage x0.9 | 0.635 | 0.581 | 0.09 / 0.25 / 0.54 / 0.12 | 0.08 | 88 | 7.7 (4.7) | 0.62 |
+
+- Energy v turn now spans 0.37-0.58 and the mix, trades and pace stay put. **Card for
+  round 7: Yongma shield x1.3 and hit damage x1.3, Jujak shield x0.87** (on the round-2
+  card: fraction x0.5, cone x0.5, Yongma explosive 0.5): energy v turn 0.503 ± 0.014.
+  The energy fighter becomes the heavier, harder-hitting type (the P-47 / Fw 190 side of
+  the archetype), the turn fighter the lighter.
+- **Round 7** (running 16:40, ETA ~17:05): ES from r4 on this card, distinctness on,
+  20 generations, against off, hand, r1, r1-hand, r2, r4.
