@@ -5,7 +5,7 @@ import modes_cases as cases
 import pytest
 import torch
 
-from bnb.contracts import REWARD_LEVELS, Events, GameConfig, Pool
+from bnb.contracts import ASPECTS, REWARD_LEVELS, Events, GameConfig, Pool
 from bnb.game import api
 from bnb.game.ship_types import per_ship
 from bnb.learn import rewards
@@ -124,7 +124,7 @@ class Match:
             objective_progress=zero,
             objective=zero,
             result=torch.tensor([result], dtype=torch.int32),
-            enemy_damage_by_aspect=torch.zeros(1, N, 3),
+            enemy_damage_by_aspect=torch.zeros(1, N, len(ASPECTS)),
             kill_aspect=torch.full((1, N), -1, dtype=torch.int32),
         )
         levels, self.ledger = rewards.reward_step(CONFIG, self.ledger, events, self.team)
@@ -311,7 +311,7 @@ def test_a_bigger_game_runs_too():
         objective_progress=zero,
         objective=zero,
         result=torch.zeros(2).int(),
-        enemy_damage_by_aspect=torch.zeros(2, N, 3),
+        enemy_damage_by_aspect=torch.zeros(2, N, len(ASPECTS)),
         kill_aspect=zero.int() - 1,
     )
     levels, ledger = rewards.reward_step(

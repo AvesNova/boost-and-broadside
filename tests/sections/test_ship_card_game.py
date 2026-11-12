@@ -319,10 +319,21 @@ def _aspect_hits(nose_angles, ships_per_team=1):
 
 @pytest.mark.parametrize(
     ("angle", "aspect"),
-    [(0.0, 0), (0.7, 0), (0.8, 1), (math.pi / 2, 1), (2.3, 1), (2.4, 2), (math.pi, 2)],
+    [
+        (0.0, 0),
+        (0.17, 0),
+        (0.18, 1),
+        (0.7, 1),
+        (0.8, 2),
+        (math.pi / 2, 2),
+        (2.3, 2),
+        (2.4, 3),
+        (math.pi, 3),
+    ],
 )
 def test_a_hits_aspect_class_is_its_angle_off_the_targets_nose(angle, aspect):
-    """Head-on under 45 degrees off the nose, tail over 135, the flank between (ASPECTS);
+    """A mutual head-on under 10 degrees off the nose, an offset head-on to 45, the flank to
+    135, the tail beyond (ASPECTS);
     the enemy damage by class is the hit's damage, and the earliest hit's class is kept."""
     hit = _aspect_hits((0.0, angle))
     expected = torch.zeros(len(ASPECTS))
@@ -338,7 +349,7 @@ def test_the_aspect_damage_leaves_out_friendly_fire():
     hit = _aspect_hits((0.0, math.pi), ships_per_team=2)
     assert hit.damage[0, 0, 1] > 0.0
     assert float(hit.enemy_damage_by_aspect.abs().sum()) == 0.0
-    assert int(hit.first_aspect[0, 1]) == 2
+    assert int(hit.first_aspect[0, 1]) == 3
     assert (hit.first_aspect[0, 2:] == -1).all()
 
 

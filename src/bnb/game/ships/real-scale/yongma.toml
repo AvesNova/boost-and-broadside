@@ -1,0 +1,96 @@
+# Yongma: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
+# it; [card] is solved from [handles], so edit the handles, not the card.
+name = 'Yongma'
+
+[handles]
+# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
+stall_speed = 48.07166006747579
+g_limit = 9.0
+cruise_speed = 167.45693936317014
+climb_time = 667.1586528583284
+ceiling = 124390.8
+low_speed_acceleration = 2.1985938476919737
+sustained_turn_rate = 0.2412978846526642
+half_lift_drag = 0.25
+nose_reversal_time = 0.7874122468197988
+dive_acceleration = 11.617236775817416
+zoom_acceleration = -8.71796609321791
+stall_angle = 0.27052603405912107
+vision_range = 1000.0
+zero_lift_drag = 4.248589268455801e-05
+hit_damage = 8.755407226225296
+fire_rate = 15.0
+muzzle_speed = 856.0
+bullet_spread = 1.5422411728818017
+gun_range = 589.5294799804688
+shots_per_store = 865.2401087452062
+max_shield = 109.1915972318197
+shield_recharge_rate = 12.0
+shield_recharge_delay = 6.0
+head_on_fraction = 0.2
+head_on_angle = 0.737832313317803
+hit_radius = 10.332411583242612
+spawn_energy = 49756.32000000001
+
+[card]
+# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).
+max_lift_coefficient = 0.00424512755125761
+max_acceleration = 88.29000091552734
+zero_lift_drag = 4.2485891754040495e-05
+engine_power = 1265.4007568359375
+engine_power_full_store = 336.1888732910156
+static_thrust = 17.1229190826416
+max_energy = 124390.796875
+corner_nose_frequency = 5.31981086730957
+max_shield = 109.19159698486328
+hit_radius = 10.332411766052246
+hit_damage = 8.755407333374023
+muzzle_speed = 856.0
+bullet_energy_cost = 143.7644805908203
+fire_rate = 15.0
+bullet_life = 0.6000000238418579
+spawn_energy = 49756.3203125
+bleed_exponent = 2.0
+induced_drag_scale = 3.5842926502227783
+stall_angle_scale = 1.0333333015441895
+coast_exchange_scale = 5.090788841247559
+dive_exchange_scale = 0.6257072687149048
+climb_exchange_scale = 1.447198510169983
+vision_range_scale = 0.3255208432674408
+bullet_spread_scale = 0.12852010130882263
+bullet_drag_scale = 0.9999974370002747
+shield_recharge_rate_scale = 1.0
+shield_recharge_delay_scale = 1.0
+head_on_fraction_scale = 0.6666666865348816
+head_on_angle_scale = 1.0
+engine_knee_scale = 1.0
+
+[notes]
+# Where each handle's value comes from.
+stall_speed = "vizia's 44.7 x 1.0754: the energy fighter's archetype delta (docs/explanation/game/ship-design/archetypes.md, section 4)"
+g_limit = "vizia's"
+cruise_speed = "vizia's 162.7 x 1.0292: the energy fighter's archetype delta (docs/explanation/game/ship-design/archetypes.md, section 4)"
+climb_time = "vizia's 600 x 1.1119: the energy fighter's archetype delta (docs/explanation/game/ship-design/archetypes.md, section 4)"
+ceiling = "vizia's"
+low_speed_acceleration = "vizia's 2.72797 x 0.8059: the energy fighter's archetype delta (docs/explanation/game/ship-design/archetypes.md, section 4)"
+sustained_turn_rate = "vizia's 0.274017 x 0.8806: the energy fighter's archetype delta (docs/explanation/game/ship-design/archetypes.md, section 4)"
+half_lift_drag = "vizia's"
+nose_reversal_time = "vizia's"
+dive_acceleration = "vizia's 10.902 x 1.0656: the energy fighter's archetype delta (docs/explanation/game/ship-design/archetypes.md, section 4)"
+zoom_acceleration = "vizia's"
+stall_angle = "vizia's"
+vision_range = "vizia's"
+zero_lift_drag = "vizia's 4.96704e-05 x 0.8554: the energy fighter's archetype delta (docs/explanation/game/ship-design/archetypes.md, section 4)"
+hit_damage = "vizia's 8 x 1.0944: the energy fighter's archetype delta (docs/explanation/game/ship-design/archetypes.md, section 4)"
+fire_rate = "vizia's"
+muzzle_speed = "vizia's"
+bullet_spread = "vizia's"
+gun_range = "follows from the set's bullet life (vizia's), cruise and muzzle speed"
+shots_per_store = "vizia's"
+max_shield = "vizia's 100 x 1.0919: the energy fighter's archetype delta (docs/explanation/game/ship-design/archetypes.md, section 4)"
+shield_recharge_rate = "the doctrine tuning's armour (docs/rewrite/sections/doctrines/ships.py)"
+shield_recharge_delay = "the doctrine tuning's armour (docs/rewrite/sections/doctrines/ships.py)"
+head_on_fraction = "the doctrine tuning's armour (docs/rewrite/sections/doctrines/ships.py)"
+head_on_angle = "the doctrine tuning's armour (docs/rewrite/sections/doctrines/ships.py)"
+hit_radius = "vizia's 10 x 1.0332: the energy fighter's archetype delta (docs/explanation/game/ship-design/archetypes.md, section 4)"
+spawn_energy = "vizia's"

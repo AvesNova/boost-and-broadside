@@ -589,8 +589,8 @@ def report(args) -> None:
             )
     print()
     print(
-        "| duels | damage head-on / flank / tail | first type's | second type's "
-        "| first kills head-on / flank / tail (n) |"
+        "| duels | damage mutual / offset head-on / flank / tail | first type's "
+        "| second type's | first kills mutual / offset head-on / flank / tail (n) |"
     )
     print("|---|---|---|---|---|")
     for row in rows:

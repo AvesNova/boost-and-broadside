@@ -383,6 +383,9 @@ cut; where they differ, this section and the code win.
     `kill_aspect` (B, N) int32, the hit's aspect class (`ASPECTS`: head-on, flank, tail)
     for the statistics. The game's numbers are unchanged; the fingerprint, which hashes
     the state and the observation, stays.
+  - **`Events` (schema 4, 2026-11-12)**: the head-on class split in two, so four classes
+    (`ASPECTS`: mutual head-on under 10 degrees, offset head-on to 45, flank to 135,
+    tail); `enemy_damage_by_aspect` is (B, N, 4). The game's numbers are unchanged.
   - **`REWARD_LEVELS`** (`bnb.contracts.trajectory`): damage, kill_death,
     objective_progress, objective, outcome. `Trajectory.reward` is
     `(L, R, S, len(REWARD_LEVELS))`, per level and weighted.

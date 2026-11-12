@@ -162,7 +162,7 @@ def hits(
 
     # The statistics' aspect classes (`bnb.contracts.events.ASPECTS`): each bullet's, the
     # enemy damage each target took by class, and the class of each target's earliest hit.
-    aspect_class = (theta >= ASPECT_BOUNDS[0]).long() + (theta > ASPECT_BOUNDS[1]).long()
+    aspect_class = sum((theta > bound).long() for bound in ASPECT_BOUNDS)
     team = ship_team(rules.ships_per_team, bullet_damage.device)
     from_enemy = team.repeat_interleave(K) != team[target]  # (B, N K)
     classes = len(ASPECTS)
@@ -198,7 +198,7 @@ def boundary_damage(
 def quiet(action: Action) -> torch.Tensor:
     """(B, N) bool: the ship's action is quiet (game spec 7.2), coasting with the stick
     straight or at a slight turn and not shooting, so its shield's recharge runs. Any other
-    input (boost, reverse, a normal or sharp turn, a shot) pauses it."""
+    input (boost, reverse, a normal or sharp turn, a shot) resets its wait to the delay."""
     steady = functools.reduce(operator.or_, (action.stick == index for index in QUIET_STICKS))
     return (action.power == COAST) & steady & (action.shoot == 0)
 
@@ -224,10 +224,11 @@ def apply_damage(
     """Phase 5 for ships alive at tick start: shields, recharge, and who dies.
 
     Damage beyond the shield breaks it (the overkill is ignored); any damage to a shield
-    already broken at tick start kills. A hit resets the recharge wait to the delay. An
-    unhurt ship on a quiet tick (quiet_input (B, N), see `quiet`) counts its wait down and
-    recharges once the wait is over; on any other tick its wait holds where it is and
-    nothing recharges. Ships dead at tick start lose and restore nothing.
+    already broken at tick start kills. A hit resets the recharge wait to the delay, and so
+    does any input that is not quiet (quiet_input (B, N), see `quiet`): an unhurt ship on a
+    quiet tick counts its wait down and recharges once the wait is over, so the recharge
+    needs the delay's length of unbroken quiet flight. Ships dead at tick start lose and
+    restore nothing.
     """
     tick_length = rules.tick_length
     shield0, wait0 = ships.shield, ships.shield_recharge_wait
