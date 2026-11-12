@@ -1,0 +1,32 @@
+[
+ {
+  "label": "m10w20reset",
+  "lock": 45,
+  "respawn_minimum": 10,
+  "wave_interval": 20,
+  "wave_effect": 1
+ },
+ {
+  "label": "m10w20delay10",
+  "lock": 45,
+  "respawn_minimum": 10,
+  "wave_interval": 20,
+  "wave_effect": 2,
+  "wave_delay": 10
+ },
+ {
+  "label": "m10w30reset",
+  "lock": 45,
+  "respawn_minimum": 10,
+  "wave_interval": 30,
+  "wave_effect": 1
+ },
+ {
+  "label": "m10w30delay10",
+  "lock": 45,
+  "respawn_minimum": 10,
+  "wave_interval": 30,
+  "wave_effect": 2,
+  "wave_delay": 10
+ }
+]
