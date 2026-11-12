@@ -1443,6 +1443,33 @@ def round13() -> list[dict]:
 ROUNDS["round13"] = round13
 
 
+def rate_speed(cl, d, drag=0.85, sv=1.0, rate_extra=None):
+    name = (
+        f"rate (lift x{cl:g}, dmg x{d:g}) v speed (drag x{drag:g}"
+        + (f", vision x{sv:g}" if sv != 1 else "")
+        + ") (M), kit2"
+    )
+    a = merge({"max_lift_coefficient": cl, "hit_damage": d}, rate_extra or {}, kit(*KIT2))
+    b = merge({"zero_lift_drag": drag, "vision_range_scale": sv}, kit(*KIT2))
+    return pair(name, ("M", a), ("M", b))
+
+
+def round14() -> list[dict]:
+    """Rate v speed: the rate fighter's duel edge (0.63 at lift x1.05, damage x1.2) taken back
+    with the speed fighter's sight or speed, or less lift."""
+    return [
+        rate_speed(1.05, 1.2, sv=1.05),
+        rate_speed(1.05, 1.25, sv=1.08),
+        rate_speed(1.03, 1.2),
+        rate_speed(1.05, 1.2, drag=0.82),
+        rate_speed(1.03, 1.25, sv=1.04),
+        rate_speed(1.05, 1.2, drag=0.8, sv=1.04),
+    ]
+
+
+ROUNDS["round14"] = round14
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
