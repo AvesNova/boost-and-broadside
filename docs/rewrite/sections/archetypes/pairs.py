@@ -778,6 +778,76 @@ def round8() -> list[dict]:
 ROUNDS["round8"] = round8
 
 
+def armed_gunner(damage, vision, arming=150.0, k=KIT):
+    a = merge(
+        {
+            "arming_distance": {"set": arming},
+            "hit_damage": damage,
+            "bullet_life": 1.3,
+            "vision_range_scale": vision,
+        },
+        kit(*k),
+    )
+    return a, merge({"bullet_life": 0.8}, kit(*k))
+
+
+def big_small(br, bd, sr, sd, small_extra=None, k=KIT):
+    a = merge({"hit_radius": br, "hit_damage": bd}, kit(*k))
+    b = merge({"hit_radius": sr, "hit_damage": sd}, kit(*k), small_extra or {})
+    return a, b
+
+
+def round9() -> list[dict]:
+    """The finalists' last knobs: the small ship's duel (agility, sight) under a softer nose,
+    the armed gunner's mirror pace (a shorter arming), sniper v shotgun and scout v brawler."""
+    out = []
+    for f0, extra, tag in (
+        (0.12, {"induced_drag_scale": 0.95}, "small induced x0.95"),
+        (0.12, {"induced_drag_scale": 0.92}, "small induced x0.92"),
+        (0.12, {"vision_range_scale": 1.1}, "small vision x1.1"),
+        (0.10, {}, ""),
+        (0.10, {"induced_drag_scale": 0.95}, "small induced x0.95"),
+    ):
+        a, b = big_small(1.3, 1.3, 0.8, 0.9, merge(cone(f0, 12, 8), extra))
+        out.append(
+            pair(
+                f"big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit, "
+                f"small cone f0 {f0:g}" + (f", {tag}" if tag else ""),
+                ("M", a),
+                ("M", b),
+            )
+        )
+    for d, v, x in ((0.9, 1.2, 100.0), (0.9, 1.2, 120.0), (0.95, 1.2, 100.0)):
+        a, b = armed_gunner(d, v, x)
+        out.append(
+            pair(
+                f"armed gunner (arming {x:g}, life x1.3, dmg x{d:g}, vision x{v:g}) v "
+                "close fighter (life x0.8) (M), kit",
+                ("M", a),
+                ("M", b),
+            )
+        )
+    for sd in (0.97, 0.92):
+        out.append(
+            pair(
+                f"sniper v shotgun (M), sniper induced x0.95 dmg x{sd:g}, kit2",
+                ("M", merge(SNIPER, {"induced_drag_scale": 0.95, "hit_damage": sd}, kit(*KIT2))),
+                ("M", merge(SHOTGUN, kit(*KIT2))),
+            )
+        )
+    out.append(
+        pair(
+            "scout v brawler (M), S vision x1.05, B vision x0.92 dmg x1.12, kit2",
+            ("M", merge({"vision_range_scale": 1.05}, kit(*KIT2))),
+            ("M", merge({"vision_range_scale": 0.92, "hit_damage": 1.12}, kit(*KIT2))),
+        )
+    )
+    return out
+
+
+ROUNDS["round9"] = round9
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
