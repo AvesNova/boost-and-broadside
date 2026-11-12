@@ -1,6 +1,9 @@
 """The play maps as maneuvers-2 `sizes.py` candidates, each flown by r9 and by r9m2.
 
-    python docs/rewrite/sections/r9m2-maps/make.py [r9m2-maps] [r9 r9m2 r9m r9m2-gate1 r9m2-card]
+    python docs/rewrite/sections/r9m2-maps/make.py [r9m2-maps] [r9 r9m2 r9m r9m2-gate1 ...]
+
+Doctrines: r9, r9m2, r9m, r9m2-gate1 (the Yongma gate on both slots), r9m2-card (the gate
+by ship), r9m2-jujak<gate> (the Jujak slot gate at a value).
 
 Each map's Yongma and Jujak card fields become absolute card values ({"set": value}) on
 `bench.game_loop`'s base card (the real-scale Yongma and Jujak rows: the map's unlisted
@@ -72,6 +75,16 @@ def main() -> None:
             ),
         )
         for doctrine in doctrines:
+            if doctrine.startswith("r9m2-jujak"):  # r9m2 with the Jujak slot's gate at a value
+                centre, scale = champion["jujak"]["duel_extend_in_shield_ratio"]
+                gate = [float(doctrine.removeprefix("r9m2-jujak")), scale]
+                extra[doctrine] = dict(
+                    r9m2,
+                    doctrine=dict(
+                        energy=champion["yongma"],
+                        turn=dict(champion["jujak"], duel_extend_in_shield_ratio=gate),
+                    ),
+                )
             out.append(
                 dict(name=f"{name} | {doctrine}", energy=energy, turn=turn, **extra[doctrine])
             )

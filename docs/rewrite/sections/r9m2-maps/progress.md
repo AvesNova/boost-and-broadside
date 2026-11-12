@@ -220,3 +220,44 @@ Nothing stored. For the author (a proposal):
   joust at 0.4 bits; gate1 de-jousts it (0.29 / 0.46, 1.6 bits) and is +0.02 in crowds, but
   its Jujak loses 1v1 duels 0.38-0.45. A gate between 0.4 and 1.0 for the Jujak on those two
   cards is the untried middle.
+
+## 06:33-06:42 KST: run 5 (`../maneuvers-2/r9m2-jujak-gates/`): the Jujak gate between, armour-tank and D2
+
+r9m2 with the Jujak slot's duel-extension gate at 0.7 and 0.55 (Yongma 1.0, the rest r9m2;
+`make.py`'s `r9m2-jujak<gate>`), the same lineups, strength cells and 1024 games as run 3.
+486 s. The 0.4 (r9m2) and 1.0 (gate1) columns are run 3's same-run rows.
+
+| Map, Jujak gate | A v B 1v1/2v2/5v5/10v10 | AA mutual, H | **BB (Jujak) mutual, life, H** | Jujak 1v1 mirror v r9m2 / v r9 | mean v r9 1v1 / 5v5 | mean v r9m2 1v1 / 5v5 | 5v5 life, kills/min |
+|---|---|---|---|---|---|---|---|
+| armour-tank 0.4 (r9m2) | .50/.42/.56/.52 | .33, 1.60 | .53, 249 s, 0.43 | .51 / .53 | .518 / .789 | .500 / .495 | 113, .49 |
+| armour-tank 0.55 | .48/.42/.59/.48 | .34, 1.60 | .50, 244 s, 0.50 | .50 / .52 | .519 / .793 | .492 / .505 | 113, .49 |
+| armour-tank 0.7 | .50/.41/.56/.45 | .33, 1.59 | **.39, 223 s, 0.70** | .46 / .49 | .526 / .788 | .491 / .496 | 114, .49 |
+| armour-tank 1.0 (gate1) | .50/.42/.58/.50 | .34, 1.60 | .29, 215 s, 1.57 | .39 / .38 | .486 / .799 | .483 / .523 | 114, .48 |
+| D2 0.4 (r9m2) | .51/.44/.56/.54 | .63, 1.60 | .64, 223 s, 0.40 | .51 / .59 | .546 / .781 | .502 / .492 | 133, .42 |
+| D2 0.55 | .50/.45/.56/.54 | .64, 1.60 | .62, 219 s, 0.51 | .50 / .59 | .554 / .782 | .503 / .501 | 132, .42 |
+| D2 0.7 | .52/.45/.59/.54 | .63, 1.60 | **.50, 220 s, 0.77** | .46 / .57 | .543 / .778 | .496 / .506 | 132, .42 |
+| D2 1.0 (gate1) | .50/.46/.55/.49 | .65, 1.59 | .46, 228 s, 1.59 | .43 / .45 | .516 / .790 | .484 / .521 | 134, .42 |
+
+SE: means ±0.005-0.007, a mirror cell ±0.011.
+
+1. **The joust falls with the gate, the entropy does not follow until 1.0**: Jujak-mirror
+   mutual 0.53 → 0.50 → 0.39 → 0.29 (armour-tank) and 0.64 → 0.62 → 0.50 → 0.46 (D2), but
+   the choice entropy only 0.4 → 0.5 → 0.7-0.8 → 1.6 bits. The full-shield gate is what makes
+   the extension a choice from the first merge; below it the extension only opens after the
+   first hits.
+2. **0.55 is r9m2** within noise on every cell.
+3. **0.7 is the middle**: armour-tank's Jujak mirror 0.53 → 0.39 (gate1 0.29), D2's 0.64 →
+   0.50 (gate1 0.46, so most of gate1's de-joust there); its Jujak keeps the duel against r9
+   (0.49 / 0.57, r9m2 0.53 / 0.59, gate1 0.38 / 0.45) and loses the mirror against r9m2's only
+   0.46 (gate1 0.39 / 0.43). Balance, pace, the A mirror and the crowd strength are r9m2's
+   (5v5 v r9m2 0.50-0.51).
+
+## State (06:43 KST)
+
+Nothing stored. For the author (a proposal): on armour-tank and D2, a **Jujak gate of 0.7**
+takes most of the Jujak-mirror joust out (D2 nearly all of gate1's) at little duel cost
+(1v1 against r9 within 0.04 of r9m2), but leaves the mirror at 0.7-0.8 bits; gate1 (1.0)
+is the only gate with 1.6 bits, and it costs the Jujak its 1v1 duels (0.38-0.45). With the
+one-hull pairs on gate1 (run 3, run 4), the candidate doctrine is: Yongma slot 1.0 on every
+map; Jujak slot 1.0 on the one-hull pairs and rate v speed, 0.7 for the turn-fighter Jujak
+(armour-tank, D2). D2's Yongma mirror stays a 0.63-0.65 joust under every gate (the card).

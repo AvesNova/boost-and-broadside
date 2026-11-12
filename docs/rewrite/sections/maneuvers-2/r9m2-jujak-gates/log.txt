@@ -1,0 +1,117 @@
+## 1v1: 44 jobs, B 8192, 06:33 KST
+/home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+  warn_once(FP_FUSION_DEFAULT_WARNING)
+  batch 1/6 23 s; ETA 06:36 KST
+  batch 2/6 39 s; ETA 06:35 KST
+  batch 3/6 54 s; ETA 06:35 KST
+  batch 4/6 70 s; ETA 06:35 KST
+  batch 5/6 85 s; ETA 06:35 KST
+  batch 6/6 101 s; ETA 06:35 KST
+1v1  armour-tank | r9m2-jujak0.7   energy v turn v c0: score 0.501 ± 0.011  kills m/o/f/t 0.12 / 0.80 / 0.08 / 0.00  life 213 s  kpm/ship 0.27  trades 0.00
+1v1  armour-tank | r9m2-jujak0.7     turn mirror v c0: score 0.492 ± 0.011  kills m/o/f/t 0.39 / 0.47 / 0.05 / 0.09  life 223 s  kpm/ship 0.26  trades 0.00
+1v1  armour-tank | r9m2-jujak0.7   energy mirror v c0: score 0.490 ± 0.012  kills m/o/f/t 0.33 / 0.47 / 0.04 / 0.15  life 212 s  kpm/ship 0.27  trades 0.00
+1v1 armour-tank | r9m2-jujak0.55   energy v turn v c1: score 0.477 ± 0.011  kills m/o/f/t 0.11 / 0.81 / 0.08 / 0.00  life 225 s  kpm/ship 0.26  trades 0.00
+1v1 armour-tank | r9m2-jujak0.55     turn mirror v c1: score 0.496 ± 0.010  kills m/o/f/t 0.50 / 0.35 / 0.04 / 0.11  life 244 s  kpm/ship 0.24  trades 0.01
+1v1 armour-tank | r9m2-jujak0.55   energy mirror v c1: score 0.478 ± 0.011  kills m/o/f/t 0.34 / 0.48 / 0.04 / 0.13  life 210 s  kpm/ship 0.27  trades 0.00
+1v1   balance-d2 | r9m2-jujak0.7   energy v turn v c2: score 0.519 ± 0.010  kills m/o/f/t 0.24 / 0.68 / 0.08 / 0.00  life 278 s  kpm/ship 0.21  trades 0.00
+1v1   balance-d2 | r9m2-jujak0.7     turn mirror v c2: score 0.504 ± 0.012  kills m/o/f/t 0.50 / 0.35 / 0.05 / 0.10  life 220 s  kpm/ship 0.26  trades 0.01
+1v1   balance-d2 | r9m2-jujak0.7   energy mirror v c2: score 0.497 ± 0.011  kills m/o/f/t 0.63 / 0.23 / 0.02 / 0.12  life 184 s  kpm/ship 0.31  trades 0.00
+1v1  balance-d2 | r9m2-jujak0.55   energy v turn v c3: score 0.499 ± 0.010  kills m/o/f/t 0.23 / 0.68 / 0.09 / 0.00  life 281 s  kpm/ship 0.21  trades 0.00
+1v1  balance-d2 | r9m2-jujak0.55     turn mirror v c3: score 0.491 ± 0.011  kills m/o/f/t 0.62 / 0.26 / 0.04 / 0.09  life 219 s  kpm/ship 0.26  trades 0.04
+1v1  balance-d2 | r9m2-jujak0.55   energy mirror v c3: score 0.496 ± 0.011  kills m/o/f/t 0.64 / 0.22 / 0.02 / 0.12  life 188 s  kpm/ship 0.30  trades 0.01
+1v1  armour-tank | r9m2-jujak0.7   energy v turn v r9: score 0.513 ± 0.011  kills m/o/f/t 0.12 / 0.80 / 0.08 / 0.00  life 216 s  kpm/ship 0.27  trades 0.00
+1v1  armour-tank | r9m2-jujak0.7   turn v energy v r9: score 0.511 ± 0.011  kills m/o/f/t 0.10 / 0.81 / 0.08 / 0.00  life 209 s  kpm/ship 0.27  trades 0.00
+1v1  armour-tank | r9m2-jujak0.7           mixed v r9: score 0.586 ± 0.011  kills m/o/f/t 0.35 / 0.53 / 0.06 / 0.05  life 187 s  kpm/ship 0.31  trades 0.00
+1v1  armour-tank | r9m2-jujak0.7  mixed reversed v r9: score 0.494 ± 0.010  kills m/o/f/t 0.58 / 0.32 / 0.05 / 0.05  life 236 s  kpm/ship 0.24  trades 0.01
+1v1 armour-tank | r9m2-jujak0.55   energy v turn v r9: score 0.509 ± 0.011  kills m/o/f/t 0.10 / 0.82 / 0.08 / 0.00  life 211 s  kpm/ship 0.27  trades 0.00
+1v1 armour-tank | r9m2-jujak0.55   turn v energy v r9: score 0.495 ± 0.011  kills m/o/f/t 0.11 / 0.82 / 0.08 / 0.00  life 220 s  kpm/ship 0.26  trades 0.00
+1v1 armour-tank | r9m2-jujak0.55           mixed v r9: score 0.556 ± 0.011  kills m/o/f/t 0.36 / 0.53 / 0.06 / 0.05  life 188 s  kpm/ship 0.30  trades 0.00
+1v1 armour-tank | r9m2-jujak0.55  mixed reversed v r9: score 0.517 ± 0.009  kills m/o/f/t 0.59 / 0.31 / 0.05 / 0.05  life 253 s  kpm/ship 0.23  trades 0.00
+1v1   balance-d2 | r9m2-jujak0.7   energy v turn v r9: score 0.483 ± 0.010  kills m/o/f/t 0.25 / 0.67 / 0.08 / 0.00  life 288 s  kpm/ship 0.20  trades 0.00
+1v1   balance-d2 | r9m2-jujak0.7   turn v energy v r9: score 0.501 ± 0.010  kills m/o/f/t 0.24 / 0.69 / 0.07 / 0.00  life 299 s  kpm/ship 0.19  trades 0.00
+1v1   balance-d2 | r9m2-jujak0.7           mixed v r9: score 0.624 ± 0.010  kills m/o/f/t 0.63 / 0.27 / 0.06 / 0.04  life 166 s  kpm/ship 0.34  trades 0.00
+1v1   balance-d2 | r9m2-jujak0.7  mixed reversed v r9: score 0.566 ± 0.011  kills m/o/f/t 0.76 / 0.16 / 0.04 / 0.04  life 230 s  kpm/ship 0.25  trades 0.02
+1v1  balance-d2 | r9m2-jujak0.55   energy v turn v r9: score 0.506 ± 0.010  kills m/o/f/t 0.21 / 0.71 / 0.08 / 0.00  life 289 s  kpm/ship 0.20  trades 0.00
+1v1  balance-d2 | r9m2-jujak0.55   turn v energy v r9: score 0.494 ± 0.010  kills m/o/f/t 0.25 / 0.68 / 0.08 / 0.00  life 289 s  kpm/ship 0.20  trades 0.00
+1v1  balance-d2 | r9m2-jujak0.55           mixed v r9: score 0.624 ± 0.010  kills m/o/f/t 0.65 / 0.25 / 0.05 / 0.04  life 166 s  kpm/ship 0.34  trades 0.00
+1v1  balance-d2 | r9m2-jujak0.55  mixed reversed v r9: score 0.592 ± 0.009  kills m/o/f/t 0.77 / 0.15 / 0.04 / 0.04  life 240 s  kpm/ship 0.24  trades 0.01
+1v1  armour-tank | r9m2-jujak0.7   energy v turn v r9m2: score 0.517 ± 0.011  kills m/o/f/t 0.10 / 0.81 / 0.09 / 0.00  life 220 s  kpm/ship 0.26  trades 0.00
+1v1  armour-tank | r9m2-jujak0.7   turn v energy v r9m2: score 0.491 ± 0.011  kills m/o/f/t 0.11 / 0.80 / 0.09 / 0.00  life 216 s  kpm/ship 0.27  trades 0.00
+1v1  armour-tank | r9m2-jujak0.7           mixed v r9m2: score 0.490 ± 0.011  kills m/o/f/t 0.35 / 0.47 / 0.03 / 0.15  life 212 s  kpm/ship 0.27  trades 0.00
+1v1  armour-tank | r9m2-jujak0.7  mixed reversed v r9m2: score 0.464 ± 0.011  kills m/o/f/t 0.39 / 0.44 / 0.05 / 0.12  life 236 s  kpm/ship 0.24  trades 0.00
+1v1 armour-tank | r9m2-jujak0.55   energy v turn v r9m2: score 0.488 ± 0.011  kills m/o/f/t 0.11 / 0.81 / 0.09 / 0.00  life 219 s  kpm/ship 0.26  trades 0.00
+1v1 armour-tank | r9m2-jujak0.55   turn v energy v r9m2: score 0.500 ± 0.011  kills m/o/f/t 0.12 / 0.81 / 0.07 / 0.00  life 214 s  kpm/ship 0.27  trades 0.00
+1v1 armour-tank | r9m2-jujak0.55           mixed v r9m2: score 0.480 ± 0.012  kills m/o/f/t 0.33 / 0.48 / 0.05 / 0.15  life 210 s  kpm/ship 0.27  trades 0.00
+1v1 armour-tank | r9m2-jujak0.55  mixed reversed v r9m2: score 0.498 ± 0.010  kills m/o/f/t 0.50 / 0.34 / 0.05 / 0.11  life 247 s  kpm/ship 0.23  trades 0.00
+1v1   balance-d2 | r9m2-jujak0.7   energy v turn v r9m2: score 0.509 ± 0.010  kills m/o/f/t 0.22 / 0.71 / 0.07 / 0.00  life 283 s  kpm/ship 0.20  trades 0.00
+1v1   balance-d2 | r9m2-jujak0.7   turn v energy v r9m2: score 0.514 ± 0.010  kills m/o/f/t 0.23 / 0.69 / 0.08 / 0.00  life 280 s  kpm/ship 0.21  trades 0.00
+1v1   balance-d2 | r9m2-jujak0.7           mixed v r9m2: score 0.500 ± 0.011  kills m/o/f/t 0.61 / 0.24 / 0.02 / 0.13  life 187 s  kpm/ship 0.30  trades 0.00
+1v1   balance-d2 | r9m2-jujak0.7  mixed reversed v r9m2: score 0.460 ± 0.011  kills m/o/f/t 0.53 / 0.32 / 0.05 / 0.10  life 226 s  kpm/ship 0.25  trades 0.02
+1v1  balance-d2 | r9m2-jujak0.55   energy v turn v r9m2: score 0.500 ± 0.010  kills m/o/f/t 0.23 / 0.69 / 0.08 / 0.00  life 282 s  kpm/ship 0.21  trades 0.00
+1v1  balance-d2 | r9m2-jujak0.55   turn v energy v r9m2: score 0.501 ± 0.010  kills m/o/f/t 0.23 / 0.69 / 0.08 / 0.00  life 281 s  kpm/ship 0.21  trades 0.00
+1v1  balance-d2 | r9m2-jujak0.55           mixed v r9m2: score 0.517 ± 0.011  kills m/o/f/t 0.60 / 0.23 / 0.02 / 0.14  life 189 s  kpm/ship 0.30  trades 0.00
+1v1  balance-d2 | r9m2-jujak0.55  mixed reversed v r9m2: score 0.496 ± 0.011  kills m/o/f/t 0.62 / 0.24 / 0.03 / 0.10  life 225 s  kpm/ship 0.26  trades 0.03
+## 2v2: 4 jobs, B 8192, 06:35 KST
+2v2  armour-tank | r9m2-jujak0.7   energy v turn v c0: score 0.414 ± 0.014  kills m/o/f/t 0.07 / 0.33 / 0.46 / 0.15  life 105 s  kpm/ship 0.52  trades 0.01
+2v2 armour-tank | r9m2-jujak0.55   energy v turn v c1: score 0.417 ± 0.014  kills m/o/f/t 0.07 / 0.33 / 0.45 / 0.15  life 107 s  kpm/ship 0.51  trades 0.02
+2v2   balance-d2 | r9m2-jujak0.7   energy v turn v c2: score 0.453 ± 0.014  kills m/o/f/t 0.10 / 0.23 / 0.47 / 0.20  life 119 s  kpm/ship 0.46  trades 0.01
+2v2  balance-d2 | r9m2-jujak0.55   energy v turn v c3: score 0.454 ± 0.014  kills m/o/f/t 0.10 / 0.23 / 0.47 / 0.20  life 120 s  kpm/ship 0.46  trades 0.01
+## 5v5: 36 jobs, B 4096, 06:36 KST
+  batch 1/9 39 s; ETA 06:42 KST
+  batch 2/9 72 s; ETA 06:41 KST
+  batch 3/9 105 s; ETA 06:41 KST
+  batch 4/9 138 s; ETA 06:41 KST
+  batch 5/9 172 s; ETA 06:41 KST
+  batch 6/9 205 s; ETA 06:41 KST
+  batch 7/9 238 s; ETA 06:41 KST
+  batch 8/9 271 s; ETA 06:41 KST
+  batch 9/9 305 s; ETA 06:41 KST
+5v5  armour-tank | r9m2-jujak0.7   energy v turn v c0: score 0.563 ± 0.014  kills m/o/f/t 0.06 / 0.28 / 0.40 / 0.26  life 114 s  kpm/ship 0.49  trades 0.04
+5v5 armour-tank | r9m2-jujak0.55   energy v turn v c1: score 0.587 ± 0.014  kills m/o/f/t 0.06 / 0.27 / 0.40 / 0.26  life 113 s  kpm/ship 0.49  trades 0.04
+5v5   balance-d2 | r9m2-jujak0.7   energy v turn v c2: score 0.591 ± 0.014  kills m/o/f/t 0.07 / 0.18 / 0.39 / 0.36  life 132 s  kpm/ship 0.42  trades 0.03
+5v5  balance-d2 | r9m2-jujak0.55   energy v turn v c3: score 0.565 ± 0.014  kills m/o/f/t 0.07 / 0.17 / 0.40 / 0.35  life 132 s  kpm/ship 0.42  trades 0.03
+5v5  armour-tank | r9m2-jujak0.7   energy v turn v r9: score 0.731 ± 0.013  kills m/o/f/t 0.06 / 0.29 / 0.49 / 0.16  life 111 s  kpm/ship 0.50  trades 0.04
+5v5  armour-tank | r9m2-jujak0.7   turn v energy v r9: score 0.759 ± 0.012  kills m/o/f/t 0.05 / 0.29 / 0.47 / 0.19  life 99 s  kpm/ship 0.55  trades 0.05
+5v5  armour-tank | r9m2-jujak0.7           mixed v r9: score 0.825 ± 0.011  kills m/o/f/t 0.05 / 0.29 / 0.47 / 0.19  life 107 s  kpm/ship 0.51  trades 0.04
+5v5  armour-tank | r9m2-jujak0.7  mixed reversed v r9: score 0.838 ± 0.011  kills m/o/f/t 0.06 / 0.29 / 0.47 / 0.18  life 105 s  kpm/ship 0.52  trades 0.04
+5v5 armour-tank | r9m2-jujak0.55   energy v turn v r9: score 0.750 ± 0.013  kills m/o/f/t 0.06 / 0.28 / 0.49 / 0.17  life 112 s  kpm/ship 0.49  trades 0.04
+5v5 armour-tank | r9m2-jujak0.55   turn v energy v r9: score 0.757 ± 0.012  kills m/o/f/t 0.06 / 0.28 / 0.48 / 0.18  life 98 s  kpm/ship 0.55  trades 0.05
+5v5 armour-tank | r9m2-jujak0.55           mixed v r9: score 0.834 ± 0.011  kills m/o/f/t 0.05 / 0.28 / 0.47 / 0.19  life 108 s  kpm/ship 0.51  trades 0.05
+5v5 armour-tank | r9m2-jujak0.55  mixed reversed v r9: score 0.830 ± 0.011  kills m/o/f/t 0.06 / 0.29 / 0.47 / 0.18  life 104 s  kpm/ship 0.52  trades 0.05
+5v5   balance-d2 | r9m2-jujak0.7   energy v turn v r9: score 0.701 ± 0.013  kills m/o/f/t 0.08 / 0.19 / 0.50 / 0.23  life 133 s  kpm/ship 0.42  trades 0.03
+5v5   balance-d2 | r9m2-jujak0.7   turn v energy v r9: score 0.774 ± 0.012  kills m/o/f/t 0.07 / 0.20 / 0.51 / 0.22  life 113 s  kpm/ship 0.49  trades 0.04
+5v5   balance-d2 | r9m2-jujak0.7           mixed v r9: score 0.811 ± 0.011  kills m/o/f/t 0.08 / 0.19 / 0.49 / 0.24  life 127 s  kpm/ship 0.44  trades 0.04
+5v5   balance-d2 | r9m2-jujak0.7  mixed reversed v r9: score 0.826 ± 0.011  kills m/o/f/t 0.07 / 0.19 / 0.50 / 0.23  life 122 s  kpm/ship 0.45  trades 0.03
+5v5  balance-d2 | r9m2-jujak0.55   energy v turn v r9: score 0.712 ± 0.013  kills m/o/f/t 0.08 / 0.19 / 0.51 / 0.22  life 132 s  kpm/ship 0.42  trades 0.03
+5v5  balance-d2 | r9m2-jujak0.55   turn v energy v r9: score 0.771 ± 0.012  kills m/o/f/t 0.07 / 0.19 / 0.52 / 0.22  life 112 s  kpm/ship 0.49  trades 0.04
+5v5  balance-d2 | r9m2-jujak0.55           mixed v r9: score 0.796 ± 0.012  kills m/o/f/t 0.07 / 0.20 / 0.49 / 0.24  life 127 s  kpm/ship 0.44  trades 0.03
+5v5  balance-d2 | r9m2-jujak0.55  mixed reversed v r9: score 0.850 ± 0.010  kills m/o/f/t 0.07 / 0.20 / 0.50 / 0.23  life 121 s  kpm/ship 0.46  trades 0.04
+5v5  armour-tank | r9m2-jujak0.7   energy v turn v r9m2: score 0.561 ± 0.014  kills m/o/f/t 0.06 / 0.27 / 0.41 / 0.26  life 113 s  kpm/ship 0.49  trades 0.04
+5v5  armour-tank | r9m2-jujak0.7   turn v energy v r9m2: score 0.411 ± 0.014  kills m/o/f/t 0.06 / 0.28 / 0.40 / 0.26  life 113 s  kpm/ship 0.49  trades 0.04
+5v5  armour-tank | r9m2-jujak0.7           mixed v r9m2: score 0.504 ± 0.014  kills m/o/f/t 0.06 / 0.28 / 0.34 / 0.32  life 122 s  kpm/ship 0.46  trades 0.04
+5v5  armour-tank | r9m2-jujak0.7  mixed reversed v r9m2: score 0.510 ± 0.014  kills m/o/f/t 0.07 / 0.27 / 0.35 / 0.31  life 116 s  kpm/ship 0.48  trades 0.04
+5v5 armour-tank | r9m2-jujak0.55   energy v turn v r9m2: score 0.573 ± 0.014  kills m/o/f/t 0.06 / 0.28 / 0.40 / 0.26  life 113 s  kpm/ship 0.49  trades 0.04
+5v5 armour-tank | r9m2-jujak0.55   turn v energy v r9m2: score 0.448 ± 0.014  kills m/o/f/t 0.06 / 0.28 / 0.40 / 0.27  life 114 s  kpm/ship 0.49  trades 0.04
+5v5 armour-tank | r9m2-jujak0.55           mixed v r9m2: score 0.485 ± 0.015  kills m/o/f/t 0.06 / 0.27 / 0.34 / 0.33  life 123 s  kpm/ship 0.45  trades 0.04
+5v5 armour-tank | r9m2-jujak0.55  mixed reversed v r9m2: score 0.514 ± 0.015  kills m/o/f/t 0.07 / 0.27 / 0.35 / 0.31  life 117 s  kpm/ship 0.47  trades 0.04
+5v5   balance-d2 | r9m2-jujak0.7   energy v turn v r9m2: score 0.566 ± 0.014  kills m/o/f/t 0.07 / 0.18 / 0.40 / 0.34  life 132 s  kpm/ship 0.42  trades 0.03
+5v5   balance-d2 | r9m2-jujak0.7   turn v energy v r9m2: score 0.438 ± 0.014  kills m/o/f/t 0.08 / 0.18 / 0.39 / 0.35  life 132 s  kpm/ship 0.42  trades 0.03
+5v5   balance-d2 | r9m2-jujak0.7           mixed v r9m2: score 0.519 ± 0.014  kills m/o/f/t 0.08 / 0.18 / 0.33 / 0.41  life 141 s  kpm/ship 0.40  trades 0.03
+5v5   balance-d2 | r9m2-jujak0.7  mixed reversed v r9m2: score 0.501 ± 0.015  kills m/o/f/t 0.08 / 0.18 / 0.35 / 0.39  life 136 s  kpm/ship 0.41  trades 0.03
+5v5  balance-d2 | r9m2-jujak0.55   energy v turn v r9m2: score 0.573 ± 0.014  kills m/o/f/t 0.08 / 0.18 / 0.41 / 0.34  life 131 s  kpm/ship 0.43  trades 0.03
+5v5  balance-d2 | r9m2-jujak0.55   turn v energy v r9m2: score 0.426 ± 0.014  kills m/o/f/t 0.08 / 0.18 / 0.40 / 0.35  life 132 s  kpm/ship 0.42  trades 0.03
+5v5  balance-d2 | r9m2-jujak0.55           mixed v r9m2: score 0.512 ± 0.014  kills m/o/f/t 0.07 / 0.17 / 0.34 / 0.42  life 141 s  kpm/ship 0.40  trades 0.03
+5v5  balance-d2 | r9m2-jujak0.55  mixed reversed v r9m2: score 0.494 ± 0.015  kills m/o/f/t 0.08 / 0.17 / 0.35 / 0.40  life 135 s  kpm/ship 0.41  trades 0.03
+## 10v10: 4 jobs, B 2048, 06:41 KST
+10v10  armour-tank | r9m2-jujak0.7   energy v turn v c0: score 0.452 ± 0.021  kills m/o/f/t 0.07 / 0.27 / 0.37 / 0.29  life 134 s  kpm/ship 0.42  trades 0.07
+10v10 armour-tank | r9m2-jujak0.55   energy v turn v c1: score 0.483 ± 0.021  kills m/o/f/t 0.07 / 0.27 / 0.37 / 0.29  life 132 s  kpm/ship 0.42  trades 0.07
+10v10   balance-d2 | r9m2-jujak0.7   energy v turn v c2: score 0.535 ± 0.021  kills m/o/f/t 0.07 / 0.18 / 0.35 / 0.39  life 156 s  kpm/ship 0.36  trades 0.06
+10v10  balance-d2 | r9m2-jujak0.55   energy v turn v c3: score 0.541 ± 0.021  kills m/o/f/t 0.07 / 0.17 / 0.36 / 0.39  life 155 s  kpm/ship 0.36  trades 0.06
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| armour-tank | r9m2-jujak0.7 | 0.501 ± 0.011 | 0.414 ± 0.014 | 0.563 ± 0.014 | 0.452 ± 0.021 | 0.086 | 0.06 / 0.28 / 0.40 / 0.26 | 0.04 | 213 / 105 / 114 / 134 | 0.27 / 0.52 / 0.49 / 0.42 | 2.62 |
+| armour-tank | r9m2-jujak0.55 | 0.477 ± 0.011 | 0.417 ± 0.014 | 0.587 ± 0.014 | 0.483 ± 0.021 | 0.087 | 0.06 / 0.27 / 0.40 / 0.26 | 0.04 | 225 / 107 / 113 / 132 | 0.26 / 0.51 / 0.49 / 0.42 | 2.7 |
+| balance-d2 | r9m2-jujak0.7 | 0.519 ± 0.010 | 0.453 ± 0.014 | 0.591 ± 0.014 | 0.535 ± 0.021 | 0.091 | 0.07 / 0.18 / 0.39 / 0.36 | 0.03 | 278 / 119 / 132 / 156 | 0.21 / 0.46 / 0.42 / 0.36 | 3.4 |
+| balance-d2 | r9m2-jujak0.55 | 0.499 ± 0.010 | 0.454 ± 0.014 | 0.565 ± 0.014 | 0.541 ± 0.021 | 0.065 | 0.07 / 0.17 / 0.40 / 0.35 | 0.03 | 281 / 120 / 132 / 155 | 0.21 / 0.46 / 0.42 / 0.36 | 3.35 |
+
+486 s
