@@ -95,6 +95,51 @@ has every column.
 - **Hold fire fails**: not shooting the nose-to-nose meeting loses it to a ship that shoots
   (1v1 0.09-0.37) and makes the self-play mirrors 500-1200 s stalemates.
 
-## 02:59- KST: round 2 (`round2/`): the duel extension's shield gate
+## 02:59-03:14 KST: round 2 (`round2/`): the duel extension's shield gate
 
-512 games against r9m and r9 at 1v1 / 2v2 / 5v5. ETA 03:25 KST (worst 03:35).
+512 games. "DE shield x": alone, extend when the own shield is below x of the target's
+(scale 0.1 unless "soft", 0.3). Against r9m: 1v1 YY / JJ, 2v2, 5v5 (mixed / reversed);
+against r9 at 5v5; the 1v1 mirrors' mutual share and H (JJ; YY); 5v5 self-play E v T:
+
+| Card: candidate | v r9m 1v1 | v r9m 2v2 | v r9m 5v5 | v r9 5v5 | JJ; YY mutual, H | E v T 5v5 |
+|---|---|---|---|---|---|---|
+| D2: r9m | 0.496 / 0.493 | 0.494 / 0.497 | 0.508 / 0.484 | 0.76 / 0.83 | 0.83, 0.11; 0.73, 0.14 | 0.52 |
+| **D2: DE 0.4** | **0.538 / 0.554** | 0.524 / 0.499 | 0.519 / 0.510 | 0.78 / 0.83 | **0.63, 0.43; 0.59, 0.85** | 0.57 |
+| D2: DE 0.6 | 0.557 / 0.501 | 0.517 / 0.538 | 0.545 / 0.534 | 0.81 / 0.86 | 0.60, 0.56; 0.57, 1.09 | 0.57 |
+| D2: DE 0.8 | 0.553 / 0.451 | 0.567 / 0.561 | 0.590 / 0.577 | 0.81 / 0.84 | 0.46, 1.20; 0.51, 1.47 | 0.56 |
+| D2: DE 1.0 | 0.552 / 0.460 | 0.602 / 0.639 | 0.640 / 0.619 | 0.84 / 0.89 | 0.44, 1.59; 0.61, 1.60 | 0.62 |
+| D2: DE 0.6 soft | 0.453 / 0.369 | 0.544 / 0.524 | 0.561 / 0.562 | 0.81 / 0.85 | 0.40, 0.52; 0.37, 0.88 | 0.55 |
+| D2: DE 0.6 + energy 0.6 | 0.562 / 0.493 | 0.563 / 0.566 | 0.581 / 0.605 | 0.82 / 0.89 | 0.55, 0.93; 0.56, 1.56 | 0.61 |
+| D2: DE 0.6, Yongma only | 0.576 / 0.478 | 0.514 / 0.543 | 0.566 / 0.521 | 0.80 / 0.85 | 0.82, 0.10; 0.55, 1.10 | 0.64 |
+| cone 0.085: r9m | 0.488 / 0.497 | 0.503 / 0.482 | 0.503 / 0.519 | 0.78 / 0.81 | 0.73, 0.10; 0.53, 0.09 | 0.65 |
+| **cone 0.085: DE 0.4** | **0.576 / 0.523** | 0.502 / 0.529 | 0.511 / 0.528 | 0.79 / 0.84 | **0.52, 0.41; 0.40, 0.75** | 0.68 |
+| cone 0.085: DE 0.6 | 0.569 / 0.475 | 0.518 / 0.529 | 0.536 / 0.547 | 0.81 / 0.83 | 0.46, 0.54; 0.34, 1.00 | 0.68 |
+| cone 0.085: DE 0.8 | 0.521 / 0.396 | 0.574 / 0.558 | 0.584 / 0.500 | 0.83 / 0.87 | 0.27, 1.00; 0.28, 1.40 | 0.68 |
+| cone 0.085: DE 1.0 | 0.528 / 0.375 | 0.636 / 0.606 | 0.652 / 0.657 | 0.85 / 0.89 | 0.30, 1.58; 0.31, 1.61 | 0.73 |
+| cone 0.085: DE 0.6 + energy 0.6 | 0.573 / 0.441 | 0.559 / 0.562 | 0.567 / 0.547 | 0.86 / 0.86 | 0.43, 0.89; 0.32, 1.48 | 0.74 |
+| big v small: r9m | 0.511 / 0.497 | 0.505 / 0.502 | 0.487 / 0.472 | 0.82 / 0.82 | 0.62, 0.12; 0.52, 0.15 | 0.47 |
+| **big v small: DE 0.4** | **0.577 / 0.594** | 0.525 / 0.499 | 0.535 / 0.521 | 0.82 / 0.84 | **0.43, 0.57; 0.40, 0.73** | 0.53 |
+| big v small: DE 0.6 | 0.578 / 0.562 | 0.502 / 0.495 | 0.571 / 0.526 | 0.86 / 0.82 | 0.34, 0.81; 0.34, 0.92 | 0.51 |
+| big v small: DE 0.8 | 0.533 / 0.502 | 0.566 / 0.561 | 0.582 / 0.564 | 0.85 / 0.86 | 0.26, 1.28; 0.27, 1.37 | 0.50 |
+| big v small: DE 1.0 | 0.553 / 0.543 | 0.608 / 0.616 | 0.642 / 0.703 | 0.87 / 0.92 | 0.34, 1.60; 0.31, 1.60 | 0.50 |
+
+- **A trade along the gate**: the higher the shield gate (the earlier a hurt ship leaves a
+  duel), the stronger in the 2v2 and 5v5 (DE 1.0: 0.60-0.70 against r9m) and the more varied
+  the duel (H up to 1.6 bits, near the 2-bit ceiling of four choices), but the Jujak mirror
+  1v1 falls (D2 0.55 at 0.4 to 0.46 at 1.0; cone 0.52 to 0.38). The Jujak is the turn fighter:
+  leaving its mirror's turning fight early gives it away. The Yongma mirror and big v small
+  gain at every gate (0.52-0.59).
+- **DE 0.4 is the gate that passes the strength rule on all three cards** (worst 0.499-0.502
+  against r9m, at or above r9m everywhere within the noise) and beats the 1v1 mirrors
+  (0.52-0.59), with the duel H at 0.41-0.85 bits (r9m 0.09-0.15) and the mutual head-on
+  share down (D2 JJ 0.83 to 0.63, cone 0.73 to 0.52, big v small 0.62 to 0.43).
+- The soft gate (scale 0.3: a hurt ship sometimes stays, a healthy one sometimes leaves)
+  loses the 1v1 (0.29-0.45): the extension must follow the shield, not dither.
+- The duel extension moves the self-play energy v turn 5v5 a little toward the Yongma (D2
+  0.52 to 0.57, cone 0.65 to 0.68, big v small 0.47 to 0.53); the Yongma-only variant more
+  (0.64).
+- Round 3: per type (the Yongma's gate higher, the Jujak's at 0.4) and the frozen card.
+
+## 03:16- KST: round 3 (`round3/`): the gate per type; the frozen card
+
+512 games against r9m and r9, four cards. ETA 03:35 KST (worst 03:45).

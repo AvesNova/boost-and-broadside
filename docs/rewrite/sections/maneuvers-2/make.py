@@ -37,6 +37,7 @@ CARDS = {
     "D2": (D2_ENERGY, D2_TURN),
     "cone 0.085": armour(0.085, 1.5),
     "big v small": (BIG_SMALL["energy"], BIG_SMALL["turn"]),
+    "frozen": ({}, {}),
 }
 
 ONE = dict(sense=1.0, sense_one_circle=1.0, sense_in_gun_range=[4.0, 0.2])
@@ -111,6 +112,15 @@ ROUNDS = {
         ("DE shield 0.6 + energy 0.6", de(0.6, energy=0.6)),
         ("DE shield 0.6, Yongma only", (de(0.6), {})),
         ("DE shield 0.6 + energy 0.8, Yongma only", (de(0.6, energy=0.8), {})),
+    ],
+    "round3": [
+        ("r9m", {}),
+        ("DE shield 0.4", de(0.4)),
+        ("DE shield 0.5", de(0.5)),
+        ("DE Y 0.6 / J 0.4", (de(0.6), de(0.4))),
+        ("DE Y 0.8 / J 0.4", (de(0.8), de(0.4))),
+        ("DE Y 1.0 / J 0.4", (de(1.0), de(0.4))),
+        ("DE Y 0.6 + energy 0.6 / J 0.4", (de(0.6, energy=0.6), de(0.4))),
     ],
 }
 
