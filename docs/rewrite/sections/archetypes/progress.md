@@ -110,3 +110,41 @@ damage x1.25. Armoured nose = cone 0.03 12° p8, induced x1.3; agile = lift x1.1
 - On the neutral ship M arming 150 with damage x1.5 leaves the joust untouched (0.66): M's
   mirror is less sensitive to the ramp than D2's Jujak mirror (why is not measured; a guess:
   its hits land from farther out).
+
+## 00:54-00:59 KST: the mirror study (`mirror/`): what shapes a 1v1 mirror
+
+One ship played against itself at 1v1, 512 games: the neutral ship M with one change, and the
+D2 Yongma with its parts undone. Kills m / o / f / t, life, merges a kill mean / median / p90,
+choice entropy H:
+
+| Ship | Kills m / o / f / t | Life s | Merges | H |
+|---|---|---|---|---|
+| M | 0.66 / 0.31 / 0.03 / 0 | 262 | 3.2 / 3 / 6 | 0.61 |
+| **M, vision x0.7** | **0.49 / 0.25 / 0.25 / 0** | **1526** | 3.0 / 2 / 7 | **0.94** |
+| M, vision x1.3 | 0.90 / 0.10 / 0.01 / 0 | 175 | 2.7 / 3 / 6 | 0.71 |
+| M, drag x0.8 (faster) | 0.66 / 0.31 / 0.03 / 0 | 264 | 3.1 / 3 / 6 | 0.64 |
+| M, lift x1.15 | 0.71 / 0.26 / 0.03 / 0 | 188 | 2.7 / 3 / 5 | 0.75 |
+| M, induced x0.8 / x1.25 | 0.76 / 0.22 / 0.02 / 0; 0.60 / 0.36 / 0.04 / 0 | 328; 214 | 3.3; 2.7 | 0.53; 0.65 |
+| M, bullet life x0.7 / x1.4 | 0.62 / 0.36 / 0.02 / 0; 0.68 / 0.28 / 0.04 / 0 | 360; 225 | 3.5; 2.9 | 0.54; 0.66 |
+| M, damage x1.5 / shield x0.6 | 0.72 / 0.23 / 0.05 / 0; 0.71 / 0.24 / 0.04 / 0 | 158; 143 | 1.8; 1.6 | 0.77; 0.84 |
+| M, 30 Hz at damage x0.5 | 0.47 / 0.52 / 0.02 / 0 | **1574** | 4.3 / 3 / 12 | 0.36 |
+| M, 7.5 Hz at damage x2 | 0.74 / 0.23 / 0.03 / 0 | 247 | 3.2 | 0.63 |
+| M, spread x3; explosive 0.5; hit radius x1.5; engine x1.3 | 0.64-0.67 / 0.28-0.33 / 0.03-0.05 / 0 | 203-330 | 2.5-3.5 | 0.60-0.72 |
+| M, head-on fraction x0.5 | 0.19 / 0.80 / 0.02 / 0 | 1137 | 4.6 / 4 / 9 | 0.41 |
+| M, head-on angle x2; stall angle x1.2 | 0.72-0.74 / 0.23-0.25 / 0.02-0.03 / 0 | 308-327 | 3.2-3.4 | 0.51-0.54 |
+| M, bleed exponent 1.5 | no kills (cannot hold level flight) | 7866 | | |
+| D2 Yongma | 0.36 / 0.54 / 0.10 / 0 | 291 | 2.2 / 2 / 4 | 0.63 |
+| D2 Yongma, explosive 0; bullet life x1.33 | 0.39-0.41 / 0.48-0.50 / 0.10-0.11 / 0 | 251-305 | 2.0-2.1 | 0.64 |
+| D2 Yongma, head-on fraction x1.43 (undone) | 0.52 / 0.37 / 0.11 / 0 | 211 | 1.6 | 0.75 |
+| D2 Yongma, shield x2 (undone) | 0.12 / 0.74 / 0.14 / 0 | 2428 | 3.1 | 0.35 |
+| frozen Yongma | 0.35 / 0.54 / 0.11 / 0 | 1018 | 3.6 / 3 / 9 | 0.38 |
+
+- **No flight field moves the mirror** off the joust (speed, lift, bleed, engine, stall:
+  0.60-0.76 mutual). Toughness (damage, shield) and the frontal fraction slide it along the
+  joust-pace curve. The fire rate does too: a 30 Hz stream at half damage is a 1574 s mirror.
+- **Short sight is the only change that brings flank kills into a mirror**: at vision x0.7
+  a quarter of the kills are from the flank, the choice entropy is the highest seen (0.94),
+  but the ships lose each other and the duel lasts 1526 s. Mirror study 2 (running) looks
+  for the vision between x0.75 and 0.9 that keeps the flank kills at a shorter life.
+- The D2 Yongma's low mutual share (0.36) is its frontal armour (x0.7) and its halved shield
+  together: shield x2 back makes a 2428 s mirror.
