@@ -500,3 +500,33 @@ Kit2 on both, 512 games, A v B 1v1 / 5v5:
   0.47 to 0.36): the agility is a lever at every size, not a duel-only one.
 - **Scout v brawler is flat at 0.54-0.56 from 1v1 to 20v20**: one uniform lean to take out.
   Confirm 4 (running) moves the brawler's damage and the scout's sight.
+
+## 02:28-02:45 KST: confirm 3 (`confirm3/`): hit-and-run v standard, 1024 games, every doctrine
+
+| Doctrine | A v B 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | AA (hit-and-run); BB (standard) mutual, life, merges mean / median / p90 | Duel kills m / o / f / t; life | Trades max | v r9 |
+|---|---|---|---|---|---|
+| r9 | **0.49 / 0.48 / 0.47 / 0.49 / 0.44** | 0.55, 189 s, 2.3 / 1 / 6; 0.35, 292 s, 3.3 / 2 / 8 | 0.46 / 0.46 / 0.08 / 0; 241 s | 0.22 | 0.50 / 0.50 |
+| CE | **0.50 / 0.50 / 0.51 / 0.49 / 0.55** | 0.46, 215 s; 0.22, 359 s | 0.36 / 0.55 / 0.09 / 0; 265 s | 0.17 | 0.81 / 0.80 |
+| DCL | **0.49 / 0.49 / 0.51 / 0.49 / 0.50** | 0.67, 128 s; 0.69, 182 s | 0.34 / 0.58 / 0.08 / 0; 267 s | 0.17 | 0.83 / 0.83 |
+
+- **The most even pair of the night, under every doctrine and at every fleet size** (0.44-0.55
+  at 20v20, 0.47-0.51 elsewhere). Its weakness is fun, not balance: the hit-and-run mirror is
+  a quick joust (0.55 mutual, a median of one merge a kill), and trades reach 0.22 at 20v20.
+  Round 12 (running) arms the hit-and-run ship's nose. Play map `arch-hit-and-run`.
+
+## 02:40-02:46 KST: confirm 4 (`confirm4/`): scout v brawler without the lean
+
+1024 games (10v10 512, 20v20 256), r9:
+
+| Pair | A v B 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | AA; BB mutual, life, merges | Duel life | v r9 |
+|---|---|---|---|---|
+| scout x1.03 v brawler (x0.92, dmg x1.16) | 0.57 / 0.56 / 0.51 / 0.52 / 0.53 | 0.34, 328 s; 0.38, 265 s | 259 s | 0.52 / 0.51 |
+| **standard (vision x1) v brawler (vision x0.92, dmg x1.12)** | **0.54 / 0.54 / 0.49 / 0.52 / 0.54** | 0.33, 335 s, 3.2 / 2 / 8; 0.34, 272 s, 2.8 / 1 / 7 | 280 s | 0.50 / 0.49 |
+| standard v brawler (x0.92, dmg x1.15) | 0.53 / 0.52 / 0.51 / 0.52 / 0.45 | 0.29, 331 s; 0.38, 260 s | 269 s | 0.50 / 0.50 |
+| big v small (small induced x0.99) | 0.57 / 0.51 / 0.47 / 0.47 / 0.42 | 0.37, 233 s; 0.38, 319 s | 250 s | 0.52 / 0.48 |
+
+- With the scout's sight back at x1 the pair is the standard ship against a short-sighted
+  brawler (vision x0.92, damage x1.12): within 0.49-0.54 at every size, both mirrors 0.33-0.34
+  mutual at 272-335 s, 3 merges a kill.
+- **A three-ship set?** The hit-and-run ship and the brawler are each even against the same
+  standard ship. The triangle's third side, hit-and-run v brawler, is running (`triangle/`).
