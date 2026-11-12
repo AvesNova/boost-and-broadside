@@ -241,6 +241,8 @@ class Ratings:
     lineup: each slot's ship type by name, both teams, for every player (the scripted agent
     and its ladder too) in every preset (`TrainConfig.lineup`; empty: the game's own). A
     record keeps no lineup: reuse only records played with the same one.
+    seed: the process's seed (the games' draws; None: torch's default), so several
+    tournaments of one field, run at once and reused together, play different games.
     """
 
     run: tyro.conf.Positional[str]
@@ -258,6 +260,7 @@ class Ratings:
     out: str | None = None
     reuse: tuple[str, ...] = ()
     lineup: tuple[str, ...] = ()
+    seed: int | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1272,6 +1275,8 @@ def ratings(options: Ratings) -> None:
     from bnb.runtime.opponents import LADDER
 
     _check_presets(options.presets)
+    if options.seed is not None:
+        torch.manual_seed(options.seed)  # every device's generator
     runs_directory = runs_directory_of(options.runs_directory)
     try:
         run = Run.open(runs_directory, options.run)

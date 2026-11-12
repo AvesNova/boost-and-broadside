@@ -1,0 +1,174 @@
+# PROPOSAL, for the author to edit (nothing here is decided): the final experiments' arms.
+# Each arm is the final config (launch.toml) plus its own lines, run as a BC -> RL chain
+# (objective "chain") to the combined budget, or RL alone (objective "ppo", the no-BC arm).
+#
+#   name        the run's name is <group>-<name>-s<seed> (a chain: <run>-bc, <run>-rl)
+#   group       "A" (Stage A, queued first) or "ablation" (queued with --group ablation)
+#   seeds       one run per seed (bnb train --seed)
+#   cost        relative GPU time: the queue starts the longest first (its priority)
+#   set, bc_set, rl_set   --set lines for both stages, BC only, RL only (after launch.toml's)
+#   train       other bnb train options (such as ["--model", "nearest"])
+#   objective   "chain" (default) or "ppo"
+#   needs       a switch the code does not have yet: launch.py refuses to queue the arm
+#
+# The learning rate is a warm-up then constant on environment steps (bnb.learn.ppo
+# .learning_rate), so a chain stopped at 150M continues to 500M by `bnb train --resume
+# <run> --chain-budget-steps 500000000`, as the same run.
+
+# ---------------------------------------------------------------- Stage A (8 GPUs)
+
+[[arm]]
+name = "control"
+group = "A"
+seeds = [0]
+cost = 1.0
+
+[[arm]]
+# width x 1.5 (128 -> 192; two heads of 96)
+name = "width192"
+group = "A"
+seeds = [0]
+cost = 1.8
+set = ["yemong.width=192"]
+
+[[arm]]
+# twice the minibatch (half the minibatches per epoch), the learning rate x sqrt 2 (the
+# square-root rule), epochs unchanged at 4 (the same passes over the data, half the steps).
+# For the author: epochs adjusted how? 4 -> 6 would keep more of the optimizer steps.
+name = "minibatch2x"
+group = "A"
+seeds = [0]
+cost = 0.95
+set = ["learner.learning_rate=0.00042426"]
+bc_set = ["learner.minibatches=128"]
+rl_set = ["learner.minibatches=16"]
+
+[[arm]]
+name = "width192-minibatch2x"
+group = "A"
+seeds = [0]
+cost = 1.7
+set = ["yemong.width=192", "learner.learning_rate=0.00042426"]
+bc_set = ["learner.minibatches=128"]
+rl_set = ["learner.minibatches=16"]
+
+[[arm]]
+# one value head: the summed reward, one discount and trace decay (no outcome head: the
+# single level has none). For the author: which gamma / lambda? Proposed 0.995 / 0.95 in RL
+# (the middle levels'), and BC's 0.995 / 0.99.
+name = "single-value"
+group = "A"
+seeds = [0]
+cost = 1.0
+set = [
+  'yemong.levels=["summed_reward"]',
+  "yemong.outcome_level=null",
+  "learner.team_spirit=[0.0]",
+]
+bc_set = ["learner.discount=[0.995]", "learner.trace_decay=[0.99]"]
+rl_set = ["learner.discount=[0.995]", "learner.trace_decay=[0.95]"]
+
+[[arm]]
+# no auxiliary heads, the outcome head kept: every auxiliary term's weight 0, the geometry
+# head off, and the forecast not fed back (an untrained forecast would be noise as input)
+name = "no-aux"
+group = "A"
+seeds = [0]
+cost = 0.8
+set = [
+  "learner.next_state=0.0",
+  "learner.correction=0.0",
+  "learner.enemy_action=0.0",
+  "learner.density=0.0",
+  "learner.shot_trajectory=0.0",
+  "learner.shot_outcome=0.0",
+  "yemong.geometry_head=false",
+  "yemong.forecast_feedback=false",
+]
+
+[[arm]]
+# the geometry head's weight x 3 (0.007 is position-codes' placeholder)
+name = "geometry3x"
+group = "A"
+seeds = [0]
+cost = 1.0
+set = ["learner.geometry=0.021"]
+
+[[arm]]
+# the spare: the control's second seed, the seed noise every other arm is read against
+name = "control"
+group = "A"
+seeds = [1]
+cost = 1.0
+
+# ---------------------------------------------------------------- ablations (2 seeds each)
+
+[[arm]]
+# the nearest-neighbour MLP (bnb.models.nearest)
+name = "mlp"
+group = "ablation"
+seeds = [0, 1]
+cost = 0.3
+train = ["--model", "nearest"]
+
+[[arm]]
+# attention only, six layers, no temporal layers: three blocks of two spatial sublayers
+name = "attention-only"
+group = "ablation"
+seeds = [0, 1]
+cost = 0.9
+set = ["yemong.order=spatial_only", "yemong.blocks=3"]
+
+[[arm]]
+# no predictive belief: the forecast not fed back, the next-state and correction terms off
+name = "no-belief"
+group = "ablation"
+seeds = [0, 1]
+cost = 0.85
+set = ["yemong.forecast_feedback=false", "learner.next_state=0.0", "learner.correction=0.0"]
+
+[[arm]]
+# no BC: RL from scratch to the same 150M (updates: 150M / 1,044,480 steps per update)
+name = "no-bc"
+group = "ablation"
+seeds = [0, 1]
+cost = 1.1
+objective = "ppo"
+train = ["--updates", "143"]
+
+[[arm]]
+name = "single-value"
+group = "ablation"
+seeds = [0, 1]
+cost = 1.0
+set = [
+  'yemong.levels=["summed_reward"]',
+  "yemong.outcome_level=null",
+  "learner.team_spirit=[0.0]",
+]
+bc_set = ["learner.discount=[0.995]", "learner.trace_decay=[0.99]"]
+rl_set = ["learner.discount=[0.995]", "learner.trace_decay=[0.95]"]
+
+[[arm]]
+# pure self-play in RL: no league seat
+name = "self-play"
+group = "ablation"
+seeds = [0, 1]
+cost = 1.0
+needs = "a switch for RL's lineup (TrainConfig.pools cannot be --set: self-play 1.0)"
+
+[[arm]]
+name = "no-aux"
+group = "ablation"
+seeds = [0, 1]
+cost = 0.8
+set = [
+  "learner.next_state=0.0",
+  "learner.correction=0.0",
+  "learner.enemy_action=0.0",
+  "learner.density=0.0",
+  "learner.shot_trajectory=0.0",
+  "learner.shot_outcome=0.0",
+  "yemong.geometry_head=false",
+  "yemong.forecast_feedback=false",
+]
