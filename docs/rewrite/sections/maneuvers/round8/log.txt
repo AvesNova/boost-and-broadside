@@ -1,0 +1,241 @@
+## 1v1: 120 jobs, B 8192, 02:24 KST
+/home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+  warn_once(FP_FUSION_DEFAULT_WARNING)
+  batch 1/8 24 s; ETA 02:27 KST
+  batch 2/8 41 s; ETA 02:27 KST
+  batch 3/8 57 s; ETA 02:26 KST
+  batch 4/8 74 s; ETA 02:26 KST
+  batch 5/8 90 s; ETA 02:26 KST
+  batch 6/8 107 s; ETA 02:26 KST
+  batch 7/8 123 s; ETA 02:26 KST
+  batch 8/8 140 s; ETA 02:26 KST
+1v1                      D2 | r9   energy v turn v c0: score 0.509 ± 0.014  kills m/o/f/t 0.25 / 0.66 / 0.08 / 0.00  life 293 s  kpm/ship 0.20  trades 0.00
+1v1                      D2 | r9     turn mirror v c0: score 0.478 ± 0.012  kills m/o/f/t 0.65 / 0.30 / 0.05 / 0.00  life 256 s  kpm/ship 0.23  trades 0.02
+1v1                      D2 | r9   energy mirror v c0: score 0.512 ± 0.012  kills m/o/f/t 0.38 / 0.51 / 0.11 / 0.00  life 268 s  kpm/ship 0.22  trades 0.01
+1v1                     D2 | r9m   energy v turn v c1: score 0.485 ± 0.014  kills m/o/f/t 0.22 / 0.69 / 0.08 / 0.00  life 289 s  kpm/ship 0.20  trades 0.00
+1v1                     D2 | r9m     turn mirror v c1: score 0.482 ± 0.017  kills m/o/f/t 0.82 / 0.06 / 0.00 / 0.11  life 207 s  kpm/ship 0.28  trades 0.03
+1v1                     D2 | r9m   energy mirror v c1: score 0.507 ± 0.016  kills m/o/f/t 0.74 / 0.13 / 0.03 / 0.09  life 132 s  kpm/ship 0.42  trades 0.02
+1v1              D2 | r9m, p0.85   energy v turn v c2: score 0.516 ± 0.015  kills m/o/f/t 0.21 / 0.70 / 0.08 / 0.00  life 272 s  kpm/ship 0.21  trades 0.00
+1v1              D2 | r9m, p0.85     turn mirror v c2: score 0.521 ± 0.015  kills m/o/f/t 0.80 / 0.08 / 0.00 / 0.12  life 224 s  kpm/ship 0.26  trades 0.03
+1v1              D2 | r9m, p0.85   energy mirror v c2: score 0.493 ± 0.014  kills m/o/f/t 0.70 / 0.16 / 0.02 / 0.12  life 144 s  kpm/ship 0.39  trades 0.02
+1v1        D2 | r9m, duel 1.5 gr   energy v turn v c3: score 0.506 ± 0.014  kills m/o/f/t 0.26 / 0.66 / 0.08 / 0.00  life 286 s  kpm/ship 0.20  trades 0.00
+1v1        D2 | r9m, duel 1.5 gr     turn mirror v c3: score 0.494 ± 0.016  kills m/o/f/t 0.84 / 0.07 / 0.00 / 0.09  life 205 s  kpm/ship 0.28  trades 0.04
+1v1        D2 | r9m, duel 1.5 gr   energy mirror v c3: score 0.498 ± 0.016  kills m/o/f/t 0.74 / 0.14 / 0.03 / 0.08  life 132 s  kpm/ship 0.42  trades 0.02
+1v1          D2 | r9m, duel 8 gr   energy v turn v c4: score 0.498 ± 0.014  kills m/o/f/t 0.22 / 0.71 / 0.07 / 0.00  life 298 s  kpm/ship 0.19  trades 0.00
+1v1          D2 | r9m, duel 8 gr     turn mirror v c4: score 0.512 ± 0.016  kills m/o/f/t 0.84 / 0.06 / 0.00 / 0.10  life 210 s  kpm/ship 0.27  trades 0.03
+1v1          D2 | r9m, duel 8 gr   energy mirror v c4: score 0.497 ± 0.015  kills m/o/f/t 0.74 / 0.12 / 0.04 / 0.10  life 136 s  kpm/ship 0.41  trades 0.03
+1v1    D2 | r9m, Jujak duel only   energy v turn v c5: score 0.487 ± 0.014  kills m/o/f/t 0.23 / 0.68 / 0.08 / 0.00  life 287 s  kpm/ship 0.20  trades 0.00
+1v1    D2 | r9m, Jujak duel only     turn mirror v c5: score 0.517 ± 0.016  kills m/o/f/t 0.83 / 0.05 / 0.01 / 0.11  life 208 s  kpm/ship 0.28  trades 0.03
+1v1    D2 | r9m, Jujak duel only   energy mirror v c5: score 0.505 ± 0.011  kills m/o/f/t 0.37 / 0.52 / 0.10 / 0.00  life 292 s  kpm/ship 0.20  trades 0.01
+1v1   D2 | r9m, Yongma duel only   energy v turn v c6: score 0.492 ± 0.013  kills m/o/f/t 0.25 / 0.69 / 0.07 / 0.00  life 296 s  kpm/ship 0.20  trades 0.00
+1v1   D2 | r9m, Yongma duel only     turn mirror v c6: score 0.488 ± 0.012  kills m/o/f/t 0.68 / 0.28 / 0.04 / 0.00  life 261 s  kpm/ship 0.22  trades 0.02
+1v1   D2 | r9m, Yongma duel only   energy mirror v c6: score 0.494 ± 0.016  kills m/o/f/t 0.73 / 0.12 / 0.04 / 0.12  life 130 s  kpm/ship 0.43  trades 0.03
+1v1       D2 | r9m + lead 0.25 s   energy v turn v c7: score 0.566 ± 0.013  kills m/o/f/t 0.23 / 0.72 / 0.06 / 0.00  life 256 s  kpm/ship 0.23  trades 0.00
+1v1       D2 | r9m + lead 0.25 s     turn mirror v c7: score 0.479 ± 0.016  kills m/o/f/t 0.83 / 0.07 / 0.00 / 0.10  life 207 s  kpm/ship 0.28  trades 0.04
+1v1       D2 | r9m + lead 0.25 s   energy mirror v c7: score 0.481 ± 0.015  kills m/o/f/t 0.75 / 0.12 / 0.02 / 0.10  life 138 s  kpm/ship 0.41  trades 0.02
+1v1           D2 cone 0.085 | r9   energy v turn v c8: score 0.532 ± 0.015  kills m/o/f/t 0.10 / 0.82 / 0.08 / 0.00  life 232 s  kpm/ship 0.25  trades 0.00
+1v1           D2 cone 0.085 | r9     turn mirror v c8: score 0.510 ± 0.013  kills m/o/f/t 0.49 / 0.45 / 0.06 / 0.00  life 300 s  kpm/ship 0.19  trades 0.00
+1v1           D2 cone 0.085 | r9   energy mirror v c8: score 0.505 ± 0.011  kills m/o/f/t 0.08 / 0.77 / 0.15 / 0.00  life 394 s  kpm/ship 0.15  trades 0.00
+1v1          D2 cone 0.085 | r9m   energy v turn v c9: score 0.520 ± 0.016  kills m/o/f/t 0.10 / 0.81 / 0.09 / 0.00  life 236 s  kpm/ship 0.24  trades 0.00
+1v1          D2 cone 0.085 | r9m     turn mirror v c9: score 0.490 ± 0.012  kills m/o/f/t 0.70 / 0.16 / 0.01 / 0.13  life 241 s  kpm/ship 0.24  trades 0.02
+1v1          D2 cone 0.085 | r9m   energy mirror v c9: score 0.492 ± 0.015  kills m/o/f/t 0.52 / 0.33 / 0.05 / 0.09  life 190 s  kpm/ship 0.30  trades 0.00
+1v1   D2 cone 0.085 | r9m, p0.85   energy v turn v c10: score 0.510 ± 0.016  kills m/o/f/t 0.08 / 0.84 / 0.07 / 0.00  life 231 s  kpm/ship 0.25  trades 0.00
+1v1   D2 cone 0.085 | r9m, p0.85     turn mirror v c10: score 0.510 ± 0.013  kills m/o/f/t 0.64 / 0.21 / 0.00 / 0.14  life 252 s  kpm/ship 0.23  trades 0.01
+1v1   D2 cone 0.085 | r9m, p0.85   energy mirror v c10: score 0.510 ± 0.015  kills m/o/f/t 0.46 / 0.37 / 0.04 / 0.13  life 193 s  kpm/ship 0.30  trades 0.01
+1v1 D2 cone 0.085 | r9m, duel 1.5 gr   energy v turn v c11: score 0.542 ± 0.015  kills m/o/f/t 0.10 / 0.82 / 0.08 / 0.00  life 221 s  kpm/ship 0.26  trades 0.00
+1v1 D2 cone 0.085 | r9m, duel 1.5 gr     turn mirror v c11: score 0.514 ± 0.012  kills m/o/f/t 0.75 / 0.16 / 0.01 / 0.08  life 250 s  kpm/ship 0.23  trades 0.01
+1v1 D2 cone 0.085 | r9m, duel 1.5 gr   energy mirror v c11: score 0.462 ± 0.015  kills m/o/f/t 0.53 / 0.32 / 0.05 / 0.10  life 178 s  kpm/ship 0.32  trades 0.01
+1v1 D2 cone 0.085 | r9m, duel 8 gr   energy v turn v c12: score 0.526 ± 0.015  kills m/o/f/t 0.11 / 0.81 / 0.09 / 0.00  life 224 s  kpm/ship 0.26  trades 0.00
+1v1 D2 cone 0.085 | r9m, duel 8 gr     turn mirror v c12: score 0.487 ± 0.013  kills m/o/f/t 0.71 / 0.17 / 0.00 / 0.12  life 242 s  kpm/ship 0.24  trades 0.01
+1v1 D2 cone 0.085 | r9m, duel 8 gr   energy mirror v c12: score 0.510 ± 0.015  kills m/o/f/t 0.53 / 0.31 / 0.05 / 0.12  life 177 s  kpm/ship 0.32  trades 0.00
+1v1 D2 cone 0.085 | r9m, Jujak duel only   energy v turn v c13: score 0.520 ± 0.015  kills m/o/f/t 0.10 / 0.82 / 0.08 / 0.00  life 231 s  kpm/ship 0.25  trades 0.00
+1v1 D2 cone 0.085 | r9m, Jujak duel only     turn mirror v c13: score 0.484 ± 0.012  kills m/o/f/t 0.70 / 0.17 / 0.01 / 0.13  life 251 s  kpm/ship 0.23  trades 0.01
+1v1 D2 cone 0.085 | r9m, Jujak duel only   energy mirror v c13: score 0.499 ± 0.011  kills m/o/f/t 0.08 / 0.78 / 0.14 / 0.00  life 359 s  kpm/ship 0.16  trades 0.00
+1v1 D2 cone 0.085 | r9m, Yongma duel only   energy v turn v c14: score 0.523 ± 0.015  kills m/o/f/t 0.10 / 0.82 / 0.08 / 0.00  life 237 s  kpm/ship 0.24  trades 0.00
+1v1 D2 cone 0.085 | r9m, Yongma duel only     turn mirror v c14: score 0.512 ± 0.013  kills m/o/f/t 0.48 / 0.46 / 0.06 / 0.00  life 285 s  kpm/ship 0.20  trades 0.00
+1v1 D2 cone 0.085 | r9m, Yongma duel only   energy mirror v c14: score 0.501 ± 0.015  kills m/o/f/t 0.54 / 0.30 / 0.04 / 0.12  life 184 s  kpm/ship 0.31  trades 0.01
+1v1 D2 cone 0.085 | r9m + lead 0.25 s   energy v turn v c15: score 0.616 ± 0.015  kills m/o/f/t 0.10 / 0.83 / 0.06 / 0.00  life 203 s  kpm/ship 0.28  trades 0.00
+1v1 D2 cone 0.085 | r9m + lead 0.25 s     turn mirror v c15: score 0.512 ± 0.013  kills m/o/f/t 0.73 / 0.16 / 0.01 / 0.11  life 257 s  kpm/ship 0.22  trades 0.01
+1v1 D2 cone 0.085 | r9m + lead 0.25 s   energy mirror v c15: score 0.503 ± 0.016  kills m/o/f/t 0.56 / 0.29 / 0.05 / 0.10  life 193 s  kpm/ship 0.30  trades 0.01
+1v1                  frozen | r9   energy v turn v c16: score 0.009 ± 0.003  kills m/o/f/t 0.16 / 0.13 / 0.40 / 0.31  life 172 s  kpm/ship 0.33  trades 0.00
+1v1                  frozen | r9     turn mirror v c16: score 0.522 ± 0.015  kills m/o/f/t 0.81 / 0.16 / 0.03 / 0.00  life 156 s  kpm/ship 0.36  trades 0.03
+1v1                  frozen | r9   energy mirror v c16: score 0.522 ± 0.008  kills m/o/f/t 0.30 / 0.59 / 0.11 / 0.00  life 935 s  kpm/ship 0.06  trades 0.00
+1v1                 frozen | r9m   energy v turn v c17: score 0.008 ± 0.003  kills m/o/f/t 0.16 / 0.13 / 0.42 / 0.29  life 168 s  kpm/ship 0.34  trades 0.00
+1v1                 frozen | r9m     turn mirror v c17: score 0.521 ± 0.016  kills m/o/f/t 0.87 / 0.06 / 0.01 / 0.06  life 108 s  kpm/ship 0.51  trades 0.05
+1v1                 frozen | r9m   energy mirror v c17: score 0.493 ± 0.014  kills m/o/f/t 0.78 / 0.09 / 0.02 / 0.11  life 198 s  kpm/ship 0.29  trades 0.01
+1v1          frozen | r9m, p0.85   energy v turn v c18: score 0.008 ± 0.003  kills m/o/f/t 0.15 / 0.12 / 0.42 / 0.31  life 168 s  kpm/ship 0.34  trades 0.00
+1v1          frozen | r9m, p0.85     turn mirror v c18: score 0.470 ± 0.016  kills m/o/f/t 0.83 / 0.07 / 0.01 / 0.10  life 113 s  kpm/ship 0.49  trades 0.04
+1v1          frozen | r9m, p0.85   energy mirror v c18: score 0.485 ± 0.013  kills m/o/f/t 0.76 / 0.11 / 0.01 / 0.12  life 237 s  kpm/ship 0.24  trades 0.02
+1v1    frozen | r9m, duel 1.5 gr   energy v turn v c19: score 0.010 ± 0.003  kills m/o/f/t 0.15 / 0.14 / 0.42 / 0.30  life 168 s  kpm/ship 0.34  trades 0.00
+1v1    frozen | r9m, duel 1.5 gr     turn mirror v c19: score 0.501 ± 0.015  kills m/o/f/t 0.87 / 0.06 / 0.01 / 0.06  life 108 s  kpm/ship 0.51  trades 0.03
+1v1    frozen | r9m, duel 1.5 gr   energy mirror v c19: score 0.511 ± 0.014  kills m/o/f/t 0.78 / 0.10 / 0.01 / 0.11  life 194 s  kpm/ship 0.29  trades 0.01
+1v1      frozen | r9m, duel 8 gr   energy v turn v c20: score 0.006 ± 0.002  kills m/o/f/t 0.16 / 0.12 / 0.39 / 0.33  life 174 s  kpm/ship 0.33  trades 0.00
+1v1      frozen | r9m, duel 8 gr     turn mirror v c20: score 0.503 ± 0.015  kills m/o/f/t 0.87 / 0.05 / 0.01 / 0.07  life 108 s  kpm/ship 0.51  trades 0.04
+1v1      frozen | r9m, duel 8 gr   energy mirror v c20: score 0.499 ± 0.014  kills m/o/f/t 0.77 / 0.09 / 0.01 / 0.13  life 200 s  kpm/ship 0.29  trades 0.02
+1v1 frozen | r9m, Jujak duel only   energy v turn v c21: score 0.011 ± 0.003  kills m/o/f/t 0.15 / 0.13 / 0.43 / 0.29  life 167 s  kpm/ship 0.34  trades 0.00
+1v1 frozen | r9m, Jujak duel only     turn mirror v c21: score 0.484 ± 0.015  kills m/o/f/t 0.87 / 0.06 / 0.01 / 0.06  life 109 s  kpm/ship 0.51  trades 0.04
+1v1 frozen | r9m, Jujak duel only   energy mirror v c21: score 0.505 ± 0.008  kills m/o/f/t 0.25 / 0.66 / 0.09 / 0.00  life 1128 s  kpm/ship 0.05  trades 0.00
+1v1 frozen | r9m, Yongma duel only   energy v turn v c22: score 0.012 ± 0.004  kills m/o/f/t 0.16 / 0.12 / 0.41 / 0.31  life 171 s  kpm/ship 0.33  trades 0.00
+1v1 frozen | r9m, Yongma duel only     turn mirror v c22: score 0.489 ± 0.016  kills m/o/f/t 0.80 / 0.18 / 0.02 / 0.00  life 151 s  kpm/ship 0.37  trades 0.02
+1v1 frozen | r9m, Yongma duel only   energy mirror v c22: score 0.485 ± 0.014  kills m/o/f/t 0.78 / 0.09 / 0.01 / 0.12  life 200 s  kpm/ship 0.29  trades 0.02
+1v1   frozen | r9m + lead 0.25 s   energy v turn v c23: score 0.006 ± 0.002  kills m/o/f/t 0.16 / 0.13 / 0.44 / 0.27  life 173 s  kpm/ship 0.33  trades 0.00
+1v1   frozen | r9m + lead 0.25 s     turn mirror v c23: score 0.490 ± 0.015  kills m/o/f/t 0.88 / 0.06 / 0.01 / 0.06  life 111 s  kpm/ship 0.49  trades 0.04
+1v1   frozen | r9m + lead 0.25 s   energy mirror v c23: score 0.495 ± 0.014  kills m/o/f/t 0.78 / 0.08 / 0.01 / 0.12  life 209 s  kpm/ship 0.27  trades 0.01
+1v1                      D2 | r9           mixed v r9: score 0.522 ± 0.011  kills m/o/f/t 0.38 / 0.51 / 0.10 / 0.00  life 286 s  kpm/ship 0.20  trades 0.01
+1v1                      D2 | r9  mixed reversed v r9: score 0.498 ± 0.012  kills m/o/f/t 0.67 / 0.29 / 0.04 / 0.00  life 264 s  kpm/ship 0.22  trades 0.02
+1v1                     D2 | r9m           mixed v r9: score 0.624 ± 0.015  kills m/o/f/t 0.77 / 0.15 / 0.04 / 0.04  life 140 s  kpm/ship 0.40  trades 0.01
+1v1                     D2 | r9m  mixed reversed v r9: score 0.566 ± 0.013  kills m/o/f/t 0.85 / 0.08 / 0.02 / 0.05  life 244 s  kpm/ship 0.24  trades 0.00
+1v1              D2 | r9m, p0.85           mixed v r9: score 0.542 ± 0.014  kills m/o/f/t 0.68 / 0.22 / 0.04 / 0.06  life 156 s  kpm/ship 0.36  trades 0.01
+1v1              D2 | r9m, p0.85  mixed reversed v r9: score 0.551 ± 0.012  kills m/o/f/t 0.78 / 0.13 / 0.03 / 0.06  life 245 s  kpm/ship 0.24  trades 0.01
+1v1        D2 | r9m, duel 1.5 gr           mixed v r9: score 0.599 ± 0.015  kills m/o/f/t 0.74 / 0.18 / 0.05 / 0.04  life 135 s  kpm/ship 0.41  trades 0.01
+1v1        D2 | r9m, duel 1.5 gr  mixed reversed v r9: score 0.609 ± 0.013  kills m/o/f/t 0.83 / 0.09 / 0.03 / 0.05  life 239 s  kpm/ship 0.24  trades 0.01
+1v1          D2 | r9m, duel 8 gr           mixed v r9: score 0.619 ± 0.015  kills m/o/f/t 0.73 / 0.17 / 0.04 / 0.06  life 141 s  kpm/ship 0.40  trades 0.01
+1v1          D2 | r9m, duel 8 gr  mixed reversed v r9: score 0.588 ± 0.013  kills m/o/f/t 0.83 / 0.08 / 0.03 / 0.06  life 236 s  kpm/ship 0.24  trades 0.01
+1v1    D2 | r9m, Jujak duel only           mixed v r9: score 0.502 ± 0.012  kills m/o/f/t 0.38 / 0.53 / 0.09 / 0.00  life 298 s  kpm/ship 0.20  trades 0.01
+1v1    D2 | r9m, Jujak duel only  mixed reversed v r9: score 0.580 ± 0.013  kills m/o/f/t 0.82 / 0.10 / 0.02 / 0.06  life 238 s  kpm/ship 0.24  trades 0.01
+1v1   D2 | r9m, Yongma duel only           mixed v r9: score 0.592 ± 0.015  kills m/o/f/t 0.72 / 0.17 / 0.04 / 0.06  life 136 s  kpm/ship 0.41  trades 0.01
+1v1   D2 | r9m, Yongma duel only  mixed reversed v r9: score 0.485 ± 0.012  kills m/o/f/t 0.65 / 0.29 / 0.06 / 0.00  life 259 s  kpm/ship 0.22  trades 0.02
+1v1       D2 | r9m + lead 0.25 s           mixed v r9: score 0.615 ± 0.015  kills m/o/f/t 0.75 / 0.15 / 0.04 / 0.05  life 141 s  kpm/ship 0.40  trades 0.01
+1v1       D2 | r9m + lead 0.25 s  mixed reversed v r9: score 0.565 ± 0.013  kills m/o/f/t 0.83 / 0.09 / 0.03 / 0.06  life 238 s  kpm/ship 0.24  trades 0.01
+1v1           D2 cone 0.085 | r9           mixed v r9: score 0.519 ± 0.011  kills m/o/f/t 0.07 / 0.78 / 0.15 / 0.00  life 332 s  kpm/ship 0.18  trades 0.00
+1v1           D2 cone 0.085 | r9  mixed reversed v r9: score 0.479 ± 0.013  kills m/o/f/t 0.49 / 0.46 / 0.06 / 0.00  life 295 s  kpm/ship 0.20  trades 0.00
+1v1          D2 cone 0.085 | r9m           mixed v r9: score 0.606 ± 0.014  kills m/o/f/t 0.49 / 0.39 / 0.06 / 0.06  life 186 s  kpm/ship 0.31  trades 0.00
+1v1          D2 cone 0.085 | r9m  mixed reversed v r9: score 0.520 ± 0.012  kills m/o/f/t 0.70 / 0.21 / 0.02 / 0.07  life 254 s  kpm/ship 0.23  trades 0.00
+1v1   D2 cone 0.085 | r9m, p0.85           mixed v r9: score 0.556 ± 0.014  kills m/o/f/t 0.40 / 0.47 / 0.07 / 0.06  life 221 s  kpm/ship 0.26  trades 0.00
+1v1   D2 cone 0.085 | r9m, p0.85  mixed reversed v r9: score 0.526 ± 0.013  kills m/o/f/t 0.64 / 0.27 / 0.02 / 0.07  life 286 s  kpm/ship 0.20  trades 0.00
+1v1 D2 cone 0.085 | r9m, duel 1.5 gr           mixed v r9: score 0.538 ± 0.015  kills m/o/f/t 0.51 / 0.40 / 0.05 / 0.05  life 184 s  kpm/ship 0.31  trades 0.00
+1v1 D2 cone 0.085 | r9m, duel 1.5 gr  mixed reversed v r9: score 0.538 ± 0.013  kills m/o/f/t 0.70 / 0.23 / 0.03 / 0.04  life 254 s  kpm/ship 0.23  trades 0.00
+1v1 D2 cone 0.085 | r9m, duel 8 gr           mixed v r9: score 0.575 ± 0.014  kills m/o/f/t 0.53 / 0.35 / 0.05 / 0.06  life 189 s  kpm/ship 0.30  trades 0.00
+1v1 D2 cone 0.085 | r9m, duel 8 gr  mixed reversed v r9: score 0.529 ± 0.012  kills m/o/f/t 0.69 / 0.21 / 0.03 / 0.06  life 254 s  kpm/ship 0.23  trades 0.01
+1v1 D2 cone 0.085 | r9m, Jujak duel only           mixed v r9: score 0.488 ± 0.010  kills m/o/f/t 0.08 / 0.79 / 0.13 / 0.00  life 394 s  kpm/ship 0.15  trades 0.00
+1v1 D2 cone 0.085 | r9m, Jujak duel only  mixed reversed v r9: score 0.521 ± 0.012  kills m/o/f/t 0.70 / 0.21 / 0.03 / 0.06  life 254 s  kpm/ship 0.23  trades 0.00
+1v1 D2 cone 0.085 | r9m, Yongma duel only           mixed v r9: score 0.588 ± 0.015  kills m/o/f/t 0.49 / 0.38 / 0.06 / 0.07  life 188 s  kpm/ship 0.30  trades 0.00
+1v1 D2 cone 0.085 | r9m, Yongma duel only  mixed reversed v r9: score 0.503 ± 0.014  kills m/o/f/t 0.47 / 0.48 / 0.05 / 0.00  life 297 s  kpm/ship 0.20  trades 0.00
+1v1 D2 cone 0.085 | r9m + lead 0.25 s           mixed v r9: score 0.593 ± 0.015  kills m/o/f/t 0.51 / 0.37 / 0.06 / 0.06  life 179 s  kpm/ship 0.32  trades 0.00
+1v1 D2 cone 0.085 | r9m + lead 0.25 s  mixed reversed v r9: score 0.530 ± 0.012  kills m/o/f/t 0.71 / 0.21 / 0.03 / 0.05  life 259 s  kpm/ship 0.22  trades 0.00
+1v1                  frozen | r9           mixed v r9: score 0.512 ± 0.009  kills m/o/f/t 0.32 / 0.60 / 0.07 / 0.00  life 1011 s  kpm/ship 0.06  trades 0.00
+1v1                  frozen | r9  mixed reversed v r9: score 0.487 ± 0.016  kills m/o/f/t 0.81 / 0.17 / 0.02 / 0.00  life 156 s  kpm/ship 0.36  trades 0.03
+1v1                 frozen | r9m           mixed v r9: score 0.627 ± 0.013  kills m/o/f/t 0.82 / 0.11 / 0.01 / 0.06  life 226 s  kpm/ship 0.25  trades 0.00
+1v1                 frozen | r9m  mixed reversed v r9: score 0.654 ± 0.014  kills m/o/f/t 0.88 / 0.08 / 0.01 / 0.03  life 109 s  kpm/ship 0.51  trades 0.01
+1v1          frozen | r9m, p0.85           mixed v r9: score 0.552 ± 0.013  kills m/o/f/t 0.68 / 0.22 / 0.03 / 0.07  life 288 s  kpm/ship 0.20  trades 0.01
+1v1          frozen | r9m, p0.85  mixed reversed v r9: score 0.633 ± 0.015  kills m/o/f/t 0.85 / 0.09 / 0.01 / 0.04  life 120 s  kpm/ship 0.46  trades 0.03
+1v1    frozen | r9m, duel 1.5 gr           mixed v r9: score 0.614 ± 0.014  kills m/o/f/t 0.81 / 0.12 / 0.01 / 0.06  life 221 s  kpm/ship 0.26  trades 0.01
+1v1    frozen | r9m, duel 1.5 gr  mixed reversed v r9: score 0.658 ± 0.014  kills m/o/f/t 0.88 / 0.08 / 0.01 / 0.03  life 110 s  kpm/ship 0.50  trades 0.01
+1v1      frozen | r9m, duel 8 gr           mixed v r9: score 0.632 ± 0.014  kills m/o/f/t 0.80 / 0.11 / 0.02 / 0.07  life 218 s  kpm/ship 0.26  trades 0.00
+1v1      frozen | r9m, duel 8 gr  mixed reversed v r9: score 0.655 ± 0.015  kills m/o/f/t 0.88 / 0.07 / 0.01 / 0.03  life 111 s  kpm/ship 0.50  trades 0.01
+1v1 frozen | r9m, Jujak duel only           mixed v r9: score 0.513 ± 0.008  kills m/o/f/t 0.29 / 0.60 / 0.10 / 0.00  life 1018 s  kpm/ship 0.06  trades 0.01
+1v1 frozen | r9m, Jujak duel only  mixed reversed v r9: score 0.635 ± 0.015  kills m/o/f/t 0.88 / 0.07 / 0.01 / 0.03  life 109 s  kpm/ship 0.50  trades 0.02
+1v1 frozen | r9m, Yongma duel only           mixed v r9: score 0.622 ± 0.013  kills m/o/f/t 0.83 / 0.09 / 0.01 / 0.07  life 225 s  kpm/ship 0.26  trades 0.01
+1v1 frozen | r9m, Yongma duel only  mixed reversed v r9: score 0.492 ± 0.016  kills m/o/f/t 0.82 / 0.16 / 0.02 / 0.00  life 154 s  kpm/ship 0.37  trades 0.02
+1v1   frozen | r9m + lead 0.25 s           mixed v r9: score 0.592 ± 0.014  kills m/o/f/t 0.82 / 0.12 / 0.02 / 0.04  life 225 s  kpm/ship 0.26  trades 0.01
+1v1   frozen | r9m + lead 0.25 s  mixed reversed v r9: score 0.626 ± 0.015  kills m/o/f/t 0.86 / 0.08 / 0.02 / 0.04  life 108 s  kpm/ship 0.51  trades 0.02
+## 5v5: 72 jobs, B 4096, 02:26 KST
+  batch 1/9 39 s; ETA 02:32 KST
+  batch 2/9 72 s; ETA 02:32 KST
+  batch 3/9 105 s; ETA 02:31 KST
+  batch 4/9 138 s; ETA 02:31 KST
+  batch 5/9 171 s; ETA 02:31 KST
+  batch 6/9 205 s; ETA 02:31 KST
+  batch 7/9 238 s; ETA 02:31 KST
+  batch 8/9 271 s; ETA 02:31 KST
+  batch 9/9 304 s; ETA 02:31 KST
+5v5                      D2 | r9   energy v turn v c0: score 0.581 ± 0.020  kills m/o/f/t 0.05 / 0.18 / 0.58 / 0.19  life 103 s  kpm/ship 0.53  trades 0.05
+5v5                     D2 | r9m   energy v turn v c1: score 0.562 ± 0.020  kills m/o/f/t 0.07 / 0.19 / 0.43 / 0.31  life 124 s  kpm/ship 0.45  trades 0.03
+5v5              D2 | r9m, p0.85   energy v turn v c2: score 0.548 ± 0.020  kills m/o/f/t 0.07 / 0.19 / 0.43 / 0.31  life 125 s  kpm/ship 0.44  trades 0.03
+5v5        D2 | r9m, duel 1.5 gr   energy v turn v c3: score 0.511 ± 0.020  kills m/o/f/t 0.07 / 0.20 / 0.44 / 0.29  life 116 s  kpm/ship 0.48  trades 0.03
+5v5          D2 | r9m, duel 8 gr   energy v turn v c4: score 0.547 ± 0.020  kills m/o/f/t 0.07 / 0.19 / 0.43 / 0.31  life 125 s  kpm/ship 0.45  trades 0.03
+5v5    D2 | r9m, Jujak duel only   energy v turn v c5: score 0.602 ± 0.020  kills m/o/f/t 0.07 / 0.19 / 0.42 / 0.31  life 123 s  kpm/ship 0.45  trades 0.03
+5v5   D2 | r9m, Yongma duel only   energy v turn v c6: score 0.535 ± 0.021  kills m/o/f/t 0.07 / 0.19 / 0.43 / 0.31  life 123 s  kpm/ship 0.45  trades 0.03
+5v5       D2 | r9m + lead 0.25 s   energy v turn v c7: score 0.515 ± 0.020  kills m/o/f/t 0.08 / 0.18 / 0.44 / 0.30  life 125 s  kpm/ship 0.45  trades 0.03
+5v5           D2 cone 0.085 | r9   energy v turn v c8: score 0.653 ± 0.020  kills m/o/f/t 0.04 / 0.26 / 0.54 / 0.16  life 92 s  kpm/ship 0.59  trades 0.05
+5v5          D2 cone 0.085 | r9m   energy v turn v c9: score 0.702 ± 0.019  kills m/o/f/t 0.05 / 0.27 / 0.43 / 0.24  life 108 s  kpm/ship 0.51  trades 0.04
+5v5   D2 cone 0.085 | r9m, p0.85   energy v turn v c10: score 0.705 ± 0.018  kills m/o/f/t 0.06 / 0.28 / 0.42 / 0.24  life 108 s  kpm/ship 0.51  trades 0.04
+5v5 D2 cone 0.085 | r9m, duel 1.5 gr   energy v turn v c11: score 0.668 ± 0.019  kills m/o/f/t 0.06 / 0.28 / 0.45 / 0.21  life 101 s  kpm/ship 0.54  trades 0.04
+5v5 D2 cone 0.085 | r9m, duel 8 gr   energy v turn v c12: score 0.687 ± 0.019  kills m/o/f/t 0.05 / 0.28 / 0.42 / 0.24  life 107 s  kpm/ship 0.51  trades 0.04
+5v5 D2 cone 0.085 | r9m, Jujak duel only   energy v turn v c13: score 0.676 ± 0.019  kills m/o/f/t 0.05 / 0.28 / 0.43 / 0.24  life 108 s  kpm/ship 0.51  trades 0.04
+5v5 D2 cone 0.085 | r9m, Yongma duel only   energy v turn v c14: score 0.644 ± 0.020  kills m/o/f/t 0.06 / 0.27 / 0.43 / 0.24  life 109 s  kpm/ship 0.51  trades 0.04
+5v5 D2 cone 0.085 | r9m + lead 0.25 s   energy v turn v c15: score 0.703 ± 0.018  kills m/o/f/t 0.05 / 0.27 / 0.43 / 0.24  life 108 s  kpm/ship 0.51  trades 0.04
+5v5                  frozen | r9   energy v turn v c16: score 0.510 ± 0.021  kills m/o/f/t 0.07 / 0.17 / 0.53 / 0.24  life 110 s  kpm/ship 0.50  trades 0.04
+5v5                 frozen | r9m   energy v turn v c17: score 0.339 ± 0.019  kills m/o/f/t 0.10 / 0.15 / 0.34 / 0.42  life 151 s  kpm/ship 0.37  trades 0.03
+5v5          frozen | r9m, p0.85   energy v turn v c18: score 0.365 ± 0.019  kills m/o/f/t 0.09 / 0.15 / 0.33 / 0.43  life 149 s  kpm/ship 0.38  trades 0.03
+5v5    frozen | r9m, duel 1.5 gr   energy v turn v c19: score 0.386 ± 0.020  kills m/o/f/t 0.09 / 0.16 / 0.35 / 0.40  life 138 s  kpm/ship 0.41  trades 0.03
+5v5      frozen | r9m, duel 8 gr   energy v turn v c20: score 0.357 ± 0.019  kills m/o/f/t 0.09 / 0.15 / 0.34 / 0.42  life 149 s  kpm/ship 0.38  trades 0.02
+5v5 frozen | r9m, Jujak duel only   energy v turn v c21: score 0.355 ± 0.019  kills m/o/f/t 0.09 / 0.15 / 0.34 / 0.42  life 147 s  kpm/ship 0.38  trades 0.03
+5v5 frozen | r9m, Yongma duel only   energy v turn v c22: score 0.337 ± 0.019  kills m/o/f/t 0.09 / 0.15 / 0.33 / 0.43  life 147 s  kpm/ship 0.38  trades 0.03
+5v5   frozen | r9m + lead 0.25 s   energy v turn v c23: score 0.331 ± 0.019  kills m/o/f/t 0.09 / 0.15 / 0.34 / 0.42  life 150 s  kpm/ship 0.38  trades 0.03
+5v5                      D2 | r9           mixed v r9: score 0.509 ± 0.020  kills m/o/f/t 0.05 / 0.19 / 0.59 / 0.18  life 99 s  kpm/ship 0.55  trades 0.05
+5v5                      D2 | r9  mixed reversed v r9: score 0.524 ± 0.021  kills m/o/f/t 0.05 / 0.19 / 0.57 / 0.19  life 98 s  kpm/ship 0.56  trades 0.05
+5v5                     D2 | r9m           mixed v r9: score 0.771 ± 0.017  kills m/o/f/t 0.07 / 0.20 / 0.48 / 0.24  life 119 s  kpm/ship 0.46  trades 0.04
+5v5                     D2 | r9m  mixed reversed v r9: score 0.832 ± 0.015  kills m/o/f/t 0.07 / 0.20 / 0.50 / 0.23  life 117 s  kpm/ship 0.47  trades 0.04
+5v5              D2 | r9m, p0.85           mixed v r9: score 0.764 ± 0.018  kills m/o/f/t 0.07 / 0.19 / 0.50 / 0.24  life 117 s  kpm/ship 0.47  trades 0.04
+5v5              D2 | r9m, p0.85  mixed reversed v r9: score 0.835 ± 0.015  kills m/o/f/t 0.07 / 0.19 / 0.50 / 0.24  life 115 s  kpm/ship 0.48  trades 0.04
+5v5        D2 | r9m, duel 1.5 gr           mixed v r9: score 0.732 ± 0.018  kills m/o/f/t 0.07 / 0.20 / 0.50 / 0.23  life 110 s  kpm/ship 0.50  trades 0.04
+5v5        D2 | r9m, duel 1.5 gr  mixed reversed v r9: score 0.801 ± 0.016  kills m/o/f/t 0.07 / 0.20 / 0.51 / 0.22  life 108 s  kpm/ship 0.51  trades 0.04
+5v5          D2 | r9m, duel 8 gr           mixed v r9: score 0.787 ± 0.016  kills m/o/f/t 0.07 / 0.19 / 0.50 / 0.24  life 118 s  kpm/ship 0.47  trades 0.04
+5v5          D2 | r9m, duel 8 gr  mixed reversed v r9: score 0.811 ± 0.016  kills m/o/f/t 0.07 / 0.19 / 0.51 / 0.23  life 116 s  kpm/ship 0.48  trades 0.04
+5v5    D2 | r9m, Jujak duel only           mixed v r9: score 0.773 ± 0.017  kills m/o/f/t 0.07 / 0.19 / 0.52 / 0.22  life 113 s  kpm/ship 0.49  trades 0.04
+5v5    D2 | r9m, Jujak duel only  mixed reversed v r9: score 0.821 ± 0.016  kills m/o/f/t 0.07 / 0.20 / 0.50 / 0.22  life 114 s  kpm/ship 0.48  trades 0.04
+5v5   D2 | r9m, Yongma duel only           mixed v r9: score 0.765 ± 0.018  kills m/o/f/t 0.07 / 0.19 / 0.50 / 0.23  life 116 s  kpm/ship 0.48  trades 0.04
+5v5   D2 | r9m, Yongma duel only  mixed reversed v r9: score 0.839 ± 0.015  kills m/o/f/t 0.07 / 0.20 / 0.53 / 0.20  life 113 s  kpm/ship 0.49  trades 0.04
+5v5       D2 | r9m + lead 0.25 s           mixed v r9: score 0.770 ± 0.017  kills m/o/f/t 0.07 / 0.19 / 0.50 / 0.24  life 117 s  kpm/ship 0.47  trades 0.04
+5v5       D2 | r9m + lead 0.25 s  mixed reversed v r9: score 0.842 ± 0.015  kills m/o/f/t 0.07 / 0.19 / 0.50 / 0.24  life 114 s  kpm/ship 0.48  trades 0.04
+5v5           D2 cone 0.085 | r9           mixed v r9: score 0.509 ± 0.021  kills m/o/f/t 0.04 / 0.27 / 0.54 / 0.14  life 89 s  kpm/ship 0.61  trades 0.06
+5v5           D2 cone 0.085 | r9  mixed reversed v r9: score 0.469 ± 0.021  kills m/o/f/t 0.04 / 0.27 / 0.54 / 0.15  life 88 s  kpm/ship 0.61  trades 0.06
+5v5          D2 cone 0.085 | r9m           mixed v r9: score 0.805 ± 0.016  kills m/o/f/t 0.05 / 0.29 / 0.47 / 0.20  life 103 s  kpm/ship 0.53  trades 0.05
+5v5          D2 cone 0.085 | r9m  mixed reversed v r9: score 0.808 ± 0.016  kills m/o/f/t 0.05 / 0.28 / 0.48 / 0.18  life 101 s  kpm/ship 0.54  trades 0.05
+5v5   D2 cone 0.085 | r9m, p0.85           mixed v r9: score 0.788 ± 0.017  kills m/o/f/t 0.05 / 0.28 / 0.46 / 0.20  life 103 s  kpm/ship 0.53  trades 0.04
+5v5   D2 cone 0.085 | r9m, p0.85  mixed reversed v r9: score 0.798 ± 0.017  kills m/o/f/t 0.05 / 0.29 / 0.47 / 0.19  life 101 s  kpm/ship 0.54  trades 0.05
+5v5 D2 cone 0.085 | r9m, duel 1.5 gr           mixed v r9: score 0.747 ± 0.018  kills m/o/f/t 0.05 / 0.29 / 0.48 / 0.19  life 97 s  kpm/ship 0.56  trades 0.05
+5v5 D2 cone 0.085 | r9m, duel 1.5 gr  mixed reversed v r9: score 0.786 ± 0.017  kills m/o/f/t 0.06 / 0.30 / 0.47 / 0.17  life 96 s  kpm/ship 0.56  trades 0.05
+5v5 D2 cone 0.085 | r9m, duel 8 gr           mixed v r9: score 0.799 ± 0.016  kills m/o/f/t 0.05 / 0.28 / 0.47 / 0.19  life 104 s  kpm/ship 0.53  trades 0.05
+5v5 D2 cone 0.085 | r9m, duel 8 gr  mixed reversed v r9: score 0.819 ± 0.016  kills m/o/f/t 0.06 / 0.28 / 0.47 / 0.20  life 103 s  kpm/ship 0.53  trades 0.04
+5v5 D2 cone 0.085 | r9m, Jujak duel only           mixed v r9: score 0.781 ± 0.017  kills m/o/f/t 0.05 / 0.28 / 0.51 / 0.17  life 100 s  kpm/ship 0.54  trades 0.05
+5v5 D2 cone 0.085 | r9m, Jujak duel only  mixed reversed v r9: score 0.838 ± 0.015  kills m/o/f/t 0.06 / 0.28 / 0.48 / 0.18  life 100 s  kpm/ship 0.55  trades 0.05
+5v5 D2 cone 0.085 | r9m, Yongma duel only           mixed v r9: score 0.766 ± 0.017  kills m/o/f/t 0.05 / 0.28 / 0.48 / 0.19  life 103 s  kpm/ship 0.53  trades 0.04
+5v5 D2 cone 0.085 | r9m, Yongma duel only  mixed reversed v r9: score 0.783 ± 0.017  kills m/o/f/t 0.06 / 0.29 / 0.49 / 0.16  life 100 s  kpm/ship 0.55  trades 0.05
+5v5 D2 cone 0.085 | r9m + lead 0.25 s           mixed v r9: score 0.787 ± 0.017  kills m/o/f/t 0.05 / 0.29 / 0.46 / 0.20  life 103 s  kpm/ship 0.53  trades 0.05
+5v5 D2 cone 0.085 | r9m + lead 0.25 s  mixed reversed v r9: score 0.806 ± 0.016  kills m/o/f/t 0.06 / 0.28 / 0.47 / 0.19  life 102 s  kpm/ship 0.54  trades 0.05
+5v5                  frozen | r9           mixed v r9: score 0.540 ± 0.020  kills m/o/f/t 0.07 / 0.17 / 0.52 / 0.24  life 115 s  kpm/ship 0.48  trades 0.04
+5v5                  frozen | r9  mixed reversed v r9: score 0.511 ± 0.021  kills m/o/f/t 0.08 / 0.18 / 0.53 / 0.20  life 105 s  kpm/ship 0.52  trades 0.04
+5v5                 frozen | r9m           mixed v r9: score 0.700 ± 0.019  kills m/o/f/t 0.10 / 0.17 / 0.43 / 0.30  life 148 s  kpm/ship 0.38  trades 0.03
+5v5                 frozen | r9m  mixed reversed v r9: score 0.804 ± 0.016  kills m/o/f/t 0.12 / 0.18 / 0.44 / 0.26  life 132 s  kpm/ship 0.42  trades 0.03
+5v5          frozen | r9m, p0.85           mixed v r9: score 0.693 ± 0.019  kills m/o/f/t 0.10 / 0.17 / 0.43 / 0.30  life 146 s  kpm/ship 0.39  trades 0.03
+5v5          frozen | r9m, p0.85  mixed reversed v r9: score 0.798 ± 0.016  kills m/o/f/t 0.11 / 0.17 / 0.45 / 0.27  life 131 s  kpm/ship 0.42  trades 0.03
+5v5    frozen | r9m, duel 1.5 gr           mixed v r9: score 0.729 ± 0.018  kills m/o/f/t 0.10 / 0.17 / 0.43 / 0.30  life 132 s  kpm/ship 0.42  trades 0.03
+5v5    frozen | r9m, duel 1.5 gr  mixed reversed v r9: score 0.811 ± 0.016  kills m/o/f/t 0.12 / 0.19 / 0.43 / 0.26  life 122 s  kpm/ship 0.45  trades 0.03
+5v5      frozen | r9m, duel 8 gr           mixed v r9: score 0.711 ± 0.019  kills m/o/f/t 0.10 / 0.17 / 0.43 / 0.31  life 148 s  kpm/ship 0.38  trades 0.03
+5v5      frozen | r9m, duel 8 gr  mixed reversed v r9: score 0.803 ± 0.016  kills m/o/f/t 0.12 / 0.18 / 0.43 / 0.27  life 132 s  kpm/ship 0.42  trades 0.03
+5v5 frozen | r9m, Jujak duel only           mixed v r9: score 0.727 ± 0.018  kills m/o/f/t 0.10 / 0.16 / 0.44 / 0.30  life 143 s  kpm/ship 0.39  trades 0.03
+5v5 frozen | r9m, Jujak duel only  mixed reversed v r9: score 0.821 ± 0.016  kills m/o/f/t 0.11 / 0.18 / 0.45 / 0.26  life 130 s  kpm/ship 0.43  trades 0.04
+5v5 frozen | r9m, Yongma duel only           mixed v r9: score 0.725 ± 0.018  kills m/o/f/t 0.10 / 0.17 / 0.44 / 0.29  life 144 s  kpm/ship 0.39  trades 0.03
+5v5 frozen | r9m, Yongma duel only  mixed reversed v r9: score 0.810 ± 0.016  kills m/o/f/t 0.11 / 0.18 / 0.47 / 0.24  life 127 s  kpm/ship 0.44  trades 0.03
+5v5   frozen | r9m + lead 0.25 s           mixed v r9: score 0.712 ± 0.018  kills m/o/f/t 0.09 / 0.17 / 0.42 / 0.31  life 146 s  kpm/ship 0.38  trades 0.03
+5v5   frozen | r9m + lead 0.25 s  mixed reversed v r9: score 0.815 ± 0.016  kills m/o/f/t 0.11 / 0.17 / 0.44 / 0.27  life 132 s  kpm/ship 0.42  trades 0.03
+| Candidate | E v T 1v1 | E v T 5v5 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|
+| D2 | r9 | 0.509 ± 0.014 | 0.581 ± 0.020 | 0.081 | 0.05 / 0.18 / 0.58 / 0.19 | 0.05 | 293 / 103 | 0.20 / 0.53 | 3.41 |
+| D2 | r9m | 0.485 ± 0.014 | 0.562 ± 0.020 | 0.062 | 0.07 / 0.19 / 0.43 / 0.31 | 0.03 | 289 / 124 | 0.20 / 0.45 | 3.46 |
+| D2 | r9m, p0.85 | 0.516 ± 0.015 | 0.548 ± 0.020 | 0.048 | 0.07 / 0.19 / 0.43 / 0.31 | 0.03 | 272 / 125 | 0.21 / 0.44 | 3.3 |
+| D2 | r9m, duel 1.5 gr | 0.506 ± 0.014 | 0.511 ± 0.020 | 0.011 | 0.07 / 0.20 / 0.44 / 0.29 | 0.03 | 286 / 116 | 0.20 / 0.48 | 3.42 |
+| D2 | r9m, duel 8 gr | 0.498 ± 0.014 | 0.547 ± 0.020 | 0.047 | 0.07 / 0.19 / 0.43 / 0.31 | 0.03 | 298 / 125 | 0.19 / 0.45 | 3.48 |
+| D2 | r9m, Jujak duel only | 0.487 ± 0.014 | 0.602 ± 0.020 | 0.102 | 0.07 / 0.19 / 0.42 / 0.31 | 0.03 | 287 / 123 | 0.20 / 0.45 | 3.44 |
+| D2 | r9m, Yongma duel only | 0.492 ± 0.013 | 0.535 ± 0.021 | 0.035 | 0.07 / 0.19 / 0.43 / 0.31 | 0.03 | 296 / 123 | 0.20 / 0.45 | 3.45 |
+| D2 | r9m + lead 0.25 s | 0.566 ± 0.013 | 0.515 ± 0.020 | 0.066 | 0.08 / 0.18 / 0.44 / 0.30 | 0.03 | 256 / 125 | 0.23 / 0.45 | 2.86 |
+| D2 cone 0.085 | r9 | 0.532 ± 0.015 | 0.653 ± 0.020 | 0.153 | 0.04 / 0.26 / 0.54 / 0.16 | 0.05 | 232 / 92 | 0.25 / 0.59 | 2.81 |
+| D2 cone 0.085 | r9m | 0.520 ± 0.016 | 0.702 ± 0.019 | 0.202 | 0.05 / 0.27 / 0.43 / 0.24 | 0.04 | 236 / 108 | 0.24 / 0.51 | 2.78 |
+| D2 cone 0.085 | r9m, p0.85 | 0.510 ± 0.016 | 0.705 ± 0.018 | 0.205 | 0.06 / 0.28 / 0.42 / 0.24 | 0.04 | 231 / 108 | 0.25 / 0.51 | 2.67 |
+| D2 cone 0.085 | r9m, duel 1.5 gr | 0.542 ± 0.015 | 0.668 ± 0.019 | 0.168 | 0.06 / 0.28 / 0.45 / 0.21 | 0.04 | 221 / 101 | 0.26 / 0.54 | 2.63 |
+| D2 cone 0.085 | r9m, duel 8 gr | 0.526 ± 0.015 | 0.687 ± 0.019 | 0.187 | 0.05 / 0.28 / 0.42 / 0.24 | 0.04 | 224 / 107 | 0.26 / 0.51 | 2.68 |
+| D2 cone 0.085 | r9m, Jujak duel only | 0.520 ± 0.015 | 0.676 ± 0.019 | 0.176 | 0.05 / 0.28 / 0.43 / 0.24 | 0.04 | 231 / 108 | 0.25 / 0.51 | 2.72 |
+| D2 cone 0.085 | r9m, Yongma duel only | 0.523 ± 0.015 | 0.644 ± 0.020 | 0.144 | 0.06 / 0.27 / 0.43 / 0.24 | 0.04 | 237 / 109 | 0.24 / 0.51 | 2.76 |
+| D2 cone 0.085 | r9m + lead 0.25 s | 0.616 ± 0.015 | 0.703 ± 0.018 | 0.203 | 0.05 / 0.27 / 0.43 / 0.24 | 0.04 | 203 / 108 | 0.28 / 0.51 | 2.24 |
+| frozen | r9 | 0.009 ± 0.003 | 0.510 ± 0.021 | 0.491 | 0.07 / 0.17 / 0.53 / 0.24 | 0.04 | 172 / 110 | 0.33 / 0.50 | 2.86 |
+| frozen | r9m | 0.008 ± 0.003 | 0.339 ± 0.019 | 0.492 | 0.10 / 0.15 / 0.34 / 0.42 | 0.03 | 168 / 151 | 0.34 / 0.37 | 2.81 |
+| frozen | r9m, p0.85 | 0.008 ± 0.003 | 0.365 ± 0.019 | 0.492 | 0.09 / 0.15 / 0.33 / 0.43 | 0.03 | 168 / 149 | 0.34 / 0.38 | 2.88 |
+| frozen | r9m, duel 1.5 gr | 0.010 ± 0.003 | 0.386 ± 0.020 | 0.490 | 0.09 / 0.16 / 0.35 / 0.40 | 0.03 | 168 / 138 | 0.34 / 0.41 | 2.85 |
+| frozen | r9m, duel 8 gr | 0.006 ± 0.002 | 0.357 ± 0.019 | 0.494 | 0.09 / 0.15 / 0.34 / 0.42 | 0.02 | 174 / 149 | 0.33 / 0.38 | 2.96 |
+| frozen | r9m, Jujak duel only | 0.011 ± 0.003 | 0.355 ± 0.019 | 0.489 | 0.09 / 0.15 / 0.34 / 0.42 | 0.03 | 167 / 147 | 0.34 / 0.38 | 2.81 |
+| frozen | r9m, Yongma duel only | 0.012 ± 0.004 | 0.337 ± 0.019 | 0.488 | 0.09 / 0.15 / 0.33 / 0.43 | 0.03 | 171 / 147 | 0.33 / 0.38 | 2.83 |
+| frozen | r9m + lead 0.25 s | 0.006 ± 0.002 | 0.331 ± 0.019 | 0.494 | 0.09 / 0.15 / 0.34 / 0.42 | 0.03 | 173 / 150 | 0.33 / 0.38 | 2.82 |
+
+458 s

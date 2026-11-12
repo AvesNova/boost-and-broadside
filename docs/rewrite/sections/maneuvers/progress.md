@@ -459,3 +459,76 @@ combat layer, the doctrines' advantage gates being shut, so the 1v1 columns diff
 On the frozen card's energy v turn, the extension turns the crowd into duels, which the
 frozen card's Jujak wins (its 1v1 is 0.01): that is why the frozen 5v5 and 10v10 tip to the
 Jujak while D2, balanced at 1v1, holds.
+
+## 02:24-02:36 KST: round 8 (`round8/`): r9m's duel arm, and the joust it brings
+
+512 games; r9m with one change. Against r9 (1v1 JJ / YY; 5v5) and the self-play mirrors'
+mutual head-on share and life (JJ; YY):
+
+| Variant | D2 v r9; mirrors | cone 0.085 v r9; mirrors | frozen v r9; mirrors |
+|---|---|---|---|
+| r9 | 0.498 / 0.522; 0.51 / 0.52; 0.65, 256 s; 0.38, 268 s | 0.479 / 0.519; 0.51 / 0.47; 0.49, 300 s; 0.08, 394 s | 0.487 / 0.512; 0.54 / 0.51; 0.81, 156 s; 0.30, 935 s |
+| r9m | 0.566 / 0.624; 0.77 / 0.83; 0.82, 207 s; 0.74, 132 s | 0.520 / 0.606; 0.81 / 0.81; 0.70, 241 s; 0.52, 190 s | 0.654 / 0.627; 0.70 / 0.80; 0.87, 108 s; 0.78, 198 s |
+| one-circle p0.85 | 0.551 / 0.542; 0.76 / 0.84; 0.80, 224 s; 0.70, 144 s | 0.526 / 0.556; 0.79 / 0.80; 0.64, 252 s; 0.46, 193 s | 0.633 / 0.552; 0.69 / 0.80; 0.83, 113 s; 0.76, 237 s |
+| duel within 1.5 gr | 0.609 / 0.599; 0.73 / 0.80 | 0.538 / 0.538; 0.75 / 0.79 | 0.658 / 0.614; 0.73 / 0.81 |
+| duel within 8 gr | 0.588 / 0.619; 0.79 / 0.81 | 0.529 / 0.575; 0.80 / 0.82 | 0.655 / 0.632; 0.71 / 0.80 |
+| Jujak duel only | 0.580 / 0.502; YY 0.37, 292 s | 0.521 / 0.488; YY 0.08, 359 s | 0.635 / 0.513; YY 0.25, 1128 s |
+| Yongma duel only | 0.485 / 0.592; JJ 0.68, 261 s | 0.503 / 0.588; JJ 0.48, 285 s | 0.492 / 0.622; JJ 0.80, 151 s |
+| + lead 0.25 s | 0.565 / 0.615; 0.77 / 0.84 | 0.530 / 0.593; 0.79 / 0.81 | 0.626 / 0.592; 0.71 / 0.82 |
+
+- The duel arm's range barely matters (1.5 to 8 gun ranges). Each mirror's edge and its
+  joust belong to that type's duel arm (per-type rows). **The rise in the mutual head-on
+  share comes with the one-circle**: the one-circle flow meets nose to nose every lap, so
+  the head-on becomes the fight's shot. Mixing the two-circle back in (p0.85) lowers it a
+  little (cone 0.085 JJ 0.70 to 0.64, YY 0.52 to 0.46) and brings back some side-by-side
+  fights (0.40), at part of the Yongma mirror's edge (0.61 to 0.56).
+
+## Final state (02:40 KST)
+
+**What works** (r9m, `champion.json`: r9's doctrines with the fields below on both types;
+not stored as the agent's default, the author's call):
+
+```json
+{"sense": 1.0, "sense_one_circle": 1.0, "sense_in_gun_range": [4.0, 0.2],
+ "sense_mirror_only": 1.0, "sense_in_crowd": [0.5, 0.1], "crowd_sense": 1.0,
+ "crowd_sense_stick": 0.0, "crowd_sense_boost": 1.0}
+```
+
+- **The crowd extension**: with another known enemy within 3 gun ranges, a target that has
+  passed behind the 3-9 line and is turning is not followed; fly straight and boost.
+  Against r9 at 5v5 0.70-0.84 on every card (1024 games), 0.86-0.95 at 10v10, even at 2v2.
+  It is robust to its radii; flying straight is what matters.
+- **The duel one-circle**: alone with a target of the own type, turn against its rotation
+  after the pass. Against r9 at 1v1: frozen 0.656 / 0.609, D2 0.580 / 0.613, cone 0.085
+  0.524 / 0.598 (JJ / YY), cone 0.01 0.523 / 0.475. It ends the side-by-side stalemate
+  (0.00) and shortens the mirrors, but raises the mutual head-on share.
+- **The lead turn**, 0.5 s before the merge, full stick, two-circle sense: alone it beats
+  the joust in the Jujak mirror (0.52-0.56 against r9, 1024 games) and is even elsewhere
+  and at 5v5; earlier lead turns lose (1 s even, 2 s 0.16-0.41, 5 s 0.08-0.21), as does the
+  one-circle lead turn. Nothing on top of r9m, and it moves D2's energy v turn 1v1 toward the
+  Yongma (0.50 to 0.55-0.61).
+
+**What does not**: the high and the low yo-yo (0.02-0.50 against r9: in this flight model's
+slow, lift-limited turning fight, at 0.39 of the corner speed, any phase off full stick
+gives the bandit the angles; the store has no geometry to trade), the brake (inert at 1v1,
+0.45-0.49 at 5v5), the two-circle sense (a stalemate).
+
+**Is the joust a losing play?** Against r9 (which holds the head-on line and turns after
+the pass, the short way round), yes, mildly: the 0.5 s lead turn scores 0.52-0.56 in the
+Jujak mirror, so the joust-only player scores 0.44-0.48 against it. But the bigger edge is
+after the merge (the one-circle choice, 0.52-0.66) and, in a crowd, not taking the turning
+fight at all (the extension). The joust survives inside r9m's own duels as the one-circle's
+shot.
+
+**Open for the author**:
+1. Adopt r9m (or the crowd extension alone, which keeps r9's duels and their joust share)
+   as the stored doctrine? Either needs the play shell's compiled tick rebuilt: the doctrine
+   table is 22 columns wider and the carry has three more fields (`stalemate_seconds`,
+   `yoyo_seconds`, `sense_draw`).
+2. The frozen card's energy v turn crowd tips to the Jujak under the extension (5v5 0.53 to
+   0.34, 10v10 0.48 to 0.22): the extension splits the furball into duels, and the frozen
+   card's Jujak wins duels (1v1 0.01). D2 and the cones hold.
+3. The near-immune cone (0.01) stays a ~1000 s Jujak duel under every maneuver: its pace is
+   the card's (tank-armour), not the agent's.
+4. The 5v5 lengthens by 18-37 s and the pace falls about 15% with the extension (still
+   inside the 45-300 s band).
