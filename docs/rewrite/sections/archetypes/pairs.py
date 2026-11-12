@@ -1686,6 +1686,19 @@ def set7() -> list[dict]:
 ROUNDS["set7"] = set7
 
 
+def round17() -> list[dict]:
+    """Rate v speed: the speed fighter's mirror pace (its damage up, its nose eased), at 1024
+    games, 1v1-20v20."""
+    return [
+        rate_speed_nose(sf=0.075, rd=1.2, sd=1.0),
+        rate_speed_nose(sf=0.075, rd=1.25, sd=1.05),
+        rate_speed_nose(sf=0.07, rd=1.2, sd=1.05),
+    ]
+
+
+ROUNDS["round17"] = round17
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
