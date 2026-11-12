@@ -283,3 +283,59 @@ size or radius compiles for 5-10 min on the box.
 At equal density the edge also grows with the fleet, a little less than on the fixed map
 (0.83 / 0.88 / 0.96 / 0.96 at 10 / 20 / 35 / 50): crowding helps the better side, if
 anything. Dense cells (3900 m, 1950 m) running.
+
+## Density record (durable; for the paper)
+
+**Setup.** Branch `tune/modes` at 7cb29748 (game version 7; the tree's default real-scale
+cards of 2026-11-12, before the combat freeze). `bench/density_sweep.py` on the league
+match engine (`bnb.league.matches.Arena`, compiled; RTX 5060 Ti box). Game: the
+`real_scale_deathmatch` preset (team deathmatch, respawns 10 s, tickets 5 per ship a side,
+i.e. 5n for n a side, clock 600 s) with **no fields**, fog **on** (the engine's pools: fog
+share 1), n ships a side, arena radius R as listed. Lineup: both teams Jujak, Yongma,
+Jujak, Yongma, ... by slot (2 Yongma + 3 Jujak at 5v5). Players: the scripted agent at
+T = 1 (`scripted`) against itself at T = 3 (`rung_T3`), every first game of 256
+environments a cell, the scripted agent on team 0 in half. Score = (wins + ties / 2) /
+games for T = 1; ± its standard error. Records: `records/density_yj.jsonl` (one line per
+batch with wins/ties/losses and per-side kills, deaths, shots, hits, living ticks),
+`records/density_calib_yj.jsonl` (T = 3 at 5v5, 512 games: 0.708 ± 0.020),
+`records/density_calib_default_lineup.jsonl` (the P-51D/Heavy lineup's T = 1.5 / 2 / 3).
+
+**Fixed map, R = 7800 m (the 5v5 training map):**
+
+| n a side | ships / km² | score | games |
+|---|---|---|---|
+| 5 | 0.052 | 0.699 ± 0.029 | 256 |
+| 10 | 0.105 | 0.832 ± 0.023 | 256 |
+| 20 | 0.209 | 0.881 ± 0.020 | 256 |
+| 35 | 0.366 | 0.957 ± 0.013 | 256 |
+| 50 | 0.523 | 0.961 ± 0.012 | 256 |
+
+**Constant density, R = 7800 sqrt(n / 5) m (the `_density` fleet presets):**
+
+| n a side | R (m) | score | games |
+|---|---|---|---|
+| 5 | 7800 | 0.699 ± 0.029 | 256 |
+| 10 | 11031 | 0.785 ± 0.026 | 256 |
+| 20 | 15600 | 0.865 ± 0.021 | 256 |
+| 35 | 20637 | 0.902 ± 0.018 | 256 |
+| 50 | 24666 | 0.924 ± 0.016 | 256 |
+
+**Dense maps:**
+
+| n a side | R (m) | ships / km² | score |
+|---|---|---|---|
+| 5 | 3900 | 0.21 | 0.797 ± 0.025 |
+| 20 | 3900 | 0.84 | 0.898 ± 0.019 |
+| 50 | 3900 | 2.09 | 0.895 ± 0.019 |
+| 5 | 1950 | 0.84 | 0.742 ± 0.027 |
+| 20 | 1950 | 3.35 | 0.820 ± 0.024 |
+| 50 | 1950 | 8.37 | 0.875 ± 0.021 |
+
+**Reading.** No collapse toward 50% anywhere in 0.05-8.4 ships/km² (160x the training
+density): the scripted agent's edge over its T = 3 rung grows with the fleet at every
+radius, as a per-ship edge summed over more ships and more kills should. Density costs a
+little at the extreme: at 1950 m (the arena preset's size, ~3 turn circles across) each
+fleet's edge is 0.05-0.09 below its 3900 m one, and at 20 a side 7800 → 3900 → 1950 m gives
+0.88 → 0.90 → 0.82. No critical density sets a floor on the map size in this range. The
+v1 hypothesis (an edge collapsing to a spawn lottery past a critical density) does not
+reproduce with this agent, these cards and this game.
