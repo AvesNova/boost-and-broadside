@@ -480,3 +480,67 @@ capture time unscaled: no fleet term is needed at 10v10 within ±0.03. The walk 
 re-measured after the freeze. Running (ETA 18:25 KST, worst 18:45): 10v10 with κ too
 (lock 42.3 s, capture 28.2 s), 20v20 (lock 59.8 s, capture 39.5 s), and 10v10 κ-scaled with
 threshold 2.
+
+With the capture time scaled too (κ = 3.5 s/km, λ = 5.3 s/km, threshold 3, 600 s; 256 games):
+
+| map | lock / capture (s) | P(same team next) | ended by the front | median length (s) | first capture median (s) |
+|---|---|---|---|---|---|
+| 5v5, d 5.64 km | 30 / 20 | 0.546 ± 0.016 | 0.387 ± 0.030 | 600 | 90 |
+| 10v10, d 7.98 km | 42.3 / 28.2 | 0.585 ± 0.016 | 0.441 ± 0.031 | 600 | 103 |
+| 20v20, d 11.28 km | 59.8 / 39.5 | 0.736 ± 0.016 | 0.785 ± 0.026 | 339 | 127 |
+| 10v10, threshold 2 | 42.3 / 28.2 | 0.594 ± 0.021 | 0.844 ± 0.023 | 320 | 103 |
+
+At equal λ and κ the fleet still shifts the walk toward persistence: 0.55 → 0.59 → 0.74 at
+5 → 10 → 20 a side (the 10v10 point with an unscaled capture time was 0.48). So a fleet term
+is needed past ~10 a side: λ (or κ) falling with the fleet, e.g. λ_n = 5.3 (5 / n)^β s/km;
+two points fit β ≈ 0.3-0.4 at 20v20 by the steepness seen at 10v10 (3.8 → 5.3 s/km took
+P 0.07 → 0.48), not measured. Not searched further (the author's scope: rough values now,
+calibration after the freeze).
+
+# Handoff (2026-11-12 18:30 KST)
+
+Branch `tune/modes`, worktree `/home/vizia/avesnova/bnb-tune-modes` (the `bnb-modes` path
+is an older `section/modes` worktree, untouched). All measurements: the tree's default
+real-scale cards (game v7) before the combat freeze; re-measure after it.
+
+**In the game (committed, quick-tier tests, ruff clean):**
+- Game v7: elimination spawns by team side (`modes.spawns.side_placement`; area 0.15 R at
+  `Rules.spawn_offset` 0.8 R on the spawn axis, nose toward the enemy area ±15°, edge
+  rule kept), two live settings (`mode.side_area_fraction`, `mode.side_heading_jitter`),
+  tests in `tests/sections/test_elimination.py`. Fingerprint `2581fdc8196942e9`.
+- Frontline with no fields no longer crashes (`frontline.mirror_fields`; test
+  `test_frontline_plays_with_no_fields`); numbers with fields unchanged.
+- Known and not mine: `test_modes.py` has three failures on the base already (the respawn
+  farthest-candidate test predates v4's headings; the shield-events tests see no recharge
+  since v5).
+
+**Benches (bench/):** `zone_travel.py` (flight-only zone legs), `density_sweep.py` (the
+league engine, a rung against the agent by fleet and radius, lineup option),
+`mode_dynamics.py` (compiled rollout with a trace stage and a per-ship probe inside the
+resolve: deathmatch kills/trades/timings, Frontline captures/travel/contest, elimination;
+`--fog`, `--set key=value`, `--lineup`, and the candidate Frontline rules as bench-only
+wrappers: `--lock-seconds`, `--hold-seconds`/`--hold-decay-seconds`, `--pause-seconds`,
+`--rear-seconds`, `--blast-radius`, `--b-parameters`), `mode_dynamics_report.py`. Records in
+`records/`. On the box, a 256-game batch of 5v5 takes 8-60 s warm; a new fleet size or a
+new rule recompiles (1-10 min).
+
+**Rough values for the author's decision (to re-measure after the freeze):**
+- Frontline: the missing mechanic is holding a taken zone. A hard capture lock of
+  λ ≈ 5.3 s/km of the adjacent-zone distance (30 s at 5v5) gives a near-random walk
+  (P(same) 0.55; was 0.14) and with threshold 2 ends 79% of 5v5 games by the front in
+  600 s. Softer: a flat extension of ~30 s (0.52) or a decaying hold H = N = 60 s (0.54).
+  Capture time κ ≈ 3.5 s/km. A fleet term is needed past ~10 a side (20v20: 0.74 at the
+  same λ, κ). Below ~5 a side Frontline does not work with this agent (1v1: no captures).
+- Deathmatch (5v5, release lineup): 7.2 kills/min, trades 14 / 20 / 35% within
+  0.5 / 1 / 2 s; tickets left to the author after the ships are final (T for 80% by
+  tickets ≈ 0.49 x kills/min x clock minutes, for a mirror).
+- Elimination: wipes in ~100% of games; spacing sets the fight's length (first hit to wipe
+  11 → 16 → 22 s at 1x / 1.5x / 2x area); the offset stays (the author).
+- Density: no critical density in 0.05-8.4 ships/km²; the scripted edge grows with the
+  fleet (durable record above). The map-size rule is then free of a density floor: set
+  it by travel (zone legs and time to first contact scale with R) and by the position
+  codes' range.
+
+**Next (after the freeze):** re-run `mode_dynamics` (deathmatch, Frontline baseline and
+the chosen hold at 5v5 / 10v10 / 20v20) and the elimination spread on the frozen cards;
+implement the chosen hold as a rule (game version), with λ, κ in s/km and a fleet term.
