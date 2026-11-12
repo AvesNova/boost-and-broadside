@@ -372,6 +372,34 @@ def mirror_study() -> list[dict]:
 ROUNDS["mirror"] = mirror_study
 
 
+def mirror_study_2() -> list[dict]:
+    """Vision between x0.7 and 1, alone and with damage, on M and on D2's two ships."""
+    out = []
+    for v in (0.75, 0.8, 0.85, 0.9):
+        for d in (1.0, 1.3):
+            f = {"vision_range_scale": v, "hit_damage": d}
+            out.append(pair(f"M, vision x{v:g}, dmg x{d:g}", ("M", f), ("M", f)))
+    for v in (0.7, 0.8, 0.9):
+        out.append(
+            pair(
+                f"D2 Yongma, vision x{v:g}",
+                (None, merge(D2_A, {"vision_range_scale": v})),
+                (None, merge(D2_A, {"vision_range_scale": v})),
+            )
+        )
+        jj = (
+            "D2J",
+            merge(
+                {k: v2 for k, v2 in D2_B.items() if k != "induced_drag_scale"},
+                {"vision_range_scale": v},
+            ),
+        )
+        out.append(pair(f"D2 Jujak, vision x{v:g}", jj, jj))
+    return out
+
+
+ROUNDS["mirror2"] = mirror_study_2
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
