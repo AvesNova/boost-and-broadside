@@ -1331,6 +1331,33 @@ def set4() -> list[dict]:
 ROUNDS["set4"] = set4
 
 
+SET4B = dict(
+    SET4,
+    **{
+        "hit-and-run": merge(HIT_AND_RUN, cone(0.07, 12, 8)),  # damage x1.2, f0 0.07
+        "small": merge({"hit_radius": 0.8, "hit_damage": 0.88}, cone(0.10, 12, 8)),
+    },
+)
+
+
+def set4b() -> list[dict]:
+    """Set 4 with the hit-and-run ship's nose eased to f0 0.07 (damage x1.2: its duel down,
+    crowds up) and the small ship's damage x0.88 (its crowds down)."""
+    names = list(SET4B)
+    return [
+        pair(
+            f"{a} v {b} (set b, M, kit2)",
+            ("M", merge(kit(*KIT2), SET4B[a])),
+            ("M", merge(kit(*KIT2), SET4B[b])),
+        )
+        for k, a in enumerate(names)
+        for b in names[k + 1 :]
+    ]
+
+
+ROUNDS["set4b"] = set4b
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
