@@ -394,7 +394,25 @@ balance (self-play energy v turn 1 / 2 / 5 / 10v10):
   in the Yongma mirror (D2 2.4 to 2.0) and a longer Yongma mirror (D2 132 to 183 s, cone 183
   to 232 s, frozen 197 to 276 s).
 
-## 05:18- KST: robustness (`robust/`): r9m2 against the league
+## 05:18-05:33 KST: robustness (`robust/`): r9m2 against the league
 
-1024 games: r9m and r9m2 against r9, r7, r4, `hand` and `off` (1v1 mirrors, 5v5 mixed). ETA
-05:35 KST (worst 05:45).
+1024 games. r9m and r9m2 against the league (1v1 YY / JJ; 5v5 mixed / reversed):
+
+| Card: player | r9 | r7 | r4 | hand | off |
+|---|---|---|---|---|---|
+| D2: r9m | 0.60 / 0.57; 0.81 / 0.81 | 0.60 / 0.58; 0.84 / 0.86 | 0.61 / 0.58; 0.81 / 0.87 | 0.61 / 0.57; 0.78 / 0.85 | 0.62 / 0.56; 0.78 / 0.82 |
+| D2: r9m2 | 0.62 / 0.60; 0.81 / 0.82 | 0.61 / 0.60; 0.82 / 0.88 | 0.62 / 0.60; 0.83 / 0.88 | 0.61 / 0.61; 0.78 / 0.85 | 0.61 / 0.58; 0.83 / 0.85 |
+| cone 0.085: r9m | 0.61 / 0.52; 0.81 / 0.82 | 0.59 / 0.53; 0.82 / 0.83 | 0.61 / 0.54; 0.81 / 0.85 | 0.57 / 0.53; 0.79 / 0.80 | 0.59 / 0.52; 0.77 / 0.81 |
+| cone 0.085: r9m2 | 0.57 / 0.53; 0.80 / 0.83 | 0.59 / 0.56; 0.84 / 0.83 | 0.57 / 0.54; 0.83 / 0.85 | 0.55 / 0.54; 0.83 / 0.82 | 0.57 / 0.53; 0.81 / 0.85 |
+| big v small: r9m | 0.57 / 0.54; 0.79 / 0.84 | 0.56 / 0.59; 0.79 / 0.81 | 0.55 / 0.58; 0.82 / 0.83 | 0.58 / 0.56; 0.79 / 0.82 | 0.55 / 0.55; 0.80 / 0.83 |
+| big v small: r9m2 | 0.56 / 0.64; 0.84 / 0.84 | 0.56 / 0.63; 0.84 / 0.84 | 0.59 / 0.64; 0.83 / 0.85 | 0.58 / 0.64; 0.85 / 0.85 | 0.57 / 0.64; 0.84 / 0.85 |
+| frozen: r9m | 0.61 / 0.65; 0.73 / 0.80 | 0.62 / 0.68; 0.75 / 0.84 | 0.65 / 0.67; 0.69 / 0.81 | 0.61 / 0.68; 0.72 / 0.84 | 0.61 / 0.66; 0.71 / 0.80 |
+| frozen: r9m2 | 0.59 / 0.72; 0.74 / 0.82 | 0.60 / 0.75; 0.77 / 0.85 | 0.61 / 0.74; 0.74 / 0.84 | 0.62 / 0.74; 0.74 / 0.82 | 0.59 / 0.73; 0.74 / 0.81 |
+
+- **r9m2 beats every league player on every card** (1v1 0.53-0.75, 5v5 0.74-0.88), at or above
+  r9m's margins except the cone card's Yongma mirror (0.55-0.59 against 0.57-0.61, about one
+  SE). Its edge over r9m is not a reply to r9m alone.
+
+## 05:35- KST: 10v10 (`ten/`): r9m2 against r9m in the big crowd
+
+512 games, four cards. ETA 05:50 KST.
