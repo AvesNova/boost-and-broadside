@@ -443,3 +443,27 @@ The author's paths 3 and 6, plus scripted parameters near the joust. 512 games; 
   only widens its circles.
 - **Yongma's range is a crowd lever** (path 1's "range"): bullet life x0.6-0.7 cuts 5v5 from
   0.80 to 0.68-0.70 and the duel less (0.47 to 0.39-0.43). Path run 3 pushes it (x0.5).
+
+## 20:57-21:05 KST: path run 3 (`paths3/`): range (C) and head-on (D) flavours
+
+512 games, E v T, with the Jujak mirror's 1v1 mutual head-on and life:
+
+| Card | 1v1 | 2v2 | 5v5 | 10v10 | JJ 1v1 |
+|---|---|---|---|---|---|
+| C: J1.5 Js x0.75 \| Ys x0.4 Yd x1.4 Yb x0.5 | 0.37 | 0.48 | 0.60 | 0.52 | 0.77, 109 s |
+| C: J1.5 Js x0.8 \| Ys x0.45 Yd x1.5 Yb x0.5 | 0.39 | 0.53 | 0.65 | 0.49 | 0.78, 114 s |
+| C: J1.5 Js x0.75 \| Ys x0.4 Yd x1.5 Yb x0.55 | 0.43 | 0.56 | 0.72 | 0.63 | 0.79, 110 s |
+| C: J1.45 Js x0.75 \| Ys x0.4 Yd x1.5 Yb x0.5 | 0.30 | 0.45 | 0.55 | 0.48 | 0.80, 109 s |
+| D: A + J fraction x0.5, Y damage x1.1 | 0.40 | 0.43 | 0.55 | 0.50 | 0.63, 259 s |
+| **D: A + both fractions x0.5, Y damage x1.1** | **0.50** | **0.51** | 0.64 | 0.58 | **0.64, 255 s** |
+| D: A + J fraction x0.4, Y damage x1.2 | 0.41 | 0.45 | 0.63 | 0.53 | 0.58, 431 s |
+
+- **C (range)**: a short-ranged, hard-hitting, fragile Yongma (bullet life x0.5: gun range
+  about 300 m against Jujak's 600; damage x1.4-1.5; shield x0.4) against a Jujak that keeps
+  its sustained edge. The crowds come close (5v5 0.55-0.65, 10v10 0.48-0.55), but the duel
+  stays at 0.30-0.43.
+- **D (head-on)**: halving the frontal fraction on both types (nose-on hits do 15% damage,
+  not 30%) makes the joust pay half. Mixed 1v1 mutual kills fall from 0.43 to 0.21, JJ
+  1v1 from 0.76 to 0.64 with life 255 s (in band), and 5v5 JJ from 0.08 to 0.04.
+- Path run 4 (running 21:05, ETA 21:25 (worst 21:35)) refines C and D (Yongma range and
+  shield for D's crowds; damage and shield for C's duel) with both mirrors and strength.

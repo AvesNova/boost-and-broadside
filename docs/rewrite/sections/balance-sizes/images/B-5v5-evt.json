@@ -1,0 +1,18 @@
+{
+ "candidate": {
+  "name": "B: J induced x1.5, J shield x0.75, Y shield x0.35, Y damage x1.4, Y bullet life x0.85",
+  "energy": {
+   "max_shield": 0.35,
+   "hit_damage": 1.4,
+   "bullet_life": 0.85
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.75
+  },
+  "player": "r9"
+ },
+ "size": 5,
+ "lineup": "energy v turn",
+ "games": 4
+}
