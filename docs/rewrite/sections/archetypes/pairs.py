@@ -494,6 +494,45 @@ def mirror_study_3() -> list[dict]:
 ROUNDS["mirror3"] = mirror_study_3
 
 
+def kit(vision: float, f0: float, damage: float) -> dict:
+    """The mirror kit: sight, the 12-degree p8 armour cone at f0, and damage."""
+    return merge({"vision_range_scale": vision, "hit_damage": damage}, cone(f0, 12, 8))
+
+
+def mirror_study_4() -> list[dict]:
+    """The kit pushed toward a 300 s mirror with little joust, on M and on D2."""
+    out = []
+    for v, f0, d in (
+        (1.0, 0.1, 2.5),
+        (0.9, 0.1, 2.5),
+        (0.9, 0.12, 2.0),
+        (0.9, 0.08, 2.5),
+        (1.0, 0.07, 2.5),
+        (0.85, 0.1, 2.5),
+        (0.9, 0.1, 3.0),
+        (0.85, 0.08, 3.0),
+    ):
+        out.append(
+            pair(
+                f"M, kit vision x{v:g} f0 {f0:g} dmg x{d:g}",
+                ("M", kit(v, f0, d)),
+                ("M", kit(v, f0, d)),
+            )
+        )
+    for v, f0, d in ((1.0, 0.1, 2.0), (0.9, 0.1, 2.0), (0.9, 0.1, 2.5)):
+        out.append(
+            pair(
+                f"D2, kit vision x{v:g} f0 {f0:g} dmg x{d:g}",
+                (None, merge(D2_A, kit(v, f0, d))),
+                (None, merge(D2_B, kit(v, f0, d))),
+            )
+        )
+    return out
+
+
+ROUNDS["mirror4"] = mirror_study_4
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
