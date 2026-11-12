@@ -152,7 +152,9 @@ def _in_todays_layout(recorded: torch.Tensor, part: str, columns: tuple[str, ...
     before = {name: i for i, name in enumerate(COLUMNS_BEFORE_RECORDS[part])}
     assert recorded.shape[-1] == len(before)
     zero = torch.zeros_like(recorded[..., 0])
-    return torch.stack([recorded[..., before[name]] if name in before else zero for name in columns], -1)
+    return torch.stack(
+        [recorded[..., before[name]] if name in before else zero for name in columns], -1
+    )
 
 
 def golden_obs(golden: dict) -> Obs:
@@ -162,6 +164,4 @@ def golden_obs(golden: dict) -> Obs:
     in the golden's team deathmatch)."""
     ships = _in_todays_layout(golden["ships"], "ships", SHIP_COLUMNS)
     globals_ = _in_todays_layout(golden["globals"], "globals", GLOBAL_COLUMNS)
-    return Obs(
-        ships=ships, fields=golden["fields"], globals=globals_, zones=golden["zones"]
-    )
+    return Obs(ships=ships, fields=golden["fields"], globals=globals_, zones=golden["zones"])
