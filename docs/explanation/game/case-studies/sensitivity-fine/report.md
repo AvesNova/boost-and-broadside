@@ -1,3 +1,7 @@
+---
+covers: [bench/case_study.py]
+---
+
 # sensitivity: the steep knobs in small steps: 9216 games
 
 | Slot | Elo against its airframe's baseline |

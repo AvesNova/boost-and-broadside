@@ -1,3 +1,7 @@
+---
+covers: [bench/case_study.py]
+---
+
 # sensitivity: flight and store: 9216 games
 
 | Slot | Elo against its airframe's baseline |

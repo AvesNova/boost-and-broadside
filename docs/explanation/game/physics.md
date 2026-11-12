@@ -151,7 +151,7 @@ which blocks sight (see [Perception and fog](perception.md)).
 
   with `D` the shooter's hit damage, a centre hit's at the reference distance. The speed
   term: `w` is the bullet's own proper speed (through the medium, not relative to the
-  target, which would favour the head-on pass), `w_ref` its type's speed at the rules'
+  target, which would favour the head-on pass), `w_ref`{.plain} its type's speed at the rules'
   damage reference distance from a shot at cruise (the card's `reference_bullet_speed`;
   300 m in the real-scale sets), and `x` the type's explosive share (0 by default: pure
   kinetic energy). The closeness term: `b` is the closest approach of the bullet's path
@@ -160,7 +160,7 @@ which blocks sight (see [Perception and fog](perception.md)).
   miss, graze, hit and centre are continuous. Its mean over a uniform `b` is 8/15, so the
   expected hit is `8/15 D` at the reference distance. The aspect
   `A(θ) = 1 - (1 - f_0) exp(-ln 2 (θ / θ_h)²)`, with `θ` the angle between the bullet's
-  reversed direction and the target's nose: the target's head-on fraction `f_0` from dead
+  reversed direction and the target's nose: the target's head-on fraction `f_0`{.plain} from dead
   ahead, half way to full damage at the target's head-on angle `θ_h` (42.27 degrees by
   default, the old fixed curve's `exp(-4θ²/π)`), and nearly all of it from the side or
   rear. A bullet is consumed by its hit (game version 6).

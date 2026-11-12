@@ -263,7 +263,8 @@ def report(args) -> None:
         f"- {' > '.join(c['cycle'])} > (weakest {c['weakest']:.2f})\n"
         for c in result["cycles"][:20]
     ]
-    (out / "report.md").write_text("".join(lines))
+    # The docs checks read every committed page's front matter (`covers`)
+    (out / "report.md").write_text("---\ncovers: [bench/case_study.py]\n---\n\n" + "".join(lines))
     print("".join(lines))
 
 
