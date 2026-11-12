@@ -108,4 +108,5 @@ damage x1.25. Armoured nose = cone 0.03 12° p8, induced x1.3; agile = lift x1.1
   a way off it.** With the scripted agent the joust is the only kill a mirror has, so any
   lever that devalues it lengthens the duel in proportion.
 - On the neutral ship M arming 150 with damage x1.5 leaves the joust untouched (0.66): M's
-  mirror jousts at longer range than D2's Jujak (a better sustained turner, closing faster).
+  mirror is less sensitive to the ramp than D2's Jujak mirror (why is not measured; a guess:
+  its hits land from farther out).
