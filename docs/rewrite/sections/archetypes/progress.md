@@ -628,3 +628,23 @@ damage x1.12), **small** (hit radius x0.8, damage x0.9, cone f0 0.10). 1024 game
 - The hit-and-run ship is a duellist (0.56-0.61 at 1v1) and fades in big crowds; the small
   ship is the reverse. Set 4b (running) eases the hit-and-run nose (f0 0.07) and trims the
   small ship's damage (x0.88).
+
+## 03:26-03:34 KST: set 4b (`set4b/`): the hit-and-run nose eased, the small ship trimmed
+
+Hit-and-run at damage x1.2 with its cone at f0 0.07; small at damage x0.88. 1024 games, r9:
+
+| A v B | 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | AA; BB mutual, life | Duel life |
+|---|---|---|---|
+| **standard v hit-and-run** | **0.48 / 0.51 / 0.50 / 0.49 / 0.51** | 0.34, 324 s; 0.51, 209 s | 245 s |
+| standard v brawler | 0.54 / 0.53 / 0.52 / 0.48 / 0.55 | 0.32, 323 s; 0.35, 274 s | 282 s |
+| standard v small | 0.56 / 0.52 / 0.47 / 0.51 / 0.53 | 0.32, 320 s; 0.42, 294 s | 276 s |
+| hit-and-run v brawler | 0.58 / 0.54 / 0.54 / 0.55 / 0.48 | 0.46, 223 s; 0.35, 284 s | 241 s |
+| hit-and-run v small | 0.63 / 0.50 / 0.48 / 0.48 / 0.38 | 0.46, 219 s; 0.42, 291 s | 228 s |
+| brawler v small | 0.50 / 0.48 / 0.46 / 0.46 / 0.43 | 0.33, 297 s; 0.43, 293 s | 259 s |
+
+- **Hit-and-run v standard at f0 0.07 is flat from 1v1 to 20v20 (0.48-0.51)**, the evenest pair
+  of the night, at the price of a jousty hit-and-run mirror (0.51 mutual, 209 s).
+- **The four ships are not transitive**: the hit-and-run ship beats the small ship in the
+  duel (0.61-0.63) and loses to it at 20v20 (0.38-0.41), while both are even with the
+  standard. Each pair has to be balanced on its own; the three-ship set {standard,
+  brawler, small} (set 4's cards) is the tight one: 0.43-0.54 on every cell.
