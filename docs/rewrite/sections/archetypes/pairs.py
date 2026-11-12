@@ -1470,6 +1470,20 @@ def round14() -> list[dict]:
 ROUNDS["round14"] = round14
 
 
+def confirm7() -> list[dict]:
+    """Hit-and-run (set 4b) v standard: r9 again (a second run of the card) and the duel
+    one-circle doctrine, 1024 games, 1v1-20v20."""
+    c = pair(
+        "hit-and-run v standard (set b, M, kit2)",
+        ("M", merge(kit(*KIT2), SET4B["hit-and-run"])),
+        ("M", kit(*KIT2)),
+    )
+    return [c, flown(c, "duel one-circle + crowd extend + lead")]
+
+
+ROUNDS["confirm7"] = confirm7
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
