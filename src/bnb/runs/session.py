@@ -199,6 +199,25 @@ def save_policies(run: Run, trainer: Trainer) -> str:
     return chosen
 
 
+def micro_batch_note(trainer: Trainer) -> str:
+    """The learner's micro-batch sizes, which the compile of fixed shapes compiles every
+    learner stage once each for: more than one when the minibatches do not divide the
+    views (the cadence's halves of the first minibatch add their own)."""
+    views = trainer.learner_pool.numel() * trainer.config.shards
+    learner = trainer.ppo
+    shapes = learner.micro_batch_shapes(views)
+    cadence = sorted(set(learner.micro_batch_shapes(views, cadence=True)) - set(shapes))
+    note = (
+        f"learner micro-batches of {', '.join(map(str, shapes))} views "
+        f"({views} views in {learner.config.minibatches} minibatches)"
+    )
+    if len(shapes) > 1:
+        note += f": every compiled learner stage compiles {len(shapes)} times"
+    if cadence:
+        note += f"; the cadence adds {', '.join(map(str, cadence))}"
+    return note
+
+
 def train(
     run: Run,
     trainer: Trainer,
@@ -228,6 +247,8 @@ def train(
         print(f"removing {stop_file}, left by an earlier process", flush=True)
         stop_file.unlink()
     device = trainer.rollout.device
+    if trainer.config.compiled:
+        print(micro_batch_note(trainer), flush=True)
     try:
         first, reason, durations = True, None, []
         while not stop.by and reason is None:

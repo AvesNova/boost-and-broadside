@@ -323,7 +323,13 @@ size of the segment):
 
 Section code does not compile itself. The learner takes a `stage` function from the runtime
 (`bnb.runtime.train.compiler`), which compiles the micro-batch loss and the
-re-simulation's tick (`bnb.learn.shots.tick`). `TrainConfig.precision` defaults to
+re-simulation's tick (`bnb.learn.shots.tick`). The compile is of fixed shapes, so every
+micro-batch size compiles each stage once more. The micro-batches take as few sizes as the
+views allow (`bnb.learn.ppo.micro_batch_sizes`): one when the minibatches divide the views,
+two when they do not (`tensor_split` gives minibatches of two sizes that differ by one, and
+no size above one divides both). A run with compiling on prints its sizes before the first
+update (`bnb.runs.session.micro_batch_note`); the cadence's halves of the first minibatch
+can add their own. `TrainConfig.precision` defaults to
 `"bfloat16"`: the model's matmuls run under bf16 autocast, in the rollout and in the update
 alike. `"float32"` (strict) and `"tf32"` (a process-wide setting the entry point applies with
 `bnb.cli.set_precision`) are the alternatives. The residual stream, norms,

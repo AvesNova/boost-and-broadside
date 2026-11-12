@@ -112,3 +112,16 @@ records.
   `RUN_SLACK` 10%): live (weight 0.5) alone, and the two averages (1.0 each) together, so
   two network copies plus the ladder's scripted pass. (PPO full: its trace ran out of GPU
   memory beside two compiles; the cold PPO run gives it.)
+- 2026-11-12 21:15 **the second `_codes` and `_loss` compile of the cold BC run (A4, gpubox4)
+  is the minibatches, not the micro-batches**: 200 environments are 300 learner rows a shard,
+  1,200 views; `tensor_split` makes 256 minibatches of 5 (the first 176) and 4 (the last 80),
+  each one micro-batch (25 views at 250 rows), so two shapes in the first epoch. No size
+  above one divides both of two counts that differ by one, so the micro-batch rule cannot
+  make it one; one compile needs the minibatches to divide the views. The rule now splits
+  both minibatch sizes together (`ppo.micro_batch_sizes`: two sizes in all, where it made
+  up to two each) and the trainer prints the sizes before the first update
+  (`session.micro_batch_note`). The 5090 (2,040 environments, 12,240 views): BC 48 + 47
+  (two compiles; the cadence's halves add 24), RL at 640 rows 64 + 63 (two; it was 64,
+  63, 62), at 320 rows 32 + 31. 1,920 environments (11,520 views) divide BC's 256 and 128
+  and RL's 32 and 16: one compile each (BC's cadence adds 22 + 23). For the author: the
+  environment count, or dropping a minibatch's remainder, are training changes.

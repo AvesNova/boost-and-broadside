@@ -7,7 +7,7 @@ import pytest
 import torch
 import yemong_cases as cases
 
-from bnb.learn.ppo import Learner
+from bnb.learn.ppo import Learner, micro_batch_sizes
 from bnb.runtime.train import compiler
 
 pytestmark = pytest.mark.usefixtures("global_generator")
@@ -63,13 +63,74 @@ def test_the_split_compiles_to_the_same_arithmetic(segment):
 
 @pytest.mark.parametrize(
     ("views", "most", "sizes"),
-    [(255, 64, [51] * 5), (255, 256, [255]), (256, 64, [64] * 4), (25, 16, [16, 9])],
+    [(255, 64, [51] * 5), (255, 256, [255]), (256, 64, [64] * 4), (25, 16, [13, 12])],
 )
 def test_micro_batches_are_of_one_size_where_they_can_be(segment, views, most, sizes):
     """One shape of micro-batch where up to twice the fewest divide the views (a smaller
-    last one is a second compile of every learner stage), never above micro_views."""
+    last one is a second compile of every learner stage), otherwise the fewest as equal as
+    they can be; never above micro_views."""
     net, runner = segment
     learner = lc.with_micro_batch(lc.learner(net, runner), most)
     batches = learner._micro_batches(torch.arange(views))
     assert [len(batch) for batch in batches] == sizes
     assert torch.equal(torch.cat(batches), torch.arange(views))
+
+
+@pytest.mark.parametrize(
+    ("counts", "most", "shapes"),
+    [
+        # 5090 RL (12 240 views in 32 minibatches) at 640 rows: six micro-batches of 64 or 63
+        ((383, 382), 64, {64, 63}),
+        ((383, 382), 32, {32, 31}),
+        # 5090 BC (256 minibatches): one micro-batch a minibatch, one size per minibatch
+        ((48, 47), 256, {48, 47}),
+        ((765,), 64, {51}),
+        ((96, 64), 64, {32}),  # a size common to both
+    ],
+)
+def test_minibatches_of_two_sizes_share_their_micro_batch_sizes(counts, most, shapes):
+    """The update's minibatches of two sizes (the minibatches do not divide the views) take
+    two micro-batch sizes together, not two each: each size is a compile of every stage."""
+    seen = set()
+    for count in counts:
+        sizes = micro_batch_sizes(count, most, counts)
+        assert sum(sizes) == count and max(sizes) <= most
+        seen |= set(sizes)
+    assert seen == shapes
+
+
+def test_an_update_runs_its_loss_on_the_shapes_it_names(segment):
+    """Every micro-batch the update's loss and labels see is of a size
+    `micro_batch_shapes` names (the trainer prints them; each is one compile of every
+    compiled stage): a new source of a second shape fails here. 12 views in 5 minibatches
+    (3 3 2 2 2) at 3 views a micro-batch: sizes 3 and 2."""
+    net, runner = segment
+    views = runner.store.views
+    learner = lc.with_micro_batch(lc.learner(net, runner, epochs=1, minibatches=5), 3)
+    expected = learner.micro_batch_shapes(views)
+    assert views == 12 and expected == (2, 3)
+    seen = []
+    loss, codes = learner.loss, learner.codes
+
+    def recorded(function):
+        def call(trajectory, *rest):
+            seen.append(trajectory.obs.ships.shape[1])
+            return function(trajectory, *rest)
+
+        return call
+
+    learner.loss, learner.codes = recorded(loss), recorded(codes)
+    learner.update(runner.store, runner.bootstrap())
+    assert set(seen) == set(expected)
+
+
+def test_minibatches_that_divide_the_views_compile_once(segment):
+    """With the minibatches dividing the views every micro-batch is of one size."""
+    net, runner = segment
+    learner = lc.with_micro_batch(lc.learner(net, runner, minibatches=4), 3)
+    assert learner.micro_batch_shapes(12) == (3,)
+    # the 5090's views (2040 environments) over BC's 256 and RL's 32 minibatches do not
+    # divide: 12 240 = 256 x 47 + 208 and 32 x 382 + 16
+    learner = lc.with_micro_batch(lc.learner(net, runner, minibatches=256), 256)
+    assert learner.micro_batch_shapes(12240) == (47, 48)
+    assert learner.micro_batch_shapes(11520) == (45,)

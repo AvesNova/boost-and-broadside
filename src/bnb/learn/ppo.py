@@ -281,6 +281,24 @@ def _own_joint(trajectory: Trajectory) -> torch.Tensor:
     return to_joint(trajectory.action)[..., : trajectory.log_probability.shape[-1]]
 
 
+def micro_batch_sizes(count: int, most: int, family: tuple[int, ...] = ()) -> list[int]:
+    """The micro-batch sizes (in order, summing to `count`) of `count` views, each at most
+    `most`, chosen with `family`, the other view counts split alongside it, so that the
+    counts together take as few sizes as they can: under a compile of fixed shapes each size
+    is one compile of every learner stage. One size where one divides every count in up to
+    twice its fewest micro-batches (255 views at 64: five of 51); otherwise each count in
+    as many micro-batches as the largest needs, as equal as they can be, which gives
+    counts that differ by one (the minibatches when they do not divide the views) the same
+    two sizes (383 and 382 at 64: six of 64 or 63). The split is memory and speed only: the
+    micro-batches' gradients add up to the minibatch's."""
+    counts = {count, *family}
+    for size in range(min(most, min(counts)), 0, -1):
+        if all(n % size == 0 and n // size <= 2 * -(-n // most) for n in counts):
+            return [size] * (count // size)
+    parts = min(count, -(-max(counts) // most))
+    return [len(part) for part in torch.arange(count).tensor_split(parts)]
+
+
 class Learner:
     """model: the learner's module, with `unroll(carry, obs, replay, reset)`, the critic's
     `bins` and `config.levels` (one of `returns.VALUE_LAYOUTS`), `outcome_level` (None: no
@@ -863,17 +881,41 @@ class Learner:
         """Views per micro-batch: micro_batch_rows ship rows."""
         return max(1, self.config.micro_batch_rows // self.rules.num_ships)
 
-    def _micro_batches(self, views: torch.Tensor) -> list[torch.Tensor]:
-        """The views in micro-batches of at most micro_views, all of one size where up to
-        twice the fewest micro-batches divide them evenly (255 views at 64: five of 51):
-        under a compile of fixed shapes a smaller last micro-batch is a second compile of
-        every learner stage. Otherwise micro_views each, the last smaller."""
-        count, most = len(views), self.micro_views
-        fewest = -(-count // most)
-        for parts in range(fewest, 2 * fewest + 1):
-            if count % parts == 0:
-                return list(views.split(count // parts))
-        return list(views.split(most))
+    def _micro_batches(
+        self, views: torch.Tensor, family: tuple[int, ...] = ()
+    ) -> list[torch.Tensor]:
+        """The views in micro-batches of at most micro_views, of as few sizes as the views
+        and `family` (the other view counts split alongside these, such as the update's
+        other minibatch size) allow: under a compile of fixed shapes every size is one
+        compile of every learner stage (`micro_batch_sizes`)."""
+        sizes = micro_batch_sizes(len(views), self.micro_views, family)
+        return list(views.split(sizes))
+
+    def minibatch_sizes(self, views: int) -> tuple[int, ...]:
+        """The view counts of an update's minibatches (`update`'s split of `views`): one,
+        or two that differ by one when the minibatches do not divide the views."""
+        minibatches = self.config.minibatches
+        return tuple(sorted({views // minibatches, -(-views // minibatches)} - {0}))
+
+    def micro_batch_shapes(self, views: int, cadence: bool = False) -> tuple[int, ...]:
+        """The micro-batch sizes an update over `views` views runs its loss on (with
+        `cadence`, also those of the cadence's gradient decomposition, the first minibatch
+        in halves): under a compile of fixed shapes each is one compile of every compiled
+        learner stage. One unless the minibatches do not divide the views."""
+        groups = [self.minibatch_sizes(views)]
+        if cadence:
+            first = max(groups[0])
+            groups.append(tuple({first - first // 2, first // 2} - {0}))
+        return tuple(
+            sorted(
+                {
+                    size
+                    for group in groups
+                    for count in group
+                    for size in micro_batch_sizes(count, self.micro_views, group)
+                }
+            )
+        )
 
     def _on_device(self, views: torch.Tensor) -> torch.Tensor:
         """Host view indices on the device, from pinned memory: no wait on the queued work
@@ -1068,7 +1110,8 @@ class Learner:
         device, derived = self.device, prepared["derived"]
         total = prepared["counts"][self._on_device(chosen)].sum(0).clamp_min(1.0)
         denominator = dict(zip(COUNTS, total.unbind()))
-        micro = self._micro_batches(chosen)
+        sizes = self.minibatch_sizes(len(prepared["counts"]))
+        micro = self._micro_batches(chosen, sizes if len(chosen) in sizes else ())
         terms_sum = torch.zeros(len(TERMS), device=device)
         levels_sum = torch.zeros(len(self.levels), device=device)
         statistic_sum = torch.zeros(len(self.STATISTICS), device=device)
@@ -1391,10 +1434,11 @@ class Learner:
         total = prepared["counts"][self._on_device(views)].sum(0).clamp_min(1.0)
         denominator = dict(zip(COUNTS, total.unbind()))
         halves = [half for half in views.tensor_split(2) if half.numel()]
+        family = tuple(len(half) for half in halves)
         names = None
         accumulated = None
         for half_index, half in enumerate(halves):
-            micro = self._micro_batches(half)
+            micro = self._micro_batches(half, family)
             for host_views, (trajectory, shot_labels) in zip(
                 micro, self.staged(segments, micro), strict=True
             ):
