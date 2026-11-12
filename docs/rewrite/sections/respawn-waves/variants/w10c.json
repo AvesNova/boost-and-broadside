@@ -1,28 +1,26 @@
 [
  {
-  "label": "fixed16L45",
-  "lock": 45
+  "label": "fixed16L60",
+  "lock": 60
  },
  {
-  "label": "fixed16L50",
-  "lock": 50
+  "label": "fixed16L65",
+  "lock": 65
  },
  {
-  "label": "m8w20L50",
-  "lock": 50,
+  "label": "fixed16L70",
+  "lock": 70
+ },
+ {
+  "label": "m8w20L65",
+  "lock": 65,
   "respawn_minimum": 8,
   "wave_interval": 20
  },
  {
-  "label": "m5w30L50",
-  "lock": 50,
+  "label": "m5w30L65",
+  "lock": 65,
   "respawn_minimum": 5,
   "wave_interval": 30
- },
- {
-  "label": "m8w20L45",
-  "lock": 45,
-  "respawn_minimum": 8,
-  "wave_interval": 20
  }
 ]

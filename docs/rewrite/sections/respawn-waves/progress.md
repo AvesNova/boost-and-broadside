@@ -114,3 +114,19 @@ reset ≈ I/2 < skip = I). The effects end more games by the front and shorten t
 they undo the lock's calibration (the lock was set where P = 0.5). Without an effect the
 waves keep P at 0.47-0.49. Mean wait rises by the effect (skip at 30 s: p90 46.5 s, over
 the Hell Let Loose bound).
+
+## 2026-11-13 08:56 KST: frontline 10v10 (w10b; lock 55, radius 11031 m, 384 games each)
+
+| variant | P(same team next) | by the front | median length (s) | first capture (s) | wait mean / p90 (s) |
+|---|---|---|---|---|---|
+| fixed 16 | 0.448 (0.452) | 0.95 (0.60) | 419 | 168 | 16.0 / 16.2 |
+| min 5, waves 20 | 0.435 (0.440) | 0.95 (0.59) | 384 | 170 | 14.9 / 23.2 |
+| min 8, waves 20 | 0.424 (0.444) | 0.95 (0.61) | 406 | 164 | 18.0 / 26.2 |
+| min 5, waves 30 | 0.441 (0.444) | 0.96 (0.60) | 379 | 152 | 20.0 / 32.2 |
+| min 10, waves 30 | 0.451 (0.463) | 0.96 (0.63) | 389 | 138 | 25.1 / 37.2 |
+
+(± 0.012-0.019 on P.) As at 5v5 the waves leave P where the fixed wait has it, and the
+30 s waves bring the first capture forward. But lock 55 gives P ≈ 0.44-0.45 here, against 0.489 (0.450) in the frontline design
+calibration (s10, 192 games, ± about 0.025; the game source is unchanged since). With
+twice the games, 55 s sits below 0.5 at 10v10: a longer lock raises P (the capturer keeps
+the zone), so 10v10 wants a little more than 55 s. Locks 60 / 65 / 70 checked below.
