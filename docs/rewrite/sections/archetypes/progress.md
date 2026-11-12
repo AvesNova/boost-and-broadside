@@ -708,3 +708,33 @@ sustained turn), damage up; speed = drag x0.85 (cruise 171, top 407 m/s):
   lift buys the duel, its damage the crowds, and the speed fighter's low drag holds both.
   The duel still leans to the rate fighter (0.63); round 14 (running) gives the speed fighter
   sight or more speed, or the rate fighter less lift.
+
+## 03:51-03:58 KST: round 14 (`round14/`): rate v speed, the duel lean
+
+512 games (10v10 256), r9:
+
+| Pair | A v B 1v1 / 2v2 / 5v5 / 10v10 | AA; BB mutual, life | Duel life |
+|---|---|---|---|
+| rate (lift x1.05, dmg x1.2) v speed (vision x1.05) | 0.59 / 0.51 / 0.46 / 0.41 | 0.47, 222 s; 0.39, 282 s | 238 s |
+| rate (x1.05, x1.25) v speed (vision x1.08) | 0.58 / 0.48 / 0.51 / 0.47 | 0.47, 215 s; 0.47, 300 s | 219 s |
+| rate (x1.03, x1.2) v speed | 0.59 / 0.54 / 0.50 / 0.50 | 0.44, 237 s; 0.35, 290 s | 243 s |
+| rate (x1.05, x1.2) v speed (drag x0.82) | 0.60 / 0.58 / 0.52 / 0.51 | 0.47, 243 s; 0.37, 280 s | 244 s |
+| **rate (x1.03, x1.25) v speed (vision x1.04)** | **0.58 / 0.51 / 0.49 / 0.52** | 0.46, 221 s; 0.40, 277 s | 235 s |
+| rate (x1.05, x1.2) v speed (drag x0.8, vision x1.04) | 0.59 / 0.53 / 0.49 / 0.44 | 0.46, 232 s; 0.37, 289 s | 231 s |
+
+- The crowds come even; the duel holds at 0.58-0.60 for the rate fighter under every
+  sight and speed tried. Round 15 tries the joust (the duel's kills are 0.4 mutual).
+
+## 03:51-03:59 KST: confirm 7 (`confirm7/`): hit-and-run v standard again
+
+| Doctrine | Hit-and-run's score 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | AA (hit-and-run); BB mutual, life, merges | v r9 |
+|---|---|---|---|
+| r9 (set 4b, first run) | 0.52 / 0.49 / 0.50 / 0.51 / 0.49 | 0.51, 209 s; 0.34, 324 s | 0.51 / 0.51 |
+| r9 (second run) | 0.53 / 0.49 / 0.51 / 0.48 / 0.47 | 0.47, 221 s, 2.6; 0.36, 284 s, 3.1 | 0.50 / 0.48 |
+| CE (set3ce) | 0.53 / 0.48 / 0.50 / 0.50 / 0.49 | 0.38, 243 s; 0.24, 370 s | 0.79 / 0.81 |
+| DCL | 0.52 / 0.49 / 0.50 / 0.50 / 0.48 | 0.66, 140 s; 0.68, 185 s | 0.82 / 0.83 |
+
+- **Hit-and-run v standard is within 0.47-0.53 in all 20 cells**: four runs, three doctrines,
+  1v1 to 20v20. Not flagged PERFECT: the hit-and-run mirror is still a 0.47-0.51 joust under
+  r9 (merges a kill 2.6, median 1), and the two ships fly alike (they differ in shield,
+  recharge, damage and nose, not in flight).
