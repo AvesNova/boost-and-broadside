@@ -184,7 +184,8 @@ Without lanes the fit reads the league's games alone.
   (`bnb.league.lanes.LaneHooks`), the uniform average as
   `rating/uniform_average/<mode>`{.plain}, and each of its policy files keeps its
   player's per mode (`PolicyRecord.ratings`): a warm start's live rating starts from its
-  parent's, not 0.
+  parent's, not 0; a mode the parent has no rating for (a clone trained without lanes)
+  starts at the scripted agent's 1000.
 
 The league's games are about half of the information. Refitted offline on run
 2026-11-06-mixed-calm-fern's first 29 updates (its per-update lane games and `pool/entries`

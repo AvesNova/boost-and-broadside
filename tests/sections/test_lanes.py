@@ -558,6 +558,21 @@ def test_a_warm_starts_league_starts_from_its_parents_rating(tmp_path):
     assert other.gauges[MODE].live.rating == 640.0
 
 
+def test_a_warm_start_from_an_unrated_clone_starts_at_the_scripted_agents_rating(tmp_path):
+    """A parent with no lane ratings (BC without lanes) imitated the scripted agent: the
+    live policy and the averages start at its 1000, not at 0."""
+    import league_cases
+
+    from bnb.league.gauge import GAUGE_TOP
+    from bnb.league.league import League
+
+    trainer, _ = league_cases.league(tmp_path)
+    clone = League(trainer, tmp_path / "clone", ratings={})
+    for gauge in clone.gauges.values():
+        assert gauge.live.rating == GAUGE_TOP == 1000.0
+        assert gauge.entries[EXPONENTIAL_AVERAGE].rating == GAUGE_TOP
+
+
 def _bc_trainer(**changes):
     """A tiny BC trainer on the CPU with one lane per BC matchup."""
     from bnb.runtime.train import Trainer

@@ -82,7 +82,8 @@ The launch runs BC with no rating lanes (`lanes.environments=0` in
 `docs/rewrite/sections/launch/launch.toml`'s `bc_set`, the author, 2026-11-12). Then no
 score window fills: the score stop cannot fire (it is off by default anyway), BC stops on
 its plateau or its budget, the `bc/stop/window_*`{.plain} series are absent, and the
-policy files carry no lane rating, so the RL run's live rating starts at 0.
+policy files carry no lane rating, so the RL run's live policy and averages start at the
+scripted agent's 1000, the agent the clone imitates (`bnb.league.league.League`).
 
 ## The averages
 

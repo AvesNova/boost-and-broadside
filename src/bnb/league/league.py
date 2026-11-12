@@ -106,7 +106,7 @@ class League:
             trainer, None if state is None else state[0]["ratings"], modes=self.modes
         )
         if state is None:
-            self._start(trainer, ratings or {})
+            self._start(trainer, ratings)
         else:
             self._restore(trainer, *state)
         self._load_lanes(fresh=False)  # no lane game has begun with these weights yet
@@ -117,10 +117,14 @@ class League:
     def _empty_record(self) -> dict[str, dict[str, Record]]:
         return {mode: {} for mode in self.modes}
 
-    def _start(self, trainer: Trainer, ratings: dict[str, float]) -> None:
+    def _start(self, trainer: Trainer, ratings: dict[str, float] | None) -> None:
+        """ratings: a warm start's parent's, per mode; a mode it has none for (a clone
+        trained without rating lanes) starts at the scripted agent's rating, which the clone
+        imitates. A run from scratch (None) starts at 0."""
         weights = trainer.model.state_dict()
         self.entries: dict[str, Entry] = {SCRIPTED_PLAYER: SCRIPTED_ENTRY}
-        self.gauges = {mode: Gauge(ratings.get(mode, 0.0)) for mode in self.modes}
+        unrated = 0.0 if ratings is None else GAUGE_TOP
+        self.gauges = {mode: Gauge((ratings or {}).get(mode, unrated)) for mode in self.modes}
         for gauge in self.gauges.values():
             gauge.add(SCRIPTED_PLAYER, "scripted", GAUGE_TOP)
         self.averages = Averages(weights, self.config, trainer.config.uniform_start())

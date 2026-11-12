@@ -329,7 +329,11 @@ views allow (`bnb.learn.ppo.micro_batch_sizes`): one when the minibatches divide
 two when they do not (`tensor_split` gives minibatches of two sizes that differ by one, and
 no size above one divides both). A run with compiling on prints its sizes before the first
 update (`bnb.runs.session.micro_batch_note`); the cadence's halves of the first minibatch
-can add their own. `TrainConfig.precision` defaults to
+can add their own. Two diagnostics run eager. The heads' sums (`bnb.learn.head_statistics`)
+are measured on cadence updates over a sample: the first epoch's first micro-batches until
+they hold `HEAD_SUM_VIEWS` (256) views. Over every micro-batch they cost about 8% of RL's
+steady time. The step/unroll drift unrolls the update's first micro-batch
+(`Learner.first_micro_batch`). `TrainConfig.precision` defaults to
 `"bfloat16"`: the model's matmuls run under bf16 autocast, in the rollout and in the update
 alike. `"float32"` (strict) and `"tf32"` (a process-wide setting the entry point applies with
 `bnb.cli.set_precision`) are the alternatives. The residual stream, norms,

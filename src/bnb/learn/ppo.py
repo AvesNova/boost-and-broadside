@@ -281,6 +281,14 @@ def _own_joint(trajectory: Trajectory) -> torch.Tensor:
     return to_joint(trajectory.action)[..., : trajectory.log_probability.shape[-1]]
 
 
+# The views the heads' sums (`head_statistics`) read on a cadence update: the first
+# micro-batches of the first epoch until they hold this many (a sample; the sums' series
+# are ratios of totals, so their meaning does not change with its size). Eager, at about
+# 0.35 s a 32-view micro-batch, the whole epoch cost about 8% of RL's steady time at 1024
+# environments (`steady-speed` notes); 256 views is 8 such micro-batches.
+HEAD_SUM_VIEWS = 256
+
+
 def micro_batch_sizes(count: int, most: int, family: tuple[int, ...] = ()) -> list[int]:
     """The micro-batch sizes (in order, summing to `count`) of `count` views, each at most
     `most`, chosen with `family`, the other view counts split alongside it, so that the
@@ -1107,12 +1115,13 @@ class Learner:
         return out
 
     def gradient(
-        self, segments: Segments, prepared: dict, chosen: torch.Tensor, heads: bool = False
+        self, segments: Segments, prepared: dict, chosen: torch.Tensor, head_views: int = 0
     ) -> tuple:
         """Accumulate one minibatch's gradient (views `chosen`, host indices) into the
         parameters' .grad, micro-batch by micro-batch: (terms (TERMS,), value loss per
-        level, statistics (STATISTICS,), diagnostics, the heads' sums (see `_loss`; measured
-        when `heads`)), each the minibatch's."""
+        level, statistics (STATISTICS,), diagnostics, the heads' sums (see `_loss`) over
+        its first micro-batches until they hold `head_views` views (0: none)), each the
+        minibatch's."""
         device, derived = self.device, prepared["derived"]
         total = prepared["counts"][self._on_device(chosen)].sum(0).clamp_min(1.0)
         denominator = dict(zip(COUNTS, total.unbind()))
@@ -1135,9 +1144,10 @@ class Learner:
             )
             loss.backward()
             head_part = {}
-            if heads and heads_read is not None:
+            if head_views > 0 and heads_read is not None:
                 with torch.no_grad():
                     head_part = self.head_sums(heads_read, trajectory, label)
+                head_views -= len(host_views)
             terms_sum += terms
             levels_sum += per_level
             statistic_sum += statistic
@@ -1197,9 +1207,10 @@ class Learner:
         (the learner's Outputs on the observation after the last tick). environment_steps:
         environment steps this update collected (the warmup counts them). cadence: also
         measure the cadence groups (`cadence`), after the steps. heads: measure the heads' sums
-        (in the first epoch, when the learner measures them; the trainer passes its cadence,
-        as they cost about 4% of a learn). Returns the update's series
-        on the device (`bnb.contracts.series`), for the caller to read back once."""
+        (a sample: the first epoch's first micro-batches until they hold `HEAD_SUM_VIEWS`
+        views, when the learner measures them; the trainer passes its cadence). Returns the
+        update's series on the device (`bnb.contracts.series`), for the caller to read back
+        once."""
         config, device = self.config, self.device
         views = segments.views
         if views < config.minibatches:
@@ -1218,8 +1229,10 @@ class Learner:
         statistics_total = torch.zeros(len(self.STATISTICS), device=device)
         diagnostics_total = None
         last_moments = None  # the last completed epoch's fit moments
-        head_total: dict = {}  # the heads' sums, over the first epoch
-        measure_heads = self.measures_heads and heads
+        # the heads' sums: a sample, the first micro-batches of the first epoch until they
+        # hold HEAD_SUM_VIEWS views (eager; every micro-batch cost ~8% of RL's steady time)
+        head_total: dict = {}
+        head_views = HEAD_SUM_VIEWS if self.measures_heads and heads else 0
         drift = self.drift(segments, prepared)
         skipped = torch.zeros((), dtype=torch.int64, device=device)
         nonfinite_terms = torch.zeros(len(TERMS), dtype=torch.int64, device=device)
@@ -1235,8 +1248,10 @@ class Learner:
             epoch_moments = None
             for chosen in order.tensor_split(config.minibatches):
                 terms, per_level, statistic, diagnostic, head_part = self.gradient(
-                    segments, prepared, chosen, heads=measure_heads and epoch == 0
+                    segments, prepared, chosen, head_views if epoch == 0 else 0
                 )
+                if epoch == 0:
+                    head_views = max(0, head_views - len(chosen))
                 head_total = head_statistics.add(head_total, head_part)
                 norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), config.max_grad_norm)
                 finite = torch.isfinite(norm)

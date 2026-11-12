@@ -7,6 +7,11 @@ update's totals into named series on the device. `belief_sums` reads the stored 
 (the behaviour policy's, one update stale) against the stored truth and needs no model
 output. None of them changes the loss or its gradient.
 
+The learner measures them on a cadence update over a sample, the first epoch's first
+micro-batches until they hold `bnb.learn.ppo.HEAD_SUM_VIEWS` (256) views: the series are
+ratios of totals, so a sample keeps their meaning, at a few seconds an update rather than
+the whole epoch's ~70 s eager (`docs/rewrite/sections/steady-speed`).
+
 Slices, quantity first:
 - next state, by population: own ships (`ally`), enemies seen at t (`enemy_visible`) and
   enemies hidden at t (`enemy_hidden`). The gain is the "nothing changes" baseline's
