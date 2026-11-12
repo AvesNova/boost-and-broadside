@@ -165,7 +165,10 @@ which blocks sight (see [Perception and fog](perception.md)).
   default, the old fixed curve's `exp(-4θ²/π)`), and nearly all of it from the side or
   rear. The target's head-on sharpness `p` (2 by default, a Gaussian cone) shapes the
   cone: a higher `p` keeps the armour near `f_0` across the cone and drops it quickly past
-  `θ_h` (a tank's armoured nose). A bullet is consumed by its hit (game version 6).
+  `θ_h` (a tank's armoured nose). The shooter's arming distance `X` (0 by default, off)
+  ramps the damage as a smoothstep of the distance the bullet has travelled over `[0, X]`: a
+  minimum effective range, like a fuse's arming time. A bullet is consumed by its hit (game
+  version 6).
 - **Shields.** Damage beyond the current shield breaks it, and the overkill is ignored.
   Any damage to a ship whose shield was already broken at tick start kills it. After a
   delay without damage, the shield recharges at a fixed rate; both are per type. The delay

@@ -504,9 +504,10 @@ def test_defaults_match_the_spec_table():
     assert set(CARD.values()) - {"ticks_between_shots"} == (
         set(DEFAULTS)
         - {"bleed_exponent", "fire_rate", "bullet_life", *SCALED}
-        - {"explosive_share", "reference_bullet_speed", "head_on_sharpness"}
+        - {"explosive_share", "reference_bullet_speed", "head_on_sharpness", "arming_distance"}
     )
     assert TYPES.head_on_sharpness.tolist() == [2.0, 2.0]
+    assert TYPES.arming_distance.tolist() == [0.0, 0.0]
     assert TYPES.explosive_share.tolist() == [0.0, 0.0]
     moves = api.bullet_moves(TYPES.bullet_life, rules.tick_length)
     assert moves.tolist() == [preset["bullet_moves"]] * 2
