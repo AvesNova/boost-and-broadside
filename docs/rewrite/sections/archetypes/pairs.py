@@ -1414,6 +1414,35 @@ def set3_doctrine() -> list[dict]:
 ROUNDS["set3ce"] = set3_doctrine
 
 
+def round13() -> list[dict]:
+    """Rate v speed, flight-distinct on one hull: the rate fighter's lift (corner speed and
+    instantaneous turn, the duel) against the speed fighter's low drag (cruise and top speed,
+    the crowds); damage as the rate fighter's crowd lever. Kit2 on both."""
+    out = []
+    for cl, d, scl in (
+        (1.05, 1.0, 1.0),
+        (1.05, 1.1, 1.0),
+        (1.1, 1.1, 1.0),
+        (1.1, 1.2, 1.0),
+        (1.05, 1.2, 1.0),
+        (1.1, 1.15, 0.95),
+        (1.15, 1.2, 1.0),
+    ):
+        out.append(
+            pair(
+                f"rate (lift x{cl:g}, dmg x{d:g}) v speed (drag x0.85"
+                + (f", lift x{scl:g}" if scl != 1 else "")
+                + ") (M), kit2",
+                ("M", merge({"max_lift_coefficient": cl, "hit_damage": d}, kit(*KIT2))),
+                ("M", merge({"zero_lift_drag": 0.85, "max_lift_coefficient": scl}, kit(*KIT2))),
+            )
+        )
+    return out
+
+
+ROUNDS["round13"] = round13
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
