@@ -586,6 +586,60 @@ def round5() -> list[dict]:
 ROUNDS["round5"] = round5
 
 
+def screen1() -> list[dict]:
+    """New pair ideas at 1v1 and 5v5, each with the mirror kit on both ships."""
+    ideas = {
+        "interceptor v brawler": (
+            {
+                "zero_lift_drag": 0.8,
+                "engine_power_full_store": 1.15,
+                "vision_range_scale": 1.2,
+                "hit_damage": 0.8,
+            },
+            {"zero_lift_drag": 1.15, "vision_range_scale": 0.85, "hit_damage": 1.2},
+        ),
+        "big gun big target v small light": (
+            {"hit_radius": 1.4, "hit_damage": 1.4},
+            {"hit_radius": 0.75, "hit_damage": 0.85},
+        ),
+        "glass cannon v steady": (
+            {"max_shield": 0.6, "hit_damage": 1.5},
+            {"max_shield": 1.3, "hit_damage": 0.8},
+        ),
+        "armed gunner v close fighter": (
+            {"arming_distance": {"set": 150.0}, "hit_damage": 1.4, "bullet_life": 1.3},
+            {"bullet_life": 0.8},
+        ),
+        "armed gunner (dmg x1.2) v close fighter": (
+            {"arming_distance": {"set": 150.0}, "hit_damage": 1.2, "bullet_life": 1.3},
+            {"bullet_life": 0.8},
+        ),
+        "wide nose armour v agile": (
+            merge(cone(0.3, 30, 4), {"induced_drag_scale": 1.1}),
+            {"max_lift_coefficient": 1.1},
+        ),
+        "hungry stream v efficient bursts": (
+            {"fire_rate": {"set": 30.0}, "hit_damage": 0.55, "bullet_energy_cost": 1.5},
+            {"fire_rate": {"set": 10.0}, "hit_damage": 1.5, "bullet_energy_cost": 1.0},
+        ),
+        "fast recharge v big shield": (
+            {
+                "shield_recharge_rate_scale": 3.0,
+                "shield_recharge_delay_scale": 0.5,
+                "max_shield": 0.85,
+            },
+            {"max_shield": 1.15, "shield_recharge_rate_scale": 0.5},
+        ),
+    }
+    out = []
+    for name, (a, b) in ideas.items():
+        out.append(pair(name + " (M), kit", ("M", merge(a, kit(*KIT))), ("M", merge(b, kit(*KIT)))))
+    return out
+
+
+ROUNDS["screen1"] = screen1
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
