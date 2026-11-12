@@ -1780,6 +1780,40 @@ def round19() -> list[dict]:
 ROUNDS["round19"] = round19
 
 
+def roster3() -> list[dict]:
+    """Set candidates against the standard at 1024 games, 1v1-20v20: the armed gunner, a
+    close fighter with heavier guns, and the rate and speed fighters a step down."""
+    ships = {
+        "armed gunner (arming 100, life x1.3, dmg x0.85, vision x1.2)": merge(
+            kit(*KIT2),
+            {
+                "arming_distance": {"set": 100.0},
+                "bullet_life": 1.3,
+                "hit_damage": 0.85,
+                "vision_range_scale": 1.2,
+            },
+        ),
+        "close fighter (life x0.8, dmg x1.05)": merge(
+            kit(*KIT2), {"bullet_life": 0.8, "hit_damage": 1.05}
+        ),
+        "rate (lift x1.03, dmg x1.1, f0 0.065)": merge(
+            {"max_lift_coefficient": 1.03, "hit_damage": 1.1}, kit(*KIT2), cone(0.065, 12, 8)
+        ),
+        "speed (drag x0.85, vision x1.04, dmg x0.92, f0 0.07)": merge(
+            {"zero_lift_drag": 0.85, "vision_range_scale": 1.04, "hit_damage": 0.92},
+            kit(*KIT2),
+            cone(0.07, 12, 8),
+        ),
+    }
+    return [
+        pair(f"{n} v standard (roster 3, M, kit2)", ("M", f), ("M", kit(*KIT2)))
+        for n, f in ships.items()
+    ]
+
+
+ROUNDS["roster3"] = roster3
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
