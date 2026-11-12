@@ -384,3 +384,25 @@ after a capture (same seeds, same play until then).
   3.6 (from 1.81) changes nothing (0.52 ± 0.03, identical captures: the attack rule does
   not bind). Holding ships back on defense loses: with these rules capturing is simply
   easier than defending, so the reversal is the rules', not a doctrine mistake.
+
+## Step 2i: the capture lock, refined (fog off, 5v5 unless noted, 256 games each)
+
+| lock | P(same team next) | ended by the front | captures / game |
+|---|---|---|---|
+| none | 0.139 ± 0.007 | 0.090 ± 0.018 | 9.4 |
+| 20 s | 0.218 ± 0.010 | 0.180 ± 0.024 | 7.6 |
+| 25 s | 0.389 ± 0.014 | 0.320 ± 0.029 | 5.8 |
+| **30 s** | **0.546 ± 0.016** | 0.387 ± 0.030 | 4.8 |
+| 35 s | 0.630 ± 0.016 | 0.520 ± 0.031 | 4.4 |
+| 40 s | 0.701 ± 0.017 | 0.598 ± 0.031 | 4.0 |
+| 60 s | 0.781 ± 0.016 | 0.645 ± 0.030 | 3.7 |
+| 30 s, 1v1 (3488 m) | - | 0.000 | 0.0 |
+| 30 s, 2v2 (4933 m) | 0.578 ± 0.044 | 0.012 ± 0.007 | 1.1 |
+
+The author picked the lock direction (17:35). Queued on the box (ETA 18:05 KST, worst
+18:25): lock 30 s with threshold 2 / clock 900 s / clock 1200 s (toward ~80% by the
+front), then the two softer variants against the hard 30 s lock: (a) a decaying hold
+(H = N = 30 s and 60 s: an extra H s of meter on the captured zone, decaying over N s, and
+drained on top by an attacking majority at the capture rate, H_n s a second), (b) a flat
+extension (E = 10 / 20 / 30 s: no decay, drained only by an attacking majority). Checked
+on a synthetic zone: a lone attacker retakes a flat-10 zone in 30.0 s (10 + 20).
