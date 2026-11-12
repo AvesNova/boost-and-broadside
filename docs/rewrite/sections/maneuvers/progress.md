@@ -241,3 +241,35 @@ two circle / scissors):
   every card (D2 0.49 to 0.03): the one-circle goes to the smaller turn radius, and the
   Jujak's maximum lift coefficient is 1.34 times the Yongma's (radius 176 against 235 m).
   Round 5 gates it by that ratio and by the mirror.
+
+**Round 4's 5v5** undoes it: against r9 in the crowd the one-circle sense loses on every
+card (frozen 0.23-0.33, D2 0.40-0.44, cone 0.085 0.39-0.50, cone 0.01 0.42-0.47); so does
+the two-circle sense (0.34-0.51). Turning away from the target after the pass, with other
+enemies about, turns the ship into them. And the sense at weight 0.5 (which loses at 1v1)
+**wins the crowd big** (0.55-0.69 on every card): it mixes full stick to the one-circle
+side with the combat layer's stick, so a ship whose target has passed behind it while
+turning flies nearly straight (the two sides' draws cancel tick by tick): an extension
+away from a turning bandit. Round 6 separates the two: a crowd gate (`sense_in_crowd`,
+the other known enemies within `sense_crowd_in_gun_range`) gives the duel to the
+one-circle and the crowd to `crowd_sense` (a set stick and a boost).
+
+## 00:57- KST: round 5 (`round5/`): gating the one-circle by type
+
+512 games. Against r9 in the 1v1 mirrors (JJ / YY) and energy v turn 1v1 (Yongma's score):
+
+| Candidate | frozen v r9; E v T | D2 v r9; E v T | cone 0.085 v r9; E v T | cone 0.01 v r9; E v T |
+|---|---|---|---|---|
+| r9 | 0.496 / 0.517; 0.01 | 0.488 / 0.482; 0.50 | 0.506 / 0.481; 0.54 | 0.474 / 0.493; 0.52 |
+| lead 0.5 s | 0.570 / 0.507; 0.01 | 0.521 / 0.499; 0.56 | 0.538 / 0.494; 0.62 | 0.526 / 0.505; 0.58 |
+| one-circle (4 gr) | 0.673 / 0.630; 0.01 | 0.585 / 0.641; 0.02 | 0.529 / 0.601; 0.02 | 0.500 / 0.494; 0.02 |
+| **one-circle, mirror only** | 0.614 / 0.604; 0.01 | **0.571 / 0.615; 0.53** | 0.515 / 0.590; 0.53 | 0.512 / 0.489; 0.52 |
+| one-circle, lift ratio > 0.95 | 0.640 / 0.607; 0.06 | 0.608 / 0.604; 0.14 | 0.521 / 0.586; 0.27 | 0.494 / 0.484; 0.41 |
+| lead + one-circle mirror | 0.660 / 0.555; 0.01 | 0.560 / 0.609; 0.55 | 0.521 / 0.554; 0.63 | 0.500 / 0.484; 0.60 |
+| Jujak one-circle, Yongma lead | 0.641 / 0.509; 0.04 | 0.559 / 0.504; 0.18 | 0.532 / 0.509; 0.30 | 0.532 / 0.483; 0.42 |
+
+- **The mirror-only gate keeps the type balance** (E v T within 0.03 of r9's on every card)
+  and the mirror edge (D2 0.57 / 0.62).
+- **The lift-ratio gate does not**: the Yongma no longer one-circles a Jujak, but the Jujak
+  one-circling the Yongma still takes the duel (D2 0.50 to 0.14). One-circle is the turn
+  fighter's move (the archetype), and on a card balanced for r9 it is too strong. Gating it
+  to the mirror is the choice that leaves the cards' balance alone.

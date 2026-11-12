@@ -376,3 +376,27 @@ def test_the_sense_hands_over_to_the_crowd_sense_with_another_enemy_near():
     flown = _decide(crowd, _every_type(doctrine))
     assert float(flown.stick[0, 0, 0]) > 0.9
     assert float(flown.power[0, 0, 1]) > 0.8
+
+
+def test_the_sense_draws_its_choice_once_as_its_gate_opens():
+    """At sense_one_circle 1/2 the choice is drawn once when the gate opens and kept: a
+    re-read carry gives the same stick; over many views both choices are made."""
+    distance = 0.5 * value("gun_range", STIFF)
+    enemy = ship(x=-distance, y=-30.0, heading=math.pi, ship_type=STIFF, team_relative=1)
+    enemy[SHIP["nose_rate"]] = 0.3
+    obs = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, absent(STIFF)])
+    obs = Obs(
+        **{
+            k: None if v is None else v.expand(256, *v.shape[1:])
+            for k, v in dataclasses.asdict(obs).items()
+        }
+    )
+    doctrines = _every_type(Doctrine(sense=1.0, sense_one_circle=0.5))
+    parts, carry = decide(obs, CHARACTERISTICS, PARAMETERS, switching=True, doctrines=doctrines)
+    draw = carry.sense_draw[:, 0]
+    assert bool((draw >= 0.0).all())
+    one = parts.stick[:, 0, 5] > 0.9
+    torch.testing.assert_close(one, draw < 0.5)
+    assert 50 < int(one.sum()) < 206
+    again = decide(obs, CHARACTERISTICS, PARAMETERS, carry=carry, doctrines=doctrines)[0]
+    torch.testing.assert_close(again.stick, parts.stick, atol=0.01, rtol=0.0)

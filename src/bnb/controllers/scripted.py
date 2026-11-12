@@ -251,6 +251,7 @@ def decide(
         combat_left=fighting.left,
         stalemate_seconds=fighting.stalemate_seconds,
         yoyo_seconds=fighting.yoyo_seconds,
+        sense_draw=fighting.sense_draw,
         frontline_left=strategy.left,
         defending=strategy.defending,
         recovering=strategy.recovering,

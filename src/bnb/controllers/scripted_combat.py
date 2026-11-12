@@ -298,7 +298,7 @@ class Combat(NamedTuple):
     target's distance (0 without one) and its weight (1 seen, fading when dead reckoned, 0
     without one); the plan choices it made, the target (-1 none) and the turn side; and the
     maneuvers' clocks after the decision (`ScriptedCarry.stalemate_seconds`,
-    `yoyo_seconds`)."""
+    `yoyo_seconds`, `sense_draw`)."""
 
     marginals: Marginals
     has_target: torch.Tensor
@@ -308,6 +308,7 @@ class Combat(NamedTuple):
     left: torch.Tensor
     stalemate_seconds: torch.Tensor
     yoyo_seconds: torch.Tensor
+    sense_draw: torch.Tensor
 
 
 def choose_target(fleet: Context, offset_x: torch.Tensor, offset_y: torch.Tensor, parameters):
@@ -520,7 +521,7 @@ def maneuvers(
     stalemate clock and the yo-yo's clock after this decision (advanced only when the plan
     choices may switch, so a re-read carry gives the same marginals; reset on a fresh ship).
     others (R, S, E): the other known enemies' distances in own gun ranges (inf elsewhere).
-    Returns (stick, left, power, stalemate_seconds, yoyo_seconds)."""
+    Returns (stick, left, power, stalemate_seconds, yoyo_seconds, sense_draw)."""
     target_x, target_y, distance, _, _, aim_error, target_vx, target_vy = geometry
     temperature = fleet.temperature
     carry = fleet.carry
@@ -644,7 +645,20 @@ def maneuvers(
         logistic(lift_ratio, doctrine.sense_in_lift_ratio, temperature),
         0.0,
     )
-    sense_left = (target_rate > 0.0) ^ (doctrine.sense_one_circle > 0.5)
+    # the choice: one-circle with probability sense_one_circle, drawn once as the gate opens
+    opened = geometry_gate > 0.5
+    if fleet.switching:
+        draw = torch.where(
+            opened,
+            torch.where(carry.sense_draw < 0.0, torch.rand_like(distance), carry.sense_draw),
+            -1.0,
+        )
+    else:
+        draw = torch.where(fresh, -1.0, carry.sense_draw)
+    one_circle = torch.where(
+        draw >= 0.0, draw < doctrine.sense_one_circle, doctrine.sense_one_circle > 0.5
+    )
+    sense_left = (target_rate > 0.0) ^ one_circle
     # alone: no other known enemy near (a soft count of them inside the crowd's radius)
     radius = doctrine.sense_crowd_in_gun_range
     per_enemy = Logistic(radius.centre[..., None], radius.scale[..., None], radius.rising)
@@ -660,7 +674,7 @@ def maneuvers(
         commanded_stick(sense_left, doctrine.crowd_sense_stick) - stick
     )
     power = power + (in_crowd * doctrine.crowd_sense_boost)[..., None] * (boost - power)
-    return stick, left, power, stalemate, clock
+    return stick, left, power, stalemate, clock, draw
 
 
 def combat(
@@ -755,7 +769,7 @@ def combat(
         # unknown): the sense's crowd
         others = torch.sqrt(offset_x * offset_x + offset_y * offset_y) / fleet.gun_range[..., None]
         others = torch.where(recall.known[:, None, :] & ~pick, others, math.inf)
-        stick, left, power, stalemate, yoyo = maneuvers(
+        stick, left, power, stalemate, yoyo, draw = maneuvers(
             fleet,
             characteristics,
             doctrine,
@@ -772,6 +786,7 @@ def combat(
         fresh = fleet.carry.fresh
         stalemate = torch.where(fresh, 0.0, fleet.carry.stalemate_seconds)
         yoyo = torch.where(fresh, -1.0, fleet.carry.yoyo_seconds)
+        draw = torch.where(fresh, -1.0, fleet.carry.sense_draw)
 
     hit_radius = target(per_ship(characteristics.hit_radius, fleet.enemy_type))
     size = (2.0 * torch.atan(hit_radius / safe_distance)).clamp(*TARGET_SIZE_RANGE)
@@ -784,7 +799,15 @@ def combat(
     shoot = floored(torch.where(has_target & ready, weight * aligned * in_range, 0.0), "shoot")
     shoot = torch.stack([1.0 - shoot, shoot], -1)
     return Combat(
-        Marginals(power, stick, shoot), has_target, distance, weight, chosen, left, stalemate, yoyo
+        Marginals(power, stick, shoot),
+        has_target,
+        distance,
+        weight,
+        chosen,
+        left,
+        stalemate,
+        yoyo,
+        draw,
     )
 
 
