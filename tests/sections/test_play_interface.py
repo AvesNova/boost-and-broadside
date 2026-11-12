@@ -690,6 +690,26 @@ def test_the_bullets_look_is_chosen_in_the_settings(context, tmp_path):
     session.close()
 
 
+def test_the_looks_save_with_the_theme_and_flags_override_them(context, tmp_path):
+    """The Settings menu edits the theme's looks; Save as theme keeps them, and the next
+    session that loads the theme has them. A flag overrides the loaded theme's value."""
+    session = _session(context, tmp_path, preset="arena")
+    session.set_grid("hex")
+    session.set_contours("zones")
+    session.toggle_true_size()
+    session.set_look_ahead("off")
+    session.set_bullet_look(style="trail", trail_seconds=0.1)
+    saved = session.editor.save_as(session.theme, "my-look")
+    assert saved is not None
+    session.close()
+    again = _session(context, tmp_path, preset="arena", theme="my-look", grid="square")
+    assert again.grid == "square"  # the flag
+    assert (again.contours, again.true_size, again.look_ahead) == ("zones", True, "off")
+    assert again.bullet_look == BulletLook(style="trail", trail_seconds=0.1)
+    assert again.original.grid_pattern == "hex"  # Revert goes back to the file
+    again.close()
+
+
 def test_a_map_is_made_saved_played_edited_renamed_and_deleted_in_the_menu(context, tmp_path):
     """Menu > Maps: start from the arena, change it, save it as "duel" (yours); it shows on
     New match and plays from there and from `--preset duel`; edited and saved again, moved

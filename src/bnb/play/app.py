@@ -71,8 +71,7 @@ SOLVED_UNDER = ("flight.", "rules.bullet_drag")  # the rules a card's handles de
 GridPattern = Literal[("off", *GRID_PATTERNS)]  # the dot grid's patterns (`render.grid`)
 ContourShapes = Literal[("off", *CONTOUR_SHAPE_SETS)]  # the contours' shapes (`render.contours`)
 BulletStyle = Literal[tuple(BULLET_STYLES)]  # tracer or trail only (`render.bullets`)
-_BULLETS = BulletLook()  # the bullets' default look
-LOOK_AHEADS = ("off", "flying", "always")  # when the camera leads a followed ship
+LOOK_AHEADS = themes.LOOK_AHEADS  # when the camera leads a followed ship
 
 
 @dataclasses.dataclass
@@ -109,16 +108,23 @@ class Options:
     overlays: tuple[str, ...] = ()  # prediction overlays on at the start (bnb.play.overlays)
     overlay_side: int | None = None  # whose predictions they draw (None: the default)
     truth: bool = False  # draw the truth beside the predictions
-    true_size: bool = False  # draw the ships at their size in metres (no minimum on screen)
-    grid: GridPattern = "triangle"  # the dot grid fixed to the map, or "off"
-    contours: ContourShapes = "off"  # the distance contours' shape set, or "off"
-    look_ahead: Literal[LOOK_AHEADS] = "always"  # lead a followed ship: off, flown only, always
-    # How bullets draw (`render.bullets.BulletLook`; the Settings menu changes it live):
-    bullet_style: BulletStyle = "tracer"  # a round head and its trail, or the trail alone
-    bullet_head_size: float = _BULLETS.head_pixels  # the head's radius, screen pixels
-    bullet_trail_head_width: float = _BULLETS.trail_head_pixels  # the trail at the head, px
-    bullet_trail_tail_width: float = _BULLETS.trail_tail_pixels  # the trail at its tail, px
-    bullet_trail_seconds: float = _BULLETS.trail_seconds  # the trail's length, screen seconds
+    # The look settings are the theme's (`themes.Theme`, saved with it). Left None, the
+    # loaded theme's value stands; given, a flag overrides it for this session.
+    true_size: bool | None = None  # draw the ships at their size in metres
+    grid: GridPattern | None = None  # the dot grid fixed to the map, or "off"
+    contours: ContourShapes | None = None  # the distance contours' shape set, or "off"
+    look_ahead: Literal[LOOK_AHEADS] | None = None  # lead a followed ship: off, flown, always
+    bullet_style: BulletStyle | None = None  # a round head and its trail, or the trail alone
+    bullet_head_size: float | None = None  # the head's radius, screen pixels
+    bullet_trail_head_width: float | None = None  # the trail at the head, px
+    bullet_trail_tail_width: float | None = None  # the trail at its tail, px
+    bullet_trail_seconds: float | None = None  # the trail's length, screen seconds
+
+    def look_overrides(self) -> dict:
+        """The look settings given as flags, by theme field."""
+        flags = {"grid_pattern": self.grid, "contour_shapes": self.contours}
+        flags |= {name: getattr(self, name) for name in themes.LOOK_FIELDS if hasattr(self, name)}
+        return {name: value for name, value in flags.items() if value is not None}
 
     def game(self, maps: Maps | None = None) -> GameConfig:
         """The game configuration: the preset's (`Maps.find`) with any sizes given
@@ -192,22 +198,12 @@ class Session:
         self.camera = Camera(width, height)
         self.minimap_camera = Camera(1, 1)
         self.view = VIEWS.index(options.view)
-        self.true_size = options.true_size  # the ships at their size in metres (`render.ships`)
-        self.grid = options.grid  # the dot grid's pattern, or "off" (`render.grid`)
-        self.contours = options.contours  # the contours' shapes, or "off" (`render.contours`)
-        self.look_ahead = options.look_ahead  # when the camera leads a followed ship
-        self.bullet_look = BulletLook(  # how bullets draw (`render.bullets`)
-            style=options.bullet_style,
-            head_pixels=options.bullet_head_size,
-            trail_head_pixels=options.bullet_trail_head_width,
-            trail_tail_pixels=options.bullet_trail_tail_width,
-            trail_seconds=options.bullet_trail_seconds,
-        )
         self.lead = LookAhead()
         self.library = themes.Library() if library is None else library
         self.theme_names = self.library.names()
-        self.theme = self.library.load(options.theme)
-        self.original = self.theme  # what "Revert" restores
+        # The flags override the loaded theme's looks for the session (not its file).
+        self.original = self.library.load(options.theme)  # what "Revert" restores
+        self.theme = dataclasses.replace(self.original, **options.look_overrides())
         self.editor = ThemeEditor(self.library)
         self.tuning_panel = TuningPanel()
         self.tuner: Tuner | None = None
@@ -619,34 +615,82 @@ class Session:
         """Switch to the next view: spectator, team 0, team 1."""
         self.view = (self.view + 1) % len(VIEWS)
 
+    def _look(self, **changes) -> None:
+        """Change the theme's look settings (they save with the theme)."""
+        self.theme = dataclasses.replace(self.theme, **changes)
+
+    @property
+    def true_size(self) -> bool:
+        """Ships at their size in metres (the theme's `true_size`)."""
+        return self.theme.true_size
+
+    @property
+    def grid(self) -> str:
+        """The dot grid's pattern, or "off" (the theme's `grid`)."""
+        return self.theme.grid_pattern
+
+    @property
+    def contours(self) -> str:
+        """The contours' shape set, or "off" (the theme's `contours`)."""
+        return self.theme.contour_shapes
+
+    @property
+    def look_ahead(self) -> str:
+        """When the camera leads a followed ship (the theme's `look_ahead`)."""
+        return self.theme.look_ahead
+
+    @property
+    def bullet_look(self) -> BulletLook:
+        """How bullets draw, from the theme's bullet settings."""
+        theme = self.theme
+        return BulletLook(
+            style=theme.bullet_style,
+            head_pixels=theme.bullet_head_size,
+            trail_head_pixels=theme.bullet_trail_head_width,
+            trail_tail_pixels=theme.bullet_trail_tail_width,
+            trail_seconds=theme.bullet_trail_seconds,
+        )
+
+    def set_bullet_look(self, **changes) -> None:
+        """Change the bullets' look: BulletLook fields (style, head_pixels,
+        trail_head_pixels, trail_tail_pixels, trail_seconds)."""
+        names = dict(
+            style="bullet_style",
+            head_pixels="bullet_head_size",
+            trail_head_pixels="bullet_trail_head_width",
+            trail_tail_pixels="bullet_trail_tail_width",
+            trail_seconds="bullet_trail_seconds",
+        )
+        self._look(**{names[name]: value for name, value in changes.items()})
+
     def toggle_true_size(self) -> None:
         """Draw the ships at their size in metres, or never smaller than a minimum on
         screen (the default)."""
-        self.true_size = not self.true_size
+        self._look(true_size=not self.true_size)
 
     def set_grid(self, pattern: str) -> None:
         """Draw the dot grid in this pattern ("off": none)."""
-        self.grid = pattern
+        self._look(grid_pattern=pattern)
 
     def cycle_grid(self) -> None:
         """Switch the dot grid to the next pattern: off, square, triangle, hex."""
         patterns = ("off", *GRID_PATTERNS)
-        self.grid = patterns[(patterns.index(self.grid) + 1) % len(patterns)]
+        self._look(grid_pattern=patterns[(patterns.index(self.grid) + 1) % len(patterns)])
 
     def set_contours(self, shapes: str) -> None:
         """Draw the distance contours from this shape set ("off": none)."""
-        self.contours = shapes
+        self._look(contour_shapes=shapes)
 
     def cycle_contours(self) -> None:
         """Switch the distance contours to the next shape set: off, fields, edge, fields
         and edge, fields, edge and zones, zones."""
         sets = ("off", *CONTOUR_SHAPE_SETS)
-        self.contours = sets[(sets.index(self.contours) + 1) % len(sets)]
+        self._look(contour_shapes=sets[(sets.index(self.contours) + 1) % len(sets)])
 
     def set_look_ahead(self, when: str) -> None:
         """Lead a followed ship's view in its direction of travel: "off", "flying" (the
         flown ship only) or "always"."""
-        self.look_ahead = when
+        self._look(look_ahead=when)
 
     def leading(self) -> bool:
         """Whether the camera leads the followed ship now."""

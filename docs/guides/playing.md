@@ -86,8 +86,9 @@ A bullet has no size in the game, so the tracer is a few pixels wide at every zo
 
 **Settings** → **Bullets** changes the look while you play: **Tracer** (the above) or
 **Trail only** (the fading trail, no head), the head's size (its radius, tracer only), the
-trail's width at the head and at its tail (screen pixels) and its length (seconds). The
-options set them at the start: `--bullet-style trail`, `--bullet-head-size`,
+trail's width at the head and at its tail (screen pixels) and its length (seconds). They
+are part of the theme (see Settings and themes): they save with it. The options override
+the theme's for the session: `--bullet-style trail`, `--bullet-head-size`,
 `--bullet-trail-head-width`, `--bullet-trail-tail-width`, `--bullet-trail-seconds`.
 
 ## Ship size
@@ -98,7 +99,8 @@ type's wingspan (the ship card's `hit_radius`). Zoomed out, the ring is never sm
 the ships at their size in metres at any zoom instead: the ring at the hitbox and the
 silhouette grown to reach it from wingtip to wingtip, so the drawn span is the real one.
 Trails, ghosts and the selection's outline follow it. Zoomed out, a true-size ship is a
-few pixels across; clicking still selects it from as far as the default size reaches.
+few pixels across; clicking still selects it from as far as the default size reaches. The
+setting is the theme's `true_size` (the option is `--true-size`).
 
 ## The camera and the grid
 
@@ -113,7 +115,7 @@ change of speed slides the ship across the view gently. It is held in pixels, so
 leaves the ship where it is on screen, and the lead then eases to the new zoom's (4 s of
 travel is more pixels zoomed in). **Settings** → **Look ahead** chooses **Always** (the
 default), **Flying** (only the ship you fly) or **Off** (the ship stays in the middle);
-the option is `--look-ahead`. Panning, the minimap or **Home** stop following, as before.
+it is the theme's `look_ahead` (the option is `--look-ahead`). Panning, the minimap or **Home** stop following, as before.
 
 **The dot grid.** Faint dots fixed to the map, inside the arena, under everything else
 (they scroll with the world, so speed reads from them). Three patterns: **Square**,
@@ -122,7 +124,7 @@ corners of a honeycomb). As you zoom, the spacing steps by the pattern's factor 
 square and triangle, ×3 for hex) and the finer dots fade out across a step, so the density
 on screen stays about the same, as in a map app. **Grid** in the top bar (or G) goes to the
 next pattern, **Settings** → **Dot grid** picks one, and `--grid off|square|triangle|hex`
-starts with one. The dots' colour and opacity are the theme's `grid` (alpha: how faint).
+overrides the theme's pattern for the session. The pattern is the theme's `grid_pattern`; the dots' colour and opacity are the theme's `grid` (alpha: how faint).
 
 **The contours.** Faint lines at equal distances from the map's shapes, as a topographic
 map draws heights: around the fields, parallel to the map edge, around the zones, inside
@@ -134,7 +136,8 @@ stronger. The lines draw over the fields' fill and under the zones, trails, ship
 bullets. **Contours** in the top bar (or O) goes to the next set of shapes, **Settings** →
 **Contours** picks one: **Off** (the default), **Fields**, **Edge**, **Fields + edge**,
 **All** (fields, edge and zones) or **Zones**; `--contours
-off|fields|edge|fields+edge|fields+edge+zones|zones` starts with one. They can be on with
+off|fields|edge|fields+edge|fields+edge+zones|zones` overrides the
+theme's `contour_shapes` for the session. They can be on with
 the dot grid. Their colour and opacity are the theme's `contours`.
 
 ## Flying a ship
@@ -313,12 +316,25 @@ itself is untouched.
 
 ## Settings and themes
 
-**Settings** chooses the theme, the dot grid, the contours, the look-ahead, the bullets'
-look, fog in new matches, the
+**Settings** chooses the theme, and edits the look the theme holds (below): the dot grid,
+the contours, the look-ahead, the bullets' look. It also sets fog in new matches, the
 interface scale (0.75 to 2; the
 layout works from 1280 × 720 to 2560 × 1440) and shows the key list. The shipped themes
 are in `src/bnb/play/themes/`; your own live in your configuration directory
 (`bnb.play.themes.USER`; on Linux, ~/.config/boost-and-broadside/themes).
+
+A theme is the whole look: its colours and the look settings (ships at true size, the dot
+grid's pattern, the contours' shapes, the look-ahead, the bullets' look). Settings and the
+top bar's **Grid**, **Contours** and true-size buttons edit the current theme's values
+live; **Save as theme** (in the theme editor) writes all of them with the colours, so
+they come back when the theme is chosen again (`--theme NAME`). Match settings (the preset,
+fog, agents, seed, tuning) and the interface scale are not part of a theme. A look option
+(`--grid`, `--contours`, `--true-size`, `--look-ahead`, `--bullet-*`) overrides the
+loaded theme's value for that session only, never the file; choosing another theme in
+the session uses that theme's own values. A theme file may omit any look setting: it
+takes its default (ships at the minimum size, triangle grid, no contours, always look
+ahead, the tracer), so themes saved before the look settings existed load and look the
+same.
 
 <!-- generated: play-themes -->
 
@@ -331,10 +347,11 @@ cards' own included:
 - **Save as theme** writes the colours to your themes as `<name>.toml`, under the name in
   the name field (lowercase words joined by hyphens). The shipped themes are read-only,
   so a shipped name is refused, and replacing one of your own themes asks first.
-- **Revert** restores the colours from the theme's file.
+- **Revert** restores the colours and looks from the theme's file.
 
 To make a theme by hand, copy a file from `src/bnb/play/themes/` into your themes and
-change its values; a file must list every value, and `bnb.play.themes.load` names any
+change its values; a file must list every colour and number (the look settings may be
+left out), and `bnb.play.themes.load` names any
 value that is missing, unknown or malformed.
 
 ## Tuning the game

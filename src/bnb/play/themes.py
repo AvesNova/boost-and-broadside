@@ -1,8 +1,13 @@
-"""Themes: the colours the renderer draws with, as data files (TOML).
+"""Themes: the colours the renderer draws with, and the rest of the play shell's look,
+as data files (TOML).
 
-Every colour is a hex code, "#RRGGBB" or "#RRGGBBAA" (alpha where it matters). A theme
-file lists every field of `Theme`, no more and no fewer; `load` checks that. The colours
-reach the shaders as uniforms each frame, so an edited theme draws on the next frame.
+Every colour is a hex code, "#RRGGBB" or "#RRGGBBAA" (alpha where it matters). The look
+settings (`LOOK_FIELDS`: true size, the dot grid's pattern, the contours' shapes, the
+look-ahead, the bullets' look) are plain values. A theme file lists every colour and
+number of `Theme` and no unknown value; `load` checks that. A look setting a file
+omits takes its default (`LOOK_DEFAULTS`), so a theme written before a setting existed
+still loads and looks as it did. The values reach the shaders as uniforms each frame,
+so an edited theme draws on the next frame.
 
 Themes live in two places (`Library`): the shipped ones in the package's `themes/`, which
 are read-only, and the user's in a per-user configuration directory, where "Save as"
@@ -66,6 +71,23 @@ def _pair(label: str, alpha: bool = False):
     return dataclasses.field(metadata={"label": label, "alpha": alpha, "pair": True})
 
 
+GRID_PATTERNS = ("off", "square", "triangle", "hex")  # `render.grid.PATTERNS` and off
+CONTOUR_SETS = (  # `render.contours.SHAPE_SETS` and off
+    "off",
+    "fields",
+    "edge",
+    "fields+edge",
+    "fields+edge+zones",
+    "zones",
+)
+LOOK_AHEADS = ("off", "flying", "always")  # when the camera leads a followed ship
+BULLET_STYLES = ("tracer", "trail")  # `render.bullets.STYLES`
+
+
+def _look(label: str, default):
+    return dataclasses.field(default=default, metadata={"label": label, "look": True})
+
+
 @dataclasses.dataclass(frozen=True)
 class Theme:
     """A whole look. Colours are `Colour`s; a pair holds team 0's then team 1's. fog
@@ -79,7 +101,14 @@ class Theme:
     (`bnb.play.overlays`).
     fill_strength: how far a field's deepest fill goes from the sky toward its air colour.
     vortex_threshold: the angle of attack, as a fraction of the stall angle, beyond which
-    a wingtip vortex trails."""
+    a wingtip vortex trails.
+    The look settings, after the colours: true_size (ships at their size in metres, no
+    minimum on screen), grid_pattern (the dot grid's pattern, or "off"; grid is its
+    colour), contour_shapes (the distance contours' shape set, or "off"), look_ahead
+    (when the camera leads a followed ship: "off", "flying", "always") and the
+    bullets' look (`render.bullets.BulletLook`): bullet_style ("tracer" or "trail"),
+    bullet_head_size (the head's radius), the trail's width at the head and at the
+    tail (screen pixels) and bullet_trail_seconds."""
 
     name: str
     sky: Colour = _colour("sky")
@@ -111,25 +140,64 @@ class Theme:
     truth: Colour = _colour("truth")
     fill_strength: float = dataclasses.field(metadata={"label": "fill strength"})
     vortex_threshold: float = dataclasses.field(metadata={"label": "vortex threshold"})
+    true_size: bool = _look("ships at true size", False)
+    grid_pattern: str = _look("dot grid pattern", "triangle")
+    contour_shapes: str = _look("distance contour shapes", "off")
+    look_ahead: str = _look("camera look-ahead", "always")
+    bullet_style: str = _look("bullet style", "tracer")
+    bullet_head_size: float = _look("bullet head radius (px)", 2.5)
+    bullet_trail_head_width: float = _look("bullet trail width at the head (px)", 5.0)
+    bullet_trail_tail_width: float = _look("bullet trail width at the tail (px)", 0.5)
+    bullet_trail_seconds: float = _look("bullet trail length (s)", 0.04)
 
 
 NUMBER_FIELDS = ("fill_strength", "vortex_threshold")
+LOOK_FIELDS = tuple(f.name for f in dataclasses.fields(Theme) if f.metadata.get("look"))
+LOOK_DEFAULTS = {f.name: f.default for f in dataclasses.fields(Theme) if f.name in LOOK_FIELDS}
+LOOK_CHOICES = {
+    "grid_pattern": GRID_PATTERNS,
+    "contour_shapes": CONTOUR_SETS,
+    "look_ahead": LOOK_AHEADS,
+    "bullet_style": BULLET_STYLES,
+}
 COLOUR_FIELDS = tuple(
     field.name
     for field in dataclasses.fields(Theme)
-    if field.name != "name" and field.name not in NUMBER_FIELDS
+    if field.name != "name" and field.name not in NUMBER_FIELDS and field.name not in LOOK_FIELDS
 )
 
 
+def _look_value(name: str, field: str, value):
+    """A look setting from a file's value; fails when it is not of the setting's kind."""
+    default = LOOK_DEFAULTS[field]
+    if isinstance(default, bool):
+        if not isinstance(value, bool):
+            raise ValueError(f"theme {name}: {field} must be true or false")
+        return value
+    if field in LOOK_CHOICES:
+        if value not in LOOK_CHOICES[field]:
+            raise ValueError(f"theme {name}: {field} must be one of {list(LOOK_CHOICES[field])}")
+        return value
+    if isinstance(value, bool) or not isinstance(value, int | float) or not value >= 0.0:
+        raise ValueError(f"theme {name}: {field} must be a number, zero or more")
+    return float(value)
+
+
 def parse(name: str, values: dict) -> Theme:
-    """A theme from a file's table; fails on a missing, unknown or malformed value."""
+    """A theme from a file's table; fails on a missing colour or number, an unknown value
+    or a malformed one. A missing look setting takes its default."""
     expected = {field.name for field in dataclasses.fields(Theme)} - {"name"}
-    missing, unknown = expected - values.keys(), values.keys() - expected
+    missing = expected - values.keys() - set(LOOK_FIELDS)
+    unknown = values.keys() - expected
     if missing or unknown:
         raise ValueError(f"theme {name}: missing {sorted(missing)}, unknown {sorted(unknown)}")
     out = {}
     for field in dataclasses.fields(Theme):
         if field.name == "name":
+            continue
+        if field.name in LOOK_FIELDS:
+            if field.name in values:
+                out[field.name] = _look_value(name, field.name, values[field.name])
             continue
         value = values[field.name]
         if field.name in NUMBER_FIELDS:
@@ -215,7 +283,13 @@ def to_toml(theme: Theme) -> str:
         if field.name == "name":
             continue
         value = getattr(theme, field.name)
-        if field.name in NUMBER_FIELDS:
+        if field.name in LOOK_FIELDS:
+            text = (
+                repr(value).lower()
+                if isinstance(value, bool)
+                else (repr(value) if isinstance(value, float) else f'"{value}"')
+            )
+        elif field.name in NUMBER_FIELDS:
             text = repr(value)
         elif field.metadata.get("pair"):
             text = "[" + ", ".join(f'"{colour.hex()}"' for colour in value) + "]"

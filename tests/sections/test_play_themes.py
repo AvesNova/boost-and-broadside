@@ -94,3 +94,46 @@ def test_a_theme_file_must_list_every_value(tmp_path):
         themes.Library(tmp_path).save(
             dataclasses.replace(themes.load(themes.DEFAULT), name="Bad Name")
         )
+
+
+def test_the_look_settings_default_to_todays_look_and_a_theme_without_them_loads():
+    """A theme file written before the look settings existed loads with the defaults
+    (the look it always had); the settings round trip through a saved file."""
+    from bnb.play.render.bullets import BulletLook
+
+    theme = themes.load(themes.DEFAULT)
+    values = tomllib.loads(themes.to_toml(theme))
+    for name in themes.LOOK_FIELDS:
+        del values[name]
+    old = themes.parse("old", values)
+    assert {name: getattr(old, name) for name in themes.LOOK_FIELDS} == themes.LOOK_DEFAULTS
+    default = BulletLook()
+    assert (
+        old.bullet_style,
+        old.bullet_head_size,
+        old.bullet_trail_head_width,
+        old.bullet_trail_tail_width,
+        old.bullet_trail_seconds,
+    ) == (
+        default.style,
+        default.head_pixels,
+        default.trail_head_pixels,
+        default.trail_tail_pixels,
+        default.trail_seconds,
+    )
+    changed = dataclasses.replace(
+        old,
+        true_size=True,
+        grid_pattern="hex",
+        contour_shapes="zones",
+        bullet_style="trail",
+        look_ahead="off",
+    )
+    assert themes.parse("old", tomllib.loads(themes.to_toml(changed))) == changed
+
+
+def test_a_malformed_look_setting_fails():
+    values = tomllib.loads(themes.to_toml(themes.load(themes.DEFAULT)))
+    for name, bad in (("grid_pattern", "dots"), ("true_size", "yes"), ("bullet_head_size", -1.0)):
+        with pytest.raises(ValueError, match=name):
+            themes.parse("broken", values | {name: bad})

@@ -580,7 +580,7 @@ class Menu:
             "settings/bullets",
             BULLET_STYLES,
             look.style,
-            lambda style: setattr(look, "style", style),
+            lambda style: session.set_bullet_look(style=style),
             "A round head and its fading trail, or the fading trail alone",
         )
         for field, label, low, high, form, help in BULLET_SLIDERS:
@@ -596,7 +596,7 @@ class Menu:
             controls.record(f"settings/bullets/{field}")
             tooltip(help)
             if changed:
-                setattr(look, field, value)
+                session.set_bullet_look(**{field: value})
 
     def _settings(self, interface: Interface) -> None:
         session, controls = self.session, interface.controls
