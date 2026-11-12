@@ -34,7 +34,7 @@ centre 1.68, Yongma 1.3 at an advantage of 1), so r9 flies the bare combat layer
   the ship inside the range: reverse, while the combat layer turns toward it.
 
 The clocks advance only on a switching decision (a re-read carry gives the same
-marginals) and reset on a fresh ship or a lost target. The doctrine table is 14 columns
+marginals) and reset on a fresh ship or a lost target. The doctrine table grew from 33 to 66 columns by the end (the sense and the yo-yo variants added later)
 wider (the play shell's compiled tick needs a rebuild). Tests:
 `test_a_lead_turn_turns_before_the_merge_to_the_passing_side_or_away`,
 `test_a_yoyo_climbs_with_the_stick_eased_after_a_stalemate_then_dives`,
@@ -523,7 +523,7 @@ shot.
 **Open for the author**:
 1. Adopt r9m (or the crowd extension alone, which keeps r9's duels and their joust share)
    as the stored doctrine? Either needs the play shell's compiled tick rebuilt: the doctrine
-   table is 22 columns wider and the carry has three more fields (`stalemate_seconds`,
+   table is 33 columns wider (33 to 66) and the carry has three more fields (`stalemate_seconds`,
    `yoyo_seconds`, `sense_draw`).
 2. The frozen card's energy v turn crowd tips to the Jujak under the extension (5v5 0.53 to
    0.34, 10v10 0.48 to 0.22): the extension splits the furball into duels, and the frozen
