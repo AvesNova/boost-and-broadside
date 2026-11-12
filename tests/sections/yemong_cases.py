@@ -125,6 +125,27 @@ def scale_error(actual: torch.Tensor, expected: torch.Tensor) -> float:
     return ((actual - expected).abs().max() / expected.abs().max().clamp_min(1.0)).item()
 
 
+def assert_matches_golden(actual: dict, expected: dict, tolerance: float = 2e-4) -> None:
+    """Every named output of a recorded run: floats to `tolerance` of the output's own scale
+    (`scale_error`), flags and counts exactly. The goldens run a float64 network for 40
+    ticks; the replay stores the enemy actions as int16 fixed point (`store_action`), so a
+    rounding flip (one unit in ACTION_SCALE) feeds back into the belief: one thread against
+    all threads, the outputs differ by 1e-6 of their scale and the worst (arm 1's carried
+    state) by 3e-5. A wrong formula or a missing term moves an output by a good fraction (the
+    stale goldens of this tree differed by 1). The stored actions themselves match to one
+    unit."""
+    assert actual.keys() == expected.keys()
+    for name, want in expected.items():
+        got = actual[name]
+        if name == "replay.enemy_action":  # round(p ACTION_SCALE): a rounding flip is one unit
+            assert (got.int() - want.int()).abs().max() <= 1, name
+        elif want.is_floating_point():
+            error = scale_error(got.double(), want.double())
+            assert error <= tolerance, (name, error)
+        else:
+            assert torch.equal(got, want), name
+
+
 def golden_obs(golden: dict) -> Obs:
     """A golden file's observation, its ship rows recorded with the columns of
     COLUMNS_BEFORE_RECORDS, in today's layout: each column moved by name, the columns added

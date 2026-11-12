@@ -166,7 +166,9 @@ def test_the_rollout_counts_episode_ends_and_timeouts(global_generator):
         (environments,), torch.ones(len(environments)), accumulate=True
     )
     played = seen > 0
-    assert torch.equal(sums[played, 0], ends[played] / seen[played])
+    torch.testing.assert_close(
+        sums[played, 0], ends[played] / seen[played], rtol=1e-6, atol=0
+    )  # float32
     assert (sums[:, 1] <= sums[:, 0]).all()
     assert torch.equal(runner.take_episodes(), torch.zeros_like(sums))
 

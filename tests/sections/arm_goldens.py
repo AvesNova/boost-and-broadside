@@ -1,13 +1,11 @@
-"""Digests of the round-2 arms' step loops and unrolls on the spread-fit golden's inputs
-(offset seed 11, one thread), recorded before arms 3 and 4 existed (`ARMS_GOLDEN`), so the
-switches they add leave arms 1 and 2 bit for bit as they were. Run on one thread in a fresh
-process (a CPU matmul's summation order follows the process's thread pool):
-`test_yemong_error_head.test_arms_1_and_2_step_and_unroll_bit_for_bit_as_recorded`.
+"""The arms' step loops and unrolls on the spread-fit golden's inputs (offset seed 11),
+recorded as float64 tensors (`ARMS_GOLDEN`): the switches later arms add leave arms 1 and 2, and
+C-fixed (the same without the acceleration inputs), as they were, to float64 rounding
+(`yemong_cases.assert_matches_golden`). The spread-fit golden's own outputs (`v1`) are
+recorded here too.
 
-`uv run --no-sync python tests/sections/arm_goldens.py --record` (one thread) rewrites it."""
+`uv run --no-sync python tests/sections/arm_goldens.py --record` rewrites both."""
 
-import hashlib
-import json
 import pathlib
 import sys
 
@@ -16,13 +14,17 @@ import yemong_cases as cases
 
 HERE = pathlib.Path(__file__).parent
 SPREAD_GOLDEN = HERE / "golden" / "yemong_v1_spread_steps.pt"
-ARMS_GOLDEN = HERE / "golden" / "yemong_arms12_steps.json"
+ARMS_GOLDEN = HERE / "golden" / "yemong_arms_steps.pt"
 OWN = 5
+F64 = torch.float64
+FIRST = 8  # the per-tick outputs are wide: the file keeps their first eight ticks
+WIDE_TICKS = 1  # and the next-state logits, wider still, their first
+C_FIXED = dict(order="temporal_first", spread_fit="coarsest")
 ARMS = {
-    "arm1": dict(order="temporal_first", spread_fit="coarsest", acceleration_inputs=True),
+    "c_fixed": dict(C_FIXED, acceleration_inputs=False),
+    "arm1": dict(C_FIXED, acceleration_inputs=True),
     "arm2": dict(
-        order="temporal_first",
-        spread_fit="coarsest",
+        C_FIXED,
         acceleration_inputs=True,
         next_state="delta",
         delta_baseline="persistence",
@@ -31,46 +33,57 @@ ARMS = {
 }
 
 
-def _digest(tensor: torch.Tensor) -> str:
-    return hashlib.sha256(tensor.contiguous().numpy().tobytes()).hexdigest()
-
-
-def digests(settings: dict) -> dict[str, str]:
-    """Each output's SHA-256 of the arm's step loop and unroll over the golden's inputs."""
+def outputs(settings: dict) -> dict[str, torch.Tensor]:
+    """The arm's step loop and unroll over the golden's inputs, by output name: the network in
+    float64 (the weights as initialised in float32), so that the rounding of a thread count or
+    a library stays small (`yemong_cases.assert_matches_golden`)."""
     golden = torch.load(SPREAD_GOLDEN, weights_only=True)
-    obs = cases.golden_obs(golden)
-    net = cases.model(**settings)
+    obs = cases.cast(cases.golden_obs(golden), F64)
+    net = cases.double(cases.model(**settings))
     torch.manual_seed(11)
     carry = net.initial_carry(obs.ships.shape[1], OWN, 10)
     with torch.no_grad():
         decisions, final = cases.step_loop(net, net.step, carry, obs, golden["joint"])
         unrolled = net.unroll(carry, obs, decisions.replay, cases.resets(obs))
-    outputs = dict(
-        step_policy_logits=decisions.policy_logits,
-        step_next_state_logits=decisions.next_state_logits,
-        step_values=decisions.values,
+    return dict(
+        step_policy_logits=decisions.policy_logits[:FIRST],
+        step_next_state_logits=decisions.next_state_logits[:WIDE_TICKS],
+        step_values=decisions.values[:FIRST],
         step_carry_state=final.state,
         step_belief_means=final.belief.means,
         step_belief_spreads=final.belief.spreads,
-        step_replay_spreads=decisions.replay.spreads,
-        unroll_policy_logits=unrolled.policy_logits,
-        unroll_next_state_logits=unrolled.next_state_logits,
-        unroll_values=unrolled.values,
+        step_replay_spreads=decisions.replay.spreads[:FIRST],
+        unroll_policy_logits=unrolled.policy_logits[:FIRST],
+        unroll_next_state_logits=unrolled.next_state_logits[:WIDE_TICKS],
+        unroll_values=unrolled.values[:FIRST],
     )
-    return {name: _digest(value) for name, value in outputs.items()}
 
 
-def reproduces() -> None:
-    """Raises unless every arm's digests equal the recorded ones."""
-    expected = json.loads(ARMS_GOLDEN.read_text())
-    for arm, settings in ARMS.items():
-        assert digests(settings) == expected[arm], arm
+def reproduces(arm: str) -> None:
+    """Raises unless the arm's outputs match the recorded ones."""
+    expected = torch.load(ARMS_GOLDEN, weights_only=True)[arm]
+    cases.assert_matches_golden(outputs(ARMS[arm]), expected)
+
+
+def record() -> None:
+    recorded = {
+        arm: {
+            name: value.clone() for name, value in outputs(settings).items()
+        }  # a slice keeps its storage
+        for arm, settings in ARMS.items()
+    }
+    torch.save(recorded, ARMS_GOLDEN)
+    import test_yemong_spread_fit as spread
+
+    golden = torch.load(SPREAD_GOLDEN, weights_only=True)
+    stepped, _ = spread._steps(cases.double(cases.model()), golden)
+    golden["outputs"] = {name: value.clone() for name, value in stepped.items()}
+    torch.save(golden, SPREAD_GOLDEN)
 
 
 if __name__ == "__main__":
-    torch.set_num_threads(1)
     if "--record" in sys.argv:
-        recorded = {arm: digests(settings) for arm, settings in ARMS.items()}
-        ARMS_GOLDEN.write_text(json.dumps(recorded, indent=1) + "\n")
+        record()
     else:
-        reproduces()
+        for name in ARMS:
+            reproduces(name)

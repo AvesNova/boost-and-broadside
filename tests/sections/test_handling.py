@@ -197,7 +197,11 @@ def test_a_parameter_no_handle_feels_takes_no_step():
     normal = normal + 1e-3 * torch.diag_embed(normal.diagonal(dim1=-2, dim2=-1))
     gradient = jacobian.transpose(-1, -2) @ residual[..., None]
     plain = -torch.linalg.solve(normal[:1], gradient[:1])[..., 0]
-    assert torch.equal(marquardt_step(jacobian[:1], residual[:1], damping[:1]), plain)
+    # float64, a batch of one against a batch of two: the solves round apart by about 1e-15
+    # relative to the conditioning; 1e-9 still fails a wrong damping or a missing term
+    torch.testing.assert_close(
+        marquardt_step(jacobian[:1], residual[:1], damping[:1]), plain, rtol=1e-9, atol=1e-12
+    )
 
 
 def test_the_characteristics_are_kept_on_disk(tmp_path, monkeypatch):

@@ -364,7 +364,10 @@ def test_fourier_inputs_replace_the_position_and_heading_runs_only(code):
     spreads = torch.rand(COUNT, code.spread_count, dtype=torch.float64, generator=generator)
     encoded = code.encode(means, spreads, ship_type)
     assert code.inputs(encoded, means, spreads) is encoded
-    torch.testing.assert_close(fourier.encode(means, spreads, ship_type), encoded, rtol=0, atol=0)
+    # float64 throughout: a few operations' rounding is 1e-15, so 1e-12 still fails a wrong term
+    torch.testing.assert_close(
+        fourier.encode(means, spreads, ship_type), encoded, rtol=1e-12, atol=1e-12
+    )
     inputs = fourier.inputs(encoded, means, spreads)
     assert inputs.shape == (COUNT, fourier.input_width)
     position = torch.stack(
@@ -375,10 +378,12 @@ def test_fourier_inputs_replace_the_position_and_heading_runs_only(code):
         -3,
     )
     heading = codes.fourier_encode(means[:, 4], spreads[:, 4], 2.0 * math.pi, 4, 4)
-    torch.testing.assert_close(inputs[:, :36], position.flatten(-3), rtol=0, atol=0)
-    torch.testing.assert_close(inputs[:, 36:279], encoded[:, 81:324], rtol=0, atol=0)  # velocity
-    torch.testing.assert_close(inputs[:, 279:287], heading.flatten(-2), rtol=0, atol=0)
-    torch.testing.assert_close(inputs[:, 287:], encoded[:, 340:], rtol=0, atol=0)
+    torch.testing.assert_close(inputs[:, :36], position.flatten(-3), rtol=1e-12, atol=1e-12)
+    torch.testing.assert_close(
+        inputs[:, 36:279], encoded[:, 81:324], rtol=1e-12, atol=1e-12
+    )  # velocity
+    torch.testing.assert_close(inputs[:, 279:287], heading.flatten(-2), rtol=1e-12, atol=1e-12)
+    torch.testing.assert_close(inputs[:, 287:], encoded[:, 340:], rtol=1e-12, atol=1e-12)
     with pytest.raises(ValueError, match="position_inputs"):
         ShipStateCode(state_code_ranges(RULES, TYPES), position_inputs="polar")
 
@@ -439,14 +444,18 @@ def test_grouped_cross_entropy_matches_the_log_softmax_form_and_its_gradient(dty
     assert ((got_gradient.double() - want_gradient).abs() <= bound).all()
 
 
-def test_the_trajectory_code_of_its_coordinates_is_the_encoders_code_bit_for_bit():
+def test_the_trajectory_code_of_its_coordinates_is_the_encoders_code():
     """`shots.trajectory_code` (made of `trajectory_coordinates`, 46 numbers) equals the
-    general encoders' code at zero spread: position_encode, circular_encode, scalar_sharp."""
+    general encoders' code at zero spread: position_encode, circular_encode, scalar_sharp, to
+    float32 rounding: the code's entries are weights in [0, 1], from sines and cosines of
+    phases up to about 3e3 radians, which float32 rounds at about 3e3 * 6e-8 = 2e-4; the
+    measured largest difference is 1.8e-4, and a missing term or a wrong bin is of order 1."""
     parameters = shots.shot_code_parameters(400.0, 300.0, 1.5, 15.0)
     snapshots = torch.randn(5000, 5) * torch.tensor([3000.0, 3000.0, 500.0, 500.0, 0.4])
     snapshots[:, 4] += 1.0
     snapshots[:20, :4] = 0.0  # on the bins' edges
-    displacement, velocity, index = snapshots[:, :2], snapshots[:, 2:4], snapshots[:, 4]
+    exact = snapshots.double()  # the reference in float64, the code under test in float32
+    displacement, velocity, index = exact[:, :2], exact[:, 2:4], exact[:, 4]
     zero = torch.zeros_like(index)
     period = parameters.displacement_period
     want = torch.cat(
@@ -478,12 +487,15 @@ def test_the_trajectory_code_of_its_coordinates_is_the_encoders_code_bit_for_bit
     )
     coordinates = shots.trajectory_coordinates(parameters, snapshots)
     assert coordinates.shape == (5000, 46)
-    assert torch.equal(shots.trajectory_code(parameters, snapshots), want)
+    torch.testing.assert_close(
+        shots.trajectory_code(parameters, snapshots), want.float(), rtol=0, atol=5e-4
+    )
 
 
 def test_grouped_cross_entropy_of_an_encoded_target_matches_the_plain_target():
-    """With `encode`, the cross-entropy and its gradient are the plain target's (the same
-    operations on the same code: equal)."""
+    """With `encode`, the cross-entropy and its gradient are the plain target's: the same
+    maths on the same code, equal to float32 rounding (1e-5 relative to the largest entry,
+    about 100 ulps)."""
     parameters = shots.shot_code_parameters(400.0, 300.0, 1.5, 15.0)
     snapshots = torch.randn(64, 5) * torch.tensor([3000.0, 3000.0, 500.0, 500.0, 0.4]) + 1.0
     coordinates = shots.trajectory_coordinates(parameters, snapshots)
@@ -498,5 +510,10 @@ def test_grouped_cross_entropy_of_an_encoded_target_matches_the_plain_target():
     )
     (plain_gradient,) = torch.autograd.grad((plain * weight).sum(), logits)
     (encoded_gradient,) = torch.autograd.grad((encoded * weight).sum(), logits)
-    assert torch.equal(plain, encoded)
-    assert torch.equal(plain_gradient, encoded_gradient)
+    torch.testing.assert_close(plain, encoded, rtol=1e-5, atol=1e-5 * float(plain.abs().max()))
+    torch.testing.assert_close(
+        plain_gradient,
+        encoded_gradient,
+        rtol=1e-5,
+        atol=1e-5 * float(plain_gradient.abs().max()),
+    )

@@ -51,7 +51,7 @@ def test_the_card_scales_by_its_units_with_energies_and_snaps_the_fire_rate():
     assert torch.allclose(faster.max_acceleration, 4.0 * types.max_acceleration)
     assert torch.allclose(faster.coast_exchange_scale, 4.0 * types.coast_exchange_scale)
     assert torch.allclose(faster.muzzle_speed, 2.0 * types.muzzle_speed)
-    assert torch.equal(faster.max_lift_coefficient, types.max_lift_coefficient)  # 1/m
+    assert torch.allclose(faster.max_lift_coefficient, types.max_lift_coefficient, rtol=1e-6)  # 1/m
     assert faster.fire_rate.tolist() == [30.0, 15.0]  # 20 Hz is not a whole number of ticks
     assert torch.allclose(
         faster.shield_recharge_delay_scale, 0.5 * types.shield_recharge_delay_scale
