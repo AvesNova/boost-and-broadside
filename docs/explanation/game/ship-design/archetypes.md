@@ -443,3 +443,18 @@ After the fourth round the author judges what is left.
 The author's choice (2026-11-12), from Korean mythology: **Jujak** (주작), the vermilion bird
 of the south, for the turn fighter, and **Yongma** (용마), the dragon-horse, for the energy
 fighter.
+
+### Balance across fleet sizes (2026-11-12)
+
+The frozen card is even at 5v5 and 10v10 (energy v turn 0.49-0.54) but not in small or
+very large fights: the Jujak wins every duel (1v1 0.01), most 2v2s (0.37), and 20v20
+(0.19). With the scripted agent, a duel goes to the better *sustained* turner. The Yongma
+never turns its speed into separation: extension loses in teams, and top-end speed only
+widens its circles. So a card even from 1v1 to 10v10 needs the sustained turns at parity
+and the toughness gap closed (`docs/rewrite/sections/balance-sizes/progress.md`).
+
+Opt-in candidates are saved as play maps (`bnb play --preset balance-a`, and others listed
+there). The ship files stay the frozen card. Open:
+- the same-type duels joust (Jujak v Jujak 0.76-0.80 mutual head-on kills), and the
+  scripted agent's deny element ends that only at about -150 Elo;
+- 20v20 favours Jujak on every card tried.

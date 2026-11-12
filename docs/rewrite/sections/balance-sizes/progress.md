@@ -423,3 +423,23 @@ The author's paths 3 and 6, plus scripted parameters near the joust. 512 games; 
   as the measured cost of anti-joust behaviour, a duel-gated deny (code) looks more
   promising. Left open.
 - Candidate B is saved as the play map `balance-b` (`bnb play --preset balance-b`).
+
+## 20:52-20:57 KST: path run 2 (`paths2/`): top-end speed and Yongma's range
+
+512 games, E v T:
+
+| Card | 1v1 | 2v2 | 5v5 | 10v10 |
+|---|---|---|---|---|
+| J1.5 Js x0.75 \| Ys x0.35 Yd x1.4, Y parasitic drag x0.7 | 0.48 | 0.64 | 0.82 | 0.88 |
+| J1.4 \| Ys x0.5, Y parasitic drag x0.6 | 0.10 | 0.33 | 0.53 | 0.54 |
+| J1.3 \| Ys x0.5, Y parasitic drag x0.5 | 0.03 | 0.27 | 0.45 | 0.39 |
+| J1.45 \| Ys x0.4, Y parasitic drag x0.6, Y engine x1.3 | 0.33 | 0.42 | 0.63 | 0.59 |
+| J1.5 Js x0.75 \| Ys x0.35 Yd x1.4, Y bullet life x0.7 | 0.39 | 0.54 | 0.70 | 0.64 |
+| J1.5 Js x0.75 \| Ys x0.4 Yd x1.4, Y bullet life x0.6 | 0.43 | 0.52 | 0.68 | 0.69 |
+
+- **Top-end speed does not win duels** (path 2). A Yongma with half the parasitic drag
+  still loses the 1v1 to a gentler Jujak (x1.3: 0.03, x1.4: 0.10), and its speed lifts the
+  crowds. With this agent the Yongma never uses speed to disengage and re-engage, so speed
+  only widens its circles.
+- **Yongma's range is a crowd lever** (path 1's "range"): bullet life x0.6-0.7 cuts 5v5 from
+  0.80 to 0.68-0.70 and the duel less (0.47 to 0.39-0.43). Path run 3 pushes it (x0.5).
