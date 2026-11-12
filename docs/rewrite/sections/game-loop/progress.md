@@ -63,3 +63,57 @@ symmetric KL 3.37 nats (Yongma ships) / 3.20 (Jujak ships), agreement 0.63 / 0.6
 
 **Next**: the doctrine search on the GPU against the league (both types at once,
 candidates in one batch), then the card sweep on the champion.
+
+## 2026-11-12 15:02-15:30 KST: round 1 (doctrine search; card sweep 1)
+
+**Doctrine search** (`doctrine_round.py --round 1`, the (1 + lambda) mutation search of
+the doctrine arena on the GPU, both types at once, 10 + 10 children a generation, 32 games
+per candidate x opponent x lineup, 6 lineups (mixed and reversed weighted half), against
+off and hand, from hand and from off; ~30 s a generation; data `round1/`):
+
+- From hand: 0.28 -> 0.72 in one generation (strength cut, extend/slash/lag kept partly),
+  then a plateau ~0.71-0.72; the later promotions were selection noise (the promoted
+  parent re-scored lower: 0.723 -> 0.688). **Fixed** in the search: one promotion at a
+  time, on probation against the incumbent on fresh games.
+- From off: no child beat off by 2 SE in 12 generations.
+- **Elo** (mixed, both orders, 512 games a pair and order): hot 1001 ± 7, off 1000,
+  r1-off 997 ± 7, r1-hand 994 ± 7, hand 513 ± 12, random 191 ± 17. **No doctrine is
+  stronger than none** on this card: the searches found off (r1-off: KL 0.016, agreement
+  0.99, collapsed) or something off-like that stays distinct (r1-hand: KL 1.25 / 0.14,
+  agreement 0.85 / 0.97). r1-off joined the league as `r1`, r1-hand as `r1-hand`.
+- Next for the search: the ES (`es_search`: antithetic pairs over both doctrines in a
+  log/linear space, normalised gradient step, probation) and the per-game kill share as
+  the objective (lower variance than win/loss; `kill_score`).
+
+**Card sweep 1** (`card_round.py --round 1 --player r1-hand`; 16 variants as rows of one
+type table, r1-hand self-play in 5 lineups x 1024 games and r1-hand v off; 544 s at K = 16:
+`per_ship`'s select over 32 types makes a tick ~2.3x slower than K = 1; data
+`round1/cards.{json,md}`). f = head-on fraction scale (of 0.2 x the card's 0.667), a = the
+half-strength angle scale (of 42 degrees); kill shares mutual / offset / flank / tail
+summed over the lineups:
+
+| Variant | v off kill share | E v T (Yongma) | Kills/min | Kills m / o / f / t | Damage m / o / f / t | Passes a kill | Card head-on passes YY / JJ / YJ / JY |
+|---|---|---|---|---|---|---|---|
+| f1 a1 (base) | 0.500 | 0.561 ± 0.014 | 5.57 | 0.33 / 0.26 / 0.35 / 0.06 | 0.51 / 0.21 / 0.24 / 0.04 | 0.58 | 3.46 / 3.33 / 2.84 / 4.04 |
+| f1 a0.25 | 0.503 | 0.492 | 5.88 | 0.36 / 0.31 / 0.29 / 0.04 | 0.49 / 0.28 / 0.21 / 0.02 | 0.62 | same |
+| f0.65 a1 | 0.503 | 0.522 | 5.20 | 0.21 / 0.26 / 0.44 / 0.09 | 0.38 / 0.24 / 0.33 / 0.06 | 0.50 | 5.36 / 5.13 / 4.36 / 6.24 |
+| f0.65 a0.25 | 0.498 | 0.470 | 5.62 | 0.26 / 0.34 / 0.34 / 0.05 | 0.37 / 0.33 / 0.27 / 0.03 | 0.56 | same |
+| f0.4 a1 | 0.486 | 0.452 | 4.88 | 0.13 / 0.25 / 0.51 / 0.11 | 0.25 / 0.26 / 0.41 / 0.08 | 0.42 | 8.71 / 8.33 / 7.12 / 10.17 |
+| f0.4 a0.25 | 0.500 | 0.444 | 5.47 | 0.21 / 0.37 / 0.37 / 0.06 | 0.26 / 0.38 / 0.31 / 0.04 | 0.54 | same |
+| f1 a1 slow | 0.501 | 0.532 | 5.34 | 0.30 / 0.26 / 0.37 / 0.07 | 0.50 / 0.20 / 0.26 / 0.05 | 0.55 | 4.06 / 3.91 / 3.33 / 4.74 |
+| f0.65 a0.5 Y explosive 0.5 | 0.501 | 0.500 | 5.50 | 0.25 / 0.32 / 0.38 / 0.06 | 0.37 / 0.30 / 0.29 / 0.04 | 0.53 | 5.36 / ... |
+| f0.65 a0.5 Jujak damage x0.95 | 0.501 | 0.496 | 5.43 | 0.23 / 0.32 / 0.38 / 0.06 | 0.37 / 0.30 / 0.30 / 0.04 | 0.53 | 5.36 / 5.41 / ... |
+
+(slow = muzzle x 0.8 with the reference speed, spread x 1.5, hit radius x 0.85.)
+
+- Frontal armour moves mutual head-on into the flank (kills 0.33 -> 0.13 at f0.4) and a
+  narrower cone into the offset head-on; tail stays 0.04-0.11 under these off-like
+  doctrines. More armour costs Yongma (energy v turn 0.56 -> 0.44): Yongma's edge is the
+  joust. Yongma's explosive share 0.5 or Jujak's damage x 0.95 rebalance it to 0.50.
+- Head-on TTK on the card is 1 / (damage x fraction): f < 1 alone overshoots 3-4 passes
+  (5-10). So round 2 trades them: fraction down, damage up (d x f ~ 1).
+- Measured passes a kill stay 0.4-0.6 whatever the card: kills come in the first merge's
+  turn, not from repeated head-on passes. The card's head-on TTK is not what the agent
+  plays.
+- The doctrine value (r1-hand v off) is 0.49-0.51 on every card: no card here makes the
+  doctrine pay.
