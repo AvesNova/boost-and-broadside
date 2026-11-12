@@ -64,14 +64,16 @@ TRAINING_MIX = (("frontline", 0.5), ("deathmatch", 0.5))
 # the mixes `bnb train --preset` names: the standard ship set's, and the real-scale set's
 # (the same two modes on the real-scale maps, `PRESETS["real_scale_*"]`); and
 # real_scale_all_modes, the final experiments' mix (the author, 2026-11-12): the three
-# real-scale modes, frontline half, deathmatch 0.3, elimination 0.2
+# real-scale modes, frontline 0.5, deathmatch 0.3125, elimination 0.1875 (of 2048
+# environments 1024 / 640 / 384, each mode's two pools whole: 512 / 320 / 192; shares of
+# sixteenths so that 2048 splits exactly and its views divide every minibatch count)
 TRAINING_MIXES = {
     "mixed": TRAINING_MIX,
     "real_scale_mixed": (("real_scale_frontline", 0.5), ("real_scale_deathmatch", 0.5)),
     "real_scale_all_modes": (
         ("real_scale_frontline", 0.5),
-        ("real_scale_deathmatch", 0.3),
-        ("real_scale_elimination", 0.2),
+        ("real_scale_deathmatch", 0.3125),
+        ("real_scale_elimination", 0.1875),
     ),
 }
 # Self-play is a fixed share of each mode's batch, the league's seat the rest (league spec 1).

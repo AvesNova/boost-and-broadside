@@ -2,7 +2,7 @@
 # read by launch.py. An arm (arms.toml) adds its own --set lines after these.
 #
 # The final training config (2026-11-12): the real-scale mix of all three modes (frontline
-# 0.50, deathmatch 0.30, elimination 0.20: `bnb.runtime.train.TRAINING_MIXES`), the
+# 0.5, deathmatch 0.3125, elimination 0.1875: `bnb.runtime.train.TRAINING_MIXES`), the
 # position codes of 2026-11-12 (the TrainConfig.yemong defaults: rotary ladder r 3.405 from
 # 48 m to 254.7 km turned 35 degrees per band, heading harmonics 1 2 4, the colour code to
 # 236 196 m, the arena code, the categorical geometry head), two attention heads (the
@@ -19,9 +19,10 @@
 lineup = ["Yongma", "Yongma", "Jujak", "Jujak", "Jujak"]
 
 preset = "real_scale_all_modes"
-# 2040, not 2048: the mix's shares split the batch into whole environments only at a
-# multiple of 20 (0.3 x 0.5 of the batch is one pool)
-environments = 2040
+# 2048: the mix splits it into whole modes (1024 / 640 / 384) and whole pools (512 / 320 /
+# 192), and its 12,288 views per update divide every minibatch count the arms use (256 and
+# 128 for BC, 32 and 16 for RL), so each stage's learner compiles one micro-batch size
+environments = 2048
 # the combined budget of each chain: BC to its plateau, RL the rest
 chain_budget_steps = 150_000_000
 

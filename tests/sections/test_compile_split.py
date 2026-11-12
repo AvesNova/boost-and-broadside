@@ -129,8 +129,11 @@ def test_minibatches_that_divide_the_views_compile_once(segment):
     net, runner = segment
     learner = lc.with_micro_batch(lc.learner(net, runner, minibatches=4), 3)
     assert learner.micro_batch_shapes(12) == (3,)
-    # the 5090's views (2040 environments) over BC's 256 and RL's 32 minibatches do not
-    # divide: 12 240 = 256 x 47 + 208 and 32 x 382 + 16
+    # 2040 environments' views (12 240) over 256 minibatches do not divide (256 x 47 + 208);
+    # the launch's 2048 (12 288 views) divide BC's 256 and 128 and RL's 32 and 16
     learner = lc.with_micro_batch(lc.learner(net, runner, minibatches=256), 256)
     assert learner.micro_batch_shapes(12240) == (47, 48)
-    assert learner.micro_batch_shapes(11520) == (45,)
+    assert learner.micro_batch_shapes(12288) == (48,)
+    for minibatches in (128, 32, 16):
+        learner = lc.with_micro_batch(lc.learner(net, runner, minibatches=minibatches), 128)
+        assert len(learner.micro_batch_shapes(12288)) == 1
