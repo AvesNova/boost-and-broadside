@@ -39,4 +39,4 @@ Quick-tier results (CPU): tests/sections test_modes, test_mixed, test_play_rende
 test_ship_sets, test_game_version, test_yemong_error_head (125 passed, about 10 min),
 test_yemong_spread_fit, _accelerations, _codes, test_diagnostics, test_handling,
 test_learner_trust_region, test_time_scale; tests/docs. test_mixed's two slow-tier tests
-were run too and pass with the new guards.
+were run by script: bit-for-bit equal, with the death counts above (not re-run under pytest after the guards moved).
