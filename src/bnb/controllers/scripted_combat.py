@@ -28,7 +28,14 @@ from .scripted_memory import (
     time_unit,
     ways_round,
 )
-from .scripted_parameters import ScriptedParameters, floored, in_own_time, logistic, ramp
+from .scripted_parameters import (
+    Logistic,
+    ScriptedParameters,
+    floored,
+    in_own_time,
+    logistic,
+    ramp,
+)
 
 TARGET_SIZE_RANGE = (math.radians(1.0), math.radians(45.0))  # the clamp on its angular size
 COAST, BOOST, REVERSE = 0, 1, 2  # power indices (bnb.game.rules.POWER_MODES)
@@ -506,11 +513,13 @@ def maneuvers(
     stick: torch.Tensor,
     left: torch.Tensor,
     power: torch.Tensor,
+    others: torch.Tensor,
 ):
     """The doctrine's maneuvers (`bnb.controllers.scripted_doctrine`: the lead turn, the
     yo-yo, the brake and the sense) on the combat layer's stick, committed side and power; with the
     stalemate clock and the yo-yo's clock after this decision (advanced only when the plan
     choices may switch, so a re-read carry gives the same marginals; reset on a fresh ship).
+    others (R, S, E): the other known enemies' distances in own gun ranges (inf elsewhere).
     Returns (stick, left, power, stalemate_seconds, yoyo_seconds)."""
     target_x, target_y, distance, _, _, aim_error, target_vx, target_vy = geometry
     temperature = fleet.temperature
@@ -625,20 +634,32 @@ def maneuvers(
         per_ship(lift, fleet.enemy_type)
     ).clamp_min(TINY)
     same_type = fleet.own_type == target_of(fleet.enemy_type.float()).round().to(torch.int32)
-    sensing = torch.where(
+    geometry_gate = torch.where(
         has_target
         & seen
         & (bearing.abs() > 0.5 * math.pi)
         & (target_rate.abs() > TURNING_RATE)
         & (same_type | (doctrine.sense_mirror_only <= 0.5)),
-        doctrine.sense
-        * logistic(distance / fleet.gun_range, doctrine.sense_in_gun_range, temperature)
+        logistic(distance / fleet.gun_range, doctrine.sense_in_gun_range, temperature)
         * logistic(lift_ratio, doctrine.sense_in_lift_ratio, temperature),
         0.0,
     )
     sense_left = (target_rate > 0.0) ^ (doctrine.sense_one_circle > 0.5)
+    # alone: no other known enemy near (a soft count of them inside the crowd's radius)
+    radius = doctrine.sense_crowd_in_gun_range
+    per_enemy = Logistic(radius.centre[..., None], radius.scale[..., None], radius.rising)
+    heat = temperature[..., None] if isinstance(temperature, torch.Tensor) else temperature
+    near = logistic(others, per_enemy, heat)
+    crowd = torch.where(torch.isfinite(others), near, 0.0).sum(-1)
+    alone = logistic(crowd, doctrine.sense_in_crowd, temperature)
+    sensing = doctrine.sense * geometry_gate * alone
+    in_crowd = doctrine.crowd_sense * geometry_gate * (1.0 - alone)
     stick = stick + sensing[..., None] * (commanded_stick(sense_left, 1.0) - stick)
     left = torch.where(sensing > 0.5, sense_left, left)
+    stick = stick + in_crowd[..., None] * (
+        commanded_stick(sense_left, doctrine.crowd_sense_stick) - stick
+    )
+    power = power + (in_crowd * doctrine.crowd_sense_boost)[..., None] * (boost - power)
     return stick, left, power, stalemate, clock
 
 
@@ -730,6 +751,10 @@ def combat(
     if power is None:
         power = power_marginal(boost, reverse)
     if doctrine is not None:
+        # the other known enemies' distances in own gun ranges (inf for the target and the
+        # unknown): the sense's crowd
+        others = torch.sqrt(offset_x * offset_x + offset_y * offset_y) / fleet.gun_range[..., None]
+        others = torch.where(recall.known[:, None, :] & ~pick, others, math.inf)
         stick, left, power, stalemate, yoyo = maneuvers(
             fleet,
             characteristics,
@@ -741,6 +766,7 @@ def combat(
             stick,
             left,
             power,
+            others,
         )
     else:
         fresh = fleet.carry.fresh

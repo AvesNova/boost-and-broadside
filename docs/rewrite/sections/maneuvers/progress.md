@@ -188,3 +188,56 @@ noise, 0.469-0.521):
   or above 0.50 within the noise), where the deny failed (0.43-0.47). From 0.75 s on it
   loses at 5v5 too (0.42-0.51). The brake costs a little at 5v5 (0.45-0.49): out of it.
 - Energy v turn 5v5 is unchanged by the lead turn (within 0.03 of r9's on every card).
+
+## The sense: the post-merge choice (code)
+
+A fourth maneuver, from the research list (nose-to-nose against nose-to-tail at the merge):
+**sense** (`sense`, `sense_one_circle`, `sense_in_gun_range`; later `sense_in_lift_ratio`,
+`sense_mirror_only`). With the target behind the ship's 3-9 line within
+`sense_in_gun_range` and turning (its observed nose rate above 0.05 rad/s), turn at full
+stick in its rotation sense (two-circle) or against it (one-circle). The lift-ratio gate
+rises in the own maximum lift coefficient (`max_acceleration / corner_speed^2`) over the
+target's: in the slow fight the turn radius is 1 / C_max, and the one-circle goes to the
+smaller radius. Tests: `test_the_sense_turns_with_or_against_the_targets_rotation_after_the_merge`,
+`test_the_sense_gates_by_the_lift_ratio_and_the_mirror`.
+
+## 00:46-01:01 KST: round 4 (`round4/`): the sense
+
+512 games, on both types; `gr` is `sense_in_gun_range`'s centre (2 unless named). Against
+r9 in the 1v1 mirrors (JJ / YY), and the self-play mirrors (mutual share, life; JJ one /
+two circle / scissors):
+
+| Sense | frozen v r9 | D2 v r9 | cone 0.085 v r9 | cone 0.01 v r9 |
+|---|---|---|---|---|
+| r9 (control) | 0.475 / 0.498 | 0.519 / 0.480 | 0.491 / 0.498 | 0.504 / 0.496 |
+| two-circle | 0.501 / 0.496 | 0.497 / 0.505 | 0.524 / 0.500 | 0.537 / 0.522 |
+| **one-circle** | **0.645 / 0.610** | **0.585 / 0.635** | **0.547 / 0.597** | 0.514 / 0.496 |
+| one-circle 1 gr | 0.624 / 0.619 | 0.570 / 0.546 | 0.498 / 0.517 | 0.490 / 0.433 |
+| one-circle 4 gr | 0.666 / 0.613 | 0.585 / 0.624 | 0.530 / 0.592 | 0.509 / 0.474 |
+| one-circle at weight 0.5 | 0.379 / 0.458 | 0.301 / 0.409 | 0.355 / 0.395 | 0.472 / 0.384 |
+| lead 0.5 s + one-circle | 0.622 / 0.583 | 0.569 / 0.593 | 0.535 / 0.572 | 0.510 / 0.481 |
+
+| Self-play (JJ; YY) | frozen | D2 | cone 0.085 | cone 0.01 |
+|---|---|---|---|---|
+| r9 | 0.81, 154 s, 0.15 / 0.81 / 0.04; 0.37, 1057 s | 0.64, 262 s, 0.15 / 0.81 / 0.04; 0.39, 273 s | 0.49, 305 s; 0.08, 348 s | 0.06, 1111 s; 0.02, 430 s |
+| two-circle | 0.10, 2065 s, 0.01 / 0.99 / 0.00; 0.00, 5109 s | 0.00, 2390 s; 0.02, 929 s | 0.03, 1412 s; 0.02, 796 s | 0.00, 1641 s; 0.00, 839 s |
+| one-circle | 0.87, 109 s, 0.62 / 0.05 / 0.33; 0.78, 201 s | 0.81, 208 s, 0.59 / 0.03 / 0.39; 0.74, 133 s | 0.72, 246 s, 0.58 / 0.02 / 0.40; 0.54, 181 s | 0.12, 994 s, 0.46 / 0.01 / 0.53; 0.04, 760 s |
+
+- **The one-circle choice after the merge beats r9 in both mirrors on three cards**
+  (0.55-0.67), the largest edge of any maneuver tried, and it is even on cone 0.01. r9 turns
+  the short way round after a pass, which is the same sense as the bandit's about 80% of
+  the time (the two-circle); a ship that turns the other way puts both on one circle, where
+  it has the bandit's tail rather than its nose as the pair comes round.
+- **In self-play it ends the side-by-side stalemate**: no two-circle fights are left
+  (side by side 0.00), the scissors share rises to 0.33-0.53, and the duels shorten (YY
+  frozen 1057 to 201 s, D2 273 to 133 s; JJ D2 262 to 208 s, cone 0.085 305 to 246 s).
+  But the one-circle flow meets nose to nose every lap, so **the mutual head-on share of
+  the kills rises** (D2 JJ 0.64 to 0.81, YY 0.39 to 0.74). The near-immune cone 0.01 stays a
+  stalemate (994 s; the scissors' head-on passes do not kill there).
+- **The two-circle sense is a stalemate** (life 1400-5100 s): both ships held to the same
+  sense never meet nose to tail. The weight must be all or nothing (0.5 dithers between
+  the sides and loses: 0.30-0.47).
+- **It moves the type balance**: on both types the energy v turn 1v1 falls to 0.01-0.03 on
+  every card (D2 0.49 to 0.03): the one-circle goes to the smaller turn radius, and the
+  Jujak's maximum lift coefficient is 1.34 times the Yongma's (radius 176 against 235 m).
+  Round 5 gates it by that ratio and by the mirror.

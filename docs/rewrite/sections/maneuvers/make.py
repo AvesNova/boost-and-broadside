@@ -63,6 +63,7 @@ def yoyo(after=20.0, phase=1.5, climb=4.0, dive=4.0, ease=0.4, low=0.0, to=10.0)
     )
 
 
+ONE = dict(sense=1.0, sense_one_circle=1.0, sense_in_gun_range=[4.0, 0.2])
 ROUNDS = {
     "round1": [
         ("r9", {}),
@@ -129,6 +130,16 @@ ROUNDS = {
         ("lead 0.5 s", lead(0.5)),
         ("lead 0.5 s cross 1.0", lead(0.5, crossing=1.0)),
     ],
+    "round5": [
+        ("r9", {}),
+        ("lead 0.5 s", lead(0.5)),
+        ("one-circle", ONE),
+        ("one-circle mirror", dict(ONE, sense_mirror_only=1.0)),
+        ("one-circle lift 0.95", dict(ONE, sense_in_lift_ratio=[0.95, 0.03])),
+        ("lead + one-circle mirror", dict(lead(0.5), **ONE, sense_mirror_only=1.0)),
+        ("lead + one-circle lift 0.95", dict(lead(0.5), **ONE, sense_in_lift_ratio=[0.95, 0.03])),
+        ("J one-circle, Y lead", (lead(0.5), dict(lead(0.5), **ONE))),
+    ],
 }
 
 
@@ -144,7 +155,11 @@ def main() -> None:
                     name=f"{card} | {label}",
                     energy=energy,
                     turn=turn,
-                    doctrine=dict(energy=fields, turn=fields),
+                    doctrine=(
+                        dict(energy=fields[0], turn=fields[1])
+                        if isinstance(fields, tuple)
+                        else dict(energy=fields, turn=fields)
+                    ),
                 )
             )
     path = HERE / name / "candidates.json"

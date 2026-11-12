@@ -51,7 +51,10 @@ and `in_advantage`, so they fly in the mirrors too; each reads the committed tar
   two-circle), or against it with `sense_one_circle` above 1/2 (the one-circle); weighted
   by `sense_in_lift_ratio`, rising in the own maximum lift coefficient over the target's
   (the inverse of the slow turn's radius: the one-circle goes to the smaller radius), and,
-  with `sense_mirror_only` above 1/2, only against the own type.
+  with `sense_mirror_only` above 1/2, only against the own type. In a crowd (the soft
+  count of the other known enemies within `sense_crowd_in_gun_range`, through the falling
+  `sense_in_crowd`; open by default) the sense hands over to `crowd_sense`: the same side at
+  `crowd_sense_stick` of full stick, boosting with weight `crowd_sense_boost`.
 
 Each element's weight (`extend`, `slash`, `bleed`, `lag`, `deny`, and the maneuvers'
 `lead_turn`, `yoyo`, `brake`, `sense`) is 0 by default, as is
@@ -122,6 +125,11 @@ class Doctrine:
     sense_in_gun_range: Logistic = Logistic(2.0, 0.2, False)
     sense_in_lift_ratio: Logistic = Logistic(1e-3, 0.05, True)
     sense_mirror_only: float = 0.0
+    sense_crowd_in_gun_range: Logistic = Logistic(3.0, 0.1, False)
+    sense_in_crowd: Logistic = Logistic(1e4, 0.1, False)
+    crowd_sense: float = 0.0
+    crowd_sense_stick: float = 0.0
+    crowd_sense_boost: float = 0.0
 
 
 NAMES = tuple(field.name for field in dataclasses.fields(Doctrine))
@@ -138,6 +146,7 @@ WEIGHTS = (
     "yoyo",
     "brake",
     "sense",
+    "crowd_sense",
 )
 # The maneuvers' fractions, each in [0, 1] (searched like a weight).
 FRACTIONS = (
@@ -147,6 +156,8 @@ FRACTIONS = (
     "yoyo_low",
     "sense_one_circle",
     "sense_mirror_only",
+    "crowd_sense_stick",
+    "crowd_sense_boost",
 )
 EXPONENTS = ("turn_exponent", "climb_exponent", "speed_exponent", "range_exponent")
 # Each logistic's smallest scale (a tenth of a factor e in its quantity, near the combat
@@ -168,6 +179,8 @@ SCALE_FLOORS = {
     "brake_in_gun_range": 0.1,
     "sense_in_gun_range": 0.1,
     "sense_in_lift_ratio": 0.03,
+    "sense_crowd_in_gun_range": 0.1,
+    "sense_in_crowd": 0.1,
 }
 
 

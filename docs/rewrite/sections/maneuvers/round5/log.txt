@@ -1,0 +1,8 @@
+## 1v1: 160 jobs, B 8192, 00:57 KST
+W1113 00:57:49.504000 1790466 torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+/home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+  warn_once(FP_FUSION_DEFAULT_WARNING)
+  batch 1/10 54 s; ETA 01:06 KST
+  batch 2/10 74 s; ETA 01:03 KST
+  batch 3/10 94 s; ETA 01:02 KST
+  batch 4/10 113 s; ETA 01:02 KST

@@ -354,3 +354,25 @@ def test_the_sense_gates_by_the_lift_ratio_and_the_mirror():
         _decide(obs, _every_type(gated)).stick, agent.stick, atol=1e-3, rtol=0
     )
     assert float(_decide(obs, _every_type(one)).stick[0, 0, 5]) > 0.9
+
+
+def test_the_sense_hands_over_to_the_crowd_sense_with_another_enemy_near():
+    """The one-circle sense alone with its target; with another enemy near, the crowd
+    sense flies straight (stick 0) and boosts."""
+    gun = value("gun_range", STIFF)
+    enemy = ship(x=-0.5 * gun, y=-30.0, heading=math.pi, ship_type=STIFF, team_relative=1)
+    enemy[SHIP["nose_rate"]] = 0.3
+    doctrine = Doctrine(
+        sense=1.0,
+        sense_one_circle=1.0,
+        sense_in_crowd=Logistic(0.5, 0.1, False),
+        crowd_sense=1.0,
+        crowd_sense_boost=1.0,
+    )
+    alone = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, absent(STIFF)])
+    assert float(_decide(alone, _every_type(doctrine)).stick[0, 0, 5]) > 0.9
+    other = ship(x=-2.0 * gun, y=2.0 * gun, heading=0.0, ship_type=STIFF, team_relative=1)
+    crowd = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, other])
+    flown = _decide(crowd, _every_type(doctrine))
+    assert float(flown.stick[0, 0, 0]) > 0.9
+    assert float(flown.power[0, 0, 1]) > 0.8
