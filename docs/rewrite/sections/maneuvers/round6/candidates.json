@@ -1,0 +1,1784 @@
+[
+ {
+  "name": "frozen | r9",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {},
+   "turn": {}
+  }
+ },
+ {
+  "name": "frozen | one-circle mirror duel",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "frozen | one-circle mirror duel, crowd straight boost",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   }
+  }
+ },
+ {
+  "name": "frozen | one-circle mirror duel, crowd straight",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0
+   }
+  }
+ },
+ {
+  "name": "frozen | one-circle mirror duel 5 gr, crowd straight boost",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "sense_crowd_in_gun_range": [
+     5.0,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "sense_crowd_in_gun_range": [
+     5.0,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "frozen | one-circle mirror duel, crowd half one-circle",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 0.5,
+    "crowd_sense_stick": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 0.5,
+    "crowd_sense_stick": 1.0
+   }
+  }
+ },
+ {
+  "name": "frozen | one-circle at 0.5 (round 4)",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 0.5,
+    "sense_one_circle": 1.0
+   },
+   "turn": {
+    "sense": 0.5,
+    "sense_one_circle": 1.0
+   }
+  }
+ },
+ {
+  "name": "frozen | crowd straight boost only",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 0.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   },
+   "turn": {
+    "sense": 0.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   }
+  }
+ },
+ {
+  "name": "frozen | lead + one-circle mirror duel, crowd straight boost",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     0.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   },
+   "turn": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     0.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 | r9",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {},
+   "turn": {}
+  }
+ },
+ {
+  "name": "D2 | one-circle mirror duel",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "D2 | one-circle mirror duel, crowd straight boost",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 | one-circle mirror duel, crowd straight",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 | one-circle mirror duel 5 gr, crowd straight boost",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "sense_crowd_in_gun_range": [
+     5.0,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "sense_crowd_in_gun_range": [
+     5.0,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "D2 | one-circle mirror duel, crowd half one-circle",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 0.5,
+    "crowd_sense_stick": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 0.5,
+    "crowd_sense_stick": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 | one-circle at 0.5 (round 4)",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 0.5,
+    "sense_one_circle": 1.0
+   },
+   "turn": {
+    "sense": 0.5,
+    "sense_one_circle": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 | crowd straight boost only",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 0.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   },
+   "turn": {
+    "sense": 0.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 | lead + one-circle mirror duel, crowd straight boost",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     0.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   },
+   "turn": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     0.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | r9",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {},
+   "turn": {}
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | one-circle mirror duel",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | one-circle mirror duel, crowd straight boost",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | one-circle mirror duel, crowd straight",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | one-circle mirror duel 5 gr, crowd straight boost",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "sense_crowd_in_gun_range": [
+     5.0,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "sense_crowd_in_gun_range": [
+     5.0,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | one-circle mirror duel, crowd half one-circle",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 0.5,
+    "crowd_sense_stick": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 0.5,
+    "crowd_sense_stick": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | one-circle at 0.5 (round 4)",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 0.5,
+    "sense_one_circle": 1.0
+   },
+   "turn": {
+    "sense": 0.5,
+    "sense_one_circle": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | crowd straight boost only",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 0.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   },
+   "turn": {
+    "sense": 0.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.085 | lead + one-circle mirror duel, crowd straight boost",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     0.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   },
+   "turn": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     0.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | r9",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {},
+   "turn": {}
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | one-circle mirror duel",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | one-circle mirror duel, crowd straight boost",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | one-circle mirror duel, crowd straight",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | one-circle mirror duel 5 gr, crowd straight boost",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "sense_crowd_in_gun_range": [
+     5.0,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "sense_crowd_in_gun_range": [
+     5.0,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | one-circle mirror duel, crowd half one-circle",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 0.5,
+    "crowd_sense_stick": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 0.5,
+    "crowd_sense_stick": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | one-circle at 0.5 (round 4)",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 0.5,
+    "sense_one_circle": 1.0
+   },
+   "turn": {
+    "sense": 0.5,
+    "sense_one_circle": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | crowd straight boost only",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 0.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   },
+   "turn": {
+    "sense": 0.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 cone 0.01 | lead + one-circle mirror duel, crowd straight boost",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.03333333333333333
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     0.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   },
+   "turn": {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [
+     0.5,
+     0.1
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.2
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   }
+  }
+ }
+]

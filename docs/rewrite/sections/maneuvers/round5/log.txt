@@ -1,0 +1,354 @@
+## 1v1: 160 jobs, B 8192, 00:57 KST
+W1113 00:57:49.504000 1790466 torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+/home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+  warn_once(FP_FUSION_DEFAULT_WARNING)
+  batch 1/10 54 s; ETA 01:06 KST
+  batch 2/10 74 s; ETA 01:03 KST
+  batch 3/10 94 s; ETA 01:02 KST
+  batch 4/10 113 s; ETA 01:02 KST
+  batch 5/10 132 s; ETA 01:01 KST
+  batch 6/10 151 s; ETA 01:01 KST
+  batch 7/10 170 s; ETA 01:01 KST
+  batch 8/10 189 s; ETA 01:01 KST
+  batch 9/10 208 s; ETA 01:01 KST
+  batch 10/10 226 s; ETA 01:01 KST
+1v1                  frozen | r9   energy v turn v c0: score 0.015 ± 0.004  kills m/o/f/t 0.15 / 0.13 / 0.44 / 0.28  life 171 s  kpm/ship 0.33  trades 0.00
+1v1                  frozen | r9     turn mirror v c0: score 0.521 ± 0.015  kills m/o/f/t 0.79 / 0.18 / 0.03 / 0.00  life 152 s  kpm/ship 0.37  trades 0.03
+1v1                  frozen | r9   energy mirror v c0: score 0.503 ± 0.008  kills m/o/f/t 0.31 / 0.60 / 0.08 / 0.00  life 1007 s  kpm/ship 0.06  trades 0.00
+1v1          frozen | lead 0.5 s   energy v turn v c1: score 0.014 ± 0.004  kills m/o/f/t 0.16 / 0.15 / 0.41 / 0.27  life 172 s  kpm/ship 0.33  trades 0.00
+1v1          frozen | lead 0.5 s     turn mirror v c1: score 0.494 ± 0.015  kills m/o/f/t 0.80 / 0.18 / 0.02 / 0.00  life 169 s  kpm/ship 0.34  trades 0.02
+1v1          frozen | lead 0.5 s   energy mirror v c1: score 0.503 ± 0.007  kills m/o/f/t 0.16 / 0.73 / 0.11 / 0.00  life 1678 s  kpm/ship 0.04  trades 0.00
+1v1          frozen | one-circle   energy v turn v c2: score 0.012 ± 0.004  kills m/o/f/t 0.19 / 0.03 / 0.01 / 0.77  life 128 s  kpm/ship 0.44  trades 0.00
+1v1          frozen | one-circle     turn mirror v c2: score 0.507 ± 0.015  kills m/o/f/t 0.87 / 0.06 / 0.01 / 0.06  life 109 s  kpm/ship 0.51  trades 0.05
+1v1          frozen | one-circle   energy mirror v c2: score 0.488 ± 0.014  kills m/o/f/t 0.79 / 0.09 / 0.01 / 0.10  life 199 s  kpm/ship 0.29  trades 0.02
+1v1   frozen | one-circle mirror   energy v turn v c3: score 0.009 ± 0.003  kills m/o/f/t 0.15 / 0.11 / 0.44 / 0.29  life 171 s  kpm/ship 0.33  trades 0.00
+1v1   frozen | one-circle mirror     turn mirror v c3: score 0.518 ± 0.015  kills m/o/f/t 0.87 / 0.05 / 0.01 / 0.06  life 110 s  kpm/ship 0.50  trades 0.04
+1v1   frozen | one-circle mirror   energy mirror v c3: score 0.521 ± 0.014  kills m/o/f/t 0.79 / 0.09 / 0.01 / 0.12  life 192 s  kpm/ship 0.30  trades 0.02
+1v1 frozen | one-circle lift 0.95   energy v turn v c4: score 0.057 ± 0.007  kills m/o/f/t 0.31 / 0.51 / 0.10 / 0.09  life 215 s  kpm/ship 0.27  trades 0.00
+1v1 frozen | one-circle lift 0.95     turn mirror v c4: score 0.511 ± 0.015  kills m/o/f/t 0.87 / 0.05 / 0.01 / 0.06  life 107 s  kpm/ship 0.51  trades 0.04
+1v1 frozen | one-circle lift 0.95   energy mirror v c4: score 0.505 ± 0.013  kills m/o/f/t 0.80 / 0.09 / 0.01 / 0.09  life 190 s  kpm/ship 0.30  trades 0.02
+1v1 frozen | lead + one-circle mirror   energy v turn v c5: score 0.011 ± 0.003  kills m/o/f/t 0.16 / 0.14 / 0.41 / 0.29  life 176 s  kpm/ship 0.32  trades 0.00
+1v1 frozen | lead + one-circle mirror     turn mirror v c5: score 0.513 ± 0.016  kills m/o/f/t 0.85 / 0.06 / 0.01 / 0.07  life 118 s  kpm/ship 0.47  trades 0.05
+1v1 frozen | lead + one-circle mirror   energy mirror v c5: score 0.502 ± 0.013  kills m/o/f/t 0.79 / 0.08 / 0.01 / 0.12  life 223 s  kpm/ship 0.26  trades 0.02
+1v1 frozen | lead + one-circle lift 0.95   energy v turn v c6: score 0.048 ± 0.007  kills m/o/f/t 0.21 / 0.59 / 0.10 / 0.10  life 238 s  kpm/ship 0.24  trades 0.00
+1v1 frozen | lead + one-circle lift 0.95     turn mirror v c6: score 0.489 ± 0.015  kills m/o/f/t 0.87 / 0.05 / 0.01 / 0.07  life 105 s  kpm/ship 0.52  trades 0.04
+1v1 frozen | lead + one-circle lift 0.95   energy mirror v c6: score 0.470 ± 0.014  kills m/o/f/t 0.75 / 0.10 / 0.01 / 0.13  life 194 s  kpm/ship 0.29  trades 0.02
+1v1 frozen | J one-circle, Y lead   energy v turn v c7: score 0.038 ± 0.006  kills m/o/f/t 0.18 / 0.60 / 0.10 / 0.11  life 242 s  kpm/ship 0.24  trades 0.00
+1v1 frozen | J one-circle, Y lead     turn mirror v c7: score 0.512 ± 0.016  kills m/o/f/t 0.87 / 0.05 / 0.01 / 0.07  life 120 s  kpm/ship 0.46  trades 0.05
+1v1 frozen | J one-circle, Y lead   energy mirror v c7: score 0.498 ± 0.007  kills m/o/f/t 0.18 / 0.66 / 0.16 / 0.00  life 1488 s  kpm/ship 0.04  trades 0.00
+1v1                      D2 | r9   energy v turn v c8: score 0.496 ± 0.014  kills m/o/f/t 0.24 / 0.69 / 0.07 / 0.00  life 292 s  kpm/ship 0.20  trades 0.00
+1v1                      D2 | r9     turn mirror v c8: score 0.501 ± 0.012  kills m/o/f/t 0.66 / 0.30 / 0.04 / 0.00  life 256 s  kpm/ship 0.23  trades 0.02
+1v1                      D2 | r9   energy mirror v c8: score 0.484 ± 0.012  kills m/o/f/t 0.34 / 0.56 / 0.09 / 0.00  life 284 s  kpm/ship 0.20  trades 0.01
+1v1              D2 | lead 0.5 s   energy v turn v c9: score 0.563 ± 0.014  kills m/o/f/t 0.20 / 0.74 / 0.07 / 0.00  life 256 s  kpm/ship 0.23  trades 0.00
+1v1              D2 | lead 0.5 s     turn mirror v c9: score 0.497 ± 0.012  kills m/o/f/t 0.65 / 0.30 / 0.05 / 0.00  life 279 s  kpm/ship 0.21  trades 0.02
+1v1              D2 | lead 0.5 s   energy mirror v c9: score 0.492 ± 0.011  kills m/o/f/t 0.23 / 0.64 / 0.13 / 0.00  life 356 s  kpm/ship 0.16  trades 0.00
+1v1              D2 | one-circle   energy v turn v c10: score 0.020 ± 0.005  kills m/o/f/t 0.08 / 0.03 / 0.00 / 0.88  life 141 s  kpm/ship 0.40  trades 0.02
+1v1              D2 | one-circle     turn mirror v c10: score 0.497 ± 0.016  kills m/o/f/t 0.82 / 0.06 / 0.00 / 0.11  life 206 s  kpm/ship 0.28  trades 0.02
+1v1              D2 | one-circle   energy mirror v c10: score 0.489 ± 0.016  kills m/o/f/t 0.74 / 0.13 / 0.04 / 0.09  life 132 s  kpm/ship 0.42  trades 0.02
+1v1       D2 | one-circle mirror   energy v turn v c11: score 0.530 ± 0.014  kills m/o/f/t 0.25 / 0.68 / 0.07 / 0.00  life 282 s  kpm/ship 0.21  trades 0.00
+1v1       D2 | one-circle mirror     turn mirror v c11: score 0.488 ± 0.016  kills m/o/f/t 0.83 / 0.05 / 0.00 / 0.11  life 213 s  kpm/ship 0.27  trades 0.03
+1v1       D2 | one-circle mirror   energy mirror v c11: score 0.502 ± 0.016  kills m/o/f/t 0.75 / 0.12 / 0.02 / 0.10  life 133 s  kpm/ship 0.42  trades 0.02
+1v1    D2 | one-circle lift 0.95   energy v turn v c12: score 0.140 ± 0.011  kills m/o/f/t 0.71 / 0.19 / 0.04 / 0.06  life 201 s  kpm/ship 0.28  trades 0.00
+1v1    D2 | one-circle lift 0.95     turn mirror v c12: score 0.498 ± 0.017  kills m/o/f/t 0.83 / 0.06 / 0.01 / 0.10  life 200 s  kpm/ship 0.29  trades 0.04
+1v1    D2 | one-circle lift 0.95   energy mirror v c12: score 0.501 ± 0.016  kills m/o/f/t 0.73 / 0.13 / 0.02 / 0.12  life 131 s  kpm/ship 0.43  trades 0.02
+1v1 D2 | lead + one-circle mirror   energy v turn v c13: score 0.551 ± 0.014  kills m/o/f/t 0.20 / 0.74 / 0.06 / 0.00  life 254 s  kpm/ship 0.23  trades 0.00
+1v1 D2 | lead + one-circle mirror     turn mirror v c13: score 0.502 ± 0.015  kills m/o/f/t 0.81 / 0.07 / 0.00 / 0.11  life 219 s  kpm/ship 0.26  trades 0.02
+1v1 D2 | lead + one-circle mirror   energy mirror v c13: score 0.495 ± 0.015  kills m/o/f/t 0.75 / 0.12 / 0.02 / 0.12  life 138 s  kpm/ship 0.41  trades 0.02
+1v1 D2 | lead + one-circle lift 0.95   energy v turn v c14: score 0.156 ± 0.011  kills m/o/f/t 0.72 / 0.17 / 0.05 / 0.06  life 209 s  kpm/ship 0.27  trades 0.00
+1v1 D2 | lead + one-circle lift 0.95     turn mirror v c14: score 0.496 ± 0.017  kills m/o/f/t 0.84 / 0.05 / 0.01 / 0.11  life 196 s  kpm/ship 0.29  trades 0.04
+1v1 D2 | lead + one-circle lift 0.95   energy mirror v c14: score 0.481 ± 0.015  kills m/o/f/t 0.75 / 0.11 / 0.03 / 0.11  life 129 s  kpm/ship 0.43  trades 0.02
+1v1    D2 | J one-circle, Y lead   energy v turn v c15: score 0.182 ± 0.012  kills m/o/f/t 0.71 / 0.17 / 0.05 / 0.07  life 204 s  kpm/ship 0.28  trades 0.00
+1v1    D2 | J one-circle, Y lead     turn mirror v c15: score 0.500 ± 0.015  kills m/o/f/t 0.83 / 0.05 / 0.01 / 0.11  life 219 s  kpm/ship 0.26  trades 0.02
+1v1    D2 | J one-circle, Y lead   energy mirror v c15: score 0.517 ± 0.011  kills m/o/f/t 0.23 / 0.67 / 0.10 / 0.00  life 350 s  kpm/ship 0.17  trades 0.00
+1v1           D2 cone 0.085 | r9   energy v turn v c16: score 0.541 ± 0.015  kills m/o/f/t 0.10 / 0.84 / 0.06 / 0.00  life 229 s  kpm/ship 0.25  trades 0.00
+1v1           D2 cone 0.085 | r9     turn mirror v c16: score 0.485 ± 0.014  kills m/o/f/t 0.50 / 0.44 / 0.06 / 0.00  life 306 s  kpm/ship 0.19  trades 0.01
+1v1           D2 cone 0.085 | r9   energy mirror v c16: score 0.501 ± 0.011  kills m/o/f/t 0.09 / 0.77 / 0.14 / 0.00  life 352 s  kpm/ship 0.17  trades 0.00
+1v1   D2 cone 0.085 | lead 0.5 s   energy v turn v c17: score 0.622 ± 0.015  kills m/o/f/t 0.09 / 0.85 / 0.06 / 0.00  life 202 s  kpm/ship 0.28  trades 0.00
+1v1   D2 cone 0.085 | lead 0.5 s     turn mirror v c17: score 0.495 ± 0.013  kills m/o/f/t 0.34 / 0.59 / 0.06 / 0.00  life 427 s  kpm/ship 0.14  trades 0.00
+1v1   D2 cone 0.085 | lead 0.5 s   energy mirror v c17: score 0.504 ± 0.010  kills m/o/f/t 0.08 / 0.80 / 0.12 / 0.00  life 402 s  kpm/ship 0.15  trades 0.00
+1v1   D2 cone 0.085 | one-circle   energy v turn v c18: score 0.023 ± 0.005  kills m/o/f/t 0.05 / 0.13 / 0.03 / 0.79  life 139 s  kpm/ship 0.40  trades 0.00
+1v1   D2 cone 0.085 | one-circle     turn mirror v c18: score 0.477 ± 0.013  kills m/o/f/t 0.71 / 0.17 / 0.01 / 0.11  life 244 s  kpm/ship 0.24  trades 0.01
+1v1   D2 cone 0.085 | one-circle   energy mirror v c18: score 0.503 ± 0.015  kills m/o/f/t 0.55 / 0.29 / 0.05 / 0.10  life 183 s  kpm/ship 0.31  trades 0.01
+1v1 D2 cone 0.085 | one-circle mirror   energy v turn v c19: score 0.534 ± 0.015  kills m/o/f/t 0.10 / 0.81 / 0.09 / 0.00  life 220 s  kpm/ship 0.26  trades 0.00
+1v1 D2 cone 0.085 | one-circle mirror     turn mirror v c19: score 0.500 ± 0.012  kills m/o/f/t 0.71 / 0.17 / 0.00 / 0.12  life 254 s  kpm/ship 0.23  trades 0.01
+1v1 D2 cone 0.085 | one-circle mirror   energy mirror v c19: score 0.485 ± 0.015  kills m/o/f/t 0.51 / 0.31 / 0.05 / 0.12  life 181 s  kpm/ship 0.31  trades 0.01
+1v1 D2 cone 0.085 | one-circle lift 0.95   energy v turn v c20: score 0.266 ± 0.013  kills m/o/f/t 0.52 / 0.36 / 0.06 / 0.06  life 227 s  kpm/ship 0.25  trades 0.00
+1v1 D2 cone 0.085 | one-circle lift 0.95     turn mirror v c20: score 0.512 ± 0.013  kills m/o/f/t 0.72 / 0.16 / 0.00 / 0.12  life 243 s  kpm/ship 0.24  trades 0.01
+1v1 D2 cone 0.085 | one-circle lift 0.95   energy mirror v c20: score 0.494 ± 0.015  kills m/o/f/t 0.53 / 0.32 / 0.05 / 0.10  life 171 s  kpm/ship 0.33  trades 0.01
+1v1 D2 cone 0.085 | lead + one-circle mirror   energy v turn v c21: score 0.629 ± 0.015  kills m/o/f/t 0.08 / 0.84 / 0.07 / 0.00  life 206 s  kpm/ship 0.28  trades 0.00
+1v1 D2 cone 0.085 | lead + one-circle mirror     turn mirror v c21: score 0.500 ± 0.012  kills m/o/f/t 0.74 / 0.14 / 0.01 / 0.12  life 289 s  kpm/ship 0.20  trades 0.01
+1v1 D2 cone 0.085 | lead + one-circle mirror   energy mirror v c21: score 0.513 ± 0.015  kills m/o/f/t 0.55 / 0.26 / 0.05 / 0.14  life 218 s  kpm/ship 0.26  trades 0.01
+1v1 D2 cone 0.085 | lead + one-circle lift 0.95   energy v turn v c22: score 0.249 ± 0.013  kills m/o/f/t 0.52 / 0.34 / 0.07 / 0.08  life 244 s  kpm/ship 0.24  trades 0.00
+1v1 D2 cone 0.085 | lead + one-circle lift 0.95     turn mirror v c22: score 0.506 ± 0.013  kills m/o/f/t 0.72 / 0.16 / 0.01 / 0.12  life 253 s  kpm/ship 0.23  trades 0.01
+1v1 D2 cone 0.085 | lead + one-circle lift 0.95   energy mirror v c22: score 0.509 ± 0.015  kills m/o/f/t 0.53 / 0.29 / 0.06 / 0.13  life 182 s  kpm/ship 0.31  trades 0.01
+1v1 D2 cone 0.085 | J one-circle, Y lead   energy v turn v c23: score 0.305 ± 0.013  kills m/o/f/t 0.51 / 0.33 / 0.08 / 0.08  life 251 s  kpm/ship 0.23  trades 0.00
+1v1 D2 cone 0.085 | J one-circle, Y lead     turn mirror v c23: score 0.498 ± 0.012  kills m/o/f/t 0.72 / 0.15 / 0.01 / 0.12  life 289 s  kpm/ship 0.20  trades 0.01
+1v1 D2 cone 0.085 | J one-circle, Y lead   energy mirror v c23: score 0.515 ± 0.011  kills m/o/f/t 0.07 / 0.79 / 0.14 / 0.00  life 347 s  kpm/ship 0.17  trades 0.00
+1v1            D2 cone 0.01 | r9   energy v turn v c24: score 0.521 ± 0.015  kills m/o/f/t 0.03 / 0.88 / 0.09 / 0.00  life 286 s  kpm/ship 0.20  trades 0.00
+1v1            D2 cone 0.01 | r9     turn mirror v c24: score 0.493 ± 0.012  kills m/o/f/t 0.04 / 0.90 / 0.06 / 0.00  life 1046 s  kpm/ship 0.06  trades 0.01
+1v1            D2 cone 0.01 | r9   energy mirror v c24: score 0.508 ± 0.009  kills m/o/f/t 0.01 / 0.86 / 0.13 / 0.00  life 423 s  kpm/ship 0.14  trades 0.00
+1v1    D2 cone 0.01 | lead 0.5 s   energy v turn v c25: score 0.585 ± 0.015  kills m/o/f/t 0.02 / 0.90 / 0.07 / 0.00  life 228 s  kpm/ship 0.25  trades 0.00
+1v1    D2 cone 0.01 | lead 0.5 s     turn mirror v c25: score 0.499 ± 0.012  kills m/o/f/t 0.06 / 0.87 / 0.07 / 0.00  life 1060 s  kpm/ship 0.06  trades 0.00
+1v1    D2 cone 0.01 | lead 0.5 s   energy mirror v c25: score 0.492 ± 0.010  kills m/o/f/t 0.01 / 0.84 / 0.14 / 0.00  life 407 s  kpm/ship 0.14  trades 0.00
+1v1    D2 cone 0.01 | one-circle   energy v turn v c26: score 0.019 ± 0.005  kills m/o/f/t 0.01 / 0.11 / 0.03 / 0.85  life 155 s  kpm/ship 0.36  trades 0.00
+1v1    D2 cone 0.01 | one-circle     turn mirror v c26: score 0.508 ± 0.009  kills m/o/f/t 0.13 / 0.50 / 0.03 / 0.35  life 997 s  kpm/ship 0.06  trades 0.10
+1v1    D2 cone 0.01 | one-circle   energy mirror v c26: score 0.525 ± 0.013  kills m/o/f/t 0.06 / 0.47 / 0.18 / 0.29  life 634 s  kpm/ship 0.09  trades 0.03
+1v1 D2 cone 0.01 | one-circle mirror   energy v turn v c27: score 0.523 ± 0.015  kills m/o/f/t 0.02 / 0.89 / 0.09 / 0.00  life 274 s  kpm/ship 0.21  trades 0.00
+1v1 D2 cone 0.01 | one-circle mirror     turn mirror v c27: score 0.496 ± 0.009  kills m/o/f/t 0.15 / 0.41 / 0.03 / 0.42  life 987 s  kpm/ship 0.06  trades 0.12
+1v1 D2 cone 0.01 | one-circle mirror   energy mirror v c27: score 0.512 ± 0.013  kills m/o/f/t 0.05 / 0.48 / 0.15 / 0.32  life 671 s  kpm/ship 0.09  trades 0.01
+1v1 D2 cone 0.01 | one-circle lift 0.95   energy v turn v c28: score 0.410 ± 0.012  kills m/o/f/t 0.13 / 0.63 / 0.12 / 0.11  life 1068 s  kpm/ship 0.06  trades 0.00
+1v1 D2 cone 0.01 | one-circle lift 0.95     turn mirror v c28: score 0.482 ± 0.010  kills m/o/f/t 0.15 / 0.46 / 0.02 / 0.37  life 1079 s  kpm/ship 0.06  trades 0.04
+1v1 D2 cone 0.01 | one-circle lift 0.95   energy mirror v c28: score 0.493 ± 0.012  kills m/o/f/t 0.05 / 0.47 / 0.21 / 0.27  life 730 s  kpm/ship 0.08  trades 0.01
+1v1 D2 cone 0.01 | lead + one-circle mirror   energy v turn v c29: score 0.598 ± 0.015  kills m/o/f/t 0.03 / 0.91 / 0.06 / 0.00  life 237 s  kpm/ship 0.24  trades 0.00
+1v1 D2 cone 0.01 | lead + one-circle mirror     turn mirror v c29: score 0.497 ± 0.010  kills m/o/f/t 0.08 / 0.51 / 0.03 / 0.39  life 1332 s  kpm/ship 0.04  trades 0.05
+1v1 D2 cone 0.01 | lead + one-circle mirror   energy mirror v c29: score 0.496 ± 0.013  kills m/o/f/t 0.07 / 0.49 / 0.16 / 0.28  life 622 s  kpm/ship 0.09  trades 0.03
+1v1 D2 cone 0.01 | lead + one-circle lift 0.95   energy v turn v c30: score 0.420 ± 0.012  kills m/o/f/t 0.13 / 0.63 / 0.10 / 0.14  life 720 s  kpm/ship 0.08  trades 0.00
+1v1 D2 cone 0.01 | lead + one-circle lift 0.95     turn mirror v c30: score 0.515 ± 0.010  kills m/o/f/t 0.10 / 0.42 / 0.05 / 0.43  life 1259 s  kpm/ship 0.05  trades 0.06
+1v1 D2 cone 0.01 | lead + one-circle lift 0.95   energy mirror v c30: score 0.491 ± 0.012  kills m/o/f/t 0.09 / 0.43 / 0.19 / 0.29  life 648 s  kpm/ship 0.09  trades 0.02
+1v1 D2 cone 0.01 | J one-circle, Y lead   energy v turn v c31: score 0.416 ± 0.012  kills m/o/f/t 0.14 / 0.64 / 0.11 / 0.12  life 803 s  kpm/ship 0.07  trades 0.00
+1v1 D2 cone 0.01 | J one-circle, Y lead     turn mirror v c31: score 0.497 ± 0.010  kills m/o/f/t 0.13 / 0.45 / 0.03 / 0.39  life 1115 s  kpm/ship 0.05  trades 0.06
+1v1 D2 cone 0.01 | J one-circle, Y lead   energy mirror v c31: score 0.498 ± 0.010  kills m/o/f/t 0.01 / 0.84 / 0.14 / 0.00  life 411 s  kpm/ship 0.14  trades 0.00
+1v1                  frozen | r9           mixed v r9: score 0.517 ± 0.009  kills m/o/f/t 0.37 / 0.54 / 0.09 / 0.00  life 930 s  kpm/ship 0.06  trades 0.01
+1v1                  frozen | r9  mixed reversed v r9: score 0.496 ± 0.016  kills m/o/f/t 0.79 / 0.18 / 0.03 / 0.00  life 155 s  kpm/ship 0.36  trades 0.02
+1v1          frozen | lead 0.5 s           mixed v r9: score 0.507 ± 0.008  kills m/o/f/t 0.27 / 0.64 / 0.09 / 0.00  life 1275 s  kpm/ship 0.05  trades 0.00
+1v1          frozen | lead 0.5 s  mixed reversed v r9: score 0.570 ± 0.015  kills m/o/f/t 0.80 / 0.18 / 0.02 / 0.00  life 160 s  kpm/ship 0.35  trades 0.01
+1v1          frozen | one-circle           mixed v r9: score 0.630 ± 0.013  kills m/o/f/t 0.81 / 0.12 / 0.02 / 0.06  life 220 s  kpm/ship 0.26  trades 0.00
+1v1          frozen | one-circle  mixed reversed v r9: score 0.673 ± 0.014  kills m/o/f/t 0.88 / 0.07 / 0.01 / 0.03  life 111 s  kpm/ship 0.50  trades 0.01
+1v1   frozen | one-circle mirror           mixed v r9: score 0.604 ± 0.014  kills m/o/f/t 0.80 / 0.11 / 0.01 / 0.07  life 222 s  kpm/ship 0.26  trades 0.01
+1v1   frozen | one-circle mirror  mixed reversed v r9: score 0.614 ± 0.015  kills m/o/f/t 0.88 / 0.07 / 0.02 / 0.04  life 112 s  kpm/ship 0.49  trades 0.02
+1v1 frozen | one-circle lift 0.95           mixed v r9: score 0.607 ± 0.014  kills m/o/f/t 0.81 / 0.11 / 0.01 / 0.06  life 217 s  kpm/ship 0.26  trades 0.01
+1v1 frozen | one-circle lift 0.95  mixed reversed v r9: score 0.640 ± 0.014  kills m/o/f/t 0.88 / 0.08 / 0.01 / 0.03  life 109 s  kpm/ship 0.50  trades 0.02
+1v1 frozen | lead + one-circle mirror           mixed v r9: score 0.555 ± 0.014  kills m/o/f/t 0.82 / 0.11 / 0.01 / 0.07  life 226 s  kpm/ship 0.25  trades 0.00
+1v1 frozen | lead + one-circle mirror  mixed reversed v r9: score 0.660 ± 0.013  kills m/o/f/t 0.87 / 0.08 / 0.01 / 0.04  life 109 s  kpm/ship 0.51  trades 0.02
+1v1 frozen | lead + one-circle lift 0.95           mixed v r9: score 0.577 ± 0.014  kills m/o/f/t 0.83 / 0.10 / 0.02 / 0.05  life 208 s  kpm/ship 0.28  trades 0.01
+1v1 frozen | lead + one-circle lift 0.95  mixed reversed v r9: score 0.608 ± 0.015  kills m/o/f/t 0.87 / 0.08 / 0.02 / 0.04  life 108 s  kpm/ship 0.51  trades 0.03
+1v1 frozen | J one-circle, Y lead           mixed v r9: score 0.509 ± 0.008  kills m/o/f/t 0.27 / 0.64 / 0.08 / 0.00  life 1195 s  kpm/ship 0.05  trades 0.00
+1v1 frozen | J one-circle, Y lead  mixed reversed v r9: score 0.641 ± 0.014  kills m/o/f/t 0.87 / 0.08 / 0.02 / 0.04  life 111 s  kpm/ship 0.50  trades 0.02
+1v1                      D2 | r9           mixed v r9: score 0.482 ± 0.012  kills m/o/f/t 0.38 / 0.49 / 0.13 / 0.00  life 283 s  kpm/ship 0.21  trades 0.01
+1v1                      D2 | r9  mixed reversed v r9: score 0.488 ± 0.012  kills m/o/f/t 0.65 / 0.30 / 0.05 / 0.00  life 258 s  kpm/ship 0.22  trades 0.02
+1v1              D2 | lead 0.5 s           mixed v r9: score 0.499 ± 0.012  kills m/o/f/t 0.29 / 0.58 / 0.13 / 0.00  life 331 s  kpm/ship 0.18  trades 0.00
+1v1              D2 | lead 0.5 s  mixed reversed v r9: score 0.521 ± 0.012  kills m/o/f/t 0.62 / 0.33 / 0.05 / 0.00  life 264 s  kpm/ship 0.22  trades 0.00
+1v1              D2 | one-circle           mixed v r9: score 0.641 ± 0.014  kills m/o/f/t 0.75 / 0.16 / 0.04 / 0.05  life 135 s  kpm/ship 0.41  trades 0.01
+1v1              D2 | one-circle  mixed reversed v r9: score 0.585 ± 0.013  kills m/o/f/t 0.82 / 0.11 / 0.02 / 0.05  life 235 s  kpm/ship 0.25  trades 0.01
+1v1       D2 | one-circle mirror           mixed v r9: score 0.615 ± 0.015  kills m/o/f/t 0.76 / 0.15 / 0.04 / 0.06  life 138 s  kpm/ship 0.41  trades 0.01
+1v1       D2 | one-circle mirror  mixed reversed v r9: score 0.571 ± 0.014  kills m/o/f/t 0.82 / 0.10 / 0.02 / 0.06  life 234 s  kpm/ship 0.25  trades 0.02
+1v1    D2 | one-circle lift 0.95           mixed v r9: score 0.604 ± 0.015  kills m/o/f/t 0.75 / 0.14 / 0.05 / 0.05  life 140 s  kpm/ship 0.40  trades 0.01
+1v1    D2 | one-circle lift 0.95  mixed reversed v r9: score 0.608 ± 0.014  kills m/o/f/t 0.85 / 0.08 / 0.02 / 0.06  life 226 s  kpm/ship 0.25  trades 0.02
+1v1 D2 | lead + one-circle mirror           mixed v r9: score 0.609 ± 0.015  kills m/o/f/t 0.74 / 0.16 / 0.04 / 0.06  life 139 s  kpm/ship 0.40  trades 0.01
+1v1 D2 | lead + one-circle mirror  mixed reversed v r9: score 0.560 ± 0.013  kills m/o/f/t 0.85 / 0.09 / 0.02 / 0.05  life 247 s  kpm/ship 0.23  trades 0.01
+1v1 D2 | lead + one-circle lift 0.95           mixed v r9: score 0.587 ± 0.016  kills m/o/f/t 0.74 / 0.17 / 0.05 / 0.05  life 133 s  kpm/ship 0.42  trades 0.01
+1v1 D2 | lead + one-circle lift 0.95  mixed reversed v r9: score 0.589 ± 0.014  kills m/o/f/t 0.80 / 0.11 / 0.03 / 0.06  life 233 s  kpm/ship 0.25  trades 0.01
+1v1    D2 | J one-circle, Y lead           mixed v r9: score 0.504 ± 0.011  kills m/o/f/t 0.29 / 0.61 / 0.10 / 0.00  life 341 s  kpm/ship 0.17  trades 0.00
+1v1    D2 | J one-circle, Y lead  mixed reversed v r9: score 0.559 ± 0.013  kills m/o/f/t 0.82 / 0.10 / 0.03 / 0.05  life 238 s  kpm/ship 0.24  trades 0.01
+1v1           D2 cone 0.085 | r9           mixed v r9: score 0.481 ± 0.011  kills m/o/f/t 0.08 / 0.79 / 0.13 / 0.00  life 342 s  kpm/ship 0.17  trades 0.00
+1v1           D2 cone 0.085 | r9  mixed reversed v r9: score 0.506 ± 0.014  kills m/o/f/t 0.48 / 0.47 / 0.05 / 0.00  life 290 s  kpm/ship 0.20  trades 0.01
+1v1   D2 cone 0.085 | lead 0.5 s           mixed v r9: score 0.494 ± 0.011  kills m/o/f/t 0.08 / 0.78 / 0.14 / 0.00  life 390 s  kpm/ship 0.15  trades 0.00
+1v1   D2 cone 0.085 | lead 0.5 s  mixed reversed v r9: score 0.538 ± 0.014  kills m/o/f/t 0.44 / 0.50 / 0.06 / 0.00  life 339 s  kpm/ship 0.17  trades 0.00
+1v1   D2 cone 0.085 | one-circle           mixed v r9: score 0.601 ± 0.014  kills m/o/f/t 0.52 / 0.38 / 0.05 / 0.05  life 185 s  kpm/ship 0.31  trades 0.00
+1v1   D2 cone 0.085 | one-circle  mixed reversed v r9: score 0.529 ± 0.012  kills m/o/f/t 0.70 / 0.23 / 0.03 / 0.05  life 249 s  kpm/ship 0.23  trades 0.00
+1v1 D2 cone 0.085 | one-circle mirror           mixed v r9: score 0.590 ± 0.015  kills m/o/f/t 0.50 / 0.38 / 0.06 / 0.07  life 185 s  kpm/ship 0.31  trades 0.00
+1v1 D2 cone 0.085 | one-circle mirror  mixed reversed v r9: score 0.515 ± 0.012  kills m/o/f/t 0.72 / 0.19 / 0.03 / 0.06  life 256 s  kpm/ship 0.23  trades 0.00
+1v1 D2 cone 0.085 | one-circle lift 0.95           mixed v r9: score 0.586 ± 0.015  kills m/o/f/t 0.51 / 0.38 / 0.06 / 0.06  life 180 s  kpm/ship 0.32  trades 0.00
+1v1 D2 cone 0.085 | one-circle lift 0.95  mixed reversed v r9: score 0.521 ± 0.013  kills m/o/f/t 0.69 / 0.22 / 0.03 / 0.06  life 245 s  kpm/ship 0.24  trades 0.00
+1v1 D2 cone 0.085 | lead + one-circle mirror           mixed v r9: score 0.554 ± 0.015  kills m/o/f/t 0.53 / 0.37 / 0.05 / 0.05  life 183 s  kpm/ship 0.31  trades 0.01
+1v1 D2 cone 0.085 | lead + one-circle mirror  mixed reversed v r9: score 0.521 ± 0.012  kills m/o/f/t 0.72 / 0.20 / 0.03 / 0.05  life 262 s  kpm/ship 0.22  trades 0.01
+1v1 D2 cone 0.085 | lead + one-circle lift 0.95           mixed v r9: score 0.514 ± 0.014  kills m/o/f/t 0.52 / 0.37 / 0.05 / 0.06  life 187 s  kpm/ship 0.31  trades 0.00
+1v1 D2 cone 0.085 | lead + one-circle lift 0.95  mixed reversed v r9: score 0.499 ± 0.012  kills m/o/f/t 0.72 / 0.20 / 0.03 / 0.06  life 255 s  kpm/ship 0.23  trades 0.00
+1v1 D2 cone 0.085 | J one-circle, Y lead           mixed v r9: score 0.509 ± 0.010  kills m/o/f/t 0.08 / 0.79 / 0.14 / 0.00  life 377 s  kpm/ship 0.16  trades 0.00
+1v1 D2 cone 0.085 | J one-circle, Y lead  mixed reversed v r9: score 0.532 ± 0.012  kills m/o/f/t 0.70 / 0.22 / 0.02 / 0.06  life 259 s  kpm/ship 0.22  trades 0.00
+1v1            D2 cone 0.01 | r9           mixed v r9: score 0.493 ± 0.009  kills m/o/f/t 0.02 / 0.82 / 0.17 / 0.00  life 437 s  kpm/ship 0.13  trades 0.00
+1v1            D2 cone 0.01 | r9  mixed reversed v r9: score 0.474 ± 0.011  kills m/o/f/t 0.04 / 0.84 / 0.12 / 0.00  life 1185 s  kpm/ship 0.05  trades 0.00
+1v1    D2 cone 0.01 | lead 0.5 s           mixed v r9: score 0.505 ± 0.010  kills m/o/f/t 0.01 / 0.84 / 0.15 / 0.00  life 431 s  kpm/ship 0.14  trades 0.00
+1v1    D2 cone 0.01 | lead 0.5 s  mixed reversed v r9: score 0.526 ± 0.012  kills m/o/f/t 0.05 / 0.87 / 0.08 / 0.00  life 1119 s  kpm/ship 0.05  trades 0.00
+1v1    D2 cone 0.01 | one-circle           mixed v r9: score 0.494 ± 0.012  kills m/o/f/t 0.08 / 0.61 / 0.23 / 0.09  life 896 s  kpm/ship 0.07  trades 0.02
+1v1    D2 cone 0.01 | one-circle  mixed reversed v r9: score 0.500 ± 0.009  kills m/o/f/t 0.14 / 0.57 / 0.10 / 0.19  life 2200 s  kpm/ship 0.03  trades 0.00
+1v1 D2 cone 0.01 | one-circle mirror           mixed v r9: score 0.489 ± 0.011  kills m/o/f/t 0.08 / 0.64 / 0.16 / 0.12  life 758 s  kpm/ship 0.08  trades 0.01
+1v1 D2 cone 0.01 | one-circle mirror  mixed reversed v r9: score 0.512 ± 0.010  kills m/o/f/t 0.15 / 0.64 / 0.03 / 0.18  life 1687 s  kpm/ship 0.04  trades 0.01
+1v1 D2 cone 0.01 | one-circle lift 0.95           mixed v r9: score 0.484 ± 0.012  kills m/o/f/t 0.09 / 0.59 / 0.19 / 0.14  life 858 s  kpm/ship 0.07  trades 0.02
+1v1 D2 cone 0.01 | one-circle lift 0.95  mixed reversed v r9: score 0.494 ± 0.010  kills m/o/f/t 0.11 / 0.62 / 0.10 / 0.17  life 1797 s  kpm/ship 0.03  trades 0.00
+1v1 D2 cone 0.01 | lead + one-circle mirror           mixed v r9: score 0.484 ± 0.011  kills m/o/f/t 0.14 / 0.54 / 0.18 / 0.14  life 902 s  kpm/ship 0.07  trades 0.04
+1v1 D2 cone 0.01 | lead + one-circle mirror  mixed reversed v r9: score 0.500 ± 0.010  kills m/o/f/t 0.18 / 0.53 / 0.07 / 0.23  life 1687 s  kpm/ship 0.04  trades 0.02
+1v1 D2 cone 0.01 | lead + one-circle lift 0.95           mixed v r9: score 0.457 ± 0.012  kills m/o/f/t 0.10 / 0.57 / 0.20 / 0.13  life 814 s  kpm/ship 0.07  trades 0.02
+1v1 D2 cone 0.01 | lead + one-circle lift 0.95  mixed reversed v r9: score 0.505 ± 0.010  kills m/o/f/t 0.11 / 0.65 / 0.08 / 0.16  life 1898 s  kpm/ship 0.03  trades 0.00
+1v1 D2 cone 0.01 | J one-circle, Y lead           mixed v r9: score 0.483 ± 0.009  kills m/o/f/t 0.01 / 0.85 / 0.14 / 0.00  life 423 s  kpm/ship 0.14  trades 0.00
+1v1 D2 cone 0.01 | J one-circle, Y lead  mixed reversed v r9: score 0.532 ± 0.010  kills m/o/f/t 0.13 / 0.67 / 0.06 / 0.13  life 1659 s  kpm/ship 0.04  trades 0.00
+## 2v2: 32 jobs, B 8192, 01:01 KST
+  batch 1/2 70 s; ETA 01:03 KST
+  batch 2/2 91 s; ETA 01:02 KST
+2v2                  frozen | r9   energy v turn v c0: score 0.378 ± 0.019  kills m/o/f/t 0.11 / 0.17 / 0.53 / 0.20  life 111 s  kpm/ship 0.50  trades 0.02
+2v2          frozen | lead 0.5 s   energy v turn v c1: score 0.343 ± 0.018  kills m/o/f/t 0.11 / 0.16 / 0.54 / 0.19  life 112 s  kpm/ship 0.49  trades 0.01
+2v2          frozen | one-circle   energy v turn v c2: score 0.269 ± 0.018  kills m/o/f/t 0.06 / 0.10 / 0.18 / 0.66  life 106 s  kpm/ship 0.52  trades 0.02
+2v2   frozen | one-circle mirror   energy v turn v c3: score 0.379 ± 0.019  kills m/o/f/t 0.10 / 0.15 / 0.54 / 0.21  life 112 s  kpm/ship 0.49  trades 0.01
+2v2 frozen | one-circle lift 0.95   energy v turn v c4: score 0.565 ± 0.020  kills m/o/f/t 0.10 / 0.21 / 0.33 / 0.37  life 109 s  kpm/ship 0.50  trades 0.02
+2v2 frozen | lead + one-circle mirror   energy v turn v c5: score 0.374 ± 0.019  kills m/o/f/t 0.10 / 0.18 / 0.52 / 0.19  life 112 s  kpm/ship 0.49  trades 0.02
+2v2 frozen | lead + one-circle lift 0.95   energy v turn v c6: score 0.533 ± 0.020  kills m/o/f/t 0.09 / 0.20 / 0.34 / 0.37  life 111 s  kpm/ship 0.50  trades 0.01
+2v2 frozen | J one-circle, Y lead   energy v turn v c7: score 0.539 ± 0.019  kills m/o/f/t 0.10 / 0.21 / 0.33 / 0.36  life 109 s  kpm/ship 0.51  trades 0.02
+2v2                      D2 | r9   energy v turn v c8: score 0.461 ± 0.020  kills m/o/f/t 0.07 / 0.23 / 0.56 / 0.13  life 114 s  kpm/ship 0.48  trades 0.01
+2v2              D2 | lead 0.5 s   energy v turn v c9: score 0.458 ± 0.020  kills m/o/f/t 0.07 / 0.23 / 0.58 / 0.12  life 113 s  kpm/ship 0.49  trades 0.02
+2v2              D2 | one-circle   energy v turn v c10: score 0.280 ± 0.018  kills m/o/f/t 0.05 / 0.13 / 0.23 / 0.59  life 106 s  kpm/ship 0.52  trades 0.02
+2v2       D2 | one-circle mirror   energy v turn v c11: score 0.443 ± 0.019  kills m/o/f/t 0.07 / 0.23 / 0.58 / 0.12  life 112 s  kpm/ship 0.49  trades 0.01
+2v2    D2 | one-circle lift 0.95   energy v turn v c12: score 0.488 ± 0.019  kills m/o/f/t 0.10 / 0.19 / 0.39 / 0.32  life 108 s  kpm/ship 0.51  trades 0.02
+2v2 D2 | lead + one-circle mirror   energy v turn v c13: score 0.428 ± 0.020  kills m/o/f/t 0.07 / 0.24 / 0.57 / 0.12  life 113 s  kpm/ship 0.49  trades 0.02
+2v2 D2 | lead + one-circle lift 0.95   energy v turn v c14: score 0.458 ± 0.020  kills m/o/f/t 0.10 / 0.19 / 0.40 / 0.31  life 107 s  kpm/ship 0.51  trades 0.02
+2v2    D2 | J one-circle, Y lead   energy v turn v c15: score 0.470 ± 0.020  kills m/o/f/t 0.09 / 0.19 / 0.40 / 0.31  life 107 s  kpm/ship 0.51  trades 0.02
+2v2           D2 cone 0.085 | r9   energy v turn v c16: score 0.522 ± 0.020  kills m/o/f/t 0.05 / 0.31 / 0.53 / 0.11  life 100 s  kpm/ship 0.55  trades 0.02
+2v2   D2 cone 0.085 | lead 0.5 s   energy v turn v c17: score 0.511 ± 0.020  kills m/o/f/t 0.05 / 0.32 / 0.53 / 0.11  life 100 s  kpm/ship 0.55  trades 0.02
+2v2   D2 cone 0.085 | one-circle   energy v turn v c18: score 0.332 ± 0.019  kills m/o/f/t 0.04 / 0.22 / 0.24 / 0.50  life 99 s  kpm/ship 0.55  trades 0.02
+2v2 D2 cone 0.085 | one-circle mirror   energy v turn v c19: score 0.535 ± 0.020  kills m/o/f/t 0.05 / 0.32 / 0.51 / 0.12  life 101 s  kpm/ship 0.54  trades 0.02
+2v2 D2 cone 0.085 | one-circle lift 0.95   energy v turn v c20: score 0.541 ± 0.020  kills m/o/f/t 0.06 / 0.29 / 0.36 / 0.29  life 97 s  kpm/ship 0.56  trades 0.02
+2v2 D2 cone 0.085 | lead + one-circle mirror   energy v turn v c21: score 0.496 ± 0.020  kills m/o/f/t 0.05 / 0.32 / 0.53 / 0.10  life 100 s  kpm/ship 0.55  trades 0.02
+2v2 D2 cone 0.085 | lead + one-circle lift 0.95   energy v turn v c22: score 0.567 ± 0.020  kills m/o/f/t 0.06 / 0.28 / 0.37 / 0.29  life 98 s  kpm/ship 0.56  trades 0.02
+2v2 D2 cone 0.085 | J one-circle, Y lead   energy v turn v c23: score 0.503 ± 0.020  kills m/o/f/t 0.07 / 0.27 / 0.38 / 0.28  life 97 s  kpm/ship 0.56  trades 0.02
+2v2            D2 cone 0.01 | r9   energy v turn v c24: score 0.502 ± 0.020  kills m/o/f/t 0.01 / 0.33 / 0.54 / 0.12  life 105 s  kpm/ship 0.52  trades 0.02
+2v2    D2 cone 0.01 | lead 0.5 s   energy v turn v c25: score 0.522 ± 0.020  kills m/o/f/t 0.02 / 0.32 / 0.55 / 0.11  life 104 s  kpm/ship 0.53  trades 0.02
+2v2    D2 cone 0.01 | one-circle   energy v turn v c26: score 0.335 ± 0.019  kills m/o/f/t 0.02 / 0.22 / 0.24 / 0.51  life 101 s  kpm/ship 0.54  trades 0.02
+2v2 D2 cone 0.01 | one-circle mirror   energy v turn v c27: score 0.487 ± 0.020  kills m/o/f/t 0.02 / 0.33 / 0.53 / 0.12  life 103 s  kpm/ship 0.53  trades 0.01
+2v2 D2 cone 0.01 | one-circle lift 0.95   energy v turn v c28: score 0.531 ± 0.020  kills m/o/f/t 0.03 / 0.29 / 0.39 / 0.29  life 102 s  kpm/ship 0.54  trades 0.03
+2v2 D2 cone 0.01 | lead + one-circle mirror   energy v turn v c29: score 0.500 ± 0.020  kills m/o/f/t 0.02 / 0.33 / 0.53 / 0.11  life 102 s  kpm/ship 0.54  trades 0.02
+2v2 D2 cone 0.01 | lead + one-circle lift 0.95   energy v turn v c30: score 0.528 ± 0.020  kills m/o/f/t 0.03 / 0.28 / 0.39 / 0.31  life 107 s  kpm/ship 0.51  trades 0.02
+2v2 D2 cone 0.01 | J one-circle, Y lead   energy v turn v c31: score 0.558 ± 0.020  kills m/o/f/t 0.03 / 0.29 / 0.39 / 0.30  life 104 s  kpm/ship 0.53  trades 0.02
+## 5v5: 96 jobs, B 4096, 01:02 KST
+  batch 1/12 103 s; ETA 01:23 KST
+  batch 2/12 133 s; ETA 01:16 KST
+  batch 3/12 164 s; ETA 01:13 KST
+  batch 4/12 194 s; ETA 01:12 KST
+  batch 5/12 226 s; ETA 01:11 KST
+  batch 6/12 258 s; ETA 01:11 KST
+  batch 7/12 289 s; ETA 01:11 KST
+  batch 8/12 320 s; ETA 01:10 KST
+  batch 9/12 351 s; ETA 01:10 KST
+  batch 10/12 382 s; ETA 01:10 KST
+  batch 11/12 413 s; ETA 01:10 KST
+  batch 12/12 444 s; ETA 01:10 KST
+5v5                  frozen | r9   energy v turn v c0: score 0.554 ± 0.020  kills m/o/f/t 0.07 / 0.17 / 0.54 / 0.23  life 109 s  kpm/ship 0.51  trades 0.04
+5v5          frozen | lead 0.5 s   energy v turn v c1: score 0.570 ± 0.020  kills m/o/f/t 0.07 / 0.17 / 0.53 / 0.23  life 109 s  kpm/ship 0.50  trades 0.04
+5v5          frozen | one-circle   energy v turn v c2: score 0.460 ± 0.021  kills m/o/f/t 0.05 / 0.10 / 0.22 / 0.63  life 109 s  kpm/ship 0.50  trades 0.05
+5v5   frozen | one-circle mirror   energy v turn v c3: score 0.533 ± 0.020  kills m/o/f/t 0.07 / 0.17 / 0.53 / 0.24  life 109 s  kpm/ship 0.51  trades 0.04
+5v5 frozen | one-circle lift 0.95   energy v turn v c4: score 0.763 ± 0.018  kills m/o/f/t 0.06 / 0.15 / 0.38 / 0.41  life 110 s  kpm/ship 0.50  trades 0.04
+5v5 frozen | lead + one-circle mirror   energy v turn v c5: score 0.521 ± 0.021  kills m/o/f/t 0.07 / 0.17 / 0.54 / 0.23  life 110 s  kpm/ship 0.50  trades 0.04
+5v5 frozen | lead + one-circle lift 0.95   energy v turn v c6: score 0.744 ± 0.018  kills m/o/f/t 0.06 / 0.16 / 0.38 / 0.40  life 110 s  kpm/ship 0.50  trades 0.05
+5v5 frozen | J one-circle, Y lead   energy v turn v c7: score 0.756 ± 0.017  kills m/o/f/t 0.06 / 0.16 / 0.37 / 0.41  life 110 s  kpm/ship 0.50  trades 0.04
+5v5                      D2 | r9   energy v turn v c8: score 0.540 ± 0.020  kills m/o/f/t 0.05 / 0.18 / 0.58 / 0.19  life 103 s  kpm/ship 0.53  trades 0.05
+5v5              D2 | lead 0.5 s   energy v turn v c9: score 0.513 ± 0.020  kills m/o/f/t 0.05 / 0.19 / 0.57 / 0.19  life 103 s  kpm/ship 0.53  trades 0.04
+5v5              D2 | one-circle   energy v turn v c10: score 0.487 ± 0.021  kills m/o/f/t 0.05 / 0.14 / 0.28 / 0.53  life 105 s  kpm/ship 0.52  trades 0.05
+5v5       D2 | one-circle mirror   energy v turn v c11: score 0.558 ± 0.020  kills m/o/f/t 0.05 / 0.18 / 0.59 / 0.19  life 103 s  kpm/ship 0.53  trades 0.04
+5v5    D2 | one-circle lift 0.95   energy v turn v c12: score 0.572 ± 0.020  kills m/o/f/t 0.05 / 0.17 / 0.44 / 0.34  life 100 s  kpm/ship 0.54  trades 0.05
+5v5 D2 | lead + one-circle mirror   energy v turn v c13: score 0.582 ± 0.020  kills m/o/f/t 0.05 / 0.18 / 0.59 / 0.19  life 103 s  kpm/ship 0.53  trades 0.05
+5v5 D2 | lead + one-circle lift 0.95   energy v turn v c14: score 0.610 ± 0.020  kills m/o/f/t 0.05 / 0.17 / 0.43 / 0.35  life 100 s  kpm/ship 0.54  trades 0.05
+5v5    D2 | J one-circle, Y lead   energy v turn v c15: score 0.653 ± 0.019  kills m/o/f/t 0.05 / 0.17 / 0.43 / 0.35  life 101 s  kpm/ship 0.54  trades 0.05
+5v5           D2 cone 0.085 | r9   energy v turn v c16: score 0.697 ± 0.019  kills m/o/f/t 0.04 / 0.26 / 0.54 / 0.16  life 92 s  kpm/ship 0.59  trades 0.06
+5v5   D2 cone 0.085 | lead 0.5 s   energy v turn v c17: score 0.640 ± 0.020  kills m/o/f/t 0.04 / 0.27 / 0.54 / 0.15  life 91 s  kpm/ship 0.59  trades 0.05
+5v5   D2 cone 0.085 | one-circle   energy v turn v c18: score 0.636 ± 0.020  kills m/o/f/t 0.04 / 0.22 / 0.28 / 0.45  life 97 s  kpm/ship 0.56  trades 0.05
+5v5 D2 cone 0.085 | one-circle mirror   energy v turn v c19: score 0.683 ± 0.019  kills m/o/f/t 0.04 / 0.27 / 0.53 / 0.16  life 92 s  kpm/ship 0.59  trades 0.05
+5v5 D2 cone 0.085 | one-circle lift 0.95   energy v turn v c20: score 0.709 ± 0.019  kills m/o/f/t 0.04 / 0.25 / 0.42 / 0.29  life 91 s  kpm/ship 0.59  trades 0.06
+5v5 D2 cone 0.085 | lead + one-circle mirror   energy v turn v c21: score 0.690 ± 0.019  kills m/o/f/t 0.04 / 0.27 / 0.54 / 0.16  life 92 s  kpm/ship 0.59  trades 0.06
+5v5 D2 cone 0.085 | lead + one-circle lift 0.95   energy v turn v c22: score 0.729 ± 0.018  kills m/o/f/t 0.04 / 0.25 / 0.41 / 0.30  life 91 s  kpm/ship 0.60  trades 0.05
+5v5 D2 cone 0.085 | J one-circle, Y lead   energy v turn v c23: score 0.713 ± 0.019  kills m/o/f/t 0.04 / 0.25 / 0.41 / 0.30  life 92 s  kpm/ship 0.59  trades 0.06
+5v5            D2 cone 0.01 | r9   energy v turn v c24: score 0.636 ± 0.020  kills m/o/f/t 0.03 / 0.27 / 0.55 / 0.16  life 93 s  kpm/ship 0.58  trades 0.05
+5v5    D2 cone 0.01 | lead 0.5 s   energy v turn v c25: score 0.670 ± 0.019  kills m/o/f/t 0.02 / 0.26 / 0.56 / 0.15  life 94 s  kpm/ship 0.58  trades 0.06
+5v5    D2 cone 0.01 | one-circle   energy v turn v c26: score 0.597 ± 0.020  kills m/o/f/t 0.02 / 0.21 / 0.29 / 0.47  life 99 s  kpm/ship 0.55  trades 0.05
+5v5 D2 cone 0.01 | one-circle mirror   energy v turn v c27: score 0.647 ± 0.020  kills m/o/f/t 0.03 / 0.26 / 0.56 / 0.16  life 93 s  kpm/ship 0.58  trades 0.05
+5v5 D2 cone 0.01 | one-circle lift 0.95   energy v turn v c28: score 0.755 ± 0.018  kills m/o/f/t 0.03 / 0.24 / 0.42 / 0.30  life 93 s  kpm/ship 0.59  trades 0.06
+5v5 D2 cone 0.01 | lead + one-circle mirror   energy v turn v c29: score 0.666 ± 0.019  kills m/o/f/t 0.03 / 0.27 / 0.55 / 0.16  life 93 s  kpm/ship 0.58  trades 0.06
+5v5 D2 cone 0.01 | lead + one-circle lift 0.95   energy v turn v c30: score 0.710 ± 0.019  kills m/o/f/t 0.03 / 0.25 / 0.42 / 0.30  life 93 s  kpm/ship 0.59  trades 0.05
+5v5 D2 cone 0.01 | J one-circle, Y lead   energy v turn v c31: score 0.723 ± 0.019  kills m/o/f/t 0.03 / 0.25 / 0.42 / 0.30  life 92 s  kpm/ship 0.59  trades 0.06
+5v5                  frozen | r9           mixed v r9: score 0.494 ± 0.020  kills m/o/f/t 0.07 / 0.16 / 0.53 / 0.24  life 114 s  kpm/ship 0.49  trades 0.04
+5v5                  frozen | r9  mixed reversed v r9: score 0.495 ± 0.021  kills m/o/f/t 0.08 / 0.17 / 0.53 / 0.22  life 104 s  kpm/ship 0.53  trades 0.05
+5v5          frozen | lead 0.5 s           mixed v r9: score 0.521 ± 0.021  kills m/o/f/t 0.07 / 0.17 / 0.53 / 0.24  life 115 s  kpm/ship 0.48  trades 0.04
+5v5          frozen | lead 0.5 s  mixed reversed v r9: score 0.466 ± 0.021  kills m/o/f/t 0.07 / 0.18 / 0.54 / 0.21  life 104 s  kpm/ship 0.53  trades 0.05
+5v5          frozen | one-circle           mixed v r9: score 0.211 ± 0.017  kills m/o/f/t 0.07 / 0.13 / 0.36 / 0.44  life 113 s  kpm/ship 0.49  trades 0.04
+5v5          frozen | one-circle  mixed reversed v r9: score 0.275 ± 0.018  kills m/o/f/t 0.08 / 0.14 / 0.37 / 0.41  life 105 s  kpm/ship 0.52  trades 0.05
+5v5   frozen | one-circle mirror           mixed v r9: score 0.352 ± 0.019  kills m/o/f/t 0.07 / 0.15 / 0.44 / 0.35  life 111 s  kpm/ship 0.49  trades 0.05
+5v5   frozen | one-circle mirror  mixed reversed v r9: score 0.402 ± 0.020  kills m/o/f/t 0.08 / 0.16 / 0.45 / 0.31  life 103 s  kpm/ship 0.53  trades 0.05
+5v5 frozen | one-circle lift 0.95           mixed v r9: score 0.307 ± 0.019  kills m/o/f/t 0.07 / 0.15 / 0.40 / 0.38  life 113 s  kpm/ship 0.49  trades 0.05
+5v5 frozen | one-circle lift 0.95  mixed reversed v r9: score 0.357 ± 0.020  kills m/o/f/t 0.08 / 0.15 / 0.43 / 0.34  life 104 s  kpm/ship 0.53  trades 0.05
+5v5 frozen | lead + one-circle mirror           mixed v r9: score 0.350 ± 0.019  kills m/o/f/t 0.07 / 0.14 / 0.44 / 0.35  life 112 s  kpm/ship 0.49  trades 0.05
+5v5 frozen | lead + one-circle mirror  mixed reversed v r9: score 0.391 ± 0.020  kills m/o/f/t 0.08 / 0.17 / 0.45 / 0.30  life 104 s  kpm/ship 0.53  trades 0.05
+5v5 frozen | lead + one-circle lift 0.95           mixed v r9: score 0.320 ± 0.019  kills m/o/f/t 0.07 / 0.14 / 0.41 / 0.38  life 113 s  kpm/ship 0.49  trades 0.05
+5v5 frozen | lead + one-circle lift 0.95  mixed reversed v r9: score 0.347 ± 0.020  kills m/o/f/t 0.08 / 0.15 / 0.42 / 0.34  life 105 s  kpm/ship 0.52  trades 0.05
+5v5 frozen | J one-circle, Y lead           mixed v r9: score 0.392 ± 0.020  kills m/o/f/t 0.07 / 0.16 / 0.47 / 0.30  life 114 s  kpm/ship 0.48  trades 0.04
+5v5 frozen | J one-circle, Y lead  mixed reversed v r9: score 0.404 ± 0.020  kills m/o/f/t 0.08 / 0.17 / 0.43 / 0.32  life 105 s  kpm/ship 0.52  trades 0.05
+5v5                      D2 | r9           mixed v r9: score 0.527 ± 0.021  kills m/o/f/t 0.05 / 0.18 / 0.58 / 0.19  life 99 s  kpm/ship 0.55  trades 0.05
+5v5                      D2 | r9  mixed reversed v r9: score 0.529 ± 0.021  kills m/o/f/t 0.05 / 0.18 / 0.59 / 0.18  life 98 s  kpm/ship 0.55  trades 0.05
+5v5              D2 | lead 0.5 s           mixed v r9: score 0.506 ± 0.021  kills m/o/f/t 0.05 / 0.18 / 0.59 / 0.18  life 100 s  kpm/ship 0.55  trades 0.04
+5v5              D2 | lead 0.5 s  mixed reversed v r9: score 0.447 ± 0.021  kills m/o/f/t 0.05 / 0.19 / 0.59 / 0.18  life 98 s  kpm/ship 0.56  trades 0.05
+5v5              D2 | one-circle           mixed v r9: score 0.404 ± 0.020  kills m/o/f/t 0.05 / 0.17 / 0.44 / 0.35  life 100 s  kpm/ship 0.54  trades 0.05
+5v5              D2 | one-circle  mixed reversed v r9: score 0.370 ± 0.020  kills m/o/f/t 0.05 / 0.16 / 0.44 / 0.35  life 99 s  kpm/ship 0.55  trades 0.05
+5v5       D2 | one-circle mirror           mixed v r9: score 0.465 ± 0.021  kills m/o/f/t 0.05 / 0.17 / 0.49 / 0.28  life 100 s  kpm/ship 0.55  trades 0.05
+5v5       D2 | one-circle mirror  mixed reversed v r9: score 0.430 ± 0.021  kills m/o/f/t 0.05 / 0.17 / 0.51 / 0.27  life 98 s  kpm/ship 0.56  trades 0.05
+5v5    D2 | one-circle lift 0.95           mixed v r9: score 0.464 ± 0.021  kills m/o/f/t 0.05 / 0.17 / 0.48 / 0.30  life 100 s  kpm/ship 0.55  trades 0.05
+5v5    D2 | one-circle lift 0.95  mixed reversed v r9: score 0.433 ± 0.020  kills m/o/f/t 0.06 / 0.17 / 0.48 / 0.29  life 99 s  kpm/ship 0.55  trades 0.05
+5v5 D2 | lead + one-circle mirror           mixed v r9: score 0.438 ± 0.020  kills m/o/f/t 0.05 / 0.17 / 0.50 / 0.27  life 100 s  kpm/ship 0.55  trades 0.05
+5v5 D2 | lead + one-circle mirror  mixed reversed v r9: score 0.447 ± 0.020  kills m/o/f/t 0.05 / 0.17 / 0.51 / 0.27  life 98 s  kpm/ship 0.56  trades 0.05
+5v5 D2 | lead + one-circle lift 0.95           mixed v r9: score 0.415 ± 0.020  kills m/o/f/t 0.05 / 0.17 / 0.47 / 0.31  life 100 s  kpm/ship 0.55  trades 0.05
+5v5 D2 | lead + one-circle lift 0.95  mixed reversed v r9: score 0.430 ± 0.020  kills m/o/f/t 0.05 / 0.17 / 0.49 / 0.29  life 99 s  kpm/ship 0.55  trades 0.05
+5v5    D2 | J one-circle, Y lead           mixed v r9: score 0.473 ± 0.021  kills m/o/f/t 0.05 / 0.18 / 0.53 / 0.24  life 100 s  kpm/ship 0.55  trades 0.05
+5v5    D2 | J one-circle, Y lead  mixed reversed v r9: score 0.469 ± 0.021  kills m/o/f/t 0.05 / 0.17 / 0.51 / 0.27  life 98 s  kpm/ship 0.55  trades 0.05
+5v5           D2 cone 0.085 | r9           mixed v r9: score 0.484 ± 0.021  kills m/o/f/t 0.04 / 0.27 / 0.54 / 0.15  life 89 s  kpm/ship 0.61  trades 0.06
+5v5           D2 cone 0.085 | r9  mixed reversed v r9: score 0.499 ± 0.021  kills m/o/f/t 0.04 / 0.27 / 0.54 / 0.15  life 88 s  kpm/ship 0.61  trades 0.07
+5v5   D2 cone 0.085 | lead 0.5 s           mixed v r9: score 0.520 ± 0.021  kills m/o/f/t 0.04 / 0.27 / 0.54 / 0.15  life 89 s  kpm/ship 0.60  trades 0.06
+5v5   D2 cone 0.085 | lead 0.5 s  mixed reversed v r9: score 0.500 ± 0.021  kills m/o/f/t 0.04 / 0.27 / 0.54 / 0.14  life 88 s  kpm/ship 0.61  trades 0.06
+5v5   D2 cone 0.085 | one-circle           mixed v r9: score 0.426 ± 0.020  kills m/o/f/t 0.04 / 0.25 / 0.42 / 0.29  life 92 s  kpm/ship 0.59  trades 0.06
+5v5   D2 cone 0.085 | one-circle  mixed reversed v r9: score 0.443 ± 0.021  kills m/o/f/t 0.04 / 0.25 / 0.42 / 0.29  life 90 s  kpm/ship 0.60  trades 0.06
+5v5 D2 cone 0.085 | one-circle mirror           mixed v r9: score 0.449 ± 0.021  kills m/o/f/t 0.04 / 0.26 / 0.48 / 0.22  life 90 s  kpm/ship 0.60  trades 0.06
+5v5 D2 cone 0.085 | one-circle mirror  mixed reversed v r9: score 0.478 ± 0.021  kills m/o/f/t 0.05 / 0.26 / 0.47 / 0.22  life 89 s  kpm/ship 0.61  trades 0.06
+5v5 D2 cone 0.085 | one-circle lift 0.95           mixed v r9: score 0.444 ± 0.021  kills m/o/f/t 0.04 / 0.25 / 0.46 / 0.25  life 92 s  kpm/ship 0.59  trades 0.06
+5v5 D2 cone 0.085 | one-circle lift 0.95  mixed reversed v r9: score 0.471 ± 0.021  kills m/o/f/t 0.05 / 0.25 / 0.46 / 0.24  life 90 s  kpm/ship 0.60  trades 0.06
+5v5 D2 cone 0.085 | lead + one-circle mirror           mixed v r9: score 0.451 ± 0.020  kills m/o/f/t 0.04 / 0.26 / 0.48 / 0.22  life 90 s  kpm/ship 0.60  trades 0.06
+5v5 D2 cone 0.085 | lead + one-circle mirror  mixed reversed v r9: score 0.476 ± 0.021  kills m/o/f/t 0.04 / 0.27 / 0.47 / 0.22  life 89 s  kpm/ship 0.61  trades 0.06
+5v5 D2 cone 0.085 | lead + one-circle lift 0.95           mixed v r9: score 0.479 ± 0.021  kills m/o/f/t 0.04 / 0.25 / 0.46 / 0.25  life 90 s  kpm/ship 0.60  trades 0.06
+5v5 D2 cone 0.085 | lead + one-circle lift 0.95  mixed reversed v r9: score 0.472 ± 0.021  kills m/o/f/t 0.05 / 0.26 / 0.44 / 0.25  life 88 s  kpm/ship 0.61  trades 0.06
+5v5 D2 cone 0.085 | J one-circle, Y lead           mixed v r9: score 0.473 ± 0.021  kills m/o/f/t 0.04 / 0.26 / 0.50 / 0.20  life 90 s  kpm/ship 0.60  trades 0.06
+5v5 D2 cone 0.085 | J one-circle, Y lead  mixed reversed v r9: score 0.468 ± 0.020  kills m/o/f/t 0.05 / 0.26 / 0.48 / 0.22  life 89 s  kpm/ship 0.61  trades 0.06
+5v5            D2 cone 0.01 | r9           mixed v r9: score 0.452 ± 0.020  kills m/o/f/t 0.03 / 0.27 / 0.56 / 0.15  life 91 s  kpm/ship 0.59  trades 0.05
+5v5            D2 cone 0.01 | r9  mixed reversed v r9: score 0.482 ± 0.021  kills m/o/f/t 0.03 / 0.26 / 0.56 / 0.15  life 90 s  kpm/ship 0.60  trades 0.06
+5v5    D2 cone 0.01 | lead 0.5 s           mixed v r9: score 0.462 ± 0.021  kills m/o/f/t 0.03 / 0.27 / 0.56 / 0.15  life 91 s  kpm/ship 0.59  trades 0.06
+5v5    D2 cone 0.01 | lead 0.5 s  mixed reversed v r9: score 0.508 ± 0.021  kills m/o/f/t 0.03 / 0.27 / 0.56 / 0.15  life 89 s  kpm/ship 0.61  trades 0.06
+5v5    D2 cone 0.01 | one-circle           mixed v r9: score 0.368 ± 0.020  kills m/o/f/t 0.03 / 0.25 / 0.42 / 0.30  life 93 s  kpm/ship 0.58  trades 0.06
+5v5    D2 cone 0.01 | one-circle  mixed reversed v r9: score 0.452 ± 0.021  kills m/o/f/t 0.03 / 0.25 / 0.43 / 0.29  life 93 s  kpm/ship 0.58  trades 0.06
+5v5 D2 cone 0.01 | one-circle mirror           mixed v r9: score 0.465 ± 0.021  kills m/o/f/t 0.03 / 0.26 / 0.49 / 0.23  life 92 s  kpm/ship 0.59  trades 0.06
+5v5 D2 cone 0.01 | one-circle mirror  mixed reversed v r9: score 0.478 ± 0.021  kills m/o/f/t 0.03 / 0.26 / 0.48 / 0.23  life 91 s  kpm/ship 0.60  trades 0.06
+5v5 D2 cone 0.01 | one-circle lift 0.95           mixed v r9: score 0.482 ± 0.021  kills m/o/f/t 0.03 / 0.25 / 0.46 / 0.26  life 92 s  kpm/ship 0.59  trades 0.05
+5v5 D2 cone 0.01 | one-circle lift 0.95  mixed reversed v r9: score 0.479 ± 0.021  kills m/o/f/t 0.03 / 0.25 / 0.46 / 0.26  life 91 s  kpm/ship 0.59  trades 0.06
+5v5 D2 cone 0.01 | lead + one-circle mirror           mixed v r9: score 0.437 ± 0.021  kills m/o/f/t 0.03 / 0.26 / 0.48 / 0.23  life 92 s  kpm/ship 0.59  trades 0.06
+5v5 D2 cone 0.01 | lead + one-circle mirror  mixed reversed v r9: score 0.450 ± 0.021  kills m/o/f/t 0.03 / 0.26 / 0.48 / 0.23  life 91 s  kpm/ship 0.60  trades 0.06
+5v5 D2 cone 0.01 | lead + one-circle lift 0.95           mixed v r9: score 0.425 ± 0.021  kills m/o/f/t 0.03 / 0.26 / 0.45 / 0.26  life 92 s  kpm/ship 0.59  trades 0.06
+5v5 D2 cone 0.01 | lead + one-circle lift 0.95  mixed reversed v r9: score 0.489 ± 0.021  kills m/o/f/t 0.03 / 0.25 / 0.47 / 0.25  life 91 s  kpm/ship 0.59  trades 0.06
+5v5 D2 cone 0.01 | J one-circle, Y lead           mixed v r9: score 0.484 ± 0.020  kills m/o/f/t 0.02 / 0.26 / 0.51 / 0.20  life 92 s  kpm/ship 0.59  trades 0.06
+5v5 D2 cone 0.01 | J one-circle, Y lead  mixed reversed v r9: score 0.438 ± 0.021  kills m/o/f/t 0.03 / 0.26 / 0.48 / 0.23  life 90 s  kpm/ship 0.60  trades 0.06
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|
+| frozen | r9 | 0.015 ± 0.004 | 0.378 ± 0.019 | 0.554 ± 0.020 | 0.485 | 0.07 / 0.17 / 0.54 / 0.23 | 0.04 | 171 / 111 / 109 | 0.33 / 0.50 / 0.51 | 2.83 |
+| frozen | lead 0.5 s | 0.014 ± 0.004 | 0.343 ± 0.018 | 0.570 ± 0.020 | 0.486 | 0.07 / 0.17 / 0.53 / 0.23 | 0.04 | 172 / 112 / 109 | 0.33 / 0.49 / 0.50 | 2.86 |
+| frozen | one-circle | 0.012 ± 0.004 | 0.269 ± 0.018 | 0.460 ± 0.021 | 0.488 | 0.05 / 0.10 / 0.22 / 0.63 | 0.05 | 128 / 106 / 109 | 0.44 / 0.52 / 0.50 | 2.81 |
+| frozen | one-circle mirror | 0.009 ± 0.003 | 0.379 ± 0.019 | 0.533 ± 0.020 | 0.491 | 0.07 / 0.17 / 0.53 / 0.24 | 0.04 | 171 / 112 / 109 | 0.33 / 0.49 / 0.51 | 2.86 |
+| frozen | one-circle lift 0.95 | 0.057 ± 0.007 | 0.565 ± 0.020 | 0.763 ± 0.018 | 0.443 | 0.06 / 0.15 / 0.38 / 0.41 | 0.04 | 215 / 109 / 110 | 0.27 / 0.50 / 0.50 | 3.8 |
+| frozen | lead + one-circle mirror | 0.011 ± 0.003 | 0.374 ± 0.019 | 0.521 ± 0.021 | 0.489 | 0.07 / 0.17 / 0.54 / 0.23 | 0.04 | 176 / 112 / 110 | 0.32 / 0.49 / 0.50 | 2.83 |
+| frozen | lead + one-circle lift 0.95 | 0.048 ± 0.007 | 0.533 ± 0.020 | 0.744 ± 0.018 | 0.452 | 0.06 / 0.16 / 0.38 / 0.40 | 0.05 | 238 / 111 / 110 | 0.24 / 0.50 / 0.50 | 3.74 |
+| frozen | J one-circle, Y lead | 0.038 ± 0.006 | 0.539 ± 0.019 | 0.756 ± 0.017 | 0.462 | 0.06 / 0.16 / 0.37 / 0.41 | 0.04 | 242 / 109 / 110 | 0.24 / 0.51 / 0.50 | 3.91 |
+| D2 | r9 | 0.496 ± 0.014 | 0.461 ± 0.020 | 0.540 ± 0.020 | 0.040 | 0.05 / 0.18 / 0.58 / 0.19 | 0.05 | 292 / 114 / 103 | 0.20 / 0.48 / 0.53 | 3.47 |
+| D2 | lead 0.5 s | 0.563 ± 0.014 | 0.458 ± 0.020 | 0.513 ± 0.020 | 0.063 | 0.05 / 0.19 / 0.57 / 0.19 | 0.04 | 256 / 113 / 103 | 0.23 / 0.49 / 0.53 | 2.99 |
+| D2 | one-circle | 0.020 ± 0.005 | 0.280 ± 0.018 | 0.487 ± 0.021 | 0.480 | 0.05 / 0.14 / 0.28 / 0.53 | 0.05 | 141 / 106 / 105 | 0.40 / 0.52 / 0.52 | 3.62 |
+| D2 | one-circle mirror | 0.530 ± 0.014 | 0.443 ± 0.019 | 0.558 ± 0.020 | 0.058 | 0.05 / 0.18 / 0.59 / 0.19 | 0.04 | 282 / 112 / 103 | 0.21 / 0.49 / 0.53 | 3.47 |
+| D2 | one-circle lift 0.95 | 0.140 ± 0.011 | 0.488 ± 0.019 | 0.572 ± 0.020 | 0.360 | 0.05 / 0.17 / 0.44 / 0.34 | 0.05 | 201 / 108 / 100 | 0.28 / 0.51 / 0.54 | 3.79 |
+| D2 | lead + one-circle mirror | 0.551 ± 0.014 | 0.428 ± 0.020 | 0.582 ± 0.020 | 0.082 | 0.05 / 0.18 / 0.59 / 0.19 | 0.05 | 254 / 113 / 103 | 0.23 / 0.49 / 0.53 | 3.05 |
+| D2 | lead + one-circle lift 0.95 | 0.156 ± 0.011 | 0.458 ± 0.020 | 0.610 ± 0.020 | 0.344 | 0.05 / 0.17 / 0.43 / 0.35 | 0.05 | 209 / 107 / 100 | 0.27 / 0.51 / 0.54 | 3.89 |
+| D2 | J one-circle, Y lead | 0.182 ± 0.012 | 0.470 ± 0.020 | 0.653 ± 0.019 | 0.318 | 0.05 / 0.17 / 0.43 / 0.35 | 0.05 | 204 / 107 / 101 | 0.28 / 0.51 / 0.54 | 3.84 |
+| D2 cone 0.085 | r9 | 0.541 ± 0.015 | 0.522 ± 0.020 | 0.697 ± 0.019 | 0.197 | 0.04 / 0.26 / 0.54 / 0.16 | 0.06 | 229 / 100 / 92 | 0.25 / 0.55 / 0.59 | 2.71 |
+| D2 cone 0.085 | lead 0.5 s | 0.622 ± 0.015 | 0.511 ± 0.020 | 0.640 ± 0.020 | 0.140 | 0.04 / 0.27 / 0.54 / 0.15 | 0.05 | 202 / 100 / 91 | 0.28 / 0.55 / 0.59 | 2.27 |
+| D2 cone 0.085 | one-circle | 0.023 ± 0.005 | 0.332 ± 0.019 | 0.636 ± 0.020 | 0.477 | 0.04 / 0.22 / 0.28 / 0.45 | 0.05 | 139 / 99 / 97 | 0.40 / 0.55 / 0.56 | 3.28 |
+| D2 cone 0.085 | one-circle mirror | 0.534 ± 0.015 | 0.535 ± 0.020 | 0.683 ± 0.019 | 0.183 | 0.04 / 0.27 / 0.53 / 0.16 | 0.05 | 220 / 101 / 92 | 0.26 / 0.54 / 0.59 | 2.66 |
+| D2 cone 0.085 | one-circle lift 0.95 | 0.266 ± 0.013 | 0.541 ± 0.020 | 0.709 ± 0.019 | 0.234 | 0.04 / 0.25 / 0.42 / 0.29 | 0.06 | 227 / 97 / 91 | 0.25 / 0.56 / 0.59 | 4.29 |
+| D2 cone 0.085 | lead + one-circle mirror | 0.629 ± 0.015 | 0.496 ± 0.020 | 0.690 ± 0.019 | 0.190 | 0.04 / 0.27 / 0.54 / 0.16 | 0.06 | 206 / 100 / 92 | 0.28 / 0.55 / 0.59 | 2.29 |
+| D2 cone 0.085 | lead + one-circle lift 0.95 | 0.249 ± 0.013 | 0.567 ± 0.020 | 0.729 ± 0.018 | 0.251 | 0.04 / 0.25 / 0.41 / 0.30 | 0.05 | 244 / 98 / 91 | 0.24 / 0.56 / 0.60 | 4.41 |
+| D2 cone 0.085 | J one-circle, Y lead | 0.305 ± 0.013 | 0.503 ± 0.020 | 0.713 ± 0.019 | 0.213 | 0.04 / 0.25 / 0.41 / 0.30 | 0.06 | 251 / 97 / 92 | 0.23 / 0.56 / 0.59 | 4.48 |
+| D2 cone 0.01 | r9 | 0.521 ± 0.015 | 0.502 ± 0.020 | 0.636 ± 0.020 | 0.136 | 0.03 / 0.27 / 0.55 / 0.16 | 0.05 | 286 / 105 / 93 | 0.20 / 0.52 / 0.58 | 2.94 |
+| D2 cone 0.01 | lead 0.5 s | 0.585 ± 0.015 | 0.522 ± 0.020 | 0.670 ± 0.019 | 0.170 | 0.02 / 0.26 / 0.56 / 0.15 | 0.06 | 228 / 104 / 94 | 0.25 / 0.53 / 0.58 | 2.58 |
+| D2 cone 0.01 | one-circle | 0.019 ± 0.005 | 0.335 ± 0.019 | 0.597 ± 0.020 | 0.481 | 0.02 / 0.21 / 0.29 / 0.47 | 0.05 | 155 / 101 / 99 | 0.36 / 0.54 / 0.55 | 3.6 |
+| D2 cone 0.01 | one-circle mirror | 0.523 ± 0.015 | 0.487 ± 0.020 | 0.647 ± 0.020 | 0.147 | 0.03 / 0.26 / 0.56 / 0.16 | 0.05 | 274 / 103 / 93 | 0.21 / 0.53 / 0.58 | 2.89 |
+| D2 cone 0.01 | one-circle lift 0.95 | 0.410 ± 0.012 | 0.531 ± 0.020 | 0.755 ± 0.018 | 0.255 | 0.03 / 0.24 / 0.42 / 0.30 | 0.06 | 1068 / 102 / 93 | 0.06 / 0.54 / 0.59 | 3.14 |
+| D2 cone 0.01 | lead + one-circle mirror | 0.598 ± 0.015 | 0.500 ± 0.020 | 0.666 ± 0.019 | 0.166 | 0.03 / 0.27 / 0.55 / 0.16 | 0.06 | 237 / 102 / 93 | 0.24 / 0.54 / 0.58 | 2.57 |
+| D2 cone 0.01 | lead + one-circle lift 0.95 | 0.420 ± 0.012 | 0.528 ± 0.020 | 0.710 ± 0.019 | 0.210 | 0.03 / 0.25 / 0.42 / 0.30 | 0.05 | 720 / 107 / 93 | 0.08 / 0.51 / 0.59 | 2.54 |
+| D2 cone 0.01 | J one-circle, Y lead | 0.416 ± 0.012 | 0.558 ± 0.020 | 0.723 ± 0.019 | 0.223 | 0.03 / 0.25 / 0.42 / 0.30 | 0.06 | 803 / 104 / 92 | 0.07 / 0.53 / 0.59 | 2.54 |
+
+763 s

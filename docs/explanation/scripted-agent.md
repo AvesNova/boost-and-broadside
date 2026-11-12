@@ -128,6 +128,35 @@ a weight of its own:
   `deny_angle` off the line to it, to the side the ship is already off its nose, so the
   pass is an offset one, not a mutual head-on.
 
+The maneuvers act on the stick and the power after the combat layer has chosen them. Each
+has its own weight and gates, not `strength` and `in_advantage`, so they also fly in the
+mirrors (where the advantage is 1 and the tuned doctrines' gates are shut). Each is off
+by default:
+
+- **Lead turn**: on a head-on approach (the flight paths within `lead_turn_in_crossing` of
+  opposed) with the merge `lead_turn_in_seconds` away (range over closure), turn early at
+  `lead_turn_stick` of full stick toward the side the target will pass on (the two-circle
+  sense), or away from it (`lead_turn_one_circle`).
+- **Yo-yo**: after `yoyo_after_seconds` of a close fight with no angle gained (a clock in
+  the carry), with the target within `yoyo_phase` of the nose and its nose off the ship,
+  ease the stick to `yoyo_ease` and climb (reverse) for `yoyo_climb_seconds`, then pull
+  and dive (boost) for `yoyo_dive_seconds`. The low yo-yo (`yoyo_low`) dives first, up to
+  `yoyo_to_corner_speed` corner speeds.
+- **Brake**: with a closing target in the rear hemisphere, its nose on the ship, inside
+  `brake_in_gun_range`, reverse (the store as a speed brake) to force an overshoot.
+- **Sense** (the post-merge choice): with the target passed behind the 3-9 line within
+  `sense_in_gun_range` and turning, turn at full stick against its rotation (the
+  one-circle) with probability `sense_one_circle`, drawn once per merge, else with it (the
+  two-circle). It is gated by the lift-coefficient ratio (`sense_in_lift_ratio`; the slow
+  turn's radius is one over the maximum lift coefficient) and, optionally, to the own type
+  (`sense_mirror_only`). With another known enemy within `sense_crowd_in_gun_range` (the
+  falling `sense_in_crowd` on their soft count), it hands over to the **crowd sense**: the
+  same side at `crowd_sense_stick` of full stick (0 flies straight, an extension),
+  boosting with weight `crowd_sense_boost`.
+
+What each one did against r9, and why the yo-yo does not work in this flight model, is in
+`docs/rewrite/sections/maneuvers/progress.md`.
+
 ## The Frontline layer
 
 Strength is a sum of Gaussian kernels over visible living ships, each weighted by its
