@@ -27,10 +27,9 @@ SLIGHT_TURN = min(abs(level) for level in STICK_LEVELS if level != 0.0)  # the l
 # straight or at a slight turn to either side, and not shooting. Any other input restarts
 # its delay.
 QUIET_STICKS = tuple(index for index, level in enumerate(STICK_LEVELS) if abs(level) <= SLIGHT_TURN)
-FIELD_LEVELS = (-2, -1, 1, 2)
+FIELD_LEVELS = (-2, -1, 1, 2)  # a field's level: -2 and -1 low, 1 and 2 high; 2 strong
 LN_SQRT2 = 0.5 * math.log(2.0)
 MAP_SCALE_RADIUS = 2600.0  # m: the arena radius of map scale 1 (map_scale = R_a / this)
-FIELD_DISC_FRACTION = 0.85  # the fields' centres lie within this fraction of the arena radius
 # rad: the angle off the nose at which armour is at half strength (the aspect halfway from
 # the head-on fraction to 1): 42.27 degrees, the exp(-4 theta^2 / pi) curve's
 HEAD_ON_ANGLE = math.sqrt(math.pi * math.log(2.0) / 4.0)
@@ -114,6 +113,17 @@ class Rules:
     # speed, straight out, is 65 m (the heavy, reversing), rounded up.
     spawn_turn_distance: float = 75.0
     field_band_width: float = 40.0  # m [b]
+    # The random map's fields (`physics.spawning.new_map`). Radius: uniform between these
+    # two, in metres at map scale 1 (scaled by the arena's map scale like the other map
+    # lengths). Centres: uniform in a disc of this fraction of the arena radius. Levels:
+    # the sign and the strength are independent draws; a field is high (+) with probability
+    # `field_high_share` and strong (+-2 rather than +-1) with `field_strong_share`. A pair
+    # of point-symmetric fields shares its level, so any shares leave the map fair.
+    field_radius_min: float = 30.0  # m
+    field_radius_max: float = 490.0  # m
+    field_disc_fraction: float = 0.85
+    field_high_share: float = 0.5
+    field_strong_share: float = 0.5
     vision_range: float = 1024.0  # m [V]
     flight: FlightConstants = FlightConstants()
 

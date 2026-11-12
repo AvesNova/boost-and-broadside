@@ -182,12 +182,14 @@ def new_match(
     map_uniforms: torch.Tensor,
     fields: Fields,
     previous: ModeState,
+    disc_fraction,
 ) -> tuple[ModeState, Fields]:
     """A new match's mode state and map from the mode's tick uniforms (B, U_mode) and the
     environments' arena radius and map scale (B,): the drawn point-symmetric fields as they
     are, a fixed layout's fields (`layout_fields`) where the mode's rules have one, or, in
     Frontline, a random ring (rotation, then handedness) with fields mirrored about its
-    neutral axis. previous: the mode state as it stands. A mode without zones zeroes only
+    neutral axis (the odd field within disc_fraction of the arena radius). previous: the mode
+    state as it stands. A mode without zones zeroes only
     the score; its other leaves are zero already and pass through unchanged (no copy of
     the absent slots)."""
     if mode_rules.name != FRONTLINE:
@@ -214,7 +216,9 @@ def new_match(
         handedness=handedness,
         ring_rotation=rotation,
     )
-    return state, frontline.mirror_fields(fields, map_uniforms, arena_radius, rotation)
+    return state, frontline.mirror_fields(
+        fields, map_uniforms, arena_radius, rotation, disc_fraction
+    )
 
 
 def layout_rotation(mode_rules: ModeRules, map_uniforms: torch.Tensor):

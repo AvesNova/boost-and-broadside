@@ -9,7 +9,7 @@ from typing import NamedTuple
 
 import torch
 
-from ..rules import FIELD_DISC_FRACTION, FIELD_LEVELS, TEAMS, Rules
+from ..rules import FIELD_LEVELS, TEAMS, Rules
 from ..ship_types import ShipTypes, per_ship
 from ..state import Fields, Ships, replace, ship_team, where
 from .medium import medium
@@ -46,6 +46,16 @@ def uniform_disc(radius, radius_uniform: torch.Tensor, angle_uniform: torch.Tens
     return distance * torch.cos(angle), distance * torch.sin(angle)
 
 
+def field_level(rules: Rules, uniform: torch.Tensor) -> torch.Tensor:
+    """Field levels (FIELD_LEVELS) from uniforms in [0, 1): low with probability
+    1 - field_high_share (then strong, -2, with field_strong_share), high otherwise. The
+    default shares of 1/2 give the four levels a quarter each."""
+    high, strong = rules.field_high_share, rules.field_strong_share
+    edges = ((1.0 - high) * strong, 1.0 - high, 1.0 - high + high * (1.0 - strong))
+    index = sum((uniform >= edge).to(torch.int32) for edge in edges)
+    return lookup(FIELD_LEVELS, index)
+
+
 def new_map(
     rules: Rules, arena_radius: torch.Tensor, map_scale: torch.Tensor, uniforms: torch.Tensor
 ) -> tuple[Fields, torch.Tensor, torch.Tensor]:
@@ -59,13 +69,16 @@ def new_map(
     P = M // 2
     per_field = uniforms[:, : 4 * M].reshape(B, M, 4)
     x, y = uniform_disc(
-        (FIELD_DISC_FRACTION * arena_radius)[:, None], per_field[:, :P, 0], per_field[:, :P, 1]
+        (rules.field_disc_fraction * arena_radius)[:, None],
+        per_field[:, :P, 0],
+        per_field[:, :P, 1],
     )
     drawn = torch.cat(
         [per_field[:, :P], per_field[:, :P], per_field[:, 2 * P :]], 1
     )  # pairs, centre
-    radius = map_scale[:, None] * (30.0 + 460.0 * drawn[..., 2])
-    level = lookup(FIELD_LEVELS, (4.0 * drawn[..., 3]).to(torch.int32).clamp_max(3))
+    span = rules.field_radius_max - rules.field_radius_min
+    radius = map_scale[:, None] * (rules.field_radius_min + span * drawn[..., 2])
+    level = field_level(rules, drawn[..., 3])
     centre = torch.zeros((B, M - 2 * P), device=uniforms.device)
     fields = Fields(
         x=torch.cat([x, -x, centre], 1),

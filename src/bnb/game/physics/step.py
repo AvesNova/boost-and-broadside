@@ -48,6 +48,7 @@ def _new_matches(rules: Rules, arena: Environment, tick: TickUniforms, previous_
             map_uniforms,
             fields,
             previous_mode,
+            rules.field_disc_fraction,
         )
 
     mode, fields = per_mode(

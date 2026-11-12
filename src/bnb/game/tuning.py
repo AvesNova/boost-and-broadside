@@ -93,6 +93,19 @@ SETTINGS = (
     _s("rules.spawn_radius", SPAWNS, "spawn radius", "m", 10.0, 600.0, when=EPISODE),
     _s("rules.spawn_turn_distance", SPAWNS, "spawn turn distance", "m", 1.0, 2000.0),
     _s("rules.field_band_width", MAP, "field band width", "m", 5.0, 200.0, when=EPISODE),
+    _s("rules.field_radius_min", MAP, "field radius, smallest", "m", 5.0, 1000.0, when=EPISODE),
+    _s("rules.field_radius_max", MAP, "field radius, largest", "m", 5.0, 2000.0, when=EPISODE),
+    _s(
+        "rules.field_disc_fraction",
+        MAP,
+        "field centres' disc",
+        "arena radii",
+        0.0,
+        1.0,
+        when=EPISODE,
+    ),
+    _s("rules.field_high_share", MAP, "share of high fields (+)", "", 0.0, 1.0, when=EPISODE),
+    _s("rules.field_strong_share", MAP, "share of strong fields (+-2)", "", 0.0, 1.0, when=EPISODE),
     _s(
         "mode.kills_per_ship",
         TEAM_DEATHMATCH_GROUP,
@@ -296,6 +309,11 @@ LIVE_RULES = (
     "spawn_radius",
     "spawn_turn_distance",
     "field_band_width",
+    "field_radius_min",
+    "field_radius_max",
+    "field_disc_fraction",
+    "field_high_share",
+    "field_strong_share",
 )
 LIVE_FLIGHT = ("gravity", "engine_knee", "store_fade_band", "nose_damping", "nose_frequency_floor")
 LIVE_MODE = (
