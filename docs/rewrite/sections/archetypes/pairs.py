@@ -1358,6 +1358,62 @@ def set4b() -> list[dict]:
 ROUNDS["set4b"] = set4b
 
 
+def roster2() -> list[dict]:
+    """Flight-distinct ships against the standard (M, kit2): the lift coefficient sets the
+    corner speed and the instantaneous turn without touching the sustained turn (the
+    characteristics), so a rate fighter can sit at sustained-turn parity; and speed or power
+    bought with bleed."""
+    ships = {
+        "rate (lift x1.2)": {"max_lift_coefficient": 1.2},
+        "rate (lift x1.2, induced x1.05)": {
+            "max_lift_coefficient": 1.2,
+            "induced_drag_scale": 1.05,
+        },
+        "rate (lift x1.3, induced x1.1)": {"max_lift_coefficient": 1.3, "induced_drag_scale": 1.1},
+        "speed (drag x0.85, induced x1.1)": {"zero_lift_drag": 0.85, "induced_drag_scale": 1.1},
+        "speed (drag x0.85)": {"zero_lift_drag": 0.85},
+        "power (engine x1.15, induced x1.15)": {
+            "engine_power": 1.15,
+            "engine_power_full_store": 1.15,
+            "induced_drag_scale": 1.15,
+        },
+        "sustained (lift x0.85, induced x0.9)": {
+            "max_lift_coefficient": 0.85,
+            "induced_drag_scale": 0.9,
+        },
+        "sustained (lift x0.85)": {"max_lift_coefficient": 0.85},
+    }
+    return [
+        pair(f"{name} v standard (M), kit2", ("M", merge(f, kit(*KIT2))), ("M", kit(*KIT2)))
+        for name, f in ships.items()
+    ]
+
+
+ROUNDS["roster2"] = roster2
+
+
+def set3_doctrine() -> list[dict]:
+    """The three-ship set (standard, brawler, small: set 4's cards) and the eased
+    hit-and-run v standard (set 4b) under the crowd extension with the lead turn."""
+    names = ["standard", "brawler", "small"]
+    out = [
+        pair(f"{a} v {b} (set, M, kit2)", ("M", set_ship(a)), ("M", set_ship(b)))
+        for k, a in enumerate(names)
+        for b in names[k + 1 :]
+    ]
+    out.append(
+        pair(
+            "hit-and-run v standard (set b, M, kit2)",
+            ("M", merge(kit(*KIT2), SET4B["hit-and-run"])),
+            ("M", kit(*KIT2)),
+        )
+    )
+    return [flown(c, "crowd extend + lead") for c in out]
+
+
+ROUNDS["set3ce"] = set3_doctrine
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
