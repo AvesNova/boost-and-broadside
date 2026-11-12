@@ -498,6 +498,44 @@ def report(args) -> None:
         pathlib.Path(args.out).write_text(json.dumps(out, indent=1) + "\n")
 
 
+def card(args) -> None:
+    """The two cards' time-to-kill budget (card, 100% hits) for each shooter and target: the
+    head-on time to kill (the target's head-on fraction) in seconds and in head-on passes
+    (the pair's longer gun range over the two cruises), and the tail's; with the armour's
+    half-strength angle and the shield's recharge."""
+    game, types, rules, keys = setup(args.preset)
+    c = characteristics(types, rules)
+    fraction = rules.head_on_fraction * types.head_on_fraction_scale
+    angle = rules.head_on_angle * types.head_on_angle_scale
+    print("| Shooter on target | Head-on TTK (s) | Head-on passes | Tail TTK (s) |")
+    print("|---|---|---|---|")
+    for shooter in KEYS:
+        for target in KEYS:
+            i, j = keys.index(shooter), keys.index(target)
+            damage, rate = float(types.hit_damage[i]), float(types.fire_rate[i])
+            shield = float(types.max_shield[j])
+
+            def ttk(aspect: float) -> float:
+                return (math.ceil(shield / (damage * aspect) - 1e-9) - 1) / rate
+
+            reach = max(float(c.gun_range[i]), float(c.gun_range[j]))
+            passing = reach / float(c.cruise_speed[i] + c.cruise_speed[j])
+            head_on = ttk(float(fraction[j]))
+            print(
+                f"| {shooter} on {target} | {head_on:.2f} | {head_on / passing:.2f} "
+                f"| {ttk(1.0):.2f} |"
+            )
+    for key in KEYS:
+        i = keys.index(key)
+        rate = float(rules.shield_recharge_rate * types.shield_recharge_rate_scale[i])
+        delay = float(rules.shield_recharge_delay * types.shield_recharge_delay_scale[i])
+        print(
+            f"{key}: head-on fraction {float(fraction[i]):.3f}, half-strength angle "
+            f"{math.degrees(float(angle[i])):.1f} degrees, recharge "
+            f"{rate:.1f}/s after {delay:.1f} s"
+        )
+
+
 # The search: what each field draws and its bounds. Weights and exponents step additively;
 # logistics, the deny angle and the lag multiplicatively.
 FROZEN = ("climb_exponent", "speed_exponent", "range_exponent")
@@ -673,6 +711,7 @@ def main() -> None:
     one.add_argument("--seed", type=int, default=11)
     one.add_argument("--hours", type=float, default=3.0)
     one.add_argument("--preset", default=PRESET)
+    sub.add_parser("card").add_argument("--preset", default=PRESET)
     two = sub.add_parser("report")
     two.add_argument("--record", required=True, nargs="+")
     two.add_argument("--out")
@@ -693,9 +732,9 @@ def main() -> None:
     for command in (one, three):
         command.add_argument("--threads", type=int, default=4, help="torch's CPU threads")
     args = parser.parse_args()
-    if args.command != "report":
+    if args.command in ("play", "search"):
         torch.set_num_threads(args.threads)
-    {"play": play, "report": report, "search": search}[args.command](args)
+    {"play": play, "report": report, "search": search, "card": card}[args.command](args)
 
 
 if __name__ == "__main__":
