@@ -1,0 +1,121 @@
+[
+ {
+  "name": "s0.5 a0.5 Yx0.5 (round 2)",
+  "energy": {
+   "head_on_fraction_scale": 0.5,
+   "head_on_angle_scale": 0.5,
+   "explosive_share": {
+    "set": 0.5
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.5,
+   "head_on_angle_scale": 0.5
+  }
+ },
+ {
+  "name": "s0.65 a0.5 Yx0.5",
+  "energy": {
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.5,
+   "explosive_share": {
+    "set": 0.5
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.5
+  }
+ },
+ {
+  "name": "s0.35 a0.5 Yx0.5",
+  "energy": {
+   "head_on_fraction_scale": 0.35,
+   "head_on_angle_scale": 0.5,
+   "explosive_share": {
+    "set": 0.5
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.35,
+   "head_on_angle_scale": 0.5
+  }
+ },
+ {
+  "name": "s0.5 a1 Yx0.5",
+  "energy": {
+   "head_on_fraction_scale": 0.5,
+   "head_on_angle_scale": 1.0,
+   "explosive_share": {
+    "set": 0.5
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.5,
+   "head_on_angle_scale": 1.0
+  }
+ },
+ {
+  "name": "s0.5 a0.25 Yx0.5",
+  "energy": {
+   "head_on_fraction_scale": 0.5,
+   "head_on_angle_scale": 0.25,
+   "explosive_share": {
+    "set": 0.5
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.5,
+   "head_on_angle_scale": 0.25
+  }
+ },
+ {
+  "name": "s0.5 a0.5 Yx0",
+  "energy": {
+   "head_on_fraction_scale": 0.5,
+   "head_on_angle_scale": 0.5
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.5,
+   "head_on_angle_scale": 0.5
+  }
+ },
+ {
+  "name": "s0.5 a0.5 Yx0.5 d1.25",
+  "energy": {
+   "head_on_fraction_scale": 0.5,
+   "head_on_angle_scale": 0.5,
+   "hit_damage": 1.25,
+   "explosive_share": {
+    "set": 0.5
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.5,
+   "head_on_angle_scale": 0.5,
+   "hit_damage": 1.25
+  }
+ },
+ {
+  "name": "s0.5 a0.5 Yx0.5 slow",
+  "energy": {
+   "head_on_fraction_scale": 0.5,
+   "head_on_angle_scale": 0.5,
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85,
+   "explosive_share": {
+    "set": 0.5
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.5,
+   "head_on_angle_scale": 0.5,
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85
+  }
+ }
+]

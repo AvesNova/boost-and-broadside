@@ -1,0 +1,882 @@
+[
+ {
+  "name": "r1",
+  "temperature": 1.0,
+  "yongma": {
+   "strength": 0.189,
+   "turn_exponent": -0.216,
+   "climb_exponent": 0.0,
+   "speed_exponent": 0.0,
+   "range_exponent": 0.0,
+   "in_advantage": [
+    0.977,
+    0.113
+   ],
+   "fight_in_gun_range": [
+    1.32,
+    0.201
+   ],
+   "extend": 0.0121,
+   "extend_in_stall_angle": [
+    3.36,
+    0.175
+   ],
+   "engage_in_energy_ratio": [
+    0.782,
+    0.03
+   ],
+   "engage_in_store_fraction": [
+    0.0531,
+    0.282
+   ],
+   "slash": 0.0994,
+   "slash_in_gun_range": [
+    3.28,
+    0.174
+   ],
+   "bleed": 0.0,
+   "bleed_in_corner_speed": [
+    1.25,
+    0.0997
+   ],
+   "bleed_in_stall_angle": [
+    2.43,
+    0.175
+   ],
+   "lag": 0.0169,
+   "lag_in_gun_range": 0.576,
+   "deny": 0.0113,
+   "deny_in_stall_angle": [
+    1.12,
+    0.207
+   ],
+   "deny_in_gun_range": [
+    2.67,
+    0.154
+   ],
+   "deny_angle": 0.569
+  },
+  "jujak": {
+   "strength": 0.0123,
+   "turn_exponent": -1.12,
+   "climb_exponent": 0.0,
+   "speed_exponent": 0.0,
+   "range_exponent": 0.0,
+   "in_advantage": [
+    0.921,
+    0.0989
+   ],
+   "fight_in_gun_range": [
+    1.11,
+    0.18
+   ],
+   "extend": 0.0,
+   "extend_in_stall_angle": [
+    3.87,
+    0.207
+   ],
+   "engage_in_energy_ratio": [
+    1.02,
+    0.03
+   ],
+   "engage_in_store_fraction": [
+    0.048,
+    0.336
+   ],
+   "slash": 0.0,
+   "slash_in_gun_range": [
+    2.65,
+    0.186
+   ],
+   "bleed": 0.0353,
+   "bleed_in_corner_speed": [
+    1.34,
+    0.107
+   ],
+   "bleed_in_stall_angle": [
+    1.83,
+    0.19
+   ],
+   "lag": 0.0,
+   "lag_in_gun_range": 0.511,
+   "deny": 0.0,
+   "deny_in_stall_angle": [
+    0.995,
+    0.194
+   ],
+   "deny_in_gun_range": [
+    2.72,
+    0.208
+   ],
+   "deny_angle": 0.493
+  }
+ },
+ {
+  "name": "r1-hand",
+  "temperature": 1.0,
+  "yongma": {
+   "strength": 0.58,
+   "turn_exponent": -0.204,
+   "climb_exponent": 0.0,
+   "speed_exponent": 0.0,
+   "range_exponent": 0.0,
+   "in_advantage": [
+    1.75,
+    0.102
+   ],
+   "fight_in_gun_range": [
+    1.44,
+    0.191
+   ],
+   "extend": 0.774,
+   "extend_in_stall_angle": [
+    3.98,
+    0.169
+   ],
+   "engage_in_energy_ratio": [
+    0.717,
+    0.0315
+   ],
+   "engage_in_store_fraction": [
+    0.198,
+    0.148
+   ],
+   "slash": 0.911,
+   "slash_in_gun_range": [
+    2.93,
+    0.414
+   ],
+   "bleed": 0.154,
+   "bleed_in_corner_speed": [
+    1.85,
+    0.105
+   ],
+   "bleed_in_stall_angle": [
+    1.53,
+    0.164
+   ],
+   "lag": 0.136,
+   "lag_in_gun_range": 0.31,
+   "deny": 0.0,
+   "deny_in_stall_angle": [
+    0.924,
+    0.158
+   ],
+   "deny_in_gun_range": [
+    5.06,
+    0.226
+   ],
+   "deny_angle": 0.634
+  },
+  "jujak": {
+   "strength": 0.795,
+   "turn_exponent": -1.49,
+   "climb_exponent": 0.0,
+   "speed_exponent": 0.0,
+   "range_exponent": 0.0,
+   "in_advantage": [
+    1.32,
+    0.0793
+   ],
+   "fight_in_gun_range": [
+    3.2,
+    0.144
+   ],
+   "extend": 0.29,
+   "extend_in_stall_angle": [
+    5.28,
+    0.356
+   ],
+   "engage_in_energy_ratio": [
+    0.928,
+    0.0381
+   ],
+   "engage_in_store_fraction": [
+    0.0651,
+    0.426
+   ],
+   "slash": 0.227,
+   "slash_in_gun_range": [
+    3.48,
+    0.134
+   ],
+   "bleed": 0.886,
+   "bleed_in_corner_speed": [
+    0.824,
+    0.0541
+   ],
+   "bleed_in_stall_angle": [
+    2.32,
+    0.182
+   ],
+   "lag": 0.848,
+   "lag_in_gun_range": 0.258,
+   "deny": 0.43,
+   "deny_in_stall_angle": [
+    0.732,
+    0.18
+   ],
+   "deny_in_gun_range": [
+    3.66,
+    0.157
+   ],
+   "deny_angle": 0.373
+  }
+ },
+ {
+  "name": "r2",
+  "temperature": 1.0,
+  "yongma": {
+   "strength": 0.793,
+   "turn_exponent": 0.528,
+   "climb_exponent": 0.0,
+   "speed_exponent": 0.0,
+   "range_exponent": 0.0,
+   "in_advantage": [
+    1.71,
+    0.083
+   ],
+   "fight_in_gun_range": [
+    3.09,
+    0.129
+   ],
+   "extend": 0.886,
+   "extend_in_stall_angle": [
+    2.36,
+    0.215
+   ],
+   "engage_in_energy_ratio": [
+    0.635,
+    0.0319
+   ],
+   "engage_in_store_fraction": [
+    0.155,
+    0.212
+   ],
+   "slash": 0.992,
+   "slash_in_gun_range": [
+    2.8,
+    0.21
+   ],
+   "bleed": 0.0,
+   "bleed_in_corner_speed": [
+    1.42,
+    0.104
+   ],
+   "bleed_in_stall_angle": [
+    1.57,
+    0.204
+   ],
+   "lag": 0.0,
+   "lag_in_gun_range": 0.508,
+   "deny": 0.0625,
+   "deny_in_stall_angle": [
+    0.946,
+    0.198
+   ],
+   "deny_in_gun_range": [
+    3.1,
+    0.246
+   ],
+   "deny_angle": 0.486
+  },
+  "jujak": {
+   "strength": 1.0,
+   "turn_exponent": 0.114,
+   "climb_exponent": 0.0,
+   "speed_exponent": 0.0,
+   "range_exponent": 0.0,
+   "in_advantage": [
+    1.99,
+    0.0834
+   ],
+   "fight_in_gun_range": [
+    1.84,
+    0.136
+   ],
+   "extend": 0.0,
+   "extend_in_stall_angle": [
+    4.39,
+    0.178
+   ],
+   "engage_in_energy_ratio": [
+    0.723,
+    0.03
+   ],
+   "engage_in_store_fraction": [
+    0.0559,
+    0.341
+   ],
+   "slash": 0.0,
+   "slash_in_gun_range": [
+    2.44,
+    0.217
+   ],
+   "bleed": 0.713,
+   "bleed_in_corner_speed": [
+    1.5,
+    0.0511
+   ],
+   "bleed_in_stall_angle": [
+    1.76,
+    0.198
+   ],
+   "lag": 0.365,
+   "lag_in_gun_range": 0.305,
+   "deny": 0.686,
+   "deny_in_stall_angle": [
+    0.782,
+    0.192
+   ],
+   "deny_in_gun_range": [
+    3.22,
+    0.191
+   ],
+   "deny_angle": 0.404
+  },
+  "parameters": [
+   0.01117629413567867,
+   0.158,
+   0.08446208125088055,
+   0.3063610089004647,
+   0.384208506814541,
+   0.24906791537878947,
+   2.203867436083652,
+   0.044306755055300004,
+   7.363260828100984,
+   0.3323328507802124,
+   0.2830513259264869,
+   0.14849148573889848,
+   0.926638475838976,
+   0.24125186481162286,
+   1.1144759415457128,
+   0.14258923461194287,
+   6.22851369008168,
+   2.39,
+   0.0554,
+   0.52,
+   0.0,
+   1.0,
+   0.298,
+   5.12,
+   0.529,
+   0.0692,
+   0.387,
+   2.84,
+   0.252,
+   2.071275296997977,
+   3.174060153611137,
+   0.202,
+   4.1,
+   0.509,
+   0.11,
+   23.833287736196382,
+   0.36741957004964404,
+   0.24456223733329638,
+   4.704582546663934,
+   0.21376870864802866,
+   5.0071039619779745,
+   0.2890406396252781,
+   0.19004848403982358,
+   14.1,
+   3.5,
+   0.263,
+   6.13,
+   0.284,
+   0.0605,
+   0.0
+  ]
+ },
+ {
+  "name": "r4",
+  "temperature": 1.0,
+  "yongma": {
+   "strength": 0.809,
+   "turn_exponent": 1.05,
+   "climb_exponent": 0.0,
+   "speed_exponent": 0.0,
+   "range_exponent": 0.0,
+   "in_advantage": [
+    1.2,
+    0.0863
+   ],
+   "fight_in_gun_range": [
+    3.08,
+    0.133
+   ],
+   "extend": 0.896,
+   "extend_in_stall_angle": [
+    2.29,
+    0.243
+   ],
+   "engage_in_energy_ratio": [
+    0.643,
+    0.03
+   ],
+   "engage_in_store_fraction": [
+    0.135,
+    0.199
+   ],
+   "slash": 0.788,
+   "slash_in_gun_range": [
+    2.79,
+    0.219
+   ],
+   "bleed": 0.0274,
+   "bleed_in_corner_speed": [
+    1.52,
+    0.112
+   ],
+   "bleed_in_stall_angle": [
+    1.68,
+    0.201
+   ],
+   "lag": 0.204,
+   "lag_in_gun_range": 0.537,
+   "deny": 0.0,
+   "deny_in_stall_angle": [
+    0.852,
+    0.197
+   ],
+   "deny_in_gun_range": [
+    3.17,
+    0.255
+   ],
+   "deny_angle": 0.51
+  },
+  "jujak": {
+   "strength": 0.989,
+   "turn_exponent": -0.0383,
+   "climb_exponent": 0.0,
+   "speed_exponent": 0.0,
+   "range_exponent": 0.0,
+   "in_advantage": [
+    1.59,
+    0.0892
+   ],
+   "fight_in_gun_range": [
+    1.93,
+    0.143
+   ],
+   "extend": 0.0885,
+   "extend_in_stall_angle": [
+    5.05,
+    0.173
+   ],
+   "engage_in_energy_ratio": [
+    0.76,
+    0.0331
+   ],
+   "engage_in_store_fraction": [
+    0.0543,
+    0.365
+   ],
+   "slash": 0.126,
+   "slash_in_gun_range": [
+    2.54,
+    0.223
+   ],
+   "bleed": 0.821,
+   "bleed_in_corner_speed": [
+    1.51,
+    0.0517
+   ],
+   "bleed_in_stall_angle": [
+    1.74,
+    0.181
+   ],
+   "lag": 0.365,
+   "lag_in_gun_range": 0.282,
+   "deny": 0.819,
+   "deny_in_stall_angle": [
+    0.774,
+    0.173
+   ],
+   "deny_in_gun_range": [
+    3.4,
+    0.175
+   ],
+   "deny_angle": 0.401
+  },
+  "parameters": [
+   0.01164885291534664,
+   0.158,
+   0.07051843909669134,
+   0.27675085434732266,
+   0.3951599142140841,
+   0.26255177102890187,
+   2.4071769982220337,
+   0.04249443371503203,
+   7.283314028051692,
+   0.3090158651536345,
+   0.232172680825715,
+   0.15072095492111004,
+   1.036684707833242,
+   0.2631297845471832,
+   0.9611629898781028,
+   0.1300528460290565,
+   5.411829675924217,
+   2.39,
+   0.0554,
+   0.52,
+   0.0,
+   1.0,
+   0.298,
+   5.12,
+   0.529,
+   0.0692,
+   0.387,
+   2.84,
+   0.252,
+   1.9974241667800081,
+   3.5069220587974184,
+   0.202,
+   4.1,
+   0.509,
+   0.11,
+   26.817915562273434,
+   0.333177259225748,
+   0.2583825064089183,
+   4.256059688302934,
+   0.22108902255856167,
+   4.716632307425469,
+   0.3247236129719921,
+   0.19741916697469908,
+   14.1,
+   3.5,
+   0.263,
+   6.13,
+   0.284,
+   0.0605,
+   0.0
+  ]
+ },
+ {
+  "name": "r7",
+  "temperature": 1.0,
+  "yongma": {
+   "strength": 0.842,
+   "turn_exponent": 2.0,
+   "climb_exponent": 0.0,
+   "speed_exponent": 0.0,
+   "range_exponent": 0.0,
+   "in_advantage": [
+    1.23,
+    0.0924
+   ],
+   "fight_in_gun_range": [
+    2.95,
+    0.13
+   ],
+   "extend": 0.975,
+   "extend_in_stall_angle": [
+    2.15,
+    0.238
+   ],
+   "engage_in_energy_ratio": [
+    0.642,
+    0.03
+   ],
+   "engage_in_store_fraction": [
+    0.147,
+    0.194
+   ],
+   "slash": 0.847,
+   "slash_in_gun_range": [
+    2.73,
+    0.223
+   ],
+   "bleed": 0.0904,
+   "bleed_in_corner_speed": [
+    1.53,
+    0.118
+   ],
+   "bleed_in_stall_angle": [
+    1.8,
+    0.195
+   ],
+   "lag": 0.198,
+   "lag_in_gun_range": 0.543,
+   "deny": 0.00176,
+   "deny_in_stall_angle": [
+    0.766,
+    0.173
+   ],
+   "deny_in_gun_range": [
+    3.11,
+    0.231
+   ],
+   "deny_angle": 0.515
+  },
+  "jujak": {
+   "strength": 1.0,
+   "turn_exponent": -0.621,
+   "climb_exponent": 0.0,
+   "speed_exponent": 0.0,
+   "range_exponent": 0.0,
+   "in_advantage": [
+    1.56,
+    0.0955
+   ],
+   "fight_in_gun_range": [
+    2.14,
+    0.133
+   ],
+   "extend": 0.176,
+   "extend_in_stall_angle": [
+    5.13,
+    0.158
+   ],
+   "engage_in_energy_ratio": [
+    0.78,
+    0.0327
+   ],
+   "engage_in_store_fraction": [
+    0.059,
+    0.33
+   ],
+   "slash": 0.0499,
+   "slash_in_gun_range": [
+    2.43,
+    0.228
+   ],
+   "bleed": 0.79,
+   "bleed_in_corner_speed": [
+    1.57,
+    0.0553
+   ],
+   "bleed_in_stall_angle": [
+    1.76,
+    0.177
+   ],
+   "lag": 0.321,
+   "lag_in_gun_range": 0.262,
+   "deny": 0.833,
+   "deny_in_stall_angle": [
+    0.681,
+    0.171
+   ],
+   "deny_in_gun_range": [
+    3.44,
+    0.177
+   ],
+   "deny_angle": 0.395
+  },
+  "parameters": [
+   0.010730939637972095,
+   0.158,
+   0.07521055945853795,
+   0.32767738336807983,
+   0.37513754845724373,
+   0.28174931105570367,
+   2.7217688811532565,
+   0.03743780993572315,
+   6.845412402417991,
+   0.29617950265172177,
+   0.24461486775410304,
+   0.15175641734997153,
+   1.0413907447773256,
+   0.23983312541929433,
+   1.1122494464916766,
+   0.127,
+   4.7011199557489185,
+   2.39,
+   0.0554,
+   0.52,
+   0.0,
+   1.0,
+   0.298,
+   5.12,
+   0.529,
+   0.0692,
+   0.387,
+   2.84,
+   0.252,
+   1.787210581246605,
+   3.7331412809279785,
+   0.202,
+   4.1,
+   0.509,
+   0.11,
+   29.196615935432312,
+   0.31616485998950544,
+   0.26670334164836856,
+   4.800945045787979,
+   0.22676978575291978,
+   4.963986906889805,
+   0.3467723670152405,
+   0.21355851875655987,
+   14.1,
+   3.5,
+   0.263,
+   6.13,
+   0.284,
+   0.0605,
+   0.0
+  ]
+ },
+ {
+  "name": "r9",
+  "temperature": 1.0,
+  "yongma": {
+   "strength": 0.89,
+   "turn_exponent": 1.86,
+   "climb_exponent": 0.0,
+   "speed_exponent": 0.0,
+   "range_exponent": 0.0,
+   "in_advantage": [
+    1.3,
+    0.0972
+   ],
+   "fight_in_gun_range": [
+    3.01,
+    0.127
+   ],
+   "extend": 0.979,
+   "extend_in_stall_angle": [
+    2.2,
+    0.225
+   ],
+   "engage_in_energy_ratio": [
+    0.623,
+    0.0305
+   ],
+   "engage_in_store_fraction": [
+    0.149,
+    0.205
+   ],
+   "slash": 0.874,
+   "slash_in_gun_range": [
+    2.76,
+    0.236
+   ],
+   "bleed": 0.0,
+   "bleed_in_corner_speed": [
+    1.45,
+    0.111
+   ],
+   "bleed_in_stall_angle": [
+    2.0,
+    0.197
+   ],
+   "lag": 0.129,
+   "lag_in_gun_range": 0.502,
+   "deny": 0.0224,
+   "deny_in_stall_angle": [
+    0.807,
+    0.179
+   ],
+   "deny_in_gun_range": [
+    2.94,
+    0.232
+   ],
+   "deny_angle": 0.58
+  },
+  "jujak": {
+   "strength": 1.0,
+   "turn_exponent": -0.385,
+   "climb_exponent": 0.0,
+   "speed_exponent": 0.0,
+   "range_exponent": 0.0,
+   "in_advantage": [
+    1.68,
+    0.0959
+   ],
+   "fight_in_gun_range": [
+    2.19,
+    0.132
+   ],
+   "extend": 0.252,
+   "extend_in_stall_angle": [
+    5.17,
+    0.158
+   ],
+   "engage_in_energy_ratio": [
+    0.755,
+    0.0347
+   ],
+   "engage_in_store_fraction": [
+    0.0559,
+    0.319
+   ],
+   "slash": 0.0491,
+   "slash_in_gun_range": [
+    2.46,
+    0.231
+   ],
+   "bleed": 0.816,
+   "bleed_in_corner_speed": [
+    1.59,
+    0.058
+   ],
+   "bleed_in_stall_angle": [
+    1.72,
+    0.175
+   ],
+   "lag": 0.305,
+   "lag_in_gun_range": 0.268,
+   "deny": 0.806,
+   "deny_in_stall_angle": [
+    0.625,
+    0.177
+   ],
+   "deny_in_gun_range": [
+    3.49,
+    0.179
+   ],
+   "deny_angle": 0.389
+  },
+  "parameters": [
+   0.010579757666730189,
+   0.17182620797624332,
+   0.07750800789689066,
+   0.3276143259119253,
+   0.3863213976504908,
+   0.2665820742397608,
+   2.613390737407157,
+   0.03432460185065461,
+   7.22251445552065,
+   0.28975274511405685,
+   0.21008310411721529,
+   0.15992924332533454,
+   1.0078719785543524,
+   0.24343089169103846,
+   1.0364160635690995,
+   0.127,
+   4.777758400400022,
+   2.2799521013448762,
+   0.0554,
+   0.52,
+   0.0,
+   1.0,
+   0.29434785240590305,
+   5.12,
+   0.529,
+   0.0692,
+   0.387,
+   2.84,
+   0.252,
+   1.757881643736857,
+   3.445244924597663,
+   0.202,
+   4.1,
+   0.5099354183085596,
+   0.11324053620778331,
+   27.74650505080631,
+   0.29180213111069536,
+   0.2692698743208903,
+   4.992022598250429,
+   0.23460271081548606,
+   4.951923741514554,
+   0.33417843225634153,
+   0.20033174480605445,
+   14.1,
+   3.5,
+   0.263,
+   6.13,
+   0.284,
+   0.0605,
+   0.0
+  ]
+ }
+]

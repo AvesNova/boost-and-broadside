@@ -1,0 +1,192 @@
+[
+ {
+  "name": "f1 a1",
+  "energy": {},
+  "turn": {}
+ },
+ {
+  "name": "f1 a0.5",
+  "energy": {
+   "head_on_angle_scale": 0.5
+  },
+  "turn": {
+   "head_on_angle_scale": 0.5
+  }
+ },
+ {
+  "name": "f1 a0.25",
+  "energy": {
+   "head_on_angle_scale": 0.25
+  },
+  "turn": {
+   "head_on_angle_scale": 0.25
+  }
+ },
+ {
+  "name": "f0.65 a1",
+  "energy": {
+   "head_on_fraction_scale": 0.65
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.65
+  }
+ },
+ {
+  "name": "f0.65 a0.5",
+  "energy": {
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.5
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.5
+  }
+ },
+ {
+  "name": "f0.65 a0.25",
+  "energy": {
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.25
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.25
+  }
+ },
+ {
+  "name": "f0.4 a1",
+  "energy": {
+   "head_on_fraction_scale": 0.4
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.4
+  }
+ },
+ {
+  "name": "f0.4 a0.5",
+  "energy": {
+   "head_on_fraction_scale": 0.4,
+   "head_on_angle_scale": 0.5
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.4,
+   "head_on_angle_scale": 0.5
+  }
+ },
+ {
+  "name": "f0.4 a0.25",
+  "energy": {
+   "head_on_fraction_scale": 0.4,
+   "head_on_angle_scale": 0.25
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.4,
+   "head_on_angle_scale": 0.25
+  }
+ },
+ {
+  "name": "f1 a1 slow",
+  "energy": {
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85
+  },
+  "turn": {
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85
+  }
+ },
+ {
+  "name": "f0.65 a0.5 slow",
+  "energy": {
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85,
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.5
+  },
+  "turn": {
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85,
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.5
+  }
+ },
+ {
+  "name": "f0.4 a0.25 slow",
+  "energy": {
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85,
+   "head_on_fraction_scale": 0.4,
+   "head_on_angle_scale": 0.25
+  },
+  "turn": {
+   "muzzle_speed": 0.8,
+   "reference_bullet_speed": 0.8,
+   "bullet_spread_scale": 1.5,
+   "hit_radius": 0.85,
+   "head_on_fraction_scale": 0.4,
+   "head_on_angle_scale": 0.25
+  }
+ },
+ {
+  "name": "f0.65 a0.5 Yx0.5",
+  "energy": {
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.5,
+   "explosive_share": {
+    "set": 0.5
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.5
+  }
+ },
+ {
+  "name": "f0.4 a0.5 Yx0.5",
+  "energy": {
+   "head_on_fraction_scale": 0.4,
+   "head_on_angle_scale": 0.5,
+   "explosive_share": {
+    "set": 0.5
+   }
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.4,
+   "head_on_angle_scale": 0.5
+  }
+ },
+ {
+  "name": "f0.65 a0.5 Ydmg0.95",
+  "energy": {
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.5,
+   "hit_damage": 0.95
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.5
+  }
+ },
+ {
+  "name": "f0.65 a0.5 Jdmg0.95",
+  "energy": {
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.5
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.65,
+   "head_on_angle_scale": 0.5,
+   "hit_damage": 0.95
+  }
+ }
+]

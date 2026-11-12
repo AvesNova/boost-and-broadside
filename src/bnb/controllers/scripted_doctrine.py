@@ -28,6 +28,10 @@ and not another. Within it:
 Each element's weight (`extend`, `slash`, `bleed`, `lag`, `deny`) is 0 by default, as is
 `strength`: the default doctrine is off. A `table` packs one doctrine per ship type (T, D),
 or per view and type (R, T, D); `per_ship` reads each own ship's row.
+
+The tuned doctrines live in `scripted_doctrines.json` by ship set and type key (`stored`);
+the scripted agent flies them by default (`for_card`: the set is the one whose type count
+is the card's; a type without a stored doctrine flies none).
 """
 
 import dataclasses
@@ -191,3 +195,18 @@ def set_table(keys: list[str], ship_set: str, device=None, path=DOCTRINES) -> to
     one: off)."""
     doctrines = stored(path).get(ship_set, {})
     return table([doctrines.get(key, _DEFAULT) for key in keys], device)
+
+
+def for_card(characteristics, path: pathlib.Path = DOCTRINES) -> torch.Tensor | None:
+    """(T, WIDTH) the stored doctrines for a card's types, on the card's device: those of the
+    ship set whose type count is the card's T (the sets' counts differ), by type key; None
+    when no set with stored doctrines has T types (every type then flies none)."""
+    from bnb.game import ships
+
+    count = characteristics.gun_range.shape[-1]
+    device = characteristics.gun_range.device
+    for ship_set in stored(path):
+        keys = [ship.key for ship in ships.load(ship_set)]
+        if len(keys) == count:
+            return set_table(keys, ship_set, device, path)
+    return None
