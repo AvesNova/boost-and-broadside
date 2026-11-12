@@ -15,7 +15,8 @@
                           launch.toml's matched steps reached so far (averaged and live),
                           queued as ratings jobs, N per preset (each its own seed and record,
                           at SE x sqrt(N)), reusing every earlier record
-    leaderboard           fit every record of the field together (no games: budget 0) and
+    leaderboard           fit every record of the field together (no games: every error is
+                          under a target of 1e9, so no batch is played) and
                           print the ratings by preset, labelled (arm, seed, steps, variant)
     resume-to STEPS [RUN ...]   raise the chains' combined budget (150M -> 500M) and queue
                           their resumes
@@ -623,6 +624,13 @@ def leaderboard(arguments) -> None:
         raise SystemExit("no tournament round yet")
     labels = json.loads((rounds[-1] / "field.json").read_text())
     owner = next(path.split("/policies/")[0].rsplit("/", 1)[1] for path in labels)
+    played = [
+        preset
+        for preset in config["tournament"]["presets"]
+        if any(any(path.rglob(f"{preset}.batches.jsonl")) for path in rounds)
+    ]
+    if not played:
+        raise SystemExit("no tournament records yet")
     out = ratings / "fits" / datetime.datetime.now(KST).strftime("%Y%m%d-%H%M%S")
     line = [
         *arguments.bnb,
@@ -631,9 +639,9 @@ def leaderboard(arguments) -> None:
         "--no-league",
         "--no-ladder",
         "--presets",
-        *config["tournament"]["presets"],
-        "--budget",
-        "0",
+        *played,
+        "--target-stderr",
+        "1e9",
         "--out",
         str(out),
         "--reuse",
