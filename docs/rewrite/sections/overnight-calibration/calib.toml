@@ -31,6 +31,14 @@ bc_train = ["--bc-budget-steps", "30000000"]
 rl_set = ["learner.micro_batch_rows=320"]
 
 [[arm]]
+# The edge extension (main, 2026-11-13 09:10): 256 led 64 and 32 in frontline and deathmatch
+# at 30M at the same seconds per update, so one arm further out. 12 views per minibatch:
+# micro-batches of 12 views, a second compiled shape.
+name = "bc-mb512"
+stage = "bc"
+set = ["learner.minibatches=512"]
+
+[[arm]]
 name = "bc-mb256"
 stage = "bc"
 set = ["learner.minibatches=256"]
