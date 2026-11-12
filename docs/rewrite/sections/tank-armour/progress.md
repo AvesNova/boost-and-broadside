@@ -169,3 +169,32 @@ reversed):
   and the armour removes the head-on hits the Jujak trades with.
 - **A stronger dive is a Yongma loss at every size** (5v5 0.07 with the Yongma's alone).
 - C does not take the cone (1v1 0.21-0.30): its Yongma's short guns need the head-on.
+
+## 23:47-00:05 KST: round 3 (`round3/`): the band between f0 0.03 and 0.085, on D2
+
+512 games; 1v1 to 10v10 (10v10 at 256). The cone at 9, 12 and 15 degrees (p8), damage x1.5
+or x2, and split cones (a stronger Yongma nose):
+
+| D2 + | JJ 1v1 mutual, life | YY 1v1 mutual, life | E v T 1v1 / 2v2 / 5v5 | v r9 |
+|---|---|---|---|---|
+| r9 | 0.64, 260 s | 0.36, 283 s | 0.50 / 0.48 / 0.55 | 0.506 / 0.493 |
+| 0.03, 12 deg, damage x2 | 0.13, 899 s | 0.03, 340 s | 0.56 / 0.54 / 0.67 | 0.457 / 0.508 |
+| 0.05, 9 deg, damage x1.5 | 0.26, 569 s | 0.09, 383 s | 0.50 / 0.52 / 0.67 | 0.473 / 0.513 |
+| 0.07, 15 deg, damage x1.5 | 0.19, 687 s | 0.04, 418 s | 0.53 / 0.49 / 0.67 | 0.499 / 0.472 |
+| 0.07, 12 deg, damage x1.5 | 0.23, 546 s | 0.05, 340 s | 0.52 / 0.53 / 0.64 | 0.517 / 0.513 |
+| 0.07, 9 deg, damage x1.5 | 0.32, 445 s | 0.08, 331 s | 0.50 / 0.49 / 0.66 | 0.511 / 0.505 |
+| **0.085, 12 deg, damage x1.5** | **0.45, 288 s** | **0.07, 344 s** | 0.52 / 0.53 / **0.65** | 0.520 / 0.465 |
+| 0.07, 12 deg, damage x2 | 0.51, 239 s | 0.09, 318 s | 0.52 / 0.52 / 0.67 | 0.464 / 0.497 |
+| 0.085, 12 deg, damage x2 | 0.61, 209 s | 0.19, 276 s | 0.51 / 0.47 / 0.69 | 0.483 / 0.518 |
+| Y 0.01 / J 0.07, 12 deg, x1.5 | 0.23, 539 s | 0.02, 421 s | 0.55 / 0.54 / 0.68 | 0.488 / 0.484 |
+| Y 0.03 / J 0.085, 12 deg, x1.5 | 0.52, 311 s | 0.02, 429 s | 0.55 / 0.56 / 0.68 | 0.518 / 0.504 |
+
+- **One number sets both the joust and the pace: what a dead-on hit does** (f0 times the
+  damage factor). At 0.06-0.075 of a full hit the Jujak mirror is 0.13-0.26 mutual and
+  570-900 s long; at 0.105, 0.23 and 546 s; at 0.1275, 0.45 and 288 s; at 0.14-0.17, 0.51-0.61
+  and 210-240 s (D2 today: 0.15, 0.64, 260 s). The cone's width and sharpness move it far
+  less. **Inside the 300 s band, the card takes the Jujak mirror's joust from 0.64 to about
+  0.45**, and the Yongma mirror's from 0.36 to 0.07 (344 s).
+- **The 5v5 leans to the Yongma under every armour with more damage** (0.64-0.69 against
+  0.55). Round 4 looks for a crowd-only counter on the Yongma (its damage, range, shield).
+- The mixed duel stays at 0.50-0.56 and strength at 0.46-0.52.
