@@ -11,9 +11,11 @@
 #      out, at /workspace/boost-and-broadside
 #   2. uv (if missing) and the locked environment (`uv sync --frozen`)
 #   3. the caches on /workspace (env.sh: inductor, Triton, uv), compile threads per job
-#   4. CACHE_ARCHIVE, if given: an earlier box's compile cache (cache.sh export), unpacked
+#   4. CACHE_ARCHIVE, if given: an earlier box's compile cache (cache.sh export), unpacked;
+#      a file on the box, or hub:NAME (hub.sh pull-cache: from the Hugging Face hub)
 #   5. the supervisor programs: the heartbeat and one queue runner per GPU (slot k, GPU k);
-#      they start at boot, so the box resumes on its own after a restart
+#      they start at boot, so the box resumes on its own after a restart; with a hub token
+#      in /workspace/.env (HF_TOKEN=...), hub-sync too: the runs to the hub every 30 min
 # It does not probe or queue: `launch.py probe` and `launch.py enqueue` next (runbook.md).
 set -euo pipefail
 REF=${1:?usage: bootstrap.sh REF [CACHE_ARCHIVE]}
@@ -45,6 +47,10 @@ say "environment: $($REPO/.venv/bin/python -c 'import torch, triton; print("torc
 
 # 3-4. the caches
 mkdir -p "$TORCHINDUCTOR_CACHE_DIR" "$TRITON_CACHE_DIR" /workspace/runs /workspace/queue /workspace/logs
+if [ "${ARCHIVE#hub:}" != "$ARCHIVE" ]; then
+  bash $REPO/$HERE/hub.sh pull-cache "${ARCHIVE#hub:}" /workspace/hub
+  ARCHIVE=$(ls /workspace/hub/*/caches/"${ARCHIVE#hub:}")
+fi
 if [ -n "$ARCHIVE" ]; then
   bash $REPO/$HERE/cache.sh import "$ARCHIVE"
 fi
@@ -78,6 +84,15 @@ CONF=/etc/supervisor/conf.d/bnb.conf
     echo "stdout_logfile=/workspace/logs/runner-$k.out"
     echo "redirect_stderr=true"
   done
+  if grep -q '^HF_TOKEN=' /workspace/.env 2>/dev/null; then
+    echo
+    echo "[program:hub-sync]"
+    echo "command=bash -c 'source $REPO/$HERE/env.sh; exec $REPO/$HERE/hub.sh push-runs --loop 30'"
+    echo "autostart=true"
+    echo "autorestart=true"
+    echo "stdout_logfile=/workspace/logs/hub-sync.out"
+    echo "redirect_stderr=true"
+  fi
 } > $CONF
 if pgrep -x supervisord > /dev/null; then
   supervisorctl reread > /dev/null && supervisorctl update

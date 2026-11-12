@@ -15,7 +15,8 @@ GPU (supervisor programs), so the box resumes on its own after a restart.
 | `launch.py` | `check`, `probe`, `enqueue`, `status`, `tournament`, `leaderboard`, `resume-to` |
 | `replays.py` | whole matches of a policy as play-shell replays, headless, and `matches.jsonl` |
 | `reward_check.py` | a run's reward, play and episode series by window, and the reward-hacking flags |
-| `pull.sh` | the laptop's pull of results over the box's direct address |
+| `pull.sh` | the laptop's pull of results over the box's direct address (ssh/rsync) |
+| `hub.sh` | the same transfers through the Hugging Face hub: the cache archive, the runs (checkpoints included), the laptop's download |
 
 ## The dry run on one 5090, in short
 
@@ -34,6 +35,18 @@ bash $L/cache.sh export /workspace/compile-cache.tar.zst    # for the 8x box (sa
 Export the cache again after the run's first updates (the run compiles a few graphs the
 probe does not: the RL warm start, the lanes' snapshots); the archive replaces the old one.
 
+## Two transfer paths
+
+- **ssh/rsync over the box's direct address** (`pull.sh`, `scp -P PORT root@IP:...`):
+  needs nothing but the key; the relay address (`sshN.vast.ai`) drops anything longer than
+  about 2 minutes, so never copy through it.
+- **The Hugging Face hub** (`hub.sh`, repo `julianzia/boost-and-broadside-runs`, public,
+  the project's run store, under `final/`): uploads resume where they stopped and a box
+  reaches the hub at datacentre speed; the laptop downloads with no token. The box needs a
+  write token in `/workspace/.env` (`HF_TOKEN=hf_...`, never committed); with it,
+  bootstrap adds the `hub-sync` program, which uploads every run directory whole (the
+  training checkpoints too, so any box can continue a run) every 30 minutes.
+
 ## 1. Rent and bootstrap
 
 1. Rent the box. Note its **direct** ssh address (vast's "Direct ssh connect": `root@IP -p
@@ -46,8 +59,10 @@ probe does not: the RL warm start, the lanes' snapshots); the archive replaces t
 
    ```bash
    curl -fsSL https://raw.githubusercontent.com/AvesNova/boost-and-broadside/REF/docs/rewrite/sections/launch/bootstrap.sh -o /workspace/bootstrap.sh
+   echo HF_TOKEN=hf_... > /workspace/.env; chmod 600 /workspace/.env   # for the hub path
    bash /workspace/bootstrap.sh REF                                  # first box
-   bash /workspace/bootstrap.sh REF /workspace/compile-cache.tar.zst # a box given the cache
+   bash /workspace/bootstrap.sh REF /workspace/compile-cache.tar.zst # a box given the cache by scp
+   bash /workspace/bootstrap.sh REF hub:compile-cache-5090.tar.zst   # ... or from the hub
    ```
 
    It logs to `/workspace/bootstrap.log`; at the end `supervisorctl status` shows
@@ -91,6 +106,8 @@ and the policies its field names; not training checkpoints):
 systemd-run --user --unit bnb-pull -p MemoryMax=2G \
   docs/rewrite/sections/launch/pull.sh ~/avesnova/runs-5090 root@IP PORT 20
 cat ~/avesnova/runs-5090/status.txt
+# or from the hub (what hub-sync has uploaded; no checkpoints unless --checkpoints):
+docs/rewrite/sections/launch/hub.sh pull-runs ~/avesnova/runs-5090-hub mainline-s0-bc mainline-s0-rl ratings
 ```
 
 ## 4. After a restart
@@ -132,12 +149,16 @@ On the laptop, open a replay with `bnb play --replay DIR`.
 
 ```bash
 bash $L/cache.sh export /workspace/compile-cache.tar.zst
-# laptop: scp -P PORT root@IP:/workspace/compile-cache.tar.zst .   (direct address)
-# next box: scp -P PORT2 compile-cache.tar.zst root@IP2:/workspace/; bootstrap.sh REF /workspace/compile-cache.tar.zst
+bash $L/hub.sh push-cache /workspace/compile-cache.tar.zst compile-cache-5090.tar.zst   # hub path
+# next box: bootstrap.sh REF hub:compile-cache-5090.tar.zst (downloads, checks the SHA-256, imports)
+# or by scp over the direct addresses, through the laptop:
+#   scp -P PORT root@IP:/workspace/compile-cache.tar.zst .
+#   scp -P PORT2 compile-cache.tar.zst root@IP2:/workspace/; bootstrap.sh REF /workspace/compile-cache.tar.zst
 ```
 
 The learning rate is a warm-up then constant on environment steps, so a chain that ended at
 its budget continues as the same run: `launch.py resume-to 500000000 mainline-s0` raises
 the chain's combined budget and queues its resume (from its final checkpoint, which the box
-keeps; the laptop does not pull checkpoints, so continue on the box that has them, or copy
-`/workspace/runs/<run>-rl/checkpoints/` over the direct address).
+keeps). On another box: `hub.sh pull-runs /workspace/hub mainline-s0 mainline-s0-bc
+mainline-s0-rl --checkpoints`, move `/workspace/hub/final/runs/*` into `/workspace/runs/`,
+then `resume-to` (or copy the run directories over the direct addresses).
