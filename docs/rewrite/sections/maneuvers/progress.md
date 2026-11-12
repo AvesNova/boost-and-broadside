@@ -137,3 +137,54 @@ by the candidate / by r9 (the bench's new `damage_by_side`).
   candidate to beat r9 in a mirror; D2 0.503 / 0.515, cone 0.085 0.532 / 0.490, cone 0.01
   0.505 / 0.511), and it takes less damage than it deals on every card. Round 3 maps it
   around 0.5 s and adds the 5v5 strength.
+
+## 00:30-00:45 KST: round 3 (`round3/`): the lead turn at 0.25-1 s; 1v1 and 5v5
+
+512 games. `cross` is `lead_turn_in_crossing`'s centre (rad from opposed; 0.5 unless
+named). Against r9 in the 1v1 mirrors (JJ / YY) and the damage a game in the Jujak duel
+(the candidate's / r9's):
+
+| Lead turn | frozen | D2 | cone 0.085 | cone 0.01 |
+|---|---|---|---|---|
+| r9 (control) | 0.512 / 0.496; 182 / 182 | 0.497 / 0.511; 119 / 120 | 0.464 / 0.498; 110 / 106 | 0.490 / 0.515; 39 / 38 |
+| 0.25 s | 0.535 / 0.503 | 0.518 / 0.486 | 0.521 / 0.492 | 0.499 / 0.513 |
+| **0.5 s** | **0.566 / 0.521**; 165 / 176 | **0.535 / 0.517**; 110 / 120 | **0.543 / 0.503**; 102 / 107 | 0.507 / 0.482; 37 / 40 |
+| 0.75 s | 0.501 / 0.506 | 0.525 / 0.475 | 0.529 / 0.507 | 0.512 / 0.486 |
+| 0.5 s, cross 1.0 | 0.562 / 0.501 | 0.512 / 0.515 | 0.545 / 0.498 | **0.539 / 0.508**; 34 / 41 |
+| 0.5 s, cross 1.5 | 0.560 / 0.509 | 0.526 / 0.501 | 0.530 / 0.486 | 0.523 / 0.505 |
+| 0.75 s, cross 1.0 | 0.521 / 0.498 | 0.530 / 0.493 | 0.518 / 0.476 | 0.507 / 0.505 |
+| 1 s, cross 1.0 | 0.396 / 0.485 | 0.486 / 0.470 | 0.474 / 0.492 | 0.522 / 0.511 |
+| 0.5 s, stick 0.75 | 0.511 / 0.493 | 0.500 / 0.494 | 0.516 / 0.493 | 0.515 / 0.489 |
+| 0.5 s, one-circle | 0.292 / 0.451 | 0.459 / 0.441 | 0.464 / 0.414 | 0.467 / 0.447 |
+| 0.5 s + brake | 0.569 / 0.494 | 0.541 / 0.502 | 0.516 / 0.507 | 0.505 / 0.494 |
+
+- **The lead turn 0.5 s before the merge beats the joust in the Jujak mirror on three
+  cards** (0.535-0.566, ±0.02) and holds the Yongma mirror (0.48-0.52), dealing more damage
+  than it takes. The window is narrow: 0.25 s gains less, 1 s is even or worse. Full stick
+  matters (0.75 of it: even), and the two-circle sense: the one-circle lead turn loses
+  everywhere. On the near-immune cone 0.01 it needs the wider crossing gate (cross 1.0:
+  0.539), since there the approaches are offset (the kills are offset head-on passes).
+- **Self-play mirrors** (`mtable.py round3/sizes.json`): the Jujak mirror's mutual share
+  falls on the cones (cone 0.085: 0.48 to 0.35; D2 0.67 to 0.63; frozen unchanged 0.78),
+  life rises (cone 0.085 297 to 391 s); merges a kill 3.2-3.6. The lead turn shifts D2's
+  energy v turn duel toward the Yongma (1v1 0.49 to 0.54-0.59).
+
+The 5v5 strength against r9 (mixed / mixed reversed, ±0.022; r9's own control row shows the
+noise, 0.469-0.521):
+
+| Lead turn | frozen | D2 | cone 0.085 | cone 0.01 |
+|---|---|---|---|---|
+| r9 (control) | 0.489 / 0.469 | 0.492 / 0.508 | 0.498 / 0.510 | 0.495 / 0.521 |
+| 0.25 s | 0.507 / 0.464 | 0.493 / 0.503 | 0.505 / 0.484 | 0.502 / 0.487 |
+| **0.5 s** | **0.543 / 0.490** | **0.526 / 0.512** | 0.496 / 0.495 | **0.514 / 0.521** |
+| 0.75 s | 0.440 / 0.469 | 0.507 / 0.487 | 0.479 / 0.492 | 0.444 / 0.467 |
+| 0.5 s, cross 1.0 | 0.481 / 0.506 | 0.530 / 0.482 | 0.497 / 0.514 | 0.475 / 0.511 |
+| 0.5 s, cross 1.5 | 0.519 / 0.479 | 0.508 / 0.545 | 0.474 / 0.493 | 0.508 / 0.526 |
+| 1 s, cross 1.0 | 0.445 / 0.417 | 0.427 / 0.463 | 0.444 / 0.449 | 0.444 / 0.468 |
+| 0.5 s, one-circle | 0.447 / 0.441 | 0.466 / 0.498 | 0.479 / 0.462 | 0.461 / 0.458 |
+| 0.5 s + brake | 0.483 / 0.459 | 0.465 / 0.446 | 0.488 / 0.458 | 0.469 / 0.478 |
+
+- **The 0.5 s lead turn holds its strength in the crowd** (0.496-0.543 on every card: at
+  or above 0.50 within the noise), where the deny failed (0.43-0.47). From 0.75 s on it
+  loses at 5v5 too (0.42-0.51). The brake costs a little at 5v5 (0.45-0.49): out of it.
+- Energy v turn 5v5 is unchanged by the lead turn (within 0.03 of r9's on every card).

@@ -107,6 +107,23 @@ ROUNDS = {
         ("lead 0.5 s one-circle", lead(0.5, one_circle=1.0)),
         ("lead 0.5 s + brake", dict(lead(0.5), brake=1.0)),
     ],
+    "round4": [
+        ("r9", {}),
+        ("sense two-circle", dict(sense=1.0)),
+        ("sense one-circle", dict(sense=1.0, sense_one_circle=1.0)),
+        ("sense two-circle 1 gr", dict(sense=1.0, sense_in_gun_range=[1.0, 0.2])),
+        (
+            "sense one-circle 1 gr",
+            dict(sense=1.0, sense_one_circle=1.0, sense_in_gun_range=[1.0, 0.2]),
+        ),
+        (
+            "sense one-circle 4 gr",
+            dict(sense=1.0, sense_one_circle=1.0, sense_in_gun_range=[4.0, 0.2]),
+        ),
+        ("sense one-circle 0.5", dict(sense=0.5, sense_one_circle=1.0)),
+        ("lead 0.5 s + sense two-circle", dict(lead(0.5), sense=1.0)),
+        ("lead 0.5 s + sense one-circle", dict(lead(0.5), sense=1.0, sense_one_circle=1.0)),
+    ],
 }
 
 
