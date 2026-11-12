@@ -30,6 +30,7 @@ import json
 import math
 import pathlib
 import time
+import types as types_module
 import zoneinfo
 
 import torch
@@ -38,6 +39,8 @@ from bnb.contracts import Pool
 from bnb.controllers import scripted
 from bnb.game import api, ships
 from bnb.game.handling.characteristics import characteristics
+from bnb.game.modes import frontline
+from bnb.runtime import rollout as rollout_module
 from bnb.runtime.rollout import Rollout
 
 KST = zoneinfo.ZoneInfo("Asia/Seoul")
@@ -88,6 +91,114 @@ def mode_overrides(arguments) -> dict:
     if arguments.front_threshold:
         changes["mode.front_threshold"] = arguments.front_threshold
     return changes
+
+
+BINS = 900  # 1 s histogram bins (the last one holds every longer time)
+HISTOGRAMS = ("engage", "life", "objective", "zone_to_zone", "contest")
+
+
+class Probe:
+    """Per-ship timings inside the resolve stage (`api.resolve` wrapped while the rollout
+    compiles, so the tick's events are at hand), as 1 s histograms over every ship of the
+    batch's first games: engage, from a spawn to the ship's first hit dealt or taken (enemy
+    hits only); life, from a spawn to the ship's death. Frontline: objective, from a spawn to
+    the ship's first entry into a zone other than its spawn zone; zone_to_zone, from leaving
+    a zone to entering another one; contest, from the last tick every meter was at zero to
+    a capture. Per environment: the first game's first enemy hit tick (-1 none)."""
+
+    def __init__(self, environments: int, ships_per_team: int, device) -> None:
+        N = 2 * ships_per_team
+        self.S = ships_per_team
+        self.buffers = dict(
+            tick=torch.zeros(1, dtype=torch.long, device=device),
+            live=torch.ones(environments, dtype=torch.bool, device=device),
+            since_spawn=torch.zeros((environments, N), dtype=torch.long, device=device),
+            engaged=torch.zeros((environments, N), dtype=torch.bool, device=device),
+            reached=torch.zeros((environments, N), dtype=torch.bool, device=device),
+            last_zone=torch.full((environments, N), -1, dtype=torch.long, device=device),
+            since_zone=torch.zeros((environments, N), dtype=torch.long, device=device),
+            quiet_tick=torch.zeros(environments, dtype=torch.long, device=device),
+            front=torch.zeros(environments, dtype=torch.long, device=device),
+            first_hit=torch.full((environments,), -1, dtype=torch.long, device=device),
+            **{name: torch.zeros(BINS, dtype=torch.long, device=device) for name in HISTOGRAMS},
+        )
+        self.ticks_per_bin = 30
+
+    def clear(self) -> None:
+        for name, value in self.buffers.items():
+            if name in ("first_hit", "last_zone"):
+                value.fill_(-1)
+            elif name == "live":
+                value.fill_(True)
+            else:
+                value.zero_()
+
+    def _count(self, name: str, ticks: torch.Tensor, mask: torch.Tensor) -> None:
+        bins = (ticks // self.ticks_per_bin).clamp(0, BINS - 1)
+        self.buffers[name].index_add_(0, bins.flatten(), mask.flatten().long())
+
+    def observe(self, state, events, frontline_mode: bool) -> None:
+        b = self.buffers
+        live = b["live"][:, None]
+        S = self.S
+        N = 2 * S
+        team = torch.arange(N, device=events.died.device) // S
+        enemy = team[:, None] != team[None, :]
+        dealt = (torch.where(enemy, events.damage, 0.0) > 0).any(-1)
+        taken = events.enemy_damage_by_aspect.sum(-1) > 0
+        hit = dealt | taken
+        alive = state.ships.alive
+        since = b["since_spawn"] + 1
+        first_engage = hit & ~b["engaged"] & live
+        self._count("engage", since, first_engage)
+        self._count("life", since, events.died & live)
+        game_hit = (hit.any(-1) & (b["first_hit"] < 0)) & b["live"]
+        b["first_hit"].copy_(torch.where(game_hit, b["tick"], b["first_hit"]))
+        engaged = b["engaged"] | hit
+        if frontline_mode:
+            mode = state.mode
+            position = torch.stack([state.ships.x, state.ships.y], -1)
+            zones = torch.stack([mode.zone_x, mode.zone_y], -1)
+            inside = frontline.zone_membership(position, zones, mode.zone_radius)  # (B, N, Z)
+            spawn_role = torch.where(team == 0, frontline.TEAM0_SPAWN, frontline.TEAM1_SPAWN)
+            own_spawn = mode.role[:, None, :] == spawn_role[None, :, None]
+            objective = (inside & ~own_spawn).any(-1) & alive
+            first_objective = objective & ~b["reached"] & live
+            self._count("objective", since, first_objective)
+            b["reached"].copy_((b["reached"] | objective) & ~events.spawned)
+            zone = torch.where(
+                inside.any(-1), inside.long().argmax(-1), torch.full_like(b["last_zone"], -1)
+            )
+            entering = (zone >= 0) & (b["last_zone"] >= 0) & (zone != b["last_zone"]) & alive
+            outside = zone < 0
+            self._count("zone_to_zone", b["since_zone"], entering & live & (b["since_zone"] > 0))
+            b["since_zone"].copy_(torch.where(outside, b["since_zone"] + 1, 0))
+            last = torch.where(zone >= 0, zone, b["last_zone"])
+            b["last_zone"].copy_(torch.where(events.spawned | ~alive, -1, last))
+            quiet = (mode.progress.abs() == 0).all(-1)
+            b["quiet_tick"].copy_(torch.where(quiet, b["tick"], b["quiet_tick"]))
+            captured = (mode.front.long() != b["front"]) & b["live"] & ~events.done
+            self._count("contest", b["tick"] - b["quiet_tick"], captured)
+            b["front"].copy_(mode.front.long())
+        b["engaged"].copy_(engaged & ~events.spawned & alive)
+        b["since_spawn"].copy_(torch.where(events.spawned, 0, since))
+        b["live"].copy_(b["live"] & ~events.done)
+        b["tick"].add_(1)
+
+
+def install(probe: Probe, frontline_mode: bool) -> None:
+    """Wrap the rollout's `api.resolve` so every resolve feeds the probe."""
+    original = rollout_module.api.resolve
+
+    def resolve(*arguments, **keywords):
+        state, events = original(*arguments, **keywords)
+        probe.observe(state, events, frontline_mode)
+        return state, events
+
+    rollout_module.api = types_module.SimpleNamespace(
+        **{name: getattr(api, name) for name in dir(api) if not name.startswith("__")}
+    )
+    rollout_module.api.resolve = resolve
 
 
 def trace_stage(length: int):
@@ -191,6 +302,8 @@ def main() -> None:
     card = characteristics(types, rules)
     agent = scripted.Scripted(card, rules.ships_per_team, temperature=arguments.temperature)
     environments = arguments.batch
+    probe = Probe(environments, rules.ships_per_team, device)
+    install(probe, arguments.kind == "frontline")
     rollout = Rollout(
         dataclasses.replace(game),
         types,
@@ -218,10 +331,15 @@ def main() -> None:
         rollout.carry["trace"] = trace
         for name, value in blank_trace(environments, length, device).items():
             trace[name].copy_(value)
+        probe.clear()
         for _ in range(math.ceil(length / rollout.length)):
             rollout.run()
         host = {name: value.cpu() for name, value in trace.items()}
         games = first_games(host, episode, threshold, arguments.kind)
+        first_hit = probe.buffers["first_hit"].cpu().tolist()
+        for game_record, hit_tick in zip(games, first_hit):
+            game_record["first_hit"] = hit_tick
+        histograms = {name: probe.buffers[name].cpu().tolist() for name in HISTOGRAMS}
         entry = dict(
             label=arguments.label,
             kind=arguments.kind,
@@ -235,6 +353,7 @@ def main() -> None:
             front_threshold=threshold,
             temperature=arguments.temperature,
             lineup=arguments.lineup,
+            histograms=histograms,
             games=games,
         )
         with arguments.out.open("a") as file:
