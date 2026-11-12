@@ -1215,6 +1215,32 @@ def triangle() -> list[dict]:
 ROUNDS["triangle"] = triangle
 
 
+def hit_and_run_nose(f0: float, damage: float) -> dict:
+    a = merge(HIT_AND_RUN, {"hit_damage": damage / 1.2}, kit(*KIT2), cone(f0, 12, 8))
+    return pair(
+        f"hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x{damage:g}, cone f0 "
+        f"{f0:g}) v standard (M), kit2",
+        ("M", a),
+        ("M", kit(*KIT2)),
+    )
+
+
+def confirm5() -> list[dict]:
+    """1024 games, 1v1-20v20: the hit-and-run ship's harder nose with its damage trimmed;
+    standard v brawler under both doctrines."""
+    sb = scout_brawler(1.0, 0.92, 1.12)
+    return [
+        hit_and_run_nose(0.06, 1.15),
+        hit_and_run_nose(0.06, 1.12),
+        hit_and_run_nose(0.05, 1.12),
+        flown(sb, "crowd extend + lead"),
+        flown(sb, "duel one-circle + crowd extend + lead"),
+    ]
+
+
+ROUNDS["confirm5"] = confirm5
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
