@@ -128,6 +128,22 @@ def lineup_types(lineup: str, keys: list[str], environments: int) -> tuple:
     return torch.cat([team0, team1], 1).to(torch.int32), a_on_zero
 
 
+COMPACT_EVERY = 60  # ticks: how often the finished games leave the batch
+
+
+def selected(value, keep: torch.Tensor, size: int):
+    """A batch's tree (dataclasses, tuples, tensors) with the rows `keep` (bool, (size,)) of
+    every tensor whose first axis is the batch's."""
+    if isinstance(value, torch.Tensor):
+        return value[keep] if value.dim() > 0 and value.shape[0] == size else value
+    if dataclasses.is_dataclass(value):
+        fields = dataclasses.fields(value)
+        return type(value)(**{f.name: selected(getattr(value, f.name), keep, size) for f in fields})
+    if isinstance(value, tuple):
+        return type(value)(*(selected(part, keep, size) for part in value))
+    return value
+
+
 def games(
     rules,
     types,
@@ -140,7 +156,9 @@ def games(
     seed: int,
 ) -> dict:
     """One batch of games to their first end, A's doctrines (T, W) or per environment
-    (B, T, W) against B's; per environment arrays and the kills."""
+    (B, T, W) against B's; per environment arrays and the kills. Every COMPACT_EVERY ticks
+    the finished games leave the batch (`selected`), so a batch costs its games' lengths,
+    not its longest's."""
     torch.manual_seed(seed)
     B, N = ship_type.shape
     S = N // 2
@@ -177,11 +195,13 @@ def games(
     recharges = torch.zeros((B, N), dtype=torch.long)
     restoring = torch.zeros((B, N), dtype=torch.bool)
     done = torch.zeros(B, dtype=torch.bool)
+    environment = torch.arange(B)  # each row's game
     result = torch.zeros(B, dtype=torch.long)
     length = torch.zeros(B, dtype=torch.long)
     first_game_hit = torch.full((B,), -1, dtype=torch.long)  # the side (0 A, 1 B) to hit first
-    damage_by_victim_type = torch.zeros((B, len(KEYS), len(ASPECTS)), dtype=torch.float64)
-    damage_by_shooter_side = torch.zeros((B, 2, len(ASPECTS)), dtype=torch.float64)
+    games_first_hit = first_game_hit.clone()  # by game, kept as rows leave
+    damage_by_victim_type = torch.zeros((len(KEYS), len(ASPECTS)), dtype=torch.float64)
+    damage_by_shooter_side = torch.zeros((2, len(ASPECTS)), dtype=torch.float64)
     type_slot = torch.full((len(keys),), -1, dtype=torch.long)
     for slot, key in enumerate(KEYS):
         type_slot[keys.index(key)] = slot
@@ -195,13 +215,14 @@ def games(
                     for name in ("ships", "fields", "globals", "zones")
                 }
             )
-            action, carry, _ = agent.step(carry, view, torch.full((2 * B,), tick == 0))
-            action = Action.unpack(action.packed().reshape(B, N, 3).to(torch.int32))
+            rows = done.shape[0]
+            action, carry, _ = agent.step(carry, view, torch.full((2 * rows,), tick == 0))
+            action = Action.unpack(action.packed().reshape(rows, N, 3).to(torch.int32))
             moved, sweep = api.move(
-                rules, types, state, action, api.spread(rules, B, generator=draws)
+                rules, types, state, action, api.spread(rules, rows, generator=draws)
             )
             state, events = api.resolve(
-                rules, types, moved, sweep, action, api.uniforms(rules, B, generator=draws)
+                rules, types, moved, sweep, action, api.uniforms(rules, rows, generator=draws)
             )
             live = ~done
             shown = api.display(state)
@@ -260,12 +281,12 @@ def games(
             by_aspect = torch.where(live[:, None, None], events.enemy_damage_by_aspect, 0.0)
             for slot in range(len(KEYS)):
                 mine = (victim_slot == slot)[..., None]
-                damage_by_victim_type[:, slot] += torch.where(mine, by_aspect, 0.0).sum(1)
-            damage_by_shooter_side[:, 0] += torch.where(
-                ~ship_side_a[..., None], by_aspect, 0.0
-            ).sum(1)
-            damage_by_shooter_side[:, 1] += torch.where(ship_side_a[..., None], by_aspect, 0.0).sum(
-                1
+                damage_by_victim_type[slot] += torch.where(mine, by_aspect, 0.0).sum((0, 1))
+            damage_by_shooter_side[0] += torch.where(~ship_side_a[..., None], by_aspect, 0.0).sum(
+                (0, 1)
+            )
+            damage_by_shooter_side[1] += torch.where(ship_side_a[..., None], by_aspect, 0.0).sum(
+                (0, 1)
             )
 
             # shield recharges: each spell's start
@@ -279,7 +300,7 @@ def games(
             for b, v in died.nonzero().tolist():
                 k = int(killer[b, v])
                 record = dict(
-                    environment=b,
+                    environment=int(environment[b]),
                     victim_type=KEYS[int(victim_slot[b, v])],
                     victim_side="A" if bool(ship_side_a[b, v]) else "B",
                     aspect=int(events.kill_aspect[b, v]),
@@ -319,21 +340,62 @@ def games(
 
             ending_now = events.done & live
             team0_result = events.result.long()
-            result = torch.where(
-                ending_now, torch.where(a_on_zero, team0_result, -team0_result), result
-            )
-            length = torch.where(ending_now, tick + 1, length)
+            outcome = torch.where(a_on_zero, team0_result, -team0_result)
+            ended = environment[ending_now]
+            result[ended] = outcome[ending_now]
+            length[ended] = tick + 1
+            games_first_hit[ended] = first_game_hit[ending_now]
             done |= events.done
             state, observation, _ = api.perceive(rules, state)
             if bool(done.all()):
                 break
+            if tick % COMPACT_EVERY == 0 and bool(done.any()):
+                keep, rows = ~done, done.shape[0]
+                views = keep.repeat_interleave(2)
+                state, observation = selected(state, keep, rows), selected(observation, keep, rows)
+                carry = selected(carry, views, 2 * rows)
+                agent.doctrines = agent.doctrines[views]
+                (
+                    environment,
+                    ship_side_a,
+                    a_on_zero,
+                    pair_reach,
+                    in_merge,
+                    merges,
+                    first_merge_end,
+                    first_hit,
+                    victim_hit_tick,
+                    recharges,
+                    restoring,
+                    victim_slot,
+                    first_game_hit,
+                    done,
+                ) = (
+                    tensor[keep]
+                    for tensor in (
+                        environment,
+                        ship_side_a,
+                        a_on_zero,
+                        pair_reach,
+                        in_merge,
+                        merges,
+                        first_merge_end,
+                        first_hit,
+                        victim_hit_tick,
+                        recharges,
+                        restoring,
+                        victim_slot,
+                        first_game_hit,
+                        done,
+                    )
+                )
     return dict(
         result=result.tolist(),
         length=length.tolist(),
         timeout=(length >= episode_ticks).tolist(),
-        first_game_hit=first_game_hit.tolist(),
-        damage_by_victim_type=damage_by_victim_type.sum(0).tolist(),
-        damage_by_shooter_side=damage_by_shooter_side.sum(0).tolist(),
+        first_game_hit=games_first_hit.tolist(),
+        damage_by_victim_type=damage_by_victim_type.tolist(),
+        damage_by_shooter_side=damage_by_shooter_side.tolist(),
         kills=kills,
     )
 
