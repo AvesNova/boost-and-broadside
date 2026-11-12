@@ -94,6 +94,19 @@ ROUNDS = {
         ("low 10 s ph1.5 8 s to 1.3", yoyo(10.0, 1.5, 8.0, 2.0, 0.0, 1.0, 1.3)),
         ("high 20 s (gated)", yoyo()),
     ],
+    "round3": [
+        ("r9", {}),
+        ("lead 0.25 s", lead(0.25)),
+        ("lead 0.5 s", lead(0.5)),
+        ("lead 0.75 s", lead(0.75)),
+        ("lead 0.5 s cross 1.0", lead(0.5, crossing=1.0)),
+        ("lead 0.5 s cross 1.5", lead(0.5, crossing=1.5)),
+        ("lead 0.75 s cross 1.0", lead(0.75, crossing=1.0)),
+        ("lead 1 s cross 1.0", lead(1.0, crossing=1.0)),
+        ("lead 0.5 s stick 0.75", lead(0.5, stick=0.75)),
+        ("lead 0.5 s one-circle", lead(0.5, one_circle=1.0)),
+        ("lead 0.5 s + brake", dict(lead(0.5), brake=1.0)),
+    ],
 }
 
 
