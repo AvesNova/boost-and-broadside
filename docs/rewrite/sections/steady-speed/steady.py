@@ -1,5 +1,6 @@
 """Steady-state training speed of one tree x stage: `python steady.py config=FILE updates=N
-[timed=1] [set=path=value;...] [process_start=EPOCH]`, one JSON object to stdout.
+[timed=1] [set=path=value;...] [memory_fraction=F] [process_start=EPOCH]`, one JSON object
+to stdout.
 
 Runs the trainer's own update (`Trainer.update`: collect, analytics, learn, the cadence's
 diagnostics and heads' sums on its updates), so the steady numbers are a run's, not the
@@ -96,6 +97,8 @@ def main() -> None:
     config = dataclasses.replace(config, updates=max(config.updates, updates))
     torch.manual_seed(0)
     device = torch.device("cuda")
+    if "memory_fraction" in OPTIONS:  # emulate a smaller GPU (e.g. 8 GB: 8/16.3 here)
+        torch.cuda.set_per_process_memory_fraction(float(OPTIONS["memory_fraction"]), device)
     log("build ...")
     started = time.perf_counter()
     trainer = Trainer(config, device)

@@ -1,7 +1,7 @@
 #!/bin/bash
 # run.sh NAME TREE CONFIG UPDATES TIMED CACHE [SET]: one steady.py run of tree TREE
 # (/workspace/wt-TREE) on gpubox4, caches in /workspace/ss/cache/CACHE (MODE cold: remove
-# them first, by passing CACHE=cold:DIR), raw output logs/NAME.{json,log}, the GPU's state
+# them first, by passing CACHE=cold:DIR; EXTRA: more steady.py options), raw output logs/NAME.{json,log}, the GPU's state
 # and power profile before and after in logs/NAME.gpu.
 set -uo pipefail
 NAME=$1; TREE=$2; CONFIG=$3; UPDATES=$4; TIMED=$5; CACHE=$6; SETS=${7:-}
@@ -16,5 +16,5 @@ gpu() { nvidia-smi --query-gpu=pstate,clocks.sm,clocks.mem,power.draw,power.limi
 { echo "before $(date +%s) $(gpu)"; echo "commit $(git -C /workspace/wt-$TREE rev-parse --short HEAD)"; } > "$ROOT/logs/$NAME.gpu"
 START=$(date +%s.%N)
 /workspace/bnb/.venv/bin/python $ROOT/steady.py config="$ROOT/configs/$CONFIG" updates="$UPDATES" \
-  timed="$TIMED" set="$SETS" process_start="$START" > "$ROOT/logs/$NAME.json" 2> "$ROOT/logs/$NAME.log"
+  timed="$TIMED" set="$SETS" ${EXTRA:-} process_start="$START" > "$ROOT/logs/$NAME.json" 2> "$ROOT/logs/$NAME.log"
 echo "exit $? $(date +%s) $(gpu)" >> "$ROOT/logs/$NAME.gpu"
