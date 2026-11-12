@@ -9,7 +9,7 @@ import pytest
 import torch
 from ship_card_cases import seconds_between_shots
 
-from bnb.contracts import Action, GameConfig
+from bnb.contracts import ASPECTS, Action, GameConfig
 from bnb.contracts.obs import SHIP
 from bnb.game import api
 from bnb.game.physics import flight
@@ -266,6 +266,80 @@ def test_head_on_angle_is_where_the_targets_armour_is_half():
     old = 1.0 - 0.7 * math.exp(-4.0 * theta * theta / math.pi)
     damage = _head_on_damage(api.ship_types(), (theta, theta))
     assert torch.allclose(damage[0, 1, 0], torch.tensor(16.0 * old))
+
+
+def _aspect_hits(nose_angles, ships_per_team=1):
+    """Hits of one bullet each way between ships 0 and 1, 100 m apart on the x axis, each
+    through the other's nose turned by its nose angle (rad); with two ships a team they
+    are teammates (the others wait far off, unarmed)."""
+    rules = api.rules_of(GameConfig(ships_per_team, 1, 1000.0))
+    N, K = 2 * ships_per_team, rules.bullet_slots
+    angles = torch.zeros(1, N)
+    angles[0, :2] = torch.tensor(nose_angles)
+    facing = torch.ones(1, N)
+    facing[0, 1] = -1.0
+    ships = replace(
+        _ships(torch.zeros(1, N), 0.0),
+        x=torch.tensor([[0.0, 100.0] + [0.0] * (N - 2)]),
+        y=torch.tensor([[0.0, 0.0] + [5000.0] * (N - 2)]),
+        heading_cos=torch.cos(angles) * facing,
+        heading_sin=torch.sin(angles),
+    )
+    zeros = torch.zeros(1, N, K)
+    live = torch.zeros(1, N, K, dtype=torch.int32)
+    live[0, :2, 0] = 1
+    along = zeros.clone()
+    along[0, :2, 0] = torch.tensor([1.0, -1.0])
+    start = zeros.clone()
+    start[0, 1, 0] = 100.0
+    bullets = Bullets(
+        x=start,
+        y=zeros,
+        direction_x=along,
+        direction_y=zeros,
+        proper_speed=zeros + 500.0,
+        log_refractive_index=zeros,
+        log_index_gradient_x=zeros,
+        log_index_gradient_y=zeros,
+        moves_left=live,
+    )
+    sweep = Sweep(
+        ship_x=ships.x,
+        ship_y=ships.y,
+        ship_displacement_x=ships.x * 0.0,
+        ship_displacement_y=ships.y * 0.0,
+        bullet_x=start,
+        bullet_y=zeros,
+        bullet_displacement_x=along * 100.0,
+        bullet_displacement_y=zeros,
+    )
+    alive = torch.ones(1, N, dtype=torch.bool)
+    return hits(rules, api.ship_types(), sweep, ships, bullets, alive)
+
+
+@pytest.mark.parametrize(
+    ("angle", "aspect"),
+    [(0.0, 0), (0.7, 0), (0.8, 1), (math.pi / 2, 1), (2.3, 1), (2.4, 2), (math.pi, 2)],
+)
+def test_a_hits_aspect_class_is_its_angle_off_the_targets_nose(angle, aspect):
+    """Head-on under 45 degrees off the nose, tail over 135, the flank between (ASPECTS);
+    the enemy damage by class is the hit's damage, and the earliest hit's class is kept."""
+    hit = _aspect_hits((0.0, angle))
+    expected = torch.zeros(len(ASPECTS))
+    expected[aspect] = hit.damage[0, 0, 1]
+    assert hit.damage[0, 0, 1] > 0.0
+    torch.testing.assert_close(hit.enemy_damage_by_aspect[0, 1], expected)
+    assert int(hit.first_aspect[0, 1]) == aspect
+    assert int(hit.first_aspect[0, 0]) == 0  # ship 0 is hit nose on
+
+
+def test_the_aspect_damage_leaves_out_friendly_fire():
+    """A teammate's hit is damage, but not enemy damage; its class is still the first hit's."""
+    hit = _aspect_hits((0.0, math.pi), ships_per_team=2)
+    assert hit.damage[0, 0, 1] > 0.0
+    assert float(hit.enemy_damage_by_aspect.abs().sum()) == 0.0
+    assert int(hit.first_aspect[0, 1]) == 2
+    assert (hit.first_aspect[0, 2:] == -1).all()
 
 
 def test_shield_recharge_rate_and_delay_are_per_type():

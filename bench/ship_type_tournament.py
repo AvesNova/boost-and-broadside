@@ -45,6 +45,7 @@ import time
 import torch
 
 from bench.lock import bench_lock
+from bnb.contracts import ASPECTS
 from bnb.game import api, ships
 from bnb.league import cyclic, tournament
 from bnb.league.matches import STATISTICS, ArenaConfig, ship_type_players
@@ -152,6 +153,17 @@ def _summaries(record: pathlib.Path):
     return names, counts, statistics, lines
 
 
+def aspect_shares(column: dict, k: int) -> dict:
+    """Type k's damage dealt and kills by the hit's aspect class, as shares of its total
+    (`damage_share_head_on`, ..., `kill_share_tail`; 0 from a record without them)."""
+    out = {}
+    for kind, name in (("damage", "damage_share"), ("kills", "kill_share")):
+        whole = sum(float(column[f"{kind}_{aspect}"][k]) for aspect in ASPECTS)
+        for aspect in ASPECTS:
+            out[f"{name}_{aspect}"] = float(column[f"{kind}_{aspect}"][k]) / max(whole, 1e-9)
+    return out
+
+
 def report(args) -> None:
     """The tables the module describes, from a record."""
     record, out = pathlib.Path(args.record), pathlib.Path(args.out)
@@ -183,6 +195,7 @@ def report(args) -> None:
                 shots_per_game=float(column["shots"][k]) / played,
                 hit_share=float(column["hits"][k]) / max(float(column["shots"][k]), 1.0),
                 mean_speed=float(column["speed"][k]) / max(float(column["ship_ticks"][k]), 1.0),
+                **aspect_shares(column, k),
             )
         )
     rows.sort(key=lambda row: -row["elo"])
@@ -223,15 +236,20 @@ def report(args) -> None:
     )
     header = (
         "| Rank | Type | Elo (95% interval) | Score | W / D / L | Kills / deaths a game "
-        "| Kill ratio | Shots a game | Hit share | Mean speed m/s |\n"
-        "|---|---|---|---|---|---|---|---|---|---|\n"
+        "| Kill ratio | Shots a game | Hit share | Mean speed m/s "
+        "| Damage head-on / flank / tail | Kills head-on / flank / tail |\n"
+        "|---|---|---|---|---|---|---|---|---|---|---|---|\n"
     )
     body = "".join(
         f"| {rank} | {row['type']} | {row['elo']:.0f} ({row['low']:.0f} to {row['high']:.0f}) "
         f"| {row['score']:.3f} | {row['wins']} / {row['draws']} / {row['losses']} "
         f"| {row['kills_per_game']:.2f} / {row['deaths_per_game']:.2f} "
         f"| {row['kill_ratio']:.2f} | {row['shots_per_game']:.0f} | {row['hit_share']:.3f} "
-        f"| {row['mean_speed']:.0f} |\n"
+        f"| {row['mean_speed']:.0f} | "
+        + " / ".join(f"{row[f'damage_share_{aspect}']:.2f}" for aspect in ASPECTS)
+        + " | "
+        + " / ".join(f"{row[f'kill_share_{aspect}']:.2f}" for aspect in ASPECTS)
+        + " |\n"
         for rank, row in enumerate(rows, 1)
     )
     print(json.dumps(meta))

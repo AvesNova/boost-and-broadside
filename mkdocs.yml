@@ -125,6 +125,7 @@ nav:
           - Case studies of the trade-offs: explanation/game/case-studies.md
           - Designing ship types: explanation/game/ship-design.md
           - "Runbook: a ship-design search": explanation/game/ship-design/runbook.md
+          - "Two archetypes (draft)": explanation/game/ship-design/archetypes.md
       - The model (Yemong): explanation/yemong.md
       - The training loop: explanation/training-loop.md
       - The learner: explanation/learner.md

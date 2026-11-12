@@ -11,11 +11,11 @@ from typing import NamedTuple
 
 import torch
 
-from bnb.contracts import Action
+from bnb.contracts import ASPECT_BOUNDS, ASPECTS, Action
 
 from ..rules import COAST, QUIET_STICKS, Rules
 from ..ship_types import ShipTypes, per_ship
-from ..state import Bullets, Ships, Sweep, replace
+from ..state import Bullets, Ships, Sweep, replace, ship_team
 
 LN_2 = math.log(2.0)
 NO_HIT = torch.iinfo(torch.int64).max
@@ -27,6 +27,9 @@ class Hits(NamedTuple):
     damage: torch.Tensor  # (B, N, N) hit damage from shooter to target
     bullet_hit: torch.Tensor  # (B, N, K) the bullet hit something this tick
     first_shooter: torch.Tensor  # (B, N) owner of the earliest hit on each ship, -1 if none
+    # (B, N, len(ASPECTS)) hit damage from the enemy team by aspect class (statistics only)
+    enemy_damage_by_aspect: torch.Tensor
+    first_aspect: torch.Tensor  # (B, N) aspect class of the earliest hit on each ship, -1 if none
 
 
 class Contacts(NamedTuple):
@@ -156,7 +159,30 @@ def hits(
     first = hit & (order == earliest_order.gather(1, target))
     earliest = blank.scatter_reduce(1, target, torch.where(first, bullet, NO_HIT), "amin")
     shooter = torch.where(earliest < NO_HIT, earliest // K, -1)
-    return Hits(damage=damage, bullet_hit=hit.reshape(B, N, K), first_shooter=shooter)
+
+    # The statistics' aspect classes (`bnb.contracts.events.ASPECTS`): each bullet's, the
+    # enemy damage each target took by class, and the class of each target's earliest hit.
+    aspect_class = (theta >= ASPECT_BOUNDS[0]).long() + (theta > ASPECT_BOUNDS[1]).long()
+    team = ship_team(rules.ships_per_team, bullet_damage.device)
+    from_enemy = team.repeat_interleave(K) != team[target]  # (B, N K)
+    classes = len(ASPECTS)
+    enemy_damage_by_aspect = (
+        torch.zeros((B, N * classes), dtype=bullet_damage.dtype, device=bullet_damage.device)
+        .scatter_add(
+            1, target * classes + aspect_class, torch.where(from_enemy, bullet_damage, 0.0)
+        )
+        .reshape(B, N, classes)
+    )
+    first_aspect = torch.where(
+        earliest < NO_HIT, aspect_class.gather(1, earliest.clamp_max(N * K - 1)), -1
+    )
+    return Hits(
+        damage=damage,
+        bullet_hit=hit.reshape(B, N, K),
+        first_shooter=shooter,
+        enemy_damage_by_aspect=enemy_damage_by_aspect,
+        first_aspect=first_aspect,
+    )
 
 
 def boundary_damage(

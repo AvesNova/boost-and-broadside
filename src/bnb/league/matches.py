@@ -61,7 +61,7 @@ import pathlib
 import torch
 from torch.utils import _pytree
 
-from bnb.contracts import Action, GameConfig, Obs, Outputs, Pool
+from bnb.contracts import ASPECTS, Action, GameConfig, Obs, Outputs, Pool
 from bnb.contracts.obs import SHIP
 from bnb.contracts.tree import contract
 from bnb.controllers.scripted import Scripted, uniform_actions
@@ -253,8 +253,22 @@ class MatchCarry:
 # enemy), its living ship-ticks and their proper speeds (m/s, summed: over the ship-ticks
 # it is the mean speed), as each tick's observation shows them, and a network's entropy (nats,
 # its sampled joint action distribution's, at its temperature) summed over the same
-# ship-ticks (over them it is the mean entropy; 0 for a scripted player).
-STATISTICS = ("kills", "deaths", "shots", "hits", "ship_ticks", "speed", "entropy")
+# ship-ticks (over them it is the mean entropy; 0 for a scripted player). Then, by the hit's
+# aspect class (`bnb.contracts.events.ASPECTS`), the hit damage its ships dealt to enemy
+# ships and its kills (the killing hit's class). New columns go last: a record keeps the
+# columns of its time, a prefix of these.
+STATISTICS = (
+    "kills",
+    "deaths",
+    "shots",
+    "hits",
+    "ship_ticks",
+    "speed",
+    "entropy",
+    *(f"damage_{aspect}" for aspect in ASPECTS),
+    *(f"kills_{aspect}" for aspect in ASPECTS),
+)
+ASPECT_STATISTICS = STATISTICS.index(f"damage_{ASPECTS[0]}")
 
 
 class _Decision(torch.nn.Module):
@@ -484,7 +498,7 @@ class MatchSeat:
             -1,
         )
         statistics = carry.statistics.clone()
-        statistics[:, STATISTICS.index("ship_ticks") :] += playing * observed
+        statistics[:, STATISTICS.index("ship_ticks") : ASPECT_STATISTICS] += playing * observed
         carry = MatchCarry(
             model=model_carry,
             scripted=scripted_carry,
@@ -528,6 +542,14 @@ class MatchSeat:
         tick = torch.stack([kills, deaths, shots, hits], -1).float()
         playing = (~carry.finished).float()[:, None]
         carry.statistics[:, : STATISTICS.index("ship_ticks")] += playing * tick
+        # by aspect: the enemy-only damage its enemies took, and its kills by class
+        dealt = (events.enemy_damage_by_aspect[environments] * (~own).float()[..., None]).sum(1)
+        kill_aspect = events.kill_aspect[environments]
+        own_kill = died & ~own & (killer_team == team[:, None])
+        kills_by_aspect = torch.stack(
+            [(own_kill & (kill_aspect == index)).sum(-1) for index in range(len(ASPECTS))], -1
+        ).float()
+        carry.statistics[:, ASPECT_STATISTICS:] += playing * torch.cat([dealt, kills_by_aspect], -1)
 
     # ---- the host's side, between batches
 

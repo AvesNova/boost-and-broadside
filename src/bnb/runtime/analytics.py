@@ -13,13 +13,16 @@ Over the batch: `episode/alive_share`, `reward/level_share/{level}`, the learner
 by game and by opponent (`batch/token_share/mode/{mode}`, `.../opponent/{opponent}`), the
 committed actions' use (`policy/usage/{factor}/{option}`) and how often a ship changes a
 factor from one step to the next (`policy/switch_rate/{factor}`).
+Per slice and over every game: the enemy hit damage and the kills by the hit's aspect class
+(`bnb.contracts.events.ASPECTS`: head-on, flank, tail), as shares of their totals
+(`combat/damage_share/{aspect}`, `combat/kill_share/{aspect}`, each also `/{slice}`).
 """
 
 import math
 
 import torch
 
-from bnb.contracts import REWARD_LEVELS
+from bnb.contracts import ASPECTS, REWARD_LEVELS
 from bnb.contracts.action import NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.contracts.series import Mean, Table
@@ -237,6 +240,20 @@ class Analytics:
             out[f"fog/occlusion_share/{name}"] = Mean(
                 total(perceive[f"fog/occlusion/{name}"]), reacquisitions
             )
+        for kind in ("damage", "kills"):
+            name = "damage_share" if kind == "damage" else "kill_share"
+            by_aspect = {a: per_slice(resolve[f"aspect_{kind}/{a}"]) for a in ASPECTS}
+            for index, slice_name in enumerate(self.slices):
+                whole = sum(by_aspect[a][index] for a in ASPECTS)
+                for aspect in ASPECTS:
+                    out[f"combat/{name}/{aspect}/{slice_name}"] = Mean(
+                        by_aspect[aspect][index], whole
+                    )
+            whole = sum(total(resolve[f"aspect_{kind}/{a}"]) for a in ASPECTS)
+            for aspect in ASPECTS:
+                out[f"combat/{name}/{aspect}"] = Mean(
+                    total(resolve[f"aspect_{kind}/{aspect}"]), whole
+                )
         if tables is not None:
             out.update(outcome_series(tables))
         return out
@@ -337,6 +354,8 @@ RESOLVE_COLUMNS = (
     "team_0_wins",
     "team_1_wins",
     "team_draws",
+    *(f"aspect_damage/{aspect}" for aspect in ASPECTS),
+    *(f"aspect_kills/{aspect}" for aspect in ASPECTS),
 )
 # Hidden spells' lengths at reacquisition, in seconds (lower bound inclusive).
 OCCLUSION_BUCKETS = (
@@ -480,6 +499,15 @@ def resolve_tick(
         columns[f"event/{event}"] = event_rewards[..., index].abs().sum(1)
     for index, name in enumerate(EPISODE_EVENTS):
         columns[f"episode_event/{name}"] = ended * episode_events[:, index]
+    ships_per_team = events.died.shape[1] // 2  # team-major sim order
+    team = torch.arange(events.died.shape[1], device=done.device) // ships_per_team
+    killer = events.killer.long()
+    by_enemy = events.died & (killer >= 0) & (killer // ships_per_team != team)
+    for index, aspect in enumerate(ASPECTS):
+        columns[f"aspect_damage/{aspect}"] = events.enemy_damage_by_aspect[..., index].sum(1)
+        columns[f"aspect_kills/{aspect}"] = (
+            (by_enemy & (events.kill_aspect == index)).float().sum(1)
+        )
     sums["resolve"].add_(torch.stack([columns[name] for name in RESOLVE_COLUMNS], -1))
     low = torch.where(done, ship_totals.amin(1), math.inf)
     high = torch.where(done, ship_totals.amax(1), -math.inf)

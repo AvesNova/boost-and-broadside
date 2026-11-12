@@ -1,0 +1,246 @@
+{
+ "s1": {
+  "scaling": {
+   "turn": 1.0,
+   "speed": 1.0,
+   "guns": 0.5
+  },
+  "delta": {
+   "vizia": {},
+   "Yongma": {
+    "stall_speed": 48.07166006747579,
+    "sustained_turn_rate": 0.2412978846526642,
+    "low_speed_acceleration": 2.1985938476919737,
+    "climb_time": 667.1586528583284,
+    "cruise_speed": 167.45693936317014,
+    "zero_lift_drag": 4.248589268455801e-05,
+    "dive_acceleration": 11.617236775817416,
+    "max_shield": 109.1915972318197,
+    "hit_damage": 8.755407226225296,
+    "hit_radius": 10.332411583242612
+   },
+   "Jujak": {
+    "stall_speed": 41.564822125871686,
+    "sustained_turn_rate": 0.3111718759074401,
+    "low_speed_acceleration": 3.38482056357099,
+    "climb_time": 539.6016750151647,
+    "cruise_speed": 158.07792718423417,
+    "zero_lift_drag": 5.80698270078619e-05,
+    "dive_acceleration": 10.230753922301655,
+    "max_shield": 91.5821386765637,
+    "hit_damage": 7.309768506060935,
+    "hit_radius": 9.678282673348276
+   }
+  },
+  "flies": {
+   "vizia": {
+    "converged": true,
+    "worst_error": 8.273170915411675e-05,
+    "cruise": 162.67550659179688,
+    "top": 389.2728271484375,
+    "corner": 134.10000610351562,
+    "turn_deg": [
+     10.06,
+     12.89,
+     15.7
+    ],
+    "instant_deg": 37.72292305011615,
+    "gun_range": 586.8834838867188,
+    "climb_power": 1033.3333740234375,
+    "store": 124390.796875,
+    "failures": [],
+    "turn_180_sustained": 11.464968152866243,
+    "turn_180_instant": 4.771634471720658,
+    "turn_circle": 1187.3401220207088
+   },
+   "Yongma": {
+    "converged": true,
+    "worst_error": 5.130470933057598e-08,
+    "cruise": 167.42913818359375,
+    "top": 422.3100891113281,
+    "corner": 144.21498107910156,
+    "turn_deg": [
+     8.67,
+     11.24,
+     13.82
+    ],
+    "instant_deg": 35.077109256233726,
+    "gun_range": 586.8817138671875,
+    "climb_power": 929.0576171875,
+    "store": 124390.796875,
+    "failures": [],
+    "turn_180_sustained": 13.024602026049203,
+    "turn_180_instant": 5.131551710408158,
+    "turn_circle": 1388.2753958657859
+   },
+   "Jujak": {
+    "converged": true,
+    "worst_error": 4.5493217417856396e-05,
+    "cruise": 158.0579833984375,
+    "top": 350.0736083984375,
+    "corner": 124.69447326660156,
+    "turn_deg": [
+     11.49,
+     14.86,
+     17.83
+    ],
+    "instant_deg": 40.56831155645177,
+    "gun_range": 586.8864135742188,
+    "climb_power": 1149.17822265625,
+    "store": 124390.796875,
+    "failures": [],
+    "turn_180_sustained": 10.095344924284914,
+    "turn_180_instant": 4.436960600382043,
+    "turn_circle": 1015.822250934302
+   }
+  },
+  "budget": {
+   "Yongma shoots Yongma": {
+    "head_on": 4.133333333333334,
+    "passes": 2.3583642886584504,
+    "tail": 0.8,
+    "tail_over_target_turn": 0.1558982633610388
+   },
+   "Yongma shoots Jujak": {
+    "head_on": 3.466666666666667,
+    "passes": 1.9226128407810117,
+    "tail": 0.6666666666666666,
+    "tail_over_target_turn": 0.15025300576463618
+   },
+   "Jujak shoots Yongma": {
+    "head_on": 4.933333333333334,
+    "passes": 2.7360259657268244,
+    "tail": 0.9333333333333333,
+    "tail_over_target_turn": 0.18188130725454524
+   },
+   "Jujak shoots Jujak": {
+    "head_on": 4.133333333333334,
+    "passes": 2.2263467555893253,
+    "tail": 0.8,
+    "tail_over_target_turn": 0.18030360691756342
+   }
+  }
+ },
+ "s1-speed2": {
+  "scaling": {
+   "turn": 1.0,
+   "speed": 2.0,
+   "guns": 0.5
+  },
+  "delta": {
+   "vizia": {},
+   "Yongma": {
+    "stall_speed": 48.07166006747579,
+    "sustained_turn_rate": 0.2412978846526642,
+    "low_speed_acceleration": 2.1985938476919737,
+    "climb_time": 667.1586528583284,
+    "cruise_speed": 172.3531033591492,
+    "zero_lift_drag": 3.6340580094449474e-05,
+    "dive_acceleration": 12.379424117649416,
+    "max_shield": 109.1915972318197,
+    "hit_damage": 8.755407226225296,
+    "hit_radius": 10.332411583242612
+   },
+   "Jujak": {
+    "stall_speed": 41.564822125871686,
+    "sustained_turn_rate": 0.3111718759074401,
+    "low_speed_acceleration": 3.38482056357099,
+    "climb_time": 539.6016750151647,
+    "cruise_speed": 153.5872888345107,
+    "zero_lift_drag": 6.788962729969443e-05,
+    "dive_acceleration": 9.600857808971222,
+    "max_shield": 91.5821386765637,
+    "hit_damage": 7.309768506060935,
+    "hit_radius": 9.678282673348276
+   }
+  },
+  "flies": {
+   "vizia": {
+    "converged": true,
+    "worst_error": 8.273170915411675e-05,
+    "cruise": 162.67550659179688,
+    "top": 389.2728271484375,
+    "corner": 134.10000610351562,
+    "turn_deg": [
+     10.06,
+     12.89,
+     15.7
+    ],
+    "instant_deg": 37.72292305011615,
+    "gun_range": 586.8834838867188,
+    "climb_power": 1033.3333740234375,
+    "store": 124390.796875,
+    "failures": [],
+    "turn_180_sustained": 11.464968152866243,
+    "turn_180_instant": 4.771634471720658,
+    "turn_circle": 1187.3401220207088
+   },
+   "Yongma": {
+    "converged": true,
+    "worst_error": 5.8296387467665554e-08,
+    "cruise": 172.32110595703125,
+    "top": 447.9215393066406,
+    "corner": 144.21498107910156,
+    "turn_deg": [
+     8.67,
+     11.21,
+     13.82
+    ],
+    "instant_deg": 35.077109256233726,
+    "gun_range": 586.8795776367188,
+    "climb_power": 928.9249877929688,
+    "store": 124390.796875,
+    "failures": [],
+    "turn_180_sustained": 13.024602026049203,
+    "turn_180_instant": 5.131551710408158,
+    "turn_circle": 1428.838218866072
+   },
+   "Jujak": {
+    "converged": true,
+    "worst_error": 4.700530216880853e-05,
+    "cruise": 153.56979370117188,
+    "top": 317.0693054199219,
+    "corner": 124.69447326660156,
+    "turn_deg": [
+     11.44,
+     14.9,
+     17.83
+    ],
+    "instant_deg": 40.56831155645177,
+    "gun_range": 586.8876953125,
+    "climb_power": 1149.349365234375,
+    "store": 124390.796875,
+    "failures": [],
+    "turn_180_sustained": 10.095344924284914,
+    "turn_180_instant": 4.436960600382043,
+    "turn_circle": 986.9771216794036
+   }
+  },
+  "budget": {
+   "Yongma shoots Yongma": {
+    "head_on": 4.133333333333334,
+    "passes": 2.4272801386520735,
+    "tail": 0.8,
+    "tail_over_target_turn": 0.1558982633610388
+   },
+   "Yongma shoots Jujak": {
+    "head_on": 3.466666666666667,
+    "passes": 1.9249937046533983,
+    "tail": 0.6666666666666666,
+    "tail_over_target_turn": 0.15025300576463618
+   },
+   "Jujak shoots Yongma": {
+    "head_on": 4.933333333333334,
+    "passes": 2.7394141181606053,
+    "tail": 0.9333333333333333,
+    "tail_over_target_turn": 0.18188130725454524
+   },
+   "Jujak shoots Jujak": {
+    "head_on": 4.133333333333334,
+    "passes": 2.163123038250748,
+    "tail": 0.8,
+    "tail_over_target_turn": 0.18030360691756342
+   }
+  }
+ }
+}

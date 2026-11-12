@@ -124,6 +124,8 @@ class Match:
             objective_progress=zero,
             objective=zero,
             result=torch.tensor([result], dtype=torch.int32),
+            enemy_damage_by_aspect=torch.zeros(1, N, 3),
+            kill_aspect=torch.full((1, N), -1, dtype=torch.int32),
         )
         levels, self.ledger = rewards.reward_step(CONFIG, self.ledger, events, self.team)
         assert levels.sum(1).abs().max() < 1e-6, "zero-sum"
@@ -309,6 +311,8 @@ def test_a_bigger_game_runs_too():
         objective_progress=zero,
         objective=zero,
         result=torch.zeros(2).int(),
+        enemy_damage_by_aspect=torch.zeros(2, N, 3),
+        kill_aspect=zero.int() - 1,
     )
     levels, ledger = rewards.reward_step(
         CONFIG, rewards.blank_ledger(2, N), events, torch.arange(N) // 50

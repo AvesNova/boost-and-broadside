@@ -245,6 +245,7 @@ def resolve(
     # is still spent), then damage, deaths and shields (the recharge on quiet actions).
     hit = hits(rules, types, sweep, ships, bullets, alive0)
     damage, first_shooter = hit.damage, hit.first_shooter
+    enemy_damage_by_aspect, first_aspect = hit.enemy_damage_by_aspect, hit.first_aspect
     if any(mode.name == FRONTLINE for mode in rules.modes):  # the only mode that protects
         guarded = per_mode(
             rules,
@@ -255,10 +256,13 @@ def resolve(
         )
         damage = torch.where(guarded[:, None, :], 0.0, damage)
         first_shooter = torch.where(guarded, -1, first_shooter)
+        enemy_damage_by_aspect = torch.where(guarded[..., None], 0.0, enemy_damage_by_aspect)
+        first_aspect = torch.where(guarded, -1, first_aspect)
     boundary = boundary_damage(rules, arena.arena_radius, ships, alive0)
     applied = apply_damage(rules, types, ships, alive0, damage.sum(1) + boundary, quiet(action))
     ships, died = applied.ships, applied.died
     killer = torch.where(died, first_shooter, -1).to(torch.int32)
+    kill_aspect = torch.where(died, first_aspect, -1).to(torch.int32)
 
     # The mode phase: the mode state, the objective events, and whether the match is won.
     alive = alive0 & ~died
@@ -329,6 +333,8 @@ def resolve(
         objective_progress=phase.objective_progress,
         objective=phase.objective,
         result=result,
+        enemy_damage_by_aspect=enemy_damage_by_aspect,
+        kill_aspect=kill_aspect,
     )
     return State(ships=ships, bullets=bullets, fields=fields, match=match, mode=mode), events
 

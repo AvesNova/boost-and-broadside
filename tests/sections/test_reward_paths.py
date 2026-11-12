@@ -47,6 +47,8 @@ def _events(
         objective_progress=torch.zeros(1, N) if progress is None else progress,
         objective=torch.zeros(1, N) if objective is None else objective,
         result=torch.zeros(1, dtype=torch.int32),
+        enemy_damage_by_aspect=torch.zeros(1, N, 3),
+        kill_aspect=torch.full((1, N), -1, dtype=torch.int32),
     )
 
 
