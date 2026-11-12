@@ -90,3 +90,25 @@ records.
   never above micro_views; the 5090's RL at 640 rows had 64 x 3 + 63). The learner does it,
   so the launch probe needs no change (its memory is an upper bound). Quick tier: 54 passed
   (`test_compile_split`, `test_learner`, `test_diagnostics_heads`, `test_bc`).
+- 19:30 **the crashes are host memory**: each compiling process holds about 12 GB resident in
+  the learner's compile (the 40k-op heads' sums); the box's cgroup (32 GB) reached its limit
+  (memory.peak 34.2e9 = memory.max, `oom_kill 1`): C's warm re-run was killed there. B's
+  segfault came with no other process on the box, so it is not settled: plan2 runs with
+  faulthandler and at most two compiling processes.
+- 19:22-19:40 **act-stage ablations** (trace-only, Dynamo op counts, `records/ablations.jsonl`):
+
+  | Config | `_act` ops | `_resolve` | `_perceive` |
+  |---|---|---|---|
+  | BC full | 27,291 | 3,254 | 854 |
+  | BC lanes off | **9,957** | 2,554 | 710 |
+  | BC frontline only | 27,291 | 2,209 | 632 |
+  | BC frontline, lanes off | 9,957 | 2,185 | 632 |
+  | PPO lanes off | 13,747 | 2,574 | 710 |
+  | PPO lanes off, one league slot | 13,747 | 2,574 | 710 |
+
+  The rating lanes are 17,334 of BC's 27,291 act ops (64%); the three-mode mix adds nothing
+  to the act stage (a few hundred ops to resolve and perceive); the league's slots are one
+  vmapped copy whatever their number. BC's lanes are two stacked runs (`LaneSeat`,
+  `RUN_SLACK` 10%): live (weight 0.5) alone, and the two averages (1.0 each) together, so
+  two network copies plus the ladder's scripted pass. (PPO full: its trace ran out of GPU
+  memory beside two compiles; the cold PPO run gives it.)
