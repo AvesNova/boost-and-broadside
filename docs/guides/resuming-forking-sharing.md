@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/cli.py, src/bnb/runs/]
-reviewed: 2026-11-03 16:00
+reviewed: 2026-11-11 15:15
 ---
 
 # Resuming, forking and sharing runs
@@ -93,7 +93,8 @@ uv run --no-sync bnb train --init-from runs/2026-11-02-mixed-quiet-otter/checkpo
 ```
 
 The new run's model starts from the policy file's weights and return scale, with a fresh
-optimizer: behaviour cloning's hand-off to RL. A BC run saves its clone at
+optimizer: behaviour cloning's hand-off to RL (a chain, `--objective chain`, makes it
+itself: [Training](training.md#chain-bc-and-rl)). A BC run saves its clone at
 `runs/<run>/policy/`{.plain} ([Behaviour cloning](behaviour-cloning.md)). Any policy file or
 training checkpoint works, if its build record matches the run's model; as for a fork,
 the model's settings come from the file unless `--set` gives one. In Python, the same files are

@@ -81,9 +81,10 @@ def lane_results(trainer: Trainer) -> dict[str, tuple[int, int, int]]:
 
 def update(trainer: Trainer) -> tuple[dict, str | None]:
     """One BC update of `trainer` (objective "bc"), fed to its stop rule
-    (`trainer.stop_rule`): (the update's row with the training games' scores and the rule's
-    windows over the lanes' games against the scripted agent, the rule that fired: "score",
-    "kl_plateau" or "budget", or None). The trainer's hooks must be BC's
+    (`trainer.stop_rule`): (the update's row with the training games' scores, the rule's
+    windows over the lanes' games against the scripted agent and the plateau's reading
+    (`bc/stop/plateau/{kl_mean, fraction, held_steps}`), the rule that fired: "plateau",
+    "score" or "budget", or None). The trainer's hooks must be BC's
     (`bnb.league.lanes.LaneHooks`), which keep the averages. The uniform average's games
     count only once it held an update past the warm-up (`TrainConfig.uniform_start`) as
     the update began: before that it is the live clone."""
@@ -106,10 +107,13 @@ def update(trainer: Trainer) -> tuple[dict, str | None]:
         row[f"bc/games/{kind}"] = value["games"]
         if value["score"] is not None:
             row[f"bc/score/{kind}"] = value["score"]
+    plateau = rule.plateau
     for name, value in (
         ("window_score", rule.score),
         ("window_stderr", rule.standard_error),
-        ("kl_average", rule.kl_average),
+        ("plateau/kl_mean", plateau.mean),
+        ("plateau/fraction", plateau.fraction),
+        ("plateau/held_steps", plateau.held_steps(trainer.ppo.environment_steps)),
     ):
         if value is not None:
             row[f"bc/stop/{name}"] = value
@@ -130,7 +134,7 @@ def clone(
 ) -> str:
     """BC with `trainer` (objective "bc", `bnb.league.lanes.LaneHooks` attached) until its
     stop rule (`TrainConfig.stop`) fires or
-    `interrupted()` is true after an update: the rule's name ("score", "kl_plateau" or
+    `interrupted()` is true after an update: the rule's name ("plateau", "score" or
     "budget"), or "interrupted". A run's loop, with checkpoints, is
     `bnb.runs.session.train`."""
     while True:

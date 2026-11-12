@@ -10,6 +10,8 @@ The record adds, per update:
   `train/memory_budget_gigabytes` (the device's memory less the probe's margin), on a GPU;
 - `counters/hours`, `counters/skipped_steps` (the run's total), `counters/recompiles` (graphs
   compiled after the segment's first update);
+- in a chain's stage (`bnb.runs.chain`), `counters/chain_environment_steps`: the update's
+  environment steps on the chain's axis (the stage's own plus the chain's before it);
 - the trigger rules' `alerts/*`.
 """
 
@@ -76,6 +78,11 @@ class Recorder:
                 "counters/recompiles": graphs - self.baseline,
             }
         )
+        chain = self.run.record.get("chain") if self.run is not None else None
+        if chain is not None:
+            record["counters/chain_environment_steps"] = (
+                chain["start_step"] + row["counters/environment_steps"]
+            )
         if self.device.type == "cuda":
             peaks = probe.measure(self.device)
             record["train/memory_peak_gigabytes"] = peaks["reserved"] / 2**30
