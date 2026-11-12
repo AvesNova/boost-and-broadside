@@ -3,11 +3,17 @@ behind it along its direction of flight, in the team's trail colour, leaving the
 wide as the head (its diameter) and tapering and fading to a thin tail as a ship's trail
 does (`trails`). Every bullet draws in every view.
 
-The trail spans the last TRAIL_SECONDS of the bullet's flight as the screen shows it (that
+The trail spans the last trail seconds of the bullet's flight as the screen shows it (that
 many seconds of play times the playback speed), never past the point it was fired from,
 so a fast bullet reads as one continuous streak at any time scale or playback speed. A
 bullet has no size in the game (hits are tested against the ship's hit radius), so the
-tracer is a fixed few pixels wide at every zoom, the true-size view included."""
+tracer is a fixed few pixels wide at every zoom, the true-size view included.
+
+The look is an option (`BulletLook`, the Settings menu): the style (a tracer, or the trail
+alone with no head), the head's size, the trail's width at its two ends and its length in
+seconds; the defaults are the tracer above."""
+
+import dataclasses
 
 import moderngl
 import numpy as np
@@ -16,10 +22,27 @@ from ..themes import Theme
 from .programs import program, set_uniforms
 from .trails import OLDEST_PIXELS
 
-TRAIL_SECONDS = 0.04  # of the screen's time
-HEAD_PIXELS = 2.5  # the head's radius
-TRAIL_PIXELS = (OLDEST_PIXELS, 2.0 * HEAD_PIXELS)  # the trail's width at its tail and at the head
+STYLES = {"tracer": "Tracer", "trail": "Trail only"}  # by style: its label
 FLOATS = 13
+
+
+@dataclasses.dataclass
+class BulletLook:
+    """How bullets draw: style (STYLES: "tracer", a round head and its trail, or "trail",
+    the trail alone); head_pixels, the head's radius; trail_head_pixels and
+    trail_tail_pixels, the trail's width at the head's end and at its tail (screen pixels,
+    as every width in the scene); trail_seconds, the trail's length in seconds of the
+    screen's time."""
+
+    style: str = "tracer"
+    head_pixels: float = 2.5
+    trail_head_pixels: float = 5.0  # the head's diameter: the trail leaves it as wide
+    trail_tail_pixels: float = OLDEST_PIXELS
+    trail_seconds: float = 0.04
+
+    def __post_init__(self) -> None:
+        if self.style not in STYLES:
+            raise ValueError(f"bullet style {self.style!r} is not one of {list(STYLES)}")
 
 
 def tracer_lengths(speed: np.ndarray, age: np.ndarray, seconds: float) -> np.ndarray:
@@ -73,9 +96,11 @@ class BulletsPass:
         direction_y: np.ndarray,
         trail: np.ndarray,
         team: np.ndarray,
+        look: BulletLook,
     ) -> None:
         """The listed bullets (arrays of one length): head position, unit direction of
-        flight, trail length (m, `tracer_lengths`) and team."""
+        flight, trail length (m, `tracer_lengths`) and team, drawn in this look (a head
+        radius of 0: no head)."""
         if len(x) == 0:
             return
         self._reserve(len(x))
@@ -89,7 +114,7 @@ class BulletsPass:
         set_uniforms(
             self.program,
             **camera,
-            head_pixels=HEAD_PIXELS,
-            trail_pixels=TRAIL_PIXELS,
+            head_pixels=look.head_pixels if look.style == "tracer" else 0.0,
+            trail_pixels=(look.trail_tail_pixels, look.trail_head_pixels),
         )
         self.vertex_array.render(moderngl.TRIANGLE_STRIP, vertices=4, instances=len(x))

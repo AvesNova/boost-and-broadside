@@ -9,7 +9,8 @@
 - Maps: make, edit, save, rename and delete maps (`map_editor`);
 - Replays: the saved replays, newest first; "Open";
 - Settings: theme (and the theme editor), the dot grid, the distance contours, the
-  look-ahead camera, fog in new matches, interface scale, the key list.
+  look-ahead camera, the bullets' look (tracer or trail only, the head's size, the trail's
+  widths and length), fog in new matches, interface scale, the key list.
 """
 
 import dataclasses
@@ -25,6 +26,7 @@ from bnb.game.api import PRESETS
 from .. import replay as replays
 from ..loop import MatchSetup, SideSetup
 from ..maps import MAP_PRESETS, Map, map_of
+from ..render.bullets import STYLES as BULLET_STYLES
 from ..sides import policy_choices
 from ..tuning import Tuning
 from .controls import button, tooltip
@@ -45,6 +47,21 @@ MODE_LABELS = dict(MODES)
 POLICY_REFRESH_SECONDS = 5.0
 WIDTH = 460.0  # the menu's width at scale 1
 LOOK_AHEAD_LABELS = {"off": "Off", "flying": "Flying", "always": "Always"}
+# The bullets' look's numbers (`render.bullets.BulletLook`): field, label, low, high, format,
+# tooltip.
+BULLET_SLIDERS = (
+    ("head_pixels", "Head size", 0.5, 8.0, "%.1f px", "The head's radius (tracer style)"),
+    ("trail_head_pixels", "Trail at head", 0.25, 16.0, "%.2f px", "The trail's width at the head"),
+    ("trail_tail_pixels", "Trail at tail", 0.0, 16.0, "%.2f px", "The trail's width at its tail"),
+    (
+        "trail_seconds",
+        "Trail length",
+        0.0,
+        0.5,
+        "%.3f s",
+        "The trail's length: the bullet's last seconds of flight as the screen shows them",
+    ),
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -541,6 +558,35 @@ class Menu:
             if button(interface.controls, f"{name}/{value}", labelled, help, key, active=on):
                 choose(value)
 
+    def _bullets(self, interface: Interface) -> None:
+        """The bullets' look: the style, then a slider per number (the head's size only for
+        the tracer)."""
+        session, controls = self.session, interface.controls
+        look = session.bullet_look
+        self._choices(
+            interface,
+            "Bullets",
+            "settings/bullets",
+            BULLET_STYLES,
+            look.style,
+            lambda style: setattr(look, "style", style),
+            "A round head and its fading trail, or the fading trail alone",
+        )
+        for field, label, low, high, form, help in BULLET_SLIDERS:
+            if field == "head_pixels" and look.style != "tracer":
+                continue
+            imgui.align_text_to_frame_padding()
+            imgui.text(f"  {label}")
+            imgui.same_line(140.0 * session.scale)
+            imgui.set_next_item_width(220.0 * session.scale)
+            changed, value = imgui.slider_float(
+                f"##bullets {field}", getattr(look, field), low, high, form
+            )
+            controls.record(f"settings/bullets/{field}")
+            tooltip(help)
+            if changed:
+                setattr(look, field, value)
+
     def _settings(self, interface: Interface) -> None:
         session, controls = self.session, interface.controls
         self._title("Settings")
@@ -588,6 +634,7 @@ class Menu:
             "Lead a followed ship's view in its direction of travel: never, while flying it, "
             "or always",
         )
+        self._bullets(interface)
         imgui.align_text_to_frame_padding()
         imgui.text("Fog of war")
         imgui.same_line(140.0 * session.scale)

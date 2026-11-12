@@ -22,7 +22,7 @@ import numpy as np
 from ..camera import Camera
 from ..themes import Theme
 from .arcs import ArcProgram
-from .bullets import TRAIL_SECONDS, BulletsPass, tracer_lengths
+from .bullets import BulletLook, BulletsPass, tracer_lengths
 from .contours import ContoursPass
 from .fields import FieldsPass
 from .fog import FogPass
@@ -140,6 +140,7 @@ class Renderer:
         playback: float = 1.0,
         grid: str = "off",
         contours: str = "off",
+        bullet_look: BulletLook | None = None,
     ) -> None:
         """Draw the frame as `view` (SPECTATOR or a team) sees it onto `target`; `now`:
         game time (s), for the trails; overlay: an arcs table drawn last (the selection's
@@ -147,7 +148,8 @@ class Renderer:
         the ships at their size in metres, with no minimum on screen (`ships`); playback:
         the playback speed (seconds of play per second shown), for the bullets' tracers; grid:
         the dot grid's pattern, or "off"; contours: the distance contours' shape set, or
-        "off"."""
+        "off"; bullet_look: how bullets draw (None: the default tracer)."""
+        bullet_look = BulletLook() if bullet_look is None else bullet_look
         context, uniforms = self.context, camera.uniforms()
         ships, pixel = frame.ships, camera.metres_per_pixel
         team_view = view != SPECTATOR
@@ -222,7 +224,7 @@ class Renderer:
             bullets = frame.bullets
             active = bullets.active
             trail = tracer_lengths(
-                bullets.speed[active], bullets.age[active], TRAIL_SECONDS * playback
+                bullets.speed[active], bullets.age[active], bullet_look.trail_seconds * playback
             )
             self.bullets.draw(
                 uniforms,
@@ -233,6 +235,7 @@ class Renderer:
                 bullets.direction_y[active],
                 trail,
                 bullets.team[active],
+                bullet_look,
             )
         if predictions is not None:
             with self._measure("predictions"):

@@ -19,3 +19,15 @@
   mask hits and closest passes past the shooter's own life (a no-op while every type has
   one life).
 - Next: part B (bullet display options), then part C (head-on angle).
+
+## 2026-11-12, part B (bullet display options)
+
+- Done: `render.bullets.BulletLook` (style tracer or trail only, head radius, trail width
+  at the head and the tail, trail seconds), defaults today's tracer; the session holds one,
+  set from `bnb play --bullet-*` options and live in Settings > Bullets (style buttons and
+  sliders; the head's size hides for trail only). Widths are screen pixels, not scaled by
+  the interface scale, as every width in the scene (keeps today's look at any scale).
+- Worked: render tests (trail only draws no head, takes its widths and length) and an
+  interface test (the settings switch the style and set a width); an offscreen run with
+  `--bullet-style trail` renders.
+- Next: part C (head-on angle).

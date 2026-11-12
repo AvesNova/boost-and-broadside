@@ -83,6 +83,12 @@ it was fired, so a burst reads as continuous streaks at any time scale or playba
 A bullet has no size in the game, so the tracer is a few pixels wide at every zoom,
 **True size** included.
 
+**Settings** → **Bullets** changes the look while you play: **Tracer** (the above) or
+**Trail only** (the fading trail, no head), the head's size (its radius, tracer only), the
+trail's width at the head and at its tail (screen pixels) and its length (seconds). The
+options set them at the start: `--bullet-style trail`, `--bullet-head-size`,
+`--bullet-trail-head-width`, `--bullet-trail-tail-width`, `--bullet-trail-seconds`.
+
 ## Ship size
 
 A ship is drawn as a silhouette inside a ring at its hitbox, whose radius is half the
@@ -306,7 +312,8 @@ itself is untouched.
 
 ## Settings and themes
 
-**Settings** chooses the theme, the dot grid, the contours, the look-ahead, fog in new matches, the
+**Settings** chooses the theme, the dot grid, the contours, the look-ahead, the bullets'
+look, fog in new matches, the
 interface scale (0.75 to 2; the
 layout works from 1280 × 720 to 2560 × 1440) and shows the key list. The shipped themes
 are in `src/bnb/play/themes/`; your own live in your configuration directory
