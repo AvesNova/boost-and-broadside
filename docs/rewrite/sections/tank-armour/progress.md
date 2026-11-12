@@ -198,3 +198,24 @@ or x2, and split cones (a stronger Yongma nose):
 - **The 5v5 leans to the Yongma under every armour with more damage** (0.64-0.69 against
   0.55). Round 4 looks for a crowd-only counter on the Yongma (its damage, range, shield).
 - The mixed duel stays at 0.50-0.56 and strength at 0.46-0.52.
+
+## 00:02-00:12 KST: round 4 (`round4/`): crowd-only counters for the Yongma
+
+512 games, 1v1 to 10v10, the round-3 pick (f0 0.085, 12 degrees, p8, damage x1.5) with the
+Yongma's damage, range or shield cut back:
+
+| D2 + 0.085 / 12 deg / p8 + | JJ 1v1 mutual, life | YY 1v1 mutual, life | E v T 1v1 / 2v2 / 5v5 / 10v10 | v r9 |
+|---|---|---|---|---|
+| (r9, no armour) | 0.65, 259 s | 0.35, 304 s | 0.51 / 0.46 / 0.59 / 0.47 | 0.498 / 0.490 |
+| damage x1.5 | 0.49, 300 s | 0.07, 345 s | 0.52 / 0.48 / 0.69 / 0.62 | 0.498 / 0.487 |
+| damage Y x1.25, J x1.5 | 0.48, 288 s | 0.05, 437 s | 0.50 / 0.48 / 0.61 / 0.54 | 0.488 / 0.503 |
+| damage x1.5, Y bullet life x0.85 | 0.49, 295 s | 0.07, 399 s | 0.54 / 0.44 / 0.60 / 0.60 | 0.481 / 0.504 |
+| damage x1.5, Y bullet life x0.7 | 0.49, 296 s | 0.06, 435 s | 0.55 / 0.46 / 0.53 / 0.50 | 0.517 / 0.482 |
+| damage x1.5, Y shield x0.8 | 0.46, 285 s | 0.16, 297 s | 0.50 / 0.47 / 0.61 / 0.60 | 0.488 / 0.523 |
+| (0.07 / 9 deg) damage x1.5, Y bullet life x0.85 | 0.32, 432 s | 0.11, 380 s | 0.54 / 0.48 / 0.64 / 0.50 | 0.472 / 0.507 |
+| (0.07 / 9 deg) damage Y x1.25, J x1.5 | 0.31, 439 s | 0.08, 409 s | 0.51 / 0.44 / 0.58 / 0.51 | 0.505 / 0.531 |
+
+- The Yongma's range (bullet life x0.7, gun range about 340 m) and its damage are crowd
+  levers here as on balance-sizes: the duel stays at 0.50-0.55 and the crowds come back to
+  0.50-0.61. Both lengthen the Yongma mirror (435 s); the Yongma's shield x0.8 shortens it
+  (297 s) and also pulls the crowds down a little (0.61 / 0.60). The confirm combines them.
