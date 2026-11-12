@@ -145,3 +145,25 @@ See the report section at the end. Records of the champion: `champion/*.json` (c
   supervisor resume design worked; the market did not. Interruptible could suit work with no
   long cold start (a tournament with a warm cache, short jobs), or at a bid that is not
   outbid.
+
+## gpubox3 (on-demand RTX 4090, from 2026-11-12 09:00 KST)
+
+- **09:00 Moved to gpubox3** (the coordinator: gpubox2 retired). RTX 4090 24 GB at a 450 W
+  limit, AMD EPYC 7B13 with a quota of 20.48 cores (shared host), and `/workspace` a
+  persistent 150 GB volume: the repo, `.venv`, the uv, inductor and Triton caches and the
+  runs all live there (`pipeline.sh` sets the cache paths). SSH only through the vast proxy
+  (`gpubox3`; the direct address gives no route). The proxy closes any transfer longer than
+  about 2 min and uploads at well under 1 MB/s, so the code came from a depth-1 clone of the
+  public GitHub branch on the box, and `uv sync` ran detached.
+- **09:08 BC started fresh** (commit 04563a5 = 9f11922 + scripts; src unchanged), not resumed
+  from gpubox2's checkpoint: the laptop held only step_4194304, the proxy could not upload
+  it in one piece, and a fresh run keeps the whole BC on one machine. Config check: 3
+  differences, all expected.
+- **10:27 First four updates.**
+  - The cold first update took 73 min: rollout 1,378 s and learn 3,017 s, compiling on a
+    shared CPU (load ~24).
+  - Steady: 69 s per update (rollout 6.0 s, learn 63 s), **15,200 SPS**; GPU 98%, ~347 W,
+    2.76 GHz.
+  - Probe: 17.37 GB allocated, 18.06 GB reserved, of a 23.07 GB budget.
+  - **Not comparable to the champion's speed** (a 3090 at 420 W, 11,330 SPS).
+  - KL 2.964 / 1.463 / 0.722 / 0.697 (champion 2.965 / 1.452 / 0.717 / 0.699).
