@@ -271,8 +271,10 @@ in a crowd its flank shots are what kill (5v5 0.53), and in a duel it still hold
 306 and 327 s a life (D2 258 / 282), crowds 91-104 s.
 
 Images (`images/`): before (D2, r9) `D2-before-jj-0.png` (a seven-merge loop fight, a
-head-on kill at 156 s), `D2-before-evt-*.png`; after, A: `D2-tank-jj-*.png` and
-`D2-tank-evt-*.png`. (The cone without the crowd counters, the round-3 pick, is
+head-on kill at 156 s), `D2-before-evt-*.png`; after, A: `D2-tank-jj-0.png` (two side-by-side circles,
+3.4 laps each, one merge, the kill on the pass at 94 s), `D2-tank-evt-0.png` (no merge: a
+one-circle turn after the pass, which the Jujak's tighter turn wins at 33 s); 32 games a
+lineup, merges a kill 4.4 (JJ) and 2.9 (mixed) against D2's 4.4 and 3.7. (The cone without the crowd counters, the round-3 pick, is
 `D2-armour-*.png`: a 12-merge, 9.9-circle Jujak mirror, killed at 271 s.)
 
 **Against the goals** (A, 1024 games): mirror joust JJ 0.65 to 0.50 (not ended), YY 0.38 to
