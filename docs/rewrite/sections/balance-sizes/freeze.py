@@ -36,6 +36,9 @@ def main() -> None:
     parser.add_argument("--candidate", type=int, required=True)
     parser.add_argument("--note", default="the size balance's card")
     parser.add_argument("--dry", action="store_true", help="measure and print, write nothing")
+    parser.add_argument(
+        "--out", default=None, help="write the ship files here, not into the ship set"
+    )
     args = parser.parse_args()
     candidate = json.loads((HERE / args.candidates).read_text())[args.candidate]
     base = base_card("cpu")
@@ -68,9 +71,16 @@ def main() -> None:
         for field in ("induced_drag_scale", "max_shield", "bullet_life", "engine_power"):
             print(f"  {key} card {field}: {float(getattr(types, field)[row]):.6g} (variant) "
                   f"{card[field]:.6g} (solved)")  # fmt: skip
-        ships.write_ship(
-            ships.Ship(key=key, name=data["name"], handles=handles, card=card, notes=notes), SET
-        )
+        ship = ships.Ship(key=key, name=data["name"], handles=handles, card=card, notes=notes)
+        if args.out is None:
+            ships.write_ship(ship, SET)
+        else:  # the same file, into another directory (the set's files untouched)
+            directory_of = ships.directory_of
+            ships.directory_of = lambda _: HERE / args.out
+            try:
+                ships.write_ship(ship, SET)
+            finally:
+                ships.directory_of = directory_of
 
 
 if __name__ == "__main__":

@@ -246,3 +246,79 @@ E v T SE: ±0.01 at 1v1, ±0.014 at 2v2 and 5v5, ±0.02 at 10v10.
 - Pace on the champion: life 91-142 s (1v1-10v10 self-play, both mirrors included) and the
   YY 1v1 206 s, all within 45-300 s. Kills a minute a ship 0.53-0.59 at 5v5. Trades
   0.02-0.06.
+
+## 20:10-20:17 KST: deny strength sweep (`deny2/`), on the champion card
+
+Deny opened on both types at a lower weight, a narrower angle or a shorter range. 1v1 JJ
+mutual head-on and life; strength is the score against r9 at 5v5 (mixed / reversed, 512
+games, ±0.02):
+
+| Deny | JJ 1v1 mutual, life | YY 1v1 mutual, life | v r9 (5v5) |
+|---|---|---|---|
+| off (r9) | 0.77, 141 s | 0.53, 215 s | 0.52 / 0.53 |
+| 0.8, angle 0.39 rad | 0.02, 375 s | 0.01, 543 s | 0.30 / 0.27 |
+| 0.4 | 0.42, 564 s | 0.08, 462 s | 0.35 / 0.33 |
+| 0.2 | 0.54, 291 s | 0.13, 475 s | 0.39 / 0.43 |
+| 0.8, angle 0.2 | 0.42, 506 s | 0.09, 513 s | 0.36 / 0.30 |
+| 0.8, range 1.5 gun ranges | 0.02, 377 s | 0.01, 505 s | 0.29 / 0.30 |
+| 0.4, range 1.5 | 0.39, 526 s | 0.07, 482 s | 0.34 / 0.31 |
+
+- **Every deny costs strength**: even at weight 0.2 it scores 0.39-0.43 against r9. Only
+  the full deny ends the joust, and it costs about 150 Elo. A weak deny halves mutual
+  head-on but doubles the duel's length.
+- **The Jujak mirror joust is the main remaining fight-shape issue.** With the scripted
+  agent, two equal ships in a duel meet nose to nose. The fix is a duel-only behaviour (a
+  break or reversal that forces an overshoot, or a deny gated by how many enemies are
+  near), which needs code. Left open.
+
+**Incident, 20:16 (fixed):** the freeze's handle solve (`freeze.py`) wrote the Yongma ship
+file at 20:16:05 while round 6 and the trajectory job were running, and those read the
+card from the files when a size starts. Round 6's 5v5 and 10v10 rows and the trajectory
+job's later lineups were therefore on a doubled-down card. They were stopped, the file
+was restored, and round 6's 5v5 and 10v10 rerun (`round6/sizes-5-10.*`). The 1v1 and 2v2
+rows and the deny sweep started before 20:16 and are clean. From here the freeze writes
+only after every GPU run has ended.
+
+## 20:13-20:24 KST: the archetype question; rounds 6-7 (card B: Jujak keeps its sustained edge)
+
+Characteristics (`characteristics.py`; sustained turn = settled full-stick turn):
+
+| Card | Ship | Sustained turn rad/s | Cruise m/s | Top m/s | Corner m/s | Shield | Hit damage | Gun range m |
+|---|---|---|---|---|---|---|---|---|
+| frozen | Yongma | 0.241 | 167 | 422 | 144 | 142 | 3.34 | 612 |
+| frozen | Jujak | 0.311 | 158 | 350 | 125 | 80 | 2.67 | 607 |
+| A (J induced x1.6, Y shield x0.5, Y bullet life x0.85) | Yongma | 0.241 | 167 | 422 | 144 | 71 | 3.34 | 536 |
+| A | Jujak | **0.232** | **132** | 348 | 125 | 80 | 2.67 | 594 |
+| B base (J induced x1.5, Y shield x0.35, Y damage x1.4, J shield x0.75) | Yongma | 0.241 | 167 | 422 | 144 | 50 | 4.68 | 612 |
+| B base | Jujak | 0.242 | 139 | 349 | 125 | 60 | 2.67 | 598 |
+
+- **Card A inverts the sustained turn**: the Jujak bleeds to 0.232 rad/s, under the
+  Yongma's 0.241, and cruises at 132 m/s against 167. It keeps the better instantaneous
+  turn (corner 125 against 144 m/s, lift coefficient +34%) and the lower stall speed. The
+  coordinator flags this as likely unacceptable ("Jujak = turn fighter" was decided), so
+  A stays a named alternative, not the only result.
+- **Card B direction**: Jujak induced x1.45-1.5 keeps it at or just above the Yongma's
+  sustained turn (0.242-0.248). Its 1v1 deficit is paid with Yongma damage up and Jujak
+  shield down, the duel-weighted levers (about 2:1, round 2).
+
+Round 6 (`round6/sizes.json`, 1v1 and 2v2 rows only; its 5v5 and 10v10 were contaminated
+and the rerun was cancelled for round 8): J induced 1.45-1.55 with Y damage x1.0-1.3 and
+J shield x0.85-1.0 gives 1v1 0.15-0.40 and 2v2 0.39-0.54. Not enough duel.
+
+Round 7 (`round7/sizes.{json,md}`, 512 games, E v T):
+
+| Card | 1v1 | 2v2 | 5v5 | 10v10 |
+|---|---|---|---|---|
+| J1.5, Y shield x0.4, Y damage x1.4, J shield x0.75 | 0.50 | 0.65 | 0.84 | 0.86 |
+| J1.5, Ys x0.35, Yd x1.4, Js x0.75 | 0.46 | 0.60 | 0.76 | 0.79 |
+| J1.5, Ys x0.3, Yd x1.6, Js x0.65 | 0.53 | 0.70 | 0.86 | 0.89 |
+| J1.45, Ys x0.35, Yd x1.5, Js x0.7 | 0.48 | 0.69 | 0.83 | 0.83 |
+| J1.45, Ys x0.4, Yd x1.4, Js x0.65 | 0.53 | 0.68 | 0.88 | 0.88 |
+
+- With Jujak's sustained edge kept, balancing the duel with damage and shield **spills into
+  the crowds** (5v5 0.76-0.91): those levers are only 2:1 duel-weighted, and the Yongma's
+  shield, the crowd-only counterweight, is already down to x0.3-0.4.
+- **Round 8** (running 20:25, ETA 20:37 (worst 20:45)): the B base (J1.5, Ys x0.35, Yd x1.4,
+  Js x0.75) with crowd reducers from round 2: Yongma engine down (round 2: x1.5 gave -0.034
+  in the duel and +0.033 at 5v5, so less engine should help the duel and cool the crowds),
+  Jujak nose frequency up, and Yongma bullet life down.

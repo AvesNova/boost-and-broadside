@@ -1,2 +1,22 @@
 ## 1v1: 8 jobs, B 8192, 20:11 KST
 W1112 20:12:23.986000 1633619 torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+/home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+  warn_once(FP_FUSION_DEFAULT_WARNING)
+1v1 J1.45 Ys0.4 Yd1.2 Js1.0 | r9   energy v turn v c0: score 0.160 ± 0.012  kills m/o/f/t 0.46 / 0.43 / 0.10 / 0.00  life 124 s  kpm/ship 0.45  trades 0.00
+1v1 J1.45 Ys0.4 Yd1.0 Js0.85 | r9   energy v turn v c1: score 0.146 ± 0.011  kills m/o/f/t 0.48 / 0.41 / 0.11 / 0.00  life 123 s  kpm/ship 0.45  trades 0.00
+1v1 J1.45 Ys0.4 Yd1.2 Js0.85 | r9   energy v turn v c2: score 0.241 ± 0.014  kills m/o/f/t 0.48 / 0.41 / 0.11 / 0.00  life 116 s  kpm/ship 0.48  trades 0.00
+1v1 J1.45 Ys0.35 Yd1.3 Js0.85 | r9   energy v turn v c3: score 0.229 ± 0.014  kills m/o/f/t 0.57 / 0.34 / 0.09 / 0.00  life 107 s  kpm/ship 0.51  trades 0.01
+1v1 J1.5 Ys0.45 Yd1.15 Js0.9 | r9   energy v turn v c4: score 0.300 ± 0.014  kills m/o/f/t 0.50 / 0.41 / 0.09 / 0.00  life 144 s  kpm/ship 0.39  trades 0.01
+1v1 J1.5 Ys0.4 Yd1.2 Js0.85 | r9   energy v turn v c5: score 0.321 ± 0.015  kills m/o/f/t 0.52 / 0.40 / 0.08 / 0.00  life 131 s  kpm/ship 0.43  trades 0.01
+1v1 J1.55 Ys0.45 Yd1.1 Js0.9 | r9   energy v turn v c6: score 0.404 ± 0.015  kills m/o/f/t 0.58 / 0.35 / 0.07 / 0.00  life 166 s  kpm/ship 0.34  trades 0.00
+1v1       J1.6 Ys0.5 Yb0.85 | r9   energy v turn v c7: score 0.498 ± 0.013  kills m/o/f/t 0.43 / 0.51 / 0.06 / 0.00  life 227 s  kpm/ship 0.25  trades 0.00
+## 2v2: 8 jobs, B 8192, 20:13 KST
+2v2 J1.45 Ys0.4 Yd1.2 Js1.0 | r9   energy v turn v c0: score 0.400 ± 0.020  kills m/o/f/t 0.16 / 0.25 / 0.48 / 0.10  life 91 s  kpm/ship 0.59  trades 0.02
+2v2 J1.45 Ys0.4 Yd1.0 Js0.85 | r9   energy v turn v c1: score 0.386 ± 0.020  kills m/o/f/t 0.16 / 0.25 / 0.49 / 0.10  life 91 s  kpm/ship 0.60  trades 0.02
+2v2 J1.45 Ys0.4 Yd1.2 Js0.85 | r9   energy v turn v c2: score 0.466 ± 0.020  kills m/o/f/t 0.19 / 0.26 / 0.46 / 0.09  life 89 s  kpm/ship 0.60  trades 0.02
+2v2 J1.45 Ys0.35 Yd1.3 Js0.85 | r9   energy v turn v c3: score 0.460 ± 0.020  kills m/o/f/t 0.21 / 0.25 / 0.46 / 0.09  life 86 s  kpm/ship 0.63  trades 0.03
+2v2 J1.5 Ys0.45 Yd1.15 Js0.9 | r9   energy v turn v c4: score 0.513 ± 0.020  kills m/o/f/t 0.16 / 0.25 / 0.49 / 0.10  life 94 s  kpm/ship 0.58  trades 0.02
+2v2 J1.5 Ys0.4 Yd1.2 Js0.85 | r9   energy v turn v c5: score 0.505 ± 0.020  kills m/o/f/t 0.19 / 0.24 / 0.47 / 0.10  life 90 s  kpm/ship 0.60  trades 0.02
+2v2 J1.55 Ys0.45 Yd1.1 Js0.9 | r9   energy v turn v c6: score 0.539 ± 0.019  kills m/o/f/t 0.17 / 0.25 / 0.47 / 0.11  life 96 s  kpm/ship 0.57  trades 0.02
+2v2       J1.6 Ys0.5 Yb0.85 | r9   energy v turn v c7: score 0.492 ± 0.020  kills m/o/f/t 0.12 / 0.23 / 0.52 / 0.13  life 107 s  kpm/ship 0.51  trades 0.02
+## 5v5: 8 jobs, B 4096, 20:16 KST
