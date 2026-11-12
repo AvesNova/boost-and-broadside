@@ -413,6 +413,80 @@ balance (self-play energy v turn 1 / 2 / 5 / 10v10):
   r9m's margins except the cone card's Yongma mirror (0.55-0.59 against 0.57-0.61, about one
   SE). Its edge over r9m is not a reply to r9m alone.
 
-## 05:35- KST: 10v10 (`ten/`): r9m2 against r9m in the big crowd
+## 05:35-05:36 KST: 10v10 (`ten/`): r9m2 against r9m in the big crowd
 
-512 games, four cards. ETA 05:50 KST.
+512 games (±0.021). Against r9m (mixed / reversed), r9m's own control row first; self-play
+energy v turn and life:
+
+| Card | r9m v r9m | r9m2 v r9m | E v T r9m; r9m2 |
+|---|---|---|---|
+| D2 | 0.520 / 0.460 | **0.558 / 0.607** | 0.43, 148 s; 0.55, 156 s |
+| cone 0.085 | 0.519 / 0.544 | **0.552 / 0.592** | 0.62, 125 s; 0.68, 133 s |
+| big v small | 0.518 / 0.498 | **0.559 / 0.565** | 0.54, 111 s; 0.59, 113 s |
+| frozen | 0.512 / 0.479 | **0.575 / 0.606** | 0.26, 168 s; 0.21, 175 s |
+
+- r9m2 beats r9m at 10v10 too (0.55-0.61 on every card). Its 10v10 balance moves toward
+  the Yongma (D2 0.43 to 0.55, cone 0.62 to 0.68, big v small 0.54 to 0.59) and on the
+  frozen card further to the Jujak (0.26 to 0.21); lives lengthen 2-8 s.
+
+## Final state (05:40 KST)
+
+**The best doctrine: r9m2** (`champion2.json`): r9m with the duel extension on both types,
+gated on the shield ratio per type and, against the other type, on a team game:
+
+```json
+"yongma": {"duel_extend": 1.0, "duel_extend_in_shield_ratio": [1.0, 0.1],
+           "duel_extend_cross_in_others": [0.5, 0.1]},
+"jujak":  {"duel_extend": 1.0, "duel_extend_in_shield_ratio": [0.4, 0.1],
+           "duel_extend_cross_in_others": [0.5, 0.1]}
+```
+
+After a merge, alone with the target: a Yongma behind on shield (below the target's) extends,
+level or ahead it one-circles (in the mirror; the combat layer's turn otherwise); a Jujak
+extends only when well behind (below 0.4 of the target's shield). Against the other type it
+extends only in a team game (another known enemy anywhere), never in a lone 1v1. In a crowd
+r9m's extension is unchanged.
+
+- **Strength** (1024 games): against r9m worst 0.517-0.532 over 1v1 / 2v2 / 5v5 and both
+  orders on D2, cone 0.085, big v small and frozen; 5v5 0.53-0.59, 10v10 0.55-0.61 (512).
+  Against r9 5v5 0.75-0.86; against every league player 1v1 0.53-0.75, 5v5 0.74-0.88.
+- **Choice entropy** (the post-merge choice, bits over the bench's four observed choices):
+  the 1v1 Jujak mirror 0.40-0.78, the Yongma mirror 1.58-1.60 (r9m: 0.09-0.22). The 5v5
+  self-play stays at 1.7-1.8 bits (r9m's crowd was already varied: about 0.13 same sense,
+  0.10 opposite, 0.38 extend, 0.38 turn v extender).
+- **Mirror shapes** (mutual head-on share, life): JJ D2 0.84 to 0.66 (213 to 221 s), cone
+  0.70 to 0.52, big v small 0.62 to 0.44, frozen 0.86 to 0.78; YY D2 0.74 to 0.62 (132 to
+  183 s), cone 0.56 to 0.32 (183 to 232 s), big v small 0.53 to 0.31, frozen 0.79 to 0.63
+  (197 to 276 s). Merges a kill: about the same in the Jujak mirror, fewer in the Yongma's.
+- **Balance per size** (energy v turn 1 / 2 / 5 / 10v10, r9m then r9m2): D2 0.50 / 0.44 /
+  0.53 / 0.43, 0.50 / 0.44 / 0.59 / 0.50; cone 0.52 / 0.52 / 0.69 / 0.59, 0.53 / 0.51 / 0.71
+  / 0.68; big v small 0.60 / 0.51 / 0.50 / 0.47, 0.57 / 0.51 / 0.53 / 0.55; frozen 0.01 /
+  0.43 / 0.36 / 0.26, 0.01 / 0.45 / 0.33 / 0.18.
+
+**What worked**: the duel extension on the shield ratio (a hurt ship leaves the turning
+fight): the first situational post-merge choice that wins, and the fix for the one-circle's
+joust (a ship behind no longer takes the nose-to-nose meeting); a per-type gate (the
+energy fighter leaves early, the turn fighter late); the team gate on the cross-type
+extension (a Yongma leaving a Jujak wins a team game and loses a lone duel).
+
+**What failed**: pressing instead of extending in the crowd, on any signal (energy, shield,
+threats only, allies near): 0.24-0.43 against r9m at 5v5; the extension is right in the
+crowd whatever the situation. Hold fire at the nose-to-nose meeting (0.09-0.37 at 1v1; the
+mirrors become 500-1200 s stalemates). The soft (dithering) shield gate. The duel extension
+on the lift ratio or the energy ratio alone (they lose a mirror). A high Jujak gate (loses
+the Jujak mirror).
+
+**Open for the author**:
+1. Store r9m2 as the scripted agent's doctrine? The doctrine table grows from 66 to 88
+   columns since `tune/maneuvers` (the play shell's compiled tick needs a rebuild), and
+   r9m itself is not stored yet. The mirror-only variant ("DE 0.4 mirror") is the option that
+   leaves every card's balance exactly as r9m's, at r9m's crowd strength (worst 0.485-0.499,
+   within the noise) with the same duel gains.
+2. Item 3 (the frozen card's crowd tipping to the Jujak) does not fall out: r9m2 tips it a
+   little further at 10v10 (0.26 to 0.21). It is the frozen card's (its Jujak wins duels);
+   D2, the cone and big v small hold within about 0.06 to 10v10 except cone's 10v10
+   (0.59 to 0.68).
+3. The bench's per-choice outcome is pair-symmetric in self-play, so "how often each choice
+   wins" is measurable only for extend against the chase (the extender nets -0.01 to -0.03 a
+   choice: it wins the game, not the engagement it leaves). A per-player choice tally in
+   the versus jobs would answer it properly.
