@@ -60,8 +60,9 @@ def test_deathmatch_or_wide_by_gun_ranges():
 
 
 def test_a_real_scale_card_plays_the_real_scale_sets():
-    """A card at the real-scale gravity plays real_scale_deathmatch on any deathmatch map and
-    real_scale_frontline in Frontline; the real-scale presets' own card is one."""
+    """A card at the real-scale gravity plays real_scale_deathmatch on any deathmatch map,
+    real_scale_frontline in Frontline and real_scale_elimination in elimination (a standard
+    card its deathmatch set there); the real-scale presets' own card is one."""
     from bnb.controllers.scripted import REAL_SCALE_GRAVITY
     from bnb.game import api
     from bnb.game.handling.characteristics import characteristics
@@ -74,6 +75,11 @@ def test_a_real_scale_card_plays_the_real_scale_sets():
     view.globals[:, GLOBAL["mode_team_deathmatch"]] = 0.0
     assert mode_index(view, REAL_SCALE).tolist() == [MODES.index("real_scale_frontline")]
     assert mode_index(view, CHARACTERISTICS).tolist() == [MODES.index("frontline")]
+    view.globals[:, GLOBAL["mode_frontline"]] = 0.0
+    view.globals[:, GLOBAL["mode_elimination"]] = 1.0
+    assert mode_index(view, REAL_SCALE).tolist() == [MODES.index("real_scale_elimination")]
+    deathmatch_view = mode_index(_deathmatch(7800.0), CHARACTERISTICS)
+    assert torch.equal(mode_index(view, CHARACTERISTICS), deathmatch_view)
     game = api.PRESETS["real_scale_deathmatch"]
     card = characteristics(api.ship_types(ship_set=game.ship_set), api.rules_of(game))
     assert float(card.gravity.amax()) < REAL_SCALE_GRAVITY < float(CHARACTERISTICS.gravity[0])

@@ -10,7 +10,11 @@ import pytest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))  # `bench`
 from bench import balance_round  # noqa: E402
 from bnb.controllers import scripted_defaults  # noqa: E402
-from bnb.controllers.scripted_parameters import ScriptedParameters, pack  # noqa: E402
+from bnb.controllers.scripted_parameters import (  # noqa: E402
+    REAL_SCALE_MODES,
+    ScriptedParameters,
+    pack,
+)
 
 
 def test_a_search_summary_picks_the_best_survivor_of_the_last_generation(tmp_path):
@@ -45,7 +49,7 @@ def test_the_real_scale_sets_round_trip_through_their_file(tmp_path):
     path = tmp_path / "sets.json"
     path.write_text(scripted_defaults.REAL_SCALE.read_text())
     stored = scripted_defaults.read_real_scale(path)
-    assert set(stored) == {"real_scale_deathmatch", "real_scale_frontline"}
+    assert set(stored) == set(REAL_SCALE_MODES)
     for mode, entry in stored.items():
         parameters = scripted_defaults.from_named(entry["parameters"])
         assert pack(parameters) == pack(scripted_defaults.MODE_DEFAULTS.sets[mode])
