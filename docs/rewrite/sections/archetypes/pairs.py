@@ -1552,6 +1552,16 @@ def round16() -> list[dict]:
 ROUNDS["round16"] = round16
 
 
+def confirm9() -> list[dict]:
+    """Rate v speed at 1024 games, 1v1-20v20: the speed fighter's nose at f0 0.07 (r9 and CE),
+    and with the rate fighter's at f0 0.09."""
+    a = rate_speed_nose(sf=0.07)
+    return [a, flown(a, "crowd extend + lead"), rate_speed_nose(sf=0.07, rf=0.09)]
+
+
+ROUNDS["confirm9"] = confirm9
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
