@@ -249,6 +249,8 @@ def decide(
         carry,
         target=fighting.target,
         combat_left=fighting.left,
+        stalemate_seconds=fighting.stalemate_seconds,
+        yoyo_seconds=fighting.yoyo_seconds,
         frontline_left=strategy.left,
         defending=strategy.defending,
         recovering=strategy.recovering,

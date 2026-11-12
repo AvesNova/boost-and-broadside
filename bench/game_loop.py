@@ -1544,7 +1544,7 @@ def encode(doctrine: Doctrine) -> list[float]:
     an exponent over 4, a logistic's centre and scale and the other positive numbers as
     logs (the fields `bench.doctrine_arena.FROZEN` left out)."""
     from bench.doctrine_arena import FROZEN
-    from bnb.controllers.scripted_doctrine import EXPONENTS, NAMES, WEIGHTS
+    from bnb.controllers.scripted_doctrine import EXPONENTS, FRACTIONS, NAMES, WEIGHTS
     from bnb.controllers.scripted_parameters import Logistic
 
     out = []
@@ -1552,7 +1552,7 @@ def encode(doctrine: Doctrine) -> list[float]:
         value = getattr(doctrine, name)
         if name in FROZEN:
             continue
-        if name in WEIGHTS:
+        if name in WEIGHTS or name in FRACTIONS:
             out.append(value)
         elif name in EXPONENTS:
             out.append(value / 4.0)
@@ -1566,7 +1566,7 @@ def encode(doctrine: Doctrine) -> list[float]:
 def decode(vector: list[float], like: Doctrine) -> Doctrine:
     """`encode`'s inverse (the frozen fields from `like`), clamped to the search's bounds."""
     from bench.doctrine_arena import FROZEN, clamp
-    from bnb.controllers.scripted_doctrine import EXPONENTS, NAMES, WEIGHTS
+    from bnb.controllers.scripted_doctrine import EXPONENTS, FRACTIONS, NAMES, WEIGHTS
     from bnb.controllers.scripted_parameters import Logistic
 
     values, column = {}, 0
@@ -1574,7 +1574,7 @@ def decode(vector: list[float], like: Doctrine) -> Doctrine:
         value = getattr(like, name)
         if name in FROZEN:
             values[name] = value
-        elif name in WEIGHTS:
+        elif name in WEIGHTS or name in FRACTIONS:
             values[name], column = vector[column], column + 1
         elif name in EXPONENTS:
             values[name], column = 4.0 * vector[column], column + 1

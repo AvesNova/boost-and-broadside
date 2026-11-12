@@ -36,7 +36,10 @@ class ScriptedCarry:
     frontline_left (R, S) bool: each layer's committed turn side. defending, recovering (R,
     S) bool: the Frontline goal and recovery. fresh (R, S) bool: the ship's plan choices are
     unset (it re-chooses each outright). agent (R, S) bool: the ship plays the agent (else
-    uniformly: a mixture rung's share). enemy_x, enemy_y, enemy_velocity_x,
+    uniformly: a mixture rung's share). stalemate_seconds (R, S): how long the ship has
+    fought its target at close range without gaining an angle (the maneuvers' clock);
+    yoyo_seconds (R, S): the time since its yo-yo began, negative when none is flown.
+    enemy_x, enemy_y, enemy_velocity_x,
     enemy_velocity_y (R, E): each enemy's last seen state; known (R, E) bool: remembered."""
 
     target: torch.Tensor
@@ -46,6 +49,8 @@ class ScriptedCarry:
     recovering: torch.Tensor
     fresh: torch.Tensor
     agent: torch.Tensor
+    stalemate_seconds: torch.Tensor
+    yoyo_seconds: torch.Tensor
     enemy_x: torch.Tensor
     enemy_y: torch.Tensor
     enemy_velocity_x: torch.Tensor
@@ -70,6 +75,8 @@ def fresh_carry(views: int, ships: int, enemies: int, device) -> ScriptedCarry:
         recovering=flag(ships, False),
         fresh=flag(ships, True),
         agent=flag(ships, True),
+        stalemate_seconds=torch.zeros((views, ships), device=device),
+        yoyo_seconds=torch.full((views, ships), -1.0, device=device),
         enemy_x=zero(),
         enemy_y=zero(),
         enemy_velocity_x=zero(),

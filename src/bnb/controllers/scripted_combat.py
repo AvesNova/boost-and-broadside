@@ -33,6 +33,14 @@ from .scripted_parameters import ScriptedParameters, floored, in_own_time, logis
 TARGET_SIZE_RANGE = (math.radians(1.0), math.radians(45.0))  # the clamp on its angular size
 COAST, BOOST, REVERSE = 0, 1, 2  # power indices (bnb.game.rules.POWER_MODES)
 TINY = 1e-6  # m: keeps a direction's length away from zero
+# The maneuvers' stalemate clock (`maneuvers`): it runs while the ship's committed target is
+# within this many own gun ranges and no angle is gained, an angle gained being the nose
+# within GAINED_NOSE stall angles of the aim point while the target's nose is more than
+# GAINED_OFF_ITS_NOSE of its stall angles off the ship (an offensive shot, not a joust).
+STALEMATE_IN_GUN_RANGES = 4.0
+GAINED_NOSE_IN_STALL_ANGLES = 1.0
+GAINED_OFF_ITS_NOSE_IN_STALL_ANGLES = 2.0
+STICK_MAGNITUDES = (0.0, 0.4, 0.75, 1.0)  # bnb.game.rules.STICK_LEVELS by level
 
 
 class Marginals(NamedTuple):
@@ -280,7 +288,9 @@ def lead(
 class Combat(NamedTuple):
     """The combat layer's result: its marginals; per own ship (R, S): has_target, the
     target's distance (0 without one) and its weight (1 seen, fading when dead reckoned, 0
-    without one); and the plan choices it made, the target (-1 none) and the turn side."""
+    without one); the plan choices it made, the target (-1 none) and the turn side; and the
+    maneuvers' clocks after the decision (`ScriptedCarry.stalemate_seconds`,
+    `yoyo_seconds`)."""
 
     marginals: Marginals
     has_target: torch.Tensor
@@ -288,6 +298,8 @@ class Combat(NamedTuple):
     weight: torch.Tensor
     target: torch.Tensor
     left: torch.Tensor
+    stalemate_seconds: torch.Tensor
+    yoyo_seconds: torch.Tensor
 
 
 def choose_target(fleet: Context, offset_x: torch.Tensor, offset_y: torch.Tensor, parameters):
@@ -454,6 +466,144 @@ def doctrinal(
     return Doctrinal(aim_x, aim_y, boost, reverse, extending, close)
 
 
+def commanded_stick(left: torch.Tensor, fraction) -> torch.Tensor:
+    """(R, S, 7) the stick distribution flying `fraction` of full stick (in [0, 1], between
+    the two nearest levels of STICK_MAGNITUDES, linearly) to the left where `left`, else to
+    the right."""
+    fraction = torch.as_tensor(fraction, device=left.device).clamp(0.0, 1.0)
+    fraction = fraction.expand(left.shape)
+    hats = []
+    for index, magnitude in enumerate(STICK_MAGNITUDES):
+        below = STICK_MAGNITUDES[index - 1] if index > 0 else None
+        above = STICK_MAGNITUDES[index + 1] if index + 1 < len(STICK_MAGNITUDES) else None
+        rising = (
+            (fraction - below) / (magnitude - below)
+            if below is not None
+            else torch.ones_like(fraction)
+        )
+        falling = (
+            (above - fraction) / (above - magnitude)
+            if above is not None
+            else torch.ones_like(fraction)
+        )
+        hats.append(torch.where(fraction <= magnitude, rising, falling).clamp(0.0, 1.0))
+    on_left = left.float()
+    parts = [hats[0]]
+    for hat in hats[1:]:
+        parts += [(1.0 - on_left) * hat, on_left * hat]
+    return torch.stack(parts, -1)
+
+
+def maneuvers(
+    fleet: Context,
+    characteristics: Characteristics,
+    doctrine: Doctrine,
+    target_of,
+    has_target: torch.Tensor,
+    chosen: torch.Tensor,
+    geometry: tuple,
+    stick: torch.Tensor,
+    left: torch.Tensor,
+    power: torch.Tensor,
+):
+    """The doctrine's maneuvers (`bnb.controllers.scripted_doctrine`: the lead turn, the
+    yo-yo and the brake) on the combat layer's stick, committed side and power; with the
+    stalemate clock and the yo-yo's clock after this decision (advanced only when the plan
+    choices may switch, so a re-read carry gives the same marginals; reset on a fresh ship).
+    Returns (stick, left, power, stalemate_seconds, yoyo_seconds)."""
+    target_x, target_y, distance, _, _, aim_error, target_vx, target_vy = geometry
+    temperature = fleet.temperature
+    carry = fleet.carry
+    safe = distance.clamp_min(TINY)
+    target_stall = target_of(per_ship(characteristics.stall_angle, fleet.enemy_type))
+    target_heading = torch.atan2(target_vy, target_vx)
+    off_its_nose = signed_angle(
+        torch.cos(target_heading), torch.sin(target_heading), -target_x, -target_y
+    ).abs() / target_stall.clamp_min(TINY)
+    relative_x = target_vx - fleet.velocity_x
+    relative_y = target_vy - fleet.velocity_y
+    closing = -(target_x * relative_x + target_y * relative_y) / safe  # m/s
+    approaching = (closing > 0.0) & has_target
+
+    # The clocks: the stalemate's and the yo-yo's.
+    engaged = has_target & (distance < STALEMATE_IN_GUN_RANGES * fleet.gun_range)
+    gained = (aim_error.abs() < GAINED_NOSE_IN_STALL_ANGLES * fleet.stall_angle) & (
+        off_its_nose > GAINED_OFF_ITS_NOSE_IN_STALL_ANGLES
+    )
+    fresh = carry.fresh
+    if fleet.switching:
+        same = chosen == carry.target
+        stalemate = torch.where(
+            engaged & ~gained & same & ~fresh, carry.stalemate_seconds + fleet.seconds, 0.0
+        )
+        running = carry.yoyo_seconds >= 0.0
+        clock = torch.where(running, carry.yoyo_seconds + fleet.seconds, -1.0)
+        done = clock > doctrine.yoyo_climb_seconds + doctrine.yoyo_dive_seconds
+        start = (
+            ~running
+            & (doctrine.yoyo > 0.0)
+            & engaged
+            & (stalemate > doctrine.yoyo_after_seconds)
+            & (aim_error.abs() < doctrine.yoyo_phase)
+        )
+        clock = torch.where(start, 0.0, torch.where(done, -1.0, clock))
+        stalemate = torch.where(done, 0.0, stalemate)
+        clock = torch.where(fresh | ~has_target, -1.0, clock)
+    else:
+        stalemate = torch.where(fresh, 0.0, carry.stalemate_seconds)
+        clock = torch.where(fresh | ~has_target, -1.0, carry.yoyo_seconds)
+
+    reverse = power_marginal(torch.zeros_like(distance), torch.ones_like(distance))
+    boost = power_marginal(torch.ones_like(distance), torch.zeros_like(distance))
+
+    # Yo-yo: the high phase eases the stick and climbs, the low phase dives.
+    climbing = ((clock >= 0.0) & (clock < doctrine.yoyo_climb_seconds)).float() * doctrine.yoyo
+    diving = (clock >= doctrine.yoyo_climb_seconds).float() * doctrine.yoyo
+    stick = stick + climbing[..., None] * (commanded_stick(left, doctrine.yoyo_ease) - stick)
+    power = power + climbing[..., None] * (reverse - power)
+    power = power + diving[..., None] * (boost - power)
+
+    # Lead turn: on a head-on approach, turn before the merge.
+    own_speed = torch.sqrt(
+        fleet.velocity_x * fleet.velocity_x + fleet.velocity_y * fleet.velocity_y
+    ).clamp_min(TINY)
+    target_speed = torch.sqrt(target_vx * target_vx + target_vy * target_vy).clamp_min(TINY)
+    crossing = (fleet.velocity_x * target_vx + fleet.velocity_y * target_vy) / (
+        own_speed * target_speed
+    )
+    from_opposed = math.pi - torch.acos(crossing.clamp(-1.0, 1.0))
+    time_to_merge = safe / closing.clamp_min(TINY)
+    lead_weight = torch.where(
+        approaching,
+        doctrine.lead_turn
+        * logistic(time_to_merge, doctrine.lead_turn_in_seconds, temperature)
+        * logistic(from_opposed, doctrine.lead_turn_in_crossing, temperature),
+        0.0,
+    )
+    # the side the target passes on: its offset at the closest approach, from the nose
+    relative_squared = (relative_x * relative_x + relative_y * relative_y).clamp_min(TINY)
+    along = (target_x * relative_x + target_y * relative_y) / relative_squared
+    miss_x, miss_y = target_x - along * relative_x, target_y - along * relative_y
+    passes_left = fleet.cos * miss_y - fleet.sin * miss_x > 0.0
+    lead_left = torch.where(doctrine.lead_turn_one_circle > 0.5, ~passes_left, passes_left)
+    stick = stick + lead_weight[..., None] * (
+        commanded_stick(lead_left, doctrine.lead_turn_stick) - stick
+    )
+    left = torch.where(lead_weight > 0.5, lead_left, left)
+
+    # Brake: the target closing in the rear hemisphere with its nose on the ship.
+    bearing = signed_angle(fleet.cos, fleet.sin, target_x, target_y)
+    braking = torch.where(
+        approaching & (bearing.abs() > 0.5 * math.pi),
+        doctrine.brake
+        * logistic(off_its_nose, doctrine.brake_in_stall_angle, temperature)
+        * logistic(distance / fleet.gun_range, doctrine.brake_in_gun_range, temperature),
+        0.0,
+    )
+    power = power + braking[..., None] * (reverse - power)
+    return stick, left, power, stalemate, clock
+
+
 def combat(
     fleet: Context,
     characteristics: Characteristics,
@@ -500,7 +650,7 @@ def combat(
         logistic(distance / fleet.gun_range, parameters.reverse_in_gun_range, fleet.temperature),
         0.0,
     )
-    power = None
+    power, doctrine, geometry = None, None, None
     if doctrines is not None:  # the own types' doctrines shape the aim point and the power
         geometry = (
             target_x,
@@ -541,6 +691,23 @@ def combat(
     stick = torch.where(hold, held, steered)
     if power is None:
         power = power_marginal(boost, reverse)
+    if doctrine is not None:
+        stick, left, power, stalemate, yoyo = maneuvers(
+            fleet,
+            characteristics,
+            doctrine,
+            target,
+            has_target,
+            chosen,
+            geometry,
+            stick,
+            left,
+            power,
+        )
+    else:
+        fresh = fleet.carry.fresh
+        stalemate = torch.where(fresh, 0.0, fleet.carry.stalemate_seconds)
+        yoyo = torch.where(fresh, -1.0, fleet.carry.yoyo_seconds)
 
     hit_radius = target(per_ship(characteristics.hit_radius, fleet.enemy_type))
     size = (2.0 * torch.atan(hit_radius / safe_distance)).clamp(*TARGET_SIZE_RANGE)
@@ -552,7 +719,9 @@ def combat(
     ready = (column(fleet.own, "gun_cooldown") <= 0.0) & (column(fleet.own, "energy") >= cost)
     shoot = floored(torch.where(has_target & ready, weight * aligned * in_range, 0.0), "shoot")
     shoot = torch.stack([1.0 - shoot, shoot], -1)
-    return Combat(Marginals(power, stick, shoot), has_target, distance, weight, chosen, left)
+    return Combat(
+        Marginals(power, stick, shoot), has_target, distance, weight, chosen, left, stalemate, yoyo
+    )
 
 
 def blend(first: torch.Tensor, second: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:

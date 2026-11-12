@@ -25,7 +25,25 @@ and not another. Within it:
   `deny_angle` off the line to it, to the side it is already off, so the pass is not a
   mutual head-on.
 
-Each element's weight (`extend`, `slash`, `bleed`, `lag`, `deny`) is 0 by default, as is
+The maneuvers (the combat layer's `maneuvers`) are weighted on their own, not by `strength`
+and `in_advantage`, so they fly in the mirrors too; each reads the committed target:
+
+- **Lead turn**: on a head-on approach (the crossing angle of the two flight paths within
+  `lead_turn_in_crossing` radians of opposed) with the merge `lead_turn_in_seconds` away
+  (range over closure), start the turn early at `lead_turn_stick` of full stick: toward
+  the side the bandit will pass on (the two-circle sense), or, with `lead_turn_one_circle`
+  above 1/2, away from it (the one-circle sense).
+- **Yo-yo**: after `yoyo_after_seconds` of a close fight without an angle gained (the
+  carry's stalemate clock: the nose never on the target while the target's nose is off the
+  ship), when the target comes within `yoyo_phase` radians of the nose, ease the stick to
+  `yoyo_ease` and climb (reverse: speed into the store) for `yoyo_climb_seconds`, then
+  full stick and dive (boost: the store back into speed) for `yoyo_dive_seconds`.
+- **Brake** (overshoot forcing): with the target in the rear hemisphere, its nose on the
+  ship (`brake_in_stall_angle`, its stall angles) within `brake_in_gun_range` and closing,
+  reverse (the store as a speed brake) while the combat layer turns toward it.
+
+Each element's weight (`extend`, `slash`, `bleed`, `lag`, `deny`, and the maneuvers'
+`lead_turn`, `yoyo`, `brake`) is 0 by default, as is
 `strength`: the default doctrine is off. A `table` packs one doctrine per ship type (T, D),
 or per view and type (R, T, D); `per_ship` reads each own ship's row.
 
@@ -72,12 +90,28 @@ class Doctrine:
     deny_in_stall_angle: Logistic = Logistic(1.0, 0.2, False)
     deny_in_gun_range: Logistic = Logistic(3.0, 0.2, False)
     deny_angle: float = 0.5  # rad
+    lead_turn: float = 0.0
+    lead_turn_in_seconds: Logistic = Logistic(1.5, 0.2, False)
+    lead_turn_in_crossing: Logistic = Logistic(0.5, 0.3, False)
+    lead_turn_stick: float = 1.0
+    lead_turn_one_circle: float = 0.0
+    yoyo: float = 0.0
+    yoyo_after_seconds: float = 30.0
+    yoyo_phase: float = 1.5  # rad
+    yoyo_climb_seconds: float = 4.0
+    yoyo_ease: float = 0.4
+    yoyo_dive_seconds: float = 4.0
+    brake: float = 0.0
+    brake_in_stall_angle: Logistic = Logistic(1.5, 0.2, False)
+    brake_in_gun_range: Logistic = Logistic(1.0, 0.2, False)
 
 
 NAMES = tuple(field.name for field in dataclasses.fields(Doctrine))
 _DEFAULT = Doctrine()
 # The element weights and the strength, each in [0, 1]; the exponents in [-2, 2].
-WEIGHTS = ("strength", "extend", "slash", "bleed", "lag", "deny")
+WEIGHTS = ("strength", "extend", "slash", "bleed", "lag", "deny", "lead_turn", "yoyo", "brake")
+# The maneuvers' fractions, each in [0, 1] (searched like a weight).
+FRACTIONS = ("lead_turn_stick", "lead_turn_one_circle", "yoyo_ease")
 EXPONENTS = ("turn_exponent", "climb_exponent", "speed_exponent", "range_exponent")
 # Each logistic's smallest scale (a tenth of a factor e in its quantity, near the combat
 # layer's floors in stall angles).
@@ -92,6 +126,10 @@ SCALE_FLOORS = {
     "bleed_in_stall_angle": 0.158,
     "deny_in_stall_angle": 0.158,
     "deny_in_gun_range": 0.1,
+    "lead_turn_in_seconds": 0.05,
+    "lead_turn_in_crossing": 0.1,
+    "brake_in_stall_angle": 0.158,
+    "brake_in_gun_range": 0.1,
 }
 
 

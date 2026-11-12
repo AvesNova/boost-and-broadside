@@ -229,3 +229,81 @@ def test_a_doctrine_packs_and_names_both_ways():
     assert from_named({}) == Doctrine()
     with pytest.raises(ValueError):
         from_row(pack(doctrine)[:-1])
+
+
+LEFT_LEVELS, RIGHT_LEVELS = (2, 4, 6), (1, 3, 5)
+
+
+def test_a_lead_turn_turns_before_the_merge_to_the_passing_side_or_away():
+    """A target one gun range ahead flying at the ship, offset a little to the left: the
+    agent flies at it; the lead turn turns left at full stick (the side it will pass on: the
+    two-circle sense), or right in the one-circle sense; far from the merge it does not."""
+    lead = Doctrine(lead_turn=1.0, lead_turn_in_seconds=Logistic(3.0, 0.1, False))
+    obs = _duel(STIFF, STIFF, 0.05, 1.0, enemy_heading=math.pi)
+    agent = _decide(obs)
+    two = _decide(obs, _every_type(lead))
+    one = _decide(obs, _every_type(dataclasses.replace(lead, lead_turn_one_circle=1.0)))
+    assert float(agent.stick[0, 0, 6]) < 0.5
+    assert float(two.stick[0, 0, 6]) > 0.9
+    assert float(one.stick[0, 0, 5]) > 0.9
+    far = _duel(STIFF, STIFF, 0.05, 6.0, enemy_heading=math.pi)
+    torch.testing.assert_close(
+        _decide(far).stick, _decide(far, _every_type(lead)).stick, atol=0.02, rtol=0.0
+    )
+    half = _decide(obs, _every_type(dataclasses.replace(lead, lead_turn_stick=0.4)))
+    assert float(half.stick[0, 0, 2]) > 0.9
+
+
+def test_a_yoyo_climbs_with_the_stick_eased_after_a_stalemate_then_dives():
+    """A head-on target inside the fight's range: once the stalemate clock passes
+    yoyo_after_seconds the ship climbs (reverse) at the eased stick for
+    yoyo_climb_seconds, then dives (boost); a re-read carry gives the same marginals."""
+    yoyo = Doctrine(
+        yoyo=1.0, yoyo_after_seconds=5.0, yoyo_climb_seconds=0.05, yoyo_dive_seconds=0.05
+    )
+    doctrines = _every_type(yoyo)
+    obs = _duel(STIFF, STIFF, 0.3, 2.0, enemy_heading=math.pi)
+    _, carry = decide(obs, CHARACTERISTICS, PARAMETERS, switching=True, doctrines=doctrines)
+    assert float(carry.stalemate_seconds[0, 0]) == 0.0  # fresh
+    _, carry = decide(
+        obs, CHARACTERISTICS, PARAMETERS, carry=carry, switching=True, doctrines=doctrines
+    )
+    assert float(carry.stalemate_seconds[0, 0]) > 0.0
+    assert float(carry.yoyo_seconds[0, 0]) < 0.0
+    carry = dataclasses.replace(
+        carry, stalemate_seconds=torch.full_like(carry.stalemate_seconds, 9.0)
+    )
+    climb, carry = decide(
+        obs, CHARACTERISTICS, PARAMETERS, carry=carry, switching=True, doctrines=doctrines
+    )
+    assert float(carry.yoyo_seconds[0, 0]) == 0.0
+    assert float(climb.power[0, 0, 2]) > 0.9  # reverse: speed into the store
+    again = decide(obs, CHARACTERISTICS, PARAMETERS, carry=carry, doctrines=doctrines)[0]
+    torch.testing.assert_close(again.power, climb.power)
+    for _ in range(2):
+        dive, carry = decide(
+            obs, CHARACTERISTICS, PARAMETERS, carry=carry, switching=True, doctrines=doctrines
+        )
+    assert float(dive.power[0, 0, 1]) > 0.9  # boost: the store into speed
+    for _ in range(2):
+        _, carry = decide(
+            obs, CHARACTERISTICS, PARAMETERS, carry=carry, switching=True, doctrines=doctrines
+        )
+    assert float(carry.yoyo_seconds[0, 0]) < 0.0  # done: the clocks start over
+    assert float(carry.stalemate_seconds[0, 0]) < 1.0
+
+
+def test_a_brake_reverses_with_a_closing_target_on_the_tail():
+    """A faster target half a gun range behind, nose on the ship: braking reverses."""
+    brake = Doctrine(brake=1.0)
+    distance = 0.5 * value("gun_range", STIFF)
+    enemy = ship(
+        x=-distance,
+        heading=0.0,
+        speed=2.0 * value("cruise_speed", STIFF),
+        ship_type=STIFF,
+        team_relative=1,
+    )
+    obs = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, absent(STIFF)])
+    assert float(_decide(obs).power[0, 0, 2]) < 0.5
+    assert float(_decide(obs, _every_type(brake)).power[0, 0, 2]) > 0.9

@@ -55,6 +55,7 @@ from bnb.controllers import scripted
 from bnb.controllers.scripted_doctrine import (
     DOCTRINES,
     EXPONENTS,
+    FRACTIONS,
     NAMES,
     SCALE_FLOORS,
     WEIGHTS,
@@ -609,7 +610,14 @@ def card(args) -> None:
 # The search: what each field draws and its bounds. Weights and exponents step additively;
 # logistics, the deny angle and the lag multiplicatively.
 FROZEN = ("climb_exponent", "speed_exponent", "range_exponent")
-MULTIPLICATIVE_BOUNDS = {"deny_angle": (0.05, 1.5), "lag_in_gun_range": (0.05, 3.0)}
+MULTIPLICATIVE_BOUNDS = {
+    "deny_angle": (0.05, 1.5),
+    "lag_in_gun_range": (0.05, 3.0),
+    "yoyo_after_seconds": (3.0, 200.0),
+    "yoyo_phase": (0.05, 3.1),
+    "yoyo_climb_seconds": (0.3, 20.0),
+    "yoyo_dive_seconds": (0.3, 20.0),
+}
 SCALE_CEILING = 10.0
 
 
@@ -619,7 +627,7 @@ def clamp(doctrine: Doctrine) -> Doctrine:
     values = {}
     for name in NAMES:
         value = getattr(doctrine, name)
-        if name in WEIGHTS:
+        if name in WEIGHTS or name in FRACTIONS:
             value = min(max(value, 0.0), 1.0)
         elif name in EXPONENTS:
             value = min(max(value, -2.0), 2.0)
@@ -648,7 +656,7 @@ def perturb(doctrine: Doctrine, sigma: float, generator: torch.Generator) -> Doc
         value = getattr(doctrine, name)
         if name in FROZEN:
             values[name] = value
-        elif name in WEIGHTS:
+        elif name in WEIGHTS or name in FRACTIONS:
             values[name] = value + sigma * normal()
         elif name in EXPONENTS:
             values[name] = value + 4.0 * sigma * normal()

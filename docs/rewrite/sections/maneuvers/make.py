@@ -1,0 +1,100 @@
+"""Candidates for `sizes.py`: each card x each maneuver set, the maneuver set's doctrine
+fields applied to both types on top of r9.
+
+    python docs/rewrite/sections/maneuvers/make.py round1 [card ...]
+
+`ROUNDS[name]` lists the maneuver sets (a name and the doctrine fields); the cards are
+`CARDS` (the frozen card, balance-d2, and d2 with the tank-armour cones).
+"""
+
+import json
+import pathlib
+import sys
+
+HERE = pathlib.Path(__file__).parent
+
+D2_ENERGY = {"max_shield": 0.5, "bullet_life": 0.75, "head_on_fraction_scale": 0.7, "hit_damage": 1.1}
+D2_TURN = {"induced_drag_scale": 1.6, "head_on_fraction_scale": 0.5}
+CONE = {"head_on_angle_scale": {"set": 0.28388928317955997}, "head_on_sharpness": {"set": 8}}
+
+
+def armour(f0: float, damage: float) -> tuple[dict, dict]:
+    """D2 with the 12-degree p8 cone at a dead-on fraction f0 (of a full hit) on both types,
+    the damage times `damage`."""
+    fraction = {"head_on_fraction_scale": {"set": f0 / 0.3}}
+    energy = dict(D2_ENERGY, **fraction, **CONE, hit_damage=1.1 * damage)
+    turn = dict(D2_TURN, **fraction, **CONE, hit_damage=damage)
+    return energy, turn
+
+
+CARDS = {
+    "frozen": ({}, {}),
+    "D2": (D2_ENERGY, D2_TURN),
+    "D2 cone 0.085": armour(0.085, 1.5),  # tank-armour round 3's pick (inside the 300 s band)
+    "D2 cone 0.01": armour(0.01, 1.5),  # the near-immune nose: the side-by-side stalemate
+}
+
+
+def lead(seconds, stick=1.0, one_circle=0.0, crossing=0.5):
+    return dict(
+        lead_turn=1.0,
+        lead_turn_in_seconds=[seconds, 0.1],
+        lead_turn_in_crossing=[crossing, 0.2],
+        lead_turn_stick=stick,
+        lead_turn_one_circle=one_circle,
+    )
+
+
+def yoyo(after=20.0, phase=1.5, climb=4.0, dive=4.0, ease=0.4):
+    return dict(
+        yoyo=1.0,
+        yoyo_after_seconds=after,
+        yoyo_phase=phase,
+        yoyo_climb_seconds=climb,
+        yoyo_dive_seconds=dive,
+        yoyo_ease=ease,
+    )
+
+
+ROUNDS = {
+    "round1": [
+        ("r9", {}),
+        ("lead 1 s", lead(1.0)),
+        ("lead 2 s", lead(2.0)),
+        ("lead 3 s", lead(3.0)),
+        ("lead 5 s", lead(5.0)),
+        ("lead 2 s stick 0.6", lead(2.0, stick=0.6)),
+        ("lead 2 s one-circle", lead(2.0, one_circle=1.0)),
+        ("lead 4 s one-circle", lead(4.0, one_circle=1.0)),
+        ("yoyo 20 s", yoyo()),
+        ("yoyo 10 s", yoyo(after=10.0)),
+        ("yoyo 20 s climb 8", yoyo(climb=8.0, dive=6.0)),
+        ("yoyo 20 s phase 0.5", yoyo(phase=0.5)),
+        ("brake", dict(brake=1.0)),
+    ],
+}
+
+
+def main() -> None:
+    name = sys.argv[1]
+    cards = sys.argv[2:] or list(CARDS)
+    out = []
+    for card in cards:
+        energy, turn = CARDS[card]
+        for label, fields in ROUNDS[name]:
+            out.append(
+                dict(
+                    name=f"{card} | {label}",
+                    energy=energy,
+                    turn=turn,
+                    doctrine=dict(energy=fields, turn=fields),
+                )
+            )
+    path = HERE / name / "candidates.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(out, indent=1))
+    print(f"{len(out)} candidates -> {path}")
+
+
+if __name__ == "__main__":
+    main()
