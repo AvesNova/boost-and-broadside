@@ -284,3 +284,61 @@ engagement is in every game).
   the archetype), the turn fighter the lighter.
 - **Round 7** (running 16:40, ETA ~17:05): ES from r4 on this card, distinctness on,
   20 generations, against off, hand, r1, r1-hand, r2, r4.
+
+## How a round works (plainly)
+
+- **Doctrine/parameter round** (`doctrine_round.py`, `es_search`): one search state, the
+  champion's 2 doctrines (29 numbers each) and 31 scripted parameters. A generation is
+  **33-34 candidates** (the parent, the incumbent on probation, 16 antithetic pairs of
+  random perturbations), each playing **16 games per league opponent per lineup** (6
+  lineups, 5-7 opponents: ~500-700 games a candidate) as side A; **all candidates' games
+  run batched together on the GPU** (8192 games per compiled batch, ~13-20k games a
+  generation, 35-70 s). Score = the candidate's share of the kills, lineups weighted (mixed
+  1/2, single-type 1/2), minus the distinctness penalty; SE ~0.005-0.008 per candidate.
+  The gradient comes from the pairs' differences; the parent moves; the move is kept only
+  if the parent's fresh games beat the incumbent's. 15-20 generations a start.
+- At the round's end: **Elo** over the whole league (every pair, mixed + mixed reversed,
+  512 games a pair and order: ±6-8 Elo), distinctness, and the champion's self-play table
+  (2048 games a lineup) and against off (1024).
+- **Card round** (`card_round.py`): **8 card variants** (16 in round 1) as rows of one
+  type table, **all in one batched run**: each variant x 5 lineups x 1024 games of the
+  champion's self-play plus 1024 games against off (49k games, 2-5 min). Error bars:
+  energy v turn ±0.014; mix shares ±0.01.
+- Batching more variants per run is possible (each variant is two rows of the type table);
+  the tick slows with the type count (per_ship's select: K = 16 was ~2.3x K = 1), so 8-16
+  per run is the sweet spot. A random sample of card vectors in one tournament would fit
+  in the same harness; not done yet.
+
+## 2026-11-12 16:40-17:03 KST: round 7 (ES on the balanced card)
+
+Card: round-2 card + Yongma shield x1.3 and damage x1.3, Jujak shield x0.87.
+
+- ES from r4, 20 generations: kill share 0.615 -> 0.626 (penalised), KL 0.82.
+- **Elo**: **r7-r4 1291 ± 7**, r4 1280 ± 7, r2 1263 ± 7, hot 1003, off 1000, r1-hand 992,
+  r1 992, hand 506, random 108. **Improvement over r4: +11 ± 10 Elo: not significant.**
+  The ES has converged on this neighbourhood (rounds 4 and 7 both plateau after ~6
+  generations). r7 joined the league.
+- Distinctness: KL 0.28 (Yongma ships) / 2.02 (Jujak ships), agreement 0.94 / 0.73.
+- **Energy v turn 0.509 ± 0.010** (target met); turn mirror 0.488, energy mirror 0.502,
+  mixed 0.485 / 0.486 (seats fair within 1.5 SE).
+- Mix (self-play kills): mutual 0.07-0.12, offset 0.25-0.28, flank 0.51-0.54, tail
+  0.10-0.13. Trades 0.07-0.10. Life 82-94 s, gap between deaths 7.2-8.1 s (median
+  4.5-5.5), first hit 37.5 s after spawn.
+
+## 17:03 KST: the author's round-4/5 feedback, done
+
+- Engagement statistics in the tick (two definitions: within the pair's gun range; within
+  two full-stick turn diameters; ends 3 s apart or on a death): engagements, kills in them,
+  **merges per kill** (closing -> least distance -> opening by 30 m; mean, median,
+  first-pass share = 0 or 1 merges, 90th percentile), merges per engagement, time from
+  start to first damage and to death, length, circles turned per ship, and each merge's
+  kind (one-circle: opposite turn senses; two-circle: same; scissors: both reversed since
+  the last merge).
+- Fleet sizes: `Loop(ships_per_team=1, 2, 5)`, the arena by the density rule (7800 m x
+  sqrt(n / 5)); lineups cut to size. Measured in the final.
+- **Fog off** in every run from round 8 on (`api.reset`'s fogged flag); earlier rounds ran
+  fogged. Team deathmatch's early win (25 kills) disabled: every game runs the clock.
+- A first CPU look (r4, 60 s, 4 games): **merges per kill 0.1-0.7, first-pass share ~1.0**:
+  kills come on the first pass. The author wants ~3 with spread: that is a lethality
+  question. **Round 8** (running, 17:03): lethality on the round-7 card (damage x0.35-0.7,
+  shields x1.5-2, damage x0.5 with more frontal armour or a faster recharge).
