@@ -9,7 +9,8 @@ of 27 m/s^2. The real-scale variant keeps the game and changes its units so that
 metre is a metre and one second a second, with late-war fighters (the first a P-51D) and a
 few invented designs that fly as the research has them. It is
 the ship set `real-scale` (`src/bnb/game/ships/real-scale/`) and the presets
-real_scale_deathmatch and real_scale_frontline (`bnb.game.modes.rules.PRESETS`). Everything stays per unit mass:
+real_scale_deathmatch, real_scale_frontline and real_scale_elimination, with the arena and
+Clover maps (`bnb.game.modes.rules.PRESETS`). Everything stays per unit mass:
 energies are J/kg and powers W/kg.
 
 `bnb.game.real_scale` holds the arithmetic and writes the set
@@ -260,7 +261,8 @@ These are single seed-1 episodes, a provisional economy for the author to judge 
 
 The scripted agent plays the real-scale presets with sets of its own,
 real_scale_deathmatch and real_scale_frontline in
-`bnb.controllers.scripted_defaults.MODE_DEFAULTS`, chosen whenever the card's gravity is the
+`bnb.controllers.scripted_defaults.MODE_DEFAULTS` (and real_scale_elimination, a copy of
+the deathmatch set without a search), chosen whenever the card's gravity is the
 real-scale one ([The scripted agent](../scripted-agent.md)); the standard sets are
 unchanged. They are a light retune: each preset's parameter search
 (`bench/scripted_search.py --preset <preset> --ship-type 0 --from-defaults`) started from

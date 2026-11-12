@@ -244,11 +244,12 @@ def flight_constants() -> str:
 
 
 def mode_clocks() -> str:
-    """Each mode's default episode length and respawn wait."""
+    """Each mode's default episode length and respawn wait (none: a dead ship waits out
+    the episode)."""
     from bnb.game.modes.rules import CLOCKS
 
     return _table(("Mode", "Episode (s)", "Respawn wait (s)"),
-                  [(_code(mode), _number(episode), _number(respawn))
+                  [(_code(mode), _number(episode), "none" if respawn is None else _number(respawn))
                    for mode, (episode, respawn) in CLOCKS.items()])
 
 
@@ -266,13 +267,15 @@ def game_presets() -> str:
     rows = []
     for name, game in PRESETS.items():
         episode, respawn = CLOCKS[game.mode]
+        respawn = game.respawn_seconds if game.respawn_seconds else respawn
         rows.append((_code(name), _code(game.mode), game.ships_per_team, game.num_fields,
                      _number(game.arena_radius), _code(game.spawn_groups) if game.spawn_groups
                      else "uniform", _number(game.episode_seconds if game.episode_seconds else episode),
-                     _number(game.respawn_seconds if game.respawn_seconds else respawn),
+                     "none" if respawn is None else _number(respawn),
+                     "fixed" if game.layout is not None else "random",
                      " / ".join(LINEUPS[name]) if name in LINEUPS else "default"))
     return _table(("Preset", "Mode", "Ships per team", "Fields", "Arena radius (m)",
-                   "Spawn groups", "Episode (s)", "Respawn wait (s)", "Lineup"), rows)
+                   "Spawn groups", "Episode (s)", "Respawn wait (s)", "Map", "Lineup"), rows)
 
 
 def game_config() -> str:

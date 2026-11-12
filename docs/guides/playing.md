@@ -19,6 +19,7 @@ uv run bnb play
 uv run bnb play --preset frontline --view team0 --seed 3
 uv run bnb play --preset real_scale_frontline
 uv run bnb play --preset arena
+uv run bnb play --preset clover
 uv run bnb play --agent1 runs/<run>/policy
 ```
 

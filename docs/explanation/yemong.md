@@ -93,7 +93,10 @@ mode's zones are key and value memory only.
   With `YemongConfig.position_inputs` "fourier" the position and heading enter as Fourier
   features in place of their code runs (see below).
 - **The global token** reads the map centre's code, episode progress, the arena radius,
-  the fog flag and the mode's block.
+  the fog flag and the mode's block. Which mode flags it reads is a build option,
+  `YemongConfig.mode_inputs`: a new run reads team deathmatch, Frontline and elimination;
+  a build record from before elimination (2026-11-12) reads the first two, and plays an
+  elimination match as a match of no mode.
 - **A field token** reads its centre's code, radius, band width and level; **a zone token**
   its centre's code, radius, role, meter and the captures left. An absent zone is one
   learned vector (see [Mixed batches](game/mixed-batches.md)).

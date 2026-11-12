@@ -14,6 +14,8 @@ The modes are `bnb.contracts.config.MODES`:
 
 - **team deathmatch**: score by deaths;
 - **Frontline**: capture zones around a ring and push the front;
+- **elimination**: team deathmatch without respawns: wipe out the other team, or at the
+  clock have more ships alive, then more shield;
 - **sandbox**: the physics game alone, with no score and no win, only the clock. The race's
   reference tests run in it.
 
@@ -36,8 +38,12 @@ full-stick turn circles of its two ships across (each turns at about 500-600 m a
 162 m/s cruise): first set at 1300 m, two circles across, and widened by half for more
 room. Its ships come within gun range (about 600 m) within seconds of spawning: in the
 scripted agent's 2v2s on it, 0-12 s after the start, the first kill 9-23 s in, with 3-10%
-of the ships' time beyond the boundary (at 1300 m: 0-7.5 s, 6-14 s and 10-16%). A config's fields may be 0 to 64; with none the medium is
-uniform (an index of 1 everywhere) and nothing blocks sight.
+of the ships' time beyond the boundary (at 1300 m: 0-7.5 s, 6-14 s and 10-16%).
+`real_scale_elimination` is elimination at the training size (5v5, 10 random fields, the
+7800 m real-scale map, 180 s); `clover` is the author's 2v2 elimination map with a fixed
+layout (see [Fixed layouts and Clover](#fixed-layouts-and-clover)). A config's fields may be
+0 to 64; with none the medium is uniform (an index of 1 everywhere) and nothing blocks
+sight.
 
 <!-- generated: game-presets -->
 
@@ -75,6 +81,55 @@ When a match ends, the environment gets a new map and a fresh mode state
   centres are spread over the arena, and each team's ships are assigned to groups by
   formation rank. A respawn lands at a distance from an anchor, a random living ship of
   either team, choosing the candidate farthest from the nearest living enemy.
+
+## Elimination
+
+Team deathmatch's variant with no respawn (the author, 2026-11-12). It scores as team
+deathmatch, every death a point for the other team, with one kill per enemy ship to win
+(`ModeRules.kills_per_ship` is 1 whatever the config's), so a team with no ship left loses.
+
+- **No respawn:** a dead ship waits the episode's whole length (`CLOCKS` gives elimination
+  no respawn wait, and `bnb.game.rules` sets it to the episode's), so it is still waiting
+  when the episode ends. A config takes no `respawn_seconds` in elimination, and the live
+  tuning's episode length moves the wait with it.
+- **At the clock** (`bnb.game.modes.phase.clock_result`): more ships alive wins; with as
+  many alive, more total shield over the living ships wins (the shield is the game's only
+  health: a ship whose shield is gone dies to any damage, so the side behind on it has to
+  attack); equal again, a draw.
+- **Spawns:** team deathmatch's uniform spawns, at the start only; or a fixed layout's.
+- **Observation:** the `mode_elimination` flag; the scores are the kills and the winning
+  score is the enemy's (active) ships.
+- **Clock:** 90 s by default, 180 s at real scale (both presets): a short episode.
+
+## Fixed layouts and Clover
+
+A game config may carry a fixed map, `GameConfig.layout`
+(`bnb.contracts.config.MapLayout`), in team deathmatch or elimination; without one the map
+is drawn at every new match, as before. A layout lists half its fields
+(`FixedField`: centre, radius and the levels it draws from), each with its image under the
+map's 180-degree rotation, so the map stays point-symmetric and both seats meet the same
+map; a field and its image draw one level per match (`bnb.game.modes.phase.layout_fields`,
+from the uniform a random map spends on that field's level). Its spawns (`FixedSpawn`:
+position, a heading or none for toward the centre, position and heading jitter) are team
+0's by slot, team 1's their images (`bnb.game.modes.spawns.layout_placement`). With
+`rotated` (the default) the whole layout turns about the centre by the spawn axis's
+uniform angle at every new match, so a fixed map is met at every bearing, as random maps
+are, and the model's position codes see it everywhere. The layout is part of the mode's
+rules (`ModeRules.layout`), so a batch slices games of different layouts apart. Saved maps
+keep it (`game.layout` in the map's file).
+
+**Clover** (`clover`, the author's design): a 2v2 elimination of the real-scale ships,
+180 s. Its arena, 4933.2 m, is the real-scale map at 2 ships a side by the fleet presets'
+density rule (radius as the square root of the fleet: 7800 sqrt(2/5)). Four fields of
+radius 1233 m (a quarter of the arena radius) sit in a square, their centres at 0.45 arena
+radii on the diagonals: upper right and lower left high index (+1 or +2, drawn together),
+upper left and lower right low (-1 or -2), four combinations. Each team's two spawns lie at
+0.875 arena radii, each between a high and a low field: team 0 at 1 and 4 o'clock, team 1
+at 7 and 10, nose to the centre, with up to 150 m and 5 degrees of jitter. Turned half a
+turn, team 0's situation is team 1's exactly. Clover plays the game's default lineup
+(P-51D and Spitfire XIV).
+
+![Clover at its start: two high (green) and two low (pink) fields, team 0's ships (blue) at the bottom and team 1's (orange) at the top, the layout turned by this match's angle](../../images/play/clover-1920.png)
 
 ## Benched ships
 
@@ -137,8 +192,9 @@ compiled graphs specialize on:
   view lists the zones in its own ring order, with roles, meter direction and the
   captures still needed to win or lose all relative to the viewer, so the order reveals no
   seat (`bnb.game.modes.observation.zone_rows`).
-- **Globals:** the mode one-hot, the scores by team and the winning score, the front for
-  the viewer and the winning front (`bnb.game.modes.observation.mode_globals`).
+- **Globals:** the mode one-hot (team deathmatch, Frontline, elimination), the scores by
+  team and the winning score, the front for the viewer and the winning front
+  (`bnb.game.modes.observation.mode_globals`).
 
 The columns are listed in [Contracts](../contracts.md).
 

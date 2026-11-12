@@ -67,12 +67,17 @@ A new mode with spawn protection extends that condition in `src/bnb/game/physics
 
 ## 5. The observation
 
-A new mode one-hot or a new global column changes `bnb.contracts.obs.GLOBAL_COLUMNS`, and
-so the observation contract:
+A new mode one-hot (`mode_<name>`) or a new global column extends
+`bnb.contracts.obs.GLOBAL_COLUMNS`. Columns are read by name and a policy file records the
+ones it was trained with, so a new column locks out no policy and does not raise
+`bnb.contracts.obs.Obs.SCHEMA_VERSION` (only a removed or renamed column does):
 
-- bump `bnb.contracts.obs.Obs.SCHEMA_VERSION`;
-- extend Yemong's global token in `src/bnb/models/yemong/inputs.py` (`GLOBAL_INPUTS` and
-  the columns it composes);
+- add the mode to Yemong's `bnb.models.yemong.inputs.MODE_INPUTS` and to the training
+  build's `mode_inputs` (`bnb.runtime.train.TrainConfig`); a build record without the
+  new mode keeps reading its own flags, and reads the new mode's matches as no mode
+  (as elimination did for older builds);
+- give the scripted agent a parameter set for it (`bnb.controllers.scripted_parameters.MODES`
+  and `bnb.controllers.scripted.mode_index`);
 - add a scale for the column to the skeleton MLP if it needs one (`bnb.models.mlp.GLOBAL_SCALE`).
 
 Zone columns are the same for every mode. A mode without zones leaves its slots absent:

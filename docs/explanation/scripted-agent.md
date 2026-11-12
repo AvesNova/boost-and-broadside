@@ -31,8 +31,8 @@ numbers on every replay. A dead ship, or one waiting to respawn, takes the no-op
 with probability 1; a living ship never has an action at probability 0 or 1 (see
 [Softness](#softness-logistics-the-floor-and-the-temperature)).
 
-The global mode one-hot selects the layers: team deathmatch runs the combat layer;
-Frontline runs the Frontline layer on top of it. Both are computed for every view and the
+The global mode one-hot selects the layers: team deathmatch and elimination run the combat
+layer; Frontline runs the Frontline layer on top of it. Both are computed for every view and the
 mode selects per view, so a mixed batch is one graph.
 
 ## Characteristics
@@ -223,13 +223,15 @@ each named for the quantity it scales, with the logistics as `Logistic`, the wei
 **One set per game mode.** The agent's defaults are
 `bnb.controllers.scripted_defaults.MODE_DEFAULTS`, a
 `bnb.controllers.scripted_parameters.ModeParameters` with a set for each of the training
-presets and the two real-scale ones (`bnb.controllers.scripted_parameters.MODES`:
-deathmatch, deathmatch_wide, Frontline, real_scale_deathmatch, real_scale_frontline), each
-from a search of its own preset. Each view plays its mode's set, chosen from its
+presets and the real-scale ones (`bnb.controllers.scripted_parameters.MODES`:
+deathmatch, deathmatch_wide, Frontline, real_scale_deathmatch, real_scale_frontline,
+real_scale_elimination), each from a search of its own preset but elimination's, a copy of
+real_scale_deathmatch's set without a search (2026-11-12). Each view plays its mode's set, chosen from its
 observation and the card (`bnb.controllers.scripted.mode_index`): on a real-scale card (its
 gravity below `REAL_SCALE_GRAVITY`, 16.3 m/s^2, the geometric mean of 27 and 9.81) the
-real-scale Frontline set by the mode's flag, else the real-scale deathmatch set; otherwise
-Frontline by the mode's flag, else the wide set when the arena radius is more than
+real-scale Frontline or elimination set by the mode's flag, else the real-scale deathmatch
+set; otherwise Frontline by the mode's flag (a standard card plays elimination with its
+deathmatch sets), else the wide set when the arena radius is more than
 `WIDE_ARENA_IN_GUN_RANGES` of the card's longest gun range (20.9: the geometric mean of the
 two deathmatch presets' 2600 and 8200 m on the standard card, 11.8 and 37.1 of its 220.8 m
 gun range), else deathmatch's. The real-scale sets are a light retune

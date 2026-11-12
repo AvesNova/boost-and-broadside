@@ -70,7 +70,8 @@ in each viewer's own ring order.
 
 **Globals**, `(..., len(GLOBAL_COLUMNS))`. The first columns are the game's; the rest are
 the mode's block: a mode one-hot (all zero in sandbox), the scores by team and the score
-that wins (team deathmatch), the front for the viewer and the front that wins (Frontline).
+that wins (team deathmatch; in elimination the enemy's ships), the front for the viewer
+and the front that wins (Frontline).
 An absent quantity is 0.
 
 <!-- generated: global-columns -->
