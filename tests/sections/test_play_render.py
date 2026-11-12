@@ -281,7 +281,10 @@ def test_fog_darkens_what_the_team_cannot_see(renderer, context):
     assert team[row, column].sum() < spectator[row, column].sum()
     # A team-0 ship's own spot is not fogged.
     seen = int(np.flatnonzero(own)[0])
-    beside = 3 * ring_radius(ships.hit_radius, camera.metres_per_pixel)[seen]
+    # beside it, inside its sight (the real-scale ships' rings are a third of their vision
+    # range, so three ring radii reach the soft edge of the sight and a darker pixel)
+    ring = ring_radius(ships.hit_radius, camera.metres_per_pixel)[seen]
+    beside = min(3 * ring, 0.5 * ships.vision_range[seen])
     row, column = _pixel_of(camera, ships.x[seen] + beside, ships.y[seen])
     assert np.abs(team[row, column] - spectator[row, column]).max() <= 2
 
