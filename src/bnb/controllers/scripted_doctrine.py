@@ -46,9 +46,12 @@ and `in_advantage`, so they fly in the mirrors too; each reads the committed tar
 - **Brake** (overshoot forcing): with the target in the rear hemisphere, its nose on the
   ship (`brake_in_stall_angle`, its stall angles) within `brake_in_gun_range` and closing,
   reverse (the store as a speed brake) while the combat layer turns toward it.
+- **Sense** (the post-merge choice): with the target behind the ship's 3-9 line within
+  `sense_in_gun_range` and turning, turn at full stick in its rotation sense (the
+  two-circle), or against it with `sense_one_circle` above 1/2 (the one-circle).
 
 Each element's weight (`extend`, `slash`, `bleed`, `lag`, `deny`, and the maneuvers'
-`lead_turn`, `yoyo`, `brake`) is 0 by default, as is
+`lead_turn`, `yoyo`, `brake`, `sense`) is 0 by default, as is
 `strength`: the default doctrine is off. A `table` packs one doctrine per ship type (T, D),
 or per view and type (R, T, D); `per_ship` reads each own ship's row.
 
@@ -111,14 +114,34 @@ class Doctrine:
     brake: float = 0.0
     brake_in_stall_angle: Logistic = Logistic(1.5, 0.2, False)
     brake_in_gun_range: Logistic = Logistic(1.0, 0.2, False)
+    sense: float = 0.0
+    sense_one_circle: float = 0.0
+    sense_in_gun_range: Logistic = Logistic(2.0, 0.2, False)
 
 
 NAMES = tuple(field.name for field in dataclasses.fields(Doctrine))
 _DEFAULT = Doctrine()
 # The element weights and the strength, each in [0, 1]; the exponents in [-2, 2].
-WEIGHTS = ("strength", "extend", "slash", "bleed", "lag", "deny", "lead_turn", "yoyo", "brake")
+WEIGHTS = (
+    "strength",
+    "extend",
+    "slash",
+    "bleed",
+    "lag",
+    "deny",
+    "lead_turn",
+    "yoyo",
+    "brake",
+    "sense",
+)
 # The maneuvers' fractions, each in [0, 1] (searched like a weight).
-FRACTIONS = ("lead_turn_stick", "lead_turn_one_circle", "yoyo_ease", "yoyo_low")
+FRACTIONS = (
+    "lead_turn_stick",
+    "lead_turn_one_circle",
+    "yoyo_ease",
+    "yoyo_low",
+    "sense_one_circle",
+)
 EXPONENTS = ("turn_exponent", "climb_exponent", "speed_exponent", "range_exponent")
 # Each logistic's smallest scale (a tenth of a factor e in its quantity, near the combat
 # layer's floors in stall angles).
@@ -137,6 +160,7 @@ SCALE_FLOORS = {
     "lead_turn_in_crossing": 0.1,
     "brake_in_stall_angle": 0.158,
     "brake_in_gun_range": 0.1,
+    "sense_in_gun_range": 0.1,
 }
 
 

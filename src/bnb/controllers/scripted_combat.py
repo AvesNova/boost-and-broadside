@@ -41,6 +41,7 @@ STALEMATE_IN_GUN_RANGES = 4.0
 GAINED_NOSE_IN_STALL_ANGLES = 1.0
 GAINED_OFF_ITS_NOSE_IN_STALL_ANGLES = 2.0
 STICK_MAGNITUDES = (0.0, 0.4, 0.75, 1.0)  # bnb.game.rules.STICK_LEVELS by level
+TURNING_RATE = 0.05  # rad/s: a nose rate below this is not a turn (the sense maneuver)
 
 
 class Marginals(NamedTuple):
@@ -507,7 +508,7 @@ def maneuvers(
     power: torch.Tensor,
 ):
     """The doctrine's maneuvers (`bnb.controllers.scripted_doctrine`: the lead turn, the
-    yo-yo and the brake) on the combat layer's stick, committed side and power; with the
+    yo-yo, the brake and the sense) on the combat layer's stick, committed side and power; with the
     stalemate clock and the yo-yo's clock after this decision (advanced only when the plan
     choices may switch, so a re-read carry gives the same marginals; reset on a fresh ship).
     Returns (stick, left, power, stalemate_seconds, yoyo_seconds)."""
@@ -613,6 +614,19 @@ def maneuvers(
         0.0,
     )
     power = power + braking[..., None] * (reverse - power)
+
+    # Sense: after the merge, the turn's rotation sense against the target's.
+    target_rate = target_of(column(fleet.enemy, "nose_rate"))
+    seen = target_of(fleet.enemy_seen.float()) > 0.5
+    sensing = torch.where(
+        has_target & seen & (bearing.abs() > 0.5 * math.pi) & (target_rate.abs() > TURNING_RATE),
+        doctrine.sense
+        * logistic(distance / fleet.gun_range, doctrine.sense_in_gun_range, temperature),
+        0.0,
+    )
+    sense_left = (target_rate > 0.0) ^ (doctrine.sense_one_circle > 0.5)
+    stick = stick + sensing[..., None] * (commanded_stick(sense_left, 1.0) - stick)
+    left = torch.where(sensing > 0.5, sense_left, left)
     return stick, left, power, stalemate, clock
 
 

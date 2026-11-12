@@ -320,3 +320,16 @@ def test_a_brake_reverses_with_a_closing_target_on_the_tail():
     obs = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, absent(STIFF)])
     assert float(_decide(obs).power[0, 0, 2]) < 0.5
     assert float(_decide(obs, _every_type(brake)).power[0, 0, 2]) > 0.9
+
+
+def test_the_sense_turns_with_or_against_the_targets_rotation_after_the_merge():
+    """A target just passed (behind, its tail to the ship's tail) turning left: the
+    two-circle sense turns left (with its rotation), the one-circle sense right."""
+    distance = 0.5 * value("gun_range", STIFF)
+    enemy = ship(x=-distance, y=-30.0, heading=math.pi, ship_type=STIFF, team_relative=1)
+    enemy[SHIP["nose_rate"]] = 0.3
+    obs = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, absent(STIFF)])
+    two = _decide(obs, _every_type(Doctrine(sense=1.0)))
+    one = _decide(obs, _every_type(Doctrine(sense=1.0, sense_one_circle=1.0)))
+    assert float(two.stick[0, 0, 6]) > 0.9
+    assert float(one.stick[0, 0, 5]) > 0.9
