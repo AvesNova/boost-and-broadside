@@ -467,3 +467,97 @@ The author's paths 3 and 6, plus scripted parameters near the joust. 512 games; 
   1v1 from 0.76 to 0.64 with life 255 s (in band), and 5v5 JJ from 0.08 to 0.04.
 - Path run 4 (running 21:05, ETA 21:25 (worst 21:35)) refines C and D (Yongma range and
   shield for D's crowds; damage and shield for C's duel) with both mirrors and strength.
+
+## 21:05-21:13 KST: path run 4 (`paths4/`): C and D refined; 20v20 spot check
+
+512 games, E v T, both mirrors (1v1 mutual head-on kill share and life), strength (5v5
+against r9, mixed / reversed):
+
+| Card | 1v1 | 2v2 | 5v5 | 10v10 | JJ 1v1 | YY 1v1 | v r9 |
+|---|---|---|---|---|---|---|---|
+| A (reference) | 0.49 | 0.48 | 0.61 | 0.47 | 0.76, 144 s | 0.48, 219 s | 0.50 / 0.48 |
+| **D**: A + both head-on fractions x0.5, Y damage x1.1, Y bullet life x0.75 | **0.51** | **0.50** | **0.58** | **0.54** | **0.66, 262 s** | **0.21**, 482 s | 0.51 / 0.54 |
+| D: A + both fractions x0.5, Y damage x1.1, Y shield x0.45 | 0.52 | 0.47 | 0.59 | 0.49 | 0.67, 253 s | 0.25, 342 s | 0.53 / 0.46 |
+| D: A + both fractions x0.5, Y damage x1.15, Y bullet life x0.7 | 0.52 | 0.54 | 0.59 | 0.51 | 0.65, 253 s | 0.17, 455 s | 0.49 / 0.50 |
+| C: J1.5 Js x0.8 \| Ys x0.4, Yd x1.6, Yb x0.45 | 0.33 | 0.48 | 0.60 | 0.45 | 0.78, 116 s | 0.65, 195 s | 0.50 / 0.53 |
+| **C**: J1.5 Js x0.8 \| Ys x0.45, Yd x1.6, Yb x0.45 | **0.41** | **0.53** | 0.64 | **0.51** | 0.77, 115 s | 0.62, 203 s | 0.51 / 0.53 |
+| C: J1.5 Js x0.75 \| Ys x0.4, Yd x1.6, Yb x0.45 | 0.37 | 0.49 | 0.62 | 0.47 | 0.77, 110 s | 0.66, 190 s | 0.47 / 0.50 |
+
+20v20 spot check (256 games): D 0.10, C 0.07, the same Jujak lean as every card (frozen
+0.19, A 0.12, B 0.27). A diagnosis is running (`diag20/`: the frozen card at 20v20 in the
+10v10 arena, without fog, and in 600 s games).
+
+## The playtest set (opt-in maps; the play default stays the frozen card)
+
+Each candidate is a saved project map: the real-scale deathmatch game with the
+candidate's Yongma and Jujak card fields as the map's tuning
+(`src/bnb/game/maps/balance-*.json`, written by `make_map.py`). The ship files are
+untouched, and all four candidates fly r9's doctrines and parameters, so the scripted
+agent is the same everywhere. Ship files in handle form for A and B are in `cards/A/` and
+`cards/B/` (the variant's flown handles; the Jujak re-solve does not converge, so its
+[card] is the variant card itself).
+
+| | A (fallback) | B | C | D |
+|---|---|---|---|---|
+| Launch | `bnb play --preset balance-a` | `--preset balance-b` | `--preset balance-c` | `--preset balance-d` |
+| Card (factors on the frozen card) | J induced drag x1.6; Y shield x0.5, bullet life x0.85 | J induced x1.5, shield x0.75; Y shield x0.35, damage x1.4, bullet life x0.85 | J induced x1.5, shield x0.8; Y shield x0.45, damage x1.6, bullet life x0.45 | A + head-on fraction x0.5 on both; Y damage x1.1, bullet life x0.75 |
+| Balanced through | energy (Jujak bleeds) and Yongma's toughness | damage and shield | range: a short-ranged heavy-hitting Yongma | head-on mechanics on top of A |
+| Sustained turn Y / J (rad/s) | 0.241 / **0.232** | 0.241 / 0.242 | 0.241 / 0.242 | 0.241 / **0.232** |
+| Cruise Y / J (m/s); top | 167 / 132; 422 / 348 | 167 / 139; 422 / 349 | 167 / 139; 422 / 349 | 167 / 132; 422 / 348 |
+| Shield Y / J; hit damage Y / J | 71 / 80; 3.34 / 2.67 | 50 / 60; 4.68 / 2.67 | 64 / 64; 5.35 / 2.67 | 71 / 80; 3.68 / 2.67 |
+| Gun range Y / J (m) | 536 / 594 | 536 / 598 | **286** / 598 | 483 / 594 |
+| E v T 1v1 / 2v2 / 5v5 / 10v10 | **0.50 / 0.47 / 0.57 / 0.47** | 0.43 / 0.57 / **0.76 / 0.75** | 0.41 / 0.53 / **0.64** / 0.51 | **0.51 / 0.50 / 0.58 / 0.54** |
+| 20v20 | 0.12 | 0.27 | 0.07 | 0.10 |
+| Strength v r9 (5v5) | 0.49 / 0.51 | 0.49 / 0.47 | 0.51 / 0.53 | 0.51 / 0.54 |
+| Mixed 1v1 kills m / o / f / t | 0.43 / 0.50 / 0.07 / 0 | 0.59 / 0.33 / 0.08 / 0 | 0.54 / 0.36 / 0.10 / 0 | **0.17** / 0.74 / 0.08 / 0 |
+| JJ 1v1 mutual, life | 0.76, 144 s | 0.78, 110 s | 0.77, 115 s | **0.66, 262 s** |
+| YY 1v1 mutual, life | 0.51, 207 s | 0.65, 130 s | 0.62, 203 s | **0.21**, 482 s |
+| Merges a kill, mixed 1v1 (mean / median / first-pass / p90) | 2.6 / 2 / 0.43 / 7 | 1.2 / 1 / 0.79 / 3 | 2.1 / 1 / 0.58 / 6 | **3.6 / 3 / 0.28 / 8** |
+| Life s (1v1-10v10, all lineups) | 91-224 | 81-130 | 86-203 | 96-308; YY 1v1 482 |
+| Kills/min/ship; trades | 0.26-0.59; 0-0.11 | 0.43-0.66; 0.02-0.14 | 0.28-0.63; 0.01-0.13 | 0.12-0.57; 0-0.10 |
+| Source (games) | `final/` 1024 | `final/` 1024 | `paths4/` 512 | `paths4/` 512 |
+
+How each plays:
+
+- **A, the fallback (energy).** The Jujak keeps the tighter instantaneous turn (corner 125
+  against 144 m/s, lift +34%), but it bleeds: below corner speed it cannot hold a turn, and
+  it cruises at 132 m/s. The Yongma is faster everywhere and now holds the better sustained
+  turn, at half its old shield. In a duel the Yongma takes wider, faster loops and meets
+  the Jujak nose to nose. Mixed duels are jousts with some turning (2.3 circles a ship),
+  and the Jujak mirror is loop-and-joust (`images/A-1v1-evt-2.png`,
+  `images/A-1v1-jj-1.png`). The archetype is inverted in sustained turn.
+- **B (damage and shield).** The Jujak keeps a hair of sustained edge (0.242 against 0.241)
+  and the Yongma becomes a glass cannon (shield 50, damage x1.4). Duels are short
+  head-on trades (1.2 merges a kill, 79% first-pass), and in crowds the Yongma's damage
+  wins (5v5 0.76). Fast, lethal, jousty (`images/B-1v1-evt-0.png`). Out of band in crowds.
+- **C (range).** The same Jujak as B; the Yongma is a short-ranged brawler (286 m, damage
+  x1.6, shield 64). It must close inside the Jujak's guns to hurt it; the duels are
+  two-circle fights ending nose to nose (8 circles in `images/C-1v1-evt-0.png`). Near the
+  band except 1v1 (0.41) and 5v5 (0.64): the duel and the crowd pull its numbers apart.
+- **D (head-on).** A's ships with half the frontal fraction on both (a nose-on hit does
+  15% damage, not 30%) and a slightly harder-hitting, shorter-ranged Yongma. The joust
+  stops paying, so duels go round: 3.6 merges a kill (median 3, first-pass 0.28, p90 8),
+  mixed 1v1 mutual head-on 0.17, JJ 0.66. The fights are long turning fights, some up to
+  11 circles (`images/D-1v1-evt-0.png`), and the Yongma mirror's life is 482 s. **D is the
+  only candidate that meets the balance and moves the fight shape**, at the cost of A's
+  inverted sustained turn and long duels.
+
+**Ranking of the paths** (what moved what):
+
+1. **Jujak's energy bleed** (induced drag): the only lever that moves the duel much more than
+   the crowd (3.6:1). The duel flips at sustained-turn parity (x1.45-1.6).
+2. **Yongma's shield**: crowd-only, which makes it the counterweight to anything that
+   helps the Yongma's duel.
+3. **Head-on fraction (both types)**: halves the joust's pay. Mixed duel mutual kills
+   0.43 to 0.17 and JJ 0.76 to 0.66 in D, at no strength cost; mirror life rises.
+4. **Yongma's range** (bullet life): mostly a crowd lever (5v5 -0.1 to -0.15 for x0.5-0.6).
+5. **Damage and Jujak shield**: duel-weighted only 2:1, so they spill into the crowds.
+6. **The deny element**: ends the joust (0.02), but costs about 150 Elo at every weight that
+   matters.
+7. **No effect, or harmful**: top-end speed and engine (they widen the Yongma's circles and
+   lose the duel), extension doctrines (tail-shot in teams), fire discipline (costs
+   strength), aim cone, side commit, aggression, lead cap, head-on angle.
+
+None of the candidates keeps Jujak's sustained edge *and* holds 0.42-0.58 at every size:
+B and C come closest and lean Yongma at 5v5. Every card fails 20v20 (0.07-0.27), frozen
+included.

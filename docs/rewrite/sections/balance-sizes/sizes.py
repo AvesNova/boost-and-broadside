@@ -94,6 +94,8 @@ def main() -> None:
     parser.add_argument(
         "--versus", default=None, help="also each candidate against this player, mixed, 5v5"
     )
+    parser.add_argument("--arena-scale", type=float, default=1.0, help="off the density rule")
+    parser.add_argument("--fog", type=int, default=1)
     args = parser.parse_args()
     started = time.time()
     candidates = json.loads((HERE / args.candidates).read_text())
@@ -114,7 +116,14 @@ def main() -> None:
     log = lambda line: print(line, flush=True)  # noqa: E731
     for size in args.sizes:
         B = ENVIRONMENTS[size]
-        loop = Loop(B, K, args.seconds, ships_per_team=size)
+        loop = Loop(
+            B,
+            K,
+            args.seconds,
+            ships_per_team=size,
+            fog=bool(args.fog),
+            arena_scale=args.arena_scale,
+        )
         loop.set_types(energy, turn)
         if size == args.sizes[0]:
             result["card_passes"] = card_passes(loop)

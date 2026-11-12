@@ -1,0 +1,26 @@
+{
+  "game": {
+    "ships_per_team": 5,
+    "num_fields": 10,
+    "arena_radius": 7800.0,
+    "episode_seconds": 600.0,
+    "respawn_seconds": 10.0,
+    "mode": "team_deathmatch",
+    "spawn_groups": [],
+    "kills_per_ship": 5,
+    "ship_set": "real-scale",
+    "layout": null
+  },
+  "lineup": null,
+  "ships": {
+    "yongma": {
+      "max_shield": 63.8770866394043,
+      "hit_damage": 5.348430156707764,
+      "bullet_life": 0.3149999976158142
+    },
+    "jujak": {
+      "max_shield": 63.74116897583008,
+      "induced_drag_scale": 3.8741421699523926
+    }
+  }
+}

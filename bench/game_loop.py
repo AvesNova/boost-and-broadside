@@ -342,11 +342,13 @@ class Loop:
         compiled: bool = True,
         ships_per_team: int = 5,
         fog: bool = True,
+        arena_scale: float = 1.0,
     ) -> None:
         self.device = torch.device(device)
         base_game = api.PRESETS[PRESET]
         # the fleet presets' density rule: the arena radius grows as sqrt(n / 5)
         radius = base_game.arena_radius * math.sqrt(ships_per_team / base_game.ships_per_team)
+        radius *= arena_scale  # a diagnostic: the arena off the density rule
         game = dataclasses.replace(
             base_game,
             ships_per_team=ships_per_team,
