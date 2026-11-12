@@ -624,3 +624,26 @@ def test_v1s_entropy_bonus_outweighs_the_clones_policy_gradient_on_shooting():
     assert after > before
     before, after = _shoot_share_after_a_step(WARM_START_ENTROPY)
     assert after < before
+
+
+def test_the_drift_never_unrolls_more_views_than_a_micro_batch(segment):
+    """The drift's sample is the update's first micro-batch: with minibatches smaller than
+    micro_views it is the first minibatch's micro-batch, never micro_views views."""
+    net, runner, _, prepared = segment
+    views = runner.store.views
+    learner = lc.learner(net, runner, minibatches=views)  # one view per minibatch
+    assert learner.micro_views >= views > 1
+    assert learner.first_micro_batch(views) == 1
+    seen = []
+    unroll = learner.unroll
+
+    def recorded(trajectory):
+        seen.append(trajectory.alive.shape[1])
+        return unroll(trajectory)
+
+    learner.unroll = recorded
+    learner.drift(runner.store, prepared)
+    assert seen == [1]
+    # the 5090's BC: 12 288 views in 256 minibatches of 48, at 2560 rows (256 views)
+    learner = lc.with_micro_batch(lc.learner(net, runner, minibatches=256), 256)
+    assert learner.first_micro_batch(12288) == 48

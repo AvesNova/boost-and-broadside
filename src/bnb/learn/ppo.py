@@ -897,6 +897,12 @@ class Learner:
         minibatches = self.config.minibatches
         return tuple(sorted({views // minibatches, -(-views // minibatches)} - {0}))
 
+    def first_micro_batch(self, views: int) -> int:
+        """The views of an update's first micro-batch over `views` views (the first
+        minibatch's first, `update`'s split): what the drift unrolls."""
+        sizes = self.minibatch_sizes(views)
+        return micro_batch_sizes(max(sizes), self.micro_views, sizes)[0]
+
     def micro_batch_shapes(self, views: int, cadence: bool = False) -> tuple[int, ...]:
         """The micro-batch sizes an update over `views` views runs its loss on (with
         `cadence`, also those of the cadence's gradient decomposition, the first minibatch
@@ -1492,8 +1498,11 @@ class Learner:
     def drift(self, segments: Segments, prepared: dict) -> torch.Tensor:
         """(2,): the step/unroll ratio drift before any optimizer step, on the first
         micro-batch of views: |exp(log_probability_unroll - log_probability_rollout) - 1|
-        over living own ships, max and mean (0 without any)."""
-        views = torch.arange(min(self.micro_views, segments.views))
+        over living own ships, max and mean (0 without any). The micro-batch's views are
+        `first_micro_batch`'s: never more than a loss micro-batch holds (an eager unroll of
+        `micro_views` views, when the minibatches are smaller, cost memory and time the
+        update never otherwise needs)."""
+        views = torch.arange(self.first_micro_batch(segments.views))
         # The loop runs the store's generator out: it releases the batch's staging buffers
         # for reuse only once the compute below is queued (an abandoned generator never does).
         for batch in segments.batches(segments.names, [views]):
