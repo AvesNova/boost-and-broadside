@@ -533,6 +533,59 @@ def mirror_study_4() -> list[dict]:
 ROUNDS["mirror4"] = mirror_study_4
 
 
+KIT = (0.9, 0.08, 2.5)  # mirror study 4's pick: sight x0.9, cone f0 0.08, damage x2.5
+
+
+def round5() -> list[dict]:
+    """Refinements of round 4's live pairs (scout v brawler, sniper v shotgun, slasher v
+    dogfighter, gunner v brawler), each also with the mirror kit on both ships."""
+    out = []
+
+    def add(name, a, b, with_kit=False):
+        out.append(pair(name, ("M", a), ("M", b)))
+        if with_kit:
+            out.append(pair(name + ", kit", ("M", merge(a, kit(*KIT))), ("M", merge(b, kit(*KIT)))))
+
+    for sv, bv, bd, k in (
+        (1.15, 0.85, 1.1, True),
+        (1.1, 0.85, 1.1, False),
+        (1.2, 0.85, 1.0, False),
+        (1.15, 0.9, 1.1, True),
+    ):
+        add(
+            f"scout v brawler (M), S vision x{sv:g}, B vision x{bv:g} dmg x{bd:g}",
+            {"vision_range_scale": sv},
+            {"vision_range_scale": bv, "hit_damage": bd},
+            k,
+        )
+    for si, sd in ((0.85, 0.9), (0.9, 1.0)):
+        add(
+            f"sniper v shotgun (M), sniper induced x{si:g} dmg x{sd:g}",
+            merge(SNIPER, {"induced_drag_scale": si, "hit_damage": sd}),
+            SHOTGUN,
+            True,
+        )
+    for si, ssh in ((0.8, 0.55), (0.85, 0.65)):
+        add(
+            f"slasher v dogfighter (M), S induced x{si:g} shield x{ssh:g}",
+            merge(SLASHER, {"induced_drag_scale": si, "max_shield": ssh}),
+            DOGFIGHTER,
+            True,
+        )
+    for gi in (0.92, 0.95):
+        add(
+            f"gunner v brawler (M), G dmg x0.9 induced x{gi:g} vision x1.25, B dmg x1.2",
+            merge(
+                GUNNER, {"hit_damage": 0.9, "induced_drag_scale": gi, "vision_range_scale": 1.25}
+            ),
+            merge(BRAWLER, {"hit_damage": 1.2}),
+        )
+    return out
+
+
+ROUNDS["round5"] = round5
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"

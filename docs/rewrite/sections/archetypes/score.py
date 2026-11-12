@@ -138,7 +138,7 @@ def table(rows: list[dict]) -> str:
         "| Candidate | A v B "
         + " / ".join(f"{s}v{s}" for s in sizes)
         + " | Worst | AA 1v1 mutual, life; merges m / med / p90; H | BB 1v1 | A v B 1v1 kills "
-        "m / o / f / t; merges; H | 5v5 kills m / o / f / t | Life s | Kills/min/ship "
+        "m / o / f / t; merges; H; life | 5v5 kills m / o / f / t | Life s | Kills/min/ship "
         "| Trades | v r9 | Badness |",
         "|---" * 12 + "|",
     ]
@@ -151,6 +151,7 @@ def table(rows: list[dict]) -> str:
             ab_text = (
                 " / ".join(f"{v:.2f}" for v in ab["kills"])
                 + f"; {mean:.1f} / {'-' if median is None else round(median)}{ent}"
+                + f"; {ab['life']:.0f} s"
             )
         five = " / ".join(f"{v:.2f}" for v in r["AB5_kills"]) if r.get("AB5_kills") else ""
         lines.append(

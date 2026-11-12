@@ -1,0 +1,1768 @@
+[
+ {
+  "name": "scout v brawler (M), S vision x1.15, B vision x0.85 dmg x1.1",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 2.9889793602963097
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 1.15
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 3.287877296325941
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.85
+  }
+ },
+ {
+  "name": "scout v brawler (M), S vision x1.15, B vision x0.85 dmg x1.1, kit",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 7.472448400740774
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 1.035,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 8.219693240814852
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.765,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "scout v brawler (M), S vision x1.1, B vision x0.85 dmg x1.1",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 2.9889793602963097
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 1.1
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 3.287877296325941
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.85
+  }
+ },
+ {
+  "name": "scout v brawler (M), S vision x1.2, B vision x0.85 dmg x1",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 2.9889793602963097
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 1.2
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 2.9889793602963097
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.85
+  }
+ },
+ {
+  "name": "scout v brawler (M), S vision x1.15, B vision x0.9 dmg x1.1",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 2.9889793602963097
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 1.15
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 3.287877296325941
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.9
+  }
+ },
+ {
+  "name": "scout v brawler (M), S vision x1.15, B vision x0.9 dmg x1.1, kit",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 7.472448400740774
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 1.035,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 8.219693240814852
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.81,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "sniper v shotgun (M), sniper induced x0.85 dmg x0.9",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 2.5862041885181477
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 5.380162848533358
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "bullet_spread_scale": 0.3,
+   "fire_rate": {
+    "set": 7.5
+   },
+   "bullet_energy_cost": 2.0,
+   "bullet_life": 1.4
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 1.7933876161777857
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "bullet_spread_scale": 3.0,
+   "fire_rate": {
+    "set": 30.0
+   },
+   "bullet_energy_cost": 0.5,
+   "bullet_life": 0.6
+  }
+ },
+ {
+  "name": "sniper v shotgun (M), sniper induced x0.85 dmg x0.9, kit",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 2.5862041885181477
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 13.450407121333393
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "bullet_spread_scale": 0.3,
+   "fire_rate": {
+    "set": 7.5
+   },
+   "bullet_energy_cost": 2.0,
+   "bullet_life": 1.4,
+   "vision_range_scale": 0.9,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 4.483469040444465
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "bullet_spread_scale": 3.0,
+   "fire_rate": {
+    "set": 30.0
+   },
+   "bullet_energy_cost": 0.5,
+   "bullet_life": 0.6,
+   "vision_range_scale": 0.9,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "sniper v shotgun (M), sniper induced x0.9 dmg x1",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 2.738333846666274
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 5.9779587205926195
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "bullet_spread_scale": 0.3,
+   "fire_rate": {
+    "set": 7.5
+   },
+   "bullet_energy_cost": 2.0,
+   "bullet_life": 1.4
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 1.7933876161777857
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "bullet_spread_scale": 3.0,
+   "fire_rate": {
+    "set": 30.0
+   },
+   "bullet_energy_cost": 0.5,
+   "bullet_life": 0.6
+  }
+ },
+ {
+  "name": "sniper v shotgun (M), sniper induced x0.9 dmg x1, kit",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 2.738333846666274
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 14.944896801481548
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "bullet_spread_scale": 0.3,
+   "fire_rate": {
+    "set": 7.5
+   },
+   "bullet_energy_cost": 2.0,
+   "bullet_life": 1.4,
+   "vision_range_scale": 0.9,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 4.483469040444465
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "bullet_spread_scale": 3.0,
+   "fire_rate": {
+    "set": 30.0
+   },
+   "bullet_energy_cost": 0.5,
+   "bullet_life": 0.6,
+   "vision_range_scale": 0.9,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "slasher v dogfighter (M), S induced x0.8 shield x0.55",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.004173235275684914
+   },
+   "zero_lift_drag": {
+    "set": 3.97363185895378e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 2.4340745303700215
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 58.49166696681808
+   },
+   "hit_damage": {
+    "set": 5.9779587205926195
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "fire_rate": {
+    "set": 7.5
+   },
+   "bullet_energy_cost": 2.0
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.005400657415592242
+   },
+   "zero_lift_drag": {
+    "set": 5.463743806061448e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 1.4944896801481549
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "fire_rate": {
+    "set": 30.0
+   },
+   "bullet_energy_cost": 0.5
+  }
+ },
+ {
+  "name": "slasher v dogfighter (M), S induced x0.8 shield x0.55, kit",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.004173235275684914
+   },
+   "zero_lift_drag": {
+    "set": 3.97363185895378e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 2.4340745303700215
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 58.49166696681808
+   },
+   "hit_damage": {
+    "set": 14.944896801481548
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "fire_rate": {
+    "set": 7.5
+   },
+   "bullet_energy_cost": 2.0,
+   "vision_range_scale": 0.9,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.005400657415592242
+   },
+   "zero_lift_drag": {
+    "set": 5.463743806061448e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 3.736224200370387
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "fire_rate": {
+    "set": 30.0
+   },
+   "bullet_energy_cost": 0.5,
+   "vision_range_scale": 0.9,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "slasher v dogfighter (M), S induced x0.85 shield x0.65",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.004173235275684914
+   },
+   "zero_lift_drag": {
+    "set": 3.97363185895378e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 2.5862041885181477
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 69.12651550623954
+   },
+   "hit_damage": {
+    "set": 5.9779587205926195
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "fire_rate": {
+    "set": 7.5
+   },
+   "bullet_energy_cost": 2.0
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.005400657415592242
+   },
+   "zero_lift_drag": {
+    "set": 5.463743806061448e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 1.4944896801481549
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "fire_rate": {
+    "set": 30.0
+   },
+   "bullet_energy_cost": 0.5
+  }
+ },
+ {
+  "name": "slasher v dogfighter (M), S induced x0.85 shield x0.65, kit",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.004173235275684914
+   },
+   "zero_lift_drag": {
+    "set": 3.97363185895378e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 2.5862041885181477
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 69.12651550623954
+   },
+   "hit_damage": {
+    "set": 14.944896801481548
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "fire_rate": {
+    "set": 7.5
+   },
+   "bullet_energy_cost": 2.0,
+   "vision_range_scale": 0.9,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.005400657415592242
+   },
+   "zero_lift_drag": {
+    "set": 5.463743806061448e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 3.736224200370387
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "fire_rate": {
+    "set": 30.0
+   },
+   "bullet_energy_cost": 0.5,
+   "vision_range_scale": 0.9,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  }
+ },
+ {
+  "name": "gunner v brawler (M), G dmg x0.9 induced x0.92 vision x1.25, B dmg x1.2",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 2.7991857099255246
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 2.690081424266679
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "bullet_life": 1.6,
+   "vision_range_scale": 1.25
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 3.5867752323555715
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "bullet_life": 0.5
+  }
+ },
+ {
+  "name": "gunner v brawler (M), G dmg x0.9 induced x0.95 vision x1.25, B dmg x1.2",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 2.8904635048144
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 2.690081424266679
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "bullet_life": 1.6,
+   "vision_range_scale": 1.25
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 3.5867752323555715
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 10.000000121726089
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "bullet_life": 0.5
+  }
+ }
+]
