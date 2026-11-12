@@ -28,3 +28,6 @@ Branch `calib/overnight` (from `perf/steady-speed`). Hard stop 08:30 KST, 2026-1
 
 - 23:47 Started. Worktree `/home/vizia/avesnova/bnb-calib`; box repo and venv set up on
   `/workspace/calib` (gpubox4, niced, during the speed agent's run).
+- 00:25 Change of allocation (coordinator): gpubox4 only (gpubox7 goes to ship experiments).
+  BC arms in sequence, priority 256, 64, 32, 128; budget 30M each (a budget-stopped BC run
+  resumes with a larger one if time allows); RL forks only if the BC arms finish early.

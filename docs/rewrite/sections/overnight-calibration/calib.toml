@@ -15,17 +15,17 @@ set = [
   "learner.trace_decay=[0.99, 0.99, 0.99, 0.99, 0.99]",
 ]
 
-# BC only, after launch.toml's bc_set (later lines win): the budget capped at 40M, the
+# BC only, after launch.toml's bc_set (later lines win): the budget capped at 30M (one box, four arms in sequence), the
 # plateau stop off (the full curve is seen; the rule is replayed offline by plateau.py),
 # and 24 views per micro-batch (240 rows of 10 ships), the most a 16 GB card holds: every
 # arm's minibatch (24, 48, 96, 192 views) is then whole micro-batches of 24 views, one
 # compiled shape for all four arms.
 bc_set = [
-  "stop.budget_steps=40000000",
+  "stop.budget_steps=30000000",
   "stop.plateau_fraction=null",
   "learner.micro_batch_rows=240",
 ]
-bc_train = ["--bc-budget-steps", "40000000"]
+bc_train = ["--bc-budget-steps", "30000000"]
 
 # RL only: 32 views per micro-batch (320 rows), the steady-speed agent's RL size on this card
 rl_set = ["learner.micro_batch_rows=320"]
