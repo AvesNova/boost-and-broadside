@@ -199,3 +199,60 @@ choice entropy H:
   4866 s, 0.01 kills a minute): not followed.
 - Round 4 (running) adds the sustained turn as the duel lever (the brawler's or shotgun's
   induced drag up, or the gunner's down) and sight as the gunner's.
+
+## 01:10-01:19 KST: mirror studies 3-4 (`mirror3/`, `mirror4/`): the mirror kit
+
+The neutral ship M against itself (both 1v1 mirror slots, 512 games), with short sight, the
+12-degree p8 armour cone at f0, and damage:
+
+| M + | AA mutual, life; merges m / med / p90 | BB mutual, life | A v B kills m / o / f / t |
+|---|---|---|---|
+| nothing | 0.66, 262 s; 3.2 / 3 / 6 | 0.65, 236 s | 0.66 / 0.31 / 0.03 / 0 |
+| cone 0.15, dmg x2 | 0.59, 208 s | 0.58, 196 s | 0.58 / 0.36 / 0.06 / 0 |
+| cone 0.1, dmg x2 | 0.38, 349 s; 3.4 / 2 / 9 | 0.35, 286 s | 0.38 / 0.53 / 0.08 / 0 |
+| cone 0.07, dmg x2.5 | 0.20, 370 s; 3.0 / 2 / 8 | 0.22, 362 s | 0.19 / 0.70 / 0.12 / 0 |
+| vision x0.9, cone 0.1, dmg x2 | 0.26, 386 s | 0.32, 333 s | 0.30 / 0.59 / 0.10 / 0 |
+| vision x0.9, cone 0.1, dmg x2.5 | 0.34, 273 s; 2.7 / 1 / 7 | 0.41, 273 s | 0.41 / 0.45 / 0.13 / 0 |
+| **vision x0.9, cone 0.08, dmg x2.5** | **0.25, 376 s; 3.0 / 2 / 8** | **0.29, 315 s** | 0.29 / 0.56 / 0.14 / 0 |
+| vision x0.85, cone 0.08, dmg x3 | 0.29, 331 s; 2.6 / 1 / 7 | 0.31, 300 s | 0.31 / 0.52 / 0.17 / 0 |
+| vision x0.8, cone 0.1, dmg x2 | 0.09, 664 s | 0.10, 690 s | 0.08 / 0.66 / 0.26 / 0 |
+| D2 + vision x0.9, cone 0.1, dmg x2 | 0.28, 415 s | 0.57, 195 s | 0.13 / 0.73 / 0.14 / 0 |
+
+- **On the neutral ship the cone and short sight move the joust-pace curve, not just slide
+  along it**: at ~300-330 s the M mirror is 0.29-0.31 mutual head-on (D2's Jujak mirror on
+  the cone alone: 0.45 at 288 s), with a tenth to a sixth of the kills from the flank and 3
+  merges a kill (p90 7-8). This is the **mirror kit** (vision x0.9, cone f0 0.08 12° p8,
+  damage x2.5) carried into round 5.
+- **The D2 Jujak mirror resists every kit** (0.57-0.66): the bleeding rate fighter jousts
+  whatever its armour. The Yongma mirror takes it (0.26-0.36).
+
+## 01:10-01:18 KST: round 4 (`round4/`): two levers a pair
+
+512 games (10v10 256). A v B by size, and the A v B duel's kills and life:
+
+| Pair | A v B 1v1 / 2v2 / 5v5 / 10v10 | A v B 1v1 kills m / o / f / t; life | AA; BB mutual, life |
+|---|---|---|---|
+| gunner (dmg x0.9, induced x0.85) v brawler (dmg x1.2) | 0.50 / 0.50 / 0.48 / 0.49 | 0.45 / 0.40 / 0.15 / 0; **4866 s** | 0.76, 298 s; 0.65, 378 s |
+| gunner (dmg x0.9) v brawler (dmg x1.2, induced x1.25) | 0.63 / 0.43 / 0.35 / 0.27 | 0.16 / 0.05 / 0.79 / 0; 1276 s | |
+| gunner (dmg x0.9) v brawler (dmg x1.2, induced x1.45) | 0.16 / 0.05 / 0.00 / 0.00 | | |
+| gunner (dmg x0.9, vision x1.25) v brawler (dmg x1.2) | 0.28 / 0.52 / 0.59 / 0.57 | 0.60 / 0.38 / 0.02 / 0; 196 s | 0.89, 166 s; 0.66, 387 s |
+| sniper (induced x0.85) v shotgun | 0.67 / 0.54 / 0.53 / 0.58 | 0.34 / 0.36 / 0.30 / 0; 466 s | 0.71, 262 s; 0.69, 266 s |
+| sniper v shotgun (induced x1.25) | 0.66 / 0.36 / 0.22 / 0.23 | 0.18 / 0.03 / 0.78 / 0.01; 1024 s | |
+| scout (vision x1.2) v brawler (vision x0.85, dmg x1.1) | 0.64 / 0.54 / 0.50 / 0.57 | 0.58 / 0.37 / 0.05 / 0; 249 s | 0.83, 187 s; 0.55, 319 s |
+| scout (vision x1.15) v brawler (dmg x1.15) | 0.52 / 0.40 / 0.38 / 0.36 | 0.71 / 0.27 / 0.03 / 0; 195 s | 0.77, 203 s; 0.69, 195 s |
+| scout (vision x1.3, shield x1.1) v brawler (vision x0.8, dmg x1.15) | 0.76 / 0.62 / 0.58 / 0.65 | 0.41 / 0.45 / 0.13 / 0; 276 s | 0.87, 218 s; 0.38, 543 s |
+| slasher (induced x0.8, shield x0.65) v dogfighter | 0.60 / 0.51 / 0.62 / 0.72 | 0.41 / 0.49 / 0.09 / 0; 506 s | 0.70, 291 s; 0.71, 225 s |
+| slasher (induced x0.7, shield x0.65) v dogfighter | 0.50 / 0.26 / 0.23 / 0.19 | 0.35 / 0.35 / 0.29 / 0; 3521 s | |
+
+- **A flat 0.50 can be a stalemate.** The gunner with the better sustained turn scores
+  0.50 / 0.50 / 0.48 / 0.49, but its duel with the brawler has 0.1 kills a game (life 4866
+  s): the gunner keeps the brawler off and cannot hurt it. The same happens whenever the
+  sustained turns of two different ships come near parity with one side unable to reach the
+  other (slasher induced x0.7, brawler or shotgun induced x1.25: 1000-3500 s duels, flank
+  kills from the turning fight). **The duel lever's middle is a stalemate band**, and the
+  A v B duel's life is now a column of the score table.
+- The sustained turn moves these pairs far and non-linearly (brawler induced x1.25 to x1.45
+  takes the gunner from 0.63 to 0.16 in the duel and from 0.27 to 0.00 at 10v10).
+- **Scout v brawler is the steadiest family**: a 250-280 s duel decided at the merge (kills
+  0.4-0.7 mutual), the band within reach (0.64 / 0.54 / 0.50 / 0.57). Sight is its duel
+  lever, the brawler's damage its crowd lever.
