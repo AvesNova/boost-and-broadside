@@ -1072,3 +1072,15 @@ vision x1.04, dmg x1.05, f0 0.07):
 - The rate mirror's joust falls from 0.48 to 0.35 with the balance unchanged under r9 and CE
   (0.44-0.56); the duel one-circle doctrine tips 10v10-20v20 to the speed fighter (0.37-0.40).
   The play map `arch-rate-speed` now carries this card.
+
+## 05:05-05:10 KST: roster 3 (`roster3/`): set candidates against the standard, 1024 games
+
+| Ship v standard | 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | Its mirror: mutual, life, merges | Duel life |
+|---|---|---|---|
+| armed gunner (arming 100 m, range x1.3, dmg x0.85, vision x1.2) | 0.50 / 0.53 / 0.48 / 0.44 / 0.42 | 0.19, 545 s, 3.3 | 293 s |
+| **close fighter (range x0.8, dmg x1.05)** | **0.53 / 0.49 / 0.51 / 0.54 / 0.53** | 0.28, 352 s, 3.2 | 311 s |
+| rate (lift x1.03, dmg x1.1, f0 0.065) | 0.58 / 0.58 / 0.55 / 0.52 / 0.59 | 0.24, 360 s | 276 s |
+| speed (drag x0.85, vision x1.04, dmg x0.92, f0 0.07) | 0.52 / 0.52 / 0.53 / 0.59 / 0.58 | 0.15, 441 s | 367 s |
+
+- The close fighter is even with the standard at every size; set 8 (running) plays it
+  against the brawler and the small ship.
