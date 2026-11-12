@@ -483,7 +483,8 @@ def status(arguments) -> None:
         name = job.get("run") or " ".join(job["arguments"])[:28]
         if job["kind"] == "ratings" and "--presets" in job["arguments"]:
             out = job["arguments"][job["arguments"].index("--out") + 1]
-            name = "ratings " + pathlib.Path(out).parent.name + "/" + pathlib.Path(out).name
+            shard = pathlib.Path(out).name.removeprefix("real_scale_")
+            name = f"ratings {pathlib.Path(out).parent.name.replace('round-', 'r')} {shard}"
         slot = "-" if job.get("slot") is None else str(job["slot"])
         info = run_progress(runs_directory, job["run"]) if job.get("run") else None
         if not info or "steps" not in info:

@@ -29,6 +29,28 @@ Branch `feat/launch` (from `integrate/next-runs` abcecd53). Worktree
   covariance pack and unpack made their index on the host and copied it in the capture.
   Fixed (made on the device).
 
+## 15:00-15:40 Laptop end-to-end (tiny: 40 environments, uncompiled, budget 400k)
+
+- **Worked:** `check` refuses the placeholder; `probe` stepped BC 1280 (fits) and RL
+  640 -> 160 (out of memory at 640 on the 8 GB GPU), writing `micro_batch.json`; `enqueue`
+  queued two chains (control, geometry x3) and skipped them when run again; the runner
+  (`runner.sh 0` as a user unit) ran job 1. **Killed the unit with SIGKILL** mid-BC (the
+  reboot case): restarted, the runner marked job 1 interrupted and queued it again as a
+  resume of the chain, which went on from its step-0 checkpoint and reproduced the first
+  segment's KL to 4 digits (2.8790, 2.8979, 2.9146 / 2.9147), handed over to RL at the BC
+  cap (163,840) and finished. The tournament round's three ratings jobs (priority 100) went
+  before job 2. `status`, `pull.sh` (local mode: no checkpoints pulled), `replays.py` (a
+  whole elimination match, saved as a replay, `matches.jsonl`) and `reward_check.py` (its
+  flags caught the untrained policy's boundary deaths) work.
+- **Bugs found and fixed:** the probe parsed the peaks line wrong and stepped down on any
+  failure (now only on out-of-memory); replays could not load a mixed batch's policy in
+  elimination (the play shell's game check: now `any_mode`).
+- **Noted:** before the warm-up ends (10M) a BC snapshot has no uniform average, so early
+  tournament fields hold only live policies (the production steps start at 25M).
+- **Hub path (coordinator, 15:30):** `hub.sh` and bootstrap's `hub:NAME` and `hub-sync`;
+  downloads tested against the public repo; uploads need the author's write token on the box
+  (not testable from the laptop: no token here).
+
 ## Next
 
 - The laptop end-to-end: probe, two tiny chains on one slot, a kill and a resume, a
