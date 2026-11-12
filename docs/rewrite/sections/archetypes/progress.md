@@ -256,3 +256,27 @@ The neutral ship M against itself (both 1v1 mirror slots, 512 games), with short
 - **Scout v brawler is the steadiest family**: a 250-280 s duel decided at the merge (kills
   0.4-0.7 mutual), the band within reach (0.64 / 0.54 / 0.50 / 0.57). Sight is its duel
   lever, the brawler's damage its crowd lever.
+
+## 01:21-01:27 KST: screen 1 (`screen1/`): new pair ideas with the mirror kit (1v1, 5v5)
+
+Every ship M plus its factors plus the kit (vision x0.9, cone f0 0.08 12° p8, damage x2.5),
+512 games:
+
+| Pair (A v B) | A v B 1v1 / 5v5 | A v B duel kills m / o / f / t; life | AA mutual, life | BB mutual, life |
+|---|---|---|---|---|
+| interceptor (drag x0.8, engine x1.15, vision x1.2, dmg x0.8) v brawler (drag x1.15, vision x0.85, dmg x1.2) | 0.78 / 0.63 | 0.21 / 0.60 / 0.19 / 0; 317 s | 0.19, 448 s | 0.14, 630 s |
+| **big gun, big target (radius x1.4, dmg x1.4) v small, light (radius x0.75, dmg x0.85)** | **0.52 / 0.50** | 0.30 / 0.56 / 0.14 / 0; 273 s | 0.43, 224 s | 0.16, **512 s** |
+| glass cannon (shield x0.6, dmg x1.5) v steady (shield x1.3, dmg x0.8) | 0.49 / 0.39 | 0.35 / 0.50 / 0.14 / 0; 251 s | 0.51, 170 s | 0.12, 621 s |
+| armed gunner (arming 150 m, dmg x1.4, life x1.3) v close fighter (life x0.8) | 0.44 / 0.66 | 0.25 / 0.60 / 0.15 / 0; 305 s | **0.24, 319 s** | **0.24, 360 s** |
+| armed gunner, dmg x1.2 | 0.44 / 0.57 | 0.23 / 0.61 / 0.15 / 0; 327 s | 0.15, 405 s | 0.24, 415 s |
+| (kit cone over) induced x1.1 v lift x1.1 (the "wide nose" arm: the kit's cone replaced its own) | 0.13 / 0.38 | | 0.25, 320 s | 0.33, 258 s |
+| hungry 30 Hz stream (dmg x0.55, cost x1.5) v efficient 10 Hz bursts (dmg x1.5) | 0.23 / 0.08 | | 0.13, 893 s | 0.37, 292 s |
+| fast recharge (x3 after half the delay, shield x0.85) v big shield (x1.15, recharge x0.5) | 0.45 / 0.38 | | 0.34, 278 s | 0.17, 398 s |
+
+- **Big gun on a big target v a small, light ship is even at both sizes on its first try**
+  (0.52 / 0.50), with a 273 s duel. The small ship's own mirror is long (512 s): a small
+  target and light guns. Round 6 tunes the small ship's damage and size.
+- **The arming distance makes a real archetype as one ship's trait**: the armed gunner
+  (no damage inside 150 m, more damage and range) against a close fighter gives the best
+  mirror shapes seen with kills in band (0.24 / 0.24 mutual at 319 / 360 s), but leans
+  to the gunner in crowds (0.57-0.66) and away in the duel (0.44).
