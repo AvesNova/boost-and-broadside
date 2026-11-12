@@ -187,3 +187,32 @@ a distinctness penalty from r2.
 final measurement (tight error bars, 300 s pace games) 19:15-19:50; freeze and commit by
 ~20:00. Expected stop **~20:00 KST**, later only if a final run is in flight (hard limit
 21:00).
+
+## 2026-11-12 16:02-16:08 KST: round 3 cards (on r2)
+
+`card_round.py --round 3 --player r2` (8 variants, 245 s; `round3/cards.*`):
+
+| Variant | r2 v off kill share (score) | E v T (Yongma) | Kills/min mean (median) | Kills m / o / f / t | Damage m / o / f / t | Passes a kill | First-merge |
+|---|---|---|---|---|---|---|---|
+| s0.5 a0.5 Yx0.5 (round 2) | 0.639 (0.856) | 0.345 ± 0.014 | 6.02 (6.00) | 0.09 / 0.26 / 0.54 / 0.12 | 0.16 / 0.27 / 0.48 / 0.09 | 0.35 | 0.26 |
+| s0.65 | 0.636 (0.853) | 0.326 | 6.09 (6.00) | 0.10 / 0.26 / 0.52 / 0.11 | 0.19 / 0.26 / 0.46 / 0.09 | 0.37 | 0.28 |
+| s0.35 | 0.657 (0.851) | 0.332 | 5.94 (6.00) | 0.07 / 0.26 / 0.55 / 0.12 | 0.12 / 0.27 / 0.51 / 0.10 | 0.33 | 0.24 |
+| a1 | 0.648 (0.850) | 0.330 | 5.67 (6.00) | 0.08 / 0.19 / 0.59 / 0.14 | 0.16 / 0.20 / 0.52 / 0.11 | 0.31 | 0.20 |
+| a0.25 | 0.632 (0.839) | 0.338 | 6.24 (6.50) | 0.10 / 0.30 / 0.49 / 0.11 | 0.16 / 0.30 / 0.45 / 0.09 | 0.38 | 0.31 |
+| Yongma explosive 0 | 0.649 (0.862) | 0.332 | 6.03 (6.00) | 0.09 / 0.26 / 0.54 / 0.12 | 0.16 / 0.27 / 0.48 / 0.09 | 0.35 | 0.26 |
+| damage x 1.25 | 0.631 (0.852) | 0.334 | 6.26 (6.50) | 0.11 / 0.27 / 0.52 / 0.11 | 0.18 / 0.27 / 0.47 / 0.08 | 0.37 | 0.29 |
+| slow bullets | 0.676 (0.887) | 0.291 | 5.67 (5.50) | 0.07 / 0.26 / 0.54 / 0.13 | 0.16 / 0.26 / 0.48 / 0.10 | 0.34 | 0.24 |
+
+- Under r2 the mix is now set by the agent, not the card: every variant gives mutual
+  0.07-0.11, offset 0.19-0.30, flank 0.49-0.59, tail 0.11-0.14 of kills; the cone moves
+  offset against flank (a0.25: 0.30 / 0.49; a1: 0.19 / 0.59).
+- **Energy v turn 0.29-0.35 on every one**: no armour, cone, damage or explosive change
+  rebalances it; r2's shared parameters favour the turn fighter. Round 5 tries
+  type-specific levers (Yongma damage / shield up, Jujak's down).
+- The coordinator's check, the **trade fraction** (deaths with an enemy death within 0.5
+  s), is now in the tick (`deaths`, `traded`; `trade_fraction` in every table from round
+  4 on).
+
+**Round 4** (running, 16:08, ETA ~16:40): the ES from r2 and from hand, with the
+distinctness penalty (0.1 x max(0, 1 - KL / 0.5 nats), KL on 8 snapshots x 4096 views of
+the parent's mixed games), against off, hand, r1, r1-hand, r2.
