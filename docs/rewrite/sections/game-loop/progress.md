@@ -216,3 +216,26 @@ final measurement (tight error bars, 300 s pace games) 19:15-19:50; freeze and c
 **Round 4** (running, 16:08, ETA ~16:40): the ES from r2 and from hand, with the
 distinctness penalty (0.1 x max(0, 1 - KL / 0.5 nats), KL on 8 snapshots x 4096 views of
 the parent's mixed games), against off, hand, r1, r1-hand, r2.
+
+## 2026-11-12 16:08-16:32 KST: round 4 (ES with the distinctness penalty)
+
+Same card as round 2. ES from r2 and from hand, doctrines + parameters, the distinctness
+penalty (floor 0.5 nats, weight 0.1 kill share), against off, hand, r1, r1-hand, r2.
+
+- From r2: KL 0.000 -> 0.65 in 5 generations while the kill share rose 0.532 -> 0.652
+  (penalised; r2 itself scores 0.532 penalised = 0.632 raw). Then probation kept failing
+  and the step halved to nothing (fixed for later rounds: a passed probation grows the
+  step 1.5x). From hand: KL 3.37 -> 0.24, kill share 0.28 -> 0.44: far behind.
+- **Elo** (mixed, both orders, 512 a pair and order): **r4-r2 1294 ± 7**, r2 1279 ± 7,
+  hot 1005, r1 1003, off 1000, r1-hand 999, r4-hand 909, hand 478, random 98.
+- **Did it improve on the champion?** Elo +15 ± 10 over r2: no significant gain, but the
+  same strength with **distinct doctrines**: KL 0.21 on Yongma ships / 1.71 on Jujak ships
+  (agreement 0.95 / 0.77), against r2's 0.0001 / 0.0005. r4-r2 joined the league as `r4`.
+- **Aspect mix** (r4 self-play, all lineups): kills mutual 0.07-0.10, offset 0.25-0.27,
+  flank 0.52-0.55, tail 0.10-0.14 (r2's within 0.01). Damage mutual 0.14-0.18.
+- **Trade fraction** (first measurement): **0.07-0.09** in every self-play lineup and 0.07-0.09
+  against off: decisive fights, inside the author's 10-20%.
+- Energy v turn still **0.336 ± 0.010** (Yongma loses): round 5 (running) tries type
+  levers (Yongma damage x1.15 / x1.3, shield x1.15, Jujak damage x0.85, shield x0.87,
+  Yongma frontal armour x0.7) with the pace statistics added (gap between deaths, life
+  length, kills per minute per ship, spawn to first hit, first hit and kill).
