@@ -506,7 +506,7 @@ agent is the same everywhere. Ship files in handle form for A and B are in `card
 | Cruise Y / J (m/s); top | 167 / 132; 422 / 348 | 167 / 139; 422 / 349 | 167 / 139; 422 / 349 | 167 / 132; 422 / 348 |
 | Shield Y / J; hit damage Y / J | 71 / 80; 3.34 / 2.67 | 50 / 60; 4.68 / 2.67 | 64 / 64; 5.35 / 2.67 | 71 / 80; 3.68 / 2.67 |
 | Gun range Y / J (m) | 536 / 594 | 536 / 598 | **286** / 598 | 483 / 594 |
-| E v T 1v1 / 2v2 / 5v5 / 10v10 | **0.50 / 0.47 / 0.57 / 0.47** | 0.43 / 0.57 / **0.76 / 0.75** | 0.41 / 0.53 / **0.64** / 0.51 | **0.51 / 0.50 / 0.58 / 0.54** |
+| E v T 1v1 / 2v2 / 5v5 / 10v10 | **0.50 / 0.47 / 0.57 / 0.47** | 0.43 / 0.57 / **0.76 / 0.75** | **0.39** / 0.51 / **0.61** / 0.49 | **0.53 / 0.52 / 0.56 / 0.49** |
 | 20v20 | 0.12 | 0.27 | 0.07 | 0.10 |
 | Strength v r9 (5v5) | 0.49 / 0.51 | 0.49 / 0.47 | 0.51 / 0.53 | 0.51 / 0.54 |
 | Mixed 1v1 kills m / o / f / t | 0.43 / 0.50 / 0.07 / 0 | 0.59 / 0.33 / 0.08 / 0 | 0.54 / 0.36 / 0.10 / 0 | **0.17** / 0.74 / 0.08 / 0 |
@@ -515,7 +515,7 @@ agent is the same everywhere. Ship files in handle form for A and B are in `card
 | Merges a kill, mixed 1v1 (mean / median / first-pass / p90) | 2.6 / 2 / 0.43 / 7 | 1.2 / 1 / 0.79 / 3 | 2.1 / 1 / 0.58 / 6 | **3.6 / 3 / 0.28 / 8** |
 | Life s (1v1-10v10, all lineups) | 91-224 | 81-130 | 86-203 | 96-308; YY 1v1 482 |
 | Kills/min/ship; trades | 0.26-0.59; 0-0.11 | 0.43-0.66; 0.02-0.14 | 0.28-0.63; 0.01-0.13 | 0.12-0.57; 0-0.10 |
-| Source (games) | `final/` 1024 | `final/` 1024 | `paths4/` 512 | `paths4/` 512 |
+| Source (games) | `final/` 1024 | `final/` 1024 | `confirm/` 1024 (balance), `paths4/` 512 (the rest) | `confirm/` 1024 (balance), `paths4/` 512 (the rest) |
 
 How each plays:
 
@@ -533,7 +533,7 @@ How each plays:
 - **C (range).** The same Jujak as B; the Yongma is a short-ranged brawler (286 m, damage
   x1.6, shield 64). It must close inside the Jujak's guns to hurt it; the duels are
   two-circle fights ending nose to nose (8 circles in `images/C-1v1-evt-0.png`). Near the
-  band except 1v1 (0.41) and 5v5 (0.64): the duel and the crowd pull its numbers apart.
+  band except 1v1 (0.39) and 5v5 (0.61): the duel and the crowd pull its numbers apart.
 - **D (head-on).** A's ships with half the frontal fraction on both (a nose-on hit does
   15% damage, not 30%) and a slightly harder-hitting, shorter-ranged Yongma. The joust
   stops paying, so duels go round: 3.6 merges a kill (median 3, first-pass 0.28, p90 8),
@@ -586,3 +586,7 @@ The frozen card, E v T, 256 games (±0.03), 300 s unless noted:
   "20v20 balance" is really a map-size balance. The size table should be read per arena
   radius, and the map-size generalization (training on smaller and larger maps) will
   meet the same lean.
+
+**Confirm at 1024 games (`confirm/`, 21:25-21:28):** D 0.53 / 0.52 / 0.56 / 0.49 (JJ 1v1
+0.64 mutual, 256 s; YY 0.20, 484 s); C 0.39 / 0.51 / 0.61 / 0.49 (JJ 0.78). D holds the
+band at every size from 1v1 to 10v10; C misses at 1v1 and 5v5 by about 0.1.
