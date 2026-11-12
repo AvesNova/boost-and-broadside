@@ -92,4 +92,12 @@ Tests: `tests/sections/test_position_codes.py`, `tests/sections/test_learner_geo
 
 ## Step C: the geometry head's weight
 
-(below)
+**Launched 13:40 KST** (unit `pc-stepc`, under the bench lock, 20 GB cap; script in the
+session scratchpad): two BC runs of 20M steps each, the BC preset (`--preset mixed
+--objective bc`, the new `TrainConfig.yemong`), one after the other:
+`2026-11-12-bc-geometry-w0007` (`learner.geometry=0.007`), then
+`2026-11-12-bc-geometry-baseline` (`yemong.geometry_head=false`). Per update (about 1M
+steps) each writes `metrics.jsonl` in its run directory (`/home/vizia/avesnova/runs-v2`);
+the gradient decomposition at updates 1, 10 and 20. ETA: the first 15:15 (worst 15:40),
+the second 16:50 (worst 17:20). GPU at launch: only Xorg and two idle leftover processes
+(128 MiB each, since 2026-11-11).
