@@ -331,9 +331,10 @@ def table(parameters: list[ScriptedParameters], device=None) -> torch.Tensor:
 # The game modes the agent is tuned for, one parameter set each, in `mode_index` order: the
 # standard training presets and the real-scale ones (`bnb.game.modes.rules.PRESETS`), each
 # a preset's name. `mode_index` tells them apart by the map in gun ranges, the mode's flag
-# and the card's gravity.
+# and the card's gravity. Elimination has a real-scale set only (its presets, Clover too,
+# are real-scale); a standard card plays it with its deathmatch set.
 STANDARD_MODES = ("deathmatch", "deathmatch_wide", "frontline")
-REAL_SCALE_MODES = ("real_scale_deathmatch", "real_scale_frontline")
+REAL_SCALE_MODES = ("real_scale_deathmatch", "real_scale_frontline", "real_scale_elimination")
 MODES = STANDARD_MODES + REAL_SCALE_MODES
 
 

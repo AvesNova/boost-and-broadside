@@ -21,6 +21,8 @@ FINGERPRINTED = (
     "frontline",
     "real_scale_deathmatch",
     "real_scale_frontline",
+    "real_scale_elimination",
+    "clover",
 )
 SIGNIFICANT = 5  # digits kept, so the fingerprint reads the game, not the last bit
 

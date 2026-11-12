@@ -199,6 +199,15 @@ def _objective(interface: Interface, rect, left: float, right: float) -> None:
             ("gap", 10.0 * scale),
             ("text", (f"first to {frame.score_target}", muted, small, None)),
         ]
+    elif frame.mode == "elimination":  # the ships each team has left
+        left = [int(frame.ships.alive[frame.ships.team == side].sum()) for side in range(2)]
+        parts += [
+            ("text", (f"{left[0]}", team[0], big, fonts.bold)),
+            ("text", ("  :  ", text, big, fonts.bold)),
+            ("text", (f"{left[1]}", team[1], big, fonts.bold)),
+            ("gap", 10.0 * scale),
+            ("text", ("ships left", muted, small, None)),
+        ]
     elif frame.mode == "frontline":
         parts += [
             ("text", ("Front", muted, small, None)),

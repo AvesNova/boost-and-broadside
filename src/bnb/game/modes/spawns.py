@@ -16,7 +16,7 @@ from ..physics.spawning import Placement, formation, formation_rank, uniform_dis
 from ..rules import Rules
 from ..state import ModeState, by_team, enemy
 from .frontline import TEAM0_DEFENSE, TEAM0_SPAWN, TEAM1_DEFENSE, TEAM1_SPAWN
-from .rules import FRONTLINE, TEAM_DEATHMATCH, ModeRules
+from .rules import ELIMINATION, FRONTLINE, TEAM_DEATHMATCH, ModeRules
 
 INFINITY = float("inf")
 
@@ -232,6 +232,50 @@ def frontline_placement(
     return Placement(x=x, y=y, heading_cos=to_x / length, heading_sin=to_y / length)
 
 
+def layout_placement(
+    rules: Rules, mode_rules: ModeRules, uniforms: torch.Tensor, axis_x, axis_y
+) -> Placement:
+    """A fixed layout's spawns: each slot of team 0 at its point, team 1's same slot at the
+    point's 180-degree image, the whole turned with the layout by the spawn axis (B,),
+    whose angle is the layout's turn (none for a layout that is not rotated). Each ship
+    then moves by a uniform point in its spawn's jitter disc and turns by a uniform angle
+    within its heading jitter, from the mode's per-ship uniforms (team deathmatch's
+    candidate 0 radius and angle and its heading; a layout's spawns leave no spawn groups).
+    A spawn without a heading points at the map centre from its unjittered point. Built
+    from the layout's numbers as constants (no host-to-device copy)."""
+    B, N, candidates = uniforms.shape[0], rules.num_ships, mode_rules.spawn_candidates
+    per_ship = uniforms.reshape(B, N, -1)
+    if mode_rules.layout.rotated:
+        cos, sin = axis_x[:, None], axis_y[:, None]
+    else:
+        cos, sin = torch.ones_like(axis_x)[:, None], torch.zeros_like(axis_y)[:, None]
+    zero = torch.zeros_like(axis_x)
+    columns: dict[str, list] = {"x": [], "y": [], "heading": [], "jitter": [], "swing": []}
+    for side in (1.0, -1.0):  # team 0's points, then team 1's: their images
+        for spawn in mode_rules.layout.spawns:
+            x, y = side * spawn.x, side * spawn.y
+            if spawn.heading is None:
+                heading = math.atan2(-y, -x)
+            else:
+                heading = spawn.heading + (0.0 if side > 0.0 else math.pi)
+            columns["x"].append(zero + x)
+            columns["y"].append(zero + y)
+            columns["heading"].append(zero + heading)
+            columns["jitter"].append(zero + spawn.position_jitter)
+            columns["swing"].append(zero + spawn.heading_jitter)
+    point_x, point_y, written, jitter, swing = (
+        torch.stack(columns[name], -1) for name in ("x", "y", "heading", "jitter", "swing")
+    )
+    offset_x, offset_y = uniform_disc(jitter, per_ship[..., 0], per_ship[..., candidates])
+    heading = written + torch.atan2(sin, cos) + swing * (2.0 * per_ship[..., 2 * candidates] - 1.0)
+    return Placement(
+        x=cos * point_x - sin * point_y + offset_x,
+        y=sin * point_x + cos * point_y + offset_y,
+        heading_cos=torch.cos(heading),
+        heading_sin=torch.sin(heading),
+    )
+
+
 def placement(
     rules: Rules,
     mode_rules: ModeRules,
@@ -250,8 +294,12 @@ def placement(
     benched=None,
 ) -> Placement:
     """The mode's placement for every ship (selected later by the spawn mask); arena_radius
-    and map_scale (B,); benched (B, N) or None: ships that do not play."""
-    if mode_rules.name == TEAM_DEATHMATCH:
+    and map_scale (B,); benched (B, N) or None: ships that do not play. A fixed layout's
+    spawn points (`layout_placement`) take the place of the mode's own; elimination
+    places as team deathmatch does."""
+    if mode_rules.layout is not None and mode_rules.layout.spawns:
+        return layout_placement(rules, mode_rules, uniforms, axis_x, axis_y)
+    if mode_rules.name in (TEAM_DEATHMATCH, ELIMINATION):
         return deathmatch_placement(
             rules, mode_rules, arena_radius, uniforms, x, y, alive, reset, keys, benched
         )

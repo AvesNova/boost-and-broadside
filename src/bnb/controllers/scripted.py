@@ -154,20 +154,25 @@ REAL_SCALE_GRAVITY = math.sqrt(
 
 def mode_index(obs: Obs, characteristics: Characteristics) -> torch.Tensor:
     """(R,) int64 each view's mode, an index into `MODES`. On a real-scale card (its gravity
-    below REAL_SCALE_GRAVITY): real_scale_frontline by the mode's flag, else
-    real_scale_deathmatch. Otherwise frontline by the mode's flag, else deathmatch_wide
-    beyond WIDE_ARENA_IN_GUN_RANGES of the card's longest gun range, else deathmatch (a
-    sandbox view too)."""
+    below REAL_SCALE_GRAVITY): real_scale_frontline or real_scale_elimination by the mode's
+    flag, else real_scale_deathmatch. Otherwise frontline by the mode's flag, else
+    deathmatch_wide beyond WIDE_ARENA_IN_GUN_RANGES of the card's longest gun range, else
+    deathmatch (a sandbox view and an elimination view too)."""
     globals_ = obs.globals
     wide_radius = WIDE_ARENA_IN_GUN_RANGES * characteristics.gun_range.amax()
     wide = globals_[:, GLOBAL["arena_radius"]] > wide_radius
     frontline_view = globals_[:, GLOBAL["mode_frontline"]] > 0.5
     index = torch.where(wide, MODES.index("deathmatch_wide"), MODES.index("deathmatch"))
     index = torch.where(frontline_view, MODES.index("frontline"), index)
+    elimination_view = globals_[:, GLOBAL["mode_elimination"]] > 0.5
     real = torch.where(
         frontline_view,
         MODES.index("real_scale_frontline"),
-        MODES.index("real_scale_deathmatch"),
+        torch.where(
+            elimination_view,
+            MODES.index("real_scale_elimination"),
+            MODES.index("real_scale_deathmatch"),
+        ),
     )
     return torch.where(characteristics.gravity.amax() < REAL_SCALE_GRAVITY, real, index)
 

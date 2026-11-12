@@ -18,7 +18,8 @@ There are three places a map comes from (`Map.place`):
 
 A saved map's name is lowercase words joined by hyphens ("big-sky"), which no game preset
 uses (theirs join words with underscores), and is unique over both places, so a name
-always means one map. A file holds the config's fields (`game`), the lineup, and the
+always means one map. A file holds the config's fields (`game`; a fixed layout's fields
+and spawn points under `game.layout`, `GameConfig.layout`), the lineup, and the
 tuning where it is not empty: the rule settings, the time scale's factor, and the cards of
 the ship types it changes by type key (`ships`), so a map stays valid when a player adds a
 type to the set. The arena radius, the clocks and the kills to win are the config's own
@@ -35,6 +36,7 @@ import platformdirs
 import torch
 
 from bnb.contracts import GameConfig
+from bnb.contracts.config import layout_of
 from bnb.game import api
 from bnb.game.api import FLEET_PRESETS, LINEUPS, PRESETS
 
@@ -55,7 +57,18 @@ CONFIG_SETTINGS = {
 # The game presets the pages offer as maps: not the fleet-size evaluation presets (the
 # New match page sets the fleet size itself).
 MAP_PRESETS = {name: config for name, config in PRESETS.items() if name not in FLEET_PRESETS}
-MODE_WORDS = {"team_deathmatch": "deathmatch", "frontline": "frontline", "sandbox": "sandbox"}
+MODE_WORDS = {
+    "team_deathmatch": "deathmatch",
+    "frontline": "frontline",
+    "elimination": "elimination",
+    "sandbox": "sandbox",
+}
+# The modes the pages offer, with their titles.
+MODES = (
+    ("team_deathmatch", "Team deathmatch"),
+    ("frontline", "Frontline"),
+    ("elimination", "Elimination"),
+)
 
 
 def map_of(preset: str) -> str:
@@ -172,6 +185,8 @@ def from_json(name: str, data: dict, place: str) -> Map:
     if unknown:
         raise ValueError(f"map {name}: unknown entries {unknown}")
     game["spawn_groups"] = tuple(game.get("spawn_groups", ()))
+    if game.get("layout") is not None:
+        game["layout"] = layout_of(game["layout"])
     config = GameConfig(**game)
     card = {}
     ships = data.get("ships", {})

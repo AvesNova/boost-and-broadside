@@ -35,6 +35,7 @@ from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
 from bnb.models.nearest import Nearest, NearestBuild, NearestConfig
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
+from bnb.models.yemong.inputs import MODE_INPUTS
 from bnb.models.yemong.model import Yemong, YemongBuild, YemongConfig, yemong_build
 
 from . import analytics, lanes, metrics
@@ -101,9 +102,11 @@ class TrainConfig:
     MLP), built with the settings of the same name (`yemong`, `relational`, `nearest`);
     their `bfloat16_matmuls` stays False, as `precision`
     sets it, and a new run's Yemong decodes its belief's spreads with
-    `spread_fit="coarsest"` and runs each block's temporal sublayer first
-    (`order="temporal_first"`, arm C's order, the champion's since 2026-11-07); the config's
-    own defaults, "v1" and "spatial_first", are what older build records hold. ship_card:
+    `spread_fit="coarsest"`, runs each block's temporal sublayer first
+    (`order="temporal_first"`, arm C's order, the champion's since 2026-11-07) and reads
+    every mode's flag (`mode_inputs`, elimination's since 2026-11-12); the config's own
+    defaults, "v1", "spatial_first" and the two older modes, are what older build records
+    hold. ship_card:
     the ship card's values by field, one per ship type, every field given
     (`bnb.game.api.default_card`). environments: the training environments; length: ticks
     per segment; shards: consecutive segments per update (v1's batch, twice over:
@@ -137,7 +140,9 @@ class TrainConfig:
     lanes: LaneConfig = LaneConfig()
     model: str = "yemong"
     # a new build's settings that differ from the record defaults (see the docstring)
-    yemong: YemongConfig = YemongConfig(spread_fit="coarsest", order="temporal_first")
+    yemong: YemongConfig = YemongConfig(
+        spread_fit="coarsest", order="temporal_first", mode_inputs=MODE_INPUTS
+    )
     relational: RelationalConfig = RelationalConfig()
     nearest: NearestConfig = NearestConfig()
     ship_card: dict[str, tuple[float, ...]] | None = None  # None: the game's ship set's card

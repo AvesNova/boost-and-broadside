@@ -6,15 +6,32 @@ holds one or several games (one per pool), all at one size.
 """
 
 import dataclasses
+import math
 
 from bnb.contracts import GameConfig
-from bnb.contracts.config import FRONTLINE, SANDBOX, TEAM_DEATHMATCH
+from bnb.contracts.config import (
+    ELIMINATION,
+    FRONTLINE,
+    SANDBOX,
+    TEAM_DEATHMATCH,
+    FixedField,
+    FixedSpawn,
+    MapLayout,
+)
 
 from .. import ships
 
 # The mode's clock when the config leaves it out: (episode, respawn) seconds. Sandbox keeps
-# the physics game's (game spec 1), so the race tests run in it unchanged.
-CLOCKS = {TEAM_DEATHMATCH: (300.0, 5.0), FRONTLINE: (300.0, 8.0), SANDBOX: (60.0, 8.0)}
+# the physics game's (game spec 1), so the race tests run in it unchanged. Elimination has
+# no respawn (None): a dead ship's wait is the episode's whole length, so it is still
+# waiting when the episode ends (`bnb.game.rules`). Its episode is short (the author,
+# 2026-11-12): 90 s here, 180 s at real scale.
+CLOCKS = {
+    TEAM_DEATHMATCH: (300.0, 5.0),
+    FRONTLINE: (300.0, 8.0),
+    ELIMINATION: (90.0, None),
+    SANDBOX: (60.0, 8.0),
+}
 
 # Training presets, all 5v5 at 10 fields (modes spec 1; mixed spec 1: the battle map keeps
 # 10 fields, zoomed with the arena). The real-scale ones play the real-scale ship set
@@ -39,6 +56,16 @@ PRESETS = {
         )
         for name, mode in (("deathmatch", TEAM_DEATHMATCH), ("frontline", FRONTLINE))
     },
+    # Elimination at the training size (5v5, 10 random fields, the real-scale map): the
+    # mode's own rules, ready for the training mix (its share there is the author's call).
+    "real_scale_elimination": GameConfig(
+        5,
+        10,
+        REAL_SCALE_ARENA,
+        episode_seconds=REAL_SCALE_CLOCK * CLOCKS[ELIMINATION][0],
+        mode=ELIMINATION,
+        ship_set=REAL_SCALE,
+    ),
 }
 
 # The arena: a 2v2 team deathmatch of the real-scale set on a small map with no fields (and
@@ -60,6 +87,54 @@ PRESETS["arena"] = GameConfig(
     respawn_seconds=1.0 / 30.0,  # one tick (`Rules.tick_length`)
     mode=TEAM_DEATHMATCH,
     ship_set=REAL_SCALE,
+)
+
+# Clover (the author's map, 2026-11-12): a 2v2 elimination of the real-scale set on a fixed
+# map, a showcase rather than a training preset. The arena is the 2v2 size of the
+# real-scale map by the fleet presets' density rule (`<base>_<n>v<n>_density`: the radius
+# grows as sqrt(n / 5)), 7800 sqrt(2 / 5) = 4933.2 m. Four fields in a square around the
+# centre, each of radius a quarter of the arena radius (1233 m), their centres at 0.45
+# arena radii on the diagonals: upper right and lower left high index (level +1 or +2, the
+# pair drawn together each match), upper left and lower right low (-1 or -2), so four
+# combinations. Each team's two spawns lie at 0.875 arena radii between a low and a high
+# field, at 1 and 4 o'clock for team 0 and at 7 and 10 for team 1 (their 180-degree
+# images), each ship nose to the centre with up to 150 m and 5 degrees of jitter. The
+# whole layout turns by a random angle each match, as the random maps' fields and spawn
+# axis do.
+CLOVER_RADIUS = round(REAL_SCALE_ARENA * (2 / 5) ** 0.5, 1)  # m
+CLOVER_FIELD_RADIUS = 0.25 * CLOVER_RADIUS
+CLOVER_FIELD_DISTANCE = 0.45 * CLOVER_RADIUS  # the centres' distance from the map centre
+CLOVER_SPAWN_DISTANCE = 0.875 * CLOVER_RADIUS
+HIGH_LEVELS, LOW_LEVELS = (1, 2), (-1, -2)
+
+
+def _polar(distance: float, degrees: float) -> tuple[float, float]:
+    angle = math.radians(degrees)
+    return distance * math.cos(angle), distance * math.sin(angle)
+
+
+CLOVER = MapLayout(
+    fields=(
+        FixedField(*_polar(CLOVER_FIELD_DISTANCE, 45.0), CLOVER_FIELD_RADIUS, HIGH_LEVELS),
+        FixedField(*_polar(CLOVER_FIELD_DISTANCE, 135.0), CLOVER_FIELD_RADIUS, LOW_LEVELS),
+    ),
+    spawns=tuple(
+        FixedSpawn(
+            *_polar(CLOVER_SPAWN_DISTANCE, degrees),
+            position_jitter=150.0,
+            heading_jitter=math.radians(5.0),
+        )
+        for degrees in (60.0, -30.0)  # 1 and 4 o'clock
+    ),
+)
+PRESETS["clover"] = GameConfig(
+    2,
+    4,
+    CLOVER_RADIUS,
+    episode_seconds=REAL_SCALE_CLOCK * CLOCKS[ELIMINATION][0],
+    mode=ELIMINATION,
+    ship_set=REAL_SCALE,
+    layout=CLOVER,
 )
 
 # The presets whose lineup is not the game's default (`Rules.team_types`): each slot's ship
@@ -95,14 +170,17 @@ del _base, _game, _n
 
 @dataclasses.dataclass(frozen=True)
 class ModeRules:
-    """name: the mode. Team deathmatch: kills_per_ship, spawn_groups (ships per team per
+    """name: the mode. Team deathmatch (and elimination, its variant: uniform spawns, and one
+    kill per enemy ship wins): kills_per_ship, spawn_groups (ships per team per
     group; empty for uniform spawns), spawn_candidates (C, the best of C), the group centres'
     disc (group_centre_fraction of the arena radius), the members' disc (group_radius), the
     respawn ring around an anchor (anchor_distance_min to _max), and spawn_margin, how far
     inside the arena edge a grouped candidate is clipped to. Frontline: the zone
     ring (zone_ring_fraction of the arena radius), zone_radius (m before map scaling),
     capture_seconds (a lead of one), front_threshold (captures ahead that win) and the
-    spawn disc (spawn_zone_fraction of the zone radius)."""
+    spawn disc (spawn_zone_fraction of the zone radius). layout: the game's fixed map
+    (`MapLayout`), or None for a random one; part of the mode's rules, so games of one mode
+    with different layouts are different slices of the batch (`layout.per_mode`)."""
 
     name: str
     kills_per_ship: int = 5
@@ -118,6 +196,7 @@ class ModeRules:
     capture_seconds: float = 10.0
     front_threshold: int = 3
     spawn_zone_fraction: float = 0.35
+    layout: MapLayout | None = None
 
     def uniform_count(self, num_ships: int) -> int:
         """The mode's spawn uniforms per environment per tick, after the game's (spec 2).
@@ -126,7 +205,7 @@ class ModeRules:
         grouped; per environment C centre candidates (2 each) per group. Frontline: the
         ring's rotation and handedness, and per ship a point in the spawn disc."""
         candidates, groups = self.spawn_candidates, len(self.spawn_groups)
-        if self.name == TEAM_DEATHMATCH:
+        if self.name in (TEAM_DEATHMATCH, ELIMINATION):
             return 2 * candidates * groups + num_ships * (2 * candidates + 1 + (1 if groups else 0))
         if self.name == FRONTLINE:
             return 2 + 2 * num_ships
@@ -134,9 +213,9 @@ class ModeRules:
 
 
 def mode_rules_of(config: GameConfig) -> ModeRules:
-    """The ModeRules of the config's mode: its name, kills_per_ship and spawn_groups from the
-    config, the fields its ship set's rules give ([mode] in `ships.rules`), the others their
-    defaults."""
+    """The ModeRules of the config's mode: its name, kills_per_ship (1 in elimination: each
+    enemy ship once, a wipe), spawn_groups and layout from the config, the fields its ship
+    set's rules give ([mode] in `ships.rules`), the others their defaults."""
     given = {
         key.split(".", 1)[1]: value
         for key, value in ships.rules(config.ship_set).items()
@@ -144,7 +223,8 @@ def mode_rules_of(config: GameConfig) -> ModeRules:
     }
     return ModeRules(
         name=config.mode,
-        kills_per_ship=config.kills_per_ship,
+        kills_per_ship=1 if config.mode == ELIMINATION else config.kills_per_ship,
         spawn_groups=config.spawn_groups,
+        layout=config.layout,
         **given,
     )

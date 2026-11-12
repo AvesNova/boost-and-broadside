@@ -15,8 +15,8 @@ from bnb.contracts.obs import GLOBAL_COLUMNS, ZONE_COLUMNS
 from ..rules import TEAMS, Rules
 from ..state import ModeState
 from . import frontline
-from .phase import deathmatch_targets
-from .rules import FRONTLINE, TEAM_DEATHMATCH, ModeRules
+from .phase import KILL_MODES, deathmatch_targets
+from .rules import ELIMINATION, FRONTLINE, TEAM_DEATHMATCH, ModeRules
 
 MODE_GLOBALS = GLOBAL_COLUMNS[GLOBAL_COLUMNS.index("mode_team_deathmatch") :]
 
@@ -74,13 +74,14 @@ def mode_globals(
 ) -> torch.Tensor:
     """(B, 2, len(MODE_GLOBALS)): the mode one-hot, the scores by team_relative and the
     winning score (the viewer's own: in team deathmatch, kills_per_ship times the enemy's
-    active ships, `phase.deathmatch_targets`; active (B, 2) or None, every ship), the front
-    (positive for the viewer) and the winning front."""
+    active ships, `phase.deathmatch_targets`, and in elimination the enemy's active ships;
+    active (B, 2) or None, every ship), the front (positive for the viewer) and the
+    winning front."""
     B = mode.front.shape[0]
     zero = torch.zeros(B, device=mode.front.device)
     name = mode_rules.name
     score = mode.score.float()
-    target = deathmatch_targets(rules, mode_rules, active) if name == TEAM_DEATHMATCH else 0
+    target = deathmatch_targets(rules, mode_rules, active) if name in KILL_MODES else 0
     threshold = mode_rules.front_threshold if name == FRONTLINE else 0
     front = mode.front.float()
     views = [
@@ -88,6 +89,7 @@ def mode_globals(
             [
                 zero + float(name == TEAM_DEATHMATCH),
                 zero + float(name == FRONTLINE),
+                zero + float(name == ELIMINATION),
                 score[:, view],
                 score[:, 1 - view],
                 # per team (B, 2) with benching; else one number (a host 0-d tensor under

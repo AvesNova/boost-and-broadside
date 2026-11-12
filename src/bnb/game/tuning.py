@@ -28,6 +28,7 @@ import math
 import torch
 
 from bnb.contracts import ticks_of
+from bnb.contracts.config import ELIMINATION, FRONTLINE, SANDBOX, TEAM_DEATHMATCH
 
 from .rules import LONGEST_BULLET_LIFE, FlightConstants, PoolRules, Rules
 
@@ -69,7 +70,16 @@ ARENA, COMBAT, FLIGHT, SPAWNS, MAP = (
 SETTINGS = (
     _s("pool.arena_radius", ARENA, "arena radius", "m", 800.0, 30_000.0),
     _s("pool.episode_seconds", ARENA, "episode length", "s", 10.0, 900.0, ticks=True),
-    _s("pool.respawn_seconds", ARENA, "respawn wait", "s", 0.0, 30.0, ticks=True),
+    _s(
+        "pool.respawn_seconds",
+        ARENA,
+        "respawn wait",
+        "s",
+        0.0,
+        30.0,
+        ticks=True,
+        modes=(TEAM_DEATHMATCH, FRONTLINE, SANDBOX),  # elimination has none
+    ),
     _s("rules.boundary_damage_base", ARENA, "boundary damage", "/s", 0.0, 50.0),
     _s("rules.boundary_damage_per_metre", ARENA, "boundary damage per metre", "/s/m", 0.0, 1.0),
     _s("rules.bullet_drag", COMBAT, "bullet drag", "1/m", 1e-5, 5e-3, log=True),
@@ -245,7 +255,9 @@ def tuned(rules: Rules, values: dict[str, float], bounded: bool = True) -> Rules
             changes["arena_radius"] = pools["arena_radius"]
         if "episode_seconds" in pools:
             changes["episode_ticks"] = ticks_of(pools["episode_seconds"], rules.tick_length)
-        if "respawn_seconds" in pools:
+            if mode.name == ELIMINATION:  # no respawn: the wait is the episode's length
+                changes["respawn_ticks"] = changes["episode_ticks"]
+        if "respawn_seconds" in pools and mode.name in BY_KEY["pool.respawn_seconds"].modes:
             changes["respawn_ticks"] = ticks_of(pools["respawn_seconds"], rules.tick_length)
         return dataclasses.replace(pool, **changes) if changes else pool
 

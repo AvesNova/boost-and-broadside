@@ -20,12 +20,13 @@ from typing import TYPE_CHECKING
 from imgui_bundle import imgui
 
 from bnb.contracts import GameConfig
+from bnb.contracts.config import LAYOUT_MODES
 from bnb.game import api
 from bnb.game.api import PRESETS
 
 from .. import replay as replays
 from ..loop import MatchSetup, SideSetup
-from ..maps import MAP_PRESETS, Map, map_of
+from ..maps import MAP_PRESETS, MODES, Map, map_of
 from ..render.bullets import STYLES as BULLET_STYLES
 from ..sides import policy_choices
 from ..tuning import Tuning
@@ -42,7 +43,6 @@ if TYPE_CHECKING:
     from ..app import Session
     from .interface import Interface
 
-MODES = (("team_deathmatch", "Team deathmatch"), ("frontline", "Frontline"))
 MODE_LABELS = dict(MODES)
 POLICY_REFRESH_SECONDS = 5.0
 WIDTH = 460.0  # the menu's width at scale 1
@@ -172,18 +172,29 @@ class Draft:
     def config(self) -> GameConfig:
         """The game of these choices: the saved map's, or the preset of this mode and map
         (for a pair no preset has, a preset of the map in this mode), with the chosen sizes
-        (its spawn groups kept when they fit the fleet)."""
+        (its spawn groups kept when they fit the fleet, and its fixed layout when it fits
+        the sizes and the mode: else the map's arena draws its fields and spawns)."""
         saved = self.chosen.saved
         preset = saved.config if saved is not None else PRESETS[preset_of(self.map, self.mode)]
         groups = preset.spawn_groups if self.mode == "team_deathmatch" else ()
         if sum(groups) != self.ships_per_team:
             groups = ()
+        layout = preset.layout
+        if layout is not None and (
+            self.mode not in LAYOUT_MODES
+            or (layout.fields and 2 * len(layout.fields) != self.fields)
+            or (layout.spawns and len(layout.spawns) != self.ships_per_team)
+        ):
+            layout = None
         return dataclasses.replace(
             preset,
             ships_per_team=self.ships_per_team,
             num_fields=self.fields,
             mode=self.mode,
             spawn_groups=groups,
+            # elimination has no respawn (a preset of the map in another mode may have one)
+            respawn_seconds=None if self.mode == "elimination" else preset.respawn_seconds,
+            layout=layout,
         )
 
     def setup(self) -> MatchSetup:

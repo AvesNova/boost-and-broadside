@@ -44,7 +44,7 @@ from .heads import HeadGroup, ShotTrajectoryHead, critic_values, next_state_logi
 from .inputs import (
     ACCELERATION_INPUTS,
     FIELD_INPUTS,
-    GLOBAL_INPUTS,
+    MODE_INPUTS,
     POSITION_CODE,
     ZONE_INPUTS,
     Accelerations,
@@ -54,6 +54,7 @@ from .inputs import (
     accelerations,
     believed,
     compose,
+    global_inputs,
     motion,
     preceding,
     ship_inputs,
@@ -193,6 +194,10 @@ class YemongConfig:
     the tick before, which rides in the carry for the enemy rows (`Carry.motion`), and
     `unroll` shifts it within the segment. Off by default, so every build from before the
     option is unchanged.
+    mode_inputs: the modes whose one-hot flags the global token reads, in this order
+    (`inputs.MODE_INPUTS`). The default, team deathmatch and frontline, is every build's
+    from before elimination (2026-11-12), which reads an elimination match as no mode (as
+    sandbox); a new run's build reads all three (`bnb.runtime.train.TrainConfig`).
     """
 
     width: int = 128
@@ -223,6 +228,8 @@ class YemongConfig:
     spread_inputs: str = "scalar"  # how a row reads its spread: "scalar" or "ellipse"
     position_inputs: str = "colour"  # a row's position and heading: "colour" or "fourier"
     acceleration_inputs: bool = False  # each ship row reads its acceleration over the last tick
+    # the modes whose flags the global token reads (`inputs.MODE_INPUTS`); new runs read all
+    mode_inputs: tuple[str, ...] = MODE_INPUTS[:2]
     delta_split: bool = False  # physics head on seen rows, an error head for hidden rows
     extrapolation_decay: float = 0.5  # s: a hidden row's held rates decay with this constant
     correction_rate: float = 0.1  # eta: the error head's step per tick, of its confident median
@@ -261,6 +268,10 @@ class YemongConfig:
             raise ValueError(f"spread_fit {self.spread_fit!r} is not one of {SPREAD_FITS}")
         if self.order not in ORDERS:
             raise ValueError(f"order {self.order!r} is not one of {ORDERS}")
+        if not set(self.mode_inputs) <= set(MODE_INPUTS) or len(set(self.mode_inputs)) != len(
+            self.mode_inputs
+        ):
+            raise ValueError(f"mode_inputs {self.mode_inputs} must be distinct, of {MODE_INPUTS}")
         if self.rotary_readout and (self.order != "temporal_first" or not self.rotary):
             raise ValueError("rotary_readout needs order temporal_first and rotary on")
         if not self.levels or len(set(self.levels)) != len(self.levels):
@@ -498,7 +509,7 @@ class Yemong(nn.Module):
                 config.acceleration_inputs,
                 self.state_code.ellipse_width,
             ),
-            GLOBAL_INPUTS,
+            global_inputs(config.mode_inputs),
             FIELD_INPUTS,
             width,
             config.map_width,
@@ -882,6 +893,7 @@ class Yemong(nn.Module):
             self.tick_length,
             previous if self._tracks_motion else None,
             self.config.acceleration_inputs,
+            self.config.mode_inputs,
         )
 
     def preceding_motion(

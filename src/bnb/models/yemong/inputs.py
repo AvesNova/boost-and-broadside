@@ -18,6 +18,7 @@ import torch
 
 from bnb.contracts import Obs
 from bnb.contracts.action import NUM_JOINT
+from bnb.contracts.config import ELIMINATION, FRONTLINE, TEAM_DEATHMATCH
 from bnb.contracts.obs import FIELD, GLOBAL, SHIP, ZONE
 from bnb.contracts.tree import contract
 from bnb.game.rules import TEAMS
@@ -72,9 +73,19 @@ SLOW_SPEED = 1.0  # m/s: below it the frame is the heading, not the velocity
 
 SHIP_FLAGS = ("alive", "visible", "fired")
 POSITION_CODE = 9 * POSITION_LEVELS  # the width of a position code
-# The centre's code, then episode progress, arena radius, fog, the mode one-hot (2), both
-# scores over the target, the target, the front and its threshold.
-GLOBAL_INPUTS = POSITION_CODE + 10
+# The modes whose flags the global token reads (`YemongConfig.mode_inputs`): the modes a
+# build knows, each a one-hot column of the observation ("mode_<name>"). Builds from before
+# elimination read the first two.
+MODE_INPUTS = (TEAM_DEATHMATCH, FRONTLINE, ELIMINATION)
+
+
+def global_inputs(mode_inputs: tuple[str, ...]) -> int:
+    """The global token's width: the centre's code, then episode progress, arena radius,
+    fog, the flags of the modes read (mode_inputs), both scores over the target, the
+    target, the front and its threshold."""
+    return POSITION_CODE + 8 + len(mode_inputs)
+
+
 FIELD_INPUTS = POSITION_CODE + 3
 # The centre's code, radius, the role one-hot, progress, direction and the two distances.
 ZONE_INPUTS = POSITION_CODE + 1 + ZONE_ROLES + 4
@@ -247,7 +258,7 @@ def acceleration_code(inputs: Accelerations) -> torch.Tensor:
 class Tokens:
     """The encoder's inputs and the geometry for the rotary tables, (...) leading axes.
 
-    ship (..., N, ship_inputs), global_token (..., 1, GLOBAL_INPUTS), field (..., M,
+    ship (..., N, ship_inputs), global_token (..., 1, global_inputs), field (..., M,
     FIELD_INPUTS), zone (..., Z, ZONE_INPUTS); zone_present (..., Z) bool, the zone is
     the mode's (an absent one becomes the learned absent token); code (..., N, state_code.width) the
     belief's state code (the next-state head's baseline), the colour code whatever the ship
@@ -304,6 +315,7 @@ def compose(
     tick_length: float,
     previous: Motion | None = None,
     read_accelerations: bool = True,
+    mode_inputs: tuple[str, ...] = MODE_INPUTS,
 ) -> Tokens:
     """The Tokens of one team's views (...) from the observation and the replay: the ships' belief
     codes and features, the global token, the fields and the zones, every position shifted by the
@@ -313,7 +325,8 @@ def compose(
     `ShipStateCode.inputs` of the code (Fourier position and heading with
     `state_code.position_inputs` "fourier"); with read_accelerations the
     acceleration inputs end the ship token, before the ellipse inputs
-    (`state_code.spread_inputs` "ellipse"), and without it the token does not carry them."""
+    (`state_code.spread_inputs` "ellipse"), and without it the token does not carry them.
+    The global token reads the flags of mode_inputs' modes (`global_inputs`)."""
     ships, dtype = obs.ships, obs.ships.dtype
     own = replay.previous_action.shape[-1]
     column = {name: ships[..., SHIP[name]] for name in SHIP}
@@ -371,8 +384,7 @@ def compose(
                     globals_[..., GLOBAL["episode_progress"]],
                     globals_[..., GLOBAL["arena_radius"]] / ARENA_SCALE,
                     globals_[..., GLOBAL["fogged"]],
-                    globals_[..., GLOBAL["mode_team_deathmatch"]],
-                    globals_[..., GLOBAL["mode_frontline"]],
+                    *(globals_[..., GLOBAL[f"mode_{mode}"]] for mode in mode_inputs),
                     globals_[..., GLOBAL["score_own"]] * per_target,
                     globals_[..., GLOBAL["score_enemy"]] * per_target,
                     symlog(target),

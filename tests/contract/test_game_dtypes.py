@@ -94,10 +94,17 @@ def _state_dtypes(state) -> dict[str, torch.dtype]:
 
 @pytest.mark.parametrize("mode", MODES)
 def test_a_tick_keeps_every_state_fields_dtype(mode):
-    """Through ticks with deaths, respawns and an episode's end (a one-second episode)."""
+    """Through ticks with deaths, respawns (none in elimination) and an episode's end (a
+    one-second episode)."""
     generator = torch.Generator().manual_seed(11)
+    respawn_seconds = None if mode == "elimination" else 0.5
     config = GameConfig(
-        SHIPS_PER_TEAM, FIELDS, 600.0, mode=mode, episode_seconds=1.0, respawn_seconds=0.5
+        SHIPS_PER_TEAM,
+        FIELDS,
+        600.0,
+        mode=mode,
+        episode_seconds=1.0,
+        respawn_seconds=respawn_seconds,
     )
     rules, types, batch = api.rules_of(config), api.ship_types(), 4
     state = api.reset(rules, types, api.uniforms(rules, batch, generator=generator))

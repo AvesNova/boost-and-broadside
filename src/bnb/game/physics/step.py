@@ -265,7 +265,7 @@ def resolve(
 
     def mode_phase(mode_rules: ModeRules, mode, ships, alive, died, active):
         phase = modes.mode_phase(rules, mode_rules, mode, ships, alive, died, active)
-        return phase, modes.clock_result(mode_rules, phase.mode)
+        return phase, modes.clock_result(mode_rules, phase.mode, ships, alive)
 
     phase, clock_result = per_mode(rules, B, mode_phase, state.mode, ships, alive, died, active)
     done = (match.episode_tick + 1 >= arena.episode_ticks) | phase.won

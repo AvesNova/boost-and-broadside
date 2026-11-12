@@ -40,9 +40,9 @@ def test_modes_take_their_clocks_and_presets_build():
     for name, config in PRESETS.items():
         rules = api.rules_of(config)
         # the training presets are 5v5; the fleet-size ones (`<mode>_<n>v<n>_<arena|density>`)
-        # are as named, and the arena is a 2v2
+        # are as named, and the arena and Clover are 2v2s
         fleet = re.fullmatch(r"\w+_(\d+)v\1_(arena|density)", name)
-        size = int(fleet.group(1)) if fleet else 2 if name == "arena" else 5
+        size = int(fleet.group(1)) if fleet else 2 if name in ("arena", "clover") else 5
         assert rules.num_ships == 2 * size, name
     assert api.rules_of(PRESETS["deathmatch_wide"]).pools[0].mode.spawn_groups == (2, 2, 1)
     with pytest.raises(ValueError):

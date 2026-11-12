@@ -134,7 +134,8 @@ class Rules:
 
     @property
     def map_uniform_count(self) -> int:
-        """Uniforms per environment for a map: 4 per field plus the spawn axis."""
+        """Uniforms per environment for a map: 4 per field plus the spawn axis (a fixed
+        layout reads a level draw per pair of fields and the axis as its rotation)."""
         return 4 * self.num_fields + 1
 
     @property
@@ -154,10 +155,17 @@ class Rules:
 
 
 def _pool_rules(environments: int | None, game: GameConfig, tick_length: float) -> PoolRules:
-    """A game's mode and its time-native rules (the mode's clock where it leaves them out)."""
+    """A game's mode and its time-native rules (the mode's clock where it leaves them out).
+    A mode without respawn (elimination: None in its clock) waits a dead ship out for the
+    episode's whole length, so it never comes back before the episode ends."""
     episode_seconds, respawn_seconds = CLOCKS[game.mode]
     episode_seconds = episode_seconds if game.episode_seconds is None else game.episode_seconds
     respawn_seconds = respawn_seconds if game.respawn_seconds is None else game.respawn_seconds
+    if respawn_seconds is None:
+        respawn_seconds = episode_seconds
+    for field in () if game.layout is None else game.layout.fields:
+        if not set(field.levels) <= set(FIELD_LEVELS):
+            raise ValueError(f"field levels {field.levels}: each one of {FIELD_LEVELS}")
     return PoolRules(
         environments=environments,
         mode=mode_rules_of(game),

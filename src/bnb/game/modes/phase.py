@@ -13,10 +13,13 @@ from typing import NamedTuple
 
 import torch
 
+from ..physics.numerics import lookup
 from ..rules import Rules
-from ..state import Fields, ModeState, Ships, apply, enemy, replace, ship_team
+from ..state import Fields, ModeState, Ships, apply, by_team, enemy, replace, ship_team
 from . import frontline
-from .rules import FRONTLINE, TEAM_DEATHMATCH, ModeRules
+from .rules import ELIMINATION, FRONTLINE, TEAM_DEATHMATCH, ModeRules
+
+KILL_MODES = (TEAM_DEATHMATCH, ELIMINATION)  # every death scores for the other team
 
 
 class Phase(NamedTuple):
@@ -51,10 +54,11 @@ def mode_phase(
 ) -> Phase:
     """ships: after the moves; alive (B, N): alive after the damage phase; died (B, N);
     active (B, 2) int32 or None: each team's active ships (None: every ship), which sets
-    team deathmatch's winning scores (`deathmatch_targets`)."""
+    team deathmatch's winning scores (`deathmatch_targets`). Elimination scores as team
+    deathmatch with one kill per enemy ship to win: a team with no ship left loses."""
     zero = torch.zeros_like(ships.x)
     no = torch.zeros_like(mode.front, dtype=torch.bool)
-    if mode_rules.name == TEAM_DEATHMATCH:
+    if mode_rules.name in KILL_MODES:
         # Every death scores for the other team, whatever its cause: (B, 2) by the scoring
         # team, its enemy's deaths.
         score = mode.score + enemy(died.to(torch.int32)).sum(-1, dtype=torch.int32)
@@ -111,7 +115,8 @@ def mode_phase(
 def deathmatch_targets(
     rules: Rules, mode_rules: ModeRules, active: torch.Tensor | None
 ) -> torch.Tensor | int:
-    """Team deathmatch's winning score per team: kills_per_ship times the enemy team's
+    """Team deathmatch's (and elimination's) winning score per team: kills_per_ship (1 in
+    elimination) times the enemy team's
     active ships, (B, 2) int32 by the scoring team from active (B, 2), or the one int
     kills_per_ship * ships_per_team when every ship is active (active None)."""
     if active is None:
@@ -119,10 +124,21 @@ def deathmatch_targets(
     return mode_rules.kills_per_ship * active.flip(-1).to(torch.int32)
 
 
-def clock_result(mode_rules: ModeRules, mode: ModeState) -> torch.Tensor:
-    """(B,) int32: the result for team 0 when the clock ends the match."""
+def clock_result(
+    mode_rules: ModeRules, mode: ModeState, ships: Ships, alive: torch.Tensor
+) -> torch.Tensor:
+    """(B,) int32: the result for team 0 when the clock ends the match. ships: after the
+    damage phase, alive (B, N) its survivors. Elimination: more ships alive wins, then more
+    total shield (the game's only health: a ship dies to any damage with its shield
+    gone) over the living ships, then a draw."""
     if mode_rules.name == TEAM_DEATHMATCH:
         return torch.sign(mode.score[:, 0] - mode.score[:, 1]).to(torch.int32)
+    if mode_rules.name == ELIMINATION:
+        living = by_team(alive).sum(-1)  # (B, 2)
+        health = by_team(torch.where(alive, ships.shield, 0.0)).sum(-1)
+        by_ships = torch.sign(living[:, 0] - living[:, 1])
+        by_health = torch.sign(health[:, 0] - health[:, 1]).to(by_ships.dtype)
+        return torch.where(by_ships != 0, by_ships, by_health).to(torch.int32)
     if mode_rules.name == FRONTLINE:
         return frontline.timeout_result(mode.front).to(torch.int32)
     return torch.zeros_like(mode.front)
@@ -169,11 +185,14 @@ def new_match(
 ) -> tuple[ModeState, Fields]:
     """A new match's mode state and map from the mode's tick uniforms (B, U_mode) and the
     environments' arena radius and map scale (B,): the drawn point-symmetric fields as they
-    are, or, in Frontline, a random ring (rotation, then handedness) with fields mirrored
-    about its neutral axis. previous: the mode state as it stands. A mode without zones
-    zeroes only the score; its other leaves are zero already and pass through unchanged
-    (no copy of the absent slots)."""
+    are, a fixed layout's fields (`layout_fields`) where the mode's rules have one, or, in
+    Frontline, a random ring (rotation, then handedness) with fields mirrored about its
+    neutral axis. previous: the mode state as it stands. A mode without zones zeroes only
+    the score; its other leaves are zero already and pass through unchanged (no copy of
+    the absent slots)."""
     if mode_rules.name != FRONTLINE:
+        if mode_rules.layout is not None and mode_rules.layout.fields:
+            fields = layout_fields(mode_rules, map_uniforms, fields)
         return replace(previous, score=torch.zeros_like(previous.score)), fields
     blank = apply(torch.zeros_like, previous)
     rotation = 2.0 * math.pi * uniforms[:, 0]
@@ -196,3 +215,40 @@ def new_match(
         ring_rotation=rotation,
     )
     return state, frontline.mirror_fields(fields, map_uniforms, arena_radius, rotation)
+
+
+def layout_rotation(mode_rules: ModeRules, map_uniforms: torch.Tensor):
+    """(cos, sin) (B,) of a fixed layout's turn this match: the spawn axis's draw (the map's
+    last uniform) when the layout is rotated, else none."""
+    if mode_rules.layout.rotated:
+        angle = 2.0 * math.pi * map_uniforms[:, -1]
+        return torch.cos(angle), torch.sin(angle)
+    zero = torch.zeros_like(map_uniforms[:, -1])
+    return zero + 1.0, zero
+
+
+def layout_fields(mode_rules: ModeRules, map_uniforms: torch.Tensor, fields: Fields) -> Fields:
+    """The fixed layout's fields (B, M) for a new match: its fields, then their images under
+    the 180-degree rotation, the whole turned by `layout_rotation`. Field p and its image
+    draw one level from the field's choices with the uniform the random map reads for
+    field p's level (map uniform 4 p + 3). The band width is the drawn map's (the
+    rules'). Built from the layout's numbers as constants (no host-to-device copy, so it
+    is safe inside a CUDA graph's capture)."""
+    cos, sin = layout_rotation(mode_rules, map_uniforms)
+    xs, ys, radii, levels = [], [], [], []
+    for index, field in enumerate(mode_rules.layout.fields):
+        xs.append(field.x * cos - field.y * sin)
+        ys.append(field.x * sin + field.y * cos)
+        radii.append(torch.zeros_like(cos) + field.radius)
+        uniform = map_uniforms[:, 4 * index + 3]
+        choice = (len(field.levels) * uniform).to(torch.int32).clamp_max(len(field.levels) - 1)
+        levels.append(lookup(field.levels, choice))
+    x, y, radius = torch.stack(xs, -1), torch.stack(ys, -1), torch.stack(radii, -1)
+    level = torch.stack(levels, -1).to(fields.level.dtype)
+    return replace(
+        fields,
+        x=torch.cat([x, -x], 1),
+        y=torch.cat([y, -y], 1),
+        radius=torch.cat([radius, radius], 1),
+        level=torch.cat([level, level], 1),
+    )

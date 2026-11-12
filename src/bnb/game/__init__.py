@@ -16,8 +16,12 @@ recharge pauses while the pilot gives an input other than a quiet one
 2026-11-12 each type's bullet life became a card field derived from its gun range, equal to
 the old shared life on every ship set, so the game's numbers stayed version 3; the
 fingerprint changed only because a play-shell match allocates 60 bullet slots (was 45),
-and at 45 it is the old one.
+and at 45 it is the old one. Also on 2026-11-12 the elimination mode came in (its presets
+real_scale_elimination and clover, fixed map layouts): a new game, rated under its own mode
+and map, while every existing game computes the same numbers (the old presets' fingerprint
+without the observation's new mode_elimination column, always 0 in them, is the old one),
+so the version stayed 3; the fingerprint now covers the two new presets as well.
 """
 
 VERSION = 3
-FINGERPRINT = "192e58786f9e7b07"
+FINGERPRINT = "bd69c68587244307"

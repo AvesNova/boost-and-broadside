@@ -75,8 +75,9 @@ ZONE_COLUMNS = (
     "present",
 )
 # The mode block: a mode one-hot (all zero in sandbox); the scores by team_relative and the
-# score that wins (team deathmatch); the front, positive in the viewer's favour, and the
-# front that wins (Frontline). Absent quantities are 0.
+# score that wins (team deathmatch; in elimination the enemy's ships, a wipe); the front,
+# positive in the viewer's favour, and the front that wins (Frontline). Absent quantities
+# are 0.
 GLOBAL_COLUMNS = (
     "episode_progress",
     "arena_radius",
@@ -84,6 +85,7 @@ GLOBAL_COLUMNS = (
     "reset",
     "mode_team_deathmatch",
     "mode_frontline",
+    "mode_elimination",
     "score_own",
     "score_enemy",
     "score_target",

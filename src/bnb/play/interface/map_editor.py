@@ -3,13 +3,16 @@
 A dropdown chooses what the form starts from: this match (its game, lineup and tuning,
 the tuning panel's changes included), a game preset, or a saved map. The form holds the
 whole game: the mode, the ship set, the ships a side, the fields, the arena radius, the
-match length, the respawn wait, team deathmatch's spawn groups and kills to win, and the
-lineup; a tuning that comes with it is kept (or dropped). Below it, the name and where the
-map is saved (yours, in the user's configuration directory; or the project's, tracked in
-git), and **Save** (a new map, or the chosen saved map again when the name is its own:
-editing it, and moving it when the place changed), **Rename**, **Delete** (after a popup
-asks) and **Play** (a new match of the form, saved or not). A saved map shows on the New
-match page and starts with `bnb play --preset <name>`.
+match length, the respawn wait (none in elimination), team deathmatch's spawn groups and
+kills to win, and the lineup; a tuning that comes with it is kept (or dropped), and so is
+a fixed layout (Clover's fields and spawn points, `GameConfig.layout`), which the form
+does not edit: it plays at the layout's own sizes, in team deathmatch or elimination.
+Below it, the name and where the map is saved (yours, in the user's configuration
+directory; or the project's, tracked in git), and **Save** (a new map, or the chosen saved
+map again when the name is its own: editing it, and moving it when the place changed),
+**Rename**, **Delete** (after a popup asks) and **Play** (a new match of the form, saved
+or not). A saved map shows on the New match page and starts with
+`bnb play --preset <name>`.
 """
 
 import dataclasses
@@ -18,10 +21,11 @@ from typing import TYPE_CHECKING
 from imgui_bundle import imgui
 
 from bnb.contracts import GameConfig
+from bnb.contracts.config import ELIMINATION, TEAM_DEATHMATCH, MapLayout
 from bnb.game import api
 
 from ..loop import MatchSetup
-from ..maps import MAP_PRESETS, PLACE_LABELS, PLACES, Map, preset_map
+from ..maps import MAP_PRESETS, MODES, PLACE_LABELS, PLACES, Map, preset_map
 from ..tuning import Tuning
 from .controls import button, tooltip
 from .lineups import default_lineup, lineup_row, resized_lineup
@@ -38,7 +42,8 @@ DELETE = "Delete the map?###delete map"
 class MapForm:
     """The Maps page's form: a whole game (a `Map` without its name and place), the clocks
     as the seconds they play at x1 (the mode's own when the map leaves them out), the spawn
-    groups as typed ("2, 2, 1"; empty: uniform)."""
+    groups as typed ("2, 2, 1"; empty: uniform); layout: the map's fixed layout, carried
+    unedited (None: a random map)."""
 
     mode: str
     ship_set: str
@@ -51,6 +56,7 @@ class MapForm:
     kills_per_ship: int
     lineup: list[int]
     tuning: Tuning = Tuning()
+    layout: MapLayout | None = None
 
     @classmethod
     def of(cls, game_map: Map) -> MapForm:
@@ -71,6 +77,7 @@ class MapForm:
             config.kills_per_ship,
             list(lineup),
             game_map.tuning,
+            config.layout,
         )
 
     def config(self) -> GameConfig:
@@ -82,7 +89,7 @@ class MapForm:
         except ValueError:
             message = f"spawn groups {self.spawn_groups!r}: whole numbers, as 2, 2, 1"
             raise ValueError(message) from None
-        if self.mode != "team_deathmatch":
+        if self.mode != TEAM_DEATHMATCH:
             groups = ()
         config = GameConfig(
             self.ships_per_team,
@@ -92,6 +99,7 @@ class MapForm:
             spawn_groups=groups,
             kills_per_ship=self.kills_per_ship,
             ship_set=self.ship_set,
+            layout=self.layout,
         )
         own = api.rules_of(config).pools[0]
         tick_rate = round(1.0 / api.rules_of(config).tick_length)
@@ -102,6 +110,8 @@ class MapForm:
         ):
             whole = max(round(seconds * tick_rate), 0)  # the box holds float32: whole ticks
             clocks[field] = None if whole == ticks else whole / tick_rate
+        if self.mode == ELIMINATION:  # no respawn: the wait follows the match length
+            clocks["respawn_seconds"] = None
         return dataclasses.replace(config, **clocks)
 
     def lineup_names(self) -> tuple[str, ...] | None:
@@ -250,7 +260,7 @@ class MapEditor:
         form = self.form
         imgui.separator()
         label("Mode")
-        for key, title in (("team_deathmatch", "Team deathmatch"), ("frontline", "Frontline")):
+        for key, title in MODES:
             if button(controls, f"maps/mode/{key}", title, active=form.mode == key):
                 form.mode = key
             imgui.same_line()
@@ -276,11 +286,12 @@ class MapEditor:
         imgui.set_next_item_width(-1.0)
         _, form.num_fields = imgui.slider_int("##map fields", form.num_fields, 0, 64)
         controls.record("maps/fields")
-        for title, field, unit, help in (
+        boxes = (
             ("Arena radius", "arena_radius", "m", "The arena's radius"),
             ("Match length", "episode_seconds", "s", "Seconds at x1, whole ticks (1/30 s)"),
             ("Respawn wait", "respawn_seconds", "s", "Seconds at x1, whole ticks (1/30 s)"),
-        ):
+        )
+        for title, field, unit, help in boxes[:2] if form.mode == ELIMINATION else boxes:
             label(title)
             imgui.set_next_item_width(120.0 * scale)
             _, value = imgui.input_float(f"##{field}", getattr(form, field), 0.0, 0.0, "%.4g")
@@ -289,7 +300,7 @@ class MapEditor:
             setattr(form, field, value)
             imgui.same_line()
             imgui.text(unit)
-        if form.mode == "team_deathmatch":
+        if form.mode == TEAM_DEATHMATCH:
             label("Spawn groups")
             imgui.set_next_item_width(120.0 * scale)
             _, form.spawn_groups = imgui.input_text_with_hint(
