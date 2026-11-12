@@ -924,6 +924,7 @@ mirrors without a joust *and* ships that fly differently.
 | 1 | **hit-and-run v standard** (`arch-standard-hit-and-run`) | 0.53 / 0.48 / 0.47 / 0.47 / 0.46 | CE 0.51 / 0.46 / 0.46 / 0.48 / 0.44; DCL 0.51 / 0.48 / 0.49 / 0.47 / 0.47 | 0.34, 260 s, 2.7; 0.36, 295 s, 3.2 | the two fly alike (shield, recharge, damage, nose and sight differ, not flight); the hit-and-run mirror's median is one merge a kill |
 | 2 | **rate v speed** (`arch-rate-speed`, confirm 12) | 0.56 / 0.50 / 0.49 / 0.47 / 0.44 | CE 0.53 / 0.49 / 0.47 / 0.46 / 0.45; DCL 0.53 / 0.51 / 0.50 / 0.40 / 0.37 | 0.35, 287 s, 3.1; 0.32, 341 s, 3.4 | flight differs only a little (lift x1.03, drag x0.85); a tier above the set's ships; the speed mirror runs 341 s |
 | 3 | **standard v brawler** (`arch-standard-brawler`) | 0.52 / 0.52 / 0.52 / 0.53 / 0.52 (repeat 0.54 / 0.52 / 0.53 / 0.52 / 0.46) | CE 0.53 / 0.57 / 0.58 / 0.61 / 0.59; DCL 0.53-0.61 | 0.33, 327-335 s, 3.2; 0.35, 270-282 s, 2.9 | leans 0.57-0.61 to the standard once ships extend; differs in sight and damage only |
+| 3b | **close fighter v standard** (`arch-close-standard`) | 0.53 / 0.49 / 0.51 / 0.54 / 0.53 | | 0.28, 352 s, 3.2; 0.36, 285 s, 3.2 | range and damage only |
 | 4 | **standard v small** (`arch-standard-small`) | 0.54 / 0.50 / 0.47 / 0.48 / 0.47 | CE 0.54 / 0.53 / 0.49 / 0.46 / 0.49 | 0.33, 320 s; 0.42, 281 s | size and gun weight only |
 | 5 | **brawler v small** (`arch-brawler-small`) | 0.51 / 0.47 / 0.43 / 0.47 / 0.46 | CE 0.51 / 0.46 / 0.41 / 0.43 / 0.37 | 0.33, 303 s; 0.44, 294 s | 0.37 at 20v20 under CE |
 | 6 | big v small (`arch-big-small`) | 0.59 / 0.51 / 0.49 / 0.50 / 0.47 (small induced x0.98: 0.54 / 0.49 / 0.47 / 0.43 / 0.36) | CE 0.49-0.57; DCL 0.48-0.57 | 0.36, 236 s; 0.38, 326 s | duel and 20v20 pull opposite ways |
@@ -1008,7 +1009,14 @@ kills a game inside the 0.5 s trade window. Post-merge choice entropy stays at 0
 under r9 (no ship extends); under CE it falls to ~0.1 (the extension is nearly the only
 choice made). Every result is r9 or the maneuvers doctrines, not a trained agent.
 
-**Next**: a playtest of `arch-standard-hit-and-run` and `arch-rate-speed`; a doctrine that
+**Maps to playtest** (`bnb play --preset <name>`; ship A in the Yongma slot, ship B in the
+Jujak slot; the ship files and the play default are untouched): `arch-standard-hit-and-run`
+(hit-and-run v standard), `arch-rate-speed`, `arch-standard-brawler`, `arch-standard-small`,
+`arch-brawler-small`, `arch-close-standard`, `arch-big-small`, `arch-gunner-close` (the
+armed gunner, arming distance 100 m).
+
+**Next**: a playtest of `arch-standard-hit-and-run` and `arch-rate-speed`; the four-ship set
+under the maneuvers doctrines (the brawler loses ground when ships extend); a doctrine that
 uses the hit-and-run recharge (break off, recharge, re-enter) and the rate fighter's slow
 fight, which r9 never does; the trade window at 20v20 (count mutual kills, not coincident
 deaths); bring rate and speed down to the set (damage x1.1 / x0.88 is 0.52-0.58 against the
