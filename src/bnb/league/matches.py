@@ -812,7 +812,7 @@ class Arena:
                 f"{tuple(held.max_energy.shape)}"
             )
         rules = self.rollout.rules
-        if api.bullet_slots_for(types.fire_rate, rules.bullet_moves, rules.tick_length) > (
+        if api.bullet_slots_for(types.fire_rate, types.bullet_life, rules.tick_length) > (
             rules.bullet_slots
         ):
             raise ValueError(

@@ -878,7 +878,7 @@ class Learner:
                 generator=self.spread_generator,
             )
             drawn = torch.randint(
-                self.rules.bullet_moves,
+                self.rules.longest_bullet_moves,
                 (segments.length, segments.views, self.rules.num_ships, 3),
                 dtype=torch.uint8,
                 device=device,
@@ -893,7 +893,7 @@ class Learner:
                 with torch.no_grad():
                     if self.auxiliary:
                         following, followed = segments.following(
-                            FOLLOWING, host_views, self.rules.bullet_moves
+                            FOLLOWING, host_views, self.rules.longest_bullet_moves
                         )
                         shot, shot_mask = self.shots(
                             trajectory, spread[:, views], drawn[:, views], following, followed

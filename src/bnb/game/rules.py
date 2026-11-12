@@ -16,7 +16,7 @@ from bnb.contracts.config import TEAMS
 from bnb.contracts.obs import ZONE_SLOTS
 from bnb.contracts.pools import environments_per_pool, pool_game
 
-from . import ships
+from . import ship_types, ships
 from .modes.rules import CLOCKS, ModeRules, mode_rules_of
 
 STICK_LEVELS = (0.0, -0.4, 0.4, -0.75, 0.75, -1.0, 1.0)  # by stick index; + turns left
@@ -30,7 +30,12 @@ FIELD_LEVELS = (-2, -1, 1, 2)
 LN_SQRT2 = 0.5 * math.log(2.0)
 MAP_SCALE_RADIUS = 2600.0  # m: the arena radius of map scale 1 (map_scale = R_a / this)
 FIELD_DISC_FRACTION = 0.85  # the fields' centres lie within this fraction of the arena radius
-BULLET_LIFE = 0.4  # s, every bullet's: 12 moves at 30 Hz
+# rad: the angle off the nose at which armour is at half strength (the aspect halfway from
+# the head-on fraction to 1): 42.27 degrees, the exp(-4 theta^2 / pi) curve's
+HEAD_ON_ANGLE = math.sqrt(math.pi * math.log(2.0) / 4.0)
+# s: the longest bullet life a card may have (a type's life follows from its gun range,
+# `handling.weapons.bullet_life`); what a match that may be tuned sizes its bullet slots by
+LONGEST_BULLET_LIFE = 2.0
 
 
 @dataclasses.dataclass(frozen=True)
@@ -82,10 +87,13 @@ class Rules:
     team_types: tuple[int, ...] = ()  # ship type per slot, the same for both teams
     bullet_slots: int = 6  # per ship [K]
     tick_length: float = 1.0 / 30.0  # s [h]
-    bullet_moves: int = 12  # a bullet's lifetime, BULLET_LIFE in ticks (rules_of converts)
+    # The longest bullet life on the card, in moves (rules_of reads the card; 12 is the
+    # standard card's): the static size of what follows a shot (its labels, the lookahead).
+    longest_bullet_moves: int = 12
     bullet_drag: float = 8e-4  # 1/m [k_b]
     bullet_spread: float = 12.0  # m/s per axis, proper [sigma_b]
     head_on_fraction: float = 0.3  # [f_0]
+    head_on_angle: float = HEAD_ON_ANGLE  # rad, armour at half strength [theta_h]
     shield_recharge_delay: float = 6.0  # s without a hit, counted on quiet ticks (QUIET_STICKS)
     shield_recharge_rate: float = 12.0  # per s, on quiet ticks
     boundary_damage_base: float = 5.0  # per s
@@ -159,25 +167,31 @@ def _pool_rules(environments: int | None, game: GameConfig, tick_length: float) 
     )
 
 
-def bullet_slots_for(fire_rate, bullet_moves: int, tick_length: float) -> int:
-    """The bullet slots a ship needs so that none of its bullets is replaced in flight: its
-    life in moves over the fewest ticks between shots of any type (fire_rate: the card's,
-    shots per second, one per type)."""
-    rates = fire_rate.tolist() if hasattr(fire_rate, "tolist") else list(fire_rate)
-    fewest = min(max(round(1.0 / (tick_length * rate)), 1) for rate in rates)
-    return math.ceil(bullet_moves / fewest)
+def life_moves(bullet_life, tick_length: float) -> list[int]:
+    """The card's bullet lives (s, one per type, or (B, types)) as whole moves at this tick."""
+    if hasattr(bullet_life, "flatten"):
+        bullet_life = bullet_life.flatten().tolist()
+    return [round(life / tick_length) for life in bullet_life]
+
+
+def bullet_slots_for(fire_rate, bullet_life, tick_length: float) -> int:
+    """The bullet slots a ship needs so that none of its bullets is replaced in flight: the
+    most of any type's life in moves over its ticks between shots (fire_rate: shots per
+    second, bullet_life: seconds, the card's, one per type)."""
+    rates = fire_rate.flatten().tolist() if hasattr(fire_rate, "flatten") else list(fire_rate)
+    return max(
+        math.ceil(moves / max(round(1.0 / (tick_length * rate)), 1))
+        for moves, rate in zip(life_moves(bullet_life, tick_length), rates, strict=True)
+    )
 
 
 def set_overrides(ship_set: str, tick_length: float) -> dict:
     """The `Rules` fields a ship set's rules.toml sets (`ships.rules`): its [rules] values
-    (bullet_life in seconds, as whole ticks of bullet_moves) and its [flight] constants (as
-    `flight`). Empty for the standard set."""
+    and its [flight] constants (as `flight`). Empty for the standard set."""
     found = ships.rules(ship_set)
     shared = {
         key.split(".", 1)[1]: value for key, value in found.items() if key.startswith("rules.")
     }
-    if "bullet_life" in shared:
-        shared["bullet_moves"] = ticks_of(shared.pop("bullet_life"), tick_length)
     flight = {
         key.split(".", 1)[1]: value for key, value in found.items() if key.startswith("flight.")
     }
@@ -198,8 +212,9 @@ def rules_of(
     Without pools the batch plays the config's game, at any batch size. With pools (and
     environments, their batch size) each pool plays its own (`pool_game`), in pool order;
     adjacent pools of the same game merge, and if one game remains it covers the whole
-    batch as without pools. types: the ship card, which sets the bullet slots
-    (`bullet_slots_for`; 6 for the default card) unless `bullet_slots` is given. The config's
+    batch as without pools. types: the ship card (None: the config's ship set's default
+    card), whose bullet lives set `longest_bullet_moves`, and which sets the bullet slots
+    (`bullet_slots_for`; 6 without a card) unless `bullet_slots` is given. The config's
     ship set gives its own rule values (`set_overrides`) where `overrides` leave them out.
     """
     tick_length = overrides.pop("tick_length", Rules.tick_length)
@@ -219,11 +234,13 @@ def rules_of(
         if len(merged) == 1:
             merged = [dataclasses.replace(merged[0], environments=None)]
         games = tuple(merged)
-    overrides.setdefault("bullet_moves", ticks_of(BULLET_LIFE, tick_length))
+    lives = (
+        ship_types.defaults(config.ship_set)["bullet_life"] if types is None else types.bullet_life
+    )
+    overrides.setdefault("longest_bullet_moves", max(life_moves(lives, tick_length)))
     if types is not None:
         overrides.setdefault(
-            "bullet_slots",
-            bullet_slots_for(types.fire_rate, overrides["bullet_moves"], tick_length),
+            "bullet_slots", bullet_slots_for(types.fire_rate, types.bullet_life, tick_length)
         )
     return Rules(
         ships_per_team=config.ships_per_team,

@@ -30,7 +30,7 @@ ORDER = "order.toml"
 RULES = "rules.toml"
 NAME = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 # The tables of a set's rules.toml and the owners of their keys (`bnb.game.tuning`'s naming):
-# [rules] Rules fields (and bullet_life, s), [flight] FlightConstants, [mode] ModeRules.
+# [rules] Rules fields, [flight] FlightConstants, [mode] ModeRules.
 RULE_TABLES = ("rules", "flight", "mode")
 
 

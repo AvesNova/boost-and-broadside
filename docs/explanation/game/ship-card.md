@@ -37,7 +37,7 @@ Three kinds of field:
   span the widest stall angle and the longest recharge delay of the card it is built with.
 
 Whose value applies: the flight and shield values are the ship's own; the bullet spread and
-drag are the shooter's; the head-on fraction is the target's; the vision range is the
+drag are the shooter's; the head-on fraction and the head-on angle are the target's; the vision range is the
 observer's. Perception takes no card, so the observers' ranges are kept in the state,
 `Match.vision_range`, written by every reset and every tick.
 
@@ -59,7 +59,7 @@ A game names its set, `GameConfig.ship_set` ("standard" by default); the whole b
 shares it. `bnb.game.ship_types.ship_types`, `default_card` and `type_names` take the set
 (the standard one by default) and read its files once; `reload` reads every set again
 after a save. A set may hold `rules.toml`, the rule values its cards were solved under:
-`[rules]` (`Rules` fields, and `bullet_life` in seconds), `[flight]` (`FlightConstants`)
+`[rules]` (`Rules` fields), `[flight]` (`FlightConstants`)
 and `[mode]` (`ModeRules`). `rules_of` and `mode_rules_of` apply them where the caller
 does not override them, so a card always flies under its own rules. The standard set has
 none: it is the game's own rules, and its card is the default card.
@@ -118,9 +118,21 @@ full-store power instead.
 
 The combat handles are the damage, the fire rate in shots per second, the muzzle speed, the
 spread, the gun range (the distance a bullet fired at cruise along the flight path travels
-in its 0.4 s life), the shots a full store pays for, the shield capacity, recharge rate and
-delay (both run on quiet ticks only, [Physics](physics.md)), the head-on fraction, the hit radius and the spawn energy. They map to the card in
+in its life), the shots a full store pays for, the shield capacity, recharge rate and
+delay (both run on quiet ticks only, [Physics](physics.md)), the head-on fraction and the
+head-on angle (the angle off the nose at which the target's armour is at half strength, 5
+to 90 degrees on the panel's slider), the hit radius and the spawn energy. They map to the card in
 closed form (`bnb.game.handling.weapons`).
+
+**The gun range sets the bullet life.** A bullet launched at w0 (cruise plus muzzle speed)
+under drag k covers ln(1 + k w0 t) / k in time t, so the range R and the life are one
+quantity: the type's life is the time the game's bullet drag takes to cover R,
+t = expm1(k R) / (k w0), rounded up to a whole tick, and its drag scale (1 or more, since
+drag only shortens) trims the range to exactly R in that life. The card holds the life
+(`bullet_life`, seconds) and the drag scale; a lower muzzle speed at the same range is a
+longer life, up to `bnb.game.rules.LONGEST_BULLET_LIFE` (2 s), past which the range is
+infeasible. The game's bullet drag is a rule setting: changing it keeps the cards, so each
+type's range changes with it until its gun range is set again.
 
 ## Measuring
 

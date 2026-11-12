@@ -65,7 +65,7 @@ RULES = dict(
     h="tick_length",
     episode_ticks="episode_ticks",
     slots="bullet_slots",
-    bullet_moves="bullet_moves",
+    bullet_moves="longest_bullet_moves",
     bullet_drag="bullet_drag",
     spread="bullet_spread",
     head_on_fraction="head_on_fraction",
@@ -475,10 +475,13 @@ def test_defaults_match_the_spec_table():
                 field, want = "fire_rate", 1.0 / (want * rules.tick_length)
             assert math.isclose(float(getattr(TYPES, field)[t]), want, rel_tol=1e-6), (name, key)
     # The ship card's additions: the bleed exponent (2) and per-type scales (1) of values
-    # that are shared in the spec's table; the fire rate replaces the ticks between shots.
+    # that are shared in the spec's table; the fire rate replaces the ticks between shots,
+    # and the bullet life (s) the table's shared bullet moves.
     assert set(CARD.values()) - {"ticks_between_shots"} == (
-        set(DEFAULTS) - {"bleed_exponent", "fire_rate", *SCALED}
+        set(DEFAULTS) - {"bleed_exponent", "fire_rate", "bullet_life", *SCALED}
     )
+    moves = api.bullet_moves(TYPES.bullet_life, rules.tick_length)
+    assert moves.tolist() == [preset["bullet_moves"]] * 2
     assert TYPES.bleed_exponent.tolist() == [2.0, 2.0]
     assert all(getattr(TYPES, name).tolist() == [1.0, 1.0] for name in SCALED)
 

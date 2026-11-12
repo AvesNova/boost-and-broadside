@@ -16,6 +16,7 @@ from bnb.play.app import Options, Session, read_pixels
 from bnb.play.interface.minimap import to_world
 from bnb.play.loop import MatchEvent, SideSetup
 from bnb.play.maps import Maps
+from bnb.play.render.bullets import BulletLook
 from bnb.play.selection import Selection, shown_ships
 from bnb.play.sides import Agent
 from bnb.play.tuning import Tuning
@@ -665,6 +666,27 @@ def test_the_dot_grid_is_chosen_in_the_top_bar_the_settings_and_with_g(context, 
     player.click("settings/grid/triangle")
     assert session.grid == "triangle"
     assert (battlefield() != bare).any()  # the dots
+    session.close()
+
+
+def test_the_bullets_look_is_chosen_in_the_settings(context, tmp_path):
+    """Settings > Bullets: today's tracer by default; Trail only hides the head's size and
+    changes how the battlefield draws; a slider sets a width."""
+    session = _session(context, tmp_path, preset="arena", bullet_trail_head_width=3.0)
+    assert session.bullet_look == BulletLook(trail_head_pixels=3.0)
+    player = Player(session, context, 1280, 720)
+    player.click("menu")
+    player.click("menu/settings")
+    controls = session.interface.controls
+    assert "settings/bullets/head_pixels" in controls.last
+    player.click("settings/bullets/trail")
+    assert session.bullet_look.style == "trail"
+    assert "settings/bullets/head_pixels" not in controls.last
+    width = controls.rect("settings/bullets/trail_head_pixels")
+    player.click_at(width.x + 0.95 * width.width, width.y + 0.5 * width.height)
+    assert session.bullet_look.trail_head_pixels > 12.0
+    player.click("settings/bullets/tracer")
+    assert session.bullet_look.style == "tracer"
     session.close()
 
 

@@ -18,7 +18,7 @@ from bnb.play.app import Options, read_pixels, run_offscreen
 from bnb.play.camera import Camera
 from bnb.play.index_map import build
 from bnb.play.loop import MatchLoop, MatchSetup
-from bnb.play.render.bullets import HEAD_PIXELS, TRAIL_PIXELS, TRAIL_SECONDS, tracer_lengths
+from bnb.play.render.bullets import BulletLook, tracer_lengths
 from bnb.play.render.contours import CONTOUR_PIXELS, SMOOTHING_FRACTION, contour_level
 from bnb.play.render.grid import GRID_PIXELS, PATTERNS
 from bnb.play.render.renderer import SPECTATOR, Renderer
@@ -90,6 +90,7 @@ def _draw(
     true_size=False,
     grid_pattern="off",
     contours="off",
+    bullet_look=None,
 ):
     grid, values = build(frame.fields, frame.arena_radius)
     renderer.set_map(frame, grid, values)
@@ -107,6 +108,7 @@ def _draw(
         true_size=true_size,
         grid=grid_pattern,
         contours=contours,
+        bullet_look=bullet_look,
     )
     assert context.error == "GL_NO_ERROR"
     return read_pixels(target).astype(int)
@@ -316,7 +318,7 @@ def _with_bullets(frame, owner: int, x, y, direction_x: float = 1.0, direction_y
 
 def test_a_bullet_draws_a_round_head_and_a_fading_trail_behind_it(renderer, context):
     """A tracer: the head where the bullet is, a trail behind it as long as the bullet
-    flew in the last TRAIL_SECONDS (fading toward its end), none ahead; a bullet just
+    flew in the last trail seconds (fading toward its end), none ahead; a bullet just
     fired trails back only to where it was fired from; no speed known (a tick's snapshot):
     the head alone."""
     loop = _loop(PRESETS["deathmatch"], ticks=0, seed=1)
@@ -324,7 +326,7 @@ def test_a_bullet_draws_a_round_head_and_a_fading_trail_behind_it(renderer, cont
     theme = themes.load(themes.DEFAULT)
     x, y = 0.0, 0.0
     camera = Camera(WIDTH, HEIGHT, x, y, 0.5)  # 2 px per metre
-    speed = 600.0  # m/s: the trail is 600 x TRAIL_SECONDS = 24 m, 48 px
+    speed = 600.0  # m/s: the trail is 600 x 0.04 s = 24 m, 48 px
     background = _draw(renderer, context, frame, SPECTATOR, camera, theme)
 
     def drawn(age: float, speed: float = speed):
@@ -340,7 +342,7 @@ def test_a_bullet_draws_a_round_head_and_a_fading_trail_behind_it(renderer, cont
             (image[row, column + pixels] != background[row, column + pixels]).any()
         )
 
-    assert TRAIL_SECONDS * speed == pytest.approx(24.0)
+    assert BulletLook().trail_seconds * speed == pytest.approx(24.0)
     tracer = drawn(age=1.0)
     assert tracer(0) and tracer(-10) and tracer(-40)  # the head and the trail behind it
     assert not tracer(-60) and not tracer(8)  # past the trail's end, and ahead
@@ -353,7 +355,8 @@ def test_a_bullet_draws_a_round_head_and_a_fading_trail_behind_it(renderer, cont
 def test_a_tracers_trail_leaves_the_head_as_wide_as_the_head(renderer, context):
     """The trail's width at the head is the head's diameter: just behind the head the trail
     covers as many rows as the head does through its middle, and it thins toward its end."""
-    assert TRAIL_PIXELS[1] == 2.0 * HEAD_PIXELS
+    look = BulletLook()
+    assert look.trail_head_pixels == 2.0 * look.head_pixels
     loop = _loop(PRESETS["deathmatch"], ticks=0, seed=1)
     frame = _without_bullets(loop.current)
     theme = themes.load(themes.DEFAULT)
@@ -376,6 +379,40 @@ def test_a_tracers_trail_leaves_the_head_as_wide_as_the_head(renderer, context):
     assert rows(0) == 5  # the head: 5 px across
     assert rows(4) == rows(0)
     assert rows(150) < rows(4)
+
+
+def test_a_trail_only_bullet_has_no_head_and_takes_its_widths_and_length(renderer, context):
+    """The trail-only style draws no head: nothing ahead of the bullet's point, a trail
+    behind it at the widths and length the look gives (a long, wide one here), and a
+    bullet with no speed known draws nothing."""
+    loop = _loop(PRESETS["deathmatch"], ticks=0, seed=1)
+    frame = _without_bullets(loop.current)
+    theme = themes.load(themes.DEFAULT)
+    camera = Camera(WIDTH, HEIGHT, 0.0, 0.0, 0.5)  # 2 px per metre
+    x = y = 0.25
+    background = _draw(renderer, context, frame, SPECTATOR, camera, theme)
+    look = BulletLook(
+        style="trail", trail_head_pixels=9.0, trail_tail_pixels=3.0, trail_seconds=0.1
+    )
+
+    def changed(speed: float, bullet_look: BulletLook) -> np.ndarray:
+        bullet = _with_bullets(frame, 0, np.array([x]), np.array([y]))
+        bullets = bullet.bullets
+        slot = np.flatnonzero(bullets.active)
+        values = {"age": bullets.age.copy(), "speed": bullets.speed.copy()}
+        values["age"][slot], values["speed"][slot] = 1.0, speed
+        bullet = dataclasses.replace(bullet, bullets=dataclasses.replace(bullets, **values))
+        image = _draw(renderer, context, bullet, SPECTATOR, camera, theme, bullet_look=bullet_look)
+        return np.abs(image - background).max(-1) > 0
+
+    row, column = _pixel_of(camera, x, y)
+    trail = changed(600.0, look)  # 60 m, 120 px
+    assert not trail[row - 8 : row + 9, column + 3].any()  # no head ahead of the point
+    assert int(trail[row - 8 : row + 9, column - 4].sum()) == 9  # the head end: 9 px across
+    assert trail[row, column - 100] and not trail[row, column - 130]
+    assert not changed(0.0, look).any()  # no speed: no trail, and no head
+    tracer = changed(0.0, BulletLook(head_pixels=4.0))
+    assert int(tracer[row - 8 : row + 9, column].sum()) == 9  # the head: radius 4, 9 px across
 
 
 def _without_bullets(frame):

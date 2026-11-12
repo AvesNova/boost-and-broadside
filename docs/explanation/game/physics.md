@@ -131,15 +131,20 @@ which blocks sight (see [Perception and fog](perception.md)).
 
 - **Firing.** A ship fires when it is alive, its gun is cooled down and its store holds the
   shot's energy cost. The bullet starts at the ship's position with the ship's velocity plus
-  the muzzle speed along the nose, plus the shooter's random spread. It lives 0.4 s
-  (`bnb.game.rules.BULLET_LIFE`), a whole number of moves at the rules' tick.
-- **Drag.** Bullets slow quadratically on their proper speed, with the shooter's drag, so a
-  shot has a range.
+  the muzzle speed along the nose, plus the shooter's random spread. It lives its shooter's
+  type's bullet life (the card's `bullet_life`, a whole number of moves at the rules'
+  tick; 0.4 s for the standard types, 0.6 s for the real-scale ones).
+- **Drag.** Bullets slow quadratically on their proper speed, with the game's bullet drag
+  times the shooter's drag scale, so a shot has a range. A type's gun range sets both its
+  bullet life and its drag scale ([The ship card](ship-card.md)).
 - **Hits.** A swept test between each bullet's and each ship's straight motion this tick
   finds contacts within the target's hit radius. A bullet hits only its first contact.
   **Friendly fire is on:** a bullet can hit any ship but its own shooter.
-- **Damage.** A hit from dead ahead deals the target's head-on fraction of the shooter's
-  damage; from the side or rear, nearly all of it.
+- **Damage.** A hit deals the shooter's damage times the aspect
+  `1 - (1 - f_0) exp(-ln 2 (θ / θ_h)²)`, with `θ` the angle between the bullet's reversed
+  direction and the target's nose: the target's head-on fraction `f_0` from dead ahead,
+  half way to full damage at the target's head-on angle `θ_h` (42.27 degrees by default,
+  the old fixed curve's `exp(-4θ²/π)`), and nearly all of it from the side or rear.
 - **Shields.** Damage beyond the current shield breaks it, and the overkill is ignored.
   Any damage to a ship whose shield was already broken at tick start kills it. After a
   delay without damage, the shield recharges at a fixed rate; both are per type. The delay
@@ -154,7 +159,7 @@ which blocks sight (see [Perception and fog](perception.md)).
   bullet index.
 
 The shared constants, from `bnb.game.rules.Rules`. The card scales the spread, the
-bullet drag, the head-on fraction, the shield recharge rate and delay, and the vision range
+bullet drag, the head-on fraction and angle, the shield recharge rate and delay, and the vision range
 per type:
 
 <!-- generated: game-constants -->

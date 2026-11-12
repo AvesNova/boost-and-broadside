@@ -105,8 +105,8 @@ class Realtime:
     settings: tuned rules by `api.tuning` key (none: the game's); types: the ship card (None:
     the default card of the config's ship set); bullet_slots: per ship (None:
     `api.tuning.most_bullet_slots`, room for any fire rate and bullet life live tuning
-    allows: a match never runs out of slots while it is tuned, and spare slots cost the tick
-    next to nothing).
+    allows, and `longest_bullet_moves` the longest life a card may have: a match never runs
+    out of slots while it is tuned, and spare slots cost the tick next to nothing).
     """
 
     def __init__(
@@ -122,13 +122,15 @@ class Realtime:
         bullet_slots: int | None = None,
     ) -> None:
         types = api.ship_types(ship_set=config.ship_set) if types is None else types
-        rules = api.rules_of(config)
+        rules = api.rules_of(config, types=types)
         if lineup is not None:
             rules = dataclasses.replace(rules, team_types=tuple(lineup))
         if settings:  # as live tuning holds them: a time scale carries some past a slider's end
             rules = api.tuning.tuned(rules, settings, bounded=False)
         if bullet_slots is None:  # room for any fire rate and bullet life live tuning allows
             bullet_slots = api.tuning.most_bullet_slots(rules.tick_length)
+            longest = api.tuning.longest_moves(rules.tick_length)
+            rules = dataclasses.replace(rules, longest_bullet_moves=longest)
         rules = dataclasses.replace(rules, bullet_slots=bullet_slots)
         self.config, self.rules = config, rules
         self.static, self.live = api.tuning.static_of(rules), api.tuning.live_of(rules)

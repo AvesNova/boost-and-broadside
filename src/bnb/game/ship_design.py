@@ -12,9 +12,10 @@ knobs are nearly independent (`KNOBS`, each with the reason it is in the search)
   whole number of hertz dividing the 30 Hz tick), the shield, the muzzle speed and the
   dispersion angle (the bullet spread over the muzzle speed).
 
-Every other handle is the base type's; the gun range follows from the cruise and the muzzle
-speed, the climb time from the store and the climb rate, the spawn energy is the base's
-share of the store, and the shot keeps the base's store cost per second of fire.
+Every other handle is the base type's; the gun range is the bullet's reach at cruise plus
+muzzle speed in the set's gun flight time (`real_scale.gun_flight_time`), the climb time
+from the store and the climb rate, the spawn energy is the base's share of the store, and
+the shot keeps the base's store cost per second of fire.
 
 The envelope is the 16 real propeller fighters of the set (`ENVELOPE`; the Me 262 and Me 163
 are left out, as are the invented designs): each knob's log has their mean and standard
@@ -37,7 +38,7 @@ from . import ships
 from .handling import Handles
 from .handling.estimate import Estimate
 from .handling.weapons import gun_range
-from .real_scale import CLIMB_FILL, GRAVITY, SHIP_SET
+from .real_scale import CLIMB_FILL, GRAVITY, SHIP_SET, gun_flight_time
 from .rules import Rules
 from .ship_types import FIELDS, ShipTypes, ticks_between_shots
 
@@ -157,7 +158,7 @@ def handles_of(base: dict[str, float], knobs: dict[str, float], rules: Rules) ->
     handles["shots_per_store"] = values["ceiling"] * values["fire_rate"] / cost_per_second
     drag = torch.tensor(rules.bullet_drag, dtype=torch.float64)
     launch = torch.tensor(values["cruise_speed"] + values["muzzle_speed"], dtype=torch.float64)
-    handles["gun_range"] = float(gun_range(rules, drag, launch))
+    handles["gun_range"] = float(gun_range(drag, launch, gun_flight_time(rules.tick_length)))
     return handles
 
 

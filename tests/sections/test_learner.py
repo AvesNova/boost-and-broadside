@@ -477,7 +477,7 @@ def test_the_stored_shot_labels_are_the_updates_resimulation(segment):
     store = runner.store
     stream = random_stream(0, "shot_spread")
     spread = torch.randn((store.length, store.views, 10, 2), generator=stream)
-    moves = runner.rules.bullet_moves
+    moves = runner.rules.longest_bullet_moves
     drawn = torch.randint(
         moves, (store.length, store.views, 10, 3), dtype=torch.uint8, generator=stream
     )

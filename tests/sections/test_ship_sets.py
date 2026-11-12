@@ -23,7 +23,7 @@ from bnb.runtime.train import TrainConfig
 TYPES = 12  # a set of many types
 TRIAL_RULES = """
 [rules]
-bullet_life = 0.6
+bullet_drag = 0.0001
 field_band_width = 120.0
 
 [flight]
@@ -69,7 +69,7 @@ def test_the_standard_set_is_the_ship_directory_and_has_the_games_rules():
     config = api.PRESETS["frontline"]
     rules = api.rules_of(config)
     assert rules.flight == FlightConstants()
-    assert rules.bullet_moves == 12 and rules.field_band_width == Rules.field_band_width
+    assert rules.longest_bullet_moves == 12 and rules.field_band_width == Rules.field_band_width
     assert api.default_card() == api.default_card(api.STANDARD_SHIP_SET)
     with pytest.raises(ValueError, match="lowercase"):
         ships.directory_of("Real Scale")
@@ -86,12 +86,12 @@ def test_a_set_gives_its_card_names_and_rules_and_leaves_the_standard_alone(tria
 
     config = GameConfig(5, 10, 7800.0, mode="frontline", ship_set=trial)
     rules = api.rules_of(config)
-    assert rules.bullet_moves == 18 and rules.field_band_width == 120.0
+    assert rules.bullet_drag == 0.0001 and rules.field_band_width == 120.0
     assert rules.flight.gravity == 9.81
     assert rules.flight.coast_exchange == FlightConstants().coast_exchange
     assert rules.pools[0].mode.capture_seconds == 20.0
     assert rules.pools[0].mode.group_radius == 900.0
-    assert api.rules_of(config, bullet_moves=6).bullet_moves == 6  # the caller's win
+    assert api.rules_of(config, bullet_drag=1e-3).bullet_drag == 1e-3  # the caller's win
 
 
 def test_a_sets_files_round_trip_with_their_notes(trial):

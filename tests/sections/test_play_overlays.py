@@ -320,7 +320,7 @@ def test_the_drawing_holds_every_overlay_on(theme, match):
     drawing = overlay_drawing(theme, settings, drawn, loop.current, selected, 1.0)
     ghosts = len(made.next_state.ship) + len(made.belief.ship)
     assert len(drawing.ghosts["x"]) == ghosts
-    assert len(drawing.circles) >= loop.rules.bullet_moves  # the shot's circles and dots
+    assert len(drawing.circles) >= agent.model.bullet_moves  # the shot's circles and dots
     assert len(drawing.density) % 18 == 0
     alone = overlay_drawing(theme, settings, {}, loop.current, None, 1.0)
     assert len(alone.segments) == len(alone.circles) == len(alone.ghosts["x"]) == 0

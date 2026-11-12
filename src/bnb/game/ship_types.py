@@ -39,6 +39,7 @@ FIELDS = dict(
     muzzle_speed="m/s, proper",
     bullet_energy_cost="J [bullet_cost]",
     fire_rate="shots/s; 2 and 3 ticks between shots at 30 Hz [fire_interval]",
+    bullet_life="s, whole ticks; the shooter's bullets', from its gun range",
     spawn_energy="J",
     bleed_exponent="e: induced drag k (C^2 + (z/u^2)^2)^(e/2)",
     # Per-type scales of shared values (SCALED), 1 by default.
@@ -53,6 +54,7 @@ FIELDS = dict(
     shield_recharge_rate_scale="of rules.shield_recharge_rate; on quiet ticks only",
     shield_recharge_delay_scale="of rules.shield_recharge_delay; counted on quiet ticks only",
     head_on_fraction_scale="of rules.head_on_fraction; the target's [f_0]",
+    head_on_angle_scale="of rules.head_on_angle; the target's [theta_h]",
     engine_knee_scale="of flight.engine_knee [e_k]",
 )
 
@@ -114,6 +116,7 @@ SCALED = dict(
     shield_recharge_rate_scale=("rules", "shield_recharge_rate"),
     shield_recharge_delay_scale=("rules", "shield_recharge_delay"),
     head_on_fraction_scale=("rules", "head_on_fraction"),
+    head_on_angle_scale=("rules", "head_on_angle"),
     engine_knee_scale=("flight", "engine_knee"),
 )
 
@@ -121,7 +124,8 @@ SCALED = dict(
 @contract
 class ShipTypes:
     """Ship-card parameters by type, float; see FIELDS for units and SCALED for the
-    scales. Times are time-native: the fire rate becomes ticks with `ticks_between_shots`."""
+    scales. Times are time-native: the fire rate becomes ticks with `ticks_between_shots`, the
+    bullet life with `bullet_moves`."""
 
     max_lift_coefficient: torch.Tensor
     max_acceleration: torch.Tensor
@@ -137,6 +141,7 @@ class ShipTypes:
     muzzle_speed: torch.Tensor
     bullet_energy_cost: torch.Tensor
     fire_rate: torch.Tensor
+    bullet_life: torch.Tensor
     spawn_energy: torch.Tensor
     bleed_exponent: torch.Tensor
     induced_drag_scale: torch.Tensor
@@ -150,6 +155,7 @@ class ShipTypes:
     shield_recharge_rate_scale: torch.Tensor
     shield_recharge_delay_scale: torch.Tensor
     head_on_fraction_scale: torch.Tensor
+    head_on_angle_scale: torch.Tensor
     engine_knee_scale: torch.Tensor
 
 
@@ -195,6 +201,12 @@ def per_ship(table: torch.Tensor, ship_type: torch.Tensor) -> torch.Tensor:
     for i in range(1, table.shape[-1]):
         out = torch.where(ship_type == i, table[..., i], out)
     return out
+
+
+def bullet_moves(bullet_life: torch.Tensor, tick_length: float) -> torch.Tensor:
+    """The moves of each bullet life (s) at this tick, int32: the card holds whole ticks, so
+    rounding removes only the float error."""
+    return torch.round(bullet_life / tick_length).to(torch.int32)
 
 
 def ticks_between_shots(fire_rate: torch.Tensor, tick_length: float) -> torch.Tensor:

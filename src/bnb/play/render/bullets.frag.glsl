@@ -1,6 +1,6 @@
 #version 330
 #include "common.glsl"
-uniform float head_pixels;
+uniform float head_pixels;  // 0: no head, the trail alone
 uniform vec2 trail_pixels;
 
 in vec2 along_across;
@@ -11,7 +11,7 @@ out vec4 colour;
 
 void main() {
     float along = along_across.x, across = along_across.y;
-    float head = clamp(head_pixels + 0.5 - length(along_across), 0.0, 1.0);
+    float head = head_pixels > 0.0 ? clamp(head_pixels + 0.5 - length(along_across), 0.0, 1.0) : 0.0;
     // The trail: 0 at the head, 1 at its end, tapering and fading as a ship's trail does.
     float back = trail_length > 0.0 ? -along / trail_length : 2.0;
     float fresh = 1.0 - back;

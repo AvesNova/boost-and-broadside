@@ -43,6 +43,8 @@ from .maps import Maps
 from .overlays import NAMES as OVERLAY_NAMES
 from .overlays import OverlaySettings, Predictions, offered, offered_by, provider
 from .png import write_png
+from .render.bullets import STYLES as BULLET_STYLES
+from .render.bullets import BulletLook
 from .render.contours import SHAPE_SETS as CONTOUR_SHAPE_SETS
 from .render.grid import PATTERNS as GRID_PATTERNS
 from .render.minimap import DOT_PIXELS
@@ -63,11 +65,13 @@ FRAME_SECONDS = 1.0 / 60.0  # the offscreen runner's clock
 NOTICE_SECONDS = 6.0  # a notice stays this long (display time)
 FLYING_ZOOM = 3.0  # taking control zooms in to at most this multiple of the fitted view
 SEEK_BEFORE_MARKER = 3.0  # seconds before an event a marker seeks to
-SOLVED_UNDER = ("flight.", "rules.bullet_life")  # the rules a card's handles depend on
+SOLVED_UNDER = ("flight.", "rules.bullet_drag")  # the rules a card's handles depend on
 
 
 GridPattern = Literal[("off", *GRID_PATTERNS)]  # the dot grid's patterns (`render.grid`)
 ContourShapes = Literal[("off", *CONTOUR_SHAPE_SETS)]  # the contours' shapes (`render.contours`)
+BulletStyle = Literal[tuple(BULLET_STYLES)]  # tracer or trail only (`render.bullets`)
+_BULLETS = BulletLook()  # the bullets' default look
 LOOK_AHEADS = ("off", "flying", "always")  # when the camera leads a followed ship
 
 
@@ -109,6 +113,12 @@ class Options:
     grid: GridPattern = "triangle"  # the dot grid fixed to the map, or "off"
     contours: ContourShapes = "off"  # the distance contours' shape set, or "off"
     look_ahead: Literal[LOOK_AHEADS] = "always"  # lead a followed ship: off, flown only, always
+    # How bullets draw (`render.bullets.BulletLook`; the Settings menu changes it live):
+    bullet_style: BulletStyle = "tracer"  # a round head and its trail, or the trail alone
+    bullet_head_size: float = _BULLETS.head_pixels  # the head's radius, screen pixels
+    bullet_trail_head_width: float = _BULLETS.trail_head_pixels  # the trail at the head, px
+    bullet_trail_tail_width: float = _BULLETS.trail_tail_pixels  # the trail at its tail, px
+    bullet_trail_seconds: float = _BULLETS.trail_seconds  # the trail's length, screen seconds
 
     def game(self, maps: Maps | None = None) -> GameConfig:
         """The game configuration: the preset's (`Maps.find`) with any sizes given
@@ -186,6 +196,13 @@ class Session:
         self.grid = options.grid  # the dot grid's pattern, or "off" (`render.grid`)
         self.contours = options.contours  # the contours' shapes, or "off" (`render.contours`)
         self.look_ahead = options.look_ahead  # when the camera leads a followed ship
+        self.bullet_look = BulletLook(  # how bullets draw (`render.bullets`)
+            style=options.bullet_style,
+            head_pixels=options.bullet_head_size,
+            trail_head_pixels=options.bullet_trail_head_width,
+            trail_tail_pixels=options.bullet_trail_tail_width,
+            trail_seconds=options.bullet_trail_seconds,
+        )
         self.lead = LookAhead()
         self.library = themes.Library() if library is None else library
         self.theme_names = self.library.names()
@@ -423,7 +440,7 @@ class Session:
     def save_ships(self, ships: list, moved: dict[int, int | None] | None = None) -> None:
         """Write the ship files of the match's ship set (`api.ships`, tracked in git), and
         the tuned rule values the cards fly under (`SOLVED_UNDER`: the flight constants and the
-        bullet life) into the set's rules.toml, and play on with them. The
+        bullet drag) into the set's rules.toml, and play on with them. The
         current card becomes the files' default, so the match plays on as it is; when the
         types change (`moved`: each old type's new index, None for a removed one), a new
         match starts with the lineup remapped (a removed type's slots take the first type)."""
@@ -990,6 +1007,7 @@ class Session:
             self.loop.time_scale,
             self.grid,
             self.contours,
+            self.bullet_look,
         )
         imgui.set_current_context(self.imgui_context)
         imgui.get_io().delta_time = max(self.elapsed, 1e-4)

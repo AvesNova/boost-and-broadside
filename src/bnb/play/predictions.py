@@ -54,7 +54,7 @@ def bullet_paths(
     bullets = frame.bullets
     active = bullets.active
     if not active.any():
-        empty = np.zeros((0, rules.bullet_moves + 1), np.float32)
+        empty = np.zeros((0, rules.longest_bullet_moves + 1), np.float32)
         return BulletPaths(x=empty, y=empty, valid=empty.astype(bool), team=bullets.team[active])
     x, y, valid = api.bullet_paths(rules, types, state)
 

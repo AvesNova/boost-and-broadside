@@ -8,13 +8,14 @@ arithmetic, and writes the set:
 **The rules.** Today's game maps onto a P-51D with lengths x LENGTH (5.82) and times x TIME
 (4.00, the time that turns today's gravity of 27 m/s^2 into 9.81). The flight constants are
 today's in those units (`similarity.scale_flight`); the bullet drag per metre is today's
-over LENGTH; the bullet life is the whole ticks that give the P-51 a gun range of about
-GUN_RANGE; vision is today's times MAP_SCALE; the spawn speed is SPAWN_SPEED_MARGIN times
-the set's fastest stall speed. The map is MAP_SCALE (3) times today's (the presets' arena
-radius of 7800 m scales the fields, zones and spawn disc by itself); the field band and the
-team-deathmatch spawn distances, which do not follow the map scale, are scaled here. Rule
-times follow the map, not the ship (CLOCK_SCALE, 2): crossing between fields takes about
-twice as long, so the capture time doubles (the presets double the episode and respawn).
+over LENGTH; the gun flight time is the whole ticks that give the P-51 a gun range of about
+GUN_RANGE (`gun_flight_time`); vision is today's times MAP_SCALE; the spawn speed is
+SPAWN_SPEED_MARGIN times the set's fastest stall speed. The map is MAP_SCALE (3) times
+today's (the presets' arena radius of 7800 m scales the fields, zones and spawn disc by
+itself); the field band and the team-deathmatch spawn distances, which do not follow the
+map scale, are scaled here. Rule times follow the map, not the ship (CLOCK_SCALE, 2):
+crossing between fields takes about twice as long, so the capture time doubles (the presets
+double the episode and respawn).
 
 **The ships.** Each `Aircraft` (`bnb.game.real_scale_aircraft`) gives researched quantities
 with their confidence and source; `given_handles` converts them to handles: the ceiling's
@@ -34,7 +35,8 @@ Every handle a type does not give is a placeholder: its `like` type's standard h
 the factor that turns the standard fighter into the P-51 (`placeholder_factors`: the P-51's
 given handle over the standard fighter's, or for a flight handle the similarity factor of
 its units where the P-51 gives none; the other combat handles keep the game's values). The
-gun range follows from the bullet life, cruise and muzzle speed (drag scale 1); the spawn
+gun range is the bullet's reach in the gun flight time at cruise plus muzzle speed (drag
+scale 1), which makes that time every type's bullet life; the spawn
 energy is the `like` type's fraction of the store. The climb rate (m/s) sets the climb
 time: the one whose initial store charge, coasting at cruise, is gravity times it.
 
@@ -79,7 +81,7 @@ LENGTH = 5.82  # a standard metre in real metres
 TIME = math.sqrt(LENGTH * STANDARD_GRAVITY / GRAVITY)  # a standard second in real ones: 4.00
 MAP_SCALE = 3.0  # the map against the standard one (arena radius 7800 m against 2600 m)
 CLOCK_SCALE = 2.0  # rule times: a crossing takes 3x the distance at about 1.5x the speed
-GUN_RANGE = 600.0  # m, the P-51's, which sets the bullet life (whole ticks)
+GUN_RANGE = 600.0  # m, the P-51's, which sets the gun flight time (whole ticks)
 SPAWN_SPEED_MARGIN = 1.3  # the spawn speed over the set's fastest stall speed
 CLIMB_TOLERANCE = 0.01  # the initial climb charge is met to this fraction
 CLIMB_ROUNDS = 6
@@ -396,18 +398,27 @@ def real_scale_flight() -> FlightConstants:
     return dataclasses.replace(scaled, gravity=GRAVITY)
 
 
-def rule_values(stall_speeds: list[float], tick_length: float = Rules.tick_length) -> dict:
+def bullet_drag() -> float:
+    """The set's bullet drag (1/m): today's per standard metre, over LENGTH."""
+    return Rules(1, 1, ()).bullet_drag / LENGTH
+
+
+def gun_flight_time(tick_length: float = Rules.tick_length) -> float:
+    """The whole ticks (s) in which the P-51's bullet, under the set's drag, travels about
+    GUN_RANGE (ln(1 + k v t) / k = R): every type's gun range is its own bullet's reach in
+    this time (drag scale 1), so it is every type's bullet life."""
+    reference = REFERENCE.data
+    launch = reference["cruise_speed"].value + reference["muzzle_speed"].value
+    life = math.expm1(bullet_drag() * GUN_RANGE) / (bullet_drag() * launch)
+    return round(life / tick_length) * tick_length
+
+
+def rule_values(stall_speeds: list[float]) -> dict:
     """The set's rules.toml values (`ships.rules` keys)."""
     standard = Rules(1, 1, ())
     standard_mode = rules_of(GameConfig(1, 1, 1.0)).pools[0].mode
-    bullet_drag = standard.bullet_drag / LENGTH
-    reference = REFERENCE.data
-    launch = reference["cruise_speed"].value + reference["muzzle_speed"].value
-    # The life whose range is GUN_RANGE: ln(1 + k v t) / k = R.
-    life = math.expm1(bullet_drag * GUN_RANGE) / (bullet_drag * launch)
     values = {
-        "rules.bullet_life": round(life / tick_length) * tick_length,
-        "rules.bullet_drag": bullet_drag,
+        "rules.bullet_drag": bullet_drag(),
         "rules.vision_range": MAP_SCALE * standard.vision_range,
         "rules.spawn_speed": SPAWN_SPEED_MARGIN * max(stall_speeds),
         "rules.field_band_width": MAP_SCALE * standard.field_band_width,
@@ -494,9 +505,12 @@ def target_handles(
     balance(values, notes, aircraft.key, combat[1])
     drag = rules.bullet_drag
     launch = values["cruise_speed"] + values["muzzle_speed"]
-    life = rules.bullet_moves * rules.tick_length
+    life = gun_flight_time(rules.tick_length)
     values["gun_range"] = math.log1p(drag * launch * life) / drag
-    notes["gun_range"] = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
+    notes["gun_range"] = (
+        f"the reach in the set's gun flight time ({life:.3g} s), cruise and muzzle speed "
+        "(drag scale 1)"
+    )
     rate, notes["climb_time"] = climb_rate_of(aircraft, given)
     _, climb, _ = pacing()
     if climb != 1.0:

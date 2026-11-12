@@ -2,7 +2,6 @@
 # game's own rules elsewhere. Times in s, lengths in m, per unit mass.
 
 [rules]
-bullet_life = 0.6
 bullet_drag = 0.0001374570446735395
 vision_range = 3072.0
 spawn_speed = 72.644

@@ -28,6 +28,7 @@ max_shield = 120.0
 shield_recharge_rate = 12.0
 shield_recharge_delay = 6.0
 head_on_fraction = 0.3
+head_on_angle = 0.737832313317803
 hit_radius = 5.645
 spawn_energy = 64667.52000000001
 
@@ -47,6 +48,7 @@ hit_damage = 34.77370834350586
 muzzle_speed = 856.0
 bullet_energy_cost = 172.5173797607422
 fire_rate = 10.0
+bullet_life = 0.6
 spawn_energy = 64667.51953125
 bleed_exponent = 2.0
 induced_drag_scale = 3.2333121299743652
@@ -60,6 +62,7 @@ bullet_drag_scale = 1.0
 shield_recharge_rate_scale = 1.0
 shield_recharge_delay_scale = 1.0
 head_on_fraction_scale = 1.0
+head_on_angle_scale = 1.0
 engine_knee_scale = 1.0
 
 [notes]
@@ -82,11 +85,12 @@ hit_damage = "invented: weight_of_fire 1.84; proposal: 360 per second (the P-51D
 fire_rate = "invented: fire_rate 10; proposal: the main gun's volley rate. the Browning .50-class 12.7 mm"
 muzzle_speed = "invented: muzzle_speed 856. the Browning .50-class 12.7 mm"
 bullet_spread = "invented: dispersion 4.5; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the P-51D's x 0.75: Glider-like energy fighter: very low drag, long wing, weak engine."
-gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
+gun_range = "the reach in the set's gun flight time (0.6 s), cruise and muzzle speed (drag scale 1)"
 shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 12.16 m/s), the standard fighter's ratio: a shot costs 172.5 J/kg, 1.45 s of charge"
 max_shield = "invented: survivability 2; proposal: the standard 100 x (1 + 0.1 per rating step from the P-51D's 2). Light structure. Balanced (round 2): 100 -> 120: an invented or placeholder type rated 849 +- 6 in round 1, -208 from the median 1057 (the rule moves its shield 20 towards the median beyond 200 Elo)."
 shield_recharge_rate = "placeholder: the standard fighter's"
 shield_recharge_delay = "placeholder: the standard fighter's"
 head_on_fraction = "placeholder: the standard fighter's"
+head_on_angle = "placeholder: the standard fighter's"
 hit_radius = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
 spawn_energy = "placeholder: the standard fighter's fraction of the store"

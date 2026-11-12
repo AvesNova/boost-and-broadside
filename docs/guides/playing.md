@@ -83,6 +83,12 @@ it was fired, so a burst reads as continuous streaks at any time scale or playba
 A bullet has no size in the game, so the tracer is a few pixels wide at every zoom,
 **True size** included.
 
+**Settings** → **Bullets** changes the look while you play: **Tracer** (the above) or
+**Trail only** (the fading trail, no head), the head's size (its radius, tracer only), the
+trail's width at the head and at its tail (screen pixels) and its length (seconds). The
+options set them at the start: `--bullet-style trail`, `--bullet-head-size`,
+`--bullet-trail-head-width`, `--bullet-trail-tail-width`, `--bullet-trail-seconds`.
+
 ## Ship size
 
 A ship is drawn as a silhouette inside a ring at its hitbox, whose radius is half the
@@ -306,7 +312,8 @@ itself is untouched.
 
 ## Settings and themes
 
-**Settings** chooses the theme, the dot grid, the contours, the look-ahead, fog in new matches, the
+**Settings** chooses the theme, the dot grid, the contours, the look-ahead, the bullets'
+look, fog in new matches, the
 interface scale (0.75 to 2; the
 layout works from 1280 × 720 to 2560 × 1440) and shows the key list. The shipped themes
 are in `src/bnb/play/themes/`; your own live in your configuration directory
@@ -355,15 +362,15 @@ compare.
   at once: it does not change how the ship flies.
 - **Save ships** writes every type to its file in the match's ship set (`src/bnb/game/ships/`
   for the standard set, `src/bnb/game/ships/real-scale/` for the real-scale one), tracked
-  in git: the handles and the card, and the tuned flight constants and bullet life into
+  in git: the handles and the card, and the tuned flight constants and bullet drag into
   the set's `rules.toml`, as the cards fly under them. **Add a copy as this name** writes a
   copy of the chosen type under the name in the field to its own file in the set at once
   (the panel names the file); the other types' files are left as they are, and their
   unsaved changes play on in the new match until **Save ships**. It waits only for the
   chosen type's exact card, and asks for **Save ships** first when the flight constants or
-  bullet life were changed. **Remove** deletes the chosen type after asking. Each starts a
+  bullet drag were changed. **Remove** deletes the chosen type after asking. Each starts a
   new match; the last type cannot be removed.
-- **Rules**, by group: the arena and the clocks, bullet life, the flight constants every
+- **Rules**, by group: the arena and the clocks, the bullet drag, the flight constants every
   type shares, spawns, and the current mode's rules (Frontline's zone radius and capture
   time, team deathmatch's kills to win). Each has a slider and a number box, and applies on
   the next tick; those marked with * are drawn at an episode's start. Hover a row for
@@ -376,7 +383,7 @@ compare.
 - **Time scale**: **Apply** makes the whole game the given factor faster than its design
   (×1) with the map's lengths fixed (speeds x k, gravity and accelerations x k^2, rates and fire rates x k,
   times / k, energies x k^2, so a store keeps its height). Fire rates snap to whole Hz that
-  divide 30, and bullet life, clocks and shield delays to whole ticks; the message says
+  divide 30, and bullet lives, clocks and shield delays to whole ticks; the message says
   what snapped. **Make this speed 1×** takes the playback speed (×¼ to ×8 in the top bar)
   as the factor and sets playback back to ×1: pick the speed at which the game feels
   right, then make it the game's own. The factor is always against ×1: **Apply** 2 gives ×2

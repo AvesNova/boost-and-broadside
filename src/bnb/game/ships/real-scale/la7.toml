@@ -28,6 +28,7 @@ max_shield = 110.0
 shield_recharge_rate = 12.0
 shield_recharge_delay = 6.0
 head_on_fraction = 0.3
+head_on_angle = 0.737832313317803
 hit_radius = 4.9
 spawn_energy = 42183.0
 
@@ -47,6 +48,7 @@ hit_damage = 34.84778594970703
 muzzle_speed = 770.0
 bullet_energy_cost = 255.37112426757812
 fire_rate = 10.0
+bullet_life = 0.6
 spawn_energy = 42183.0
 bleed_exponent = 2.0
 induced_drag_scale = 1.3729760646820068
@@ -60,6 +62,7 @@ bullet_drag_scale = 1.0
 shield_recharge_rate_scale = 1.0
 shield_recharge_delay_scale = 1.0
 head_on_fraction_scale = 1.0
+head_on_angle_scale = 1.0
 engine_knee_scale = 1.0
 
 [notes]
@@ -82,11 +85,12 @@ hit_damage = "researched (medium): weight_of_fire 1.92; proposal: 360 per second
 fire_rate = "derived: fire_rate 10; proposal: the main gun's volley rate. the ShVAK 20 mm: the whole-Hz volley rate dividing 30 nearest its rate per gun"
 muzzle_speed = "researched (medium): muzzle_speed 770. the ShVAK 20 mm: Wikipedia"
 bullet_spread = "estimated: dispersion 3.5; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
-gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
+gun_range = "the reach in the set's gun flight time (0.6 s), cruise and muzzle speed (drag scale 1)"
 shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 18 m/s), the standard fighter's ratio: a shot costs 255.4 J/kg, 1.45 s of charge"
 max_shield = "researched (medium): survivability 3; proposal: the standard 100 x (1 + 0.1 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Air-cooled radial and pilot armour; wooden wing structure (metal spars) less resilient than all-metal designs. Balanced (round 3): 120 -> 110, the step per rating 0.2 -> 0.1: the shield's Spearman correlation with the round-2 Elo was +0.54 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
 shield_recharge_rate = "placeholder: the standard fighter's"
 shield_recharge_delay = "placeholder: the standard fighter's"
 head_on_fraction = "placeholder: the standard fighter's"
+head_on_angle = "placeholder: the standard fighter's"
 hit_radius = "researched (good): half_span 4.9. half of the span 9.80 m"
 spawn_energy = "placeholder: the standard fighter's fraction of the store"

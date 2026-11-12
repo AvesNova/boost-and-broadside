@@ -159,7 +159,7 @@ def test_bullet_paths_are_where_the_game_flies_its_bullets():
     moves_left = state.bullets.moves_left
     assert (moves_left > 0).any()
     assert torch.equal(valid.sum(-1), moves_left.clamp_min(0))
-    for move in range(rules.bullet_moves):
+    for move in range(rules.longest_bullet_moves):
         before = state.bullets.moves_left
         state, _ = api.step(
             rules,

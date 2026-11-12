@@ -38,6 +38,7 @@ ENVELOPE = dict(
     max_shield=(0.7, 1.4),
     shield_recharge_rate_scale=(0.6, 1.6),
     head_on_fraction_scale=(0.5, 2.0),
+    head_on_angle_scale=(0.5, 2.0),
     hit_damage=(0.7, 1.4),
 )
 

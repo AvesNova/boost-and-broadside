@@ -49,7 +49,6 @@ and the respawn waits (10 s in team deathmatch, 16 s in Frontline) double with i
 |---|---|---|
 | gravity | 9.81 m/s^2 | real |
 | tick | 30 Hz | unchanged |
-| bullet life | 0.6 s (18 ticks) | the P-51's gun range of about 600 m (587 m at its researched speeds) |
 | bullet drag | 1.375e-4 /m | today's 8e-4 /m over 5.82 |
 | vision range | 3072 m | today's 1024 m times the map scale |
 | spawn speed | 72.6 m/s | 1.3 times the set's fastest stall speed (the Hammerhead's 55.9 m/s) |
@@ -57,8 +56,11 @@ and the respawn waits (10 s in team deathmatch, 16 s in Frontline) double with i
 | episode | 600 s | twice today's |
 | capture time | 20 s | twice today's |
 
-Bullet life is one rule for every type, so another type's gun range follows its own
-muzzle and cruise speed. The spawn speed is set above every stall speed so that no ship
+The gun flight time, 0.6 s (18 ticks), is the time in which the P-51's bullet covers about
+600 m (587 m at its researched speeds); every type's gun range is its own bullet's reach in
+that time at its cruise and muzzle speed, so every type's bullet life is 0.6 s
+(`bnb.game.real_scale.gun_flight_time`). A type's life follows its gun range, so a gun
+range tuned later sets its own life. The spawn speed is set above every stall speed so that no ship
 starts in a stall; the build takes 1.3 times the fastest in the set, so it follows the set
 as types are added.
 
@@ -105,8 +107,8 @@ converted value times the design's multiplier (marked "invented" in the notes). 
 handle a type does not give is a placeholder, its `like` type's standard handle scaled as
 the standard fighter is to the P-51D: the dive and zoom accelerations and the half-lift
 drag for all types, the nose reversal for the P-51D, and the stall angle and hit radius
-for the invented designs. The gun range follows from the bullet life, cruise and muzzle
-speed; the spawn energy keeps the `like` type's 40% of the store.
+for the invented designs. The gun range is the bullet's reach in the gun flight time at cruise and
+muzzle speed; the spawn energy keeps the `like` type's 40% of the store.
 
 The P-51D's researched values moved its handles from the first build's: stall speed
 46 to 44.7 m/s (-2.8%), cruise 163 to 162.7 m/s, store 125,300 to 124,391 J/kg (the

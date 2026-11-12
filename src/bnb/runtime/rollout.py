@@ -130,7 +130,7 @@ class Rollout:
         ticks = _pytree.tree_map_only(torch.Tensor, lambda x: x[0], records)
         kept = {name: lookahead for name in LOOKAHEAD_RETURNS if name in records}
         for name in LOOKAHEAD_SHOTS:
-            kept[name] = max(kept.get(name, 0), min(lookahead, self.rules.bullet_moves))
+            kept[name] = max(kept.get(name, 0), min(lookahead, self.rules.longest_bullet_moves))
         kept = {name: count for name, count in kept.items() if count > 0}
         self.store = SegmentStore(
             ticks, self.carry["segment"], shards, length, device, host_store, kept

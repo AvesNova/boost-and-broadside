@@ -44,4 +44,5 @@ def test_a_ship_with_exactly_the_shot_cost_in_energy_fires():
     fired_ships, fired_bullets = fire(rules, TYPES, ships, bullets, shoot, spread)
     assert bool(fired_ships.fired[0, 0])
     assert float(fired_ships.energy[0, 0]) == 0.0
-    assert int(fired_bullets.moves_left[0, 0, int(ships.next_slot[0, 0])]) == rules.bullet_moves
+    life = round(float(TYPES.bullet_life[0]) / rules.tick_length)  # the shooter's type's
+    assert int(fired_bullets.moves_left[0, 0, int(ships.next_slot[0, 0])]) == life

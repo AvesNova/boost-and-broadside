@@ -420,11 +420,12 @@ class YemongBuild:
     """Everything Yemong's constructor takes (runs spec 4): its config and the numbers it
     derives from the rules and the ship card (`yemong_build`), so a saved model is rebuilt
     without the current game. tick_length (s); num_ships sets only the density head's
-    starting rate; ship_types: the card's type count; bullet_moves: a bullet's lifetime in
-    ticks; muzzle_speed (m/s): the card's fastest; hit_radius (m): its smallest;
-    state_code: the ship-state code's ranges; dynamics: what a rule baseline reads
-    (`delta.StateDynamics`): the extrapolation baseline's shield rule reads it; None for
-    every other build (persistence reads nothing; round 1's rule baselines are gone)."""
+    starting rate; ship_types: the card's type count; bullet_moves: the card's longest
+    bullet life in ticks (`Rules.longest_bullet_moves`); muzzle_speed (m/s): the card's
+    fastest; hit_radius (m): its smallest; state_code: the ship-state code's ranges;
+    dynamics: what a rule baseline reads (`delta.StateDynamics`): the extrapolation
+    baseline's shield rule reads it; None for every other
+    build (persistence reads nothing; round 1's rule baselines are gone)."""
 
     config: YemongConfig
     tick_length: float
@@ -444,7 +445,7 @@ def yemong_build(config: YemongConfig, rules: Rules, types: ShipTypes) -> Yemong
         tick_length=rules.tick_length,
         num_ships=rules.num_ships,
         ship_types=types.max_shield.shape[-1],
-        bullet_moves=rules.bullet_moves,
+        bullet_moves=rules.longest_bullet_moves,
         muzzle_speed=float(types.muzzle_speed.max()),
         hit_radius=float(types.hit_radius.min()),
         state_code=state_code_ranges(rules, types),

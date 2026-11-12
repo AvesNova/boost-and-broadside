@@ -35,12 +35,10 @@ def test_settings_scale_by_their_units_and_times_snap():
     assert faster["pool.episode_seconds"] == 150.0
     assert faster["mode.capture_seconds"] == 5.0
     assert faster["pool.arena_radius"] == values["pool.arena_radius"]  # lengths fixed
-    assert faster["rules.bullet_life"] == pytest.approx(0.2)  # 6 ticks
-    slower = time_scaled_settings(values, 1.0 / 3.0, RULES.tick_length)
-    assert round(slower["rules.bullet_life"] / RULES.tick_length) == 36
+    assert faster["rules.bullet_drag"] == values["rules.bullet_drag"]  # per length: fixed
     snapped = time_scaled_settings(values, 0.7, RULES.tick_length)
-    ticks = snapped["rules.bullet_life"] / RULES.tick_length
-    assert ticks == pytest.approx(round(ticks)) and round(ticks) == round(12 / 0.7)
+    ticks = snapped["pool.respawn_seconds"] / RULES.tick_length
+    assert ticks == pytest.approx(round(ticks))
 
 
 def test_the_card_scales_by_its_units_with_energies_and_snaps_the_fire_rate():
@@ -58,8 +56,12 @@ def test_the_card_scales_by_its_units_with_energies_and_snaps_the_fire_rate():
     assert torch.allclose(
         faster.shield_recharge_delay_scale, 0.5 * types.shield_recharge_delay_scale
     )
+    assert faster.bullet_life.tolist() == pytest.approx([0.2, 0.2])  # 6 ticks
     slower = time_scaled_card(types, RULES, 0.5)
     assert slower.fire_rate.tolist() == [6.0, 5.0]  # 7.5 and 5 Hz, held to whole Hz at 30 Hz
+    snapped = time_scaled_card(types, RULES, 0.7)
+    ticks = snapped.bullet_life / RULES.tick_length
+    assert torch.allclose(ticks, ticks.round()) and round(float(ticks[0])) == round(12 / 0.7)
 
 
 @pytest.mark.slow

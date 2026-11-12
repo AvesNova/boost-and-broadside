@@ -62,9 +62,9 @@ def test_a_modes_settings_belong_to_its_games_only():
 
 def test_times_hold_to_whole_ticks():
     base = api.rules_of(FRONTLINE)
-    rules = api.tuning.tuned(base, {"pool.respawn_seconds": 3.01, "rules.bullet_life": 0.51})
+    rules = api.tuning.tuned(base, {"pool.respawn_seconds": 3.01, "pool.episode_seconds": 60.51})
     assert rules.pools[0].respawn_ticks == 90  # 3.0 s at 30 Hz
-    assert rules.bullet_moves == 15  # 0.5 s
+    assert rules.pools[0].episode_ticks == 1815  # 60.5 s
     with pytest.raises(KeyError):
         api.tuning.tuned(base, {"rules.no_such_setting": 1.0})
 
@@ -109,13 +109,13 @@ def test_a_retune_never_recompiles():
     actions = torch.zeros(DEATHMATCH.num_ships, 3, dtype=torch.int32)
     realtime.step(actions)
     loaded = dict(built_module._LOADED)
-    changes = {"flight.gravity": 33.0, "rules.bullet_life": 0.3, "pool.respawn_seconds": 2.0}
+    changes = {"flight.gravity": 33.0, "rules.bullet_drag": 1e-3, "pool.respawn_seconds": 2.0}
     realtime.retune(rules=api.tuning.tuned(realtime.rules, changes))
     for _ in range(5):
         realtime.step(actions)
     assert realtime.uses_compiled
     assert built_module._LOADED == loaded
-    assert realtime.rules.flight.gravity == 33.0 and realtime.rules.bullet_moves == 9
+    assert realtime.rules.flight.gravity == 33.0 and realtime.rules.bullet_drag == 1e-3
 
 
 def test_a_match_starts_from_its_tuning():
@@ -140,25 +140,28 @@ def test_handles_hold_to_what_the_card_can_keep():
 
 def test_bullet_slots_follow_the_card_and_a_tunable_match_has_room():
     """Training's rules hold what the card needs (6 for the default card: 12 moves, 2 ticks
-    apart); a play-shell match holds a shot every tick for the longest bullet life."""
+    apart); a play-shell match holds a shot every tick for the longest bullet life a card
+    may have (2 s)."""
     types = api.ship_types()
     assert api.rules_of(DEATHMATCH, types=types).bullet_slots == 6
     fast = api.ship_types(fire_rate=(30.0, 10.0))
     assert api.rules_of(DEATHMATCH, types=fast).bullet_slots == 12
-    assert api.tuning.most_bullet_slots(1.0 / 30.0) == 45
-    assert Realtime(DEATHMATCH, compiled=False).rules.bullet_slots == 45
+    assert api.tuning.most_bullet_slots(1.0 / 30.0) == 60
+    realtime = Realtime(DEATHMATCH, compiled=False)
+    assert realtime.rules.bullet_slots == realtime.rules.longest_bullet_moves == 60
 
 
-def test_a_bullet_life_changes_the_gun_range_at_once():
-    """The card is kept: the gun range handle follows the bullet life in closed form."""
+def test_a_bullet_drag_changes_the_gun_range_at_once():
+    """The card is kept (each type's bullet life and drag scale): the gun range handle
+    follows the bullet drag in closed form."""
     rules = api.rules_of(DEATHMATCH)
-    longer = api.tuning.tuned(rules, {"rules.bullet_life": 0.8})
+    lighter = api.tuning.tuned(rules, {"rules.bullet_drag": 1e-5})
     cruise = torch.tensor([100.0, 100.0])
     near, far = (
         api.gun_range(rules, api.ship_types(), cruise),
-        api.gun_range(longer, api.ship_types(), cruise),
+        api.gun_range(lighter, api.ship_types(), cruise),
     )
-    assert (far > 1.5 * near).all()
+    assert (far > 1.05 * near).all()
 
 
 @pytest.mark.parametrize("low, high", [(1.7e-4, 2.8e-3), (-96.0, -6.0), (0.03, 0.7)])

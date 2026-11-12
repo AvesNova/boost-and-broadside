@@ -28,6 +28,7 @@ max_shield = 117.17419700256752
 shield_recharge_rate = 12.0
 shield_recharge_delay = 6.0
 head_on_fraction = 0.3
+head_on_angle = 0.737832313317803
 hit_radius = 7.761875
 spawn_energy = 47284.200000000004
 
@@ -47,6 +48,7 @@ hit_damage = 40.99553298950195
 muzzle_speed = 860.0
 bullet_energy_cost = 204.86439514160156
 fire_rate = 10.0
+bullet_life = 0.6
 spawn_energy = 47284.19921875
 bleed_exponent = 2.0
 induced_drag_scale = 2.7254831790924072
@@ -60,6 +62,7 @@ bullet_drag_scale = 1.0
 shield_recharge_rate_scale = 1.0
 shield_recharge_delay_scale = 1.0
 head_on_fraction_scale = 1.0
+head_on_angle_scale = 1.0
 engine_knee_scale = 1.0
 
 [notes]
@@ -88,5 +91,6 @@ max_shield = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/sta
 shield_recharge_rate = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
 shield_recharge_delay = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
 head_on_fraction = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
+head_on_angle = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
 hit_radius = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"
 spawn_energy = "designed (/home/vizia/avesnova/bnb-balance-v2/runs/ship-design/stage-1/seed, candidate 28:0): the base zerstorer's"

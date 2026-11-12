@@ -166,7 +166,7 @@ def test_shots_near_a_segments_end_read_the_ticks_after_it(segment_pair):
             msg=field.name,
         )
     alone, _ = learner.shots(first, spread[:length])
-    tail = slice(length - learner.rules.bullet_moves + 1, length)
+    tail = slice(length - learner.rules.longest_bullet_moves + 1, length)
     assert not alone.valid[tail].any() and extended.valid[tail].any()
 
 
@@ -176,7 +176,7 @@ def segment_pair(module_global_generator):
     net = cases.model()
     runner = lc.rollout(net, length=32, runs=1)
     whole = lc.whole(runner)
-    length, flight = 16, runner.rules.bullet_moves
+    length, flight = 16, runner.rules.longest_bullet_moves
 
     def ticks(tree, part: slice):
         return torch.utils._pytree.tree_map_only(torch.Tensor, lambda x: x[part], tree)
@@ -195,7 +195,7 @@ def segment_pair(module_global_generator):
 def test_the_store_follows_each_shard_with_the_next_and_the_last_with_the_lookahead():
     net = cases.model()
     runner, _ = _collect(net, 2, 16, lookahead=16)
-    store, flight = runner.store, runner.rules.bullet_moves
+    store, flight = runner.store, runner.rules.longest_bullet_moves
     rows = store.shard_views
     views = torch.arange(store.views)
     following, followed = store.following(("done", "capture"), views, flight)

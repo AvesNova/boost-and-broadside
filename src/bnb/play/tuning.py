@@ -3,7 +3,7 @@ next tick.
 
 Two kinds of number, both applied through `MatchLoop.retune`:
 
-- **Rule settings** (`api.tuning`: the arena and clock, bullet life, the shared flight
+- **Rule settings** (`api.tuning`: the arena and clock, bullet drag, the shared flight
   constants, spawns, each mode's rules). They apply on the next tick: the compiled tick
   takes their values as tensors (`Realtime.retune`), so nothing recompiles. A few apply
   from the next episode (`api.tuning.EPISODE`: the map and the spawns).
@@ -69,7 +69,7 @@ TICK_HANDLES = ("shield_recharge_delay",)  # handles held to whole ticks
 # Rule settings that change what a card flies: the card is kept and its handles re-measured.
 MEASURED_BY = ("flight.",)
 # The rule settings a card's handles depend on: a ship file's handles hold under its set's.
-SET_BY = (*MEASURED_BY, "rules.bullet_life")
+SET_BY = (*MEASURED_BY, "rules.bullet_drag")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -187,12 +187,14 @@ def time_scaled_card(types: api.ShipTypes, rules: api.Rules, factor: float) -> a
     1/factor; energies x factor^2 with gravity, so a store's height, energy / g, stays). The
     shared values the card scales per type and that no setting holds (the exchanges, the
     bullet spread, the shield recharge) are scaled through the per-type scales; the fire
-    rate snaps to `fire_rates` and the shield recharge delay to whole ticks."""
+    rate snaps to `fire_rates`, and the bullet life and the shield recharge delay to whole
+    ticks (the life to one at least)."""
     scaled = api.similarity.scale_card(types, 1.0, 1.0 / factor)
     acceleration, rate = factor**2, factor
     tick = rules.tick_length
     delay = rules.shield_recharge_delay * types.shield_recharge_delay_scale / factor
     delay = torch.clamp(torch.round(delay / tick), min=0.0) * tick
+    life = torch.clamp(torch.round(scaled.bullet_life / tick), min=1.0) * tick
     fire_rate = [
         snap_handle("fire_rate", float(value), tick) for value in scaled.fire_rate.flatten()
     ]
@@ -204,6 +206,7 @@ def time_scaled_card(types: api.ShipTypes, rules: api.Rules, factor: float) -> a
         bullet_spread_scale=types.bullet_spread_scale * rate,
         shield_recharge_rate_scale=types.shield_recharge_rate_scale * rate,
         shield_recharge_delay_scale=delay / rules.shield_recharge_delay,
+        bullet_life=life,
         fire_rate=torch.tensor(fire_rate, dtype=types.fire_rate.dtype).reshape(
             types.fire_rate.shape
         ),
@@ -478,7 +481,11 @@ class Tuner:
     def __init__(self, loop, base: api.Rules) -> None:
         self.loop = loop
         self.ship_set = loop.setup.config.ship_set
-        self.base = dataclasses.replace(base, bullet_slots=loop.rules.bullet_slots)
+        self.base = dataclasses.replace(
+            base,
+            bullet_slots=loop.rules.bullet_slots,
+            longest_bullet_moves=loop.rules.longest_bullet_moves,
+        )
         tuning = loop.setup.tuning
         self.time_factor = tuning.time_factor
         if self.time_factor == 1.0:
@@ -666,14 +673,15 @@ class Tuner:
         self._anchor_version += 1
         if key.startswith(MEASURED_BY):
             self._reset()  # each type re-measured when shown
-        elif key == "rules.bullet_life":
+        elif key == "rules.bullet_drag":
             self._rerange()
         if self._solving is not None or not self.exact:
             self._handles_changed = time.monotonic()  # the cancelled solve runs again
 
     def _rerange(self) -> None:
-        """A new bullet life: the card is kept, so its gun range (a closed form of the
-        bullet's drag, speed and life) changes; the estimate is re-anchored on it."""
+        """A new bullet drag: the card is kept (each type's bullet life and drag scale), so
+        its gun range (a closed form of the bullet's drag, speed and life) changes; the
+        estimate is re-anchored on it."""
         rules = self.rules
         gun_range = api.gun_range(rules, self.card, self.targets.cruise_speed)
         self.targets = self.targets.replace(gun_range=gun_range)

@@ -7,7 +7,7 @@ import torch
 from bnb.contracts.tree import contract
 
 from ..rules import Rules
-from ..ship_types import ShipTypes, per_ship
+from ..ship_types import ShipTypes, bullet_moves, per_ship
 from ..state import Bullets, Fields, Ships, apply, replace, where
 from .medium import medium
 from .numerics import flight_path_velocity, rotate, small_angle_cos_sin
@@ -100,8 +100,9 @@ def launch_state(ships: Ships) -> Launch:
 
 
 def launch(rules: Rules, types: ShipTypes, state: Launch, spread: torch.Tensor) -> Bullets:
-    """The bullet each ship fires from its launch state, (B, N), with all its moves left.
-    spread (B, N, 2) standard normals. The gun's values are the shooter's."""
+    """The bullet each ship fires from its launch state, (B, N), with all its moves left (its
+    type's bullet life). spread (B, N, 2) standard normals. The gun's values are the
+    shooter's."""
     cos, sin, speed = state.heading_cos, state.heading_sin, state.proper_speed
     angle_cos, angle_sin = state.angle_of_attack_cos, state.angle_of_attack_sin
     muzzle = per_ship(types.muzzle_speed, state.ship_type)
@@ -121,7 +122,7 @@ def launch(rules: Rules, types: ShipTypes, state: Launch, spread: torch.Tensor) 
         log_refractive_index=state.log_refractive_index,
         log_index_gradient_x=state.log_index_gradient_x,
         log_index_gradient_y=state.log_index_gradient_y,
-        moves_left=torch.zeros_like(state.ship_type) + rules.bullet_moves,
+        moves_left=bullet_moves(per_ship(types.bullet_life, state.ship_type), rules.tick_length),
     )
 
 

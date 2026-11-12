@@ -30,7 +30,7 @@ from .manoeuvres import (
     steady_turn,
     type_axis,
 )
-from .weapons import bullet_life
+from .weapons import whole_tick_life
 
 STICKS = tuple(level for level in STICK_LEVELS if level > 0.0)  # 0.4, 0.75, 1
 SUSTAINED_CURVE = tuple(i / 12 for i in range(1, 13))  # stick levels drawn on the doghouse
@@ -337,7 +337,9 @@ def similarity_inputs(rules: Rules, handles, view: Shown) -> dict[str, torch.Ten
         sustained_circle=2.0 * math.pi / handles.sustained_turn_rate,
         muzzle_speed=handles.muzzle_speed,
         gun_range=handles.gun_range,
-        flight_time=torch.full_like(handles.gun_range, bullet_life(rules)),
+        flight_time=whole_tick_life(
+            rules, handles.gun_range, handles.cruise_speed + handles.muzzle_speed
+        ),
     )
 
 
