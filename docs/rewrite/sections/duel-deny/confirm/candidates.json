@@ -1,0 +1,458 @@
+[
+ {
+  "name": "frozen | r9",
+  "player": "r9",
+  "doctrine": {},
+  "energy": {},
+  "turn": {}
+ },
+ {
+  "name": "frozen | duel deny 0.8, crowd 8 gun ranges",
+  "player": "r9",
+  "doctrine": {
+   "turn": {
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389,
+    "deny_crowd_in_gun_range": [
+     8.0,
+     0.1
+    ],
+    "deny_in_crowd": [
+     0.5,
+     0.1
+    ]
+   },
+   "energy": {
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389,
+    "deny_crowd_in_gun_range": [
+     8.0,
+     0.1
+    ],
+    "deny_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "turn_exponent": 0.0
+   }
+  },
+  "energy": {},
+  "turn": {}
+ },
+ {
+  "name": "frozen | duel deny 0.8, crowd 12 gun ranges",
+  "player": "r9",
+  "doctrine": {
+   "turn": {
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389,
+    "deny_crowd_in_gun_range": [
+     12.0,
+     0.1
+    ],
+    "deny_in_crowd": [
+     0.5,
+     0.1
+    ]
+   },
+   "energy": {
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389,
+    "deny_crowd_in_gun_range": [
+     12.0,
+     0.1
+    ],
+    "deny_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "turn_exponent": 0.0
+   }
+  },
+  "energy": {},
+  "turn": {}
+ },
+ {
+  "name": "C | r9",
+  "player": "r9",
+  "doctrine": {},
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8
+  }
+ },
+ {
+  "name": "C | duel deny 0.8, crowd 8 gun ranges",
+  "player": "r9",
+  "doctrine": {
+   "turn": {
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389,
+    "deny_crowd_in_gun_range": [
+     8.0,
+     0.1
+    ],
+    "deny_in_crowd": [
+     0.5,
+     0.1
+    ]
+   },
+   "energy": {
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389,
+    "deny_crowd_in_gun_range": [
+     8.0,
+     0.1
+    ],
+    "deny_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "turn_exponent": 0.0
+   }
+  },
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8
+  }
+ },
+ {
+  "name": "C | duel deny 0.8, crowd 12 gun ranges",
+  "player": "r9",
+  "doctrine": {
+   "turn": {
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389,
+    "deny_crowd_in_gun_range": [
+     12.0,
+     0.1
+    ],
+    "deny_in_crowd": [
+     0.5,
+     0.1
+    ]
+   },
+   "energy": {
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389,
+    "deny_crowd_in_gun_range": [
+     12.0,
+     0.1
+    ],
+    "deny_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "turn_exponent": 0.0
+   }
+  },
+  "energy": {
+   "max_shield": 0.45,
+   "hit_damage": 1.6,
+   "bullet_life": 0.45
+  },
+  "turn": {
+   "induced_drag_scale": 1.5,
+   "max_shield": 0.8
+  }
+ },
+ {
+  "name": "D2 | r9",
+  "player": "r9",
+  "doctrine": {},
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  }
+ },
+ {
+  "name": "D2 | duel deny 0.8, crowd 8 gun ranges",
+  "player": "r9",
+  "doctrine": {
+   "turn": {
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389,
+    "deny_crowd_in_gun_range": [
+     8.0,
+     0.1
+    ],
+    "deny_in_crowd": [
+     0.5,
+     0.1
+    ]
+   },
+   "energy": {
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389,
+    "deny_crowd_in_gun_range": [
+     8.0,
+     0.1
+    ],
+    "deny_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "turn_exponent": 0.0
+   }
+  },
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  }
+ },
+ {
+  "name": "D2 | duel deny 0.8, crowd 12 gun ranges",
+  "player": "r9",
+  "doctrine": {
+   "turn": {
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389,
+    "deny_crowd_in_gun_range": [
+     12.0,
+     0.1
+    ],
+    "deny_in_crowd": [
+     0.5,
+     0.1
+    ]
+   },
+   "energy": {
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0,
+    "slash": 0.0,
+    "bleed": 0.0,
+    "lag": 0.0,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389,
+    "deny_crowd_in_gun_range": [
+     12.0,
+     0.1
+    ],
+    "deny_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "turn_exponent": 0.0
+   }
+  },
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  }
+ }
+]
