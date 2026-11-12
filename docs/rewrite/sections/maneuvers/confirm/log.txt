@@ -1,3 +1,7 @@
 ## 1v1: 140 jobs, B 8192, 01:24 KST
 /home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
   warn_once(FP_FUSION_DEFAULT_WARNING)
+  batch 1/18 27 s; ETA 01:32 KST
+  batch 2/18 46 s; ETA 01:31 KST
+  batch 3/18 65 s; ETA 01:30 KST
+  batch 4/18 84 s; ETA 01:30 KST

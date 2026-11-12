@@ -66,6 +66,7 @@ def yoyo(after=20.0, phase=1.5, climb=4.0, dive=4.0, ease=0.4, low=0.0, to=10.0)
 ONE = dict(sense=1.0, sense_one_circle=1.0, sense_in_gun_range=[4.0, 0.2])
 DUEL = dict(ONE, sense_mirror_only=1.0, sense_in_crowd=[0.5, 0.1])
 STRAIGHT = dict(crowd_sense=1.0, crowd_sense_stick=0.0, crowd_sense_boost=1.0)
+EXTEND = dict(DUEL, sense=0.0, **STRAIGHT)
 ROUNDS = {
     "round1": [
         ("r9", {}),
@@ -168,6 +169,17 @@ ROUNDS = {
             "lead + one-circle mirror duel, crowd straight boost",
             dict(lead(0.5), **DUEL, **STRAIGHT),
         ),
+    ],
+    "round7": [
+        ("r9", {}),
+        ("crowd extend", EXTEND),
+        ("crowd extend, crowd 2 gr", dict(EXTEND, sense_crowd_in_gun_range=[2.0, 0.1])),
+        ("crowd extend, crowd 8 gr", dict(EXTEND, sense_crowd_in_gun_range=[8.0, 0.1])),
+        ("crowd extend, 2 others", dict(EXTEND, sense_in_crowd=[1.5, 0.1])),
+        ("crowd extend, target 2 gr", dict(EXTEND, sense_in_gun_range=[2.0, 0.2])),
+        ("crowd extend, target 8 gr", dict(EXTEND, sense_in_gun_range=[8.0, 0.2])),
+        ("crowd extend, stick 0.4", dict(EXTEND, crowd_sense_stick=0.4)),
+        ("crowd extend at 0.7", dict(EXTEND, crowd_sense=0.7)),
     ],
 }
 
