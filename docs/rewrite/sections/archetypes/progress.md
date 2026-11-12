@@ -364,3 +364,23 @@ same card (5v5 mixed / reversed), a sanity check that the card does not break th
   jousty mirrors seen (0.12 / 0.22), but the gunner mirror is slow (475 s).
 - Merged `origin/tune/maneuvers` (ad2dff4d) for the doctrine re-evaluation once its confirm
   lands; r9's own play is unchanged by the merge (the new elements are off in r9).
+
+## 01:52-02:03 KST: round 9 (`round9/`): the finalists' last knobs
+
+512 games (10v10 256); strength against r9 at 5v5 (mixed / reversed):
+
+| Pair | A v B 1v1 / 2v2 / 5v5 / 10v10 | Duel kills m / o / f / t; life | AA; BB mutual, life; merges mean / median / p90 | v r9 |
+|---|---|---|---|---|
+| **sniper (induced x0.95, dmg x0.92) v shotgun, kit2** | **0.52 / 0.52 / 0.52 / 0.45** | 0.29 / 0.63 / 0.08 / 0; 316 s | 0.37, 306 s, 3.5 / 2 / 9; 0.35, 334 s, 3.2 / 2 / 8 | 0.52 / 0.51 |
+| sniper (dmg x0.97) v shotgun, kit2 | 0.51 / 0.54 / 0.54 / 0.44 | 321 s | 0.35, 268 s; 0.34, 346 s | 0.45 / 0.51 |
+| **big v small, kit, small cone f0 0.10** | 0.59 / 0.52 / 0.50 / 0.47 | 0.34 / 0.49 / 0.17 / 0; 256 s | 0.38, 239 s; 0.38, 328 s | 0.50 / 0.50 |
+| big v small, small f0 0.12, small vision x1.1 | 0.59 / 0.47 / 0.46 / 0.49 | 213 s | 0.43, 233 s; 0.50, 253 s | 0.53 / 0.51 |
+| big v small, small f0 0.10, small induced x0.95 | 0.35 / 0.43 / 0.43 / 0.40 | 231 s | 0.38, 240 s; 0.36, 331 s | 0.52 / 0.49 |
+| **armed gunner (arming 100 m, dmg x0.9, vision x1.2) v close fighter, kit** | 0.52 / 0.55 / 0.52 / 0.47 | 0.23 / 0.68 / 0.10 / 0; 311 s | **0.17**, 471 s; **0.21**, 390 s | 0.50 / 0.49 |
+| armed gunner (arming 120 m) | 0.55 / 0.54 / 0.57 / 0.50 | 326 s | 0.15, 510 s; 0.22, 395 s | 0.48 / 0.51 |
+| **scout (vision x1.05) v brawler (vision x0.92, dmg x1.12), kit2** | 0.60 / 0.56 / 0.53 / 0.51 | 0.30 / 0.58 / 0.12 / 0; 265 s | 0.33, 324 s; 0.36, 270 s | 0.52 / 0.49 |
+
+- **Sniper v shotgun meets nearly every goal at 512 games**: within 0.45-0.55 at every size,
+  all three matchups 0.35-0.37 mutual head-on with 3.2-3.5 merges a kill (p90 8-9), lives
+  306-334 s, strength even. Confirming at 1024 games with 20v20 (`confirm1/`, running).
+- The small ship's sustained turn is a steep duel lever (induced x0.95: 0.59 to 0.35).
