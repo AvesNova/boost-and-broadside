@@ -15,26 +15,29 @@ tick and team (the front's step), and how the game ended: by the front reaching 
 threshold, or by the clock.
 
 Each environment's first game is recorded; every `--batch` games are one JSON line of FILE
-(appended; a line per batch, so a stopped run keeps its batches). Eager, on `--device`
-(cuda if available). Overrides: `--ships`, `--radius` (m), `--zone-radius` (m at map scale
-1), `--capture-seconds`, `--episode-seconds`, `--temperature` (the agent's; a pair a,b plays
-team 0 at a and team 1 at b... per environment the pair is swapped on odd environments).
+(appended; a line per batch, so a stopped run keeps its batches). On the compiled rollout
+(`bnb.runtime.rollout.Rollout`, the scripted agent on both seats) with a stage that traces
+each environment's score, front and clock every tick, on `--device` (cuda if
+available). Overrides: `--ships`, `--radius` (m), `--zone-radius` (m at map scale 1),
+`--capture-seconds`, `--episode-seconds`, `--temperature` (the agent's, both teams).
 """
 
 import argparse
 import dataclasses
 import datetime
 import json
+import math
 import pathlib
 import time
 import zoneinfo
 
 import torch
 
-from bnb.contracts import Action, Obs
+from bnb.contracts import Pool
 from bnb.controllers import scripted
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
+from bnb.runtime.rollout import Rollout
 
 KST = zoneinfo.ZoneInfo("Asia/Seoul")
 NO_TICKETS = 1_000_000
@@ -60,100 +63,76 @@ def game_of(arguments) -> tuple:
     game = dataclasses.replace(game, **changes)
     types = api.ship_types(ship_set=game.ship_set)
     rules = api.rules_of(game, types=types)
-    mode_changes = {}
-    if arguments.zone_radius:
-        mode_changes["zone_radius"] = arguments.zone_radius
-    if arguments.capture_seconds:
-        mode_changes["capture_seconds"] = arguments.capture_seconds
-    if mode_changes:
-        rules = api.tuning.tuned(
-            rules, {f"mode.{key}": value for key, value in mode_changes.items()}
-        )
     return game, types, rules
 
 
-def batch(arguments, game, types, rules, device, seed: int) -> list[dict]:
-    """One batch of first games to their ends: a dict per game."""
-    torch.manual_seed(seed)
-    B, S, N = arguments.batch, rules.ships_per_team, rules.num_ships
-    draws = torch.Generator(device=device).manual_seed(seed + 1)
-    state = api.reset(rules, types, api.uniforms(rules, B, generator=draws, device=device))
-    state, observation, _ = api.perceive(rules, state)
-    card = characteristics(types, rules)
-    temperatures = [float(value) for value in arguments.temperature.split(",")]
-    if len(temperatures) == 1:
-        temperature = temperatures[0]
-    else:
-        swap = torch.arange(B, device=device) % 2 == 1
-        first = torch.where(swap, temperatures[1], temperatures[0])
-        second = torch.where(swap, temperatures[0], temperatures[1])
-        temperature = torch.stack([first, second], 1).flatten()  # views: env-major, team
-    agent = scripted.Scripted(card, S, temperature=temperature)
-    carry = agent.init_carry(2 * B, device)
-    finished = torch.zeros(B, dtype=torch.bool, device=device)
-    end_tick = torch.full((B,), -1, dtype=torch.long, device=device)
-    result = torch.zeros(B, dtype=torch.long, device=device)
-    front = state.mode.front.clone()
-    events_list: list[torch.Tensor] = []  # rows (environment, tick, team)
-    episode = int(rules.pools[0].episode_ticks)
-    team_of = torch.arange(N, device=device) // S
-    with torch.no_grad():
-        for tick in range(episode + 2):
-            view = Obs(
-                **{
-                    name: getattr(observation, name).flatten(0, 1)
-                    for name in ("ships", "fields", "globals", "zones")
-                }
-            )
-            action, carry, _ = agent.step(
-                carry, view, torch.full((2 * B,), tick == 0, device=device)
-            )
-            action = Action.unpack(action.packed().reshape(B, N, 3).to(torch.int32))
-            moved, sweep = api.move(
-                rules, types, state, action, api.spread(rules, B, generator=draws, device=device)
-            )
-            state, events = api.resolve(
-                rules,
-                types,
-                moved,
-                sweep,
-                action,
-                api.uniforms(rules, B, generator=draws, device=device),
-            )
-            live = ~finished
-            if arguments.kind == "deathmatch":
-                died = events.died & live[:, None]
-                where = died.nonzero()
-                if len(where):
-                    scorer = 1 - team_of[where[:, 1]]
-                    events_list.append(
-                        torch.stack([where[:, 0], torch.full_like(scorer, tick), scorer], 1)
-                    )
-            else:
-                step = (state.mode.front - front).long()
-                changed = (step != 0) & live & ~events.done
-                where = changed.nonzero()[:, 0]
-                if len(where):
-                    team = (step[where] < 0).long()  # +1: team 0 captured
-                    events_list.append(torch.stack([where, torch.full_like(where, tick), team], 1))
-                front = state.mode.front.clone()
-            ending = events.done & live
-            end_tick = torch.where(ending, tick, end_tick)
-            result = torch.where(ending, events.result.long(), result)
-            finished |= events.done
-            state, observation, _ = api.perceive(rules, state)
-            if bool(finished.all()):
-                break
-    rows = torch.cat(events_list).cpu() if events_list else torch.zeros((0, 3), dtype=torch.long)
+def mode_overrides(arguments) -> dict:
+    """The mode's live settings the run changes (`bnb.game.tuning`)."""
+    changes = {}
+    if arguments.zone_radius:
+        changes["mode.zone_radius"] = arguments.zone_radius
+    if arguments.capture_seconds:
+        changes["mode.capture_seconds"] = arguments.capture_seconds
+    return changes
+
+
+def trace_stage(length: int):
+    """The stage appended to the rollout's tick: each environment's score, front and episode
+    tick after the tick, at the trace's tick (the last slot holds every tick past it)."""
+
+    def stage(carry: dict) -> None:
+        trace, state = carry["trace"], carry["state"]
+        index = trace["tick"].clamp(max=length - 1)
+        trace["score"].index_copy_(1, index, state.mode.score[:, None].to(torch.int16))
+        trace["front"].index_copy_(1, index, state.mode.front[:, None].to(torch.int8))
+        trace["clock"].index_copy_(1, index, state.match.episode_tick[:, None].to(torch.int32))
+        trace["tick"].add_(1)
+
+    return stage
+
+
+def blank_trace(environments: int, length: int, device) -> dict:
+    return dict(
+        tick=torch.zeros(1, dtype=torch.long, device=device),
+        score=torch.zeros((environments, length, 2), dtype=torch.int16, device=device),
+        front=torch.zeros((environments, length), dtype=torch.int8, device=device),
+        clock=torch.zeros((environments, length), dtype=torch.int32, device=device),
+    )
+
+
+def first_games(trace: dict, episode: int, threshold: int, kind: str) -> list[dict]:
+    """Each environment's first game from its trace (host tensors): its end tick, result,
+    whether it ended before the clock, and its events (tick, team): a point (deathmatch) or
+    a capture (frontline)."""
+    score, front, clock = (trace[name].long() for name in ("score", "front", "clock"))
     games = []
-    for environment in range(B):
-        mine = rows[rows[:, 0] == environment]
+    for environment in range(clock.shape[0]):
+        ticks = clock[environment]
+        restart = ((ticks[1:] < ticks[:-1]).nonzero()[:, 0] + 1).tolist()
+        end = restart[0] - 1 if restart else ticks.shape[0] - 1  # the game's last state
+        events = []
+        if kind == "deathmatch":
+            points = score[environment, : end + 1]
+            steps = torch.diff(points, dim=0, prepend=torch.zeros_like(points[:1]))
+            for at, team in steps.nonzero().tolist():
+                events += [[at, team]] * int(steps[at, team])
+            final = points[-1]
+            result = int(torch.sign(final[0] - final[1]))
+        else:
+            fronts = front[environment, : end + 1]
+            steps = torch.diff(fronts, prepend=torch.zeros_like(fronts[:1]))
+            for at in steps.nonzero()[:, 0].tolist():
+                events.append([at, 0 if int(steps[at]) > 0 else 1])
+            last = int(fronts[-1])
+            result = int(math.copysign(1, last)) if last else 0
+            if restart and end < episode - 1 and abs(last) == threshold - 1:
+                events.append([end + 1, 0 if last > 0 else 1])  # the winning capture
         games.append(
             dict(
-                end_tick=int(end_tick[environment]),
-                result=int(result[environment]),
-                by_rule=0 <= int(end_tick[environment]) < episode - 1,  # before the clock
-                events=mine[:, 1:].tolist(),
+                end_tick=end + 1 if restart else end,
+                result=result,
+                by_rule=bool(restart) and end + 1 < episode - 1,
+                events=events,
             )
         )
     return games
@@ -171,7 +150,7 @@ def main() -> None:
     parser.add_argument("--zone-radius", type=float, default=None)
     parser.add_argument("--capture-seconds", type=float, default=None)
     parser.add_argument("--episode-seconds", type=float, default=None)
-    parser.add_argument("--temperature", default="1")
+    parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--label", default="")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -189,9 +168,41 @@ def main() -> None:
                 done += len(entry["games"])
     started = time.time()
     index = done // arguments.batch
+    episode = int(rules.pools[0].episode_ticks)
+    length = episode + 2
+    card = characteristics(types, rules)
+    agent = scripted.Scripted(card, rules.ships_per_team, temperature=arguments.temperature)
+    environments = arguments.batch
+    rollout = Rollout(
+        dataclasses.replace(game),
+        types,
+        (Pool("dynamics", 1.0, ("a", "b")),),
+        {"a": agent, "b": agent},
+        "a",
+        environments,
+        32,
+        device,
+        staggered=False,
+    )
+    if mode_overrides(arguments):
+        rollout.rules = api.tuning.tuned(rollout.rules, mode_overrides(arguments))
+    rollout.carry["trace"] = blank_trace(environments, length, device)
+    rollout.stages = rollout.stages + (
+        torch.compile(trace_stage(length), fullgraph=True, dynamic=False),
+    )
+    threshold = rollout.rules.pools[0].mode.front_threshold
     while done < arguments.games:
         began = time.time()
-        games = batch(arguments, game, types, rules, device, arguments.seed + 1000 * index)
+        torch.manual_seed(arguments.seed + 1000 * index)
+        trace = rollout.carry.pop("trace")
+        rollout.restart()
+        rollout.carry["trace"] = trace
+        for name, value in blank_trace(environments, length, device).items():
+            trace[name].copy_(value)
+        for _ in range(math.ceil(length / rollout.length)):
+            rollout.run()
+        host = {name: value.cpu() for name, value in trace.items()}
+        games = first_games(host, episode, threshold, arguments.kind)
         entry = dict(
             label=arguments.label,
             kind=arguments.kind,
@@ -200,8 +211,8 @@ def main() -> None:
             radius=game.arena_radius,
             tick_length=rules.tick_length,
             episode_ticks=int(rules.pools[0].episode_ticks),
-            zone_radius=rules.pools[0].mode.zone_radius,
-            capture_seconds=rules.pools[0].mode.capture_seconds,
+            zone_radius=rollout.rules.pools[0].mode.zone_radius,
+            capture_seconds=rollout.rules.pools[0].mode.capture_seconds,
             temperature=arguments.temperature,
             games=games,
         )
