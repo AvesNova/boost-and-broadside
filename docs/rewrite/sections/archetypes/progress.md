@@ -604,3 +604,27 @@ of the delay, shield x0.8, damage x1.15, its own cone at f0 0.06:
 
 - The small ship is the next set member (within 0.45-0.52 of the standard). Set 4 (running)
   plays every pair of standard, hit-and-run 2, brawler and small.
+
+## 03:10-03:24 KST: set 4 (`set4/`): every pair of a four-ship set
+
+Every ship M + kit2 + its factors: **standard** (nothing else), **hit-and-run** (recharge x4
+after 0.4 of the delay, shield x0.8, damage x1.15, cone f0 0.06), **brawler** (vision x0.92,
+damage x1.12), **small** (hit radius x0.8, damage x0.9, cone f0 0.10). 1024 games (10v10 512,
+20v20 256), r9; A's score:
+
+| A v B | 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | AA; BB mutual, life, merges | Duel life | v r9 |
+|---|---|---|---|---|
+| standard v hit-and-run | 0.44 / 0.50 / 0.54 / 0.57 / 0.51 | 0.30, 319 s, 3.2; 0.37, 240 s, 2.9 | 268 s | 0.51 / 0.48 |
+| standard v brawler | 0.52 / 0.52 / 0.52 / 0.53 / 0.52 | 0.34, 330 s, 3.3; 0.35, 270 s, 2.9 | 289 s | 0.51 / 0.50 |
+| standard v brawler (repeat in the same run) | 0.54 / 0.52 / 0.53 / 0.52 / 0.46 | 0.33, 327 s; 0.37, 282 s | 274 s | 0.50 / 0.49 |
+| standard v small | 0.54 / 0.50 / 0.47 / 0.48 / 0.47 | 0.33, 320 s; 0.42, 281 s, 3.3 | 276 s | 0.49 / 0.53 |
+| hit-and-run v brawler | 0.59 / 0.53 / 0.50 / 0.49 / 0.49 | 0.37, 263 s; 0.36, 270 s | 258 s | 0.49 / 0.52 |
+| hit-and-run v small | 0.61 / 0.51 / 0.47 / 0.45 / 0.41 | 0.35, 264 s; 0.43, 301 s | 242 s | 0.51 / 0.52 |
+| brawler v small | 0.51 / 0.47 / 0.43 / 0.47 / 0.46 | 0.33, 303 s; 0.44, 294 s | 259 s | 0.50 / 0.51 |
+
+- **A four-ship set within 0.39-0.61 on all 30 cells** (six pairs, five sizes), every mirror
+  0.30-0.44 mutual at 240-330 s with about 3 merges a kill, every duel 240-290 s, strength
+  even. The in-run repeat agrees to 0.02 at 1v1-10v10 (0.06 at 20v20, 256 games).
+- The hit-and-run ship is a duellist (0.56-0.61 at 1v1) and fades in big crowds; the small
+  ship is the reverse. Set 4b (running) eases the hit-and-run nose (f0 0.07) and trims the
+  small ship's damage (x0.88).
