@@ -31,3 +31,9 @@ Branch `calib/overnight` (from `perf/steady-speed`). Hard stop 08:30 KST, 2026-1
 - 00:25 Change of allocation (coordinator): gpubox4 only (gpubox7 goes to ship experiments).
   BC arms in sequence, priority 256, 64, 32, 128; budget 30M each (a budget-stopped BC run
   resumes with a larger one if time allows); RL forks only if the BC arms finish early.
+- 00:30 gpubox4 free (the speed agent's runs done). Merged `perf/steady-speed` 7f7fbeb1
+  (the heads' sums sample) as 0f3ec4b4. The venv's Python is on the volume
+  (`UV_PYTHON_INSTALL_DIR=/workspace/calib/python`; the default install is container-local).
+  The box cache `cache-box4` was seeded with the speed agent's AFTER BC and RL caches.
+- 00:32 **bc-mb256 launched** (cold for its rollout without lanes; the learner's 24-view
+  shape may hit the seeded cache).
