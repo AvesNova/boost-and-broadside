@@ -1,0 +1,55 @@
+## 1v1: 12 jobs, B 8192, 02:04 KST
+W1112 17:04:58.393000 32112 /workspace/arch/venv/lib/python3.14/site-packages/torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+  batch 1/2 131 s; ETA 02:08 KST
+  batch 2/2 170 s; ETA 02:07 KST
+1v1 sniper v shotgun (M), sniper induced x0.95 dmg x0.92, kit2   energy v turn v c0: score 0.489 ± 0.009  kills m/o/f/t 0.34 / 0.58 / 0.08 / 0.00  life 333 s  kpm/ship 0.17  trades 0.00
+1v1 sniper v shotgun (M), sniper induced x0.95 dmg x0.92, kit2     turn mirror v c0: score 0.491 ± 0.009  kills m/o/f/t 0.32 / 0.60 / 0.08 / 0.00  life 339 s  kpm/ship 0.17  trades 0.00
+1v1 sniper v shotgun (M), sniper induced x0.95 dmg x0.92, kit2   energy mirror v c0: score 0.497 ± 0.010  kills m/o/f/t 0.37 / 0.55 / 0.08 / 0.00  life 308 s  kpm/ship 0.19  trades 0.00
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit, small cone f0 0.1   energy v turn v c1: score 0.593 ± 0.010  kills m/o/f/t 0.35 / 0.50 / 0.14 / 0.00  life 261 s  kpm/ship 0.22  trades 0.00
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit, small cone f0 0.1     turn mirror v c1: score 0.510 ± 0.010  kills m/o/f/t 0.38 / 0.52 / 0.11 / 0.00  life 326 s  kpm/ship 0.18  trades 0.00
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit, small cone f0 0.1   energy mirror v c1: score 0.515 ± 0.011  kills m/o/f/t 0.36 / 0.47 / 0.17 / 0.00  life 236 s  kpm/ship 0.24  trades 0.00
+1v1 armed gunner (arming 100, life x1.3, dmg x0.9, vision x1.2) v close fighter (life x0.8) (M), kit   energy v turn v c2: score 0.563 ± 0.010  kills m/o/f/t 0.24 / 0.67 / 0.09 / 0.00  life 310 s  kpm/ship 0.19  trades 0.00
+1v1 armed gunner (arming 100, life x1.3, dmg x0.9, vision x1.2) v close fighter (life x0.8) (M), kit     turn mirror v c2: score 0.498 ± 0.010  kills m/o/f/t 0.22 / 0.63 / 0.15 / 0.00  life 376 s  kpm/ship 0.16  trades 0.00
+1v1 armed gunner (arming 100, life x1.3, dmg x0.9, vision x1.2) v close fighter (life x0.8) (M), kit   energy mirror v c2: score 0.520 ± 0.008  kills m/o/f/t 0.15 / 0.80 / 0.05 / 0.00  life 458 s  kpm/ship 0.13  trades 0.00
+1v1 scout v brawler (M), S vision x1.05, B vision x0.92 dmg x1.12, kit2   energy v turn v c3: score 0.560 ± 0.010  kills m/o/f/t 0.33 / 0.57 / 0.10 / 0.00  life 284 s  kpm/ship 0.20  trades 0.00
+1v1 scout v brawler (M), S vision x1.05, B vision x0.92 dmg x1.12, kit2     turn mirror v c3: score 0.486 ± 0.010  kills m/o/f/t 0.36 / 0.51 / 0.13 / 0.00  life 279 s  kpm/ship 0.21  trades 0.00
+1v1 scout v brawler (M), S vision x1.05, B vision x0.92 dmg x1.12, kit2   energy mirror v c3: score 0.505 ± 0.009  kills m/o/f/t 0.35 / 0.59 / 0.05 / 0.00  life 322 s  kpm/ship 0.18  trades 0.01
+## 2v2: 4 jobs, B 8192, 02:07 KST
+2v2 sniper v shotgun (M), sniper induced x0.95 dmg x0.92, kit2   energy v turn v c0: score 0.494 ± 0.014  kills m/o/f/t 0.07 / 0.33 / 0.51 / 0.09  life 95 s  kpm/ship 0.57  trades 0.02
+2v2 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit, small cone f0 0.1   energy v turn v c1: score 0.511 ± 0.014  kills m/o/f/t 0.08 / 0.32 / 0.50 / 0.10  life 94 s  kpm/ship 0.58  trades 0.02
+2v2 armed gunner (arming 100, life x1.3, dmg x0.9, vision x1.2) v close fighter (life x0.8) (M), kit   energy v turn v c2: score 0.564 ± 0.014  kills m/o/f/t 0.06 / 0.34 / 0.50 / 0.10  life 95 s  kpm/ship 0.57  trades 0.02
+2v2 scout v brawler (M), S vision x1.05, B vision x0.92 dmg x1.12, kit2   energy v turn v c3: score 0.573 ± 0.014  kills m/o/f/t 0.08 / 0.33 / 0.50 / 0.09  life 92 s  kpm/ship 0.59  trades 0.02
+## 5v5: 12 jobs, B 4096, 02:09 KST
+  batch 1/3 205 s; ETA 02:19 KST
+  batch 2/3 264 s; ETA 02:16 KST
+  batch 3/3 326 s; ETA 02:15 KST
+5v5 sniper v shotgun (M), sniper induced x0.95 dmg x0.92, kit2   energy v turn v c0: score 0.524 ± 0.015  kills m/o/f/t 0.05 / 0.28 / 0.54 / 0.13  life 85 s  kpm/ship 0.63  trades 0.06
+5v5 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit, small cone f0 0.1   energy v turn v c1: score 0.493 ± 0.015  kills m/o/f/t 0.06 / 0.28 / 0.53 / 0.12  life 83 s  kpm/ship 0.65  trades 0.07
+5v5 armed gunner (arming 100, life x1.3, dmg x0.9, vision x1.2) v close fighter (life x0.8) (M), kit   energy v turn v c2: score 0.567 ± 0.015  kills m/o/f/t 0.05 / 0.28 / 0.54 / 0.13  life 85 s  kpm/ship 0.63  trades 0.06
+5v5 scout v brawler (M), S vision x1.05, B vision x0.92 dmg x1.12, kit2   energy v turn v c3: score 0.531 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.12  life 82 s  kpm/ship 0.65  trades 0.07
+5v5 sniper v shotgun (M), sniper induced x0.95 dmg x0.92, kit2           mixed v r9: score 0.497 ± 0.015  kills m/o/f/t 0.06 / 0.28 / 0.54 / 0.13  life 86 s  kpm/ship 0.63  trades 0.07
+5v5 sniper v shotgun (M), sniper induced x0.95 dmg x0.92, kit2  mixed reversed v r9: score 0.516 ± 0.015  kills m/o/f/t 0.05 / 0.28 / 0.54 / 0.13  life 86 s  kpm/ship 0.63  trades 0.06
+5v5 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit, small cone f0 0.1           mixed v r9: score 0.510 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.12  life 82 s  kpm/ship 0.66  trades 0.08
+5v5 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit, small cone f0 0.1  mixed reversed v r9: score 0.495 ± 0.015  kills m/o/f/t 0.06 / 0.28 / 0.53 / 0.13  life 83 s  kpm/ship 0.65  trades 0.07
+5v5 armed gunner (arming 100, life x1.3, dmg x0.9, vision x1.2) v close fighter (life x0.8) (M), kit           mixed v r9: score 0.510 ± 0.015  kills m/o/f/t 0.05 / 0.28 / 0.53 / 0.13  life 85 s  kpm/ship 0.64  trades 0.07
+5v5 armed gunner (arming 100, life x1.3, dmg x0.9, vision x1.2) v close fighter (life x0.8) (M), kit  mixed reversed v r9: score 0.492 ± 0.015  kills m/o/f/t 0.05 / 0.28 / 0.54 / 0.13  life 84 s  kpm/ship 0.64  trades 0.06
+5v5 scout v brawler (M), S vision x1.05, B vision x0.92 dmg x1.12, kit2           mixed v r9: score 0.499 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.52 / 0.13  life 82 s  kpm/ship 0.65  trades 0.07
+5v5 scout v brawler (M), S vision x1.05, B vision x0.92 dmg x1.12, kit2  mixed reversed v r9: score 0.522 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.12  life 82 s  kpm/ship 0.66  trades 0.07
+## 10v10: 4 jobs, B 2048, 02:15 KST
+10v10 sniper v shotgun (M), sniper induced x0.95 dmg x0.92, kit2   energy v turn v c0: score 0.391 ± 0.021  kills m/o/f/t 0.05 / 0.28 / 0.52 / 0.15  life 95 s  kpm/ship 0.57  trades 0.12
+10v10 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit, small cone f0 0.1   energy v turn v c1: score 0.503 ± 0.021  kills m/o/f/t 0.06 / 0.28 / 0.51 / 0.15  life 90 s  kpm/ship 0.60  trades 0.13
+10v10 armed gunner (arming 100, life x1.3, dmg x0.9, vision x1.2) v close fighter (life x0.8) (M), kit   energy v turn v c2: score 0.475 ± 0.021  kills m/o/f/t 0.05 / 0.27 / 0.52 / 0.15  life 94 s  kpm/ship 0.58  trades 0.12
+10v10 scout v brawler (M), S vision x1.05, B vision x0.92 dmg x1.12, kit2   energy v turn v c3: score 0.519 ± 0.021  kills m/o/f/t 0.06 / 0.28 / 0.52 / 0.14  life 91 s  kpm/ship 0.60  trades 0.13
+## 20v20: 4 jobs, B 1024, 02:18 KST
+20v20 sniper v shotgun (M), sniper induced x0.95 dmg x0.92, kit2   energy v turn v c0: score 0.381 ± 0.029  kills m/o/f/t 0.05 / 0.28 / 0.51 / 0.16  life 115 s  kpm/ship 0.48  trades 0.18
+20v20 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit, small cone f0 0.1   energy v turn v c1: score 0.469 ± 0.031  kills m/o/f/t 0.06 / 0.28 / 0.50 / 0.16  life 110 s  kpm/ship 0.50  trades 0.20
+20v20 armed gunner (arming 100, life x1.3, dmg x0.9, vision x1.2) v close fighter (life x0.8) (M), kit   energy v turn v c2: score 0.510 ± 0.030  kills m/o/f/t 0.05 / 0.28 / 0.50 / 0.17  life 114 s  kpm/ship 0.48  trades 0.19
+20v20 scout v brawler (M), S vision x1.05, B vision x0.92 dmg x1.12, kit2   energy v turn v c3: score 0.535 ± 0.031  kills m/o/f/t 0.05 / 0.27 / 0.51 / 0.16  life 110 s  kpm/ship 0.50  trades 0.20
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | E v T 20v20 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| sniper v shotgun (M), sniper induced x0.95 dmg x0.92, kit2 | 0.489 ± 0.009 | 0.494 ± 0.014 | 0.524 ± 0.015 | 0.391 ± 0.021 | 0.381 ± 0.029 | 0.119 | 0.05 / 0.28 / 0.54 / 0.13 | 0.06 | 333 / 95 / 85 / 95 / 115 | 0.17 / 0.57 / 0.63 / 0.57 / 0.48 | 3.18 |
+| big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit, small cone f0 0.1 | 0.593 ± 0.010 | 0.511 ± 0.014 | 0.493 ± 0.015 | 0.503 ± 0.021 | 0.469 ± 0.031 | 0.093 | 0.06 / 0.28 / 0.53 / 0.12 | 0.07 | 261 / 94 / 83 / 90 / 110 | 0.22 / 0.58 / 0.65 / 0.60 / 0.50 | 2.67 |
+| armed gunner (arming 100, life x1.3, dmg x0.9, vision x1.2) v close fighter (life x0.8) (M), kit | 0.563 ± 0.010 | 0.564 ± 0.014 | 0.567 ± 0.015 | 0.475 ± 0.021 | 0.510 ± 0.030 | 0.067 | 0.05 / 0.28 / 0.54 / 0.13 | 0.06 | 310 / 95 / 85 / 94 / 114 | 0.19 / 0.57 / 0.63 / 0.58 / 0.48 | 3.19 |
+| scout v brawler (M), S vision x1.05, B vision x0.92 dmg x1.12, kit2 | 0.560 ± 0.010 | 0.573 ± 0.014 | 0.531 ± 0.015 | 0.519 ± 0.021 | 0.535 ± 0.031 | 0.073 | 0.06 / 0.29 / 0.53 / 0.12 | 0.07 | 284 / 92 / 82 / 91 / 110 | 0.20 / 0.59 / 0.65 / 0.60 / 0.50 | 2.94 |
+
+1039 s

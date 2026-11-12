@@ -979,6 +979,80 @@ def screen2() -> list[dict]:
 ROUNDS["screen2"] = screen2
 
 
+def big_small_final() -> dict:
+    a, b = big_small(1.3, 1.3, 0.8, 0.9, merge(cone(0.10, 12, 8), {"induced_drag_scale": 0.98}))
+    return pair(
+        "big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), "
+        "kit, small cone f0 0.1",
+        ("M", a),
+        ("M", b),
+    )
+
+
+def confirm2() -> list[dict]:
+    """1024 games, 1v1-20v20: big v small with the small ship's induced x0.98 (r9 and both
+    maneuvers doctrines), scout at x1.03, the armed gunner at damage x0.85."""
+    big = big_small_final()
+    a, b = armed_gunner(0.85, 1.2, 100.0)
+    return [
+        big,
+        flown(big, "crowd extend + lead"),
+        flown(big, "duel one-circle + crowd extend + lead"),
+        pair(
+            "scout v brawler (M), S vision x1.03, B vision x0.92 dmg x1.12, kit2",
+            ("M", merge({"vision_range_scale": 1.03}, kit(*KIT2))),
+            ("M", merge({"vision_range_scale": 0.92, "hit_damage": 1.12}, kit(*KIT2))),
+        ),
+        pair(
+            "armed gunner (arming 100, life x1.3, dmg x0.85, vision x1.2) v close fighter "
+            "(life x0.8) (M), kit",
+            ("M", a),
+            ("M", b),
+        ),
+    ]
+
+
+ZOOMER = {"dive_exchange_scale": 2.0, "climb_exchange_scale": 1.5, "max_energy": 1.3}
+LEVEL = {"engine_power_full_store": 1.1, "dive_exchange_scale": 0.6}
+
+
+def round11() -> list[dict]:
+    """Zoomer v level (the store against cruise) and hit-and-run (recharge) refinements."""
+    out = []
+    for zd, ld, lf in (
+        (1.0, 1.0, None),
+        (1.05, 1.0, None),
+        (1.0, 1.0, 0.12),
+        (1.05, 1.0, 0.12),
+        (1.0, 0.95, 0.12),
+    ):
+        b = merge(LEVEL, {"hit_damage": ld}, kit(*KIT2), cone(lf, 12, 8) if lf else {})
+        out.append(
+            pair(
+                f"zoomer (dmg x{zd:g}) v level (dmg x{ld:g}"
+                + (f", cone f0 {lf:g}" if lf else "")
+                + ") (M), kit2",
+                ("M", merge(ZOOMER, {"hit_damage": zd}, kit(*KIT2))),
+                ("M", b),
+            )
+        )
+    hr = {"shield_recharge_rate_scale": 4.0, "shield_recharge_delay_scale": 0.4, "max_shield": 0.8}
+    for hd in (1.1, 1.2):
+        out.append(
+            pair(
+                f"hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x{hd:g}) v "
+                "standard (M), kit2",
+                ("M", merge(hr, {"hit_damage": hd}, kit(*KIT2))),
+                ("M", kit(*KIT2)),
+            )
+        )
+    return out
+
+
+ROUNDS["confirm2"] = confirm2
+ROUNDS["round11"] = round11
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
