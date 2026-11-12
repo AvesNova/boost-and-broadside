@@ -1814,6 +1814,19 @@ def roster3() -> list[dict]:
 ROUNDS["roster3"] = roster3
 
 
+def set8() -> list[dict]:
+    """The close fighter (range x0.8, dmg x1.05; even with the standard in roster 3) against
+    the brawler and the small ship: a fourth member for the set?"""
+    close = merge(kit(*KIT2), {"bullet_life": 0.8, "hit_damage": 1.05})
+    return [
+        pair(f"close fighter v {b} (set 8, M, kit2)", ("M", close), ("M", set_ship(b)))
+        for b in ("brawler", "small")
+    ]
+
+
+ROUNDS["set8"] = set8
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
