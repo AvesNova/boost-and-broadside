@@ -140,8 +140,11 @@ which blocks sight (see [Perception and fog](perception.md)).
 - **Hits.** A swept test between each bullet's and each ship's straight motion this tick
   finds contacts within the target's hit radius. A bullet hits only its first contact.
   **Friendly fire is on:** a bullet can hit any ship but its own shooter.
-- **Damage.** A hit from dead ahead deals the target's head-on fraction of the shooter's
-  damage; from the side or rear, nearly all of it.
+- **Damage.** A hit deals the shooter's damage times the aspect
+  `1 - (1 - f_0) exp(-ln 2 (θ / θ_h)²)`, with `θ` the angle between the bullet's reversed
+  direction and the target's nose: the target's head-on fraction `f_0` from dead ahead,
+  half way to full damage at the target's head-on angle `θ_h` (42.27 degrees by default,
+  the old fixed curve's `exp(-4θ²/π)`), and nearly all of it from the side or rear.
 - **Shields.** Damage beyond the current shield breaks it, and the overkill is ignored.
   Any damage to a ship whose shield was already broken at tick start kills it. After a
   delay without damage, the shield recharges at a fixed rate; both are per type. The delay
@@ -156,7 +159,7 @@ which blocks sight (see [Perception and fog](perception.md)).
   bullet index.
 
 The shared constants, from `bnb.game.rules.Rules`. The card scales the spread, the
-bullet drag, the head-on fraction, the shield recharge rate and delay, and the vision range
+bullet drag, the head-on fraction and angle, the shield recharge rate and delay, and the vision range
 per type:
 
 <!-- generated: game-constants -->

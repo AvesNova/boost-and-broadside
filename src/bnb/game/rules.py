@@ -30,6 +30,9 @@ FIELD_LEVELS = (-2, -1, 1, 2)
 LN_SQRT2 = 0.5 * math.log(2.0)
 MAP_SCALE_RADIUS = 2600.0  # m: the arena radius of map scale 1 (map_scale = R_a / this)
 FIELD_DISC_FRACTION = 0.85  # the fields' centres lie within this fraction of the arena radius
+# rad: the angle off the nose at which armour is at half strength (the aspect halfway from
+# the head-on fraction to 1): 42.27 degrees, the exp(-4 theta^2 / pi) curve's
+HEAD_ON_ANGLE = math.sqrt(math.pi * math.log(2.0) / 4.0)
 # s: the longest bullet life a card may have (a type's life follows from its gun range,
 # `handling.weapons.bullet_life`); what a match that may be tuned sizes its bullet slots by
 LONGEST_BULLET_LIFE = 2.0
@@ -90,6 +93,7 @@ class Rules:
     bullet_drag: float = 8e-4  # 1/m [k_b]
     bullet_spread: float = 12.0  # m/s per axis, proper [sigma_b]
     head_on_fraction: float = 0.3  # [f_0]
+    head_on_angle: float = HEAD_ON_ANGLE  # rad, armour at half strength [theta_h]
     shield_recharge_delay: float = 6.0  # s without a hit, counted on quiet ticks (QUIET_STICKS)
     shield_recharge_rate: float = 12.0  # per s, on quiet ticks
     boundary_damage_base: float = 5.0  # per s

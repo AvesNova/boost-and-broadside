@@ -17,6 +17,7 @@ from ..rules import COAST, QUIET_STICKS, Rules
 from ..ship_types import ShipTypes, per_ship
 from ..state import Bullets, Ships, Sweep, replace
 
+LN_2 = math.log(2.0)
 NO_HIT = torch.iinfo(torch.int64).max
 
 
@@ -131,7 +132,10 @@ def hits(
     full = per_ship(types.hit_damage, ships.ship_type).repeat_interleave(K, 1)  # the shooter's
     head_on = rules.head_on_fraction * per_ship(types.head_on_fraction_scale, ships.ship_type)
     head_on = head_on.gather(1, target)  # the target's armour
-    aspect = 1.0 - (1.0 - head_on) * torch.exp(-4.0 * theta * theta / math.pi)
+    # Its half-strength angle: the aspect is halfway from the head-on fraction to 1 there.
+    half = rules.head_on_angle * per_ship(types.head_on_angle_scale, ships.ship_type)
+    ratio = theta / half.gather(1, target)
+    aspect = 1.0 - (1.0 - head_on) * torch.exp(-LN_2 * ratio * ratio)
     bullet_damage = torch.where(hit, full * aspect, 0.0)
 
     # Scatter each bullet's hit to its (shooter, target): O(bullets), not O(bullets x ships).

@@ -348,6 +348,8 @@ class TuningPanel:
                 low, high = _range(saved.get(name, value / factor) * factor)
                 if name == "half_lift_drag":
                     low, high = 0.5**5, 0.5**0.5
+                if name == "head_on_angle":  # degrees
+                    low, high = 5.0, 90.0
                 changed, new = number(label, name, value, low, high, log=True, help=help)
                 if changed and math.isfinite(new):
                     tuner.set_handle(name, kind, new / factor)

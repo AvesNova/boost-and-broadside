@@ -53,6 +53,7 @@ Constants marked † differ by ship type (section 1.1); the value shown is the f
 | hit radius † | `r_hit` | 8 m | `hit_radius` |
 | damage per hit † | `D` | 12 | `damage` |
 | head-on damage fraction | `f_0` | 0.3 **(v2)** | `head_on_fraction` |
+| head-on angle (armour at half strength) | `θ_h` | 42.27° | — |
 | shield maximum † | `S_max` | 100 | `shield_max` |
 | shield recharge delay | — | 6 s | `shield_delay` |
 | shield recharge rate | — | 12 per s | `shield_regen` |
@@ -376,8 +377,9 @@ one tick.
 
 Damage of a hit: with `θ` the angle between `−d̂` (the bullet's post-move direction) and
 the target's post-move nose `(c, s)`,
-`D (1 − (1 − f_0) exp(−4θ²/π))` with the shooter's `D`: the fraction `f_0` from dead ahead, nearly full from the side or
-rear.
+`D (1 − (1 − f_0) exp(−ln 2 (θ/θ_h)²))` with the shooter's `D`: the fraction `f_0` from dead ahead, half way
+to full at the target's head-on angle `θ_h` (by default `sqrt(π ln 2 / 4)`, 42.27 degrees, which is `exp(−4θ²/π)`),
+nearly full from the side or rear.
 
 ### 7.2 Damage, death and shields (phase 5)
 

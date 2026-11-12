@@ -10,6 +10,8 @@ the rules' drag takes to cover the range, t = expm1(k_b R) / (k_b w0), and the t
 scale (1 or more: drag only shortens) trims the range to R in that life, by bisection.
 """
 
+import math
+
 import torch
 
 from bnb.contracts import ticks_of
@@ -86,6 +88,8 @@ def combat_card(rules: Rules, handles, cruise_speed: torch.Tensor) -> dict[str, 
     gun's cost and range depend on)."""
     if ((handles.head_on_fraction < 0.0) | (handles.head_on_fraction > 1.0)).any():
         raise Infeasible("a head-on fraction must lie in [0, 1]")
+    if ((handles.head_on_angle <= 0.0) | (handles.head_on_angle > math.pi)).any():
+        raise Infeasible("a head-on angle must lie in (0, 180] degrees")
     if (handles.shots_per_store < 1.0).any():
         raise Infeasible("a full store must pay for at least one shot")
     whole_ticks(handles.shield_recharge_delay, rules, "shield recharge delay")
@@ -108,6 +112,7 @@ def combat_card(rules: Rules, handles, cruise_speed: torch.Tensor) -> dict[str, 
         shield_recharge_rate_scale=handles.shield_recharge_rate / rules.shield_recharge_rate,
         shield_recharge_delay_scale=handles.shield_recharge_delay / rules.shield_recharge_delay,
         head_on_fraction_scale=handles.head_on_fraction / rules.head_on_fraction,
+        head_on_angle_scale=handles.head_on_angle / rules.head_on_angle,
         hit_radius=handles.hit_radius,
         spawn_energy=handles.spawn_energy,
     )
@@ -132,6 +137,7 @@ def combat_handles(rules: Rules, types: ShipTypes, cruise_speed: torch.Tensor) -
         )
         * rules.tick_length,
         head_on_fraction=rules.head_on_fraction * types.head_on_fraction_scale,
+        head_on_angle=rules.head_on_angle * types.head_on_angle_scale,
         hit_radius=types.hit_radius,
         spawn_energy=types.spawn_energy,
     )

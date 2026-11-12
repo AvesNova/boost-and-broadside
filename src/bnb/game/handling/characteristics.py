@@ -144,6 +144,7 @@ def _key(types: ShipTypes, rules: Rules) -> tuple:
         rules.shield_recharge_rate,
         rules.shield_recharge_delay,
         rules.head_on_fraction,
+        rules.head_on_angle,
     )
 
 

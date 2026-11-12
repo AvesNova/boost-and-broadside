@@ -63,6 +63,7 @@ HANDLE_UNITS = dict(
     shield_recharge_rate=RATE,
     shield_recharge_delay=TIME,
     head_on_fraction=NONE,
+    head_on_angle=NONE,
     hit_radius=LENGTH,
     spawn_energy=ENERGY,
 )
@@ -95,6 +96,7 @@ CARD_UNITS = dict(
     shield_recharge_rate_scale=NONE,
     shield_recharge_delay_scale=NONE,
     head_on_fraction_scale=NONE,
+    head_on_angle_scale=NONE,
     engine_knee_scale=NONE,
 )
 FLIGHT_UNITS = dict(
@@ -117,6 +119,7 @@ RULE_UNITS = {
     "rules.bullet_drag": PER_LENGTH,
     "rules.bullet_spread": SPEED,
     "rules.head_on_fraction": NONE,
+    "rules.head_on_angle": NONE,
     "rules.shield_recharge_delay": TIME,
     "rules.shield_recharge_rate": RATE,
     "rules.boundary_damage_base": RATE,

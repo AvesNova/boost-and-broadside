@@ -28,6 +28,7 @@ max_shield = 160.0
 shield_recharge_rate = 12.0
 shield_recharge_delay = 6.0
 head_on_fraction = 0.3
+head_on_angle = 0.737832313317803
 hit_radius = 7.761875
 spawn_energy = 39789.36000000001
 
@@ -61,6 +62,7 @@ bullet_drag_scale = 1.0
 shield_recharge_rate_scale = 1.0
 shield_recharge_delay_scale = 1.0
 head_on_fraction_scale = 1.0
+head_on_angle_scale = 1.0
 engine_knee_scale = 1.0
 
 [notes]
@@ -89,5 +91,6 @@ max_shield = "invented: survivability 5; proposal: the standard 100 x (1 + 0.1 p
 shield_recharge_rate = "placeholder: the standard heavy's"
 shield_recharge_delay = "placeholder: the standard heavy's"
 head_on_fraction = "placeholder: the standard heavy's"
+head_on_angle = "placeholder: the standard heavy's"
 hit_radius = "placeholder: the standard heavy's, scaled as the standard fighter is to the P-51D"
 spawn_energy = "placeholder: the standard heavy's fraction of the store"

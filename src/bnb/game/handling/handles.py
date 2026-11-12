@@ -42,6 +42,7 @@ class Handles:
     shield_recharge_rate: torch.Tensor  # per s
     shield_recharge_delay: torch.Tensor  # s
     head_on_fraction: torch.Tensor  # damage taken from dead ahead
+    head_on_angle: torch.Tensor  # rad off the nose where armour is at half strength
     hit_radius: torch.Tensor  # m
     spawn_energy: torch.Tensor  # J
 
@@ -97,6 +98,7 @@ UNITS = dict(
     shield_recharge_rate=("1/s", 1.0),
     shield_recharge_delay=("s", 1.0),
     head_on_fraction=("", 1.0),
+    head_on_angle=("deg", DEGREES),
     hit_radius=("m", 1.0),
     spawn_energy=("J", 1.0),
 )

@@ -31,3 +31,17 @@
   interface test (the settings switch the style and set a width); an offscreen run with
   `--bullet-style trail` renders.
 - Next: part C (head-on angle).
+
+## 2026-11-12, part C (head-on angle)
+
+- Done: a combat handle `head_on_angle` (rad; degrees on the panel, slider 5-90), the
+  target's half-strength angle: aspect = 1 - (1 - f0) exp(-ln 2 (theta / theta_h)^2). It
+  follows its sibling's pattern: a shared `Rules.head_on_angle` (sqrt(pi ln 2 / 4)) times a
+  per-type card scale `head_on_angle_scale` (SCALED), closed form both ways in
+  `handling.weapons`; Infeasible outside (0, 180] degrees.
+- Correction: the default is 0.7378 rad = 42.27 degrees, not 42.29.
+- Ship files: the loader needs every card field and handle, so every file gained
+  `head_on_angle` (handle and note copied from the head-on fraction's) and
+  `head_on_angle_scale = 1.0` (as the engine knee scale was added).
+- Worked: the default curve is the old one (a test at 0.6 rad against exp(-4 theta^2/pi)),
+  a halved angle halves where the armour is at half.

@@ -15,7 +15,7 @@ from bnb.game import api
 from bnb.game.physics import flight
 from bnb.game.physics.bullets import fire, move_bullets
 from bnb.game.physics.combat import apply_damage, hits
-from bnb.game.rules import POWER_MODES, STICK_LEVELS, FlightConstants
+from bnb.game.rules import HEAD_ON_ANGLE, POWER_MODES, STICK_LEVELS, FlightConstants
 from bnb.game.ship_types import SCALED, ship_types, ticks_between_shots
 from bnb.game.state import Bullets, Fields, Ships, Sweep, replace
 
@@ -205,21 +205,22 @@ def test_bullet_drag_and_spread_are_the_shooters():
     assert torch.allclose(sideways, torch.tensor([12.0, 36.0]))
 
 
-def test_head_on_fraction_is_the_targets_armour():
-    """A head-on hit does the target's head-on fraction of the shooter's damage."""
+def _head_on_damage(types, nose_angles=(0.0, 0.0)) -> torch.Tensor:
+    """(B, N, N) damage of one bullet each way between two ships 100 m apart on the x axis,
+    each through the other's nose turned by its nose angle (rad): the hit's aspect angle."""
     rules = api.rules_of(GameConfig(1, 1, 1000.0))
-    types = api.ship_types(head_on_fraction_scale=(1.0, 2.0))
+    angles = torch.tensor([nose_angles])
     ships = replace(
         _ships(torch.zeros(1, 2), 0.0),
         x=torch.tensor([[0.0, 100.0]]),
-        heading_cos=torch.tensor([[1.0, -1.0]]),
+        heading_cos=torch.cos(angles) * torch.tensor([[1.0, -1.0]]),
+        heading_sin=torch.sin(angles),
         ship_type=torch.tensor([[0, 1]], dtype=torch.int32),
     )
     K = rules.bullet_slots
     zeros = torch.zeros(1, 2, K)
     live = torch.zeros(1, 2, K, dtype=torch.int32)
     live[0, :, 0] = 1
-    # One bullet each way, through the other ship's nose.
     along = torch.tensor([1.0, -1.0])[None, :, None] + zeros
     bullets = Bullets(
         x=zeros,
@@ -242,9 +243,29 @@ def test_head_on_fraction_is_the_targets_armour():
         bullet_displacement_x=torch.tensor([[100.0, -100.0]])[..., None] + zeros,
         bullet_displacement_y=zeros,
     )
-    damage = hits(rules, types, sweep, ships, bullets, torch.ones(1, 2, dtype=torch.bool)).damage
+    return hits(rules, types, sweep, ships, bullets, torch.ones(1, 2, dtype=torch.bool)).damage
+
+
+def test_head_on_fraction_is_the_targets_armour():
+    """A head-on hit does the target's head-on fraction of the shooter's damage."""
+    damage = _head_on_damage(api.ship_types(head_on_fraction_scale=(1.0, 2.0)))
     assert torch.allclose(damage[0, 0, 1], torch.tensor(12.0 * 0.6))  # fighter hits the heavy
     assert torch.allclose(damage[0, 1, 0], torch.tensor(16.0 * 0.3))  # heavy hits the fighter
+
+
+def test_head_on_angle_is_where_the_targets_armour_is_half():
+    """At its head-on angle off the nose a target takes half way from its head-on fraction to
+    full damage; the default angle (42.27 degrees) is the exp(-4 theta^2 / pi) curve's."""
+    assert math.degrees(HEAD_ON_ANGLE) == pytest.approx(42.27, abs=0.01)
+    types = api.ship_types(head_on_angle_scale=(1.0, 0.5))
+    half = 1.0 - 0.7 * 0.5
+    damage = _head_on_damage(types, (HEAD_ON_ANGLE, 0.5 * HEAD_ON_ANGLE))
+    assert torch.allclose(damage[0, 0, 1], torch.tensor(12.0 * half))  # into the heavy's 21 deg
+    assert torch.allclose(damage[0, 1, 0], torch.tensor(16.0 * half))  # the fighter's 42 deg
+    theta = 0.6
+    old = 1.0 - 0.7 * math.exp(-4.0 * theta * theta / math.pi)
+    damage = _head_on_damage(api.ship_types(), (theta, theta))
+    assert torch.allclose(damage[0, 1, 0], torch.tensor(16.0 * old))
 
 
 def test_shield_recharge_rate_and_delay_are_per_type():
