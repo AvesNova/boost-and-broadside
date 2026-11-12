@@ -1502,6 +1502,30 @@ def round15() -> list[dict]:
 ROUNDS["round15"] = round15
 
 
+def confirm8() -> list[dict]:
+    """The hit-and-run mirror's joust: its nose at f0 0.06 (mirror 0.34-0.39) with the duel
+    edge that brings taken back by sight; 1024 games, 1v1-20v20, r9."""
+    out = []
+    for d, v in ((1.2, 0.97), (1.22, 0.96)):
+        a = merge(
+            kit(*KIT2),
+            HIT_AND_RUN,
+            {"hit_damage": d / 1.2, "vision_range_scale": v},
+            cone(0.06, 12, 8),
+        )
+        out.append(
+            pair(
+                f"hit-and-run (f0 0.06, dmg x{d:g}, vision x{v:g}) v standard (M), kit2",
+                ("M", a),
+                ("M", kit(*KIT2)),
+            )
+        )
+    return out
+
+
+ROUNDS["confirm8"] = confirm8
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
