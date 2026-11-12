@@ -91,6 +91,7 @@ SETTINGS = (
     _s("rules.spawn_speed", SPAWNS, "spawn speed", "m/s", 0.0, 200.0, when=EPISODE),
     _s("rules.spawn_offset", SPAWNS, "spawn offset", "arena radii", 0.0, 0.95, when=EPISODE),
     _s("rules.spawn_radius", SPAWNS, "spawn radius", "m", 10.0, 600.0, when=EPISODE),
+    _s("rules.spawn_turn_distance", SPAWNS, "spawn turn distance", "m", 1.0, 2000.0),
     _s("rules.field_band_width", MAP, "field band width", "m", 5.0, 200.0, when=EPISODE),
     _s(
         "mode.kills_per_ship",
@@ -293,6 +294,7 @@ LIVE_RULES = (
     "spawn_speed",
     "spawn_offset",
     "spawn_radius",
+    "spawn_turn_distance",
     "field_band_width",
 )
 LIVE_FLIGHT = ("gravity", "engine_knee", "store_fade_band", "nose_damping", "nose_frequency_floor")

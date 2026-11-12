@@ -72,8 +72,26 @@ def _clip_to_disc(x: torch.Tensor, y: torch.Tensor, radius: torch.Tensor):
     return x * scale, y * scale
 
 
-def _heading(uniform: torch.Tensor):
-    angle = 2.0 * math.pi * uniform
+def _heading(rules: Rules, arena_radius: torch.Tensor, x: torch.Tensor, y: torch.Tensor, uniform):
+    """A random heading (cos, sin) (B, N) for a ship spawning at (x, y) (B, N) in an arena
+    of this radius (B,), from one uniform (B, N) in [0, 1), that leaves the ship room to
+    turn away from the edge (modes spec 4).
+
+    The uniform draws an angle a in [-pi, pi) off the outward normal (the direction from the
+    map centre to the point). Within `spawn_turn_distance` D of the edge the heading points
+    outward by a cosine of at most d / D at a distance d from it: its angle off the normal
+    is at least m = acos(d / D), a right angle at the edge. The draw is spread evenly over
+    the allowed directions on its own side of the normal (a to sign(a) (m + |a| (1 - m /
+    pi))), so the heading is uniform over them, changes continuously with d, and from D
+    inward is the plain uniform heading. A circle of radius D started at d with an outward
+    cosine d / D reaches D (1 - sqrt(1 - (d / D)^2)) <= d outward, so a ship whose
+    full-stick turn radius at spawn speed is at most D can always turn away in time."""
+    distance = torch.sqrt(x * x + y * y)
+    room = (arena_radius[:, None] - distance) / rules.spawn_turn_distance
+    least = torch.acos(room.clamp(0.0, 1.0))
+    drawn = math.pi * (2.0 * uniform - 1.0)
+    off_normal = torch.copysign(least + drawn.abs() * (1.0 - least / math.pi), drawn)
+    angle = torch.atan2(y, x) + off_normal
     return torch.cos(angle), torch.sin(angle)
 
 
@@ -198,7 +216,9 @@ def deathmatch_placement(
     target_x = torch.where(target, torch.where(starting, candidate_x[..., 0], x), INFINITY)
     target_y = torch.where(target, torch.where(starting, candidate_y[..., 0], y), INFINITY)
     place_x, place_y = _farthest_from_enemies(candidate_x, candidate_y, target_x, target_y, counts)
-    heading_cos, heading_sin = _heading(per_ship[..., 2 * candidates])
+    heading_cos, heading_sin = _heading(
+        rules, arena_radius, place_x, place_y, per_ship[..., 2 * candidates]
+    )
     return Placement(x=place_x, y=place_y, heading_cos=heading_cos, heading_sin=heading_sin)
 
 

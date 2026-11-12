@@ -64,7 +64,7 @@ medium. Only the position and the heading come from the mode.
 ### Team deathmatch, uniform (no groups)
 
 - **Candidates:** each spawning ship draws `K = 8` points, uniform over the arena disc
-  (`r = R_a √u₁`, angle `2π u₂`), and one heading `2π u₃`.
+  (`r = R_a √u₁`, angle `2π u₂`), and one heading draw `u₃` (below).
 - **Respawn:** take the candidate whose distance to the nearest enemy alive after phase 5
   is largest; ties go to the lower candidate. With no living enemy, take candidate 0.
 - **Reset (all ships at once):** candidate 0 of every ship is its provisional point. Each
@@ -90,6 +90,27 @@ medium. Only the position and the heading come from the mode.
   - take the best of `K` by distance to the nearest living enemy;
   - with no living ship, fall back to the uniform rule.
 - **Heading:** random, as in the uniform case.
+
+### Random headings: room to turn away from the edge
+
+A random heading is drawn for the chosen point, at distance `d` from the edge, with the
+outward normal `n` (from the map centre to the point):
+
+- the draw is an angle `a = π (2u₃ − 1)` off `n`;
+- the heading's angle off `n` is at least `m = acos(clamp(d / D, 0, 1))`, so its outward
+  cosine is at most `d / D`: tangent at the edge, any heading from `D` inward;
+- the draw is spread evenly over the allowed arc on its own side of `n`:
+  `a → sign(a) (m + |a| (1 − m / π))`, with `sign(0) = +1`.
+
+So the heading is uniform over the allowed directions, deterministic, continuous in `d`,
+and the plain uniform heading from `D` inward. `D` is `Rules.spawn_turn_distance`: 75 m in
+the standard set and 436.5 m (75 m × the length scale 5.82) in the real-scale set, the
+set's largest full-stick turn excursion from spawn speed, straight out, rounded up (65 m
+for the standard heavy, 405 m for the Me 262). A circle of radius `D` started at `d` with
+outward cosine `d / D` reaches `D (1 − √(1 − (d/D)²)) ≤ d` outward, so a ship that turns at
+once never crosses the edge. It is a tunable rule (`rules.spawn_turn_distance`, a length).
+Frontline's headings and a fixed layout's are not random and keep their own: each points at
+a point inside the arena (a zone, or the centre), and the straight path to it stays inside.
 
 ### Frontline
 

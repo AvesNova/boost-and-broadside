@@ -20,8 +20,12 @@ and at 45 it is the old one. Also on 2026-11-12 the elimination mode came in (it
 real_scale_elimination and clover, fixed map layouts): a new game, rated under its own mode
 and map, while every existing game computes the same numbers (the old presets' fingerprint
 without the observation's new mode_elimination column, always 0 in them, is the old one),
-so the version stayed 3; the fingerprint now covers the two new presets as well.
+so the version stayed 3; the fingerprint now covers the two new presets as well. Version 4
+(2026-11-12): a random spawn heading leaves room to turn away from the edge
+(`modes.spawns._heading`, `Rules.spawn_turn_distance`): within that distance of it a
+heading's outward cosine is at most the distance over it, so team deathmatch's and
+elimination's spawns change in every preset with random headings.
 """
 
-VERSION = 3
-FINGERPRINT = "bd69c68587244307"
+VERSION = 4
+FINGERPRINT = "85912f2a4ebdafa9"

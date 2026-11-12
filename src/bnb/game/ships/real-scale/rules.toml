@@ -6,6 +6,7 @@ bullet_drag = 0.0001374570446735395
 vision_range = 3072.0
 spawn_speed = 72.644
 field_band_width = 120.0
+spawn_turn_distance = 436.5
 
 [flight]
 mass = 1.0

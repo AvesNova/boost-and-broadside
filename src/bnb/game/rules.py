@@ -101,6 +101,11 @@ class Rules:
     spawn_speed: float = 30.0  # m/s, proper
     spawn_offset: float = 0.8  # spawn centres at +-0.8 arena radii along the spawn axis
     spawn_radius: float = 120.0  # m, before map scaling [rho_s]
+    # m: a random spawn heading's room to turn away from the edge (`modes.spawns._heading`):
+    # within this distance of it a heading points outward by a cosine of at most the
+    # distance over this one. The standard set's largest full-stick excursion from spawn
+    # speed, straight out, is 65 m (the heavy, reversing), rounded up.
+    spawn_turn_distance: float = 75.0
     field_band_width: float = 40.0  # m [b]
     vision_range: float = 1024.0  # m [V]
     flight: FlightConstants = FlightConstants()

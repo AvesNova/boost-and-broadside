@@ -77,6 +77,14 @@ When a match ends, the environment gets a new map and a fresh mode state
   spawns at once, each ship's first candidate stands in for its position, and each ship
   takes the candidate farthest from the nearest enemy's. One pass serves both, and nothing
   in it depends on the team or sim index.
+- **Spawn headings:** random, but never so far outward that the ship cannot turn away from
+  the edge in time: within `Rules.spawn_turn_distance` (75 m in the standard set, 436.5 m
+  in the real-scale one, the set's largest full-stick turn excursion from spawn speed) of
+  the edge, a heading's outward cosine is at most the distance to the edge over that
+  distance, tangent at the edge. The draw is spread evenly over the allowed directions,
+  and from that distance inward it is the plain uniform heading. In the arena, where a
+  killed ship spawns anywhere on the next tick, that band is 40% of the map's area (and
+  the best-of-8 candidates, kept away from the enemy, lean outward).
 - **Spawns, grouped** (`spawn_groups`, for example `(2, 2, 1)`): at a reset the groups'
   centres are spread over the arena, and each team's ships are assigned to groups by
   formation rank. A respawn lands at a distance from an anchor, a random living ship of

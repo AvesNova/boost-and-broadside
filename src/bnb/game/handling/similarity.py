@@ -127,6 +127,7 @@ RULE_UNITS = {
     "rules.spawn_speed": SPEED,
     "rules.spawn_offset": NONE,
     "rules.spawn_radius": LENGTH,
+    "rules.spawn_turn_distance": LENGTH,
     "rules.field_band_width": LENGTH,
     "rules.vision_range": LENGTH,
     "pool.arena_radius": LENGTH,

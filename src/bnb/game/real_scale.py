@@ -10,12 +10,13 @@ arithmetic, and writes the set:
 today's in those units (`similarity.scale_flight`); the bullet drag per metre is today's
 over LENGTH; the gun flight time is the whole ticks that give the P-51 a gun range of about
 GUN_RANGE (`gun_flight_time`); vision is today's times MAP_SCALE; the spawn speed is
-SPAWN_SPEED_MARGIN times the set's fastest stall speed. The map is MAP_SCALE (3) times
-today's (the presets' arena radius of 7800 m scales the fields, zones and spawn disc by
-itself); the field band and the team-deathmatch spawn distances, which do not follow the
-map scale, are scaled here. Rule times follow the map, not the ship (CLOCK_SCALE, 2):
-crossing between fields takes about twice as long, so the capture time doubles (the presets
-double the episode and respawn).
+SPAWN_SPEED_MARGIN times the set's fastest stall speed; a spawn heading's room to turn away
+from the edge is today's times LENGTH (a turn radius follows the ship, not the map). The map
+is MAP_SCALE (3) times today's (the presets' arena radius of 7800 m scales the fields,
+zones and spawn disc by itself); the field band and the team-deathmatch spawn distances,
+which do not follow the map scale, are scaled here. Rule times follow the map, not the
+ship (CLOCK_SCALE, 2): crossing between fields takes about twice as long, so the capture
+time doubles (the presets double the episode and respawn).
 
 **The ships.** Each `Aircraft` (`bnb.game.real_scale_aircraft`) gives researched quantities
 with their confidence and source; `given_handles` converts them to handles: the ceiling's
@@ -422,6 +423,7 @@ def rule_values(stall_speeds: list[float]) -> dict:
         "rules.vision_range": MAP_SCALE * standard.vision_range,
         "rules.spawn_speed": SPAWN_SPEED_MARGIN * max(stall_speeds),
         "rules.field_band_width": MAP_SCALE * standard.field_band_width,
+        "rules.spawn_turn_distance": LENGTH * standard.spawn_turn_distance,
         "mode.group_radius": MAP_SCALE * standard_mode.group_radius,
         "mode.anchor_distance_min": MAP_SCALE * standard_mode.anchor_distance_min,
         "mode.anchor_distance_max": MAP_SCALE * standard_mode.anchor_distance_max,
