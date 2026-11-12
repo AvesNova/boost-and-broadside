@@ -29,7 +29,6 @@
       "coast_exchange_scale": 5.827264785766602,
       "dive_exchange_scale": 0.4433835744857788,
       "climb_exchange_scale": 1.5299285650253296,
-      "vision_range_scale": 0.341796875,
       "head_on_fraction_scale": 0.2666666805744171,
       "head_on_angle_scale": 0.2838892936706543,
       "head_on_sharpness": 8.0

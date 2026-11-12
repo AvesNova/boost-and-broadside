@@ -1241,6 +1241,40 @@ def confirm5() -> list[dict]:
 ROUNDS["confirm5"] = confirm5
 
 
+def roster1() -> list[dict]:
+    """Every ship of the night against the standard ship (M, kit2), as the energy slot: a
+    ship even with the standard at every size is a candidate for the set."""
+    ships = {
+        "big (radius x1.3, dmg x1.3)": {"hit_radius": 1.3, "hit_damage": 1.3},
+        "small (radius x0.8, dmg x0.9, f0 0.10)": merge(
+            {"hit_radius": 0.8, "hit_damage": 0.9}, cone(0.10, 12, 8)
+        ),
+        "armed gunner (arming 100, life x1.3, dmg x0.9, vision x1.2)": {
+            "arming_distance": {"set": 100.0},
+            "hit_damage": 0.9,
+            "bullet_life": 1.3,
+            "vision_range_scale": 1.2,
+        },
+        "close fighter (life x0.8)": {"bullet_life": 0.8},
+        "sniper (induced x0.95, dmg x0.92)": merge(
+            SNIPER, {"induced_drag_scale": 0.95, "hit_damage": 0.92}
+        ),
+        "shotgun": SHOTGUN,
+        "zoomer": ZOOMER,
+        "level": LEVEL,
+        "glass cannon (shield x0.6, dmg x1.5)": {"max_shield": 0.6, "hit_damage": 1.5},
+    }
+    out = []
+    for name, f in ships.items():
+        # kit2 first, so a ship's own cone or damage factor sits on top of it
+        a = merge(kit(*KIT2), f) if "head_on_fraction_scale" in f else merge(f, kit(*KIT2))
+        out.append(pair(f"{name} v standard (M), kit2", ("M", a), ("M", kit(*KIT2))))
+    return out
+
+
+ROUNDS["roster1"] = roster1
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
