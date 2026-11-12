@@ -615,3 +615,40 @@ kills m / o / f / t and merges a kill; strength against r9:
 - E (head-on on the range card, keeping Jujak's edge at x1.5) moves the duel the wrong way
   (1v1 0.39 to 0.34): with Jujak's sustained edge, the Yongma needs the joust.
   At J induced x1.55 (sustained 0.237, a slight inversion) it is 0.50 / 0.53 / 0.63 / 0.50.
+
+## Final state (21:42 KST)
+
+Ship files and the play default: **the frozen card, unchanged.** The candidates are opt-in
+maps (`bnb play --preset <name>`), all flown by r9's doctrines and parameters:
+
+| Map | How it balances | E v T 1v1 / 2v2 / 5v5 / 10v10 | Sustained turn Y / J | JJ 1v1 mutual, life | YY 1v1 mutual, life | v r9 | Images |
+|---|---|---|---|---|---|---|---|
+| frozen (default) | | 0.01 / 0.37 / 0.54 / 0.49 | 0.241 / 0.311 | 0.80, 156 s | 0.32, 927 s | 0.50 / 0.51 | `frozen-1v1-evt-1.png`, `frozen-1v1-jj-0.png`, `frozen-1v1-yy-0.png` |
+| `balance-a` (fallback) | energy: Jujak bleeds, Yongma's toughness halved | 0.50 / 0.47 / 0.57 / 0.47 | 0.241 / 0.232 | 0.76, 144 s | 0.51, 207 s | 0.49 / 0.51 | `A-1v1-evt-2.png`, `A-1v1-jj-1.png` |
+| `balance-b` | damage and shield, Jujak's edge kept | 0.43 / 0.57 / 0.76 / 0.75 | 0.241 / 0.242 | 0.78, 110 s | 0.65, 130 s | 0.49 / 0.47 | `B-1v1-evt-0.png`, `B-1v1-jj-0.png` |
+| `balance-c` | range: short-ranged Yongma, Jujak's edge kept | 0.39 / 0.51 / 0.61 / 0.49 | 0.241 / 0.242 | 0.78, 117 s | 0.64, 191 s | 0.51 / 0.53 | `C-1v1-evt-0.png`, `C-1v1-jj-0.png` |
+| `balance-d` | head-on: A + frontal fraction x0.5 on both | 0.53 / 0.52 / 0.56 / 0.49 | 0.241 / 0.232 | 0.64, 256 s | 0.20, 484 s | 0.51 / 0.54 | `D-1v1-evt-0.png`, `D-1v1-jj-*.png` |
+| **`balance-d2`** | D with Yongma's fraction x0.7 | **0.49 / 0.48 / 0.55 / 0.45** | 0.241 / 0.232 | **0.64, 260 s** | 0.39, **290 s** | 0.50 / 0.52 | `D2-1v1-evt-0.png`, `D2-1v1-jj-1.png` |
+
+(images in `images/`; A, B and the frozen card at 1024 games, C and D at 1024 for E v T
+and 512 for the rest, D2 at 512.)
+
+Open questions for the author:
+1. **The archetype or the duel.** With the scripted agent, a duel goes to the better
+   sustained turner, and the Yongma has no working way to use its speed. Every card
+   balanced from 1v1 to 10v10 (A, D, D2) gives the Yongma the better sustained turn
+   (0.241 against 0.232), while the Jujak keeps the instantaneous turn. Keeping Jujak's
+   sustained edge (B, C) leaves 1v1 at 0.39-0.43 and 5v5 at 0.61-0.76. An archetype-true
+   card at every size needs an energy-fight doctrine that works in duels without losing in
+   teams (the regime selector, or extension gated on how many enemies are near): code.
+2. **The mirror joust.** Same-type duels joust under this agent (JJ 0.64-0.80 on every card).
+   Half the frontal fraction helps (0.64), and the deny element ends it but costs about 150
+   Elo. A duel-gated deny is the obvious next try.
+3. **Map size.** The balance follows the arena's radius: 10v10 in the 20v20 arena is 0.13,
+   20v20 in the 10v10 arena 0.66. Should the size target be read per arena, or should the
+   density rule change? 20v20 at the density rule fails on every card (0.07-0.27); 50v50 was
+   not run.
+4. The Jujak's measured handles on A-type cards include a negative low-speed acceleration
+   (-1.87 m/s^2: it cannot hold level flight near the stall), and the handle solver does
+   not converge on them. If A, D or D2 is chosen, a handle-space version (keeping the
+   Jujak's low-speed handling) needs its own check.
