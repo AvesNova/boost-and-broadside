@@ -19,7 +19,7 @@ Each environment's first game is recorded; every `--batch` games are one JSON li
 (`bnb.runtime.rollout.Rollout`, the scripted agent on both seats) with a stage that traces
 each environment's score, front and clock every tick, on `--device` (cuda if
 available). Overrides: `--ships`, `--radius` (m), `--zone-radius` (m at map scale 1),
-`--capture-seconds`, `--episode-seconds`, `--temperature` (the agent's, both teams).
+`--capture-seconds`, `--front-threshold`, `--episode-seconds`, `--temperature` (the agent's, both teams).
 """
 
 import argparse
@@ -84,6 +84,8 @@ def mode_overrides(arguments) -> dict:
         changes["mode.zone_radius"] = arguments.zone_radius
     if arguments.capture_seconds:
         changes["mode.capture_seconds"] = arguments.capture_seconds
+    if arguments.front_threshold:
+        changes["mode.front_threshold"] = arguments.front_threshold
     return changes
 
 
@@ -161,6 +163,7 @@ def main() -> None:
     parser.add_argument("--zone-radius", type=float, default=None)
     parser.add_argument("--capture-seconds", type=float, default=None)
     parser.add_argument("--episode-seconds", type=float, default=None)
+    parser.add_argument("--front-threshold", type=int, default=None)
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
@@ -228,6 +231,7 @@ def main() -> None:
             episode_ticks=int(rules.pools[0].episode_ticks),
             zone_radius=rollout.rules.pools[0].mode.zone_radius,
             capture_seconds=rollout.rules.pools[0].mode.capture_seconds,
+            front_threshold=threshold,
             temperature=arguments.temperature,
             lineup=arguments.lineup,
             games=games,

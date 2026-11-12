@@ -103,7 +103,8 @@ def frontline(entries: list[dict]) -> dict:
     print(
         f"{len(games)} games, {entries[0]['ships']}v{entries[0]['ships']}, R "
         f"{entries[0]['radius']:.0f} m, zone radius {entries[0]['zone_radius']:.0f} m (scale 1), "
-        f"capture {entries[0]['capture_seconds']:.0f} s, clock {episode * tick:.0f} s"
+        f"capture {entries[0]['capture_seconds']:.0f} s, threshold "
+        f"{entries[0].get('front_threshold', 3)}, clock {episode * tick:.0f} s"
     )
     print(f"ended by the front: {by_front:.3f} +- {error:.3f} (else the clock)")
     print(f"length (s): {quantiles(lengths)}")
