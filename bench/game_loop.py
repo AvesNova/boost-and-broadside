@@ -340,7 +340,7 @@ class Loop:
         device="cuda",
         compiled: bool = True,
         ships_per_team: int = 5,
-        fog: bool = False,
+        fog: bool = True,
     ) -> None:
         self.device = torch.device(device)
         base_game = api.PRESETS[PRESET]
