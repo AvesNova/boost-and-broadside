@@ -1,0 +1,70 @@
+## 1v1: 15 jobs, B 8192, 02:22 KST
+W1112 17:23:22.982000 36843 /workspace/arch/venv/lib/python3.14/site-packages/torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+  batch 1/2 106 s; ETA 02:26 KST
+  batch 2/2 137 s; ETA 02:25 KST
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1   energy v turn v c0: score 0.542 ± 0.010  kills m/o/f/t 0.37 / 0.50 / 0.13 / 0.00  life 263 s  kpm/ship 0.22  trades 0.00
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1     turn mirror v c0: score 0.515 ± 0.010  kills m/o/f/t 0.36 / 0.51 / 0.13 / 0.00  life 335 s  kpm/ship 0.17  trades 0.00
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1   energy mirror v c0: score 0.498 ± 0.011  kills m/o/f/t 0.37 / 0.47 / 0.16 / 0.00  life 234 s  kpm/ship 0.25  trades 0.01
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | crowd extend + lead   energy v turn v c1: score 0.488 ± 0.010  kills m/o/f/t 0.29 / 0.56 / 0.15 / 0.00  life 274 s  kpm/ship 0.21  trades 0.00
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | crowd extend + lead     turn mirror v c1: score 0.492 ± 0.009  kills m/o/f/t 0.28 / 0.60 / 0.12 / 0.00  life 393 s  kpm/ship 0.15  trades 0.00
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | crowd extend + lead   energy mirror v c1: score 0.486 ± 0.010  kills m/o/f/t 0.31 / 0.54 / 0.15 / 0.00  life 273 s  kpm/ship 0.21  trades 0.01
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | duel one-circle + crowd extend + lead   energy v turn v c2: score 0.514 ± 0.010  kills m/o/f/t 0.29 / 0.58 / 0.14 / 0.00  life 271 s  kpm/ship 0.21  trades 0.00
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | duel one-circle + crowd extend + lead     turn mirror v c2: score 0.496 ± 0.011  kills m/o/f/t 0.60 / 0.17 / 0.06 / 0.18  life 184 s  kpm/ship 0.31  trades 0.01
+1v1 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | duel one-circle + crowd extend + lead   energy mirror v c2: score 0.503 ± 0.012  kills m/o/f/t 0.49 / 0.25 / 0.11 / 0.14  life 140 s  kpm/ship 0.40  trades 0.01
+1v1 scout v brawler (M), S vision x1.03, B vision x0.92 dmg x1.12, kit2   energy v turn v c3: score 0.558 ± 0.010  kills m/o/f/t 0.34 / 0.55 / 0.11 / 0.00  life 283 s  kpm/ship 0.20  trades 0.00
+1v1 scout v brawler (M), S vision x1.03, B vision x0.92 dmg x1.12, kit2     turn mirror v c3: score 0.500 ± 0.010  kills m/o/f/t 0.35 / 0.52 / 0.13 / 0.00  life 276 s  kpm/ship 0.21  trades 0.01
+1v1 scout v brawler (M), S vision x1.03, B vision x0.92 dmg x1.12, kit2   energy mirror v c3: score 0.499 ± 0.009  kills m/o/f/t 0.36 / 0.57 / 0.07 / 0.00  life 328 s  kpm/ship 0.18  trades 0.00
+1v1 armed gunner (arming 100, life x1.3, dmg x0.85, vision x1.2) v close fighter (life x0.8) (M), kit   energy v turn v c4: score 0.520 ± 0.010  kills m/o/f/t 0.23 / 0.68 / 0.09 / 0.00  life 317 s  kpm/ship 0.18  trades 0.00
+1v1 armed gunner (arming 100, life x1.3, dmg x0.85, vision x1.2) v close fighter (life x0.8) (M), kit     turn mirror v c4: score 0.507 ± 0.010  kills m/o/f/t 0.22 / 0.64 / 0.14 / 0.00  life 408 s  kpm/ship 0.14  trades 0.00
+1v1 armed gunner (arming 100, life x1.3, dmg x0.85, vision x1.2) v close fighter (life x0.8) (M), kit   energy mirror v c4: score 0.479 ± 0.008  kills m/o/f/t 0.17 / 0.78 / 0.06 / 0.00  life 511 s  kpm/ship 0.12  trades 0.00
+## 2v2: 5 jobs, B 8192, 02:25 KST
+2v2 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1   energy v turn v c0: score 0.493 ± 0.014  kills m/o/f/t 0.07 / 0.33 / 0.51 / 0.09  life 93 s  kpm/ship 0.58  trades 0.02
+2v2 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | crowd extend + lead   energy v turn v c1: score 0.488 ± 0.014  kills m/o/f/t 0.08 / 0.34 / 0.46 / 0.12  life 99 s  kpm/ship 0.55  trades 0.02
+2v2 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | duel one-circle + crowd extend + lead   energy v turn v c2: score 0.502 ± 0.014  kills m/o/f/t 0.07 / 0.34 / 0.48 / 0.11  life 99 s  kpm/ship 0.55  trades 0.02
+2v2 scout v brawler (M), S vision x1.03, B vision x0.92 dmg x1.12, kit2   energy v turn v c3: score 0.562 ± 0.014  kills m/o/f/t 0.07 / 0.33 / 0.51 / 0.10  life 93 s  kpm/ship 0.59  trades 0.02
+2v2 armed gunner (arming 100, life x1.3, dmg x0.85, vision x1.2) v close fighter (life x0.8) (M), kit   energy v turn v c4: score 0.544 ± 0.014  kills m/o/f/t 0.06 / 0.33 / 0.51 / 0.10  life 96 s  kpm/ship 0.57  trades 0.02
+## 5v5: 15 jobs, B 4096, 02:27 KST
+  batch 1/4 123 s; ETA 02:35 KST
+  batch 2/4 152 s; ETA 02:32 KST
+  batch 3/4 197 s; ETA 02:31 KST
+  batch 4/4 254 s; ETA 02:31 KST
+5v5 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1   energy v turn v c0: score 0.471 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.12  life 82 s  kpm/ship 0.65  trades 0.07
+5v5 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | crowd extend + lead   energy v turn v c1: score 0.472 ± 0.015  kills m/o/f/t 0.07 / 0.29 / 0.44 / 0.20  life 100 s  kpm/ship 0.55  trades 0.05
+5v5 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | duel one-circle + crowd extend + lead   energy v turn v c2: score 0.492 ± 0.015  kills m/o/f/t 0.07 / 0.30 / 0.43 / 0.20  life 100 s  kpm/ship 0.55  trades 0.05
+5v5 scout v brawler (M), S vision x1.03, B vision x0.92 dmg x1.12, kit2   energy v turn v c3: score 0.546 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.13  life 82 s  kpm/ship 0.65  trades 0.07
+5v5 armed gunner (arming 100, life x1.3, dmg x0.85, vision x1.2) v close fighter (life x0.8) (M), kit   energy v turn v c4: score 0.521 ± 0.015  kills m/o/f/t 0.05 / 0.28 / 0.53 / 0.13  life 86 s  kpm/ship 0.63  trades 0.07
+5v5 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1           mixed v r9: score 0.493 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.12  life 82 s  kpm/ship 0.66  trades 0.07
+5v5 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1  mixed reversed v r9: score 0.501 ± 0.015  kills m/o/f/t 0.06 / 0.27 / 0.54 / 0.13  life 83 s  kpm/ship 0.64  trades 0.07
+5v5 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | crowd extend + lead           mixed v r9: score 0.803 ± 0.012  kills m/o/f/t 0.07 / 0.31 / 0.49 / 0.13  life 91 s  kpm/ship 0.60  trades 0.06
+5v5 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | crowd extend + lead  mixed reversed v r9: score 0.812 ± 0.011  kills m/o/f/t 0.07 / 0.30 / 0.49 / 0.14  life 93 s  kpm/ship 0.58  trades 0.05
+5v5 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | duel one-circle + crowd extend + lead           mixed v r9: score 0.816 ± 0.011  kills m/o/f/t 0.08 / 0.30 / 0.46 / 0.16  life 94 s  kpm/ship 0.58  trades 0.06
+5v5 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | duel one-circle + crowd extend + lead  mixed reversed v r9: score 0.806 ± 0.011  kills m/o/f/t 0.07 / 0.29 / 0.46 / 0.17  life 97 s  kpm/ship 0.56  trades 0.05
+5v5 scout v brawler (M), S vision x1.03, B vision x0.92 dmg x1.12, kit2           mixed v r9: score 0.474 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.13  life 83 s  kpm/ship 0.65  trades 0.07
+5v5 scout v brawler (M), S vision x1.03, B vision x0.92 dmg x1.12, kit2  mixed reversed v r9: score 0.500 ± 0.015  kills m/o/f/t 0.06 / 0.29 / 0.53 / 0.13  life 82 s  kpm/ship 0.65  trades 0.07
+5v5 armed gunner (arming 100, life x1.3, dmg x0.85, vision x1.2) v close fighter (life x0.8) (M), kit           mixed v r9: score 0.491 ± 0.015  kills m/o/f/t 0.05 / 0.28 / 0.53 / 0.13  life 86 s  kpm/ship 0.63  trades 0.06
+5v5 armed gunner (arming 100, life x1.3, dmg x0.85, vision x1.2) v close fighter (life x0.8) (M), kit  mixed reversed v r9: score 0.482 ± 0.015  kills m/o/f/t 0.05 / 0.28 / 0.54 / 0.13  life 85 s  kpm/ship 0.63  trades 0.07
+## 10v10: 5 jobs, B 2048, 02:31 KST
+  batch 1/2 193 s; ETA 02:37 KST
+  batch 2/2 223 s; ETA 02:35 KST
+10v10 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1   energy v turn v c0: score 0.427 ± 0.021  kills m/o/f/t 0.06 / 0.28 / 0.52 / 0.14  life 90 s  kpm/ship 0.60  trades 0.14
+10v10 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | crowd extend + lead   energy v turn v c1: score 0.436 ± 0.021  kills m/o/f/t 0.07 / 0.30 / 0.40 / 0.23  life 112 s  kpm/ship 0.49  trades 0.10
+10v10 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | duel one-circle + crowd extend + lead   energy v turn v c2: score 0.481 ± 0.021  kills m/o/f/t 0.07 / 0.29 / 0.40 / 0.23  life 111 s  kpm/ship 0.50  trades 0.10
+10v10 scout v brawler (M), S vision x1.03, B vision x0.92 dmg x1.12, kit2   energy v turn v c3: score 0.536 ± 0.021  kills m/o/f/t 0.06 / 0.28 / 0.52 / 0.14  life 91 s  kpm/ship 0.60  trades 0.13
+10v10 armed gunner (arming 100, life x1.3, dmg x0.85, vision x1.2) v close fighter (life x0.8) (M), kit   energy v turn v c4: score 0.442 ± 0.021  kills m/o/f/t 0.05 / 0.28 / 0.52 / 0.15  life 94 s  kpm/ship 0.58  trades 0.11
+## 20v20: 5 jobs, B 1024, 02:35 KST
+  batch 1/2 197 s; ETA 02:41 KST
+  batch 2/2 266 s; ETA 02:39 KST
+20v20 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1   energy v turn v c0: score 0.357 ± 0.029  kills m/o/f/t 0.06 / 0.28 / 0.51 / 0.16  life 108 s  kpm/ship 0.51  trades 0.22
+20v20 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | crowd extend + lead   energy v turn v c1: score 0.432 ± 0.030  kills m/o/f/t 0.07 / 0.29 / 0.40 / 0.24  life 133 s  kpm/ship 0.42  trades 0.17
+20v20 big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | duel one-circle + crowd extend + lead   energy v turn v c2: score 0.377 ± 0.030  kills m/o/f/t 0.08 / 0.29 / 0.39 / 0.25  life 131 s  kpm/ship 0.42  trades 0.17
+20v20 scout v brawler (M), S vision x1.03, B vision x0.92 dmg x1.12, kit2   energy v turn v c3: score 0.547 ± 0.030  kills m/o/f/t 0.05 / 0.28 / 0.51 / 0.16  life 109 s  kpm/ship 0.50  trades 0.21
+20v20 armed gunner (arming 100, life x1.3, dmg x0.85, vision x1.2) v close fighter (life x0.8) (M), kit   energy v turn v c4: score 0.467 ± 0.031  kills m/o/f/t 0.05 / 0.27 / 0.51 / 0.17  life 116 s  kpm/ship 0.48  trades 0.19
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | E v T 20v20 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | 0.542 ± 0.010 | 0.493 ± 0.014 | 0.471 ± 0.015 | 0.427 ± 0.021 | 0.357 ± 0.029 | 0.143 | 0.06 / 0.29 / 0.53 / 0.12 | 0.07 | 263 / 93 / 82 / 90 / 108 | 0.22 / 0.58 / 0.65 / 0.60 / 0.51 | 2.71 |
+| big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | crowd extend + lead | 0.488 ± 0.010 | 0.488 ± 0.014 | 0.472 ± 0.015 | 0.436 ± 0.021 | 0.432 ± 0.030 | 0.068 | 0.07 / 0.29 / 0.44 / 0.20 | 0.05 | 274 / 99 / 100 / 112 / 133 | 0.21 / 0.55 / 0.55 / 0.49 / 0.42 | 2.7 |
+| big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.98) (M), kit, small cone f0 0.1 | duel one-circle + crowd extend + lead | 0.514 ± 0.010 | 0.502 ± 0.014 | 0.492 ± 0.015 | 0.481 ± 0.021 | 0.377 ± 0.030 | 0.123 | 0.07 / 0.30 / 0.43 / 0.20 | 0.05 | 271 / 99 / 100 / 111 / 131 | 0.21 / 0.55 / 0.55 / 0.50 / 0.42 | 2.58 |
+| scout v brawler (M), S vision x1.03, B vision x0.92 dmg x1.12, kit2 | 0.558 ± 0.010 | 0.562 ± 0.014 | 0.546 ± 0.015 | 0.536 ± 0.021 | 0.547 ± 0.030 | 0.062 | 0.06 / 0.29 / 0.53 / 0.13 | 0.07 | 283 / 93 / 82 / 91 / 109 | 0.20 / 0.59 / 0.65 / 0.60 / 0.50 | 3.09 |
+| armed gunner (arming 100, life x1.3, dmg x0.85, vision x1.2) v close fighter (life x0.8) (M), kit | 0.520 ± 0.010 | 0.544 ± 0.014 | 0.521 ± 0.015 | 0.442 ± 0.021 | 0.467 ± 0.031 | 0.058 | 0.05 / 0.28 / 0.53 / 0.13 | 0.07 | 317 / 96 / 86 / 94 / 116 | 0.18 / 0.57 / 0.63 / 0.58 / 0.48 | 3.28 |
+
+1052 s

@@ -1141,6 +1141,34 @@ def screen4() -> list[dict]:
 ROUNDS["screen4"] = screen4
 
 
+def scout_brawler(sv: float, bv: float, bd: float) -> dict:
+    return pair(
+        f"scout v brawler (M), S vision x{sv:g}, B vision x{bv:g} dmg x{bd:g}, kit2",
+        ("M", merge({"vision_range_scale": sv}, kit(*KIT2))),
+        ("M", merge({"vision_range_scale": bv, "hit_damage": bd}, kit(*KIT2))),
+    )
+
+
+def confirm4() -> list[dict]:
+    """Scout v brawler's uniform 0.55 lean taken out (1024 games, 1v1-20v20); big v small
+    with the small ship's induced x0.99."""
+    a, b = big_small(1.3, 1.3, 0.8, 0.9, merge(cone(0.10, 12, 8), {"induced_drag_scale": 0.99}))
+    return [
+        scout_brawler(1.03, 0.92, 1.16),
+        scout_brawler(1.0, 0.92, 1.12),
+        scout_brawler(1.0, 0.92, 1.15),
+        pair(
+            "big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9, induced x0.99) (M), "
+            "kit, small cone f0 0.1",
+            ("M", a),
+            ("M", b),
+        ),
+    ]
+
+
+ROUNDS["confirm4"] = confirm4
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
