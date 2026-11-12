@@ -400,3 +400,67 @@ def test_the_sense_draws_its_choice_once_as_its_gate_opens():
     assert 50 < int(one.sum()) < 206
     again = decide(obs, CHARACTERISTICS, PARAMETERS, carry=carry, doctrines=doctrines)[0]
     torch.testing.assert_close(again.stick, parts.stick, atol=0.01, rtol=0.0)
+
+
+def _passed_target(other_type: int = STIFF) -> torch.Tensor:
+    """A target of this type passed behind the ship's 3-9 line, half a gun range off and
+    turning (its nose rate 0.3 rad/s)."""
+    gun = value("gun_range", STIFF)
+    enemy = ship(x=-0.5 * gun, y=-30.0, heading=math.pi, ship_type=other_type, team_relative=1)
+    enemy[SHIP["nose_rate"]] = 0.3
+    return enemy
+
+
+CROWDED = Doctrine(
+    sense=1.0,
+    sense_one_circle=1.0,
+    sense_in_crowd=Logistic(0.5, 0.1, False),
+    crowd_sense=1.0,
+    crowd_sense_boost=1.0,
+)
+
+
+def test_the_crowd_extension_presses_by_the_situation():
+    """In a crowd the ship extends (stick straight); it presses (the sense's full-stick turn)
+    with the energy gate shut, with an own ship as near as the other enemy (the ally
+    weight), or when the other enemy's track is off the line to the ship (the threat)."""
+    gun = value("gun_range", STIFF)
+    other = ship(x=-2.0 * gun, y=2.0 * gun, heading=0.0, ship_type=STIFF, team_relative=1)
+    crowd = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [_passed_target(), other])
+    assert float(_decide(crowd, _every_type(CROWDED)).stick[0, 0, 0]) > 0.9
+    rich = dataclasses.replace(CROWDED, crowd_sense_in_energy_ratio=Logistic(1e-3, 0.05, False))
+    assert float(_decide(crowd, _every_type(rich)).stick[0, 0, 5]) > 0.9
+    wing = ship(x=0.0, y=gun, ship_type=STIFF)
+    pair = observation([ship(ship_type=STIFF), wing], [_passed_target(), other])
+    assert float(_decide(pair, _every_type(CROWDED)).stick[0, 0, 0]) > 0.9
+    allied = dataclasses.replace(CROWDED, sense_crowd_ally_weight=1.0)
+    assert float(_decide(pair, _every_type(allied)).stick[0, 0, 5]) > 0.9
+    # the other enemy flies +x, 45 degrees off the line to the ship
+    threats = dataclasses.replace(CROWDED, sense_crowd_in_nose_angle=Logistic(0.3, 0.1, False))
+    assert float(_decide(crowd, _every_type(threats)).stick[0, 0, 5]) > 0.9
+
+
+def test_the_duel_extension_flies_straight_behind_on_the_lift_ratio():
+    """Alone with a target: the one-circle sense; with the duel extension's lift gate above
+    the pair's ratio, straight and boosting; its default gates are shut."""
+    alone = observation(
+        [ship(ship_type=STIFF), absent(STIFF, 0)], [_passed_target(), absent(STIFF)]
+    )
+    shut = dataclasses.replace(CROWDED, duel_extend=1.0)
+    assert float(_decide(alone, _every_type(shut)).stick[0, 0, 5]) > 0.9
+    behind = dataclasses.replace(shut, duel_extend_in_lift_ratio=Logistic(10.0, 0.05, False))
+    flown = _decide(alone, _every_type(behind))
+    assert float(flown.stick[0, 0, 0]) > 0.9
+    assert float(flown.power[0, 0, 1]) > 0.8
+
+
+def test_hold_fire_withholds_the_shot_at_a_nose_to_nose_meeting():
+    """A target dead ahead, nose on, closing inside the gate: the shot falls by the weight;
+    flying away from the ship it does not."""
+    toward = _duel(STIFF, STIFF, 0.0, 0.3, math.pi)
+    hold = _every_type(Doctrine(hold_fire=1.0, hold_fire_in_gun_range=Logistic(1.0, 0.1, False)))
+    free = float(_decide(toward).shoot[0, 0, 1])
+    assert free > 0.5
+    assert float(_decide(toward, hold).shoot[0, 0, 1]) < 0.1 * free
+    away = _duel(STIFF, STIFF, 0.0, 0.3, 0.0)
+    torch.testing.assert_close(_decide(away, hold).shoot, _decide(away).shoot)

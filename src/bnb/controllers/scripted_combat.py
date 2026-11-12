@@ -514,14 +514,17 @@ def maneuvers(
     stick: torch.Tensor,
     left: torch.Tensor,
     power: torch.Tensor,
-    others: torch.Tensor,
+    others: tuple,
 ):
     """The doctrine's maneuvers (`bnb.controllers.scripted_doctrine`: the lead turn, the
     yo-yo, the brake and the sense) on the combat layer's stick, committed side and power; with the
     stalemate clock and the yo-yo's clock after this decision (advanced only when the plan
     choices may switch, so a re-read carry gives the same marginals; reset on a fresh ship).
-    others (R, S, E): the other known enemies' distances in own gun ranges (inf elsewhere).
-    Returns (stick, left, power, stalemate_seconds, yoyo_seconds, sense_draw)."""
+    others: the other known enemies' distances in own gun ranges (R, S, E; inf elsewhere),
+    the angles between their tracks and the lines from them to the ship (R, S, E), and the
+    own ships' distances in own gun ranges (R, S, S; inf for the ship itself and the dead).
+    Returns (stick, left, power, stalemate_seconds, yoyo_seconds, sense_draw, hold): hold
+    the weight withholding the shot."""
     target_x, target_y, distance, _, _, aim_error, target_vx, target_vy = geometry
     temperature = fleet.temperature
     carry = fleet.carry
@@ -659,22 +662,66 @@ def maneuvers(
         draw >= 0.0, draw < doctrine.sense_one_circle, doctrine.sense_one_circle > 0.5
     )
     sense_left = (target_rate > 0.0) ^ one_circle
-    # alone: no other known enemy near (a soft count of them inside the crowd's radius)
+    # alone: no other threatening known enemy near (a soft count of them inside the crowd's
+    # radius, their tracks toward the ship), less the weighted count of own ships near
+    enemies, tracks, allies = others
     radius = doctrine.sense_crowd_in_gun_range
     per_enemy = Logistic(radius.centre[..., None], radius.scale[..., None], radius.rising)
+    threat = doctrine.sense_crowd_in_nose_angle
+    per_track = Logistic(threat.centre[..., None], threat.scale[..., None], threat.rising)
     heat = temperature[..., None] if isinstance(temperature, torch.Tensor) else temperature
-    near = logistic(others, per_enemy, heat)
-    crowd = torch.where(torch.isfinite(others), near, 0.0).sum(-1)
+    near = logistic(enemies, per_enemy, heat) * logistic(tracks, per_track, heat)
+    crowd = torch.where(torch.isfinite(enemies), near, 0.0).sum(-1)
+    friends = torch.where(torch.isfinite(allies), logistic(allies, per_enemy, heat), 0.0).sum(-1)
+    crowd = crowd - doctrine.sense_crowd_ally_weight * friends
     alone = logistic(crowd, doctrine.sense_in_crowd, temperature)
-    sensing = doctrine.sense * geometry_gate * duel_gate * alone
-    in_crowd = doctrine.crowd_sense * geometry_gate * (1.0 - alone)
+    # the situation: own over target specific energy, shield and maximum lift coefficient
+    target_speed_now = target_of(column(fleet.enemy, "proper_speed"))
+    own_energy = 0.5 * fleet.speed * fleet.speed + column(fleet.own, "energy")
+    target_energy = 0.5 * target_speed_now * target_speed_now + target_of(
+        column(fleet.enemy, "energy")
+    )
+    energy_ratio = torch.where(seen, own_energy / target_energy.clamp_min(1.0), 1.0)
+    shield_ratio = torch.where(
+        seen,
+        column(fleet.own, "shield").clamp_min(TINY)
+        / target_of(column(fleet.enemy, "shield")).clamp_min(TINY),
+        1.0,
+    )
+    stay_out = logistic(energy_ratio, doctrine.crowd_sense_in_energy_ratio, temperature) * logistic(
+        shield_ratio, doctrine.crowd_sense_in_shield_ratio, temperature
+    )
+    behind = either(
+        either(
+            logistic(energy_ratio, doctrine.duel_extend_in_energy_ratio, temperature),
+            logistic(shield_ratio, doctrine.duel_extend_in_shield_ratio, temperature),
+        ),
+        logistic(lift_ratio, doctrine.duel_extend_in_lift_ratio, temperature),
+    )
+    duel_extending = doctrine.duel_extend * geometry_gate * alone * behind
+    sensing = (
+        doctrine.sense
+        * geometry_gate
+        * duel_gate
+        * (alone * (1.0 - duel_extending) + (1.0 - alone) * (1.0 - stay_out))
+    )
+    in_crowd = doctrine.crowd_sense * geometry_gate * (1.0 - alone) * stay_out + duel_extending
     stick = stick + sensing[..., None] * (commanded_stick(sense_left, 1.0) - stick)
     left = torch.where(sensing > 0.5, sense_left, left)
     stick = stick + in_crowd[..., None] * (
         commanded_stick(sense_left, doctrine.crowd_sense_stick) - stick
     )
     power = power + (in_crowd * doctrine.crowd_sense_boost)[..., None] * (boost - power)
-    return stick, left, power, stalemate, clock, draw
+
+    # Hold fire: the nose-to-nose meeting on a closing approach is not shot.
+    hold = torch.where(
+        approaching,
+        doctrine.hold_fire
+        * logistic(off_its_nose, doctrine.hold_fire_in_stall_angle, temperature)
+        * logistic(distance / fleet.gun_range, doctrine.hold_fire_in_gun_range, temperature),
+        0.0,
+    )
+    return stick, left, power, stalemate, clock, draw, hold
 
 
 def combat(
@@ -767,9 +814,25 @@ def combat(
     if doctrine is not None:
         # the other known enemies' distances in own gun ranges (inf for the target and the
         # unknown): the sense's crowd
-        others = torch.sqrt(offset_x * offset_x + offset_y * offset_y) / fleet.gun_range[..., None]
+        apart = torch.sqrt(offset_x * offset_x + offset_y * offset_y)
+        others = apart / fleet.gun_range[..., None]
         others = torch.where(recall.known[:, None, :] & ~pick, others, math.inf)
-        stick, left, power, stalemate, yoyo, draw = maneuvers(
+        # the angle between each enemy's track and the line from it to the ship
+        track_speed = torch.sqrt(
+            recall.velocity_x * recall.velocity_x + recall.velocity_y * recall.velocity_y
+        ).clamp_min(TINY)[:, None, :]
+        toward = -(
+            recall.velocity_x[:, None, :] * offset_x + recall.velocity_y[:, None, :] * offset_y
+        ) / (track_speed * apart.clamp_min(TINY))
+        tracks = torch.acos(toward.clamp(-1.0, 1.0)).clamp_min(TINY)
+        # the own ships' distances (none to itself or the dead)
+        own_alive = column(fleet.own, "alive") > 0.5
+        ally_x = fleet.x[:, None, :] - fleet.x[..., None]
+        ally_y = fleet.y[:, None, :] - fleet.y[..., None]
+        allies = torch.sqrt(ally_x * ally_x + ally_y * ally_y) / fleet.gun_range[..., None]
+        itself = torch.eye(allies.shape[-1], dtype=torch.bool, device=allies.device)
+        allies = torch.where(own_alive[:, None, :] & ~itself, allies, math.inf)
+        stick, left, power, stalemate, yoyo, draw, hold = maneuvers(
             fleet,
             characteristics,
             doctrine,
@@ -780,9 +843,10 @@ def combat(
             stick,
             left,
             power,
-            others,
+            (others, tracks, allies),
         )
     else:
+        hold = torch.zeros_like(distance)
         fresh = fleet.carry.fresh
         stalemate = torch.where(fresh, 0.0, fleet.carry.stalemate_seconds)
         yoyo = torch.where(fresh, -1.0, fleet.carry.yoyo_seconds)
@@ -796,7 +860,9 @@ def combat(
     )
     cost = per_ship(characteristics.bullet_energy_cost, fleet.own_type)
     ready = (column(fleet.own, "gun_cooldown") <= 0.0) & (column(fleet.own, "energy") >= cost)
-    shoot = floored(torch.where(has_target & ready, weight * aligned * in_range, 0.0), "shoot")
+    shoot = floored(
+        torch.where(has_target & ready, weight * aligned * in_range * (1.0 - hold), 0.0), "shoot"
+    )
     shoot = torch.stack([1.0 - shoot, shoot], -1)
     return Combat(
         Marginals(power, stick, shoot),
