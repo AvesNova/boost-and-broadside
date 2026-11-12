@@ -1053,6 +1053,31 @@ ROUNDS["confirm2"] = confirm2
 ROUNDS["round11"] = round11
 
 
+HIT_AND_RUN = {
+    "shield_recharge_rate_scale": 4.0,
+    "shield_recharge_delay_scale": 0.4,
+    "max_shield": 0.8,
+    "hit_damage": 1.2,
+}
+
+
+def hit_and_run_final() -> dict:
+    return pair(
+        "hit-and-run (recharge x4 at 0.4 delay, shield x0.8, dmg x1.2) v standard (M), kit2",
+        ("M", merge(HIT_AND_RUN, kit(*KIT2))),
+        ("M", kit(*KIT2)),
+    )
+
+
+def confirm3() -> list[dict]:
+    """Hit-and-run v standard at 1024 games, 1v1-20v20, under r9 and both doctrines."""
+    c = hit_and_run_final()
+    return [c, flown(c, "crowd extend + lead"), flown(c, "duel one-circle + crowd extend + lead")]
+
+
+ROUNDS["confirm3"] = confirm3
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
