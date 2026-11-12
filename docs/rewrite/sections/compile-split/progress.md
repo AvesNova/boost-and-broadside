@@ -74,3 +74,19 @@ records.
 - 18:35 next (the coordinator's list): the act-stage ablations, trace-only op counts first
   (`ablate.sh eager`: lanes off; PPO one league slot; frontline only), then a real compile of
   the largest cut to check time against ops.
+- 18:42-18:58 the first learn's units (cold, 2-3 processes): `tick` 11 s (763 ops),
+  `Learner._codes` 245-260 s (**11,833 ops**), `Learner._loss` A 382 s (14,789 ops), B 382 s
+  (14,471); C: `unroll` 52 s (2,068 ops) + `_loss_of` 293 s (12,721): the model's unroll is
+  a seventh of the learner's graph, the loss terms and the label codes the rest, so C cuts
+  little. B then compiled **`Learner._head_sums` 554 s at 40,302 ops** (the first update is
+  a cadence update) and **`_codes` a second time** (253 s): 200 environments give 25 views a
+  minibatch, micro-batches of 16 + 9, and every learner stage compiles once per shape.
+- Crashes: A died in its first backward (cuBLAS handle allocation, four processes on the
+  GPU); C (18:53) and B (18:57) segfaulted with no traceback, B with no other process on
+  the GPU. C again warm, with faulthandler next.
+- 19:05 fixes (the coordinator's go: perf bugs): the heads' sums eager (`Learner.head_sums`;
+  the bench times their calls); micro-batches of one size where up to twice the fewest
+  divide the minibatch's views (`Learner._micro_batches`: 255 views at 64 is five of 51,
+  never above micro_views; the 5090's RL at 640 rows had 64 x 3 + 63). The learner does it,
+  so the launch probe needs no change (its memory is an upper bound). Quick tier: 54 passed
+  (`test_compile_split`, `test_learner`, `test_diagnostics_heads`, `test_bc`).
