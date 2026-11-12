@@ -86,6 +86,7 @@ def de(shield=0.6, scale=0.1, energy=None) -> dict:
     return out
 
 
+MIRROR = dict(duel_extend_mirror_only=1.0)
 ROUNDS = {
     "round1": [
         ("r9m", {}),
@@ -121,6 +122,14 @@ ROUNDS = {
         ("DE Y 0.8 / J 0.4", (de(0.8), de(0.4))),
         ("DE Y 1.0 / J 0.4", (de(1.0), de(0.4))),
         ("DE Y 0.6 + energy 0.6 / J 0.4", (de(0.6, energy=0.6), de(0.4))),
+    ],
+    "round4": [
+        ("r9m", {}),
+        ("DE 0.4", de(0.4)),
+        ("DE 0.4 mirror", dict(de(0.4), **MIRROR)),
+        ("DE 0.5 mirror", dict(de(0.5), **MIRROR)),
+        ("DE Y 0.6 / J 0.4 mirror", (dict(de(0.6), **MIRROR), dict(de(0.4), **MIRROR))),
+        ("DE Y 1.0 / J 0.4 mirror", (dict(de(1.0), **MIRROR), dict(de(0.4), **MIRROR))),
     ],
 }
 

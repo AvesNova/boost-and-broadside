@@ -67,7 +67,7 @@ and `in_advantage`, so they fly in the mirrors too; each reads the committed tar
   extension** (`duel_extend`) flies the crowd extension's stick and boost instead of the
   sense's turn when any of the energy, shield or lift ratio is below its gate
   (`duel_extend_in_energy_ratio`, `_in_shield_ratio`, `_in_lift_ratio`; falling, closed by
-  default).
+  default); with `duel_extend_mirror_only` above 1/2, only against the own type.
 - **Hold fire** (`hold_fire`): on a closing approach with the target's nose on the ship
   (`hold_fire_in_stall_angle`, its stall angles) inside `hold_fire_in_gun_range`, the
   shot's probability falls by the weight: the nose-to-nose meeting of a one-circle is not
@@ -155,6 +155,7 @@ class Doctrine:
     duel_extend_in_energy_ratio: Logistic = Logistic(1e-6, 0.1, False)
     duel_extend_in_shield_ratio: Logistic = Logistic(1e-6, 0.1, False)
     duel_extend_in_lift_ratio: Logistic = Logistic(1e-6, 0.1, False)
+    duel_extend_mirror_only: float = 0.0
     hold_fire: float = 0.0
     hold_fire_in_stall_angle: Logistic = Logistic(1.0, 0.2, False)
     hold_fire_in_gun_range: Logistic = Logistic(0.5, 0.2, False)
@@ -188,6 +189,7 @@ FRACTIONS = (
     "sense_mirror_only",
     "crowd_sense_stick",
     "crowd_sense_boost",
+    "duel_extend_mirror_only",
 )
 EXPONENTS = ("turn_exponent", "climb_exponent", "speed_exponent", "range_exponent")
 # Each logistic's smallest scale (a tenth of a factor e in its quantity, near the combat

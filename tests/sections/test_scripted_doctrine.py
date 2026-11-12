@@ -452,6 +452,13 @@ def test_the_duel_extension_flies_straight_behind_on_the_lift_ratio():
     flown = _decide(alone, _every_type(behind))
     assert float(flown.stick[0, 0, 0]) > 0.9
     assert float(flown.power[0, 0, 1]) > 0.8
+    # mirror only: against the other type the sense's turn stays (the sense on any type)
+    other = observation(
+        [ship(ship_type=STIFF), absent(STIFF, 0)], [_passed_target(AGILE), absent(AGILE)]
+    )
+    mirror = dataclasses.replace(behind, duel_extend_mirror_only=1.0, sense_mirror_only=0.0)
+    hurt = dataclasses.replace(mirror, duel_extend_in_shield_ratio=Logistic(10.0, 0.05, False))
+    assert float(_decide(other, _every_type(hurt)).stick[0, 0, 0]) < 0.5
 
 
 def test_hold_fire_withholds_the_shot_at_a_nose_to_nose_meeting():

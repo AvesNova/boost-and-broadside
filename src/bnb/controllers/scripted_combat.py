@@ -698,7 +698,11 @@ def maneuvers(
         ),
         logistic(lift_ratio, doctrine.duel_extend_in_lift_ratio, temperature),
     )
-    duel_extending = doctrine.duel_extend * geometry_gate * alone * behind
+    duel_extending = torch.where(
+        same_type | (doctrine.duel_extend_mirror_only <= 0.5),
+        doctrine.duel_extend * geometry_gate * alone * behind,
+        0.0,
+    )
     sensing = (
         doctrine.sense
         * geometry_gate
