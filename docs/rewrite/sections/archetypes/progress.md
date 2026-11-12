@@ -345,3 +345,22 @@ same card (5v5 mixed / reversed), a sanity check that the card does not break th
   matchups near the band. Sniper = tight spread, 7.5 Hz, damage x2, range x1.4, a slightly
   better sustained turn; shotgun = spread x3, 30 Hz, damage x0.6, range x0.6.
 - Slasher v dogfighter keeps a 1v1-2v2-10v10 zigzag (0.62 / 0.44 / 0.78): not followed.
+
+## 01:43-01:51 KST: round 8 (`round8/`): the small ship's mirror; the armed gunner
+
+| Pair | A v B 1v1 / 2v2 / 5v5 / 10v10 | Duel life | AA; BB mutual, life |
+|---|---|---|---|
+| big (x1.3, x1.3) v small (x0.8, x0.9), kit2 | 0.57 / 0.48 / 0.50 / 0.47 | 250 s | 0.49, 198 s; 0.27, 405 s |
+| **big v small, kit, the small ship's cone at f0 0.12** | 0.65 / 0.57 / 0.51 / 0.49 | 242 s | **0.37, 230 s; 0.44, 288 s** |
+| big v small, kit2, small f0 0.12 | 0.71 / 0.56 / 0.53 / 0.51 | 194 s | 0.51, 201 s; 0.51, 241 s |
+| big (x1.4) v small (x0.75, dmg x1.0) | 0.54 / 0.48 / 0.38 / 0.37 | 268 s | 0.40, 226 s; 0.28, 393 s |
+| **armed gunner (dmg x0.9, vision x1.2) v close fighter, kit** | **0.53 / 0.53 / 0.52 / 0.46** | 330 s | 0.12, **475 s**; 0.22, 372 s |
+| armed gunner (dmg x0.95, vision x1.2), kit2 | 0.49 / 0.57 / 0.49 / 0.49 | 324 s | 0.19, 623 s; 0.26, 349 s |
+
+- A softer nose on the small ship (f0 0.12 against the kit's 0.08) brings its mirror into
+  pace (468 to 288 s) and costs it the duel (0.55 to 0.65 for the big ship); round 9 gives
+  the small ship agility or sight to win the duel back.
+- **The armed gunner v close fighter is in band at every size** (worst 0.04) with the least
+  jousty mirrors seen (0.12 / 0.22), but the gunner mirror is slow (475 s).
+- Merged `origin/tune/maneuvers` (ad2dff4d) for the doctrine re-evaluation once its confirm
+  lands; r9's own play is unchanged by the merge (the new elements are off in r9).
