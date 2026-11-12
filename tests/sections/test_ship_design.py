@@ -12,6 +12,7 @@ import pytest
 import torch
 
 from bnb.game import api, ships
+from bnb.game.physics.combat import MEAN_CLOSENESS
 from bnb.game.physics.flight import airframe_of, engine_fall
 from bnb.game.ship_design import (
     CONTINUOUS,
@@ -52,7 +53,8 @@ def test_a_knob_moves_only_its_own_handles_and_those_that_follow(handles):
     knobs = knobs_of(base)
     faster = handles_of(base, {"fire_rate": 10.0}, rules)
     # the damage per second and the store cost per second of fire stay
-    assert faster["hit_damage"] * 10.0 == pytest.approx(knobs["damage_per_second"])
+    mean_hit = faster["hit_damage"] * MEAN_CLOSENESS  # the handle is a centre hit's
+    assert mean_hit * 10.0 == pytest.approx(knobs["damage_per_second"])
     cost = base["ceiling"] / base["shots_per_store"] * base["fire_rate"]
     assert faster["ceiling"] / faster["shots_per_store"] * 10.0 == pytest.approx(cost)
     longer = handles_of(base, {"muzzle_speed": 700.0}, rules)

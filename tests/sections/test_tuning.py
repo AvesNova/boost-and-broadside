@@ -247,7 +247,7 @@ def test_ship_files_round_trip_and_a_new_type_joins_the_card(ship_files):
     ships.write([*files, scout])
     api.reload_ships()
     assert api.type_names() == ("Fighter", "Heavy", "Scout")
-    assert api.ship_types().hit_damage.tolist() == [12.0, 16.0, 7.0]
+    assert api.ship_types().hit_damage.tolist() == [22.5, 30.0, 7.0]
     ships.write(files[:1])
     api.reload_ships()
     assert api.type_names() == ("Fighter",) and not (ship_files / "heavy.toml").exists()

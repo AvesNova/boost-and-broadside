@@ -205,10 +205,15 @@ def test_bullet_drag_and_spread_are_the_shooters():
     assert torch.allclose(sideways, torch.tensor([12.0, 36.0]))
 
 
+FIGHTER_DAMAGE, HEAVY_DAMAGE = api.default_card()["hit_damage"]  # a centre hit's
+
+
 def _head_on_damage(types, nose_angles=(0.0, 0.0)) -> torch.Tensor:
     """(B, N, N) damage of one bullet each way between two ships 100 m apart on the x axis,
-    each through the other's nose turned by its nose angle (rad): the hit's aspect angle."""
+    each through the other's nose turned by its nose angle (rad): the hit's aspect angle.
+    Centre hits, all explosive share (flat in speed): the armour alone."""
     rules = api.rules_of(GameConfig(1, 1, 1000.0))
+    types = dataclasses.replace(types, explosive_share=torch.ones_like(types.explosive_share))
     angles = torch.tensor([nose_angles])
     ships = replace(
         _ships(torch.zeros(1, 2), 0.0),
@@ -249,8 +254,12 @@ def _head_on_damage(types, nose_angles=(0.0, 0.0)) -> torch.Tensor:
 def test_head_on_fraction_is_the_targets_armour():
     """A head-on hit does the target's head-on fraction of the shooter's damage."""
     damage = _head_on_damage(api.ship_types(head_on_fraction_scale=(1.0, 2.0)))
-    assert torch.allclose(damage[0, 0, 1], torch.tensor(12.0 * 0.6))  # fighter hits the heavy
-    assert torch.allclose(damage[0, 1, 0], torch.tensor(16.0 * 0.3))  # heavy hits the fighter
+    assert torch.allclose(
+        damage[0, 0, 1], torch.tensor(FIGHTER_DAMAGE * 0.6)
+    )  # fighter hits the heavy
+    assert torch.allclose(
+        damage[0, 1, 0], torch.tensor(HEAVY_DAMAGE * 0.3)
+    )  # heavy hits the fighter
 
 
 def test_head_on_angle_is_where_the_targets_armour_is_half():
@@ -260,12 +269,16 @@ def test_head_on_angle_is_where_the_targets_armour_is_half():
     types = api.ship_types(head_on_angle_scale=(1.0, 0.5))
     half = 1.0 - 0.7 * 0.5
     damage = _head_on_damage(types, (HEAD_ON_ANGLE, 0.5 * HEAD_ON_ANGLE))
-    assert torch.allclose(damage[0, 0, 1], torch.tensor(12.0 * half))  # into the heavy's 21 deg
-    assert torch.allclose(damage[0, 1, 0], torch.tensor(16.0 * half))  # the fighter's 42 deg
+    assert torch.allclose(
+        damage[0, 0, 1], torch.tensor(FIGHTER_DAMAGE * half)
+    )  # into the heavy's 21 deg
+    assert torch.allclose(
+        damage[0, 1, 0], torch.tensor(HEAVY_DAMAGE * half)
+    )  # the fighter's 42 deg
     theta = 0.6
     old = 1.0 - 0.7 * math.exp(-4.0 * theta * theta / math.pi)
     damage = _head_on_damage(api.ship_types(), (theta, theta))
-    assert torch.allclose(damage[0, 1, 0], torch.tensor(16.0 * old))
+    assert torch.allclose(damage[0, 1, 0], torch.tensor(HEAVY_DAMAGE * old))
 
 
 def _aspect_hits(nose_angles, ships_per_team=1):
@@ -406,28 +419,29 @@ def test_the_bullet_slots_follow_each_types_life_and_fire_rate():
 
 
 def test_the_gun_range_sets_the_bullet_life():
-    """The life is the whole ticks at or above the time the rules' drag takes to cover the
-    gun range, and the drag scale (1 or more) trims the range to it exactly: the standard
-    card's life is 0.4 s at drag scale 1; a slower muzzle keeps its range with a longer life;
-    a range past the longest life is infeasible."""
+    """The life is the whole ticks at or above the time the type's own drag takes to cover
+    the gun range: the standard card's life is 0.4 s at the rules' drag; a slower muzzle or
+    a higher drag flies longer; the flown range is the handle's to within one tick of
+    travel; a range past the longest life is infeasible."""
     from bnb.game.handling import Infeasible
-    from bnb.game.handling.weapons import bullet_life, gun_range, range_drag
+    from bnb.game.handling.weapons import bullet_life, gun_range
 
     rules = api.rules_of(GameConfig(1, 1, 1000.0))
-    launch = torch.tensor([603.7, 300.0], dtype=torch.float64)
+    launch = torch.tensor([603.7, 300.0, 603.7], dtype=torch.float64)
+    drag = torch.tensor([1.0, 1.0, 2.0], dtype=torch.float64) * rules.bullet_drag
     life = torch.tensor(0.4, dtype=torch.float64)
-    distance = gun_range(torch.tensor(rules.bullet_drag, dtype=torch.float64), launch[:1], life)
-    distance = distance.expand(2)  # the standard fighter's range, at half the launch speed too
-    lives = bullet_life(rules, distance, launch)
+    distance = gun_range(drag[0], launch[0], life).expand(3)  # the standard fighter's range
+    lives = bullet_life(rules, distance, launch, drag)
     assert lives[0].item() == pytest.approx(0.4)
-    slow = math.expm1(rules.bullet_drag * distance[1].item()) / (rules.bullet_drag * 300.0)
-    assert lives[1].item() == pytest.approx(math.ceil(slow * 30.0) / 30.0)
-    drag = range_drag(distance, launch, lives)
-    assert (drag[0] / rules.bullet_drag).item() == pytest.approx(1.0, rel=1e-6)
-    assert drag[1].item() >= rules.bullet_drag
-    assert gun_range(drag, launch, lives).tolist() == pytest.approx(distance.tolist(), rel=1e-9)
+    for kind in (1, 2):
+        k, w = drag[kind].item(), launch[kind].item()
+        slow = math.expm1(k * distance[kind].item()) / (k * w)
+        assert lives[kind].item() == pytest.approx(math.ceil(slow * 30.0) / 30.0)
+    flown = gun_range(drag, launch, lives)
+    assert (flown >= distance * (1.0 - 1e-9)).all()
+    assert (flown - distance <= launch * rules.tick_length).all()
     with pytest.raises(Infeasible, match="beyond the longest"):
-        bullet_life(rules, distance * 10.0, launch)
+        bullet_life(rules, distance * 10.0, launch, drag)
 
 
 def test_weapon_cadence_is_validated_per_rate():

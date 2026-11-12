@@ -7,10 +7,12 @@ arithmetic, and writes the set:
 
 **The rules.** Today's game maps onto a P-51D with lengths x LENGTH (5.82) and times x TIME
 (4.00, the time that turns today's gravity of 27 m/s^2 into 9.81). The flight constants are
-today's in those units (`similarity.scale_flight`); the bullet drag per metre is today's
-over LENGTH; the gun flight time is the whole ticks that give the P-51 a gun range of about
-GUN_RANGE (`gun_flight_time`); vision is today's times MAP_SCALE; the spawn speed is
-SPAWN_SPEED_MARGIN times the set's fastest stall speed; a spawn heading's room to turn away
+today's in those units (`similarity.scale_flight`); the bullet drag is the .50 cal's,
+BULLET_DRAG_FLOOR, the floor of every type's own (GUN_DRAGS, by the main gun); the gun
+flight time is the whole ticks that give the P-51 a gun range of about GUN_RANGE under
+RANGE_DRAG (`gun_flight_time`); damage is stated at DAMAGE_REFERENCE_DISTANCE; vision is
+today's times MAP_SCALE; the spawn speed is SPAWN_SPEED_MARGIN times the set's fastest stall
+speed; a spawn heading's room to turn away
 from the edge is today's times LENGTH (a turn radius follows the ship, not the map). The map
 is MAP_SCALE (3) times today's (the presets' arena radius of 7800 m scales the fields,
 zones and spawn disc by itself); the field band and the team-deathmatch spawn distances,
@@ -36,8 +38,10 @@ Every handle a type does not give is a placeholder: its `like` type's standard h
 the factor that turns the standard fighter into the P-51 (`placeholder_factors`: the P-51's
 given handle over the standard fighter's, or for a flight handle the similarity factor of
 its units where the P-51 gives none; the other combat handles keep the game's values). The
-gun range is the bullet's reach in the gun flight time at cruise plus muzzle speed (drag
-scale 1), which makes that time every type's bullet life; the spawn
+gun range is the bullet's reach in the gun flight time at cruise plus muzzle speed under
+RANGE_DRAG (the set's drag before each gun had its own; the ranges kept their values), and
+the bullet life the whole ticks that fly it under the type's own drag; the hit damage is a
+centre hit's, the balanced mean hit over MEAN_CLOSENESS; the spawn
 energy is the `like` type's fraction of the store. The climb rate (m/s) sets the climb
 time: the one whose initial store charge, coasting at cruise, is gravity times it.
 
@@ -69,6 +73,7 @@ from .handling.manoeuvres import airframe_of, empty_map
 from .handling.manoeuvres import ships as flying_ships
 from .handling.similarity import HANDLE_UNITS, factor, scale_flight
 from .handling.weapons import combat_card
+from .physics.combat import MEAN_CLOSENESS
 from .physics.flight import flight_tick
 from .real_scale_aircraft import AIRCRAFT as RESEARCHED
 from .real_scale_aircraft import Aircraft
@@ -83,6 +88,50 @@ TIME = math.sqrt(LENGTH * STANDARD_GRAVITY / GRAVITY)  # a standard second in re
 MAP_SCALE = 3.0  # the map against the standard one (arena radius 7800 m against 2600 m)
 CLOCK_SCALE = 2.0  # rule times: a crossing takes 3x the distance at about 1.5x the speed
 GUN_RANGE = 600.0  # m, the P-51's, which sets the gun flight time (whole ticks)
+# 1/m: the drag the gun ranges are measured with, today's per standard metre over LENGTH
+# (the set's bullet drag before game v6): each type's range is its bullet's reach in the gun
+# flight time under it, so the ranges kept their values when each gun got its own drag.
+RANGE_DRAG = Rules(1, 1, ()).bullet_drag / LENGTH
+# 1/m, the .50 cal's: the set's bullet drag, the floor of every type's. Lake City M33 ball
+# (a 660 gr .50 BMG, G1 0.707) falls from 2940 to 2309 ft/s in 500 yd (ammo.com's .50 BMG
+# ballistics table): k = ln(2940 / 2309) / 457 m = 5.3e-4; M2 AP is a like bullet.
+BULLET_DRAG_FLOOR = 5e-4
+DAMAGE_REFERENCE_DISTANCE = 300.0  # m: a type's hit damage is a centre hit's at this distance
+# 1/m and a note: each researched type's bullet drag, by its main gun (the muzzle speed's).
+_FIFTY = (
+    BULLET_DRAG_FLOOR,
+    "researched (medium): the .50 cal's, the set's floor (BULLET_DRAG_FLOOR)",
+)
+_HISPANO = (
+    5.5e-4,
+    "estimated: the Hispano 20 mm, a heavier shell than the .50's at a like ballistic coefficient",
+)
+_MG151 = (9e-4, "estimated: the MG 151/20 high-explosive (Minengeschoss) shell, light and blunt")
+_MK108 = (6.5e-4, "estimated: the MK 108 30 mm, a short heavy shell at 500 m/s")
+_LIGHT_20 = (
+    7e-4,
+    "estimated: a light 20 mm shell (Type 99 Mk 2, Ho-5, ShVAK), between the Hispano and "
+    "the MG 151/20",
+)
+_HEAVY_SHELL = (
+    BULLET_DRAG_FLOOR,
+    "estimated: the Vickers S 40 mm, a heavy shell that holds its speed (the floor)",
+)
+_UBS = (BULLET_DRAG_FLOOR, "estimated: the Berezin UBS 12.7 mm, a .50-class bullet (the floor)")
+GUN_DRAGS = {
+    **dict.fromkeys(
+        ("p51d", "p47d", "p38l", "f4u-1d", "f6f-5", "albatross", "lantern", "wren"), _FIFTY
+    ),
+    **dict.fromkeys(
+        ("spitfire-ix", "spitfire-xiv", "tempest-v", "mosquito", "zerstorer"), _HISPANO
+    ),
+    **dict.fromkeys(("fw190-a8", "fw190-d9", "shrike"), _MG151),
+    **dict.fromkeys(("bf109-k4", "me262", "me163", "firecracker", "hammerhead"), _MK108),
+    **dict.fromkeys(("a6m5", "ki84", "la7", "heavy"), _LIGHT_20),
+    "anvil": _HEAVY_SHELL,
+    "yak3": _UBS,
+}
+EXPLOSIVE_SHARE_NOTE = "proposal: the default, pure kinetic"
 SPAWN_SPEED_MARGIN = 1.3  # the spawn speed over the set's fastest stall speed
 CLIMB_TOLERANCE = 0.01  # the initial climb charge is met to this fraction
 CLIMB_ROUNDS = 6
@@ -189,8 +238,8 @@ def combat_constants(combat: CombatEconomy = COMBAT) -> tuple[float, float]:
         cost = fighter["ceiling"] / fighter["shots_per_store"]
         power = cost * fighter["fire_rate"] / standard_climb_charges()["fighter"]
     damage = combat.damage_per_second
-    if damage is None:
-        damage = fighter["hit_damage"] * fighter["fire_rate"]
+    if damage is None:  # the mean hit's
+        damage = fighter["hit_damage"] * MEAN_CLOSENESS * fighter["fire_rate"]
     return power, damage
 
 
@@ -400,17 +449,27 @@ def real_scale_flight() -> FlightConstants:
 
 
 def bullet_drag() -> float:
-    """The set's bullet drag (1/m): today's per standard metre, over LENGTH."""
-    return Rules(1, 1, ()).bullet_drag / LENGTH
+    """The set's bullet drag (1/m): the .50 cal's, every type's floor."""
+    return BULLET_DRAG_FLOOR
+
+
+def centre_hit(values: dict[str, float], notes: dict[str, str]) -> None:
+    """The hit damage as a centre hit's (in place): the mean hit over MEAN_CLOSENESS."""
+    old = values["hit_damage"]
+    values["hit_damage"] = old / MEAN_CLOSENESS
+    notes["hit_damage"] = notes["hit_damage"] + (
+        f" Centre hit (game v6): {old:.4g} -> {values['hit_damage']:.4g}, x 15/8 (the"
+        " closeness's mean over a uniform impact parameter is 8/15), at the reference distance."
+    )
 
 
 def gun_flight_time(tick_length: float = Rules.tick_length) -> float:
     """The whole ticks (s) in which the P-51's bullet, under the set's drag, travels about
-    GUN_RANGE (ln(1 + k v t) / k = R): every type's gun range is its own bullet's reach in
-    this time (drag scale 1), so it is every type's bullet life."""
+    GUN_RANGE (ln(1 + k v t) / k = R) under RANGE_DRAG: every type's gun range is its own
+    bullet's reach in this time under it."""
     reference = REFERENCE.data
     launch = reference["cruise_speed"].value + reference["muzzle_speed"].value
-    life = math.expm1(bullet_drag() * GUN_RANGE) / (bullet_drag() * launch)
+    life = math.expm1(RANGE_DRAG * GUN_RANGE) / (RANGE_DRAG * launch)
     return round(life / tick_length) * tick_length
 
 
@@ -420,6 +479,7 @@ def rule_values(stall_speeds: list[float]) -> dict:
     standard_mode = rules_of(GameConfig(1, 1, 1.0)).pools[0].mode
     values = {
         "rules.bullet_drag": bullet_drag(),
+        "rules.damage_reference_distance": DAMAGE_REFERENCE_DISTANCE,
         "rules.vision_range": MAP_SCALE * standard.vision_range,
         "rules.spawn_speed": SPAWN_SPEED_MARGIN * max(stall_speeds),
         "rules.field_band_width": MAP_SCALE * standard.field_band_width,
@@ -505,13 +565,15 @@ def target_handles(
         values["spawn_energy"] = like["spawn_energy"] / like["ceiling"] * values["ceiling"]
         notes["spawn_energy"] = f"placeholder: the standard {aircraft.like}'s fraction of the store"
     balance(values, notes, aircraft.key, combat[1])
-    drag = rules.bullet_drag
+    centre_hit(values, notes)
+    values["bullet_drag"], notes["bullet_drag"] = GUN_DRAGS[aircraft.key]
+    values["explosive_share"], notes["explosive_share"] = 0.0, EXPLOSIVE_SHARE_NOTE
     launch = values["cruise_speed"] + values["muzzle_speed"]
     life = gun_flight_time(rules.tick_length)
-    values["gun_range"] = math.log1p(drag * launch * life) / drag
+    values["gun_range"] = math.log1p(RANGE_DRAG * launch * life) / RANGE_DRAG
     notes["gun_range"] = (
-        f"the reach in the set's gun flight time ({life:.3g} s), cruise and muzzle speed "
-        "(drag scale 1)"
+        f"the reach in the set's gun flight time ({life:.3g} s), cruise and muzzle speed, "
+        "under RANGE_DRAG (the set's drag before game v6)"
     )
     rate, notes["climb_time"] = climb_rate_of(aircraft, given)
     _, climb, _ = pacing()

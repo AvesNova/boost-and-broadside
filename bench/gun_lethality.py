@@ -20,11 +20,13 @@ merge.
 `play`: every matchup (the set's mirrors, then the cross pairs) a batch of
 `--environments` duels, one line of the record each, resumed by matchup. `report`: the
 table per type (Markdown, printed, and `gun_lethality.json` in `--out`), with the card's
-closed forms: time to kill from full shield at 100% hits, head-on (the target's head-on
-fraction) and from the tail, (hits needed - 1) / fire rate; the 180-degree turn at the
-sustained turn rate (the settled full-stick coasting turn) and at the instantaneous one
-(the g limit at the corner speed, a_max / v_corner); a head-on pass's time in gun range,
-gun range / (2 cruise).
+closed forms: time to kill from full shield at 100% hits of the expected damage (a centre
+hit at the reference distance x 8/15, the mean over a uniform impact parameter), head-on
+(the target's head-on fraction) and from the tail, (hits needed - 1) / fire rate; the
+180-degree turn at the sustained turn rate (the settled full-stick coasting turn) and at
+the instantaneous one (the g limit at the corner speed, a_max / v_corner); a head-on pass's
+time in gun range, gun range / (2 cruise). The front damage share is the damage dealt in
+the two head-on aspect classes (under 45 degrees).
 """
 
 import argparse
@@ -42,6 +44,7 @@ from bnb.contracts import ASPECTS, Action, Obs
 from bnb.controllers import scripted
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
+from bnb.game.physics.combat import MEAN_CLOSENESS
 
 PRESET = "real_scale_deathmatch"
 ARENA_RADIUS = round(api.PRESETS[PRESET].arena_radius * (1 / 5) ** 0.5, 1)
@@ -89,7 +92,6 @@ def duels(rules, types, first: int, second: int, environments: int, seconds: flo
     carry = agent.init_carry(2 * B, torch.device("cpu"))
     gun_range = characteristics(types, rules).gun_range
     reach = torch.maximum(gun_range[first], gun_range[second])
-    full_damage = types.hit_damage[ship_type.long()]  # (B, 2) each shooter's bullet
     ticks = int(round(seconds / rules.tick_length))
     grace = int(round(MERGE_GRACE / rules.tick_length))
     never = torch.full((B,), -1, dtype=torch.long)
@@ -100,11 +102,9 @@ def duels(rules, types, first: int, second: int, environments: int, seconds: flo
     shots = torch.zeros((B, 2))
     hits = torch.zeros((B, 2))
     damage_dealt = torch.zeros((B, 2))
-    front_damage = torch.zeros((B, 2))  # dealt at aspect below the half point
+    front_damage = torch.zeros((B, 2))  # dealt head-on (the two head-on aspect classes)
     aspect_damage = torch.zeros((B, 2, len(ASPECTS)))  # dealt, by team and aspect class
     kill_aspect = torch.full((B, 2), -1, dtype=torch.long)  # the killing hit's, by victim
-    half_point = (1.0 + rules.head_on_fraction * types.head_on_fraction_scale) / 2.0
-    target_half = half_point[ship_type.long().flip(1)]  # (B, 2) the target's, per shooter
     done = torch.zeros(B, dtype=torch.bool)
     with torch.no_grad():
         for tick in range(ticks):
@@ -149,12 +149,10 @@ def duels(rules, types, first: int, second: int, environments: int, seconds: flo
             hits += landed.float()
             shots += (events.fired & live[:, None]).float()
             damage_dealt += torch.where(live[:, None], dealt, 0.0)
-            aspect = dealt / full_damage  # one bullet a tick at these fire rates
-            front_damage += torch.where(landed & (aspect < target_half), dealt, 0.0)
             # 1v1: ship = team; team t dealt what the other ship took from its enemy
-            aspect_damage += torch.where(
-                live[:, None, None], events.enemy_damage_by_aspect.flip(1), 0.0
-            )
+            by_aspect = torch.where(live[:, None, None], events.enemy_damage_by_aspect.flip(1), 0.0)
+            aspect_damage += by_aspect
+            front_damage += by_aspect[..., :2].sum(-1)  # mutual and offset head-on
             any_hit = landed.any(1)
             new_first = any_hit & (first_hit_tick < 0)
             first_hit_tick = torch.where(new_first, tick, first_hit_tick)
@@ -320,7 +318,10 @@ def card_table(types, rules, names=None):
     f0 = rules.head_on_fraction * types.head_on_fraction_scale
     rows = {}
     for i, name in enumerate(names):
-        damage, rate = float(types.hit_damage[i]), float(types.fire_rate[i])
+        # the expected hit: the card's centre hit at the reference distance, times the
+        # closeness's mean over a uniform impact parameter (8/15)
+        damage = float(types.hit_damage[i]) * MEAN_CLOSENESS
+        rate = float(types.fire_rate[i])
         shield = float(types.max_shield[i])
 
         def ttk(aspect):  # a mirror: the type shooting itself

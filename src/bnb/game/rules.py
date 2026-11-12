@@ -91,7 +91,13 @@ class Rules:
     # The longest bullet life on the card, in moves (rules_of reads the card; 12 is the
     # standard card's): the static size of what follows a shot (its labels, the lookahead).
     longest_bullet_moves: int = 12
-    bullet_drag: float = 8e-4  # 1/m [k_b]
+    bullet_drag: float = (
+        8e-4  # 1/m [k_b], the floor of the card's (bullet_drag_scale >= 1 by design)
+    )
+    # m: the distance at which a card's hit damage holds (its reference bullet speed's, from a
+    # shot at cruise; ship-card spec 3): 300 real metres, the real-scale sets' value, over the
+    # standard metre's 5.82. Only the card's solve reads it (the game reads the card's speed).
+    damage_reference_distance: float = 300.0 / 5.82
     bullet_spread: float = 12.0  # m/s per axis, proper [sigma_b]
     head_on_fraction: float = 0.3  # [f_0]
     head_on_angle: float = HEAD_ON_ANGLE  # rad, armour at half strength [theta_h]

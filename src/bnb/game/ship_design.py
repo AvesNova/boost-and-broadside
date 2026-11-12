@@ -38,7 +38,8 @@ from . import ships
 from .handling import Handles
 from .handling.estimate import Estimate
 from .handling.weapons import gun_range
-from .real_scale import CLIMB_FILL, GRAVITY, SHIP_SET, gun_flight_time
+from .physics.combat import MEAN_CLOSENESS
+from .real_scale import CLIMB_FILL, GRAVITY, RANGE_DRAG, SHIP_SET, gun_flight_time
 from .rules import Rules
 from .ship_types import FIELDS, ShipTypes, ticks_between_shots
 
@@ -130,7 +131,8 @@ def knobs_of(handles: dict[str, float]) -> dict[str, float]:
         sustained_turn_rate=handles["sustained_turn_rate"],
         climb_rate=climb_rate_of(handles),
         ceiling=handles["ceiling"],
-        damage_per_second=handles["hit_damage"] * handles["fire_rate"],
+        # the mean hit's (the handle is a centre hit's)
+        damage_per_second=handles["hit_damage"] * MEAN_CLOSENESS * handles["fire_rate"],
         fire_rate=handles["fire_rate"],
         max_shield=handles["max_shield"],
         muzzle_speed=handles["muzzle_speed"],
@@ -150,13 +152,13 @@ def handles_of(base: dict[str, float], knobs: dict[str, float], rules: Rules) ->
     handles["max_shield"] = values["max_shield"]
     handles["muzzle_speed"] = values["muzzle_speed"]
     handles["fire_rate"] = values["fire_rate"]
-    handles["hit_damage"] = values["damage_per_second"] / values["fire_rate"]
+    handles["hit_damage"] = values["damage_per_second"] / values["fire_rate"] / MEAN_CLOSENESS
     handles["bullet_spread"] = values["dispersion"] * values["muzzle_speed"]
     handles["climb_time"] = CLIMB_FILL * values["ceiling"] / (GRAVITY * values["climb_rate"])
     handles["spawn_energy"] = base["spawn_energy"] / base["ceiling"] * values["ceiling"]
     cost_per_second = base["ceiling"] / base["shots_per_store"] * base["fire_rate"]
     handles["shots_per_store"] = values["ceiling"] * values["fire_rate"] / cost_per_second
-    drag = torch.tensor(rules.bullet_drag, dtype=torch.float64)
+    drag = torch.tensor(RANGE_DRAG, dtype=torch.float64)  # the set's range measure
     launch = torch.tensor(values["cruise_speed"] + values["muzzle_speed"], dtype=torch.float64)
     handles["gun_range"] = float(gun_range(drag, launch, gun_flight_time(rules.tick_length)))
     return handles

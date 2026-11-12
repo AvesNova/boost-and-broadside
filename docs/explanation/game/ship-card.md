@@ -116,9 +116,11 @@ pays for it meets the cruise, so the cruise does not determine the drag. The dra
 therefore a handle of its own, held like the store size, and the cruise sets the
 full-store power instead.
 
-The combat handles are the damage, the fire rate in shots per second, the muzzle speed, the
-spread, the gun range (the distance a bullet fired at cruise along the flight path travels
-in its life), the shots a full store pays for, the shield capacity, recharge rate and
+The combat handles are the damage (a centre hit's by a bullet at the reference distance,
+[Physics](physics.md)), the explosive share (the damage's part that does not fall with
+speed, 0 to 1), the fire rate in shots per second, the muzzle speed, the spread, the gun
+range (the distance a bullet fired at cruise along the flight path travels in its life),
+the bullet drag (1/m, the type's own; the rules' drag is the floor), the shots a full store pays for, the shield capacity, recharge rate and
 delay (both run on quiet ticks only, [Physics](physics.md)), the head-on fraction and the
 head-on angle (the angle off the nose at which the target's armour is at half strength, 5
 to 90 degrees on the panel's slider), the hit radius and the spawn energy. They map to the card in
@@ -126,13 +128,15 @@ closed form (`bnb.game.handling.weapons`).
 
 **The gun range sets the bullet life.** A bullet launched at w0 (cruise plus muzzle speed)
 under drag k covers ln(1 + k w0 t) / k in time t, so the range R and the life are one
-quantity: the type's life is the time the game's bullet drag takes to cover R,
-t = expm1(k R) / (k w0), rounded up to a whole tick, and its drag scale (1 or more, since
-drag only shortens) trims the range to exactly R in that life. The card holds the life
-(`bullet_life`, seconds) and the drag scale; a lower muzzle speed at the same range is a
+quantity: the type's life is the time its own drag takes to cover R,
+t = expm1(k R) / (k w0), rounded up to a whole tick. The flown range is R to within one
+tick of travel, and the panel shows the flown one. The card holds the life (`bullet_life`,
+seconds), the drag as a scale of the rules' (`bullet_drag_scale`) and the bullet's speed at
+the rules' damage reference distance, w0 exp(-k d) (`reference_bullet_speed`), which the
+hit damage is stated at; a lower muzzle speed or a higher drag at the same range is a
 longer life, up to `bnb.game.rules.LONGEST_BULLET_LIFE` (2 s), past which the range is
-infeasible. The game's bullet drag is a rule setting: changing it keeps the cards, so each
-type's range changes with it until its gun range is set again.
+infeasible. The rules' bullet drag is a rule setting: changing it keeps the cards (each
+type's scale), so each type's drag and range change with it until they are set again.
 
 ## Measuring
 

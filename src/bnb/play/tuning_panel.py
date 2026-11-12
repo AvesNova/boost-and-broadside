@@ -52,6 +52,16 @@ REMOVE = "Remove a ship type###remove ship"
 EPISODE_MARK = " *"  # after the label of a setting drawn at an episode's start
 
 
+# A handle's tooltip where its name alone does not say what it means.
+HANDLE_HELP = dict(
+    hit_damage="hit damage: a centre hit's, by a bullet at the reference distance (rules)",
+    explosive_share="explosive share: the hit damage's part that does not fall with speed",
+    bullet_drag="bullet drag: speed falls as exp(-drag x distance); the rules' is the floor",
+    gun_range="gun range: the flown one, in whole ticks of the type's bullet life",
+)
+LINEAR_HANDLES = dict(explosive_share=(0.0, 1.0))  # handles on a linear slider, with its span
+
+
 def _label(name: str) -> str:
     return name.replace("_", " ")
 
@@ -333,7 +343,7 @@ class TuningPanel:
             unit, factor = api.HANDLE_UNITS[name]
             value = float(getattr(targets, name)[kind]) * factor
             label = _label(name)
-            help = label + (f", {unit}" if unit else "")
+            help = HANDLE_HELP.get(name, label) + (f", {unit}" if unit else "")
             if name == "fire_rate":
                 row_label(label, help)
                 imgui.table_next_column()
@@ -350,7 +360,9 @@ class TuningPanel:
                     low, high = 0.5**5, 0.5**0.5
                 if name == "head_on_angle":  # degrees
                     low, high = 5.0, 90.0
-                changed, new = number(label, name, value, low, high, log=True, help=help)
+                low, high = LINEAR_HANDLES.get(name, (low, high))
+                linear = name in LINEAR_HANDLES
+                changed, new = number(label, name, value, low, high, log=not linear, help=help)
                 if changed and math.isfinite(new):
                     tuner.set_handle(name, kind, new / factor)
             imgui.table_next_column()

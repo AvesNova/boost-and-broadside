@@ -11,6 +11,7 @@ import torch
 from bnb.contracts import GameConfig
 from bnb.game import api, real_scale, ships
 from bnb.game.handling.similarity import scale_flight
+from bnb.game.physics.combat import MEAN_CLOSENESS
 from bnb.game.rules import FlightConstants
 
 SET = "real-scale"
@@ -36,8 +37,11 @@ def test_the_rules_are_todays_in_real_units():
     expected = scale_flight(FlightConstants(), real_scale.LENGTH, real_scale.TIME)
     for name in ("coast_exchange", "climb_exchange", "nose_frequency_floor"):
         assert getattr(rules.flight, name) == pytest.approx(getattr(expected, name), rel=1e-12)
-    assert rules.longest_bullet_moves == 18  # 0.6 s, every type's
-    assert rules.bullet_drag == pytest.approx(8e-4 / 5.82)
+    assert rules.longest_bullet_moves == 23  # 0.77 s, the MG 151/20's (its high drag)
+    assert rules.bullet_drag == 5e-4  # the .50 cal's, every type's floor
+    assert rules.damage_reference_distance == 300.0
+    card = api.ship_types(ship_set=SET)
+    assert (card.bullet_drag_scale >= 1.0 - 1e-6).all()
     assert rules.vision_range == 3072.0
     stall = torch.sqrt(rules.flight.gravity / api.ship_types(ship_set=SET).max_lift_coefficient)
     assert rules.spawn_speed == pytest.approx(1.3 * float(stall.max()), rel=1e-4)
@@ -136,7 +140,8 @@ def test_the_combat_economy_follows_the_weight_of_fire_and_the_climb_charge():
     weakly: the equal-damage rule keeps it within 5% of the P-51's."""
     power, damage = real_scale.combat_constants()
     standard = {ship.key: ship.handles for ship in ships.load()}["fighter"]
-    assert damage == 2.0 * standard["hit_damage"] * standard["fire_rate"] == 360.0
+    mean_hit = standard["hit_damage"] * MEAN_CLOSENESS  # the card's is a centre hit's
+    assert damage == pytest.approx(2.0 * mean_hit * standard["fire_rate"]) and damage == 360.0
     found = {ship.key: ship.handles for ship in ships.load(SET)}
     data = {one.key: one.data for one in real_scale.AIRCRAFT}
     charge = standard["ceiling"] / standard["shots_per_store"] / power * standard["fire_rate"]
@@ -148,7 +153,8 @@ def test_the_combat_economy_follows_the_weight_of_fire_and_the_climb_charge():
         assert cost * handles["fire_rate"] == pytest.approx(power * own_charge), key
         ratio = data[key]["weight_of_fire"].value / data["p51d"]["weight_of_fire"].value
         balanced = real_scale.balanced_damage_per_second(damage * ratio, damage)
-        assert handles["hit_damage"] * handles["fire_rate"] == pytest.approx(balanced), key
+        mean = handles["hit_damage"] * MEAN_CLOSENESS * handles["fire_rate"]
+        assert mean == pytest.approx(balanced), key
         assert handles["fire_rate"] == data[key]["fire_rate"].value, key
     p51 = found["p51d"]
     assert p51["ceiling"] / p51["shots_per_store"] / (9.81 * 15.2) == pytest.approx(0.96, abs=0.01)
@@ -162,7 +168,7 @@ def test_every_type_deals_about_the_p51s_damage_per_second():
     assert rule(720.0, 360.0) == pytest.approx(360.0 * 2.0**0.05)
     assert rule(1e6, 360.0) == pytest.approx(378.0) and rule(1.0, 360.0) == pytest.approx(342.0)
     for ship in researched():
-        per_second = ship.handles["hit_damage"] * ship.handles["fire_rate"]
+        per_second = ship.handles["hit_damage"] * MEAN_CLOSENESS * ship.handles["fire_rate"]
         assert 342.0 - 1e-6 <= per_second <= 378.0 + 1e-6, ship.key
         assert "Balanced (round 1)" in ship.notes["hit_damage"], ship.key
 

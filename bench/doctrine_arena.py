@@ -68,6 +68,7 @@ from bnb.controllers.scripted_doctrine import (
 from bnb.controllers.scripted_parameters import Logistic
 from bnb.game import api, ships
 from bnb.game.handling.characteristics import characteristics
+from bnb.game.physics.combat import MEAN_CLOSENESS
 
 PRESET = "real_scale_elimination"
 SHIP_SET = "real-scale"
@@ -579,7 +580,9 @@ def card(args) -> None:
     for shooter in KEYS:
         for target in KEYS:
             i, j = keys.index(shooter), keys.index(target)
-            damage, rate = float(types.hit_damage[i]), float(types.fire_rate[i])
+            # the expected hit: a centre hit at the reference distance x the mean closeness
+            damage = float(types.hit_damage[i]) * MEAN_CLOSENESS
+            rate = float(types.fire_rate[i])
             shield = float(types.max_shield[j])
 
             def ttk(aspect: float) -> float:
