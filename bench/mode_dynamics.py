@@ -1,4 +1,4 @@
-"""Mode dynamics of the scripted agent (T = 1, both sides, the game's default lineup): the
+"""Mode dynamics of the scripted agent (T = 1, both sides, the game's lineup or `--lineup`): the
 deathmatch's kill rate and the Frontline's captures, on a preset with no fields (the agent
 ignores fields; Frontline keeps its zones).
 
@@ -35,7 +35,7 @@ import torch
 
 from bnb.contracts import Pool
 from bnb.controllers import scripted
-from bnb.game import api
+from bnb.game import api, ships
 from bnb.game.handling.characteristics import characteristics
 from bnb.runtime.rollout import Rollout
 
@@ -64,6 +64,17 @@ def game_of(arguments) -> tuple:
     types = api.ship_types(ship_set=game.ship_set)
     rules = api.rules_of(game, types=types)
     return game, types, rules
+
+
+def lineup_of(lineup: str | None, game, environments: int) -> torch.Tensor | None:
+    """(environments, N) int32 ship types: the keys cycled over each team's slots, the same
+    for both teams; None for the game's lineup."""
+    if lineup is None:
+        return None
+    keys = [ship.key for ship in ships.load(game.ship_set)]
+    chosen = [keys.index(key) for key in lineup.split(",")]
+    team = [chosen[slot % len(chosen)] for slot in range(game.ships_per_team)]
+    return torch.tensor(team + team, dtype=torch.int32).repeat(environments, 1)
 
 
 def mode_overrides(arguments) -> dict:
@@ -152,6 +163,9 @@ def main() -> None:
     parser.add_argument("--episode-seconds", type=float, default=None)
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--lineup", default=None, help="type keys cycled over each team's slots (both teams)"
+    )
     parser.add_argument("--label", default="")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     arguments = parser.parse_args()
@@ -183,6 +197,7 @@ def main() -> None:
         32,
         device,
         staggered=False,
+        ship_type=lineup_of(arguments.lineup, game, environments),
     )
     if mode_overrides(arguments):
         rollout.rules = api.tuning.tuned(rollout.rules, mode_overrides(arguments))
@@ -214,6 +229,7 @@ def main() -> None:
             zone_radius=rollout.rules.pools[0].mode.zone_radius,
             capture_seconds=rollout.rules.pools[0].mode.capture_seconds,
             temperature=arguments.temperature,
+            lineup=arguments.lineup,
             games=games,
         )
         with arguments.out.open("a") as file:
