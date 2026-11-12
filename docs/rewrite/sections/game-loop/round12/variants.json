@@ -1,0 +1,146 @@
+[
+ {
+  "name": "final card",
+  "energy": {
+   "head_on_fraction_scale": 0.5,
+   "head_on_angle_scale": 0.5,
+   "explosive_share": {
+    "set": 0.5
+   },
+   "max_shield": 1.3,
+   "hit_damage": 0.29835
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.5,
+   "head_on_angle_scale": 0.5,
+   "max_shield": 0.87,
+   "hit_damage": 0.3
+  }
+ },
+ {
+  "name": "Y damage x1.05",
+  "energy": {
+   "head_on_fraction_scale": 0.5,
+   "head_on_angle_scale": 0.5,
+   "explosive_share": {
+    "set": 0.5
+   },
+   "max_shield": 1.3,
+   "hit_damage": 0.31326750000000003
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.5,
+   "head_on_angle_scale": 0.5,
+   "max_shield": 0.87,
+   "hit_damage": 0.3
+  }
+ },
+ {
+  "name": "Y damage x1.1",
+  "energy": {
+   "head_on_fraction_scale": 0.5,
+   "head_on_angle_scale": 0.5,
+   "explosive_share": {
+    "set": 0.5
+   },
+   "max_shield": 1.3,
+   "hit_damage": 0.328185
+  },
+  "turn": {
+   "head_on_fraction_scale": 0.5,
+   "head_on_angle_scale": 0.5,
+   "max_shield": 0.87,
+   "hit_damage": 0.3
+  }
+ },
+ {
+  "name": "fraction x2",
+  "energy": {
+   "head_on_fraction_scale": 1.0,
+   "head_on_angle_scale": 0.5,
+   "explosive_share": {
+    "set": 0.5
+   },
+   "max_shield": 1.3,
+   "hit_damage": 0.29835
+  },
+  "turn": {
+   "head_on_fraction_scale": 1.0,
+   "head_on_angle_scale": 0.5,
+   "max_shield": 0.87,
+   "hit_damage": 0.3
+  }
+ },
+ {
+  "name": "fraction x4",
+  "energy": {
+   "head_on_fraction_scale": 2.0,
+   "head_on_angle_scale": 0.5,
+   "explosive_share": {
+    "set": 0.5
+   },
+   "max_shield": 1.3,
+   "hit_damage": 0.29835
+  },
+  "turn": {
+   "head_on_fraction_scale": 2.0,
+   "head_on_angle_scale": 0.5,
+   "max_shield": 0.87,
+   "hit_damage": 0.3
+  }
+ },
+ {
+  "name": "fraction x6",
+  "energy": {
+   "head_on_fraction_scale": 3.0,
+   "head_on_angle_scale": 0.5,
+   "explosive_share": {
+    "set": 0.5
+   },
+   "max_shield": 1.3,
+   "hit_damage": 0.29835
+  },
+  "turn": {
+   "head_on_fraction_scale": 3.0,
+   "head_on_angle_scale": 0.5,
+   "max_shield": 0.87,
+   "hit_damage": 0.3
+  }
+ },
+ {
+  "name": "fraction x4, cone x2",
+  "energy": {
+   "head_on_fraction_scale": 2.0,
+   "head_on_angle_scale": 1.0,
+   "explosive_share": {
+    "set": 0.5
+   },
+   "max_shield": 1.3,
+   "hit_damage": 0.29835
+  },
+  "turn": {
+   "head_on_fraction_scale": 2.0,
+   "head_on_angle_scale": 1.0,
+   "max_shield": 0.87,
+   "hit_damage": 0.3
+  }
+ },
+ {
+  "name": "fraction x3, Y damage x1.05",
+  "energy": {
+   "head_on_fraction_scale": 1.5,
+   "head_on_angle_scale": 0.5,
+   "explosive_share": {
+    "set": 0.5
+   },
+   "max_shield": 1.3,
+   "hit_damage": 0.31326750000000003
+  },
+  "turn": {
+   "head_on_fraction_scale": 1.5,
+   "head_on_angle_scale": 0.5,
+   "max_shield": 0.87,
+   "hit_damage": 0.3
+  }
+ }
+]

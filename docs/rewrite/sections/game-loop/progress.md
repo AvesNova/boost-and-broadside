@@ -439,3 +439,59 @@ in code, a wider/random restart population, or longer games at this lethality), 
 generations. Stopped at 17:57; the final measurement (r9 on the round-11 card, every
 league pair 1024 games a pair and order, 300 s pace games at 5v5, 2v2, 1v1) started
 17:57, ETA ~18:25.
+
+## 17:57-18:20 KST: final measurement (r9 on the round-11 card; `final/`)
+
+**Elo** (every league pair, mixed + mixed reversed, 1024 games a pair and order, 120 s
+games; off = 1000): **r9 1230 ± 4**, r7 1219 ± 4, r4 1209 ± 4, r2 1204 ± 4, off 1000, hot
+999, r1 995, r1-hand 981, hand 623, random 531 (the scale is compressed on this
+low-lethality card: random was 98-108 at full damage).
+
+**Distinctness** (r9, mixed games, memoryless agent): KL 0.08 on Yongma ships (agreement
+0.97), 2.63 on Jujak ships (0.65). By regime against the nearest enemy (energy ahead /
+behind, inside / outside two turn radii): Yongma ships 0.07-0.14 everywhere (the two
+doctrines agree on Yongma); Jujak ships 5.04 when energy-ahead and inside (agreement 0.37),
+2.92 behind-inside, 2.00 ahead-outside, 1.69 behind-outside. The doctrines differ most for
+the turn fighter in the close fight, and hardly at all for the energy fighter.
+
+**Card** (closed form, 100% hits, the mean closeness): head-on TTK **17-35 passes**
+(Y on J 16.6, J on J 19.4, Y on Y 30.5, J on Y 35.3); tail TTK 3.1-6.6 s; cone 21 degrees.
+The 3-4 head-on passes target is missed by ~5-10x: the damage cut that bought slower
+fights, more tail and fewer trades put the joust far out. Round 12 (running) measures
+less frontal armour.
+
+**5v5** (300 s games, 8192 games a self-play lineup, 2048 against off and off v off):
+
+| Lineup | r9 v r9 score | Kills m / o / f / t | Trades | Kills/min (median) | Kills/min/ship | Life s | Death gap mean (median) s | Spawn to first hit s | Merges a kill (2 TD): mean / median / first-pass / p90 | Engagement to death (2 TD) s | Circles turned | Merges 1-circle / 2-circle / scissors |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| energy v turn | **0.443 ± 0.005** | 0.03 / 0.15 / 0.56 / 0.26 | 0.04 | 4.62 (4.6) | 0.47 | 118 | 11.5 (8.5) | 38.5 | 0.74 / 0 / 0.82 / 2 | 18.5 | 1.17 | 0.31 / 0.59 / 0.10 |
+| turn mirror | 0.505 | 0.05 / 0.19 / 0.59 / 0.17 | 0.05 | 5.48 (5.6) | 0.56 | 98 | 9.8 (7.5) | 38.5 | 0.50 / 0 / 0.91 / 1 | 12.5 | 0.89 | 0.31 / 0.63 / 0.07 |
+| energy mirror | 0.505 | 0.03 / 0.14 / 0.50 / 0.33 | 0.02 | 2.78 (2.8) | 0.29 | 199 | 17.8 (13.5) | 37.5 | 0.95 / 1 / 0.76 / 3 | 22.5 | 1.73 | 0.32 / 0.54 / 0.15 |
+| mixed | 0.493 | 0.03 / 0.15 / 0.55 / 0.27 | 0.04 | 4.35 (4.4) | 0.44 | 126 | 12.1 (9.5) | 38.5 | 0.78 / 0 / 0.80 / 2 | 18.5 | 1.23 | 0.31 / 0.58 / 0.11 |
+| mixed reversed | 0.506 | 0.04 / 0.16 / 0.56 / 0.24 | 0.04 | 4.81 (4.8) | 0.49 | 113 | 11.1 (8.5) | 38.5 | 0.67 / 0 / 0.84 / 2 | 16.5 | 1.09 | 0.31 / 0.60 / 0.09 |
+
+r9 v off (5v5): energy v turn 0.711 ± 0.009, turn mirror 0.958, **energy mirror 0.429 ±
+0.010** (in 300 s games r9's Yongma loses to off's), mixed 0.749 / 0.843. Off v off energy
+v turn: 0.823 (off's Yongma wins). Note: energy v turn under r9 was 0.508 in 120 s games
+(round 10) and is 0.443 in 300 s games: the game length moves it.
+
+**2v2 and 1v1** (300 s, 4096 games a self-play lineup; the arena by the density rule):
+
+| Size | Lineup | r9 v r9 | Kills m / o / f / t | Trades | Kills/min/ship | Life s | Merges a kill (2 TD) mean / median / first-pass / p90 | Circles turned | Merges 1 / 2 / sc |
+|---|---|---|---|---|---|---|---|---|---|
+| 2v2 | energy v turn | **0.277 ± 0.006** | 0.03 / 0.14 / 0.57 / 0.25 | 0.01 | 0.18 | 126 | 1.31 / 1 / 0.63 / 3 | 1.49 | 0.21 / 0.65 / 0.15 |
+| 2v2 | turn mirror | 0.505 | 0.07 / 0.23 / 0.57 / 0.13 | 0.02 | 0.19 | 117 | 0.93 / 1 / 0.79 / 2 | 1.24 | 0.23 / 0.69 / 0.09 |
+| 2v2 | energy mirror | 0.487 | 0.04 / 0.20 / 0.50 / 0.25 | 0.01 | 0.07 | 318 | 1.80 / 1 / 0.51 / 4 | 2.10 | 0.21 / 0.65 / 0.14 |
+| 2v2 | mixed | 0.492 | 0.04 / 0.17 / 0.57 / 0.22 | 0.01 | 0.16 | 136 | 1.33 / 1 / 0.63 / 3 | 1.54 | 0.21 / 0.65 / 0.14 |
+| 1v1 | energy v turn | **0.003 ± 0.001** | 0.01 / 0.04 / 0.44 / 0.51 | 0.00 | 0.05 | 244 | 4.11 / 4 / 0.09 / 6 | 3.23 | 0.09 / 0.70 / 0.21 |
+| 1v1 | turn mirror | 0.502 | 0.37 / 0.57 / 0.06 / 0.00 | 0.00 | 0.01 | 1079 | 5.45 / 5 / 0.21 / 11 | 3.38 | 0.06 / 0.92 / 0.02 |
+| 1v1 | energy mirror | 0.500 | 0.03 / 0.78 / 0.20 / 0.00 | 0.00 | 0.00 | 3713 | 3.05 / 3 / 0.05 / 4 | 2.57 | 0.03 / 0.94 / 0.03 |
+
+- **Balance depends on the fleet size**: Yongma 0.44 at 5v5, 0.28 at 2v2, 0.00 at 1v1
+  (off's agent the same: 0.82 / 0.37 / 0.00). In a duel the turn fighter always wins on
+  this card; in a crowd Yongma's toughness pays. One card cannot hold 45-55 at every size
+  with this agent.
+- **Merges a kill near 3 appears only in duels** (1v1: mean 3-5, median 3-5, first-pass
+  0.05-0.21, p90 4-11); 2v2 1.3-1.8 (median 1, p90 3-4); 5v5 0.5-1.0 (first-pass
+  0.76-0.91): in a crowd a third ship ends the fight. The 1v1 mirrors almost never
+  resolve (life 1079-3713 s: head-on stalemates, mutual + offset kills 0.81-0.94).
