@@ -130,3 +130,26 @@ games; record `records/dynamics.jsonl`, report `bench/mode_dynamics_report.py`.
   is far tighter than Poisson). After the freeze: rerun `bench.mode_dynamics deathmatch`
   (8 s per 256 games warm on the box) and read k and T off the report.
   Today's 25 tickets in 600 s: every game ends by tickets (at about 7 min).
+
+## Step 2e: Frontline capture dynamics, 5v5, release lineup (rough; provisional zone sizes)
+
+`--label fl_5v5_yj` (real_scale_frontline, no fields, zones kept, 2 Yongma + 3 Jujak, scripted
+mirror, 512 games; zone radius 330 m x map scale 3 = 990 m, capture 20 s, threshold 3,
+600 s):
+
+- Ended by the front (the final capture): **0.090 ± 0.013**; 91% run out the clock (target
+  ~80% by the front).
+- Captures per game: mean 10.8, median 11 (5-95%: 5-16); the first at a median 87 s
+  (quartiles 80-124 s).
+- **P(next capture by the same team | a capture) = 0.143 ± 0.005** (5021 pairs), P(reversal)
+  0.857: strongly anti-persistent, the degenerate end, not a random walk. The September v1
+  study (docs/engineering/frontline-density-and-front-dynamics.md on the v1 tree; memory
+  note) found P(reversal) = 0.84 and a 300 s clock cutting ~90% of 5v5 games: unchanged in
+  v2 at the real scale's 600 s. The cause it named is structural (the role rotation makes
+  the zone just captured the loser's next target, with its defenders already inside), so
+  clock and capture-time knobs alone may not fix it. Knob scan running (16:10 KST, ETA
+  ~16:40): capture 10 s / 40 s, threshold 2, zone radius 495 / 660 m (1.5x / 2x), clock
+  1200 s.
+- Zone sizes in use: `ModeRules.zone_radius` 330 m at map scale 1, scaled by R / 2600 m:
+  990 m on the 7800 m real-scale map (0.127 R), 1400 / 1980 / 3131 m on the 10v10 / 20v20 /
+  50v50 `_density` maps; the ring at 0.615 R. A zone covers 1.6% of the arena's area.
