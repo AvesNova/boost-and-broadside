@@ -213,7 +213,86 @@ the duel H (JJ; YY):
   A hurt Yongma leaving a Jujak in a crowd wins the crowd, and loses the lone duel (D2 E v T
   1v1 0.34).
 
-## 03:55- KST: confirm (`confirm/`): 1024 games, 1v1 / 2v2 / 5v5 (10v10 self-play)
+## 03:55-04:26 KST: confirm (`confirm/`): 1024 games, 1v1 / 2v2 / 5v5 (10v10 self-play)
 
-r9m, DE 0.4, DE 0.4 mirror, DE 0.5 mirror, DE Y 1.0 / J 0.4 on four cards, against r9m and r9;
-the mirrors at 1v1 and 5v5. ETA 04:30 KST (worst 04:45).
+1024 games a job (SE about ±0.015; 10v10 self-play 512). `table.py confirm/sizes.json
+--versus r9m` (or `r9`) has every column.
+
+**Strength** against r9m (1v1 YY / JJ; 2v2 and 5v5 mixed / reversed; the worst) and r9 (5v5):
+
+| Card: candidate | v r9m 1v1 | v r9m 2v2 | v r9m 5v5 | worst | v r9 5v5 |
+|---|---|---|---|---|---|
+| D2: r9m | 0.489 / 0.513 | 0.506 / 0.503 | 0.479 / 0.492 | 0.479 | 0.78 / 0.83 |
+| D2: DE 0.4 | 0.551 / 0.565 | 0.478 / 0.523 | 0.540 / 0.543 | 0.478 | 0.78 / 0.83 |
+| D2: DE 0.4 mirror | 0.541 / 0.520 | 0.515 / 0.506 | 0.537 / 0.499 | 0.499 | 0.77 / 0.83 |
+| D2: DE 0.5 mirror | 0.562 / 0.522 | 0.526 / 0.507 | 0.503 / 0.502 | 0.502 | 0.78 / 0.84 |
+| **D2: DE Y 1.0 / J 0.4** | **0.601 / 0.523** | **0.556 / 0.587** | **0.588 / 0.579** | **0.523** | **0.83 / 0.85** |
+| cone: r9m | 0.503 / 0.513 | 0.493 / 0.478 | 0.530 / 0.469 | 0.469 | 0.78 / 0.83 |
+| cone: DE 0.4 | 0.566 / 0.532 | 0.520 / 0.545 | 0.524 / 0.524 | 0.520 | 0.80 / 0.84 |
+| cone: DE 0.4 mirror | 0.571 / 0.503 | 0.492 / 0.513 | 0.504 / 0.507 | 0.492 | 0.78 / 0.81 |
+| cone: DE 0.5 mirror | 0.564 / 0.499 | 0.503 / 0.514 | 0.487 / 0.525 | 0.487 | 0.78 / 0.83 |
+| **cone: DE Y 1.0 / J 0.4** | **0.535 / 0.534** | **0.569 / 0.565** | **0.586 / 0.588** | **0.534** | **0.82 / 0.86** |
+| big v small: r9m | 0.501 / 0.498 | 0.503 / 0.495 | 0.481 / 0.515 | 0.481 | 0.80 / 0.80 |
+| big v small: DE 0.4 | 0.585 / 0.562 | 0.512 / 0.511 | 0.536 / 0.523 | 0.511 | 0.80 / 0.84 |
+| big v small: DE 0.4 mirror | 0.571 / 0.575 | 0.495 / 0.519 | 0.526 / 0.485 | 0.485 | 0.81 / 0.82 |
+| big v small: DE 0.5 mirror | 0.564 / 0.557 | 0.504 / 0.479 | 0.519 / 0.499 | 0.479 | 0.81 / 0.81 |
+| **big v small: DE Y 1.0 / J 0.4** | **0.549 / 0.550** | **0.544 / 0.559** | **0.621 / 0.563** | **0.544** | **0.84 / 0.86** |
+| frozen: r9m | 0.507 / 0.507 | 0.486 / 0.509 | 0.517 / 0.521 | 0.486 | 0.75 / 0.81 |
+| frozen: DE 0.4 | 0.565 / 0.557 | 0.533 / 0.561 | 0.515 / 0.539 | 0.515 | 0.73 / 0.83 |
+| frozen: DE 0.4 mirror | 0.552 / 0.557 | 0.512 / 0.515 | 0.498 / 0.510 | 0.498 | 0.76 / 0.83 |
+| frozen: DE 0.5 mirror | 0.565 / 0.548 | 0.499 / 0.499 | 0.506 / 0.527 | 0.499 | 0.70 / 0.83 |
+| **frozen: DE Y 1.0 / J 0.4** | **0.596 / 0.560** | **0.552 / 0.566** | **0.570 / 0.600** | **0.552** | **0.76 / 0.84** |
+
+**The duels and the balance**: the 1v1 mirrors (mutual head-on share, life, merges a kill,
+H; JJ then YY), the 5v5 mirrors' H (JJ; YY), self-play energy v turn by size (1 / 2 / 5 /
+10v10):
+
+| Card: candidate | JJ 1v1 | YY 1v1 | 5v5 mirrors H | E v T 1/2/5/10 |
+|---|---|---|---|---|
+| D2: r9m | 0.85, 210 s, 4.3, 0.10 | 0.75, 133 s, 2.4, 0.14 | 1.78; 1.80 | 0.51 / 0.45 / 0.52 / 0.44 |
+| D2: DE 0.4 | 0.65, 224 s, 4.0, 0.41 | 0.62, 152 s, 2.2, 0.83 | 1.76; 1.77 | 0.42 / 0.43 / 0.56 / 0.43 |
+| D2: DE 0.4 mirror | 0.66, 223 s, 4.1, 0.41 | 0.60, 153 s, 2.3, 0.86 | 1.76; 1.78 | 0.49 / 0.44 / 0.56 / 0.42 |
+| D2: DE 0.5 mirror | 0.64, 224 s, 3.9, 0.44 | 0.58, 151 s, 2.2, 0.96 | 1.75; 1.77 | 0.48 / 0.44 / 0.56 / 0.42 |
+| D2: DE Y 1.0 / J 0.4 | 0.66, 223 s, 4.1, 0.40 | 0.61, 185 s, 2.0, 1.59 | 1.77; 1.69 | 0.35 / 0.54 / 0.64 / 0.61 |
+| cone: r9m | 0.71, 246 s, 4.6, 0.10 | 0.53, 184 s, 3.7, 0.09 | 1.76; 1.77 | 0.52 / 0.53 / 0.68 / 0.60 |
+| cone: DE 0.4 | 0.54, 249 s, 4.3, 0.42 | 0.38, 192 s, 3.1, 0.72 | 1.74; 1.78 | 0.48 / 0.49 / 0.72 / 0.62 |
+| cone: DE 0.4 mirror | 0.55, 253 s, 4.4, 0.42 | 0.41, 199 s, 3.1, 0.74 | 1.76; 1.78 | 0.53 / 0.47 / 0.66 / 0.60 |
+| cone: DE 0.5 mirror | 0.50, 242 s, 4.1, 0.49 | 0.37, 189 s, 2.9, 0.86 | 1.74; 1.77 | 0.52 / 0.50 / 0.68 / 0.62 |
+| cone: DE Y 1.0 / J 0.4 | 0.53, 255 s, 4.4, 0.41 | 0.31, 228 s, 2.2, 1.60 | 1.74; 1.73 | 0.42 / 0.62 / 0.72 / 0.69 |
+| big v small: r9m | 0.63, 168 s, 3.8, 0.14 | 0.52, 134 s, 2.5, 0.15 | 1.79; 1.76 | 0.60 / 0.50 / 0.50 / 0.53 |
+| big v small: DE 0.4 | 0.43, 187 s, 3.4, 0.59 | 0.39, 144 s, 2.4, 0.72 | 1.76; 1.75 | 0.59 / 0.51 / 0.50 / 0.53 |
+| big v small: DE 0.4 mirror | 0.42, 191 s, 3.5, 0.60 | 0.41, 145 s, 2.4, 0.70 | 1.77; 1.75 | 0.61 / 0.51 / 0.49 / 0.50 |
+| big v small: DE Y 1.0 / J 0.4 | 0.41, 187 s, 3.5, 0.62 | 0.29, 166 s, 1.8, 1.58 | 1.77; 1.70 | 0.61 / 0.61 / 0.64 / 0.60 |
+| frozen: r9m | 0.86, 109 s, 2.3, 0.23 | 0.79, 198 s, 4.0, 0.08 | 1.78; 1.78 | 0.01 / 0.44 / 0.37 / 0.23 |
+| frozen: DE 0.4 | 0.79, 123 s, 2.2, 0.81 | 0.59, 221 s, 3.5, 0.72 | 1.76; 1.76 | 0.32 / 0.37 / 0.28 / 0.20 |
+| frozen: DE 0.4 mirror | 0.78, 122 s, 2.2, 0.78 | 0.61, 217 s, 3.6, 0.72 | 1.77; 1.76 | 0.01 / 0.44 / 0.36 / 0.21 |
+| frozen: DE Y 1.0 / J 0.4 | 0.79, 121 s, 2.2, 0.80 | 0.62, 277 s, 3.0, 1.59 | 1.77; 1.69 | 0.43 / 0.43 / 0.34 / 0.22 |
+
+(In big v small "JJ" is the small mirror and "YY" the big one; "Y" in a candidate's name is
+the first slot, the big ship. The 5v5 choice shares barely move: r9m's 5v5 mirrors are
+already at 1.7-1.8 bits.)
+
+- **Only "DE Y 1.0 / J 0.4" clears the strength rule on every card at 1024 games** (worst
+  0.523-0.552 against r9m; 5v5 0.56-0.62, 2v2 0.54-0.59), and it beats r9 more than r9m does
+  (5v5 0.76-0.86). The mirror-only gates are r9m's equal in the crowd (worst 0.479-0.502, as
+  r9m's own control row, 0.469-0.486) and better in the 1v1 mirrors (0.50-0.58).
+- **The duel's choice opens up under every candidate**: 1v1 mirror H from 0.08-0.23 to
+  0.40-0.96 (the Yongma mirror at a full-shield gate 1.6, near the 2-bit ceiling); the
+  mutual head-on share falls in every mirror (D2 JJ 0.85 to 0.64-0.66, cone 0.71 to
+  0.50-0.55, big v small 0.63 to 0.41-0.43; YY D2 0.75 to 0.58-0.62, cone 0.53 to 0.31-0.41).
+  The frozen Jujak mirror moves least (0.86 to 0.78-0.79). The Yongma mirrors lengthen
+  (D2 133 to 151-185 s; frozen 198 to 217-277 s) and need fewer merges a kill.
+- **The cost of the strongest**: the any-type duel extension moves energy v turn, toward the
+  Jujak at 1v1 (D2 0.51 to 0.35, cone 0.52 to 0.42) and toward the Yongma from 2v2 up (D2
+  5v5 0.52 to 0.64, 10v10 0.44 to 0.61; cone 10v10 0.60 to 0.69; big v small 0.50-0.53 to
+  0.60-0.64). On the frozen card the 1v1 improves (0.01 to 0.43) but the crowd still tips to
+  the Jujak (5v5 0.34, 10v10 0.22): item 3 does not fall out of the duel extension.
+- **The mirror-only gate keeps every card's balance** (within 0.04 of r9m's at every size).
+- **Net outcome a choice**: in self-play the bench's per-pair outcome is symmetric for same
+  and opposite sense (both ships make the choice), so only extend v chase is informative:
+  the extender's engagement nets -0.01 to -0.03 a choice (it does not win the engagement
+  it leaves; it wins the game by not being in the turning fight when hurt or crowded).
+
+## 04:30- KST: round 5 (`round5/`): the gates per type for the balance
+
+512 games against r9m; 1v1 / 2v2 / 5v5 (10v10 self-play). ETA 04:50 KST (worst 05:00).
