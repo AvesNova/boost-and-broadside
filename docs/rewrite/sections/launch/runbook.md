@@ -49,6 +49,15 @@ probe does not: the RL warm start, the lanes' snapshots); the archive replaces t
 
 ## 1. Rent and bootstrap
 
+**Host memory for cold compiles.** A process compiling the learner cold holds about 12 GB of
+host memory (measured 2026-11-12 on gpubox6, `compile-split/progress.md`; three at once
+reached a 32 GB box's limit and the OOM killer). The queue's warm key staggers only the jobs
+of one model (a second job of a key waits for the first one's first update); jobs of
+different models (Stage A's arms) start cold at once, one per GPU, and nothing caps how many.
+So rent for RAM: at least 16 GB per GPU beyond the runs' own use (the 8-GPU box: 128 GB
+free; check `free -g` after bootstrap). On a box short of it, enqueue fewer arms than GPUs
+until the first ones have logged an update (`launch.py status`), then the rest.
+
 1. Rent the box. Note its **direct** ssh address (vast's "Direct ssh connect": `root@IP -p
    PORT`). The relay (`sshN.vast.ai`) drops any transfer longer than about 2 minutes: use it
    only for a shell, never for copies.
