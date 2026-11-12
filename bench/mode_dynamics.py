@@ -37,7 +37,10 @@ import torch
 
 from bnb.contracts import Pool
 from bnb.controllers import scripted
+from bnb.controllers.scripted_defaults import MODE_DEFAULTS
+from bnb.controllers.scripted_parameters import ModeParameters
 from bnb.game import api, ships
+from bnb.game import state as state_module
 from bnb.game.handling.characteristics import characteristics
 from bnb.game.modes import frontline
 from bnb.runtime import rollout as rollout_module
@@ -62,6 +65,8 @@ def game_of(arguments) -> tuple:
         changes["arena_radius"] = arguments.radius
     if arguments.episode_seconds:
         changes["episode_seconds"] = arguments.episode_seconds
+    if arguments.respawn_seconds:
+        changes["respawn_seconds"] = arguments.respawn_seconds
     if arguments.kind == "deathmatch":
         changes["kills_per_ship"] = NO_TICKETS
     game = dataclasses.replace(game, **changes)
@@ -188,14 +193,138 @@ class Probe:
         b["tick"].add_(1)
 
 
-def install(probe: Probe, frontline_mode: bool) -> None:
+class Experiments:
+    """Candidate Frontline rules, measured here before any goes into the game (each off at
+    0): lock, the just-captured zone's meter stands still for this many ticks (no ship
+    counts in it); pause, the losing team's dead ships wait at least this many ticks after
+    it loses a zone; rear, for this many ticks after it loses a zone the losing team
+    respawns at the neutral zone (its rear: two zones from its defense) instead of its
+    spawn zone, nose toward the zone it attacks; blast, on a capture the losing team's
+    living ships within this many zone radii of the captured zone die. They act inside the
+    compiled tick (`capture_step` and `api.resolve` wrapped), on closure buffers."""
+
+    def __init__(self, arguments, environments: int, respawn_ticks: int, tick_length, device):
+        ticks = lambda seconds: round((seconds or 0.0) / tick_length)  # noqa: E731
+        self.lock, self.pause = ticks(arguments.lock_seconds), ticks(arguments.pause_seconds)
+        self.rear, self.blast = ticks(arguments.rear_seconds), arguments.blast_radius or 0.0
+        self.respawn_ticks = respawn_ticks
+        self.buffers = dict(
+            lock_zone=torch.full((environments,), -1, dtype=torch.long, device=device),
+            lock_left=torch.zeros(environments, dtype=torch.long, device=device),
+            front=torch.zeros(environments, dtype=torch.long, device=device),
+            pause_left=torch.zeros((environments, 2), dtype=torch.long, device=device),
+            rear_left=torch.zeros((environments, 2), dtype=torch.long, device=device),
+        )
+
+    @property
+    def active(self) -> bool:
+        return bool(self.lock or self.pause or self.rear or self.blast)
+
+    def clear(self) -> None:
+        for name, value in self.buffers.items():
+            value.fill_(-1 if name == "lock_zone" else 0)
+
+    def capture_step(self, original):
+        def step(team, inside, roles, progress, *rest):
+            b = self.buffers
+            zone = torch.arange(roles.shape[-1], device=roles.device)
+            locked = (zone == b["lock_zone"][:, None]) & (b["lock_left"] > 0)[:, None]
+            capture = original(team, inside & ~locked[:, None, :], roles, progress, *rest)
+            done = capture.team0_captured | capture.team1_captured
+            role = torch.where(
+                capture.team0_captured, frontline.TEAM0_DEFENSE, frontline.TEAM1_DEFENSE
+            )
+            taken = (capture.roles == role[:, None]).long().argmax(-1)
+            b["lock_zone"].copy_(torch.where(done, taken, b["lock_zone"]))
+            b["lock_left"].copy_(torch.where(done, self.lock, (b["lock_left"] - 1).clamp_min(0)))
+            return capture
+
+        return step
+
+    def after_resolve(self, state, events, ships_per_team: int):
+        """The state with the pause, rear and blast rules applied."""
+        b = self.buffers
+        mode, ships = state.mode, state.ships
+        front = mode.front.long()
+        step = front - b["front"]
+        fresh = events.done
+        captured = (step != 0) & ~fresh
+        loser = (step > 0).long()  # team 1 loses when the front rises
+        team = torch.arange(2 * ships_per_team, device=front.device) // ships_per_team
+        on_loser = team[None, :] == loser[:, None]  # (B, N)
+        teams = torch.arange(2, device=front.device)
+        losing = captured[:, None] & (teams[None, :] == loser[:, None])  # (B, 2)
+        ship_pause = b["pause_left"].gather(1, team.expand(front.shape[0], -1))  # (B, N)
+        respawn_wait = ships.respawn_wait
+        alive = ships.alive
+        x, y = ships.x, ships.y
+        heading_cos, heading_sin = ships.heading_cos, ships.heading_sin
+        if self.blast:
+            role = torch.where(step > 0, frontline.TEAM0_DEFENSE, frontline.TEAM1_DEFENSE)
+            taken = (mode.role == role[:, None]).long().argmax(-1)  # (B,)
+            zone_x = mode.zone_x.gather(1, taken[:, None])
+            zone_y = mode.zone_y.gather(1, taken[:, None])
+            reach = self.blast * mode.zone_radius.gather(1, taken[:, None])
+            near = (x - zone_x) ** 2 + (y - zone_y) ** 2 <= reach**2
+            killed = captured[:, None] & on_loser & alive & near
+            alive = alive & ~killed
+            respawn_wait = torch.where(killed, self.respawn_ticks, respawn_wait)
+        if self.pause:
+            pause = torch.where(losing, self.pause, (b["pause_left"] - 1).clamp_min(0))
+            b["pause_left"].copy_(torch.where(fresh[:, None], 0, pause))
+            ship_pause = pause.gather(1, team.expand(front.shape[0], -1))
+            respawn_wait = torch.where(
+                ~alive, torch.maximum(respawn_wait, ship_pause), respawn_wait
+            )
+        if self.rear:
+            rear = torch.where(losing, self.rear, (b["rear_left"] - 1).clamp_min(0))
+            b["rear_left"].copy_(torch.where(fresh[:, None], 0, rear))
+            moving = (
+                events.spawned
+                & ~fresh[:, None]
+                & (rear.gather(1, team.expand(front.shape[0], -1)) > 0)
+            )
+
+            def centre(roles_by_team):
+                wanted = torch.where(team == 0, roles_by_team[0], roles_by_team[1])  # (N,)
+                pick = (mode.role[:, None, :] == wanted[None, :, None]).long().argmax(-1)
+                return mode.zone_x.gather(1, pick), mode.zone_y.gather(1, pick)
+
+            spawn_x, spawn_y = centre((frontline.TEAM0_SPAWN, frontline.TEAM1_SPAWN))
+            rear_x, rear_y = centre((frontline.NEUTRAL, frontline.NEUTRAL))
+            target_x, target_y = centre((frontline.TEAM1_DEFENSE, frontline.TEAM0_DEFENSE))
+            new_x, new_y = rear_x + (x - spawn_x), rear_y + (y - spawn_y)
+            to_x, to_y = target_x - new_x, target_y - new_y
+            length = torch.sqrt(to_x * to_x + to_y * to_y).clamp_min(1e-6)
+            x, y = torch.where(moving, new_x, x), torch.where(moving, new_y, y)
+            heading_cos = torch.where(moving, to_x / length, heading_cos)
+            heading_sin = torch.where(moving, to_y / length, heading_sin)
+        b["front"].copy_(front)
+        ships = state_module.replace(
+            ships,
+            alive=alive,
+            respawn_wait=respawn_wait,
+            x=x,
+            y=y,
+            heading_cos=heading_cos,
+            heading_sin=heading_sin,
+        )
+        return state_module.replace(state, ships=ships)
+
+
+def install(probe: Probe, frontline_mode: bool, experiments: Experiments | None = None) -> None:
     """Wrap the rollout's `api.resolve` so every resolve feeds the probe."""
     original = rollout_module.api.resolve
 
     def resolve(*arguments, **keywords):
         state, events = original(*arguments, **keywords)
+        if experiments is not None and experiments.active:
+            state = experiments.after_resolve(state, events, probe.S)
         probe.observe(state, events, frontline_mode)
         return state, events
+
+    if experiments is not None and experiments.lock:
+        frontline.capture_step = experiments.capture_step(frontline.capture_step)
 
     rollout_module.api = types_module.SimpleNamespace(
         **{name: getattr(api, name) for name in dir(api) if not name.startswith("__")}
@@ -284,6 +413,18 @@ def main() -> None:
         "--lineup", default=None, help="type keys cycled over each team's slots (both teams)"
     )
     parser.add_argument("--label", default="")
+    parser.add_argument("--respawn-seconds", type=float, default=None)
+    parser.add_argument("--lock-seconds", type=float, default=None)
+    parser.add_argument("--pause-seconds", type=float, default=None)
+    parser.add_argument("--rear-seconds", type=float, default=None)
+    parser.add_argument("--blast-radius", type=float, default=None, help="in zone radii")
+    parser.add_argument("--fog", type=float, default=1.0, help="the fogged share")
+    parser.add_argument(
+        "--b-parameters",
+        default=None,
+        help="JSON overrides of the mode's scripted set for side B (A plays the default); "
+        "A sits on team 0 in even environments",
+    )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     arguments = parser.parse_args()
     if arguments.preset is None:
@@ -305,12 +446,24 @@ def main() -> None:
     agent = scripted.Scripted(card, rules.ships_per_team, temperature=arguments.temperature)
     environments = arguments.batch
     probe = Probe(environments, rules.ships_per_team, device)
-    install(probe, arguments.kind == "frontline")
+    experiments = Experiments(
+        arguments, environments, int(rules.pools[0].respawn_ticks), rules.tick_length, device
+    )
+    install(probe, arguments.kind == "frontline", experiments)
+    other = agent
+    if arguments.b_parameters:
+        mode_name = arguments.preset if arguments.preset in MODE_DEFAULTS.sets else None
+        sets = dict(MODE_DEFAULTS.sets)
+        for name in [mode_name] if mode_name else list(sets):
+            sets[name] = dataclasses.replace(sets[name], **json.loads(arguments.b_parameters))
+        other = scripted.Scripted(
+            card, rules.ships_per_team, ModeParameters(sets), temperature=arguments.temperature
+        )
     rollout = Rollout(
         dataclasses.replace(game),
         types,
-        (Pool("dynamics", 1.0, ("a", "b")),),
-        {"a": agent, "b": agent},
+        (Pool("dynamics", 1.0, ("a", "b"), fog_share=arguments.fog),),
+        {"a": agent, "b": other},
         "a",
         environments,
         32,
@@ -334,6 +487,9 @@ def main() -> None:
         for name, value in blank_trace(environments, length, device).items():
             trace[name].copy_(value)
         probe.clear()
+        experiments.clear()
+        seat = torch.arange(environments, device=device) % 2  # A on team 0 in even ones
+        rollout.carry["seat"].copy_(seat)
         for _ in range(math.ceil(length / rollout.length)):
             rollout.run()
         host = {name: value.cpu() for name, value in trace.items()}
@@ -355,6 +511,15 @@ def main() -> None:
             front_threshold=threshold,
             temperature=arguments.temperature,
             lineup=arguments.lineup,
+            fog=arguments.fog,
+            respawn_seconds=rollout.rules.pools[0].respawn_ticks * rules.tick_length,
+            experiments=dict(
+                lock_seconds=arguments.lock_seconds,
+                pause_seconds=arguments.pause_seconds,
+                rear_seconds=arguments.rear_seconds,
+                blast_radius=arguments.blast_radius,
+                b_parameters=arguments.b_parameters,
+            ),
             histograms=histograms,
             games=games,
         )

@@ -181,6 +181,18 @@ def frontline(entries: list[dict]) -> dict:
     if first_capture:
         print(f"first capture (s): {quantiles(first_capture)}")
     probes(entries, ("engage", "life", "objective", "zone_to_zone", "contest"))
+    if (entries[0].get("experiments") or {}).get("b_parameters"):
+        scores = []
+        for entry in entries:
+            for environment, game in enumerate(entry["games"]):
+                result = game["result"] if environment % 2 == 0 else -game["result"]
+                scores.append((result + 1) / 2)  # side A: win 1, draw 0.5
+        mean = statistics.fmean(scores)
+        error = statistics.pstdev(scores) / math.sqrt(len(scores))
+        print(
+            f"side A (default set) against B ({entries[0]['experiments']['b_parameters']}): "
+            f"{mean:.3f} +- {error:.3f}"
+        )
     print(
         f"P(next capture by the same team | a capture): {p_same:.3f} +- {p_error:.3f} "
         f"over {pairs} pairs; P(reversal) {1 - p_same:.3f}"
