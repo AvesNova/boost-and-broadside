@@ -85,17 +85,6 @@ def main() -> None:
     )
     del loop
 
-    pace_loop = Loop(args.environments, 1, 300.0)
-    pace_loop.set_types([card["energy"]], [card["turn"]])
-    self_jobs = [Job(0, lineup, champion, champion, args.self_games) for lineup in LINEUPS]
-    self_jobs += [Job(0, lineup, champion, by["off"], args.self_games // 4) for lineup in LINEUPS]
-    self_jobs += [Job(0, lineup, by["off"], by["off"], args.self_games // 4) for lineup in LINEUPS]
-    self_rows = [
-        job_summary(j, o, 300.0)
-        for j, o in zip(self_jobs, run(pace_loop, self_jobs, log), strict=True)
-    ]
-    table = markdown(self_rows)
-    log(table)
     pace_keys = (
         "kills_per_minute_mean",
         "kills_per_minute_median",
@@ -108,22 +97,43 @@ def main() -> None:
         "first_kill_median",
         "trade_fraction",
     )
-    for r in self_rows:
-        log(f"{r['lineup']} {r['a']} v {r['b']}: " + ", ".join(f"{k} {r[k]}" for k in pace_keys))
-    (out_dir / "self-table.md").write_text(table + "\n")
-    (out_dir / "result.json").write_text(
-        json.dumps(
-            dict(
-                card=card,
-                passes=passes,
-                elo=elo,
-                distinct=distinct,
-                league_rows=rows,
-                self_rows=self_rows,
-            ),
-            indent=1,
+    self_rows = []
+    for size in (5, 2, 1):
+        pace_loop = Loop(args.environments, 1, 300.0, ships_per_team=size)
+        pace_loop.set_types([card["energy"]], [card["turn"]])
+        lineups = LINEUPS if size > 1 else LINEUPS[:3]
+        games = args.self_games if size == 5 else args.self_games // 2
+        jobs = [Job(0, lineup, champion, champion, games) for lineup in lineups]
+        jobs += [Job(0, lineup, champion, by["off"], games // 4) for lineup in lineups]
+        jobs += [Job(0, lineup, by["off"], by["off"], games // 4) for lineup in lineups]
+        rows_size = [
+            dict(job_summary(j, o, 300.0), size=size)
+            for j, o in zip(jobs, run(pace_loop, jobs, log), strict=True)
+        ]
+        self_rows += rows_size
+        log(f"## {size}v{size}")
+        log(markdown(rows_size))
+        for r in rows_size:
+            log(
+                f"{size}v{size} {r['lineup']} {r['a']} v {r['b']}: "
+                + ", ".join(f"{k} {r[k]}" for k in pace_keys)
+                + " engagement "
+                + json.dumps(r["engagement"])
+            )
+        (out_dir / "result.json").write_text(
+            json.dumps(
+                dict(
+                    card=card,
+                    passes=passes,
+                    elo=elo,
+                    distinct=distinct,
+                    league_rows=rows,
+                    self_rows=self_rows,
+                ),
+                indent=1,
+            )
         )
-    )
+        del pace_loop
     log(f"{time.time() - started:.0f} s")
 
 
