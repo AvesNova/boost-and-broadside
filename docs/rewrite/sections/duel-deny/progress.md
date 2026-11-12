@@ -185,8 +185,9 @@ parameters: deny 0.8 on both types (angle 0.39 rad, on-nose 0.625 stall angles, 
 
 Strength 0.42-0.47 against r9 (target 0.47-0.53); the ungated deny was 0.19-0.33. The
 mirror duels also last 1.3-3.4x longer (out of the 300 s band) and D2's mixed duel tips to
-the Yongma (0.61). Nothing is changed in the stored doctrines: the gate's default is open
-and every stored deny weight is 0, so the play agent and r9 are unchanged.
+the Yongma (0.61). Nothing is changed in the stored doctrines: the gate's default is open,
+and the stored deny (0.02 and 0.81) stays behind its closed `in_advantage` gate, so the play
+agent and r9 fly as before.
 
 What to try next:
 1. **A best response to the joust, not an avoidance**: a lead turn (start the turn before
