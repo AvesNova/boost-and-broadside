@@ -219,3 +219,93 @@ Yongma's damage, range or shield cut back:
   levers here as on balance-sizes: the duel stays at 0.50-0.55 and the crowds come back to
   0.50-0.61. Both lengthen the Yongma mirror (435 s); the Yongma's shield x0.8 shortens it
   (297 s) and also pulls the crowds down a little (0.61 / 0.60). The confirm combines them.
+
+## 00:12-00:23 KST: confirm (`confirm/`): 1024 games, 1v1 to 10v10
+
+1024 games (10v10 512; SE about ±0.01 at 1v1, ±0.014 at 2v2 and 5v5, ±0.02 at 10v10 and
+the strength). Every arm is D2 with the cone f0 0.085, 12 degrees, p8 on both types:
+
+| D2 + cone + | JJ 1v1 mutual, life; merges m / med / first / p90 | YY 1v1 mutual, life | E v T 1v1 / 2v2 / 5v5 / 10v10 | v r9 | Life; kills/min/ship (all lineups) | Trades max | Mixed 1v1 kills m / o / f / t |
+|---|---|---|---|---|---|---|---|
+| (r9, no cone) | 0.65, 258 s; 3.4 / 3 / 0.39 / 7 | 0.38, 282 s | 0.49 / 0.49 / 0.56 / 0.47 | 0.518 / 0.496 | 103-285 s; 0.20-0.53 | 0.08 | 0.22 / 0.70 / 0.08 / 0 |
+| damage x1.5, Y bullet life x0.7 | 0.45, 289 s; 3.6 / 2 / 0.48 / 9 | 0.05, 453 s | 0.55 / 0.46 / 0.56 / 0.47 | 0.478 / 0.506 | 95-453 s; 0.13-0.57 | 0.09 | 0.09 / 0.83 / 0.08 / 0 |
+| **B: damage Y x1.25, J x1.5** | 0.49, 298 s; 3.7 / 2 / 0.47 / 9 | 0.06, 415 s | 0.52 / 0.46 / 0.59 / 0.51 | 0.483 / 0.480 | 93-415 s; 0.14-0.58 | 0.09 | 0.10 / 0.83 / 0.07 / 0 |
+| **A: damage x1.5, Y bullet life x0.8, Y shield x0.8** | **0.50, 306 s; 3.7 / 2 / 0.48 / 10** | **0.11, 327 s** | **0.51 / 0.44 / 0.53 / 0.48** | **0.512 / 0.480** | 91-327 s; 0.18-0.59 | 0.10 | 0.11 / 0.80 / 0.08 / 0 |
+| damage Y x1.25, J x1.5, Y shield x0.8 | 0.48, 295 s; 3.7 / 2 / 0.46 / 9 | 0.09, 329 s | 0.48 / 0.40 / 0.52 / 0.44 | 0.511 / 0.452 | 91-329 s; 0.18-0.59 | 0.10 | 0.11 / 0.80 / 0.08 / 0 |
+
+Fight statistics on A (`confirm/fights.md`), 1v1:
+
+| Lineup | Two-circle fights: overlapping / side by side (share; ends in a kill) | Post-merge choice (share; chooser kills / killed) |
+|---|---|---|
+| JJ, r9 on D2 | 0.25; 0.20 / 0.75; 0.19 | same sense 0.80; 0.10 / 0.10, opposite 0.20; 0.05 / 0.05, extend 0 |
+| JJ, A | 0.17; 0.14 / 0.83; 0.15 | same 0.82; 0.07 / 0.07, opposite 0.18; 0.04 / 0.04, extend 0 |
+| YY, r9 on D2 | 0.59; 0.22 / 0.41; 0.30 | same 0.84; 0.13 / 0.13, opposite 0.16; 0.07 / 0.07, extend 0 |
+| YY, A | 0.60; 0.14 / 0.40; 0.25 | same 0.86; 0.09 / 0.09, opposite 0.14; 0.02 / 0.02, extend 0 |
+| E v T, r9 on D2 | 0.67; 0.27 / 0.33; 0.28 | Yongma: same 0.86; 0.15 / 0.13, opposite 0.14; 0.01 / 0.14 |
+| E v T, A | 0.56; 0.33 / 0.44; 0.33 | Yongma: same 0.83; 0.20 / 0.13, opposite 0.17; 0.01 / 0.24 |
+
+## Final state (00:30 KST)
+
+Ship files and the play default: **unchanged** (every card at sharpness 2, today's cone).
+Two opt-in maps (`src/bnb/game/maps/`), flown by r9:
+
+- **`armour-tank`** (A; `bnb play --preset armour-tank`): D2 with a tank nose on both
+  types (f0 0.085: a dead-on hit does 8.5% instead of D2's 15-21%; half strength at 12
+  degrees instead of 21; sharpness 8, flat across the cone, full damage by about 16
+  degrees), every gun x1.5, and the Yongma at bullet life x0.8 (gun range about 390 m)
+  and shield x0.8 (57).
+- **`armour-tank-b`** (B): the same nose, Jujak's guns x1.5 and Yongma's x1.25 (shield and
+  range as D2). Duels as A, the Yongma mirror longer (415 s), 5v5 0.59.
+
+**How A plays.** A head-on pass is a bad trade: bullets that meet the nose do 8.5% of a hit,
+while anything 16 degrees or more off the nose does a full hit, 1.5 times D2's (on D2 a
+hit 20 degrees off the nose does about half). So a merge
+no longer decides the fight on its own. The ships pass, turn (four times in five the same
+sense, a two-circle fight), and the kill comes on a later pass from a slightly offset
+angle (offset head-on 0.80 of the mixed duel's kills; mutual head-on 0.11, from 0.22). The
+Jujak mirror still meets nose to nose often (0.50 of its kills, from 0.65), because in a
+side-by-side circle the only shots are at the pass. The Yongma mirror nearly stops jousting
+(0.11 from 0.38). The Yongma is a shorter-ranged, softer, harder-hitting ship than on D2:
+in a crowd its flank shots are what kill (5v5 0.53), and in a duel it still holds even
+(0.51). Duels are 2 to 4 merges long (median 2, first-pass 0.48, p90 10); the mirrors run
+306 and 327 s a life (D2 258 / 282), crowds 91-104 s.
+
+Images (`images/`): before (D2, r9) `D2-before-jj-0.png` (a seven-merge loop fight, a
+head-on kill at 156 s), `D2-before-evt-*.png`; after, A: `D2-tank-jj-*.png` and
+`D2-tank-evt-*.png`. (The cone without the crowd counters, the round-3 pick, is
+`D2-armour-*.png`: a 12-merge, 9.9-circle Jujak mirror, killed at 271 s.)
+
+**Against the goals** (A, 1024 games): mirror joust JJ 0.65 to 0.50 (not ended), YY 0.38 to
+0.11; E v T 0.51 / 0.44 / 0.53 / 0.48 (2v2 0.01 under the 0.45 line, within its SE); strength
+0.512 / 0.480 (in 0.47-0.53); life 91-327 s (the mirrors 6 and 27 s over 300); kills a
+minute a ship 0.18-0.59 (in band); trades at most 0.10 (D2 0.08).
+
+**What moved what:**
+
+1. **The damage of a dead-on hit (f0 x damage) is the joust lever, and it is also the
+   mirror pace lever.** No cone shape separates them: at 0.06-0.075 of a full hit the
+   Jujak mirror stops jousting (0.13-0.26) and lasts 570-1550 s. The narrow tank nose
+   (high p, 9-12 degrees) is worth it only as a way of keeping flank and offset damage
+   high while the dead-on hit is cut.
+2. **The mirror stalemate is the agent's, not the card's**: a symmetric side-by-side
+   two-circle fight, which r9 never breaks (zero post-merge extensions). More damage, less
+   shield and wider cones do not end it; the joust did. An agent move that breaks a
+   symmetric circle (the yo-yo sketch above) is what lets the cone go lower.
+3. **The cone plus damage leans the crowds to the Yongma**; the Yongma's range, damage and
+   shield take it back without touching the duel.
+4. **A stronger dive exchange is harmful under r9** (round 1 and 2): Yongma alone at 9.8
+   m/s^2 is 0.23 / 0.18 / 0.07 at 1v1 / 2v2 / 5v5; both types at 9.8 cut the Jujak joust
+   (0.08-0.11) but pull every size to 0.31-0.41 and stretch the mirrors to 750 s. r9 has no
+   climb-and-dive use for the store, so a faster dive only makes wider circles. It belongs
+   with the yo-yo, not before it. No card was re-solved and no ship file was written (no
+   freeze solve was needed: every candidate is card factors).
+5. C (the range card) does not take the cone: its short-gunned Yongma lives on the
+   head-on (1v1 0.38 to 0.21-0.30).
+
+Next:
+1. Build the yo-yo (or any symmetric-circle breaker) and re-run the cone at f0 0.03-0.05,
+   where the mirror joust is gone if the mirror pace can be had another way.
+2. A per-type pass-through (the shooter's bullets that cross the nose cone ricochet:
+   no damage, no store refund) would be the same lever as f0; the closure-scaled
+   head-on damage (duel-deny's next step 2) is a different one and untested.
+3. 20v20 was not run on A (every card fails it at the density rule; see balance-sizes).
