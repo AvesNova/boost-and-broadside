@@ -19,7 +19,8 @@ Each environment's first game is recorded; every `--batch` games are one JSON li
 (`bnb.runtime.rollout.Rollout`, the scripted agent on both seats) with a stage that traces
 each environment's score, front and clock every tick, on `--device` (cuda if
 available). Overrides: `--ships`, `--radius` (m), `--zone-radius` (m at map scale 1),
-`--capture-seconds`, `--front-threshold`, `--episode-seconds`, `--temperature` (the agent's, both teams).
+`--capture-seconds`, `--front-threshold`, `--episode-seconds`, `--temperature` (the
+agent's, both teams).
 """
 
 import argparse
