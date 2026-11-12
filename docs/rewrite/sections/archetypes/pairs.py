@@ -938,6 +938,47 @@ ROUNDS["round10"] = round10
 ROUNDS["confirm1"] = lambda: list(finalists().values())
 
 
+def screen2() -> list[dict]:
+    """Ideas the maneuvers doctrine may unlock (it leaves fights and boosts): shield recharge,
+    the store, and a classic energy v turn pair on the neutral hull; kit2 on both; each under
+    r9 and under the crowd extension with the lead turn. 1v1 and 5v5."""
+    ideas = {
+        "fast recharge v big shield": (
+            {
+                "shield_recharge_rate_scale": 3.0,
+                "shield_recharge_delay_scale": 0.5,
+                "max_shield": 0.85,
+            },
+            {"max_shield": 1.15, "shield_recharge_rate_scale": 0.5},
+        ),
+        "hit-and-run (recharge x4 at 0.4 delay, shield x0.8) v standard": (
+            {
+                "shield_recharge_rate_scale": 4.0,
+                "shield_recharge_delay_scale": 0.4,
+                "max_shield": 0.8,
+            },
+            {},
+        ),
+        "zoomer (dive x2, climb x1.5, store x1.3) v level (engine x1.1, dive x0.6)": (
+            {"dive_exchange_scale": 2.0, "climb_exchange_scale": 1.5, "max_energy": 1.3},
+            {"engine_power_full_store": 1.1, "dive_exchange_scale": 0.6},
+        ),
+        "energy (drag x0.85, engine x1.1, induced x1.1) v turn "
+        "(lift x1.1, induced x0.9, drag x1.1)": (
+            {"zero_lift_drag": 0.85, "engine_power_full_store": 1.1, "induced_drag_scale": 1.1},
+            {"max_lift_coefficient": 1.1, "induced_drag_scale": 0.9, "zero_lift_drag": 1.1},
+        ),
+    }
+    out = []
+    for name, (a, b) in ideas.items():
+        c = pair(name + " (M), kit2", ("M", merge(a, kit(*KIT2))), ("M", merge(b, kit(*KIT2))))
+        out += [c, flown(c, "crowd extend + lead")]
+    return out
+
+
+ROUNDS["screen2"] = screen2
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
