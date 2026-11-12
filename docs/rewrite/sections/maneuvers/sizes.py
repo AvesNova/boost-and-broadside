@@ -93,7 +93,10 @@ def main() -> None:
     parser.add_argument("--seconds", type=float, default=300.0)
     parser.add_argument("--lineups", nargs="+", default=["energy v turn"])
     parser.add_argument(
-        "--versus", default=None, help="also each candidate against this player, mixed, 5v5"
+        "--versus",
+        nargs="*",
+        default=None,
+        help="also each candidate against these players (league names or `champion.json`)",
     )
     parser.add_argument(
         "--mirror-sizes",
@@ -115,6 +118,11 @@ def main() -> None:
     started = time.time()
     candidates = json.loads((HERE / args.candidates).read_text())
     by = {p.name: p for p in league.load()}
+    if (HERE / "champion.json").exists():  # this section's champion, r9m
+        from bench.game_loop import player_from
+
+        champion = player_from(json.loads((HERE / "champion.json").read_text()))
+        by[champion.name] = champion
     players = [player_of(c, by, n) for n, c in enumerate(candidates)]
     cards, card_of = [], []
     for c in candidates:
@@ -152,12 +160,13 @@ def main() -> None:
             if lineup == "energy v turn" or args.mirror_sizes is None or size in args.mirror_sizes
         ]
         if args.versus and size in args.versus_sizes:
-            versus = by[args.versus]
-            jobs += [
-                Job(card_of[n], lineup, player, versus, args.games)
-                for n, player in enumerate(players)
-                for lineup in args.versus_lineups
-            ]
+            for name in args.versus:
+                versus = by[name]
+                jobs += [
+                    Job(card_of[n], lineup, player, versus, args.games)
+                    for n, player in enumerate(players)
+                    for lineup in args.versus_lineups
+                ]
         log(f"## {size}v{size}: {len(jobs)} jobs, B {B}, {clock(0)} KST")
         outs = run(loop, jobs, log)
         rows = []

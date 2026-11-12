@@ -181,6 +181,10 @@ ROUNDS = {
         ("crowd extend, stick 0.4", dict(EXTEND, crowd_sense_stick=0.4)),
         ("crowd extend at 0.7", dict(EXTEND, crowd_sense=0.7)),
     ],
+    "robust": [
+        ("r9", {}),
+        ("r9m", dict(DUEL, **STRAIGHT)),
+    ],
 }
 
 
