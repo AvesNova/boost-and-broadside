@@ -848,6 +848,95 @@ def round9() -> list[dict]:
 ROUNDS["round9"] = round9
 
 
+# The maneuvers branch's doctrine elements (origin/tune/maneuvers, its confirm set).
+LEAD = {
+    "lead_turn": 1.0,
+    "lead_turn_in_seconds": [0.5, 0.1],
+    "lead_turn_in_crossing": [0.5, 0.2],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+}
+CROWD_EXTEND = {
+    "sense": 0.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [4.0, 0.2],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [0.5, 0.1],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+}
+DUEL_CROWD_LEAD = {**CROWD_EXTEND, "sense": 1.0, **LEAD}
+DOCTRINES = {
+    "crowd extend + lead": merge(CROWD_EXTEND, LEAD),
+    "duel one-circle + crowd extend + lead": DUEL_CROWD_LEAD,
+}
+
+
+def flown(candidate: dict, doctrine: str) -> dict:
+    """The candidate flown by r9 with a maneuvers doctrine on both types."""
+    fields = DOCTRINES[doctrine]
+    return dict(
+        candidate,
+        name=f"{candidate['name']} | {doctrine}",
+        doctrine={"energy": fields, "turn": fields},
+    )
+
+
+def finalists() -> dict[str, dict]:
+    """The four pairs carried past round 9, flown by r9."""
+    sniper = pair(
+        "sniper v shotgun (M), sniper induced x0.95 dmg x0.92, kit2",
+        ("M", merge(SNIPER, {"induced_drag_scale": 0.95, "hit_damage": 0.92}, kit(*KIT2))),
+        ("M", merge(SHOTGUN, kit(*KIT2))),
+    )
+    a, b = big_small(1.3, 1.3, 0.8, 0.9, cone(0.10, 12, 8))
+    big = pair(
+        "big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit, small cone f0 0.1",
+        ("M", a),
+        ("M", b),
+    )
+    a, b = armed_gunner(0.9, 1.2, 100.0)
+    gunner = pair(
+        "armed gunner (arming 100, life x1.3, dmg x0.9, vision x1.2) v close fighter "
+        "(life x0.8) (M), kit",
+        ("M", a),
+        ("M", b),
+    )
+    scout = pair(
+        "scout v brawler (M), S vision x1.05, B vision x0.92 dmg x1.12, kit2",
+        ("M", merge({"vision_range_scale": 1.05}, kit(*KIT2))),
+        ("M", merge({"vision_range_scale": 0.92, "hit_damage": 1.12}, kit(*KIT2))),
+    )
+    return {"sniper": sniper, "big": big, "gunner": gunner, "scout": scout}
+
+
+def round10() -> list[dict]:
+    """The finalists under the maneuvers doctrines (self-play, and against r9), two more
+    big v small duel knobs, and D2 under r9 (the merge check)."""
+    out = [pair("D2", (None, D2_A), (None, D2_B))]
+    for c in finalists().values():
+        for d in DOCTRINES:
+            out.append(flown(c, d))
+    for extra, tag in (
+        ({"induced_drag_scale": 0.98}, "small induced x0.98"),
+        ({"vision_range_scale": 1.05}, "small vision x1.05"),
+    ):
+        a, b = big_small(1.3, 1.3, 0.8, 0.9, merge(cone(0.10, 12, 8), extra))
+        out.append(
+            pair(
+                "big (radius x1.3, dmg x1.3) v small (radius x0.8, dmg x0.9) (M), kit, "
+                f"small cone f0 0.1, {tag}",
+                ("M", a),
+                ("M", b),
+            )
+        )
+    return out
+
+
+ROUNDS["round10"] = round10
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
