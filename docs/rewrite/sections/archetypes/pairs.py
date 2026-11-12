@@ -1609,6 +1609,26 @@ def set5() -> list[dict]:
 ROUNDS["set5"] = set5
 
 
+def arming2() -> list[dict]:
+    """The arming distance on the night's final pairs (both ships), 1v1 and 5v5: does it help
+    mirrors that the kit has already de-jousted?"""
+    out = []
+    for c in (hit_and_run_final_2(), rate_speed_nose(sf=0.07)):
+        for x in (50.0, 100.0, 150.0):
+            out.append(
+                dict(
+                    c,
+                    name=f"{c['name']}, arming {x:g} both",
+                    energy=merge(c["energy"], arm(x)),
+                    turn=merge(c["turn"], arm(x)),
+                )
+            )
+    return out
+
+
+ROUNDS["arming2"] = arming2
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"

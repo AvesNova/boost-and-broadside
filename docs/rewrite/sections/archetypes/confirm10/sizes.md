@@ -1,0 +1,4 @@
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | E v T 20v20 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | crowd extend + lead | 0.510 ± 0.010 | 0.462 ± 0.014 | 0.460 ± 0.014 | 0.478 ± 0.021 | 0.441 ± 0.030 | 0.059 | 0.07 / 0.31 / 0.43 / 0.19 | 0.05 | 289 / 96 / 97 / 110 / 133 | 0.20 / 0.57 / 0.56 / 0.50 / 0.42 | 2.72 |
+| hit-and-run (f0 0.06, dmg x1.22, vision x0.96) v standard (M), kit2 | duel one-circle + crowd extend + lead | 0.506 ± 0.010 | 0.476 ± 0.014 | 0.491 ± 0.014 | 0.467 ± 0.021 | 0.469 ± 0.031 | 0.033 | 0.07 / 0.31 / 0.43 / 0.19 | 0.05 | 292 / 96 / 97 / 110 / 129 | 0.20 / 0.57 / 0.56 / 0.50 / 0.43 | 2.74 |
