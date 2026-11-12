@@ -29,3 +29,28 @@ Rules (all bench-only):
 - `prog g`: capture time x (1 + g)^depth, depth = the attacker's lead in captures.
 
 ## Results
+
+## 2026-11-12 21:54 KST: soft locks at 10v10 (s10; d = 7.98 km, 192 games; threshold 2 / clock 900, threshold 3 in brackets)
+
+| rule | P(same team next) | ends by the front | median length |
+|---|---|---|---|
+| extension 45 | 0.229 (0.232) | 0.71 (0.39) | 584 s |
+| extension 60 | 0.332 (0.320) | 0.83 (0.48) | 455 s |
+| extension 80 | 0.514 (0.519) | 0.89 (0.66) | 378 s |
+| hold 60 | 0.153 (0.146) | 0.59 (0.15) | 770 s |
+| hold 90 | 0.194 (0.192) | 0.60 (0.22) | 718 s |
+| lock 55 | 0.489 (0.450) | 0.88 (0.56) | 361 s |
+
+The seconds that reach P = 0.5 on the frozen cards:
+
+| fleet | d | flat extension | hard lock |
+|---|---|---|---|
+| 5v5 | 5.64 km | ~38 s (interpolated) | 45 s |
+| 10v10 | 7.98 km | 80 s | 55 s |
+| 20v20 | 11.28 km | 80 s | 60 s |
+
+The extension is not linear in d: 10v10 needs as much as 20v20, a step from 5v5, so a
+fleet term would be needed. The hard lock grows smoothly, roughly as the square root of
+d (about 19 s per sqrt(km): 45 / 54 / 64 s). It is the steadier rule across sizes. The
+decaying hold is dropped (it is too weak at 10v10 and 20v20). Calibrate again on the final
+card.
