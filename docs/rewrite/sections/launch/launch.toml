@@ -38,7 +38,7 @@ set = [
   # matched steps (per-update policy files are off: --update-policies False below)
   "policy_snapshot_every=5000000",
 ]
-# BC only (bnb train --bc-set). PROPOSAL, for the author: cap BC at 100M (v1's target was
+# BC only (bnb train --bc-set). BC is capped at 100M (author, 2026-11-12; v1's target was
 # BC under 100M) so that a BC stage whose plateau never fires still leaves RL 50M; without
 # a cap BC's budget is the combined one and RL would get nothing.
 bc_set = ["stop.budget_steps=100000000"]
