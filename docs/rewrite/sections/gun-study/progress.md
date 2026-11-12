@@ -15,7 +15,7 @@ the first head-on pass, so that who fires first decides every duel?
   0.70 s, hit fraction 0.38, 98% of damage from the front.
 - Next: the full table; then the archetype draft.
 
-## 2026-11-12 12:00 KST: duels done (34 matchups x 512)
+## 2026-11-12 11:55 KST: duels done (34 matchups x 512)
 
 - Worked: the hypothesis holds. In 25 of the 28 mirrors 96-99% of first kills fall in the
   first head-on merge, 20-43% of duels are trades (both die on one tick), P(win | first
@@ -28,3 +28,22 @@ the first head-on pass, so that who fires first decides every duel?
   Spitfire IX 92%, P-51D beats vizia 98%; table.md and gun_lethality.json here.
 - Next: card variants of the P-51D mirror (damage, head-on fraction and angle, shield) to
   attribute the lethality to knobs and set a target; unit gunstudy-variants.
+
+## 2026-11-12 12:30 KST: variants, target, archetype draft
+
+- Worked: the P-51D mirror's variants (variants.jsonl, variants/table.md) show a switch
+  between a head-on TTK of 1.0 and 1.5 head-on passes: damage x 1/2 (1.8 s, 1.0 pass)
+  still 97% first-merge kills; damage x 1/3 (2.7 s, 1.5 passes) 4%, P(win | first hit)
+  0.62. Damage, shield and head-on fraction act only through the head-on hits a kill
+  needs (identical duels seed for seed); the head-on angle does nothing.
+- Proposed target: head-on TTK (card, 100% hits) 1.5-2.5 head-on passes (2.7-4.5 s at
+  P-51D numbers, 0.5-0.9 of the instantaneous 180-degree turn); tail TTK at most a fifth
+  of that turn. vizia already sits inside.
+- Draft: docs/explanation/game/ship-design/archetypes.md (Jujak turn, Yongma energy, as
+  vizia handle deltas; both cards solve, variants_solved.json via variants_solve.py).
+- Didn't: the threshold is one type's (the P-51D's speeds and ranges) and the scripted
+  agent's; not checked on other pass times or with learned agents.
+- Next (the author's call): pick the lethality target; implement the doctrine pieces in
+  section 5 of the draft; run the capped loop on Jujak and Yongma.
+- Docs quick tier: tests/docs has 8 failures, all also on the base commit (other benches'
+  docstrings and other pages' references), none from this branch.

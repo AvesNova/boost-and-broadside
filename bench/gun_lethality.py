@@ -65,6 +65,7 @@ def _clock(seconds: float) -> str:
 
 
 def setup():
+    """The duel game (1v1, no fields, the 1v1 arena), the real-scale card and its rules."""
     game = dataclasses.replace(
         api.PRESETS[PRESET], ships_per_team=1, num_fields=0, arena_radius=ARENA_RADIUS
     )
@@ -113,7 +114,9 @@ def duels(rules, types, first: int, second: int, environments: int, seconds: flo
             )
             action, carry, _ = agent.step(carry, view, torch.full((2 * B,), tick == 0))
             action = Action.unpack(action.packed().reshape(B, 2, 3).to(torch.int32))
-            moved, sweep = api.move(rules, types, state, action, api.spread(rules, B, generator=draws))
+            moved, sweep = api.move(
+                rules, types, state, action, api.spread(rules, B, generator=draws)
+            )
             state, events = api.resolve(
                 rules, types, moved, sweep, action, api.uniforms(rules, B, generator=draws)
             )
@@ -125,8 +128,12 @@ def duels(rules, types, first: int, second: int, environments: int, seconds: flo
             alive = shown["ships.alive"].bool()
             dx, dy = x[:, 1] - x[:, 0], y[:, 1] - y[:, 0]
             distance = torch.sqrt(dx * dx + dy * dy)
-            off0 = torch.atan2((cos[:, 0] * dy - sin[:, 0] * dx).abs(), cos[:, 0] * dx + sin[:, 0] * dy)
-            off1 = torch.atan2((cos[:, 1] * dy - sin[:, 1] * dx).abs(), -(cos[:, 1] * dx + sin[:, 1] * dy))
+            off0 = torch.atan2(
+                (cos[:, 0] * dy - sin[:, 0] * dx).abs(), cos[:, 0] * dx + sin[:, 0] * dy
+            )
+            off1 = torch.atan2(
+                (cos[:, 1] * dy - sin[:, 1] * dx).abs(), -(cos[:, 1] * dx + sin[:, 1] * dy)
+            )
             both = alive.all(1)
             starting = live & both & (merge_start < 0) & (distance < reach)
             starting &= (off0 < MERGE_CONE) & (off1 < MERGE_CONE)
@@ -155,9 +162,7 @@ def duels(rules, types, first: int, second: int, environments: int, seconds: flo
             team_killer = torch.where(
                 died.all(1),
                 -3,  # both died on one tick
-                torch.where(
-                    died[:, 0], events.killer[:, 0].long(), events.killer[:, 1].long()
-                ),
+                torch.where(died[:, 0], events.killer[:, 0].long(), events.killer[:, 1].long()),
             )
             team_killer = torch.where(team_killer == -1, -2, team_killer)
             kill_tick = torch.where(dying, tick, kill_tick)
@@ -165,6 +170,7 @@ def duels(rules, types, first: int, second: int, environments: int, seconds: flo
             done |= dying
             if bool(done.all()):
                 break
+
     # results in the first type's terms: who is "first" in each environment
     def by_type(values):  # (B, 2) by team -> (B, 2) [first type, second type]
         return torch.where((seat == 0)[:, None], values, values.flip(1))
@@ -194,6 +200,7 @@ def duels(rules, types, first: int, second: int, environments: int, seconds: flo
 
 
 def play(args) -> None:
+    """Every matchup of this shard not yet in the record, one record line each."""
     game, types, rules = setup()
     names = api.type_names(game.ship_set)
     matchups = [(name, name) for name in names] + list(CROSS_PAIRS)
@@ -216,7 +223,12 @@ def play(args) -> None:
             raise SystemExit(f"past the {args.hours} h bound: resume from {record}")
         batch_started = time.time()
         result = duels(
-            rules, types, names.index(a), names.index(b), args.environments, args.seconds,
+            rules,
+            types,
+            names.index(a),
+            names.index(b),
+            args.environments,
+            args.seconds,
             args.seed + matchups.index((a, b)),
         )
         result["pair"] = [a, b]
@@ -226,7 +238,8 @@ def play(args) -> None:
         elapsed = time.time() - started
         left = elapsed / (number + 1) * (len(todo) - number - 1)
         print(
-            f"{datetime.datetime.now(KST):%H:%M:%S} {a} v {b}: {time.time() - batch_started:.0f} s, "
+            f"{datetime.datetime.now(KST):%H:%M:%S} {a} v {b}: "
+            f"{time.time() - batch_started:.0f} s, "
             f"{result['ticks']} ticks; {number + 1}/{len(todo)}, ETA {_clock(left)} KST",
             flush=True,
         )
@@ -250,6 +263,7 @@ VARIANTS = {
 
 
 def variant_types(types, index: int, factors: dict):
+    """The card with type `index`'s fields multiplied by `factors` (field: factor)."""
     values = {}
     for field, factor in factors.items():
         value = getattr(types, field).clone()
@@ -259,6 +273,7 @@ def variant_types(types, index: int, factors: dict):
 
 
 def variants(args) -> None:
+    """Every card variant of the P-51D mirror not yet in the record, one line each."""
     game, types, rules = setup()
     names = api.type_names(game.ship_set)
     index = names.index(VARIANT_TYPE)
@@ -272,7 +287,9 @@ def variants(args) -> None:
         batch_started = time.time()
         card = variant_types(types, index, VARIANTS[name])
         result = duels(rules, card, index, index, args.environments, args.seconds, args.seed)
-        result.update(pair=[VARIANT_TYPE, VARIANT_TYPE], variant=name, environments=args.environments)
+        result.update(
+            pair=[VARIANT_TYPE, VARIANT_TYPE], variant=name, environments=args.environments
+        )
         with record.open("a") as handle:
             handle.write(json.dumps(result) + "\n")
         left = (time.time() - started) / (number + 1) * (len(todo) - number - 1)
@@ -284,6 +301,7 @@ def variants(args) -> None:
 
 
 def card_table(types, rules):
+    """Per type, the closed forms of the module docstring (a mirror: the type against itself)."""
     c = characteristics(types, rules)
     names = api.type_names("real-scale")
     f0 = rules.head_on_fraction * types.head_on_fraction_scale
@@ -315,11 +333,13 @@ def card_table(types, rules):
 
 
 def share(count, total):
+    """A share and its binomial standard error."""
     p = count / max(total, 1)
     return p, math.sqrt(max(p * (1 - p), 1e-12) / max(total, 1))
 
 
 def summarise(line, tick_length):
+    """One record line's statistics (the module docstring's definitions)."""
     k = torch.tensor(line["kill_tick"])
     ms, me = torch.tensor(line["merge_start"]), torch.tensor(line["merge_end"])
     killer = torch.tensor(line["killer"])
@@ -334,7 +354,7 @@ def summarise(line, tick_length):
     before = fought & ((ms < 0) | (k < ms))
     decided = shot & (first >= 0)
     first_wins = decided & (first == killer)
-    ttk = ((k - victim_hit)[shot & (victim_hit >= 0)].float() * tick_length)
+    ttk = (k - victim_hit)[shot & (victim_hit >= 0)].float() * tick_length
     shots, hits = line["shots"], line["hits"]
     damage, front = line["damage"], line["front_damage"]
     return dict(
@@ -348,7 +368,9 @@ def summarise(line, tick_length):
         merges=int((ms >= 0).sum()),
         first_merge_share=share(int(in_merge.sum()), int(fought.sum())),
         before_merge_share=share(int(before.sum()), int(fought.sum())),
-        first_kill_seconds=float(k[fought].float().median() * tick_length) if fought.any() else None,
+        first_kill_seconds=float(k[fought].float().median() * tick_length)
+        if fought.any()
+        else None,
         first_hitter_wins=share(int(first_wins.sum()), int(decided.sum())),
         first_type_wins=share(int((killer[shot] == 0).sum()), int(shot.sum())),
         ttk_median=float(ttk.median()) if len(ttk) else None,
@@ -359,6 +381,7 @@ def summarise(line, tick_length):
 
 
 def report(args) -> None:
+    """The table from the records, printed, and gun_lethality.json in --out."""
     game, types, rules = setup()
     card = card_table(types, rules)
     lines = [
@@ -402,7 +425,8 @@ def report(args) -> None:
     )
     print(
         "| type | TTK head-on (s) | TTK tail (s) | 180° sustained (s) | 180° instant (s) | "
-        "TTK head-on / 180° instant | pass in range (s) | first-merge kills | trades | kills before a merge "
+        "TTK head-on / 180° instant | pass in range (s) | first-merge kills | trades | "
+        "kills before a merge "
         "| P(win \\| first hit) | measured TTK median (s) | hit fraction | front damage share |"
     )
     print("|---" * 14 + "|")
@@ -429,14 +453,20 @@ def report(args) -> None:
         )
     for row in rows:
         if row["pair"][0] != row["pair"][1]:
-            print(f"{row['pair']}: first type wins {row['first_type_wins'][0]:.2f} ± "
-                  f"{row['first_type_wins'][1]:.2f}; timeouts {row['timeouts']}, boundary {row['boundary']}")
+            print(
+                f"{row['pair']}: first type wins {row['first_type_wins'][0]:.2f} ± "
+                f"{row['first_type_wins'][1]:.2f}; timeouts {row['timeouts']}, "
+                f"boundary {row['boundary']}"
+            )
     timeouts = sum(row["timeouts"] for row in rows)
     boundary = sum(row["boundary"] for row in rows)
-    print(f"timeouts {timeouts}, boundary deaths {boundary} of {sum(r['environments'] for r in rows)}")
+    print(
+        f"timeouts {timeouts}, boundary deaths {boundary} of {sum(r['environments'] for r in rows)}"
+    )
 
 
 def main() -> None:
+    """The command line."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
     one = sub.add_parser("play")

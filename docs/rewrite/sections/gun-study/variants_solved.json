@@ -1,0 +1,95 @@
+{
+ "vizia": {
+  "delta": {},
+  "flies": {
+   "converged": true,
+   "worst_error": 8.273170915411675e-05,
+   "cruise": 162.67550659179688,
+   "top": 389.2728271484375,
+   "corner": 134.10000610351562,
+   "turn_deg": [
+    10.1,
+    12.9,
+    15.7
+   ],
+   "instant_deg": 37.72292305011615,
+   "gun_range": 586.8834838867188,
+   "climb_power": 1033.3333740234375,
+   "store": 124390.796875,
+   "failures": [],
+   "turn_180_sustained": 11.464968152866243,
+   "turn_180_instant": 4.771634471720658,
+   "turn_circle": 1187.3401220207088
+  }
+ },
+ "Yongma": {
+  "delta": {
+   "stall_speed": 50.0,
+   "cruise_speed": 182.0,
+   "sustained_turn_rate": 0.23561944901923448,
+   "ceiling": 149268.96,
+   "spawn_energy": 59707.584,
+   "dive_acceleration": 13.082371750685024,
+   "zero_lift_drag": 4.470335820895522e-05,
+   "half_lift_drag": 0.2,
+   "max_shield": 120.0,
+   "hit_radius": 11.0
+  },
+  "flies": {
+   "converged": true,
+   "worst_error": 1.0513603818656232e-06,
+   "cruise": 181.97756958007812,
+   "top": 443.9686584472656,
+   "corner": 150.0,
+   "turn_deg": [
+    9.1,
+    11.0,
+    13.5
+   ],
+   "instant_deg": 33.724294668464324,
+   "gun_range": 586.8849487304688,
+   "climb_power": 1238.8865966796875,
+   "store": 149268.953125,
+   "failures": [],
+   "turn_180_sustained": 13.333333333333334,
+   "turn_180_instant": 5.337398506611866,
+   "turn_circle": 1544.673585627667
+  }
+ },
+ "Jujak": {
+  "delta": {
+   "stall_speed": 40.0,
+   "cruise_speed": 150.0,
+   "sustained_turn_rate": 0.32288591161895097,
+   "ceiling": 111951.72,
+   "spawn_energy": 44780.68800000001,
+   "dive_acceleration": 9.266679990068559,
+   "low_speed_acceleration": 3.000772110073712,
+   "nose_reversal_time": 0.7,
+   "zero_lift_drag": 5.463743781094527e-05,
+   "half_lift_drag": 0.3,
+   "max_shield": 90.0,
+   "hit_radius": 9.0
+  },
+  "flies": {
+   "converged": true,
+   "worst_error": 2.1632515580912886e-05,
+   "cruise": 149.97821044921875,
+   "top": 344.1139221191406,
+   "corner": 120.0,
+   "turn_deg": [
+    11.2,
+    15.3,
+    18.5
+   ],
+   "instant_deg": 42.155370896901346,
+   "gun_range": 586.88525390625,
+   "climb_power": 930.99658203125,
+   "store": 111951.71875,
+   "failures": [],
+   "turn_180_sustained": 9.72972972972973,
+   "turn_180_instant": 4.2699185458532165,
+   "turn_circle": 928.9857813691996
+  }
+ }
+}
