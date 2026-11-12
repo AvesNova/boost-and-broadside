@@ -147,7 +147,9 @@ class LearnerConfig:
     entropy_stick: float = -0.0081
     entropy_shoot: float = -0.0081
     value: float = 0.007
-    next_state: float = 0.0041
+    # the delta physics head's (the champion's; the absolute head took 0.0041 for the same
+    # trunk share: docs/explanation/learner.md, round2-log.md 03:50-04:13)
+    next_state: float = 0.0033
     # the error head's (`yemong.delta_split`); its term and the physics head's share one
     # denominator (every next-state row), so equal coefficients weigh a row equally
     correction: float = 0.0033

@@ -7,7 +7,7 @@ GPU (supervisor programs), so the box resumes on its own after a restart.
 
 | file | what |
 |---|---|
-| `launch.toml` | the final config every arm shares, the lineup (a placeholder until the game lands), the box's paths, the probe's and the tournament's settings |
+| `launch.toml` | the final config every arm shares, the lineup (two Yongma, three Jujak), the box's paths, the probe's and the tournament's settings |
 | `arms.toml` | the arms (a proposal): the mainline, Stage A, the ablations |
 | `bootstrap.sh REF [CACHE]` | the box: clone, `uv sync --frozen`, caches on `/workspace`, supervisor (heartbeat, a runner per GPU) |
 | `env.sh` | every job's environment: the cache paths, compile threads and CPU threads per job |

@@ -179,6 +179,13 @@ class TrainConfig:
         position_period=COLOUR_PERIOD,
         arena_code=True,
         geometry_head=True,
+        # the champion's (2026-11-09-*-deadreckon-split-hiddenphysics): the delta next state
+        # on the extrapolation baseline, split into the physics and error heads, the physics
+        # head's hidden rows decayed with 0.5 s
+        next_state="delta",
+        delta_baseline="extrapolation",
+        delta_split=True,
+        physics_hidden_decay=0.5,
     )
     relational: RelationalConfig = RelationalConfig()
     nearest: NearestConfig = NearestConfig()

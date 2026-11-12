@@ -459,6 +459,10 @@ ARM_SETS = (
     "yemong.next_state=delta",
     "yemong.delta_baseline=persistence",
     "yemong.spread_inputs=ellipse",
+    # a new run's defaults split the head and train its hidden rows (the champion's): arm 2
+    # has neither
+    "yemong.delta_split=false",
+    "yemong.physics_hidden_decay=null",
 )
 
 
@@ -473,6 +477,7 @@ def test_the_arms_set_line_builds_the_arm():
     build = model_build(config)
     assert build.config.next_state == "delta" and build.config.spread_inputs == "ellipse"
     assert build.config.acceleration_inputs and build.config.spread_fit == "coarsest"
+    assert not build.config.delta_split and build.config.physics_hidden_decay is None
     assert build.dynamics is None
 
 

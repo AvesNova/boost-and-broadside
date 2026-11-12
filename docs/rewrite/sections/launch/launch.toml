@@ -8,7 +8,8 @@
 # 236 196 m, the arena code, the categorical geometry head), two attention heads (the
 # default; the one-head A/B of 2026-11-12 lost), and the champion's model settings
 # (2026-11-09-*-deadreckon-split-hiddenphysics: delta next state on the extrapolation
-# baseline, split, hidden physics decay 0.5), each a BC -> RL chain.
+# baseline, split, hidden physics decay 0.5, learner.next_state 0.0033: the code's
+# defaults since 2026-11-12), each a BC -> RL chain.
 
 # The ship lineup, one type name per slot of a team (both teams fly it, in every mode),
 # names as `bnb.game.api.type_names("real-scale")` gives them: two Yongma (the energy
@@ -26,13 +27,8 @@ chain_budget_steps = 150_000_000
 
 # Shared by both stages (bnb train --set). Every line is checked by `launch.py check`.
 set = [
-  # the champion's model (gpubox2 pipeline.sh BC_ARGS; the rest of its settings are the
-  # code's defaults now)
-  "yemong.next_state=delta",
-  "yemong.delta_baseline=extrapolation",
-  "yemong.delta_split=true",
-  "yemong.physics_hidden_decay=0.5",
-  "learner.next_state=0.0033",
+  # (the champion's model settings are the code's defaults: TrainConfig.yemong and
+  # LearnerConfig.next_state, so a run traces to one committed set of settings)
   # the segments on the device, not pinned host memory (the champion's; 32 GB is room)
   "host_store=false",
   # policy files (live and both averages) every 5M environment steps, for the tournament's

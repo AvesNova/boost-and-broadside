@@ -137,9 +137,18 @@ The next-state head predicts the same vector, so a forecast carries its own unce
 ### The next-state head: absolute or delta
 
 `YemongConfig.next_state` chooses what the next-state head predicts. Its inputs, the
-state code above, are the same either way.
+state code above, are the same either way. A new run (`TrainConfig.yemong`, since
+2026-11-12) builds the champion's head, the
+2026-11-09-*-deadreckon-split-hiddenphysics run's: `"delta"` on the extrapolation baseline,
+split (`delta_split`), the physics head's hidden rows decayed with 0.5 s
+(`physics_hidden_decay`), its coefficient `LearnerConfig.next_state` 0.0033. `YemongConfig()`'s
+own defaults are the record defaults (`"absolute"`, persistence, no split), which a build
+record written before a field existed reads. The arms' `--set` lines below are each arm's
+change from the record defaults; on a new run's defaults an arm without the split also
+needs `--set yemong.delta_split=false --set yemong.physics_hidden_decay=null`, and one
+without the hidden rows' physics `--set yemong.physics_hidden_decay=null`.
 
-- **`"absolute"`** (the default): the state code of the state at `t + 1`. The head's logits
+- **`"absolute"`** (the record default): the state code of the state at `t + 1`. The head's logits
   add to the persistence baseline `log(code_t + 1e-3)` (`bnb.models.yemong.heads.next_state_logits`),
   so it starts as "nothing changes", and the forecast is the decoded code.
 - **`"delta"`**: each quantity's one-tick change from its baseline
@@ -462,7 +471,8 @@ read this covariance. A row seen at `t` takes the
 physics forecast, as without the split. Select the arm with `--set yemong.delta_split=true`
 on arm 2's line.
 
-`YemongConfig.physics_hidden_decay` (tau in seconds, with `delta_split`; off by default)
+`YemongConfig.physics_hidden_decay` (tau in seconds, with `delta_split`; off in the record
+defaults, 0.5 in a new run's)
 also trains the physics head on the hidden enemies, each row weighted `exp(-age / tau)` by
 the time since its ship was last seen (the replay's age at `t`; a row of the segment's
 first tick weighs 0, its truth lacking the tick before). Its target is truth to truth: the
