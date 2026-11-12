@@ -57,6 +57,7 @@ class SymlogTarget:
 
     @property
     def width(self) -> int:
+        """The target's code width: its bins and the padding bins on both sides."""
         return self.bins + 2 * codes.PADDING_BINS
 
 

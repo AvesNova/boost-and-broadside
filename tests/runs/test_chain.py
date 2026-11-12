@@ -169,6 +169,21 @@ def test_a_chain_resumes_in_bc(monkeypatch, tmp_path):
     assert [row["counters/updates"] for row in rows(bc_run)] == [1, 2]
 
 
+def test_a_bc_cap_holds_over_a_resume_in_bc(monkeypatch, tmp_path):
+    """A BC stage capped below the combined budget (`--bc-set stop.budget_steps`), stopped
+    in its first update, resumes to its own cap, not the combined budget, and hands over."""
+    plateau_at(monkeypatch, 10**12)
+    stop_at_update(monkeypatch, 1)
+    chain(monkeypatch, tmp_path, 4 * STEPS, "--bc-set", f"stop.budget_steps={2 * STEPS}")
+    assert Run.open(tmp_path, "c-bc").record["status"] == "stopped"
+    monkeypatch.undo()
+    plateau_at(monkeypatch, 10**12)
+    chained = resume(monkeypatch, tmp_path, "--device", "cpu")
+    assert chained.record["handover"]["stopped_by"] == "budget"
+    assert chained.record["handover"]["step"] == 2 * STEPS
+    assert [row["counters/updates"] for row in rows(Run.open(tmp_path, "c-rl"))] == [1, 2]
+
+
 def test_a_chain_resumes_in_bc_from_its_start(monkeypatch, tmp_path):
     """A BC stage that failed in its first update, before any checkpoint of its cadence,
     resumes from its step-0 checkpoint."""

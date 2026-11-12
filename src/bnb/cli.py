@@ -237,6 +237,10 @@ class Ratings:
     trusts its paths: a name is resolved as it would be now, and is left out (and
     reported) when it no longer resolves or its policy's checkpoint.json was written after
     the record's first batch ended (a rewind writes a new policy at the old path).
+
+    lineup: each slot's ship type by name, both teams, for every player (the scripted agent
+    and its ladder too) in every preset (`TrainConfig.lineup`; empty: the game's own). A
+    record keeps no lineup: reuse only records played with the same one.
     """
 
     run: tyro.conf.Positional[str]
@@ -253,6 +257,7 @@ class Ratings:
     scripted_plays: tuple[str, ...] | None = None
     out: str | None = None
     reuse: tuple[str, ...] = ()
+    lineup: tuple[str, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -415,7 +420,8 @@ class FiguresWatch:
 
 @dataclasses.dataclass(frozen=True)
 class QueueOptions:
-    """The GPU job queue (`bnb queue ACTION`, `bnb.runs.queue`): one job at a time, in order.
+    """The GPU job queue (`bnb queue ACTION`, `bnb.runs.queue`): one job at a time per GPU,
+    by priority, then in order.
 
     `bnb queue add [--after JOB] [--background] KIND ARGUMENTS...` queues a job: KIND train
     (ARGUMENTS are `bnb train`'s: a new run; give it --name to rate or resume it by name),
@@ -428,6 +434,10 @@ class QueueOptions:
     log's last --lines lines. `bnb queue run` is the runner, for a systemd user unit:
     `systemd-run --user --unit=bnb-queue -p KillMode=mixed -p TimeoutStopSec=1h
     --working-directory=$PWD .venv/bin/bnb queue run` (docs/guides/queueing-jobs.md).
+    On a machine of several GPUs, one runner per GPU: `bnb queue run --slot K [--gpu G]`
+    (the slot's jobs see only GPU G, by default K). `add --priority P`: ready jobs start
+    highest first (default 0); `add --warm KEY`: wait while a job of the same key compiles
+    (has logged no update yet).
 
     action: add, list, remove, log or run; job: the job's number (remove, log); kind and
     arguments: the job (add); after and background: as above; queue_file: the queue
@@ -435,7 +445,8 @@ class QueueOptions:
     the command that runs bnb (default this environment's bnb); lines: the log lines
     printed; lock: the bench lock's wrapper the runner runs each job under ("none": no
     lock); poll: the runner's seconds between looks at the queue; until_idle: the runner
-    exits once nothing is running or ready.
+    exits once nothing is running or ready; slot and gpu: the runner's slot and its GPU;
+    priority and warm: the job's (add).
     """
 
     action: str
@@ -450,6 +461,10 @@ class QueueOptions:
     lock: str | None = None
     poll: float = 2.0
     until_idle: bool = False
+    slot: int | None = None
+    gpu: str | None = None
+    priority: float = 0.0
+    warm: str | None = None
 
 
 # `bnb queue`'s own options, read anywhere on its command line (the rest is the job's), with
@@ -463,6 +478,10 @@ QUEUE_FLAGS = {
     "--lock": True,
     "--poll": True,
     "--until-idle": False,
+    "--slot": True,
+    "--gpu": True,
+    "--priority": True,
+    "--warm": True,
 }
 
 COMMANDS = (
@@ -972,7 +991,9 @@ def chain(options: Train, given_options: set[str], stop) -> None:
                 bc_options = stage_options(base, "bc", name=stage, bc_budget_steps=budget)
                 given_stage, entry = set(), chained.stage_record("bc", 0)
             else:
-                bc_options = Train(resume=stage, bc_budget_steps=budget, **passed)
+                # the stage's own budget: the combined one, or a --bc-set stop.budget_steps
+                own = _requested(stage_options(original, "bc", bc_budget_steps=budget))
+                bc_options = Train(resume=stage, bc_budget_steps=own.stop.budget_steps, **passed)
                 given_stage, entry = {"resume", "bc_budget_steps"}, None
             bc_run = _train(bc_options, given_stage, stop, entry)
         if stop.by is not None or bc_run.record["status"] != "finished":
@@ -1219,6 +1240,25 @@ def _check_presets(presets: tuple[str, ...]) -> None:
         raise SystemExit(f"unknown presets {unknown}; choose from {sorted(PRESETS)}")
 
 
+def with_lineup(field: list, lineup: tuple[str, ...], presets: tuple[str, ...]) -> list:
+    """The field with every player that flies the game's lineup flying `lineup` (names of the
+    presets' ship set, which must be one set at one team size)."""
+    from bnb.game.api import PRESETS
+    from bnb.runtime.train import lineup_indices
+
+    games = {(PRESETS[preset].ship_set, PRESETS[preset].ships_per_team) for preset in presets}
+    if len(games) != 1:
+        raise SystemExit(f"--lineup: the presets {list(presets)} play other ship sets or sizes")
+    try:
+        indices = lineup_indices(tuple(lineup), PRESETS[presets[0]])
+    except ValueError as error:
+        raise SystemExit(f"--lineup: {error}") from error
+    return [
+        dataclasses.replace(one, ship_type=indices) if one.ship_type is None else one
+        for one in field
+    ]
+
+
 def ratings(options: Ratings) -> None:
     """`bnb ratings`: the offline tournament and its leaderboard."""
     import torch
@@ -1251,6 +1291,8 @@ def ratings(options: Ratings) -> None:
     field += [
         p for p in _players(options.with_, runs_directory) if p.name not in {f.name for f in field}
     ]
+    if options.lineup:
+        field = with_lineup(field, options.lineup, options.presets)
     try:
         allowed = tournament.allowed_pairs([p.name for p in field], options.scripted_plays)
         config = tournament.TournamentConfig(
@@ -1540,7 +1582,13 @@ def queue_options(arguments: list[str]) -> QueueOptions:
             positional.append(rest[index])
         index += 1
     try:
-        for name, kind in (("after", int), ("lines", int), ("poll", float)):
+        for name, kind in (
+            ("after", int),
+            ("lines", int),
+            ("poll", float),
+            ("slot", int),
+            ("priority", float),
+        ):
             if name in values:
                 values[name] = kind(values[name])
         if action == "add":
@@ -1600,6 +1648,8 @@ def queue(options: QueueOptions) -> None:
                 runs_directory=runs_directory_of(given).resolve(),
                 after=options.after,
                 background=options.background,
+                priority=options.priority,
+                warm=options.warm,
             )
             print(f"job {job['id']}: {job['kind']} {' '.join(job['arguments'])}, queued")
         elif options.action == "list":
@@ -1618,8 +1668,11 @@ def queue(options: QueueOptions) -> None:
                 lock = None
             elif not lock.exists():
                 raise SystemExit(f"no bench lock wrapper at {lock} (--lock PATH, or --lock none)")
-            print(f"[queue] runner for {store.path}, lock {lock}", flush=True)
-            Runner(store, lock, poll=options.poll).run(until_idle=options.until_idle)
+            slot = "" if options.slot is None else f", slot {options.slot}"
+            print(f"[queue] runner for {store.path}, lock {lock}{slot}", flush=True)
+            Runner(store, lock, poll=options.poll, slot=options.slot, gpu=options.gpu).run(
+                until_idle=options.until_idle
+            )
         else:
             raise SystemExit(f"bnb queue {{add,list,remove,log,run}}, not {options.action!r}")
     except QueueError as error:

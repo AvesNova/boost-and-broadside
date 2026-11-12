@@ -162,7 +162,7 @@ Each term matches an independent computation on a stored segment
 (`tests/sections/test_learner.py::test_each_loss_term_matches_an_independent_computation`,
 and `tests/sections/test_learner_geometry.py` for the geometry head).
 
-The geometry term divides by its own count, the pairs (`COUNTS` "pairs"): a view with
+The geometry term divides by its own count, the pairs (`bnb.learn.ppo.COUNTS` "pairs"): a view with
 more ships has more pairs, as it has more next-state rows. A model without the head gives
 no such output, and the term stays 0 (and out of the gradient decomposition).
 `geometry/loss` is the term; `geometry/cross_entropy/{range, antenna_train_angle, aspect,
@@ -314,10 +314,8 @@ size of the segment):
 - **Enemy action:** each enemy row's joint action at `t`.
 - **Density:** the hex counts of the living ships of each side at `t`, in world coordinates
   scaled by each environment's arena radius.
-- **Rotary read-out:** the true (cos, sin) of every row's rotary angles at `t`
-  (`bnb.learn.labels.rotary_targets`): its true position at `t`, shifted by the view's
-  offset, and its true heading. These are the angles the row's tables would have if the ship
-  were visible, which is what the read-out stands in for. The term masks dead rows.
+- **Geometry:** the pairs the view sees at `t` (`bnb.learn.labels.geometry_pairs`), each
+  pair's range, angles and closure from their true states.
 
 ## Compilation and precision
 

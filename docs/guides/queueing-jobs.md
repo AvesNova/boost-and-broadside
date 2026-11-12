@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/runs/queue.py, src/bnb/runs/session.py, src/bnb/cli.py]
-reviewed: 2026-11-07 21:30
+reviewed: 2026-11-12 14:40
 ---
 
 # Queueing GPU jobs
@@ -72,6 +72,24 @@ writes a checkpoint and exits (`bnb.runs.session.StopRequest`). The ready job ru
 the background job, queued again in its place as a resume of its run (with its device and
 W&B options), continues to its own budget. A job that is waiting for its dependency does
 not preempt.
+
+## Several GPUs
+
+On a machine of several GPUs, run one runner per GPU on the one queue file, each a slot:
+`bnb queue run --slot K` (its jobs see only GPU K, through `CUDA_VISIBLE_DEVICES`; `--gpu
+G` picks another). Each slot runs one job at a time, and every runner takes the next ready
+job as it frees up. A slot's runner that starts again (a reboot) settles only the jobs its
+own slot was running. A second runner of the same slot is refused.
+
+- `add --priority P`: the ready jobs start highest priority first, then in the queue's
+  order (default 0). The launch scripts give the longest jobs the highest.
+- `add --warm KEY`: the job waits while another job of the same key is running and has
+  not logged its first update, so the first one's compiles fill the shared compile cache
+  (`TORCHINDUCTOR_CACHE_DIR`) and the rest read them. Jobs of the same model share a key.
+
+`list` shows each job's slot and priority, and `warming` for a job held by its key.
+The Stage A launch on a rented 8-GPU machine:
+[docs/rewrite/sections/launch/runbook.md](../rewrite/sections/launch/runbook.md).
 
 ## Watch the queue
 

@@ -26,6 +26,7 @@ from bnb.game.handling.characteristics import characteristics
 
 
 def measure(preset: str, environments: int, ticks: int, hold: int, window: int, seed: int) -> dict:
+    """The preset's boundary deaths after a spawn (the module docstring)."""
     torch.manual_seed(seed)  # the agent's draws
     config = api.PRESETS[preset]
     types = api.ship_types(ship_set=config.ship_set)

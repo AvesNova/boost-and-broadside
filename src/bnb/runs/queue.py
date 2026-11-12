@@ -1,4 +1,4 @@
-"""The GPU job queue (`bnb queue`): a durable job list and one runner, so the GPU runs one
+"""The GPU job queue (`bnb queue`): a durable job list and its runners, so each GPU runs one
 job at a time, in order.
 
 A job is a `bnb train` (a new run), a resume of a run, or a `bnb ratings`, with an optional
@@ -16,6 +16,16 @@ start and, for training, re-queued as a resume; one whose process is still alive
 for first. `eta` reads a job's progress from its own log lines. A chain
 (`bnb train --objective chain`, `bnb.runs.chain`) is one job: its run is the stage it is
 in, and it goes back into the queue as a resume of the chain.
+
+Several GPUs (one machine): one runner per GPU, each a slot (`Runner(slot=k)`, `bnb queue
+run --slot K`, the GPU `--gpu` or K), all on the one queue file. A slot's runner runs its
+jobs with only its GPU visible (CUDA_VISIBLE_DEVICES), records its slot on each, and at its
+start recovers only its own slot's jobs, so a reboot's runners each settle what they ran.
+The ready jobs start by priority (higher first; `--priority`, by default 0), then in order:
+the launch gives the longest jobs the highest. A job with a warm key (`--warm KEY`, such as
+its model's settings) waits while another job of the same key runs and has not yet logged
+its first update, so the first one's compiles fill the shared compile cache and the rest
+read them; the queue records a job warm once its log shows an update (`warmed`).
 """
 
 import contextlib
@@ -54,6 +64,8 @@ RATINGS_LINE = re.compile(r"^(\S+): batch \d+, .*; done about (\d\d:\d\d)")
 CARRIED = {"--device": True, "--wandb": False}
 # the progress lines an ETA averages over, after the segment's first (it compiles)
 ETA_LINES = 5
+# a runner's lock beside the queue file: `<queue>.runner` (one runner), `.runner.<slot>`
+RUNNER_LOCK = ".runner"
 
 
 def now() -> str:
@@ -129,13 +141,16 @@ class Queue:
         runs_directory: pathlib.Path | None = None,
         after: int | None = None,
         background: bool = False,
+        priority: float = 0.0,
+        warm: str | None = None,
     ) -> dict:
         """Append a queued job and return it. kind: "train" (`arguments` are `bnb train`'s),
         "resume" (a run's name, then `bnb train --resume`'s other options, such as a new
         budget) or "ratings" (`bnb ratings`'); program: the command that runs `bnb`; cwd: the
         job's working directory (its commit); runs_directory: the runs directory it uses
         (added to the arguments, so the runner's own directory does not matter); after: a
-        job it waits for; background: preemptible (the champion's continuation)."""
+        job it waits for; background: preemptible (the champion's continuation); priority:
+        the ready jobs start highest first; warm: the job's warm key (the module docstring)."""
         if kind not in KINDS:
             raise QueueError(f"kind {kind!r} is not one of {KINDS}")
         arguments = list(arguments)
@@ -167,6 +182,10 @@ class Queue:
                 stop=None,
                 note=None,
                 attempts=[],
+                priority=float(priority),
+                warm=warm,
+                warmed=False,
+                slot=None,
             )
             queue["next_id"] += 1
             queue["jobs"].append(job)
@@ -210,8 +229,15 @@ def command(job: dict) -> list[str]:
 
 
 def ready(queue: dict, job: dict) -> bool:
-    """Whether a queued job may start: its dependency, if any, has finished."""
+    """Whether a queued job may start: its dependency, if any, has finished, and no job of
+    its warm key is running cold (started, no update logged yet)."""
     if job["state"] != "queued":
+        return False
+    key = job.get("warm")
+    if key is not None and any(
+        other["state"] == "running" and other.get("warm") == key and not other.get("warmed")
+        for other in queue["jobs"]
+    ):
         return False
     if job["after"] is None:
         return True
@@ -220,11 +246,29 @@ def ready(queue: dict, job: dict) -> bool:
 
 
 def next_job(queue: dict) -> dict | None:
-    """The job the runner starts next: the first ready job in order that is not in the
-    background, else the first ready background job."""
+    """The job a runner starts next: of the ready jobs not in the background, the highest
+    priority, first in order among equals; else the same of the ready background jobs."""
     waiting = [job for job in queue["jobs"] if ready(queue, job)]
     foreground = [job for job in waiting if not job["background"]]
-    return (foreground or waiting or [None])[0]
+    chosen = foreground or waiting
+    if not chosen:
+        return None
+    top = max(job.get("priority", 0.0) for job in chosen)
+    return next(job for job in chosen if job.get("priority", 0.0) == top)
+
+
+def warm_line(log: pathlib.Path) -> bool:
+    """Whether a job's log shows an update (`bnb train`'s PPO or BC progress line) after the
+    runner's last header: its first compiles are done."""
+    if not log.exists():
+        return False
+    lines = log.read_text(errors="replace").splitlines()
+    for line in reversed(lines):
+        if line.startswith("[queue] "):
+            return False
+        if PPO_LINE.match(line) or BC_LINE.match(line):
+            return True
+    return False
 
 
 def run_of(job: dict, log: pathlib.Path) -> Run | None:
@@ -438,7 +482,9 @@ class Runner:
     no wrapper) with `python`, logs it, and records every state change in the queue. It
     preempts a background job for a ready one, stops a running job a removal marked, and on
     SIGTERM or SIGINT stops the running job gracefully, queues it again and exits. poll:
-    seconds between looks at the queue and the job."""
+    seconds between looks at the queue and the job. slot: this runner's slot among several
+    on the queue (None: the only runner); gpu: the device its jobs see (CUDA_VISIBLE_DEVICES;
+    by default the slot's number, none set without a slot)."""
 
     def __init__(
         self,
@@ -446,8 +492,12 @@ class Runner:
         lock: pathlib.Path | None = LOCK_WRAPPER,
         python: str = sys.executable,
         poll: float = 2.0,
+        slot: int | None = None,
+        gpu: str | None = None,
     ) -> None:
         self.queue, self.lock, self.python, self.poll = queue, lock, python, poll
+        self.slot = slot
+        self.gpu = gpu if gpu is not None or slot is None else str(slot)
         self.process: subprocess.Popen | None = None
         self.job: int | None = None  # the running job's id
         self.pid: int | None = None  # its process (the wrapper's, with a lock)
@@ -461,11 +511,13 @@ class Runner:
         """Run jobs until SIGTERM or SIGINT (or, with `until_idle`, until nothing is running
         or ready). Only one runner per queue file: a second exits with the reason."""
         self.queue.path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.queue.path.with_name(self.queue.path.name + ".runner"), "a+") as held:
+        suffix = RUNNER_LOCK + ("" if self.slot is None else f".{self.slot}")
+        with open(self.queue.path.with_name(self.queue.path.name + suffix), "a+") as held:
             try:
                 fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
-                raise QueueError(f"another runner holds {self.queue.path}") from None
+                which = "" if self.slot is None else f" slot {self.slot} of"
+                raise QueueError(f"another runner holds{which} {self.queue.path}") from None
             previous = {
                 number: signal.signal(number, self._stop)
                 for number in (signal.SIGTERM, signal.SIGINT)
@@ -506,8 +558,14 @@ class Runner:
         if self.lock is not None:
             line = [self.python, str(self.lock), *line]
         attempt = len(job["attempts"]) + 1
+        environment = dict(os.environ, PYTHONUNBUFFERED="1")
+        if self.gpu is not None:
+            environment["CUDA_VISIBLE_DEVICES"] = self.gpu
+        where = "" if self.slot is None else f" on slot {self.slot} (GPU {self.gpu})"
         with open(log, "a") as out:
-            out.write(f"[queue] job {job['id']} attempt {attempt} at {now()}: {' '.join(line)}\n")
+            out.write(
+                f"[queue] job {job['id']} attempt {attempt} at {now()}{where}: {' '.join(line)}\n"
+            )
             out.flush()
             self.process = subprocess.Popen(
                 line,
@@ -516,11 +574,22 @@ class Runner:
                 stdout=out,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,  # a terminal's Ctrl-C reaches the runner only
-                env=dict(os.environ, PYTHONUNBUFFERED="1"),
+                env=environment,
             )
         self.job, self.pid, self.asked, self.signalled = job["id"], self.process.pid, None, []
-        job.update(state="running", started=now(), ended=None, pid=self.pid, returncode=None)
-        job["attempts"].append(dict(started=job["started"], ended=None, state="running"))
+        job.update(
+            state="running",
+            started=now(),
+            ended=None,
+            pid=self.pid,
+            returncode=None,
+            slot=self.slot,
+            gpu=self.gpu,
+            warmed=False,
+        )
+        job["attempts"].append(
+            dict(started=job["started"], ended=None, state="running", slot=self.slot)
+        )
         print(f"[queue] job {job['id']} started ({job['kind']}), log {log}", flush=True)
 
     def _watch(self) -> None:
@@ -536,6 +605,8 @@ class Runner:
                 print(f"[queue] job {job['id']} {job['state']} ({returncode})", flush=True)
                 self.job = self.process = self.pid = None
                 return
+            if not job.get("warmed") and warm_line(self.queue.log_path(job)):
+                job["warmed"] = True
             if self.asked:
                 return
             ready_job = next_job(queue)
@@ -575,12 +646,14 @@ class Runner:
         print(f"[queue] job {job['id']}: {why}, asked to stop", flush=True)
 
     def _recover(self) -> None:
-        """At the start: a job marked running belongs to a runner that died. Its process, if
-        still alive, is adopted (waited for, then settled); else it is settled as
-        interrupted."""
+        """At the start: a job marked running in this runner's slot (any job, for the only
+        runner) belongs to a runner that died. Its process, if still alive, is adopted
+        (waited for, then settled); else it is settled as interrupted."""
         with self.queue.edit() as queue:
             for job in queue["jobs"]:
                 if job["state"] != "running":
+                    continue
+                if self.slot is not None and job.get("slot") != self.slot:
                     continue
                 if job["pid"] is not None and alive(job["pid"]) and self.job is None:
                     self.job, self.pid, self.process = job["id"], job["pid"], None
@@ -594,16 +667,22 @@ def describe(queue: Queue) -> list[str]:
     """`bnb queue list`'s lines: per job its id, state, kind, run or arguments, start and end
     (HH:MM), ETA while running, the dependency and the note."""
     data = queue.read()
-    lines = [f"{'job':>4}  {'state':12} {'kind':8} {'start':5}  {'end':5}  {'eta':13} what"]
+    lines = [
+        f"{'job':>4}  {'state':12} {'kind':8} {'slot':>4} {'prio':>5} {'start':5}  {'end':5}  "
+        f"{'eta':13} what"
+    ]
     for job in data["jobs"]:
         state = job["state"] + (" (bg)" if job["background"] else "")
         if job["state"] == "queued" and job["after"] is not None and not ready(data, job):
             state = f"after {job['after']}"
+        elif job["state"] == "queued" and not ready(data, job):
+            state = "warming"  # another job of its warm key compiles first
         what = job["run"] or " ".join(job["arguments"])
         eta = progress(job, queue.log_path(job)) if job["state"] == "running" else None
+        slot = "-" if job.get("slot") is None else str(job["slot"])
         line = (
-            f"{job['id']:>4}  {state:12} {job['kind']:8} {clock(job['started']):5}  "
-            f"{clock(job['ended']):5}  {eta or '-':13} {what}"
+            f"{job['id']:>4}  {state:12} {job['kind']:8} {slot:>4} {job.get('priority', 0):5g} "
+            f"{clock(job['started']):5}  {clock(job['ended']):5}  {eta or '-':13} {what}"
         )
         if job["note"]:
             line += f"  [{job['note']}]"

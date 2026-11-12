@@ -45,6 +45,8 @@ GOLDEN_FRACTION = (math.sqrt(5.0) - 1.0) / 2.0  # 0.618
 
 @dataclasses.dataclass(frozen=True)
 class Code:
+    """A rotary code: its bands' periods and axis angles."""
+
     name: str
     periods: tuple[float, ...]  # m, finest first
     angles: tuple[float, ...]  # degrees, one per band
@@ -64,6 +66,7 @@ class Code:
 
 
 def ladder(start: float, ratio: float, bands: int = 8) -> tuple[float, ...]:
+    """The periods start x ratio^k, finest first."""
     return tuple(start * ratio**k for k in range(bands))
 
 
@@ -136,6 +139,7 @@ def search(
 
 
 def candidates() -> list[Code]:
+    """The named candidates of the table (progress notes, step A)."""
     flat = (0.0,) * 8
     golden = tuple((k * GOLDEN_ANGLE) % 360.0 for k in range(8))
     golden90 = tuple((k * 90.0 * GOLDEN_FRACTION) % 90.0 for k in range(8))
@@ -251,6 +255,7 @@ def profile(out: pathlib.Path) -> None:
 
 
 def main() -> None:
+    """The sweep's command line (the module docstring)."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=pathlib.Path, required=True)
     parser.add_argument("--only", default=None, help="substring of the candidates to run")

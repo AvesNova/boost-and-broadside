@@ -24,6 +24,7 @@ POWERS = ("coast", "boost", "reverse")  # by power index
 
 
 def measure(ship_set: str) -> dict:
+    """Each type of the set's spawn turn excursion, per power (the module docstring)."""
     types = api.ship_types(ship_set=ship_set, dtype=torch.float64)
     rules = api.rules_of(GameConfig(1, 1, api.MAP_SCALE_RADIUS, ship_set=ship_set), types=types)
     count = types.max_energy.shape[0]
