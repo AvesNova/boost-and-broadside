@@ -689,6 +689,43 @@ def round6() -> list[dict]:
 ROUNDS["round6"] = round6
 
 
+KIT2 = (1.0, 0.08, 2.5)  # the kit without the short sight
+
+
+def round7() -> list[dict]:
+    """Scout v brawler, sniper v shotgun and slasher v dogfighter with the kit at full sight
+    (KIT2), rebalanced."""
+    out = []
+
+    def add(name, a, b, k=KIT2, tag="kit2"):
+        out.append(pair(f"{name}, {tag}", ("M", merge(a, kit(*k))), ("M", merge(b, kit(*k)))))
+
+    for sv, bv, bd in ((1.15, 0.9, 1.1), (1.1, 0.9, 1.15), (1.05, 0.9, 1.1), (1.1, 0.95, 1.1)):
+        add(
+            f"scout v brawler (M), S vision x{sv:g}, B vision x{bv:g} dmg x{bd:g}",
+            {"vision_range_scale": sv},
+            {"vision_range_scale": bv, "hit_damage": bd},
+        )
+    for si, sd in ((0.9, 1.0), (0.95, 1.0), (0.95, 0.95)):
+        add(
+            f"sniper v shotgun (M), sniper induced x{si:g} dmg x{sd:g}",
+            merge(SNIPER, {"induced_drag_scale": si, "hit_damage": sd}),
+            SHOTGUN,
+        )
+    for si, ssh in ((0.8, 0.45), (0.85, 0.5)):
+        add(
+            f"slasher v dogfighter (M), S induced x{si:g} shield x{ssh:g}",
+            merge(SLASHER, {"induced_drag_scale": si, "max_shield": ssh}),
+            DOGFIGHTER,
+            KIT,
+            "kit",
+        )
+    return out
+
+
+ROUNDS["round7"] = round7
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
