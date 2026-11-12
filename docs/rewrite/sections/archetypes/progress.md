@@ -530,3 +530,31 @@ Kit2 on both, 512 games, A v B 1v1 / 5v5:
   mutual at 272-335 s, 3 merges a kill.
 - **A three-ship set?** The hit-and-run ship and the brawler are each even against the same
   standard ship. The triangle's third side, hit-and-run v brawler, is running (`triangle/`).
+
+## 02:44-02:52 KST: round 12 (`round12/`): the hit-and-run ship's nose
+
+512 games (10v10 256), r9; the hit-and-run ship's own cone f0 (kit2's is 0.08):
+
+| Hit-and-run + | v standard 1v1 / 2v2 / 5v5 / 10v10 | AA (hit-and-run) mutual, life, merges | BB mutual, life | Trades |
+|---|---|---|---|---|
+| (confirm 3: f0 0.08, dmg x1.2) | 0.49 / 0.48 / 0.47 / 0.49 | 0.55, 189 s, 2.3 / 1 / 6 | 0.35, 292 s | 0.22 |
+| f0 0.06 | 0.57 / 0.53 / 0.52 / 0.51 | **0.39, 264 s**, 2.9 / 1 / 7 | 0.37, 296 s | 0.13 |
+| f0 0.05 | 0.58 / 0.52 / 0.54 / 0.49 | 0.24, 336 s, 3.0 / 1 / 8 | 0.35, 278 s | 0.14 |
+| f0 0.05, dmg x1.3 | 0.58 / 0.55 / 0.56 / 0.50 | 0.31, 302 s | 0.38, 312 s | 0.14 |
+| f0 0.04, dmg x1.3 | 0.59 / 0.57 / 0.54 / 0.53 | 0.12, 366 s | 0.40, 293 s | 0.14 |
+
+- A harder nose fixes the hit-and-run mirror (0.55 to 0.39 mutual at f0 0.06, life in band)
+  and costs the standard ship the duel (0.49 to 0.57): confirm 5 trims the damage back.
+
+## 02:47-02:55 KST: the triangle (`triangle/`): hit-and-run v brawler, 1024 games
+
+| Doctrine | A v B 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | AA; BB mutual, life | Duel life | v r9 |
+|---|---|---|---|---|
+| r9 | **0.53 / 0.52 / 0.52 / 0.50 / 0.50** | 0.56, 186 s; 0.36, 278 s | 228 s | 0.51 / 0.50 |
+| CE | 0.54 / 0.55 / 0.55 / 0.56 / 0.61 | 0.46, 229 s; 0.28, 323 s | 267 s | 0.79 / 0.79 |
+| DCL | 0.54 / 0.55 / 0.55 / 0.58 / 0.61 | 0.67, 128 s; 0.58, 164 s | 242 s | 0.82 / 0.81 |
+
+- **Under r9 the three ships (standard, hit-and-run, brawler) are pairwise even at every
+  size** (all nine 1v1-20v20 cells of the three pairs within 0.44-0.54). Under the
+  maneuvers doctrines the hit-and-run ship gains on the brawler in big crowds (0.56-0.61):
+  the extension out of a furball is where a fast recharge pays.
