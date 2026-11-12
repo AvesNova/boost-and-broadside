@@ -897,3 +897,17 @@ vision x1.04, f0 0.07) fighters of confirm 9 against each set ship:
 
 - The same shape as set 4: the hit-and-run ship wins duels and fades in big crowds against
   every ship but the standard. It is a pair ship (with the standard), not a set member.
+
+## 04:36-04:41 KST: round 17 (`round17/`): the speed fighter's mirror pace
+
+1024 games, r9; rate (lift x1.03) v speed (drag x0.85, vision x1.04), kit2:
+
+| Arm | 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | AA (rate); BB (speed) mutual, life, merges | Duel life | v r9 |
+|---|---|---|---|---|
+| rate dmg x1.2; speed f0 0.075 | 0.56 / 0.51 / 0.53 / 0.46 / 0.49 | 0.47, 245 s; 0.33, 315 s, 3.3 | 247 s | 0.51 / 0.52 |
+| **rate dmg x1.25; speed f0 0.075, dmg x1.05** | **0.55 / 0.52 / 0.46 / 0.48 / 0.45** | 0.48, 223 s, 2.7; **0.38, 299 s**, 3.3 | 247 s | 0.50 / 0.51 |
+| rate dmg x1.2; speed f0 0.07, dmg x1.05 | 0.52 / 0.52 / 0.49 / 0.44 / 0.41 | 0.46, 229 s; 0.32, 336 s | 275 s | 0.50 / 0.51 |
+
+- The second arm keeps both mirrors in pace (223 / 299 s) and every size within 0.45-0.55:
+  it is the card on the play map `arch-rate-speed` (the rate fighter in the Yongma slot).
+  Set 6's damage-trimmed version is flatter (0.50-0.52) with a 437 s speed mirror.
