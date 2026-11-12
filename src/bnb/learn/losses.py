@@ -7,7 +7,7 @@ unsplit minibatch exactly. v1's math; fixtures `learner_policy`, `learner_critic
 import torch
 import torch.nn.functional as F
 
-from bnb.models.yemong import codes, critic
+from bnb.models.yemong import codes, critic, geometry
 
 
 def masked_sum(values: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -15,12 +15,14 @@ def masked_sum(values: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     return torch.where(mask, values, 0.0).sum()
 
 
-def phasor_square_error(readout: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-    """The rotary read-out's error per token: the squared distance between its (cos, sin)
-    pair and the true one, averaged over the frequencies. readout and target
-    (..., 2, pairs); (...). Its minimum over a distribution of true angles is the expected
-    phasor, whose length shrinks with the spread; an all-zero read-out scores 1."""
-    return (readout - target).square().sum(-2).mean(-1)
+def geometry_cross_entropy(logits: torch.Tensor, values: torch.Tensor) -> torch.Tensor:
+    """(..., S, K): the geometry head's cross-entropy per pair, in nats per target (the mean
+    over its `geometry.TARGETS`): logits (..., S, K, `geometry.WIDTH`), values (..., S, K,
+    5) the pairs' true quantities (`geometry.pairs`), coded inside the loss."""
+    per_target = codes.grouped_cross_entropy(
+        logits.float(), values.float(), geometry.RUNS, geometry.encode
+    )
+    return per_target.mean(-1)
 
 
 def surrogate(

@@ -429,15 +429,25 @@ def _run(rule: bc.StopRule, updates: int, steps: int, score: float, kl):
     return None
 
 
+# a plateau of a few 100-step updates: from step 0, smoothed over 200 steps, a 1000-step
+# window, held 300 steps
+PLATEAU = dict(
+    plateau_from_steps=0,
+    plateau_smoothing_steps=200,
+    plateau_window_steps=1000,
+    plateau_hold_steps=300,
+)
+
+
 def test_each_stop_rule_fires_alone():
-    config = bc.StopConfig(score_window=100, plateau_steps=1000, budget_steps=10_000)
-    falling = lambda update: 2.0 * 0.95**update  # noqa: E731 - still improving 5% per update
+    config = bc.StopConfig(score_window=100, score_target=0.5, budget_steps=10_000, **PLATEAU)
+    falling = lambda update: 2.0 - 0.01 * update  # noqa: E731 - still improving steadily
     # 0.8 over 100 games: above parity once the window is full
     assert _run(bc.StopRule(config), 200, 100, 0.8, falling) == (4, "score")  # 100 games
     assert _run(bc.StopRule(config), 200, 100, 0.2, falling) == (99, "budget")
     flat = lambda update: 1.0 + 0.5 * 0.5**update  # noqa: E731 - converges, then plateaus
     update, reason = _run(bc.StopRule(config), 200, 100, 0.2, flat)
-    assert reason == "kl_plateau" and 10 < update < 99
+    assert reason == "plateau" and 10 < update < 99
     rule = bc.StopRule(config)
     _run(rule, update, 100, 0.2, flat)  # one update earlier it had not plateaued
     assert rule.score == pytest.approx(0.2)
@@ -474,13 +484,18 @@ def test_the_score_stop_reads_the_window_trimmed_like_the_score():
     assert above.observe(2, {EXPONENTIAL: (20, 40, 10)}, 1.0) is None
 
 
-def test_the_score_stop_fires_at_parity_by_default():
-    config = bc.StopConfig(score_window=100, budget_steps=10**9)
-    assert config.score_target == pytest.approx(0.5)  # parity (author)
+def test_the_score_stop_fires_at_its_target_and_is_off_by_default():
+    """Parity (0.5) was its default until the plateau became BC's stop (2026-11-11); without
+    a target the window is still kept, logged and read for `policy/`."""
+    assert bc.StopConfig().score_target is None
+    config = bc.StopConfig(score_window=100, score_target=0.5, budget_steps=10**9)
     below = bc.StopRule(config)
     assert below.observe(1, {EXPONENTIAL: (49, 0, 51)}, 1.0) is None
     at = bc.StopRule(config)
     assert at.observe(1, {EXPONENTIAL: (40, 20, 40)}, 1.0) == "score"
+    off = bc.StopRule(bc.StopConfig(score_window=100, budget_steps=10**9))
+    assert off.observe(1, {EXPONENTIAL: (100, 0, 0)}, 1.0) is None
+    assert off.read == EXPONENTIAL and off.score == pytest.approx(1.0)
 
 
 def test_the_budget_stops_bc_at_v1s_time_to_parity_by_default():
@@ -495,7 +510,7 @@ def test_the_score_stop_reads_the_better_average_and_only_logs_the_live_clone():
     the averages (`StopConfig.reads`): it fires when the better of them reaches the
     target, and reads the uniform average once it beats the exponential."""
     assert bc.StopConfig().reads == (EXPONENTIAL, UNIFORM)
-    config = bc.StopConfig(score_window=100, budget_steps=10**9)
+    config = bc.StopConfig(score_window=100, score_target=0.5, budget_steps=10**9)
     rule = bc.StopRule(config)
     assert rule.observe(1, {"live": (90, 0, 10), EXPONENTIAL: (30, 0, 50)}, 1.0) is None
     assert rule.windows["live"].score == pytest.approx(0.9)
@@ -523,9 +538,9 @@ def test_an_equal_score_reads_the_earlier_average():
 
 
 def test_the_stop_rules_state_round_trips_through_json_and_continues_the_window():
-    """A resume restores the rule from its JSON state: the window, the KL's EMA and its
-    history, so the restored rule decides exactly as the original would."""
-    config = bc.StopConfig(score_window=100, plateau_steps=1000, budget_steps=10**9)
+    """A resume restores the rule from its JSON state: the windows and the plateau's, so
+    the restored rule decides exactly as the original would."""
+    config = bc.StopConfig(score_window=100, budget_steps=10**9, **PLATEAU)
     flat = lambda update: 1.0 + 0.5 * 0.5**update  # noqa: E731 - converges, then plateaus
     original = bc.StopRule(config)
     assert _run(original, 6, 100, 0.3, flat) is None
@@ -538,10 +553,9 @@ def test_the_stop_rules_state_round_trips_through_json_and_continues_the_window(
             for rule in (original, restored)
         ]
         assert decisions[0] == decisions[1] and original.state == restored.state
-    assert decisions[0] == "kl_plateau"
-    # The history keeps only what the plateau still reads: one average at or before
-    # plateau_steps back, and the newer ones.
-    assert len(original.history) == 1000 // 100 + 1
+        if decisions[0] is not None:
+            break
+    assert decisions[0] == "plateau"
 
 
 def test_alive_mask_reads_the_own_rows(segment):
@@ -724,7 +738,7 @@ def test_a_bc_run_writes_training_checkpoints_and_resumes(monkeypatch, tmp_path)
     config, _ = checkpoint.training_config(newest)
     assert config.objective == "bc" and config.stop.budget_steps == 2 * 16 * 16
     window = saved["stop_rule"]
-    assert len(window["history"]) == 2 and window["kl_average"] is not None
+    assert len(window["plateau"]["means"]) == 2 and window["plateau"]["values"]
     _bnb(
         monkeypatch,
         "train",
@@ -743,7 +757,7 @@ def test_a_bc_run_writes_training_checkpoints_and_resumes(monkeypatch, tmp_path)
     assert second["start_step"] == 2 * 16 * 16 and second["end_step"] == 4 * 16 * 16
     assert second["overrides"] == {"stop.budget_steps": 4 * 16 * 16}
     resumed = checkpoint.read_record(run.checkpoint_at())["stop_rule"]
-    assert resumed["history"][:2] == window["history"]  # the window went on
+    assert resumed["plateau"]["means"][:2] == window["plateau"]["means"]  # it went on
     assert checkpoint.read_record(run.policy_path)["steps"]["environment_steps"] == 4 * 16 * 16
     assert not list(run.directory.glob("*.replaced"))
     resumed_record = checkpoint.read_record(run.checkpoint_at())

@@ -36,7 +36,17 @@ from bnb.learn.rewards import RewardConfig
 from bnb.models.nearest import Nearest, NearestBuild, NearestConfig
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
 from bnb.models.yemong.inputs import MODE_INPUTS
-from bnb.models.yemong.model import Yemong, YemongBuild, YemongConfig, yemong_build
+from bnb.models.yemong.model import (
+    COLOUR_PERIOD,
+    ROTARY_BANDS,
+    ROTARY_COARSEST,
+    ROTARY_RATIO,
+    ROTARY_TURN,
+    Yemong,
+    YemongBuild,
+    YemongConfig,
+    yemong_build,
+)
 
 from . import analytics, lanes, metrics
 from .evaluate import first_results, shares
@@ -52,10 +62,17 @@ SCRIPTED = "scripted"
 # map (deathmatch_wide) is out for now (author, 2026-11-06: decisions, BC round three).
 TRAINING_MIX = (("frontline", 0.5), ("deathmatch", 0.5))
 # the mixes `bnb train --preset` names: the standard ship set's, and the real-scale set's
-# (the same two modes on the real-scale maps, `PRESETS["real_scale_*"]`)
+# (the same two modes on the real-scale maps, `PRESETS["real_scale_*"]`); and
+# real_scale_all_modes, the final experiments' mix (the author, 2026-11-12): the three
+# real-scale modes, frontline half, deathmatch 0.3, elimination 0.2
 TRAINING_MIXES = {
     "mixed": TRAINING_MIX,
     "real_scale_mixed": (("real_scale_frontline", 0.5), ("real_scale_deathmatch", 0.5)),
+    "real_scale_all_modes": (
+        ("real_scale_frontline", 0.5),
+        ("real_scale_deathmatch", 0.3),
+        ("real_scale_elimination", 0.2),
+    ),
 }
 # Self-play is a fixed share of each mode's batch, the league's seat the rest (league spec 1).
 LINEUP = (Pool("self_play", 0.5, (LEARNER, LEARNER)), Pool("league", 0.5, (LEARNER, OPPONENTS)))
@@ -103,10 +120,13 @@ class TrainConfig:
     their `bfloat16_matmuls` stays False, as `precision`
     sets it, and a new run's Yemong decodes its belief's spreads with
     `spread_fit="coarsest"`, runs each block's temporal sublayer first
-    (`order="temporal_first"`, arm C's order, the champion's since 2026-11-07) and reads
-    every mode's flag (`mode_inputs`, elimination's since 2026-11-12); the config's own
-    defaults, "v1", "spatial_first" and the two older modes, are what older build records
-    hold. ship_card:
+    (`order="temporal_first"`, arm C's order, the champion's since 2026-11-07), reads
+    every mode's flag (`mode_inputs`, elimination's since 2026-11-12), and has the position
+    codes of 2026-11-12: the rotary bands (ROTARY_*: eight at ratio 3.405 from 48 m, each
+    turned 35 degrees, heading harmonics 1, 2, 4), the colour code to 236 196 m
+    (`position_period`), the arena radius's code (`arena_code`) and the geometry head
+    (`geometry_head`); the config's own defaults, "v1", "spatial_first", the two older
+    modes and the older codes, are what older build records hold. ship_card:
     the ship card's values by field, one per ship type, every field given
     (`bnb.game.api.default_card`). environments: the training environments; length: ticks
     per segment; shards: consecutive segments per update (v1's batch, twice over:
@@ -128,7 +148,11 @@ class TrainConfig:
     policy_snapshot_every: for a run that does not write every update's policy files (BC
     by default: the run's `update_policies`), the environment steps between the policy
     files it keeps under `policies/step_<steps>/`, the live weights and both averages, and
-    always at the end of each process's segment (`bnb.runs.session.train`)."""
+    always at the end of each process's segment (`bnb.runs.session.train`).
+    lineup: each slot's ship type by name in the game's ship set (`api.type_names`), the
+    same for both teams, in every game of the batch (the rating lanes' too); None plays the
+    game's own lineup (`Rules.team_types`). A tournament of such policies plays the same
+    lineup (`bnb ratings --lineup`)."""
 
     game: GameConfig
     environments: int = 2048
@@ -141,7 +165,17 @@ class TrainConfig:
     model: str = "yemong"
     # a new build's settings that differ from the record defaults (see the docstring)
     yemong: YemongConfig = YemongConfig(
-        spread_fit="coarsest", order="temporal_first", mode_inputs=MODE_INPUTS
+        spread_fit="coarsest",
+        order="temporal_first",
+        mode_inputs=MODE_INPUTS,
+        rotary_period=ROTARY_COARSEST,
+        rotary_octaves=ROTARY_BANDS,
+        rotary_ratio=ROTARY_RATIO,
+        rotary_turn=ROTARY_TURN,
+        heading_harmonics=(1, 2, 4),
+        position_period=COLOUR_PERIOD,
+        arena_code=True,
+        geometry_head=True,
     )
     relational: RelationalConfig = RelationalConfig()
     nearest: NearestConfig = NearestConfig()
@@ -159,6 +193,7 @@ class TrainConfig:
     stop: StopConfig = StopConfig()
     # every 10M environment steps (author, 2026-11-07: decisions, run control)
     policy_snapshot_every: int = 10_000_000
+    lineup: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         if self.objective not in OBJECTIVES:
@@ -177,6 +212,8 @@ class TrainConfig:
                     f"{name}.bfloat16_matmuls is set by precision ({self.precision!r}), "
                     f"not by the model's settings"
                 )
+        if self.lineup is not None:
+            lineup_indices(self.lineup, self.game)  # fails for a wrong size or an unknown name
         card = api.default_card(self.game.ship_set)
         if self.ship_card is None:
             object.__setattr__(self, "ship_card", card)
@@ -202,6 +239,20 @@ class TrainConfig:
 
 
 Build = YemongBuild | RelationalBuild | NearestBuild
+
+
+def lineup_indices(lineup: tuple[str, ...], game: GameConfig) -> tuple[int, ...]:
+    """A lineup's ship type names as type indices of the game's ship set, one per slot of a
+    team. Fails for a lineup of another size than the team or a name not in the set."""
+    names = api.type_names(game.ship_set)
+    if len(lineup) != game.ships_per_team:
+        raise ValueError(
+            f"lineup {list(lineup)} has {len(lineup)} ships for a team of {game.ships_per_team}"
+        )
+    unknown = [name for name in lineup if name not in names]
+    if unknown:
+        raise ValueError(f"lineup names {unknown}, not ship types of {game.ship_set!r}: {names}")
+    return tuple(names.index(name) for name in lineup)
 
 
 def model_build(config: TrainConfig) -> Build:
@@ -373,6 +424,11 @@ class Trainer:
             extra_reads=Scripted.reads if cloning else (),
             lookahead=config.lookahead,
             graph_ticks=config.graph_ticks,
+            ship_type=None
+            if config.lineup is None
+            else torch.tensor(lineup_indices(config.lineup, game) * api.TEAMS).repeat(
+                self.batch_environments, 1
+            ),
         )
         lineup = self.rollout.lineup
         self.pool_names = tuple(pool.name for pool in lineup.pools)

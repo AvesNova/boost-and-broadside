@@ -431,9 +431,11 @@ def odd_bins(knee: float, bound: float) -> int:
 
 
 def bounds(ranges: StateCodeRanges) -> dict[str, float]:
-    """Each quantity's largest |e| (the code's bound, uncapped): position the code's period
-    (the largest meaningful offset), velocity twice the velocity code's reach, the heading
-    pi, the rest the span of their state-code ranges."""
+    """Each quantity's largest |e| (the code's bound, uncapped): position POSITION_PERIOD,
+    26 244 m (the colour code's period when the head was built, and larger than any
+    training map, so it stays whatever the build's `YemongConfig.position_period`),
+    velocity twice the velocity code's reach, the heading pi, the rest the span of their
+    state-code ranges."""
     return dict(
         position=POSITION_PERIOD,
         velocity=2.0 * velocity_reach(),

@@ -26,7 +26,7 @@ import functools
 import math
 import zlib
 from collections.abc import Callable, Iterator
-from typing import Protocol
+from typing import ClassVar, Protocol
 
 import torch
 from torch.utils import _pytree
@@ -55,12 +55,12 @@ TERMS = (
     "density",
     "shot_trajectory",
     "shot_outcome",
-    "rotary_readout",
+    "geometry",
 )
 # Token counts per view, the denominators' parts: own ships alive; own ships valued (alive or
 # waiting to respawn); view-steps; valid beliefs at non-final steps; enemies alive; shots;
-# every living ship (the rotary read-out's tokens).
-COUNTS = ("policy", "valued", "steps", "next_state", "enemy_action", "shots", "ships")
+# the geometry head's pairs (`geometry.pairs`).
+COUNTS = ("policy", "valued", "steps", "next_state", "enemy_action", "shots", "pairs")
 # The per-tick records the returns read, staged whole per shard (the outcome only with an
 # outcome level: `Learner.small_names`).
 SMALL = ("reward", "values", "outcome", "done", "result", "log_probability", "alive", "valued")
@@ -76,7 +76,7 @@ HEAD_SERIES = {
     "density": "density/loss",
     "shot_trajectory": "shot/loss/trajectory",
     "shot_outcome": "shot/loss/outcome",
-    "rotary_readout": "rotary_readout/loss",
+    "geometry": "geometry/loss",
 }
 # The policy term's trust regions (`LearnerConfig.trust_region`).
 TRUST_REGIONS = ("clip", "clip_higher", "dppo_tv", "dppo_binary_tv")
@@ -155,9 +155,8 @@ class LearnerConfig:
     density: float = 0.021
     shot_trajectory: float = 0.007
     shot_outcome: float = 0.019
-    # the read-out's mean squared pair error (not nats): about 0.02 of trunk gradient norm
-    # at initialisation, next_state's trained level (learner page)
-    rotary_readout: float = 0.007
+    # the geometry head's (`yemong.geometry_head`), nats per target per pair
+    geometry: float = 0.007
     learning_rate: float = 3e-4
     warmup_start: float = 1e-7
     warmup_steps: int = 10_000_000  # environment steps (decisions: round four)
@@ -167,6 +166,9 @@ class LearnerConfig:
     micro_batch_rows: int = 160
     target_kl: float | None = 0.02  # None: no early stop
     old_log_probabilities: str = "rollout"
+
+    # the rotary read-out's coefficient (2026-11-07 to 2026-11-12), retired with the head
+    RETIRED: ClassVar[dict] = {"rotary_readout": None}
 
     def __post_init__(self) -> None:
         if self.old_log_probabilities not in ("rollout", "recomputed"):
@@ -423,7 +425,6 @@ class Learner:
         counts[:, COUNTS.index("valued")] = small["valued"].sum((0, 2))
         counts[:, COUNTS.index("steps")] = length
         counts[:, COUNTS.index("enemy_action")] = alive[..., own:].sum((0, 2))
-        counts[:, COUNTS.index("ships")] = alive.sum((0, 2))
         return counts
 
     # ------------------------------------------------------------------ labels
@@ -500,15 +501,16 @@ class Learner:
         rows = labels.privileged_rows(trajectory)
         enemy, enemy_mask = labels.enemy_actions(trajectory)
         code = model.shot_code
-        readout = {}
-        if getattr(model, "rotary_readout", None) is not None:
-            readout = dict(rotary_readout=labels.rotary_targets(model, trajectory, rows))
+        pairs = {}
+        if getattr(model, "geometry_head", None) is not None:
+            partners, mask, values = labels.geometry_pairs(trajectory)
+            pairs = dict(geometry_partners=partners, geometry_mask=mask, geometry=values)
         mask = labels.next_state_mask(trajectory, self.model)
         split = {}
         if getattr(model, "correction_code", None) is not None:
             split = labels.split_masks(trajectory, mask, model)
         return dict(
-            **readout,
+            **pairs,
             **split,
             **labels.next_state_targets(model, trajectory, rows),
             next_state_mask=mask,
@@ -647,12 +649,13 @@ class Learner:
             terms["shot_outcome"] = (
                 losses.masked_sum(outcome, label["shot_mask"]) / denominator["shots"]
             )
-        if _head(unrolled, "rotary_readout") is not None:
-            error = losses.phasor_square_error(  # (L, R, N, blocks): the blocks' mean
-                unrolled.rotary_readout.float(), label["rotary_readout"][..., None, :, :]
-            ).mean(-1)
-            terms["rotary_readout"] = (
-                losses.masked_sum(error, trajectory.alive) / denominator["ships"]
+        if _head(unrolled, "geometry_latents") is not None:
+            per_pair = losses.geometry_cross_entropy(
+                model.geometry(unrolled.geometry_latents, label["geometry_partners"]),
+                label["geometry"],
+            )
+            terms["geometry"] = (
+                losses.masked_sum(per_pair, label["geometry_mask"]) / denominator["pairs"]
             )
         return terms, per_level, statistic, unrolled, parts
 
@@ -902,6 +905,9 @@ class Learner:
                             labels.next_state_mask(trajectory, self.model).sum((0, 2)).float()
                         )
                         counts[views, COUNTS.index("shots")] = shot_mask.sum((0, 2)).float()
+                        if getattr(self.model, "geometry_head", None) is not None:
+                            _, pair_mask, _ = labels.geometry_pairs(trajectory)
+                            counts[views, COUNTS.index("pairs")] = pair_mask.sum((0, 2, 3)).float()
                         stored = _pytree.tree_map_only(
                             torch.Tensor,
                             lambda x: x.transpose(0, 1).contiguous(),
@@ -1319,8 +1325,8 @@ class Learner:
                     basic[f"next_state_{name}"] = (
                         config.next_state * part / denominator["next_state"]
                     )
-            elif term in ("rotary_readout", "correction") and not terms[term].requires_grad:
-                continue  # a model without the read-out or the error head
+            elif term in ("geometry", "correction") and not terms[term].requires_grad:
+                continue  # a model without the geometry head or the error head
             else:
                 basic[term] = getattr(config, term) * terms[term]
         return basic

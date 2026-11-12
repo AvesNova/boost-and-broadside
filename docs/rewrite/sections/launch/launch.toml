@@ -1,0 +1,77 @@
+# The final experiments' launch (Stage A and the ablations): the settings every arm shares,
+# read by launch.py. An arm (arms.toml) adds its own --set lines after these.
+#
+# The final training config (2026-11-12): the real-scale mix of all three modes (frontline
+# 0.50, deathmatch 0.30, elimination 0.20: `bnb.runtime.train.TRAINING_MIXES`), the
+# position codes of 2026-11-12 (the TrainConfig.yemong defaults: rotary ladder r 3.405 from
+# 48 m to 254.7 km turned 35 degrees per band, heading harmonics 1 2 4, the colour code to
+# 236 196 m, the arena code, the categorical geometry head), two attention heads (the
+# default; the one-head A/B of 2026-11-12 lost), and the champion's model settings
+# (2026-11-09-*-deadreckon-split-hiddenphysics: delta next state on the extrapolation
+# baseline, split, hidden physics decay 0.5), each a BC -> RL chain.
+
+# The ship lineup, one type name per slot of a team (both teams fly it, in every mode),
+# names as `bnb.game.api.type_names("real-scale")` gives them. It arrives from the game
+# branch (Yongma + Jujak, 2 + 3); launch.py refuses to check, probe or queue anything while
+# it is this placeholder. Example: ["Yongma", "Yongma", "Jujak", "Jujak", "Jujak"].
+lineup = "PLACEHOLDER"
+
+preset = "real_scale_all_modes"
+# 2040, not 2048: the mix's shares split the batch into whole environments only at a
+# multiple of 20 (0.3 x 0.5 of the batch is one pool)
+environments = 2040
+# the combined budget of each chain: BC to its plateau, RL the rest
+chain_budget_steps = 150_000_000
+
+# Shared by both stages (bnb train --set). Every line is checked by `launch.py check`.
+set = [
+  # the champion's model (gpubox2 pipeline.sh BC_ARGS; the rest of its settings are the
+  # code's defaults now)
+  "yemong.next_state=delta",
+  "yemong.delta_baseline=extrapolation",
+  "yemong.delta_split=true",
+  "yemong.physics_hidden_decay=0.5",
+  "learner.next_state=0.0033",
+  # the segments on the device, not pinned host memory (the champion's; 32 GB is room)
+  "host_store=false",
+  # policy files (live and both averages) every 5M environment steps, for the tournament's
+  # matched steps (per-update policy files are off: --update-policies False below)
+  "policy_snapshot_every=5000000",
+]
+# BC only (bnb train --bc-set). BC is capped at 100M (author, 2026-11-12; v1's target was
+# BC under 100M) so that a BC stage whose plateau never fires still leaves RL 50M; without
+# a cap BC's budget is the combined one and RL would get nothing.
+bc_set = ["stop.budget_steps=100000000"]
+# RL only (bnb train --rl-set)
+rl_set = []
+# other bnb train options for every arm
+train = ["--update-policies", "False"]
+
+[box]
+# where everything lives on the box (a vast /workspace volume)
+repository = "/workspace/boost-and-broadside"
+runs_directory = "/workspace/runs"
+queue_file = "/workspace/queue/queue.json"
+
+[probe]
+# micro-batch rows tried per stage, largest first: the largest whose first update reserves
+# at most `fraction` of the GPU's memory is used (micro-batches add up to the minibatch:
+# memory and speed only, the update's math is the same). Each try compiles its shapes
+# (tens of minutes cold), so the lists start at what should fit 32 GB: on the 24 GB 3090
+# the champion's BC fit 2560 rows (18 GB) and its RL 320 (640 ran out of memory).
+# A cold compile takes about an hour per stage (single-threaded tracing), so keep the lists
+# short: the dry run's lists below cost one compile each when the first fits.
+bc = [2560, 1280]
+rl = [640, 320]
+fraction = 0.9
+
+[tournament]
+# the game presets rated (each rated on its own), the matched total steps (chain steps,
+# BC included) at which each run's policies are rated, and the variants (the averaged
+# agent, the product, and the live weights, both labelled)
+presets = ["real_scale_frontline", "real_scale_deathmatch", "real_scale_elimination"]
+steps = [25_000_000, 50_000_000, 75_000_000, 100_000_000, 125_000_000, 150_000_000,
+         200_000_000, 250_000_000, 300_000_000]
+variants = ["uniform_average", "live"]
+blocks = 8
+block_environments = 256

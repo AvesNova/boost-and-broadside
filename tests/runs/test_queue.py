@@ -295,3 +295,73 @@ def test_bnb_queue_add_list_and_log(place, monkeypatch, capsys):
     assert listing[1].split()[:3] == ["1", "queued", "train"]
     assert listing[2].split()[:4] == ["2", "after", "1", "resume"]
     assert bnb("log", "1").strip().endswith("1.log:")
+
+
+def test_ready_jobs_start_by_priority_then_in_order(place):
+    add(place, "train", "--name", "low", "--updates", "1")
+    add(place, "train", "--name", "high", "--updates", "1", priority=5)
+    add(place, "train", "--name", "middle", "--updates", "1", priority=1)
+    add(place, "train", "--name", "high-too", "--updates", "1", priority=5)
+    runner(place).run(until_idle=True)
+    assert [line[0] for line in events(place)] == ["high", "high-too", "middle", "low"]
+
+
+def test_a_job_waits_while_one_of_its_warm_key_runs_cold():
+    def job(number, state, warm, warmed=False):
+        return dict(id=number, state=state, warm=warm, warmed=warmed, after=None, background=False)
+
+    cold = dict(jobs=[job(1, "running", "m"), job(2, "queued", "m"), job(3, "queued", "n")])
+    assert not job_queue.ready(cold, cold["jobs"][1]) and job_queue.ready(cold, cold["jobs"][2])
+    assert job_queue.next_job(cold)["id"] == 3
+    warm = dict(jobs=[job(1, "running", "m", warmed=True), job(2, "queued", "m")])
+    assert job_queue.ready(warm, warm["jobs"][1])
+    ended = dict(jobs=[job(1, "failed", "m"), job(2, "queued", "m")])
+    assert job_queue.ready(ended, ended["jobs"][1])
+
+
+def test_a_job_is_warm_once_its_log_shows_an_update(place):
+    add(place, "train", "--name", "a", "--updates", "3", warm="m")
+    runner(place).run(until_idle=True)
+    log = place / "logs" / "queue" / "1.log"
+    assert job_queue.warm_line(log) and jobs(place)[1]["warmed"]
+    log.write_text(log.read_text() + "[queue] job 1 attempt 2 at now\n")
+    assert not job_queue.warm_line(log)  # a new attempt compiles again
+
+
+def test_two_slots_run_two_jobs_at_once_each_on_its_own_gpu(place):
+    """Two runners on one queue file, slots 0 and 1 (the second a process of its own, as
+    supervisor starts them): the two jobs overlap in time, each sees only its slot's GPU,
+    and a second runner of a slot is refused."""
+    add(place, "train", "--name", "a", "--updates", "30")
+    add(place, "train", "--name", "b", "--updates", "30")
+    second = subprocess.Popen(
+        [sys.executable, "-c", "from bnb.cli import main; main()", "queue", "run", "--slot",
+         "1", "--gpu", "7", "--lock", "none", "--poll", "0.02", "--until-idle",
+         "--queue-file", str(place / "queue.json")],
+        env=dict(os.environ, PYTHONPATH=str(SOURCE)),
+    )  # fmt: skip
+    wait_for(lambda: any(job["slot"] == 1 for job in jobs(place).values()))
+    with pytest.raises(job_queue.QueueError, match="slot 1"):
+        Runner(Queue(place / "queue.json"), None, slot=1).run(until_idle=True)
+    Runner(Queue(place / "queue.json"), None, poll=0.02, slot=0).run(until_idle=True)
+    assert second.wait(timeout=60) == 0
+    by_run = {job["run"]: job for job in jobs(place).values()}
+    assert {job["state"] for job in by_run.values()} == {"finished"}
+    assert sorted((job["slot"], job["gpu"]) for job in by_run.values()) == [(0, "0"), (1, "7")]
+    first, other = sorted(by_run.values(), key=lambda job: job["slot"])
+    assert first["started"] <= other["ended"] and other["started"] <= first["ended"]
+    log = (place / "logs" / "queue" / f"{other['id']}.log").read_text()
+    assert "on slot 1 (GPU 7)" in log.splitlines()[0]
+
+
+def test_a_slots_runner_recovers_only_its_own_slots_jobs(place):
+    add(place, "train", "--name", "a", "--updates", "2")
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait()
+    with Queue(place / "queue.json").edit() as queue:
+        queue["jobs"][0].update(state="running", pid=dead.pid, slot=1)
+        queue["jobs"][0]["attempts"].append(dict(started=None, state="running"))
+    Runner(Queue(place / "queue.json"), None, poll=0.02, slot=0).run(until_idle=True)
+    assert jobs(place)[1]["state"] == "running" and events(place) == []
+    Runner(Queue(place / "queue.json"), None, poll=0.02, slot=1).run(until_idle=True)
+    assert jobs(place)[1]["state"] == "finished"
