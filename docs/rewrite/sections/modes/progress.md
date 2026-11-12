@@ -406,3 +406,29 @@ front), then the two softer variants against the hard 30 s lock: (a) a decaying 
 drained on top by an attacking majority at the capture rate, H_n s a second), (b) a flat
 extension (E = 10 / 20 / 30 s: no decay, drained only by an attacking majority). Checked
 on a synthetic zone: a lone attacker retakes a flat-10 zone in 30.0 s (10 + 20).
+
+- Lock 30 s at 10v10 (R 11031 m, the `_density` map): P(same) **0.066 ± 0.005**, 4.7% by the
+  front, 11.8 captures a game: the 5v5 lock does not carry over. The map is 1.41x larger
+  (zones and travel too), and twice the ships retake faster: a lock in seconds is tied to
+  one map and fleet size; it likely has to scale (with the travel time across the ring,
+  i.e. R, and with the fleet). To measure if the author keeps the lock: lock 30 x 1.41 and
+  60 s at 10v10.
+
+## Step 2j: elimination spawn spread (fog off, no fields, release lineup, 256 games each)
+
+`bench.mode_dynamics deathmatch --preset real_scale_elimination --fog 0 --set ...`
+(record `records/elimination.jsonl`). The area must stay inside the arena, so the wider
+areas move their centres in; `e_offset0.68` separates the two effects.
+
+| variant | area (R) | centre (R) | first hit median (s) | first hit to wipe median (s) [quartiles] | wiped |
+|---|---|---|---|---|---|
+| base (v7) | 0.15 | 0.80 | 41.1 | 11.4 [10.0-15.0] | 1.000 |
+| heading jitter ±30° | 0.15 | 0.80 | 41.3 | 11.6 [10.1-16.7] | 1.000 |
+| centre only moved | 0.15 | 0.68 | 35.2 | 12.1 [10.5-18.9] | 1.000 |
+| spread 1.5x | 0.225 | 0.75 | 36.6 | 15.9 [14.1-19.3] | 1.000 |
+| spread 2x | 0.30 | 0.68 | 30.5 | 22.4 [19.5-27.0] | 1.000 |
+
+Wider spacing makes the fight less sharp: from first hit to wipe 11.4 → 15.9 → 22.4 s
+(the centre alone: 12.1 s), every game still a wipe. The ±30° jitter changes nothing
+measurable (it stays inside the author's 30° look). With fog off the first hit comes ~4 s
+later than with fog on (36.6 s).
