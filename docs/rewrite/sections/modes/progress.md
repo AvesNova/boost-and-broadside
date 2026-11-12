@@ -245,3 +245,27 @@ farthest from enemies).
 - If a shorter approach is wanted, `Rules.spawn_offset` (shared with the sandbox formation)
   or a separate elimination offset sets it: at 0.5 the areas are 7.8 km apart, ~22 s to
   contact. The author's call.
+
+## Step 3a: density sweep, fixed arena (deathmatch, release lineup)
+
+`bench/density_sweep.py --lineup jujak,yongma --temperature 3` (real_scale_deathmatch, no
+fields, 7800 m, tickets 5 per ship, 600 s; the scripted agent at T = 1 against itself at
+T = 3; record `/workspace/results/density_yj/density.jsonl` on the box, copied to
+`records/density_yj.jsonl` at the end). Rung choice: on this lineup T = 2 scores only
+0.575 ± 0.022 at 5v5, T = 3 0.708 ± 0.020 (512 games), close to T = 2's 0.70 on the old
+lineup; T = 3 is the sweep's weaker rung.
+
+| per side | ships / km² | score (T = 1 vs T = 3) | games |
+|---|---|---|---|
+| 5 | 0.052 | 0.699 ± 0.029 | 256 |
+| 10 | 0.105 | 0.832 ± 0.023 | 256 |
+| 20 | 0.209 | 0.881 ± 0.020 | 256 |
+| 35 | 0.366 | 0.957 ± 0.013 | 256 |
+| 50 | 0.523 | 0.961 ± 0.012 | 256 |
+
+No collapse up to 50v50 on the 7800 m map (10x the 5v5's density): the edge grows with the
+fleet, as a per-ship edge summed over more ships and more kills (the tickets grow with the
+fleet) should. The v1 hypothesis is not reproduced in this range. Next: the `_density`
+radii (running), then much denser cells (20 and 50 a side at 3900 m and 1950 m; 5v5 there
+too) to find a critical density if there is one. ETA ~18:00 KST (worst 18:30): each new
+size or radius compiles for 5-10 min on the box.
