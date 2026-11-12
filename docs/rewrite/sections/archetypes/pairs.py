@@ -1749,6 +1749,37 @@ def confirm12() -> list[dict]:
 ROUNDS["confirm12"] = confirm12
 
 
+def round19() -> list[dict]:
+    """A wider rate v speed: more lift (x1.1-1.15) against more speed (drag x0.8), the
+    duel paid back with the speed fighter's nose and the crowds with the rate's damage."""
+    out = []
+    for cl, rd, sf in (
+        (1.1, 1.3, 0.06),
+        (1.1, 1.4, 0.06),
+        (1.1, 1.3, 0.055),
+        (1.1, 1.4, 0.065),
+        (1.15, 1.45, 0.055),
+    ):
+        a = merge({"max_lift_coefficient": cl, "hit_damage": rd}, kit(*KIT2), cone(0.065, 12, 8))
+        b = merge(
+            {"zero_lift_drag": 0.8, "vision_range_scale": 1.06, "hit_damage": 1.05},
+            kit(*KIT2),
+            cone(sf, 12, 8),
+        )
+        out.append(
+            pair(
+                f"rate (lift x{cl:g}, dmg x{rd:g}, f0 0.065) v speed (drag x0.8, vision "
+                f"x1.06, dmg x1.05, f0 {sf:g}) (M), kit2",
+                ("M", a),
+                ("M", b),
+            )
+        )
+    return out
+
+
+ROUNDS["round19"] = round19
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
