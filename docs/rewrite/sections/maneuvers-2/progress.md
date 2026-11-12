@@ -338,8 +338,63 @@ enemy anywhere (`duel_extend_cross_in_others` [0.5, 0.1]). Worst against r9m; E 
 - The frozen card's 1v1 rises from 0.02 to 0.20-0.21 with the Jujak's any-type gate (a
   hurt frozen Jujak leaves a Yongma); its crowd is unchanged (item 3 stays open).
 
-## 04:56- KST: confirm 2 (`confirm2/`): the team-gated duel extension at 1024 games
+## 04:56-05:16 KST: confirm 2 (`confirm2/`): the team-gated duel extension at 1024 games
 
-r9m; DE Y 1.0 team / J 0.4; the same with the Jujak's gate team too; DE Y 0.85 team / J 0.4;
-four cards, against r9m and r9 at 1v1 / 2v2 / 5v5, self-play to 10v10. ETA 05:25 KST (worst
-05:40).
+1024 games (SE about ±0.015; 10v10 self-play 512). "team / team": both types' cross-type
+extension gated on another known enemy anywhere. Against r9m (1v1 YY / JJ; 2v2; 5v5;
+worst) and r9 (5v5):
+
+| Card: candidate | v r9m 1v1 | 2v2 | 5v5 | worst | v r9 5v5 |
+|---|---|---|---|---|---|
+| D2: r9m | 0.486 / 0.502 | 0.513 / 0.523 | 0.484 / 0.480 | 0.480 | 0.76 / 0.83 |
+| D2: DE Y 1.0 team / J 0.4 | 0.582 / 0.537 | 0.555 / 0.555 | 0.582 / 0.559 | 0.537 | 0.83 / 0.84 |
+| **D2: DE Y 1.0 team / J 0.4 team** | **0.562 / 0.532** | **0.533 / 0.539** | **0.586 / 0.532** | **0.532** | **0.81 / 0.85** |
+| D2: DE Y 0.85 team / J 0.4 | 0.518 / 0.535 | 0.511 / 0.503 | 0.545 / 0.544 | 0.503 | 0.79 / 0.86 |
+| cone: r9m | 0.498 / 0.497 | 0.473 / 0.499 | 0.486 / 0.496 | 0.473 | 0.78 / 0.82 |
+| cone: DE Y 1.0 team / J 0.4 | 0.538 / 0.510 | 0.522 / 0.524 | 0.576 / 0.534 | 0.510 | 0.82 / 0.85 |
+| **cone: DE Y 1.0 team / J 0.4 team** | **0.555 / 0.531** | **0.534 / 0.541** | **0.591 / 0.554** | **0.531** | **0.81 / 0.84** |
+| cone: DE Y 0.85 team / J 0.4 | 0.507 / 0.532 | 0.530 / 0.525 | 0.547 / 0.532 | 0.507 | 0.80 / 0.82 |
+| big v small: r9m | 0.493 / 0.511 | 0.494 / 0.482 | 0.499 / 0.512 | 0.482 | 0.80 / 0.81 |
+| big v small: DE Y 1.0 team / J 0.4 | 0.585 / 0.560 | 0.516 / 0.500 | 0.581 / 0.549 | 0.500 | 0.83 / 0.83 |
+| **big v small: DE Y 1.0 team / J 0.4 team** | **0.563 / 0.577** | **0.530 / 0.519** | **0.554 / 0.556** | **0.519** | **0.84 / 0.86** |
+| big v small: DE Y 0.85 team / J 0.4 | 0.523 / 0.556 | 0.528 / 0.531 | 0.550 / 0.548 | 0.523 | 0.82 / 0.85 |
+| frozen: r9m | 0.510 / 0.501 | 0.494 / 0.489 | 0.507 / 0.486 | 0.486 | 0.72 / 0.82 |
+| frozen: DE Y 1.0 team / J 0.4 | 0.572 / 0.562 | 0.569 / 0.552 | 0.576 / 0.533 | 0.533 | 0.73 / 0.82 |
+| **frozen: DE Y 1.0 team / J 0.4 team** | **0.591 / 0.571** | **0.552 / 0.519** | **0.560 / 0.517** | **0.517** | **0.75 / 0.84** |
+| frozen: DE Y 0.85 team / J 0.4 | 0.521 / 0.536 | 0.530 / 0.532 | 0.535 / 0.529 | 0.521 | 0.76 / 0.84 |
+
+The duels (1v1 mirrors: mutual head-on share, life, merges a kill, H; JJ then YY) and the
+balance (self-play energy v turn 1 / 2 / 5 / 10v10):
+
+| Card: candidate | JJ 1v1 | YY 1v1 | E v T 1/2/5/10 |
+|---|---|---|---|
+| D2: r9m | 0.84, 213 s, 4.3, 0.09 | 0.74, 132 s, 2.4, 0.15 | 0.50 / 0.44 / 0.53 / 0.43 |
+| D2: DE Y 1.0 team / J 0.4 | 0.66, 221 s, 4.1, 0.40 | 0.62, 184 s, 2.0, 1.60 | 0.47 / 0.42 / 0.55 / 0.53 |
+| **D2: team / team** | **0.66, 221 s, 4.1, 0.40** | **0.62, 183 s, 2.0, 1.59** | **0.50 / 0.44 / 0.59 / 0.50** |
+| cone: r9m | 0.70, 246 s, 4.6, 0.10 | 0.56, 183 s, 3.6, 0.09 | 0.52 / 0.52 / 0.69 / 0.59 |
+| **cone: team / team** | **0.52, 249 s, 4.2, 0.43** | **0.32, 232 s, 2.2, 1.60** | **0.53 / 0.51 / 0.71 / 0.68** |
+| big v small: r9m | 0.62, 168 s, 3.9, 0.12 | 0.53, 133 s, 2.5, 0.15 | 0.60 / 0.51 / 0.50 / 0.47 |
+| **big v small: team / team** | **0.44, 189 s, 3.5, 0.61** | **0.31, 159 s, 1.8, 1.60** | **0.57 / 0.51 / 0.53 / 0.55** |
+| frozen: r9m | 0.86, 109 s, 2.3, 0.22 | 0.79, 197 s, 4.0, 0.09 | 0.01 / 0.43 / 0.36 / 0.26 |
+| **frozen: team / team** | **0.78, 121 s, 2.2, 0.78** | **0.63, 276 s, 3.1, 1.58** | **0.01 / 0.45 / 0.33 / 0.18** |
+
+- **"DE Y 1.0 team / J 0.4 team" (r9m2, `champion2.json`) passes the strength rule on every
+  card at 1024 games**: worst against r9m 0.517-0.532 (about 1-2 SE above even), 5v5
+  0.53-0.59, 1v1 0.53-0.59; against r9 it beats r9m's margins (5v5 0.75-0.86).
+- **The type balance stays r9m's at 1v1-5v5** (within 0.06 at every size on every card;
+  D2 0.50 / 0.44 / 0.59 against 0.50 / 0.44 / 0.53). At 10v10 it moves toward the Yongma
+  (D2 0.43 to 0.50, big v small 0.47 to 0.55, cone 0.59 to 0.68) and the frozen card's to the
+  Jujak (0.26 to 0.18).
+- **The duel choice**: H 0.40-0.78 in the Jujak mirror, 1.58-1.60 in the Yongma mirror
+  (r9m 0.09-0.22): the Yongma one-circles at a shield lead and extends behind, the
+  Jujak extends only when well behind (below 0.4 of the target's shield).
+- **The joust in the duels**: the mutual head-on share falls in every mirror (JJ D2 0.84 to
+  0.66, cone 0.70 to 0.52, big v small 0.62 to 0.44, frozen 0.86 to 0.78; YY D2 0.74 to 0.62,
+  cone 0.56 to 0.32, big v small 0.53 to 0.31, frozen 0.79 to 0.63) with fewer merges a kill
+  in the Yongma mirror (D2 2.4 to 2.0) and a longer Yongma mirror (D2 132 to 183 s, cone 183
+  to 232 s, frozen 197 to 276 s).
+
+## 05:18- KST: robustness (`robust/`): r9m2 against the league
+
+1024 games: r9m and r9m2 against r9, r7, r4, `hand` and `off` (1v1 mirrors, 5v5 mixed). ETA
+05:35 KST (worst 05:45).
