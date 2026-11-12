@@ -1,0 +1,43 @@
+[
+ {
+  "label": "lock60_kappa",
+  "lock": 59.8,
+  "capture_scale": 2.0
+ },
+ {
+  "label": "lock60_kappa_count0.25",
+  "lock": 59.8,
+  "capture_scale": 2.0,
+  "count_scale": 0.25
+ },
+ {
+  "label": "lock42_kappa",
+  "lock": 42.3,
+  "capture_scale": 2.0
+ },
+ {
+  "label": "lock30_kappa",
+  "lock": 30,
+  "capture_scale": 2.0
+ },
+ {
+  "label": "lock60",
+  "lock": 59.8
+ },
+ {
+  "label": "stale_kappa",
+  "stale": 1,
+  "capture_scale": 2.0
+ },
+ {
+  "label": "forward_kappa",
+  "forward": 1,
+  "capture_scale": 2.0
+ },
+ {
+  "label": "forward_lock30_kappa",
+  "forward": 1,
+  "lock": 30,
+  "capture_scale": 2.0
+ }
+]

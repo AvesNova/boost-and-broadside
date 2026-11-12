@@ -1,0 +1,74 @@
+[
+ {
+  "label": "base"
+ },
+ {
+  "label": "lock20",
+  "lock": 20
+ },
+ {
+  "label": "lock25",
+  "lock": 25
+ },
+ {
+  "label": "lock30",
+  "lock": 30
+ },
+ {
+  "label": "lock35",
+  "lock": 35
+ },
+ {
+  "label": "lock30_early",
+  "lock": 30,
+  "early": 1
+ },
+ {
+  "label": "lock40_early",
+  "lock": 40,
+  "early": 1
+ },
+ {
+  "label": "lock60_early",
+  "lock": 60,
+  "early": 1
+ },
+ {
+  "label": "stale",
+  "stale": 1
+ },
+ {
+  "label": "stale_lock15",
+  "stale": 1,
+  "lock": 15
+ },
+ {
+  "label": "stale_lock20",
+  "stale": 1,
+  "lock": 20
+ },
+ {
+  "label": "stale_lock30",
+  "stale": 1,
+  "lock": 30
+ },
+ {
+  "label": "forward",
+  "forward": 1
+ },
+ {
+  "label": "forward_lock15",
+  "forward": 1,
+  "lock": 15
+ },
+ {
+  "label": "forward_lock30",
+  "forward": 1,
+  "lock": 30
+ },
+ {
+  "label": "lock30_prog0.5",
+  "lock": 30,
+  "progressive": 0.5
+ }
+]

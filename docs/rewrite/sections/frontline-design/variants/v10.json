@@ -1,0 +1,65 @@
+[
+ {
+  "label": "kappa",
+  "capture_scale": 1.4148936170212767
+ },
+ {
+  "label": "lock42_kappa",
+  "lock": 42.3,
+  "capture_scale": 1.4148936170212767
+ },
+ {
+  "label": "lock42",
+  "lock": 42.3
+ },
+ {
+  "label": "lock42_kappa_count0.5",
+  "lock": 42.3,
+  "capture_scale": 1.4148936170212767,
+  "count_scale": 0.5
+ },
+ {
+  "label": "lock30_kappa",
+  "lock": 30,
+  "capture_scale": 1.4148936170212767
+ },
+ {
+  "label": "lock42_kappa_early",
+  "lock": 42.3,
+  "early": 1,
+  "capture_scale": 1.4148936170212767
+ },
+ {
+  "label": "stale_kappa",
+  "stale": 1,
+  "capture_scale": 1.4148936170212767
+ },
+ {
+  "label": "stale_lock21_kappa",
+  "stale": 1,
+  "lock": 21.2,
+  "capture_scale": 1.4148936170212767
+ },
+ {
+  "label": "forward_kappa",
+  "forward": 1,
+  "capture_scale": 1.4148936170212767
+ },
+ {
+  "label": "forward_lock21_kappa",
+  "forward": 1,
+  "lock": 21.2,
+  "capture_scale": 1.4148936170212767
+ },
+ {
+  "label": "forward_lock42_kappa",
+  "forward": 1,
+  "lock": 42.3,
+  "capture_scale": 1.4148936170212767
+ },
+ {
+  "label": "lock42_count0.5",
+  "lock": 42.3,
+  "count_scale": 0.5
+ }
+]
