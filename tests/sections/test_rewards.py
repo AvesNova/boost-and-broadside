@@ -71,9 +71,14 @@ def test_levels_are_zero_sum_and_the_ledger_holds_every_deficit(mode):
         seen["resets"] += int(events.done.sum())
         seen["recharge"] += int((events.shield_restored > 0).sum())
     # every kind of death, in every mode (Frontline included), plus respawns (none in
-    # elimination) and resets
+    # elimination) and resets. Recharge is required where random play has it reliably
+    # (sandbox, Frontline): in the deathmatch modes a calm ship is rarely hurt and spared
+    # long enough to recharge (none in about half of the seeds, before game version 4's
+    # spawn headings and after), and the reward step does not depend on the mode.
     if mode == "elimination":
         assert seen.pop("respawns") == 0, seen
+    if mode not in ("sandbox", "frontline"):
+        seen.pop("recharge")
     assert all(count > 0 for count in seen.values()), seen
 
 
@@ -226,7 +231,7 @@ def test_rollout_stores_every_level_zero_sum_per_environment(mode):
         {"r": Random(config.ships_per_team)},
         "r",
         8,
-        64,
+        256,  # random play's first hit can take over 64 ticks (8 environments)
         torch.device("cpu"),
         compiled=False,
     )
