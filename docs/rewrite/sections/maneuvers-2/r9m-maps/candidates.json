@@ -1,0 +1,563 @@
+[
+ {
+  "name": "arch-standard-hit-and-run | r9m",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096886068582535
+   },
+   "zero_lift_drag": {
+    "set": 4.967039785697125e-05
+   },
+   "engine_power": {
+    "set": 1369.9053955078125
+   },
+   "engine_power_full_store": {
+    "set": 334.950927734375
+   },
+   "static_thrust": {
+    "set": 18.26384925842285
+   },
+   "corner_nose_frequency": {
+    "set": 5.432675838470459
+   },
+   "max_shield": {
+    "set": 85.07878875732422
+   },
+   "hit_radius": {
+    "set": 10.0
+   },
+   "hit_damage": {
+    "set": 9.116387367248535
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "reference_bullet_speed": {
+    "set": 876.8519287109375
+   },
+   "induced_drag_scale": {
+    "set": 3.042593240737915
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264785766602
+   },
+   "dive_exchange_scale": {
+    "set": 0.4433835744857788
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285650253296
+   },
+   "vision_range_scale": {
+    "set": 0.3125
+   },
+   "shield_recharge_rate_scale": {
+    "set": 4.0
+   },
+   "shield_recharge_delay_scale": {
+    "set": 0.4000000059604645
+   },
+   "head_on_fraction_scale": {
+    "set": 0.20000000298023224
+   },
+   "head_on_angle_scale": {
+    "set": 0.2838892936706543
+   },
+   "head_on_sharpness": {
+    "set": 8.0
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096886068582535
+   },
+   "zero_lift_drag": {
+    "set": 4.967039785697125e-05
+   },
+   "engine_power": {
+    "set": 1369.9053955078125
+   },
+   "engine_power_full_store": {
+    "set": 334.950927734375
+   },
+   "static_thrust": {
+    "set": 18.26384925842285
+   },
+   "corner_nose_frequency": {
+    "set": 5.432675838470459
+   },
+   "max_shield": {
+    "set": 106.3484878540039
+   },
+   "hit_radius": {
+    "set": 10.0
+   },
+   "hit_damage": {
+    "set": 7.472448348999023
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "reference_bullet_speed": {
+    "set": 876.8519287109375
+   },
+   "induced_drag_scale": {
+    "set": 3.042593240737915
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264785766602
+   },
+   "dive_exchange_scale": {
+    "set": 0.4433835744857788
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285650253296
+   },
+   "head_on_fraction_scale": {
+    "set": 0.2666666805744171
+   },
+   "head_on_angle_scale": {
+    "set": 0.2838892936706543
+   },
+   "head_on_sharpness": {
+    "set": 8.0
+   }
+  },
+  "player": "r9m"
+ },
+ {
+  "name": "arch-rate-speed | r9m",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.005056979134678841
+   },
+   "zero_lift_drag": {
+    "set": 4.967039785697125e-05
+   },
+   "engine_power": {
+    "set": 1369.9053955078125
+   },
+   "engine_power_full_store": {
+    "set": 334.950927734375
+   },
+   "static_thrust": {
+    "set": 18.26384925842285
+   },
+   "corner_nose_frequency": {
+    "set": 5.432675838470459
+   },
+   "max_shield": {
+    "set": 106.3484878540039
+   },
+   "hit_radius": {
+    "set": 10.0
+   },
+   "hit_damage": {
+    "set": 9.340560913085938
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "reference_bullet_speed": {
+    "set": 876.8519287109375
+   },
+   "induced_drag_scale": {
+    "set": 3.042593240737915
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264785766602
+   },
+   "dive_exchange_scale": {
+    "set": 0.4433835744857788
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285650253296
+   },
+   "head_on_fraction_scale": {
+    "set": 0.21666666865348816
+   },
+   "head_on_angle_scale": {
+    "set": 0.2838892936706543
+   },
+   "head_on_sharpness": {
+    "set": 8.0
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096886068582535
+   },
+   "zero_lift_drag": {
+    "set": 4.2219839087920263e-05
+   },
+   "engine_power": {
+    "set": 1369.9053955078125
+   },
+   "engine_power_full_store": {
+    "set": 334.950927734375
+   },
+   "static_thrust": {
+    "set": 18.26384925842285
+   },
+   "corner_nose_frequency": {
+    "set": 5.432675838470459
+   },
+   "max_shield": {
+    "set": 106.3484878540039
+   },
+   "hit_radius": {
+    "set": 10.0
+   },
+   "hit_damage": {
+    "set": 7.846070766448975
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "reference_bullet_speed": {
+    "set": 876.8519287109375
+   },
+   "induced_drag_scale": {
+    "set": 3.042593240737915
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264785766602
+   },
+   "dive_exchange_scale": {
+    "set": 0.4433835744857788
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285650253296
+   },
+   "vision_range_scale": {
+    "set": 0.3385416567325592
+   },
+   "head_on_fraction_scale": {
+    "set": 0.23333333432674408
+   },
+   "head_on_angle_scale": {
+    "set": 0.2838892936706543
+   },
+   "head_on_sharpness": {
+    "set": 8.0
+   }
+  },
+  "player": "r9m"
+ },
+ {
+  "name": "arch-standard-brawler | r9m",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096886068582535
+   },
+   "zero_lift_drag": {
+    "set": 4.967039785697125e-05
+   },
+   "engine_power": {
+    "set": 1369.9053955078125
+   },
+   "engine_power_full_store": {
+    "set": 334.950927734375
+   },
+   "static_thrust": {
+    "set": 18.26384925842285
+   },
+   "corner_nose_frequency": {
+    "set": 5.432675838470459
+   },
+   "max_shield": {
+    "set": 106.3484878540039
+   },
+   "hit_radius": {
+    "set": 10.0
+   },
+   "hit_damage": {
+    "set": 7.472448348999023
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "reference_bullet_speed": {
+    "set": 876.8519287109375
+   },
+   "induced_drag_scale": {
+    "set": 3.042593240737915
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264785766602
+   },
+   "dive_exchange_scale": {
+    "set": 0.4433835744857788
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285650253296
+   },
+   "head_on_fraction_scale": {
+    "set": 0.2666666805744171
+   },
+   "head_on_angle_scale": {
+    "set": 0.2838892936706543
+   },
+   "head_on_sharpness": {
+    "set": 8.0
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096886068582535
+   },
+   "zero_lift_drag": {
+    "set": 4.967039785697125e-05
+   },
+   "engine_power": {
+    "set": 1369.9053955078125
+   },
+   "engine_power_full_store": {
+    "set": 334.950927734375
+   },
+   "static_thrust": {
+    "set": 18.26384925842285
+   },
+   "corner_nose_frequency": {
+    "set": 5.432675838470459
+   },
+   "max_shield": {
+    "set": 106.3484878540039
+   },
+   "hit_radius": {
+    "set": 10.0
+   },
+   "hit_damage": {
+    "set": 8.369142532348633
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "reference_bullet_speed": {
+    "set": 876.8519287109375
+   },
+   "induced_drag_scale": {
+    "set": 3.042593240737915
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264785766602
+   },
+   "dive_exchange_scale": {
+    "set": 0.4433835744857788
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285650253296
+   },
+   "vision_range_scale": {
+    "set": 0.2994791865348816
+   },
+   "head_on_fraction_scale": {
+    "set": 0.2666666805744171
+   },
+   "head_on_angle_scale": {
+    "set": 0.2838892936706543
+   },
+   "head_on_sharpness": {
+    "set": 8.0
+   }
+  },
+  "player": "r9m"
+ },
+ {
+  "name": "arch-gunner-close | r9m",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096886068582535
+   },
+   "zero_lift_drag": {
+    "set": 4.967039785697125e-05
+   },
+   "engine_power": {
+    "set": 1369.9053955078125
+   },
+   "engine_power_full_store": {
+    "set": 334.950927734375
+   },
+   "static_thrust": {
+    "set": 18.26384925842285
+   },
+   "corner_nose_frequency": {
+    "set": 5.432675838470459
+   },
+   "max_shield": {
+    "set": 106.3484878540039
+   },
+   "hit_radius": {
+    "set": 10.0
+   },
+   "hit_damage": {
+    "set": 6.725203514099121
+   },
+   "bullet_life": {
+    "set": 0.9099999666213989
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "reference_bullet_speed": {
+    "set": 876.8519287109375
+   },
+   "induced_drag_scale": {
+    "set": 3.042593240737915
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264785766602
+   },
+   "dive_exchange_scale": {
+    "set": 0.4433835744857788
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285650253296
+   },
+   "vision_range_scale": {
+    "set": 0.3515625298023224
+   },
+   "head_on_fraction_scale": {
+    "set": 0.2666666805744171
+   },
+   "head_on_angle_scale": {
+    "set": 0.2838892936706543
+   },
+   "head_on_sharpness": {
+    "set": 8.0
+   },
+   "arming_distance": {
+    "set": 100.0
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096886068582535
+   },
+   "zero_lift_drag": {
+    "set": 4.967039785697125e-05
+   },
+   "engine_power": {
+    "set": 1369.9053955078125
+   },
+   "engine_power_full_store": {
+    "set": 334.950927734375
+   },
+   "static_thrust": {
+    "set": 18.26384925842285
+   },
+   "corner_nose_frequency": {
+    "set": 5.432675838470459
+   },
+   "max_shield": {
+    "set": 106.3484878540039
+   },
+   "hit_radius": {
+    "set": 10.0
+   },
+   "hit_damage": {
+    "set": 7.472448348999023
+   },
+   "bullet_life": {
+    "set": 0.5600000023841858
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "reference_bullet_speed": {
+    "set": 876.8519287109375
+   },
+   "induced_drag_scale": {
+    "set": 3.042593240737915
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264785766602
+   },
+   "dive_exchange_scale": {
+    "set": 0.4433835744857788
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285650253296
+   },
+   "vision_range_scale": {
+    "set": 0.29296875
+   },
+   "head_on_fraction_scale": {
+    "set": 0.2666666805744171
+   },
+   "head_on_angle_scale": {
+    "set": 0.2838892936706543
+   },
+   "head_on_sharpness": {
+    "set": 8.0
+   }
+  },
+  "player": "r9m"
+ },
+ {
+  "name": "armour-tank | r9m",
+  "energy": {
+   "max_shield": {
+    "set": 56.779632568359375
+   },
+   "hit_damage": {
+    "set": 5.515568256378174
+   },
+   "bullet_life": {
+    "set": 0.42000001668930054
+   },
+   "head_on_fraction_scale": {
+    "set": 0.28333333134651184
+   },
+   "head_on_angle_scale": {
+    "set": 0.2838892936706543
+   },
+   "head_on_sharpness": {
+    "set": 8.0
+   }
+  },
+  "turn": {
+   "hit_damage": {
+    "set": 4.008951187133789
+   },
+   "induced_drag_scale": {
+    "set": 4.132418632507324
+   },
+   "head_on_fraction_scale": {
+    "set": 0.28333333134651184
+   },
+   "head_on_angle_scale": {
+    "set": 0.2838892936706543
+   },
+   "head_on_sharpness": {
+    "set": 8.0
+   }
+  },
+  "player": "r9m"
+ },
+ {
+  "name": "balance-d2 | r9m",
+  "energy": {
+   "max_shield": {
+    "set": 70.97454071044922
+   },
+   "hit_damage": {
+    "set": 3.6770455837249756
+   },
+   "bullet_life": {
+    "set": 0.5249999761581421
+   },
+   "head_on_fraction_scale": {
+    "set": 0.699999988079071
+   }
+  },
+  "turn": {
+   "induced_drag_scale": {
+    "set": 4.132418632507324
+   },
+   "head_on_fraction_scale": {
+    "set": 0.5
+   }
+  },
+  "player": "r9m"
+ }
+]
