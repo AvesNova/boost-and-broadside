@@ -47,6 +47,7 @@ hit_damage = 24.692468643188477
 muzzle_speed = 840.0
 bullet_energy_cost = 210.91763305664062
 fire_rate = 15.0
+bullet_life = 0.6
 spawn_energy = 40652.640625
 bleed_exponent = 2.0
 induced_drag_scale = 2.947392225265503
@@ -82,7 +83,7 @@ hit_damage = "researched (medium): weight_of_fire 6.5; proposal: 360 per second 
 fire_rate = "derived: fire_rate 15; proposal: the main gun's volley rate. the Hispano Mk V 20 mm: the whole-Hz volley rate dividing 30 nearest its rate per gun"
 muzzle_speed = "researched (medium): muzzle_speed 840. the Hispano Mk V 20 mm: Wikipedia"
 bullet_spread = "estimated: dispersion 4; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
-gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
+gun_range = "the reach in the set's gun flight time (0.6 s), cruise and muzzle speed (drag scale 1)"
 shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 22.3 m/s), the standard fighter's ratio: a shot costs 210.9 J/kg, 0.964 s of charge"
 max_shield = "researched (medium): survivability 4; proposal: the standard 100 x (1 + 0.1 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Big, strongly built; pilot armour. Chin radiator and liquid cooling are vulnerable, but the airframe absorbs a lot. Balanced (round 3): 140 -> 120, the step per rating 0.2 -> 0.1: the shield's Spearman correlation with the round-2 Elo was +0.54 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
 shield_recharge_rate = "placeholder: the standard fighter's"

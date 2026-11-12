@@ -4,8 +4,9 @@ following ticks.
 
 The scan keeps one bullet per (row, age), newest first, as the game keeps one per slot: each
 tick every row fires a fresh bullet from its captured launch state, every bullet moves, and
-the swept test runs against the tick's captured ship motion. Every bullet flies all its
-moves; a shot's first contact is its hit (the game spends the bullet there) and its outcome,
+the swept test runs against the tick's captured ship motion. Every bullet flies the card's
+longest life (`Rules.longest_bullet_moves`); a shot's first contact within its own type's
+life is its hit (the game spends the bullet there) and its outcome,
 while its path is labelled at every age: past a hit, the straight-on flight it would have
 had. The trajectory head learns a shot at QUERIES of its ages (`query_ages`). Rows are in
 the view's order, so a shooter's side is its block.
@@ -20,7 +21,7 @@ from bnb.contracts.tree import contract
 from bnb.game.physics.bullets import Launch, launch, move_bullets
 from bnb.game.physics.combat import contacts, first_contact
 from bnb.game.rules import Rules
-from bnb.game.ship_types import ShipTypes
+from bnb.game.ship_types import ShipTypes, bullet_moves, per_ship
 from bnb.game.state import Bullets, Fields, Sweep, apply, replace
 from bnb.models.yemong.shots import HIT_ALLY, HIT_ENEMY, HIT_NONE, SIDE_ALLY, SIDE_ENEMY
 
@@ -185,7 +186,7 @@ def resimulate(
     copy of it; available (R,): the ticks of each view that hold played ticks (a view whose
     window was extended past its segment by the ticks after it), L when None."""
     length, views, rows = capture.alive.shape
-    ages = rules.bullet_moves
+    ages = rules.longest_bullet_moves
     device = capture.alive.device
     empty = apply(
         lambda x: x.new_zeros((views, rows, ages)),
@@ -216,7 +217,10 @@ def resimulate(
             for field in dataclasses.fields(_Tick)
         }
     )
-    inside = inside[:, None, None, :]
+    # A shot hits, and passes ships, only within its shooter's bullet life (the scan flies
+    # every bullet the card's longest).
+    life = bullet_moves(per_ship(types.bullet_life, capture.launch.ship_type), rules.tick_length)
+    inside = inside[:, None, None, :] & (torch.arange(ages, device=device) < life[..., None])
     contact = shot.hit & inside
     hit_age = torch.where(contact, torch.arange(ages, device=device), ages).min(-1).values
     hit_any = hit_age < ages

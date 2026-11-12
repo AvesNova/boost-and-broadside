@@ -45,7 +45,7 @@ Constants marked † differ by ship type (section 1.1); the value shown is the f
 | episode length | `T_ep` | 1800 ticks | `episode_ticks` |
 | bullet slots per ship | `K` | 6 | `slots` |
 | ticks between shots † | — | 2 | `fire_interval` |
-| bullet lifetime | — | 12 moves | `bullet_moves` |
+| bullet lifetime † (from the gun range) | — | 12 moves | `bullet_moves` |
 | muzzle proper speed † | `w_m` | 500 m/s **(v2)** | `muzzle_speed` |
 | bullet drag **(v2)** | `k_b` | 8e-4 1/m | `bullet_drag` |
 | spread (per axis, proper) | `σ_b` | 12 m/s | `spread` |

@@ -131,10 +131,12 @@ which blocks sight (see [Perception and fog](perception.md)).
 
 - **Firing.** A ship fires when it is alive, its gun is cooled down and its store holds the
   shot's energy cost. The bullet starts at the ship's position with the ship's velocity plus
-  the muzzle speed along the nose, plus the shooter's random spread. It lives 0.4 s
-  (`bnb.game.rules.BULLET_LIFE`), a whole number of moves at the rules' tick.
-- **Drag.** Bullets slow quadratically on their proper speed, with the shooter's drag, so a
-  shot has a range.
+  the muzzle speed along the nose, plus the shooter's random spread. It lives its shooter's
+  type's bullet life (the card's `bullet_life`, a whole number of moves at the rules'
+  tick; 0.4 s for the standard types, 0.6 s for the real-scale ones).
+- **Drag.** Bullets slow quadratically on their proper speed, with the game's bullet drag
+  times the shooter's drag scale, so a shot has a range. A type's gun range sets both its
+  bullet life and its drag scale ([The ship card](ship-card.md)).
 - **Hits.** A swept test between each bullet's and each ship's straight motion this tick
   finds contacts within the target's hit radius. A bullet hits only its first contact.
   **Friendly fire is on:** a bullet can hit any ship but its own shooter.

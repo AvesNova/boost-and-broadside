@@ -210,7 +210,8 @@ def model_build(config: TrainConfig) -> Build:
         architecture = dataclasses.replace(config.relational, bfloat16_matmuls=bfloat16)
         return RelationalBuild(architecture, game.ships_per_team, game.num_ships)
     architecture = dataclasses.replace(config.yemong, bfloat16_matmuls=bfloat16)
-    return yemong_build(architecture, api.rules_of(game), config.ship_types())
+    types = config.ship_types()
+    return yemong_build(architecture, api.rules_of(game, types=types), types)
 
 
 def build_model(build: Build, device: torch.device) -> torch.nn.Module:

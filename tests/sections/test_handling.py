@@ -83,7 +83,7 @@ def test_gun_range_and_time_of_flight_match_a_bullet_fired_in_the_game(ship_type
     spread = torch.zeros((1, 2, 2))
     state, _ = api.move(rules, TYPES, state, _action(shoot=1), spread)
     start = torch.tensor([0.0, 0.0])
-    for move in range(2, rules.bullet_moves + 1):
+    for move in range(2, rules.longest_bullet_moves + 1):
         state, _ = api.move(rules, TYPES, state, _action(), spread)
         travelled = float(
             torch.hypot(state.bullets.x[0, 0, 0] - start[0], state.bullets.y[0, 0, 0] - start[1])

@@ -4,47 +4,69 @@ form both ways.
 Times are stated in seconds, and the fire rate in shots per second; each must be a whole
 number of ticks at the rules' tick, or the conversion fails with the reason (spec 5). The
 gun's range is the distance a bullet fired at cruise along the flight path travels in its
-life: s = ln(1 + k_b w0 t) / k_b at n = 1, with w0 = cruise + muzzle speed, solved for the
-drag k_b by bisection.
+life: s = ln(1 + k_b w0 t) / k_b at n = 1, with w0 = cruise + muzzle speed. The range sets
+both the type's bullet life and its drag: the life is the whole ticks at or above the time
+the rules' drag takes to cover the range, t = expm1(k_b R) / (k_b w0), and the type's drag
+scale (1 or more: drag only shortens) trims the range to R in that life, by bisection.
 """
 
 import torch
 
 from bnb.contracts import ticks_of
 
-from ..rules import Rules
-from ..ship_types import ShipTypes, ticks_between_shots
+from ..rules import LONGEST_BULLET_LIFE, Rules
+from ..ship_types import ShipTypes, bullet_moves, ticks_between_shots
 from .errors import Infeasible
 
 DRAG_BISECTIONS = 200
 DRAG_RANGE = (1e-12, 10.0)  # 1/m
 
 
-def bullet_life(rules: Rules) -> float:
-    """Every bullet's life in seconds: its moves at the rules' tick."""
-    return rules.bullet_moves * rules.tick_length
+# Ticks: a range's flight time this close above a whole tick is that tick (the float error of
+# a range measured from a card, whose life covers it exactly).
+LIFE_TOLERANCE = 1e-4
 
 
-def gun_range(rules: Rules, drag: torch.Tensor, launch_speed: torch.Tensor) -> torch.Tensor:
-    """The distance a bullet launched at this proper speed travels in its life, n = 1."""
-    reach = drag * launch_speed * bullet_life(rules)
-    return torch.log1p(reach) / drag
+def whole_tick_life(
+    rules: Rules, distance: torch.Tensor, launch_speed: torch.Tensor
+) -> torch.Tensor:
+    """The bullet life (s, whole ticks) that covers `distance` at this launch speed under the
+    rules' drag: the time t = expm1(k_b R) / (k_b w0) rounded up to a tick, so that the
+    type's drag scale, 1 or more, trims the range to R (`bullet_life` checks it)."""
+    drag, tick = rules.bullet_drag, rules.tick_length
+    flight = torch.expm1(drag * distance) / (drag * launch_speed)
+    ticks = torch.ceil(flight / tick - LIFE_TOLERANCE)
+    # At a drag near 0 the time is the drag-free one, which no drag scale can trim to: a tick more.
+    ticks = torch.where(launch_speed * ticks * tick <= distance, ticks + 1, ticks)
+    return ticks * tick
 
 
-def range_drag(rules: Rules, distance: torch.Tensor, launch_speed: torch.Tensor) -> torch.Tensor:
-    """The drag k_b at which a bullet launched at this speed travels `distance` in its life
-    (bisection in log k_b: the range falls as the drag grows)."""
-    reach = launch_speed * bullet_life(rules)
-    if (distance >= reach).any():
+def bullet_life(rules: Rules, distance: torch.Tensor, launch_speed: torch.Tensor) -> torch.Tensor:
+    """`whole_tick_life`, or Infeasible with the reason past LONGEST_BULLET_LIFE."""
+    life = whole_tick_life(rules, distance, launch_speed)
+    if (life > LONGEST_BULLET_LIFE + 0.5 * rules.tick_length).any():
         raise Infeasible(
-            "a gun range at or beyond the drag-free reach (cruise + muzzle speed) "
-            "x bullet life cannot be met"
+            f"a gun range needs a bullet life of {float(life.max()):.3g} s at this cruise and "
+            f"muzzle speed and bullet drag, beyond the longest, {LONGEST_BULLET_LIFE:g} s: "
+            "shorten it, or raise the muzzle speed or lower the bullet drag"
         )
+    return life
+
+
+def gun_range(drag: torch.Tensor, launch_speed: torch.Tensor, life) -> torch.Tensor:
+    """The distance a bullet launched at this proper speed travels in its life (s), n = 1."""
+    return torch.log1p(drag * launch_speed * life) / drag
+
+
+def range_drag(distance: torch.Tensor, launch_speed: torch.Tensor, life) -> torch.Tensor:
+    """The drag k_b at which a bullet launched at this speed travels `distance` in its life
+    (bisection in log k_b: the range falls as the drag grows). The distance must lie short
+    of the drag-free reach, launch speed x life (`bullet_life` sees to it)."""
     low = torch.full_like(distance, DRAG_RANGE[0]).log()
     high = torch.full_like(distance, DRAG_RANGE[1]).log()
     for _ in range(DRAG_BISECTIONS):
         middle = 0.5 * (low + high)
-        too_far = gun_range(rules, middle.exp(), launch_speed) > distance
+        too_far = gun_range(middle.exp(), launch_speed, life) > distance
         low, high = torch.where(too_far, middle, low), torch.where(too_far, high, middle)
     return (0.5 * (low + high)).exp()
 
@@ -71,10 +93,13 @@ def combat_card(rules: Rules, handles, cruise_speed: torch.Tensor) -> dict[str, 
         ticks_between_shots(handles.fire_rate, rules.tick_length)
     except ValueError as error:
         raise Infeasible(str(error)) from error
-    drag = range_drag(rules, handles.gun_range, cruise_speed + handles.muzzle_speed)
+    launch_speed = cruise_speed + handles.muzzle_speed
+    life = bullet_life(rules, handles.gun_range, launch_speed)
+    drag = range_drag(handles.gun_range, launch_speed, life)
     return dict(
         hit_damage=handles.hit_damage,
         fire_rate=handles.fire_rate,
+        bullet_life=life,
         muzzle_speed=handles.muzzle_speed,
         bullet_spread_scale=handles.bullet_spread / rules.bullet_spread,
         bullet_drag_scale=drag / rules.bullet_drag,
@@ -91,12 +116,13 @@ def combat_card(rules: Rules, handles, cruise_speed: torch.Tensor) -> dict[str, 
 def combat_handles(rules: Rules, types: ShipTypes, cruise_speed: torch.Tensor) -> dict:
     """The combat handles of a card (fields (B, num_types)) flying at this cruise."""
     drag = rules.bullet_drag * types.bullet_drag_scale
+    life = bullet_moves(types.bullet_life, rules.tick_length) * rules.tick_length
     return dict(
         hit_damage=types.hit_damage,
         fire_rate=types.fire_rate,
         muzzle_speed=types.muzzle_speed,
         bullet_spread=rules.bullet_spread * types.bullet_spread_scale,
-        gun_range=gun_range(rules, drag, cruise_speed + types.muzzle_speed),
+        gun_range=gun_range(drag, cruise_speed + types.muzzle_speed, life),
         shots_per_store=types.max_energy / types.bullet_energy_cost,
         max_shield=types.max_shield,
         shield_recharge_rate=rules.shield_recharge_rate * types.shield_recharge_rate_scale,

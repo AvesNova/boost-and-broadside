@@ -47,6 +47,7 @@ hit_damage = 24.0
 muzzle_speed = 856.0
 bullet_energy_cost = 156.0601348876953
 fire_rate = 15.0
+bullet_life = 0.6
 spawn_energy = 46303.19921875
 bleed_exponent = 2.0
 induced_drag_scale = 2.8421876430511475
@@ -82,7 +83,7 @@ hit_damage = "researched (medium): weight_of_fire 3.68; proposal: 360 per second
 fire_rate = "derived: fire_rate 15; proposal: the main gun's volley rate. the Browning AN/M2 .50 cal: the whole-Hz volley rate dividing 30 nearest its rate per gun"
 muzzle_speed = "researched (medium): muzzle_speed 856. the Browning AN/M2 .50 cal: AAF Manual 200-1"
 bullet_spread = "researched (low): dispersion 6; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
-gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
+gun_range = "the reach in the set's gun flight time (0.6 s), cruise and muzzle speed (drag scale 1)"
 shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 16.5 m/s), the standard fighter's ratio: a shot costs 156.1 J/kg, 0.964 s of charge"
 max_shield = "researched (medium): survivability 4; proposal: the standard 100 x (1 + 0.1 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Air-cooled radial, pilot armour, self-sealing tanks, strong carrier airframe. Balanced (round 3): 140 -> 120, the step per rating 0.2 -> 0.1: the shield's Spearman correlation with the round-2 Elo was +0.54 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
 shield_recharge_rate = "placeholder: the standard fighter's"

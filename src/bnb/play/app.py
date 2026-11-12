@@ -63,7 +63,7 @@ FRAME_SECONDS = 1.0 / 60.0  # the offscreen runner's clock
 NOTICE_SECONDS = 6.0  # a notice stays this long (display time)
 FLYING_ZOOM = 3.0  # taking control zooms in to at most this multiple of the fitted view
 SEEK_BEFORE_MARKER = 3.0  # seconds before an event a marker seeks to
-SOLVED_UNDER = ("flight.", "rules.bullet_life")  # the rules a card's handles depend on
+SOLVED_UNDER = ("flight.", "rules.bullet_drag")  # the rules a card's handles depend on
 
 
 GridPattern = Literal[("off", *GRID_PATTERNS)]  # the dot grid's patterns (`render.grid`)
@@ -423,7 +423,7 @@ class Session:
     def save_ships(self, ships: list, moved: dict[int, int | None] | None = None) -> None:
         """Write the ship files of the match's ship set (`api.ships`, tracked in git), and
         the tuned rule values the cards fly under (`SOLVED_UNDER`: the flight constants and the
-        bullet life) into the set's rules.toml, and play on with them. The
+        bullet drag) into the set's rules.toml, and play on with them. The
         current card becomes the files' default, so the match plays on as it is; when the
         types change (`moved`: each old type's new index, None for a removed one), a new
         match starts with the lineup remapped (a removed type's slots take the first type)."""

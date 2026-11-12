@@ -36,7 +36,7 @@ def test_the_rules_are_todays_in_real_units():
     expected = scale_flight(FlightConstants(), real_scale.LENGTH, real_scale.TIME)
     for name in ("coast_exchange", "climb_exchange", "nose_frequency_floor"):
         assert getattr(rules.flight, name) == pytest.approx(getattr(expected, name), rel=1e-12)
-    assert rules.bullet_moves == 18  # 0.6 s
+    assert rules.longest_bullet_moves == 18  # 0.6 s, every type's
     assert rules.bullet_drag == pytest.approx(8e-4 / 5.82)
     assert rules.vision_range == 3072.0
     stall = torch.sqrt(rules.flight.gravity / api.ship_types(ship_set=SET).max_lift_coefficient)

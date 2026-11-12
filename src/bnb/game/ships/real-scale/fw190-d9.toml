@@ -47,6 +47,7 @@ hit_damage = 35.47297668457031
 muzzle_speed = 805.0
 bullet_energy_cost = 241.183837890625
 fire_rate = 10.0
+bullet_life = 0.6
 spawn_energy = 41202.0
 bleed_exponent = 2.0
 induced_drag_scale = 1.4240812063217163
@@ -82,7 +83,7 @@ hit_damage = "researched (medium): weight_of_fire 2.74; proposal: 360 per second
 fire_rate = "derived: fire_rate 10; proposal: the main gun's volley rate. the Mauser MG 151/20, 1.84 of 2.74 kg/s: the whole-Hz volley rate dividing 30 nearest its rate per gun"
 muzzle_speed = "researched (good): muzzle_speed 805. the Mauser MG 151/20, 1.84 of 2.74 kg/s: Wikipedia"
 bullet_spread = "researched (low): dispersion 4; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
-gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
+gun_range = "the reach in the set's gun flight time (0.6 s), cruise and muzzle speed (drag scale 1)"
 shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 17 m/s), the standard fighter's ratio: a shot costs 241.2 J/kg, 1.45 s of charge"
 max_shield = "researched (medium): survivability 3; proposal: the standard 100 x (1 + 0.1 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Liquid-cooled but with an armoured annular radiator; armour as A-8. Balanced (round 3): 120 -> 110, the step per rating 0.2 -> 0.1: the shield's Spearman correlation with the round-2 Elo was +0.54 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
 shield_recharge_rate = "placeholder: the standard fighter's"

@@ -12,8 +12,12 @@ computes went in under it (the observation's accelerations, whole-Hz fire rates 
 instant bullet life, the time scale, the real-scale card): ratings keyed on version 1 mix
 those games. Version 2 is the game at 2026-11-10. Version 3 (2026-11-11): the shield's
 recharge pauses while the pilot gives an input other than a quiet one
-(`physics.combat.quiet`), and the arena preset's radius is 1950 m (was 1300 m).
+(`physics.combat.quiet`), and the arena preset's radius is 1950 m (was 1300 m). On
+2026-11-12 each type's bullet life became a card field derived from its gun range, equal to
+the old shared life on every ship set, so the game's numbers stayed version 3; the
+fingerprint changed only because a play-shell match allocates 60 bullet slots (was 45),
+and at 45 it is the old one.
 """
 
 VERSION = 3
-FINGERPRINT = "6ff805b3cfb25174"
+FINGERPRINT = "192e58786f9e7b07"

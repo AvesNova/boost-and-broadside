@@ -355,15 +355,15 @@ compare.
   at once: it does not change how the ship flies.
 - **Save ships** writes every type to its file in the match's ship set (`src/bnb/game/ships/`
   for the standard set, `src/bnb/game/ships/real-scale/` for the real-scale one), tracked
-  in git: the handles and the card, and the tuned flight constants and bullet life into
+  in git: the handles and the card, and the tuned flight constants and bullet drag into
   the set's `rules.toml`, as the cards fly under them. **Add a copy as this name** writes a
   copy of the chosen type under the name in the field to its own file in the set at once
   (the panel names the file); the other types' files are left as they are, and their
   unsaved changes play on in the new match until **Save ships**. It waits only for the
   chosen type's exact card, and asks for **Save ships** first when the flight constants or
-  bullet life were changed. **Remove** deletes the chosen type after asking. Each starts a
+  bullet drag were changed. **Remove** deletes the chosen type after asking. Each starts a
   new match; the last type cannot be removed.
-- **Rules**, by group: the arena and the clocks, bullet life, the flight constants every
+- **Rules**, by group: the arena and the clocks, the bullet drag, the flight constants every
   type shares, spawns, and the current mode's rules (Frontline's zone radius and capture
   time, team deathmatch's kills to win). Each has a slider and a number box, and applies on
   the next tick; those marked with * are drawn at an episode's start. Hover a row for
@@ -376,7 +376,7 @@ compare.
 - **Time scale**: **Apply** makes the whole game the given factor faster than its design
   (×1) with the map's lengths fixed (speeds x k, gravity and accelerations x k^2, rates and fire rates x k,
   times / k, energies x k^2, so a store keeps its height). Fire rates snap to whole Hz that
-  divide 30, and bullet life, clocks and shield delays to whole ticks; the message says
+  divide 30, and bullet lives, clocks and shield delays to whole ticks; the message says
   what snapped. **Make this speed 1×** takes the playback speed (×¼ to ×8 in the top bar)
   as the factor and sets playback back to ×1: pick the speed at which the game feels
   right, then make it the game's own. The factor is always against ×1: **Apply** 2 gives ×2

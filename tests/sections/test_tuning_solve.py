@@ -116,9 +116,9 @@ def test_the_tuner_applies_the_estimate_then_the_exact_card():
         assert tuner.flying["cruise_speed"][0] == pytest.approx(cruise, rel=5e-3)
         assert frames(lambda: loop.sides[0].characteristics is not traits, 300.0)
         gun_range = tuner.targets.gun_range.clone()
-        tuner.set_setting("rules.bullet_life", 0.8)
-        assert loop.rules.bullet_moves == 24 and not tuner.message
-        assert (tuner.targets.gun_range > 1.5 * gun_range).all()  # at once, the card kept
+        tuner.set_setting("rules.bullet_drag", 1e-5)
+        assert loop.rules.bullet_drag == 1e-5 and not tuner.message
+        assert (tuner.targets.gun_range > 1.05 * gun_range).all()  # at once, the card kept
     finally:
         tuner.close()
 

@@ -47,6 +47,7 @@ hit_damage = 36.28557205200195
 muzzle_speed = 520.0
 bullet_energy_cost = 319.2138977050781
 fire_rate = 10.0
+bullet_life = 0.6
 spawn_energy = 49050.0
 bleed_exponent = 2.0
 induced_drag_scale = 2.0838489532470703
@@ -82,7 +83,7 @@ hit_damage = "researched (medium): weight_of_fire 4.31; proposal: 360 per second
 fire_rate = "derived: fire_rate 10; proposal: the main gun's volley rate. the Rheinmetall-Borsig MK 108 30 mm, 3.41 of 4.31 kg/s: the whole-Hz volley rate dividing 30 nearest its rate per gun"
 muzzle_speed = "researched (medium): muzzle_speed 520. the Rheinmetall-Borsig MK 108 30 mm, 3.41 of 4.31 kg/s: Wikipedia"
 bullet_spread = "researched (low): dispersion 2.4; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
-gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
+gun_range = "the reach in the set's gun flight time (0.6 s), cruise and muzzle speed (drag scale 1)"
 shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 22.5 m/s), the standard fighter's ratio: a shot costs 319.2 J/kg, 1.45 s of charge"
 max_shield = "researched (medium): survivability 2; proposal: the standard 100 x (1 + 0.1 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Small and light, liquid-cooled with wing radiators; pilot armour and armoured glass; few hits needed."
 shield_recharge_rate = "placeholder: the standard fighter's"

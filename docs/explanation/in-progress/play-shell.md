@@ -228,7 +228,7 @@ match's own state and recompile on the window's thread.
 The tuning panel (`bnb.play.tuning_panel`, F2) changes a live match's numbers while it
 plays, through `bnb.play.tuning.Tuner` and `MatchLoop.retune`:
 
-- **Rule settings** (`bnb.game.api.tuning`: the arena and clock, the bullet life, the
+- **Rule settings** (`bnb.game.api.tuning`: the arena and clock, the bullet drag, the
   shared flight constants, spawns and each mode's rules) apply from the next tick, without
   a recompile: the compiled tick takes their values as tensors (`bnb.game.tuning.live_of`) and
   is keyed on the rules with them blanked (`bnb.game.tuning.static_of`), so every value runs on
@@ -238,7 +238,7 @@ plays, through `bnb.play.tuning.Tuner` and `MatchLoop.retune`:
   tick) take a new match.
 - **Handles**, per ship type, go through the card, also an input of the compiled tick. The
   panel shows a type's handles at once when its card and the rules its handles depend on
-  (the flight constants and the bullet life, `bnb.play.tuning.SET_BY`) are its ship
+  (the flight constants and the bullet drag, `bnb.play.tuning.SET_BY`) are its ship
   file's: each file's card was solved exact to its handles. Otherwise (a flight constant
   changed, a preset, the time scale) the type's handles are measured before they show.
   What each card flies is measured lazily, one type at a time on a measuring worker: the
@@ -251,7 +251,8 @@ plays, through `bnb.play.tuning.Tuner` and `MatchLoop.retune`:
   combat handle of an exact card whose flight is measured skips both: the flight does not
   read the combat fields, so the solve's answer is that card with its combat fields in
   closed form (`combat_card`), applied at once. A flight constant re-measures the cards'
-  handles (the cards are kept); the bullet life changes only the gun range, in closed form.
+  handles (the cards are kept); the bullet drag changes only the gun range, in closed form (each type keeps its bullet
+  life and drag scale; a gun range set afterwards solves them under the new drag).
 - **The workers are processes**, not threads: the solve and the estimate are thousands of
   small tensor operations, and on a thread each waits for the interpreter lock while the
   match runs. Each worker flies the compiled flight tick (`bnb.runtime.flights`), compiled
@@ -262,8 +263,9 @@ plays, through `bnb.play.tuning.Tuner` and `MatchLoop.retune`:
   and 7-13 s for a real-scale one (its climb lasts about an hour of game time); the game's
   own tick is about ten times slower.
 - **Bullet slots.** A play-shell match allocates a slot per tick of the longest bullet life
-  a setting allows (`bnb.game.tuning.most_bullet_slots`, 45 at 30 Hz), so no fire rate or bullet
-  life runs out of them; the compiled 5v5 tick costs the same 0.7-1.0 ms at 6, 15 or 45.
+  a card may have (`bnb.game.rules.LONGEST_BULLET_LIFE`, 2 s;
+  `bnb.game.tuning.most_bullet_slots`, 60 at 30 Hz), so no fire rate or gun range runs out
+  of them; the compiled 5v5 tick cost the same 0.7-1.0 ms at 6, 15 or 45 slots.
   Elsewhere the rules hold what the card needs (`bnb.game.rules.bullet_slots_for`). Fire rates are
   whole shots per second a whole number of ticks apart.
 - The scripted agent's characteristics are re-measured for each exact card. A trained
@@ -278,7 +280,7 @@ times faster with the map's lengths fixed, by the units of every quantity
 fire rates x k, times / k, energies x k^2 and specific powers x k^3. Energies scale with
 gravity, so a store keeps its height (energy / g): a time-scaled game is an exact
 similarity of the original, up to the tick, which stays at 30 Hz, and the values held to
-whole ticks or Hz (bullet life, clocks, shield delays, fire rates), which snap; the
+whole ticks or Hz (bullet lives, clocks, shield delays, fire rates), which snap; the
 panel's message lists what snapped. The rule settings change through
 `api.tuning.tuned(..., bounded=False)` (a scaled value may lie past a slider's end); the
 card is transformed in closed form, with the shared values no setting holds (the
@@ -291,7 +293,7 @@ looks the same and plays at real time.
 [The ship card](../game/ship-card.md#ship-sets)): the handles the type flies and the card
 the game reads, in the order of `order.toml`. A match plays its config's set
 (`GameConfig.ship_set`), whose default card is read from them. The panel's **Save ships**
-writes the match's set, and the tuned flight constants and bullet life with it (into the
+writes the match's set, and the tuned flight constants and bullet drag with it (into the
 set's `rules.toml`: the rules its cards fly under); **Add** copies the chosen type under a
 new name and **Remove** deletes one (after a confirmation popup; the last type stays),
 each starting a new match with the lineup remapped.

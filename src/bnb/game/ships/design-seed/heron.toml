@@ -47,6 +47,7 @@ hit_damage = 37.859004974365234
 muzzle_speed = 880.0
 bullet_energy_cost = 144.71031188964844
 fire_rate = 10.0
+bullet_life = 0.6
 spawn_energy = 35641.69140625
 bleed_exponent = 2.0
 induced_drag_scale = 1.4327577352523804

@@ -45,10 +45,10 @@ For display (the play shell), with no rules of their own: `display` (the state's
 display draws, by name), `log_index` and `log_index_gradient` (the medium at points),
 `core_radius` (the discs the sight test treats as cores), `zone_sides`
 (Frontline's zone owners and attackers), `visible` (each team's observation in sim order),
-`vision_range`, `per_ship` and `type_names` (the ship types' names, from the ship files);
-`bullet_paths` (each live bullet's flight ahead, by the game's own transport); and the
-constants `TEAMS`, `LN_SQRT2` (ln n per field level),
-`MAP_SCALE_RADIUS` (the arena radius of map scale 1), the game presets `PRESETS` and the
+`vision_range`, `per_ship`, `bullet_moves` (a card's bullet lives in moves) and `type_names`
+(the ship types' names, from the ship files); `bullet_paths` (each live bullet's flight
+ahead, by the game's own transport); and the constants `TEAMS`, `LN_SQRT2` (ln n per field
+level), `MAP_SCALE_RADIUS` (the arena radius of map scale 1), the game presets `PRESETS` and the
 lineups of those whose lineup is their own (`LINEUPS`, as type indices by `preset_lineup`).
 """
 
@@ -83,7 +83,14 @@ from .physics.medium import medium
 from .physics.step import move, reset, resolve, step
 from .rules import LN_SQRT2, MAP_SCALE_RADIUS, TEAMS, Rules, bullet_slots_for, rules_of
 from .ship_types import STANDARD as STANDARD_SHIP_SET
-from .ship_types import ShipTypes, default_card, per_ship, ship_types, type_names
+from .ship_types import (
+    ShipTypes,
+    bullet_moves,
+    default_card,
+    per_ship,
+    ship_types,
+    type_names,
+)
 from .ship_types import reload as reload_ships
 from .state import Fields, State, Sweep, replace, ship_team, sweep_like
 
@@ -111,6 +118,7 @@ __all__ = [
     "Sweep",
     "TEAMS",
     "bleed_rate",
+    "bullet_moves",
     "bullet_paths",
     "bullet_slots_for",
     "combat_card",
@@ -201,7 +209,7 @@ def retune(rules: Rules, types: ShipTypes, state: State) -> State:
 
 def gun_range(rules: Rules, types: ShipTypes, cruise_speed: torch.Tensor) -> torch.Tensor:
     """(num_types,) each type's gun range handle: how far a bullet fired at cruise along the
-    flight path travels in the rules' bullet life (`combat_handles`)."""
+    flight path travels in its type's bullet life (`combat_handles`)."""
     return combat_handles(rules, types, cruise_speed)["gun_range"]
 
 
@@ -325,11 +333,11 @@ def bullet_paths(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Each live bullet's flight ahead through the fields, by the game's own transport
     (`move_bullets`, as the learner's shot re-simulation flies them), ignoring the ships:
-    x, y (B, N, K, A) m after each of the next A = bullet_moves moves, and valid (B, N, K,
+    x, y (B, N, K, A) m after each of the next A = longest_bullet_moves moves, and valid (B, N, K,
     A), the bullet still flies that move (it has that many moves left)."""
     bullets, owner_type = state.bullets, state.ships.ship_type
     xs, ys, valid = [], [], []
-    for _ in range(rules.bullet_moves):
+    for _ in range(rules.longest_bullet_moves):
         flying = bullets.moves_left > 0
         bullets = move_bullets(rules, types, bullets, state.fields, owner_type)
         bullets = replace(bullets, moves_left=torch.where(flying, bullets.moves_left - 1, 0))

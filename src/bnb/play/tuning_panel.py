@@ -504,6 +504,7 @@ class TuningPanel:
                     setting.low,
                     setting.high,
                     setting.integer,
+                    log=setting.log,
                     help=help,
                     mark=EPISODE_MARK if episode else "",
                 )
@@ -527,7 +528,7 @@ class TuningPanel:
             "map's lengths fixed (2 gives x2 whatever it runs at now; 1 goes back): speeds "
             "x k, accelerations and gravity x k^2, rates and fire rates x k, times / k, "
             "energies x k^2 (a store keeps its height, energy / g) and powers x k^3. Fire "
-            "rates snap to whole Hz dividing the tick rate and bullet life, clocks and shield "
+            "rates snap to whole Hz dividing the tick rate and bullet lives, clocks and shield "
             "delays to whole ticks. The panel's values stay the design's, at x1: an edit sets "
             "the x1 value and a save writes it."
         )

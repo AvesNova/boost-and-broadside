@@ -7,15 +7,16 @@ A setting is named by a key, `<owner>.<field>`:
 - `flight.<field>`: a flight constant (`FlightConstants`) every ship type shares;
 - `mode.<field>`: a mode's rule (`ModeRules`), for every pool of that mode;
 - `pool.arena_radius`, `pool.episode_seconds`, `pool.respawn_seconds`: each game's arena
-  and clocks, the clocks in seconds (whole ticks);
-- `rules.bullet_life`: every bullet's life in seconds (whole ticks: `Rules.bullet_moves`).
+  and clocks, the clocks in seconds (whole ticks).
 
 Sizes (ships, fields, lineup, bullet slots, the tick, the mode's spawn draws) are not
 settings: they change the state's shapes, so they take a new match. The ship card's values
 are tuned through the handles (`bnb.game.handling`), not here; so are the shared values the
-card scales per type (bullet drag and spread, shield recharge, the head-on fraction, vision,
-the stall angle, the induced drag and the exchanges), which are left out to keep one
-control per quantity.
+card scales per type (bullet spread, shield recharge, the head-on fraction, vision, the
+stall angle, the induced drag and the exchanges), which are left out to keep one control
+per quantity. The bullet drag is the exception: the game's drag, which sets how long a
+bullet takes to cover a gun range (each type's bullet life, `handling.weapons`), while the
+type's drag scale only trims its range.
 
 A setting applies from the next tick, except where `Setting.when` is "episode": the map and
 the spawns are drawn at an episode's start, so those apply from the next episode.
@@ -28,7 +29,7 @@ import torch
 
 from bnb.contracts import ticks_of
 
-from .rules import FlightConstants, PoolRules, Rules
+from .rules import LONGEST_BULLET_LIFE, FlightConstants, PoolRules, Rules
 
 NOW, EPISODE = "now", "episode"
 TEAM_DEATHMATCH_GROUP, FRONTLINE_GROUP = "Team deathmatch", "Frontline"
@@ -39,7 +40,7 @@ class Setting:
     """One tunable number: its key, the panel group and label, its unit, its bounds (in its
     unit), whether it is a whole number, and when it applies (NOW or EPISODE). `ticks`: it
     is a time in seconds held to whole ticks. `modes`: the modes it belongs to (empty for
-    every mode)."""
+    every mode). `log`: its slider is logarithmic (a value spanning decades)."""
 
     key: str
     group: str
@@ -51,6 +52,7 @@ class Setting:
     when: str = NOW
     ticks: bool = False
     modes: tuple[str, ...] = ()
+    log: bool = False
 
 
 def _s(key, group, label, unit, low, high, **kw) -> Setting:
@@ -70,7 +72,7 @@ SETTINGS = (
     _s("pool.respawn_seconds", ARENA, "respawn wait", "s", 0.0, 30.0, ticks=True),
     _s("rules.boundary_damage_base", ARENA, "boundary damage", "/s", 0.0, 50.0),
     _s("rules.boundary_damage_per_metre", ARENA, "boundary damage per metre", "/s/m", 0.0, 1.0),
-    _s("rules.bullet_life", COMBAT, "bullet life", "s", 0.1, 1.5, ticks=True),
+    _s("rules.bullet_drag", COMBAT, "bullet drag", "1/m", 1e-5, 5e-3, log=True),
     _s("flight.gravity", FLIGHT, "gravity", "m/s^2", 5.0, 80.0),
     _s("flight.engine_knee", FLIGHT, "engine knee (store fraction)", "", 0.05, 0.95),
     _s("flight.store_fade_band", FLIGHT, "store fade band", "", 0.005, 0.2),
@@ -162,8 +164,13 @@ BY_KEY = {setting.key: setting for setting in SETTINGS}
 
 def most_bullet_slots(tick_length: float) -> int:
     """The bullet slots a ship needs at the fastest fire rate (a shot every tick) and the
-    longest bullet life a setting allows: what a match that may be tuned allocates."""
-    return math.ceil(round(BY_KEY["rules.bullet_life"].high / tick_length, 9))
+    longest bullet life a card may have: what a match that may be tuned allocates."""
+    return longest_moves(tick_length)
+
+
+def longest_moves(tick_length: float) -> int:
+    """LONGEST_BULLET_LIFE in moves at this tick."""
+    return math.ceil(round(LONGEST_BULLET_LIFE / tick_length, 9))
 
 
 def settings_for(rules: Rules) -> tuple[Setting, ...]:
@@ -178,8 +185,6 @@ def value(rules: Rules, key: str) -> float:
     it)."""
     owner, name = key.split(".", 1)
     if owner == "rules":
-        if name == "bullet_life":
-            return rules.bullet_moves * rules.tick_length
         return float(getattr(rules, name))
     if owner == "flight":
         return float(getattr(rules.flight, name))
@@ -219,9 +224,7 @@ def tuned(rules: Rules, values: dict[str, float], bounded: bool = True) -> Rules
         owner, name = key.split(".", 1)
         if setting.integer:
             number = int(number)
-        if owner == "rules" and name == "bullet_life":
-            shared["bullet_moves"] = ticks_of(number, rules.tick_length)
-        elif owner == "rules":
+        if owner == "rules":
             shared[name] = number
         elif owner == "flight":
             flight[name] = number
@@ -274,7 +277,7 @@ def changed(rules: Rules, base: Rules) -> dict[str, float]:
 LIVE_RULES = (
     "boundary_damage_base",
     "boundary_damage_per_metre",
-    "bullet_moves",
+    "bullet_drag",
     "spawn_speed",
     "spawn_offset",
     "spawn_radius",
@@ -295,7 +298,7 @@ LIVE_MODE = (
     "spawn_zone_fraction",
 )
 LIVE_POOL = ("arena_radius", "episode_ticks", "respawn_ticks")
-_INTEGERS = {"bullet_moves", "kills_per_ship", "front_threshold", "episode_ticks", "respawn_ticks"}
+_INTEGERS = {"kills_per_ship", "front_threshold", "episode_ticks", "respawn_ticks"}
 
 
 def _tensor(name: str, number) -> torch.Tensor:

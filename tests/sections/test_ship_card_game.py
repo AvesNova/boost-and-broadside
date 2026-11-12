@@ -1,6 +1,6 @@
 """The ship card in the game (ship-card spec 1, 2, 5): the bleed exponent, every per-type
-value taking effect for its own type only, the time-native bullet life and weapon
-cadence, and energy conservation at each supported tick rate."""
+value taking effect for its own type only, the time-native bullet life (each type's, from
+its gun range) and weapon cadence, and energy conservation at each supported tick rate."""
 
 import dataclasses
 import math
@@ -25,6 +25,7 @@ pytestmark = pytest.mark.usefixtures("global_generator")
 
 
 RATES = (25, 30, 60)
+BULLET_FLOATS = [field.name for field in dataclasses.fields(Bullets) if field.name != "moves_left"]
 
 
 def _ships(speed, energy, angle=None, ship_type=None, dtype=torch.float32) -> Ships:
@@ -276,9 +277,51 @@ def test_every_shared_value_has_its_scale():
 
 
 @pytest.mark.parametrize("rate", RATES)
-def test_bullet_life_is_time_native(rate):
-    rules = api.rules_of(GameConfig(1, 1, 1000.0), tick_length=1.0 / rate)
-    assert math.isclose(rules.bullet_moves * rules.tick_length, 0.4)
+def test_bullet_life_is_the_shooters_and_time_native(rate):
+    """A bullet gets its shooter's type's life, in whole moves at the tick; the rules' longest
+    and the bullet slots follow the card."""
+    types = api.ship_types(bullet_life=(0.4, 0.6))
+    rules = api.rules_of(GameConfig(1, 1, 1000.0), types=types, tick_length=1.0 / rate)
+    assert rules.longest_bullet_moves == round(0.6 * rate)
+    ship_type = torch.tensor([[0, 1]], dtype=torch.int32)
+    ships = replace(_ships(torch.full((1, 2), 100.0), 5000.0), ship_type=ship_type)
+    zeros = torch.zeros(1, 2, rules.bullet_slots)
+    bullets = Bullets(**{name: zeros for name in BULLET_FLOATS}, moves_left=zeros.int())
+    _, fired = fire(
+        rules, types, ships, bullets, torch.ones(1, 2, dtype=torch.bool), torch.zeros(1, 2, 2)
+    )
+    assert fired.moves_left[0, :, 0].tolist() == [round(0.4 * rate), round(0.6 * rate)]
+
+
+def test_the_bullet_slots_follow_each_types_life_and_fire_rate():
+    """A type's slots are its life over its ticks between shots; a ship gets the most."""
+    assert api.bullet_slots_for((10.0, 15.0), (0.6, 0.4), 1.0 / 30.0) == 6  # 18 / 3
+    assert api.bullet_slots_for((10.0, 15.0), (0.3, 0.8), 1.0 / 30.0) == 12  # 24 / 2
+
+
+def test_the_gun_range_sets_the_bullet_life():
+    """The life is the whole ticks at or above the time the rules' drag takes to cover the
+    gun range, and the drag scale (1 or more) trims the range to it exactly: the standard
+    card's life is 0.4 s at drag scale 1; a slower muzzle keeps its range with a longer life;
+    a range past the longest life is infeasible."""
+    from bnb.game.handling import Infeasible
+    from bnb.game.handling.weapons import bullet_life, gun_range, range_drag
+
+    rules = api.rules_of(GameConfig(1, 1, 1000.0))
+    launch = torch.tensor([603.7, 300.0], dtype=torch.float64)
+    life = torch.tensor(0.4, dtype=torch.float64)
+    distance = gun_range(torch.tensor(rules.bullet_drag, dtype=torch.float64), launch[:1], life)
+    distance = distance.expand(2)  # the standard fighter's range, at half the launch speed too
+    lives = bullet_life(rules, distance, launch)
+    assert lives[0].item() == pytest.approx(0.4)
+    slow = math.expm1(rules.bullet_drag * distance[1].item()) / (rules.bullet_drag * 300.0)
+    assert lives[1].item() == pytest.approx(math.ceil(slow * 30.0) / 30.0)
+    drag = range_drag(distance, launch, lives)
+    assert (drag[0] / rules.bullet_drag).item() == pytest.approx(1.0, rel=1e-6)
+    assert drag[1].item() >= rules.bullet_drag
+    assert gun_range(drag, launch, lives).tolist() == pytest.approx(distance.tolist(), rel=1e-9)
+    with pytest.raises(Infeasible, match="beyond the longest"):
+        bullet_life(rules, distance * 10.0, launch)
 
 
 def test_weapon_cadence_is_validated_per_rate():

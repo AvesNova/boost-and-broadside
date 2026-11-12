@@ -47,6 +47,7 @@ hit_damage = 71.62169647216797
 muzzle_speed = 520.0
 bullet_energy_cost = 1725.173828125
 fire_rate = 5.0
+bullet_life = 0.6
 spawn_energy = 12439.080078125
 bleed_exponent = 2.0
 induced_drag_scale = 6.951470851898193
@@ -82,7 +83,7 @@ hit_damage = "invented: weight_of_fire 3.312; proposal: 360 per second (the P-51
 fire_rate = "invented: fire_rate 5; proposal: the main gun's volley rate. the MK 108-class 30 mm"
 muzzle_speed = "invented: muzzle_speed 520. the MK 108-class 30 mm"
 bullet_spread = "invented: dispersion 2.52; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the P-51D's x 0.42: Rocket sprinter: enormous thrust, a tiny store (propellant)."
-gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
+gun_range = "the reach in the set's gun flight time (0.6 s), cruise and muzzle speed (drag scale 1)"
 shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 60.8 m/s), the standard fighter's ratio: a shot costs 1725 J/kg, 2.89 s of charge"
 max_shield = "invented: survivability 1; proposal: the standard 100 x (1 + 0.1 per rating step from the P-51D's 2). Explosive propellants. Balanced (round 3): 80 -> 90, the step per rating 0.2 -> 0.1: the shield's Spearman correlation with the round-2 Elo was +0.54 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal. Balanced (round 3): 90 -> 120: an invented or placeholder type rated -867 +- 24 in round 2, -1854 from the median 986 (the rule moves its shield 20 towards the median beyond 200 Elo)."
 shield_recharge_rate = "placeholder: the standard fighter's"

@@ -47,6 +47,7 @@ hit_damage = 177.30970764160156
 muzzle_speed = 615.0
 bullet_energy_cost = 808.6752319335938
 fire_rate = 2.0
+bullet_life = 0.6
 spawn_energy = 39789.359375
 bleed_exponent = 2.0
 induced_drag_scale = 2.502345085144043
@@ -82,7 +83,7 @@ hit_damage = "invented: weight_of_fire 2.723; proposal: 360 per second (the P-51
 fire_rate = "invented: fire_rate 2; proposal: the main gun's volley rate. the Vickers S-class 40 mm, 2.16 of 2.71 kg/s"
 muzzle_speed = "invented: muzzle_speed 615. the Vickers S-class 40 mm, 2.16 of 2.71 kg/s"
 bullet_spread = "invented: dispersion 2.4; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the P-51D's x 0.4: Heavy gunship: one big slow cannon, armoured bathtub."
-gun_range = "follows from the bullet life, cruise and muzzle speed (drag scale 1)"
+gun_range = "the reach in the set's gun flight time (0.6 s), cruise and muzzle speed (drag scale 1)"
 shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 11.4 m/s), the standard fighter's ratio: a shot costs 808.7 J/kg, 7.23 s of charge"
 max_shield = "invented: survivability 5; proposal: the standard 100 x (1 + 0.1 per rating step from the P-51D's 2). Armoured engine, cockpit and tanks (Il-2 style). Balanced (round 3): 160 -> 130, the step per rating 0.2 -> 0.1: the shield's Spearman correlation with the round-2 Elo was +0.54 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal. Balanced (round 3): 130 -> 160: an invented or placeholder type rated -84 +- 13 in round 2, -1070 from the median 986 (the rule moves its shield 20 towards the median beyond 200 Elo)."
 shield_recharge_rate = "placeholder: the standard heavy's"

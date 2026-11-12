@@ -62,7 +62,7 @@ CARD = dict(cl_max="max_lift_coefficient", a_max="max_acceleration", cd0="zero_l
             bullet_cost="bullet_energy_cost", fire_interval="ticks_between_shots",
             spawn_energy="spawn_energy")
 RULES = dict(h="tick_length", episode_ticks="episode_ticks", slots="bullet_slots",
-             bullet_moves="bullet_moves", bullet_drag="bullet_drag", spread="bullet_spread",
+             bullet_moves="longest_bullet_moves", bullet_drag="bullet_drag", spread="bullet_spread",
              head_on_fraction="head_on_fraction", shield_delay="shield_recharge_delay",
              shield_regen="shield_recharge_rate", boundary_base="boundary_damage_base",
              boundary_per_m="boundary_damage_per_metre", respawn_ticks="respawn_ticks",

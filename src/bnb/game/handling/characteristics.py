@@ -139,7 +139,6 @@ def _key(types: ShipTypes, rules: Rules) -> tuple:
         rules.flight,
         rules.tick_length,
         rules.bullet_drag,
-        rules.bullet_moves,
         rules.bullet_spread,
         rules.vision_range,
         rules.shield_recharge_rate,

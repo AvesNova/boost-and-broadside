@@ -205,7 +205,7 @@ def _one_shot(rules, types, start: Launch, fields: torch.Tensor, rows: int, spre
     """The flight of one shot fired from `start` (one row's launch state, scalars), alone,
     through fields (M, 5): snapshots (draws, A, 5) and age_valid (draws, A), every age of a
     valid shot, for spread (draws, 2) standard normals."""
-    draws, ages = spread.shape[0], rules.bullet_moves
+    draws, ages = spread.shape[0], rules.longest_bullet_moves
     shape = (ages, draws, rows)
 
     def column(value: torch.Tensor) -> torch.Tensor:
@@ -253,7 +253,7 @@ def measure(model, rules, types, trajectory, config) -> dict:
     bullet = launch(rules, types, start, zero[0])
     direction = torch.stack([bullet.direction_x, bullet.direction_y]).reshape(2)
     speed = float(bullet.proper_speed / torch.exp(bullet.log_refractive_index))
-    flight = speed * rules.bullet_moves * rules.tick_length
+    flight = speed * int(bullet.moves_left) * rules.tick_length
     origin = torch.stack([start.x, start.y]).reshape(2)
     arena_radius = float(trajectory.obs.globals[tick, view, GLOBAL["arena_radius"]])
     generator = torch.Generator().manual_seed(config.seed)

@@ -155,17 +155,22 @@ def _ships(rules: Rules, types: ShipTypes, state: State, values: dict, observati
     )
 
 
-def _bullets(rules: Rules, values: dict) -> Bullets:
+def _bullets(rules: Rules, types: ShipTypes, state: State, values: dict) -> Bullets:
     N, K = rules.num_ships, rules.bullet_slots
     owner = torch.arange(N).repeat_interleave(K)
+    life = api.bullet_moves(
+        api.per_ship(types.bullet_life, state.ships.ship_type)[0], rules.tick_length
+    )
 
     def value(name: str) -> np.ndarray:
         return _numpy(values[f"bullets.{name}"][0].reshape(-1))
 
     moves_left = value("moves_left")
     active = moves_left > 0
-    # A bullet fired on a tick has bullet_moves - 1 moves left after it: one tick flown.
-    flown = np.where(active, rules.bullet_moves - moves_left, 0) * rules.tick_length
+    # A bullet fired on a tick has its shooter's life in moves - 1 left after it: one tick
+    # flown (a life tuned since it was fired is the new one: at least 0).
+    lives = _numpy(life.repeat_interleave(K))
+    flown = np.where(active, np.maximum(lives - moves_left, 0), 0) * rules.tick_length
     return Bullets(
         x=value("x"),
         y=value("y"),
@@ -220,7 +225,7 @@ def snapshot(rules: Rules, types: ShipTypes, state: State, observation: Obs) -> 
     globals_ = observation.globals[0, 0]
     return Snapshot(
         ships=_ships(rules, types, state, values, observation),
-        bullets=_bullets(rules, values),
+        bullets=_bullets(rules, types, state, values),
         fields=_fields(state, values),
         zones=_zones(rules, state, values),
         arena_radius=pool.arena_radius,
