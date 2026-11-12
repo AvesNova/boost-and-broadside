@@ -384,3 +384,68 @@ same card (5v5 mixed / reversed), a sanity check that the card does not break th
   all three matchups 0.35-0.37 mutual head-on with 3.2-3.5 merges a kill (p90 8-9), lives
   306-334 s, strength even. Confirming at 1024 games with 20v20 (`confirm1/`, running).
 - The small ship's sustained turn is a steep duel lever (induced x0.95: 0.59 to 0.35).
+
+## 02:03-02:20 KST: confirm 1 (`confirm1/`): the four finalists at 1024 games, 1v1-20v20
+
+1024 games a lineup (10v10 512, 20v20 256), r9; SE about ±0.015 (1v1-5v5), ±0.02 (10v10),
+±0.03 (20v20):
+
+| Pair | A v B 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | Duel kills m / o / f / t; life | AA; BB mutual, life; merges | Trades max | v r9 |
+|---|---|---|---|---|---|
+| sniper v shotgun, kit2 | 0.49 / 0.49 / 0.52 / **0.39 / 0.38** | 0.34 / 0.58 / 0.08 / 0; 333 s | 0.37, 308 s, 3.4; 0.32, 339 s, 3.2 | 0.18 | 0.50 / 0.52 |
+| **big v small, kit, small f0 0.10** | 0.59 / 0.51 / 0.49 / 0.50 / **0.47** | 0.35 / 0.50 / 0.14 / 0; 261 s | 0.36, 236 s, 2.4; 0.38, 326 s, 3.1 | 0.20 | 0.51 / 0.49 |
+| armed gunner v close fighter, kit | 0.56 / 0.56 / 0.57 / 0.47 / 0.51 | 0.24 / 0.67 / 0.09 / 0; 310 s | 0.15, 458 s, 3.1; 0.22, 376 s, 3.0 | 0.19 | 0.51 / 0.49 |
+| **scout v brawler, kit2** | 0.56 / 0.57 / 0.53 / 0.52 / **0.54** | 0.33 / 0.57 / 0.10 / 0; 284 s | 0.35, 322 s, 3.2; 0.36, 279 s, 2.9 | 0.20 | 0.50 / 0.52 |
+
+- **Big v small and scout v brawler hold at 20v20** (0.47 and 0.54), where every Yongma v
+  Jujak card failed (0.07-0.27): pairs on one hull do not carry the arena-size lean.
+- Sniper v shotgun loses the big crowds to the shotgun at 1024 games (0.39 / 0.38): the 512
+  game 10v10 (0.45) was high. Not carried forward.
+
+## 02:04-02:18 KST: round 10 (`round10/`): the finalists under the maneuvers doctrines
+
+The maneuvers branch's elements (merged), on both types in self-play: "CE" = the crowd
+extension and the 0.5 s lead turn; "DCL" = CE plus the duel one-circle sense (mirror only).
+The players beat r9 0.80-0.85 at 5v5 on every one of these cards.
+
+| Pair | Doctrine | A v B 1v1 / 2v2 / 5v5 / 10v10 | AA; BB mutual, life, merges, H | Duel life |
+|---|---|---|---|---|
+| big v small (f0 0.10) | r9 (confirm 1) | 0.59 / 0.51 / 0.49 / 0.50 | 0.36, 236 s, 2.4, 0.66; 0.38, 326 s, 3.1, 0.53 | 261 s |
+| big v small | CE | 0.57 / 0.56 / 0.50 / 0.51 | 0.31, 264 s, 2.2, 0.12; 0.28, 373 s, 2.9, 0.13 | 278 s |
+| big v small | DCL | 0.57 / 0.51 / 0.53 / 0.48 | 0.51, 142 s, 2.4, 0.51; 0.60, 186 s, 3.6, 0.39 | 270 s |
+| sniper v shotgun | CE | 0.53 / 0.57 / 0.60 / 0.61 | 0.25, 382 s; 0.25, 430 s | 395 s |
+| sniper v shotgun | DCL | 0.53 / 0.56 / 0.56 / 0.55 | 0.67, 206 s, 4.3; 0.70, 165 s, 3.6 | 371 s |
+| armed gunner v close | CE | 0.57 / 0.66 / 0.67 / 0.68 | 0.19, 455 s; 0.16, 441 s | 382 s |
+| armed gunner v close | DCL | 0.55 / 0.62 / 0.65 / 0.59 | 0.66, 398 s, 6.1; 0.56, 190 s | 335 s |
+| scout v brawler | CE | 0.57 / 0.61 / 0.64 / 0.68 | 0.24, 400 s; 0.26, 328 s | 327 s |
+| scout v brawler | DCL | 0.55 / 0.62 / 0.63 / 0.63 | 0.71, 186 s, 4.0; 0.56, 169 s, 3.2 | 322 s |
+| big v small, small induced x0.98 | r9 | **0.54 / 0.50 / 0.49 / 0.47** | 0.38, 228 s; 0.35, 351 s | 261 s |
+| D2 (the merge check) | r9 | 0.52 / 0.46 / 0.56 / 0.41 | 0.41, 284 s; 0.65, 254 s | 273 s |
+
+- **Big v small is the pair that keeps its balance under the stronger doctrine** (0.48-0.57
+  under CE and DCL); the others lean 0.6-0.68 to the ship with range or sight once ships
+  extend out of crowds (the extension favours the ship that shoots first on the way back in).
+- The doctrines reshape the mirrors: CE lowers the mutual share (0.16-0.31) but lengthens the
+  mirror and narrows the post-merge choices (H 0.09-0.13: the extension is nearly the only
+  choice made); DCL's one-circle brings the joust back (0.51-0.71) at a quicker pace.
+- D2 under r9 after the merge matches round 1 (0.48 / 0.46 / 0.55) within noise: the merge
+  leaves r9 as it was.
+
+## 02:14-02:20 KST: screen 2 (`screen2/`): recharge, the store, energy v turn on one hull
+
+512 games, kit2 on both, r9 and CE; A v B 1v1 / 5v5, mirrors' mutual and life:
+
+| Pair | r9 | CE | AA; BB (r9) |
+|---|---|---|---|
+| fast recharge (x3, half delay, shield x0.85) v big shield (x1.15, recharge x0.5) | 0.42 / 0.36 | 0.46 / 0.40 | 0.42, 254 s; 0.23, 382 s |
+| hit-and-run (recharge x4 at 0.4 delay, shield x0.8) v standard | 0.43 / 0.37 | 0.46 / 0.41 | 0.46, 232 s; 0.37, 291 s |
+| **zoomer (dive x2, climb x1.5, store x1.3) v level (engine x1.1, dive x0.6)** | **0.55 / 0.47** | 0.54 / 0.41 | **0.18, 311 s**; 0.61, 249 s |
+| energy (drag x0.85, engine x1.1, induced x1.1) v turn (lift x1.1, induced x0.9, drag x1.1) | 0.02 / 0.29 | 0.03 / 0.32 | 0.30, 289 s; 0.45, 269 s |
+
+- **The zoomer v level pair is near even on its first try** with kit2, and the zoomer mirror
+  is the least jousty mirror in band seen (0.18 at 311 s); the level ship's mirror jousts
+  (0.61). Round 11 (running) works on it. The extension does not make the store pay.
+- A recharging ship is 0.05-0.1 short and the extension barely helps it (it leaves, but its
+  enemies recharge too). Round 11 gives it damage.
+- On one hull, the classic energy v turn pair is the frozen card's: the turn fighter takes
+  the duel (0.02).
