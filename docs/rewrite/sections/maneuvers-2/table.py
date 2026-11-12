@@ -70,9 +70,9 @@ def main() -> None:
     versus = sys.argv[sys.argv.index("--versus") + 1] if "--versus" in sys.argv else None
     sizes = result["sizes"]
     lines = [
-        "| Candidate | v 1v1 YY / JJ | 2v2 | 5v5 | worst | 5v5 E v T, life, H | "
+        "| Candidate | v 1v1 YY / JJ | 2v2 | 5v5 | worst | E v T by size | 5v5 E v T, life, H | "
         "5v5 choices s/o/e/t; net | JJ 1v1 mutual, life, merges, H | YY 1v1 |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for c in result["candidates"]:
         name = c["name"]
@@ -102,6 +102,9 @@ def main() -> None:
             scores += got
             cells.append(" / ".join(f"{s:.3f}" for s in got))
         worst = f"{min(scores):.3f}" if scores else ""
+        balance = "/".join(
+            f"{r['score'][0]:.2f}" for size in (1, 2, 5, 10) if (r := row(size, "energy v turn"))
+        )
         five = row(5, "energy v turn")
         evt = (
             f"{five['score'][0]:.2f}, {five['life_seconds']:.0f} s, H {entropy(five):.2f}"
@@ -109,7 +112,7 @@ def main() -> None:
             else ""
         )
         lines.append(
-            f"| {name} | {' | '.join(cells)} | {worst} | {evt} | {choices(five)} | "
+            f"| {name} | {' | '.join(cells)} | {worst} | {balance} | {evt} | {choices(five)} | "
             f"{mirror(row(1, 'turn mirror'))} | {mirror(row(1, 'energy mirror'))} |"
         )
     print("\n".join(lines))

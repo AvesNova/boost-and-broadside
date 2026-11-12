@@ -140,6 +140,44 @@ against r9 at 5v5; the 1v1 mirrors' mutual share and H (JJ; YY); 5v5 self-play E
   (0.64).
 - Round 3: per type (the Yongma's gate higher, the Jujak's at 0.4) and the frozen card.
 
-## 03:16- KST: round 3 (`round3/`): the gate per type; the frozen card
+## 03:16-03:34 KST: round 3 (`round3/`): the gate per type; the frozen card
 
-512 games against r9m and r9, four cards. ETA 03:35 KST (worst 03:45).
+512 games, four cards. Worst score against r9m (1v1 / 2v2 / 5v5, both orders); the 5v5
+against r9m and r9; the duel H (JJ; YY); self-play energy v turn 1v1 / 2v2 / 5v5:
+
+| Card: candidate | worst v r9m | 5v5 v r9m | 5v5 v r9 | JJ; YY H | E v T 1/2/5 |
+|---|---|---|---|---|---|
+| D2: r9m | 0.475 | 0.518 / 0.505 | 0.80 / 0.81 | 0.10; 0.15 | 0.50 / 0.42 / 0.58 |
+| D2: DE 0.4 | 0.514 | 0.514 / 0.515 | 0.81 / 0.82 | 0.41; 0.86 | 0.43 / 0.42 / 0.58 |
+| D2: DE 0.5 | 0.521 | 0.547 / 0.550 | 0.77 / 0.84 | 0.45; 0.99 | 0.38 / 0.43 / 0.49 |
+| D2: DE Y 0.6 / J 0.4 | 0.529 | 0.533 / 0.541 | 0.81 / 0.83 | 0.40; 1.11 | 0.36 / 0.50 / 0.62 |
+| D2: DE Y 1.0 / J 0.4 | 0.515 | 0.604 / 0.592 | 0.80 / 0.85 | 0.37; 1.60 | 0.34 / 0.55 / 0.61 |
+| cone 0.085: r9m | 0.480 | 0.480 / 0.521 | 0.77 / 0.77 | 0.09; 0.09 | 0.55 / 0.50 / 0.69 |
+| cone 0.085: DE 0.4 | 0.505 | 0.551 / 0.506 | 0.78 / 0.81 | 0.42; 0.72 | 0.51 / 0.52 / 0.69 |
+| cone 0.085: DE 0.5 | 0.500 | 0.520 / 0.528 | 0.80 / 0.84 | 0.48; 0.88 | 0.47 / 0.47 / 0.66 |
+| cone 0.085: DE Y 0.6 / J 0.4 | 0.515 | 0.532 / 0.545 | 0.82 / 0.80 | 0.42; 0.99 | 0.50 / 0.51 / 0.70 |
+| cone 0.085: DE Y 1.0 / J 0.4 | 0.499 | 0.611 / 0.583 | 0.82 / 0.87 | 0.41; 1.60 | 0.43 / 0.60 / 0.77 |
+| big v small: r9m | 0.467 | 0.469 / 0.491 | 0.81 / 0.83 | 0.15; 0.17 | 0.56 / 0.51 / 0.46 |
+| big v small: DE 0.4 | 0.479 | 0.540 / 0.529 | 0.80 / 0.84 | 0.60; 0.71 | 0.60 / 0.52 / 0.54 |
+| big v small: DE 0.5 | 0.496 | 0.520 / 0.551 | 0.81 / 0.83 | 0.65; 0.79 | 0.59 / 0.52 / 0.52 |
+| big v small: DE Y 1.0 / J 0.4 | 0.553 | 0.611 / 0.588 | 0.87 / 0.88 | 0.63; 1.57 | 0.61 / 0.61 / 0.62 |
+| frozen: r9m | 0.478 | 0.509 / 0.522 | 0.73 / 0.80 | 0.21; 0.08 | 0.01 / 0.44 / 0.35 |
+| frozen: DE 0.4 | 0.524 | 0.550 / 0.524 | 0.72 / 0.83 | 0.77; 0.72 | 0.36 / 0.38 / 0.26 |
+| frozen: DE 0.5 | 0.547 | 0.570 / 0.550 | 0.74 / 0.83 | 0.89; 0.89 | 0.38 / 0.33 / 0.25 |
+| frozen: DE Y 1.0 / J 0.4 | 0.535 | 0.536 / 0.550 | 0.75 / 0.82 | 0.81; 1.59 | 0.43 / 0.44 / 0.32 |
+
+(r9m's own row shows the noise: its worst against itself is 0.47-0.48 at 512 games.)
+
+- **The per-type gate (the Yongma's high, the Jujak's at 0.4) holds the Jujak mirror and
+  keeps the crowd gain**: DE Y 1.0 / J 0.4 beats r9m 0.58-0.61 at 5v5 on every card and its
+  Yongma mirror makes the most varied choice (H 1.6), with the worst at 0.499-0.553.
+- **But the duel extension moves the cross-type duel**: it applies against any type, and on
+  D2 the energy v turn 1v1 falls from 0.50 to 0.34-0.43 (a hurt Yongma leaving a Jujak is
+  not the Yongma's win); on the frozen card it rises from 0.01 to 0.36-0.43 (the frozen
+  Jujak's duel edge shrinks), and the frozen 5v5 tips further to the Jujak (0.35 to
+  0.25-0.32): **item 3 does not fall out of it**. Round 4 gates the duel extension to the
+  mirror, as the duel one-circle is.
+
+## 03:43- KST: round 4 (`round4/`): the duel extension in the mirror only
+
+512 games, four cards. ETA 03:58 KST (worst 04:08).
