@@ -800,3 +800,17 @@ Rate (lift x1.03, dmg x1.25) v speed (drag x0.85, vision x1.04, cone f0 0.07), k
   fighter wins slow turning fights at a lower corner speed and hits harder; the speed
   fighter cruises faster, sees a little farther and takes the merge on a harder nose. The
   speed mirror is slow (367 s). Play map `arch-rate-speed`.
+
+## 04:14-04:19 KST: confirm 10 (`confirm10/`): the final hit-and-run v standard, doctrines
+
+| Doctrine | 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | AA; BB mutual, life | Duel kills m / o / f / t; life | v r9 |
+|---|---|---|---|---|
+| r9 (confirm 8) | 0.53 / 0.48 / 0.47 / 0.47 / 0.46 | 0.34, 260 s; 0.36, 295 s | 0.35 / 0.54 / 0.11 / 0; 257 s | 0.50 / 0.53 |
+| CE | 0.51 / 0.46 / 0.46 / 0.48 / 0.44 | 0.27, 303 s; 0.23, 346 s | 0.26 / 0.63 / 0.11 / 0; 289 s | 0.82 / 0.81 |
+| DCL | 0.51 / 0.48 / 0.49 / 0.47 / 0.47 | 0.60, 163 s; 0.68, 186 s | 0.27 / 0.62 / 0.11 / 0; 292 s | 0.82 / 0.82 |
+
+The finals' crowds (confirm 8 and 9, A v B under r9): kills m / o / f / t about
+0.06 / 0.30 / 0.51 / 0.13 at 5v5-20v20 (0.07-0.08 / 0.35 / 0.50 / 0.08 at 2v2), 0.5-0.66
+kills a minute a ship, life 81-109 s; **trades 0.07 at 5v5, 0.13-0.14 at 10v10 and 0.20-0.22 at
+20v20**, above the frozen card's (0.04 / 0.08 / 0.12): the kit's damage x2.5 makes crowds
+lethal enough that two ships often die together.
