@@ -95,6 +95,9 @@ def mode_overrides(arguments) -> dict:
         changes["mode.capture_seconds"] = arguments.capture_seconds
     if arguments.front_threshold:
         changes["mode.front_threshold"] = arguments.front_threshold
+    for setting in arguments.set or ():
+        key, _, value = setting.partition("=")
+        changes[key] = float(value)
     return changes
 
 
@@ -414,6 +417,9 @@ def main() -> None:
     )
     parser.add_argument("--label", default="")
     parser.add_argument("--respawn-seconds", type=float, default=None)
+    parser.add_argument(
+        "--set", action="append", help="a live tuning setting, key=value (`bnb.game.tuning`)"
+    )
     parser.add_argument("--lock-seconds", type=float, default=None)
     parser.add_argument("--pause-seconds", type=float, default=None)
     parser.add_argument("--rear-seconds", type=float, default=None)
@@ -519,6 +525,7 @@ def main() -> None:
                 rear_seconds=arguments.rear_seconds,
                 blast_radius=arguments.blast_radius,
                 b_parameters=arguments.b_parameters,
+                settings=arguments.set,
             ),
             histograms=histograms,
             games=games,

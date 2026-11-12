@@ -97,6 +97,24 @@ def deathmatch_timing(entries: list[dict]) -> None:
         print(f"trade share (an enemy death within {window} s): {trades / total:.3f}")
 
 
+def elimination(entries: list[dict]) -> dict:
+    """Wipe share, the time to the first hit, and from it to the match's end."""
+    tick = entries[0]["tick_length"]
+    games = [game for entry in entries for game in entry["games"]]
+    wiped = sum(game["by_rule"] for game in games) / len(games)
+    hits = [game["first_hit"] * tick for game in games if game["first_hit"] >= 0]
+    fights = [
+        (game["end_tick"] - game["first_hit"]) * tick
+        for game in games
+        if game["by_rule"] and game["first_hit"] >= 0
+    ]
+    print(f"{len(games)} games; ended by a wipe {wiped:.3f}")
+    print(f"match start to first enemy hit (s): {quantiles(hits)}")
+    if fights:
+        print(f"first hit to the wipe (s): {quantiles(fights)}")
+    return dict(wiped=wiped, first_hit=statistics.median(hits))
+
+
 def deathmatch(entries: list[dict]) -> dict:
     tick = entries[0]["tick_length"]
     episode = entries[0]["episode_ticks"]
@@ -219,7 +237,9 @@ def main() -> None:
     for label in labels if arguments.label is None else [arguments.label]:
         mine = [entry for entry in entries if entry["label"] == label]
         print(f"## {label or '(no label)'}")
-        if mine[0]["kind"] == "deathmatch":
+        if "elimination" in mine[0]["preset"]:
+            elimination(mine)
+        elif mine[0]["kind"] == "deathmatch":
             deathmatch(mine)
         else:
             frontline(mine)
