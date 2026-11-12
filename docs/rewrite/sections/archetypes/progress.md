@@ -148,3 +148,54 @@ choice entropy H:
   for the vision between x0.75 and 0.9 that keeps the flank kills at a shorter life.
 - The D2 Yongma's low mutual share (0.36) is its frontal armour (x0.7) and its halved shield
   together: shield x2 back makes a 2428 s mirror.
+
+## 01:00-01:05 KST: mirror study 2 (`mirror2/`): sight between x0.75 and x0.9
+
+1v1, 512 games; the mirrors and the pair's own A v B:
+
+| Card | AA mutual, life; kills f | BB mutual, life; kills f | A v B 1v1; kills m / o / f / t |
+|---|---|---|---|
+| M, vision x0.9 | 0.59, 345 s | 0.59, 310 s | 0.51; 0.61 / 0.34 / 0.06 / 0 |
+| M, vision x0.85 | 0.54, 386 s | 0.55, 362 s | 0.52; 0.54 / 0.37 / 0.10 / 0 |
+| M, vision x0.85, dmg x1.3 | 0.55, 312 s | 0.56, 301 s | 0.51; 0.55 / 0.32 / 0.13 / 0 |
+| M, vision x0.8, dmg x1.3 | 0.42, 556 s | 0.39, 482 s | 0.51; 0.40 / 0.40 / 0.20 / 0 |
+| M, vision x0.75, dmg x1.3 | 0.47, 698 s | 0.41, 670 s | 0.50; 0.45 / 0.32 / 0.23 / 0 |
+| D2, vision x0.9 | 0.44, 597 s | 0.54, 261 s | 0.45; 0.20 / 0.67 / 0.13 / 0 |
+| D2, vision x0.8 | 0.29, 1057 s | 0.51, 291 s | 0.35; 0.16 / 0.57 / 0.27 / 0 |
+| D2, vision x0.7 | 0.38, 1239 s | 0.13, 716 s | 0.37; 0.25 / 0.29 / 0.46 / 0 |
+
+- Short sight trades along the same joust-pace curve, but it **adds flank kills** that no
+  other lever gives (up to 0.2-0.46 of the duel's kills at x0.7-0.8), and the most varied
+  post-merge choices (H 0.85-0.92). Damage x1.3 recovers about 70 s of the pace.
+- **D2 does not like short sight**: the Yongma's duel falls (0.49 to 0.35 at x0.8): its long
+  approaches need to see the Jujak coming.
+
+## 00:53-01:09 KST: round 3 (`round3/`): balance grids at 1v1-10v10
+
+512 games (10v10 256); A v B score by size and the 1v1 mirrors:
+
+| Pair | A v B 1v1 / 2v2 / 5v5 / 10v10 | AA mutual, life | BB mutual, life |
+|---|---|---|---|
+| slasher (vision x1.4, shield x0.65) v dogfighter | 0.15 / 0.46 / 0.58 / 0.71 | 0.95, 102 s | 0.69, 221 s |
+| slasher (vision x1.4, shield x0.8) v dogfighter | 0.22 / 0.62 / 0.78 / 0.83 | 0.92, 157 s | 0.67, 218 s |
+| slasher (shield x0.65) v dogfighter (induced x1.3) | 0.46 / 0.20 / 0.10 / 0.06 | 0.67, 218 s | 0.67, 195 s |
+| gunner (dmg x0.9) v brawler (dmg x1.2) | 0.24 / 0.48 / 0.53 / 0.54 | 0.72, 241 s | 0.64, 377 s |
+| gunner (dmg x1.0) v brawler (dmg x1.3) | 0.26 / 0.50 / 0.56 / 0.63 | 0.72, 208 s | 0.68, 305 s |
+| gunner (life x1.3, dmg x0.85) v brawler (life x0.6, dmg x1.3) | 0.24 / 0.30 / 0.27 / 0.25 | 0.65, 288 s | 0.71, 222 s |
+| scout (vision x1.3, shield x0.9) v brawler (vision x0.8, dmg x1.15) | 0.73 / 0.51 / 0.41 / 0.41 | 0.91, 146 s | 0.36, 575 s |
+| scout (vision x1.3) v brawler (dmg x1.25) | 0.50 / 0.42 / 0.34 / 0.34 | 0.91, 175 s | 0.70, 186 s |
+| rate (lift x1.2, induced x1.3) v sustained (lift x0.9, induced x0.8) | 0.04 / 0.05 / 0.01 / 0.02 | 0.68, 177 s | 0.69, 428 s |
+| rate, dmg x1.25 | 0.07 / 0.13 / 0.06 / 0.02 | | |
+| sniper (spread x0.3, 7.5 Hz, dmg x2, life x1.4) v shotgun (spread x3, 30 Hz, dmg x0.6, life x0.6) | 0.30 / 0.50 / 0.59 / 0.58 | 0.71, 226 s | 0.69, 276 s |
+
+- **Every pair has a duel-crowd split**, and the levers fall in two kinds: sight, range and
+  the fire stream move the duel; damage and shield move the crowds. The weapon pairs
+  (gunner v brawler, sniper v shotgun) balance the crowds and lose the duel to the
+  short-range ship (0.24-0.30): in a duel the brawler gets inside.
+- **The rate fighter loses everywhere** (0.01-0.13): lower corner speed and more lift do not
+  make up for a worse sustained turn and a slower cruise. Under this agent the sustained
+  turn is the fighter's turn.
+- A bleeding dogfighter (induced x1.3) makes the A v B crowds nearly killless (life up to
+  4866 s, 0.01 kills a minute): not followed.
+- Round 4 (running) adds the sustained turn as the duel lever (the brawler's or shotgun's
+  induced drag up, or the gunner's down) and sight as the gunner's.
