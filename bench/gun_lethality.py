@@ -38,7 +38,7 @@ import zoneinfo
 
 import torch
 
-from bnb.contracts import Action, Obs
+from bnb.contracts import ASPECTS, Action, Obs
 from bnb.controllers import scripted
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
@@ -101,6 +101,8 @@ def duels(rules, types, first: int, second: int, environments: int, seconds: flo
     hits = torch.zeros((B, 2))
     damage_dealt = torch.zeros((B, 2))
     front_damage = torch.zeros((B, 2))  # dealt at aspect below the half point
+    aspect_damage = torch.zeros((B, 2, len(ASPECTS)))  # dealt, by team and aspect class
+    kill_aspect = torch.full((B, 2), -1, dtype=torch.long)  # the killing hit's, by victim
     half_point = (1.0 + rules.head_on_fraction * types.head_on_fraction_scale) / 2.0
     target_half = half_point[ship_type.long().flip(1)]  # (B, 2) the target's, per shooter
     done = torch.zeros(B, dtype=torch.bool)
@@ -149,6 +151,10 @@ def duels(rules, types, first: int, second: int, environments: int, seconds: flo
             damage_dealt += torch.where(live[:, None], dealt, 0.0)
             aspect = dealt / full_damage  # one bullet a tick at these fire rates
             front_damage += torch.where(landed & (aspect < target_half), dealt, 0.0)
+            # 1v1: ship = team; team t dealt what the other ship took from its enemy
+            aspect_damage += torch.where(
+                live[:, None, None], events.enemy_damage_by_aspect.flip(1), 0.0
+            )
             any_hit = landed.any(1)
             new_first = any_hit & (first_hit_tick < 0)
             first_hit_tick = torch.where(new_first, tick, first_hit_tick)
@@ -158,6 +164,7 @@ def duels(rules, types, first: int, second: int, environments: int, seconds: flo
             taken = landed.flip(1)  # by victim
             victim_first_hit = torch.where(taken & (victim_first_hit < 0), tick, victim_first_hit)
             died = events.died & live[:, None]
+            kill_aspect = torch.where(died, events.kill_aspect.long(), kill_aspect)
             dying = died.any(1)
             team_killer = torch.where(
                 died.all(1),
@@ -172,8 +179,9 @@ def duels(rules, types, first: int, second: int, environments: int, seconds: flo
                 break
 
     # results in the first type's terms: who is "first" in each environment
-    def by_type(values):  # (B, 2) by team -> (B, 2) [first type, second type]
-        return torch.where((seat == 0)[:, None], values, values.flip(1))
+    def by_type(values):  # (B, 2, ...) by team -> (B, 2, ...) [first type, second type]
+        first_on_team0 = (seat == 0).reshape(-1, *([1] * (values.dim() - 1)))
+        return torch.where(first_on_team0, values, values.flip(1))
 
     def team_to_type(team):  # team index -> 0 first type, 1 second, others kept
         return torch.where(team >= 0, (team != seat).long(), team)
@@ -194,6 +202,8 @@ def duels(rules, types, first: int, second: int, environments: int, seconds: flo
         hits=by_type(hits).sum(0).tolist(),
         damage=by_type(damage_dealt).sum(0).tolist(),
         front_damage=by_type(front_damage).sum(0).tolist(),
+        aspect_damage=by_type(aspect_damage).sum(0).tolist(),
+        kill_aspect=by_type(kill_aspect).tolist(),
         ticks=tick + 1,
         grace=grace,
     )
@@ -204,6 +214,8 @@ def play(args) -> None:
     game, types, rules = setup()
     names = api.type_names(game.ship_set)
     matchups = [(name, name) for name in names] + list(CROSS_PAIRS)
+    if args.pairs:
+        matchups = [tuple(pair.split(":")) for pair in args.pairs]
     record = pathlib.Path(args.record)
     record.parent.mkdir(parents=True, exist_ok=True)
     done = set()
@@ -281,7 +293,7 @@ def variants(args) -> None:
     done = set()
     if record.exists():
         done = {json.loads(line)["variant"] for line in record.read_text().splitlines()}
-    todo = [name for name in VARIANTS if name not in done]
+    todo = [name for name in (args.names or VARIANTS) if name not in done]
     started = time.time()
     for number, name in enumerate(todo):
         batch_started = time.time()
@@ -300,10 +312,11 @@ def variants(args) -> None:
         )
 
 
-def card_table(types, rules):
-    """Per type, the closed forms of the module docstring (a mirror: the type against itself)."""
+def card_table(types, rules, names=None):
+    """Per type, the closed forms of the module docstring (a mirror: the type against itself);
+    names: the types' (default the set's)."""
     c = characteristics(types, rules)
-    names = api.type_names("real-scale")
+    names = names or api.type_names("real-scale")
     f0 = rules.head_on_fraction * types.head_on_fraction_scale
     rows = {}
     for i, name in enumerate(names):
@@ -330,6 +343,93 @@ def card_table(types, rules):
             instantaneous_deg=math.degrees(instantaneous),
         )
     return rows
+
+
+# Temporary cards (no ship files): a type's handles with a delta, solved, in place of one of
+# the set's last types for the duels (`cards`).
+SHIP_FILES = pathlib.Path(__file__).parents[1] / "src/bnb/game/ships/real-scale"
+
+
+def solved_card(rules, base: str, delta: dict) -> dict[str, float]:
+    """The card fields of ship file `base`'s handles with `delta` (handle: value), solved."""
+    import tomllib
+
+    from bnb.game.handling import Handles
+
+    handles = tomllib.loads((SHIP_FILES / f"{base}.toml").read_text())["handles"]
+    table = dict(handles, **delta)
+    solution = api.solve_handles(
+        Handles(**{n: torch.tensor([v], dtype=torch.float64) for n, v in table.items()}),
+        rules,
+        strict=False,
+    )
+    return {
+        field.name: float(getattr(solution.types, field.name)[0])
+        for field in dataclasses.fields(solution.types)
+    }
+
+
+def with_cards(types, cards: dict[int, dict[str, float]]):
+    """The card with type index i's fields replaced by cards[i] (field: value)."""
+    values = {}
+    for field in dataclasses.fields(types):
+        value = getattr(types, field.name).clone()
+        for index, card in cards.items():
+            value[index] = card[field.name]
+        values[field.name] = value
+    return dataclasses.replace(types, **values)
+
+
+def cards(args) -> None:
+    """Mirrors and the cross pair of temporary cards: --cards a JSON {scaling: {"delta":
+    {name: {handle: value}}}} (archetypes_solve.py's), the cards of --scaling solved from
+    --base's ship file, each in place of one of the set's last types."""
+    game, types, rules = setup()
+    names = list(api.type_names(game.ship_set))
+    deltas = json.loads(pathlib.Path(args.cards).read_text())[args.scaling]["delta"]
+    chosen = [name for name in deltas if name != args.base]
+    slots = {name: len(names) - len(chosen) + number for number, name in enumerate(chosen)}
+    solved = {slots[name]: solved_card(rules, args.base, deltas[name]) for name in chosen}
+    for name, index in slots.items():
+        names[index] = name
+    types = with_cards(types, solved)
+    rules = api.rules_of(game, types=types)
+    table = card_table(types, rules, names)
+    matchups = [(name, name) for name in chosen] + [
+        (a, b) for i, a in enumerate(chosen) for b in chosen[i + 1 :]
+    ]
+    record = pathlib.Path(args.record)
+    done = set()
+    if record.exists():
+        done = {tuple(json.loads(line)["pair"]) for line in record.read_text().splitlines()}
+    todo = [pair for pair in matchups if pair not in done]
+    started = time.time()
+    for number, (a, b) in enumerate(todo):
+        batch_started = time.time()
+        result = duels(
+            rules,
+            types,
+            slots[a],
+            slots[b],
+            args.environments,
+            args.seconds,
+            args.seed + number,
+        )
+        result.update(
+            pair=[a, b],
+            environments=args.environments,
+            scaling=args.scaling,
+            card={name: table[name] for name in (a, b)},
+        )
+        with record.open("a") as handle:
+            handle.write(json.dumps(result) + "\n")
+        left = (time.time() - started) / (number + 1) * (len(todo) - number - 1)
+        print(
+            f"{datetime.datetime.now(KST):%H:%M:%S} {a} v {b}: "
+            f"{time.time() - batch_started:.0f} s; {number + 1}/{len(todo)}, "
+            f"ETA {_clock(left)} KST",
+            flush=True,
+        )
 
 
 def share(count, total):
@@ -377,6 +477,27 @@ def summarise(line, tick_length):
         ttk_quartiles=[float(ttk.quantile(0.25)), float(ttk.quantile(0.75))] if len(ttk) else None,
         hit_fraction=sum(hits) / max(sum(shots), 1),
         front_damage_share=sum(front) / max(sum(damage), 1e-9),
+        **aspect_summary(line),
+    )
+
+
+def aspect_summary(line) -> dict:
+    """Damage and first kills by the hit's aspect class (`ASPECTS`): shares of both types'
+    damage dealt (and of each type's), and of the first kills' victims (a trade counts
+    both); an older record without them gives none."""
+    if "aspect_damage" not in line:
+        return {}
+    by_type = torch.tensor(line["aspect_damage"], dtype=torch.float64)  # (2, aspects)
+    kills = torch.tensor(line["kill_aspect"]).flatten()
+    kills = kills[kills >= 0]
+    counts = torch.bincount(kills, minlength=len(ASPECTS)).double()
+    return dict(
+        damage_aspect_share=(by_type.sum(0) / by_type.sum().clamp_min(1e-9)).tolist(),
+        damage_aspect_share_by_type=(
+            by_type / by_type.sum(1, keepdim=True).clamp_min(1e-9)
+        ).tolist(),
+        kill_aspect_share=(counts / counts.sum().clamp_min(1.0)).tolist(),
+        kill_aspect_count=int(counts.sum()),
     )
 
 
@@ -392,9 +513,10 @@ def report(args) -> None:
     order = {name: number for number, name in enumerate(api.type_names(game.ship_set))}
     lines.sort(
         key=lambda line: (
+            "card" in line,
             "variant" in line,
             line["pair"][0] != line["pair"][1],
-            order[line["pair"][0]],
+            order.get(line["pair"][0], len(order)),
             list(VARIANTS).index(line["variant"]) if "variant" in line else 0,
         )
     )
@@ -406,6 +528,8 @@ def report(args) -> None:
             factors = VARIANTS[line["variant"]]
             index = order[line["pair"][0]]
             cards.append(card_table(variant_types(types, index, factors), rules))
+        elif "card" in line:
+            cards.append(line["card"])
         else:
             cards.append(card)
     out = pathlib.Path(args.out)
@@ -458,6 +582,29 @@ def report(args) -> None:
                 f"{row['first_type_wins'][1]:.2f}; timeouts {row['timeouts']}, "
                 f"boundary {row['boundary']}"
             )
+    print()
+    print(
+        "| duels | damage head-on / flank / tail | first type's | second type's "
+        "| first kills head-on / flank / tail (n) |"
+    )
+    print("|---|---|---|---|---|")
+    for row in rows:
+        if "damage_aspect_share" not in row:
+            continue
+        a, b = row["pair"]
+        name = a if a == b else f"{a} v {b}"
+        if "variant" in row:
+            name = f"{a}: {row['variant']}"
+
+        def shares(values):
+            return " / ".join(f"{value:.2f}" for value in values)
+
+        first, second = row["damage_aspect_share_by_type"]
+        print(
+            f"| {name} | {shares(row['damage_aspect_share'])} | {shares(first)} "
+            f"| {shares(second)} | {shares(row['kill_aspect_share'])} "
+            f"({row['kill_aspect_count']}) |"
+        )
     timeouts = sum(row["timeouts"] for row in rows)
     boundary = sum(row["boundary"] for row in rows)
     print(
@@ -481,11 +628,21 @@ def main() -> None:
     three.add_argument("--environments", type=int, default=512)
     three.add_argument("--seconds", type=float, default=90.0)
     three.add_argument("--seed", type=int, default=11)
+    one.add_argument("--pairs", nargs="+", help="only these matchups, each FIRST:SECOND")
+    three.add_argument("--names", nargs="+", help="only these variants")
+    four = sub.add_parser("cards")
+    four.add_argument("--record", required=True)
+    four.add_argument("--cards", required=True)
+    four.add_argument("--scaling", required=True)
+    four.add_argument("--base", default="vizia")
+    four.add_argument("--environments", type=int, default=512)
+    four.add_argument("--seconds", type=float, default=120.0)
+    four.add_argument("--seed", type=int, default=11)
     two = sub.add_parser("report")
     two.add_argument("--record", required=True, nargs="+")
     two.add_argument("--out", required=True)
     args = parser.parse_args()
-    {"play": play, "report": report, "variants": variants}[args.command](args)
+    {"play": play, "report": report, "variants": variants, "cards": cards}[args.command](args)
 
 
 if __name__ == "__main__":

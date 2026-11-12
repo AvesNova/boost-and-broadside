@@ -47,3 +47,22 @@ the first head-on pass, so that who fires first decides every duel?
   section 5 of the draft; run the capped loop on Jujak and Yongma.
 - Docs quick tier: tests/docs has 8 failures, all also on the base commit (other benches'
   docstrings and other pages' references), none from this branch.
+
+## 2026-11-12 12:48 KST: WWII archetypes, aspect statistics, duels launched
+
+- Worked: the turn and energy fighters in numbers (`archetypes_ww2.py`, from the set's
+  research): the energy fighter is 1.56 times as heavy on a wing 1.33 times as loaded,
+  turns 1.29 times slower sustained (1.35 at 100 m/s), has 1.37 times the W/S over C_D0,
+  1.4 times the weight of fire and twice the survivability; level top speed, ceiling, g
+  limit and zoom are shared, and the turn fighters climb better (1.24) on more power per kg.
+- Yongma and Jujak redone as vizia deltas scaled from those ratios (`archetypes_solve.py`:
+  r^(+-s/2), s = 1 for flight, 1/2 for armour and guns); both solve; a speed group at s = 2
+  solved as the alternative.
+- Aspect statistics: Events gain `enemy_damage_by_aspect` and `kill_aspect` (head-on
+  under 45 degrees, tail over 135); training series `combat/damage_share/{aspect}` and
+  `combat/kill_share/{aspect}`; match statistics `damage_{aspect}`, `kills_{aspect}`;
+  the gun-lethality bench records and reports both. Fingerprint unchanged.
+- Launched: units aspect-p51d, aspect-vizia (mirrors), aspect-variant (P-51D with vizia's
+  guns), aspect-cards-s1 and aspect-cards-s1-speed2 (Yongma and Jujak mirrors and cross
+  pair, temporary cards), 512 duels each, records and logs in `aspect/`, one line per
+  matchup, resumable; ETA 13:10 KST (worst 13:30), bound 14:48 (RuntimeMaxSec).
