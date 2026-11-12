@@ -1,0 +1,3 @@
+frozen (r9), 1v1 energy v turn: 213 fights, 167 kills; merges a kill mean 1.38, seconds 64, extensions 0.11, edge s 3.0
+frozen (r9), 1v1 turn mirror: 230 fights, 191 kills; merges a kill mean 2.76, seconds 55, extensions 0.08, edge s 2.8
+frozen (r9), 1v1 energy mirror: 73 fights, 26 kills; merges a kill mean 4.54, seconds 106, extensions 0.15, edge s 1.8

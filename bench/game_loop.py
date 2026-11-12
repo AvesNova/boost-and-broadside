@@ -763,7 +763,11 @@ class Loop:
         for _ in range(self.ticks - 1):  # the game ends (and resets) on its last tick
             state, observation, carry, tally = self._tick(state, observation, carry, tally)
         torch.cuda.synchronize(self.device) if self.device.type == "cuda" else None
-        return {name: tally[name].cpu() for name in STATISTICS} | {"group": self.group.cpu()}
+        ships = torch.full((self.B,), float(self.N))  # ships a game, for the per-ship pace
+        return {name: tally[name].cpu() for name in STATISTICS} | {
+            "group": self.group.cpu(),
+            "ships": ships,
+        }
 
 
 def per_type(table: torch.Tensor, ship_type: torch.Tensor) -> torch.Tensor:
@@ -860,7 +864,8 @@ def pace(out: dict, mask: torch.Tensor, seconds: float) -> dict:
     centres = torch.arange(PACE_BINS, dtype=torch.float32) + 0.5
     deaths = float(out["deaths"][mask].sum())
     ships_alive_seconds = float(out["alive_ticks"][mask].sum()) / 30.0
-    ships = 10
+    # ships a game (`Loop.play` records it; a 5v5 record without it)
+    ships = int(out["ships"][mask][0]) if "ships" in out and bool(mask.any()) else 10
 
     def median_tick(values: torch.Tensor) -> float | None:
         values = values[values >= 0]

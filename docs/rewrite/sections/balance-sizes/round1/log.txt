@@ -1,0 +1,121 @@
+## 1v1: 20 jobs, B 8192, 19:24 KST
+W1112 19:25:22.599000 1607950 torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+/home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+  warn_once(FP_FUSION_DEFAULT_WARNING)
+  batch 1/2 89 s; ETA 19:27 KST
+  batch 2/2 115 s; ETA 19:26 KST
+1v1                  frozen | r9   energy v turn v c0: score 0.009 ± 0.003  kills m/o/f/t 0.16 / 0.12 / 0.42 / 0.30  life 170 s  kpm/ship 0.33  trades 0.00
+1v1         frozen | D1 gate v J   energy v turn v c1: score 0.086 ± 0.009  kills m/o/f/t 0.17 / 0.00 / 0.01 / 0.81  life 154 s  kpm/ship 0.37  trades 0.01
+1v1      frozen | D2 gate+energy   energy v turn v c2: score 0.068 ± 0.008  kills m/o/f/t 0.12 / 0.00 / 0.01 / 0.86  life 150 s  kpm/ship 0.38  trades 0.01
+1v1        frozen | D3 gate+nose   energy v turn v c3: score 0.060 ± 0.008  kills m/o/f/t 0.08 / 0.00 / 0.01 / 0.91  life 148 s  kpm/ship 0.38  trades 0.01
+1v1           frozen | D4 always   energy v turn v c4: score 0.052 ± 0.007  kills m/o/f/t 0.05 / 0.00 / 0.01 / 0.94  life 146 s  kpm/ship 0.39  trades 0.01
+1v1           Y engine x1.2 | r9   energy v turn v c5: score 0.018 ± 0.004  kills m/o/f/t 0.18 / 0.15 / 0.41 / 0.26  life 187 s  kpm/ship 0.31  trades 0.00
+1v1  Y engine x1.2 | D1 gate v J   energy v turn v c6: score 0.140 ± 0.011  kills m/o/f/t 0.19 / 0.00 / 0.01 / 0.80  life 164 s  kpm/ship 0.35  trades 0.01
+1v1 Y engine x1.2 | D2 gate+energy   energy v turn v c7: score 0.103 ± 0.010  kills m/o/f/t 0.11 / 0.00 / 0.01 / 0.87  life 164 s  kpm/ship 0.35  trades 0.01
+1v1 Y engine x1.2 | D3 gate+nose   energy v turn v c8: score 0.086 ± 0.009  kills m/o/f/t 0.10 / 0.00 / 0.01 / 0.89  life 157 s  kpm/ship 0.36  trades 0.01
+1v1    Y engine x1.2 | D4 always   energy v turn v c9: score 0.063 ± 0.008  kills m/o/f/t 0.06 / 0.00 / 0.01 / 0.92  life 159 s  kpm/ship 0.36  trades 0.01
+1v1             Y drag x0.8 | r9   energy v turn v c10: score 0.047 ± 0.006  kills m/o/f/t 0.19 / 0.27 / 0.51 / 0.03  life 262 s  kpm/ship 0.22  trades 0.00
+1v1    Y drag x0.8 | D1 gate v J   energy v turn v c11: score 0.060 ± 0.007  kills m/o/f/t 0.18 / 0.21 / 0.61 / 0.01  life 364 s  kpm/ship 0.16  trades 0.00
+1v1 Y drag x0.8 | D2 gate+energy   energy v turn v c12: score 0.056 ± 0.007  kills m/o/f/t 0.16 / 0.14 / 0.68 / 0.02  life 403 s  kpm/ship 0.15  trades 0.00
+1v1   Y drag x0.8 | D3 gate+nose   energy v turn v c13: score 0.066 ± 0.008  kills m/o/f/t 0.21 / 0.21 / 0.56 / 0.02  life 344 s  kpm/ship 0.17  trades 0.00
+1v1      Y drag x0.8 | D4 always   energy v turn v c14: score 0.059 ± 0.008  kills m/o/f/t 0.05 / 0.00 / 0.00 / 0.95  life 171 s  kpm/ship 0.33  trades 0.00
+1v1          J induced x1.3 | r9   energy v turn v c15: score 0.105 ± 0.009  kills m/o/f/t 0.20 / 0.38 / 0.42 / 0.00  life 259 s  kpm/ship 0.22  trades 0.00
+1v1 J induced x1.3 | D1 gate v J   energy v turn v c16: score 0.069 ± 0.008  kills m/o/f/t 0.22 / 0.35 / 0.42 / 0.00  life 288 s  kpm/ship 0.20  trades 0.00
+1v1 J induced x1.3 | D2 gate+energy   energy v turn v c17: score 0.076 ± 0.008  kills m/o/f/t 0.22 / 0.37 / 0.41 / 0.00  life 295 s  kpm/ship 0.20  trades 0.00
+1v1 J induced x1.3 | D3 gate+nose   energy v turn v c18: score 0.081 ± 0.008  kills m/o/f/t 0.21 / 0.38 / 0.41 / 0.00  life 303 s  kpm/ship 0.19  trades 0.00
+1v1   J induced x1.3 | D4 always   energy v turn v c19: score 0.051 ± 0.007  kills m/o/f/t 0.05 / 0.00 / 0.01 / 0.94  life 165 s  kpm/ship 0.34  trades 0.01
+## 2v2: 20 jobs, B 8192, 19:27 KST
+  batch 1/2 108 s; ETA 19:30 KST
+  batch 2/2 140 s; ETA 19:29 KST
+2v2                  frozen | r9   energy v turn v c0: score 0.396 ± 0.020  kills m/o/f/t 0.10 / 0.17 / 0.54 / 0.19  life 110 s  kpm/ship 0.50  trades 0.01
+2v2         frozen | D1 gate v J   energy v turn v c1: score 0.011 ± 0.004  kills m/o/f/t 0.03 / 0.01 / 0.06 / 0.91  life 196 s  kpm/ship 0.29  trades 0.02
+2v2      frozen | D2 gate+energy   energy v turn v c2: score 0.002 ± 0.001  kills m/o/f/t 0.02 / 0.01 / 0.06 / 0.92  life 190 s  kpm/ship 0.30  trades 0.02
+2v2        frozen | D3 gate+nose   energy v turn v c3: score 0.007 ± 0.003  kills m/o/f/t 0.02 / 0.01 / 0.06 / 0.92  life 193 s  kpm/ship 0.30  trades 0.02
+2v2           frozen | D4 always   energy v turn v c4: score 0.004 ± 0.002  kills m/o/f/t 0.01 / 0.01 / 0.05 / 0.93  life 191 s  kpm/ship 0.30  trades 0.02
+2v2           Y engine x1.2 | r9   energy v turn v c5: score 0.414 ± 0.020  kills m/o/f/t 0.11 / 0.17 / 0.54 / 0.18  life 113 s  kpm/ship 0.49  trades 0.02
+2v2  Y engine x1.2 | D1 gate v J   energy v turn v c6: score 0.013 ± 0.004  kills m/o/f/t 0.03 / 0.01 / 0.06 / 0.90  life 220 s  kpm/ship 0.26  trades 0.02
+2v2 Y engine x1.2 | D2 gate+energy   energy v turn v c7: score 0.015 ± 0.004  kills m/o/f/t 0.03 / 0.00 / 0.05 / 0.92  life 212 s  kpm/ship 0.27  trades 0.02
+2v2 Y engine x1.2 | D3 gate+nose   energy v turn v c8: score 0.014 ± 0.004  kills m/o/f/t 0.02 / 0.01 / 0.06 / 0.91  life 217 s  kpm/ship 0.27  trades 0.02
+2v2    Y engine x1.2 | D4 always   energy v turn v c9: score 0.011 ± 0.003  kills m/o/f/t 0.01 / 0.00 / 0.04 / 0.94  life 217 s  kpm/ship 0.26  trades 0.02
+2v2             Y drag x0.8 | r9   energy v turn v c10: score 0.536 ± 0.020  kills m/o/f/t 0.12 / 0.20 / 0.53 / 0.16  life 118 s  kpm/ship 0.47  trades 0.02
+2v2    Y drag x0.8 | D1 gate v J   energy v turn v c11: score 0.111 ± 0.011  kills m/o/f/t 0.12 / 0.14 / 0.51 / 0.22  life 167 s  kpm/ship 0.34  trades 0.01
+2v2 Y drag x0.8 | D2 gate+energy   energy v turn v c12: score 0.112 ± 0.011  kills m/o/f/t 0.12 / 0.13 / 0.53 / 0.21  life 171 s  kpm/ship 0.33  trades 0.01
+2v2   Y drag x0.8 | D3 gate+nose   energy v turn v c13: score 0.101 ± 0.011  kills m/o/f/t 0.12 / 0.15 / 0.51 / 0.22  life 171 s  kpm/ship 0.33  trades 0.01
+2v2      Y drag x0.8 | D4 always   energy v turn v c14: score 0.015 ± 0.004  kills m/o/f/t 0.02 / 0.00 / 0.04 / 0.94  life 234 s  kpm/ship 0.25  trades 0.01
+2v2          J induced x1.3 | r9   energy v turn v c15: score 0.621 ± 0.019  kills m/o/f/t 0.11 / 0.19 / 0.54 / 0.16  life 119 s  kpm/ship 0.47  trades 0.01
+2v2 J induced x1.3 | D1 gate v J   energy v turn v c16: score 0.394 ± 0.019  kills m/o/f/t 0.13 / 0.16 / 0.52 / 0.19  life 135 s  kpm/ship 0.42  trades 0.01
+2v2 J induced x1.3 | D2 gate+energy   energy v turn v c17: score 0.430 ± 0.019  kills m/o/f/t 0.12 / 0.17 / 0.52 / 0.18  life 136 s  kpm/ship 0.41  trades 0.01
+2v2 J induced x1.3 | D3 gate+nose   energy v turn v c18: score 0.394 ± 0.018  kills m/o/f/t 0.11 / 0.17 / 0.53 / 0.19  life 136 s  kpm/ship 0.41  trades 0.01
+2v2   J induced x1.3 | D4 always   energy v turn v c19: score 0.012 ± 0.003  kills m/o/f/t 0.01 / 0.00 / 0.05 / 0.94  life 227 s  kpm/ship 0.25  trades 0.01
+## 5v5: 20 jobs, B 4096, 19:29 KST
+  batch 1/3 124 s; ETA 19:35 KST
+  batch 2/3 165 s; ETA 19:33 KST
+  batch 3/3 208 s; ETA 19:32 KST
+5v5                  frozen | r9   energy v turn v c0: score 0.560 ± 0.021  kills m/o/f/t 0.06 / 0.17 / 0.54 / 0.23  life 110 s  kpm/ship 0.50  trades 0.04
+5v5         frozen | D1 gate v J   energy v turn v c1: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.01 / 0.11 / 0.86  life 226 s  kpm/ship 0.25  trades 0.04
+5v5      frozen | D2 gate+energy   energy v turn v c2: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.01 / 0.10 / 0.87  life 226 s  kpm/ship 0.25  trades 0.04
+5v5        frozen | D3 gate+nose   energy v turn v c3: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.01 / 0.11 / 0.87  life 222 s  kpm/ship 0.26  trades 0.04
+5v5           frozen | D4 always   energy v turn v c4: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.01 / 0.09 / 0.88  life 223 s  kpm/ship 0.26  trades 0.03
+5v5           Y engine x1.2 | r9   energy v turn v c5: score 0.625 ± 0.020  kills m/o/f/t 0.07 / 0.17 / 0.54 / 0.23  life 112 s  kpm/ship 0.49  trades 0.04
+5v5  Y engine x1.2 | D1 gate v J   energy v turn v c6: score 0.000 ± 0.000  kills m/o/f/t 0.02 / 0.01 / 0.12 / 0.85  life 250 s  kpm/ship 0.23  trades 0.03
+5v5 Y engine x1.2 | D2 gate+energy   energy v turn v c7: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.01 / 0.11 / 0.86  life 249 s  kpm/ship 0.23  trades 0.04
+5v5 Y engine x1.2 | D3 gate+nose   energy v turn v c8: score 0.000 ± 0.000  kills m/o/f/t 0.02 / 0.01 / 0.11 / 0.87  life 252 s  kpm/ship 0.23  trades 0.03
+5v5    Y engine x1.2 | D4 always   energy v turn v c9: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.01 / 0.09 / 0.89  life 258 s  kpm/ship 0.22  trades 0.04
+5v5             Y drag x0.8 | r9   energy v turn v c10: score 0.737 ± 0.018  kills m/o/f/t 0.07 / 0.18 / 0.53 / 0.22  life 117 s  kpm/ship 0.47  trades 0.03
+5v5    Y drag x0.8 | D1 gate v J   energy v turn v c11: score 0.130 ± 0.013  kills m/o/f/t 0.07 / 0.14 / 0.50 / 0.29  life 143 s  kpm/ship 0.39  trades 0.03
+5v5 Y drag x0.8 | D2 gate+energy   energy v turn v c12: score 0.157 ± 0.015  kills m/o/f/t 0.07 / 0.14 / 0.51 / 0.27  life 144 s  kpm/ship 0.39  trades 0.03
+5v5   Y drag x0.8 | D3 gate+nose   energy v turn v c13: score 0.174 ± 0.016  kills m/o/f/t 0.07 / 0.13 / 0.51 / 0.29  life 144 s  kpm/ship 0.39  trades 0.03
+5v5      Y drag x0.8 | D4 always   energy v turn v c14: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.01 / 0.08 / 0.90  life 297 s  kpm/ship 0.20  trades 0.03
+5v5          J induced x1.3 | r9   energy v turn v c15: score 0.815 ± 0.016  kills m/o/f/t 0.06 / 0.17 / 0.53 / 0.23  life 115 s  kpm/ship 0.48  trades 0.04
+5v5 J induced x1.3 | D1 gate v J   energy v turn v c16: score 0.599 ± 0.020  kills m/o/f/t 0.07 / 0.15 / 0.52 / 0.26  life 124 s  kpm/ship 0.45  trades 0.03
+5v5 J induced x1.3 | D2 gate+energy   energy v turn v c17: score 0.624 ± 0.020  kills m/o/f/t 0.07 / 0.15 / 0.52 / 0.26  life 121 s  kpm/ship 0.46  trades 0.04
+5v5 J induced x1.3 | D3 gate+nose   energy v turn v c18: score 0.610 ± 0.020  kills m/o/f/t 0.07 / 0.15 / 0.51 / 0.26  life 123 s  kpm/ship 0.45  trades 0.04
+5v5   J induced x1.3 | D4 always   energy v turn v c19: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.01 / 0.09 / 0.90  life 270 s  kpm/ship 0.21  trades 0.03
+## 10v10: 20 jobs, B 2048, 19:32 KST
+  batch 1/3 125 s; ETA 19:39 KST
+  batch 2/3 166 s; ETA 19:37 KST
+  batch 3/3 208 s; ETA 19:36 KST
+10v10                  frozen | r9   energy v turn v c0: score 0.514 ± 0.030  kills m/o/f/t 0.05 / 0.17 / 0.52 / 0.26  life 124 s  kpm/ship 0.45  trades 0.07
+10v10         frozen | D1 gate v J   energy v turn v c1: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.02 / 0.13 / 0.83  life 231 s  kpm/ship 0.25  trades 0.06
+10v10      frozen | D2 gate+energy   energy v turn v c2: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.02 / 0.13 / 0.85  life 231 s  kpm/ship 0.25  trades 0.06
+10v10        frozen | D3 gate+nose   energy v turn v c3: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.02 / 0.12 / 0.85  life 229 s  kpm/ship 0.25  trades 0.06
+10v10           frozen | D4 always   energy v turn v c4: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.02 / 0.11 / 0.87  life 235 s  kpm/ship 0.25  trades 0.06
+10v10           Y engine x1.2 | r9   energy v turn v c5: score 0.631 ± 0.029  kills m/o/f/t 0.06 / 0.16 / 0.52 / 0.26  life 128 s  kpm/ship 0.44  trades 0.07
+10v10  Y engine x1.2 | D1 gate v J   energy v turn v c6: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.02 / 0.14 / 0.82  life 253 s  kpm/ship 0.23  trades 0.06
+10v10 Y engine x1.2 | D2 gate+energy   energy v turn v c7: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.02 / 0.13 / 0.84  life 255 s  kpm/ship 0.23  trades 0.06
+10v10 Y engine x1.2 | D3 gate+nose   energy v turn v c8: score 0.000 ± 0.000  kills m/o/f/t 0.02 / 0.02 / 0.12 / 0.84  life 257 s  kpm/ship 0.23  trades 0.06
+10v10    Y engine x1.2 | D4 always   energy v turn v c9: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.02 / 0.11 / 0.86  life 269 s  kpm/ship 0.21  trades 0.05
+10v10             Y drag x0.8 | r9   energy v turn v c10: score 0.756 ± 0.026  kills m/o/f/t 0.06 / 0.17 / 0.51 / 0.26  life 134 s  kpm/ship 0.42  trades 0.06
+10v10    Y drag x0.8 | D1 gate v J   energy v turn v c11: score 0.113 ± 0.019  kills m/o/f/t 0.06 / 0.13 / 0.49 / 0.32  life 168 s  kpm/ship 0.34  trades 0.06
+10v10 Y drag x0.8 | D2 gate+energy   energy v turn v c12: score 0.088 ± 0.016  kills m/o/f/t 0.05 / 0.14 / 0.49 / 0.32  life 164 s  kpm/ship 0.35  trades 0.06
+10v10   Y drag x0.8 | D3 gate+nose   energy v turn v c13: score 0.082 ± 0.017  kills m/o/f/t 0.06 / 0.13 / 0.49 / 0.32  life 168 s  kpm/ship 0.34  trades 0.05
+10v10      Y drag x0.8 | D4 always   energy v turn v c14: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.02 / 0.10 / 0.88  life 285 s  kpm/ship 0.20  trades 0.06
+10v10          J induced x1.3 | r9   energy v turn v c15: score 0.824 ± 0.023  kills m/o/f/t 0.05 / 0.16 / 0.52 / 0.27  life 130 s  kpm/ship 0.43  trades 0.07
+10v10 J induced x1.3 | D1 gate v J   energy v turn v c16: score 0.598 ± 0.030  kills m/o/f/t 0.06 / 0.15 / 0.51 / 0.29  life 143 s  kpm/ship 0.39  trades 0.06
+10v10 J induced x1.3 | D2 gate+energy   energy v turn v c17: score 0.635 ± 0.029  kills m/o/f/t 0.06 / 0.15 / 0.50 / 0.29  life 139 s  kpm/ship 0.40  trades 0.07
+10v10 J induced x1.3 | D3 gate+nose   energy v turn v c18: score 0.600 ± 0.030  kills m/o/f/t 0.06 / 0.14 / 0.51 / 0.29  life 142 s  kpm/ship 0.40  trades 0.06
+10v10   J induced x1.3 | D4 always   energy v turn v c19: score 0.000 ± 0.000  kills m/o/f/t 0.01 / 0.02 / 0.11 / 0.87  life 279 s  kpm/ship 0.21  trades 0.05
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| frozen | r9 | 0.009 ± 0.003 | 0.396 ± 0.020 | 0.560 ± 0.021 | 0.514 ± 0.030 | 0.491 | 0.06 / 0.17 / 0.54 / 0.23 | 0.04 | 170 / 110 / 110 / 124 | 0.33 / 0.50 / 0.50 / 0.45 | 2.81 |
+| frozen | D1 gate v J | 0.086 ± 0.009 | 0.011 ± 0.004 | 0.000 ± 0.000 | 0.000 ± 0.000 | 0.500 | 0.01 / 0.01 / 0.11 / 0.86 | 0.04 | 154 / 196 / 226 / 231 | 0.37 / 0.29 / 0.25 / 0.25 | 1.29 |
+| frozen | D2 gate+energy | 0.068 ± 0.008 | 0.002 ± 0.001 | 0.000 ± 0.000 | 0.000 ± 0.000 | 0.500 | 0.01 / 0.01 / 0.10 / 0.87 | 0.04 | 150 / 190 / 226 / 231 | 0.38 / 0.30 / 0.25 / 0.25 | 1.18 |
+| frozen | D3 gate+nose | 0.060 ± 0.008 | 0.007 ± 0.003 | 0.000 ± 0.000 | 0.000 ± 0.000 | 0.500 | 0.01 / 0.01 / 0.11 / 0.87 | 0.04 | 148 / 193 / 222 / 229 | 0.38 / 0.30 / 0.26 / 0.25 | 1.15 |
+| frozen | D4 always | 0.052 ± 0.007 | 0.004 ± 0.002 | 0.000 ± 0.000 | 0.000 ± 0.000 | 0.500 | 0.01 / 0.01 / 0.09 / 0.88 | 0.03 | 146 / 191 / 223 / 235 | 0.39 / 0.30 / 0.26 / 0.25 | 1.11 |
+| Y engine x1.2 | r9 | 0.018 ± 0.004 | 0.414 ± 0.020 | 0.625 ± 0.020 | 0.631 ± 0.029 | 0.482 | 0.07 / 0.17 / 0.54 / 0.23 | 0.04 | 187 / 113 / 112 / 128 | 0.31 / 0.49 / 0.49 / 0.44 | 2.94 |
+| Y engine x1.2 | D1 gate v J | 0.140 ± 0.011 | 0.013 ± 0.004 | 0.000 ± 0.000 | 0.000 ± 0.000 | 0.500 | 0.02 / 0.01 / 0.12 / 0.85 | 0.03 | 164 / 220 / 250 / 253 | 0.35 / 0.26 / 0.23 / 0.23 | 1.17 |
+| Y engine x1.2 | D2 gate+energy | 0.103 ± 0.010 | 0.015 ± 0.004 | 0.000 ± 0.000 | 0.000 ± 0.000 | 0.500 | 0.01 / 0.01 / 0.11 / 0.86 | 0.04 | 164 / 212 / 249 / 255 | 0.35 / 0.27 / 0.23 / 0.23 | 1.19 |
+| Y engine x1.2 | D3 gate+nose | 0.086 ± 0.009 | 0.014 ± 0.004 | 0.000 ± 0.000 | 0.000 ± 0.000 | 0.500 | 0.02 / 0.01 / 0.11 / 0.87 | 0.03 | 157 / 217 / 252 / 257 | 0.36 / 0.27 / 0.23 / 0.23 | 1.08 |
+| Y engine x1.2 | D4 always | 0.063 ± 0.008 | 0.011 ± 0.003 | 0.000 ± 0.000 | 0.000 ± 0.000 | 0.500 | 0.01 / 0.01 / 0.09 / 0.89 | 0.04 | 159 / 217 / 258 / 269 | 0.36 / 0.26 / 0.22 / 0.21 | 1.06 |
+| Y drag x0.8 | r9 | 0.047 ± 0.006 | 0.536 ± 0.020 | 0.737 ± 0.018 | 0.756 ± 0.026 | 0.453 | 0.07 / 0.18 / 0.53 / 0.22 | 0.03 | 262 / 118 / 117 / 134 | 0.22 / 0.47 / 0.47 / 0.42 | 2.51 |
+| Y drag x0.8 | D1 gate v J | 0.060 ± 0.007 | 0.111 ± 0.011 | 0.130 ± 0.013 | 0.113 ± 0.019 | 0.440 | 0.07 / 0.14 / 0.50 / 0.29 | 0.03 | 364 / 167 / 143 / 168 | 0.16 / 0.34 / 0.39 / 0.34 | 2.95 |
+| Y drag x0.8 | D2 gate+energy | 0.056 ± 0.007 | 0.112 ± 0.011 | 0.157 ± 0.015 | 0.088 ± 0.016 | 0.444 | 0.07 / 0.14 / 0.51 / 0.27 | 0.03 | 403 / 171 / 144 / 164 | 0.15 / 0.33 / 0.39 / 0.35 | 3.3 |
+| Y drag x0.8 | D3 gate+nose | 0.066 ± 0.008 | 0.101 ± 0.011 | 0.174 ± 0.016 | 0.082 ± 0.017 | 0.434 | 0.07 / 0.13 / 0.51 / 0.29 | 0.03 | 344 / 171 / 144 / 168 | 0.17 / 0.33 / 0.39 / 0.34 | 2.93 |
+| Y drag x0.8 | D4 always | 0.059 ± 0.008 | 0.015 ± 0.004 | 0.000 ± 0.000 | 0.000 ± 0.000 | 0.500 | 0.01 / 0.01 / 0.08 / 0.90 | 0.03 | 171 / 234 / 297 / 285 | 0.33 / 0.25 / 0.20 / 0.20 | 1.33 |
+| J induced x1.3 | r9 | 0.105 ± 0.009 | 0.621 ± 0.019 | 0.815 ± 0.016 | 0.824 ± 0.023 | 0.395 | 0.06 / 0.17 / 0.53 / 0.23 | 0.04 | 259 / 119 / 115 / 130 | 0.22 / 0.47 / 0.48 / 0.43 | 2.28 |
+| J induced x1.3 | D1 gate v J | 0.069 ± 0.008 | 0.394 ± 0.019 | 0.599 ± 0.020 | 0.598 ± 0.030 | 0.431 | 0.07 / 0.15 / 0.52 / 0.26 | 0.03 | 288 / 135 / 124 / 143 | 0.20 / 0.42 / 0.45 / 0.39 | 2.6 |
+| J induced x1.3 | D2 gate+energy | 0.076 ± 0.008 | 0.430 ± 0.019 | 0.624 ± 0.020 | 0.635 ± 0.029 | 0.424 | 0.07 / 0.15 / 0.52 / 0.26 | 0.04 | 295 / 136 / 121 / 139 | 0.20 / 0.41 / 0.46 / 0.40 | 2.55 |
+| J induced x1.3 | D3 gate+nose | 0.081 ± 0.008 | 0.394 ± 0.018 | 0.610 ± 0.020 | 0.600 ± 0.030 | 0.419 | 0.07 / 0.15 / 0.51 / 0.26 | 0.04 | 303 / 136 / 123 / 142 | 0.19 / 0.41 / 0.45 / 0.40 | 2.59 |
+| J induced x1.3 | D4 always | 0.051 ± 0.007 | 0.012 ± 0.003 | 0.000 ± 0.000 | 0.000 ± 0.000 | 0.500 | 0.01 / 0.01 / 0.09 / 0.90 | 0.03 | 165 / 227 / 270 / 279 | 0.34 / 0.25 / 0.21 / 0.21 | 1.1 |
+
+714 s

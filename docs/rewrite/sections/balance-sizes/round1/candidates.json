@@ -1,0 +1,321 @@
+[
+ {
+  "name": "frozen | r9",
+  "energy": {},
+  "turn": {},
+  "player": "r9",
+  "doctrine": {}
+ },
+ {
+  "name": "frozen | D1 gate v J",
+  "energy": {},
+  "turn": {},
+  "player": "r9",
+  "doctrine": {
+   "energy": {
+    "turn_exponent": -1.86
+   }
+  }
+ },
+ {
+  "name": "frozen | D2 gate+energy",
+  "energy": {},
+  "turn": {},
+  "player": "r9",
+  "doctrine": {
+   "energy": {
+    "turn_exponent": -1.86,
+    "engage_in_energy_ratio": [
+     1.1,
+     0.05
+    ]
+   }
+  }
+ },
+ {
+  "name": "frozen | D3 gate+nose",
+  "energy": {},
+  "turn": {},
+  "player": "r9",
+  "doctrine": {
+   "energy": {
+    "turn_exponent": -1.86,
+    "extend_in_stall_angle": [
+     1.0,
+     0.2
+    ]
+   }
+  }
+ },
+ {
+  "name": "frozen | D4 always",
+  "energy": {},
+  "turn": {},
+  "player": "r9",
+  "doctrine": {
+   "energy": {
+    "turn_exponent": 0.0,
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "engage_in_energy_ratio": [
+     1.1,
+     0.05
+    ],
+    "extend_in_stall_angle": [
+     1.0,
+     0.2
+    ]
+   }
+  }
+ },
+ {
+  "name": "Y engine x1.2 | r9",
+  "energy": {
+   "engine_power": 1.2
+  },
+  "turn": {},
+  "player": "r9",
+  "doctrine": {}
+ },
+ {
+  "name": "Y engine x1.2 | D1 gate v J",
+  "energy": {
+   "engine_power": 1.2
+  },
+  "turn": {},
+  "player": "r9",
+  "doctrine": {
+   "energy": {
+    "turn_exponent": -1.86
+   }
+  }
+ },
+ {
+  "name": "Y engine x1.2 | D2 gate+energy",
+  "energy": {
+   "engine_power": 1.2
+  },
+  "turn": {},
+  "player": "r9",
+  "doctrine": {
+   "energy": {
+    "turn_exponent": -1.86,
+    "engage_in_energy_ratio": [
+     1.1,
+     0.05
+    ]
+   }
+  }
+ },
+ {
+  "name": "Y engine x1.2 | D3 gate+nose",
+  "energy": {
+   "engine_power": 1.2
+  },
+  "turn": {},
+  "player": "r9",
+  "doctrine": {
+   "energy": {
+    "turn_exponent": -1.86,
+    "extend_in_stall_angle": [
+     1.0,
+     0.2
+    ]
+   }
+  }
+ },
+ {
+  "name": "Y engine x1.2 | D4 always",
+  "energy": {
+   "engine_power": 1.2
+  },
+  "turn": {},
+  "player": "r9",
+  "doctrine": {
+   "energy": {
+    "turn_exponent": 0.0,
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "engage_in_energy_ratio": [
+     1.1,
+     0.05
+    ],
+    "extend_in_stall_angle": [
+     1.0,
+     0.2
+    ]
+   }
+  }
+ },
+ {
+  "name": "Y drag x0.8 | r9",
+  "energy": {
+   "zero_lift_drag": 0.8,
+   "induced_drag_scale": 0.8
+  },
+  "turn": {},
+  "player": "r9",
+  "doctrine": {}
+ },
+ {
+  "name": "Y drag x0.8 | D1 gate v J",
+  "energy": {
+   "zero_lift_drag": 0.8,
+   "induced_drag_scale": 0.8
+  },
+  "turn": {},
+  "player": "r9",
+  "doctrine": {
+   "energy": {
+    "turn_exponent": -1.86
+   }
+  }
+ },
+ {
+  "name": "Y drag x0.8 | D2 gate+energy",
+  "energy": {
+   "zero_lift_drag": 0.8,
+   "induced_drag_scale": 0.8
+  },
+  "turn": {},
+  "player": "r9",
+  "doctrine": {
+   "energy": {
+    "turn_exponent": -1.86,
+    "engage_in_energy_ratio": [
+     1.1,
+     0.05
+    ]
+   }
+  }
+ },
+ {
+  "name": "Y drag x0.8 | D3 gate+nose",
+  "energy": {
+   "zero_lift_drag": 0.8,
+   "induced_drag_scale": 0.8
+  },
+  "turn": {},
+  "player": "r9",
+  "doctrine": {
+   "energy": {
+    "turn_exponent": -1.86,
+    "extend_in_stall_angle": [
+     1.0,
+     0.2
+    ]
+   }
+  }
+ },
+ {
+  "name": "Y drag x0.8 | D4 always",
+  "energy": {
+   "zero_lift_drag": 0.8,
+   "induced_drag_scale": 0.8
+  },
+  "turn": {},
+  "player": "r9",
+  "doctrine": {
+   "energy": {
+    "turn_exponent": 0.0,
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "engage_in_energy_ratio": [
+     1.1,
+     0.05
+    ],
+    "extend_in_stall_angle": [
+     1.0,
+     0.2
+    ]
+   }
+  }
+ },
+ {
+  "name": "J induced x1.3 | r9",
+  "energy": {},
+  "turn": {
+   "induced_drag_scale": 1.3
+  },
+  "player": "r9",
+  "doctrine": {}
+ },
+ {
+  "name": "J induced x1.3 | D1 gate v J",
+  "energy": {},
+  "turn": {
+   "induced_drag_scale": 1.3
+  },
+  "player": "r9",
+  "doctrine": {
+   "energy": {
+    "turn_exponent": -1.86
+   }
+  }
+ },
+ {
+  "name": "J induced x1.3 | D2 gate+energy",
+  "energy": {},
+  "turn": {
+   "induced_drag_scale": 1.3
+  },
+  "player": "r9",
+  "doctrine": {
+   "energy": {
+    "turn_exponent": -1.86,
+    "engage_in_energy_ratio": [
+     1.1,
+     0.05
+    ]
+   }
+  }
+ },
+ {
+  "name": "J induced x1.3 | D3 gate+nose",
+  "energy": {},
+  "turn": {
+   "induced_drag_scale": 1.3
+  },
+  "player": "r9",
+  "doctrine": {
+   "energy": {
+    "turn_exponent": -1.86,
+    "extend_in_stall_angle": [
+     1.0,
+     0.2
+    ]
+   }
+  }
+ },
+ {
+  "name": "J induced x1.3 | D4 always",
+  "energy": {},
+  "turn": {
+   "induced_drag_scale": 1.3
+  },
+  "player": "r9",
+  "doctrine": {
+   "energy": {
+    "turn_exponent": 0.0,
+    "in_advantage": [
+     0.5,
+     0.1
+    ],
+    "engage_in_energy_ratio": [
+     1.1,
+     0.05
+    ],
+    "extend_in_stall_angle": [
+     1.0,
+     0.2
+    ]
+   }
+  }
+ }
+]
