@@ -153,3 +153,34 @@ mirror, 512 games; zone radius 330 m x map scale 3 = 990 m, capture 20 s, thresh
 - Zone sizes in use: `ModeRules.zone_radius` 330 m at map scale 1, scaled by R / 2600 m:
   990 m on the 7800 m real-scale map (0.127 R), 1400 / 1980 / 3131 m on the 10v10 / 20v20 /
   50v50 `_density` maps; the ring at 0.615 R. A zone covers 1.6% of the arena's area.
+
+## Step 2f: Frontline knob scan (rough, 256 games each, release lineup)
+
+One knob changed from the 5v5 baseline (990 m zones, capture 20 s, threshold 3, 600 s):
+
+| variant | ended by the front | captures / game | first capture median (s) | P(same team next) |
+|---|---|---|---|---|
+| baseline (512 games) | 0.090 ± 0.013 | 10.8 | 87 | 0.143 ± 0.005 |
+| capture 10 s | 0.191 ± 0.025 | 16.3 | 78 | 0.132 ± 0.005 |
+| capture 40 s | 0.004 ± 0.004 | 1.8 | 289 | 0.125 ± 0.020 |
+| threshold 2 | 0.445 ± 0.031 | 9.0 | 87 | 0.171 ± 0.008 |
+| zone radius 1.5x (1485 m) | 0.082 ± 0.017 | 9.9 | 88 | 0.163 ± 0.008 |
+| zone radius 2x (1980 m) | 0.098 ± 0.019 | 8.3 | 89 | 0.180 ± 0.009 |
+| clock 1200 s | 0.281 ± 0.028 | 21.2 | 87 | 0.141 ± 0.005 |
+
+- Tried: capture time, threshold, zone size, clock. Worked: none reaches ~80% by the front;
+  threshold 2 gets closest (45%). Didn't: P(same team next) stays 0.13-0.18 under every
+  knob: the reversal is structural, set by the role rotation and the agent's play, not by
+  the knobs. Bigger zones nudge it toward 0.5 (0.14 → 0.18) and slow the game.
+- Why (the rotation; zone indices round the ring 0-4): after team 0 takes team 1's
+  defense zone, that zone becomes team 0's defense and so team 1's next target, with team
+  1's ships still in it. Team 0's own next target is the old team-1 spawn, next door. The
+  scripted agent's attackers move on to the new target and the losers' survivors retake
+  the zone: so the measurement is the rules and the scripted doctrine together. A trained
+  policy that holds what it took could play differently.
+- Proposal (the author decides; not implemented): a rule that keeps a just-captured zone
+  from being taken straight back, e.g. a lock (no meter movement in the captured zone
+  for L seconds after a capture, L ~ capture time to 2x), or rotate the roles so the loser's
+  next target is not the zone it just lost. Either is a rule change (game version). I can
+  measure a lock in an hour if wanted. With a near-random walk (P ≈ 0.5) a symmetric walk
+  needs ~9 captures to reach ±3, which at ~1 capture per 55 s fits a 600 s clock.
