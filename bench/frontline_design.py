@@ -1,7 +1,8 @@
 """Frontline design search: candidate capture rules side by side in one compiled rollout.
 
     PYTHONPATH=src python -m bench.frontline_design --variants FILE.json --out FILE.jsonl \
-        [--ships 5 --radius 7800] [--games 256] [--slots 4] [--per-slot 128]
+        [--kind frontline|deathmatch] [--ships 5 --radius 7800] [--games 256] [--slots 4]
+        [--per-slot 128]
 
 Each variant is a JSON object (every field optional, off by default):
 
@@ -24,7 +25,14 @@ Each variant is a JSON object (every field optional, off by default):
   at the capture rate (H_n s a second for n ahead, a lone attacker 1 s a second); E never
   decays or recharges;
 - `hold` H (s): a decaying hold, the extension H that also decays 1 s a second (gone
-  after H s with no attacker).
+  after H s with no attacker);
+- `respawn_minimum` (s) and `wave_interval` (s): respawn waves (both 0: the game's fixed
+  wait). A dead ship respawns at its team's first wave after it has been dead
+  `respawn_minimum` s; each team's waves come every `wave_interval` s (0: no waves, the ship
+  respawns once the minimum has passed), from a random phase per team at the episode start;
+- `wave_effect`: on a capture, the team that lost the zone has its wave clock 0 untouched,
+  1 reset (its next wave a full interval away), 2 delayed by `wave_delay` s, 3 pushed back
+  one interval (a wave skipped).
 
 All parameters are per-environment tensors read inside the compiled tick, so `--slots`
 variants run side by side in one batch of slots x per-slot environments and every variant
@@ -54,9 +62,15 @@ from bnb.game.modes import frontline
 from bnb.runtime.rollout import Rollout
 
 FIELDS = ("lock", "early", "stale", "forward", "capture_scale", "progressive", "count_scale",
-          "extension", "hold")  # fmt: skip
+          "extension", "hold", "respawn_minimum", "wave_interval", "wave_effect",
+          "wave_delay")  # fmt: skip
 DEFAULTS = dict(lock=0.0, early=0.0, stale=0.0, forward=0.0, capture_scale=1.0,
-                progressive=0.0, count_scale=1.0, extension=0.0, hold=0.0)  # fmt: skip
+                progressive=0.0, count_scale=1.0, extension=0.0, hold=0.0,
+                respawn_minimum=0.0, wave_interval=0.0, wave_effect=0.0,
+                wave_delay=0.0)  # fmt: skip
+WAIT_BIN = 0.25  # s, the respawn-wait histogram's bins
+WAIT_BINS = 400  # (the last one holds every longer wait)
+RESET, DELAY, SKIP = 1, 2, 3  # wave_effect codes
 
 
 class GroupProbe(dynamics.Probe):
@@ -88,9 +102,13 @@ class Design:
     hold = True  # install the capture-step wrapper
     active = True  # run after_resolve
 
-    def __init__(self, environments: int, ships_per_team: int, tick_length: float, device):
+    def __init__(
+        self, environments: int, ships_per_team: int, tick_length: float, device, slots: int = 1
+    ):
         self.tick_length = tick_length
         self.S = ships_per_team
+        self.slots = slots
+        self.group = (torch.arange(environments, device=device) * slots) // environments
         N = 2 * ships_per_team
         self.parameters = {
             name: torch.full((environments,), DEFAULTS[name], dtype=torch.float32, device=device)
@@ -103,7 +121,25 @@ class Design:
             winner=torch.zeros(environments, dtype=torch.long, device=device),
             stale=torch.zeros((environments, N), dtype=torch.bool, device=device),
             front=torch.zeros(environments, dtype=torch.long, device=device),
+            # respawn waves: ticks each ship has been dead (0 alive or dying this tick), ticks
+            # to each team's next wave (the wave respawns on that tick)
+            dead_for=torch.zeros((environments, N), dtype=torch.long, device=device),
+            wave_left=torch.ones((environments, 2), dtype=torch.long, device=device),
+            live=torch.ones(environments, dtype=torch.bool, device=device),
+            # per slot, over the first games: every respawn's wait (s) summed, and binned
+            wait_sum=torch.zeros(slots, dtype=torch.float64, device=device),
+            wait=torch.zeros(slots * WAIT_BINS, dtype=torch.long, device=device),
         )
+
+    def wait_histogram(self, slot: int) -> list[int]:
+        """One slot's respawn-wait histogram (host list, `WAIT_BIN` s bins)."""
+        return self.buffers["wait"][slot * WAIT_BINS : (slot + 1) * WAIT_BINS].cpu().tolist()
+
+    def _phase(self, shape) -> torch.Tensor:
+        """A random wave phase per team: ticks to the first wave, uniform on 1..interval."""
+        interval = torch.round(self.parameters["wave_interval"] / self.tick_length)[:, None]
+        draw = torch.rand(shape, device=interval.device)
+        return (draw * interval).floor().long().clamp_min(0) + 1
 
     def set(self, variants: list[dict]) -> None:
         """Fill the parameters in place: variant k on the k-th block of environments."""
@@ -124,6 +160,11 @@ class Design:
         b["winner"].zero_()
         b["stale"].fill_(False)
         b["front"].zero_()
+        b["dead_for"].zero_()
+        b["wave_left"].copy_(self._phase(b["wave_left"].shape))
+        b["live"].fill_(True)
+        b["wait_sum"].zero_()
+        b["wait"].zero_()
 
     def capture_step(self, original):
         """`frontline.capture_step` with the candidate rules."""
@@ -198,8 +239,10 @@ class Design:
 
     def after_resolve(self, state, events, ships_per_team: int):
         """Forward spawning: this tick's respawns moved from the team's spawn zone to its
-        defense zone, nose toward the zone it attacks."""
+        defense zone, nose toward the zone it attacks. Respawn waves: the dead ships' waits
+        set so that they respawn on their team's wave (`waves`)."""
         b, p = self.buffers, self.parameters
+        state = self.waves(state, events, ships_per_team)
         mode, ships = state.mode, state.ships
         fresh = events.done
         team = torch.arange(2 * ships_per_team, device=mode.front.device) // ships_per_team
@@ -227,13 +270,65 @@ class Design:
         b["front"].copy_(mode.front.long())
         return state_module.replace(state, ships=ships)
 
+    def waves(self, state, events, ships_per_team: int):
+        """Respawn waves (inside the compiled tick, after the resolve). A ship released here
+        gets respawn_wait 1, so the next tick's step spawns it; a ship held gets 2 (the step
+        counts it to 1, never due). A ship's wait is (ticks dead here) + 1. The capture
+        effect acts on the wave clock of the team the front stepped against. Every respawn's
+        wait (episode resets aside) is counted per slot over each environment's first game."""
+        b, p = self.buffers, self.parameters
+        ships, mode = state.ships, state.mode
+        tick = self.tick_length
+        fresh = events.done
+        B = fresh.shape[0]
+        team = torch.arange(2 * ships_per_team, device=fresh.device) // ships_per_team
+        # the waits of this tick's respawns (the step spawned them)
+        spawned = events.spawned & ~fresh[:, None]
+        wait = (b["dead_for"] + 1).double() * tick
+        counted = spawned & b["live"][:, None]
+        b["wait_sum"].index_add_(0, self.group, torch.where(counted, wait, 0.0).sum(-1))
+        bins = (wait / WAIT_BIN).long().clamp(0, WAIT_BINS - 1)
+        index = self.group[:, None] * WAIT_BINS + bins
+        b["wait"].index_add_(0, index.flatten(), counted.flatten().long())
+        dead = ~ships.alive
+        dead_for = torch.where(dead & ~events.died, b["dead_for"] + 1, 0)
+        # the wave clocks: the capture effect on the losing team, then this tick's waves
+        interval = torch.round(p["wave_interval"] / tick).long()[:, None]  # (B, 1)
+        delay = torch.round(p["wave_delay"] / tick).long()[:, None]
+        step = mode.front.long() - b["front"]
+        captured = (step != 0) & ~fresh
+        loser = (step > 0).long()  # team 1 loses a zone when the front rises
+        teams = torch.arange(2, device=fresh.device)
+        losing = captured[:, None] & (teams[None, :] == loser[:, None])
+        effect = p["wave_effect"][:, None]
+        left = b["wave_left"]
+        left = torch.where(losing & (effect == RESET), interval, left)
+        left = torch.where(losing & (effect == DELAY), left + delay, left)
+        left = torch.where(losing & (effect == SKIP), left + interval, left)
+        fires = left <= 1  # (B, 2): this team's wave is on the next tick
+        left = torch.where(fires, interval.expand(-1, 2), left - 1)
+        left = torch.where(fresh[:, None], self._phase((B, 2)), left)
+        b["wave_left"].copy_(left)
+        on = ((p["respawn_minimum"] > 0) | (p["wave_interval"] > 0))[:, None]  # (B, 1)
+        minimum = torch.round(p["respawn_minimum"] / tick)[:, None]
+        team_fires = fires[:, team]  # (B, N)
+        waited = (dead_for + 1).float() >= minimum
+        release = dead & waited & ((interval == 0) | team_fires)
+        held_wait = torch.where(release, 1, 2).to(ships.respawn_wait.dtype)
+        respawn_wait = torch.where(on & dead, held_wait, ships.respawn_wait)
+        b["dead_for"].copy_(torch.where(fresh[:, None], 0, dead_for))
+        b["live"].copy_(b["live"] & ~fresh)
+        ships = state_module.replace(ships, respawn_wait=respawn_wait)
+        return state_module.replace(state, ships=ships)
+
 
 def main() -> None:
     """The run the module describes."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--variants", type=pathlib.Path, required=True)
     parser.add_argument("--out", type=pathlib.Path, required=True)
-    parser.add_argument("--preset", default="real_scale_frontline")
+    parser.add_argument("--kind", choices=("frontline", "deathmatch"), default="frontline")
+    parser.add_argument("--preset", default=None, help="default real_scale_KIND")
     parser.add_argument("--ships", type=int, default=None)
     parser.add_argument("--radius", type=float, default=None)
     parser.add_argument("--games", type=int, default=256, help="per variant")
@@ -247,10 +342,13 @@ def main() -> None:
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     arguments = parser.parse_args()
     variants = json.loads(arguments.variants.read_text())
+    kind = arguments.kind
+    if arguments.preset is None:
+        arguments.preset = f"real_scale_{kind}"
     device = torch.device(arguments.device)
     shim = argparse.Namespace(
         preset=arguments.preset, ships=arguments.ships, radius=arguments.radius,
-        episode_seconds=arguments.episode_seconds, respawn_seconds=None, kind="frontline",
+        episode_seconds=arguments.episode_seconds, respawn_seconds=None, kind=kind,
     )  # fmt: skip
     game, types, rules = dynamics.game_of(shim)
     types = api.ship_types(ship_set=game.ship_set, device=device)
@@ -266,8 +364,8 @@ def main() -> None:
     card = characteristics(types, rules)
     agent = scripted.Scripted(card, rules.ships_per_team, temperature=1.0)
     probe = GroupProbe(environments, rules.ships_per_team, device, slots)
-    design = Design(environments, rules.ships_per_team, rules.tick_length, device)
-    dynamics.install(probe, True, design)
+    design = Design(environments, rules.ships_per_team, rules.tick_length, device, slots)
+    dynamics.install(probe, kind == "frontline", design)
     rollout = Rollout(
         dataclasses.replace(game),
         types,
@@ -312,7 +410,7 @@ def main() -> None:
             for _ in range(math.ceil(length / rollout.length)):
                 rollout.run()
             host = {name: value.cpu() for name, value in trace.items()}
-            games = dynamics.first_games(host, episode, threshold, "frontline")
+            games = dynamics.first_games(host, episode, threshold, kind)
             first_hit = probe.buffers["first_hit"].cpu().tolist()
             for record, hit in zip(games, first_hit):
                 record["first_hit"] = hit
@@ -322,7 +420,7 @@ def main() -> None:
                     continue
                 written.add(variant["label"])
                 entry = dict(
-                    label=variant["label"], kind="frontline", preset=arguments.preset,
+                    label=variant["label"], kind=kind, preset=arguments.preset,
                     ships=rules.ships_per_team, radius=game.arena_radius,
                     tick_length=rules.tick_length, episode_ticks=episode,
                     zone_radius=rollout.rules.pools[0].mode.zone_radius,
@@ -331,6 +429,11 @@ def main() -> None:
                     respawn_seconds=rollout.rules.pools[0].respawn_ticks * rules.tick_length,
                     variant=variant,
                     histograms={n: probe.histogram(n, slot) for n in dynamics.HISTOGRAMS},
+                    respawn_wait=dict(
+                        bin_seconds=WAIT_BIN,
+                        histogram=design.wait_histogram(slot),
+                        total_seconds=float(design.buffers["wait_sum"][slot]),
+                    ),
                     games=games[slot * per : (slot + 1) * per],
                 )  # fmt: skip
                 with arguments.out.open("a") as file:

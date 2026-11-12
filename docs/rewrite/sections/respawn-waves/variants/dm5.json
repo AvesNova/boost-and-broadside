@@ -1,0 +1,20 @@
+[
+ {
+  "label": "dm_fixed10"
+ },
+ {
+  "label": "dm_m10w15",
+  "respawn_minimum": 10,
+  "wave_interval": 15
+ },
+ {
+  "label": "dm_m10w20",
+  "respawn_minimum": 10,
+  "wave_interval": 20
+ },
+ {
+  "label": "dm_m10w30",
+  "respawn_minimum": 10,
+  "wave_interval": 30
+ }
+]

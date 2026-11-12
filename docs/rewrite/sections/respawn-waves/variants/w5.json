@@ -1,0 +1,47 @@
+[
+ {
+  "label": "fixed16",
+  "lock": 45
+ },
+ {
+  "label": "m10w0",
+  "lock": 45,
+  "respawn_minimum": 10
+ },
+ {
+  "label": "m8w15",
+  "lock": 45,
+  "respawn_minimum": 8,
+  "wave_interval": 15
+ },
+ {
+  "label": "m10w15",
+  "lock": 45,
+  "respawn_minimum": 10,
+  "wave_interval": 15
+ },
+ {
+  "label": "m8w20",
+  "lock": 45,
+  "respawn_minimum": 8,
+  "wave_interval": 20
+ },
+ {
+  "label": "m10w20",
+  "lock": 45,
+  "respawn_minimum": 10,
+  "wave_interval": 20
+ },
+ {
+  "label": "m8w30",
+  "lock": 45,
+  "respawn_minimum": 8,
+  "wave_interval": 30
+ },
+ {
+  "label": "m10w30",
+  "lock": 45,
+  "respawn_minimum": 10,
+  "wave_interval": 30
+ }
+]
