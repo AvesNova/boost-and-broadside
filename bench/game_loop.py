@@ -1323,8 +1323,9 @@ def es_search(
     pairs' score differences times their directions; the parent on probation moves `step`
     sigma along the normalised gradient. The moved parent stays only if its fresh score in
     the next generation beats the incumbent's (whose games accumulate), else the incumbent
-    returns and the step halves (a pass grows it 1.5x up to 1). With `distinct_floor` > 0, each candidate's score loses
-    distinct_weight x max(0, 1 - KL / distinct_floor), KL its two doctrines' `doctrine_kl`
+    returns and the step halves (a pass grows it 1.5x, up to 1). With `distinct_floor` > 0,
+    each candidate's score loses distinct_weight x max(0, 1 - KL / distinct_floor), KL its
+    two doctrines' `doctrine_kl`
     on the parent's situations (`snapshots`, taken once): the doctrines may not collapse
     into one. Every candidate is a line of the log."""
     generator = torch.Generator().manual_seed(seed)
