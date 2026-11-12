@@ -313,3 +313,89 @@ mixed / reversed; energy v turn 5v5 and its life:
   0.34-0.35 (the Jujaks extend better? to be checked) and lengthens the 5v5 life (110 to
   145-148 s; D2 102 to 122 s, cones 92 to 108-111 s). On D2 and the cones energy v turn
   5v5 is unchanged.
+
+## 01:24-01:47 KST: confirm (`confirm/`): 1024 games, 1v1 / 2v2 / 5v5
+
+1024 games a job (SE ±0.015 at 1v1, ±0.016 at 2v2 and 5v5). Maneuvers on both types over
+r9: "lead" the 0.5 s lead turn; "crowd extend" the crowd sense (straight and boost, the
+target passed behind and turning, another enemy within 3 gun ranges); "duel one-circle" the
+one-circle sense, mirror only, alone; "p0.7" the one-circle drawn with probability 0.7 at
+each merge. `ctable.py confirm/sizes.json` prints all three tables.
+
+**Strength and balance**: against r9 (1v1 JJ / YY; 2v2 mixed / reversed; 5v5 mixed /
+reversed), and energy v turn in self-play (1v1 / 2v2 / 5v5):
+
+| Card: candidate | v r9 1v1 | v r9 2v2 | v r9 5v5 | E v T |
+|---|---|---|---|---|
+| frozen: r9 | 0.494 / 0.499 | 0.500 / 0.504 | 0.512 / 0.515 | 0.01 / 0.39 / 0.53 |
+| frozen: lead | 0.562 / 0.507 | 0.484 / 0.486 | 0.489 / 0.498 | 0.00 / 0.40 / 0.53 |
+| frozen: crowd extend | 0.498 / 0.502 | 0.527 / 0.511 | 0.717 / 0.792 | 0.00 / 0.42 / 0.37 |
+| **frozen: duel one-circle + crowd extend** | **0.656 / 0.609** | 0.523 / 0.507 | **0.699 / 0.834** | 0.00 / 0.41 / 0.34 |
+| frozen: duel + crowd + lead | 0.636 / 0.580 | 0.533 / 0.523 | 0.710 / 0.826 | 0.00 / 0.45 / 0.34 |
+| frozen: duel p0.7 + crowd + lead | 0.569 / 0.507 | 0.467 / 0.473 | 0.685 / 0.779 | 0.01 / 0.43 / 0.33 |
+| D2: r9 | 0.499 / 0.508 | 0.514 / 0.495 | 0.497 / 0.507 | 0.50 / 0.44 / 0.56 |
+| D2: lead | 0.527 / 0.506 | 0.485 / 0.500 | 0.463 / 0.469 | 0.55 / 0.45 / 0.53 |
+| D2: crowd extend | 0.504 / 0.493 | 0.507 / 0.536 | 0.760 / 0.816 | 0.49 / 0.45 / 0.53 |
+| **D2: duel one-circle + crowd extend** | **0.580 / 0.613** | 0.518 / 0.492 | **0.753 / 0.811** | 0.49 / 0.45 / 0.52 |
+| D2: duel + crowd + lead | 0.560 / 0.598 | 0.534 / 0.496 | 0.770 / 0.824 | 0.56 / 0.43 / 0.53 |
+| D2: duel p0.7 + crowd + lead | 0.528 / 0.504 | 0.499 / 0.497 | 0.777 / 0.825 | 0.56 / 0.43 / 0.51 |
+| cone 0.085: r9 | 0.483 / 0.494 | 0.475 / 0.497 | 0.484 / 0.498 | 0.53 / 0.52 / 0.68 |
+| cone 0.085: lead | 0.520 / 0.492 | 0.457 / 0.504 | 0.495 / 0.503 | 0.60 / 0.54 / 0.66 |
+| cone 0.085: crowd extend | 0.487 / 0.504 | 0.508 / 0.519 | 0.760 / 0.813 | 0.54 / 0.49 / 0.68 |
+| **cone 0.085: duel one-circle + crowd extend** | **0.524 / 0.598** | 0.531 / 0.531 | **0.792 / 0.819** | 0.53 / 0.50 / 0.69 |
+| cone 0.085: duel + crowd + lead | 0.522 / 0.555 | 0.536 / 0.550 | 0.777 / 0.788 | 0.60 / 0.52 / 0.66 |
+| cone 0.01: r9 | 0.507 / 0.516 | 0.488 / 0.473 | 0.481 / 0.486 | 0.53 / 0.48 / 0.65 |
+| cone 0.01: lead | 0.523 / 0.500 | 0.512 / 0.504 | 0.477 / 0.504 | 0.60 / 0.49 / 0.65 |
+| cone 0.01: crowd extend | 0.489 / 0.506 | 0.535 / 0.535 | 0.778 / 0.815 | 0.52 / 0.48 / 0.64 |
+| **cone 0.01: duel one-circle + crowd extend** | 0.523 / 0.475 | 0.528 / 0.519 | **0.778 / 0.843** | 0.53 / 0.52 / 0.66 |
+| cone 0.01: duel + crowd + lead | 0.511 / 0.489 | 0.517 / 0.524 | 0.777 / 0.815 | 0.61 / 0.50 / 0.66 |
+
+**The duels** (self-play 1v1: mutual head-on kill share, life, merges a kill mean / median
+/ p90; one / two circle / scissors; side by side; post-merge same / opposite / extend):
+
+| Card: candidate | JJ | YY |
+|---|---|---|
+| frozen: r9 | 0.79, 153 s, 2.2/2/4; 0.15/0.81/0.04; 0.63; 0.78/0.22/0.00 | 0.35, 1053 s, 3.5/3/8; 0.04/0.92/0.03; 0.35; 0.92/0.08/0.00 |
+| frozen: duel + crowd | 0.86, 110 s, 2.3/2/5; 0.63/0.05/0.32; 0.00; 0.00/0.97/0.03 | 0.78, 199 s, 4.0/5/8; 0.66/0.04/0.30; 0.00; 0.00/0.99/0.01 |
+| frozen: p0.7 + crowd + lead | 0.82, 130 s, 2.3/2/6; 0.56/0.29/0.15; 0.39; 0.24/0.71/0.05 | 0.63, 393 s, 4.2/3/11; 0.51/0.28/0.21; 0.31; 0.22/0.77/0.01 |
+| D2: r9 | 0.65, 257 s, 3.3/3/7; 0.15/0.81/0.04; 0.75; 0.80/0.20/0.00 | 0.37, 275 s, 2.1/2/4; 0.09/0.88/0.03; 0.43; 0.84/0.16/0.00 |
+| D2: lead | 0.60, 282 s, 3.5/3/7; 0.02/0.89/0.10; 0.70; 0.95/0.05/0.00 | 0.25, 373 s, 2.0/2/4; 0.01/0.94/0.05; 0.36 |
+| D2: duel + crowd | 0.84, 205 s, 4.3/5/8; 0.60/0.02/0.38; 0.00; 0.00/0.99/0.01 | 0.74, 133 s, 2.5/3/4; 0.60/0.05/0.36; 0.00 |
+| D2: p0.7 + crowd + lead | 0.75, 284 s, 4.3/4/10; 0.56/0.29/0.15; 0.37; 0.22/0.77/0.02 | 0.61, 180 s, 2.6/2/5; 0.50/0.32/0.18; 0.33 |
+| cone 0.085: r9 | 0.49, 299 s, 3.7/2/9; 0.15/0.81/0.04; 0.84 | 0.07, 379 s, 1.9/2/4; 0.08/0.89/0.03; 0.43 |
+| cone 0.085: lead | 0.32, 416 s, 3.3/2/8; 0.02/0.89/0.09; 0.79 | 0.06, 370 s, 1.7/2/4 |
+| cone 0.085: duel + crowd | 0.72, 247 s, 4.7/3/11; 0.58/0.02/0.40; 0.00 | 0.53, 180 s, 3.6/3/7; 0.69/0.04/0.27; 0.00 |
+| cone 0.085: p0.7 + crowd + lead | 0.53, 383 s, 4.8/3/13; 0.54/0.29/0.17; 0.37 | 0.32, 257 s, 3.2/3/7 |
+| cone 0.01: r9 | 0.05, 1141 s, 1.7/1/6; 0.14/0.82/0.05; 0.85 | 0.01, 477 s, 2.0/2/4 |
+| cone 0.01: duel + crowd | 0.14, 1059 s, 1.9/1/7; 0.46/0.01/0.53; 0.00 | 0.06, 741 s, 2.1/1/5 |
+
+**The crowd** (self-play energy v turn 5v5: life, kills a minute a ship; post-merge same /
+opposite / extend, Yongma's and Jujak's):
+
+| Card | r9 | duel one-circle + crowd extend |
+|---|---|---|
+| frozen | 109 s, 0.50; 0.64/0.36/0.00 | 146 s, 0.38; 0.11/0.10/0.48 (Y), 0.31 (J) |
+| D2 | 102 s, 0.53; 0.66/0.34/0.00 | 124 s, 0.45; 0.13/0.10/0.42 (Y), 0.35 (J) |
+| cone 0.085 | 92 s, 0.59; 0.67/0.33/0.00 | 109 s, 0.51; 0.13/0.10/0.41 (Y), 0.36 (J) |
+| cone 0.01 | 93 s, 0.58; 0.67/0.33/0.00 | 112 s, 0.49; 0.13/0.11/0.41 (Y), 0.36 (J) |
+
+- **Confirmed: "duel one-circle + crowd extend" (`champion.json`, r9m) beats r9 at 1v1 and
+  5v5 on the frozen card, D2 and cone 0.085** (1v1 0.52-0.66, 5v5 0.70-0.83), even at 2v2
+  (0.49-0.53). On cone 0.01 the 1v1 is even (0.523 / 0.475: the Yongma mirror 1.6 SE under)
+  and the 5v5 0.78-0.84.
+- It keeps D2's and the cones' type balance at every size (D2 0.49 / 0.45 / 0.52 against
+  r9's 0.50 / 0.44 / 0.56). **On the frozen card the 5v5 goes to the Jujak** (0.53 to 0.34).
+- **The crowd gets more decisions**: extensions after a merge go from none to 0.31-0.48 of
+  the choices; the 5v5 life lengthens 18-37 s (still inside 45-300 s), the pace falls about
+  15%.
+- **The duels**: the side-by-side stalemate is gone (0.00), the scissors appear
+  (0.30-0.40), the Yongma mirror shortens (frozen 1053 to 199 s, D2 275 to 133 s), the D2
+  and cone 0.085 Jujak mirrors too (257 to 205 s, 299 to 247 s), with more merges a kill
+  (3.3 to 4.3 on D2, spread median 5, p90 8). **But the mutual head-on share rises**
+  (D2 JJ 0.65 to 0.84): the one-circle meets nose to nose every lap, so the head-on is the
+  fight's shot. The p0.7 draw spreads the post-merge choice (0.22 / 0.77 instead of 1.00
+  opposite) and lowers the joust (D2 0.75, cone 0.085 0.53) at most of the 1v1 edge (D2
+  0.528 / 0.504).
+- **The lead turn on top adds nothing** at 5v5 and little at 1v1, and moves D2's and the
+  cones' energy v turn 1v1 toward the Yongma (0.50 to 0.55-0.61). Alone it beats r9 in the
+  Jujak mirror (0.52-0.56) and is even elsewhere.

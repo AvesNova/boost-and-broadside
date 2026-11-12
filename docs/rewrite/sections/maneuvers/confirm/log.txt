@@ -5,3 +5,392 @@
   batch 2/18 46 s; ETA 01:31 KST
   batch 3/18 65 s; ETA 01:30 KST
   batch 4/18 84 s; ETA 01:30 KST
+  batch 5/18 103 s; ETA 01:30 KST
+  batch 6/18 122 s; ETA 01:30 KST
+  batch 7/18 141 s; ETA 01:30 KST
+  batch 8/18 160 s; ETA 01:30 KST
+  batch 9/18 179 s; ETA 01:30 KST
+  batch 10/18 198 s; ETA 01:30 KST
+  batch 11/18 217 s; ETA 01:30 KST
+  batch 12/18 236 s; ETA 01:30 KST
+  batch 13/18 255 s; ETA 01:30 KST
+  batch 14/18 274 s; ETA 01:30 KST
+  batch 15/18 292 s; ETA 01:30 KST
+  batch 16/18 311 s; ETA 01:30 KST
+  batch 17/18 330 s; ETA 01:30 KST
+  batch 18/18 349 s; ETA 01:30 KST
+1v1                  frozen | r9   energy v turn v c0: score 0.012 ± 0.002  kills m/o/f/t 0.15 / 0.13 / 0.43 / 0.29  life 171 s  kpm/ship 0.33  trades 0.00
+1v1                  frozen | r9     turn mirror v c0: score 0.514 ± 0.011  kills m/o/f/t 0.79 / 0.18 / 0.03 / 0.00  life 153 s  kpm/ship 0.37  trades 0.03
+1v1                  frozen | r9   energy mirror v c0: score 0.507 ± 0.006  kills m/o/f/t 0.35 / 0.54 / 0.11 / 0.00  life 1053 s  kpm/ship 0.06  trades 0.00
+1v1                frozen | lead   energy v turn v c1: score 0.007 ± 0.002  kills m/o/f/t 0.16 / 0.14 / 0.42 / 0.28  life 172 s  kpm/ship 0.33  trades 0.00
+1v1                frozen | lead     turn mirror v c1: score 0.502 ± 0.010  kills m/o/f/t 0.79 / 0.19 / 0.03 / 0.00  life 169 s  kpm/ship 0.33  trades 0.03
+1v1                frozen | lead   energy mirror v c1: score 0.499 ± 0.006  kills m/o/f/t 0.18 / 0.69 / 0.13 / 0.00  life 1346 s  kpm/ship 0.04  trades 0.00
+1v1        frozen | crowd extend   energy v turn v c2: score 0.009 ± 0.002  kills m/o/f/t 0.15 / 0.13 / 0.42 / 0.29  life 168 s  kpm/ship 0.34  trades 0.00
+1v1        frozen | crowd extend     turn mirror v c2: score 0.501 ± 0.011  kills m/o/f/t 0.80 / 0.17 / 0.03 / 0.00  life 155 s  kpm/ship 0.36  trades 0.03
+1v1        frozen | crowd extend   energy mirror v c2: score 0.501 ± 0.006  kills m/o/f/t 0.36 / 0.56 / 0.08 / 0.00  life 994 s  kpm/ship 0.06  trades 0.00
+1v1 frozen | crowd extend + lead   energy v turn v c3: score 0.007 ± 0.002  kills m/o/f/t 0.15 / 0.14 / 0.42 / 0.29  life 174 s  kpm/ship 0.33  trades 0.00
+1v1 frozen | crowd extend + lead     turn mirror v c3: score 0.493 ± 0.010  kills m/o/f/t 0.79 / 0.18 / 0.03 / 0.00  life 170 s  kpm/ship 0.33  trades 0.03
+1v1 frozen | crowd extend + lead   energy mirror v c3: score 0.505 ± 0.005  kills m/o/f/t 0.14 / 0.71 / 0.15 / 0.00  life 1244 s  kpm/ship 0.05  trades 0.00
+1v1 frozen | duel one-circle + crowd extend   energy v turn v c4: score 0.007 ± 0.002  kills m/o/f/t 0.16 / 0.12 / 0.43 / 0.29  life 167 s  kpm/ship 0.34  trades 0.00
+1v1 frozen | duel one-circle + crowd extend     turn mirror v c4: score 0.506 ± 0.011  kills m/o/f/t 0.86 / 0.05 / 0.01 / 0.07  life 110 s  kpm/ship 0.50  trades 0.05
+1v1 frozen | duel one-circle + crowd extend   energy mirror v c4: score 0.513 ± 0.010  kills m/o/f/t 0.78 / 0.09 / 0.01 / 0.12  life 199 s  kpm/ship 0.29  trades 0.02
+1v1 frozen | duel one-circle + crowd extend + lead   energy v turn v c5: score 0.008 ± 0.002  kills m/o/f/t 0.15 / 0.15 / 0.41 / 0.29  life 178 s  kpm/ship 0.32  trades 0.00
+1v1 frozen | duel one-circle + crowd extend + lead     turn mirror v c5: score 0.504 ± 0.011  kills m/o/f/t 0.87 / 0.05 / 0.01 / 0.07  life 116 s  kpm/ship 0.48  trades 0.05
+1v1 frozen | duel one-circle + crowd extend + lead   energy mirror v c5: score 0.518 ± 0.009  kills m/o/f/t 0.79 / 0.08 / 0.01 / 0.13  life 217 s  kpm/ship 0.26  trades 0.02
+1v1 frozen | duel one-circle p0.7 + crowd extend + lead   energy v turn v c6: score 0.011 ± 0.002  kills m/o/f/t 0.15 / 0.15 / 0.42 / 0.27  life 176 s  kpm/ship 0.32  trades 0.00
+1v1 frozen | duel one-circle p0.7 + crowd extend + lead     turn mirror v c6: score 0.491 ± 0.011  kills m/o/f/t 0.82 / 0.08 / 0.02 / 0.08  life 130 s  kpm/ship 0.43  trades 0.03
+1v1 frozen | duel one-circle p0.7 + crowd extend + lead   energy mirror v c6: score 0.512 ± 0.008  kills m/o/f/t 0.63 / 0.16 / 0.04 / 0.18  life 393 s  kpm/ship 0.15  trades 0.01
+1v1                      D2 | r9   energy v turn v c7: score 0.501 ± 0.010  kills m/o/f/t 0.24 / 0.68 / 0.08 / 0.00  life 291 s  kpm/ship 0.20  trades 0.00
+1v1                      D2 | r9     turn mirror v c7: score 0.510 ± 0.008  kills m/o/f/t 0.65 / 0.30 / 0.05 / 0.00  life 257 s  kpm/ship 0.23  trades 0.01
+1v1                      D2 | r9   energy mirror v c7: score 0.498 ± 0.009  kills m/o/f/t 0.37 / 0.52 / 0.11 / 0.00  life 275 s  kpm/ship 0.21  trades 0.01
+1v1                    D2 | lead   energy v turn v c8: score 0.556 ± 0.010  kills m/o/f/t 0.21 / 0.73 / 0.06 / 0.00  life 256 s  kpm/ship 0.23  trades 0.00
+1v1                    D2 | lead     turn mirror v c8: score 0.493 ± 0.008  kills m/o/f/t 0.60 / 0.35 / 0.05 / 0.00  life 282 s  kpm/ship 0.21  trades 0.01
+1v1                    D2 | lead   energy mirror v c8: score 0.505 ± 0.008  kills m/o/f/t 0.25 / 0.65 / 0.11 / 0.00  life 373 s  kpm/ship 0.16  trades 0.00
+1v1            D2 | crowd extend   energy v turn v c9: score 0.498 ± 0.010  kills m/o/f/t 0.23 / 0.69 / 0.08 / 0.00  life 279 s  kpm/ship 0.21  trades 0.00
+1v1            D2 | crowd extend     turn mirror v c9: score 0.501 ± 0.008  kills m/o/f/t 0.64 / 0.31 / 0.04 / 0.00  life 265 s  kpm/ship 0.22  trades 0.02
+1v1            D2 | crowd extend   energy mirror v c9: score 0.481 ± 0.008  kills m/o/f/t 0.40 / 0.49 / 0.11 / 0.00  life 284 s  kpm/ship 0.20  trades 0.01
+1v1     D2 | crowd extend + lead   energy v turn v c10: score 0.562 ± 0.009  kills m/o/f/t 0.21 / 0.71 / 0.07 / 0.00  life 250 s  kpm/ship 0.23  trades 0.00
+1v1     D2 | crowd extend + lead     turn mirror v c10: score 0.497 ± 0.007  kills m/o/f/t 0.65 / 0.31 / 0.04 / 0.00  life 285 s  kpm/ship 0.20  trades 0.01
+1v1     D2 | crowd extend + lead   energy mirror v c10: score 0.498 ± 0.008  kills m/o/f/t 0.25 / 0.62 / 0.14 / 0.00  life 354 s  kpm/ship 0.16  trades 0.00
+1v1 D2 | duel one-circle + crowd extend   energy v turn v c11: score 0.492 ± 0.010  kills m/o/f/t 0.25 / 0.68 / 0.07 / 0.00  life 276 s  kpm/ship 0.21  trades 0.00
+1v1 D2 | duel one-circle + crowd extend     turn mirror v c11: score 0.497 ± 0.012  kills m/o/f/t 0.84 / 0.06 / 0.00 / 0.10  life 205 s  kpm/ship 0.28  trades 0.04
+1v1 D2 | duel one-circle + crowd extend   energy mirror v c11: score 0.499 ± 0.011  kills m/o/f/t 0.74 / 0.13 / 0.03 / 0.10  life 133 s  kpm/ship 0.42  trades 0.03
+1v1 D2 | duel one-circle + crowd extend + lead   energy v turn v c12: score 0.568 ± 0.009  kills m/o/f/t 0.21 / 0.73 / 0.06 / 0.00  life 256 s  kpm/ship 0.23  trades 0.00
+1v1 D2 | duel one-circle + crowd extend + lead     turn mirror v c12: score 0.476 ± 0.011  kills m/o/f/t 0.84 / 0.06 / 0.00 / 0.10  life 222 s  kpm/ship 0.26  trades 0.02
+1v1 D2 | duel one-circle + crowd extend + lead   energy mirror v c12: score 0.494 ± 0.011  kills m/o/f/t 0.74 / 0.12 / 0.02 / 0.11  life 137 s  kpm/ship 0.41  trades 0.02
+1v1 D2 | duel one-circle p0.7 + crowd extend + lead   energy v turn v c13: score 0.561 ± 0.010  kills m/o/f/t 0.22 / 0.72 / 0.06 / 0.00  life 248 s  kpm/ship 0.23  trades 0.00
+1v1 D2 | duel one-circle p0.7 + crowd extend + lead     turn mirror v c13: score 0.497 ± 0.008  kills m/o/f/t 0.75 / 0.11 / 0.02 / 0.12  life 284 s  kpm/ship 0.20  trades 0.02
+1v1 D2 | duel one-circle p0.7 + crowd extend + lead   energy mirror v c13: score 0.509 ± 0.010  kills m/o/f/t 0.61 / 0.23 / 0.03 / 0.13  life 180 s  kpm/ship 0.32  trades 0.01
+1v1           D2 cone 0.085 | r9   energy v turn v c14: score 0.534 ± 0.011  kills m/o/f/t 0.10 / 0.82 / 0.08 / 0.00  life 228 s  kpm/ship 0.25  trades 0.00
+1v1           D2 cone 0.085 | r9     turn mirror v c14: score 0.500 ± 0.010  kills m/o/f/t 0.49 / 0.46 / 0.05 / 0.00  life 299 s  kpm/ship 0.19  trades 0.01
+1v1           D2 cone 0.085 | r9   energy mirror v c14: score 0.502 ± 0.007  kills m/o/f/t 0.07 / 0.78 / 0.14 / 0.00  life 379 s  kpm/ship 0.15  trades 0.00
+1v1         D2 cone 0.085 | lead   energy v turn v c15: score 0.608 ± 0.010  kills m/o/f/t 0.10 / 0.83 / 0.06 / 0.00  life 202 s  kpm/ship 0.28  trades 0.00
+1v1         D2 cone 0.085 | lead     turn mirror v c15: score 0.499 ± 0.009  kills m/o/f/t 0.32 / 0.62 / 0.06 / 0.00  life 416 s  kpm/ship 0.14  trades 0.00
+1v1         D2 cone 0.085 | lead   energy mirror v c15: score 0.492 ± 0.007  kills m/o/f/t 0.06 / 0.81 / 0.13 / 0.00  life 370 s  kpm/ship 0.16  trades 0.00
+1v1 D2 cone 0.085 | crowd extend   energy v turn v c16: score 0.541 ± 0.011  kills m/o/f/t 0.10 / 0.83 / 0.07 / 0.00  life 225 s  kpm/ship 0.26  trades 0.00
+1v1 D2 cone 0.085 | crowd extend     turn mirror v c16: score 0.506 ± 0.010  kills m/o/f/t 0.51 / 0.44 / 0.05 / 0.00  life 299 s  kpm/ship 0.19  trades 0.01
+1v1 D2 cone 0.085 | crowd extend   energy mirror v c16: score 0.500 ± 0.008  kills m/o/f/t 0.08 / 0.77 / 0.15 / 0.00  life 350 s  kpm/ship 0.17  trades 0.00
+1v1 D2 cone 0.085 | crowd extend + lead   energy v turn v c17: score 0.609 ± 0.010  kills m/o/f/t 0.09 / 0.84 / 0.07 / 0.00  life 201 s  kpm/ship 0.28  trades 0.00
+1v1 D2 cone 0.085 | crowd extend + lead     turn mirror v c17: score 0.501 ± 0.009  kills m/o/f/t 0.33 / 0.61 / 0.06 / 0.00  life 392 s  kpm/ship 0.15  trades 0.00
+1v1 D2 cone 0.085 | crowd extend + lead   energy mirror v c17: score 0.506 ± 0.007  kills m/o/f/t 0.06 / 0.79 / 0.15 / 0.00  life 406 s  kpm/ship 0.14  trades 0.00
+1v1 D2 cone 0.085 | duel one-circle + crowd extend   energy v turn v c18: score 0.530 ± 0.011  kills m/o/f/t 0.09 / 0.83 / 0.08 / 0.00  life 229 s  kpm/ship 0.25  trades 0.00
+1v1 D2 cone 0.085 | duel one-circle + crowd extend     turn mirror v c18: score 0.503 ± 0.009  kills m/o/f/t 0.72 / 0.16 / 0.01 / 0.12  life 247 s  kpm/ship 0.23  trades 0.01
+1v1 D2 cone 0.085 | duel one-circle + crowd extend   energy mirror v c18: score 0.488 ± 0.011  kills m/o/f/t 0.53 / 0.31 / 0.05 / 0.11  life 180 s  kpm/ship 0.32  trades 0.01
+1v1 D2 cone 0.085 | duel one-circle + crowd extend + lead   energy v turn v c19: score 0.606 ± 0.010  kills m/o/f/t 0.10 / 0.85 / 0.06 / 0.00  life 204 s  kpm/ship 0.28  trades 0.00
+1v1 D2 cone 0.085 | duel one-circle + crowd extend + lead     turn mirror v c19: score 0.495 ± 0.009  kills m/o/f/t 0.73 / 0.15 / 0.01 / 0.12  life 278 s  kpm/ship 0.21  trades 0.00
+1v1 D2 cone 0.085 | duel one-circle + crowd extend + lead   energy mirror v c19: score 0.486 ± 0.010  kills m/o/f/t 0.52 / 0.29 / 0.06 / 0.13  life 208 s  kpm/ship 0.28  trades 0.01
+1v1 D2 cone 0.085 | duel one-circle p0.7 + crowd extend + lead   energy v turn v c20: score 0.603 ± 0.010  kills m/o/f/t 0.10 / 0.83 / 0.08 / 0.00  life 199 s  kpm/ship 0.29  trades 0.00
+1v1 D2 cone 0.085 | duel one-circle p0.7 + crowd extend + lead     turn mirror v c20: score 0.477 ± 0.009  kills m/o/f/t 0.53 / 0.30 / 0.02 / 0.15  life 383 s  kpm/ship 0.15  trades 0.00
+1v1 D2 cone 0.085 | duel one-circle p0.7 + crowd extend + lead   energy mirror v c20: score 0.495 ± 0.010  kills m/o/f/t 0.32 / 0.48 / 0.05 / 0.14  life 257 s  kpm/ship 0.22  trades 0.00
+1v1            D2 cone 0.01 | r9   energy v turn v c21: score 0.533 ± 0.010  kills m/o/f/t 0.03 / 0.89 / 0.08 / 0.00  life 275 s  kpm/ship 0.21  trades 0.00
+1v1            D2 cone 0.01 | r9     turn mirror v c21: score 0.485 ± 0.008  kills m/o/f/t 0.05 / 0.84 / 0.11 / 0.00  life 1141 s  kpm/ship 0.05  trades 0.00
+1v1            D2 cone 0.01 | r9   energy mirror v c21: score 0.500 ± 0.007  kills m/o/f/t 0.01 / 0.85 / 0.14 / 0.00  life 477 s  kpm/ship 0.12  trades 0.00
+1v1          D2 cone 0.01 | lead   energy v turn v c22: score 0.606 ± 0.010  kills m/o/f/t 0.03 / 0.89 / 0.08 / 0.00  life 227 s  kpm/ship 0.25  trades 0.00
+1v1          D2 cone 0.01 | lead     turn mirror v c22: score 0.506 ± 0.008  kills m/o/f/t 0.05 / 0.87 / 0.07 / 0.00  life 1011 s  kpm/ship 0.06  trades 0.00
+1v1          D2 cone 0.01 | lead   energy mirror v c22: score 0.509 ± 0.007  kills m/o/f/t 0.01 / 0.85 / 0.14 / 0.00  life 419 s  kpm/ship 0.14  trades 0.00
+1v1  D2 cone 0.01 | crowd extend   energy v turn v c23: score 0.520 ± 0.010  kills m/o/f/t 0.03 / 0.88 / 0.09 / 0.00  life 277 s  kpm/ship 0.21  trades 0.00
+1v1  D2 cone 0.01 | crowd extend     turn mirror v c23: score 0.514 ± 0.008  kills m/o/f/t 0.06 / 0.83 / 0.11 / 0.00  life 1107 s  kpm/ship 0.05  trades 0.00
+1v1  D2 cone 0.01 | crowd extend   energy mirror v c23: score 0.496 ± 0.007  kills m/o/f/t 0.02 / 0.83 / 0.16 / 0.00  life 434 s  kpm/ship 0.14  trades 0.00
+1v1 D2 cone 0.01 | crowd extend + lead   energy v turn v c24: score 0.603 ± 0.010  kills m/o/f/t 0.02 / 0.90 / 0.07 / 0.00  life 227 s  kpm/ship 0.25  trades 0.00
+1v1 D2 cone 0.01 | crowd extend + lead     turn mirror v c24: score 0.503 ± 0.008  kills m/o/f/t 0.04 / 0.86 / 0.10 / 0.00  life 1145 s  kpm/ship 0.05  trades 0.00
+1v1 D2 cone 0.01 | crowd extend + lead   energy mirror v c24: score 0.505 ± 0.007  kills m/o/f/t 0.01 / 0.83 / 0.16 / 0.00  life 448 s  kpm/ship 0.13  trades 0.00
+1v1 D2 cone 0.01 | duel one-circle + crowd extend   energy v turn v c25: score 0.538 ± 0.010  kills m/o/f/t 0.02 / 0.89 / 0.09 / 0.00  life 267 s  kpm/ship 0.22  trades 0.00
+1v1 D2 cone 0.01 | duel one-circle + crowd extend     turn mirror v c25: score 0.508 ± 0.007  kills m/o/f/t 0.14 / 0.45 / 0.03 / 0.37  life 1059 s  kpm/ship 0.06  trades 0.07
+1v1 D2 cone 0.01 | duel one-circle + crowd extend   energy mirror v c25: score 0.511 ± 0.009  kills m/o/f/t 0.06 / 0.47 / 0.16 / 0.30  life 741 s  kpm/ship 0.08  trades 0.02
+1v1 D2 cone 0.01 | duel one-circle + crowd extend + lead   energy v turn v c26: score 0.614 ± 0.010  kills m/o/f/t 0.02 / 0.90 / 0.08 / 0.00  life 227 s  kpm/ship 0.25  trades 0.00
+1v1 D2 cone 0.01 | duel one-circle + crowd extend + lead     turn mirror v c26: score 0.492 ± 0.007  kills m/o/f/t 0.12 / 0.48 / 0.03 / 0.37  life 1257 s  kpm/ship 0.05  trades 0.03
+1v1 D2 cone 0.01 | duel one-circle + crowd extend + lead   energy mirror v c26: score 0.492 ± 0.009  kills m/o/f/t 0.04 / 0.50 / 0.17 / 0.29  life 628 s  kpm/ship 0.09  trades 0.02
+1v1 D2 cone 0.01 | duel one-circle p0.7 + crowd extend + lead   energy v turn v c27: score 0.599 ± 0.010  kills m/o/f/t 0.02 / 0.91 / 0.07 / 0.00  life 224 s  kpm/ship 0.26  trades 0.00
+1v1 D2 cone 0.01 | duel one-circle p0.7 + crowd extend + lead     turn mirror v c27: score 0.502 ± 0.008  kills m/o/f/t 0.07 / 0.47 / 0.05 / 0.40  life 1236 s  kpm/ship 0.05  trades 0.02
+1v1 D2 cone 0.01 | duel one-circle p0.7 + crowd extend + lead   energy mirror v c27: score 0.497 ± 0.009  kills m/o/f/t 0.05 / 0.61 / 0.11 / 0.24  life 529 s  kpm/ship 0.11  trades 0.00
+1v1                  frozen | r9           mixed v r9: score 0.499 ± 0.006  kills m/o/f/t 0.31 / 0.59 / 0.09 / 0.00  life 989 s  kpm/ship 0.06  trades 0.01
+1v1                  frozen | r9  mixed reversed v r9: score 0.494 ± 0.011  kills m/o/f/t 0.80 / 0.17 / 0.03 / 0.00  life 155 s  kpm/ship 0.36  trades 0.02
+1v1                frozen | lead           mixed v r9: score 0.507 ± 0.005  kills m/o/f/t 0.23 / 0.66 / 0.11 / 0.00  life 1393 s  kpm/ship 0.04  trades 0.00
+1v1                frozen | lead  mixed reversed v r9: score 0.562 ± 0.010  kills m/o/f/t 0.80 / 0.17 / 0.03 / 0.00  life 161 s  kpm/ship 0.35  trades 0.02
+1v1        frozen | crowd extend           mixed v r9: score 0.502 ± 0.006  kills m/o/f/t 0.33 / 0.57 / 0.10 / 0.00  life 946 s  kpm/ship 0.06  trades 0.00
+1v1        frozen | crowd extend  mixed reversed v r9: score 0.498 ± 0.011  kills m/o/f/t 0.81 / 0.17 / 0.03 / 0.00  life 153 s  kpm/ship 0.37  trades 0.02
+1v1 frozen | crowd extend + lead           mixed v r9: score 0.501 ± 0.006  kills m/o/f/t 0.20 / 0.68 / 0.12 / 0.00  life 1101 s  kpm/ship 0.05  trades 0.00
+1v1 frozen | crowd extend + lead  mixed reversed v r9: score 0.546 ± 0.011  kills m/o/f/t 0.80 / 0.17 / 0.03 / 0.00  life 165 s  kpm/ship 0.34  trades 0.02
+1v1 frozen | duel one-circle + crowd extend           mixed v r9: score 0.609 ± 0.010  kills m/o/f/t 0.81 / 0.11 / 0.01 / 0.07  life 219 s  kpm/ship 0.26  trades 0.00
+1v1 frozen | duel one-circle + crowd extend  mixed reversed v r9: score 0.656 ± 0.010  kills m/o/f/t 0.87 / 0.08 / 0.02 / 0.04  life 110 s  kpm/ship 0.50  trades 0.02
+1v1 frozen | duel one-circle + crowd extend + lead           mixed v r9: score 0.580 ± 0.010  kills m/o/f/t 0.82 / 0.11 / 0.01 / 0.05  life 212 s  kpm/ship 0.27  trades 0.01
+1v1 frozen | duel one-circle + crowd extend + lead  mixed reversed v r9: score 0.636 ± 0.010  kills m/o/f/t 0.88 / 0.07 / 0.01 / 0.04  life 109 s  kpm/ship 0.51  trades 0.02
+1v1 frozen | duel one-circle p0.7 + crowd extend + lead           mixed v r9: score 0.507 ± 0.008  kills m/o/f/t 0.61 / 0.24 / 0.04 / 0.10  life 406 s  kpm/ship 0.14  trades 0.02
+1v1 frozen | duel one-circle p0.7 + crowd extend + lead  mixed reversed v r9: score 0.569 ± 0.011  kills m/o/f/t 0.84 / 0.10 / 0.02 / 0.04  life 136 s  kpm/ship 0.41  trades 0.02
+1v1                      D2 | r9           mixed v r9: score 0.508 ± 0.008  kills m/o/f/t 0.38 / 0.52 / 0.10 / 0.00  life 290 s  kpm/ship 0.20  trades 0.00
+1v1                      D2 | r9  mixed reversed v r9: score 0.499 ± 0.008  kills m/o/f/t 0.66 / 0.30 / 0.04 / 0.00  life 260 s  kpm/ship 0.22  trades 0.02
+1v1                    D2 | lead           mixed v r9: score 0.506 ± 0.008  kills m/o/f/t 0.32 / 0.57 / 0.12 / 0.00  life 343 s  kpm/ship 0.17  trades 0.00
+1v1                    D2 | lead  mixed reversed v r9: score 0.527 ± 0.008  kills m/o/f/t 0.62 / 0.32 / 0.06 / 0.00  life 266 s  kpm/ship 0.22  trades 0.00
+1v1            D2 | crowd extend           mixed v r9: score 0.493 ± 0.008  kills m/o/f/t 0.38 / 0.53 / 0.10 / 0.00  life 282 s  kpm/ship 0.21  trades 0.01
+1v1            D2 | crowd extend  mixed reversed v r9: score 0.504 ± 0.009  kills m/o/f/t 0.63 / 0.32 / 0.05 / 0.00  life 256 s  kpm/ship 0.23  trades 0.02
+1v1     D2 | crowd extend + lead           mixed v r9: score 0.504 ± 0.008  kills m/o/f/t 0.31 / 0.59 / 0.10 / 0.00  life 325 s  kpm/ship 0.18  trades 0.00
+1v1     D2 | crowd extend + lead  mixed reversed v r9: score 0.528 ± 0.008  kills m/o/f/t 0.62 / 0.34 / 0.05 / 0.00  life 270 s  kpm/ship 0.21  trades 0.00
+1v1 D2 | duel one-circle + crowd extend           mixed v r9: score 0.613 ± 0.010  kills m/o/f/t 0.75 / 0.16 / 0.04 / 0.06  life 138 s  kpm/ship 0.41  trades 0.00
+1v1 D2 | duel one-circle + crowd extend  mixed reversed v r9: score 0.580 ± 0.009  kills m/o/f/t 0.83 / 0.08 / 0.02 / 0.06  life 236 s  kpm/ship 0.24  trades 0.01
+1v1 D2 | duel one-circle + crowd extend + lead           mixed v r9: score 0.598 ± 0.011  kills m/o/f/t 0.75 / 0.15 / 0.04 / 0.05  life 135 s  kpm/ship 0.41  trades 0.01
+1v1 D2 | duel one-circle + crowd extend + lead  mixed reversed v r9: score 0.560 ± 0.009  kills m/o/f/t 0.82 / 0.10 / 0.02 / 0.06  life 242 s  kpm/ship 0.24  trades 0.01
+1v1 D2 | duel one-circle p0.7 + crowd extend + lead           mixed v r9: score 0.504 ± 0.010  kills m/o/f/t 0.60 / 0.29 / 0.05 / 0.06  life 185 s  kpm/ship 0.31  trades 0.01
+1v1 D2 | duel one-circle p0.7 + crowd extend + lead  mixed reversed v r9: score 0.528 ± 0.008  kills m/o/f/t 0.72 / 0.18 / 0.04 / 0.06  life 282 s  kpm/ship 0.21  trades 0.00
+1v1           D2 cone 0.085 | r9           mixed v r9: score 0.494 ± 0.007  kills m/o/f/t 0.09 / 0.78 / 0.13 / 0.00  life 369 s  kpm/ship 0.16  trades 0.00
+1v1           D2 cone 0.085 | r9  mixed reversed v r9: score 0.483 ± 0.010  kills m/o/f/t 0.46 / 0.49 / 0.05 / 0.00  life 283 s  kpm/ship 0.20  trades 0.00
+1v1         D2 cone 0.085 | lead           mixed v r9: score 0.492 ± 0.008  kills m/o/f/t 0.07 / 0.81 / 0.13 / 0.00  life 358 s  kpm/ship 0.16  trades 0.00
+1v1         D2 cone 0.085 | lead  mixed reversed v r9: score 0.520 ± 0.010  kills m/o/f/t 0.43 / 0.51 / 0.06 / 0.00  life 348 s  kpm/ship 0.17  trades 0.00
+1v1 D2 cone 0.085 | crowd extend           mixed v r9: score 0.504 ± 0.008  kills m/o/f/t 0.08 / 0.77 / 0.15 / 0.00  life 352 s  kpm/ship 0.17  trades 0.00
+1v1 D2 cone 0.085 | crowd extend  mixed reversed v r9: score 0.487 ± 0.010  kills m/o/f/t 0.48 / 0.46 / 0.05 / 0.00  life 300 s  kpm/ship 0.19  trades 0.00
+1v1 D2 cone 0.085 | crowd extend + lead           mixed v r9: score 0.485 ± 0.007  kills m/o/f/t 0.08 / 0.79 / 0.14 / 0.00  life 383 s  kpm/ship 0.15  trades 0.00
+1v1 D2 cone 0.085 | crowd extend + lead  mixed reversed v r9: score 0.528 ± 0.010  kills m/o/f/t 0.42 / 0.53 / 0.05 / 0.00  life 328 s  kpm/ship 0.18  trades 0.00
+1v1 D2 cone 0.085 | duel one-circle + crowd extend           mixed v r9: score 0.598 ± 0.010  kills m/o/f/t 0.52 / 0.36 / 0.06 / 0.06  life 189 s  kpm/ship 0.30  trades 0.00
+1v1 D2 cone 0.085 | duel one-circle + crowd extend  mixed reversed v r9: score 0.524 ± 0.009  kills m/o/f/t 0.70 / 0.22 / 0.03 / 0.05  life 255 s  kpm/ship 0.23  trades 0.01
+1v1 D2 cone 0.085 | duel one-circle + crowd extend + lead           mixed v r9: score 0.555 ± 0.011  kills m/o/f/t 0.51 / 0.37 / 0.06 / 0.06  life 188 s  kpm/ship 0.30  trades 0.00
+1v1 D2 cone 0.085 | duel one-circle + crowd extend + lead  mixed reversed v r9: score 0.522 ± 0.009  kills m/o/f/t 0.71 / 0.20 / 0.03 / 0.06  life 259 s  kpm/ship 0.22  trades 0.00
+1v1 D2 cone 0.085 | duel one-circle p0.7 + crowd extend + lead           mixed v r9: score 0.478 ± 0.010  kills m/o/f/t 0.25 / 0.59 / 0.08 / 0.08  life 266 s  kpm/ship 0.22  trades 0.00
+1v1 D2 cone 0.085 | duel one-circle p0.7 + crowd extend + lead  mixed reversed v r9: score 0.541 ± 0.009  kills m/o/f/t 0.52 / 0.37 / 0.04 / 0.07  life 345 s  kpm/ship 0.17  trades 0.00
+1v1            D2 cone 0.01 | r9           mixed v r9: score 0.516 ± 0.007  kills m/o/f/t 0.01 / 0.84 / 0.15 / 0.00  life 441 s  kpm/ship 0.13  trades 0.00
+1v1            D2 cone 0.01 | r9  mixed reversed v r9: score 0.507 ± 0.008  kills m/o/f/t 0.06 / 0.85 / 0.09 / 0.00  life 1093 s  kpm/ship 0.05  trades 0.00
+1v1          D2 cone 0.01 | lead           mixed v r9: score 0.500 ± 0.007  kills m/o/f/t 0.01 / 0.82 / 0.17 / 0.00  life 422 s  kpm/ship 0.14  trades 0.00
+1v1          D2 cone 0.01 | lead  mixed reversed v r9: score 0.523 ± 0.008  kills m/o/f/t 0.05 / 0.86 / 0.09 / 0.00  life 1126 s  kpm/ship 0.05  trades 0.00
+1v1  D2 cone 0.01 | crowd extend           mixed v r9: score 0.506 ± 0.006  kills m/o/f/t 0.01 / 0.85 / 0.14 / 0.00  life 432 s  kpm/ship 0.14  trades 0.00
+1v1  D2 cone 0.01 | crowd extend  mixed reversed v r9: score 0.489 ± 0.008  kills m/o/f/t 0.05 / 0.84 / 0.11 / 0.00  life 1019 s  kpm/ship 0.06  trades 0.00
+1v1 D2 cone 0.01 | crowd extend + lead           mixed v r9: score 0.498 ± 0.007  kills m/o/f/t 0.01 / 0.85 / 0.14 / 0.00  life 426 s  kpm/ship 0.14  trades 0.00
+1v1 D2 cone 0.01 | crowd extend + lead  mixed reversed v r9: score 0.519 ± 0.008  kills m/o/f/t 0.05 / 0.83 / 0.11 / 0.00  life 1062 s  kpm/ship 0.06  trades 0.00
+1v1 D2 cone 0.01 | duel one-circle + crowd extend           mixed v r9: score 0.475 ± 0.008  kills m/o/f/t 0.10 / 0.57 / 0.16 / 0.17  life 906 s  kpm/ship 0.07  trades 0.02
+1v1 D2 cone 0.01 | duel one-circle + crowd extend  mixed reversed v r9: score 0.523 ± 0.007  kills m/o/f/t 0.13 / 0.60 / 0.10 / 0.17  life 1659 s  kpm/ship 0.04  trades 0.01
+1v1 D2 cone 0.01 | duel one-circle + crowd extend + lead           mixed v r9: score 0.489 ± 0.008  kills m/o/f/t 0.10 / 0.58 / 0.17 / 0.15  life 864 s  kpm/ship 0.07  trades 0.01
+1v1 D2 cone 0.01 | duel one-circle + crowd extend + lead  mixed reversed v r9: score 0.511 ± 0.007  kills m/o/f/t 0.12 / 0.59 / 0.10 / 0.19  life 1808 s  kpm/ship 0.03  trades 0.01
+1v1 D2 cone 0.01 | duel one-circle p0.7 + crowd extend + lead           mixed v r9: score 0.476 ± 0.008  kills m/o/f/t 0.03 / 0.73 / 0.13 / 0.11  life 467 s  kpm/ship 0.13  trades 0.01
+1v1 D2 cone 0.01 | duel one-circle p0.7 + crowd extend + lead  mixed reversed v r9: score 0.514 ± 0.008  kills m/o/f/t 0.05 / 0.67 / 0.10 / 0.18  life 1346 s  kpm/ship 0.04  trades 0.00
+## 2v2: 84 jobs, B 8192, 01:30 KST
+W1113 01:30:23.679000 1805884 torch/_inductor/utils.py:2143] [0/1] Not enough SMs to use max_autotune_gemm mode
+  batch 1/11 68 s; ETA 01:42 KST
+  batch 2/11 90 s; ETA 01:38 KST
+  batch 3/11 111 s; ETA 01:36 KST
+  batch 4/11 133 s; ETA 01:36 KST
+  batch 5/11 154 s; ETA 01:35 KST
+  batch 6/11 176 s; ETA 01:35 KST
+  batch 7/11 197 s; ETA 01:35 KST
+  batch 8/11 219 s; ETA 01:35 KST
+  batch 9/11 241 s; ETA 01:34 KST
+  batch 10/11 262 s; ETA 01:34 KST
+  batch 11/11 284 s; ETA 01:34 KST
+2v2                  frozen | r9   energy v turn v c0: score 0.393 ± 0.014  kills m/o/f/t 0.10 / 0.17 / 0.54 / 0.19  life 111 s  kpm/ship 0.50  trades 0.02
+2v2                frozen | lead   energy v turn v c1: score 0.406 ± 0.014  kills m/o/f/t 0.10 / 0.17 / 0.54 / 0.19  life 111 s  kpm/ship 0.50  trades 0.02
+2v2        frozen | crowd extend   energy v turn v c2: score 0.425 ± 0.013  kills m/o/f/t 0.14 / 0.19 / 0.39 / 0.28  life 129 s  kpm/ship 0.43  trades 0.01
+2v2 frozen | crowd extend + lead   energy v turn v c3: score 0.396 ± 0.013  kills m/o/f/t 0.14 / 0.19 / 0.39 / 0.28  life 131 s  kpm/ship 0.43  trades 0.01
+2v2 frozen | duel one-circle + crowd extend   energy v turn v c4: score 0.416 ± 0.013  kills m/o/f/t 0.14 / 0.19 / 0.40 / 0.27  life 129 s  kpm/ship 0.43  trades 0.01
+2v2 frozen | duel one-circle + crowd extend + lead   energy v turn v c5: score 0.453 ± 0.013  kills m/o/f/t 0.14 / 0.19 / 0.40 / 0.27  life 129 s  kpm/ship 0.43  trades 0.01
+2v2 frozen | duel one-circle p0.7 + crowd extend + lead   energy v turn v c6: score 0.431 ± 0.013  kills m/o/f/t 0.14 / 0.19 / 0.41 / 0.27  life 131 s  kpm/ship 0.43  trades 0.01
+2v2                      D2 | r9   energy v turn v c7: score 0.445 ± 0.014  kills m/o/f/t 0.07 / 0.24 / 0.56 / 0.13  life 115 s  kpm/ship 0.48  trades 0.01
+2v2                    D2 | lead   energy v turn v c8: score 0.459 ± 0.014  kills m/o/f/t 0.07 / 0.23 / 0.57 / 0.13  life 113 s  kpm/ship 0.49  trades 0.02
+2v2            D2 | crowd extend   energy v turn v c9: score 0.450 ± 0.014  kills m/o/f/t 0.10 / 0.24 / 0.47 / 0.20  life 118 s  kpm/ship 0.47  trades 0.01
+2v2     D2 | crowd extend + lead   energy v turn v c10: score 0.448 ± 0.014  kills m/o/f/t 0.09 / 0.23 / 0.48 / 0.19  life 118 s  kpm/ship 0.47  trades 0.01
+2v2 D2 | duel one-circle + crowd extend   energy v turn v c11: score 0.451 ± 0.014  kills m/o/f/t 0.10 / 0.24 / 0.46 / 0.19  life 117 s  kpm/ship 0.47  trades 0.01
+2v2 D2 | duel one-circle + crowd extend + lead   energy v turn v c12: score 0.438 ± 0.014  kills m/o/f/t 0.09 / 0.24 / 0.48 / 0.19  life 117 s  kpm/ship 0.47  trades 0.02
+2v2 D2 | duel one-circle p0.7 + crowd extend + lead   energy v turn v c13: score 0.431 ± 0.013  kills m/o/f/t 0.10 / 0.24 / 0.47 / 0.19  life 119 s  kpm/ship 0.47  trades 0.01
+2v2           D2 cone 0.085 | r9   energy v turn v c14: score 0.521 ± 0.014  kills m/o/f/t 0.04 / 0.32 / 0.52 / 0.12  life 100 s  kpm/ship 0.55  trades 0.02
+2v2         D2 cone 0.085 | lead   energy v turn v c15: score 0.544 ± 0.014  kills m/o/f/t 0.05 / 0.34 / 0.51 / 0.10  life 100 s  kpm/ship 0.54  trades 0.02
+2v2 D2 cone 0.085 | crowd extend   energy v turn v c16: score 0.499 ± 0.014  kills m/o/f/t 0.06 / 0.32 / 0.47 / 0.15  life 107 s  kpm/ship 0.52  trades 0.01
+2v2 D2 cone 0.085 | crowd extend + lead   energy v turn v c17: score 0.484 ± 0.014  kills m/o/f/t 0.06 / 0.33 / 0.46 / 0.15  life 107 s  kpm/ship 0.51  trades 0.02
+2v2 D2 cone 0.085 | duel one-circle + crowd extend   energy v turn v c18: score 0.501 ± 0.014  kills m/o/f/t 0.06 / 0.33 / 0.46 / 0.16  life 106 s  kpm/ship 0.52  trades 0.02
+2v2 D2 cone 0.085 | duel one-circle + crowd extend + lead   energy v turn v c19: score 0.521 ± 0.014  kills m/o/f/t 0.06 / 0.32 / 0.47 / 0.15  life 109 s  kpm/ship 0.51  trades 0.01
+2v2 D2 cone 0.085 | duel one-circle p0.7 + crowd extend + lead   energy v turn v c20: score 0.493 ± 0.014  kills m/o/f/t 0.06 / 0.33 / 0.47 / 0.14  life 106 s  kpm/ship 0.52  trades 0.02
+2v2            D2 cone 0.01 | r9   energy v turn v c21: score 0.481 ± 0.014  kills m/o/f/t 0.02 / 0.33 / 0.53 / 0.12  life 105 s  kpm/ship 0.52  trades 0.02
+2v2          D2 cone 0.01 | lead   energy v turn v c22: score 0.495 ± 0.014  kills m/o/f/t 0.02 / 0.33 / 0.54 / 0.11  life 105 s  kpm/ship 0.52  trades 0.02
+2v2  D2 cone 0.01 | crowd extend   energy v turn v c23: score 0.484 ± 0.014  kills m/o/f/t 0.03 / 0.33 / 0.48 / 0.17  life 112 s  kpm/ship 0.49  trades 0.01
+2v2 D2 cone 0.01 | crowd extend + lead   energy v turn v c24: score 0.500 ± 0.014  kills m/o/f/t 0.03 / 0.33 / 0.48 / 0.16  life 111 s  kpm/ship 0.49  trades 0.02
+2v2 D2 cone 0.01 | duel one-circle + crowd extend   energy v turn v c25: score 0.522 ± 0.014  kills m/o/f/t 0.03 / 0.32 / 0.48 / 0.18  life 112 s  kpm/ship 0.49  trades 0.02
+2v2 D2 cone 0.01 | duel one-circle + crowd extend + lead   energy v turn v c26: score 0.506 ± 0.014  kills m/o/f/t 0.03 / 0.33 / 0.48 / 0.17  life 113 s  kpm/ship 0.49  trades 0.01
+2v2 D2 cone 0.01 | duel one-circle p0.7 + crowd extend + lead   energy v turn v c27: score 0.493 ± 0.014  kills m/o/f/t 0.03 / 0.34 / 0.48 / 0.16  life 112 s  kpm/ship 0.49  trades 0.01
+2v2                  frozen | r9           mixed v r9: score 0.500 ± 0.014  kills m/o/f/t 0.13 / 0.18 / 0.52 / 0.17  life 115 s  kpm/ship 0.48  trades 0.01
+2v2                  frozen | r9  mixed reversed v r9: score 0.504 ± 0.014  kills m/o/f/t 0.13 / 0.18 / 0.52 / 0.17  life 115 s  kpm/ship 0.48  trades 0.01
+2v2                frozen | lead           mixed v r9: score 0.484 ± 0.014  kills m/o/f/t 0.13 / 0.17 / 0.52 / 0.17  life 116 s  kpm/ship 0.48  trades 0.01
+2v2                frozen | lead  mixed reversed v r9: score 0.486 ± 0.014  kills m/o/f/t 0.12 / 0.19 / 0.52 / 0.17  life 116 s  kpm/ship 0.48  trades 0.02
+2v2        frozen | crowd extend           mixed v r9: score 0.527 ± 0.013  kills m/o/f/t 0.15 / 0.19 / 0.46 / 0.19  life 122 s  kpm/ship 0.46  trades 0.01
+2v2        frozen | crowd extend  mixed reversed v r9: score 0.511 ± 0.014  kills m/o/f/t 0.15 / 0.19 / 0.46 / 0.19  life 121 s  kpm/ship 0.46  trades 0.01
+2v2 frozen | crowd extend + lead           mixed v r9: score 0.508 ± 0.014  kills m/o/f/t 0.16 / 0.19 / 0.46 / 0.19  life 121 s  kpm/ship 0.46  trades 0.01
+2v2 frozen | crowd extend + lead  mixed reversed v r9: score 0.482 ± 0.014  kills m/o/f/t 0.15 / 0.19 / 0.46 / 0.19  life 123 s  kpm/ship 0.45  trades 0.01
+2v2 frozen | duel one-circle + crowd extend           mixed v r9: score 0.523 ± 0.014  kills m/o/f/t 0.18 / 0.17 / 0.40 / 0.25  life 123 s  kpm/ship 0.45  trades 0.01
+2v2 frozen | duel one-circle + crowd extend  mixed reversed v r9: score 0.507 ± 0.014  kills m/o/f/t 0.17 / 0.18 / 0.39 / 0.25  life 123 s  kpm/ship 0.45  trades 0.01
+2v2 frozen | duel one-circle + crowd extend + lead           mixed v r9: score 0.533 ± 0.013  kills m/o/f/t 0.17 / 0.18 / 0.39 / 0.26  life 124 s  kpm/ship 0.45  trades 0.02
+2v2 frozen | duel one-circle + crowd extend + lead  mixed reversed v r9: score 0.523 ± 0.014  kills m/o/f/t 0.18 / 0.17 / 0.40 / 0.25  life 125 s  kpm/ship 0.45  trades 0.02
+2v2 frozen | duel one-circle p0.7 + crowd extend + lead           mixed v r9: score 0.467 ± 0.013  kills m/o/f/t 0.16 / 0.16 / 0.42 / 0.26  life 123 s  kpm/ship 0.45  trades 0.01
+2v2 frozen | duel one-circle p0.7 + crowd extend + lead  mixed reversed v r9: score 0.473 ± 0.014  kills m/o/f/t 0.16 / 0.17 / 0.42 / 0.25  life 124 s  kpm/ship 0.45  trades 0.02
+2v2                      D2 | r9           mixed v r9: score 0.514 ± 0.014  kills m/o/f/t 0.08 / 0.22 / 0.57 / 0.13  life 112 s  kpm/ship 0.49  trades 0.02
+2v2                      D2 | r9  mixed reversed v r9: score 0.495 ± 0.014  kills m/o/f/t 0.08 / 0.23 / 0.56 / 0.12  life 112 s  kpm/ship 0.49  trades 0.02
+2v2                    D2 | lead           mixed v r9: score 0.485 ± 0.014  kills m/o/f/t 0.08 / 0.22 / 0.57 / 0.12  life 113 s  kpm/ship 0.49  trades 0.02
+2v2                    D2 | lead  mixed reversed v r9: score 0.500 ± 0.014  kills m/o/f/t 0.08 / 0.24 / 0.56 / 0.13  life 114 s  kpm/ship 0.49  trades 0.02
+2v2            D2 | crowd extend           mixed v r9: score 0.507 ± 0.014  kills m/o/f/t 0.10 / 0.23 / 0.53 / 0.14  life 112 s  kpm/ship 0.49  trades 0.01
+2v2            D2 | crowd extend  mixed reversed v r9: score 0.536 ± 0.014  kills m/o/f/t 0.09 / 0.23 / 0.53 / 0.14  life 111 s  kpm/ship 0.50  trades 0.01
+2v2     D2 | crowd extend + lead           mixed v r9: score 0.510 ± 0.014  kills m/o/f/t 0.09 / 0.24 / 0.53 / 0.15  life 112 s  kpm/ship 0.49  trades 0.02
+2v2     D2 | crowd extend + lead  mixed reversed v r9: score 0.512 ± 0.014  kills m/o/f/t 0.09 / 0.23 / 0.53 / 0.14  life 112 s  kpm/ship 0.49  trades 0.01
+2v2 D2 | duel one-circle + crowd extend           mixed v r9: score 0.518 ± 0.014  kills m/o/f/t 0.11 / 0.22 / 0.46 / 0.22  life 116 s  kpm/ship 0.48  trades 0.02
+2v2 D2 | duel one-circle + crowd extend  mixed reversed v r9: score 0.492 ± 0.014  kills m/o/f/t 0.10 / 0.21 / 0.46 / 0.22  life 115 s  kpm/ship 0.48  trades 0.01
+2v2 D2 | duel one-circle + crowd extend + lead           mixed v r9: score 0.534 ± 0.014  kills m/o/f/t 0.11 / 0.21 / 0.46 / 0.23  life 115 s  kpm/ship 0.48  trades 0.02
+2v2 D2 | duel one-circle + crowd extend + lead  mixed reversed v r9: score 0.496 ± 0.014  kills m/o/f/t 0.11 / 0.22 / 0.46 / 0.22  life 114 s  kpm/ship 0.48  trades 0.01
+2v2 D2 | duel one-circle p0.7 + crowd extend + lead           mixed v r9: score 0.499 ± 0.014  kills m/o/f/t 0.10 / 0.21 / 0.47 / 0.22  life 113 s  kpm/ship 0.49  trades 0.01
+2v2 D2 | duel one-circle p0.7 + crowd extend + lead  mixed reversed v r9: score 0.497 ± 0.014  kills m/o/f/t 0.09 / 0.22 / 0.47 / 0.21  life 113 s  kpm/ship 0.49  trades 0.01
+2v2           D2 cone 0.085 | r9           mixed v r9: score 0.475 ± 0.014  kills m/o/f/t 0.05 / 0.33 / 0.52 / 0.11  life 100 s  kpm/ship 0.54  trades 0.02
+2v2           D2 cone 0.085 | r9  mixed reversed v r9: score 0.497 ± 0.014  kills m/o/f/t 0.05 / 0.32 / 0.52 / 0.11  life 99 s  kpm/ship 0.55  trades 0.02
+2v2         D2 cone 0.085 | lead           mixed v r9: score 0.457 ± 0.014  kills m/o/f/t 0.05 / 0.32 / 0.53 / 0.10  life 100 s  kpm/ship 0.55  trades 0.02
+2v2         D2 cone 0.085 | lead  mixed reversed v r9: score 0.504 ± 0.014  kills m/o/f/t 0.05 / 0.32 / 0.53 / 0.11  life 101 s  kpm/ship 0.54  trades 0.02
+2v2 D2 cone 0.085 | crowd extend           mixed v r9: score 0.508 ± 0.014  kills m/o/f/t 0.05 / 0.33 / 0.50 / 0.12  life 102 s  kpm/ship 0.54  trades 0.01
+2v2 D2 cone 0.085 | crowd extend  mixed reversed v r9: score 0.519 ± 0.014  kills m/o/f/t 0.06 / 0.32 / 0.50 / 0.12  life 103 s  kpm/ship 0.53  trades 0.01
+2v2 D2 cone 0.085 | crowd extend + lead           mixed v r9: score 0.506 ± 0.014  kills m/o/f/t 0.06 / 0.33 / 0.50 / 0.12  life 105 s  kpm/ship 0.52  trades 0.02
+2v2 D2 cone 0.085 | crowd extend + lead  mixed reversed v r9: score 0.513 ± 0.014  kills m/o/f/t 0.05 / 0.33 / 0.50 / 0.12  life 102 s  kpm/ship 0.54  trades 0.02
+2v2 D2 cone 0.085 | duel one-circle + crowd extend           mixed v r9: score 0.531 ± 0.014  kills m/o/f/t 0.07 / 0.31 / 0.43 / 0.19  life 105 s  kpm/ship 0.52  trades 0.02
+2v2 D2 cone 0.085 | duel one-circle + crowd extend  mixed reversed v r9: score 0.531 ± 0.014  kills m/o/f/t 0.06 / 0.31 / 0.44 / 0.19  life 105 s  kpm/ship 0.52  trades 0.02
+2v2 D2 cone 0.085 | duel one-circle + crowd extend + lead           mixed v r9: score 0.536 ± 0.014  kills m/o/f/t 0.07 / 0.29 / 0.44 / 0.20  life 106 s  kpm/ship 0.52  trades 0.02
+2v2 D2 cone 0.085 | duel one-circle + crowd extend + lead  mixed reversed v r9: score 0.550 ± 0.014  kills m/o/f/t 0.06 / 0.30 / 0.44 / 0.19  life 104 s  kpm/ship 0.53  trades 0.02
+2v2 D2 cone 0.085 | duel one-circle p0.7 + crowd extend + lead           mixed v r9: score 0.495 ± 0.014  kills m/o/f/t 0.06 / 0.32 / 0.44 / 0.19  life 104 s  kpm/ship 0.53  trades 0.02
+2v2 D2 cone 0.085 | duel one-circle p0.7 + crowd extend + lead  mixed reversed v r9: score 0.483 ± 0.014  kills m/o/f/t 0.06 / 0.31 / 0.45 / 0.18  life 102 s  kpm/ship 0.53  trades 0.02
+2v2            D2 cone 0.01 | r9           mixed v r9: score 0.488 ± 0.014  kills m/o/f/t 0.02 / 0.32 / 0.54 / 0.12  life 105 s  kpm/ship 0.52  trades 0.02
+2v2            D2 cone 0.01 | r9  mixed reversed v r9: score 0.473 ± 0.014  kills m/o/f/t 0.02 / 0.32 / 0.54 / 0.12  life 104 s  kpm/ship 0.53  trades 0.02
+2v2          D2 cone 0.01 | lead           mixed v r9: score 0.512 ± 0.014  kills m/o/f/t 0.02 / 0.33 / 0.55 / 0.11  life 104 s  kpm/ship 0.53  trades 0.02
+2v2          D2 cone 0.01 | lead  mixed reversed v r9: score 0.504 ± 0.014  kills m/o/f/t 0.02 / 0.33 / 0.54 / 0.11  life 104 s  kpm/ship 0.53  trades 0.02
+2v2  D2 cone 0.01 | crowd extend           mixed v r9: score 0.535 ± 0.014  kills m/o/f/t 0.02 / 0.33 / 0.52 / 0.13  life 106 s  kpm/ship 0.52  trades 0.01
+2v2  D2 cone 0.01 | crowd extend  mixed reversed v r9: score 0.535 ± 0.014  kills m/o/f/t 0.03 / 0.32 / 0.52 / 0.13  life 107 s  kpm/ship 0.51  trades 0.02
+2v2 D2 cone 0.01 | crowd extend + lead           mixed v r9: score 0.523 ± 0.014  kills m/o/f/t 0.02 / 0.34 / 0.52 / 0.12  life 107 s  kpm/ship 0.51  trades 0.02
+2v2 D2 cone 0.01 | crowd extend + lead  mixed reversed v r9: score 0.493 ± 0.014  kills m/o/f/t 0.02 / 0.33 / 0.52 / 0.13  life 107 s  kpm/ship 0.51  trades 0.02
+2v2 D2 cone 0.01 | duel one-circle + crowd extend           mixed v r9: score 0.528 ± 0.014  kills m/o/f/t 0.03 / 0.31 / 0.46 / 0.21  life 110 s  kpm/ship 0.50  trades 0.02
+2v2 D2 cone 0.01 | duel one-circle + crowd extend  mixed reversed v r9: score 0.519 ± 0.014  kills m/o/f/t 0.03 / 0.31 / 0.45 / 0.21  life 111 s  kpm/ship 0.50  trades 0.02
+2v2 D2 cone 0.01 | duel one-circle + crowd extend + lead           mixed v r9: score 0.517 ± 0.014  kills m/o/f/t 0.03 / 0.30 / 0.47 / 0.20  life 111 s  kpm/ship 0.50  trades 0.01
+2v2 D2 cone 0.01 | duel one-circle + crowd extend + lead  mixed reversed v r9: score 0.524 ± 0.014  kills m/o/f/t 0.02 / 0.31 / 0.46 / 0.20  life 109 s  kpm/ship 0.50  trades 0.01
+2v2 D2 cone 0.01 | duel one-circle p0.7 + crowd extend + lead           mixed v r9: score 0.508 ± 0.014  kills m/o/f/t 0.03 / 0.30 / 0.47 / 0.20  life 108 s  kpm/ship 0.51  trades 0.02
+2v2 D2 cone 0.01 | duel one-circle p0.7 + crowd extend + lead  mixed reversed v r9: score 0.513 ± 0.014  kills m/o/f/t 0.02 / 0.31 / 0.47 / 0.20  life 109 s  kpm/ship 0.51  trades 0.01
+## 5v5: 84 jobs, B 4096, 01:34 KST
+  batch 1/21 40 s; ETA 01:48 KST
+  batch 2/21 72 s; ETA 01:47 KST
+  batch 3/21 104 s; ETA 01:47 KST
+  batch 4/21 137 s; ETA 01:46 KST
+  batch 5/21 169 s; ETA 01:46 KST
+  batch 6/21 202 s; ETA 01:46 KST
+  batch 7/21 234 s; ETA 01:46 KST
+  batch 8/21 267 s; ETA 01:46 KST
+  batch 9/21 300 s; ETA 01:46 KST
+  batch 10/21 333 s; ETA 01:46 KST
+  batch 11/21 365 s; ETA 01:46 KST
+  batch 12/21 398 s; ETA 01:46 KST
+  batch 13/21 431 s; ETA 01:46 KST
+  batch 14/21 464 s; ETA 01:46 KST
+  batch 15/21 497 s; ETA 01:46 KST
+  batch 16/21 529 s; ETA 01:46 KST
+  batch 17/21 562 s; ETA 01:46 KST
+  batch 18/21 595 s; ETA 01:46 KST
+  batch 19/21 628 s; ETA 01:46 KST
+  batch 20/21 661 s; ETA 01:46 KST
+  batch 21/21 693 s; ETA 01:46 KST
+5v5                  frozen | r9   energy v turn v c0: score 0.533 ± 0.015  kills m/o/f/t 0.07 / 0.17 / 0.53 / 0.23  life 109 s  kpm/ship 0.50  trades 0.04
+5v5                frozen | lead   energy v turn v c1: score 0.537 ± 0.014  kills m/o/f/t 0.07 / 0.17 / 0.54 / 0.23  life 110 s  kpm/ship 0.50  trades 0.04
+5v5        frozen | crowd extend   energy v turn v c2: score 0.376 ± 0.014  kills m/o/f/t 0.09 / 0.15 / 0.33 / 0.42  life 148 s  kpm/ship 0.38  trades 0.03
+5v5 frozen | crowd extend + lead   energy v turn v c3: score 0.356 ± 0.014  kills m/o/f/t 0.09 / 0.15 / 0.34 / 0.43  life 149 s  kpm/ship 0.38  trades 0.03
+5v5 frozen | duel one-circle + crowd extend   energy v turn v c4: score 0.348 ± 0.013  kills m/o/f/t 0.09 / 0.15 / 0.34 / 0.42  life 146 s  kpm/ship 0.38  trades 0.03
+5v5 frozen | duel one-circle + crowd extend + lead   energy v turn v c5: score 0.343 ± 0.013  kills m/o/f/t 0.09 / 0.15 / 0.33 / 0.43  life 150 s  kpm/ship 0.38  trades 0.03
+5v5 frozen | duel one-circle p0.7 + crowd extend + lead   energy v turn v c6: score 0.334 ± 0.013  kills m/o/f/t 0.08 / 0.15 / 0.34 / 0.43  life 149 s  kpm/ship 0.38  trades 0.03
+5v5                      D2 | r9   energy v turn v c7: score 0.566 ± 0.014  kills m/o/f/t 0.05 / 0.18 / 0.58 / 0.19  life 102 s  kpm/ship 0.53  trades 0.04
+5v5                    D2 | lead   energy v turn v c8: score 0.537 ± 0.014  kills m/o/f/t 0.05 / 0.19 / 0.58 / 0.19  life 102 s  kpm/ship 0.53  trades 0.04
+5v5            D2 | crowd extend   energy v turn v c9: score 0.531 ± 0.014  kills m/o/f/t 0.08 / 0.19 / 0.42 / 0.31  life 125 s  kpm/ship 0.45  trades 0.03
+5v5     D2 | crowd extend + lead   energy v turn v c10: score 0.514 ± 0.014  kills m/o/f/t 0.07 / 0.19 / 0.43 / 0.31  life 125 s  kpm/ship 0.44  trades 0.03
+5v5 D2 | duel one-circle + crowd extend   energy v turn v c11: score 0.520 ± 0.014  kills m/o/f/t 0.07 / 0.18 / 0.43 / 0.32  life 124 s  kpm/ship 0.45  trades 0.03
+5v5 D2 | duel one-circle + crowd extend + lead   energy v turn v c12: score 0.538 ± 0.014  kills m/o/f/t 0.07 / 0.19 / 0.43 / 0.31  life 125 s  kpm/ship 0.45  trades 0.03
+5v5 D2 | duel one-circle p0.7 + crowd extend + lead   energy v turn v c13: score 0.516 ± 0.014  kills m/o/f/t 0.07 / 0.19 / 0.43 / 0.31  life 124 s  kpm/ship 0.45  trades 0.03
+5v5           D2 cone 0.085 | r9   energy v turn v c14: score 0.682 ± 0.014  kills m/o/f/t 0.04 / 0.27 / 0.53 / 0.16  life 92 s  kpm/ship 0.59  trades 0.05
+5v5         D2 cone 0.085 | lead   energy v turn v c15: score 0.660 ± 0.014  kills m/o/f/t 0.04 / 0.27 / 0.54 / 0.15  life 91 s  kpm/ship 0.59  trades 0.05
+5v5 D2 cone 0.085 | crowd extend   energy v turn v c16: score 0.680 ± 0.013  kills m/o/f/t 0.05 / 0.27 / 0.43 / 0.24  life 109 s  kpm/ship 0.51  trades 0.04
+5v5 D2 cone 0.085 | crowd extend + lead   energy v turn v c17: score 0.660 ± 0.014  kills m/o/f/t 0.05 / 0.27 / 0.43 / 0.24  life 108 s  kpm/ship 0.51  trades 0.04
+5v5 D2 cone 0.085 | duel one-circle + crowd extend   energy v turn v c18: score 0.692 ± 0.013  kills m/o/f/t 0.05 / 0.27 / 0.43 / 0.24  life 109 s  kpm/ship 0.51  trades 0.04
+5v5 D2 cone 0.085 | duel one-circle + crowd extend + lead   energy v turn v c19: score 0.668 ± 0.014  kills m/o/f/t 0.05 / 0.28 / 0.43 / 0.24  life 108 s  kpm/ship 0.51  trades 0.04
+5v5 D2 cone 0.085 | duel one-circle p0.7 + crowd extend + lead   energy v turn v c20: score 0.677 ± 0.014  kills m/o/f/t 0.05 / 0.28 / 0.43 / 0.24  life 108 s  kpm/ship 0.51  trades 0.04
+5v5            D2 cone 0.01 | r9   energy v turn v c21: score 0.658 ± 0.014  kills m/o/f/t 0.03 / 0.26 / 0.55 / 0.16  life 93 s  kpm/ship 0.58  trades 0.06
+5v5          D2 cone 0.01 | lead   energy v turn v c22: score 0.653 ± 0.014  kills m/o/f/t 0.03 / 0.27 / 0.55 / 0.16  life 94 s  kpm/ship 0.58  trades 0.05
+5v5  D2 cone 0.01 | crowd extend   energy v turn v c23: score 0.646 ± 0.014  kills m/o/f/t 0.03 / 0.27 / 0.43 / 0.26  life 112 s  kpm/ship 0.49  trades 0.04
+5v5 D2 cone 0.01 | crowd extend + lead   energy v turn v c24: score 0.678 ± 0.013  kills m/o/f/t 0.03 / 0.27 / 0.44 / 0.26  life 111 s  kpm/ship 0.49  trades 0.04
+5v5 D2 cone 0.01 | duel one-circle + crowd extend   energy v turn v c25: score 0.666 ± 0.014  kills m/o/f/t 0.03 / 0.27 / 0.44 / 0.25  life 112 s  kpm/ship 0.49  trades 0.04
+5v5 D2 cone 0.01 | duel one-circle + crowd extend + lead   energy v turn v c26: score 0.663 ± 0.014  kills m/o/f/t 0.03 / 0.27 / 0.45 / 0.25  life 112 s  kpm/ship 0.49  trades 0.03
+5v5 D2 cone 0.01 | duel one-circle p0.7 + crowd extend + lead   energy v turn v c27: score 0.664 ± 0.014  kills m/o/f/t 0.03 / 0.28 / 0.44 / 0.26  life 110 s  kpm/ship 0.50  trades 0.04
+5v5                  frozen | r9           mixed v r9: score 0.512 ± 0.015  kills m/o/f/t 0.07 / 0.17 / 0.52 / 0.24  life 115 s  kpm/ship 0.48  trades 0.04
+5v5                  frozen | r9  mixed reversed v r9: score 0.515 ± 0.015  kills m/o/f/t 0.08 / 0.18 / 0.53 / 0.21  life 105 s  kpm/ship 0.52  trades 0.05
+5v5                frozen | lead           mixed v r9: score 0.489 ± 0.015  kills m/o/f/t 0.07 / 0.17 / 0.53 / 0.23  life 115 s  kpm/ship 0.48  trades 0.04
+5v5                frozen | lead  mixed reversed v r9: score 0.498 ± 0.015  kills m/o/f/t 0.08 / 0.18 / 0.53 / 0.21  life 105 s  kpm/ship 0.52  trades 0.05
+5v5        frozen | crowd extend           mixed v r9: score 0.717 ± 0.013  kills m/o/f/t 0.10 / 0.17 / 0.45 / 0.29  life 141 s  kpm/ship 0.40  trades 0.03
+5v5        frozen | crowd extend  mixed reversed v r9: score 0.792 ± 0.012  kills m/o/f/t 0.12 / 0.19 / 0.46 / 0.24  life 125 s  kpm/ship 0.45  trades 0.04
+5v5 frozen | crowd extend + lead           mixed v r9: score 0.710 ± 0.013  kills m/o/f/t 0.09 / 0.18 / 0.45 / 0.28  life 141 s  kpm/ship 0.40  trades 0.03
+5v5 frozen | crowd extend + lead  mixed reversed v r9: score 0.804 ± 0.011  kills m/o/f/t 0.11 / 0.19 / 0.46 / 0.24  life 127 s  kpm/ship 0.44  trades 0.04
+5v5 frozen | duel one-circle + crowd extend           mixed v r9: score 0.699 ± 0.013  kills m/o/f/t 0.10 / 0.17 / 0.43 / 0.30  life 148 s  kpm/ship 0.38  trades 0.03
+5v5 frozen | duel one-circle + crowd extend  mixed reversed v r9: score 0.834 ± 0.011  kills m/o/f/t 0.12 / 0.18 / 0.44 / 0.26  life 131 s  kpm/ship 0.43  trades 0.04
+5v5 frozen | duel one-circle + crowd extend + lead           mixed v r9: score 0.710 ± 0.013  kills m/o/f/t 0.10 / 0.16 / 0.43 / 0.31  life 148 s  kpm/ship 0.38  trades 0.03
+5v5 frozen | duel one-circle + crowd extend + lead  mixed reversed v r9: score 0.826 ± 0.011  kills m/o/f/t 0.11 / 0.18 / 0.45 / 0.27  life 132 s  kpm/ship 0.42  trades 0.03
+5v5 frozen | duel one-circle p0.7 + crowd extend + lead           mixed v r9: score 0.685 ± 0.013  kills m/o/f/t 0.10 / 0.16 / 0.43 / 0.31  life 148 s  kpm/ship 0.38  trades 0.03
+5v5 frozen | duel one-circle p0.7 + crowd extend + lead  mixed reversed v r9: score 0.779 ± 0.012  kills m/o/f/t 0.11 / 0.18 / 0.45 / 0.27  life 131 s  kpm/ship 0.43  trades 0.04
+5v5                      D2 | r9           mixed v r9: score 0.497 ± 0.015  kills m/o/f/t 0.05 / 0.18 / 0.59 / 0.19  life 99 s  kpm/ship 0.55  trades 0.05
+5v5                      D2 | r9  mixed reversed v r9: score 0.507 ± 0.015  kills m/o/f/t 0.05 / 0.18 / 0.58 / 0.19  life 99 s  kpm/ship 0.55  trades 0.05
+5v5                    D2 | lead           mixed v r9: score 0.463 ± 0.015  kills m/o/f/t 0.05 / 0.18 / 0.58 / 0.18  life 99 s  kpm/ship 0.55  trades 0.05
+5v5                    D2 | lead  mixed reversed v r9: score 0.469 ± 0.015  kills m/o/f/t 0.05 / 0.18 / 0.58 / 0.18  life 98 s  kpm/ship 0.56  trades 0.05
+5v5            D2 | crowd extend           mixed v r9: score 0.760 ± 0.012  kills m/o/f/t 0.06 / 0.20 / 0.53 / 0.21  life 113 s  kpm/ship 0.49  trades 0.04
+5v5            D2 | crowd extend  mixed reversed v r9: score 0.816 ± 0.011  kills m/o/f/t 0.07 / 0.20 / 0.54 / 0.20  life 111 s  kpm/ship 0.49  trades 0.04
+5v5     D2 | crowd extend + lead           mixed v r9: score 0.788 ± 0.012  kills m/o/f/t 0.07 / 0.20 / 0.53 / 0.20  life 112 s  kpm/ship 0.49  trades 0.04
+5v5     D2 | crowd extend + lead  mixed reversed v r9: score 0.817 ± 0.011  kills m/o/f/t 0.07 / 0.20 / 0.54 / 0.19  life 111 s  kpm/ship 0.50  trades 0.04
+5v5 D2 | duel one-circle + crowd extend           mixed v r9: score 0.753 ± 0.012  kills m/o/f/t 0.07 / 0.20 / 0.49 / 0.24  life 118 s  kpm/ship 0.47  trades 0.04
+5v5 D2 | duel one-circle + crowd extend  mixed reversed v r9: score 0.811 ± 0.011  kills m/o/f/t 0.07 / 0.20 / 0.50 / 0.23  life 116 s  kpm/ship 0.48  trades 0.04
+5v5 D2 | duel one-circle + crowd extend + lead           mixed v r9: score 0.770 ± 0.012  kills m/o/f/t 0.07 / 0.20 / 0.49 / 0.24  life 118 s  kpm/ship 0.47  trades 0.04
+5v5 D2 | duel one-circle + crowd extend + lead  mixed reversed v r9: score 0.824 ± 0.011  kills m/o/f/t 0.07 / 0.19 / 0.51 / 0.23  life 116 s  kpm/ship 0.48  trades 0.04
+5v5 D2 | duel one-circle p0.7 + crowd extend + lead           mixed v r9: score 0.777 ± 0.012  kills m/o/f/t 0.07 / 0.20 / 0.50 / 0.23  life 115 s  kpm/ship 0.48  trades 0.04
+5v5 D2 | duel one-circle p0.7 + crowd extend + lead  mixed reversed v r9: score 0.825 ± 0.011  kills m/o/f/t 0.07 / 0.20 / 0.51 / 0.23  life 114 s  kpm/ship 0.49  trades 0.04
+5v5           D2 cone 0.085 | r9           mixed v r9: score 0.484 ± 0.015  kills m/o/f/t 0.04 / 0.27 / 0.54 / 0.14  life 89 s  kpm/ship 0.61  trades 0.06
+5v5           D2 cone 0.085 | r9  mixed reversed v r9: score 0.498 ± 0.015  kills m/o/f/t 0.04 / 0.27 / 0.54 / 0.15  life 88 s  kpm/ship 0.61  trades 0.06
+5v5         D2 cone 0.085 | lead           mixed v r9: score 0.495 ± 0.015  kills m/o/f/t 0.04 / 0.27 / 0.54 / 0.15  life 89 s  kpm/ship 0.61  trades 0.06
+5v5         D2 cone 0.085 | lead  mixed reversed v r9: score 0.503 ± 0.015  kills m/o/f/t 0.04 / 0.27 / 0.54 / 0.14  life 88 s  kpm/ship 0.61  trades 0.06
+5v5 D2 cone 0.085 | crowd extend           mixed v r9: score 0.760 ± 0.012  kills m/o/f/t 0.05 / 0.28 / 0.51 / 0.16  life 99 s  kpm/ship 0.55  trades 0.05
+5v5 D2 cone 0.085 | crowd extend  mixed reversed v r9: score 0.813 ± 0.011  kills m/o/f/t 0.05 / 0.29 / 0.50 / 0.16  life 97 s  kpm/ship 0.56  trades 0.05
+5v5 D2 cone 0.085 | crowd extend + lead           mixed v r9: score 0.765 ± 0.012  kills m/o/f/t 0.05 / 0.28 / 0.51 / 0.16  life 100 s  kpm/ship 0.55  trades 0.05
+5v5 D2 cone 0.085 | crowd extend + lead  mixed reversed v r9: score 0.807 ± 0.011  kills m/o/f/t 0.05 / 0.29 / 0.50 / 0.15  life 97 s  kpm/ship 0.56  trades 0.05
+5v5 D2 cone 0.085 | duel one-circle + crowd extend           mixed v r9: score 0.792 ± 0.012  kills m/o/f/t 0.05 / 0.28 / 0.48 / 0.20  life 104 s  kpm/ship 0.53  trades 0.04
+5v5 D2 cone 0.085 | duel one-circle + crowd extend  mixed reversed v r9: score 0.819 ± 0.011  kills m/o/f/t 0.06 / 0.29 / 0.47 / 0.19  life 102 s  kpm/ship 0.54  trades 0.05
+5v5 D2 cone 0.085 | duel one-circle + crowd extend + lead           mixed v r9: score 0.777 ± 0.012  kills m/o/f/t 0.05 / 0.28 / 0.47 / 0.20  life 103 s  kpm/ship 0.53  trades 0.05
+5v5 D2 cone 0.085 | duel one-circle + crowd extend + lead  mixed reversed v r9: score 0.788 ± 0.012  kills m/o/f/t 0.06 / 0.29 / 0.47 / 0.19  life 101 s  kpm/ship 0.54  trades 0.05
+5v5 D2 cone 0.085 | duel one-circle p0.7 + crowd extend + lead           mixed v r9: score 0.758 ± 0.012  kills m/o/f/t 0.05 / 0.28 / 0.47 / 0.19  life 101 s  kpm/ship 0.54  trades 0.05
+5v5 D2 cone 0.085 | duel one-circle p0.7 + crowd extend + lead  mixed reversed v r9: score 0.794 ± 0.012  kills m/o/f/t 0.06 / 0.28 / 0.48 / 0.19  life 100 s  kpm/ship 0.55  trades 0.05
+5v5            D2 cone 0.01 | r9           mixed v r9: score 0.481 ± 0.015  kills m/o/f/t 0.02 / 0.26 / 0.56 / 0.15  life 91 s  kpm/ship 0.60  trades 0.05
+5v5            D2 cone 0.01 | r9  mixed reversed v r9: score 0.486 ± 0.015  kills m/o/f/t 0.03 / 0.27 / 0.55 / 0.15  life 90 s  kpm/ship 0.60  trades 0.06
+5v5          D2 cone 0.01 | lead           mixed v r9: score 0.477 ± 0.015  kills m/o/f/t 0.03 / 0.27 / 0.55 / 0.15  life 91 s  kpm/ship 0.59  trades 0.05
+5v5          D2 cone 0.01 | lead  mixed reversed v r9: score 0.504 ± 0.015  kills m/o/f/t 0.03 / 0.27 / 0.56 / 0.15  life 90 s  kpm/ship 0.60  trades 0.06
+5v5  D2 cone 0.01 | crowd extend           mixed v r9: score 0.778 ± 0.012  kills m/o/f/t 0.03 / 0.28 / 0.51 / 0.18  life 103 s  kpm/ship 0.53  trades 0.04
+5v5  D2 cone 0.01 | crowd extend  mixed reversed v r9: score 0.815 ± 0.011  kills m/o/f/t 0.03 / 0.29 / 0.52 / 0.16  life 100 s  kpm/ship 0.54  trades 0.05
+5v5 D2 cone 0.01 | crowd extend + lead           mixed v r9: score 0.758 ± 0.012  kills m/o/f/t 0.03 / 0.28 / 0.52 / 0.17  life 102 s  kpm/ship 0.54  trades 0.05
+5v5 D2 cone 0.01 | crowd extend + lead  mixed reversed v r9: score 0.839 ± 0.011  kills m/o/f/t 0.03 / 0.29 / 0.51 / 0.16  life 100 s  kpm/ship 0.55  trades 0.05
+5v5 D2 cone 0.01 | duel one-circle + crowd extend           mixed v r9: score 0.778 ± 0.012  kills m/o/f/t 0.03 / 0.28 / 0.48 / 0.21  life 107 s  kpm/ship 0.52  trades 0.04
+5v5 D2 cone 0.01 | duel one-circle + crowd extend  mixed reversed v r9: score 0.843 ± 0.011  kills m/o/f/t 0.03 / 0.29 / 0.48 / 0.20  life 106 s  kpm/ship 0.52  trades 0.05
+5v5 D2 cone 0.01 | duel one-circle + crowd extend + lead           mixed v r9: score 0.777 ± 0.012  kills m/o/f/t 0.03 / 0.28 / 0.47 / 0.21  life 107 s  kpm/ship 0.52  trades 0.04
+5v5 D2 cone 0.01 | duel one-circle + crowd extend + lead  mixed reversed v r9: score 0.815 ± 0.011  kills m/o/f/t 0.03 / 0.28 / 0.48 / 0.20  life 104 s  kpm/ship 0.53  trades 0.04
+5v5 D2 cone 0.01 | duel one-circle p0.7 + crowd extend + lead           mixed v r9: score 0.776 ± 0.012  kills m/o/f/t 0.03 / 0.28 / 0.48 / 0.21  life 105 s  kpm/ship 0.52  trades 0.04
+5v5 D2 cone 0.01 | duel one-circle p0.7 + crowd extend + lead  mixed reversed v r9: score 0.816 ± 0.011  kills m/o/f/t 0.03 / 0.28 / 0.49 / 0.20  life 102 s  kpm/ship 0.54  trades 0.05
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|
+| frozen | r9 | 0.012 ± 0.002 | 0.393 ± 0.014 | 0.533 ± 0.015 | 0.488 | 0.07 / 0.17 / 0.53 / 0.23 | 0.04 | 171 / 111 / 109 | 0.33 / 0.50 / 0.50 | 2.85 |
+| frozen | lead | 0.007 ± 0.002 | 0.406 ± 0.014 | 0.537 ± 0.014 | 0.493 | 0.07 / 0.17 / 0.54 / 0.23 | 0.04 | 172 / 111 / 110 | 0.33 / 0.50 / 0.50 | 2.8 |
+| frozen | crowd extend | 0.009 ± 0.002 | 0.425 ± 0.013 | 0.376 ± 0.014 | 0.491 | 0.09 / 0.15 / 0.33 / 0.42 | 0.03 | 168 / 129 / 148 | 0.34 / 0.43 / 0.38 | 2.82 |
+| frozen | crowd extend + lead | 0.007 ± 0.002 | 0.396 ± 0.013 | 0.356 ± 0.014 | 0.493 | 0.09 / 0.15 / 0.34 / 0.43 | 0.03 | 174 / 131 / 149 | 0.33 / 0.43 / 0.38 | 2.84 |
+| frozen | duel one-circle + crowd extend | 0.007 ± 0.002 | 0.416 ± 0.013 | 0.348 ± 0.013 | 0.493 | 0.09 / 0.15 / 0.34 / 0.42 | 0.03 | 167 / 129 / 146 | 0.34 / 0.43 / 0.38 | 2.82 |
+| frozen | duel one-circle + crowd extend + lead | 0.008 ± 0.002 | 0.453 ± 0.013 | 0.343 ± 0.013 | 0.492 | 0.09 / 0.15 / 0.33 / 0.43 | 0.03 | 178 / 129 / 150 | 0.32 / 0.43 / 0.38 | 2.88 |
+| frozen | duel one-circle p0.7 + crowd extend + lead | 0.011 ± 0.002 | 0.431 ± 0.013 | 0.334 ± 0.013 | 0.489 | 0.08 / 0.15 / 0.34 / 0.43 | 0.03 | 176 / 131 / 149 | 0.32 / 0.43 / 0.38 | 2.84 |
+| D2 | r9 | 0.501 ± 0.010 | 0.445 ± 0.014 | 0.566 ± 0.014 | 0.066 | 0.05 / 0.18 / 0.58 / 0.19 | 0.04 | 291 / 115 / 102 | 0.20 / 0.48 / 0.53 | 3.48 |
+| D2 | lead | 0.556 ± 0.010 | 0.459 ± 0.014 | 0.537 ± 0.014 | 0.056 | 0.05 / 0.19 / 0.58 / 0.19 | 0.04 | 256 / 113 / 102 | 0.23 / 0.49 / 0.53 | 3.01 |
+| D2 | crowd extend | 0.498 ± 0.010 | 0.450 ± 0.014 | 0.531 ± 0.014 | 0.050 | 0.08 / 0.19 / 0.42 / 0.31 | 0.03 | 279 / 118 / 125 | 0.21 / 0.47 / 0.45 | 3.4 |
+| D2 | crowd extend + lead | 0.562 ± 0.009 | 0.448 ± 0.014 | 0.514 ± 0.014 | 0.062 | 0.07 / 0.19 / 0.43 / 0.31 | 0.03 | 250 / 118 / 125 | 0.23 / 0.47 / 0.44 | 2.93 |
+| D2 | duel one-circle + crowd extend | 0.492 ± 0.010 | 0.451 ± 0.014 | 0.520 ± 0.014 | 0.049 | 0.07 / 0.18 / 0.43 / 0.32 | 0.03 | 276 / 117 / 124 | 0.21 / 0.47 / 0.45 | 3.36 |
+| D2 | duel one-circle + crowd extend + lead | 0.568 ± 0.009 | 0.438 ± 0.014 | 0.538 ± 0.014 | 0.068 | 0.07 / 0.19 / 0.43 / 0.31 | 0.03 | 256 / 117 / 125 | 0.23 / 0.47 / 0.45 | 2.99 |
+| D2 | duel one-circle p0.7 + crowd extend + lead | 0.561 ± 0.010 | 0.431 ± 0.013 | 0.516 ± 0.014 | 0.069 | 0.07 / 0.19 / 0.43 / 0.31 | 0.03 | 248 / 119 / 124 | 0.23 / 0.47 / 0.45 | 2.94 |
+| D2 cone 0.085 | r9 | 0.534 ± 0.011 | 0.521 ± 0.014 | 0.682 ± 0.014 | 0.182 | 0.04 / 0.27 / 0.53 / 0.16 | 0.05 | 228 / 100 / 92 | 0.25 / 0.55 / 0.59 | 2.67 |
+| D2 cone 0.085 | lead | 0.608 ± 0.010 | 0.544 ± 0.014 | 0.660 ± 0.014 | 0.160 | 0.04 / 0.27 / 0.54 / 0.15 | 0.05 | 202 / 100 / 91 | 0.28 / 0.54 / 0.59 | 2.33 |
+| D2 cone 0.085 | crowd extend | 0.541 ± 0.011 | 0.499 ± 0.014 | 0.680 ± 0.013 | 0.180 | 0.05 / 0.27 / 0.43 / 0.24 | 0.04 | 225 / 107 / 109 | 0.26 / 0.52 / 0.51 | 2.66 |
+| D2 cone 0.085 | crowd extend + lead | 0.609 ± 0.010 | 0.484 ± 0.014 | 0.660 ± 0.014 | 0.160 | 0.05 / 0.27 / 0.43 / 0.24 | 0.04 | 201 / 107 / 108 | 0.28 / 0.51 / 0.51 | 2.3 |
+| D2 cone 0.085 | duel one-circle + crowd extend | 0.530 ± 0.011 | 0.501 ± 0.014 | 0.692 ± 0.013 | 0.192 | 0.05 / 0.27 / 0.43 / 0.24 | 0.04 | 229 / 106 / 109 | 0.25 / 0.52 / 0.51 | 2.66 |
+| D2 cone 0.085 | duel one-circle + crowd extend + lead | 0.606 ± 0.010 | 0.521 ± 0.014 | 0.668 ± 0.014 | 0.168 | 0.05 / 0.28 / 0.43 / 0.24 | 0.04 | 204 / 109 / 108 | 0.28 / 0.51 / 0.51 | 2.34 |
+| D2 cone 0.085 | duel one-circle p0.7 + crowd extend + lead | 0.603 ± 0.010 | 0.493 ± 0.014 | 0.677 ± 0.014 | 0.177 | 0.05 / 0.28 / 0.43 / 0.24 | 0.04 | 199 / 106 / 108 | 0.29 / 0.52 / 0.51 | 2.24 |
+| D2 cone 0.01 | r9 | 0.533 ± 0.010 | 0.481 ± 0.014 | 0.658 ± 0.014 | 0.158 | 0.03 / 0.26 / 0.55 / 0.16 | 0.06 | 275 / 105 / 93 | 0.21 / 0.52 / 0.58 | 2.85 |
+| D2 cone 0.01 | lead | 0.606 ± 0.010 | 0.495 ± 0.014 | 0.653 ± 0.014 | 0.153 | 0.03 / 0.27 / 0.55 / 0.16 | 0.05 | 227 / 105 / 94 | 0.25 / 0.52 / 0.58 | 2.49 |
+| D2 cone 0.01 | crowd extend | 0.520 ± 0.010 | 0.484 ± 0.014 | 0.646 ± 0.014 | 0.146 | 0.03 / 0.27 / 0.43 / 0.26 | 0.04 | 277 / 112 / 112 | 0.21 / 0.49 / 0.49 | 2.91 |
+| D2 cone 0.01 | crowd extend + lead | 0.603 ± 0.010 | 0.500 ± 0.014 | 0.678 ± 0.013 | 0.178 | 0.03 / 0.27 / 0.44 / 0.26 | 0.04 | 227 / 111 / 111 | 0.25 / 0.49 / 0.49 | 2.51 |
+| D2 cone 0.01 | duel one-circle + crowd extend | 0.538 ± 0.010 | 0.522 ± 0.014 | 0.666 ± 0.014 | 0.166 | 0.03 / 0.27 / 0.44 / 0.25 | 0.04 | 267 / 112 / 112 | 0.22 / 0.49 / 0.49 | 2.83 |
+| D2 cone 0.01 | duel one-circle + crowd extend + lead | 0.614 ± 0.010 | 0.506 ± 0.014 | 0.663 ± 0.014 | 0.163 | 0.03 / 0.27 / 0.45 / 0.25 | 0.03 | 227 / 113 / 112 | 0.25 / 0.49 / 0.49 | 2.56 |
+| D2 cone 0.01 | duel one-circle p0.7 + crowd extend + lead | 0.599 ± 0.010 | 0.493 ± 0.014 | 0.664 ± 0.014 | 0.164 | 0.03 / 0.28 / 0.44 / 0.26 | 0.04 | 224 / 112 / 110 | 0.26 / 0.49 / 0.50 | 2.51 |
+
+1328 s
