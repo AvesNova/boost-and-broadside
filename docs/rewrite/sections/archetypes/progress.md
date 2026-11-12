@@ -738,3 +738,21 @@ sustained turn), damage up; speed = drag x0.85 (cruise 171, top 407 m/s):
   1v1 to 20v20. Not flagged PERFECT: the hit-and-run mirror is still a 0.47-0.51 joust under
   r9 (merges a kill 2.6, median 1), and the two ships fly alike (they differ in shield,
   recharge, damage and nose, not in flight).
+
+## 03:59-04:03 KST: round 15 (`round15/`): rate v speed through the joust
+
+512 games (10v10 256), r9. Rate (lift x1.03, dmg x1.25) v speed (drag x0.85, vision x1.04),
+kit2 on both, with one ship's cone f0 changed (kit2's is 0.08):
+
+| Nose | A v B 1v1 / 2v2 / 5v5 / 10v10 | AA (rate); BB (speed) mutual, life | Duel kills m / o / f / t; life |
+|---|---|---|---|
+| (round 14) | 0.58 / 0.51 / 0.49 / 0.52 | 0.46, 221 s; 0.40, 277 s | 0.40 / 0.54 / 0.06 / 0; 235 s |
+| **speed f0 0.06** | **0.49 / 0.49 / 0.51 / 0.48** | 0.48, 233 s; 0.14, **485 s** | 0.33 / 0.60 / 0.07 / 0; 306 s |
+| speed f0 0.05 | 0.46 / 0.48 / 0.50 / 0.46 | 0.49, 234 s; 0.11, 465 s | 303 s |
+| rate f0 0.10 | 0.55 / 0.54 / 0.53 / 0.48 | 0.58, 180 s; 0.39, 293 s | 223 s |
+| rate f0 0.12 | 0.47 / 0.50 / 0.47 / 0.45 | 0.63, 148 s; 0.43, 309 s | 199 s |
+| speed f0 0.06, rate f0 0.10 | 0.45 / 0.50 / 0.51 / 0.44 | 0.60, 191 s; 0.13, 412 s | 237 s |
+
+- **The nose is the duel lever this pair needed**: a harder nose on the speed fighter takes
+  the rate fighter's duel edge away (0.58 to 0.49) and leaves the crowds (0.48-0.51). It
+  slows the speed fighter's own mirror (485 s); round 16 looks between.
