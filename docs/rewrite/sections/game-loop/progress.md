@@ -429,3 +429,13 @@ Card: round-7 card with both types' damage x0.3 and Yongma's x0.85 more (`round9
   0.298, Jujak 0.300), shields Yongma x1.3, Jujak x0.87.
 - **Round 11** (running, 17:40, ETA ~18:08): ES from r9 on this card. Then the final
   measurement (~18:10-18:45), the freeze, and the report. **Expected stop ~19:15 KST.**
+
+## 17:40-17:57 KST: round 11 (ES from r9 on the final card): no move
+
+8 generations (108 s each: 7 league opponents), every probation failed (0 passed); the
+step fell to 0.01 and the parent stayed r9. **No improvement over r9**: the ES has
+converged around this champion; further Elo needs the method changed (a regime selector
+in code, a wider/random restart population, or longer games at this lethality), not more
+generations. Stopped at 17:57; the final measurement (r9 on the round-11 card, every
+league pair 1024 games a pair and order, 300 s pace games at 5v5, 2v2, 1v1) started
+17:57, ETA ~18:25.
