@@ -98,6 +98,8 @@ def merge(*dicts: dict) -> dict:
         for k, v in d.items():
             if k in out and not isinstance(v, dict) and not isinstance(out[k], dict):
                 out[k] = out[k] * v
+            elif k in out and not isinstance(v, dict):  # a factor on a set value
+                out[k] = {"set": out[k]["set"] * v}
             else:
                 out[k] = v
     return out
@@ -181,6 +183,18 @@ def round1() -> list[dict]:
             ("M", merge(sustained, arm(150))),
         ),
     ]
+
+
+def knobs(name: str, a: dict, b: dict, a_knobs: dict, b_knobs: dict) -> dict:
+    """A pair with extra factors on each side (a_knobs, b_knobs), named after them."""
+    tags = [f"A {k} x{v:g}" for k, v in a_knobs.items()] + [
+        f"B {k} x{v:g}" for k, v in b_knobs.items()
+    ]
+    return {
+        "name": name + (", " + ", ".join(tags) if tags else ""),
+        "energy": merge(a, a_knobs),
+        "turn": merge(b, b_knobs),
+    }
 
 
 ROUNDS = {"round1": round1}
