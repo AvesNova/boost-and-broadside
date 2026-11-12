@@ -134,8 +134,9 @@ sets how many (`environments`, beyond the training ones) and what they play (`ma
   player's weights change, copied in place between segments (`LaneSeat.load`).
 - **Defaults:** a reinforcement-learning run's lanes (`bnb.runtime.lanes.RL_MATCHUPS`) play,
   per mode: the live policy and the averaged agent against each of the league's four slot
-  entries and each other; the slot entries and both against the scripted agent, a small
-  share, the anchor; and the ladder chained from the scripted agent down (each rung against
+  entries and each other; the slot entries and both against the scripted agent, the
+  anchor (the slots' share sized so each of the six network players has the same lane rows,
+  one stacked run with no padding); and the ladder chained from the scripted agent down (each rung against
   the next one up), which calibrates the ladder. A game tells the rating fit `p (1 − p)`
   about its players' gap: 0.25 at even odds, 0.004 at the 950 points v1's policy reached
   above the scripted agent. The league draws its slots' entries by `p (1 − p)` against the

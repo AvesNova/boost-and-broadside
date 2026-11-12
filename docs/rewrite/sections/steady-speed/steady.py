@@ -141,6 +141,12 @@ def main() -> None:
                 head_sums_calls=sum(1 for c in head_sums if c["update"] == index),
                 end_since_start=since_start(),
                 peak_reserved_gb=torch.cuda.max_memory_reserved(device) / 2**30,
+                lanes={k: v for k, v in row.items() if k.startswith("lanes/")},
+                ratings={
+                    k: v
+                    for k, v in row.items()
+                    if k.startswith("rating") and isinstance(v, int | float)
+                },
             )
         )
         log(
