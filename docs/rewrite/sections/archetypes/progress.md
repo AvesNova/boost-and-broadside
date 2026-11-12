@@ -866,3 +866,24 @@ vision x1.04, f0 0.07) fighters of confirm 9 against each set ship:
 - Both pairs keep their balance on the milder kit (0.45-0.56) and their mirrors; the trades
   do not fall. Why big crowds trade more on these cards than on the frozen card is open
   (the neutral hull, or the sharp armour cones, are the suspects; not measured).
+
+## 04:28-04:35 KST: set 6 (`set6/`): rate and speed trimmed toward the set
+
+1024 games, r9:
+
+| A v B | 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | AA; BB mutual, life | Duel life |
+|---|---|---|---|
+| rate (dmg x1.1) v standard | 0.58 / 0.53 / 0.54 / 0.53 / 0.56 | 0.42, 269 s; 0.35, 283 s | 272 s |
+| speed (dmg x0.88) v standard | 0.52 / 0.54 / 0.55 / 0.54 / 0.56 | 0.14, 507 s; 0.37, 292 s | 392 s |
+| rate (x1.1) v speed (x0.88) | 0.54 / 0.54 / 0.51 / 0.52 / 0.48 | 0.41, 259 s; 0.16, 503 s | 336 s |
+| rate (dmg x1.15) v standard | 0.56 / 0.56 / 0.56 / 0.56 / 0.62 | 0.46, 253 s; 0.36, 299 s | 250 s |
+| speed (dmg x0.92) v standard | 0.54 / 0.52 / 0.55 / 0.56 / 0.64 | 0.15, 465 s; 0.36, 287 s | 355 s |
+| **rate (x1.15) v speed (x0.92)** | **0.52 / 0.52 / 0.51 / 0.51 / 0.50** | 0.42, 248 s; 0.19, **437 s** | 299 s |
+
+- **Rate (dmg x1.15) v speed (dmg x0.92) is flat from 1v1 to 20v20 (0.50-0.52)**, the
+  flattest flight-distinct pair of the night; trimming the speed fighter's damage slows its
+  mirror (437-507 s). Against the standard both still lean 0.52-0.64: they would join the
+  set only a further step down. Round 17 (running) trades the speed mirror's pace back.
+- The trades at 20v20 (0.18-0.22 on every card of the kit) are probably density more than
+  mutual kills: the bench counts any death on the other team within 0.5 s as a trade, and
+  these cards' 20v20 games have about 100 kills against the frozen card's 68.
