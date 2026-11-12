@@ -61,6 +61,11 @@ LINEUPS = {
     "mixed": ((0, 1, 0, 1, 0), (0, 1, 0, 1, 0)),
     "mixed reversed": ((1, 0, 1, 0, 1), (1, 0, 1, 0, 1)),
 }
+# Lineups by type row: each team's ships as rows of the variant table (0..K-1 the Yongma
+# slot's variants, K..2K-1 the Jujak slot's), so one game can fly more than two types (a
+# row below K flies the side's Yongma doctrine, the rest its Jujak doctrine). Registered by
+# a sweep (name -> (side A's rows, side B's rows)); a group's variant is then unused.
+ROW_LINEUPS: dict[str, tuple[tuple[int, ...], tuple[int, ...]]] = {}
 MERGE_CONE = math.radians(30.0)
 PASSED = math.radians(90.0)
 OPEN_FACTOR = 1.2
@@ -204,6 +209,11 @@ class Group:
 def teams_of(lineup: str, ships_per_team: int = 5) -> tuple[tuple[int, ...], ...]:
     """A lineup's two teams of slot kinds at a team size (`LINEUPS` at 5; the patterns
     repeated or cut at others)."""
+    if lineup in ROW_LINEUPS:
+        first, second = ROW_LINEUPS[lineup]
+        if len(first) != ships_per_team or len(second) != ships_per_team:
+            raise ValueError(f"the row lineup {lineup!r} is not {ships_per_team} a side")
+        return first, second
     first, second = LINEUPS[lineup]
     if ships_per_team == 5:
         return first, second
@@ -229,6 +239,8 @@ def layout(groups: list[Group], variants: int, device, ships_per_team: int = 5) 
         }
 
         def types_of(team):
+            if group.lineup in ROW_LINEUPS:  # the team's rows themselves
+                return list(team)
             return [group.variant + kind * variants for kind in team]
 
         for e in range(group.environments):
@@ -252,11 +264,13 @@ def layout(groups: list[Group], variants: int, device, ships_per_team: int = 5) 
     )
 
 
-def tally_like(B: int, S: int, device) -> dict:
-    """The zeroed per-environment statistics and the trackers."""
+def tally_like(B: int, S: int, device, rows: int = 2) -> dict:
+    """The zeroed per-environment statistics and the trackers (rows: the variant table's)."""
     zeros = dict(device=device)
     return dict(
         kills_side=torch.zeros((B, 2), **zeros),  # by killer side A, B
+        # by killer side (A, B), killer type row, victim type row
+        kills_by_row=torch.zeros((B, 2, rows, rows), **zeros),
         kills_kind=torch.zeros((B, 2, 2, len(ASPECTS)), **zeros),  # killer, victim kind
         damage_kind=torch.zeros((B, 2, 2, len(ASPECTS)), **zeros),  # victim side, kind
         passes=torch.zeros((B, PASS_BINS), **zeros),
@@ -345,6 +359,7 @@ STATISTICS = (
     "deaths",
     "traded",
     "kills_side",
+    "kills_by_row",
     "kills_kind",
     "damage_kind",
     "passes",
@@ -449,7 +464,7 @@ class Loop:
         )
         state, observation, _ = api.perceive(self.rules, state)
         carry = self.agent.init_carry(2 * self.B, self.device)
-        tally = tally_like(self.B, self.S, self.device)
+        tally = tally_like(self.B, self.S, self.device, 2 * self.K)
         shown = api.display(state)
         tally["heading"] = torch.stack([shown["ships.heading_cos"], shown["ships.heading_sin"]], -1)
         return state, observation, carry, tally
@@ -696,6 +711,13 @@ class Loop:
         tally["kills_kind"] = tally["kills_kind"] + torch.einsum(
             "bn,bnc,bna->bca", kill, pair_kind, aspect
         ).reshape(B, 2, 2, len(ASPECTS))
+        rows = 2 * self.K
+        row = self.ship_type.long()
+        killer_row = torch.gather(row, 1, killer)
+        by_row = (1 - killer_side_a.long()) * rows * rows + killer_row * rows + row
+        tally["kills_by_row"] = tally["kills_by_row"] + torch.einsum(
+            "bn,bnc->bc", kill, torch.nn.functional.one_hot(by_row, 2 * rows * rows).float()
+        ).reshape(B, 2, rows, rows)
         # the killer's pair: (i, j) team 0 ship i, team 1 ship j
         victim_index = torch.arange(N, device=x.device).expand(B, N)
         i = torch.where(victim_index < S, victim_index, killer)
