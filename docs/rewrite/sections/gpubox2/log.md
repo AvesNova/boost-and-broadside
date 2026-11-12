@@ -103,3 +103,45 @@ See the report section at the end. Records of the champion: `champion/*.json` (c
     learn (5.5 min, against 108 s steady). KL 0.6605 (champion 0.6609).
   - run.json carries one segment per attempt (start 4194304; the killed ones have no end).
 - Tally at 07:42: 13 interruptions in 7.0 h; up 1.92 h (27%), down 5.11 h.
+- **07:35-08:02 Up 27 min, then interruption 14** (the laptop's reach log). The BC reached
+  about 12.6M steps (step_12582912, seen by the coordinator). gpubox2 never came back. The
+  author destroyed it about 09:15. Its final records (the run directory past 7.3M, its
+  checkpoints, the heartbeat after 07:42) were lost with the box. The laptop keeps the run
+  directory to 7.3M (checkpoint step_4194304), the heartbeat to 07:42
+  (`gpubox2-heartbeat.log`) and the reach log 01:44-09:10 (`gpubox2-reach.log`).
+
+## Verdict on gpubox2 (interruptible, $0.138/h including storage)
+
+- **14 interruptions in 8.5 h** (00:40-09:10 KST): 13 measured in the heartbeat, plus the
+  final one in the reach log.
+  - Down spells: 2.1, 3.0, 4.1, 5.1, 6.8, 7.1, 7.5, 7.9, 20.4, 21.1, 46.3, 53.5 and 121.7 min,
+    and the last open-ended (over 70 min, then destroyed).
+  - Up windows: under 1 min (four times), 1, 1, 2, 3, 8, 10, 27, 27, 27 and 29 min.
+- **Up about 2.3 h of 8.5 h (27%)**: the heartbeat to 07:42 gives 1.92 h up of 7.03 h; the
+  reach log gives 110 of 442 minutes up from 01:44 to 09:10.
+- **Each stop was a container stop/start**: the same kernel boot_id, the same address and SSH
+  port. The proxy went down and up with it. The box always came back on its own until the
+  last time, and supervisor restarted the heartbeat and the driver within a second of each
+  boot.
+- **Lost work:**
+  - The cold first BC update compiles on one core for more than 29 min on this CPU, longer
+    than most up windows. It needed 12 starts and 6.4 h of wall time to finish once (07:03).
+  - After a checkpoint, a restart costs about 5.5 min (warm compile and graph capture) plus
+    up to 4 updates (7 min) since the last checkpoint.
+  - Several restarts lived under a minute and did nothing.
+- **Throughput:**
+  - Uninterrupted, the BC ran at 108 s per update: 9,700 SPS, about 35M steps per hour.
+  - Effective: about 12.6M steps in 8.5 h of wall time, **about 1.5M steps per hour, 4% of
+    uninterrupted**.
+- **Cost:** 8.5 h x $0.138 = $1.17 for about 12.6M steps, **about $0.093 per million
+  steps**. Uninterrupted the same box gives $0.138 / 35M = $0.0039 per million: 24x cheaper.
+  - Even if stopped hours were not billed (storage is), the cost per step of up-time is still
+    raised by the restarts: about 11 of 27 up-minutes per hour went to compiles that never
+    finished.
+- **Also on this host:** the 3090 was capped at 275 W (SW power cap; max 375 W), about 15%
+  slower than the first gpu box.
+- **Not worth the half price for this job.** A pipeline whose first step needs a 30-min
+  single-core compile cannot make progress when the box is outbid every 2-30 min. The
+  supervisor resume design worked; the market did not. Interruptible could suit work with no
+  long cold start (a tournament with a warm cache, short jobs), or at a bid that is not
+  outbid.
