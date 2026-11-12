@@ -1721,6 +1721,24 @@ def d2kit() -> list[dict]:
 ROUNDS["d2kit"] = d2kit
 
 
+def round18() -> list[dict]:
+    """Rate v speed toward unjousted mirrors: harder noses on both (the rate mirror is 0.48
+    mutual), damage to keep the pace."""
+    out = []
+    for rf, sf, rd, sd in (
+        (0.06, 0.06, 1.25, 1.05),
+        (0.06, 0.065, 1.25, 1.1),
+        (0.06, 0.06, 1.3, 1.1),
+        (0.065, 0.07, 1.25, 1.05),
+        (0.05, 0.055, 1.35, 1.15),
+    ):
+        out.append(rate_speed_nose(sf=sf, rf=rf, rd=rd, sd=sd))
+    return out
+
+
+ROUNDS["round18"] = round18
+
+
 if __name__ == "__main__":
     name = sys.argv[1]
     out = HERE / name / "candidates.json"
