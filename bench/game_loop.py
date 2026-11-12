@@ -70,6 +70,7 @@ TTK_BINS = 32  # seconds from the first hit taken: [0, 1), ..., [31, inf)
 CIRCLE_WINDOW = 3.0  # s after a merge's end
 TURNING = 0.05  # rad/s: a nose rate below this is not a turn
 CIRCLES = ("one circle", "two circle", "scissors")
+TRADE_WINDOW = 0.5  # s: a death with one on the other team this close is a trade
 # The base card: the ship files' with these factors (the author's 2026-11-12 decision:
 # hit damage x 0.65 restores v5's damage per landed hit).
 BASE_FACTORS = {"hit_damage": 0.65}
@@ -227,6 +228,11 @@ def tally_like(B: int, S: int, device) -> dict:
         ttk=torch.zeros((B, TTK_BINS), **zeros),
         circles=torch.zeros((B, len(CIRCLES)), **zeros),
         first_game_hit=torch.full((B,), -1.0, **zeros),  # 0 A, 1 B, 2 both
+        deaths=torch.zeros((B,), **zeros),
+        traded=torch.zeros((B,), **zeros),  # deaths with an enemy death within TRADE_WINDOW
+        last_death=torch.full((B, 2), -1e9, **zeros),  # by team: its last death's tick
+        last_deaths=torch.zeros((B, 2), **zeros),  # how many died then
+        last_traded=torch.ones((B, 2), dtype=torch.bool, device=device),  # counted already
         # trackers
         in_merge=torch.zeros((B, S, S), dtype=torch.bool, device=device),
         merges=torch.zeros((B, S, S), **zeros),
@@ -244,6 +250,8 @@ def tally_like(B: int, S: int, device) -> dict:
 
 
 STATISTICS = (
+    "deaths",
+    "traded",
     "kills_side",
     "kills_kind",
     "damage_kind",
@@ -465,6 +473,23 @@ class Loop:
         killer_side_a = torch.gather(side_a, 1, killer)
         killer_kind = torch.gather(kind, 1, killer)
         kill = enemy_kill.float()
+        # trades: a team's deaths this tick with the other team's last deaths within the window
+        window_ticks = round(TRADE_WINDOW / rules.tick_length)
+        team_deaths = torch.stack([died[:, :S].sum(1), died[:, S:].sum(1)], -1).float()  # (B, 2)
+        other_last = tally["last_death"].flip(-1)
+        other_before = (tick - other_last) <= window_ticks
+        other_recent = other_before | (team_deaths.flip(-1) > 0)
+        traded_now = torch.where(other_recent, team_deaths, 0.0).sum(-1)
+        # the other team's earlier deaths, now traded, counted once
+        late = other_before & (team_deaths > 0) & ~tally["last_traded"].flip(-1)
+        traded_now = traded_now + torch.where(late, tally["last_deaths"].flip(-1), 0.0).sum(-1)
+        marked = tally["last_traded"] | late.flip(-1)
+        dying = team_deaths > 0
+        tally["last_traded"] = torch.where(dying, other_recent, marked)
+        tally["last_death"] = torch.where(dying, tick, tally["last_death"])
+        tally["last_deaths"] = torch.where(dying, team_deaths, tally["last_deaths"])
+        tally["deaths"] = tally["deaths"] + team_deaths.sum(-1)
+        tally["traded"] = tally["traded"] + traded_now
         tally["kills_side"] = tally["kills_side"] + torch.stack(
             [(kill * killer_side_a).sum(1), (kill * ~killer_side_a).sum(1)], -1
         )
@@ -623,6 +648,7 @@ def summary(out: dict, mask: torch.Tensor, seconds: float) -> dict:
         ttk_median=median_of(out["ttk"][mask].sum(0)),
         circles=(circles / circles.sum().clamp_min(1)).tolist(),
         circle_count=float(circles.sum()),
+        trade_fraction=float(out["traded"][mask].sum() / out["deaths"][mask].sum().clamp_min(1)),
     )
 
 
@@ -802,8 +828,9 @@ def markdown(rows: list[dict]) -> str:
     lines = [
         "| Variant | Lineup | A v B | Games | A scores | Kills/min mean (median) "
         "| Damage m / o / f / t | Kills m / o / f / t | Passes a kill | First-merge kills "
-        "| Killer hit first | P(win \\| first hit) | TTK median s | Circles 1 / 2 / scissors (n) |",
-        "|---" * 14 + "|",
+        "| Killer hit first | P(win \\| first hit) | TTK median s | Circles 1 / 2 / scissors (n) "
+        "| Trades |",
+        "|---" * 15 + "|",
     ]
     for r in rows:
         lines.append(
@@ -813,7 +840,8 @@ def markdown(rows: list[dict]) -> str:
             f"| {shares(r['damage_share'])} | {shares(r['kill_share'])} "
             f"| {r['passes_per_kill']:.2f} | {r['first_merge_kills'][0]:.2f} "
             f"| {r['killer_first_hit'][0]:.2f} | {r['first_hit_wins'][0]:.2f} "
-            f"| {r['ttk_median']} | {shares(r['circles'])} ({r['circle_count']:.0f}) |"
+            f"| {r['ttk_median']} | {shares(r['circles'])} ({r['circle_count']:.0f}) "
+            f"| {r.get('trade_fraction', float('nan')):.2f} |"
         )
     return "\n".join(lines)
 
