@@ -1,3 +1,127 @@
 ## 1v1: 36 jobs, B 8192, 20:44 KST
 /home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
   warn_once(FP_FUSION_DEFAULT_WARNING)
+  batch 1/3 33 s; ETA 20:45 KST
+  batch 2/3 54 s; ETA 20:45 KST
+  batch 3/3 78 s; ETA 20:45 KST
+1v1                            A   energy v turn v c0: score 0.491 ± 0.014  kills m/o/f/t 0.44 / 0.49 / 0.08 / 0.00  life 225 s  kpm/ship 0.26  trades 0.00
+1v1                            A     turn mirror v c0: score 0.510 ± 0.014  kills m/o/f/t 0.78 / 0.18 / 0.04 / 0.00  life 141 s  kpm/ship 0.40  trades 0.03
+1v1                            A   energy mirror v c0: score 0.511 ± 0.013  kills m/o/f/t 0.51 / 0.39 / 0.10 / 0.00  life 207 s  kpm/ship 0.28  trades 0.03
+1v1 A + shoot range 0.7 (r9 1.04)   energy v turn v c1: score 0.499 ± 0.013  kills m/o/f/t 0.39 / 0.55 / 0.06 / 0.00  life 255 s  kpm/ship 0.23  trades 0.00
+1v1 A + shoot range 0.7 (r9 1.04)     turn mirror v c1: score 0.507 ± 0.014  kills m/o/f/t 0.79 / 0.17 / 0.04 / 0.00  life 150 s  kpm/ship 0.38  trades 0.04
+1v1 A + shoot range 0.7 (r9 1.04)   energy mirror v c1: score 0.484 ± 0.012  kills m/o/f/t 0.53 / 0.40 / 0.07 / 0.00  life 256 s  kpm/ship 0.23  trades 0.01
+1v1          A + shoot range 0.5   energy v turn v c2: score 0.528 ± 0.014  kills m/o/f/t 0.38 / 0.59 / 0.03 / 0.00  life 295 s  kpm/ship 0.20  trades 0.00
+1v1          A + shoot range 0.5     turn mirror v c2: score 0.494 ± 0.015  kills m/o/f/t 0.82 / 0.15 / 0.03 / 0.00  life 163 s  kpm/ship 0.35  trades 0.04
+1v1          A + shoot range 0.5   energy mirror v c2: score 0.503 ± 0.012  kills m/o/f/t 0.54 / 0.42 / 0.04 / 0.00  life 327 s  kpm/ship 0.18  trades 0.01
+1v1 A + aim cone 0.6 target sizes (r9 1.01)   energy v turn v c3: score 0.555 ± 0.013  kills m/o/f/t 0.43 / 0.51 / 0.06 / 0.00  life 231 s  kpm/ship 0.25  trades 0.00
+1v1 A + aim cone 0.6 target sizes (r9 1.01)     turn mirror v c3: score 0.499 ± 0.015  kills m/o/f/t 0.77 / 0.19 / 0.04 / 0.00  life 143 s  kpm/ship 0.39  trades 0.03
+1v1 A + aim cone 0.6 target sizes (r9 1.01)   energy mirror v c3: score 0.480 ± 0.013  kills m/o/f/t 0.54 / 0.37 / 0.09 / 0.00  life 216 s  kpm/ship 0.27  trades 0.01
+1v1             A + aim cone 2.0   energy v turn v c4: score 0.485 ± 0.013  kills m/o/f/t 0.44 / 0.49 / 0.07 / 0.00  life 234 s  kpm/ship 0.25  trades 0.00
+1v1             A + aim cone 2.0     turn mirror v c4: score 0.512 ± 0.015  kills m/o/f/t 0.75 / 0.20 / 0.04 / 0.00  life 139 s  kpm/ship 0.40  trades 0.03
+1v1             A + aim cone 2.0   energy mirror v c4: score 0.497 ± 0.013  kills m/o/f/t 0.51 / 0.41 / 0.08 / 0.00  life 230 s  kpm/ship 0.25  trades 0.02
+1v1 A + reverse range 0.5 (r9 0.21)   energy v turn v c5: score 0.698 ± 0.014  kills m/o/f/t 0.58 / 0.38 / 0.04 / 0.00  life 157 s  kpm/ship 0.36  trades 0.01
+1v1 A + reverse range 0.5 (r9 0.21)     turn mirror v c5: score 0.510 ± 0.016  kills m/o/f/t 0.78 / 0.18 / 0.05 / 0.00  life 127 s  kpm/ship 0.44  trades 0.03
+1v1 A + reverse range 0.5 (r9 0.21)   energy mirror v c5: score 0.517 ± 0.015  kills m/o/f/t 0.59 / 0.34 / 0.07 / 0.00  life 164 s  kpm/ship 0.34  trades 0.03
+1v1 A + side commit 2.5 stall angles (r9 5.0)   energy v turn v c6: score 0.534 ± 0.014  kills m/o/f/t 0.42 / 0.50 / 0.08 / 0.00  life 225 s  kpm/ship 0.26  trades 0.00
+1v1 A + side commit 2.5 stall angles (r9 5.0)     turn mirror v c6: score 0.492 ± 0.015  kills m/o/f/t 0.74 / 0.21 / 0.04 / 0.00  life 144 s  kpm/ship 0.39  trades 0.03
+1v1 A + side commit 2.5 stall angles (r9 5.0)   energy mirror v c6: score 0.503 ± 0.013  kills m/o/f/t 0.49 / 0.41 / 0.11 / 0.00  life 217 s  kpm/ship 0.26  trades 0.01
+1v1           A + side commit 10   energy v turn v c7: score 0.532 ± 0.014  kills m/o/f/t 0.44 / 0.51 / 0.06 / 0.00  life 218 s  kpm/ship 0.26  trades 0.00
+1v1           A + side commit 10     turn mirror v c7: score 0.509 ± 0.015  kills m/o/f/t 0.80 / 0.17 / 0.04 / 0.00  life 142 s  kpm/ship 0.40  trades 0.03
+1v1           A + side commit 10   energy mirror v c7: score 0.497 ± 0.013  kills m/o/f/t 0.54 / 0.37 / 0.09 / 0.00  life 213 s  kpm/ship 0.27  trades 0.02
+1v1 A + aggression 1.5 (r9 2.84)   energy v turn v c8: score 0.513 ± 0.014  kills m/o/f/t 0.43 / 0.50 / 0.07 / 0.00  life 225 s  kpm/ship 0.26  trades 0.00
+1v1 A + aggression 1.5 (r9 2.84)     turn mirror v c8: score 0.499 ± 0.015  kills m/o/f/t 0.78 / 0.17 / 0.05 / 0.00  life 141 s  kpm/ship 0.40  trades 0.03
+1v1 A + aggression 1.5 (r9 2.84)   energy mirror v c8: score 0.524 ± 0.013  kills m/o/f/t 0.52 / 0.39 / 0.09 / 0.00  life 208 s  kpm/ship 0.27  trades 0.01
+1v1 A + lead cap 2 gun ranges (r9 4.78)   energy v turn v c9: score 0.542 ± 0.013  kills m/o/f/t 0.43 / 0.50 / 0.08 / 0.00  life 217 s  kpm/ship 0.26  trades 0.00
+1v1 A + lead cap 2 gun ranges (r9 4.78)     turn mirror v c9: score 0.500 ± 0.014  kills m/o/f/t 0.77 / 0.19 / 0.04 / 0.00  life 142 s  kpm/ship 0.40  trades 0.03
+1v1 A + lead cap 2 gun ranges (r9 4.78)   energy mirror v c9: score 0.510 ± 0.013  kills m/o/f/t 0.50 / 0.41 / 0.09 / 0.00  life 216 s  kpm/ship 0.27  trades 0.02
+1v1  A + head-on angle x0.5 both   energy v turn v c10: score 0.520 ± 0.015  kills m/o/f/t 0.43 / 0.51 / 0.05 / 0.00  life 193 s  kpm/ship 0.30  trades 0.00
+1v1  A + head-on angle x0.5 both     turn mirror v c10: score 0.490 ± 0.016  kills m/o/f/t 0.74 / 0.22 / 0.04 / 0.00  life 135 s  kpm/ship 0.41  trades 0.03
+1v1  A + head-on angle x0.5 both   energy mirror v c10: score 0.518 ± 0.014  kills m/o/f/t 0.51 / 0.40 / 0.10 / 0.00  life 208 s  kpm/ship 0.28  trades 0.01
+1v1  A + J head-on fraction x0.5   energy v turn v c11: score 0.401 ± 0.014  kills m/o/f/t 0.33 / 0.60 / 0.07 / 0.00  life 268 s  kpm/ship 0.22  trades 0.00
+1v1  A + J head-on fraction x0.5     turn mirror v c11: score 0.499 ± 0.012  kills m/o/f/t 0.64 / 0.31 / 0.05 / 0.00  life 256 s  kpm/ship 0.23  trades 0.01
+1v1  A + J head-on fraction x0.5   energy mirror v c11: score 0.476 ± 0.012  kills m/o/f/t 0.50 / 0.40 / 0.10 / 0.00  life 224 s  kpm/ship 0.26  trades 0.01
+## 5v5: 60 jobs, B 4096, 20:45 KST
+  batch 1/8 50 s; ETA 20:52 KST
+  batch 2/8 94 s; ETA 20:51 KST
+  batch 3/8 139 s; ETA 20:51 KST
+  batch 4/8 178 s; ETA 20:51 KST
+  batch 5/8 224 s; ETA 20:51 KST
+  batch 6/8 266 s; ETA 20:51 KST
+  batch 7/8 307 s; ETA 20:51 KST
+  batch 8/8 351 s; ETA 20:51 KST
+5v5                            A   energy v turn v c0: score 0.594 ± 0.020  kills m/o/f/t 0.08 / 0.19 / 0.55 / 0.18  life 99 s  kpm/ship 0.55  trades 0.05
+5v5                            A     turn mirror v c0: score 0.459 ± 0.021  kills m/o/f/t 0.08 / 0.19 / 0.54 / 0.18  life 92 s  kpm/ship 0.59  trades 0.06
+5v5                            A   energy mirror v c0: score 0.536 ± 0.021  kills m/o/f/t 0.08 / 0.19 / 0.55 / 0.18  life 100 s  kpm/ship 0.55  trades 0.05
+5v5 A + shoot range 0.7 (r9 1.04)   energy v turn v c1: score 0.578 ± 0.020  kills m/o/f/t 0.08 / 0.18 / 0.53 / 0.21  life 107 s  kpm/ship 0.51  trades 0.04
+5v5 A + shoot range 0.7 (r9 1.04)     turn mirror v c1: score 0.524 ± 0.021  kills m/o/f/t 0.08 / 0.17 / 0.55 / 0.20  life 96 s  kpm/ship 0.57  trades 0.06
+5v5 A + shoot range 0.7 (r9 1.04)   energy mirror v c1: score 0.499 ± 0.020  kills m/o/f/t 0.09 / 0.18 / 0.53 / 0.21  life 109 s  kpm/ship 0.50  trades 0.04
+5v5          A + shoot range 0.5   energy v turn v c2: score 0.527 ± 0.021  kills m/o/f/t 0.09 / 0.17 / 0.49 / 0.25  life 128 s  kpm/ship 0.44  trades 0.04
+5v5          A + shoot range 0.5     turn mirror v c2: score 0.488 ± 0.021  kills m/o/f/t 0.08 / 0.16 / 0.52 / 0.24  life 110 s  kpm/ship 0.50  trades 0.05
+5v5          A + shoot range 0.5   energy mirror v c2: score 0.455 ± 0.021  kills m/o/f/t 0.09 / 0.17 / 0.46 / 0.28  life 141 s  kpm/ship 0.40  trades 0.03
+5v5 A + aim cone 0.6 target sizes (r9 1.01)   energy v turn v c3: score 0.589 ± 0.020  kills m/o/f/t 0.08 / 0.20 / 0.55 / 0.18  life 100 s  kpm/ship 0.55  trades 0.04
+5v5 A + aim cone 0.6 target sizes (r9 1.01)     turn mirror v c3: score 0.480 ± 0.021  kills m/o/f/t 0.08 / 0.19 / 0.54 / 0.19  life 91 s  kpm/ship 0.60  trades 0.06
+5v5 A + aim cone 0.6 target sizes (r9 1.01)   energy mirror v c3: score 0.477 ± 0.020  kills m/o/f/t 0.08 / 0.20 / 0.55 / 0.18  life 100 s  kpm/ship 0.55  trades 0.05
+5v5             A + aim cone 2.0   energy v turn v c4: score 0.573 ± 0.020  kills m/o/f/t 0.07 / 0.19 / 0.55 / 0.19  life 99 s  kpm/ship 0.55  trades 0.05
+5v5             A + aim cone 2.0     turn mirror v c4: score 0.473 ± 0.020  kills m/o/f/t 0.08 / 0.19 / 0.55 / 0.18  life 91 s  kpm/ship 0.60  trades 0.06
+5v5             A + aim cone 2.0   energy mirror v c4: score 0.486 ± 0.021  kills m/o/f/t 0.08 / 0.19 / 0.55 / 0.18  life 100 s  kpm/ship 0.55  trades 0.04
+5v5 A + reverse range 0.5 (r9 0.21)   energy v turn v c5: score 0.759 ± 0.018  kills m/o/f/t 0.08 / 0.19 / 0.55 / 0.18  life 95 s  kpm/ship 0.57  trades 0.05
+5v5 A + reverse range 0.5 (r9 0.21)     turn mirror v c5: score 0.472 ± 0.021  kills m/o/f/t 0.09 / 0.19 / 0.54 / 0.18  life 89 s  kpm/ship 0.60  trades 0.06
+5v5 A + reverse range 0.5 (r9 0.21)   energy mirror v c5: score 0.479 ± 0.021  kills m/o/f/t 0.08 / 0.19 / 0.55 / 0.17  life 92 s  kpm/ship 0.59  trades 0.06
+5v5 A + side commit 2.5 stall angles (r9 5.0)   energy v turn v c6: score 0.555 ± 0.021  kills m/o/f/t 0.07 / 0.19 / 0.56 / 0.19  life 99 s  kpm/ship 0.55  trades 0.05
+5v5 A + side commit 2.5 stall angles (r9 5.0)     turn mirror v c6: score 0.500 ± 0.021  kills m/o/f/t 0.08 / 0.19 / 0.55 / 0.19  life 91 s  kpm/ship 0.59  trades 0.06
+5v5 A + side commit 2.5 stall angles (r9 5.0)   energy mirror v c6: score 0.544 ± 0.020  kills m/o/f/t 0.08 / 0.18 / 0.56 / 0.18  life 99 s  kpm/ship 0.55  trades 0.04
+5v5           A + side commit 10   energy v turn v c7: score 0.564 ± 0.020  kills m/o/f/t 0.07 / 0.19 / 0.55 / 0.19  life 99 s  kpm/ship 0.55  trades 0.05
+5v5           A + side commit 10     turn mirror v c7: score 0.511 ± 0.021  kills m/o/f/t 0.09 / 0.19 / 0.55 / 0.18  life 92 s  kpm/ship 0.59  trades 0.07
+5v5           A + side commit 10   energy mirror v c7: score 0.544 ± 0.020  kills m/o/f/t 0.08 / 0.19 / 0.56 / 0.17  life 99 s  kpm/ship 0.55  trades 0.05
+5v5 A + aggression 1.5 (r9 2.84)   energy v turn v c8: score 0.606 ± 0.020  kills m/o/f/t 0.08 / 0.19 / 0.55 / 0.18  life 99 s  kpm/ship 0.55  trades 0.05
+5v5 A + aggression 1.5 (r9 2.84)     turn mirror v c8: score 0.484 ± 0.021  kills m/o/f/t 0.09 / 0.20 / 0.54 / 0.18  life 92 s  kpm/ship 0.59  trades 0.06
+5v5 A + aggression 1.5 (r9 2.84)   energy mirror v c8: score 0.493 ± 0.020  kills m/o/f/t 0.08 / 0.19 / 0.55 / 0.18  life 100 s  kpm/ship 0.55  trades 0.04
+5v5 A + lead cap 2 gun ranges (r9 4.78)   energy v turn v c9: score 0.550 ± 0.021  kills m/o/f/t 0.07 / 0.19 / 0.55 / 0.19  life 99 s  kpm/ship 0.55  trades 0.04
+5v5 A + lead cap 2 gun ranges (r9 4.78)     turn mirror v c9: score 0.483 ± 0.020  kills m/o/f/t 0.08 / 0.19 / 0.55 / 0.18  life 90 s  kpm/ship 0.60  trades 0.06
+5v5 A + lead cap 2 gun ranges (r9 4.78)   energy mirror v c9: score 0.516 ± 0.020  kills m/o/f/t 0.08 / 0.19 / 0.55 / 0.18  life 102 s  kpm/ship 0.54  trades 0.04
+5v5  A + head-on angle x0.5 both   energy v turn v c10: score 0.615 ± 0.020  kills m/o/f/t 0.09 / 0.22 / 0.52 / 0.17  life 95 s  kpm/ship 0.57  trades 0.05
+5v5  A + head-on angle x0.5 both     turn mirror v c10: score 0.502 ± 0.021  kills m/o/f/t 0.09 / 0.23 / 0.52 / 0.16  life 88 s  kpm/ship 0.61  trades 0.07
+5v5  A + head-on angle x0.5 both   energy mirror v c10: score 0.494 ± 0.021  kills m/o/f/t 0.08 / 0.22 / 0.53 / 0.16  life 95 s  kpm/ship 0.57  trades 0.05
+5v5  A + J head-on fraction x0.5   energy v turn v c11: score 0.493 ± 0.021  kills m/o/f/t 0.06 / 0.18 / 0.57 / 0.19  life 100 s  kpm/ship 0.55  trades 0.05
+5v5  A + J head-on fraction x0.5     turn mirror v c11: score 0.485 ± 0.021  kills m/o/f/t 0.05 / 0.18 / 0.58 / 0.20  life 96 s  kpm/ship 0.57  trades 0.06
+5v5  A + J head-on fraction x0.5   energy mirror v c11: score 0.497 ± 0.021  kills m/o/f/t 0.08 / 0.19 / 0.55 / 0.18  life 100 s  kpm/ship 0.54  trades 0.05
+5v5                            A           mixed v r9: score 0.473 ± 0.021  kills m/o/f/t 0.08 / 0.20 / 0.56 / 0.17  life 96 s  kpm/ship 0.57  trades 0.05
+5v5                            A  mixed reversed v r9: score 0.505 ± 0.021  kills m/o/f/t 0.08 / 0.19 / 0.56 / 0.17  life 94 s  kpm/ship 0.58  trades 0.05
+5v5 A + shoot range 0.7 (r9 1.04)           mixed v r9: score 0.357 ± 0.020  kills m/o/f/t 0.08 / 0.18 / 0.55 / 0.19  life 100 s  kpm/ship 0.55  trades 0.04
+5v5 A + shoot range 0.7 (r9 1.04)  mixed reversed v r9: score 0.375 ± 0.020  kills m/o/f/t 0.08 / 0.18 / 0.56 / 0.18  life 98 s  kpm/ship 0.56  trades 0.05
+5v5          A + shoot range 0.5           mixed v r9: score 0.128 ± 0.014  kills m/o/f/t 0.08 / 0.18 / 0.52 / 0.21  life 110 s  kpm/ship 0.50  trades 0.04
+5v5          A + shoot range 0.5  mixed reversed v r9: score 0.101 ± 0.012  kills m/o/f/t 0.08 / 0.18 / 0.53 / 0.21  life 107 s  kpm/ship 0.51  trades 0.04
+5v5 A + aim cone 0.6 target sizes (r9 1.01)           mixed v r9: score 0.484 ± 0.021  kills m/o/f/t 0.08 / 0.19 / 0.55 / 0.18  life 96 s  kpm/ship 0.57  trades 0.05
+5v5 A + aim cone 0.6 target sizes (r9 1.01)  mixed reversed v r9: score 0.494 ± 0.021  kills m/o/f/t 0.08 / 0.19 / 0.56 / 0.17  life 95 s  kpm/ship 0.57  trades 0.05
+5v5             A + aim cone 2.0           mixed v r9: score 0.486 ± 0.020  kills m/o/f/t 0.08 / 0.18 / 0.57 / 0.17  life 96 s  kpm/ship 0.57  trades 0.05
+5v5             A + aim cone 2.0  mixed reversed v r9: score 0.523 ± 0.021  kills m/o/f/t 0.08 / 0.20 / 0.56 / 0.17  life 94 s  kpm/ship 0.58  trades 0.05
+5v5 A + reverse range 0.5 (r9 0.21)           mixed v r9: score 0.447 ± 0.021  kills m/o/f/t 0.08 / 0.19 / 0.55 / 0.18  life 94 s  kpm/ship 0.58  trades 0.05
+5v5 A + reverse range 0.5 (r9 0.21)  mixed reversed v r9: score 0.425 ± 0.021  kills m/o/f/t 0.08 / 0.19 / 0.55 / 0.18  life 93 s  kpm/ship 0.58  trades 0.05
+5v5 A + side commit 2.5 stall angles (r9 5.0)           mixed v r9: score 0.436 ± 0.020  kills m/o/f/t 0.08 / 0.19 / 0.56 / 0.17  life 97 s  kpm/ship 0.56  trades 0.05
+5v5 A + side commit 2.5 stall angles (r9 5.0)  mixed reversed v r9: score 0.466 ± 0.021  kills m/o/f/t 0.08 / 0.19 / 0.56 / 0.18  life 94 s  kpm/ship 0.58  trades 0.06
+5v5           A + side commit 10           mixed v r9: score 0.498 ± 0.021  kills m/o/f/t 0.08 / 0.20 / 0.56 / 0.17  life 96 s  kpm/ship 0.57  trades 0.05
+5v5           A + side commit 10  mixed reversed v r9: score 0.500 ± 0.021  kills m/o/f/t 0.08 / 0.19 / 0.55 / 0.17  life 94 s  kpm/ship 0.58  trades 0.06
+5v5 A + aggression 1.5 (r9 2.84)           mixed v r9: score 0.532 ± 0.020  kills m/o/f/t 0.08 / 0.19 / 0.56 / 0.17  life 95 s  kpm/ship 0.57  trades 0.05
+5v5 A + aggression 1.5 (r9 2.84)  mixed reversed v r9: score 0.500 ± 0.021  kills m/o/f/t 0.08 / 0.19 / 0.55 / 0.17  life 95 s  kpm/ship 0.57  trades 0.05
+5v5 A + lead cap 2 gun ranges (r9 4.78)           mixed v r9: score 0.506 ± 0.021  kills m/o/f/t 0.07 / 0.19 / 0.57 / 0.18  life 95 s  kpm/ship 0.57  trades 0.06
+5v5 A + lead cap 2 gun ranges (r9 4.78)  mixed reversed v r9: score 0.539 ± 0.020  kills m/o/f/t 0.08 / 0.19 / 0.56 / 0.17  life 94 s  kpm/ship 0.58  trades 0.06
+5v5  A + head-on angle x0.5 both           mixed v r9: score 0.518 ± 0.020  kills m/o/f/t 0.09 / 0.23 / 0.52 / 0.16  life 93 s  kpm/ship 0.59  trades 0.05
+5v5  A + head-on angle x0.5 both  mixed reversed v r9: score 0.449 ± 0.021  kills m/o/f/t 0.09 / 0.23 / 0.53 / 0.16  life 91 s  kpm/ship 0.60  trades 0.06
+5v5  A + J head-on fraction x0.5           mixed v r9: score 0.478 ± 0.021  kills m/o/f/t 0.06 / 0.18 / 0.58 / 0.18  life 98 s  kpm/ship 0.56  trades 0.05
+5v5  A + J head-on fraction x0.5  mixed reversed v r9: score 0.489 ± 0.020  kills m/o/f/t 0.06 / 0.19 / 0.57 / 0.18  life 97 s  kpm/ship 0.56  trades 0.05
+| Candidate | E v T 1v1 | E v T 5v5 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|
+| A | 0.491 ± 0.014 | 0.594 ± 0.020 | 0.094 | 0.08 / 0.19 / 0.55 / 0.18 | 0.05 | 225 / 99 | 0.26 / 0.55 | 2.57 |
+| A + shoot range 0.7 (r9 1.04) | 0.499 ± 0.013 | 0.578 ± 0.020 | 0.078 | 0.08 / 0.18 / 0.53 / 0.21 | 0.04 | 255 / 107 | 0.23 / 0.51 | 3.05 |
+| A + shoot range 0.5 | 0.528 ± 0.014 | 0.527 ± 0.021 | 0.028 | 0.09 / 0.17 / 0.49 / 0.25 | 0.04 | 295 / 128 | 0.20 / 0.44 | 3.44 |
+| A + aim cone 0.6 target sizes (r9 1.01) | 0.555 ± 0.013 | 0.589 ± 0.020 | 0.089 | 0.08 / 0.20 / 0.55 / 0.18 | 0.04 | 231 / 100 | 0.25 / 0.55 | 2.69 |
+| A + aim cone 2.0 | 0.485 ± 0.013 | 0.573 ± 0.020 | 0.073 | 0.07 / 0.19 / 0.55 / 0.19 | 0.05 | 234 / 99 | 0.25 / 0.55 | 2.46 |
+| A + reverse range 0.5 (r9 0.21) | 0.698 ± 0.014 | 0.759 ± 0.018 | 0.259 | 0.08 / 0.19 / 0.55 / 0.18 | 0.05 | 157 / 95 | 0.36 / 0.57 | 2.01 |
+| A + side commit 2.5 stall angles (r9 5.0) | 0.534 ± 0.014 | 0.555 ± 0.021 | 0.055 | 0.07 / 0.19 / 0.56 / 0.19 | 0.05 | 225 / 99 | 0.26 / 0.55 | 2.55 |
+| A + side commit 10 | 0.532 ± 0.014 | 0.564 ± 0.020 | 0.064 | 0.07 / 0.19 / 0.55 / 0.19 | 0.05 | 218 / 99 | 0.26 / 0.55 | 2.51 |
+| A + aggression 1.5 (r9 2.84) | 0.513 ± 0.014 | 0.606 ± 0.020 | 0.106 | 0.08 / 0.19 / 0.55 / 0.18 | 0.05 | 225 / 99 | 0.26 / 0.55 | 2.56 |
+| A + lead cap 2 gun ranges (r9 4.78) | 0.542 ± 0.013 | 0.550 ± 0.021 | 0.050 | 0.07 / 0.19 / 0.55 / 0.19 | 0.04 | 217 / 99 | 0.26 / 0.55 | 2.53 |
+| A + head-on angle x0.5 both | 0.520 ± 0.015 | 0.615 ± 0.020 | 0.115 | 0.09 / 0.22 / 0.52 / 0.17 | 0.05 | 193 / 95 | 0.30 / 0.57 | 2.19 |
+| A + J head-on fraction x0.5 | 0.401 ± 0.014 | 0.493 ± 0.021 | 0.099 | 0.06 / 0.18 / 0.57 / 0.19 | 0.05 | 268 / 100 | 0.22 / 0.55 | 3.31 |
+
+460 s

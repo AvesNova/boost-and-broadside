@@ -392,3 +392,34 @@ E v T pace and shape (self-play):
 - **Candidate A is saved as a play map**: `src/bnb/game/maps/balance-a.json` (the real-scale
   deathmatch with A's card fields as the map's tuning; the ship files and the play default
   stay the frozen card). Launch: `bnb play --preset balance-a`.
+
+## 20:44-20:51 KST: path run 1 (`paths1/`): anti-joust parameters and head-on mechanics, on A
+
+The author's paths 3 and 6, plus scripted parameters near the joust. 512 games; 1v1 and
+5v5; strength is the score against r9 at 5v5 (mixed / reversed, ±0.02):
+
+| On card A | E v T 1v1 / 5v5 | JJ 1v1 mutual, life | YY 1v1 mutual, life | v r9 |
+|---|---|---|---|---|
+| A | 0.49 / 0.59 | 0.78, 141 s | 0.51, 207 s | 0.47 / 0.50 |
+| shoot range 0.7 gun ranges (r9 1.04) | 0.50 / 0.58 | 0.79, 150 s | 0.53, 256 s | **0.36 / 0.38** |
+| shoot range 0.5 | 0.53 / 0.53 | 0.82, 163 s | 0.54, 327 s | **0.13 / 0.10** |
+| aim cone 0.6 target sizes (r9 1.01) | 0.55 / 0.59 | 0.77 | 0.54 | 0.48 / 0.49 |
+| aim cone 2.0 | 0.49 / 0.57 | 0.75 | 0.51 | 0.49 / 0.52 |
+| reverse range 0.5 (r9 0.21) | 0.70 / 0.76 | 0.78 | 0.59 | 0.45 / 0.42 |
+| side commit 2.5 / 10 stall angles (r9 5.0) | 0.53 / 0.55; 0.53 / 0.56 | 0.74; 0.80 | 0.49; 0.54 | 0.44 / 0.47; 0.50 / 0.50 |
+| aggression 1.5 (r9 2.84) | 0.51 / 0.61 | 0.78 | 0.52 | 0.53 / 0.50 |
+| lead cap 2 gun ranges (r9 4.78) | 0.54 / 0.55 | 0.77 | 0.50 | 0.51 / 0.54 |
+| head-on angle x0.5, both | 0.52 / 0.62 | 0.74 | 0.51 | 0.52 / 0.45 |
+| **Jujak head-on fraction x0.5** | 0.40 / 0.49 | **0.64, 256 s** | 0.50, 224 s | 0.48 / 0.49 |
+
+- **No fire-discipline or geometry parameter moves the joust** (JJ 0.74-0.82). Holding fire
+  to a shorter range only loses strength (0.10-0.38 against r9). The joust is how two
+  equal ships under this agent meet, not a shooting habit.
+- Per-type frontal armour (Jujak's head-on fraction x0.5) is the only card lever that bites
+  (JJ 0.78 to 0.64, life still 256 s). It also costs Yongma's duel (0.49 to 0.40), because
+  nose-on is how A's Yongma wins.
+- Path 4 (an ES with a mirror-joust penalty) was not run. The ES (`doctrine_round.py`)
+  plays 5v5 only and would need a 1v1 lineup in its loop; with the deny element's -150 Elo
+  as the measured cost of anti-joust behaviour, a duel-gated deny (code) looks more
+  promising. Left open.
+- Candidate B is saved as the play map `balance-b` (`bnb play --preset balance-b`).

@@ -1,3 +1,4 @@
 A: J induced x1.6, Y shield x0.5, Y bullet life x0.85, 1v1 energy v turn: 169 fights, 129 kills; merges a kill mean 2.75, seconds 75, extensions 0.07, edge s 2.7
 A: J induced x1.6, Y shield x0.5, Y bullet life x0.85, 1v1 turn mirror: 232 fights, 193 kills; merges a kill mean 2.48, seconds 57, extensions 0.00, edge s 2.4
 A: J induced x1.6, Y shield x0.5, Y bullet life x0.85, 1v1 energy mirror: 178 fights, 137 kills; merges a kill mean 2.23, seconds 54, extensions 0.28, edge s 2.8
+B: J induced x1.5, J shield x0.75, Y shield x0.35, Y damage x1.4, Y bullet life x0.85, 1v1 energy v turn: 280 fights, 242 kills; merges a kill mean 1.50, seconds 40, extensions 0.05, edge s 2.2
