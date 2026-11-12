@@ -581,9 +581,9 @@ def test_bcs_lanes_rate_the_live_clone_and_both_averages_against_the_scripted_ag
         (UNIFORM_AVERAGE, SCRIPTED_PLAYER),
         (EXPONENTIAL_AVERAGE, SCRIPTED_PLAYER),
     ]
-    # the default 1024 lanes of one mode: a fifth for the live clone, 2/5 for each average
+    # the default 1024 lanes of one mode: a third each (equal weights, one stacked run)
     sizes = split(1024, [matchup.weight for matchup in cloning.LANES.matchups])
-    assert sizes == [205, 410, 409]
+    assert sizes == [342, 341, 341]
     assert set(bc.StopConfig().reads) == {UNIFORM_AVERAGE, EXPONENTIAL_AVERAGE}
 
 

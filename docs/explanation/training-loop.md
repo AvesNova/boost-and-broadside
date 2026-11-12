@@ -142,8 +142,7 @@ sets how many (`environments`, beyond the training ones) and what they play (`ma
   live policy, so they are near-even opponents, and older entries, which played lower ones
   before they cycled out, chain the newer to the scripted agent. BC's
   (`bnb.runtime.cloning.LANES`) play the live clone, the uniform average and the
-  exponential average against the scripted agent alone, a fifth, two fifths and two
-  fifths of each mode's lanes.
+  exponential average against the scripted agent alone, a third of each mode's lanes each.
 - **A game counts once, by the weights that played it:** each lane row stamps its player's
   weight generation when its game begins, and loading another entry into a slot's lane
   player (`LaneSeat.load` with `fresh`) starts a new generation, so a game in progress then

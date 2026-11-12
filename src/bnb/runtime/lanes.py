@@ -105,10 +105,11 @@ RL_MATCHUPS = (
     *ladder_chain(LADDER[:-1], 0.05),
 )
 # Behaviour cloning's: the live clone and both averages of its weights against the raw
-# scripted agent (decisions: BC round three). The score stop reads the averages, so they
-# take 2/5 of each mode's lanes each; the live clone, only logged, the last fifth.
+# scripted agent (decisions: BC round three), a third of each mode's lanes each (the
+# author, 2026-11-12: no reason for the live clone's half weight; equal rows also make the
+# three one stacked network run with no padding, `LaneSeat.network_runs`).
 BC_MATCHUPS = (
-    Matchup(LIVE, SCRIPTED_PLAYER, 0.5),
+    Matchup(LIVE, SCRIPTED_PLAYER, 1.0),
     Matchup(UNIFORM_AVERAGE, SCRIPTED_PLAYER, 1.0),
     Matchup(EXPONENTIAL_AVERAGE, SCRIPTED_PLAYER, 1.0),
 )
@@ -241,10 +242,9 @@ class _Decision(torch.nn.Module):
 # within this fraction of the run's first player's: the padding it costs against the network
 # copy a run of its own would add to the compiled stage (about 8,000 traced ops, 2.5-3 min
 # of a cold compile, `compile-split` notes). Up to about twice (2.05x, room for the splits'
-# rounding): BC's lanes (live at half the averages' weight) are one run, the live rows
-# padded (+20% of the lanes' network rows); RL's (live and the exponential average at 4.75
-# units, the league's slots at 2.25) stay two, as padding the slots would run about half
-# again as many network rows.
+# rounding): BC's lanes (three players of equal rows) are one run; RL's (live and the
+# exponential average at 4.75 units, the league's slots at 2.25) stay two, as padding the
+# slots would run about half again as many network rows.
 RUN_SLACK = 1.05
 
 
