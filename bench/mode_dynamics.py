@@ -209,11 +209,28 @@ class Experiments:
     def __init__(self, arguments, environments: int, respawn_ticks: int, tick_length, device):
         ticks = lambda seconds: round((seconds or 0.0) / tick_length)  # noqa: E731
         self.lock, self.pause = ticks(arguments.lock_seconds), ticks(arguments.pause_seconds)
+        self.tick_length = tick_length
+        # the just-captured zone's hold (s): a hard lock holds L s, decaying 1 s a second, and
+        # no ship counts in the zone; a soft hold H decays over N s (none: no decay) and an
+        # attacking majority in the zone drains it at the capture rate (s of a lone ship's
+        # capture a second, H_n for n ahead) while the meter waits
+        if arguments.lock_seconds:
+            self.hold, self.decay, self.drain = arguments.lock_seconds, 1.0, False
+        elif arguments.hold_seconds:
+            decay = arguments.hold_decay_seconds
+            self.hold, self.decay, self.drain = (
+                arguments.hold_seconds,
+                arguments.hold_seconds / decay if decay else 0.0,
+                True,
+            )
+        else:
+            self.hold, self.decay, self.drain = 0.0, 0.0, False
+        self.lock = self.lock or bool(self.hold)
         self.rear, self.blast = ticks(arguments.rear_seconds), arguments.blast_radius or 0.0
         self.respawn_ticks = respawn_ticks
         self.buffers = dict(
             lock_zone=torch.full((environments,), -1, dtype=torch.long, device=device),
-            lock_left=torch.zeros(environments, dtype=torch.long, device=device),
+            hold_left=torch.zeros(environments, dtype=torch.float32, device=device),
             front=torch.zeros(environments, dtype=torch.long, device=device),
             pause_left=torch.zeros((environments, 2), dtype=torch.long, device=device),
             rear_left=torch.zeros((environments, 2), dtype=torch.long, device=device),
@@ -231,15 +248,26 @@ class Experiments:
         def step(team, inside, roles, progress, *rest):
             b = self.buffers
             zone = torch.arange(roles.shape[-1], device=roles.device)
-            locked = (zone == b["lock_zone"][:, None]) & (b["lock_left"] > 0)[:, None]
+            held = zone == b["lock_zone"][:, None]  # (B, Z)
+            locked = held & (b["hold_left"] > 0)[:, None]
+            drained = torch.zeros_like(b["hold_left"])
+            if self.drain:  # an attacking majority in the held zone drains the hold
+                present = inside.transpose(-1, -2)  # (B, Z, N)
+                on_team0 = (team == 0)[..., None, :]
+                net = (present & on_team0).sum(-1) - (present & ~on_team0).sum(-1)
+                team0_attacks = roles == frontline.TEAM1_DEFENSE
+                ahead = torch.where(team0_attacks, net, -net)  # the attackers' lead
+                rate = frontline.harmonic(ahead.clamp_min(0)) * (ahead > 0)
+                drained = torch.where(held, rate, 0.0).sum(-1) * self.tick_length
             capture = original(team, inside & ~locked[:, None, :], roles, progress, *rest)
             done = capture.team0_captured | capture.team1_captured
             role = torch.where(
                 capture.team0_captured, frontline.TEAM0_DEFENSE, frontline.TEAM1_DEFENSE
             )
             taken = (capture.roles == role[:, None]).long().argmax(-1)
+            left = (b["hold_left"] - self.decay * self.tick_length - drained).clamp_min(0.0)
             b["lock_zone"].copy_(torch.where(done, taken, b["lock_zone"]))
-            b["lock_left"].copy_(torch.where(done, self.lock, (b["lock_left"] - 1).clamp_min(0)))
+            b["hold_left"].copy_(torch.where(done, self.hold, left))
             return capture
 
         return step
@@ -326,7 +354,7 @@ def install(probe: Probe, frontline_mode: bool, experiments: Experiments | None 
         probe.observe(state, events, frontline_mode)
         return state, events
 
-    if experiments is not None and experiments.lock:
+    if experiments is not None and experiments.hold:
         frontline.capture_step = experiments.capture_step(frontline.capture_step)
 
     rollout_module.api = types_module.SimpleNamespace(
@@ -422,6 +450,10 @@ def main() -> None:
     )
     parser.add_argument("--lock-seconds", type=float, default=None)
     parser.add_argument("--pause-seconds", type=float, default=None)
+    parser.add_argument("--hold-seconds", type=float, default=None, help="a soft hold H (s)")
+    parser.add_argument(
+        "--hold-decay-seconds", type=float, default=None, help="the hold decays over N s"
+    )
     parser.add_argument("--rear-seconds", type=float, default=None)
     parser.add_argument("--blast-radius", type=float, default=None, help="in zone radii")
     parser.add_argument("--fog", type=float, default=1.0, help="the fogged share")
@@ -521,6 +553,8 @@ def main() -> None:
             respawn_seconds=rollout.rules.pools[0].respawn_ticks * rules.tick_length,
             experiments=dict(
                 lock_seconds=arguments.lock_seconds,
+                hold_seconds=arguments.hold_seconds,
+                hold_decay_seconds=arguments.hold_decay_seconds,
                 pause_seconds=arguments.pause_seconds,
                 rear_seconds=arguments.rear_seconds,
                 blast_radius=arguments.blast_radius,
