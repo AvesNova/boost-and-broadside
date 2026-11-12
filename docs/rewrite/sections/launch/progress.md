@@ -51,7 +51,21 @@ Branch `feat/launch` (from `integrate/next-runs` abcecd53). Worktree
   downloads tested against the public repo; uploads need the author's write token on the box
   (not testable from the laptop: no token here).
 
+## 15:40-15:56 Tournament rounds and the leaderboard
+
+- **Worked:** round 1 (frontline; deathmatch and elimination removed to save laptop time)
+  played to its 256-game budget; round 2 (the RL policy added) **reused round 1's 240
+  games** (3 of its 4 players matched by weight hash) and played only its own batch;
+  elimination's ratings compiled and played; `leaderboard` fits both rounds together,
+  labelled. Job 2 (the second chain) was removed gracefully mid-BC to free the GPU (the
+  removal path works; the second chain's own run was not needed to test anything new).
+- **Fixed:** the leaderboard's fit needed a budget of at least one batch: it now asks for a
+  target of 1e9 (no batch is played) and fits only presets that have records.
+- **Noted:** with tiny budgets A-optimal may never pair a policy with the scripted agent
+  (elimination round 2: scripted 0 games, so its ratings hang on the prior); real rounds
+  (thousands of games) do not have this, but read `games` in the leaderboard.
+
 ## Next
 
-- The laptop end-to-end: probe, two tiny chains on one slot, a kill and a resume, a
-  tournament round, the leaderboard, replays, the reward check, the status, the pull.
+- A compiled probe on the laptop (the e2e above ran `compiled=false` to keep it short): the
+  production path compiles; launched 15:57.
