@@ -334,3 +334,11 @@ The dead-ship slots get about 1–3%. Self-play is within 2–3 points, and the 
   - Frontline collapsed after 50M. That is forgetting: zone and objective play decays without frontline training.
 - **Deathmatch on kill share** reached 1221 at 75M. Again, it's compressed.
 - **Live Elo** has moved to rl-kl.
+
+## 08:05 — launch slip: rl-kl is deathmatch-only, so it became the clean outcome A/B; the mixed E3 is queued
+
+- **The slip:** rl-dm was launched as `NAME=rl-dm PRESET=real_scale_deathmatch UPDATES=72 tmux new ...`, which started the box's tmux server. Those variables went into tmux's global environment, so the queued rl-kl session inherited PRESET=real_scale_deathmatch.
+- **The fix:** the variables are cleared (`tmux set-environment -g -u`), and later queues set PRESET explicitly.
+- **Kept:** rl-kl, deathmatch only, kill-lead outcome, 72 updates. Against rl-dm, which is deathmatch only with the kill-share outcome, at the same steps, only the outcome reward differs. That is the cleanest test of the reward shape.
+  - Early sign: the outcome critic's explained variance is 0.161 at update 18; rl-dm had 0.135 at update 23.
+- **Queued:** rl-mix-kl, mixed modes with the kill-lead outcome, 72 updates. It starts after rl-kl and compares with rl-v20 at 75M.
