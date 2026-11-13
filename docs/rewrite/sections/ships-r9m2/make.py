@@ -355,7 +355,42 @@ def round8() -> list[dict]:
     return out
 
 
+def round9() -> list[dict]:
+    """Big moves for the map-size axis (5v5 at R 3.9 / 7.8 / 15.6 km): Yongma's toughness and
+    damage (the dense small map's levers) traded for speed and sight (the large map's), and
+    Jujak's toughness up."""
+    cards = [
+        ("Ysh0.6 Ypow1.4", dict(shield=0.6, power=1.4)),
+        (
+            "Ysh0.6 Ydmg0.8 Ypow1.5 Ydrag0.8",
+            dict(shield=0.6, damage=0.8, power=1.5, zero_lift_drag=0.8),
+        ),
+        ("Jsh1.5 Ypow1.3", dict(power=1.3, turn=dict(max_shield=1.5))),
+        (
+            "Jsh1.5 Jdmg1.2 Ypow1.4 Yvis1.2",
+            dict(power=1.4, vision_range_scale=1.2, turn=dict(max_shield=1.5, hit_damage=1.2)),
+        ),
+        ("Yrad1.3 Ypow1.3", dict(power=1.3, hit_radius=1.3)),
+        (
+            "Ysh0.5 Ydmg1.2 Yrange0.75 Ypow1.4",
+            dict(shield=0.5, damage=1.2, bullet_life=0.75, power=1.4),
+        ),
+        (
+            "Ysh0.6 Ypow1.4 Yvis1.2 Jvis0.85",
+            dict(shield=0.6, power=1.4, vision_range_scale=1.2, turn=dict(vision_range_scale=0.85)),
+        ),
+        ("Ysh0.7 Ydrag0.75", dict(shield=0.7, power=1.0, zero_lift_drag=0.75)),
+    ]
+    out = []
+    for name, c in cards:
+        turn_more = c.pop("turn", {})
+        energy, turn = card_c(**c)
+        out.append(candidate("Jd1.35 Yl1.2 Jf1.5 " + name, energy, turn | turn_more, 0.7))
+    return out
+
+
 ROUNDS = {
+    "round9": round9,
     "round8": round8,
     "arena_screen": arena_screen,
     "round7": round7,
