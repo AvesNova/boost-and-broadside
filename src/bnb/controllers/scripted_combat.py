@@ -92,7 +92,8 @@ class Context(NamedTuple):
     switching: bool  # the plan choices may switch (else only a forced re-choice)
     # Frontline's timers, s (0 in the other modes): the own team's next respawn wave (R,)
     # (the enemy's is hidden), and each zone's capture lock on the own team and on the
-    # enemy's (R, Z), by the observation's zone rows. Read by no rule yet.
+    # enemy's (R, Z), by the observation's zone rows. Read by the Frontline layer's lock and
+    # wave terms (`scripted_frontline.lock_and_wave`).
     next_wave: torch.Tensor
     zone_lock_own: torch.Tensor
     zone_lock_enemy: torch.Tensor

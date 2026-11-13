@@ -75,6 +75,16 @@ and `in_advantage`, so they fly in the mirrors too; each reads the committed tar
   shot's probability falls by the weight: the nose-to-nose meeting of a one-circle is not
   shot (the doctrine's only element on the shot).
 
+- **Frontline's lock and waves** (the Frontline layer's goal, defend or attack, game v16;
+  `scripted_frontline.frontline`): with `lock_press`, while the enemy is locked out of a
+  zone it lost (the capture lock) for longer than the ship's travel back to that zone, the
+  ship attacks; while its own team is locked out of a zone it lost for longer than the
+  travel to it, the ship defends. Each shifts the goal's margin by the weight times
+  LOCK_STRENGTHS ship strengths, so it ends a travel time before the lock does and the
+  balanced rule takes over. With `wave_hold`, while an own ship waits to respawn and the
+  team's next wave lands within `wave_hold_seconds`, the ship holds at the defense, then
+  launches with the wave (the same shift toward defending).
+
 Each element's weight (`extend`, `slash`, `bleed`, `lag`, `deny`, and the maneuvers'
 `lead_turn`, `yoyo`, `brake`, `sense`, `duel_extend`, `hold_fire`) is 0 by default, as is
 `strength`: the default doctrine is off. A `table` packs one doctrine per ship type (T, D),
@@ -162,6 +172,9 @@ class Doctrine:
     hold_fire: float = 0.0
     hold_fire_in_stall_angle: Logistic = Logistic(1.0, 0.2, False)
     hold_fire_in_gun_range: Logistic = Logistic(0.5, 0.2, False)
+    lock_press: float = 0.0
+    wave_hold: float = 0.0
+    wave_hold_seconds: float = 30.0
 
 
 NAMES = tuple(field.name for field in dataclasses.fields(Doctrine))
@@ -181,6 +194,8 @@ WEIGHTS = (
     "crowd_sense",
     "duel_extend",
     "hold_fire",
+    "lock_press",
+    "wave_hold",
 )
 # The maneuvers' fractions, each in [0, 1] (searched like a weight).
 FRACTIONS = (
