@@ -311,3 +311,26 @@ The dead-ship slots get about 1–3%. Self-play is within 2–3 points, and the 
 **RL against BC:** RL attends less to visible enemies, most clearly in deathmatch (23.6% → 15.3%), and more to allies and hidden enemies in every mode.
 
 **Striking: the absent-zone slots are an attention sink.** In deathmatch and elimination, one learned token repeated in five slots takes 13–14% of the mass, about 20% in the last layer. It is probably an "attend to nothing" sink, which transformers commonly learn and use, so it isn't necessarily waste. A proposal for the author, not done: mask absent zones and give the model one explicit sink token instead, then compare with an arm.
+
+## 08:00 — E2 result (rl-dm, deathmatch only, 75M): no crowding-out; deathmatch training lifts elimination but forgets frontline
+
+| steps | rl-dm deathmatch, win/loss | rl-v20 (mixed) deathmatch, win/loss |
+|---|---|---|
+| 30M | 1697 ± 95 | 1668 ± 89 |
+| 50–55M | 2297 ± 118 | 2196 ± 121 |
+| 75M | **2866 ± 151** | 2825 ± 164 (95M) |
+
+- **The mixed run matches deathmatch-only at equal total steps** while giving deathmatch only 31% of them. Per deathmatch step, mixed training is about 3× as efficient. The other modes help deathmatch rather than crowd it out.
+- **The smaller deathmatch advantage is not limiting it.** The suspicion from 06:50 is ruled out.
+- **Transfer:** the live Elo of rl-dm's averaged policy in the modes it never trained on:
+
+  | step | elimination | frontline |
+  |---|---|---|
+  | 30M | 1387 | 1439 |
+  | 50M | 1625 | 1548 |
+  | 75M | **1847** | **914** |
+
+  - Elimination rose above the mixed run's best, about 1727. Its fighting is deathmatch's fighting.
+  - Frontline collapsed after 50M. That is forgetting: zone and objective play decays without frontline training.
+- **Deathmatch on kill share** reached 1221 at 75M. Again, it's compressed.
+- **Live Elo** has moved to rl-kl.
