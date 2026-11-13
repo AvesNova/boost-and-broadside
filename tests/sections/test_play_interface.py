@@ -500,7 +500,7 @@ def test_a_real_scale_match_is_chosen_with_a_dropdown_lineup_and_sped_up(context
         api.default_card("real-scale")["max_energy"]
     )
     gravity = session.loop.rules.flight.gravity
-    assert gravity == pytest.approx(9.81)
+    assert gravity == pytest.approx(4.0 * 9.81)  # the set's native x2 (game v13)
     player.click("speed/0.5")
     session.make_speed_normal()
     assert session.loop.time_scale == 1.0

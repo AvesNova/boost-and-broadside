@@ -226,3 +226,18 @@ def test_the_clocks_count_the_seconds_played_at_x1_playback(factor):
         for _ in range(60):  # one second of the display at 60 frames a second
             loop.advance(1.0 / 60.0)
         assert loop.current.clock - before == pytest.approx(playback, abs=loop.tick_length)
+
+
+def test_the_real_world_equivalent_divides_the_native_x2_by_the_similarity():
+    """Game v13: the real-scale set plays at x2 natively; the play panel's equivalent shows
+    speeds / 2, accelerations / 4, rates / 2, times x 2 and lengths as they are (display
+    only); every other set has no equivalent (factor 1)."""
+    from bnb.play.tuning import equivalent_factor, equivalent_handle
+
+    assert equivalent_factor("real-scale") == 2.0
+    assert equivalent_factor(api.STANDARD_SHIP_SET) == 1.0
+    assert equivalent_handle("cruise_speed", 300.0, 2.0) == pytest.approx(150.0)
+    assert equivalent_handle("low_speed_acceleration", 8.0, 2.0) == pytest.approx(2.0)
+    assert equivalent_handle("fire_rate", 30.0, 2.0) == pytest.approx(15.0)
+    assert equivalent_handle("shield_recharge_delay", 3.0, 2.0) == pytest.approx(6.0)
+    assert equivalent_handle("gun_range", 590.0, 2.0) == pytest.approx(590.0)
