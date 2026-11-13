@@ -419,6 +419,29 @@ mixed-reversed lineups: 5v5 at 512 games a lineup, 10v10 at 256. Elo against r9m
 - Next: lock_press into the default doctrine (both types), then a re-check of the card
   balance on frontline with it, since frontline balance moves with doctrine.
 
+### 18:45 round 11 (`round11/`, game v19): balance with r9m3 (r9m2 + lock_press 1)
+Self-play energy v turn on the lift x1.5 + damage x1.5 card; Yongma's score (deathmatch:
+kill share, every death counted). Frontline 5v5 at 512 games, the others at 256 (10v10,
+arenas) or 512 (elimination, deathmatch 5v5). The 0.5x frontline arena is at v19's 4200 m
+floor.
+
+| Doctrine | Front 5v5 | Front 10v10 | Front 0.5x (4200 m) | Front 2x | Elim 5v5 | DM share 5v5 |
+|---|---|---|---|---|---|---|
+| r9m2 | 0.46 ± 0.02 | 0.24 ± 0.03 | 0.70 ± 0.03 | 0.29 ± 0.03 | 0.49 ± 0.02 | 0.543 |
+| r9m3 | 0.40 ± 0.02 | 0.32 ± 0.03 | 0.73 ± 0.03 | 0.29 ± 0.03 | 0.51 ± 0.02 | 0.544 |
+
+- **The doctrine change leaves elimination and deathmatch where they were** (0.51 against
+  0.49, 0.544 both).
+- **Frontline stays unbalanced, and as map-size sensitive as before.** Yongma 0.40 at 5v5
+  and 0.32 at 10v10 (Jujak favoured), 0.73 on the smallest frontline map and 0.29 on the
+  double. r9m3 moves 5v5 down 0.06 and 10v10 up 0.08 (each about 2-3 SE). Lock play does not
+  remove the map-size effect: on big frontline maps the better sustained turner (Jujak) wins
+  the zone fights, on small ones the faster Yongma does.
+- So frontline needs a frontline lever, not a card one. Options, all the author's: a zone
+  size or count that grows slower than the map; a frontline arena that stays nearer 5v5's
+  size at 10v10; or a Yongma-only frontline aid. A card shift toward Yongma (say lift x1.6)
+  would help frontline 5v5 / 10v10 but push elimination and deathmatch past 0.55.
+
 ## Next
 - Item 6, league: no-flee scripted agents and the fast-chaser ship. ETA ~15:45.
 - Item 7: round 6 (v15) is running in tmux `lethality-r6`; then 10v10 and 0.5x / 2x arena
