@@ -26,9 +26,9 @@ from .. import ships
 # no respawn (None): a dead ship's wait is the episode's whole length, so it is still
 # waiting when the episode ends (`bnb.game.rules`). Its episode is short (the author,
 # 2026-11-12): 90 s here, 180 s at real scale. The respawn waits (the author, 2026-11-13):
-# 8 s at real scale in team deathmatch (was 10 s) and Frontline's minimum 8 s (was a fixed
-# 16 s), after which a Frontline ship waits for its team's next respawn wave
-# (`ModeRules.wave_seconds`); the standard game's clock is half the real-scale one.
+# Frontline's minimum 8 s at real scale (was a fixed 16 s), after which a Frontline ship
+# waits for its team's next respawn wave (`ModeRules.wave_seconds`); the standard game's
+# clock is half the real-scale one. Real-scale team deathmatch waits 10 s (its preset).
 CLOCKS = {
     TEAM_DEATHMATCH: (300.0, 4.0),
     FRONTLINE: (300.0, 4.0),
@@ -72,6 +72,14 @@ PRESETS = {
         ship_set=REAL_SCALE,
     ),
 }
+# Real-scale team deathmatch plays a smaller arena than the map scale's 7800 m (the author,
+# 2026-11-13): 4200 m, with a 10 s respawn wait (the clock's would be 8 s).
+REAL_SCALE_DEATHMATCH_ARENA = 4200.0  # m
+PRESETS["real_scale_deathmatch"] = dataclasses.replace(
+    PRESETS["real_scale_deathmatch"],
+    arena_radius=REAL_SCALE_DEATHMATCH_ARENA,
+    respawn_seconds=10.0,
+)
 
 # The arena: a 2v2 team deathmatch of the real-scale set on a small map with no fields (and
 # no zones: they are frontline's), a ship killed spawning again on the next tick (one tick
@@ -191,7 +199,9 @@ class ModeRules:
     lock_seconds_per_root_km x sqrt(d / 1 km) s, d the distance between adjacent zone
     centres; 0 none) and the respawn waves (each team's every wave_seconds, from a random
     phase per team at the match's start: a dead ship respawns at its team's first wave
-    after its respawn wait; 0 no waves). layout: the
+    after its respawn wait; 0 no waves). Elimination's boundary shrinks: it holds at the
+    arena radius for shrink_hold_seconds, then falls to 0 at the clock's end by shrink_law
+    (0 linear in radius, 1 the smootherstep). layout: the
     game's fixed map (`MapLayout`), or None for a random one; part of the mode's rules, so
     games of one mode with different layouts are different slices of the batch
     (`layout.per_mode`)."""
@@ -217,6 +227,12 @@ class ModeRules:
     wave_seconds: float = 10.0  # s: 20 s at real scale (the set's [mode])
     side_area_fraction: float = 0.15
     side_heading_jitter: float = math.radians(15.0)
+    # Elimination's shrinking boundary (`bnb.game.layout.boundary_fraction`): it holds at
+    # the arena radius for shrink_hold_seconds, then shrinks to 0 at the clock's end, linear
+    # in radius (shrink_law 0) or along the smootherstep (1: a smooth start and end). 18 s
+    # is a fifth of the standard clock; 36 s at real scale (the set's [mode]).
+    shrink_hold_seconds: float = 18.0
+    shrink_law: int = 0
     layout: MapLayout | None = None
 
     def uniform_count(self, num_ships: int) -> int:

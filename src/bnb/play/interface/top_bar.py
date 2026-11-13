@@ -220,6 +220,14 @@ def _frame_rate(interface: Interface, rect, right: float) -> float:
     return x
 
 
+def boundary_label(frame) -> str:
+    """Elimination's boundary for the top bar: its radius now as a share of the arena's,
+    and its time to zero (whole seconds, rounded up)."""
+    share = frame.boundary_radius / max(frame.arena_radius, 1e-6)
+    seconds = math.ceil(frame.boundary_time_to_zero - 1e-6)
+    return f"edge {100.0 * share:.0f}%  {clock(seconds)} to zero"
+
+
 def _objective(interface: Interface, rect, left: float, right: float) -> None:
     """The score or the front and zones, and the clock, centred between the two groups."""
     session = interface.session
@@ -256,6 +264,8 @@ def _objective(interface: Interface, rect, left: float, right: float) -> None:
             ("text", (f"{alive[1]}", team[1], big, fonts.bold)),
             ("gap", 10.0 * scale),
             ("text", ("ships left", muted, small, None)),
+            ("gap", 16.0 * scale),
+            ("boundary", (boundary_label(frame), text, small, None)),
         ]
     elif frame.mode == "frontline":
         parts += [
@@ -288,7 +298,7 @@ def _objective(interface: Interface, rect, left: float, right: float) -> None:
         return 2 * zone_radius + (lock_gap + width_of(label[0], small) if label else 0.0)
 
     def size_of(kind, value) -> float:
-        if kind == "text":
+        if kind in ("text", "boundary"):
             return width_of(value[0], value[2], value[3])
         if kind == "gap":
             return value
@@ -301,12 +311,20 @@ def _objective(interface: Interface, rect, left: float, right: float) -> None:
     if x + total > right - 16.0 * scale:
         x = 0.5 * (left + right - total)
     for kind, value in parts:
-        if kind == "text":
+        if kind in ("text", "boundary"):
             string, colour, size, font = value
             imgui.push_font(font, size)
             height = imgui.get_text_line_height()
             draw.add_text(imgui.ImVec2(x, middle_y - 0.5 * height), colour, string)
             imgui.pop_font()
+            if kind == "boundary":
+                imgui.set_cursor_screen_pos(imgui.ImVec2(x, middle_y - 0.5 * height))
+                imgui.invisible_button("boundary", imgui.ImVec2(size_of(kind, value), height))
+                tooltip(
+                    "The boundary holds at the arena's edge, then shrinks to nothing by the "
+                    "clock's end; beyond it a ship takes boundary damage. Shown: its radius "
+                    "now, as a share of the arena's, and its time to zero."
+                )
         elif kind == "front":
             _front(draw, x, middle_y, frame, threshold, cell, cell_gap, team, theme, scale)
             imgui.set_cursor_screen_pos(imgui.ImVec2(x, middle_y - 0.5 * cell))

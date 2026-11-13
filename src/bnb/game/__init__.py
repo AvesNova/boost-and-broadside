@@ -95,7 +95,21 @@ and resolve_native.py). The mode clocks (match, respawn, capture, waves, the loc
 their numbers as native seconds. The real-scale scripted agent's time parameters scaled
 the same way (scripted_x2.py). The plane-equivalent values are native over
 `real_scale.EQUIVALENT_FACTOR` (2), for display only.
+Version 14 (2026-11-13): the boundary and the real-scale maps. Boundary damage, in every
+mode, is `Rules.boundary_max_damage` per s times the smootherstep of the depth beyond the
+boundary over `boundary_ramp_width` (m at map scale 1, times the map scale): 30 per s and
+100 m in the standard game, 40 per s at real scale (was 5 + 0.05 depth, and 10 + 0.1 depth
+at real scale). Elimination's boundary shrinks: it holds at the arena radius for
+`ModeRules.shrink_hold_seconds` (18 s, 36 s at real scale: a fifth of the clock), then
+falls to 0 at the clock's end (`shrink_law`: linear in radius, or the smootherstep), so
+staying away no longer runs the clock out; the tie-break by health left decides what
+survives it. The observation gains the globals boundary_fraction (the boundary's radius
+over the arena radius) and boundary_time_to_zero; every length keeps the arena radius as
+its scale. The real-scale random maps (the set's rules.toml, the author's): field band
+160 m, radii 120-1200 m at map scale 1 drawn lognormal (median 400 m, log spread 0.6).
+Real-scale team deathmatch plays a 4200 m arena (was 7800 m) with a 10 s respawn wait
+(was 8 s).
 """
 
-VERSION = 13
-FINGERPRINT = "00177471050a7b4b"
+VERSION = 14
+FINGERPRINT = "3421b9f4dc56d6e8"

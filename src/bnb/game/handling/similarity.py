@@ -140,8 +140,8 @@ RULE_UNITS = {
     "rules.head_on_angle": NONE,
     "rules.shield_recharge_delay": TIME,
     "rules.shield_recharge_rate": RATE,
-    "rules.boundary_damage_base": RATE,
-    "rules.boundary_damage_per_metre": (-1, -1),
+    "rules.boundary_max_damage": RATE,
+    "rules.boundary_ramp_width": LENGTH,
     "rules.spawn_speed": SPEED,
     "rules.spawn_offset": NONE,
     "rules.spawn_radius": LENGTH,
@@ -174,6 +174,8 @@ RULE_UNITS = {
     "mode.wave_seconds": TIME,
     "mode.side_area_fraction": NONE,
     "mode.side_heading_jitter": NONE,
+    "mode.shrink_hold_seconds": TIME,
+    "mode.shrink_law": NONE,
     **{f"flight.{name}": units for name, units in FLIGHT_UNITS.items()},
 }
 

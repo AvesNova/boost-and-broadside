@@ -2,7 +2,7 @@
  "game": {
   "ships_per_team": 5,
   "num_fields": 10,
-  "arena_radius": 7800.0,
+  "arena_radius": 4200.0,
   "episode_seconds": 600.0,
   "respawn_seconds": 10.0,
   "mode": "team_deathmatch",

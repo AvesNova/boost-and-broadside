@@ -18,17 +18,28 @@ SET = "real-scale"
 
 
 def test_the_presets_play_the_real_scale_set_on_a_map_three_times_wider():
-    for mode in ("deathmatch", "frontline"):
+    """Frontline and elimination on the 7800 m map; team deathmatch on 4200 m with a 10 s
+    respawn wait (the author, 2026-11-13). The random maps are the author's (game v14)."""
+    for mode in ("deathmatch", "frontline", "elimination"):
         standard, real = api.PRESETS[mode], api.PRESETS[f"real_scale_{mode}"]
-        assert real.ship_set == SET and real.arena_radius == 3.0 * standard.arena_radius
+        wide = 4200.0 if mode == "deathmatch" else 3.0 * standard.arena_radius
+        assert real.ship_set == SET and real.arena_radius == wide
         rules = api.rules_of(real)
-        assert rules.pools[0].arena_radius / api.MAP_SCALE_RADIUS == 3.0
+        assert rules.pools[0].arena_radius == wide
         standard_rules = api.rules_of(standard)
         assert rules.pools[0].episode_ticks == 2 * standard_rules.pools[0].episode_ticks
-        assert rules.pools[0].respawn_ticks == 2 * standard_rules.pools[0].respawn_ticks
+        if mode == "frontline":
+            assert rules.pools[0].respawn_ticks == 2 * standard_rules.pools[0].respawn_ticks
+        if mode == "deathmatch":
+            assert rules.pools[0].respawn_ticks == round(10.0 / rules.tick_length)
         assert rules.pools[0].mode.capture_seconds == 20.0
         assert rules.pools[0].mode.group_radius == 900.0
-        assert rules.field_band_width == 120.0
+        assert rules.pools[0].mode.shrink_hold_seconds == 36.0  # a fifth of 180 s
+        assert rules.field_band_width == 160.0
+        assert (rules.field_radius_min, rules.field_radius_max) == (120.0, 1200.0)
+        assert rules.field_radius_distribution == 2
+        assert (rules.field_radius_median, rules.field_radius_log_sigma) == (400.0, 0.6)
+        assert (rules.boundary_max_damage, rules.boundary_ramp_width) == (40.0, 100.0)
 
 
 def test_the_rules_are_todays_in_real_units():

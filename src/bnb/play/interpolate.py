@@ -70,4 +70,7 @@ def interpolate(previous: Snapshot, current: Snapshot, alpha: float) -> Snapshot
         current,
         ships=_ships(previous.ships, current.ships, alpha),
         bullets=_bullets(previous, current, alpha),
+        boundary_radius=float(lerp(previous.boundary_radius, current.boundary_radius, alpha))
+        if previous.tick < current.tick
+        else current.boundary_radius,
     )

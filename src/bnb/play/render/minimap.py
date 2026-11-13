@@ -95,6 +95,10 @@ class MinimapPass:
         self.sky.draw(uniforms, theme, frame.arena_radius)
         self.fields.draw(uniforms, theme, frame.log_index_per_level)
         self.arcs.draw(uniforms, zone_table(theme, frame.zones, pixel))
+        if frame.boundary_radius < frame.arena_radius:  # elimination's shrunk boundary
+            self.sky.draw(
+                uniforms, theme, frame.arena_radius, edge=True, boundary=frame.boundary_radius
+            )
         if fogged:
             self.fog.draw(uniforms, theme)
         self.arcs.draw(uniforms, dot_table(theme, frame, shown, pixel))

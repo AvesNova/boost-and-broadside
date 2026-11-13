@@ -15,7 +15,8 @@ from torch.utils import _pytree
 
 from bnb.contracts.tree import contract
 
-from .modes.rules import ModeRules
+from .modes.rules import ELIMINATION, ModeRules
+from .physics.numerics import smootherstep
 from .rules import MAP_SCALE_RADIUS, Rules
 
 
@@ -23,12 +24,17 @@ from .rules import MAP_SCALE_RADIUS, Rules
 class Environment:
     """The rules that vary by environment, (B,) each, one value per pool: arena_radius (m)
     and map_scale (arena_radius / MAP_SCALE_RADIUS) float32; episode_ticks and respawn_ticks
-    int32."""
+    int32; the boundary's shrink (`boundary_fraction`): shrinking float32, 1 where the
+    boundary shrinks (elimination) and 0 elsewhere, shrink_hold_ticks float32 (its hold, in
+    ticks; 0 where it does not shrink) and shrink_law int32 (`ModeRules.shrink_law`)."""
 
     arena_radius: torch.Tensor
     map_scale: torch.Tensor
     episode_ticks: torch.Tensor
     respawn_ticks: torch.Tensor
+    shrinking: torch.Tensor
+    shrink_hold_ticks: torch.Tensor
+    shrink_law: torch.Tensor
 
 
 @dataclasses.dataclass(frozen=True)
@@ -82,7 +88,41 @@ def environment(rules: Rules, batch: int, device=None) -> Environment:
         map_scale=per_pool(lambda pool: pool.arena_radius / MAP_SCALE_RADIUS),
         episode_ticks=per_pool(lambda pool: pool.episode_ticks, torch.int32),
         respawn_ticks=per_pool(lambda pool: pool.respawn_ticks, torch.int32),
+        shrinking=per_pool(lambda pool: float(shrinks(pool.mode))),
+        shrink_hold_ticks=per_pool(
+            lambda pool: (
+                pool.mode.shrink_hold_seconds / rules.tick_length if shrinks(pool.mode) else 0.0
+            )
+        ),
+        shrink_law=per_pool(
+            lambda pool: pool.mode.shrink_law if shrinks(pool.mode) else 0, torch.int32
+        ),
     )
+
+
+def shrinks(mode: ModeRules) -> bool:
+    """Whether the mode's boundary shrinks over the clock (elimination's)."""
+    return mode.name == ELIMINATION
+
+
+def boundary_fraction(arena: Environment, elapsed: torch.Tensor) -> torch.Tensor:
+    """(B,) the boundary's radius over the arena radius after `elapsed` (B,) ticks of the
+    episode. Where it shrinks (elimination) it holds at 1 for the hold, then falls to 0 at
+    the clock's end: s = (elapsed - hold) / (episode - hold) in [0, 1], the fraction 1 - s
+    (shrink law 0) or 1 - smootherstep(s) (law 1). Elsewhere 1. Every law is computed and
+    the live law selects one, so it is data in the compiled tick."""
+    total = arena.episode_ticks.to(torch.float32)
+    hold = torch.minimum(arena.shrink_hold_ticks, total - 1.0).clamp_min(0.0)
+    s = ((elapsed.to(torch.float32) - hold) / (total - hold).clamp_min(1.0)).clamp(0.0, 1.0)
+    law = torch.where(arena.shrink_law == 1, smootherstep(s), s)
+    return 1.0 - arena.shrinking * law
+
+
+def boundary_time_to_zero(arena: Environment, elapsed: torch.Tensor, tick_length: float):
+    """(B,) seconds until the boundary reaches radius 0 (the clock's end) where it shrinks,
+    after `elapsed` (B,) ticks; 0 where it does not shrink."""
+    left = (arena.episode_ticks - elapsed).clamp_min(0).to(torch.float32) * tick_length
+    return arena.shrinking * left
 
 
 def per_mode(rules: Rules, batch: int, function, *trees):

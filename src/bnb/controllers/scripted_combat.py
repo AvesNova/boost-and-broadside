@@ -79,6 +79,9 @@ class Context(NamedTuple):
     stall_angle: torch.Tensor
     corner_speed: torch.Tensor
     arena_radius: torch.Tensor  # (R, 1)
+    # (R, 1) the boundary's radius now: the arena radius, or less where it shrinks
+    # (elimination), which the boundary's steer and the centre hold read
+    boundary_radius: torch.Tensor
     distance_from_centre: torch.Tensor
     boundary_weight: torch.Tensor  # the steer toward the centre, in [0, 1]
     temperature: torch.Tensor | float  # the agent's: a float, or (R, 1) per view
@@ -135,11 +138,13 @@ def context(
     velocity_x, velocity_y = column(own, "velocity_x"), column(own, "velocity_y")
     speed = column(own, "proper_speed")
     arena_radius = obs.globals[:, None, GLOBAL["arena_radius"]]
-    # The boundary: within a margin of turn radii of the edge and flying outward.
+    boundary_radius = arena_radius * obs.globals[:, None, GLOBAL["boundary_fraction"]]
+    # The boundary (as it stands now): within a margin of turn radii of the edge and flying
+    # outward.
     distance_from_centre = torch.sqrt(x * x + y * y).clamp_min(TINY)
     turn_radius = speed * speed / per_ship(characteristics.max_acceleration, own_type)
     margin = (parameters.boundary_margin_in_turn_radius * turn_radius).clamp_min(1.0)
-    depth = (distance_from_centre - (arena_radius - margin)) / margin
+    depth = (distance_from_centre - (boundary_radius - margin)) / margin
     outward = x * velocity_x + y * velocity_y > 0.0
     boundary_weight = torch.where(
         outward, ramp(depth, parameters.boundary_steer_ramp_in_margin), 0.0
@@ -162,6 +167,7 @@ def context(
         stall_angle=per_ship(characteristics.stall_angle, own_type),
         corner_speed=per_ship(characteristics.corner_speed, own_type),
         arena_radius=arena_radius,
+        boundary_radius=boundary_radius,
         distance_from_centre=distance_from_centre,
         boundary_weight=boundary_weight,
         temperature=temperature,
@@ -812,7 +818,7 @@ def combat(
 
     # Without a target: head for the centre unless already near it.
     toward_centre = fleet.distance_from_centre > (
-        parameters.centre_hold_in_arena_radius * fleet.arena_radius
+        parameters.centre_hold_in_arena_radius * fleet.boundary_radius
     )
     wanted_x, wanted_y = steer(
         fleet, torch.where(has_target, aim_x, -fleet.x), torch.where(has_target, aim_y, -fleet.y)

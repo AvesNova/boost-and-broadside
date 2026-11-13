@@ -12,6 +12,7 @@ import torch
 
 from ..rules import LN_SQRT2
 from ..state import Fields
+from .numerics import smootherstep
 
 
 def medium(fields: Fields, x: torch.Tensor, y: torch.Tensor):
@@ -30,10 +31,10 @@ def medium(fields: Fields, x: torch.Tensor, y: torch.Tensor):
     depth = 0.5 - (distance - per_field(fields.radius)) / band  # spec: zeta
     inward = depth.clamp(0.0, 1.0)  # spec: z
     outward = 1.0 - inward
-    profile = inward * inward * inward * (inward * (6.0 * inward - 15.0) + 10.0)  # alpha_i
+    profile = smootherstep(inward)  # alpha_i
     # 1 - alpha in factored form (the profile is symmetric: 1 - alpha(z) = alpha(1 - z)), so
     # it is exactly positive wherever the gradient is non-zero, even where alpha rounds to 1.
-    complement = outward * outward * outward * (outward * (6.0 * outward - 15.0) + 10.0)
+    complement = smootherstep(outward)
     in_band = (depth > 0.0) & (depth < 1.0) & (distance > 1e-6)
     slope = torch.where(
         in_band, -30.0 * (inward * outward) ** 2 / (band * distance.clamp_min(1e-6)), 0.0
