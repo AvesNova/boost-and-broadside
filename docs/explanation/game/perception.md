@@ -74,7 +74,7 @@ observation shows it in seconds, in `time_since_seen`.
   so nothing in a view gives the enemy's wave clock directly.
 - The globals `boundary_fraction` and `boundary_time_to_zero` give the boundary as it
   stands: its radius over the arena radius and the seconds until it reaches 0 (1 and 0
-  but in elimination, whose boundary shrinks). `arena_radius` stays the arena's, so
+  but in elimination, whose boundary shrinks; once it passes the centre, both 0). `arena_radius` stays the arena's, so
   nothing that is scaled by it moves as the boundary shrinks.
 - **Privileged** (`bnb.contracts.Privileged`) is built from the same rows with every ship
   visible (the dead included, with `time_since_seen` 0), plus each ship's sim team and the
