@@ -132,3 +132,22 @@ This log records the changes and decisions made while the author was away, with 
   - In the CPU run the outputs' gradients all pointed the same way.
   - The total is near target.
   - Gradient size also reflects how much is left to learn, so equalising it has no clear benefit.
+
+## 04:26 — handoff: RL `rl-v20` launched from bc-v20's averaged policy (5b85b6c2)
+
+- **bc-v20's final averaged policy** at 84.9M: deathmatch 970 ± 25, elimination 930 ± 21, frontline 893 ± 28. At 70M it was 953, 869 and 869.
+- **Why hand off now:**
+  - Gains are slowing.
+  - Every mode is within about 110 of Baekho.
+  - A resume can't lift the plateau stop.
+  - The earlier v2 handed off at a similar level.
+- **RL settings** (rl.sh), the champion's PPO:
+  - a warm start: weights and return scale, with a fresh optimizer;
+  - 2048 environments, about 1.05M steps per update;
+  - **32 minibatches**, 4 epochs;
+  - per-level γ/λ, target KL 0.02, learning rate 3e-4 with a 10M warm-up;
+  - 256 rating lanes;
+  - one map size per mode;
+  - 143 updates, about 150M steps.
+- **Why 32 minibatches:** the author locked 256 for BC. For RL, 32 is what trained the champion, under the build-on-the-winner rule. The minibatch comparison is still a candidate for the arms.
+- **Live Elo** is repointed to rl-v20.
