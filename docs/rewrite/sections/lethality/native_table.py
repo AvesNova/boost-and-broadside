@@ -33,9 +33,7 @@ for i, key in enumerate(KEYS):
         top_boost=float(view.top_speed[0, i]),
     )
     d = view.datum
-    turns = [
-        (float(d.speed[0, i, j]), float(d.turn_rate[0, i, j]) * deg) for j in range(3)
-    ]
+    turns = [(float(d.speed[0, i, j]), float(d.turn_rate[0, i, j]) * deg) for j in range(3)]
     shields = {k: files[k].card["max_shield"] for k in KEYS}
     rate = types.fire_rate[i].item()
     kills = [math.ceil(s / types.hit_damage[i].item()) + 1 for s in shields.values()]
@@ -44,7 +42,9 @@ for i, key in enumerate(KEYS):
     for label, v in speeds.items():
         print(f"| {name} {label} speed | {v:.0f} m/s | {v / K:.0f} m/s |")
     for level, (u, w) in zip(("fine", "sustained", "max"), turns):
-        print(f"| {name} settled {level} | {u:.0f} m/s at {w:.1f} deg/s | {u / K:.0f} m/s at {w / K:.1f} deg/s |")
+        native = f"{u:.0f} m/s at {w:.1f} deg/s"
+        equivalent = f"{u / K:.0f} m/s at {w / K:.1f} deg/s"
+        print(f"| {name} settled {level} | {native} | {equivalent} |")
     vs = ", ".join(f"{k} {n} hits {t:.2f} s" for k, n, t in zip(shields, kills, ttk))
     vs_eq = ", ".join(f"{k} {t * K:.2f} s" for k, t in zip(shields, ttk))
     print(f"| {name} core time to kill | {vs} | {vs_eq} |")

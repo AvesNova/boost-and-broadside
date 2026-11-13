@@ -238,7 +238,23 @@ is provisional.
   0.07 / 0.45) and Jujak shield x0.5 (DM 0.29 / 0.60 / 0.69, elim 0.36 / 0.55 / 0.70, front
   0.08 / 0.53).
 
+### 16:00 frontline 2v2 diagnosis (closed: frontline is played at 5v5 and up only)
+CPU run (`diag/zones.log`, `zones.py`: 16 games of 600 s, 2v2, base card, r9m2 on both
+sides). The turn-circle hypothesis (a 626 m zone against Yongma's 707 m sustained circle and
+Jujak's 468 m) is mostly not it. Yongma spends 0.44 of its living time inside a capturable
+zone, Jujak 0.52 (within 1.5 radii: 0.59 and 0.68). The gap is the fight: Jujak killed
+Yongma 251 times to Yongma's 125 on Jujak, and frontline's all-or-nothing result magnifies
+that 2:1. The author dropped frontline below 5v5 (16:00), so it is judged at 5v5 with a
+10v10 spot-check.
+
+### 16:00 merged game v15 (origin/integrate/next-runs c35ef260: the shrinking elimination, band sight, new map defaults)
+Clean merge; the x2 rules survived; the fingerprint is v15's. bench/state_deltas_bounds.py
+now reads boundary_max_damage and boundary_ramp_width. Round 5's frontline (v13, `round5/`)
+finished before the merge; its deathmatch and elimination were stopped and moved to round 6.
+From here, elimination results count. The harness uses each preset's clock (deathmatch
+600 s, elimination 180 s, frontline 600 s); the frontline runs before this used 1200 s.
+
 ## Next
 - Item 6, league: no-flee scripted agents and the fast-chaser ship. ETA ~15:45.
-- Item 7: decide the balance fix (Questions), then a crowd-gate round, ideally scored on
-  elimination. Item 6's chaser needs a third kind in bench.game_loop to play.
+- Item 7: round 6 (v15) is running in tmux `lethality-r6`; then 10v10 and 0.5x / 2x arena
+  spot-checks for the finalists. Item 6's chaser needs a third kind in bench.game_loop to play.

@@ -45,8 +45,6 @@ def main() -> None:
     inside = torch.zeros(2)
     near = torch.zeros(2)
     alive_ticks = torch.zeros(2)
-    deaths = torch.zeros(2)
-    deaths_inside = torch.zeros(2)
     started = time.time()
     for tick in range(loop.ticks):
         state, observation, carry, tally = loop._tick(state, observation, carry, tally)

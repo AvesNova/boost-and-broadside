@@ -18,6 +18,7 @@ _spec.loader.exec_module(make)
 R9M = make.R9M
 R9M2 = make.gates(1.0, 0.4)
 
+
 def POWER(factor: float) -> dict:
     """Yongma's engine power, below and above the knee, times this."""
     return {"engine_power": factor, "engine_power_full_store": factor}
@@ -52,6 +53,18 @@ CARDS = {
     # two levers: damage for the duel, power or Jujak's shield for the team sizes
     "round5": [
         ("base", {}, {}),
+        ("Y damage x2 + power x1.3", {"hit_damage": 2.0, **POWER(1.3)}, {}),
+        ("Y damage x2 + J shield x0.65", {"hit_damage": 2.0}, {"max_shield": 0.65}),
+        ("Y damage x1.5 + J shield x0.65", {"hit_damage": 1.5}, {"max_shield": 0.65}),
+        ("Y damage x1.5 + power x1.15", {"hit_damage": 1.5, **POWER(1.15)}, {}),
+    ],
+    # game v15 (the shrinking elimination, band sight, the 4200 m deathmatch): round 5's
+    # cards and round 4's single-lever finalists on all three modes
+    "round6": [
+        ("base", {}, {}),
+        ("Y damage x2", {"hit_damage": 2.0}, {}),
+        ("Y power x1.3", POWER(1.3), {}),
+        ("J shield x0.5", {}, {"max_shield": 0.5}),
         ("Y damage x2 + power x1.3", {"hit_damage": 2.0, **POWER(1.3)}, {}),
         ("Y damage x2 + J shield x0.65", {"hit_damage": 2.0}, {"max_shield": 0.65}),
         ("Y damage x1.5 + J shield x0.65", {"hit_damage": 1.5}, {"max_shield": 0.65}),
