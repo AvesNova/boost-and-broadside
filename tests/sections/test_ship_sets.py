@@ -173,7 +173,7 @@ def test_the_new_match_maps_come_from_the_presets():
 
 
 def test_choosing_the_arena_takes_its_fleet_fields_and_lineup():
-    """The arena map is the arena preset: 2v2 at no fields, a P-51D and a Spitfire XIV a
+    """The arena map is the arena preset: 2v2 at no fields, a Yongma and a Jujak a
     team; the other maps give back their own sizes."""
     draft = Draft()
     draft.choose_map("arena")
@@ -188,7 +188,7 @@ def test_choosing_the_arena_takes_its_fleet_fields_and_lineup():
 
 
 def test_the_lineup_shown_is_the_lineup_played():
-    """The New match page's default lineup (the P-51D and the Spitfire XIV alternating)
+    """The New match page's default lineup (Yongma and Jujak alternating)
     reaches the match; only the game's own lineup is passed as None."""
     names = api.type_names("real-scale")
     draft = Draft()

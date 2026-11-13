@@ -570,7 +570,7 @@ def test_a_new_match_on_an_unmeasured_card_flies_the_last_matchs_characteristics
 
 
 def test_the_arena_is_chosen_flown_and_drawn_at_true_size(context, tmp_path):
-    """New match offers the arena as a map (2v2, no fields, a P-51D and a Spitfire XIV a
+    """New match offers the arena as a map (2v2, no fields, a Yongma and a Jujak a
     team); taking control of a ship keeps every card as it was, open or collapsed; the top
     bar's True size switches the ships' drawing."""
     session = _session(context, tmp_path)
@@ -779,7 +779,7 @@ def test_a_map_is_made_saved_played_edited_renamed_and_deleted_in_the_menu(conte
     player.click("maps/start from")
     player.click("maps/start from/arena")
     editor = session.interface.menu.editor
-    assert editor.form.ships_per_team == 2 and editor.form.lineup == [0, 5]
+    assert editor.form.ships_per_team == 2 and editor.form.lineup == [0, 1]
     editor.form.num_fields = 3
     player.click("maps/name")
     player.type("duel")
@@ -787,14 +787,15 @@ def test_a_map_is_made_saved_played_edited_renamed_and_deleted_in_the_menu(conte
     duel = library.find("duel")
     assert duel.place == "user" and (tmp_path / "maps" / "duel.json").is_file()
     assert duel.config == dataclasses.replace(PRESETS["arena"], num_fields=3)
-    assert duel.lineup == ("P-51D", "Spitfire XIV")
+    # the arena's lineup (Yongma, Jujak) is the game's own: the map keeps None for it
+    assert duel.lineup is None
 
     player.click("menu/back")
     player.click("menu/new match")
     player.click("new match/map/duel")
     player.click("new match/start")
     assert session.loop.setup.config == duel.config
-    assert session.loop.setup.lineup == (0, 5)
+    assert session.loop.setup.lineup is None and session.loop.rules.team_types == (0, 1)
 
     player.click("menu")
     player.click("menu/maps")

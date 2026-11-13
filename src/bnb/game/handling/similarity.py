@@ -8,8 +8,8 @@ this way is the same flight in the new units, up to the tick: the tick stays, so
 game is the same flight sampled at another rate, and the quantities held to whole ticks
 (fire rates, the bullet life, the shield recharge delay) are snapped by their callers.
 
-Two uses: building a ship set in other units from the standard one (the real-scale set,
-`bnb.game.real_scale`), and live tuning's time scale (length 1, time 1/k: the game k
+Two uses: building a ship set in other units from the standard one (the real-scale set's
+rules, `bnb.game.real_scale`), and live tuning's time scale (length 1, time 1/k: the game k
 times faster at fixed map lengths).
 
 `UNITS` gives (a, b) by name: the handles, the card's fields, the flight constants and the

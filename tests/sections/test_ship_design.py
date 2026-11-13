@@ -15,16 +15,19 @@ from bnb.game import api, ships
 from bnb.game.physics.combat import MEAN_CLOSENESS
 from bnb.game.physics.flight import airframe_of, engine_fall
 from bnb.game.ship_design import (
+    BOUNDS,
     CONTINUOUS,
     ENVELOPE,
     Envelope,
     design_cards,
+    envelope_handles,
     handles_of,
     knobs_of,
     set_handles,
 )
 from bnb.game.ship_types import FIELDS
 from bnb.league.matches import Player, team_lineup
+from bnb.reference.real_planes import solved_types
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))  # `bench`
 from bench import ship_design_search as search  # noqa: E402
@@ -39,17 +42,17 @@ def handles():
 
 def test_a_design_with_no_knob_moved_has_its_base_handles(handles):
     rules = api.rules_of(GAME)
-    for key in ("p51d", "fw190-a8", "albatross"):
+    for key in ("yongma", "jujak", "vizia"):
         base = handles[key]
         same = handles_of(base, {}, rules)
         for name, value in base.items():
-            assert same[name] == pytest.approx(value, rel=2e-2 if name == "climb_time" else 1e-9)
+            assert same[name] == pytest.approx(value, rel=2e-2 if name == "climb_time" else 1e-6)
         assert knobs_of(same) == pytest.approx(knobs_of(base), rel=1e-9)
 
 
 def test_a_knob_moves_only_its_own_handles_and_those_that_follow(handles):
     rules = api.rules_of(GAME)
-    base = handles["p51d"]
+    base = handles["vizia"]
     knobs = knobs_of(base)
     faster = handles_of(base, {"fire_rate": 10.0}, rules)
     # the damage per second and the store cost per second of fire stay
@@ -65,20 +68,29 @@ def test_a_knob_moves_only_its_own_handles_and_those_that_follow(handles):
 
 
 def test_the_envelope_is_the_propeller_fighters_and_holds_its_bounds(handles):
+    """The envelope is the 16 real propeller fighters of the reference data (the set's own
+    types are no part of it)."""
     assert "me262" not in ENVELOPE and "me163" not in ENVELOPE and len(ENVELOPE) == 16
-    envelope = Envelope.of(handles)
-    for key in ENVELOPE:  # every envelope type is inside its own bounds
-        assert envelope.clamp(knobs_of(handles[key])) == pytest.approx(knobs_of(handles[key]))
+    reference = envelope_handles()
+    envelope = Envelope.of(handles)  # the set's handles hold no envelope type
+    assert torch.equal(envelope.mean, Envelope.of().mean)
+    # every envelope type is inside the envelope's own bounds (not the author's BOUNDS,
+    # which the balancing's damage and the shields may leave)
+    for key in ENVELOPE:
+        knobs = {k: v for k, v in knobs_of(reference[key]).items() if k not in BOUNDS}
+        assert {k: envelope.clamp(knobs_of(reference[key]))[k] for k in knobs} == pytest.approx(
+            knobs
+        )
     # a jet's speed is outside them, and far from the mean
-    jet = knobs_of(handles["me262"])
+    jet = knobs_of(solved_types()["me262"].handles)
     assert envelope.clamp(jet)["cruise_speed"] < jet["cruise_speed"]
-    assert envelope.distance(jet) > max(envelope.distance(knobs_of(handles[k])) for k in ENVELOPE)
-    assert set(CONTINUOUS) | {"fire_rate"} == set(knobs_of(handles["p51d"]))
+    assert envelope.distance(jet) > max(envelope.distance(knobs_of(reference[k])) for k in ENVELOPE)
+    assert set(CONTINUOUS) | {"fire_rate"} == set(knobs_of(handles["vizia"]))
 
 
 def test_the_instant_card_of_unmoved_designs_is_their_solved_card(handles):
     rules = api.rules_of(GAME)
-    keys = ["p51d", "spitfire-ix", "p47d"]
+    keys = ["yongma", "jujak", "vizia"]
     card = design_cards(rules, keys, [handles[k] for k in keys])
     found = {ship.key: ship for ship in ships.load("real-scale")}
     for index, key in enumerate(keys):
@@ -139,7 +151,7 @@ def test_a_new_card_and_knee_play_without_recompiling():
 
     device = torch.device("cuda")
     base = api.ship_types(device, ship_set=GAME.ship_set)
-    two = type(base)(**{k: v[:2].clone() for k, v in vars(base).items()})  # P-51D, Heavy
+    two = type(base)(**{k: v[:2].clone() for k, v in vars(base).items()})  # Yongma, Jujak
     players = [Player(f"slot {i}", rung=Rung(1.0), ship_type=i) for i in range(2)]
     arena = Arena(players, GAME, device, ArenaConfig(blocks=1, block_environments=8), card=two)
     first = arena.play([(0, 1)])

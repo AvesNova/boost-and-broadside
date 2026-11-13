@@ -1,0 +1,113 @@
+# Fw 190A: a type of the real-scale set, its file as it stood at game v16 (the set's x2 native
+# units), kept as reference data (bnb.reference.real_planes): not a ship type since
+# 2026-11-13. [handles] as it flew, [card] the solve, [notes] each value's source.
+name = 'Fw 190A'
+
+[handles]
+# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
+stall_speed = 105.6
+g_limit = 7.0
+cruise_speed = 309.4
+climb_time = 446.15451388888886
+ceiling = 404172.0
+low_speed_acceleration = 11.228
+sustained_turn_rate = 0.5480333851262195
+half_lift_drag = 0.25
+nose_reversal_time = 0.2493450444548806
+dive_acceleration = 43.607892724096246
+zoom_acceleration = -34.87187540918414
+stall_angle = 0.2617993877991494
+vision_range = 3072.0
+zero_lift_drag = 6.004901960784314e-05
+hit_damage = 68.5080556510132
+explosive_share = 0.0
+fire_rate = 15.0
+muzzle_speed = 1610.0
+bullet_spread = 1.9338070781461845
+gun_range = 554.1671004274907
+bullet_drag = 0.0009
+shots_per_store = 494.58899778431123
+max_shield = 120.0
+shield_recharge_rate = 24.0
+shield_recharge_delay = 3.0
+head_on_fraction = 0.3
+head_on_angle = 0.737832313317803
+head_on_sharpness = 2.0
+arming_distance = 0.0
+hit_radius = 5.255
+core_radius = 0.0
+spawn_energy = 161668.80000000002
+
+[card]
+# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).
+max_lift_coefficient = 0.003518853336572647
+max_acceleration = 274.67999267578125
+zero_lift_drag = 6.004902024869807e-05
+engine_power = 6752.84765625
+engine_power_full_store = 2229.411865234375
+static_thrust = 37.07343673706055
+max_energy = 404172.0
+corner_nose_frequency = 15.034749031066895
+max_shield = 120.0
+hit_radius = 5.255000114440918
+core_radius = 0.0
+hit_damage = 68.508056640625
+muzzle_speed = 1610.0
+bullet_energy_cost = 817.1876220703125
+fire_rate = 15.0
+bullet_life = 0.36666667461395264
+spawn_energy = 161668.796875
+explosive_share = 0.0
+reference_bullet_speed = 1465.2305908203125
+bleed_exponent = 2.0
+induced_drag_scale = 1.3630403280258179
+stall_angle_scale = 1.0
+coast_exchange_scale = 13.412866592407227
+dive_exchange_scale = 3.016876459121704
+climb_exchange_scale = 4.983100414276123
+vision_range_scale = 1.0
+bullet_spread_scale = 0.16115058958530426
+bullet_drag_scale = 1.7999999523162842
+shield_recharge_rate_scale = 2.0
+shield_recharge_delay_scale = 0.5
+head_on_fraction_scale = 1.0
+head_on_angle_scale = 1.0
+head_on_sharpness = 2.0
+arming_distance = 0.0
+engine_knee_scale = 1.0
+fine_stick = 0.4000000059604645
+sustained_stick = 0.75
+
+[notes]
+# Where each handle's value comes from.
+stall_speed = "estimated: stall_speed 52.8. W/S 225 kg/m^2 and CLmax ~1.4 gives 184 km/h; RAE noted a sharp wing drop at the stall; 190 km/h."
+g_limit = "estimated: g_limit 7. German strength group H5 safe load factor ~ 7 at design weight; not found tonight"
+cruise_speed = "researched (good): cruise_speed 154.7. sea-level maximum speed, military power: wwiiaircraftperformance.org test report (557 km/h)"
+climb_time = "solved for an initial charge of g x 14.4 m/s; researched (good): climb_rate 14.4. sea-level climb, military power: wwiiaircraftperformance.org test report (GL/C-E2 Nr 7578/44 (13.4 m/s in the 13.11.43 chart)). Paced: the climb rate 14.4 -> 57.6 m/s, x 4 (docs/explanation/game/real-scale-pacing.md)."
+ceiling = "researched (low): service_ceiling 10300; the store g h, J/kg. recalled standard figure, not re-checked"
+low_speed_acceleration = "estimated: low_speed_acceleration 2.807. the research's point-mass model at 1.1 x stall, military power (3.19 m/s^2) x 0.88, its correction for propeller efficiency"
+sustained_turn_rate = "researched (low): sustained_turn_rate 15.7; degrees. literature: simulator/community turn-time compilations (360 deg in 23.0 s)"
+half_lift_drag = "placeholder: the standard fighter's"
+nose_reversal_time = "researched (medium): roll_rate 150; the P-51D's nose reversal (a placeholder) x its roll rate 95 over this one. peak roll rate: NACA TR-868 via secondary summaries"
+dive_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+zoom_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+stall_angle = "estimated: stall_angle 15; degrees. NACA 23015.3-23009 section"
+vision_range = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+zero_lift_drag = "estimated: drag_coefficient 0.0225; rho C_D0 / (2 W/S) with W/S 229.5 kg/m^2 (researched (medium)). back-solved so the point-mass model (propeller efficiency 0.8, Oswald 0.8) reaches the measured sea-level mili..."
+hit_damage = "researched (medium): weight_of_fire 4.95; proposal: 360 per second (the P-51D's) x the weight of fire over the P-51D's 3.68 kg/s, over the fire rate. 2x Rheinmetall-Borsig MG 131 13 mm (cowl); 2x Mauser MG 151/20 (wing_root); 2x Mauser MG 151/20 (wing): count x rate x projectile mass. Balanced (round 1): 48.42 -> 36.54 a shot, 484.2 -> 365.4 per second at its 10 Hz: the equal-damage rule, 360 x (its weight of fire over the P-51D's)^0.05 within 5% (the guns dominated the ratings). Centre hit (game v6): 36.54 -> 68.51, x 15/8 (the closeness's mean over a uniform impact parameter is 8/15), at the reference distance."
+explosive_share = "proposal: the default, pure kinetic"
+fire_rate = "derived: fire_rate 10; proposal: the main gun's volley rate. the Mauser MG 151/20, 4.05 of 4.95 kg/s: the whole-Hz volley rate dividing 30 nearest its rate per gun"
+muzzle_speed = "researched (good): muzzle_speed 805. the Mauser MG 151/20, 4.05 of 4.95 kg/s: Wikipedia"
+bullet_spread = "researched (low): dispersion 4; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
+gun_range = "the reach in the set's gun flight time (0.6 s), cruise and muzzle speed, under RANGE_DRAG (the set's drag before game v6)"
+bullet_drag = "estimated: the MG 151/20 high-explosive (Minengeschoss) shell, light and blunt"
+shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 14.4 m/s), the standard fighter's ratio: a shot costs 204.3 J/kg, 1.45 s of charge"
+max_shield = "researched (medium): survivability 4; proposal: the standard 100 x (1 + 0.1 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Air-cooled radial in front of the pilot, armoured oil cooler ring, self-sealing tanks; A-8 added heavier cockpit armour . Balanced (round 3): 140 -> 120, the step per rating 0.2 -> 0.1: the shield's Spearman correlation with the round-2 Elo was +0.54 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
+shield_recharge_rate = "placeholder: the standard fighter's"
+shield_recharge_delay = "placeholder: the standard fighter's"
+head_on_fraction = "placeholder: the standard fighter's"
+head_on_angle = "placeholder: the standard fighter's"
+head_on_sharpness = "placeholder: the standard fighter's"
+arming_distance = "placeholder: the standard fighter's"
+hit_radius = "researched (good): half_span 5.255. half of the span 10.51 m"
+spawn_energy = "placeholder: the standard fighter's fraction of the store"

@@ -2,8 +2,8 @@
 (docs/explanation/game/ship-design.md): the knobs a design moves, the WW2 envelope that
 bounds them, and the instant card of a design.
 
-A design is a base type of the real-scale set (a propeller type, real or invented) and the
-values of its knobs. The knobs are existing handles, or ratios of them chosen so that the
+A design is a base type of the real-scale set (Yongma, Jujak or vizia) and the values of
+its knobs. The knobs are existing handles, or ratios of them chosen so that the
 knobs are nearly independent (`KNOBS`, each with the reason it is in the search):
 
 - flight: the stall speed, the cruise speed, the sustained turn rate, the climb rate (the
@@ -21,8 +21,9 @@ muzzle speed in the set's gun flight time (`real_scale.gun_flight_time`), the cl
 from the store and the climb rate, the spawn energy is the base's share of the store, and
 the shot keeps the base's store cost per second of fire.
 
-The envelope is the 16 real propeller fighters of the set (`ENVELOPE`; the Me 262 and Me 163
-are left out, as are the invented designs): each knob's log has their mean and standard
+The envelope is the 16 real propeller fighters the set was researched from (`ENVELOPE`, as
+last solved: `bnb.reference.real_planes.solved_types`; the Me 262 and Me 163 are left out,
+as are the invented designs): each knob's log has their mean and standard
 deviation, and a design's realism is the Mahalanobis distance of its knobs' logs from that
 mean, under the 16 types' covariance shrunk half way to its diagonal (`Envelope`), so that
 a combination the real fighters do not show (fast and weakly armed) costs more than its
@@ -30,13 +31,15 @@ parts. The bounds are the 16 types' range, with margins only where the data is s
 author widened them (`BOUNDS`).
 
 `design_cards` is the instant card of designs (`bnb.game.handling.estimate.Estimate`,
-anchored on each base's solved card); `bnb.game.real_scale.solve_type` gives the exact one.
+anchored on each base's solved card); `bnb.game.handling.solve` gives the exact one.
 """
 
 import dataclasses
 import math
 
 import torch
+
+from bnb.reference.real_planes import solved_types
 
 from . import ships
 from .handling import Handles
@@ -54,7 +57,7 @@ from .real_scale import (
 from .rules import Rules
 from .ship_types import FIELDS, ShipTypes, ticks_between_shots
 
-# The real propeller fighters of the set: the envelope a design stays in.
+# The real propeller fighters (reference types): the envelope a design stays in.
 ENVELOPE = (
     "p51d",
     "p47d",
@@ -72,18 +75,6 @@ ENVELOPE = (
     "f4u-1d",
     "la7",
     "f6f-5",
-)
-# The bases a design may start from: the envelope's types and the invented propeller designs
-# (not the rocket Firecracker, nor the jets).
-BASES = ENVELOPE + (
-    "heavy",
-    "hammerhead",
-    "wren",
-    "anvil",
-    "albatross",
-    "zerstorer",
-    "shrike",
-    "lantern",
 )
 # The volley rates a design may fire (native): whole hertz dividing the 30 Hz tick, from the
 # invented heavy cannon's 10 Hz to the .50 batteries' 30 (5, 7.5 and 15 Hz at the planes'
@@ -185,6 +176,12 @@ def set_handles(ship_set: str = SHIP_SET) -> dict[str, dict[str, float]]:
     return {ship.key: ship.handles for ship in ships.load(ship_set)}
 
 
+def envelope_handles() -> dict[str, dict[str, float]]:
+    """The envelope's types' handles, by key: the reference types as last solved."""
+    solved = solved_types()
+    return {key: solved[key].handles for key in ENVELOPE}
+
+
 @dataclasses.dataclass
 class Envelope:
     """The envelope's statistics over its types' knobs (continuous ones, in logs): mean,
@@ -197,8 +194,10 @@ class Envelope:
     precision: torch.Tensor
 
     @classmethod
-    def of(cls, handles: dict[str, dict[str, float]], keys=ENVELOPE, shrink: float = 0.5):
-        """The envelope of these types' knobs (`keys`), the correlation shrunk by `shrink`."""
+    def of(cls, handles: dict | None = None, keys=ENVELOPE, shrink: float = 0.5):
+        """The envelope of these types' knobs (`keys`), the correlation shrunk by `shrink`:
+        each key's handles from `handles`, else the reference types' (`envelope_handles`)."""
+        handles = envelope_handles() | (handles or {})
         rows = torch.tensor(
             [[math.log(knobs_of(handles[key])[name]) for name in CONTINUOUS] for key in keys],
             dtype=torch.float64,
