@@ -23,7 +23,10 @@ KIND = torch.tensor([type_names("real-scale").index("Yongma")])
 
 
 def _flight(**changes):
-    return dataclasses.replace(RULES.flight, **changes)
+    """The real-scale flight constants with version 11's switches off (they are tested in
+    test_flight_separation_and_propeller.py), and these changes."""
+    v11_off = dict(separation_drag=0.0, thrust_softmin_exponent=4.0, vertical_exchange=False)
+    return dataclasses.replace(RULES.flight, **{**v11_off, **changes})
 
 
 def _rates(constants, speed, energy, power=0.0):

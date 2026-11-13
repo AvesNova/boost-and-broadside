@@ -105,6 +105,38 @@ class Setting(NamedTuple):
     charge: torch.Tensor | None = None  # c, the store's direct charge (W/kg); None without
 
 
+def _vertical_demand(constants: FlightConstants, budget, lateral_command, commanded, sink_room):
+    """The exchange as vertical lift (`FlightConstants.vertical_exchange`): (lateral lift,
+    vertical lift, exchange, the lift's share left over, the vertical demand's flown share).
+
+    The wing's lift holds the ship up and drives the exchange: the vertical demand is
+    gravity plus the commanded exchange, V = max(g + a, 0) as a smooth max (width g / 32,
+    which lifts level flight by 0.02%), so a climb (reverse) asks for more lift than level
+    flight and a dive (boost) for less, about none. The turn keeps priority: the lateral lift
+    is the command within the budget L, and the vertical lift the demand within what is left,
+    z = softmin(V, sqrt(L^2 - l^2)). What the wing cannot give sinks the ship (store into
+    speed): the exchange is a - (V - z). A climbing turn therefore climbs at the commanded
+    rate while the budget allows, at a higher total lift and so a higher induced drag than a
+    straight climb; a diving turn frees the lift that held the ship up for the turn.
+
+    An empty store is the floor: a ship cannot sink below it, so there (sink_room, the
+    store's room to spend, falls to 0) the demand it cannot sink comes first and the turn
+    takes what is left, l <= sqrt(L^2 - V_held^2)."""
+    exponent = constants.lift_softmin_exponent
+    raw = constants.gravity + commanded
+    width = constants.gravity / 32.0
+    demand = 0.5 * (raw + torch.sqrt(raw * raw + width * width))  # V, smooth max(g + a, 0)
+    held = softmin(demand * (1.0 - sink_room), budget, exponent)  # what cannot sink
+    turn_budget = torch.sqrt((budget * budget - held * held).clamp_min(0.0))
+    lateral_size = softmin(lateral_command.abs(), turn_budget, exponent)
+    lateral = torch.sign(lateral_command) * lateral_size
+    left = torch.sqrt((budget * budget - lateral_size * lateral_size).clamp_min(0.0))
+    vertical = softmin(demand, left, exponent)
+    exchange = commanded - (demand - vertical)
+    share = (lateral_size / budget).clamp(0.0, 1.0)
+    return lateral, vertical, exchange, torch.sqrt(1.0 - share * share), vertical / demand
+
+
 def setting(constants: FlightConstants, airframe: Airframe, speed, energy, stick, power) -> Setting:
     """The Setting (game spec 3.4) at speed (m/s) and store energy, for stick level sigma and power
     mode pi as floats: the lateral lift within the airframe's budget, the exchange faded at the
@@ -133,35 +165,49 @@ def setting(constants: FlightConstants, airframe: Airframe, speed, energy, stick
     lateral_command = torch.sign(stick) * softmin(
         stick.abs() * lift_reach, airframe.max_acceleration, constants.lift_softmin_exponent
     )
-    need = torch.sqrt(
-        lateral_command * lateral_command + constants.gravity * constants.gravity
-    )  # N
-    flown = softmin(need, safe_budget, constants.lift_softmin_exponent) / need.clamp_min(1e-12)  # q
-    lateral = lateral_command * flown
-    lateral_share = (lateral.abs() / safe_budget).clamp(0.0, 1.0)  # chi
-    level = torch.sqrt(1.0 - lateral_share * lateral_share)  # the lift's share left to climb
-    exchange = commanded * level * flown - (1.0 - flown) * dive
+    fade = constants.store_fade_band * airframe.max_energy
+    sink_room = (energy / fade).clamp(0.0, 1.0)
+    if constants.vertical_exchange:
+        lateral, vertical, exchange, level, flown = _vertical_demand(
+            constants, safe_budget, lateral_command, commanded, sink_room
+        )
+    else:
+        need = torch.sqrt(
+            lateral_command * lateral_command + constants.gravity * constants.gravity
+        )  # N
+        flown = softmin(need, safe_budget, constants.lift_softmin_exponent) / need.clamp_min(
+            1e-12
+        )  # q
+        lateral = lateral_command * flown
+        lateral_share = (lateral.abs() / safe_budget).clamp(0.0, 1.0)  # chi
+        level = torch.sqrt(1.0 - lateral_share * lateral_share)  # the lift's share left to climb
+        exchange = commanded * level * flown - (1.0 - flown) * dive
+        vertical = constants.gravity * flown
     # Fade the exchange out at the ends of the store: charging stops at the maximum,
     # spending at 0.
-    fade = constants.store_fade_band * airframe.max_energy
     headroom = ((airframe.max_energy - energy) / fade).clamp(0.0, 1.0)
-    room = torch.where(exchange > 0.0, headroom, (energy / fade).clamp(0.0, 1.0))
+    room = torch.where(exchange > 0.0, headroom, sink_room)
     exchange = exchange * room
     if constants.direct_charge:
         charge = (airframe.engine_power - airframe.engine_power_full_store) * (1.0 - fall)
-        thrust = softmin(airframe.engine_power_full_store / speed, airframe.static_thrust, 4.0)
+        thrust = softmin(
+            airframe.engine_power_full_store / speed,
+            airframe.static_thrust,
+            constants.thrust_softmin_exponent,
+        )
         return Setting(
             lateral,
             exchange,
-            constants.gravity * flown,
+            vertical,
             thrust / constants.mass,
             charge * level * flown * headroom / constants.mass,
         )
     engine = (
         airframe.engine_power - (airframe.engine_power - airframe.engine_power_full_store) * fall
     )
-    thrust = softmin(engine / speed, airframe.static_thrust, 4.0) / constants.mass
-    return Setting(lateral, exchange, constants.gravity * flown, thrust)
+    thrust = softmin(engine / speed, airframe.static_thrust, constants.thrust_softmin_exponent)
+    thrust = thrust / constants.mass
+    return Setting(lateral, exchange, vertical, thrust)
 
 
 def rates(
@@ -177,12 +223,14 @@ def rates(
     """(d speed / dt, d energy / dt) for a speed, lift coefficient, cos(angle of attack) and
     1/u^2 (game spec 3.4). `index` is the refractive index n."""
     induced = current.vertical_lift * inverse_speed_squared
+    lift_squared = lift * lift + induced * induced
     drag = (
         (
             zero_lift_drag(constants, airframe, speed)
             + constants.induced_drag_factor
             * airframe.induced_drag_scale
-            * bleed(airframe, lift * lift + induced * induced)
+            * bleed(airframe, lift_squared)
+            * separation(constants, airframe, lift_squared)
         )
         * speed
         * speed
@@ -203,6 +251,18 @@ def zero_lift_drag(constants: FlightConstants, airframe: Airframe, speed: torch.
         return airframe.zero_lift_drag
     rise = torch.pow(speed.abs() / constants.critical_speed, constants.drag_rise_exponent)
     return airframe.zero_lift_drag * (1.0 + rise)
+
+
+def separation(constants: FlightConstants, airframe: Airframe, lift_squared: torch.Tensor):
+    """The induced drag's factor for flow separation near the maximum lift,
+    1 + s (S / C_max^2)^(m/2) with S = C^2 + (z/u^2)^2 the total lift coefficient squared:
+    1 (a Python number) when the rules give no separation drag s. Smooth everywhere,
+    including past C_max (s m-th powers on, no clamp), so the polar steepens through the
+    stall rather than breaking there."""
+    if constants.separation_drag <= 0.0:
+        return 1.0
+    ratio = lift_squared / (airframe.max_lift_coefficient * airframe.max_lift_coefficient)
+    return 1.0 + constants.separation_drag * torch.pow(ratio, 0.5 * constants.separation_exponent)
 
 
 def bleed(airframe: Airframe, lift_squared: torch.Tensor) -> torch.Tensor:

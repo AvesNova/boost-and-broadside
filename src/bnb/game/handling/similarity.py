@@ -125,6 +125,9 @@ FLIGHT_UNITS = dict(
     speed_floor=SPEED,
     critical_speed=SPEED,
     drag_rise_exponent=NONE,
+    separation_drag=NONE,
+    separation_exponent=NONE,
+    thrust_softmin_exponent=NONE,
 )
 # Rule values by `bnb.game.tuning` key (and the Rules fields no setting holds).
 RULE_UNITS = {

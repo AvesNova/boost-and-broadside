@@ -43,6 +43,7 @@ def sticks(types: ShipTypes) -> torch.Tensor:
     )
 
 
+LEVEL_STORE = 0.0  # an empty store: a settled turn at it is level (`settled`)
 SUSTAINED_CURVE = tuple(i / 12 for i in range(1, 13))  # stick levels drawn on the doghouse
 SETTLE_TIME = 40.0  # s
 AVERAGING_WINDOW = 1.0  # s, each of the last three settled windows
@@ -157,11 +158,17 @@ class Settled(NamedTuple):
     angle: torch.Tensor  # the angle of attack: the gun's offset from the flight path
 
 
-def settled(rules: Rules, types: ShipTypes, sticks: tuple[float, ...] | torch.Tensor) -> Settled:
-    """The coast datum at each stick level: coasting from cruise with the store held below
-    the engine knee until speed, angle of attack and turn rate settle (the Aitken limit of
-    the means over the last three AVERAGING_WINDOWs), for SETTLE_TIME (both stretched by
-    the card's time scale)."""
+def settled(
+    rules: Rules,
+    types: ShipTypes,
+    sticks: tuple[float, ...] | torch.Tensor,
+    store: float = TURNING_STORE,
+) -> Settled:
+    """The coast datum at each stick level: coasting from cruise with the store held at this
+    fraction (below the engine knee) until speed, angle of attack and turn rate settle (the
+    Aitken limit of the means over the last three AVERAGING_WINDOWs), for SETTLE_TIME (both
+    stretched by the card's time scale). At LEVEL_STORE the turn is level: a turn whose lift
+    falls short of gravity sinks, and an empty store gives it no speed for the sink."""
     B, type_count = types.max_energy.shape
     stick = torch.as_tensor(sticks, dtype=types.max_energy.dtype).expand(B, type_count, -1)
     stick_count = stick.shape[-1]
@@ -170,7 +177,7 @@ def settled(rules: Rules, types: ShipTypes, sticks: tuple[float, ...] | torch.Te
     time = card_stretch(rules.flight, types).time
     ticks = round(SETTLE_TIME * time / rules.tick_length)
     last = round(AVERAGING_WINDOW * time / rules.tick_length)
-    energy = TURNING_STORE * types.max_energy[..., None].expand(B, type_count, stick_count)
+    energy = store * types.max_energy[..., None].expand(B, type_count, stick_count)
     flown = trajectory(
         rules,
         types,

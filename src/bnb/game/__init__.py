@@ -70,7 +70,15 @@ shares are 0.8 and 0.3) the cards keep the classic 0.4 and 0.75. Yongma, Jujak a
 were re-solved with vizia's sustained turn 18.7 -> 21.3 deg/s (same archetype factors):
 their sustained level settles at 88-91 m/s. The fingerprint's presets fly none of the
 three, so it is version 9's.
+Version 11 (2026-11-13, rough, iterating): real-scale flight v11, three switches in the
+real-scale rules (off elsewhere): flow separation (the induced drag times
+1 + s (C / C_max)^m, s = 1, m = 8), the propeller's thrust (softmin exponent 2:
+P / sqrt(u^2 + (P / T_0)^2)) and the exchange as vertical lift demand (the lift holds
+gravity plus the exchange: a climb asks for more, a dive about none; the turn keeps
+priority, the shortfall sinks, and an empty store holds gravity first). The settled level
+turn's rate now peaks below full stick; a solve sets the sustained stick to that peak and
+the fine to 0.3 of it. Yongma, Jujak and Vizia re-solved.
 """
 
-VERSION = 10
+VERSION = 11
 FINGERPRINT = "bd362de0be49ee56"

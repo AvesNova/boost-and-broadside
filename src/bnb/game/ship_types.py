@@ -68,7 +68,7 @@ FIELDS = dict(
     fine_stick="the fine stick level's lift fraction (rules.STICK_LEVELS' lightest)",
     sustained_stick=(
         "the sustained (middle) stick level's lift fraction; the max level's is 1. A solve "
-        "sets both from flight.sustained_rate_share and fine_stick_share"
+        "sets it to the best sustained turn's and the fine one to flight.fine_stick_share of it"
     ),
 )
 

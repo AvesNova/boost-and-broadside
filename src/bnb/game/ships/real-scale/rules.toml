@@ -26,7 +26,10 @@ speed_floor = 1.454166427889188e-06
 direct_charge = true
 critical_speed = 197.0
 drag_rise_exponent = 12.0
-sustained_rate_share = 0.8
+separation_drag = 1.0
+separation_exponent = 8.0
+thrust_softmin_exponent = 2.0
+vertical_exchange = true
 fine_stick_share = 0.3
 
 [mode]

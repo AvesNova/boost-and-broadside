@@ -63,11 +63,23 @@ class FlightConstants:
     # sound that bounds a dive [u_c]; 0 is off.
     critical_speed: float = 0.0  # m/s
     drag_rise_exponent: float = 8.0  # [q]
+    # Flow separation near the maximum lift: the induced drag times 1 + s (C / C_max)^m, C
+    # the total lift coefficient, so the polar steepens toward the stall and a full-stick
+    # turn costs more than its lift is worth [s, m]; 0 is off.
+    separation_drag: float = 0.0  # [s]
+    separation_exponent: float = 8.0  # [m]
+    # The thrust is softmin(P / u, T_0) with this exponent: 2 is a propeller's,
+    # P / sqrt(u^2 + (P / T_0)^2), its efficiency u / sqrt(u^2 + u_s^2) rising from 0 at rest
+    # (a finite static thrust) and saturating with speed [p_T].
+    thrust_softmin_exponent: float = 4.0  # [p_T]
+    # The exchange as vertical lift demand (`physics.flight._vertical_demand`): the lift holds
+    # gravity plus the commanded exchange (more in a climb, about none in a dive), the turn
+    # keeps priority within the budget, and the shortfall sinks. False: the exchange fades
+    # by the lift's share left over, sqrt(1 - chi^2), and the vertical lift is gravity's.
+    vertical_exchange: bool = False
     # How a solve sets a type's stick levels (the card's sustained_stick and fine_stick): the
-    # sustained level is the lift fraction whose settled coasting turn reaches this share of
-    # the full-stick one's rate, the fine level this share of it. 0: the classic levels, 0.75
-    # and 0.4, for every type.
-    sustained_rate_share: float = 0.0
+    # sustained level is the lift fraction of the best sustained (settled level) turn, the
+    # fine level this share of it. 0: the classic levels, 0.75 and 0.4, for every type.
     fine_stick_share: float = 0.0
 
 

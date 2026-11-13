@@ -40,6 +40,7 @@ CLIMB_PROGRESS = 10.0  # s: a climb whose store has not risen over this long is 
 CRUISE_BISECTIONS = 50
 CROSSING_BISECTIONS = 50  # on the cubic through the ticks around a crossing
 CRUISE_GRID = 48  # speeds, log-spaced from the stall speed to 30 times it
+CRUISE_DRAG_RISE_TOP = 1.6  # critical speeds: the cruise grid's top under a drag rise
 TURNING_STORE = 0.25  # store fraction for the turns: below the knee, clear of the fade bands
 DIVE_STORE = 0.5  # store fraction for the dive and the zoom (spec: half full)
 # The bleed's stick: the middle of the game's three levels, so that the bleed and the
@@ -249,9 +250,15 @@ def cruise_speed(rules: Rules, types: ShipTypes, energy: torch.Tensor) -> torch.
         )
         return (end.proper_speed - speed).reshape(shape)
 
+    # The grid's top: 30 stall speeds, or below the drag rise's stiff range (where one
+    # tick's drag outruns the speed and the explicit kick's gain changes sign spuriously).
     grid = stall[..., None] * torch.logspace(
         0.0, math.log10(30.0), CRUISE_GRID, dtype=stall.dtype, device=stall.device
     )
+    if rules.flight.critical_speed > 0.0:
+        top = (CRUISE_DRAG_RISE_TOP * rules.flight.critical_speed / stall).clamp_max(30.0)
+        steps = torch.linspace(0.0, 1.0, CRUISE_GRID, dtype=stall.dtype, device=stall.device)
+        grid = stall[..., None] * top[..., None] ** steps
     rising = gain(grid) > 0.0
     falls = rising[..., :-1] & ~rising[..., 1:]  # a stable root in (grid[i], grid[i + 1])
     found = falls.any(-1)

@@ -18,7 +18,14 @@ from typing import NamedTuple
 
 import torch
 
-from ..physics.flight import Airframe, airframe_of, lift_coefficient, rates, setting
+from ..physics.flight import (
+    Airframe,
+    airframe_of,
+    lift_coefficient,
+    rates,
+    separation,
+    setting,
+)
 from ..rules import Rules
 from ..ship_types import DEFAULTS, ShipTypes
 from .errors import Infeasible, RedundantHandles
@@ -34,7 +41,7 @@ from .manoeuvres import (
     steady_turn,
     stretch,
 )
-from .shown import settled
+from .shown import LEVEL_STORE, settled
 from .weapons import combat_card, combat_handles
 
 # The parameter each flown handle sets, in FLOWN's order (physical values, not scales). The
@@ -83,7 +90,7 @@ DAMPING = (1e-6, 1e6)  # Levenberg-Marquardt's: the first, and the bounds
 EXPONENT_BOUNDS = (0.5, 5.0)  # the bleed exponents a card may have
 CONDITION_WARNING = 1e4  # a Jacobian condition number above this warns
 CLASSIC_STICKS = (0.4, 0.75)  # the fine and sustained levels' lift fractions without shares
-STICK_GRID = tuple(0.3 + 0.02 * i for i in range(36)) + (1.0,)  # the sustained level's search
+STICK_GRID = tuple(round(0.3 + 0.02 * i, 2) for i in range(36))  # the sustained level's search, to 1
 # The flown handles measured over a bounded flight: (its window's constant, its name, the
 # stretch it flies by: `manoeuvres.Scales`' field).
 WINDOWS = dict(
@@ -399,7 +406,10 @@ def first_guess(rules: Rules, handles: Handles, combat: dict) -> torch.Tensor:
         drag, current = _drag_and_exchange(rules, airframe, stall, zeros, zeros, zeros)
         needed = handles.low_speed_acceleration + drag + current.exchange
         free = (null_power if constants.direct_charge else power) / stall
-        capped = (needed**-4 - free**-4).clamp_min(1e-30) ** -0.25  # softmin_4 inverted
+        thrust_exponent = constants.thrust_softmin_exponent
+        capped = (needed**-thrust_exponent - free**-thrust_exponent).clamp_min(1e-30) ** (
+            -1.0 / thrust_exponent
+        )  # the thrust's softmin inverted
         thrust_cap = torch.where(needed < free, capped, 10.0 * needed)
         airframe = airframe_at()
         # The induced drag k S^(e/2) where the sustained turn settles: thrust meets drag and
@@ -417,6 +427,7 @@ def first_guess(rules: Rules, handles: Handles, combat: dict) -> torch.Tensor:
         lifting = coefficient**2 + (current.vertical_lift / speed**2) ** 2  # S
         total = current.thrust * torch.cos(turn.angle) - current.exchange
         induced_drag = (total / speed**2 - handles.zero_lift_drag).clamp_min(1e-12)
+        induced_drag = induced_drag / separation(constants, airframe, lifting)
         full_lift = induced_drag / lifting ** (0.5 * exponent) * lift ** (exponent - 2.0)
     frequency = _reversal_frequency(rules, airframe_at(), handles, turning)
     return torch.stack([null_power, coast, thrust_cap, full_lift, frequency, dive, climb], -1)
@@ -613,21 +624,25 @@ def solve(
 
 
 def stick_levels(rules: Rules, types: ShipTypes) -> ShipTypes:
-    """The card (B, num_types) with its stick levels set from the rules' shares
-    (`FlightConstants.sustained_rate_share`, `fine_stick_share`): the sustained level is the
-    lift fraction whose settled coasting turn (`shown.settled`, on STICK_GRID, linear between
-    its points) reaches the share of the full stick's rate, the fine level its share of
-    that. Without shares, the classic levels (`_flight_card`) stay."""
+    """The card (B, num_types) with its stick levels set when the rules give a fine share
+    (`FlightConstants.fine_stick_share`): the sustained level is the lift fraction of the
+    best sustained turn, the argmax over STICK_GRID of the settled level turn's rate
+    (`shown.settled` at LEVEL_STORE), refined by the parabola through its grid neighbours;
+    the fine level is the share of it. Without a share, the classic levels (`_flight_card`)
+    stay."""
     constants = rules.flight
-    if constants.sustained_rate_share <= 0.0:
+    if constants.fine_stick_share <= 0.0:
         return types
-    rate = settled(rules, types, STICK_GRID).turn_rate  # (B, types, grid), rising in stick
+    rate = settled(rules, types, STICK_GRID, LEVEL_STORE).turn_rate  # (B, types, grid)
     grid = torch.tensor(STICK_GRID, dtype=rate.dtype)
-    target = constants.sustained_rate_share * rate[..., -1:]
-    above = (rate >= target).int().argmax(-1, keepdim=True).clamp_min(1)
-    low, high = rate.gather(-1, above - 1), rate.gather(-1, above)
-    fraction = ((target - low) / (high - low).clamp_min(1e-12)).clamp(0.0, 1.0)
-    sustained = (grid[above - 1] + fraction * (grid[above] - grid[above - 1]))[..., 0]
+    best = rate.nan_to_num(-math.inf).argmax(-1, keepdim=True)
+    middle = best.clamp(1, len(STICK_GRID) - 2)
+    left, centre, right = (rate.gather(-1, middle + k) for k in (-1, 0, 1))
+    step = grid[1] - grid[0]
+    curvature = (left - 2.0 * centre + right).clamp_max(-1e-12)
+    offset = (0.5 * (left - right) / curvature).clamp(-1.0, 1.0)
+    interior = (best > 0) & (best < len(STICK_GRID) - 1)
+    sustained = torch.where(interior, grid[middle] + offset * step, grid[best])[..., 0]
     return dataclasses.replace(
         types, sustained_stick=sustained, fine_stick=constants.fine_stick_share * sustained
     )
