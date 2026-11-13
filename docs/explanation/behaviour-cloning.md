@@ -24,10 +24,11 @@ teacher's labels, in nats per token, over own ships alive, with coefficient 0.02
 auxiliary heads at their coefficients, and the return scale, which runs during BC and is
 handed on. There is no policy gradient, no entropy bonus and no KL early stop.
 
-The critic's returns are RL's own: one discount (0.9997) and one trace decay (0.99) for
-every value level (`bnb.learn.ppo.LearnerConfig`), so the critic BC hands over has learned
-the targets RL trains on. `--set learner.discount=...` and `--set learner.trace_decay=...`
-override them ([the learner](learner.md#the-single-value-arm)).
+The critic's returns use BC's own discounts and trace decays (`bnb.learn.bc.DISCOUNT`,
+`bnb.learn.bc.TRACE_DECAY`): the outcome undiscounted and every level's trace decay near 1,
+the two combat levels' squared for the x2 game. With PPO's values the outcome head predicts
+the game's result worse than the base rate in the first 10M steps (its Brier skill
+negative). `--set learner.discount=...` and `--set learner.trace_decay=...` override them ([the learner](learner.md#the-single-value-arm)).
 
 ## The labels
 

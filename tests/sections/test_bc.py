@@ -779,10 +779,12 @@ def test_the_gradient_stays_finite_for_a_confident_student(segment):
         assert torch.isfinite(gradient).all(), coefficient
 
 
-def test_bc_returns_are_rl_s_one_discount_and_trace_decay():
-    """BC's learner settings carry RL's returns, one discount (0.9997) and one trace decay
-    (0.99) for every value level, and an override still wins, as `--set
+def test_bc_and_rl_returns_are_per_level():
+    """BC carries its own per-level returns (the outcome undiscounted), PPO the champion's
+    with the combat levels' squared for the x2 game, and an override still wins, as `--set
     learner.discount=...` does."""
-    assert bc.config().discount == lc.LearnerConfig().discount == (0.9997,) * 5
-    assert bc.config().trace_decay == lc.LearnerConfig().trace_decay == (0.99,) * 5
+    assert bc.config().discount == bc.DISCOUNT == (0.982, 0.990, 0.995, 0.999, 1.0)
+    assert bc.config().trace_decay == bc.TRACE_DECAY == (0.98, 0.98, 0.99, 0.99, 1.0)
+    assert lc.LearnerConfig().discount == (0.982, 0.990, 0.995, 0.999, 0.9997)
+    assert lc.LearnerConfig().trace_decay == (0.81, 0.90, 0.95, 0.97, 0.97)
     assert bc.config(discount=(0.9,) * 5).discount == (0.9,) * 5

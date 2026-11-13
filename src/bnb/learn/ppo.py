@@ -133,11 +133,14 @@ class LearnerConfig:
     of the sampled action, a lower bound of it.
     """
 
-    # One discount and one trace decay for every value level, the same in BC and RL (the
-    # author, 2026-11-13, for the dry run): 0.9997 is a half-life of 77 s at 30 decisions
-    # per s, 0.99 a look-ahead of about 3.3 s.
-    discount: tuple[float, ...] = (0.9997,) * 5
-    trace_decay: tuple[float, ...] = (0.99,) * 5
+    # Per value level (REWARD_LEVELS: damage, kill_death, objective_progress, objective,
+    # outcome): the 2026-11-09 champion's (0.991, 0.995, 0.995, 0.999, 0.9997 and 0.90,
+    # 0.95, 0.95, 0.97, 0.97) with the two combat levels' squared for the x2 game (game v13:
+    # a fight takes half the ticks); the objective and outcome levels follow the mode
+    # clocks, which kept their seconds. One value for every level (tried 2026-11-13) let a
+    # run learn to stop fighting.
+    discount: tuple[float, ...] = (0.982, 0.990, 0.995, 0.999, 0.9997)
+    trace_decay: tuple[float, ...] = (0.81, 0.90, 0.95, 0.97, 0.97)
     team_spirit: tuple[float, ...] = (0.0, 0.0, 0.0, 0.0, 0.0)
     return_scale_decay: float = 0.99
     return_scale_floor: float = 1.0

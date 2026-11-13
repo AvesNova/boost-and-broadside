@@ -41,6 +41,12 @@ TEACHER_LABELS = "teacher_labels"  # the derived name of the labels (L, V, S, 42
 
 
 MINIBATCHES = 256
+# BC's returns per reward level (REWARD_LEVELS' order), in place of PPO's: the outcome
+# undiscounted and every level's trace near 1, as every BC arm ran from 2026-11-06 (with
+# PPO's values the outcome head's Brier skill was negative in the first 10M steps), the two
+# combat levels' discounts and traces squared for the x2 game (game v13).
+DISCOUNT = (0.982, 0.990, 0.995, 0.999, 1.0)
+TRACE_DECAY = (0.98, 0.98, 0.99, 0.99, 1.0)
 
 
 def config(**overrides) -> LearnerConfig:
@@ -49,9 +55,8 @@ def config(**overrides) -> LearnerConfig:
     BC's returns (`DISCOUNT`, `TRACE_DECAY`); the rest section 6's. Cloning's progress
     follows its optimizer steps, so at the 8,192-view batch (2,048 x 4) it takes
     minibatches of 32 views, not PPO's 32 per epoch: 8x the steps per environment step for
-    the same compute. The returns are RL's own (one discount and trace decay for every
-    level, `LearnerConfig`), so the critic BC hands RL learned RL's targets."""
-    defaults = dict(minibatches=MINIBATCHES)
+    the same compute."""
+    defaults = dict(minibatches=MINIBATCHES, discount=DISCOUNT, trace_decay=TRACE_DECAY)
     return dataclasses.replace(
         LearnerConfig(),
         policy=0.025,

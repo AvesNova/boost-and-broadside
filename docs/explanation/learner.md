@@ -104,9 +104,11 @@ L ticks give the returns of one segment of N L ticks
 
 `LearnerConfig.discount`, `trace_decay` and `team_spirit` hold one value per value level,
 in the critic's order; the learner refuses a model whose levels they do not match. The
-defaults give every level the same discount, 0.9997 (a half-life of about 77 s at 30
-decisions per second), and the same trace decay, 0.99 (a look-ahead of about 3.3 s), and
-BC uses the same returns as RL, so the critic BC hands over has learned RL's targets.
+defaults are per level (discount / trace decay): damage 0.982 / 0.81, kill_death 0.990 /
+0.90, objective_progress 0.995 / 0.95, objective 0.999 / 0.97, outcome 0.9997 / 0.97. They
+are the 2026-11-09 champion's with the two combat levels' squared, because the x2 game
+fights in half the ticks. One value for every level (tried 2026-11-13) let a run learn to
+stop fighting.
 
 ### The single value arm
 
