@@ -39,15 +39,32 @@ ROUNDS = {
 }
 
 
+# round 10: the Frontline lock and wave options over r9m2, on the card the balance search
+# chose (Yongma lift x1.5 + damage x1.5)
+CARD = {"max_lift_coefficient": 1.5, "hit_damage": 1.5}
+LOCK = dict(lock_press=1.0)
+WAVE = dict(wave_hold=1.0)
+ROUNDS["round10"] = [
+    ("r9m2", gates(1.0, 0.4)),
+    ("r9m2 + lock 1", gates(1.0, 0.4, LOCK)),
+    ("r9m2 + lock 0.5", gates(1.0, 0.4, dict(lock_press=0.5))),
+    ("r9m2 + wave 30 s", gates(1.0, 0.4, WAVE)),
+    ("r9m2 + wave 10 s", gates(1.0, 0.4, dict(WAVE, wave_hold_seconds=10.0))),
+    ("r9m2 + lock 1 + wave 30 s", gates(1.0, 0.4, LOCK, WAVE)),
+]
+CARDS = {"round10": CARD}
+
+
 def main() -> None:
     name = sys.argv[1]
     out = []
+    card = CARDS.get(name, {})
     for label, fields in ROUNDS[name]:
         pair = fields if isinstance(fields, tuple) else (fields, fields)
         out.append(
             dict(
                 name=label,
-                energy={},
+                energy=card,
                 turn={},
                 doctrine=dict(energy=dict(R9M, **pair[0]), turn=dict(R9M, **pair[1])),
             )

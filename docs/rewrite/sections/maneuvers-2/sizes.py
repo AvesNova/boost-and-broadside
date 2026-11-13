@@ -124,11 +124,13 @@ def main() -> None:
     started = time.time()
     candidates = json.loads((HERE / args.candidates).read_text())
     by = {p.name: p for p in league.load()}
-    if (HERE / "champion.json").exists():  # this section's champion, r9m
-        from bench.game_loop import player_from
+    from bench.game_loop import player_from
 
-        champion = player_from(json.loads((HERE / "champion.json").read_text()))
-        by[champion.name] = champion
+    # this section's champions: r9m (champion.json) and r9m2 (champion2.json)
+    for stored in ("champion.json", "champion2.json"):
+        if (HERE / stored).exists():
+            champion = player_from(json.loads((HERE / stored).read_text()))
+            by[champion.name] = champion
     players = [player_of(c, by, n) for n, c in enumerate(candidates)]
     cards, card_of = [], []
     for c in candidates:
