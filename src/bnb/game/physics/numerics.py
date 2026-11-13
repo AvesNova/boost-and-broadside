@@ -35,13 +35,16 @@ def softmin(a: torch.Tensor, b, exponent: float) -> torch.Tensor:
     """a (1 + (a/b)^q)^(-1/q) for a, b >= 0.
 
     Written with the smaller and the larger argument (the formula is symmetric in a and b),
-    so the power never overflows.
+    so the power never overflows. softmin(0, 0) is 0 (a turn budget of exactly 0 with the
+    stick neutral), not 0/0.
     """
     if isinstance(b, torch.Tensor):
         low, high = torch.minimum(a, b), torch.maximum(a, b)
     else:
         low, high = a.clamp_max(b), a.clamp_min(b)
-    return low * torch.pow(1.0 + torch.pow(low / high, exponent), -1.0 / exponent)
+    positive = high > 0.0
+    ratio = torch.where(positive, low / torch.where(positive, high, 1.0), 0.0)
+    return low * torch.pow(1.0 + torch.pow(ratio, exponent), -1.0 / exponent)
 
 
 def smoothstep(t: torch.Tensor) -> torch.Tensor:

@@ -87,3 +87,19 @@ def test_the_stick_takes_each_types_own_fine_and_sustained_levels():
     stick, power = controls(airframe, torch.zeros(7, dtype=torch.int32), torch.arange(7))
     assert stick.tolist() == pytest.approx([0.0, -0.2, 0.2, -0.65, 0.65, -1.0, 1.0])
     assert power.tolist() == [0.0] * 7
+
+
+def test_softmin_of_zero_and_zero_is_zero_with_a_finite_gradient():
+    """A slow ship with an empty store, climbing with the stick neutral, has a turn budget of
+    exactly 0 and a lateral command of 0: softmin(0, 0) must be 0, not 0/0 (bc-v19's crash)."""
+    from bnb.game.physics.numerics import softmin
+
+    a = torch.zeros(3, requires_grad=True)
+    b = torch.tensor([0.0, 2.0, 0.0])
+    value = softmin(a, b, 16.0)
+    value.sum().backward()
+    assert torch.equal(value.detach(), torch.zeros(3))
+    assert torch.isfinite(a.grad).all()
+    assert torch.equal(softmin(torch.zeros(2), 0.0, 16.0), torch.zeros(2))
+    reference = torch.tensor([3.0]) * (1 + (torch.tensor([3.0]) / 5.0) ** 16) ** (-1 / 16)
+    assert torch.allclose(softmin(torch.tensor([3.0]), torch.tensor([5.0]), 16.0), reference)
