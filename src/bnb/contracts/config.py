@@ -98,8 +98,9 @@ class GameConfig:
 
     mode: the game's rules (modes spec 1): "team_deathmatch", "frontline", "elimination"
         (team deathmatch without respawns: a team with no ship alive loses; at the clock
-        more ships alive wins, then more total shield) or "sandbox" (no score and no win,
-        formation spawns: the physics game the race tests run).
+        the team with more health left wins, its living ships' shield fractions summed)
+        or "sandbox" (no score and no win, formation spawns: the physics game the race
+        tests run).
     episode_seconds, respawn_seconds: time-native rules, whole multiples of the tick or the
         rules fail to build (ticks_of); None takes the mode's (the game's `modes.rules`).
         Elimination has no respawn: a dead ship waits out the episode, so it takes no

@@ -13,6 +13,9 @@ Rules items 1-4 are in (rough). Fly them with:
 - The full recharge is 3 s delay + 4.5 s (not 5 s), so empty to full (7.5 s) is shorter
   than deathmatch's 8 s respawn as well as frontline's ~18 s.
 - Reverse power also restarts the shield wait, as before (only coasting recharges).
+- Ratings: `bnb tournament` and `bnb head-to-head` now default to frontline + a new
+  standard `elimination` preset (5v5, 10 fields, 2600 m). The in-training league lanes
+  still rate on the training games (deathmatch included); I left them alone.
 
 ## Log (KST)
 ### 13:54 start
@@ -47,8 +50,19 @@ until ~14:30, so code and CPU tests come first.
   test_eager_cuda_graph_replays_draw_fresh_randomness, which needs the GPU (busy). I
   recheck it after 14:30. `bnb play --preset yongma-jujak --fly` renders offscreen.
 
+### 14:10 milestone 2: ratings (item 5)
+- Elimination at the clock (`modes.phase.clock_result`): the team with more health left
+  wins, its living ships' shield fractions (shield / the type's full shield) summed;
+  equal is a draw. The ship count no longer comes first. step.py passes the fractions.
+- The RL outcome reward reads the same result (`learn.rewards.outcome_events` takes
+  `events.result`, which is this rule at the clock), so a run-away draw earns nothing.
+- Rating games: `tournament.PRESET_NAMES` and the CLI's `RATED_PRESETS` (tournament,
+  head-to-head) = frontline, elimination. The training mix is unchanged.
+- Tests (CPU): test_elimination (clock case rewritten for the new rule), test_modes,
+  test_mode_rules, test_league_tournament, test_game_api_display, test_map_knobs,
+  test_game_version pass; tests/docs has 5 failures that the base branch also has (stale
+  references, not this work).
+
 ## Next
-- Item 5, ratings: elimination and frontline only; an elimination timeout goes to the
-  team with more shield left; check the RL reward uses the same outcome. ETA ~15:00.
 - Item 6, league: no-flee scripted agents and the fast-chaser ship. ETA ~15:45.
 - Item 7 (GPU, after bc-mb512 ends ~14:30): the doctrine search, then Yongma v Jujak 5v5.

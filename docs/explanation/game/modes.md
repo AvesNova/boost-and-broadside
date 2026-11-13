@@ -15,7 +15,7 @@ The modes are `bnb.contracts.config.MODES`:
 - **team deathmatch**: score by deaths;
 - **Frontline**: capture zones around a ring and push the front;
 - **elimination**: team deathmatch without respawns: wipe out the other team, or at the
-  clock have more ships alive, then more shield;
+  clock have more health left (the living ships' shield fractions, summed);
 - **sandbox**: the physics game alone, with no score and no win, only the clock. The race's
   reference tests run in it.
 
@@ -104,10 +104,12 @@ deathmatch, every death a point for the other team, with one kill per enemy ship
   no respawn wait, and `bnb.game.rules` sets it to the episode's), so it is still waiting
   when the episode ends. A config takes no `respawn_seconds` in elimination, and the live
   tuning's episode length moves the wait with it.
-- **At the clock** (`bnb.game.modes.phase.clock_result`): more ships alive wins; with as
-  many alive, more total shield over the living ships wins (the shield is the game's only
-  health: a ship whose shield is gone dies to any damage, so the side behind on it has to
-  attack); equal again, a draw.
+- **At the clock** (`bnb.game.modes.phase.clock_result`): the team with more health left wins
+  (game v12): each living ship counts its shield over its type's full shield, 0 to 1,
+  summed by team (the shield is the game's only health: a ship whose shield is gone dies to
+  any damage). Equal, a draw. The rule is zero-sum, so the side behind has to attack: a
+  side that runs from a losing fight cannot run out the clock into a draw. The RL outcome
+  reward reads the same result (`bnb.learn.rewards.outcome_events`).
 - **Spawns, by team side** (game version 7; `bnb.game.modes.spawns.side_placement`): the
   teams start on opposite sides, not as a lottery. Each team's area is a disc of
   `ModeRules.side_area_fraction` (0.15) arena radii around its centre, `Rules.spawn_offset`

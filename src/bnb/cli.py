@@ -22,6 +22,10 @@ from bnb.contracts import REWARD_LEVELS
 from bnb.contracts.config import TEAM_DEATHMATCH
 from bnb.figures.video import VideoConfig
 
+# The rating games (game v12; `bnb.league.tournament.PRESET_NAMES`, kept here so the CLI
+# starts without torch): frontline and elimination. Team deathmatch trains but is not rated.
+RATED_PRESETS = ("frontline", "elimination")
+
 
 @dataclasses.dataclass(frozen=True)
 class Train:
@@ -218,7 +222,7 @@ class Ratings:
 
     run: tyro.conf.Positional[str]
     with_: Annotated[tuple[str, ...], tyro.conf.arg(name="with")] = ()
-    presets: tuple[str, ...] = ("frontline", "deathmatch", "deathmatch_wide")
+    presets: tuple[str, ...] = RATED_PRESETS
     target_stderr: float = 25.0
     budget: int = 20_000
     blocks: int = 8
@@ -254,7 +258,7 @@ class HeadToHead:
 
     players: tyro.conf.Positional[tuple[str, ...]]
     games: int = 64
-    presets: tuple[str, ...] = ("frontline", "deathmatch", "deathmatch_wide")
+    presets: tuple[str, ...] = RATED_PRESETS
     device: str = "cuda"
     runs_directory: str | None = None
 

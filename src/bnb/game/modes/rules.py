@@ -47,6 +47,8 @@ PRESETS = {
     "deathmatch": GameConfig(5, 10, 2600.0, mode=TEAM_DEATHMATCH),
     "deathmatch_wide": GameConfig(5, 10, 8200.0, mode=TEAM_DEATHMATCH, spawn_groups=(2, 2, 1)),
     "frontline": GameConfig(5, 10, 2600.0, mode=FRONTLINE),
+    # Elimination on the standard map (game v12): a rating game, not in the training mix.
+    "elimination": GameConfig(5, 10, 2600.0, mode=ELIMINATION),
     **{
         f"real_scale_{name}": GameConfig(
             5,

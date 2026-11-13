@@ -143,20 +143,19 @@ def deathmatch_targets(
 
 
 def clock_result(
-    mode_rules: ModeRules, mode: ModeState, ships: Ships, alive: torch.Tensor
+    mode_rules: ModeRules, mode: ModeState, alive: torch.Tensor, health: torch.Tensor
 ) -> torch.Tensor:
-    """(B,) int32: the result for team 0 when the clock ends the match. ships: after the
-    damage phase, alive (B, N) its survivors. Elimination: more ships alive wins, then more
-    total shield (the game's only health: a ship dies to any damage with its shield
-    gone) over the living ships, then a draw."""
+    """(B,) int32: the result for team 0 when the clock ends the match. alive (B, N): the
+    survivors after the damage phase; health (B, N): each ship's shield over its type's full
+    shield. Elimination (game v12): the team with more health left over its living ships
+    wins (a ship counts its shield fraction, 0 to 1: a shieldless survivor counts 0), equal
+    health a draw. Zero-sum, so a side that runs from a fight it is losing cannot run out the
+    clock into a draw."""
     if mode_rules.name == TEAM_DEATHMATCH:
         return torch.sign(mode.score[:, 0] - mode.score[:, 1]).to(torch.int32)
     if mode_rules.name == ELIMINATION:
-        living = by_team(alive).sum(-1)  # (B, 2)
-        health = by_team(torch.where(alive, ships.shield, 0.0)).sum(-1)
-        by_ships = torch.sign(living[:, 0] - living[:, 1])
-        by_health = torch.sign(health[:, 0] - health[:, 1]).to(by_ships.dtype)
-        return torch.where(by_ships != 0, by_ships, by_health).to(torch.int32)
+        left = by_team(torch.where(alive, health, 0.0)).sum(-1)  # (B, 2)
+        return torch.sign(left[:, 0] - left[:, 1]).to(torch.int32)
     if mode_rules.name == FRONTLINE:
         return frontline.timeout_result(mode.front).to(torch.int32)
     return torch.zeros_like(mode.front)

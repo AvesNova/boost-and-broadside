@@ -45,7 +45,10 @@ from .gauge import GAUGE_TOP
 from .matches import Arena, ArenaConfig, Player, default_lanes, network_groups, player
 from .ratings import allocate_blocks, fit_ratings
 
-PRESET_NAMES = ("frontline", "deathmatch", "deathmatch_wide")  # the training mix's games
+# The rating games (game v12): frontline and elimination, whose results a side cannot draw
+# by running away. Team deathmatch still trains (`bnb.runtime.train.TRAINING_MIX`) but is
+# not rated: its kill-lead result at the clock let the weaker side extend for a draw.
+PRESET_NAMES = ("frontline", "elimination")
 PRIOR_GAMES = 1.0
 ANCHOR = "scripted"
 ALLOCATIONS = ("a_optimal", "balanced")
