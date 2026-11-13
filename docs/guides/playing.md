@@ -45,7 +45,7 @@ compiled. The options:
   team it holds; a tooltip says what each shows; on the battlefield each zone shows its
   meter outside its edge and a lock as a thinner arc inside it, shrinking as the lock runs
   out; in elimination the ships each team has left, and the boundary's radius as a share
-  of the arena's with its time to zero), and the clock in the middle; the speed controls
+  of the arena's and its time to zero, as "edge 31%, 0:45"), and the clock in the middle; the speed controls
   on the right: pause or play, one tick while paused, and ×1, ×2, ×4, ×8. Left of the
   speed controls, the frame rate: frames per second and the frame time, smoothed over about
   half a second, and the longest frame of the last second (`max`), so a stall shows. F4,

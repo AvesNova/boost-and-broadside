@@ -225,7 +225,7 @@ def boundary_label(frame) -> str:
     and its time to zero (whole seconds, rounded up)."""
     share = frame.boundary_radius / max(frame.arena_radius, 1e-6)
     seconds = math.ceil(frame.boundary_time_to_zero - 1e-6)
-    return f"edge {100.0 * share:.0f}%  {clock(seconds)} to zero"
+    return f"edge {100.0 * share:.0f}%, {clock(seconds)}"
 
 
 def _objective(interface: Interface, rect, left: float, right: float) -> None:
@@ -323,7 +323,7 @@ def _objective(interface: Interface, rect, left: float, right: float) -> None:
                 tooltip(
                     "The boundary holds at the arena's edge, then shrinks to nothing by the "
                     "clock's end; beyond it a ship takes boundary damage. Shown: its radius "
-                    "now, as a share of the arena's, and its time to zero."
+                    "now, as a share of the arena's, and its time to zero (m:ss)."
                 )
         elif kind == "front":
             _front(draw, x, middle_y, frame, threshold, cell, cell_gap, team, theme, scale)
