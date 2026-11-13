@@ -57,6 +57,48 @@ def middle(factors: dict | None = None, slot: str = "yongma") -> dict:
     return out
 
 
+def absolute(base: dict, factors: dict) -> dict:
+    """A card dict of factors as absolute card values on its base row."""
+    out = dict(base)
+    for field, factor in factors.items():
+        out[field] = factor["set"] if isinstance(factor, dict) else base[field] * factor
+    return out
+
+
+def middle_of(energy: dict, turn: dict, slot: str = "yongma", factors: dict | None = None) -> dict:
+    """The neutral ship between a card's Yongma and Jujak (the geometric mean of the two in
+    flight, shield, damage and size, as the archetypes' M on the frozen pair), on a slot's
+    base row, then factors."""
+    y, j = absolute(Y, energy), absolute(J, turn)
+    base = Y if slot == "yongma" else J
+    fields = set(FLIGHT + NEUTRAL) | set(energy) | set(turn)
+    fields -= {"explosive_share"}
+    out = {f: {"set": math.sqrt(y[f] * j[f])} for f in fields}
+    out["explosive_share"] = {"set": 0.5 * (y["explosive_share"] + j["explosive_share"])}
+    out = {f: v for f, v in out.items() if v["set"] != base[f]}
+    for field, factor in (factors or {}).items():
+        if isinstance(factor, dict):
+            out[field] = factor
+        elif field in out:
+            out[field] = {"set": out[field]["set"] * factor}
+        else:
+            out[field] = factor
+    return out
+
+
+def three_set(name: str, energy: dict, turn: dict, gate: float, middle: dict | None = None):
+    """A three-ship set file for `threeship.py`."""
+    m = middle or {}
+    return dict(
+        name=name,
+        yongma=energy,
+        jujak=turn,
+        middle_energy=middle_of(energy, turn, "yongma", m),
+        middle_turn=middle_of(energy, turn, "jujak", m),
+        player=dict(doctrine=dict(turn=dict(duel_extend_in_shield_ratio=[gate, 0.1]))),
+    )
+
+
 def doctrine(gate: float) -> dict:
     """r9m2 with the Jujak slot's duel-extension gate at `gate`."""
     champion = json.loads((HERE.parent / "maneuvers-2" / "champion2.json").read_text())
@@ -183,7 +225,29 @@ def round4() -> list[dict]:
     return [candidate(name, e, t, gate) for name, (e, t), gate in cards]
 
 
+def round5() -> list[dict]:
+    """The dive exchange raises Yongma's sustained turn (x1.5: 0.248 rad/s), so card A's Jujak
+    is only +2.4%: back to Jujak drag x1.3 (+7%) and x1.35 (+5%), with Jujak's nose cone
+    softer (round 2: x1.3 was +0.05 in the duel, +0.03 at 5v5) and Yongma's damage up."""
+    cards = []
+    for drag, damage, dive, jf in (
+        (1.35, 1.3, 1.5, 1.5),
+        (1.35, 1.4, 1.5, 1.5),
+        (1.35, 1.3, 1.5, 2.0),
+        (1.3, 1.4, 1.5, 2.0),
+        (1.3, 1.5, 1.5, 1.5),
+        (1.35, 1.4, 1.3, 1.5),
+        (1.3, 1.5, 1.5, 2.0),
+        (1.35, 1.5, 1.5, 2.0),
+    ):
+        energy, turn = lift_card(drag=drag, damage=damage, dive=dive)
+        name = f"Jd{drag} Yl1.2 Ydmg{damage} Ydive{dive} Jf{jf}"
+        cards.append(candidate(name, energy, turn | cone(jf), 0.7))
+    return cards
+
+
 ROUNDS = {
+    "round5": round5,
     "round4": round4,
     "round0": round0,
     "flight_grid": flight_grid,
