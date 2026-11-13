@@ -395,6 +395,30 @@ columns at 256 (SE ~0.03-0.04). Deathmatch 1v1 / 2v2 now play at the 3000 m floo
   fix both ends; a frontline rule might (the author's planned minimum zone size and zone
   travel distance), or the lock and wave doctrine (round 10, now running).
 
+### 18:11 round 10 (`round10/`): frontline lock and wave doctrines against r9m2
+Frontline (600 s), the lift x1.5 + damage x1.5 card, each candidate against r9m2 in the mixed and
+mixed-reversed lineups: 5v5 at 512 games a lineup, 10v10 at 256. Elo against r9m2 =
+400 log10(s / (1 - s)) of the two lineups' mean score, SE by the delta method.
+
+| Candidate | 5v5 score (mixed / reversed) | 5v5 Elo | 10v10 score (mixed / reversed) | 10v10 Elo |
+|---|---|---|---|---|
+| r9m2 (control) | 0.48 / 0.47 | -19 ± 11 | 0.49 / 0.52 | +5 ± 11 |
+| r9m2 + lock 0.5 | 0.73 / 0.77 | +189 ± 12 | 0.67 / 0.70 | +137 ± 12 |
+| **r9m2 + lock 1** | **0.75 / 0.81** | **+222 ± 13** | **0.78 / 0.77** | **+218 ± 13** |
+| r9m2 + wave 30 s | 0.39 / 0.41 | -73 ± 10 | 0.20 / 0.18 | -256 ± 12 |
+| r9m2 + wave 10 s | 0.32 / 0.35 | -116 ± 11 | 0.23 / 0.22 | -215 ± 12 |
+| r9m2 + lock 1 + wave 30 s | 0.48 / 0.55 | +11 ± 10 | 0.27 / 0.26 | -178 ± 11 |
+
+- **The lock-aware goal wins big: about +220 Elo at both sizes** (lock_press 1; 0.5 gives
+  +140-190). Attacking while the enemy is locked out of the zone it lost, and defending
+  while the own team is locked out, until a travel time before the lock ends.
+- **Holding for the wave loses**, -70 to -260 Elo, worse at 10v10, and it cancels the
+  lock's gain when combined. Waiting at the defense for the respawns hands the enemy the
+  lock window and the initiative. Not recommended as it stands; a shorter hold or one only
+  for a large missing share might differ.
+- Next: lock_press into the default doctrine (both types), then a re-check of the card
+  balance on frontline with it, since frontline balance moves with doctrine.
+
 ## Next
 - Item 6, league: no-flee scripted agents and the fast-chaser ship. ETA ~15:45.
 - Item 7: round 6 (v15) is running in tmux `lethality-r6`; then 10v10 and 0.5x / 2x arena
