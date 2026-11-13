@@ -67,6 +67,13 @@ observation shows it in seconds, in `time_since_seen`.
   stage writes anyway (`bnb.game.perception.observe.view_order`).
 - The ship rows are the hidden columns where the viewer sees the ship and zero where it
   does not, then the always-shown columns.
+- A match keeps a fixed number of ship slots per team; an uneven one (`active`, each
+  team's active ship count) benches a team's last `S - active` slots, held as dead ships
+  with their respawn wait frozen at the full respawn length. The always-shown column
+  `benched` is 1 on those rows, in both teams' views and under fog (both sides know the
+  roster), so no agent has to infer a bench from a frozen respawn wait. It is 0 in a game
+  with every ship active, and comes from the `active` given to `perceive` (the rollout
+  passes its own; the play shell plays full teams).
 - The fields are the same in every view. The zones and the mode's global columns come from
   the mode, on its own slice of the batch (see [Modes](modes.md)).
   Frontline's capture locks are public zone columns. Each view's `next_wave_own` is its own
