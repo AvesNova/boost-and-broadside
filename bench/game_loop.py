@@ -1534,6 +1534,8 @@ def card_passes(loop: Loop) -> list[dict]:
                 rate, shield = float(types.fire_rate[i]), float(types.max_shield[j])
 
                 def ttk(aspect: float) -> float:
+                    if damage * aspect <= 0.0:  # no damage at this aspect (a head-on fraction 0)
+                        return math.inf
                     return (math.ceil(shield / (damage * aspect) - 1e-9) - 1) / rate
 
                 reach = max(float(card.gun_range[i]), float(card.gun_range[j]))

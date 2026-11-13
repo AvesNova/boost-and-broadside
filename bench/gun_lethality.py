@@ -325,6 +325,8 @@ def card_table(types, rules, names=None):
         shield = float(types.max_shield[i])
 
         def ttk(aspect):  # a mirror: the type shooting itself
+            if damage * aspect <= 0.0:  # no damage at this aspect (a head-on fraction 0)
+                return math.inf
             return (math.ceil(shield / (damage * aspect) - 1e-9) - 1) / rate
 
         sustained = float(c.turn_rate[i, 2])
