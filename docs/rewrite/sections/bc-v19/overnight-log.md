@@ -342,3 +342,15 @@ The dead-ship slots get about 1–3%. Self-play is within 2–3 points, and the 
 - **Kept:** rl-kl, deathmatch only, kill-lead outcome, 72 updates. Against rl-dm, which is deathmatch only with the kill-share outcome, at the same steps, only the outcome reward differs. That is the cleanest test of the reward shape.
   - Early sign: the outcome critic's explained variance is 0.161 at update 18; rl-dm had 0.135 at update 23.
 - **Queued:** rl-mix-kl, mixed modes with the kill-lead outcome, 72 updates. It starts after rl-kl and compares with rl-v20 at 75M.
+
+## 08:30 — per-head attention (453c5035): the absent slots are the zone-reading heads' "nothing here"
+
+- **Setup:** 2 heads per layer, 8 in all.
+- **Only layer 3 head 0 puts more than 30% on the absent-zone slots:** 31–35% in deathmatch and elimination. It holds under a third of the absent mass. Layer 0 head 0 and layer 1 head 0 put 12–18% there.
+- **In frontline the same heads put 27–48% on the real zones**, not on the global token, self or ships.
+- **No head is a sink on the global token or on self in every mode.**
+- **Reading:** these are zone readers. Where there are no zones, they park on the placeholder. So the placeholder already works as a learned "nothing to read" target, and works consistently in both zone-less modes. There is no fight between modes.
+- **Consequences for the sink idea:**
+  - **Masking the absent zones alone would be harmful.** The zone heads would have to push that mass onto real tokens.
+  - **An explicit sink logit or Qwen-style gate** would let those heads switch off cleanly. With only 2 heads per layer, it would also let them spend their mass on something useful.
+  - **The expected gain is modest.** It stays an arm candidate for the 8-GPU stage, testing both variants, and is not urgent.
