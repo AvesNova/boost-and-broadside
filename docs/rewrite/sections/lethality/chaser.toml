@@ -1,0 +1,80 @@
+# Chaser: the league-only fast chaser (docs/rewrite/sections/lethality/chaser.py), not a
+# playable type; vizia with a faster cruise and a stronger boost.
+name = 'Chaser'
+
+[handles]
+stall_speed = 89.4
+g_limit = 9.0
+cruise_speed = 374.2096880589837
+climb_time = 299.9999694096713
+ceiling = 497563.2
+low_speed_acceleration = 10.911898582086224
+sustained_turn_rate = 0.6733480254194123
+half_lift_drag = 0.25
+nose_reversal_time = 0.3937061234098994
+dive_acceleration = 65.41185875342512
+zoom_acceleration = -34.87186437287164
+stall_angle = 0.27052603405912107
+vision_range = 1000.0
+zero_lift_drag = 4.9670398009950244e-05
+hit_damage = 21.0
+explosive_share = 0.0
+fire_rate = 30.0
+muzzle_speed = 1712.0
+bullet_spread = 3.0844823457636035
+gun_range = 586.896944716751
+bullet_drag = 0.0005
+shots_per_store = 865.2401087452062
+max_shield = 100.0
+shield_recharge_rate = 24.0
+shield_recharge_delay = 3.0
+head_on_fraction = 0.0
+head_on_angle = 0.7853981633974483
+head_on_sharpness = 3.0
+arming_distance = 0.0
+hit_radius = 12.0
+core_radius = 5.0
+spawn_energy = 199025.28000000003
+
+[card]
+max_lift_coefficient = 0.0049096886068582535
+max_acceleration = 353.1600036621094
+zero_lift_drag = 4.967039785697125e-05
+engine_power = 12938.6181640625
+engine_power_full_store = 4684.51220703125
+static_thrust = 23.818571090698242
+max_energy = 497563.1875
+corner_nose_frequency = 11.254040718078613
+max_shield = 100.0
+hit_radius = 12.0
+core_radius = 5.0
+hit_damage = 21.0
+muzzle_speed = 1712.0
+bullet_energy_cost = 575.0579223632812
+fire_rate = 30.0
+bullet_life = 0.3333333432674408
+spawn_energy = 199025.28125
+explosive_share = 0.0
+reference_bullet_speed = 1795.6173095703125
+bleed_exponent = 2.0
+induced_drag_scale = 0.5181795954704285
+stall_angle_scale = 1.0333333015441895
+coast_exchange_scale = 20.23617935180664
+dive_exchange_scale = 6.6293487548828125
+climb_exchange_scale = 3.4592878818511963
+vision_range_scale = 0.3255208432674408
+bullet_spread_scale = 0.25704020261764526
+bullet_drag_scale = 1.0
+shield_recharge_rate_scale = 2.0
+shield_recharge_delay_scale = 0.5
+head_on_fraction_scale = 0.0
+head_on_angle_scale = 1.0644670724868774
+head_on_sharpness = 3.0
+arming_distance = 0.0
+engine_knee_scale = 1.0
+fine_stick = 0.2043347954750061
+sustained_stick = 0.681115984916687
+
+[notes]
+cruise_speed = "vizia's x 1.15 (league-only fast chaser)"
+dive_acceleration = "vizia's x 1.5 (league-only fast chaser)"

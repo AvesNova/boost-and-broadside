@@ -12,6 +12,7 @@ from scripted_cases import CHARACTERISTICS, absent, observation, ship
 
 from bnb.contracts.obs import GLOBAL
 from bnb.controllers.scripted import (
+    REAL_SCALE_GRAVITY,
     STANDARD_CORNER_RADIUS,
     STANDARD_GUN_RANGE,
     Chaser,
@@ -22,7 +23,8 @@ from bnb.controllers.scripted import (
 from bnb.controllers.scripted_parameters import MODES
 
 # The standard fighter at P-51 scale: lengths x5.82 and g = 9.81 m/s^2 (times x4.00), with
-# the real-scale variant's 600 m gun range.
+# the real-scale variant's 600 m gun range; its gravity the real-scale set's native one
+# (39.24 at x2 since game v13), which the agent classifies by.
 LENGTH = 5.82
 TIME = math.sqrt(LENGTH * 27.0 / 9.81)
 REAL_SCALE = dataclasses.replace(
@@ -30,7 +32,7 @@ REAL_SCALE = dataclasses.replace(
     corner_speed=CHARACTERISTICS.corner_speed * (LENGTH / TIME),
     max_acceleration=CHARACTERISTICS.max_acceleration * (LENGTH / TIME**2),
     gun_range=CHARACTERISTICS.gun_range * (600.0 / STANDARD_GUN_RANGE),
-    gravity=torch.full_like(CHARACTERISTICS.gravity, 9.81),
+    gravity=torch.full_like(CHARACTERISTICS.gravity, REAL_SCALE_GRAVITY),
 )
 # The same lengths at the standard gravity: a card the agent classifies by gun ranges alone.
 SCALED_LENGTHS = dataclasses.replace(REAL_SCALE, gravity=CHARACTERISTICS.gravity)
@@ -63,7 +65,7 @@ def test_a_real_scale_card_plays_the_real_scale_sets():
     """A card at the real-scale gravity plays real_scale_deathmatch on any deathmatch map,
     real_scale_frontline in Frontline and real_scale_elimination in elimination (a standard
     card its deathmatch set there); the real-scale presets' own card is one."""
-    from bnb.controllers.scripted import REAL_SCALE_GRAVITY
+    from bnb.controllers.scripted import real_scale_card
     from bnb.game import api
     from bnb.game.handling.characteristics import characteristics
 
@@ -82,7 +84,8 @@ def test_a_real_scale_card_plays_the_real_scale_sets():
     assert torch.equal(mode_index(view, CHARACTERISTICS), deathmatch_view)
     game = api.PRESETS["real_scale_deathmatch"]
     card = characteristics(api.ship_types(ship_set=game.ship_set), api.rules_of(game))
-    assert float(card.gravity.amax()) < REAL_SCALE_GRAVITY < float(CHARACTERISTICS.gravity[0])
+    assert bool(real_scale_card(card.gravity.amax()))
+    assert not bool(real_scale_card(CHARACTERISTICS.gravity.amax()))
 
 
 def test_the_chaser_plays_the_race_distances_on_the_standard_card():

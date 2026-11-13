@@ -147,17 +147,23 @@ WIDE_ARENA_IN_GUN_RANGES = (
 )
 
 
-# A card plays the real-scale sets when its gravity is below this, the geometric mean of
-# the standard game's and the real-scale set's (27 and 9.81 m/s^2).
-REAL_SCALE_GRAVITY = math.sqrt(
-    FlightConstants.gravity * rules_of(PRESETS["real_scale_deathmatch"]).flight.gravity
-)
+# A card plays the real-scale sets when its gravity is nearer (in log) the real-scale set's
+# than the standard game's (27 m/s^2; the real-scale set's 39.24 at its native x2 speed since
+# game v13, 9.81 before).
+STANDARD_GRAVITY = FlightConstants.gravity
+REAL_SCALE_GRAVITY = rules_of(PRESETS["real_scale_deathmatch"]).flight.gravity
+
+
+def real_scale_card(gravity: torch.Tensor) -> torch.Tensor:
+    """Whether a card with this gravity plays the real-scale sets (`REAL_SCALE_GRAVITY`)."""
+    log = torch.log(gravity)
+    return (log - math.log(REAL_SCALE_GRAVITY)).abs() < (log - math.log(STANDARD_GRAVITY)).abs()
 
 
 def mode_index(obs: Obs, characteristics: Characteristics) -> torch.Tensor:
-    """(R,) int64 each view's mode, an index into `MODES`. On a real-scale card (its gravity
-    below REAL_SCALE_GRAVITY): real_scale_frontline or real_scale_elimination by the mode's
-    flag, else real_scale_deathmatch. Otherwise frontline by the mode's flag, else
+    """(R,) int64 each view's mode, an index into `MODES`. On a real-scale card
+    (`real_scale_card`): real_scale_frontline or real_scale_elimination by the mode's flag,
+    else real_scale_deathmatch. Otherwise frontline by the mode's flag, else
     deathmatch_wide beyond WIDE_ARENA_IN_GUN_RANGES of the card's longest gun range, else
     deathmatch (a sandbox view and an elimination view too)."""
     globals_ = obs.globals
@@ -176,7 +182,7 @@ def mode_index(obs: Obs, characteristics: Characteristics) -> torch.Tensor:
             MODES.index("real_scale_deathmatch"),
         ),
     )
-    return torch.where(characteristics.gravity.amax() < REAL_SCALE_GRAVITY, real, index)
+    return torch.where(real_scale_card(characteristics.gravity.amax()), real, index)
 
 
 def resolved(

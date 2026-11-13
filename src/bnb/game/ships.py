@@ -137,9 +137,10 @@ def read(path: pathlib.Path, key: str) -> Ship:
 
 
 def _table(values: dict[str, float | str]) -> str:
-    """TOML lines: numbers as Python writes them, text as a basic string."""
+    """TOML lines: numbers as Python writes them, text as a basic string, a bool as TOML's
+    true or false."""
     return "".join(
-        f"{name} = {json.dumps(value) if isinstance(value, str) else repr(value)}\n"
+        f"{name} = {json.dumps(value) if isinstance(value, (str, bool)) else repr(value)}\n"
         for name, value in values.items()
     )
 

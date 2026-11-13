@@ -48,7 +48,7 @@ def test_the_exchange_is_vertical_lift_demand():
     """A boost spends at its full rate in a turn and asks for about no lift; a reverse
     climbs at its full rate in a moderate turn, with gravity plus the climb's lift."""
     airframe = airframe_of(TYPES, KINDS)
-    speed = torch.full((3,), 150.0, dtype=torch.float64)
+    speed = torch.full((3,), 300.0, dtype=torch.float64)  # x1's 150 at the set's x2 (game v13)
     energy = 0.25 * airframe.max_energy
     stick = torch.full_like(speed, 0.3)
     for power in (-1.0, 1.0):
@@ -60,7 +60,8 @@ def test_the_exchange_is_vertical_lift_demand():
         )
         torch.testing.assert_close(turning.exchange, straight.exchange, rtol=1e-3, atol=0.0)
         expected = (RULES.flight.gravity + turning.exchange).clamp_min(0.0)
-        torch.testing.assert_close(turning.vertical_lift, expected, rtol=0.0, atol=0.2)
+        # x1's 0.2 m/s^2, an acceleration: x4 at the set's x2 (game v13)
+        torch.testing.assert_close(turning.vertical_lift, expected, rtol=0.0, atol=0.8)
 
 
 def test_the_best_sustained_turn_is_below_full_stick():

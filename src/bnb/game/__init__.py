@@ -86,7 +86,16 @@ damage dead ahead and half at 45 degrees (sharpness 3). The shield keeps its old
 of quiet flight, then 12 per s; the wait restarts on a boost, a shot, a hit or a stick past
 the fine level). The fingerprint's presets fly none of the three,
 so it is version 11's.
+Version 13 (2026-11-13): the real-scale set at x2 native speed. Every card and handle of
+the set and its rules.toml went through the exact similarity at length 1, time 1/2
+(`bnb.game.handling.similarity`; speeds x2, accelerations and gravity x4, rates and fire
+rates x2, times /2, energies x4, powers x8, lengths and map sizes kept), with Yongma, Jujak
+and Vizia re-solved from their scaled handles (docs/rewrite/sections/lethality/native_x2.py
+and resolve_native.py). The mode clocks (match, respawn, capture, waves, the lock) keep
+their numbers as native seconds. The real-scale scripted agent's time parameters scaled
+the same way (scripted_x2.py). The plane-equivalent values are native over
+`real_scale.EQUIVALENT_FACTOR` (2), for display only.
 """
 
-VERSION = 12
-FINGERPRINT = "923ebb362bbf26e8"
+VERSION = 13
+FINGERPRINT = "00177471050a7b4b"

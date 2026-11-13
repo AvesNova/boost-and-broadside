@@ -4,14 +4,16 @@
 [rules]
 bullet_drag = 0.0005
 vision_range = 3072.0
-spawn_speed = 72.644
+spawn_speed = 145.288
 field_band_width = 120.0
 spawn_turn_distance = 436.5
 damage_reference_distance = 300.0
+boundary_damage_base = 10.0
+boundary_damage_per_metre = 0.1
 
 [flight]
 mass = 1.0
-gravity = 9.81
+gravity = 39.24
 stall_angle = 0.2617993877991494
 induced_drag_factor = 66.348
 engine_knee = 0.5
@@ -21,10 +23,10 @@ climb_exchange = 9.810000000000002
 dive_exchange = 9.810000000000002
 lift_softmin_exponent = 16.0
 nose_damping = 0.7
-nose_frequency_floor = 0.24985677455140684
+nose_frequency_floor = 0.4997135491028137
 speed_floor = 1.454166427889188e-06
 direct_charge = true
-critical_speed = 197.0
+critical_speed = 394.0
 drag_rise_exponent = 12.0
 separation_drag = 1.0
 separation_exponent = 8.0

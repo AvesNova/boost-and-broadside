@@ -57,7 +57,7 @@
     "deny_angle": 0.58,
     "lead_turn": 0.0,
     "lead_turn_in_seconds": [
-     1.5,
+     0.75,
      0.2
     ],
     "lead_turn_in_crossing": [
@@ -67,11 +67,11 @@
     "lead_turn_stick": 1.0,
     "lead_turn_one_circle": 0.0,
     "yoyo": 0.0,
-    "yoyo_after_seconds": 30.0,
+    "yoyo_after_seconds": 15.0,
     "yoyo_phase": 1.5,
-    "yoyo_climb_seconds": 4.0,
+    "yoyo_climb_seconds": 2.0,
     "yoyo_ease": 0.4,
-    "yoyo_dive_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
     "yoyo_low": 0.0,
     "yoyo_to_corner_speed": 10.0,
     "brake": 0.0,
@@ -173,7 +173,7 @@
     "deny_angle": 0.389,
     "lead_turn": 0.0,
     "lead_turn_in_seconds": [
-     1.5,
+     0.75,
      0.2
     ],
     "lead_turn_in_crossing": [
@@ -183,11 +183,11 @@
     "lead_turn_stick": 1.0,
     "lead_turn_one_circle": 0.0,
     "yoyo": 0.0,
-    "yoyo_after_seconds": 30.0,
+    "yoyo_after_seconds": 15.0,
     "yoyo_phase": 1.5,
-    "yoyo_climb_seconds": 4.0,
+    "yoyo_climb_seconds": 2.0,
     "yoyo_ease": 0.4,
-    "yoyo_dive_seconds": 4.0,
+    "yoyo_dive_seconds": 2.0,
     "yoyo_low": 0.0,
     "yoyo_to_corner_speed": 10.0,
     "brake": 0.0,
