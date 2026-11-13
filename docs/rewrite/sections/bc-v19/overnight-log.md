@@ -88,3 +88,12 @@ This log records the changes and decisions made while the author was away, with 
   - **Decision:** no reweighting from a warm-up CPU run. bc-v20 logs the split at production scale. I'll set the per-output weights from it before RL, which recompiles anyway.
 - **The launch line** takes NAME and BUDGET. bc-v20 runs 150M steps, finishing about 05:10 if steps/s matches bc-v19.
 - **Live Elo** is repointed: the `bnb-live-elo` unit with RUN=bc-v20, and the bnb-elo worktree at ac77680c.
+
+## 03:25 — bc-v20 update 18: the BC KL flag judged benign
+
+- **The flag:** BC KL rose from a best of 0.40 to 0.49, then fell back to 0.468.
+- **Why it's benign:** over the same updates the teacher's entropy rose from 0.80 to 0.95 as combat ramped up. A harder target is the same distribution shift that bc-v19's triage found behind the next-state and correction rises.
+- **Speed:** unchanged, with 3.1 s rollout and 44.7 s learning per update.
+- **Inputs:** no envelope violations, no clipping, nothing non-finite.
+- **The new within-one-σ alert:** fired at update 16, then cleared.
+- **Elo at 5M:** deathmatch 598 ± 31, elimination −84 ± 142, frontline −275 ± 246.
