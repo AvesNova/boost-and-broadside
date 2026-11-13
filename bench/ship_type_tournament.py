@@ -257,20 +257,28 @@ def report(args) -> None:
     print(header + body, end="")
 
 
-GRAVITY = 9.81  # m/s^2, the real-scale set's
+GRAVITY = 9.81  # m/s^2, the planes' (the real-scale set's at its plane equivalent)
 
 
 def features(ship_set: str) -> dict[str, dict[str, float]]:
-    """Per type name: the handles that differ between types, and the groups."""
-    from bnb.game.real_scale import combat_constants
+    """Per type name: the handles that differ between types, and the groups, in the planes'
+    units: the real-scale set's native x2 handles over `real_scale.EQUIVALENT_FACTOR`
+    through the similarity (game v13), and the hit damage as the mean hit (the centre hit
+    times MEAN_CLOSENESS, game v6), so they compare with the researched quantities."""
+    from bnb.game.handling.similarity import ENERGY, HANDLE_UNITS, factor
+    from bnb.game.physics.combat import MEAN_CLOSENESS
+    from bnb.game.real_scale import EQUIVALENT_FACTOR, SHIP_SET, combat_constants
 
+    k = EQUIVALENT_FACTOR if ship_set == SHIP_SET else 1.0
     fire_over_charge = combat_constants()[0]  # continuous fire's power over the climb charge
     out = {}
     for ship in ships.load(ship_set):
-        h = ship.handles
+        h = {n: v * factor(HANDLE_UNITS[n], 1.0, k) for n, v in ship.handles.items()}
+        h["hit_damage"] = h["hit_damage"] * MEAN_CLOSENESS  # the mean hit
+        shot_cost = ship.card["bullet_energy_cost"] * factor(ENERGY, 1.0, k)
         # the climb rate, from the combat economy: continuous fire costs fire_over_charge
         # times the initial climb charge g x climb_rate
-        climb_rate = ship.card["bullet_energy_cost"] * h["fire_rate"] / fire_over_charge / GRAVITY
+        climb_rate = shot_cost * h["fire_rate"] / fire_over_charge / GRAVITY
         weight_of_fire = h["fire_rate"] * h["hit_damage"]  # damage per second
         spread_angle = h["bullet_spread"] / h["muzzle_speed"]  # rad, per axis
         row = dict(
