@@ -65,3 +65,26 @@ This log records the changes and decisions made while the author was away, with 
 - **The fix:** softmin(0, 0) = 0, plus a test with a finite gradient. Every other value is unchanged, so the game version stays the same. The agent's fixed rerun ran clean past the ticks that had failed.
 - **Not done, a proposal:** a rollout-side non-finite detector, counting non-finite ship state per update and failing fast with the env and tick. It would have turned a 30-minute hunt into a log line. It isn't needed for the run.
 - **Still open:** the NaN in `belief/normalised_square_error/position_metres/*` is probably a separate metric issue: a near-singular covariance determinant overflows.
+
+## 03:06 — bc-v20 launched (ac77680c): Yemong v8 + the softmin fix, 150M
+
+- **Yemong v8** (d43a4b7d): the velocity code is knee 100, spacing 5, **99 bins**, with a reach of 1059 m/s.
+  - 97 bins reach only 1002 m/s, short of the 1006 target. Every past count has been odd, so I accepted 99.
+  - The state code is 544 wide (616 in v7).
+- **The `sigma_miscalibrated` alert** (dd797c9c): it now fires when any `belief/within_one_sigma/*` falls below 0.4.
+  - The agent warns that it still fires on a short CPU run, where shield_recharge_wait is within one σ 0% of the time.
+  - I'll check this in bc-v20 before trusting the rule.
+- **The geometry head's per-output gradient split** (4a3fe524). The short CPU run, all in learning-rate warm-up, gave these trunk norms:
+
+  | output | trunk norm |
+  |---|---|
+  | range | 1.2e-4 |
+  | closure | 7.5e-5 |
+  | antenna train angle | 1.6e-5 |
+  | aspect | 1.6e-5 |
+  | heading crossing angle | 1.2e-5 |
+
+  - Range and closure carry about 80% of the term, and the five outputs' gradients point the same way (cosines 0.77–0.94).
+  - **Decision:** no reweighting from a warm-up CPU run. bc-v20 logs the split at production scale. I'll set the per-output weights from it before RL, which recompiles anyway.
+- **The launch line** takes NAME and BUDGET. bc-v20 runs 150M steps, finishing about 05:10 if steps/s matches bc-v19.
+- **Live Elo** is repointed: the `bnb-live-elo` unit with RUN=bc-v20, and the bnb-elo worktree at ac77680c.
