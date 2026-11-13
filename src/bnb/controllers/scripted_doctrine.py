@@ -2,8 +2,8 @@
 archetypes.md, section 5). One agent; each own ship reads its type's `Doctrine`, so a mixed
 team flies each type by its own.
 
-A doctrine changes the combat layer's aim point and power (and, through `hold_fire`, may
-withhold a shot; a shot still needs the nose on the lead point). Its weight against the
+A doctrine changes the combat layer's aim point and power (a shot still needs the nose on
+the lead point). Its weight against the
 committed target is `strength` times `in_advantage`, a logistic in the doctrine's advantage,
 the product of the own-over-target ratios of the sustained turn rate, the climb power, the
 cruise speed and the gun range, each raised to its exponent: so a doctrine can act against
@@ -28,24 +28,6 @@ one opponent type and not another. Within it:
 The maneuvers (the combat layer's `maneuvers`) are weighted on their own, not by `strength`
 and `in_advantage`, so they fly in the mirrors too; each reads the committed target:
 
-- **Lead turn**: on a head-on approach (the crossing angle of the two flight paths within
-  `lead_turn_in_crossing` radians of opposed) with the merge `lead_turn_in_seconds` away
-  (range over closure), start the turn early at `lead_turn_stick` of full stick: toward
-  the side the bandit will pass on (the two-circle sense), or, with `lead_turn_one_circle`
-  above 1/2, away from it (the one-circle sense).
-- **Yo-yo**: after `yoyo_after_seconds` of a close fight without an angle gained (the
-  carry's stalemate clock: the nose never on the target while the target's nose is off the
-  ship), when the target comes within `yoyo_phase` radians of the nose, ease the stick to
-  `yoyo_ease` and climb (reverse: speed into the store) for `yoyo_climb_seconds`, then
-  full stick and dive (boost: the store back into speed) for `yoyo_dive_seconds`. The
-  low yo-yo (`yoyo_low` above 1/2) dives in the first phase instead (the unloaded
-  extension: in the slow lift-limited turn the turn rate grows with the speed) and leaves
-  the second's power to the combat layer. The first phase ends early above
-  `yoyo_to_corner_speed` corner speeds; a yo-yo never starts with the target's nose within
-  2 of its stall angles of the ship.
-- **Brake** (overshoot forcing): with the target in the rear hemisphere, its nose on the
-  ship (`brake_in_stall_angle`, its stall angles) within `brake_in_gun_range` and closing,
-  reverse (the store as a speed brake) while the combat layer turns toward it.
 - **Sense** (the post-merge choice): with the target behind the ship's 3-9 line within
   `sense_in_gun_range` and turning, turn at full stick in its rotation sense (the
   two-circle), or against it (the one-circle) with probability `sense_one_circle`, drawn
@@ -70,23 +52,18 @@ and `in_advantage`, so they fly in the mirrors too; each reads the committed tar
   default); with `duel_extend_mirror_only` above 1/2, only against the own type; against
   another type, weighted by `duel_extend_cross_in_others`, rising in the count of the other
   known enemies at any range (open by default; at a centre of 1/2, never in a lone 1v1).
-- **Hold fire** (`hold_fire`): on a closing approach with the target's nose on the ship
-  (`hold_fire_in_stall_angle`, its stall angles) inside `hold_fire_in_gun_range`, the
-  shot's probability falls by the weight: the nose-to-nose meeting of a one-circle is not
-  shot (the doctrine's only element on the shot).
+- **The capture lock** (the Frontline layer's goal, defend or attack;
+  `scripted_frontline.lock_press`): with `lock_press`, while the enemy is locked out of a
+  zone it lost for longer than the ship's travel back to that zone, the ship attacks; while
+  its own team is locked out of a zone it lost for longer than the travel to it, the ship
+  defends. Each shifts the goal's margin by the weight times LOCK_STRENGTHS ship strengths,
+  so it ends a travel time before the lock does and the balanced rule takes over.
 
-- **Frontline's lock and waves** (the Frontline layer's goal, defend or attack, game v16;
-  `scripted_frontline.frontline`): with `lock_press`, while the enemy is locked out of a
-  zone it lost (the capture lock) for longer than the ship's travel back to that zone, the
-  ship attacks; while its own team is locked out of a zone it lost for longer than the
-  travel to it, the ship defends. Each shifts the goal's margin by the weight times
-  LOCK_STRENGTHS ship strengths, so it ends a travel time before the lock does and the
-  balanced rule takes over. With `wave_hold`, while an own ship waits to respawn and the
-  team's next wave lands within `wave_hold_seconds`, the ship holds at the defense, then
-  launches with the wave (the same shift toward defending).
+The lead turn, yo-yo, brake, hold fire and wave hold were tried and dropped (2026-11-13; no
+shipped doctrine flew them): docs/explanation/scripted-agent.md, Baekho's history.
 
-Each element's weight (`extend`, `slash`, `bleed`, `lag`, `deny`, and the maneuvers'
-`lead_turn`, `yoyo`, `brake`, `sense`, `duel_extend`, `hold_fire`) is 0 by default, as is
+Each element's weight (`extend`, `slash`, `bleed`, `lag`, `deny`, the maneuvers' `sense`,
+`crowd_sense` and `duel_extend`, and `lock_press`) is 0 by default, as is
 `strength`: the default doctrine is off. A `table` packs one doctrine per ship type (T, D),
 or per view and type (R, T, D); `per_ship` reads each own ship's row.
 
@@ -133,22 +110,6 @@ class Doctrine:
     deny_in_stall_angle: Logistic = Logistic(1.0, 0.2, False)
     deny_in_gun_range: Logistic = Logistic(3.0, 0.2, False)
     deny_angle: float = 0.5  # rad
-    lead_turn: float = 0.0
-    lead_turn_in_seconds: Logistic = Logistic(1.5, 0.2, False)
-    lead_turn_in_crossing: Logistic = Logistic(0.5, 0.3, False)
-    lead_turn_stick: float = 1.0
-    lead_turn_one_circle: float = 0.0
-    yoyo: float = 0.0
-    yoyo_after_seconds: float = 30.0
-    yoyo_phase: float = 1.5  # rad
-    yoyo_climb_seconds: float = 4.0
-    yoyo_ease: float = 0.4
-    yoyo_dive_seconds: float = 4.0
-    yoyo_low: float = 0.0
-    yoyo_to_corner_speed: float = 10.0
-    brake: float = 0.0
-    brake_in_stall_angle: Logistic = Logistic(1.5, 0.2, False)
-    brake_in_gun_range: Logistic = Logistic(1.0, 0.2, False)
     sense: float = 0.0
     sense_one_circle: float = 0.0
     sense_in_gun_range: Logistic = Logistic(2.0, 0.2, False)
@@ -169,12 +130,7 @@ class Doctrine:
     duel_extend_in_lift_ratio: Logistic = Logistic(1e-6, 0.1, False)
     duel_extend_mirror_only: float = 0.0
     duel_extend_cross_in_others: Logistic = Logistic(1e-9, 0.1, True)
-    hold_fire: float = 0.0
-    hold_fire_in_stall_angle: Logistic = Logistic(1.0, 0.2, False)
-    hold_fire_in_gun_range: Logistic = Logistic(0.5, 0.2, False)
     lock_press: float = 0.0
-    wave_hold: float = 0.0
-    wave_hold_seconds: float = 30.0
 
 
 NAMES = tuple(field.name for field in dataclasses.fields(Doctrine))
@@ -187,22 +143,13 @@ WEIGHTS = (
     "bleed",
     "lag",
     "deny",
-    "lead_turn",
-    "yoyo",
-    "brake",
     "sense",
     "crowd_sense",
     "duel_extend",
-    "hold_fire",
     "lock_press",
-    "wave_hold",
 )
 # The maneuvers' fractions, each in [0, 1] (searched like a weight).
 FRACTIONS = (
-    "lead_turn_stick",
-    "lead_turn_one_circle",
-    "yoyo_ease",
-    "yoyo_low",
     "sense_one_circle",
     "sense_mirror_only",
     "crowd_sense_stick",
@@ -223,10 +170,6 @@ SCALE_FLOORS = {
     "bleed_in_stall_angle": 0.158,
     "deny_in_stall_angle": 0.158,
     "deny_in_gun_range": 0.1,
-    "lead_turn_in_seconds": 0.05,
-    "lead_turn_in_crossing": 0.1,
-    "brake_in_stall_angle": 0.158,
-    "brake_in_gun_range": 0.1,
     "sense_in_gun_range": 0.1,
     "sense_in_lift_ratio": 0.03,
     "sense_crowd_in_gun_range": 0.1,
@@ -238,8 +181,6 @@ SCALE_FLOORS = {
     "duel_extend_in_shield_ratio": 0.05,
     "duel_extend_in_lift_ratio": 0.03,
     "duel_extend_cross_in_others": 0.1,
-    "hold_fire_in_stall_angle": 0.158,
-    "hold_fire_in_gun_range": 0.1,
 }
 
 
@@ -320,10 +261,40 @@ def named(doctrine: Doctrine, figures: int = 3) -> dict:
     }
 
 
+# The fields of the dropped elements (2026-11-13): an older record's values of these are
+# read and ignored, so the records of the doctrines tried with them still load.
+DROPPED = (
+    "lead_turn",
+    "lead_turn_in_seconds",
+    "lead_turn_in_crossing",
+    "lead_turn_stick",
+    "lead_turn_one_circle",
+    "yoyo",
+    "yoyo_after_seconds",
+    "yoyo_phase",
+    "yoyo_climb_seconds",
+    "yoyo_ease",
+    "yoyo_dive_seconds",
+    "yoyo_low",
+    "yoyo_to_corner_speed",
+    "brake",
+    "brake_in_stall_angle",
+    "brake_in_gun_range",
+    "hold_fire",
+    "hold_fire_in_stall_angle",
+    "hold_fire_in_gun_range",
+    "wave_hold",
+    "wave_hold_seconds",
+)
+
+
 def from_named(fields: dict) -> Doctrine:
-    """A doctrine from `named`'s fields; a field left out keeps the default."""
+    """A doctrine from `named`'s fields; a field left out keeps the default, and a dropped
+    element's (`DROPPED`) is ignored."""
     values = {}
     for name, value in fields.items():
+        if name in DROPPED:
+            continue
         kind = getattr(_DEFAULT, name)
         values[name] = Logistic(*value, kind.rising) if isinstance(kind, Logistic) else value
     return Doctrine(**values)

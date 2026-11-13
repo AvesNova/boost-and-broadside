@@ -615,11 +615,6 @@ FROZEN = ("climb_exponent", "speed_exponent", "range_exponent")
 MULTIPLICATIVE_BOUNDS = {
     "deny_angle": (0.05, 1.5),
     "lag_in_gun_range": (0.05, 3.0),
-    "yoyo_after_seconds": (3.0, 200.0),
-    "yoyo_phase": (0.05, 3.1),
-    "yoyo_climb_seconds": (0.3, 20.0),
-    "yoyo_dive_seconds": (0.3, 20.0),
-    "yoyo_to_corner_speed": (0.3, 10.0),
 }
 SCALE_CEILING = 10.0
 

@@ -1,11 +1,7 @@
-"""The play shell's scripted doctrines (`bnb.play.sides.DOCTRINES`): r9m2 by default, r9 as
-an option, chosen per team on the command line and in the fleets combo; r9m2's file holds
-maneuvers-2's champion2 doctrine and the training's stored doctrine is left alone. And the
-frame-rate readout's numbers (`bnb.play.frame_rate`)."""
-
-import json
-import pathlib
-import typing
+"""The play shell's scripted doctrine (`bnb.play.sides.DOCTRINES`): Baekho, the one scripted
+doctrine (the stored real-scale doctrine, with the Frontline lock-aware goal), in the fleets
+combo and on both teams by default. And the frame-rate readout's numbers
+(`bnb.play.frame_rate`)."""
 
 import pytest
 import tyro
@@ -18,64 +14,43 @@ from bnb.play.interface.shortcuts import SHORTCUTS
 from bnb.play.loop import SideSetup
 from bnb.play.sides import DEFAULT_DOCTRINE, DOCTRINES
 
-ROOT = pathlib.Path(__file__).parents[2]
-CHAMPION = ROOT / "docs/rewrite/sections/maneuvers-2/champion2.json"
+
+def test_baekho_is_the_one_doctrine_and_the_stored_one():
+    assert DOCTRINES == {"baekho": scripted_doctrine.DOCTRINES}
+    assert DEFAULT_DOCTRINE == "baekho" and SideSetup().doctrine == "baekho"
 
 
-def test_r9m3_is_the_default_and_r9_the_stored_training_doctrine():
-    assert DEFAULT_DOCTRINE == "r9m3" and SideSetup().doctrine == "r9m3"
-    assert DOCTRINES["r9"] == scripted_doctrine.DOCTRINES
-    assert set(typing.get_args(Options.__annotations__["doctrine0"])) == set(DOCTRINES)
-    assert set(typing.get_args(Options.__annotations__["doctrine1"])) == set(DOCTRINES)
-
-
-@pytest.mark.skipif(not CHAMPION.exists(), reason="maneuvers-2's champion2.json is not here")
-def test_r9m2s_file_is_maneuvers_2s_champion2():
-    champion = json.loads(CHAMPION.read_text())
-    stored = scripted_doctrine.stored(DOCTRINES["r9m2"])["real-scale"]
+def test_baekho_flies_the_lock_aware_goal_and_the_maneuver_elements():
+    """Baekho: the game loop's r9 with maneuvers-2's elements (the duel one-circle sense, the
+    crowd extension, the team-gated duel extension) and lock_press 1, for both types."""
+    stored = scripted_doctrine.stored()["real-scale"]
     for key in ("yongma", "jujak"):
-        assert stored[key] == scripted_doctrine.from_named(champion[key])
-    # r9m2 differs from r9 in the maneuver elements: the duel extension is on
-    r9 = scripted_doctrine.stored(DOCTRINES["r9"])["real-scale"]
-    assert stored["yongma"].duel_extend == 1.0 and r9["yongma"].duel_extend == 0.0
+        doctrine = stored[key]
+        assert doctrine.lock_press == 1.0
+        assert doctrine.sense == 1.0 and doctrine.sense_one_circle == 1.0
+        assert doctrine.crowd_sense == 1.0 and doctrine.duel_extend == 1.0
 
 
-def test_r9m3_is_r9m2_with_the_lock_aware_goal():
-    """r9m3 (the play shell's default since 2026-11-13) is r9m2 with lock_press 1 on both
-    types and every other field r9m2's; the wave hold stays off."""
-    import dataclasses
-
-    r9m2 = scripted_doctrine.stored(DOCTRINES["r9m2"])["real-scale"]
-    r9m3 = scripted_doctrine.stored(DOCTRINES["r9m3"])["real-scale"]
-    for key in ("yongma", "jujak"):
-        assert r9m3[key].lock_press == 1.0 and r9m3[key].wave_hold == 0.0
-        assert dataclasses.replace(r9m3[key], lock_press=0.0) == r9m2[key]
+def test_the_stored_file_packs_to_the_full_table_width_for_the_real_scale_set():
+    rows = scripted_doctrine.rows_by_count(DOCTRINES["baekho"])
+    assert rows and all(
+        len(row) == scripted_doctrine.WIDTH for table in rows.values() for row in table
+    )
 
 
-def test_both_files_pack_to_the_full_table_width_for_the_real_scale_set():
-    for path in DOCTRINES.values():
-        rows = scripted_doctrine.rows_by_count(path)
-        assert rows and all(
-            len(row) == scripted_doctrine.WIDTH for table in rows.values() for row in table
-        )
-
-
-def test_the_command_line_chooses_each_teams_doctrine():
-    options = tyro.cli(Options, args=["--doctrine1", "r9"])
-    sides = options.setup().sides
-    assert [side.doctrine for side in sides] == ["r9m3", "r9"]
+def test_both_teams_fly_baekho_from_the_command_line():
+    sides = tyro.cli(Options, args=[]).setup().sides
+    assert [side.doctrine for side in sides] == ["baekho", "baekho"]
     assert all(side.controller == "scripted_agent" for side in sides)
-    with pytest.raises(SystemExit):
-        tyro.cli(Options, args=["--doctrine0", "r10"])
 
 
-def test_the_fleets_combo_offers_the_chaser_and_each_doctrine():
+def test_the_fleets_combo_offers_the_chaser_and_baekho():
     labels = [label for _, label in SCRIPTED_CHOICES]
-    assert labels == ["Chaser", "Scripted agent r9m3", "Scripted agent r9m2", "Scripted agent r9"]
-    assert scripted_label(SideSetup("scripted_agent", doctrine="r9")) == "Scripted agent r9"
+    assert labels == ["Chaser", "Scripted agent Baekho"]
+    assert scripted_label(SideSetup("scripted_agent")) == "Scripted agent Baekho"
     assert scripted_label(SideSetup("scripted")) == "Chaser"
     assert scripted_label(SideSetup("agent", "runs/x")) is None
-    assert controller_label_of_setup(SideSetup()) == "scripted agent r9m3"
+    assert controller_label_of_setup(SideSetup()) == "scripted agent baekho"
 
 
 def test_the_frame_rate_is_smoothed_and_keeps_the_last_seconds_longest_frame():

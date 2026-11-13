@@ -39,8 +39,8 @@ from .scripted_memory import commit
 from .scripted_parameters import Ramp, ScriptedParameters, in_own_time, ramp
 
 OWN_SPAWN, OWN_DEFENSE, ENEMY_DEFENSE = 0, 1, 3  # zone roles for the viewer (ZONE_COLUMNS)
-# The doctrine's lock and wave terms shift the goal's margin by their weight times this
-# many ship strengths: more than a team's own (a weight of 1 decides the goal).
+# The doctrine's capture-lock term shifts the goal's margin by its weight times this many
+# ship strengths: more than a team's own (a weight of 1 decides the goal).
 LOCK_STRENGTHS = 10.0
 
 
@@ -95,8 +95,8 @@ def frontline(
     zones (R, Z, columns), or toward the spawn when recovering, blended with the combat
     layer's marginals by its target's distance, times the target's weight, where it has a
     target; the shoot marginal is the combat layer's. doctrines: each ship type's doctrine
-    table (`bnb.controllers.scripted_doctrine`), whose lock and wave terms shift the goal
-    (`lock_and_wave`); None, or the weights at 0, leave it as it was."""
+    table (`bnb.controllers.scripted_doctrine`), whose capture-lock term shifts the goal
+    (`lock_press`); None, or the weight at 0, leave it as it was."""
     combat_marginals, has_target = fighting.marginals, fighting.has_target
     target_distance = fighting.distance
     own, enemy = fleet.own, fleet.enemy
@@ -184,10 +184,10 @@ def frontline(
     )
     strength_ahead = torch.where(ahead, available[:, None, :], 0.0).sum(-1)  # (R, S)
     # Defend's margin, in ship strengths: the larger of the two rules', shifted by the
-    # doctrine's lock and wave terms.
+    # doctrine's capture-lock term.
     margin = torch.maximum(hopeless, wanted - strength_ahead)
     if doctrines is not None:
-        margin = margin + lock_and_wave(fleet, zones, own_alive, doctrines)
+        margin = margin + lock_press(fleet, zones, doctrines)
     defending = _choice(fleet, fleet.carry.defending, margin, parameters.goal_switch_in_strength)
     goal_x = torch.where(defending, to_defense[0], to_attack[0])
     goal_y = torch.where(defending, to_defense[1], to_attack[1])
@@ -238,20 +238,13 @@ def frontline(
     return Frontline(marginals, left, defending, recovering)
 
 
-def lock_and_wave(
-    fleet: Context, zones: torch.Tensor, own_alive: torch.Tensor, doctrines: torch.Tensor
-) -> torch.Tensor:
+def lock_press(fleet: Context, zones: torch.Tensor, doctrines: torch.Tensor) -> torch.Tensor:
     """(R, S) the doctrine's shift of the defend margin, in ship strengths (positive:
-    defend). The capture lock: the enemy locked out of a zone it lost for longer than the
-    ship's travel back there (its distance over its speed, at least the corner speed)
+    defend), from the capture lock: the enemy locked out of a zone it lost for longer than
+    the ship's travel back there (its distance over its speed, at least the corner speed)
     presses the attack (-lock_press); the own team locked out of a zone for longer than the
-    travel to it holds the defense (+lock_press). The wave: an own ship waiting to respawn,
-    with the team's next wave within wave_hold_seconds, holds the defense (+wave_hold) until
-    the wave lands. Each term is LOCK_STRENGTHS ship strengths times its weight.
-
-    A ship waits to respawn when it is dead and not benched (the ship row's `benched` flag:
-    a team's slots beyond its active ships, fleet sizes and the play shell's padded teams,
-    which never respawn)."""
+    travel to it holds the defense (+lock_press). LOCK_STRENGTHS ship strengths a unit
+    weight, so the balanced rule takes over a travel time before the lock ends."""
     doctrine = per_ship_doctrine(doctrines, fleet.own_type)
     present = zones[..., ZONE["present"]] > 0.5  # (R, Z)
     to_x, to_y = _pairs(fleet.x, fleet.y, zones[..., ZONE["x"]], zones[..., ZONE["y"]])
@@ -261,12 +254,7 @@ def lock_and_wave(
     lock_enemy = zones[..., ZONE["lock_enemy"]][:, None, :]
     held_out = (present[:, None, :] & (lock_own > travel)).any(-1)  # we cannot retake one
     pressing = (present[:, None, :] & (lock_enemy > travel)).any(-1)  # they cannot
-    benched = column(fleet.own, "benched") > 0.5
-    waiting = (~own_alive & ~benched).any(-1, keepdim=True)  # an own ship waits for the wave
-    landing = (fleet.next_wave[:, None] < doctrine.wave_hold_seconds) & waiting
-    shift = doctrine.lock_press * (held_out.float() - pressing.float())
-    shift = shift + doctrine.wave_hold * landing.float()
-    return LOCK_STRENGTHS * shift
+    return LOCK_STRENGTHS * doctrine.lock_press * (held_out.float() - pressing.float())
 
 
 def _log(value):

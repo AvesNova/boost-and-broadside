@@ -26,7 +26,7 @@ SCRIPTED_AGENTS = (SideSetup("scripted_agent"), SideSetup("scripted_agent"))
 AGENTS = MatchSetup(SMALL, seed=3, sides=SCRIPTED_AGENTS)
 FLOAT_MEMORY = ("enemy_x", "enemy_y", "enemy_velocity_x", "enemy_velocity_y")
 # A small real-scale match of the Yongma and the Jujak, the types with stored doctrines: the
-# scripted agent flies the play shell's default doctrine (r9m2) there.
+# scripted agent flies the play shell's doctrine (Baekho) there.
 REAL_SCALE = dataclasses.replace(
     api.PRESETS["real_scale_deathmatch"], ships_per_team=2, num_fields=4, arena_radius=2500.0
 )
@@ -77,7 +77,7 @@ def _arguments(game: GameConfig, step: ScriptedStep, traits=None) -> tuple:
 
 @pytest.mark.slow
 @pytest.mark.parametrize(
-    "setup, ticks", [(AGENTS, 200), (REAL_SCALE_AGENTS, 900)], ids=["small", "real-scale r9m2"]
+    "setup, ticks", [(AGENTS, 200), (REAL_SCALE_AGENTS, 900)], ids=["small", "real-scale baekho"]
 )
 def test_the_built_step_plays_as_the_uncompiled_one_and_is_kept_on_disk(
     setup, ticks, tmp_path, monkeypatch
@@ -85,7 +85,7 @@ def test_the_built_step_plays_as_the_uncompiled_one_and_is_kept_on_disk(
     """Built in a child process (once for both sides, then read from disk by a later
     process), the step gives the uncompiled step's actions exactly, its draws included, over
     a match with fights; every step after the first runs built. On the real-scale card the
-    Yongma and the Jujak fly r9m2's doctrines (the table is the built step's constant)."""
+    Yongma and the Jujak fly Baekho's doctrines (the table is the built step's constant)."""
     sides = _agents(setup, compiled=True)  # the card measured before the cache moves
     monkeypatch.setattr(cache, "ROOT", tmp_path)
     monkeypatch.setattr(built, "_LOADED", {})
@@ -121,16 +121,24 @@ def test_the_step_is_keyed_by_its_shapes_and_parameters_not_the_cards_values():
     assert library_path(deathmatch, arguments) != library_path(step, arguments)
 
 
-def test_the_step_is_keyed_by_its_doctrines_and_their_width(monkeypatch):
-    """r9m2 and r9 have their own built steps, and a wider doctrine table another (so a
-    grown table rebuilds instead of loading a library built for the old one)."""
+def test_the_step_is_keyed_by_its_doctrines_and_their_width(monkeypatch, tmp_path):
+    """Another doctrine file (Baekho without its lock press here) has its own built step,
+    and a wider doctrine table another (so a grown table rebuilds instead of loading a
+    library built for the old one)."""
+    import json
+
     arguments = _arguments(SMALL, ScriptedStep(SMALL.ships_per_team))
-    r9m2 = ScriptedStep(SMALL.ships_per_team, doctrines=DOCTRINES["r9m2"])
-    r9 = ScriptedStep(SMALL.ships_per_team, doctrines=DOCTRINES["r9"])
-    assert library_path(r9m2, arguments) != library_path(r9, arguments)
-    before = library_path(r9m2, arguments)
+    stored = json.loads(DOCTRINES["baekho"].read_text())
+    for entry in stored["real-scale"].values():
+        entry["doctrine"]["lock_press"] = 0.0
+    other = tmp_path / "other.json"
+    other.write_text(json.dumps(stored))
+    baekho = ScriptedStep(SMALL.ships_per_team, doctrines=DOCTRINES["baekho"])
+    unlocked = ScriptedStep(SMALL.ships_per_team, doctrines=other)
+    assert library_path(baekho, arguments) != library_path(unlocked, arguments)
+    before = library_path(baekho, arguments)
     monkeypatch.setattr(scripted_doctrine, "WIDTH", scripted_doctrine.WIDTH + 1)
-    assert library_path(r9m2, arguments) != before
+    assert library_path(baekho, arguments) != before
 
 
 def test_the_agent_steps_uncompiled_until_its_built_step_is_in(monkeypatch):

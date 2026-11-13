@@ -442,6 +442,28 @@ floor.
   size at 10v10; or a Yongma-only frontline aid. A card shift toward Yongma (say lift x1.6)
   would help frontline 5v5 / 10v10 but push elimination and deathmatch past 0.55.
 
+### 19:35 frontline geometry exploration (`geometry/`, `geometry.py`; r9m3 both sides, lift x1.5 + damage x1.5, 256 games)
+Yongma's frontline score. A today's; B zones and ring x (3 / map_scale)^0.5 (5v5 unchanged,
+so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 changes); D both.
+
+| Variant | 5v5 | 10v10 | 0.5x | 2x |
+|---|---|---|---|---|
+| A | 0.49 ± 0.03 | 0.41 ± 0.04 | 0.79 ± 0.03 | 0.28 ± 0.03 |
+| B | 0.49 (=A) | 0.39 ± 0.04 | 0.78 ± 0.03 | 0.32 ± 0.03 |
+| C | 0.49 ± 0.03 (=A) | 0.29 ± 0.04 | 0.79 ± 0.03 (=A) | 0.28 ± 0.03 (=A) |
+| D | 0.49 (=A) | 0.51 ± 0.04 | 0.78 ± 0.03 (=B) | 0.32 ± 0.03 (=B) |
+
+- No variant flattens the map-size effect at 5v5 on a smaller or bigger map: 0.5x stays
+  0.78-0.79 and 2x 0.28-0.32 under every geometry. B alone barely moves anything.
+- At 10v10, D (both) gives 0.51, against A's 0.41; C alone drops it to 0.29 (a denser map
+  with today's zones favours Jujak). So the 10v10 imbalance is the zones and arena
+  together, and D fixes 10v10 without moving 5v5. The 0.5x / 2x imbalance is the arena
+  size itself (the speed against the turn), and these geometry levers do not touch it.
+- B at 0.5x reaches about 46 m past the boundary with its outer zones (ring 0.838 at the
+  4200 m floor).
+
+### 19:40 WIP: Baekho (r9m3 as the one scripted doctrine): see the WIP commit's message.
+
 ## Next
 - Item 6, league: no-flee scripted agents and the fast-chaser ship. ETA ~15:45.
 - Item 7: round 6 (v15) is running in tmux `lethality-r6`; then 10v10 and 0.5x / 2x arena

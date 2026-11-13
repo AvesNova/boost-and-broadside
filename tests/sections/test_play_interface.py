@@ -535,9 +535,9 @@ def test_a_side_slow_to_make_plays_on_until_it_is_made(context, tmp_path, monkey
     measured.set()
     for _ in range(200):
         player.frames()
-        if session.loop.sides[1].label == "scripted agent r9m3":
+        if session.loop.sides[1].label == "scripted agent Baekho":
             break
-    assert session.loop.sides[1].label == "scripted agent r9m3"
+    assert session.loop.sides[1].label == "scripted agent Baekho"
     assert session.loop.setup.sides[1] == SideSetup("scripted_agent")
 
 
@@ -649,9 +649,9 @@ def test_start_never_measures_in_the_windows_thread(context, tmp_path, monkeypat
     measured.set()
     for _ in range(200):
         player.frames()
-        if all(side.label == "scripted agent r9m3" for side in session.loop.sides):
+        if all(side.label == "scripted agent Baekho" for side in session.loop.sides):
             break
-    assert [side.label for side in session.loop.sides] == ["scripted agent r9m3"] * 2
+    assert [side.label for side in session.loop.sides] == ["scripted agent Baekho"] * 2
     session.close()
 
 
@@ -904,19 +904,22 @@ def test_the_frame_rate_shows_in_the_top_bar_and_f4_and_the_settings_toggle_it(c
     session.close()
 
 
-def test_the_fleets_combo_sets_the_scripted_agents_doctrine(context, tmp_path, monkeypatch):
-    """The fleets card's controller combo offers the scripted agent with r9m3 (the default),
-    r9m2 and r9; choosing r9 makes that side fly it."""
+def test_the_fleets_combo_sets_the_chaser_and_back_to_baekho(context, tmp_path, monkeypatch):
+    """The fleets card's controller combo offers the chaser and the scripted agent flying
+    Baekho (the default); choosing the chaser and then the agent puts Baekho back."""
     from bnb.play import app
 
     monkeypatch.setattr(app, "cached_characteristics", lambda types, rules: object())
     session = _session(context, tmp_path)
     player = Player(session, context, 1280, 720)
-    assert session.loop.setup.sides[1] == SideSetup("scripted_agent", doctrine="r9m3")
+    assert session.loop.setup.sides[1] == SideSetup("scripted_agent", doctrine="baekho")
     player.click("fleet/team1/controller")
-    player.click("fleet/team1/controller/scripted agent r9")
-    assert session.loop.setup.sides[1] == SideSetup("scripted_agent", doctrine="r9")
-    assert session.loop.sides[1].label == "scripted agent r9"
+    player.click("fleet/team1/controller/chaser")
+    assert session.loop.setup.sides[1] == SideSetup("scripted")
+    player.click("fleet/team1/controller")
+    player.click("fleet/team1/controller/scripted agent baekho")
+    assert session.loop.setup.sides[1] == SideSetup("scripted_agent", doctrine="baekho")
+    assert session.loop.sides[1].label == "scripted agent Baekho"
     session.close()
 
 

@@ -95,8 +95,6 @@ class Options:
     agent1: pathlib.Path | None = None  # a policy file for team 1
     scripted0: Literal["scripted", "scripted_agent"] = "scripted_agent"  # team 0 without an agent
     scripted1: Literal["scripted", "scripted_agent"] = "scripted_agent"  # the agent or the chaser
-    doctrine0: Literal["r9m3", "r9m2", "r9"] = "r9m3"  # team 0's scripted agent's (sides.DOCTRINES)
-    doctrine1: Literal["r9m3", "r9m2", "r9"] = "r9m3"  # team 1's (r9: the training's stored one)
     fps: bool = True  # the frame-rate readout in the top bar (F4 toggles it)
     temperature: float = 1.0  # the agents' sampling temperature
     replay: pathlib.Path | None = None  # open this replay instead of a match
@@ -150,15 +148,12 @@ class Options:
         """The first match's setup: the preset's game at the sizes given, its lineup (the
         play shell's default when it has none or the size changed) and its tuning."""
         maps = Maps() if maps is None else maps
-        teams = (
-            (self.agent0, self.scripted0, self.doctrine0),
-            (self.agent1, self.scripted1, self.doctrine1),
-        )
+        teams = ((self.agent0, self.scripted0), (self.agent1, self.scripted1))
         sides = tuple(
-            SideSetup(scripted, doctrine=doctrine)
+            SideSetup(scripted)
             if policy is None
             else SideSetup("agent", str(policy), self.temperature)
-            for policy, scripted, doctrine in teams
+            for policy, scripted in teams
         )
         game_map = maps.find(self.preset)
         game = self.game(maps)

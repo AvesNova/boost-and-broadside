@@ -40,13 +40,6 @@ from .scripted_parameters import (
 TARGET_SIZE_RANGE = (math.radians(1.0), math.radians(45.0))  # the clamp on its angular size
 COAST, BOOST, REVERSE = 0, 1, 2  # power indices (bnb.game.rules.POWER_MODES)
 TINY = 1e-6  # m: keeps a direction's length away from zero
-# The maneuvers' stalemate clock (`maneuvers`): it runs while the ship's committed target is
-# within this many own gun ranges and no angle is gained, an angle gained being the nose
-# within GAINED_NOSE stall angles of the aim point while the target's nose is more than
-# GAINED_OFF_ITS_NOSE of its stall angles off the ship (an offensive shot, not a joust).
-STALEMATE_IN_GUN_RANGES = 4.0
-GAINED_NOSE_IN_STALL_ANGLES = 1.0
-GAINED_OFF_ITS_NOSE_IN_STALL_ANGLES = 2.0
 STICK_MAGNITUDES = (0.0, 0.4, 0.75, 1.0)  # bnb.game.rules.STICK_LEVELS by level
 TURNING_RATE = 0.05  # rad/s: a nose rate below this is not a turn (the sense maneuver)
 
@@ -92,8 +85,8 @@ class Context(NamedTuple):
     switching: bool  # the plan choices may switch (else only a forced re-choice)
     # Frontline's timers, s (0 in the other modes): the own team's next respawn wave (R,)
     # (the enemy's is hidden), and each zone's capture lock on the own team and on the
-    # enemy's (R, Z), by the observation's zone rows. Read by the Frontline layer's lock and
-    # wave terms (`scripted_frontline.lock_and_wave`).
+    # enemy's (R, Z), by the observation's zone rows. Read by the Frontline layer's
+    # capture-lock term (`scripted_frontline.lock_press`).
     next_wave: torch.Tensor
     zone_lock_own: torch.Tensor
     zone_lock_enemy: torch.Tensor
@@ -313,8 +306,7 @@ class Combat(NamedTuple):
     """The combat layer's result: its marginals; per own ship (R, S): has_target, the
     target's distance (0 without one) and its weight (1 seen, fading when dead reckoned, 0
     without one); the plan choices it made, the target (-1 none) and the turn side; and the
-    maneuvers' clocks after the decision (`ScriptedCarry.stalemate_seconds`,
-    `yoyo_seconds`, `sense_draw`)."""
+    sense's draw after the decision (`ScriptedCarry.sense_draw`)."""
 
     marginals: Marginals
     has_target: torch.Tensor
@@ -322,8 +314,6 @@ class Combat(NamedTuple):
     weight: torch.Tensor
     target: torch.Tensor
     left: torch.Tensor
-    stalemate_seconds: torch.Tensor
-    yoyo_seconds: torch.Tensor
     sense_draw: torch.Tensor
 
 
@@ -525,124 +515,24 @@ def maneuvers(
     doctrine: Doctrine,
     target_of,
     has_target: torch.Tensor,
-    chosen: torch.Tensor,
     geometry: tuple,
     stick: torch.Tensor,
     left: torch.Tensor,
     power: torch.Tensor,
     others: tuple,
 ):
-    """The doctrine's maneuvers (`bnb.controllers.scripted_doctrine`: the lead turn, the
-    yo-yo, the brake and the sense) on the combat layer's stick, committed side and power; with the
-    stalemate clock and the yo-yo's clock after this decision (advanced only when the plan
-    choices may switch, so a re-read carry gives the same marginals; reset on a fresh ship).
-    others: the other known enemies' distances in own gun ranges (R, S, E; inf elsewhere),
-    the angles between their tracks and the lines from them to the ship (R, S, E), and the
-    own ships' distances in own gun ranges (R, S, S; inf for the ship itself and the dead).
-    Returns (stick, left, power, stalemate_seconds, yoyo_seconds, sense_draw, hold): hold
-    the weight withholding the shot."""
-    target_x, target_y, distance, _, _, aim_error, target_vx, target_vy = geometry
+    """The doctrine's maneuver (`bnb.controllers.scripted_doctrine`: the sense, the duel
+    extension and the crowd extension) on the combat layer's stick, committed side and
+    power. others: the other known enemies' distances in own gun ranges (R, S, E; inf
+    elsewhere), the angles between their tracks and the lines from them to the ship (R, S,
+    E), and the own ships' distances in own gun ranges (R, S, S; inf for the ship itself and
+    the dead). Returns (stick, left, power, sense_draw)."""
+    target_x, target_y, distance = geometry[:3]
     temperature = fleet.temperature
     carry = fleet.carry
-    safe = distance.clamp_min(TINY)
-    target_stall = target_of(per_ship(characteristics.stall_angle, fleet.enemy_type))
-    target_heading = torch.atan2(target_vy, target_vx)
-    off_its_nose = signed_angle(
-        torch.cos(target_heading), torch.sin(target_heading), -target_x, -target_y
-    ).abs() / target_stall.clamp_min(TINY)
-    relative_x = target_vx - fleet.velocity_x
-    relative_y = target_vy - fleet.velocity_y
-    closing = -(target_x * relative_x + target_y * relative_y) / safe  # m/s
-    approaching = (closing > 0.0) & has_target
-
-    # The clocks: the stalemate's and the yo-yo's.
-    engaged = has_target & (distance < STALEMATE_IN_GUN_RANGES * fleet.gun_range)
-    gained = (aim_error.abs() < GAINED_NOSE_IN_STALL_ANGLES * fleet.stall_angle) & (
-        off_its_nose > GAINED_OFF_ITS_NOSE_IN_STALL_ANGLES
-    )
     fresh = carry.fresh
-    if fleet.switching:
-        same = chosen == carry.target
-        stalemate = torch.where(
-            engaged & ~gained & same & ~fresh, carry.stalemate_seconds + fleet.seconds, 0.0
-        )
-        running = carry.yoyo_seconds >= 0.0
-        clock = torch.where(running, carry.yoyo_seconds + fleet.seconds, -1.0)
-        # the first phase ends early at the wanted speed
-        fast = fleet.speed > doctrine.yoyo_to_corner_speed * fleet.corner_speed
-        clock = torch.where(
-            running & fast & (clock < doctrine.yoyo_climb_seconds),
-            doctrine.yoyo_climb_seconds,
-            clock,
-        )
-        done = clock > doctrine.yoyo_climb_seconds + doctrine.yoyo_dive_seconds
-        start = (
-            ~running
-            & (doctrine.yoyo > 0.0)
-            & engaged
-            & (stalemate > doctrine.yoyo_after_seconds)
-            & (aim_error.abs() < doctrine.yoyo_phase)
-            & (off_its_nose > GAINED_OFF_ITS_NOSE_IN_STALL_ANGLES)  # never under its guns
-        )
-        clock = torch.where(start, 0.0, torch.where(done, -1.0, clock))
-        stalemate = torch.where(done, 0.0, stalemate)
-        clock = torch.where(fresh | ~has_target, -1.0, clock)
-    else:
-        stalemate = torch.where(fresh, 0.0, carry.stalemate_seconds)
-        clock = torch.where(fresh | ~has_target, -1.0, carry.yoyo_seconds)
-
-    reverse = power_marginal(torch.zeros_like(distance), torch.ones_like(distance))
     boost = power_marginal(torch.ones_like(distance), torch.zeros_like(distance))
-
-    # Yo-yo: the high phase eases the stick and climbs, the low phase dives.
-    # (the low yo-yo, `yoyo_low` above 1/2: the first phase dives, the second leaves the power
-    # to the combat layer)
-    first = ((clock >= 0.0) & (clock < doctrine.yoyo_climb_seconds)).float() * doctrine.yoyo
-    second = (clock >= doctrine.yoyo_climb_seconds).float() * doctrine.yoyo
-    low = doctrine.yoyo_low > 0.5
-    stick = stick + first[..., None] * (commanded_stick(left, doctrine.yoyo_ease) - stick)
-    first_power = torch.where(low[..., None], boost, reverse)
-    power = power + first[..., None] * (first_power - power)
-    power = power + torch.where(low, 0.0, second)[..., None] * (boost - power)
-
-    # Lead turn: on a head-on approach, turn before the merge.
-    own_speed = torch.sqrt(
-        fleet.velocity_x * fleet.velocity_x + fleet.velocity_y * fleet.velocity_y
-    ).clamp_min(TINY)
-    target_speed = torch.sqrt(target_vx * target_vx + target_vy * target_vy).clamp_min(TINY)
-    crossing = (fleet.velocity_x * target_vx + fleet.velocity_y * target_vy) / (
-        own_speed * target_speed
-    )
-    from_opposed = math.pi - torch.acos(crossing.clamp(-1.0, 1.0))
-    time_to_merge = safe / closing.clamp_min(TINY)
-    lead_weight = torch.where(
-        approaching,
-        doctrine.lead_turn
-        * logistic(time_to_merge, doctrine.lead_turn_in_seconds, temperature)
-        * logistic(from_opposed, doctrine.lead_turn_in_crossing, temperature),
-        0.0,
-    )
-    # the side the target passes on: its offset at the closest approach, from the nose
-    relative_squared = (relative_x * relative_x + relative_y * relative_y).clamp_min(TINY)
-    along = (target_x * relative_x + target_y * relative_y) / relative_squared
-    miss_x, miss_y = target_x - along * relative_x, target_y - along * relative_y
-    passes_left = fleet.cos * miss_y - fleet.sin * miss_x > 0.0
-    lead_left = torch.where(doctrine.lead_turn_one_circle > 0.5, ~passes_left, passes_left)
-    stick = stick + lead_weight[..., None] * (
-        commanded_stick(lead_left, doctrine.lead_turn_stick) - stick
-    )
-    left = torch.where(lead_weight > 0.5, lead_left, left)
-
-    # Brake: the target closing in the rear hemisphere with its nose on the ship.
     bearing = signed_angle(fleet.cos, fleet.sin, target_x, target_y)
-    braking = torch.where(
-        approaching & (bearing.abs() > 0.5 * math.pi),
-        doctrine.brake
-        * logistic(off_its_nose, doctrine.brake_in_stall_angle, temperature)
-        * logistic(distance / fleet.gun_range, doctrine.brake_in_gun_range, temperature),
-        0.0,
-    )
-    power = power + braking[..., None] * (reverse - power)
 
     # Sense: after the merge, the turn's rotation sense against the target's.
     target_rate = target_of(column(fleet.enemy, "nose_rate"))
@@ -736,16 +626,7 @@ def maneuvers(
         commanded_stick(sense_left, doctrine.crowd_sense_stick) - stick
     )
     power = power + (in_crowd * doctrine.crowd_sense_boost)[..., None] * (boost - power)
-
-    # Hold fire: the nose-to-nose meeting on a closing approach is not shot.
-    hold = torch.where(
-        approaching,
-        doctrine.hold_fire
-        * logistic(off_its_nose, doctrine.hold_fire_in_stall_angle, temperature)
-        * logistic(distance / fleet.gun_range, doctrine.hold_fire_in_gun_range, temperature),
-        0.0,
-    )
-    return stick, left, power, stalemate, clock, draw, hold
+    return stick, left, power, draw
 
 
 def combat(
@@ -856,13 +737,12 @@ def combat(
         allies = torch.sqrt(ally_x * ally_x + ally_y * ally_y) / fleet.gun_range[..., None]
         itself = torch.eye(allies.shape[-1], dtype=torch.bool, device=allies.device)
         allies = torch.where(own_alive[:, None, :] & ~itself, allies, math.inf)
-        stick, left, power, stalemate, yoyo, draw, hold = maneuvers(
+        stick, left, power, draw = maneuvers(
             fleet,
             characteristics,
             doctrine,
             target,
             has_target,
-            chosen,
             geometry,
             stick,
             left,
@@ -870,11 +750,7 @@ def combat(
             (others, tracks, allies),
         )
     else:
-        hold = torch.zeros_like(distance)
-        fresh = fleet.carry.fresh
-        stalemate = torch.where(fresh, 0.0, fleet.carry.stalemate_seconds)
-        yoyo = torch.where(fresh, -1.0, fleet.carry.yoyo_seconds)
-        draw = torch.where(fresh, -1.0, fleet.carry.sense_draw)
+        draw = torch.where(fleet.carry.fresh, -1.0, fleet.carry.sense_draw)
 
     hit_radius = target(per_ship(characteristics.hit_radius, fleet.enemy_type))
     size = (2.0 * torch.atan(hit_radius / safe_distance)).clamp(*TARGET_SIZE_RANGE)
@@ -884,9 +760,7 @@ def combat(
     )
     cost = per_ship(characteristics.bullet_energy_cost, fleet.own_type)
     ready = (column(fleet.own, "gun_cooldown") <= 0.0) & (column(fleet.own, "energy") >= cost)
-    shoot = floored(
-        torch.where(has_target & ready, weight * aligned * in_range * (1.0 - hold), 0.0), "shoot"
-    )
+    shoot = floored(torch.where(has_target & ready, weight * aligned * in_range, 0.0), "shoot")
     shoot = torch.stack([1.0 - shoot, shoot], -1)
     return Combat(
         Marginals(power, stick, shoot),
@@ -895,8 +769,6 @@ def combat(
         weight,
         chosen,
         left,
-        stalemate,
-        yoyo,
         draw,
     )
 
