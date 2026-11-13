@@ -90,7 +90,8 @@ DAMPING = (1e-6, 1e6)  # Levenberg-Marquardt's: the first, and the bounds
 EXPONENT_BOUNDS = (0.5, 5.0)  # the bleed exponents a card may have
 CONDITION_WARNING = 1e4  # a Jacobian condition number above this warns
 CLASSIC_STICKS = (0.4, 0.75)  # the fine and sustained levels' lift fractions without shares
-STICK_GRID = tuple(round(0.3 + 0.02 * i, 2) for i in range(36))  # the sustained level's search, to 1
+# the sustained level's search, 0.3 to 1
+STICK_GRID = tuple(round(0.3 + 0.02 * i, 2) for i in range(36))
 # The flown handles measured over a bounded flight: (its window's constant, its name, the
 # stretch it flies by: `manoeuvres.Scales`' field).
 WINDOWS = dict(

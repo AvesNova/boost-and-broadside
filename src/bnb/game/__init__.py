@@ -81,4 +81,4 @@ the fine to 0.3 of it. Yongma, Jujak and Vizia re-solved.
 """
 
 VERSION = 11
-FINGERPRINT = "bd362de0be49ee56"
+FINGERPRINT = "923ebb362bbf26e8"

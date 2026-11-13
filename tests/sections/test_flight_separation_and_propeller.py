@@ -18,7 +18,7 @@ from bnb.game.ship_types import type_names
 
 RULES = api.rules_of(GameConfig(1, 1, 7800.0, ship_set="real-scale"))
 TYPES = api.ship_types(ship_set="real-scale", dtype=torch.float64)
-NAMES = ("Yongma", "Jujak", "Vizia")
+NAMES = ("Yongma", "Jujak", "vizia")
 KINDS = torch.tensor([type_names("real-scale").index(name) for name in NAMES])
 
 
@@ -33,7 +33,7 @@ def test_separation_is_one_plus_s_at_the_maximum_lift_and_off_by_default():
     lift_squared = (ratio * airframe.max_lift_coefficient) ** 2
     expected = 1.0 + 1.5 * ratio**8
     torch.testing.assert_close(separation(constants, airframe, lift_squared), expected.expand(4, 3))
-    assert separation(api.rules_of(GameConfig(1, 1)).flight, airframe, lift_squared) == 1.0
+    assert separation(api.rules_of(GameConfig(1, 1, 7800.0)).flight, airframe, lift_squared) == 1.0
 
 
 def test_the_propeller_thrust_is_power_over_the_root_of_speeds_squared():
@@ -52,7 +52,9 @@ def test_the_exchange_is_vertical_lift_demand():
     energy = 0.25 * airframe.max_energy
     stick = torch.full_like(speed, 0.3)
     for power in (-1.0, 1.0):
-        turning = setting(RULES.flight, airframe, speed, energy, stick, torch.full_like(speed, power))
+        turning = setting(
+            RULES.flight, airframe, speed, energy, stick, torch.full_like(speed, power)
+        )
         straight = setting(
             RULES.flight, airframe, speed, energy, 0.0 * stick, torch.full_like(speed, power)
         )
