@@ -40,18 +40,27 @@ compiled. The options:
   **Overlays** button (see [Prediction overlays](#prediction-overlays)), **True size**
   (see [Ship size](#ship-size)), **Grid** and **Contours** (see [The camera and the grid](#the-camera-and-the-grid)) on the left; the
   score, or Frontline's front and zones (captioned "Front" and "Zones", each zone numbered
-  in its owner's colour, with a tooltip saying what it shows), and the clock in the middle; the speed controls
+  in its owner's colour, its capture progress as an arc in the attacker's colour, and
+  while a zone is under a capture lock the seconds left beside it in the colour of the
+  team it holds; a tooltip says what each shows; on the battlefield each zone shows its
+  meter outside its edge and a lock as a thinner arc inside it, shrinking as the lock runs
+  out), and the clock in the middle; the speed controls
   on the right: pause or play, one tick while paused, and ×1, ×2, ×4, ×8. Left of the
   speed controls, the frame rate: frames per second and the frame time, smoothed over about
   half a second, and the longest frame of the last second (`max`), so a stall shows. F4,
   **Settings** → **Frame rate** and `--no-fps` hide it (offscreen renders never draw it).
 - **The fleets card** (left): each team's ships, with type, shield, energy, alive or the
-  respawn wait, and who controls it. Click a row to select the ship. Each team's
-  controller is chosen here (see below).
+  time to its respawn, and who controls it. Click a row to select the ship. Each team's
+  controller is chosen here (see below). In Frontline a team's section opens with **next
+  wave in**, the countdown to its respawn wave (dead ships wait their minimum, then
+  respawn together at their team's next wave; the respawn times include it). While you
+  fly a ship only your own team's countdown shows, since the enemy's wave clock is hidden
+  from the agents too; while you watch, both show.
 - **The selection card** (right): what you selected. A ship shows its live state (shield,
   energy, speed (at ×1 under a [time scale](#tuning-the-game)), angle of attack, power and stick, the last shot), kills and deaths, and
   the buttons **Take control** and **Follow**; a field its refractive index and core; a
-  zone its owner, progress and the ships contesting it.
+  zone its owner, progress, the capture lock left on the team that lost it, and the ships
+  contesting it.
 - **The minimap** (lower right): the whole arena, with the camera's view as a rectangle.
   Click or drag on it to move the camera.
 - **The kill feed** (upper right): the last few kills, in team colours.
@@ -397,8 +406,11 @@ compare.
   bullet drag were changed. **Remove** deletes the chosen type after asking. Each starts a
   new match; the last type cannot be removed.
 - **Rules**, by group: the arena and the clocks, the bullet drag, the flight constants every
-  type shares, spawns, and the current mode's rules (Frontline's zone radius and capture
-  time, team deathmatch's kills to win). Each has a slider and a number box, and applies on
+  type shares, spawns, and the current mode's rules (Frontline's zone radius, capture
+  time, capture lock (s per sqrt(km) of the zone spacing), respawn minimum and respawn
+  wave interval; team deathmatch's kills to win and respawn wait). The respawn wait shows
+  in the mode's own group: Frontline's as the respawn minimum, team deathmatch's as its
+  fixed wait. Each has a slider and a number box, and applies on
   the next tick; those marked with * are drawn at an episode's start. Hover a row for
   the game's value.
 - Changing a flight constant re-measures the handles (the ships keep their card, so what

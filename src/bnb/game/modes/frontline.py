@@ -70,14 +70,16 @@ def zone_membership(
 
 class Capture(NamedTuple):
     """One tick of the meters. progress (..., Z); the attempt ledgers (..., Z, N); gain and
-    loss (..., N), each capturing side's shares; team0_captured, team1_captured (...,);
-    front (...,) and roles (..., Z) after the captures."""
+    loss (..., N), each capturing side's shares; captured (..., Z), the zones that fell
+    this tick; team0_captured, team1_captured (...,); front (...,) and roles (..., Z)
+    after the captures."""
 
     progress: torch.Tensor
     attack_ledger: torch.Tensor
     defense_ledger: torch.Tensor
     gain: torch.Tensor
     loss: torch.Tensor
+    captured: torch.Tensor
     team0_captured: torch.Tensor
     team1_captured: torch.Tensor
     front: torch.Tensor
@@ -116,11 +118,14 @@ def capture_step(
     front: torch.Tensor,
     tick_length: float,
     capture_seconds: float,
+    attacker_locked: torch.Tensor | None = None,
 ) -> Capture:
     """v1's meters, attempt ledgers and completions (spec 5).
 
     team (..., N); inside (..., N, Z), masked to living ships (a dead ship is absent);
-    roles, progress (..., Z); the ledgers (..., Z, N); front (...,).
+    roles, progress (..., Z); the ledgers (..., Z, N); front (...,). attacker_locked
+    (..., Z) bool or None (none): the capture lock holds the zone's attacker, so its
+    majority does not move the meter (a defending majority still does).
     """
     present = inside.transpose(-1, -2)  # (..., Z, N)
     attacker, defender, team0_attacks, contested = _sides(team, roles)
@@ -128,6 +133,10 @@ def capture_step(
     net = (present & on_team0).sum(-1) - (present & ~on_team0).sum(-1)  # team 0 minus team 1
     majority = torch.where(contested, torch.sign(net), 0)  # the majority, in team 0's frame
     toward_attacker = torch.where(team0_attacks, majority, -majority)
+    if attacker_locked is not None:
+        toward_attacker = torch.where(
+            attacker_locked, toward_attacker.clamp_max(0), toward_attacker
+        )
     rate = harmonic(net.abs(), progress.dtype) * tick_length / capture_seconds
     moved = (progress + toward_attacker * rate).clamp(0.0, 1.0)
     new = torch.where(contested, moved, 0.0)
@@ -163,6 +172,7 @@ def capture_step(
         defense_ledger=torch.where(clear, 0.0, defense_ledger),
         gain=gain,
         loss=loss,
+        captured=captured,
         team0_captured=team0_captured,
         team1_captured=team1_captured,
         front=front,
@@ -197,6 +207,72 @@ def zone_progress_events(
     held = _split(amount, favoured & present).sum(-2)
     absent = -_split(amount, charged).sum(-2)
     return torch.stack([held, absent], -1)
+
+
+def adjacent_distance(zone_x: torch.Tensor, zone_y: torch.Tensor) -> torch.Tensor:
+    """(...,) m: the distance between adjacent zone centres on the ring (zones 0 and 1;
+    every adjacent pair is as far apart). zone_x, zone_y (..., Z)."""
+    return torch.hypot(zone_x[..., 1] - zone_x[..., 0], zone_y[..., 1] - zone_y[..., 0])
+
+
+def lock_ticks(
+    seconds_per_root_km, zone_x: torch.Tensor, zone_y: torch.Tensor, tick_length: float
+) -> torch.Tensor:
+    """(...,) int32: the capture lock's length in whole ticks, seconds_per_root_km (a
+    number or a 0-d tensor) x sqrt(d / 1 km), d the adjacent zones' distance."""
+    distance = adjacent_distance(zone_x, zone_y)
+    seconds = seconds_per_root_km * torch.sqrt(distance / 1000.0)
+    return torch.round(seconds / tick_length).to(torch.int32)
+
+
+def locks_after(
+    lock: torch.Tensor, captured: torch.Tensor, roles: torch.Tensor, length: torch.Tensor
+) -> torch.Tensor:
+    """(..., 2, Z) the capture locks after a tick: each counts down a tick, and a zone
+    that fell (captured (..., Z), by its roles before the capture (..., Z)) locks the team
+    that lost it, its defender, for `length` (...,) ticks. lock (..., 2, Z) by team."""
+    team0_lost = captured & (roles == TEAM0_DEFENSE)
+    team1_lost = captured & (roles == TEAM1_DEFENSE)
+    lost = torch.stack([team0_lost, team1_lost], -2)
+    return torch.where(lost, length[..., None, None], (lock - 1).clamp_min(0))
+
+
+def attacker_locked(lock: torch.Tensor, roles: torch.Tensor) -> torch.Tensor:
+    """(..., Z): the capture lock holds the zone's attacker (team 0 attacks team 1's
+    defense zone, team 1 team 0's). lock (..., 2, Z) by team; roles (..., Z)."""
+    held = lock > 0
+    return torch.where(
+        roles == TEAM1_DEFENSE,
+        held[..., 0, :],
+        torch.where(roles == TEAM0_DEFENSE, held[..., 1, :], False),
+    )
+
+
+def whole_ticks(seconds, tick_length: float, like: torch.Tensor) -> torch.Tensor:
+    """(...,) int32 like `like` (...,): seconds (a number or a 0-d tensor: a live setting)
+    as whole ticks."""
+    return torch.round(torch.zeros_like(like, dtype=torch.float32) + seconds / tick_length).to(
+        torch.int32
+    )
+
+
+def waves_after(
+    wave_wait: torch.Tensor, interval: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """(wave_wait, landed), each (..., 2) by team: a team's wave lands on the tick its
+    wait counts down to 0 (or below), and its next is interval (..., 1) ticks away (0 no
+    waves: every tick lands)."""
+    counted = wave_wait - 1
+    landed = counted <= 0
+    return torch.where(landed, interval.expand_as(counted), counted), landed
+
+
+def first_waves(uniforms: torch.Tensor, interval: torch.Tensor) -> torch.Tensor:
+    """(..., 2) int32: each team's ticks to its first wave, uniform on 1..interval from
+    uniforms (..., 2) in [0, 1); interval (..., 1) ticks (0 with no waves, then 0)."""
+    span = interval.to(uniforms.dtype)
+    drawn = (uniforms * span).floor() + 1.0
+    return torch.minimum(drawn, span).to(torch.int32)
 
 
 def timeout_result(front: torch.Tensor) -> torch.Tensor:

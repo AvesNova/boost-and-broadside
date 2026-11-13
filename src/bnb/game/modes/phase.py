@@ -25,13 +25,17 @@ KILL_MODES = (TEAM_DEATHMATCH, ELIMINATION)  # every death scores for the other 
 class Phase(NamedTuple):
     """mode: the state after this tick; objective_progress, objective (B, N): the mode's
     signed per-ship amounts, each summing to zero per environment; won (B,): the win rule
-    ended the match; result (B,) int32: the result for team 0 if it ended now (+1, -1, 0)."""
+    ended the match; result (B,) int32: the result for team 0 if it ended now (+1, -1, 0);
+    respawn_open (B, 2) bool, by team: a dead ship of the team whose respawn wait is over
+    respawns on this tick (Frontline: the team's respawn wave lands; every tick in the
+    other modes)."""
 
     mode: ModeState
     objective_progress: torch.Tensor
     objective: torch.Tensor
     won: torch.Tensor
     result: torch.Tensor
+    respawn_open: torch.Tensor
 
 
 def _in_zones(mode: ModeState, ships: Ships) -> torch.Tensor:
@@ -58,13 +62,14 @@ def mode_phase(
     deathmatch with one kill per enemy ship to win: a team with no ship left loses."""
     zero = torch.zeros_like(ships.x)
     no = torch.zeros_like(mode.front, dtype=torch.bool)
+    every_tick = torch.ones_like(mode.score, dtype=torch.bool)
     if mode_rules.name in KILL_MODES:
         # Every death scores for the other team, whatever its cause: (B, 2) by the scoring
         # team, its enemy's deaths.
         score = mode.score + enemy(died.to(torch.int32)).sum(-1, dtype=torch.int32)
         reached = score >= deathmatch_targets(rules, mode_rules, active)
         result = reached[:, 0].to(torch.int32) - reached[:, 1].to(torch.int32)  # both: a draw
-        return Phase(replace(mode, score=score), zero, zero, reached.any(-1), result)
+        return Phase(replace(mode, score=score), zero, zero, reached.any(-1), result, every_tick)
     if mode_rules.name == FRONTLINE:
         team = ship_team(rules.ships_per_team, ships.x.device)
         inside = _in_zones(mode, ships) & alive[..., None]
@@ -78,7 +83,17 @@ def mode_phase(
             mode.front,
             rules.tick_length,
             mode_rules.capture_seconds,
+            frontline.attacker_locked(mode.lock, mode.role),
         )
+        # The capture lock: a zone that fell holds the team that lost it for the lock's
+        # length, scaled by the ring's size (`frontline.lock_ticks`).
+        length = frontline.lock_ticks(
+            mode_rules.lock_seconds_per_root_km, mode.zone_x, mode.zone_y, rules.tick_length
+        )
+        lock = frontline.locks_after(mode.lock, capture.captured, mode.role, length)
+        # The respawn waves: each team's clock counts down, and a wave lands at 0.
+        interval = frontline.whole_ticks(mode_rules.wave_seconds, rules.tick_length, mode.front)
+        wave_wait, landed = frontline.waves_after(mode.wave_wait, interval[:, None])
         held = frontline.zone_progress_events(
             team,
             inside,
@@ -100,6 +115,8 @@ def mode_phase(
             movement=movement.to(torch.int32),
             attack_ledger=capture.attack_ledger,
             defense_ledger=capture.defense_ledger,
+            lock=lock,
+            wave_wait=wave_wait,
         )
         won = capture.front.abs() >= mode_rules.front_threshold
         return Phase(
@@ -108,8 +125,9 @@ def mode_phase(
             capture.gain - capture.loss,
             won,
             torch.sign(capture.front).to(torch.int32),
+            landed,
         )
-    return Phase(mode, zero, zero, no, torch.zeros_like(mode.front))
+    return Phase(mode, zero, zero, no, torch.zeros_like(mode.front), every_tick)
 
 
 def deathmatch_targets(
@@ -183,12 +201,15 @@ def new_match(
     fields: Fields,
     previous: ModeState,
     disc_fraction,
+    tick_length: float,
 ) -> tuple[ModeState, Fields]:
     """A new match's mode state and map from the mode's tick uniforms (B, U_mode) and the
     environments' arena radius and map scale (B,): the drawn point-symmetric fields as they
     are, a fixed layout's fields (`layout_fields`) where the mode's rules have one, or, in
     Frontline, a random ring (rotation, then handedness) with fields mirrored about its
-    neutral axis (the odd field within disc_fraction of the arena radius). previous: the mode
+    neutral axis (the odd field within disc_fraction of the arena radius), no capture
+    locks, and each team's first respawn wave drawn uniformly on 1..interval ticks (the
+    mode's uniforms 2 and 3; tick_length, s). previous: the mode
     state as it stands. A mode without zones zeroes only
     the score; its other leaves are zero already and pass through unchanged (no copy of
     the absent slots)."""
@@ -215,6 +236,10 @@ def new_match(
         role=roles,
         handedness=handedness,
         ring_rotation=rotation,
+        wave_wait=frontline.first_waves(
+            uniforms[:, 2:4],
+            frontline.whole_ticks(mode_rules.wave_seconds, tick_length, rotation)[:, None],
+        ),
     )
     return state, frontline.mirror_fields(
         fields, map_uniforms, arena_radius, rotation, disc_fraction

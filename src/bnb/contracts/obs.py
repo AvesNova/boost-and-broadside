@@ -62,7 +62,10 @@ FIELD_COLUMNS = ("x", "y", "radius", "band_width", "level")
 # defense, 4 enemy spawn; progress, the meter in [0, 1]; direction +1 when the meter moves
 # in the viewer's favour, -1 in the enemy's, 0 still; the distances: captures to the
 # viewer's win and to its loss; present, 1 for a zone of the environment's mode and 0 for an
-# absent slot (a mode without zones in a batch that has them), whose other columns are 0.
+# absent slot (a mode without zones in a batch that has them), whose other columns are 0;
+# lock_own and lock_enemy, the seconds left of the capture lock on the viewer's team and on
+# the enemy's (the team that lost the zone gains no progress on it until 0; public, as
+# every zone column is).
 ZONE_COLUMNS = (
     "x",
     "y",
@@ -73,11 +76,14 @@ ZONE_COLUMNS = (
     "offensive_distance",
     "defensive_distance",
     "present",
+    "lock_own",
+    "lock_enemy",
 )
 # The mode block: a mode one-hot (all zero in sandbox); the scores by team_relative and the
 # score that wins (team deathmatch; in elimination the enemy's ships, a wipe); the front,
-# positive in the viewer's favour, and the front that wins (Frontline). Absent quantities
-# are 0.
+# positive in the viewer's favour, and the front that wins (Frontline); next_wave_own, the
+# seconds to the viewer's team's next respawn wave (Frontline; the enemy's wave clock is
+# not shown). Absent quantities are 0.
 GLOBAL_COLUMNS = (
     "episode_progress",
     "arena_radius",
@@ -91,8 +97,13 @@ GLOBAL_COLUMNS = (
     "score_target",
     "front",
     "front_threshold",
+    "next_wave_own",
 )
-# Times (shield_recharge_wait, gun_cooldown, respawn_wait, time_since_seen) are in seconds.
+# Times (shield_recharge_wait, gun_cooldown, respawn_wait, time_since_seen, lock_own,
+# lock_enemy, next_wave_own) are in seconds. respawn_wait is the ship's respawn wait left
+# (its minimum, in Frontline): a Frontline ship then respawns at its team's next wave, so
+# an own ship's time to respawn is the first of next_wave_own + k x the wave interval at or
+# after its respawn_wait.
 
 # Z: the zone slots of every observation in every mode, a fixed shape like the field count,
 # so a model sees the same tokens in any batch. Frontline fills them all; a mode without

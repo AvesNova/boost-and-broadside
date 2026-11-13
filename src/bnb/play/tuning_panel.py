@@ -247,13 +247,15 @@ def draw_rules(tuner, scale: float, wanted, open_groups: bool = False) -> None:
     (open at first with `open_groups`), in the current ImGui frame."""
     groups: dict[str, list] = {}
     for setting in api.tuning.settings_for(tuner.base):
-        if wanted(setting.group):
-            groups.setdefault(setting.group, []).append(setting)
+        group, label = api.tuning.shown(setting, tuner.base)
+        if wanted(group):
+            groups.setdefault(group, []).append((setting, label))
     flag = imgui.TreeNodeFlags_.default_open if open_groups else 0
-    for group, settings in groups.items():
+    for group, entries in groups.items():
         if not imgui.collapsing_header(group, flag) or not begin_rows(group, scale):
             continue
-        for setting in settings:
+        settings = [setting for setting, _ in entries]
+        for setting, label in entries:
             episode = setting.when == api.tuning.EPISODE
             played = ""
             if tuner.time_factor != 1.0:
@@ -265,7 +267,7 @@ def draw_rules(tuner, scale: float, wanted, open_groups: bool = False) -> None:
             help = "\n".join(
                 line
                 for line in (
-                    setting.label + (f", {setting.unit}" if setting.unit else ""),
+                    label + (f", {setting.unit}" if setting.unit else ""),
                     f"game's value: {short(tuner.default(setting.key))}",
                     played,
                     "applies from the next episode" if episode else "",
@@ -273,7 +275,7 @@ def draw_rules(tuner, scale: float, wanted, open_groups: bool = False) -> None:
                 if line
             )
             changed, new = number(
-                setting.label.split(" (")[0],
+                label.split(" (")[0],
                 setting.key,
                 tuner.values[setting.key],
                 setting.low,

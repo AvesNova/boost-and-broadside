@@ -14,7 +14,7 @@ import math
 
 from imgui_bundle import imgui
 
-from bnb.game.physics.spawning import field_radius_summary
+from bnb.game import api
 
 from .interface.layout import MARGIN, TOP_BAR, Rect
 from .maps import MODES
@@ -81,7 +81,7 @@ class MapPanel:
         )
         changes = {name: tuner.values[f"rules.{name}"] for name in names}
         changes["field_radius_distribution"] = int(changes["field_radius_distribution"])
-        mean, low, high = field_radius_summary(dataclasses.replace(tuner.base, **changes))
+        mean, low, high = api.field_radius_summary(dataclasses.replace(tuner.base, **changes))
         return f"field radius: mean {mean:.0f} m, 10th {low:.0f} m, 90th {high:.0f} m (map scale 1)"
 
     def _buttons(self, session) -> None:

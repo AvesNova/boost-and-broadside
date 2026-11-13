@@ -76,7 +76,7 @@ def test_pools_take_the_configs_values_or_the_modes_defaults():
     frontline, squad, battle = rules.pools
     assert [pool.environments for pool in rules.pools] == [4, 2, 2]
     assert frontline.mode.name == "frontline" and frontline.arena_radius == 2600.0
-    assert frontline.respawn_ticks == 240 and squad.respawn_ticks == 150  # the modes' clocks
+    assert frontline.respawn_ticks == 120 and squad.respawn_ticks == 120  # the modes' clocks
     assert battle.episode_ticks == 1800 and battle.mode.spawn_groups == (2, 2, 1)
     assert rules.num_zones == 5
     # the uniforms are as wide as the widest mode needs
@@ -84,7 +84,7 @@ def test_pools_take_the_configs_values_or_the_modes_defaults():
     assert rules.tick_uniform_count == max(widths)
     arena = environment(rules, 8)
     assert arena.arena_radius.tolist() == [2600.0] * 6 + [8200.0] * 2
-    assert arena.respawn_ticks.tolist() == [240] * 4 + [150] * 4
+    assert arena.respawn_ticks.tolist() == [120] * 8  # both modes wait 4 s (8 s at real scale)
     with pytest.raises(ValueError):
         environment(rules, 16)  # the pools hold 8 environments
     with pytest.raises(ValueError):
@@ -464,7 +464,9 @@ def test_a_mixed_batch_does_not_reveal_the_seat():
     _, obs, _ = api.perceive(rules, state)
     S = rules.ships_per_team
     arena_radius = environment(rules, per_game * 4).arena_radius
-    assert torch.equal(obs.globals[:, 0], obs.globals[:, 1])
+    # every global but the own team's next respawn wave, each team's own draw
+    same = [GLOBAL[name] for name in GLOBAL if name != "next_wave_own"]
+    assert torch.equal(obs.globals[:, 0, same], obs.globals[:, 1, same])
     shown = [
         ZONE[name]
         for name in (

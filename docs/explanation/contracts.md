@@ -64,15 +64,24 @@ The parts and their columns, from `bnb.contracts.obs`:
 **Zones**, `(..., Z, len(ZONE_COLUMNS))`. Every mode has the same zone slots; a mode
 without zones shows them absent, with `present` 0 and every other column 0. Roles are the
 viewer's: 0 own spawn, 1 own defense, 2 neutral, 3 enemy defense, 4 enemy spawn. Rows are
-in each viewer's own ring order.
+in each viewer's own ring order. `lock_own` and `lock_enemy` are the seconds left of the
+capture lock on the viewer's team and on the enemy's: the team that lost the zone gains no
+capture progress on it until 0. Both are public.
 
 <!-- generated: zone-columns -->
 
 **Globals**, `(..., len(GLOBAL_COLUMNS))`. The first columns are the game's; the rest are
 the mode's block: a mode one-hot (all zero in sandbox), the scores by team and the score
 that wins (team deathmatch; in elimination the enemy's ships), the front for the viewer
-and the front that wins (Frontline).
+and the front that wins (Frontline), and the seconds to the viewer's own team's next
+respawn wave (`next_wave_own`, Frontline; the enemy's clock is not shown).
 An absent quantity is 0.
+
+Every time column is in seconds. In Frontline a ship's `respawn_wait` is its minimum
+wait left; the ship then respawns at its team's next wave. An own ship's time to respawn
+is therefore the first of `next_wave_own` + k x the wave interval at or after its
+`respawn_wait`. An enemy ship's `respawn_wait` shows only its minimum, so it does not
+reveal the enemy's wave clock.
 
 <!-- generated: global-columns -->
 

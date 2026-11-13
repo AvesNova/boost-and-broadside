@@ -62,6 +62,9 @@ observation shows it in seconds, in `time_since_seen`.
   does not, then the always-shown columns.
 - The fields are the same in every view. The zones and the mode's global columns come from
   the mode, on its own slice of the batch (see [Modes](modes.md)).
+  Frontline's capture locks are public zone columns. Each view's `next_wave_own` is its own
+  team's wave clock only, and an enemy ship's `respawn_wait` shows only its minimum wait,
+  so nothing in a view gives the enemy's wave clock directly.
 - **Privileged** (`bnb.contracts.Privileged`) is built from the same rows with every ship
   visible (the dead included, with `time_since_seen` 0), plus each ship's sim team and the
   sim index of every row. No controller receives it. The rollout stores its enemy rows for

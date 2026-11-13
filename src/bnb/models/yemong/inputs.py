@@ -79,16 +79,29 @@ POSITION_CODE = 9 * POSITION_LEVELS  # the width of a position code
 MODE_INPUTS = (TEAM_DEATHMATCH, FRONTLINE, ELIMINATION)
 
 
-def global_inputs(mode_inputs: tuple[str, ...]) -> int:
+# A countdown the model reads (`YemongConfig.frontline_timer_inputs`: the capture locks and
+# the own team's next respawn wave) is coded as the ship token codes its respawn wait,
+# `features.respawn_features`: s / 16 s and 4 harmonics of it, 9 numbers.
+TIMER_INPUTS = 1 + 2 * RESPAWN_HARMONICS
+
+
+def global_inputs(mode_inputs: tuple[str, ...], timers: bool = False) -> int:
     """The global token's width: the centre's code, then episode progress, arena radius,
     fog, the flags of the modes read (mode_inputs), both scores over the target, the
-    target, the front and its threshold."""
-    return POSITION_CODE + 8 + len(mode_inputs)
+    target, the front and its threshold, then with timers the own team's next respawn
+    wave (TIMER_INPUTS)."""
+    return POSITION_CODE + 8 + len(mode_inputs) + (TIMER_INPUTS if timers else 0)
 
 
 FIELD_INPUTS = POSITION_CODE + 3
 # The centre's code, radius, the role one-hot, progress, direction and the two distances.
 ZONE_INPUTS = POSITION_CODE + 1 + ZONE_ROLES + 4
+
+
+def zone_inputs(timers: bool = False) -> int:
+    """The zone token's width: ZONE_INPUTS, then with timers the capture locks on the
+    viewer's team and on the enemy's (TIMER_INPUTS each)."""
+    return ZONE_INPUTS + (2 * TIMER_INPUTS if timers else 0)
 
 
 def ship_inputs(
@@ -316,6 +329,7 @@ def compose(
     previous: Motion | None = None,
     read_accelerations: bool = True,
     mode_inputs: tuple[str, ...] = MODE_INPUTS,
+    timers: bool = False,
 ) -> Tokens:
     """The Tokens of one team's views (...) from the observation and the replay: the ships' belief
     codes and features, the global token, the fields and the zones, every position shifted by the
@@ -326,7 +340,11 @@ def compose(
     `state_code.position_inputs` "fourier"); with read_accelerations the
     acceleration inputs end the ship token, before the ellipse inputs
     (`state_code.spread_inputs` "ellipse"), and without it the token does not carry them.
-    The global token reads the flags of mode_inputs' modes (`global_inputs`)."""
+    The global token reads the flags of mode_inputs' modes (`global_inputs`). With timers
+    the global token ends with the own team's next respawn wave and the zone token with
+    the capture locks (lock_own, lock_enemy), each coded as the respawn wait
+    (`respawn_features`); a zone's capture progress is the meter's fraction in [0, 1]
+    either way."""
     ships, dtype = obs.ships, obs.ships.dtype
     own = replay.previous_action.shape[-1]
     column = {name: ships[..., SHIP[name]] for name in SHIP}
@@ -393,6 +411,7 @@ def compose(
                 ],
                 -1,
             ),
+            *((respawn_features(globals_[..., GLOBAL["next_wave_own"]]),) if timers else ()),
         ],
         -1,
     )[..., None, :]
@@ -440,6 +459,14 @@ def compose(
                             symlog(zones[..., ZONE["defensive_distance"]]),
                         ],
                         -1,
+                    ),
+                    *(
+                        (
+                            respawn_features(zones[..., ZONE["lock_own"]]),
+                            respawn_features(zones[..., ZONE["lock_enemy"]]),
+                        )
+                        if timers
+                        else ()
                     ),
                 ],
                 -1,

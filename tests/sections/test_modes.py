@@ -33,8 +33,8 @@ def test_modes_take_their_clocks_and_presets_build():
         return pool
 
     assert game().episode_ticks == 9000
-    assert game().respawn_ticks == 150  # 5 s
-    assert game(mode="frontline").respawn_ticks == 240
+    assert game().respawn_ticks == 120  # 4 s (8 s at real scale)
+    assert game(mode="frontline").respawn_ticks == 120  # the minimum, then the next wave
     assert game(mode="sandbox").episode_ticks == 1800
     assert game(episode_seconds=2.0).episode_ticks == 60
     for name, config in PRESETS.items():
@@ -62,7 +62,7 @@ def test_tick_uniform_counts_are_exact_functions_of_the_sizes():
     assert grouped.tick_uniform_count == game + 2 * K * 3 + N * (2 * K + 2)
     assert (
         api.rules_of(GameConfig(5, M, 2600.0, mode="frontline")).tick_uniform_count
-        == game + 2 + 2 * N
+        == game + 4 + 2 * N
     )
 
 
@@ -447,7 +447,9 @@ def test_mode_rows_do_not_reveal_the_seat(mode):
         api.uniforms(rules, 1024, generator=torch.Generator().manual_seed(19)),
     )
     _, obs, _ = api.perceive(rules, state)
-    assert torch.equal(obs.globals[:, 0], obs.globals[:, 1])
+    # every global but the own team's next respawn wave, each team's own draw
+    same = [GLOBAL[name] for name in GLOBAL if name != "next_wave_own"]
+    assert torch.equal(obs.globals[:, 0, same], obs.globals[:, 1, same])
     zones = obs.zones
     shown = [
         ZONE[name]
@@ -458,6 +460,8 @@ def test_mode_rows_do_not_reveal_the_seat(mode):
             "direction",
             "offensive_distance",
             "defensive_distance",
+            "lock_own",
+            "lock_enemy",
         )
     ]
     assert torch.equal(zones[:, 0][..., shown], zones[:, 1][..., shown])
@@ -725,6 +729,8 @@ def test_frontline_respawn_on_a_capture_tick_uses_the_new_spawn_zone():
     alive, wait = state.ships.alive.clone(), state.ships.respawn_wait.clone()
     alive[:, 3], wait[:, 3] = False, 1
     state = cases.edit_ships(_hold(state, attackers=3), alive=alive, respawn_wait=wait)
+    # team 1's respawn wave lands on this tick (team 0's does not: it has no dead ship)
+    state = replace(state, mode=replace(state.mode, wave_wait=torch.tensor([[5, 1]])))
     after, events = cases.tick(rules, state, seed=ticks)
     assert after.mode.front.item() == 1 and not events.done.item()
     assert after.ships.spawned[0, 3] and after.ships.spawned.sum() == 1
@@ -839,7 +845,7 @@ def test_frontline_zone_rows_are_team_relative():
         state, _ = cases.tick(rules, _hold(state, attackers=2), seed=t)
     _, obs, _ = api.perceive(rules, state)
     zones = obs.zones
-    assert zones.shape == (8, 2, 5, 9)
+    assert zones.shape == (8, 2, 5, len(ZONE))
     assert (zones[..., ZONE["present"]] == 1).all()
     torch.testing.assert_close(zones[:, 0, :, ZONE["x"]], state.mode.zone_x)
     torch.testing.assert_close(zones[:, 1, :, ZONE["x"]], state.mode.zone_x[:, MIRRORED])

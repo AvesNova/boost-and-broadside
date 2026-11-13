@@ -1,6 +1,9 @@
 """The fleets card (left): one section per team, a row per ship with its type, shield and
-energy bars, alive or respawning (with the wait), and its controller (you, scripted, the
-scripted agent and its doctrine, or the agent's name). Clicking a row selects its ship. A
+energy bars, alive or respawning (with the time to its respawn, its team's respawn wave
+included), and its controller (you, scripted, the scripted agent and its doctrine, or the
+agent's name). In Frontline a team's section opens with its next respawn wave's countdown:
+the player's own team's only while they fly a ship (the enemy's clock is hidden from them,
+as from the agents), both teams' while they watch. Clicking a row selects its ship. A
 team's controller is changed here: the scripted chaser, the scripted agent flying r9m2 (the
 default) or r9 (`bnb.play.sides.DOCTRINES`), or one of the local runs' policies, and an
 agent's sampling temperature. The card is wide enough for the longest
@@ -154,6 +157,14 @@ def draw(interface: Interface, layout: Layout) -> None:
                 )
                 if changed:
                     session.set_temperature(team, value)
+        if wave_shown(frame.mode, loop.pilot, per_team, team):
+            imgui.text_disabled("next wave in")
+            imgui.same_line()
+            imgui.text(f"{float(frame.next_wave[team]):.1f} s")
+            tooltip(
+                "Dead ships respawn together at their team's respawn wave, once their "
+                "minimum wait is over; each team's waves have their own clock"
+            )
         flags = imgui.TableFlags_.sizing_fixed_fit | imgui.TableFlags_.no_pad_outer_x
         if imgui.begin_table(f"team {team}", 5, flags):
             # As wide as the longest name of either team, so both teams' bars line up.
@@ -208,6 +219,14 @@ def draw(interface: Interface, layout: Layout) -> None:
         if team == 0:
             imgui.spacing()
     imgui.end()
+
+
+def wave_shown(mode: str, pilot: int | None, ships_per_team: int, team: int) -> bool:
+    """Whether the card shows this team's next respawn wave: in Frontline, the pilot's own
+    team only (the enemy's clock is hidden information), or both teams with no pilot."""
+    if mode != "frontline":
+        return False
+    return pilot is None or pilot // ships_per_team == team
 
 
 def row_controller(loop, team: int) -> str:

@@ -888,3 +888,28 @@ def test_the_fleets_combo_sets_the_scripted_agents_doctrine(context, tmp_path, m
     assert session.loop.setup.sides[1] == SideSetup("scripted_agent", doctrine="r9")
     assert session.loop.sides[1].label == "scripted agent r9"
     session.close()
+
+
+def test_the_fleets_card_shows_only_the_pilots_own_wave_clock():
+    from bnb.play.interface.fleets import wave_shown
+
+    assert wave_shown("frontline", None, 5, 0) and wave_shown("frontline", None, 5, 1)
+    assert wave_shown("frontline", 7, 5, 1) and not wave_shown("frontline", 7, 5, 0)
+    assert not wave_shown("team_deathmatch", None, 5, 0)
+
+
+def test_a_locked_zones_dot_carries_its_countdown_in_the_held_teams_colour():
+    from types import SimpleNamespace
+
+    from bnb.play.interface.top_bar import _lock_label, _zone_tooltip
+
+    zones = SimpleNamespace(
+        lock=np.array([[0.0, 0.0], [44.2, 0.0]]),
+        role=np.array([1, 2]),
+        owner=np.array([0, -1]),
+        attacker=np.array([1, -1]),
+        meter=np.array([0.0, 0.0]),
+    )
+    assert _lock_label(zones, 0) == ("45s", 1)
+    assert _lock_label(zones, 1) is None
+    assert "44.2 s" in _zone_tooltip(zones, 0, 1)

@@ -1,6 +1,8 @@
 """Pass 3: Frontline's zones. A disc tinted with its owner's colour (the neutral colour
 for the neutral zone), stronger on the defense zones, an outline, and on each defense
-zone the capture meter: an arc in the attacker's colour, growing clockwise from the top."""
+zone the capture meter: an arc in the attacker's colour, growing clockwise from the top.
+A zone under a capture lock shows it inside its edge: a thinner arc in the held team's
+colour, from the top, as long as the share of the lock still to run."""
 
 import math
 from typing import TYPE_CHECKING
@@ -20,6 +22,8 @@ OUTLINE_OPACITY = 0.8
 METER_PIXELS = 5.0
 METER_GAP_PIXELS = 7.0  # between the zone's edge and the meter
 METER_TRACK_OPACITY = 0.2
+LOCK_PIXELS = 3.0
+LOCK_OPACITY = 0.75
 
 
 def zone_table(theme: Theme, zones: Zones, metres_per_pixel: float) -> np.ndarray:
@@ -39,6 +43,20 @@ def zone_table(theme: Theme, zones: Zones, metres_per_pixel: float) -> np.ndarra
         disc[12] = OUTLINE_OPACITY
         disc[14] = CIRCLE
         rows.append(disc)
+        for side in range(2):
+            left = float(zones.lock[side, zone])
+            length = float(zones.lock_length[zone])
+            if left <= 0.0 or length <= 0.0:
+                continue
+            lock = arcs(1)[0]
+            radius = zones.radius[zone] - METER_GAP_PIXELS * metres_per_pixel
+            lock[0:3] = zones.x[zone], zones.y[zone], max(float(radius), 0.0)
+            lock[4] = LOCK_PIXELS
+            lock[9:13] = np.array(team[side], np.float32)
+            lock[12] = LOCK_OPACITY
+            half = math.pi * min(left / length, 1.0)
+            lock[13], lock[14] = 0.5 * math.pi - half, half
+            rows.append(lock)
         if attacker < 0:
             continue
         meter_colour = np.array(team[attacker], np.float32)

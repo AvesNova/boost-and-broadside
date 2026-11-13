@@ -65,6 +65,10 @@ When a match ends, the environment gets a new map and a fresh mode state
 
 ## Team deathmatch
 
+- **Respawn:** a dead ship respawns after a fixed wait: 8 s at real scale (the author,
+  2026-11-13; it was 10 s), 4 s in the standard game, whose clock is half the real-scale
+  one. There are no waves. The wait is the `pool.respawn_seconds` setting, shown in the
+  Map / mode panel's Team deathmatch group.
 - **Score:** every death scores one point for the other team, whatever its cause: an
   enemy's hit, friendly fire or the boundary.
 - **Win:** the first team to `kills_per_ship * ships_per_team` points. Both reaching it on
@@ -177,6 +181,26 @@ None, as in training) the game is bit-identical to the game without the input
   favour, every meter empties, and the roles rotate around the ring.
 - **Win:** a front of `front_threshold` captures ahead. At the clock the sign of the front
   decides, and 0 draws.
+- **Capture lock** (game version 8): after a capture, the team that lost the zone gains no
+  capture progress on it for L seconds: its majority there does not move the meter (a
+  defending majority still does), so the zone cannot be taken straight back. L is set by
+  the ring's size, `lock_seconds_per_root_km` x sqrt(d / 1 km), d the distance between
+  adjacent zone centres. The default, 19 s per sqrt(km), is about 45 s at 5v5 on the
+  real-scale map (d = 5.64 km), 54 s at 10v10 and 64 s at 20v20: the hard lock at which
+  the team that captured is about as likely as the other to capture next (P = 0.5 in
+  `bench/frontline_design.py`), to be calibrated again on the final ship card. The state
+  holds it per team and zone (`ModeState.lock`, ticks), so it is exact for any sequence
+  of captures; `frontline.lock_ticks`, `locks_after` and `attacker_locked` compute it.
+- **Respawn waves** (game version 8): a dead ship waits its minimum (`respawn_seconds`, 8 s
+  at real scale and 4 s in the standard game) and then respawns at its team's next
+  respawn wave. Each team's waves come every `wave_seconds` (20 s at real scale, 10 s in
+  the standard game), from a random phase per team drawn at the match's start (uniform
+  over one interval, from two of the mode's uniforms), and a capture does not move them.
+  The state holds each team's ticks to its next wave (`ModeState.wave_wait`); the wave
+  lands on the tick it reaches 0 and the next is an interval later. `wave_seconds` 0
+  turns the waves off (every tick lands), which leaves the fixed wait. The respawn waves
+  study (`docs/rewrite/sections/respawn-waves/progress.md`) found the waves move the pace
+  (an earlier first capture, shorter games) and not the momentum.
 - **Spawns:** a ship spawns at a random point near its team's current spawn zone, facing
   the zone its team attacks.
 - **Spawn protection:** a hit on a ship inside its own team's spawn zone deals no damage.
@@ -206,9 +230,15 @@ compiled graphs specialize on:
   view lists the zones in its own ring order, with roles, meter direction and the
   captures still needed to win or lose all relative to the viewer, so the order reveals no
   seat (`bnb.game.modes.observation.zone_rows`).
+  Each zone row also carries the capture lock left on the viewer's team and on the
+  enemy's (`lock_own`, `lock_enemy`, seconds): zone state is public, so both teams see
+  both.
 - **Globals:** the mode one-hot (team deathmatch, Frontline, elimination), the scores by
-  team and the winning score, the front for the viewer and the winning front
-  (`bnb.game.modes.observation.mode_globals`).
+  team and the winning score, the front for the viewer and the winning front, and in
+  Frontline the seconds to the viewer's own team's next respawn wave (`next_wave_own`)
+  (`bnb.game.modes.observation.mode_globals`). The enemy's wave clock is hidden. It can
+  be inferred, though: every ship's `alive` is shown, so an enemy wave that brings back a
+  dead ship reveals the enemy's phase, which then repeats every interval.
 
 The columns are listed in [Contracts](../contracts.md).
 

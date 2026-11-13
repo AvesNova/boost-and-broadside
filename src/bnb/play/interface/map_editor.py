@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 from imgui_bundle import imgui
 
 from bnb.contracts import GameConfig
-from bnb.contracts.config import ELIMINATION, TEAM_DEATHMATCH, MapLayout
+from bnb.contracts.config import ELIMINATION, FRONTLINE, TEAM_DEATHMATCH, MapLayout
 from bnb.game import api
 
 from ..loop import MatchSetup
@@ -289,7 +289,13 @@ class MapEditor:
         boxes = (
             ("Arena radius", "arena_radius", "m", "The arena's radius"),
             ("Match length", "episode_seconds", "s", "Seconds at x1, whole ticks (1/30 s)"),
-            ("Respawn wait", "respawn_seconds", "s", "Seconds at x1, whole ticks (1/30 s)"),
+            (
+                "Respawn minimum" if form.mode == FRONTLINE else "Respawn wait",
+                "respawn_seconds",
+                "s",
+                "Seconds at x1, whole ticks (1/30 s)"
+                + (", then the team's next respawn wave" if form.mode == FRONTLINE else ""),
+            ),
         )
         for title, field, unit, help in boxes[:2] if form.mode == ELIMINATION else boxes:
             label(title)

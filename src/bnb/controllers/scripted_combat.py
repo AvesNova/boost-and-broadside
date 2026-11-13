@@ -12,7 +12,7 @@ from typing import NamedTuple
 import torch
 
 from bnb.contracts import Obs
-from bnb.contracts.obs import GLOBAL, SHIP
+from bnb.contracts.obs import GLOBAL, SHIP, ZONE
 from bnb.game.handling.characteristics import Characteristics, time_of_flight
 from bnb.game.rules import Rules
 from bnb.game.ship_types import per_ship
@@ -87,6 +87,12 @@ class Context(NamedTuple):
     seconds: float  # a decision's length
     time_unit: torch.Tensor  # the ship's own time unit in seconds (`time_unit`)
     switching: bool  # the plan choices may switch (else only a forced re-choice)
+    # Frontline's timers, s (0 in the other modes): the own team's next respawn wave (R,)
+    # (the enemy's is hidden), and each zone's capture lock on the own team and on the
+    # enemy's (R, Z), by the observation's zone rows. Read by no rule yet.
+    next_wave: torch.Tensor
+    zone_lock_own: torch.Tensor
+    zone_lock_enemy: torch.Tensor
 
 
 def column(rows: torch.Tensor, name: str) -> torch.Tensor:
@@ -164,6 +170,9 @@ def context(
         seconds=seconds,
         time_unit=time_unit(characteristics, own_type, parameters),
         switching=switching,
+        next_wave=obs.globals[:, GLOBAL["next_wave_own"]],
+        zone_lock_own=obs.zones[..., ZONE["lock_own"]],
+        zone_lock_enemy=obs.zones[..., ZONE["lock_enemy"]],
     )
 
 

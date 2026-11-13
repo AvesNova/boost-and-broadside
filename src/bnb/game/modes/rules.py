@@ -25,10 +25,13 @@ from .. import ships
 # the physics game's (game spec 1), so the race tests run in it unchanged. Elimination has
 # no respawn (None): a dead ship's wait is the episode's whole length, so it is still
 # waiting when the episode ends (`bnb.game.rules`). Its episode is short (the author,
-# 2026-11-12): 90 s here, 180 s at real scale.
+# 2026-11-12): 90 s here, 180 s at real scale. The respawn waits (the author, 2026-11-13):
+# 8 s at real scale in team deathmatch (was 10 s) and Frontline's minimum 8 s (was a fixed
+# 16 s), after which a Frontline ship waits for its team's next respawn wave
+# (`ModeRules.wave_seconds`); the standard game's clock is half the real-scale one.
 CLOCKS = {
-    TEAM_DEATHMATCH: (300.0, 5.0),
-    FRONTLINE: (300.0, 8.0),
+    TEAM_DEATHMATCH: (300.0, 4.0),
+    FRONTLINE: (300.0, 4.0),
     ELIMINATION: (90.0, None),
     SANDBOX: (60.0, 8.0),
 }
@@ -181,7 +184,12 @@ class ModeRules:
     the noses toward the enemy area's centre within side_heading_jitter (radians).
     Frontline: the zone ring (zone_ring_fraction of the arena radius), zone_radius (m
     before map scaling), capture_seconds (a lead of one), front_threshold (captures ahead
-    that win) and the spawn disc (spawn_zone_fraction of the zone radius). layout: the
+    that win), the spawn disc (spawn_zone_fraction of the zone radius), the capture lock
+    (after a capture the team that lost the zone gains no progress on it for
+    lock_seconds_per_root_km x sqrt(d / 1 km) s, d the distance between adjacent zone
+    centres; 0 none) and the respawn waves (each team's every wave_seconds, from a random
+    phase per team at the match's start: a dead ship respawns at its team's first wave
+    after its respawn wait; 0 no waves). layout: the
     game's fixed map (`MapLayout`), or None for a random one; part of the mode's rules, so
     games of one mode with different layouts are different slices of the batch
     (`layout.per_mode`)."""
@@ -200,6 +208,11 @@ class ModeRules:
     capture_seconds: float = 10.0
     front_threshold: int = 3
     spawn_zone_fraction: float = 0.35
+    # The author, 2026-11-13: about 45 s at 5v5 on the real-scale map (d = 5.64 km), 54 s
+    # at 10v10 and 64 s at 20v20 (bench/frontline_design.py: the hard lock that gives an
+    # even P(same team captures next)); to be calibrated again on the final ship card.
+    lock_seconds_per_root_km: float = 19.0  # s / sqrt(km)
+    wave_seconds: float = 10.0  # s: 20 s at real scale (the set's [mode])
     side_area_fraction: float = 0.15
     side_heading_jitter: float = math.radians(15.0)
     layout: MapLayout | None = None
@@ -209,12 +222,13 @@ class ModeRules:
 
         Team deathmatch: per ship C radii, C angles and a heading, plus an anchor when
         grouped; per environment C centre candidates (2 each) per group. Frontline: the
-        ring's rotation and handedness, and per ship a point in the spawn disc."""
+        ring's rotation and handedness, each team's first respawn wave, and per ship a point
+        in the spawn disc."""
         candidates, groups = self.spawn_candidates, len(self.spawn_groups)
         if self.name in (TEAM_DEATHMATCH, ELIMINATION):
             return 2 * candidates * groups + num_ships * (2 * candidates + 1 + (1 if groups else 0))
         if self.name == FRONTLINE:
-            return 2 + 2 * num_ships
+            return 4 + 2 * num_ships
         return 0
 
 

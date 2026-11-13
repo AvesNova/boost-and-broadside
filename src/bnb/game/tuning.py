@@ -42,7 +42,9 @@ class Setting:
     """One tunable number: its key, the panel group and label, its unit, its bounds (in its
     unit), whether it is a whole number, and when it applies (NOW or EPISODE). `ticks`: it
     is a time in seconds held to whole ticks. `modes`: the modes it belongs to (empty for
-    every mode). `log`: its slider is logarithmic (a value spanning decades)."""
+    every mode). `log`: its slider is logarithmic (a value spanning decades). `shown_as`:
+    (mode, group, label) where a match of that mode alone shows the setting under another
+    group and label (`shown`): the respawn wait is a mode's own rule in its panel group."""
 
     key: str
     group: str
@@ -55,6 +57,7 @@ class Setting:
     ticks: bool = False
     modes: tuple[str, ...] = ()
     log: bool = False
+    shown_as: tuple[tuple[str, str, str], ...] = ()
 
 
 def _s(key, group, label, unit, low, high, **kw) -> Setting:
@@ -80,6 +83,10 @@ SETTINGS = (
         30.0,
         ticks=True,
         modes=(TEAM_DEATHMATCH, FRONTLINE, SANDBOX),  # elimination has none
+        shown_as=(
+            (TEAM_DEATHMATCH, TEAM_DEATHMATCH_GROUP, "respawn wait"),
+            (FRONTLINE, FRONTLINE_GROUP, "respawn minimum (then the next wave)"),
+        ),
     ),
     _s("rules.boundary_damage_base", ARENA, "boundary damage", "/s", 0.0, 50.0),
     _s("rules.boundary_damage_per_metre", ARENA, "boundary damage per metre", "/s/m", 0.0, 1.0),
@@ -222,6 +229,24 @@ SETTINGS = (
         modes=("frontline",),
     ),
     _s(
+        "mode.lock_seconds_per_root_km",
+        FRONTLINE_GROUP,
+        "capture lock (x sqrt of the zone spacing in km)",
+        "s/sqrt(km)",
+        0.0,
+        60.0,
+        modes=("frontline",),
+    ),
+    _s(
+        "mode.wave_seconds",
+        FRONTLINE_GROUP,
+        "respawn wave interval (0 no waves)",
+        "s",
+        0.0,
+        60.0,
+        modes=("frontline",),
+    ),
+    _s(
         "mode.spawn_zone_fraction",
         FRONTLINE_GROUP,
         "spawn disc (zone fraction)",
@@ -233,6 +258,16 @@ SETTINGS = (
     ),
 )
 BY_KEY = {setting.key: setting for setting in SETTINGS}
+
+
+def shown(setting: Setting, rules: Rules) -> tuple[str, str]:
+    """(group, label) the panels show a setting under in these rules' games: its
+    `shown_as` entry when every game plays that mode, else its own."""
+    names = {pool.mode.name for pool in rules.pools}
+    for mode, group, label in setting.shown_as:
+        if names == {mode}:
+            return group, label
+    return setting.group, setting.label
 
 
 def most_bullet_slots(tick_length: float) -> int:
@@ -380,6 +415,8 @@ LIVE_MODE = (
     "capture_seconds",
     "front_threshold",
     "spawn_zone_fraction",
+    "lock_seconds_per_root_km",
+    "wave_seconds",
 )
 LIVE_POOL = ("arena_radius", "episode_ticks", "respawn_ticks")
 _INTEGERS = {

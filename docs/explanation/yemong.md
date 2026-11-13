@@ -100,6 +100,18 @@ mode's zones are key and value memory only.
 - **A field token** reads its centre's code, radius, band width and level; **a zone token**
   its centre's code, radius, role, meter and the captures left. An absent zone is one
   learned vector (see [Mixed batches](game/mixed-batches.md)).
+- **Frontline's timers** (`YemongConfig.frontline_timer_inputs`, on in a new run since
+  game version 8; off in older build records, whose tokens are unchanged): the global
+  token ends with the own team's next respawn wave (`next_wave_own`), and each zone token
+  with the capture lock left on the viewer's team and on the enemy's (`lock_own`,
+  `lock_enemy`). Each countdown uses exactly the code the ship token gives its respawn
+  wait, `features.respawn_features`: s / 16 s, then the sine and cosine of 4 harmonics of
+  it (9 numbers). These are the model's other countdowns of the same kind (a few seconds to
+  about a minute, read as a clock), so they share its scale. The linear term tells
+  waits past 16 s apart, where the harmonics wrap. A zone's capture progress stays the
+  meter as the fraction in [0, 1] that the zone token already reads, like the episode
+  progress in the global token: it is a share of a capture, not a time. Its seconds would
+  depend on the lead in the zone (the harmonic rate), which the model sees anyway.
 
 ### The state code
 

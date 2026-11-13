@@ -283,7 +283,7 @@ def frontline_placement(
     the team's current spawn zone, nose toward the zone it attacks (the enemy's defense zone).
     map_scale (B,); mode: the state after this tick's captures (or a new match's)."""
     B, N, S = uniforms.shape[0], rules.num_ships, rules.ships_per_team
-    per_ship = uniforms[:, 2:].reshape(B, N, 2)
+    per_ship = uniforms[:, 4 : 4 + 2 * N].reshape(B, N, 2)  # after the ring's and waves'
 
     def centre(roles: tuple[int, int]):
         """(B, N) x, y of the zone with each ship's team's role (roles by team)."""

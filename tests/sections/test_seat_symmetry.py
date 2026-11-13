@@ -76,7 +76,12 @@ class Mirror:
     def state(self, state: State) -> State:
         seats, fields, match, mode = self.seats, state.fields, state.match, state.mode
         field_x, field_y = self.vector(fields.x, fields.y)
-        mode = replace(mode, score=mode.score.flip(-1))
+        mode = replace(
+            mode,
+            score=mode.score.flip(-1),
+            wave_wait=mode.wave_wait.flip(-1),
+            lock=mode.lock.flip(1),
+        )
         if self.reflect:
             zone = ZONE_REFLECTED
             zone_x, zone_y = self.vector(mode.zone_x[:, zone], mode.zone_y[:, zone])
@@ -91,6 +96,7 @@ class Mirror:
                 movement=mode.movement[:, zone],
                 attack_ledger=mode.attack_ledger[:, zone][..., seats],
                 defense_ledger=mode.defense_ledger[:, zone][..., seats],
+                lock=mode.lock[:, :, zone],
             )
         return State(
             ships=self._per_ship(state.ships, Ships),

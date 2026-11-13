@@ -21,12 +21,13 @@ from .rules import ELIMINATION, FRONTLINE, TEAM_DEATHMATCH, ModeRules
 MODE_GLOBALS = GLOBAL_COLUMNS[GLOBAL_COLUMNS.index("mode_team_deathmatch") :]
 
 
-def zone_rows(mode_rules: ModeRules, mode: ModeState) -> torch.Tensor:
+def zone_rows(mode_rules: ModeRules, mode: ModeState, tick_length: float) -> torch.Tensor:
     """(B, 2, Z, len(ZONE_COLUMNS)) in ZONE_COLUMNS order (absent rows outside Frontline).
 
     direction: the meter's movement this tick, +1 toward the viewer's capture (a meter
     rising on the zone the viewer attacks, or falling on the one it defends), -1 toward
-    the enemy's, 0 still."""
+    the enemy's, 0 still. lock_own, lock_enemy: the capture lock left on the viewer's
+    team and on the enemy's, in seconds (tick_length s a tick)."""
     role = mode.role
     B, Z = role.shape
     if mode_rules.name != FRONTLINE:
@@ -37,6 +38,7 @@ def zone_rows(mode_rules: ModeRules, mode: ModeState) -> torch.Tensor:
         role == frontline.TEAM1_DEFENSE, 1, torch.where(role == frontline.TEAM0_DEFENSE, -1, 0)
     )
     team0_direction = mode.movement * team0_attacks  # in team 0's favour
+    lock = mode.lock.float() * tick_length  # (B, 2, Z) by team
     team0 = torch.stack(
         [
             mode.zone_x,
@@ -48,6 +50,8 @@ def zone_rows(mode_rules: ModeRules, mode: ModeState) -> torch.Tensor:
             offensive.float(),
             defensive.float(),
             present,
+            lock[:, 0],
+            lock[:, 1],
         ],
         -1,
     )
@@ -62,6 +66,8 @@ def zone_rows(mode_rules: ModeRules, mode: ModeState) -> torch.Tensor:
             defensive.float(),
             offensive.float(),
             present,
+            lock[:, 1],
+            lock[:, 0],
         ],
         -1,
     )
@@ -75,8 +81,9 @@ def mode_globals(
     """(B, 2, len(MODE_GLOBALS)): the mode one-hot, the scores by team_relative and the
     winning score (the viewer's own: in team deathmatch, kills_per_ship times the enemy's
     active ships, `phase.deathmatch_targets`, and in elimination the enemy's active ships;
-    active (B, 2) or None, every ship), the front (positive for the viewer) and the
-    winning front."""
+    active (B, 2) or None, every ship), the front (positive for the viewer), the
+    winning front, and the seconds to the viewer's own team's next respawn wave
+    (Frontline; never the enemy's)."""
     B = mode.front.shape[0]
     zero = torch.zeros(B, device=mode.front.device)
     name = mode_rules.name
@@ -84,6 +91,7 @@ def mode_globals(
     target = deathmatch_targets(rules, mode_rules, active) if name in KILL_MODES else 0
     threshold = mode_rules.front_threshold if name == FRONTLINE else 0
     front = mode.front.float()
+    wave = mode.wave_wait.float() * rules.tick_length if name == FRONTLINE else None
     views = [
         torch.stack(
             [
@@ -99,6 +107,7 @@ def mode_globals(
                 else zero + float(target),
                 front if view == 0 else -front,
                 zero + float(threshold),
+                wave[:, view] if wave is not None else zero,
             ],
             -1,
         )
