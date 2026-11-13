@@ -165,6 +165,56 @@ def test_deathmatch_clock_goes_to_the_higher_score(score, result):
     assert events.done.item() and events.result.item() == result
 
 
+@pytest.mark.parametrize("score, share", [((3, 5), 3 / 8), ((6, 2), 0.75), ((0, 0), 0.5)])
+def test_deathmatch_outcome_is_the_kill_share(score, share):
+    """Team deathmatch's learner outcome is its kill share, as its rating is: win_loss is
+    (share, 1 - share), never a draw, and the outcome reward 2 share - 1 to team 0 and its
+    negation to team 1; the result still says who led."""
+    rules, state = cases.rules_and_state(GameConfig(3, 2, 1200.0), batch=1)
+    state = cases.edit_mode(state, score=torch.tensor([score], dtype=torch.int32))
+    state = replace(
+        state,
+        match=replace(
+            state.match,
+            episode_tick=torch.tensor([rules.pools[0].episode_ticks - 1], dtype=torch.int32),
+        ),
+    )
+    _, events = cases.tick(rules, state)
+    assert events.done.item()
+    torch.testing.assert_close(events.win_loss[0], torch.tensor([share, 1.0 - share]))
+    outcome = _outcome(events, 6)
+    torch.testing.assert_close(outcome, (2 * share - 1) * torch.tensor([1.0] * 3 + [-1.0] * 3))
+    assert events.result.item() == (score[0] > score[1]) - (score[0] < score[1])
+
+
+def test_deathmatch_win_by_target_scores_the_final_share():
+    """A match the target ends is scored by the share at its end, the winning kill counted."""
+    rules, state = cases.rules_and_state(GameConfig(3, 2, 1200.0), batch=1)
+    target = rules.pools[0].mode.kills_per_ship * rules.ships_per_team
+    state = cases.edit_mode(state, score=torch.tensor([[target - 1, 5]], dtype=torch.int32))
+    _, events = cases.tick(rules, _boundary_kill(state, (3,)))
+    assert events.done.item() and events.result.item() == 1
+    share = target / (target + 5)
+    torch.testing.assert_close(events.win_loss[0], torch.tensor([share, 1.0 - share]))
+
+
+def test_win_loss_is_zero_until_the_match_ends_and_one_hot_outside_deathmatch():
+    """No outcome mid-match; elimination and Frontline score the result one-hot (a draw
+    neither), whatever the kills."""
+    from bnb.game.modes import phase
+    from bnb.game.modes.rules import ELIMINATION, FRONTLINE, ModeRules
+
+    rules, state = cases.rules_and_state(GameConfig(3, 2, 1200.0), batch=1)
+    _, events = cases.tick(rules, state)
+    assert not events.done.item() and not events.win_loss.any()
+    result = torch.tensor([1, -1, 0], dtype=torch.int32)
+    score = torch.tensor([[1, 4]] * 3, dtype=torch.int32)
+    for name in (ELIMINATION, FRONTLINE):
+        mode = replace(state.mode, score=score)
+        win_loss = phase.win_loss(ModeRules(name=name), mode, result)
+        assert win_loss.tolist() == [[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]]
+
+
 def test_every_death_scores_for_the_other_team():
     """Enemy kills, friendly fire and the boundary all score, and only on the other side."""
     causes = {"enemy": 0, "ally": 0, "boundary": 0}
@@ -519,6 +569,57 @@ def test_frontline_map_is_a_mirror_image_about_the_neutral_axis():
     distance = torch.hypot(mode.zone_x, mode.zone_y)
     torch.testing.assert_close(distance, torch.full_like(distance, 0.615 * 2600.0))
     assert torch.allclose(mode.zone_radius, torch.tensor(330.0))
+
+
+def _real_scale_zones(arena_scale: float):
+    """(distance from the centre, adjacent spacing, radius) (B, 5) of the real-scale 5v5
+    Frontline map with its arena scaled by arena_scale."""
+    preset = PRESETS["real_scale_frontline"]
+    config = dataclasses.replace(preset, arena_radius=preset.arena_radius * arena_scale)
+    rules = api.rules_of(config)
+    generator = torch.Generator().manual_seed(3)
+    state = api.reset(rules, REAL_SCALE, api.uniforms(rules, 64, generator=generator))
+    mode = state.mode
+    distance = torch.hypot(mode.zone_x, mode.zone_y)
+    spacing = torch.hypot(
+        mode.zone_x - mode.zone_x.roll(1, -1), mode.zone_y - mode.zone_y.roll(1, -1)
+    )
+    return distance, spacing, mode.zone_radius
+
+
+def test_frontline_zone_floors_are_seven_tenths_of_the_default_map():
+    """The floors (m at map scale 1, times the set's map scale) are 0.7 x the zone radius
+    and spacing the 5v5 real-scale Frontline map plays, and leave that map as it was."""
+    preset = PRESETS["real_scale_frontline"]
+    mode = api.rules_of(preset).pools[0].mode
+    scale = mode.set_map_scale
+    assert scale == pytest.approx(3.0)
+    arena = preset.arena_radius
+    radius = mode.zone_radius * arena / 2600.0
+    spacing = 2.0 * mode.zone_ring_fraction * arena * math.sin(math.pi / 5)
+    assert mode.zone_radius_floor * scale == pytest.approx(0.7 * radius, abs=0.1)
+    assert mode.zone_spacing_floor * scale == pytest.approx(0.7 * spacing, abs=0.5)
+    distance, spacings, radii = _real_scale_zones(1.0)
+    torch.testing.assert_close(distance, torch.full_like(distance, mode.zone_ring_fraction * arena))
+    torch.testing.assert_close(spacings, torch.full_like(spacings, spacing), rtol=1e-5, atol=0.05)
+    torch.testing.assert_close(radii, torch.full_like(radii, radius))
+
+
+def test_frontline_zones_hold_their_floors_on_a_half_size_arena():
+    """At half the arena the zones would shrink to half; they stop at the floors, every
+    zone alike on one ring (a regular pentagon, so the layout stays fair)."""
+    mode = api.rules_of(PRESETS["real_scale_frontline"]).pools[0].mode
+    radius_floor = mode.zone_radius_floor * mode.set_map_scale
+    spacing_floor = mode.zone_spacing_floor * mode.set_map_scale
+    distance, spacing, radii = _real_scale_zones(0.5)
+    torch.testing.assert_close(radii, torch.full_like(radii, radius_floor))
+    torch.testing.assert_close(
+        spacing, torch.full_like(spacing, spacing_floor), rtol=1e-5, atol=0.05
+    )
+    torch.testing.assert_close(distance, torch.full_like(distance, distance[0, 0].item()))
+    # between the floors and the default, the floor that binds is the only one that moves
+    _, spacing, radii = _real_scale_zones(0.8)
+    assert (spacing > spacing_floor + 1.0).all() and (radii > radius_floor + 1.0).all()
 
 
 def test_frontline_draws_both_handednesses_and_any_rotation():

@@ -22,7 +22,14 @@ import torch
 
 from bnb.contracts import Action, Events
 
-from ..layout import Environment, boundary_fraction, environment, per_mode
+from ..layout import (
+    Environment,
+    boundary_fraction,
+    draw_arena_scale,
+    environment,
+    per_mode,
+    sized,
+)
 from ..modes import phase as modes
 from ..modes.rules import FRONTLINE, ModeRules
 from ..modes.spawns import placement
@@ -168,7 +175,12 @@ def reset(
     )  # refuses a fire rate the tick cannot keep
     B, device = uniforms.shape[0], uniforms.device
     state = blank(rules, B, device)
+    tick = TickUniforms(rules, uniforms)
     arena = environment(rules, B, device)
+    scale = state.match.arena_scale
+    if tick.arena_scale is not None:
+        scale = draw_arena_scale(arena, tick.arena_scale)
+    arena = sized(arena, scale)
     if ship_type is None:
         ship_type = torch.tensor(rules.slot_types, dtype=torch.int32, device=device)
         ship_type = ship_type.expand(B, -1).contiguous()
@@ -177,7 +189,6 @@ def reset(
             raise ValueError(f"ship_type {tuple(ship_type.shape)}: need ({B}, {rules.num_ships})")
         ship_type = ship_type.to(device=device, dtype=torch.int32, copy=True)
     ships = replace(state.ships, ship_type=ship_type)
-    tick = TickUniforms(rules, uniforms)
     mode, fields, axis_x, axis_y = _new_matches(rules, arena, tick, state.mode)
     everyone = torch.ones_like(state.mode.front, dtype=torch.bool)
     benched = None if active is None else benched_of(rules.ships_per_team, active)
@@ -192,6 +203,7 @@ def reset(
         spawn_axis_x=axis_x,
         spawn_axis_y=axis_y,
         vision_range=_vision_ranges(rules, types, ships.ship_type),
+        arena_scale=scale,
     )
     if fogged is not None:
         match = replace(match, fogged=fogged.to(torch.bool))
@@ -239,7 +251,8 @@ def resolve(
     active ships, as `reset` was given (default every ship)."""
     ships, bullets, match = state.ships, state.bullets, state.match
     B = ships.x.shape[0]
-    arena = environment(rules, B, ships.x.device)
+    pools = environment(rules, B, ships.x.device)
+    arena = sized(pools, match.arena_scale)
     benched = None if active is None else benched_of(rules.ships_per_team, active)
     alive0, flying = ships.alive, bullets.moves_left > 0  # as at tick start: motion keeps them
 
@@ -283,6 +296,14 @@ def resolve(
     done = (match.episode_tick + 1 >= arena.episode_ticks) | phase.won
     result = torch.where(phase.won, phase.result, clock_result)
     result = torch.where(done, result, 0)
+    win_loss = per_mode(
+        rules,
+        B,
+        lambda mode_rules, mode, result: modes.win_loss(mode_rules, mode, result),
+        phase.mode,
+        result,
+    )
+    win_loss = torch.where(done[:, None], win_loss, 0.0)
 
     # 6. Clocks.
     moves_left = torch.where(
@@ -307,7 +328,13 @@ def resolve(
 
     # 8. Episode end: a finished environment gets a new map and mode state, no bullets,
     # cleared slots and flags, and all its ships spawn. Its fog setting stays.
+    # A finished environment draws its next episode's arena scale (map-size sampling);
+    # the new map and every spawn of this tick read the arena as it will be.
     tick = TickUniforms(rules, uniforms)
+    arena_scale = match.arena_scale
+    if tick.arena_scale is not None:
+        arena_scale = torch.where(done, draw_arena_scale(pools, tick.arena_scale), arena_scale)
+        arena = sized(pools, arena_scale)
     mode, fields, axis_x, axis_y = _new_matches(rules, arena, tick, phase.mode)
     fields = where(done, fields, state.fields)
     mode = where(done, mode, phase.mode)
@@ -328,6 +355,7 @@ def resolve(
         spawn_axis_x=axis_x,
         spawn_axis_y=axis_y,
         vision_range=_vision_ranges(rules, types, ships.ship_type),
+        arena_scale=arena_scale,
     )
 
     events = Events(
@@ -343,6 +371,7 @@ def resolve(
         objective_progress=phase.objective_progress,
         objective=phase.objective,
         result=result,
+        win_loss=win_loss,
         enemy_damage_by_aspect=enemy_damage_by_aspect,
         kill_aspect=kill_aspect,
     )

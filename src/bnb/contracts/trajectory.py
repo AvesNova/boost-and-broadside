@@ -23,6 +23,9 @@ class Trajectory:
     (L, R, S). reward: (L, R, S, len(REWARD_LEVELS)), per reward level, weighted.
     done: (L, R) bool, the view's environment reset after this step. result: (L, R) int32,
     the match result for the view's team (+1 win, -1 loss, 0 draw), nonzero only where done.
+    win_loss: (L, R, 2) float, the view's team's weights of a win and of a loss where done
+    (`Events.win_loss`, flipped for team 1): the outcome reward and the outcome head's
+    final targets; team deathmatch's are its kill share, the other modes' the result.
 
     When the learner's controller gives them (else None): values (L, R, S, levels), its
     critic's value levels; outcome (L, R, 4), with an outcome level; replay (a pytree,
@@ -46,6 +49,7 @@ class Trajectory:
     reward: torch.Tensor
     done: torch.Tensor
     result: torch.Tensor | None = None
+    win_loss: torch.Tensor | None = None
     values: torch.Tensor | None = None
     outcome: torch.Tensor | None = None
     replay: Any = None

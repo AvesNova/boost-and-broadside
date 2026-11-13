@@ -144,7 +144,9 @@ def enemy_team_share(value: torch.Tensor, team: torch.Tensor) -> torch.Tensor:
 
 def outcome_events(team: torch.Tensor, result: torch.Tensor, done: torch.Tensor) -> torch.Tensor:
     """(..., N, 1): +result for team 0 and -result for team 1 on done environments, the
-    living and the dead alike. result (...,) is +1 a team-0 win, -1 a team-1 win, 0 a draw."""
+    living and the dead alike. result (...,) is team 0's score in [-1, 1], its win weight
+    less its loss weight (`Events.win_loss`): +1 a team-0 win, -1 a team-1 win, 0 a draw;
+    team deathmatch's 2 share - 1 of team 0's kill share."""
     sign = torch.where(team == 0, 1.0, -1.0)
     return (sign * torch.where(done, result, 0.0)[..., None])[..., None]
 
@@ -303,7 +305,8 @@ def reward_step_events(
         config.damage_unit,
         raw_total=raw_total,
     )
-    outcome = outcome_events(team, events.result.to(raw.dtype), events.done)[..., 0]
+    score = events.win_loss[..., 0] - events.win_loss[..., 1]  # team 0's, in [-1, 1]
+    outcome = outcome_events(team, score.to(raw.dtype), events.done)[..., 0]
 
     levels = (
         damage.sum(-1),

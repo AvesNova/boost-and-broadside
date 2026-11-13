@@ -50,7 +50,9 @@ stay as crowded), times an optional arena scale, then at least the mode's minimu
 (`bnb.game.modes.rules.MINIMUM_ARENA_RADIUS`, m at map scale 1 times the ship set's map
 scale, 3 for the real-scale set). Team deathmatch's minimum is 1000 m, 3000 m at real
 scale: by the rule alone real-scale 2v2 and 1v1 would play 2656 m and 1878 m arenas.
-Elimination and frontline have none for now. The minimum applies after the arena scale,
+Frontline's minimum is 1400 m, 4200 m at real scale, so a half-size map keeps its floored
+zones (`ModeRules.zone_radius_floor`, `zone_spacing_floor`) inside the boundary.
+Elimination has none for now. The minimum applies after the arena scale,
 so a map drawn at half size is still floored. The `_density` fleet presets and Clover
 take their radius from it; the `arena` preset's 1950 m is its own choice, not derived.
 `real_scale_elimination` is elimination at the training size (5v5, 10 random fields, the
@@ -71,6 +73,10 @@ objective events and decides whether the match is won.
 - `result` is for team 0: +1 a win, -1 a loss, 0 a draw. It is the win rule's when the win
   ended the match, otherwise the clock rule's (`bnb.game.modes.phase.clock_result`), and 0
   where the match goes on.
+- `win_loss` (game v17) is team 0's weights of a win and of a loss where the match ended
+  (`bnb.game.modes.phase.win_loss`), a draw the rest: the result one-hot, except in team
+  deathmatch (below). The RL outcome reward and the outcome head's targets read it; the
+  win/draw/loss tallies read `result`.
 - `objective_progress` and `objective` are signed amounts per ship, each summing to zero
   over the environment. Team deathmatch and sandbox emit zero.
 
@@ -89,6 +95,10 @@ When a match ends, the environment gets a new map and a fresh mode state
   benched ships (below) a team's target is `kills_per_ship` times the enemy's *active*
   ships (`bnb.game.modes.phase.deathmatch_targets`), and the observation's `score_target`
   is the viewer's own.
+- **Outcome for the learner** (game v17): a game is scored by its kill share, as its
+  rating is: share = team 0's score over both teams' (0.5 when neither scored), and
+  `win_loss = (share, 1 - share)`, never a draw. The outcome reward is `2 share - 1`; the
+  `result` above still says who led, for the tallies.
 - **Spawns, uniform:** each spawning ship draws candidate points uniformly over the arena
   and takes the one farthest from the nearest living enemy. At a reset, when every ship
   spawns at once, each ship's first candidate stands in for its position, and each ship
@@ -209,6 +219,16 @@ None, as in training) the game is bit-identical to the game without the input
 - **The ring:** `bnb.game.modes.frontline.ZONES` zones on a circle around the
   centre, at a random rotation and a random handedness (clockwise or counter-clockwise). At front 0 their roles are, in ring order:
   neutral, team 0's spawn, team 0's defense, team 1's defense, team 1's spawn.
+- **Size:** the ring's radius is `zone_ring_fraction` (0.615) of the arena radius and each
+  zone's radius `zone_radius` (330 m) times the map scale, so both follow the arena. Two
+  floors (game v17) stop a small or sampled arena from shrinking them past 70% of the 5v5
+  map's: every zone's radius is at least `zone_radius_floor` (231 m) and adjacent zone
+  centres at least `zone_spacing_floor` (1315.8 m) apart, the ring growing to fit. Both
+  are m at map scale 1 times the ship set's map scale (3 at real scale: 693 m and
+  3947 m), not the arena's, and both are in the Map / mode panel's Frontline group. No
+  preset reaches them. The floors move every zone alike, so the ring stays a regular
+  pentagon. Below about half the real-scale 5v5 arena the floored zones reach past the
+  boundary. The spawn disc is `spawn_zone_fraction` of the match's zone radius.
 - **Meters:** only the two defense zones have meters, from 0 to 1. A meter moves only on a
   strict majority of the living ships inside its zone: it rises while the attackers
   outnumber the defenders there, and falls while the defenders outnumber the attackers. Its

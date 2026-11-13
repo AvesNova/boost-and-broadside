@@ -434,8 +434,12 @@ cut; where they differ, this section and the code win.
     (own ships first; the learner's are `[..., :S]`).
   - **`Trajectory`** gains:
     - `result (L, R)` int32: the match result for the view's team (+1 win, −1 loss,
-      0 draw), nonzero only where `done`. The outcome targets and win rates read it, never
-      the sign of a reward;
+      0 draw), nonzero only where `done`. The win rates read it, never the sign of a
+      reward;
+    - `win_loss (L, R, 2)` float: the view's team's weights of a win and of a loss where
+      `done` (`Events.win_loss`, game v17): the outcome reward and the outcome targets read
+      it. Team deathmatch's is its kill share `(share, 1 - share)`; the other modes' the
+      result one-hot;
     - the label inputs, filled by the runtime for the learner's views:
       - `alive (L, R, N)` and `valued (L, R, S)`;
       - `truth (L, R, N − S, …)`, the enemy rows of `Privileged.ships`;

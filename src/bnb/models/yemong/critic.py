@@ -46,14 +46,19 @@ def outcome_values(probabilities: torch.Tensor) -> torch.Tensor:
     return probabilities[..., WIN] - probabilities[..., LOSS]
 
 
-def outcome_class(result: torch.Tensor) -> torch.Tensor:
-    """int64: win if the result is positive, loss if negative, else tie."""
-    return torch.where(result > 0, WIN, torch.where(result < 0, LOSS, TIE)).long()
+def final_outcome(win_loss: torch.Tensor) -> torch.Tensor:
+    """(..., 4): the outcome distribution of a match that ended with win_loss (..., 2), the
+    view's weights of a win and of a loss (`bnb.contracts.Events.win_loss`): win, draw (the
+    rest, 1 - win - loss), loss, and unresolved 0. One-hot for a win, draw or loss; team
+    deathmatch's (share, 0, 1 - share, 0) of the view's kill share, whose value
+    (`outcome_values`) is 2 share - 1, the outcome reward's."""
+    win, loss = win_loss.unbind(-1)
+    return torch.stack([win, 1.0 - win - loss, loss, torch.zeros_like(win)], -1)
 
 
 def outcome_targets(
     probabilities: torch.Tensor,
-    result: torch.Tensor,
+    win_loss: torch.Tensor,
     terminated: torch.Tensor,
     next_probabilities: torch.Tensor,
     gamma: float,
@@ -62,12 +67,12 @@ def outcome_targets(
     """Lambda targets for the outcome distribution, (L, ..., 4).
 
     probabilities (L, ..., 4) are p(s_t); next_probabilities (..., 4) bootstrap p(s_L);
-    result and terminated (L, ...) say how transition t ended.
+    win_loss (L, ..., 2) and terminated (L, ...) say how transition t ended (an ended
+    transition's target is `final_outcome`, soft in team deathmatch).
     """
     unresolved = torch.zeros(OUTCOMES, dtype=probabilities.dtype, device=probabilities.device)
     unresolved[UNRESOLVED] = 1.0
-    final = outcome_class(result)[..., None] == torch.arange(OUTCOMES, device=result.device)
-    final = final.to(probabilities.dtype)
+    final = final_outcome(win_loss).to(probabilities.dtype)
     following = next_probabilities
     target = next_probabilities
     out = []

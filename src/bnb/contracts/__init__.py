@@ -8,7 +8,7 @@ from .config import GameConfig, ticks_of
 from .controller import Controller, Outputs
 from .events import ASPECT_BOUNDS, ASPECTS, Events
 from .obs import Obs, Privileged
-from .pools import Pool
+from .pools import ArenaScale, Pool
 from .trajectory import REWARD_LEVELS, SUMMED_LEVEL, Trajectory
 
 __all__ = [
@@ -20,6 +20,7 @@ __all__ = [
     "GameConfig",
     "Obs",
     "Outputs",
+    "ArenaScale",
     "Pool",
     "Privileged",
     "REWARD_LEVELS",
