@@ -120,7 +120,7 @@ measures; `real-scale-pacing/pacing-standard.jsonl`): engaged 0.32, recovering 0
 a minute.
 
 **Four times the climb, the store and the knee as they are** (the balance file's
-"_rules" entry "climb_multiplier", read by `bnb.game.real_scale.pacing`). Four times brings the time spent
+"_rules" entry "climb_multiplier", read by the builder's pacing). Four times brings the time spent
 recovering to the standard game's (0.33 against 0.26) and the fights begun depleted below it
 (15% against 32%); twice is not enough (0.61, 49%), and eight times costs the turn while
 engaged twice as much (-16% against -9%) for a further 16 points of recovering share. Every

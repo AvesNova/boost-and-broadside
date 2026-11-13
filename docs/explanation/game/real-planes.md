@@ -11,8 +11,8 @@ those types from the game: the set now holds only the ships the game uses, Yongm
 and vizia, the P-51D-derived hull both come from ([The real-scale variant](real-scale.md)).
 The research stays, as reference data that no game preset loads:
 
-- `bnb.reference.real_planes.AIRCRAFT`: every plane's researched quantities (SI; `QUANTITIES`
-  gives the units), each a `Datum` with its value, confidence and source;
+- `bnb.reference.real_planes.AIRCRAFT`: every plane's researched quantities (SI;
+  `bnb.reference.real_planes.QUANTITIES` gives the units), each a `Datum` with its value, confidence and source;
 - `bnb.reference.real_planes.solved_types()`: every type as the set last held it, one TOML
   file each in `src/bnb/reference/real-plane-types/` (the ship-file format, at game v16 in
   the set's x2 native units): its handles as it flew, its solved card and a note per handle;
@@ -151,7 +151,7 @@ With the game's combat values the real-scale fighting was rare: a shot cost 3,75
 (the store over the standard 33 shots), about 23 s of the P-51's initial charge where a
 standard shot costs about 1 s of its; and a 5.64 m half-span at 600 m is a quarter of the
 angle a standard fighter presents at its gun range. The proposal, all in
-the builder (`CombatEconomy`, `combat_economy`) and the set's ship files, so the
+the builder (CombatEconomy, combat_economy) and the set's ship files, so the
 standard game was unchanged:
 
 - **Shot cost.** The standard fighter's continuous fire (15 shots/s at 300 J) costs 14.46

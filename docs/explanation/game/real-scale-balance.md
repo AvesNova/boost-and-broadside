@@ -26,7 +26,7 @@ the noise. Each round's data are in `real-scale-balance/`
 ## The rules the rounds follow
 
 **Equal damage per second.** Every type deals about the P-51D's 360 per second
-(`bnb.game.real_scale.balanced_damage_per_second`):
+(the builder's balanced_damage_per_second):
 
     damage per second = 360 x (w / 3.68 kg/s)^0.05, kept within 5% of 360,
 
@@ -41,7 +41,7 @@ is unchanged (continuous fire costs every type the same multiple of its own clim
 **Leeway by confidence.** A value the research holds well (a "good" or "medium" datum in
 `bnb.reference.real_planes`) stays where it is. A loosely known one (low, estimated,
 invented or a placeholder) may move within its plausible range when a round's analysis
-points at it. Every move is an entry of the balance file (the builder's `BALANCE_FILE`, now
+points at it. Every move is an entry of the balance file (the builder's balance file, now
 [real-scale-balance/moves.json](real-scale-balance/moves.json)), and the ship file's note for the handle records the
 old value, the new and the reason; the equal-damage rule's note does the same for the hit
 damage.

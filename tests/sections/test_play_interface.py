@@ -787,14 +787,15 @@ def test_a_map_is_made_saved_played_edited_renamed_and_deleted_in_the_menu(conte
     duel = library.find("duel")
     assert duel.place == "user" and (tmp_path / "maps" / "duel.json").is_file()
     assert duel.config == dataclasses.replace(PRESETS["arena"], num_fields=3)
-    assert duel.lineup == ("Yongma", "Jujak")
+    # the arena's lineup (Yongma, Jujak) is the game's own: the map keeps None for it
+    assert duel.lineup is None
 
     player.click("menu/back")
     player.click("menu/new match")
     player.click("new match/map/duel")
     player.click("new match/start")
     assert session.loop.setup.config == duel.config
-    assert session.loop.setup.lineup == (0, 5)
+    assert session.loop.setup.lineup is None and session.loop.rules.team_types == (0, 1)
 
     player.click("menu")
     player.click("menu/maps")
