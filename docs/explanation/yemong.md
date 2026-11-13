@@ -632,6 +632,32 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
 | shot trajectory | ship rows, at bullet ages (in training, 4 per shot) | where a shot fired now would be at each age |
 | geometry (training only, optional) | pairs of ship rows: an own ship and another ship the view sees | the pair's range, antenna train angle, aspect, heading crossing angle and closure rate |
 
+### Attention shares
+
+`bench/attention_shares.py` measures where an own ship's attention goes: the softmax mass
+of each spatial sublayer, averaged over heads, living own ships and ticks, by the kind of
+key (itself, allies, enemies seen, hidden or dead, the global token, the fields, the
+zones present or absent), per layer and over all four. The weights are recomputed from
+the attention call's own inputs (the rotary tables, the autocast cast, the benched mask);
+the weights times the values match the call's output to 6e-7 in float32 and to the bf16
+rounding (5e-3) under the policy's autocast. On 2026-11-14 (bc-v20's final policy and
+rl-v20's average at 150M, the lineup Yongma Yongma Jujak Jujak Jujak, against the scripted
+agent, about 70,000 own ship-ticks per mode, in %):
+
+| policy | preset | self | allies | enemies seen | enemies hidden | global | fields | zones | absent zones |
+|---|---|---|---|---|---|---|---|---|---|
+| BC | deathmatch | 9.3 | 12.5 | 23.6 | 4.2 | 4.2 | 32.0 | 0 | 12.6 |
+| BC | elimination | 8.7 | 18.7 | 10.9 | 5.7 | 6.2 | 34.3 | 0 | 14.1 |
+| BC | frontline | 10.9 | 14.4 | 14.3 | 5.3 | 3.0 | 34.5 | 16.2 | 0 |
+| RL 150M | deathmatch | 9.5 | 15.3 | 15.3 | 5.4 | 5.2 | 33.3 | 0 | 13.3 |
+| RL 150M | elimination | 9.3 | 19.6 | 9.1 | 7.6 | 6.1 | 33.4 | 0 | 13.6 |
+| RL 150M | frontline | 8.2 | 18.4 | 10.5 | 7.5 | 3.7 | 30.0 | 20.7 | 0 |
+
+Dead ships take 1-3% together. Per key, a seen enemy (7-9% each) and the ship itself
+(8-11%) draw the most; the global token takes about as much as one ally (3-6%); and the five absent zone slots, one learned
+token, take 13-14%, a fifth of the last layer's mass: there they act as a place to put
+attention that reads nothing. Self-play gives the same shares within 2-3 points.
+
 ### Trunk order
 
 `YemongConfig.order` sets each block's sublayer order: `"spatial_first"` (spatial,
