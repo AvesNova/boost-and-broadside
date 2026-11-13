@@ -7,6 +7,7 @@
 set -euo pipefail
 NAME=${NAME:-rl-v20}
 FROM=${FROM:-bc-v20}
+PRESET=${PRESET:-real_scale_all_modes}  # or one mode alone, e.g. real_scale_deathmatch
 UPDATES=${UPDATES:-143}  # about 150M steps
 RUNS=${RUNS:-/workspace/runs}
 CACHE=${CACHE:-/workspace/cache}
@@ -15,7 +16,7 @@ export TORCHINDUCTOR_CACHE_DIR=$CACHE/inductor TRITON_CACHE_DIR=$CACHE/triton BN
 export TORCHINDUCTOR_COMPILE_THREADS=8 TRITON_DEFAULT_FP_FUSION=1 PYTHONFAULTHANDLER=1
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 echo "commit $(git rev-parse HEAD) $(date -u +%FT%TZ) from $FROM" >> "$RUNS/$NAME.log"
-.venv/bin/bnb train --preset real_scale_all_modes --environments 2048 --seed 0 --name "$NAME" \
+.venv/bin/bnb train --preset "$PRESET" --environments 2048 --seed 0 --name "$NAME" \
   --runs-directory "$RUNS" --init-from "$RUNS/$FROM/policy" --updates "$UPDATES" \
   --update-policies False --set lanes.environments=256 --set host_store=false \
   --set policy_snapshot_every=5000000 --set learner.micro_batch_rows=480 \
