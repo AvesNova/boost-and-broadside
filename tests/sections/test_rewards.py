@@ -58,7 +58,10 @@ def test_levels_are_zero_sum_and_the_ledger_holds_every_deficit(mode):
     ledger = rewards.blank_ledger(batch, config.num_ships)
     team = torch.arange(config.num_ships) // config.ships_per_team
     seen = dict(friendly=0, boundary=0, respawns=0, resets=0, recharge=0, kills=0)
-    for _, events, after in cases.play(config, batch=batch, ticks=300, seed=5):
+    # elimination's teams spawn by side, 0.8 arena radii out (game v7): in the case's 6 s
+    # clock random fliers never cross the 1440 m between them, so they spawn 0.2 out
+    nearer = dict(spawn_offset=0.2) if mode == "elimination" else {}
+    for _, events, after in cases.play(config, batch=batch, ticks=300, seed=5, **nearer):
         levels, ledger = rewards.reward_step(CONFIG, ledger, events, team)
         _check_tick(levels, ledger, after, cases.LIVELY_TYPES)
         assert (levels[..., LEVEL["outcome"]][~events.done] == 0).all()

@@ -162,9 +162,12 @@ def test_the_grid_contours_and_look_ahead_are_options():
     for shapes in ("off", *SHAPE_SETS):
         assert tyro.cli(Options, args=["--contours", shapes]).contours == shapes
     assert tyro.cli(Options, args=["--grid", "off"]).grid == "off"
+    # without a flag the loaded theme decides (its look settings; test_play_themes checks
+    # their defaults)
     defaults = Options()
-    assert defaults.grid in PATTERNS and defaults.look_ahead == "always"
-    assert defaults.contours == "off"  # until a shape set is chosen as the default
+    assert defaults.grid is None and defaults.contours is None and defaults.look_ahead is None
+    for pattern in PATTERNS:
+        assert tyro.cli(Options, args=["--grid", pattern]).grid == pattern
     with pytest.raises(SystemExit):
         tyro.cli(Options, args=["--grid", "hexagon"])
     with pytest.raises(SystemExit):
