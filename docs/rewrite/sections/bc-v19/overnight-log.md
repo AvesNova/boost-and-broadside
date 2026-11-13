@@ -163,3 +163,11 @@ This log records the changes and decisions made while the author was away, with 
   - policy KL 0.006–0.008, clip fraction 0.07–0.08, entropy 1.44;
   - advantage shares: damage 0.08, kill/death 0.14, objective progress 0.10, objective 0.20, outcome 0.49, with every level's gradient cosine to the total between 0.65 and 0.86;
   - inputs clean.
+
+## 04:57 — rl-v20 at 27M: the alert cleared, Elo climbing, fighting more
+
+- **`gauge_runaway`:** every mode now has rated games, and the anomalies are 0. Confirmed as a warm-up artifact.
+- **The run's own rating lanes** put the live policy against Baekho (1000) at deathmatch about 1660, frontline about 1545, elimination about 1429. These are noisy, with ±40–160.
+- **The laptop's live Elo** of the averaged policy at 10M: deathmatch 999 ± 25, elimination 953 ± 25, frontline 1094 ± 26.
+- **Combat rose with RL:** deathmatch hits per game went from 417 to 927 and frontline from 569 to 1061 by 12M. That is the opposite of the failed old-game RL check, which learned to stop fighting.
+- **Entropy** fell slowly from 1.44 to 1.32. KL is 0.006 and the clip fraction 0.06.
