@@ -97,3 +97,38 @@ This log records the changes and decisions made while the author was away, with 
 - **Inputs:** no envelope violations, no clipping, nothing non-finite.
 - **The new within-one-σ alert:** fired at update 16, then cleared.
 - **Elo at 5M:** deathmatch 598 ± 31, elimination −84 ± 142, frontline −275 ± 246.
+
+## 04:15 — bc-v20 stopped by its plateau rule at 84.9M
+
+- **Why it stopped:** BC KL held within the plateau band for 10.5M steps. KL was 0.35, against bc-v19's floor of 0.40.
+- **Live Elo** of the averaged policy against Baekho (1000):
+
+  | step | deathmatch | elimination | frontline |
+  |---|---|---|---|
+  | 40M | 809 | 350 | −3 |
+  | 50M | 858 | 610 | 469 |
+  | 60M | 925 | 791 | 760 |
+  | 70M | 953 | 872 | 885 |
+
+  Elo was still rising at 70M even though the KL plateau had fired. The KL rule doesn't track strength, as the old-game handoff curve also showed. A resume can raise the budget but cannot change the stop rule. I'm waiting for 84.9M's ratings before choosing between resuming and handing off to RL.
+
+## 04:20 — geometry head, production per-output split: no reweighting
+
+- **Trunk norms** from bc-v20, medians over updates 30–80:
+
+  | output | median trunk norm |
+  |---|---|
+  | antenna train angle | 0.0090 |
+  | aspect | 0.0088 |
+  | closure | 0.0056 |
+  | range | 0.0033 |
+  | heading crossing angle | 0.0030 |
+  | geometry total | 0.025 (target 0.02) |
+  | next_state, for comparison | 0.0085 |
+
+- **The CPU run was misleading:** it ranked range and closure on top, the opposite of this.
+- **Decision:** keep equal nats per target and the total weight of 0.007.
+  - The spread is within 3×.
+  - In the CPU run the outputs' gradients all pointed the same way.
+  - The total is near target.
+  - Gradient size also reflects how much is left to learn, so equalising it has no clear benefit.
