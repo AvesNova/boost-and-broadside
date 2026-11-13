@@ -22,9 +22,9 @@ from bnb.contracts import REWARD_LEVELS
 from bnb.contracts.config import TEAM_DEATHMATCH
 from bnb.figures.video import VideoConfig
 
-# The rating games (game v12; `bnb.league.tournament.PRESET_NAMES`, kept here so the CLI
-# starts without torch): frontline and elimination. Team deathmatch trains but is not rated.
-RATED_PRESETS = ("frontline", "elimination")
+# The rating games (`bnb.league.tournament.PRESET_NAMES`, kept here so the CLI starts
+# without torch): frontline, elimination and kill-lead team deathmatch.
+RATED_PRESETS = ("frontline", "elimination", "deathmatch")
 
 
 @dataclasses.dataclass(frozen=True)

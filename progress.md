@@ -21,8 +21,9 @@ Game v13: the real-scale set at x2 native speed, with the lethality rules. Fly i
   build has to go through native_x2.py again. Should the builder scale itself?
 - The other 27 real-scale types went through the exact similarity but were not
   re-solved (their bullet life snaps to 10 ticks where a solve gives 11).
-- Ratings: `bnb tournament` and `bnb head-to-head` now default to frontline + a new
-  standard `elimination` preset (5v5, 10 fields, 2600 m). The in-training league lanes
+- Ratings: `bnb tournament` and `bnb head-to-head` default to frontline, a new standard
+  `elimination` preset (5v5, 10 fields, 2600 m) and kill-lead deathmatch (the author's
+  three modes; deathmatch_wide is no longer rated). The in-training league lanes
   still rate on the training games (deathmatch included); I left them alone.
 
 - **Balance under v13 is far off: Jujak beats Yongma.** Yongma's score energy v turn is
