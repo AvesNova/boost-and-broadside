@@ -246,7 +246,62 @@ def round5() -> list[dict]:
     return cards
 
 
+def card_b(drag=1.35, damage=1.2, dive=1.3, jf=1.5, **more) -> tuple[dict, dict]:
+    """Round 5's shape: Jujak drag, Yongma lift x1.2, damage and dive, Jujak's softer nose."""
+    energy, turn = lift_card(drag=drag, damage=damage, dive=dive, **more)
+    return energy, turn | cone(jf)
+
+
+def round6() -> list[dict]:
+    """Round 5's Jd1.35 Ydmg1.4 Ydive1.3 Jf1.5 (0.65 / 0.75 / 0.59 at 1v1 / 5v5 / 10v10: flat
+    but Yongma's) with less damage, all sizes."""
+    cards = [
+        dict(damage=1.1),
+        dict(damage=1.2),
+        dict(damage=1.0),
+        dict(damage=1.2, jf=1.3),
+        dict(damage=1.2, dive=1.4),
+        dict(damage=1.1, dive=1.2),
+        dict(damage=1.2, drag=1.3),
+        dict(damage=1.3, jf=1.3),
+    ]
+    out = []
+    for c in cards:
+        k = dict(drag=1.35, damage=1.2, dive=1.3, jf=1.5) | c
+        name = f"Jd{k['drag']} Yl1.2 Ydmg{k['damage']} Ydive{k['dive']} Jf{k['jf']}"
+        out.append(candidate(name, *card_b(**c), 0.7))
+    return out
+
+
+def round7() -> list[dict]:
+    """Round 6's Jd1.35 Yl1.2 Ydmg1.1 Ydive1.2 Jf1.5 (0.58 / 0.74 / 0.67 / 0.53 at 1v1 / 2v2 /
+    5v5 / 10v10): single levers looking for one that takes 2v2 and 5v5 down more than 1v1
+    and 10v10."""
+    base = dict(damage=1.1, dive=1.2)
+    levers = [
+        ("", {}, {}),
+        (" Yvis0.9", {"vision_range_scale": 0.9}, {}),
+        (" Jvis1.1", {}, {"vision_range_scale": 1.1}),
+        (" Yrange0.85", {"bullet_life": 0.85}, {}),
+        (" Ysh0.8 Ydmg1.2", {"max_shield": 0.8, "hit_damage": 1.2}, {}),
+        (" Yrad1.1", {"hit_radius": 1.1}, {}),
+        (" Jdmg1.1", {}, {"hit_damage": 1.1}),
+        (" Jsh1.15", {}, {"max_shield": 1.15}),
+        (" Ypower0.9", {"engine_power": 0.9}, {}),
+        (" Ydmg1.0", {"hit_damage": 1.0}, {}),
+    ]
+    out = []
+    for suffix, energy_more, turn_more in levers:
+        energy, turn = card_b(**base)
+        energy = energy | energy_more
+        name = "Jd1.35 Yl1.2 Ydmg1.1 Ydive1.2 Jf1.5" + suffix
+        out.append(candidate(name, energy, turn | turn_more, 0.7))
+    return out
+
+
 ROUNDS = {
+    "round7": round7,
+    "round6": round6,
     "round5": round5,
     "round4": round4,
     "round0": round0,
@@ -255,6 +310,33 @@ ROUNDS = {
     "round2": round2,
     "round3": round3,
 }
+
+GAME = dict(
+    ships_per_team=5,
+    num_fields=10,
+    arena_radius=7800.0,
+    episode_seconds=600.0,
+    respawn_seconds=10.0,
+    mode="team_deathmatch",
+    spawn_groups=[],
+    kills_per_ship=5,
+    ship_set="real-scale",
+    layout=None,
+)
+
+
+def write_map(name: str, energy: dict, turn: dict) -> pathlib.Path:
+    """An opt-in play map `yj-<name>`: the card's changed fields as absolute values, the
+    release lineup (2 Yongma + 3 Jujak)."""
+    ships = {}
+    for slot, base, factors in (("yongma", Y, energy), ("jujak", J, turn)):
+        values = absolute(base, factors)
+        ships[slot] = {f: float(values[f]) for f in factors}
+    data = dict(game=GAME, lineup=["Yongma", "Yongma", "Jujak", "Jujak", "Jujak"], ships=ships)
+    path = HERE.parents[3] / "src/bnb/game/maps" / f"yj-{name}.json"
+    path.write_text(json.dumps(data, indent=1) + "\n")
+    return path
+
 
 if __name__ == "__main__":
     tag = sys.argv[1]
