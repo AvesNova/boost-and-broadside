@@ -128,8 +128,13 @@ class Rules:
     head_on_angle: float = HEAD_ON_ANGLE  # rad, armour at half strength [theta_h]
     shield_recharge_delay: float = 6.0  # s without a hit, counted on quiet ticks (QUIET_STICKS)
     shield_recharge_rate: float = 12.0  # per s, on quiet ticks
-    boundary_damage_base: float = 5.0  # per s
-    boundary_damage_per_metre: float = 0.05  # per s per m of depth
+    # The boundary (game spec 5): a ship beyond it takes boundary_max_damage per s times
+    # the smootherstep of its depth over the ramp width (the ramp width in metres at map
+    # scale 1, scaled by the arena's map scale like the other map lengths): little just
+    # past the edge, the most from one ramp width out. At map scale 1 a ship 50 m out takes
+    # half the most, 100 m out all of it (a standard fighter's shield in about 3 s).
+    boundary_max_damage: float = 30.0  # per s
+    boundary_ramp_width: float = 100.0  # m, at map scale 1
     spawn_speed: float = 30.0  # m/s, proper
     spawn_offset: float = 0.8  # spawn centres at +-0.8 arena radii along the spawn axis
     spawn_radius: float = 120.0  # m, before map scaling [rho_s]

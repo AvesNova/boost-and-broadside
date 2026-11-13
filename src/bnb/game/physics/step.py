@@ -22,7 +22,7 @@ import torch
 
 from bnb.contracts import Action, Events
 
-from ..layout import Environment, environment, per_mode
+from ..layout import Environment, boundary_fraction, environment, per_mode
 from ..modes import phase as modes
 from ..modes.rules import FRONTLINE, ModeRules
 from ..modes.spawns import placement
@@ -260,7 +260,9 @@ def resolve(
         first_shooter = torch.where(guarded, -1, first_shooter)
         enemy_damage_by_aspect = torch.where(guarded[..., None], 0.0, enemy_damage_by_aspect)
         first_aspect = torch.where(guarded, -1, first_aspect)
-    boundary = boundary_damage(rules, arena.arena_radius, ships, alive0)
+    # The boundary as it stands after this tick's move (elimination's shrinks).
+    radius = arena.arena_radius * boundary_fraction(arena, match.episode_tick + 1)
+    boundary = boundary_damage(rules, radius, arena.map_scale, ships, alive0)
     applied = apply_damage(rules, types, ships, alive0, damage.sum(1) + boundary, quiet(action))
     ships, died = applied.ships, applied.died
     killer = torch.where(died, first_shooter, -1).to(torch.int32)

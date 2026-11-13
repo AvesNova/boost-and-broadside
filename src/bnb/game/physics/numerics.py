@@ -49,6 +49,12 @@ def smoothstep(t: torch.Tensor) -> torch.Tensor:
     return t * t * (3.0 - 2.0 * t)
 
 
+def smootherstep(t: torch.Tensor) -> torch.Tensor:
+    """t^3 (t (6t - 15) + 10), the quintic step of t in [0, 1] (zero slope and curvature
+    at both ends): the fields' profile (game spec 4) and the boundary's damage ramp."""
+    return t * t * t * (t * (6.0 * t - 15.0) + 10.0)
+
+
 def lookup(values: tuple, index: torch.Tensor) -> torch.Tensor:
     """values[index] for a small constant table, as a chain of selects: no host-to-device
     copy, so it is safe inside CUDA-graph capture in eager mode, and it fuses when

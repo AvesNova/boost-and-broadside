@@ -57,7 +57,7 @@ Constants marked † differ by ship type (section 1.1); the value shown is the f
 | shield maximum † | `S_max` | 100 | `shield_max` |
 | shield recharge delay | — | 6 s | `shield_delay` |
 | shield recharge rate | — | 12 per s | `shield_regen` |
-| boundary damage | — | 5 + 0.05 · depth (m) per s | `boundary_base`, `boundary_per_m` |
+| boundary damage | — | 5 + 0.05 · depth (m) per s; since game v14 `boundary_max_damage` · smootherstep(depth / ramp) per s (see `docs/explanation/game/physics.md`) | `boundary_base`, `boundary_per_m` |
 | respawn wait | — | 240 ticks | `respawn_ticks` |
 | spawn proper speed | — | 30 m/s | `spawn_speed` |
 | spawn energy † | — | 4000 J | `spawn_energy` |

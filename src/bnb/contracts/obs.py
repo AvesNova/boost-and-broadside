@@ -83,12 +83,18 @@ ZONE_COLUMNS = (
 # score that wins (team deathmatch; in elimination the enemy's ships, a wipe); the front,
 # positive in the viewer's favour, and the front that wins (Frontline); next_wave_own, the
 # seconds to the viewer's team's next respawn wave (Frontline; the enemy's wave clock is
-# not shown). Absent quantities are 0.
+# not shown). Absent quantities are 0. Before the mode block, the boundary:
+# boundary_fraction, its radius now over the arena radius (1 but where it shrinks, in
+# elimination: positions and map lengths stay in metres, and arena_radius stays the
+# arena's), and boundary_time_to_zero, the seconds until it reaches radius 0 (elimination's
+# clock end; 0 where it does not shrink).
 GLOBAL_COLUMNS = (
     "episode_progress",
     "arena_radius",
     "fogged",
     "reset",
+    "boundary_fraction",
+    "boundary_time_to_zero",
     "mode_team_deathmatch",
     "mode_frontline",
     "mode_elimination",
@@ -100,8 +106,9 @@ GLOBAL_COLUMNS = (
     "next_wave_own",
 )
 # Times (shield_recharge_wait, gun_cooldown, respawn_wait, time_since_seen, lock_own,
-# lock_enemy, next_wave_own) are in seconds. respawn_wait is the ship's respawn wait left
-# (its minimum, in Frontline): a Frontline ship then respawns at its team's next wave, so
+# lock_enemy, next_wave_own, boundary_time_to_zero) are in seconds. respawn_wait is the
+# ship's respawn wait left (its minimum, in Frontline): a Frontline ship then respawns at
+# its team's next wave, so
 # an own ship's time to respawn is the first of next_wave_own + k x the wave interval at or
 # after its respawn_wait.
 

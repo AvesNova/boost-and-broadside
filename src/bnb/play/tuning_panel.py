@@ -240,6 +240,7 @@ MAP_GROUPS = (
     api.tuning.MAP,
     api.tuning.TEAM_DEATHMATCH_GROUP,
     api.tuning.FRONTLINE_GROUP,
+    api.tuning.ELIMINATION_GROUP,
 )  # the rule groups of the Map / mode panel; the tuning panel keeps the rest
 
 

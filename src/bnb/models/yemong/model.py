@@ -202,6 +202,9 @@ class YemongConfig:
     zone token the capture locks on both teams (Frontline, game version 8), coded as the
     ship token codes its respawn wait (`inputs.compose`). Off by default, so every build
     from before them is unchanged; a new run's build reads them.
+    boundary_inputs: the global token reads the boundary's radius over the arena radius
+    and its time to zero (elimination's shrinking boundary, game version 14), the time
+    coded as the timers are. Off by default, as the timers; a new run's build reads them.
     """
 
     width: int = 128
@@ -235,6 +238,7 @@ class YemongConfig:
     # the modes whose flags the global token reads (`inputs.MODE_INPUTS`); new runs read all
     mode_inputs: tuple[str, ...] = MODE_INPUTS[:2]
     frontline_timer_inputs: bool = False  # the capture locks and the own next wave
+    boundary_inputs: bool = False  # the boundary's radius and its time to zero
     delta_split: bool = False  # physics head on seen rows, an error head for hidden rows
     extrapolation_decay: float = 0.5  # s: a hidden row's held rates decay with this constant
     correction_rate: float = 0.1  # eta: the error head's step per tick, of its confident median
@@ -514,7 +518,9 @@ class Yemong(nn.Module):
                 config.acceleration_inputs,
                 self.state_code.ellipse_width,
             ),
-            global_inputs(config.mode_inputs, config.frontline_timer_inputs),
+            global_inputs(
+                config.mode_inputs, config.frontline_timer_inputs, config.boundary_inputs
+            ),
             FIELD_INPUTS,
             width,
             config.map_width,
@@ -900,6 +906,7 @@ class Yemong(nn.Module):
             self.config.acceleration_inputs,
             self.config.mode_inputs,
             self.config.frontline_timer_inputs,
+            self.config.boundary_inputs,
         )
 
     def preceding_motion(
