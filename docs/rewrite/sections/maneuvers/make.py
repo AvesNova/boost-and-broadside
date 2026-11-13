@@ -67,6 +67,7 @@ ONE = dict(sense=1.0, sense_one_circle=1.0, sense_in_gun_range=[4.0, 0.2])
 DUEL = dict(ONE, sense_mirror_only=1.0, sense_in_crowd=[0.5, 0.1])
 STRAIGHT = dict(crowd_sense=1.0, crowd_sense_stick=0.0, crowd_sense_boost=1.0)
 EXTEND = dict(DUEL, sense=0.0, **STRAIGHT)
+R9M = dict(DUEL, **STRAIGHT)
 ROUNDS = {
     "round1": [
         ("r9", {}),
@@ -184,6 +185,16 @@ ROUNDS = {
     "robust": [
         ("r9", {}),
         ("r9m", dict(DUEL, **STRAIGHT)),
+    ],
+    "round8": [
+        ("r9", {}),
+        ("r9m", R9M),
+        ("r9m, p0.85", dict(R9M, sense_one_circle=0.85)),
+        ("r9m, duel 1.5 gr", dict(R9M, sense_in_gun_range=[1.5, 0.2])),
+        ("r9m, duel 8 gr", dict(R9M, sense_in_gun_range=[8.0, 0.2])),
+        ("r9m, Jujak duel only", (dict(R9M, sense=0.0), R9M)),
+        ("r9m, Yongma duel only", (R9M, dict(R9M, sense=0.0))),
+        ("r9m + lead 0.25 s", dict(R9M, **lead(0.25))),
     ],
 }
 

@@ -1,0 +1,362 @@
+## 1v1: 112 jobs, B 8192, 04:54 KST
+/home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+  warn_once(FP_FUSION_DEFAULT_WARNING)
+  batch 1/14 27 s; ETA 05:01 KST
+  batch 2/14 47 s; ETA 05:00 KST
+  batch 3/14 66 s; ETA 04:59 KST
+  batch 4/14 85 s; ETA 04:59 KST
+  batch 5/14 105 s; ETA 04:59 KST
+  batch 6/14 124 s; ETA 04:59 KST
+  batch 7/14 144 s; ETA 04:59 KST
+  batch 8/14 163 s; ETA 04:59 KST
+  batch 9/14 182 s; ETA 04:59 KST
+  batch 10/14 202 s; ETA 04:59 KST
+  batch 11/14 221 s; ETA 04:59 KST
+  batch 12/14 241 s; ETA 04:59 KST
+  batch 13/14 260 s; ETA 04:59 KST
+  batch 14/14 279 s; ETA 04:59 KST
+1v1                     D2 | r9m   energy v turn v c0: score 0.498 ± 0.010  kills m/o/f/t 0.24 / 0.67 / 0.09 / 0.00  life 275 s  kpm/ship 0.21  trades 0.00
+1v1                     D2 | r9m     turn mirror v c0: score 0.484 ± 0.011  kills m/o/f/t 0.84 / 0.06 / 0.00 / 0.09  life 213 s  kpm/ship 0.27  trades 0.03
+1v1                     D2 | r9m   energy mirror v c0: score 0.507 ± 0.011  kills m/o/f/t 0.74 / 0.12 / 0.03 / 0.11  life 132 s  kpm/ship 0.42  trades 0.02
+1v1   D2 | DE Y 1.0 team / J 0.4   energy v turn v c1: score 0.471 ± 0.010  kills m/o/f/t 0.28 / 0.61 / 0.09 / 0.02  life 281 s  kpm/ship 0.21  trades 0.00
+1v1   D2 | DE Y 1.0 team / J 0.4     turn mirror v c1: score 0.485 ± 0.011  kills m/o/f/t 0.66 / 0.21 / 0.03 / 0.09  life 221 s  kpm/ship 0.26  trades 0.05
+1v1   D2 | DE Y 1.0 team / J 0.4   energy mirror v c1: score 0.492 ± 0.011  kills m/o/f/t 0.62 / 0.24 / 0.02 / 0.13  life 184 s  kpm/ship 0.31  trades 0.01
+1v1 D2 | DE Y 1.0 team / J 0.4 team   energy v turn v c2: score 0.500 ± 0.009  kills m/o/f/t 0.25 / 0.67 / 0.08 / 0.00  life 289 s  kpm/ship 0.20  trades 0.00
+1v1 D2 | DE Y 1.0 team / J 0.4 team     turn mirror v c2: score 0.486 ± 0.011  kills m/o/f/t 0.66 / 0.22 / 0.03 / 0.09  life 221 s  kpm/ship 0.26  trades 0.04
+1v1 D2 | DE Y 1.0 team / J 0.4 team   energy mirror v c2: score 0.490 ± 0.011  kills m/o/f/t 0.62 / 0.23 / 0.02 / 0.13  life 183 s  kpm/ship 0.31  trades 0.00
+1v1  D2 | DE Y 0.85 team / J 0.4   energy v turn v c3: score 0.454 ± 0.010  kills m/o/f/t 0.29 / 0.61 / 0.08 / 0.01  life 286 s  kpm/ship 0.20  trades 0.00
+1v1  D2 | DE Y 0.85 team / J 0.4     turn mirror v c3: score 0.512 ± 0.011  kills m/o/f/t 0.65 / 0.21 / 0.04 / 0.10  life 223 s  kpm/ship 0.26  trades 0.03
+1v1  D2 | DE Y 0.85 team / J 0.4   energy mirror v c3: score 0.505 ± 0.011  kills m/o/f/t 0.53 / 0.27 / 0.03 / 0.17  life 170 s  kpm/ship 0.33  trades 0.00
+1v1             cone 0.085 | r9m   energy v turn v c4: score 0.522 ± 0.011  kills m/o/f/t 0.09 / 0.83 / 0.08 / 0.00  life 228 s  kpm/ship 0.25  trades 0.00
+1v1             cone 0.085 | r9m     turn mirror v c4: score 0.502 ± 0.009  kills m/o/f/t 0.70 / 0.18 / 0.01 / 0.11  life 246 s  kpm/ship 0.23  trades 0.01
+1v1             cone 0.085 | r9m   energy mirror v c4: score 0.499 ± 0.011  kills m/o/f/t 0.56 / 0.27 / 0.04 / 0.13  life 183 s  kpm/ship 0.31  trades 0.01
+1v1 cone 0.085 | DE Y 1.0 team / J 0.4   energy v turn v c5: score 0.520 ± 0.011  kills m/o/f/t 0.13 / 0.78 / 0.09 / 0.01  life 231 s  kpm/ship 0.25  trades 0.00
+1v1 cone 0.085 | DE Y 1.0 team / J 0.4     turn mirror v c5: score 0.487 ± 0.009  kills m/o/f/t 0.54 / 0.32 / 0.04 / 0.10  life 251 s  kpm/ship 0.23  trades 0.01
+1v1 cone 0.085 | DE Y 1.0 team / J 0.4   energy mirror v c5: score 0.525 ± 0.011  kills m/o/f/t 0.31 / 0.50 / 0.04 / 0.16  life 226 s  kpm/ship 0.25  trades 0.00
+1v1 cone 0.085 | DE Y 1.0 team / J 0.4 team   energy v turn v c6: score 0.526 ± 0.011  kills m/o/f/t 0.10 / 0.82 / 0.07 / 0.00  life 232 s  kpm/ship 0.25  trades 0.00
+1v1 cone 0.085 | DE Y 1.0 team / J 0.4 team     turn mirror v c6: score 0.502 ± 0.010  kills m/o/f/t 0.52 / 0.33 / 0.04 / 0.12  life 249 s  kpm/ship 0.23  trades 0.01
+1v1 cone 0.085 | DE Y 1.0 team / J 0.4 team   energy mirror v c6: score 0.509 ± 0.011  kills m/o/f/t 0.32 / 0.50 / 0.04 / 0.14  life 232 s  kpm/ship 0.25  trades 0.00
+1v1 cone 0.085 | DE Y 0.85 team / J 0.4   energy v turn v c7: score 0.522 ± 0.011  kills m/o/f/t 0.13 / 0.76 / 0.10 / 0.01  life 229 s  kpm/ship 0.25  trades 0.00
+1v1 cone 0.085 | DE Y 0.85 team / J 0.4     turn mirror v c7: score 0.486 ± 0.009  kills m/o/f/t 0.54 / 0.32 / 0.04 / 0.11  life 246 s  kpm/ship 0.23  trades 0.01
+1v1 cone 0.085 | DE Y 0.85 team / J 0.4   energy mirror v c7: score 0.488 ± 0.012  kills m/o/f/t 0.26 / 0.50 / 0.04 / 0.20  life 181 s  kpm/ship 0.31  trades 0.00
+1v1            big v small | r9m   energy v turn v c8: score 0.601 ± 0.011  kills m/o/f/t 0.35 / 0.51 / 0.14 / 0.00  life 251 s  kpm/ship 0.23  trades 0.00
+1v1            big v small | r9m     turn mirror v c8: score 0.506 ± 0.011  kills m/o/f/t 0.62 / 0.18 / 0.06 / 0.15  life 168 s  kpm/ship 0.34  trades 0.02
+1v1            big v small | r9m   energy mirror v c8: score 0.487 ± 0.012  kills m/o/f/t 0.53 / 0.22 / 0.12 / 0.13  life 133 s  kpm/ship 0.42  trades 0.02
+1v1 big v small | DE Y 1.0 team / J 0.4   energy v turn v c9: score 0.543 ± 0.011  kills m/o/f/t 0.36 / 0.48 / 0.15 / 0.01  life 243 s  kpm/ship 0.24  trades 0.00
+1v1 big v small | DE Y 1.0 team / J 0.4     turn mirror v c9: score 0.489 ± 0.012  kills m/o/f/t 0.41 / 0.36 / 0.04 / 0.19  life 190 s  kpm/ship 0.30  trades 0.02
+1v1 big v small | DE Y 1.0 team / J 0.4   energy mirror v c9: score 0.506 ± 0.013  kills m/o/f/t 0.31 / 0.49 / 0.07 / 0.13  life 165 s  kpm/ship 0.34  trades 0.00
+1v1 big v small | DE Y 1.0 team / J 0.4 team   energy v turn v c10: score 0.568 ± 0.010  kills m/o/f/t 0.35 / 0.50 / 0.15 / 0.00  life 255 s  kpm/ship 0.23  trades 0.00
+1v1 big v small | DE Y 1.0 team / J 0.4 team     turn mirror v c10: score 0.491 ± 0.012  kills m/o/f/t 0.44 / 0.34 / 0.04 / 0.18  life 189 s  kpm/ship 0.30  trades 0.02
+1v1 big v small | DE Y 1.0 team / J 0.4 team   energy mirror v c10: score 0.497 ± 0.013  kills m/o/f/t 0.31 / 0.49 / 0.06 / 0.15  life 159 s  kpm/ship 0.35  trades 0.00
+1v1 big v small | DE Y 0.85 team / J 0.4   energy v turn v c11: score 0.565 ± 0.011  kills m/o/f/t 0.36 / 0.49 / 0.14 / 0.01  life 248 s  kpm/ship 0.23  trades 0.00
+1v1 big v small | DE Y 0.85 team / J 0.4     turn mirror v c11: score 0.471 ± 0.012  kills m/o/f/t 0.45 / 0.34 / 0.04 / 0.18  life 186 s  kpm/ship 0.31  trades 0.03
+1v1 big v small | DE Y 0.85 team / J 0.4   energy mirror v c11: score 0.493 ± 0.013  kills m/o/f/t 0.27 / 0.48 / 0.07 / 0.18  life 144 s  kpm/ship 0.39  trades 0.00
+1v1                 frozen | r9m   energy v turn v c12: score 0.010 ± 0.002  kills m/o/f/t 0.15 / 0.13 / 0.41 / 0.31  life 170 s  kpm/ship 0.33  trades 0.00
+1v1                 frozen | r9m     turn mirror v c12: score 0.499 ± 0.011  kills m/o/f/t 0.86 / 0.06 / 0.01 / 0.07  life 109 s  kpm/ship 0.51  trades 0.05
+1v1                 frozen | r9m   energy mirror v c12: score 0.491 ± 0.010  kills m/o/f/t 0.79 / 0.09 / 0.01 / 0.11  life 197 s  kpm/ship 0.29  trades 0.02
+1v1 frozen | DE Y 1.0 team / J 0.4   energy v turn v c13: score 0.235 ± 0.009  kills m/o/f/t 0.35 / 0.15 / 0.37 / 0.13  life 162 s  kpm/ship 0.35  trades 0.00
+1v1 frozen | DE Y 1.0 team / J 0.4     turn mirror v c13: score 0.494 ± 0.011  kills m/o/f/t 0.79 / 0.12 / 0.02 / 0.08  life 122 s  kpm/ship 0.46  trades 0.04
+1v1 frozen | DE Y 1.0 team / J 0.4   energy mirror v c13: score 0.499 ± 0.010  kills m/o/f/t 0.61 / 0.23 / 0.03 / 0.13  life 275 s  kpm/ship 0.21  trades 0.00
+1v1 frozen | DE Y 1.0 team / J 0.4 team   energy v turn v c14: score 0.011 ± 0.002  kills m/o/f/t 0.15 / 0.13 / 0.41 / 0.30  life 169 s  kpm/ship 0.34  trades 0.00
+1v1 frozen | DE Y 1.0 team / J 0.4 team     turn mirror v c14: score 0.511 ± 0.012  kills m/o/f/t 0.78 / 0.13 / 0.01 / 0.07  life 121 s  kpm/ship 0.46  trades 0.04
+1v1 frozen | DE Y 1.0 team / J 0.4 team   energy mirror v c14: score 0.492 ± 0.010  kills m/o/f/t 0.63 / 0.22 / 0.02 / 0.13  life 276 s  kpm/ship 0.21  trades 0.00
+1v1 frozen | DE Y 0.85 team / J 0.4   energy v turn v c15: score 0.214 ± 0.009  kills m/o/f/t 0.34 / 0.14 / 0.39 / 0.14  life 165 s  kpm/ship 0.34  trades 0.00
+1v1 frozen | DE Y 0.85 team / J 0.4     turn mirror v c15: score 0.505 ± 0.012  kills m/o/f/t 0.78 / 0.12 / 0.01 / 0.08  life 122 s  kpm/ship 0.45  trades 0.04
+1v1 frozen | DE Y 0.85 team / J 0.4   energy mirror v c15: score 0.478 ± 0.011  kills m/o/f/t 0.47 / 0.26 / 0.03 / 0.24  life 226 s  kpm/ship 0.25  trades 0.00
+1v1                     D2 | r9m           mixed v r9m: score 0.486 ± 0.011  kills m/o/f/t 0.75 / 0.12 / 0.03 / 0.10  life 134 s  kpm/ship 0.42  trades 0.02
+1v1                     D2 | r9m  mixed reversed v r9m: score 0.502 ± 0.012  kills m/o/f/t 0.84 / 0.06 / 0.00 / 0.11  life 203 s  kpm/ship 0.28  trades 0.04
+1v1   D2 | DE Y 1.0 team / J 0.4           mixed v r9m: score 0.582 ± 0.011  kills m/o/f/t 0.62 / 0.22 / 0.03 / 0.13  life 162 s  kpm/ship 0.35  trades 0.00
+1v1   D2 | DE Y 1.0 team / J 0.4  mixed reversed v r9m: score 0.537 ± 0.011  kills m/o/f/t 0.76 / 0.12 / 0.02 / 0.09  life 214 s  kpm/ship 0.27  trades 0.04
+1v1 D2 | DE Y 1.0 team / J 0.4 team           mixed v r9m: score 0.562 ± 0.011  kills m/o/f/t 0.61 / 0.24 / 0.03 / 0.13  life 161 s  kpm/ship 0.35  trades 0.00
+1v1 D2 | DE Y 1.0 team / J 0.4 team  mixed reversed v r9m: score 0.532 ± 0.011  kills m/o/f/t 0.75 / 0.12 / 0.02 / 0.10  life 215 s  kpm/ship 0.27  trades 0.04
+1v1  D2 | DE Y 0.85 team / J 0.4           mixed v r9m: score 0.518 ± 0.011  kills m/o/f/t 0.61 / 0.22 / 0.03 / 0.14  life 148 s  kpm/ship 0.38  trades 0.01
+1v1  D2 | DE Y 0.85 team / J 0.4  mixed reversed v r9m: score 0.535 ± 0.011  kills m/o/f/t 0.74 / 0.14 / 0.02 / 0.10  life 215 s  kpm/ship 0.27  trades 0.03
+1v1             cone 0.085 | r9m           mixed v r9m: score 0.498 ± 0.011  kills m/o/f/t 0.53 / 0.31 / 0.05 / 0.12  life 183 s  kpm/ship 0.31  trades 0.01
+1v1             cone 0.085 | r9m  mixed reversed v r9m: score 0.497 ± 0.009  kills m/o/f/t 0.72 / 0.16 / 0.01 / 0.11  life 245 s  kpm/ship 0.23  trades 0.01
+1v1 cone 0.085 | DE Y 1.0 team / J 0.4           mixed v r9m: score 0.538 ± 0.012  kills m/o/f/t 0.33 / 0.48 / 0.05 / 0.14  life 184 s  kpm/ship 0.31  trades 0.00
+1v1 cone 0.085 | DE Y 1.0 team / J 0.4  mixed reversed v r9m: score 0.510 ± 0.009  kills m/o/f/t 0.64 / 0.24 / 0.02 / 0.11  life 250 s  kpm/ship 0.23  trades 0.01
+1v1 cone 0.085 | DE Y 1.0 team / J 0.4 team           mixed v r9m: score 0.555 ± 0.012  kills m/o/f/t 0.32 / 0.50 / 0.05 / 0.13  life 187 s  kpm/ship 0.30  trades 0.00
+1v1 cone 0.085 | DE Y 1.0 team / J 0.4 team  mixed reversed v r9m: score 0.531 ± 0.009  kills m/o/f/t 0.63 / 0.24 / 0.02 / 0.11  life 246 s  kpm/ship 0.23  trades 0.01
+1v1 cone 0.085 | DE Y 0.85 team / J 0.4           mixed v r9m: score 0.507 ± 0.011  kills m/o/f/t 0.35 / 0.45 / 0.04 / 0.16  life 183 s  kpm/ship 0.31  trades 0.00
+1v1 cone 0.085 | DE Y 0.85 team / J 0.4  mixed reversed v r9m: score 0.532 ± 0.009  kills m/o/f/t 0.64 / 0.22 / 0.03 / 0.11  life 248 s  kpm/ship 0.23  trades 0.02
+1v1            big v small | r9m           mixed v r9m: score 0.493 ± 0.012  kills m/o/f/t 0.53 / 0.22 / 0.12 / 0.14  life 132 s  kpm/ship 0.42  trades 0.01
+1v1            big v small | r9m  mixed reversed v r9m: score 0.511 ± 0.011  kills m/o/f/t 0.62 / 0.17 / 0.06 / 0.16  life 172 s  kpm/ship 0.33  trades 0.02
+1v1 big v small | DE Y 1.0 team / J 0.4           mixed v r9m: score 0.585 ± 0.012  kills m/o/f/t 0.33 / 0.43 / 0.09 / 0.15  life 139 s  kpm/ship 0.40  trades 0.00
+1v1 big v small | DE Y 1.0 team / J 0.4  mixed reversed v r9m: score 0.560 ± 0.011  kills m/o/f/t 0.56 / 0.23 / 0.04 / 0.17  life 182 s  kpm/ship 0.31  trades 0.01
+1v1 big v small | DE Y 1.0 team / J 0.4 team           mixed v r9m: score 0.563 ± 0.012  kills m/o/f/t 0.33 / 0.43 / 0.09 / 0.16  life 140 s  kpm/ship 0.40  trades 0.00
+1v1 big v small | DE Y 1.0 team / J 0.4 team  mixed reversed v r9m: score 0.577 ± 0.011  kills m/o/f/t 0.54 / 0.26 / 0.04 / 0.17  life 183 s  kpm/ship 0.31  trades 0.02
+1v1 big v small | DE Y 0.85 team / J 0.4           mixed v r9m: score 0.523 ± 0.012  kills m/o/f/t 0.35 / 0.39 / 0.10 / 0.16  life 137 s  kpm/ship 0.41  trades 0.00
+1v1 big v small | DE Y 0.85 team / J 0.4  mixed reversed v r9m: score 0.556 ± 0.011  kills m/o/f/t 0.56 / 0.23 / 0.04 / 0.16  life 179 s  kpm/ship 0.32  trades 0.02
+1v1                 frozen | r9m           mixed v r9m: score 0.510 ± 0.010  kills m/o/f/t 0.78 / 0.08 / 0.01 / 0.13  life 196 s  kpm/ship 0.29  trades 0.01
+1v1                 frozen | r9m  mixed reversed v r9m: score 0.501 ± 0.011  kills m/o/f/t 0.87 / 0.05 / 0.01 / 0.07  life 108 s  kpm/ship 0.51  trades 0.05
+1v1 frozen | DE Y 1.0 team / J 0.4           mixed v r9m: score 0.572 ± 0.010  kills m/o/f/t 0.65 / 0.17 / 0.01 / 0.16  life 254 s  kpm/ship 0.23  trades 0.00
+1v1 frozen | DE Y 1.0 team / J 0.4  mixed reversed v r9m: score 0.562 ± 0.011  kills m/o/f/t 0.83 / 0.08 / 0.01 / 0.08  life 115 s  kpm/ship 0.48  trades 0.04
+1v1 frozen | DE Y 1.0 team / J 0.4 team           mixed v r9m: score 0.591 ± 0.010  kills m/o/f/t 0.68 / 0.15 / 0.02 / 0.15  life 246 s  kpm/ship 0.23  trades 0.00
+1v1 frozen | DE Y 1.0 team / J 0.4 team  mixed reversed v r9m: score 0.571 ± 0.012  kills m/o/f/t 0.83 / 0.08 / 0.02 / 0.07  life 115 s  kpm/ship 0.48  trades 0.05
+1v1 frozen | DE Y 0.85 team / J 0.4           mixed v r9m: score 0.521 ± 0.011  kills m/o/f/t 0.62 / 0.18 / 0.02 / 0.17  life 222 s  kpm/ship 0.26  trades 0.01
+1v1 frozen | DE Y 0.85 team / J 0.4  mixed reversed v r9m: score 0.536 ± 0.011  kills m/o/f/t 0.84 / 0.09 / 0.02 / 0.06  life 113 s  kpm/ship 0.49  trades 0.05
+1v1                     D2 | r9m           mixed v r9: score 0.612 ± 0.010  kills m/o/f/t 0.75 / 0.16 / 0.04 / 0.06  life 138 s  kpm/ship 0.41  trades 0.01
+1v1                     D2 | r9m  mixed reversed v r9: score 0.567 ± 0.009  kills m/o/f/t 0.83 / 0.08 / 0.02 / 0.06  life 239 s  kpm/ship 0.24  trades 0.01
+1v1   D2 | DE Y 1.0 team / J 0.4           mixed v r9: score 0.622 ± 0.011  kills m/o/f/t 0.65 / 0.26 / 0.06 / 0.04  life 165 s  kpm/ship 0.34  trades 0.00
+1v1   D2 | DE Y 1.0 team / J 0.4  mixed reversed v r9: score 0.599 ± 0.009  kills m/o/f/t 0.79 / 0.13 / 0.04 / 0.04  life 244 s  kpm/ship 0.24  trades 0.01
+1v1 D2 | DE Y 1.0 team / J 0.4 team           mixed v r9: score 0.623 ± 0.011  kills m/o/f/t 0.66 / 0.25 / 0.06 / 0.04  life 167 s  kpm/ship 0.34  trades 0.00
+1v1 D2 | DE Y 1.0 team / J 0.4 team  mixed reversed v r9: score 0.598 ± 0.010  kills m/o/f/t 0.78 / 0.13 / 0.04 / 0.05  life 238 s  kpm/ship 0.24  trades 0.01
+1v1  D2 | DE Y 0.85 team / J 0.4           mixed v r9: score 0.557 ± 0.010  kills m/o/f/t 0.66 / 0.24 / 0.04 / 0.06  life 158 s  kpm/ship 0.36  trades 0.01
+1v1  D2 | DE Y 0.85 team / J 0.4  mixed reversed v r9: score 0.602 ± 0.009  kills m/o/f/t 0.77 / 0.14 / 0.05 / 0.04  life 241 s  kpm/ship 0.24  trades 0.01
+1v1             cone 0.085 | r9m           mixed v r9: score 0.589 ± 0.011  kills m/o/f/t 0.51 / 0.39 / 0.05 / 0.06  life 185 s  kpm/ship 0.31  trades 0.00
+1v1             cone 0.085 | r9m  mixed reversed v r9: score 0.520 ± 0.009  kills m/o/f/t 0.70 / 0.21 / 0.03 / 0.05  life 261 s  kpm/ship 0.22  trades 0.00
+1v1 cone 0.085 | DE Y 1.0 team / J 0.4           mixed v r9: score 0.567 ± 0.011  kills m/o/f/t 0.34 / 0.53 / 0.08 / 0.05  life 202 s  kpm/ship 0.28  trades 0.00
+1v1 cone 0.085 | DE Y 1.0 team / J 0.4  mixed reversed v r9: score 0.525 ± 0.009  kills m/o/f/t 0.63 / 0.28 / 0.04 / 0.05  life 252 s  kpm/ship 0.23  trades 0.00
+1v1 cone 0.085 | DE Y 1.0 team / J 0.4 team           mixed v r9: score 0.563 ± 0.011  kills m/o/f/t 0.33 / 0.55 / 0.07 / 0.05  life 200 s  kpm/ship 0.29  trades 0.00
+1v1 cone 0.085 | DE Y 1.0 team / J 0.4 team  mixed reversed v r9: score 0.535 ± 0.009  kills m/o/f/t 0.63 / 0.28 / 0.04 / 0.05  life 260 s  kpm/ship 0.22  trades 0.01
+1v1 cone 0.085 | DE Y 0.85 team / J 0.4           mixed v r9: score 0.531 ± 0.011  kills m/o/f/t 0.36 / 0.51 / 0.06 / 0.07  life 185 s  kpm/ship 0.31  trades 0.00
+1v1 cone 0.085 | DE Y 0.85 team / J 0.4  mixed reversed v r9: score 0.525 ± 0.009  kills m/o/f/t 0.63 / 0.27 / 0.05 / 0.06  life 252 s  kpm/ship 0.23  trades 0.00
+1v1            big v small | r9m           mixed v r9: score 0.558 ± 0.012  kills m/o/f/t 0.54 / 0.30 / 0.10 / 0.07  life 133 s  kpm/ship 0.42  trades 0.00
+1v1            big v small | r9m  mixed reversed v r9: score 0.565 ± 0.011  kills m/o/f/t 0.64 / 0.23 / 0.06 / 0.07  life 187 s  kpm/ship 0.31  trades 0.01
+1v1 big v small | DE Y 1.0 team / J 0.4           mixed v r9: score 0.569 ± 0.012  kills m/o/f/t 0.36 / 0.49 / 0.12 / 0.04  life 149 s  kpm/ship 0.38  trades 0.00
+1v1 big v small | DE Y 1.0 team / J 0.4  mixed reversed v r9: score 0.623 ± 0.011  kills m/o/f/t 0.56 / 0.31 / 0.06 / 0.07  life 197 s  kpm/ship 0.29  trades 0.00
+1v1 big v small | DE Y 1.0 team / J 0.4 team           mixed v r9: score 0.553 ± 0.013  kills m/o/f/t 0.38 / 0.46 / 0.12 / 0.04  life 149 s  kpm/ship 0.38  trades 0.00
+1v1 big v small | DE Y 1.0 team / J 0.4 team  mixed reversed v r9: score 0.649 ± 0.011  kills m/o/f/t 0.57 / 0.30 / 0.06 / 0.07  life 199 s  kpm/ship 0.29  trades 0.00
+1v1 big v small | DE Y 0.85 team / J 0.4           mixed v r9: score 0.514 ± 0.012  kills m/o/f/t 0.39 / 0.45 / 0.11 / 0.05  life 144 s  kpm/ship 0.39  trades 0.00
+1v1 big v small | DE Y 0.85 team / J 0.4  mixed reversed v r9: score 0.604 ± 0.011  kills m/o/f/t 0.58 / 0.30 / 0.05 / 0.07  life 200 s  kpm/ship 0.29  trades 0.01
+1v1                 frozen | r9m           mixed v r9: score 0.633 ± 0.010  kills m/o/f/t 0.82 / 0.10 / 0.01 / 0.07  life 217 s  kpm/ship 0.26  trades 0.01
+1v1                 frozen | r9m  mixed reversed v r9: score 0.665 ± 0.010  kills m/o/f/t 0.88 / 0.08 / 0.01 / 0.03  life 111 s  kpm/ship 0.50  trades 0.02
+1v1 frozen | DE Y 1.0 team / J 0.4           mixed v r9: score 0.621 ± 0.010  kills m/o/f/t 0.70 / 0.21 / 0.03 / 0.06  life 266 s  kpm/ship 0.22  trades 0.00
+1v1 frozen | DE Y 1.0 team / J 0.4  mixed reversed v r9: score 0.710 ± 0.010  kills m/o/f/t 0.86 / 0.09 / 0.02 / 0.03  life 115 s  kpm/ship 0.48  trades 0.02
+1v1 frozen | DE Y 1.0 team / J 0.4 team           mixed v r9: score 0.606 ± 0.010  kills m/o/f/t 0.71 / 0.21 / 0.02 / 0.05  life 269 s  kpm/ship 0.22  trades 0.00
+1v1 frozen | DE Y 1.0 team / J 0.4 team  mixed reversed v r9: score 0.738 ± 0.010  kills m/o/f/t 0.86 / 0.10 / 0.01 / 0.03  life 115 s  kpm/ship 0.48  trades 0.02
+1v1 frozen | DE Y 0.85 team / J 0.4           mixed v r9: score 0.553 ± 0.011  kills m/o/f/t 0.68 / 0.20 / 0.02 / 0.09  life 244 s  kpm/ship 0.24  trades 0.00
+1v1 frozen | DE Y 0.85 team / J 0.4  mixed reversed v r9: score 0.732 ± 0.010  kills m/o/f/t 0.86 / 0.09 / 0.02 / 0.03  life 115 s  kpm/ship 0.48  trades 0.01
+## 2v2: 80 jobs, B 8192, 04:59 KST
+  batch 1/10 28 s; ETA 05:04 KST
+  batch 2/10 50 s; ETA 05:03 KST
+  batch 3/10 72 s; ETA 05:03 KST
+  batch 4/10 93 s; ETA 05:03 KST
+  batch 5/10 116 s; ETA 05:03 KST
+  batch 6/10 138 s; ETA 05:03 KST
+  batch 7/10 159 s; ETA 05:03 KST
+  batch 8/10 181 s; ETA 05:03 KST
+  batch 9/10 204 s; ETA 05:03 KST
+  batch 10/10 226 s; ETA 05:03 KST
+2v2                     D2 | r9m   energy v turn v c0: score 0.445 ± 0.014  kills m/o/f/t 0.09 / 0.24 / 0.48 / 0.19  life 118 s  kpm/ship 0.47  trades 0.01
+2v2   D2 | DE Y 1.0 team / J 0.4   energy v turn v c1: score 0.422 ± 0.014  kills m/o/f/t 0.10 / 0.23 / 0.46 / 0.21  life 122 s  kpm/ship 0.45  trades 0.01
+2v2 D2 | DE Y 1.0 team / J 0.4 team   energy v turn v c2: score 0.444 ± 0.014  kills m/o/f/t 0.10 / 0.24 / 0.47 / 0.19  life 119 s  kpm/ship 0.47  trades 0.01
+2v2  D2 | DE Y 0.85 team / J 0.4   energy v turn v c3: score 0.423 ± 0.013  kills m/o/f/t 0.11 / 0.23 / 0.45 / 0.22  life 120 s  kpm/ship 0.46  trades 0.01
+2v2             cone 0.085 | r9m   energy v turn v c4: score 0.522 ± 0.014  kills m/o/f/t 0.06 / 0.33 / 0.47 / 0.15  life 107 s  kpm/ship 0.51  trades 0.01
+2v2 cone 0.085 | DE Y 1.0 team / J 0.4   energy v turn v c5: score 0.507 ± 0.014  kills m/o/f/t 0.06 / 0.32 / 0.44 / 0.17  life 110 s  kpm/ship 0.50  trades 0.01
+2v2 cone 0.085 | DE Y 1.0 team / J 0.4 team   energy v turn v c6: score 0.514 ± 0.014  kills m/o/f/t 0.06 / 0.33 / 0.46 / 0.15  life 107 s  kpm/ship 0.51  trades 0.02
+2v2 cone 0.085 | DE Y 0.85 team / J 0.4   energy v turn v c7: score 0.486 ± 0.014  kills m/o/f/t 0.06 / 0.32 / 0.45 / 0.17  life 109 s  kpm/ship 0.50  trades 0.01
+2v2            big v small | r9m   energy v turn v c8: score 0.507 ± 0.014  kills m/o/f/t 0.09 / 0.33 / 0.46 / 0.12  life 100 s  kpm/ship 0.55  trades 0.02
+2v2 big v small | DE Y 1.0 team / J 0.4   energy v turn v c9: score 0.520 ± 0.014  kills m/o/f/t 0.09 / 0.34 / 0.44 / 0.13  life 100 s  kpm/ship 0.54  trades 0.02
+2v2 big v small | DE Y 1.0 team / J 0.4 team   energy v turn v c10: score 0.511 ± 0.014  kills m/o/f/t 0.08 / 0.34 / 0.46 / 0.12  life 99 s  kpm/ship 0.55  trades 0.02
+2v2 big v small | DE Y 0.85 team / J 0.4   energy v turn v c11: score 0.492 ± 0.014  kills m/o/f/t 0.09 / 0.34 / 0.44 / 0.14  life 102 s  kpm/ship 0.54  trades 0.02
+2v2                 frozen | r9m   energy v turn v c12: score 0.430 ± 0.013  kills m/o/f/t 0.15 / 0.18 / 0.39 / 0.28  life 129 s  kpm/ship 0.43  trades 0.01
+2v2 frozen | DE Y 1.0 team / J 0.4   energy v turn v c13: score 0.369 ± 0.013  kills m/o/f/t 0.17 / 0.16 / 0.35 / 0.32  life 142 s  kpm/ship 0.40  trades 0.01
+2v2 frozen | DE Y 1.0 team / J 0.4 team   energy v turn v c14: score 0.445 ± 0.013  kills m/o/f/t 0.14 / 0.18 / 0.39 / 0.30  life 130 s  kpm/ship 0.43  trades 0.01
+2v2 frozen | DE Y 0.85 team / J 0.4   energy v turn v c15: score 0.418 ± 0.013  kills m/o/f/t 0.18 / 0.16 / 0.34 / 0.32  life 139 s  kpm/ship 0.40  trades 0.01
+2v2                     D2 | r9m           mixed v r9m: score 0.513 ± 0.014  kills m/o/f/t 0.11 / 0.20 / 0.35 / 0.35  life 123 s  kpm/ship 0.45  trades 0.01
+2v2                     D2 | r9m  mixed reversed v r9m: score 0.523 ± 0.014  kills m/o/f/t 0.10 / 0.21 / 0.35 / 0.34  life 121 s  kpm/ship 0.46  trades 0.01
+2v2   D2 | DE Y 1.0 team / J 0.4           mixed v r9m: score 0.555 ± 0.014  kills m/o/f/t 0.11 / 0.21 / 0.34 / 0.35  life 127 s  kpm/ship 0.44  trades 0.01
+2v2   D2 | DE Y 1.0 team / J 0.4  mixed reversed v r9m: score 0.555 ± 0.014  kills m/o/f/t 0.11 / 0.20 / 0.35 / 0.34  life 127 s  kpm/ship 0.44  trades 0.01
+2v2 D2 | DE Y 1.0 team / J 0.4 team           mixed v r9m: score 0.533 ± 0.014  kills m/o/f/t 0.10 / 0.21 / 0.35 / 0.34  life 126 s  kpm/ship 0.44  trades 0.01
+2v2 D2 | DE Y 1.0 team / J 0.4 team  mixed reversed v r9m: score 0.539 ± 0.014  kills m/o/f/t 0.11 / 0.21 / 0.34 / 0.35  life 127 s  kpm/ship 0.44  trades 0.01
+2v2  D2 | DE Y 0.85 team / J 0.4           mixed v r9m: score 0.511 ± 0.014  kills m/o/f/t 0.11 / 0.21 / 0.34 / 0.35  life 126 s  kpm/ship 0.44  trades 0.01
+2v2  D2 | DE Y 0.85 team / J 0.4  mixed reversed v r9m: score 0.503 ± 0.014  kills m/o/f/t 0.10 / 0.20 / 0.35 / 0.35  life 126 s  kpm/ship 0.44  trades 0.01
+2v2             cone 0.085 | r9m           mixed v r9m: score 0.473 ± 0.014  kills m/o/f/t 0.06 / 0.30 / 0.34 / 0.30  life 110 s  kpm/ship 0.50  trades 0.01
+2v2             cone 0.085 | r9m  mixed reversed v r9m: score 0.499 ± 0.014  kills m/o/f/t 0.07 / 0.29 / 0.35 / 0.29  life 110 s  kpm/ship 0.50  trades 0.02
+2v2 cone 0.085 | DE Y 1.0 team / J 0.4           mixed v r9m: score 0.522 ± 0.014  kills m/o/f/t 0.07 / 0.30 / 0.34 / 0.30  life 116 s  kpm/ship 0.48  trades 0.02
+2v2 cone 0.085 | DE Y 1.0 team / J 0.4  mixed reversed v r9m: score 0.524 ± 0.014  kills m/o/f/t 0.07 / 0.29 / 0.33 / 0.30  life 116 s  kpm/ship 0.48  trades 0.02
+2v2 cone 0.085 | DE Y 1.0 team / J 0.4 team           mixed v r9m: score 0.534 ± 0.014  kills m/o/f/t 0.07 / 0.30 / 0.34 / 0.29  life 116 s  kpm/ship 0.48  trades 0.01
+2v2 cone 0.085 | DE Y 1.0 team / J 0.4 team  mixed reversed v r9m: score 0.541 ± 0.014  kills m/o/f/t 0.07 / 0.30 / 0.34 / 0.29  life 115 s  kpm/ship 0.48  trades 0.02
+2v2 cone 0.085 | DE Y 0.85 team / J 0.4           mixed v r9m: score 0.530 ± 0.014  kills m/o/f/t 0.06 / 0.30 / 0.34 / 0.30  life 114 s  kpm/ship 0.49  trades 0.02
+2v2 cone 0.085 | DE Y 0.85 team / J 0.4  mixed reversed v r9m: score 0.525 ± 0.014  kills m/o/f/t 0.07 / 0.30 / 0.35 / 0.29  life 114 s  kpm/ship 0.49  trades 0.02
+2v2            big v small | r9m           mixed v r9m: score 0.494 ± 0.014  kills m/o/f/t 0.09 / 0.31 / 0.33 / 0.27  life 103 s  kpm/ship 0.53  trades 0.02
+2v2            big v small | r9m  mixed reversed v r9m: score 0.482 ± 0.014  kills m/o/f/t 0.09 / 0.31 / 0.34 / 0.27  life 104 s  kpm/ship 0.53  trades 0.02
+2v2 big v small | DE Y 1.0 team / J 0.4           mixed v r9m: score 0.516 ± 0.014  kills m/o/f/t 0.09 / 0.32 / 0.33 / 0.26  life 107 s  kpm/ship 0.51  trades 0.02
+2v2 big v small | DE Y 1.0 team / J 0.4  mixed reversed v r9m: score 0.500 ± 0.014  kills m/o/f/t 0.09 / 0.32 / 0.34 / 0.26  life 108 s  kpm/ship 0.51  trades 0.02
+2v2 big v small | DE Y 1.0 team / J 0.4 team           mixed v r9m: score 0.530 ± 0.014  kills m/o/f/t 0.09 / 0.32 / 0.34 / 0.26  life 107 s  kpm/ship 0.51  trades 0.02
+2v2 big v small | DE Y 1.0 team / J 0.4 team  mixed reversed v r9m: score 0.519 ± 0.014  kills m/o/f/t 0.09 / 0.32 / 0.34 / 0.25  life 108 s  kpm/ship 0.51  trades 0.02
+2v2 big v small | DE Y 0.85 team / J 0.4           mixed v r9m: score 0.528 ± 0.014  kills m/o/f/t 0.09 / 0.32 / 0.33 / 0.26  life 106 s  kpm/ship 0.52  trades 0.02
+2v2 big v small | DE Y 0.85 team / J 0.4  mixed reversed v r9m: score 0.531 ± 0.014  kills m/o/f/t 0.10 / 0.32 / 0.33 / 0.26  life 107 s  kpm/ship 0.51  trades 0.02
+2v2                 frozen | r9m           mixed v r9m: score 0.494 ± 0.014  kills m/o/f/t 0.16 / 0.15 / 0.29 / 0.39  life 131 s  kpm/ship 0.43  trades 0.01
+2v2                 frozen | r9m  mixed reversed v r9m: score 0.489 ± 0.013  kills m/o/f/t 0.16 / 0.15 / 0.30 / 0.39  life 132 s  kpm/ship 0.42  trades 0.01
+2v2 frozen | DE Y 1.0 team / J 0.4           mixed v r9m: score 0.569 ± 0.013  kills m/o/f/t 0.17 / 0.14 / 0.29 / 0.40  life 138 s  kpm/ship 0.41  trades 0.01
+2v2 frozen | DE Y 1.0 team / J 0.4  mixed reversed v r9m: score 0.552 ± 0.014  kills m/o/f/t 0.17 / 0.15 / 0.28 / 0.40  life 139 s  kpm/ship 0.40  trades 0.01
+2v2 frozen | DE Y 1.0 team / J 0.4 team           mixed v r9m: score 0.552 ± 0.013  kills m/o/f/t 0.16 / 0.16 / 0.29 / 0.39  life 135 s  kpm/ship 0.41  trades 0.01
+2v2 frozen | DE Y 1.0 team / J 0.4 team  mixed reversed v r9m: score 0.519 ± 0.013  kills m/o/f/t 0.16 / 0.15 / 0.31 / 0.38  life 137 s  kpm/ship 0.41  trades 0.01
+2v2 frozen | DE Y 0.85 team / J 0.4           mixed v r9m: score 0.530 ± 0.013  kills m/o/f/t 0.17 / 0.15 / 0.29 / 0.40  life 137 s  kpm/ship 0.41  trades 0.01
+2v2 frozen | DE Y 0.85 team / J 0.4  mixed reversed v r9m: score 0.532 ± 0.013  kills m/o/f/t 0.17 / 0.15 / 0.28 / 0.40  life 138 s  kpm/ship 0.41  trades 0.01
+2v2                     D2 | r9m           mixed v r9: score 0.516 ± 0.014  kills m/o/f/t 0.11 / 0.21 / 0.46 / 0.22  life 114 s  kpm/ship 0.48  trades 0.01
+2v2                     D2 | r9m  mixed reversed v r9: score 0.535 ± 0.014  kills m/o/f/t 0.11 / 0.21 / 0.45 / 0.23  life 116 s  kpm/ship 0.48  trades 0.02
+2v2   D2 | DE Y 1.0 team / J 0.4           mixed v r9: score 0.552 ± 0.014  kills m/o/f/t 0.12 / 0.21 / 0.46 / 0.21  life 123 s  kpm/ship 0.45  trades 0.01
+2v2   D2 | DE Y 1.0 team / J 0.4  mixed reversed v r9: score 0.572 ± 0.014  kills m/o/f/t 0.10 / 0.22 / 0.47 / 0.22  life 122 s  kpm/ship 0.45  trades 0.01
+2v2 D2 | DE Y 1.0 team / J 0.4 team           mixed v r9: score 0.556 ± 0.014  kills m/o/f/t 0.11 / 0.22 / 0.47 / 0.21  life 122 s  kpm/ship 0.45  trades 0.01
+2v2 D2 | DE Y 1.0 team / J 0.4 team  mixed reversed v r9: score 0.517 ± 0.014  kills m/o/f/t 0.10 / 0.22 / 0.46 / 0.22  life 122 s  kpm/ship 0.45  trades 0.01
+2v2  D2 | DE Y 0.85 team / J 0.4           mixed v r9: score 0.554 ± 0.013  kills m/o/f/t 0.10 / 0.22 / 0.47 / 0.22  life 120 s  kpm/ship 0.46  trades 0.02
+2v2  D2 | DE Y 0.85 team / J 0.4  mixed reversed v r9: score 0.542 ± 0.014  kills m/o/f/t 0.11 / 0.20 / 0.47 / 0.22  life 121 s  kpm/ship 0.46  trades 0.01
+2v2             cone 0.085 | r9m           mixed v r9: score 0.533 ± 0.014  kills m/o/f/t 0.06 / 0.31 / 0.44 / 0.19  life 105 s  kpm/ship 0.52  trades 0.02
+2v2             cone 0.085 | r9m  mixed reversed v r9: score 0.531 ± 0.014  kills m/o/f/t 0.06 / 0.31 / 0.43 / 0.20  life 104 s  kpm/ship 0.53  trades 0.02
+2v2 cone 0.085 | DE Y 1.0 team / J 0.4           mixed v r9: score 0.545 ± 0.014  kills m/o/f/t 0.07 / 0.31 / 0.45 / 0.17  life 111 s  kpm/ship 0.50  trades 0.02
+2v2 cone 0.085 | DE Y 1.0 team / J 0.4  mixed reversed v r9: score 0.541 ± 0.014  kills m/o/f/t 0.07 / 0.31 / 0.44 / 0.18  life 110 s  kpm/ship 0.50  trades 0.02
+2v2 cone 0.085 | DE Y 1.0 team / J 0.4 team           mixed v r9: score 0.557 ± 0.014  kills m/o/f/t 0.06 / 0.32 / 0.44 / 0.18  life 110 s  kpm/ship 0.50  trades 0.02
+2v2 cone 0.085 | DE Y 1.0 team / J 0.4 team  mixed reversed v r9: score 0.545 ± 0.014  kills m/o/f/t 0.07 / 0.32 / 0.44 / 0.18  life 109 s  kpm/ship 0.50  trades 0.02
+2v2 cone 0.085 | DE Y 0.85 team / J 0.4           mixed v r9: score 0.548 ± 0.014  kills m/o/f/t 0.07 / 0.31 / 0.43 / 0.19  life 109 s  kpm/ship 0.51  trades 0.02
+2v2 cone 0.085 | DE Y 0.85 team / J 0.4  mixed reversed v r9: score 0.579 ± 0.014  kills m/o/f/t 0.07 / 0.31 / 0.44 / 0.18  life 109 s  kpm/ship 0.51  trades 0.02
+2v2            big v small | r9m           mixed v r9: score 0.511 ± 0.014  kills m/o/f/t 0.09 / 0.33 / 0.42 / 0.16  life 98 s  kpm/ship 0.56  trades 0.02
+2v2            big v small | r9m  mixed reversed v r9: score 0.515 ± 0.014  kills m/o/f/t 0.09 / 0.32 / 0.43 / 0.16  life 99 s  kpm/ship 0.55  trades 0.02
+2v2 big v small | DE Y 1.0 team / J 0.4           mixed v r9: score 0.583 ± 0.014  kills m/o/f/t 0.09 / 0.33 / 0.43 / 0.15  life 104 s  kpm/ship 0.53  trades 0.02
+2v2 big v small | DE Y 1.0 team / J 0.4  mixed reversed v r9: score 0.565 ± 0.014  kills m/o/f/t 0.09 / 0.32 / 0.43 / 0.15  life 102 s  kpm/ship 0.54  trades 0.02
+2v2 big v small | DE Y 1.0 team / J 0.4 team           mixed v r9: score 0.534 ± 0.014  kills m/o/f/t 0.09 / 0.33 / 0.43 / 0.15  life 103 s  kpm/ship 0.53  trades 0.02
+2v2 big v small | DE Y 1.0 team / J 0.4 team  mixed reversed v r9: score 0.545 ± 0.014  kills m/o/f/t 0.09 / 0.32 / 0.44 / 0.15  life 101 s  kpm/ship 0.54  trades 0.02
+2v2 big v small | DE Y 0.85 team / J 0.4           mixed v r9: score 0.557 ± 0.014  kills m/o/f/t 0.09 / 0.31 / 0.44 / 0.15  life 103 s  kpm/ship 0.53  trades 0.02
+2v2 big v small | DE Y 0.85 team / J 0.4  mixed reversed v r9: score 0.545 ± 0.014  kills m/o/f/t 0.09 / 0.32 / 0.43 / 0.16  life 102 s  kpm/ship 0.53  trades 0.02
+2v2                 frozen | r9m           mixed v r9: score 0.535 ± 0.014  kills m/o/f/t 0.17 / 0.18 / 0.41 / 0.25  life 124 s  kpm/ship 0.45  trades 0.01
+2v2                 frozen | r9m  mixed reversed v r9: score 0.527 ± 0.014  kills m/o/f/t 0.18 / 0.17 / 0.40 / 0.25  life 124 s  kpm/ship 0.45  trades 0.01
+2v2 frozen | DE Y 1.0 team / J 0.4           mixed v r9: score 0.567 ± 0.013  kills m/o/f/t 0.18 / 0.18 / 0.40 / 0.24  life 134 s  kpm/ship 0.42  trades 0.01
+2v2 frozen | DE Y 1.0 team / J 0.4  mixed reversed v r9: score 0.560 ± 0.013  kills m/o/f/t 0.19 / 0.18 / 0.40 / 0.24  life 136 s  kpm/ship 0.41  trades 0.02
+2v2 frozen | DE Y 1.0 team / J 0.4 team           mixed v r9: score 0.539 ± 0.014  kills m/o/f/t 0.17 / 0.18 / 0.41 / 0.24  life 132 s  kpm/ship 0.42  trades 0.01
+2v2 frozen | DE Y 1.0 team / J 0.4 team  mixed reversed v r9: score 0.544 ± 0.014  kills m/o/f/t 0.17 / 0.17 / 0.40 / 0.25  life 130 s  kpm/ship 0.43  trades 0.01
+2v2 frozen | DE Y 0.85 team / J 0.4           mixed v r9: score 0.567 ± 0.013  kills m/o/f/t 0.18 / 0.18 / 0.40 / 0.24  life 133 s  kpm/ship 0.42  trades 0.01
+2v2 frozen | DE Y 0.85 team / J 0.4  mixed reversed v r9: score 0.564 ± 0.013  kills m/o/f/t 0.18 / 0.17 / 0.40 / 0.24  life 134 s  kpm/ship 0.42  trades 0.01
+## 5v5: 80 jobs, B 4096, 05:03 KST
+  batch 1/20 40 s; ETA 05:16 KST
+  batch 2/20 73 s; ETA 05:15 KST
+  batch 3/20 105 s; ETA 05:14 KST
+  batch 4/20 138 s; ETA 05:14 KST
+  batch 5/20 171 s; ETA 05:14 KST
+  batch 6/20 204 s; ETA 05:14 KST
+  batch 7/20 237 s; ETA 05:14 KST
+  batch 8/20 270 s; ETA 05:14 KST
+  batch 9/20 303 s; ETA 05:14 KST
+  batch 10/20 336 s; ETA 05:14 KST
+  batch 11/20 369 s; ETA 05:14 KST
+  batch 12/20 402 s; ETA 05:14 KST
+  batch 13/20 435 s; ETA 05:14 KST
+  batch 14/20 468 s; ETA 05:14 KST
+  batch 15/20 502 s; ETA 05:14 KST
+  batch 16/20 535 s; ETA 05:14 KST
+  batch 17/20 568 s; ETA 05:14 KST
+  batch 18/20 601 s; ETA 05:14 KST
+  batch 19/20 634 s; ETA 05:14 KST
+  batch 20/20 667 s; ETA 05:14 KST
+5v5                     D2 | r9m   energy v turn v c0: score 0.530 ± 0.014  kills m/o/f/t 0.07 / 0.19 / 0.43 / 0.31  life 124 s  kpm/ship 0.45  trades 0.03
+5v5   D2 | DE Y 1.0 team / J 0.4   energy v turn v c1: score 0.549 ± 0.014  kills m/o/f/t 0.08 / 0.18 / 0.38 / 0.36  life 134 s  kpm/ship 0.42  trades 0.03
+5v5 D2 | DE Y 1.0 team / J 0.4 team   energy v turn v c2: score 0.592 ± 0.014  kills m/o/f/t 0.07 / 0.18 / 0.40 / 0.35  life 131 s  kpm/ship 0.43  trades 0.03
+5v5  D2 | DE Y 0.85 team / J 0.4   energy v turn v c3: score 0.553 ± 0.014  kills m/o/f/t 0.08 / 0.18 / 0.40 / 0.35  life 130 s  kpm/ship 0.43  trades 0.03
+5v5             cone 0.085 | r9m   energy v turn v c4: score 0.688 ± 0.013  kills m/o/f/t 0.05 / 0.27 / 0.42 / 0.25  life 108 s  kpm/ship 0.51  trades 0.04
+5v5 cone 0.085 | DE Y 1.0 team / J 0.4   energy v turn v c5: score 0.691 ± 0.013  kills m/o/f/t 0.06 / 0.27 / 0.40 / 0.27  life 113 s  kpm/ship 0.49  trades 0.04
+5v5 cone 0.085 | DE Y 1.0 team / J 0.4 team   energy v turn v c6: score 0.714 ± 0.013  kills m/o/f/t 0.06 / 0.27 / 0.41 / 0.27  life 113 s  kpm/ship 0.49  trades 0.04
+5v5 cone 0.085 | DE Y 0.85 team / J 0.4   energy v turn v c7: score 0.669 ± 0.014  kills m/o/f/t 0.06 / 0.27 / 0.41 / 0.26  life 111 s  kpm/ship 0.50  trades 0.04
+5v5            big v small | r9m   energy v turn v c8: score 0.503 ± 0.015  kills m/o/f/t 0.08 / 0.29 / 0.44 / 0.20  life 99 s  kpm/ship 0.55  trades 0.05
+5v5 big v small | DE Y 1.0 team / J 0.4   energy v turn v c9: score 0.513 ± 0.014  kills m/o/f/t 0.08 / 0.29 / 0.41 / 0.22  life 102 s  kpm/ship 0.54  trades 0.05
+5v5 big v small | DE Y 1.0 team / J 0.4 team   energy v turn v c10: score 0.532 ± 0.014  kills m/o/f/t 0.08 / 0.29 / 0.42 / 0.21  life 102 s  kpm/ship 0.54  trades 0.05
+5v5 big v small | DE Y 0.85 team / J 0.4   energy v turn v c11: score 0.499 ± 0.014  kills m/o/f/t 0.08 / 0.29 / 0.41 / 0.22  life 102 s  kpm/ship 0.54  trades 0.05
+5v5                 frozen | r9m   energy v turn v c12: score 0.356 ± 0.014  kills m/o/f/t 0.10 / 0.16 / 0.33 / 0.41  life 147 s  kpm/ship 0.38  trades 0.03
+5v5 frozen | DE Y 1.0 team / J 0.4   energy v turn v c13: score 0.301 ± 0.013  kills m/o/f/t 0.10 / 0.13 / 0.29 / 0.48  life 158 s  kpm/ship 0.36  trades 0.03
+5v5 frozen | DE Y 1.0 team / J 0.4 team   energy v turn v c14: score 0.331 ± 0.013  kills m/o/f/t 0.10 / 0.14 / 0.30 / 0.46  life 153 s  kpm/ship 0.37  trades 0.03
+5v5 frozen | DE Y 0.85 team / J 0.4   energy v turn v c15: score 0.293 ± 0.013  kills m/o/f/t 0.10 / 0.14 / 0.29 / 0.48  life 155 s  kpm/ship 0.36  trades 0.03
+5v5                     D2 | r9m           mixed v r9m: score 0.484 ± 0.014  kills m/o/f/t 0.07 / 0.17 / 0.36 / 0.39  life 130 s  kpm/ship 0.43  trades 0.04
+5v5                     D2 | r9m  mixed reversed v r9m: score 0.480 ± 0.014  kills m/o/f/t 0.07 / 0.18 / 0.37 / 0.38  life 126 s  kpm/ship 0.44  trades 0.03
+5v5   D2 | DE Y 1.0 team / J 0.4           mixed v r9m: score 0.582 ± 0.014  kills m/o/f/t 0.07 / 0.17 / 0.34 / 0.41  life 136 s  kpm/ship 0.41  trades 0.03
+5v5   D2 | DE Y 1.0 team / J 0.4  mixed reversed v r9m: score 0.559 ± 0.014  kills m/o/f/t 0.08 / 0.18 / 0.36 / 0.39  life 131 s  kpm/ship 0.43  trades 0.03
+5v5 D2 | DE Y 1.0 team / J 0.4 team           mixed v r9m: score 0.586 ± 0.014  kills m/o/f/t 0.07 / 0.17 / 0.34 / 0.41  life 136 s  kpm/ship 0.41  trades 0.03
+5v5 D2 | DE Y 1.0 team / J 0.4 team  mixed reversed v r9m: score 0.532 ± 0.015  kills m/o/f/t 0.08 / 0.18 / 0.36 / 0.38  life 131 s  kpm/ship 0.43  trades 0.03
+5v5  D2 | DE Y 0.85 team / J 0.4           mixed v r9m: score 0.545 ± 0.014  kills m/o/f/t 0.08 / 0.18 / 0.34 / 0.40  life 134 s  kpm/ship 0.42  trades 0.03
+5v5  D2 | DE Y 0.85 team / J 0.4  mixed reversed v r9m: score 0.544 ± 0.014  kills m/o/f/t 0.08 / 0.18 / 0.35 / 0.38  life 129 s  kpm/ship 0.43  trades 0.03
+5v5             cone 0.085 | r9m           mixed v r9m: score 0.486 ± 0.015  kills m/o/f/t 0.05 / 0.27 / 0.36 / 0.31  life 114 s  kpm/ship 0.48  trades 0.04
+5v5             cone 0.085 | r9m  mixed reversed v r9m: score 0.496 ± 0.015  kills m/o/f/t 0.06 / 0.28 / 0.36 / 0.30  life 111 s  kpm/ship 0.50  trades 0.04
+5v5 cone 0.085 | DE Y 1.0 team / J 0.4           mixed v r9m: score 0.576 ± 0.014  kills m/o/f/t 0.06 / 0.27 / 0.35 / 0.32  life 118 s  kpm/ship 0.47  trades 0.04
+5v5 cone 0.085 | DE Y 1.0 team / J 0.4  mixed reversed v r9m: score 0.534 ± 0.014  kills m/o/f/t 0.06 / 0.28 / 0.36 / 0.30  life 113 s  kpm/ship 0.49  trades 0.04
+5v5 cone 0.085 | DE Y 1.0 team / J 0.4 team           mixed v r9m: score 0.591 ± 0.014  kills m/o/f/t 0.05 / 0.27 / 0.35 / 0.32  life 119 s  kpm/ship 0.47  trades 0.04
+5v5 cone 0.085 | DE Y 1.0 team / J 0.4 team  mixed reversed v r9m: score 0.554 ± 0.015  kills m/o/f/t 0.06 / 0.27 / 0.36 / 0.30  life 113 s  kpm/ship 0.49  trades 0.04
+5v5 cone 0.085 | DE Y 0.85 team / J 0.4           mixed v r9m: score 0.547 ± 0.014  kills m/o/f/t 0.05 / 0.27 / 0.35 / 0.32  life 117 s  kpm/ship 0.47  trades 0.04
+5v5 cone 0.085 | DE Y 0.85 team / J 0.4  mixed reversed v r9m: score 0.532 ± 0.014  kills m/o/f/t 0.06 / 0.27 / 0.36 / 0.31  life 113 s  kpm/ship 0.49  trades 0.04
+5v5            big v small | r9m           mixed v r9m: score 0.499 ± 0.014  kills m/o/f/t 0.08 / 0.29 / 0.36 / 0.27  life 102 s  kpm/ship 0.53  trades 0.05
+5v5            big v small | r9m  mixed reversed v r9m: score 0.512 ± 0.015  kills m/o/f/t 0.07 / 0.28 / 0.36 / 0.29  life 107 s  kpm/ship 0.51  trades 0.04
+5v5 big v small | DE Y 1.0 team / J 0.4           mixed v r9m: score 0.581 ± 0.014  kills m/o/f/t 0.08 / 0.29 / 0.35 / 0.27  life 105 s  kpm/ship 0.52  trades 0.05
+5v5 big v small | DE Y 1.0 team / J 0.4  mixed reversed v r9m: score 0.549 ± 0.014  kills m/o/f/t 0.07 / 0.28 / 0.35 / 0.30  life 109 s  kpm/ship 0.50  trades 0.04
+5v5 big v small | DE Y 1.0 team / J 0.4 team           mixed v r9m: score 0.554 ± 0.014  kills m/o/f/t 0.08 / 0.30 / 0.36 / 0.27  life 105 s  kpm/ship 0.52  trades 0.05
+5v5 big v small | DE Y 1.0 team / J 0.4 team  mixed reversed v r9m: score 0.556 ± 0.014  kills m/o/f/t 0.08 / 0.28 / 0.35 / 0.29  life 109 s  kpm/ship 0.50  trades 0.05
+5v5 big v small | DE Y 0.85 team / J 0.4           mixed v r9m: score 0.550 ± 0.014  kills m/o/f/t 0.08 / 0.30 / 0.35 / 0.27  life 104 s  kpm/ship 0.53  trades 0.05
+5v5 big v small | DE Y 0.85 team / J 0.4  mixed reversed v r9m: score 0.548 ± 0.014  kills m/o/f/t 0.08 / 0.28 / 0.35 / 0.30  life 109 s  kpm/ship 0.51  trades 0.05
+5v5                 frozen | r9m           mixed v r9m: score 0.507 ± 0.014  kills m/o/f/t 0.09 / 0.13 / 0.27 / 0.51  life 156 s  kpm/ship 0.36  trades 0.03
+5v5                 frozen | r9m  mixed reversed v r9m: score 0.486 ± 0.014  kills m/o/f/t 0.11 / 0.15 / 0.28 / 0.47  life 147 s  kpm/ship 0.38  trades 0.03
+5v5 frozen | DE Y 1.0 team / J 0.4           mixed v r9m: score 0.576 ± 0.014  kills m/o/f/t 0.09 / 0.12 / 0.25 / 0.53  life 163 s  kpm/ship 0.35  trades 0.03
+5v5 frozen | DE Y 1.0 team / J 0.4  mixed reversed v r9m: score 0.533 ± 0.014  kills m/o/f/t 0.12 / 0.14 / 0.27 / 0.47  life 147 s  kpm/ship 0.38  trades 0.03
+5v5 frozen | DE Y 1.0 team / J 0.4 team           mixed v r9m: score 0.560 ± 0.014  kills m/o/f/t 0.09 / 0.13 / 0.26 / 0.52  life 162 s  kpm/ship 0.35  trades 0.03
+5v5 frozen | DE Y 1.0 team / J 0.4 team  mixed reversed v r9m: score 0.517 ± 0.014  kills m/o/f/t 0.11 / 0.14 / 0.27 / 0.47  life 150 s  kpm/ship 0.38  trades 0.03
+5v5 frozen | DE Y 0.85 team / J 0.4           mixed v r9m: score 0.535 ± 0.014  kills m/o/f/t 0.09 / 0.13 / 0.25 / 0.53  life 162 s  kpm/ship 0.35  trades 0.03
+5v5 frozen | DE Y 0.85 team / J 0.4  mixed reversed v r9m: score 0.529 ± 0.014  kills m/o/f/t 0.11 / 0.14 / 0.27 / 0.48  life 150 s  kpm/ship 0.38  trades 0.03
+5v5                     D2 | r9m           mixed v r9: score 0.757 ± 0.012  kills m/o/f/t 0.07 / 0.20 / 0.49 / 0.24  life 119 s  kpm/ship 0.47  trades 0.04
+5v5                     D2 | r9m  mixed reversed v r9: score 0.828 ± 0.011  kills m/o/f/t 0.07 / 0.20 / 0.50 / 0.23  life 116 s  kpm/ship 0.48  trades 0.04
+5v5   D2 | DE Y 1.0 team / J 0.4           mixed v r9: score 0.827 ± 0.011  kills m/o/f/t 0.08 / 0.19 / 0.49 / 0.24  life 126 s  kpm/ship 0.44  trades 0.04
+5v5   D2 | DE Y 1.0 team / J 0.4  mixed reversed v r9: score 0.843 ± 0.011  kills m/o/f/t 0.07 / 0.19 / 0.50 / 0.23  life 121 s  kpm/ship 0.46  trades 0.04
+5v5 D2 | DE Y 1.0 team / J 0.4 team           mixed v r9: score 0.811 ± 0.011  kills m/o/f/t 0.07 / 0.19 / 0.50 / 0.24  life 124 s  kpm/ship 0.45  trades 0.03
+5v5 D2 | DE Y 1.0 team / J 0.4 team  mixed reversed v r9: score 0.849 ± 0.010  kills m/o/f/t 0.08 / 0.19 / 0.49 / 0.24  life 121 s  kpm/ship 0.46  trades 0.04
+5v5  D2 | DE Y 0.85 team / J 0.4           mixed v r9: score 0.785 ± 0.012  kills m/o/f/t 0.07 / 0.20 / 0.49 / 0.24  life 123 s  kpm/ship 0.45  trades 0.03
+5v5  D2 | DE Y 0.85 team / J 0.4  mixed reversed v r9: score 0.862 ± 0.010  kills m/o/f/t 0.08 / 0.20 / 0.49 / 0.23  life 120 s  kpm/ship 0.46  trades 0.04
+5v5             cone 0.085 | r9m           mixed v r9: score 0.777 ± 0.012  kills m/o/f/t 0.05 / 0.28 / 0.47 / 0.20  life 104 s  kpm/ship 0.53  trades 0.04
+5v5             cone 0.085 | r9m  mixed reversed v r9: score 0.815 ± 0.011  kills m/o/f/t 0.06 / 0.28 / 0.47 / 0.19  life 102 s  kpm/ship 0.54  trades 0.05
+5v5 cone 0.085 | DE Y 1.0 team / J 0.4           mixed v r9: score 0.817 ± 0.011  kills m/o/f/t 0.05 / 0.29 / 0.47 / 0.19  life 109 s  kpm/ship 0.50  trades 0.04
+5v5 cone 0.085 | DE Y 1.0 team / J 0.4  mixed reversed v r9: score 0.848 ± 0.010  kills m/o/f/t 0.06 / 0.29 / 0.47 / 0.19  life 106 s  kpm/ship 0.52  trades 0.05
+5v5 cone 0.085 | DE Y 1.0 team / J 0.4 team           mixed v r9: score 0.807 ± 0.012  kills m/o/f/t 0.05 / 0.29 / 0.47 / 0.19  life 109 s  kpm/ship 0.50  trades 0.04
+5v5 cone 0.085 | DE Y 1.0 team / J 0.4 team  mixed reversed v r9: score 0.844 ± 0.011  kills m/o/f/t 0.06 / 0.29 / 0.47 / 0.19  life 105 s  kpm/ship 0.52  trades 0.04
+5v5 cone 0.085 | DE Y 0.85 team / J 0.4           mixed v r9: score 0.804 ± 0.011  kills m/o/f/t 0.05 / 0.28 / 0.47 / 0.20  life 108 s  kpm/ship 0.51  trades 0.04
+5v5 cone 0.085 | DE Y 0.85 team / J 0.4  mixed reversed v r9: score 0.820 ± 0.011  kills m/o/f/t 0.06 / 0.29 / 0.47 / 0.19  life 104 s  kpm/ship 0.53  trades 0.04
+5v5            big v small | r9m           mixed v r9: score 0.804 ± 0.012  kills m/o/f/t 0.08 / 0.30 / 0.46 / 0.16  life 94 s  kpm/ship 0.58  trades 0.06
+5v5            big v small | r9m  mixed reversed v r9: score 0.809 ± 0.011  kills m/o/f/t 0.07 / 0.29 / 0.47 / 0.17  life 97 s  kpm/ship 0.56  trades 0.05
+5v5 big v small | DE Y 1.0 team / J 0.4           mixed v r9: score 0.827 ± 0.011  kills m/o/f/t 0.08 / 0.30 / 0.47 / 0.15  life 97 s  kpm/ship 0.56  trades 0.06
+5v5 big v small | DE Y 1.0 team / J 0.4  mixed reversed v r9: score 0.829 ± 0.011  kills m/o/f/t 0.07 / 0.29 / 0.46 / 0.17  life 99 s  kpm/ship 0.55  trades 0.05
+5v5 big v small | DE Y 1.0 team / J 0.4 team           mixed v r9: score 0.840 ± 0.010  kills m/o/f/t 0.08 / 0.30 / 0.47 / 0.15  life 97 s  kpm/ship 0.56  trades 0.05
+5v5 big v small | DE Y 1.0 team / J 0.4 team  mixed reversed v r9: score 0.856 ± 0.010  kills m/o/f/t 0.07 / 0.29 / 0.47 / 0.17  life 100 s  kpm/ship 0.55  trades 0.05
+5v5 big v small | DE Y 0.85 team / J 0.4           mixed v r9: score 0.820 ± 0.011  kills m/o/f/t 0.08 / 0.30 / 0.47 / 0.16  life 97 s  kpm/ship 0.56  trades 0.06
+5v5 big v small | DE Y 0.85 team / J 0.4  mixed reversed v r9: score 0.847 ± 0.010  kills m/o/f/t 0.07 / 0.30 / 0.46 / 0.17  life 100 s  kpm/ship 0.55  trades 0.05
+5v5                 frozen | r9m           mixed v r9: score 0.724 ± 0.013  kills m/o/f/t 0.10 / 0.16 / 0.43 / 0.31  life 146 s  kpm/ship 0.38  trades 0.03
+5v5                 frozen | r9m  mixed reversed v r9: score 0.818 ± 0.011  kills m/o/f/t 0.12 / 0.17 / 0.44 / 0.27  life 131 s  kpm/ship 0.43  trades 0.04
+5v5 frozen | DE Y 1.0 team / J 0.4           mixed v r9: score 0.725 ± 0.013  kills m/o/f/t 0.11 / 0.16 / 0.42 / 0.31  life 156 s  kpm/ship 0.36  trades 0.03
+5v5 frozen | DE Y 1.0 team / J 0.4  mixed reversed v r9: score 0.817 ± 0.011  kills m/o/f/t 0.12 / 0.18 / 0.42 / 0.28  life 139 s  kpm/ship 0.40  trades 0.03
+5v5 frozen | DE Y 1.0 team / J 0.4 team           mixed v r9: score 0.752 ± 0.012  kills m/o/f/t 0.11 / 0.16 / 0.42 / 0.31  life 156 s  kpm/ship 0.36  trades 0.03
+5v5 frozen | DE Y 1.0 team / J 0.4 team  mixed reversed v r9: score 0.843 ± 0.010  kills m/o/f/t 0.12 / 0.18 / 0.44 / 0.27  life 137 s  kpm/ship 0.41  trades 0.04
+5v5 frozen | DE Y 0.85 team / J 0.4           mixed v r9: score 0.763 ± 0.012  kills m/o/f/t 0.11 / 0.16 / 0.42 / 0.31  life 155 s  kpm/ship 0.36  trades 0.03
+5v5 frozen | DE Y 0.85 team / J 0.4  mixed reversed v r9: score 0.840 ± 0.011  kills m/o/f/t 0.12 / 0.18 / 0.44 / 0.26  life 137 s  kpm/ship 0.41  trades 0.03
+## 10v10: 16 jobs, B 2048, 05:14 KST
+  batch 1/4 38 s; ETA 05:16 KST
+  batch 2/4 70 s; ETA 05:16 KST
+  batch 3/4 102 s; ETA 05:16 KST
+  batch 4/4 134 s; ETA 05:16 KST
+10v10                     D2 | r9m   energy v turn v c0: score 0.434 ± 0.021  kills m/o/f/t 0.06 / 0.18 / 0.39 / 0.36  life 147 s  kpm/ship 0.38  trades 0.07
+10v10   D2 | DE Y 1.0 team / J 0.4   energy v turn v c1: score 0.530 ± 0.021  kills m/o/f/t 0.07 / 0.17 / 0.36 / 0.39  life 156 s  kpm/ship 0.36  trades 0.06
+10v10 D2 | DE Y 1.0 team / J 0.4 team   energy v turn v c2: score 0.495 ± 0.021  kills m/o/f/t 0.08 / 0.18 / 0.36 / 0.39  life 156 s  kpm/ship 0.36  trades 0.06
+10v10  D2 | DE Y 0.85 team / J 0.4   energy v turn v c3: score 0.513 ± 0.021  kills m/o/f/t 0.07 / 0.19 / 0.36 / 0.38  life 152 s  kpm/ship 0.37  trades 0.06
+10v10             cone 0.085 | r9m   energy v turn v c4: score 0.595 ± 0.021  kills m/o/f/t 0.06 / 0.26 / 0.41 / 0.27  life 126 s  kpm/ship 0.44  trades 0.07
+10v10 cone 0.085 | DE Y 1.0 team / J 0.4   energy v turn v c5: score 0.692 ± 0.019  kills m/o/f/t 0.06 / 0.26 / 0.38 / 0.30  life 133 s  kpm/ship 0.42  trades 0.07
+10v10 cone 0.085 | DE Y 1.0 team / J 0.4 team   energy v turn v c6: score 0.676 ± 0.020  kills m/o/f/t 0.06 / 0.26 / 0.38 / 0.30  life 132 s  kpm/ship 0.42  trades 0.07
+10v10 cone 0.085 | DE Y 0.85 team / J 0.4   energy v turn v c7: score 0.641 ± 0.020  kills m/o/f/t 0.06 / 0.26 / 0.39 / 0.29  life 130 s  kpm/ship 0.43  trades 0.07
+10v10            big v small | r9m   energy v turn v c8: score 0.475 ± 0.021  kills m/o/f/t 0.08 / 0.29 / 0.40 / 0.23  life 111 s  kpm/ship 0.50  trades 0.10
+10v10 big v small | DE Y 1.0 team / J 0.4   energy v turn v c9: score 0.538 ± 0.021  kills m/o/f/t 0.08 / 0.29 / 0.38 / 0.25  life 115 s  kpm/ship 0.48  trades 0.10
+10v10 big v small | DE Y 1.0 team / J 0.4 team   energy v turn v c10: score 0.547 ± 0.021  kills m/o/f/t 0.08 / 0.29 / 0.38 / 0.25  life 114 s  kpm/ship 0.48  trades 0.09
+10v10 big v small | DE Y 0.85 team / J 0.4   energy v turn v c11: score 0.547 ± 0.021  kills m/o/f/t 0.08 / 0.29 / 0.38 / 0.24  life 113 s  kpm/ship 0.49  trades 0.10
+10v10                 frozen | r9m   energy v turn v c12: score 0.262 ± 0.018  kills m/o/f/t 0.08 / 0.14 / 0.31 / 0.47  life 171 s  kpm/ship 0.33  trades 0.05
+10v10 frozen | DE Y 1.0 team / J 0.4   energy v turn v c13: score 0.200 ± 0.016  kills m/o/f/t 0.09 / 0.14 / 0.26 / 0.51  life 178 s  kpm/ship 0.32  trades 0.05
+10v10 frozen | DE Y 1.0 team / J 0.4 team   energy v turn v c14: score 0.181 ± 0.016  kills m/o/f/t 0.08 / 0.14 / 0.27 / 0.51  life 174 s  kpm/ship 0.33  trades 0.05
+10v10 frozen | DE Y 0.85 team / J 0.4   energy v turn v c15: score 0.187 ± 0.016  kills m/o/f/t 0.08 / 0.14 / 0.27 / 0.50  life 177 s  kpm/ship 0.32  trades 0.05
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| D2 | r9m | 0.498 ± 0.010 | 0.445 ± 0.014 | 0.530 ± 0.014 | 0.434 ± 0.021 | 0.066 | 0.07 / 0.19 / 0.43 / 0.31 | 0.03 | 275 / 118 / 124 / 147 | 0.21 / 0.47 / 0.45 / 0.38 | 3.29 |
+| D2 | DE Y 1.0 team / J 0.4 | 0.471 ± 0.010 | 0.422 ± 0.014 | 0.549 ± 0.014 | 0.530 ± 0.021 | 0.078 | 0.08 / 0.18 / 0.38 / 0.36 | 0.03 | 281 / 122 / 134 / 156 | 0.21 / 0.45 / 0.42 / 0.36 | 3.26 |
+| D2 | DE Y 1.0 team / J 0.4 team | 0.500 ± 0.009 | 0.444 ± 0.014 | 0.592 ± 0.014 | 0.495 ± 0.021 | 0.092 | 0.07 / 0.18 / 0.40 / 0.35 | 0.03 | 289 / 119 / 131 / 156 | 0.20 / 0.47 / 0.43 / 0.36 | 3.38 |
+| D2 | DE Y 0.85 team / J 0.4 | 0.454 ± 0.010 | 0.423 ± 0.013 | 0.553 ± 0.014 | 0.513 ± 0.021 | 0.077 | 0.08 / 0.18 / 0.40 / 0.35 | 0.03 | 286 / 120 / 130 / 152 | 0.20 / 0.46 / 0.43 / 0.37 | 3.31 |
+| cone 0.085 | r9m | 0.522 ± 0.011 | 0.522 ± 0.014 | 0.688 ± 0.013 | 0.595 ± 0.021 | 0.188 | 0.05 / 0.27 / 0.42 / 0.25 | 0.04 | 228 / 107 / 108 / 126 | 0.25 / 0.51 / 0.51 / 0.44 | 2.71 |
+| cone 0.085 | DE Y 1.0 team / J 0.4 | 0.520 ± 0.011 | 0.507 ± 0.014 | 0.691 ± 0.013 | 0.692 ± 0.019 | 0.192 | 0.06 / 0.27 / 0.40 / 0.27 | 0.04 | 231 / 110 / 113 / 133 | 0.25 / 0.50 / 0.49 / 0.42 | 2.68 |
+| cone 0.085 | DE Y 1.0 team / J 0.4 team | 0.526 ± 0.011 | 0.514 ± 0.014 | 0.714 ± 0.013 | 0.676 ± 0.020 | 0.214 | 0.06 / 0.27 / 0.41 / 0.27 | 0.04 | 232 / 107 / 113 / 132 | 0.25 / 0.51 / 0.49 / 0.42 | 2.76 |
+| cone 0.085 | DE Y 0.85 team / J 0.4 | 0.522 ± 0.011 | 0.486 ± 0.014 | 0.669 ± 0.014 | 0.641 ± 0.020 | 0.169 | 0.06 / 0.27 / 0.41 / 0.26 | 0.04 | 229 / 109 / 111 / 130 | 0.25 / 0.50 / 0.50 / 0.43 | 2.76 |
+| big v small | r9m | 0.601 ± 0.011 | 0.507 ± 0.014 | 0.503 ± 0.015 | 0.475 ± 0.021 | 0.101 | 0.08 / 0.29 / 0.44 / 0.20 | 0.05 | 251 / 100 / 99 / 111 | 0.23 / 0.55 / 0.55 / 0.50 | 2.62 |
+| big v small | DE Y 1.0 team / J 0.4 | 0.543 ± 0.011 | 0.520 ± 0.014 | 0.513 ± 0.014 | 0.538 ± 0.021 | 0.043 | 0.08 / 0.29 / 0.41 / 0.22 | 0.05 | 243 / 100 / 102 / 115 | 0.24 / 0.54 / 0.54 / 0.48 | 2.5 |
+| big v small | DE Y 1.0 team / J 0.4 team | 0.568 ± 0.010 | 0.511 ± 0.014 | 0.532 ± 0.014 | 0.547 ± 0.021 | 0.068 | 0.08 / 0.29 / 0.42 / 0.21 | 0.05 | 255 / 99 / 102 / 114 | 0.23 / 0.55 / 0.54 / 0.48 | 2.64 |
+| big v small | DE Y 0.85 team / J 0.4 | 0.565 ± 0.011 | 0.492 ± 0.014 | 0.499 ± 0.014 | 0.547 ± 0.021 | 0.065 | 0.08 / 0.29 / 0.41 / 0.22 | 0.05 | 248 / 102 / 102 / 113 | 0.23 / 0.54 / 0.54 / 0.49 | 2.45 |
+| frozen | r9m | 0.010 ± 0.002 | 0.430 ± 0.013 | 0.356 ± 0.014 | 0.262 ± 0.018 | 0.490 | 0.10 / 0.16 / 0.33 / 0.41 | 0.03 | 170 / 129 / 147 / 171 | 0.33 / 0.43 / 0.38 / 0.33 | 2.87 |
+| frozen | DE Y 1.0 team / J 0.4 | 0.235 ± 0.009 | 0.369 ± 0.013 | 0.301 ± 0.013 | 0.200 ± 0.016 | 0.300 | 0.10 / 0.13 / 0.29 / 0.48 | 0.03 | 162 / 142 / 158 / 178 | 0.35 / 0.40 / 0.36 / 0.32 | 2.48 |
+| frozen | DE Y 1.0 team / J 0.4 team | 0.011 ± 0.002 | 0.445 ± 0.013 | 0.331 ± 0.013 | 0.181 ± 0.016 | 0.489 | 0.10 / 0.14 / 0.30 / 0.46 | 0.03 | 169 / 130 / 153 / 174 | 0.34 / 0.43 / 0.37 / 0.33 | 2.85 |
+| frozen | DE Y 0.85 team / J 0.4 | 0.214 ± 0.009 | 0.418 ± 0.013 | 0.293 ± 0.013 | 0.187 ± 0.016 | 0.313 | 0.10 / 0.14 / 0.29 / 0.48 | 0.03 | 165 / 139 / 155 / 177 | 0.34 / 0.40 / 0.36 / 0.32 | 2.54 |
+
+1308 s

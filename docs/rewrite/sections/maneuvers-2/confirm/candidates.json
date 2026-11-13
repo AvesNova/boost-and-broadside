@@ -1,0 +1,1683 @@
+[
+ {
+  "name": "D2 | r9m",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 | DE 0.4",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "D2 | DE 0.4 mirror",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ],
+    "duel_extend_mirror_only": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ],
+    "duel_extend_mirror_only": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 | DE 0.5 mirror",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.5,
+     0.1
+    ],
+    "duel_extend_mirror_only": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.5,
+     0.1
+    ],
+    "duel_extend_mirror_only": 1.0
+   }
+  }
+ },
+ {
+  "name": "D2 | DE Y 1.0 / J 0.4",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": 0.7,
+   "hit_damage": 1.1
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": 0.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     1.0,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "cone 0.085 | r9m",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   }
+  }
+ },
+ {
+  "name": "cone 0.085 | DE 0.4",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "cone 0.085 | DE 0.4 mirror",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ],
+    "duel_extend_mirror_only": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ],
+    "duel_extend_mirror_only": 1.0
+   }
+  }
+ },
+ {
+  "name": "cone 0.085 | DE 0.5 mirror",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.5,
+     0.1
+    ],
+    "duel_extend_mirror_only": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.5,
+     0.1
+    ],
+    "duel_extend_mirror_only": 1.0
+   }
+  }
+ },
+ {
+  "name": "cone 0.085 | DE Y 1.0 / J 0.4",
+  "energy": {
+   "max_shield": 0.5,
+   "bullet_life": 0.75,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "hit_damage": 1.6500000000000001,
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "induced_drag_scale": 1.6,
+   "head_on_fraction_scale": {
+    "set": 0.2833333333333334
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   },
+   "hit_damage": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     1.0,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "big v small | r9m",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 9.714182920963006
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 13.000000158243916
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.9,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 6.725203560666697
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 8.000000097380871
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.9,
+   "head_on_fraction_scale": {
+    "set": 0.33333333333333337
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   }
+  }
+ },
+ {
+  "name": "big v small | DE 0.4",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 9.714182920963006
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 13.000000158243916
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.9,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 6.725203560666697
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 8.000000097380871
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.9,
+   "head_on_fraction_scale": {
+    "set": 0.33333333333333337
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "big v small | DE 0.4 mirror",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 9.714182920963006
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 13.000000158243916
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.9,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 6.725203560666697
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 8.000000097380871
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.9,
+   "head_on_fraction_scale": {
+    "set": 0.33333333333333337
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ],
+    "duel_extend_mirror_only": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ],
+    "duel_extend_mirror_only": 1.0
+   }
+  }
+ },
+ {
+  "name": "big v small | DE 0.5 mirror",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 9.714182920963006
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 13.000000158243916
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.9,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 6.725203560666697
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 8.000000097380871
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.9,
+   "head_on_fraction_scale": {
+    "set": 0.33333333333333337
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.5,
+     0.1
+    ],
+    "duel_extend_mirror_only": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.5,
+     0.1
+    ],
+    "duel_extend_mirror_only": 1.0
+   }
+  }
+ },
+ {
+  "name": "big v small | DE Y 1.0 / J 0.4",
+  "energy": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 9.714182920963006
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 13.000000158243916
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.9,
+   "head_on_fraction_scale": {
+    "set": 0.26666666666666666
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "turn": {
+   "max_lift_coefficient": {
+    "set": 0.0049096885596293105
+   },
+   "zero_lift_drag": {
+    "set": 4.967039823692225e-05
+   },
+   "engine_power": {
+    "set": 1369.9054400413486
+   },
+   "engine_power_full_store": {
+    "set": 334.9509220345242
+   },
+   "static_thrust": {
+    "set": 18.26384968972947
+   },
+   "corner_nose_frequency": {
+    "set": 5.43267567152869
+   },
+   "induced_drag_scale": {
+    "set": 3.0425931629625267
+   },
+   "coast_exchange_scale": {
+    "set": 5.827264883151506
+   },
+   "dive_exchange_scale": {
+    "set": 0.443383570178651
+   },
+   "climb_exchange_scale": {
+    "set": 1.5299285427612306
+   },
+   "max_shield": {
+    "set": 106.34848539421468
+   },
+   "hit_damage": {
+    "set": 6.725203560666697
+   },
+   "reference_bullet_speed": {
+    "set": 876.851946797867
+   },
+   "hit_radius": {
+    "set": 8.000000097380871
+   },
+   "explosive_share": {
+    "set": 0.25
+   },
+   "vision_range_scale": 0.9,
+   "head_on_fraction_scale": {
+    "set": 0.33333333333333337
+   },
+   "head_on_angle_scale": {
+    "set": 0.28388928317955997
+   },
+   "head_on_sharpness": {
+    "set": 8
+   }
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     1.0,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "frozen | r9m",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   }
+  }
+ },
+ {
+  "name": "frozen | DE 0.4",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "frozen | DE 0.4 mirror",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ],
+    "duel_extend_mirror_only": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ],
+    "duel_extend_mirror_only": 1.0
+   }
+  }
+ },
+ {
+  "name": "frozen | DE 0.5 mirror",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.5,
+     0.1
+    ],
+    "duel_extend_mirror_only": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.5,
+     0.1
+    ],
+    "duel_extend_mirror_only": 1.0
+   }
+  }
+ },
+ {
+  "name": "frozen | DE Y 1.0 / J 0.4",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     1.0,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ]
+   }
+  }
+ }
+]

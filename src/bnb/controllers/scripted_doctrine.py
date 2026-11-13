@@ -2,12 +2,12 @@
 archetypes.md, section 5). One agent; each own ship reads its type's `Doctrine`, so a mixed
 team flies each type by its own.
 
-A doctrine changes the combat layer's aim point and power only (never the shot: a shot
-still needs the nose on the lead point). Its weight against the committed target is
-`strength` times `in_advantage`, a logistic in the doctrine's advantage, the product of the
-own-over-target ratios of the sustained turn rate, the climb power, the cruise speed and
-the gun range, each raised to its exponent: so a doctrine can act against one opponent type
-and not another. Within it:
+A doctrine changes the combat layer's aim point and power (and, through `hold_fire`, may
+withhold a shot; a shot still needs the nose on the lead point). Its weight against the
+committed target is `strength` times `in_advantage`, a logistic in the doctrine's advantage,
+the product of the own-over-target ratios of the sustained turn rate, the climb power, the
+cruise speed and the gun range, each raised to its exponent: so a doctrine can act against
+one opponent type and not another. Within it:
 
 - **Extend** (the energy fighter): rather than turn after a target its nose is far from
   (`extend_in_stall_angle`), or engage without an energy advantage (`engage_in_energy_ratio`,
@@ -57,9 +57,26 @@ and `in_advantage`, so they fly in the mirrors too; each reads the committed tar
   `sense_in_crowd`; open by default) the sense hands over to `crowd_sense`: the same side at
   `crowd_sense_stick` of full stick, boosting with weight `crowd_sense_boost` (whatever
   the types and lift ratio).
+- **The post-merge choice by the situation**: the crowd counts an other enemy only with its
+  nose (its track) within `sense_crowd_in_nose_angle` radians of the line to the ship (a
+  threat), less `sense_crowd_ally_weight` times the soft count of the own ships inside the
+  same radius. The crowd extension holds only while the own specific energy over the
+  target's is below `crowd_sense_in_energy_ratio` and the own shield over the target's
+  below `crowd_sense_in_shield_ratio` (both falling, open by default); where they close, the
+  ship presses: the sense's turn (with its own gates) in the crowd. Alone, the **duel
+  extension** (`duel_extend`) flies the crowd extension's stick and boost instead of the
+  sense's turn when any of the energy, shield or lift ratio is below its gate
+  (`duel_extend_in_energy_ratio`, `_in_shield_ratio`, `_in_lift_ratio`; falling, closed by
+  default); with `duel_extend_mirror_only` above 1/2, only against the own type; against
+  another type, weighted by `duel_extend_cross_in_others`, rising in the count of the other
+  known enemies at any range (open by default; at a centre of 1/2, never in a lone 1v1).
+- **Hold fire** (`hold_fire`): on a closing approach with the target's nose on the ship
+  (`hold_fire_in_stall_angle`, its stall angles) inside `hold_fire_in_gun_range`, the
+  shot's probability falls by the weight: the nose-to-nose meeting of a one-circle is not
+  shot (the doctrine's only element on the shot).
 
 Each element's weight (`extend`, `slash`, `bleed`, `lag`, `deny`, and the maneuvers'
-`lead_turn`, `yoyo`, `brake`, `sense`) is 0 by default, as is
+`lead_turn`, `yoyo`, `brake`, `sense`, `duel_extend`, `hold_fire`) is 0 by default, as is
 `strength`: the default doctrine is off. A `table` packs one doctrine per ship type (T, D),
 or per view and type (R, T, D); `per_ship` reads each own ship's row.
 
@@ -132,6 +149,19 @@ class Doctrine:
     crowd_sense: float = 0.0
     crowd_sense_stick: float = 0.0
     crowd_sense_boost: float = 0.0
+    crowd_sense_in_energy_ratio: Logistic = Logistic(1e6, 0.1, False)
+    crowd_sense_in_shield_ratio: Logistic = Logistic(1e6, 0.1, False)
+    sense_crowd_in_nose_angle: Logistic = Logistic(1e6, 0.1, False)
+    sense_crowd_ally_weight: float = 0.0
+    duel_extend: float = 0.0
+    duel_extend_in_energy_ratio: Logistic = Logistic(1e-6, 0.1, False)
+    duel_extend_in_shield_ratio: Logistic = Logistic(1e-6, 0.1, False)
+    duel_extend_in_lift_ratio: Logistic = Logistic(1e-6, 0.1, False)
+    duel_extend_mirror_only: float = 0.0
+    duel_extend_cross_in_others: Logistic = Logistic(1e-9, 0.1, True)
+    hold_fire: float = 0.0
+    hold_fire_in_stall_angle: Logistic = Logistic(1.0, 0.2, False)
+    hold_fire_in_gun_range: Logistic = Logistic(0.5, 0.2, False)
 
 
 NAMES = tuple(field.name for field in dataclasses.fields(Doctrine))
@@ -149,6 +179,8 @@ WEIGHTS = (
     "brake",
     "sense",
     "crowd_sense",
+    "duel_extend",
+    "hold_fire",
 )
 # The maneuvers' fractions, each in [0, 1] (searched like a weight).
 FRACTIONS = (
@@ -160,6 +192,7 @@ FRACTIONS = (
     "sense_mirror_only",
     "crowd_sense_stick",
     "crowd_sense_boost",
+    "duel_extend_mirror_only",
 )
 EXPONENTS = ("turn_exponent", "climb_exponent", "speed_exponent", "range_exponent")
 # Each logistic's smallest scale (a tenth of a factor e in its quantity, near the combat
@@ -183,6 +216,15 @@ SCALE_FLOORS = {
     "sense_in_lift_ratio": 0.03,
     "sense_crowd_in_gun_range": 0.1,
     "sense_in_crowd": 0.1,
+    "crowd_sense_in_energy_ratio": 0.03,
+    "crowd_sense_in_shield_ratio": 0.05,
+    "sense_crowd_in_nose_angle": 0.1,
+    "duel_extend_in_energy_ratio": 0.03,
+    "duel_extend_in_shield_ratio": 0.05,
+    "duel_extend_in_lift_ratio": 0.03,
+    "duel_extend_cross_in_others": 0.1,
+    "hold_fire_in_stall_angle": 0.158,
+    "hold_fire_in_gun_range": 0.1,
 }
 
 

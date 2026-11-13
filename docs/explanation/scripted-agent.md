@@ -153,9 +153,25 @@ by default:
   falling `sense_in_crowd` on their soft count), it hands over to the **crowd sense**: the
   same side at `crowd_sense_stick` of full stick (0 flies straight, an extension),
   boosting with weight `crowd_sense_boost`.
+  The crowd can count only threats (`sense_crowd_in_nose_angle`: an other enemy whose track
+  is within that angle of the line to the ship) and less the own ships near
+  (`sense_crowd_ally_weight`), and the crowd extension can give way to the sense's turn
+  above an energy or shield ratio (`crowd_sense_in_energy_ratio`,
+  `crowd_sense_in_shield_ratio`).
+- **Duel extension** (`duel_extend`): alone with the target after the pass, extend (the
+  crowd sense's stick and boost) instead of the sense's turn when the own shield, specific
+  energy or maximum lift coefficient over the target's is below its gate
+  (`duel_extend_in_shield_ratio`, `_in_energy_ratio`, `_in_lift_ratio`): a hurt ship
+  leaves the turning fight. `duel_extend_mirror_only` keeps it to the own type;
+  `duel_extend_cross_in_others` lets it act against another type only with another known
+  enemy anywhere (in a team game, not a lone duel).
+- **Hold fire** (`hold_fire`): on a closing approach with the target's nose on the ship
+  inside `hold_fire_in_gun_range`, withhold the shot (the only element on the shot).
 
 What each one did against r9, and why the yo-yo does not work in this flight model, is in
-`docs/rewrite/sections/maneuvers/progress.md`.
+`docs/rewrite/sections/maneuvers/progress.md`; the situational post-merge choice, the
+duel extension and hold fire against r9m are in
+`docs/rewrite/sections/maneuvers-2/progress.md`.
 
 ## The Frontline layer
 
