@@ -581,13 +581,19 @@ def default_rules() -> tuple[Rule, ...]:
             0.0,
             **anomaly,
         ),
-        Outside(
+        # On the share of hidden-belief errors within one sigma, not the mean of
+        # (error / sigma)^2: a near-constant quantity (a shield, an energy, a fresh
+        # belief's position) collapses its sigma to the variance floor, and one
+        # rounding-sized error then sends that mean to 1e18 or more while the coverage
+        # stays 0.6-0.8. Calibrated, the share is 0.68 in 1D and 0.63 in 2D; below 0.4 the
+        # sigma is too narrow by about 1.4x or more. No upper bound: an exactly known
+        # quantity (a full shield) is within one sigma at any width.
+        Below(
             "sigma_miscalibrated",
             WARNING,
-            "belief/normalised_square_error",
-            "belief/normalised_square_error*",
-            0.5,
-            2.0,
+            "belief/within_one_sigma",
+            "belief/within_one_sigma*",
+            0.4,
             **anomaly,
         ),
         SideImbalance("side_imbalance", WARNING, "episode/result", warmup=10),

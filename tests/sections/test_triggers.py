@@ -128,8 +128,17 @@ CASES = {
         [{"next_state/gain/allies": 0.2}] * 13,
     ),
     "sigma_miscalibrated": (
-        [{"belief/normalised_square_error/hidden": 3.0}] * 13,
-        [{"belief/normalised_square_error/hidden": 1.1}] * 13,
+        [{"belief/within_one_sigma/shield/age_2_5_seconds": 0.2}] * 13,
+        # the bc-v19 false alarm: a collapsed sigma's mean square error, coverage fine
+        [
+            {
+                "belief/normalised_square_error/shield/age_0.1_0.5_seconds": 1e26,
+                "belief/normalised_square_error/energy/age_0.1_0.5_seconds": float("nan"),
+                "belief/within_one_sigma/shield/age_0.1_0.5_seconds": 0.7,
+                "belief/within_one_sigma/energy/age_0.1_0.5_seconds": 0.98,
+            }
+        ]
+        * 13,
     ),
     "combat_collapse/team_deathmatch": (FIGHTING + COLLAPSED, FIGHTING + FIGHTING),
     "combat_collapse/elimination": (

@@ -228,8 +228,11 @@ collapse (effective rank 30% below peak); dormant units (rising trend); update r
 of band (any module); label validity (any `supervised_share` < 50% of its run level);
 sampling collapse (`pool/sampling_entropy` low); reward hacking (reward rising while
 rating flat, G5); head worse than trivial (next-state gain < 0 for allies or visible
-enemies, enemy-action gain vs repeat < 0, density R2 < 0); sigma miscalibrated (belief
-mean (error/sigma)^2 outside [0.5, 2]); side imbalance (self-play team 0 vs team 1 win
+enemies, enemy-action gain vs repeat < 0, density R2 < 0); sigma miscalibrated (any
+`belief/within_one_sigma/*` below 0.4: 0.68 calibrated in 1D, 0.63 in 2D; until 2026-11-14 the
+mean (error/sigma)^2 outside [0.5, 2], which a near-constant quantity's sigma at the variance
+floor sent to 1e18-1e26 while the coverage was 0.6-0.8; there is no upper bound, since an
+exactly known quantity, a full shield, is within one sigma at any width); side imbalance (self-play team 0 vs team 1 win
 shares differ by more than 3 binomial SE).
 
 **Not rules:** reward level shares and timeout share (would assume an expected game);
