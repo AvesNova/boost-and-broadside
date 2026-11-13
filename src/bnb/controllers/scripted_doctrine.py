@@ -272,13 +272,31 @@ def from_named(fields: dict) -> Doctrine:
     return Doctrine(**values)
 
 
+# Read once per file and kept: the doctrines are read inside traced code (the play shell's
+# exported scripted step builds `Scripted`, whose default reads them), and a traced function
+# cannot open files. The module reads the default file when it is imported (below).
+_STORED: dict[pathlib.Path, dict[str, dict[str, Doctrine]]] = {}
+_SET_KEYS: dict[str, list[str]] = {}
+
+
 def stored(path: pathlib.Path = DOCTRINES) -> dict[str, dict[str, Doctrine]]:
-    """The tuned doctrines by ship set and type key (`scripted_doctrines.json`)."""
-    data = json.loads(path.read_text())
-    return {
-        ship_set: {key: from_named(entry["doctrine"]) for key, entry in types.items()}
-        for ship_set, types in data.items()
-    }
+    """The tuned doctrines by ship set and type key (`scripted_doctrines.json`), read once."""
+    if path not in _STORED:
+        data = json.loads(path.read_text())
+        _STORED[path] = {
+            ship_set: {key: from_named(entry["doctrine"]) for key, entry in types.items()}
+            for ship_set, types in data.items()
+        }
+    return _STORED[path]
+
+
+def _set_keys(ship_set: str) -> list[str]:
+    """A ship set's type keys in order, read once (the set's files are read like `stored`)."""
+    if ship_set not in _SET_KEYS:
+        from bnb.game import ships
+
+        _SET_KEYS[ship_set] = [ship.key for ship in ships.load(ship_set)]
+    return _SET_KEYS[ship_set]
 
 
 def set_table(keys: list[str], ship_set: str, device=None, path=DOCTRINES) -> torch.Tensor:
@@ -292,12 +310,19 @@ def for_card(characteristics, path: pathlib.Path = DOCTRINES) -> torch.Tensor | 
     """(T, WIDTH) the stored doctrines for a card's types, on the card's device: those of the
     ship set whose type count is the card's T (the sets' counts differ), by type key; None
     when no set with stored doctrines has T types (every type then flies none)."""
-    from bnb.game import ships
-
     count = characteristics.gun_range.shape[-1]
     device = characteristics.gun_range.device
     for ship_set in stored(path):
-        keys = [ship.key for ship in ships.load(ship_set)]
+        keys = _set_keys(ship_set)
         if len(keys) == count:
             return set_table(keys, ship_set, device, path)
     return None
+
+
+def _warm(path: pathlib.Path = DOCTRINES) -> None:
+    """Read the default doctrines and their sets' keys now, outside any traced code."""
+    for ship_set in stored(path):
+        _set_keys(ship_set)
+
+
+_warm()
