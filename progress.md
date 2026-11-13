@@ -189,6 +189,26 @@ mixed / reversed. Provisional (the shrinking elimination and new map defaults ar
   0.36-0.48 at 2v2/5v5; frontline 0.01-0.04 at 2v2 (Jujak wins almost every 2v2 front)
   and 0.14-0.32 at 5v5. Round 3 (the card levers, elimination) is running.
 
+### 15:26 round 3: single card levers, elimination, 256 games (SE ~0.03; `round3/`)
+Both sides r9m2; the score is Yongma's, energy v turn. Provisional (the shrinking
+elimination is coming).
+
+| Card | 1v1 | 2v2 | 5v5 |
+|---|---|---|---|
+| base | 0.24 | 0.39 | 0.35 |
+| Y lift x1.1 / 1.2 / 1.3 | 0.27 / 0.26 / 0.33 | 0.38 / 0.41 / 0.45 | 0.36 / 0.40 / 0.34 |
+| Y power x1.15 / 1.3 | 0.27 / 0.30 | 0.47 / 0.44 | 0.45 / 0.56 |
+| Y drag x0.8 | 0.24 | 0.42 | 0.43 |
+| Y damage x1.25 / 1.5 | 0.29 / 0.38 | 0.40 / 0.36 | 0.45 / 0.46 |
+| J shield x0.8 / 0.65 | 0.25 / 0.29 | 0.44 / 0.54 | 0.48 / 0.58 |
+
+No single lever reaches 0.45 at 1v1. The duel is the hardest. Damage helps it most, then
+lift. Power and Jujak's shield fix the team sizes but barely move the 1v1.
+Round 4 (running in tmux `lethality-r4` since 15:26): the best per lever and one step
+further (lift 1.3 / 1.5, power 1.3 / 1.5, damage 1.5 / 2, shield 0.65 / 0.5). It runs
+frontline 2/5 first, then kill-lead deathmatch 1/2/5, then elimination 1/2/5.
+Likely next: a two-lever card, damage (the duel) plus power or shield (the teams).
+
 ## Next
 - Item 6, league: no-flee scripted agents and the fast-chaser ship. ETA ~15:45.
 - Item 7: decide the balance fix (Questions), then a crowd-gate round, ideally scored on

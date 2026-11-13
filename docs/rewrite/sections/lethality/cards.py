@@ -32,6 +32,18 @@ CARDS = {
         ("J shield x0.8", {}, {"max_shield": 0.8}),
         ("J shield x0.65", {}, {"max_shield": 0.65}),
     ],
+    # round 3's best per lever (none reached 0.45 at 1v1) and one step further each
+    "round4": [
+        ("base", {}, {}),
+        ("Y lift x1.3", {"max_lift_coefficient": 1.3}, {}),
+        ("Y lift x1.5", {"max_lift_coefficient": 1.5}, {}),
+        ("Y power x1.3", {"engine_power": 1.3, "engine_power_full_store": 1.3}, {}),
+        ("Y power x1.5", {"engine_power": 1.5, "engine_power_full_store": 1.5}, {}),
+        ("Y damage x1.5", {"hit_damage": 1.5}, {}),
+        ("Y damage x2", {"hit_damage": 2.0}, {}),
+        ("J shield x0.65", {}, {"max_shield": 0.65}),
+        ("J shield x0.5", {}, {"max_shield": 0.5}),
+    ],
 }
 
 
