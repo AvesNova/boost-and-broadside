@@ -225,3 +225,11 @@ This log records the changes and decisions made while the author was away, with 
 - **Density loss** rose from 1.13 to 1.46. That is game-distribution drift: positions are harder to predict as the play changes.
 - **The real watch item:** entropy is 0.57 and still falling. KL is 0.008 and the clip fraction 0.07.
 - **The laptop's live Elo** has not written a deathmatch rating since 65M even though the games are reused. That needs a look.
+
+## 06:50 — live Elo: deathmatch was cut from latest.txt (fixed, a0805606); the deathmatch series
+
+- **The bug:** `latest.txt` kept the log's last 30 rating lines. With 16 or more snapshots × 3 modes, deathmatch, which prints first, was cut off. The ratings themselves were always computed and logged.
+- **The fix:** keep the last finished cycle's whole table. The service is restarted on it; finished game batches are kept per batch, so little was lost.
+- **Deathmatch, averaged policy, kill-share scale:**
+  - 997 at 10M, 1082 at 30M, 1142 at 55M, 1182 at 75M, 1205 at 95M, 1210 at 115M, 1204 at 145M, 1204 at 150M.
+  - Like elimination, it has plateaued since about 100M. Frontline is the only mode still climbing.
