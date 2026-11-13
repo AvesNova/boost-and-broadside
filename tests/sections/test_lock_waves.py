@@ -289,4 +289,4 @@ def test_the_new_rules_are_live_settings_in_their_mode_groups():
 
 
 def test_the_game_version_names_the_lock_and_the_waves():
-    assert game.VERSION == 8
+    assert game.VERSION >= 8 and "capture lock" in game.__doc__

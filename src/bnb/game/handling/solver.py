@@ -357,12 +357,17 @@ def first_guess(rules: Rules, handles: Handles, combat: dict) -> torch.Tensor:
         * _climb_integral(constants.engine_knee, constants.store_fade_band)
         / (mass * cruise * handles.climb_time)
     )
-    dive = handles.dive_acceleration - coast
-    climb = coast - handles.zoom_acceleration
+    # The exchange a boost or reverse adds to the speed's rate at cruise: the coast exchange
+    # is the cruise's own, except with the direct charge (it then exchanges nothing).
+    cruising = 0.0 if constants.direct_charge else coast
+    dive = handles.dive_acceleration - cruising
+    climb = cruising - handles.zoom_acceleration
     if (dive <= 0.0).any() or (climb <= 0.0).any():
         raise Infeasible(
             "the dive acceleration must exceed, and the zoom acceleration fall "
             "short of, the coast exchange the climb implies"
+            if not constants.direct_charge
+            else "the dive acceleration must be positive and the zoom acceleration negative"
         )
     lift = constants.gravity / stall**2  # C_max
     exponent = exponent_of(handles.half_lift_drag)
@@ -386,7 +391,7 @@ def first_guess(rules: Rules, handles: Handles, combat: dict) -> torch.Tensor:
         airframe = airframe_at()
         drag, current = _drag_and_exchange(rules, airframe, stall, zeros, zeros, zeros)
         needed = handles.low_speed_acceleration + drag + current.exchange
-        free = power / stall
+        free = (null_power if constants.direct_charge else power) / stall
         capped = (needed**-4 - free**-4).clamp_min(1e-30) ** -0.25  # softmin_4 inverted
         thrust_cap = torch.where(needed < free, capped, 10.0 * needed)
         airframe = airframe_at()

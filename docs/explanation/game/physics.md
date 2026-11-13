@@ -111,6 +111,26 @@ The power mode is the sign of the energy exchange: negative (boost) trades store
 positive (reverse) trades speed for store, and zero (coast) leaves the slow exchange that
 fades as the store fills.
 
+Two flight constants change how the engine and the drag work. Both are off by default and
+on in the real-scale set's rules (`ships/real-scale/rules.toml`, game version 8):
+
+- **The direct charge** (`direct_charge`). The engine's power above its null power (the
+  card's `engine_power` less `engine_power_full_store`, less still as the store fills past
+  the knee) charges the store directly, at a constant power, in every power mode. A turn
+  fades the charge as it fades the exchange (by the lift's share left over), and the
+  charge stops at the top of the store. The speed sees only the null power, so in a
+  sustained turn a ship fights its drag with about a real fighter's power (250-265 W/kg).
+  Without it, the charge drives the thrust and the coast exchange takes it back from the
+  speed as an acceleration. Straight at cruise, the two are the same flight. Below cruise,
+  the old form left the charge's surplus, `a_0 (u_cruise - u)`, as extra thrust, and the
+  solved cards answered it with an induced drag that made the best lift-to-drag ratio
+  about 5 (a WWII fighter's is 12-15). Under the direct charge it is about 12.
+- **The drag rise** (`critical_speed` u_c, `drag_rise_exponent` q). The zero-lift drag is
+  the card's times `1 + (u / u_c)^q`: compressibility as the speed nears that of sound,
+  which bounds a dive. The real-scale set has u_c = 197 m/s and q = 12, which costs about
+  15% more zero-lift drag at cruise (the solve holds the cruise) and stops a boost from
+  cruise near 1.35 x cruise (217-225 m/s; it reached 350-420 m/s without it).
+
 The shared flight constants (`bnb.game.rules.FlightConstants`). The induced-drag factor,
 the stall angle and the three exchanges are scaled per type by the card:
 

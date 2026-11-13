@@ -53,7 +53,14 @@ phase per team (two more mode uniforms per match, before the spawn draws). The r
 waits: team deathmatch 8 s at real scale (was 10 s), Frontline's minimum 8 s (its fixed
 wait was 16 s), halved in the standard game. The observation gains the zones' lock_own
 and lock_enemy and the global next_wave_own.
+Version 9 (2026-11-13): real-scale flight. Two flight constants, on in the real-scale set's
+rules (off elsewhere, where every game computes the same numbers): the direct charge (the
+engine's store charge goes into the store as a power; the speed sees only the null power)
+and the drag rise (the zero-lift drag times 1 + (u / 197 m/s)^12, which bounds a boost
+near 1.35 x cruise). Yongma, Jujak and Vizia were re-solved under them with higher
+sustained turn rates (their full-stick turn settles near 70 m/s, not 55); the set's other
+types keep their old cards until re-solved.
 """
 
-VERSION = 8
-FINGERPRINT = "32b80fc191d97854"
+VERSION = 9
+FINGERPRINT = "bd362de0be49ee56"
