@@ -32,6 +32,7 @@ def _events(**given) -> Events:
         objective_progress=torch.zeros((B, N)),
         objective=torch.zeros((B, N)),
         result=torch.zeros(B, dtype=torch.int32),
+        win_loss=torch.zeros(B, 2),
         enemy_damage_by_aspect=torch.zeros((B, N, len(ASPECTS))),
         kill_aspect=torch.full((B, N), -1, dtype=torch.int32),
     )

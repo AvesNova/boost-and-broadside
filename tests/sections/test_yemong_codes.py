@@ -199,6 +199,28 @@ def test_value_bins_and_two_hot():
     torch.testing.assert_close(critic.expectation(logits, bins), values)
 
 
+def test_the_outcome_targets_end_on_the_win_loss_weights():
+    """An ended transition's target is (win, draw, loss, unresolved) from its win/loss
+    weights: one-hot for a result, soft for team deathmatch's kill share (no draw), whose
+    read value P(win) - P(loss) is 2 share - 1; a live one bootstraps."""
+    win_loss = torch.tensor([[1.0, 0.0], [0.0, 1.0], [0.0, 0.0], [0.75, 0.25]])
+    final = critic.final_outcome(win_loss)
+    expected = [[1, 0, 0, 0], [0, 0, 1, 0], [0, 1, 0, 0], [0.75, 0, 0.25, 0]]
+    torch.testing.assert_close(final, torch.tensor(expected, dtype=torch.float32))
+    torch.testing.assert_close(critic.outcome_values(final[3]), torch.tensor(0.5))
+    L, R = 3, 4
+    probabilities = torch.full((L, R, 4), 0.25)
+    terminated = torch.zeros(L, R, dtype=torch.bool)
+    terminated[1] = True
+    weights = torch.zeros(L, R, 2)
+    weights[1] = win_loss
+    targets = critic.outcome_targets(
+        probabilities, weights, terminated, torch.full((R, 4), 0.25), 0.99, 0.95
+    )
+    torch.testing.assert_close(targets[1], final)
+    torch.testing.assert_close(targets.sum(-1), torch.ones(L, R))
+
+
 def test_floor_removal_inverts_the_baseline(code):
     """decode_logits of the next-state baseline is the decode of the code itself."""
     generator = torch.Generator().manual_seed(2)

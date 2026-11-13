@@ -63,9 +63,9 @@ TERMS = (
 COUNTS = ("policy", "valued", "steps", "next_state", "enemy_action", "shots", "ships")
 # The per-tick records the returns read, staged whole per shard (the outcome only with an
 # outcome level: `Learner.small_names`).
-SMALL = ("reward", "values", "outcome", "done", "result", "log_probability", "alive", "valued")
+SMALL = ("reward", "values", "outcome", "done", "win_loss", "log_probability", "alive", "valued")
 # What the returns read of the lookahead (likewise: `Learner.lookahead_names`).
-LOOKAHEAD = ("reward", "values", "outcome", "done", "result")
+LOOKAHEAD = ("reward", "values", "outcome", "done", "win_loss")
 # What the shot re-simulation reads of the ticks after a segment.
 FOLLOWING = ("capture", "obs", "done")
 # The auxiliary heads' losses (nats per token), as their groups' series.
@@ -406,7 +406,7 @@ class Learner:
         if level is not None:
             targets = critic.outcome_targets(
                 chain["outcome"],
-                chain["result"],
+                chain["win_loss"],
                 done,
                 bootstrap.outcome,
                 config.discount[level],

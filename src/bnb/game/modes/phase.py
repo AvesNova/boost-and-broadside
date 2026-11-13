@@ -161,6 +161,31 @@ def clock_result(
     return torch.zeros_like(mode.front)
 
 
+def result_win_loss(result: torch.Tensor) -> torch.Tensor:
+    """(..., 2) float: a win/draw/loss result (...) as its weights of a win and of a loss,
+    one-hot (a draw is neither)."""
+    return torch.stack([result > 0, result < 0], -1).to(torch.float32)
+
+
+def kill_share(score: torch.Tensor) -> torch.Tensor:
+    """(B,) float: team 0's share of the kills, its score over both teams' (B, 2); 0.5 when
+    neither team scored."""
+    score = score.to(torch.float32)
+    total = score.sum(-1)
+    return torch.where(total > 0, score[:, 0] / total.clamp_min(1.0), 0.5)
+
+
+def win_loss(mode_rules: ModeRules, mode: ModeState, result: torch.Tensor) -> torch.Tensor:
+    """(B, 2) float: team 0's weights of a win and of a loss for a match that ended now with
+    `result` (B,) (team 1's: flipped); a draw is the rest. Team deathmatch scores a game by
+    its kill share, as its rating does: (share, 1 - share) (`kill_share`, of the final
+    score), never a draw. Elimination and Frontline: the result one-hot."""
+    if mode_rules.name == TEAM_DEATHMATCH:
+        share = kill_share(mode.score)
+        return torch.stack([share, 1.0 - share], -1)
+    return result_win_loss(result)
+
+
 def protected(rules: Rules, mode_rules: ModeRules, mode: ModeState, ships: Ships) -> torch.Tensor:
     """(B, N): hits on these ships deal no damage (Frontline: inside the own team's spawn
     zone, by the roles at tick start and the post-move position; other modes: none)."""

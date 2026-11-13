@@ -165,6 +165,56 @@ def test_deathmatch_clock_goes_to_the_higher_score(score, result):
     assert events.done.item() and events.result.item() == result
 
 
+@pytest.mark.parametrize("score, share", [((3, 5), 3 / 8), ((6, 2), 0.75), ((0, 0), 0.5)])
+def test_deathmatch_outcome_is_the_kill_share(score, share):
+    """Team deathmatch's learner outcome is its kill share, as its rating is: win_loss is
+    (share, 1 - share), never a draw, and the outcome reward 2 share - 1 to team 0 and its
+    negation to team 1; the result still says who led."""
+    rules, state = cases.rules_and_state(GameConfig(3, 2, 1200.0), batch=1)
+    state = cases.edit_mode(state, score=torch.tensor([score], dtype=torch.int32))
+    state = replace(
+        state,
+        match=replace(
+            state.match,
+            episode_tick=torch.tensor([rules.pools[0].episode_ticks - 1], dtype=torch.int32),
+        ),
+    )
+    _, events = cases.tick(rules, state)
+    assert events.done.item()
+    torch.testing.assert_close(events.win_loss[0], torch.tensor([share, 1.0 - share]))
+    outcome = _outcome(events, 6)
+    torch.testing.assert_close(outcome, (2 * share - 1) * torch.tensor([1.0] * 3 + [-1.0] * 3))
+    assert events.result.item() == (score[0] > score[1]) - (score[0] < score[1])
+
+
+def test_deathmatch_win_by_target_scores_the_final_share():
+    """A match the target ends is scored by the share at its end, the winning kill counted."""
+    rules, state = cases.rules_and_state(GameConfig(3, 2, 1200.0), batch=1)
+    target = rules.pools[0].mode.kills_per_ship * rules.ships_per_team
+    state = cases.edit_mode(state, score=torch.tensor([[target - 1, 5]], dtype=torch.int32))
+    _, events = cases.tick(rules, _boundary_kill(state, (3,)))
+    assert events.done.item() and events.result.item() == 1
+    share = target / (target + 5)
+    torch.testing.assert_close(events.win_loss[0], torch.tensor([share, 1.0 - share]))
+
+
+def test_win_loss_is_zero_until_the_match_ends_and_one_hot_outside_deathmatch():
+    """No outcome mid-match; elimination and Frontline score the result one-hot (a draw
+    neither), whatever the kills."""
+    from bnb.game.modes import phase
+    from bnb.game.modes.rules import ELIMINATION, FRONTLINE, ModeRules
+
+    rules, state = cases.rules_and_state(GameConfig(3, 2, 1200.0), batch=1)
+    _, events = cases.tick(rules, state)
+    assert not events.done.item() and not events.win_loss.any()
+    result = torch.tensor([1, -1, 0], dtype=torch.int32)
+    score = torch.tensor([[1, 4]] * 3, dtype=torch.int32)
+    for name in (ELIMINATION, FRONTLINE):
+        mode = replace(state.mode, score=score)
+        win_loss = phase.win_loss(ModeRules(name=name), mode, result)
+        assert win_loss.tolist() == [[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]]
+
+
 def test_every_death_scores_for_the_other_team():
     """Enemy kills, friendly fire and the boundary all score, and only on the other side."""
     causes = {"enemy": 0, "ally": 0, "boundary": 0}

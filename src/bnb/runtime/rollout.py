@@ -39,7 +39,7 @@ PARTS = ("ships", "fields", "globals", "zones")
 COUNTERS = ("shots", "hits", "deaths", "resets")
 # What the store keeps of the lookahead: the returns' records over all of it, and the shot
 # re-simulation's over the first bullet flight (the observation for its fields).
-LOOKAHEAD_RETURNS = ("reward", "values", "outcome", "done", "result")
+LOOKAHEAD_RETURNS = ("reward", "values", "outcome", "done", "win_loss")
 LOOKAHEAD_SHOTS = ("capture", "obs", "done")
 
 
@@ -198,6 +198,7 @@ class Rollout:
             reward=torch.zeros((ring, views, S, len(REWARD_LEVELS)), device=device),
             done=torch.zeros((ring, views), **flags),
             result=torch.zeros((ring, views), dtype=torch.int32, device=device),
+            win_loss=torch.zeros((ring, views, 2), device=device),
             alive=torch.zeros((ring, views, N), **flags),
             valued=torch.zeros((ring, views, S), **flags),
             truth=torch.zeros((ring, views, N - S, truth.ships.shape[-1]), device=device),
@@ -429,6 +430,9 @@ class Rollout:
         # Events.result is team 0's; the other team's is its negation (two teams).
         result = torch.where(team == 0, events.result[environments], -events.result[environments])
         records["result"].index_copy_(0, slot, result[None])
+        win_loss = events.win_loss[environments]  # team 0's; team 1's is flipped
+        win_loss = torch.where((team == 0)[:, None], win_loss, win_loss.flip(-1))
+        records["win_loss"].index_copy_(0, slot, win_loss[None])
         for name in self.tallied:  # each ended game's result, from the controller's side
             environments, team = self.lineup.environments[name], self._team(name, carry["seat"])
             own = torch.where(team == 0, events.result[environments], -events.result[environments])

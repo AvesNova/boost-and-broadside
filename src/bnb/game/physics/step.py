@@ -283,6 +283,14 @@ def resolve(
     done = (match.episode_tick + 1 >= arena.episode_ticks) | phase.won
     result = torch.where(phase.won, phase.result, clock_result)
     result = torch.where(done, result, 0)
+    win_loss = per_mode(
+        rules,
+        B,
+        lambda mode_rules, mode, result: modes.win_loss(mode_rules, mode, result),
+        phase.mode,
+        result,
+    )
+    win_loss = torch.where(done[:, None], win_loss, 0.0)
 
     # 6. Clocks.
     moves_left = torch.where(
@@ -343,6 +351,7 @@ def resolve(
         objective_progress=phase.objective_progress,
         objective=phase.objective,
         result=result,
+        win_loss=win_loss,
         enemy_damage_by_aspect=enemy_damage_by_aspect,
         kill_aspect=kill_aspect,
     )

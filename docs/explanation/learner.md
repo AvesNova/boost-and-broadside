@@ -36,7 +36,7 @@ An update consumes `shards` segments of `length` ticks each, collected one after
 each continuing from the carry the last one ended with, and the lookahead after them: the
 ticks the rollout plays after the last shard, never trained on, of which the store keeps the
 returns' records (rewards, values, outcome probabilities with an outcome head, `done`,
-results) and, for a
+the win/loss weights) and, for a
 bullet's flight, the shot capture and the observation. The rollout records the learner's
 views into a staging ring of two graph blocks on the device, and after each block copies the
 block into a `bnb.runtime.store.SegmentStore` on a copy stream. The store keeps the segments
@@ -95,8 +95,12 @@ L ticks give the returns of one segment of N L ticks
   is the sum over levels of its own advantage plus each level's team spirit times the mean
   over its living teammates. Team spirit is 0 on every level by default.
 - **The outcome's targets** (with an outcome level): lambda targets of the outcome
-  distribution (`bnb.models.yemong.critic.outcome_targets`), with the view's result at an
-  episode end.
+  distribution (`bnb.models.yemong.critic.outcome_targets`), with the view's final outcome
+  at an episode end (`critic.final_outcome` of the view's `Trajectory.win_loss`). In
+  Elimination and Frontline that is the result one-hot (win, draw or loss). Team deathmatch's
+  is soft: `P(win) = share`, `P(loss) = 1 - share`, `P(draw) = 0`, share the view's kill
+  share. The head is read as `P(win) - P(loss)`, so its value at the end is `2 share - 1`,
+  the outcome reward's.
 
 `LearnerConfig.discount`, `trace_decay` and `team_spirit` hold one value per value level,
 in the critic's order; the learner refuses a model whose levels they do not match. The

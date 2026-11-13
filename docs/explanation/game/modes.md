@@ -71,6 +71,10 @@ objective events and decides whether the match is won.
 - `result` is for team 0: +1 a win, -1 a loss, 0 a draw. It is the win rule's when the win
   ended the match, otherwise the clock rule's (`bnb.game.modes.phase.clock_result`), and 0
   where the match goes on.
+- `win_loss` (game v17) is team 0's weights of a win and of a loss where the match ended
+  (`bnb.game.modes.phase.win_loss`), a draw the rest: the result one-hot, except in team
+  deathmatch (below). The RL outcome reward and the outcome head's targets read it; the
+  win/draw/loss tallies read `result`.
 - `objective_progress` and `objective` are signed amounts per ship, each summing to zero
   over the environment. Team deathmatch and sandbox emit zero.
 
@@ -89,6 +93,10 @@ When a match ends, the environment gets a new map and a fresh mode state
   benched ships (below) a team's target is `kills_per_ship` times the enemy's *active*
   ships (`bnb.game.modes.phase.deathmatch_targets`), and the observation's `score_target`
   is the viewer's own.
+- **Outcome for the learner** (game v17): a game is scored by its kill share, as its
+  rating is: share = team 0's score over both teams' (0.5 when neither scored), and
+  `win_loss = (share, 1 - share)`, never a draw. The outcome reward is `2 share - 1`; the
+  `result` above still says who led, for the tallies.
 - **Spawns, uniform:** each spawning ship draws candidate points uniformly over the arena
   and takes the one farthest from the nearest living enemy. At a reset, when every ship
   spawns at once, each ship's first candidate stands in for its position, and each ship
