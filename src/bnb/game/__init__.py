@@ -43,7 +43,17 @@ in a disc of `ModeRules.side_area_fraction` arena radii around its centre,
 `Rules.spawn_offset` arena radii out on the spawn axis, nose toward the enemy area within
 `side_heading_jitter`, keeping the edge's turn room; it was team deathmatch's uniform
 draw. Team deathmatch, Frontline and fixed layouts (Clover) compute the same numbers.
+Version 8 (2026-11-13): Frontline's capture lock and respawn waves, and shorter respawn
+waits. After a capture the team that lost the zone gains no progress on it for
+`ModeRules.lock_seconds_per_root_km` (19) x sqrt(d / 1 km) s, d the adjacent zones'
+spacing (about 45 s at 5v5 on the real-scale map). A dead Frontline ship respawns at its
+team's first respawn wave after its minimum wait, each team's waves every
+`ModeRules.wave_seconds` (20 s at real scale, 10 s in the standard game) from a random
+phase per team (two more mode uniforms per match, before the spawn draws). The respawn
+waits: team deathmatch 8 s at real scale (was 10 s), Frontline's minimum 8 s (its fixed
+wait was 16 s), halved in the standard game. The observation gains the zones' lock_own
+and lock_enemy and the global next_wave_own.
 """
 
-VERSION = 7
-FINGERPRINT = "2581fdc8196942e9"
+VERSION = 8
+FINGERPRINT = "32b80fc191d97854"
