@@ -10,6 +10,7 @@ full names. Everything about that translation lives here:
 Bullets are not observed (contract decision 2026-10-31).
 """
 
+import contextlib
 import dataclasses
 
 import numpy as np
@@ -20,10 +21,13 @@ from bnb.contracts.obs import FIELD, SHIP
 from bnb.game import api
 from bnb.game.physics import flight as flight_module
 from bnb.game.physics.bullets import bullet_motion
+from bnb.game.perception import sight
 from bnb.game.physics.medium import medium
 from bnb.game.rules import FlightConstants, Rules
 from bnb.game.state import Bullets, Fields, Match, Ships, State, blank
 
+from race_presets import _DATA as RACE_DATA
+from race_presets import PRESETS as RACE_PRESETS
 from race_presets import preset as race_preset
 
 # Race key -> (state part, field).
@@ -71,7 +75,38 @@ RACE_SHIP = dict(x="x", y="y", c="heading_cos", s="heading_sin", vx="velocity_x"
                  vy="velocity_y", w="proper_speed", alpha="angle_of_attack", r="nose_rate",
                  E="energy", shield="shield", alive="alive", visible="visible", ally=None,
                  gun_wait="gun_cooldown", respawn="respawn_wait", type="ship_type")
-TYPES = api.ship_types()
+
+
+def race_damage(types: api.ShipTypes) -> api.ShipTypes:
+    """The card playing the race's damage rule, from before game version 6's bullet damage:
+    a hit does its shooter's damage (the race's 12 and 16) times the aspect, whatever the
+    bullet's speed or the pass's closeness: explosive share 1 (no kinetic term) and the core
+    at the hit radius (closeness 1 wherever a bullet hits). The kinetic term and the
+    closeness have their own tests (tests/sections/test_game_section.py)."""
+    damage = (RACE_PRESETS["squad"]["damage"], RACE_DATA["types"]["heavy"]["damage"])
+    assert api.type_names() == ("Fighter", "Heavy")
+    return dataclasses.replace(
+        types,
+        hit_damage=torch.tensor(damage, dtype=types.hit_damage.dtype),
+        explosive_share=torch.ones_like(types.explosive_share),
+        core_radius=types.hit_radius.clone(),
+    )
+
+
+TYPES = race_damage(api.ship_types())
+
+
+@contextlib.contextmanager
+def race_sight():
+    """The race's sight test, from before game version 14's sight through the band: a line
+    with exactly one end inside a core is blocked, the band counting as outside (here the
+    outer disc is the core). The band rule has its own tests (tests/sections/test_sight.py)."""
+    outer = sight.outer_radius
+    sight.outer_radius = sight.core_radius
+    try:
+        yield
+    finally:
+        sight.outer_radius = outer
 
 
 def rules(spec) -> Rules:
@@ -150,9 +185,9 @@ class RaceArm:
         constants = FlightConstants(**{FLIGHT_SHARED[k]: flight.pop(k) for k in list(flight)
                                        if k in FLIGHT_SHARED})
         types = api.ship_types(**{CARD[k]: v for k, v in flight.items()})
-        sigma, pi = flight_module.controls(torch.as_tensor(power), torch.as_tensor(stick))
         ships = ships_of({k: ship[k] for k in ship if k in FLIGHT_KEYS + ("ship_type",)})
         airframe = flight_module.airframe_of(types, ships.ship_type)
+        sigma, pi = flight_module.controls(airframe, torch.as_tensor(power), torch.as_tensor(stick))
         out = flight_module.flight_tick(constants, airframe, Rules.tick_length, ships, sigma, pi,
                                         fields_of(fields))
         return {k: getattr(out, STATE_KEYS[k][1]).numpy() for k in FLIGHT_KEYS}
@@ -170,17 +205,21 @@ class RaceArm:
 
     def step(self, preset, state, actions, spread, uniforms):
         p = rules(preset)
-        st, ev = api.step(p, TYPES, unflat(p, state), Action.unpack(torch.as_tensor(actions)),
-                          torch.as_tensor(spread), torch.as_tensor(uniforms))
+        with race_sight():
+            st, ev = api.step(p, TYPES, unflat(p, state), Action.unpack(torch.as_tensor(actions)),
+                              torch.as_tensor(spread), torch.as_tensor(uniforms))
+            obs = race_observation(p, st)
         events = {k: getattr(ev, k) for k in ("damage", "boundary_damage", "died", "killer", "fired", "done")}
-        return to_numpy(flat(st)), to_numpy(events), to_numpy(race_observation(p, st))
+        return to_numpy(flat(st)), to_numpy(events), to_numpy(obs)
 
     def observe(self, preset, state):
         p = rules(preset)
-        return to_numpy(race_observation(p, unflat(p, state)))
+        with race_sight():
+            return to_numpy(race_observation(p, unflat(p, state)))
 
     def chaser(self, preset, state):
         from race_chaser import chaser
 
         p = rules(preset)
-        return chaser(p, unflat(p, state)).numpy()
+        with race_sight():
+            return chaser(p, unflat(p, state)).numpy()
