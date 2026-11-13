@@ -74,3 +74,14 @@ stage = "rl"
 init_from = "PENDING"
 updates = 24
 set = ["learner.minibatches=64"]
+
+# The RL check (main, 2026-11-13 17:40): does PPO train from the 100M BC exponential average
+# (bc-mb256 at 100.1M, frontline Elo ~841 against the ladder)? The calibration's gamma 0.9999
+# / lambda 0.99 (the ones its critic learned), 256 rating lanes (the author's count), the
+# pool's one scripted player (the code's default); about 30M steps.
+[[arm]]
+name = "rl-check"
+stage = "rl"
+init_from = "bc-mb256/policy"
+updates = 60
+set = ["learner.minibatches=32", "lanes.environments=256"]
