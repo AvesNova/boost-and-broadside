@@ -110,12 +110,12 @@ The stick levels and power modes by index (`bnb.game.rules.STICK_LEVELS`,
 The stick's three levels each way are **fine**, **sustained** and **max**, the same action
 indices for every type; each type's lift fractions are its card's (`fine_stick`,
 `sustained_stick`; max is 1, all the lift the ship can get). The standard and design-seed
-cards keep 0.4 and 0.75. A solve sets them from two flight constants (on in the real-scale
-set, game version 10): the sustained level is the lift fraction whose settled coasting
-turn reaches `sustained_rate_share` (0.8) of the full stick's rate, and the fine level
-`fine_stick_share` (0.3) of it. The settled turn rate rises with the stick all the way to
-max (a full-stick turn sinks and bleeds), so the sustained level gives up a fifth of the
-rate and keeps about 10 m/s of speed: a pilot circles there.
+cards keep 0.4 and 0.75. A solve sets them when the rules give a fine share (the
+real-scale set's, game version 11): with flow separation the settled level turn's rate
+peaks below full stick, so the sustained level is the lift fraction of that best sustained
+turn, and the fine level `fine_stick_share` (0.3) of it
+(`bnb.game.handling.solver.stick_levels`). Past the peak, more stick turns slower and
+bleeds: a pilot circles at the sustained level.
 
 The power mode is the sign of the energy exchange: negative (boost) trades store for speed,
 positive (reverse) trades speed for store, and zero (coast) leaves the slow exchange that
@@ -194,7 +194,7 @@ that shape sight (see [Perception and fog](perception.md)).
   ahead, half way to full damage at the target's head-on angle `θ_h` (42.27 degrees by
   default, the old fixed curve's `exp(-4θ²/π)`), and nearly all of it from the side or
   rear. The target's head-on sharpness `p` (2 by default, a Gaussian cone) shapes the
-  cone: a higher `p` keeps the armour near `f_0` across the cone and drops it quickly past
+  cone: a higher `p` keeps the armour near `f_0`{.plain} across the cone and drops it quickly past
   `θ_h` (a tank's armoured nose). The shooter's arming distance `X` (0 by default, off)
   ramps the damage as a smoothstep of the distance the bullet has travelled over `[0, X]`: a
   minimum effective range, like a fuse's arming time. A bullet is consumed by its hit (game

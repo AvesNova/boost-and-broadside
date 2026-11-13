@@ -69,7 +69,7 @@ When a match ends, the environment gets a new map and a fresh mode state
 ## Team deathmatch
 
 - **Respawn:** a dead ship respawns after a fixed wait: 10 s at real scale (the author,
-  2026-11-13; the `real_scale_deathmatch` preset's), 4 s in the standard game. There are no waves. The wait is the `pool.respawn_seconds` setting, shown in the
+  2026-11-13; the `real_scale_deathmatch` preset's), 4 s in the standard game. There are no waves. The wait is the `bnb.contracts.pools.Pool.respawn_seconds` setting, shown in the
   Map / mode panel's Team deathmatch group.
 - **Score:** every death scores one point for the other team, whatever its cause: an
   enemy's hit, friendly fire or the boundary.
@@ -203,8 +203,8 @@ None, as in training) the game is bit-identical to the game without the input
   adjacent zone centres. The default, 19 s per sqrt(km), is about 45 s at 5v5 on the
   real-scale map (d = 5.64 km), 54 s at 10v10 and 64 s at 20v20: the hard lock at which
   the team that captured is about as likely as the other to capture next (P = 0.5 in
-  `bench/frontline_design.py`), to be calibrated again on the final ship card. The state
-  holds it per team and zone (`ModeState.lock`, ticks), so it is exact for any sequence
+  the frontline design bench, bench/frontline_design.py on the tune/respawn-waves branch), to be calibrated again on the final ship card. The state
+  holds it per team and zone (the `bnb.game.state.ModeState` field lock, ticks), so it is exact for any sequence
   of captures; `frontline.lock_ticks`, `locks_after` and `attacker_locked` compute it.
 - **Respawn waves** (game version 8): a dead ship waits its minimum (`respawn_seconds`, 8 s
   at real scale and 4 s in the standard game) and then respawns at its team's next
@@ -214,7 +214,7 @@ None, as in training) the game is bit-identical to the game without the input
   The state holds each team's ticks to its next wave (`ModeState.wave_wait`); the wave
   lands on the tick it reaches 0 and the next is an interval later. `wave_seconds` 0
   turns the waves off (every tick lands), which leaves the fixed wait. The respawn waves
-  study (`docs/rewrite/sections/respawn-waves/progress.md`) found the waves move the pace
+  study (docs/rewrite/sections/respawn-waves/progress.md on the tune/respawn-waves branch) found the waves move the pace
   (an earlier first capture, shorter games) and not the momentum.
 - **Spawns:** a ship spawns at a random point near its team's current spawn zone, facing
   the zone its team attacks.

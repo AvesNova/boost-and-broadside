@@ -231,7 +231,7 @@ sampled joint action's probability now to the rollout's and A the scaled advanta
 
 | `trust_region` | The policy term per token |
 |---|---|
-| `"clip"` (default) | PPO's: max(-A r, -A clip(r, 1 - `clip`, 1 + `clip`)), as before the option (`tests/sections/test_learner_trust_region.py::test_the_clip_is_todays_bit_for_bit`) |
+| `"clip"` (default) | PPO's: max(-A r, -A clip(r, 1 - `clip`, 1 + `clip`)), as before the option (`tests/sections/test_learner_trust_region.py::test_the_clip_is_todays`) |
 | `"clip_higher"` | DAPO's asymmetric clip: the ratio in [1 - `clip`, 1 + `clip_high`], 0.2 and 0.28 |
 | `"dppo_tv"` | DPPO's mask (Qi et al., "Rethinking the Trust Region in LLM Reinforcement Learning", ICML 2026): the unclipped -A r, its gradient zeroed where D > `dppo_delta` (0.15) and the step moves further away (A > 0 and r > 1, or A < 0 and r < 1). D is the exact total variation between the rollout's and the current joint action distribution at the state, 1/2 sum over the 42 joint actions of \|mu(a) - pi(a)\| |
 | `"dppo_binary_tv"` | the same mask with D = \|mu(a) - pi(a)\| of the sampled action, the paper's binary approximation; a lower bound of the exact form, so it masks less at the same delta |

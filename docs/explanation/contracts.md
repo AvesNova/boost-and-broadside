@@ -85,7 +85,7 @@ reveal the enemy's wave clock.
 
 <!-- generated: global-columns -->
 
-`bnb.contracts.obs.SHIP`, `FIELD`, `ZONE` and `GLOBAL` map each column name to its index.
+`bnb.contracts.obs.SHIP`, `bnb.contracts.obs.FIELD`, `ZONE` and `GLOBAL` map each column name to its index.
 A stored batch may leave out (`None`) a part its model does not read.
 
 ## Privileged truth
