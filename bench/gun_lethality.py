@@ -47,7 +47,7 @@ from bnb.game.handling.characteristics import characteristics
 from bnb.game.physics.combat import MEAN_CLOSENESS
 
 PRESET = "real_scale_deathmatch"
-ARENA_RADIUS = round(api.PRESETS[PRESET].arena_radius * (1 / 5) ** 0.5, 1)
+ARENA_RADIUS = api.arena_radius_for(api.PRESETS[PRESET], 1)  # the 1v1 radius, floored (v16)
 MERGE_CONE = math.radians(30.0)
 PASSED = math.radians(90.0)
 OPEN_FACTOR = 1.2

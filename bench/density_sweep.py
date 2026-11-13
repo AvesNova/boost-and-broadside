@@ -29,6 +29,7 @@ import zoneinfo
 import torch
 
 from bnb.cli import compile_limits
+from bnb.game import api
 from bnb.game import ships as ship_sets
 from bnb.game.api import PRESETS
 from bnb.league.matches import STATISTICS, Arena, ArenaConfig, player
@@ -42,12 +43,14 @@ def clock(seconds: float) -> str:
     return (datetime.datetime.now(KST) + datetime.timedelta(seconds=seconds)).strftime("%H:%M")
 
 
-def radius_of(kind: str, base_radius: float, base_ships: int, ships: int) -> float:
-    """A cell's arena radius (m)."""
+def radius_of(kind: str, game, ships: int) -> float:
+    """A cell's arena radius (m): the game's own ("fixed"), the game's per-size radius
+    ("density": `api.arena_radius_for`, the density rule then the mode's floor), or a
+    number."""
     if kind == "fixed":
-        return base_radius
+        return game.arena_radius
     if kind == "density":
-        return round(base_radius * math.sqrt(ships / base_ships), 1)
+        return api.arena_radius_for(game, ships)
     return float(kind)
 
 
@@ -109,7 +112,7 @@ def main() -> None:
         for ships in (int(size) for size in arguments.sizes.split(","))
     ]
     for ships, kind in cells:
-        radius = radius_of(kind, base.arena_radius, base.ships_per_team, ships)
+        radius = radius_of(kind, base, ships)
         mode = arguments.mode or base.mode
         cell = f"{mode}_{ships}v{ships}_R{radius:.0f}_T{arguments.temperature:g}"
         if arguments.lineup:

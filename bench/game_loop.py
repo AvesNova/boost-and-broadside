@@ -392,9 +392,9 @@ class Loop:
         self.device = torch.device(device)
         self.mode = mode
         base_game = api.PRESETS[MODES[mode]]
-        # the fleet presets' density rule: the arena radius grows as sqrt(n / 5)
-        radius = base_game.arena_radius * math.sqrt(ships_per_team / base_game.ships_per_team)
-        radius *= arena_scale  # a diagnostic: the arena off the density rule
+        # the game's per-size radius (the density rule, the scale, then the mode's floor:
+        # deathmatch at least 3000 m at real scale, game v16)
+        radius = api.arena_radius_for(base_game, ships_per_team, arena_scale)
         game = dataclasses.replace(
             base_game,
             ships_per_team=ships_per_team,
