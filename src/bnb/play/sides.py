@@ -147,8 +147,9 @@ class Scripted:
     label = "scripted"
     overlays = ()
 
-    def __init__(self, rules: api.Rules, types: api.ShipTypes) -> None:
-        self.chaser = Chaser(characteristics(types, rules), rules.ships_per_team)
+    def __init__(self, rules: api.Rules, types: api.ShipTypes, traits=None) -> None:
+        traits = characteristics(types, rules) if traits is None else traits
+        self.chaser = Chaser(traits, rules.ships_per_team)
 
     def retune(self, traits) -> None:
         """Play on at the distances of a tuned card's characteristics (live tuning)."""
@@ -183,11 +184,12 @@ class ScriptedAgent:
         compiled: bool = False,
         background: bool = False,
         doctrine: str = DEFAULT_DOCTRINE,
+        traits=None,
     ) -> None:
         if doctrine not in DOCTRINES:
             raise ValueError(f"no scripted doctrine {doctrine!r}: {sorted(DOCTRINES)}")
         self.doctrine, self.label = doctrine, f"scripted agent {doctrine}"
-        self.characteristics = characteristics(types, rules)
+        self.characteristics = characteristics(types, rules) if traits is None else traits
         parameters = wider_fire(MODE_DEFAULTS, PLAY_FIRE_ANGLE_SCALE)
         self.step = ScriptedStep(rules.ships_per_team, parameters, DOCTRINES[doctrine])
         self.controller = scripted.Scripted(
@@ -571,18 +573,26 @@ def controller_of(
     types: api.ShipTypes,
     compiled: bool = False,
     background: bool = False,
+    traits=None,
 ):
     """The controller of one `SideSetup` for team `team` of the setup's match (raises
     AgentError for an agent that cannot play it). compiled, background: a scripted agent's
-    built step (`ScriptedAgent`)."""
+    built step (`ScriptedAgent`). traits: stand-in characteristics for a scripted side
+    (None: the card's own, measured if no run has)."""
     seed = setup.seed + team
     if side.controller == "agent":
         return load_agent(side.policy, setup.config, rules, types, side.temperature, seed)
     if side.controller == "scripted_agent":
         return ScriptedAgent(
-            rules, types, seed, compiled=compiled, background=background, doctrine=side.doctrine
+            rules,
+            types,
+            seed,
+            compiled=compiled,
+            background=background,
+            doctrine=side.doctrine,
+            traits=traits,
         )
-    return Scripted(rules, types)
+    return Scripted(rules, types, traits)
 
 
 def build_sides(

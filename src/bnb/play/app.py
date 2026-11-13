@@ -307,10 +307,24 @@ class Session:
             )
             deferred = []
             if sides is None:
+                stand_in = self._stand_in_traits(loop)
                 for team, side in enumerate(setup.sides):
                     if self.unmeasured(side, loop):
                         deferred.append(team)
-                        loop.sides.append(Waiting(loop.rules.ships_per_team))
+                        loop.sides.append(
+                            Waiting(loop.rules.ships_per_team)
+                            if stand_in is None
+                            else controller_of(
+                                side,
+                                team,
+                                setup,
+                                loop.rules,
+                                loop.types,
+                                self.options.compile,
+                                background=True,
+                                traits=stand_in,
+                            )
+                        )
                     else:
                         loop.sides.append(
                             controller_of(
@@ -565,6 +579,17 @@ class Session:
         return controller_of(
             side, team, setup, loop.rules, loop.types, self.options.compile, background=True
         )
+
+    def _stand_in_traits(self, loop: MatchLoop):
+        """Characteristics a scripted side can fly the new match on while its own card is
+        measured: the last match's (a tuned card is close to the one before it), when that
+        match had the same ship types; None otherwise (its ships coast, `Waiting`)."""
+        previous = self.loop
+        if previous is None:
+            return None
+        if previous.types.max_energy.shape != loop.types.max_energy.shape:
+            return None
+        return cached_characteristics(previous.types, previous.rules)
 
     def unmeasured(self, side: SideSetup, loop: MatchLoop) -> bool:
         """Whether this side's controller needs ship characteristics that no earlier run
