@@ -38,8 +38,8 @@ builds them). r9m2 in the same run is the control. `maneuvers-2/sizes.py`:
 - confirm (09:11-09:24, 1024 games, 10v10 512): t = 0.2 / 0.3 s, the same cells.
   `confirm.json`, `confirm.table.md`, `confirm-log.txt`.
 - last (09:24-09:27, **cut** at the 2v2 by the coordinator: the author was playtesting and
-  the job took the GPU; only its 1v1 completed): t = 0.2 / 0.3 s with `lead_turn_in_others` (0.5, 0.1) as well, 512 games,
-  against r9m2 also at 10v10. `last.json`, `last-log.txt`.
+  the job took the GPU; only its 1v1 completed): t = 0.2 / 0.3 s with `lead_turn_in_others`
+  (0.5, 0.1) as well, 512 games, against r9m2 also at 10v10. `last.json`, `last-log.txt`.
 
 **Reading the cells.** The Jujak is plain r9m2 in every game, so the self-play energy v
 turn and the energy v turn against r9m2 are the same game (the variant's Yongma against
@@ -124,7 +124,7 @@ in `summary.md` (`summary.py sizes.json confirm.json last.json`).
   0.5 s on frozen), life and merges a kill within noise.
 - **Crowds: no clear loss, but not clean at 0.2 s.** 5v5 mixed against r9m2 at 0.3 s is
   -12 to +6 (controls -24 to +11); at 0.2 s the confirm gives -18 / -15 / -7 against
-  controls +1 / +11 / +4 (pooled about -15 ± 4 net), while the main run gave +21 / -3 / -1.
+  controls +1 / +11 / +4 (about -19 ± 6 net), while the main run gave +21 / -3 / -1.
   The gate keeps the lead turn out of most crowd merges, but late-game lone duels inside a
   5v5 still fly it.
 - **Best t: 0.3 s** (1v1 +0.014 to +0.032 in all six D2 and armour-tank cells, crowds
