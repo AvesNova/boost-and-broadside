@@ -249,10 +249,9 @@ def lock_and_wave(
     with the team's next wave within wave_hold_seconds, holds the defense (+wave_hold) until
     the wave lands. Each term is LOCK_STRENGTHS ship strengths times its weight.
 
-    A ship waits to respawn when it is dead and its respawn wait is at 0 (its wave to come)
-    or below the last decision's (counting down). A benched slot (fleet sizes, the play
-    shell's padded teams: `bnb.game.physics.step`) is a dead ship whose wait holds at the
-    full respawn length, so it never counts; nor does a ship on the tick it died."""
+    A ship waits to respawn when it is dead and not benched (the ship row's `benched` flag:
+    a team's slots beyond its active ships, fleet sizes and the play shell's padded teams,
+    which never respawn)."""
     doctrine = per_ship_doctrine(doctrines, fleet.own_type)
     present = zones[..., ZONE["present"]] > 0.5  # (R, Z)
     to_x, to_y = _pairs(fleet.x, fleet.y, zones[..., ZONE["x"]], zones[..., ZONE["y"]])
@@ -262,9 +261,8 @@ def lock_and_wave(
     lock_enemy = zones[..., ZONE["lock_enemy"]][:, None, :]
     held_out = (present[:, None, :] & (lock_own > travel)).any(-1)  # we cannot retake one
     pressing = (present[:, None, :] & (lock_enemy > travel)).any(-1)  # they cannot
-    wait = column(fleet.own, "respawn_wait")
-    counting = (wait <= 0.0) | (wait < fleet.carry.respawn_seen - 1e-6)
-    waiting = (~own_alive & counting).any(-1, keepdim=True)  # an own ship waits for the wave
+    benched = column(fleet.own, "benched") > 0.5
+    waiting = (~own_alive & ~benched).any(-1, keepdim=True)  # an own ship waits for the wave
     landing = (fleet.next_wave[:, None] < doctrine.wave_hold_seconds) & waiting
     shift = doctrine.lock_press * (held_out.float() - pressing.float())
     shift = shift + doctrine.wave_hold * landing.float()

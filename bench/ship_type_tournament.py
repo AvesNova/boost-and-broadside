@@ -265,6 +265,11 @@ def features(ship_set: str) -> dict[str, dict[str, float]]:
     units: the real-scale set's native x2 handles over `real_scale.EQUIVALENT_FACTOR`
     through the similarity (game v13), and the hit damage as the mean hit (the centre hit
     times MEAN_CLOSENESS, game v6), so they compare with the researched quantities."""
+    raise SystemExit(
+        "features used the researched real-scale types and their builder, which left "
+        "the game on 2026-11-13 (game v17: the set is Yongma, Jujak and Vizia; the "
+        "research data is in src/bnb/reference/)"
+    )
     from bnb.game.handling.similarity import ENERGY, HANDLE_UNITS, factor
     from bnb.game.physics.combat import MEAN_CLOSENESS
     from bnb.game.real_scale import EQUIVALENT_FACTOR, SHIP_SET, combat_constants

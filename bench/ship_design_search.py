@@ -577,6 +577,11 @@ def _solve_design(arguments):
 def export(args) -> None:
     """Solve a candidate's designs exactly and write them as a ship set (rules from the
     real-scale set's), one file per design, in the spec's order."""
+    raise SystemExit(
+        "export (real_scale.solve_type) used the researched real-scale types and their "
+        "builder, which left the game on 2026-11-13 (game v17: the set is Yongma, Jujak "
+        "and Vizia; the research data is in src/bnb/reference/)"
+    )
     import concurrent.futures
 
     from bnb.game import real_scale

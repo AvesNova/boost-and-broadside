@@ -291,6 +291,11 @@ def propose(round_number: int, apply: bool = True) -> dict:
     Returns the proposal (also written to proposal.json); `apply` merges its moves into the
     balance file, labelled round + 1. A round proposed already gives its proposal.json again
     (re-applying its moves), so a rerun does not move a value twice."""
+    raise SystemExit(
+        "propose used the researched real-scale types and their builder, which left the "
+        "game on 2026-11-13 (game v17: the set is Yongma, Jujak and Vizia; the research "
+        "data is in src/bnb/reference/)"
+    )
     from bnb.game import real_scale, ships
 
     docs, _ = paths(round_number)

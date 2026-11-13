@@ -1,8 +1,8 @@
 """The scripted Frontline layer's lock and wave terms (`scripted_frontline.lock_and_wave`,
 the doctrine's `lock_press`, `wave_hold` and `wave_hold_seconds`): off by default, the
 capture lock presses the attack or holds the defense until a travel time before it ends,
-and a waiting respawn holds the defense until its wave, while a benched slot (a dead ship
-whose respawn wait holds still) never counts as waiting."""
+and a waiting respawn holds the defense until its wave, while a benched slot (the ship
+row's `benched` flag) never counts as waiting."""
 
 import types
 
@@ -14,14 +14,13 @@ from bnb.controllers.scripted_doctrine import Doctrine, table
 from bnb.controllers.scripted_frontline import LOCK_STRENGTHS, lock_and_wave
 
 
-def _fleet(x: float, next_wave: float = 0.0, wait=(0.0, 0.0), seen=(-1.0, -1.0)):
-    """One view, two own ships at (x, 0) flying 100 m/s (corner speed 100 m/s), type 0, with
-    these respawn waits now and at the last decision (s)."""
+def _fleet(x: float, next_wave: float = 0.0, benched=(False, False)):
+    """One view, two own ships at (x, 0) flying 100 m/s (corner speed 100 m/s), type 0, these
+    slots benched (the ship rows' `benched` flag)."""
     own = torch.zeros((1, 2, len(SHIP_COLUMNS)))
-    own[..., SHIP["respawn_wait"]] = torch.tensor([wait])
+    own[..., SHIP["benched"]] = torch.tensor([benched], dtype=torch.float32)
     return types.SimpleNamespace(
         own=own,
-        carry=types.SimpleNamespace(respawn_seen=torch.tensor([seen])),
         own_type=torch.zeros((1, 2), dtype=torch.long),
         x=torch.full((1, 2), x),
         y=torch.zeros((1, 2)),
@@ -79,24 +78,17 @@ def test_a_waiting_respawn_holds_the_defense_until_its_wave_lands():
     assert torch.equal(far, torch.zeros((1, 2)))  # the wave is beyond the hold
     landed = lock_and_wave(_fleet(1000.0, next_wave=6.0), _zones(), ALIVE, doctrines)
     assert torch.equal(landed, torch.zeros((1, 2)))  # nobody waits: launch
-    counting = _fleet(1000.0, next_wave=6.0, wait=(0.0, 5.0), seen=(0.0, 5.1))
-    torch.testing.assert_close(
-        lock_and_wave(counting, _zones(), one_dead, doctrines), torch.full((1, 2), LOCK_STRENGTHS)
-    )  # a wait counting down is a ship waiting
 
 
 def test_a_benched_slot_is_not_a_ship_waiting_to_respawn():
-    """A benched slot is held dead with its respawn wait at the full respawn length, still
-    from decision to decision (`bnb.game.physics.step._bench`): the team does not hold for
-    it. A ship that has just died (its wait up from the last decision's) waits from the
-    next decision on."""
+    """A benched slot (the ship row's `benched` flag: a team's slots beyond its active
+    ships) is dead but never respawns: the team does not hold for it, while a dead ship
+    that is not benched holds the team as before."""
     doctrines = _doctrines(wave_hold=1.0, wave_hold_seconds=30.0)
-    benched = torch.tensor([[False, True]])  # alive: slot 0 dead (benched), slot 1 alive
-    held_still = _fleet(1000.0, next_wave=6.0, wait=(8.0, 0.0), seen=(8.0, 0.0))
-    assert torch.equal(lock_and_wave(held_still, _zones(), benched, doctrines), torch.zeros(1, 2))
-    first_decision = _fleet(1000.0, next_wave=6.0, wait=(8.0, 0.0), seen=(-1.0, -1.0))
-    assert torch.equal(
-        lock_and_wave(first_decision, _zones(), benched, doctrines), torch.zeros(1, 2)
+    slot_0_dead = torch.tensor([[False, True]])  # alive
+    benched = _fleet(1000.0, next_wave=6.0, benched=(True, False))
+    assert torch.equal(lock_and_wave(benched, _zones(), slot_0_dead, doctrines), torch.zeros(1, 2))
+    waiting = _fleet(1000.0, next_wave=6.0, benched=(False, False))
+    torch.testing.assert_close(
+        lock_and_wave(waiting, _zones(), slot_0_dead, doctrines), torch.full((1, 2), LOCK_STRENGTHS)
     )
-    just_died = _fleet(1000.0, next_wave=6.0, wait=(8.0, 0.0), seen=(0.0, 0.0))
-    assert torch.equal(lock_and_wave(just_died, _zones(), benched, doctrines), torch.zeros(1, 2))
