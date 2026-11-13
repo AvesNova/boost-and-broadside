@@ -403,7 +403,14 @@ LIVE_RULES = (
     "field_high_share",
     "field_strong_share",
 )
-LIVE_FLIGHT = ("gravity", "engine_knee", "store_fade_band", "nose_damping", "nose_frequency_floor")
+LIVE_FLIGHT = (
+    "gravity",
+    "engine_knee",
+    "store_fade_band",
+    "nose_damping",
+    "nose_frequency_floor",
+    "critical_speed",
+)
 LIVE_MODE = (
     "kills_per_ship",
     "group_centre_fraction",

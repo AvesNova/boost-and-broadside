@@ -70,7 +70,9 @@ def test_the_drag_rise_doubles_the_zero_lift_drag_at_the_critical_speed():
     expected = airframe.zero_lift_drag * (1.0 + (speeds / 200.0) ** 12)
     torch.testing.assert_close(zero_lift_drag(constants, airframe, speeds), expected)
     off = _flight(critical_speed=0.0)
-    assert zero_lift_drag(off, airframe, speeds) is airframe.zero_lift_drag
+    torch.testing.assert_close(
+        zero_lift_drag(off, airframe, speeds), airframe.zero_lift_drag.expand_as(expected)
+    )
 
 
 def test_the_stick_takes_each_types_own_fine_and_sustained_levels():

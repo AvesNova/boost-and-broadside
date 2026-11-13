@@ -246,10 +246,11 @@ def rates(
 
 def zero_lift_drag(constants: FlightConstants, airframe: Airframe, speed: torch.Tensor):
     """The zero-lift drag coefficient (1/m) at a speed: the card's, times the drag rise
-    1 + (u / u_c)^q when the rules give a critical speed u_c."""
-    if constants.critical_speed <= 0.0:
-        return airframe.zero_lift_drag
-    rise = torch.pow(speed.abs() / constants.critical_speed, constants.drag_rise_exponent)
+    1 + (u / u_c)^q when the rules give a critical speed u_c (0: no rise). u_c is a live
+    value (a number or a 0-d tensor in a tick), so no branch on it."""
+    critical = torch.as_tensor(constants.critical_speed, dtype=speed.dtype, device=speed.device)
+    inverse = torch.where(critical > 0.0, 1.0 / critical.clamp_min(1e-12), 0.0)
+    rise = torch.pow(speed.abs() * inverse, constants.drag_rise_exponent)
     return airframe.zero_lift_drag * (1.0 + rise)
 
 
