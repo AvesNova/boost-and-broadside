@@ -264,11 +264,13 @@ class Draft:
 
 def switch(controls, name: str, value: bool, help: str) -> bool:
     """An On / Off pair of buttons (recorded as `name/on` and `name/off`); returns the
-    value after this frame's click."""
-    if button(controls, f"{name}/on", "On", help, active=value):
+    value after this frame's click. Each button's ImGui id carries `name`: two switches in
+    one window would otherwise share the ids "On" and "Off", and a click on the second
+    would press the first."""
+    if button(controls, f"{name}/on", f"On##{name}", help, active=value):
         value = True
     imgui.same_line(0.0, 2.0)
-    if button(controls, f"{name}/off", "Off", help, active=not value):
+    if button(controls, f"{name}/off", f"Off##{name}", help, active=not value):
         value = False
     return value
 

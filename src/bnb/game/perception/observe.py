@@ -178,7 +178,7 @@ def perceive(
             arena.arena_radius,
             match.fogged.float(),
             (match.episode_tick == 0).float(),
-            boundary_fraction(arena, match.episode_tick),
+            boundary_fraction(arena, match.episode_tick).clamp_min(0.0),  # 0 once past 0
             boundary_time_to_zero(arena, match.episode_tick, rules.tick_length),
         ],
         -1,

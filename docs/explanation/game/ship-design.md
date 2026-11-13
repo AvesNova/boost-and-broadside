@@ -143,7 +143,7 @@ reason and to be nearly independent of the others (below):
 | climb rate | flight | the store's charge, as a ratio to the set-wide level: the energy fight and the reset |
 | store (`ceiling`) | flight | how long a ship can boost and fire |
 | damage per second | combat | the weight of fire (the hit damage is it over the fire rate) |
-| fire rate | combat | how the damage arrives: the hits a kill takes against a shield (5, 6, 10 or 15 Hz) |
+| fire rate | combat | how the damage arrives: the hits a kill takes against a shield (10, 15 or 30 Hz native: the planes' 5, 7.5 and 15) |
 | shield | combat | toughness (80 to 200) |
 | muzzle speed | combat | the gun's reach and the lead a shot needs |
 | dispersion | combat | the cone (the bullet spread over the muzzle speed) |
@@ -169,7 +169,7 @@ The envelope is the 16 real propeller fighters of the set; the Me 262 and the Me
 left out (the author's decision: a jet's 228 m/s and a rocket's 81 m/s climb are outside what
 the propeller types can be made to fight, and a design built to match them would be the
 "Mach 2 with no damage" compensation the set should avoid), as are the invented designs. A
-knob's bounds are the 16's range, except the damage per second (288 to 432: the balancing
+knob's bounds are the 16's range, except the damage per second (576 to 864 native, 288 to 432 at the planes' speed: the balancing
 had set every type near 360) and the shield (80 to 200, the cap raised), and the sustained
 turn, ±10% past the range (no turn rate is measured). Within the bounds, a design's realism
 is its Mahalanobis distance from the 16's mean in the knobs' logs, under their correlation

@@ -202,10 +202,19 @@ SETTINGS = (
     _s(
         "mode.shrink_hold_seconds",
         ELIMINATION_GROUP,
-        "boundary hold (then it shrinks to 0 by the clock's end)",
+        "boundary hold (then it shrinks past 0)",
         "s",
         0.0,
         900.0,
+        modes=("elimination",),
+    ),
+    _s(
+        "mode.shrink_end_lead_seconds",
+        ELIMINATION_GROUP,
+        "boundary closes, before the clock (full damage everywhere)",
+        "s",
+        0.0,
+        120.0,
         modes=("elimination",),
     ),
     _s(
@@ -452,6 +461,7 @@ LIVE_MODE = (
     "lock_seconds_per_root_km",
     "wave_seconds",
     "shrink_hold_seconds",
+    "shrink_end_lead_seconds",
     "shrink_law",
 )
 LIVE_POOL = ("arena_radius", "episode_ticks", "respawn_ticks")

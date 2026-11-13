@@ -45,11 +45,14 @@ For display (the play shell), with no rules of their own: `display` (the state's
 display draws, by name), `log_index` and `log_index_gradient` (the medium at points),
 `core_radius` and `outer_radius` (the band edges, where the sight test changes), `zone_sides`
 (Frontline's zone owners and attackers), `visible` (each team's observation in sim order),
-`vision_range`, `per_ship`, `bullet_moves` (a card's bullet lives in moves) and `type_names`
-(the ship types' names, from the ship files); `bullet_paths` (each live bullet's flight
+`vision_range`, `per_ship`, `bullet_moves` (a card's bullet lives in moves), `type_names`
+(the ship types' names, from the ship files) and `equivalent_factor` (how many times faster
+than the planes a ship set plays natively); `bullet_paths` (each live bullet's flight
 ahead, by the game's own transport); and the constants `TEAMS`, `LN_SQRT2` (ln n per field
 level), `MAP_SCALE_RADIUS` (the arena radius of map scale 1), the game presets `PRESETS` and the
-lineups of those whose lineup is their own (`LINEUPS`, as type indices by `preset_lineup`).
+lineups of those whose lineup is their own (`LINEUPS`, as type indices by `preset_lineup`);
+`arena_radius_for` (a game's arena radius at another fleet size: the density rule, then the
+mode's minimum, `minimum_arena_radius`).
 """
 
 import torch
@@ -74,7 +77,7 @@ from .handling.weapons import combat_card, combat_handles
 from .layout import environment, per_mode
 from .modes import frontline, phase
 from .modes.frontline import lock_ticks
-from .modes.rules import FLEET_PRESETS, LINEUPS, PRESETS
+from .modes.rules import FLEET_PRESETS, LINEUPS, PRESETS, arena_radius_for, minimum_arena_radius
 from .perception import sight
 from .perception.observe import perceive, view_order
 from .perception.sight import vision_range
@@ -113,6 +116,8 @@ __all__ = [
     "MAP_SCALE_RADIUS",
     "PRESETS",
     "FLEET_PRESETS",
+    "arena_radius_for",
+    "minimum_arena_radius",
     "LINEUPS",
     "Rules",
     "ShipTypes",
@@ -129,6 +134,7 @@ __all__ = [
     "default_card",
     "display",
     "episode_ticks",
+    "equivalent_factor",
     "field_radius_summary",
     "flight_tick",
     "launch_capture",
@@ -170,6 +176,14 @@ __all__ = [
 def spread(rules: Rules, batch: int, device=None, generator=None) -> torch.Tensor:
     """(B, N, 2) standard normals: the bullet spread of one tick."""
     return torch.randn((batch, rules.num_ships, 2), device=device, generator=generator)
+
+
+def equivalent_factor(ship_set: str) -> float:
+    """How many times faster than the planes a set plays natively (game v13): the real-scale
+    set's `real_scale.EQUIVALENT_FACTOR` (2), 1 for every other set. Display only."""
+    from . import real_scale  # the set's arithmetic, loaded only when asked
+
+    return real_scale.EQUIVALENT_FACTOR if ship_set == real_scale.SHIP_SET else 1.0
 
 
 def preset_lineup(name: str) -> tuple[int, ...] | None:

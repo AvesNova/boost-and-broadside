@@ -161,7 +161,7 @@ by default:
 - **Duel extension** (`duel_extend`): alone with the target after the pass, extend (the
   crowd sense's stick and boost) instead of the sense's turn when the own shield, specific
   energy or maximum lift coefficient over the target's is below its gate
-  (`duel_extend_in_shield_ratio`, `_in_energy_ratio`, `_in_lift_ratio`): a hurt ship
+  (`duel_extend_in_shield_ratio`, `duel_extend_in_energy_ratio`, `duel_extend_in_lift_ratio`): a hurt ship
   leaves the turning fight. `duel_extend_mirror_only` keeps it to the own type;
   `duel_extend_cross_in_others` lets it act against another type only with another known
   enemy anywhere (in a team game, not a lone duel).

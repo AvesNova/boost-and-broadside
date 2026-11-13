@@ -14,9 +14,10 @@ The modes are `bnb.contracts.config.MODES`:
 
 - **team deathmatch**: score by deaths;
 - **Frontline**: capture zones around a ring and push the front;
-- **elimination**: team deathmatch without respawns and with a boundary that shrinks to
-  nothing by the clock's end: wipe out the other team, or at the clock have more health
-  left (the living ships' shield fractions, summed);
+- **elimination**: team deathmatch without respawns and with a boundary that shrinks
+  past the centre before the clock's end, so every ship dies: wipe out the other team
+  first (ships that die on the same tick go to the health left, the living ships' shield
+  fractions, summed);
 - **sandbox**: the physics game alone, with no score and no win, only the clock. The race's
   reference tests run in it.
 
@@ -42,6 +43,16 @@ scripted agent's 2v2s on it, 0-12 s after the start, the first kill 9-23 s in, w
 of the ships' time beyond the boundary (at 1300 m: 0-7.5 s, 6-14 s and 10-16%).
 `real_scale_deathmatch` plays a 4200 m arena (the author, 2026-11-13), smaller than the
 real-scale map's 7800 m, which `real_scale_frontline` keeps.
+
+A game at another fleet size takes its arena radius from `bnb.game.api.arena_radius_for`
+(game v16): the density rule (the base game's radius times sqrt(n / n_base), so the ships
+stay as crowded), times an optional arena scale, then at least the mode's minimum
+(`bnb.game.modes.rules.MINIMUM_ARENA_RADIUS`, m at map scale 1 times the ship set's map
+scale, 3 for the real-scale set). Team deathmatch's minimum is 1000 m, 3000 m at real
+scale: by the rule alone real-scale 2v2 and 1v1 would play 2656 m and 1878 m arenas.
+Elimination and frontline have none for now. The minimum applies after the arena scale,
+so a map drawn at half size is still floored. The `_density` fleet presets and Clover
+take their radius from it; the `arena` preset's 1950 m is its own choice, not derived.
 `real_scale_elimination` is elimination at the training size (5v5, 10 random fields, the
 7800 m real-scale map, 180 s); `clover` is the author's 2v2 elimination map with a fixed
 layout (see [Fixed layouts and Clover](#fixed-layouts-and-clover)). A config's fields may be
@@ -69,7 +80,7 @@ When a match ends, the environment gets a new map and a fresh mode state
 ## Team deathmatch
 
 - **Respawn:** a dead ship respawns after a fixed wait: 10 s at real scale (the author,
-  2026-11-13; the `real_scale_deathmatch` preset's), 4 s in the standard game. There are no waves. The wait is the `pool.respawn_seconds` setting, shown in the
+  2026-11-13; the `real_scale_deathmatch` preset's), 4 s in the standard game. There are no waves. The wait is the `bnb.contracts.pools.Pool.respawn_seconds` setting, shown in the
   Map / mode panel's Team deathmatch group.
 - **Score:** every death scores one point for the other team, whatever its cause: an
   enemy's hit, friendly fire or the boundary.
@@ -106,7 +117,8 @@ deathmatch, every death a point for the other team, with one kill per enemy ship
   no respawn wait, and `bnb.game.rules` sets it to the episode's), so it is still waiting
   when the episode ends. A config takes no `respawn_seconds` in elimination, and the live
   tuning's episode length moves the wait with it.
-- **At the clock** (`bnb.game.modes.phase.clock_result`): the team with more health left wins
+- **At the clock** (`bnb.game.modes.phase.clock_result`; since the boundary closes first,
+  in practice a lead set shorter than a shield's life): the team with more health left wins
   (game v12): each living ship counts its shield over its type's full shield, 0 to 1,
   summed by team (the shield is the game's only health: a ship whose shield is gone dies to
   any damage). Equal, a draw. The rule is zero-sum, so the side behind has to attack: a
@@ -119,19 +131,27 @@ deathmatch, every death a point for the other team, with one kill per enemy ship
   nose toward the enemy area's centre within `side_heading_jitter` (15 degrees), turned
   the least that keeps team deathmatch's edge rule. A fixed layout's spawns (Clover)
   replace it.
-- **The boundary shrinks** (game v14; `bnb.game.layout.boundary_fraction`): it stays at
-  the arena radius for `ModeRules.shrink_hold_seconds` (18 s, 36 s at real scale: a fifth
-  of the clock), then shrinks to radius 0 at the clock's end, linear in radius
-  (`shrink_law` 0, the default) or along the smootherstep (1: a smooth start and end).
-  Boundary damage (see [physics](physics.md)) is measured from the boundary as it stands,
-  so by the end no place is safe: a side that keeps away from the fight is pushed back
-  into it, and the end time does not depend on how the sides fly. What is still alive at
-  the clock goes to the tie-break below. Both settings are live, in the Map / mode
-  panel's Elimination group. Positions and every map length keep the arena radius as
-  their scale; only the boundary moves.
+- **The boundary shrinks** (game v14, closing before the clock since v16;
+  `bnb.game.layout.boundary_fraction`): it stays at the arena radius for
+  `ModeRules.shrink_hold_seconds` (18 s, 36 s at real scale: a fifth of the clock), then
+  shrinks, linear in radius (`shrink_law` 0, the default) or along the smootherstep (1: a
+  smooth start and end), past radius 0 to minus one ramp width, which it reaches
+  `shrink_end_lead_seconds` (8 s) before the clock. Boundary damage (see
+  [physics](physics.md)) is measured from the boundary as it stands, so a side that keeps
+  away from the fight is pushed back into it, and the end time does not depend on how the
+  sides fly. A negative radius puts every point beyond the boundary: from the zero
+  crossing even a ship at the centre is hurt every tick, so its shield does not recharge,
+  and from the close it takes the boundary's most. The lead is set so the largest shield
+  of either set dies in it: 160 at 30 per s (40 at real scale) is 5.3 s, plus a tick to
+  kill a broken shield, leaving 2.6 s of margin before the damage between the zero
+  crossing and the close is counted. So every ship dies before the clock; the tie-break
+  below decides only ships that die together. The three settings are live, in the Map /
+  mode panel's Elimination group. Positions and every map length keep the arena radius
+  as their scale; only the boundary moves.
 - **Observation:** the `mode_elimination` flag; the scores are the kills and the winning
   score is the enemy's (active) ships. The globals `boundary_fraction` (the boundary's
-  radius over the arena radius) and `boundary_time_to_zero` (seconds) show the shrink.
+  radius over the arena radius, 0 once it has passed the centre) and
+  `boundary_time_to_zero` (seconds to the zero crossing, then 0) show the shrink.
 - **Clock:** 90 s by default, 180 s at real scale (both presets): a short episode.
 
 ## Fixed layouts and Clover
@@ -203,8 +223,8 @@ None, as in training) the game is bit-identical to the game without the input
   adjacent zone centres. The default, 19 s per sqrt(km), is about 45 s at 5v5 on the
   real-scale map (d = 5.64 km), 54 s at 10v10 and 64 s at 20v20: the hard lock at which
   the team that captured is about as likely as the other to capture next (P = 0.5 in
-  `bench/frontline_design.py`), to be calibrated again on the final ship card. The state
-  holds it per team and zone (`ModeState.lock`, ticks), so it is exact for any sequence
+  the frontline design bench, bench/frontline_design.py on the tune/respawn-waves branch), to be calibrated again on the final ship card. The state
+  holds it per team and zone (the `bnb.game.state.ModeState` field lock, ticks), so it is exact for any sequence
   of captures; `frontline.lock_ticks`, `locks_after` and `attacker_locked` compute it.
 - **Respawn waves** (game version 8): a dead ship waits its minimum (`respawn_seconds`, 8 s
   at real scale and 4 s in the standard game) and then respawns at its team's next
@@ -214,7 +234,7 @@ None, as in training) the game is bit-identical to the game without the input
   The state holds each team's ticks to its next wave (`ModeState.wave_wait`); the wave
   lands on the tick it reaches 0 and the next is an interval later. `wave_seconds` 0
   turns the waves off (every tick lands), which leaves the fixed wait. The respawn waves
-  study (`docs/rewrite/sections/respawn-waves/progress.md`) found the waves move the pace
+  study (docs/rewrite/sections/respawn-waves/progress.md on the tune/respawn-waves branch) found the waves move the pace
   (an earlier first capture, shorter games) and not the momentum.
 - **Spawns:** a ship spawns at a random point near its team's current spawn zone, facing
   the zone its team attacks.

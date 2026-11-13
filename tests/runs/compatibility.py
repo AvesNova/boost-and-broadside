@@ -5,6 +5,13 @@ current version, with a fixed input and the outputs of its single step.
 
 writes `tests/runs/checkpoints/<MODEL>-v<VERSION>/` and removes the model's older entry.
 Run it only with a version bump, and say in the commit why the version rose.
+
+    uv run --no-sync python tests/runs/compatibility.py --outputs MODEL
+
+records the entry's outputs again from its stored policy file and inputs, at the same
+version: for a change that computes the same mathematics with other rounding (beyond
+OUTPUT_TOLERANCE's few ulps), which old policy files still load and play. Say in the commit
+which change moved the outputs, and by how much.
 """
 
 import pathlib
@@ -17,7 +24,7 @@ import torch
 
 from bnb.contracts import Obs
 from bnb.models.yemong.model import Yemong
-from bnb.runs.checkpoint import read_policy, save_policy
+from bnb.runs.checkpoint import load_policy, read_policy, save_policy
 from bnb.runs.registry import model_class
 from bnb.runs.serialise import named_tensors, tree_from_named
 
@@ -68,7 +75,21 @@ def write(name: str) -> pathlib.Path:
     return directory
 
 
+def record_outputs(name: str) -> pathlib.Path:
+    """Record the entry's outputs again from its stored policy file and inputs."""
+    directory = entry(name)
+    model = load_policy(directory / "policy", cases.CPU).eval()
+    obs, carry = inputs(model, directory)
+    outputs = cases.single_step(model, obs, carry)
+    safetensors.torch.save_file(
+        {key: value.clone() for key, value in outputs.items()}, directory / OUTPUTS
+    )
+    return directory / OUTPUTS
+
+
 if __name__ == "__main__":
     torch.set_num_threads(1)
-    for model_name in sys.argv[1:]:
-        print(f"wrote {write(model_name)}")
+    arguments = sys.argv[1:]
+    only_outputs = "--outputs" in arguments
+    for model_name in (argument for argument in arguments if argument != "--outputs"):
+        print(f"wrote {record_outputs(model_name) if only_outputs else write(model_name)}")

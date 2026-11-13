@@ -22,7 +22,7 @@ tall as the room under the top bar (never taller; its contents scroll). Each row
 - **Real-world equivalent** (a set that plays faster than the planes natively: the
   real-scale set at x2, game v13): off by default, the panel shows and edits the native
   values; on, a table under the handles shows each one's plane equivalent (native through
-  the similarity at time x `equivalent_factor`: speeds / 2, accelerations / 4, rates / 2,
+  the similarity at time x `api.equivalent_factor`: speeds / 2, accelerations / 4, rates / 2,
   times x 2), labelled "equivalent". Display only: edits and saves stay native.
 - **Maps**: **Save as a map** opens the menu's Maps page with this match, its tuning
   included (the rules' settings, the changed ship cards and the time scale), to save under
@@ -38,7 +38,7 @@ from imgui_bundle import imgui
 from bnb.game import api
 
 from .interface.layout import MARGIN, TOP_BAR, Rect
-from .tuning import SET_BY, Tuning, equivalent_factor, equivalent_handle, fire_rates
+from .tuning import SET_BY, Tuning, equivalent_handle, fire_rates
 
 PANEL_WIDTH = 400.0  # pixels at interface scale 1, like every size here
 LABEL_WIDTH = 150.0  # the label column
@@ -446,8 +446,8 @@ class TuningPanel:
     def _equivalent(self, session, tuner, kind: int) -> None:
         """The **Real-world equivalent** toggle (off by default) and, on, each handle's plane
         equivalent (`equivalent_handle`), labelled "equivalent": only for a set that plays
-        faster than the planes natively (`equivalent_factor` above 1). Display only."""
-        factor = equivalent_factor(tuner.ship_set)
+        faster than the planes natively (`api.equivalent_factor` above 1). Display only."""
+        factor = api.equivalent_factor(tuner.ship_set)
         if factor == 1.0:
             return
         _, self.equivalent = imgui.checkbox("Real-world equivalent", self.equivalent)
