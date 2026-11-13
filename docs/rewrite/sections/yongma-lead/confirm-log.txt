@@ -2,3 +2,157 @@
   batch 1/7 29 s; ETA 09:15 KST
   batch 2/7 51 s; ETA 09:14 KST
   batch 3/7 74 s; ETA 09:14 KST
+  batch 4/7 96 s; ETA 09:14 KST
+  batch 5/7 117 s; ETA 09:14 KST
+  batch 6/7 138 s; ETA 09:14 KST
+  batch 7/7 160 s; ETA 09:14 KST
+1v1            balance-d2 | r9m2   energy v turn v c0: score 0.484 ± 0.010  kills m/o/f/t 0.23 / 0.70 / 0.08 / 0.00  life 296 s  kpm/ship 0.20  trades 0.00
+1v1            balance-d2 | r9m2   energy mirror v c0: score 0.495 ± 0.011  kills m/o/f/t 0.63 / 0.23 / 0.03 / 0.12  life 186 s  kpm/ship 0.31  trades 0.00
+1v1 balance-d2 | r9m2 + Yongma lone lead 0.2 s   energy v turn v c1: score 0.511 ± 0.010  kills m/o/f/t 0.24 / 0.68 / 0.08 / 0.00  life 276 s  kpm/ship 0.21  trades 0.00
+1v1 balance-d2 | r9m2 + Yongma lone lead 0.2 s   energy mirror v c1: score 0.487 ± 0.011  kills m/o/f/t 0.62 / 0.24 / 0.02 / 0.12  life 188 s  kpm/ship 0.30  trades 0.01
+1v1 balance-d2 | r9m2 + Yongma lone lead 0.3 s   energy v turn v c2: score 0.503 ± 0.010  kills m/o/f/t 0.23 / 0.69 / 0.07 / 0.00  life 284 s  kpm/ship 0.20  trades 0.00
+1v1 balance-d2 | r9m2 + Yongma lone lead 0.3 s   energy mirror v c2: score 0.498 ± 0.011  kills m/o/f/t 0.61 / 0.23 / 0.02 / 0.14  life 191 s  kpm/ship 0.30  trades 0.01
+1v1                frozen | r9m2   energy v turn v c3: score 0.008 ± 0.002  kills m/o/f/t 0.16 / 0.13 / 0.42 / 0.29  life 170 s  kpm/ship 0.33  trades 0.00
+1v1                frozen | r9m2   energy mirror v c3: score 0.507 ± 0.010  kills m/o/f/t 0.61 / 0.22 / 0.02 / 0.15  life 275 s  kpm/ship 0.21  trades 0.00
+1v1 frozen | r9m2 + Yongma lone lead 0.2 s   energy v turn v c4: score 0.009 ± 0.002  kills m/o/f/t 0.16 / 0.13 / 0.42 / 0.29  life 171 s  kpm/ship 0.33  trades 0.00
+1v1 frozen | r9m2 + Yongma lone lead 0.2 s   energy mirror v c4: score 0.491 ± 0.011  kills m/o/f/t 0.60 / 0.23 / 0.03 / 0.14  life 292 s  kpm/ship 0.20  trades 0.00
+1v1 frozen | r9m2 + Yongma lone lead 0.3 s   energy v turn v c5: score 0.010 ± 0.002  kills m/o/f/t 0.16 / 0.14 / 0.43 / 0.28  life 169 s  kpm/ship 0.34  trades 0.00
+1v1 frozen | r9m2 + Yongma lone lead 0.3 s   energy mirror v c5: score 0.504 ± 0.011  kills m/o/f/t 0.60 / 0.22 / 0.02 / 0.15  life 302 s  kpm/ship 0.19  trades 0.00
+1v1           armour-tank | r9m2   energy v turn v c6: score 0.515 ± 0.011  kills m/o/f/t 0.12 / 0.81 / 0.07 / 0.00  life 216 s  kpm/ship 0.27  trades 0.00
+1v1           armour-tank | r9m2   energy mirror v c6: score 0.508 ± 0.011  kills m/o/f/t 0.35 / 0.47 / 0.03 / 0.15  life 214 s  kpm/ship 0.27  trades 0.00
+1v1 armour-tank | r9m2 + Yongma lone lead 0.2 s   energy v turn v c7: score 0.517 ± 0.011  kills m/o/f/t 0.11 / 0.81 / 0.08 / 0.00  life 218 s  kpm/ship 0.26  trades 0.00
+1v1 armour-tank | r9m2 + Yongma lone lead 0.2 s   energy mirror v c7: score 0.505 ± 0.011  kills m/o/f/t 0.33 / 0.48 / 0.04 / 0.14  life 222 s  kpm/ship 0.26  trades 0.00
+1v1 armour-tank | r9m2 + Yongma lone lead 0.3 s   energy v turn v c8: score 0.527 ± 0.011  kills m/o/f/t 0.11 / 0.82 / 0.08 / 0.00  life 217 s  kpm/ship 0.27  trades 0.00
+1v1 armour-tank | r9m2 + Yongma lone lead 0.3 s   energy mirror v c8: score 0.525 ± 0.011  kills m/o/f/t 0.34 / 0.47 / 0.04 / 0.15  life 231 s  kpm/ship 0.25  trades 0.00
+1v1            balance-d2 | r9m2   energy v turn v r9m2: score 0.499 ± 0.010  kills m/o/f/t 0.24 / 0.67 / 0.09 / 0.00  life 286 s  kpm/ship 0.20  trades 0.00
+1v1            balance-d2 | r9m2   turn v energy v r9m2: score 0.488 ± 0.010  kills m/o/f/t 0.23 / 0.69 / 0.08 / 0.00  life 283 s  kpm/ship 0.20  trades 0.00
+1v1            balance-d2 | r9m2           mixed v r9m2: score 0.526 ± 0.011  kills m/o/f/t 0.62 / 0.24 / 0.03 / 0.11  life 188 s  kpm/ship 0.30  trades 0.01
+1v1            balance-d2 | r9m2  mixed reversed v r9m2: score 0.517 ± 0.011  kills m/o/f/t 0.67 / 0.22 / 0.03 / 0.08  life 224 s  kpm/ship 0.26  trades 0.05
+1v1 balance-d2 | r9m2 + Yongma lone lead 0.2 s   energy v turn v r9m2: score 0.516 ± 0.010  kills m/o/f/t 0.24 / 0.69 / 0.07 / 0.00  life 282 s  kpm/ship 0.21  trades 0.00
+1v1 balance-d2 | r9m2 + Yongma lone lead 0.2 s   turn v energy v r9m2: score 0.481 ± 0.010  kills m/o/f/t 0.23 / 0.69 / 0.08 / 0.00  life 283 s  kpm/ship 0.21  trades 0.00
+1v1 balance-d2 | r9m2 + Yongma lone lead 0.2 s           mixed v r9m2: score 0.472 ± 0.011  kills m/o/f/t 0.60 / 0.25 / 0.02 / 0.12  life 192 s  kpm/ship 0.30  trades 0.00
+1v1 balance-d2 | r9m2 + Yongma lone lead 0.2 s  mixed reversed v r9m2: score 0.500 ± 0.011  kills m/o/f/t 0.64 / 0.22 / 0.04 / 0.10  life 225 s  kpm/ship 0.26  trades 0.04
+1v1 balance-d2 | r9m2 + Yongma lone lead 0.3 s   energy v turn v r9m2: score 0.516 ± 0.010  kills m/o/f/t 0.24 / 0.68 / 0.08 / 0.00  life 283 s  kpm/ship 0.20  trades 0.00
+1v1 balance-d2 | r9m2 + Yongma lone lead 0.3 s   turn v energy v r9m2: score 0.523 ± 0.010  kills m/o/f/t 0.23 / 0.68 / 0.08 / 0.00  life 298 s  kpm/ship 0.20  trades 0.00
+1v1 balance-d2 | r9m2 + Yongma lone lead 0.3 s           mixed v r9m2: score 0.485 ± 0.011  kills m/o/f/t 0.60 / 0.24 / 0.03 / 0.13  life 190 s  kpm/ship 0.30  trades 0.00
+1v1 balance-d2 | r9m2 + Yongma lone lead 0.3 s  mixed reversed v r9m2: score 0.521 ± 0.011  kills m/o/f/t 0.65 / 0.22 / 0.03 / 0.10  life 226 s  kpm/ship 0.25  trades 0.05
+1v1                frozen | r9m2   energy v turn v r9m2: score 0.006 ± 0.002  kills m/o/f/t 0.16 / 0.13 / 0.42 / 0.29  life 170 s  kpm/ship 0.33  trades 0.00
+1v1                frozen | r9m2   turn v energy v r9m2: score 0.990 ± 0.002  kills m/o/f/t 0.15 / 0.13 / 0.42 / 0.30  life 171 s  kpm/ship 0.33  trades 0.00
+1v1                frozen | r9m2           mixed v r9m2: score 0.507 ± 0.010  kills m/o/f/t 0.61 / 0.21 / 0.04 / 0.14  life 276 s  kpm/ship 0.21  trades 0.01
+1v1                frozen | r9m2  mixed reversed v r9m2: score 0.482 ± 0.011  kills m/o/f/t 0.79 / 0.13 / 0.02 / 0.07  life 124 s  kpm/ship 0.45  trades 0.04
+1v1 frozen | r9m2 + Yongma lone lead 0.2 s   energy v turn v r9m2: score 0.012 ± 0.002  kills m/o/f/t 0.16 / 0.13 / 0.42 / 0.29  life 170 s  kpm/ship 0.33  trades 0.00
+1v1 frozen | r9m2 + Yongma lone lead 0.2 s   turn v energy v r9m2: score 0.990 ± 0.002  kills m/o/f/t 0.16 / 0.12 / 0.43 / 0.28  life 168 s  kpm/ship 0.34  trades 0.00
+1v1 frozen | r9m2 + Yongma lone lead 0.2 s           mixed v r9m2: score 0.489 ± 0.010  kills m/o/f/t 0.58 / 0.23 / 0.03 / 0.16  life 278 s  kpm/ship 0.21  trades 0.00
+1v1 frozen | r9m2 + Yongma lone lead 0.2 s  mixed reversed v r9m2: score 0.491 ± 0.012  kills m/o/f/t 0.79 / 0.12 / 0.02 / 0.08  life 122 s  kpm/ship 0.46  trades 0.04
+1v1 frozen | r9m2 + Yongma lone lead 0.3 s   energy v turn v r9m2: score 0.009 ± 0.002  kills m/o/f/t 0.17 / 0.13 / 0.41 / 0.29  life 171 s  kpm/ship 0.33  trades 0.00
+1v1 frozen | r9m2 + Yongma lone lead 0.3 s   turn v energy v r9m2: score 0.994 ± 0.002  kills m/o/f/t 0.15 / 0.12 / 0.43 / 0.30  life 169 s  kpm/ship 0.34  trades 0.00
+1v1 frozen | r9m2 + Yongma lone lead 0.3 s           mixed v r9m2: score 0.493 ± 0.010  kills m/o/f/t 0.58 / 0.25 / 0.03 / 0.14  life 286 s  kpm/ship 0.20  trades 0.00
+1v1 frozen | r9m2 + Yongma lone lead 0.3 s  mixed reversed v r9m2: score 0.463 ± 0.012  kills m/o/f/t 0.78 / 0.12 / 0.01 / 0.08  life 123 s  kpm/ship 0.45  trades 0.04
+1v1           armour-tank | r9m2   energy v turn v r9m2: score 0.504 ± 0.011  kills m/o/f/t 0.11 / 0.81 / 0.08 / 0.00  life 210 s  kpm/ship 0.27  trades 0.00
+1v1           armour-tank | r9m2   turn v energy v r9m2: score 0.487 ± 0.011  kills m/o/f/t 0.12 / 0.80 / 0.08 / 0.00  life 213 s  kpm/ship 0.27  trades 0.00
+1v1           armour-tank | r9m2           mixed v r9m2: score 0.510 ± 0.011  kills m/o/f/t 0.35 / 0.46 / 0.04 / 0.15  life 211 s  kpm/ship 0.27  trades 0.00
+1v1           armour-tank | r9m2  mixed reversed v r9m2: score 0.506 ± 0.010  kills m/o/f/t 0.52 / 0.32 / 0.04 / 0.12  life 246 s  kpm/ship 0.23  trades 0.01
+1v1 armour-tank | r9m2 + Yongma lone lead 0.2 s   energy v turn v r9m2: score 0.534 ± 0.011  kills m/o/f/t 0.11 / 0.80 / 0.09 / 0.00  life 209 s  kpm/ship 0.27  trades 0.00
+1v1 armour-tank | r9m2 + Yongma lone lead 0.2 s   turn v energy v r9m2: score 0.485 ± 0.011  kills m/o/f/t 0.11 / 0.81 / 0.08 / 0.00  life 216 s  kpm/ship 0.27  trades 0.00
+1v1 armour-tank | r9m2 + Yongma lone lead 0.2 s           mixed v r9m2: score 0.478 ± 0.011  kills m/o/f/t 0.34 / 0.48 / 0.03 / 0.15  life 220 s  kpm/ship 0.26  trades 0.00
+1v1 armour-tank | r9m2 + Yongma lone lead 0.2 s  mixed reversed v r9m2: score 0.508 ± 0.009  kills m/o/f/t 0.54 / 0.31 / 0.04 / 0.11  life 252 s  kpm/ship 0.23  trades 0.01
+1v1 armour-tank | r9m2 + Yongma lone lead 0.3 s   energy v turn v r9m2: score 0.539 ± 0.011  kills m/o/f/t 0.12 / 0.80 / 0.08 / 0.00  life 215 s  kpm/ship 0.27  trades 0.00
+1v1 armour-tank | r9m2 + Yongma lone lead 0.3 s   turn v energy v r9m2: score 0.481 ± 0.011  kills m/o/f/t 0.11 / 0.82 / 0.08 / 0.00  life 217 s  kpm/ship 0.26  trades 0.00
+1v1 armour-tank | r9m2 + Yongma lone lead 0.3 s           mixed v r9m2: score 0.468 ± 0.011  kills m/o/f/t 0.33 / 0.47 / 0.03 / 0.16  life 219 s  kpm/ship 0.26  trades 0.00
+1v1 armour-tank | r9m2 + Yongma lone lead 0.3 s  mixed reversed v r9m2: score 0.496 ± 0.010  kills m/o/f/t 0.52 / 0.34 / 0.04 / 0.11  life 251 s  kpm/ship 0.23  trades 0.01
+## 2v2: 9 jobs, B 8192, 09:14 KST
+  batch 1/2 34 s; ETA 09:15 KST
+  batch 2/2 63 s; ETA 09:15 KST
+2v2            balance-d2 | r9m2   energy v turn v c0: score 0.454 ± 0.014  kills m/o/f/t 0.10 / 0.24 / 0.46 / 0.20  life 120 s  kpm/ship 0.46  trades 0.01
+2v2 balance-d2 | r9m2 + Yongma lone lead 0.2 s   energy v turn v c1: score 0.448 ± 0.013  kills m/o/f/t 0.11 / 0.23 / 0.46 / 0.20  life 119 s  kpm/ship 0.47  trades 0.01
+2v2 balance-d2 | r9m2 + Yongma lone lead 0.3 s   energy v turn v c2: score 0.424 ± 0.014  kills m/o/f/t 0.10 / 0.22 / 0.47 / 0.20  life 120 s  kpm/ship 0.46  trades 0.01
+2v2                frozen | r9m2   energy v turn v c3: score 0.438 ± 0.013  kills m/o/f/t 0.14 / 0.18 / 0.39 / 0.28  life 129 s  kpm/ship 0.43  trades 0.01
+2v2 frozen | r9m2 + Yongma lone lead 0.2 s   energy v turn v c4: score 0.434 ± 0.013  kills m/o/f/t 0.15 / 0.19 / 0.38 / 0.28  life 131 s  kpm/ship 0.43  trades 0.01
+2v2 frozen | r9m2 + Yongma lone lead 0.3 s   energy v turn v c5: score 0.420 ± 0.013  kills m/o/f/t 0.14 / 0.19 / 0.39 / 0.28  life 132 s  kpm/ship 0.42  trades 0.01
+2v2           armour-tank | r9m2   energy v turn v c6: score 0.414 ± 0.014  kills m/o/f/t 0.07 / 0.34 / 0.44 / 0.15  life 106 s  kpm/ship 0.52  trades 0.01
+2v2 armour-tank | r9m2 + Yongma lone lead 0.2 s   energy v turn v c7: score 0.421 ± 0.014  kills m/o/f/t 0.07 / 0.33 / 0.46 / 0.14  life 106 s  kpm/ship 0.52  trades 0.01
+2v2 armour-tank | r9m2 + Yongma lone lead 0.3 s   energy v turn v c8: score 0.438 ± 0.014  kills m/o/f/t 0.06 / 0.34 / 0.45 / 0.14  life 106 s  kpm/ship 0.52  trades 0.01
+## 5v5: 45 jobs, B 4096, 09:15 KST
+  batch 1/12 39 s; ETA 09:23 KST
+  batch 2/12 73 s; ETA 09:22 KST
+  batch 3/12 106 s; ETA 09:22 KST
+  batch 4/12 140 s; ETA 09:22 KST
+  batch 5/12 173 s; ETA 09:22 KST
+  batch 6/12 209 s; ETA 09:22 KST
+  batch 7/12 245 s; ETA 09:22 KST
+  batch 8/12 278 s; ETA 09:22 KST
+  batch 9/12 312 s; ETA 09:22 KST
+  batch 10/12 347 s; ETA 09:22 KST
+  batch 11/12 380 s; ETA 09:22 KST
+  batch 12/12 414 s; ETA 09:22 KST
+5v5            balance-d2 | r9m2   energy v turn v c0: score 0.591 ± 0.014  kills m/o/f/t 0.07 / 0.18 / 0.40 / 0.35  life 131 s  kpm/ship 0.42  trades 0.03
+5v5 balance-d2 | r9m2 + Yongma lone lead 0.2 s   energy v turn v c1: score 0.588 ± 0.014  kills m/o/f/t 0.08 / 0.18 / 0.40 / 0.34  life 131 s  kpm/ship 0.43  trades 0.03
+5v5 balance-d2 | r9m2 + Yongma lone lead 0.3 s   energy v turn v c2: score 0.583 ± 0.014  kills m/o/f/t 0.08 / 0.18 / 0.40 / 0.34  life 132 s  kpm/ship 0.42  trades 0.03
+5v5                frozen | r9m2   energy v turn v c3: score 0.329 ± 0.013  kills m/o/f/t 0.10 / 0.14 / 0.30 / 0.46  life 152 s  kpm/ship 0.37  trades 0.03
+5v5 frozen | r9m2 + Yongma lone lead 0.2 s   energy v turn v c4: score 0.344 ± 0.014  kills m/o/f/t 0.09 / 0.15 / 0.30 / 0.46  life 154 s  kpm/ship 0.37  trades 0.03
+5v5 frozen | r9m2 + Yongma lone lead 0.3 s   energy v turn v c5: score 0.301 ± 0.013  kills m/o/f/t 0.09 / 0.15 / 0.30 / 0.46  life 155 s  kpm/ship 0.36  trades 0.02
+5v5           armour-tank | r9m2   energy v turn v c6: score 0.579 ± 0.014  kills m/o/f/t 0.06 / 0.28 / 0.40 / 0.26  life 112 s  kpm/ship 0.49  trades 0.04
+5v5 armour-tank | r9m2 + Yongma lone lead 0.2 s   energy v turn v c7: score 0.571 ± 0.014  kills m/o/f/t 0.06 / 0.27 / 0.40 / 0.26  life 111 s  kpm/ship 0.49  trades 0.04
+5v5 armour-tank | r9m2 + Yongma lone lead 0.3 s   energy v turn v c8: score 0.572 ± 0.014  kills m/o/f/t 0.06 / 0.27 / 0.40 / 0.26  life 112 s  kpm/ship 0.49  trades 0.04
+5v5            balance-d2 | r9m2   energy v turn v r9m2: score 0.591 ± 0.014  kills m/o/f/t 0.07 / 0.18 / 0.40 / 0.35  life 132 s  kpm/ship 0.42  trades 0.03
+5v5            balance-d2 | r9m2   turn v energy v r9m2: score 0.418 ± 0.014  kills m/o/f/t 0.08 / 0.18 / 0.40 / 0.34  life 131 s  kpm/ship 0.43  trades 0.03
+5v5            balance-d2 | r9m2           mixed v r9m2: score 0.502 ± 0.014  kills m/o/f/t 0.08 / 0.17 / 0.34 / 0.42  life 141 s  kpm/ship 0.40  trades 0.03
+5v5            balance-d2 | r9m2  mixed reversed v r9m2: score 0.500 ± 0.014  kills m/o/f/t 0.08 / 0.18 / 0.35 / 0.39  life 136 s  kpm/ship 0.41  trades 0.04
+5v5 balance-d2 | r9m2 + Yongma lone lead 0.2 s   energy v turn v r9m2: score 0.567 ± 0.014  kills m/o/f/t 0.07 / 0.18 / 0.40 / 0.35  life 132 s  kpm/ship 0.42  trades 0.03
+5v5 balance-d2 | r9m2 + Yongma lone lead 0.2 s   turn v energy v r9m2: score 0.412 ± 0.014  kills m/o/f/t 0.08 / 0.18 / 0.40 / 0.35  life 132 s  kpm/ship 0.42  trades 0.03
+5v5 balance-d2 | r9m2 + Yongma lone lead 0.2 s           mixed v r9m2: score 0.474 ± 0.014  kills m/o/f/t 0.08 / 0.17 / 0.34 / 0.41  life 141 s  kpm/ship 0.40  trades 0.03
+5v5 balance-d2 | r9m2 + Yongma lone lead 0.2 s  mixed reversed v r9m2: score 0.475 ± 0.014  kills m/o/f/t 0.08 / 0.18 / 0.35 / 0.39  life 134 s  kpm/ship 0.42  trades 0.03
+5v5 balance-d2 | r9m2 + Yongma lone lead 0.3 s   energy v turn v r9m2: score 0.571 ± 0.014  kills m/o/f/t 0.08 / 0.18 / 0.40 / 0.34  life 131 s  kpm/ship 0.43  trades 0.03
+5v5 balance-d2 | r9m2 + Yongma lone lead 0.3 s   turn v energy v r9m2: score 0.426 ± 0.014  kills m/o/f/t 0.08 / 0.18 / 0.39 / 0.35  life 132 s  kpm/ship 0.42  trades 0.03
+5v5 balance-d2 | r9m2 + Yongma lone lead 0.3 s           mixed v r9m2: score 0.482 ± 0.014  kills m/o/f/t 0.08 / 0.17 / 0.34 / 0.41  life 141 s  kpm/ship 0.40  trades 0.03
+5v5 balance-d2 | r9m2 + Yongma lone lead 0.3 s  mixed reversed v r9m2: score 0.483 ± 0.014  kills m/o/f/t 0.08 / 0.18 / 0.35 / 0.39  life 135 s  kpm/ship 0.41  trades 0.03
+5v5                frozen | r9m2   energy v turn v r9m2: score 0.374 ± 0.014  kills m/o/f/t 0.09 / 0.15 / 0.31 / 0.45  life 152 s  kpm/ship 0.37  trades 0.03
+5v5                frozen | r9m2   turn v energy v r9m2: score 0.671 ± 0.013  kills m/o/f/t 0.09 / 0.14 / 0.30 / 0.46  life 154 s  kpm/ship 0.37  trades 0.03
+5v5                frozen | r9m2           mixed v r9m2: score 0.507 ± 0.014  kills m/o/f/t 0.10 / 0.13 / 0.25 / 0.53  life 169 s  kpm/ship 0.33  trades 0.03
+5v5                frozen | r9m2  mixed reversed v r9m2: score 0.523 ± 0.014  kills m/o/f/t 0.11 / 0.13 / 0.26 / 0.49  life 153 s  kpm/ship 0.37  trades 0.03
+5v5 frozen | r9m2 + Yongma lone lead 0.2 s   energy v turn v r9m2: score 0.315 ± 0.013  kills m/o/f/t 0.10 / 0.15 / 0.30 / 0.46  life 153 s  kpm/ship 0.37  trades 0.03
+5v5 frozen | r9m2 + Yongma lone lead 0.2 s   turn v energy v r9m2: score 0.658 ± 0.013  kills m/o/f/t 0.10 / 0.14 / 0.30 / 0.46  life 153 s  kpm/ship 0.37  trades 0.03
+5v5 frozen | r9m2 + Yongma lone lead 0.2 s           mixed v r9m2: score 0.484 ± 0.014  kills m/o/f/t 0.09 / 0.12 / 0.25 / 0.53  life 167 s  kpm/ship 0.34  trades 0.03
+5v5 frozen | r9m2 + Yongma lone lead 0.2 s  mixed reversed v r9m2: score 0.474 ± 0.014  kills m/o/f/t 0.11 / 0.14 / 0.26 / 0.49  life 151 s  kpm/ship 0.37  trades 0.03
+5v5 frozen | r9m2 + Yongma lone lead 0.3 s   energy v turn v r9m2: score 0.325 ± 0.013  kills m/o/f/t 0.10 / 0.14 / 0.30 / 0.46  life 153 s  kpm/ship 0.37  trades 0.02
+5v5 frozen | r9m2 + Yongma lone lead 0.3 s   turn v energy v r9m2: score 0.665 ± 0.013  kills m/o/f/t 0.10 / 0.15 / 0.30 / 0.46  life 154 s  kpm/ship 0.37  trades 0.02
+5v5 frozen | r9m2 + Yongma lone lead 0.3 s           mixed v r9m2: score 0.514 ± 0.014  kills m/o/f/t 0.09 / 0.13 / 0.24 / 0.54  life 169 s  kpm/ship 0.34  trades 0.03
+5v5 frozen | r9m2 + Yongma lone lead 0.3 s  mixed reversed v r9m2: score 0.502 ± 0.014  kills m/o/f/t 0.12 / 0.14 / 0.26 / 0.48  life 153 s  kpm/ship 0.37  trades 0.03
+5v5           armour-tank | r9m2   energy v turn v r9m2: score 0.566 ± 0.014  kills m/o/f/t 0.06 / 0.28 / 0.40 / 0.26  life 113 s  kpm/ship 0.49  trades 0.04
+5v5           armour-tank | r9m2   turn v energy v r9m2: score 0.442 ± 0.014  kills m/o/f/t 0.06 / 0.28 / 0.40 / 0.26  life 112 s  kpm/ship 0.49  trades 0.04
+5v5           armour-tank | r9m2           mixed v r9m2: score 0.509 ± 0.015  kills m/o/f/t 0.06 / 0.27 / 0.34 / 0.33  life 121 s  kpm/ship 0.46  trades 0.04
+5v5           armour-tank | r9m2  mixed reversed v r9m2: score 0.503 ± 0.015  kills m/o/f/t 0.06 / 0.28 / 0.36 / 0.30  life 115 s  kpm/ship 0.48  trades 0.04
+5v5 armour-tank | r9m2 + Yongma lone lead 0.2 s   energy v turn v r9m2: score 0.567 ± 0.014  kills m/o/f/t 0.06 / 0.28 / 0.40 / 0.26  life 113 s  kpm/ship 0.49  trades 0.04
+5v5 armour-tank | r9m2 + Yongma lone lead 0.2 s   turn v energy v r9m2: score 0.410 ± 0.014  kills m/o/f/t 0.06 / 0.28 / 0.40 / 0.26  life 113 s  kpm/ship 0.49  trades 0.04
+5v5 armour-tank | r9m2 + Yongma lone lead 0.2 s           mixed v r9m2: score 0.498 ± 0.015  kills m/o/f/t 0.06 / 0.27 / 0.34 / 0.33  life 121 s  kpm/ship 0.46  trades 0.04
+5v5 armour-tank | r9m2 + Yongma lone lead 0.2 s  mixed reversed v r9m2: score 0.482 ± 0.015  kills m/o/f/t 0.06 / 0.28 / 0.35 / 0.30  life 116 s  kpm/ship 0.48  trades 0.04
+5v5 armour-tank | r9m2 + Yongma lone lead 0.3 s   energy v turn v r9m2: score 0.538 ± 0.015  kills m/o/f/t 0.06 / 0.28 / 0.40 / 0.26  life 112 s  kpm/ship 0.49  trades 0.04
+5v5 armour-tank | r9m2 + Yongma lone lead 0.3 s   turn v energy v r9m2: score 0.418 ± 0.014  kills m/o/f/t 0.06 / 0.27 / 0.40 / 0.27  life 112 s  kpm/ship 0.49  trades 0.04
+5v5 armour-tank | r9m2 + Yongma lone lead 0.3 s           mixed v r9m2: score 0.507 ± 0.015  kills m/o/f/t 0.06 / 0.28 / 0.34 / 0.33  life 122 s  kpm/ship 0.46  trades 0.04
+5v5 armour-tank | r9m2 + Yongma lone lead 0.3 s  mixed reversed v r9m2: score 0.490 ± 0.015  kills m/o/f/t 0.07 / 0.28 / 0.35 / 0.30  life 116 s  kpm/ship 0.48  trades 0.04
+## 10v10: 9 jobs, B 2048, 09:22 KST
+  batch 1/3 42 s; ETA 09:24 KST
+  batch 2/3 78 s; ETA 09:24 KST
+  batch 3/3 114 s; ETA 09:24 KST
+10v10            balance-d2 | r9m2   energy v turn v c0: score 0.556 ± 0.021  kills m/o/f/t 0.08 / 0.18 / 0.36 / 0.38  life 156 s  kpm/ship 0.36  trades 0.06
+10v10 balance-d2 | r9m2 + Yongma lone lead 0.2 s   energy v turn v c1: score 0.562 ± 0.021  kills m/o/f/t 0.08 / 0.17 / 0.36 / 0.39  life 157 s  kpm/ship 0.36  trades 0.06
+10v10 balance-d2 | r9m2 + Yongma lone lead 0.3 s   energy v turn v c2: score 0.532 ± 0.021  kills m/o/f/t 0.08 / 0.18 / 0.36 / 0.39  life 155 s  kpm/ship 0.36  trades 0.05
+10v10                frozen | r9m2   energy v turn v c3: score 0.214 ± 0.017  kills m/o/f/t 0.08 / 0.14 / 0.27 / 0.51  life 177 s  kpm/ship 0.32  trades 0.05
+10v10 frozen | r9m2 + Yongma lone lead 0.2 s   energy v turn v c4: score 0.218 ± 0.017  kills m/o/f/t 0.09 / 0.14 / 0.28 / 0.50  life 175 s  kpm/ship 0.33  trades 0.05
+10v10 frozen | r9m2 + Yongma lone lead 0.3 s   energy v turn v c5: score 0.206 ± 0.017  kills m/o/f/t 0.08 / 0.14 / 0.28 / 0.50  life 175 s  kpm/ship 0.33  trades 0.05
+10v10           armour-tank | r9m2   energy v turn v c6: score 0.481 ± 0.021  kills m/o/f/t 0.07 / 0.27 / 0.37 / 0.30  life 132 s  kpm/ship 0.42  trades 0.07
+10v10 armour-tank | r9m2 + Yongma lone lead 0.2 s   energy v turn v c7: score 0.478 ± 0.021  kills m/o/f/t 0.06 / 0.27 / 0.37 / 0.30  life 134 s  kpm/ship 0.42  trades 0.08
+10v10 armour-tank | r9m2 + Yongma lone lead 0.3 s   energy v turn v c8: score 0.484 ± 0.021  kills m/o/f/t 0.06 / 0.27 / 0.37 / 0.30  life 132 s  kpm/ship 0.42  trades 0.07
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | E v T 10v10 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| balance-d2 | r9m2 | 0.484 ± 0.010 | 0.454 ± 0.014 | 0.591 ± 0.014 | 0.556 ± 0.021 | 0.091 | 0.07 / 0.18 / 0.40 / 0.35 | 0.03 | 296 / 120 / 131 / 156 | 0.20 / 0.46 / 0.42 / 0.36 | 3.51 |
+| balance-d2 | r9m2 + Yongma lone lead 0.2 s | 0.511 ± 0.010 | 0.448 ± 0.013 | 0.588 ± 0.014 | 0.562 ± 0.021 | 0.088 | 0.08 / 0.18 / 0.40 / 0.34 | 0.03 | 276 / 119 / 131 / 157 | 0.21 / 0.47 / 0.43 / 0.36 | 3.28 |
+| balance-d2 | r9m2 + Yongma lone lead 0.3 s | 0.503 ± 0.010 | 0.424 ± 0.014 | 0.583 ± 0.014 | 0.532 ± 0.021 | 0.083 | 0.08 / 0.18 / 0.40 / 0.34 | 0.03 | 284 / 120 / 132 / 155 | 0.20 / 0.46 / 0.42 / 0.36 | 3.32 |
+| frozen | r9m2 | 0.008 ± 0.002 | 0.438 ± 0.013 | 0.329 ± 0.013 | 0.214 ± 0.017 | 0.492 | 0.10 / 0.14 / 0.30 / 0.46 | 0.03 | 170 / 129 / 152 / 177 | 0.33 / 0.43 / 0.37 / 0.32 | 2.82 |
+| frozen | r9m2 + Yongma lone lead 0.2 s | 0.009 ± 0.002 | 0.434 ± 0.013 | 0.344 ± 0.014 | 0.218 ± 0.017 | 0.491 | 0.09 / 0.15 / 0.30 / 0.46 | 0.03 | 171 / 131 / 154 / 175 | 0.33 / 0.43 / 0.37 / 0.33 | 2.82 |
+| frozen | r9m2 + Yongma lone lead 0.3 s | 0.010 ± 0.002 | 0.420 ± 0.013 | 0.301 ± 0.013 | 0.206 ± 0.017 | 0.490 | 0.09 / 0.15 / 0.30 / 0.46 | 0.02 | 169 / 132 / 155 / 175 | 0.34 / 0.42 / 0.36 / 0.33 | 2.81 |
+| armour-tank | r9m2 | 0.515 ± 0.011 | 0.414 ± 0.014 | 0.579 ± 0.014 | 0.481 ± 0.021 | 0.086 | 0.06 / 0.28 / 0.40 / 0.26 | 0.04 | 216 / 106 / 112 / 132 | 0.27 / 0.52 / 0.49 / 0.42 | 2.66 |
+| armour-tank | r9m2 + Yongma lone lead 0.2 s | 0.517 ± 0.011 | 0.421 ± 0.014 | 0.571 ± 0.014 | 0.478 ± 0.021 | 0.079 | 0.06 / 0.27 / 0.40 / 0.26 | 0.04 | 218 / 106 / 111 / 134 | 0.26 / 0.52 / 0.49 / 0.42 | 2.62 |
+| armour-tank | r9m2 + Yongma lone lead 0.3 s | 0.527 ± 0.011 | 0.438 ± 0.014 | 0.572 ± 0.014 | 0.484 ± 0.021 | 0.072 | 0.06 / 0.27 / 0.40 / 0.26 | 0.04 | 217 / 106 / 112 / 132 | 0.27 / 0.52 / 0.49 / 0.42 | 2.6 |
+
+752 s
