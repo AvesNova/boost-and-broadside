@@ -21,14 +21,18 @@ def test_baekho_is_the_one_doctrine_and_the_stored_one():
 
 
 def test_baekho_flies_the_lock_aware_goal_and_the_maneuver_elements():
-    """Baekho: the game loop's r9 with maneuvers-2's elements (the duel one-circle sense, the
-    crowd extension, the team-gated duel extension) and lock_press 1, for both types."""
+    """Baekho: the game loop's r9 with maneuvers-2's duel one-circle sense and lock_press 1,
+    for both types; its running-away elements (r9's extend, the crowd extension, the
+    team-gated duel extension) are off (the author, 2026-11-14: they ran ships out of
+    bounds and taught the BC student to flee)."""
     stored = scripted_doctrine.stored()["real-scale"]
     for key in ("yongma", "jujak"):
         doctrine = stored[key]
         assert doctrine.lock_press == 1.0
         assert doctrine.sense == 1.0 and doctrine.sense_one_circle == 1.0
-        assert doctrine.crowd_sense == 1.0 and doctrine.duel_extend == 1.0
+        assert (
+            doctrine.extend == 0.0 and doctrine.crowd_sense == 0.0 and doctrine.duel_extend == 0.0
+        )
 
 
 def test_the_stored_file_packs_to_the_full_table_width_for_the_real_scale_set():

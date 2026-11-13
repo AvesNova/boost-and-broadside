@@ -510,7 +510,7 @@ def test_one_set_of_weights_plays_every_size(config):
         decision = net.step(carry, view, torch.ones(views, dtype=torch.bool))
     assert decision.policy_logits.shape == (views, own, 42)
     assert decision.values.shape == (views, own, len(REWARD_LEVELS))
-    assert decision.next_state_logits.shape == (views, ships - own, 490)
+    assert decision.next_state_logits.shape == (views, ships - own, 616)
     assert all(
         torch.isfinite(x).all() for x in _pytree.tree_leaves(decision) if x.is_floating_point()
     )

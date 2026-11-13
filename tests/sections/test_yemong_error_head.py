@@ -209,7 +209,7 @@ def test_the_bounds_are_the_ranges_a_hidden_ships_error_can_reach():
     code = _code()
     bound = {c.name: c.bound for c in code.components}
     assert bound["position_0"] == 26244.0 and bound["heading"] == math.pi
-    assert math.isclose(bound["velocity_60"], 2.0 * 650.6602, rel_tol=1e-4)
+    assert math.isclose(bound["velocity_60"], 2.0 * 50.0 * math.expm1(61 * 2.5 / 50), rel_tol=1e-4)
     assert bound["shield"] == bound["energy"] == 1.0
     assert math.isclose(bound["gun_cooldown"], 3.0 / 30.0)
 
@@ -493,15 +493,15 @@ def test_the_fourier_arms_set_line_builds_it_and_old_records_read_as_colour():
 
 
 def test_the_fourier_ship_token_reads_fourier_and_the_code_stays_colour():
-    """Only the encoder's ship input changes (437 state columns for 490, the token 501 for
-    554, the benched flag included): the tokens' code, the next-state baseline, is the
+    """Only the encoder's ship input changes (563 state columns for 616, the token 627 for
+    680, the benched flag included): the tokens' code, the next-state baseline, is the
     colour code."""
     colour = _model(**ARMS["arm4d"])
     fourier = _model(**ARMS["arm4d_fourier"])
-    assert colour.state_code.input_width == colour.state_code.width == 490
-    assert fourier.state_code.input_width == 437
+    assert colour.state_code.input_width == colour.state_code.width == 616
+    assert fourier.state_code.input_width == 563
     width = colour.encoder.ship.first.in_features
-    assert fourier.encoder.ship.first.in_features == width - 490 + 437 == 501
+    assert fourier.encoder.ship.first.in_features == width - 616 + 563 == 627
     _, trajectory = cases.rollout(fourier, length=4)
     obs, replay = trajectory.obs, trajectory.replay
     reset = cases.resets(obs)
@@ -513,13 +513,13 @@ def test_the_fourier_ship_token_reads_fourier_and_the_code_stays_colour():
     # ten ulps, and a wrong or missing column is of order one
     close = dict(rtol=1e-6, atol=1e-6)
     torch.testing.assert_close(tokens.code, plain.code, **close)
-    assert tokens.ship.shape[-1] == 501 and plain.ship.shape[-1] == 554
-    torch.testing.assert_close(tokens.ship[..., 437:], plain.ship[..., 490:], **close)
+    assert tokens.ship.shape[-1] == 627 and plain.ship.shape[-1] == 680
+    torch.testing.assert_close(tokens.ship[..., 563:], plain.ship[..., 616:], **close)
     valid, _, means, spreads = believed(obs.ships, replay)
     position = torch.where(valid[..., None], means[..., 0:2], replay.offset[..., None, :])
     means = torch.cat([position, means[..., 2:]], -1)
     expected = fourier.state_code.inputs(tokens.code, means, spreads)
-    torch.testing.assert_close(tokens.ship[..., :437], expected, **close)
+    torch.testing.assert_close(tokens.ship[..., :563], expected, **close)
 
 
 def test_the_error_head_starts_at_its_marginal_with_a_zero_last_layer():

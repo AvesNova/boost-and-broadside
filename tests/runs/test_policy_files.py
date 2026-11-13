@@ -147,10 +147,10 @@ def test_a_schema_version_mismatch_is_refused_naming_both(tmp_path):
 
 def test_a_model_version_mismatch_is_refused_naming_both(tmp_path):
     save_policy(tmp_path / "policy", cases.tiny_model("yemong"))
-    _edit_record(tmp_path / "policy", lambda record: record["model"].update(version=7))
+    _edit_record(tmp_path / "policy", lambda record: record["model"].update(version=99))
     with pytest.raises(
         CheckpointError,
-        match=rf"yemong version 7; the code has version {Yemong.VERSION}\. "
+        match=rf"yemong version 99; the code has version {Yemong.VERSION}\. "
         r"Load it from a worktree",
     ):
         load_policy(tmp_path / "policy", cases.CPU)

@@ -13,6 +13,7 @@ from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
 from bnb.models.yemong.state_code import (
     MEANS,
     POSITION_PERIOD,
+    VELOCITY_BINS,
     ShipStateCode,
     state_code_ranges,
     velocity_reach,
@@ -90,10 +91,10 @@ def _errors(decoded, means):
 
 
 def test_layout(code):
-    assert code.width == 490 and code.groups == 23
-    assert code.runs[0] == (9, 9) and code.runs[1] == (3, 81) and code.runs[-1] == (1, 4)
+    assert code.width == 616 and code.groups == 23  # 123 velocity bins since the x2 game
+    assert code.runs[0] == (9, 9) and code.runs[1] == (3, 123) and code.runs[-1] == (1, 4)
     assert len(MEANS) == 12 and code.spread_count == 15
-    assert velocity_reach() == pytest.approx(50.0 * math.expm1(40 * 3.3 / 50))
+    assert velocity_reach() == pytest.approx(50.0 * math.expm1(61 * 2.5 / 50))
 
 
 def test_sharp_round_trip(code):
@@ -379,7 +380,7 @@ def test_fourier_inputs_replace_the_position_and_heading_runs_only(code):
     16, the rest the code's own; colour inputs are the code itself."""
     fourier = ShipStateCode(state_code_ranges(RULES, TYPES), position_inputs="fourier").double()
     assert code.input_width == code.width and code.input_groups == code.groups
-    assert fourier.input_width == code.width - 81 - 16 + 36 + 8 == 437
+    assert fourier.input_width == code.width - 81 - 16 + 36 + 8 == 563
     assert fourier.width == code.width  # the code itself is unchanged
     generator = torch.Generator().manual_seed(3)
     means, ship_type = _states(generator, margin=0.25)
@@ -401,11 +402,17 @@ def test_fourier_inputs_replace_the_position_and_heading_runs_only(code):
     )
     heading = codes.fourier_encode(means[:, 4], spreads[:, 4], 2.0 * math.pi, 4, 4)
     torch.testing.assert_close(inputs[:, :36], position.flatten(-3), rtol=1e-12, atol=1e-12)
+    velocity = 3 * VELOCITY_BINS  # 369 since the x2 game (243 before)
     torch.testing.assert_close(
-        inputs[:, 36:279], encoded[:, 81:324], rtol=1e-12, atol=1e-12
-    )  # velocity
-    torch.testing.assert_close(inputs[:, 279:287], heading.flatten(-2), rtol=1e-12, atol=1e-12)
-    torch.testing.assert_close(inputs[:, 287:], encoded[:, 340:], rtol=1e-12, atol=1e-12)
+        inputs[:, 36 : 36 + velocity], encoded[:, 81 : 81 + velocity], rtol=1e-12, atol=1e-12
+    )
+    after = 36 + velocity
+    torch.testing.assert_close(
+        inputs[:, after : after + 8], heading.flatten(-2), rtol=1e-12, atol=1e-12
+    )
+    torch.testing.assert_close(
+        inputs[:, after + 8 :], encoded[:, 81 + velocity + 16 :], rtol=1e-12, atol=1e-12
+    )
     with pytest.raises(ValueError, match="position_inputs"):
         ShipStateCode(state_code_ranges(RULES, TYPES), position_inputs="polar")
 

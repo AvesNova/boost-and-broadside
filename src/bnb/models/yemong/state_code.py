@@ -74,10 +74,11 @@ POSITION_INPUTS = ("colour", "fourier")  # `YemongConfig.position_inputs`
 POSITION_PERIOD = 4.0 * 3.0**8  # m per axis: 26 244 m, finest level 4 m
 POSITION_LEVELS = 9
 VELOCITY_KNEE = 50.0  # m/s
-VELOCITY_BINS = 81
-# x2 game (v13): ships cruise at ~335 m/s and boost to ~450, so the spacing grew from 2.5 to
-# keep every speed resolved: reach 50 (e^(40 x 3.3 / 50) - 1) = 651 m/s (was 319 m/s).
-VELOCITY_SPACING = 3.3
+VELOCITY_BINS = 123
+# x2 game (v13): ships cruise at ~335 m/s and boost to ~450, and thin air (refractive index
+# down to 1/2) doubles a ground speed, so the code grew from 81 bins to 123 at the same
+# spacing (the same resolution): reach 50 (e^(61 x 2.5 / 50) - 1) = 995 m/s (was 319 m/s).
+VELOCITY_SPACING = 2.5
 HEADING_COLOURS = 4
 HEADING_LEVELS = 4
 NOSE_RATE_LIMIT = 8.0  # rad/s
@@ -139,7 +140,7 @@ def ellipse(packed: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Ten
 
 
 def velocity_reach() -> float:
-    """The largest world speed the velocity code resolves (m/s): 50 (e^2.64 - 1), 651."""
+    """The largest world speed the velocity code resolves (m/s): 50 (e^3.05 - 1), 1006."""
     return VELOCITY_KNEE * math.expm1(0.5 * (VELOCITY_BINS - 1) * VELOCITY_SPACING / VELOCITY_KNEE)
 
 
