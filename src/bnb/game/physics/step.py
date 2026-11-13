@@ -204,8 +204,8 @@ def move(
     """Phases 1-3: fire, ships fly, bullets fly. Returns the moved state and this tick's
     motions (the hit test's input). Motion changes no flag (but `fired`), clock or count."""
     ships0, bullets0 = fire(rules, types, state.ships, state.bullets, action.shoot == 1, spread)
-    stick, power = controls(action.power, action.stick)
     airframe = airframe_of(types, ships0.ship_type)
+    stick, power = controls(airframe, action.power, action.stick)
     flown = flight_tick(
         rules.flight, airframe, rules.tick_length, ships0, stick, power, state.fields
     )

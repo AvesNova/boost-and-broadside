@@ -65,6 +65,11 @@ FIELDS = dict(
     arming_distance="m: the shooter's bullet's damage ramps (a smoothstep) from 0 to full over "
     "the first this many metres it travels (a minimum effective range); 0 off",
     engine_knee_scale="of flight.engine_knee [e_k]",
+    fine_stick="the fine stick level's lift fraction (rules.STICK_LEVELS' lightest)",
+    sustained_stick=(
+        "the sustained (middle) stick level's lift fraction; the max level's is 1. A solve "
+        "sets both from flight.sustained_rate_share and fine_stick_share"
+    ),
 )
 
 
@@ -170,6 +175,8 @@ class ShipTypes:
     head_on_sharpness: torch.Tensor
     arming_distance: torch.Tensor
     engine_knee_scale: torch.Tensor
+    fine_stick: torch.Tensor
+    sustained_stick: torch.Tensor
 
 
 def default_card(ship_set: str = STANDARD) -> dict[str, tuple[float, ...]]:

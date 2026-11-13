@@ -14,7 +14,7 @@ import torch
 
 from ..physics.bullets import fire
 from ..physics.flight import airframe_of, flight_tick
-from ..rules import STICK_LEVELS, Rules
+from ..rules import Rules
 from ..ship_types import ShipTypes, per_ship
 from ..state import Bullets, replace
 from .manoeuvres import (
@@ -32,7 +32,17 @@ from .manoeuvres import (
 )
 from .weapons import whole_tick_life
 
-STICKS = tuple(level for level in STICK_LEVELS if level > 0.0)  # 0.4, 0.75, 1
+LEVELS = ("fine", "sustained", "max")  # the stick's three turning levels, lightest first
+
+
+def sticks(types: ShipTypes) -> torch.Tensor:
+    """(B, types, 3) each type's turning stick levels' lift fractions, lightest first (the
+    card's fine and sustained levels, and the max's 1)."""
+    return torch.stack(
+        [types.fine_stick, types.sustained_stick, torch.ones_like(types.fine_stick)], -1
+    )
+
+
 SUSTAINED_CURVE = tuple(i / 12 for i in range(1, 13))  # stick levels drawn on the doghouse
 SETTLE_TIME = 40.0  # s
 AVERAGING_WINDOW = 1.0  # s, each of the last three settled windows
@@ -110,7 +120,7 @@ def instant(rules: Rules, types: ShipTypes, speed: torch.Tensor, stick: float) -
     B, type_count, grid = speed.shape
     full = types.max_energy[..., None].expand(B, type_count, grid)
     energy = TURNING_STORE * full
-    sticks = torch.full_like(speed, stick)
+    sticks = torch.as_tensor(stick, dtype=speed.dtype).expand_as(speed)
     _, airframe, (flat_speed, flat_energy, flat_stick) = _grid(types, speed, energy, sticks)
     steady = steady_turn(rules, airframe, flat_speed, flat_energy, flat_stick)
     weights = derivative_weights(rules.tick_length, speed, card_stretch(rules.flight, types).time)
@@ -147,14 +157,14 @@ class Settled(NamedTuple):
     angle: torch.Tensor  # the angle of attack: the gun's offset from the flight path
 
 
-def settled(rules: Rules, types: ShipTypes, sticks: tuple[float, ...]) -> Settled:
+def settled(rules: Rules, types: ShipTypes, sticks: tuple[float, ...] | torch.Tensor) -> Settled:
     """The coast datum at each stick level: coasting from cruise with the store held below
     the engine knee until speed, angle of attack and turn rate settle (the Aitken limit of
     the means over the last three AVERAGING_WINDOWs), for SETTLE_TIME (both stretched by
     the card's time scale)."""
     B, type_count = types.max_energy.shape
-    stick_count = len(sticks)
-    stick = torch.tensor(sticks, dtype=types.max_energy.dtype).expand(B, type_count, stick_count)
+    stick = torch.as_tensor(sticks, dtype=types.max_energy.dtype).expand(B, type_count, -1)
+    stick_count = stick.shape[-1]
     cruise = cruise_speed(rules, types, types.max_energy[..., None])
     zeros = torch.zeros_like(stick)
     time = card_stretch(rules.flight, types).time
@@ -304,7 +314,7 @@ def shown(rules: Rules, types: ShipTypes) -> Shown:
         peak_turn_rate=peak,
         peak_turn_speed=hard.speed.gather(-1, at[..., None])[..., 0],
         minimum_radius=radius,
-        datum=settled(rules, types, STICKS),
+        datum=settled(rules, types, sticks(types)),
         top_speed=top_speed(rules, types),
         endurance=endurance(rules, types),
         damage_per_second=types.hit_damage * types.fire_rate,

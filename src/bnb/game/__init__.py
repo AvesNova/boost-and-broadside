@@ -60,7 +60,17 @@ and the drag rise (the zero-lift drag times 1 + (u / 197 m/s)^12, which bounds a
 near 1.35 x cruise). Yongma, Jujak and Vizia were re-solved under them with higher
 sustained turn rates (their full-stick turn settles near 70 m/s, not 55); the set's other
 types keep their old cards until re-solved.
+Version 10 (2026-11-13): per-type stick levels. The stick keeps its three levels each way
+(fine, sustained, max: the same action indices), but each type's lift fractions are card
+fields (`fine_stick`, `sustained_stick`; max stays 1). A solve sets them from the rules'
+shares (`FlightConstants.sustained_rate_share`, `fine_stick_share`): the sustained level
+is the lift fraction whose settled coasting turn reaches that share of the full stick's
+rate, the fine level that share of it. Without shares (every set but real-scale, whose
+shares are 0.8 and 0.3) the cards keep the classic 0.4 and 0.75. Yongma, Jujak and Vizia
+were re-solved with vizia's sustained turn 18.7 -> 21.3 deg/s (same archetype factors):
+their sustained level settles at 88-91 m/s. The fingerprint's presets fly none of the
+three, so it is version 9's.
 """
 
-VERSION = 9
+VERSION = 10
 FINGERPRINT = "bd362de0be49ee56"

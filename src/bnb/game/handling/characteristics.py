@@ -23,7 +23,7 @@ from ..physics.flight import airframe_of
 from ..rules import Rules
 from ..ship_types import ShipTypes, per_ship
 from .manoeuvres import batched, cruise_speed, type_axis
-from .shown import STICKS, settled, top_speed
+from .shown import settled, sticks, top_speed
 from .weapons import combat_handles
 
 
@@ -98,7 +98,7 @@ def measure_characteristics(types: ShipTypes, rules: Rules) -> Characteristics:
         cruise_speed=cruise[0],
         top_speed=top_speed(rules, card)[0],
         corner_speed=airframe_of(types, all_types).corner_speed,
-        turn_rate=settled(rules, card, STICKS).turn_rate[0],
+        turn_rate=settled(rules, card, sticks(card)).turn_rate[0],
         stall_angle=rules.flight.stall_angle * types.stall_angle_scale,
         gun_range=gun_range,
         bullet_speed=cruise[0] + types.muzzle_speed,

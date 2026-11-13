@@ -372,6 +372,20 @@ and the three cards were solved again. The other handles are unchanged.
 | best lift-to-drag ratio | 12.1 | 11.6 | 12.5 |
 | null power (W/kg) | 257 | 254 | 263 |
 
+**Game version 10 (2026-11-13): stick levels.** vizia's sustained turn is 21.3 °/s (Yongma
+18.8, Jujak 24.2), and each card's stick levels are its own (fine, sustained, max; see
+[Physics](../physics.md#flight)). Settled coasting turns (m/s, °/s), WWII targets in the
+last column:
+
+| v10 | vizia | Yongma | Jujak | real |
+|---|---|---|---|---|
+| fine level (lift fraction) | 0.198: 147.6, 8.3 | 0.207: 150.6, 7.6 | 0.194: 144.2, 9.1 | gentle: 5-9 °/s at 110-140 |
+| sustained level | 0.662: 90.6, 17.0 | 0.690: 88.3, 15.0 | 0.646: 91.2, 19.4 | best sustained 70-97, 14-20 °/s |
+| max (1) | 79.7, 21.3 | 81.7, 18.8 | 77.9, 24.2 | |
+| instantaneous at corner (°/s) | 34.6 | 32.2 | 37.3 | 30-40 |
+| boost top speed (m/s) | 221 | 225 | 217 | dive limit 220-250 |
+| best lift-to-drag ratio | 15.0 | 14.5 | 15.4 | 12-15 |
+
 | Shooter on target | Head-on TTK (s) | Head-on passes | Tail TTK (s) | Tail TTK / target's 180° instantaneous |
 |---|---|---|---|---|
 | Yongma on Yongma | 4.13 | 2.36 | 0.80 | 0.16 |

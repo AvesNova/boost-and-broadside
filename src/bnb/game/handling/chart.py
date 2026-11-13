@@ -79,12 +79,13 @@ def lines(rules: Rules, types: ShipTypes, card: Report) -> list[str]:
         _row("  at speed (m/s)", view.peak_turn_speed[0]),
         _row("minimum radius (m)", view.minimum_radius[0]),
     ]
-    for i, stick in enumerate(shown_module.STICKS):
+    for i, stick in enumerate(shown_module.LEVELS):
         out += [
-            _row(f"stick {stick:g}: gun offset (deg)", view.datum.angle[0, :, i] * DEGREES),
-            _row(f"stick {stick:g}: coast datum speed (m/s)", view.datum.speed[0, :, i]),
+            _row(f"{stick} stick: lift fraction", view.datum.stick[0, :, i]),
+            _row(f"{stick} stick: gun offset (deg)", view.datum.angle[0, :, i] * DEGREES),
+            _row(f"{stick} stick: coast datum speed (m/s)", view.datum.speed[0, :, i]),
             _row(
-                f"stick {stick:g}: coast datum turn (deg/s)",
+                f"{stick} stick: coast datum turn (deg/s)",
                 view.datum.turn_rate[0, :, i] * DEGREES,
             ),
         ]
@@ -117,10 +118,11 @@ def _curves(rules: Rules, types: ShipTypes, card: Report):
     top = torch.maximum(card.view.top_speed[0], 1.6 * corner)
     fraction = torch.linspace(0.0, 1.0, shown_module.SPEED_GRID, dtype=stall.dtype)
     speeds = ((1.01 * stall)[:, None] + (top - 1.01 * stall)[:, None] * fraction)[None]
-    return {
-        stick: shown_module.instant(rules, types, speeds, stick)
-        for stick in (0.0, *shown_module.STICKS)
-    }
+    levels = shown_module.sticks(types)  # (1, types, 3)
+    curves = {"straight": shown_module.instant(rules, types, speeds, 0.0)}
+    for i, name in enumerate(shown_module.LEVELS):
+        curves[name] = shown_module.instant(rules, types, speeds, levels[..., i : i + 1])
+    return curves
 
 
 def write_charts(rules: Rules, types: ShipTypes, card: Report, directory: str) -> list[str]:
@@ -146,7 +148,7 @@ def write_charts(rules: Rules, types: ShipTypes, card: Report, directory: str) -
             axis.plot(
                 curve.speed[0, t],
                 curve.specific_power[0, t],
-                label="straight" if stick == 0.0 else f"stick {stick:g}",
+                label=stick if stick == "straight" else f"{stick} stick",
             )
         axis.axhline(0.0, color="grey", linewidth=0.8)
         axis.axvline(
@@ -166,15 +168,15 @@ def write_charts(rules: Rules, types: ShipTypes, card: Report, directory: str) -
 
     figure, axes = plt.subplots(1, len(names), figsize=(6 * len(names), 4.5), squeeze=False)
     for t, (name, axis) in enumerate(zip(names, axes[0])):
-        speed = curves[1.0].speed[0, t]
+        speed = curves["max"].speed[0, t]
         lift_limit = types.max_lift_coefficient[0, t] * speed**2
         stall_boundary = (lift_limit**2 - constants.gravity**2).clamp_min(0.0).sqrt() / speed
         acceleration = types.max_acceleration[0, t]
         g_line = torch.sqrt(acceleration**2 - constants.gravity**2) / speed
         axis.plot(speed, stall_boundary * DEGREES, "k--", linewidth=1, label="stall boundary")
         axis.plot(speed, g_line * DEGREES, "k-.", linewidth=1, label="g limit")
-        for stick in shown_module.STICKS:
-            axis.plot(speed, curves[stick].turn_rate[0, t] * DEGREES, label=f"stick {stick:g}")
+        for stick in shown_module.LEVELS:
+            axis.plot(speed, curves[stick].turn_rate[0, t] * DEGREES, label=f"{stick} stick")
         axis.plot(
             sustained.speed[0, t],
             sustained.turn_rate[0, t] * DEGREES,

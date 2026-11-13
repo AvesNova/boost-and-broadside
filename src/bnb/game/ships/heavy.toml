@@ -72,3 +72,5 @@ head_on_angle_scale = 1.0
 head_on_sharpness = 2.0
 arming_distance = 0.0
 engine_knee_scale = 1.0
+fine_stick = 0.4
+sustained_stick = 0.75

@@ -505,7 +505,10 @@ def test_defaults_match_the_spec_table():
         set(DEFAULTS)
         - {"bleed_exponent", "fire_rate", "bullet_life", *SCALED}
         - {"explosive_share", "reference_bullet_speed", "head_on_sharpness", "arming_distance"}
+        - {"fine_stick", "sustained_stick"}
     )
+    assert TYPES.fine_stick.tolist() == pytest.approx([0.4, 0.4])
+    assert TYPES.sustained_stick.tolist() == [0.75, 0.75]
     assert TYPES.head_on_sharpness.tolist() == [2.0, 2.0]
     assert TYPES.arming_distance.tolist() == [0.0, 0.0]
     assert TYPES.explosive_share.tolist() == [0.0, 0.0]

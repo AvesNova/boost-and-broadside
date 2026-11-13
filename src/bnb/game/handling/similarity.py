@@ -106,6 +106,8 @@ CARD_UNITS = dict(
     head_on_sharpness=NONE,
     arming_distance=LENGTH,
     engine_knee_scale=NONE,
+    fine_stick=NONE,
+    sustained_stick=NONE,
 )
 FLIGHT_UNITS = dict(
     mass=NONE,

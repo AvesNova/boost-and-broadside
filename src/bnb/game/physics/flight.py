@@ -16,6 +16,8 @@ from ..state import Fields, Ships, replace
 from .medium import medium
 from .numerics import lookup, rotate, small_angle_cos_sin, smoothstep, softmin
 
+SUSTAINED = sorted(level for level in STICK_LEVELS if level > 0.0)[1]  # the middle level
+
 
 class Airframe(NamedTuple):
     """Each ship's flight parameters from the ship card, shaped like its ship_type."""
@@ -35,6 +37,8 @@ class Airframe(NamedTuple):
     dive_exchange_scale: torch.Tensor
     climb_exchange_scale: torch.Tensor
     engine_knee_scale: torch.Tensor
+    fine_stick: torch.Tensor
+    sustained_stick: torch.Tensor
     corner_speed: torch.Tensor  # sqrt(max_acceleration / max_lift_coefficient)
 
 
@@ -47,9 +51,18 @@ def airframe_of(types: ShipTypes, ship_type: torch.Tensor) -> Airframe:
     return Airframe(**values, corner_speed=corner)
 
 
-def controls(power_index: torch.Tensor, stick_index: torch.Tensor):
-    """Action indices to (stick level sigma, power mode pi), game spec 3.2."""
-    return lookup(STICK_LEVELS, stick_index), lookup(POWER_MODES, power_index)
+def controls(airframe: Airframe, power_index: torch.Tensor, stick_index: torch.Tensor):
+    """Action indices to (stick level sigma, power mode pi), game spec 3.2. The stick's
+    three levels each way (`rules.STICK_LEVELS` by index: straight, then fine, sustained
+    and max, right then left) take each ship's own lift fractions: the card's fine_stick
+    and sustained_stick, and 1."""
+    level = lookup(STICK_LEVELS, stick_index)
+    magnitude = torch.where(
+        level.abs() == 1.0,
+        1.0,
+        torch.where(level.abs() == SUSTAINED, airframe.sustained_stick, airframe.fine_stick),
+    )
+    return torch.sign(level) * magnitude, lookup(POWER_MODES, power_index)
 
 
 def engine_fall(constants: FlightConstants, airframe: Airframe, energy: torch.Tensor):

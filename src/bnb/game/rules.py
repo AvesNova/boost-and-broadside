@@ -63,6 +63,12 @@ class FlightConstants:
     # sound that bounds a dive [u_c]; 0 is off.
     critical_speed: float = 0.0  # m/s
     drag_rise_exponent: float = 8.0  # [q]
+    # How a solve sets a type's stick levels (the card's sustained_stick and fine_stick): the
+    # sustained level is the lift fraction whose settled coasting turn reaches this share of
+    # the full-stick one's rate, the fine level this share of it. 0: the classic levels, 0.75
+    # and 0.4, for every type.
+    sustained_rate_share: float = 0.0
+    fine_stick_share: float = 0.0
 
 
 @dataclasses.dataclass(frozen=True)

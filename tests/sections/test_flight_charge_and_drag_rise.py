@@ -5,6 +5,7 @@ sees only the null power, and the drag rise multiplies the zero-lift drag by
 
 import dataclasses
 
+import pytest
 import torch
 
 from bnb.contracts import GameConfig
@@ -67,3 +68,17 @@ def test_the_drag_rise_doubles_the_zero_lift_drag_at_the_critical_speed():
     torch.testing.assert_close(zero_lift_drag(constants, airframe, speeds), expected)
     off = _flight(critical_speed=0.0)
     assert zero_lift_drag(off, airframe, speeds) is airframe.zero_lift_drag
+
+
+def test_the_stick_takes_each_types_own_fine_and_sustained_levels():
+    from bnb.game.physics.flight import controls
+
+    types = dataclasses.replace(
+        TYPES,
+        fine_stick=torch.full_like(TYPES.fine_stick, 0.2),
+        sustained_stick=torch.full_like(TYPES.sustained_stick, 0.65),
+    )
+    airframe = airframe_of(types, KIND.expand(7))
+    stick, power = controls(airframe, torch.zeros(7, dtype=torch.int32), torch.arange(7))
+    assert stick.tolist() == pytest.approx([0.0, -0.2, 0.2, -0.65, 0.65, -1.0, 1.0])
+    assert power.tolist() == [0.0] * 7

@@ -107,6 +107,16 @@ The stick levels and power modes by index (`bnb.game.rules.STICK_LEVELS`,
 
 <!-- generated: power-modes -->
 
+The stick's three levels each way are **fine**, **sustained** and **max**, the same action
+indices for every type; each type's lift fractions are its card's (`fine_stick`,
+`sustained_stick`; max is 1, all the lift the ship can get). The standard and design-seed
+cards keep 0.4 and 0.75. A solve sets them from two flight constants (on in the real-scale
+set, game version 10): the sustained level is the lift fraction whose settled coasting
+turn reaches `sustained_rate_share` (0.8) of the full stick's rate, and the fine level
+`fine_stick_share` (0.3) of it. The settled turn rate rises with the stick all the way to
+max (a full-stick turn sinks and bleeds), so the sustained level gives up a fifth of the
+rate and keeps about 10 m/s of speed: a pilot circles there.
+
 The power mode is the sign of the energy exchange: negative (boost) trades store for speed,
 positive (reverse) trades speed for store, and zero (coast) leaves the slow exchange that
 fades as the store fills.

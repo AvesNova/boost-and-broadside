@@ -9,6 +9,7 @@ derives the engine power: P = P_min + m a_0 u_cruise, with P_min (the null power
 so that the flown cruise meets its handle.
 """
 
+import dataclasses
 import functools
 import math
 import warnings
@@ -33,6 +34,7 @@ from .manoeuvres import (
     steady_turn,
     stretch,
 )
+from .shown import settled
 from .weapons import combat_card, combat_handles
 
 # The parameter each flown handle sets, in FLOWN's order (physical values, not scales). The
@@ -80,6 +82,8 @@ STEP_LIMIT = 0.5  # the largest Newton step in any log parameter
 DAMPING = (1e-6, 1e6)  # Levenberg-Marquardt's: the first, and the bounds
 EXPONENT_BOUNDS = (0.5, 5.0)  # the bleed exponents a card may have
 CONDITION_WARNING = 1e4  # a Jacobian condition number above this warns
+CLASSIC_STICKS = (0.4, 0.75)  # the fine and sustained levels' lift fractions without shares
+STICK_GRID = tuple(0.3 + 0.02 * i for i in range(36)) + (1.0,)  # the sustained level's search
 # The flown handles measured over a bounded flight: (its window's constant, its name, the
 # stretch it flies by: `manoeuvres.Scales`' field).
 WINDOWS = dict(
@@ -147,6 +151,9 @@ def _flight_card(rules: Rules, handles: Handles, parameters: torch.Tensor) -> di
         # The knee is the rules' (a card is solved under it); the scale is a live tuning
         # knob of the card, 1 for a solved one.
         engine_knee_scale=torch.ones_like(lift),
+        # the classic levels; `solve` sets them from the rules' shares when they are given
+        fine_stick=torch.full_like(lift, CLASSIC_STICKS[0]),
+        sustained_stick=torch.full_like(lift, CLASSIC_STICKS[1]),
     )
 
 
@@ -597,12 +604,33 @@ def solve(
         )
     if failures and strict:
         raise Infeasible("; ".join(failures))
-    final = _card(rules, handles, best_x.exp(), combat)
+    final = stick_levels(rules, _card(rules, handles, best_x.exp(), combat))
     final = ShipTypes(**{name: value.float() for name, value in vars(final).items()})
     if one_card:
         final = ShipTypes(**{name: value[0] for name, value in vars(final).items()})
         error, condition, converged = error[0], condition[0], converged[0]
     return Solution(final, error, condition, redundant, iteration, converged, failures)
+
+
+def stick_levels(rules: Rules, types: ShipTypes) -> ShipTypes:
+    """The card (B, num_types) with its stick levels set from the rules' shares
+    (`FlightConstants.sustained_rate_share`, `fine_stick_share`): the sustained level is the
+    lift fraction whose settled coasting turn (`shown.settled`, on STICK_GRID, linear between
+    its points) reaches the share of the full stick's rate, the fine level its share of
+    that. Without shares, the classic levels (`_flight_card`) stay."""
+    constants = rules.flight
+    if constants.sustained_rate_share <= 0.0:
+        return types
+    rate = settled(rules, types, STICK_GRID).turn_rate  # (B, types, grid), rising in stick
+    grid = torch.tensor(STICK_GRID, dtype=rate.dtype)
+    target = constants.sustained_rate_share * rate[..., -1:]
+    above = (rate >= target).int().argmax(-1, keepdim=True).clamp_min(1)
+    low, high = rate.gather(-1, above - 1), rate.gather(-1, above)
+    fraction = ((target - low) / (high - low).clamp_min(1e-12)).clamp(0.0, 1.0)
+    sustained = (grid[above - 1] + fraction * (grid[above] - grid[above - 1]))[..., 0]
+    return dataclasses.replace(
+        types, sustained_stick=sustained, fine_stick=constants.fine_stick_share * sustained
+    )
 
 
 def _conditioning(jacobian: torch.Tensor):
