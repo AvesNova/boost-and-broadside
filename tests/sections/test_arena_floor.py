@@ -27,11 +27,20 @@ def test_the_standard_set_floors_at_a_third_and_the_floor_follows_the_scale():
     assert api.arena_radius_for(game, 5, arena_scale=0.5) == 1300.0
 
 
-@pytest.mark.parametrize("preset", ["real_scale_elimination", "real_scale_frontline"])
-def test_elimination_and_frontline_have_no_floor_yet(preset):
-    game = api.PRESETS[preset]
+def test_elimination_has_no_floor_yet():
+    game = api.PRESETS["real_scale_elimination"]
     assert api.minimum_arena_radius(game) == 0.0
     assert api.arena_radius_for(game, 1) == round(game.arena_radius * math.sqrt(0.2), 1)
+
+
+def test_frontline_s_floor_keeps_its_floored_zones_inside_the_boundary():
+    """Frontline's arena floor (4200 m at real scale) holds a half-size sampled map above
+    the radius where the floored zones would reach past the boundary (about 0.52 of the
+    real-scale 5v5 arena)."""
+    game = api.PRESETS["real_scale_frontline"]
+    assert api.minimum_arena_radius(game) == 4200.0
+    assert api.arena_radius_for(game, 5, arena_scale=0.5) == 4200.0
+    assert api.arena_radius_for(game, 5) == game.arena_radius
 
 
 def test_the_presets_derive_their_sizes_by_the_one_function():

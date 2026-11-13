@@ -19,13 +19,16 @@ from .numerics import lookup
 class TickUniforms:
     """Slices of the (B, U) tick uniforms (game spec 2): the map, a formation rotation per
     team, a formation key per ship; then the mode's spawn draws (modes spec 2), as wide as
-    the widest mode of the batch needs (each mode reads its own prefix)."""
+    the widest mode of the batch needs (each mode reads its own prefix). arena_scale:
+    the arena scale's uniform (B,) when the rules sample map sizes, else None."""
 
     def __init__(self, rules: Rules, uniforms: torch.Tensor) -> None:
         start = rules.map_uniform_count
+        keys = start + TEAMS + rules.num_ships
         self.map = uniforms[:, :start]
         self.rotation = uniforms[:, start : start + TEAMS]
-        self.keys = uniforms[:, start + TEAMS : start + TEAMS + rules.num_ships]
+        self.keys = uniforms[:, start + TEAMS : keys]
+        self.arena_scale = uniforms[:, keys] if rules.samples_arena else None
         self.mode = uniforms[:, rules.game_uniform_count :]
 
 

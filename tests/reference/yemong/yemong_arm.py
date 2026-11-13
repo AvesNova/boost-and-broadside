@@ -13,6 +13,7 @@ import torch
 
 from bnb.contracts.obs import ZONE_COLUMNS
 from bnb.contracts.obs import ZONE_SLOTS
+from bnb.game.modes.phase import result_win_loss
 from bnb.models.yemong import belief, codes, critic, density, features, heads, layers, shots
 from bnb.models.yemong.network import Encoder, Trunk
 from bnb.models.yemong.spatial import SpatialBlock
@@ -185,10 +186,11 @@ class Arm:
         return critic.outcome_values(probabilities)
 
     def outcome_class(self, result):
-        return critic.outcome_class(result)
+        return critic.final_outcome(result_win_loss(result)).argmax(-1)
 
     def outcome_targets(self, probabilities, result, terminated, next_probabilities, gamma, lam):
-        return critic.outcome_targets(probabilities, result, terminated, next_probabilities,
+        win_loss = result_win_loss(result).to(probabilities.dtype)
+        return critic.outcome_targets(probabilities, win_loss, terminated, next_probabilities,
                                       gamma, lam)
 
     def return_scales(self, returns, masks, decay, floor):

@@ -89,7 +89,9 @@ class Match:
     it: previous_velocity_x, previous_velocity_y (B, N) each ship's velocity (m/s) and
     previous_nose_rate (B, N) its nose rate (rad/s); previous_alive (B, N); previously_seen
     (B, 2, N), team T saw ship n. A reset leaves them stale: perception reads them only
-    past a game's first tick and for a ship that did not spawn."""
+    past a game's first tick and for a ship that did not spawn. arena_scale (B,): the
+    episode's arena scale, drawn at each reset where the pool samples map sizes (1
+    elsewhere; `bnb.game.layout.sized` makes the episode's arena radius of it)."""
 
     episode_tick: torch.Tensor
     spawn_axis_x: torch.Tensor
@@ -102,6 +104,7 @@ class Match:
     previous_nose_rate: torch.Tensor
     previous_alive: torch.Tensor
     previously_seen: torch.Tensor
+    arena_scale: torch.Tensor
 
 
 @contract
@@ -221,6 +224,7 @@ def blank(rules: Rules, batch: int, device=None) -> State:
             previous_nose_rate=torch.zeros((B, N), device=device),
             previous_alive=torch.zeros((B, N), dtype=BOOL, device=device),
             previously_seen=torch.zeros((B, TEAMS, N), dtype=BOOL, device=device),
+            arena_scale=torch.ones(B, device=device),
         ),
         mode=ModeState(**mode),
     )

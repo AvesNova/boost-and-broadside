@@ -145,7 +145,27 @@ Version 18 (2026-11-13): the benched flag. Every ship row gains the always-shown
 S - active slots, `state.benched_of`), shown to both teams whatever the fog. A game with
 every ship active computes the same numbers (the column is 0 there; the fingerprint without
 it is version 16's).
+
+Version 19 (2026-11-13): team deathmatch's outcome is its kill share, and Frontline's
+zones have floors. `Events.win_loss` (B, 2) is team 0's weights of a win and of a loss
+where a match ended (a draw the rest): in team deathmatch (share, 1 - share), share =
+team 0's kills over both teams' (0.5 with none), as its rating scores a game; in the other
+modes the result one-hot. The outcome reward is win - loss (2 share - 1 in deathmatch) and
+the outcome head's final target (win, draw, loss) its weights; `result` still says who led.
+Frontline's zone ring keeps its zones' radius at least `ModeRules.zone_radius_floor`
+(231 m) and adjacent zones at least `zone_spacing_floor` (1315.8 m) apart, both m at map
+scale 1 times the ship set's map scale (3 at real scale), 0.7 x the 5v5 map's: no preset
+changes, a map under 70% of it is held there. The spawn disc follows the match's zone
+radius. Map-size sampling: a pool with `arena_scale` (`bnb.contracts.ArenaScale`; the
+training pools by default) draws each environment's arena scale at every reset, ln scale
+~ Normal(0, 0.35) truncated to [0.5, 2] by the inverse CDF of one more tick uniform (only
+when some pool samples, so a game without sampling draws as before); the episode's arena
+radius is the pool's times the scale, at least the mode's minimum (`api.arena_radius_for`),
+and every map length follows its map scale. `Match.arena_scale` (B,) holds it (1 without
+sampling); that new leaf is the fingerprint's only change.
+Frontline's arena has a floor too (`MINIMUM_ARENA_RADIUS`, 1400 m at map scale 1, 4200 m at
+real scale), so a sampled small Frontline map keeps its floored zones inside the boundary.
 """
 
-VERSION = 18
-FINGERPRINT = "6778aae7411da8b1"
+VERSION = 19
+FINGERPRINT = "e16ea10c244756ab"

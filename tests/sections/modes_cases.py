@@ -6,7 +6,7 @@ import dataclasses
 import torch
 
 from bnb.contracts import Action, GameConfig
-from bnb.game import api
+from bnb.game import api, tuning
 from bnb.game.state import replace
 
 TYPES = api.ship_types()
@@ -38,7 +38,19 @@ def random_actions(
 
 
 def lively(config: GameConfig, **rules):
-    return api.rules_of(config, **{**LIVELY_RULES, **rules})
+    return without_zone_floors(api.rules_of(config, **{**LIVELY_RULES, **rules}))
+
+
+def without_zone_floors(rules):
+    """The rules with Frontline's zone floors off: the lively Frontline arena (300 m) is far
+    under them (they would put the zones outside the arena)."""
+    floors = {
+        f"pool{index}.mode.{name}": 0.0
+        for index, pool in enumerate(rules.pools)
+        if pool.mode.name == "frontline"
+        for name in ("zone_radius_floor", "zone_spacing_floor")
+    }
+    return tuning.with_live(rules, floors) if floors else rules
 
 
 def play(config: GameConfig, batch: int = 16, ticks: int = 300, seed: int = 0, **rules):

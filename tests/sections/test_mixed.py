@@ -55,7 +55,9 @@ def _pools(share: float = 0.25, names=GAMES) -> tuple[Pool, ...]:
 
 def _mixed(per_game: int):
     pools = _pools()
-    rules = api.rules_of(BASE, pools, per_game * len(pools), **cases.LIVELY_RULES)
+    rules = cases.without_zone_floors(
+        api.rules_of(BASE, pools, per_game * len(pools), **cases.LIVELY_RULES)
+    )
     alone = [cases.lively(pool_game(BASE, pool)) for pool in pools]
     return rules, alone
 
@@ -195,7 +197,7 @@ def _against_alone(
     steps from the mixed batch's previous state, so a tolerance is one tick's, not
     amplified by play. Returns what happened."""
     B = per_game * len(pools)
-    rules = api.rules_of(BASE, pools, B, **cases.LIVELY_RULES)
+    rules = cases.without_zone_floors(api.rules_of(BASE, pools, B, **cases.LIVELY_RULES))
     alone = [cases.lively(pool_game(BASE, pool)) for pool in pools]
     bounds = [(g * per_game, (g + 1) * per_game) for g in range(len(pools))]
     N, types = rules.num_ships, cases.LIVELY_TYPES
@@ -530,6 +532,7 @@ def test_the_rollout_runs_a_mixed_batch_and_reports_every_pool():
         pools=pools,
         compiled=False,
         learner=LearnerConfig(minibatches=2, micro_batch_rows=30),
+        arena_scale=None,  # each pool's own arena, as the check of the radii below reads
     )
     trainer = Trainer(cfg, torch.device("cpu"))
     store, bootstrap = trainer.collect()

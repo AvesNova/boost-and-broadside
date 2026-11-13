@@ -131,7 +131,7 @@ def test_the_per_shard_cut_is_gone():
             values=torch.zeros((8, rows, ships, levels)),
             outcome=torch.full((8, rows, 4), 0.25),
             done=torch.zeros((8, rows), dtype=torch.bool),
-            result=torch.zeros((8, rows), dtype=torch.int32),
+            win_loss=torch.zeros((8, rows, 2)),
         )
 
     bootstrap = types.SimpleNamespace(

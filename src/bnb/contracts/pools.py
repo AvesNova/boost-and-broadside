@@ -9,6 +9,23 @@ from .config import ELIMINATION, GameConfig
 
 
 @dataclasses.dataclass(frozen=True)
+class ArenaScale:
+    """Map-size sampling: each environment's arena scale, drawn at every reset, is
+    log-normal about 1 (ln scale ~ Normal(0, sigma)) truncated to [low, high], by the
+    inverse CDF of one uniform (`bnb.game.layout.draw_arena_scale`). The episode's arena
+    radius is then the pool's radius times the scale, at least the mode's minimum
+    (`bnb.game.api.arena_radius_for`)."""
+
+    sigma: float = 0.35
+    low: float = 0.5
+    high: float = 2.0
+
+    def __post_init__(self) -> None:
+        if not (self.sigma > 0.0 and 0.0 < self.low <= 1.0 <= self.high):
+            raise ValueError(f"{self}: sigma > 0 and 0 < low <= 1 <= high")
+
+
+@dataclasses.dataclass(frozen=True)
 class Pool:
     """A contiguous slice of the batch with a fixed lineup and one game.
 
@@ -20,6 +37,8 @@ class Pool:
         (mixed spec 1); None takes the GameConfig's value, and for the clocks then the
         mode's default. Every environment of the pool shares them. The sizes (ships, fields) are the
         GameConfig's, shared by the whole batch.
+    arena_scale: map-size sampling (`ArenaScale`): each episode's arena radius drawn about
+        the pool's; None plays the pool's radius every episode (evaluation, ratings, play).
     """
 
     name: str
@@ -31,6 +50,7 @@ class Pool:
     spawn_groups: tuple[int, ...] | None = None
     episode_seconds: float | None = None
     respawn_seconds: float | None = None
+    arena_scale: ArenaScale | None = None
 
 
 GAME_FIELDS = ("mode", "arena_radius", "spawn_groups", "episode_seconds", "respawn_seconds")

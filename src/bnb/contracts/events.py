@@ -34,7 +34,11 @@ class Events:
     objective_progress, objective: the mode's two objective amounts, signed per ship, each
         summing to zero over the environment (Frontline: meter fractions, captures).
     result: (B,) int32, the match result for team 0 (+1 win, -1 loss, 0 draw), nonzero
-        only where done.
+        only where done (team deathmatch: by the kill lead, for the tallies).
+    win_loss: (B, 2) float, team 0's weights of a win and of a loss where done, zero
+        elsewhere; a draw is the rest, 1 - win - loss (team 1's: flipped). The learner's
+        outcome: team deathmatch's is its kill share (share, 1 - share), the other modes'
+        the result one-hot (`bnb.game.modes.phase.win_loss`).
     enemy_damage_by_aspect: (B, N, len(ASPECTS)) float, the hit damage each ship took from
         the enemy team this tick by the hit's aspect class (friendly fire left out).
     kill_aspect: int32, the aspect class (an index of ASPECTS) of the hit that killed the
@@ -53,6 +57,7 @@ class Events:
     objective_progress: torch.Tensor
     objective: torch.Tensor
     result: torch.Tensor
+    win_loss: torch.Tensor
     enemy_damage_by_aspect: torch.Tensor
     kill_aspect: torch.Tensor
-    SCHEMA_VERSION: ClassVar[int] = 4  # 3: the aspect statistics; 4: four classes
+    SCHEMA_VERSION: ClassVar[int] = 5  # 3: the aspect statistics; 4: four classes; 5: win_loss

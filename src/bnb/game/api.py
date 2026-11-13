@@ -74,7 +74,7 @@ from .handling.solver import ACCEPTANCE as SOLVE_ACCEPTANCE
 from .handling.solver import Progress as SolveProgress
 from .handling.solver import error_floor as solve_error_floor
 from .handling.weapons import combat_card, combat_handles
-from .layout import environment, per_mode
+from .layout import environment, per_mode, sized
 from .modes import frontline, phase
 from .modes.frontline import lock_ticks
 from .modes.rules import FLEET_PRESETS, LINEUPS, PRESETS, arena_radius_for, minimum_arena_radius
@@ -207,7 +207,7 @@ def retune(rules: Rules, types: ShipTypes, state: State) -> State:
     each ship's shield and store capped at its type's new maximum. The map and the spawns
     are left as drawn; they follow the rules from the next episode."""
     batch = state.ships.x.shape[0]
-    arena = environment(rules, batch, state.ships.x.device)
+    arena = sized(environment(rules, batch, state.ships.x.device), state.match.arena_scale)
     mode = per_mode(
         rules,
         batch,

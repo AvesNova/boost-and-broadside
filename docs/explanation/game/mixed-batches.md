@@ -15,6 +15,7 @@ clear, in the same tensors and one compiled graph. The training mix does this. T
   `GameConfig`. Every environment has the same tensor shapes.
 - **Per pool:** the mode, the arena radius, the spawn groups and the two clocks
   (`bnb.contracts.Pool`). Every environment of a pool shares them.
+- **Per episode:** the arena scale, where the pool samples map sizes (below).
 
 `bnb.contracts.pools.pool_game` gives a pool's game: the config with the pool's values
 where it sets them. `bnb.game.api.rules_of(config, pools, environments)` then builds
@@ -38,6 +39,32 @@ is the whole batch, uncut. No environment pays for another mode's rules.
 
 `bnb.game.layout.slices` cuts the batch where the mode changes, so two pools of one mode
 with different arenas or clocks run in one slice.
+
+## Map-size sampling
+
+A pool with `arena_scale` (`bnb.contracts.ArenaScale`, game v17) plays a different arena
+size each episode. At every reset each of its environments draws a scale: ln scale ~
+Normal(0, sigma), truncated to [low, high]. The draw is one tick uniform through the
+truncated inverse CDF (`bnb.game.layout.draw_arena_scale`), so there is no rejection loop
+and no branch. The scale is kept in `Match.arena_scale` (B,). `bnb.game.layout.sized` makes
+the episode's arena radius from it: the pool's radius times the scale, at least the mode's
+minimum (`bnb.game.api.arena_radius_for`; team deathmatch 1000 m at map scale 1, 3000 m at
+real scale). The map scale follows the radius, so every map length that scales with the map
+moves with it: fields, zones (down to Frontline's zone floors), spawns and the boundary's
+ramp. The observation's lengths stay normalised by the episode's own radius, which is in
+the globals.
+
+Only the radius tensors change, never a shape or a static value, so the compiled tick does
+not recompile when the radii vary. This was checked by compiling a sampled tick with
+dynamo's `error_on_recompile`{.plain} through 128 resets and 145 distinct radii: one frame, one
+graph. The scale takes one more tick uniform, but only when some pool samples, so a batch
+without sampling draws exactly as before. Pools without `arena_scale` play their own radius
+every episode.
+
+Training samples by default (`TrainConfig.arena_scale`: sigma 0.35, bounds 0.5 to 2;
+`None` turns it off). The rating lanes (`bnb.runtime.lanes.lane_pools`), evaluation and
+play keep their games' own sizes. To rate at another size, give the game that radius
+(`api.arena_radius_for(game, ships_per_team, scale)`).
 
 ## Fixed shapes across modes
 

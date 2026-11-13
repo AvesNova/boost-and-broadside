@@ -426,7 +426,9 @@ def test_the_outcome_targets_read_the_match_result_at_any_outcome_weight(decided
     assert (trajectory.result[ended] > 0).any() and (trajectory.result[ended] < 0).any()
     learner = lc.learner(net, runner)
     targets = learner.prepare(runner.store, runner.bootstrap())["derived"]["outcome_targets"]
-    assert torch.equal(targets[ended].argmax(-1), critic.outcome_class(trajectory.result[ended]))
+    assert torch.equal(
+        targets[ended].argmax(-1), critic.final_outcome(trajectory.win_loss[ended]).argmax(-1)
+    )
 
 
 def test_an_update_consumes_several_shards():

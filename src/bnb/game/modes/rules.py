@@ -87,7 +87,9 @@ PRESETS["real_scale_deathmatch"] = dataclasses.replace(
 # deathmatch's is 1000 m, 3000 m at real scale (the author, 2026-11-13: real-scale 5v5 is
 # 4200 m, so by the rule alone 2v2 would be 2656 m and 1v1 1878 m); elimination's and
 # frontline's are 0 (off) until smaller sizes prove too uneven.
-MINIMUM_ARENA_RADIUS = {TEAM_DEATHMATCH: 1000.0, ELIMINATION: 0.0, FRONTLINE: 0.0}  # m
+# Frontline's keeps its floored zones (`ModeRules.zone_spacing_floor`) inside the boundary
+# down to the floor; deathmatch's keeps a 1v1 from becoming a pure turning duel.
+MINIMUM_ARENA_RADIUS = {TEAM_DEATHMATCH: 1000.0, ELIMINATION: 0.0, FRONTLINE: 1400.0}  # m
 SET_MAP_SCALE = {REAL_SCALE: REAL_SCALE_ARENA / 2600.0}  # others 1 (2600: map scale 1)
 
 
@@ -218,7 +220,9 @@ class ModeRules:
     arena radii around its centre at `Rules.spawn_offset` arena radii on the spawn axis,
     the noses toward the enemy area's centre within side_heading_jitter (radians).
     Frontline: the zone ring (zone_ring_fraction of the arena radius), zone_radius (m
-    before map scaling), capture_seconds (a lead of one), front_threshold (captures ahead
+    before map scaling), the zones' floors (zone_radius_floor on the radius and
+    zone_spacing_floor on the adjacent zones' spacing, m at map scale 1 times set_map_scale,
+    the ship set's), capture_seconds (a lead of one), front_threshold (captures ahead
     that win), the spawn disc (spawn_zone_fraction of the zone radius), the capture lock
     (after a capture the team that lost the zone gains no progress on it for
     lock_seconds_per_root_km x sqrt(d / 1 km) s, d the distance between adjacent zone
@@ -243,6 +247,14 @@ class ModeRules:
     spawn_margin: float = 50.0  # m: grouped candidates are kept this far inside the arena
     zone_ring_fraction: float = 0.615
     zone_radius: float = 330.0  # m, before map scaling
+    # The zones' floors (game v17; m at map scale 1, times the ship set's map scale
+    # set_map_scale, not the arena's: a smaller arena does not shrink them): 0.7 x the zone
+    # radius (330 m) and the adjacent zones' spacing (2 x 0.615 x 2600 m x sin 36 deg =
+    # 1879.7 m) of the 5v5 Frontline map, so they leave it as it is and hold a sampled or
+    # small map at 70% of it (`frontline.zone_ring`).
+    zone_radius_floor: float = 231.0  # m at map scale 1
+    zone_spacing_floor: float = 1315.8  # m at map scale 1
+    set_map_scale: float = 1.0  # the ship set's map scale (`SET_MAP_SCALE`; 3 at real scale)
     capture_seconds: float = 10.0
     front_threshold: int = 3
     spawn_zone_fraction: float = 0.35
@@ -299,5 +311,6 @@ def mode_rules_of(config: GameConfig) -> ModeRules:
         kills_per_ship=1 if config.mode == ELIMINATION else config.kills_per_ship,
         spawn_groups=config.spawn_groups,
         layout=config.layout,
+        set_map_scale=SET_MAP_SCALE.get(config.ship_set, 1.0),
         **given,
     )

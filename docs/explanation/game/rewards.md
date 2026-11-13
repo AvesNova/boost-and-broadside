@@ -29,8 +29,11 @@ critic's bins and the return scale assume ([the learner](../learner.md)):
 - **kill_death:** death, kill, ally kill and unforced (boundary) death.
 - **objective_progress** and **objective:** the mode's two objective events, as they come
   (see [Modes](modes.md)).
-- **outcome:** the match result, +1 or -1 by team or 0 for a draw, to every ship of the
-  team, living or dead, on the final tick.
+- **outcome:** the match's score, to every ship of the team, living or dead, on the final
+  tick: the team's win weight less its loss weight (`Events.win_loss`). Elimination and
+  Frontline score the result, +1 or -1 by team or 0 for a draw. Team deathmatch scores its
+  kill share, as its rating does: `2 share - 1`, with share the team's kills over both
+  teams' kills (0.5 when neither scored), so +1 for every kill and -1 for none.
 
 **Every level is zero-sum** over each environment on every tick. A team's gain is the
 other team's loss: damage to an ally blames the shooter and pays the opposing team twice,

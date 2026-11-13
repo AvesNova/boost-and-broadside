@@ -7,6 +7,7 @@ import torch
 
 from bnb.contracts import ASPECTS, REWARD_LEVELS, Events, GameConfig, Pool
 from bnb.game import api
+from bnb.game.modes.phase import result_win_loss
 from bnb.game.ship_types import per_ship
 from bnb.learn import rewards
 
@@ -127,6 +128,7 @@ class Match:
             objective_progress=zero,
             objective=zero,
             result=torch.tensor([result], dtype=torch.int32),
+            win_loss=result_win_loss(torch.tensor([result])) * done,
             enemy_damage_by_aspect=torch.zeros(1, N, len(ASPECTS)),
             kill_aspect=torch.full((1, N), -1, dtype=torch.int32),
         )
@@ -253,15 +255,20 @@ def test_rollout_stores_every_level_zero_sum_per_environment(mode):
 
 
 @pytest.mark.parametrize("mode", list(cases.MODES))
-def test_the_rollouts_ledger_holds_every_deficit(mode):
+def test_the_rollouts_ledger_holds_every_deficit(mode, monkeypatch):
     """Through the runtime: the rollout's carried ledger against its carried state, after
-    each of 16 short runs (staggered clocks, so resets fall inside)."""
+    each of 16 short runs (staggered clocks, so resets fall inside). The rollout builds its
+    rules without Frontline's zone floors, as the lively cases are (`cases.lively`)."""
     from bnb.controllers.scripted import Chaser, Random
     from bnb.game.handling.characteristics import characteristics
     from bnb.runtime.rollout import Rollout
 
     config = cases.MODES[mode]
     S = config.ships_per_team
+    built = api.rules_of
+    monkeypatch.setattr(
+        api, "rules_of", lambda *args, **kwargs: cases.without_zone_floors(built(*args, **kwargs))
+    )
     rollout = Rollout(
         config,
         api.ship_types(),
@@ -314,6 +321,7 @@ def test_a_bigger_game_runs_too():
         objective_progress=zero,
         objective=zero,
         result=torch.zeros(2).int(),
+        win_loss=torch.zeros(2, 2),
         enemy_damage_by_aspect=torch.zeros(2, N, len(ASPECTS)),
         kill_aspect=zero.int() - 1,
     )

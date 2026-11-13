@@ -68,7 +68,9 @@ def _mixed_rules():
         )
         for name, game in ((name, cases.MODES[name]) for name in GAMES)
     )
-    return api.rules_of(cases.MODES["team_deathmatch"], pools, BATCH, **cases.LIVELY_RULES)
+    return cases.without_zone_floors(
+        api.rules_of(cases.MODES["team_deathmatch"], pools, BATCH, **cases.LIVELY_RULES)
+    )
 
 
 @pytest.mark.parametrize("name", [*GAMES, "mixed"])

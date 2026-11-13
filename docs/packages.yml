@@ -7,6 +7,9 @@
 - package: contracts
   holds: the types shared between sections; shapes, dtypes and meanings, no logic
   reference: reference/contracts.md
+- package: reference
+  holds: "data only: the researched real WWII fighters and their ship files, kept for reference"
+  reference: reference/reference.md
 - package: game
   holds: "the rules: physics, perception, modes, the batch layout"
   reference: reference/game.md

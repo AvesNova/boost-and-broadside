@@ -6,6 +6,7 @@ import pathlib
 SRC = pathlib.Path(__file__).resolve().parents[2] / "src" / "bnb"
 LAYER = {
     "contracts": 0,
+    "reference": 0,  # data only: the researched real planes (no bnb imports)
     "game": 1,
     "controllers": 2,
     "models": 2,

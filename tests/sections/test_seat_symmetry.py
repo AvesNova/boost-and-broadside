@@ -188,6 +188,7 @@ class Mirror:
             killer=killer,
             done=events.done,
             result=-events.result,
+            win_loss=events.win_loss.flip(-1),
             damage=events.damage[:, seats][:, :, seats],
             boundary_damage=events.boundary_damage[:, seats],
             objective=events.objective[:, seats],
