@@ -402,9 +402,8 @@ class Trainer:
         # learner's: the advantage and combat series per mode
         pool_modes = tuple(pool_game(game, pool).mode for pool in lineup.pools)
         view_modes = tuple(dict.fromkeys(pool_modes[int(p)] for p in self.learner_pool.tolist()))
-        view_mode = torch.tensor(
-            [view_modes.index(pool_modes[int(p)]) for p in self.learner_pool.tolist()],
-            device=device,
+        view_mode = torch.tensor(  # on the host: the learner reads it once
+            [view_modes.index(pool_modes[int(p)]) for p in self.learner_pool.tolist()]
         ).repeat(config.shards)
         if cloning:  # the labels are the scripted agent's distribution, transformed
             teacher = teacher_agent(self.characteristics, game.ships_per_team, config.teacher)

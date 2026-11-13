@@ -322,7 +322,8 @@ class Learner:
         self.device, self.outcome_weight = device, outcome_weight
         self.reward_weights = reward_weights
         self.view_modes = view_modes
-        self.view_mode = None if view_mode is None else view_mode.to(device)
+        self.view_mode = view_mode
+        self.view_members: dict = {}  # `_view_member`'s, by (slice names, views)
         levels = tuple(model.config.levels)
         if levels not in returns.VALUE_LAYOUTS:
             raise ValueError(f"the model's levels {levels} are not one of {returns.VALUE_LAYOUTS}")
@@ -1038,6 +1039,19 @@ class Learner:
             level_advantage=cadence_advantage,
         )
 
+    def _view_member(self, names: tuple[str | None, ...], views: int) -> torch.Tensor:
+        """(views, slices) each view's slices for the advantage series: the batch (the
+        first, None), then each mode of `names` (`view_mode`, on the host). Made on the host
+        once, so the update reads it without a synchronisation."""
+        key = (names, views)
+        if key not in self.view_members:
+            member = torch.ones((views, len(names)))
+            if len(names) > 1:
+                modes = self.view_mode.cpu().long()
+                member[:, 1:] = torch.nn.functional.one_hot(modes, len(names) - 1).float()
+            self.view_members[key] = member.to(self.device)
+        return self.view_members[key]
+
     def _advantage_series(
         self,
         level_advantage: torch.Tensor,
@@ -1050,12 +1064,11 @@ class Learner:
         return scale, own_alive (L, V, S) the policy's tokens; raw_sums the levels' raw sums
         (`advantages.raw_sums`)."""
         views = advantage.shape[1]
-        member = advantage.new_ones((views, 1))
         names: tuple[str | None, ...] = (None,)
-        if self.view_mode is not None and self.view_mode.shape[0] == views and self.view_modes:
-            modes = torch.nn.functional.one_hot(self.view_mode.long(), len(self.view_modes))
-            member = torch.cat([member, modes.to(member.dtype)], 1)
+        mode = self.view_mode
+        if mode is not None and mode.shape[0] == views and self.view_modes:
             names += self.view_modes
+        member = self._view_member(names, views)
         per_level, whole = level_advantages.level_sums(
             level_advantage, advantage, own_alive, member
         )
