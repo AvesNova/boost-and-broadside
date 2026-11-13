@@ -70,6 +70,27 @@ CARDS = {
         ("Y damage x1.5 + J shield x0.65", {"hit_damage": 1.5}, {"max_shield": 0.65}),
         ("Y damage x1.5 + power x1.15", {"hit_damage": 1.5, **POWER(1.15)}, {}),
     ],
+    # round 6: every card's duel too low and 5v5 too high; lift (round 4: the duel lever
+    # that spares 5v5) with smaller damage / shield steps
+    "round7": [
+        ("base", {}, {}),
+        ("Y damage x2 + J shield x0.65", {"hit_damage": 2.0}, {"max_shield": 0.65}),
+        ("Y lift x1.5", {"max_lift_coefficient": 1.5}, {}),
+        ("Y lift x1.5 + damage x1.5", {"max_lift_coefficient": 1.5, "hit_damage": 1.5}, {}),
+        ("Y lift x1.3 + damage x1.5", {"max_lift_coefficient": 1.3, "hit_damage": 1.5}, {}),
+        (
+            "Y lift x1.3 + damage x1.5 + J shield x0.8",
+            {"max_lift_coefficient": 1.3, "hit_damage": 1.5},
+            {"max_shield": 0.8},
+        ),
+        ("Y lift x1.5 + J shield x0.8", {"max_lift_coefficient": 1.5}, {"max_shield": 0.8}),
+    ],
+    # the spot-checks (10v10, arena 0.5x and 2x) of round 6's two closest cards
+    "round7-spot": [
+        ("base", {}, {}),
+        ("Y damage x2 + J shield x0.65", {"hit_damage": 2.0}, {"max_shield": 0.65}),
+        ("Y damage x1.5 + J shield x0.65", {"hit_damage": 1.5}, {"max_shield": 0.65}),
+    ],
 }
 
 

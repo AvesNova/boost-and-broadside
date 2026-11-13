@@ -40,6 +40,10 @@ Game v13: the real-scale set at x2 native speed, with the lethality rules. Fly i
   is therefore provisional; re-check the final card on the shrinking elimination. I don't
   touch modes, boundary damage, observations, scripted boundary avoidance or rendering.
 
+- Kill-lead deathmatch at the v15 clock (600 s, 4200 m) is near-deterministic: one side
+  wins 90-100% of games from a 55-60% kill share. For ratings and the search, score it by
+  kill share, or shorten its clock?
+
 ## Log (KST)
 ### 13:54 start
 Branch feat/lethality from integrate/next-runs (fd918a0a). The GPU is running bc-mb512
@@ -253,6 +257,33 @@ now reads boundary_max_damage and boundary_ramp_width. Round 5's frontline (v13,
 finished before the merge; its deathmatch and elimination were stopped and moved to round 6.
 From here, elimination results count. The harness uses each preset's clock (deathmatch
 600 s, elimination 180 s, frontline 600 s); the frontline runs before this used 1200 s.
+
+### 16:23 round 6 on game v15 (`round6/`): finalists and two-lever cards, all three modes
+256 games a cell (SE ~0.03). Yongma's score, energy v turn, both sides r9m2. Elimination
+counts now. Deathmatch is a 600 s clock on the 4200 m map: its kill-lead result
+saturates (base 1v1 0.002, most buffs 0.91-1.0 at 5v5, from 15-120 kills a game), so the
+table shows its kill share (Yongma's share of the kills), which reads 0.5 at balance.
+
+| Card | Elim 1v1 | Elim 2v2 | Elim 5v5 | DM share 1v1 | DM share 2v2 | DM share 5v5 | Front 5v5 |
+|---|---|---|---|---|---|---|---|
+| base | 0.21 | 0.38 | 0.40 | 0.22 | 0.46 | 0.49 | 0.29 |
+| Y damage x2 | 0.36 | 0.41 | 0.48 | 0.27 | 0.53 | 0.55 | 0.42 |
+| Y power x1.3 | 0.24 | 0.48 | 0.54 | 0.20 | 0.53 | 0.56 | 0.50 |
+| J shield x0.5 | 0.38 | 0.63 | 0.65 | 0.27 | 0.54 | 0.56 | 0.52 |
+| Y damage x2 + power x1.3 | 0.47 | 0.50 | 0.61 | 0.27 | 0.60 | 0.61 | 0.63 |
+| **Y damage x2 + J shield x0.65** | 0.49 | 0.55 | 0.64 | 0.30 | 0.57 | 0.59 | 0.53 |
+| Y damage x1.5 + J shield x0.65 | 0.41 | 0.51 | 0.63 | 0.29 | 0.54 | 0.57 | 0.51 |
+| Y damage x1.5 + power x1.15 | 0.35 | 0.48 | 0.45 | 0.24 | 0.54 | 0.56 | 0.54 |
+
+- Closest overall: Yongma damage x2 + Jujak shield x0.65. Elimination is within 0.45-0.55 at
+  1v1 and 2v2 but 0.64 at 5v5, frontline 5v5 is 0.53, and the deathmatch 1v1 share only
+  0.30.
+- Every card has the same shape: the duel (1v1) too low and 5v5 overshooting. Damage,
+  power and shield all help the teams more than the duel. In round 4 lift x1.5 lifted
+  the 1v1 (elim 0.38) without the 5v5 (0.48), so round 7 pairs lift with smaller
+  damage / shield steps.
+- Deathmatch's kill-lead score is too deterministic at 600 s to rate with. Rate on the kill
+  share, or a shorter clock? (Question for the author.)
 
 ## Next
 - Item 6, league: no-flee scripted agents and the fast-chaser ship. ETA ~15:45.
