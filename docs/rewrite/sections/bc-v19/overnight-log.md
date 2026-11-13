@@ -255,3 +255,11 @@ This log records the changes and decisions made while the author was away, with 
 - **E1 (agent):** a rating switch, `--deathmatch-score win_loss`, so deathmatch can also be rated as v2.1 did and matched with it.
 - **E3 (agent, then the GPU):** a training switch for deathmatch's outcome, kill lead as win/loss, and a mixed run with it.
 - **Attention shares (agent):** the attention mass to self, allies, enemies, zones, fields and the super token, by mode, for the BC final and RL at 150M.
+
+## 07:10 — switches in; win/loss rating of rl-v20 running; E3 queued
+
+- **Rating switch** (c6fc6d88): `bnb ratings --deathmatch-score win_loss`. Records name their scoring and are never reused under the other.
+- **Training switch** (1eaebc74): `--set reward.deathmatch_outcome=kill_lead`. It sits on RewardConfig, so existing policy files still pass the game check. The default is unchanged.
+- **E1 is running on the laptop:** rl-v20's averaged snapshots at 10, 30, 55, 95 and 150M are being rated in deathmatch on win/loss against Baekho. The live Elo service is paused while it runs.
+- **rl-dm flags:** the objective and objective-progress advantage shares are about 0. That is expected, since deathmatch has no objective.
+- **E3 `rl-kl`** is queued on the box. It is mixed modes with deathmatch's outcome on kill lead, 143 updates. It starts when rl-dm ends, from a second checkout, /workspace/game2 at 4475e893, so rl-dm's code isn't touched mid-run.
