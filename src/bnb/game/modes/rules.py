@@ -81,6 +81,32 @@ PRESETS["real_scale_deathmatch"] = dataclasses.replace(
     respawn_seconds=10.0,
 )
 
+# A game at another fleet size (`arena_radius_for`): the arena radius follows the density
+# rule, growing as sqrt(n / n_base) from the base game's, down to the mode's minimum
+# (m at map scale 1, times the ship set's map scale: the real-scale set's is 3). Team
+# deathmatch's is 1000 m, 3000 m at real scale (the author, 2026-11-13: real-scale 5v5 is
+# 4200 m, so by the rule alone 2v2 would be 2656 m and 1v1 1878 m); elimination's and
+# frontline's are 0 (off) until smaller sizes prove too uneven.
+MINIMUM_ARENA_RADIUS = {TEAM_DEATHMATCH: 1000.0, ELIMINATION: 0.0, FRONTLINE: 0.0}  # m
+SET_MAP_SCALE = {REAL_SCALE: REAL_SCALE_ARENA / 2600.0}  # others 1 (2600: map scale 1)
+
+
+def minimum_arena_radius(game: GameConfig) -> float:
+    """The smallest arena radius (m) the game's mode plays at another fleet size, at its
+    ship set's map scale (0: none)."""
+    return MINIMUM_ARENA_RADIUS.get(game.mode, 0.0) * SET_MAP_SCALE.get(game.ship_set, 1.0)
+
+
+def arena_radius_for(game: GameConfig, ships_per_team: int, arena_scale: float = 1.0) -> float:
+    """The arena radius (m, to 0.1 m) of this game at ships_per_team a side: the density
+    rule (the game's radius times sqrt(ships_per_team / its ships per team), so the
+    crowding stays), times arena_scale (a map off the rule, as a size search draws), then
+    at least the mode's minimum (`minimum_arena_radius`; after the scale, so a scaled-down
+    map is still floored). The one place a per-size radius is derived."""
+    radius = game.arena_radius * math.sqrt(ships_per_team / game.ships_per_team) * arena_scale
+    return round(max(radius, minimum_arena_radius(game)), 1)
+
+
 # The arena: a 2v2 team deathmatch of the real-scale set on a small map with no fields (and
 # no zones: they are frontline's), a ship killed spawning again on the next tick (one tick
 # of the game's 30 Hz). Not a training preset. Its first radius, 1300 m, came from the two
@@ -114,7 +140,7 @@ PRESETS["arena"] = GameConfig(
 # images), each ship nose to the centre with up to 150 m and 5 degrees of jitter. The
 # whole layout turns by a random angle each match, as the random maps' fields and spawn
 # axis do.
-CLOVER_RADIUS = round(REAL_SCALE_ARENA * (2 / 5) ** 0.5, 1)  # m
+CLOVER_RADIUS = arena_radius_for(PRESETS["real_scale_elimination"], 2)  # m
 CLOVER_FIELD_RADIUS = 0.25 * CLOVER_RADIUS
 CLOVER_FIELD_DISTANCE = 0.45 * CLOVER_RADIUS  # the centres' distance from the map centre
 CLOVER_SPAWN_DISTANCE = 0.875 * CLOVER_RADIUS
@@ -159,8 +185,9 @@ LINEUPS = {"arena": ("P-51D", "Spitfire XIV")}
 # Fleet-size evaluation presets (zero-shot: training is 5v5 only), of each base game:
 # `<base>_<n>v<n>_arena` keeps the base's arena, so n ships crowd it n/5 times as densely;
 # `<base>_<n>v<n>_density` keeps its crowding, the arena radius growing as sqrt(n / 5) (its
-# 10 fields zoom with the arena, as every map scale's do). Not training presets, and not maps
-# of the play shell (`FLEET_PRESETS`).
+# 10 fields zoom with the arena, as every map scale's do; `arena_radius_for`, so a mode's
+# minimum radius holds). Not training presets, and not maps of the play shell
+# (`FLEET_PRESETS`).
 FLEET_SIZES = (10, 20, 50)  # the largest is 10x the trained 5v5 (the zero-shot claim)
 FLEET_BASES = ("deathmatch", "frontline", "real_scale_deathmatch", "real_scale_frontline")
 FLEET_PRESETS: tuple[str, ...] = tuple(
@@ -174,9 +201,7 @@ for _base in FLEET_BASES:
     for _n in FLEET_SIZES:
         PRESETS[f"{_base}_{_n}v{_n}_arena"] = dataclasses.replace(_game, ships_per_team=_n)
         PRESETS[f"{_base}_{_n}v{_n}_density"] = dataclasses.replace(
-            _game,
-            ships_per_team=_n,
-            arena_radius=round(_game.arena_radius * (_n / _game.ships_per_team) ** 0.5, 1),
+            _game, ships_per_team=_n, arena_radius=arena_radius_for(_game, _n)
         )
 del _base, _game, _n
 
