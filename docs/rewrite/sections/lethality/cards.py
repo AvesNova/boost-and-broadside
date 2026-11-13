@@ -18,6 +18,11 @@ _spec.loader.exec_module(make)
 R9M = make.R9M
 R9M2 = make.gates(1.0, 0.4)
 
+def POWER(factor: float) -> dict:
+    """Yongma's engine power, below and above the knee, times this."""
+    return {"engine_power": factor, "engine_power_full_store": factor}
+
+
 CARDS = {
     "round3": [
         ("base", {}, {}),
@@ -43,6 +48,14 @@ CARDS = {
         ("Y damage x2", {"hit_damage": 2.0}, {}),
         ("J shield x0.65", {}, {"max_shield": 0.65}),
         ("J shield x0.5", {}, {"max_shield": 0.5}),
+    ],
+    # two levers: damage for the duel, power or Jujak's shield for the team sizes
+    "round5": [
+        ("base", {}, {}),
+        ("Y damage x2 + power x1.3", {"hit_damage": 2.0, **POWER(1.3)}, {}),
+        ("Y damage x2 + J shield x0.65", {"hit_damage": 2.0}, {"max_shield": 0.65}),
+        ("Y damage x1.5 + J shield x0.65", {"hit_damage": 1.5}, {"max_shield": 0.65}),
+        ("Y damage x1.5 + power x1.15", {"hit_damage": 1.5, **POWER(1.15)}, {}),
     ],
 }
 
