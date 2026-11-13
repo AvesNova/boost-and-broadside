@@ -648,4 +648,11 @@ def test_a_view_reflected_about_frontlines_neutral_axis_reflects_the_stick():
     # float32 rounding of the reflection itself moves the inputs by about 1e-4 m
     torch.testing.assert_close(mirrored.power, original.power, atol=1e-4, rtol=0)
     torch.testing.assert_close(mirrored.shoot, original.shoot, atol=1e-4, rtol=0)
-    torch.testing.assert_close(mirrored.stick, original.stick[..., swap_sides], atol=1e-4, rtol=0)
+    # A ship flying exactly at its goal (a fresh spawn's nose is set toward the zone it
+    # attacks) is an exact left-right tie, whose side the reflection's rounding picks: such
+    # rows are left out (game version 8's waves land a team's spawns together, making them
+    # likelier at a given tick).
+    tie = original.stick[..., 1] == original.stick[..., 2]
+    torch.testing.assert_close(
+        mirrored.stick[~tie], original.stick[..., swap_sides][~tie], atol=1e-4, rtol=0
+    )
