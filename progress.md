@@ -347,6 +347,32 @@ facing spawn plus the lethality, not head-on damage. Possible rules (the laptop'
 not touched here): spawn areas spread wider, or a spawn offset that grows on small maps,
 or a heading jitter that spreads the blocks.
 
+### 17:05 round 8 on game v15 (`round8/`): the lift leader confirmed at 512 games
+Yongma's score (deathmatch: kill share). Sizes 1 / 2 / 5 at 512 games (SE ~0.02); the spot
+columns at 256 (SE ~0.03). Stopped after the deathmatch 10v10 block: v16 changes the
+deathmatch arenas (round 9 reruns them).
+
+| Card | Elim 1/2/5 | DM share 1/2/5 | Front 5v5 | Elim 10v10 | Elim 0.5x | Elim 2x | DM share 10v10 |
+|---|---|---|---|---|---|---|---|
+| base | 0.21 / 0.35 / 0.40 | 0.21 / 0.46 / 0.49 | 0.31 | 0.40 | 0.49 | 0.29 | 0.48 |
+| **Y lift x1.5 + damage x1.5** | **0.49 / 0.49 / 0.54** | 0.31 / 0.56 / 0.54 | 0.47 | 0.46 | 0.59 | 0.44 | 0.52 |
+| Y damage x2 + J shield x0.65 | 0.41 / 0.51 / 0.63 | 0.30 / 0.57 / 0.59 | 0.53 | 0.64 | 0.64 | 0.62 | 0.57 |
+
+The lift leader holds at 512 games: elimination 0.49 / 0.49 / 0.54 and 0.46 at 10v10;
+frontline 5v5 0.47; deathmatch share 0.56 / 0.54 / 0.52 at 2v2 / 5v5 / 10v10. Map size
+still matters (elimination 0.59 on the half arena, 0.44 on the double). The deathmatch 1v1
+share (0.31, on the 1878 m arena) is the one miss. v16's 3000 m floor tests the arena
+explanation directly (round 9).
+
+### 17:10 merged game v16 (origin/integrate/next-runs 7545c16b, with the test sweep)
+Clean merge; the fingerprint is v16's (71982b10a86b586f). The search harness (game_loop),
+density_sweep and gun_lethality take arena radii from `api.arena_radius_for` (the density
+rule, the scale, then the mode's floor: deathmatch 1v1 / 2v2 now 3000 m). Tests pass:
+arena_floor, game_version, elimination, boundary_shrink, ship_type_tournament,
+league_tournament, game_loop. Round 9 (v16; tmux `lethality-r9` since 17:10): base and the
+two leaders at 512 games on elimination and deathmatch 1/2/5, then the three modes'
+spot-checks (10v10, 0.5x, 2x; frontline for the lift leader is new there).
+
 ## Next
 - Item 6, league: no-flee scripted agents and the fast-chaser ship. ETA ~15:45.
 - Item 7: round 6 (v15) is running in tmux `lethality-r6`; then 10v10 and 0.5x / 2x arena
