@@ -44,3 +44,14 @@ This log records the changes and decisions made while the author was away, with 
 | step | deathmatch | elimination | frontline |
 |---|---|---|---|
 | 10M | 548 ± 35 | lost every game | lost every game |
+
+## 01:56 — bc-v19 crashed at update 27 (27M steps): NaN in a rollout belief decode
+
+- **The error:** a device-side assert, `index out of bounds < 3457`, in the compiled `codes.invert_mean` table lookup. That lookup is the delta head's decode of a 55-bin family, run during the rollout. A NaN mean bin produces a garbage index.
+- **What it rules out:** the learner was clean. It had 0 non-finite steps, 0 skipped steps, 0 non-finite inputs and finite losses. So the NaN entered through a rollout-time input or game state, or from an op hit by an extreme input. The weights were not corrupted.
+- **What I've ruled out by reading the code:**
+  - `arena_code`: log(0) at a closed boundary gives −∞, which clamps.
+  - The boundary inputs: they are ratios over the fixed arena radius.
+  - The boundary damage ramp: it is clamped.
+- **A possibly related signal:** `belief/normalised_square_error/position_metres/*` has been NaN every update.
+- **Action:** an agent is reproducing the rollout on the idle 5090 with per-tick finiteness checks to find the exact op. The v8 BC run won't launch until the cause is fixed. Snapshots up to 25M and the live Elo for 10M and 20M are kept.
