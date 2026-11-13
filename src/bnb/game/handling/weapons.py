@@ -89,6 +89,8 @@ def combat_card(rules: Rules, handles, cruise_speed: torch.Tensor) -> dict[str, 
         raise Infeasible("a head-on angle must lie in (0, 180] degrees")
     if ((handles.explosive_share < 0.0) | (handles.explosive_share > 1.0)).any():
         raise Infeasible("an explosive share must lie in [0, 1]")
+    if ((handles.core_radius < 0.0) | (handles.core_radius >= handles.hit_radius)).any():
+        raise Infeasible("a core radius must lie in [0, the hit radius)")
     if (handles.bullet_drag <= 0.0).any():
         raise Infeasible("a bullet drag must be positive")
     if (handles.shots_per_store < 1.0).any():
@@ -119,6 +121,7 @@ def combat_card(rules: Rules, handles, cruise_speed: torch.Tensor) -> dict[str, 
         head_on_sharpness=handles.head_on_sharpness,
         arming_distance=handles.arming_distance,
         hit_radius=handles.hit_radius,
+        core_radius=handles.core_radius,
         spawn_energy=handles.spawn_energy,
     )
 
@@ -149,5 +152,6 @@ def combat_handles(rules: Rules, types: ShipTypes, cruise_speed: torch.Tensor) -
         head_on_sharpness=types.head_on_sharpness,
         arming_distance=types.arming_distance,
         hit_radius=types.hit_radius,
+        core_radius=types.core_radius,
         spawn_energy=types.spawn_energy,
     )

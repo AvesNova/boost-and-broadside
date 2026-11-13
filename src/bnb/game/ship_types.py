@@ -34,7 +34,11 @@ FIELDS = dict(
     max_energy="J [e_max]",
     corner_nose_frequency="rad/s at corner speed [omega_c]",
     max_shield="[shield_max]",
-    hit_radius="m",
+    hit_radius="m: the hit test's reach and the damage profile's outer radius",
+    core_radius=(
+        "m: full damage inside it, a smoothstep down to 0 at hit_radius; 0, the classic "
+        "(1 - (b / R)^2)^2 falloff over the whole hit radius (the target's)"
+    ),
     hit_damage="a centre hit's damage by a bullet at its reference speed [damage]",
     muzzle_speed="m/s, proper",
     bullet_energy_cost="J [bullet_cost]",
@@ -151,6 +155,7 @@ class ShipTypes:
     corner_nose_frequency: torch.Tensor
     max_shield: torch.Tensor
     hit_radius: torch.Tensor
+    core_radius: torch.Tensor
     hit_damage: torch.Tensor
     muzzle_speed: torch.Tensor
     bullet_energy_cost: torch.Tensor

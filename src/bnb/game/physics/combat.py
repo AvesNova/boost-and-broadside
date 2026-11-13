@@ -96,13 +96,24 @@ def kinetic(
     return explosive_share + (1.0 - explosive_share) * ratio * ratio
 
 
-def closeness(impact_squared: torch.Tensor, radius: torch.Tensor) -> torch.Tensor:
-    """A hit's damage over a centre hit's, (1 - (b / R)^2)^2 for the closest approach b of
-    the bullet's relative path to the target's centre and the target's hit radius R: 1 at
-    the centre, 0 with zero slope at the rim (a graze does little, and miss, graze, hit and
-    centre are continuous). Its mean over a uniform b in [0, R] is 8/15 (`MEAN_CLOSENESS`)."""
+def closeness(
+    impact_squared: torch.Tensor, radius: torch.Tensor, core: torch.Tensor | float = 0.0
+) -> torch.Tensor:
+    """A hit's damage over a centre hit's, by the closest approach b of the bullet's relative
+    path to the target's centre, its hit radius R and core radius c (the target's).
+
+    c > 0: 1 inside the core, then a smoothstep down to 0 with zero slope at the rim, 1 - s^2
+    (3 - 2 s) for s = (b - c) / (R - c): a solid core and a short graze band. c = 0: the
+    classic (1 - (b / R)^2)^2, 1 at the centre and 0 with zero slope at the rim. Either way
+    miss, graze, hit and centre are continuous. The classic falloff's mean over a uniform b in
+    [0, R] is 8/15 (`MEAN_CLOSENESS`); the core profile's is (c + R) / (2 R).
+    """
     left = (1.0 - impact_squared / (radius * radius)).clamp_min(0.0)
-    return left * left
+    classic = left * left
+    core = torch.as_tensor(core, dtype=impact_squared.dtype, device=impact_squared.device)
+    band = ((impact_squared.sqrt() - core) / (radius - core).clamp_min(1e-6)).clamp(0.0, 1.0)
+    cored = 1.0 - band * band * (3.0 - 2.0 * band)
+    return torch.where(core > 0.0, cored, classic)
 
 
 MEAN_CLOSENESS = 8.0 / 15.0  # closeness averaged over a uniform impact parameter
@@ -186,7 +197,8 @@ def hits(
         shooters(types.explosive_share),
     )
     radius = per_ship(types.hit_radius, ships.ship_type).gather(1, target)  # the target's
-    full = full * closeness(impact_squared(sweep, target, K), radius)
+    core = per_ship(types.core_radius, ships.ship_type).gather(1, target)
+    full = full * closeness(impact_squared(sweep, target, K), radius, core)
     # The shooter's arming distance X: the damage ramps as a smoothstep of the distance the
     # bullet has travelled over [0, X] (a minimum effective range; X = 0 is full damage at
     # once). The distance is its moves so far, this one included, at its present speed:

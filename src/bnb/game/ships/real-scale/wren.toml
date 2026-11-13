@@ -34,6 +34,7 @@ head_on_angle = 0.737832313317803
 head_on_sharpness = 2.0
 arming_distance = 0.0
 hit_radius = 5.645
+core_radius = 0.0
 spawn_energy = 42300.72
 
 [card]
@@ -48,6 +49,7 @@ max_energy = 105751.796875
 corner_nose_frequency = 7.682472229003906
 max_shield = 100.0
 hit_radius = 5.644999980926514
+core_radius = 0.0
 hit_damage = 42.81825637817383
 muzzle_speed = 856.0
 bullet_energy_cost = 165.32916259765625

@@ -78,7 +78,15 @@ gravity plus the exchange: a climb asks for more, a dive about none; the turn ke
 priority, the shortfall sinks, and an empty store holds gravity first). The settled level
 turn's rate now peaks below full stick; a solve sets the sustained stick to that peak and
 the fine to 0.3 of it. Yongma, Jujak and Vizia re-solved.
+Version 12 (2026-11-13, rough, iterating): lethality. A card field `core_radius`: full
+damage inside it, a smoothstep down to 0 at the hit radius (0, every set's default, keeps
+the classic (1 - (b / R)^2)^2 falloff). Yongma, Jujak and Vizia: core 5 m, hit radius 12 m,
+a centre hit 21 x the archetype delta (about 6 core hits kill, 0.3-0.5 s of fire), no
+damage dead ahead and half at 45 degrees (sharpness 3), and a shield that refills empty to
+full in 4.5 s after 3 s of quiet flight (the wait restarts on a boost, a shot, a hit or a
+stick past the fine level, as before). The fingerprint's presets fly none of the three,
+so it is version 11's.
 """
 
-VERSION = 11
+VERSION = 12
 FINGERPRINT = "923ebb362bbf26e8"

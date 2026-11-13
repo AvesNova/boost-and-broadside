@@ -48,6 +48,7 @@ class Handles:
     head_on_sharpness: torch.Tensor  # the armour cone's exponent p (2 a Gaussian)
     arming_distance: torch.Tensor  # m a bullet travels before its damage is full (0 off)
     hit_radius: torch.Tensor  # m
+    core_radius: torch.Tensor  # m, full damage inside it (0: the classic falloff)
     spawn_energy: torch.Tensor  # J
 
     def replace(self, **values) -> Handles:
@@ -108,6 +109,7 @@ UNITS = dict(
     head_on_sharpness=("", 1.0),
     arming_distance=("m", 1.0),
     hit_radius=("m", 1.0),
+    core_radius=("m", 1.0),
     spawn_energy=("J", 1.0),
 )
 

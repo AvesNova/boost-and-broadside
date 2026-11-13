@@ -69,6 +69,7 @@ HANDLE_UNITS = dict(
     head_on_sharpness=NONE,
     arming_distance=LENGTH,
     hit_radius=LENGTH,
+    core_radius=LENGTH,
     spawn_energy=ENERGY,
 )
 CARD_UNITS = dict(
@@ -82,6 +83,7 @@ CARD_UNITS = dict(
     corner_nose_frequency=RATE,
     max_shield=NONE,
     hit_radius=LENGTH,
+    core_radius=LENGTH,
     hit_damage=NONE,
     muzzle_speed=SPEED,
     bullet_energy_cost=ENERGY,

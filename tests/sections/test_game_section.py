@@ -500,13 +500,15 @@ def test_defaults_match_the_spec_table():
     # that are shared in the spec's table; the fire rate replaces the ticks between shots,
     # and the bullet life (s) the table's shared bullet moves; the damage's speed terms
     # (game v6): no explosive share, and each bullet's speed at the reference distance; the
-    # armour cone's sharpness (2, the table's Gaussian cone).
+    # armour cone's sharpness (2, the table's Gaussian cone); the core radius (game v12; 0,
+    # the table's falloff).
     assert set(CARD.values()) - {"ticks_between_shots"} == (
         set(DEFAULTS)
         - {"bleed_exponent", "fire_rate", "bullet_life", *SCALED}
         - {"explosive_share", "reference_bullet_speed", "head_on_sharpness", "arming_distance"}
-        - {"fine_stick", "sustained_stick"}
+        - {"fine_stick", "sustained_stick", "core_radius"}
     )
+    assert TYPES.core_radius.tolist() == [0.0, 0.0]
     assert TYPES.fine_stick.tolist() == pytest.approx([0.4, 0.4])
     assert TYPES.sustained_stick.tolist() == [0.75, 0.75]
     assert TYPES.head_on_sharpness.tolist() == [2.0, 2.0]
