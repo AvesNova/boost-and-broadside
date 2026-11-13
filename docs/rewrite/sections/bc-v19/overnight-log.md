@@ -151,3 +151,15 @@ This log records the changes and decisions made while the author was away, with 
   - 143 updates, about 150M steps.
 - **Why 32 minibatches:** the author locked 256 for BC. For RL, 32 is what trained the champion, under the build-on-the-winner rule. The minibatch comparison is still a candidate for the arms.
 - **Live Elo** is repointed to rl-v20.
+
+## 04:47 — rl-v20 update 12: `gauge_runaway` judged a warm-up artifact (recheck at about 22M)
+
+- **What the alert counts:** league entries that have played training games but whose rating error is still infinite.
+- **Why it fires now:** after 12 updates, the deathmatch rating lanes have finished no rated games, so every deathmatch entry, including the scripted anchor, is at stderr ∞. Frontline has rated one or two games.
+- **Not a runaway fit:** elimination is rated normally (live 1068 ± 26).
+- **Expected to clear** as long deathmatch and frontline games finish. If the deathmatch lanes still have no rated games by about 22M, that is a real bug in the lanes.
+- **Otherwise healthy:**
+  - 6.1 s rollout and 38–43 s learning per update, so about 1.8 h for 150M steps;
+  - policy KL 0.006–0.008, clip fraction 0.07–0.08, entropy 1.44;
+  - advantage shares: damage 0.08, kill/death 0.14, objective progress 0.10, objective 0.20, outcome 0.49, with every level's gradient cosine to the total between 0.65 and 0.86;
+  - inputs clean.
