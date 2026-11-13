@@ -49,6 +49,17 @@ from bnb.game.handling.characteristics import characteristics
 from bnb.game.ship_types import ShipTypes
 
 PRESET = "real_scale_deathmatch"
+# The harness's games (game v13: the rating games are elimination and frontline): each the
+# preset a Loop plays and how a game's result for A is read. "deathmatch" (the default, as
+# every round before v13 ran): the whole clock, the result the sign of A's kills less B's.
+# "elimination" and "frontline": the mode's own result for the environment's first match
+# (a wipe or the front's threshold, else the clock's rule: the health left, the front),
+# the environment's later matches (after an early win) played but not scored.
+MODES = {
+    "deathmatch": "real_scale_deathmatch",
+    "elimination": "real_scale_elimination",
+    "frontline": "real_scale_frontline",
+}
 SHIP_SET = "real-scale"
 ENERGY, TURN = "yongma", "jujak"
 KINDS = (ENERGY, TURN)
@@ -257,6 +268,9 @@ def tally_like(B: int, S: int, device) -> dict:
     zeros = dict(device=device)
     return dict(
         kills_side=torch.zeros((B, 2), **zeros),  # by killer side A, B
+        # the first match's result for team 0 (+1, 0, -1) and whether it has ended
+        result=torch.zeros((B,), dtype=torch.int32, device=device),
+        finished=torch.zeros((B,), dtype=torch.bool, device=device),
         kills_kind=torch.zeros((B, 2, 2, len(ASPECTS)), **zeros),  # killer, victim kind
         damage_kind=torch.zeros((B, 2, 2, len(ASPECTS)), **zeros),  # victim side, kind
         passes=torch.zeros((B, PASS_BINS), **zeros),
@@ -345,6 +359,8 @@ STATISTICS = (
     "deaths",
     "traded",
     "kills_side",
+    "result",
+    "finished",
     "kills_kind",
     "damage_kind",
     "passes",
@@ -371,9 +387,11 @@ class Loop:
         ships_per_team: int = 5,
         fog: bool = True,
         arena_scale: float = 1.0,
+        mode: str = "deathmatch",
     ) -> None:
         self.device = torch.device(device)
-        base_game = api.PRESETS[PRESET]
+        self.mode = mode
+        base_game = api.PRESETS[MODES[mode]]
         # the fleet presets' density rule: the arena radius grows as sqrt(n / 5)
         radius = base_game.arena_radius * math.sqrt(ships_per_team / base_game.ships_per_team)
         radius *= arena_scale  # a diagnostic: the arena off the density rule
@@ -383,7 +401,8 @@ class Loop:
             arena_radius=radius,
             num_fields=0,
             episode_seconds=seconds,
-            kills_per_ship=1000,  # no early win: every game runs the whole clock
+            # deathmatch: no early win, every game runs the whole clock
+            **(dict(kills_per_ship=1000) if mode == "deathmatch" else {}),
         )
         self.fog = fog
         self.game = game
@@ -475,6 +494,9 @@ class Loop:
         )
         tally = dict(tally)
         tick = tally["tick"]
+        first_end = events.done & ~tally["finished"]
+        tally["result"] = torch.where(first_end, events.result.to(torch.int32), tally["result"])
+        tally["finished"] = tally["finished"] | events.done
         shown = api.display(state)
         x, y = shown["ships.x"], shown["ships.y"]
         cos, sin = shown["ships.heading_cos"], shown["ships.heading_sin"]
@@ -902,14 +924,21 @@ class Loop:
     def play(self, groups: list[Group]) -> dict:
         """One game in every environment; the statistics per environment, on the host."""
         state, observation, carry, tally = self.start(groups)
-        for _ in range(self.ticks - 1):  # the game ends (and resets) on its last tick
+        # deathmatch: the game ends (and resets) on its last tick, which is not played; a
+        # scored mode plays it, so the clock's result is read
+        ticks = self.ticks - 1 if self.mode == "deathmatch" else self.ticks
+        for _ in range(ticks):
             state, observation, carry, tally = self._tick(state, observation, carry, tally)
         torch.cuda.synchronize(self.device) if self.device.type == "cuda" else None
         ships = torch.full((self.B,), float(self.N))  # ships a game, for the per-ship pace
-        return {name: tally[name].cpu() for name in STATISTICS} | {
+        out = {name: tally[name].cpu() for name in STATISTICS} | {
             "group": self.group.cpu(),
             "ships": ships,
         }
+        if self.mode != "deathmatch":  # A's first-match result, +1, 0 or -1
+            a_result = torch.where(self.a_on_zero, tally["result"], -tally["result"])
+            out["a_result"] = a_result.cpu()
+        return out
 
 
 def per_type(table: torch.Tensor, ship_type: torch.Tensor) -> torch.Tensor:
@@ -1029,7 +1058,10 @@ def summary(out: dict, mask: torch.Tensor, seconds: float) -> dict:
     kills = out["kills_side"][mask]
     n = int(mask.sum())
     difference = kills[:, 0] - kills[:, 1]
-    points = torch.where(difference > 0, 1.0, torch.where(difference < 0, 0.0, 0.5))
+    if "a_result" in out:  # a scored mode: the first match's own result
+        points = (out["a_result"][mask].float() + 1.0) / 2.0
+    else:
+        points = torch.where(difference > 0, 1.0, torch.where(difference < 0, 0.0, 0.5))
     score = float(points.mean())
     score_se = float(points.std() / math.sqrt(max(n, 1))) if n > 1 else 0.5
     # A's share of the game's kills (0.5 in a game without one): the search's finer signal
@@ -1273,6 +1305,14 @@ def run(loop: Loop, jobs: list[Job], log=print) -> list[dict]:
     return [{k: torch.cat([p[k] for p in part]) for k in part[0]} for part in parts]
 
 
+def outcome(out: dict) -> torch.Tensor:
+    """(B,) each game's result for A: the scored mode's first-match result, else the sign of
+    A's kills less B's (deathmatch)."""
+    if "a_result" in out:
+        return out["a_result"]
+    return torch.sign(out["kills_side"][:, 0] - out["kills_side"][:, 1])
+
+
 def job_summary(job: Job, out: dict, seconds: float) -> dict:
     """A job's statistics and its key."""
     mask = torch.ones(out["kills_side"].shape[0], dtype=torch.bool)
@@ -1282,8 +1322,8 @@ def job_summary(job: Job, out: dict, seconds: float) -> dict:
         a=job.a.name,
         b=job.b.name,
         **summary(out, mask, seconds),
-        wins=float((out["kills_side"][:, 0] > out["kills_side"][:, 1]).sum()),
-        draws=float((out["kills_side"][:, 0] == out["kills_side"][:, 1]).sum()),
+        wins=float((outcome(out) > 0).sum()),
+        draws=float((outcome(out) == 0).sum()),
     )
 
 

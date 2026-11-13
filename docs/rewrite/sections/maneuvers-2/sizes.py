@@ -114,6 +114,12 @@ def main() -> None:
     parser.add_argument("--versus-sizes", type=int, nargs="+", default=[5])
     parser.add_argument("--arena-scale", type=float, default=1.0, help="off the density rule")
     parser.add_argument("--fog", type=int, default=1)
+    parser.add_argument(
+        "--mode",
+        default="deathmatch",
+        choices=["deathmatch", "elimination", "frontline"],
+        help="the game and its score (bench.game_loop.MODES); --seconds is its match clock",
+    )
     args = parser.parse_args()
     started = time.time()
     candidates = json.loads((HERE / args.candidates).read_text())
@@ -146,6 +152,7 @@ def main() -> None:
             ships_per_team=size,
             fog=bool(args.fog),
             arena_scale=args.arena_scale,
+            mode=args.mode,
         )
         loop.set_types(energy, turn)
         if size == args.sizes[0]:
