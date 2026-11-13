@@ -254,9 +254,10 @@ def test_a_lead_turn_turns_before_the_merge_to_the_passing_side_or_away():
     assert float(half.stick[0, 0, 2]) > 0.9
 
 
-def test_the_lead_turn_in_crowd_gate_flies_it_only_in_a_lone_duel():
+def test_the_lead_turn_crowd_gates_fly_it_only_in_a_lone_duel():
     """At a lead_turn_in_crowd centre of 1/2 the lead turn flies alone with its target; with
-    another known enemy inside the crowd's radius it is shut (the stick as without it)."""
+    another known enemy inside the crowd's radius it is shut (the stick as without it); one
+    far off leaves it open, unless lead_turn_in_others shuts it at any range."""
     lead = Doctrine(
         lead_turn=1.0,
         lead_turn_in_seconds=Logistic(3.0, 0.1, False),
@@ -270,6 +271,13 @@ def test_the_lead_turn_in_crowd_gate_flies_it_only_in_a_lone_duel():
     crowd = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, other])
     torch.testing.assert_close(
         _decide(crowd).stick, _decide(crowd, _every_type(lead)).stick, atol=0.02, rtol=0.0
+    )
+    far = ship(x=-8.0 * gun, y=8.0 * gun, heading=0.0, ship_type=STIFF, team_relative=1)
+    apart = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, far])
+    assert float(_decide(apart, _every_type(lead)).stick[0, 0, 6]) > 0.9
+    last = dataclasses.replace(lead, lead_turn_in_others=Logistic(0.5, 0.1, False))
+    torch.testing.assert_close(
+        _decide(apart).stick, _decide(apart, _every_type(last)).stick, atol=0.02, rtol=0.0
     )
 
 

@@ -34,7 +34,8 @@ and `in_advantage`, so they fly in the mirrors too; each reads the committed tar
   the side the bandit will pass on (the two-circle sense), or, with `lead_turn_one_circle`
   above 1/2, away from it (the one-circle sense). Weighted by the falling
   `lead_turn_in_crowd` in the sense's crowd count (below; open by default): at a centre of
-  1/2, only in a lone duel.
+  1/2, only in a lone duel; and by the falling `lead_turn_in_others` in the count of the
+  other known enemies at any range (open by default; at 1/2, only against the last one).
 - **Yo-yo**: after `yoyo_after_seconds` of a close fight without an angle gained (the
   carry's stalemate clock: the nose never on the target while the target's nose is off the
   ship), when the target comes within `yoyo_phase` radians of the nose, ease the stick to
@@ -131,6 +132,7 @@ class Doctrine:
     lead_turn_stick: float = 1.0
     lead_turn_one_circle: float = 0.0
     lead_turn_in_crowd: Logistic = Logistic(1e4, 0.1, False)
+    lead_turn_in_others: Logistic = Logistic(1e4, 0.1, False)
     yoyo: float = 0.0
     yoyo_after_seconds: float = 30.0
     yoyo_phase: float = 1.5  # rad
@@ -214,6 +216,7 @@ SCALE_FLOORS = {
     "lead_turn_in_seconds": 0.05,
     "lead_turn_in_crossing": 0.1,
     "lead_turn_in_crowd": 0.1,
+    "lead_turn_in_others": 0.1,
     "brake_in_stall_angle": 0.158,
     "brake_in_gun_range": 0.1,
     "sense_in_gun_range": 0.1,

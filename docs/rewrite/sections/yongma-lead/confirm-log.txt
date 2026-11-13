@@ -1,1 +1,4 @@
 ## 1v1: 54 jobs, B 8192, 09:11 KST
+  batch 1/7 29 s; ETA 09:15 KST
+  batch 2/7 51 s; ETA 09:14 KST
+  batch 3/7 74 s; ETA 09:14 KST

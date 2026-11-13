@@ -137,7 +137,8 @@ by default:
   opposed) with the merge `lead_turn_in_seconds` away (range over closure), turn early at
   `lead_turn_stick` of full stick toward the side the target will pass on (the two-circle
   sense), or away from it (`lead_turn_one_circle`). The falling `lead_turn_in_crowd` on the
-  sense's crowd count (below) can keep it to a lone duel.
+  sense's crowd count (below) can keep it to a lone duel, and the falling
+  `lead_turn_in_others` on the count of the other known enemies at any range to the last one.
 - **Yo-yo**: after `yoyo_after_seconds` of a close fight with no angle gained (a clock in
   the carry), with the target within `yoyo_phase` of the nose and its nose off the ship,
   ease the stick to `yoyo_ease` and climb (reverse) for `yoyo_climb_seconds`, then pull

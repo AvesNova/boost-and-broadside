@@ -601,6 +601,7 @@ def maneuvers(
     crowd = torch.where(torch.isfinite(enemies), near, 0.0).sum(-1)
     friends = torch.where(torch.isfinite(allies), logistic(allies, per_enemy, heat), 0.0).sum(-1)
     crowd = crowd - doctrine.sense_crowd_ally_weight * friends
+    anywhere = torch.isfinite(enemies).float().sum(-1)  # the other known enemies
 
     # Lead turn: on a head-on approach, turn before the merge.
     own_speed = torch.sqrt(
@@ -617,7 +618,8 @@ def maneuvers(
         doctrine.lead_turn
         * logistic(time_to_merge, doctrine.lead_turn_in_seconds, temperature)
         * logistic(from_opposed, doctrine.lead_turn_in_crossing, temperature)
-        * logistic(crowd, doctrine.lead_turn_in_crowd, temperature),
+        * logistic(crowd, doctrine.lead_turn_in_crowd, temperature)
+        * logistic(anywhere, doctrine.lead_turn_in_others, temperature),
         0.0,
     )
     # the side the target passes on: its offset at the closest approach, from the nose
@@ -700,7 +702,6 @@ def maneuvers(
         ),
         logistic(lift_ratio, doctrine.duel_extend_in_lift_ratio, temperature),
     )
-    anywhere = torch.isfinite(enemies).float().sum(-1)  # the other known enemies
     cross = torch.where(
         doctrine.duel_extend_mirror_only <= 0.5,
         logistic(anywhere, doctrine.duel_extend_cross_in_others, temperature),

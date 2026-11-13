@@ -4,6 +4,10 @@ candidates on balance-d2, the frozen card (the ship files) and armour-tank, r9m2
 them as the same-run control. Writes `candidates.json` (or `--out`).
 
     python docs/rewrite/sections/yongma-lead/make.py [--seconds 0.3] [--out confirm.json]
+        [--last] [--no-control]
+
+`--last` adds the stricter gate `lead_turn_in_others` (0.5, 0.1): no other known enemy at
+any range, only the last one.
 
 The lead turn is morning item 3's (`morning/lead.py`: full stick toward the bandit's passing
 side, crossing gate 0.5 rad, time gate scale 0.1 s). The lone-duel gate is the new
@@ -26,8 +30,9 @@ ROOT = HERE.parents[3]
 MAPS = ("balance-d2", "frozen", "armour-tank")  # frozen: the ship files
 
 
-def lead(seconds: float, crowd: list[float]) -> dict:
-    return {
+def lead(seconds: float, crowd: list[float], last: bool) -> dict:
+    gate = {"lead_turn_in_others": [0.5, 0.1]} if last else {}
+    return gate | {
         "lead_turn": 1.0,
         "lead_turn_in_seconds": [seconds, min(0.1, seconds / 2)],
         "lead_turn_in_crossing": [0.5, 0.2],
@@ -42,14 +47,19 @@ def main() -> None:
     parser.add_argument("--seconds", type=float, nargs="+", default=[0.2, 0.3, 0.5])
     parser.add_argument("--maps", nargs="+", default=list(MAPS))
     parser.add_argument("--out", default="candidates.json")
+    parser.add_argument("--last", action="store_true", help="also only against the last enemy")
+    parser.add_argument("--no-control", action="store_true")
     args = parser.parse_args()
     champion = json.loads((HERE.parent / "maneuvers-2" / "champion2.json").read_text())
     parameters = {str(i): v for i, v in enumerate(champion["parameters"])}
     crowd = champion["yongma"]["sense_in_crowd"]
-    doctrines = {"r9m2": dict(energy=champion["yongma"], turn=champion["jujak"])}
+    doctrines = (
+        {} if args.no_control else {"r9m2": dict(energy=champion["yongma"], turn=champion["jujak"])}
+    )
+    label = "last" if args.last else "lone"
     for t in args.seconds:
-        doctrines[f"r9m2 + Yongma lone lead {t} s"] = dict(
-            energy=dict(champion["yongma"], **lead(t, crowd)), turn=champion["jujak"]
+        doctrines[f"r9m2 + Yongma {label} lead {t} s"] = dict(
+            energy=dict(champion["yongma"], **lead(t, crowd, args.last)), turn=champion["jujak"]
         )
     out = []
     for name in args.maps:
