@@ -478,7 +478,9 @@ class Yemong(nn.Module):
     rises whenever a change alters what saved weights compute (runs spec 4)."""
 
     NAME = "yemong"
-    VERSION = 2  # 2: every build reads the boundary (2026-11-13)
+    # 2: every build reads the boundary (2026-11-13); 3: the ship token reads the benched
+    # flag (SHIP_FLAGS, one more input; 2026-11-13)
+    VERSION = 3
 
     def __init__(self, build: YemongBuild) -> None:
         super().__init__()

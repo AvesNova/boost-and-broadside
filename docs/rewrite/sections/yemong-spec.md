@@ -227,11 +227,11 @@ Per view, the tokens are ships `0 … N−1` (rows as observed: own `S` first, t
 enemies), then the global token, then fields `0 … M−1`. Each ship row's physical state is
 the belief's (section 5), so it is truth when visible.
 
-**Ship token** (width 490 + 63 = 553):
+**Ship token** (width 490 + 64 = 554):
 - the position code (81) and state code (409) of the belief means and spreads;
 - `team_relative` one-hot (2);
 - `ship_type` one-hot (types);
-- `alive`, `visible`, `fired` (3);
+- `alive`, `visible`, `fired`, `benched` (4; `benched` since Yemong v3);
 - `symlog(time_since_seen)` (1), with `symlog(x) = sign(x) ln(1 + |x|)`;
 - respawn features of `respawn_wait` (9):
   `[s/H, sin(2πk s/H), cos(2πk s/H)]` for `k = 1…4`, with `H = 16 s`;

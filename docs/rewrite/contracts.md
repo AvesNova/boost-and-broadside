@@ -308,7 +308,8 @@ snapshot(state) -> RenderSnapshot            # play section
 The source of truth is the code: `src/bnb/contracts/`. The tables above are the first
 cut; where they differ, this section and the code win.
 
-- **Ship columns (28 since 2026-11-08; 24 before),** in two groups:
+- **Ship columns (29 since 2026-11-13: benched; 28 since 2026-11-08; 24 before),** in two
+  groups:
   - zeroed for a ship the team cannot see: x, y, heading_cos, heading_sin, velocity_x,
     velocity_y, proper_speed, angle_of_attack, nose_rate, energy, shield,
     shield_recharge_wait, gun_cooldown, log_refractive_index, log_index_gradient_x,
@@ -317,7 +318,8 @@ cut; where they differ, this section and the code win.
     world-frame change over the last tick, valid only when the team saw the ship alive at
     both ticks and it did not spawn, past a game's first tick;
   - always shown: alive, visible, fired, respawn_wait, ship_type, team_relative,
-    time_since_seen, spawned.
+    time_since_seen, spawned, and (2026-11-13) benched: 1 for a slot out of an uneven
+    match (a team's last S - active slots), shown to both teams under fog.
 
   Times are in seconds.
 - **Field columns:** x, y, radius, band_width, level.

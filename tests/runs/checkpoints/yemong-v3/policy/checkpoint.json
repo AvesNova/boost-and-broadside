@@ -3,7 +3,7 @@
  "kind": "policy",
  "model": {
   "name": "yemong",
-  "version": 2,
+  "version": 3,
   "build": {
    "config": {
     "width": 8,
@@ -106,7 +106,8 @@
    "ship_type",
    "team_relative",
    "time_since_seen",
-   "spawned"
+   "spawned",
+   "benched"
   ],
   "fields": [
    "x",
@@ -146,16 +147,16 @@
    "lock_enemy"
   ]
  },
- "game_version": 16,
+ "game_version": 17,
  "game": null,
  "ship_card": null,
  "return_scale": false,
  "steps": {},
  "ratings": {},
- "commit": "0dbc67e7f7c1714948b7219402fa493a1eb36461",
+ "commit": "97fbbd4d6b5ef1b23e5f0ddc6b830a21b26c4dcb",
  "dirty": true,
- "time": "2026-11-13T08:36:41+00:00",
+ "time": "2026-11-13T08:55:58+00:00",
  "files": {
-  "weights.safetensors": "79de30bb3c384dc4386b8dc282ca287639981aa4088f7c65842e54c538fc2ab2"
+  "weights.safetensors": "2068e40bd72c76fb7e0c2813f895d3f8eb14e205c167a4ad17430b22f420c590"
  }
 }

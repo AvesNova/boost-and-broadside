@@ -130,7 +130,13 @@ crossing. A game's arena radius at another fleet size (`api.arena_radius_for`) f
 density rule down to its mode's minimum: team deathmatch 1000 m at map scale 1, 3000 m at
 real scale (1v1 and 2v2 real-scale deathmatch were 1878 m and 2656 m by the rule alone);
 elimination and frontline have none. No preset changes radius.
+
+Version 17 (2026-11-13): the benched flag. Every ship row gains the always-shown column
+`benched` (`bnb.contracts.obs`): 1 for a slot out of an uneven match (a team's last
+S - active slots, `state.benched_of`), shown to both teams whatever the fog. A game with
+every ship active computes the same numbers (the column is 0 there; the fingerprint without
+it is version 16's).
 """
 
-VERSION = 16
-FINGERPRINT = "71982b10a86b586f"
+VERSION = 17
+FINGERPRINT = "fc00556b4dec455f"

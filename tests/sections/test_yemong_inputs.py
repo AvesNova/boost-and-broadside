@@ -206,6 +206,46 @@ def test_the_time_since_seen_input_is_in_seconds():
     assert torch.all(tokens.ship[:, :S, SINCE_SEEN] == 0.0)  # own rows: seen now
 
 
+def test_the_ship_token_reads_the_benched_flag_and_the_model_steps_with_it():
+    """Benching an own and an enemy row moves one ship-token input (the flag's, 1 on exactly
+    those rows) and nothing else; a step reads it and stays finite."""
+    net = _model()
+    views, _, _ = _game(2, 4)
+    view = views[-1]
+    replay = _decision(net, view, 2).replay
+
+    def tokens(ships):
+        return compose(
+            dataclasses.replace(view, ships=ships),
+            replay,
+            net.state_code,
+            net.ship_types,
+            net.config.presence_radius,
+            net.tick_length,
+        ).ship
+
+    ships = view.ships.clone()
+    assert torch.all(ships[..., SHIP["benched"]] == 0.0)  # every ship active
+    benched = ships.clone()
+    benched[:, [S - 1, N - 1], SHIP["benched"]] = 1.0
+    change = tokens(benched) - tokens(ships)
+    moved = (change != 0).any(0).any(0).nonzero()[:, 0]
+    assert moved.numel() == 1, moved
+    expected = torch.zeros(2, N)
+    expected[:, [S - 1, N - 1]] = 1.0
+    torch.testing.assert_close(change[..., moved[0]], expected, rtol=0, atol=0)
+    with torch.no_grad(), _default_generator(7):
+        carry = net.initial_carry(2, S, N)
+        decision = net.step(
+            carry, dataclasses.replace(view, ships=benched), torch.ones(2, dtype=torch.bool)
+        )
+    assert all(
+        bool(torch.isfinite(leaf).all())
+        for leaf in _pytree.tree_leaves(decision)
+        if isinstance(leaf, torch.Tensor) and leaf.is_floating_point()
+    )
+
+
 # ------------------------------------------------------------------ item 26: the image
 
 

@@ -12,6 +12,9 @@ import pytest
 import torch
 
 from bnb.contracts import GameConfig
+from bnb.contracts.obs import SHIP
+from bnb.game import api
+from bnb.game.state import benched_of
 from bnb.league import crossover as fights
 from bnb.league.matches import Arena, ArenaConfig, Player, player
 from bnb.runs import checkpoint
@@ -42,6 +45,20 @@ def test_each_environment_gives_the_first_player_its_count_whatever_its_seat():
     assert set(first_team.tolist()) == {0, 1}  # both seats in every block
     with pytest.raises(ValueError, match="from 1 to"):
         arena.play([(0, 1), (0, 1)], [(4, 3), (3, 3)])
+
+
+def test_the_rollout_shows_the_benched_flag_from_its_first_observation_on():
+    """The restart's observation (before any tick) and every one after it flag exactly the
+    benched rows of both views, as the rollout's active counts give them."""
+    arena = Arena([_scripted(), _scripted()], GAME, CPU, LAYOUT, benching=True)
+    rollout = arena.rollout
+    rollout.restart(arena._active([(3, 1), (2, 3)]))
+    order = api.view_order(GAME.ships_per_team, CPU)
+    rows = benched_of(GAME.ships_per_team, rollout.carry["active"])[:, order].float()
+    assert rows.any()
+    assert torch.equal(rollout.carry["obs"]["ships"][..., SHIP["benched"]], rows)
+    rollout.run()
+    assert torch.equal(rollout.carry["obs"]["ships"][..., SHIP["benched"]], rows)
 
 
 def test_an_engine_without_benching_refuses_counts():

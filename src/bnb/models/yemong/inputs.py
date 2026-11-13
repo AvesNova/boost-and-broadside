@@ -71,7 +71,8 @@ ACCELERATION_CODE = sum(component.width for component in ACCELERATIONS)
 ACCELERATION_INPUTS = ACCELERATION_CODE + 1  # the codes, then the validity flag
 SLOW_SPEED = 1.0  # m/s: below it the frame is the heading, not the velocity
 
-SHIP_FLAGS = ("alive", "visible", "fired")
+# benched (a slot out of an uneven match, shown to both teams): read since Yemong v3
+SHIP_FLAGS = ("alive", "visible", "fired", "benched")
 POSITION_CODE = 9 * POSITION_LEVELS  # the width of a position code
 # The modes whose flags the global token reads (`YemongConfig.mode_inputs`): the modes a
 # build knows, each a one-hot column of the observation ("mode_<name>"). Builds from before

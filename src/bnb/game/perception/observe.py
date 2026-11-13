@@ -14,7 +14,7 @@ from ..layout import boundary_fraction, boundary_time_to_zero, environment, per_
 from ..modes.observation import mode_globals, zone_rows
 from ..physics.numerics import flight_path_velocity
 from ..rules import TEAMS, Rules
-from ..state import State, replace, ship_team
+from ..state import State, benched_of, replace, ship_team
 from .sight import visibility
 
 # The row layout `ship_rows` writes: the hidden columns, then the always-shown ones.
@@ -49,6 +49,7 @@ SHOWN = (
     "team_relative",
     "time_since_seen",
     "spawned",
+    "benched",
 )
 assert HIDDEN + SHOWN == SHIP_COLUMNS and len(HIDDEN) == SHIP_HIDDEN_ZERO
 
@@ -102,8 +103,8 @@ def perceive(
     `ticks_since_seen` advanced and this tick's velocities, nose rates, life and sight kept
     for the next tick's accelerations (the only state perception changes). active (B, 2)
     int32: each team's active ships, as the tick was given (`bnb.game.physics.step`; None,
-    every ship), which sets team deathmatch's winning score; a benched ship's row is a dead
-    ship's, from the state."""
+    every ship), which sets team deathmatch's winning score and the rows' benched flag (shown
+    to both teams); a benched ship's other columns are a dead ship's, from the state."""
     ships, fields, match = state.ships, state.fields, state.match
     B, N = ships.x.shape
     S, device = rules.ships_per_team, ships.x.device
@@ -144,6 +145,10 @@ def perceive(
     alive, fired = ships.alive[:, order].float(), ships.fired[:, order].float()
     respawn_wait = ships.respawn_wait[:, order].float() * rules.tick_length
     ship_type, spawned = ships.ship_type[:, order].float(), ships.spawned[:, order].float()
+    if active is None:
+        benched = torch.zeros_like(alive)
+    else:
+        benched = benched_of(S, active.to(device))[:, order].float()
 
     def ship_rows(seen: torch.Tensor, ticks: torch.Tensor, valid: torch.Tensor) -> torch.Tensor:
         """seen, ticks, valid (the accelerations'): (B, 2, N) in sim order."""
@@ -162,6 +167,7 @@ def perceive(
                 team_relative.expand(B, TEAMS, N),
                 ticks.float() * rules.tick_length,
                 spawned,
+                benched,
             ],
             -1,
         )
