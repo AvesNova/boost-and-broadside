@@ -1,8 +1,9 @@
 """The fleets card (left): one section per team, a row per ship with its type, shield and
 energy bars, alive or respawning (with the wait), and its controller (you, scripted, the
-scripted agent, or the agent's name). Clicking a row selects its ship. A team's controller
-is changed here: the scripted chaser, the scripted agent or one of the local runs'
-policies, and an agent's sampling temperature. The card is wide enough for the longest
+scripted agent and its doctrine, or the agent's name). Clicking a row selects its ship. A
+team's controller is changed here: the scripted chaser, the scripted agent flying r9m2 (the
+default) or r9 (`bnb.play.sides.DOCTRINES`), or one of the local runs' policies, and an
+agent's sampling temperature. The card is wide enough for the longest
 ship name (`width`), whose column both teams share, so their bars line up."""
 
 from typing import TYPE_CHECKING
@@ -11,7 +12,7 @@ from imgui_bundle import imgui
 
 from ..loop import SideSetup
 from ..selection import Selection
-from ..sides import describe, label_of
+from ..sides import DOCTRINES, describe, label_of
 from . import cards
 from .controls import bar, right_edge, tooltip, u32
 from .layout import FLEETS_WIDTH
@@ -27,6 +28,21 @@ LONGEST_WAIT = "99.9 s"  # the widest a row's respawn wait reads
 
 
 SCRIPTED_LABELS = {"scripted": "Chaser", "scripted_agent": "Scripted agent"}
+# The combo's scripted choices: the chaser, then the scripted agent with each doctrine.
+SCRIPTED_CHOICES = ((SideSetup("scripted"), "Chaser"),) + tuple(
+    (SideSetup("scripted_agent", doctrine=doctrine), f"Scripted agent {doctrine}")
+    for doctrine in DOCTRINES
+)
+
+
+def scripted_label(side: SideSetup) -> str | None:
+    """A scripted side's label in the combo (None for an agent)."""
+    for choice, label in SCRIPTED_CHOICES:
+        if side.controller == choice.controller and (
+            side.controller != "scripted_agent" or side.doctrine == choice.doctrine
+        ):
+            return label
+    return SCRIPTED_LABELS.get(side.controller)
 
 
 def controller_label(controller) -> str:
@@ -41,20 +57,21 @@ def controller_combo(
     policy directory typed in); returns the chosen one when it changes. Recorded as
     `name` and `name/<choice>`."""
     session, controls = interface.session, interface.controls
-    preview = SCRIPTED_LABELS.get(current.controller) or label_of(current.policy)
+    preview = scripted_label(current) or label_of(current.policy)
     imgui.set_next_item_width(width)
     chosen = None
     opened = imgui.begin_combo(f"##{name}", preview)
     controls.record(name)
     tooltip(
         f"Who controls {TEAM_NAMES[team]}: the scripted chaser, the scripted agent (it "
-        "remembers the enemies it saw) or a trained agent"
+        "remembers the enemies it saw; r9m2 is r9 with the maneuver doctrine elements, r9 "
+        "the training's doctrine) or a trained agent"
     )
     if opened:
-        for kind, label in SCRIPTED_LABELS.items():
-            if imgui.selectable(label, current.controller == kind)[0]:
-                chosen = SideSetup(kind)
-            controls.record(f"{name}/{kind.replace('_', ' ')}")
+        for choice, label in SCRIPTED_CHOICES:
+            if imgui.selectable(label, scripted_label(current) == label)[0]:
+                chosen = choice
+            controls.record(f"{name}/{label.lower()}")
         policies = interface.menu.policies()
         if not policies:
             imgui.text_disabled(f"no policies under {session.options.runs}")
@@ -242,4 +259,4 @@ def controller_label_of_setup(side: SideSetup) -> str:
     """A recorded side's controller label (replays run no controllers)."""
     if side.controller == "agent":
         return label_of(side.policy)
-    return SCRIPTED_LABELS.get(side.controller, side.controller).lower()
+    return (scripted_label(side) or side.controller).lower()

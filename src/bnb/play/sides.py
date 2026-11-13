@@ -39,8 +39,7 @@ from torch.utils import _pytree
 from bnb.contracts import GameConfig, Obs
 from bnb.contracts.action import from_joint
 from bnb.contracts.pools import GAME_FIELDS
-from bnb.controllers import scripted
-from bnb.controllers import scripted_doctrine
+from bnb.controllers import scripted, scripted_doctrine
 from bnb.controllers.scripted import Chaser
 from bnb.controllers.scripted_defaults import MODE_DEFAULTS
 from bnb.controllers.scripted_memory import ScriptedCarry

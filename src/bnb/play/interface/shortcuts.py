@@ -26,6 +26,7 @@ SHORTCUTS = (
     (imgui.Key.e, "E", "toggle_editor", "theme editor"),
     (imgui.Key.f2, "F2", "toggle_tuning", "ship editing: the ships' handles, bullets and flight"),
     (imgui.Key.f3, "F3", "toggle_map_panel", "map and mode: field knobs, zone, clocks, new map"),
+    (imgui.Key.f4, "F4", "toggle_fps", "frame rate: frames per second and frame time"),
     (imgui.Key.left_arrow, "Left", "step_back", "replay: one tick back, while paused"),
     (imgui.Key.right_arrow, "Right", "single_step", "replay: one tick on, while paused"),
     (imgui.Key.f1, "F1", "toggle_keys", "this list"),

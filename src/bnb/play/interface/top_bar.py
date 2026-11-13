@@ -2,7 +2,9 @@
 button (its submenu, `overlays`), the true-size switch, the dot grid's pattern and the
 distance contours' shapes on the left;
 the score or the mode's objective and the clock in the middle; the speed controls on the
-right (pause or play, a tick while paused, x1 to x8).
+right (pause or play, a tick while paused, x1 to x8), and left of them, when it is on, the
+frame-rate readout (`bnb.play.frame_rate`: frames per second, the smoothed frame time and
+the longest frame of the last second).
 
 Team deathmatch shows the kill score in team colours and the winning score; Frontline
 shows the front as a tug of war (a cell per capture up to the threshold, filled toward
@@ -200,8 +202,22 @@ def draw(interface: Interface, layout: Layout) -> None:
         ):
             session.set_time_scale(value)
 
+    if session.show_fps:
+        right_start = _frame_rate(interface, rect, right_start)
     _objective(interface, rect, left_end, right_start)
     imgui.end()
+
+
+def _frame_rate(interface: Interface, rect, right: float) -> float:
+    """The frame-rate readout, muted, ending 14 px left of `right`; returns where it starts."""
+    session = interface.session
+    line = session.frame_rate.text()
+    draw = imgui.get_window_draw_list()
+    size = imgui.calc_text_size(line)
+    x = right - 14.0 * session.scale - size.x
+    y = rect.y + 0.5 * (rect.height - size.y)
+    draw.add_text(imgui.ImVec2(x, y), imgui.get_color_u32(imgui.Col_.text_disabled), line)
+    return x
 
 
 def _objective(interface: Interface, rect, left: float, right: float) -> None:

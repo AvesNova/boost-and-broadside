@@ -19,8 +19,7 @@ from torch.utils import _pytree
 
 from bnb import cache
 from bnb.contracts import Obs
-from bnb.controllers import scripted
-from bnb.controllers import scripted_doctrine
+from bnb.controllers import scripted, scripted_doctrine
 from bnb.controllers.scripted_defaults import MODE_DEFAULTS
 from bnb.controllers.scripted_memory import ScriptedCarry
 from bnb.controllers.scripted_parameters import ModeParameters, ScriptedParameters
@@ -62,7 +61,10 @@ class ScriptedStep:
         characteristics: Characteristics,
     ) -> tuple[torch.Tensor, ScriptedCarry]:
         controller = scripted.Scripted(
-            characteristics, self.ships_per_team, self.parameters, doctrines=self.table(characteristics)
+            characteristics,
+            self.ships_per_team,
+            self.parameters,
+            doctrines=self.table(characteristics),
         )
         action, after, _ = controller.step(carry, view, reset)
         return action.packed()[0], after

@@ -10,7 +10,8 @@
 - Replays: the saved replays, newest first; "Open";
 - Settings: theme (and the theme editor), the dot grid, the distance contours, the
   look-ahead camera, the bullets' look (tracer or trail only, the head's size, the trail's
-  widths and length), fog in new matches, interface scale, the key list.
+  widths and length), fog in new matches, the frame-rate readout, interface scale, the key
+  list.
 """
 
 import dataclasses
@@ -651,6 +652,16 @@ class Menu:
         imgui.same_line(140.0 * session.scale)
         session.fog_default = switch(
             controls, "settings/fog", session.fog_default, "Fog of war in new matches"
+        )
+        imgui.align_text_to_frame_padding()
+        imgui.text("Frame rate")
+        imgui.same_line(140.0 * session.scale)
+        session.show_fps = switch(
+            controls,
+            "settings/fps",
+            session.show_fps,
+            "The frame rate in the top bar: frames per second and the frame time (smoothed), "
+            "and the longest frame of the last second (F4)",
         )
         imgui.align_text_to_frame_padding()
         imgui.text("Interface scale")

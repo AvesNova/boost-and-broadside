@@ -41,7 +41,10 @@ compiled. The options:
   (see [Ship size](#ship-size)), **Grid** and **Contours** (see [The camera and the grid](#the-camera-and-the-grid)) on the left; the
   score, or Frontline's front and zones (captioned "Front" and "Zones", each zone numbered
   in its owner's colour, with a tooltip saying what it shows), and the clock in the middle; the speed controls
-  on the right: pause or play, one tick while paused, and ×1, ×2, ×4, ×8.
+  on the right: pause or play, one tick while paused, and ×1, ×2, ×4, ×8. Left of the
+  speed controls, the frame rate: frames per second and the frame time, smoothed over about
+  half a second, and the longest frame of the last second (`max`), so a stall shows. F4,
+  **Settings** → **Frame rate** and `--no-fps` hide it (offscreen renders never draw it).
 - **The fleets card** (left): each team's ships, with type, shield, energy, alive or the
   respawn wait, and who controls it. Click a row to select the ship. Each team's
   controller is chosen here (see below).
@@ -177,10 +180,15 @@ Choosing a map takes its fleet size, fields and lineup (and a saved map's mode a
 (0 to 64), the lineup (a dropdown per
 slot of the map's ship types, the same for both teams; **Default** alternates the P-51D and
 the Spitfire XIV, or a set's first two types where it has not both; the map starts at **Real
-scale**), fog, the seed, and each side's controller: **Scripted agent** (the default: the
-scripted agent, the BC teacher and the ratings' anchor, `bnb.controllers.scripted.Scripted`:
+scale**), fog, the seed, and each side's controller: **Scripted agent r9m2** (the default:
+the scripted agent, `bnb.controllers.scripted.Scripted`:
 it plays the mode's objectives, remembers each enemy it saw and dead reckons it while
-hidden), **Chaser** (`--scripted0 scripted`: it turns toward the nearest visible enemy and
+hidden; r9m2 flies r9 with the maneuver doctrine elements and the team-gated duel extension,
+`src/bnb/play/doctrines/r9m2.json`, from maneuvers-2's `champion2.json`), **Scripted agent
+r9** (the stored doctrine of training, the BC teacher and the ratings' anchor,
+`scripted_doctrines.json`;
+`--doctrine0 r9` / `--doctrine1 r9`; a doctrine applies to the ship types it holds one for,
+the Yongma and the Jujak), **Chaser** (`--scripted0 scripted`: it turns toward the nearest visible enemy and
 fires, and reads no zones) or a trained agent. The scripted agent and the chaser need their
 ship card's characteristics, measured once per card in a separate process (about 15 s for
 the standard set and about 2 minutes for the 27 real-scale types on a laptop CPU) and kept

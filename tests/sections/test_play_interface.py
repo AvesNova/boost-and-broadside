@@ -535,9 +535,9 @@ def test_a_side_slow_to_make_plays_on_until_it_is_made(context, tmp_path, monkey
     measured.set()
     for _ in range(200):
         player.frames()
-        if session.loop.sides[1].label == "scripted agent":
+        if session.loop.sides[1].label == "scripted agent r9m2":
             break
-    assert session.loop.sides[1].label == "scripted agent"
+    assert session.loop.sides[1].label == "scripted agent r9m2"
     assert session.loop.setup.sides[1] == SideSetup("scripted_agent")
 
 
@@ -621,9 +621,9 @@ def test_start_never_measures_in_the_windows_thread(context, tmp_path, monkeypat
     measured.set()
     for _ in range(200):
         player.frames()
-        if all(side.label == "scripted agent" for side in session.loop.sides):
+        if all(side.label == "scripted agent r9m2" for side in session.loop.sides):
             break
-    assert [side.label for side in session.loop.sides] == ["scripted agent"] * 2
+    assert [side.label for side in session.loop.sides] == ["scripted agent r9m2"] * 2
     session.close()
 
 
@@ -847,4 +847,44 @@ def test_the_contours_are_chosen_in_the_top_bar_the_settings_and_with_o(context,
     player.click("settings/contours/fields+edge+zones")
     assert session.contours == "fields+edge+zones"
     assert (battlefield() != bare).any()  # the lines
+    session.close()
+
+
+def test_the_frame_rate_shows_in_the_top_bar_and_f4_and_the_settings_toggle_it(context, tmp_path):
+    """On by default; F4 and Settings > Frame rate turn it off and on; the readout is
+    drawn in the top bar (its pixels change with it)."""
+    session = _session(context, tmp_path, preset="arena")
+    player = Player(session, context, 1280, 720)
+    assert session.show_fps
+    player.frames(70)
+    assert session.frame_rate.per_second == pytest.approx(60.0)
+    shown = player.pixels()[:40]
+    player.io.add_key_event(imgui_key("f4"), True)
+    player.frames()
+    player.io.add_key_event(imgui_key("f4"), False)
+    player.frames()
+    assert not session.show_fps
+    assert (player.pixels()[:40] != shown).any()
+    player.click("menu")
+    player.click("menu/settings")
+    player.click("settings/fps/on")
+    assert session.show_fps
+    player.click("settings/fps/off")
+    assert not session.show_fps
+    session.close()
+
+
+def test_the_fleets_combo_sets_the_scripted_agents_doctrine(context, tmp_path, monkeypatch):
+    """The fleets card's controller combo offers the scripted agent with r9m2 (the default)
+    and with r9; choosing r9 makes that side fly it."""
+    from bnb.play import app
+
+    monkeypatch.setattr(app, "cached_characteristics", lambda types, rules: object())
+    session = _session(context, tmp_path)
+    player = Player(session, context, 1280, 720)
+    assert session.loop.setup.sides[1] == SideSetup("scripted_agent", doctrine="r9m2")
+    player.click("fleet/team1/controller")
+    player.click("fleet/team1/controller/scripted agent r9")
+    assert session.loop.setup.sides[1] == SideSetup("scripted_agent", doctrine="r9")
+    assert session.loop.sides[1].label == "scripted agent r9"
     session.close()

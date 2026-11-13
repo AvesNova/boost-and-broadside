@@ -3,6 +3,7 @@
 kept on disk by the shapes it was built for, and the agent steps uncompiled until it is
 in."""
 
+import dataclasses
 import threading
 
 import pytest
@@ -12,29 +13,36 @@ from play_cases import SMALL
 from bnb import cache
 from bnb.contracts import GameConfig
 from bnb.contracts.obs import GLOBAL
+from bnb.controllers import scripted_doctrine
 from bnb.controllers.scripted_defaults import MODE_DEFAULTS
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
 from bnb.play.loop import MatchLoop, MatchSetup, SideSetup, team_view
-from bnb.play.sides import ScriptedAgent
+from bnb.play.sides import DOCTRINES, ScriptedAgent
 from bnb.runtime import built
 from bnb.runtime.scripted_step import ScriptedStep, library_path
 
 SCRIPTED_AGENTS = (SideSetup("scripted_agent"), SideSetup("scripted_agent"))
 AGENTS = MatchSetup(SMALL, seed=3, sides=SCRIPTED_AGENTS)
 FLOAT_MEMORY = ("enemy_x", "enemy_y", "enemy_velocity_x", "enemy_velocity_y")
+# A small real-scale match of the Yongma and the Jujak, the types with stored doctrines: the
+# scripted agent flies the play shell's default doctrine (r9m2) there.
+REAL_SCALE = dataclasses.replace(
+    api.PRESETS["real_scale_deathmatch"], ships_per_team=2, num_fields=4, arena_radius=2500.0
+)
+REAL_SCALE_AGENTS = MatchSetup(REAL_SCALE, lineup=(28, 29), seed=3, sides=SCRIPTED_AGENTS)
 
 
-def _agents(game: GameConfig = SMALL, **settings) -> list[ScriptedAgent]:
-    """Both sides' scripted agents, seeded as a match of `AGENTS` seeds them."""
-    rules, types = api.rules_of(game), api.ship_types()
-    return [ScriptedAgent(rules, types, AGENTS.seed + team, **settings) for team in (0, 1)]
+def _agents(setup: MatchSetup = AGENTS, **settings) -> list[ScriptedAgent]:
+    """Both sides' scripted agents, seeded as a match of `setup` seeds them."""
+    loop = MatchLoop(dataclasses.replace(setup, sides=(SideSetup("scripted"),) * 2), compiled=False)
+    return [ScriptedAgent(loop.rules, loop.types, setup.seed + team, **settings) for team in (0, 1)]
 
 
-def _beside_uncompiled(sides: list) -> tuple[MatchLoop, MatchLoop]:
+def _beside_uncompiled(sides: list, setup: MatchSetup = AGENTS) -> tuple[MatchLoop, MatchLoop]:
     """A match played by `sides` and, beside it, one by uncompiled scripted agents of the
     same seeds."""
-    return MatchLoop(AGENTS, sides=sides, compiled=False), MatchLoop(AGENTS, compiled=False)
+    return MatchLoop(setup, sides=sides, compiled=False), MatchLoop(setup, compiled=False)
 
 
 def _play(loop: MatchLoop, twin: MatchLoop, ticks: int) -> int:
@@ -68,23 +76,28 @@ def _arguments(game: GameConfig, step: ScriptedStep, traits=None) -> tuple:
 
 
 @pytest.mark.slow
-def test_the_built_step_plays_as_the_uncompiled_one_and_is_kept_on_disk(tmp_path, monkeypatch):
+@pytest.mark.parametrize("setup", [AGENTS, REAL_SCALE_AGENTS], ids=["small", "real-scale r9m2"])
+def test_the_built_step_plays_as_the_uncompiled_one_and_is_kept_on_disk(
+    setup, tmp_path, monkeypatch
+):
     """Built in a child process (once for both sides, then read from disk by a later
     process), the step gives the uncompiled step's actions exactly, its draws included, over
-    a match with fights; every step after the first runs built."""
-    characteristics(api.ship_types(), api.rules_of(SMALL))  # measured before the cache moves
+    a match with fights; every step after the first runs built. On the real-scale card the
+    Yongma and the Jujak fly r9m2's doctrines (the table is the built step's constant)."""
+    sides = _agents(setup, compiled=True)  # the card measured before the cache moves
     monkeypatch.setattr(cache, "ROOT", tmp_path)
     monkeypatch.setattr(built, "_LOADED", {})
-    sides = _agents(compiled=True)
-    assert _play(*_beside_uncompiled(sides), 200) > 0
+    if setup is REAL_SCALE_AGENTS:
+        assert sides[0].controller.doctrines is not None
+    assert _play(*_beside_uncompiled(sides, setup), 200) > 0
     assert all(side.uses_compiled for side in sides)
     libraries = list(tmp_path.glob("scripted_steps/*.pt2"))
     assert len(libraries) == 1
 
     monkeypatch.setattr(built, "_LOADED", {})
     stamp = libraries[0].stat().st_mtime_ns
-    again = _agents(compiled=True)
-    _play(*_beside_uncompiled(again), 3)
+    again = _agents(setup, compiled=True)
+    _play(*_beside_uncompiled(again, setup), 3)
     assert all(side.uses_compiled for side in again)
     assert list(tmp_path.glob("scripted_steps/*.pt2")) == libraries
     assert libraries[0].stat().st_mtime_ns == stamp
@@ -104,6 +117,18 @@ def test_the_step_is_keyed_by_its_shapes_and_parameters_not_the_cards_values():
     assert library_path(larger, _arguments(bigger, larger)) != library_path(step, arguments)
     deathmatch = ScriptedStep(SMALL.ships_per_team, MODE_DEFAULTS.sets["deathmatch"])
     assert library_path(deathmatch, arguments) != library_path(step, arguments)
+
+
+def test_the_step_is_keyed_by_its_doctrines_and_their_width(monkeypatch):
+    """r9m2 and r9 have their own built steps, and a wider doctrine table another (so a
+    grown table rebuilds instead of loading a library built for the old one)."""
+    arguments = _arguments(SMALL, ScriptedStep(SMALL.ships_per_team))
+    r9m2 = ScriptedStep(SMALL.ships_per_team, doctrines=DOCTRINES["r9m2"])
+    r9 = ScriptedStep(SMALL.ships_per_team, doctrines=DOCTRINES["r9"])
+    assert library_path(r9m2, arguments) != library_path(r9, arguments)
+    before = library_path(r9m2, arguments)
+    monkeypatch.setattr(scripted_doctrine, "WIDTH", scripted_doctrine.WIDTH + 1)
+    assert library_path(r9m2, arguments) != before
 
 
 def test_the_agent_steps_uncompiled_until_its_built_step_is_in(monkeypatch):

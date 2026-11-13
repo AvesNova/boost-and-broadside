@@ -33,6 +33,7 @@ from bnb.runtime.built import clone
 from . import predictions, themes
 from . import replay as replays
 from .camera import Camera, LookAhead
+from .frame_rate import FrameRate
 from .index_map import IndexBuilder, build
 from .interface.interface import Interface
 from .interface.kill_feed import FEED_SECONDS
@@ -94,7 +95,7 @@ class Options:
     agent1: pathlib.Path | None = None  # a policy file for team 1
     scripted0: Literal["scripted", "scripted_agent"] = "scripted_agent"  # team 0 without an agent
     scripted1: Literal["scripted", "scripted_agent"] = "scripted_agent"  # the agent or the chaser
-    doctrine0: Literal["r9m2", "r9"] = "r9m2"  # team 0's scripted agent's doctrine (sides.DOCTRINES)
+    doctrine0: Literal["r9m2", "r9"] = "r9m2"  # team 0's scripted agent's (sides.DOCTRINES)
     doctrine1: Literal["r9m2", "r9"] = "r9m2"  # team 1's (r9: the training's stored one)
     fps: bool = True  # the frame-rate readout in the top bar (F4 toggles it)
     temperature: float = 1.0  # the agents' sampling temperature
@@ -223,6 +224,8 @@ class Session:
         self.selection: Selection | None = None
         self.following: int | None = None
         self.show_keys = False
+        self.show_fps = options.fps  # the frame-rate readout in the top bar
+        self.frame_rate = FrameRate()
         self.show_interface = True  # False draws the battlefield alone (tests, screenshots)
         self.quit_requested = False
         self.notice, self.notice_until = "", 0.0
@@ -705,6 +708,10 @@ class Session:
         )
         self._look(**{names[name]: value for name, value in changes.items()})
 
+    def toggle_fps(self) -> None:
+        """Show or hide the frame-rate readout (frames per second and frame time)."""
+        self.show_fps = not self.show_fps
+
     def toggle_true_size(self) -> None:
         """Draw the ships at their size in metres, or never smaller than a minimum on
         screen (the default)."""
@@ -1012,6 +1019,7 @@ class Session:
         layers and trails current."""
         self.elapsed = elapsed
         self.clock += elapsed
+        self.frame_rate.add(elapsed)
         if self.tuner is not None:
             self.tuner.update()
         if self._pending:
@@ -1162,6 +1170,7 @@ def run_offscreen(options: Options) -> list[pathlib.Path]:
     size = (options.width, options.height)
     target = context.framebuffer(color_attachments=[context.texture(size, 4)])
     session = Session(options, context, options.width, options.height)
+    session.show_fps = False  # its frames are a fixed step apart: the readout says nothing
     options.offscreen.mkdir(parents=True, exist_ok=True)
     paths = []
     for index in range(options.frames):
