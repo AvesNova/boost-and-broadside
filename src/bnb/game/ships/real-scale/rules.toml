@@ -23,6 +23,9 @@ lift_softmin_exponent = 16.0
 nose_damping = 0.7
 nose_frequency_floor = 0.24985677455140684
 speed_floor = 1.454166427889188e-06
+direct_charge = true
+critical_speed = 197.0
+drag_rise_exponent = 12.0
 
 [mode]
 group_radius = 900.0

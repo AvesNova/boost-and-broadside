@@ -89,6 +89,7 @@ SETTINGS = (
     _s("flight.store_fade_band", FLIGHT, "store fade band", "", 0.005, 0.2),
     _s("flight.nose_damping", FLIGHT, "nose damping", "", 0.2, 1.5),
     _s("flight.nose_frequency_floor", FLIGHT, "nose frequency floor", "rad/s", 0.1, 10.0),
+    _s("flight.critical_speed", FLIGHT, "critical speed (0 off)", "m/s", 0.0, 2000.0),
     _s("rules.spawn_speed", SPAWNS, "spawn speed", "m/s", 0.0, 200.0, when=EPISODE),
     _s("rules.spawn_offset", SPAWNS, "spawn offset", "arena radii", 0.0, 0.95, when=EPISODE),
     _s("rules.spawn_radius", SPAWNS, "spawn radius", "m", 10.0, 600.0, when=EPISODE),

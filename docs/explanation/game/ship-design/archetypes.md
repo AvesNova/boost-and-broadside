@@ -359,6 +359,19 @@ time-to-kill budget (card, 100% hits; a pass is the longer gun range over the tw
 | turn circle at cruise, sustained (m) | 1,187 | 1,388 | 1,016 |
 | store (J/kg) | 124,391 | the same | the same |
 
+**Game version 8 (2026-11-13): real-scale flight.** The table above is the version 7
+flight. Under the direct charge and the drag rise ([Physics](../physics.md#flight)),
+vizia's sustained turn is 18.7 °/s (Yongma 16.5, Jujak 21.2: the same archetype factors),
+and the three cards were solved again. The other handles are unchanged.
+
+| version 8 | vizia | Yongma | Jujak |
+|---|---|---|---|
+| top speed, a straight boost from cruise (m/s) | 221 | 225 | 217 |
+| full-stick settled turn (m/s, °/s) | 70.8, 18.7 | 72.8, 16.5 | 68.9, 21.2 |
+| stick 0.75 / 0.4 settled turn (m/s, °/s) | 72.6, 15.6 / 106.7, 12.1 | 72.0, 13.4 / 107.6, 10.5 | 72.7, 18.1 / 105.2, 13.8 |
+| best lift-to-drag ratio | 12.1 | 11.6 | 12.5 |
+| null power (W/kg) | 257 | 254 | 263 |
+
 | Shooter on target | Head-on TTK (s) | Head-on passes | Tail TTK (s) | Tail TTK / target's 180° instantaneous |
 |---|---|---|---|---|
 | Yongma on Yongma | 4.13 | 2.36 | 0.80 | 0.16 |

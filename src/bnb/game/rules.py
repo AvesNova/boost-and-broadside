@@ -55,6 +55,14 @@ class FlightConstants:
     nose_damping: float = 0.7  # damping ratio [zeta]
     nose_frequency_floor: float = 1.0  # rad/s [omega_min]
     speed_floor: float = 1e-6  # m/s [epsilon]
+    # The engine's charge (the power above the null power, which charges the store) goes
+    # into the store directly, and the speed sees only the null power [c]. False: the
+    # charge drives the thrust and the coast exchange moves it into the store.
+    direct_charge: bool = False
+    # Where the zero-lift drag doubles, (1 + (u / u_c)^q): the drag rise near the speed of
+    # sound that bounds a dive [u_c]; 0 is off.
+    critical_speed: float = 0.0  # m/s
+    drag_rise_exponent: float = 8.0  # [q]
 
 
 @dataclasses.dataclass(frozen=True)

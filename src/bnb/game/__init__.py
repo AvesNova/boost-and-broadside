@@ -43,7 +43,14 @@ in a disc of `ModeRules.side_area_fraction` arena radii around its centre,
 `Rules.spawn_offset` arena radii out on the spawn axis, nose toward the enemy area within
 `side_heading_jitter`, keeping the edge's turn room; it was team deathmatch's uniform
 draw. Team deathmatch, Frontline and fixed layouts (Clover) compute the same numbers.
+Version 8 (2026-11-13): real-scale flight. Two flight constants, on in the real-scale set's
+rules (off elsewhere, where every game computes the same numbers): the direct charge (the
+engine's store charge goes into the store as a power; the speed sees only the null power)
+and the drag rise (the zero-lift drag times 1 + (u / 197 m/s)^12, which bounds a boost
+near 1.35 x cruise). Yongma, Jujak and Vizia were re-solved under them with higher
+sustained turn rates (their full-stick turn settles near 70 m/s, not 55); the set's other
+types keep their old cards until re-solved.
 """
 
-VERSION = 7
-FINGERPRINT = "2581fdc8196942e9"
+VERSION = 8
+FINGERPRINT = "9f9de7b70dda5f12"
