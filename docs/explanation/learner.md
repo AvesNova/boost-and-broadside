@@ -200,7 +200,34 @@ more ships has more pairs, as it has more next-state rows. A model without the h
 no such output, and the term stays 0 (and out of the gradient decomposition).
 `geometry/loss` is the term; `geometry/cross_entropy/{range, antenna_train_angle, aspect,
 heading_crossing_angle, closure}` its parts.
-GEOMETRY_COEFFICIENT_NOTE
+
+**The geometry head's coefficient, 0.007** (`LearnerConfig.geometry`) was set in commit
+e334d032, for the rotary read-out the head replaced, so that its trunk gradient norm sits
+near 0.02, the next-state head's level in trained BC. In the production BC run bc-v19 (the
+5090, commit a87cbdb0) `gradient/norm/trunk/geometry` was 0.0205 at update 10 and 0.0218
+at update 20, against next_state 0.0224 and 0.0132, density 0.076 and 0.092 and policy
+0.029 and 0.072, so 0.007 is kept. The decomposition splits the term by target
+(`gradient/norm/trunk/geometry_{target}`, each its share of the mean over targets, so the
+parts sum to the term). On the short CPU run (the production BC config,
+`real_scale_all_modes` with the lineup Yongma, Yongma, Jujak, Jujak, Jujak, scaled to 64
+environments of 32 ticks, 8 minibatches, float32, seed 1, the decomposition at every
+update, updates 10 to 20; Yemong v8, commit 4a3fe524), the trunk norms were:
+
+| Target | Mean | Median | Share |
+|---|---|---|---|
+| range | 1.18e-4 | 1.22e-4 | 1.1e-3 |
+| antenna train angle | 1.6e-5 | 1.7e-5 | 1.3e-4 |
+| aspect | 1.6e-5 | 1.5e-5 | 9e-5 |
+| heading crossing angle | 1.2e-5 | 1.1e-5 | 9e-5 |
+| closure | 7.5e-5 | 8.3e-5 | 7.1e-4 |
+| geometry, all five | 2.30e-4 | 2.55e-4 | 2.2e-3 |
+| next_state | 1.75e-3 | 1.88e-3 | 0.047 |
+
+Range and closure carry about 80% of the term's trunk gradient, and the three angles about
+6% each. The parts point nearly one way (pairwise cosines 0.77-0.94, agreement 0.97). The
+scale is about a hundredth of bc-v19's: 172 k steps are deep in the learning rate's
+warm-up (5e-6 at update 21), and the head's cross-entropies are still near uniform. So the
+split, not the level, is the result, and it may change as the head trains.
 
 **The persistence delta head's coefficient, 0.0033** (`LearnerConfig.next_state`'s default
 since 2026-11-12, with a new run's delta head; the absolute head's was 0.0041, `--set
