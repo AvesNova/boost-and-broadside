@@ -209,6 +209,35 @@ further (lift 1.3 / 1.5, power 1.3 / 1.5, damage 1.5 / 2, shield 0.65 / 0.5). It
 frontline 2/5 first, then kill-lead deathmatch 1/2/5, then elimination 1/2/5.
 Likely next: a two-lever card, damage (the duel) plus power or shield (the teams).
 
+### 15:47 round 4: the levers further, on all three rating modes (`round4/`)
+256 games a cell (SE ~0.03). Yongma's score, energy v turn, both sides r9m2. Elimination
+is provisional.
+
+| Card | Front 2v2 | Front 5v5 | DM 1v1 | DM 2v2 | DM 5v5 | Elim 1v1 | Elim 2v2 | Elim 5v5 |
+|---|---|---|---|---|---|---|---|---|
+| base | 0.04 | 0.29 | 0.15 | 0.33 | 0.27 | 0.17 | 0.42 | 0.39 |
+| Y lift x1.3 | 0.08 | 0.43 | 0.23 | 0.49 | 0.28 | 0.36 | 0.38 | 0.32 |
+| Y lift x1.5 | 0.07 | 0.39 | 0.31 | 0.53 | 0.32 | 0.38 | 0.42 | 0.48 |
+| Y power x1.3 | 0.07 | 0.47 | 0.22 | 0.59 | 0.78 | 0.32 | 0.49 | 0.53 |
+| Y power x1.5 | 0.09 | 0.61 | 0.23 | 0.73 | 0.90 | 0.29 | 0.51 | 0.63 |
+| Y damage x1.5 | 0.05 | 0.39 | 0.23 | 0.50 | 0.45 | 0.25 | 0.45 | 0.48 |
+| Y damage x2 | 0.07 | 0.45 | 0.31 | 0.56 | 0.59 | 0.39 | 0.47 | 0.51 |
+| J shield x0.65 | 0.05 | 0.40 | 0.22 | 0.55 | 0.48 | 0.37 | 0.52 | 0.58 |
+| J shield x0.5 | 0.08 | 0.53 | 0.29 | 0.60 | 0.69 | 0.36 | 0.55 | 0.70 |
+
+- **No single lever balances all three modes.** The 1v1 duel tops out at 0.31-0.39
+  (lift x1.5, damage x2). Power is very strong in kill-lead deathmatch 5v5 (0.78-0.90)
+  but barely moves the duel.
+- **Frontline 2v2 is 0.04-0.09 for every card.** A diagnostic on the base card
+  (`diag/`, 256 games) shows the harness is sound: mirrors are even (energy 0.56, turn
+  0.45, mixed 0.49) while energy v turn is 0.04. Some frontline 2v2 mechanism favours
+  Jujak whatever the card: captures by the better sustained turner, or the scripted
+  agent's frontline play for Yongma. Worth a look at the scripted frontline goals before
+  more card search.
+- Closest single cards: damage x2 (DM 0.31 / 0.56 / 0.59, elim 0.39 / 0.47 / 0.51, front
+  0.07 / 0.45) and Jujak shield x0.5 (DM 0.29 / 0.60 / 0.69, elim 0.36 / 0.55 / 0.70, front
+  0.08 / 0.53).
+
 ## Next
 - Item 6, league: no-flee scripted agents and the fast-chaser ship. ETA ~15:45.
 - Item 7: decide the balance fix (Questions), then a crowd-gate round, ideally scored on
