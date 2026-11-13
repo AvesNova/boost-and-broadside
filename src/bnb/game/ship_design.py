@@ -12,6 +12,10 @@ knobs are nearly independent (`KNOBS`, each with the reason it is in the search)
   whole number of hertz dividing the 30 Hz tick), the shield, the muzzle speed and the
   dispersion angle (the bullet spread over the muzzle speed).
 
+The knobs and handles are in the set's files' units: the set plays at x2 native speed (game
+v13, `real_scale.EQUIVALENT_FACTOR`), so its gravity is 4 g (`NATIVE_GRAVITY`) and the
+P-51D's gun flies its range in half the planes' flight time.
+
 Every other handle is the base type's; the gun range is the bullet's reach at cruise plus
 muzzle speed in the set's gun flight time (`real_scale.gun_flight_time`), the climb time
 from the store and the climb rate, the spawn energy is the base's share of the store, and
@@ -39,7 +43,14 @@ from .handling import Handles
 from .handling.estimate import Estimate
 from .handling.weapons import gun_range
 from .physics.combat import MEAN_CLOSENESS
-from .real_scale import CLIMB_FILL, GRAVITY, RANGE_DRAG, SHIP_SET, gun_flight_time
+from .real_scale import (
+    CLIMB_FILL,
+    EQUIVALENT_FACTOR,
+    GRAVITY,
+    RANGE_DRAG,
+    SHIP_SET,
+    gun_flight_time,
+)
 from .rules import Rules
 from .ship_types import FIELDS, ShipTypes, ticks_between_shots
 
@@ -74,10 +85,13 @@ BASES = ENVELOPE + (
     "shrike",
     "lantern",
 )
-# The volley rates a design may fire: whole hertz dividing the 30 Hz tick, from the
-# invented heavy cannon's 5 Hz to the .50 batteries' 15 (2 and 3 Hz, the Anvil's, are left
-# out: a WW2 fighter's main battery fires faster).
-FIRE_RATES = (5.0, 6.0, 10.0, 15.0)
+# The volley rates a design may fire (native): whole hertz dividing the 30 Hz tick, from the
+# invented heavy cannon's 10 Hz to the .50 batteries' 30 (5, 7.5 and 15 Hz at the planes'
+# speed; the Anvil's 5 is left out: a WW2 fighter's main battery fires faster). The planes'
+# 6 and 10 Hz have no x2 the tick can hold.
+FIRE_RATES = (10.0, 15.0, 30.0)
+# The set's gravity (m/s^2, native): the similarity's x4 of the planes' g.
+NATIVE_GRAVITY = GRAVITY * EQUIVALENT_FACTOR**2
 
 
 @dataclasses.dataclass(frozen=True)
@@ -108,11 +122,12 @@ KNOBS = (
 NAMES = tuple(knob.name for knob in KNOBS)
 CONTINUOUS = tuple(name for name in NAMES if name != "fire_rate")
 # Bounds (physical units) a knob may not leave: None takes the envelope's range. The
-# damage per second is not researched (the balancing set it): +-20% of the P-51D's 360. The
+# damage per second is not researched (the balancing set it): +-20% of the P-51D's 720
+# (native: 360 at the planes' speed). The
 # shield may rise above the set's 160 (the author's decision of 2026-11-10). The turn has
 # +-10% beyond the envelope (no turn rate is measured).
 BOUNDS = dict(
-    damage_per_second=(288.0, 432.0),
+    damage_per_second=(576.0, 864.0),
     max_shield=(80.0, 200.0),
 )
 SOFT_MARGINS = dict(sustained_turn_rate=0.10)
@@ -120,7 +135,7 @@ SOFT_MARGINS = dict(sustained_turn_rate=0.10)
 
 def climb_rate_of(handles: dict[str, float]) -> float:
     """A card's climb rate (m/s): the one its climb time was solved for (to the solve's 1%)."""
-    return CLIMB_FILL * handles["ceiling"] / (GRAVITY * handles["climb_time"])
+    return CLIMB_FILL * handles["ceiling"] / (NATIVE_GRAVITY * handles["climb_time"])
 
 
 def knobs_of(handles: dict[str, float]) -> dict[str, float]:
@@ -154,13 +169,14 @@ def handles_of(base: dict[str, float], knobs: dict[str, float], rules: Rules) ->
     handles["fire_rate"] = values["fire_rate"]
     handles["hit_damage"] = values["damage_per_second"] / values["fire_rate"] / MEAN_CLOSENESS
     handles["bullet_spread"] = values["dispersion"] * values["muzzle_speed"]
-    handles["climb_time"] = CLIMB_FILL * values["ceiling"] / (GRAVITY * values["climb_rate"])
+    handles["climb_time"] = CLIMB_FILL * values["ceiling"] / (NATIVE_GRAVITY * values["climb_rate"])
     handles["spawn_energy"] = base["spawn_energy"] / base["ceiling"] * values["ceiling"]
     cost_per_second = base["ceiling"] / base["shots_per_store"] * base["fire_rate"]
     handles["shots_per_store"] = values["ceiling"] * values["fire_rate"] / cost_per_second
     drag = torch.tensor(RANGE_DRAG, dtype=torch.float64)  # the set's range measure
     launch = torch.tensor(values["cruise_speed"] + values["muzzle_speed"], dtype=torch.float64)
-    handles["gun_range"] = float(gun_range(drag, launch, gun_flight_time(rules.tick_length)))
+    life = gun_flight_time(rules.tick_length) / EQUIVALENT_FACTOR  # the planes' at x2
+    handles["gun_range"] = float(gun_range(drag, launch, life))
     return handles
 
 
