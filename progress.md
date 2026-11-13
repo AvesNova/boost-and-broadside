@@ -90,7 +90,14 @@ a 6 s delay and 12/s (rearmed); the restart-on-action rule stays.
   Flight tests' hard-coded x1 speeds and accelerations were scaled.
 
 Native table (`docs/rewrite/sections/lethality/native_table.py`; time to kill: core hits on
-each target type, first hit at t = 0):
+each target type, first hit at t = 0). **The settled turns below are at a held store of
+0.25 (`shown`'s TURNING_STORE), where the store feeds the turn, so full stick out-turns the
+sustained level. Level turns with an empty store (LEVEL_STORE, v11's condition) are
+slower at full stick, as intended**, equivalent: Yongma 147 at 7.0 / 80 at 13.0 / 57 at
+10.2 deg/s; Jujak 141 at 10.2 / 81 at 19.7 / 59 at 17.2; Vizia 143 at 8.5 / 80 at 16.0 / 57
+at 13.4. Checked at 15:05: v11 (fd918a0a, x1) and v13 (x2, halved) agree to 0.1 deg/s at
+both store levels, so the x2 conversion left the flight unchanged.
+
 
 | | native | equivalent |
 |---|---|---|
