@@ -192,3 +192,46 @@ scripted entry. The AFTER RL rows are tree cbf0584e (eager heads' sums over ever
 micro-batch, the drift on `micro_views`); BEFORE is 9f8c20fc, given the same config JSON.
 None of the final tree's rollout (new lanes, the pool's always-on scripted pass) has been
 compiled or measured yet.
+
+## 2026-11-13 dry-run readiness on gpubox7 (stopped early: the host stopped answering)
+
+Tree: `calib/overnight` 0f3ec4b4 (its code is `perf/steady-speed` 7f7fbeb1 plus the
+calibration kit), cloned to `/workspace/drycheck/repo` on gpubox7 (RTX 5060 Ti 16 GB, shares
+its host's 31 GB RAM and CPU with gpubox4). Configs: `configs.sh`'s launch lines at 2048
+environments, BC `lanes.environments=0`, BC 256 / RL 32 minibatches (the defaults), RL's
+1024 lane environments. 8 GB emulation: `memory_fraction=0.4908` (8/16.3), which caps the
+allocator at 7.60 GiB.
+
+- **Fixed:** `steady.py`'s `memory_fraction` passed `torch.device("cuda")`, which
+  `set_per_process_memory_fraction` refuses (it needs an index): ac77ba2c.
+- **BC at 2048 environments does not fit 8 GB with `host_store=false`.** The build runs out
+  of memory while allocating the segment store (7.48 GiB allocated, store not complete),
+  before any compile. The laptop needs `host_store=true`.
+- **With `host_store=true` the store pins about 11 GB of host RAM** (BC alone: the process
+  held 13.4 GB resident, 11.1 GB of it shared/pinned; the host then had 0 GB free and 5 GB
+  available). Pinned memory cannot swap.
+- Micro-batch note, BC at 1280 rows: "learner micro-batches of 48 views (12288 views in
+  256 minibatches); the cadence adds 24". So 1280 and 640 rows are the same run for BC (the
+  minibatch, 48 views, is one micro-batch); two shapes, as expected.
+- The seeded compile caches did not hit: the calibration's `cache-box4` holds BC at 1024
+  environments and 240 rows (24 views, cadence 12), not 48. BC compiled cold.
+- About 12 minutes into that cold compile (GPU at 6.2 GB of the 7.6 GiB cap, no update
+  yet), **gpubox7 and gpubox4 both stopped answering ssh** (banner timeouts from 05:40 KST).
+  The likely cause is host RAM: the 11 GB pinned store plus four compile workers on a host
+  that also runs the calibration's BC. The run was not finished; the coordinator is
+  recovering the boxes. No BC or RL update completed under the cap, so **the 8 GB verdict,
+  the laptop profile, BC's half-minibatch compile count (check 2), the final RL rollout's
+  timings (check 3) and the lanes / memory pairs (check 4) are not measured.**
+
+What is known for the laptop without a measurement:
+- `host_store=true` is required at 2048 environments, and it needs about 11 GB of free host
+  RAM for BC (RL's store is likely larger). On an 8 GB laptop with 16 GB of RAM this may
+  not fit; fewer environments may be the laptop's real limit.
+- BC micro rows: by `micro_batch_sizes`, any rows from 240 to 479 give 24 views; 24 divides
+  the 48-view minibatch and equals the cadence's halves, so BC compiles **one** shape there
+  (computed, not run). Rows of 480 and more give 48 + 24. Speed cost not measured.
+- RL micro rows: 640 and 320 give one shape (64 or 32 views; the 192-view halves divide);
+  1280 gives 128 + 96. RL at 320 rows reserved 10.69 GB at 1024 environments with the store
+  on the device, so at 8 GB only 320 or less with `host_store=true` is plausible.
+- Never run this emulation again beside another job on a shared host: the pinned store is
+  host RAM the other job cannot get back.
