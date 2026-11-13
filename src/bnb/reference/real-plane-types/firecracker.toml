@@ -1,0 +1,113 @@
+# Firecracker: a type of the real-scale set, its file as it stood at game v16 (the set's x2 native
+# units), kept as reference data (bnb.reference.real_planes): not a ship type since
+# 2026-11-13. [handles] as it flew, [card] the solve, [notes] each value's source.
+name = 'Firecracker'
+
+[handles]
+# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
+stall_speed = 98.34
+g_limit = 8.0
+cruise_speed = 471.8
+climb_time = 32.52117598684211
+ceiling = 124390.8
+low_speed_acceleration = 32.736
+sustained_turn_rate = 0.5480333851262195
+half_lift_drag = 0.25
+nose_reversal_time = 0.3280855848090534
+dive_acceleration = 54.92636593864514
+zoom_acceleration = -34.87187540918414
+stall_angle = 0.27052603405912107
+vision_range = 3072.0
+zero_lift_drag = 3.725279850746269e-05
+hit_damage = 134.2906865006217
+explosive_share = 0.0
+fire_rate = 10.0
+muzzle_speed = 1040.0
+bullet_spread = 0.786975402236882
+gun_range = 439.96404354168027
+bullet_drag = 0.00065
+shots_per_store = 18.02583559885846
+max_shield = 120.0
+shield_recharge_rate = 24.0
+shield_recharge_delay = 3.0
+head_on_fraction = 0.3
+head_on_angle = 0.737832313317803
+head_on_sharpness = 2.0
+arming_distance = 0.0
+hit_radius = 5.645
+core_radius = 0.0
+spawn_energy = 49756.32000000001
+
+[card]
+# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).
+max_lift_coefficient = 0.004057594109326601
+max_acceleration = 313.9200134277344
+zero_lift_drag = 3.7252797483233735e-05
+engine_power = 24130.298828125
+engine_power_full_store = 5224.0478515625
+static_thrust = 132.06581115722656
+max_energy = 124390.796875
+corner_nose_frequency = 11.910198211669922
+max_shield = 120.0
+hit_radius = 5.644999980926514
+core_radius = 0.0
+hit_damage = 134.29067993164062
+muzzle_speed = 1040.0
+bullet_energy_cost = 6900.6953125
+fire_rate = 10.0
+bullet_life = 0.3333333432674408
+spawn_energy = 49756.3203125
+explosive_share = 0.0
+reference_bullet_speed = 1243.96142578125
+bleed_exponent = 2.0
+induced_drag_scale = 6.951470851898193
+stall_angle_scale = 1.0333333015441895
+coast_exchange_scale = 36.763851165771484
+dive_exchange_scale = 1.5454680919647217
+climb_exchange_scale = 7.603233337402344
+vision_range_scale = 1.0
+bullet_spread_scale = 0.06558128446340561
+bullet_drag_scale = 1.2999999523162842
+shield_recharge_rate_scale = 2.0
+shield_recharge_delay_scale = 0.5
+head_on_fraction_scale = 1.0
+head_on_angle_scale = 1.0
+head_on_sharpness = 2.0
+arming_distance = 0.0
+engine_knee_scale = 1.0
+fine_stick = 0.4000000059604645
+sustained_stick = 0.75
+
+[notes]
+# Where each handle's value comes from.
+stall_speed = "invented: stall_speed 49.17. the P-51D's x 1.1: Rocket sprinter: enormous thrust, a tiny store (propellant)."
+g_limit = "invented: g_limit 8. Rocket sprinter: enormous thrust, a tiny store (propellant)."
+cruise_speed = "invented: cruise_speed 235.9. the P-51D's x 1.45: Rocket sprinter: enormous thrust, a tiny store (propellant). MISSED: the card flies it 1.9% off"
+climb_time = "solved for an initial charge of g x 60.8 m/s; invented: climb_rate 60.8. the P-51D's x 4.0: Rocket sprinter: enormous thrust, a tiny store (propellant). Paced: the climb rate 60.8 -> 243.2 m/s, x 4 (docs/explanation/game/real-scale-pacing.md). MISSED: the card flies it 2.3% off"
+ceiling = "invented: service_ceiling 3170; the store g h, J/kg. the P-51D's x 0.25: Rocket sprinter: enormous thrust, a tiny store (propellant)."
+low_speed_acceleration = "invented: low_speed_acceleration 8.184. the P-51D's x 3.0: Rocket sprinter: enormous thrust, a tiny store (propellant). MISSED: the card flies it 26.7% off"
+sustained_turn_rate = "invented: sustained_turn_rate 15.7; degrees. the P-51D's x 1.0: Rocket sprinter: enormous thrust, a tiny store (propellant). MISSED: the card flies it 3.7% off"
+half_lift_drag = "placeholder: the standard fighter's"
+nose_reversal_time = "invented: roll_rate 114; the P-51D's nose reversal (a placeholder) x its roll rate 95 over this one. the P-51D's x 1.2: Rocket sprinter: enormous thrust, a tiny store (propellant). MISSED: the card flies it 2.7% off"
+dive_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D. Paced: 10.9 -> 13.73 m/s^2, the paced coast exchange 10.11 plus half the P-51D's paced boost exchange (docs/explanation/game/real-scale-pacing.md). MISSED: the card flies it 1.4% off"
+zoom_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D MISSED: the card flies it 2.4% off"
+stall_angle = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+vision_range = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+zero_lift_drag = "invented: drag_coefficient 0.01467; rho C_D0 / (2 W/S) with W/S 241.2 kg/m^2 (invented). the P-51D's x 0.9: Rocket sprinter: enormous thrust, a tiny store (propellant)."
+hit_damage = "invented: weight_of_fire 3.312; proposal: 360 per second (the P-51D's) x the weight of fire over the P-51D's 3.68 kg/s, over the fire rate. 2x MK 108-class 30 mm @ 5/s (wing_root): the P-51D's x 0.9. Balanced (round 1): 64.8 -> 71.62 a shot, 324 -> 358.1 per second at its 5 Hz: the equal-damage rule, 360 x (its weight of fire over the P-51D's)^0.05 within 5% (the guns dominated the ratings). Centre hit (game v6): 71.62 -> 134.3, x 15/8 (the closeness's mean over a uniform impact parameter is 8/15), at the reference distance."
+explosive_share = "proposal: the default, pure kinetic"
+fire_rate = "invented: fire_rate 5; proposal: the main gun's volley rate. the MK 108-class 30 mm"
+muzzle_speed = "invented: muzzle_speed 520. the MK 108-class 30 mm"
+bullet_spread = "invented: dispersion 2.52; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the P-51D's x 0.42: Rocket sprinter: enormous thrust, a tiny store (propellant)."
+gun_range = "the reach in the set's gun flight time (0.6 s), cruise and muzzle speed, under RANGE_DRAG (the set's drag before game v6)"
+bullet_drag = "estimated: the MK 108 30 mm, a short heavy shell at 500 m/s"
+shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 60.8 m/s), the standard fighter's ratio: a shot costs 1725 J/kg, 2.89 s of charge"
+max_shield = "invented: survivability 1; proposal: the standard 100 x (1 + 0.1 per rating step from the P-51D's 2). Explosive propellants. Balanced (round 3): 80 -> 90, the step per rating 0.2 -> 0.1: the shield's Spearman correlation with the round-2 Elo was +0.54 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal. Balanced (round 3): 90 -> 120: an invented or placeholder type rated -867 +- 24 in round 2, -1854 from the median 986 (the rule moves its shield 20 towards the median beyond 200 Elo)."
+shield_recharge_rate = "placeholder: the standard fighter's"
+shield_recharge_delay = "placeholder: the standard fighter's"
+head_on_fraction = "placeholder: the standard fighter's"
+head_on_angle = "placeholder: the standard fighter's"
+head_on_sharpness = "placeholder: the standard fighter's"
+arming_distance = "placeholder: the standard fighter's"
+hit_radius = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+spawn_energy = "placeholder: the standard fighter's fraction of the store"

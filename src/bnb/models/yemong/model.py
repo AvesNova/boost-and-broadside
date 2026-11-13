@@ -202,9 +202,6 @@ class YemongConfig:
     zone token the capture locks on both teams (Frontline, game version 8), coded as the
     ship token codes its respawn wait (`inputs.compose`). Off by default, so every build
     from before them is unchanged; a new run's build reads them.
-    boundary_inputs: the global token reads the boundary's radius over the arena radius
-    and its time to zero (elimination's shrinking boundary, game version 14), the time
-    coded as the timers are. Off by default, as the timers; a new run's build reads them.
     """
 
     width: int = 128
@@ -238,7 +235,6 @@ class YemongConfig:
     # the modes whose flags the global token reads (`inputs.MODE_INPUTS`); new runs read all
     mode_inputs: tuple[str, ...] = MODE_INPUTS[:2]
     frontline_timer_inputs: bool = False  # the capture locks and the own next wave
-    boundary_inputs: bool = False  # the boundary's radius and its time to zero
     delta_split: bool = False  # physics head on seen rows, an error head for hidden rows
     extrapolation_decay: float = 0.5  # s: a hidden row's held rates decay with this constant
     correction_rate: float = 0.1  # eta: the error head's step per tick, of its confident median
@@ -482,10 +478,20 @@ class Yemong(nn.Module):
     rises whenever a change alters what saved weights compute (runs spec 4)."""
 
     NAME = "yemong"
-    VERSION = 1
+    # 2: every build reads the boundary (2026-11-13); 3: the ship token reads the benched
+    # flag (SHIP_FLAGS, one more input; 2026-11-13)
+    VERSION = 3
 
     def __init__(self, build: YemongBuild) -> None:
         super().__init__()
+        # The runtime switch for uneven teams (not a build field: the same weights serve
+        # both). On, a benched ship (the observation's benched flag) is no key or value of
+        # any attention and counts in no ship's presence, so the active ships' outputs do
+        # not depend on its rows; its own outputs are computed and mean nothing (the game
+        # ignores a benched ship's action). Off (training, which plays full teams), the
+        # model computes exactly what it did before the switch. On wherever uneven teams
+        # are evaluated (`bnb.league.matches.Arena` with benching).
+        self.mask_benched = False
         config = build.config
         self.build, self.config = build, config
         width, hidden = config.width, 2 * config.width
@@ -518,9 +524,7 @@ class Yemong(nn.Module):
                 config.acceleration_inputs,
                 self.state_code.ellipse_width,
             ),
-            global_inputs(
-                config.mode_inputs, config.frontline_timer_inputs, config.boundary_inputs
-            ),
+            global_inputs(config.mode_inputs, config.frontline_timer_inputs),
             FIELD_INPUTS,
             width,
             config.map_width,
@@ -906,7 +910,7 @@ class Yemong(nn.Module):
             self.config.acceleration_inputs,
             self.config.mode_inputs,
             self.config.frontline_timer_inputs,
-            self.config.boundary_inputs,
+            self.mask_benched,
         )
 
     def preceding_motion(
@@ -1078,6 +1082,7 @@ class Yemong(nn.Module):
                 carry.state,
                 carry.convolution_buffer,
                 self._readout(ships, token_tables, rotary_off, readout),
+                tokens.key_mask,
             )
             policy_logits, value_logits = self.own_heads(hidden[:, :own])
             enemy_action_logits, change = self.ship_heads(hidden[:, own:ships_count])
@@ -1209,6 +1214,7 @@ class Yemong(nn.Module):
                 buffer,
                 reset,
                 self._readout(obs.ships, token_tables, None, readout),
+                tokens.key_mask,
             )
             policy_logits, value_logits = self.own_heads(hidden[..., :own, :])
             ship_hidden = hidden[..., :ships, :]

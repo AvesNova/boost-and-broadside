@@ -171,7 +171,7 @@ class Rollout:
             state = api.start_clocks(
                 state, torch.randint(0, 1 << 30, (B,), device=device) % episode_ticks
             )
-        state, obs, truth = api.perceive(rules, state)
+        state, obs, truth = api.perceive(rules, state, active)
         views, ring, S, N = (
             self.lineup.rows(self.learner),
             self.ring,

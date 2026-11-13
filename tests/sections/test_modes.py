@@ -67,14 +67,14 @@ def test_tick_uniform_counts_are_exact_functions_of_the_sizes():
 
 
 def test_the_arena_is_a_2v2_dogfight_with_no_fields_or_zones():
-    """The arena preset: team deathmatch of a P-51D and a Spitfire XIV a team, real-scale,
+    """The arena preset: team deathmatch of a Yongma and a Jujak a team, real-scale,
     on a small map with no fields and no zones, a killed ship respawning after one tick."""
     game = PRESETS["arena"]
     assert (game.mode, game.ships_per_team, game.num_fields) == ("team_deathmatch", 2, 0)
     assert game.ship_set == "real-scale" and game.arena_radius == 1950.0
     lineup = api.preset_lineup("arena")
     names = api.type_names("real-scale")
-    assert [names[kind] for kind in lineup] == ["P-51D", "Spitfire XIV"]
+    assert [names[kind] for kind in lineup] == ["Yongma", "Jujak"]
     assert api.preset_lineup("real_scale_deathmatch") is None
     assert "arena" not in {name for mix in TRAINING_MIXES.values() for name, _ in mix}
     rules = dataclasses.replace(api.rules_of(game), team_types=lineup)

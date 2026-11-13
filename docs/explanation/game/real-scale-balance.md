@@ -4,6 +4,10 @@ covers: [src/bnb/league/cyclic.py, bench/scripted_search.py, bench/scripted_comp
 
 # Balancing the real-scale set
 
+> The researched types this page balances left the game on 2026-11-13; the real-scale set
+> holds Yongma, Jujak and vizia. The page and its data are kept as a record; the types'
+> research and last cards are reference data ([The real planes](real-planes.md)).
+
 The [ship-type tournament](real-scale-tournament.md) rated the 27 real-scale types over a
 2,900-point spread, and the guns explained most of it: the weight of fire and the shots a
 type needs to kill a P-51D. This page balances the set in rounds, each of four steps:
@@ -22,7 +26,7 @@ the noise. Each round's data are in `real-scale-balance/`
 ## The rules the rounds follow
 
 **Equal damage per second.** Every type deals about the P-51D's 360 per second
-(`bnb.game.real_scale.balanced_damage_per_second`):
+(the builder's balanced_damage_per_second):
 
     damage per second = 360 x (w / 3.68 kg/s)^0.05, kept within 5% of 360,
 
@@ -35,10 +39,10 @@ its real fire rate, so a slower-firing type hits harder a shot: the Anvil's 2 Hz
 is unchanged (continuous fire costs every type the same multiple of its own climb charge).
 
 **Leeway by confidence.** A value the research holds well (a "good" or "medium" datum in
-`bnb.game.real_scale_aircraft`) stays where it is. A loosely known one (low, estimated,
+`bnb.reference.real_planes`) stays where it is. A loosely known one (low, estimated,
 invented or a placeholder) may move within its plausible range when a round's analysis
-points at it. Every move is an entry of the balance file (`bnb.game.real_scale.BALANCE_FILE`,
-`src/bnb/game/real_scale_balance.json`), and the ship file's note for the handle records the
+points at it. Every move is an entry of the balance file (the builder's balance file, now
+[real-scale-balance/moves.json](real-scale-balance/moves.json)), and the ship file's note for the handle records the
 old value, the new and the reason; the equal-damage rule's note does the same for the hit
 damage.
 

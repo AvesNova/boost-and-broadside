@@ -1,8 +1,12 @@
 ---
-covers: [bench/pacing.py, src/bnb/game/real_scale.py]
+covers: [bench/pacing.py]
 ---
 
 # Pacing the real-scale fight
+
+> The researched types this page paces left the game on 2026-11-13; the real-scale set
+> holds Yongma, Jujak and vizia. The page and its data are kept as a record; the types'
+> research and last cards are reference data ([The real planes](real-planes.md)).
 
 The game has no altitude, only the energy store, and the store is where the real-scale set
 departs most from real life by design. A P-51D's store (its 12,680 m ceiling, 124 kJ/kg)
@@ -116,7 +120,7 @@ measures; `real-scale-pacing/pacing-standard.jsonl`): engaged 0.32, recovering 0
 a minute.
 
 **Four times the climb, the store and the knee as they are** (the balance file's
-"_rules" entry "climb_multiplier", read by `bnb.game.real_scale.pacing`). Four times brings the time spent
+"_rules" entry "climb_multiplier", read by the builder's pacing). Four times brings the time spent
 recovering to the standard game's (0.33 against 0.26) and the fights begun depleted below it
 (15% against 32%); twice is not enough (0.61, 49%), and eight times costs the turn while
 engaged twice as much (-16% against -9%) for a further 16 points of recovering share. Every
@@ -129,8 +133,7 @@ What it does to the set: every climb rate is four times its researched value (a 
 shot keeps its cost in J/kg, a quarter of the seconds of charge it cost; a type whose boost
 exchange (its dive handle less its paced coast exchange) would fall below half the
 P-51D's has its dive handle (a placeholder) raised to that: the Me 163 (10.9 to 17.5 m/s^2)
-and the Firecracker (10.9 to 13.7). Every type is solved again under it (`python -m
-bnb.game.real_scale --resume`).
+and the Firecracker (10.9 to 13.7). Every type was solved again under it (by the set's builder, since removed).
 
 The cost the author should weigh: a faster climb is a stronger engine, whose extra power
 the solver hides at the handles but not in a partial-stick turn (the bleed rate above). A

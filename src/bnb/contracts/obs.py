@@ -46,7 +46,10 @@ SHIP_COLUMNS = (
     "acceleration_y",
     "nose_acceleration",
     "acceleration_valid",
-    # always shown; fired: fired this tick
+    # always shown; fired: fired this tick; benched: a slot out of the match (an uneven
+    # game's, `bnb.game.state.benched_of`: a team's last S - active slots), held as a dead
+    # ship with respawn_wait frozen at the full respawn length; shown to both teams, fog or
+    # not (both know the roster), 0 in a game with every ship active
     "alive",
     "visible",
     "fired",
@@ -55,6 +58,7 @@ SHIP_COLUMNS = (
     "team_relative",
     "time_since_seen",
     "spawned",
+    "benched",
 )
 SHIP_HIDDEN_ZERO = 20  # the first this-many columns are zero for a ship the team cannot see
 FIELD_COLUMNS = ("x", "y", "radius", "band_width", "level")

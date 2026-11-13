@@ -1,5 +1,7 @@
-"""The real-scale balancing's round script (`bench/balance_round.py`) and the real-scale
-sets' file (`bnb.controllers.scripted_defaults`): the parts that run on the CPU."""
+"""The real-scale balancing's round script (`bench/balance_round.py`: its search summary)
+and the real-scale sets' file (`bnb.controllers.scripted_defaults`): the parts that run on
+the CPU. The balance rule's moves were of the researched types, which left the game on
+2026-11-13 (their moves: docs/explanation/game/real-scale-balance/moves.json)."""
 
 import json
 import pathlib
@@ -59,47 +61,3 @@ def test_the_real_scale_sets_round_trip_through_their_file(tmp_path):
     assert again["real_scale_deathmatch"] == stored["real_scale_deathmatch"]
     written = scripted_defaults.from_named(again["real_scale_frontline"]["parameters"])
     assert pack(written) == pytest.approx(pack(ScriptedParameters()), rel=5e-3)
-
-
-def _round(tmp_path, monkeypatch, shield_spearman, elo_of):
-    """A round's tournament outputs in a temporary docs directory: every type rated by
-    `elo_of(name)` (+- 20), the shield correlated `shield_spearman` with the Elo."""
-    from bnb.game import api, real_scale
-
-    monkeypatch.setattr(balance_round, "DOCS", tmp_path / "docs")
-    monkeypatch.setattr(real_scale, "BALANCE_FILE", tmp_path / "balance.json")
-    docs, _ = balance_round.paths(1)
-    docs.mkdir(parents=True)
-    rated = [
-        dict(type=name, elo=elo_of(name), stderr=20.0) for name in api.type_names("real-scale")
-    ]
-    (docs / "tournament.json").write_text(json.dumps(dict(ratings=rated)))
-    correlations = {"max_shield": {"spearman": shield_spearman, "pearson": shield_spearman}}
-    (docs / "analysis.json").write_text(json.dumps(dict(correlations=correlations)))
-    return real_scale
-
-
-def test_the_rule_lowers_the_shield_step_and_lifts_an_invented_outlier(tmp_path, monkeypatch):
-    real_scale = _round(
-        tmp_path,
-        monkeypatch,
-        0.55,
-        lambda name: {"Firecracker": 400.0, "P-47D": 300.0}.get(name, 1000.0),
-    )
-    proposal = balance_round.propose(1)
-    moves = real_scale.balance_moves()
-    assert moves["_rules"]["shield_per_rating"]["value"] == pytest.approx(0.15)
-    assert moves["_rules"]["shield_per_rating"]["round"] == 2
-    from bnb.game import ships
-
-    shield = {ship.key: ship.handles["max_shield"] for ship in ships.load("real-scale")}
-    assert moves["firecracker"]["max_shield"]["value"] == min(shield["firecracker"] + 20.0, 160.0)
-    assert "p47d" not in moves  # a researched type is never moved on its own
-    assert not proposal["stop"]
-
-
-def test_the_rule_stops_when_nothing_fires(tmp_path, monkeypatch):
-    real_scale = _round(tmp_path, monkeypatch, 0.2, lambda name: 1000.0)
-    proposal = balance_round.propose(1)
-    assert proposal["stop"] and proposal["moves"] == []
-    assert real_scale.balance_moves() == {}

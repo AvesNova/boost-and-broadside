@@ -99,7 +99,10 @@ L ticks give the returns of one segment of N L ticks
   episode end.
 
 `LearnerConfig.discount`, `trace_decay` and `team_spirit` hold one value per value level,
-in the critic's order; the learner refuses a model whose levels they do not match.
+in the critic's order; the learner refuses a model whose levels they do not match. The
+defaults give every level the same discount, 0.9997 (a half-life of about 77 s at 30
+decisions per second), and the same trace decay, 0.99 (a look-ahead of about 3.3 s), and
+BC uses the same returns as RL, so the critic BC hands over has learned RL's targets.
 
 ### The single value arm
 

@@ -71,7 +71,8 @@ ACCELERATION_CODE = sum(component.width for component in ACCELERATIONS)
 ACCELERATION_INPUTS = ACCELERATION_CODE + 1  # the codes, then the validity flag
 SLOW_SPEED = 1.0  # m/s: below it the frame is the heading, not the velocity
 
-SHIP_FLAGS = ("alive", "visible", "fired")
+# benched (a slot out of an uneven match, shown to both teams): read since Yemong v3
+SHIP_FLAGS = ("alive", "visible", "fired", "benched")
 POSITION_CODE = 9 * POSITION_LEVELS  # the width of a position code
 # The modes whose flags the global token reads (`YemongConfig.mode_inputs`): the modes a
 # build knows, each a one-hot column of the observation ("mode_<name>"). Builds from before
@@ -85,25 +86,17 @@ MODE_INPUTS = (TEAM_DEATHMATCH, FRONTLINE, ELIMINATION)
 TIMER_INPUTS = 1 + 2 * RESPAWN_HARMONICS
 
 
-# The boundary's inputs (`YemongConfig.boundary_inputs`): its radius over the arena radius,
+# The boundary's inputs, always read: its radius over the arena radius,
 # then its time to zero coded as a timer (TIMER_INPUTS).
 BOUNDARY_INPUTS = 1 + TIMER_INPUTS
 
 
-def global_inputs(
-    mode_inputs: tuple[str, ...], timers: bool = False, boundary: bool = False
-) -> int:
+def global_inputs(mode_inputs: tuple[str, ...], timers: bool = False) -> int:
     """The global token's width: the centre's code, then episode progress, arena radius,
     fog, the flags of the modes read (mode_inputs), both scores over the target, the
     target, the front and its threshold, then with timers the own team's next respawn
-    wave (TIMER_INPUTS), then with boundary the boundary's inputs (BOUNDARY_INPUTS)."""
-    return (
-        POSITION_CODE
-        + 8
-        + len(mode_inputs)
-        + (TIMER_INPUTS if timers else 0)
-        + (BOUNDARY_INPUTS if boundary else 0)
-    )
+    wave (TIMER_INPUTS), then the boundary's inputs (BOUNDARY_INPUTS)."""
+    return POSITION_CODE + 8 + len(mode_inputs) + (TIMER_INPUTS if timers else 0) + BOUNDARY_INPUTS
 
 
 FIELD_INPUTS = POSITION_CODE + 3
@@ -294,7 +287,9 @@ class Tokens:
     an absent zone at the map centre (the global token's rotation). Positions are shifted.
     Given the Motion the tick before (the acceleration inputs or the extrapolation
     baseline): motion, the enemy rows' Motion (the next tick's previous), and accelerations,
-    whether or not the ship token reads them (None without).
+    whether or not the ship token reads them (None without). key_mask (..., N) bool, with
+    mask_benched: the ships attention reads as keys, every one but the benched (None
+    without).
     """
 
     ship: torch.Tensor
@@ -309,6 +304,7 @@ class Tokens:
     memory_position: torch.Tensor
     motion: Motion | None = None
     accelerations: Accelerations | None = None
+    key_mask: torch.Tensor | None = None
 
 
 def _position_code(position: torch.Tensor) -> torch.Tensor:
@@ -343,7 +339,7 @@ def compose(
     read_accelerations: bool = True,
     mode_inputs: tuple[str, ...] = MODE_INPUTS,
     timers: bool = False,
-    boundary: bool = False,
+    mask_benched: bool = False,
 ) -> Tokens:
     """The Tokens of one team's views (...) from the observation and the replay: the ships' belief
     codes and features, the global token, the fields and the zones, every position shifted by the
@@ -358,9 +354,11 @@ def compose(
     the global token ends with the own team's next respawn wave and the zone token with
     the capture locks (lock_own, lock_enemy), each coded as the respawn wait
     (`respawn_features`); a zone's capture progress is the meter's fraction in [0, 1]
-    either way. With boundary the global token ends with the boundary's radius over the
-    arena radius and its time to zero, coded as a timer (elimination's shrinking boundary;
-    1 and 0 elsewhere)."""
+    either way. The global token ends with the boundary's radius over the arena radius and
+    its time to zero, coded as a timer (elimination's shrinking boundary; 1 and 0
+    elsewhere). With mask_benched a benched row (the observation's benched flag) counts in
+    no ship's presence and the Tokens carry the key mask that hides it from attention
+    (`Yemong.mask_benched`)."""
     ships, dtype = obs.ships, obs.ships.dtype
     own = replay.previous_action.shape[-1]
     column = {name: ships[..., SHIP[name]] for name in SHIP}
@@ -384,7 +382,12 @@ def compose(
 
     gradient = torch.stack([column["log_index_gradient_x"], column["log_index_gradient_y"]], -1)
     gradient = torch.where(visible[..., None], gradient, 0.0) / GRADIENT_SCALE
-    presence = local_presence(position, team, valid, presence_radius)
+    key_mask = None
+    if mask_benched:
+        key_mask = column["benched"] < 0.5
+        presence = local_presence(position, team, valid & key_mask, presence_radius)
+    else:
+        presence = local_presence(position, team, valid, presence_radius)
     since_seen = age.to(dtype) * tick_length
     now, change = None, None
     if previous is not None:
@@ -428,14 +431,8 @@ def compose(
                 -1,
             ),
             *((respawn_features(globals_[..., GLOBAL["next_wave_own"]]),) if timers else ()),
-            *(
-                (
-                    globals_[..., GLOBAL["boundary_fraction"], None],
-                    respawn_features(globals_[..., GLOBAL["boundary_time_to_zero"]]),
-                )
-                if boundary
-                else ()
-            ),
+            globals_[..., GLOBAL["boundary_fraction"], None],
+            respawn_features(globals_[..., GLOBAL["boundary_time_to_zero"]]),
         ],
         -1,
     )[..., None, :]
@@ -513,4 +510,5 @@ def compose(
         memory_position=torch.cat([field_position, zone_position], -2),
         motion=now,
         accelerations=change,
+        key_mask=key_mask,
     )

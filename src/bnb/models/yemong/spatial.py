@@ -33,8 +33,12 @@ class SpatialBlock(nn.Module):
         map_memory: torch.Tensor,
         token_tables: Tables,
         map_tables: Tables,
+        key_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """tokens (..., Q, D) attend over themselves and map_memory (..., M, Dm)."""
+        """tokens (..., Q, D) attend over themselves and map_memory (..., M, Dm). key_mask
+        (..., K) bool, K <= Q: the first K tokens that are keys and values (the ships, for
+        `Yemong.mask_benched`); the rest and the map memory always are. None: every token,
+        through the fused kernel where it applies (with a mask the plain path runs)."""
         query, key, value = (
             self.query_key_value(self.attention_norm(tokens))
             .unflatten(-1, (3, self.heads, -1))
@@ -45,7 +49,11 @@ class SpatialBlock(nn.Module):
             .unflatten(-1, (2, self.heads, -1))
             .unbind(-3)
         )
-        if kernels.switches.attention and attention.applies(query, token_tables):
+        if key_mask is not None:
+            attended = self._attend(
+                query, key, value, map_key, map_value, token_tables, map_tables, key_mask
+            )
+        elif kernels.switches.attention and attention.applies(query, token_tables):
             attended = attention.attend(
                 query, key, value, map_key, map_value, token_tables, map_tables
             )
@@ -55,8 +63,9 @@ class SpatialBlock(nn.Module):
         return tokens + self.feedforward(self.feedforward_norm(tokens))
 
     @staticmethod
-    def _attend(query, key, value, map_key, map_value, token_tables, map_tables):
-        """The plain twin of `kernels.attention.attend`: (..., Q, heads, width)."""
+    def _attend(query, key, value, map_key, map_value, token_tables, map_tables, key_mask=None):
+        """The plain twin of `kernels.attention.attend`: (..., Q, heads, width); with a
+        key_mask (see `forward`) the masked keys take no weight."""
         query, key = apply_rotary(query, *token_tables), apply_rotary(key, *token_tables)
         map_key = apply_rotary(map_key, *map_tables)
         keys = torch.cat([key, map_key], -3).transpose(-3, -2)  # (..., heads, Q + M, width)
@@ -69,5 +78,9 @@ class SpatialBlock(nn.Module):
             # query met the bf16 values. Bitwise the same where autocast does cast.
             dtype = torch.get_autocast_dtype(device)
             query, keys, values = query.to(dtype), keys.to(dtype), values.to(dtype)
-        attended = F.scaled_dot_product_attention(query, keys, values)
+        mask = None
+        if key_mask is not None:
+            shown = key_mask.new_ones(key_mask.shape[:-1] + (keys.shape[-2] - key_mask.shape[-1],))
+            mask = torch.cat([key_mask, shown], -1)[..., None, None, :]  # (..., 1, 1, keys)
+        attended = F.scaled_dot_product_attention(query, keys, values, attn_mask=mask)
         return attended.transpose(-3, -2)

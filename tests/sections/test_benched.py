@@ -209,3 +209,41 @@ def test_a_5_against_3_game_ends_on_the_enemys_active_count():
         assert torch.equal(events.result[clock], torch.sign(score[:, 0] - score[:, 1])[clock].int())
         won += int(by_rule.sum())
     assert won > 0
+
+
+@pytest.mark.parametrize("name", ["team_deathmatch", "frontline"])
+def test_the_benched_flag_marks_exactly_the_benched_slots_in_both_views_under_fog(name):
+    """4v5, 3v5, 5v4 and 5v3 games under fog: from the reset on, through the active ships'
+    deaths and respawns and the episode resets, the benched column is 1 on exactly the
+    benched rows of both views (the enemy's included, which it cannot see) and of the
+    truth; with every ship active it is 0 everywhere."""
+    config = dataclasses.replace(cases.MODES[name], ships_per_team=5)
+    rules = cases.lively(config)
+    active = torch.tensor([[4, 5], [3, 5], [5, 4], [5, 3]] * 2, dtype=torch.int32)
+    benched = benched_of(rules.ships_per_team, active)  # (B, N) sim order
+    order = api.view_order(rules.ships_per_team, active.device)
+    rows = benched[:, order].float()  # (B, 2, N) by view row
+    own = (api.ship_team(rules.ships_per_team)[order] == torch.arange(2)[:, None])[None]
+    generator = torch.Generator().manual_seed(4)
+    types = cases.LIVELY_TYPES
+    fogged = torch.ones(BATCH, dtype=torch.bool)
+    state = api.reset(
+        rules, types, api.uniforms(rules, BATCH, generator=generator), fogged, active=active
+    )
+    state, obs, truth = api.perceive(rules, state, active)
+    respawned = resets = hidden_enemy = 0
+    for _ in range(TICKS):
+        assert torch.equal(obs.ships[..., SHIP["benched"]], rows)
+        assert torch.equal(truth.ships[..., SHIP["benched"]], rows)
+        hidden_enemy += int(((obs.ships[..., SHIP["visible"]] == 0) & (rows > 0) & ~own).sum())
+        action = cases.random_actions(BATCH, rules.num_ships, generator, shoot=0.9)
+        spread = api.spread(rules, BATCH, generator=generator)
+        uniforms = api.uniforms(rules, BATCH, generator=generator)
+        state, events = api.step(rules, types, state, action, spread, uniforms, active)
+        state, obs, truth = api.perceive(rules, state, active)
+        respawned += int((events.spawned & ~events.done[:, None]).sum())
+        resets += int(events.done.sum())
+    assert respawned > 0 and resets > 0 and hidden_enemy > 0
+    _, full, full_truth = api.perceive(rules, state)
+    assert not full.ships[..., SHIP["benched"]].any()
+    assert not full_truth.ships[..., SHIP["benched"]].any()

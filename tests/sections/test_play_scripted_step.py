@@ -30,7 +30,7 @@ FLOAT_MEMORY = ("enemy_x", "enemy_y", "enemy_velocity_x", "enemy_velocity_y")
 REAL_SCALE = dataclasses.replace(
     api.PRESETS["real_scale_deathmatch"], ships_per_team=2, num_fields=4, arena_radius=2500.0
 )
-REAL_SCALE_AGENTS = MatchSetup(REAL_SCALE, lineup=(28, 29), seed=3, sides=SCRIPTED_AGENTS)
+REAL_SCALE_AGENTS = MatchSetup(REAL_SCALE, lineup=(0, 1), seed=3, sides=SCRIPTED_AGENTS)
 
 
 def _agents(setup: MatchSetup = AGENTS, **settings) -> list[ScriptedAgent]:

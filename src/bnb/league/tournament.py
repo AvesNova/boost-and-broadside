@@ -16,8 +16,9 @@ a few players, which anchor the scale for the others through their games.
 A field may instead be balanced (`TournamentConfig.allocation`): each block goes to the
 allowed pair with the fewest games so far, so a budget of every pair's games is a full
 round robin; and anchored on another player (`rate`'s `anchor`). The ship-type tournament
-(`bench/ship_type_tournament.py`) is one: the real-scale set's types, each flown by the
-scripted agent (`matches.ship_type_players`), anchored on the P-51D.
+(`bench/ship_type_tournament.py`) is one: a ship set's types, each flown by the scripted
+agent (`matches.ship_type_players`), anchored on one of them (the P-51D, while the
+real-scale set held the researched types: docs/explanation/game/real-scale-tournament.md).
 
 Earlier tournaments' games may be reused (`reuse_record`): every recorded game whose two
 players are in the field, matched by identity (`identity`: a policy by the hash of its

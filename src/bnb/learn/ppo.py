@@ -133,8 +133,11 @@ class LearnerConfig:
     of the sampled action, a lower bound of it.
     """
 
-    discount: tuple[float, ...] = (0.991, 0.995, 0.995, 0.999, 0.9997)
-    trace_decay: tuple[float, ...] = (0.90, 0.95, 0.95, 0.97, 0.97)
+    # One discount and one trace decay for every value level, the same in BC and RL (the
+    # author, 2026-11-13, for the dry run): 0.9997 is a half-life of 77 s at 30 decisions
+    # per s, 0.99 a look-ahead of about 3.3 s.
+    discount: tuple[float, ...] = (0.9997,) * 5
+    trace_decay: tuple[float, ...] = (0.99,) * 5
     team_spirit: tuple[float, ...] = (0.0, 0.0, 0.0, 0.0, 0.0)
     return_scale_decay: float = 0.99
     return_scale_floor: float = 1.0

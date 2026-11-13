@@ -1,0 +1,162 @@
+{
+ "format": 1,
+ "kind": "policy",
+ "model": {
+  "name": "yemong",
+  "version": 3,
+  "build": {
+   "config": {
+    "width": 8,
+    "blocks": 1,
+    "spatial_per_block": 1,
+    "heads": 1,
+    "map_width": 4,
+    "value_bins": 11,
+    "value_limit": 3.0,
+    "levels": [
+     "damage",
+     "kill_death",
+     "objective_progress",
+     "objective",
+     "outcome"
+    ],
+    "outcome_level": "outcome",
+    "hex_rings": 1,
+    "presence_radius": 150.0,
+    "rotary_period": 8192.0,
+    "rotary_octaves": 1,
+    "heading_harmonics": [
+     1
+    ],
+    "bfloat16_matmuls": false,
+    "forecast_feedback": true,
+    "rotary": true,
+    "order": "spatial_first",
+    "rotary_readout": false,
+    "spread_fit": "v1",
+    "next_state": "absolute",
+    "delta_baseline": "persistence",
+    "spread_inputs": "scalar",
+    "position_inputs": "colour",
+    "acceleration_inputs": false,
+    "mode_inputs": [
+     "team_deathmatch",
+     "frontline"
+    ],
+    "frontline_timer_inputs": false,
+    "delta_split": false,
+    "extrapolation_decay": 0.5,
+    "correction_rate": 0.1,
+    "physics_hidden_decay": null,
+    "physics_hidden_fade": false
+   },
+   "tick_length": 0.03333333333333333,
+   "num_ships": 4,
+   "ship_types": 2,
+   "bullet_moves": 12,
+   "muzzle_speed": 500.0,
+   "hit_radius": 8.0,
+   "state_code": {
+    "tick_length": 0.03333333333333333,
+    "angle_of_attack_limit": 0.5235987755982988,
+    "shield_recharge_delay": 6.0,
+    "cooldown_bins": 4,
+    "max_shield": [
+     100.0,
+     160.0
+    ],
+    "max_energy": [
+     10000.0,
+     14000.0
+    ]
+   },
+   "dynamics": null
+  }
+ },
+ "schemas": {
+  "Obs": 3,
+  "Action": 1
+ },
+ "observation": {
+  "ships": [
+   "x",
+   "y",
+   "heading_cos",
+   "heading_sin",
+   "velocity_x",
+   "velocity_y",
+   "proper_speed",
+   "angle_of_attack",
+   "nose_rate",
+   "energy",
+   "shield",
+   "shield_recharge_wait",
+   "gun_cooldown",
+   "log_refractive_index",
+   "log_index_gradient_x",
+   "log_index_gradient_y",
+   "acceleration_x",
+   "acceleration_y",
+   "nose_acceleration",
+   "acceleration_valid",
+   "alive",
+   "visible",
+   "fired",
+   "respawn_wait",
+   "ship_type",
+   "team_relative",
+   "time_since_seen",
+   "spawned",
+   "benched"
+  ],
+  "fields": [
+   "x",
+   "y",
+   "radius",
+   "band_width",
+   "level"
+  ],
+  "globals": [
+   "episode_progress",
+   "arena_radius",
+   "fogged",
+   "reset",
+   "boundary_fraction",
+   "boundary_time_to_zero",
+   "mode_team_deathmatch",
+   "mode_frontline",
+   "mode_elimination",
+   "score_own",
+   "score_enemy",
+   "score_target",
+   "front",
+   "front_threshold",
+   "next_wave_own"
+  ],
+  "zones": [
+   "x",
+   "y",
+   "radius",
+   "role",
+   "progress",
+   "direction",
+   "offensive_distance",
+   "defensive_distance",
+   "present",
+   "lock_own",
+   "lock_enemy"
+  ]
+ },
+ "game_version": 17,
+ "game": null,
+ "ship_card": null,
+ "return_scale": false,
+ "steps": {},
+ "ratings": {},
+ "commit": "97fbbd4d6b5ef1b23e5f0ddc6b830a21b26c4dcb",
+ "dirty": true,
+ "time": "2026-11-13T08:55:58+00:00",
+ "files": {
+  "weights.safetensors": "2068e40bd72c76fb7e0c2813f895d3f8eb14e205c167a4ad17430b22f420c590"
+ }
+}

@@ -785,6 +785,10 @@ class Arena:
         ship_type = None
         if any(one.ship_type is not None for one in players):
             ship_type = torch.tensor(rules.slot_types, dtype=torch.int32).repeat(config.games, 1)
+        if benching:  # uneven teams: a Yemong reads no benched ship (`Yemong.mask_benched`)
+            for template in self.groups:
+                if isinstance(template, Yemong):
+                    template.mask_benched = True
         controllers = [model_controller(template, game) for template in self.groups]
         self.seat = MatchSeat(
             controllers,
