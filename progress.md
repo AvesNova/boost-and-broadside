@@ -33,6 +33,12 @@ Game v13: the real-scale set at x2 native speed, with the lethality rules. Fly i
   the kill lead. The rating games are now frontline and elimination; should the doctrine
   search move to elimination?
 
+- Coming from the laptop (feat/elimination-shrink, not here): elimination's boundary
+  shrinks over the match, and the real-scale map defaults change (field band 160, radius
+  120-1200 lognormal median 400, deathmatch arena 4200 m). Rounds 2-3's elimination balance
+  is therefore provisional; re-check the final card on the shrinking elimination. I don't
+  touch modes, boundary damage, observations, scripted boundary avoidance or rendering.
+
 ## Log (KST)
 ### 13:54 start
 Branch feat/lethality from integrate/next-runs (fd918a0a). The GPU is running bc-mb512
