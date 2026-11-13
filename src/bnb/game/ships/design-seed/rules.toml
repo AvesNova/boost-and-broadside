@@ -30,3 +30,4 @@ anchor_distance_min = 750.0
 anchor_distance_max = 1800.0
 spawn_margin = 150.0
 capture_seconds = 20.0
+wave_seconds = 20.0

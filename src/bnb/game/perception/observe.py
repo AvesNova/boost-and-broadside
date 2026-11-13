@@ -186,7 +186,7 @@ def perceive(
         B,
         lambda mode_rules, mode, active: (
             mode_globals(rules, mode_rules, mode, active),
-            zone_rows(mode_rules, mode),
+            zone_rows(mode_rules, mode, rules.tick_length),
         ),
         state.mode,
         active,

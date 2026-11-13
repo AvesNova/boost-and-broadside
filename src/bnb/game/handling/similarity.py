@@ -161,6 +161,8 @@ RULE_UNITS = {
     "mode.capture_seconds": TIME,
     "mode.front_threshold": NONE,
     "mode.spawn_zone_fraction": NONE,
+    "mode.lock_seconds_per_root_km": (-0.5, 1),  # s / sqrt(km)
+    "mode.wave_seconds": TIME,
     "mode.side_area_fraction": NONE,
     "mode.side_heading_jitter": NONE,
     **{f"flight.{name}": units for name, units in FLIGHT_UNITS.items()},

@@ -49,6 +49,7 @@ def _new_matches(rules: Rules, arena: Environment, tick: TickUniforms, previous_
             fields,
             previous_mode,
             rules.field_disc_fraction,
+            rules.tick_length,
         )
 
     mode, fields = per_mode(
@@ -283,10 +284,12 @@ def resolve(
     )
     bullets = replace(bullets, moves_left=moves_left)
 
-    # 7. Death and respawn (the spawns happen together with the resets below).
+    # 7. Death and respawn (the spawns happen together with the resets below): a dead ship
+    # whose wait is over respawns when its team's respawn is open (Frontline's waves).
     was_dead = ~alive0
-    respawn_wait = torch.where(was_dead, ships.respawn_wait - 1, ships.respawn_wait)
-    due = was_dead & (respawn_wait <= 0)
+    respawn_wait = torch.where(was_dead, (ships.respawn_wait - 1).clamp_min(0), ships.respawn_wait)
+    open_by_ship = phase.respawn_open.repeat_interleave(rules.ships_per_team, 1)
+    due = was_dead & (respawn_wait <= 0) & open_by_ship
     ships = replace(
         ships,
         alive=alive,

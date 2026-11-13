@@ -112,7 +112,10 @@ class ModeState:
     (B, Z); role (B, Z) int32 in team 0's frame; progress (B, Z), the meters; movement
     (B, Z) int32, the sign of each meter's progress change this tick (0 on a completion);
     attack_ledger and defense_ledger (B, Z, N), the attempt ledgers; handedness (B,) +-1
-    and ring_rotation (B,) rad, the ring's draw."""
+    and ring_rotation (B,) rad, the ring's draw; lock (B, 2, Z) int32, by team, the ticks
+    left in which the team gains no capture progress on the zone (it lost the zone; the
+    capture lock); wave_wait (B, 2) int32, by team, the ticks to its next respawn wave
+    (the wave lands on the tick it reaches 0; 0 throughout with no waves)."""
 
     score: torch.Tensor
     front: torch.Tensor
@@ -126,6 +129,8 @@ class ModeState:
     defense_ledger: torch.Tensor
     handedness: torch.Tensor
     ring_rotation: torch.Tensor
+    lock: torch.Tensor
+    wave_wait: torch.Tensor
 
 
 @contract
@@ -170,7 +175,7 @@ SHIP_DTYPES = {field.name: FLOAT for field in dataclasses.fields(Ships)} | dict(
 )
 BULLET_DTYPES = {field.name: FLOAT for field in dataclasses.fields(Bullets)} | dict(moves_left=INT)
 FIELD_DTYPES = {field.name: FLOAT for field in dataclasses.fields(Fields)} | dict(level=INT)
-MODE_INTEGERS = ("score", "front", "role", "movement")
+MODE_INTEGERS = ("score", "front", "role", "movement", "lock", "wave_wait")
 
 
 def blank(rules: Rules, batch: int, device=None) -> State:
@@ -189,6 +194,8 @@ def blank(rules: Rules, batch: int, device=None) -> State:
         defense_ledger=(B, Z, N),
         handedness=(B,),
         ring_rotation=(B,),
+        lock=(B, TEAMS, Z),
+        wave_wait=(B, TEAMS),
     )
     mode = {
         field.name: torch.zeros(

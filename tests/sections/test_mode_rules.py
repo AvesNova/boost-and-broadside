@@ -128,7 +128,7 @@ def test_every_zones_observed_movement_is_zero_on_the_tick_a_capture_completes()
     phase = mode_phase(rules, mode_rules, mode, ships, alive, died)
     assert int(phase.mode.front[0]) == 1, "the capture should complete this tick"
     assert int(phase.mode.movement.abs().sum()) == 0
-    rows = zone_rows(mode_rules, phase.mode)  # (B, 2, Z, columns)
+    rows = zone_rows(mode_rules, phase.mode, rules.tick_length)  # (B, 2, Z, columns)
     assert torch.all(rows[..., ZONE["direction"]] == 0.0)
 
 

@@ -104,8 +104,9 @@ class TrainConfig:
     sets it, and a new run's Yemong decodes its belief's spreads with
     `spread_fit="coarsest"`, runs each block's temporal sublayer first
     (`order="temporal_first"`, arm C's order, the champion's since 2026-11-07) and reads
-    every mode's flag (`mode_inputs`, elimination's since 2026-11-12); the config's own
-    defaults, "v1", "spatial_first" and the two older modes, are what older build records
+    every mode's flag (`mode_inputs`, elimination's since 2026-11-12) and Frontline's
+    timers (`frontline_timer_inputs`, since 2026-11-13); the config's own defaults, "v1",
+    "spatial_first", the two older modes and no timers, are what older build records
     hold. ship_card:
     the ship card's values by field, one per ship type, every field given
     (`bnb.game.api.default_card`). environments: the training environments; length: ticks
@@ -141,7 +142,10 @@ class TrainConfig:
     model: str = "yemong"
     # a new build's settings that differ from the record defaults (see the docstring)
     yemong: YemongConfig = YemongConfig(
-        spread_fit="coarsest", order="temporal_first", mode_inputs=MODE_INPUTS
+        spread_fit="coarsest",
+        order="temporal_first",
+        mode_inputs=MODE_INPUTS,
+        frontline_timer_inputs=True,
     )
     relational: RelationalConfig = RelationalConfig()
     nearest: NearestConfig = NearestConfig()
