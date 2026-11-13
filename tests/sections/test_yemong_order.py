@@ -195,9 +195,9 @@ def test_the_read_out_sets_the_hidden_ships_tables_and_visible_ships_keep_theirs
     seen = []
     original = SpatialBlock.forward
 
-    def recording(self, tokens, map_memory, token_tables, map_tables):
+    def recording(self, tokens, map_memory, token_tables, map_tables, key_mask=None):
         seen.append((token_tables, map_tables))
-        return original(self, tokens, map_memory, token_tables, map_tables)
+        return original(self, tokens, map_memory, token_tables, map_tables, key_mask)
 
     monkeypatch.setattr(SpatialBlock, "forward", recording)
     obs = cases.cast(segment.obs, torch.float64)
@@ -264,9 +264,9 @@ def test_the_ablated_views_read_the_identity_rotation_with_the_read_out(segment)
     seen = []
     original = SpatialBlock.forward
 
-    def recording(self, tokens, map_memory, token_tables, map_tables):
+    def recording(self, tokens, map_memory, token_tables, map_tables, key_mask=None):
         seen.append(token_tables)
-        return original(self, tokens, map_memory, token_tables, map_tables)
+        return original(self, tokens, map_memory, token_tables, map_tables, key_mask)
 
     with torch.no_grad(), pytest.MonkeyPatch.context() as patch:
         patch.setattr(SpatialBlock, "forward", recording)

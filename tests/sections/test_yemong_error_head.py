@@ -463,14 +463,15 @@ def test_the_fourier_arms_set_line_builds_it_and_old_records_read_as_colour():
 
 
 def test_the_fourier_ship_token_reads_fourier_and_the_code_stays_colour():
-    """Only the encoder's ship input changes (437 state columns for 490, the token 500 for
-    553): the tokens' code, the next-state baseline, is the colour code."""
+    """Only the encoder's ship input changes (437 state columns for 490, the token 501 for
+    554, the benched flag included): the tokens' code, the next-state baseline, is the
+    colour code."""
     colour = _model(**ARMS["arm4d"])
     fourier = _model(**ARMS["arm4d_fourier"])
     assert colour.state_code.input_width == colour.state_code.width == 490
     assert fourier.state_code.input_width == 437
     width = colour.encoder.ship.first.in_features
-    assert fourier.encoder.ship.first.in_features == width - 490 + 437 == 500
+    assert fourier.encoder.ship.first.in_features == width - 490 + 437 == 501
     _, trajectory = cases.rollout(fourier, length=4)
     obs, replay = trajectory.obs, trajectory.replay
     reset = cases.resets(obs)
@@ -482,7 +483,7 @@ def test_the_fourier_ship_token_reads_fourier_and_the_code_stays_colour():
     # ten ulps, and a wrong or missing column is of order one
     close = dict(rtol=1e-6, atol=1e-6)
     torch.testing.assert_close(tokens.code, plain.code, **close)
-    assert tokens.ship.shape[-1] == 500 and plain.ship.shape[-1] == 553
+    assert tokens.ship.shape[-1] == 501 and plain.ship.shape[-1] == 554
     torch.testing.assert_close(tokens.ship[..., 437:], plain.ship[..., 490:], **close)
     valid, _, means, spreads = believed(obs.ships, replay)
     position = torch.where(valid[..., None], means[..., 0:2], replay.offset[..., None, :])

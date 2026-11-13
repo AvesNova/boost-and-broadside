@@ -11,7 +11,13 @@ from bnb.contracts import Obs
 from bnb.contracts.obs import GLOBAL, ZONE
 from bnb.game import api
 from bnb.models.yemong.features import respawn_features
-from bnb.models.yemong.inputs import POSITION_CODE, TIMER_INPUTS, ZONE_INPUTS, zone_inputs
+from bnb.models.yemong.inputs import (
+    BOUNDARY_INPUTS,
+    POSITION_CODE,
+    TIMER_INPUTS,
+    ZONE_INPUTS,
+    zone_inputs,
+)
 from bnb.models.yemong.state_code import POSITION_PERIOD
 
 # The code under test draws from torch's default generator (model initialisation, the
@@ -127,9 +133,10 @@ def test_the_offset_reaches_zones_only_through_their_position_code():
 
 
 def test_frontline_timer_inputs_code_the_locks_and_the_own_wave_as_the_respawn_wait():
-    """With `frontline_timer_inputs` the global token ends with the own team's next wave and
-    each zone token with its two capture locks, each as `respawn_features` codes the ship's
-    respawn wait; without, the tokens are as before."""
+    """With `frontline_timer_inputs` the global token gains the own team's next wave (before
+    the boundary's inputs, which end it) and each zone token ends with its two capture
+    locks, each as `respawn_features` codes the ship's respawn wait; without, the tokens
+    are as before."""
     config = cases.SHORT_FRONTLINE
     plain = cases.model(config)
     timed = cases.model(config, frontline_timer_inputs=True)
@@ -153,7 +160,12 @@ def test_frontline_timer_inputs_code_the_locks_and_the_own_wave_as_the_respawn_w
     width = TIMER_INPUTS
     assert tokens[1].zone.shape[-1] == zone_inputs(True) == ZONE_INPUTS + 2 * width
     assert torch.equal(tokens[1].zone[..., :ZONE_INPUTS], tokens[0].zone)
-    assert torch.equal(tokens[1].global_token[..., :-width], tokens[0].global_token)
+    timers = slice(-(width + BOUNDARY_INPUTS), -BOUNDARY_INPUTS)
+    global_token = tokens[1].global_token
+    without_timers = torch.cat(
+        [global_token[..., : timers.start], global_token[..., timers.stop :]], -1
+    )
+    assert torch.equal(without_timers, tokens[0].global_token)
     torch.testing.assert_close(
         tokens[1].zone[..., ZONE_INPUTS : ZONE_INPUTS + width],
         respawn_features(view.zones[..., ZONE["lock_own"]]),
@@ -163,7 +175,7 @@ def test_frontline_timer_inputs_code_the_locks_and_the_own_wave_as_the_respawn_w
         respawn_features(view.zones[..., ZONE["lock_enemy"]]),
     )
     torch.testing.assert_close(
-        tokens[1].global_token[..., 0, -width:],
+        global_token[..., 0, timers],
         respawn_features(view.globals[..., GLOBAL["next_wave_own"]]),
     )
     assert (
