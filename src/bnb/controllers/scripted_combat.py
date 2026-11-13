@@ -589,6 +589,19 @@ def maneuvers(
     power = power + first[..., None] * (first_power - power)
     power = power + torch.where(low, 0.0, second)[..., None] * (boost - power)
 
+    # alone: no other threatening known enemy near (a soft count of them inside the crowd's
+    # radius, their tracks toward the ship), less the weighted count of own ships near
+    enemies, tracks, allies = others
+    radius = doctrine.sense_crowd_in_gun_range
+    per_enemy = Logistic(radius.centre[..., None], radius.scale[..., None], radius.rising)
+    threat = doctrine.sense_crowd_in_nose_angle
+    per_track = Logistic(threat.centre[..., None], threat.scale[..., None], threat.rising)
+    heat = temperature[..., None] if isinstance(temperature, torch.Tensor) else temperature
+    near = logistic(enemies, per_enemy, heat) * logistic(tracks, per_track, heat)
+    crowd = torch.where(torch.isfinite(enemies), near, 0.0).sum(-1)
+    friends = torch.where(torch.isfinite(allies), logistic(allies, per_enemy, heat), 0.0).sum(-1)
+    crowd = crowd - doctrine.sense_crowd_ally_weight * friends
+
     # Lead turn: on a head-on approach, turn before the merge.
     own_speed = torch.sqrt(
         fleet.velocity_x * fleet.velocity_x + fleet.velocity_y * fleet.velocity_y
@@ -603,7 +616,8 @@ def maneuvers(
         approaching,
         doctrine.lead_turn
         * logistic(time_to_merge, doctrine.lead_turn_in_seconds, temperature)
-        * logistic(from_opposed, doctrine.lead_turn_in_crossing, temperature),
+        * logistic(from_opposed, doctrine.lead_turn_in_crossing, temperature)
+        * logistic(crowd, doctrine.lead_turn_in_crowd, temperature),
         0.0,
     )
     # the side the target passes on: its offset at the closest approach, from the nose
@@ -662,18 +676,6 @@ def maneuvers(
         draw >= 0.0, draw < doctrine.sense_one_circle, doctrine.sense_one_circle > 0.5
     )
     sense_left = (target_rate > 0.0) ^ one_circle
-    # alone: no other threatening known enemy near (a soft count of them inside the crowd's
-    # radius, their tracks toward the ship), less the weighted count of own ships near
-    enemies, tracks, allies = others
-    radius = doctrine.sense_crowd_in_gun_range
-    per_enemy = Logistic(radius.centre[..., None], radius.scale[..., None], radius.rising)
-    threat = doctrine.sense_crowd_in_nose_angle
-    per_track = Logistic(threat.centre[..., None], threat.scale[..., None], threat.rising)
-    heat = temperature[..., None] if isinstance(temperature, torch.Tensor) else temperature
-    near = logistic(enemies, per_enemy, heat) * logistic(tracks, per_track, heat)
-    crowd = torch.where(torch.isfinite(enemies), near, 0.0).sum(-1)
-    friends = torch.where(torch.isfinite(allies), logistic(allies, per_enemy, heat), 0.0).sum(-1)
-    crowd = crowd - doctrine.sense_crowd_ally_weight * friends
     alone = logistic(crowd, doctrine.sense_in_crowd, temperature)
     # the situation: own over target specific energy, shield and maximum lift coefficient
     target_speed_now = target_of(column(fleet.enemy, "proper_speed"))

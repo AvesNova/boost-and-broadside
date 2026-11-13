@@ -254,6 +254,25 @@ def test_a_lead_turn_turns_before_the_merge_to_the_passing_side_or_away():
     assert float(half.stick[0, 0, 2]) > 0.9
 
 
+def test_the_lead_turn_in_crowd_gate_flies_it_only_in_a_lone_duel():
+    """At a lead_turn_in_crowd centre of 1/2 the lead turn flies alone with its target; with
+    another known enemy inside the crowd's radius it is shut (the stick as without it)."""
+    lead = Doctrine(
+        lead_turn=1.0,
+        lead_turn_in_seconds=Logistic(3.0, 0.1, False),
+        lead_turn_in_crowd=Logistic(0.5, 0.1, False),
+    )
+    alone = _duel(STIFF, STIFF, 0.05, 1.0, enemy_heading=math.pi)
+    assert float(_decide(alone, _every_type(lead)).stick[0, 0, 6]) > 0.9
+    gun = value("gun_range", STIFF)
+    enemy = ship(x=gun, y=0.05 * gun, heading=math.pi, ship_type=STIFF, team_relative=1)
+    other = ship(x=-gun, y=gun, heading=0.0, ship_type=STIFF, team_relative=1)
+    crowd = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, other])
+    torch.testing.assert_close(
+        _decide(crowd).stick, _decide(crowd, _every_type(lead)).stick, atol=0.02, rtol=0.0
+    )
+
+
 def test_a_yoyo_climbs_with_the_stick_eased_after_a_stalemate_then_dives():
     """A crossing target inside the fight's range, its nose off the ship: once the
     stalemate clock passes
