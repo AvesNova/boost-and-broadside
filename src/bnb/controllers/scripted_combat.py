@@ -485,8 +485,11 @@ def commanded_stick(left: torch.Tensor, fraction) -> torch.Tensor:
     """(R, S, 7) the stick distribution flying `fraction` of full stick (in [0, 1], between
     the two nearest levels of STICK_MAGNITUDES, linearly) to the left where `left`, else to
     the right."""
-    fraction = torch.as_tensor(fraction, device=left.device).clamp(0.0, 1.0)
-    fraction = fraction.expand(left.shape)
+    # A number is filled on the device (a host-to-device copy would break CUDA graph capture)
+    if isinstance(fraction, torch.Tensor):
+        fraction = fraction.clamp(0.0, 1.0).expand(left.shape)
+    else:
+        fraction = torch.full(left.shape, min(max(float(fraction), 0.0), 1.0), device=left.device)
     hats = []
     for index, magnitude in enumerate(STICK_MAGNITUDES):
         below = STICK_MAGNITUDES[index - 1] if index > 0 else None
