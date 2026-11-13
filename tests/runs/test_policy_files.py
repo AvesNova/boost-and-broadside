@@ -150,7 +150,7 @@ def test_a_model_version_mismatch_is_refused_naming_both(tmp_path):
     _edit_record(tmp_path / "policy", lambda record: record["model"].update(version=7))
     with pytest.raises(
         CheckpointError,
-        match=r"yemong version 7; the code has version 1\. "
+        match=rf"yemong version 7; the code has version {Yemong.VERSION}\. "
         r"Load it from a worktree",
     ):
         load_policy(tmp_path / "policy", cases.CPU)

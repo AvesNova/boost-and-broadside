@@ -301,14 +301,8 @@ def test_the_scripted_agent_steers_by_the_boundary_as_it_stands():
     assert float(fleet.arena_radius[0, 0]) == 1000.0
 
 
-def test_a_new_build_reads_the_boundary_and_an_older_one_does_not():
-    from bnb.models.yemong.inputs import BOUNDARY_INPUTS, MODE_INPUTS, global_inputs
-    from bnb.models.yemong.model import YemongConfig
-    from bnb.runtime.train import TrainConfig
+def test_every_build_reads_the_boundary():
+    from bnb.models.yemong.inputs import BOUNDARY_INPUTS, MODE_INPUTS, POSITION_CODE, global_inputs
 
-    assert TrainConfig(GameConfig(5, 10, 2600.0)).yemong.boundary_inputs
-    assert not YemongConfig().boundary_inputs
-    assert global_inputs(MODE_INPUTS, True, True) == global_inputs(MODE_INPUTS, True) + (
-        BOUNDARY_INPUTS
-    )
+    assert global_inputs(MODE_INPUTS) == POSITION_CODE + 8 + len(MODE_INPUTS) + BOUNDARY_INPUTS
     assert math.isclose(BOUNDARY_INPUTS, 10)
