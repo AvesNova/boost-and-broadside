@@ -56,11 +56,18 @@ def level_sums(
     weight = mask.to(levels.dtype)
     levels = levels * weight[..., None]
     total = total * weight
+    # one column at a time: a stack of them would hold four copies of the levels at once
+    columns = (
+        torch.abs,
+        lambda x: x,
+        torch.square,
+        lambda x: x * total[..., None],
+    )
     per_level = torch.stack(
-        [levels.abs(), levels, levels.square(), levels * total[..., None]], -2
-    )  # (L, V, S, LEVEL_COLUMNS, levels)
+        [_per_slice(column(levels), member) for column in columns], 1
+    )  # (slices, LEVEL_COLUMNS, levels)
     whole = torch.stack([weight, total, total.square()], -1)  # (L, V, S, TOTAL_COLUMNS)
-    return _per_slice(per_level, member), _per_slice(whole, member)
+    return per_level, _per_slice(whole, member)
 
 
 def _deviation(first: torch.Tensor, second: torch.Tensor, count: torch.Tensor) -> torch.Tensor:
