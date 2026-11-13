@@ -14,8 +14,9 @@ The modes are `bnb.contracts.config.MODES`:
 
 - **team deathmatch**: score by deaths;
 - **Frontline**: capture zones around a ring and push the front;
-- **elimination**: team deathmatch without respawns: wipe out the other team, or at the
-  clock have more health left (the living ships' shield fractions, summed);
+- **elimination**: team deathmatch without respawns and with a boundary that shrinks to
+  nothing by the clock's end: wipe out the other team, or at the clock have more health
+  left (the living ships' shield fractions, summed);
 - **sandbox**: the physics game alone, with no score and no win, only the clock. The race's
   reference tests run in it.
 
@@ -39,6 +40,8 @@ full-stick turn circles of its two ships across (each turns at about 500-600 m a
 room. Its ships come within gun range (about 600 m) within seconds of spawning: in the
 scripted agent's 2v2s on it, 0-12 s after the start, the first kill 9-23 s in, with 3-10%
 of the ships' time beyond the boundary (at 1300 m: 0-7.5 s, 6-14 s and 10-16%).
+`real_scale_deathmatch` plays a 4200 m arena (the author, 2026-11-13), smaller than the
+real-scale map's 7800 m, which `real_scale_frontline` keeps.
 `real_scale_elimination` is elimination at the training size (5v5, 10 random fields, the
 7800 m real-scale map, 180 s); `clover` is the author's 2v2 elimination map with a fixed
 layout (see [Fixed layouts and Clover](#fixed-layouts-and-clover)). A config's fields may be
@@ -65,9 +68,8 @@ When a match ends, the environment gets a new map and a fresh mode state
 
 ## Team deathmatch
 
-- **Respawn:** a dead ship respawns after a fixed wait: 8 s at real scale (the author,
-  2026-11-13; it was 10 s), 4 s in the standard game, whose clock is half the real-scale
-  one. There are no waves. The wait is the `pool.respawn_seconds` setting, shown in the
+- **Respawn:** a dead ship respawns after a fixed wait: 10 s at real scale (the author,
+  2026-11-13; the `real_scale_deathmatch` preset's), 4 s in the standard game. There are no waves. The wait is the `pool.respawn_seconds` setting, shown in the
   Map / mode panel's Team deathmatch group.
 - **Score:** every death scores one point for the other team, whatever its cause: an
   enemy's hit, friendly fire or the boundary.
@@ -117,8 +119,19 @@ deathmatch, every death a point for the other team, with one kill per enemy ship
   nose toward the enemy area's centre within `side_heading_jitter` (15 degrees), turned
   the least that keeps team deathmatch's edge rule. A fixed layout's spawns (Clover)
   replace it.
+- **The boundary shrinks** (game v14; `bnb.game.layout.boundary_fraction`): it stays at
+  the arena radius for `ModeRules.shrink_hold_seconds` (18 s, 36 s at real scale: a fifth
+  of the clock), then shrinks to radius 0 at the clock's end, linear in radius
+  (`shrink_law` 0, the default) or along the smootherstep (1: a smooth start and end).
+  Boundary damage (see [physics](physics.md)) is measured from the boundary as it stands,
+  so by the end no place is safe: a side that keeps away from the fight is pushed back
+  into it, and the end time does not depend on how the sides fly. What is still alive at
+  the clock goes to the tie-break below. Both settings are live, in the Map / mode
+  panel's Elimination group. Positions and every map length keep the arena radius as
+  their scale; only the boundary moves.
 - **Observation:** the `mode_elimination` flag; the scores are the kills and the winning
-  score is the enemy's (active) ships.
+  score is the enemy's (active) ships. The globals `boundary_fraction` (the boundary's
+  radius over the arena radius) and `boundary_time_to_zero` (seconds) show the shrink.
 - **Clock:** 90 s by default, 180 s at real scale (both presets): a short episode.
 
 ## Fixed layouts and Clover

@@ -209,8 +209,15 @@ which blocks sight (see [Perception and fog](perception.md)).
   gains nothing that tick: the recharge needs the whole delay of unbroken quiet flight, a
   real disengagement (game version 5; in version 3 and 4 such an input only paused the
   delay, so quiet stretches between passes added up and the shield refilled between them).
-- **The arena** is a disc with no wall. A ship outside it takes boundary damage that grows
-  with its depth.
+- **The arena** is a disc with no wall. A ship beyond the boundary takes
+  `boundary_max_damage` per second times the smootherstep (the fields' quintic step) of
+  its depth over `boundary_ramp_width`: little just past the edge, all of it from one ramp
+  width out, and smooth in the position (game v14; it was 5 + 0.05 per metre of depth).
+  The ramp width is in metres at map scale 1 and scales with the arena, as the other map
+  lengths do: 30 per s over 100 m in the standard game, 40 per s at real scale, so on the
+  7800 m real-scale map a ship 150 m out takes half and one 300 m out takes all, a
+  standard shield in about 2.5 s. The boundary is the arena's edge, except in elimination,
+  where it shrinks inside it over the clock ([modes](modes.md#elimination)).
 - **The killer** of a ship is the owner of its earliest hit this tick, ties to the lower
   bullet index.
 - **Aspect statistics.** For the statistics only, each hit is classed by `θ`: a mutual

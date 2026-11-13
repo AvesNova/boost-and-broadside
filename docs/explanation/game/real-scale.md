@@ -39,6 +39,13 @@ the map scale are set three times in the set's rules: the field band width (120 
 team deathmatch's spawn distances (group radius 900 m, respawn distances 750 to 1800 m,
 spawn margin 150 m).
 
+The random maps' fields are the author's (game v14): band width 160 m, and radii from
+120 m to 1200 m at map scale 1 (360 m to 3600 m on the 7800 m map), drawn lognormal with
+median 400 m and log spread 0.6, their centres within 0.85 arena radii, half of them high
+and half strong. Boundary damage is at most 40 per s, over a ramp of 100 m at map scale 1
+(300 m on the 7800 m map). Team deathmatch plays a 4200 m arena (map scale 1.6), Frontline
+and elimination the 7800 m one.
+
 The rules' times follow the map, not the ship. A P-51 cruises about 1.57 times as fast as
 today's fighter in metres per second, over a map three times as wide, so crossing between
 fields takes about twice as long. The episode doubles to 600 s, and the capture time (20 s)
