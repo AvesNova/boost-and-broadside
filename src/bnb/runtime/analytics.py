@@ -16,6 +16,11 @@ factor from one step to the next (`policy/switch_rate/{factor}`).
 Per slice and over every game: the enemy hit damage and the kills by the hit's aspect class
 (`bnb.contracts.events.ASPECTS`: mutual and offset head-on, flank, tail), as shares of their totals
 (`combat/damage_share/{aspect}`, `combat/kill_share/{aspect}`, each also `/{slice}`).
+Per game mode of the training games (the pools the learner plays in: self-play and the
+league's seat, not the rating lanes): `combat/deaths_per_ship_minute/{mode}` and
+`combat/hits_per_ship_minute/{mode}`, the combat deaths and the hits (one ship damaging
+another on a tick) per living ship-minute, which the combat-collapse rule reads
+(`bnb.runs.triggers.CombatCollapse`).
 """
 
 import math
@@ -57,10 +62,13 @@ class Analytics:
         view_fogged: torch.Tensor | None = None,
         environment_fogged: torch.Tensor | None = None,
         ships: int = 1,
+        pool_modes: tuple[str, ...] | None = None,
     ) -> None:
         """view_fogged (R,) and environment_fogged (B,): which views' and environments'
         games have fog of war; a pool with both kinds has its series sliced by fog as well
-        (`{pool}/fogged`, `{pool}/clear`). ships: per environment."""
+        (`{pool}/fogged`, `{pool}/clear`). ships: per environment. pool_modes: each pool's
+        game mode, for the training games' combat series (None: the game of the pool's
+        name, `pool_parts`)."""
         self.pools, self.tick_length, self.ships = pools, tick_length, ships
         view_member = torch.nn.functional.one_hot(view_pool.long(), len(pools)).float()  # (R, P)
         environment_member = torch.nn.functional.one_hot(
@@ -112,6 +120,22 @@ class Analytics:
             ],
             device=device,
         )  # (slices, modes)
+        # the training games by mode, (B, training modes): each environment of a pool the
+        # learner plays in, under its pool's game mode
+        modes_of_pools = pool_modes or tuple(game for game, _ in all_parts)
+        trained = [index for index in range(len(pools)) if self.viewed[index]]
+        self.training_modes = tuple(dict.fromkeys(modes_of_pools[index] for index in trained))
+        pool_training_mode = torch.tensor(
+            [
+                [
+                    float(index in trained and modes_of_pools[index] == kind)
+                    for kind in self.training_modes
+                ]
+                for index in range(len(pools))
+            ],
+            device=device,
+        ).reshape(len(pools), len(self.training_modes))
+        self.environment_training_mode = environment_member @ pool_training_mode
         self.opponent_of_pool = torch.tensor(
             [
                 [weight * float(other == kind) for kind in self.opponents]
@@ -185,6 +209,16 @@ class Analytics:
             out[f"episode/reward_max/{name}"] = Mean(
                 torch.where(finite, highest[index], 0.0), finite.float()
             )
+        by_mode = {
+            name: (resolve[name] @ self.environment_training_mode).unbind()
+            for name in ("combat_deaths", "hits", "alive_ship_ticks")
+        }
+        for index, kind in enumerate(self.training_modes):
+            ship_minutes = by_mode["alive_ship_ticks"][index] * tick / 60.0
+            out[f"combat/deaths_per_ship_minute/{kind}"] = Mean(
+                by_mode["combat_deaths"][index], ship_minutes
+            )
+            out[f"combat/hits_per_ship_minute/{kind}"] = Mean(by_mode["hits"][index], ship_minutes)
         out["episode/result/team_0"] = total(resolve["team_0_wins"]).int()
         out["episode/result/team_1"] = total(resolve["team_1_wins"]).int()
         out["episode/result/draw"] = total(resolve["team_draws"]).int()
@@ -339,6 +373,7 @@ RESOLVE_COLUMNS = (
     "boundary_damage",
     "combat_deaths",
     "boundary_deaths",
+    "hits",
     "speed",
     "energy",
     "out_of_energy",
@@ -480,6 +515,7 @@ def resolve_tick(
         boundary_damage=events.boundary_damage.sum(1),
         combat_deaths=combat_death.float().sum(1),
         boundary_deaths=boundary_death.float().sum(1),
+        hits=tick_events[:, EPISODE_EVENTS.index("hits")],
         speed=(speed * living).sum(1),
         energy=(energy * living).sum(1),
         out_of_energy=((energy <= 0.0).float() * living).sum(1),

@@ -24,13 +24,24 @@ def _flags(rule_name: str, records: list[dict]) -> list[int]:
     ]
 
 
-def test_there_are_nine_alerts_and_thirteen_warnings():
+def test_there_are_eleven_alerts_and_thirteen_warnings():
     severities = [rule.severity for rule in RULES.values()]
-    assert severities.count(triggers.ALERT) == 9 and severities.count(triggers.WARNING) == 13
+    assert severities.count(triggers.ALERT) == 11 and severities.count(triggers.WARNING) == 13
+
+
+def _combat(mode: str, deaths: float, hits: float) -> dict:
+    """One update's combat series of `mode`'s training games."""
+    return {
+        f"combat/deaths_per_ship_minute/{mode}": deaths,
+        f"combat/hits_per_ship_minute/{mode}": hits,
+    }
 
 
 # (rule, a series that trips it, one that does not); each record is one update's
 QUIET_STEPS = [{"train/environment_steps_per_second": 1000.0}] * 12
+# a BC start (0.3 deaths and 26 hits per ship-minute), then the RL check's collapse
+FIGHTING = [_combat("team_deathmatch", 0.3 + 0.02 * (k % 2), 26.0 + k % 3) for k in range(8)]
+COLLAPSED = [_combat("team_deathmatch", 0.0, 0.2)] * 3
 CASES = {
     "skipped_step": ([{"train/skipped_steps": 1}], [{"train/skipped_steps": 0}]),
     "recompile": (
@@ -120,6 +131,11 @@ CASES = {
         [{"belief/normalised_square_error/hidden": 3.0}] * 13,
         [{"belief/normalised_square_error/hidden": 1.1}] * 13,
     ),
+    "combat_collapse/team_deathmatch": (FIGHTING + COLLAPSED, FIGHTING + FIGHTING),
+    "combat_collapse/elimination": (
+        [_combat("elimination", 0.4, 30.0)] * 5 + [_combat("elimination", 0.4, 1.0)] * 3,
+        [_combat("elimination", 0.4, 30.0)] * 5 + [_combat("elimination", 0.2, 15.0)] * 3,
+    ),
     "side_imbalance": (
         [{"episode/result/team_0": 60, "episode/result/team_1": 40, "episode/result/draw": 0}] * 12,
         [{"episode/result/team_0": 50, "episode/result/team_1": 50, "episode/result/draw": 0}] * 12,
@@ -136,6 +152,53 @@ def test_each_rule_fires_on_its_case_and_stays_quiet_otherwise(name):
 
 def test_every_rule_has_a_case():
     assert set(CASES) == set(RULES)
+
+
+def test_the_combat_collapse_smooths_and_floors_at_the_lower_of_absolute_and_own_level():
+    name = "combat_collapse/team_deathmatch"
+    # one quiet update in a fighting run does not trip it (the mean of the last three)
+    dip = FIGHTING + [_combat("team_deathmatch", 0.0, 0.0)] + FIGHTING[:2]
+    assert not any(_flags(name, dip))
+    # quiet while the baseline (the first five updates) fills, however low
+    assert not any(_flags(name, [_combat("team_deathmatch", 0.0, 0.0)] * 5))
+    # a run that starts fighting little (from scratch: 0.02 deaths, 1 hit per ship-minute)
+    # is measured against its own level: a quarter of it, not the absolute floor
+    scratch = [_combat("team_deathmatch", 0.02, 1.0)] * 5
+    assert not any(_flags(name, scratch + [_combat("team_deathmatch", 0.02, 1.0)] * 5))
+    assert _flags(name, scratch + [_combat("team_deathmatch", 0.002, 0.1)] * 3)[-1] == 1
+    # a run that fights hard alerts only at the absolute floor (0.075 deaths, 6.5 hits)
+    hard = [_combat("team_deathmatch", 2.0, 100.0)] * 5
+    assert not any(_flags(name, hard + [_combat("team_deathmatch", 0.1, 10.0)] * 5))
+    assert _flags(name, hard + [_combat("team_deathmatch", 0.05, 10.0)] * 3)[-1] == 1
+    # the other mode's series leave it idle
+    assert not any(_flags(name, [_combat("elimination", 0.0, 0.0)] * 10))
+
+
+def test_the_combat_collapse_stop_ends_a_run_after_k_updates_with_the_alert():
+    from types import SimpleNamespace
+
+    from bnb.runs import session
+
+    rules = Triggers()
+    records = FIGHTING + COLLAPSED + COLLAPSED
+    reasons = {}
+    for after in (0, 2, 4):
+        trainer = SimpleNamespace(config=SimpleNamespace(combat_collapse_stop=after))
+        recorder = SimpleNamespace(triggers=Triggers())
+        reasons[after] = [
+            (recorder.triggers.check(record, update), session.combat_collapse(trainer, recorder))[1]
+            for update, record in enumerate(records, 1)
+        ]
+    assert not any(reasons[0])  # off by default
+    first = [index for index, reason in enumerate(reasons[2]) if reason]
+    flags = [
+        rules.check(record, update)["alerts/combat_collapse/team_deathmatch"]
+        for update, record in enumerate(records, 1)
+    ]
+    alerted = flags.index(1)
+    assert first[0] == alerted + 1  # the second consecutive update with the alert
+    assert [index for index, reason in enumerate(reasons[4]) if reason][0] == alerted + 3
+    assert reasons[2][first[0]].startswith("combat_collapse/team_deathmatch: 2 consecutive")
 
 
 def test_a_rule_is_quiet_during_its_warm_up():
@@ -337,7 +400,8 @@ class _Setup:
 
 def test_a_bc_run_leaves_reinforcement_learnings_rules_out():
     """In BC a falling student entropy is the goal: the entropy collapse and the other
-    RL-only rules are not run, and each of the 22 rules says which objectives it watches."""
+    RL-only rules are not run, and each of the 24 rules says which objectives it watches."""
+    assert len(RULES) == 24
     assert all(set(rule.objectives) <= {"ppo", "bc"} for rule in RULES.values())
     rl_only = {name for name, rule in RULES.items() if rule.objectives == ("ppo",)}
     assert rl_only == {
@@ -347,6 +411,8 @@ def test_a_bc_run_leaves_reinforcement_learnings_rules_out():
         "sampling_collapse",
         "gauge_runaway",
         "reward_hacking",
+        "combat_collapse/team_deathmatch",
+        "combat_collapse/elimination",
     }
     falling = [{"policy/entropy/joint": 3.0 * 0.8**update} for update in range(30)]
     ppo, cloning = Triggers(), Triggers(objective="bc")

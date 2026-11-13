@@ -31,7 +31,7 @@ from typing import Protocol
 import torch
 from torch.utils import _pytree
 
-from bnb.contracts import Trajectory
+from bnb.contracts import REWARD_LEVELS, Trajectory
 from bnb.contracts.action import to_joint
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.contracts.series import Mean, Stopwatch
@@ -41,6 +41,7 @@ from bnb.models.yemong import codes, critic, policy
 from bnb.models.yemong import shots as shot_codes
 from bnb.models.yemong.density import HexGrid, poisson_terms
 
+from . import advantages as level_advantages
 from . import gradients, head_statistics, labels, losses, returns, shots, statistics
 
 # The entropy's terms, one per action factor by the chain rule (`policy.factor_entropies`).
@@ -89,6 +90,8 @@ DIVERGENCE_QUANTILES = (0.5, 0.9, 0.99)
 ENTROPY_BUCKETS = ("low", "middle", "high")
 # The stored shot labels' name in the store: per view, {"shots": Shots, "mask"}, (V, L, ...).
 SHOT_LABELS = "shot_labels"
+# `chained_returns`' sums of the levels' raw advantages (`advantages.raw_sums`), not per view
+RAW_SUMS = "raw_advantage_sums"
 
 
 class Adam(torch.optim.Adam):
@@ -290,6 +293,10 @@ class Learner:
     runtime compiles the micro-batch loss, the shot re-simulation's tick and the label codes
     (identity: eager)."""
 
+    # whether the diagnostics measure the levels' advantages and policy gradients
+    # (`bnb.learn.advantages`): PPO's policy term reads the advantage, BC's does not
+    measures_advantages = True
+
     def __init__(
         self,
         model: torch.nn.Module,
@@ -301,12 +308,21 @@ class Learner:
         stage: Callable = lambda function: function,
         seed: int = 0,
         diagnostics: bool = True,
+        reward_weights: tuple[float, ...] | None = None,
+        view_modes: tuple[str, ...] = (),
+        view_mode: torch.Tensor | None = None,
     ) -> None:
         """seed: the learner's random streams (the shot spread, the minibatch order).
         diagnostics: measure the diagnostic series beyond the losses and the early stop's
-        KL (none of them changes the update)."""
+        KL (none of them changes the update). reward_weights: the reward levels' weights
+        (`bnb.learn.rewards.RewardConfig.weights`), for the levels' raw advantage (None: not
+        measured). view_modes and view_mode (V,): the modes of the batch's games and each
+        stored view's index into them, for the advantage series per mode (none without)."""
         self.model, self.config, self.rules, self.types = model, config, rules, types
         self.device, self.outcome_weight = device, outcome_weight
+        self.reward_weights = reward_weights
+        self.view_modes = view_modes
+        self.view_mode = None if view_mode is None else view_mode.to(device)
         levels = tuple(model.config.levels)
         if levels not in returns.VALUE_LAYOUTS:
             raise ValueError(f"the model's levels {levels} are not one of {returns.VALUE_LAYOUTS}")
@@ -398,6 +414,11 @@ class Learner:
             level_returns=level_returns,
             values=values[:trained],
         )
+        if self.diagnostics and self.measures_advantages:  # each level's part of A
+            out["level_advantage"] = returns.team_mixed_levels(
+                team, own_alive, advantages, self.team_spirit
+            )
+            out[RAW_SUMS] = level_advantages.raw_sums(advantages, own_alive)
         if self.diagnostics:  # the critic against the rewards, not against itself
             _, monte_carlo = returns.per_level_gae(
                 rewards, values, done, following, done[-1], self.discount, self.every_trace
@@ -727,6 +748,74 @@ class Learner:
         *(f"entropy_bucket/{bucket}/limited" for bucket in ENTROPY_BUCKETS),
     )
 
+    def _divergence(
+        self, unrolled, trajectory: Trajectory, log_probability: torch.Tensor, old: torch.Tensor
+    ) -> torch.Tensor:
+        """The trust region's divergence per token between the rollout's policy and the
+        current one: the joint's exact total variation ("dppo_tv"), else the binary form
+        (DPPO's, and the clip modes' reading of the step's size)."""
+        if self.config.trust_region == "dppo_tv":
+            if trajectory.probabilities is None:
+                raise ValueError("trust_region 'dppo_tv' needs the rollout's probabilities")
+            return losses.total_variation(trajectory.probabilities, unrolled.policy_logits)
+        return losses.binary_total_variation(log_probability, old)
+
+    def _surrogate(
+        self,
+        log_probability: torch.Tensor,
+        old: torch.Tensor,
+        ratio: torch.Tensor,
+        advantage: torch.Tensor,
+        scale: torch.Tensor | float,
+        divergence: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """The policy's surrogate per token under the trust region, and where the region
+        limits the step (the ratio past the clip's bounds, or the samples DPPO masks)."""
+        config = self.config
+        region = config.trust_region
+        if region in ("dppo_tv", "dppo_binary_tv"):
+            keep = losses.dppo_keep(divergence, ratio, advantage, config.dppo_delta)
+            surrogate = losses.dppo_surrogate(log_probability, old, advantage, scale, keep)
+            return surrogate, ~keep
+        high = config.clip if region == "clip" else config.clip_high
+        surrogate = losses.surrogate(
+            log_probability,
+            old,
+            advantage,
+            scale,
+            config.clip,
+            None if region == "clip" else config.clip_high,
+        )
+        detached = ratio.detach()
+        if region == "clip":
+            limited = (detached - 1.0).abs() > config.clip
+        else:
+            limited = (detached < 1.0 - config.clip) | (detached > 1.0 + high)
+        return surrogate, limited
+
+    def _level_policy_terms(
+        self,
+        unrolled,
+        trajectory: Trajectory,
+        old: torch.Tensor,
+        level_advantage: torch.Tensor,
+        denominator: dict,
+    ) -> list[torch.Tensor]:
+        """The weighted policy term with each level's advantage alone, one per level:
+        level_advantage (L, R, S, levels) already over the return scale; old (L, R, S) the
+        old log-probabilities."""
+        own_alive = trajectory.alive[..., : trajectory.log_probability.shape[-1]]
+        log_probability, _ = policy.evaluate(unrolled.policy_logits, _own_joint(trajectory))
+        ratio = torch.exp(log_probability - old)
+        divergence = self._divergence(unrolled, trajectory, log_probability, old)
+        terms = []
+        for advantage in level_advantage.unbind(-1):
+            surrogate, _ = self._surrogate(log_probability, old, ratio, advantage, 1.0, divergence)
+            terms.append(
+                self.config.policy * losses.masked_sum(surrogate, own_alive) / denominator["policy"]
+            )
+        return terms
+
     def _policy(
         self,
         unrolled,
@@ -744,32 +833,10 @@ class Learner:
         entropies = policy.factor_entropies(unrolled.policy_logits)
         old, advantage = derived["old_log_probability"], derived["advantage"]
         ratio = torch.exp(log_probability - old)
-        region = config.trust_region
-        if region == "dppo_tv":
-            if trajectory.probabilities is None:
-                raise ValueError("trust_region 'dppo_tv' needs the rollout's probabilities")
-            divergence = losses.total_variation(trajectory.probabilities, unrolled.policy_logits)
-        else:  # the binary form: DPPO's, and the clip modes' reading of the step's size
-            divergence = losses.binary_total_variation(log_probability, old)
-        if region in ("dppo_tv", "dppo_binary_tv"):
-            keep = losses.dppo_keep(divergence, ratio, advantage, config.dppo_delta)
-            surrogate = losses.dppo_surrogate(log_probability, old, advantage, scale, keep)
-            limited = ~keep
-        else:
-            high = config.clip if region == "clip" else config.clip_high
-            surrogate = losses.surrogate(
-                log_probability,
-                old,
-                advantage,
-                scale,
-                config.clip,
-                None if region == "clip" else config.clip_high,
-            )
-            detached = ratio.detach()
-            if region == "clip":
-                limited = (detached - 1.0).abs() > config.clip
-            else:
-                limited = (detached < 1.0 - config.clip) | (detached > 1.0 + high)
+        divergence = self._divergence(unrolled, trajectory, log_probability, old)
+        surrogate, limited = self._surrogate(
+            log_probability, old, ratio, advantage, scale, divergence
+        )
         clipped = losses.masked_sum(limited.float(), own_alive)
         approximate = losses.masked_sum((ratio - 1.0) - (log_probability - old), own_alive)
         weight = own_alive.float()
@@ -850,6 +917,7 @@ class Learner:
         chained = self.chained_returns(
             chain, torch.cat([part["alive"] for part in small], 0), bootstrap
         )
+        raw_sums = chained.pop(RAW_SUMS, None)
 
         def by_view(x: torch.Tensor) -> torch.Tensor:
             """(shards L, R, ...) as the store's views, (L, shards R, ...)."""
@@ -942,6 +1010,17 @@ class Learner:
             if self.diagnostics
             else {}
         )
+        cadence_advantage = None
+        if "level_advantage" in chained:
+            level_advantage = joined("level_advantage", parts) / scale
+            series.update(
+                self._advantage_series(
+                    level_advantage, derived["advantage"] / scale, own_alive, raw_sums
+                )
+            )
+            # kept for the cadence's minibatch (`cadence`): the first views
+            cadence_views = len(torch.arange(segments.views).tensor_split(config.minibatches)[0])
+            cadence_advantage = level_advantage[:, :cadence_views].clone()
         if "monte_carlo_returns" in chained:  # the λ = 1 returns, bootstrapped at the end
             monte_carlo = explained_variance(joined("monte_carlo_returns", parts), values, valued)
             for index, name in enumerate(self.levels):
@@ -956,7 +1035,40 @@ class Learner:
             scale=scale,
             explained_variance=variance,
             series=series,
+            level_advantage=cadence_advantage,
         )
+
+    def _advantage_series(
+        self,
+        level_advantage: torch.Tensor,
+        advantage: torch.Tensor,
+        own_alive: torch.Tensor,
+        raw_sums: torch.Tensor | None,
+    ) -> dict:
+        """The levels' advantage series (`bnb.learn.advantages`), over the batch and per mode
+        of its games: level_advantage (L, V, S, levels) and advantage (L, V, S) over the
+        return scale, own_alive (L, V, S) the policy's tokens; raw_sums the levels' raw sums
+        (`advantages.raw_sums`)."""
+        views = advantage.shape[1]
+        member = advantage.new_ones((views, 1))
+        names: tuple[str | None, ...] = (None,)
+        if self.view_mode is not None and self.view_mode.shape[0] == views and self.view_modes:
+            modes = torch.nn.functional.one_hot(self.view_mode.long(), len(self.view_modes))
+            member = torch.cat([member, modes.to(member.dtype)], 1)
+            names += self.view_modes
+        per_level, whole = level_advantages.level_sums(
+            level_advantage, advantage, own_alive, member
+        )
+        out = level_advantages.level_series(per_level, whole, self.levels, names)
+        if raw_sums is not None and self.reward_weights is not None:
+            weights = dict(zip(REWARD_LEVELS, self.reward_weights, strict=True))
+            if all(level in weights for level in self.levels):  # not the single value level
+                out.update(
+                    level_advantages.raw_series(
+                        raw_sums, tuple(weights[level] for level in self.levels), self.levels
+                    )
+                )
+        return out
 
     def _target_series(
         self,
@@ -1340,6 +1452,12 @@ class Learner:
         halves = [half for half in views.tensor_split(2) if half.numel()]
         names = None
         accumulated = None
+        level_advantage = prepared.get("level_advantage") if self.measures_advantages else None
+        level_gradients = (
+            None
+            if level_advantage is None
+            else torch.zeros((len(self.levels), size), device=device)
+        )
         for half_index, half in enumerate(halves):
             micro = self._micro_batches(half)
             for host_views, (trajectory, shot_labels) in zip(
@@ -1363,6 +1481,16 @@ class Learner:
                     accumulated[half_index, index] += gradients.flat_gradient(
                         basic[name], parameters, size
                     )
+                if level_gradients is not None:  # the policy term with one level's A alone
+                    level_terms = self._level_policy_terms(
+                        unrolled,
+                        trajectory,
+                        part["old_log_probability"],
+                        level_advantage.index_select(1, device_views),
+                        denominator,
+                    )
+                    for index, term in enumerate(level_terms):
+                        level_gradients[index] += gradients.flat_gradient(term, parameters, size)
         self.optimizer.zero_grad(set_to_none=True)
         populations = tuple(name for name in names if name.startswith("next_state_"))
         levels = tuple(name for name in names if name.startswith("value_"))
@@ -1380,7 +1508,7 @@ class Learner:
         grams = gradients.grams(accumulated.flatten(0, 1), trunk_size)
         if len(halves) < 2:  # one view: no halves to compare
             grams = {"model": grams["model"]}
-        return gradients.decomposition(
+        out = gradients.decomposition(
             grams,
             combination,
             everything,
@@ -1390,6 +1518,10 @@ class Learner:
             actor=("policy", *ENTROPY_TERMS),
             critic=("value",),
         )
+        if level_gradients is not None:
+            whole = accumulated[:, names.index("policy")].sum(0)
+            out.update(level_advantages.policy_level_series(level_gradients, whole, self.levels))
+        return out
 
     @torch.no_grad()
     def drift(self, segments: Segments, prepared: dict) -> torch.Tensor:

@@ -185,6 +185,8 @@ class BehaviourCloning(Learner):
     given its carry, transformed. pools: the pool names, view_pool (V,) each stored view's
     pool index (the metrics are per pool). The other arguments are the Learner's."""
 
+    measures_advantages = False  # the cloning term reads no advantage
+
     def __init__(
         self,
         model: torch.nn.Module,
