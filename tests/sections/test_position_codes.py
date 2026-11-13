@@ -39,13 +39,13 @@ def _wrapped(angle: torch.Tensor) -> torch.Tensor:
 
 
 def test_a_new_runs_ladder_is_the_decided_one():
-    """Eight bands at ratio 3.405 from 48 m, each turned ROTARY_TURN from the coarser one,
-    heading harmonics 1, 2, 4: 19 pairs, 38 of a head's 64 dims."""
+    """Eight bands at ratio 3.405 from 64 m (48 m before the x2 game), each turned
+    ROTARY_TURN from the coarser one, heading harmonics 1, 2, 4: 19 pairs, 38 of a head's 64
+    dims."""
     periods = NEW.rotary_periods()
-    # the decided values, m, coarsest first (rounded along the ladder: 48 x 3.405^7 is
-    # 254 719 m)
-    decided = (254771, 74820, 21973, 6453, 1895, 557, 163, 48)
-    assert len(periods) == 8 and periods[-1] == pytest.approx(48.0, rel=1e-12)
+    # the decided values, m, coarsest first (64 x 3.405^k)
+    decided = (339625, 99743, 29293, 8603, 2527, 742, 218, 64)
+    assert len(periods) == 8 and periods[-1] == pytest.approx(64.0, rel=1e-12)
     for period, expected in zip(periods, decided, strict=True):
         assert period == pytest.approx(expected, rel=1e-3, abs=0.5)
     assert NEW.rotary_turn == ROTARY_TURN and NEW.heading_harmonics == (1, 2, 4)

@@ -89,10 +89,12 @@ NEXT_STATES = ("absolute", "delta")  # `YemongConfig.next_state`
 # the aliasing sweep's pick (bench/rotary_aliasing.py, docs/rewrite/sections/position-codes):
 # its neighbourhood, 33.75-38.75 degrees, is good on every summary at ratios 3.35-3.45.
 ROTARY_RATIO = 3.405
-ROTARY_FINEST = 48.0  # m
+# x2 game (v13): boosting head-on ships close at up to ~900 m/s, 30 m a tick, so the finest
+# band is above 60 m (Nyquist); it was 48 m for 640 m/s.
+ROTARY_FINEST = 64.0  # m
 ROTARY_BANDS = 8
 ROTARY_TURN = 35.0  # degrees
-ROTARY_COARSEST = ROTARY_FINEST * ROTARY_RATIO ** (ROTARY_BANDS - 1)  # 254 771 m
+ROTARY_COARSEST = ROTARY_FINEST * ROTARY_RATIO ** (ROTARY_BANDS - 1)  # 339 695 m
 COLOUR_PERIOD = 36.0 * 3.0**8  # m: a new run's colour code, 36 m to 236 196 m
 
 
@@ -115,7 +117,7 @@ class YemongConfig:
     differences). heading_harmonics: the heading's. The defaults, eight octaves from
     8192 m on the world axes with harmonics 1, 2, 4, 8, are every build's from before
     2026-11-12; a new run's build (`bnb.runtime.train.TrainConfig`) has eight bands at
-    ratio 3.405 from 48 m to 254 771 m, each turned ROTARY_TURN from the last, and
+    ratio 3.405 from 64 m to 339 695 m, each turned ROTARY_TURN from the last, and
     harmonics 1, 2, 4 (the sizing rule beside `state_code.POSITION_PERIOD`).
     position_period (m per axis): the coarsest period of the position colour code
     (`state_code.POSITION_LEVELS` levels of 3 colours, so the finest is the period over
@@ -524,7 +526,7 @@ class Yemong(nn.Module):
     # flag (SHIP_FLAGS, one more input; 2026-11-13); 4: the merge of the calibration's
     # model (the geometry head in place of the rotary read-out, the state code's position
     # period, the arena code) with 2 and 3 (2026-11-13)
-    VERSION = 4
+    VERSION = 5  # 5: the x2 velocity spacing (3.3) and rotary finest band (64 m)
 
     def __init__(self, build: YemongBuild) -> None:
         super().__init__()

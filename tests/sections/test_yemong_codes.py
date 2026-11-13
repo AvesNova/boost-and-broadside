@@ -93,7 +93,7 @@ def test_layout(code):
     assert code.width == 490 and code.groups == 23
     assert code.runs[0] == (9, 9) and code.runs[1] == (3, 81) and code.runs[-1] == (1, 4)
     assert len(MEANS) == 12 and code.spread_count == 15
-    assert velocity_reach() == pytest.approx(50.0 * (math.e**2 - 1.0))
+    assert velocity_reach() == pytest.approx(50.0 * math.expm1(40 * 3.3 / 50))
 
 
 def test_sharp_round_trip(code):

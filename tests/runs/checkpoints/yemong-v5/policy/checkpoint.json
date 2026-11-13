@@ -3,7 +3,7 @@
  "kind": "policy",
  "model": {
   "name": "yemong",
-  "version": 4,
+  "version": 5,
   "build": {
    "config": {
     "width": 8,
@@ -157,9 +157,9 @@
  "return_scale": false,
  "steps": {},
  "ratings": {},
- "commit": "e431e6f825a9ea686d17d80038a89927dd5de920",
+ "commit": "38a20b1548d0c75f8351d35266a413869dbb1cbf",
  "dirty": true,
- "time": "2026-11-13T13:50:46+00:00",
+ "time": "2026-11-13T14:49:20+00:00",
  "files": {
   "weights.safetensors": "2068e40bd72c76fb7e0c2813f895d3f8eb14e205c167a4ad17430b22f420c590"
  }

@@ -209,7 +209,7 @@ def test_the_bounds_are_the_ranges_a_hidden_ships_error_can_reach():
     code = _code()
     bound = {c.name: c.bound for c in code.components}
     assert bound["position_0"] == 26244.0 and bound["heading"] == math.pi
-    assert math.isclose(bound["velocity_60"], 2.0 * 319.4528, rel_tol=1e-4)
+    assert math.isclose(bound["velocity_60"], 2.0 * 650.6602, rel_tol=1e-4)
     assert bound["shield"] == bound["energy"] == 1.0
     assert math.isclose(bound["gun_cooldown"], 3.0 / 30.0)
 

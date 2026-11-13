@@ -80,7 +80,7 @@ The code is one vector of softmax groups. These are its runs in order, as
 | run | groups × size | code |
 |---|---|---|
 | position | 9 × 9 | position code, period `P_pos = 26 244 m` per axis (`4 · 3⁸`; finest level 4 m), 9 levels **(v2)** |
-| velocity | 3 × 81 | velocity code, knee 50 m/s, 81 bins, spacing 2.5 (reach `\|v\| ≤ 50(e² − 1) ≈ 319 m/s`) **(measure)** |
+| velocity | 3 × 81 | velocity code, knee 50 m/s, 81 bins, spacing 3.3 (2.5 before the x2 game; reach `\|v\| ≤ 50(e^2.64 − 1) ≈ 651 m/s`) **(measure)** |
 | heading | 4 × 4 | circular, period 2π, 4 colours |
 | nose_rate | 1 × 41 | scalar, ±8 rad/s **(measure)** |
 | angle_of_attack | 1 × 21 | scalar, ±2 `α_s` (the lift curve's clip; the largest `α_s` over types) |

@@ -68,13 +68,16 @@ POSITION_INPUTS = ("colour", "fourier")  # `YemongConfig.position_inputs`
 #   (the largest evaluation maps are about 62 km across).
 # POSITION_PERIOD is the record default (every build before 2026-11-12: 4 m to 26 244 m,
 # breaking both); a new run's is 236 196 m (36 m finest; `model.COLOUR_PERIOD`) and its
-# rotary bands 48 m to 254 771 m at ratio 3.405, each turned 35 degrees
+# rotary bands 64 m to 339 695 m at ratio 3.405 (48 m to 254 771 m before the x2
+# game), each turned 35 degrees
 # (`model.ROTARY_*`).
 POSITION_PERIOD = 4.0 * 3.0**8  # m per axis: 26 244 m, finest level 4 m
 POSITION_LEVELS = 9
 VELOCITY_KNEE = 50.0  # m/s
 VELOCITY_BINS = 81
-VELOCITY_SPACING = 2.5
+# x2 game (v13): ships cruise at ~335 m/s and boost to ~450, so the spacing grew from 2.5 to
+# keep every speed resolved: reach 50 (e^(40 x 3.3 / 50) - 1) = 651 m/s (was 319 m/s).
+VELOCITY_SPACING = 3.3
 HEADING_COLOURS = 4
 HEADING_LEVELS = 4
 NOSE_RATE_LIMIT = 8.0  # rad/s
@@ -136,7 +139,7 @@ def ellipse(packed: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Ten
 
 
 def velocity_reach() -> float:
-    """The largest world speed the velocity code resolves (m/s): 50 (e^2 - 1)."""
+    """The largest world speed the velocity code resolves (m/s): 50 (e^2.64 - 1), 651."""
     return VELOCITY_KNEE * math.expm1(0.5 * (VELOCITY_BINS - 1) * VELOCITY_SPACING / VELOCITY_KNEE)
 
 
