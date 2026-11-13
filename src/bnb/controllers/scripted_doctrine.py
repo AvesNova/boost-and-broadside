@@ -330,16 +330,24 @@ def set_table(keys: list[str], ship_set: str, device=None, path=DOCTRINES) -> to
     return table([doctrines.get(key, _DEFAULT) for key in keys], device)
 
 
+def card_rows(count: int, path: pathlib.Path = DOCTRINES) -> list[list[float]] | None:
+    """The stored doctrines for a card of `count` types, packed (`for_card`'s rows), or
+    None."""
+    from bnb.game import ships
+
+    by_set = stored(path)
+    for ship_set, doctrines in by_set.items():
+        keys = [ship.key for ship in ships.load(ship_set)]
+        if len(keys) == count:
+            return [pack(doctrines.get(key, _DEFAULT)) for key in keys]
+    return None
+
+
 def for_card(characteristics, path: pathlib.Path = DOCTRINES) -> torch.Tensor | None:
     """(T, WIDTH) the stored doctrines for a card's types, on the card's device: those of the
     ship set whose type count is the card's T (the sets' counts differ), by type key; None
     when no set with stored doctrines has T types (every type then flies none)."""
-    from bnb.game import ships
-
-    count = characteristics.gun_range.shape[-1]
-    device = characteristics.gun_range.device
-    for ship_set in stored(path):
-        keys = [ship.key for ship in ships.load(ship_set)]
-        if len(keys) == count:
-            return set_table(keys, ship_set, device, path)
-    return None
+    rows = card_rows(characteristics.gun_range.shape[-1], path)
+    if rows is None:
+        return None
+    return torch.tensor(rows, dtype=torch.float32, device=characteristics.gun_range.device)

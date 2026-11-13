@@ -40,6 +40,7 @@ from bnb.contracts import GameConfig, Obs
 from bnb.contracts.action import from_joint
 from bnb.contracts.pools import GAME_FIELDS
 from bnb.controllers import scripted
+from bnb.controllers import scripted_doctrine
 from bnb.controllers.scripted import Chaser
 from bnb.controllers.scripted_defaults import MODE_DEFAULTS
 from bnb.controllers.scripted_memory import ScriptedCarry
@@ -75,6 +76,18 @@ class AgentError(ValueError):
 
 
 CONTROLLERS = ("scripted", "scripted_agent", "agent")  # a SideSetup's controller kinds
+
+# The scripted agent's doctrines in the play shell, by name (a SideSetup's `doctrine`), each a
+# stored-doctrine file (`scripted_doctrine.stored`'s form). r9m2, the default here, is r9
+# with the maneuver doctrine elements and the team-gated duel extension
+# (docs/rewrite/sections/maneuvers-2, `champion2.json`; its scripted parameters are r9's);
+# r9 is the training's and the league's stored doctrine (`scripted_doctrines.json`), which
+# the play shell's choice leaves alone.
+DOCTRINES = {
+    "r9m2": pathlib.Path(__file__).with_name("doctrines") / "r9m2.json",
+    "r9": scripted_doctrine.DOCTRINES,
+}
+DEFAULT_DOCTRINE = "r9m2"
 
 # The play shell's scripted agent fires at aim errors this many times wider than the trained
 # defaults' (playtesting: more, riskier shots than the tuned agent takes). The window is in
@@ -148,8 +161,9 @@ class Scripted:
 
 
 class ScriptedAgent:
-    """The scripted agent (`bnb.controllers.scripted.Scripted`, memory on, temperature 1):
-    it remembers each enemy it saw and dead reckons it while hidden. Its draws come from
+    """The scripted agent (`bnb.controllers.scripted.Scripted`, memory on, temperature 1)
+    flying a doctrine of `DOCTRINES` by name: it remembers each enemy it saw and dead
+    reckons it while hidden. Its draws come from
     its own generator, swapped in for torch's default one and back, so it is reproducible
     from its seed and leaves the process's generator alone.
 
@@ -160,7 +174,6 @@ class ScriptedAgent:
     ran last). The two agree to float32 fusion rounding and draw the same numbers.
     """
 
-    label = "scripted agent"
     overlays = MEMORY
 
     def __init__(
@@ -170,14 +183,23 @@ class ScriptedAgent:
         seed: int = 0,
         compiled: bool = False,
         background: bool = False,
+        doctrine: str = DEFAULT_DOCTRINE,
     ) -> None:
+        if doctrine not in DOCTRINES:
+            raise ValueError(f"no scripted doctrine {doctrine!r}: {sorted(DOCTRINES)}")
+        self.doctrine, self.label = doctrine, f"scripted agent {doctrine}"
         self.characteristics = characteristics(types, rules)
         parameters = wider_fire(MODE_DEFAULTS, PLAY_FIRE_ANGLE_SCALE)
-        self.controller = scripted.Scripted(self.characteristics, rules.ships_per_team, parameters)
+        self.step = ScriptedStep(rules.ships_per_team, parameters, DOCTRINES[doctrine])
+        self.controller = scripted.Scripted(
+            self.characteristics,
+            rules.ships_per_team,
+            parameters,
+            doctrines=self.step.table(self.characteristics),
+        )
         self.carry: ScriptedCarry = self.controller.init_carry(1, torch.device("cpu"))
         self.draws = torch.Generator().manual_seed(seed + MODEL_DRAWS_OFFSET)
         self.inspection: Inspection | None = None
-        self.step = ScriptedStep(rules.ships_per_team, parameters)
         self.compiled, self.background = compiled, background
         self.uses_compiled = False
         self._path: pathlib.Path | None = None  # the built step's, from the first view
@@ -558,7 +580,9 @@ def controller_of(
     if side.controller == "agent":
         return load_agent(side.policy, setup.config, rules, types, side.temperature, seed)
     if side.controller == "scripted_agent":
-        return ScriptedAgent(rules, types, seed, compiled=compiled, background=background)
+        return ScriptedAgent(
+            rules, types, seed, compiled=compiled, background=background, doctrine=side.doctrine
+        )
     return Scripted(rules, types)
 
 

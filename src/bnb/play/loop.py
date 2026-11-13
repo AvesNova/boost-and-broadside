@@ -25,6 +25,7 @@ from bnb.game.api import TEAMS
 from bnb.runtime.realtime import Realtime
 
 from .interpolate import interpolate
+from .sides import DEFAULT_DOCTRINE
 from .snapshot import Snapshot, snapshot
 from .tuning import Tuning, base_rules
 
@@ -36,12 +37,14 @@ CATCH_UP_TICKS = 4  # at most this many ticks of backlog per unit of time scale
 @dataclasses.dataclass(frozen=True)
 class SideSetup:
     """One side's controller (`bnb.play.sides.CONTROLLERS`): "scripted" (the chaser),
-    "scripted_agent" (the scripted agent, with its memory), or "agent" with the policy
-    file's directory and the sampling temperature."""
+    "scripted_agent" (the scripted agent, with its memory, flying `doctrine`, a name of
+    `bnb.play.sides.DOCTRINES`), or "agent" with the policy file's directory and the
+    sampling temperature."""
 
     controller: str = "scripted_agent"  # "scripted_agent", "scripted" (the chaser) or "agent"
     policy: str | None = None
     temperature: float = 1.0
+    doctrine: str = DEFAULT_DOCTRINE  # the scripted agent's
 
 
 @dataclasses.dataclass(frozen=True)
