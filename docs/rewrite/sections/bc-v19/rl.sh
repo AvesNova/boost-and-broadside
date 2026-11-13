@@ -9,6 +9,7 @@ NAME=${NAME:-rl-v20}
 FROM=${FROM:-bc-v20}
 PRESET=${PRESET:-real_scale_all_modes}  # or one mode alone, e.g. real_scale_deathmatch
 UPDATES=${UPDATES:-143}  # about 150M steps
+DEATHMATCH_OUTCOME=${DEATHMATCH_OUTCOME:-kill_share}  # or kill_lead (win/loss by the kill difference)
 RUNS=${RUNS:-/workspace/runs}
 CACHE=${CACHE:-/workspace/cache}
 mkdir -p "$RUNS" "$CACHE/inductor" "$CACHE/triton" "$CACHE/bnb"
@@ -21,4 +22,5 @@ echo "commit $(git rev-parse HEAD) $(date -u +%FT%TZ) from $FROM" >> "$RUNS/$NAM
   --update-policies False --set lanes.environments=256 --set host_store=false \
   --set policy_snapshot_every=5000000 --set learner.micro_batch_rows=480 \
   --set 'lineup=["Yongma", "Yongma", "Jujak", "Jujak", "Jujak"]' --set arena_scale=null \
+  --set reward.deathmatch_outcome="$DEATHMATCH_OUTCOME" \
   >> "$RUNS/$NAME.log" 2>&1
