@@ -52,7 +52,9 @@ ROUNDS["round10"] = [
     ("r9m2 + wave 10 s", gates(1.0, 0.4, dict(WAVE, wave_hold_seconds=10.0))),
     ("r9m2 + lock 1 + wave 30 s", gates(1.0, 0.4, LOCK, WAVE)),
 ]
-CARDS = {"round10": CARD}
+# round 11: frontline balance with r9m3 (r9m2 + lock_press 1), r9m2 beside it
+ROUNDS["round11"] = [("r9m2", gates(1.0, 0.4)), ("r9m3", gates(1.0, 0.4, LOCK))]
+CARDS = {"round10": CARD, "round11": CARD}
 
 
 def main() -> None:

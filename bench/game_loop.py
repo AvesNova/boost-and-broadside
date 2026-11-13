@@ -14,7 +14,8 @@ carries the side's Yongma doctrine, every Jujak row its Jujak doctrine. Side A s
 0 in the even environments of a group. The game: `real_scale_deathmatch` with no fields and
 no zones, the episode `--seconds` long (every environment ends on the same tick; the game
 resets itself), a dead ship respawning after the mode's 10 s. A game's result for A is the
-sign of its kills minus B's.
+sign of its points minus B's,
+a side's points the other side's deaths of any cause (team deathmatch's score).
 
 Statistics per environment (`Tally`), accumulated in the tick: kills by killer side, by
 killer and victim type and by the killing hit's aspect class (`bnb.contracts.ASPECTS`);
@@ -268,6 +269,9 @@ def tally_like(B: int, S: int, device) -> dict:
     zeros = dict(device=device)
     return dict(
         kills_side=torch.zeros((B, 2), **zeros),  # by killer side A, B
+        # deaths of any cause (the boundary's, friendly fire's too) by victim side A, B: a
+        # side's points are the other side's deaths, as team deathmatch's score counts them
+        deaths_side=torch.zeros((B, 2), **zeros),
         # the first match's result for team 0 (+1, 0, -1) and whether it has ended
         result=torch.zeros((B,), dtype=torch.int32, device=device),
         finished=torch.zeros((B,), dtype=torch.bool, device=device),
@@ -359,6 +363,7 @@ STATISTICS = (
     "deaths",
     "traded",
     "kills_side",
+    "deaths_side",
     "result",
     "finished",
     "kills_kind",
@@ -711,6 +716,10 @@ class Loop:
         tally["kills_side"] = tally["kills_side"] + torch.stack(
             [(kill * killer_side_a).sum(1), (kill * ~killer_side_a).sum(1)], -1
         )
+        tally["deaths_side"] = (
+            tally["deaths_side"]
+            + torch.stack([(died & side_a).sum(1), (died & ~side_a).sum(1)], -1).float()
+        )
         aspect = torch.nn.functional.one_hot(
             events.kill_aspect.long().clamp_min(0), len(ASPECTS)
         ).float()
@@ -1057,7 +1066,10 @@ def summary(out: dict, mask: torch.Tensor, seconds: float) -> dict:
     """A set of environments' statistics (mask (B,) bool)."""
     kills = out["kills_side"][mask]
     n = int(mask.sum())
-    difference = kills[:, 0] - kills[:, 1]
+    # A's points less B's: the other side's deaths of any cause (team deathmatch's score;
+    # a record without deaths_side falls back to the kills)
+    points_side = out["deaths_side"][mask].flip(-1) if "deaths_side" in out else kills
+    difference = points_side[:, 0] - points_side[:, 1]
     if "a_result" in out:  # a scored mode: the first match's own result
         points = (out["a_result"][mask].float() + 1.0) / 2.0
     else:
@@ -1066,7 +1078,9 @@ def summary(out: dict, mask: torch.Tensor, seconds: float) -> dict:
     score_se = float(points.std() / math.sqrt(max(n, 1))) if n > 1 else 0.5
     # A's share of the game's kills (0.5 in a game without one): the search's finer signal
     kill_points = torch.where(
-        kills.sum(1) > 0, kills[:, 0] / kills.sum(1).clamp_min(1.0), torch.tensor(0.5)
+        points_side.sum(1) > 0,
+        points_side[:, 0] / points_side.sum(1).clamp_min(1.0),
+        torch.tensor(0.5),
     )
     kill_se = float(kill_points.std() / math.sqrt(max(n, 1))) if n > 1 else 0.5
     per_minute = kills.sum(1) / (seconds / 60.0)
@@ -1307,9 +1321,11 @@ def run(loop: Loop, jobs: list[Job], log=print) -> list[dict]:
 
 def outcome(out: dict) -> torch.Tensor:
     """(B,) each game's result for A: the scored mode's first-match result, else the sign of
-    A's kills less B's (deathmatch)."""
+    A's points less B's (deathmatch: each side's points the other's deaths of any cause)."""
     if "a_result" in out:
         return out["a_result"]
+    if "deaths_side" in out:
+        return torch.sign(out["deaths_side"][:, 1] - out["deaths_side"][:, 0])
     return torch.sign(out["kills_side"][:, 0] - out["kills_side"][:, 1])
 
 
