@@ -314,13 +314,31 @@ def from_named(fields: dict) -> Doctrine:
     return Doctrine(**values)
 
 
+# Read once per file and kept: the doctrines are read inside traced code (the play shell's
+# exported scripted step builds `Scripted`, whose default reads them), and a traced function
+# cannot open files. The module reads the default file when it is imported (below).
+_STORED: dict[pathlib.Path, dict[str, dict[str, Doctrine]]] = {}
+_SET_KEYS: dict[str, list[str]] = {}
+
+
 def stored(path: pathlib.Path = DOCTRINES) -> dict[str, dict[str, Doctrine]]:
-    """The tuned doctrines by ship set and type key (`scripted_doctrines.json`)."""
-    data = json.loads(path.read_text())
-    return {
-        ship_set: {key: from_named(entry["doctrine"]) for key, entry in types.items()}
-        for ship_set, types in data.items()
-    }
+    """The tuned doctrines by ship set and type key (`scripted_doctrines.json`), read once."""
+    if path not in _STORED:
+        data = json.loads(path.read_text())
+        _STORED[path] = {
+            ship_set: {key: from_named(entry["doctrine"]) for key, entry in types.items()}
+            for ship_set, types in data.items()
+        }
+    return _STORED[path]
+
+
+def _set_keys(ship_set: str) -> list[str]:
+    """A ship set's type keys in order, read once (the set's files are read like `stored`)."""
+    if ship_set not in _SET_KEYS:
+        from bnb.game import ships
+
+        _SET_KEYS[ship_set] = [ship.key for ship in ships.load(ship_set)]
+    return _SET_KEYS[ship_set]
 
 
 def set_table(keys: list[str], ship_set: str, device=None, path=DOCTRINES) -> torch.Tensor:
@@ -330,24 +348,34 @@ def set_table(keys: list[str], ship_set: str, device=None, path=DOCTRINES) -> to
     return table([doctrines.get(key, _DEFAULT) for key in keys], device)
 
 
-def card_rows(count: int, path: pathlib.Path = DOCTRINES) -> list[list[float]] | None:
-    """The stored doctrines for a card of `count` types, packed (`for_card`'s rows), or
-    None."""
-    from bnb.game import ships
-
-    by_set = stored(path)
-    for ship_set, doctrines in by_set.items():
-        keys = [ship.key for ship in ships.load(ship_set)]
-        if len(keys) == count:
-            return [pack(doctrines.get(key, _DEFAULT)) for key in keys]
-    return None
-
-
 def for_card(characteristics, path: pathlib.Path = DOCTRINES) -> torch.Tensor | None:
     """(T, WIDTH) the stored doctrines for a card's types, on the card's device: those of the
     ship set whose type count is the card's T (the sets' counts differ), by type key; None
     when no set with stored doctrines has T types (every type then flies none)."""
-    rows = card_rows(characteristics.gun_range.shape[-1], path)
-    if rows is None:
-        return None
-    return torch.tensor(rows, dtype=torch.float32, device=characteristics.gun_range.device)
+    count = characteristics.gun_range.shape[-1]
+    device = characteristics.gun_range.device
+    for ship_set in stored(path):
+        keys = _set_keys(ship_set)
+        if len(keys) == count:
+            return set_table(keys, ship_set, device, path)
+    return None
+
+
+def rows_by_count(path: pathlib.Path = DOCTRINES) -> dict[int, list[list[float]]]:
+    """A file's stored doctrines packed per card type count (`for_card`'s rows as plain
+    floats, by the type count of each set with stored doctrines), for a caller that keeps
+    them as constants outside any traced code."""
+    out = {}
+    for ship_set, doctrines in stored(path).items():
+        keys = _set_keys(ship_set)
+        out[len(keys)] = [pack(doctrines.get(key, _DEFAULT)) for key in keys]
+    return out
+
+
+def _warm(path: pathlib.Path = DOCTRINES) -> None:
+    """Read the default doctrines and their sets' keys now, outside any traced code."""
+    for ship_set in stored(path):
+        _set_keys(ship_set)
+
+
+_warm()

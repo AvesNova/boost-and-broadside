@@ -33,8 +33,7 @@ class ScriptedStep:
     """One decision of the scripted agent (`bnb.controllers.scripted.Scripted`, temperature
     1, memory on) for a team of `ships_per_team` ships: the team's (S, 3) int32 actions and
     the carry after it. doctrines: the stored-doctrine file it flies (`scripted_doctrine.
-    for_card` of the card; the default, the training's stored ones), read once per type
-    count."""
+    for_card` of the card; the default, the training's stored ones), read when it is made."""
 
     def __init__(
         self,
@@ -44,15 +43,13 @@ class ScriptedStep:
     ) -> None:
         self.ships_per_team, self.parameters = ships_per_team, parameters
         self.doctrines = doctrines
-        self._rows: dict = {}  # by type count: the card's doctrines packed (plain floats)
+        # read here, kept as plain floats: the traced step reads no files
+        self._rows = scripted_doctrine.rows_by_count(doctrines)
 
     def table(self, characteristics: Characteristics) -> torch.Tensor | None:
         """(T, WIDTH) the doctrines for the card's types, on its device (None: the file has
-        none for its type count); the file is read once per type count."""
-        count = characteristics.gun_range.shape[-1]
-        if count not in self._rows:
-            self._rows[count] = scripted_doctrine.card_rows(count, self.doctrines)
-        rows = self._rows[count]
+        none for its type count)."""
+        rows = self._rows.get(characteristics.gun_range.shape[-1])
         if rows is None:
             return None
         return torch.tensor(rows, dtype=torch.float32, device=characteristics.gun_range.device)
