@@ -165,6 +165,29 @@ Yongma side in energy v turn; against r9m and r9-press at 5v5, mixed / reversed.
   gates (energy, shield, threat count), or the game: the elimination score in the harness.
 - The mirrors (1v1) are even (0.47-0.53).
 
+### 15:17 round 2: round 1's key comparisons scored on elimination and frontline (`round2/`)
+Elimination: 180 s clock, 512 games (SE ~0.02). Frontline: 1200 s, 256 games (SE ~0.03).
+Score = the candidate's Yongma side in energy v turn; against r9m and r9-press at 5v5,
+mixed / reversed. Provisional (the shrinking elimination and new map defaults are coming).
+
+| Candidate | Elim EvT 1/2/5 | Elim v r9m | Elim v r9-press | Front EvT 2/5 | Front v r9m | Front v r9-press |
+|---|---|---|---|---|---|---|
+| r9m | 0.23 / 0.38 / 0.38 | 0.48 / 0.48 | 0.52 / 0.55 | 0.02 / 0.27 | 0.51 / 0.50 | 0.55 / 0.52 |
+| r9m2 | 0.22 / 0.36 / 0.37 | 0.52 / 0.53 | 0.54 / 0.56 | 0.04 / 0.30 | 0.55 / 0.54 | 0.59 / 0.53 |
+| DE Y 0.7 / J 0.25 | 0.18 / 0.37 / 0.40 | 0.54 / 0.50 | 0.56 / 0.55 | 0.02 / 0.32 | 0.49 / 0.51 | 0.52 / 0.54 |
+| r9m2, no crowd ext | 0.22 / 0.41 / 0.48 | 0.44 / 0.47 | 0.48 / 0.45 | 0.02 / 0.16 | 0.47 / 0.44 | 0.49 / 0.48 |
+| press | 0.20 / 0.39 / 0.43 | 0.43 / 0.47 | 0.47 / 0.45 | 0.01 / 0.14 | 0.46 / 0.48 | 0.42 / 0.46 |
+
+- **Most of round 1's crowd-extension win was the kill-lead scoring.** Against r9m,
+  removing the crowd extension cost 0.15-0.18 under kill lead. Under elimination it costs
+  0.03-0.06, and under frontline 0.03-0.07. r9m2 beats the no-flee r9-press by only
+  0.04-0.09 (0.58-0.72 before). Leaving a crowd still pays a little, about one SE to two.
+- The duel gates: shrinking them is level with r9m2 within SE in both modes. r9m2 stays
+  the doctrine to beat.
+- **Balance is off in both rating modes.** Yongma: elimination 0.18-0.23 at 1v1 and
+  0.36-0.48 at 2v2/5v5; frontline 0.01-0.04 at 2v2 (Jujak wins almost every 2v2 front)
+  and 0.14-0.32 at 5v5. Round 3 (the card levers, elimination) is running.
+
 ## Next
 - Item 6, league: no-flee scripted agents and the fast-chaser ship. ETA ~15:45.
 - Item 7: decide the balance fix (Questions), then a crowd-gate round, ideally scored on
