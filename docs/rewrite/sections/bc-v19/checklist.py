@@ -36,7 +36,7 @@ def main() -> None:
         out.append(("FLAG" if bad else "ok", name, detail))
 
     if not rows:
-        print("FLAG metrics: no rows yet")
+        print("info metrics: no rows yet (compiling)")
         return
     last, updates = rows[-1], len(rows)
     out.append(("info", "progress", f"{updates} updates, steps {last.get('steps', '?')}"))
