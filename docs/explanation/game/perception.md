@@ -21,10 +21,17 @@ visible to a team when:
 - it is alive and some living ship of that team is within that observer's vision range of
   it with a clear sight line.
 
-A **sight line** is blocked by a field's opaque core, a disc of radius
-`max(radius - band_width / 2, 0)`, when the segment passes strictly inside that disc,
-unless both ends are strictly inside the same core. Range tests compare squared
-distances. Bullets are not perceived.
+A **sight line** is tested against each field's three regions: the **core**, a disc of
+radius `max(radius - band_width / 2, 0)`; the **band**, from the core's edge out to
+`radius + band_width / 2`; and outside. A field blocks the line when
+
+- one end is strictly inside its core and the other is outside its outer edge; or
+- neither end is inside its core and the segment passes strictly inside the core.
+
+So the core hides what is behind it from everywhere, a ship outside a field sees into the
+band but not into the core, a ship in the band sees the core, and a ship in the core sees
+the core and the band but nothing beyond. Range tests compare squared distances. Bullets
+are not perceived.
 
 The vision range is the observer's: its type's scale (`vision_range_scale` on the
 [ship card](ship-card.md)) times the shared `Rules.vision_range`. Perception takes no card,

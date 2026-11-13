@@ -67,8 +67,9 @@ class Bullets:
 
 @dataclasses.dataclass(frozen=True)
 class Fields:
-    """(M,): centre, radius and band width (m), level, and the core radius (m), the disc
-    that blocks sight (`bnb.game.api.core_radius`)."""
+    """(M,): centre, radius and band width (m), level, and the band's two edges where the
+    sight test changes: the core radius and the outer radius (m) (`bnb.game.api.core_radius`
+    and `outer_radius`)."""
 
     x: np.ndarray
     y: np.ndarray
@@ -76,6 +77,7 @@ class Fields:
     band_width: np.ndarray
     level: np.ndarray
     core_radius: np.ndarray
+    outer_radius: np.ndarray
 
 
 @dataclasses.dataclass(frozen=True)
@@ -226,6 +228,7 @@ def _fields(state: State, values: dict) -> Fields:
         band_width=value("band_width"),
         level=value("level"),
         core_radius=_numpy(api.core_radius(state)[0]),
+        outer_radius=_numpy(api.outer_radius(state)[0]),
     )
 
 

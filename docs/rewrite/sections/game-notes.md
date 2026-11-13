@@ -96,6 +96,11 @@ only the adapter (`tests/reference/race_arm.py`, `race_chaser.py`) was rewritten
    - Without this, the learner was rewarded for shooting teammates, and deaths rose
      during training.
 5. **Sight test:** the race's loop over cores with bitmask membership is kept.
+   - Since version 14 (2026-11-13, the band rule) each point carries two bitmasks, inside
+     the core and inside the outer disc; the endpoint test is
+     `(core_a ^ core_b) & ~(field_a & field_b)` and the loop's perpendicular test is masked
+     per field by `~(core_a | core_b)`. One more shift and AND per pair and field; not
+     measured.
    - A field-axis reduction like the medium's was measured 1.3-2.5x slower: it recomputes
      both endpoints' membership per pair.
    - The loop stays small for M <= 64 (no kernel splitting at 54 fields).

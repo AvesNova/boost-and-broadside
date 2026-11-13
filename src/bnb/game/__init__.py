@@ -95,7 +95,13 @@ and resolve_native.py). The mode clocks (match, respawn, capture, waves, the loc
 their numbers as native seconds. The real-scale scripted agent's time parameters scaled
 the same way (scripted_x2.py). The plane-equivalent values are native over
 `real_scale.EQUIVALENT_FACTOR` (2), for display only.
+Version 14 (2026-11-13): sight through the band. Each field has a core (inside radius - b/2),
+a band (out to radius + b/2) and outside. A line with exactly one end in the core is blocked
+only when the other end is outside the band, so the core and the band see each other; a line
+with neither end in the core is blocked when it passes within the core radius, as before.
+Before, the band counted as outside. No ship's visibility in the fingerprint's 48 ticks
+changes, so the fingerprint is version 13's.
 """
 
-VERSION = 13
+VERSION = 14
 FINGERPRINT = "00177471050a7b4b"

@@ -58,7 +58,7 @@ compiled. The options:
   from the agents too; while you watch, both show.
 - **The selection card** (right): what you selected. A ship shows its live state (shield,
   energy, speed (at ×1 under a [time scale](#tuning-the-game)), angle of attack, power and stick, the last shot), kills and deaths, and
-  the buttons **Take control** and **Follow**; a field its refractive index and core; a
+  the buttons **Take control** and **Follow**; a field its refractive index, core and band; a
   zone its owner, progress, the capture lock left on the team that lost it, and the ships
   contesting it.
 - **The minimap** (lower right): the whole arena, with the camera's view as a rectangle.

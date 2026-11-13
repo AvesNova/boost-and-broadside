@@ -71,7 +71,7 @@ layer over everything. The passes, in order:
 | Pass | Draws |
 |---|---|
 | Sky | The sky inside the arena disc; beyond it the boundary damage zone, hatched in the theme's boundary colour, and a line on the edge. |
-| Fields | A topographic map of the true refractive index: terraces filled by sign (thin air below ambient, thick air above), stronger with depth, and a contour at every third of a level. The core edge is drawn bold. |
+| Fields | A topographic map of the true refractive index: terraces filled by sign (thin air below ambient, thick air above), stronger with depth, and a contour at every third of a level. The core edge is drawn bold and the band's outer edge thin, in the same colour. |
 | Zones | Frontline's zones, tinted with their owner's colour, with each defense zone's capture meter as an arc in the attacker's colour. |
 | Trails | Each ship's recent path, a strip that tapers and fades with age, and in hard turns a faint vortex line from the inside wingtip. A dead ship's trail fades out where it ended. |
 | Ships | Silhouettes from the Komet family, filled with the team colour, every ship outlined. A ship type without a silhouette of its own draws a plain dart. |
@@ -102,16 +102,19 @@ centres, which keeps the contours smooth at the closest zoom. The contours are l
 the sampled ln n, antialiased with screen-space derivatives, and fade where they would be
 closer together than a few pixels.
 
-The bold line on each core edge is drawn from the field geometry, at
-`bnb.game.api.core_radius`, the radius at which the game's sight test blocks a sight line
-(`tests/sections/test_game_api_display.py::test_core_radius_is_where_the_sight_test_blocks`).
+The two band edges are drawn from the field geometry, where the game's sight test changes:
+the bold line at `bnb.game.api.core_radius`, inside which a point is hidden from outside
+the field, and the thin line at `bnb.game.api.outer_radius`, beyond which a point is hidden
+from the core
+(`tests/sections/test_game_api_display.py::test_core_radius_is_where_the_sight_test_blocks`
+and `::test_outer_radius_is_where_a_core_stops_seeing`).
 
 ### The fog mask
 
 In a team's view the renderer first draws a visibility mask in screen space, at
 `MASK_SCALE` of the target's resolution: a fragment shader applies the sight rule of
 `bnb.game.perception.sight.sighted` to the world point under each texel, against the team's
-living ships and the field cores. A test holds the mask to `sighted` at every texel away
+living ships and the fields' cores and bands. A test holds the mask to `sighted` at every texel away
 from the mask's edges
 (`tests/sections/test_play_render.py::test_fog_mask_agrees_with_sighted`). The game's
 own function on the CPU was too slow for a frame budget at large fleets; the shader runs

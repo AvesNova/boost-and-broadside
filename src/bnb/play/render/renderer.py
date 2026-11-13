@@ -115,7 +115,7 @@ class Renderer:
         self.contours.set_map(frame.fields, frame.zones)
         fields = frame.fields
         self.cores = np.stack(
-            [fields.x, fields.y, fields.core_radius**2, np.zeros_like(fields.x)], -1
+            [fields.x, fields.y, fields.core_radius**2, fields.outer_radius**2], -1
         ).astype(np.float32)
 
     def write_index(self, updates: list[TileUpdate]) -> None:

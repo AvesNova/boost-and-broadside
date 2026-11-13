@@ -19,8 +19,8 @@ Status: decisions settled for milestone 1, 2026-11-01. Spec: `play-spec.md`.
   `claude/game-rules-mechanics-szzz5h`):
   - a flat, minimalist look on a near-white sky;
   - fields drawn as a topographic map of the true refractive index: evenly spaced
-    contours, with the innermost contour, drawn bold, on the core edge where sight is
-    blocked;
+    contours, with the innermost contour, drawn bold, on the core edge, and a thin line
+    on the band's outer edge, the two radii where sight changes;
   - fog drawn by darkening to 60% brightness, saturation kept;
   - every ship outlined;
   - one ring at the hitbox: shield 240° centred on the nose, energy 120° centred on the

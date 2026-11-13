@@ -453,11 +453,21 @@ bullet values become 0), every `cursor ← 0`, `fired ← false`, and every ship
 
 ### 10.1 Visibility (after the tick)
 
-Each field has an opaque core of radius `ρ_i = max(R_i − b_i/2, 0)` (a field too small to
-have a flat interior has no core and blocks nothing). A sight line from point `a`
-to point `p` is **blocked** by core `i` when the segment comes within `ρ_i` of its center
-(closest point on the segment, strictly less than `ρ_i`), unless both `a` and `p` are
-strictly inside that core. It is **clear** when no core blocks it.
+Each field splits the plane into three regions: its **core**, the disc of radius
+`ρ_i = max(R_i − b_i/2, 0)`; its **band**, from `ρ_i` out to the outer radius
+`σ_i = R_i + b_i/2`; and outside, beyond `σ_i` (a field too small to have a flat interior
+has no core and blocks nothing). A point is inside a disc when its distance to the centre is
+strictly less than the disc's radius. A sight line from point `a` to point `p` is
+**blocked** by field `i` when
+
+- exactly one of `a` and `p` is inside the core and the other is outside the disc of
+  radius `σ_i`; or
+- neither is inside the core and the segment comes within `ρ_i` of the centre (closest
+  point on the segment, strictly less than `ρ_i`).
+
+It is **clear** when no field blocks it. So from outside a field its band is seen and its
+core is not; from the band the core, the band and outside are seen, except through the
+core; from the core the core and the band are seen and outside is not.
 
 - Ship `k` is visible to team `T` when `k` is on team `T`, or `k` is alive and
   (it fired this tick, or it spawned this tick, or some living ship of team `T` is within

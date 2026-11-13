@@ -45,8 +45,8 @@ print(obs.ships.shape, events.damage.shape)
   compiled stage between them; `bnb.game.state.Sweep` carries the tick's motions from one
   to the other.
 - For display, with no rules of their own: `log_index` (the medium at points),
-  `core_radius` (the cores the sight test uses), `zone_sides` (Frontline's zone owners and
-  attackers) and `visible` (each team's observation in sim order). The
+  `core_radius` and `outer_radius` (the band edges the sight test uses), `zone_sides`
+  (Frontline's zone owners and attackers) and `visible` (each team's observation in sim order). The
   [play shell](../in-progress/play-shell.md) draws the game through them.
 
 ## The tick
@@ -154,8 +154,8 @@ centre, a radius, a band width and a level in `bnb.game.rules.FIELD_LEVELS`; a l
 step across the band, and overlapping fields compose as a union.
 
 Inside a field a ship or a bullet keeps its proper speed while its world speed is that
-divided by `n`, and its path bends toward higher `n`. Each field also has an opaque core,
-which blocks sight (see [Perception and fog](perception.md)).
+divided by `n`, and its path bends toward higher `n`. Each field also has a core and a band
+that shape sight (see [Perception and fog](perception.md)).
 
 ## Bullets and combat
 
