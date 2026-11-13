@@ -602,7 +602,7 @@ class TuningPanel:
         if not imgui.collapsing_header("Game's numbers"):
             return
         controls = session.interface.controls
-        if imgui.button("Game's numbers"):
+        if imgui.button("Reset to the game's numbers##reset"):
             session.retune_to(Tuning(time_factor=tuner.time_factor))
             self.message = "back to the ship files' and the rules' own numbers"
         controls.record("tuning/game's numbers")
