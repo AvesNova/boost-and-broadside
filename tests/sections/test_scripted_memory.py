@@ -16,6 +16,7 @@ from bnb.controllers.scripted import Scripted, distribution, mode_index
 from bnb.controllers.scripted_memory import FORGET_WEIGHT, remember, ways_round
 from bnb.controllers.scripted_parameters import (
     MODES,
+    REAL_SCALE_MODES,
     STANDARD_MODES,
     ModeParameters,
     ScriptedParameters,
@@ -227,15 +228,32 @@ def test_each_view_plays_its_modes_parameters():
     )
 
 
+def _at_plane_speed(parameters: ScriptedParameters, factor: float) -> ScriptedParameters:
+    """A real-scale set at the planes' speed: game v13 plays the set `factor` times faster
+    (docs/rewrite/sections/lethality/scripted_x2.py scaled its time parameters: the memory
+    fade's centre / factor, every switch's rate x factor), and the search's bounds are the
+    planes' seconds."""
+    fade = parameters.memory_fade_in_seconds
+    changed = {"memory_fade_in_seconds": fade._replace(centre=fade.centre * factor)}
+    for field in dataclasses.fields(parameters):
+        value = getattr(parameters, field.name)
+        if isinstance(value, Switch):
+            changed[field.name] = value._replace(rate=value.rate / factor)
+    return dataclasses.replace(parameters, **changed)
+
+
 def test_the_mode_defaults_lie_within_the_searchs_bounds_and_the_populations_load():
     from bnb.controllers.scripted_defaults import MODE_DEFAULTS, populations
+    from bnb.game.real_scale import EQUIVALENT_FACTOR
 
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))  # `bench`
     from bench.scripted_search import clamp
 
     assert set(MODE_DEFAULTS.sets) == set(MODES)
-    for parameters in MODE_DEFAULTS.sets.values():
-        assert clamp(parameters) == parameters
+    for mode, parameters in MODE_DEFAULTS.sets.items():
+        if mode in REAL_SCALE_MODES:  # at x2 native speed
+            parameters = _at_plane_speed(parameters, EQUIVALENT_FACTOR)
+        assert clamp(parameters) == parameters, mode
     stored = populations()
     assert set(stored) == set(STANDARD_MODES)
     assert all(len(stored[mode]) == 32 for mode in STANDARD_MODES)

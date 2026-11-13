@@ -1,5 +1,10 @@
 """The real-scale variant (`docs/explanation/game/real-scale.md`): its ship set, its rules
-and its presets, and that its cards fly their handles."""
+and its presets, and that its cards fly their handles.
+
+The set plays at x2 native speed (game v13): its files hold the similarity at length 1 and
+time 1 / `real_scale.EQUIVALENT_FACTOR` of the planes' values, which `real_scale`'s
+arithmetic gives. So a test of the files against that arithmetic reads the files at the
+planes' speed (`plane`), or scales the arithmetic's values as the build did (`native`)."""
 
 import json
 import math
@@ -10,11 +15,29 @@ import torch
 
 from bnb.contracts import GameConfig
 from bnb.game import api, real_scale, ships
-from bnb.game.handling.similarity import scale_flight
+from bnb.game.handling.similarity import HANDLE_UNITS, factor, scale_flight
 from bnb.game.physics.combat import MEAN_CLOSENESS
-from bnb.game.rules import FlightConstants
+from bnb.game.rules import FlightConstants, Rules
+from bnb.play.tuning import snap_handle
 
 SET = "real-scale"
+SPEED_UP = real_scale.EQUIVALENT_FACTOR
+
+
+def plane(handles: dict[str, float]) -> dict[str, float]:
+    """A ship file's handles at the planes' speed (speeds / 2, rates / 2, times x 2,
+    energies / 4, lengths kept)."""
+    return {
+        name: value * factor(HANDLE_UNITS[name], 1.0, SPEED_UP) for name, value in handles.items()
+    }
+
+
+def native(name: str, value: float) -> float:
+    """A planes'-speed handle as the set's file holds it: scaled to x2, snapped as the card
+    holds it (docs/rewrite/sections/lethality/native_x2.py)."""
+    return snap_handle(
+        name, value * factor(HANDLE_UNITS[name], 1.0, 1.0 / SPEED_UP), Rules.tick_length
+    )
 
 
 def test_the_presets_play_the_real_scale_set_on_a_map_three_times_wider():
@@ -42,13 +65,19 @@ def test_the_presets_play_the_real_scale_set_on_a_map_three_times_wider():
         assert (rules.boundary_max_damage, rules.boundary_ramp_width) == (40.0, 100.0)
 
 
-def test_the_rules_are_todays_in_real_units():
+def test_the_rules_are_todays_in_real_units_at_x2_speed():
     rules = api.rules_of(api.PRESETS["real_scale_frontline"])
-    assert rules.flight.gravity == 9.81
-    expected = scale_flight(FlightConstants(), real_scale.LENGTH, real_scale.TIME)
-    for name in ("coast_exchange", "climb_exchange", "nose_frequency_floor"):
-        assert getattr(rules.flight, name) == pytest.approx(getattr(expected, name), rel=1e-12)
-    assert rules.longest_bullet_moves == 23  # 0.77 s, the MG 151/20's (its high drag)
+    assert rules.flight.gravity == pytest.approx(9.81 * SPEED_UP**2, rel=1e-12)
+    real = scale_flight(FlightConstants(), real_scale.LENGTH, real_scale.TIME)
+    expected = scale_flight(real, 1.0, 1.0 / SPEED_UP)
+    assert rules.flight.nose_frequency_floor == pytest.approx(
+        expected.nose_frequency_floor, rel=1e-12
+    )
+    # the exchanges keep their real-unit values: the card's per-type scales carry the x4
+    # (`bnb.play.tuning.time_scaled_card`), as no setting holds them
+    for name in ("coast_exchange", "climb_exchange", "dive_exchange"):
+        assert getattr(rules.flight, name) == pytest.approx(getattr(real, name), rel=1e-12)
+    assert rules.longest_bullet_moves == 11  # 0.37 s, the MG 151/20's (its high drag): 0.73 s at x1
     assert rules.bullet_drag == 5e-4  # the .50 cal's, every type's floor
     assert rules.damage_reference_distance == 300.0
     card = api.ship_types(ship_set=SET)
@@ -60,7 +89,7 @@ def test_the_rules_are_todays_in_real_units():
 
 def test_the_first_type_is_the_researched_p51d_with_a_600_m_gun():
     p51 = ships.load(SET)[0]
-    handles = p51.handles
+    handles = plane(p51.handles)
     assert p51.name == "P-51D"
     assert handles["stall_speed"] == 44.7 and handles["g_limit"] == 8.0
     assert handles["cruise_speed"] == 162.7 and handles["ceiling"] == pytest.approx(9.81 * 12680)
@@ -127,7 +156,10 @@ def test_every_type_is_written_with_a_note_for_every_handle():
         targets, notes, _ = real_scale.target_handles(aircraft, rules, combat)
         for name, value in targets.items():
             if name != "climb_time":
-                assert ship.handles[name] == pytest.approx(value, rel=1e-9), (ship.key, name)
+                assert ship.handles[name] == pytest.approx(native(name, value), rel=1e-9), (
+                    ship.key,
+                    name,
+                )
             assert ship.notes[name].startswith(notes[name]), (ship.key, name)
         for name in set(api.HANDLE_NAMES) - {"gun_range", "climb_time"}:
             assert ship.notes[name].startswith(kinds), (ship.key, name, ship.notes[name])
@@ -141,7 +173,7 @@ def test_the_spread_is_the_volleys_75_percent_cone():
     assert 1.0 - math.exp(-(real_scale.SPREAD_RADIUS_75**2) / 2.0) == pytest.approx(0.75)
     assert real_scale.spread_of(6.0, 856.0) == pytest.approx(6e-3 / 3.3302 * 856.0, rel=1e-4)
     p51 = ships.load(SET)[0]
-    assert p51.handles["bullet_spread"] == pytest.approx(real_scale.spread_of(6.0, 856.0))
+    assert plane(p51.handles)["bullet_spread"] == pytest.approx(real_scale.spread_of(6.0, 856.0))
 
 
 def test_the_combat_economy_follows_the_weight_of_fire_and_the_climb_charge():
@@ -153,7 +185,7 @@ def test_the_combat_economy_follows_the_weight_of_fire_and_the_climb_charge():
     standard = {ship.key: ship.handles for ship in ships.load()}["fighter"]
     mean_hit = standard["hit_damage"] * MEAN_CLOSENESS  # the card's is a centre hit's
     assert damage == pytest.approx(2.0 * mean_hit * standard["fire_rate"]) and damage == 360.0
-    found = {ship.key: ship.handles for ship in ships.load(SET)}
+    found = {ship.key: plane(ship.handles) for ship in ships.load(SET)}
     data = {one.key: one.data for one in real_scale.AIRCRAFT}
     charge = standard["ceiling"] / standard["shots_per_store"] / power * standard["fire_rate"]
     assert charge == pytest.approx(real_scale.standard_climb_charges()["fighter"])
@@ -179,7 +211,8 @@ def test_every_type_deals_about_the_p51s_damage_per_second():
     assert rule(720.0, 360.0) == pytest.approx(360.0 * 2.0**0.05)
     assert rule(1e6, 360.0) == pytest.approx(378.0) and rule(1.0, 360.0) == pytest.approx(342.0)
     for ship in researched():
-        per_second = ship.handles["hit_damage"] * MEAN_CLOSENESS * ship.handles["fire_rate"]
+        handles = plane(ship.handles)
+        per_second = handles["hit_damage"] * MEAN_CLOSENESS * handles["fire_rate"]
         assert 342.0 - 1e-6 <= per_second <= 378.0 + 1e-6, ship.key
         assert "Balanced (round 1)" in ship.notes["hit_damage"], ship.key
 
