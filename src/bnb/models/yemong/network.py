@@ -214,8 +214,8 @@ class Trunk(nn.Module):
         buffer: torch.Tensor,
         key_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """One decision: tokens (..., Q, D); key_mask (..., N) bool or None, the ship tokens
-        attention reads as keys (`SpatialBlock.forward`). Returns (tokens, state, buffer)."""
+        """One decision: tokens (..., Q, D); key_mask (..., K) bool or None, the first K keys
+        attention reads (`SpatialBlock.forward`). Returns (tokens, state, buffer)."""
         if not self.temporal_blocks:
             attended = self._attend(tokens, map_memory, token_tables, map_tables, key_mask)
             return attended, state, buffer

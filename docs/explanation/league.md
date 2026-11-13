@@ -396,14 +396,17 @@ uv run --no-sync bnb crossover POLICY --preset deathmatch --pairs 5:5 4:5 3:5 2:
 ```
 
 **Ablated players.** A Yemong policy may play ablated, in `--with` or in head-to-head:
-`PATH:rotary`, `PATH:forecast` or `PATH:rotary+forecast` (a run's name works as the
-policy too). An ablated player is the same weights and build, so it shares its policy's
+`PATH:rotary`, `PATH:forecast`, `PATH:absent_zones` or a combination such as
+`PATH:rotary+forecast` (a run's name works as the policy too). An ablated player is the same weights and build, so it shares its policy's
 group and stacked weights; the seat holds each row's ablations and passes them to every
 Yemong group's network (`bnb.models.yemong.model.Ablations`), so only that player's rows
 are ablated and the captured graph stays one graph. A tournament without an ablated player calls the networks
 without them. `rotary` makes the attention's rotary rotation the identity (every angle 0,
 token and map tables); `forecast` stores nothing back to the belief, as
-`yemong.forecast_feedback=false` does. Both are inference-time ablations of a model
+`yemong.forecast_feedback=false` does; `absent_zones` takes the absent zone slots (the
+learned absent token of a mode without zones) out of every attention as keys and values,
+so no head can attend to them (the masked attention runs the plain path, not the fused
+kernel; a tournament without an `absent_zones` player attends as before). All are inference-time ablations of a model
 trained with the feature on: they measure how much the trained policy relies on it, not
 what a model trained without it would reach.
 

@@ -182,3 +182,72 @@ def test_rotary_off_is_recorded_in_the_policy_file(segment, tmp_path):
     net, _ = segment
     checkpoint.save_policy(tmp_path / "off", _switched(net, rotary=False))
     assert not checkpoint.load_policy(tmp_path / "off", torch.device("cpu")).config.rotary
+
+
+# ------------------------------------------------------------------ the absent zone slots
+
+
+def _absent_zone_ablations(views: int, masked=()) -> Ablations:
+    on = torch.zeros(views, dtype=torch.bool)
+    on[list(masked)] = True
+    off = torch.zeros(views, dtype=torch.bool)
+    return Ablations(rotary=off, forecast=off, absent_zones=on)
+
+
+def _assert_rows_close(first, second, rows, axis):
+    for one, two in zip(_pytree.tree_leaves(first), _pytree.tree_leaves(second), strict=True):
+        index = (slice(None),) * axis + (rows,)
+        if one.is_floating_point():
+            torch.testing.assert_close(one[index], two[index], rtol=1e-5, atol=1e-5)
+        else:
+            assert torch.equal(one[index], two[index])
+
+
+def test_the_segment_has_no_zones(segment):
+    """The squad game has no zones: every view's zone slots are the absent token."""
+    from bnb.contracts.obs import ZONE
+
+    _, trajectory = segment
+    assert (trajectory.obs.zones[..., ZONE["present"]] < 0.5).all()
+
+
+def test_absent_zones_unmasked_is_the_unablated_step(segment):
+    """The ablation carried but on no view: the plain attention path with a full mask, which
+    computes what the unmasked step does, within rounding."""
+    net, trajectory = segment
+    views = trajectory.obs.ships.shape[1]
+    plain = _loop(net, trajectory)
+    carried = _loop(net, trajectory, _absent_zone_ablations(views))
+    _assert_rows_close(plain[0], carried[0], slice(None), 1)
+    _assert_rows_close(plain[1], carried[1], slice(None), 0)
+
+
+def test_absent_zones_masked_views_do_not_read_the_absent_token(segment):
+    """On a masked view the absent zone token takes no attention: its outputs do not change
+    with the token's value; an unmasked view's do."""
+    net, trajectory = segment
+    views = trajectory.obs.ships.shape[1]
+    masked, kept = [0, 3, 6], [1, 2, 4, 5, 7]
+    other = _switched(net)
+    with torch.no_grad():
+        other.encoder.absent_zone.add_(torch.randn_like(other.encoder.absent_zone))
+    ablations = _absent_zone_ablations(views, masked)
+    first = _loop(net, trajectory, ablations)
+    second = _loop(other, trajectory, ablations)
+    _assert_rows_close(first[0], second[0], masked, 1)
+    _assert_rows_close(first[1], second[1], masked, 0)
+    plain = _loop(net, trajectory)
+    assert not torch.allclose(
+        first[0].policy_logits[:, masked], plain[0].policy_logits[:, masked], atol=1e-4
+    )
+    _assert_rows_close(first[0], plain[0], kept, 1)
+    assert not torch.allclose(
+        second[0].policy_logits[:, kept], plain[0].policy_logits[:, kept], atol=1e-4
+    )
+
+
+def test_absent_zones_is_a_player_suffix():
+    from bnb.league.matches import ablations_of
+
+    assert ablations_of("runs/x/policy:absent_zones") == ("runs/x/policy", ("absent_zones",))
+    assert ablations_of("p:rotary+absent_zones") == ("p", ("absent_zones", "rotary"))

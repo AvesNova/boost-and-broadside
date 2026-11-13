@@ -9,7 +9,7 @@ heads' table.
         --policy NAME=DIRECTORY [--policy ...] [--preset real_scale_deathmatch ...] \
         [--lineup Yongma Yongma Jujak Jujak Jujak] [--opponent scripted|self] \
         [--environments 8] [--warmup 1] [--segments 4] [--ticks 128] [--per-head] \
-        --out FILE.json
+        [--absent-zones-masked] --out FILE.json
 
 The weights are recomputed, not read from the kernel: every spatial sublayer's attention
 call (`SpatialBlock._attend`, and the fused `kernels.attention.attend` where it runs) is
@@ -19,7 +19,9 @@ mask), takes softmax(q k^T / sqrt(W)) in float32, and checks that these weights 
 values give the original output (the largest absolute difference, over the largest
 output magnitude, is reported per run: about 4e-3 under the policy's bf16 autocast, the
 output's own rounding; `--float32` plays without autocast, where it is about 1e-6).
-Nothing in the model changes.
+Nothing in the model changes. `--absent-zones-masked` plays the policy with the
+inference-time ablation `Ablations.absent_zones` on every view (the absent zone slots no
+key of any attention; their share is then 0), to show where that mass goes.
 
 Key layout (`bnb.models.yemong.network`): the query tokens are the N ship rows (own S
 first, then the enemies) then the global token; the keys are those N + 1 tokens then the
@@ -53,6 +55,7 @@ from bnb.game.handling.characteristics import characteristics
 from bnb.models.yemong import spatial
 from bnb.models.yemong.kernels import attention as attention_kernel
 from bnb.models.yemong.layers import apply_rotary
+from bnb.models.yemong.model import Ablations
 from bnb.runs import checkpoint
 from bnb.runtime.rollout import Rollout
 from bnb.runtime.train import lineup_indices, model_controller
@@ -241,10 +244,12 @@ def patched():
 
 
 class RecordingController:
-    """The policy's controller, with the recorder active around each of its decisions."""
+    """The policy's controller, with the recorder active around each of its decisions;
+    absent_zones_masked: every view plays with `Ablations.absent_zones`."""
 
-    def __init__(self, inner, own: int) -> None:
+    def __init__(self, inner, own: int, absent_zones_masked: bool = False) -> None:
         self.inner, self.own = inner, own
+        self.absent_zones_masked = absent_zones_masked
         self.reads = inner.reads
 
     def __getattr__(self, name):
@@ -254,6 +259,11 @@ class RecordingController:
         recorder = RECORDER
         if recorder is not None and recorder.armed:
             recorder.obs, recorder.own, recorder.active = obs, self.own, True
+        if self.absent_zones_masked:
+            off = torch.zeros_like(reset, dtype=torch.bool)
+            keywords["ablations"] = Ablations(
+                rotary=off, forecast=off, absent_zones=torch.ones_like(off)
+            )
         try:
             return self.inner.step(carry, obs, reset, *arguments, **keywords)
         finally:
@@ -288,7 +298,9 @@ def measure(name, directory, preset, lineup, opponent, arguments, device) -> dic
     S = game.ships_per_team
     spatial_layers = sum(isinstance(m, spatial.SpatialBlock) for m in model.modules())
     names = api.type_names(game.ship_set)
-    controllers = {POLICY: RecordingController(model_controller(model, game), S)}
+    controllers = {
+        POLICY: RecordingController(model_controller(model, game), S, arguments.absent_zones_masked)
+    }
     seats = (POLICY, POLICY)
     if opponent == "scripted":
         controllers[OPPONENT] = Scripted(characteristics(types, api.rules_of(game)), S)
@@ -341,6 +353,7 @@ def measure(name, directory, preset, lineup, opponent, arguments, device) -> dic
         preset=preset,
         lineup=list(lineup or []),
         opponent=opponent,
+        absent_zones_masked=arguments.absent_zones_masked,
         environments=arguments.environments,
         ticks=arguments.ticks * arguments.segments,
         warmup_ticks=arguments.ticks * arguments.warmup,
@@ -417,6 +430,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--per-head", action="store_true", help="also print the shares per layer and head"
+    )
+    parser.add_argument(
+        "--absent-zones-masked",
+        action="store_true",
+        help="play with the absent zone slots masked out of attention (Ablations.absent_zones)",
     )
     parser.add_argument("--out", type=pathlib.Path, required=True)
     arguments = parser.parse_args()

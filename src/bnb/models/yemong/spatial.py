@@ -36,8 +36,9 @@ class SpatialBlock(nn.Module):
         key_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """tokens (..., Q, D) attend over themselves and map_memory (..., M, Dm). key_mask
-        (..., K) bool, K <= Q: the first K tokens that are keys and values (the ships, for
-        `Yemong.mask_benched`); the rest and the map memory always are. None: every token,
+        (..., K) bool, K <= Q + M: which of the first K keys (the tokens, then the map memory)
+        are keys and values (the ships, for `Yemong.mask_benched`; every key, for the
+        `Ablations.absent_zones` mask); the rest always are. None: every token,
         through the fused kernel where it applies (with a mask the plain path runs)."""
         query, key, value = (
             self.query_key_value(self.attention_norm(tokens))

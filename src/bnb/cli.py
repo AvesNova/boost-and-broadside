@@ -215,9 +215,10 @@ class Ratings:
     batches are the match engine's fixed blocks (`--blocks` of `--block-environments`
     games). The leaderboard goes to the run's `artifacts/ratings/` (or `--out`'s).
 
-    A Yemong policy may play ablated: `PATH:rotary`, `PATH:forecast` or
-    `PATH:rotary+forecast` (`bnb.league.matches.ablations_of`), the same weights with the
-    rotary rotation as the identity or the forecast not fed back, on its own rows only.
+    A Yemong policy may play ablated: `PATH:rotary`, `PATH:forecast`, `PATH:absent_zones`
+    or a combination, `PATH:rotary+forecast` (`bnb.league.matches.ablations_of`), the same
+    weights with the rotary rotation as the identity, the forecast not fed back, or the
+    absent zone slots masked out of attention, on its own rows only.
     A network may play at a sampling temperature, `PATH@T=0.7` (after any ablations,
     `PATH:rotary@T=0.7`; `bnb.league.matches.temperature_of`): its joint action drawn from
     logits / T, on its own rows only.

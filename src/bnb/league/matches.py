@@ -11,7 +11,8 @@ groups' builds may differ (a field may mix architectures); the networks of one g
 their weights stacked.
 
 A Yemong network may play ablated, `<policy>:<ablation>[+<ablation>...]` (for example
-`PATH:rotary`, `PATH:forecast`, `PATH:rotary+forecast`; `bnb.models.yemong.model.ABLATIONS`):
+`PATH:rotary`, `PATH:forecast`, `PATH:rotary+forecast`, `PATH:absent_zones`;
+`bnb.models.yemong.model.ABLATIONS`):
 the same weights, with the ablations applied on that player's rows only
 (`bnb.models.yemong.model.Ablations`). It is the same build, so it shares its policy's group
 and weights. An ablation is inference-time: it measures how much a policy trained with the
@@ -307,9 +308,10 @@ class MatchSeat:
     then its second's, as the lineup lists them); characteristics and ships_per_team: the
     scripted agent's; doctrine: the scripted agent's parameter set for every row whose slot's
     player brings none (None: the mode's set, and no player may bring one); ablations: a
-    network slot may play ablated (each row's ablations held
-    in place and passed to every Yemong group's network as `Ablations`; else the networks
-    are called without them). Each row's network sampling temperature is held in place
+    the ablations a network slot may play (`ABLATIONS` names; each row's ablations held
+    in place and passed to every Yemong group's network as `Ablations`, absent_zones carried
+    only when named, so a seat without it attends as before; none: the networks are called
+    without them). Each row's network sampling temperature is held in place
     (`network_temperature`, 1 but on a tempered player's rows). Every slot starts as the
     scripted agent, every lane idle."""
 
@@ -321,7 +323,7 @@ class MatchSeat:
         characteristics: Characteristics,
         ships_per_team: int,
         device: torch.device,
-        ablations: bool = False,
+        ablations: tuple[str, ...] = (),
         lanes: tuple[int, ...] | None = None,
         doctrine: ScriptedParameters | None = None,
     ) -> None:
@@ -389,10 +391,18 @@ class MatchSeat:
         if ablations:
             if not any(self.ablatable):
                 raise ValueError("only a Yemong network plays ablated")
+            unknown = set(ablations) - set(ABLATIONS)
+            if unknown:
+                raise ValueError(f"unknown ablations {sorted(unknown)}")
+            carried = (
+                "rotary",
+                "forecast",
+                *(("absent_zones",) if "absent_zones" in ablations else ()),
+            )
             self.ablations = Ablations(
                 **{
                     name: torch.zeros(self.rows, dtype=torch.bool, device=device)
-                    for name in ABLATIONS
+                    for name in carried
                 }
             )
 
@@ -577,6 +587,8 @@ class MatchSeat:
             raise ValueError(f"the seat was built with {len(self.decisions)} network groups")
         if ablations and (self.ablations is None or not self.ablatable[group]):
             raise ValueError("only a Yemong network of a seat built with ablations plays ablated")
+        if "absent_zones" in ablations and self.ablations.absent_zones is None:
+            raise ValueError("the seat was built without the absent_zones ablation")
         taken = [lane for g, lane in self.lane_of.values() if g == group]
         if len(taken) >= self.lanes[group]:
             raise ValueError(
@@ -598,7 +610,8 @@ class MatchSeat:
         self.network_temperature[rows] = temperature
         if self.ablations is not None:
             for name in ABLATIONS:
-                getattr(self.ablations, name)[rows] = name in ablations
+                if getattr(self.ablations, name) is not None:
+                    getattr(self.ablations, name)[rows] = name in ablations
 
     @torch.no_grad()
     def load_scripted(self, slot: int, play: ScriptedPlay) -> None:
@@ -616,7 +629,8 @@ class MatchSeat:
             raise ValueError("a player with its own parameters needs an arena with a doctrine")
         if self.ablations is not None:
             for name in ABLATIONS:
-                getattr(self.ablations, name)[rows] = False
+                if getattr(self.ablations, name) is not None:
+                    getattr(self.ablations, name)[rows] = False
 
     def finished(self, carry: MatchCarry) -> bool:
         """Whether every row's first game has ended (a host read)."""
@@ -797,7 +811,7 @@ class Arena:
             agent,
             game.ships_per_team,
             device,
-            ablations=any(one.ablations for one in players),
+            ablations=tuple(sorted({name for one in players for name in one.ablations})),
             lanes=self.lanes,
             doctrine=doctrine,
         )

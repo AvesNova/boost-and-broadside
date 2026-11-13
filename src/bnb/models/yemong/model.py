@@ -387,7 +387,8 @@ class Carry:
     held_valid: torch.Tensor | None = None
 
 
-ABLATIONS = ("rotary", "forecast")  # the inference-time ablations `Ablations` carries
+# the inference-time ablations `Ablations` carries
+ABLATIONS = ("rotary", "forecast", "absent_zones")
 
 
 @contract
@@ -396,10 +397,33 @@ class Ablations:
     rotary rotation is the identity on the view's rows (every angle 0: cos 1, sin 0, for the
     token and the map tables); forecast, nothing is written back to the view's belief, as
     with `YemongConfig.forecast_feedback` off (a hidden ship keeps its last sighting, every
-    enemy action stays uniform). A view with neither computes what it would without them."""
+    enemy action stays uniform); absent_zones, the absent zone slots (a mode without zones:
+    the learned absent token, `network.Encoder`) are no key or value of any attention on the
+    view's rows, so no head can attend to them (None, as carried only where a player plays
+    it: the step attends as it would without it, through the fused kernel). A view with
+    none computes what it would without them."""
 
     rotary: torch.Tensor
     forecast: torch.Tensor
+    absent_zones: torch.Tensor | None = None
+
+
+def absent_zone_key_mask(tokens: Tokens, masked: torch.Tensor) -> torch.Tensor:
+    """The key mask (R, N + 1 + M + Z) bool over every key of the spatial attention (the N
+    ships, the global token, the M fields, the Z zone slots; `SpatialBlock.forward`) that
+    hides the absent zone slots on the masked views (R,) bool, with the tokens' own ship
+    mask (`Yemong.mask_benched`) kept."""
+    ships = tokens.code.shape[:-1]
+    shown = (
+        tokens.key_mask
+        if tokens.key_mask is not None
+        else torch.ones(ships, dtype=torch.bool, device=masked.device)
+    )
+    fields = torch.ones(
+        ships[:-1] + (1 + tokens.field.shape[-2],), dtype=torch.bool, device=masked.device
+    )
+    zones = tokens.zone_present | ~masked[..., None]
+    return torch.cat([shown, fields, zones], -1)
 
 
 @contract
@@ -1078,6 +1102,9 @@ class Yemong(nn.Module):
         tokens = self.tokens(obs, replay, carry.motion)
         ships_count = tokens.code.shape[-2]
         rotary_off = None if ablations is None else ablations.rotary
+        key_mask = tokens.key_mask
+        if ablations is not None and ablations.absent_zones is not None:
+            key_mask = absent_zone_key_mask(tokens, ablations.absent_zones)
         with self._matmuls(ships.device):
             queries, memory, token_tables, map_tables = self._encode(tokens, rotary_off)
             hidden, state, buffer = self.trunk.step(
@@ -1087,7 +1114,7 @@ class Yemong(nn.Module):
                 map_tables,
                 carry.state,
                 carry.convolution_buffer,
-                key_mask=tokens.key_mask,
+                key_mask=key_mask,
             )
             policy_logits, value_logits = self.own_heads(hidden[:, :own])
             enemy_action_logits, change = self.ship_heads(hidden[:, own:ships_count])
