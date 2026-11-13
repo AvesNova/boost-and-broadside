@@ -26,7 +26,7 @@ import functools
 import math
 import zlib
 from collections.abc import Callable, Iterator
-from typing import Protocol
+from typing import ClassVar, Protocol
 
 import torch
 from torch.utils import _pytree
@@ -55,12 +55,12 @@ TERMS = (
     "density",
     "shot_trajectory",
     "shot_outcome",
-    "rotary_readout",
+    "geometry",
 )
 # Token counts per view, the denominators' parts: own ships alive; own ships valued (alive or
 # waiting to respawn); view-steps; valid beliefs at non-final steps; enemies alive; shots;
-# every living ship (the rotary read-out's tokens).
-COUNTS = ("policy", "valued", "steps", "next_state", "enemy_action", "shots", "ships")
+# the geometry head's pairs (`geometry.pairs`).
+COUNTS = ("policy", "valued", "steps", "next_state", "enemy_action", "shots", "pairs")
 # The per-tick records the returns read, staged whole per shard (the outcome only with an
 # outcome level: `Learner.small_names`).
 SMALL = ("reward", "values", "outcome", "done", "win_loss", "log_probability", "alive", "valued")
@@ -76,7 +76,7 @@ HEAD_SERIES = {
     "density": "density/loss",
     "shot_trajectory": "shot/loss/trajectory",
     "shot_outcome": "shot/loss/outcome",
-    "rotary_readout": "rotary_readout/loss",
+    "geometry": "geometry/loss",
 }
 # The policy term's trust regions (`LearnerConfig.trust_region`).
 TRUST_REGIONS = ("clip", "clip_higher", "dppo_tv", "dppo_binary_tv")
@@ -153,7 +153,9 @@ class LearnerConfig:
     entropy_stick: float = -0.0081
     entropy_shoot: float = -0.0081
     value: float = 0.007
-    next_state: float = 0.0041
+    # the delta physics head's (the champion's; the absolute head took 0.0041 for the same
+    # trunk share: docs/explanation/learner.md, round2-log.md 03:50-04:13)
+    next_state: float = 0.0033
     # the error head's (`yemong.delta_split`); its term and the physics head's share one
     # denominator (every next-state row), so equal coefficients weigh a row equally
     correction: float = 0.0033
@@ -161,9 +163,8 @@ class LearnerConfig:
     density: float = 0.021
     shot_trajectory: float = 0.007
     shot_outcome: float = 0.019
-    # the read-out's mean squared pair error (not nats): about 0.02 of trunk gradient norm
-    # at initialisation, next_state's trained level (learner page)
-    rotary_readout: float = 0.007
+    # the geometry head's (`yemong.geometry_head`), nats per target per pair
+    geometry: float = 0.007
     learning_rate: float = 3e-4
     warmup_start: float = 1e-7
     warmup_steps: int = 10_000_000  # environment steps (decisions: round four)
@@ -173,6 +174,9 @@ class LearnerConfig:
     micro_batch_rows: int = 160
     target_kl: float | None = 0.02  # None: no early stop
     old_log_probabilities: str = "rollout"
+
+    # the rotary read-out's coefficient (2026-11-07 to 2026-11-12), retired with the head
+    RETIRED: ClassVar[dict] = {"rotary_readout": None}
 
     def __post_init__(self) -> None:
         if self.old_log_probabilities not in ("rollout", "recomputed"):
@@ -283,6 +287,32 @@ def _own_joint(trajectory: Trajectory) -> torch.Tensor:
     return to_joint(trajectory.action)[..., : trajectory.log_probability.shape[-1]]
 
 
+# The views the heads' sums (`head_statistics`) read on a cadence update: the first
+# micro-batches of the first epoch until they hold this many (a sample; the sums' series
+# are ratios of totals, so their meaning does not change with its size). Eager, at about
+# 0.35 s a 32-view micro-batch, the whole epoch cost about 8% of RL's steady time at 1024
+# environments (`steady-speed` notes); 256 views is 8 such micro-batches.
+HEAD_SUM_VIEWS = 256
+
+
+def micro_batch_sizes(count: int, most: int, family: tuple[int, ...] = ()) -> list[int]:
+    """The micro-batch sizes (in order, summing to `count`) of `count` views, each at most
+    `most`, chosen with `family`, the other view counts split alongside it, so that the
+    counts together take as few sizes as they can: under a compile of fixed shapes each size
+    is one compile of every learner stage. One size where one divides every count in up to
+    twice its fewest micro-batches (255 views at 64: five of 51); otherwise each count in
+    as many micro-batches as the largest needs, as equal as they can be, which gives
+    counts that differ by one (the minibatches when they do not divide the views) the same
+    two sizes (383 and 382 at 64: six of 64 or 63). The split is memory and speed only: the
+    micro-batches' gradients add up to the minibatch's."""
+    counts = {count, *family}
+    for size in range(min(most, min(counts)), 0, -1):
+        if all(n % size == 0 and n // size <= 2 * -(-n // most) for n in counts):
+            return [size] * (count // size)
+    parts = min(count, -(-max(counts) // most))
+    return [len(part) for part in torch.arange(count).tensor_split(parts)]
+
+
 class Learner:
     """model: the learner's module, with `unroll(carry, obs, replay, reset)`, the critic's
     `bins` and `config.levels` (one of `returns.VALUE_LAYOUTS`), `outcome_level` (None: no
@@ -291,7 +321,9 @@ class Learner:
     types: the game's (for the shot re-simulation). outcome_weight: the outcome level's
     reward weight (its value in reward units is P(win) - P(loss) times it). stage: how the
     runtime compiles the micro-batch loss, the shot re-simulation's tick and the label codes
-    (identity: eager)."""
+    (identity: eager). split: compile the micro-batch loss as two units, the model's unroll
+    and the loss over its outputs, rather than one graph (the same arithmetic; a
+    compile-time choice, `bnb.runtime.train.TrainConfig.compile_split`)."""
 
     def __init__(
         self,
@@ -304,6 +336,7 @@ class Learner:
         stage: Callable = lambda function: function,
         seed: int = 0,
         diagnostics: bool = True,
+        split: bool = False,
     ) -> None:
         """seed: the learner's random streams (the shot spread, the minibatch order).
         diagnostics: measure the diagnostic series beyond the losses and the early stop's
@@ -346,9 +379,19 @@ class Learner:
         self.trace_decay = torch.tensor(config.trace_decay, device=device)
         self.every_trace = torch.ones_like(self.trace_decay)  # λ = 1: the rewards themselves
         self.team_spirit = torch.tensor(config.team_spirit, device=device)
-        self.loss = stage(self._loss)
-        self.head_sums = stage(self._head_sums)
-        self.cadence_terms = stage(self._terms)  # the cadence groups' own compiled function
+        if split:  # the unroll one unit, shared by the loss and the cadence terms
+            unroll, loss_of = stage(self.unroll), stage(self._loss_of)
+            terms_of = stage(self._terms_of)
+            self.loss = lambda trajectory, *rest: loss_of(unroll(trajectory), trajectory, *rest)
+            self.cadence_terms = lambda trajectory, *rest: terms_of(
+                unroll(trajectory), trajectory, *rest
+            )
+        else:
+            self.loss = stage(self._loss)
+            self.cadence_terms = stage(self._terms)  # the cadence groups' own compiled function
+        # Eager: a diagnostic on the cadence's updates only, of about 40k traced ops; compiled
+        # it was the largest single compile of a cold start (554 s, `compile-split` notes).
+        self.head_sums = self._head_sums
         self.cadence_stopwatch = Stopwatch(device)
         self.shot_tick = stage(shots.tick)
         self.codes = stage(self._codes)
@@ -429,7 +472,6 @@ class Learner:
         counts[:, COUNTS.index("valued")] = small["valued"].sum((0, 2))
         counts[:, COUNTS.index("steps")] = length
         counts[:, COUNTS.index("enemy_action")] = alive[..., own:].sum((0, 2))
-        counts[:, COUNTS.index("ships")] = alive.sum((0, 2))
         return counts
 
     # ------------------------------------------------------------------ labels
@@ -506,15 +548,16 @@ class Learner:
         rows = labels.privileged_rows(trajectory)
         enemy, enemy_mask = labels.enemy_actions(trajectory)
         code = model.shot_code
-        readout = {}
-        if getattr(model, "rotary_readout", None) is not None:
-            readout = dict(rotary_readout=labels.rotary_targets(model, trajectory, rows))
+        pairs = {}
+        if getattr(model, "geometry_head", None) is not None:
+            partners, mask, values = labels.geometry_pairs(trajectory)
+            pairs = dict(geometry_partners=partners, geometry_mask=mask, geometry=values)
         mask = labels.next_state_mask(trajectory, self.model)
         split = {}
         if getattr(model, "correction_code", None) is not None:
             split = labels.split_masks(trajectory, mask, model)
         return dict(
-            **readout,
+            **pairs,
             **split,
             **labels.next_state_targets(model, trajectory, rows),
             next_state_mask=mask,
@@ -548,10 +591,23 @@ class Learner:
         entropy histogram, then the critic targets' entropy per level; empty without
         diagnostics), what the heads' sums read (the unrolled outputs and the shot parts,
         detached; None unless the learner measures the heads)), every sum over its tokens
-        divided by its minibatch-total denominator. The heads' sums are their own compiled
-        function (`_head_sums`), so every epoch runs this one graph."""
-        terms, per_level, statistic, unrolled, shot_parts = self._terms(
-            trajectory, label, derived, denominator, scale
+        divided by its minibatch-total denominator. The heads' sums are their own function
+        (`_head_sums`, eager), so every epoch runs this one graph."""
+        unrolled = self.unroll(trajectory)
+        return self._loss_of(unrolled, trajectory, label, derived, denominator, scale)
+
+    def _loss_of(
+        self,
+        unrolled,
+        trajectory: Trajectory,
+        label: dict,
+        derived: dict,
+        denominator: dict,
+        scale: torch.Tensor,
+    ):
+        """`_loss` given the model's outputs over the micro-batch (`unroll`)."""
+        terms, per_level, statistic, unrolled, shot_parts = self._terms_of(
+            unrolled, trajectory, label, derived, denominator, scale
         )
         loss = sum(getattr(self.config, term) * terms[term] for term in TERMS)
         heads_read = None
@@ -588,8 +644,21 @@ class Learner:
         value loss per level (levels,), statistics (STATISTICS,), the model's outputs, the
         shot trajectory's cross-entropy per part (L, R, N, ages, parts) or None), with their
         graph."""
+        return self._terms_of(
+            self.unroll(trajectory), trajectory, label, derived, denominator, scale
+        )
+
+    def _terms_of(
+        self,
+        unrolled,
+        trajectory: Trajectory,
+        label: dict,
+        derived: dict,
+        denominator: dict,
+        scale: torch.Tensor,
+    ):
+        """`_terms` given the model's outputs over the micro-batch (`unroll`)."""
         model = self.model
-        unrolled = self.unroll(trajectory)
         own = trajectory.log_probability.shape[-1]
         terms = dict.fromkeys(TERMS, unrolled.policy_logits.new_zeros(()))
         terms["policy"], entropies, statistic = self._policy(
@@ -653,12 +722,13 @@ class Learner:
             terms["shot_outcome"] = (
                 losses.masked_sum(outcome, label["shot_mask"]) / denominator["shots"]
             )
-        if _head(unrolled, "rotary_readout") is not None:
-            error = losses.phasor_square_error(  # (L, R, N, blocks): the blocks' mean
-                unrolled.rotary_readout.float(), label["rotary_readout"][..., None, :, :]
-            ).mean(-1)
-            terms["rotary_readout"] = (
-                losses.masked_sum(error, trajectory.alive) / denominator["ships"]
+        if _head(unrolled, "geometry_latents") is not None:
+            per_pair = losses.geometry_cross_entropy(
+                model.geometry(unrolled.geometry_latents, label["geometry_partners"]),
+                label["geometry"],
+            )
+            terms["geometry"] = (
+                losses.masked_sum(per_pair, label["geometry_mask"]) / denominator["pairs"]
             )
         return terms, per_level, statistic, unrolled, parts
 
@@ -825,8 +895,47 @@ class Learner:
         """Views per micro-batch: micro_batch_rows ship rows."""
         return max(1, self.config.micro_batch_rows // self.rules.num_ships)
 
-    def _micro_batches(self, views: torch.Tensor) -> list[torch.Tensor]:
-        return list(views.split(self.micro_views))
+    def _micro_batches(
+        self, views: torch.Tensor, family: tuple[int, ...] = ()
+    ) -> list[torch.Tensor]:
+        """The views in micro-batches of at most micro_views, of as few sizes as the views
+        and `family` (the other view counts split alongside these, such as the update's
+        other minibatch size) allow: under a compile of fixed shapes every size is one
+        compile of every learner stage (`micro_batch_sizes`)."""
+        sizes = micro_batch_sizes(len(views), self.micro_views, family)
+        return list(views.split(sizes))
+
+    def minibatch_sizes(self, views: int) -> tuple[int, ...]:
+        """The view counts of an update's minibatches (`update`'s split of `views`): one,
+        or two that differ by one when the minibatches do not divide the views."""
+        minibatches = self.config.minibatches
+        return tuple(sorted({views // minibatches, -(-views // minibatches)} - {0}))
+
+    def first_micro_batch(self, views: int) -> int:
+        """The views of an update's first micro-batch over `views` views (the first
+        minibatch's first, `update`'s split): what the drift unrolls."""
+        sizes = self.minibatch_sizes(views)
+        return micro_batch_sizes(max(sizes), self.micro_views, sizes)[0]
+
+    def micro_batch_shapes(self, views: int, cadence: bool = False) -> tuple[int, ...]:
+        """The micro-batch sizes an update over `views` views runs its loss on (with
+        `cadence`, also those of the cadence's gradient decomposition, the first minibatch
+        in halves): under a compile of fixed shapes each is one compile of every compiled
+        learner stage. One unless the minibatches do not divide the views."""
+        groups = [self.minibatch_sizes(views)]
+        if cadence:
+            first = max(groups[0])
+            groups.append(tuple({first - first // 2, first // 2} - {0}))
+        return tuple(
+            sorted(
+                {
+                    size
+                    for group in groups
+                    for count in group
+                    for size in micro_batch_sizes(count, self.micro_views, group)
+                }
+            )
+        )
 
     def _on_device(self, views: torch.Tensor) -> torch.Tensor:
         """Host view indices on the device, from pinned memory: no wait on the queued work
@@ -908,6 +1017,9 @@ class Learner:
                             labels.next_state_mask(trajectory, self.model).sum((0, 2)).float()
                         )
                         counts[views, COUNTS.index("shots")] = shot_mask.sum((0, 2)).float()
+                        if getattr(self.model, "geometry_head", None) is not None:
+                            _, pair_mask, _ = labels.geometry_pairs(trajectory)
+                            counts[views, COUNTS.index("pairs")] = pair_mask.sum((0, 2, 3)).float()
                         stored = _pytree.tree_map_only(
                             torch.Tensor,
                             lambda x: x.transpose(0, 1).contiguous(),
@@ -1009,16 +1121,18 @@ class Learner:
         return out
 
     def gradient(
-        self, segments: Segments, prepared: dict, chosen: torch.Tensor, heads: bool = False
+        self, segments: Segments, prepared: dict, chosen: torch.Tensor, head_views: int = 0
     ) -> tuple:
         """Accumulate one minibatch's gradient (views `chosen`, host indices) into the
         parameters' .grad, micro-batch by micro-batch: (terms (TERMS,), value loss per
-        level, statistics (STATISTICS,), diagnostics, the heads' sums (see `_loss`; measured
-        when `heads`)), each the minibatch's."""
+        level, statistics (STATISTICS,), diagnostics, the heads' sums (see `_loss`) over
+        its first micro-batches until they hold `head_views` views (0: none)), each the
+        minibatch's."""
         device, derived = self.device, prepared["derived"]
         total = prepared["counts"][self._on_device(chosen)].sum(0).clamp_min(1.0)
         denominator = dict(zip(COUNTS, total.unbind()))
-        micro = self._micro_batches(chosen)
+        sizes = self.minibatch_sizes(len(prepared["counts"]))
+        micro = self._micro_batches(chosen, sizes if len(chosen) in sizes else ())
         terms_sum = torch.zeros(len(TERMS), device=device)
         levels_sum = torch.zeros(len(self.levels), device=device)
         statistic_sum = torch.zeros(len(self.STATISTICS), device=device)
@@ -1036,9 +1150,10 @@ class Learner:
             )
             loss.backward()
             head_part = {}
-            if heads and heads_read is not None:
+            if head_views > 0 and heads_read is not None:
                 with torch.no_grad():
                     head_part = self.head_sums(heads_read, trajectory, label)
+                head_views -= len(host_views)
             terms_sum += terms
             levels_sum += per_level
             statistic_sum += statistic
@@ -1098,9 +1213,10 @@ class Learner:
         (the learner's Outputs on the observation after the last tick). environment_steps:
         environment steps this update collected (the warmup counts them). cadence: also
         measure the cadence groups (`cadence`), after the steps. heads: measure the heads' sums
-        (in the first epoch, when the learner measures them; the trainer passes its cadence,
-        as they cost about 4% of a learn). Returns the update's series
-        on the device (`bnb.contracts.series`), for the caller to read back once."""
+        (a sample: the first epoch's first micro-batches until they hold `HEAD_SUM_VIEWS`
+        views, when the learner measures them; the trainer passes its cadence). Returns the
+        update's series on the device (`bnb.contracts.series`), for the caller to read back
+        once."""
         config, device = self.config, self.device
         views = segments.views
         if views < config.minibatches:
@@ -1119,8 +1235,10 @@ class Learner:
         statistics_total = torch.zeros(len(self.STATISTICS), device=device)
         diagnostics_total = None
         last_moments = None  # the last completed epoch's fit moments
-        head_total: dict = {}  # the heads' sums, over the first epoch
-        measure_heads = self.measures_heads and heads
+        # the heads' sums: a sample, the first micro-batches of the first epoch until they
+        # hold HEAD_SUM_VIEWS views (eager; every micro-batch cost ~8% of RL's steady time)
+        head_total: dict = {}
+        head_views = HEAD_SUM_VIEWS if self.measures_heads and heads else 0
         drift = self.drift(segments, prepared)
         skipped = torch.zeros((), dtype=torch.int64, device=device)
         nonfinite_terms = torch.zeros(len(TERMS), dtype=torch.int64, device=device)
@@ -1129,15 +1247,17 @@ class Learner:
         steps, stopped, epochs = 0, False, 0
         first_kl = first_epoch = epoch_statistics = None
         for epoch in range(config.epochs):
-            # Minibatches as equal as the views allow (micro-batches of micro_views views,
-            # each minibatch's last one smaller where they do not divide).
+            # Minibatches as equal as the views allow (micro-batches of at most micro_views
+            # views, `_micro_batches`).
             order = torch.randperm(views, generator=self.order_generator)
             epoch_statistics = torch.zeros(len(self.STATISTICS), device=device)
             epoch_moments = None
             for chosen in order.tensor_split(config.minibatches):
                 terms, per_level, statistic, diagnostic, head_part = self.gradient(
-                    segments, prepared, chosen, heads=measure_heads and epoch == 0
+                    segments, prepared, chosen, head_views if epoch == 0 else 0
                 )
+                if epoch == 0:
+                    head_views = max(0, head_views - len(chosen))
                 head_total = head_statistics.add(head_total, head_part)
                 norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), config.max_grad_norm)
                 finite = torch.isfinite(norm)
@@ -1325,8 +1445,8 @@ class Learner:
                     basic[f"next_state_{name}"] = (
                         config.next_state * part / denominator["next_state"]
                     )
-            elif term in ("rotary_readout", "correction") and not terms[term].requires_grad:
-                continue  # a model without the read-out or the error head
+            elif term in ("geometry", "correction") and not terms[term].requires_grad:
+                continue  # a model without the geometry head or the error head
             else:
                 basic[term] = getattr(config, term) * terms[term]
         return basic
@@ -1341,10 +1461,11 @@ class Learner:
         total = prepared["counts"][self._on_device(views)].sum(0).clamp_min(1.0)
         denominator = dict(zip(COUNTS, total.unbind()))
         halves = [half for half in views.tensor_split(2) if half.numel()]
+        family = tuple(len(half) for half in halves)
         names = None
         accumulated = None
         for half_index, half in enumerate(halves):
-            micro = self._micro_batches(half)
+            micro = self._micro_batches(half, family)
             for host_views, (trajectory, shot_labels) in zip(
                 micro, self.staged(segments, micro), strict=True
             ):
@@ -1398,8 +1519,11 @@ class Learner:
     def drift(self, segments: Segments, prepared: dict) -> torch.Tensor:
         """(2,): the step/unroll ratio drift before any optimizer step, on the first
         micro-batch of views: |exp(log_probability_unroll - log_probability_rollout) - 1|
-        over living own ships, max and mean (0 without any)."""
-        views = torch.arange(min(self.micro_views, segments.views))
+        over living own ships, max and mean (0 without any). The micro-batch's views are
+        `first_micro_batch`'s: never more than a loss micro-batch holds (an eager unroll of
+        `micro_views` views, when the minibatches are smaller, cost memory and time the
+        update never otherwise needs)."""
+        views = torch.arange(self.first_micro_batch(segments.views))
         # The loop runs the store's generator out: it releases the batch's staging buffers
         # for reuse only once the compute below is queued (an abandoned generator never does).
         for batch in segments.batches(segments.names, [views]):

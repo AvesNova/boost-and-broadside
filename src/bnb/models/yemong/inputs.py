@@ -26,7 +26,7 @@ from bnb.game.rules import TEAMS
 from . import codes
 from .delta import DeltaComponent
 from .features import RESPAWN_HARMONICS, local_presence, respawn_features, symlog
-from .state_code import POSITION_LEVELS, POSITION_PERIOD, ShipStateCode
+from .state_code import POSITION_LEVELS, ShipStateCode
 
 NULL_ACTION = 0  # the joint index of coast, straight, hold fire
 # The model's input scales: constants of the model (its VERSION), not the game's rules. They
@@ -91,12 +91,41 @@ TIMER_INPUTS = 1 + 2 * RESPAWN_HARMONICS
 BOUNDARY_INPUTS = 1 + TIMER_INPUTS
 
 
-def global_inputs(mode_inputs: tuple[str, ...], timers: bool = False) -> int:
+# The arena radius's code (`YemongConfig.arena_code`): ln(R / ARENA_CODE_RADIUS) as an
+# HL-Gauss code, its real bins a quarter octave apart from 0.25x to 8x (1950 m, the arena
+# preset, to 62.4 km, past the largest evaluation maps), 2 padding bins per side (decisions,
+# "Code padding rule"). The real-scale arena is the reference: a constant of the model.
+ARENA_CODE_RADIUS = 7800.0  # m
+ARENA_CODE_LOW = math.log(0.25)
+ARENA_CODE_SPACING = math.log(2.0) / 4.0
+ARENA_CODE_BINS = 21  # real bins: 0.25x .. 8x
+ARENA_CODE = ARENA_CODE_BINS + 2 * codes.PADDING_BINS
+
+
+def arena_code(radius: torch.Tensor) -> torch.Tensor:
+    """(...) arena radii (m) to their codes (..., ARENA_CODE): the Gaussian of
+    `codes.HL_GAUSS_SIGMA` bins at ln(R / ARENA_CODE_RADIUS), clamped to the outermost
+    padding bin's centre."""
+    coordinate = (torch.log(radius / ARENA_CODE_RADIUS) - ARENA_CODE_LOW) / ARENA_CODE_SPACING
+    low, high = codes.PADDING_BINS, ARENA_CODE_BINS - 1 + codes.PADDING_BINS
+    coordinate = torch.clamp(coordinate, -float(low), float(high))
+    return codes.hl_gauss(coordinate, low, high, codes.HL_GAUSS_SIGMA)
+
+
+def global_inputs(mode_inputs: tuple[str, ...], timers: bool = False, arena: bool = False) -> int:
     """The global token's width: the centre's code, then episode progress, arena radius,
     fog, the flags of the modes read (mode_inputs), both scores over the target, the
     target, the front and its threshold, then with timers the own team's next respawn
-    wave (TIMER_INPUTS), then the boundary's inputs (BOUNDARY_INPUTS)."""
-    return POSITION_CODE + 8 + len(mode_inputs) + (TIMER_INPUTS if timers else 0) + BOUNDARY_INPUTS
+    wave (TIMER_INPUTS), then with arena the arena radius's code (`arena_code`), then the
+    boundary's inputs (BOUNDARY_INPUTS)."""
+    return (
+        POSITION_CODE
+        + 8
+        + len(mode_inputs)
+        + (TIMER_INPUTS if timers else 0)
+        + (ARENA_CODE if arena else 0)
+        + BOUNDARY_INPUTS
+    )
 
 
 FIELD_INPUTS = POSITION_CODE + 3
@@ -308,11 +337,9 @@ class Tokens:
     key_mask: torch.Tensor | None = None
 
 
-def _position_code(position: torch.Tensor) -> torch.Tensor:
+def _position_code(position: torch.Tensor, period: float) -> torch.Tensor:
     zero = torch.zeros_like(position[..., 0])
-    return codes.position_encode(position, zero, (POSITION_PERIOD,) * 2, POSITION_LEVELS).flatten(
-        -2
-    )
+    return codes.position_encode(position, zero, (period,) * 2, POSITION_LEVELS).flatten(-2)
 
 
 def believed(ships: torch.Tensor, replay: Replay) -> tuple[torch.Tensor, ...]:
@@ -341,6 +368,7 @@ def compose(
     mode_inputs: tuple[str, ...] = MODE_INPUTS,
     timers: bool = False,
     mask_benched: bool = False,
+    read_arena: bool = False,
 ) -> Tokens:
     """The Tokens of one team's views (...) from the observation and the replay: the ships' belief
     codes and features, the global token, the fields and the zones, every position shifted by the
@@ -359,8 +387,12 @@ def compose(
     its time to zero, coded as a timer (elimination's shrinking boundary; 1 and 0
     elsewhere). With mask_benched a benched row (the observation's benched flag) counts in
     no ship's presence and the Tokens carry the key mask that hides it from attention
-    (`Yemong.mask_benched`)."""
+    (`Yemong.mask_benched`).
+    With read_arena the global token reads the arena radius's code before the boundary's
+    inputs (`global_inputs`). The position codes' period is the state code's
+    (`ShipStateCode.position_period`)."""
     ships, dtype = obs.ships, obs.ships.dtype
+    period = state_code.position_period
     own = replay.previous_action.shape[-1]
     column = {name: ships[..., SHIP[name]] for name in SHIP}
     visible = column["visible"] > 0.5
@@ -416,7 +448,7 @@ def compose(
     per_target = torch.where(target > 0.0, 1.0 / torch.where(target > 0.0, target, 1.0), 0.0)
     global_token = torch.cat(
         [
-            _position_code(centre),
+            _position_code(centre, period),
             torch.stack(
                 [
                     globals_[..., GLOBAL["episode_progress"]],
@@ -432,6 +464,7 @@ def compose(
                 -1,
             ),
             *((respawn_features(globals_[..., GLOBAL["next_wave_own"]]),) if timers else ()),
+            *((arena_code(globals_[..., GLOBAL["arena_radius"]]),) if read_arena else ()),
             globals_[..., GLOBAL["boundary_fraction"], None],
             respawn_features(globals_[..., GLOBAL["boundary_time_to_zero"]]),
         ],
@@ -444,7 +477,7 @@ def compose(
     )
     field = torch.cat(
         [
-            _position_code(field_position),
+            _position_code(field_position, period),
             torch.stack(
                 [
                     fields[..., FIELD["radius"]] / FIELD_RADIUS_SCALE,
@@ -468,7 +501,7 @@ def compose(
     role = zones[..., ZONE["role"]].long()
     zone = torch.cat(
         [
-            _position_code(zone_position),
+            _position_code(zone_position, period),
             torch.cat(
                 [
                     (zones[..., ZONE["radius"]] / FIELD_RADIUS_SCALE)[..., None],

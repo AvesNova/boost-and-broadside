@@ -38,6 +38,8 @@ ARM_SETS = (
     "yemong.delta_baseline=extrapolation",
     "yemong.spread_inputs=ellipse",
     "yemong.delta_split=true",
+    # a new run's defaults train the physics head's hidden rows (the champion's): arm 4 does not
+    "yemong.physics_hidden_decay=null",
 )
 # arm 4c: arm 4 on C-fixed's inputs, the rates computed for the baseline but not read
 WITHOUT_INPUTS = dict(SETTINGS, acceleration_inputs=False)
@@ -218,6 +220,7 @@ def test_the_arms_set_line_builds_the_arm():
     )
     build = model_build(config)
     assert build.config.delta_baseline == "extrapolation" and build.config.delta_split
+    assert build.config.physics_hidden_decay is None
     assert build.dynamics is not None
 
 

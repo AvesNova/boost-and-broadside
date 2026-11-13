@@ -22,7 +22,6 @@ from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
 from bnb.league.lanes import LaneHooks
 from bnb.learn import bc
-from bnb.runs.session import policy_player
 from bnb.runtime import cloning
 from bnb.runtime.evaluate import first_results, score
 from bnb.runtime.train import LEARNER, SCRIPTED, TrainConfig, Trainer
@@ -70,8 +69,9 @@ def test_the_toy_clone_scores_against_its_teacher_and_the_chaser():
                 )
             )
 
-        # the product: the average the score stop read, in the learner's controller
-        student.model.load_state_dict(hooks.averages.weights[policy_player(student)])
+        # the average the score stop read (the one whose window met the target), in the
+        # learner's controller
+        student.model.load_state_dict(hooks.averages.weights[student.stop_rule.read])
         clone = student.controllers[LEARNER]
         versus_teacher = against(clone, teacher)
         versus_chaser = against(clone, chaser)

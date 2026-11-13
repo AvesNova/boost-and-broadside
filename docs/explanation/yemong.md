@@ -75,7 +75,8 @@ without it.
 ### The position offset
 
 Every position the model reads, of ships, fields, zones and the map centre, is shifted by
-the view's offset. The categorical position codes then cannot memorize absolute map
+the view's offset, drawn per match uniformly over the colour code's period
+(`YemongConfig.position_period`: 236 196 m in a new run's build, 26 244 m in older ones). The categorical position codes then cannot memorize absolute map
 positions, while rotary attention and local presence read only differences, where the
 offset cancels.
 `tests/sections/test_yemong_model.py::test_the_offset_reaches_the_outputs_only_through_the_position_codes`
@@ -97,6 +98,10 @@ mode's zones are key and value memory only.
   `YemongConfig.mode_inputs`: a new run reads team deathmatch, Frontline and elimination;
   a build record from before elimination (2026-11-12) reads the first two, and plays an
   elimination match as a match of no mode.
+  With `YemongConfig.arena_code` (a new run's build) it also reads the arena radius as a
+  code: `ln(R / 7800 m)` as an HL-Gauss code, a quarter octave a bin from 0.25x to 8x
+  (1950 m to 62.4 km) with 2 padding bins per side, so maps of every size read with the
+  same resolution in proportion.
 - **A field token** reads its centre's code, radius, band width and level; **a zone token**
   its centre's code, radius, role, meter and the captures left. An absent zone is one
   learned vector (see [Mixed batches](game/mixed-batches.md)).
@@ -144,9 +149,18 @@ The next-state head predicts the same vector, so a forecast carries its own unce
 ### The next-state head: absolute or delta
 
 `YemongConfig.next_state` chooses what the next-state head predicts. Its inputs, the
-state code above, are the same either way.
+state code above, are the same either way. A new run (`TrainConfig.yemong`, since
+2026-11-12) builds the champion's head, the
+2026-11-09-*-deadreckon-split-hiddenphysics run's: `"delta"` on the extrapolation baseline,
+split (`delta_split`), the physics head's hidden rows decayed with 0.5 s
+(`physics_hidden_decay`), its coefficient `LearnerConfig.next_state` 0.0033. `YemongConfig()`'s
+own defaults are the record defaults (`"absolute"`, persistence, no split), which a build
+record written before a field existed reads. The arms' `--set` lines below are each arm's
+change from the record defaults; on a new run's defaults an arm without the split also
+needs `--set yemong.delta_split=false --set yemong.physics_hidden_decay=null`, and one
+without the hidden rows' physics `--set yemong.physics_hidden_decay=null`.
 
-- **`"absolute"`** (the default): the state code of the state at `t + 1`. The head's logits
+- **`"absolute"`** (the record default): the state code of the state at `t + 1`. The head's logits
   add to the persistence baseline `log(code_t + 1e-3)` (`bnb.models.yemong.heads.next_state_logits`),
   so it starts as "nothing changes", and the forecast is the decoded code.
 - **`"delta"`**: each quantity's one-tick change from its baseline
@@ -354,7 +368,7 @@ scalars, with shield and energy as fractions of the type's maximum. Bins are abo
 
 | Quantity | Knee | Bound (the last real centre) | Real bins |
 |---|---|---|---|
-| position, per axis (m) | 11.9 | 26 244 (the position code's period) | 31 |
+| position, per axis (m) | 11.9 | 26 244 (the record colour code's period, fixed) | 31 |
 | velocity, per axis (m/s) | 9.09 | 639 (twice the velocity code's reach) | 19 |
 | heading (rad) | 0.160 | pi | 13 |
 | nose rate (rad/s) | 0.587 | 16 | 15 |
@@ -469,7 +483,8 @@ read this covariance. A row seen at `t` takes the
 physics forecast, as without the split. Select the arm with `--set yemong.delta_split=true`
 on arm 2's line.
 
-`YemongConfig.physics_hidden_decay` (tau in seconds, with `delta_split`; off by default)
+`YemongConfig.physics_hidden_decay` (tau in seconds, with `delta_split`; off in the record
+defaults, 0.5 in a new run's)
 also trains the physics head on the hidden enemies, each row weighted `exp(-age / tau)` by
 the time since its ship was last seen (the replay's age at `t`; a row of the segment's
 first tick weighs 0, its truth lacking the tick before). Its target is truth to truth: the
@@ -584,7 +599,7 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
 - **Encoder:** one first projection per token kind, then a shared one. Fields and zones are
   then projected into the map memory, of width `map_width`.
 - **Trunk:** blocks of spatial sublayers and one temporal sublayer each, in the order
-  `YemongConfig.order` gives (see [Trunk order and the rotary read-out](#trunk-order-and-the-rotary-read-out)):
+  `YemongConfig.order` gives (see [Trunk order](#trunk-order)):
   by default the spatial sublayers first.
   - A **spatial sublayer** is attention of the queries over themselves and the map memory,
     with rotary encodings of position and heading, then a gated MLP. There is no mask, but
@@ -615,9 +630,9 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
 | density | global token | ally and enemy rates on a hex grid that scales with the arena |
 | shot outcome | ship rows | how a shot fired now would end |
 | shot trajectory | ship rows, at bullet ages (in training, 4 per shot) | where a shot fired now would be at each age |
-| rotary read-out (optional) | ship rows, after each block's temporal sublayer | per block, a (cos, sin) pair per rotary frequency |
+| geometry (training only, optional) | pairs of ship rows: an own ship and another ship the view sees | the pair's range, antenna train angle, aspect, heading crossing angle and closure rate |
 
-### Trunk order and the rotary read-out
+### Trunk order
 
 `YemongConfig.order` sets each block's sublayer order: `"spatial_first"` (spatial,
 spatial, temporal) or `"temporal_first"` (temporal, spatial, spatial). Temporal first,
@@ -628,38 +643,35 @@ loop of `step`, and the carry is the same shape. A new run builds `"temporal_fir
 default, so a build record from before the setting existed loads as it was trained.
 `--set yemong.order=spatial_first` selects the other order.
 
-`YemongConfig.rotary_readout` (off by default; it needs `temporal_first` and `rotary`) adds
-one linear head per block, on that block's temporal sublayer's ship rows: every block does
-the same thing, whichever it is. Each head gives a (cos, sin) pair for every rotary
-frequency: x and y for each of the `rotary_octaves` position octaves, then each
-heading harmonic (2 x (2 x 8 + 4) = 40 numbers at the defaults). The pairs are not
-normalised: the read-out is trained toward the true phasors, whose expectation under the
-model's uncertainty is shorter than 1, so a short pair means the model is unsure at that
-frequency, and attention at that frequency is damped.
+The per-block rotary read-out (arm D, `rotary_readout`) was retired on 2026-11-12 in favour
+of the geometry head: a build record with it off still loads, one with it on does not.
 
-With the read-out, each block's spatial sublayers rotate a ship's row by:
+### The geometry head
 
-- a **visible** ship: its true tables, from its observed position and heading;
-- a **hidden** ship: that block's read-out pairs, in place of the belief's tables;
-- the global token and the map memory (fields, zones): their exact tables, as without it.
+`YemongConfig.geometry_head` (on in a new run's build, off in the record default) adds a
+training-only head (`bnb.models.yemong.geometry`) that reads **pairs** of the trunk's ship
+rows and predicts the pair's geometry, so the trunk learns to carry relative position,
+attitude and motion in its rows rather than only inside attention's rotation. A pair is
+an anchor, an own ship, and a partner, another ship alive that the view sees (an own ship
+or a visible enemy); hidden ships are never in a pair, so the head never asks for what
+the view lacks. Each anchor has up to 8 partners a tick, the rows after it in a cycle that
+moves on 8 rows each tick: in 5v5 every other ship every tick, in a larger fleet every
+ship within a few ticks, at a fixed cost per tick.
 
-The read-outs enter the tables detached, so each learns only from its own loss (the
-learner's `rotary_readout` term, the mean over blocks of each block's error against the
-true phasors of every living ship; see the [learner page](learner.md)). That keeps each
-optimum the expected phasor and keeps the fused
-attention kernel in use in the learner (the kernel gives no gradient to the tables). The
-inference-time `rotary` ablation still makes every table the identity, the read-out's
-included. Select it with `--set yemong.rotary_readout=true`.
+Its targets, from anchor A to partner B, each a categorical code in nats:
 
-**The temporal-first arms.** The BC comparison of the trunk order runs two arms beside
-the baseline:
+| Target | Definition | Code |
+|---|---|---|
+| range | `|p_B - p_A|` | symlog above zero, knee 10 m, 48 bins to 64 km (about 20% apart), 2 padding bins per side |
+| antenna train angle | the line of sight off A's nose | 48 circular bins (7.5 degrees), wrapped Gaussian, no padding |
+| aspect | the line of sight off B's tail: 0 with A dead astern of B, pi head on | the same |
+| heading crossing angle | B's heading less A's | the same |
+| closure rate | `-(v_B - v_A) . u_AB` (m/s, positive closing) | signed symlog, knee 10 m/s, 41 bins to 640 m/s, 2 padding bins per side |
 
-- **C**, temporal first with forecast feedback: hidden ships' rows and rotary positions come
-  from the belief, as in the baseline (`--set yemong.order=temporal_first`);
-- **D**, temporal first, Griffin only (no forecast fed back between ticks), with hidden
-  ships' rotary pairs from each block's read-out: memory places a hidden ship where it thinks the
-  ship is, not at its last sighting (`--set yemong.order=temporal_first --set
-  yemong.rotary_readout=true --set yemong.forecast_feedback=false`).
+The head computes one latent per row (an anchor half and a partner half), adds the
+anchor's to each partner's, and maps the sum through a norm, a hidden layer and the output
+layer, as the shot trajectory head does with its ages. The learner's `geometry` term
+([learner page](learner.md)) is its cross-entropy, nats per target, over the pairs.
 
 The critic gives one value per value level (`YemongConfig.levels`; by default one per
 reward level, `bnb.contracts.REWARD_LEVELS`): a per-ship categorical value over

@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/cli.py, src/bnb/runtime/cloning.py, src/bnb/learn/bc.py, src/bnb/runs/session.py]
-reviewed: 2026-11-09
+reviewed: 2026-11-11 15:15
 ---
 
 # Behaviour cloning
@@ -19,14 +19,19 @@ uv run --no-sync bnb train --preset mixed --objective bc --teacher-temperature 1
 ```
 
 `--objective bc` plays the BC lineup (half self-play, half the scripted agent) in the
-chosen game and runs until a stop rule fires: parity against the scripted agent over 1000
-lane games, read on the better of the two averages of the clone's weights, a KL plateau,
-or the budget ([When it stops](../explanation/behaviour-cloning.md#when-it-stops)). The scripted
-opponent plays the labels' distribution, at `--teacher-floor` and `--teacher-temperature`.
-`--updates` is not used. Each update prints the BC KL, the labels' and the student's
-entropy, the live score per opponent and, once an average's 1000 games have finished, the
-average the stop rule reads with its window score and standard error; the last line names
-the rule that stopped it and the average the run's policy holds. The other
+chosen game and runs until a stop rule fires: the plateau of the BC KL, or the budget, a
+cap; a score target (`--set stop.score_target=0.5`, off by default) adds parity against
+the scripted agent over 1000 lane games, read on the better of the two averages of the
+clone's weights ([When it stops](../explanation/behaviour-cloning.md#when-it-stops)). The
+scripted opponent plays the labels' distribution, at `--teacher-floor` and
+`--teacher-temperature`. `--updates` is not used. Each update prints the BC KL, the
+labels' and the student's entropy, the live score per opponent, once an average's 1000
+games have finished the average the score window reads with its window score and standard
+error, and once the plateau reads one its fraction (the KL's recent improvement over its
+improvement since 5M steps; the rule fires once it has stayed below 0.05 for 10M steps)
+and how long it has been below; the last line names the rule that stopped it and the
+average the run's policy holds. To clone and then reinforce in one command, chain them
+([Training](training.md#chain-bc-and-rl)). The other
 options (`--model`, `--environments`, `--shards`, `--precision`, `--micro-batch-rows`,
 `--seed`, `--set`, `--name`, `--runs-directory`) are training's ([Training](training.md)).
 
@@ -40,7 +45,7 @@ counts and its own lane ratings
 
 | Directory | Holds |
 | --- | --- |
-| `runs/<run>/policy/`{.plain} | the run's policy: the average the stop rule read last |
+| `runs/<run>/policy/`{.plain} | the run's policy and the hand-off to RL: always the exponential average |
 | `runs/<run>/policy-uniform/`{.plain} | the uniform average (after the warm-up) |
 | `runs/<run>/policy-exponential/`{.plain} | the exponential moving average |
 | `runs/<run>/policy-live/`{.plain} | the live clone |
@@ -53,7 +58,7 @@ never replaced, so a run resumed past its budget keeps its earlier averages; `bn
 ([Runs and checkpoints](../explanation/runs.md#every-updates-policy-files)).
 
 `run.json`{.plain} records the rule as `stopped_by` (`interrupted` for a stop request) and the
-average in `policy/` as `policy_player` (`uniform_average` or `exponential_average`).
+average in `policy/` as `policy_player` (always `exponential_average`).
 The averages take the league's settings: the uniform average starts after the run's
 learning-rate warm-up (`LearnerConfig.warmup_steps`), `--set league.uniform_from=20000000` starts
 it elsewhere, `--set league.exponential_decay=0.98` slows the exponential
@@ -62,18 +67,17 @@ one.
 ## Run a BC experiment to a fixed budget
 
 A comparison between builds (an "arm") trains every build for the same number of
-environment steps, so that neither stop rule ends one early:
+environment steps, so that no stop rule ends one early:
 
 <!-- not-runnable: needs CUDA and runs for hours -->
 ```bash
 uv run --no-sync bnb train --preset mixed --objective bc --bc-budget-steps 30000000 \
-    --set stop.score_target=1.0 --set stop.plateau_steps=1000000000 \
-    --name 2026-11-09-bc-arm-example
+    --set stop.plateau_fraction=null --name 2026-11-09-bc-arm-example
 ```
 
-A score target of 1.0 (`StopConfig.score_target`) puts the parity rule out of reach and a
-plateau window of 1e9 steps (`StopConfig.plateau_steps`) the KL plateau, so the budget ends
-the run. The build's own changes go on as more `--set` lines.
+No plateau fraction (`StopConfig.plateau_fraction`) turns the plateau off, and the score
+stop is off without a target, so the budget ends the run (the plateau's reading is still
+logged). The build's own changes go on as more `--set` lines.
 The model and learner settings the arms build on (the trunk order, BC's discounts and
 trace decays) are the defaults: a run copied from an older arm's command line may carry
 them as `--set` lines too, which changes nothing. The exact command of any run is in its
@@ -89,11 +93,11 @@ uv run --no-sync bnb train --resume clone --bc-budget-steps 800000000
 
 A resume continues a stopped or crashed BC run from its newest checkpoint, as for PPO
 ([Resuming, forking and sharing runs](resuming-forking-sharing.md)): the stop rule's score
-window, the KL's average and its history come back with the rest, so the rules decide as
+windows and the plateau's state come back with the rest, so the rules decide as
 they would have in one process, and so do both averages. `--bc-budget-steps` is the run's total budget and may be
 raised on a resume; the other stop settings come from the checkpoint. A finished run
 resumed trains until a rule fires again: a raised budget continues one that stopped on its
-budget, while the score and plateau rules usually fire on the first update. The new policy
+budget, while the plateau (and a score target) usually fire on the first update. The new policy
 files replace the old ones. A BC run itself starts fresh or resumes: it does not start
 from another run (`--from`) or a policy file (`--init-from`).
 
@@ -105,7 +109,8 @@ uv run --no-sync bnb train --preset mixed --init-from runs/clone/policy
 ```
 
 `--init-from` starts a new PPO run from the policy file's weights and return scale, with a
-fresh optimizer and no cloning term, and its live rating starts from the file's lane
+fresh optimizer and step count (so the learning-rate warm-up runs again) and no cloning
+term, and its live rating starts from the file's lane
 ratings ([Resuming, forking and sharing runs](resuming-forking-sharing.md)). Any of the
 four files works: `--init-from runs/clone/policy-live` starts from the live clone. Its entropy
 coefficients are `bnb.learn.ppo.WARM_START_ENTROPY` (0) rather than v1's −0.0081, on each

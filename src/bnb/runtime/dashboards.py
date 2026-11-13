@@ -120,7 +120,7 @@ HEADLINE = (
         (
             panel("policy/entropy/joint"),
             rl("policy/kl and clip fraction", "policy/kl", "policy/clip_fraction"),
-            bc("bc/kl", "bc/kl", "bc/stop/kl_average"),
+            bc("bc/kl", "bc/kl", "bc/stop/plateau/kl_mean"),
             panel("critic/explained_variance", "critic/explained_variance/*"),
             panel(
                 "gradient norm and clip fire rate", "train/gradient_norm", "train/clip_fire_rate"
@@ -162,7 +162,9 @@ CURATED = (
     Section(
         "bc/",
         (
-            bc("bc/kl", "bc/kl", "bc/stop/kl_average"),
+            bc("bc/kl", "bc/kl", "bc/stop/plateau/kl_mean"),
+            bc("bc/stop/plateau/fraction", "bc/stop/plateau/fraction"),
+            bc("bc/stop/plateau/held_steps", "bc/stop/plateau/held_steps"),
             bc("bc/agreement", "bc/agreement/*"),
             bc("bc/entropy", "bc/entropy/*"),
             bc("bc/score", "bc/score/*", "bc/stop/window_score", "bc/stop/window_stderr"),
@@ -258,10 +260,8 @@ CURATED = (
             panel("enemy_action/loss"),
             panel("density/loss"),
             panel("shot/loss", "shot/loss/*"),
-            panel("rotary_readout/loss"),
-            panel("rotary_readout/error", "rotary_readout/error/*"),
-            panel("rotary_readout/hidden_error", "rotary_readout/hidden_error/*"),
-            panel("rotary_readout/hidden_length", "rotary_readout/hidden_length/*"),
+            panel("geometry/loss"),
+            panel("geometry/cross_entropy", "geometry/cross_entropy/*"),
             panel("next_state/kl", "next_state/kl/*"),
             panel("next_state/gain/ally", "next_state/gain/ally/*"),
             panel("next_state/gain/enemy_visible", "next_state/gain/enemy_visible/*"),

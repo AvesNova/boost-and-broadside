@@ -5,10 +5,9 @@ import math
 
 import torch
 
-from bnb.league.gauge import Gauge, gauge_rating
+from bnb.league.gauge import GAUGE_TOP, Gauge
 from bnb.league.ratings import fit_ratings, win_probability
 from bnb.runtime.lanes import LIVE
-from bnb.runtime.opponents import Rung
 
 TRIALS = 200
 COVERAGE = 0.9  # acceptance 2: within two standard errors in at least 90% of trials
@@ -54,23 +53,23 @@ def test_the_offline_fit_recovers_known_ratings():
     assert covered >= COVERAGE * total, (covered, total)
 
 
-def _ladder_gauge() -> Gauge:
+def _gauge() -> Gauge:
+    """Two snapshots started at 0 and 500, and the scripted agent at its fixed 1000."""
     gauge = Gauge()
-    # the priors 1000 / T: random 0, T = 2 at 500, the scripted agent 1000
-    for name, temperature in (("random", math.inf), ("rung_T2", 2.0), ("scripted", 1.0)):
-        gauge.add(name, "ladder", gauge_rating(Rung(temperature)))
+    gauge.add("snapshot_1", "checkpoint", 0.0)
+    gauge.add("snapshot_2", "checkpoint", 500.0)
+    gauge.add("scripted", "scripted", GAUGE_TOP)
     return gauge
 
 
-def test_the_ladder_holds_its_priors_until_the_fit_rates_it():
-    gauge = _ladder_gauge()
-    assert [rated.rating for rated in gauge.entries.values()] == [0.0, 500.0, 1000.0]
-    gauge.update({"rung_T2": (640.0, 30.0), "scripted": (1000.0, 0.0), LIVE: (900.0, 40.0)})
+def test_an_entry_holds_its_start_until_the_fit_rates_it():
+    gauge = _gauge()
+    gauge.update({"snapshot_2": (640.0, 30.0), LIVE: (900.0, 40.0)})
     assert [rated.rating for rated in gauge.entries.values()] == [0.0, 640.0, 1000.0]
-    assert gauge.entries["rung_T2"].stderr == 30.0
-    assert math.isinf(gauge.entries["random"].stderr)
-    gauge.update({LIVE: (950.0, 40.0)})  # a fit that no longer rates the rung
-    assert gauge.entries["rung_T2"].rating == 640.0
+    assert gauge.entries["snapshot_2"].stderr == 30.0
+    assert math.isinf(gauge.entries["scripted"].stderr)
+    gauge.update({LIVE: (950.0, 40.0)})  # a fit that no longer rates the snapshot
+    assert gauge.entries["snapshot_2"].rating == 640.0
 
 
 def test_the_live_rating_is_the_fits_and_holds_between_fits():
@@ -85,7 +84,7 @@ def test_the_live_rating_is_the_fits_and_holds_between_fits():
 
 
 def test_a_new_snapshot_starts_at_the_live_rating_until_the_fit_rates_it():
-    gauge = _ladder_gauge()
+    gauge = _gauge()
     gauge.update({LIVE: (720.0, 30.0)})
     gauge.add("snapshot_100", "checkpoint")
     assert gauge.entries["snapshot_100"].rating == 720.0
@@ -94,7 +93,7 @@ def test_a_new_snapshot_starts_at_the_live_rating_until_the_fit_rates_it():
 
 
 def test_an_average_takes_the_live_rating_until_the_fit_rates_it():
-    gauge = _ladder_gauge()
+    gauge = _gauge()
     gauge.add("exponential_average", "average")
     gauge.update({LIVE: (700.0, 30.0)})
     assert gauge.entries["exponential_average"].rating == 700.0
@@ -104,14 +103,14 @@ def test_an_average_takes_the_live_rating_until_the_fit_rates_it():
 
 
 def test_the_sampling_reads_the_live_policys_odds_against_each_entry():
-    gauge = _ladder_gauge()
+    gauge = _gauge()
     gauge.update({LIVE: (500.0, 30.0)})
     expected = win_probability(torch.tensor(500.0), torch.tensor([0.0, 500.0, 1000.0]))
     assert torch.allclose(gauge.win_probabilities(), expected.double())
 
 
 def test_the_gauge_state_round_trips():
-    gauge = _ladder_gauge()
+    gauge = _gauge()
     gauge.add("exponential_average", "average")
     gauge.add("snapshot_100", "checkpoint")
     gauge.update({LIVE: (700.0, 30.0), "snapshot_100": (650.0, 35.0)})

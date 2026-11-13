@@ -52,6 +52,8 @@ ARM_SETS = (
     "yemong.delta_split=true",
     "learner.next_state=0.0033",
     "learner.correction=0.0033",
+    # a new run's defaults train the physics head's hidden rows (the champion's): arm 3 does not
+    "yemong.physics_hidden_decay=null",
 )
 
 
@@ -417,7 +419,34 @@ def test_the_arms_set_line_builds_the_arm():
     build = model_build(config)
     assert build.config.delta_split and build.config.delta_baseline == "persistence"
     assert build.config.next_state == "delta" and build.config.spread_inputs == "ellipse"
+    assert build.config.physics_hidden_decay is None
     assert config.learner.next_state == config.learner.correction == 0.0033
+
+
+def test_a_new_runs_defaults_are_the_champions_model():
+    """The 2026-11-09-*-deadreckon-split-hiddenphysics run's model settings are a new run's
+    defaults (`TrainConfig.yemong`, `LearnerConfig.next_state`): the deadreckon-split line
+    with the hidden rows' physics builds the default model."""
+    from bnb.cli import parse_setting, with_settings
+    from bnb.contracts import GameConfig
+    from bnb.learn.ppo import LearnerConfig
+    from bnb.runtime.train import TrainConfig
+
+    default = TrainConfig(game=GameConfig(5, 10, 2600.0))
+    assert default.yemong.next_state == "delta"
+    assert default.yemong.delta_baseline == "extrapolation"
+    assert default.yemong.delta_split and default.yemong.physics_hidden_decay == 0.5
+    assert LearnerConfig().next_state == default.learner.next_state == 0.0033
+    champion = (
+        "yemong.next_state=delta",
+        "yemong.delta_baseline=extrapolation",
+        "yemong.delta_split=true",
+        "yemong.physics_hidden_decay=0.5",
+        "learner.next_state=0.0033",
+    )
+    assert with_settings(default, map(parse_setting, champion)) == default
+    # the record defaults stay what a build record from before the switches reads
+    assert YemongConfig().next_state == "absolute" and not YemongConfig().delta_split
 
 
 FOURIER_SETS = (

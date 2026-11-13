@@ -7,6 +7,11 @@ update's totals into named series on the device. `belief_sums` reads the stored 
 (the behaviour policy's, one update stale) against the stored truth and needs no model
 output. None of them changes the loss or its gradient.
 
+The learner measures them on a cadence update over a sample, the first epoch's first
+micro-batches until they hold `bnb.learn.ppo.HEAD_SUM_VIEWS` (256) views: the series are
+ratios of totals, so a sample keeps their meaning, at a few seconds an update rather than
+the whole epoch's ~70 s eager (`docs/rewrite/sections/steady-speed`).
+
 Slices, quantity first:
 - next state, by population: own ships (`ally`), enemies seen at t (`enemy_visible`) and
   enemies hidden at t (`enemy_hidden`). The gain is the "nothing changes" baseline's
@@ -32,12 +37,8 @@ Slices, quantity first:
 - belief, by hidden age (`AGE_BUCKETS`), over hidden living enemies that hold a belief;
   with a delta build's covariance, the position's coverage under its 2 x 2 block and the
   ellipses' anisotropy (`belief/anisotropy/{position, velocity}/*`).
-- rotary read-out (with `YemongConfig.rotary_readout`), its mean squared pair error
-  (`bnb.learn.losses.phasor_square_error`, the mean over the blocks' read-outs; per block
-  too, over the living ships) by population over the living ships, and for
-  living hidden enemies by hidden age (`AGE_BUCKETS`, then `never_seen`: no sighting since
-  the spawn) the error and the mean length of its (cos, sin) pairs (1: certain; it shrinks
-  toward 0 with the model's uncertainty).
+- geometry head (with `YemongConfig.geometry_head`), its cross-entropy per target
+  (`geometry/cross_entropy/{target}`, nats over the pairs, `bnb.models.yemong.geometry`).
 - error head (with `YemongConfig.delta_split`; `_correction`), over the hidden enemies it
   trains on, by hidden age (`AGE_BUCKETS`), per quantity (`correction.QUANTITIES`; position
   and velocity as 2D vectors): the realised error |e| and the predicted median |m|
@@ -67,7 +68,7 @@ from bnb.contracts import Trajectory
 from bnb.contracts.action import NUM_JOINT, NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.contracts.series import Mean
-from bnb.models.yemong import codes, correction
+from bnb.models.yemong import codes, correction, geometry
 from bnb.models.yemong.delta import CONTINUOUS, PART_GROUPS
 from bnb.models.yemong.density import poisson_terms
 from bnb.models.yemong.inputs import ACCELERATIONS, believed
@@ -83,7 +84,7 @@ from bnb.models.yemong.state_code import (
     velocity_reach,
 )
 
-from . import labels, losses
+from . import labels
 
 # The state code's runs, in order (`ShipStateCode.runs`).
 STATE_PARTS = ("position", "velocity", "heading", "nose_rate", *SCALARS, "gun_cooldown")
@@ -252,8 +253,8 @@ def sums(
     if shot_parts is not None:
         target = trajectory_code(model.shot_code, label["shot_snapshots"])
         out.update(_shots(unrolled, label, target, shot_parts, shot_runs, own, alive))
-    if getattr(unrolled, "rotary_readout", None) is not None:
-        out.update(_rotary_readout(unrolled, trajectory, label, populations, model.tick_length))
+    if getattr(unrolled, "geometry_latents", None) is not None:
+        out.update(_geometry(model, unrolled, label))
     if getattr(unrolled, "correction_logits", None) is not None:
         out.update(_correction(model, unrolled, trajectory, label, cross_entropy.sum(-1)))
     return out
@@ -494,34 +495,19 @@ def _state_errors(predicted: torch.Tensor, truth: torch.Tensor) -> torch.Tensor:
     return torch.stack(errors, -1)
 
 
-def _rotary_readout(unrolled, trajectory: Trajectory, label: dict, populations: dict, tick):
-    """The read-out's totals, each the mean over the blocks' read-outs: per population the
-    living ships and their error; per hidden age slice of the living hidden enemies, their
-    count, error and mean pair length. Per block, the living ships' error (blocks,)."""
-    readout = unrolled.rotary_readout.float()  # (L, R, N, blocks, 2, pairs)
-    per_block = losses.phasor_square_error(readout, label["rotary_readout"][..., None, :, :])
-    error = per_block.mean(-1)
-    length = readout.square().sum(-2).sqrt().mean(-1).mean(-1)
-    alive = trajectory.alive
-    out = {
-        "rotary_readout/alive/count": alive.float().sum(),
-        "rotary_readout/block/error": _masked(per_block, alive),
+def _geometry(model, unrolled, label: dict) -> dict:
+    """The geometry head's totals: the pairs, and per target its cross-entropy's sum."""
+    logits = model.geometry(unrolled.geometry_latents, label["geometry_partners"]).float()
+    per_target = codes.grouped_cross_entropy(
+        logits, label["geometry"].float(), geometry.RUNS, geometry.encode
+    )  # (L, R, S, K, targets)
+    mask = label["geometry_mask"]
+    return {
+        "geometry/count": mask.float().sum(),
+        "geometry/cross_entropy": torch.where(mask[..., None], per_target, 0.0)
+        .flatten(0, -2)
+        .sum(0),
     }
-    for name, members in populations.items():
-        chosen = alive & members
-        out[f"rotary_readout/{name}/count"] = chosen.float().sum()
-        out[f"rotary_readout/{name}/error"] = _masked(error, chosen)
-    own = trajectory.log_probability.shape[-1]
-    hidden = (alive & populations["enemy_hidden"])[..., own:]
-    replay = trajectory.replay
-    age = replay.age.float() * tick
-    slices = [(name, replay.valid & (age >= low) & (age < high)) for name, low, high in AGE_BUCKETS]
-    for name, members in [*slices, ("never_seen", ~replay.valid)]:
-        chosen = hidden & members
-        out[f"rotary_readout/{name}/count"] = chosen.float().sum()
-        out[f"rotary_readout/{name}/error"] = _masked(error[..., own:], chosen)
-        out[f"rotary_readout/{name}/length"] = _masked(length[..., own:], chosen)
-    return out
 
 
 def _enemy_action(unrolled, trajectory: Trajectory, label: dict, own: int, visible) -> dict:
@@ -722,20 +708,11 @@ def series(total: dict, model) -> dict:
         out[f"shot/{name}_rate/realised"] = Mean(realised, shots)
         out[f"shot/{name}_rate/predicted"] = Mean(predicted, shots)
     out["shot/supervised_share"] = Mean(shots, total["shot/own_alive"])
-    if "rotary_readout/ally/count" in total:
-        for name in POPULATIONS:
-            prefix = f"rotary_readout/{name}"
-            out[f"rotary_readout/error/{name}"] = Mean(
-                total[f"{prefix}/error"], total[f"{prefix}/count"]
-            )
-        for index, error in enumerate(total["rotary_readout/block/error"].unbind()):
-            out[f"rotary_readout/error/block_{index}"] = Mean(
-                error, total["rotary_readout/alive/count"]
-            )
-        for name in (*(bucket for bucket, _, _ in AGE_BUCKETS), "never_seen"):
-            prefix, count = f"rotary_readout/{name}", total[f"rotary_readout/{name}/count"]
-            out[f"rotary_readout/hidden_error/{name}"] = Mean(total[f"{prefix}/error"], count)
-            out[f"rotary_readout/hidden_length/{name}"] = Mean(total[f"{prefix}/length"], count)
+    if "geometry/count" in total:
+        for name, value in zip(
+            geometry.TARGETS, total["geometry/cross_entropy"].unbind(), strict=True
+        ):
+            out[f"geometry/cross_entropy/{name}"] = Mean(value, total["geometry/count"])
     if "correction/count" in total:
         out.update(_correction_series(total))
     return out
@@ -761,6 +738,7 @@ def belief_sums(trajectory: Trajectory, tick_length: float, state_code=None) -> 
     is), and each bucket also sums the position and velocity ellipses' anisotropy
     ((sigma_major - sigma_minor) / (sigma_major + sigma_minor))."""
     replay = trajectory.replay
+    period = POSITION_PERIOD if state_code is None else state_code.position_period
     own = trajectory.log_probability.shape[-1]
     enemy = trajectory.obs.ships[..., own:, :]
     hidden = (enemy[..., SHIP["visible"]] < 0.5) & (trajectory.truth[..., SHIP["alive"]] > 0.5)
@@ -770,7 +748,7 @@ def belief_sums(trajectory: Trajectory, tick_length: float, state_code=None) -> 
     difference = means - truth
     difference = torch.cat(
         [
-            _wrapped(difference[..., 0:2], POSITION_PERIOD),
+            _wrapped(difference[..., 0:2], period),
             difference[..., 2:4],
             _wrapped(difference[..., 4:5], 2.0 * math.pi),
             difference[..., 5:],

@@ -16,7 +16,7 @@ import yemong_cases as cases
 from bnb.contracts import REWARD_LEVELS, Action
 from bnb.contracts.action import NUM_JOINT
 from bnb.contracts.series import Deferred, Mean, Table
-from bnb.league.league import entry_kind, normalised_entropy
+from bnb.league.league import normalised_entropy
 from bnb.learn import returns, statistics
 from bnb.runs import sinks
 from bnb.runtime import analytics, metrics
@@ -358,13 +358,6 @@ def test_the_sampling_entropy_is_normalised():
     assert normalised_entropy([1.0, 0.0, 0.0]) == 0.0
     assert normalised_entropy([0.5, 0.25, 0.25]) == pytest.approx(1.5 * math.log(2) / math.log(3))
     assert normalised_entropy([1.0]) == 0.0
-
-
-def test_entry_kinds_split_the_ladder():
-    assert entry_kind("scripted", "ladder") == "scripted"
-    assert entry_kind("rung_T2", "ladder") == "rung"
-    assert entry_kind("random", "ladder") == "rung"
-    assert entry_kind("step_100", "checkpoint") == "checkpoint"
 
 
 # ------------------------------------------------------------------ the method rules

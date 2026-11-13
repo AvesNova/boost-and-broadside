@@ -262,26 +262,51 @@ Positions are the belief means; "valid" is the belief's valid flag; there is no 
 - frequencies `(2π/8192 m) 2^k`, `k = 0…7`, on each of x and y (periods from 8192 m
   down to 64 m), and harmonics `1, 2, 4, 8` on the heading **(v2**: metre periods; there is
   no torus, so periodicity no longer fixes the coarsest. Erratum 2026-11-01: the first
-  text inverted this, giving periods from 64 m down to 0.5 m);
-- 20 pairs, 40 of the 64 head dims.
+  text inverted this, giving periods from 64 m down to 0.5 m); 20 pairs, 40 of the 64 head
+  dims. These are the record defaults (every build before 2026-11-12). **A new run's
+  (2026-11-12, `TrainConfig.yemong`):** eight bands at ratio 3.405 from 48 m (48, 163,
+  557, 1895, 6452, 21970, 74806, 254719 m), band `k`'s two axes turned `k × 35°` from the
+  world's x and y (`YemongConfig.rotary_ratio`, `rotary_turn`), and heading harmonics
+  `1, 2, 4`: 19 pairs, 38 of the 64 head dims. The turn is a fixed linear map of the
+  position, so the angle between two tokens still depends only on their difference.
 
 **Sizing the position codes** (the rotary bands and the position colour code). Revisit
 both whenever ship speeds, the tick length or the largest map change:
-- **Finest period: Nyquist.** It must exceed twice the largest distance a ship moves in one
-  tick. Otherwise the level's phase change per tick is ambiguous, and the level reads as
-  pseudo-random noise from tick to tick. Real scale: about 320 m/s at most (the velocity
-  code's reach) at 30 Hz is 10.7 m a tick, so above 21 m; standard ships, about 10 m. For
-  the rotary bands, which relate ships at the same tick, the smallest separation worth
-  resolving binds too; gun geometry puts it at tens of metres.
-- **Coarsest period: the largest map.** It must exceed the largest separation on one axis:
-  the largest map's diameter plus the overshoot past the boundary. Otherwise a far ship
-  aliases onto a near one. The largest preset is real-scale 50v50 density, about 49 km
-  across.
-- **Status (2026-11-11):** today's values predate real scale (map x3) and break both rules.
-  The rotary coarsest, 8192 m, is under the real-scale map's 15.6 km. The colour code's
-  4 m and 12 m levels fail Nyquist at real-scale speeds (4 m already did at standard
-  speeds), and its coarsest, 26 244 m, is under 49 km. Proposed, not yet adopted: rotary
-  65 536 m down to 128 m (10 octaves); colour 8 levels, 36 m to 78 732 m.
+- **Colour code, finest period: Nyquist on absolute motion.** It must exceed twice the
+  largest distance a ship moves in one tick, else the level's phase change per tick is
+  ambiguous and the level reads as noise. Real scale: about 320 m/s (the velocity code's
+  reach) at 30 Hz is 10.7 m a tick, so above 21 m.
+- **Colour code, coarsest period: the largest absolute span.** The largest map's
+  diameter plus the overshoot past the boundary; absolute positions span one map (the
+  view's random offset is drawn over the whole period).
+- **Rotary, finest period: relative motion, and aim.** Rotary relates ships at the same
+  tick, so the bound is the relative displacement per tick: about 640 m/s closing is 21 m
+  a tick, so above about 43 m; and fine enough to aim, about 1° at 550 m. 48 m.
+- **Rotary, coarsest period: twice the largest pairwise distance.** A relative phase is
+  unique only within ±P/2, so P must exceed 2× the largest distance between two ships
+  (the largest evaluation maps are about 62 km across). The earlier rule (P above the
+  largest separation) was half what is needed. 254.7 km.
+- **Rotary, the ratio: not a power of 2.** With ratio 2 every coarser period is a whole
+  number of finer ones, so a one-cycle misread of a coarse band is invisible to every
+  finer band. 3.405 keeps r, r², r³ and r⁴ each at least 0.4 from a whole number, so a
+  coarse misread moves every finer band's phase.
+- **Rotary, the turn per band.** On the world axes each band's alias set is a square
+  lattice on x and y, and the lattices of different bands line up along the axes (a
+  shift along x leaves every y pair unchanged). Turning band `k`'s axes by `k × turn`
+  breaks that. The aliasing sweep (`bench/rotary_aliasing.py`,
+  `docs/rewrite/sections/position-codes/progress.md`) searched the 2D shifts by branch and
+  bound for the worst case. Within 130 km and beyond 1 km: today's ladder aliases
+  exactly (a shift of 8192 m reads as none); ratio 3.405 on the world axes has a far ghost
+  at 64.6 km (similarity 0.90, as close as a 1.6 km shift; phase margin 1.8° with the
+  coarse bands read noisier); every turned set lifts that margin to 3.4–4.3° and leaves
+  no ghost within 130 km. Among the one-parameter turns, 35° sits in a neighbourhood
+  (33.75–38.75°) that is good on every summary at ratios 3.35–3.45 (margin 3.9°, equal-
+  noise margin 17.1°, similarity 0.84); the golden angle (137.5°, ≡ 42.5° here) scores
+  close (3.7°, 15.9°, 0.86) but its neighbourhood has a weak turn (43.75°: 2.6°).
+- **Status (2026-11-12):** a new run's colour code is 9 levels of 3 from 36 m to
+  236 196 m (`YemongConfig.position_period`); its rotary bands as above. The record
+  defaults (4 m to 26 244 m; 8192 m octaves) stay for builds from before, which break
+  both rules.
 
 **Initialising the encoder's code columns** (v1): each first projection's columns for
 code inputs are drawn from `N(0, 1/G)`, where `G` is the number of softmax groups in that

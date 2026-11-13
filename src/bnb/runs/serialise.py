@@ -6,6 +6,11 @@ behaviour), tuples come back as tuples and enums by name. Reading is driven by t
 type hints, so a value of the wrong kind, an unknown field or a missing field without a
 default fails with the field's dotted path. A missing field with a default takes it, and
 the read reports the paths it filled (the model-version rule, runs spec 4).
+
+A class may retire a field: its `RETIRED` class attribute maps the field's name to the
+values a stored record may still hold for it (None: any value), the behaviour every
+current build has. A record holding one of them reads with the field dropped; one holding
+another value was built with what the field switched on, which is gone, and fails.
 """
 
 import dataclasses
@@ -111,7 +116,15 @@ def _read_dataclass(cls: type, data: Any, path: str, filled: list[str]) -> Any:
         raise SerialiseError(f"{path or cls.__name__}: expected an object, got {data!r}")
     hints = typing.get_type_hints(cls)
     fields = {field.name: field for field in dataclasses.fields(cls) if field.init}
-    unknown = sorted(set(data) - set(fields))
+    retired = getattr(cls, "RETIRED", {})
+    for name in sorted(set(data) & set(retired)):
+        if retired[name] is not None and data[name] not in retired[name]:
+            dotted = f"{path}.{name}" if path else name
+            raise SerialiseError(
+                f"{dotted} = {data[name]!r} in {cls.__name__}: the field is retired, and "
+                f"only {list(retired[name])} still read"
+            )
+    unknown = sorted(set(data) - set(fields) - set(retired))
     if unknown:
         names = ", ".join(f"{path}.{name}" if path else name for name in unknown)
         raise SerialiseError(f"unknown field {names} in {cls.__name__}")

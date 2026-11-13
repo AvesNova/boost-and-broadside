@@ -159,7 +159,7 @@ The coefficients are the fields of `bnb.learn.ppo.LearnerConfig` named after the
 | `density` | each view-step, over its count of valued own ships | Poisson terms over the hex cells, against the counts of living ships at `t` |
 | `shot_trajectory` | valid shots of own ships and of enemies visible at `t` | the trajectory code's cross-entropy, averaged over the shot's 4 queried ages ([below](#shot-labels)) |
 | `shot_outcome` | the same shots | the outcome code's cross-entropy |
-| `rotary_readout` | every ship alive at `t`, visible or hidden (with Yemong's rotary read-out only) | the squared distance between a block's read-out (cos, sin) pair and the true one, averaged over the rotary frequencies (`bnb.learn.losses.phasor_square_error`), then over the blocks' read-outs; not in nats |
+| `geometry` | with `YemongConfig.geometry_head` only: pairs of an own ship alive at `t` and a partner alive and seen at `t` (`bnb.models.yemong.geometry.pairs`) | the cross-entropy of the pair's five geometry codes, averaged over them (nats per target) |
 
 With `YemongConfig.delta_split` the `next_state` and `correction` terms both divide by the count
 of every next-state row (seen and hidden), not by their own rows: a row then weighs the
@@ -169,29 +169,19 @@ row, and add up to it.
 
 Each term matches an independent computation on a stored segment
 (`tests/sections/test_learner.py::test_each_loss_term_matches_an_independent_computation`,
-and `tests/sections/test_learner_rotary_readout.py` for the read-out).
+and `tests/sections/test_learner_geometry.py` for the geometry head).
 
-The read-out's term is the one term not in nats: a per-ship mean over the frequencies of
-`|p - p_true|^2`, between 0 and 4, averaged over the blocks (each block has its own
-read-out). An all-zero read-out scores 1. Its minimum over the
-model's uncertainty is the expected phasor, so the read-out learns to shorten its pairs
-where it is unsure. A model without the read-out gives no such output, and the term stays 0
-(and out of the gradient decomposition). `rotary_readout/loss` and the
-`rotary_readout/error/*` population and hidden-age series are the blocks' mean;
-`rotary_readout/error/block_<k>` is block k's error over the living ships.
-**The read-out's coefficient, 0.007.** Set so the read-out's trunk gradient norm at
-initialisation is about 0.02, the level the next-state term settles at in a trained BC run.
-Measured on the CPU (arm D, production initialisation, 5v5, 16 environments of 128 ticks,
-BC's gradient decomposition): at coefficient 1 the read-out's trunk norm is 2.97, so 0.007
-gives about 0.021. Calibrating its *share* at initialisation would mislead: there the other
-terms' trunk norms are about 0.002, because their heads start at or near zero, while in a
-trained BC run they settle at 0.02-0.10 (policy 0.04-0.07, density 0.05-0.08, enemy action
-0.05-0.10, next state about 0.02, value 0.02-0.07). The arm's own logged
-`gradient/norm/trunk/rotary_readout` is the check. The measurement predates the read-out
-in every block (it was one head, on the first block) and was not repeated for it.
+The geometry term divides by its own count, the pairs (`bnb.learn.ppo.COUNTS` "pairs"): a view with
+more ships has more pairs, as it has more next-state rows. A model without the head gives
+no such output, and the term stays 0 (and out of the gradient decomposition).
+`geometry/loss` is the term; `geometry/cross_entropy/{range, antenna_train_angle, aspect,
+heading_crossing_angle, closure}` its parts.
+GEOMETRY_COEFFICIENT_NOTE
 
-**The persistence delta head's coefficient, 0.0033** (`--set learner.next_state=0.0033`
-with `--set yemong.next_state=delta`; the default 0.0041 is the absolute head's). Nats per
+**The persistence delta head's coefficient, 0.0033** (`LearnerConfig.next_state`'s default
+since 2026-11-12, with a new run's delta head; the absolute head's was 0.0041, `--set
+learner.next_state=0.0041` with the absolute head, `--set yemong.next_state=absolute` and
+the split off: [the next-state head](yemong.md#the-next-state-head-absolute-or-delta)). Nats per
 token change with the code, so it is set to match the next-state term's trunk gradient in
 the absolute arm it is compared with (arm 1: `yemong.order=temporal_first`,
 `yemong.acceleration_inputs=true`, `spread_fit="coarsest"`, BC). At initialisation the
@@ -335,16 +325,24 @@ size of the segment):
 - **Enemy action:** each enemy row's joint action at `t`.
 - **Density:** the hex counts of the living ships of each side at `t`, in world coordinates
   scaled by each environment's arena radius.
-- **Rotary read-out:** the true (cos, sin) of every row's rotary angles at `t`
-  (`bnb.learn.labels.rotary_targets`): its true position at `t`, shifted by the view's
-  offset, and its true heading. These are the angles the row's tables would have if the ship
-  were visible, which is what the read-out stands in for. The term masks dead rows.
+- **Geometry:** the pairs the view sees at `t` (`bnb.learn.labels.geometry_pairs`), each
+  pair's range, angles and closure from their true states.
 
 ## Compilation and precision
 
 Section code does not compile itself. The learner takes a `stage` function from the runtime
 (`bnb.runtime.train.compiler`), which compiles the micro-batch loss and the
-re-simulation's tick (`bnb.learn.shots.tick`). `TrainConfig.precision` defaults to
+re-simulation's tick (`bnb.learn.shots.tick`). The compile is of fixed shapes, so every
+micro-batch size compiles each stage once more. The micro-batches take as few sizes as the
+views allow (`bnb.learn.ppo.micro_batch_sizes`): one when the minibatches divide the views,
+two when they do not (`tensor_split` gives minibatches of two sizes that differ by one, and
+no size above one divides both). A run with compiling on prints its sizes before the first
+update (`bnb.runs.session.micro_batch_note`); the cadence's halves of the first minibatch
+can add their own. Two diagnostics run eager. The heads' sums (`bnb.learn.head_statistics`)
+are measured on cadence updates over a sample: the first epoch's first micro-batches until
+they hold `HEAD_SUM_VIEWS` (256) views. Over every micro-batch they cost about 8% of RL's
+steady time. The step/unroll drift unrolls the update's first micro-batch
+(`Learner.first_micro_batch`). `TrainConfig.precision` defaults to
 `"bfloat16"`: the model's matmuls run under bf16 autocast, in the rollout and in the update
 alike. `"float32"` (strict) and `"tf32"` (a process-wide setting the entry point applies with
 `bnb.cli.set_precision`) are the alternatives. The residual stream, norms,

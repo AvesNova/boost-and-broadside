@@ -4,8 +4,6 @@ The query tokens are the ships, then the global token. Fields, and the mode's zo
 only as map memory.
 """
 
-from collections.abc import Callable
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -129,6 +127,48 @@ class Block(nn.Module):
             tokens = layer(tokens, map_memory, token_tables, map_tables, key_mask)
         return tokens
 
+    def step(
+        self,
+        tokens,
+        map_memory,
+        token_tables,
+        map_tables,
+        state,
+        buffer,
+        temporal_first,
+        key_mask=None,
+    ):
+        """One decision through the block, its temporal sublayer before (`temporal_first`) or
+        after its spatial ones: (tokens, the block's state, its buffer); key_mask:
+        `SpatialBlock.forward`'s."""
+        if not temporal_first:
+            tokens = self.attend(tokens, map_memory, token_tables, map_tables, key_mask)
+        tokens, state, buffer = self.temporal.step(tokens, state, buffer)
+        if temporal_first:
+            tokens = self.attend(tokens, map_memory, token_tables, map_tables, key_mask)
+        return tokens, state, buffer
+
+    def sequence(
+        self,
+        tokens,
+        map_memory,
+        token_tables,
+        map_tables,
+        state,
+        buffer,
+        starts,
+        temporal_first,
+        key_mask=None,
+    ):
+        """A segment through the block (see `Trunk.sequence`): (tokens, the block's final
+        state, its final buffer); key_mask: `SpatialBlock.forward`'s."""
+        if not temporal_first:
+            tokens = self.attend(tokens, map_memory, token_tables, map_tables, key_mask)
+        tokens, state, buffer = self.temporal.sequence(tokens, state, buffer, starts)
+        if temporal_first:
+            tokens = self.attend(tokens, map_memory, token_tables, map_tables, key_mask)
+        return tokens, state, buffer
+
 
 class Trunk(nn.Module):
     """Blocks of spatial sublayers and one temporal sublayer each: per block the spatial
@@ -137,10 +177,7 @@ class Trunk(nn.Module):
     without temporal layers: the carry holds no trunk state, only the model's beliefs).
     The trunk carry is state (..., temporal_blocks, Q, D) and convolution_buffer
     (..., temporal_blocks, Q, 3, D).
-
-    retable (temporal_first only): a function of a block's index and its temporal
-    sublayer's output (..., Q, D) giving the token tables of that block's spatial
-    sublayers, in place of the given ones (the model's rotary read-out, one per block)."""
+    """
 
     def __init__(
         self,
@@ -175,7 +212,6 @@ class Trunk(nn.Module):
         map_tables: Tables,
         state: torch.Tensor,
         buffer: torch.Tensor,
-        retable: Callable[[int, torch.Tensor], Tables] | None = None,
         key_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """One decision: tokens (..., Q, D); key_mask (..., N) bool or None, the ship tokens
@@ -186,14 +222,16 @@ class Trunk(nn.Module):
         states, buffers = [], []
         temporal_first = self.order == "temporal_first"
         for index, block in enumerate(self.blocks):
-            if not temporal_first:
-                tokens = block.attend(tokens, map_memory, token_tables, map_tables, key_mask)
-            tokens, block_state, block_buffer = block.temporal.step(
-                tokens, state[..., index, :, :], buffer[..., index, :, :, :]
+            tokens, block_state, block_buffer = block.step(
+                tokens,
+                map_memory,
+                token_tables,
+                map_tables,
+                state[..., index, :, :],
+                buffer[..., index, :, :, :],
+                temporal_first,
+                key_mask,
             )
-            if temporal_first:
-                tables = token_tables if retable is None else retable(index, tokens)
-                tokens = block.attend(tokens, map_memory, tables, map_tables, key_mask)
             states.append(block_state)
             buffers.append(block_buffer)
         return tokens, torch.stack(states, -3), torch.stack(buffers, -4)
@@ -207,7 +245,6 @@ class Trunk(nn.Module):
         state: torch.Tensor,
         buffer: torch.Tensor,
         starts: torch.Tensor,
-        retable: Callable[[int, torch.Tensor], Tables] | None = None,
         key_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """A segment: tokens (L, ..., Q, D), the carry at its start (..., blocks, Q, ...),
@@ -221,14 +258,17 @@ class Trunk(nn.Module):
         states, buffers = [], []
         temporal_first = self.order == "temporal_first"
         for index, block in enumerate(self.blocks):
-            if not temporal_first:
-                tokens = block.attend(tokens, map_memory, token_tables, map_tables, key_mask)
-            tokens, block_state, block_buffer = block.temporal.sequence(
-                tokens, state[..., index, :, :], buffer[..., index, :, :, :], starts
+            tokens, block_state, block_buffer = block.sequence(
+                tokens,
+                map_memory,
+                token_tables,
+                map_tables,
+                state[..., index, :, :],
+                buffer[..., index, :, :, :],
+                starts,
+                temporal_first,
+                key_mask,
             )
-            if temporal_first:
-                tables = token_tables if retable is None else retable(index, tokens)
-                tokens = block.attend(tokens, map_memory, tables, map_tables, key_mask)
             states.append(block_state)
             buffers.append(block_buffer)
         return tokens, torch.stack(states, -3), torch.stack(buffers, -4)

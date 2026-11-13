@@ -22,7 +22,7 @@ from . import codes, critic
 from .density import LOG_RATE_RANGE, hex_cells
 from .inputs import believed
 from .shots import ShotCodeParameters
-from .state_code import MEANS, POSITION_PERIOD
+from .state_code import MEANS
 
 # --------------------------------------------------------------------------- shots
 
@@ -149,20 +149,28 @@ class ShipForecast:
     spreads: torch.Tensor
 
 
-def nearest_representative(position: torch.Tensor, reference: torch.Tensor) -> torch.Tensor:
-    """The representative of position (mod POSITION_PERIOD) nearest to reference (..., 2)."""
-    return position + POSITION_PERIOD * torch.round((reference - position) / POSITION_PERIOD)
+def nearest_representative(
+    position: torch.Tensor, reference: torch.Tensor, period: float
+) -> torch.Tensor:
+    """The representative of position (mod period, the colour code's
+    `YemongConfig.position_period`) nearest to reference (..., 2)."""
+    return position + period * torch.round((reference - position) / period)
 
 
 def ship_forecast(
-    means: torch.Tensor, spreads: torch.Tensor, offset: torch.Tensor, reference: torch.Tensor
+    means: torch.Tensor,
+    spreads: torch.Tensor,
+    offset: torch.Tensor,
+    reference: torch.Tensor,
+    period: float,
 ) -> ShipForecast:
     """State-code means (..., N, len(MEANS)) and spreads (`ShipStateCode.decode`, or a
     belief's) to a forecast in world coordinates: positions less the view's offset (..., 2),
-    as the representative nearest reference (..., N, 2) m (the code wraps)."""
+    as the representative nearest reference (..., N, 2) m (the code wraps every period m,
+    the model's `YemongConfig.position_period`)."""
     shifted = means[..., 0:2] - offset[..., None, :]
     return ShipForecast(
-        position=nearest_representative(shifted, reference),
+        position=nearest_representative(shifted, reference, period),
         position_sigma=spreads[..., 0],
         velocity=means[..., 2:4],
         velocity_covariance=spreads[..., 1:4],
@@ -217,7 +225,7 @@ def next_state(
                 moved(age),
             )
         )
-    return ship_forecast(means, spreads, offset, reference)
+    return ship_forecast(means, spreads, offset, reference, model.config.position_period)
 
 
 # --------------------------------------------------------------------------- density

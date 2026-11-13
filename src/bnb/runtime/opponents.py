@@ -1,20 +1,16 @@
 """The league's opponent seat inside the rollout (league spec 2): network slots with stacked
-parameters, the stationary ladder, the clean cut and the in-graph draws.
+parameters, the scripted agent and the clean cut.
 
 One controller, `OpponentSlots`, plays every opponent row of the batch:
 - `slots` network slots, with their parameters stacked `(slots, ...)`, run as one forward
   over the stacked sets (`bnb.runtime.stacked`, `torch.vmap`), each set on its own rows:
   slot k plays rows k, k + slots, k + 2 slots, ... (so every slot plays every mode).
-- the stationary ladder, when it is in the pool (`LeagueConfig.ladder_in_pool`): one
-  scripted pass over every row, each row at its rung's temperature and share (scripted spec
-  A6; +inf is random, a share below 1 a mixture rung). Without it the seat runs no scripted
-  pass.
-- per row, the kind it plays (a network set or the ladder) is selected with `where`.
+- the full-strength scripted agent (temperature 1): one scripted pass over every row. The
+  training pool holds no other scripted player, no weaker rung and no random player (the
+  author, 2026-11-12); the rating lanes and the offline tournament still play the ladder.
+- per row, the kind it plays (a network set or the scripted agent) is selected with `where`.
 
-A slot holds a network entry or a ladder entry. A ladder row draws a new rung at each of its
-resets from its mode's ladder weights, by inverse CDF on a counter-based uniform (a hash of
-the stream's key, the tick counter and the row), so the draws need no generator state and
-repeat exactly.
+A slot holds a network entry or the scripted agent.
 
 The clean cut (`cut`): the host loads a new entry into a slot's set in place, at an update
 boundary. The games in progress on its rows play on against the new entry; their results
@@ -23,8 +19,8 @@ those rows is reset (its trunk; the belief part is kept) or kept. Every host-sid
 an in-place copy between segments, so a captured graph stays valid.
 
 Each row's column (`OpponentCarry.column`) names what it plays for the record: a slot's
-set or a ladder entry. The rollout tallies each episode's result from the learner's side by
-column and mode (`tally`).
+set, or the scripted agent (the column after the slots'). The rollout tallies each
+episode's result from the learner's side by column and mode (`tally`).
 """
 
 import dataclasses
@@ -108,15 +104,7 @@ def ladder_rung(name: str) -> Rung | None:
     return None
 
 
-def strength_order(rung: Rung) -> tuple[float, float]:
-    """A key that sorts rungs weakest first: random, the mixtures by share, then the
-    temperature rungs by falling temperature."""
-    if rung.temperature == math.inf:
-        return (0.0, 0.0)
-    return (rung.share, -rung.temperature)
-
-
-NETWORK, LADDER_KIND = 0, 1  # what a slot holds
+NETWORK, SCRIPTED_KIND = 0, 1  # what a slot holds
 OUTCOMES = ("wins", "ties", "losses")  # the tally's last axis, from the learner's side
 MASK = (1 << 32) - 1
 
@@ -129,10 +117,7 @@ class LeagueConfig:
     """slots: network slots loaded at once; cut_every: updates between the clean cuts;
     cut_slots: the slots a cut draws anew (round robin); carry_at_cut: the opponent's model
     carry on a cut slot's rows, "keep" (the old occupant's, when both are networks of the
-    one build; else reset) or "reset" (the trunk zeroed, the belief kept); ladder_in_pool:
-    the stationary ladder is in the training pool (the rating lanes play it either way);
-    ladder: the stationary ladder's rungs, weakest
-    first (`strength_order`; +inf random, T = 1 at share 1 the scripted agent); floor: the
+    one build; else reset) or "reset" (the trunk zeroed, the belief kept); floor: the
     share of the pool's sampling weight spread evenly over the entries; exponential_decay:
     the exponential average's decay per update; uniform_from: the environment steps after
     which the uniform average starts (before them it is the live weights: a warm start's
@@ -147,8 +132,6 @@ class LeagueConfig:
     cut_every: int = 2
     cut_slots: int = 1
     carry_at_cut: str = "keep"  # the hand-over test's verdict (author, 2026-11-06)
-    ladder_in_pool: bool = False
-    ladder: tuple[Rung, ...] = LADDER
     floor: float = 0.05
     exponential_decay: float = 0.95
     # the run's warm-up (author, 2026-11-07: decisions, run control)
@@ -165,18 +148,6 @@ class LeagueConfig:
             )
         if self.carry_at_cut not in CARRY_AT_CUT:
             raise ValueError(f"league carry_at_cut {self.carry_at_cut!r}; one of {CARRY_AT_CUT}")
-        rungs = list(self.ladder)
-        if not rungs or any(
-            not (rung.temperature >= 1.0 and 0.0 < rung.share <= 1.0) for rung in rungs
-        ):
-            raise ValueError(
-                f"league ladder {self.ladder} must be rungs of temperature at least 1 and "
-                "share in (0, 1]"
-            )
-        if rungs != sorted(set(rungs), key=strength_order) or len(
-            set(map(strength_order, rungs))
-        ) != len(rungs):
-            raise ValueError(f"league ladder {self.ladder} must be distinct, weakest first")
         if not 0.0 <= self.floor < 1.0:
             raise ValueError(f"league floor {self.floor} must be in [0, 1)")
         if not 0.0 < self.exponential_decay < 1.0:
@@ -241,19 +212,16 @@ def draw(weights: torch.Tensor, uniform: torch.Tensor) -> torch.Tensor:
 @contract
 class OpponentCarry:
     """Per opponent row (R leading): model, the network's carry (its controller's);
-    ladder_index (R,) int64, the ladder entry the row plays (when its slot holds the ladder);
     column (R,) int64, what the row plays, for the tally; stepped (R,) bool, the row has
     played a tick; whole (R,) bool, the row's game began after its first tick
-    (`whole_game_begins`) and has not been cut, so the tally counts it; counter (1,) int64,
-    the decisions so far (the ladder draws' counter); ladder, the ladder agent's carry."""
+    (`whole_game_begins`) and has not been cut, so the tally counts it; scripted, the
+    scripted agent's carry."""
 
     model: object
-    ladder_index: torch.Tensor
     column: torch.Tensor
     stepped: torch.Tensor
     whole: torch.Tensor
-    counter: torch.Tensor
-    ladder: ScriptedCarry
+    scripted: ScriptedCarry
 
 
 class _Decision(torch.nn.Module):
@@ -274,8 +242,8 @@ class OpponentSlots:
     """The league's seat (see the module docstring). controller: a network controller of the
     live policy's architecture over a model of its own (never the learner's: the forward
     swaps the sets' parameters in); modes (R,) int64: each opponent row's mode index;
-    mode_count: how many modes; characteristics and ships_per_team: the scripted agent's,
-    for the ladder; key: the ladder draws' stream key."""
+    mode_count: how many modes; characteristics and ships_per_team: the scripted
+    agent's."""
 
     def __init__(
         self,
@@ -285,27 +253,17 @@ class OpponentSlots:
         characteristics: Characteristics,
         ships_per_team: int,
         config: LeagueConfig,
-        key: int,
     ) -> None:
         rows, slots = modes.shape[0], config.slots
         if rows % slots:
             raise ValueError(f"{rows} opponent rows do not split evenly over {slots} slots")
         device = modes.device
-        self.config, self.slots, self.key = config, slots, key
+        self.config, self.slots = config, slots
         self.mode_count, self.modes = mode_count, modes
         self.decision = _Decision(controller)
         self.decision.requires_grad_(False)
         self.reads = tuple(dict.fromkeys(controller.reads + Scripted.reads))
-        # One scripted pass for the whole ladder: each row's temperature and share are
-        # written in place.
-        self.ladder_temperature = torch.ones(rows, device=device)
-        self.ladder_share = torch.ones(rows, device=device)
-        self.ladder_agent = Scripted(
-            characteristics,
-            ships_per_team,
-            temperature=self.ladder_temperature,
-            share=self.ladder_share,
-        )
+        self.scripted_agent = Scripted(characteristics, ships_per_team)  # full strength
         state = self.decision.state_dict()
         # The stacked sets, one per slot.
         self.parameters = {
@@ -315,27 +273,19 @@ class OpponentSlots:
         self.rows = torch.arange(rows, device=device)
         self.slot_of_row = self.rows % slots
         self.kind = torch.full((slots,), NETWORK, dtype=torch.int64, device=device)
-        ladder = len(config.ladder)
-        rungs = list(config.ladder)
-        self.temperatures = torch.tensor(
-            [rung.temperature for rung in rungs], dtype=torch.float32, device=device
-        )
-        self.shares = torch.tensor([rung.share for rung in rungs], device=device)
-        self.ladder_weights = torch.full((mode_count, ladder), 1.0 / ladder, device=device)
-        self.columns = slots + ladder
+        self.scripted_column = slots  # the tally's column for the scripted agent
+        self.columns = slots + 1
 
     # ---- the controller
 
     def init_carry(self, views: int, device: torch.device) -> OpponentCarry:
-        """Every row on its slot's set, the first ladder entry."""
+        """Every row on its slot's set."""
         return OpponentCarry(
             model=self.decision.controller.init_carry(views, device),
-            ladder_index=torch.zeros(views, dtype=torch.int64, device=device),
             column=self.slot_of_row.clone(),
             stepped=torch.zeros(views, dtype=torch.bool, device=device),
             whole=torch.zeros(views, dtype=torch.bool, device=device),
-            counter=torch.zeros(1, dtype=torch.int64, device=device),
-            ladder=self.ladder_agent.init_carry(views, device),
+            scripted=self.scripted_agent.init_carry(views, device),
         )
 
     def _network(self, carry, obs: Obs, reset: torch.Tensor):
@@ -363,26 +313,16 @@ class OpponentSlots:
     def step(self, carry: OpponentCarry, obs: Obs, reset: torch.Tensor):
         """One decision for every opponent row; see `Controller.step`."""
         network_action, model_carry = self._network(carry.model, obs, reset)
-        action, column = network_action, self.slot_of_row
-        ladder_index, ladder_carry = carry.ladder_index, carry.ladder
-        if self.config.ladder_in_pool:
-            ladder = self.kind[self.slot_of_row] == LADDER_KIND  # (R,)
-            uniform = counter_uniform(self.key, carry.counter, self.rows)
-            drawn = draw(self.ladder_weights[self.modes], uniform)
-            ladder_index = torch.where(reset & ladder, drawn, carry.ladder_index)
-            self.ladder_temperature.copy_(self.temperatures[ladder_index])
-            self.ladder_share.copy_(self.shares[ladder_index])
-            ladder_action, ladder_carry, _ = self.ladder_agent.step(carry.ladder, obs, reset)
-            action = torch.where(ladder[:, None, None], ladder_action.packed(), network_action)
-            column = torch.where(ladder, self.slots + ladder_index, self.slot_of_row)
+        scripted = self.kind[self.slot_of_row] == SCRIPTED_KIND  # (R,)
+        scripted_action, scripted_carry, _ = self.scripted_agent.step(carry.scripted, obs, reset)
+        action = torch.where(scripted[:, None, None], scripted_action.packed(), network_action)
+        column = torch.where(scripted, self.scripted_column, self.slot_of_row)
         carry = OpponentCarry(
             model=model_carry,
-            ladder_index=ladder_index,
             column=column,
             stepped=torch.ones_like(carry.stepped),
             whole=carry.whole | whole_game_begins(reset, carry.stepped),
-            counter=carry.counter + 1,
-            ladder=ladder_carry,
+            scripted=scripted_carry,
         )
         return Action.unpack(action), carry, Outputs()
 
@@ -413,7 +353,7 @@ class OpponentSlots:
         self.kind.fill_(NETWORK)
 
     def set_kind(self, slot: int, kind: int) -> None:
-        """What slot `slot` holds: NETWORK or LADDER_KIND."""
+        """What slot `slot` holds: NETWORK or SCRIPTED_KIND."""
         self.kind[slot] = kind
 
     @torch.no_grad()
@@ -436,26 +376,10 @@ class OpponentSlots:
                     target.copy_(source)
         return uncredited
 
-    @torch.no_grad()
-    def draw_ladder(self, carry: OpponentCarry, slot: int, uniform: torch.Tensor) -> None:
-        """A ladder entry for each row of `slot` (now holding the ladder), from its mode's
-        weights and `uniform` (R,): rows that play the ladder before their first reset."""
-        rows = self.slot_of_row == slot
-        drawn = draw(self.ladder_weights[self.modes], uniform.to(self.modes.device))
-        carry.ladder_index.copy_(torch.where(rows, drawn, carry.ladder_index))
-        column = self.slots + carry.ladder_index
-        carry.column.copy_(torch.where(rows, column, carry.column))
-
-    @torch.no_grad()
-    def set_ladder_weights(self, weights: torch.Tensor) -> None:
-        """Each mode's sampling weights over the ladder's entries, (modes, ladder)."""
-        self.ladder_weights.copy_(weights)
-
     def state_dict(self) -> dict[str, torch.Tensor]:
-        """The sets, what each holds and the ladder weights (a resume restores them with
-        `load_state_dict`)."""
+        """The sets and what each holds (a resume restores them with `load_state_dict`)."""
         state = {f"parameters.{name}": value for name, value in self.parameters.items()}
-        state.update(kind=self.kind, ladder_weights=self.ladder_weights)
+        state.update(kind=self.kind)
         return state
 
     @torch.no_grad()

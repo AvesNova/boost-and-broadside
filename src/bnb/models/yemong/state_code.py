@@ -56,17 +56,20 @@ COVARIANCE_ENTRIES = len(COVARIANCE_STATE) * (len(COVARIANCE_STATE) + 1) // 2
 SPREAD_INPUTS = ("scalar", "ellipse")  # `YemongConfig.spread_inputs`
 POSITION_INPUTS = ("colour", "fourier")  # `YemongConfig.position_inputs`
 
-# Sizing rule for the position codes (this colour code and `YemongConfig.rotary_period` /
-# `rotary_octaves`); revisit both whenever ship speeds, the tick or the largest map change:
-# - finest period > 2 x the largest distance a ship moves in one tick (Nyquist), else that
-#   level's phase change per tick is ambiguous and the level reads as noise. Real scale: up
-#   to about 320 m/s (the velocity code's reach) at 30 Hz is 10.7 m a tick, so above 21 m;
-# - coarsest period > the largest separation on one axis: the largest map's diameter plus
-#   the overshoot past the boundary. The largest preset is real-scale 50v50 density (arena
-#   radius 7800 sqrt(10) = 24.7 km, about 49 km across).
-# Today's values predate real scale and break both: the 4 m and 12 m levels fail Nyquist at
-# real-scale speeds (4 m already did at standard speeds), and 26 244 m is under 49 km.
-# Proposed (2026-11-11, not yet adopted): 8 levels, 36 m to 78 732 m.
+# Sizing rule for the position codes (this colour code, `YemongConfig.position_period`, and
+# the rotary bands, `YemongConfig.rotary_*`); revisit both whenever ship speeds, the tick or
+# the largest map change (yemong spec, "Sizing the position codes"):
+# - colour code, finest period > 2 x the largest distance a ship moves in one tick
+#   (Nyquist; real scale: about 320 m/s at 30 Hz is 10.7 m a tick, so above 21 m);
+#   coarsest > the largest absolute span (a map's diameter plus the overshoot);
+# - rotary, finest > 2 x the largest relative move in a tick (about 640 m/s closing, 21 m
+#   a tick, so above 43 m) and fine enough to aim (about 1 degree at 550 m); coarsest >
+#   2 x the largest pairwise distance, since a relative phase is unique only within +-P/2
+#   (the largest evaluation maps are about 62 km across).
+# POSITION_PERIOD is the record default (every build before 2026-11-12: 4 m to 26 244 m,
+# breaking both); a new run's is 236 196 m (36 m finest; `model.COLOUR_PERIOD`) and its
+# rotary bands 48 m to 254 771 m at ratio 3.405, each turned 35 degrees
+# (`model.ROTARY_*`).
 POSITION_PERIOD = 4.0 * 3.0**8  # m per axis: 26 244 m, finest level 4 m
 POSITION_LEVELS = 9
 VELOCITY_KNEE = 50.0  # m/s
@@ -88,23 +91,30 @@ SCALARS = ("angle_of_attack", "shield_recharge_wait", "shield", "energy", "log_r
 # two-hot code of SCALAR_BINS like the state code's scalars. A sigma is coded as
 # ln(1 + sigma / knee) from 0 up to its bound's (a log above the knee, 0 for a sharp row).
 ELLIPSE_FEATURES = 4
-ELLIPSE_SIGMA = dict(position=(1.0, POSITION_PERIOD), velocity=(0.1, None))  # (knee, bound)
+# The sigmas' knees; each is coded up to its bound: the position code's period, the
+# velocity code's reach (`ShipStateCode`).
+ELLIPSE_KNEE = dict(position=1.0, velocity=0.1)
 
 
 def pack_covariance(matrix: torch.Tensor) -> torch.Tensor:
     """(..., 6, 6) to its upper triangle (..., COVARIANCE_ENTRIES), row-major."""
-    rows, columns = torch.triu_indices(len(COVARIANCE_STATE), len(COVARIANCE_STATE))
+    size = len(COVARIANCE_STATE)
+    rows, columns = torch.triu_indices(size, size, device=matrix.device)  # no host copy
     return matrix[..., rows, columns]
 
 
 def unpack_covariance(packed: torch.Tensor) -> torch.Tensor:
     """The inverse of `pack_covariance`: (..., COVARIANCE_ENTRIES) to symmetric (..., 6, 6)."""
     size = len(COVARIANCE_STATE)
-    rows, columns = torch.triu_indices(size, size)
-    index = torch.zeros((size, size), dtype=torch.long)
-    index[rows, columns] = torch.arange(COVARIANCE_ENTRIES)
-    index[columns, rows] = torch.arange(COVARIANCE_ENTRIES)
-    return packed[..., index.to(packed.device)]
+    # made on the packed tensor's device: no host-to-device copy (which a CUDA graph's
+    # capture, the uncompiled rollout's, refuses)
+    device = packed.device
+    rows, columns = torch.triu_indices(size, size, device=device)
+    entries = torch.arange(COVARIANCE_ENTRIES, device=device)
+    index = torch.zeros((size, size), dtype=torch.long, device=device)
+    index[rows, columns] = entries
+    index[columns, rows] = entries
+    return packed[..., index]
 
 
 def ellipse(packed: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -168,7 +178,8 @@ class ShipStateCode(nn.Module):
     heading's spreads (`codes.circular_decode`). position_inputs (POSITION_INPUTS): what the
     ship token reads for the position and the heading (`inputs`): the code's own runs
     ("colour"), or Fourier features at the same levels ("fourier"); the code is the same
-    either way.
+    either way. position_period (m per axis): the position code's coarsest period
+    (`YemongConfig.position_period`), which the position ellipse's sigma code also spans.
     """
 
     def __init__(
@@ -178,8 +189,10 @@ class ShipStateCode(nn.Module):
         covariance: bool = False,
         spread_inputs: str = "scalar",
         position_inputs: str = "colour",
+        position_period: float = POSITION_PERIOD,
     ) -> None:
         super().__init__()
+        self.position_period = position_period
         if spread_fit not in codes.SPREAD_FITS:
             raise ValueError(f"spread_fit {spread_fit!r} is not one of {codes.SPREAD_FITS}")
         if spread_inputs not in SPREAD_INPUTS:
@@ -205,8 +218,8 @@ class ShipStateCode(nn.Module):
         # the ellipse features' lows and highs (`ellipse_code`), likewise
         ellipse_low, ellipse_high = [], []
         for name in ("position", "velocity"):
-            knee, bound = ELLIPSE_SIGMA[name]
-            top = math.log1p((velocity_reach() if bound is None else bound) / knee)
+            bound = {"position": position_period, "velocity": velocity_reach()}[name]
+            top = math.log1p(bound / ELLIPSE_KNEE[name])
             ellipse_low += [0.0, 0.0, -1.0, -1.0]
             ellipse_high += [top, top, 1.0, 1.0]
         for name, values in (("ellipse_low", ellipse_low), ("ellipse_high", ellipse_high)):
@@ -291,10 +304,10 @@ class ShipStateCode(nn.Module):
 
     def ellipse_code(self, spreads: torch.Tensor) -> torch.Tensor:
         """(..., ellipse_width): per ellipse (position, velocity; `blocks`) the four
-        ELLIPSE_FEATURES, each a two-hot code of SCALAR_BINS (`ELLIPSE_SIGMA`)."""
+        ELLIPSE_FEATURES, each a two-hot code of SCALAR_BINS (`ELLIPSE_KNEE`)."""
         features = []
         for name, packed in zip(("position", "velocity"), self.blocks(spreads), strict=True):
-            knee, _ = ELLIPSE_SIGMA[name]
+            knee = ELLIPSE_KNEE[name]
             major, minor, cos, sin = ellipse(packed)
             features += [torch.log1p(major / knee), torch.log1p(minor / knee), cos, sin]
         # one code call over the eight features, their bounds per feature (module init)
@@ -345,7 +358,10 @@ class ShipStateCode(nn.Module):
         spread = dict(zip(SPREADS, spreads[..., : len(SPREADS)].unbind(-1), strict=True))
         residual = spreads[..., self.residual_slice]
         position = codes.position_encode(
-            means[..., 0:2], self._position_sigma(spreads), (POSITION_PERIOD,) * 2, POSITION_LEVELS
+            means[..., 0:2],
+            self._position_sigma(spreads),
+            (self.position_period,) * 2,
+            POSITION_LEVELS,
         )
         velocity = codes.velocity_encode(
             means[..., 2:4], spreads[..., 1:4], VELOCITY_BINS, VELOCITY_SPACING, VELOCITY_KNEE
@@ -398,7 +414,7 @@ class ShipStateCode(nn.Module):
         code (..., width) itself; with Fourier inputs the code with its position and heading
         runs replaced by `codes.fourier_encode` of the same means and spreads at the same
         periods (position per world axis, x first, POSITION_LEVELS levels from
-        POSITION_PERIOD; heading HEADING_LEVELS from 2 pi), each level attenuated by its
+        position_period; heading HEADING_LEVELS from 2 pi), each level attenuated by its
         sigma as the code's is."""
         if self.position_inputs == "colour":
             return code
@@ -408,7 +424,7 @@ class ShipStateCode(nn.Module):
         position = torch.stack(
             [
                 codes.fourier_encode(
-                    means[..., axis], sigma[..., axis], POSITION_PERIOD, 3, POSITION_LEVELS
+                    means[..., axis], sigma[..., axis], self.position_period, 3, POSITION_LEVELS
                 )
                 for axis in range(2)
             ],
@@ -440,7 +456,7 @@ class ShipStateCode(nn.Module):
         parts = probabilities.split([groups * size for groups, size in self.runs], -1)
         position, position_spread = codes.position_decode(
             parts[0].unflatten(-1, (POSITION_LEVELS, 9)),
-            (POSITION_PERIOD,) * 2,
+            (self.position_period,) * 2,
             POSITION_LEVELS,
             self.spread_fit,
         )

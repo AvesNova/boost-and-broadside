@@ -212,7 +212,11 @@ def head_record(model, trajectory, unrolled) -> dict:
     )
     replay = trajectory.replay
     belief = decode.ship_forecast(
-        replay.means.float(), replay.spreads.float(), offset, position[..., own:, :]
+        replay.means.float(),
+        replay.spreads.float(),
+        offset,
+        position[..., own:, :],
+        model.config.position_period,
     )
     action = decode.action_distribution(unrolled.enemy_action_logits[..., own:, :])
     arena_radius = trajectory.obs.globals[..., GLOBAL["arena_radius"]]

@@ -600,6 +600,20 @@ def hl_gauss(coordinate: torch.Tensor, low: int, high: int, sigma: float) -> tor
     return probabilities / probabilities.sum(-1, keepdim=True)
 
 
+def wrapped_hl_gauss(angle: torch.Tensor, bins: int, sigma: float = HL_GAUSS_SIGMA) -> torch.Tensor:
+    """(...) angles (rad) to (..., bins) probabilities on the circle: bin k centred at
+    2 pi k / bins, the Gaussian of `sigma` bins at the angle integrated over each bin with
+    its mass past half the circle wrapped round (the nearest image of every bin; at sigma
+    under bins / 8 the farther images hold under 1e-15), divided by its sum. No padding:
+    the circle has no edge (decisions, "Code padding rule")."""
+    coordinate = torch.remainder(angle, 2.0 * math.pi) * (bins / (2.0 * math.pi))
+    centres = torch.arange(bins, dtype=coordinate.dtype, device=coordinate.device)
+    offset = torch.remainder(centres - coordinate[..., None] + 0.5 * bins, bins) - 0.5 * bins
+    scale = sigma * math.sqrt(2.0)
+    probabilities = 0.5 * (torch.erf((offset + 0.5) / scale) - torch.erf((offset - 0.5) / scale))
+    return probabilities / probabilities.sum(-1, keepdim=True)
+
+
 def symlog_encode(
     values: torch.Tensor,
     knee: float,

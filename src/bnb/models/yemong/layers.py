@@ -18,26 +18,27 @@ def norm(width: int) -> nn.RMSNorm:
 def rotary_tables(
     position: torch.Tensor,
     heading: torch.Tensor,
-    periods_x: torch.Tensor,
-    periods_y: torch.Tensor,
+    axes: torch.Tensor,
+    periods: torch.Tensor,
     frequencies_heading: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """(cos, sin), each (..., tokens, 1, pairs), of the angles [x f_x, y f_y, heading f_h],
-    with the position frequencies given as periods p = 2 pi / f.
+    """(cos, sin), each (..., tokens, 1, pairs), of the angles [the position's along each
+    axis times its frequency, heading f_h], with the position frequencies given as periods
+    p = 2 pi / f.
 
     position (..., tokens, 2) in metres; heading (..., tokens) in radians (0 for a token
-    without one). A position angle is 2 pi (x mod p) / p: the same rotation, but the angle
-    stays below 2 pi, where x f would reach thousands of radians in the shifted frame and
-    keep float32 only 1e-4 rad. For power-of-two periods the remainder is exact.
+    without one); axes (P, 2), the position pairs' unit axes in the world frame, and periods
+    (P,) theirs. A position angle is 2 pi (u mod p) / p, u = position . axis: the same
+    rotation, but the angle stays below 2 pi, where u f would reach thousands of radians in
+    the shifted frame and keep float32 only 1e-4 rad. A fixed axis is a linear map, so the
+    angle between two tokens still depends only on their difference. On the world axes (an
+    axis (1, 0) or (0, 1)) u is the coordinate itself, exactly; for power-of-two periods
+    the remainder is exact too.
     """
-
-    def phase(coordinate: torch.Tensor, periods: torch.Tensor) -> torch.Tensor:
-        return 2.0 * math.pi * (torch.remainder(coordinate, periods) / periods)
-
+    along = position[..., 0:1] * axes[:, 0] + position[..., 1:2] * axes[:, 1]
     angles = torch.cat(
         [
-            phase(position[..., 0:1], periods_x),
-            phase(position[..., 1:2], periods_y),
+            2.0 * math.pi * (torch.remainder(along, periods) / periods),
             heading[..., None] * frequencies_heading,
         ],
         -1,

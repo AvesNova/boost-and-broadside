@@ -1,0 +1,111 @@
+# The overnight calibration (2026-11-12/13): the minibatch count for BC and RL and BC's
+# plateau stop, on two RTX 5060 Ti 16 GB boxes (gpubox4, gpubox7). Every run is the launch
+# config (../launch/launch.toml: preset, lineup, its shared `set` lines, its `train` options)
+# plus the lines below, built by calib.py; nothing is typed by hand.
+#
+# Box scale: 1024 environments (the launch's 2048 halved; the mix's shares are the same,
+# 512 / 320 / 192): 6144 views per update, which 256, 128, 64 and 32 minibatches divide.
+environments = 1024
+
+# Both stages: ONE discount and ONE trace decay for every value level, identical in BC and
+# RL (the author, 2026-11-12: gamma 0.9999, lambda 0.99). A config option (the tuples, all
+# equal), not the code's defaults. The outcome level's targets follow its tuple entry too.
+set = [
+  "learner.discount=[0.9999, 0.9999, 0.9999, 0.9999, 0.9999]",
+  "learner.trace_decay=[0.99, 0.99, 0.99, 0.99, 0.99]",
+]
+
+# BC only, after launch.toml's bc_set (later lines win): the budget capped at 30M (one box, four arms in sequence), the
+# plateau stop off (the full curve is seen; the rule is replayed offline by plateau.py),
+# and 24 views per micro-batch (240 rows of 10 ships), the most a 16 GB card holds: every
+# arm's minibatch (24, 48, 96, 192 views) is then whole micro-batches of 24 views, one
+# compiled shape for all four arms.
+bc_set = [
+  "stop.budget_steps=30000000",
+  "stop.plateau_fraction=null",
+  "learner.micro_batch_rows=240",
+]
+bc_train = ["--bc-budget-steps", "30000000"]
+
+# RL only: 32 views per micro-batch (320 rows), the steady-speed agent's RL size on this card
+rl_set = ["learner.micro_batch_rows=320"]
+
+[[arm]]
+# The edge extension (main, 2026-11-13 09:10): 256 led 64 and 32 in frontline and deathmatch
+# at 30M at the same seconds per update, so one arm further out. 12 views per minibatch:
+# micro-batches of 12 views, a second compiled shape.
+name = "bc-mb512"
+stage = "bc"
+set = ["learner.minibatches=512"]
+
+[[arm]]
+name = "bc-mb256"
+stage = "bc"
+set = ["learner.minibatches=256"]
+
+[[arm]]
+name = "bc-mb128"
+stage = "bc"
+set = ["learner.minibatches=128"]
+
+[[arm]]
+name = "bc-mb64"
+stage = "bc"
+set = ["learner.minibatches=64"]
+
+[[arm]]
+name = "bc-mb32"
+stage = "bc"
+set = ["learner.minibatches=32"]
+
+# The RL forks: PPO warm-started from the best BC arm's 40M exponential average (the
+# chain's hand-off player), at 32 and 64 minibatches. init_from is set once the BC
+# tournament names the arm (committed before the launch).
+[[arm]]
+name = "rl-mb32"
+stage = "rl"
+init_from = "PENDING"
+updates = 24
+set = ["learner.minibatches=32"]
+
+[[arm]]
+name = "rl-mb64"
+stage = "rl"
+init_from = "PENDING"
+updates = 24
+set = ["learner.minibatches=64"]
+
+# The RL check (main, 2026-11-13 17:40): does PPO train from the 100M BC exponential average
+# (bc-mb256 at 100.1M, frontline Elo ~841 against the ladder)? The calibration's gamma 0.9999
+# / lambda 0.99 (the ones its critic learned), 256 rating lanes (the author's count), the
+# pool's one scripted player (the code's default); about 30M steps.
+[[arm]]
+name = "rl-check"
+stage = "rl"
+init_from = "bc-mb256/policy"
+updates = 60
+set = ["learner.minibatches=32", "lanes.environments=256"]
+
+# The RL minibatch arms (the author, 2026-11-13 19:00): from the same 100M BC exponential
+# average, 100M steps each (192 updates of ~0.52M), 256 lanes; only the minibatch count
+# differs. rl-check (32) is resumed to 192 updates as the 32 arm. 256 is the expected default.
+[[arm]]
+name = "rl-mb256"
+stage = "rl"
+init_from = "bc-mb256/policy"
+updates = 192
+set = ["learner.minibatches=256", "lanes.environments=256"]
+
+[[arm]]
+name = "rl-mb128"
+stage = "rl"
+init_from = "bc-mb256/policy"
+updates = 192
+set = ["learner.minibatches=128", "lanes.environments=256"]
+
+[[arm]]
+name = "rl-mb64"
+stage = "rl"
+init_from = "bc-mb256/policy"
+updates = 192
+set = ["learner.minibatches=64", "lanes.environments=256"]

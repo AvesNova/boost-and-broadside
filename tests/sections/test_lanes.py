@@ -558,6 +558,21 @@ def test_a_warm_starts_league_starts_from_its_parents_rating(tmp_path):
     assert other.gauges[MODE].live.rating == 640.0
 
 
+def test_a_warm_start_from_an_unrated_clone_starts_at_the_scripted_agents_rating(tmp_path):
+    """A parent with no lane ratings (BC without lanes) imitated the scripted agent: the
+    live policy and the averages start at its 1000, not at 0."""
+    import league_cases
+
+    from bnb.league.gauge import GAUGE_TOP
+    from bnb.league.league import League
+
+    trainer, _ = league_cases.league(tmp_path)
+    clone = League(trainer, tmp_path / "clone", ratings={})
+    for gauge in clone.gauges.values():
+        assert gauge.live.rating == GAUGE_TOP == 1000.0
+        assert gauge.entries[EXPONENTIAL_AVERAGE].rating == GAUGE_TOP
+
+
 def _bc_trainer(**changes):
     """A tiny BC trainer on the CPU with one lane per BC matchup."""
     from bnb.runtime.train import Trainer
@@ -581,9 +596,9 @@ def test_bcs_lanes_rate_the_live_clone_and_both_averages_against_the_scripted_ag
         (UNIFORM_AVERAGE, SCRIPTED_PLAYER),
         (EXPONENTIAL_AVERAGE, SCRIPTED_PLAYER),
     ]
-    # the default 1024 lanes of one mode: a fifth for the live clone, 2/5 for each average
+    # the default 1024 lanes of one mode: a third each (equal weights, one stacked run)
     sizes = split(1024, [matchup.weight for matchup in cloning.LANES.matchups])
-    assert sizes == [205, 410, 409]
+    assert sizes == [342, 341, 341]
     assert set(bc.StopConfig().reads) == {UNIFORM_AVERAGE, EXPONENTIAL_AVERAGE}
 
 
@@ -650,10 +665,11 @@ def test_the_uniform_average_starts_at_the_first_update_past_the_warm_up(explici
     assert counts[-1] == len(counts) - first
 
 
-def test_a_clone_saves_the_read_average_as_its_policy_and_every_player_beside_it(tmp_path):
-    """`policy/` holds the average the score stop read, with that average's lane ratings
-    (where a warm start's rating starts); `policy-live/`, `policy-uniform/` and
-    `policy-exponential/` hold each player with its own."""
+def test_a_clone_hands_off_the_exponential_average_whatever_the_stop_reads(tmp_path):
+    """`policy/`, the BC -> RL hand-off, holds the exponential average with its lane ratings
+    (where a warm start's rating starts) whatever `StopConfig.reads` says and whichever
+    average the score stop reads (the author, 2026-11-12); `policy-live/`,
+    `policy-uniform/` and `policy-exponential/` hold each player with its own."""
     from bnb.runs import checkpoint, session
 
     trainer = _bc_trainer()
@@ -677,17 +693,24 @@ def test_a_clone_saves_the_read_average_as_its_policy_and_every_player_beside_it
             for player in (UNIFORM_AVERAGE, EXPONENTIAL_AVERAGE)
         },
     }
-    # the windows hold 40 games, under the default 1000: no average is read yet, so
-    # `policy/` holds the first the stop reads
-    assert session.save_policies(run, trainer) == EXPONENTIAL_AVERAGE
-    trainer.stop_rule = type(trainer.stop_rule)(
-        dataclasses.replace(trainer.config.stop, score_window=40), trainer.stop_rule.state
-    )
-    assert trainer.stop_rule.read == UNIFORM_AVERAGE
-    assert session.save_policies(run, trainer) == UNIFORM_AVERAGE
+    assert session.HANDOFF_PLAYER == EXPONENTIAL_AVERAGE
+    # the windows hold 40 games, under the default 1000: no average is read yet
+    assert trainer.stop_rule.read is None
+    session.save_policies(run, trainer)
+    # with full windows the stop reads the better scoring uniform average, and with `reads`
+    # reordered it prefers the uniform one: `policy/` still holds the exponential average
+    for reads in (
+        (EXPONENTIAL_AVERAGE, UNIFORM_AVERAGE),
+        (UNIFORM_AVERAGE, EXPONENTIAL_AVERAGE),
+        (UNIFORM_AVERAGE,),
+    ):
+        stop = dataclasses.replace(trainer.config.stop, score_window=40, reads=reads)
+        trainer.stop_rule = type(trainer.stop_rule)(stop, trainer.stop_rule.state)
+        assert trainer.stop_rule.read == UNIFORM_AVERAGE
+        session.save_policies(run, trainer)
     assert not (tmp_path / "policy.replaced").exists()
     for directory, player in (
-        ("policy", UNIFORM_AVERAGE),
+        ("policy", EXPONENTIAL_AVERAGE),
         ("policy-live", LIVE),
         ("policy-uniform", UNIFORM_AVERAGE),
         ("policy-exponential", EXPONENTIAL_AVERAGE),
@@ -697,7 +720,7 @@ def test_a_clone_saves_the_read_average_as_its_policy_and_every_player_beside_it
             assert torch.equal(policy.state_dict()[key], value.cpu()), (directory, key)
         ratings = checkpoint.read_policy(tmp_path / directory).ratings
         assert ratings[MODE] == pytest.approx(hooks.ratings.rating(MODE, player)[0])
-    assert checkpoint.read_policy(tmp_path / "policy").ratings[MODE] > 1000.0
+    assert checkpoint.read_policy(tmp_path / "policy").ratings[MODE] < 1000.0
 
 
 def test_bcs_stop_reads_each_players_lane_games_against_the_scripted_agent():
@@ -794,3 +817,22 @@ def test_a_lane_seat_with_unequal_players_compiles_whole_and_plays_as_uncompiled
         torch.manual_seed(3)
         compiled_action, _, _ = compiled(carry, obs, reset)
     assert torch.equal(eager_action.packed(), compiled_action.packed())
+
+
+def test_rls_lanes_rate_every_network_player_against_the_scripted_agent_in_one_run():
+    """RL's default lanes: the live policy, both averages and each league slot against the
+    full-strength scripted agent at equal weight, so every network player has the same
+    rows (to the split's rounding) and they stack as one run."""
+    from bnb.runtime.lanes import RL_MATCHUPS, UNIFORM_AVERAGE, league_slot
+
+    players = [matchup.first for matchup in RL_MATCHUPS]
+    assert players == [
+        LIVE,
+        EXPONENTIAL_AVERAGE,
+        UNIFORM_AVERAGE,
+        *(league_slot(index) for index in range(4)),
+    ]
+    assert {matchup.second for matchup in RL_MATCHUPS} == {SCRIPTED_PLAYER}
+    assert {matchup.weight for matchup in RL_MATCHUPS} == {1.0}
+    sizes = split(1024 // 3, [matchup.weight for matchup in RL_MATCHUPS])
+    assert max(sizes) - min(sizes) <= 1

@@ -80,7 +80,8 @@ def config(model: str, device: str, objective: str = "ppo") -> TrainConfig:
         micro_batch_rows=64,
         return_scale_floor=1e-7,
     )
-    if objective == "bc":  # a window of a few games, so it fills and trims in each half
+    if objective == "bc":  # a window of a few games and a plateau of a few updates, so both
+        # fill and trim in each half
         return TrainConfig(
             game=GameConfig(2, 2, 1500.0, episode_seconds=0.5, respawn_seconds=0.2),
             pools=cloning.LINEUP,
@@ -94,7 +95,12 @@ def config(model: str, device: str, objective: str = "ppo") -> TrainConfig:
             learner=bc.config(**settings),
             compiled=device == "cuda",
             objective="bc",
-            stop=bc.StopConfig(score_window=4, plateau_steps=ENVIRONMENTS * LENGTH),
+            stop=bc.StopConfig(
+                score_window=4,
+                plateau_from_steps=0,
+                plateau_smoothing_steps=2 * ENVIRONMENTS * LENGTH,
+                plateau_window_steps=ENVIRONMENTS * LENGTH,
+            ),
             league=LeagueConfig(uniform_from=0),
         )
     learner = LearnerConfig(**settings)
@@ -108,11 +114,8 @@ def config(model: str, device: str, objective: str = "ppo") -> TrainConfig:
         model=model,
         relational=RelationalConfig(hidden=32),
         # a cut at every update: the checkpoint falls right after one, the resume runs into
-        # more; the ladder in the pool, so its rows' rungs resume too and the "gauges" damage
-        # has unrated rungs to hold it (an unrated average takes the live rating each update)
-        league=LeagueConfig(
-            snapshot_every=ENVIRONMENTS * LENGTH, cut_every=1, cut_slots=2, ladder_in_pool=True
-        ),
+        # more (an unrated average takes the live rating each update)
+        league=LeagueConfig(snapshot_every=ENVIRONMENTS * LENGTH, cut_every=1, cut_slots=2),
         learner=learner,
         compiled=device == "cuda",
     )
