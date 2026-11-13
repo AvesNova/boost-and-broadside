@@ -2,9 +2,11 @@
 checkpoints every N environment steps with the retention (the newest two and the final),
 the policy files of every update (`policies/`, when the run keeps them), and the run's
 status at the end.
-A PPO run trains to its update budget; a BC run until its stop rule fires, and then (or at
-Ctrl-C) also saves its policy files: the average its score stop read as the run's policy,
-and the live clone and both averages beside it.
+A PPO run trains to its update budget (or, with `TrainConfig.combat_collapse_stop` set, until
+a combat-collapse alert has held that many updates: `stopped_by` in run.json says which); a
+BC run until its stop rule fires, and then (or at Ctrl-C) also saves its policy files: the
+average its score stop read as the run's policy, and the live clone and both averages
+beside it.
 
 A stop request (`StopRequest`: SIGINT, as Ctrl-C sends, SIGTERM, as `systemctl stop` sends,
 or a `STOP` file in the run directory, checked after each update) finishes the current
@@ -46,6 +48,8 @@ HANDOFF_PLAYER = EXPONENTIAL_AVERAGE
 STOP_FILE = "STOP"
 BY_STOP_FILE = "STOP file"  # a `StopRequest.by`, beside the signals' names
 STOP_SIGNALS = (signal.SIGINT, signal.SIGTERM)
+# the combat-collapse rules' names start so (`bnb.runs.triggers.default_rules`)
+COMBAT_COLLAPSE = "combat_collapse/"
 
 
 class StopRequest:
@@ -148,6 +152,23 @@ def act(run: Run, trainer: Trainer, recorder: Recorder, record: dict) -> None:
     dumped = recording.dump_batch(run, trainer, record)
     run.update(dumps=run.record.get("dumps", []) + [str(dumped)])
     print(f"skipped a non-finite step: checkpoint and batch dump in {dumped}", flush=True)
+
+
+def combat_collapse(trainer: Trainer, recorder: Recorder) -> str | None:
+    """The combat-collapse stop (`TrainConfig.combat_collapse_stop`, off at 0): why a PPO
+    run ends, once a combat-collapse rule (`bnb.runs.triggers.CombatCollapse`) has been up
+    for that many consecutive updates; None while it runs on."""
+    after = trainer.config.combat_collapse_stop
+    if not after:
+        return None
+    triggers = recorder.triggers
+    for rule in triggers.rules:
+        if (
+            rule.name.startswith(COMBAT_COLLAPSE)
+            and triggers.state[rule.name]["consecutive"] >= after
+        ):
+            return f"{rule.name}: {after} consecutive updates with the alert"
+    return None
 
 
 def _replace_policy(
@@ -273,6 +294,8 @@ def train(
             if recorder is not None:
                 row = recorder.record(row)
                 act(run, trainer, recorder, row)
+                if not cloned:
+                    reason = combat_collapse(trainer, recorder)
             log(row)
             steps = trainer.ppo.environment_steps
             if every_update or steps // snapshot_every > before // snapshot_every:
@@ -294,6 +317,9 @@ def train(
                 policy=str(run.policy_path),
                 policy_player=HANDOFF_PLAYER,
             )
+        elif reason is not None:
+            run.update(stopped_by=reason)
+            print(f"stopping: {reason}", flush=True)
         if stop.by is not None and not finished:
             run.update(stop_request=dict(by=stop.by, step=step))
             if stop.by == BY_STOP_FILE:

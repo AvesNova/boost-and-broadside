@@ -362,8 +362,9 @@ def test_the_sampling_entropy_is_normalised():
 
 # ------------------------------------------------------------------ the method rules
 
-# Abbreviations a series name may use (code style, "Names"): universal ones and percentiles.
-ALLOWED = {"kl", "rms", "x", "y", "id", "of", "p5", "p10", "p50", "p90", "p95"}
+# Abbreviations a series name may use (code style, "Names"): universal ones and percentiles;
+# and short whole words ("of", "on": `combat/damage_share/mutual_head_on`).
+ALLOWED = {"kl", "rms", "x", "y", "id", "of", "on", "p5", "p10", "p50", "p90", "p95"}
 # Truncations a series name must not use.
 FORBIDDEN = {
     "adv", "avg", "cfg", "env", "envs", "ev", "grad", "grads", "idx", "lr", "num", "obs",

@@ -52,7 +52,8 @@ listed.
 
 The final rule list in the audit ("Final trigger rules"), as written:
 - **The alerts:** skipped step, recompile, memory, C4 mismatch, non-finite input,
-  never-seen ship, throughput, rating drop.
+  never-seen ship, throughput, rating drop; and since 2026-11-13 the combat collapse per
+  fighting mode (team deathmatch, elimination; the audit's "Final trigger rules").
 - **The warnings:** entropy collapse, critic useless, support clipping, envelope
   violation, representation collapse, dormant units, update ratio, label validity,
   sampling collapse, reward hacking, head worse than trivial, sigma miscalibrated, side

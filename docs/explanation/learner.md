@@ -141,6 +141,30 @@ is against the lambda 1 returns, the discounted rewards bootstrapped only after 
 last tick: whether the value predicts the rewards. Ticks near that last tick are bootstrapped
 sooner, most of all for the outcome's long horizon.
 
+### Each level's part of the advantage
+
+The policy reads one advantage, the sum of the levels' team-mixed advantages over the return
+scale. Which level that sum follows is not visible in it: a dense level (damage) or one that
+is easy to earn (the zones) can carry most of it while another barely moves the policy. The
+learner measures each level's part in the policy term's own units
+(`bnb.learn.advantages`):
+
+- every update, over the living own ships, `advantage/mean_absolute/{level}`,
+  `advantage/standard_deviation/{level}`, `advantage/share/{level}` (the level's mean |A_k|
+  over the sum of the levels', so the shares sum to 1) and `advantage/correlation/{level}`
+  (with the summed advantage), each also per mode of the batch's games
+  (`.../{level}/{mode}`), and `advantage/raw_standard_deviation/{level}`, the level's GAE
+  before its reward weight, the team mixing and the return scale;
+- at the diagnostics cadence, on the cadence's minibatch, the policy term's gradient with one
+  level's advantage alone: `gradient/policy_level_norm/{level}`,
+  `gradient/policy_level_share/{level}` (its projection on the whole policy gradient; the
+  shares sum to 1 where no token is clipped) and `gradient/policy_level_cosine/{a}/{b}`
+  (every pair of levels, and each level with `policy`, the whole gradient).
+
+The advantage shares cost a few reductions over the batch's per-level advantages; the
+gradients cost one backward pass per level per micro-batch of the cadence's minibatch. Neither
+changes the update (`tests/sections/test_reward_diagnostics.py`).
+
 ## Losses
 
 Every term is a mean in nats per token. Each divides its masked sum by the mask summed over

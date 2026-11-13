@@ -54,6 +54,25 @@ def per_level_gae(
     return advantages, advantages + values
 
 
+def team_weights(team: torch.Tensor, alive: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
+    """(..., N, N) [i, j]: 1 / the living teammates of ship i where j is one of them (j != i),
+    else 0. team (..., N) ids, alive (..., N)."""
+    ships = team.shape[-1]
+    others = ~torch.eye(ships, dtype=torch.bool, device=team.device)
+    mates = (team[..., :, None] == team[..., None, :]) & others & alive[..., None, :]
+    weight = mates.to(dtype)
+    return weight / weight.sum(-1, keepdim=True).clamp_min(1.0)
+
+
+def team_mixed_levels(
+    team: torch.Tensor, alive: torch.Tensor, per_level: torch.Tensor, team_spirit: torch.Tensor
+) -> torch.Tensor:
+    """(..., N, levels): each level's A_ik + s_k mean_{living teammates j != i} A_jk, the
+    parts `team_aggregate` sums. per_level (..., N, levels)."""
+    weight = team_weights(team, alive, per_level.dtype)
+    return per_level + team_spirit * (weight @ per_level)
+
+
 def team_aggregate(
     team: torch.Tensor,
     alive: torch.Tensor,
@@ -65,11 +84,7 @@ def team_aggregate(
     A_i = sum_k (A_ik + s_k mean_{living teammates j != i} A_jk), and the same of the
     returns. team (..., N) ids, alive (..., N); advantages, returns (..., N, levels); team_spirit
     (levels,). A ship with no living teammate mixes in nothing."""
-    ships = team.shape[-1]
-    others = ~torch.eye(ships, dtype=torch.bool, device=team.device)
-    mates = (team[..., :, None] == team[..., None, :]) & others & alive[..., None, :]
-    weight = mates.to(advantages.dtype)
-    weight = weight / weight.sum(-1, keepdim=True).clamp_min(1.0)  # (..., N, N)
+    weight = team_weights(team, alive, advantages.dtype)  # (..., N, N)
 
     def mixed(per_level: torch.Tensor) -> torch.Tensor:
         mean = weight @ per_level  # (..., N, levels): the mean over living teammates

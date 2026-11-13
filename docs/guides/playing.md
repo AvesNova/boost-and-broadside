@@ -191,16 +191,11 @@ Choosing a map takes its fleet size, fields and lineup (and a saved map's mode a
 (0 to 64), the lineup (a dropdown per
 slot of the map's ship types, the same for both teams; **Default** alternates Yongma and
 Jujak, or a set's first two types where it has not both; the map starts at **Real
-scale**), fog, the seed, and each side's controller: **Scripted agent r9m3** (the default:
-the scripted agent, `bnb.controllers.scripted.Scripted`:
-it plays the mode's objectives, remembers each enemy it saw and dead reckons it while
-hidden; r9m3 flies r9m2 with the Frontline lock-aware goal, `src/bnb/play/doctrines/r9m3.json`),
-**Scripted agent r9m2** (r9 with the maneuver doctrine elements and the team-gated duel
-extension, `src/bnb/play/doctrines/r9m2.json`, from maneuvers-2's `champion2.json`),
-**Scripted agent r9** (the stored doctrine of training, the BC teacher and the ratings'
-anchor, `scripted_doctrines.json`, with the lock-aware goal since 2026-11-13;
-`--doctrine0 r9` / `--doctrine1 r9`; a doctrine applies to the ship types it holds one for,
-the Yongma and the Jujak), **Chaser** (`--scripted0 scripted`: it turns toward the nearest visible enemy and
+scale**), fog, the seed, and each side's controller: **Scripted agent Baekho** (the scripted agent, `bnb.controllers.scripted.Scripted`, flying
+Baekho, the one stored doctrine (`scripted_doctrines.json`): the training's BC teacher, its
+league opponent and the ratings' anchor. It plays the mode's objectives, remembers each
+enemy it saw and dead reckons it while hidden, extends from crowds and from a duel it is
+losing, and on Frontline attacks or defends by the capture locks), **Chaser** (`--scripted0 scripted`: it turns toward the nearest visible enemy and
 fires, and reads no zones) or a trained agent. The scripted agent and the chaser need their
 ship card's characteristics, measured once per card in a separate process (about 15 s for
 the standard set and longer for the real-scale types on a laptop CPU) and kept
