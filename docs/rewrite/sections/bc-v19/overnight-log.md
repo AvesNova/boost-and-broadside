@@ -264,3 +264,24 @@ This log records the changes and decisions made while the author was away, with 
 - **rl-dm flags:** the objective and objective-progress advantage shares are about 0. That is expected, since deathmatch has no objective.
 - **E3 `rl-kl`** is queued on the box. It is mixed modes with deathmatch's outcome on kill lead, 143 updates. It starts when rl-dm ends, from a second checkout, /workspace/game2 at 4475e893, so rl-dm's code isn't touched mid-run.
 - **07:12, rl-dm update 23:** `critic_useless` fired on the objective and objective-progress critics, whose returns are always 0 in deathmatch, so their explained variance is meaningless. The real signal is that the **outcome critic explains only 0.135 of the kill-share outcome's variance**. The value the policy learns against is noisy, which fits deathmatch's weak advantage. Entropy is 1.16.
+
+## 07:17 — ANSWER: deathmatch is the strongest mode; the low number was the kill-share Elo scale
+
+rl-v20's averaged policy rated in deathmatch on **win/loss** against Baekho, which is how v2.1 rated it. The column is `--deathmatch-score win_loss`, 768 games.
+
+| step | deathmatch, win/loss | frontline, win/loss | deathmatch, kill share |
+|---|---|---|---|
+| 10M | 987 ± 35 | 1342 (20M) | 997 |
+| 30M | 1668 ± 89 | — | 1082 |
+| 55M | 2196 ± 121 | 2110 | 1142 |
+| 95M | **2825 ± 164** | 2369 | 1205 |
+| 150M | **2719 ± 147** | 2585 | 1204 |
+
+- **Deathmatch leads frontline by a few hundred Elo at matched steps,** the same pattern as v2.1.
+- **Kill-share scoring compresses a dominant policy to about +200:** a 77% kill share is about +206.
+- **Deathmatch's 4–5× smaller advantage** did not stop it outpacing the other modes.
+- **For the author's decision** (not changed): kill share is a fair measure of margin, but its Elo is not comparable with the other modes or with v2.1, and it saturates near +200. Rating deathmatch on win/loss, or reporting both, would restore comparability.
+- **Follow-ups:**
+  - rl-dm, deathmatch only, finishes about 07:45.
+  - rl-kl, mixed with the kill-lead outcome, is trimmed to 72 updates, a matched 75M comparison with rl-v20, since the rating question is answered. It still tests whether a ±1 outcome helps deathmatch learn faster.
+  - The live Elo service is unpaused.
