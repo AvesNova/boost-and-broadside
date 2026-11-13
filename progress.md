@@ -25,6 +25,14 @@ Game v13: the real-scale set at x2 native speed, with the lethality rules. Fly i
   standard `elimination` preset (5v5, 10 fields, 2600 m). The in-training league lanes
   still rate on the training games (deathmatch included); I left them alone.
 
+- **Balance under v13 is far off: Jujak beats Yongma.** Yongma's score energy v turn is
+  0.11-0.14 at 1v1, 0.31-0.34 at 2v2 and 0.20-0.24 at 5v5 (doctrine round 1, below). A
+  card change is the author's call (Yongma's damage or turn, Jujak's shield?). I have not
+  started a card round.
+- The search harness (bench.game_loop) still plays deathmatch with respawns, scored by
+  the kill lead. The rating games are now frontline and elimination; should the doctrine
+  search move to elimination?
+
 ## Log (KST)
 ### 13:54 start
 Branch feat/lethality from integrate/next-runs (fd918a0a). The GPU is running bc-mb512
@@ -126,7 +134,32 @@ both store levels, so the x2 conversion left the flight unchanged.
 | vizia settled max | 139 m/s at 38.6 deg/s | 69 m/s at 19.3 deg/s |
 | vizia core time to kill | yongma 8 hits 0.23 s, jujak 5 hits 0.13 s, vizia 6 hits 0.17 s | yongma 0.47 s, jujak 0.27 s, vizia 0.33 s |
 
+### 15:00 doctrine round 1 on the native v13 game (`docs/rewrite/sections/lethality/round1/`)
+512 games a cell (SE about ±0.02), the ship files as they are. Score: the candidate's
+Yongma side in energy v turn; against r9m and r9-press at 5v5, mixed / reversed.
+
+| Candidate | EvT 1v1 / 2v2 / 5v5 | 5v5 v r9m | 5v5 v r9-press |
+|---|---|---|---|
+| r9m | 0.14 / 0.32 / 0.20 | 0.52 / 0.51 | 0.68 / 0.62 |
+| r9m2 | 0.12 / 0.32 / 0.20 | 0.55 / 0.51 | 0.72 / 0.64 |
+| DE Y 0.7 / J 0.25 | 0.12 / 0.34 / 0.24 | 0.53 / 0.53 | 0.72 / 0.63 |
+| DE Y 0.5 / J 0.1 | 0.12 / 0.31 / 0.20 | 0.51 / 0.51 | 0.72 / 0.59 |
+| r9m2, no crowd extension | 0.14 / 0.15 / 0.06 | 0.32 / 0.35 | 0.50 / 0.43 |
+| r9m2, no r9 extend | 0.11 / 0.32 / 0.21 | 0.58 / 0.52 | 0.73 / 0.58 |
+| press (no extension) | 0.13 / 0.11 / 0.05 | 0.30 / 0.34 | 0.46 / 0.49 |
+
+- The duel extension's gates matter little now: shrinking them (Y 0.7 / J 0.25, Y 0.5 /
+  J 0.1) stays level with r9m2 against r9m. The 1v1 duel is decided by the matchup
+  (Jujak), not by when to leave.
+- r9's own extension element (`extend`) is not needed: without it r9m2 is as strong or
+  stronger (0.58 / 0.52 against r9m).
+- **The crowd extension still wins**: without it a team loses to r9m (0.30-0.35) and only
+  ties the no-flee r9-press. Leaving the crowd still pays at 2v2 and 5v5 under the new
+  lethality. Running away in a team fight is still rewarded. Next levers are the crowd
+  gates (energy, shield, threat count), or the game: the elimination score in the harness.
+- The mirrors (1v1) are even (0.47-0.53).
+
 ## Next
 - Item 6, league: no-flee scripted agents and the fast-chaser ship. ETA ~15:45.
-- Item 7: doctrine round 1 running in tmux `lethality-r1` since 14:48 (7 candidates x 1/2/5,
-  versus r9m and r9-press). Then Yongma v Jujak 5v5.
+- Item 7: decide the balance fix (Questions), then a crowd-gate round, ideally scored on
+  elimination. Item 6's chaser needs a third kind in bench.game_loop to play.
