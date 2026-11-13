@@ -1,12 +1,15 @@
 """Attention shares of a Yemong policy: for each own living ship, the share of its softmax
 attention mass that goes to each kind of key (itself, allies, enemies seen and hidden, the
 global token at the map centre, the fields, the zones), averaged over heads and ticks, per
-spatial layer and over all layers.
+spatial layer and over all layers; and the same per layer and head (`shares_by_layer_head`,
+with each head's per-query spread `spread_by_layer_head`), with `--per-head` printing the
+heads' table.
 
     CUDA_VISIBLE_DEVICES= uv run --no-sync python -m bench.attention_shares \
         --policy NAME=DIRECTORY [--policy ...] [--preset real_scale_deathmatch ...] \
         [--lineup Yongma Yongma Jujak Jujak Jujak] [--opponent scripted|self] \
-        [--environments 8] [--warmup 1] [--segments 4] [--ticks 128] --out FILE.json
+        [--environments 8] [--warmup 1] [--segments 4] [--ticks 128] [--per-head] \
+        --out FILE.json
 
 The weights are recomputed, not read from the kernel: every spatial sublayer's attention
 call (`SpatialBlock._attend`, and the fused `kernels.attention.attend` where it runs) is
@@ -67,20 +70,35 @@ KINDS = (
     "zone_absent",
 )
 KIND = {name: index for index, name in enumerate(KINDS)}
+SHORT = {
+    "self": "self",
+    "ally_alive": "ally",
+    "ally_dead": "ally†",
+    "enemy_visible": "en.vis",
+    "enemy_hidden": "en.hid",
+    "enemy_dead": "en.†",
+    "global": "global",
+    "field": "fields",
+    "zone_present": "zones",
+    "zone_absent": "zone∅",
+}
 POLICY, OPPONENT = "policy", "opponent"
 
 
 @dataclasses.dataclass
 class Recorder:
     """The running sums: per layer and own ship type, each kind's attention mass and the
-    count of living own ship-ticks; the keys of each kind per query (mean count); the
-    recomputation's worst relative error."""
+    count of living own ship-ticks; per layer and head, each kind's mass and its sum of
+    squares over queries (the spread of a head's per-query share); the keys of each kind
+    per query (mean count); the recomputation's worst relative error."""
 
     layers: int
     ship_types: int
     mass: torch.Tensor = None  # (layers, ship_types, kinds) float64
     queries: torch.Tensor = None  # (layers, ship_types) float64
     key_counts: torch.Tensor = None  # (kinds,) float64, summed over layer-0 queries
+    head_mass: torch.Tensor = None  # (layers, heads, kinds) float64, set at the first call
+    head_square: torch.Tensor = None  # (layers, heads, kinds) float64
     worst_error: float = 0.0
     calls: int = 0
     # the step's context: the policy's observation, set around each of its decisions
@@ -140,6 +158,17 @@ class Recorder:
         mass = torch.zeros(*kinds.shape[:2], len(KINDS), dtype=torch.float64, device=kinds.device)
         mass.scatter_add_(-1, kinds, per_query)
         mass = mass * alive[..., None]
+        heads = weights.shape[1]
+        if self.head_mass is None:
+            self.head_mass = torch.zeros(self.layers, heads, len(KINDS), dtype=torch.float64)
+            self.head_square = torch.zeros_like(self.head_mass)
+        per_head = weights[:, :, :own, :].double()  # (R, H, S, K)
+        head_kinds = kinds[:, None].expand(-1, heads, -1, -1)
+        head_mass = torch.zeros(*per_head.shape[:3], len(KINDS), dtype=torch.float64)
+        head_mass = head_mass.to(kinds.device).scatter_add_(-1, head_kinds, per_head)
+        head_mass = head_mass * alive[:, None, :, None]
+        self.head_mass[self.layer] += head_mass.sum((0, 2)).cpu()
+        self.head_square[self.layer] += head_mass.square().sum((0, 2)).cpu()
         for type_index in range(self.ship_types):
             chosen = ship_type == type_index
             self.mass[self.layer, type_index] += mass[chosen].sum(0).cpu()
@@ -303,6 +332,9 @@ def measure(name, directory, preset, lineup, opponent, arguments, device) -> dic
     overall = recorder.mass.sum((0, 1)) / recorder.queries.sum()
     by_type = recorder.mass.sum(0) / recorder.queries.sum(0)[:, None].clamp_min(1.0)
     ship_ticks = recorder.queries[0].sum().item()
+    layer_queries = recorder.queries.sum(1)[:, None, None]  # (layers, 1, 1)
+    head_shares = recorder.head_mass / layer_queries
+    head_spread = (recorder.head_square / layer_queries - head_shares.square()).clamp_min(0).sqrt()
     return dict(
         policy=name,
         directory=str(directory),
@@ -321,6 +353,12 @@ def measure(name, directory, preset, lineup, opponent, arguments, device) -> dic
             for t in range(len(names))
             if recorder.queries[0, t] > 0
         },
+        shares_by_layer_head=[
+            [dict(zip(KINDS, head.tolist())) for head in layer] for layer in head_shares
+        ],
+        spread_by_layer_head=[
+            [dict(zip(KINDS, head.tolist())) for head in layer] for layer in head_spread
+        ],
         mean_keys_per_query=dict(zip(KINDS, (recorder.key_counts / ship_ticks).tolist())),
         recomputation_worst_relative_error=recorder.worst_error,
         attention_calls=recorder.calls,
@@ -330,25 +368,29 @@ def measure(name, directory, preset, lineup, opponent, arguments, device) -> dic
 
 def table(results: list[dict]) -> str:
     """The shares as a text table, a row per policy and preset."""
-    short = {
-        "self": "self",
-        "ally_alive": "ally",
-        "ally_dead": "ally†",
-        "enemy_visible": "en.vis",
-        "enemy_hidden": "en.hid",
-        "enemy_dead": "en.†",
-        "global": "global",
-        "field": "fields",
-        "zone_present": "zones",
-        "zone_absent": "zone∅",
-    }
-    header = f"{'policy':<10}{'preset':<26}" + "".join(f"{short[k]:>8}" for k in KINDS)
+    header = f"{'policy':<10}{'preset':<26}" + "".join(f"{SHORT[k]:>8}" for k in KINDS)
     lines = [header]
     for result in results:
         lines.append(
             f"{result['policy']:<10}{result['preset']:<26}"
             + "".join(f"{100 * result['shares'][k]:8.1f}" for k in KINDS)
         )
+    return "\n".join(lines)
+
+
+def head_table(results: list[dict]) -> str:
+    """The shares per layer and head, in %, a row per policy, preset, layer and head."""
+    header = f"{'policy':<10}{'preset':<26}{'L':>3}{'H':>3}" + "".join(
+        f"{SHORT[k]:>8}" for k in KINDS
+    )
+    lines = [header]
+    for result in results:
+        for layer, heads in enumerate(result["shares_by_layer_head"]):
+            for head, shares in enumerate(heads):
+                lines.append(
+                    f"{result['policy']:<10}{result['preset']:<26}{layer:>3}{head:>3}"
+                    + "".join(f"{100 * shares[k]:8.1f}" for k in KINDS)
+                )
     return "\n".join(lines)
 
 
@@ -372,6 +414,9 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--float32", action="store_true", help="play without bf16 autocast (validation)"
+    )
+    parser.add_argument(
+        "--per-head", action="store_true", help="also print the shares per layer and head"
     )
     parser.add_argument("--out", type=pathlib.Path, required=True)
     arguments = parser.parse_args()
@@ -404,6 +449,8 @@ def main() -> None:
                 flush=True,
             )
     print(table(results))
+    if arguments.per_head:
+        print(head_table(results))
 
 
 if __name__ == "__main__":

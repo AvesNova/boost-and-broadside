@@ -658,6 +658,18 @@ Dead ships take 1-3% together. Per key, a seen enemy (7-9% each) and the ship it
 token, take 13-14%, a fifth of the last layer's mass: there they act as a place to put
 attention that reads nothing. Self-play gives the same shares within 2-3 points.
 
+Per head (`shares_by_layer_head` in the output; 2 heads per layer), the absent slots are
+not one dedicated sink. Only layer 3's head 0 puts more than 30% on them (31-35% in both
+policies, in deathmatch and elimination; a per-query spread of 8-10 points), and it holds
+under a third of all the absent-slot mass. Every other head puts 4-18% there. In frontline
+the same head reads the real zones (31% for BC, 48% for RL) and the fields. Layers 0
+and 1's head 0, at 12-18% on the absent slots, give 27-33% to real zones in frontline. So
+the heads that read zones in frontline park that mass on the absent token in the other
+modes: what looks like a sink is the zone readers with nothing to read. No head is a sink
+on the global token or on itself in every mode. The largest such shares are layer 0's
+head 1 on itself (20-25%) and layer 1's head 0 on the global token (5-23%), and both vary
+by query and by mode.
+
 ### Trunk order
 
 `YemongConfig.order` sets each block's sublayer order: `"spatial_first"` (spatial,
