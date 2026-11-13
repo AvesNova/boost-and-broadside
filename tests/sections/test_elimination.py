@@ -1,6 +1,6 @@
-"""Elimination and fixed map layouts: the win and draw rules (a wipe; at the clock ships
-alive, then total shield, then a draw), no respawn, Clover's fixed fields (four level
-combinations, diagonal partners equal) and its point-symmetric spawns, the mode's
+"""Elimination and fixed map layouts: the win and draw rules (a wipe; at the clock the
+health left, the living ships' shield fractions, then a draw), no respawn, Clover's fixed
+fields (four level combinations, diagonal partners equal) and its point-symmetric spawns, the mode's
 observation, a saved map's layout, and the scripted agent's set for the mode."""
 
 import dataclasses
@@ -83,22 +83,24 @@ def test_played_out_a_match_won_by_its_rule_leaves_the_loser_with_no_ship():
     assert won > 0
 
 
-def test_at_the_clock_more_ships_alive_wins_then_more_shield_then_a_draw():
+def test_at_the_clock_more_health_left_wins_then_a_draw():
+    """Game v12: the health left, each living ship's shield fraction summed by team, decides;
+    the count of ships alive counts only through it (a shieldless survivor adds nothing)."""
     alive = [
-        [True, True, False, True, False, False],  # 2 against 1
+        [True, True, False, True, False, False],  # 2 against 1, team 1 healthier
         [True, False, False, True, False, False],  # 1 against 1, team 1 healthier
-        [True, True, False, True, True, False],  # 2 against 2, equal shields: a draw
+        [True, True, False, True, True, False],  # 2 against 2, every shield gone: a draw
         [True, True, False, True, True, False],  # 2 against 2, team 0 healthier
     ]
     shield = [
-        [1.0, 1.0, 9.0, 30.0, 9.0, 9.0],  # the dead's shields do not count
-        [5.0, 9.0, 9.0, 6.0, 0.0, 0.0],
-        [5.0, 7.0, 0.0, 6.0, 6.0, 0.0],
-        [5.0, 7.5, 0.0, 6.0, 6.0, 0.0],
+        [1.0, 1.0, 90.0, 60.0, 90.0, 90.0],  # the dead's shields do not count
+        [5.0, 9.0, 9.0, 60.0, 0.0, 0.0],
+        [0.0, 0.0, 50.0, 0.0, 0.0, 50.0],
+        [50.0, 70.0, 0.0, 1.0, 1.0, 0.0],
     ]
     result, done = _ended(alive, shield, clock=True)
     assert done == [True] * 4
-    assert result == [1, -1, 0, 1]
+    assert result == [-1, -1, 0, 1]
 
 
 def test_a_dead_ship_never_respawns_within_the_match():

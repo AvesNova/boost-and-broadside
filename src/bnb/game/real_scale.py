@@ -83,6 +83,12 @@ from .ship_types import FIELDS, ShipTypes
 SHIP_SET = "real-scale"
 STANDARD_GRAVITY = FlightConstants().gravity  # 27 m/s^2
 GRAVITY = 9.81  # m/s^2
+# The set plays at this many times the planes' speed (game v13, native): its files hold
+# the x2 values; a plane-equivalent display divides by it through the similarity (length 1,
+# time EQUIVALENT_FACTOR). It drives no simulation. The researched values above (GRAVITY and
+# the aircraft data) stay in plane units; `solve_set` builds an x1 set from them, so a fresh
+# build must be scaled again (docs/rewrite/sections/lethality/native_x2.py).
+EQUIVALENT_FACTOR = 2.0
 LENGTH = 5.82  # a standard metre in real metres
 TIME = math.sqrt(LENGTH * STANDARD_GRAVITY / GRAVITY)  # a standard second in real ones: 4.00
 MAP_SCALE = 3.0  # the map against the standard one (arena radius 7800 m against 2600 m)

@@ -19,10 +19,11 @@ tall as the room under the top bar (never taller; its contents scroll). Each row
 - **Rules**, by group: each setting a slider and a number box within its bounds; "*" marks
   those drawn at an episode's start, and the tooltip gives the game's value (and, under a
   time scale, the value the match plays: a time in the seconds the clock counts).
-- **Time scale**: make the game k times faster than its design at fixed map lengths
-  ("faster by" k sets the factor itself, relative to x1: 2 gives x2 whatever it is now, 1
-  goes back to the design's speed). Every value in the panel stays the design's, at x1
-  (what a save writes); a line at the top names k.
+- **Real-world equivalent** (a set that plays faster than the planes natively: the
+  real-scale set at x2, game v13): off by default, the panel shows and edits the native
+  values; on, a table under the handles shows each one's plane equivalent (native through
+  the similarity at time x `equivalent_factor`: speeds / 2, accelerations / 4, rates / 2,
+  times x 2), labelled "equivalent". Display only: edits and saves stay native.
 - **Maps**: **Save as a map** opens the menu's Maps page with this match, its tuning
   included (the rules' settings, the changed ship cards and the time scale), to save under
   a name (`bnb.play.maps`); **Game's numbers** goes back to the ship files' and the rules'
@@ -37,7 +38,7 @@ from imgui_bundle import imgui
 from bnb.game import api
 
 from .interface.layout import MARGIN, TOP_BAR, Rect
-from .tuning import SET_BY, Tuning, fire_rates
+from .tuning import SET_BY, Tuning, equivalent_factor, equivalent_handle, fire_rates
 
 PANEL_WIDTH = 400.0  # pixels at interface scale 1, like every size here
 LABEL_WIDTH = 150.0  # the label column
@@ -304,6 +305,7 @@ class TuningPanel:
         # the time scale field: None shows the factor the game runs at (x1 at the start),
         # so the field never suggests a speed the game is not running
         self.factor: float | None = None
+        self.equivalent = False  # show the plane-equivalent table (display only)
         self.window: Rect | None = None  # where the window was last drawn
         self.message = ""
         self._files: list | None = None  # the ship files as last read
@@ -335,12 +337,11 @@ class TuningPanel:
                 self._status(tuner)
                 self._ships(session, tuner)
                 self._rules(tuner, session.scale)
-                self._time_scale(session, tuner)
                 self._maps(session, tuner)
         imgui.end()
 
     def _status(self, tuner) -> None:
-        if tuner.time_factor != 1.0:
+        if tuner.time_factor != 1.0:  # a map saved under the old time scale
             imgui.text_colored(
                 DIM, f"Values at x1; the game runs x{tuner.time_factor:.4g} (time scale)."
             )
@@ -438,6 +439,37 @@ class TuningPanel:
             imgui.text_colored(DIM, "shown, not set")
             imgui.table_next_column()
             imgui.text_colored(DIM, short(values[kind]))
+        imgui.end_table()
+        self._equivalent(session, tuner, kind)
+
+    def _equivalent(self, session, tuner, kind: int) -> None:
+        """The **Real-world equivalent** toggle (off by default) and, on, each handle's plane
+        equivalent (`equivalent_handle`), labelled "equivalent": only for a set that plays
+        faster than the planes natively (`equivalent_factor` above 1). Display only."""
+        factor = equivalent_factor(tuner.ship_set)
+        if factor == 1.0:
+            return
+        _, self.equivalent = imgui.checkbox("Real-world equivalent", self.equivalent)
+        session.interface.controls.record("tuning/equivalent")
+        tooltip(
+            f"This set plays x{factor:g} the planes' speed natively: the values above are "
+            f"native. On, the table shows the plane-equivalent ones (speeds / {factor:g}, "
+            f"accelerations / {factor**2:g}, rates / {factor:g}, times x {factor:g}, map "
+            "lengths kept), for comparing with the aircraft. Display only."
+        )
+        if not self.equivalent:
+            return
+        if not imgui.begin_table("equivalent", 2, imgui.TableFlags_.sizing_fixed_fit):
+            return
+        for name in api.HANDLE_NAMES:
+            unit, shown = api.HANDLE_UNITS[name]
+            native = float(getattr(tuner.targets, name)[kind])
+            value = equivalent_handle(name, native, factor) * shown
+            imgui.table_next_row()
+            imgui.table_next_column()
+            imgui.text(_label(name))
+            imgui.table_next_column()
+            imgui.text_colored(DIM, f"{short(value)} {unit} equivalent".replace("  ", " "))
         imgui.end_table()
 
     def _current(self, tuner) -> list:
@@ -548,51 +580,6 @@ class TuningPanel:
 
     def _rules(self, tuner, scale: float) -> None:
         draw_rules(tuner, scale, lambda group: group not in MAP_GROUPS)
-
-    # Time scale --------------------------------------------------------------------------
-
-    def _time_scale(self, session, tuner) -> None:
-        """The time scale now, a factor and **Apply** (the game that many times faster than
-        its design at x1, map lengths fixed: 2 always gives x2, 1 the design's own speed),
-        and **Make this speed 1×** (the playback speed becomes the game's own)."""
-        if not imgui.collapsing_header("Time scale"):
-            return
-        controls = session.interface.controls
-        help = (
-            "Make the whole game this many times faster than its design (x1) with the "
-            "map's lengths fixed (2 gives x2 whatever it runs at now; 1 goes back): speeds "
-            "x k, accelerations and gravity x k^2, rates and fire rates x k, times / k, "
-            "energies x k^2 (a store keeps its height, energy / g) and powers x k^3. Fire "
-            "rates snap to whole Hz dividing the tick rate and bullet lives, clocks and shield "
-            "delays to whole ticks. The panel's values stay the design's, at x1: an edit sets "
-            "the x1 value and a save writes it."
-        )
-        width = 80.0 * session.scale
-        imgui.text_colored(DIM, f"the game runs x{tuner.time_factor:.4g}; values at x1")
-        imgui.align_text_to_frame_padding()
-        imgui.text("faster by")
-        imgui.same_line()
-        imgui.set_next_item_width(width)
-        if self.factor is None:
-            self.factor = tuner.time_factor
-        _, self.factor = imgui.input_float("##time factor", self.factor, 0.0, 0.0, "%.4g")
-        controls.record("tuning/time factor")
-        tooltip(help)
-        imgui.same_line()
-        if imgui.button("Apply##time scale") and self.factor > 0.0:
-            self.message = session.time_scale(self.factor)
-        controls.record("tuning/time scale")
-        tooltip(help)
-        playback = session.loop.time_scale
-        imgui.begin_disabled(playback == 1.0)
-        if imgui.button(f"Make this speed 1× (playback ×{playback:g})"):
-            self.message = session.make_speed_normal()
-        imgui.end_disabled()
-        controls.record("tuning/make speed normal")
-        tooltip(
-            "Take the playback speed as the factor: the game becomes that many times faster "
-            "and playback goes back to ×1, so the match looks the same.\n" + help
-        )
 
     # Maps and the game's numbers --------------------------------------------------------
 

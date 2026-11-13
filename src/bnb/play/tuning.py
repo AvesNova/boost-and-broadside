@@ -169,6 +169,22 @@ def snap_handle(name: str, value: float, tick_length: float) -> float:
     return value
 
 
+def equivalent_factor(ship_set: str) -> float:
+    """How many times faster than the planes a set plays natively (game v13): the real-scale
+    set's `real_scale.EQUIVALENT_FACTOR` (2), 1 for every other set. Display only."""
+    from bnb.game import real_scale
+
+    return real_scale.EQUIVALENT_FACTOR if ship_set == real_scale.SHIP_SET else 1.0
+
+
+def equivalent_handle(name: str, value: float, factor: float) -> float:
+    """A native handle's plane-equivalent value (SI): the similarity at length 1 and time
+    `factor` (the game `factor` times slower: speeds / factor, accelerations / factor^2,
+    rates / factor, times x factor, energies / factor^2). Display only; nothing snaps."""
+    units = api.similarity.HANDLE_UNITS[name]
+    return value * api.similarity.factor(units, 1.0, factor)
+
+
 def time_scaled_settings(
     values: dict[str, float], factor: float, tick_length: float
 ) -> dict[str, float]:

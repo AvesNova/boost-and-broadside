@@ -269,11 +269,15 @@ def resolve(
     # The mode phase: the mode state, the objective events, and whether the match is won.
     alive = alive0 & ~died
 
-    def mode_phase(mode_rules: ModeRules, mode, ships, alive, died, active):
+    def mode_phase(mode_rules: ModeRules, mode, ships, alive, died, active, health):
         phase = modes.mode_phase(rules, mode_rules, mode, ships, alive, died, active)
-        return phase, modes.clock_result(mode_rules, phase.mode, ships, alive)
+        return phase, modes.clock_result(mode_rules, phase.mode, alive, health)
 
-    phase, clock_result = per_mode(rules, B, mode_phase, state.mode, ships, alive, died, active)
+    # each ship's health, its shield over its type's full shield (elimination's tie-break)
+    health = ships.shield / per_ship(types.max_shield, ships.ship_type)
+    phase, clock_result = per_mode(
+        rules, B, mode_phase, state.mode, ships, alive, died, active, health
+    )
     done = (match.episode_tick + 1 >= arena.episode_ticks) | phase.won
     result = torch.where(phase.won, phase.result, clock_result)
     result = torch.where(done, result, 0)

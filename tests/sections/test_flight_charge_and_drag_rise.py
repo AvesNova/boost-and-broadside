@@ -54,7 +54,7 @@ def test_the_direct_charge_flies_as_the_coast_exchange_at_cruise():
 def test_below_cruise_the_direct_charge_leaves_the_speed_only_the_null_power():
     airframe = airframe_of(TYPES, KIND)
     constants = _flight(direct_charge=True, critical_speed=0.0)
-    speed = 80.0
+    speed = 160.0  # x1's 80 m/s at the set's x2 (game v13)
     speed_rate, energy_rate = _rates(constants, speed, 0.0)
     torch.testing.assert_close(
         energy_rate, airframe.engine_power - airframe.engine_power_full_store
