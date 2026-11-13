@@ -287,7 +287,9 @@ class Tokens:
     an absent zone at the map centre (the global token's rotation). Positions are shifted.
     Given the Motion the tick before (the acceleration inputs or the extrapolation
     baseline): motion, the enemy rows' Motion (the next tick's previous), and accelerations,
-    whether or not the ship token reads them (None without).
+    whether or not the ship token reads them (None without). key_mask (..., N) bool, with
+    mask_benched: the ships attention reads as keys, every one but the benched (None
+    without).
     """
 
     ship: torch.Tensor
@@ -302,6 +304,7 @@ class Tokens:
     memory_position: torch.Tensor
     motion: Motion | None = None
     accelerations: Accelerations | None = None
+    key_mask: torch.Tensor | None = None
 
 
 def _position_code(position: torch.Tensor) -> torch.Tensor:
@@ -336,6 +339,7 @@ def compose(
     read_accelerations: bool = True,
     mode_inputs: tuple[str, ...] = MODE_INPUTS,
     timers: bool = False,
+    mask_benched: bool = False,
 ) -> Tokens:
     """The Tokens of one team's views (...) from the observation and the replay: the ships' belief
     codes and features, the global token, the fields and the zones, every position shifted by the
@@ -352,7 +356,9 @@ def compose(
     (`respawn_features`); a zone's capture progress is the meter's fraction in [0, 1]
     either way. The global token ends with the boundary's radius over the arena radius and
     its time to zero, coded as a timer (elimination's shrinking boundary; 1 and 0
-    elsewhere)."""
+    elsewhere). With mask_benched a benched row (the observation's benched flag) counts in
+    no ship's presence and the Tokens carry the key mask that hides it from attention
+    (`Yemong.mask_benched`)."""
     ships, dtype = obs.ships, obs.ships.dtype
     own = replay.previous_action.shape[-1]
     column = {name: ships[..., SHIP[name]] for name in SHIP}
@@ -376,7 +382,12 @@ def compose(
 
     gradient = torch.stack([column["log_index_gradient_x"], column["log_index_gradient_y"]], -1)
     gradient = torch.where(visible[..., None], gradient, 0.0) / GRADIENT_SCALE
-    presence = local_presence(position, team, valid, presence_radius)
+    key_mask = None
+    if mask_benched:
+        key_mask = column["benched"] < 0.5
+        presence = local_presence(position, team, valid & key_mask, presence_radius)
+    else:
+        presence = local_presence(position, team, valid, presence_radius)
     since_seen = age.to(dtype) * tick_length
     now, change = None, None
     if previous is not None:
@@ -499,4 +510,5 @@ def compose(
         memory_position=torch.cat([field_position, zone_position], -2),
         motion=now,
         accelerations=change,
+        key_mask=key_mask,
     )

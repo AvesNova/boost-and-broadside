@@ -587,12 +587,21 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
   `YemongConfig.order` gives (see [Trunk order and the rotary read-out](#trunk-order-and-the-rotary-read-out)):
   by default the spatial sublayers first.
   - A **spatial sublayer** is attention of the queries over themselves and the map memory,
-    with rotary encodings of position and heading, then a gated MLP. There is no mask.
+    with rotary encodings of position and heading, then a gated MLP. There is no mask, but
+    for uneven teams (below).
   - A **temporal sublayer** runs per query token over time: a short causal convolution and
     an RG-LRU recurrence, gated, then a gated MLP. An episode start cuts both. The RG-LRU
     (real-gated linear recurrent unit) keeps one state vector per token and updates it as
     `h = a * h + sqrt(1 - a**2) * (i * x)`, where the decay `a` and the input gate `i` are
     computed from the input `x`, so the layer learns how long to remember.
+- **Uneven teams:** training plays full teams only. Where a match benches slots (the
+  crossover's engine, `bnb.league.matches.Arena` with benching), the runtime switch
+  `Yemong.mask_benched` is on: a ship whose observation row has the `benched` flag is no
+  key or value of any spatial sublayer (an attention mask from the flag, at fixed shapes,
+  on the plain attention path) and counts in no ship's local presence, so the active
+  ships' outputs do not depend on anything in the benched rows. The benched rows' own
+  outputs are computed and mean nothing; the game ignores a benched ship's action. Off,
+  the model computes exactly what it did without the switch. The same weights serve both.
 - **Heads**, each an MLP:
 
 | Head | Reads | Gives |

@@ -198,7 +198,9 @@ give the enemy a point, respawn or show to the enemy, and a reset's spawns keep 
 from them. In the observation their rows are a dead ship's: alive 0, fired and spawned 0,
 `respawn_wait` the full respawn length; the enemy's view shows them not visible (hidden
 columns zero), and their own team's view shows them as it shows its own dead ships
-(visible, with the frozen values, no accelerations). With every ship active (or `active`
+(visible, with the frozen values, no accelerations); every row carries the `benched` flag,
+shown to both teams ([perception](perception.md)), and a Yemong evaluated at uneven counts
+masks benched ships out of its attention (`Yemong.mask_benched`). With every ship active (or `active`
 None, as in training) the game is bit-identical to the game without the input
 (`tests/sections/test_benched.py`).
 

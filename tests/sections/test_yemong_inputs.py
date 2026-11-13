@@ -246,6 +246,137 @@ def test_the_ship_token_reads_the_benched_flag_and_the_model_steps_with_it():
     )
 
 
+def _benched_views(ticks: int):
+    """Team 0's views of a fogged 5-a-side chaser game, environment 0 at 4 against 5 (own
+    slot 4 benched) and environment 1 at 5 against 4 (enemy slot 4, row 9, benched): (the
+    views, the benched rows (2, N) bool)."""
+    game = dataclasses.replace(GAME, ships_per_team=5)
+    rules, S5 = api.rules_of(game), game.ships_per_team
+    active = torch.tensor([[4, 5], [5, 4]], dtype=torch.int32)
+    generator = torch.Generator().manual_seed(5)
+    state = api.reset(rules, TYPES, api.uniforms(rules, 2, generator=generator), active=active)
+    state, observation, _ = api.perceive(rules, state, active)
+    chaser = Chaser(characteristics(TYPES, rules), S5)
+    views = []
+    for _ in range(ticks):
+        team0, team1 = (
+            Obs(
+                **{
+                    part: getattr(observation, part)[:, team]
+                    for part in ("ships", "fields", "globals", "zones")
+                }
+            )
+            for team in (0, 1)
+        )
+        views.append(team0)
+        actions = [chaser.step(None, view, None)[0] for view in (team0, team1)]
+        packed = torch.cat([action.packed() for action in actions], 1)
+        state, _ = api.step(
+            rules,
+            TYPES,
+            state,
+            Action.unpack(packed),
+            api.spread(rules, 2, generator=generator),
+            api.uniforms(rules, 2, generator=generator),
+            active,
+        )
+        state, observation, _ = api.perceive(rules, state, active)
+    benched = views[0].ships[..., SHIP["benched"]] > 0.5
+    return game, views, benched
+
+
+def _benched_model(game: GameConfig, seed: int = 0) -> Yemong:
+    config = YemongConfig(
+        width=8,
+        blocks=1,
+        spatial_per_block=1,
+        heads=1,
+        map_width=4,
+        value_bins=11,
+        hex_rings=1,
+        rotary_octaves=1,
+        heading_harmonics=(1,),
+    )
+    with _default_generator(seed):
+        net = Yemong(yemong_build(config, api.rules_of(game), TYPES))
+    generator = torch.Generator().manual_seed(seed)
+    with torch.no_grad():
+        for parameter in net.parameters():
+            parameter.copy_(0.3 * torch.randn(parameter.shape, generator=generator))
+    return net.eval()
+
+
+def _masked_run(net, game, views, benched, noise: torch.Generator | None):
+    """Decisions over the views with each step's benched rows overwritten by noise (every
+    column but the flag; and the benched own ship's previous action) when noise is given."""
+    S5, N5 = game.ships_per_team, game.num_ships
+    with torch.no_grad(), _default_generator(7):
+        carry = net.initial_carry(2, S5, N5)
+    decisions = []
+    for t, view in enumerate(views):
+        ships = view.ships
+        if noise is not None:
+            junk = 1e3 * torch.randn(ships.shape, generator=noise)
+            junk[..., SHIP["benched"]] = ships[..., SHIP["benched"]]
+            ships = torch.where(benched[..., None], junk, ships)
+        with torch.no_grad(), _default_generator(11 + t):  # the reset's offset draw
+            decision = net.step(
+                carry, dataclasses.replace(view, ships=ships), torch.full((2,), t == 0)
+            )
+        joint = decision.policy_logits.argmax(-1).to(torch.int32)
+        if noise is not None:
+            other = torch.randint(0, NUM_JOINT, joint.shape, generator=noise, dtype=torch.int32)
+            joint = torch.where(benched[:, :S5], other, joint)
+        carry = dataclasses.replace(decision.carry, previous_action=joint)
+        decisions.append(decision)
+    return decisions
+
+
+def test_with_the_mask_on_the_active_ships_read_nothing_of_the_benched_rows():
+    """A 4v5 and a 5v4 game: anything written into the benched rows (own and enemy) leaves
+    every active ship's policy, values, enemy forecasts and belief, and the outcome, as
+    they were; with the mask off it does not (the test can tell)."""
+    game, views, benched = _benched_views(6)
+    S5 = game.ships_per_team
+    assert benched[0, S5 - 1] and benched[1, -1] and int(benched.sum()) == 2
+    own_active, enemy_active = ~benched[:, :S5], ~benched[:, S5:]
+    net = _benched_model(game)
+    net.mask_benched = True
+    clean = _masked_run(net, game, views, benched, None)
+    dirty = _masked_run(net, game, views, benched, torch.Generator().manual_seed(9))
+    for one, two in zip(clean, dirty, strict=True):
+        torch.testing.assert_close(one.policy_logits[own_active], two.policy_logits[own_active])
+        torch.testing.assert_close(one.values[own_active], two.values[own_active])
+        torch.testing.assert_close(
+            one.enemy_action_logits[enemy_active], two.enemy_action_logits[enemy_active]
+        )
+        torch.testing.assert_close(
+            one.next_state_logits[enemy_active], two.next_state_logits[enemy_active]
+        )
+        torch.testing.assert_close(one.outcome_probabilities, two.outcome_probabilities)
+        playing = ~benched
+        torch.testing.assert_close(one.carry.belief.means[playing], two.carry.belief.means[playing])
+    net.mask_benched = False
+    clean = _masked_run(net, game, views, benched, None)
+    dirty = _masked_run(net, game, views, benched, torch.Generator().manual_seed(9))
+    assert not torch.allclose(
+        clean[-1].policy_logits[own_active], dirty[-1].policy_logits[own_active]
+    )
+
+
+def test_the_mask_on_a_full_team_computes_what_it_does_off():
+    """No benched row: the masked attention (the plain path, every key shown) and the
+    unmasked one agree within rounding, and the switch reads only the flag."""
+    net = _model()
+    views, _, _ = _game(2, 4)
+    off = _decision(net, views[-1], 2)
+    net.mask_benched = True
+    on = _decision(net, views[-1], 2)
+    torch.testing.assert_close(on.policy_logits, off.policy_logits)
+    torch.testing.assert_close(on.values, off.values)
+    torch.testing.assert_close(on.enemy_action_logits, off.enemy_action_logits)
+
+
 # ------------------------------------------------------------------ item 26: the image
 
 

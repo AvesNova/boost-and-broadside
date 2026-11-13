@@ -80,10 +80,12 @@ def test_the_scripted_agent_against_itself_scores_a_half_at_equal_counts_and_win
     assert ahead["score"] > 0.9  # three ships against one
 
 
-def test_a_network_plays_crossover_pairs(tmp_path):
+@pytest.mark.parametrize("name", ["relational", "yemong"])
+def test_a_network_plays_crossover_pairs(tmp_path, name):
+    """A Yemong plays with its benched mask on (`Yemong.mask_benched`)."""
     game = GameConfig(2, 2, 700.0, episode_seconds=4.0, respawn_seconds=1.0)
     directory = tmp_path / "policy"
-    checkpoint.save_policy(directory, tiny_model("relational", seed=1, game=game))
+    checkpoint.save_policy(directory, tiny_model(name, seed=1, game=game))
     network = player(str(directory))
     layout = dataclasses.replace(LAYOUT, block_environments=4)
     rows = fights.crossover(network, _scripted(), [(2, 2), (1, 2), (2, 1)], 8, game, CPU, layout)
@@ -176,3 +178,15 @@ def test_the_command_prints_the_table_and_records_the_rows(tmp_path, monkeypatch
     result = json.loads((directory / "result.json").read_text())
     assert result["payload"]["rows"] == rows and result["payload"]["seed"] == 0
     assert "command" in result["provenance"]
+
+
+def test_an_engine_with_benching_masks_a_yemongs_benched_ships(tmp_path):
+    """The benching engine turns `Yemong.mask_benched` on; the full-team one leaves it off."""
+    game = GameConfig(2, 2, 700.0, episode_seconds=4.0, respawn_seconds=1.0)
+    directory = tmp_path / "policy"
+    checkpoint.save_policy(directory, tiny_model("yemong", seed=1, game=game))
+    layout = dataclasses.replace(LAYOUT, block_environments=4)
+    for benching in (False, True):
+        network = player(str(directory))
+        arena = Arena([network, _scripted()], game, CPU, layout, benching=benching)
+        assert arena.groups[0].mask_benched is benching
