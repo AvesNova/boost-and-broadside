@@ -186,3 +186,15 @@ This log records the changes and decisions made while the author was away, with 
 - **`rating_drop`:** the run's own frontline rating of the live policy fell from about 1966 to about 1760. Its error is ±130–180, because the live policy wins almost every game against Baekho, which leaves the rating poorly determined. The laptop's frontline rating of the averaged policy rose over the same stretch. I judged it noise and am not acting on it.
 - **To watch:** in deathmatch the averaged policy, 1142 on the laptop, lags the live policy, about 1880 in the run's lanes, far more than in the other modes. I'll rate the final live and averaged policies side by side to see whether averaging costs deathmatch strength.
 - **Health:** entropy fell from 1.32 to 1.11 and KL is 0.008. Advantage shares: outcome 0.44, objective 0.29, objective progress 0.11, kill/death 0.11, damage 0.06.
+
+## 05:59 — rl-v20 at 113M: frontline 2369, elimination 1727; the deathmatch "lag" is a scoring-scale effect
+
+- **The laptop's live Elo** of the averaged policy:
+  - frontline 2179 at 65M, then 2268, 2353, **2369 at 95M**;
+  - elimination 1584 at 65M, then 1618, 1676, **1727 at 95M**;
+  - deathmatch **1162 at 65M**, up from 1097 at 35M.
+- **Why deathmatch looks low:** the laptop rates deathmatch on kill share, a continuous score, as the author chose. A dominant policy scores well under 1, so its Elo gap is compressed. The run's own win/loss lanes rate the same averaged policy about 1585, the uniform average 1539, and the live policy about 1944. So averaging is not costing deathmatch strength. The kill-share Elo scale is simply not comparable with the other two modes.
+- **`gauge_runaway` again:** a new league snapshot (86M) has played but has no rated games yet, the same warm-up artifact as before. Benign.
+- **To watch:**
+  - Entropy is falling: 1.11 at 70M, 0.81 now. KL is steady at 0.008 and the clip fraction 0.08.
+  - Deathmatch boundary deaths in league games rose from 0.14 to 2.9 per game, against about 41 combat deaths. Small, but rising.
