@@ -285,6 +285,28 @@ table shows its kill share (Yongma's share of the kills), which reads 0.5 at bal
 - Deathmatch's kill-lead score is too deterministic at 600 s to rate with. Rate on the kill
   share, or a shorter clock? (Question for the author.)
 
+### 16:40 round 7 (`round7/`): lift with smaller damage and shield steps, v15, 256 games
+Yongma's score (deathmatch: its kill share), energy v turn, both sides r9m2.
+
+| Card | Elim 1v1 | Elim 2v2 | Elim 5v5 | DM share 1v1 | DM share 2v2 | DM share 5v5 | Front 5v5 |
+|---|---|---|---|---|---|---|---|
+| base | 0.19 | 0.36 | 0.47 | 0.22 | 0.46 | 0.49 | 0.32 |
+| Y damage x2 + J shield x0.65 | 0.41 | 0.56 | 0.65 | 0.30 | 0.57 | 0.59 | 0.53 |
+| Y lift x1.5 | 0.40 | 0.45 | 0.47 | 0.26 | 0.52 | 0.51 | 0.37 |
+| **Y lift x1.5 + damage x1.5** | **0.48** | **0.52** | **0.55** | 0.27 | 0.57 | 0.54 | 0.47 |
+| Y lift x1.3 + damage x1.5 | 0.43 | 0.43 | 0.50 | 0.27 | 0.55 | 0.54 | 0.48 |
+| Y lift x1.3 + damage x1.5 + J shield x0.8 | 0.42 | 0.47 | 0.56 | 0.28 | 0.57 | 0.56 | 0.48 |
+| Y lift x1.5 + J shield x0.8 | 0.43 | 0.49 | 0.61 | 0.28 | 0.55 | 0.53 | 0.50 |
+
+- **Yongma lift x1.5 + damage x1.5 is the first card inside 0.45-0.55 on all three
+  elimination sizes.** Frontline 5v5 is 0.47 and the deathmatch share at 2v2 / 5v5 is
+  0.57 / 0.54. Lift balances the duel without the 5v5 overshoot that shield and power give.
+- **The deathmatch 1v1 share stays at 0.26-0.30 for every card** (base 0.22). The respawn
+  duel on the small map (1878 m) favours the turn fighter whatever the card, like frontline
+  2v2 did. Is deathmatch 1v1 a rating size? (Question for the author.)
+- Round 6's leader read 0.49 at elimination 1v1 there and 0.41 here: 256 games is coarse.
+  Round 8 confirms at 512.
+
 ## Next
 - Item 6, league: no-flee scripted agents and the fast-chaser ship. ETA ~15:45.
 - Item 7: round 6 (v15) is running in tmux `lethality-r6`; then 10v10 and 0.5x / 2x arena

@@ -85,6 +85,12 @@ CARDS = {
         ),
         ("Y lift x1.5 + J shield x0.8", {"max_lift_coefficient": 1.5}, {"max_shield": 0.8}),
     ],
+    # round 7's leader confirmed at 512 games, with its spot-checks
+    "round8": [
+        ("base", {}, {}),
+        ("Y lift x1.5 + damage x1.5", {"max_lift_coefficient": 1.5, "hit_damage": 1.5}, {}),
+        ("Y damage x2 + J shield x0.65", {"hit_damage": 2.0}, {"max_shield": 0.65}),
+    ],
     # the spot-checks (10v10, arena 0.5x and 2x) of round 6's two closest cards
     "round7-spot": [
         ("base", {}, {}),
