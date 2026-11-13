@@ -115,6 +115,13 @@ def main() -> None:
     parser.add_argument("--arena-scale", type=float, default=1.0, help="off the density rule")
     parser.add_argument("--fog", type=int, default=1)
     parser.add_argument(
+        "--setting",
+        action="append",
+        default=[],
+        type=lambda text: (text.split("=")[0], float(text.split("=")[1])),
+        help="a rule setting KEY=VALUE (`bnb.game.tuning` key), repeatable",
+    )
+    parser.add_argument(
         "--mode",
         default="deathmatch",
         choices=["deathmatch", "elimination", "frontline"],
@@ -155,6 +162,7 @@ def main() -> None:
             fog=bool(args.fog),
             arena_scale=args.arena_scale,
             mode=args.mode,
+            settings=dict(args.setting),
         )
         loop.set_types(energy, turn)
         if size == args.sizes[0]:

@@ -393,6 +393,7 @@ class Loop:
         fog: bool = True,
         arena_scale: float = 1.0,
         mode: str = "deathmatch",
+        settings: dict[str, float] | None = None,
     ) -> None:
         self.device = torch.device(device)
         self.mode = mode
@@ -415,6 +416,8 @@ class Loop:
         self.K = variants
         self.types = variant_types(self.base, [{}] * variants, [{}] * variants)
         self.rules = api.rules_of(game, types=self.types)
+        if settings:  # rule settings by `bnb.game.tuning` key (an exploration's overrides)
+            self.rules = api.tuning.tuned(self.rules, settings, bounded=False)
         self.B, self.S = environments, game.ships_per_team
         self.N = 2 * self.S
         self.ticks = int(round(seconds / self.rules.tick_length))

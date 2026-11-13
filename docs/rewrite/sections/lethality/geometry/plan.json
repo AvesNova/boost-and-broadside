@@ -1,0 +1,112 @@
+{
+ "A-5v5": {
+  "ships": 5,
+  "arena": 7800.0,
+  "settings": {}
+ },
+ "A-10v10": {
+  "ships": 10,
+  "arena": 11030.9,
+  "settings": {}
+ },
+ "A-0.5x": {
+  "ships": 5,
+  "arena": 4200.0,
+  "settings": {}
+ },
+ "A-2x": {
+  "ships": 5,
+  "arena": 15600.0,
+  "settings": {}
+ },
+ "B-5v5": {
+  "ships": 5,
+  "arena": 7800.0,
+  "settings": {
+   "mode.zone_radius": 330.0,
+   "mode.zone_ring_fraction": 0.615
+  }
+ },
+ "B-10v10": {
+  "ships": 10,
+  "arena": 11030.9,
+  "settings": {
+   "mode.zone_radius": 277.4953866922449,
+   "mode.zone_ring_fraction": 0.5171504933810018
+  }
+ },
+ "B-0.5x": {
+  "ships": 5,
+  "arena": 4200.0,
+  "settings": {
+   "mode.zone_radius": 449.71419495370293,
+   "mode.zone_ring_fraction": 0.8381037269591737
+  }
+ },
+ "B-2x": {
+  "ships": 5,
+  "arena": 15600.0,
+  "settings": {
+   "mode.zone_radius": 233.3452377915607,
+   "mode.zone_ring_fraction": 0.43487067042972677
+  }
+ },
+ "C-5v5": {
+  "ships": 5,
+  "arena": 7800.0,
+  "settings": {},
+  "same_as": "A-5v5"
+ },
+ "C-10v10": {
+  "ships": 10,
+  "arena": 9275.8,
+  "settings": {}
+ },
+ "C-0.5x": {
+  "ships": 5,
+  "arena": 4200.0,
+  "settings": {},
+  "same_as": "A-0.5x"
+ },
+ "C-2x": {
+  "ships": 5,
+  "arena": 15600.0,
+  "settings": {},
+  "same_as": "A-2x"
+ },
+ "D-5v5": {
+  "ships": 5,
+  "arena": 7800.0,
+  "settings": {
+   "mode.zone_radius": 330.0,
+   "mode.zone_ring_fraction": 0.615
+  },
+  "same_as": "B-5v5"
+ },
+ "D-10v10": {
+  "ships": 10,
+  "arena": 9275.8,
+  "settings": {
+   "mode.zone_radius": 302.6115870428706,
+   "mode.zone_ring_fraction": 0.5639579576708044
+  }
+ },
+ "D-0.5x": {
+  "ships": 5,
+  "arena": 4200.0,
+  "settings": {
+   "mode.zone_radius": 449.71419495370293,
+   "mode.zone_ring_fraction": 0.8381037269591737
+  },
+  "same_as": "B-0.5x"
+ },
+ "D-2x": {
+  "ships": 5,
+  "arena": 15600.0,
+  "settings": {
+   "mode.zone_radius": 233.3452377915607,
+   "mode.zone_ring_fraction": 0.43487067042972677
+  },
+  "same_as": "B-2x"
+ }
+}
