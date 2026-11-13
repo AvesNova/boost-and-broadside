@@ -76,9 +76,11 @@ def _arguments(game: GameConfig, step: ScriptedStep, traits=None) -> tuple:
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("setup", [AGENTS, REAL_SCALE_AGENTS], ids=["small", "real-scale r9m2"])
+@pytest.mark.parametrize(
+    "setup, ticks", [(AGENTS, 200), (REAL_SCALE_AGENTS, 900)], ids=["small", "real-scale r9m2"]
+)
 def test_the_built_step_plays_as_the_uncompiled_one_and_is_kept_on_disk(
-    setup, tmp_path, monkeypatch
+    setup, ticks, tmp_path, monkeypatch
 ):
     """Built in a child process (once for both sides, then read from disk by a later
     process), the step gives the uncompiled step's actions exactly, its draws included, over
@@ -89,7 +91,7 @@ def test_the_built_step_plays_as_the_uncompiled_one_and_is_kept_on_disk(
     monkeypatch.setattr(built, "_LOADED", {})
     if setup is REAL_SCALE_AGENTS:
         assert sides[0].controller.doctrines is not None
-    assert _play(*_beside_uncompiled(sides, setup), 200) > 0
+    assert _play(*_beside_uncompiled(sides, setup), ticks) > 0
     assert all(side.uses_compiled for side in sides)
     libraries = list(tmp_path.glob("scripted_steps/*.pt2"))
     assert len(libraries) == 1
