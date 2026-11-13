@@ -10,8 +10,10 @@ Rules items 1-4 are in (rough). Fly them with:
   where Jujak and Vizia take 5-7. Default: keep the shields (they are the archetypes' and
   the game loop's tuning) and give every type the same centre hit times its archetype
   delta. The alternative is pulling Yongma's shield down towards 100.
-- The full recharge is 3 s delay + 4.5 s (not 5 s), so empty to full (7.5 s) is shorter
-  than deathmatch's 8 s respawn as well as frontline's ~18 s.
+- Shield timing: back to the old 6 s delay + 12/s (author's call after flying v12). Note
+  that empty to full now takes 6 + 6.6-11.8 s = 13-18 s, slower than deathmatch's 8 s
+  respawn and about frontline's ~18 s, which is what the brief's constraint ruled out.
+  Confirm this is intended.
 - Reverse power also restarts the shield wait, as before (only coasting recharges).
 - Ratings: `bnb tournament` and `bnb head-to-head` now default to frontline + a new
   standard `elimination` preset (5v5, 10 fields, 2600 m). The in-training league lanes
@@ -62,6 +64,10 @@ until ~14:30, so code and CPU tests come first.
   test_mode_rules, test_league_tournament, test_game_api_display, test_map_knobs,
   test_game_version pass; tests/docs has 5 failures that the base branch also has (stale
   references, not this work).
+
+### 14:25 author feedback: shield back to the old timing
+The flying and the time to kill feel right. Yongma, Jujak and Vizia's shields went back to
+a 6 s delay and 12/s (rearmed); the restart-on-action rule stays.
 
 ## Next
 - Item 6, league: no-flee scripted agents and the fast-chaser ship. ETA ~15:45.
