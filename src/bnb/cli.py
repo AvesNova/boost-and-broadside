@@ -833,7 +833,8 @@ def _train(options: Train, given_options: set[str], stop) -> None:
             f"entropy {row.get('policy/entropy/joint', float('nan')):.2f}  "
             f"kl {row['policy/kl']:+.4f}  clip {row['policy/clip_fraction']:.3f}  "
             f"drift {row['policy/ratio_drift/max']:.3f}  skipped {row['train/skipped_steps']}  "
-            f"nonfinite beliefs {row['counters/nonfinite_beliefs']}  reward/s: {rewards}",
+            f"nonfinite beliefs {row['counters/nonfinite_beliefs']}  reward/s: {rewards}"
+            f"{alert_text(row)}",
             flush=True,
         )
 
@@ -877,6 +878,20 @@ def _train(options: Train, given_options: set[str], stop) -> None:
     print(f"run {run.record['name']} {status} at step {trainer.ppo.environment_steps}")
 
 
+def alert_text(row: dict) -> str:
+    """The update line's tail: the trigger rules up this update (`alerts/{rule}` at 1), or
+    nothing."""
+    up = [
+        name.removeprefix("alerts/")
+        for name, value in row.items()
+        if name.startswith("alerts/")
+        and name not in ("alerts/active", "alerts/events")
+        and isinstance(value, int | float)
+        and value
+    ]
+    return f"  alerts: {' '.join(up)}" if up else ""
+
+
 def log_cloning(row: dict) -> None:
     """Print one behaviour-cloning update's row on one line: the timings (ms), the BC KL and the
     teacher's and student's entropies (nats), each score, and the score stop's window once one
@@ -899,7 +914,7 @@ def log_cloning(row: dict) -> None:
         f"rollout {row['train/time/rollout_seconds'] * 1e3:6.0f} ms  "
         f"learn {row['train/time/learner_seconds'] * 1e3:6.0f} ms  "
         f"bc kl {row['bc/kl']:.4f}  teacher {row['bc/entropy/target']:.3f}  "
-        f"student {row['bc/entropy/student']:.3f}  scores: {scores}{window}",
+        f"student {row['bc/entropy/student']:.3f}  scores: {scores}{window}{alert_text(row)}",
         flush=True,
     )
 

@@ -221,6 +221,10 @@ CURATED = (
             panel("gradient/cosine/trunk/value", "gradient/cosine/trunk/*/value"),
             panel("gradient/coherent_fraction", "gradient/coherent_fraction/*"),
             panel("gradient/actor_share"),
+            rl("advantage/share", "advantage/share/*"),
+            rl("gradient/policy_level_share", "gradient/policy_level_share/*"),
+            panel("combat/deaths_per_ship_minute", "combat/deaths_per_ship_minute/*"),
+            panel("combat/hits_per_ship_minute", "combat/hits_per_ship_minute/*"),
         ),
         open=True,
     ),
@@ -249,6 +253,10 @@ CURATED = (
             panel("returns/scale_floored"),
             panel("returns/advantage_rms"),
             panel("returns/advantage_mean"),
+            rl("advantage/mean_absolute", "advantage/mean_absolute/*"),
+            rl("advantage/standard_deviation", "advantage/standard_deviation/*"),
+            rl("advantage/raw_standard_deviation", "advantage/raw_standard_deviation/*"),
+            rl("advantage/correlation", "advantage/correlation/*"),
         ),
     ),
     Section(
@@ -395,6 +403,8 @@ CURATED = (
             panel("gradient/agreement", "gradient/agreement/*"),
             panel("gradient/coherent_share", "gradient/coherent_share/*"),
             panel("gradient/cosine/trunk", "gradient/cosine/trunk/*"),
+            rl("gradient/policy_level_norm", "gradient/policy_level_norm/*"),
+            rl("gradient/policy_level_cosine", "gradient/policy_level_cosine/*"),
             panel(
                 "gradient/actor_norm and critic_norm", "gradient/actor_norm", "gradient/critic_norm"
             ),

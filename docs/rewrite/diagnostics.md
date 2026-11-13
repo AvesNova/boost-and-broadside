@@ -235,6 +235,22 @@ shares differ by more than 3 binomial SE).
 **Not rules:** reward level shares and timeout share (would assume an expected game);
 per-term coherent fraction (design information, not an alarm).
 
+**Added 2026-11-13 (alerts, RL only):** combat collapse per fighting mode,
+`combat_collapse/team_deathmatch` and `combat_collapse/elimination`. An RL check (PPO from a
+BC policy, one discount and trace decay for every level, no entropy bonus) stopped fighting
+within about 60 updates: team deathmatch hits per game 2,600 to 20, combat deaths 33 to 0,
+while Frontline kept capturing zones. The rule reads `combat/deaths_per_ship_minute/{mode}`
+and `combat/hits_per_ship_minute/{mode}` of the training games (self-play and the league's
+seat), takes the mean of the last 3 updates, and is up while either is below the lower of an
+absolute floor and a quarter of the run's own first 5 updates. The absolute floors are a
+quarter of the BC policy's: about 30 combat deaths and 2,600 hits in a 600 s game of 10
+ships, 0.3 deaths and 26 hits per ship-minute, so 0.075 and 6.5. The lower of the two: a
+run that starts at the BC policy's level alerts at the floor, one that starts fighting
+little (from scratch) only when it falls to a quarter of where it began. Frontline is not
+watched (its zones can be won without fighting). It acts only when
+`TrainConfig.combat_collapse_stop` is set (default 0, off): the run stops after that many
+consecutive updates with the alert and records the rule as `stopped_by`.
+
 ## Group 1: histograms
 
 **What exists** (`ppo.py` `_update_epochs`, logged by `logging.py`): every
@@ -455,6 +471,16 @@ one amendment: **team spirit may not stay at zero.** `returns/{level}` is then t
 team-mixed return the actor is credited with, which differs from the critic's own
 return. Kept as `returns/mixed/{level}`, logged only for levels whose team spirit is
 non-zero (a static config check at trace time: no cost while spirit is zero).
+
+**Added 2026-11-13: each level's part of the advantage.** With one discount and trace decay
+for every level, nothing showed which level the summed advantage follows. Every update, in
+the policy term's units (each level's team-mixed advantage over the return scale) over the
+living own ships: `advantage/mean_absolute/{level}`, `advantage/standard_deviation/{level}`,
+`advantage/share/{level}` (mean |A_k| / sum_j mean |A_j|) and `advantage/correlation/{level}`
+(with the summed advantage), each also per mode of the batch's games, `.../{level}/{mode}`;
+and `advantage/raw_standard_deviation/{level}`, the level's GAE before its reward weight, the
+team mixing and the return scale (`bnb.learn.advantages`). This restores the per-level view
+the D6 outcome dropped, as shares rather than RMS, beside the aggregate it kept.
 
 ## Group 6: `outcome/*`
 
@@ -965,6 +991,16 @@ contribute consistent gradient or noise.
   `train/time_s/grad_diag`.
 - All cosine pairs logged; dashboard shows curated pairs (policy vs each auxiliary term,
   policy vs value), about 6 panels.
+
+**Added 2026-11-13: the policy gradient per reward level** (v1's "policy per reward level"
+term group, back in v2's form). At the cadence, on the cadence's minibatch, the policy term's
+gradient with one level's advantage alone (A = A_k, the others 0), over every parameter the
+policy reaches: `gradient/policy_level_norm/{level}`, `gradient/policy_level_share/{level}`
+(the projection on the whole policy gradient, <g_k, g> / |g|^2; the shares sum to 1 where no
+token is clipped) and `gradient/policy_level_cosine/{a}/{b}` (every pair, and each level with
+`policy`). One extra backward pass per level per micro-batch of that minibatch, eager, so the
+steady update's compiled graph is unchanged. The value levels' own
+`gradient/coherent_fraction/value_{level}` stay.
 
 ## Group 20: evaluator names -> `rating/` + `pool/`
 

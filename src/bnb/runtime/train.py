@@ -17,6 +17,7 @@ from typing import Protocol
 import torch
 
 from bnb.contracts import ArenaScale, GameConfig, Pool
+from bnb.contracts.pools import pool_game
 from bnb.controllers.relational import RelationalController
 from bnb.controllers.scripted import Chaser, Random, Scripted
 from bnb.controllers.yemong import YemongController
@@ -173,10 +174,15 @@ class TrainConfig:
     # every 10M environment steps (author, 2026-11-07: decisions, run control)
     policy_snapshot_every: int = 10_000_000
     arena_scale: ArenaScale | None = ArenaScale()
+    # end a PPO run after this many consecutive updates with a combat-collapse alert
+    # (`bnb.runs.triggers.CombatCollapse`), recording why; 0: never (the default)
+    combat_collapse_stop: int = 0
 
     def __post_init__(self) -> None:
         if self.objective not in OBJECTIVES:
             raise ValueError(f"objective {self.objective!r} is not one of {OBJECTIVES}")
+        if self.combat_collapse_stop < 0:
+            raise ValueError(f"combat_collapse_stop {self.combat_collapse_stop} is negative")
         if self.model not in MODELS:
             raise ValueError(f"model {self.model!r} is not one of {MODELS}")
         if self.precision not in PRECISIONS:
@@ -392,6 +398,13 @@ class Trainer:
         self.pool_names = tuple(pool.name for pool in lineup.pools)
         self.learner_pool = lineup.pool_of[LEARNER]
         rules, stage = self.rollout.rules, compiler(config.compiled)
+        # each pool's game mode ("frontline", "team_deathmatch", "elimination"), and the
+        # learner's: the advantage and combat series per mode
+        pool_modes = tuple(pool_game(game, pool).mode for pool in lineup.pools)
+        view_modes = tuple(dict.fromkeys(pool_modes[int(p)] for p in self.learner_pool.tolist()))
+        view_mode = torch.tensor(  # on the host: the learner reads it once
+            [view_modes.index(pool_modes[int(p)]) for p in self.learner_pool.tolist()]
+        ).repeat(config.shards)
         if cloning:  # the labels are the scripted agent's distribution, transformed
             teacher = teacher_agent(self.characteristics, game.ships_per_team, config.teacher)
             self.ppo = BehaviourCloning(
@@ -420,6 +433,9 @@ class Trainer:
                 stage=stage,
                 seed=config.seed,
                 diagnostics=diagnostics,
+                reward_weights=config.reward.weights,
+                view_modes=view_modes,
+                view_mode=view_mode,
             )
         self.updates_done = 0
         # BC's stop rule (`bnb.runtime.cloning.update` feeds it): its window is part of the
@@ -438,6 +454,7 @@ class Trainer:
             game.mode,
             view_fogged=lineup.fogged[lineup.environments[LEARNER]],
             environment_fogged=lineup.fogged,
+            pool_modes=pool_modes,
         )
 
     @property

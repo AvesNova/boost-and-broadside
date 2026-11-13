@@ -358,6 +358,62 @@ class SideImbalance(Rule):
         return []
 
 
+class CombatCollapse(Rule):
+    """The training games of `mode` stop fighting: the mean over the last `window` updates of
+    `combat/deaths_per_ship_minute/{mode}` or `combat/hits_per_ship_minute/{mode}` below its
+    floor, the lower of the absolute floor (`floors`, by quantity) and `share` of the run's
+    own level (the mean of the series' first `baseline` updates). Quiet until the baseline
+    is in. The lower of the two: a run that starts fighting harder than the floor's reference
+    alerts only at the absolute floor, one that starts below it (from scratch) only when its
+    own combat falls to `share` of where it began."""
+
+    def __init__(
+        self,
+        name,
+        severity,
+        panel,
+        mode: str,
+        floors: dict[str, float],
+        share: float = 0.25,
+        window: int = 3,
+        baseline: int = 5,
+        **gate,
+    ) -> None:
+        super().__init__(name, severity, panel, **gate)
+        self.mode, self.floors, self.share = mode, floors, share
+        self.window, self.baseline = window, baseline
+
+    def breaches(self, record, state):
+        """This update's breaches as (series, value, threshold)."""
+        out = []
+        for quantity, floor in self.floors.items():
+            series = f"combat/{quantity}_per_ship_minute/{self.mode}"
+            value = record.get(series)
+            if value is None or not math.isfinite(value):
+                continue
+            kept = state.setdefault(quantity, dict(first=[], recent=[]))
+            if len(kept["first"]) < self.baseline:
+                kept["first"].append(value)
+            kept["recent"] = (kept["recent"] + [value])[-self.window :]
+            if len(kept["first"]) < self.baseline:
+                continue
+            level = sum(kept["first"]) / len(kept["first"])
+            threshold = min(floor, self.share * level)
+            smoothed = sum(kept["recent"]) / len(kept["recent"])
+            if smoothed < threshold:
+                out.append((series, smoothed, threshold))
+        return out
+
+
+# The combat-collapse floors, per living ship-minute: a quarter of a BC policy's combat on
+# the real-scale team deathmatch (about 30 combat deaths and 2,600 hits in a 600 s game of
+# 10 ships: 0.3 deaths and 26 hits per ship-minute; RL check, 2026-11-13, old game). The RL
+# check that stopped fighting fell to 0 deaths and about 0.2 hits.
+COMBAT_FLOORS = dict(deaths=0.075, hits=6.5)
+# the modes whose games are won by fighting (Frontline's zones can be won without)
+COMBAT_MODES = ("team_deathmatch", "elimination")
+
+
 class SkippedSteps(Rule):
     """`train/skipped_steps` above 0; each loss term with non-finite minibatches
     (`train/nonfinite_steps/{term}`) is a breach of its own, so the events name it."""
@@ -377,10 +433,12 @@ class SkippedSteps(Rule):
 
 def default_rules() -> tuple[Rule, ...]:
     """The audit's final trigger rules, with placeholder thresholds, and the league's gauge
-    guard: 9 alerts, 13 warnings. Six watch reinforcement learning only (`RL_ONLY`): the PPO
-    behaviour mismatch (BC measures no PPO ratio), the rating drop and reward hacking (BC has
-    no ratings), the entropy collapse (BC's student is meant to grow confident), the
-    league's sampling collapse and its gauge runaway (BC has no league)."""
+    guard, and the combat collapse per fighting mode: 11 alerts, 13 warnings. Eight watch
+    reinforcement learning only (`RL_ONLY`): the PPO behaviour mismatch (BC measures no PPO
+    ratio), the rating drop and reward hacking (BC has no ratings), the entropy collapse
+    (BC's student is meant to grow confident), the league's sampling collapse and its gauge
+    runaway (BC has no league), and the two combat collapses (a policy that learns to stop
+    fighting is RL's failure; BC copies the scripted agent's fighting)."""
     anomaly = dict(warmup=10, hysteresis=3)
     rl_anomaly = dict(anomaly, objectives=RL_ONLY)
     return (
@@ -434,6 +492,18 @@ def default_rules() -> tuple[Rule, ...]:
             "pool/gauge_anomalies/*",
             0,
             objectives=RL_ONLY,
+        ),
+        # the training games stop fighting (`bnb.runtime.analytics`' combat series)
+        *(
+            CombatCollapse(
+                f"combat_collapse/{mode}",
+                ALERT,
+                f"combat/deaths_per_ship_minute/{mode}",
+                mode,
+                COMBAT_FLOORS,
+                objectives=RL_ONLY,
+            )
+            for mode in COMBAT_MODES
         ),
         # warnings
         ZScoreBelow(
