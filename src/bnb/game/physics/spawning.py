@@ -90,21 +90,28 @@ def new_map(
     return fields, torch.cos(axis), torch.sin(axis)
 
 
+def _live(value, like: torch.Tensor, dtype=None) -> torch.Tensor:
+    """A live rule value (a number or a 0-d tensor) as a tensor on `like`'s device: a number
+    is filled there, not copied from the host, which a CUDA graph capture forbids."""
+    if torch.is_tensor(value):
+        return value.to(device=like.device, dtype=dtype or value.dtype)
+    return torch.full((), value, device=like.device, dtype=dtype)
+
+
 def field_radius(rules: Rules, u: torch.Tensor) -> torch.Tensor:
     """A field's radius in metres at map scale 1 from its uniform draw `u` in [0, 1), by
     the rules' `field_radius_distribution` (every branch is computed and the rule's value
     selects one, so the choice is live data in the compiled tick)."""
     low, high = rules.field_radius_min, rules.field_radius_max
     span = high - low
-    code = torch.as_tensor(rules.field_radius_distribution, device=u.device)
+    code = _live(rules.field_radius_distribution, u)
     uniform = low + span * u
     triangular = low + span * (1.0 - torch.sqrt(1.0 - u))
     eps = 1e-6
     z = math.sqrt(2.0) * torch.erfinv(2.0 * u.clamp(eps, 1.0 - eps) - 1.0)
     lognormal = rules.field_radius_median * torch.exp(rules.field_radius_log_sigma * z)
     lognormal = torch.maximum(
-        torch.minimum(lognormal, torch.as_tensor(high, device=u.device, dtype=u.dtype)),
-        torch.as_tensor(low, device=u.device, dtype=u.dtype),
+        torch.minimum(lognormal, _live(high, u, u.dtype)), _live(low, u, u.dtype)
     )
     return torch.where(code == 0, uniform, torch.where(code == 1, triangular, lognormal))
 
