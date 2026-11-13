@@ -510,6 +510,28 @@ def test_a_deathmatch_block_is_scored_by_its_games_kill_shares():
     assert ((results[:, 0] >= 0.0) & (results[:, 0] <= SMALL.block_environments)).all()
 
 
+def test_a_deathmatch_block_scored_by_win_loss_counts_each_games_kill_lead():
+    """With deathmatch_score "win_loss" a team deathmatch game is a win, draw or loss by the
+    sign of its final kill difference (the first player's kills are the second's deaths)."""
+    from bnb.league.matches import STATISTICS
+
+    game = dataclasses.replace(GAME, arena_radius=600.0, episode_seconds=12.0)
+    assert not tournament.kill_share_scored(game, "win_loss")
+    assert tournament.scoring_of(game, "win_loss") == "win_loss"
+    assert tournament.scoring_of(game) == "kill_share"
+    with pytest.raises(ValueError, match="deathmatch score"):
+        tournament.kill_share_scored(game, "kill_lead")
+    arena = Arena([SCRIPTED, RANDOM], game, CPU, SMALL)
+    torch.manual_seed(3)
+    results = tournament.scored(arena, game, [(0, 1), (1, 0)], "win_loss")
+    rows = arena.rollout.carry["controllers"][SEAT].statistics.double()
+    deaths = rows[:, STATISTICS.index("deaths")].reshape(2, 2, SMALL.block_environments)
+    lead = torch.sign(deaths[:, 1] - deaths[:, 0])  # (blocks, games): the first player's
+    assert bool((lead != 0).any())  # the test means something: decided games
+    expected = torch.stack([(lead > 0).sum(-1), (lead == 0).sum(-1), (lead < 0).sum(-1)], -1)
+    torch.testing.assert_close(results.double(), expected.double())
+
+
 def test_a_fractional_summary_reports_the_kill_share_score():
     summary = tournament._summary(torch.tensor([2.75, 0.0, 1.25], dtype=torch.float64))
     assert summary["wins"] == 2.75 and summary["draws"] == 0 and summary["losses"] == 1.25
@@ -841,6 +863,49 @@ def test_a_record_of_another_game_version_is_not_reused(tmp_path):
         assert found.games == 0 and float(found.pair_games.sum()) == 0.0
         assert all("game version" in why for why in found.skipped.values())
         assert set(found.skipped) == set(names)
+
+
+def test_games_of_one_deathmatch_scoring_are_not_resumed_or_reused_under_the_other(tmp_path):
+    """Each batch names its scoring; a record of the other scoring is refused on resume and
+    left out of reuse, and a record that names none counts as the default's (kill share)."""
+    names = ["scripted", "a", "b"]
+    record = tmp_path / "deathmatch.batches.jsonl"
+    truth = torch.tensor([0.0, 100.0, 200.0], dtype=torch.float64)
+    layout = ArenaConfig(blocks=4, block_environments=16)
+    config = tournament.TournamentConfig(layout, target_stderr=1.0, budget=64)
+    play = _bradley_terry(truth, 16, torch.Generator().manual_seed(1))
+    allowed = tournament.allowed_pairs(names)
+    win_loss, kill_share = ("win_loss", "kill_share"), ("kill_share", "kill_share")
+    tournament.fit_field(
+        play,
+        names,
+        0,
+        allowed,
+        config,
+        lambda line: None,
+        "d",
+        record,
+        identities=names,
+        scoring=win_loss,
+    )
+    assert json.loads(record.read_text().splitlines()[0])["scoring"] == "win_loss"
+    with pytest.raises(ValueError, match="scored by win_loss, not kill_share"):
+        tournament.fit_field(
+            play, names, 0, allowed, config, lambda line: None, "d", record, scoring=kill_share
+        )
+    assert tournament.reuse_record(record, names, names, scoring=win_loss).games > 0
+    other = tournament.reuse_record(record, names, names, scoring=kill_share)
+    assert other.games == 0 and all("scored by win_loss" in why for why in other.skipped.values())
+    # a record without a scoring was scored by the default
+    legacy = tmp_path / "legacy.batches.jsonl"
+    _recorded(legacy, names, names)
+    assert "scoring" not in json.loads(legacy.read_text().splitlines()[0])
+    assert tournament.reuse_record(legacy, names, names, scoring=kill_share).games > 0
+    assert tournament.reuse_record(legacy, names, names, scoring=win_loss).games == 0
+    with pytest.raises(ValueError, match="scored by kill_share, not win_loss"):
+        tournament.fit_field(
+            play, names, 0, allowed, config, lambda line: None, "d", legacy, scoring=win_loss
+        )
 
 
 def test_reused_games_that_meet_the_target_play_no_batch(tmp_path):

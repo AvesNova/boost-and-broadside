@@ -14,7 +14,7 @@ import os
 import pathlib
 import subprocess
 import sys
-from typing import Annotated
+from typing import Annotated, Literal
 
 import tyro
 
@@ -24,7 +24,7 @@ from bnb.figures.video import VideoConfig
 
 # The rating games (`bnb.league.tournament.PRESET_NAMES`, kept here so the CLI starts
 # without torch): frontline, elimination and team deathmatch, rated by kill share
-# (`bnb.league.tournament.kill_share_scored`).
+# (`bnb.league.tournament.kill_share_scored`) unless --deathmatch-score win_loss.
 RATED_PRESETS = ("frontline", "elimination", "deathmatch")
 
 
@@ -248,6 +248,10 @@ class Ratings:
     record keeps no lineup: reuse only records played with the same one.
     seed: the process's seed (the games' draws; None: torch's default), so several
     tournaments of one field, run at once and reused together, play different games.
+    deathmatch_score: how a team deathmatch game is scored: kill_share (the default), its
+    kill share, or win_loss, a win, draw or loss by the sign of the final kill difference
+    (`bnb.league.tournament.kill_share_scored`). Each batch records its scoring; a record
+    of the other scoring is not resumed (choose another --out) and not reused.
     """
 
     run: tyro.conf.Positional[str]
@@ -266,6 +270,7 @@ class Ratings:
     reuse: tuple[str, ...] = ()
     lineup: tuple[str, ...] = ()
     seed: int | None = None
+    deathmatch_score: Literal["kill_share", "win_loss"] = "kill_share"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -285,7 +290,8 @@ class HeadToHead:
     directory's).
 
     players: the pairs; games: games per pair and preset (even); presets; device;
-    runs_directory: as for bnb train.
+    runs_directory: as for bnb train; deathmatch_score: how a team deathmatch game is
+    scored, kill_share (the default) or win_loss (as for bnb ratings).
     """
 
     players: tyro.conf.Positional[tuple[str, ...]]
@@ -293,6 +299,7 @@ class HeadToHead:
     presets: tuple[str, ...] = RATED_PRESETS
     device: str = "cuda"
     runs_directory: str | None = None
+    deathmatch_score: Literal["kill_share", "win_loss"] = "kill_share"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1359,6 +1366,7 @@ def ratings(options: Ratings) -> None:
                 record=record,
                 reuse=reused[preset],
                 resolve=lambda name: player(name, runs_directory),
+                deathmatch_score=options.deathmatch_score,
             )
     except ValueError as error:
         raise SystemExit(str(error)) from error
@@ -1372,6 +1380,7 @@ def ratings(options: Ratings) -> None:
         leaderboard=rows,
         config=dataclasses.asdict(config),
         scripted_plays=options.scripted_plays,
+        deathmatch_score=options.deathmatch_score,
         reused={preset: [str(record) for record in records] for preset, records in reused.items()},
     )
     print(provenance.write_result(owner, "ratings", payload, inputs))
@@ -1389,7 +1398,11 @@ def head_to_head(options: HeadToHead) -> None:
     players = _players(options.players, runs_directory)
     try:
         rows = tournament.head_to_head(
-            players, options.games, options.presets, torch.device(options.device)
+            players,
+            options.games,
+            options.presets,
+            torch.device(options.device),
+            deathmatch_score=options.deathmatch_score,
         )
     except ValueError as error:
         raise SystemExit(str(error)) from error
@@ -1413,7 +1426,12 @@ def head_to_head(options: HeadToHead) -> None:
         runs_directory,
     )
     inputs = {player.name: player.policy for player in players if player.policy is not None}
-    payload = dict(pairs=rows, games=options.games, presets=list(options.presets))
+    payload = dict(
+        pairs=rows,
+        games=options.games,
+        presets=list(options.presets),
+        deathmatch_score=options.deathmatch_score,
+    )
     print(provenance.write_result(owner, "head_to_head", payload, inputs))
 
 
