@@ -114,7 +114,83 @@ def round1() -> list[dict]:
     return [candidate(name, e, t, 0.7) for name, e, t in cards]
 
 
-ROUNDS = {"round0": round0, "flight_grid": flight_grid, "round1": round1}
+def cone(scale: float) -> dict:
+    """The nose cone's dead-on fraction as a factor on the frozen 0.3 (lower: harder)."""
+    return {"head_on_fraction_scale": scale}
+
+
+def round2() -> list[dict]:
+    """The second screen: Yongma's nose cone (a duel lever) on Jujak drag x1.3-1.4, with
+    damage, Jujak's cone and Yongma's shield."""
+    j14, j135, j13 = ({"induced_drag_scale": d} for d in (1.4, 1.35, 1.3))
+    cards = [
+        ("Jd1.4 Yf0.6", cone(0.6), j14),
+        ("Jd1.4 Yf0.4", cone(0.4), j14),
+        ("Jd1.4 Yf0.25", cone(0.25), j14),
+        ("Jd1.35 Yf0.4", cone(0.4), j135),
+        ("Jd1.4 Yf0.4 Ydmg1.15", cone(0.4) | {"hit_damage": 1.15}, j14),
+        ("Jd1.4 Yf0.4 Jf1.3", cone(0.4), j14 | cone(1.3)),
+        ("Jd1.3 Yf0.25 Ydmg1.15", cone(0.25) | {"hit_damage": 1.15}, j13),
+        ("Jd1.4 Yf0.4 Ysh0.85", cone(0.4) | {"max_shield": 0.85}, j14),
+        ("Jd1.4 Yf0.6 Ydmg1.3", cone(0.6) | {"hit_damage": 1.3}, j14),
+        ("Yf0.25", cone(0.25), {}),
+    ]
+    return [candidate(name, e, t, 0.7) for name, e, t in cards]
+
+
+def round3() -> list[dict]:
+    """Yongma's lift (its instantaneous turn only: x1.2 is 0.623 rad/s against Jujak's 0.661)
+    as a duel lever, and its dive exchange (x1.5) as a crowd counter, on Jujak drag x1.3-1.4."""
+    j14, j13 = ({"induced_drag_scale": d} for d in (1.4, 1.3))
+    lift = lambda f: {"max_lift_coefficient": f}  # noqa: E731
+    dive = {"dive_exchange_scale": 1.5}
+    cards = [
+        ("Jd1.3 Yl1.2", lift(1.2), j13),
+        ("Jd1.4 Yl1.2", lift(1.2), j14),
+        ("Jd1.4 Yl1.1", lift(1.1), j14),
+        ("Jd1.4 Yl1.2 Ydmg1.2", lift(1.2) | {"hit_damage": 1.2}, j14),
+        ("Jd1.4 Ydive1.5 Ydmg1.3", dive | {"hit_damage": 1.3}, j14),
+        ("Jd1.4 Ydive1.5", dive, j14),
+        ("Jd1.4 Yl1.2 Ydive1.5", lift(1.2) | dive, j14),
+        ("Jd1.3 Yl1.2 Ydmg1.2", lift(1.2) | {"hit_damage": 1.2}, j13),
+        ("Jd1.4 Yl1.2 Ydmg1.3", lift(1.2) | {"hit_damage": 1.3}, j14),
+        ("Jd1.4 Yl1.2 Ydmg1.3 Ydive1.5", lift(1.2) | dive | {"hit_damage": 1.3}, j14),
+    ]
+    return [candidate(name, e, t, 0.7) for name, e, t in cards]
+
+
+def lift_card(
+    drag: float = 1.4, lift: float = 1.2, damage: float = 1.3, dive: float = 1.5, **more
+) -> tuple[dict, dict]:
+    """Round 3's best: Jujak drag, Yongma lift, damage and dive exchange (and more Yongma
+    factors)."""
+    energy = {"max_lift_coefficient": lift, "hit_damage": damage, "dive_exchange_scale": dive}
+    return energy | more, {"induced_drag_scale": drag}
+
+
+def round4() -> list[dict]:
+    """Refine round 3's Jd1.4 Yl1.2 Ydmg1.3 Ydive1.5 (1v1 0.45, 5v5 0.53), all sizes."""
+    cards = [
+        ("A Jd1.4 Yl1.2 Ydmg1.3 Ydive1.5", lift_card(), 0.7),
+        ("A Jd1.4 Yl1.2 Ydmg1.3 Ydive1.5", lift_card(), 1.0),
+        ("Jd1.4 Yl1.2 Ydmg1.3 Ydive1.3", lift_card(dive=1.3), 0.7),
+        ("Jd1.4 Yl1.2 Ydmg1.3 Ydive1.4", lift_card(dive=1.4), 0.7),
+        ("Jd1.4 Yl1.2 Ydmg1.4 Ydive1.5", lift_card(damage=1.4), 0.7),
+        ("Jd1.4 Yl1.2 Ydmg1.3 Ysh1.1 Ydive1.5", lift_card(max_shield=1.1), 0.7),
+        ("Jd1.4 Yl1.25 Ydmg1.3 Ydive1.5", lift_card(lift=1.25), 0.7),
+        ("Jd1.35 Yl1.2 Ydmg1.4 Ydive1.5", lift_card(drag=1.35, damage=1.4), 0.7),
+    ]
+    return [candidate(name, e, t, gate) for name, (e, t), gate in cards]
+
+
+ROUNDS = {
+    "round4": round4,
+    "round0": round0,
+    "flight_grid": flight_grid,
+    "round1": round1,
+    "round2": round2,
+    "round3": round3,
+}
 
 if __name__ == "__main__":
     tag = sys.argv[1]
