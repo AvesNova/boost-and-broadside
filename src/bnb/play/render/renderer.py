@@ -115,7 +115,7 @@ class Renderer:
         self.contours.set_map(frame.fields, frame.zones)
         fields = frame.fields
         self.cores = np.stack(
-            [fields.x, fields.y, fields.core_radius**2, np.zeros_like(fields.x)], -1
+            [fields.x, fields.y, fields.core_radius**2, fields.outer_radius**2], -1
         ).astype(np.float32)
 
     def write_index(self, updates: list[TileUpdate]) -> None:
@@ -186,6 +186,10 @@ class Renderer:
                 self.contours.draw(uniforms, theme, frame.arena_radius, contours)
         with self._measure("zones"):
             self.arcs.draw(uniforms, zone_table(theme, frame.zones, pixel))
+        with self._measure("edge"):  # over the map's shapes, under the trails and ships
+            self.sky.draw(
+                uniforms, theme, frame.arena_radius, edge=True, boundary=frame.boundary_radius
+            )
         with self._measure("trails"):
             seen = trails.seen[view] if team_view else np.ones_like(trails.seen[0])
             self.trails.draw(uniforms, theme, trails, now, seen, ships.team, ships.ship_type, body)

@@ -43,7 +43,7 @@ it for them).
 
 For display (the play shell), with no rules of their own: `display` (the state's values a
 display draws, by name), `log_index` and `log_index_gradient` (the medium at points),
-`core_radius` (the discs the sight test treats as cores), `zone_sides`
+`core_radius` and `outer_radius` (the band edges, where the sight test changes), `zone_sides`
 (Frontline's zone owners and attackers), `visible` (each team's observation in sim order),
 `vision_range`, `per_ship`, `bullet_moves` (a card's bullet lives in moves) and `type_names`
 (the ship types' names, from the ship files); `bullet_paths` (each live bullet's flight
@@ -137,6 +137,7 @@ __all__ = [
     "log_index_gradient",
     "measure_handles",
     "move",
+    "outer_radius",
     "per_ship",
     "perceive",
     "perceived",
@@ -313,10 +314,17 @@ def log_index_gradient(
 
 
 def core_radius(state: State) -> torch.Tensor:
-    """(B, M) each field's core radius (m): the disc the sight test treats as the core
-    (game spec 10.1), the radius less half the band, and 0 for a field with no flat
-    interior."""
+    """(B, M) each field's core radius (m): the inner edge of its band, where the sight
+    test's core ends (game spec 10.1), the radius less half the band, and 0 for a field
+    with no flat interior."""
     return sight.core_radius(state.fields)
+
+
+def outer_radius(state: State) -> torch.Tensor:
+    """(B, M) each field's outer radius (m): the outer edge of its band, beyond which the
+    sight test counts a point as outside the field (game spec 10.1), the radius plus half
+    the band."""
+    return sight.outer_radius(state.fields)
 
 
 def zone_sides(state: State) -> tuple[torch.Tensor, torch.Tensor]:

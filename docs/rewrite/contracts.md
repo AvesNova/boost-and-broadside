@@ -354,6 +354,8 @@ cut; where they differ, this section and the code win.
   the runtime).
   - **Display functions (section 10, 2026-11-01), for the play shell:**
     - `log_index`: the medium at chosen points;
+    - `outer_radius` (2026-11-13): the outer band edge the sight test uses, beside
+      `core_radius`;
     - `core_radius`: the cores the sight test uses (a second copy, held to
       `visibility` by a test until the cleanup pass makes it the one definition);
     - `zone_sides`: Frontline's zone owners and attackers, from the game's own role

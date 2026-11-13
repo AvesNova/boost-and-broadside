@@ -88,8 +88,15 @@ SETTINGS = (
             (FRONTLINE, FRONTLINE_GROUP, "respawn minimum (then the next wave)"),
         ),
     ),
-    _s("rules.boundary_damage_base", ARENA, "boundary damage", "/s", 0.0, 50.0),
-    _s("rules.boundary_damage_per_metre", ARENA, "boundary damage per metre", "/s/m", 0.0, 1.0),
+    _s("rules.boundary_max_damage", ARENA, "boundary damage, most", "/s", 0.0, 200.0),
+    _s(
+        "rules.boundary_ramp_width",
+        ARENA,
+        "boundary ramp width (map scale 1)",
+        "m",
+        1.0,
+        2000.0,
+    ),
     _s("rules.bullet_drag", COMBAT, "bullet drag", "1/m", 1e-5, 5e-3, log=True),
     _s("flight.gravity", FLIGHT, "gravity", "m/s^2", 5.0, 80.0),
     _s("flight.engine_knee", FLIGHT, "engine knee (store fraction)", "", 0.05, 0.95),
@@ -190,6 +197,25 @@ SETTINGS = (
         0.0,
         math.pi,
         when=EPISODE,
+        modes=("elimination",),
+    ),
+    _s(
+        "mode.shrink_hold_seconds",
+        ELIMINATION_GROUP,
+        "boundary hold (then it shrinks to 0 by the clock's end)",
+        "s",
+        0.0,
+        900.0,
+        modes=("elimination",),
+    ),
+    _s(
+        "mode.shrink_law",
+        ELIMINATION_GROUP,
+        "boundary shrink law (0 linear, 1 smooth)",
+        "",
+        0,
+        1,
+        integer=True,
         modes=("elimination",),
     ),
     _s(
@@ -386,8 +412,8 @@ def changed(rules: Rules, base: Rules) -> dict[str, float]:
 # `with_live` the rules rebuilt from the two (inside the tick).
 
 LIVE_RULES = (
-    "boundary_damage_base",
-    "boundary_damage_per_metre",
+    "boundary_max_damage",
+    "boundary_ramp_width",
     "bullet_drag",
     "spawn_speed",
     "spawn_offset",
@@ -425,12 +451,15 @@ LIVE_MODE = (
     "spawn_zone_fraction",
     "lock_seconds_per_root_km",
     "wave_seconds",
+    "shrink_hold_seconds",
+    "shrink_law",
 )
 LIVE_POOL = ("arena_radius", "episode_ticks", "respawn_ticks")
 _INTEGERS = {
     "field_radius_distribution",
     "kills_per_ship",
     "front_threshold",
+    "shrink_law",
     "episode_ticks",
     "respawn_ticks",
 }

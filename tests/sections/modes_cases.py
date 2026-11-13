@@ -14,7 +14,7 @@ TYPES = api.ship_types()
 # recharging after half a second. Within a few hundred ticks it then has kills, friendly
 # fire, boundary deaths, recharge, respawns and resets (and in Frontline, moving meters).
 LIVELY_TYPES = api.ship_types(max_shield=(20.0, 30.0))
-LIVELY_RULES = dict(shield_recharge_delay=0.5, boundary_damage_base=60.0)
+LIVELY_RULES = dict(shield_recharge_delay=0.5, boundary_max_damage=60.0, boundary_ramp_width=10.0)
 MODES = {
     "sandbox": GameConfig(3, 3, 300.0, mode="sandbox", episode_seconds=8.0, respawn_seconds=0.5),
     "team_deathmatch": GameConfig(3, 3, 900.0, episode_seconds=6.0, respawn_seconds=0.5),

@@ -1,8 +1,9 @@
 """Pass 2: the fields as a topographic map of the true refractive index.
 
 The fill and the thin contours come from the index texture (`bnb.play.index_map`, the
-game's `medium` on a grid); the bold line on each core edge is drawn from the field
-geometry, where the game's sight test puts the core.
+game's `medium` on a grid); the band's two edges are drawn from the field geometry, where
+the game's sight test changes: a bold line at the core edge and a thin one at the outer
+edge.
 """
 
 from typing import TYPE_CHECKING
@@ -19,11 +20,12 @@ if TYPE_CHECKING:  # rendering never imports torch, which these modules do
     from ..snapshot import Fields
 
 CORE_LINE_PIXELS = 2.4
+OUTER_LINE_PIXELS = 1.0
 CONTOURS_PER_LEVEL = 3
 
 
 class FieldsPass:
-    """Pass 2: the fields' fill and contours from the index texture, and their core edges."""
+    """Pass 2: the fields' fill and contours from the index texture, and their band edges."""
 
     def __init__(self, context: moderngl.Context, arc_program: ArcProgram) -> None:
         self.context = context
@@ -76,23 +78,29 @@ class FieldsPass:
                 ),
             )
 
-    def core_edges(self, theme: Theme) -> np.ndarray:
-        """The core edges' circles as an arcs table, in each field's thin or thick core colour."""
+    def band_edges(self, theme: Theme) -> np.ndarray:
+        """The band edges' circles as an arcs table, in each field's thin or thick core colour:
+        the bold core edge and the thin outer edge, where the sight test changes."""
         fields = self.fields
         cored = fields.core_radius > 0.0
-        table = arcs(int(cored.sum()))
-        table[:, 0], table[:, 1] = fields.x[cored], fields.y[cored]
-        table[:, 2] = fields.core_radius[cored]
-        table[:, 4] = CORE_LINE_PIXELS
-        thick = fields.level[cored] > 0
-        table[:, 9:13] = np.where(
-            thick[:, None], theme.thick_core.floats(), theme.thin_core.floats()
-        )
+        count = int(cored.sum())
+        table = arcs(2 * count)
+        for half, radius, pixels in (
+            (slice(0, count), fields.core_radius, CORE_LINE_PIXELS),
+            (slice(count, 2 * count), fields.outer_radius, OUTER_LINE_PIXELS),
+        ):
+            table[half, 0], table[half, 1] = fields.x[cored], fields.y[cored]
+            table[half, 2] = radius[cored]
+            table[half, 4] = pixels
+            thick = fields.level[cored] > 0
+            table[half, 9:13] = np.where(
+                thick[:, None], theme.thick_core.floats(), theme.thin_core.floats()
+            )
         table[:, 14] = CIRCLE
         return table
 
     def draw(self, camera: dict, theme: Theme, log_index_per_level: float) -> None:
-        """Draw the fields' fill and contours, then their core edges."""
+        """Draw the fields' fill and contours, then their band edges."""
         if self.vertex_array is None:
             return
         self.index_texture.use(0)
@@ -112,4 +120,4 @@ class FieldsPass:
             contour_step=log_index_per_level / CONTOURS_PER_LEVEL,
         )
         self.vertex_array.render(moderngl.TRIANGLE_STRIP, vertices=4, instances=self.count)
-        self.arcs.draw(camera, self.core_edges(theme))
+        self.arcs.draw(camera, self.band_edges(theme))

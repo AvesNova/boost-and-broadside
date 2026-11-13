@@ -154,12 +154,18 @@ def test_shield_recharge_after_the_delay(arm):
 
 
 def test_boundary_damage_grows_with_depth(arm):
+    """Game v14 (the race's 5 + 0.05 depth replaced): 30 smootherstep(depth / ramp) per s,
+    the ramp 100 m at map scale 1 (here 1200 / 2600 of it)."""
     st = duel(arm)
     R = PRESETS["duel"]["arena_radius"]
-    place(st, 0, R + 100.0, 0.0, 0.0)
-    new, ev, _ = step(arm, "duel", st, actions(1, 2))
-    depth = math.hypot(new["x"][0, 0], new["y"][0, 0]) - R
-    assert abs(ev["boundary_damage"][0, 0] - (5.0 + 0.05 * depth) * H) < 1e-4
+    ramp = 100.0 * R / 2600.0
+    for start in (R + 20.0, R + 100.0):
+        place(st, 0, start, 0.0, 0.0)
+        new, ev, _ = step(arm, "duel", st, actions(1, 2))
+        z = min(max((math.hypot(new["x"][0, 0], new["y"][0, 0]) - R) / ramp, 0.0), 1.0)
+        want = 30.0 * z**3 * (z * (6.0 * z - 15.0) + 10.0) * H
+        assert abs(ev["boundary_damage"][0, 0] - want) < 1e-4
+    assert ev["boundary_damage"][0, 0] == pytest.approx(30.0 * H)  # a ramp width out: all
     assert ev["killer"][0, 0] == -1
     st["shield"][0, 0] = 0.0
     new, ev, _ = step(arm, "duel", st, actions(1, 2))

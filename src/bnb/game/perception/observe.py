@@ -10,7 +10,7 @@ import torch
 from bnb.contracts import Obs, Privileged
 from bnb.contracts.obs import SHIP_COLUMNS, SHIP_HIDDEN_ZERO
 
-from ..layout import environment, per_mode
+from ..layout import boundary_fraction, boundary_time_to_zero, environment, per_mode
 from ..modes.observation import mode_globals, zone_rows
 from ..physics.numerics import flight_path_velocity
 from ..rules import TEAMS, Rules
@@ -178,6 +178,8 @@ def perceive(
             arena.arena_radius,
             match.fogged.float(),
             (match.episode_tick == 0).float(),
+            boundary_fraction(arena, match.episode_tick),
+            boundary_time_to_zero(arena, match.episode_tick, rules.tick_length),
         ],
         -1,
     )

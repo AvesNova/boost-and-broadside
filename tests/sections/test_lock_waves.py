@@ -196,20 +196,20 @@ def test_frontline_respawns_at_real_scale_take_the_decided_minimum_and_interval(
 # ------------------------------------------------------------------ team deathmatch
 
 
-def test_team_deathmatch_waits_a_fixed_8_s_at_real_scale_with_no_waves():
+def test_team_deathmatch_waits_a_fixed_10_s_at_real_scale_with_no_waves():
     config = dataclasses.replace(PRESETS["real_scale_deathmatch"], ships_per_team=2, num_fields=0)
     rules = api.rules_of(config)
-    assert rules.pools[0].respawn_ticks == 240  # 8 s
+    assert rules.pools[0].respawn_ticks == 300  # 10 s (its preset)
     assert api.rules_of(PRESETS["deathmatch"]).pools[0].respawn_ticks == 120  # the half clock
     types = api.ship_types(ship_set="real-scale")
     uniforms = api.uniforms(rules, 1, generator=torch.Generator().manual_seed(5))
     state = api.reset(rules, types, uniforms)
     alive, wait = state.ships.alive.clone(), state.ships.respawn_wait.clone()
-    alive[:, 3], wait[:, 3] = False, 240
+    alive[:, 3], wait[:, 3] = False, 300
     state = cases.edit_ships(state, alive=alive, respawn_wait=wait)
-    for tick in range(1, 241):
+    for tick in range(1, 301):
         state, events = cases.tick(rules, state, seed=tick, types=types)
-        assert bool(events.spawned[0, 3]) == (tick == 240), tick
+        assert bool(events.spawned[0, 3]) == (tick == 300), tick
     assert int(state.mode.wave_wait.abs().sum()) == 0
 
 

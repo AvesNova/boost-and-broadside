@@ -105,9 +105,10 @@ class TrainConfig:
     `spread_fit="coarsest"`, runs each block's temporal sublayer first
     (`order="temporal_first"`, arm C's order, the champion's since 2026-11-07) and reads
     every mode's flag (`mode_inputs`, elimination's since 2026-11-12) and Frontline's
-    timers (`frontline_timer_inputs`, since 2026-11-13); the config's own defaults, "v1",
-    "spatial_first", the two older modes and no timers, are what older build records
-    hold. ship_card:
+    timers (`frontline_timer_inputs`, since 2026-11-13) and the boundary's radius and time
+    to zero (`boundary_inputs`, since 2026-11-13); the config's own defaults, "v1",
+    "spatial_first", the two older modes, no timers and no boundary inputs, are what older
+    build records hold. ship_card:
     the ship card's values by field, one per ship type, every field given
     (`bnb.game.api.default_card`). environments: the training environments; length: ticks
     per segment; shards: consecutive segments per update (v1's batch, twice over:
@@ -146,6 +147,7 @@ class TrainConfig:
         order="temporal_first",
         mode_inputs=MODE_INPUTS,
         frontline_timer_inputs=True,
+        boundary_inputs=True,
     )
     relational: RelationalConfig = RelationalConfig()
     nearest: NearestConfig = NearestConfig()

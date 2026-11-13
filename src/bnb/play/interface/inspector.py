@@ -302,9 +302,17 @@ def _field(interface: Interface, index: int) -> None:
     _row("refractive index", f"{index_value:.2f}  ({air})", scale)
     _row("speed in it", f"{100.0 / index_value:.0f}% of the open sky's", scale)
     _row("radius", f"{fields.radius[index]:.0f} m", scale)
-    _row("core", f"{fields.core_radius[index]:.0f} m (blocks sight)", scale)
-    _row("band", f"{fields.band_width[index]:.0f} m", scale)
-    tooltip("The core blocks sight lines that cross it")
+    _row("core", f"{fields.core_radius[index]:.0f} m (hides from outside)", scale)
+    _row(
+        "band",
+        f"{fields.band_width[index]:.0f} m, to {fields.outer_radius[index]:.0f} m (sees in)",
+        scale,
+    )
+    tooltip(
+        "The core hides what is behind it. A ship in the core sees the core and the band, "
+        "not past the outer edge; a ship in the band sees the core, the band and outside; "
+        "from outside the core is hidden"
+    )
 
 
 def _zone(interface: Interface, index: int) -> None:

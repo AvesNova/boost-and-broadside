@@ -72,8 +72,6 @@ RULES = dict(
     head_on_fraction="head_on_fraction",
     shield_delay="shield_recharge_delay",
     shield_regen="shield_recharge_rate",
-    boundary_base="boundary_damage_base",
-    boundary_per_m="boundary_damage_per_metre",
     respawn_ticks="respawn_ticks",
     spawn_speed="spawn_speed",
     spawn_offset="spawn_offset",
@@ -81,6 +79,9 @@ RULES = dict(
     field_width="field_band_width",
     vision="vision_range",
 )
+# The table's keys the game no longer has: the race's boundary damage, base + per metre,
+# became a smooth ramp in game v14 (`Rules.boundary_max_damage`, `boundary_ramp_width`).
+SUPERSEDED = ("boundary_base", "boundary_per_m")
 
 TYPES = api.ship_types()
 
@@ -479,7 +480,7 @@ def test_defaults_match_the_spec_table():
             assert math.isclose(getattr(owner, RULES[key]), value), key
         else:
             sizes = ("num_ships", "num_fields", "arena_radius", "ship_types")
-            assert key in CARD or key in sizes, key
+            assert key in CARD or key in sizes or key in SUPERSEDED, key
     for key, value in spec["flight"].items():
         if key in FLIGHT_SHARED:
             assert math.isclose(getattr(FlightConstants(), FLIGHT_SHARED[key]), value), key

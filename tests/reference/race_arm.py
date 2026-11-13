@@ -64,8 +64,7 @@ CARD = dict(cl_max="max_lift_coefficient", a_max="max_acceleration", cd0="zero_l
 RULES = dict(h="tick_length", episode_ticks="episode_ticks", slots="bullet_slots",
              bullet_moves="longest_bullet_moves", bullet_drag="bullet_drag", spread="bullet_spread",
              head_on_fraction="head_on_fraction", shield_delay="shield_recharge_delay",
-             shield_regen="shield_recharge_rate", boundary_base="boundary_damage_base",
-             boundary_per_m="boundary_damage_per_metre", respawn_ticks="respawn_ticks",
+             shield_regen="shield_recharge_rate", respawn_ticks="respawn_ticks",
              spawn_speed="spawn_speed", spawn_offset="spawn_offset", spawn_radius="spawn_radius",
              field_width="field_band_width", vision="vision_range")
 RACE_SHIP = dict(x="x", y="y", c="heading_cos", s="heading_sin", vx="velocity_x",

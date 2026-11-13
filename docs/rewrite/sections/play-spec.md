@@ -86,9 +86,9 @@ Draw order, each a pass:
        colours, stronger with |level|;
      - contour lines at every third of a level, antialiased with screen-space
        derivatives.
-   - **The core edge:** drawn as the one bold line, exactly where the game's sight test
-     treats the core (the cores `bnb.game.perception.sight` uses), drawn from the field
-     geometry.
+   - **The band edges:** the core edge drawn as the one bold line and the outer edge as a
+     very thin one in the same colour, exactly where the game's sight test changes (the
+     radii `bnb.game.perception.sight` uses), drawn from the field geometry.
    - Resolution: fine enough that contours are smooth at the closest zoom **(measure;
      about 1 m per texel at 5v5 maps)**.
 3. **Zones** (Frontline): their discs, role colours and meter arcs.
@@ -108,7 +108,8 @@ Draw order, each a pass:
    - no shield arc when the shield is empty.
 8. **Fog** (team views only):
    - a visibility mask of where the team can see, from the game's own `sighted` evaluated
-     on a grid of target points against the team's living ships and the field cores;
+     on a grid of target points against the team's living ships and the fields' cores
+     and bands;
    - non-visible areas darkened to 60% brightness, saturation kept (`fogdark.png`);
    - terrain (arena, fields, zones) stays drawn under fog.
    - **Its cost:** measure the grid that fits the frame budget. Updating the mask every

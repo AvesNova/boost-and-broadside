@@ -96,6 +96,7 @@ def observation(
     globals_ = torch.zeros(len(GLOBAL_COLUMNS))
     globals_[GLOBAL["arena_radius"]] = arena_radius
     globals_[GLOBAL["fogged"]] = 1.0
+    globals_[GLOBAL["boundary_fraction"]] = 1.0  # the boundary at the arena's edge
     globals_[GLOBAL["mode_frontline" if zones else "mode_team_deathmatch"]] = 1.0
     zone_rows = torch.stack(zones) if zones else torch.zeros((5, len(ZONE_COLUMNS)))
     return Obs(ships=rows[None], fields=None, globals=globals_[None], zones=zone_rows[None])

@@ -16,6 +16,7 @@ from bnb.contracts import ASPECT_BOUNDS, ASPECTS, Action
 from ..rules import COAST, QUIET_STICKS, Rules
 from ..ship_types import ShipTypes, per_ship
 from ..state import Bullets, Ships, Sweep, replace, ship_team
+from .numerics import smootherstep
 
 LN_2 = math.log(2.0)
 NO_HIT = torch.iinfo(torch.int64).max
@@ -265,13 +266,20 @@ def hits(
 
 
 def boundary_damage(
-    rules: Rules, arena_radius: torch.Tensor, ships: Ships, alive_at_start: torch.Tensor
+    rules: Rules,
+    boundary_radius: torch.Tensor,
+    map_scale: torch.Tensor,
+    ships: Ships,
+    alive_at_start: torch.Tensor,
 ) -> torch.Tensor:
-    """Game spec 5: (boundary_damage_base + boundary_damage_per_metre depth) tick_length for
-    a living ship outside the arena (radius (B,)) after its move."""
-    depth = torch.sqrt(ships.x * ships.x + ships.y * ships.y) - arena_radius[:, None]
-    rate = rules.boundary_damage_base + rules.boundary_damage_per_metre * depth
-    return torch.where(alive_at_start & (depth > 0.0), rate * rules.tick_length, 0.0)
+    """Game spec 5: boundary_max_damage smootherstep(depth / ramp) tick_length for a living
+    ship after its move, depth its distance beyond the boundary (radius (B,); 0 inside) and
+    ramp the rules' ramp width times the map scale (B,): smooth in the position, little
+    just past the edge, the most from one ramp width out."""
+    depth = torch.sqrt(ships.x * ships.x + ships.y * ships.y) - boundary_radius[:, None]
+    ramp = (rules.boundary_ramp_width * map_scale).clamp_min(1e-3)[:, None]
+    rate = rules.boundary_max_damage * smootherstep((depth / ramp).clamp(0.0, 1.0))
+    return torch.where(alive_at_start, rate * rules.tick_length, 0.0)
 
 
 def quiet(action: Action) -> torch.Tensor:

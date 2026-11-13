@@ -11,7 +11,7 @@ import torch
 from bnb.contracts import GameConfig
 from bnb.game import api
 from bnb.game.api import PRESETS
-from bnb.game.perception.sight import core_membership, sighted
+from bnb.game.perception.sight import membership, sighted
 from bnb.game.physics.medium import medium
 from bnb.play import themes
 from bnb.play.app import Options, read_pixels, run_offscreen
@@ -19,7 +19,7 @@ from bnb.play.camera import Camera
 from bnb.play.index_map import build
 from bnb.play.loop import MatchLoop, MatchSetup
 from bnb.play.render.bullets import BulletLook, tracer_lengths
-from bnb.play.render.contours import CONTOUR_PIXELS, SMOOTHING_FRACTION, contour_level
+from bnb.play.render.contours import CONTOUR_PIXELS, contour_level
 from bnb.play.render.grid import GRID_PIXELS, PATTERNS
 from bnb.play.render.renderer import SPECTATOR, Renderer
 from bnb.play.render.ships import MINIMUM_RING_PIXELS, ring_radius, silhouette_size
@@ -140,8 +140,17 @@ def test_index_texture_equals_medium_at_sampled_points(renderer):
     assert (want != 0).sum() > 1000
 
 
-@pytest.mark.parametrize("config", [PRESETS["deathmatch"], GameConfig(12, 30, 5000.0)])
-def test_fog_mask_agrees_with_sighted(renderer, config):
+@pytest.mark.parametrize(
+    "config, in_fields",
+    [
+        (PRESETS["deathmatch"], False),
+        (GameConfig(12, 30, 5000.0), False),
+        (GameConfig(12, 30, 5000.0), True),
+    ],
+)
+def test_fog_mask_agrees_with_sighted(renderer, config, in_fields):
+    """in_fields: the team's only two observers, one in the largest field's core and one in
+    its band, so the mask is held to the core and band cases too."""
     loop = _loop(config, ticks=30, seed=5)
     frame, state = loop.current, loop.realtime.state
     camera = Camera(WIDTH, HEIGHT)
@@ -149,8 +158,19 @@ def test_fog_mask_agrees_with_sighted(renderer, config):
     ships, fields = frame.ships, frame.fields
     team = 0
     own = ships.alive & (ships.team == team)
+    ship_x, ship_y, alive = ships.x.copy(), ships.y.copy(), ships.alive.copy()
+    if in_fields:
+        field = int(np.argmax(fields.core_radius))
+        first, second, *others = np.flatnonzero(own)
+        own[others] = alive[others] = False
+        ship_x[first] = fields.x[field] + 0.5 * fields.core_radius[field]
+        ship_y[first] = fields.y[field]
+        ship_x[second] = fields.x[field]
+        ship_y[second] = fields.y[field] + 0.5 * (
+            fields.core_radius[field] + fields.outer_radius[field]
+        )
     observers = np.stack(
-        [ships.x[own], ships.y[own], ships.vision_range[own], np.zeros(int(own.sum()))], -1
+        [ship_x[own], ship_y[own], ships.vision_range[own], np.zeros(int(own.sum()))], -1
     )
     renderer.set_map(frame, *build(fields, frame.arena_radius))
     renderer.fog.draw_mask(camera.uniforms(), observers, renderer.cores)
@@ -164,20 +184,22 @@ def test_fog_mask_agrees_with_sighted(renderer, config):
     y = camera.centre_y + ((np.arange(height) + 0.5) / height * 2 - 1) * half_height
     target_x = torch.from_numpy(np.tile(x, height)).float()[None, None].expand(1, 2, -1)
     target_y = torch.from_numpy(np.repeat(y, width)).float()[None, None].expand(1, 2, -1)
-    radius = torch.from_numpy(fields.core_radius)[None]
-    cores = (state.fields.x, state.fields.y, radius * radius)
+    core = torch.from_numpy(fields.core_radius)[None]
+    outer = torch.from_numpy(fields.outer_radius)[None]
+    discs = (state.fields.x, state.fields.y, core * core, outer * outer)
     S = loop.rules.ships_per_team
-    observer_x, observer_y = state.ships.x.reshape(1, 2, S), state.ships.y.reshape(1, 2, S)
+    observer_x = torch.from_numpy(ship_x).float().reshape(1, 2, S)
+    observer_y = torch.from_numpy(ship_y).float().reshape(1, 2, S)
     seen = sighted(
-        cores,
+        discs,
         (
             observer_x,
             observer_y,
-            core_membership(cores, observer_x, observer_y),
-            state.ships.alive.reshape(1, 2, S),
+            *membership(discs, observer_x, observer_y),
+            torch.from_numpy(alive).reshape(1, 2, S),
             torch.from_numpy(ships.vision_range).reshape(1, 2, S),
         ),
-        (target_x, target_y, core_membership(cores, target_x, target_y)),
+        (target_x, target_y, *membership(discs, target_x, target_y)),
     )
     want = seen[0, team].numpy().reshape(height, width)
     # Compare away from the mask's edges: cells whose neighbours all agree with them.
@@ -621,6 +643,28 @@ def test_the_core_line_is_drawn_at_the_sight_tests_core_radius(renderer, context
         assert bool(np.abs(pixel - [255, 0, 0]).max() <= 8) is on_line, (radius, pixel)
 
 
+def test_the_thin_outer_line_is_drawn_at_the_sight_tests_outer_radius(renderer, context):
+    """With the core lines in pure red, the thin line at a field's outer radius tints the
+    pixel on it red, and the pixel on its radius stays clear of red."""
+    loop = _loop(PRESETS["deathmatch"], ticks=0)
+    frame = loop.current
+    fields = frame.fields
+    field = int(np.argmax(fields.core_radius))
+    outer = float(api.outer_radius(loop.realtime.state)[0, field])
+    assert outer == pytest.approx(float(fields.outer_radius[field]))
+    red = Colour.from_hex("#FF0000")
+    theme = with_colour(
+        with_colour(themes.load(themes.DEFAULT), "thin_core", red), "thick_core", red
+    )
+    for radius, on_line in ((outer, True), (float(fields.radius[field]), False)):
+        x, y = float(fields.x[field]) + radius, float(fields.y[field])
+        camera = Camera(WIDTH, HEIGHT, x, y, 0.25)
+        row, column = _pixel_of(camera, x, y)
+        pixel = _draw(renderer, context, frame, SPECTATOR, camera, theme)[row, column]
+        redness = int(pixel[0]) - max(int(pixel[1]), int(pixel[2]))
+        assert (redness > 60) is on_line, (radius, pixel)
+
+
 def test_a_ship_type_without_a_silhouette_draws_the_generic_one(renderer, context):
     loop = _loop(PRESETS["deathmatch"], ticks=10)
     frame = loop.current
@@ -810,22 +854,15 @@ def test_the_grid_draws_nothing_beyond_the_arena(renderer, context):
     assert not changed[:, WIDTH // 2 :].any()
 
 
-def _smooth_minimum(a, b, k):
-    """The quadratic smooth minimum, by hand: min(a, b) less h²k/4, h = 1 - |a - b|/k."""
-    h = np.maximum(k - np.abs(a - b), 0.0) / k
-    return np.minimum(a, b) - h * h * k / 4.0
+def _soft_minimum_terms(distance):
+    """One edge's term of the shader's soft minimum of edge distances, |d|^-6 (|d| at
+    least 1 mm)."""
+    return np.maximum(np.abs(distance), 1e-3) ** -6.0
 
 
 def _circle_distance(x, y, circle):
     centre_x, centre_y, radius = circle
     return np.hypot(x - centre_x, y - centre_y) - radius
-
-
-def test_the_smooth_minimum_by_hand():
-    """Two values far apart: the plain minimum; equal: less k/4; in between, smooth."""
-    assert _smooth_minimum(np.array(0.0), np.array(10.0), 4.0) == 0.0
-    assert _smooth_minimum(np.array(-3.0), np.array(-3.0), 4.0) == -4.0
-    assert _smooth_minimum(np.array(0.0), np.array(2.0), 4.0) == pytest.approx(-0.25)
 
 
 def _with_shapes(frame, fields=(), zones=()):
@@ -844,6 +881,7 @@ def _with_shapes(frame, fields=(), zones=()):
         band_width=column([10.0] * count, template.band_width),
         level=column([1] * count, template.level),
         core_radius=column([0.0] * count, template.core_radius),
+        outer_radius=column([f[2] + 5.0 for f in fields], template.outer_radius),
     )
     present = np.zeros_like(frame.zones.present)
     values = {name: getattr(frame.zones, name).copy() for name in ("x", "y", "radius")}
@@ -870,6 +908,7 @@ ARENA = PRESETS["arena"].arena_radius
     [
         ("fields", [(-35.0, 5.0, 25.0), (30.0, -5.0, 18.0)], [], (0.0, 0.0)),
         ("fields", [(-15.0, 0.0, 25.0), (15.0, 0.0, 25.0)], [], (0.0, 0.0)),  # overlapping
+        ("fields", [(0.0, 0.0, 60.0), (8.0, 0.0, 20.0)], [], (0.0, 0.0)),  # one inside another
         ("edge", [], [], (ARENA, 0.0)),
         (
             "fields+edge+zones",
@@ -880,14 +919,14 @@ ARENA = PRESETS["arena"].arena_radius
         ("zones", [(-30.0, 0.0, 20.0)], [(30.0, 0.0, 20.0)], (0.0, 0.0)),
     ],
 )
-def test_the_contours_are_the_smooth_union_of_the_signed_distances(
+def test_the_contours_are_the_soft_minimum_of_the_edge_distances(
     renderer, context, shapes, fields, zones, centre
 ):
     """At a zoom where the fine spacing is exactly CONTOUR_PIXELS (no fade), a line is drawn
-    wherever the hand-computed signed distance (negative inside a circle and beyond the
-    arena; the circles' and the edge's joined by the smooth minimum) is a multiple of the
-    spacing, and nothing where it is more than 1.5 px from one. Inside the overlapping
-    circles the union falls below either circle's distance, so a sign error shows."""
+    wherever the hand-computed distance to the nearest edge (the circles' and the map
+    edge's, from either side, joined by the soft minimum (sum |d|^-6)^(-1/6)) is a multiple
+    of the spacing, and nothing where it is more than 1.5 px from one. A circle inside
+    another keeps its own rings."""
     frame = _with_shapes(_empty_arena(), fields, zones)
     spacing = 32.0
     camera = Camera(WIDTH, HEIGHT, *centre, spacing / CONTOUR_PIXELS)
@@ -905,28 +944,31 @@ def test_the_contours_are_the_smooth_union_of_the_signed_distances(
             "fields+edge+zones": (1, 1, 1),
             "zones": (0, 0, 1),
         }[shapes]
-        total = ARENA - np.hypot(x, y) if with_edge else np.full_like(x, 1e9)
+        total = _soft_minimum_terms(ARENA - np.hypot(x, y)) if with_edge else np.zeros_like(x)
         circles = (fields if with_fields else []) + (zones if with_zones else [])
         for circle in circles:
-            total = _smooth_minimum(
-                total, _circle_distance(x, y, circle), SMOOTHING_FRACTION * ARENA
-            )
-        return total
+            total = total + _soft_minimum_terms(_circle_distance(x, y, circle))
+        return total ** (-1.0 / 6.0)
 
     value = distance(x, y)
     gradient = np.hypot(
         distance(x + 0.5 * pixel, y) - distance(x - 0.5 * pixel, y),
         distance(x, y + 0.5 * pixel) - distance(x, y - 0.5 * pixel),
     )  # metres of distance per pixel
-    off_line = np.abs(value - spacing * np.round(value / spacing)) / np.maximum(gradient, 1e-9)
-    smooth = gradient > 0.5 * pixel  # away from a circle's centre and the union's ridges
+    slope = np.maximum(gradient, 0.7 * pixel)  # the shader's floor (an edge folds |d|)
+    off_line = np.abs(value - spacing * np.round(value / spacing)) / slope
+    # away from a circle's centre and the creases between edges, or on an edge
+    smooth = (gradient > 0.5 * pixel) | (value < 0.5 * pixel)
     on, bare = smooth & (off_line < 0.25), smooth & (off_line > 1.5)
     on[:2], on[-2:], on[:, :2], on[:, -2:] = False, False, False, False
+    under_edge = np.abs(np.hypot(x, y) - ARENA) < 3.0 * pixel  # the edge line draws over
+    on &= ~under_edge
     assert on.sum() > 100 and bare.sum() > 1000
     assert drawn[on].mean() > 0.99
     assert not drawn[bare].any()
-    if shapes == "fields" and fields[0][0] == -15.0:
-        assert (on & (value < -spacing + 1.0)).any()  # a line inside both circles
+    if shapes == "fields" and fields[0][2] == 60.0:  # the inner circle's own rim is drawn
+        inner = np.abs(np.hypot(x - 8.0, y) - 20.0) < 0.5 * pixel
+        assert drawn[inner].mean() > 0.9
 
 
 def test_no_contours_draw_when_off_or_for_shapes_the_map_has_not(renderer, context):

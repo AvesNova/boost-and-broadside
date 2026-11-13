@@ -1,6 +1,6 @@
 """Pass 7: fog, in a team's view. The visibility mask is drawn first, in screen space at
-MASK_SCALE of the target's resolution, from the team's living ships and the field cores;
-the fog pass reads it and multiplies what the team cannot see by the theme's
+MASK_SCALE of the target's resolution, from the team's living ships and the fields' cores
+and bands; the fog pass reads it and multiplies what the team cannot see by the theme's
 fog colour (brightness down, saturation kept). Terrain stays drawn under the fog."""
 
 import moderngl
@@ -56,8 +56,8 @@ class FogPass:
 
     def draw_mask(self, camera: dict, observers: np.ndarray, cores: np.ndarray) -> None:
         """Draw the mask into its own framebuffer (the caller binds its target again).
-        observers (O, 4): x, y, vision range, unused; cores (M, 4): x, y, radius squared,
-        unused."""
+        observers (O, 4): x, y, vision range, unused; cores (M, 4): x, y, core radius
+        squared, outer radius squared (the band's two edges)."""
         width, height = (int(value) for value in camera["viewport"])
         self._resize(width, height)
         self.observers = self._table(self.context, self.observers, observers)

@@ -70,6 +70,33 @@ def test_core_radius_is_where_the_sight_test_blocks():
         assert bool(visible[0, 0, 1]) is seen, offset
 
 
+def test_outer_radius_is_where_a_core_stops_seeing():
+    """An observer at a field's centre, in its core, looks out along a radius: the enemy is
+    seen just inside the outer radius (in the band) and hidden just outside it."""
+    rules, state, _ = _state(GameConfig(1, 1, 2600.0))
+    fields = replace(
+        state.fields,
+        x=torch.tensor([[0.0]]),
+        y=torch.tensor([[0.0]]),
+        radius=torch.tensor([[300.0]]),
+        band_width=torch.tensor([[40.0]]),
+    )
+    state = replace(state, fields=fields)
+    outer = float(api.outer_radius(state)[0, 0])
+    assert outer == 320.0
+    for offset, seen in ((-0.5, True), (0.5, False)):
+        ships = replace(
+            state.ships,
+            x=torch.tensor([[0.0, outer + offset]]),
+            y=torch.zeros(1, 2),
+            alive=torch.ones(1, 2, dtype=torch.bool),
+            fired=torch.zeros(1, 2, dtype=torch.bool),
+            spawned=torch.zeros(1, 2, dtype=torch.bool),
+        )
+        visible = sight.visibility(replace(state, ships=ships))
+        assert bool(visible[0, 0, 1]) is seen, offset
+
+
 def test_a_lone_attacker_raises_only_the_meters_zone_sides_name():
     """For every front, one ship alone in one zone: the meter rises exactly where
     `zone_sides` names its team the attacker, and the defense zone's owner is the other

@@ -67,8 +67,9 @@ class Bullets:
 
 @dataclasses.dataclass(frozen=True)
 class Fields:
-    """(M,): centre, radius and band width (m), level, and the core radius (m), the disc
-    that blocks sight (`bnb.game.api.core_radius`)."""
+    """(M,): centre, radius and band width (m), level, and the band's two edges where the
+    sight test changes: the core radius and the outer radius (m) (`bnb.game.api.core_radius`
+    and `outer_radius`)."""
 
     x: np.ndarray
     y: np.ndarray
@@ -76,6 +77,7 @@ class Fields:
     band_width: np.ndarray
     level: np.ndarray
     core_radius: np.ndarray
+    outer_radius: np.ndarray
 
 
 @dataclasses.dataclass(frozen=True)
@@ -108,7 +110,9 @@ class Snapshot:
     see (without it a team's view has no fog). log_index_per_level: ln n per field level;
     stall_angle (rad): the game's constants the drawing scales by. next_wave (2,): by team,
     the seconds to its next respawn wave (Frontline; zeros elsewhere): a player sees only
-    their own team's, as the observation shows it."""
+    their own team's, as the observation shows it. boundary_radius (m): the boundary as it
+    stands (the arena radius, or less where it shrinks: elimination), and
+    boundary_time_to_zero, the seconds until it reaches 0 (0 where it does not shrink)."""
 
     ships: Ships
     bullets: Bullets
@@ -128,6 +132,8 @@ class Snapshot:
     log_index_per_level: float
     stall_angle: float
     next_wave: np.ndarray
+    boundary_radius: float
+    boundary_time_to_zero: float
 
 
 def _numpy(value: torch.Tensor) -> np.ndarray:
@@ -226,6 +232,7 @@ def _fields(state: State, values: dict) -> Fields:
         band_width=value("band_width"),
         level=value("level"),
         core_radius=_numpy(api.core_radius(state)[0]),
+        outer_radius=_numpy(api.outer_radius(state)[0]),
     )
 
 
@@ -288,4 +295,6 @@ def snapshot(rules: Rules, types: ShipTypes, state: State, observation: Obs) -> 
         log_index_per_level=api.LN_SQRT2,
         stall_angle=rules.flight.stall_angle,
         next_wave=_numpy(values["mode.wave_wait"][0].float() * rules.tick_length),
+        boundary_radius=pool.arena_radius * float(globals_[GLOBAL["boundary_fraction"]]),
+        boundary_time_to_zero=float(globals_[GLOBAL["boundary_time_to_zero"]]),
     )
