@@ -50,7 +50,9 @@ display draws, by name), `log_index` and `log_index_gradient` (the medium at poi
 than the planes a ship set plays natively); `bullet_paths` (each live bullet's flight
 ahead, by the game's own transport); and the constants `TEAMS`, `LN_SQRT2` (ln n per field
 level), `MAP_SCALE_RADIUS` (the arena radius of map scale 1), the game presets `PRESETS` and the
-lineups of those whose lineup is their own (`LINEUPS`, as type indices by `preset_lineup`).
+lineups of those whose lineup is their own (`LINEUPS`, as type indices by `preset_lineup`);
+`arena_radius_for` (a game's arena radius at another fleet size: the density rule, then the
+mode's minimum, `minimum_arena_radius`).
 """
 
 import torch
@@ -75,7 +77,7 @@ from .handling.weapons import combat_card, combat_handles
 from .layout import environment, per_mode
 from .modes import frontline, phase
 from .modes.frontline import lock_ticks
-from .modes.rules import FLEET_PRESETS, LINEUPS, PRESETS
+from .modes.rules import FLEET_PRESETS, LINEUPS, PRESETS, arena_radius_for, minimum_arena_radius
 from .perception import sight
 from .perception.observe import perceive, view_order
 from .perception.sight import vision_range
@@ -114,6 +116,8 @@ __all__ = [
     "MAP_SCALE_RADIUS",
     "PRESETS",
     "FLEET_PRESETS",
+    "arena_radius_for",
+    "minimum_arena_radius",
     "LINEUPS",
     "Rules",
     "ShipTypes",

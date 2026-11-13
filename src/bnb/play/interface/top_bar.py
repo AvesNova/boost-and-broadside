@@ -222,9 +222,12 @@ def _frame_rate(interface: Interface, rect, right: float) -> float:
 
 def boundary_label(frame) -> str:
     """Elimination's boundary for the top bar: its radius now as a share of the arena's,
-    and its time to zero (whole seconds, rounded up)."""
+    and its time to zero (whole seconds, rounded up); "edge closed" once it has passed 0
+    (every ship is beyond it)."""
     share = frame.boundary_radius / max(frame.arena_radius, 1e-6)
     seconds = math.ceil(frame.boundary_time_to_zero - 1e-6)
+    if share <= 0.0 and seconds <= 0:
+        return "edge closed"
     return f"edge {100.0 * share:.0f}%, {clock(seconds)}"
 
 

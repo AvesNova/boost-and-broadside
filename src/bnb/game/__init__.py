@@ -116,7 +116,21 @@ its scale. The real-scale random maps (the set's rules.toml, the author's): fiel
 160 m, radii 120-1200 m at map scale 1 drawn lognormal (median 400 m, log spread 0.6).
 Real-scale team deathmatch plays a 4200 m arena (was 7800 m) with a 10 s respawn wait
 (was 8 s).
+
+Version 16 (2026-11-13): elimination's boundary closes before the clock, and small
+deathmatch arenas have a floor. The shrinking boundary no longer stops at radius 0 at the
+clock's end: it passes 0 and reaches minus a ramp width, where even a ship at the centre
+takes the boundary's most, `ModeRules.shrink_end_lead_seconds` (8 s) before the clock.
+From the zero crossing a ship at the centre is hurt every tick, so its shield does not
+recharge; 8 s at the most outlasts the largest shield of either set (160 at 30 or 40 per
+s), so every ship dies before the clock, and the tie-break by health left only decides
+ships that die on the same tick (a draw when both teams' last ships do). The observation
+shows the boundary's fraction clamped at 0, and boundary_time_to_zero counts to the zero
+crossing. A game's arena radius at another fleet size (`api.arena_radius_for`) follows the
+density rule down to its mode's minimum: team deathmatch 1000 m at map scale 1, 3000 m at
+real scale (1v1 and 2v2 real-scale deathmatch were 1878 m and 2656 m by the rule alone);
+elimination and frontline have none. No preset changes radius.
 """
 
-VERSION = 15
-FINGERPRINT = "3421b9f4dc56d6e8"
+VERSION = 16
+FINGERPRINT = "71982b10a86b586f"

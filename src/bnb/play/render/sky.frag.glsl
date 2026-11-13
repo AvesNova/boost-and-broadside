@@ -5,7 +5,8 @@
 // fields, contours and zones): beyond the edge a veil of the outside colour hatched in the
 // boundary colour, so fields that reach past the edge show through dimmed, and a line on
 // the edge. The edge layer follows the boundary (`boundary_radius`: elimination's shrinks
-// inside the arena); a faint ring stays on the arena's edge once it has.
+// inside the arena, to radius 0 and on: then the veil covers everything); a faint ring
+// stays on the arena's edge once it has.
 uniform float arena_radius;
 uniform float boundary_radius;
 uniform vec4 sky;
@@ -41,7 +42,9 @@ void main() {
         * line_coverage(abs(fract(stripe) - 0.5) * HATCH_SPACING, HATCH_WIDTH);
     vec3 zone = mix(outside.rgb, boundary.rgb, hatch);
     float veil = past * (VEIL_OPACITY + (1.0 - VEIL_OPACITY) * hatch);
-    float line = line_coverage(abs(beyond), EDGE_WIDTH);
+    // the boundary's line fades out as it closes on the centre: past radius 0 (shown as 0)
+    // everything is beyond it, so only the veil is left
+    float line = clamp(boundary_radius / pixel, 0.0, 1.0) * line_coverage(abs(beyond), EDGE_WIDTH);
     // the arena's edge, faint, once the boundary has shrunk a pixel inside it
     float inside = clamp((arena_radius - boundary_radius) / pixel, 0.0, 1.0);
     float ring = RING_OPACITY * inside

@@ -45,7 +45,8 @@ compiled. The options:
   team it holds; a tooltip says what each shows; on the battlefield each zone shows its
   meter outside its edge and a lock as a thinner arc inside it, shrinking as the lock runs
   out; in elimination the ships each team has left, and the boundary's radius as a share
-  of the arena's and its time to zero, as "edge 31%, 0:45"), and the clock in the middle; the speed controls
+  of the arena's and its time to zero, as "edge 31%, 0:45", then "edge closed" once it has
+  passed the centre and every ship is outside it), and the clock in the middle; the speed controls
   on the right: pause or play, one tick while paused, and ×1, ×2, ×4, ×8. Left of the
   speed controls, the frame rate: frames per second and the frame time, smoothed over about
   half a second, and the longest frame of the last second (`max`), so a stall shows. F4,
@@ -411,7 +412,7 @@ compare.
   and the current mode's rules (Frontline's zone radius, capture time, capture lock (s per
   sqrt(km) of the zone spacing), respawn minimum and respawn wave interval; team
   deathmatch's kills to win and respawn wait; elimination's spawn areas and the
-  boundary's hold and shrink law). The map's groups (the arena, spawns, the random fields
+  boundary's hold, shrink law and lead, how long before the clock it closes). The map's groups (the arena, spawns, the random fields
   and the mode's own) are in the **Map / mode** panel (F3), the rest here. The respawn wait shows
   in the mode's own group: Frontline's as the respawn minimum, team deathmatch's as its
   fixed wait. Each has a slider and a number box, and applies on

@@ -81,6 +81,32 @@ PRESETS["real_scale_deathmatch"] = dataclasses.replace(
     respawn_seconds=10.0,
 )
 
+# A game at another fleet size (`arena_radius_for`): the arena radius follows the density
+# rule, growing as sqrt(n / n_base) from the base game's, down to the mode's minimum
+# (m at map scale 1, times the ship set's map scale: the real-scale set's is 3). Team
+# deathmatch's is 1000 m, 3000 m at real scale (the author, 2026-11-13: real-scale 5v5 is
+# 4200 m, so by the rule alone 2v2 would be 2656 m and 1v1 1878 m); elimination's and
+# frontline's are 0 (off) until smaller sizes prove too uneven.
+MINIMUM_ARENA_RADIUS = {TEAM_DEATHMATCH: 1000.0, ELIMINATION: 0.0, FRONTLINE: 0.0}  # m
+SET_MAP_SCALE = {REAL_SCALE: REAL_SCALE_ARENA / 2600.0}  # others 1 (2600: map scale 1)
+
+
+def minimum_arena_radius(game: GameConfig) -> float:
+    """The smallest arena radius (m) the game's mode plays at another fleet size, at its
+    ship set's map scale (0: none)."""
+    return MINIMUM_ARENA_RADIUS.get(game.mode, 0.0) * SET_MAP_SCALE.get(game.ship_set, 1.0)
+
+
+def arena_radius_for(game: GameConfig, ships_per_team: int, arena_scale: float = 1.0) -> float:
+    """The arena radius (m, to 0.1 m) of this game at ships_per_team a side: the density
+    rule (the game's radius times sqrt(ships_per_team / its ships per team), so the
+    crowding stays), times arena_scale (a map off the rule, as a size search draws), then
+    at least the mode's minimum (`minimum_arena_radius`; after the scale, so a scaled-down
+    map is still floored). The one place a per-size radius is derived."""
+    radius = game.arena_radius * math.sqrt(ships_per_team / game.ships_per_team) * arena_scale
+    return round(max(radius, minimum_arena_radius(game)), 1)
+
+
 # The arena: a 2v2 team deathmatch of the real-scale set on a small map with no fields (and
 # no zones: they are frontline's), a ship killed spawning again on the next tick (one tick
 # of the game's 30 Hz). Not a training preset. Its first radius, 1300 m, came from the two
@@ -114,7 +140,7 @@ PRESETS["arena"] = GameConfig(
 # images), each ship nose to the centre with up to 150 m and 5 degrees of jitter. The
 # whole layout turns by a random angle each match, as the random maps' fields and spawn
 # axis do.
-CLOVER_RADIUS = round(REAL_SCALE_ARENA * (2 / 5) ** 0.5, 1)  # m
+CLOVER_RADIUS = arena_radius_for(PRESETS["real_scale_elimination"], 2)  # m
 CLOVER_FIELD_RADIUS = 0.25 * CLOVER_RADIUS
 CLOVER_FIELD_DISTANCE = 0.45 * CLOVER_RADIUS  # the centres' distance from the map centre
 CLOVER_SPAWN_DISTANCE = 0.875 * CLOVER_RADIUS
@@ -159,8 +185,9 @@ LINEUPS = {"arena": ("P-51D", "Spitfire XIV")}
 # Fleet-size evaluation presets (zero-shot: training is 5v5 only), of each base game:
 # `<base>_<n>v<n>_arena` keeps the base's arena, so n ships crowd it n/5 times as densely;
 # `<base>_<n>v<n>_density` keeps its crowding, the arena radius growing as sqrt(n / 5) (its
-# 10 fields zoom with the arena, as every map scale's do). Not training presets, and not maps
-# of the play shell (`FLEET_PRESETS`).
+# 10 fields zoom with the arena, as every map scale's do; `arena_radius_for`, so a mode's
+# minimum radius holds). Not training presets, and not maps of the play shell
+# (`FLEET_PRESETS`).
 FLEET_SIZES = (10, 20, 50)  # the largest is 10x the trained 5v5 (the zero-shot claim)
 FLEET_BASES = ("deathmatch", "frontline", "real_scale_deathmatch", "real_scale_frontline")
 FLEET_PRESETS: tuple[str, ...] = tuple(
@@ -174,9 +201,7 @@ for _base in FLEET_BASES:
     for _n in FLEET_SIZES:
         PRESETS[f"{_base}_{_n}v{_n}_arena"] = dataclasses.replace(_game, ships_per_team=_n)
         PRESETS[f"{_base}_{_n}v{_n}_density"] = dataclasses.replace(
-            _game,
-            ships_per_team=_n,
-            arena_radius=round(_game.arena_radius * (_n / _game.ships_per_team) ** 0.5, 1),
+            _game, ships_per_team=_n, arena_radius=arena_radius_for(_game, _n)
         )
 del _base, _game, _n
 
@@ -200,8 +225,9 @@ class ModeRules:
     centres; 0 none) and the respawn waves (each team's every wave_seconds, from a random
     phase per team at the match's start: a dead ship respawns at its team's first wave
     after its respawn wait; 0 no waves). Elimination's boundary shrinks: it holds at the
-    arena radius for shrink_hold_seconds, then falls to 0 at the clock's end by shrink_law
-    (0 linear in radius, 1 the smootherstep). layout: the
+    arena radius for shrink_hold_seconds, then falls by shrink_law (0 linear in radius, 1
+    the smootherstep) past 0 to a ramp width inside the centre, shrink_end_lead_seconds
+    before the clock's end, so every ship dies before the clock. layout: the
     game's fixed map (`MapLayout`), or None for a random one; part of the mode's rules, so
     games of one mode with different layouts are different slices of the batch
     (`layout.per_mode`)."""
@@ -228,10 +254,19 @@ class ModeRules:
     side_area_fraction: float = 0.15
     side_heading_jitter: float = math.radians(15.0)
     # Elimination's shrinking boundary (`bnb.game.layout.boundary_fraction`): it holds at
-    # the arena radius for shrink_hold_seconds, then shrinks to 0 at the clock's end, linear
-    # in radius (shrink_law 0) or along the smootherstep (1: a smooth start and end). 18 s
-    # is a fifth of the standard clock; 36 s at real scale (the set's [mode]).
+    # the arena radius for shrink_hold_seconds, then shrinks, linear in radius (shrink_law
+    # 0) or along the smootherstep (1: a smooth start and end), past radius 0 to minus a
+    # ramp width (`Rules.boundary_ramp_width`), where even a ship at the centre takes the
+    # boundary's most, shrink_end_lead_seconds before the clock's end. 18 s is a fifth of
+    # the standard clock; 36 s at real scale (the set's [mode]). The lead (the author,
+    # 2026-11-13: every ship dies before the clock): from the zero crossing a ship at the
+    # centre is hurt every tick, so its shield does not recharge, and from the end it takes
+    # the most; the largest shield of either set (160) over the smaller most (30 per s,
+    # the standard set's; 40 at real scale) is 5.3 s, plus a tick to kill a broken shield,
+    # so 8 s leaves 2.6 s of margin before counting the ramp's damage between the zero
+    # crossing and the end (`test_boundary_shrink` checks it against the cards).
     shrink_hold_seconds: float = 18.0
+    shrink_end_lead_seconds: float = 8.0
     shrink_law: int = 0
     layout: MapLayout | None = None
 

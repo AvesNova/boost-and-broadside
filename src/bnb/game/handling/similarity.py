@@ -175,6 +175,7 @@ RULE_UNITS = {
     "mode.side_area_fraction": NONE,
     "mode.side_heading_jitter": NONE,
     "mode.shrink_hold_seconds": TIME,
+    "mode.shrink_end_lead_seconds": TIME,
     "mode.shrink_law": NONE,
     **{f"flight.{name}": units for name, units in FLIGHT_UNITS.items()},
 }
