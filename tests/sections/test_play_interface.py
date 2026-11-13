@@ -541,6 +541,34 @@ def test_a_side_slow_to_make_plays_on_until_it_is_made(context, tmp_path, monkey
     assert session.loop.setup.sides[1] == SideSetup("scripted_agent")
 
 
+def test_a_new_match_on_an_unmeasured_card_flies_the_last_matchs_characteristics(
+    context, tmp_path, monkeypatch
+):
+    """A new match whose card no run has measured (a tuned card): its scripted sides fly
+    on the last match's characteristics while the card is measured aside, not coasting
+    straight, and take the card's own when they are in."""
+    import threading
+
+    from bnb.game.handling.characteristics import characteristics
+    from bnb.play import app
+
+    session = _session(context, tmp_path)
+    old = session.loop
+    traits = characteristics(old.types, old.rules)
+    measured = threading.Event()
+    monkeypatch.setattr(
+        app,
+        "cached_characteristics",
+        lambda types, rules: traits if types is old.types or measured.is_set() else None,
+    )
+    monkeypatch.setattr(app, "measure_aside", lambda types, rules: measured.wait(60))
+    session.restart()
+    assert session.loop is not old
+    assert all(side.label != "waiting" for side in session.loop.sides)
+    measured.set()
+    session.close()
+
+
 def test_the_arena_is_chosen_flown_and_drawn_at_true_size(context, tmp_path):
     """New match offers the arena as a map (2v2, no fields, a P-51D and a Spitfire XIV a
     team); taking control of a ship keeps every card as it was, open or collapsed; the top

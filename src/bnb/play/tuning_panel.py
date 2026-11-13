@@ -301,7 +301,9 @@ class TuningPanel:
         self.ship = 0
         self.new_ship = ""
         self.removing = 0  # the ship type the remove popup asks about
-        self.factor = 2.0  # the time scale's factor
+        # the time scale field: None shows the factor the game runs at (x1 at the start),
+        # so the field never suggests a speed the game is not running
+        self.factor: float | None = None
         self.window: Rect | None = None  # where the window was last drawn
         self.message = ""
         self._files: list | None = None  # the ship files as last read
@@ -571,6 +573,8 @@ class TuningPanel:
         imgui.text("faster by")
         imgui.same_line()
         imgui.set_next_item_width(width)
+        if self.factor is None:
+            self.factor = tuner.time_factor
         _, self.factor = imgui.input_float("##time factor", self.factor, 0.0, 0.0, "%.4g")
         controls.record("tuning/time factor")
         tooltip(help)
@@ -598,7 +602,7 @@ class TuningPanel:
         if not imgui.collapsing_header("Game's numbers"):
             return
         controls = session.interface.controls
-        if imgui.button("Game's numbers"):
+        if imgui.button("Reset to the game's numbers##reset"):
             session.retune_to(Tuning(time_factor=tuner.time_factor))
             self.message = "back to the ship files' and the rules' own numbers"
         controls.record("tuning/game's numbers")

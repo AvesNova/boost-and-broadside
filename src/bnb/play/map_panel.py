@@ -117,7 +117,7 @@ class MapPanel:
                 imgui.push_style_color(
                     imgui.Col_.button, imgui.get_style().color_(imgui.Col_.button_active)
                 )
-            if imgui.button(name) and not active:
+            if imgui.button(f"{name}##mode") and not active:
                 self.message = "" if session.set_mode(key) else session.notice
             if active:
                 imgui.pop_style_color()
