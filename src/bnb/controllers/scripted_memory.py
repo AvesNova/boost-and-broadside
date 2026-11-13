@@ -40,7 +40,9 @@ class ScriptedCarry:
     fought its target at close range without gaining an angle (the maneuvers' clock);
     yoyo_seconds (R, S): the time since its yo-yo began, negative when none is flown.
     sense_draw (R, S): the uniform drawn for the sense's choice when its gate opened,
-    negative while it is shut.
+    negative while it is shut. respawn_seen (R, S): each own ship's respawn wait (s) at the
+    last decision, -1 before any: a ship waiting to respawn counts its wait down (or waits
+    at 0 for its wave), while a benched slot's wait holds still (`scripted_frontline`).
     enemy_x, enemy_y, enemy_velocity_x,
     enemy_velocity_y (R, E): each enemy's last seen state; known (R, E) bool: remembered."""
 
@@ -54,6 +56,7 @@ class ScriptedCarry:
     stalemate_seconds: torch.Tensor
     yoyo_seconds: torch.Tensor
     sense_draw: torch.Tensor
+    respawn_seen: torch.Tensor
     enemy_x: torch.Tensor
     enemy_y: torch.Tensor
     enemy_velocity_x: torch.Tensor
@@ -81,6 +84,7 @@ def fresh_carry(views: int, ships: int, enemies: int, device) -> ScriptedCarry:
         stalemate_seconds=torch.zeros((views, ships), device=device),
         yoyo_seconds=torch.full((views, ships), -1.0, device=device),
         sense_draw=torch.full((views, ships), -1.0, device=device),
+        respawn_seen=torch.full((views, ships), -1.0, device=device),
         enemy_x=zero(),
         enemy_y=zero(),
         enemy_velocity_x=zero(),

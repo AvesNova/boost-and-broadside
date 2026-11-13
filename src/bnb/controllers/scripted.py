@@ -258,6 +258,7 @@ def decide(
         stalemate_seconds=fighting.stalemate_seconds,
         yoyo_seconds=fighting.yoyo_seconds,
         sense_draw=fighting.sense_draw,
+        respawn_seen=fleet.own[..., SHIP["respawn_wait"]],
         frontline_left=strategy.left,
         defending=strategy.defending,
         recovering=strategy.recovering,
