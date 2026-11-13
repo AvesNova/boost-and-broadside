@@ -1,0 +1,1062 @@
+{
+ "candidates": [
+  {
+   "name": "base",
+   "energy": {},
+   "turn": {},
+   "doctrine": {
+    "energy": {
+     "sense": 1.0,
+     "sense_one_circle": 1.0,
+     "sense_in_gun_range": [
+      4.0,
+      0.2
+     ],
+     "sense_mirror_only": 1.0,
+     "sense_in_crowd": [
+      0.5,
+      0.1
+     ],
+     "crowd_sense": 1.0,
+     "crowd_sense_stick": 0.0,
+     "crowd_sense_boost": 1.0,
+     "duel_extend": 1.0,
+     "duel_extend_in_shield_ratio": [
+      1.0,
+      0.1
+     ],
+     "duel_extend_cross_in_others": [
+      0.5,
+      0.1
+     ]
+    },
+    "turn": {
+     "sense": 1.0,
+     "sense_one_circle": 1.0,
+     "sense_in_gun_range": [
+      4.0,
+      0.2
+     ],
+     "sense_mirror_only": 1.0,
+     "sense_in_crowd": [
+      0.5,
+      0.1
+     ],
+     "crowd_sense": 1.0,
+     "crowd_sense_stick": 0.0,
+     "crowd_sense_boost": 1.0,
+     "duel_extend": 1.0,
+     "duel_extend_in_shield_ratio": [
+      0.4,
+      0.1
+     ],
+     "duel_extend_cross_in_others": [
+      0.5,
+      0.1
+     ]
+    }
+   }
+  },
+  {
+   "name": "Y lift x1.5 + damage x1.5",
+   "energy": {
+    "max_lift_coefficient": 1.5,
+    "hit_damage": 1.5
+   },
+   "turn": {},
+   "doctrine": {
+    "energy": {
+     "sense": 1.0,
+     "sense_one_circle": 1.0,
+     "sense_in_gun_range": [
+      4.0,
+      0.2
+     ],
+     "sense_mirror_only": 1.0,
+     "sense_in_crowd": [
+      0.5,
+      0.1
+     ],
+     "crowd_sense": 1.0,
+     "crowd_sense_stick": 0.0,
+     "crowd_sense_boost": 1.0,
+     "duel_extend": 1.0,
+     "duel_extend_in_shield_ratio": [
+      1.0,
+      0.1
+     ],
+     "duel_extend_cross_in_others": [
+      0.5,
+      0.1
+     ]
+    },
+    "turn": {
+     "sense": 1.0,
+     "sense_one_circle": 1.0,
+     "sense_in_gun_range": [
+      4.0,
+      0.2
+     ],
+     "sense_mirror_only": 1.0,
+     "sense_in_crowd": [
+      0.5,
+      0.1
+     ],
+     "crowd_sense": 1.0,
+     "crowd_sense_stick": 0.0,
+     "crowd_sense_boost": 1.0,
+     "duel_extend": 1.0,
+     "duel_extend_in_shield_ratio": [
+      0.4,
+      0.1
+     ],
+     "duel_extend_cross_in_others": [
+      0.5,
+      0.1
+     ]
+    }
+   }
+  },
+  {
+   "name": "Y damage x2 + J shield x0.65",
+   "energy": {
+    "hit_damage": 2.0
+   },
+   "turn": {
+    "max_shield": 0.65
+   },
+   "doctrine": {
+    "energy": {
+     "sense": 1.0,
+     "sense_one_circle": 1.0,
+     "sense_in_gun_range": [
+      4.0,
+      0.2
+     ],
+     "sense_mirror_only": 1.0,
+     "sense_in_crowd": [
+      0.5,
+      0.1
+     ],
+     "crowd_sense": 1.0,
+     "crowd_sense_stick": 0.0,
+     "crowd_sense_boost": 1.0,
+     "duel_extend": 1.0,
+     "duel_extend_in_shield_ratio": [
+      1.0,
+      0.1
+     ],
+     "duel_extend_cross_in_others": [
+      0.5,
+      0.1
+     ]
+    },
+    "turn": {
+     "sense": 1.0,
+     "sense_one_circle": 1.0,
+     "sense_in_gun_range": [
+      4.0,
+      0.2
+     ],
+     "sense_mirror_only": 1.0,
+     "sense_in_crowd": [
+      0.5,
+      0.1
+     ],
+     "crowd_sense": 1.0,
+     "crowd_sense_stick": 0.0,
+     "crowd_sense_boost": 1.0,
+     "duel_extend": 1.0,
+     "duel_extend_in_shield_ratio": [
+      0.4,
+      0.1
+     ],
+     "duel_extend_cross_in_others": [
+      0.5,
+      0.1
+     ]
+    }
+   }
+  }
+ ],
+ "sizes": {
+  "5": [
+   {
+    "variant": 0,
+    "lineup": "energy v turn",
+    "a": "c0",
+    "b": "c0",
+    "games": 256,
+    "score": [
+     0.234375,
+     0.02652733400464058
+    ],
+    "kill_score": [
+     0.3065042495727539,
+     0.006829799618571997
+    ],
+    "kills_per_minute_mean": 3.3460936546325684,
+    "kills_per_minute_median": 3.299999952316284,
+    "kills_per_game": 33.4609375,
+    "kill_share": [
+     0.019612420350313187,
+     0.0904739648103714,
+     0.552766740322113,
+     0.3371468484401703
+    ],
+    "damage_share": [
+     0.0007545471889898181,
+     0.13022145628929138,
+     0.6344549059867859,
+     0.2345689982175827
+    ],
+    "kill_share_by_pair": {
+     "Y on Y": [
+      [
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      0.0
+     ],
+     "Y on J": [
+      [
+       0.036924246698617935,
+       0.10011419653892517,
+       0.5306433439254761,
+       0.3323182463645935
+      ],
+      2627.0
+     ],
+     "J on Y": [
+      [
+       0.011954874731600285,
+       0.08620979636907578,
+       0.5625526309013367,
+       0.33928272128105164
+      ],
+      5939.0
+     ],
+     "J on J": [
+      [
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      0.0
+     ]
+    },
+    "damage_share_by_victim": {
+     "yongma": [
+      0.0005667471559718251,
+      0.12281590700149536,
+      0.6421231627464294,
+      0.2344941794872284
+     ],
+     "jujak": [
+      0.001352442312054336,
+      0.15379837155342102,
+      0.6100418567657471,
+      0.2348073422908783
+     ]
+    },
+    "passes_per_kill": 0.32675695419311523,
+    "no_merge_kills": [
+     0.7603315433107635,
+     0.004612303835170001
+    ],
+    "first_merge_kills": [
+     0.05136586504786365,
+     0.0023850508466166016
+    ],
+    "killer_first_hit": [
+     0.9011207097828625,
+     0.00322518863341989
+    ],
+    "first_hit_wins": [
+     0.5846774193548387,
+     0.03129140706092391
+    ],
+    "ttk_median": 4.5,
+    "damage_by_side": [
+     [
+      3950.46630859375,
+      [
+       0.0005667471559718251,
+       0.12281590700149536,
+       0.6421231627464294,
+       0.2344941794872284
+      ]
+     ],
+     [
+      1240.8497314453125,
+      [
+       0.001352442312054336,
+       0.15379837155342102,
+       0.6100418567657471,
+       0.2348073422908783
+      ]
+     ]
+    ],
+    "circles": [
+     0.3416902422904968,
+     0.4870602488517761,
+     0.17124949395656586
+    ],
+    "circle_count": 4946.0,
+    "trade_fraction": 0.0404084287583828,
+    "death_gap_mean": 15.71664810180664,
+    "death_gap_median": 10.5,
+    "life_seconds": 149.8646390035484,
+    "kills_per_minute_per_ship": 0.359609375,
+    "spawn_to_engagement_median": 30.5,
+    "first_hit_median": 27.066666666666666,
+    "first_kill_median": 31.733333333333334,
+    "engagement": {
+     "gun range": {
+      "engagements": 28539.0,
+      "kills": 8558.0,
+      "merges_per_kill_mean": 0.3604814112186432,
+      "merges_per_kill_median": 0.0,
+      "first_pass_kill_share": 0.9246318936347961,
+      "merges_per_kill_p90": 1.0,
+      "merges_per_engagement_mean": 0.8135183453559875,
+      "to_damage_median": 0.5,
+      "to_death_median": 1.5,
+      "length_median": 4.5,
+      "circles_turned_mean": 0.3939039707183838,
+      "one_two_scissors": [
+       0.11617673188447952,
+       0.8469753265380859,
+       0.03684797137975693
+      ]
+     },
+     "two turn diameters": {
+      "engagements": 34947.0,
+      "kills": 8558.0,
+      "merges_per_kill_mean": 0.9394718408584595,
+      "merges_per_kill_median": 1.0,
+      "first_pass_kill_share": 0.7548492550849915,
+      "merges_per_kill_p90": 3.0,
+      "merges_per_engagement_mean": 1.0950582027435303,
+      "to_damage_median": 3.5,
+      "to_death_median": 7.5,
+      "length_median": 8.5,
+      "circles_turned_mean": 0.791230320930481,
+      "one_two_scissors": [
+       0.2542511820793152,
+       0.6781026124954224,
+       0.06764618307352066
+      ]
+     }
+    },
+    "two_circles": {
+     "overlapping": {
+      "count": 1680.0,
+      "share": 0.7170294523239136,
+      "kill": 0.2994047701358795
+     },
+     "side by side": {
+      "count": 663.0,
+      "share": 0.2829705476760864,
+      "kill": 0.2835595905780792
+     }
+    },
+    "post_merge_choices": {
+     "yongma": {
+      "same sense": {
+       "count": 3010.0,
+       "share": 0.3783308267593384,
+       "outcome": [
+        0.03289036452770233,
+        0.20963455736637115,
+        0.7574750781059265
+       ]
+      },
+      "opposite sense": {
+       "count": 2416.0,
+       "share": 0.303670197725296,
+       "outcome": [
+        0.04759933799505234,
+        0.16804635524749756,
+        0.7843543291091919
+       ]
+      },
+      "extend": {
+       "count": 1334.0,
+       "share": 0.16767220199108124,
+       "outcome": [
+        0.012743628583848476,
+        0.14017991721630096,
+        0.8470764756202698
+       ]
+      },
+      "turn v extender": {
+       "count": 1196.0,
+       "share": 0.15032680332660675,
+       "outcome": [
+        0.08277592062950134,
+        0.040133778005838394,
+        0.8770902752876282
+       ]
+      }
+     },
+     "jujak": {
+      "same sense": {
+       "count": 3010.0,
+       "share": 0.3783308267593384,
+       "outcome": [
+        0.20963455736637115,
+        0.03289036452770233,
+        0.7574750781059265
+       ]
+      },
+      "opposite sense": {
+       "count": 2416.0,
+       "share": 0.303670197725296,
+       "outcome": [
+        0.16804635524749756,
+        0.04759933799505234,
+        0.7843543291091919
+       ]
+      },
+      "extend": {
+       "count": 1234.0,
+       "share": 0.15510307252407074,
+       "outcome": [
+        0.03889789432287216,
+        0.08022690564393997,
+        0.8808752298355103
+       ]
+      },
+      "turn v extender": {
+       "count": 1296.0,
+       "share": 0.16289593279361725,
+       "outcome": [
+        0.14429011940956116,
+        0.013117283582687378,
+        0.8425925970077515
+       ]
+      }
+     }
+    },
+    "wins": 60.0,
+    "draws": 0.0,
+    "candidate": "base"
+   },
+   {
+    "variant": 1,
+    "lineup": "energy v turn",
+    "a": "c1",
+    "b": "c1",
+    "games": 256,
+    "score": [
+     0.30859375,
+     0.028926115483045578
+    ],
+    "kill_score": [
+     0.409457266330719,
+     0.006793706677854061
+    ],
+    "kills_per_minute_mean": 3.431640386581421,
+    "kills_per_minute_median": 3.4000000953674316,
+    "kills_per_game": 34.31640625,
+    "kill_share": [
+     0.027774615213274956,
+     0.11212293803691864,
+     0.5659646987915039,
+     0.29413774609565735
+    ],
+    "damage_share": [
+     0.0009772689081728458,
+     0.14301073551177979,
+     0.6323645710945129,
+     0.22364744544029236
+    ],
+    "kill_share_by_pair": {
+     "Y on Y": [
+      [
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      0.0
+     ],
+     "Y on J": [
+      [
+       0.036459781229496,
+       0.11661563813686371,
+       0.6125800013542175,
+       0.23434455692768097
+      ],
+      3593.0
+     ],
+     "J on Y": [
+      [
+       0.021764252334833145,
+       0.1090138703584671,
+       0.5337057113647461,
+       0.33551618456840515
+      ],
+      5192.0
+     ],
+     "J on J": [
+      [
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      0.0
+     ]
+    },
+    "damage_share_by_victim": {
+     "yongma": [
+      0.0007147313444875181,
+      0.13732512295246124,
+      0.6168363690376282,
+      0.24512378871440887
+     ],
+     "jujak": [
+      0.0015008405316621065,
+      0.1543494015932083,
+      0.6633319854736328,
+      0.18081776797771454
+     ]
+    },
+    "passes_per_kill": 0.36573705077171326,
+    "no_merge_kills": [
+     0.7538986909504838,
+     0.004595603733445516
+    ],
+    "first_merge_kills": [
+     0.05896414342629482,
+     0.002513195074785668
+    ],
+    "killer_first_hit": [
+     0.9014228799089357,
+     0.003180397978511602
+    ],
+    "first_hit_wins": [
+     0.5933609958506224,
+     0.031641385555806555
+    ],
+    "ttk_median": 4.5,
+    "damage_by_side": [
+     [
+      3499.78466796875,
+      [
+       0.0007147313444875181,
+       0.13732512295246124,
+       0.6168363690376282,
+       0.24512378871440887
+      ]
+     ],
+     [
+      1754.9183349609375,
+      [
+       0.0015008405316621065,
+       0.1543494015932083,
+       0.6633319854736328,
+       0.18081776797771454
+      ]
+     ]
+    ],
+    "circles": [
+     0.38531073927879333,
+     0.483427494764328,
+     0.13126176595687866
+    ],
+    "circle_count": 5310.0,
+    "trade_fraction": 0.043757230043411255,
+    "death_gap_mean": 15.206734657287598,
+    "death_gap_median": 10.5,
+    "life_seconds": 144.69774552084428,
+    "kills_per_minute_per_ship": 0.3713671875,
+    "spawn_to_engagement_median": 30.5,
+    "first_hit_median": 27.133333333333333,
+    "first_kill_median": 31.266666666666666,
+    "engagement": {
+     "gun range": {
+      "engagements": 27813.0,
+      "kills": 8777.0,
+      "merges_per_kill_mean": 0.36128517985343933,
+      "merges_per_kill_median": 0.0,
+      "first_pass_kill_share": 0.923322319984436,
+      "merges_per_kill_p90": 1.0,
+      "merges_per_engagement_mean": 0.799266517162323,
+      "to_damage_median": 0.5,
+      "to_death_median": 0.5,
+      "length_median": 4.5,
+      "circles_turned_mean": 0.39818161725997925,
+      "one_two_scissors": [
+       0.12335134297609329,
+       0.83121258020401,
+       0.045436058193445206
+      ]
+     },
+     "two turn diameters": {
+      "engagements": 33590.0,
+      "kills": 8777.0,
+      "merges_per_kill_mean": 0.8197562098503113,
+      "merges_per_kill_median": 0.0,
+      "first_pass_kill_share": 0.8064258694648743,
+      "merges_per_kill_p90": 2.0,
+      "merges_per_engagement_mean": 1.0340875387191772,
+      "to_damage_median": 2.5,
+      "to_death_median": 6.5,
+      "length_median": 7.5,
+      "circles_turned_mean": 0.7354792952537537,
+      "one_two_scissors": [
+       0.2413426786661148,
+       0.690775990486145,
+       0.06788131594657898
+      ]
+     }
+    },
+    "two_circles": {
+     "overlapping": {
+      "count": 1779.0,
+      "share": 0.7079188227653503,
+      "kill": 0.25295108556747437
+     },
+     "side by side": {
+      "count": 734.0,
+      "share": 0.29208117723464966,
+      "kill": 0.20572206377983093
+     }
+    },
+    "post_merge_choices": {
+     "yongma": {
+      "same sense": {
+       "count": 3059.0,
+       "share": 0.3680221438407898,
+       "outcome": [
+        0.03890160098671913,
+        0.16802877187728882,
+        0.79306960105896
+       ]
+      },
+      "opposite sense": {
+       "count": 2684.0,
+       "share": 0.32290664315223694,
+       "outcome": [
+        0.09947839379310608,
+        0.13822652399539948,
+        0.7622950673103333
+       ]
+      },
+      "extend": {
+       "count": 866.0,
+       "share": 0.10418672114610672,
+       "outcome": [
+        0.021939953789114952,
+        0.1628175526857376,
+        0.8152424693107605
+       ]
+      },
+      "turn v extender": {
+       "count": 1703.0,
+       "share": 0.20488449931144714,
+       "outcome": [
+        0.08749265968799591,
+        0.03347034752368927,
+        0.8790370225906372
+       ]
+      }
+     },
+     "jujak": {
+      "same sense": {
+       "count": 3059.0,
+       "share": 0.3680221438407898,
+       "outcome": [
+        0.16802877187728882,
+        0.03890160098671913,
+        0.79306960105896
+       ]
+      },
+      "opposite sense": {
+       "count": 2684.0,
+       "share": 0.32290664315223694,
+       "outcome": [
+        0.13822652399539948,
+        0.09947839379310608,
+        0.7622950673103333
+       ]
+      },
+      "extend": {
+       "count": 1735.0,
+       "share": 0.20873436331748962,
+       "outcome": [
+        0.03285302594304085,
+        0.08587896078824997,
+        0.8812680244445801
+       ]
+      },
+      "turn v extender": {
+       "count": 834.0,
+       "share": 0.10033686459064484,
+       "outcome": [
+        0.1690647453069687,
+        0.022781774401664734,
+        0.8081534504890442
+       ]
+      }
+     }
+    },
+    "wins": 79.0,
+    "draws": 0.0,
+    "candidate": "Y lift x1.5 + damage x1.5"
+   },
+   {
+    "variant": 2,
+    "lineup": "energy v turn",
+    "a": "c2",
+    "b": "c2",
+    "games": 256,
+    "score": [
+     0.41796875,
+     0.030886946246027946
+    ],
+    "kill_score": [
+     0.4398842453956604,
+     0.007829396054148674
+    ],
+    "kills_per_minute_mean": 3.4683592319488525,
+    "kills_per_minute_median": 3.5,
+    "kills_per_game": 34.68359375,
+    "kill_share": [
+     0.02725532092154026,
+     0.1200585663318634,
+     0.5788940191268921,
+     0.2737920880317688
+    ],
+    "damage_share": [
+     0.0010738121345639229,
+     0.14185982942581177,
+     0.6507418155670166,
+     0.206324502825737
+    ],
+    "kill_share_by_pair": {
+     "Y on Y": [
+      [
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      0.0
+     ],
+     "Y on J": [
+      [
+       0.03757668659090996,
+       0.17305725812911987,
+       0.5674846768379211,
+       0.22188138961791992
+      ],
+      3912.0
+     ],
+     "J on Y": [
+      [
+       0.019126232713460922,
+       0.07831688970327377,
+       0.58788001537323,
+       0.3146768808364868
+      ],
+      4967.0
+     ],
+     "J on J": [
+      [
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      0.0
+     ]
+    },
+    "damage_share_by_victim": {
+     "yongma": [
+      0.0006415498210117221,
+      0.12689419090747833,
+      0.6530895829200745,
+      0.21937468647956848
+     ],
+     "jujak": [
+      0.002001428045332432,
+      0.17397543787956238,
+      0.6457037925720215,
+      0.17831936478614807
+     ]
+    },
+    "passes_per_kill": 0.31636446714401245,
+    "no_merge_kills": [
+     0.7656267597702444,
+     0.004495526232738736
+    ],
+    "first_merge_kills": [
+     0.07602207455794571,
+     0.0028126690108340774
+    ],
+    "killer_first_hit": [
+     0.9121522693997072,
+     0.003004117511262567
+    ],
+    "first_hit_wins": [
+     0.49173553719008267,
+     0.032136826449956794
+    ],
+    "ttk_median": 3.5,
+    "damage_by_side": [
+     [
+      3361.94970703125,
+      [
+       0.0006415498210117221,
+       0.12689419090747833,
+       0.6530895829200745,
+       0.21937468647956848
+      ]
+     ],
+     [
+      1566.64404296875,
+      [
+       0.002001428045332432,
+       0.17397543787956238,
+       0.6457037925720215,
+       0.17831936478614807
+      ]
+     ]
+    ],
+    "circles": [
+     0.3399657607078552,
+     0.4957210123538971,
+     0.16431322693824768
+    ],
+    "circle_count": 4674.0,
+    "trade_fraction": 0.04614577814936638,
+    "death_gap_mean": 15.196087837219238,
+    "death_gap_median": 10.5,
+    "life_seconds": 144.1906380003496,
+    "kills_per_minute_per_ship": 0.3724609375,
+    "spawn_to_engagement_median": 30.5,
+    "first_hit_median": 27.066666666666666,
+    "first_kill_median": 30.7,
+    "engagement": {
+     "gun range": {
+      "engagements": 27804.0,
+      "kills": 8867.0,
+      "merges_per_kill_mean": 0.28566595911979675,
+      "merges_per_kill_median": 0.0,
+      "first_pass_kill_share": 0.9410172700881958,
+      "merges_per_kill_p90": 1.0,
+      "merges_per_engagement_mean": 0.7588116526603699,
+      "to_damage_median": 0.5,
+      "to_death_median": 0.5,
+      "length_median": 4.5,
+      "circles_turned_mean": 0.3720013201236725,
+      "one_two_scissors": [
+       0.11966245621442795,
+       0.846646785736084,
+       0.03369075432419777
+      ]
+     },
+     "two turn diameters": {
+      "engagements": 34892.0,
+      "kills": 8867.0,
+      "merges_per_kill_mean": 0.7655351161956787,
+      "merges_per_kill_median": 0.0,
+      "first_pass_kill_share": 0.8101950883865356,
+      "merges_per_kill_p90": 2.0,
+      "merges_per_engagement_mean": 1.0012036561965942,
+      "to_damage_median": 3.5,
+      "to_death_median": 6.5,
+      "length_median": 7.5,
+      "circles_turned_mean": 0.7327432036399841,
+      "one_two_scissors": [
+       0.25264817476272583,
+       0.6852510571479797,
+       0.06210075318813324
+      ]
+     }
+    },
+    "two_circles": {
+     "overlapping": {
+      "count": 1670.0,
+      "share": 0.742222249507904,
+      "kill": 0.24371257424354553
+     },
+     "side by side": {
+      "count": 580.0,
+      "share": 0.25777778029441833,
+      "kill": 0.23965516686439514
+     }
+    },
+    "post_merge_choices": {
+     "yongma": {
+      "same sense": {
+       "count": 2837.0,
+       "share": 0.3885768949985504,
+       "outcome": [
+        0.03454353287816048,
+        0.16778287291526794,
+        0.7976735830307007
+       ]
+      },
+      "opposite sense": {
+       "count": 2288.0,
+       "share": 0.31338173151016235,
+       "outcome": [
+        0.09659090638160706,
+        0.12762238085269928,
+        0.7757866978645325
+       ]
+      },
+      "extend": {
+       "count": 1027.0,
+       "share": 0.140665665268898,
+       "outcome": [
+        0.01752677746117115,
+        0.1402142196893692,
+        0.8422589898109436
+       ]
+      },
+      "turn v extender": {
+       "count": 1149.0,
+       "share": 0.15737570822238922,
+       "outcome": [
+        0.0948650985956192,
+        0.03568320348858833,
+        0.8694517016410828
+       ]
+      }
+     },
+     "jujak": {
+      "same sense": {
+       "count": 2837.0,
+       "share": 0.3885768949985504,
+       "outcome": [
+        0.16778287291526794,
+        0.03454353287816048,
+        0.7976735830307007
+       ]
+      },
+      "opposite sense": {
+       "count": 2288.0,
+       "share": 0.31338173151016235,
+       "outcome": [
+        0.12762238085269928,
+        0.09659090638160706,
+        0.7757866978645325
+       ]
+      },
+      "extend": {
+       "count": 1184.0,
+       "share": 0.16216956079006195,
+       "outcome": [
+        0.03547297418117523,
+        0.09206081181764603,
+        0.8724662065505981
+       ]
+      },
+      "turn v extender": {
+       "count": 992.0,
+       "share": 0.1358717978000641,
+       "outcome": [
+        0.14415322244167328,
+        0.018145160749554634,
+        0.8377016186714172
+       ]
+      }
+     }
+    },
+    "wins": 107.0,
+    "draws": 0.0,
+    "candidate": "Y damage x2 + J shield x0.65"
+   }
+  ]
+ },
+ "versus": [],
+ "card_passes": [
+  {
+   "Y on Y": {
+    "head_on_passes": Infinity,
+    "tail_seconds": 0.36666666666666664
+   },
+   "Y on J": {
+    "head_on_passes": Infinity,
+    "tail_seconds": 0.2
+   },
+   "J on Y": {
+    "head_on_passes": Infinity,
+    "tail_seconds": 0.43333333333333335
+   },
+   "J on J": {
+    "head_on_passes": Infinity,
+    "tail_seconds": 0.23333333333333334
+   },
+   "gun_range": [
+    637.2931518554688,
+    632.2858276367188
+   ],
+   "head_on_angle_degrees": [
+    45.000002242910554,
+    45.000002242910554
+   ]
+  },
+  {
+   "Y on Y": {
+    "head_on_passes": Infinity,
+    "tail_seconds": 0.23333333333333334
+   },
+   "Y on J": {
+    "head_on_passes": Infinity,
+    "tail_seconds": 0.13333333333333333
+   },
+   "J on Y": {
+    "head_on_passes": Infinity,
+    "tail_seconds": 0.43333333333333335
+   },
+   "J on J": {
+    "head_on_passes": Infinity,
+    "tail_seconds": 0.23333333333333334
+   },
+   "gun_range": [
+    637.2931518554688,
+    632.2858276367188
+   ],
+   "head_on_angle_degrees": [
+    45.000002242910554,
+    45.000002242910554
+   ]
+  },
+  {
+   "Y on Y": {
+    "head_on_passes": Infinity,
+    "tail_seconds": 0.16666666666666666
+   },
+   "Y on J": {
+    "head_on_passes": Infinity,
+    "tail_seconds": 0.06666666666666667
+   },
+   "J on Y": {
+    "head_on_passes": Infinity,
+    "tail_seconds": 0.43333333333333335
+   },
+   "J on J": {
+    "head_on_passes": Infinity,
+    "tail_seconds": 0.16666666666666666
+   },
+   "gun_range": [
+    637.2931518554688,
+    632.2858276367188
+   ],
+   "head_on_angle_degrees": [
+    45.000002242910554,
+    45.000002242910554
+   ]
+  }
+ ]
+}

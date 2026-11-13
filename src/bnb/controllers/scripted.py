@@ -230,7 +230,7 @@ def decide(
         obs, characteristics, parameters, temperature, carry, recall, seconds, switching
     )
     fighting = combat(fleet, characteristics, parameters, doctrines)
-    strategy = frontline(fleet, obs.zones, characteristics, parameters, fighting)
+    strategy = frontline(fleet, obs.zones, characteristics, parameters, fighting, doctrines)
     in_frontline = (obs.globals[:, None, GLOBAL["mode_frontline"]] > 0.5)[..., None]
     alive = (fleet.own[..., SHIP["alive"]] > 0.5)[..., None]
     uniform = ~carry.agent[..., None]
@@ -255,8 +255,6 @@ def decide(
         carry,
         target=fighting.target,
         combat_left=fighting.left,
-        stalemate_seconds=fighting.stalemate_seconds,
-        yoyo_seconds=fighting.yoyo_seconds,
         sense_draw=fighting.sense_draw,
         frontline_left=strategy.left,
         defending=strategy.defending,

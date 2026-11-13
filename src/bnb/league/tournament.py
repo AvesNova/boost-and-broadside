@@ -38,6 +38,7 @@ from collections.abc import Callable
 import torch
 
 from bnb.contracts import GameConfig
+from bnb.contracts.config import TEAM_DEATHMATCH
 from bnb.game import VERSION as GAME_VERSION
 from bnb.game.api import PRESETS
 from bnb.runs import checkpoint
@@ -46,10 +47,9 @@ from .gauge import GAUGE_TOP
 from .matches import Arena, ArenaConfig, Player, default_lanes, network_groups, player
 from .ratings import allocate_blocks, fit_ratings
 
-# The rating games (game v12): frontline and elimination, whose results a side cannot draw
-# by running away. Team deathmatch still trains (`bnb.runtime.train.TRAINING_MIX`) but is
-# not rated: its kill-lead result at the clock let the weaker side extend for a draw.
-PRESET_NAMES = ("frontline", "elimination")
+# The rating games (the author, 2026-11-13): frontline, elimination (the clock to the team
+# with more health left) and team deathmatch, rated by kill share (`kill_share_scored`).
+PRESET_NAMES = ("frontline", "elimination", "deathmatch")
 PRIOR_GAMES = 1.0
 ANCHOR = "scripted"
 ALLOCATIONS = ("a_optimal", "balanced")
@@ -140,9 +140,25 @@ def _connected(allowed: torch.Tensor, anchor: int) -> bool:
         reached = grown
 
 
+def kill_share_scored(game: GameConfig) -> bool:
+    """Whether a game is rated by kill share (the author, 2026-11-13): team deathmatch, each
+    game scored by the enemy's deaths over both sides' (any cause, as the mode's score
+    counts them: `Arena.kill_shares`), a fractional outcome
+    the Bradley-Terry fit takes as it takes a draw's half. Elimination and frontline are
+    rated on the match's win, draw or loss."""
+    return game.mode == TEAM_DEATHMATCH
+
+
+def scored(arena: Arena, game: GameConfig, matchups: list[tuple[int, int]]) -> torch.Tensor:
+    """One batch's results by block, as the game is rated: the first player's (wins, ties,
+    losses), or its kill-share score as (score, 0, games - score) (`kill_share_scored`)."""
+    results = arena.play(matchups)
+    return arena.kill_shares() if kill_share_scored(game) else results
+
+
 def _add(wins, pair_games, matchups, results) -> int:
-    """Add a batch's results (a block's first player's (wins, ties, losses)) to the wins and
-    the pair games; returns its games."""
+    """Add a batch's results (a block's first player's (wins, ties, losses), fractional for a
+    kill-share game) to the wins and the pair games; returns its games."""
     played = 0
     for (first, second), (won, tied, lost) in zip(matchups, results, strict=True):
         wins[first, second] += won + tied / 2
@@ -468,7 +484,7 @@ def rate(
     def play(matchups: list[tuple[int, int]]):
         if not arenas:
             arenas.append(Arena(players, game, device, config.arena, lanes))
-        results = arenas[0].play(matchups)
+        results = scored(arenas[0], game, matchups)
         if not statistics:
             return results
         return results, dict(statistics=arenas[0].statistics().tolist())
@@ -551,10 +567,10 @@ def head_to_head(
     split = {}
     for preset in presets:
         arena = Arena(players, games_of[preset], device, layout, lanes)
-        counts = torch.zeros((len(pairs), 3), dtype=torch.int64)
+        counts = torch.zeros((len(pairs), 3), dtype=torch.float64)
         for start, batch in zip(range(0, len(queue), layout.blocks), batches, strict=True):
             played = queue[start : start + layout.blocks]
-            results = arena.play([pairs[number] for number in batch])
+            results = scored(arena, games_of[preset], [pairs[number] for number in batch])
             for number, result in zip(played, results[: len(played)], strict=True):
                 counts[number] += result
         split[preset] = counts
@@ -563,7 +579,7 @@ def head_to_head(
     for number, (first, second) in enumerate(pairs):
         per_preset = {preset: _summary(split[preset][number]) for preset in presets}
         total = sum(
-            (split[preset][number] for preset in presets), torch.zeros(3, dtype=torch.int64)
+            (split[preset][number] for preset in presets), torch.zeros(3, dtype=torch.float64)
         )
         rows.append(
             dict(
@@ -577,8 +593,11 @@ def head_to_head(
 
 
 def _summary(counts: torch.Tensor) -> dict:
-    """wins, draws, losses, the score and its standard error from (wins, ties, losses)."""
-    won, tied, lost = (int(value) for value in counts.tolist())
+    """wins, draws, losses, the score and its standard error from (wins, ties, losses). A
+    kill-share game's counts are fractional (score, 0, games - score): its "wins" are the
+    summed shares, and its standard error is the Bernoulli bound (a fractional outcome
+    varies less than a win or loss of the same mean)."""
+    won, tied, lost = (_count(value) for value in counts.tolist())
     games = won + tied + lost
     if games == 0:
         return dict(wins=0, draws=0, losses=0, score=math.nan, stderr=math.inf)
@@ -592,3 +611,8 @@ def _summary(counts: torch.Tensor) -> dict:
         score=score,
         stderr=math.sqrt(variance / games),
     )
+
+
+def _count(value: float) -> int | float:
+    """A count as an int where it is whole (a win, draw or loss count), else the float."""
+    return int(value) if float(value).is_integer() else float(value)

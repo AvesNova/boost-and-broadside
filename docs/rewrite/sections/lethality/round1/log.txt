@@ -1,0 +1,87 @@
+## 1v1: 21 jobs, B 8192, 14:49 KST
+W1113 05:50:15.932000 98663 .venv/lib/python3.14/site-packages/torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+/workspace/game/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+  warn_once(FP_FUSION_DEFAULT_WARNING)
+  batch 1/2 100 s; ETA 14:53 KST
+  batch 2/2 121 s; ETA 14:51 KST
+1v1                          r9m   energy v turn v c0: score 0.140 ± 0.014  kills m/o/f/t 0.01 / 0.12 / 0.80 / 0.07  life 93 s  kpm/ship 0.59  trades 0.00
+1v1                          r9m     turn mirror v c0: score 0.513 ± 0.021  kills m/o/f/t 0.01 / 0.07 / 0.30 / 0.62  life 59 s  kpm/ship 0.90  trades 0.00
+1v1                          r9m   energy mirror v c0: score 0.519 ± 0.016  kills m/o/f/t 0.02 / 0.15 / 0.36 / 0.48  life 189 s  kpm/ship 0.31  trades 0.05
+1v1                         r9m2   energy v turn v c1: score 0.121 ± 0.013  kills m/o/f/t 0.01 / 0.12 / 0.80 / 0.07  life 94 s  kpm/ship 0.59  trades 0.00
+1v1                         r9m2     turn mirror v c1: score 0.531 ± 0.020  kills m/o/f/t 0.01 / 0.09 / 0.29 / 0.62  life 64 s  kpm/ship 0.84  trades 0.00
+1v1                         r9m2   energy mirror v c1: score 0.485 ± 0.018  kills m/o/f/t 0.02 / 0.10 / 0.24 / 0.65  life 120 s  kpm/ship 0.47  trades 0.00
+1v1            DE Y 0.7 / J 0.25   energy v turn v c2: score 0.121 ± 0.013  kills m/o/f/t 0.02 / 0.11 / 0.79 / 0.08  life 93 s  kpm/ship 0.59  trades 0.00
+1v1            DE Y 0.7 / J 0.25     turn mirror v c2: score 0.489 ± 0.020  kills m/o/f/t 0.01 / 0.08 / 0.26 / 0.65  life 63 s  kpm/ship 0.85  trades 0.00
+1v1            DE Y 0.7 / J 0.25   energy mirror v c2: score 0.491 ± 0.017  kills m/o/f/t 0.02 / 0.12 / 0.24 / 0.62  life 119 s  kpm/ship 0.47  trades 0.02
+1v1             DE Y 0.5 / J 0.1   energy v turn v c3: score 0.116 ± 0.012  kills m/o/f/t 0.01 / 0.11 / 0.80 / 0.07  life 94 s  kpm/ship 0.59  trades 0.00
+1v1             DE Y 0.5 / J 0.1     turn mirror v c3: score 0.495 ± 0.020  kills m/o/f/t 0.01 / 0.08 / 0.26 / 0.65  life 59 s  kpm/ship 0.89  trades 0.00
+1v1             DE Y 0.5 / J 0.1   energy mirror v c3: score 0.466 ± 0.015  kills m/o/f/t 0.02 / 0.10 / 0.22 / 0.67  life 161 s  kpm/ship 0.36  trades 0.04
+1v1            r9m2 no crowd ext   energy v turn v c4: score 0.141 ± 0.014  kills m/o/f/t 0.01 / 0.11 / 0.81 / 0.07  life 94 s  kpm/ship 0.59  trades 0.00
+1v1            r9m2 no crowd ext     turn mirror v c4: score 0.519 ± 0.020  kills m/o/f/t 0.01 / 0.09 / 0.27 / 0.63  life 64 s  kpm/ship 0.84  trades 0.00
+1v1            r9m2 no crowd ext   energy mirror v c4: score 0.515 ± 0.017  kills m/o/f/t 0.02 / 0.12 / 0.22 / 0.64  life 123 s  kpm/ship 0.46  trades 0.00
+1v1            r9m2 no r9 extend   energy v turn v c5: score 0.108 ± 0.012  kills m/o/f/t 0.01 / 0.12 / 0.80 / 0.07  life 95 s  kpm/ship 0.59  trades 0.00
+1v1            r9m2 no r9 extend     turn mirror v c5: score 0.517 ± 0.020  kills m/o/f/t 0.01 / 0.08 / 0.28 / 0.63  life 63 s  kpm/ship 0.85  trades 0.00
+1v1            r9m2 no r9 extend   energy mirror v c5: score 0.485 ± 0.017  kills m/o/f/t 0.02 / 0.15 / 0.25 / 0.58  life 115 s  kpm/ship 0.49  trades 0.00
+1v1         press (no extension)   energy v turn v c6: score 0.129 ± 0.013  kills m/o/f/t 0.01 / 0.10 / 0.81 / 0.08  life 93 s  kpm/ship 0.59  trades 0.00
+1v1         press (no extension)     turn mirror v c6: score 0.494 ± 0.021  kills m/o/f/t 0.01 / 0.06 / 0.31 / 0.62  life 58 s  kpm/ship 0.90  trades 0.00
+1v1         press (no extension)   energy mirror v c6: score 0.492 ± 0.016  kills m/o/f/t 0.02 / 0.15 / 0.35 / 0.48  life 174 s  kpm/ship 0.33  trades 0.04
+## 2v2: 7 jobs, B 8192, 14:51 KST
+2v2                          r9m   energy v turn v c0: score 0.320 ± 0.020  kills m/o/f/t 0.03 / 0.11 / 0.62 / 0.24  life 58 s  kpm/ship 0.91  trades 0.03
+2v2                         r9m2   energy v turn v c1: score 0.323 ± 0.019  kills m/o/f/t 0.03 / 0.12 / 0.62 / 0.23  life 59 s  kpm/ship 0.90  trades 0.03
+2v2            DE Y 0.7 / J 0.25   energy v turn v c2: score 0.336 ± 0.019  kills m/o/f/t 0.03 / 0.11 / 0.63 / 0.24  life 58 s  kpm/ship 0.91  trades 0.03
+2v2             DE Y 0.5 / J 0.1   energy v turn v c3: score 0.310 ± 0.019  kills m/o/f/t 0.03 / 0.11 / 0.62 / 0.24  life 58 s  kpm/ship 0.91  trades 0.03
+2v2            r9m2 no crowd ext   energy v turn v c4: score 0.148 ± 0.015  kills m/o/f/t 0.03 / 0.13 / 0.73 / 0.11  life 55 s  kpm/ship 0.95  trades 0.04
+2v2            r9m2 no r9 extend   energy v turn v c5: score 0.316 ± 0.019  kills m/o/f/t 0.03 / 0.11 / 0.62 / 0.24  life 59 s  kpm/ship 0.90  trades 0.03
+2v2         press (no extension)   energy v turn v c6: score 0.109 ± 0.013  kills m/o/f/t 0.03 / 0.12 / 0.74 / 0.11  life 55 s  kpm/ship 0.96  trades 0.04
+## 5v5: 35 jobs, B 4096, 14:53 KST
+  batch 1/5 148 s; ETA 15:05 KST
+  batch 2/5 174 s; ETA 15:00 KST
+  batch 3/5 200 s; ETA 14:59 KST
+  batch 4/5 226 s; ETA 14:58 KST
+  batch 5/5 251 s; ETA 14:57 KST
+5v5                          r9m   energy v turn v c0: score 0.196 ± 0.017  kills m/o/f/t 0.04 / 0.10 / 0.54 / 0.32  life 53 s  kpm/ship 0.98  trades 0.09
+5v5                         r9m2   energy v turn v c1: score 0.203 ± 0.017  kills m/o/f/t 0.04 / 0.10 / 0.51 / 0.35  life 55 s  kpm/ship 0.96  trades 0.09
+5v5            DE Y 0.7 / J 0.25   energy v turn v c2: score 0.242 ± 0.018  kills m/o/f/t 0.04 / 0.10 / 0.52 / 0.34  life 54 s  kpm/ship 0.96  trades 0.09
+5v5             DE Y 0.5 / J 0.1   energy v turn v c3: score 0.200 ± 0.017  kills m/o/f/t 0.04 / 0.10 / 0.52 / 0.34  life 54 s  kpm/ship 0.97  trades 0.09
+5v5            r9m2 no crowd ext   energy v turn v c4: score 0.061 ± 0.010  kills m/o/f/t 0.04 / 0.13 / 0.70 / 0.13  life 46 s  kpm/ship 1.12  trades 0.10
+5v5            r9m2 no r9 extend   energy v turn v c5: score 0.205 ± 0.017  kills m/o/f/t 0.04 / 0.10 / 0.51 / 0.35  life 55 s  kpm/ship 0.95  trades 0.08
+5v5         press (no extension)   energy v turn v c6: score 0.050 ± 0.009  kills m/o/f/t 0.04 / 0.13 / 0.70 / 0.12  life 45 s  kpm/ship 1.13  trades 0.11
+5v5                          r9m           mixed v r9m: score 0.524 ± 0.021  kills m/o/f/t 0.04 / 0.10 / 0.49 / 0.38  life 59 s  kpm/ship 0.90  trades 0.08
+5v5                          r9m  mixed reversed v r9m: score 0.510 ± 0.021  kills m/o/f/t 0.04 / 0.10 / 0.50 / 0.36  life 58 s  kpm/ship 0.91  trades 0.09
+5v5                         r9m2           mixed v r9m: score 0.551 ± 0.021  kills m/o/f/t 0.04 / 0.10 / 0.48 / 0.39  life 60 s  kpm/ship 0.88  trades 0.08
+5v5                         r9m2  mixed reversed v r9m: score 0.514 ± 0.021  kills m/o/f/t 0.04 / 0.09 / 0.50 / 0.37  life 59 s  kpm/ship 0.90  trades 0.08
+5v5            DE Y 0.7 / J 0.25           mixed v r9m: score 0.529 ± 0.021  kills m/o/f/t 0.04 / 0.10 / 0.48 / 0.39  life 60 s  kpm/ship 0.89  trades 0.08
+5v5            DE Y 0.7 / J 0.25  mixed reversed v r9m: score 0.531 ± 0.021  kills m/o/f/t 0.04 / 0.10 / 0.50 / 0.37  life 58 s  kpm/ship 0.91  trades 0.09
+5v5             DE Y 0.5 / J 0.1           mixed v r9m: score 0.513 ± 0.021  kills m/o/f/t 0.04 / 0.09 / 0.49 / 0.38  life 60 s  kpm/ship 0.89  trades 0.08
+5v5             DE Y 0.5 / J 0.1  mixed reversed v r9m: score 0.514 ± 0.021  kills m/o/f/t 0.04 / 0.10 / 0.51 / 0.36  life 59 s  kpm/ship 0.90  trades 0.09
+5v5            r9m2 no crowd ext           mixed v r9m: score 0.316 ± 0.020  kills m/o/f/t 0.04 / 0.11 / 0.60 / 0.25  life 55 s  kpm/ship 0.96  trades 0.09
+5v5            r9m2 no crowd ext  mixed reversed v r9m: score 0.347 ± 0.020  kills m/o/f/t 0.04 / 0.11 / 0.62 / 0.23  life 54 s  kpm/ship 0.97  trades 0.09
+5v5            r9m2 no r9 extend           mixed v r9m: score 0.577 ± 0.021  kills m/o/f/t 0.04 / 0.10 / 0.48 / 0.39  life 61 s  kpm/ship 0.88  trades 0.08
+5v5            r9m2 no r9 extend  mixed reversed v r9m: score 0.524 ± 0.021  kills m/o/f/t 0.04 / 0.10 / 0.50 / 0.37  life 59 s  kpm/ship 0.90  trades 0.09
+5v5         press (no extension)           mixed v r9m: score 0.296 ± 0.020  kills m/o/f/t 0.04 / 0.11 / 0.60 / 0.25  life 54 s  kpm/ship 0.97  trades 0.09
+5v5         press (no extension)  mixed reversed v r9m: score 0.342 ± 0.020  kills m/o/f/t 0.04 / 0.11 / 0.61 / 0.24  life 54 s  kpm/ship 0.97  trades 0.09
+5v5                          r9m           mixed v r9-press: score 0.683 ± 0.020  kills m/o/f/t 0.04 / 0.12 / 0.63 / 0.21  life 54 s  kpm/ship 0.98  trades 0.09
+5v5                          r9m  mixed reversed v r9-press: score 0.622 ± 0.021  kills m/o/f/t 0.04 / 0.12 / 0.64 / 0.20  life 53 s  kpm/ship 0.98  trades 0.10
+5v5                         r9m2           mixed v r9-press: score 0.718 ± 0.019  kills m/o/f/t 0.04 / 0.12 / 0.63 / 0.21  life 56 s  kpm/ship 0.94  trades 0.09
+5v5                         r9m2  mixed reversed v r9-press: score 0.642 ± 0.021  kills m/o/f/t 0.04 / 0.12 / 0.64 / 0.21  life 55 s  kpm/ship 0.96  trades 0.09
+5v5            DE Y 0.7 / J 0.25           mixed v r9-press: score 0.724 ± 0.019  kills m/o/f/t 0.04 / 0.12 / 0.62 / 0.22  life 55 s  kpm/ship 0.95  trades 0.09
+5v5            DE Y 0.7 / J 0.25  mixed reversed v r9-press: score 0.630 ± 0.021  kills m/o/f/t 0.04 / 0.11 / 0.64 / 0.20  life 54 s  kpm/ship 0.96  trades 0.09
+5v5             DE Y 0.5 / J 0.1           mixed v r9-press: score 0.716 ± 0.019  kills m/o/f/t 0.04 / 0.12 / 0.62 / 0.21  life 55 s  kpm/ship 0.96  trades 0.09
+5v5             DE Y 0.5 / J 0.1  mixed reversed v r9-press: score 0.592 ± 0.021  kills m/o/f/t 0.04 / 0.12 / 0.63 / 0.21  life 54 s  kpm/ship 0.97  trades 0.10
+5v5            r9m2 no crowd ext           mixed v r9-press: score 0.501 ± 0.021  kills m/o/f/t 0.04 / 0.13 / 0.69 / 0.14  life 47 s  kpm/ship 1.10  trades 0.10
+5v5            r9m2 no crowd ext  mixed reversed v r9-press: score 0.425 ± 0.021  kills m/o/f/t 0.04 / 0.13 / 0.69 / 0.14  life 46 s  kpm/ship 1.11  trades 0.11
+5v5            r9m2 no r9 extend           mixed v r9-press: score 0.734 ± 0.019  kills m/o/f/t 0.04 / 0.12 / 0.62 / 0.22  life 56 s  kpm/ship 0.94  trades 0.09
+5v5            r9m2 no r9 extend  mixed reversed v r9-press: score 0.579 ± 0.021  kills m/o/f/t 0.04 / 0.12 / 0.63 / 0.21  life 55 s  kpm/ship 0.96  trades 0.09
+5v5         press (no extension)           mixed v r9-press: score 0.457 ± 0.021  kills m/o/f/t 0.04 / 0.13 / 0.68 / 0.15  life 46 s  kpm/ship 1.11  trades 0.11
+5v5         press (no extension)  mixed reversed v r9-press: score 0.488 ± 0.021  kills m/o/f/t 0.04 / 0.13 / 0.69 / 0.14  life 45 s  kpm/ship 1.12  trades 0.11
+| Candidate | E v T 1v1 | E v T 2v2 | E v T 5v5 | Worst |dev| | Kills m / o / f / t (5v5) | Trades | Life s by size | Kills/min/ship by size | Merges a kill mean (1v1) |
+|---|---|---|---|---|---|---|---|---|---|
+| r9m | 0.140 ± 0.014 | 0.320 ± 0.020 | 0.196 ± 0.017 | 0.360 | 0.04 / 0.10 / 0.54 / 0.32 | 0.09 | 93 / 58 / 53 | 0.59 / 0.91 / 0.98 | 3.1 |
+| r9m2 | 0.121 ± 0.013 | 0.323 ± 0.019 | 0.203 ± 0.017 | 0.379 | 0.04 / 0.10 / 0.51 / 0.35 | 0.09 | 94 / 59 / 55 | 0.59 / 0.90 / 0.96 | 3.18 |
+| DE Y 0.7 / J 0.25 | 0.121 ± 0.013 | 0.336 ± 0.019 | 0.242 ± 0.018 | 0.379 | 0.04 / 0.10 / 0.52 / 0.34 | 0.09 | 93 / 58 / 54 | 0.59 / 0.91 / 0.96 | 3.15 |
+| DE Y 0.5 / J 0.1 | 0.116 ± 0.012 | 0.310 ± 0.019 | 0.200 ± 0.017 | 0.384 | 0.04 / 0.10 / 0.52 / 0.34 | 0.09 | 94 / 58 / 54 | 0.59 / 0.91 / 0.97 | 3.16 |
+| r9m2 no crowd ext | 0.141 ± 0.014 | 0.148 ± 0.015 | 0.061 ± 0.010 | 0.439 | 0.04 / 0.13 / 0.70 / 0.13 | 0.10 | 94 / 55 / 46 | 0.59 / 0.95 / 1.12 | 3.14 |
+| r9m2 no r9 extend | 0.108 ± 0.012 | 0.316 ± 0.019 | 0.205 ± 0.017 | 0.392 | 0.04 / 0.10 / 0.51 / 0.35 | 0.08 | 95 / 59 / 55 | 0.59 / 0.90 / 0.95 | 3.16 |
+| press (no extension) | 0.129 ± 0.013 | 0.109 ± 0.013 | 0.050 ± 0.009 | 0.450 | 0.04 / 0.13 / 0.70 / 0.12 | 0.11 | 93 / 55 / 45 | 0.59 / 0.96 / 1.13 | 3.09 |
+
+490 s

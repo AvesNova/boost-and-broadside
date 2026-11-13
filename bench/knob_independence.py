@@ -115,7 +115,8 @@ def main() -> None:
     """The analysis the module describes."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument(
-        "--bases", default="p51d,spitfire-ix,fw190-a8,p47d,a6m5,ki84,albatross,zerstorer"
+        "--bases",
+        default="yongma,jujak,vizia",  # the real-scale set (game v17)
     )
     parser.add_argument("--align", type=float, default=0.5)
     parser.add_argument("--out", required=True)

@@ -83,3 +83,19 @@ def test_the_pace_counts_the_ships_a_game():
     assert math.isclose(pace(out, mask, 60.0)["kills_per_minute_per_ship"], 1.5)
     del out["ships"]  # a 5v5 record from before the count: 10 ships
     assert math.isclose(pace(out, mask, 60.0)["kills_per_minute_per_ship"], 0.3)
+
+
+def test_a_deathmatch_game_is_scored_by_every_death_as_the_mode_scores_it():
+    """The harness's deathmatch result counts each side's points as the other side's deaths
+    of any cause (`deaths_side`: the boundary's too), as team deathmatch's score does, not
+    the kills by hits (`kills_side`)."""
+    from bench.game_loop import outcome
+
+    out = dict(
+        kills_side=torch.tensor([[2.0, 1.0], [1.0, 1.0]]),  # by killer side A, B
+        deaths_side=torch.tensor([[2.0, 2.0], [1.0, 3.0]]),  # by victim side A, B
+    )
+    # game 0: A killed 2 by hits but B lost 2 and A 2 (a boundary death): a draw
+    # game 1: even kills by hits, but B lost 3 to A's 1: A wins
+    assert outcome(out).tolist() == [0.0, 1.0]
+    assert outcome(dict(kills_side=out["kills_side"])).tolist() == [1.0, 0.0]  # an old record

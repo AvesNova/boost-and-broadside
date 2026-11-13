@@ -4,8 +4,8 @@ included), and its controller (you, scripted, the scripted agent and its doctrin
 agent's name). In Frontline a team's section opens with its next respawn wave's countdown:
 the player's own team's only while they fly a ship (the enemy's clock is hidden from them,
 as from the agents), both teams' while they watch. Clicking a row selects its ship. A
-team's controller is changed here: the scripted chaser, the scripted agent flying r9m2 (the
-default) or r9 (`bnb.play.sides.DOCTRINES`), or one of the local runs' policies, and an
+team's controller is changed here: the scripted chaser, the scripted agent flying Baekho
+(`bnb.play.sides.DOCTRINES`), or one of the local runs' policies, and an
 agent's sampling temperature. The card is wide enough for the longest
 ship name (`width`), whose column both teams share, so their bars line up."""
 
@@ -15,7 +15,7 @@ from imgui_bundle import imgui
 
 from ..loop import SideSetup
 from ..selection import Selection
-from ..sides import DOCTRINES, describe, label_of
+from ..sides import DOCTRINE_NAMES, DOCTRINES, describe, label_of
 from . import cards
 from .controls import bar, right_edge, tooltip, u32
 from .layout import FLEETS_WIDTH
@@ -33,7 +33,7 @@ LONGEST_WAIT = "99.9 s"  # the widest a row's respawn wait reads
 SCRIPTED_LABELS = {"scripted": "Chaser", "scripted_agent": "Scripted agent"}
 # The combo's scripted choices: the chaser, then the scripted agent with each doctrine.
 SCRIPTED_CHOICES = ((SideSetup("scripted"), "Chaser"),) + tuple(
-    (SideSetup("scripted_agent", doctrine=doctrine), f"Scripted agent {doctrine}")
+    (SideSetup("scripted_agent", doctrine=doctrine), f"Scripted agent {DOCTRINE_NAMES[doctrine]}")
     for doctrine in DOCTRINES
 )
 
@@ -67,8 +67,7 @@ def controller_combo(
     controls.record(name)
     tooltip(
         f"Who controls {TEAM_NAMES[team]}: the scripted chaser, the scripted agent (it "
-        "remembers the enemies it saw; r9m2 is r9 with the maneuver doctrine elements, r9 "
-        "the training's doctrine) or a trained agent"
+        "remembers the enemies it saw, flying the Baekho doctrine) or a trained agent"
     )
     if opened:
         for choice, label in SCRIPTED_CHOICES:

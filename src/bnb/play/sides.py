@@ -77,16 +77,12 @@ class AgentError(ValueError):
 CONTROLLERS = ("scripted", "scripted_agent", "agent")  # a SideSetup's controller kinds
 
 # The scripted agent's doctrines in the play shell, by name (a SideSetup's `doctrine`), each a
-# stored-doctrine file (`scripted_doctrine.stored`'s form). r9m2, the default here, is r9
-# with the maneuver doctrine elements and the team-gated duel extension
-# (docs/rewrite/sections/maneuvers-2, `champion2.json`; its scripted parameters are r9's);
-# r9 is the training's and the league's stored doctrine (`scripted_doctrines.json`), which
-# the play shell's choice leaves alone.
-DOCTRINES = {
-    "r9m2": pathlib.Path(__file__).with_name("doctrines") / "r9m2.json",
-    "r9": scripted_doctrine.DOCTRINES,
-}
-DEFAULT_DOCTRINE = "r9m2"
+# stored-doctrine file (`scripted_doctrine.stored`'s form): Baekho, the one scripted doctrine
+# (2026-11-13: training's, the BC teacher's, the league's and the ratings' anchor too;
+# docs/explanation/scripted-agent.md).
+DOCTRINES = {"baekho": scripted_doctrine.DOCTRINES}
+DEFAULT_DOCTRINE = "baekho"
+DOCTRINE_NAMES = {"baekho": "Baekho"}  # as the interface shows them
 
 # The play shell's scripted agent fires at aim errors this many times wider than the trained
 # defaults' (playtesting: more, riskier shots than the tuned agent takes). The window is in
@@ -188,7 +184,8 @@ class ScriptedAgent:
     ) -> None:
         if doctrine not in DOCTRINES:
             raise ValueError(f"no scripted doctrine {doctrine!r}: {sorted(DOCTRINES)}")
-        self.doctrine, self.label = doctrine, f"scripted agent {doctrine}"
+        self.doctrine = doctrine
+        self.label = f"scripted agent {DOCTRINE_NAMES.get(doctrine, doctrine)}"
         self.characteristics = characteristics(types, rules) if traits is None else traits
         parameters = wider_fire(MODE_DEFAULTS, PLAY_FIRE_ANGLE_SCALE)
         self.step = ScriptedStep(rules.ships_per_team, parameters, DOCTRINES[doctrine])

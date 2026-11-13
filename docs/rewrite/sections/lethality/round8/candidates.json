@@ -1,0 +1,180 @@
+[
+ {
+  "name": "base",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     1.0,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "Y lift x1.5 + damage x1.5",
+  "energy": {
+   "max_lift_coefficient": 1.5,
+   "hit_damage": 1.5
+  },
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     1.0,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "Y damage x2 + J shield x0.65",
+  "energy": {
+   "hit_damage": 2.0
+  },
+  "turn": {
+   "max_shield": 0.65
+  },
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     1.0,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   }
+  }
+ }
+]

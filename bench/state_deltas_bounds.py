@@ -239,8 +239,9 @@ def discrete(rules, types) -> dict:
             hit_damage_fraction_per_bullet=[
                 float(types.hit_damage[k]) / max_shield for k in range(len(TYPES))
             ],  # fmt: skip
-            boundary_damage_per_tick_at_depth_0=rules.boundary_damage_base * dt / max_shield,
-            boundary_damage_per_tick_per_metre=rules.boundary_damage_per_metre * dt / max_shield,
+            # game v15: boundary_max_damage x smootherstep(depth / ramp), 0 at the line
+            boundary_damage_per_tick_max=rules.boundary_max_damage * dt / max_shield,
+            boundary_ramp_width_at_map_scale_1=rules.boundary_ramp_width,
             recharge_wait_steps=[-dt, rules.shield_recharge_delay],  # countdown, reset on a hit
             gun_cooldown_after_shot_ticks=interval - 1,  # set to the interval, then the clock
             bullet_energy_fraction=float(types.bullet_energy_cost[t] / types.max_energy[t]),

@@ -34,10 +34,14 @@ from .scripted_combat import (
     steer,
     stick_marginal,
 )
+from .scripted_doctrine import per_ship as per_ship_doctrine
 from .scripted_memory import commit
 from .scripted_parameters import Ramp, ScriptedParameters, in_own_time, ramp
 
 OWN_SPAWN, OWN_DEFENSE, ENEMY_DEFENSE = 0, 1, 3  # zone roles for the viewer (ZONE_COLUMNS)
+# The doctrine's capture-lock term shifts the goal's margin by its weight times this many
+# ship strengths: more than a team's own (a weight of 1 decides the goal).
+LOCK_STRENGTHS = 10.0
 
 
 def _health(rows: torch.Tensor, types: torch.Tensor, characteristics: Characteristics):
@@ -85,11 +89,14 @@ def frontline(
     characteristics: Characteristics,
     parameters: ScriptedParameters,
     fighting: Combat,
+    doctrines: torch.Tensor | None = None,
 ) -> Frontline:
     """The Frontline layer per own ship (R, S): power and stick toward the assigned zone of
     zones (R, Z, columns), or toward the spawn when recovering, blended with the combat
     layer's marginals by its target's distance, times the target's weight, where it has a
-    target; the shoot marginal is the combat layer's."""
+    target; the shoot marginal is the combat layer's. doctrines: each ship type's doctrine
+    table (`bnb.controllers.scripted_doctrine`), whose capture-lock term shifts the goal
+    (`lock_press`); None, or the weight at 0, leave it as it was."""
     combat_marginals, has_target = fighting.marginals, fighting.has_target
     target_distance = fighting.distance
     own, enemy = fleet.own, fleet.enemy
@@ -176,13 +183,12 @@ def frontline(
         (order[:, None, :] == order[..., None]) & (rows[None, :] < rows[:, None])
     )
     strength_ahead = torch.where(ahead, available[:, None, :], 0.0).sum(-1)  # (R, S)
-    # Defend's margin, in ship strengths: the larger of the two rules'.
-    defending = _choice(
-        fleet,
-        fleet.carry.defending,
-        torch.maximum(hopeless, wanted - strength_ahead),
-        parameters.goal_switch_in_strength,
-    )
+    # Defend's margin, in ship strengths: the larger of the two rules', shifted by the
+    # doctrine's capture-lock term.
+    margin = torch.maximum(hopeless, wanted - strength_ahead)
+    if doctrines is not None:
+        margin = margin + lock_press(fleet, zones, doctrines)
+    defending = _choice(fleet, fleet.carry.defending, margin, parameters.goal_switch_in_strength)
     goal_x = torch.where(defending, to_defense[0], to_attack[0])
     goal_y = torch.where(defending, to_defense[1], to_attack[1])
 
@@ -230,6 +236,25 @@ def frontline(
         combat_marginals.shoot,
     )
     return Frontline(marginals, left, defending, recovering)
+
+
+def lock_press(fleet: Context, zones: torch.Tensor, doctrines: torch.Tensor) -> torch.Tensor:
+    """(R, S) the doctrine's shift of the defend margin, in ship strengths (positive:
+    defend), from the capture lock: the enemy locked out of a zone it lost for longer than
+    the ship's travel back there (its distance over its speed, at least the corner speed)
+    presses the attack (-lock_press); the own team locked out of a zone for longer than the
+    travel to it holds the defense (+lock_press). LOCK_STRENGTHS ship strengths a unit
+    weight, so the balanced rule takes over a travel time before the lock ends."""
+    doctrine = per_ship_doctrine(doctrines, fleet.own_type)
+    present = zones[..., ZONE["present"]] > 0.5  # (R, Z)
+    to_x, to_y = _pairs(fleet.x, fleet.y, zones[..., ZONE["x"]], zones[..., ZONE["y"]])
+    pace = torch.maximum(fleet.speed, fleet.corner_speed).clamp_min(1.0)[..., None]
+    travel = torch.sqrt(to_x * to_x + to_y * to_y) / pace  # (R, S, Z) s to each zone
+    lock_own = zones[..., ZONE["lock_own"]][:, None, :]
+    lock_enemy = zones[..., ZONE["lock_enemy"]][:, None, :]
+    held_out = (present[:, None, :] & (lock_own > travel)).any(-1)  # we cannot retake one
+    pressing = (present[:, None, :] & (lock_enemy > travel)).any(-1)  # they cannot
+    return LOCK_STRENGTHS * doctrine.lock_press * (held_out.float() - pressing.float())
 
 
 def _log(value):

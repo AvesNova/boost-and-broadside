@@ -114,15 +114,30 @@ def main() -> None:
     parser.add_argument("--versus-sizes", type=int, nargs="+", default=[5])
     parser.add_argument("--arena-scale", type=float, default=1.0, help="off the density rule")
     parser.add_argument("--fog", type=int, default=1)
+    parser.add_argument(
+        "--setting",
+        action="append",
+        default=[],
+        type=lambda text: (text.split("=")[0], float(text.split("=")[1])),
+        help="a rule setting KEY=VALUE (`bnb.game.tuning` key), repeatable",
+    )
+    parser.add_argument(
+        "--mode",
+        default="deathmatch",
+        choices=["deathmatch", "elimination", "frontline"],
+        help="the game and its score (bench.game_loop.MODES); --seconds is its match clock",
+    )
     args = parser.parse_args()
     started = time.time()
     candidates = json.loads((HERE / args.candidates).read_text())
     by = {p.name: p for p in league.load()}
-    if (HERE / "champion.json").exists():  # this section's champion, r9m
-        from bench.game_loop import player_from
+    from bench.game_loop import player_from
 
-        champion = player_from(json.loads((HERE / "champion.json").read_text()))
-        by[champion.name] = champion
+    # this section's champions: r9m (champion.json) and r9m2 (champion2.json)
+    for stored in ("champion.json", "champion2.json"):
+        if (HERE / stored).exists():
+            champion = player_from(json.loads((HERE / stored).read_text()))
+            by[champion.name] = champion
     players = [player_of(c, by, n) for n, c in enumerate(candidates)]
     cards, card_of = [], []
     for c in candidates:
@@ -146,6 +161,8 @@ def main() -> None:
             ships_per_team=size,
             fog=bool(args.fog),
             arena_scale=args.arena_scale,
+            mode=args.mode,
+            settings=dict(args.setting),
         )
         loop.set_types(energy, turn)
         if size == args.sizes[0]:

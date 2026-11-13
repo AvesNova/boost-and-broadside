@@ -1,7 +1,7 @@
 {
  "real-scale": {
   "yongma": {
-   "source": "the game loop's champion r9 (docs/rewrite/sections/game-loop/progress.md): Elo 1230 +- 4 (off 1000), 2026-11-12",
+   "source": "Baekho (2026-11-13), the scripted doctrine: the game loop's r9 with the maneuver elements of maneuvers-2 (the duel one-circle, the crowd extension, the team-gated duel extension when outgunned on shield) and the Frontline lock-aware goal (lock_press 1); docs/explanation/scripted-agent.md, its history",
    "doctrine": {
     "strength": 0.89,
     "turn_exponent": 1.86,
@@ -54,11 +54,43 @@
      2.94,
      0.232
     ],
-    "deny_angle": 0.58
+    "deny_angle": 0.58,
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_in_lift_ratio": [
+     0.001,
+     0.05
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_crowd_in_gun_range": [
+     3.0,
+     0.1
+    ],
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     1.0,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ],
+    "lock_press": 1.0
    }
   },
   "jujak": {
-   "source": "the game loop's champion r9 (docs/rewrite/sections/game-loop/progress.md): Elo 1230 +- 4 (off 1000), 2026-11-12",
+   "source": "Baekho (2026-11-13), the scripted doctrine: the game loop's r9 with the maneuver elements of maneuvers-2 (the duel one-circle, the crowd extension, the team-gated duel extension when outgunned on shield) and the Frontline lock-aware goal (lock_press 1); docs/explanation/scripted-agent.md, its history",
    "doctrine": {
     "strength": 1.0,
     "turn_exponent": -0.385,
@@ -111,7 +143,39 @@
      3.49,
      0.179
     ],
-    "deny_angle": 0.389
+    "deny_angle": 0.389,
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_in_lift_ratio": [
+     0.001,
+     0.05
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_crowd_in_gun_range": [
+     3.0,
+     0.1
+    ],
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ],
+    "lock_press": 1.0
    }
   }
  }
