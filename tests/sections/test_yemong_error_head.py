@@ -426,7 +426,8 @@ def test_the_arms_set_line_builds_the_arm():
 def test_a_new_runs_defaults_are_the_champions_model():
     """The 2026-11-09-*-deadreckon-split-hiddenphysics run's model settings are a new run's
     defaults (`TrainConfig.yemong`, `LearnerConfig.next_state`): the deadreckon-split line
-    with the hidden rows' physics builds the default model."""
+    with the hidden rows' physics builds the default model, its decay halved for the x2
+    game (0.5 s then)."""
     from bnb.cli import parse_setting, with_settings
     from bnb.contracts import GameConfig
     from bnb.learn.ppo import LearnerConfig
@@ -435,13 +436,13 @@ def test_a_new_runs_defaults_are_the_champions_model():
     default = TrainConfig(game=GameConfig(5, 10, 2600.0))
     assert default.yemong.next_state == "delta"
     assert default.yemong.delta_baseline == "extrapolation"
-    assert default.yemong.delta_split and default.yemong.physics_hidden_decay == 0.5
+    assert default.yemong.delta_split and default.yemong.physics_hidden_decay == 0.25
     assert LearnerConfig().next_state == default.learner.next_state == 0.0033
     champion = (
         "yemong.next_state=delta",
         "yemong.delta_baseline=extrapolation",
         "yemong.delta_split=true",
-        "yemong.physics_hidden_decay=0.5",
+        "yemong.physics_hidden_decay=0.25",  # the champion's 0.5 s, halved for x2
         "learner.next_state=0.0033",
     )
     assert with_settings(default, map(parse_setting, champion)) == default

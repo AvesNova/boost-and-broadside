@@ -666,7 +666,7 @@ Its targets, from anchor A to partner B, each a categorical code in nats:
 | antenna train angle | the line of sight off A's nose | 48 circular bins (7.5 degrees), wrapped Gaussian, no padding |
 | aspect | the line of sight off B's tail: 0 with A dead astern of B, pi head on | the same |
 | heading crossing angle | B's heading less A's | the same |
-| closure rate | `-(v_B - v_A) . u_AB` (m/s, positive closing) | signed symlog, knee 10 m/s, 41 bins to 640 m/s, 2 padding bins per side |
+| closure rate | `-(v_B - v_A) . u_AB` (m/s, positive closing) | signed symlog, knee 10 m/s, 41 bins to 1280 m/s (640 before the x2 game), 2 padding bins per side |
 
 The head computes one latent per row (an anchor half and a partner half), adds the
 anchor's to each partner's, and maps the sum through a norm, a hidden layer and the output

@@ -63,8 +63,9 @@ class SymlogTarget:
 
 # Range: 10 m to 64 km (the largest maps, about 62 km across), 48 bins (about 20% apart).
 RANGE = SymlogTarget(knee=10.0, bound=64_000.0, bins=48, below=0)
-# Closure: 0 to 640 m/s either way (two of the fastest ships head on), 20 bins a side.
-CLOSURE = SymlogTarget(knee=10.0, bound=640.0, bins=41)
+# Closure: 0 to 1280 m/s either way (two of the fastest x2 ships head on, ~900 m/s, with
+# room; 640 m/s before the x2 game), 20 bins a side.
+CLOSURE = SymlogTarget(knee=10.0, bound=1280.0, bins=41)
 
 RUNS: codes.Runs = ((1, RANGE.width), (len(ANGLES), ANGLE_BINS), (1, CLOSURE.width))
 WIDTH = sum(groups * size for groups, size in RUNS)

@@ -271,7 +271,7 @@ class YemongConfig:
     mode_inputs: tuple[str, ...] = MODE_INPUTS[:2]
     frontline_timer_inputs: bool = False  # the capture locks and the own next wave
     delta_split: bool = False  # physics head on seen rows, an error head for hidden rows
-    extrapolation_decay: float = 0.5  # s: a hidden row's held rates decay with this constant
+    extrapolation_decay: float = 0.25  # s: a hidden row's held rates decay (0.5 before x2)
     correction_rate: float = 0.1  # eta: the error head's step per tick, of its confident median
     physics_hidden_decay: float | None = None  # s: the physics head's hidden rows, exp(-age/tau)
     physics_hidden_fade: bool = False  # a hidden row's forecast: exp(-age/tau) of the change
@@ -526,7 +526,7 @@ class Yemong(nn.Module):
     # flag (SHIP_FLAGS, one more input; 2026-11-13); 4: the merge of the calibration's
     # model (the geometry head in place of the rotary read-out, the state code's position
     # period, the arena code) with 2 and 3 (2026-11-13)
-    VERSION = 5  # 5: the x2 velocity spacing (3.3) and rotary finest band (64 m)
+    VERSION = 6  # 5: the x2 velocity spacing and rotary band; 6: closure range, decays
 
     def __init__(self, build: YemongBuild) -> None:
         super().__init__()

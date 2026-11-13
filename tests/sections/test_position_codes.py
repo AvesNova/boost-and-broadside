@@ -195,7 +195,7 @@ def test_the_angle_codes_wrap_round_the_circle():
 
 def test_the_geometry_code_bins_range_and_closure():
     values = torch.tensor(
-        [[10.0, 0.0, 0.0, 0.0, 0.0], [64_000.0, 0.0, 0.0, 0.0, 640.0], [1e6, 0, 0, 0, -1e4]],
+        [[10.0, 0.0, 0.0, 0.0, 0.0], [64_000.0, 0.0, 0.0, 0.0, 1280.0], [1e6, 0, 0, 0, -1e4]],
         dtype=torch.float64,
     )
     code = geometry.encode(values)

@@ -196,11 +196,11 @@ class TrainConfig:
         geometry_head=True,
         # the champion's (2026-11-09-*-deadreckon-split-hiddenphysics): the delta next state
         # on the extrapolation baseline, split into the physics and error heads, the physics
-        # head's hidden rows decayed with 0.5 s
+        # head's hidden rows decayed (0.5 s then; halved for the x2 game)
         next_state="delta",
         delta_baseline="extrapolation",
         delta_split=True,
-        physics_hidden_decay=0.5,
+        physics_hidden_decay=0.25,  # s (0.5 before the x2 game: motion changes twice as fast)
     )
     relational: RelationalConfig = RelationalConfig()
     nearest: NearestConfig = NearestConfig()

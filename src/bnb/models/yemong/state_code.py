@@ -62,8 +62,8 @@ POSITION_INPUTS = ("colour", "fourier")  # `YemongConfig.position_inputs`
 # - colour code, finest period > 2 x the largest distance a ship moves in one tick
 #   (Nyquist; real scale: about 320 m/s at 30 Hz is 10.7 m a tick, so above 21 m);
 #   coarsest > the largest absolute span (a map's diameter plus the overshoot);
-# - rotary, finest > 2 x the largest relative move in a tick (about 640 m/s closing, 21 m
-#   a tick, so above 43 m) and fine enough to aim (about 1 degree at 550 m); coarsest >
+# - rotary, finest > 2 x the largest relative move in a tick (about 900 m/s closing at x2, 30 m
+#   a tick, so above 60 m) and fine enough to aim (about 1 degree at 550 m); coarsest >
 #   2 x the largest pairwise distance, since a relative phase is unique only within +-P/2
 #   (the largest evaluation maps are about 62 km across).
 # POSITION_PERIOD is the record default (every build before 2026-11-12: 4 m to 26 244 m,
