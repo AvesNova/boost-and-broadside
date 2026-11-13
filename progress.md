@@ -307,6 +307,46 @@ Yongma's score (deathmatch: its kill share), energy v turn, both sides r9m2.
 - Round 6's leader read 0.49 at elimination 1v1 there and 0.41 here: 256 games is coarse.
   Round 8 confirms at 512.
 
+### 16:50 round 7 spot-checks (`round7-spot/`, run on the laptop): 10v10 and 5v5 at 0.5x / 2x arenas
+256 games; Yongma's score (deathmatch: its kill share; the .md files hold the saturated
+kill-lead score).
+
+| Card | Elim 10v10 | Elim 0.5x | Elim 2x | DM share 10v10 | DM share 0.5x | DM share 2x | Front 10v10 | Front 0.5x | Front 2x |
+|---|---|---|---|---|---|---|---|---|---|
+| base | 0.45 | 0.52 | 0.32 | 0.48 | 0.52 | 0.44 | 0.12 | 0.46 | 0.18 |
+| Y damage x2 + J shield x0.65 | 0.77 | 0.65 | 0.61 | 0.57 | 0.62 | 0.55 | 0.40 | 0.83 | 0.42 |
+| Y damage x1.5 + J shield x0.65 | 0.62 | 0.64 | 0.58 | 0.55 | 0.60 | 0.53 | 0.36 | 0.81 | 0.36 |
+
+- Round 6's damage + shield cards overshoot elimination at 10v10 (0.62-0.77) and frontline
+  on the half arena (0.81-0.83), but stay low on frontline at 10v10 and on the double arena
+  (0.36-0.42). Map size swings frontline the most: base 0.46 on the half arena, 0.18 on the
+  double. Round 8 checks the lift card the same way.
+
+**Why deathmatch 1v1 resists every card (the laptop's point 1).** At 5v5, map size favours
+Yongma when small, as the laptop says. But a 1v1 is a lone duel, not a crowd. Both 1v1 modes
+are mostly sustained turning fights (two-circle merges 0.72 in elimination, 0.83 in
+deathmatch), and Jujak takes 78-81% of the kills at base, mostly from the flank. In
+elimination 1v1, Yongma's kill share follows its score (lift x1.5 + damage x1.5: score 0.48,
+kill share 0.46), so the card's gain there is kills. In deathmatch 1v1 the same card gets a
+0.27 share. The two differ in arena (3488 m elimination, 1878 m deathmatch: 2.7 of
+Yongma's 707 m sustained circles) and in respawns. My guess is the small arena: in a lone
+duel it leaves Yongma no room to extend and come back. In a crowd it gives Yongma
+head-on passes. The disentangling run is queued after round 8 (`round8b/`): deathmatch 1v1
+on elimination's 1v1 arena and elimination 1v1 on deathmatch's.
+
+**Elimination on the half arena is decided at the first crossing (the laptop's point 2).**
+`modes.spawns.side_placement` puts each team in a disc of 0.15 arena radii (585 m on the
+half arena), centres 0.8 radii off the middle (6240 m apart), noses at the enemy's centre
+within 15 degrees. Both blocks fly straight at each other; at cruise they meet in about 9
+s (first kill median 8.7 s, against 32 s on the double arena). The first crossing decides
+it: 0.96 of kills come in the first pass of a pair, 0.49 in the first merge, and 0.49 of
+deaths are trades. The armour removes the dead-ahead joust (head-on aspect kills 0.01 of
+damage), but in a 5v5 block crossing, ships are hit obliquely (0.33) and from the flank
+(0.53) by enemies other than the one ahead, within 0.13-0.27 s. So it is the packed,
+facing spawn plus the lethality, not head-on damage. Possible rules (the laptop's area,
+not touched here): spawn areas spread wider, or a spawn offset that grows on small maps,
+or a heading jitter that spreads the blocks.
+
 ## Next
 - Item 6, league: no-flee scripted agents and the fast-chaser ship. ETA ~15:45.
 - Item 7: round 6 (v15) is running in tmux `lethality-r6`; then 10v10 and 0.5x / 2x arena
