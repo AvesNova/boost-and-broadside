@@ -96,7 +96,7 @@ def mixed(
     return base, tuple(pools)
 
 
-def training_pools(config: "TrainConfig") -> tuple[Pool, ...]:
+def training_pools(config: TrainConfig) -> tuple[Pool, ...]:
     """The config's training pools with its map-size sampling (`TrainConfig.arena_scale`)."""
     return tuple(dataclasses.replace(pool, arena_scale=config.arena_scale) for pool in config.pools)
 
