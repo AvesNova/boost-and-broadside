@@ -22,9 +22,10 @@ from bnb.game.api import Rules, ShipTypes, State
 class Ships:
     """(N,) per ship, in sim order (team-major). Angles in radians, counter-clockwise from
     +x: heading (the nose), flight_path (the velocity), angle_of_attack (heading minus
-    flight path). shield and energy are fractions of the ship type's maxima; respawn_wait
-    in seconds; hit_radius and vision_range in metres. visible (2, N): team T sees ship n
-    (from team T's observation)."""
+    flight path). shield and energy are fractions of the ship type's maxima; respawn_wait:
+    the seconds until a dead ship respawns (in Frontline its minimum wait, then its team's
+    next respawn wave: `respawn_seconds`); hit_radius and vision_range in metres.
+    visible (2, N): team T sees ship n (from team T's observation)."""
 
     x: np.ndarray
     y: np.ndarray
@@ -82,7 +83,10 @@ class Zones:
     """(Z,) Frontline's zones (none present in other modes): centre and radius (m); role
     in team 0's frame (`bnb.game.modes.frontline`); meter, the capture progress in [0, 1];
     owner, the team the zone belongs to (-1 for the neutral zone); attacker, the team
-    whose capture the meter counts (-1 for a zone without a meter); present."""
+    whose capture the meter counts (-1 for a zone without a meter); present; lock (2, Z),
+    by team, the seconds left of the capture lock on that team (it lost the zone, and
+    gains no progress on it until 0); lock_length (Z,), the seconds a fresh lock lasts on
+    this ring, the same for every zone (0 outside Frontline)."""
 
     x: np.ndarray
     y: np.ndarray
@@ -92,6 +96,8 @@ class Zones:
     owner: np.ndarray
     attacker: np.ndarray
     present: np.ndarray
+    lock: np.ndarray
+    lock_length: np.ndarray
 
 
 @dataclasses.dataclass(frozen=True)
@@ -100,7 +106,9 @@ class Snapshot:
     seconds. score (2,) by team and score_target (team deathmatch); front (positive for
     team 0) and front_threshold (Frontline). fogged: the match hides what each team cannot
     see (without it a team's view has no fog). log_index_per_level: ln n per field level;
-    stall_angle (rad): the game's constants the drawing scales by."""
+    stall_angle (rad): the game's constants the drawing scales by. next_wave (2,): by team,
+    the seconds to its next respawn wave (Frontline; zeros elsewhere): a player sees only
+    their own team's, as the observation shows it."""
 
     ships: Ships
     bullets: Bullets
@@ -119,6 +127,7 @@ class Snapshot:
     fogged: bool
     log_index_per_level: float
     stall_angle: float
+    next_wave: np.ndarray
 
 
 def _numpy(value: torch.Tensor) -> np.ndarray:
@@ -148,18 +157,39 @@ def _ships(rules: Rules, types: ShipTypes, state: State, values: dict, observati
         ship_type=_numpy(ship_type[0]),
         fired=_numpy(value("fired")[0]),
         spawned=_numpy(value("spawned")[0]),
-        respawn_wait=_numpy(value("respawn_wait")[0].float() * rules.tick_length),
+        respawn_wait=_numpy(respawn_seconds(rules, values)),
         hit_radius=_numpy(api.per_ship(types.hit_radius, ship_type)[0]),
         vision_range=_numpy(api.vision_range(rules, state)[0]),
         visible=_numpy(api.visible(rules, observation)[0]),
     )
 
 
+def _wave_ticks(rules: Rules) -> int:
+    """The match's respawn wave interval in ticks (0: no waves, outside Frontline)."""
+    mode = rules.pools[0].mode
+    if mode.name != "frontline":
+        return 0
+    return round(float(mode.wave_seconds) / rules.tick_length)
+
+
+def respawn_seconds(rules: Rules, values: dict) -> torch.Tensor:
+    """(N,) the seconds until each dead ship respawns (`api.display` values of a one-match
+    state): its respawn wait, and in Frontline then its team's first respawn wave at or
+    after it (the waves come wave_wait, wave_wait + I, ... ticks from now)."""
+    wait = values["ships.respawn_wait"][0].long()
+    interval = _wave_ticks(rules)
+    if interval > 0:
+        wave = values["mode.wave_wait"][0].long().repeat_interleave(rules.ships_per_team)
+        behind = (wait - wave).clamp_min(0)
+        wait = wave + interval * torch.div(behind + interval - 1, interval, rounding_mode="floor")
+    return wait.float() * rules.tick_length
+
+
 def _bullets(rules: Rules, types: ShipTypes, state: State, values: dict) -> Bullets:
     N, K = rules.num_ships, rules.bullet_slots
     owner = torch.arange(N).repeat_interleave(K)
     life = api.bullet_moves(
-        api.per_ship(types.bullet_life, state.ships.ship_type)[0], rules.tick_length
+        api.per_ship(types.bullet_life, values["ships.ship_type"])[0], rules.tick_length
     )
 
     def value(name: str) -> np.ndarray:
@@ -212,7 +242,23 @@ def _zones(rules: Rules, state: State, values: dict) -> Zones:
         owner=_numpy(torch.where(present, owner, -1)),
         attacker=_numpy(torch.where(present, attacker, -1)),
         present=_numpy(present),
+        lock=_numpy(values["mode.lock"][0].float() * rules.tick_length),
+        lock_length=np.full(role.shape[-1], _lock_length(rules, values), np.float32),
     )
+
+
+def _lock_length(rules: Rules, values: dict) -> float:
+    """The seconds a fresh capture lock lasts on the match's ring (0 outside Frontline)."""
+    mode = rules.pools[0].mode
+    if mode.name != "frontline":
+        return 0.0
+    ticks = api.lock_ticks(
+        float(mode.lock_seconds_per_root_km),
+        values["mode.zone_x"],
+        values["mode.zone_y"],
+        rules.tick_length,
+    )
+    return float(ticks[0]) * rules.tick_length
 
 
 def snapshot(rules: Rules, types: ShipTypes, state: State, observation: Obs) -> Snapshot:
@@ -241,4 +287,5 @@ def snapshot(rules: Rules, types: ShipTypes, state: State, observation: Obs) -> 
         fogged=bool(values["match.fogged"][0]),
         log_index_per_level=api.LN_SQRT2,
         stall_angle=rules.flight.stall_angle,
+        next_wave=_numpy(values["mode.wave_wait"][0].float() * rules.tick_length),
     )

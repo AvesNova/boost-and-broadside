@@ -44,7 +44,7 @@ Each hook takes the mode's `ModeRules` and runs on that mode's slice of the batc
 
 | Hook | What it decides |
 |---|---|
-| `bnb.game.modes.phase.mode_phase` | the mode state after the tick, the two objective events, whether the match is won and the result |
+| `bnb.game.modes.phase.mode_phase` | the mode state after the tick, the two objective events, whether the match is won, the result, and which teams' dead ships may respawn this tick (`respawn_open`: every tick, or Frontline's waves) |
 | `bnb.game.modes.phase.clock_result` | the result when the clock ends the match |
 | `bnb.game.modes.phase.new_match` | a new match's mode state and map |
 | `bnb.game.modes.phase.protected` | which ships take no damage from hits |

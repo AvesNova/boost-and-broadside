@@ -73,6 +73,7 @@ from .handling.solver import error_floor as solve_error_floor
 from .handling.weapons import combat_card, combat_handles
 from .layout import environment, per_mode
 from .modes import frontline, phase
+from .modes.frontline import lock_ticks
 from .modes.rules import FLEET_PRESETS, LINEUPS, PRESETS
 from .perception import sight
 from .perception.observe import perceive, view_order
@@ -80,6 +81,7 @@ from .perception.sight import vision_range
 from .physics.bullets import Launch, launch_state, move_bullets
 from .physics.flight import flight_tick
 from .physics.medium import medium
+from .physics.spawning import field_radius_summary
 from .physics.step import move, reset, resolve, step
 from .rules import LN_SQRT2, MAP_SCALE_RADIUS, TEAMS, Rules, bullet_slots_for, rules_of
 from .ship_types import STANDARD as STANDARD_SHIP_SET
@@ -127,9 +129,11 @@ __all__ = [
     "default_card",
     "display",
     "episode_ticks",
+    "field_radius_summary",
     "flight_tick",
     "launch_capture",
     "log_index",
+    "lock_ticks",
     "log_index_gradient",
     "measure_handles",
     "move",
@@ -259,7 +263,10 @@ DISPLAYED = {
     ),
     "bullets": ("x", "y", "direction_x", "direction_y", "moves_left"),
     "fields": ("x", "y", "radius", "band_width", "level"),
-    "mode": ("role", "zone_x", "zone_y", "zone_radius", "progress", "score", "front"),
+    "mode": (
+        "role", "zone_x", "zone_y", "zone_radius", "progress", "score", "front", "lock",
+        "wave_wait",
+    ),
     "match": ("episode_tick", "fogged"),
 }  # fmt: skip
 

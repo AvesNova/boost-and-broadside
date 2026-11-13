@@ -263,6 +263,13 @@ def _objective(interface: Interface, rect, left: float, right: float) -> None:
     threshold = max(frame.front_threshold, 1)
     zone_radius, zone_gap = 10.0 * scale, 6.0 * scale
     zones = [index for index in range(len(frame.zones.x)) if frame.zones.present[index]]
+    lock_gap = 3.0 * scale
+    lock_labels = {zone: _lock_label(frame.zones, zone) for zone in zones}
+
+    def zone_width(zone: int) -> float:
+        """A zone's slot: its dot, and the capture lock's countdown beside it when locked."""
+        label = lock_labels[zone]
+        return 2 * zone_radius + (lock_gap + width_of(label[0], small) if label else 0.0)
 
     def size_of(kind, value) -> float:
         if kind == "text":
@@ -271,7 +278,7 @@ def _objective(interface: Interface, rect, left: float, right: float) -> None:
             return value
         if kind == "front":
             return (2 * threshold) * (cell + cell_gap) + 4.0 * scale
-        return len(zones) * (2 * zone_radius + zone_gap) - zone_gap
+        return sum(zone_width(zone) for zone in zones) + zone_gap * max(len(zones) - 1, 0)
 
     total = sum(size_of(kind, value) for kind, value in parts)
     x = max(0.5 * (rect.x + rect.right - total), left + 16.0 * scale)
@@ -295,11 +302,23 @@ def _objective(interface: Interface, rect, left: float, right: float) -> None:
                 f"(positive: team 0)."
             )
         elif kind == "zones":
+            start = x
             for slot, zone in enumerate(zones):
-                centre_x = x + zone_radius + slot * (2 * zone_radius + zone_gap)
+                centre_x = start + zone_radius
                 _zone_dot(
                     draw, centre_x, middle_y, zone_radius, frame.zones, zone, slot + 1, theme, scale
                 )
+                label = lock_labels[zone]
+                if label:  # the lock's countdown, in the held team's colour
+                    imgui.push_font(None, small)
+                    height = imgui.get_text_line_height()
+                    draw.add_text(
+                        imgui.ImVec2(centre_x + zone_radius + lock_gap, middle_y - 0.5 * height),
+                        team[label[1]],
+                        label[0],
+                    )
+                    imgui.pop_font()
+                start += zone_width(zone) + zone_gap
                 imgui.set_cursor_screen_pos(
                     imgui.ImVec2(centre_x - zone_radius, middle_y - zone_radius)
                 )
@@ -335,8 +354,18 @@ def _front(draw, x, middle_y, frame, threshold, cell, gap, team, theme, scale) -
         )
 
 
+def _lock_label(zones, zone: int) -> tuple[str, int] | None:
+    """The capture lock's countdown beside a zone's dot ("45s") and the held team, or None
+    when no team is held there."""
+    held = [team for team in range(2) if zones.lock[team, zone] > 0.0]
+    if not held:
+        return None
+    team = max(held, key=lambda side: zones.lock[side, zone])
+    return f"{math.ceil(float(zones.lock[team, zone]))}s", team
+
+
 def _zone_tooltip(zones, zone: int, number: int) -> str:
-    """What a zone's dot shows: its role, owner and capture progress."""
+    """What a zone's dot shows: its role, owner, capture progress and capture lock."""
     role, owner, attacker = int(zones.role[zone]), int(zones.owner[zone]), int(zones.attacker[zone])
     text = f"Zone {number}: {ROLE_NAMES[role] if 0 <= role < len(ROLE_NAMES) else role}, "
     text += f"owned by {TEAM_NAMES[owner]}" if owner >= 0 else "owned by nobody"
@@ -345,6 +374,12 @@ def _zone_tooltip(zones, zone: int, number: int) -> str:
         text += (
             f"; the arc is {TEAM_NAMES[attacker]}'s capture, {100 * float(zones.meter[zone]):.0f}%"
         )
+    for team in range(2):
+        if zones.lock[team, zone] > 0.0:
+            text += (
+                f". Locked for {TEAM_NAMES[team]}, who lost it: no capture progress for "
+                f"{float(zones.lock[team, zone]):.1f} s more (the number beside the dot)"
+            )
     return text + ". Click to inspect."
 
 

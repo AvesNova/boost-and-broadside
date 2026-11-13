@@ -318,6 +318,10 @@ def _zone(interface: Interface, index: int) -> None:
     if attacker >= 0:
         _meter("progress", float(zones.meter[index]), theme.team[attacker], theme, scale)
         _row("attacker", TEAM_NAMES[attacker], scale)
+    for team in range(2):
+        if zones.lock[team, index] > 0.0:
+            _row(f"locked for {TEAM_NAMES[team]}", f"{float(zones.lock[team, index]):.1f} s", scale)
+            tooltip("The team that lost the zone gains no capture progress on it until 0")
     inside = ships.alive & (
         np.hypot(ships.x - zones.x[index], ships.y - zones.y[index]) <= zones.radius[index]
     )

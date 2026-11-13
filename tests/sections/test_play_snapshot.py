@@ -89,3 +89,35 @@ def test_flight_path_and_angle_of_attack_agree_with_the_velocity():
     velocity = torch.atan2(truth[:5, SHIP["velocity_y"]], truth[:5, SHIP["velocity_x"]]).numpy()
     turn = np.remainder(frame.ships.flight_path[:5] - velocity + math.pi, 2 * math.pi) - math.pi
     assert np.abs(turn).max() < 1e-4
+
+
+def test_frontline_snapshot_shows_the_locks_the_waves_and_the_time_to_respawn():
+    """A dead Frontline ship's time to respawn counts its team's wave (the minimum wait,
+    then the first wave at or after it); the zones carry each team's capture lock."""
+    match = _match(PRESETS["real_scale_frontline"], ticks=2)
+    rules = match.rules
+    tick = rules.tick_length
+    interval = round(rules.modes[0].wave_seconds / tick)
+    ships, mode = match.state.ships, match.state.mode
+    alive, wait = ships.alive.clone(), ships.respawn_wait.clone()
+    alive[0, :2], wait[0, :2] = False, torch.tensor([30, 200], dtype=wait.dtype)
+    lock = torch.zeros_like(mode.lock)
+    lock[0, 1, 3] = 90
+    state = dataclasses.replace(
+        match.state,
+        ships=dataclasses.replace(ships, alive=alive, respawn_wait=wait),
+        mode=dataclasses.replace(
+            mode, lock=lock, wave_wait=torch.tensor([[100, 7]], dtype=mode.wave_wait.dtype)
+        ),
+    )
+    frame = snapshot(rules, match.types, state, match.obs)
+    # team 0's wave in 100 ticks: a ship ready in 30 waits for it; one ready in 200 for the
+    # wave after (100 + interval >= 200)
+    want = np.array([100, 100 + interval]) * tick
+    np.testing.assert_allclose(frame.ships.respawn_wait[:2], want, rtol=1e-6)
+    np.testing.assert_allclose(frame.next_wave, np.array([100, 7]) * tick, rtol=1e-6)
+    assert frame.zones.lock.shape == (2, rules.num_zones)
+    assert frame.zones.lock[1, 3] == pytest.approx(
+        90 * tick
+    ) and frame.zones.lock.sum() == pytest.approx(90 * tick)
+    assert frame.zones.lock_length[0] == pytest.approx(45.0, abs=0.5)  # 19 s / sqrt(km), 5v5

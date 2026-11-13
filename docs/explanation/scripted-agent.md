@@ -183,6 +183,13 @@ health `0.2 + 0.8 · shield / max_shield`.
   weight: all combat at the shoot logistic's centre and all strategy at the combat radius.
   The blend is already smooth, so it takes no hysteresis. The shot is the combat layer's.
   The boundary term applies to every wanted direction.
+- **Frontline's timers** (game version 8): the context both layers read (`Context` in
+  `bnb.controllers.scripted_combat`) carries the own team's next respawn wave
+  (`next_wave`) and each zone's capture lock on the own team and on the enemy's
+  (`zone_lock_own`, `zone_lock_enemy`), in seconds, from the observation. No rule reads
+  them yet, so the agent plays as before. A doctrine that uses them (do not attack a zone
+  the own team is locked out of; delay a push until the wave lands) is a proposal for the
+  author.
 
 ## Softness: logistics, the floor and the temperature
 
