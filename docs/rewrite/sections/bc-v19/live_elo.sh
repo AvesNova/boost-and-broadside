@@ -34,6 +34,8 @@ while true; do
     --lineup Yongma Yongma Jujak Jujak Jujak \
     --reuse "$HERE/rounds" --out "$HERE/rounds/$step" >> "$HERE/live_elo.log" 2>&1 \
     && touch "$newest/.rated"
-  grep -E "^real_scale_[a-z]+ " "$HERE/live_elo.log" | tail -n 30 > "$HERE/latest.txt"
+  # the last finished cycle's whole table (every mode, every snapshot)
+  awk '/ rating step_/ { if (block != "") last = block; block = "" } /^real_scale_[a-z]+ / { block = block $0 "\n" } END { printf "%s", (block != "" ? block : last) }' \
+    "$HERE/live_elo.log" > "$HERE/latest.txt"
   du -sh "$HERE/cache" >> "$HERE/live_elo.log"
 done
