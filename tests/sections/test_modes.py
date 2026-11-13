@@ -571,6 +571,57 @@ def test_frontline_map_is_a_mirror_image_about_the_neutral_axis():
     assert torch.allclose(mode.zone_radius, torch.tensor(330.0))
 
 
+def _real_scale_zones(arena_scale: float):
+    """(distance from the centre, adjacent spacing, radius) (B, 5) of the real-scale 5v5
+    Frontline map with its arena scaled by arena_scale."""
+    preset = PRESETS["real_scale_frontline"]
+    config = dataclasses.replace(preset, arena_radius=preset.arena_radius * arena_scale)
+    rules = api.rules_of(config)
+    generator = torch.Generator().manual_seed(3)
+    state = api.reset(rules, REAL_SCALE, api.uniforms(rules, 64, generator=generator))
+    mode = state.mode
+    distance = torch.hypot(mode.zone_x, mode.zone_y)
+    spacing = torch.hypot(
+        mode.zone_x - mode.zone_x.roll(1, -1), mode.zone_y - mode.zone_y.roll(1, -1)
+    )
+    return distance, spacing, mode.zone_radius
+
+
+def test_frontline_zone_floors_are_seven_tenths_of_the_default_map():
+    """The floors (m at map scale 1, times the set's map scale) are 0.7 x the zone radius
+    and spacing the 5v5 real-scale Frontline map plays, and leave that map as it was."""
+    preset = PRESETS["real_scale_frontline"]
+    mode = api.rules_of(preset).pools[0].mode
+    scale = mode.set_map_scale
+    assert scale == pytest.approx(3.0)
+    arena = preset.arena_radius
+    radius = mode.zone_radius * arena / 2600.0
+    spacing = 2.0 * mode.zone_ring_fraction * arena * math.sin(math.pi / 5)
+    assert mode.zone_radius_floor * scale == pytest.approx(0.7 * radius, abs=0.1)
+    assert mode.zone_spacing_floor * scale == pytest.approx(0.7 * spacing, abs=0.5)
+    distance, spacings, radii = _real_scale_zones(1.0)
+    torch.testing.assert_close(distance, torch.full_like(distance, mode.zone_ring_fraction * arena))
+    torch.testing.assert_close(spacings, torch.full_like(spacings, spacing), rtol=1e-5, atol=0.05)
+    torch.testing.assert_close(radii, torch.full_like(radii, radius))
+
+
+def test_frontline_zones_hold_their_floors_on_a_half_size_arena():
+    """At half the arena the zones would shrink to half; they stop at the floors, every
+    zone alike on one ring (a regular pentagon, so the layout stays fair)."""
+    mode = api.rules_of(PRESETS["real_scale_frontline"]).pools[0].mode
+    radius_floor = mode.zone_radius_floor * mode.set_map_scale
+    spacing_floor = mode.zone_spacing_floor * mode.set_map_scale
+    distance, spacing, radii = _real_scale_zones(0.5)
+    torch.testing.assert_close(radii, torch.full_like(radii, radius_floor))
+    torch.testing.assert_close(
+        spacing, torch.full_like(spacing, spacing_floor), rtol=1e-5, atol=0.05
+    )
+    torch.testing.assert_close(distance, torch.full_like(distance, distance[0, 0].item()))
+    # between the floors and the default, the floor that binds is the only one that moves
+    _, spacing, radii = _real_scale_zones(0.8)
+    assert (spacing > spacing_floor + 1.0).all() and (radii > radius_floor + 1.0).all()
+
+
 def test_frontline_draws_both_handednesses_and_any_rotation():
     _, state = cases.rules_and_state(FRONTLINE, batch=256, seed=11)
     mode = state.mode

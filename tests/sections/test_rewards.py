@@ -255,15 +255,20 @@ def test_rollout_stores_every_level_zero_sum_per_environment(mode):
 
 
 @pytest.mark.parametrize("mode", list(cases.MODES))
-def test_the_rollouts_ledger_holds_every_deficit(mode):
+def test_the_rollouts_ledger_holds_every_deficit(mode, monkeypatch):
     """Through the runtime: the rollout's carried ledger against its carried state, after
-    each of 16 short runs (staggered clocks, so resets fall inside)."""
+    each of 16 short runs (staggered clocks, so resets fall inside). The rollout builds its
+    rules without Frontline's zone floors, as the lively cases are (`cases.lively`)."""
     from bnb.controllers.scripted import Chaser, Random
     from bnb.game.handling.characteristics import characteristics
     from bnb.runtime.rollout import Rollout
 
     config = cases.MODES[mode]
     S = config.ships_per_team
+    built = api.rules_of
+    monkeypatch.setattr(
+        api, "rules_of", lambda *args, **kwargs: cases.without_zone_floors(built(*args, **kwargs))
+    )
     rollout = Rollout(
         config,
         api.ship_types(),

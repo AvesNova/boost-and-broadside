@@ -206,14 +206,26 @@ def refit_zones(
     front are kept. A mode without zones passes through unchanged."""
     if mode_rules.name != FRONTLINE:
         return mode
-    zone_x, zone_y, radius = frontline.zone_ring(
+    zone_x, zone_y, radius = _ring(
+        mode_rules, arena_radius, map_scale, mode.ring_rotation, mode.handedness
+    )
+    return replace(mode, zone_x=zone_x, zone_y=zone_y, zone_radius=radius)
+
+
+def _ring(mode_rules: ModeRules, arena_radius, map_scale, rotation, handedness):
+    """Frontline's zone ring for these rules (`frontline.zone_ring`): the zone radius at
+    the environments' map scale and the ring fraction of their arena, each held at its
+    floor (`ModeRules.zone_radius_floor`, `zone_spacing_floor`: m at map scale 1, times the
+    ship set's map scale, so a smaller arena does not shrink them)."""
+    return frontline.zone_ring(
         arena_radius,
         mode_rules.zone_radius * map_scale,
         mode_rules.zone_ring_fraction,
-        mode.ring_rotation,
-        mode.handedness,
+        rotation,
+        handedness,
+        mode_rules.zone_radius_floor * mode_rules.set_map_scale,
+        mode_rules.zone_spacing_floor * mode_rules.set_map_scale,
     )
-    return replace(mode, zone_x=zone_x, zone_y=zone_y, zone_radius=radius)
 
 
 def new_match(
@@ -244,13 +256,7 @@ def new_match(
     blank = apply(torch.zeros_like, previous)
     rotation = 2.0 * math.pi * uniforms[:, 0]
     handedness = torch.where(uniforms[:, 1] < 0.5, 1.0, -1.0)
-    zone_x, zone_y, radius = frontline.zone_ring(
-        arena_radius,
-        mode_rules.zone_radius * map_scale,
-        mode_rules.zone_ring_fraction,
-        rotation,
-        handedness,
-    )
+    zone_x, zone_y, radius = _ring(mode_rules, arena_radius, map_scale, rotation, handedness)
     roles = frontline.roles_from_front(blank.front)
     state = replace(
         blank,

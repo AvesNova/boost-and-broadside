@@ -80,9 +80,10 @@ def test_new_rules_and_card_apply_from_the_next_tick():
     for _ in range(3):
         realtime.step(actions)
     map_scale = FRONTLINE.arena_radius / api.MAP_SCALE_RADIUS
-    realtime.retune(rules=api.tuning.tuned(realtime.rules, {"mode.zone_radius": 600.0}))
+    # 1000 m at map scale 1 is 346 m on this 900 m arena, above the 231 m floor
+    realtime.retune(rules=api.tuning.tuned(realtime.rules, {"mode.zone_radius": 1000.0}))
     radius = api.display(realtime.state)["mode.zone_radius"]
-    torch.testing.assert_close(radius, torch.full_like(radius, 600.0 * map_scale))
+    torch.testing.assert_close(radius, torch.full_like(radius, 1000.0 * map_scale))
     realtime.retune(types=api.ship_types(max_shield=(20.0, 30.0)))
     shield = api.display(realtime.state)["ships.shield"]
     assert shield.max() <= 30.0

@@ -273,15 +273,12 @@ def side_placement(
 
 
 def frontline_placement(
-    rules: Rules,
-    mode_rules: ModeRules,
-    map_scale: torch.Tensor,
-    uniforms: torch.Tensor,
-    mode: ModeState,
+    rules: Rules, mode_rules: ModeRules, uniforms: torch.Tensor, mode: ModeState
 ) -> Placement:
-    """Frontline spawns: a uniform point in the disc of spawn_zone_fraction zone radii around
-    the team's current spawn zone, nose toward the zone it attacks (the enemy's defense zone).
-    map_scale (B,); mode: the state after this tick's captures (or a new match's)."""
+    """Frontline spawns: a uniform point in the disc of spawn_zone_fraction zone radii (the
+    match's, after its floor) around the team's current spawn zone, nose toward the zone it
+    attacks (the enemy's defense zone). mode: the state after this tick's captures (or a new
+    match's)."""
     B, N, S = uniforms.shape[0], rules.num_ships, rules.ships_per_team
     per_ship = uniforms[:, 4 : 4 + 2 * N].reshape(B, N, 2)  # after the ring's and waves'
 
@@ -294,7 +291,7 @@ def frontline_placement(
 
     spawn_x, spawn_y = centre((TEAM0_SPAWN, TEAM1_SPAWN))
     target_x, target_y = centre((TEAM1_DEFENSE, TEAM0_DEFENSE))
-    radius = (mode_rules.spawn_zone_fraction * mode_rules.zone_radius * map_scale)[:, None]
+    radius = mode_rules.spawn_zone_fraction * mode.zone_radius[:, :1]  # every zone's
     offset_x, offset_y = uniform_disc(radius, per_ship[..., 0], per_ship[..., 1])
     x, y = spawn_x + offset_x, spawn_y + offset_y
     to_x, to_y = target_x - x, target_y - y
@@ -376,7 +373,7 @@ def placement(
             rules, mode_rules, arena_radius, uniforms, x, y, alive, reset, keys, benched
         )
     if mode_rules.name == FRONTLINE:
-        return frontline_placement(rules, mode_rules, map_scale, uniforms, mode)
+        return frontline_placement(rules, mode_rules, uniforms, mode)
     return formation(
         rules, arena_radius, map_scale, axis_x, axis_y, rotation, keys
     )  # sandbox: game spec 8's

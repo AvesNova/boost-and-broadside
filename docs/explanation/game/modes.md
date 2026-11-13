@@ -215,6 +215,16 @@ None, as in training) the game is bit-identical to the game without the input
 - **The ring:** `bnb.game.modes.frontline.ZONES` zones on a circle around the
   centre, at a random rotation and a random handedness (clockwise or counter-clockwise). At front 0 their roles are, in ring order:
   neutral, team 0's spawn, team 0's defense, team 1's defense, team 1's spawn.
+- **Size:** the ring's radius is `zone_ring_fraction` (0.615) of the arena radius and each
+  zone's radius `zone_radius` (330 m) times the map scale, so both follow the arena. Two
+  floors (game v17) stop a small or sampled arena from shrinking them past 70% of the 5v5
+  map's: every zone's radius is at least `zone_radius_floor` (231 m) and adjacent zone
+  centres at least `zone_spacing_floor` (1315.8 m) apart, the ring growing to fit. Both
+  are m at map scale 1 times the ship set's map scale (3 at real scale: 693 m and
+  3947 m), not the arena's, and both are in the Map / mode panel's Frontline group. No
+  preset reaches them. The floors move every zone alike, so the ring stays a regular
+  pentagon. Below about half the real-scale 5v5 arena the floored zones reach past the
+  boundary. The spawn disc is `spawn_zone_fraction` of the match's zone radius.
 - **Meters:** only the two defense zones have meters, from 0 to 1. A meter moves only on a
   strict majority of the living ships inside its zone: it rises while the attackers
   outnumber the defenders there, and falls while the defenders outnumber the attackers. Its

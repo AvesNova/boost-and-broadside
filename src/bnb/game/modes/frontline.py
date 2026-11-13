@@ -283,23 +283,38 @@ def timeout_result(front: torch.Tensor) -> torch.Tensor:
 # ------------------------------------------------------------------ the map (v2)
 
 
+def ring_distance_for_spacing(spacing):
+    """The ring radius whose adjacent zone centres are `spacing` apart (the chord of a fifth
+    of the ring)."""
+    return spacing / (2.0 * math.sin(math.pi / ZONES))
+
+
 def zone_ring(
     arena_radius: torch.Tensor,
     zone_radius: torch.Tensor,
     ring_fraction: float,
     rotation: torch.Tensor,
     handedness: torch.Tensor,
+    radius_floor=0.0,
+    spacing_floor=0.0,
 ):
     """Zone centres (B, 5) x, y at angles rotation + handedness 2 pi k / 5 on the ring, and
-    their radii (B, 5); arena_radius and zone_radius (B,)."""
+    their radii (B, 5); arena_radius and zone_radius (B,). The ring is ring_fraction of the
+    arena radius, but at least the radius whose adjacent zones are spacing_floor apart, and
+    every zone's radius at least radius_floor (m, floats or 0-d tensors; 0: no floor). Every
+    zone takes the same radius and the one ring, so the layout stays a regular pentagon."""
     angle = rotation[:, None] + handedness[:, None] * (2.0 * math.pi / ZONES) * torch.arange(
         ZONES, device=rotation.device
     )
-    distance = (ring_fraction * arena_radius)[:, None]
+    distance = torch.clamp(
+        ring_fraction * arena_radius, min=ring_distance_for_spacing(spacing_floor)
+    )
+    distance = distance[:, None]
+    radius = torch.clamp(zone_radius, min=radius_floor)
     return (
         distance * torch.cos(angle),
         distance * torch.sin(angle),
-        zone_radius[:, None] + torch.zeros_like(angle),
+        radius[:, None] + torch.zeros_like(angle),
     )
 
 

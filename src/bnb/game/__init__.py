@@ -130,7 +130,19 @@ crossing. A game's arena radius at another fleet size (`api.arena_radius_for`) f
 density rule down to its mode's minimum: team deathmatch 1000 m at map scale 1, 3000 m at
 real scale (1v1 and 2v2 real-scale deathmatch were 1878 m and 2656 m by the rule alone);
 elimination and frontline have none. No preset changes radius.
+
+Version 17 (2026-11-13): team deathmatch's outcome is its kill share, and Frontline's
+zones have floors. `Events.win_loss` (B, 2) is team 0's weights of a win and of a loss
+where a match ended (a draw the rest): in team deathmatch (share, 1 - share), share =
+team 0's kills over both teams' (0.5 with none), as its rating scores a game; in the other
+modes the result one-hot. The outcome reward is win - loss (2 share - 1 in deathmatch) and
+the outcome head's final target (win, draw, loss) its weights; `result` still says who led.
+Frontline's zone ring keeps its zones' radius at least `ModeRules.zone_radius_floor`
+(231 m) and adjacent zones at least `zone_spacing_floor` (1315.8 m) apart, both m at map
+scale 1 times the ship set's map scale (3 at real scale), 0.7 x the 5v5 map's: no preset
+changes, a map under 70% of it is held there. The spawn disc follows the match's zone
+radius. The presets' states and observations are version 16's, so is the fingerprint.
 """
 
-VERSION = 16
+VERSION = 17
 FINGERPRINT = "71982b10a86b586f"
