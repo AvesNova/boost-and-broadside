@@ -9,6 +9,7 @@ are written back into the batch tensors. The bounds are static: one graph.
 """
 
 import dataclasses
+import functools
 
 import torch
 from torch.utils import _pytree
@@ -26,7 +27,11 @@ class Environment:
     and map_scale (arena_radius / MAP_SCALE_RADIUS) float32; episode_ticks and respawn_ticks
     int32; the boundary's shrink (`boundary_fraction`): shrinking float32, 1 where the
     boundary shrinks (elimination) and 0 elsewhere, shrink_hold_ticks float32 (its hold, in
-    ticks; 0 where it does not shrink) and shrink_law int32 (`ModeRules.shrink_law`)."""
+    ticks; 0 where it does not shrink), shrink_end_ticks float32 (the tick it reaches its
+    end, `ModeRules.shrink_end_lead_seconds` before the clock's), shrink_end_fraction
+    float32 (its end: minus the ramp width over the arena radius, so even the centre lies a
+    ramp width beyond it), shrink_zero_ticks float32 (the tick it passes radius 0) and
+    shrink_law int32 (`ModeRules.shrink_law`)."""
 
     arena_radius: torch.Tensor
     map_scale: torch.Tensor
@@ -34,6 +39,9 @@ class Environment:
     respawn_ticks: torch.Tensor
     shrinking: torch.Tensor
     shrink_hold_ticks: torch.Tensor
+    shrink_end_ticks: torch.Tensor
+    shrink_end_fraction: torch.Tensor
+    shrink_zero_ticks: torch.Tensor
     shrink_law: torch.Tensor
 
 
@@ -83,21 +91,69 @@ def environment(rules: Rules, batch: int, device=None) -> Environment:
         ]
         return parts[0] if len(parts) == 1 else torch.cat(parts)
 
+    episode_ticks = per_pool(lambda pool: pool.episode_ticks, torch.int32)
+    shrinking = per_pool(lambda pool: float(shrinks(pool.mode)))
+    shrink_law = per_pool(
+        lambda pool: pool.mode.shrink_law if shrinks(pool.mode) else 0, torch.int32
+    )
+    # The shrink's schedule: it ends `shrink_end_lead_seconds` before the clock (at least a
+    # tick after the match's start), its hold at most a tick before its end.
+    total = episode_ticks.to(torch.float32)
+    lead = per_pool(lambda pool: pool.mode.shrink_end_lead_seconds / rules.tick_length)
+    end = torch.maximum(total - lead, torch.ones_like(total))
+    hold = per_pool(lambda pool: pool.mode.shrink_hold_seconds / rules.tick_length)
+    hold = torch.minimum(hold, end - 1.0).clamp_min(0.0)
+    # its end: a ramp width (m at map scale 1, times the map scale) inside the centre, as a
+    # fraction of the arena radius (the map scale cancels: the ramp over MAP_SCALE_RADIUS)
+    end_fraction = shrinking * (-rules.boundary_ramp_width / MAP_SCALE_RADIUS)
+    # the zero crossing's share of the shrink (`zero_share`)
+    s_zero = per_pool(lambda pool: zero_share(pool.mode.shrink_law, rules.boundary_ramp_width))
     return Environment(
         arena_radius=per_pool(lambda pool: pool.arena_radius),
         map_scale=per_pool(lambda pool: pool.arena_radius / MAP_SCALE_RADIUS),
-        episode_ticks=per_pool(lambda pool: pool.episode_ticks, torch.int32),
+        episode_ticks=episode_ticks,
         respawn_ticks=per_pool(lambda pool: pool.respawn_ticks, torch.int32),
-        shrinking=per_pool(lambda pool: float(shrinks(pool.mode))),
-        shrink_hold_ticks=per_pool(
-            lambda pool: (
-                pool.mode.shrink_hold_seconds / rules.tick_length if shrinks(pool.mode) else 0.0
-            )
-        ),
-        shrink_law=per_pool(
-            lambda pool: pool.mode.shrink_law if shrinks(pool.mode) else 0, torch.int32
-        ),
+        shrinking=shrinking,
+        shrink_hold_ticks=shrinking * hold,
+        shrink_end_ticks=torch.where(shrinking > 0, end, total),
+        shrink_end_fraction=end_fraction,
+        shrink_zero_ticks=torch.where(shrinking > 0, hold + s_zero * (end - hold), total),
+        shrink_law=shrink_law,
     )
+
+
+def zero_share(law, ramp_width):
+    """The share s of the shrink at which the boundary passes radius 0: its law reaches
+    1 / (1 + ramp_width / MAP_SCALE_RADIUS) there (s itself for law 0; the smootherstep's
+    inverse for law 1, by a fixed bisection). Plain numbers (static rules) are solved once
+    and kept; 0-d tensors (live rules) by the same bisection in tensors, branch-free."""
+    if isinstance(law, torch.Tensor) or isinstance(ramp_width, torch.Tensor):
+        reach = 1.0 / (1.0 + torch.as_tensor(ramp_width, dtype=torch.float32) / MAP_SCALE_RADIUS)
+        low, high = torch.zeros_like(reach), torch.ones_like(reach)
+        for _ in range(_BISECTIONS):
+            middle = 0.5 * (low + high)
+            below = smootherstep(middle) < reach
+            low, high = torch.where(below, middle, low), torch.where(below, high, middle)
+        return torch.where(torch.as_tensor(law) == 1, 0.5 * (low + high), reach)
+    return _zero_share(int(law), float(ramp_width))
+
+
+_BISECTIONS = 24  # to 2^-24 of the shrink, float32's resolution
+
+
+@functools.lru_cache(maxsize=64)
+def _zero_share(law: int, ramp_width: float) -> float:
+    reach = 1.0 / (1.0 + ramp_width / MAP_SCALE_RADIUS)
+    if law != 1:
+        return reach
+    low, high = 0.0, 1.0
+    for _ in range(_BISECTIONS):
+        middle = 0.5 * (low + high)
+        if middle**3 * (middle * (6.0 * middle - 15.0) + 10.0) < reach:
+            low = middle
+        else:
+            high = middle
+    return 0.5 * (low + high)
 
 
 def shrinks(mode: ModeRules) -> bool:
@@ -107,21 +163,23 @@ def shrinks(mode: ModeRules) -> bool:
 
 def boundary_fraction(arena: Environment, elapsed: torch.Tensor) -> torch.Tensor:
     """(B,) the boundary's radius over the arena radius after `elapsed` (B,) ticks of the
-    episode. Where it shrinks (elimination) it holds at 1 for the hold, then falls to 0 at
-    the clock's end: s = (elapsed - hold) / (episode - hold) in [0, 1], the fraction 1 - s
-    (shrink law 0) or 1 - smootherstep(s) (law 1). Elsewhere 1. Every law is computed and
-    the live law selects one, so it is data in the compiled tick."""
-    total = arena.episode_ticks.to(torch.float32)
-    hold = torch.minimum(arena.shrink_hold_ticks, total - 1.0).clamp_min(0.0)
-    s = ((elapsed.to(torch.float32) - hold) / (total - hold).clamp_min(1.0)).clamp(0.0, 1.0)
+    episode. Where it shrinks (elimination) it holds at 1 for the hold, then falls past 0 to
+    its end fraction e (minus a ramp width over the arena radius) at its end, the clock's
+    end less the lead: s = (elapsed - hold) / (end - hold) in [0, 1], the fraction
+    1 - (1 - e) s (shrink law 0) or 1 - (1 - e) smootherstep(s) (law 1), so from its end
+    every ship, the centre's too, is a full ramp width beyond it. Negative once it passes 0
+    (the damage reads it so; the observation shows it clamped at 0). Elsewhere 1. Every law
+    is computed and the live law selects one, so it is data in the compiled tick."""
+    hold, end = arena.shrink_hold_ticks, arena.shrink_end_ticks
+    s = ((elapsed.to(torch.float32) - hold) / (end - hold).clamp_min(1.0)).clamp(0.0, 1.0)
     law = torch.where(arena.shrink_law == 1, smootherstep(s), s)
-    return 1.0 - arena.shrinking * law
+    return 1.0 - arena.shrinking * (1.0 - arena.shrink_end_fraction) * law
 
 
 def boundary_time_to_zero(arena: Environment, elapsed: torch.Tensor, tick_length: float):
-    """(B,) seconds until the boundary reaches radius 0 (the clock's end) where it shrinks,
-    after `elapsed` (B,) ticks; 0 where it does not shrink."""
-    left = (arena.episode_ticks - elapsed).clamp_min(0).to(torch.float32) * tick_length
+    """(B,) seconds until the boundary reaches radius 0 where it shrinks, after `elapsed`
+    (B,) ticks (0 once it has); 0 where it does not shrink."""
+    left = (arena.shrink_zero_ticks - elapsed.to(torch.float32)).clamp_min(0.0) * tick_length
     return arena.shrinking * left
 
 

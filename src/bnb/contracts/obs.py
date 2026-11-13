@@ -86,8 +86,9 @@ ZONE_COLUMNS = (
 # not shown). Absent quantities are 0. Before the mode block, the boundary:
 # boundary_fraction, its radius now over the arena radius (1 but where it shrinks, in
 # elimination: positions and map lengths stay in metres, and arena_radius stays the
-# arena's), and boundary_time_to_zero, the seconds until it reaches radius 0 (elimination's
-# clock end; 0 where it does not shrink).
+# arena's; 0 once it has passed radius 0, the game's boundary going on to a ramp width
+# inside the centre), and boundary_time_to_zero, the seconds until it reaches radius 0
+# (0 after; 0 where it does not shrink).
 GLOBAL_COLUMNS = (
     "episode_progress",
     "arena_radius",

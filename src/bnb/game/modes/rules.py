@@ -200,8 +200,9 @@ class ModeRules:
     centres; 0 none) and the respawn waves (each team's every wave_seconds, from a random
     phase per team at the match's start: a dead ship respawns at its team's first wave
     after its respawn wait; 0 no waves). Elimination's boundary shrinks: it holds at the
-    arena radius for shrink_hold_seconds, then falls to 0 at the clock's end by shrink_law
-    (0 linear in radius, 1 the smootherstep). layout: the
+    arena radius for shrink_hold_seconds, then falls by shrink_law (0 linear in radius, 1
+    the smootherstep) past 0 to a ramp width inside the centre, shrink_end_lead_seconds
+    before the clock's end, so every ship dies before the clock. layout: the
     game's fixed map (`MapLayout`), or None for a random one; part of the mode's rules, so
     games of one mode with different layouts are different slices of the batch
     (`layout.per_mode`)."""
@@ -228,10 +229,19 @@ class ModeRules:
     side_area_fraction: float = 0.15
     side_heading_jitter: float = math.radians(15.0)
     # Elimination's shrinking boundary (`bnb.game.layout.boundary_fraction`): it holds at
-    # the arena radius for shrink_hold_seconds, then shrinks to 0 at the clock's end, linear
-    # in radius (shrink_law 0) or along the smootherstep (1: a smooth start and end). 18 s
-    # is a fifth of the standard clock; 36 s at real scale (the set's [mode]).
+    # the arena radius for shrink_hold_seconds, then shrinks, linear in radius (shrink_law
+    # 0) or along the smootherstep (1: a smooth start and end), past radius 0 to minus a
+    # ramp width (`Rules.boundary_ramp_width`), where even a ship at the centre takes the
+    # boundary's most, shrink_end_lead_seconds before the clock's end. 18 s is a fifth of
+    # the standard clock; 36 s at real scale (the set's [mode]). The lead (the author,
+    # 2026-11-13: every ship dies before the clock): from the zero crossing a ship at the
+    # centre is hurt every tick, so its shield does not recharge, and from the end it takes
+    # the most; the largest shield of either set (160) over the smaller most (30 per s,
+    # the standard set's; 40 at real scale) is 5.3 s, plus a tick to kill a broken shield,
+    # so 8 s leaves 2.6 s of margin before counting the ramp's damage between the zero
+    # crossing and the end (`test_boundary_shrink` checks it against the cards).
     shrink_hold_seconds: float = 18.0
+    shrink_end_lead_seconds: float = 8.0
     shrink_law: int = 0
     layout: MapLayout | None = None
 
