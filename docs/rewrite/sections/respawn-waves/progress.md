@@ -130,3 +130,39 @@ the Hell Let Loose bound).
 calibration (s10, 192 games, ± about 0.025; the game source is unchanged since). With
 twice the games, 55 s sits below 0.5 at 10v10: a longer lock raises P (the capturer keeps
 the zone), so 10v10 wants a little more than 55 s. Locks 60 / 65 / 70 checked below.
+
+## 2026-11-13 09:05 KST: the lock at 10v10 (w10c; 384 games each)
+
+| variant | lock (s) | P(same team next) | by the front | median length (s) | first capture (s) |
+|---|---|---|---|---|---|
+| fixed 16 | 55 | 0.448 (0.452) | 0.95 (0.60) | 419 | 168 |
+| fixed 16 | 60 | 0.543 (0.552) | 0.96 (0.66) | 359 | 168 |
+| fixed 16 | 65 | 0.645 (0.634) | 0.97 (0.69) | 346 | 156 |
+| fixed 16 | 70 | 0.706 (0.725) | 0.99 (0.79) | 327 | 165 |
+| min 8, waves 20 | 55 | 0.424 (0.444) | 0.95 (0.61) | 406 | 164 |
+| min 8, waves 20 | 65 | 0.640 (0.640) | 0.99 (0.74) | 320 | 149 |
+| min 5, waves 30 | 55 | 0.441 (0.444) | 0.96 (0.60) | 379 | 152 |
+| min 5, waves 30 | 65 | 0.589 (0.608) | 0.98 (0.72) | 354 | 149 |
+
+P rises about 0.02 a second of lock here, so P = 0.5 sits at about 57-58 s at 10v10
+(interpolated between 55 and 60; the 57 / 58 s run was stopped when the calibration chain
+took the box again). The waves do not move it at 55 s; at 65 s the 30 s waves sit lower
+(0.59 against 0.64, about 2 SE). At 5v5 lock 45 holds: 0.47-0.50 over every wave variant
+without a capture effect.
+
+## Recommendation
+
+- **Frontline: minimum 8 s, waves every 20 s, no capture effect.** Wait mean 17.8 s, p90
+  26 s (Hell Let Loose: about 10 s plus 30 s waves, mean about 25 s, worst 40 s), so a
+  death costs 8-28 s, a little more on average than today's 16 s, and the waves land the
+  team together: the game is shorter (median 506 against 570 s at 5v5) and the first
+  capture earlier (174 against 182 s). P(same team next) stays at the lock's 0.5. A faster
+  alternative is minimum 5 s, waves 30 s (mean 20 s, p90 32 s, median 484 s, first capture
+  153 s). Capture effects all add momentum (delay 10 the least, +0.03-0.05; skip the most,
+  +0.14-0.21) and would need the lock recalibrated; leave them out.
+- **Deathmatch: fixed 8 s, no waves** (5.24 kills / min against 5.09 at 10 s; out 8.5% of
+  the time). 5 s makes a death matter little (5.6% of the time), 16 s costs 6% of the kills.
+- **Lock at 10v10: 55 s gives P ≈ 0.45; about 58 s gives 0.5.** 5v5 lock 45 holds.
+
+These are scripted mirror games: the scripted agent does not read the wave clock, so a
+human or a trained agent timing pushes to the waves may make them matter more than here.
