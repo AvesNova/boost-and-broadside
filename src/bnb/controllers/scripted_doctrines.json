@@ -1,7 +1,7 @@
 {
  "real-scale": {
   "yongma": {
-   "source": "the game loop's champion r9 (docs/rewrite/sections/game-loop/progress.md): Elo 1230 +- 4 (off 1000), 2026-11-12",
+   "source": "the game loop's champion r9 (docs/rewrite/sections/game-loop/progress.md): Elo 1230 +- 4 (off 1000), 2026-11-12; with the Frontline lock-aware goal, lock_press 1 (docs/rewrite/sections/lethality/progress.md, round 10), 2026-11-13",
    "doctrine": {
     "strength": 0.89,
     "turn_exponent": 1.86,
@@ -54,11 +54,12 @@
      2.94,
      0.232
     ],
-    "deny_angle": 0.58
+    "deny_angle": 0.58,
+    "lock_press": 1.0
    }
   },
   "jujak": {
-   "source": "the game loop's champion r9 (docs/rewrite/sections/game-loop/progress.md): Elo 1230 +- 4 (off 1000), 2026-11-12",
+   "source": "the game loop's champion r9 (docs/rewrite/sections/game-loop/progress.md): Elo 1230 +- 4 (off 1000), 2026-11-12; with the Frontline lock-aware goal, lock_press 1 (docs/rewrite/sections/lethality/progress.md, round 10), 2026-11-13",
    "doctrine": {
     "strength": 1.0,
     "turn_exponent": -0.385,
@@ -111,7 +112,8 @@
      3.49,
      0.179
     ],
-    "deny_angle": 0.389
+    "deny_angle": 0.389,
+    "lock_press": 1.0
    }
   }
  }

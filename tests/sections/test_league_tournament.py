@@ -482,8 +482,9 @@ def test_the_aspect_statistics_split_each_rows_kills_and_hit_damage():
 
 def test_a_deathmatch_block_is_scored_by_its_games_kill_shares():
     """Team deathmatch is rated by kill share (the author, 2026-11-13): each game's score is
-    the first player's kills over both sides' (0.5 with none), a block's result (score, 0,
-    games - score); elimination and frontline keep win, draw and loss."""
+    the second player's deaths over both sides' (any cause, as the mode's score counts
+    them; 0.5 with none), a block's result (score, 0, games - score); elimination and
+    frontline keep win, draw and loss."""
     from bnb.contracts.config import ELIMINATION, FRONTLINE
     from bnb.league.matches import STATISTICS
 
@@ -496,12 +497,12 @@ def test_a_deathmatch_block_is_scored_by_its_games_kill_shares():
     torch.manual_seed(3)
     results = tournament.scored(arena, game, [(0, 1), (1, 0)])
     rows = arena.rollout.carry["controllers"][SEAT].statistics.double()
-    kills = rows[:, STATISTICS.index("kills")].reshape(2, 2, SMALL.block_environments)
-    assert float(kills.sum()) > 0.0  # the test means something: games with kills
+    deaths = rows[:, STATISTICS.index("deaths")].reshape(2, 2, SMALL.block_environments)
+    assert float(deaths.sum()) > 0.0  # the test means something: games with deaths
     for block in range(2):
         shares = [
-            0.5 if mine + theirs == 0 else mine / (mine + theirs)
-            for mine, theirs in zip(kills[block, 0].tolist(), kills[block, 1].tolist())
+            0.5 if mine + theirs == 0 else theirs / (mine + theirs)
+            for mine, theirs in zip(deaths[block, 0].tolist(), deaths[block, 1].tolist())
         ]
         score = sum(shares)
         expected = [score, 0.0, SMALL.block_environments - score]

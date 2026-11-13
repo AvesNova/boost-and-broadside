@@ -22,8 +22,8 @@ ROOT = pathlib.Path(__file__).parents[2]
 CHAMPION = ROOT / "docs/rewrite/sections/maneuvers-2/champion2.json"
 
 
-def test_r9m2_is_the_default_and_r9_the_stored_training_doctrine():
-    assert DEFAULT_DOCTRINE == "r9m2" and SideSetup().doctrine == "r9m2"
+def test_r9m3_is_the_default_and_r9_the_stored_training_doctrine():
+    assert DEFAULT_DOCTRINE == "r9m3" and SideSetup().doctrine == "r9m3"
     assert DOCTRINES["r9"] == scripted_doctrine.DOCTRINES
     assert set(typing.get_args(Options.__annotations__["doctrine0"])) == set(DOCTRINES)
     assert set(typing.get_args(Options.__annotations__["doctrine1"])) == set(DOCTRINES)
@@ -40,6 +40,18 @@ def test_r9m2s_file_is_maneuvers_2s_champion2():
     assert stored["yongma"].duel_extend == 1.0 and r9["yongma"].duel_extend == 0.0
 
 
+def test_r9m3_is_r9m2_with_the_lock_aware_goal():
+    """r9m3 (the play shell's default since 2026-11-13) is r9m2 with lock_press 1 on both
+    types and every other field r9m2's; the wave hold stays off."""
+    import dataclasses
+
+    r9m2 = scripted_doctrine.stored(DOCTRINES["r9m2"])["real-scale"]
+    r9m3 = scripted_doctrine.stored(DOCTRINES["r9m3"])["real-scale"]
+    for key in ("yongma", "jujak"):
+        assert r9m3[key].lock_press == 1.0 and r9m3[key].wave_hold == 0.0
+        assert dataclasses.replace(r9m3[key], lock_press=0.0) == r9m2[key]
+
+
 def test_both_files_pack_to_the_full_table_width_for_the_real_scale_set():
     for path in DOCTRINES.values():
         rows = scripted_doctrine.rows_by_count(path)
@@ -51,7 +63,7 @@ def test_both_files_pack_to_the_full_table_width_for_the_real_scale_set():
 def test_the_command_line_chooses_each_teams_doctrine():
     options = tyro.cli(Options, args=["--doctrine1", "r9"])
     sides = options.setup().sides
-    assert [side.doctrine for side in sides] == ["r9m2", "r9"]
+    assert [side.doctrine for side in sides] == ["r9m3", "r9"]
     assert all(side.controller == "scripted_agent" for side in sides)
     with pytest.raises(SystemExit):
         tyro.cli(Options, args=["--doctrine0", "r10"])
@@ -59,11 +71,11 @@ def test_the_command_line_chooses_each_teams_doctrine():
 
 def test_the_fleets_combo_offers_the_chaser_and_each_doctrine():
     labels = [label for _, label in SCRIPTED_CHOICES]
-    assert labels == ["Chaser", "Scripted agent r9m2", "Scripted agent r9"]
+    assert labels == ["Chaser", "Scripted agent r9m3", "Scripted agent r9m2", "Scripted agent r9"]
     assert scripted_label(SideSetup("scripted_agent", doctrine="r9")) == "Scripted agent r9"
     assert scripted_label(SideSetup("scripted")) == "Chaser"
     assert scripted_label(SideSetup("agent", "runs/x")) is None
-    assert controller_label_of_setup(SideSetup()) == "scripted agent r9m2"
+    assert controller_label_of_setup(SideSetup()) == "scripted agent r9m3"
 
 
 def test_the_frame_rate_is_smoothed_and_keeps_the_last_seconds_longest_frame():

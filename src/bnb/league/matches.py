@@ -883,14 +883,16 @@ class Arena:
     def kill_shares(self) -> torch.Tensor:
         """(blocks, 3) float64 the last batch's first games scored by kill share, as
         `play`'s (wins, ties, losses) are: (the sum of the first player's shares, 0, the
-        block's games less that sum). A game's share is its kills over both sides' kills
-        (`STATISTICS`' "kills": enemy ships killed by the side's hits), 0.5 in a game with no
-        kill. Team deathmatch's rating score (`bnb.league.tournament.kill_share_scored`)."""
+        block's games less that sum). A game's share is the first player's points over both
+        sides', 0.5 in a game with none, a side's points the other side's deaths of any cause
+        (`STATISTICS`' "deaths"; the boundary's and friendly fire's too), as team
+        deathmatch's own score counts them. Team deathmatch's rating score
+        (`bnb.league.tournament.kill_share_scored`)."""
         rows = self.rollout.carry["controllers"][SEAT].statistics.double().cpu()
-        kills = rows[:, STATISTICS.index("kills")].reshape(
+        deaths = rows[:, STATISTICS.index("deaths")].reshape(
             self.config.blocks, 2, self.config.block_environments
         )
-        first, both = kills[:, 0], kills.sum(1)
+        first, both = deaths[:, 1], deaths.sum(1)  # the first player's points: its foe's deaths
         share = torch.where(both > 0.0, first / both.clamp_min(1.0), 0.5)
         score = share.sum(-1)
         games = torch.full_like(score, float(self.config.block_environments))

@@ -95,8 +95,8 @@ class Options:
     agent1: pathlib.Path | None = None  # a policy file for team 1
     scripted0: Literal["scripted", "scripted_agent"] = "scripted_agent"  # team 0 without an agent
     scripted1: Literal["scripted", "scripted_agent"] = "scripted_agent"  # the agent or the chaser
-    doctrine0: Literal["r9m2", "r9"] = "r9m2"  # team 0's scripted agent's (sides.DOCTRINES)
-    doctrine1: Literal["r9m2", "r9"] = "r9m2"  # team 1's (r9: the training's stored one)
+    doctrine0: Literal["r9m3", "r9m2", "r9"] = "r9m3"  # team 0's scripted agent's (sides.DOCTRINES)
+    doctrine1: Literal["r9m3", "r9m2", "r9"] = "r9m3"  # team 1's (r9: the training's stored one)
     fps: bool = True  # the frame-rate readout in the top bar (F4 toggles it)
     temperature: float = 1.0  # the agents' sampling temperature
     replay: pathlib.Path | None = None  # open this replay instead of a match

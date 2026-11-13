@@ -191,13 +191,14 @@ Choosing a map takes its fleet size, fields and lineup (and a saved map's mode a
 (0 to 64), the lineup (a dropdown per
 slot of the map's ship types, the same for both teams; **Default** alternates Yongma and
 Jujak, or a set's first two types where it has not both; the map starts at **Real
-scale**), fog, the seed, and each side's controller: **Scripted agent r9m2** (the default:
+scale**), fog, the seed, and each side's controller: **Scripted agent r9m3** (the default:
 the scripted agent, `bnb.controllers.scripted.Scripted`:
 it plays the mode's objectives, remembers each enemy it saw and dead reckons it while
-hidden; r9m2 flies r9 with the maneuver doctrine elements and the team-gated duel extension,
-`src/bnb/play/doctrines/r9m2.json`, from maneuvers-2's `champion2.json`), **Scripted agent
-r9** (the stored doctrine of training, the BC teacher and the ratings' anchor,
-`scripted_doctrines.json`;
+hidden; r9m3 flies r9m2 with the Frontline lock-aware goal, `src/bnb/play/doctrines/r9m3.json`),
+**Scripted agent r9m2** (r9 with the maneuver doctrine elements and the team-gated duel
+extension, `src/bnb/play/doctrines/r9m2.json`, from maneuvers-2's `champion2.json`),
+**Scripted agent r9** (the stored doctrine of training, the BC teacher and the ratings'
+anchor, `scripted_doctrines.json`, with the lock-aware goal since 2026-11-13;
 `--doctrine0 r9` / `--doctrine1 r9`; a doctrine applies to the ship types it holds one for,
 the Yongma and the Jujak), **Chaser** (`--scripted0 scripted`: it turns toward the nearest visible enemy and
 fires, and reads no zones) or a trained agent. The scripted agent and the chaser need their

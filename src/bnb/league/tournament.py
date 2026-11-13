@@ -142,7 +142,8 @@ def _connected(allowed: torch.Tensor, anchor: int) -> bool:
 
 def kill_share_scored(game: GameConfig) -> bool:
     """Whether a game is rated by kill share (the author, 2026-11-13): team deathmatch, each
-    game scored by its kills over both sides' (`Arena.kill_shares`), a fractional outcome
+    game scored by the enemy's deaths over both sides' (any cause, as the mode's score
+    counts them: `Arena.kill_shares`), a fractional outcome
     the Bradley-Terry fit takes as it takes a draw's half. Elimination and frontline are
     rated on the match's win, draw or loss."""
     return game.mode == TEAM_DEATHMATCH

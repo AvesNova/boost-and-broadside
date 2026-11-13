@@ -81,12 +81,14 @@ CONTROLLERS = ("scripted", "scripted_agent", "agent")  # a SideSetup's controlle
 # with the maneuver doctrine elements and the team-gated duel extension
 # (docs/rewrite/sections/maneuvers-2, `champion2.json`; its scripted parameters are r9's);
 # r9 is the training's and the league's stored doctrine (`scripted_doctrines.json`), which
-# the play shell's choice leaves alone.
+# the play shell's choice leaves alone. r9m3, the default since 2026-11-13, is r9m2 with
+# the Frontline lock-aware goal (lock_press 1: docs/rewrite/sections/lethality, round 10).
 DOCTRINES = {
+    "r9m3": pathlib.Path(__file__).with_name("doctrines") / "r9m3.json",
     "r9m2": pathlib.Path(__file__).with_name("doctrines") / "r9m2.json",
     "r9": scripted_doctrine.DOCTRINES,
 }
-DEFAULT_DOCTRINE = "r9m2"
+DEFAULT_DOCTRINE = "r9m3"
 
 # The play shell's scripted agent fires at aim errors this many times wider than the trained
 # defaults' (playtesting: more, riskier shots than the tuned agent takes). The window is in

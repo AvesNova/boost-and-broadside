@@ -4,8 +4,8 @@ included), and its controller (you, scripted, the scripted agent and its doctrin
 agent's name). In Frontline a team's section opens with its next respawn wave's countdown:
 the player's own team's only while they fly a ship (the enemy's clock is hidden from them,
 as from the agents), both teams' while they watch. Clicking a row selects its ship. A
-team's controller is changed here: the scripted chaser, the scripted agent flying r9m2 (the
-default) or r9 (`bnb.play.sides.DOCTRINES`), or one of the local runs' policies, and an
+team's controller is changed here: the scripted chaser, the scripted agent flying r9m3 (the
+default), r9m2 or r9 (`bnb.play.sides.DOCTRINES`), or one of the local runs' policies, and an
 agent's sampling temperature. The card is wide enough for the longest
 ship name (`width`), whose column both teams share, so their bars line up."""
 
@@ -67,8 +67,8 @@ def controller_combo(
     controls.record(name)
     tooltip(
         f"Who controls {TEAM_NAMES[team]}: the scripted chaser, the scripted agent (it "
-        "remembers the enemies it saw; r9m2 is r9 with the maneuver doctrine elements, r9 "
-        "the training's doctrine) or a trained agent"
+        "remembers the enemies it saw; r9m2 is r9 with the maneuver doctrine elements, r9m3 "
+        "r9m2 with the Frontline lock-aware goal, r9 the training's doctrine) or a trained agent"
     )
     if opened:
         for choice, label in SCRIPTED_CHOICES:
