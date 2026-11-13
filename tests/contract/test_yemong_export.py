@@ -16,6 +16,7 @@ from bnb.controllers.scripted import Chaser
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
 from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
+from bnb.models.yemong.state_code import SPREADS
 
 # The code under test draws from torch's default generator (model initialisation, the
 # rollout, the scripted opponents): each test runs with it seeded and restored.
@@ -113,8 +114,27 @@ def test_yemong_step_exports_to_onnx(tmp_path, settings):
     with torch.no_grad():
         want = step(*args)
     assert len(got) == len(want)
-    for g, w in zip(got, want):
+    carry_paths = [_pytree.keystr(path) for path, _ in _pytree.tree_flatten_with_path(carry)[0]]
+    labels = ["policy_logits", "values", "outcome", *carry_paths]
+    for label, g, w in zip(labels, got, want, strict=True):
         if w.is_floating_point():
-            np.testing.assert_allclose(g, w.numpy(), rtol=1e-4, atol=1e-4)
+            error = np.abs(g - w.numpy())
+            allowed = _absolute_tolerance(label, w) + 1e-4 * np.abs(w.numpy())
+            assert (error <= allowed).all(), (label, np.argwhere(error > allowed).tolist())
         else:
-            np.testing.assert_array_equal(g, w.numpy())
+            np.testing.assert_array_equal(g, w.numpy(), err_msg=label)
+
+
+VELOCITY_COVARIANCE = slice(SPREADS.index("velocity_xx"), SPREADS.index("velocity_yy") + 1)
+
+
+def _absolute_tolerance(label: str, want: torch.Tensor) -> np.ndarray | float:
+    """1e-4, but for a belief's velocity covariance (xx, xy, yy) also 1e-5 of the row's
+    largest entry: `codes.velocity_decode` makes yy as (2 (v1 + v2) - v0) / 3, a difference
+    of terms the size of xx, so a float32 rounding of a large xx shows in a small yy."""
+    if not label.endswith(".belief.spreads"):
+        return 1e-4
+    tolerance = np.full(want.shape, 1e-4, dtype=np.float32)
+    block = want[..., VELOCITY_COVARIANCE].abs().amax(-1, keepdim=True).numpy()
+    tolerance[..., VELOCITY_COVARIANCE] += 1e-5 * block
+    return tolerance

@@ -38,7 +38,33 @@ def random_actions(
 
 
 def lively(config: GameConfig, **rules):
-    return without_zone_floors(api.rules_of(config, **{**LIVELY_RULES, **rules}))
+    return lively_edits(api.rules_of(config, **{**LIVELY_RULES, **rules}))
+
+
+def lively_edits(rules):
+    """Built rules fitted to the lively cases: Frontline's zone floors off and elimination's
+    boundary schedule fitted to the short clock."""
+    return short_shrink(without_zone_floors(rules))
+
+
+def short_shrink(rules):
+    """The rules with elimination's boundary schedule fitted to a lively clock: the game's
+    hold (18 s) and lead (8 s) outlast its 6 s, which would collapse the boundary past the
+    centre at the first tick and hurt every ship on every tick from then (no recharge, and
+    every tick's damage level a sum of cancelling boundary terms). Here it holds for 40% of
+    the clock and reaches its end 20% before it: a hold, a shrink and an end before the
+    clock, as in a full-length match."""
+    live = {}
+    for index, pool in enumerate(rules.pools):
+        seconds = pool.episode_ticks * rules.tick_length
+        mode = pool.mode
+        if (
+            mode.name == "elimination"
+            and seconds < mode.shrink_hold_seconds + mode.shrink_end_lead_seconds
+        ):
+            live[f"pool{index}.mode.shrink_hold_seconds"] = 0.4 * seconds
+            live[f"pool{index}.mode.shrink_end_lead_seconds"] = 0.2 * seconds
+    return tuning.with_live(rules, live) if live else rules
 
 
 def without_zone_floors(rules):

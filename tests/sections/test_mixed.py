@@ -55,7 +55,7 @@ def _pools(share: float = 0.25, names=GAMES) -> tuple[Pool, ...]:
 
 def _mixed(per_game: int):
     pools = _pools()
-    rules = cases.without_zone_floors(
+    rules = cases.lively_edits(
         api.rules_of(BASE, pools, per_game * len(pools), **cases.LIVELY_RULES)
     )
     alone = [cases.lively(pool_game(BASE, pool)) for pool in pools]
@@ -197,7 +197,7 @@ def _against_alone(
     steps from the mixed batch's previous state, so a tolerance is one tick's, not
     amplified by play. Returns what happened."""
     B = per_game * len(pools)
-    rules = cases.without_zone_floors(api.rules_of(BASE, pools, B, **cases.LIVELY_RULES))
+    rules = cases.lively_edits(api.rules_of(BASE, pools, B, **cases.LIVELY_RULES))
     alone = [cases.lively(pool_game(BASE, pool)) for pool in pools]
     bounds = [(g * per_game, (g + 1) * per_game) for g in range(len(pools))]
     N, types = rules.num_ships, cases.LIVELY_TYPES

@@ -323,8 +323,15 @@ cut; where they differ, this section and the code win.
 
   Times are in seconds.
 - **Field columns:** x, y, radius, band_width, level.
-- **Global columns:** episode_progress, arena_radius, fogged, reset, then the mode's
-  columns (see the modes section below).
+- **Global columns:** episode_progress, arena_radius, fogged, reset, boundary_fraction,
+  boundary_time_to_zero, then the mode's columns (see the modes section below):
+  mode_team_deathmatch, mode_frontline, mode_elimination, score_own, score_enemy,
+  score_target, front, front_threshold, next_wave_own. Obs schema still 3 (policy files
+  record their columns).
+  - (game v16) `boundary_fraction`: the boundary's radius over the arena radius (1 where
+    it does not shrink; elimination's closing boundary, clamped at 0 once it has passed
+    radius 0); `boundary_time_to_zero`: the seconds until it reaches radius 0 (0 after,
+    and where it does not shrink).
 - **Fog of war:**
   - per environment, `Match.fogged`, set at reset;
   - `Pool.fog_share` (default 1.0) chooses the fogged share of each pool, as a fixed
@@ -390,6 +397,13 @@ cut; where they differ, this section and the code win.
   - **`Events` (schema 4, 2026-11-12)**: the head-on class split in two, so four classes
     (`ASPECTS`: mutual head-on under 10 degrees, offset head-on to 45, flank to 135,
     tail); `enemy_damage_by_aspect` is (B, N, 4). The game's numbers are unchanged.
+  - **`Events` (schema 5, game v17, 2026-11-13)** gains `win_loss` (B, 2) float: team
+    0's weights of a win and of a loss where `done`, zero elsewhere (a draw is the rest,
+    1 - win - loss; team 1's is flipped). Team deathmatch's is its kill share
+    `(share, 1 - share)`, the other modes' the result one-hot
+    (`bnb.game.modes.phase.win_loss`). The outcome reward and the outcome head's
+    targets (`critic.final_outcome`) read it through `Trajectory.win_loss`; `result`
+    stays the win rates' and the tallies'.
   - **`REWARD_LEVELS`** (`bnb.contracts.trajectory`): damage, kill_death,
     objective_progress, objective, outcome. `Trajectory.reward` is
     `(L, R, S, len(REWARD_LEVELS))`, per level and weighted.
@@ -401,6 +415,14 @@ cut; where they differ, this section and the code win.
     `pool_game(config, pool)` gives a pool's game; `environment_multiple(pools)` the batch
     size multiple a lineup needs (64 for the training mix). The `GameConfig` keeps the
     shared sizes and the pools' defaults.
+  - **Map-size sampling (game v17, 2026-11-13):** `Pool.arena_scale` (`ArenaScale`:
+    sigma, low, high; None plays the pool's radius every episode, as evaluation, ratings
+    and play do) draws each environment's arena scale at every reset, log-normal about 1
+    and truncated to [low, high] by the inverse CDF of one uniform
+    (`bnb.game.layout.draw_arena_scale`). The state keeps it as `Match.arena_scale` (B,)
+    (1 where the pool does not sample); the episode's arena radius is the pool's radius
+    times it, at least the mode's minimum (`bnb.game.layout.sized`). Training samples by
+    default (`TrainConfig.arena_scale`).
   - **`Rules.pools`** (a tuple of `PoolRules`: environments, mode, arena radius, episode
     and respawn ticks) replaces `Rules.mode`, `arena_radius`, `episode_ticks` and
     `respawn_ticks`. Adjacent pools of one game merge; without pools, one game covers the

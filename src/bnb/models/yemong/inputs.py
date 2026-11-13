@@ -248,7 +248,8 @@ def accelerations(
     )
     believed_change = torch.cat([torch.zeros_like(observed[..., :own, :]), believed_change], -2)
     believed_valid = torch.cat([torch.zeros_like(visible[..., :own]), believed_valid], -1)
-    valid = torch.where(visible, column["acceleration_valid"] > 0.5, believed_valid)
+    # a select written as logic: ONNX Runtime has no Where on booleans
+    valid = (visible & (column["acceleration_valid"] > 0.5)) | (~visible & believed_valid)
     change = torch.where(visible[..., None], observed, believed_change)
     velocity, heading = means[..., 2:4], means[..., 4]
     speed = torch.linalg.vector_norm(velocity, dim=-1)

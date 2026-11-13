@@ -841,7 +841,7 @@ class Yemong(nn.Module):
         decayed = held.to(dtype) * math.exp(-self.tick_length / self.config.extrapolation_decay)
         hidden_valid = ~visible & held_valid & accelerations.valid
         source = torch.where(visible[..., None], current, decayed)
-        valid = torch.where(visible, accelerations.valid, hidden_valid)
+        valid = (visible & accelerations.valid) | hidden_valid  # no boolean Where in ONNX Runtime
         rates = Rates(
             valid=valid,
             acceleration=from_frame(source[..., 0:2], unit_x, unit_y),

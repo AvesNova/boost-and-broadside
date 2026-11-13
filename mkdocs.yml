@@ -123,7 +123,14 @@ nav:
           - The ship-type tournament: explanation/game/real-scale-tournament.md
           - Balancing the real-scale set: explanation/game/real-scale-balance.md
           - Pacing the real-scale fight: explanation/game/real-scale-pacing.md
-          - Case studies of the trade-offs: explanation/game/case-studies.md
+          - Case studies of the trade-offs:
+              - explanation/game/case-studies.md
+              - Sensitivity of every ship knob: explanation/game/case-studies/sensitivity.md
+              - "Sensitivity run: guns": explanation/game/case-studies/sensitivity-guns/report.md
+              - "Sensitivity run: armour and body": explanation/game/case-studies/sensitivity-armour/report.md
+              - "Sensitivity run: flight and store": explanation/game/case-studies/sensitivity-flight/report.md
+              - "Sensitivity run: steep values in small steps": explanation/game/case-studies/sensitivity-fine/report.md
+              - "Sensitivity run: pairs": explanation/game/case-studies/sensitivity-pairs/report.md
           - Designing ship types: explanation/game/ship-design.md
           - "Runbook: a ship-design search": explanation/game/ship-design/runbook.md
           - "Two archetypes (draft)": explanation/game/ship-design/archetypes.md

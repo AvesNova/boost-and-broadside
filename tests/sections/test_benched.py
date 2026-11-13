@@ -68,7 +68,7 @@ def _mixed_rules():
         )
         for name, game in ((name, cases.MODES[name]) for name in GAMES)
     )
-    return cases.without_zone_floors(
+    return cases.lively_edits(
         api.rules_of(cases.MODES["team_deathmatch"], pools, BATCH, **cases.LIVELY_RULES)
     )
 

@@ -56,6 +56,7 @@ def _expected(batch: int) -> dict:
             objective_progress=(floats, (B, N)),
             objective=(floats, (B, N)),
             result=(ints, (B,)),
+            win_loss=(floats, (B, 2)),  # a win's and a loss's weight
             enemy_damage_by_aspect=(floats, (B, N, len(ASPECTS))),
             kill_aspect=(ints, (B, N)),
         ),
