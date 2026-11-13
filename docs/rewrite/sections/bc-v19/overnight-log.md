@@ -233,3 +233,25 @@ This log records the changes and decisions made while the author was away, with 
 - **Deathmatch, averaged policy, kill-share scale:**
   - 997 at 10M, 1082 at 30M, 1142 at 55M, 1182 at 75M, 1205 at 95M, 1210 at 115M, 1204 at 145M, 1204 at 150M.
   - Like elimination, it has plateaued since about 100M. Frontline is the only mode still climbing.
+
+## 06:50 — the author's question: why is deathmatch Elo about 1200 when v2.1 reached about 2200?
+
+**What the data show (rl-v20 at about 160M):**
+
+1. **Deathmatch gets a 4–5× smaller advantage.** Mean |advantage| summed over the levels:
+
+   | mode | summed mean \|advantage\| | the largest part |
+   |---|---|---|
+   | deathmatch | 0.011 | outcome 0.0038 |
+   | frontline | 0.054 | objective 0.022, outcome 0.018 |
+   | elimination | 0.041 | outcome 0.035 |
+
+   One return scale normalises all modes, so frontline and elimination dominate the policy gradient. The cause is the outcome level. Since b2bea713, deathmatch's outcome is the kill share (2·share − 1), which sits near 0 in even games. v2.1 used a ±1 win/loss.
+2. **The rating scale is compressed.** The 145M averaged policy took 76.6% of the kills against Baekho, which is +206 on the kill-share scale. On win/loss, a policy that takes 77% of the kills would win most games and rate far higher. So the kill-share number and v2.1's win/loss deathmatch Elo aren't comparable.
+
+**Experiments, each from bc-v20's averaged policy:**
+
+- **E2 `rl-dm`:** deathmatch only, the same settings, 72 updates (about 75M). It tests whether deathmatch learns when not crowded out. Started 06:50. The rl-v20 extension was stopped at update 166 (172M; checkpoints kept) to free the GPU. Entropy had fallen to 0.4 by then, after 0.57 at update 154.
+- **E1 (agent):** a rating switch, `--deathmatch-score win_loss`, so deathmatch can also be rated as v2.1 did and matched with it.
+- **E3 (agent, then the GPU):** a training switch for deathmatch's outcome, kill lead as win/loss, and a mixed run with it.
+- **Attention shares (agent):** the attention mass to self, allies, enemies, zones, fields and the super token, by mode, for the BC final and RL at 150M.
