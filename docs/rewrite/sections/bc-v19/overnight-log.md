@@ -171,3 +171,18 @@ This log records the changes and decisions made while the author was away, with 
 - **The laptop's live Elo** of the averaged policy at 10M: deathmatch 999 ± 25, elimination 953 ± 25, frontline 1094 ± 26.
 - **Combat rose with RL:** deathmatch hits per game went from 417 to 927 and frontline from 569 to 1061 by 12M. That is the opposite of the failed old-game RL check, which learned to stop fighting.
 - **Entropy** fell slowly from 1.44 to 1.32. KL is 0.006 and the clip fraction 0.06.
+
+## 05:28 — rl-v20 at 70M: `rating_drop` judged noise near the ceiling; deathmatch averaging lags
+
+- **The laptop's live Elo** of the averaged policy against Baekho (1000):
+
+  | step | frontline | elimination | deathmatch |
+  |---|---|---|---|
+  | 30M | — | 1252 | 1082 |
+  | 35M | 1739 | 1329 | 1097 |
+  | 45M | 1946 | 1428 | 1116 |
+  | 55M | **2110** | **1480** | **1142** |
+
+- **`rating_drop`:** the run's own frontline rating of the live policy fell from about 1966 to about 1760. Its error is ±130–180, because the live policy wins almost every game against Baekho, which leaves the rating poorly determined. The laptop's frontline rating of the averaged policy rose over the same stretch. I judged it noise and am not acting on it.
+- **To watch:** in deathmatch the averaged policy, 1142 on the laptop, lags the live policy, about 1880 in the run's lanes, far more than in the other modes. I'll rate the final live and averaged policies side by side to see whether averaging costs deathmatch strength.
+- **Health:** entropy fell from 1.32 to 1.11 and KL is 0.008. Advantage shares: outcome 0.44, objective 0.29, objective progress 0.11, kill/death 0.11, damage 0.06.
