@@ -1,0 +1,2355 @@
+[
+ {
+  "name": "Jd1.35 Yl1.2 Ydmg1.1 Ysh1.0 Ypow1.15 Ydive1.0 Jf1.5 | g0.7",
+  "energy": {
+   "max_lift_coefficient": 1.2,
+   "hit_damage": 1.1,
+   "dive_exchange_scale": 1.0,
+   "engine_power": 1.15,
+   "max_shield": 1.0
+  },
+  "turn": {
+   "induced_drag_scale": 1.35,
+   "head_on_fraction_scale": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "strength": 0.89,
+    "turn_exponent": 1.86,
+    "climb_exponent": 0.0,
+    "speed_exponent": 0.0,
+    "range_exponent": 0.0,
+    "in_advantage": [
+     1.3,
+     0.0972
+    ],
+    "fight_in_gun_range": [
+     3.01,
+     0.127
+    ],
+    "extend": 0.979,
+    "extend_in_stall_angle": [
+     2.2,
+     0.225
+    ],
+    "engage_in_energy_ratio": [
+     0.623,
+     0.0305
+    ],
+    "engage_in_store_fraction": [
+     0.149,
+     0.205
+    ],
+    "slash": 0.874,
+    "slash_in_gun_range": [
+     2.76,
+     0.236
+    ],
+    "bleed": 0.0,
+    "bleed_in_corner_speed": [
+     1.45,
+     0.111
+    ],
+    "bleed_in_stall_angle": [
+     2.0,
+     0.197
+    ],
+    "lag": 0.129,
+    "lag_in_gun_range": 0.502,
+    "deny": 0.0224,
+    "deny_in_stall_angle": [
+     0.807,
+     0.179
+    ],
+    "deny_in_gun_range": [
+     2.94,
+     0.232
+    ],
+    "deny_angle": 0.58,
+    "lead_turn": 0.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.2
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.3
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "yoyo": 0.0,
+    "yoyo_after_seconds": 30.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_ease": 0.4,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "brake": 0.0,
+    "brake_in_stall_angle": [
+     1.5,
+     0.2
+    ],
+    "brake_in_gun_range": [
+     1.0,
+     0.2
+    ],
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_in_lift_ratio": [
+     0.001,
+     0.05
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_crowd_in_gun_range": [
+     3.0,
+     0.1
+    ],
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     1.0,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   },
+   "turn": {
+    "strength": 1.0,
+    "turn_exponent": -0.385,
+    "climb_exponent": 0.0,
+    "speed_exponent": 0.0,
+    "range_exponent": 0.0,
+    "in_advantage": [
+     1.68,
+     0.0959
+    ],
+    "fight_in_gun_range": [
+     2.19,
+     0.132
+    ],
+    "extend": 0.252,
+    "extend_in_stall_angle": [
+     5.17,
+     0.158
+    ],
+    "engage_in_energy_ratio": [
+     0.755,
+     0.0347
+    ],
+    "engage_in_store_fraction": [
+     0.0559,
+     0.319
+    ],
+    "slash": 0.0491,
+    "slash_in_gun_range": [
+     2.46,
+     0.231
+    ],
+    "bleed": 0.816,
+    "bleed_in_corner_speed": [
+     1.59,
+     0.058
+    ],
+    "bleed_in_stall_angle": [
+     1.72,
+     0.175
+    ],
+    "lag": 0.305,
+    "lag_in_gun_range": 0.268,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389,
+    "lead_turn": 0.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.2
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.3
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "yoyo": 0.0,
+    "yoyo_after_seconds": 30.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_ease": 0.4,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "brake": 0.0,
+    "brake_in_stall_angle": [
+     1.5,
+     0.2
+    ],
+    "brake_in_gun_range": [
+     1.0,
+     0.2
+    ],
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_in_lift_ratio": [
+     0.001,
+     0.05
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_crowd_in_gun_range": [
+     3.0,
+     0.1
+    ],
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.7,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   }
+  },
+  "parameters": {
+   "0": 0.010579757666730189,
+   "1": 0.17182620797624332,
+   "2": 0.07750800789689066,
+   "3": 0.3276143259119253,
+   "4": 0.3863213976504908,
+   "5": 0.2665820742397608,
+   "6": 2.613390737407157,
+   "7": 0.03432460185065461,
+   "8": 7.22251445552065,
+   "9": 0.28975274511405685,
+   "10": 0.21008310411721529,
+   "11": 0.15992924332533454,
+   "12": 1.0078719785543524,
+   "13": 0.24343089169103846,
+   "14": 1.0364160635690995,
+   "15": 0.127,
+   "16": 4.777758400400022,
+   "17": 2.2799521013448762,
+   "18": 0.0554,
+   "19": 0.52,
+   "20": 0.0,
+   "21": 1.0,
+   "22": 0.29434785240590305,
+   "23": 5.12,
+   "24": 0.529,
+   "25": 0.0692,
+   "26": 0.387,
+   "27": 2.84,
+   "28": 0.252,
+   "29": 1.757881643736857,
+   "30": 3.445244924597663,
+   "31": 0.202,
+   "32": 4.1,
+   "33": 0.5099354183085596,
+   "34": 0.11324053620778331,
+   "35": 27.74650505080631,
+   "36": 0.29180213111069536,
+   "37": 0.2692698743208903,
+   "38": 4.992022598250429,
+   "39": 0.23460271081548606,
+   "40": 4.951923741514554,
+   "41": 0.33417843225634153,
+   "42": 0.20033174480605445,
+   "43": 14.1,
+   "44": 3.5,
+   "45": 0.263,
+   "46": 6.13,
+   "47": 0.284,
+   "48": 0.0605,
+   "49": 0.0
+  }
+ },
+ {
+  "name": "Jd1.35 Yl1.2 Ydmg0.9 Ysh1.0 Ypow1.15 Ydive1.0 Jf1.5 | g0.7",
+  "energy": {
+   "max_lift_coefficient": 1.2,
+   "hit_damage": 0.9,
+   "dive_exchange_scale": 1.0,
+   "engine_power": 1.15,
+   "max_shield": 1.0
+  },
+  "turn": {
+   "induced_drag_scale": 1.35,
+   "head_on_fraction_scale": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "strength": 0.89,
+    "turn_exponent": 1.86,
+    "climb_exponent": 0.0,
+    "speed_exponent": 0.0,
+    "range_exponent": 0.0,
+    "in_advantage": [
+     1.3,
+     0.0972
+    ],
+    "fight_in_gun_range": [
+     3.01,
+     0.127
+    ],
+    "extend": 0.979,
+    "extend_in_stall_angle": [
+     2.2,
+     0.225
+    ],
+    "engage_in_energy_ratio": [
+     0.623,
+     0.0305
+    ],
+    "engage_in_store_fraction": [
+     0.149,
+     0.205
+    ],
+    "slash": 0.874,
+    "slash_in_gun_range": [
+     2.76,
+     0.236
+    ],
+    "bleed": 0.0,
+    "bleed_in_corner_speed": [
+     1.45,
+     0.111
+    ],
+    "bleed_in_stall_angle": [
+     2.0,
+     0.197
+    ],
+    "lag": 0.129,
+    "lag_in_gun_range": 0.502,
+    "deny": 0.0224,
+    "deny_in_stall_angle": [
+     0.807,
+     0.179
+    ],
+    "deny_in_gun_range": [
+     2.94,
+     0.232
+    ],
+    "deny_angle": 0.58,
+    "lead_turn": 0.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.2
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.3
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "yoyo": 0.0,
+    "yoyo_after_seconds": 30.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_ease": 0.4,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "brake": 0.0,
+    "brake_in_stall_angle": [
+     1.5,
+     0.2
+    ],
+    "brake_in_gun_range": [
+     1.0,
+     0.2
+    ],
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_in_lift_ratio": [
+     0.001,
+     0.05
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_crowd_in_gun_range": [
+     3.0,
+     0.1
+    ],
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     1.0,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   },
+   "turn": {
+    "strength": 1.0,
+    "turn_exponent": -0.385,
+    "climb_exponent": 0.0,
+    "speed_exponent": 0.0,
+    "range_exponent": 0.0,
+    "in_advantage": [
+     1.68,
+     0.0959
+    ],
+    "fight_in_gun_range": [
+     2.19,
+     0.132
+    ],
+    "extend": 0.252,
+    "extend_in_stall_angle": [
+     5.17,
+     0.158
+    ],
+    "engage_in_energy_ratio": [
+     0.755,
+     0.0347
+    ],
+    "engage_in_store_fraction": [
+     0.0559,
+     0.319
+    ],
+    "slash": 0.0491,
+    "slash_in_gun_range": [
+     2.46,
+     0.231
+    ],
+    "bleed": 0.816,
+    "bleed_in_corner_speed": [
+     1.59,
+     0.058
+    ],
+    "bleed_in_stall_angle": [
+     1.72,
+     0.175
+    ],
+    "lag": 0.305,
+    "lag_in_gun_range": 0.268,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389,
+    "lead_turn": 0.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.2
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.3
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "yoyo": 0.0,
+    "yoyo_after_seconds": 30.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_ease": 0.4,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "brake": 0.0,
+    "brake_in_stall_angle": [
+     1.5,
+     0.2
+    ],
+    "brake_in_gun_range": [
+     1.0,
+     0.2
+    ],
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_in_lift_ratio": [
+     0.001,
+     0.05
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_crowd_in_gun_range": [
+     3.0,
+     0.1
+    ],
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.7,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   }
+  },
+  "parameters": {
+   "0": 0.010579757666730189,
+   "1": 0.17182620797624332,
+   "2": 0.07750800789689066,
+   "3": 0.3276143259119253,
+   "4": 0.3863213976504908,
+   "5": 0.2665820742397608,
+   "6": 2.613390737407157,
+   "7": 0.03432460185065461,
+   "8": 7.22251445552065,
+   "9": 0.28975274511405685,
+   "10": 0.21008310411721529,
+   "11": 0.15992924332533454,
+   "12": 1.0078719785543524,
+   "13": 0.24343089169103846,
+   "14": 1.0364160635690995,
+   "15": 0.127,
+   "16": 4.777758400400022,
+   "17": 2.2799521013448762,
+   "18": 0.0554,
+   "19": 0.52,
+   "20": 0.0,
+   "21": 1.0,
+   "22": 0.29434785240590305,
+   "23": 5.12,
+   "24": 0.529,
+   "25": 0.0692,
+   "26": 0.387,
+   "27": 2.84,
+   "28": 0.252,
+   "29": 1.757881643736857,
+   "30": 3.445244924597663,
+   "31": 0.202,
+   "32": 4.1,
+   "33": 0.5099354183085596,
+   "34": 0.11324053620778331,
+   "35": 27.74650505080631,
+   "36": 0.29180213111069536,
+   "37": 0.2692698743208903,
+   "38": 4.992022598250429,
+   "39": 0.23460271081548606,
+   "40": 4.951923741514554,
+   "41": 0.33417843225634153,
+   "42": 0.20033174480605445,
+   "43": 14.1,
+   "44": 3.5,
+   "45": 0.263,
+   "46": 6.13,
+   "47": 0.284,
+   "48": 0.0605,
+   "49": 0.0
+  }
+ },
+ {
+  "name": "Jd1.35 Yl1.2 Ydmg1.1 Ysh0.8 Ypow1.15 Ydive1.0 Jf1.5 | g0.7",
+  "energy": {
+   "max_lift_coefficient": 1.2,
+   "hit_damage": 1.1,
+   "dive_exchange_scale": 1.0,
+   "engine_power": 1.15,
+   "max_shield": 0.8
+  },
+  "turn": {
+   "induced_drag_scale": 1.35,
+   "head_on_fraction_scale": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "strength": 0.89,
+    "turn_exponent": 1.86,
+    "climb_exponent": 0.0,
+    "speed_exponent": 0.0,
+    "range_exponent": 0.0,
+    "in_advantage": [
+     1.3,
+     0.0972
+    ],
+    "fight_in_gun_range": [
+     3.01,
+     0.127
+    ],
+    "extend": 0.979,
+    "extend_in_stall_angle": [
+     2.2,
+     0.225
+    ],
+    "engage_in_energy_ratio": [
+     0.623,
+     0.0305
+    ],
+    "engage_in_store_fraction": [
+     0.149,
+     0.205
+    ],
+    "slash": 0.874,
+    "slash_in_gun_range": [
+     2.76,
+     0.236
+    ],
+    "bleed": 0.0,
+    "bleed_in_corner_speed": [
+     1.45,
+     0.111
+    ],
+    "bleed_in_stall_angle": [
+     2.0,
+     0.197
+    ],
+    "lag": 0.129,
+    "lag_in_gun_range": 0.502,
+    "deny": 0.0224,
+    "deny_in_stall_angle": [
+     0.807,
+     0.179
+    ],
+    "deny_in_gun_range": [
+     2.94,
+     0.232
+    ],
+    "deny_angle": 0.58,
+    "lead_turn": 0.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.2
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.3
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "yoyo": 0.0,
+    "yoyo_after_seconds": 30.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_ease": 0.4,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "brake": 0.0,
+    "brake_in_stall_angle": [
+     1.5,
+     0.2
+    ],
+    "brake_in_gun_range": [
+     1.0,
+     0.2
+    ],
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_in_lift_ratio": [
+     0.001,
+     0.05
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_crowd_in_gun_range": [
+     3.0,
+     0.1
+    ],
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     1.0,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   },
+   "turn": {
+    "strength": 1.0,
+    "turn_exponent": -0.385,
+    "climb_exponent": 0.0,
+    "speed_exponent": 0.0,
+    "range_exponent": 0.0,
+    "in_advantage": [
+     1.68,
+     0.0959
+    ],
+    "fight_in_gun_range": [
+     2.19,
+     0.132
+    ],
+    "extend": 0.252,
+    "extend_in_stall_angle": [
+     5.17,
+     0.158
+    ],
+    "engage_in_energy_ratio": [
+     0.755,
+     0.0347
+    ],
+    "engage_in_store_fraction": [
+     0.0559,
+     0.319
+    ],
+    "slash": 0.0491,
+    "slash_in_gun_range": [
+     2.46,
+     0.231
+    ],
+    "bleed": 0.816,
+    "bleed_in_corner_speed": [
+     1.59,
+     0.058
+    ],
+    "bleed_in_stall_angle": [
+     1.72,
+     0.175
+    ],
+    "lag": 0.305,
+    "lag_in_gun_range": 0.268,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389,
+    "lead_turn": 0.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.2
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.3
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "yoyo": 0.0,
+    "yoyo_after_seconds": 30.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_ease": 0.4,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "brake": 0.0,
+    "brake_in_stall_angle": [
+     1.5,
+     0.2
+    ],
+    "brake_in_gun_range": [
+     1.0,
+     0.2
+    ],
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_in_lift_ratio": [
+     0.001,
+     0.05
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_crowd_in_gun_range": [
+     3.0,
+     0.1
+    ],
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.7,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   }
+  },
+  "parameters": {
+   "0": 0.010579757666730189,
+   "1": 0.17182620797624332,
+   "2": 0.07750800789689066,
+   "3": 0.3276143259119253,
+   "4": 0.3863213976504908,
+   "5": 0.2665820742397608,
+   "6": 2.613390737407157,
+   "7": 0.03432460185065461,
+   "8": 7.22251445552065,
+   "9": 0.28975274511405685,
+   "10": 0.21008310411721529,
+   "11": 0.15992924332533454,
+   "12": 1.0078719785543524,
+   "13": 0.24343089169103846,
+   "14": 1.0364160635690995,
+   "15": 0.127,
+   "16": 4.777758400400022,
+   "17": 2.2799521013448762,
+   "18": 0.0554,
+   "19": 0.52,
+   "20": 0.0,
+   "21": 1.0,
+   "22": 0.29434785240590305,
+   "23": 5.12,
+   "24": 0.529,
+   "25": 0.0692,
+   "26": 0.387,
+   "27": 2.84,
+   "28": 0.252,
+   "29": 1.757881643736857,
+   "30": 3.445244924597663,
+   "31": 0.202,
+   "32": 4.1,
+   "33": 0.5099354183085596,
+   "34": 0.11324053620778331,
+   "35": 27.74650505080631,
+   "36": 0.29180213111069536,
+   "37": 0.2692698743208903,
+   "38": 4.992022598250429,
+   "39": 0.23460271081548606,
+   "40": 4.951923741514554,
+   "41": 0.33417843225634153,
+   "42": 0.20033174480605445,
+   "43": 14.1,
+   "44": 3.5,
+   "45": 0.263,
+   "46": 6.13,
+   "47": 0.284,
+   "48": 0.0605,
+   "49": 0.0
+  }
+ },
+ {
+  "name": "Jd1.35 Yl1.2 Ydmg0.9 Ysh0.8 Ypow1.15 Ydive1.0 Jf1.5 | g0.7",
+  "energy": {
+   "max_lift_coefficient": 1.2,
+   "hit_damage": 0.9,
+   "dive_exchange_scale": 1.0,
+   "engine_power": 1.15,
+   "max_shield": 0.8
+  },
+  "turn": {
+   "induced_drag_scale": 1.35,
+   "head_on_fraction_scale": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "strength": 0.89,
+    "turn_exponent": 1.86,
+    "climb_exponent": 0.0,
+    "speed_exponent": 0.0,
+    "range_exponent": 0.0,
+    "in_advantage": [
+     1.3,
+     0.0972
+    ],
+    "fight_in_gun_range": [
+     3.01,
+     0.127
+    ],
+    "extend": 0.979,
+    "extend_in_stall_angle": [
+     2.2,
+     0.225
+    ],
+    "engage_in_energy_ratio": [
+     0.623,
+     0.0305
+    ],
+    "engage_in_store_fraction": [
+     0.149,
+     0.205
+    ],
+    "slash": 0.874,
+    "slash_in_gun_range": [
+     2.76,
+     0.236
+    ],
+    "bleed": 0.0,
+    "bleed_in_corner_speed": [
+     1.45,
+     0.111
+    ],
+    "bleed_in_stall_angle": [
+     2.0,
+     0.197
+    ],
+    "lag": 0.129,
+    "lag_in_gun_range": 0.502,
+    "deny": 0.0224,
+    "deny_in_stall_angle": [
+     0.807,
+     0.179
+    ],
+    "deny_in_gun_range": [
+     2.94,
+     0.232
+    ],
+    "deny_angle": 0.58,
+    "lead_turn": 0.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.2
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.3
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "yoyo": 0.0,
+    "yoyo_after_seconds": 30.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_ease": 0.4,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "brake": 0.0,
+    "brake_in_stall_angle": [
+     1.5,
+     0.2
+    ],
+    "brake_in_gun_range": [
+     1.0,
+     0.2
+    ],
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_in_lift_ratio": [
+     0.001,
+     0.05
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_crowd_in_gun_range": [
+     3.0,
+     0.1
+    ],
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     1.0,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   },
+   "turn": {
+    "strength": 1.0,
+    "turn_exponent": -0.385,
+    "climb_exponent": 0.0,
+    "speed_exponent": 0.0,
+    "range_exponent": 0.0,
+    "in_advantage": [
+     1.68,
+     0.0959
+    ],
+    "fight_in_gun_range": [
+     2.19,
+     0.132
+    ],
+    "extend": 0.252,
+    "extend_in_stall_angle": [
+     5.17,
+     0.158
+    ],
+    "engage_in_energy_ratio": [
+     0.755,
+     0.0347
+    ],
+    "engage_in_store_fraction": [
+     0.0559,
+     0.319
+    ],
+    "slash": 0.0491,
+    "slash_in_gun_range": [
+     2.46,
+     0.231
+    ],
+    "bleed": 0.816,
+    "bleed_in_corner_speed": [
+     1.59,
+     0.058
+    ],
+    "bleed_in_stall_angle": [
+     1.72,
+     0.175
+    ],
+    "lag": 0.305,
+    "lag_in_gun_range": 0.268,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389,
+    "lead_turn": 0.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.2
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.3
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "yoyo": 0.0,
+    "yoyo_after_seconds": 30.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_ease": 0.4,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "brake": 0.0,
+    "brake_in_stall_angle": [
+     1.5,
+     0.2
+    ],
+    "brake_in_gun_range": [
+     1.0,
+     0.2
+    ],
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_in_lift_ratio": [
+     0.001,
+     0.05
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_crowd_in_gun_range": [
+     3.0,
+     0.1
+    ],
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.7,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   }
+  },
+  "parameters": {
+   "0": 0.010579757666730189,
+   "1": 0.17182620797624332,
+   "2": 0.07750800789689066,
+   "3": 0.3276143259119253,
+   "4": 0.3863213976504908,
+   "5": 0.2665820742397608,
+   "6": 2.613390737407157,
+   "7": 0.03432460185065461,
+   "8": 7.22251445552065,
+   "9": 0.28975274511405685,
+   "10": 0.21008310411721529,
+   "11": 0.15992924332533454,
+   "12": 1.0078719785543524,
+   "13": 0.24343089169103846,
+   "14": 1.0364160635690995,
+   "15": 0.127,
+   "16": 4.777758400400022,
+   "17": 2.2799521013448762,
+   "18": 0.0554,
+   "19": 0.52,
+   "20": 0.0,
+   "21": 1.0,
+   "22": 0.29434785240590305,
+   "23": 5.12,
+   "24": 0.529,
+   "25": 0.0692,
+   "26": 0.387,
+   "27": 2.84,
+   "28": 0.252,
+   "29": 1.757881643736857,
+   "30": 3.445244924597663,
+   "31": 0.202,
+   "32": 4.1,
+   "33": 0.5099354183085596,
+   "34": 0.11324053620778331,
+   "35": 27.74650505080631,
+   "36": 0.29180213111069536,
+   "37": 0.2692698743208903,
+   "38": 4.992022598250429,
+   "39": 0.23460271081548606,
+   "40": 4.951923741514554,
+   "41": 0.33417843225634153,
+   "42": 0.20033174480605445,
+   "43": 14.1,
+   "44": 3.5,
+   "45": 0.263,
+   "46": 6.13,
+   "47": 0.284,
+   "48": 0.0605,
+   "49": 0.0
+  }
+ },
+ {
+  "name": "Jd1.35 Yl1.2 Ydmg0.9 Ysh0.8 Ypow1.3 Ydive1.0 Jf1.5 | g0.7",
+  "energy": {
+   "max_lift_coefficient": 1.2,
+   "hit_damage": 0.9,
+   "dive_exchange_scale": 1.0,
+   "engine_power": 1.3,
+   "max_shield": 0.8
+  },
+  "turn": {
+   "induced_drag_scale": 1.35,
+   "head_on_fraction_scale": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "strength": 0.89,
+    "turn_exponent": 1.86,
+    "climb_exponent": 0.0,
+    "speed_exponent": 0.0,
+    "range_exponent": 0.0,
+    "in_advantage": [
+     1.3,
+     0.0972
+    ],
+    "fight_in_gun_range": [
+     3.01,
+     0.127
+    ],
+    "extend": 0.979,
+    "extend_in_stall_angle": [
+     2.2,
+     0.225
+    ],
+    "engage_in_energy_ratio": [
+     0.623,
+     0.0305
+    ],
+    "engage_in_store_fraction": [
+     0.149,
+     0.205
+    ],
+    "slash": 0.874,
+    "slash_in_gun_range": [
+     2.76,
+     0.236
+    ],
+    "bleed": 0.0,
+    "bleed_in_corner_speed": [
+     1.45,
+     0.111
+    ],
+    "bleed_in_stall_angle": [
+     2.0,
+     0.197
+    ],
+    "lag": 0.129,
+    "lag_in_gun_range": 0.502,
+    "deny": 0.0224,
+    "deny_in_stall_angle": [
+     0.807,
+     0.179
+    ],
+    "deny_in_gun_range": [
+     2.94,
+     0.232
+    ],
+    "deny_angle": 0.58,
+    "lead_turn": 0.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.2
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.3
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "yoyo": 0.0,
+    "yoyo_after_seconds": 30.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_ease": 0.4,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "brake": 0.0,
+    "brake_in_stall_angle": [
+     1.5,
+     0.2
+    ],
+    "brake_in_gun_range": [
+     1.0,
+     0.2
+    ],
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_in_lift_ratio": [
+     0.001,
+     0.05
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_crowd_in_gun_range": [
+     3.0,
+     0.1
+    ],
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     1.0,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   },
+   "turn": {
+    "strength": 1.0,
+    "turn_exponent": -0.385,
+    "climb_exponent": 0.0,
+    "speed_exponent": 0.0,
+    "range_exponent": 0.0,
+    "in_advantage": [
+     1.68,
+     0.0959
+    ],
+    "fight_in_gun_range": [
+     2.19,
+     0.132
+    ],
+    "extend": 0.252,
+    "extend_in_stall_angle": [
+     5.17,
+     0.158
+    ],
+    "engage_in_energy_ratio": [
+     0.755,
+     0.0347
+    ],
+    "engage_in_store_fraction": [
+     0.0559,
+     0.319
+    ],
+    "slash": 0.0491,
+    "slash_in_gun_range": [
+     2.46,
+     0.231
+    ],
+    "bleed": 0.816,
+    "bleed_in_corner_speed": [
+     1.59,
+     0.058
+    ],
+    "bleed_in_stall_angle": [
+     1.72,
+     0.175
+    ],
+    "lag": 0.305,
+    "lag_in_gun_range": 0.268,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389,
+    "lead_turn": 0.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.2
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.3
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "yoyo": 0.0,
+    "yoyo_after_seconds": 30.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_ease": 0.4,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "brake": 0.0,
+    "brake_in_stall_angle": [
+     1.5,
+     0.2
+    ],
+    "brake_in_gun_range": [
+     1.0,
+     0.2
+    ],
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_in_lift_ratio": [
+     0.001,
+     0.05
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_crowd_in_gun_range": [
+     3.0,
+     0.1
+    ],
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.7,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   }
+  },
+  "parameters": {
+   "0": 0.010579757666730189,
+   "1": 0.17182620797624332,
+   "2": 0.07750800789689066,
+   "3": 0.3276143259119253,
+   "4": 0.3863213976504908,
+   "5": 0.2665820742397608,
+   "6": 2.613390737407157,
+   "7": 0.03432460185065461,
+   "8": 7.22251445552065,
+   "9": 0.28975274511405685,
+   "10": 0.21008310411721529,
+   "11": 0.15992924332533454,
+   "12": 1.0078719785543524,
+   "13": 0.24343089169103846,
+   "14": 1.0364160635690995,
+   "15": 0.127,
+   "16": 4.777758400400022,
+   "17": 2.2799521013448762,
+   "18": 0.0554,
+   "19": 0.52,
+   "20": 0.0,
+   "21": 1.0,
+   "22": 0.29434785240590305,
+   "23": 5.12,
+   "24": 0.529,
+   "25": 0.0692,
+   "26": 0.387,
+   "27": 2.84,
+   "28": 0.252,
+   "29": 1.757881643736857,
+   "30": 3.445244924597663,
+   "31": 0.202,
+   "32": 4.1,
+   "33": 0.5099354183085596,
+   "34": 0.11324053620778331,
+   "35": 27.74650505080631,
+   "36": 0.29180213111069536,
+   "37": 0.2692698743208903,
+   "38": 4.992022598250429,
+   "39": 0.23460271081548606,
+   "40": 4.951923741514554,
+   "41": 0.33417843225634153,
+   "42": 0.20033174480605445,
+   "43": 14.1,
+   "44": 3.5,
+   "45": 0.263,
+   "46": 6.13,
+   "47": 0.284,
+   "48": 0.0605,
+   "49": 0.0
+  }
+ },
+ {
+  "name": "Jd1.35 Yl1.2 Ydmg0.9 Ysh0.8 Ypow1.15 Ydive1.0 Jf2.0 | g0.7",
+  "energy": {
+   "max_lift_coefficient": 1.2,
+   "hit_damage": 0.9,
+   "dive_exchange_scale": 1.0,
+   "engine_power": 1.15,
+   "max_shield": 0.8
+  },
+  "turn": {
+   "induced_drag_scale": 1.35,
+   "head_on_fraction_scale": 2.0
+  },
+  "doctrine": {
+   "energy": {
+    "strength": 0.89,
+    "turn_exponent": 1.86,
+    "climb_exponent": 0.0,
+    "speed_exponent": 0.0,
+    "range_exponent": 0.0,
+    "in_advantage": [
+     1.3,
+     0.0972
+    ],
+    "fight_in_gun_range": [
+     3.01,
+     0.127
+    ],
+    "extend": 0.979,
+    "extend_in_stall_angle": [
+     2.2,
+     0.225
+    ],
+    "engage_in_energy_ratio": [
+     0.623,
+     0.0305
+    ],
+    "engage_in_store_fraction": [
+     0.149,
+     0.205
+    ],
+    "slash": 0.874,
+    "slash_in_gun_range": [
+     2.76,
+     0.236
+    ],
+    "bleed": 0.0,
+    "bleed_in_corner_speed": [
+     1.45,
+     0.111
+    ],
+    "bleed_in_stall_angle": [
+     2.0,
+     0.197
+    ],
+    "lag": 0.129,
+    "lag_in_gun_range": 0.502,
+    "deny": 0.0224,
+    "deny_in_stall_angle": [
+     0.807,
+     0.179
+    ],
+    "deny_in_gun_range": [
+     2.94,
+     0.232
+    ],
+    "deny_angle": 0.58,
+    "lead_turn": 0.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.2
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.3
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "yoyo": 0.0,
+    "yoyo_after_seconds": 30.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_ease": 0.4,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "brake": 0.0,
+    "brake_in_stall_angle": [
+     1.5,
+     0.2
+    ],
+    "brake_in_gun_range": [
+     1.0,
+     0.2
+    ],
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_in_lift_ratio": [
+     0.001,
+     0.05
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_crowd_in_gun_range": [
+     3.0,
+     0.1
+    ],
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     1.0,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   },
+   "turn": {
+    "strength": 1.0,
+    "turn_exponent": -0.385,
+    "climb_exponent": 0.0,
+    "speed_exponent": 0.0,
+    "range_exponent": 0.0,
+    "in_advantage": [
+     1.68,
+     0.0959
+    ],
+    "fight_in_gun_range": [
+     2.19,
+     0.132
+    ],
+    "extend": 0.252,
+    "extend_in_stall_angle": [
+     5.17,
+     0.158
+    ],
+    "engage_in_energy_ratio": [
+     0.755,
+     0.0347
+    ],
+    "engage_in_store_fraction": [
+     0.0559,
+     0.319
+    ],
+    "slash": 0.0491,
+    "slash_in_gun_range": [
+     2.46,
+     0.231
+    ],
+    "bleed": 0.816,
+    "bleed_in_corner_speed": [
+     1.59,
+     0.058
+    ],
+    "bleed_in_stall_angle": [
+     1.72,
+     0.175
+    ],
+    "lag": 0.305,
+    "lag_in_gun_range": 0.268,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389,
+    "lead_turn": 0.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.2
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.3
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "yoyo": 0.0,
+    "yoyo_after_seconds": 30.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_ease": 0.4,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "brake": 0.0,
+    "brake_in_stall_angle": [
+     1.5,
+     0.2
+    ],
+    "brake_in_gun_range": [
+     1.0,
+     0.2
+    ],
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_in_lift_ratio": [
+     0.001,
+     0.05
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_crowd_in_gun_range": [
+     3.0,
+     0.1
+    ],
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.7,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   }
+  },
+  "parameters": {
+   "0": 0.010579757666730189,
+   "1": 0.17182620797624332,
+   "2": 0.07750800789689066,
+   "3": 0.3276143259119253,
+   "4": 0.3863213976504908,
+   "5": 0.2665820742397608,
+   "6": 2.613390737407157,
+   "7": 0.03432460185065461,
+   "8": 7.22251445552065,
+   "9": 0.28975274511405685,
+   "10": 0.21008310411721529,
+   "11": 0.15992924332533454,
+   "12": 1.0078719785543524,
+   "13": 0.24343089169103846,
+   "14": 1.0364160635690995,
+   "15": 0.127,
+   "16": 4.777758400400022,
+   "17": 2.2799521013448762,
+   "18": 0.0554,
+   "19": 0.52,
+   "20": 0.0,
+   "21": 1.0,
+   "22": 0.29434785240590305,
+   "23": 5.12,
+   "24": 0.529,
+   "25": 0.0692,
+   "26": 0.387,
+   "27": 2.84,
+   "28": 0.252,
+   "29": 1.757881643736857,
+   "30": 3.445244924597663,
+   "31": 0.202,
+   "32": 4.1,
+   "33": 0.5099354183085596,
+   "34": 0.11324053620778331,
+   "35": 27.74650505080631,
+   "36": 0.29180213111069536,
+   "37": 0.2692698743208903,
+   "38": 4.992022598250429,
+   "39": 0.23460271081548606,
+   "40": 4.951923741514554,
+   "41": 0.33417843225634153,
+   "42": 0.20033174480605445,
+   "43": 14.1,
+   "44": 3.5,
+   "45": 0.263,
+   "46": 6.13,
+   "47": 0.284,
+   "48": 0.0605,
+   "49": 0.0
+  }
+ },
+ {
+  "name": "Jd1.35 Yl1.2 Ydmg0.9 Ysh0.8 Ypow1.15 Ydive1.0 Jf1.5 Yvis1.2 | g0.7",
+  "energy": {
+   "max_lift_coefficient": 1.2,
+   "hit_damage": 0.9,
+   "dive_exchange_scale": 1.0,
+   "engine_power": 1.15,
+   "max_shield": 0.8,
+   "vision_range_scale": 1.2
+  },
+  "turn": {
+   "induced_drag_scale": 1.35,
+   "head_on_fraction_scale": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "strength": 0.89,
+    "turn_exponent": 1.86,
+    "climb_exponent": 0.0,
+    "speed_exponent": 0.0,
+    "range_exponent": 0.0,
+    "in_advantage": [
+     1.3,
+     0.0972
+    ],
+    "fight_in_gun_range": [
+     3.01,
+     0.127
+    ],
+    "extend": 0.979,
+    "extend_in_stall_angle": [
+     2.2,
+     0.225
+    ],
+    "engage_in_energy_ratio": [
+     0.623,
+     0.0305
+    ],
+    "engage_in_store_fraction": [
+     0.149,
+     0.205
+    ],
+    "slash": 0.874,
+    "slash_in_gun_range": [
+     2.76,
+     0.236
+    ],
+    "bleed": 0.0,
+    "bleed_in_corner_speed": [
+     1.45,
+     0.111
+    ],
+    "bleed_in_stall_angle": [
+     2.0,
+     0.197
+    ],
+    "lag": 0.129,
+    "lag_in_gun_range": 0.502,
+    "deny": 0.0224,
+    "deny_in_stall_angle": [
+     0.807,
+     0.179
+    ],
+    "deny_in_gun_range": [
+     2.94,
+     0.232
+    ],
+    "deny_angle": 0.58,
+    "lead_turn": 0.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.2
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.3
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "yoyo": 0.0,
+    "yoyo_after_seconds": 30.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_ease": 0.4,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "brake": 0.0,
+    "brake_in_stall_angle": [
+     1.5,
+     0.2
+    ],
+    "brake_in_gun_range": [
+     1.0,
+     0.2
+    ],
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_in_lift_ratio": [
+     0.001,
+     0.05
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_crowd_in_gun_range": [
+     3.0,
+     0.1
+    ],
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     1.0,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   },
+   "turn": {
+    "strength": 1.0,
+    "turn_exponent": -0.385,
+    "climb_exponent": 0.0,
+    "speed_exponent": 0.0,
+    "range_exponent": 0.0,
+    "in_advantage": [
+     1.68,
+     0.0959
+    ],
+    "fight_in_gun_range": [
+     2.19,
+     0.132
+    ],
+    "extend": 0.252,
+    "extend_in_stall_angle": [
+     5.17,
+     0.158
+    ],
+    "engage_in_energy_ratio": [
+     0.755,
+     0.0347
+    ],
+    "engage_in_store_fraction": [
+     0.0559,
+     0.319
+    ],
+    "slash": 0.0491,
+    "slash_in_gun_range": [
+     2.46,
+     0.231
+    ],
+    "bleed": 0.816,
+    "bleed_in_corner_speed": [
+     1.59,
+     0.058
+    ],
+    "bleed_in_stall_angle": [
+     1.72,
+     0.175
+    ],
+    "lag": 0.305,
+    "lag_in_gun_range": 0.268,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389,
+    "lead_turn": 0.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.2
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.3
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "yoyo": 0.0,
+    "yoyo_after_seconds": 30.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_ease": 0.4,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "brake": 0.0,
+    "brake_in_stall_angle": [
+     1.5,
+     0.2
+    ],
+    "brake_in_gun_range": [
+     1.0,
+     0.2
+    ],
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_in_lift_ratio": [
+     0.001,
+     0.05
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_crowd_in_gun_range": [
+     3.0,
+     0.1
+    ],
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.7,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   }
+  },
+  "parameters": {
+   "0": 0.010579757666730189,
+   "1": 0.17182620797624332,
+   "2": 0.07750800789689066,
+   "3": 0.3276143259119253,
+   "4": 0.3863213976504908,
+   "5": 0.2665820742397608,
+   "6": 2.613390737407157,
+   "7": 0.03432460185065461,
+   "8": 7.22251445552065,
+   "9": 0.28975274511405685,
+   "10": 0.21008310411721529,
+   "11": 0.15992924332533454,
+   "12": 1.0078719785543524,
+   "13": 0.24343089169103846,
+   "14": 1.0364160635690995,
+   "15": 0.127,
+   "16": 4.777758400400022,
+   "17": 2.2799521013448762,
+   "18": 0.0554,
+   "19": 0.52,
+   "20": 0.0,
+   "21": 1.0,
+   "22": 0.29434785240590305,
+   "23": 5.12,
+   "24": 0.529,
+   "25": 0.0692,
+   "26": 0.387,
+   "27": 2.84,
+   "28": 0.252,
+   "29": 1.757881643736857,
+   "30": 3.445244924597663,
+   "31": 0.202,
+   "32": 4.1,
+   "33": 0.5099354183085596,
+   "34": 0.11324053620778331,
+   "35": 27.74650505080631,
+   "36": 0.29180213111069536,
+   "37": 0.2692698743208903,
+   "38": 4.992022598250429,
+   "39": 0.23460271081548606,
+   "40": 4.951923741514554,
+   "41": 0.33417843225634153,
+   "42": 0.20033174480605445,
+   "43": 14.1,
+   "44": 3.5,
+   "45": 0.263,
+   "46": 6.13,
+   "47": 0.284,
+   "48": 0.0605,
+   "49": 0.0
+  }
+ },
+ {
+  "name": "Jd1.35 Yl1.2 Ydmg0.9 Ysh0.8 Ypow1.3 Ydive1.2 Jf1.5 | g0.7",
+  "energy": {
+   "max_lift_coefficient": 1.2,
+   "hit_damage": 0.9,
+   "dive_exchange_scale": 1.2,
+   "engine_power": 1.3,
+   "max_shield": 0.8
+  },
+  "turn": {
+   "induced_drag_scale": 1.35,
+   "head_on_fraction_scale": 1.5
+  },
+  "doctrine": {
+   "energy": {
+    "strength": 0.89,
+    "turn_exponent": 1.86,
+    "climb_exponent": 0.0,
+    "speed_exponent": 0.0,
+    "range_exponent": 0.0,
+    "in_advantage": [
+     1.3,
+     0.0972
+    ],
+    "fight_in_gun_range": [
+     3.01,
+     0.127
+    ],
+    "extend": 0.979,
+    "extend_in_stall_angle": [
+     2.2,
+     0.225
+    ],
+    "engage_in_energy_ratio": [
+     0.623,
+     0.0305
+    ],
+    "engage_in_store_fraction": [
+     0.149,
+     0.205
+    ],
+    "slash": 0.874,
+    "slash_in_gun_range": [
+     2.76,
+     0.236
+    ],
+    "bleed": 0.0,
+    "bleed_in_corner_speed": [
+     1.45,
+     0.111
+    ],
+    "bleed_in_stall_angle": [
+     2.0,
+     0.197
+    ],
+    "lag": 0.129,
+    "lag_in_gun_range": 0.502,
+    "deny": 0.0224,
+    "deny_in_stall_angle": [
+     0.807,
+     0.179
+    ],
+    "deny_in_gun_range": [
+     2.94,
+     0.232
+    ],
+    "deny_angle": 0.58,
+    "lead_turn": 0.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.2
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.3
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "yoyo": 0.0,
+    "yoyo_after_seconds": 30.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_ease": 0.4,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "brake": 0.0,
+    "brake_in_stall_angle": [
+     1.5,
+     0.2
+    ],
+    "brake_in_gun_range": [
+     1.0,
+     0.2
+    ],
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_in_lift_ratio": [
+     0.001,
+     0.05
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_crowd_in_gun_range": [
+     3.0,
+     0.1
+    ],
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     1.0,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   },
+   "turn": {
+    "strength": 1.0,
+    "turn_exponent": -0.385,
+    "climb_exponent": 0.0,
+    "speed_exponent": 0.0,
+    "range_exponent": 0.0,
+    "in_advantage": [
+     1.68,
+     0.0959
+    ],
+    "fight_in_gun_range": [
+     2.19,
+     0.132
+    ],
+    "extend": 0.252,
+    "extend_in_stall_angle": [
+     5.17,
+     0.158
+    ],
+    "engage_in_energy_ratio": [
+     0.755,
+     0.0347
+    ],
+    "engage_in_store_fraction": [
+     0.0559,
+     0.319
+    ],
+    "slash": 0.0491,
+    "slash_in_gun_range": [
+     2.46,
+     0.231
+    ],
+    "bleed": 0.816,
+    "bleed_in_corner_speed": [
+     1.59,
+     0.058
+    ],
+    "bleed_in_stall_angle": [
+     1.72,
+     0.175
+    ],
+    "lag": 0.305,
+    "lag_in_gun_range": 0.268,
+    "deny": 0.806,
+    "deny_in_stall_angle": [
+     0.625,
+     0.177
+    ],
+    "deny_in_gun_range": [
+     3.49,
+     0.179
+    ],
+    "deny_angle": 0.389,
+    "lead_turn": 0.0,
+    "lead_turn_in_seconds": [
+     1.5,
+     0.2
+    ],
+    "lead_turn_in_crossing": [
+     0.5,
+     0.3
+    ],
+    "lead_turn_stick": 1.0,
+    "lead_turn_one_circle": 0.0,
+    "yoyo": 0.0,
+    "yoyo_after_seconds": 30.0,
+    "yoyo_phase": 1.5,
+    "yoyo_climb_seconds": 4.0,
+    "yoyo_ease": 0.4,
+    "yoyo_dive_seconds": 4.0,
+    "yoyo_low": 0.0,
+    "yoyo_to_corner_speed": 10.0,
+    "brake": 0.0,
+    "brake_in_stall_angle": [
+     1.5,
+     0.2
+    ],
+    "brake_in_gun_range": [
+     1.0,
+     0.2
+    ],
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_in_lift_ratio": [
+     0.001,
+     0.05
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_crowd_in_gun_range": [
+     3.0,
+     0.1
+    ],
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.7,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   }
+  },
+  "parameters": {
+   "0": 0.010579757666730189,
+   "1": 0.17182620797624332,
+   "2": 0.07750800789689066,
+   "3": 0.3276143259119253,
+   "4": 0.3863213976504908,
+   "5": 0.2665820742397608,
+   "6": 2.613390737407157,
+   "7": 0.03432460185065461,
+   "8": 7.22251445552065,
+   "9": 0.28975274511405685,
+   "10": 0.21008310411721529,
+   "11": 0.15992924332533454,
+   "12": 1.0078719785543524,
+   "13": 0.24343089169103846,
+   "14": 1.0364160635690995,
+   "15": 0.127,
+   "16": 4.777758400400022,
+   "17": 2.2799521013448762,
+   "18": 0.0554,
+   "19": 0.52,
+   "20": 0.0,
+   "21": 1.0,
+   "22": 0.29434785240590305,
+   "23": 5.12,
+   "24": 0.529,
+   "25": 0.0692,
+   "26": 0.387,
+   "27": 2.84,
+   "28": 0.252,
+   "29": 1.757881643736857,
+   "30": 3.445244924597663,
+   "31": 0.202,
+   "32": 4.1,
+   "33": 0.5099354183085596,
+   "34": 0.11324053620778331,
+   "35": 27.74650505080631,
+   "36": 0.29180213111069536,
+   "37": 0.2692698743208903,
+   "38": 4.992022598250429,
+   "39": 0.23460271081548606,
+   "40": 4.951923741514554,
+   "41": 0.33417843225634153,
+   "42": 0.20033174480605445,
+   "43": 14.1,
+   "44": 3.5,
+   "45": 0.263,
+   "46": 6.13,
+   "47": 0.284,
+   "48": 0.0605,
+   "49": 0.0
+  }
+ }
+]

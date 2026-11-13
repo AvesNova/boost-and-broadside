@@ -1,0 +1,122 @@
+{
+ "name": "B",
+ "yongma": {
+  "max_lift_coefficient": 1.2,
+  "hit_damage": 1.1,
+  "dive_exchange_scale": 1.2
+ },
+ "jujak": {
+  "induced_drag_scale": 1.35,
+  "head_on_fraction_scale": 1.5
+ },
+ "middle_energy": {
+  "engine_power": {
+   "set": 1369.9054400413486
+  },
+  "corner_nose_frequency": {
+   "set": 5.43267567152869
+  },
+  "zero_lift_drag": {
+   "set": 4.967039823692225e-05
+  },
+  "hit_damage": {
+   "set": 3.1348680000767293
+  },
+  "reference_bullet_speed": {
+   "set": 876.851946797867
+  },
+  "engine_power_full_store": {
+   "set": 334.9509220345242
+  },
+  "dive_exchange_scale": {
+   "set": 0.485702366028044
+  },
+  "max_shield": {
+   "set": 106.34848539421468
+  },
+  "hit_radius": {
+   "set": 10.000000121726089
+  },
+  "static_thrust": {
+   "set": 18.26384968972947
+  },
+  "max_lift_coefficient": {
+   "set": 0.005378294348868043
+  },
+  "coast_exchange_scale": {
+   "set": 5.827264883151506
+  },
+  "climb_exchange_scale": {
+   "set": 1.5299285427612306
+  },
+  "head_on_fraction_scale": {
+   "set": 1.224744871391589
+  },
+  "induced_drag_scale": {
+   "set": 3.5351737948315245
+  },
+  "explosive_share": {
+   "set": 0.25
+  }
+ },
+ "middle_turn": {
+  "engine_power": {
+   "set": 1369.9054400413486
+  },
+  "corner_nose_frequency": {
+   "set": 5.43267567152869
+  },
+  "zero_lift_drag": {
+   "set": 4.967039823692225e-05
+  },
+  "hit_damage": {
+   "set": 3.1348680000767293
+  },
+  "reference_bullet_speed": {
+   "set": 876.851946797867
+  },
+  "engine_power_full_store": {
+   "set": 334.9509220345242
+  },
+  "dive_exchange_scale": {
+   "set": 0.485702366028044
+  },
+  "max_shield": {
+   "set": 106.34848539421468
+  },
+  "hit_radius": {
+   "set": 10.000000121726089
+  },
+  "static_thrust": {
+   "set": 18.26384968972947
+  },
+  "max_lift_coefficient": {
+   "set": 0.005378294348868043
+  },
+  "coast_exchange_scale": {
+   "set": 5.827264883151506
+  },
+  "climb_exchange_scale": {
+   "set": 1.5299285427612306
+  },
+  "head_on_fraction_scale": {
+   "set": 1.224744871391589
+  },
+  "induced_drag_scale": {
+   "set": 3.5351737948315245
+  },
+  "explosive_share": {
+   "set": 0.25
+  }
+ },
+ "player": {
+  "doctrine": {
+   "turn": {
+    "duel_extend_in_shield_ratio": [
+     0.7,
+     0.1
+    ]
+   }
+  }
+ }
+}

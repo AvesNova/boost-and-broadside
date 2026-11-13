@@ -299,7 +299,65 @@ def round7() -> list[dict]:
     return out
 
 
+def arena_screen() -> list[dict]:
+    """Single levers on round 7's base at 5v5 across the map size (R 3.9 / 7.8 / 15.6 km): the
+    small map is Yongma's (0.97), the large Jujak's (0.15)."""
+    levers = [
+        ("", {}, {}),
+        (" Yvis1.2", {"vision_range_scale": 1.2}, {}),
+        (" Jvis0.85", {}, {"vision_range_scale": 0.85}),
+        (" Ydive1.0", {"dive_exchange_scale": 1.0}, {}),
+        (" Ypower1.15", {"engine_power": 1.15}, {}),
+        (" Ydrag0.85", {"zero_lift_drag": 0.85}, {}),
+        (" Yrecharge2", {"shield_recharge_rate_scale": 2.0}, {}),
+        (" Yclimb1.3", {"climb_exchange_scale": 1.3}, {}),
+        (" Jdrag1.15", {}, {"zero_lift_drag": 1.15}),
+        (" Jrecharge0.5", {}, {"shield_recharge_rate_scale": 0.5}),
+    ]
+    out = []
+    for suffix, energy_more, turn_more in levers:
+        energy, turn = card_b(damage=1.1, dive=1.2)
+        name = "base" + suffix
+        out.append(candidate(name, energy | energy_more, turn | turn_more, 0.7))
+    return out
+
+
+def card_c(damage=1.0, shield=1.0, power=1.15, dive=1.0, jf=1.5, drag=1.35, **more):
+    """Arena-screen shape: Yongma's speed (engine power) in place of the dive exchange (both
+    help Yongma on the large map; the dive costs it more there), damage and shield down for
+    the small map."""
+    energy, turn = card_b(drag=drag, damage=damage, dive=dive, jf=jf)
+    energy = energy | {"engine_power": power, "max_shield": shield} | more
+    return energy, turn
+
+
+def round8() -> list[dict]:
+    """5v5 across the map size and 1v1: speed for the large map, less damage and shield for the
+    small one."""
+    cards = [
+        dict(damage=1.1),
+        dict(damage=0.9),
+        dict(shield=0.8, damage=1.1),
+        dict(damage=0.9, shield=0.8),
+        dict(damage=0.9, shield=0.8, power=1.3),
+        dict(damage=0.9, shield=0.8, jf=2.0),
+        dict(damage=0.9, shield=0.8, vision_range_scale=1.2),
+        dict(damage=0.9, shield=0.8, power=1.3, dive=1.2),
+    ]
+    out = []
+    for c in cards:
+        k = dict(damage=1.0, shield=1.0, power=1.15, dive=1.0, jf=1.5) | c
+        name = (
+            f"Jd1.35 Yl1.2 Ydmg{k['damage']} Ysh{k['shield']} Ypow{k['power']} "
+            f"Ydive{k['dive']} Jf{k['jf']}" + (" Yvis1.2" if "vision_range_scale" in c else "")
+        )
+        out.append(candidate(name, *card_c(**c), 0.7))
+    return out
+
+
 ROUNDS = {
+    "round8": round8,
+    "arena_screen": arena_screen,
     "round7": round7,
     "round6": round6,
     "round5": round5,
