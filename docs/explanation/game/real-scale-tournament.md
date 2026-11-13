@@ -4,6 +4,10 @@ covers: [bench/ship_type_tournament.py]
 
 # The ship-type tournament
 
+> The researched types this page rates left the game on 2026-11-13; the real-scale set
+> holds Yongma, Jujak and vizia. The page and its data are kept as a record; the types'
+> research and last cards are reference data ([The real planes](real-planes.md)).
+
 Which real-scale type wins most in a deathmatch, as the scripted agent flies it. Every
 type of the [real-scale set](real-scale.md) played every other in real_scale_deathmatch:
 five ships of type A against five of type B, both teams flown by the scripted agent at

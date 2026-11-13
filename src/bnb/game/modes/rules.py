@@ -180,7 +180,7 @@ PRESETS["clover"] = GameConfig(
 # type name in the preset's set, the same for both teams (`bnb.game.api.preset_lineup`
 # gives the type indices). Kept beside the config, not in it: a policy file records its
 # game's every config field, and one without a field is another game.
-LINEUPS = {"arena": ("P-51D", "Spitfire XIV")}
+LINEUPS = {"arena": ("Yongma", "Jujak")}
 
 # Fleet-size evaluation presets (zero-shot: training is 5v5 only), of each base game:
 # `<base>_<n>v<n>_arena` keeps the base's arena, so n ships crowd it n/5 times as densely;

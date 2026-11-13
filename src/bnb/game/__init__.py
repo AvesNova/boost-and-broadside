@@ -130,7 +130,16 @@ crossing. A game's arena radius at another fleet size (`api.arena_radius_for`) f
 density rule down to its mode's minimum: team deathmatch 1000 m at map scale 1, 3000 m at
 real scale (1v1 and 2v2 real-scale deathmatch were 1878 m and 2656 m by the rule alone);
 elimination and frontline have none. No preset changes radius.
+
+Version 17 (2026-11-13): the real-scale set holds only the ships the game uses. Its 27
+researched and invented types (the P-51D, the heavy placeholder and the rest) left the
+game, their research and last cards kept as reference data (`bnb.reference.real_planes`);
+the set is Yongma, Jujak and vizia, in that order. So every real-scale preset without a
+lineup of its own (the default alternates types 0 and 1) flies Yongma and Jujak where it
+flew the P-51D and the heavy, and the arena's own lineup is Yongma and Jujak (was the P-51D
+and the Spitfire XIV). The set's rules are unchanged (the spawn speed stays 1.3 times the
+researched types' fastest stall); the standard game is unchanged.
 """
 
-VERSION = 16
-FINGERPRINT = "71982b10a86b586f"
+VERSION = 17
+FINGERPRINT = "3f79dfee0931106f"

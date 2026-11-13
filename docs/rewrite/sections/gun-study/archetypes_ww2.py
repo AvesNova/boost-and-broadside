@@ -41,7 +41,7 @@ def value(x, key):
 
 
 def row(x):
-    from bnb.game.real_scale_aircraft import AIRCRAFT
+    from bnb.reference.real_planes import AIRCRAFT
 
     by_name = {a.key: a for a in AIRCRAFT}
     key = {

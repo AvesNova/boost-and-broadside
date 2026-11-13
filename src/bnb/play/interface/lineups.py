@@ -16,7 +16,7 @@ LINEUP_PER_ROW = 5  # lineup dropdowns per row
 
 
 # The play shell's default pair of types, alternating, in a set that has both.
-DEFAULT_PAIR = ("P-51D", "Spitfire XIV")
+DEFAULT_PAIR = ("Yongma", "Jujak")
 
 
 def default_lineup(size: int, ship_set: str) -> list[int]:
@@ -68,7 +68,7 @@ def lineup_row(interface: Interface, name: str, lineup: list[int], ship_set: str
         controls,
         f"{name}/default",
         "Default",
-        "The P-51D and the Spitfire XIV alternating (else the set's first two types)",
+        "Yongma and Jujak alternating (else the set's first two types)",
     ):
         lineup[:] = default_lineup(size, ship_set)
     imgui.end_group()

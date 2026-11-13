@@ -31,7 +31,7 @@ A match ends when its clock runs out or when the win rule ends it. The clocks by
 The game presets (`bnb.game.modes.rules.PRESETS`): the training ones (5v5 at 10 fields),
 the fleet-size evaluation ones (`<base>_<n>v<n>_arena` and `_density`), and `arena`, a 2v2
 team deathmatch of the real-scale ships on a 1950 m map with no fields, where a ship killed
-spawns again on the next tick. Its lineup, one P-51D and one Spitfire XIV a team, is its
+spawns again on the next tick. Its lineup, one Yongma and one Jujak a team, is its
 own (`LINEUPS`, as type indices by `bnb.game.api.preset_lineup`); every other preset plays
 the game's default, the set's first two types alternating (`Rules.team_types`). The lineup
 is kept beside the config, not in it, because a policy file records every field of its
@@ -180,7 +180,7 @@ upper left and lower right low (-1 or -2), four combinations. Each team's two sp
 0.875 arena radii, each between a high and a low field: team 0 at 1 and 4 o'clock, team 1
 at 7 and 10, nose to the centre, with up to 150 m and 5 degrees of jitter. Turned half a
 turn, team 0's situation is team 1's exactly. Clover plays the game's default lineup
-(P-51D and Spitfire XIV).
+(Yongma and Jujak alternating).
 
 ![Clover at its start: two high (green) and two low (pink) fields, team 0's ships (blue) at the bottom and team 1's (orange) at the top, the layout turned by this match's angle](../../images/play/clover-1920.png)
 

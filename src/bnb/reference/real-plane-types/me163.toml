@@ -1,0 +1,113 @@
+# Me 163: a type of the real-scale set, its file as it stood at game v16 (the set's x2 native
+# units), kept as reference data (bnb.reference.real_planes): not a ship type since
+# 2026-11-13. [handles] as it flew, [card] the solve, [notes] each value's source.
+name = 'Me 163'
+
+[handles]
+# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
+stall_speed = 88.8
+g_limit = 7.0
+cruise_speed = 461.2
+climb_time = 92.83364083640836
+ceiling = 474804.0
+low_speed_acceleration = 12.04
+sustained_turn_rate = 0.6736970912698113
+half_lift_drag = 0.25
+nose_reversal_time = 0.31168130556860074
+dive_acceleration = 69.8096606447163
+zoom_acceleration = -34.87187540918414
+stall_angle = 0.3141592653589793
+vision_range = 3072.0
+zero_lift_drag = 5.487122060470326e-05
+hit_damage = 69.61464305006959
+explosive_share = 0.0
+fire_rate = 15.0
+muzzle_speed = 1040.0
+bullet_spread = 0.7807295657111925
+gun_range = 436.97004198524144
+bullet_drag = 0.00065
+shots_per_store = 102.91165045431447
+max_shield = 90.0
+shield_recharge_rate = 24.0
+shield_recharge_delay = 3.0
+head_on_fraction = 0.3
+head_on_angle = 0.737832313317803
+head_on_sharpness = 2.0
+arming_distance = 0.0
+hit_radius = 4.65
+core_radius = 0.0
+spawn_energy = 189921.6
+
+[card]
+# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).
+max_lift_coefficient = 0.004976260010153055
+max_acceleration = 274.67999267578125
+zero_lift_drag = 5.48712196177803e-05
+engine_power = 31900.8125
+engine_power_full_store = 6336.40185546875
+static_thrust = 116.30636596679688
+max_energy = 474804.0
+corner_nose_frequency = 12.42446517944336
+max_shield = 90.0
+hit_radius = 4.650000095367432
+core_radius = 0.0
+hit_damage = 69.61463928222656
+muzzle_speed = 1040.0
+bullet_energy_cost = 4613.705078125
+fire_rate = 15.0
+bullet_life = 0.3333333432674408
+spawn_energy = 189921.59375
+explosive_share = 0.0
+reference_bullet_speed = 1235.2393798828125
+bleed_exponent = 2.0
+induced_drag_scale = 4.303339958190918
+stall_angle_scale = 1.2000000476837158
+coast_exchange_scale = 50.853397369384766
+dive_exchange_scale = 1.6704645156860352
+climb_exchange_scale = 9.000445365905762
+vision_range_scale = 1.0
+bullet_spread_scale = 0.06506079435348511
+bullet_drag_scale = 1.2999999523162842
+shield_recharge_rate_scale = 2.0
+shield_recharge_delay_scale = 0.5
+head_on_fraction_scale = 1.0
+head_on_angle_scale = 1.0
+head_on_sharpness = 2.0
+arming_distance = 0.0
+engine_knee_scale = 1.0
+fine_stick = 0.4000000059604645
+sustained_stick = 0.75
+
+[notes]
+# Where each handle's value comes from.
+stall_speed = "estimated: stall_speed 44.4. tailless, W/S ~180 kg/m^2 at burnout; 160 km/h."
+g_limit = "estimated: g_limit 7. no published value found: the research's estimate"
+cruise_speed = "estimated: cruise_speed 230.6. sea-level maximum speed, military power: Mach-limited airframe, ~960 km/h at altitude (830 km/h)"
+climb_time = "solved for an initial charge of g x 81.3 m/s; researched (medium): climb_rate 81.3. sea-level climb, military power: Wikipedia (16000 ft/min). Paced: the climb rate 81.3 -> 325.2 m/s, x 4 (docs/explanation/game/real-scale-pacing.md)."
+ceiling = "researched (medium): service_ceiling 12100; the store g h, J/kg. recalled standard figure, not re-checked"
+low_speed_acceleration = "estimated: low_speed_acceleration 3.01. the research's point-mass model at 1.1 x stall (no propeller: no correction)"
+sustained_turn_rate = "estimated: sustained_turn_rate 19.3; degrees. the research's point-mass model (19.3 deg/s; no propeller, no correction)"
+half_lift_drag = "placeholder: the standard fighter's"
+nose_reversal_time = "estimated: roll_rate 120; the P-51D's nose reversal (a placeholder) x its roll rate 95 over this one. peak roll rate: elevons, very light"
+dive_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D. Paced: 10.9 -> 17.45 m/s^2, the paced coast exchange 13.83 plus half the P-51D's paced boost exchange (docs/explanation/game/real-scale-pacing.md)."
+zoom_acceleration = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+stall_angle = "estimated: stall_angle 18; degrees. fixed leading-edge slots give a benign stall"
+vision_range = "placeholder: the standard fighter's, scaled as the standard fighter is to the P-51D"
+zero_lift_drag = "estimated: drag_coefficient 0.016; rho C_D0 / (2 W/S) with W/S 178.6 kg/m^2 (researched (low)). very clean tailless glider-like airframe"
+hit_damage = "researched (medium): weight_of_fire 6.82; proposal: 360 per second (the P-51D's) x the weight of fire over the P-51D's 3.68 kg/s, over the fire rate. 2x Rheinmetall-Borsig MK 108 30 mm (wing_root): count x rate x projectile mass. Balanced (round 1): 66.72 -> 37.13 a shot, 667.2 -> 371.3 per second at its 10 Hz: the equal-damage rule, 360 x (its weight of fire over the P-51D's)^0.05 within 5% (the guns dominated the ratings). Centre hit (game v6): 37.13 -> 69.61, x 15/8 (the closeness's mean over a uniform impact parameter is 8/15), at the reference distance."
+explosive_share = "proposal: the default, pure kinetic"
+fire_rate = "derived: fire_rate 10; proposal: the main gun's volley rate. the Rheinmetall-Borsig MK 108 30 mm: the whole-Hz volley rate dividing 30 nearest its rate per gun"
+muzzle_speed = "researched (medium): muzzle_speed 520. the Rheinmetall-Borsig MK 108 30 mm: Wikipedia"
+bullet_spread = "estimated: dispersion 2.5; sigma = D75 / (2 x 1.665) x the muzzle speed; gun spacing ignored (nose guns, no convergence). the volley's 75% cone (mil), weight-of-fire-weighted over the gun groups, installed"
+gun_range = "the reach in the set's gun flight time (0.6 s), cruise and muzzle speed, under RANGE_DRAG (the set's drag before game v6)"
+bullet_drag = "estimated: the MK 108 30 mm, a short heavy shell at 500 m/s"
+shots_per_store = "proposal: continuous fire costs 14.5 x the initial climb charge (g x 81.3 m/s), the standard fighter's ratio: a shot costs 1153 J/kg, 1.45 s of charge"
+max_shield = "researched (medium): survivability 1; proposal: the standard 100 x (1 + 0.1 per rating step from the P-51D's 2). 1 fragile - 5 very tough: Hypergolic T-Stoff/C-Stoff propellants: leaks, hard landings or hits often meant explosion; landed on a skid. Some pilot. Balanced (round 3): 80 -> 90, the step per rating 0.2 -> 0.1: the shield's Spearman correlation with the round-2 Elo was +0.54 (the rule moves the step at |rho| >= 0.4); the survivability ratings are estimates and the step a proposal."
+shield_recharge_rate = "placeholder: the standard fighter's"
+shield_recharge_delay = "placeholder: the standard fighter's"
+head_on_fraction = "placeholder: the standard fighter's"
+head_on_angle = "placeholder: the standard fighter's"
+head_on_sharpness = "placeholder: the standard fighter's"
+arming_distance = "placeholder: the standard fighter's"
+hit_radius = "researched (good): half_span 4.65. half of the span 9.30 m"
+spawn_energy = "placeholder: the standard fighter's fraction of the store"

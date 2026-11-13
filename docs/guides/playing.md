@@ -180,17 +180,17 @@ The menu (the top bar's menu button, or Escape) pauses a live match and offers *
 **Settings** and **Quit**.
 
 **New match** chooses the mode, the map (**Standard**, **Wide**, **Real scale**: the
-[real-scale variant](../explanation/game/real-scale.md), where a metre is a metre and the 27
-researched types are late-war fighters from the P-51D to the Me 262 and a few invented
-designs (with any type a player added after them), on a
-map three times the standard one; or **Arena**: a 2v2 dogfight of a P-51D and a Spitfire
-XIV a team on a 1950 m map with no fields, a ship shot down back in the fight on the next
+[real-scale variant](../explanation/game/real-scale.md), where a metre is a metre and the
+types are Yongma, Jujak and vizia, their P-51D-derived hull (with any type a player added
+after them), on a
+map three times the standard one; or **Arena**: a 2v2 dogfight of a Yongma and a Jujak a
+team on a 1950 m map with no fields, a ship shot down back in the fight on the next
 tick, the `arena` preset in [Modes](../explanation/game/modes.md#clocks-and-presets); then
 your [saved maps](#making-and-saving-maps), each in its own mode).
 Choosing a map takes its fleet size, fields and lineup (and a saved map's mode and tuning); then the ships a side, the fields
 (0 to 64), the lineup (a dropdown per
-slot of the map's ship types, the same for both teams; **Default** alternates the P-51D and
-the Spitfire XIV, or a set's first two types where it has not both; the map starts at **Real
+slot of the map's ship types, the same for both teams; **Default** alternates Yongma and
+Jujak, or a set's first two types where it has not both; the map starts at **Real
 scale**), fog, the seed, and each side's controller: **Scripted agent r9m2** (the default:
 the scripted agent, `bnb.controllers.scripted.Scripted`:
 it plays the mode's objectives, remembers each enemy it saw and dead reckons it while
@@ -202,7 +202,7 @@ r9** (the stored doctrine of training, the BC teacher and the ratings' anchor,
 the Yongma and the Jujak), **Chaser** (`--scripted0 scripted`: it turns toward the nearest visible enemy and
 fires, and reads no zones) or a trained agent. The scripted agent and the chaser need their
 ship card's characteristics, measured once per card in a separate process (about 15 s for
-the standard set and about 2 minutes for the 27 real-scale types on a laptop CPU) and kept
+the standard set and longer for the real-scale types on a laptop CPU) and kept
 in the user's cache directory; until they are measured the side plays on as it was (in a
 new match its ships coast straight and hold their fire) and a notice says it will take
 over. An agent that runs on the GPU captures its step

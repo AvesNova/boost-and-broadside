@@ -24,7 +24,7 @@ def library(tmp_path) -> Maps:
 
 def big_sky(place: str = "user") -> Map:
     """A frontline map of the real-scale set: 3 a side, 4 fields, a 4000 m arena, a 400 s
-    match, a Spitfire XIV in every slot and a tuning (gravity, the P-51D's damage, x2)."""
+    match, a Jujak in every slot and a tuning (gravity, Yongma's damage, x2)."""
     names = api.type_names("real-scale")
     damage = list(api.default_card("real-scale")["hit_damage"])
     damage[0] = 9.0
@@ -36,18 +36,18 @@ def big_sky(place: str = "user") -> Map:
     config = GameConfig(
         3, 4, 4000.0, episode_seconds=400.0, mode="frontline", ship_set="real-scale"
     )
-    return Map("big-sky", config, (names[5],) * 3, tuning, place)
+    return Map("big-sky", config, (names[1],) * 3, tuning, place)
 
 
 def test_a_map_round_trips_with_its_lineup_and_tuning(library):
     path = library.save(big_sky())
     assert path == library.directories["user"] / "big-sky.json"
     data = json.loads(path.read_text())
-    assert data["lineup"] == ["Spitfire XIV"] * 3
-    assert data["ships"] == {"p51d": {"hit_damage": 9.0}}  # by type key, only what changed
+    assert data["lineup"] == ["Jujak"] * 3
+    assert data["ships"] == {"yongma": {"hit_damage": 9.0}}  # by type key, only what changed
     assert data["time_factor"] == 2.0 and data["rules"] == {"flight.gravity": 10.0}
     assert library.find("big-sky") == big_sky()
-    assert library.find("big-sky").lineup_types() == (5, 5, 5)
+    assert library.find("big-sky").lineup_types() == (1, 1, 1)
     assert "big-sky" in library.names() and "frontline" in library.names()
 
 
@@ -111,7 +111,8 @@ def test_a_match_becomes_a_map_with_its_tuned_clocks_in_the_config():
     )
     made = Map.of_match("duel", arena.config, arena.lineup_types(), tuning)
     assert (made.config.arena_radius, made.config.episode_seconds) == (2500.0, 300.0)
-    assert made.config.kills_per_ship == 3 and made.lineup == arena.lineup
+    # the arena's lineup (Yongma, Jujak) is the game's own: a map keeps None for it
+    assert made.config.kills_per_ship == 3 and made.lineup is None
     assert made.tuning == Tuning(rules={"flight.gravity": 10.0}, time_factor=2.0)
     setup = MatchSetup(made.config, made.lineup_types(), tuning=made.tuning)
     played = MatchLoop(setup, compiled=False)
@@ -125,7 +126,7 @@ def test_a_saved_map_is_offered_on_the_new_match_page_with_its_mode(library):
     draft = Draft(offered=offered)
     draft.choose_map("big-sky")
     assert draft.mode == "frontline" and (draft.ships_per_team, draft.fields) == (3, 4)
-    assert draft.lineup == [5, 5, 5] and draft.tuned
+    assert draft.lineup == [1, 1, 1] and draft.tuned
     setup = draft.setup()
     assert setup.config == big_sky().config and setup.tuning == big_sky().tuning
     assert Draft.of(setup, offered).map == "big-sky"  # the page opens on it again
@@ -136,7 +137,7 @@ def test_a_saved_map_is_offered_on_the_new_match_page_with_its_mode(library):
 def test_bnb_play_preset_starts_a_saved_map(library):
     library.save(big_sky())
     setup = Options(preset="big-sky").setup(library)
-    assert setup.config == big_sky().config and setup.lineup == (5, 5, 5)
+    assert setup.config == big_sky().config and setup.lineup == (1, 1, 1)
     assert setup.tuning == big_sky().tuning
     loop = MatchLoop(setup, compiled=False)
     assert loop.rules.flight.gravity == pytest.approx(4.0 * 10.0)  # x2 of the tuned 10
