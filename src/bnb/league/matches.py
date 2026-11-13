@@ -876,6 +876,22 @@ class Arena:
         rows = self.rollout.carry["controllers"][SEAT].statistics.double().cpu()
         return rows.reshape(self.config.blocks, 2, self.config.block_environments, -1).sum(2)
 
+    def kill_shares(self) -> torch.Tensor:
+        """(blocks, 3) float64 the last batch's first games scored by kill share, as
+        `play`'s (wins, ties, losses) are: (the sum of the first player's shares, 0, the
+        block's games less that sum). A game's share is its kills over both sides' kills
+        (`STATISTICS`' "kills": enemy ships killed by the side's hits), 0.5 in a game with no
+        kill. Team deathmatch's rating score (`bnb.league.tournament.kill_share_scored`)."""
+        rows = self.rollout.carry["controllers"][SEAT].statistics.double().cpu()
+        kills = rows[:, STATISTICS.index("kills")].reshape(
+            self.config.blocks, 2, self.config.block_environments
+        )
+        first, both = kills[:, 0], kills.sum(1)
+        share = torch.where(both > 0.0, first / both.clamp_min(1.0), 0.5)
+        score = share.sum(-1)
+        games = torch.full_like(score, float(self.config.block_environments))
+        return torch.stack([score, torch.zeros_like(score), games - score], -1)
+
     def _active(self, counts: list[tuple[int, int]]) -> torch.Tensor:
         """(B, 2) int32 each environment's active ships by team, from each block's (first
         player's, second player's) counts and the environment's seat."""

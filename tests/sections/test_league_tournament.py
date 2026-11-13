@@ -480,6 +480,43 @@ def test_the_aspect_statistics_split_each_rows_kills_and_hit_damage():
     assert torch.equal(damage > 0.0, column["hits"] > 0.0)
 
 
+def test_a_deathmatch_block_is_scored_by_its_games_kill_shares():
+    """Team deathmatch is rated by kill share (the author, 2026-11-13): each game's score is
+    the first player's kills over both sides' (0.5 with none), a block's result (score, 0,
+    games - score); elimination and frontline keep win, draw and loss."""
+    from bnb.contracts.config import ELIMINATION, FRONTLINE
+    from bnb.league.matches import STATISTICS
+
+    game = dataclasses.replace(GAME, arena_radius=600.0, episode_seconds=12.0)
+    assert tournament.kill_share_scored(game)
+    eliminated = dataclasses.replace(game, mode=ELIMINATION, respawn_seconds=None)
+    assert not tournament.kill_share_scored(eliminated)
+    assert not tournament.kill_share_scored(dataclasses.replace(game, mode=FRONTLINE))
+    arena = Arena([SCRIPTED, RANDOM], game, CPU, SMALL)
+    torch.manual_seed(3)
+    results = tournament.scored(arena, game, [(0, 1), (1, 0)])
+    rows = arena.rollout.carry["controllers"][SEAT].statistics.double()
+    kills = rows[:, STATISTICS.index("kills")].reshape(2, 2, SMALL.block_environments)
+    assert float(kills.sum()) > 0.0  # the test means something: games with kills
+    for block in range(2):
+        shares = [
+            0.5 if mine + theirs == 0 else mine / (mine + theirs)
+            for mine, theirs in zip(kills[block, 0].tolist(), kills[block, 1].tolist())
+        ]
+        score = sum(shares)
+        expected = [score, 0.0, SMALL.block_environments - score]
+        torch.testing.assert_close(results[block], torch.tensor(expected, dtype=torch.float64))
+    assert ((results[:, 0] >= 0.0) & (results[:, 0] <= SMALL.block_environments)).all()
+
+
+def test_a_fractional_summary_reports_the_kill_share_score():
+    summary = tournament._summary(torch.tensor([2.75, 0.0, 1.25], dtype=torch.float64))
+    assert summary["wins"] == 2.75 and summary["draws"] == 0 and summary["losses"] == 1.25
+    assert summary["score"] == pytest.approx(2.75 / 4.0)
+    whole = tournament._summary(torch.tensor([3.0, 1.0, 0.0], dtype=torch.float64))
+    assert whole["wins"] == 3 and isinstance(whole["wins"], int)
+
+
 # ---- the allocation of blocks and the allowed pairs
 
 
@@ -606,6 +643,46 @@ def test_the_tournament_recovers_a_known_field():
     )
     assert float(stderr.max()) < 30.0 and len(logged) < 40_000 // 256
     assert float(pair_games[0, 3:].sum()) == 0.0  # the scripted agent played only a and b
+    assert ((ratings - truth).abs() <= 4.0 * stderr + 1e-9).all(), (ratings, stderr)
+
+
+def _kill_shares(truth: torch.Tensor, block_games: int, generator):
+    """A batch's kill-share results drawn about the rating model: each game's share a Beta
+    draw whose mean is the first player's win probability against the second (a fractional
+    outcome with the model's expectation), a block's result (score, 0, games - score)."""
+
+    def play(matchups):
+        rows = []
+        for first, second in matchups:
+            mean = float(win_probability(truth[first], truth[second]))
+            beta = torch.distributions.Beta(
+                torch.tensor(8.0 * mean, dtype=torch.float64),
+                torch.tensor(8.0 * (1.0 - mean), dtype=torch.float64),
+            )
+            shares = beta.sample((block_games,))
+            score = float(shares.sum())
+            rows.append((score, 0.0, block_games - score))
+        return torch.tensor(rows, dtype=torch.float64)
+
+    return play
+
+
+def test_the_tournament_recovers_a_known_field_from_kill_shares():
+    """The Bradley-Terry fit takes fractional outcomes (a game's kill share) as it takes a
+    draw's half: a field whose games are scored by shares with the model's mean is
+    recovered within its standard errors, which stay finite and positive."""
+    truth = torch.tensor([0.0, 120.0, -200.0, 350.0], dtype=torch.float64)
+    names = ["scripted", "a", "b", "c"]
+    allowed = tournament.allowed_pairs(names)
+    config = tournament.TournamentConfig(
+        ArenaConfig(blocks=8, block_environments=32), target_stderr=30.0, budget=40_000
+    )
+    torch.manual_seed(5)
+    generator = torch.Generator().manual_seed(5)
+    ratings, stderr, _ = tournament.fit_field(
+        _kill_shares(truth, 32, generator), names, 0, allowed, config, lambda line: None, "test"
+    )
+    assert float(stderr.max()) < 30.0 and bool((stderr[1:] > 0.0).all())
     assert ((ratings - truth).abs() <= 4.0 * stderr + 1e-9).all(), (ratings, stderr)
 
 

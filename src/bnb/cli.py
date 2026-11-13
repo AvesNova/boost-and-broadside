@@ -23,7 +23,8 @@ from bnb.contracts.config import TEAM_DEATHMATCH
 from bnb.figures.video import VideoConfig
 
 # The rating games (`bnb.league.tournament.PRESET_NAMES`, kept here so the CLI starts
-# without torch): frontline, elimination and kill-lead team deathmatch.
+# without torch): frontline, elimination and team deathmatch, rated by kill share
+# (`bnb.league.tournament.kill_share_scored`).
 RATED_PRESETS = ("frontline", "elimination", "deathmatch")
 
 
@@ -1156,12 +1157,12 @@ def head_to_head(options: HeadToHead) -> None:
         raise SystemExit(str(error)) from error
     for row in rows:
         print(
-            f"{row['first']} against {row['second']}: {row['wins']} wins, {row['losses']} "
-            f"losses, {row['draws']} draws; score {row['score']:.3f} +- {row['stderr']:.3f}"
+            f"{row['first']} against {row['second']}: {row['wins']:g} wins, {row['losses']:g} "
+            f"losses, {row['draws']:g} draws; score {row['score']:.3f} +- {row['stderr']:.3f}"
         )
         for preset, part in row["presets"].items():
             print(
-                f"  {preset:16s} {part['wins']}-{part['losses']}-{part['draws']}, "
+                f"  {preset:16s} {part['wins']:g}-{part['losses']:g}-{part['draws']:g}, "
                 f"score {part['score']:.3f}"
             )
     # a run named by the players, never a policy directory given by its path
