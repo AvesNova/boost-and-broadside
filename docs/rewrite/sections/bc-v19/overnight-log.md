@@ -285,3 +285,29 @@ rl-v20's averaged policy rated in deathmatch on **win/loss** against Baekho, whi
   - rl-dm, deathmatch only, finishes about 07:45.
   - rl-kl, mixed with the kill-lead outcome, is trimmed to 72 updates, a matched 75M comparison with rl-v20, since the rating question is answered. It still tests whether a ±1 outcome helps deathmatch learn faster.
   - The live Elo service is unpaused.
+
+## 07:30 — attention shares (the author's diagnostic; bench/attention_shares.py, 1ac40156)
+
+Each living own ship's attention mass, in %, averaged over heads, ticks and the 4 spatial layers, with the policy against Baekho. The recomputed softmax is checked against each attention call's output: 4–5e-3 under bf16, 6e-7 in float32.
+
+| policy | mode | self | allies | enemies seen | enemies hidden | global | fields | zones (or absent-zone slots) |
+|---|---|---|---|---|---|---|---|---|
+| BC | deathmatch | 9.3 | 12.5 | **23.6** | 4.2 | 4.2 | 32.0 | (12.6) |
+| BC | elimination | 8.7 | 18.7 | 10.9 | 5.7 | 6.2 | 34.3 | (14.1) |
+| BC | frontline | 10.9 | 14.4 | 14.3 | 5.3 | 3.0 | 34.5 | 16.2 |
+| RL 150M | deathmatch | 9.5 | 15.3 | 15.3 | 5.4 | 5.2 | 33.3 | (13.3) |
+| RL 150M | elimination | 9.3 | 19.6 | 9.1 | 7.6 | 6.1 | 33.4 | (13.6) |
+| RL 150M | frontline | 8.2 | 18.4 | 10.5 | 7.5 | 3.7 | 30.0 | 20.7 |
+
+The dead-ship slots get about 1–3%. Self-play is within 2–3 points, and the two ship types within 1.
+
+**Per key:** a visible enemy and the ship itself each get about 7–11%. Fields take a third of the total, but each field gets only about 3%.
+
+**By layer:**
+- the global token peaks in layer 1 (6–12%);
+- allies peak in layer 2 (up to 29%);
+- layer 3 sends 20–31% to the zones, or to the absent-zone slots.
+
+**RL against BC:** RL attends less to visible enemies, most clearly in deathmatch (23.6% → 15.3%), and more to allies and hidden enemies in every mode.
+
+**Striking: the absent-zone slots are an attention sink.** In deathmatch and elimination, one learned token repeated in five slots takes 13–14% of the mass, about 20% in the last layer. It is probably an "attend to nothing" sink, which transformers commonly learn and use, so it isn't necessarily waste. A proposal for the author, not done: mask absent zones and give the model one explicit sink token instead, then compare with an arm.
