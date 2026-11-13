@@ -80,7 +80,7 @@ The code is one vector of softmax groups. These are its runs in order, as
 | run | groups × size | code |
 |---|---|---|
 | position | 9 × 9 | position code, period `P_pos = 26 244 m` per axis (`4 · 3⁸`; finest level 4 m), 9 levels **(v2)** |
-| velocity | 3 × 123 | velocity code, knee 50 m/s, 123 bins (81 before the x2 game), spacing 2.5 (reach `\|v\| ≤ 50(e^3.05 − 1) ≈ 1006 m/s`, thin air included) **(measure)** |
+| velocity | 3 × 99 | velocity code, knee 100 m/s, 99 bins, spacing 5: the x1 code (knee 50, spacing 2.5, 81 bins) scaled exactly by 2 (reach `\|v\| ≤ 100(e^2.45 − 1) ≈ 1059 m/s`, thin air included) **(measure)** |
 | heading | 4 × 4 | circular, period 2π, 4 colours |
 | nose_rate | 1 × 41 | scalar, ±8 rad/s **(measure)** |
 | angle_of_attack | 1 × 21 | scalar, ±2 `α_s` (the lift curve's clip; the largest `α_s` over types) |
@@ -90,7 +90,7 @@ The code is one vector of softmax groups. These are its runs in order, as
 | log_refractive_index | 1 × 21 | scalar, ±ln 2 (field levels span `n` from ½ to 2) |
 | gun_cooldown | 1 × 4 | `centres = 0, h, 2h, 3h`: bins = 1 + the largest ticks between shots over types |
 
-Width 490, 23 groups. Shield and energy are coded as fractions. The belief stores physical
+Width 544, 23 groups. Shield and energy are coded as fractions. The belief stores physical
 values, and decoding multiplies the fraction and its sigma back by the type's maximum,
 read from the ship card the model was built with.
 
@@ -227,8 +227,8 @@ Per view, the tokens are ships `0 … N−1` (rows as observed: own `S` first, t
 enemies), then the global token, then fields `0 … M−1`. Each ship row's physical state is
 the belief's (section 5), so it is truth when visible.
 
-**Ship token** (width 490 + 64 = 554):
-- the position code (81) and state code (409) of the belief means and spreads;
+**Ship token** (width 544 + 64 = 608):
+- the position code (81) and state code (463) of the belief means and spreads;
 - `team_relative` one-hot (2);
 - `ship_type` one-hot (types);
 - `alive`, `visible`, `fired`, `benched` (4; `benched` since Yemong v3);

@@ -203,7 +203,7 @@ without the hidden rows' physics `--set yemong.physics_hidden_decay=null`.
   about `|v| dt` (median 2.6 m, never near 0), so it has its own asymmetric code: 155 real
   bins above the zero and 19 below (to -0.51 m, a slow ship reversing), a bin 4.9 cm wide at
   the median move (2.5 cm at 0, 10 cm at 8.7 m). The code is 624 outputs (179 + 3 x 55 + 8
-  x 35), against the absolute code's 490. The head's last weight starts at zero and its
+  x 35), against the absolute code's 544. The head's last weight starts at zero and its
   bias at the marginal measured on scripted play (`bench/persistence_marginal.py`): per
   component the share of exact zeros and 16 quantiles of the rest, each an atom whose
   Gaussian is as wide as its gaps to its neighbours
@@ -369,7 +369,7 @@ scalars, with shield and energy as fractions of the type's maximum. Bins are abo
 | Quantity | Knee | Bound (the last real centre) | Real bins |
 |---|---|---|---|
 | position, per axis (m) | 11.9 | 26 244 (the record colour code's period, fixed) | 31 |
-| velocity, per axis (m/s) | 9.09 | 639 (twice the velocity code's reach) | 19 |
+| velocity, per axis (m/s) | 9.09 | 2118 (twice the velocity code's reach) | 23 |
 | heading (rad) | 0.160 | pi | 13 |
 | nose rate (rad/s) | 0.587 | 16 | 15 |
 | angle of attack (rad) | 0.0267 | 1.05 | 15 |
@@ -550,7 +550,7 @@ on arm 4d's line.
 
 The physics is deterministic, so a ship's change over the last tick reveals the control it
 used, and controls are sticky. The state code cannot show that change: a velocity bin is
-2.5 (1 + |v| / 50) m/s wide (17.5 m/s at 300 m/s), wider than any one-tick change from
+5 (1 + |v| / 100) m/s wide (20 m/s at 300 m/s), wider than any one-tick change from
 thrust (about 7 m/s). `YemongConfig.acceleration_inputs` (off by default) gives each ship
 row its acceleration over the last tick (`bnb.models.yemong.inputs.accelerations`):
 
