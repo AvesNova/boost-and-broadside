@@ -55,3 +55,13 @@ This log records the changes and decisions made while the author was away, with 
   - The boundary damage ramp: it is clamped.
 - **A possibly related signal:** `belief/normalised_square_error/position_metres/*` has been NaN every update.
 - **Action:** an agent is reproducing the rollout on the idle 5090 with per-tick finiteness checks to find the exact op. The v8 BC run won't launch until the cause is fixed. Snapshots up to 25M and the live Elo for 10M and 20M are kept.
+
+## 02:50 — root cause: a game physics 0/0 (fixed, b17a43e8)
+
+- **The op:** `numerics.softmin(0, 0)` = 0/0 in `flight._vertical_demand`.
+- **When it happens:** a slow ship with a nearly empty store, climbing, with the stick neutral. At p=16 the held climb rounds to the whole lift budget, so the turn budget is exactly 0, and the lateral command is 0.
+- **What follows:** the ship's state goes NaN, the NaN reaches the model inputs, and the belief decode asserts.
+- **How it was found:** a rollout on the 5090 reproduced it deterministically (seed 2, env 1259, tick 8436). Replaying the frozen state found the exact op.
+- **The fix:** softmin(0, 0) = 0, plus a test with a finite gradient. Every other value is unchanged, so the game version stays the same. The agent's fixed rerun ran clean past the ticks that had failed.
+- **Not done, a proposal:** a rollout-side non-finite detector, counting non-finite ship state per update and failing fast with the env and tick. It would have turned a 30-minute hunt into a log line. It isn't needed for the run.
+- **Still open:** the NaN in `belief/normalised_square_error/position_metres/*` is probably a separate metric issue: a near-singular covariance determinant overflows.
