@@ -211,3 +211,17 @@ This log records the changes and decisions made while the author was away, with 
   - Frontline is still climbing.
   - The 500M publication run needs evidence that nothing collapses late, such as entropy collapse or the rising deathmatch boundary deaths.
   - The cost is about $1.
+
+## 06:41 — rl-v20 at 161M: `reward_hacking` warning and the density loss judged benign
+
+- **`reward_hacking`** (a warning: reward per second rising while the rating is flat):
+  - Against Baekho the live policy wins nearly every game, so its rating is at a ceiling while its margin, and so its reward, can still grow.
+  - The reward event shares have been unchanged since 100M:
+    - damage dealt 0.41 against damage taken 0.47;
+    - kills 0.43 against deaths 0.48;
+    - friendly fire 0.033 → 0.027;
+    - recharge and charge-back up to 0.004.
+  - No single event source is growing, which an exploited reward would show.
+- **Density loss** rose from 1.13 to 1.46. That is game-distribution drift: positions are harder to predict as the play changes.
+- **The real watch item:** entropy is 0.57 and still falling. KL is 0.008 and the clip fraction 0.07.
+- **The laptop's live Elo** has not written a deathmatch rating since 65M even though the games are reused. That needs a look.
