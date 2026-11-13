@@ -37,7 +37,7 @@ from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.contracts.series import Mean, Stopwatch
 from bnb.game.rules import Rules
 from bnb.game.ship_types import ShipTypes
-from bnb.models.yemong import codes, critic, policy
+from bnb.models.yemong import codes, critic, geometry, policy
 from bnb.models.yemong import shots as shot_codes
 from bnb.models.yemong.density import HexGrid, poisson_terms
 
@@ -1548,7 +1548,9 @@ class Learner:
         self, terms: dict, per_level: torch.Tensor, unrolled, trajectory, label, denominator
     ):
         """{name: the weighted term} of the gradients the decomposition takes one by one: the
-        top-level terms, with the value split by level and the next state by population."""
+        top-level terms, with the value split by level, the next state by population and the
+        geometry by target (`geometry.TARGETS`, each its share of the mean over targets, so
+        the parts sum to the term)."""
         config, own = self.config, trajectory.log_probability.shape[-1]
         basic = {}
         for term in TERMS:
@@ -1572,6 +1574,20 @@ class Learner:
                     )
             elif term in ("geometry", "correction") and not terms[term].requires_grad:
                 continue  # a model without the geometry head or the error head
+            elif term == "geometry":
+                logits = self.model.geometry(
+                    unrolled.geometry_latents, label["geometry_partners"]
+                ).float()
+                per_target = codes.grouped_cross_entropy(
+                    logits, label["geometry"].float(), geometry.RUNS, geometry.encode
+                )  # (L, R, S, K, targets)
+                for name, part in zip(geometry.TARGETS, per_target.unbind(-1), strict=True):
+                    # the term's normalisation: the mean over targets, over the pairs
+                    basic[f"geometry_{name}"] = (
+                        config.geometry
+                        * losses.masked_sum(part, label["geometry_mask"])
+                        / (len(geometry.TARGETS) * denominator["pairs"])
+                    )
             else:
                 basic[term] = getattr(config, term) * terms[term]
         return basic
@@ -1631,9 +1647,10 @@ class Learner:
         self.optimizer.zero_grad(set_to_none=True)
         populations = tuple(name for name in names if name.startswith("next_state_"))
         levels = tuple(name for name in names if name.startswith("value_"))
-        derived_terms = dict(value=levels, next_state=populations)
-        top_level = tuple(term for term in TERMS if term in names or term in derived_terms)
-        everything = top_level + levels + populations
+        targets = tuple(name for name in names if name.startswith("geometry_"))
+        derived_terms = dict(value=levels, next_state=populations, geometry=targets)
+        top_level = tuple(term for term in TERMS if term in names or derived_terms.get(term, ()))
+        everything = top_level + levels + populations + targets
         combination = torch.zeros((len(everything), len(names)), device=device)
         for row, name in enumerate(everything):
             for column, basic_name in enumerate(names):
@@ -1642,6 +1659,8 @@ class Learner:
         groups = {"terms": top_level, "value": levels}
         if populations:
             groups["next_state"] = populations
+        if targets:
+            groups["geometry"] = targets
         grams = gradients.grams(accumulated.flatten(0, 1), trunk_size)
         if len(halves) < 2:  # one view: no halves to compare
             grams = {"model": grams["model"]}

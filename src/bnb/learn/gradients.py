@@ -4,7 +4,10 @@ and the representation's health, measured every `bnb.runtime.metrics.CADENCE` up
 The decomposition takes each loss term's gradient (its coefficient applied) over one
 minibatch, accumulated separately over two halves of its views, and compares them through
 Gram matrices, so no pair of gradients is ever held twice:
-- `gradient/norm/{scope}/{term}`: the term's gradient norm;
+- `gradient/norm/{scope}/{term}`: the term's gradient norm; besides the top-level terms,
+  the value by level (`value_{level}`), the next state by population
+  (`next_state_{population}`) and the geometry by target (`geometry_{target}`), the parts
+  summing to their term;
 - `gradient/share/{scope}/{term}`: its projection on the step's direction, <g_t, g> / |g|^2
   with g the sum of the top-level terms (the top-level shares sum to 1);
 - `gradient/cosine/trunk/{a}/{b}`: every pair's cosine, in the trunk only (whole-model

@@ -72,6 +72,30 @@ def test_the_update_reports_the_term_its_targets_and_its_gradient(segment):
     assert math.isfinite(out["gradient/share/trunk/geometry"])
 
 
+def test_the_decomposition_splits_the_term_by_target_and_leaves_the_update_alone(segment):
+    """The five targets' gradients sum to the term's (each is its share of the mean over
+    targets), and the cadence that measures them leaves the step's weights as they were."""
+    net, runner, _, _ = segment
+    results = []
+    for cadence in (True, False):
+        model = copy.deepcopy(net)
+        out = metrics.read(
+            lc.learner(model, runner).update(runner.store, runner.bootstrap(), cadence=cadence)
+        )
+        results.append((out, [p.detach().clone() for p in model.parameters()]))
+    (on, on_weights), (off, off_weights) = results
+    assert all(torch.equal(a, b) for a, b in zip(on_weights, off_weights, strict=True))
+    parts = [f"geometry_{name}" for name in geometry.TARGETS]
+    for scope in ("model", "trunk"):
+        assert all(on[f"gradient/norm/{scope}/{part}"] > 0 for part in parts)
+        shares = sum(on[f"gradient/share/{scope}/{part}"] for part in parts)
+        assert shares == pytest.approx(on[f"gradient/share/{scope}/geometry"], rel=1e-4)
+        norm = on[f"gradient/norm/{scope}/geometry"]
+        assert norm <= sum(on[f"gradient/norm/{scope}/{part}"] for part in parts) * (1 + 1e-5)
+    assert math.isfinite(on["gradient/agreement/trunk/geometry"])
+    assert math.isfinite(on["gradient/cosine/trunk/geometry_range/geometry_closure"])
+
+
 def test_without_the_head_the_term_is_absent():
     net = cases.model()
     assert net.geometry_head is None
