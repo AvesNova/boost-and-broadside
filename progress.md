@@ -373,6 +373,28 @@ league_tournament, game_loop. Round 9 (v16; tmux `lethality-r9` since 17:10): ba
 two leaders at 512 games on elimination and deathmatch 1/2/5, then the three modes'
 spot-checks (10v10, 0.5x, 2x; frontline for the lift leader is new there).
 
+### 17:53 round 9 on game v16 (`round9/`): the leaders on the floored deathmatch and the closing elimination
+Yongma's score (deathmatch: kill share). Sizes 1 / 2 / 5 at 512 games (SE ~0.02); the spot
+columns at 256 (SE ~0.03-0.04). Deathmatch 1v1 / 2v2 now play at the 3000 m floor.
+
+| Card | Elim 1/2/5 | Elim 10v10 | Elim 0.5x / 2x | DM share 1/2/5 | DM 10v10 | DM 0.5x / 2x | Front 10v10 | Front 0.5x / 2x |
+|---|---|---|---|---|---|---|---|---|
+| base | 0.24 / 0.38 / 0.44 | 0.38 | 0.54 / 0.39 | 0.26 / 0.47 / 0.50 | 0.48 | 0.50 / 0.45 | 0.16 | 0.41 / 0.23 |
+| **Y lift x1.5 + damage x1.5** | **0.49 / 0.46 / 0.52** | 0.60 | 0.57 / 0.50 | **0.41** / 0.56 / 0.55 | 0.53 | 0.56 / 0.50 | 0.27 | 0.87 / 0.31 |
+| Y damage x2 + J shield x0.65 | 0.46 / 0.52 / 0.62 | 0.73 | 0.59 / 0.58 | 0.40 / 0.57 / 0.59 | 0.57 | 0.60 / 0.56 | 0.41 | 0.88 / 0.42 |
+
+- **The deathmatch 1v1 gap was mostly the small arena.** At v16's 3000 m floor the leader's
+  1v1 kill share rose from 0.31 (1878 m, round 8) to 0.41, and the base card's from 0.21 to
+  0.26. The rest of the gap is the duel itself.
+- **The lift leader stays close in elimination and deathmatch at every size and arena**:
+  elimination 0.46-0.57 except 10v10 (0.60); deathmatch share 0.50-0.56 from 2v2 up.
+- **Frontline is the outlier and swings with map size**: the leader is 0.47 at 5v5
+  (round 8), 0.27 at 10v10, 0.87 on the half arena and 0.31 on the double. The base card is
+  just as steep (0.41 on the half, 0.16-0.23 large). It is a property of frontline's maps,
+  not the card. A smaller map packs the five zones closer for the faster ship. A card cannot
+  fix both ends; a frontline rule might (the author's planned minimum zone size and zone
+  travel distance), or the lock and wave doctrine (round 10, now running).
+
 ## Next
 - Item 6, league: no-flee scripted agents and the fast-chaser ship. ETA ~15:45.
 - Item 7: round 6 (v15) is running in tmux `lethality-r6`; then 10v10 and 0.5x / 2x arena
