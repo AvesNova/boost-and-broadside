@@ -153,6 +153,23 @@ uv run --no-sync bnb train --preset mixed --set 'yemong.order="spatial_only"'
 uv run --no-sync bnb train --preset mixed --model nearest
 ```
 
+## Stop a run that stops fighting
+
+Each update line ends with the trigger rules that are up (`alerts: ...`). Two of them watch
+the training games' combat: `combat_collapse/team_deathmatch` and
+`combat_collapse/elimination` are up while the mean over the last three updates of that
+mode's combat deaths or hits per living ship-minute (`combat/deaths_per_ship_minute/{mode}`,
+`combat/hits_per_ship_minute/{mode}`) is below its floor: the lower of 0.075 deaths or 6.5
+hits (a quarter of a BC policy's team deathmatch on the real-scale set) and a quarter of the
+run's own first five updates. `TrainConfig.combat_collapse_stop` ends a PPO run after that
+many consecutive updates with either up, and `run.json`{.plain} records the rule as
+`stopped_by`; 0, the default, never stops:
+
+<!-- not-runnable: needs CUDA -->
+```bash
+uv run --no-sync bnb train --preset mixed --set combat_collapse_stop=5
+```
+
 ## Configure a run in Python
 
 `bnb.runtime.train.TrainConfig` holds the loop's settings, and `bnb.runtime.train.train`
