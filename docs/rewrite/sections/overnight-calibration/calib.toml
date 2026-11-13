@@ -85,3 +85,27 @@ stage = "rl"
 init_from = "bc-mb256/policy"
 updates = 60
 set = ["learner.minibatches=32", "lanes.environments=256"]
+
+# The RL minibatch arms (the author, 2026-11-13 19:00): from the same 100M BC exponential
+# average, 100M steps each (192 updates of ~0.52M), 256 lanes; only the minibatch count
+# differs. rl-check (32) is resumed to 192 updates as the 32 arm. 256 is the expected default.
+[[arm]]
+name = "rl-mb256"
+stage = "rl"
+init_from = "bc-mb256/policy"
+updates = 192
+set = ["learner.minibatches=256", "lanes.environments=256"]
+
+[[arm]]
+name = "rl-mb128"
+stage = "rl"
+init_from = "bc-mb256/policy"
+updates = 192
+set = ["learner.minibatches=128", "lanes.environments=256"]
+
+[[arm]]
+name = "rl-mb64"
+stage = "rl"
+init_from = "bc-mb256/policy"
+updates = 192
+set = ["learner.minibatches=64", "lanes.environments=256"]
