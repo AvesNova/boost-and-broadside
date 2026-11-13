@@ -10,6 +10,7 @@ are written back into the batch tensors. The bounds are static: one graph.
 
 import dataclasses
 import functools
+import math
 
 import torch
 from torch.utils import _pytree
@@ -31,7 +32,13 @@ class Environment:
     end, `ModeRules.shrink_end_lead_seconds` before the clock's), shrink_end_fraction
     float32 (its end: minus the ramp width over the arena radius, so even the centre lies a
     ramp width beyond it), shrink_zero_ticks float32 (the tick it passes radius 0) and
-    shrink_law int32 (`ModeRules.shrink_law`)."""
+    shrink_law int32 (`ModeRules.shrink_law`). Map-size sampling (`PoolRules.arena_scale`,
+    `draw_arena_scale`): scale_sigma float32, the log-normal's sigma (0 where the pool plays
+    its radius every episode), scale_cdf_low and scale_cdf_high float32, the standard
+    normal CDF at its bounds' ln over sigma (0 and 1 where it does not sample), and
+    minimum_radius float32 (m), the mode's minimum arena radius a sampled episode keeps.
+    `environment` gives the pools' own radii; `sized` the episodes' (each environment's
+    drawn scale, `Match.arena_scale`)."""
 
     arena_radius: torch.Tensor
     map_scale: torch.Tensor
@@ -43,6 +50,55 @@ class Environment:
     shrink_end_fraction: torch.Tensor
     shrink_zero_ticks: torch.Tensor
     shrink_law: torch.Tensor
+    scale_sigma: torch.Tensor
+    scale_cdf_low: torch.Tensor
+    scale_cdf_high: torch.Tensor
+    minimum_radius: torch.Tensor
+
+
+def _normal_cdf(x: float) -> float:
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def _scale_numbers(pool) -> tuple[float, float, float]:
+    """(sigma, CDF at ln(low) / sigma, CDF at ln(high) / sigma) of a pool's map-size
+    sampling; (0, 0, 1) without."""
+    scale = pool.arena_scale
+    if scale is None:
+        return 0.0, 0.0, 1.0
+    return (
+        scale.sigma,
+        _normal_cdf(math.log(scale.low) / scale.sigma),
+        _normal_cdf(math.log(scale.high) / scale.sigma),
+    )
+
+
+# The draw's probability is kept this far inside (0, 1), so the inverse CDF stays finite.
+_PROBABILITY_MARGIN = 1e-6
+
+
+def draw_arena_scale(arena: Environment, uniform: torch.Tensor) -> torch.Tensor:
+    """(B,) each environment's arena scale from one uniform in [0, 1) (B,): the log-normal
+    ln(scale) ~ Normal(0, sigma) truncated to its bounds, by the inverse CDF (p between the
+    CDF at the bounds, then scale = exp(sigma ndtri(p))): one draw, no rejection, no
+    branch. 1 where the pool does not sample (sigma 0)."""
+    low, high = arena.scale_cdf_low, arena.scale_cdf_high
+    probability = (low + uniform * (high - low)).clamp(
+        _PROBABILITY_MARGIN, 1.0 - _PROBABILITY_MARGIN
+    )
+    scale = torch.exp(arena.scale_sigma * torch.special.ndtri(probability))
+    return torch.where(arena.scale_sigma > 0.0, scale, torch.ones_like(scale))
+
+
+def sized(arena: Environment, arena_scale: torch.Tensor) -> Environment:
+    """The environments' rules at their episodes' arena scale (B,): where the pool samples,
+    the arena radius is its own times the scale, at least the mode's minimum (as
+    `bnb.game.api.arena_radius_for` derives a radius), and the map scale follows; elsewhere
+    the pool's own radius. Every map length that scales with the map (fields, zones, spawns,
+    the boundary's ramp) reads this map scale."""
+    sampled = torch.maximum(arena.arena_radius * arena_scale, arena.minimum_radius)
+    radius = torch.where(arena.scale_sigma > 0.0, sampled, arena.arena_radius)
+    return dataclasses.replace(arena, arena_radius=radius, map_scale=radius / MAP_SCALE_RADIUS)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -119,6 +175,10 @@ def environment(rules: Rules, batch: int, device=None) -> Environment:
         shrink_end_fraction=end_fraction,
         shrink_zero_ticks=torch.where(shrinking > 0, hold + s_zero * (end - hold), total),
         shrink_law=shrink_law,
+        scale_sigma=per_pool(lambda pool: _scale_numbers(pool)[0]),
+        scale_cdf_low=per_pool(lambda pool: _scale_numbers(pool)[1]),
+        scale_cdf_high=per_pool(lambda pool: _scale_numbers(pool)[2]),
+        minimum_radius=per_pool(lambda pool: pool.minimum_arena_radius),
     )
 
 

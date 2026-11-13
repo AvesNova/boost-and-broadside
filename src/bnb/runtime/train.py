@@ -16,7 +16,7 @@ from typing import Protocol
 
 import torch
 
-from bnb.contracts import GameConfig, Pool
+from bnb.contracts import ArenaScale, GameConfig, Pool
 from bnb.controllers.relational import RelationalController
 from bnb.controllers.scripted import Chaser, Random, Scripted
 from bnb.controllers.yemong import YemongController
@@ -96,6 +96,11 @@ def mixed(
     return base, tuple(pools)
 
 
+def training_pools(config: "TrainConfig") -> tuple[Pool, ...]:
+    """The config's training pools with its map-size sampling (`TrainConfig.arena_scale`)."""
+    return tuple(dataclasses.replace(pool, arena_scale=config.arena_scale) for pool in config.pools)
+
+
 @dataclasses.dataclass(frozen=True)
 class TrainConfig:
     """model: "yemong", "relational" (the toy learner) or "nearest" (the nearest-neighbour
@@ -130,7 +135,11 @@ class TrainConfig:
     policy_snapshot_every: for a run that does not write every update's policy files (BC
     by default: the run's `update_policies`), the environment steps between the policy
     files it keeps under `policies/step_<steps>/`, the live weights and both averages, and
-    always at the end of each process's segment (`bnb.runs.session.train`)."""
+    always at the end of each process's segment (`bnb.runs.session.train`).
+    arena_scale: map-size sampling for the training pools (`bnb.contracts.ArenaScale`; the
+    author, 2026-11-13: ln scale ~ Normal(0, 0.35) truncated to [0.5, 2], each
+    environment's arena drawn at every reset), or None for each pool's own arena every
+    episode. The rating lanes, evaluation and play keep their games' own sizes."""
 
     game: GameConfig
     environments: int = 2048
@@ -165,6 +174,7 @@ class TrainConfig:
     stop: StopConfig = StopConfig()
     # every 10M environment steps (author, 2026-11-07: decisions, run control)
     policy_snapshot_every: int = 10_000_000
+    arena_scale: ArenaScale | None = ArenaScale()
 
     def __post_init__(self) -> None:
         if self.objective not in OBJECTIVES:
@@ -308,7 +318,7 @@ class Trainer:
         )
         # the training pools and the rating lanes' (`bnb.runtime.lanes`), in one batch
         self.pools, self.lanes, self.batch_environments = lanes.lane_pools(
-            config.pools,
+            training_pools(config),
             lanes.mode_games(config.pools, game, mode_key),
             config.environments,
             config.lanes,

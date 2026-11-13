@@ -141,8 +141,14 @@ Frontline's zone ring keeps its zones' radius at least `ModeRules.zone_radius_fl
 (231 m) and adjacent zones at least `zone_spacing_floor` (1315.8 m) apart, both m at map
 scale 1 times the ship set's map scale (3 at real scale), 0.7 x the 5v5 map's: no preset
 changes, a map under 70% of it is held there. The spawn disc follows the match's zone
-radius. The presets' states and observations are version 16's, so is the fingerprint.
+radius. Map-size sampling: a pool with `arena_scale` (`bnb.contracts.ArenaScale`; the
+training pools by default) draws each environment's arena scale at every reset, ln scale
+~ Normal(0, 0.35) truncated to [0.5, 2] by the inverse CDF of one more tick uniform (only
+when some pool samples, so a game without sampling draws as before); the episode's arena
+radius is the pool's times the scale, at least the mode's minimum (`api.arena_radius_for`),
+and every map length follows its map scale. `Match.arena_scale` (B,) holds it (1 without
+sampling); that new leaf is the fingerprint's only change.
 """
 
 VERSION = 17
-FINGERPRINT = "71982b10a86b586f"
+FINGERPRINT = "64c9cbf08b4ca333"

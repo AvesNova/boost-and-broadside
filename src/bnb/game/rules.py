@@ -11,13 +11,13 @@ slices of the batch, each with its mode, arena and clocks. The sizes are shared.
 import dataclasses
 import math
 
-from bnb.contracts import GameConfig, Pool, ticks_of
+from bnb.contracts import ArenaScale, GameConfig, Pool, ticks_of
 from bnb.contracts.config import TEAMS
 from bnb.contracts.obs import ZONE_SLOTS
 from bnb.contracts.pools import environments_per_pool, pool_game
 
 from . import ship_types, ships
-from .modes.rules import CLOCKS, ModeRules, mode_rules_of
+from .modes.rules import CLOCKS, ModeRules, minimum_arena_radius, mode_rules_of
 
 STICK_LEVELS = (0.0, -0.4, 0.4, -0.75, 0.75, -1.0, 1.0)  # by stick index; + turns left
 POWER_MODES = (0.0, -1.0, 1.0)  # by power index: coast, boost, reverse
@@ -87,18 +87,29 @@ class FlightConstants:
 class PoolRules:
     """One game of the batch (mixed spec 1): `environments` contiguous environments (None:
     the whole batch, at any size) playing `mode` in an arena of this radius, with these
-    clocks. Adjacent pools of the same game are one PoolRules."""
+    clocks. Adjacent pools of the same game are one PoolRules. arena_scale: map-size
+    sampling (`bnb.contracts.ArenaScale`; None: this radius every episode), held at
+    minimum_arena_radius (m, the mode's at the ship set's map scale)."""
 
     environments: int | None
     mode: ModeRules
     arena_radius: float  # m
     episode_ticks: int
     respawn_ticks: int
+    arena_scale: ArenaScale | None = None
+    minimum_arena_radius: float = 0.0  # m
 
     @property
     def game(self) -> tuple:
         """Everything but the size: pools that agree on it play the same game."""
-        return self.mode, self.arena_radius, self.episode_ticks, self.respawn_ticks
+        return (
+            self.mode,
+            self.arena_radius,
+            self.episode_ticks,
+            self.respawn_ticks,
+            self.arena_scale,
+            self.minimum_arena_radius,
+        )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -200,10 +211,16 @@ class Rules:
         return 4 * self.num_fields + 1
 
     @property
+    def samples_arena(self) -> bool:
+        """Some pool draws its arena scale per episode (`PoolRules.arena_scale`)."""
+        return any(pool.arena_scale is not None for pool in self.pools)
+
+    @property
     def game_uniform_count(self) -> int:
         """Uniforms per environment per tick for the game (game spec 2): the map, a
-        formation rotation per team, a formation key per ship."""
-        return self.map_uniform_count + TEAMS + self.num_ships
+        formation rotation per team, a formation key per ship, and the arena scale's draw
+        when some pool samples it (`samples_arena`; without, the draws are as before)."""
+        return self.map_uniform_count + TEAMS + self.num_ships + int(self.samples_arena)
 
     @property
     def tick_uniform_count(self) -> int:
@@ -215,7 +232,12 @@ class Rules:
         )
 
 
-def _pool_rules(environments: int | None, game: GameConfig, tick_length: float) -> PoolRules:
+def _pool_rules(
+    environments: int | None,
+    game: GameConfig,
+    tick_length: float,
+    arena_scale: ArenaScale | None = None,
+) -> PoolRules:
     """A game's mode and its time-native rules (the mode's clock where it leaves them out).
     A mode without respawn (elimination: None in its clock) waits a dead ship out for the
     episode's whole length, so it never comes back before the episode ends."""
@@ -233,6 +255,8 @@ def _pool_rules(environments: int | None, game: GameConfig, tick_length: float) 
         arena_radius=game.arena_radius,
         episode_ticks=ticks_of(episode_seconds, tick_length),
         respawn_ticks=ticks_of(respawn_seconds, tick_length),
+        arena_scale=arena_scale,
+        minimum_arena_radius=minimum_arena_radius(game),
     )
 
 
@@ -295,7 +319,7 @@ def rules_of(
         sizes = environments_per_pool(pools, environments)
         merged: list[PoolRules] = []
         for size, pool in zip(sizes, pools):
-            game = _pool_rules(size, pool_game(config, pool), tick_length)
+            game = _pool_rules(size, pool_game(config, pool), tick_length, pool.arena_scale)
             if merged and merged[-1].game == game.game:
                 game = dataclasses.replace(game, environments=merged.pop().environments + size)
             if game.environments:

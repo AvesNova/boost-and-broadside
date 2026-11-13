@@ -10,7 +10,7 @@ import torch
 from bnb.contracts import Obs, Privileged
 from bnb.contracts.obs import SHIP_COLUMNS, SHIP_HIDDEN_ZERO
 
-from ..layout import boundary_fraction, boundary_time_to_zero, environment, per_mode
+from ..layout import boundary_fraction, boundary_time_to_zero, environment, per_mode, sized
 from ..modes.observation import mode_globals, zone_rows
 from ..physics.numerics import flight_path_velocity
 from ..rules import TEAMS, Rules
@@ -170,7 +170,7 @@ def perceive(
     field_rows = torch.stack(
         [fields.x, fields.y, fields.radius, fields.band_width, fields.level.float()], -1
     )
-    arena = environment(rules, B, device)
+    arena = sized(environment(rules, B, device), match.arena_scale)
     episode_progress = match.episode_tick.float() / arena.episode_ticks.float()
     global_row = torch.stack(
         [

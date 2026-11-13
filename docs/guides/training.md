@@ -79,6 +79,12 @@ The crossed pools, game by game so that each game is one contiguous slice:
 
 <!-- generated: mixed-pools -->
 
+Training varies the map size by default: every training environment draws its arena
+scale at each reset (`TrainConfig.arena_scale`, ln scale ~ Normal(0, 0.35) truncated to
+0.5 to 2, then the mode's minimum radius). Set `arena_scale=None` to play each pool's own
+radius. The rating lanes always play their games' own sizes. See
+[Mixed batches](../explanation/game/mixed-batches.md#map-size-sampling).
+
 `bnb.contracts.pools.environment_multiple` gives the smallest batch the pools split into;
 every valid `--environments` is a multiple of it.
 

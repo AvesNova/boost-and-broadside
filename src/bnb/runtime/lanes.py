@@ -173,7 +173,8 @@ def lane_pools(
     batch; the lanes in their pools' order; the batch's environments). pools: the training
     pools over `environments`; modes: each mode's game, as a pool of it (its fog share and
     clocks are the lanes'). The lanes are split evenly over the modes, then by the matchups'
-    weights."""
+    weights. A lane plays its game's own arena every episode (no map-size sampling: a
+    rating compares games of one size)."""
     total = environments + config.environments
     if not config.environments:
         return pools, (), environments
@@ -194,6 +195,7 @@ def lane_pools(
             share=size / total,
             seats=(LANES, LANES),
             fog_share=round(game.fog_share * size) / size,
+            arena_scale=None,
         )
         for item, (game, size) in zip(lanes, lane_sizes, strict=True)
     )

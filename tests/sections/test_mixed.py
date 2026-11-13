@@ -532,6 +532,7 @@ def test_the_rollout_runs_a_mixed_batch_and_reports_every_pool():
         pools=pools,
         compiled=False,
         learner=LearnerConfig(minibatches=2, micro_batch_rows=30),
+        arena_scale=None,  # each pool's own arena, as the check of the radii below reads
     )
     trainer = Trainer(cfg, torch.device("cpu"))
     store, bootstrap = trainer.collect()
