@@ -198,3 +198,16 @@ This log records the changes and decisions made while the author was away, with 
 - **To watch:**
   - Entropy is falling: 1.11 at 70M, 0.81 now. KL is steady at 0.008 and the clip fraction 0.08.
   - Deathmatch boundary deaths in league games rose from 0.14 to 2.9 per game, against about 41 combat deaths. Small, but rising.
+
+## 06:30 — rl-v20 finished 150M; resumed to 300M (a budget extension)
+
+- **Final averaged-policy live Elo:**
+  - frontline **2585 ± 37** at 145M, still rising: 2457 at 115M, 2535 at 135M;
+  - elimination **1693 ± 33**, flat since about 95M, where it peaked at 1727;
+  - deathmatch is still being rated, on the kill-share scale.
+- **At 143 updates:** entropy 0.66, KL 0.007, clip fraction 0.07, no skipped or non-finite steps.
+- **Why resume to 286 updates, about 300M** (same settings, a budget extension only):
+  - The 5090 would otherwise sit idle.
+  - Frontline is still climbing.
+  - The 500M publication run needs evidence that nothing collapses late, such as entropy collapse or the rising deathmatch boundary deaths.
+  - The cost is about $1.
