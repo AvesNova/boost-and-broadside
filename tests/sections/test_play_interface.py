@@ -662,6 +662,7 @@ def test_the_camera_leads_the_flown_ship_in_its_direction_of_travel(context, tmp
 
     session = _session(context, tmp_path, 1280, 720, preset="frontline")
     player = Player(session, context, 1280, 720)
+    session.set_look_ahead("always")  # the default is off
     player.frames(10)
     ship = int(np.flatnonzero(session.frame.ships.alive)[3])
     session.take_control(ship)

@@ -186,6 +186,8 @@ class Renderer:
                 self.contours.draw(uniforms, theme, frame.arena_radius, contours)
         with self._measure("zones"):
             self.arcs.draw(uniforms, zone_table(theme, frame.zones, pixel))
+        with self._measure("edge"):  # over the map's shapes, under the trails and ships
+            self.sky.draw(uniforms, theme, frame.arena_radius, edge=True)
         with self._measure("trails"):
             seen = trails.seen[view] if team_view else np.ones_like(trails.seen[0])
             self.trails.draw(uniforms, theme, trails, now, seen, ships.team, ships.ship_type, body)

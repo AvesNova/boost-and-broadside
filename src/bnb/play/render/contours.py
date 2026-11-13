@@ -6,17 +6,14 @@ and under everything else: zones, trails, ships, bullets. The dot grid, under th
 can be on with them.
 
 The shapes are circles: the fields (their radius), Frontline's zones, and the map edge,
-taken as the region beyond the arena, so its distance is the distance to the boundary
-from either side (negative beyond it) and its lines run parallel to the edge. The signed
-distance to the shape set is the smooth union of the shapes' own (the quadratic smooth
-minimum, `smooth_minimum` in the shader): where two shapes' distances are within
-SMOOTHING_FRACTION of the arena radius of each other, the union bends below the plain
-minimum, so the crease where two shapes' rings meet is rounded and nearby shapes' contours
-merge into one rounded outline, as hills' contours do. The rounding is in metres, scaled
-with the map (fields and zones scale with the arena), so the shapes the contours draw do
-not change with the zoom: 8% of the arena radius is about the size of the larger fields
-and one contour spacing with the whole arena in view, so a crease is rounded over a line
-or two there and over several close up.
+whose lines run parallel to the boundary. The distance drawn is to the nearest edge of
+any shape, from either side, so a shape inside another (a field within a field, a zone
+over a field) keeps its own rings inside the larger one's. It is a soft minimum of the
+edges' distances ((sum d^-p)^(-1/p), `edge_distance` in the shader): 0 on every edge, and
+where two edges are about equally far it bends below the plain minimum, so the crease where
+two shapes' rings meet is rounded and nearby shapes' rings outside them merge into one
+rounded outline, as hills' contours do. The rounding is relative to the distance, so it
+does not change with the zoom.
 
 Lines sit at whole multiples of a spacing that steps by 2 with the zoom, the finer lines
 fading out across a step, like the dot grid (`grid.zoom_level`); every fifth line of each
@@ -46,7 +43,6 @@ SHAPE_SETS = {
 }
 CONTOUR_FACTOR = 2.0  # between spacing levels
 CONTOUR_PIXELS = 64.0  # the fine level's spacing on screen just as the coarser level takes over
-SMOOTHING_FRACTION = 0.08  # the smooth union's radius, as a fraction of the arena radius
 
 
 def contour_level(metres_per_pixel: float) -> tuple[float, float]:
@@ -98,7 +94,6 @@ class ContoursPass:
             last_circle=last,
             edge=with_edge,
             arena_radius=arena_radius,
-            smoothing=SMOOTHING_FRACTION * arena_radius,
             ink=theme.contours.floats(),
             spacing=spacing,
             factor=CONTOUR_FACTOR,

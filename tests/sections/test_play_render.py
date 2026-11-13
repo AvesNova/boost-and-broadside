@@ -19,7 +19,7 @@ from bnb.play.camera import Camera
 from bnb.play.index_map import build
 from bnb.play.loop import MatchLoop, MatchSetup
 from bnb.play.render.bullets import BulletLook, tracer_lengths
-from bnb.play.render.contours import CONTOUR_PIXELS, SMOOTHING_FRACTION, contour_level
+from bnb.play.render.contours import CONTOUR_PIXELS, contour_level
 from bnb.play.render.grid import GRID_PIXELS, PATTERNS
 from bnb.play.render.renderer import SPECTATOR, Renderer
 from bnb.play.render.ships import MINIMUM_RING_PIXELS, ring_radius, silhouette_size
@@ -810,22 +810,15 @@ def test_the_grid_draws_nothing_beyond_the_arena(renderer, context):
     assert not changed[:, WIDTH // 2 :].any()
 
 
-def _smooth_minimum(a, b, k):
-    """The quadratic smooth minimum, by hand: min(a, b) less h²k/4, h = 1 - |a - b|/k."""
-    h = np.maximum(k - np.abs(a - b), 0.0) / k
-    return np.minimum(a, b) - h * h * k / 4.0
+def _soft_minimum_terms(distance):
+    """One edge's term of the shader's soft minimum of edge distances, |d|^-6 (|d| at
+    least 1 mm)."""
+    return np.maximum(np.abs(distance), 1e-3) ** -6.0
 
 
 def _circle_distance(x, y, circle):
     centre_x, centre_y, radius = circle
     return np.hypot(x - centre_x, y - centre_y) - radius
-
-
-def test_the_smooth_minimum_by_hand():
-    """Two values far apart: the plain minimum; equal: less k/4; in between, smooth."""
-    assert _smooth_minimum(np.array(0.0), np.array(10.0), 4.0) == 0.0
-    assert _smooth_minimum(np.array(-3.0), np.array(-3.0), 4.0) == -4.0
-    assert _smooth_minimum(np.array(0.0), np.array(2.0), 4.0) == pytest.approx(-0.25)
 
 
 def _with_shapes(frame, fields=(), zones=()):
@@ -870,6 +863,7 @@ ARENA = PRESETS["arena"].arena_radius
     [
         ("fields", [(-35.0, 5.0, 25.0), (30.0, -5.0, 18.0)], [], (0.0, 0.0)),
         ("fields", [(-15.0, 0.0, 25.0), (15.0, 0.0, 25.0)], [], (0.0, 0.0)),  # overlapping
+        ("fields", [(0.0, 0.0, 60.0), (8.0, 0.0, 20.0)], [], (0.0, 0.0)),  # one inside another
         ("edge", [], [], (ARENA, 0.0)),
         (
             "fields+edge+zones",
@@ -880,14 +874,14 @@ ARENA = PRESETS["arena"].arena_radius
         ("zones", [(-30.0, 0.0, 20.0)], [(30.0, 0.0, 20.0)], (0.0, 0.0)),
     ],
 )
-def test_the_contours_are_the_smooth_union_of_the_signed_distances(
+def test_the_contours_are_the_soft_minimum_of_the_edge_distances(
     renderer, context, shapes, fields, zones, centre
 ):
     """At a zoom where the fine spacing is exactly CONTOUR_PIXELS (no fade), a line is drawn
-    wherever the hand-computed signed distance (negative inside a circle and beyond the
-    arena; the circles' and the edge's joined by the smooth minimum) is a multiple of the
-    spacing, and nothing where it is more than 1.5 px from one. Inside the overlapping
-    circles the union falls below either circle's distance, so a sign error shows."""
+    wherever the hand-computed distance to the nearest edge (the circles' and the map
+    edge's, from either side, joined by the soft minimum (sum |d|^-6)^(-1/6)) is a multiple
+    of the spacing, and nothing where it is more than 1.5 px from one. A circle inside
+    another keeps its own rings."""
     frame = _with_shapes(_empty_arena(), fields, zones)
     spacing = 32.0
     camera = Camera(WIDTH, HEIGHT, *centre, spacing / CONTOUR_PIXELS)
@@ -905,28 +899,31 @@ def test_the_contours_are_the_smooth_union_of_the_signed_distances(
             "fields+edge+zones": (1, 1, 1),
             "zones": (0, 0, 1),
         }[shapes]
-        total = ARENA - np.hypot(x, y) if with_edge else np.full_like(x, 1e9)
+        total = _soft_minimum_terms(ARENA - np.hypot(x, y)) if with_edge else np.zeros_like(x)
         circles = (fields if with_fields else []) + (zones if with_zones else [])
         for circle in circles:
-            total = _smooth_minimum(
-                total, _circle_distance(x, y, circle), SMOOTHING_FRACTION * ARENA
-            )
-        return total
+            total = total + _soft_minimum_terms(_circle_distance(x, y, circle))
+        return total ** (-1.0 / 6.0)
 
     value = distance(x, y)
     gradient = np.hypot(
         distance(x + 0.5 * pixel, y) - distance(x - 0.5 * pixel, y),
         distance(x, y + 0.5 * pixel) - distance(x, y - 0.5 * pixel),
     )  # metres of distance per pixel
-    off_line = np.abs(value - spacing * np.round(value / spacing)) / np.maximum(gradient, 1e-9)
-    smooth = gradient > 0.5 * pixel  # away from a circle's centre and the union's ridges
+    slope = np.maximum(gradient, 0.7 * pixel)  # the shader's floor (an edge folds |d|)
+    off_line = np.abs(value - spacing * np.round(value / spacing)) / slope
+    # away from a circle's centre and the creases between edges, or on an edge
+    smooth = (gradient > 0.5 * pixel) | (value < 0.5 * pixel)
     on, bare = smooth & (off_line < 0.25), smooth & (off_line > 1.5)
     on[:2], on[-2:], on[:, :2], on[:, -2:] = False, False, False, False
+    under_edge = np.abs(np.hypot(x, y) - ARENA) < 3.0 * pixel  # the edge line draws over
+    on &= ~under_edge
     assert on.sum() > 100 and bare.sum() > 1000
     assert drawn[on].mean() > 0.99
     assert not drawn[bare].any()
-    if shapes == "fields" and fields[0][0] == -15.0:
-        assert (on & (value < -spacing + 1.0)).any()  # a line inside both circles
+    if shapes == "fields" and fields[0][2] == 60.0:  # the inner circle's own rim is drawn
+        inner = np.abs(np.hypot(x - 8.0, y) - 20.0) < 0.5 * pixel
+        assert drawn[inner].mean() > 0.9
 
 
 def test_no_contours_draw_when_off_or_for_shapes_the_map_has_not(renderer, context):
