@@ -342,3 +342,16 @@ def rules_of(
         tick_length=tick_length,
         **overrides,
     )
+
+
+def with_deathmatch_outcome(rules: Rules, outcome: str) -> Rules:
+    """The rules with every pool's `ModeRules.deathmatch_outcome` set to `outcome` (the
+    learner's team deathmatch outcome, `bnb.game.modes.phase.win_loss`); the same rules
+    when it is already theirs."""
+    if all(pool.mode.deathmatch_outcome == outcome for pool in rules.pools):
+        return rules
+    pools = tuple(
+        dataclasses.replace(pool, mode=dataclasses.replace(pool.mode, deathmatch_outcome=outcome))
+        for pool in rules.pools
+    )
+    return dataclasses.replace(rules, pools=pools)

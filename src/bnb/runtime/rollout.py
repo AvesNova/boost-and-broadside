@@ -94,10 +94,13 @@ class Rollout:
         ship_type: torch.Tensor | None = None,
         benching: bool = False,
     ) -> None:
-        self.rules = api.rules_of(config, pools, environments, types=types)
+        self.reward_config = reward_config or rewards.RewardConfig()
+        self.rules = api.with_deathmatch_outcome(
+            api.rules_of(config, pools, environments, types=types),
+            self.reward_config.deathmatch_outcome,
+        )
         self.ship_type = None if ship_type is None else ship_type.to(device, torch.int32, copy=True)
         self.benching = benching
-        self.reward_config = reward_config or rewards.RewardConfig()
         self.teams, self.ships_per_team, self.ship_count = (
             api.TEAMS,
             config.ships_per_team,

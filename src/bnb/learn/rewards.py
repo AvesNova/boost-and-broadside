@@ -20,6 +20,7 @@ import torch
 
 from bnb.contracts import REWARD_LEVELS, Events
 from bnb.contracts.tree import contract
+from bnb.game.modes.rules import DEATHMATCH_OUTCOMES
 
 __all__ = [
     "REWARD_LEVELS",
@@ -46,7 +47,13 @@ class RewardConfig:
     v1's the returns were about a tenth of the units the critic's bins and the return
     scale's floor assume (each level's 5th to 95th percentile within +-0.6, so the bins near
     0 resolved little; compile-overhaul notes, "Return units"). The advantages are divided
-    by the return scale, so the factor leaves the policy's gradient as it was."""
+    by the return scale, so the factor leaves the policy's gradient as it was.
+
+    deathmatch_outcome: what the outcome level (and the outcome head's target) counts as
+    team deathmatch's win and loss (`bnb.game.modes.rules.DEATHMATCH_OUTCOMES`):
+    "kill_share", the kill share (share, 1 - share), as the ratings score it by default; or
+    "kill_lead", the result one-hot by the sign of the final kill difference, a draw neither
+    (the rollout sets it on the rules: `ModeRules.deathmatch_outcome`)."""
 
     damage: float = 2.74
     kill_death: float = 2.83
@@ -54,6 +61,14 @@ class RewardConfig:
     objective: float = 20.0
     outcome: float = 10.0
     damage_unit: float = 100.0  # points, for every ship type
+    deathmatch_outcome: str = "kill_share"
+
+    def __post_init__(self) -> None:
+        if self.deathmatch_outcome not in DEATHMATCH_OUTCOMES:
+            raise ValueError(
+                f"reward.deathmatch_outcome {self.deathmatch_outcome!r} is not one of "
+                f"{DEATHMATCH_OUTCOMES}"
+            )
 
     @property
     def weights(self) -> tuple[float, ...]:

@@ -400,7 +400,8 @@ cut; where they differ, this section and the code win.
   - **`Events` (schema 5, game v17, 2026-11-13)** gains `win_loss` (B, 2) float: team
     0's weights of a win and of a loss where `done`, zero elsewhere (a draw is the rest,
     1 - win - loss; team 1's is flipped). Team deathmatch's is its kill share
-    `(share, 1 - share)`, the other modes' the result one-hot
+    `(share, 1 - share)` (or, with `ModeRules.deathmatch_outcome = "kill_lead"`, the
+    result one-hot), the other modes' the result one-hot
     (`bnb.game.modes.phase.win_loss`). The outcome reward and the outcome head's
     targets (`critic.final_outcome`) read it through `Trajectory.win_loss`; `result`
     stays the win rates' and the tallies'.
@@ -460,8 +461,8 @@ cut; where they differ, this section and the code win.
       reward;
     - `win_loss (L, R, 2)` float: the view's team's weights of a win and of a loss where
       `done` (`Events.win_loss`, game v17): the outcome reward and the outcome targets read
-      it. Team deathmatch's is its kill share `(share, 1 - share)`; the other modes' the
-      result one-hot;
+      it. Team deathmatch's is its kill share `(share, 1 - share)` by default
+      (`RewardConfig.deathmatch_outcome`); the other modes' the result one-hot;
     - the label inputs, filled by the runtime for the learner's views:
       - `alive (L, R, N)` and `valued (L, R, S)`;
       - `truth (L, R, N − S, …)`, the enemy rows of `Privileged.ships`;

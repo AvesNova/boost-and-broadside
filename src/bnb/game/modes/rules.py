@@ -184,6 +184,12 @@ PRESETS["clover"] = GameConfig(
 # game's every config field, and one without a field is another game.
 LINEUPS = {"arena": ("Yongma", "Jujak")}
 
+# Team deathmatch's outcome for the learner (`ModeRules.deathmatch_outcome`,
+# `bnb.game.modes.phase.win_loss`): "kill_share", the game's kill share (share, 1 - share),
+# as the ratings score it by default; "kill_lead", the result one-hot by the sign of the
+# final kill difference (a draw neither), as the other modes' outcomes are.
+DEATHMATCH_OUTCOMES = ("kill_share", "kill_lead")
+
 # Fleet-size evaluation presets (zero-shot: training is 5v5 only), of each base game:
 # `<base>_<n>v<n>_arena` keeps the base's arena, so n ships crowd it n/5 times as densely;
 # `<base>_<n>v<n>_density` keeps its crowding, the arena radius growing as sqrt(n / 5) (its
@@ -234,7 +240,10 @@ class ModeRules:
     before the clock's end, so every ship dies before the clock. layout: the
     game's fixed map (`MapLayout`), or None for a random one; part of the mode's rules, so
     games of one mode with different layouts are different slices of the batch
-    (`layout.per_mode`)."""
+    (`layout.per_mode`). deathmatch_outcome: team deathmatch's outcome weights for the
+    learner (`DEATHMATCH_OUTCOMES`; `Events.win_loss`), a training setting the rollout sets
+    from `RewardConfig.deathmatch_outcome`; the game's state and results do not depend on
+    it."""
 
     name: str
     kills_per_ship: int = 5
@@ -281,6 +290,14 @@ class ModeRules:
     shrink_end_lead_seconds: float = 8.0
     shrink_law: int = 0
     layout: MapLayout | None = None
+    deathmatch_outcome: str = "kill_share"
+
+    def __post_init__(self) -> None:
+        if self.deathmatch_outcome not in DEATHMATCH_OUTCOMES:
+            raise ValueError(
+                f"deathmatch_outcome {self.deathmatch_outcome!r} is not one of "
+                f"{DEATHMATCH_OUTCOMES}"
+            )
 
     def uniform_count(self, num_ships: int) -> int:
         """The mode's spawn uniforms per environment per tick, after the game's (spec 2).

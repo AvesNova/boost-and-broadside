@@ -178,9 +178,11 @@ def kill_share(score: torch.Tensor) -> torch.Tensor:
 def win_loss(mode_rules: ModeRules, mode: ModeState, result: torch.Tensor) -> torch.Tensor:
     """(B, 2) float: team 0's weights of a win and of a loss for a match that ended now with
     `result` (B,) (team 1's: flipped); a draw is the rest. Team deathmatch scores a game by
-    its kill share, as its rating does: (share, 1 - share) (`kill_share`, of the final
-    score), never a draw. Elimination and Frontline: the result one-hot."""
-    if mode_rules.name == TEAM_DEATHMATCH:
+    its kill share, as its rating does by default: (share, 1 - share) (`kill_share`, of the
+    final score), never a draw; with `ModeRules.deathmatch_outcome` "kill_lead", by the
+    result one-hot (the sign of the final kill difference). Elimination and Frontline: the
+    result one-hot."""
+    if mode_rules.name == TEAM_DEATHMATCH and mode_rules.deathmatch_outcome == "kill_share":
         share = kill_share(mode.score)
         return torch.stack([share, 1.0 - share], -1)
     return result_win_loss(result)

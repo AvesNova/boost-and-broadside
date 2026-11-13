@@ -187,6 +187,78 @@ def test_deathmatch_outcome_is_the_kill_share(score, share):
     assert events.result.item() == (score[0] > score[1]) - (score[0] < score[1])
 
 
+@pytest.mark.parametrize(
+    "score, win_loss", [((3, 5), (0.0, 1.0)), ((6, 2), (1.0, 0.0)), ((4, 4), (0.0, 0.0))]
+)
+def test_deathmatch_kill_lead_outcome_is_the_result_one_hot(score, win_loss):
+    """With `deathmatch_outcome` "kill_lead" (the training switch,
+    `RewardConfig.deathmatch_outcome`), team deathmatch's learner outcome is the result
+    one-hot by the sign of the final kill difference, a draw neither; the result is the
+    same as under the default."""
+    rules, state = cases.rules_and_state(GameConfig(3, 2, 1200.0), batch=1)
+    rules = api.with_deathmatch_outcome(rules, "kill_lead")
+    assert rules.pools[0].mode.deathmatch_outcome == "kill_lead"
+    state = cases.edit_mode(state, score=torch.tensor([score], dtype=torch.int32))
+    state = replace(
+        state,
+        match=replace(
+            state.match,
+            episode_tick=torch.tensor([rules.pools[0].episode_ticks - 1], dtype=torch.int32),
+        ),
+    )
+    _, events = cases.tick(rules, state)
+    assert events.done.item()
+    torch.testing.assert_close(events.win_loss[0], torch.tensor(win_loss))
+    lead = win_loss[0] - win_loss[1]
+    torch.testing.assert_close(_outcome(events, 6), lead * torch.tensor([1.0] * 3 + [-1.0] * 3))
+    assert events.result.item() == (score[0] > score[1]) - (score[0] < score[1])
+
+
+def test_the_deathmatch_outcome_is_a_reward_setting():
+    """`--set reward.deathmatch_outcome=kill_lead` reaches the TrainConfig; kill_share is the
+    default (rules and reward alike), and an unknown outcome is refused."""
+    from bnb.cli import parse_setting, with_settings
+    from bnb.runtime.train import TrainConfig
+
+    default = TrainConfig(game=GameConfig(5, 10, 2600.0))
+    assert default.reward.deathmatch_outcome == "kill_share"
+    assert api.rules_of(default.game).pools[0].mode.deathmatch_outcome == "kill_share"
+    rules = api.rules_of(default.game)
+    assert api.with_deathmatch_outcome(rules, "kill_share") is rules
+    config = with_settings(default, [parse_setting("reward.deathmatch_outcome=kill_lead")])
+    assert config.reward.deathmatch_outcome == "kill_lead"
+    with pytest.raises(ValueError, match="deathmatch_outcome"):
+        rewards.RewardConfig(deathmatch_outcome="kill_count")
+    with pytest.raises(SystemExit, match="deathmatch_outcome"):
+        with_settings(default, [parse_setting("reward.deathmatch_outcome=kill_count")])
+
+
+@pytest.mark.usefixtures("global_generator")
+@pytest.mark.parametrize("outcome", ["kill_share", "kill_lead"])
+def test_the_rollout_plays_its_reward_configs_deathmatch_outcome(outcome):
+    """The training rollout sets the reward's deathmatch outcome on every pool's rules."""
+    from bnb.contracts import Pool
+    from bnb.controllers.scripted import Scripted
+    from bnb.game.handling.characteristics import characteristics
+    from bnb.runtime.rollout import Rollout
+
+    game = GameConfig(2, 2, 1200.0)
+    types = api.ship_types()
+    rollout = Rollout(
+        game,
+        types,
+        (Pool("scripted", 1.0, ("scripted", "scripted")),),
+        {"scripted": Scripted(characteristics(types, api.rules_of(game)), 2)},
+        "scripted",
+        4,
+        8,
+        torch.device("cpu"),
+        compiled=False,
+        reward_config=rewards.RewardConfig(deathmatch_outcome=outcome),
+    )
+    assert [pool.mode.deathmatch_outcome for pool in rollout.rules.pools] == [outcome]
+
+
 def test_deathmatch_win_by_target_scores_the_final_share():
     """A match the target ends is scored by the share at its end, the winning kill counted."""
     rules, state = cases.rules_and_state(GameConfig(3, 2, 1200.0), batch=1)

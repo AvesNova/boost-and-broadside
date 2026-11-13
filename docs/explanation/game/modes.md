@@ -95,10 +95,14 @@ When a match ends, the environment gets a new map and a fresh mode state
   benched ships (below) a team's target is `kills_per_ship` times the enemy's *active*
   ships (`bnb.game.modes.phase.deathmatch_targets`), and the observation's `score_target`
   is the viewer's own.
-- **Outcome for the learner** (game v17): a game is scored by its kill share, as its
-  rating is: share = team 0's score over both teams' (0.5 when neither scored), and
-  `win_loss = (share, 1 - share)`, never a draw. The outcome reward is `2 share - 1`; the
-  `result` above still says who led, for the tallies.
+- **Outcome for the learner** (game v17): by default a game is scored by its kill share,
+  as its default rating is: share = team 0's score over both teams' (0.5 when neither
+  scored), and `win_loss = (share, 1 - share)`, never a draw. The outcome reward is
+  `2 share - 1`; the `result` above still says who led, for the tallies. A training run
+  may instead score it by the kill lead (`--set reward.deathmatch_outcome=kill_lead`,
+  which the rollout sets as `ModeRules.deathmatch_outcome`): `win_loss` is the result
+  one-hot, a draw neither, as in the other modes. The game's state and `result` are the
+  same either way.
 - **Spawns, uniform:** each spawning ship draws candidate points uniformly over the arena
   and takes the one farthest from the nearest living enemy. At a reset, when every ship
   spawns at once, each ship's first candidate stands in for its position, and each ship

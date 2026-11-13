@@ -37,8 +37,9 @@ class Events:
         only where done (team deathmatch: by the kill lead, for the tallies).
     win_loss: (B, 2) float, team 0's weights of a win and of a loss where done, zero
         elsewhere; a draw is the rest, 1 - win - loss (team 1's: flipped). The learner's
-        outcome: team deathmatch's is its kill share (share, 1 - share), the other modes'
-        the result one-hot (`bnb.game.modes.phase.win_loss`).
+        outcome: team deathmatch's is its kill share (share, 1 - share) by default, or the
+        result one-hot (`ModeRules.deathmatch_outcome`), the other modes' the result
+        one-hot (`bnb.game.modes.phase.win_loss`).
     enemy_damage_by_aspect: (B, N, len(ASPECTS)) float, the hit damage each ship took from
         the enemy team this tick by the hit's aspect class (friendly fire left out).
     kill_aspect: int32, the aspect class (an index of ASPECTS) of the hit that killed the

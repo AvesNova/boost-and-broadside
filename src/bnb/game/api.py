@@ -86,7 +86,15 @@ from .physics.flight import flight_tick
 from .physics.medium import medium
 from .physics.spawning import field_radius_summary
 from .physics.step import move, reset, resolve, step
-from .rules import LN_SQRT2, MAP_SCALE_RADIUS, TEAMS, Rules, bullet_slots_for, rules_of
+from .rules import (
+    LN_SQRT2,
+    MAP_SCALE_RADIUS,
+    TEAMS,
+    Rules,
+    bullet_slots_for,
+    rules_of,
+    with_deathmatch_outcome,
+)
 from .ship_types import STANDARD as STANDARD_SHIP_SET
 from .ship_types import (
     ShipTypes,
@@ -169,6 +177,7 @@ __all__ = [
     "view_order",
     "visible",
     "vision_range",
+    "with_deathmatch_outcome",
     "zone_sides",
 ]
 
