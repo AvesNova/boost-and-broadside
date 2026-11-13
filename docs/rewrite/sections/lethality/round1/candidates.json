@@ -1,0 +1,369 @@
+[
+ {
+  "name": "r9m",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0
+   }
+  }
+ },
+ {
+  "name": "r9m2",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     1.0,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "DE Y 0.7 / J 0.25",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.7,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.25,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "DE Y 0.5 / J 0.1",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.5,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.1,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "r9m2 no crowd ext",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 0.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     1.0,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 0.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ]
+   }
+  }
+ },
+ {
+  "name": "r9m2 no r9 extend",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     1.0,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 1.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "duel_extend": 1.0,
+    "duel_extend_in_shield_ratio": [
+     0.4,
+     0.1
+    ],
+    "duel_extend_cross_in_others": [
+     0.5,
+     0.1
+    ],
+    "extend": 0.0
+   }
+  }
+ },
+ {
+  "name": "press (no extension)",
+  "energy": {},
+  "turn": {},
+  "doctrine": {
+   "energy": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 0.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "extend": 0.0
+   },
+   "turn": {
+    "sense": 1.0,
+    "sense_one_circle": 1.0,
+    "sense_in_gun_range": [
+     4.0,
+     0.2
+    ],
+    "sense_mirror_only": 1.0,
+    "sense_in_crowd": [
+     0.5,
+     0.1
+    ],
+    "crowd_sense": 0.0,
+    "crowd_sense_stick": 0.0,
+    "crowd_sense_boost": 1.0,
+    "extend": 0.0
+   }
+  }
+ }
+]
