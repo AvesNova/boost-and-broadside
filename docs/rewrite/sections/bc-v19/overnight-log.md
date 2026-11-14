@@ -405,3 +405,15 @@ Live Elo of the averaged policy against Baekho:
 - **All within noise.** It confirms the deathmatch-only A/B: the outcome's shape doesn't matter, and kill share stays.
 - **The bigger deathmatch advantage didn't pull learning from the other modes either.**
 - **Next on the 5090:** the masking-speed benchmark, then bc-v21 → rl-v21 with variable map sizes.
+
+## 09:58 — rl-mix-kl against rl-v20, deathmatch on win/loss in one pool: no difference
+
+| step | rl-v20, kill-share outcome | rl-mix-kl, kill-lead outcome |
+|---|---|---|
+| 30M | 1616 ± 63 | 1638 ± 66 |
+| 50M | 2280 ± 92 | 2161 ± 85 |
+| 75M | 2631 ± 109 | 2578 ± 103 |
+
+- **All within noise.** Elimination was already rated win/loss/draw and also matched.
+- **Settled:** the deathmatch outcome stays kill share.
+- **Masking speed** (5090, production shapes; the agent's report is pending): the learner's forward and backward pass costs 31.1 → 35.0 ms per 48-view micro-batch (+12.7%). The policy step costs 3.41 → 4.12 ms (+20.8%). Peak memory is unchanged. That is about +12% per update, a cost of leaving the fused kernel. An explicit sink built into the fused kernel should cost little.
