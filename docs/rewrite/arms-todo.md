@@ -11,8 +11,8 @@ It is updated and committed whenever a decision is made or a task changes. Candi
 
 Ordered for working through:
 
-1. **Arena size for games at other fleet sizes.** The game already has a density rule (`api.arena_radius_for`): the radius scales with the fleet down to each mode's minimum, so 20 a side gets 2× the radius. The alternative is the preset's 5v5 map. The density rule couples fleet size to map size, which ties into items 2 and 7.
-2. **The explicit list of evaluation games:** for every condition, the mode, team sizes, map, lineup rule, opponents and pool, SE targets, and the break-even settings. Claude drafts it, the author reviews.
+1. **Arena size for games at other fleet sizes: deferred (2026-11-14)** until the map-size arm shows whether the agent trains on varied maps. Until then evaluations use the game's density rule provisionally, the same for both arms of a pair.
+2. **The explicit list of evaluation games:** drafted in [evaluation-suite.md](evaluation-suite.md), for the author to review.
 3. **The break-even SE target:** 0.15 ships is recommended (0.3 was met in 1–6 batches on synthetic data).
 4. **The rest of the decision rule:** when to extend both arms, the no-regression gate, and the SE target (from the 2 × 2 seed measurement).
 5. **Freezing the game:** what goes in (see "First, before the game freeze"), and the clock-end tuning.
