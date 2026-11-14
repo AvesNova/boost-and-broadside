@@ -14,7 +14,7 @@ from torch.utils import _pytree
 from bnb.contracts import GameConfig
 from bnb.league import tournament
 from bnb.league.matches import SEAT, Arena, ArenaConfig, Player, default_lanes, player
-from bnb.league.ratings import SCALE, _fisher, allocate_blocks, win_probability
+from bnb.league.ratings import win_probability
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
 from bnb.models.yemong import policy
 from bnb.runs import checkpoint
@@ -222,7 +222,7 @@ def test_a_batch_keeps_to_the_engines_lanes(tmp_path):
 
 def test_the_tournament_rates_a_two_build_field(tmp_path):
     first, wider = _network(tmp_path / "a", 1), _network(tmp_path / "b", 2, hidden=32)
-    config = tournament.TournamentConfig(SMALL, target_stderr=1.0, budget=16)
+    config = tournament.TournamentConfig(SMALL, target_stderr=1.0, hopeless=math.inf, budget=16)
     rows = tournament.rate([SCRIPTED, first, wider], "small", CPU, config, game=GAME)
     by_name = {row["player"]: row for row in rows}
     assert set(by_name) == {"scripted", str(tmp_path / "a"), str(tmp_path / "b")}
@@ -540,77 +540,7 @@ def test_a_fractional_summary_reports_the_kill_share_score():
     assert whole["wins"] == 3 and isinstance(whole["wins"], int)
 
 
-# ---- the allocation of blocks and the allowed pairs
-
-
-def _trace_after(pair_games, ratings, anchor, pair, games):
-    """The summed rating variance with `games` more between `pair`, by direct inversion."""
-    count = pair_games.shape[0]
-    added = pair_games.clone()
-    added[pair[0], pair[1]] += games
-    added[pair[1], pair[0]] += games
-    free = torch.arange(count) != anchor
-    added[free, anchor] += tournament.PRIOR_GAMES
-    added[anchor, free] += tournament.PRIOR_GAMES
-    return float(torch.linalg.inv(_fisher(ratings / SCALE, added, free)).trace())
-
-
-def test_each_block_goes_to_the_pair_that_most_reduces_the_variance():
-    pair_games = torch.tensor(
-        [[0, 30, 4, 0], [30, 0, 10, 2], [4, 10, 0, 0], [0, 2, 0, 0]], dtype=torch.float64
-    )
-    ratings = torch.tensor([0.0, 150.0, -80.0, 300.0], dtype=torch.float64)
-    allowed = tournament.allowed_pairs(["scripted", "a", "b", "c"], ("a", "b"))
-    chosen = allocate_blocks(pair_games, ratings, 0, 2, 8, allowed, tournament.PRIOR_GAMES)
-    candidates = [(i, j) for i in range(4) for j in range(i + 1, 4) if allowed[i, j]]
-    best = min(candidates, key=lambda pair: _trace_after(pair_games, ratings, 0, pair, 8))
-    assert chosen[0] == best
-    # the second block's choice accounts for the first's games
-    after = pair_games.clone()
-    after[best[0], best[1]] += 8
-    after[best[1], best[0]] += 8
-    second = min(candidates, key=lambda pair: _trace_after(after, ratings, 0, pair, 8))
-    assert chosen[1] == second
-
-
-def test_the_blocks_spread_over_the_field_and_keep_to_the_allowed_pairs():
-    names = ["scripted", "a", "b", "c", "d", "e"]
-    allowed = tournament.allowed_pairs(names, ("a",))
-    chosen = allocate_blocks(torch.zeros((6, 6)), torch.zeros(6), 0, 12, 8, allowed, 1.0)
-    assert all(allowed[i, j] and i < j for i, j in chosen)
-    assert {player for pair in chosen for player in pair} == set(range(6))
-    # a pair with many games already is chosen less than one with none
-    pair_games = torch.zeros((6, 6))
-    pair_games[2, 3] = pair_games[3, 2] = 400
-    chosen = allocate_blocks(pair_games, torch.zeros(6), 0, 12, 8, allowed, 1.0)
-    assert chosen.count((2, 3)) < chosen.count((4, 5))
-
-
-def test_the_blocks_keep_to_the_engines_lanes():
-    """A batch holds at most a group's lanes of its slots: without them the allocation would
-    put more of group 0 (players 1 and 2) in it."""
-    names = ["scripted", "a", "b", "c"]
-    allowed = tournament.allowed_pairs(names)
-    free = allocate_blocks(torch.zeros((4, 4)), torch.zeros(4), 0, 8, 8, allowed, 1.0)
-    groups, lanes = [None, 0, 0, 1], (3, 13)
-    assert sum(1 for pair in free for index in pair if groups[index] == 0) > 3
-    chosen = allocate_blocks(
-        torch.zeros((4, 4)), torch.zeros(4), 0, 8, 8, allowed, 1.0, groups, lanes
-    )
-    held = [groups[index] for pair in chosen for index in pair]
-    assert held.count(0) <= 3 and held.count(1) <= 13
-    with pytest.raises(ValueError, match="no allowed pair fits"):
-        allocate_blocks(
-            torch.zeros((3, 3)),
-            torch.zeros(3),
-            0,
-            2,
-            8,
-            ~torch.eye(3, dtype=torch.bool),
-            1.0,
-            [None, 0, 0],
-            (1,),
-        )
+# ---- the allowed pairs (the plan of a batch: test_rating_design.py)
 
 
 def test_the_scripted_agent_plays_only_its_partners():
@@ -717,7 +647,9 @@ def test_each_batch_is_recorded_and_a_tournament_resumes_from_its_record(tmp_pat
     record = tmp_path / "frontline.batches.jsonl"
 
     def fit(budget, seed):
-        config = tournament.TournamentConfig(layout, target_stderr=1.0, budget=budget)
+        config = tournament.TournamentConfig(
+            layout, target_stderr=1.0, hopeless=math.inf, budget=budget
+        )
         play = _bradley_terry(truth, 16, torch.Generator().manual_seed(seed))
         logged = []
         fitted = tournament.fit_field(play, names, 0, allowed, config, logged.append, "f", record)
@@ -759,7 +691,9 @@ def _recorded(record, names, identities=None, batches=3, seed=1):
     games."""
     truth = torch.linspace(0.0, 300.0, len(names), dtype=torch.float64)
     layout = ArenaConfig(blocks=4, block_environments=16)
-    config = tournament.TournamentConfig(layout, target_stderr=1.0, budget=batches * 64)
+    config = tournament.TournamentConfig(
+        layout, target_stderr=1.0, hopeless=math.inf, budget=batches * 64
+    )
     play = _bradley_terry(truth, 16, torch.Generator().manual_seed(seed))
     allowed = tournament.allowed_pairs(names)
     tournament.fit_field(
@@ -872,7 +806,7 @@ def test_games_of_one_deathmatch_scoring_are_not_resumed_or_reused_under_the_oth
     record = tmp_path / "deathmatch.batches.jsonl"
     truth = torch.tensor([0.0, 100.0, 200.0], dtype=torch.float64)
     layout = ArenaConfig(blocks=4, block_environments=16)
-    config = tournament.TournamentConfig(layout, target_stderr=1.0, budget=64)
+    config = tournament.TournamentConfig(layout, target_stderr=1.0, hopeless=math.inf, budget=64)
     play = _bradley_terry(truth, 16, torch.Generator().manual_seed(1))
     allowed = tournament.allowed_pairs(names)
     win_loss, kill_share = ("win_loss", "kill_share"), ("kill_share", "kill_share")
@@ -947,15 +881,15 @@ def test_a_record_keeps_full_outcomes_and_is_refitted_under_either_scoring(tmp_p
     summed kill shares and kills; a budget of 0 refits it without playing, under kill share
     to the ratings it recorded and under win, draw and loss to the fit of its win counts; it
     is resumed and reused under either scoring."""
+    from bnb.league.design import fit_posterior
     from bnb.league.gauge import GAUGE_TOP
-    from bnb.league.ratings import fit_ratings
 
     game = dataclasses.replace(GAME, arena_radius=600.0, episode_seconds=12.0)
     record = tmp_path / "deathmatch.batches.jsonl"
     field = [SCRIPTED, RANDOM, HALF]
     names = [p.name for p in field]
     torch.manual_seed(3)
-    played = tournament.TournamentConfig(SMALL, target_stderr=1.0, budget=16)
+    played = tournament.TournamentConfig(SMALL, target_stderr=1.0, hopeless=math.inf, budget=16)
     tournament.rate(field, "small", CPU, played, lambda line: None, game, record=record)
     lines = [json.loads(line) for line in record.read_text().splitlines()]
     assert len(lines) == 2 and all(line["scoring"] == "kill_share" for line in lines)
@@ -964,7 +898,7 @@ def test_a_record_keeps_full_outcomes_and_is_refitted_under_either_scoring(tmp_p
         assert len(line["kill_share"]) == len(line["kills"]) == len(line["matchups"])
     # a budget of 0 builds no engine and plays no game
     monkeypatch.setattr(tournament, "Arena", None)
-    refit = tournament.TournamentConfig(SMALL, target_stderr=1.0, budget=0)
+    refit = tournament.TournamentConfig(SMALL, target_stderr=1.0, hopeless=math.inf, budget=0)
     for scoring in tournament.DEATHMATCH_SCORES:
         rows = tournament.rate(
             field,
@@ -976,7 +910,7 @@ def test_a_record_keeps_full_outcomes_and_is_refitted_under_either_scoring(tmp_p
             record=record,
             deathmatch_score=scoring,
         )
-        ratings, _ = fit_ratings(_wins_of(lines, names, scoring), 0, tournament.PRIOR_GAMES)
+        ratings = fit_posterior(_wins_of(lines, names, scoring), 0).ratings
         expected = [float(rating) + GAUGE_TOP for rating in ratings]
         assert [row["calibrated_elo"] for row in rows] == pytest.approx(expected)
         assert sum(row["games"] for row in rows) == 2 * 16
@@ -1079,7 +1013,7 @@ def test_reused_games_that_meet_the_target_play_no_batch(tmp_path):
         names,
         0,
         tournament.allowed_pairs(names),
-        tournament.TournamentConfig(config.arena, 1.0, 128),
+        tournament.TournamentConfig(config.arena, 1.0, 128, hopeless=math.inf),
         logged.append,
         "f",
         own,
@@ -1095,7 +1029,7 @@ def test_reused_games_that_meet_the_target_play_no_batch(tmp_path):
 
 def test_the_tournament_reuses_an_earlier_fields_record(tmp_path):
     earlier = tmp_path / "earlier" / "small.batches.jsonl"
-    config = tournament.TournamentConfig(SMALL, target_stderr=1.0, budget=8)
+    config = tournament.TournamentConfig(SMALL, target_stderr=1.0, hopeless=math.inf, budget=8)
     tournament.rate(
         [RANDOM, SCRIPTED, HALF], "small", CPU, config, lambda line: None, GAME, record=earlier
     )
@@ -1128,7 +1062,7 @@ def test_a_batch_that_outruns_the_game_clock_raises():
 
 def test_the_tournament_pins_the_scripted_agent_at_1000_and_stops_on_its_budget():
     logged = []
-    config = tournament.TournamentConfig(SMALL, target_stderr=1.0, budget=20)
+    config = tournament.TournamentConfig(SMALL, target_stderr=1.0, hopeless=math.inf, budget=20)
     rows = tournament.rate([RANDOM, SCRIPTED, HALF], "small", CPU, config, logged.append, GAME)
     by_name = {row["player"]: row for row in rows}
     assert by_name["scripted"]["calibrated_elo"] == 1000.0 and by_name["scripted"]["stderr"] == 0.0

@@ -2,13 +2,17 @@
 `bnb head-to-head`, on the match engine's fixed slots (`bnb.league.matches.Arena`).
 
 The ratings are an offline tournament over a field, game preset by game preset, in batches
-of the engine's fixed matchup blocks. Before each batch every block is given a pair, among
-the allowed pairs, by A-optimal value (`bnb.league.ratings.allocate_blocks`, at the current
-ratings and every game so far); after it, the Bradley-Terry fit on every game so far
-(`fit_ratings`, draws as half a win, prior 1 game), shifted so the scripted agent is 1000:
-only it is pinned. The tournament stops when every rating's standard error is below the
-target, or when the next batch would pass the game budget. The result is the leaderboard
-(`calibrated_elo`), keyed by game version, mode, map and fleet size.
+of the engine's fixed matchup blocks. Before each batch the blocks are planned
+(`bnb.league.design.plan_batch`: an A-optimal design over the allowed pairs for the unmet
+standard-error targets, at the current posterior, rounded to whole blocks within the
+batch's players and lanes); after it, the Bradley-Terry posterior on every game so far
+(`bnb.league.design.fit_posterior`, draws as half a win, a Gaussian prior about the
+anchor), shifted so the scripted agent is 1000: only it is pinned. The targets
+(`TournamentConfig`) are a standard error for every player, a tighter one for the decision
+players, and one for each named contrast (a difference between two players' ratings). The
+tournament stops when every target is met, when the next batch would pass the game budget,
+or when every unmet target is out of reach within the budget. The result is the
+leaderboard (`calibrated_elo`), keyed by game version, mode, map and fleet size.
 
 The field may restrict who plays whom (`allowed_pairs`): the scripted agent can be kept to
 a few players, which anchor the scale for the others through their games.
@@ -53,6 +57,16 @@ from bnb.game import VERSION as GAME_VERSION
 from bnb.game.api import PRESETS
 from bnb.runs import checkpoint
 
+from .design import (
+    HOPELESS,
+    INFORMATION_MARGIN,
+    PRIOR_STDERR,
+    Layout,
+    Targets,
+    fit_posterior,
+    plan_batch,
+    target_vector,
+)
 from .gauge import GAUGE_TOP
 from .matches import (
     Arena,
@@ -63,7 +77,6 @@ from .matches import (
     network_groups,
     player,
 )
-from .ratings import allocate_blocks, fit_ratings
 
 # The rating games (the author, 2026-11-13): frontline, elimination (the clock to the team
 # with more health left) and team deathmatch, rated by kill share (`kill_share_scored`).
@@ -72,7 +85,6 @@ PRESET_NAMES = ("frontline", "elimination", "deathmatch")
 # game's kill share; "win_loss", a win, draw or loss by the sign of the final kill
 # difference (the mode's score), as the other modes' games are.
 DEATHMATCH_SCORES = ("kill_share", "win_loss")
-PRIOR_GAMES = 1.0
 ANCHOR = "scripted"
 ALLOCATIONS = ("a_optimal", "balanced")
 
@@ -80,26 +92,81 @@ ALLOCATIONS = ("a_optimal", "balanced")
 @dataclasses.dataclass(frozen=True)
 class TournamentConfig:
     """arena: the match engine's layout (a batch is its blocks' games); target_stderr:
-    rating points every standard error must be under to stop; budget: games per preset at
-    most (whole batches), 0 to play none and refit from the recorded games; allocation:
-    how a batch's blocks choose their pairs, "a_optimal" (`allocate_blocks`) or "balanced"
-    (`balanced_blocks`)."""
+    rating points every player's standard error must be under (the floor of a ladder of
+    checkpoints); decision: the players a decision rests on, whose target is
+    decision_stderr; contrasts: pairs of players (A, B) whose difference r_A - r_B must
+    have a standard error under contrast_stderr; budget: games per preset at most (whole
+    batches), 0 to play none and refit from the recorded games; allocation: how a batch's
+    blocks choose their pairs, "a_optimal" (`bnb.league.design.plan_batch`) or "balanced"
+    (`balanced_blocks`); players_per_batch: the distinct players a batch may hold at most
+    (None: as many as its slots); prior_stderr: the posterior's prior about the anchor
+    (Elo); information_margin: the standard errors of a pair's difference its games are
+    planned at (`bnb.league.design.planning_information`); triangle_share: the share of a
+    batch's blocks that goes first to the least-played pairs among the decision players
+    (closing their triangles for the loop check); hopeless: when every unmet target is out
+    of reach, the tournament stops if each needs more than this many times the batches its
+    budget has left (`bnb.league.design.plan_batch`; inf: it plays its budget)."""
 
     arena: ArenaConfig = ArenaConfig()
     target_stderr: float = 25.0
     budget: int = 20_000
     allocation: str = "a_optimal"
+    decision: tuple[str, ...] = ()
+    decision_stderr: float = 20.0
+    contrasts: tuple[tuple[str, str], ...] = ()
+    contrast_stderr: float = 25.0
+    players_per_batch: int | None = None
+    prior_stderr: float = PRIOR_STDERR
+    information_margin: float = INFORMATION_MARGIN
+    triangle_share: float = 0.0
+    hopeless: float = HOPELESS
 
     def __post_init__(self) -> None:
         if self.allocation not in ALLOCATIONS:
             raise ValueError(f"allocation {self.allocation!r} is not one of {ALLOCATIONS}")
-        if self.target_stderr <= 0.0:
-            raise ValueError(f"target_stderr {self.target_stderr} must be positive")
+        for name in ("target_stderr", "decision_stderr", "contrast_stderr", "prior_stderr"):
+            if getattr(self, name) <= 0.0:
+                raise ValueError(f"{name} {getattr(self, name)} must be positive")
         if self.budget < 0 or 0 < self.budget < self.arena.games:
             raise ValueError(
                 f"a budget of {self.budget} games is less than one batch ({self.arena.games}) "
                 "and not 0 (refit only)"
             )
+        if not 0.0 <= self.triangle_share <= 1.0:
+            raise ValueError(f"triangle_share {self.triangle_share} must be within 0 to 1")
+        if self.players_per_batch is not None and self.players_per_batch < 2:
+            raise ValueError(f"players_per_batch {self.players_per_batch}: a block needs two")
+
+    def targets(self, names: list[str]) -> Targets:
+        """The field's targets: every player's, the decision players' tighter ones and the
+        contrasts'. Raises ValueError for a name not in the field."""
+        unknown = [
+            name
+            for name in (*self.decision, *(name for pair in self.contrasts for name in pair))
+            if name not in names
+        ]
+        if unknown:
+            raise ValueError(f"decision players and contrasts {unknown} are not in the field")
+        stderr = target_vector(names, self.target_stderr, dict.fromkeys(self.decision, 0.0))
+        for name in self.decision:
+            stderr[names.index(name)] = min(self.decision_stderr, self.target_stderr)
+        contrasts = tuple(
+            (names.index(first), names.index(second), self.contrast_stderr)
+            for first, second in self.contrasts
+        )
+        return Targets(stderr, contrasts)
+
+    def layout(self, lanes: tuple[list[int | None], tuple[int, ...]] | None = None) -> Layout:
+        """The plan's view of a batch: the arena's blocks, the players per batch and the
+        engine's network groups and lanes (None: none)."""
+        groups, lane_counts = lanes if lanes is not None else (None, None)
+        return Layout(
+            self.arena.blocks,
+            self.arena.block_environments,
+            self.players_per_batch,
+            None if groups is None else tuple(groups),
+            lane_counts,
+        )
 
 
 def allowed_pairs(names: list[str], anchor_partners: tuple[str, ...] | None = None) -> torch.Tensor:
@@ -458,22 +525,26 @@ def fit_field(
     record: a JSON-lines file of the batches, one line appended (and synced) after each:
     its index, the blocks' matchups and results, the games so far, every player's rating
     and standard error, the worst error, the batch's seconds and the wall time, the games
-    reused and the players' identities (`identity`) when `identities` are given. A record
-    that exists already is read first (its field must be this one), and the tournament
-    goes on from its games.
+    reused, the targets left out as out of reach, and the players' identities (`identity`)
+    when `identities` are given. A record that exists already is read first (its field
+    must be this one), and the tournament goes on from its games.
 
-    lanes: the engine's network groups and lanes (`allocate_blocks`), which each batch's
-    blocks keep to; None for an engine without lanes. reused: earlier tournaments' wins and
-    pair games (`reuse_record`), added to the record's before the first fit: the batches
-    are played only while an error is above the target (none when the reused games meet
-    it), and the budget counts only the games played here; a budget of 0 plays none, the
-    fit then the recorded and reused games' alone. scoring: (how the fit scores the games,
-    recorded with each batch as "scoring", the scoring of its ratings; the scoring of a
-    recorded batch that names none): a record whose batches hold only another scoring's
-    results is not resumed (`recorded_results`)."""
+    lanes: the engine's network groups and lanes, which each batch's blocks keep to
+    (`TournamentConfig.layout`); None for an engine without lanes. reused: earlier
+    tournaments' wins and pair games (`reuse_record`), added to the record's before the
+    first fit: the batches are played only while a target is unmet (none when the reused
+    games meet them), and the budget counts only the games played here; a budget of 0
+    plays none, the fit then the recorded and reused games' alone. scoring: (how the fit
+    scores the games, recorded with each batch as "scoring", the scoring of its ratings;
+    the scoring of a recorded batch that names none): a record whose batches hold only
+    another scoring's results is not resumed (`recorded_results`)."""
     if not _connected(allowed, anchor):
         raise ValueError("every player must reach the scripted agent through allowed pairs")
     arena, count = config.arena, len(names)
+    targets = config.targets(names)
+    decision = tuple(names.index(name) for name in config.decision)
+    labels = targets.labels(names, anchor)
+    layout = config.layout(lanes)
     wins = torch.zeros((count, count), dtype=torch.float64)
     pair_games = torch.zeros((count, count), dtype=torch.float64)
     batches, played, seconds = 0, 0, []
@@ -487,25 +558,36 @@ def fit_field(
         reused_games = round(float(reused[1].sum()) / 2)
     if config.budget == 0 and batches == 0 and reused_games == 0:
         raise ValueError(f"{label}: a budget of 0 refits recorded games, and none are recorded")
-    ratings, stderr = fit_ratings(wins, anchor, PRIOR_GAMES)
+    posterior = fit_posterior(wins, anchor, config.prior_stderr)
     while config.budget > 0 and (
         (batches == 0 and reused_games == 0)
-        or (float(stderr.max()) >= config.target_stderr and played + arena.games <= config.budget)
+        or (not targets.met(posterior) and played + arena.games <= config.budget)
     ):
         started = time.perf_counter()
+        left = (config.budget - played) // arena.games  # the budget's bound, in batches
+        out_of_reach: dict[int, float] = {}
         if config.allocation == "balanced":
             matchups = balanced_blocks(pair_games, arena.blocks, arena.block_environments, allowed)
         else:
-            matchups = allocate_blocks(
-                pair_games,
-                ratings,
-                anchor,
-                arena.blocks,
-                arena.block_environments,
+            plan = plan_batch(
+                posterior,
+                targets,
                 allowed,
-                PRIOR_GAMES,
-                *(lanes or (None, None)),
+                layout,
+                left,
+                config.information_margin,
+                config.triangle_share,
+                decision,
+                config.hopeless,
             )
+            out_of_reach = plan.out_of_reach
+            if plan.criterion <= 0.0 and (batches > 0 or reused_games > 0):
+                log(
+                    f"{label}: stopped: every unmet target is out of reach within the budget's "
+                    f"{left} batches ({_reach_note(labels, out_of_reach)})"
+                )
+                break
+            matchups = plan.blocks
         outcome, extra = play(matchups), {}
         if isinstance(outcome, tuple):
             outcome, extra = outcome
@@ -515,7 +597,8 @@ def fit_field(
             line["scoring"] = scoring[0]
         counted = recorded_results(line, scoring)
         played += _add(wins, pair_games, matchups, counted)
-        ratings, stderr = fit_ratings(wins, anchor, PRIOR_GAMES)
+        posterior = fit_posterior(wins, anchor, config.prior_stderr)
+        ratings, stderr = posterior.ratings, posterior.stderr
         seconds.append(time.perf_counter() - started)
         worst = float(stderr.max())
         if record is not None:
@@ -534,6 +617,7 @@ def fit_field(
                         for i, name in enumerate(names)
                     ],
                     worst_stderr=worst,
+                    out_of_reach=[labels[t] for t in sorted(out_of_reach)],
                     seconds=seconds[-1],
                     wall_time=datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
                     **extra,
@@ -541,18 +625,28 @@ def fit_field(
                 ),
             )
         batches += 1
-        left = (config.budget - played) // arena.games  # the budget's bound
-        # the errors fall as one over the root of the games: the batches to the target
+        left = (config.budget - played) // arena.games
+        # the errors fall as one over the root of the games: the batches to the targets
+        errors, goals = targets.standard_errors(posterior)
+        playing = [t for t in range(len(goals)) if t not in out_of_reach]
+        ratio = max((float(errors[t] / goals[t]) for t in playing), default=1.0)
         total = played + reused_games
-        needed = math.ceil(total * ((worst / config.target_stderr) ** 2 - 1.0) / arena.games)
+        needed = math.ceil(total * (ratio**2 - 1.0) / arena.games)
         expected = min(left, max(needed, 0))
         mean = sum(seconds) / len(seconds)
         log(
-            f"{label}: batch {batches}, {played} games, the largest standard error {worst:.1f} "
-            f"(the batch took {seconds[-1]:.0f} s); done about {_clock(expected * mean)} "
+            f"{label}: batch {batches}, {played} games, the largest standard error {worst:.1f}"
+            f"{'' if not out_of_reach else f' ({_reach_note(labels, out_of_reach)})'} (the "
+            f"batch took {seconds[-1]:.0f} s); done about {_clock(expected * mean)} "
             f"({expected} batches), by {_clock(left * mean)} at the latest ({left} batches)"
         )
-    return ratings, stderr, pair_games
+    return posterior.ratings, posterior.stderr, pair_games
+
+
+def _reach_note(labels: list[str], out_of_reach: dict[int, float]) -> str:
+    """The targets left out as out of reach, with the batches each would need."""
+    listed = ", ".join(f"{labels[t]} needs {batches:.0f}" for t, batches in out_of_reach.items())
+    return f"out of reach: {listed}" if listed else "none out of reach"
 
 
 def rate(

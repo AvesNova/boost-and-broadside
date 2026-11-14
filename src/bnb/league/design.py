@@ -47,13 +47,15 @@ Optionally a share of the blocks goes first to the least-played pairs among the 
 players, so every triangle among them is played (`triangle_share`; the loop check needs
 direct games).
 
-**Out of reach.** A target that no batch can bring within the tournament's remaining
-batches (`reach`) is left out of the criterion: its batches needed, at the better of the
-plan's rate for it and its best single pair's (the whole batch on that pair), with its
-precision rising by that gain each batch. The usual case is a player who beats the anchor
-every game and has no closer partner: more games against the anchor move its estimate out
-and hardly narrow it. The plan names the targets it left out (`Plan.out_of_reach`), and a
-plan with none left to play for has criterion 0, which stops the tournament.
+**Out of reach.** A target the remaining batches (`reach`) cannot bring in is left out of
+the criterion while others can be met: its batches needed are counted at the better of the
+plan's rate for it and its best single pair's (the whole batch on that pair), its
+precision rising by that gain each batch. When every unmet target is out of reach the
+batch plays for them all, unless each needs more than `HOPELESS` times the batches left:
+then the plan has criterion 0, which stops the tournament. The usual hopeless case is a
+player who beats the anchor every game and has no closer partner: more games against the
+anchor move its estimate out and hardly narrow it. The plan names the targets it found out
+of reach (`Plan.out_of_reach`).
 
 Offline statistics in float64 on the CPU (code style, Dtypes).
 """
@@ -69,6 +71,7 @@ DTYPE = torch.float64
 PRIOR_STDERR = 1000.0  # Elo: the prior's standard deviation about the anchor
 INFORMATION_MARGIN = 1.0  # standard errors of the difference a game is planned at
 MARGIN_CAP = 200.0  # Elo: the planning margin at most (an unplayed pair's error is the prior's)
+HOPELESS = 10.0  # a target needing this many times the batches left is not played for
 NEWTON_STEPS = 200
 DECREMENT_TOLERANCE = 1e-13  # on the Newton decrement, natural units
 DESIGN_STEPS = 300  # iterations of the multiplicative algorithm
@@ -189,6 +192,18 @@ class Targets:
             return torch.zeros((0, count), dtype=DTYPE), torch.zeros(0, dtype=DTYPE)
         return torch.stack(directions), torch.tensor(targets, dtype=DTYPE)
 
+    def labels(self, names: list[str], anchor: int) -> list[str]:
+        """Each target's name, in the order of `rows`: a player's name, or "A - B" for a
+        contrast."""
+        players = [
+            name
+            for index, name in enumerate(names)
+            if index != anchor and math.isfinite(float(self.stderr[index]))
+        ]
+        return players + [
+            f"{names[first]} - {names[second]}" for first, second, _ in self.contrasts
+        ]
+
     def standard_errors(self, posterior: Posterior) -> tuple[torch.Tensor, torch.Tensor]:
         """(each target's standard error now (T,), its target (T,)), in Elo."""
         rows, targets = self.rows(posterior.anchor)
@@ -281,8 +296,6 @@ class Layout:
     def __post_init__(self) -> None:
         if self.players is not None and self.players < 2:
             raise ValueError(f"{self.players} players per batch: a block needs two")
-
-
 
 
 @dataclasses.dataclass(frozen=True)
@@ -419,14 +432,16 @@ def plan_batch(
     margin: float = INFORMATION_MARGIN,
     triangle_share: float = 0.0,
     decision: tuple[int, ...] = (),
+    hopeless: float = HOPELESS,
 ) -> Plan:
     """The batch's blocks (module docstring). allowed (K, K) bool: the pairs that may play.
     reach: the batches the tournament may still play; an unmet target that would need more
     at the rate this batch is planned to lower its variance (its precision rising by the
     batch's gain each batch) is left out as out of reach, and the batch is planned again
-    for the others. decision: the decision players, whose least-played pairs take
-    `triangle_share` of the blocks first. Raises ValueError when no allowed pair fits the
-    lanes."""
+    for the others; hopeless: the factor on the batches left past which targets all out of
+    reach stop the tournament (module docstring; inf: never). decision: the decision
+    players, whose least-played pairs take `triangle_share` of the blocks first. Raises
+    ValueError when no allowed pair fits the lanes."""
     allowed = torch.as_tensor(allowed, dtype=torch.bool).cpu()
     count, anchor = allowed.shape[0], posterior.anchor
     free = torch.arange(count) != anchor
@@ -483,9 +498,11 @@ def plan_batch(
         out_of_reach.update(far)
         if not far:
             break
+        if len(far) == len(playing):  # every target left is out of reach
+            if min(far.values()) > hopeless * reach:
+                return Plan(batch.blocks, weights, 0.0, 0.0, out_of_reach)
+            break  # but not hopeless: the batch plays for them all
         playing = [t for t in playing if t not in far]
-        if not playing:  # nothing left to play for
-            return Plan(batch.blocks, weights, 0.0, 0.0, out_of_reach)
     return Plan(batch.blocks, weights, float(before.sum()), float(after.sum()), out_of_reach)
 
 

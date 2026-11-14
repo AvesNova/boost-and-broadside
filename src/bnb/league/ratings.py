@@ -1,6 +1,7 @@
-"""The rating estimators (league spec 4 and 6): the Bradley-Terry fit with standard errors (the
-run's ratings, `bnb.league.lanes.RunRatings`, and the offline tournament's) and the offline
-tournament's allocation of its matchup blocks.
+"""The run's rating estimator (league spec 4): the Bradley-Terry fit with standard errors
+behind the run's live ratings (`bnb.league.lanes.RunRatings`), and the Elo scale every
+rating shares. The offline tournament's posterior and its batch plan are
+`bnb.league.design`'s.
 
 Offline tools in float64 on the CPU (code style, Dtypes). Ratings are on the Elo scale: 400
 points per factor of 10 in odds, `P(i beats j) = 1 / (1 + 10^((r_j - r_i)/400))`. Every fit
@@ -93,78 +94,3 @@ def fit_ratings(wins, anchor: int, prior_games: float) -> tuple[torch.Tensor, to
     return (theta - theta[anchor]) * SCALE, stderr
 
 
-def allocate_blocks(
-    pair_games,
-    ratings,
-    anchor: int,
-    blocks: int,
-    block_games: int,
-    allowed,
-    prior_games: float,
-    groups: list[int | None] | None = None,
-    lanes: tuple[int, ...] | None = None,
-) -> list[tuple[int, int]]:
-    """Which pair each of `blocks` blocks of `block_games` games plays next: (i, j) with
-    i < j, chosen greedily by A-optimal value.
-
-    Each block goes to the allowed pair whose games most reduce the summed rating variance:
-    the trace of C, the inverse Fisher information over the players other than the anchor,
-    at the given ratings (K,), the pair games played so far (K, K) and the blocks already
-    chosen. The information holds the fit's prior games against the anchor (`fit_ratings`'s
-    `prior_games`), so it is defined before any game is played. n more games between i and j,
-    whose win probability is p, add n w v v' to the information (w = p (1 - p), v = e_i - e_j,
-    the anchor's entry dropped), which lowers the trace by n w v'C^2 v / (1 + n w v'C v)
-    (Sherman-Morrison); C is updated the same way. allowed (K, K) bool: the pairs that may
-    play (symmetric). groups and lanes: the match engine's (`bnb.league.matches.Arena`):
-    each player's network group (None for a scripted player) and each group's lanes, the
-    most of its slots a batch holds; a block goes to the best pair that still fits them.
-    Raises ValueError when no allowed pair fits."""
-    pair_games, ratings = _as_float(pair_games), _as_float(ratings)
-    allowed = torch.as_tensor(allowed, dtype=torch.bool).cpu()
-    count = pair_games.shape[0]
-    upper = torch.triu_indices(count, count, 1)
-    upper = upper[:, allowed[upper[0], upper[1]]]
-    if upper.shape[1] == 0:
-        raise ValueError("no pair is allowed to play")
-    free = torch.arange(count) != anchor
-    games = pair_games.clone()
-    games[free, anchor] += prior_games
-    games[anchor, free] += prior_games
-    theta = ratings / SCALE
-    covariance = torch.linalg.inv(_fisher(theta, games, free))
-    # each pair's direction v over the free players (the anchor's entry dropped)
-    position = torch.cumsum(free.long(), 0) - 1
-    direction = torch.zeros((upper.shape[1], count - 1), dtype=DTYPE)
-    for side, sign in ((upper[0], 1.0), (upper[1], -1.0)):
-        kept = free[side]
-        direction[torch.arange(upper.shape[1])[kept], position[side[kept]]] = sign
-    probability = torch.sigmoid(theta[upper[0]] - theta[upper[1]])
-    weight = block_games * probability * (1.0 - probability)
-    if lanes is not None:
-        # each pair's lanes by group; a scripted player's in a column of its own
-        group_column = torch.tensor([len(lanes) if group is None else group for group in groups])
-        needs = torch.zeros((upper.shape[1], len(lanes) + 1))
-        for side in upper:
-            needs.index_put_(
-                (torch.arange(upper.shape[1]), group_column[side]), torch.ones(()), True
-            )
-        left = torch.tensor(lanes + (2 * blocks,), dtype=needs.dtype)
-    chosen = []
-    for _ in range(blocks):
-        projected = direction @ covariance  # (pairs, K - 1): C v per pair
-        spread = (projected * direction).sum(1)  # v'C v
-        value = weight * (projected * projected).sum(1) / (1.0 + weight * spread)
-        if lanes is not None:
-            fits = (needs <= left).all(1)
-            if not fits.any():
-                raise ValueError(f"no allowed pair fits the engine's lanes {lanes}")
-            value = torch.where(fits, value, -torch.inf)
-        best = int(torch.argmax(value))
-        chosen.append((int(upper[0, best]), int(upper[1, best])))
-        if lanes is not None:
-            left = left - needs[best]
-        column = projected[best]
-        covariance = covariance - weight[best] * torch.outer(column, column) / (
-            1.0 + weight[best] * spread[best]
-        )
-    return chosen

@@ -30,8 +30,8 @@ import time
 import torch
 
 from bnb.league import tournament
+from bnb.league.design import fit_posterior
 from bnb.league.matches import STATISTICS, ArenaConfig, player, temperature_of
-from bnb.league.ratings import fit_ratings
 
 ANCHOR = "scripted"
 
@@ -122,7 +122,8 @@ def summary(record: pathlib.Path) -> list[dict]:
         policy, temperature = temperature_of(row["player"])
         difference = {}
         if row["player"] != ANCHOR:
-            relative, relative_stderr = fit_ratings(wins, index[policy], tournament.PRIOR_GAMES)
+            relative = fit_posterior(wins, index[policy])
+            relative, relative_stderr = relative.ratings, relative.stderr
             number = index[row["player"]]
             difference = dict(
                 versus_one=float(relative[number]), versus_one_stderr=float(relative_stderr[number])
