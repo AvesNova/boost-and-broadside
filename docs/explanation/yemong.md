@@ -603,7 +603,8 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
   by default the spatial sublayers first.
   - A **spatial sublayer** is attention of the queries over themselves and the map memory,
     with rotary encodings of position and heading, then a gated MLP. There is no mask, but
-    for uneven teams (below).
+    for uneven teams (below). `YemongConfig.gate` optionally gates the attention output
+    (below).
   - A **temporal sublayer** runs per query token over time: a short causal convolution and
     an RG-LRU recurrence, gated, then a gated MLP. An episode start cuts both. The RG-LRU
     (real-gated linear recurrent unit) keeps one state vector per token and updates it as
@@ -612,8 +613,8 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
 - **Uneven teams:** training plays full teams only. Where a match benches slots (the
   crossover's engine, `bnb.league.matches.Arena` with benching), the runtime switch
   `Yemong.mask_benched` is on: a ship whose observation row has the `benched` flag is no
-  key or value of any spatial sublayer (an attention mask from the flag, at fixed shapes,
-  on the plain attention path) and counts in no ship's local presence, so the active
+  key or value of any spatial sublayer (a key mask from the flag, at fixed shapes, which
+  the fused attention kernel takes) and counts in no ship's local presence, so the active
   ships' outputs do not depend on anything in the benched rows. The benched rows' own
   outputs are computed and mean nothing; the game ignores a benched ship's action. Off,
   the model computes exactly what it did without the switch. The same weights serve both.
@@ -631,6 +632,20 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
 | shot outcome | ship rows | how a shot fired now would end |
 | shot trajectory | ship rows, at bullet ages (in training, 4 per shot) | where a shot fired now would be at each age |
 | geometry (training only, optional) | pairs of ship rows: an own ship and another ship the view sees | the pair's range, antenna train angle, aspect, heading crossing angle and closure rate |
+
+### The attention output gate
+
+`YemongConfig.gate` adds the output gate of Qiu et al., "Gated Attention for Large Language
+Models" (2025), to every spatial sublayer: each head's attention output is multiplied by
+`sigmoid(W x + b)`, where `x` is the normed token the query projection reads, before the
+output projection. `"elementwise"` gates every output element (`W` is width by width, 16 512
+parameters a sublayer at width 128, 66 048 over the four), `"headwise"` one scalar per head
+(`W` is width by heads, 258 a sublayer, 1 032 in all). The gate makes the attention output
+query-dependent and lets a head contribute nothing; of the gate forms and positions the
+paper compared, the elementwise gate on the attention output did best. `W` starts at zero and `b` at 2, so every gate starts at 0.88 and
+the sublayer begins close to the ungated one. The default `"none"` has no gate parameters,
+and every build from before the option reads as `"none"`. The gate is plain PyTorch outside
+the attention kernel. Set it on a run with `--set yemong.gate=elementwise`.
 
 ### Attention shares
 

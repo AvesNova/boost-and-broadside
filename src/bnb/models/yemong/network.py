@@ -112,11 +112,17 @@ class Block(nn.Module):
     when not `temporal`), in the trunk's order (`ORDERS`)."""
 
     def __init__(
-        self, width: int, heads: int, map_width: int, spatial_per_block: int, temporal: bool
+        self,
+        width: int,
+        heads: int,
+        map_width: int,
+        spatial_per_block: int,
+        temporal: bool,
+        gate: str = "none",
     ) -> None:
         super().__init__()
         self.spatial = nn.ModuleList(
-            SpatialBlock(width, heads, map_width) for _ in range(spatial_per_block)
+            SpatialBlock(width, heads, map_width, gate) for _ in range(spatial_per_block)
         )
         self.temporal = TemporalBlock(width) if temporal else None
 
@@ -187,6 +193,7 @@ class Trunk(nn.Module):
         blocks: int,
         spatial_per_block: int,
         order: str = "spatial_first",
+        gate: str = "none",
     ) -> None:
         super().__init__()
         if order not in ORDERS:
@@ -195,7 +202,7 @@ class Trunk(nn.Module):
         temporal = order != "spatial_only"
         self.temporal_blocks = blocks if temporal else 0  # the carry's blocks
         self.blocks = nn.ModuleList(
-            Block(width, heads, map_width, spatial_per_block, temporal) for _ in range(blocks)
+            Block(width, heads, map_width, spatial_per_block, temporal, gate) for _ in range(blocks)
         )
 
     def _attend(self, tokens, map_memory, token_tables, map_tables, key_mask) -> torch.Tensor:

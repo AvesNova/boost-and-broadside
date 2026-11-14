@@ -66,6 +66,7 @@ from .inputs import (
 )
 from .layers import rotary_tables
 from .network import ORDERS, Encoder, Trunk
+from .spatial import GATES
 from .state_code import (
     MEANS,
     POSITION_INPUTS,
@@ -228,6 +229,9 @@ class YemongConfig:
     zone token the capture locks on both teams (Frontline, game version 8), coded as the
     ship token codes its respawn wait (`inputs.compose`). Off by default, so every build
     from before them is unchanged; a new run's build reads them.
+    gate (`spatial.GATES`): the spatial attention's output gate (`spatial.SpatialBlock`),
+    "elementwise" or "headwise" sigmoid(W x + b) on each head's output before the output
+    projection. "none" by default: no gate parameters, every build from before it unchanged.
 
     Retired (`RETIRED`): rotary_readout, the per-block rotary read-out (2026-11-07 to
     2026-11-12, replaced by the geometry head); a build record without it, or with it off,
@@ -275,6 +279,7 @@ class YemongConfig:
     correction_rate: float = 0.1  # eta: the error head's step per tick, of its confident median
     physics_hidden_decay: float | None = None  # s: the physics head's hidden rows, exp(-age/tau)
     physics_hidden_fade: bool = False  # a hidden row's forecast: exp(-age/tau) of the change
+    gate: str = "none"  # the attention output gate: "none", "elementwise", "headwise"
 
     def __post_init__(self) -> None:
         if self.next_state not in NEXT_STATES:
@@ -308,6 +313,8 @@ class YemongConfig:
             raise ValueError(f"spread_fit {self.spread_fit!r} is not one of {SPREAD_FITS}")
         if self.order not in ORDERS:
             raise ValueError(f"order {self.order!r} is not one of {ORDERS}")
+        if self.gate not in GATES:
+            raise ValueError(f"gate {self.gate!r} is not one of {GATES}")
         if not set(self.mode_inputs) <= set(MODE_INPUTS) or len(set(self.mode_inputs)) != len(
             self.mode_inputs
         ):
@@ -609,6 +616,7 @@ class Yemong(nn.Module):
             config.blocks,
             config.spatial_per_block,
             config.order,
+            config.gate,
         )
         levels = len(config.local_levels)
         # Heads grouped by the token they read: own ships, every ship, the global token.

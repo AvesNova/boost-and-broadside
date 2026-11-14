@@ -11,16 +11,32 @@ from .layers import GatedMLP, apply_rotary, norm
 
 Tables = tuple[torch.Tensor, torch.Tensor]  # (cos, sin), each (..., tokens, 1, pairs)
 
+GATES = ("none", "elementwise", "headwise")  # `YemongConfig.gate`
+GATE_BIAS = 2.0  # sigmoid(2) = 0.88: a new gate starts nearly open, its slope 0.10
+
 
 class SpatialBlock(nn.Module):
     """The spatial sublayer: rotary attention of the query tokens over themselves and the map
-    memory, then a gated MLP, each pre-normed and residual."""
+    memory, then a gated MLP, each pre-normed and residual.
 
-    def __init__(self, width: int, heads: int, map_width: int) -> None:
+    gate (`GATES`): "none", or the attention output gate of Qiu et al., "Gated Attention for
+    Large Language Models" (2025): each head's output times sigmoid(W x + b), x the normed
+    tokens the query projection reads, before the output projection. "elementwise", one gate
+    per output element (W: width to width); "headwise", one per head (W: width to heads).
+    W starts at zero and b at `GATE_BIAS`, so every gate starts at sigmoid(2) = 0.88."""
+
+    def __init__(self, width: int, heads: int, map_width: int, gate: str = "none") -> None:
         super().__init__()
+        if gate not in GATES:
+            raise ValueError(f"gate {gate!r} is not one of {GATES}")
         self.heads = heads
         self.attention_norm = norm(width)
         self.query_key_value = nn.Linear(width, 3 * width, bias=False)
+        self.gate = None
+        if gate != "none":
+            self.gate = nn.Linear(width, width if gate == "elementwise" else heads)
+            nn.init.zeros_(self.gate.weight)
+            nn.init.constant_(self.gate.bias, GATE_BIAS)
         self.output = nn.Linear(width, width, bias=False)
         self.map_norm = norm(map_width)
         self.map_key_value = nn.Linear(map_width, 2 * width, bias=False)
@@ -40,10 +56,9 @@ class SpatialBlock(nn.Module):
         are keys and values (the ships, for `Yemong.mask_benched`; every key, for the
         `Ablations.absent_zones` mask); the rest always are. None: every token. Masked or
         not, the fused kernel runs where it applies, the plain path elsewhere."""
+        normed = self.attention_norm(tokens)
         query, key, value = (
-            self.query_key_value(self.attention_norm(tokens))
-            .unflatten(-1, (3, self.heads, -1))
-            .unbind(-3)
+            self.query_key_value(normed).unflatten(-1, (3, self.heads, -1)).unbind(-3)
         )
         map_key, map_value = (
             self.map_key_value(self.map_norm(map_memory))
@@ -58,6 +73,9 @@ class SpatialBlock(nn.Module):
             attended = self._attend(
                 query, key, value, map_key, map_value, token_tables, map_tables, key_mask
             )
+        if self.gate is not None:  # (..., Q, heads, width or 1): per element or per head
+            gate = torch.sigmoid(self.gate(normed)).unflatten(-1, (self.heads, -1))
+            attended = attended * gate.to(attended.dtype)
         tokens = tokens + self.output(attended.flatten(-2))
         return tokens + self.feedforward(self.feedforward_norm(tokens))
 

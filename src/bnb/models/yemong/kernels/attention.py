@@ -183,8 +183,8 @@ def _store_halves(pointer, base, row_stride, rows, lanes, mask, even, odd):
 @triton.autotune(configs=CONFIGS, key=KEY, cache_results=True)
 @triton.jit
 def _attention_backward(query, key, value, map_key, map_value, token_cos, token_sin, map_cos,
-                        map_sin, key_mask, out, grad_out, grad_query, grad_key, grad_value, grad_map_key,
-                        grad_map_value, scale,
+                        map_sin, key_mask, out, grad_out, grad_query, grad_key, grad_value,
+                        grad_map_key, grad_map_value, scale,
                         q_batch, q_token, q_head, k_batch, k_token, k_head,
                         v_batch, v_token, v_head, mk_batch, mk_token, mk_head,
                         mv_batch, mv_token, mv_head, t_batch, t_token, m_batch, m_token,
