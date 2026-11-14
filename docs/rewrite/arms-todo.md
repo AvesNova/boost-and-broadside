@@ -60,7 +60,7 @@ It is updated and committed whenever a decision is made or a task changes. Candi
 | Rating allocator, shared pool, placement-only prior | `feat/rating-allocator` (6538fa81) | Done on the CPU. Waits for the layout probe on the GPU. |
 | Cheese agents | `feat/cheese-agents` (30a5dd66, from seed isolation) | Done on the CPU. Waits for the first exploit check on the GPU. |
 | Break-even ratio | `feat/break-even` (from seed isolation) | Agent working. |
-| References list | docs only | Agent working. |
+| References list | docs only (dab3a8de) | 26 entries, about 35 papers. Only 5 are verified online so far; the rest are marked "(unverified)". Update the code locations of the loop check and the allocator after the rating branch merges. |
 | Seed twin of rl-v20 (`rl-v20-seed1`, seed 1) | laptop GPU, old code | Running; ETA 01:10 (worst 02:15). |
 
 **GPU queue after the twin:**
