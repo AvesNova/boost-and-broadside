@@ -198,6 +198,9 @@ turn, team 0's situation is team 1's exactly. Clover plays the game's default li
 
 ![Clover at its start: two high (green) and two low (pink) fields, team 0's ships (blue) at the bottom and team 1's (orange) at the top, the layout turned by this match's angle](../../images/play/clover-1920.png)
 
+A layout's game may also sample field counts (`GameConfig.active_fields`): an episode
+then plays the layout's first pairs, the rest absent.
+
 ## Benched ships
 
 Unequal teams at one static size, for evaluation (the crossover, `bnb crossover`):

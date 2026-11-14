@@ -85,6 +85,11 @@ scale at each reset (`TrainConfig.arena_scale`, ln scale ~ Normal(0, 0.35) trunc
 radius. The rating lanes always play their games' own sizes. See
 [Mixed batches](../explanation/game/mixed-batches.md#map-size-sampling).
 
+The number of fields can vary too: `TrainConfig.active_fields=ActiveFields(low, high)`
+plays a drawn count of the game's field slots each episode, the rest absent, and the
+Yemong learner masks the absent ones. It is off by default (every field). See
+[Mixed batches](../explanation/game/mixed-batches.md#field-count-sampling).
+
 `bnb.contracts.pools.environment_multiple` gives the smallest batch the pools split into;
 every valid `--environments` is a multiple of it.
 
