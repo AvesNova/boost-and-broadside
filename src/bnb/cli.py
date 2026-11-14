@@ -43,6 +43,8 @@ class Train:
     real_scale_frontline), which sets the mode, the sizes, the map and the ship set, or a
     training mix in one batch (`bnb.runtime.train.TRAINING_MIXES`): mixed, frontline and
     deathmatch half each; real_scale_mixed, the same on the real-scale maps and ships;
+    real_scale_all_modes, the three real-scale modes at 6/16 frontline, 5/16 deathmatch and
+    5/16 elimination (the arms' mix);
     without one, the mode and sizes below.
     precision: bfloat16 (the model's matmuls), float32 or tf32; old_log_probabilities:
     rollout or recomputed (by unroll before the first epoch).

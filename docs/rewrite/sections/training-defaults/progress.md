@@ -42,3 +42,12 @@ defaults of [arms-todo.md](../../arms-todo.md) ("Decided, to implement"). CPU on
   test_map_sampling, test_absent_fields, test_training_checkpoints, test_league_slots,
   test_lanes, test_bc, test_game_section: 145 passed) still pass with the draw on.
 - **Next:** mode mix 6/5/5.
+
+## 07:40 to 07:50: mode mix 6/5/5
+
+- **Worked:** `TRAINING_MIXES["real_scale_all_modes"]` is frontline 0.375, deathmatch
+  0.3125, elimination 0.3125: of 2048 environments 768 / 640 / 640, each mode's self-play
+  and league pools 384 / 320 / 320. `environment_multiple` stays 32.
+- **Tests:** test_mixed, test_game_version (the game fingerprint is unchanged by the
+  lineup draw's `next_ship_type`), test_references: 622 passed.
+- **Next:** league sampling (1 - p)^2 with no floor.

@@ -154,21 +154,21 @@ def test_the_all_modes_mix_plays_the_three_real_scale_modes_at_their_shares():
     rules = api.rules_of(base, pools, 2048)
     games = [(pool.environments, pool.mode.name, pool.arena_radius) for pool in rules.pools]
     assert games == [
-        (1024, "frontline", 7800.0),
+        (768, "frontline", 7800.0),
         (640, "team_deathmatch", 4200.0),
-        (384, "elimination", 7800.0),
+        (640, "elimination", 7800.0),
     ]
 
 
 def test_the_all_modes_mix_splits_2048_environments_into_whole_pools():
     """Each mode's self-play and league pools are whole at the launch's 2048 environments:
-    512 / 320 / 192 each."""
+    384 / 320 / 320 each (6/5/5 of 16, decided 2026-11-14)."""
     from bnb.runtime.train import LINEUP, TRAINING_MIXES, mixed
 
     _, pools = mixed(LINEUP, TRAINING_MIXES["real_scale_all_modes"])
     counts = [pool.share * 2048 for pool in pools]
     assert all(count == int(count) for count in counts)
-    assert [int(count) for count in counts] == [512, 512, 320, 320, 192, 192]
+    assert [int(count) for count in counts] == [384, 384, 320, 320, 320, 320]
     assert sum(counts) == 2048
 
 
