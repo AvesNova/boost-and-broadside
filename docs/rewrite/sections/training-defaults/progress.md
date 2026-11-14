@@ -66,3 +66,27 @@ defaults of [arms-todo.md](../../arms-todo.md) ("Decided, to implement"). CPU on
   test_league_ratings, test_league_cheese, test_league_graph, test_lanes,
   test_dashboards: 72 passed.
 - **Next:** the snapshot schedules.
+
+## 08:15 to 08:45: snapshot schedules
+
+- **Worked:** `bnb.runtime.snapshots.SnapshotSchedule(steps, every)`: a list of steps,
+  then a period (None: the list's last gap). `due(before, after)` says whether an update
+  holds a point; a period alone is the old cadence exactly.
+  - RL policy files: `TrainConfig.policy_snapshots = RL_SNAPSHOTS` (1, 2, 3, 4, 6, 8, 10,
+    12, 16 and 20M, then every 5M), replacing `policy_snapshot_every` (10M). Overridable on
+    a resume as before (`policy_snapshots.steps`, `policy_snapshots.every`).
+  - League members: `LeagueConfig.snapshots = LEAGUE_SNAPSHOTS` (5 ... 160M, then every
+    30M), replacing `snapshot_every`; None keeps the measured 30-minute period. The
+    league's checkpoint state records `snapshot_schedule`.
+- **Open (not settled by the decisions):**
+  - PPO runs write every update's policy files by default (`update_policies`), so the
+    RL schedule applies only to runs without them (BC by default, or
+    `--update-policies False`). I left that default alone: turning it off would drop
+    files an author may want (the averaging sweep reads them).
+  - League retention (`pool.retained`: the newest 8, then one per 2^k) still applies on
+    top of the schedule, so at 160M the members at 20, 25, 30 and 40M are dropped.
+  - BC uses the same policy schedule (denser than its old 10M early on).
+- **Tests:** test_snapshot_schedules (new), test_league_slots, test_league_cheese,
+  test_league_graph, test_league_metrics, test_league_ratings, test_update_policies,
+  test_training_checkpoints, test_references, test_formatting: 679 passed.
+- **Next:** BC fixed at 100M, the plateau logging only.

@@ -82,7 +82,7 @@ def test_the_option_turns_the_per_update_policies_off_and_a_resume_may_change_it
         "--update-policies", "False",
     )  # fmt: skip
     run = Run.open(tmp_path, "a")
-    # off: only the snapshots of the cadence (policy_snapshot_every) and the segment's end
+    # off: only the scheduled snapshots (policy_snapshots) and the segment's end
     assert run.record["update_policies"] is False
     assert ema.live_steps(run) == [STEPS_PER_UPDATE]
     bnb(
@@ -175,15 +175,17 @@ BC_OPTIONS = (
     "--set",
     "league.uniform_from=0",
     "--set",
-    f"policy_snapshot_every={2 * STEPS_PER_UPDATE}",
+    "policy_snapshots.steps=[]",
+    "--set",
+    f"policy_snapshots.every={2 * STEPS_PER_UPDATE}",
 )
 
 
 def test_a_bc_run_keeps_policy_snapshots_on_its_cadence_and_at_each_end(monkeypatch, tmp_path):
     """BC writes no per-update policies by default, but keeps the live clone and both
-    averages every `policy_snapshot_every` environment steps and at each segment's end, so
-    a run continued past its budget keeps its earlier averages; `bnb ratings --with` takes
-    them by their path in the runs directory."""
+    averages on its schedule (`policy_snapshots`, here every two updates) and at each
+    segment's end, so a run continued past its budget keeps its earlier averages; `bnb
+    ratings --with` takes them by their path in the runs directory."""
     from bnb.league.matches import player
 
     budget = ("--bc-budget-steps", str(3 * STEPS_PER_UPDATE))

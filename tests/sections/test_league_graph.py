@@ -30,7 +30,11 @@ def _count_syncs(work) -> int:
 
 def test_cuts_never_capture_the_rollout_again(tmp_path):
     trainer, league = cases.league(
-        tmp_path, "cuda", league=cases.LeagueConfig(cheese=(), snapshot_every=256, cut_every=1)
+        tmp_path,
+        "cuda",
+        league=cases.LeagueConfig(
+            cheese=(), snapshots=cases.SnapshotSchedule(every=256), cut_every=1
+        ),
     )
     trainer.collect()
     graph = trainer.rollout.graph

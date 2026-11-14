@@ -40,6 +40,7 @@ from bnb.controllers.scripted_memory import ScriptedCarry
 from bnb.game.handling.characteristics import Characteristics
 
 from . import stacked
+from .snapshots import LEAGUE_SNAPSHOTS, SnapshotSchedule
 
 OPPONENTS = "opponents"  # the controller name of the league's seat
 
@@ -132,12 +133,14 @@ class LeagueConfig:
     which the uniform average starts (before them it is the live weights: a warm start's
     optimizer, critic and advantages settle first); None, the default, is the run's
     learning-rate warm-up (`LearnerConfig.warmup_steps`, `uniform_start`), so a fine-tune's
-    shorter warm-up starts its average sooner; snapshot_every: environment steps between
-    snapshots (None: measured once, about 30 minutes of the run's throughput, and
-    recorded); cheese: the cheese agents that are pool entries, by name
-    (`bnb.controllers.scripted_cheese.NAMES`; all six by default, `()` turns them off), each
-    `scripted:<name>`,
-    sampled with the other entries; fixed at a run's start."""
+    shorter warm-up starts its average sooner; snapshots: the environment steps at which
+    the live weights join the pool (`bnb.runtime.snapshots.SnapshotSchedule`;
+    `LEAGUE_SNAPSHOTS` by default, decided 2026-11-14: 5, 10, 15, 20, 25, 30, 40, 50, 60,
+    75, 90, 110, 130 and 160M steps, then every 30M; None: a period measured once, about 30
+    minutes of the run's throughput, and recorded); cheese: the cheese agents that are pool
+    entries, by name (`bnb.controllers.scripted_cheese.NAMES`; all six by default, `()`
+    turns them off), each `scripted:<name>`, sampled with the other entries; fixed at a
+    run's start."""
 
     slots: int = 4
     # the author's clean cut, 2026-11-06 (decisions: round four)
@@ -149,7 +152,7 @@ class LeagueConfig:
     exponential_decay: float = 0.95
     # the run's warm-up (author, 2026-11-07: decisions, run control)
     uniform_from: int | None = None
-    snapshot_every: int | None = None
+    snapshots: SnapshotSchedule | None = LEAGUE_SNAPSHOTS
     cheese: tuple[str, ...] = CHEESE_NAMES
 
     def __post_init__(self) -> None:
@@ -175,8 +178,6 @@ class LeagueConfig:
             raise ValueError(f"league exponential_decay {self.exponential_decay} must be in (0, 1)")
         if self.uniform_from is not None and self.uniform_from < 0:
             raise ValueError(f"league uniform_from {self.uniform_from} must not be negative")
-        if self.snapshot_every is not None and self.snapshot_every < 1:
-            raise ValueError(f"league snapshot_every {self.snapshot_every} must be positive")
 
     def uniform_start(self, warmup_steps: int) -> int:
         """The environment steps the uniform average starts after: `uniform_from`, or the

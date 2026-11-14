@@ -24,6 +24,7 @@ from bnb.runtime.opponents import (
     SCRIPTED_PLAYER,
     LeagueConfig,
 )
+from bnb.runtime.snapshots import SnapshotSchedule
 from bnb.streams import inverse_cdf, keyed_uniform, stream_key
 
 pytestmark = pytest.mark.usefixtures("global_generator")
@@ -136,7 +137,9 @@ def test_the_pool_holds_the_full_strength_scripted_agent_and_no_rung(tmp_path):
     """The training pool's only scripted entry is the full-strength scripted agent (the
     author, 2026-11-12): no weaker rung and no random player, beside the averages and,
     as the run takes them, the snapshots. The league's configuration has no ladder."""
-    trainer, league = cases.league(tmp_path, league=LeagueConfig(cheese=(), snapshot_every=1))
+    trainer, league = cases.league(
+        tmp_path, league=LeagueConfig(cheese=(), snapshots=SnapshotSchedule(every=1))
+    )
     for _ in range(3):
         trainer.collect()
         league.collected(trainer)
@@ -191,7 +194,10 @@ def test_a_cut_swaps_the_next_slot_every_cut_every_updates_and_nothing_else(tmp_
     the other slots keep their entries and weights, and only the cut slot's rows lose the
     tally of their game in progress."""
     trainer, league = cases.league(
-        tmp_path, league=LeagueConfig(cheese=(), snapshot_every=10**9, cut_every=2, cut_slots=1)
+        tmp_path,
+        league=LeagueConfig(
+            cheese=(), snapshots=SnapshotSchedule(every=10**9), cut_every=2, cut_slots=1
+        ),
     )
     _cycling_draws(league, monkeypatch)
     opponents = trainer.opponents
@@ -239,7 +245,10 @@ def test_a_cut_game_is_credited_to_no_one(tmp_path):
     held."""
     torch.manual_seed(0)
     trainer, league = cases.league(
-        tmp_path, league=LeagueConfig(cheese=(), snapshot_every=10**9, cut_every=1, cut_slots=1)
+        tmp_path,
+        league=LeagueConfig(
+            cheese=(), snapshots=SnapshotSchedule(every=10**9), cut_every=1, cut_slots=1
+        ),
     )
     rollout, slots = trainer.rollout, league.config.slots
     opponents = trainer.opponents
@@ -294,7 +303,10 @@ def _yemong_league(directory, carry_at_cut: str):
         model="yemong",
         yemong=tiny_yemong_config(),
         league=LeagueConfig(
-            cheese=(), snapshot_every=10**9, cut_every=1, carry_at_cut=carry_at_cut
+            cheese=(),
+            snapshots=SnapshotSchedule(every=10**9),
+            cut_every=1,
+            carry_at_cut=carry_at_cut,
         ),
     )
     trainer = cases.Trainer(config, torch.device("cpu"))
@@ -377,7 +389,8 @@ def test_the_leagues_games_join_the_runs_fit(tmp_path):
     average's are left out before it has started (it is the live weights until then)."""
     torch.manual_seed(0)
     trainer, league = cases.league(
-        tmp_path, league=LeagueConfig(cheese=(), snapshot_every=1, uniform_from=10**9)
+        tmp_path,
+        league=LeagueConfig(cheese=(), snapshots=SnapshotSchedule(every=1), uniform_from=10**9),
     )
     mode, total = league.modes[0], 0.0
     for update in range(8):
@@ -448,7 +461,10 @@ def test_the_uniform_average_starts_after_its_warm_up(tmp_path):
     the updates since; the exponential average folds in every update."""
     steps = cases.config().environments * cases.config().length
     trainer, league = cases.league(
-        tmp_path, league=LeagueConfig(cheese=(), snapshot_every=16 * 16, uniform_from=2 * steps)
+        tmp_path,
+        league=LeagueConfig(
+            cheese=(), snapshots=SnapshotSchedule(every=16 * 16), uniform_from=2 * steps
+        ),
     )
     seen = []
     for update in range(4):
@@ -470,12 +486,14 @@ def test_the_measured_snapshot_cadence_reads_the_slowest_of_the_second_to_fourth
     tmp_path, monkeypatch
 ):
     """One short update (a PPO update that stops early on its KL) must not set the cadence."""
-    trainer, league = cases.league(tmp_path, league=LeagueConfig(cheese=(), snapshot_every=None))
+    trainer, league = cases.league(tmp_path, league=LeagueConfig(cheese=(), snapshots=None))
     clock = iter([0.0, 100.0, 1100.0, 1110.0, 1111.0])  # updates of 100, 1000, 10 and 1 seconds
     monkeypatch.setattr("bnb.league.league.time.perf_counter", lambda: next(clock))
     league._measure_cadence(trainer)  # the first update compiles: only starts the clock
     for _ in range(2):
         league._measure_cadence(trainer)
-        assert league.snapshot_every is None
+        assert league.schedule is None
     league._measure_cadence(trainer)  # durations 100, 1000, 10: the slowest sets it
-    assert league.snapshot_every == round(30 * 60 / 1000) * trainer.steps_per_update
+    assert league.schedule == SnapshotSchedule(
+        every=round(30 * 60 / 1000) * trainer.steps_per_update
+    )

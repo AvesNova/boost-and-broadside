@@ -24,10 +24,13 @@ The default lineup (`bnb.runtime.train.LINEUP`) gives each game of the training 
 pools: self-play and the league's seat, half each. Self-play is not a pool entry; it keeps
 its fixed share. The entries (`bnb.league.pool.Entry`) are:
 
-- **snapshots** of the live policy, taken every `LeagueConfig.snapshot_every` environment
-  steps. Without a set value the league measures it once, about 30 minutes at the pace of the slowest of
-  the second to fourth updates, and records it in `run.json`{.plain}. A snapshot is the weights that played the
-  update it was taken at;
+- **snapshots** of the live policy, taken on the schedule `LeagueConfig.snapshots`
+  (`bnb.runtime.snapshots.LEAGUE_SNAPSHOTS`, decided 2026-11-14: at 5, 10, 15, 20, 25, 30,
+  40, 50, 60, 75, 90, 110, 130 and 160M environment steps, then every 30M, about 100 to
+  200 Elo apart on rl-v20's curve; to be re-derived after the game freeze). With
+  `snapshots=None` the league measures a period once, about 30 minutes at the pace of the
+  slowest of the second to fourth updates, and records it in `run.json`{.plain}. A
+  snapshot is the weights that played the update it was taken at;
 - **the averages:** the uniform average and the exponential moving average of the live
   policy's weights, folded in after every update (`bnb.league.pool.Averages`, through `average_into`, the
   decay `LeagueConfig.exponential_decay` per update; behaviour cloning keeps the same

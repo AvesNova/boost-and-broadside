@@ -12,6 +12,7 @@ from bnb.learn.ppo import LearnerConfig
 from bnb.models.relational import RelationalConfig
 from bnb.runtime.lanes import LaneConfig
 from bnb.runtime.opponents import LeagueConfig
+from bnb.runtime.snapshots import SnapshotSchedule
 from bnb.runtime.train import LEARNER, TrainConfig, Trainer
 
 GAME = GameConfig(2, 2, 1500.0, episode_seconds=2.0, respawn_seconds=1.0)
@@ -34,7 +35,7 @@ def config(device: str = "cpu", **changes) -> TrainConfig:
         learner=LearnerConfig(epochs=1, minibatches=2, warmup_steps=1000, micro_batch_rows=64),
         compiled=device == "cuda",
         league=LeagueConfig(
-            snapshot_every=16 * 16, cheese=()
+            snapshots=SnapshotSchedule(every=16 * 16), cheese=()
         ),  # the base pool; the cheese is its own test
     )
     values.update(changes)

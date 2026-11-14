@@ -50,7 +50,9 @@ counts and its own lane ratings
 | `runs/<run>/policy-exponential/`{.plain} | the exponential moving average |
 | `runs/<run>/policy-live/`{.plain} | the live clone |
 
-Every 10M environment steps (`--set policy_snapshot_every=...`) and at each end, the run
+At 1, 2, 3, 4, 6, 8, 10, 12, 16 and 20M environment steps, then every 5M
+(`TrainConfig.policy_snapshots`; `--set policy_snapshots.every=...` and
+`policy_snapshots.steps=[...]`), and at each end, the run
 also keeps the live clone and both averages under
 `runs/<run>/policies/step_<steps>/{live,exponential_average,uniform_average}/`{.plain},
 never replaced, so a run resumed past its budget keeps its earlier averages; `bnb ratings

@@ -56,6 +56,7 @@ from .lineup import Lineup
 from .metrics import Collector
 from .opponents import OPPONENTS, LeagueConfig, OpponentSlots
 from .rollout import Rollout
+from .snapshots import RL_SNAPSHOTS, SnapshotSchedule
 
 LEARNER = "learner"
 SCRIPTED = "scripted"
@@ -170,10 +171,12 @@ class TrainConfig:
     objective: "ppo", or "bc" (clone the scripted agent; `learner` should then be
     `bnb.learn.bc.config()`, `teacher` sets its labels and how the scripted opponent
     plays, `bnb.learn.bc.TeacherOpponent`, and `stop` when it stops, its budget included).
-    policy_snapshot_every: for a run that does not write every update's policy files (BC
-    by default: the run's `update_policies`), the environment steps between the policy
-    files it keeps under `policies/step_<steps>/`, the live weights and both averages, and
-    always at the end of each process's segment (`bnb.runs.session.train`).
+    policy_snapshots: for a run that does not write every update's policy files (BC by
+    default: the run's `update_policies`), the environment steps at which it keeps them
+    under `policies/step_<steps>/`, the live weights and both averages
+    (`bnb.runtime.snapshots.SnapshotSchedule`; `RL_SNAPSHOTS` by default, decided
+    2026-11-14: 1, 2, 3, 4, 6, 8, 10, 12, 16 and 20M steps, then every 5M), and always at
+    the end of each process's segment (`bnb.runs.session.train`).
     arena_scale: map-size sampling for the training pools (`bnb.contracts.ArenaScale`; the
     author, 2026-11-13: ln scale ~ Normal(0, 0.35) truncated to [0.5, 2], each
     environment's arena drawn at every reset), or None for each pool's own arena every
@@ -241,8 +244,7 @@ class TrainConfig:
     objective: str = "ppo"
     teacher: TeacherConfig = TeacherConfig()
     stop: StopConfig = StopConfig()
-    # every 10M environment steps (author, 2026-11-07: decisions, run control)
-    policy_snapshot_every: int = 10_000_000
+    policy_snapshots: SnapshotSchedule = RL_SNAPSHOTS
     arena_scale: ArenaScale | None = ArenaScale()
     active_fields: ActiveFields | None = None
     lineup: tuple[str, ...] | None = None
@@ -260,8 +262,6 @@ class TrainConfig:
             raise ValueError(f"model {self.model!r} is not one of {MODELS}")
         if self.precision not in PRECISIONS:
             raise ValueError(f"precision {self.precision!r} is not one of {PRECISIONS}")
-        if self.policy_snapshot_every < 1:
-            raise ValueError(f"policy_snapshot_every {self.policy_snapshot_every} must be positive")
         if self.active_fields is not None:  # the game checks the range against its fields
             dataclasses.replace(self.game, active_fields=self.active_fields)
         if self.shards < 1 or self.lookahead < 0:

@@ -8,6 +8,7 @@ import torch
 from bnb.controllers.scripted_cheese import NAMES, player_name
 from bnb.league.pool import Entry
 from bnb.runtime.opponents import OPPONENTS, SCRIPTED_KIND, LeagueConfig
+from bnb.runtime.snapshots import SnapshotSchedule
 
 pytestmark = pytest.mark.usefixtures("global_generator")
 
@@ -24,7 +25,9 @@ def test_cheese_is_on_by_default_and_checked():
 
 
 def test_the_pool_has_all_six_by_default_and_none_when_turned_off(tmp_path):
-    _, default = cases.league(tmp_path / "default", league=LeagueConfig(snapshot_every=256))
+    _, default = cases.league(
+        tmp_path / "default", league=LeagueConfig(snapshots=SnapshotSchedule(every=256))
+    )
     assert [e.name for e in default.entries.values() if e.kind == "cheese"] == [
         player_name(name) for name in NAMES
     ]
