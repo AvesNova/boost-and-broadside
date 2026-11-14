@@ -127,6 +127,10 @@ Ordered for working through:
 5. The first exploit check and break-even measurement of rl-v20's final checkpoint.
 6. Rate the twin against rl-v20 at matching steps (the noise floor).
 
+**First exploit check (2026-11-15, laptop GPU; rl-v20's final 171M exponential average against the six cheese agents, 128 games per mode, deathmatch by win/loss):**
+- Wins nearly everything: every frontline and deathmatch game against turtle, evader, deathball, jouster and kiter; elimination 0.93 to 1.00 (evader 0.93, the lowest).
+- **Flag: the zone rusher in frontline, 0.55 ± 0.04** (67-6-55; 0.48 at 75M). Imugi beats the same rusher 0.75 ± 0.04, and rl-v20 beats Imugi in every 5v5 frontline game. So it's a cycle and a blind spot of the policy, not a degenerate mode. rl-v20 trained without cheese agents in the league; the first arm (cheese on by default) should close it. Check it again on the first arm's final checkpoint.
+
 ## First, before the game freeze
 
 - [ ] **Clock ends (58).** Set each mode's free knob so most games end by the objective, some end on the clock, and progress decides the winner:
