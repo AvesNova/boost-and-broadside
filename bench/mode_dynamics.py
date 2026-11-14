@@ -79,13 +79,18 @@ def game_of(arguments) -> tuple:
 
 def lineup_of(lineup: str | None, game, environments: int) -> torch.Tensor | None:
     """(environments, N) int32 ship types: the keys cycled over each team's slots, the same
-    for both teams; None for the game's lineup."""
+    for both teams; None for the game's lineup. Several lineups separated by ';' alternate
+    by pairs of environments (both seats of a pair play the same lineup)."""
     if lineup is None:
         return None
     keys = [ship.key for ship in ships.load(game.ship_set)]
-    chosen = [keys.index(key) for key in lineup.split(",")]
-    team = [chosen[slot % len(chosen)] for slot in range(game.ships_per_team)]
-    return torch.tensor(team + team, dtype=torch.int32).repeat(environments, 1)
+    rows = []
+    for one in lineup.split(";"):
+        chosen = [keys.index(key) for key in one.split(",")]
+        team = [chosen[slot % len(chosen)] for slot in range(game.ships_per_team)]
+        rows.append(team + team)
+    table = torch.tensor(rows, dtype=torch.int32)
+    return table[(torch.arange(environments) // 2) % len(rows)]
 
 
 def mode_overrides(arguments) -> dict:
@@ -209,7 +214,9 @@ class Probe:
             held = mode.lock > 0  # (B, 2, Z) by team
             ship_held = held[:, team, :]  # (B, N, Z): the ship's team is locked out of it
             under = ship_held.any(-1) & alive & b["live"][:, None]  # (B, N)
-            own_defense_role = torch.where(team == 0, frontline.TEAM0_DEFENSE, frontline.TEAM1_DEFENSE)
+            own_defense_role = torch.where(
+                team == 0, frontline.TEAM0_DEFENSE, frontline.TEAM1_DEFENSE
+            )
             attack_role = torch.where(team == 0, frontline.TEAM1_DEFENSE, frontline.TEAM0_DEFENSE)
             own_defense = mode.role[:, None, :] == own_defense_role[None, :, None]
             attack = mode.role[:, None, :] == attack_role[None, :, None]
@@ -500,7 +507,9 @@ def main() -> None:
         help="JSON overrides of the mode's scripted set for side B (A plays the default); "
         "A sits on team 0 in even environments",
     )
-    parser.add_argument("--fields", action="store_true", help="keep the preset's fields (else none)")
+    parser.add_argument(
+        "--fields", action="store_true", help="keep the preset's fields (else none)"
+    )
     parser.add_argument("--eager", action="store_true", help="no torch.compile (CPU runs)")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     arguments = parser.parse_args()

@@ -4,8 +4,8 @@ Games come from `bench.mode_dynamics frontline` (the scripted agent on both seat
 frontline preset, 5v5, fog on, each environment's first game, one JSON line per batch):
 
     PYTHONPATH=src python -m bench.mode_dynamics frontline --out FILE --games N --label L \
-        [--lineup yongma,jujak] [--device cpu --eager]
-    PYTHONPATH=src python -m bench.front_reversal FILE [FILE ...]
+        [--lineup "yongma,jujak;jujak,yongma"] [--fields] [--device cpu --eager]
+    PYTHONPATH=src python -m bench.front_reversal FILE [FILE ...] [--label=L ...]
 
 Definitions. The front is the game's signed capture count (`ModeState.front`: +1 for a team 0
 capture, -1 for a team 1 capture). A move is one capture, so each move is +1 or -1 (the
@@ -13,8 +13,12 @@ winning capture included). A reversal is a move whose direction is opposite to t
 move's, in the same game; the first move of a game has no previous move and is not counted.
 P(reversal) = reversals / (moves that have a previous move), pooled over games, with a
 Wilson 95% interval and a game-clustered bootstrap 95% interval (moves within a game are not
-independent). A random walk has P(reversal) = 0.5; below 0.5 is persistence, above it anti-persistence. The same number is P(next capture by the team that just captured) = 1 - P(reversal). By the front's size before the move too. Also reported: moves per
-game, and how games ended: by capture (the front reached the threshold) or on the clock.
+independent). A random walk has P(reversal) = 0.5; below 0.5 is persistence, above it
+anti-persistence. The same number is P(next capture by the team that just captured) =
+1 - P(reversal); also by the front's size before the move. Also reported: moves per game,
+how games ended (by capture, the front reaching the threshold, or on the clock), the mean
+game length, the time from a capture to the next by whether it reverses, and (when the
+batches carry them) the capture lock's occupancy tallies.
 """
 
 import json
@@ -43,18 +47,28 @@ def counts(game: dict) -> tuple[int, int]:
 
 
 def main() -> None:
-    """Report the files named on the command line."""
+    """Report the files named on the command line (`--label=L`: only the batches labelled L)."""
     games, headers, tallies, tick_lengths, lengths = [], set(), {}, set(), []
-    for name in sys.argv[1:]:
+    names = [name for name in sys.argv[1:] if not name.startswith("--label=")]
+    labels = {name.split("=", 1)[1] for name in sys.argv[1:] if name.startswith("--label=")}
+    for name in names:
         for line in pathlib.Path(name).read_text().splitlines():
             entry = json.loads(line)
+            if labels and entry["label"] not in labels:
+                continue
             games += entry["games"]
             tick_lengths.add(entry["tick_length"])
             lengths += [game["end_tick"] * entry["tick_length"] for game in entry["games"]]
             for key, value in entry.get("lock_tallies", {}).items():
                 tallies[key] = tallies.get(key, 0) + value
             headers.add(
-                (entry["preset"], entry["ships"], entry["fog"], entry["lineup"], entry["tick_length"])
+                (
+                    entry["preset"],
+                    entry["ships"],
+                    entry["fog"],
+                    entry["lineup"],
+                    entry["tick_length"],
+                )
             )
     per_game = [counts(game) for game in games]
     reversals = sum(r for r, _ in per_game)
@@ -78,8 +92,10 @@ def main() -> None:
         f"  game-clustered bootstrap 95% [{boots[int(0.025 * len(boots))]:.3f}, "
         f"{boots[int(0.975 * len(boots))]:.3f}]"
     )
-    print(f"ended by capture {by_rule} ({by_rule / len(games):.1%}); on the clock "
-          f"{len(games) - by_rule} ({1 - by_rule / len(games):.1%})")
+    print(
+        f"ended by capture {by_rule} ({by_rule / len(games):.1%}); on the clock "
+        f"{len(games) - by_rule} ({1 - by_rule / len(games):.1%})"
+    )
     # By the front's size after the previous move (the state a move is made from): |front| 0, 1, 2.
     by_state: dict[int, list[int]] = {}
     for game in games:
@@ -95,7 +111,10 @@ def main() -> None:
             previous = step
     for size, (r, n) in sorted(by_state.items()):
         lo, hi = wilson(r, n)
-        print(f"  front |{size}| before the move: P(reversal) {r}/{n} = {r / n:.3f} [{lo:.3f}, {hi:.3f}]")
+        print(
+            f"  front |{size}| before the move: P(reversal) {r}/{n} = {r / n:.3f} "
+            f"[{lo:.3f}, {hi:.3f}]"
+        )
     print(f"P(next capture by the team that just captured) = {1 - reversals / pairs:.3f}")
     histogram = {}
     for count in moves:
