@@ -11,7 +11,6 @@ It is updated and committed whenever a decision is made or a task changes. Candi
 
 Ordered for working through:
 
-0. **The split critic:** it's decided for the premium arm. Open: make it the default for every arm (recommended: one shared BC, and no split-against-unsplit arm), and which levels get the 2:1 premium (recommended: damage and kill/death only; objective progress, objective and outcome stay zero-sum).
 
 1. **Arena size for games at other fleet sizes: deferred (2026-11-14)** until the map-size arm shows whether the agent trains on varied maps. Until then evaluations use the game's density rule provisionally, the same for both arms of a pair.
 2. **The explicit list of evaluation games:** drafted in [evaluation-suite.md](evaluation-suite.md), for the author to review.
@@ -56,6 +55,8 @@ Ordered for working through:
 
   Each condition has its own shared pool. **Scoring (decided):** everything is scored by win probability. For each condition, A's expected score against B, minus 0.5: the logistic of the Elo contrast, or for break-even, A's win rate against 20 Imugi at B's break-even count. Every mode gets an equal share, and every condition an equal share within its mode. No yardstick or soft cap is needed; win probability is bounded and comparable across conditions.
 - **The averaging sweep:** an early arm saves the live weights every update. Uniform, exponential at several decays and windowed uniform averages are then built after training and rated in one tournament. The exponential average folds once per update, so this reproduces a training-time average exactly.
+- **Split critic for every arm:** each reward level has an offence and a defence value, and one shared BC serves every arm. No split-against-unsplit arm.
+- **Offensive premium levels:** 2:1 on damage and kill/death only. Objective progress, objective and outcome stay zero-sum, since a capture premium would reward swapping zones in self-play.
 - **References:** a list of papers with what we take from each, where it applies in the code, and how it affected a decision ([references.md](references.md)).
 - **Early arms:** variable map sizes against fixed (first; it decides whether variable maps stay in the game and the paper, and if they don't, the colour codes and rotary frequencies are re-tuned for fixed sizes); variable ship and field counts against fixed.
 - **Deferred to the later review of all arms:** self-play training both sides against one side; the separate critic (too much work for an arm now).
@@ -96,6 +97,8 @@ Ordered for working through:
 
 ## Decided, to implement
 
+- [ ] The split offence/defence critic, before the shared BC, with advantage weights per part and the premium schedule as a setting (default 1:1).
+- [ ] Measure frontline's front persistence (reversal rate) with a trained agent on the current game, during the clock-end tuning. The 0.84 reversal figure is from September (v1); the later lock was meant to make it a random walk.
 - [ ] Snapshot schedule: `policy_snapshot_every` takes one number today, so it needs a list plus a tail.
 - [ ] Deathmatch outcome `kill_lead` as the default.
 - [ ] Mirrored 50/50 coin-flip lineups.
