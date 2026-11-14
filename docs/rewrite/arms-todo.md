@@ -9,7 +9,6 @@ It is updated and committed whenever a decision is made or a task changes. Candi
 
 ## Open for the author
 
-1. **Spread and soft cap for the evaluation score.** The recommendation is to score each condition by A's win probability against B, minus 0.5, which replaces both the spread and the tanh cap. The alternative is normalising by a yardstick: the first arm's gain, the current pair's gains, the median of earlier runs, the leader's gain, or measurement noise. Each yardstick sets the weights between conditions.
 2. **League:** the uniform floor's size (about 15%?), and latest's share if self-play becomes a league member.
 3. **The averaging sweep:** which early arm saves the live weights every update, and which averaging variants to sweep.
 4. **Freezing the game:** what goes in (see "First, before the game freeze"), and the clock-end tuning.
@@ -45,7 +44,7 @@ It is updated and committed whenever a decision is made or a task changes. Candi
   - outnumbered, as the break-even ratio against 20 Imugi;
   - map scales 0.5× and 2×, only if variable maps survive their arm.
 
-  Each condition has its own shared pool. Modes are weighted equally, then conditions equally within each mode. Contrasts are smoothed or capped (see Open 1).
+  Each condition has its own shared pool. **Scoring (decided):** everything is scored by win probability. For each condition, A's expected score against B, minus 0.5: the logistic of the Elo contrast, or for break-even, A's win rate against 20 Imugi at B's break-even count. Every mode gets an equal share, and every condition an equal share within its mode. No yardstick or soft cap is needed; win probability is bounded and comparable across conditions.
 - **The averaging sweep:** an early arm saves the live weights every update. Uniform, exponential at several decays and windowed uniform averages are then built after training and rated in one tournament. The exponential average folds once per update, so this reproduces a training-time average exactly.
 - **References:** a list of papers with what we take from each, where it applies in the code, and how it affected a decision ([references.md](references.md)).
 - **Early arms:** variable map sizes against fixed (first; it decides whether variable maps stay in the game and the paper, and if they don't, the colour codes and rotary frequencies are re-tuned for fixed sizes); variable ship and field counts against fixed.
