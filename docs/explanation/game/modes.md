@@ -200,7 +200,7 @@ turn, team 0's situation is team 1's exactly. Clover plays the game's default li
 
 ## Benched ships
 
-Unequal teams at one static size, for evaluation (the crossover, `bnb crossover`):
+Unequal teams at one static size, for evaluation (the break-even count, `bnb crossover`):
 `bnb.game.api.reset`, `bnb.game.api.step`, `bnb.game.api.resolve` and
 `bnb.game.api.perceive` take `active`, (B, 2) int32, each team's
 active ship count per environment, a runtime input, so one compiled graph plays every

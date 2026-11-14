@@ -611,7 +611,7 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
     `h = a * h + sqrt(1 - a**2) * (i * x)`, where the decay `a` and the input gate `i` are
     computed from the input `x`, so the layer learns how long to remember.
 - **Uneven teams:** training plays full teams only. Where a match benches slots (the
-  crossover's engine, `bnb.league.matches.Arena` with benching), the runtime switch
+  break-even count's engine, `bnb.league.matches.Arena` with benching), the runtime switch
   `Yemong.mask_benched` is on: a ship whose observation row has the `benched` flag is no
   key or value of any spatial sublayer (a key mask from the flag, at fixed shapes, which
   the fused attention kernel takes) and counts in no ship's local presence, so the active
