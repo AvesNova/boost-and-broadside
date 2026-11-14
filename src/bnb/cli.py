@@ -1,7 +1,8 @@
 """The `bnb` command: `bnb train` trains or clones, `bnb runs` lists runs and uploads
 checkpoints, `bnb ship-card` charts a ship card, `bnb ratings` and `bnb head-to-head` rate
 policies, `bnb crossover` finds how many of a policy's ships hold 20 of the scripted
-agent's, `bnb figures` draws what a policy's heads have learned and films it playing.
+agent's, `bnb evaluate` decides between two policies, `bnb figures` draws what a policy's
+heads have learned and films it playing.
 
 An entry point (code style, Layers): it sets the process-wide options its commands need (the
 seed, the matmul precision, the charts' backend). The play shell (`python -m bnb.play`) and
@@ -22,6 +23,7 @@ import tyro
 from bnb.contracts import REWARD_LEVELS
 from bnb.contracts.config import TEAM_DEATHMATCH
 from bnb.figures.video import VideoConfig
+from bnb.league.evaluation_settings import EvaluationConfig
 
 # The rating games (`bnb.league.tournament.PRESET_NAMES`, kept here so the CLI starts
 # without torch): frontline, elimination and team deathmatch, rated by kill share
@@ -405,6 +407,77 @@ class Crossover:
 
 
 @dataclasses.dataclass(frozen=True)
+class Evaluate:
+    """The decision suite (`bnb evaluate A B --out DIR`): A against B over the suite's
+    conditions, with a group-sequential test deciding A wins, B wins or a tie
+    (`bnb.league.evaluation`; docs/rewrite/evaluation-suite.md). A and B are policies (as
+    for bnb head-to-head), normally two arms' final exponential-average weights.
+
+    Plays toward each planned look (the games added where they most reduce the overall
+    score's variance per engine second), takes the look when its information is reached,
+    and stops when a look decides. Every batch is appended to `DIR/batches/<writer>.jsonl`
+    and every look to `DIR/looks/<writer>.jsonl`; `DIR/settings.json` holds the players and
+    the settings, and a rerun with the same ones continues. Several processes may share
+    DIR, each with its own `--play` (for example one condition each): each plays its
+    own, waits while another's are short, and any of them takes a look. Prints a line per
+    batch with the next look's ETA.
+
+    a, b: the players; out: the directory; play: the conditions this process plays (None:
+    every scored one, `--conditions`); games: a pilot instead: play this process's conditions to
+    this many games each and take no look; settings: the suite's settings, recorded in
+    settings.json (`bnb.league.evaluation_settings.EvaluationConfig`); device;
+    runs_directory: as for bnb train; poll_seconds: how long a process with nothing to play
+    waits before reading the records again.
+
+    `bnb evaluate decide DIR` (EvaluateDecide) applies the test at a look now;
+    `bnb evaluate design DIR ...` (EvaluateDesign) chooses the design from pilots.
+    """
+
+    a: tyro.conf.Positional[str]
+    b: tyro.conf.Positional[str]
+    out: str
+    play: tuple[str, ...] | None = None
+    games: int | None = None
+    settings: tyro.conf.OmitArgPrefixes[EvaluationConfig] = EvaluationConfig()
+    device: str = "cuda"
+    runs_directory: str | None = None
+    poll_seconds: float = 30.0
+
+
+@dataclasses.dataclass(frozen=True)
+class EvaluateDecide:
+    """A look now (`bnb evaluate decide DIR`): every process's records read, the scores per
+    condition, per mode and overall printed with their standard errors, and the test
+    applied at the current information (the look recorded, unless --peek; a look spends
+    some of the test's error rates). Once a look has decided, it is shown again.
+
+    directory: the evaluation's directory; peek: show the look without recording it."""
+
+    directory: tyro.conf.Positional[str]
+    peek: bool = False
+
+
+@dataclasses.dataclass(frozen=True)
+class EvaluateDesign:
+    """The sequential design from pilots (`bnb evaluate design DIR ...`): each pilot
+    directory's per-condition per-game variance and engine seconds per game (averaged over
+    the directories), and for each number of looks the planned boundaries, the most engine
+    hours, and at each true difference the outcomes' chances and the expected hours; with
+    --simulations, the whole procedure simulated as well (`bnb.league.evaluation_design`).
+
+    directories: the pilots; looks: the numbers of looks to compare; differences: true
+    differences (overall score) to show, besides 0, delta and 2 delta and each pilot's
+    observed one; simulations: repeats of the simulated procedure per difference (0: none);
+    seed: the simulation's draws."""
+
+    directories: tyro.conf.Positional[tuple[str, ...]]
+    looks: tuple[int, ...] = (2, 3, 4, 5)
+    differences: tuple[float, ...] = ()
+    simulations: int = 0
+    seed: int = 0
+
+
+@dataclasses.dataclass(frozen=True)
 class Figures:
     """Figures of what a policy's heads have learned (`bnb figures SET ... --policy P`):
     capture a self-play rollout and the scenario lab with the policy's model (on the CPU by
@@ -631,6 +704,7 @@ COMMANDS = (
     "ratings",
     "head-to-head",
     "crossover",
+    "evaluate",
     "pool",
     "figures",
     "queue",
@@ -640,12 +714,11 @@ COMMANDS = (
 def main() -> None:
     """The `bnb` command: `bnb train ...` trains, `bnb play ...` opens the play shell,
     `bnb runs ...` lists and shows runs and uploads checkpoints, `bnb ship-card ...` charts a
-    card, `bnb ratings ...` and
-    `bnb head-to-head ...` rate policies offline, `bnb crossover ...` finds a policy's
-    break-even ship count, `bnb pool ...` keeps the shared rating pool, `bnb figures ...` draws
-    what a policy's heads have learned (`bnb figures video ...` films a game, `bnb figures
-    watch RUN` makes
-    both while a run trains), `bnb queue ...` queues and runs GPU jobs."""
+    card, `bnb ratings ...` and `bnb head-to-head ...` rate policies offline, `bnb crossover
+    ...` finds a policy's break-even ship count, `bnb evaluate ...` decides between two
+    policies, `bnb pool ...` keeps the shared rating pool, `bnb figures ...` draws what a
+    policy's heads have learned (`bnb figures video ...` films a game, `bnb figures watch
+    RUN` makes both while a run trains), `bnb queue ...` queues and runs GPU jobs."""
     os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")  # Triton 3.9's default, made explicit
     # The CUDA caching allocator grows its segments in place rather than caching fixed blocks:
     # at a real-scale PPO update (160 micro-batch rows) 0.73 GB less reserved memory and the
@@ -653,7 +726,7 @@ def main() -> None:
     # at the first CUDA allocation, so it has to be set here, before any.
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     command, arguments = (sys.argv[1:2] or [""])[0], sys.argv[2:]
-    if command in ("train", "ratings", "head-to-head", "crossover", "pool", "figures"):
+    if command in ("train", "ratings", "head-to-head", "crossover", "evaluate", "pool", "figures"):
         compile_limits()
     if command == "ship-card":
         os.environ.setdefault("MPLBACKEND", "Agg")  # the charts go to files: no display
@@ -674,6 +747,18 @@ def main() -> None:
         head_to_head(tyro.cli(HeadToHead, args=arguments, prog="bnb head-to-head"))
     elif command == "crossover":
         crossover(tyro.cli(Crossover, args=arguments, prog="bnb crossover"))
+    elif command == "evaluate":
+        kind = (arguments[:1] or [""])[0]
+        if kind == "decide":
+            evaluate_decide(
+                tyro.cli(EvaluateDecide, args=arguments[1:], prog="bnb evaluate decide")
+            )
+        elif kind == "design":
+            evaluate_design(
+                tyro.cli(EvaluateDesign, args=arguments[1:], prog="bnb evaluate design")
+            )
+        else:
+            evaluate(tyro.cli(Evaluate, args=arguments, prog="bnb evaluate"))
     elif command == "pool":
         pool(tyro.cli(Pool, args=arguments, prog="bnb pool"))
     elif command == "figures":
@@ -1707,6 +1792,113 @@ def crossover(options: Crossover) -> None:
         records=str(records_directory),
     )
     print(provenance.write_result(owner, "crossover", payload, inputs))
+
+
+def evaluate(options: Evaluate) -> None:
+    """`bnb evaluate`: the decision suite (or a pilot, with --games)."""
+    import torch
+
+    from bnb.league import evaluation
+
+    runs_directory = runs_directory_of(options.runs_directory)
+    a, b, opponent = _players((options.a, options.b, options.settings.opponent), runs_directory)
+    directory = pathlib.Path(options.out)
+    try:
+        suite = evaluation.Evaluation(
+            directory,
+            dict(A=a, B=b),
+            opponent,
+            options.settings,
+            torch.device(options.device),
+            own=options.play,
+        )
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+    if options.games is not None:
+        suite.fixed(options.games)
+    else:
+        suite.run(options.poll_seconds)
+    evaluate_decide(EvaluateDecide(str(directory), peek=True))
+
+
+def evaluate_decide(options: EvaluateDecide) -> None:
+    """`bnb evaluate decide`: the scores and the test at a look now."""
+    from bnb.league import evaluation
+
+    directory = pathlib.Path(options.directory)
+    try:
+        held, config = evaluation.read_settings(directory)
+        summary, result, tallies = evaluation.decide(directory, record=not options.peek)
+    except (FileNotFoundError, ValueError) as error:
+        raise SystemExit(str(error)) from error
+    print(f"A: {held['players']['A']['name']}\nB: {held['players']['B']['name']}")
+    for line in evaluation.table(config.scored(), summary, tallies):
+        print(line)
+    if result is None:
+        print(evaluation.describe_summary(summary))
+    else:
+        print(("peek at " if options.peek else "") + evaluation.describe_look(result))
+
+
+def evaluate_design(options: EvaluateDesign) -> None:
+    """`bnb evaluate design`: the candidate designs from pilots."""
+    import torch
+
+    from bnb.league import evaluation_design
+
+    loaded = []
+    try:
+        for name in options.directories:
+            loaded.append(evaluation_design.pilot_models(pathlib.Path(name)))
+    except (FileNotFoundError, ValueError) as error:
+        raise SystemExit(str(error)) from error
+    config = loaded[0][0]
+    models = evaluation_design.pooled_models([models for _, models, _ in loaded])
+    print(f"{'condition':26s} {'var/game':>9s} {'s/game':>8s} {'draws':>6s}")
+    for model in models:
+        print(
+            f"{model.condition.name:26s} {model.per_game:9.4f} {model.seconds:8.4f} "
+            f"{model.draws:6.3f}"
+        )
+    per_information = evaluation_design.seconds_per_information(models)
+    print(f"engine seconds per unit of information: {per_information:.1f}")
+    observed = tuple(
+        abs(summary.overall[0]) for _, _, summary in loaded if summary.overall is not None
+    )
+    differences = (0.0, config.delta, 2 * config.delta, *observed, *options.differences)
+    rows, plans = evaluation_design.design_table(config, models, options.looks, differences)
+    for count, found in plans.items():
+        print(
+            f"K={count}: fractions {[round(t, 3) for t in found.fractions]}, upper "
+            f"{[round(u, 3) for u in found.upper]}, inner {[round(v, 3) for v in found.inner]}"
+        )
+    print(
+        f"{'K':>2s} {'difference':>10s} {'A wins':>7s} {'B wins':>7s} {'tie':>7s} "
+        f"{'E[hours]':>9s} {'max hours':>9s}"
+    )
+    for row in rows:
+        print(
+            f"{row.looks:2d} {row.difference:10.4f} {row.a_wins:7.4f} {row.b_wins:7.4f} "
+            f"{row.tie:7.4f} {row.expected_hours:9.2f} {row.maximum_hours:9.2f}"
+        )
+    if options.simulations:
+        generator = torch.Generator().manual_seed(options.seed)
+        print(f"the procedure simulated, {options.simulations} times per difference:")
+        for count in options.looks:
+            for difference in differences:
+                found = evaluation_design.simulate(
+                    dataclasses.replace(config, looks=count),
+                    models,
+                    difference,
+                    options.simulations,
+                    generator,
+                )
+                print(
+                    f"K={count} difference {difference:.4f}: A {found.a_wins:.3f}, B "
+                    f"{found.b_wins:.3f}, tie {found.tie:.3f}, {found.hours:.2f} hours, "
+                    f"{found.looks:.2f} looks, estimate at the stop {found.estimate_mean:+.4f} "
+                    f"+- {found.estimate_stderr:.4f}"
+                )
 
 
 def figures(options: Figures) -> None:

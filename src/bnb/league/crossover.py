@@ -310,12 +310,17 @@ def stop_reason(current: Fit, games: int, config: CrossoverConfig) -> str | None
 
 
 def lineup_draw(
-    seed: int, batch: int, games: int, ships_per_team: int, types: tuple[int, ...]
+    seed: int,
+    batch: int,
+    games: int,
+    ships_per_team: int,
+    types: tuple[int, ...],
+    stream: str = "crossover_lineup",
 ) -> torch.Tensor:
     """(games, ships_per_team) int32 each game's lineup: each slot one of `types`
-    uniformly, keyed by the seed, the batch and the game (the same for every engine of one
-    seed)."""
-    key = stream_key(seed, "crossover_lineup")
+    uniformly, keyed by the seed, the stream's name, the batch and the game (the same for
+    every engine of one seed)."""
+    key = stream_key(seed, stream)
     hashed = keyed_hash(
         key,
         torch.tensor(batch, dtype=torch.int64),
