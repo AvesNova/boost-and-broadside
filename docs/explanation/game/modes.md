@@ -246,10 +246,11 @@ None, as in training) the game is bit-identical to the game without the input
   capture progress on it for L seconds: its majority there does not move the meter (a
   defending majority still does), so the zone cannot be taken straight back. L is set by
   the ring's size, `lock_seconds_per_root_km` x sqrt(d / 1 km), d the distance between
-  adjacent zone centres. The default, 19 s per sqrt(km), is about 45 s at 5v5 on the
-  real-scale map (d = 5.64 km), 54 s at 10v10 and 64 s at 20v20: the hard lock at which
-  the team that captured is about as likely as the other to capture next (P = 0.5 in
-  the frontline design bench, bench/frontline_design.py on the tune/respawn-waves branch), to be calibrated again on the final ship card. The state
+  adjacent zone centres. The default, 6 s per sqrt(km) (game version 20), is about 14 s at 5v5 on the
+  real-scale map (d = 5.64 km). It was tuned with the scripted agent on both sides, fields
+  on, so that the front moves as a random walk: P(reversal) = 0.490 (95% interval 0.468 to
+  0.512) over 512 games, against 0.29 at the earlier 19 s per sqrt(km), where the team
+  that had just captured usually took the next zone inside the lock. The state
   holds it per team and zone (the `bnb.game.state.ModeState` field lock, ticks), so it is exact for any sequence
   of captures; `frontline.lock_ticks`, `locks_after` and `attacker_locked` compute it.
 - **Respawn waves** (game version 8): a dead ship waits its minimum (`respawn_seconds`, 8 s

@@ -165,7 +165,10 @@ and every map length follows its map scale. `Match.arena_scale` (B,) holds it (1
 sampling); that new leaf is the fingerprint's only change.
 Frontline's arena has a floor too (`MINIMUM_ARENA_RADIUS`, 1400 m at map scale 1, 4200 m at
 real scale), so a sampled small Frontline map keeps its floored zones inside the boundary.
+Version 20 (2026-11-15): Frontline's capture lock re-tuned to 6 s per sqrt(km) (was 19),
+so the front moves as a random walk with the scripted agent on both sides and fields on
+(P(reversal) 0.490 over 512 games, against 0.29).
 """
 
-VERSION = 19
+VERSION = 20
 FINGERPRINT = "e16ea10c244756ab"

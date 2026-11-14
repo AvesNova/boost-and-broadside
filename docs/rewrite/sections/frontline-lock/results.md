@@ -58,3 +58,25 @@ the next capture by outcome and the mean game length.
 - 01:52: diagnosis written; instrumentation committed. GPU held by `rl-v20-seed1` until about
   02:00. Next: baseline with fields on (lock 19), 128 games, then a sweep of
   `lock_seconds_per_root_km`.
+
+## Sweep and choice (2026-11-15, GPU, fields on, the scripted agent on both sides)
+
+Real-scale frontline 5v5 with fog on and both mirrored lineups mixed. Each value was measured with `bench/mode_dynamics.py` and `bench/front_reversal.py`; Wilson 95% intervals.
+
+| lock (s per sqrt km) | games | move pairs | P(reversal) | ended on the clock |
+|---|---|---|---|---|
+| 19 (was) | 128 | 387 | 0.292 [0.249, 0.339] | 43.0% |
+| 14 | 128 | 415 | 0.378 [0.333, 0.426] | 48.4% |
+| 10 | 128 | 464 | 0.418 [0.374, 0.463] | 51.6% |
+| 5 | 128 | 503 | 0.511 [0.467, 0.554] | 57.8% |
+| 0 | 128 | 552 | 0.574 [0.533, 0.615] | 68.0% |
+| **6 (chosen)** | 512 | 1991 | **0.490 [0.468, 0.512]** (game-clustered bootstrap [0.466, 0.513]) | 56.4% |
+
+**At 6** (about 14 s at 5v5):
+- **P(reversal) by front position:** 0.528 at |0|, 0.500 at |1|, 0.435 at |2|. Near the win threshold, the leading team still keeps a little momentum.
+- **The team that just captured takes the next capture** with probability 0.510.
+- **Games** average 4.88 moves and last a mean of 484 s.
+- **Clock ends: 56% of games end on today's 600 s clock.** That is far above the intended share, and left for the clock tuning.
+- **Fields matter.** With fields off, the same 19 gave P(reversal) 0.19 and 14% clock ends (CPU, 64 games); fields on give 0.29 and 43%. Fields slow captures.
+
+Game version 20. The fingerprint is unchanged: the 48 fingerprint ticks never reach a lock.
