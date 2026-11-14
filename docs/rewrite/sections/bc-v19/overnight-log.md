@@ -417,3 +417,18 @@ Live Elo of the averaged policy against Baekho:
 - **All within noise.** Elimination was already rated win/loss/draw and also matched.
 - **Settled:** the deathmatch outcome stays kill share.
 - **Masking speed** (5090, production shapes; the agent's report is pending): the learner's forward and backward pass costs 31.1 → 35.0 ms per 48-view micro-batch (+12.7%). The policy step costs 3.41 → 4.12 ms (+20.8%). Peak memory is unchanged. That is about +12% per update, a cost of leaving the fused kernel. An explicit sink built into the fused kernel should cost little.
+
+## 10:05 — masking speed (3b8b56ca); bc-v21 launched with variable map sizes
+
+- **Masking speed, 5090, production shapes, medians of 40:**
+
+  | | learn micro-batch | rollout policy step |
+  |---|---|---|
+  | fused (default) | 31.06 ms | 3.410 ms |
+  | absent zones masked | 35.01 ms (+12.7%) | 4.121 ms (+20.8%) |
+  | plain SDPA, unmasked | 34.79 ms (+12.0%) | 4.075 ms (+19.5%) |
+
+  - **The cost is leaving the fused Triton kernel, not the mask,** which adds under 1%.
+  - **Per update:** about +4.5 s, roughly +10%.
+  - **If training ever masks:** add an optional key mask, or the sink, to the fused kernel.
+- **bc-v21** (6a78c172, `MAP_SIZES=variable`, arena_scale σ 0.35 over [0.5, 2], redrawn every reset): otherwise identical to bc-v20, with the plateau stop and a 150M cap. RL `rl-v21` follows at 75M. Live Elo and the watcher are on bc-v21.
