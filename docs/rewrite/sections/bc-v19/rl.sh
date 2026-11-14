@@ -12,6 +12,9 @@ UPDATES=${UPDATES:-143}  # about 150M steps
 MAP_SIZES=${MAP_SIZES:-fixed}  # fixed: each pool's own arena; variable: TrainConfig.arena_scale's sampling
 SIZES=(); [ "$MAP_SIZES" = fixed ] && SIZES=(--set arena_scale=null)
 DEATHMATCH_OUTCOME=${DEATHMATCH_OUTCOME:-kill_share}  # or kill_lead (win/loss by the kill difference)
+SEED=${SEED:-0}  # a seed twin changes only this
+HOST_STORE=${HOST_STORE:-false}  # true streams the rollout store to the CPU (the 8 GB laptop GPU)
+MICRO_BATCH_ROWS=${MICRO_BATCH_ROWS:-480}  # learner memory only, not the math
 RUNS=${RUNS:-/workspace/runs}
 CACHE=${CACHE:-/workspace/cache}
 mkdir -p "$RUNS" "$CACHE/inductor" "$CACHE/triton" "$CACHE/bnb"
@@ -19,10 +22,10 @@ export TORCHINDUCTOR_CACHE_DIR=$CACHE/inductor TRITON_CACHE_DIR=$CACHE/triton BN
 export TORCHINDUCTOR_COMPILE_THREADS=8 TRITON_DEFAULT_FP_FUSION=1 PYTHONFAULTHANDLER=1
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 echo "commit $(git rev-parse HEAD) $(date -u +%FT%TZ) from $FROM" >> "$RUNS/$NAME.log"
-.venv/bin/bnb train --preset "$PRESET" --environments 2048 --seed 0 --name "$NAME" \
+.venv/bin/bnb train --preset "$PRESET" --environments 2048 --seed "$SEED" --name "$NAME" \
   --runs-directory "$RUNS" --init-from "$RUNS/$FROM/policy" --updates "$UPDATES" \
-  --update-policies False --set lanes.environments=256 --set host_store=false \
-  --set policy_snapshot_every=5000000 --set learner.micro_batch_rows=480 \
+  --update-policies False --set lanes.environments=256 --set host_store="$HOST_STORE" \
+  --set policy_snapshot_every=5000000 --set learner.micro_batch_rows="$MICRO_BATCH_ROWS" \
   --set 'lineup=["Yongma", "Yongma", "Jujak", "Jujak", "Jujak"]' "${SIZES[@]}" \
   --set reward.deathmatch_outcome="$DEATHMATCH_OUTCOME" \
   >> "$RUNS/$NAME.log" 2>&1
