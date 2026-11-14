@@ -58,7 +58,8 @@ Ordered for working through:
 - **Split critic for every arm:** each reward level has an offence and a defence value, and one shared BC serves every arm. No split-against-unsplit arm.
 - **Offensive premium levels:** 2:1 on damage and kill/death only. Objective progress, objective and outcome stay zero-sum, since a capture premium would reward swapping zones in self-play.
 - **The decision is a sequential test with a fixed number of planned looks** (group sequential). The number of looks and the acceptance thresholds are fixed in advance.
-- **Decisions don't need the ladder.** Per condition, the two finals play each other directly (win rate minus 0.5), and break-even plays against Imugi. The full Elo ladder (curves) is for the paper (proposal: rated in one batch at the end, see Open).
+- **Decisions don't need the ladder.** Per condition, the two finals play each other directly (win rate minus 0.5), and break-even plays against Imugi. The full Elo ladder (curves) is for the paper.
+- **Ladder timing (decided 2026-11-15):** mostly in one batch at the end. Earlier only on an idle GPU, and only when it doesn't compete with compilation on the CPU. On a tie, each arm's last 5 snapshots (Claude's choice, about 20–25M steps) are rated on demand for the slope check.
 - **References:** a list of papers with what we take from each, where it applies in the code, and how it affected a decision ([references.md](references.md)).
 - **Early arms:** variable map sizes against fixed (first; it decides whether variable maps stay in the game and the paper, and if they don't, the colour codes and rotary frequencies are re-tuned for fixed sizes); variable ship and field counts against fixed.
 - **Deferred to the later review of all arms:** self-play training both sides against one side; the separate critic (too much work for an arm now).
