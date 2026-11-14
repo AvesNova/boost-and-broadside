@@ -23,6 +23,7 @@ from bnb.game.handling.characteristics import characteristics
 from bnb.learn import labels, losses
 from bnb.learn.ppo import (
     COUNTS,
+    DRIFT_VIEWS,
     FOLLOWING,
     TERMS,
     WARM_START_ENTROPY,
@@ -634,13 +635,13 @@ def test_v1s_entropy_bonus_outweighs_the_clones_policy_gradient_on_shooting():
 
 
 def test_the_drift_never_unrolls_more_views_than_a_micro_batch(segment):
-    """The drift's sample is the update's first micro-batch: with minibatches smaller than
-    micro_views it is the first minibatch's micro-batch, never micro_views views."""
+    """The drift reads the first minibatch's first `DRIFT_VIEWS` views (all of it when
+    smaller) in micro-batches: with minibatches of one view it unrolls that one view."""
     net, runner, _, prepared = segment
     views = runner.store.views
     learner = lc.learner(net, runner, minibatches=views)  # one view per minibatch
     assert learner.micro_views >= views > 1
-    assert learner.first_micro_batch(views) == 1
+    assert learner.drift_views(views) == 1
     seen = []
     unroll = learner.unroll
 
@@ -651,9 +652,32 @@ def test_the_drift_never_unrolls_more_views_than_a_micro_batch(segment):
     learner.unroll = recorded
     learner.drift(runner.store, prepared)
     assert seen == [1]
-    # the 5090's BC: 12 288 views in 256 minibatches of 48, at 2560 rows (256 views)
-    learner = lc.with_micro_batch(lc.learner(net, runner, minibatches=256), 256)
-    assert learner.first_micro_batch(12288) == 48
+    seen.clear()
+    learner = lc.with_micro_batch(lc.learner(net, runner), 2)
+    learner.unroll = recorded
+    learner.drift(runner.store, prepared)
+    assert max(seen) <= 2 and sum(seen) == views
+    # the 5090's RL: 12 288 views in 32 minibatches of 384, at 96 or 480 rows (8 or 48 views)
+    learner = lc.learner(net, runner, minibatches=32)
+    assert learner.drift_views(12288) == DRIFT_VIEWS
+
+
+def test_the_drift_reads_the_same_sample_at_every_micro_batch_size(segment):
+    """The drift's max and mean are over the same views whatever the micro-batch size (a max
+    over one micro-batch grew with micro_batch_rows: rl-v20's 0.24 at 480 rows against its
+    seed twin's 0.16 at 96)."""
+    net, runner, _, prepared = segment
+    views = runner.store.views
+    changed = copy.deepcopy(net)
+    generator = torch.Generator().manual_seed(0)
+    with torch.no_grad():
+        for parameter in changed.parameters():
+            parameter.add_(0.01 * torch.randn(parameter.shape, generator=generator))
+    learner = lc.learner(changed, runner)
+    whole = learner.drift(runner.store, prepared)
+    for micro_views in (views // 2, 1):
+        split = lc.with_micro_batch(learner, micro_views).drift(runner.store, prepared)
+        torch.testing.assert_close(split, whole, rtol=1e-5, atol=1e-9)
 
 
 def test_the_heads_sums_read_a_sample_of_head_sum_views_views(segment, monkeypatch):

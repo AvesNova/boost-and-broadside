@@ -290,6 +290,12 @@ def _own_joint(trajectory: Trajectory) -> torch.Tensor:
 # 0.35 s a 32-view micro-batch, the whole epoch cost about 8% of RL's steady time at 1024
 # environments (`steady-speed` notes); 256 views is 8 such micro-batches.
 HEAD_SUM_VIEWS = 256
+# The views the step/unroll drift reads: the first minibatch's first views up to this many,
+# whatever the micro-batch size (the drift's max grows with its sample: rl-v20's seed twin
+# read 0.16 over 8-view micro-batches where rl-v20 read 0.24 over 48, with equal means,
+# `micro-batch-check` results). 48: the 5090's RL micro-batch at 480 rows, so its earlier
+# runs' series compare.
+DRIFT_VIEWS = 48
 
 
 def micro_batch_sizes(count: int, most: int, family: tuple[int, ...] = ()) -> list[int]:
@@ -973,11 +979,11 @@ class Learner:
         minibatches = self.config.minibatches
         return tuple(sorted({views // minibatches, -(-views // minibatches)} - {0}))
 
-    def first_micro_batch(self, views: int) -> int:
-        """The views of an update's first micro-batch over `views` views (the first
-        minibatch's first, `update`'s split): what the drift unrolls."""
-        sizes = self.minibatch_sizes(views)
-        return micro_batch_sizes(max(sizes), self.micro_views, sizes)[0]
+    def drift_views(self, views: int) -> int:
+        """The views the drift reads of an update over `views` views: the first minibatch's
+        first (`update`'s split), at most `DRIFT_VIEWS`, the same at every micro-batch
+        size."""
+        return min(DRIFT_VIEWS, max(self.minibatch_sizes(views)))
 
     def micro_batch_shapes(self, views: int, cadence: bool = False) -> tuple[int, ...]:
         """The micro-batch sizes an update over `views` views runs its loss on (with
@@ -1675,16 +1681,18 @@ class Learner:
 
     @torch.no_grad()
     def drift(self, segments: Segments, prepared: dict) -> torch.Tensor:
-        """(2,): the step/unroll ratio drift before any optimizer step, on the first
-        micro-batch of views: |exp(log_probability_unroll - log_probability_rollout) - 1|
-        over living own ships, max and mean (0 without any). The micro-batch's views are
-        `first_micro_batch`'s: never more than a loss micro-batch holds (an eager unroll of
-        `micro_views` views, when the minibatches are smaller, cost memory and time the
-        update never otherwise needs)."""
-        views = torch.arange(self.first_micro_batch(segments.views))
-        # The loop runs the store's generator out: it releases the batch's staging buffers
+        """(2,): the step/unroll ratio drift before any optimizer step, over `drift_views`
+        views: |exp(log_probability_unroll - log_probability_rollout) - 1| over living own
+        ships, max and mean (0 without any). The views are unrolled eager in micro-batches
+        (never more than a loss micro-batch holds), so the micro-batch size changes the
+        memory, not the sample."""
+        micro = self._micro_batches(torch.arange(self.drift_views(segments.views)))
+        largest = torch.zeros((), device=self.device)
+        total = torch.zeros((), device=self.device)
+        count = torch.zeros((), device=self.device)
+        # The loop runs the store's generator out: it releases each batch's staging buffers
         # for reuse only once the compute below is queued (an abandoned generator never does).
-        for batch in segments.batches(segments.names, [views]):
+        for views, batch in zip(micro, segments.batches(segments.names, micro), strict=True):
             trajectory = Trajectory(**batch)
             log_probability, _ = policy.evaluate(
                 self.unroll(trajectory).policy_logits, _own_joint(trajectory)
@@ -1692,7 +1700,10 @@ class Learner:
             mask = trajectory.alive[..., : log_probability.shape[-1]]
             rollout = prepared["rollout_log_probability"][:, self._on_device(views)]
             error = torch.where(mask, (torch.exp(log_probability - rollout) - 1.0).abs(), 0.0)
-        return torch.stack([error.amax(), error.sum() / mask.sum().clamp_min(1)])
+            largest = torch.maximum(largest, error.amax())
+            total += error.sum()
+            count += mask.sum()
+        return torch.stack([largest, total / count.clamp_min(1)])
 
 
 def divergence_quantiles(counts: torch.Tensor, quantiles: torch.Tensor) -> torch.Tensor:
