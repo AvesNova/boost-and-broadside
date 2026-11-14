@@ -256,13 +256,17 @@ def resolve(
     uniforms: torch.Tensor,
     active: torch.Tensor | None = None,
     next_episode_uniforms: torch.Tensor | None = None,
+    next_ship_type: torch.Tensor | None = None,
 ) -> tuple[State, Events]:
     """Phases 4-8 on the moved state: hits, damage, the mode phase, clocks, death and
     respawn, episode end. action: the tick's action, as `move` was given (the shield's
     recharge runs only on a quiet one, `combat.quiet`). active (B, 2) int32: each team's
     active ships, as `reset` was given (default every ship). next_episode_uniforms (B, U):
     the uniforms an environment whose episode ends this tick reads for its next episode
-    (its map, arena scale and spawns; None: `uniforms`, as every other environment)."""
+    (its map, arena scale and spawns; None: `uniforms`, as every other environment).
+    next_ship_type (B, N) int32: each ship's type in the next episode of an environment
+    whose episode ends this tick (a drawn lineup per episode; None: each ship keeps its
+    type)."""
     ships, bullets, match = state.ships, state.bullets, state.match
     B = ships.x.shape[0]
     pools = environment(rules, B, ships.x.device)
@@ -361,6 +365,8 @@ def resolve(
     ships = replace(
         ships, next_slot=torch.where(keep, ships.next_slot, 0), fired=ships.fired & keep
     )
+    if next_ship_type is not None:  # the next episode's lineup, before its ships spawn
+        ships = replace(ships, ship_type=torch.where(keep, ships.ship_type, next_ship_type))
     place = _placement(rules, arena, tick, mode, ships, alive, done, axis_x, axis_y, benched)
     ships = spawn(rules, types, ships, fields, due | done[:, None], place)
     if benched is not None:  # a benched ship spawns with an episode's reset, and is benched again

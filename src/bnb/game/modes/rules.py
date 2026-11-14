@@ -184,6 +184,12 @@ PRESETS["clover"] = GameConfig(
 # game's every config field, and one without a field is another game.
 LINEUPS = {"arena": ("Yongma", "Jujak")}
 
+# Each ship set's drawn lineup types (`bnb.game.api.drawn_lineup_types`): a game that draws
+# its lineup per episode (training's, `TrainConfig.lineup_draw`) gives every slot one of
+# them with equal chance, both teams flying it slot for slot. The real-scale set's Yongma
+# and Jujak (decided 2026-11-14); the standard set's two types likewise.
+DRAWN_LINEUPS = {REAL_SCALE: ("Yongma", "Jujak"), ships.STANDARD: ("Fighter", "Heavy")}
+
 # Team deathmatch's outcome for the learner (`ModeRules.deathmatch_outcome`,
 # `bnb.game.modes.phase.win_loss`): "kill_lead", the default (decided 2026-11-14), the
 # result one-hot by the sign of the final kill difference (a draw neither), as the other

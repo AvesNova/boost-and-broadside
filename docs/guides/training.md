@@ -90,6 +90,13 @@ plays a drawn count of the game's field slots each episode, the rest absent, and
 Yemong learner masks the absent ones. It is off by default (every field). See
 [Mixed batches](../explanation/game/mixed-batches.md#field-count-sampling).
 
+Each episode draws its lineup by default (`TrainConfig.lineup_draw`): every slot is one of
+the ship set's drawn types with equal chance (`bnb.game.api.DRAWN_LINEUPS`: Yongma or
+Jujak in the real-scale set), and both teams fly the lineup slot for slot, as the
+evaluation suite's games do. The draw is keyed by the run's seed, the environment and
+the episode, and covers the rating lanes too. Set `lineup_draw=false` to play the game's
+own lineup, or `lineup` to fly one fixed lineup, which replaces the draw.
+
 `bnb.contracts.pools.environment_multiple` gives the smallest batch the pools split into;
 every valid `--environments` is a multiple of it.
 

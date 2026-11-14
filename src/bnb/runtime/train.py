@@ -186,6 +186,11 @@ class TrainConfig:
     same for both teams, in every game of the batch (the rating lanes' too); None plays the
     game's own lineup (`Rules.team_types`). A tournament of such policies plays the same
     lineup (`bnb ratings --lineup`).
+    lineup_draw: each episode of the batch (the rating lanes' too) draws its lineup, every
+    slot one of the ship set's drawn types with equal chance (`api.DRAWN_LINEUPS`: Yongma
+    or Jujak in the real-scale set), both teams flying it slot for slot, as the evaluation
+    suite's games do (decided 2026-11-14); keyed by the episode (`bnb.runtime.rollout`).
+    False plays the game's own lineup; a fixed `lineup` replaces the draw.
     compile_split: the learner's micro-batch loss compiles as two units, the unroll and the
     loss over its outputs (`Learner`'s split; compile time only, the same arithmetic within
     float rounding, `docs/rewrite/sections/compile-split`)."""
@@ -241,6 +246,7 @@ class TrainConfig:
     arena_scale: ArenaScale | None = ArenaScale()
     active_fields: ActiveFields | None = None
     lineup: tuple[str, ...] | None = None
+    lineup_draw: bool = True
     # end a PPO run after this many consecutive updates with a combat-collapse alert
     # (`bnb.runs.triggers.CombatCollapse`), recording why; 0: never (the default)
     combat_collapse_stop: int = 0
@@ -268,6 +274,8 @@ class TrainConfig:
                 )
         if self.lineup is not None:
             lineup_indices(self.lineup, self.game)  # fails for a wrong size or an unknown name
+        elif self.lineup_draw:
+            api.drawn_lineup_types(self.game.ship_set)  # fails for a set without drawn types
         card = api.default_card(self.game.ship_set)
         if self.ship_card is None:
             object.__setattr__(self, "ship_card", card)
@@ -486,6 +494,9 @@ class Trainer:
             else torch.tensor(lineup_indices(config.lineup, game) * api.TEAMS).repeat(
                 self.batch_environments, 1
             ),
+            lineup_types=api.drawn_lineup_types(game.ship_set)
+            if config.lineup is None and config.lineup_draw
+            else None,
             seed=config.seed,
         )
         lineup = self.rollout.lineup

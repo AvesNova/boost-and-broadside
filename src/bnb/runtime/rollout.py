@@ -14,7 +14,8 @@ draw alike wherever they are alike. The carry counts each environment's episodes
 (`episode`) and the ticks of its current one (`clock`):
   episode draws   keyed by (seed, environment, episode): the map, the arena scale, the
                   formations and the first spawns of an environment's k-th episode
-                  (`api.resolve`'s next_episode_uniforms), and the seat it is played from
+                  (`api.resolve`'s next_episode_uniforms), the seat it is played from,
+                  and its lineup when the rollout draws them (`lineup_types`)
   tick draws      keyed by (seed, environment, episode, clock): the tick uniforms a running
                   episode reads (respawns) and the bullet spread
   decision keys   per controller row, the tick's key and the row's role: each controller
@@ -62,6 +63,7 @@ from .store import SegmentStore
 GAME_DRAWS = purpose_key("game uniforms")
 SPREAD_DRAWS = purpose_key("bullet spread")
 SEAT_DRAWS = purpose_key("seat")
+LINEUP_DRAWS = purpose_key("lineup")
 DECISION_DRAWS = purpose_key("decision")
 
 PARTS = ("ships", "fields", "globals", "zones")
@@ -101,6 +103,9 @@ class Rollout:
     batches); benching: the games take each team's active ship count as an input
     (`bnb.game.api`; the carry's `active`, (B, 2) int32, every ship until `restart` is
     given counts), for the crossover's unequal teams; off, the game is called without it.
+    lineup_types: ship type indices each episode draws its lineup from (`_lineups`): every
+    slot one of them with equal chance, both teams flying it slot for slot (None: the
+    lineup is `ship_type`'s, or the game's, in every episode; not with `ship_type`).
     seed: the run's seed, which keys every draw (the module docstring)."""
 
     def __init__(
@@ -123,6 +128,7 @@ class Rollout:
         lookahead: int = 0,
         ship_type: torch.Tensor | None = None,
         benching: bool = False,
+        lineup_types: tuple[int, ...] | None = None,
         seed: int = 0,
     ) -> None:
         self.reward_config = reward_config or rewards.RewardConfig()
@@ -131,6 +137,13 @@ class Rollout:
             self.reward_config.deathmatch_outcome,
         )
         self.ship_type = None if ship_type is None else ship_type.to(device, torch.int32, copy=True)
+        if lineup_types is not None and (ship_type is not None or not lineup_types):
+            raise ValueError("drawn lineups need their types, and replace a given ship_type")
+        self.lineup_types = (
+            None
+            if lineup_types is None
+            else torch.tensor(lineup_types, dtype=torch.int32, device=device)
+        )
         self.benching = benching
         self.teams, self.ships_per_team, self.ship_count = (
             api.TEAMS,
@@ -163,6 +176,7 @@ class Rollout:
         self.episode_stream = stream_key(seed, "episode")
         self.stagger_stream = stream_key(seed, "stagger")
         self.environment_index = torch.arange(environments, device=device)
+        self.team_slot_index = torch.arange(config.ships_per_team, device=device)
         self.slot_index = torch.arange(self.rules.tick_uniform_count, device=device)
         self.spread_index = (  # (ship, component) of the (B, N, 2) spread
             torch.arange(self.ship_count, device=device)[:, None],
@@ -210,6 +224,17 @@ class Rollout:
         uniform = keyed_uniform(SEAT_DRAWS, self._episode_keys(episode))
         return (uniform * self.teams).long().clamp_max(self.teams - 1)
 
+    def _lineups(self, episode: torch.Tensor) -> torch.Tensor | None:
+        """(B, N) int32 each environment's lineup for its episode `episode`: every slot one
+        of `lineup_types` with equal chance, the same for both teams; None without them."""
+        if self.lineup_types is None:
+            return None
+        hashed = keyed_hash(
+            LINEUP_DRAWS, self._episode_keys(episode)[:, None], self.team_slot_index
+        )
+        team = self.lineup_types[(hashed >> 8) % self.lineup_types.shape[0]]
+        return team.repeat(1, self.teams)
+
     def _decision_keys(self, ticks: torch.Tensor, name: str) -> torch.Tensor:
         """(R,) the decision keys of controller `name`'s rows: their environment's tick key
         (`_tick_keys`) and their role."""
@@ -245,7 +270,7 @@ class Rollout:
             types,
             self._episode_uniforms(episode),
             self.lineup.fogged,
-            ship_type=self.ship_type,
+            ship_type=self.ship_type if self.lineup_types is None else self._lineups(episode),
             active=active,
         )
         clock = torch.zeros(B, dtype=torch.int64, device=device)
@@ -498,6 +523,7 @@ class Rollout:
             carry["uniforms"],
             carry.get("active"),
             next_episode_uniforms=self._episode_uniforms(carry["episode"] + 1),
+            next_ship_type=self._lineups(carry["episode"] + 1),
         )
         _assign(carry["state"], state)
         team = api.ship_team(self.ships_per_team, self.device)

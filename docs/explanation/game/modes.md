@@ -33,7 +33,9 @@ the fleet-size evaluation ones (`<base>_<n>v<n>_arena` and `_density`), and `are
 team deathmatch of the real-scale ships on a 1950 m map with no fields, where a ship killed
 spawns again on the next tick. Its lineup, one Yongma and one Jujak a team, is its
 own (`LINEUPS`, as type indices by `bnb.game.api.preset_lineup`); every other preset plays
-the game's default, the set's first two types alternating (`Rules.team_types`). The lineup
+the game's default, the set's first two types alternating (`Rules.team_types`), unless a
+training run draws its lineups (`TrainConfig.lineup_draw`, the default: each episode
+every slot Yongma or Jujak with equal chance, both teams alike). The lineup
 is kept beside the config, not in it, because a policy file records every field of its
 game's config and one recorded without a field is another game. The arena is about three
 full-stick turn circles of its two ships across (each turns at about 500-600 m at its
