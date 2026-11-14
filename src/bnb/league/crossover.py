@@ -120,6 +120,7 @@ class Fit:
         return ratio, ratio * self.stderr / self.break_even
 
     def as_dict(self) -> dict:
+        """The fit as a plain dict (for the record and the result's JSON)."""
         return dataclasses.asdict(self)
 
 

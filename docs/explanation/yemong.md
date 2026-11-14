@@ -645,11 +645,11 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
 `YemongConfig.gate` adds the output gate of Qiu et al., "Gated Attention for Large Language
 Models" (2025), to every spatial sublayer: each head's attention output is multiplied by
 `sigmoid(W x + b)`, where `x` is the normed token the query projection reads, before the
-output projection. `"elementwise"` gates every output element (`W` is width by width, 16 512
+output projection. `"elementwise"` gates every output element (W is width by width, 16 512
 parameters a sublayer at width 128, 66 048 over the four), `"headwise"` one scalar per head
-(`W` is width by heads, 258 a sublayer, 1 032 in all). The gate makes the attention output
+(W is width by heads, 258 a sublayer, 1 032 in all). The gate makes the attention output
 query-dependent and lets a head contribute nothing; of the gate forms and positions the
-paper compared, the elementwise gate on the attention output did best. `W` starts at zero and `b` at 2, so every gate starts at 0.88 and
+paper compared, the elementwise gate on the attention output did best. W starts at zero and `b` at 2, so every gate starts at 0.88 and
 the sublayer begins close to the ungated one. The default `"none"` has no gate parameters,
 and every build from before the option reads as `"none"`. The gate is plain PyTorch outside
 the attention kernel. Set it on a run with `--set yemong.gate=elementwise`.

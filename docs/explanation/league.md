@@ -402,8 +402,8 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
   judged on its own.
 - **Resuming:** a tournament that finds its preset's record rebuilds the games from it and
   goes on (the record's field must be its own: same names, same order, same identities,
-  else it stops and asks for another `--out`; an older batch of the other scoring stops
-  it too); a finished one plays nothing.
+  else it stops and asks for another `--out`; an older batch of the other scoring, or a
+  batch of another game version, stops it too); a finished one plays nothing.
 - **Refitting without playing:** `--budget 0` plays no games and builds no engine. The
   field is fitted from its record in `--out` and the `--reuse` records alone, under
   `--deathmatch-score`, and the leaderboard is written as usual. A tournament is
@@ -509,9 +509,9 @@ Every batch is appended to `artifacts/crossover/<preset>.batches.jsonl`{.plain} 
 (else the policy's run, else the runs directory) as it ends: each block's count and its
 wins, draws and losses, and the fit after it. A line per batch prints the counts, the games,
 N\* with its standard error (or the bound) and an ETA as a clock time, with the budget's as
-the worst case. A rerun reuses the record's batches of the same measurement (the players'
-identities, the game, the seed, the opponent's count and the lineup types) and continues
-past them, so an interrupted measurement resumes and a finished one only reports. The
+the worst case. A rerun reuses the record's batches of the same measurement (the game
+version, the players' identities, the game, the seed, the opponent's count and the lineup
+types) and continues past them, so an interrupted measurement resumes and a finished one only reports. The
 result (per mode N\*, the ratio, the stop reason and the games per count, with the command
 and the policy's SHA-256) goes to `artifacts/crossover/<time>/result.json`{.plain}.
 

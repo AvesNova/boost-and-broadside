@@ -256,6 +256,7 @@ class RecordingController:
         return getattr(self.inner, name)
 
     def step(self, carry, obs, reset, *arguments, **keywords):
+        """The policy's step, with the recorder armed for this decision's observation."""
         recorder = RECORDER
         if recorder is not None and recorder.armed:
             recorder.obs, recorder.own, recorder.active = obs, self.own, True
@@ -408,6 +409,7 @@ def head_table(results: list[dict]) -> str:
 
 
 def main() -> None:
+    """The measurement the module describes, over every --policy and --preset."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--policy", action="append", required=True, help="NAME=DIRECTORY")
     parser.add_argument(
